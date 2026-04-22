@@ -49,6 +49,11 @@
 #include <stdarg.h>
 #include <stdlib.h>
 
+static void release_temp_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 //=============================================================================
 // Seq Conversions
 //=============================================================================
@@ -151,6 +156,7 @@ void *rt_list_to_seq(void *list) {
     for (int64_t i = 0; i < len; i++) {
         void *elem = rt_list_get(list, i);
         rt_seq_push(seq, elem);
+        release_temp_obj(elem);
     }
     return seq;
 }
@@ -165,6 +171,7 @@ void *rt_list_to_set(void *list) {
     for (int64_t i = 0; i < len; i++) {
         void *elem = rt_list_get(list, i);
         rt_set_add(set, elem);
+        release_temp_obj(elem);
     }
     return set;
 }
@@ -179,6 +186,7 @@ void *rt_list_to_stack(void *list) {
     for (int64_t i = 0; i < len; i++) {
         void *elem = rt_list_get(list, i);
         rt_stack_push(stack, elem);
+        release_temp_obj(elem);
     }
     return stack;
 }
@@ -193,6 +201,7 @@ void *rt_list_to_queue(void *list) {
     for (int64_t i = 0; i < len; i++) {
         void *elem = rt_list_get(list, i);
         rt_queue_push(queue, elem);
+        release_temp_obj(elem);
     }
     return queue;
 }
@@ -333,6 +342,8 @@ void *rt_deque_to_seq(void *deque) {
 void *rt_deque_to_list(void *deque) {
     void *seq = rt_deque_to_seq(deque);
     void *list = rt_seq_to_list(seq);
+    if (rt_obj_release_check0(seq))
+        rt_obj_free(seq);
     return list;
 }
 

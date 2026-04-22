@@ -9,6 +9,7 @@
 //
 // Key invariants:
 //   - Once created, the set cannot be modified.
+//   - Elements are byte-length-aware strings; embedded NUL bytes are part of identity.
 //   - Membership testing is O(1) average.
 //   - Constructed from a Seq or Bag of strings; source is not consumed.
 //   - rt_frozenset_has returns 1 if element is present, 0 otherwise.

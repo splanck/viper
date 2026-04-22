@@ -10,6 +10,7 @@
 // Key invariants:
 //   - Indices are arbitrary signed 64-bit integers; no range restriction.
 //   - Only non-null entries consume memory.
+//   - Setting a NULL value removes the entry for that index.
 //   - All operations are O(1) average-case via internal hash map.
 //   - rt_sparse_get returns NULL for indices not explicitly set.
 //
@@ -43,7 +44,7 @@ int64_t rt_sparse_len(void *obj);
 /// @return Value at index or NULL.
 void *rt_sparse_get(void *obj, int64_t index);
 
-/// @brief Set value at index.
+/// @brief Set value at index, or remove the entry when value is NULL.
 /// @param obj SparseArray pointer.
 /// @param index Arbitrary integer index.
 /// @param value Value to store (retained).
@@ -63,7 +64,7 @@ int8_t rt_sparse_remove(void *obj, int64_t index);
 
 /// @brief Get all indices that have values.
 /// @param obj SparseArray pointer.
-/// @return New Seq of i64 indices.
+/// @return New owning Seq of boxed i64 indices.
 void *rt_sparse_indices(void *obj);
 
 /// @brief Get all values.

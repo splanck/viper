@@ -68,6 +68,23 @@ static rt_trie_node *new_node(void) {
     return n;
 }
 
+static const char *trie_string_data(rt_string s, size_t *out_len) {
+    int64_t len = rt_str_len(s);
+    if (len <= 0) {
+        *out_len = 0;
+        return "";
+    }
+
+    const char *data = rt_string_cstr(s);
+    if (!data) {
+        *out_len = 0;
+        return "";
+    }
+
+    *out_len = (size_t)len;
+    return data;
+}
+
 static void free_node(rt_trie_node *node) {
     if (!node)
         return;
@@ -97,7 +114,7 @@ static void collect_keys(rt_trie_node *node, char **buf, size_t *buf_cap, size_t
                     new_cap = depth + 2;
                 char *new_buf = (char *)realloc(*buf, new_cap);
                 if (!new_buf)
-                    continue; // Skip on allocation failure
+                    rt_trap("rt_trie: memory allocation failed");
                 *buf = new_buf;
                 *buf_cap = new_cap;
             }
@@ -163,16 +180,14 @@ void rt_trie_set(void *obj, rt_string key, void *value) {
     if (!trie->root)
         return;
 
-    const char *cstr = rt_string_cstr(key);
-    size_t len = cstr ? strlen(cstr) : 0;
+    size_t len = 0;
+    const char *cstr = trie_string_data(key, &len);
 
     rt_trie_node *node = trie->root;
     for (size_t i = 0; i < len; ++i) {
         unsigned char c = (unsigned char)cstr[i];
         if (!node->children[c])
             node->children[c] = new_node();
-        if (!node->children[c])
-            return; // alloc fail
         node = node->children[c];
     }
 
@@ -196,8 +211,8 @@ void *rt_trie_get(void *obj, rt_string key) {
     if (!trie->root)
         return NULL;
 
-    const char *cstr = rt_string_cstr(key);
-    size_t len = cstr ? strlen(cstr) : 0;
+    size_t len = 0;
+    const char *cstr = trie_string_data(key, &len);
 
     rt_trie_node *node = trie->root;
     for (size_t i = 0; i < len; ++i) {
@@ -217,8 +232,8 @@ int8_t rt_trie_has(void *obj, rt_string key) {
     if (!trie->root)
         return 0;
 
-    const char *cstr = rt_string_cstr(key);
-    size_t len = cstr ? strlen(cstr) : 0;
+    size_t len = 0;
+    const char *cstr = trie_string_data(key, &len);
 
     rt_trie_node *node = trie->root;
     for (size_t i = 0; i < len; ++i) {
@@ -239,8 +254,8 @@ int8_t rt_trie_has_prefix(void *obj, rt_string prefix) {
     if (!trie->root)
         return 0;
 
-    const char *cstr = rt_string_cstr(prefix);
-    size_t len = cstr ? strlen(cstr) : 0;
+    size_t len = 0;
+    const char *cstr = trie_string_data(prefix, &len);
 
     rt_trie_node *node = trie->root;
     for (size_t i = 0; i < len; ++i) {
@@ -256,14 +271,15 @@ int8_t rt_trie_has_prefix(void *obj, rt_string prefix) {
 /// query). Walks the subtrie rooted at the prefix node and reconstructs full keys via DFS.
 void *rt_trie_with_prefix(void *obj, rt_string prefix) {
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
     if (!obj)
         return result;
     rt_trie_impl *trie = (rt_trie_impl *)obj;
     if (!trie->root)
         return result;
 
-    const char *cstr = rt_string_cstr(prefix);
-    size_t plen = cstr ? strlen(cstr) : 0;
+    size_t plen = 0;
+    const char *cstr = trie_string_data(prefix, &plen);
 
     // Navigate to prefix node
     rt_trie_node *node = trie->root;
@@ -278,7 +294,7 @@ void *rt_trie_with_prefix(void *obj, rt_string prefix) {
     size_t buf_cap = 4096;
     char *buf = (char *)malloc(buf_cap);
     if (!buf)
-        return result;
+        rt_trap("rt_trie: memory allocation failed");
     if (plen > 0)
         memcpy(buf, cstr, plen);
     collect_keys(node, &buf, &buf_cap, plen, result);
@@ -295,8 +311,8 @@ rt_string rt_trie_longest_prefix(void *obj, rt_string str) {
     if (!trie->root)
         return rt_string_from_bytes("", 0);
 
-    const char *cstr = rt_string_cstr(str);
-    size_t len = cstr ? strlen(cstr) : 0;
+    size_t len = 0;
+    const char *cstr = trie_string_data(str, &len);
 
     rt_trie_node *node = trie->root;
     size_t last_match = 0;
@@ -332,8 +348,8 @@ int8_t rt_trie_remove(void *obj, rt_string key) {
     if (!trie->root)
         return 0;
 
-    const char *cstr = rt_string_cstr(key);
-    size_t len = cstr ? strlen(cstr) : 0;
+    size_t len = 0;
+    const char *cstr = trie_string_data(key, &len);
 
     // Navigate to the node
     rt_trie_node *node = trie->root;

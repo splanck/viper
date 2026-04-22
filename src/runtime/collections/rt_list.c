@@ -149,6 +149,11 @@ static inline rt_list_impl *as_list(void *p) {
     return (rt_list_impl *)p;
 }
 
+static void release_temp_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 /// @brief Returns the number of elements in the List.
 ///
 /// This function returns how many elements are currently stored in the List.
@@ -620,6 +625,7 @@ void *rt_list_slice(void *list, int64_t start, int64_t end) {
     for (int64_t i = start; i < end; i++) {
         void *elem = rt_arr_obj_get(L->arr, (size_t)i);
         rt_list_push(result, elem);
+        release_temp_obj(elem);
     }
 
     return result;
@@ -922,7 +928,9 @@ void *rt_list_clone(void *list) {
     size_t len = L->arr ? rt_arr_obj_len(L->arr) : 0;
 
     for (size_t i = 0; i < len; ++i) {
-        rt_list_push(result, rt_arr_obj_get(L->arr, i));
+        void *elem = rt_arr_obj_get(L->arr, i);
+        rt_list_push(result, elem);
+        release_temp_obj(elem);
     }
 
     return result;

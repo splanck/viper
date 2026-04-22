@@ -8,7 +8,7 @@
 // for the Viper.Collections.Map runtime class.
 //
 // Key invariants:
-//   - Keys are copied by the map; the map owns its key copies.
+//   - Keys are copied by the map; embedded NUL bytes are part of key identity.
 //   - Values are retained on insertion and released on removal or overwrite.
 //   - All operations are O(1) average-case using open-addressing.
 //   - rt_map_get returns NULL for keys not present.

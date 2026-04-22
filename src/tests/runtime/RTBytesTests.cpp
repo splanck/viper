@@ -16,6 +16,7 @@
 
 #include <cassert>
 #include <csetjmp>
+#include <cstdint>
 #include <cstring>
 
 namespace {
@@ -107,6 +108,12 @@ static void test_from_hex_odd_length_traps() {
 
 static void test_from_hex_invalid_char_traps() {
     rt_string hex = rt_string_from_bytes("zzzz", 4);
+    EXPECT_TRAP(rt_bytes_from_hex(hex));
+}
+
+static void test_from_hex_embedded_nul_is_not_truncated() {
+    const char hex_bytes[] = {'4', '1', '\0', '4'};
+    rt_string hex = rt_string_from_bytes(hex_bytes, sizeof(hex_bytes));
     EXPECT_TRAP(rt_bytes_from_hex(hex));
 }
 
@@ -218,6 +225,8 @@ static void test_copy_bounds_check() {
 
     EXPECT_TRAP(rt_bytes_copy(dst, 3, src, 0, 5));  // dst overflow
     EXPECT_TRAP(rt_bytes_copy(dst, 0, src, 3, 5));  // src overflow
+    EXPECT_TRAP(rt_bytes_copy(dst, INT64_MAX - 1, src, 0, 4)); // dst index overflow guard
+    EXPECT_TRAP(rt_bytes_copy(dst, 0, src, INT64_MAX - 1, 4)); // src index overflow guard
     EXPECT_TRAP(rt_bytes_copy(dst, -1, src, 0, 1)); // negative dst index
     EXPECT_TRAP(rt_bytes_copy(dst, 0, src, -1, 1)); // negative src index
     EXPECT_TRAP(rt_bytes_copy(dst, 0, src, 0, -1)); // negative count
@@ -277,6 +286,13 @@ static void test_base64_empty_roundtrip() {
 
 static void test_from_base64_invalid_chars_traps() {
     rt_string b64 = rt_string_from_bytes("!!!!", 4);
+    EXPECT_TRAP(rt_bytes_from_base64(b64));
+    assert(g_last_trap && strstr(g_last_trap, "Bytes.FromBase64") != nullptr);
+}
+
+static void test_from_base64_embedded_nul_is_not_truncated() {
+    const char b64_bytes[] = {'Q', 'Q', '=', '=', '\0', 'A', 'A', 'A', 'A'};
+    rt_string b64 = rt_string_from_bytes(b64_bytes, sizeof(b64_bytes));
     EXPECT_TRAP(rt_bytes_from_base64(b64));
     assert(g_last_trap && strstr(g_last_trap, "Bytes.FromBase64") != nullptr);
 }
@@ -396,6 +412,13 @@ static void test_null_traps() {
     EXPECT_TRAP(rt_bytes_copy(nullptr, 0, nullptr, 0, 1));
 }
 
+static void test_from_raw_rejects_size_t_overflow() {
+    if (SIZE_MAX > (size_t)INT64_MAX) {
+        EXPECT_TRAP(rt_bytes_from_raw(nullptr, (size_t)INT64_MAX + 1u));
+        assert(g_last_trap && strstr(g_last_trap, "Bytes.FromRaw") != nullptr);
+    }
+}
+
 int main() {
     test_new_creates_zero_filled_bytes();
     test_new_with_zero_length();
@@ -405,6 +428,7 @@ int main() {
     test_from_hex_uppercase();
     test_from_hex_odd_length_traps();
     test_from_hex_invalid_char_traps();
+    test_from_hex_embedded_nul_is_not_truncated();
     test_get_set();
     test_set_clamps_to_byte();
     test_get_out_of_bounds_traps();
@@ -420,6 +444,7 @@ int main() {
     test_from_base64_to_str();
     test_base64_empty_roundtrip();
     test_from_base64_invalid_chars_traps();
+    test_from_base64_embedded_nul_is_not_truncated();
     test_from_base64_bad_padding_traps();
     test_hex_roundtrip();
     test_fill();
@@ -429,6 +454,7 @@ int main() {
     test_clone();
     test_null_handling();
     test_null_traps();
+    test_from_raw_rejects_size_t_overflow();
 
     return 0;
 }

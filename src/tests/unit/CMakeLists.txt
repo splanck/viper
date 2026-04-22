@@ -1574,6 +1574,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_map PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_map test_rt_map)
 
+    viper_add_test(test_rt_intmap ${VIPER_TESTS_DIR}/runtime/RTIntMapTests.cpp)
+    target_link_libraries(test_rt_intmap PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_intmap test_rt_intmap)
+
     viper_add_test(test_rt_multimap ${VIPER_TESTS_DIR}/runtime/RTMultiMapTests.cpp)
     target_link_libraries(test_rt_multimap PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_multimap test_rt_multimap)

@@ -45,13 +45,13 @@ void *rt_bytes_new(int64_t len);
 void *rt_bytes_from_str(rt_string str);
 
 /// @brief Create a byte array from a hexadecimal string.
-/// @param hex Hex string (must have even length).
+/// @param hex Hex string (must have even full byte length).
 /// @return Pointer to new Bytes object.
 void *rt_bytes_from_hex(rt_string hex);
 
 /// @brief Create a byte array from an RFC 4648 Base64 string.
 /// @details Uses the standard Base64 alphabet (A–Z a–z 0–9 + /) with '=' padding.
-///          Traps on invalid characters, invalid padding, or invalid length.
+///          Traps on invalid characters, invalid padding, or invalid full byte length.
 /// @param b64 Base64 string to decode.
 /// @return Pointer to new Bytes object containing the decoded bytes.
 void *rt_bytes_from_base64(rt_string b64);
@@ -90,7 +90,7 @@ void *rt_bytes_slice(void *obj, int64_t start, int64_t end);
 /// @param dst_idx Destination start index.
 /// @param src Source Bytes object.
 /// @param src_idx Source start index.
-/// @param count Number of bytes to copy.
+/// @param count Number of bytes to copy. Traps if range arithmetic overflows.
 void rt_bytes_copy(void *dst, int64_t dst_idx, void *src, int64_t src_idx, int64_t count);
 
 /// @brief Convert byte array to string (interprets as UTF-8).

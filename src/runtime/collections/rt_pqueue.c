@@ -93,6 +93,8 @@ static void heap_grow(rt_pqueue_impl *h) {
     if (h->cap > INT64_MAX / HEAP_GROWTH_FACTOR)
         rt_trap("Heap: capacity overflow");
     int64_t new_cap = h->cap * HEAP_GROWTH_FACTOR;
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(heap_entry))
+        rt_trap("Heap: allocation size overflow");
     heap_entry *new_items = malloc((size_t)new_cap * sizeof(heap_entry));
 
     if (!new_items) {
@@ -210,6 +212,8 @@ void rt_pqueue_push(void *obj, int64_t priority, void *val) {
 
     rt_pqueue_impl *h = (rt_pqueue_impl *)obj;
 
+    if (h->len >= INT64_MAX)
+        rt_trap("Heap: maximum length reached");
     if (h->len >= h->cap) {
         heap_grow(h);
     }

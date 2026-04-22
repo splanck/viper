@@ -8,7 +8,7 @@
 // when capacity is exceeded, providing O(1) average get/put operations.
 //
 // Key invariants:
-//   - Keys are string-keyed; each key maps to one value at a time.
+//   - Keys are byte-length-aware strings; embedded NUL bytes are part of key identity.
 //   - The least-recently-used entry is evicted when capacity is exceeded.
 //   - All access operations (get, put, has) count as use and update recency.
 //   - Capacity must be > 0; creating with capacity 0 is undefined.

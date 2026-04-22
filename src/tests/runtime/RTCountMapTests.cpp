@@ -16,14 +16,35 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <csetjmp>
+#include <cstdint>
 #include <cstring>
 
+static jmp_buf g_trap_jmp;
+static bool g_trap_expected = false;
+
 extern "C" void vm_trap(const char *msg) {
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
 
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+    } while (0)
+
 static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
+}
+
+static rt_string make_bytes(const char *s, size_t len) {
+    return rt_string_from_bytes(s, len);
 }
 
 static bool str_eq(rt_string s, const char *expected) {
@@ -137,6 +158,34 @@ static void test_multiple_keys() {
     rt_string_unref(c);
 }
 
+static void test_embedded_nul_keys_are_distinct() {
+    void *cm = rt_countmap_new();
+    const char bytes[] = {'a', '\0', 'b'};
+    rt_string k1 = make_bytes(bytes, sizeof(bytes));
+    rt_string k2 = make_str("a");
+
+    rt_countmap_inc_by(cm, k1, 2);
+    rt_countmap_inc_by(cm, k2, 5);
+
+    assert(rt_countmap_len(cm) == 2);
+    assert(rt_countmap_get(cm, k1) == 2);
+    assert(rt_countmap_get(cm, k2) == 5);
+    assert(rt_countmap_total(cm) == 7);
+
+    rt_string_unref(k1);
+    rt_string_unref(k2);
+}
+
+static void test_counter_overflow_traps() {
+    void *cm = rt_countmap_new();
+    rt_string k = make_str("overflow");
+
+    rt_countmap_set(cm, k, INT64_MAX);
+    EXPECT_TRAP(rt_countmap_inc(cm, k));
+
+    rt_string_unref(k);
+}
+
 static void test_keys() {
     void *cm = rt_countmap_new();
     rt_string a = make_str("x");
@@ -227,6 +276,8 @@ int main() {
     test_set();
     test_has();
     test_multiple_keys();
+    test_embedded_nul_keys_are_distinct();
+    test_counter_overflow_traps();
     test_keys();
     test_most_common();
     test_remove();

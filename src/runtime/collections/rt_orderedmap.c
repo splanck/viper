@@ -38,6 +38,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
+#include "rt_string.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -77,6 +78,30 @@ static uint64_t om_hash(const char *key, size_t len) {
     return h;
 }
 
+static const char *om_key_data(rt_string key, size_t *out_len) {
+    if (!key) {
+        *out_len = 0;
+        return "";
+    }
+    int64_t len = rt_str_len(key);
+    if (len <= 0) {
+        *out_len = 0;
+        return "";
+    }
+    const char *cstr = rt_string_cstr(key);
+    if (!cstr) {
+        *out_len = 0;
+        return "";
+    }
+    *out_len = (size_t)len;
+    return cstr;
+}
+
+static void om_release_value(void *value) {
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+}
+
 static rt_om_entry *om_find(rt_orderedmap_impl *m, const char *key, size_t len) {
     uint64_t idx = om_hash(key, len) % (uint64_t)m->capacity;
     rt_om_entry *e = m->buckets[idx];
@@ -99,6 +124,11 @@ static void om_resize(rt_orderedmap_impl *m) {
             RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "OrderedMap: capacity overflow during resize");
 
     int64_t new_cap = m->capacity * 2;
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(rt_om_entry *))
+        rt_trap_raise_kind(RT_TRAP_KIND_OVERFLOW,
+                           Err_Overflow,
+                           -1,
+                           "OrderedMap: allocation size overflow during resize");
     rt_om_entry **new_buckets = (rt_om_entry **)calloc((size_t)new_cap, sizeof(rt_om_entry *));
     if (!new_buckets)
         rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
@@ -130,8 +160,7 @@ static void orderedmap_finalizer(void *obj) {
     while (e) {
         rt_om_entry *next = e->next;
         free(e->key);
-        if (e->value)
-            rt_obj_release_check0(e->value);
+        om_release_value(e->value);
         free(e);
         e = next;
     }
@@ -185,14 +214,12 @@ int64_t rt_orderedmap_is_empty(void *map) {
 /// @details New keys are appended to the end of the order. Updating an
 ///          existing key replaces the value but keeps its position.
 void rt_orderedmap_set(void *map, rt_string key, void *value) {
-    if (!map || !key)
+    if (!map)
         return;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
 
-    const char *kstr = rt_string_cstr(key);
-    if (!kstr)
-        return;
-    size_t klen = strlen(kstr);
+    size_t klen;
+    const char *kstr = om_key_data(key, &klen);
 
     // Check for existing key
     rt_om_entry *existing = om_find(m, kstr, klen);
@@ -200,14 +227,13 @@ void rt_orderedmap_set(void *map, rt_string key, void *value) {
         // Update value in-place (preserves order)
         if (value)
             rt_obj_retain_maybe(value);
-        if (existing->value)
-            rt_obj_release_check0(existing->value);
+        om_release_value(existing->value);
         existing->value = value;
         return;
     }
 
     // Resize if needed
-    if (m->count * 4 >= m->capacity * 3)
+    if ((long double)m->count * 4.0L >= (long double)m->capacity * 3.0L)
         om_resize(m);
 
     // Create new entry
@@ -217,13 +243,19 @@ void rt_orderedmap_set(void *map, rt_string key, void *value) {
                            Err_RuntimeError,
                            -1,
                            "OrderedMap: entry allocation failed");
+    if (klen == SIZE_MAX) {
+        free(e);
+        rt_trap_raise_kind(
+            RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "OrderedMap: key allocation overflow");
+    }
     e->key = (char *)malloc(klen + 1);
     if (!e->key) {
         free(e);
         rt_trap_raise_kind(
             RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, -1, "OrderedMap: key allocation failed");
     }
-    memcpy(e->key, kstr, klen + 1);
+    memcpy(e->key, kstr, klen);
+    e->key[klen] = '\0';
     e->key_len = klen;
     if (value)
         rt_obj_retain_maybe(value);
@@ -251,14 +283,12 @@ void rt_orderedmap_set(void *map, rt_string key, void *value) {
 // ---------------------------------------------------------------------------
 
 void *rt_orderedmap_get(void *map, rt_string key) {
-    if (!map || !key)
+    if (!map)
         return NULL;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
 
-    const char *kstr = rt_string_cstr(key);
-    if (!kstr)
-        return NULL;
-    size_t klen = strlen(kstr);
+    size_t klen;
+    const char *kstr = om_key_data(key, &klen);
 
     rt_om_entry *e = om_find(m, kstr, klen);
     return e ? e->value : NULL;
@@ -266,14 +296,12 @@ void *rt_orderedmap_get(void *map, rt_string key) {
 
 /// @brief Check whether a key exists in the ordered map.
 int64_t rt_orderedmap_has(void *map, rt_string key) {
-    if (!map || !key)
+    if (!map)
         return 0;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
 
-    const char *kstr = rt_string_cstr(key);
-    if (!kstr)
-        return 0;
-    size_t klen = strlen(kstr);
+    size_t klen;
+    const char *kstr = om_key_data(key, &klen);
 
     return om_find(m, kstr, klen) != NULL ? 1 : 0;
 }
@@ -286,14 +314,12 @@ int64_t rt_orderedmap_has(void *map, rt_string key) {
 /// @details The entry is removed from both the hash table and the
 ///          insertion-order linked list.
 int8_t rt_orderedmap_remove(void *map, rt_string key) {
-    if (!map || !key)
+    if (!map)
         return 0;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
 
-    const char *kstr = rt_string_cstr(key);
-    if (!kstr)
-        return 0;
-    size_t klen = strlen(kstr);
+    size_t klen;
+    const char *kstr = om_key_data(key, &klen);
 
     uint64_t idx = om_hash(kstr, klen) % (uint64_t)m->capacity;
 
@@ -315,8 +341,7 @@ int8_t rt_orderedmap_remove(void *map, rt_string key) {
                 m->tail = e->prev;
 
             free(e->key);
-            if (e->value)
-                rt_obj_release_check0(e->value);
+            om_release_value(e->value);
             free(e);
             m->count--;
             return 1;
@@ -400,8 +425,7 @@ void rt_orderedmap_clear(void *map) {
     while (e) {
         rt_om_entry *next = e->next;
         free(e->key);
-        if (e->value)
-            rt_obj_release_check0(e->value);
+        om_release_value(e->value);
         free(e);
         e = next;
     }

@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_deque.h"
+#include "rt_object.h"
 
 #include <cassert>
 #include <cstdint>
@@ -20,6 +21,23 @@
 static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
+}
+
+static int g_finalizer_calls = 0;
+
+static void count_finalizer(void *) {
+    ++g_finalizer_calls;
+}
+
+static void *new_obj() {
+    void *p = rt_obj_new_i64(0, 8);
+    assert(p != nullptr);
+    return p;
+}
+
+static void release_obj(void *p) {
+    if (p && rt_obj_release_check0(p))
+        rt_obj_free(p);
 }
 
 //=============================================================================
@@ -258,6 +276,62 @@ static void test_deque_wraparound() {
     printf("\n");
 }
 
+static void test_deque_ownership() {
+    printf("Testing Deque Ownership:\n");
+
+    // Clear releases the deque-owned reference.
+    {
+        void *d = rt_deque_new();
+        void *value = new_obj();
+        g_finalizer_calls = 0;
+        rt_obj_set_finalizer(value, count_finalizer);
+
+        rt_deque_push_back(d, value);
+        release_obj(value);
+        test_result("Push retains value", g_finalizer_calls == 0);
+
+        rt_deque_clear(d);
+        test_result("Clear releases value", g_finalizer_calls == 1);
+    }
+
+    // Pop transfers a retained reference back to the caller.
+    {
+        void *d = rt_deque_new();
+        void *value = new_obj();
+        g_finalizer_calls = 0;
+        rt_obj_set_finalizer(value, count_finalizer);
+
+        rt_deque_push_back(d, value);
+        release_obj(value);
+        void *popped = rt_deque_pop_front(d);
+        test_result("Pop transfer keeps value alive", g_finalizer_calls == 0);
+
+        release_obj(popped);
+        test_result("Popped value can be released", g_finalizer_calls == 1);
+    }
+
+    // Set releases the replaced value and retains the replacement.
+    {
+        void *d = rt_deque_new();
+        void *old_value = new_obj();
+        void *new_value = new_obj();
+        g_finalizer_calls = 0;
+        rt_obj_set_finalizer(old_value, count_finalizer);
+        rt_obj_set_finalizer(new_value, count_finalizer);
+
+        rt_deque_push_back(d, old_value);
+        release_obj(old_value);
+        rt_deque_set(d, 0, new_value);
+        test_result("Set releases replaced value", g_finalizer_calls == 1);
+
+        release_obj(new_value);
+        rt_deque_clear(d);
+        test_result("Set retained replacement", g_finalizer_calls == 2);
+    }
+
+    printf("\n");
+}
+
 //=============================================================================
 // Entry Point
 //=============================================================================
@@ -272,6 +346,7 @@ int main() {
     test_deque_random_access();
     test_deque_utility();
     test_deque_wraparound();
+    test_deque_ownership();
 
     printf("All Deque tests passed!\n");
     return 0;

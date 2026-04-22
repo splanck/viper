@@ -36,7 +36,9 @@
 
 #include "rt_sparsearray.h"
 
+#include "rt_box.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 
 #include <stdlib.h>
@@ -71,12 +73,17 @@ static uint64_t sa_hash(int64_t key) {
 
 // --- Internal helpers ---
 
+static void sa_release_value(void *value) {
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+}
+
 static void sa_finalizer(void *obj) {
     rt_sparse_impl *sa = (rt_sparse_impl *)obj;
     if (sa->slots) {
         for (int64_t i = 0; i < sa->capacity; i++) {
             if (sa->slots[i].occupied)
-                rt_obj_release_check0(sa->slots[i].value);
+                sa_release_value(sa->slots[i].value);
         }
         free(sa->slots);
         sa->slots = NULL;
@@ -102,9 +109,9 @@ static void sa_insert_internal(rt_sparse_impl *sa, int64_t key, void *value) {
         }
         if (sa->slots[slot].key == key) {
             // Update value
-            rt_obj_release_check0(sa->slots[slot].value);
-            sa->slots[slot].value = value;
             rt_obj_retain_maybe(value);
+            sa_release_value(sa->slots[slot].value);
+            sa->slots[slot].value = value;
             return;
         }
     }
@@ -116,8 +123,14 @@ static void sa_grow(rt_sparse_impl *sa) {
 
     if (old_cap > INT64_MAX / 2)
         rt_trap("SparseArray: capacity overflow");
-    sa->capacity = old_cap * 2;
-    sa->slots = (sa_slot *)calloc((size_t)sa->capacity, sizeof(sa_slot));
+    int64_t new_cap = old_cap * 2;
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(sa_slot))
+        rt_trap("SparseArray: allocation size overflow");
+    sa_slot *new_slots = (sa_slot *)calloc((size_t)new_cap, sizeof(sa_slot));
+    if (!new_slots)
+        rt_trap("SparseArray: memory allocation failed");
+    sa->capacity = new_cap;
+    sa->slots = new_slots;
     sa->count = 0;
 
     for (int64_t i = 0; i < old_cap; i++) {
@@ -166,11 +179,16 @@ static sa_slot *sa_find(rt_sparse_impl *sa, int64_t key) {
 /// (e.g., entity IDs scattered across a wide ID space).
 void *rt_sparse_new(void) {
     rt_sparse_impl *sa = (rt_sparse_impl *)rt_obj_new_i64(0, sizeof(rt_sparse_impl));
+    if (!sa)
+        rt_trap("SparseArray: memory allocation failed");
     sa->count = 0;
     sa->capacity = 16;
     sa->slots = (sa_slot *)calloc(16, sizeof(sa_slot));
-    if (!sa->slots)
+    if (!sa->slots) {
+        if (rt_obj_release_check0(sa))
+            rt_obj_free(sa);
         rt_trap("SparseArray: memory allocation failed");
+    }
     rt_obj_set_finalizer(sa, sa_finalizer);
     return (void *)sa;
 }
@@ -204,9 +222,13 @@ void rt_sparse_set(void *obj, int64_t index, void *value) {
     rt_sparse_impl *sa = (rt_sparse_impl *)obj;
 
     // Check load factor (> 70%)
-    if (sa->count * 10 >= sa->capacity * 7)
+    if ((long double)sa->count * 10.0L >= (long double)sa->capacity * 7.0L)
         sa_grow(sa);
 
+    if (!value) {
+        rt_sparse_remove(obj, index);
+        return;
+    }
     sa_insert_internal(sa, index, value);
 }
 
@@ -235,7 +257,7 @@ int8_t rt_sparse_remove(void *obj, int64_t index) {
     if (!s)
         return 0;
 
-    rt_obj_release_check0(s->value);
+    sa_release_value(s->value);
     s->value = NULL;
     s->occupied = 0;
     sa->count--;
@@ -266,16 +288,20 @@ int8_t rt_sparse_remove(void *obj, int64_t index) {
     return 1;
 }
 
-/// @brief Return a Seq of every populated index (cast to void* — ints stored as pointers).
+/// @brief Return a Seq of every populated index as boxed i64 values.
 /// Slot-iteration order, not insertion order. Snapshot at call time.
 void *rt_sparse_indices(void *obj) {
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     rt_sparse_impl *sa = (rt_sparse_impl *)obj;
     for (int64_t i = 0; i < sa->capacity; i++) {
-        if (sa->slots[i].occupied)
-            rt_seq_push(seq, (void *)sa->slots[i].key);
+        if (sa->slots[i].occupied) {
+            void *boxed = rt_box_i64(sa->slots[i].key);
+            rt_seq_push(seq, boxed);
+            sa_release_value(boxed);
+        }
     }
     return seq;
 }
@@ -302,7 +328,7 @@ void rt_sparse_clear(void *obj) {
     rt_sparse_impl *sa = (rt_sparse_impl *)obj;
     for (int64_t i = 0; i < sa->capacity; i++) {
         if (sa->slots[i].occupied) {
-            rt_obj_release_check0(sa->slots[i].value);
+            sa_release_value(sa->slots[i].value);
             sa->slots[i].occupied = 0;
             sa->slots[i].value = NULL;
         }

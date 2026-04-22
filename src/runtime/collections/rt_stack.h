@@ -18,7 +18,7 @@
 //   - Caller is responsible for lifetime management.
 //
 // Error conventions:
-//   - Allocation failure → returns NULL
+//   - Allocation failure → rt_trap()
 //   - Pop/Peek on empty → rt_trap()
 //   - TryPop on empty → returns NULL
 //

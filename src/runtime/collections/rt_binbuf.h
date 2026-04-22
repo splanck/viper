@@ -83,12 +83,12 @@ void rt_binbuf_write_i64le(void *obj, int64_t value);
 /// @param value Value to write.
 void rt_binbuf_write_i64be(void *obj, int64_t value);
 
-/// @brief Write a length-prefixed string (4-byte LE length + UTF-8 bytes).
+/// @brief Write a length-prefixed string (4-byte LE byte length + full string bytes).
 /// @param obj BinaryBuffer pointer.
-/// @param value String to write.
+/// @param value String to write. Embedded NUL bytes are preserved.
 void rt_binbuf_write_str(void *obj, rt_string value);
 
-/// @brief Write length-prefixed bytes (4-byte LE length + raw bytes).
+/// @brief Write length-prefixed bytes (4-byte LE byte length + raw bytes).
 /// @param obj BinaryBuffer pointer.
 /// @param data Bytes object to write.
 void rt_binbuf_write_bytes(void *obj, void *data);

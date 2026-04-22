@@ -5,7 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_box.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_sparsearray.h"
 #include "rt_string.h"
@@ -18,8 +20,27 @@ extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
+namespace {
+static int g_finalizer_calls = 0;
+} // namespace
+
 static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
+}
+
+static void *new_obj() {
+    void *p = rt_obj_new_i64(0, 8);
+    assert(p != nullptr);
+    return p;
+}
+
+static void release_obj(void *p) {
+    if (p && rt_obj_release_check0(p))
+        rt_obj_free(p);
+}
+
+static void count_finalizer(void *) {
+    ++g_finalizer_calls;
 }
 
 static void test_new() {
@@ -91,10 +112,22 @@ static void test_overwrite() {
 static void test_indices() {
     void *sa = rt_sparse_new();
     rt_sparse_set(sa, 10, make_str("a"));
-    rt_sparse_set(sa, 20, make_str("b"));
+    rt_sparse_set(sa, -20, make_str("b"));
 
     void *idx = rt_sparse_indices(sa);
     assert(rt_seq_len(idx) == 2);
+
+    bool found_10 = false;
+    bool found_neg20 = false;
+    for (int64_t i = 0; i < rt_seq_len(idx); ++i) {
+        void *boxed = rt_seq_get(idx, i);
+        assert(rt_box_type(boxed) == RT_BOX_I64);
+        int64_t value = rt_unbox_i64(boxed);
+        found_10 = found_10 || value == 10;
+        found_neg20 = found_neg20 || value == -20;
+    }
+    assert(found_10);
+    assert(found_neg20);
 }
 
 static void test_values() {
@@ -113,6 +146,40 @@ static void test_clear() {
 
     rt_sparse_clear(sa);
     assert(rt_sparse_len(sa) == 0);
+}
+
+static void test_set_null_removes_entry() {
+    void *sa = rt_sparse_new();
+    rt_string value = make_str("value");
+
+    rt_sparse_set(sa, 7, value);
+    assert(rt_sparse_len(sa) == 1);
+    assert(rt_sparse_has(sa, 7) == 1);
+
+    rt_sparse_set(sa, 7, NULL);
+    assert(rt_sparse_len(sa) == 0);
+    assert(rt_sparse_has(sa, 7) == 0);
+    assert(rt_sparse_get(sa, 7) == NULL);
+
+    rt_string_unref(value);
+}
+
+static void test_set_null_releases_value() {
+    void *sa = rt_sparse_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_sparse_set(sa, 11, value);
+    release_obj(value); // SparseArray now owns the only reference.
+    assert(g_finalizer_calls == 0);
+
+    rt_sparse_set(sa, 11, NULL);
+    assert(g_finalizer_calls == 1);
+    assert(rt_sparse_len(sa) == 0);
+
+    release_obj(sa);
 }
 
 static void test_grow() {
@@ -150,6 +217,8 @@ int main() {
     test_indices();
     test_values();
     test_clear();
+    test_set_null_removes_entry();
+    test_set_null_releases_value();
     test_grow();
     test_null_safety();
     return 0;

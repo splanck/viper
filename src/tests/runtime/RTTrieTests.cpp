@@ -38,9 +38,18 @@ static rt_string make_key(const char *text) {
     return rt_string_from_bytes(text, strlen(text));
 }
 
+static rt_string make_key_bytes(const char *bytes, size_t len) {
+    return rt_string_from_bytes(bytes, len);
+}
+
 static bool str_eq(rt_string s, const char *expected) {
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
+}
+
+static bool str_bytes_eq(rt_string s, const char *expected, size_t len) {
+    const char *data = rt_string_cstr(s);
+    return data && rt_str_len(s) == (int64_t)len && memcmp(data, expected, len) == 0;
 }
 
 static void test_new() {
@@ -284,6 +293,40 @@ static void test_empty_key() {
     rt_release_obj(t);
 }
 
+static void test_embedded_nul_keys() {
+    void *t = rt_trie_new();
+    void *v = new_obj();
+    const char key_bytes[] = {'a', '\0', 'b'};
+    const char prefix_bytes[] = {'a', '\0'};
+    const char query_bytes[] = {'a', '\0', 'b', 'x'};
+    rt_string key = make_key_bytes(key_bytes, sizeof(key_bytes));
+    rt_string prefix = make_key_bytes(prefix_bytes, sizeof(prefix_bytes));
+    rt_string query = make_key_bytes(query_bytes, sizeof(query_bytes));
+
+    rt_trie_set(t, key, v);
+    assert(rt_trie_len(t) == 1);
+    assert(rt_trie_has(t, key) == 1);
+    assert(rt_trie_get(t, key) == v);
+    assert(rt_trie_has_prefix(t, prefix) == 1);
+
+    void *matches = rt_trie_with_prefix(t, prefix);
+    assert(rt_seq_len(matches) == 1);
+    assert(str_bytes_eq((rt_string)rt_seq_get(matches, 0), key_bytes, sizeof(key_bytes)));
+
+    rt_string longest = rt_trie_longest_prefix(t, query);
+    assert(str_bytes_eq(longest, key_bytes, sizeof(key_bytes)));
+    assert(rt_trie_remove(t, key) == 1);
+    assert(rt_trie_len(t) == 0);
+
+    rt_release_obj(matches);
+    rt_string_unref(longest);
+    rt_string_unref(key);
+    rt_string_unref(prefix);
+    rt_string_unref(query);
+    rt_release_obj(v);
+    rt_release_obj(t);
+}
+
 static void test_null_safety() {
     rt_string k = make_key("test");
     assert(rt_trie_len(NULL) == 0);
@@ -309,6 +352,7 @@ int main() {
     test_clear();
     test_keys();
     test_empty_key();
+    test_embedded_nul_keys();
     test_null_safety();
     return 0;
 }

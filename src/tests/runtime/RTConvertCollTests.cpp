@@ -23,6 +23,10 @@
 #include <cassert>
 #include <cstdio>
 
+namespace {
+static int g_finalizer_calls = 0;
+} // namespace
+
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
@@ -34,6 +38,22 @@ static void *new_obj() {
     void *p = rt_obj_new_i64(0, 8);
     assert(p != nullptr);
     return p;
+}
+
+static void release_obj(void *p) {
+    if (p && rt_obj_release_check0(p))
+        rt_obj_free(p);
+}
+
+static void count_finalizer(void *) {
+    ++g_finalizer_calls;
+}
+
+static void cleanup_list(void *list) {
+    if (!list)
+        return;
+    rt_list_clear(list);
+    release_obj(list);
 }
 
 // Test values - created fresh for each test
@@ -165,6 +185,52 @@ static void test_list_to_set() {
     void *set = rt_list_to_set(list);
     test_result("Set created", set != NULL);
     test_result("Set has 1 unique element", rt_set_len(set) == 1);
+
+    printf("\n");
+}
+
+static void test_list_to_seq_releases_get_temp_ref() {
+    printf("Testing List to Seq temporary reference cleanup:\n");
+
+    void *list = rt_list_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_list_push(list, value);
+    release_obj(value); // List now owns the only reference.
+
+    void *seq = rt_list_to_seq(list);
+    test_result("Seq created", seq != NULL && rt_seq_len(seq) == 1);
+
+    cleanup_list(list);
+    test_result("No temp retain leaked from List.Get", g_finalizer_calls == 1);
+    release_obj(seq);
+
+    printf("\n");
+}
+
+static void test_list_to_set_releases_get_temp_ref() {
+    printf("Testing List to Set temporary reference cleanup:\n");
+
+    void *list = rt_list_new();
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_list_push(list, value);
+    release_obj(value); // List now owns the only reference.
+
+    void *set = rt_list_to_set(list);
+    test_result("Set created", set != NULL && rt_set_len(set) == 1);
+
+    cleanup_list(list);
+    test_result("Set keeps value alive after List cleanup", g_finalizer_calls == 0);
+    rt_set_clear(set);
+    test_result("No temp retain leaked after Set cleanup", g_finalizer_calls == 1);
+    release_obj(set);
 
     printf("\n");
 }
@@ -302,6 +368,8 @@ int main() {
     // List conversions
     test_list_to_seq();
     test_list_to_set();
+    test_list_to_seq_releases_get_temp_ref();
+    test_list_to_set_releases_get_temp_ref();
 
     // Set conversions
     test_set_to_seq();

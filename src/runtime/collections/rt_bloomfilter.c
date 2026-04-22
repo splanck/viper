@@ -34,6 +34,7 @@
 #include "rt_bloomfilter.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_trap.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -88,7 +89,7 @@ static void bloomfilter_finalizer(void *obj) {
 void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate) {
     if (expected_items < 1)
         expected_items = 1;
-    if (false_positive_rate <= 0.0)
+    if (!isfinite(false_positive_rate) || false_positive_rate <= 0.0)
         false_positive_rate = 0.01;
     if (false_positive_rate >= 1.0)
         false_positive_rate = 0.5;
@@ -96,6 +97,8 @@ void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate) {
     // Optimal bit count: m = -n * ln(p) / (ln(2)^2)
     double n = (double)expected_items;
     double m = -n * log(false_positive_rate) / (log(2.0) * log(2.0));
+    if (!isfinite(m) || m > (double)INT64_MAX)
+        rt_trap("BloomFilter: size overflow");
     int64_t bit_count = (int64_t)ceil(m);
     if (bit_count < 64)
         bit_count = 64;
@@ -108,13 +111,20 @@ void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate) {
     if (hash_count > 30)
         hash_count = 30;
 
+    if (bit_count > INT64_MAX - 7)
+        rt_trap("BloomFilter: size overflow");
     int64_t byte_count = (bit_count + 7) / 8;
+    if ((uint64_t)byte_count > SIZE_MAX)
+        rt_trap("BloomFilter: allocation size overflow");
 
     rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)rt_obj_new_i64(0, sizeof(rt_bloomfilter_impl));
+    if (!bf)
+        rt_trap("BloomFilter: memory allocation failed");
     bf->bits = (uint8_t *)calloc((size_t)byte_count, 1);
     if (!bf->bits) {
+        if (rt_obj_release_check0(bf))
+            rt_obj_free(bf);
         rt_trap("BloomFilter: memory allocation failed");
-        return NULL;
     }
     bf->bit_count = bit_count;
     bf->hash_count = hash_count;
@@ -142,6 +152,8 @@ void rt_bloomfilter_add(void *filter, rt_string item) {
     if (!data)
         return;
 
+    if (bf->item_count == INT64_MAX)
+        rt_trap("BloomFilter: item count overflow");
     for (int64_t i = 0; i < bf->hash_count; i++) {
         uint64_t h = bloom_hash(data, len, (uint64_t)i);
         int64_t pos = (int64_t)(h % (uint64_t)bf->bit_count);
@@ -225,6 +237,8 @@ int64_t rt_bloomfilter_merge(void *filter, void *other) {
 
     if (a->bit_count != b->bit_count || a->hash_count != b->hash_count)
         return 0;
+    if (b->item_count > INT64_MAX - a->item_count)
+        rt_trap("BloomFilter: item count overflow");
 
     int64_t byte_count = (a->bit_count + 7) / 8;
     for (int64_t i = 0; i < byte_count; i++)

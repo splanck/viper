@@ -12,6 +12,7 @@
 
 #include "rt_context.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_random.h"
 #include "rt_seq.h"
 
@@ -23,6 +24,7 @@ namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
+static int g_finalizer_calls = 0;
 } // namespace
 
 extern "C" void vm_trap(const char *msg) {
@@ -42,6 +44,21 @@ extern "C" void vm_trap(const char *msg) {
         }                                                                                          \
         g_trap_expected = false;                                                                   \
     } while (0)
+
+static void count_finalizer(void *) {
+    ++g_finalizer_calls;
+}
+
+static void *new_obj() {
+    void *p = rt_obj_new_i64(0, 8);
+    assert(p != nullptr);
+    return p;
+}
+
+static void release_obj(void *p) {
+    if (p && rt_obj_release_check0(p))
+        rt_obj_free(p);
+}
 
 static void test_new_and_basic_properties() {
     void *seq = rt_seq_new();
@@ -121,6 +138,27 @@ static void test_push_all_self_doubles() {
     assert(rt_seq_get(seq, 1) == &b);
     assert(rt_seq_get(seq, 2) == &a);
     assert(rt_seq_get(seq, 3) == &b);
+}
+
+static void test_owns_elements_mode() {
+    void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
+
+    void *value = new_obj();
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_seq_push(seq, value);
+    release_obj(value);
+    assert(g_finalizer_calls == 0);
+
+    rt_seq_clear(seq);
+    assert(g_finalizer_calls == 1);
+
+    void *non_empty = rt_seq_new();
+    int x = 1;
+    rt_seq_push(non_empty, &x);
+    EXPECT_TRAP(rt_seq_set_owns_elements(non_empty, 1));
 }
 
 static void test_set() {
@@ -899,6 +937,7 @@ int main() {
     test_push_and_get();
     test_push_all_appends();
     test_push_all_self_doubles();
+    test_owns_elements_mode();
     test_set();
     test_pop();
     test_peek();

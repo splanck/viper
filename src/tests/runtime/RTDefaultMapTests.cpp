@@ -21,6 +21,10 @@ static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
+static rt_string make_bytes(const char *s, size_t len) {
+    return rt_string_from_bytes(s, len);
+}
+
 static void test_new() {
     rt_string def = make_str("default");
     void *m = rt_defaultmap_new(def);
@@ -131,6 +135,39 @@ static void test_null_default() {
     rt_string_unref(k);
 }
 
+static void test_null_key_uses_empty_key() {
+    rt_string def = make_str("DEFAULT");
+    void *m = rt_defaultmap_new(def);
+    rt_string v = make_str("empty-key");
+
+    assert(rt_defaultmap_get(m, NULL) == def);
+    rt_defaultmap_set(m, NULL, v);
+    assert(rt_defaultmap_has(m, NULL) == 1);
+    assert(rt_defaultmap_get(m, NULL) == v);
+    assert(rt_defaultmap_remove(m, NULL) == 1);
+    assert(rt_defaultmap_get(m, NULL) == def);
+}
+
+static void test_embedded_nul_keys_are_distinct() {
+    rt_string def = make_str("DEFAULT");
+    void *m = rt_defaultmap_new(def);
+    const char bytes[] = {'a', '\0', 'b'};
+    rt_string k1 = make_bytes(bytes, sizeof(bytes));
+    rt_string k2 = make_str("a");
+    rt_string v1 = make_str("v1");
+    rt_string v2 = make_str("v2");
+
+    rt_defaultmap_set(m, k1, v1);
+    rt_defaultmap_set(m, k2, v2);
+
+    assert(rt_defaultmap_len(m) == 2);
+    assert(rt_defaultmap_get(m, k1) == v1);
+    assert(rt_defaultmap_get(m, k2) == v2);
+
+    rt_string_unref(k1);
+    rt_string_unref(k2);
+}
+
 static void test_null_safety() {
     assert(rt_defaultmap_len(NULL) == 0);
     assert(rt_defaultmap_get(NULL, NULL) == NULL);
@@ -150,6 +187,8 @@ int main() {
     test_get_default_value();
     test_clear();
     test_null_default();
+    test_null_key_uses_empty_key();
+    test_embedded_nul_keys_are_distinct();
     test_null_safety();
 
     return 0;

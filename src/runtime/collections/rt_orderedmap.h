@@ -9,6 +9,7 @@
 //
 // Key invariants:
 //   - Iteration order matches the order of first insertion.
+//   - NULL keys are treated as the empty key; embedded NUL bytes are part of key identity.
 //   - Updating an existing key does not change its position in iteration order.
 //   - All operations are O(1) average-case.
 //   - Values are retained while stored in the map.

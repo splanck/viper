@@ -10,7 +10,7 @@
 // Key invariants:
 //   - Indices are 0-based; out-of-bounds access traps at runtime.
 //   - Append is amortized O(1) with capacity doubling.
-//   - Elements are not individually reference-counted in the base Seq.
+//   - Default sequences borrow elements; ownership can be enabled before inserting elements.
 //   - Functional operations (map, filter) return new Seq objects.
 //
 // Ownership/Lifetime:
@@ -39,9 +39,10 @@ extern "C" {
 /// @return Opaque pointer to the new Seq object.
 void *rt_seq_new(void);
 
-/// @brief Enable or disable element ownership for a Seq.
+/// @brief Enable or disable element ownership for an empty Seq.
 /// @details When enabled, the Seq retains elements on push/insert/set and
-///          releases them on clear/finalize. Must be called before pushing.
+///          releases them on clear/finalize. Ownership mode changes trap once
+///          the sequence is non-empty.
 /// @param obj Opaque Seq object pointer.
 /// @param owns 1 to enable ownership, 0 to disable.
 void rt_seq_set_owns_elements(void *obj, int8_t owns);

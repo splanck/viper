@@ -36,6 +36,7 @@
 
 #include "rt_box.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -80,11 +81,39 @@ static uint64_t fs_hash(const char *data, int64_t len) {
 }
 
 static uint64_t fs_str_hash(rt_string s) {
+    if (!s)
+        return fs_hash("", 0);
+    int64_t len = rt_str_len(s);
     const char *cstr = rt_string_cstr(s);
-    return fs_hash(cstr, rt_str_len(s));
+    return fs_hash(cstr ? cstr : "", len > 0 && cstr ? len : 0);
 }
 
 // --- Internal helpers ---
+
+static const char *fs_key_data(rt_string key, int64_t *out_len) {
+    if (!key) {
+        *out_len = 0;
+        return "";
+    }
+    int64_t len = rt_str_len(key);
+    if (len <= 0) {
+        *out_len = 0;
+        return "";
+    }
+    const char *data = rt_string_cstr(key);
+    if (!data) {
+        *out_len = 0;
+        return "";
+    }
+    *out_len = len;
+    return data;
+}
+
+static int8_t fs_key_equals(rt_string key, const char *data, int64_t len) {
+    int64_t key_len = 0;
+    const char *key_data = fs_key_data(key, &key_len);
+    return key_len == len && memcmp(key_data, data, (size_t)len) == 0 ? 1 : 0;
+}
 
 static void fs_finalizer(void *obj) {
     rt_frozenset_impl *fs = (rt_frozenset_impl *)obj;
@@ -110,13 +139,26 @@ static int64_t fs_next_pow2(int64_t n) {
 
 static rt_frozenset_impl *fs_alloc(int64_t count) {
     // Use ~50% load factor for good probe performance
-    int64_t cap = fs_next_pow2(count < 4 ? 8 : count * 2);
+    int64_t needed = 8;
+    if (count >= 4) {
+        if (count > INT64_MAX / 2)
+            rt_trap("FrozenSet: capacity overflow");
+        needed = count * 2;
+    }
+    int64_t cap = fs_next_pow2(needed);
     rt_frozenset_impl *fs = (rt_frozenset_impl *)rt_obj_new_i64(0, sizeof(rt_frozenset_impl));
+    if (!fs)
+        rt_trap("FrozenSet: memory allocation failed");
     fs->count = 0;
     fs->capacity = cap;
+    if ((uint64_t)cap > SIZE_MAX / sizeof(fs_slot))
+        rt_trap("FrozenSet: allocation size overflow");
     fs->slots = (fs_slot *)calloc((size_t)cap, sizeof(fs_slot));
-    if (!fs->slots)
+    if (!fs->slots) {
+        if (rt_obj_release_check0(fs))
+            rt_obj_free(fs);
         rt_trap("rt_frozenset: memory allocation failed");
+    }
     rt_obj_set_finalizer(fs, fs_finalizer);
     return fs;
 }
@@ -125,7 +167,8 @@ static int8_t fs_insert(rt_frozenset_impl *fs, rt_string key) {
     uint64_t h = fs_str_hash(key);
     int64_t mask = fs->capacity - 1;
     int64_t idx = (int64_t)(h & (uint64_t)mask);
-    const char *key_cstr = rt_string_cstr(key);
+    int64_t key_len = 0;
+    const char *key_data = fs_key_data(key, &key_len);
 
     for (int64_t i = 0; i < fs->capacity; i++) {
         int64_t slot = (idx + i) & mask;
@@ -135,7 +178,7 @@ static int8_t fs_insert(rt_frozenset_impl *fs, rt_string key) {
             fs->count++;
             return 1;
         }
-        if (strcmp(rt_string_cstr(fs->slots[slot].key), key_cstr) == 0)
+        if (fs_key_equals(fs->slots[slot].key, key_data, key_len))
             return 0; // duplicate
     }
     return 0;
@@ -147,13 +190,14 @@ static int8_t fs_contains(rt_frozenset_impl *fs, rt_string key) {
     uint64_t h = fs_str_hash(key);
     int64_t mask = fs->capacity - 1;
     int64_t idx = (int64_t)(h & (uint64_t)mask);
-    const char *key_cstr = rt_string_cstr(key);
+    int64_t key_len = 0;
+    const char *key_data = fs_key_data(key, &key_len);
 
     for (int64_t i = 0; i < fs->capacity; i++) {
         int64_t slot = (idx + i) & mask;
         if (!fs->slots[slot].key)
             return 0;
-        if (strcmp(rt_string_cstr(fs->slots[slot].key), key_cstr) == 0)
+        if (fs_key_equals(fs->slots[slot].key, key_data, key_len))
             return 1;
     }
     return 0;

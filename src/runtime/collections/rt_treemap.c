@@ -90,12 +90,21 @@ typedef struct {
 ///
 /// @return Pointer to the key's character data, or "" if key is NULL.
 static const char *get_key_data(rt_string key, size_t *out_len) {
+    if (!key) {
+        *out_len = 0;
+        return "";
+    }
+    int64_t len = rt_str_len(key);
+    if (len <= 0) {
+        *out_len = 0;
+        return "";
+    }
     const char *cstr = rt_string_cstr(key);
     if (!cstr) {
         *out_len = 0;
         return "";
     }
-    *out_len = strlen(cstr);
+    *out_len = (size_t)len;
     return cstr;
 }
 
@@ -179,6 +188,8 @@ static void ensure_capacity(treemap_impl *tm) {
     if (tm->capacity > SIZE_MAX / 2)
         rt_trap("TreeMap: capacity overflow");
     size_t new_cap = tm->capacity == 0 ? TREEMAP_INITIAL_CAPACITY : tm->capacity * 2;
+    if (new_cap > SIZE_MAX / sizeof(treemap_entry))
+        rt_trap("TreeMap: allocation size overflow");
     treemap_entry *new_entries =
         (treemap_entry *)realloc(tm->entries, new_cap * sizeof(treemap_entry));
     if (!new_entries) {
@@ -323,11 +334,11 @@ void rt_treemap_set(void *obj, rt_string key, void *value) {
     if (found) {
         // Update existing entry
         treemap_entry *e = &tm->entries[idx];
-        // Release old value
-        if (e->value && rt_obj_release_check0(e->value))
-            rt_obj_free(e->value);
         // Retain new value
         rt_obj_retain_maybe(value);
+        // Release old value after retaining in case the pointer is unchanged.
+        if (e->value && rt_obj_release_check0(e->value))
+            rt_obj_free(e->value);
         e->value = value;
     } else {
         // Insert new entry
@@ -342,6 +353,8 @@ void rt_treemap_set(void *obj, rt_string key, void *value) {
 
         // Create new entry
         treemap_entry *e = &tm->entries[idx];
+        if (keylen == SIZE_MAX)
+            rt_trap("TreeMap: key allocation overflow");
         e->key = (char *)malloc(keylen + 1);
         if (!e->key) {
             rt_trap("TreeMap: memory allocation failed");

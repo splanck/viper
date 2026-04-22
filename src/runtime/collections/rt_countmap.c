@@ -39,6 +39,7 @@
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -64,12 +65,21 @@ typedef struct rt_countmap_impl {
 } rt_countmap_impl;
 
 static const char *get_str_data(rt_string s, size_t *out_len) {
+    if (!s) {
+        *out_len = 0;
+        return "";
+    }
+    int64_t len = rt_str_len(s);
+    if (len <= 0) {
+        *out_len = 0;
+        return "";
+    }
     const char *cstr = rt_string_cstr(s);
     if (!cstr) {
         *out_len = 0;
         return "";
     }
-    *out_len = strlen(cstr);
+    *out_len = (size_t)len;
     return cstr;
 }
 
@@ -108,6 +118,8 @@ static void resize(rt_countmap_impl *cm) {
     if (cm->capacity > SIZE_MAX / 2)
         return;
     size_t new_cap = cm->capacity * 2;
+    if (new_cap > SIZE_MAX / sizeof(rt_cm_entry *))
+        rt_trap("CountMap: allocation size overflow");
     rt_cm_entry **new_buckets = (rt_cm_entry **)calloc(new_cap, sizeof(rt_cm_entry *));
     if (!new_buckets)
         return;
@@ -127,6 +139,11 @@ static void resize(rt_countmap_impl *cm) {
     free(cm->buckets);
     cm->buckets = new_buckets;
     cm->capacity = new_cap;
+}
+
+static int should_resize(rt_countmap_impl *cm) {
+    return (long double)cm->count * (long double)CM_LOAD_FACTOR_DEN >=
+           (long double)cm->capacity * (long double)CM_LOAD_FACTOR_NUM;
 }
 
 /// @brief Construct an empty count map (string → int64). Designed for tally workloads —
@@ -192,20 +209,28 @@ int64_t rt_countmap_inc_by(void *obj, rt_string key, int64_t n) {
 
     rt_cm_entry *e = find_entry(cm->buckets[idx], kdata, klen);
     if (e) {
+        if (n > INT64_MAX - e->count || n > INT64_MAX - cm->total)
+            rt_trap("CountMap: count overflow");
         e->count += n;
         cm->total += n;
         return e->count;
     }
 
     // New entry
-    if (cm->count * CM_LOAD_FACTOR_DEN >= cm->capacity * CM_LOAD_FACTOR_NUM) {
+    if (should_resize(cm)) {
         resize(cm);
         idx = (size_t)(h % cm->capacity);
     }
 
+    if (n > INT64_MAX - cm->total)
+        rt_trap("CountMap: total overflow");
     e = (rt_cm_entry *)malloc(sizeof(rt_cm_entry));
     if (!e)
         return 0;
+    if (klen == SIZE_MAX) {
+        free(e);
+        rt_trap("CountMap: key allocation overflow");
+    }
     e->key = (char *)malloc(klen + 1);
     if (!e->key) {
         free(e);
@@ -242,7 +267,8 @@ int64_t rt_countmap_dec(void *obj, rt_string key) {
         rt_cm_entry *e = *pp;
         if (e->key_len == klen && memcmp(e->key, kdata, klen) == 0) {
             e->count--;
-            cm->total--;
+            if (cm->total > 0)
+                cm->total--;
             if (e->count <= 0) {
                 *pp = e->next;
                 free_entry(e);
@@ -309,20 +335,33 @@ void rt_countmap_set(void *obj, rt_string key, int64_t count) {
 
     rt_cm_entry *e = find_entry(cm->buckets[idx], kdata, klen);
     if (e) {
-        cm->total += (count - e->count);
+        if (count > e->count) {
+            int64_t delta = count - e->count;
+            if (delta > INT64_MAX - cm->total)
+                rt_trap("CountMap: total overflow");
+            cm->total += delta;
+        } else {
+            cm->total -= (e->count - count);
+        }
         e->count = count;
         return;
     }
 
     // New entry
-    if (cm->count * CM_LOAD_FACTOR_DEN >= cm->capacity * CM_LOAD_FACTOR_NUM) {
+    if (should_resize(cm)) {
         resize(cm);
         idx = (size_t)(h % cm->capacity);
     }
 
+    if (count > INT64_MAX - cm->total)
+        rt_trap("CountMap: total overflow");
     e = (rt_cm_entry *)malloc(sizeof(rt_cm_entry));
     if (!e)
         return;
+    if (klen == SIZE_MAX) {
+        free(e);
+        rt_trap("CountMap: key allocation overflow");
+    }
     e->key = (char *)malloc(klen + 1);
     if (!e->key) {
         free(e);

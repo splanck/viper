@@ -21,6 +21,10 @@
 #include <cstdio>
 #include <cstring>
 
+namespace {
+static int g_finalizer_calls = 0;
+} // namespace
+
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
@@ -33,6 +37,10 @@ static rt_string make_str(const char *s) {
     return rt_const_cstr(s);
 }
 
+static rt_string make_bytes(const char *s, size_t len) {
+    return rt_string_from_bytes(s, len);
+}
+
 static const char *str_cstr(rt_string s) {
     return rt_string_cstr(s);
 }
@@ -42,6 +50,15 @@ static void *new_test_obj() {
     void *p = rt_obj_new_i64(0, 8);
     assert(p != nullptr);
     return p;
+}
+
+static void release_obj(void *p) {
+    if (p && rt_obj_release_check0(p))
+        rt_obj_free(p);
+}
+
+static void count_finalizer(void *) {
+    ++g_finalizer_calls;
 }
 
 // ============================================================================
@@ -120,6 +137,47 @@ static void test_update() {
     assert(rt_treemap_len(tm) == 1); // Still 1
 
     printf("test_update: PASSED\n");
+}
+
+static void test_update_releases_old_value() {
+    void *tm = rt_treemap_new();
+    void *old_val = new_test_obj();
+    void *new_val = new_test_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(old_val, count_finalizer);
+
+    rt_treemap_set(tm, make_str("key"), old_val);
+    release_obj(old_val); // TreeMap now owns the only reference.
+    assert(g_finalizer_calls == 0);
+
+    rt_treemap_set(tm, make_str("key"), new_val);
+    assert(rt_treemap_get(tm, make_str("key")) == new_val);
+    assert(g_finalizer_calls == 1);
+
+    release_obj(new_val);
+    release_obj(tm);
+}
+
+static void test_embedded_nul_keys_are_distinct() {
+    void *tm = rt_treemap_new();
+    const char bytes[] = {'a', '\0', 'b'};
+    rt_string k1 = make_bytes(bytes, sizeof(bytes));
+    rt_string k2 = make_str("a");
+    void *v1 = new_test_obj();
+    void *v2 = new_test_obj();
+
+    rt_treemap_set(tm, k1, v1);
+    rt_treemap_set(tm, k2, v2);
+
+    assert(rt_treemap_len(tm) == 2);
+    assert(rt_treemap_get(tm, k1) == v1);
+    assert(rt_treemap_get(tm, k2) == v2);
+
+    rt_string_unref(k1);
+    release_obj(v1);
+    release_obj(v2);
+    release_obj(tm);
 }
 
 // ============================================================================
@@ -350,6 +408,8 @@ int main() {
     test_set_get();
     test_has();
     test_update();
+    test_update_releases_old_value();
+    test_embedded_nul_keys_are_distinct();
 
     // Drop/Clear
     test_drop();

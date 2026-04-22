@@ -183,6 +183,23 @@ static void test_write_read_str() {
     assert(strcmp(rt_string_cstr(out), "hello") == 0);
 }
 
+static void test_write_read_str_preserves_embedded_nul() {
+    const char bytes[] = {'a', '\0', 'b'};
+    void *bb = rt_binbuf_new();
+    rt_string s = rt_string_from_bytes(bytes, sizeof(bytes));
+    rt_binbuf_write_str(bb, s);
+
+    assert(rt_binbuf_get_len(bb) == 4 + (int64_t)sizeof(bytes));
+
+    rt_binbuf_set_position(bb, 0);
+    rt_string out = rt_binbuf_read_str(bb);
+    assert(out != nullptr);
+    assert(rt_str_len(out) == (int64_t)sizeof(bytes));
+    assert(memcmp(rt_string_cstr(out), bytes, sizeof(bytes)) == 0);
+    rt_string_unref(s);
+    rt_string_unref(out);
+}
+
 static void test_write_read_bytes() {
     void *src = rt_bytes_new(4);
     rt_bytes_set(src, 0, 0xDE);
@@ -380,6 +397,7 @@ int main() {
     test_write_read_i64be();
     test_endian_byte_order_i16();
     test_write_read_str();
+    test_write_read_str_preserves_embedded_nul();
     test_write_read_bytes();
 
     // Cursor semantics

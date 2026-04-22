@@ -53,6 +53,10 @@ static rt_string make_key(const char *text) {
     return rt_string_from_bytes(text, strlen(text));
 }
 
+static rt_string make_key_bytes(const char *text, size_t len) {
+    return rt_string_from_bytes(text, len);
+}
+
 static void test_remove_frees_last_reference_without_invalid_free() {
     void *map = rt_map_new();
     assert(map != nullptr);
@@ -114,9 +118,34 @@ static void test_free_runs_map_finalizer_and_releases_values() {
     assert(g_finalizer_calls == 1);
 }
 
+static void test_embedded_nul_keys_are_distinct() {
+    void *map = rt_map_new();
+    assert(map != nullptr);
+
+    const char bytes[] = {'a', '\0', 'b'};
+    rt_string k1 = make_key_bytes(bytes, sizeof(bytes));
+    rt_string k2 = make_key("a");
+    void *v1 = new_obj();
+    void *v2 = new_obj();
+
+    rt_map_set(map, k1, v1);
+    rt_map_set(map, k2, v2);
+
+    assert(rt_map_len(map) == 2);
+    assert(rt_map_get(map, k1) == v1);
+    assert(rt_map_get(map, k2) == v2);
+
+    rt_string_unref(k1);
+    rt_string_unref(k2);
+    rt_release_obj(v1);
+    rt_release_obj(v2);
+    rt_release_obj(map);
+}
+
 int main() {
     test_remove_frees_last_reference_without_invalid_free();
     test_overwrite_frees_old_last_reference_without_invalid_free();
     test_free_runs_map_finalizer_and_releases_values();
+    test_embedded_nul_keys_are_distinct();
     return 0;
 }

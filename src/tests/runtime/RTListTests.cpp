@@ -209,6 +209,44 @@ static void test_list_finalizer_releases_elements() {
     assert(g_finalizer_calls == 1);
 }
 
+static void test_slice_does_not_leak_temp_get_reference() {
+    void *list = rt_list_new();
+    assert(list != nullptr);
+
+    g_finalizer_calls = 0;
+
+    void *a = new_obj();
+    rt_obj_set_finalizer(a, count_finalizer);
+    rt_list_push(list, a);
+    rt_release_obj(a); // List now owns the only reference.
+
+    void *slice = rt_list_slice(list, 0, 1);
+    cleanup_list(list);
+    assert(g_finalizer_calls == 0);
+
+    cleanup_list(slice);
+    assert(g_finalizer_calls == 1);
+}
+
+static void test_clone_does_not_leak_temp_get_reference() {
+    void *list = rt_list_new();
+    assert(list != nullptr);
+
+    g_finalizer_calls = 0;
+
+    void *a = new_obj();
+    rt_obj_set_finalizer(a, count_finalizer);
+    rt_list_push(list, a);
+    rt_release_obj(a); // List now owns the only reference.
+
+    void *clone = rt_list_clone(list);
+    cleanup_list(list);
+    assert(g_finalizer_calls == 0);
+
+    cleanup_list(clone);
+    assert(g_finalizer_calls == 1);
+}
+
 static void test_is_empty() {
     void *list = rt_list_new();
     assert(list != nullptr);
@@ -267,6 +305,8 @@ int main() {
     test_remove_returns_bool_and_removes_first_only();
     test_insert_out_of_range_traps();
     test_list_finalizer_releases_elements();
+    test_slice_does_not_leak_temp_get_reference();
+    test_clone_does_not_leak_temp_get_reference();
     test_is_empty();
     test_pop();
     return 0;

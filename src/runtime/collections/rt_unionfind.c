@@ -37,6 +37,7 @@
 #include "rt_unionfind.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_trap.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -76,9 +77,11 @@ void *rt_unionfind_new(int64_t n) {
     if (n < 1)
         n = 1;
     if ((uint64_t)n > SIZE_MAX / sizeof(int64_t))
-        return NULL;
+        rt_trap("UnionFind: allocation size overflow");
 
     rt_unionfind_impl *uf = (rt_unionfind_impl *)rt_obj_new_i64(0, sizeof(rt_unionfind_impl));
+    if (!uf)
+        rt_trap("UnionFind: memory allocation failed");
     uf->parent = (int64_t *)malloc((size_t)n * sizeof(int64_t));
     uf->rank = (int64_t *)calloc((size_t)n, sizeof(int64_t));
     uf->size = (int64_t *)malloc((size_t)n * sizeof(int64_t));
@@ -88,7 +91,7 @@ void *rt_unionfind_new(int64_t n) {
         free(uf->size);
         if (rt_obj_release_check0(uf))
             rt_obj_free(uf);
-        return NULL;
+        rt_trap("UnionFind: memory allocation failed");
     }
     uf->n = n;
     uf->sets = n;

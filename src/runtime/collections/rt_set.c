@@ -78,6 +78,8 @@ static void resize_set(rt_set_impl *set) {
     if (set->capacity > SIZE_MAX / 2)
         return;
     size_t new_capacity = set->capacity * 2;
+    if (new_capacity > SIZE_MAX / sizeof(rt_set_entry *))
+        rt_trap("Set: allocation size overflow");
     rt_set_entry **new_buckets = calloc(new_capacity, sizeof(rt_set_entry *));
     if (!new_buckets)
         return; // Allocation failed, keep old table
@@ -159,7 +161,8 @@ int8_t rt_set_add(void *obj, void *elem) {
     rt_set_impl *set = obj;
 
     // Check load factor and resize if needed
-    if (set->count * SET_LOAD_FACTOR_DEN >= set->capacity * SET_LOAD_FACTOR_NUM) {
+    if ((long double)set->count * (long double)SET_LOAD_FACTOR_DEN >=
+        (long double)set->capacity * (long double)SET_LOAD_FACTOR_NUM) {
         resize_set(set);
     }
 

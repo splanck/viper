@@ -38,6 +38,7 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
+#include "rt_string.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -76,6 +77,30 @@ static uint64_t dm_hash(const char *key, size_t len) {
     return h;
 }
 
+static const char *dm_key_data(rt_string key, size_t *out_len) {
+    if (!key) {
+        *out_len = 0;
+        return "";
+    }
+    int64_t len = rt_str_len(key);
+    if (len <= 0) {
+        *out_len = 0;
+        return "";
+    }
+    const char *cstr = rt_string_cstr(key);
+    if (!cstr) {
+        *out_len = 0;
+        return "";
+    }
+    *out_len = (size_t)len;
+    return cstr;
+}
+
+static void dm_release_value(void *value) {
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+}
+
 // ---------------------------------------------------------------------------
 // Resize
 // ---------------------------------------------------------------------------
@@ -84,6 +109,8 @@ static void dm_resize(rt_defaultmap_impl *m) {
     if (m->capacity > INT64_MAX / 2)
         return;
     int64_t new_cap = m->capacity * 2;
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(rt_dm_entry *))
+        rt_trap("DefaultMap: allocation size overflow");
     rt_dm_entry **new_buckets = (rt_dm_entry **)calloc((size_t)new_cap, sizeof(rt_dm_entry *));
     if (!new_buckets)
         return;
@@ -104,6 +131,10 @@ static void dm_resize(rt_defaultmap_impl *m) {
     m->capacity = new_cap;
 }
 
+static int dm_should_resize(rt_defaultmap_impl *m) {
+    return (long double)m->count * 4.0L >= (long double)m->capacity * 3.0L;
+}
+
 // ---------------------------------------------------------------------------
 // Finalizer
 // ---------------------------------------------------------------------------
@@ -115,15 +146,13 @@ static void defaultmap_finalizer(void *obj) {
         while (e) {
             rt_dm_entry *next = e->next;
             free(e->key);
-            if (e->value && rt_obj_release_check0(e->value))
-                rt_obj_free(e->value);
+            dm_release_value(e->value);
             free(e);
             e = next;
         }
     }
     free(m->buckets);
-    if (m->default_value)
-        rt_obj_release_check0(m->default_value);
+    dm_release_value(m->default_value);
     m->buckets = NULL;
 }
 
@@ -163,14 +192,12 @@ int64_t rt_defaultmap_len(void *map) {
 // ---------------------------------------------------------------------------
 
 void *rt_defaultmap_get(void *map, rt_string key) {
-    if (!map || !key)
+    if (!map)
         return NULL;
     rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
 
-    const char *kstr = rt_string_cstr(key);
-    if (!kstr)
-        return m->default_value;
-    size_t klen = strlen(kstr);
+    size_t klen;
+    const char *kstr = dm_key_data(key, &klen);
 
     uint64_t idx = dm_hash(kstr, klen) % (uint64_t)m->capacity;
     rt_dm_entry *e = m->buckets[idx];
@@ -190,14 +217,12 @@ void *rt_defaultmap_get(void *map, rt_string key) {
 /// @details If the key already exists, the old value is released and replaced
 ///          with the new one. Both key and value are retained by the map.
 void rt_defaultmap_set(void *map, rt_string key, void *value) {
-    if (!map || !key)
+    if (!map)
         return;
     rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
 
-    const char *kstr = rt_string_cstr(key);
-    if (!kstr)
-        return;
-    size_t klen = strlen(kstr);
+    size_t klen;
+    const char *kstr = dm_key_data(key, &klen);
 
     uint64_t idx = dm_hash(kstr, klen) % (uint64_t)m->capacity;
     rt_dm_entry *e = m->buckets[idx];
@@ -205,8 +230,7 @@ void rt_defaultmap_set(void *map, rt_string key, void *value) {
         if (e->key_len == klen && memcmp(e->key, kstr, klen) == 0) {
             if (value)
                 rt_obj_retain_maybe(value);
-            if (e->value && rt_obj_release_check0(e->value))
-                rt_obj_free(e->value);
+            dm_release_value(e->value);
             e->value = value;
             return;
         }
@@ -214,7 +238,7 @@ void rt_defaultmap_set(void *map, rt_string key, void *value) {
     }
 
     // Resize check
-    if (m->count * 4 >= m->capacity * 3) {
+    if (dm_should_resize(m)) {
         dm_resize(m);
         idx = dm_hash(kstr, klen) % (uint64_t)m->capacity;
     }
@@ -223,10 +247,15 @@ void rt_defaultmap_set(void *map, rt_string key, void *value) {
     rt_dm_entry *ne = (rt_dm_entry *)calloc(1, sizeof(rt_dm_entry));
     if (!ne)
         rt_trap("rt_defaultmap: memory allocation failed");
+    if (klen == SIZE_MAX) {
+        free(ne);
+        rt_trap("rt_defaultmap: key allocation overflow");
+    }
     ne->key = (char *)malloc(klen + 1);
     if (!ne->key)
         rt_trap("rt_defaultmap: memory allocation failed");
-    memcpy(ne->key, kstr, klen + 1);
+    memcpy(ne->key, kstr, klen);
+    ne->key[klen] = '\0';
     ne->key_len = klen;
     if (value)
         rt_obj_retain_maybe(value);
@@ -245,14 +274,12 @@ void rt_defaultmap_set(void *map, rt_string key, void *value) {
 ///          walks the separate-chaining linked list comparing by key length
 ///          and content. Returns 1 if found, 0 otherwise.
 int64_t rt_defaultmap_has(void *map, rt_string key) {
-    if (!map || !key)
+    if (!map)
         return 0;
     rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
 
-    const char *kstr = rt_string_cstr(key);
-    if (!kstr)
-        return 0;
-    size_t klen = strlen(kstr);
+    size_t klen;
+    const char *kstr = dm_key_data(key, &klen);
 
     uint64_t idx = dm_hash(kstr, klen) % (uint64_t)m->capacity;
     rt_dm_entry *e = m->buckets[idx];
@@ -269,14 +296,12 @@ int64_t rt_defaultmap_has(void *map, rt_string key) {
 ///          unlink the entry. Releases the value reference (if non-null) and
 ///          frees the key string and entry node.
 int8_t rt_defaultmap_remove(void *map, rt_string key) {
-    if (!map || !key)
+    if (!map)
         return 0;
     rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
 
-    const char *kstr = rt_string_cstr(key);
-    if (!kstr)
-        return 0;
-    size_t klen = strlen(kstr);
+    size_t klen;
+    const char *kstr = dm_key_data(key, &klen);
 
     uint64_t idx = dm_hash(kstr, klen) % (uint64_t)m->capacity;
     rt_dm_entry **pp = &m->buckets[idx];
@@ -285,8 +310,7 @@ int8_t rt_defaultmap_remove(void *map, rt_string key) {
         if (e->key_len == klen && memcmp(e->key, kstr, klen) == 0) {
             *pp = e->next;
             free(e->key);
-            if (e->value && rt_obj_release_check0(e->value))
-                rt_obj_free(e->value);
+            dm_release_value(e->value);
             free(e);
             m->count--;
             return 1;
@@ -343,8 +367,7 @@ void rt_defaultmap_clear(void *map) {
         while (e) {
             rt_dm_entry *next = e->next;
             free(e->key);
-            if (e->value && rt_obj_release_check0(e->value))
-                rt_obj_free(e->value);
+            dm_release_value(e->value);
             free(e);
             e = next;
         }

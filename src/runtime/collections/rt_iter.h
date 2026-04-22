@@ -59,7 +59,7 @@ void *rt_iter_from_map_values(void *map);
 /// @return Iterator handle producing items.
 void *rt_iter_from_set(void *set);
 
-/// @brief Create an iterator from a Stack (top to bottom).
+/// @brief Create a snapshot iterator from a Stack (bottom to top).
 /// @param stack Stack object.
 /// @return Iterator handle.
 void *rt_iter_from_stack(void *stack);

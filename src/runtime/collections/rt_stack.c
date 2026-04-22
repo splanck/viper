@@ -122,6 +122,8 @@ static void stack_ensure_capacity(rt_stack_impl *stack, int64_t needed) {
         new_cap *= STACK_GROWTH_FACTOR;
     }
 
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(void *))
+        rt_trap("Stack: allocation size overflow");
     void **new_items = realloc(stack->items, (size_t)new_cap * sizeof(void *));
     if (!new_items) {
         rt_trap("Stack: memory allocation failed");
@@ -259,6 +261,8 @@ void rt_stack_push(void *obj, void *elem) {
 
     rt_stack_impl *stack = (rt_stack_impl *)obj;
 
+    if (stack->len >= INT64_MAX)
+        rt_trap("Stack: maximum length reached");
     stack_ensure_capacity(stack, stack->len + 1);
     stack->items[stack->len] = elem;
     stack->len++;

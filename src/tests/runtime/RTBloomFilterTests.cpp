@@ -10,6 +10,7 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -25,6 +26,15 @@ static void test_new() {
     void *bf = rt_bloomfilter_new(100, 0.01);
     assert(bf != NULL);
     assert(rt_bloomfilter_count(bf) == 0);
+}
+
+static void test_invalid_fpr_is_sanitized() {
+    void *nan_bf = rt_bloomfilter_new(100, NAN);
+    void *inf_bf = rt_bloomfilter_new(100, INFINITY);
+    assert(nan_bf != NULL);
+    assert(inf_bf != NULL);
+    assert(rt_bloomfilter_count(nan_bf) == 0);
+    assert(rt_bloomfilter_count(inf_bf) == 0);
 }
 
 static void test_add_and_check() {
@@ -139,6 +149,7 @@ static void test_null_safety() {
 /// @brief Main.
 int main() {
     test_new();
+    test_invalid_fpr_is_sanitized();
     test_add_and_check();
     test_definitely_not_present();
     test_many_items();

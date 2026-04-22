@@ -117,6 +117,8 @@ static void seq_ensure_capacity(rt_seq_impl *seq, int64_t needed) {
         new_cap *= SEQ_GROWTH_FACTOR;
     }
 
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(void *))
+        rt_trap("Seq: allocation size overflow");
     void **new_items = realloc(seq->items, (size_t)new_cap * sizeof(void *));
     if (!new_items) {
         rt_trap("Seq: memory allocation failed");
@@ -168,6 +170,7 @@ void *rt_seq_new(void) {
 
     seq->len = 0;
     seq->cap = SEQ_DEFAULT_CAP;
+    seq->owns_elements = 0;
     seq->items = malloc((size_t)SEQ_DEFAULT_CAP * sizeof(void *));
     rt_obj_set_finalizer(seq, rt_seq_finalize);
 
@@ -214,6 +217,8 @@ void *rt_seq_new(void) {
 void *rt_seq_with_capacity(int64_t cap) {
     if (cap < 1)
         cap = 1;
+    if ((uint64_t)cap > SIZE_MAX / sizeof(void *))
+        rt_trap("Seq: allocation size overflow");
 
     rt_seq_impl *seq = (rt_seq_impl *)rt_obj_new_i64(RT_SEQ_CLASS_ID, (int64_t)sizeof(rt_seq_impl));
     if (!seq) {
@@ -222,6 +227,7 @@ void *rt_seq_with_capacity(int64_t cap) {
 
     seq->len = 0;
     seq->cap = cap;
+    seq->owns_elements = 0;
     seq->items = malloc((size_t)cap * sizeof(void *));
     rt_obj_set_finalizer(seq, rt_seq_finalize);
 
@@ -248,7 +254,11 @@ void *rt_seq_with_capacity(int64_t cap) {
 void rt_seq_set_owns_elements(void *obj, int8_t owns) {
     if (!obj)
         return;
-    ((rt_seq_impl *)obj)->owns_elements = owns;
+    rt_seq_impl *seq = (rt_seq_impl *)obj;
+    owns = owns ? 1 : 0;
+    if (seq->len != 0 && seq->owns_elements != owns)
+        rt_trap("Seq.SetOwnsElements: cannot change ownership mode on non-empty sequence");
+    seq->owns_elements = owns;
 }
 
 /// @brief Returns the number of elements currently in the Seq.
@@ -475,6 +485,8 @@ void rt_seq_push_raw(void *obj, void *val) {
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
 
+    if (seq->len >= INT64_MAX)
+        rt_trap("Seq: maximum length reached");
     seq_ensure_capacity(seq, seq->len + 1);
     seq->items[seq->len] = val;
     seq->len++;
@@ -534,6 +546,8 @@ void rt_seq_push_all(void *obj, void *other) {
 
     if (seq == src) {
         int64_t original_len = seq->len;
+        if (original_len > INT64_MAX - original_len)
+            rt_trap("Seq.PushAll: length overflow");
         seq_ensure_capacity(seq, original_len + original_len);
         memcpy(&seq->items[original_len], seq->items, (size_t)original_len * sizeof(void *));
         if (seq->owns_elements) {
@@ -545,6 +559,8 @@ void rt_seq_push_all(void *obj, void *other) {
         return;
     }
 
+    if (src->len > INT64_MAX - seq->len)
+        rt_trap("Seq.PushAll: length overflow");
     seq_ensure_capacity(seq, seq->len + src->len);
     memcpy(&seq->items[seq->len], src->items, (size_t)src->len * sizeof(void *));
     if (seq->owns_elements) {

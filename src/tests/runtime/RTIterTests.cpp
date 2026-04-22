@@ -21,6 +21,7 @@ extern "C" {
 #include "rt_ring.h"
 #include "rt_seq.h"
 #include "rt_set.h"
+#include "rt_stack.h"
 #include "rt_string.h"
 
 /// @brief Vm_trap.
@@ -59,6 +60,7 @@ static void test_null_safety() {
     ASSERT(rt_iter_from_map_values(NULL) == NULL, "from_map_values(null) = null");
     ASSERT(rt_iter_from_set(NULL) == NULL, "from_set(null) = null");
     ASSERT(rt_iter_from_ring(NULL) == NULL, "from_ring(null) = null");
+    ASSERT(rt_iter_from_stack(NULL) == NULL, "from_stack(null) = null");
 
     ASSERT(rt_iter_has_next(NULL) == 0, "has_next(null) = 0");
     ASSERT(rt_iter_next(NULL) == NULL, "next(null) = null");
@@ -301,6 +303,33 @@ static void test_iter_from_ring() {
 }
 
 //=============================================================================
+// Stack iterator tests
+//=============================================================================
+
+static void test_iter_from_stack_snapshots_without_mutating() {
+    void *stack = rt_stack_new();
+    void *a = make_obj();
+    void *b = make_obj();
+    void *c = make_obj();
+    rt_stack_push(stack, a);
+    rt_stack_push(stack, b);
+    rt_stack_push(stack, c);
+
+    void *it = rt_iter_from_stack(stack);
+    ASSERT(it != NULL, "iter from stack not null");
+    ASSERT(rt_iter_count(it) == 3, "stack count = 3");
+    ASSERT(rt_iter_next(it) == a, "stack iterator first = bottom item");
+    ASSERT(rt_iter_next(it) == b, "stack iterator second = middle item");
+    ASSERT(rt_iter_next(it) == c, "stack iterator third = top item");
+    ASSERT(rt_iter_has_next(it) == 0, "stack iterator exhausted");
+
+    ASSERT(rt_stack_len(stack) == 3, "stack length preserved after snapshot");
+    ASSERT(rt_stack_pop(stack) == c, "stack top preserved after snapshot");
+    ASSERT(rt_stack_pop(stack) == b, "stack middle preserved after snapshot");
+    ASSERT(rt_stack_pop(stack) == a, "stack bottom preserved after snapshot");
+}
+
+//=============================================================================
 // Empty collection tests
 //=============================================================================
 
@@ -328,6 +357,7 @@ int main() {
     test_iter_from_map_values();
     test_iter_from_set();
     test_iter_from_ring();
+    test_iter_from_stack_snapshots_without_mutating();
     test_iter_empty_seq();
 
     printf("Iterator tests: %d/%d passed\n", tests_passed, tests_run);

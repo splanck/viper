@@ -58,13 +58,34 @@ static rt_string copy_string(rt_string s) {
     if (!s)
         return rt_const_cstr("");
     const char *cstr = rt_string_cstr(s);
-    return rt_string_from_bytes(cstr, strlen(cstr));
+    int64_t len = rt_str_len(s);
+    if (!cstr || len <= 0)
+        return rt_string_from_bytes("", 0);
+    return rt_string_from_bytes(cstr, (size_t)len);
+}
+
+static void seq_push_string_copy(void *seq, rt_string s) {
+    rt_string copy = copy_string(s);
+    rt_seq_push(seq, copy);
+    rt_str_release_maybe(copy);
 }
 
 static int compare_strings(rt_string a, rt_string b) {
     const char *sa = a ? rt_string_cstr(a) : "";
     const char *sb = b ? rt_string_cstr(b) : "";
-    return strcmp(sa, sb);
+    int64_t len_a = a && sa ? rt_str_len(a) : 0;
+    int64_t len_b = b && sb ? rt_str_len(b) : 0;
+    size_t la = len_a > 0 ? (size_t)len_a : 0;
+    size_t lb = len_b > 0 ? (size_t)len_b : 0;
+    size_t minlen = la < lb ? la : lb;
+    int cmp = memcmp(sa ? sa : "", sb ? sb : "", minlen);
+    if (cmp != 0)
+        return cmp;
+    if (la < lb)
+        return -1;
+    if (la > lb)
+        return 1;
+    return 0;
 }
 
 /// Binary search for insertion point or element.
@@ -110,6 +131,8 @@ static void ensure_capacity(rt_sortedset set, int64_t needed) {
         new_cap *= 2;
     }
 
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(rt_string))
+        rt_trap("SortedSet: allocation size overflow");
     rt_string *new_data = realloc(set->data, sizeof(rt_string) * new_cap);
     if (!new_data)
         rt_trap("rt_sortedset: memory allocation failed");
@@ -371,6 +394,7 @@ int64_t rt_sortedset_index_of(void *obj, rt_string str) {
 void *rt_sortedset_range(void *obj, rt_string from, rt_string to) {
     rt_sortedset set = (rt_sortedset)obj;
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!set)
         return seq;
 
@@ -378,9 +402,9 @@ void *rt_sortedset_range(void *obj, rt_string from, rt_string to) {
     int64_t start = binary_search(set, from, &found);
 
     for (int64_t i = start; i < set->len; i++) {
-        if (compare_strings(set->data[i], to) >= 0)
+        if (to && compare_strings(set->data[i], to) > 0)
             break;
-        rt_seq_push(seq, set->data[i]);
+        seq_push_string_copy(seq, set->data[i]);
     }
 
     return seq;
@@ -391,11 +415,12 @@ void *rt_sortedset_range(void *obj, rt_string from, rt_string to) {
 void *rt_sortedset_items(void *obj) {
     rt_sortedset set = (rt_sortedset)obj;
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!set)
         return seq;
 
     for (int64_t i = 0; i < set->len; i++) {
-        rt_seq_push(seq, set->data[i]);
+        seq_push_string_copy(seq, set->data[i]);
     }
 
     return seq;
@@ -405,12 +430,13 @@ void *rt_sortedset_items(void *obj) {
 void *rt_sortedset_take(void *obj, int64_t n) {
     rt_sortedset set = (rt_sortedset)obj;
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!set || n <= 0)
         return seq;
 
     int64_t count = n < set->len ? n : set->len;
     for (int64_t i = 0; i < count; i++) {
-        rt_seq_push(seq, set->data[i]);
+        seq_push_string_copy(seq, set->data[i]);
     }
 
     return seq;
@@ -420,12 +446,13 @@ void *rt_sortedset_take(void *obj, int64_t n) {
 void *rt_sortedset_skip(void *obj, int64_t n) {
     rt_sortedset set = (rt_sortedset)obj;
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     if (!set || n >= set->len)
         return seq;
 
     int64_t start = n < 0 ? 0 : n;
     for (int64_t i = start; i < set->len; i++) {
-        rt_seq_push(seq, set->data[i]);
+        seq_push_string_copy(seq, set->data[i]);
     }
 
     return seq;

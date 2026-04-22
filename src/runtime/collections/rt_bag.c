@@ -36,6 +36,7 @@
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -245,9 +246,7 @@ static void maybe_resize(rt_bag_impl *bag) {
 /// - Collision resolution via separate chaining (linked lists)
 /// - Automatically grows when load factor exceeds 75%
 ///
-/// @return A pointer to the newly created Bag object, or NULL if memory
-///         allocation fails for the Bag structure. If bucket allocation
-///         fails, returns a partially initialized Bag with capacity 0.
+/// @return A pointer to the newly created Bag object. Traps if allocation fails.
 ///
 /// @note Initial capacity is 16 buckets.
 /// @note The Bag owns copies of all strings - it does not reference the originals.
@@ -259,16 +258,14 @@ static void maybe_resize(rt_bag_impl *bag) {
 void *rt_bag_new(void) {
     rt_bag_impl *bag = (rt_bag_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_bag_impl));
     if (!bag)
-        return NULL;
+        rt_trap("Bag: memory allocation failed");
 
     bag->vptr = NULL;
     bag->buckets = (rt_bag_entry **)calloc(BAG_INITIAL_CAPACITY, sizeof(rt_bag_entry *));
     if (!bag->buckets) {
-        // Can't trap here, just return partially initialized
-        bag->capacity = 0;
-        bag->count = 0;
-        rt_obj_set_finalizer(bag, rt_bag_finalize);
-        return bag;
+        if (rt_obj_release_check0(bag))
+            rt_obj_free(bag);
+        rt_trap("Bag: memory allocation failed");
     }
     bag->capacity = BAG_INITIAL_CAPACITY;
     bag->count = 0;

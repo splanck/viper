@@ -40,6 +40,7 @@
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -65,12 +66,21 @@ typedef struct rt_multimap_impl {
 } rt_multimap_impl;
 
 static const char *get_key_data(rt_string key, size_t *out_len) {
+    if (!key) {
+        *out_len = 0;
+        return "";
+    }
+    int64_t len = rt_str_len(key);
+    if (len <= 0) {
+        *out_len = 0;
+        return "";
+    }
     const char *cstr = rt_string_cstr(key);
     if (!cstr) {
         *out_len = 0;
         return "";
     }
-    *out_len = strlen(cstr);
+    *out_len = (size_t)len;
     return cstr;
 }
 
@@ -92,6 +102,8 @@ static void free_entry(rt_mm_entry *entry) {
 }
 
 static void mm_resize(rt_multimap_impl *mm, size_t new_cap) {
+    if (new_cap > SIZE_MAX / sizeof(rt_mm_entry *))
+        rt_trap("MultiMap: allocation size overflow");
     rt_mm_entry **new_buckets = (rt_mm_entry **)calloc(new_cap, sizeof(rt_mm_entry *));
     if (!new_buckets)
         return;
@@ -112,7 +124,8 @@ static void mm_resize(rt_multimap_impl *mm, size_t new_cap) {
 }
 
 static void maybe_resize(rt_multimap_impl *mm) {
-    if (mm->key_count * MM_LOAD_FACTOR_DEN > mm->capacity * MM_LOAD_FACTOR_NUM) {
+    if ((long double)mm->key_count * (long double)MM_LOAD_FACTOR_DEN >
+        (long double)mm->capacity * (long double)MM_LOAD_FACTOR_NUM) {
         if (mm->capacity > SIZE_MAX / 2)
             return;
         mm_resize(mm, mm->capacity * 2);
@@ -137,15 +150,13 @@ static void rt_multimap_finalize(void *obj) {
 void *rt_multimap_new(void) {
     rt_multimap_impl *mm = (rt_multimap_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_multimap_impl));
     if (!mm)
-        return NULL;
+        rt_trap("MultiMap: memory allocation failed");
     mm->vptr = NULL;
     mm->buckets = (rt_mm_entry **)calloc(MM_INITIAL_CAPACITY, sizeof(rt_mm_entry *));
     if (!mm->buckets) {
-        mm->capacity = 0;
-        mm->key_count = 0;
-        mm->total_count = 0;
-        rt_obj_set_finalizer(mm, rt_multimap_finalize);
-        return mm;
+        if (rt_obj_release_check0(mm))
+            rt_obj_free(mm);
+        rt_trap("MultiMap: memory allocation failed");
     }
     mm->capacity = MM_INITIAL_CAPACITY;
     mm->key_count = 0;
@@ -192,6 +203,8 @@ void rt_multimap_put(void *obj, rt_string key, void *value) {
 
     rt_mm_entry *existing = find_entry(mm->buckets[idx], key_data, key_len);
     if (existing) {
+        if (mm->total_count >= (size_t)INT64_MAX)
+            rt_trap("MultiMap: length overflow");
         rt_seq_push(existing->values, value);
         mm->total_count++;
         return;
@@ -201,6 +214,10 @@ void rt_multimap_put(void *obj, rt_string key, void *value) {
     rt_mm_entry *entry = (rt_mm_entry *)malloc(sizeof(rt_mm_entry));
     if (!entry)
         return;
+    if (key_len == SIZE_MAX) {
+        free(entry);
+        rt_trap("MultiMap: key allocation overflow");
+    }
     entry->key = (char *)malloc(key_len + 1);
     if (!entry->key) {
         free(entry);
@@ -211,11 +228,14 @@ void rt_multimap_put(void *obj, rt_string key, void *value) {
     entry->key_len = key_len;
 
     entry->values = rt_seq_new();
+    rt_seq_set_owns_elements(entry->values, 1);
     // rt_seq_new() already returns refcount=1 — do not retain again
     rt_seq_push(entry->values, value);
 
     entry->next = mm->buckets[idx];
     mm->buckets[idx] = entry;
+    if (mm->key_count >= (size_t)INT64_MAX || mm->total_count >= (size_t)INT64_MAX)
+        rt_trap("MultiMap: length overflow");
     mm->key_count++;
     mm->total_count++;
     maybe_resize(mm);
@@ -241,6 +261,7 @@ void *rt_multimap_get(void *obj, rt_string key) {
 
     // Return a copy of the values Seq
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
     int64_t len = rt_seq_len(entry->values);
     for (int64_t i = 0; i < len; ++i)
         rt_seq_push(result, rt_seq_get(entry->values, i));

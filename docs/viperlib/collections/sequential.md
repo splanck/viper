@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-22
 ---
 
 # Sequential Collections
@@ -53,6 +53,11 @@ Dynamic array that grows automatically. Stores object references.
 | `ToSet()`                | `Set()`                 | Returns unique elements as a new Set                                                  |
 | `ToStack()`              | `Stack()`               | Returns elements as a new Stack                                                       |
 | `ToQueue()`              | `Queue()`               | Returns elements as a new Queue                                                       |
+
+### Notes
+
+- List retains stored objects and releases them when removed, overwritten, cleared, or finalized.
+- `Slice()` and `Clone()` return independent lists that retain their elements without leaking temporary `Get()` references.
 
 ### Zia Example
 
@@ -249,6 +254,11 @@ A LIFO (last-in-first-out) collection. Elements are added and removed from the t
 | `Clone()`     | `Stack()`      | Create a shallow copy of the stack                   |
 | `ToList()`    | `List()`       | Returns elements as a new List                       |
 | `ToSeq()`     | `Seq()`        | Returns elements as a new Seq                        |
+
+### Notes
+
+- Stack-to-list, stack-to-seq, and iterator snapshots preserve bottom-to-top order without mutating the source stack.
+- Constructor allocation failures trap cleanly instead of returning a partial stack.
 
 ### Zia Example
 

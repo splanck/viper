@@ -127,6 +127,8 @@ static void queue_grow(rt_queue_impl *q) {
     if (q->cap > INT64_MAX / QUEUE_GROWTH_FACTOR)
         rt_trap("Queue: capacity overflow");
     int64_t new_cap = q->cap * QUEUE_GROWTH_FACTOR;
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(void *))
+        rt_trap("Queue: allocation size overflow");
     void **new_items = malloc((size_t)new_cap * sizeof(void *));
 
     if (!new_items) {
@@ -280,6 +282,8 @@ void rt_queue_push(void *obj, void *elem) {
 
     rt_queue_impl *q = (rt_queue_impl *)obj;
 
+    if (q->len >= INT64_MAX)
+        rt_trap("Queue: maximum length reached");
     if (q->len >= q->cap) {
         queue_grow(q);
     }

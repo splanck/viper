@@ -7,6 +7,7 @@
 
 #include "rt_frozenmap.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -17,8 +18,31 @@ extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
+namespace {
+static int g_finalizer_calls = 0;
+} // namespace
+
 static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
+}
+
+static rt_string make_bytes(const char *s, size_t len) {
+    return rt_string_from_bytes(s, len);
+}
+
+static void *new_obj() {
+    void *p = rt_obj_new_i64(0, 8);
+    assert(p != nullptr);
+    return p;
+}
+
+static void release_obj(void *p) {
+    if (p && rt_obj_release_check0(p))
+        rt_obj_free(p);
+}
+
+static void count_finalizer(void *) {
+    ++g_finalizer_calls;
 }
 
 static void test_empty() {
@@ -209,6 +233,53 @@ static void test_dedup_keys() {
     rt_string_unref(k);
 }
 
+static void test_embedded_nul_keys_are_distinct() {
+    void *keys = rt_seq_new();
+    void *vals = rt_seq_new();
+    const char bytes[] = {'a', '\0', 'b'};
+    rt_string k1 = make_bytes(bytes, sizeof(bytes));
+    rt_string k2 = make_str("a");
+    void *v1 = new_obj();
+    void *v2 = new_obj();
+
+    rt_seq_push(keys, k1);
+    rt_seq_push(keys, k2);
+    rt_seq_push(vals, v1);
+    rt_seq_push(vals, v2);
+
+    void *fm = rt_frozenmap_from_seqs(keys, vals);
+    assert(rt_frozenmap_len(fm) == 2);
+    assert(rt_frozenmap_get(fm, k1) == v1);
+    assert(rt_frozenmap_get(fm, k2) == v2);
+
+    rt_string_unref(k1);
+    rt_string_unref(k2);
+    release_obj(v1);
+    release_obj(v2);
+    release_obj(fm);
+}
+
+static void test_releases_retained_values() {
+    void *keys = rt_seq_new();
+    void *vals = rt_seq_new();
+    rt_string key = make_str("owned");
+    void *value = new_obj();
+
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_seq_push(keys, key);
+    rt_seq_push(vals, value);
+    void *fm = rt_frozenmap_from_seqs(keys, vals);
+
+    release_obj(value); // FrozenMap now owns the only reference.
+    assert(g_finalizer_calls == 0);
+    release_obj(fm);
+    assert(g_finalizer_calls == 1);
+
+    rt_string_unref(key);
+}
+
 /// @brief Main.
 int main() {
     test_empty();
@@ -222,5 +293,7 @@ int main() {
     test_equals();
     test_null_safety();
     test_dedup_keys();
+    test_embedded_nul_keys_are_distinct();
+    test_releases_retained_values();
     return 0;
 }

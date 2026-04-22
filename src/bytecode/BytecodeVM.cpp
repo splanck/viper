@@ -3016,18 +3016,30 @@ extern "C" void vm_async_run_entry_trampoline_bc(void *raw) {
         return;
     }
 
+    il::vm::Slot result{};
+    bool completed = false;
+    rt_string error = nullptr;
+
     try {
-        il::vm::VM vm(*payload->module, payload->program);
-        vm.setExternRegistry(payload->externRegistry);
-        il::support::SmallVector<il::vm::Slot, 2> args;
-        il::vm::Slot s{};
-        s.ptr = payload->arg;
-        args.push_back(s);
-        il::vm::Slot result = il::vm::detail::VMAccess::callFunction(vm, *payload->entry, args);
-        // Worker VMs unwind immediately after resolving; the Future must retain the payload.
-        rt_promise_set_owned(payload->promise, result.ptr);
+        {
+            il::vm::VM vm(*payload->module, payload->program);
+            vm.setExternRegistry(payload->externRegistry);
+            il::support::SmallVector<il::vm::Slot, 2> args;
+            il::vm::Slot s{};
+            s.ptr = payload->arg;
+            args.push_back(s);
+            result = il::vm::detail::VMAccess::callFunction(vm, *payload->entry, args);
+        }
+        completed = true;
     } catch (...) {
-        rt_promise_set_error(payload->promise, rt_const_cstr("Async.Run: unhandled exception"));
+        error = rt_const_cstr("Async.Run: unhandled exception");
+    }
+
+    if (completed) {
+        rt_promise_set_owned(payload->promise, result.ptr);
+    } else {
+        rt_promise_set_error(payload->promise, error);
+        rt_str_release_maybe(error);
     }
 
     if (rt_obj_release_check0(payload->promise))
@@ -3044,24 +3056,33 @@ extern "C" void bytecode_async_entry_trampoline(void *raw) {
         return;
     }
 
-    BytecodeVM vm;
-    vm.load(payload->module);
-    vm.applyExecutionEnvironment(payload->environment);
+    BCSlot result{};
+    VMState workerState = VMState::Ready;
+    std::string trapMessage;
 
-    std::vector<BCSlot> args;
-    BCSlot argSlot{};
-    argSlot.ptr = payload->arg;
-    args.push_back(argSlot);
+    {
+        BytecodeVM vm;
+        vm.load(payload->module);
+        vm.applyExecutionEnvironment(payload->environment);
 
-    BCSlot result = vm.exec(payload->entry, args);
-    if (vm.state() == VMState::Trapped) {
-        const std::string &message = vm.trapMessage();
-        rt_promise_set_error(payload->promise,
-                             message.empty()
-                                 ? rt_const_cstr("Async.Run: trapped")
-                                 : rt_string_from_bytes(message.data(), message.size()));
+        std::vector<BCSlot> args;
+        BCSlot argSlot{};
+        argSlot.ptr = payload->arg;
+        args.push_back(argSlot);
+
+        result = vm.exec(payload->entry, args);
+        workerState = vm.state();
+        if (workerState == VMState::Trapped)
+            trapMessage = vm.trapMessage();
+    }
+
+    if (workerState == VMState::Trapped) {
+        rt_string error = trapMessage.empty()
+                              ? rt_const_cstr("Async.Run: trapped")
+                              : rt_string_from_bytes(trapMessage.data(), trapMessage.size());
+        rt_promise_set_error(payload->promise, error);
+        rt_str_release_maybe(error);
     } else {
-        // Worker VMs unwind immediately after resolving; the Future must retain the payload.
         rt_promise_set_owned(payload->promise, result.ptr);
     }
 

@@ -21,7 +21,7 @@
 //   - Put of a new key when count == max_cap evicts the tail node before insert.
 //   - max_cap is fixed at construction; a max_cap of 0 disables eviction (unbounded).
 //   - Each node owns a heap-copied key string; values are stored as raw pointers
-//     (not retained by the cache).
+//     retained by the cache, and released on eviction/removal/finalization.
 //   - Not thread-safe; external synchronization required.
 //
 // Ownership/Lifetime:
@@ -39,6 +39,7 @@
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -74,12 +75,21 @@ typedef struct rt_lrucache_impl {
 } rt_lrucache_impl;
 
 static const char *get_key_data(rt_string key, size_t *out_len) {
+    if (!key) {
+        *out_len = 0;
+        return "";
+    }
+    int64_t len = rt_str_len(key);
+    if (len <= 0) {
+        *out_len = 0;
+        return "";
+    }
     const char *cstr = rt_string_cstr(key);
     if (!cstr) {
         *out_len = 0;
         return "";
     }
-    *out_len = strlen(cstr);
+    *out_len = (size_t)len;
     return cstr;
 }
 
@@ -166,12 +176,15 @@ static void bucket_insert(rt_lrucache_impl *cache, rt_lru_node *node) {
 
 /// Resize the hash table when load factor is too high.
 static void maybe_resize(rt_lrucache_impl *cache) {
-    if (cache->count * LRU_LOAD_FACTOR_DEN <= cache->bucket_count * LRU_LOAD_FACTOR_NUM)
+    if ((long double)cache->count * (long double)LRU_LOAD_FACTOR_DEN <=
+        (long double)cache->bucket_count * (long double)LRU_LOAD_FACTOR_NUM)
         return;
 
     if (cache->bucket_count > SIZE_MAX / 2)
         return; // Can't grow further
     size_t new_bucket_count = cache->bucket_count * 2;
+    if (new_bucket_count > SIZE_MAX / sizeof(rt_lru_node *))
+        rt_trap("LRUCache: allocation size overflow");
     rt_lru_node **new_buckets = (rt_lru_node **)calloc(new_bucket_count, sizeof(rt_lru_node *));
     if (!new_buckets)
         return; // Keep old buckets on failure
@@ -256,27 +269,27 @@ void *rt_lrucache_new(int64_t capacity) {
     rt_lrucache_impl *cache =
         (rt_lrucache_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_lrucache_impl));
     if (!cache)
-        return NULL;
+        rt_trap("LRUCache: memory allocation failed");
 
     cache->vptr = NULL;
     cache->bucket_count = LRU_INITIAL_BUCKETS;
     // If requested capacity is large, start with more buckets to avoid
     // immediate resizing
-    while (cache->bucket_count * LRU_LOAD_FACTOR_NUM / LRU_LOAD_FACTOR_DEN < (size_t)capacity) {
+    while ((long double)cache->bucket_count * (long double)LRU_LOAD_FACTOR_NUM /
+               (long double)LRU_LOAD_FACTOR_DEN <
+           (long double)capacity) {
         if (cache->bucket_count > SIZE_MAX / 2)
             break;
         cache->bucket_count *= 2;
     }
 
+    if (cache->bucket_count > SIZE_MAX / sizeof(rt_lru_node *))
+        rt_trap("LRUCache: allocation size overflow");
     cache->buckets = (rt_lru_node **)calloc(cache->bucket_count, sizeof(rt_lru_node *));
     if (!cache->buckets) {
-        cache->bucket_count = 0;
-        cache->count = 0;
-        cache->max_cap = 0;
-        cache->head = NULL;
-        cache->tail = NULL;
-        rt_obj_set_finalizer(cache, rt_lrucache_finalize);
-        return cache;
+        if (rt_obj_release_check0(cache))
+            rt_obj_free(cache);
+        rt_trap("LRUCache: memory allocation failed");
     }
 
     cache->count = 0;
@@ -344,6 +357,10 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
     if (!node)
         return;
 
+    if (key_len == SIZE_MAX) {
+        free(node);
+        return;
+    }
     node->key = (char *)malloc(key_len + 1);
     if (!node->key) {
         free(node);

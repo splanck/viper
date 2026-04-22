@@ -61,6 +61,11 @@ static void trap_with_message(const char *msg) {
     rt_trap(msg);
 }
 
+static void deque_release_value(void *value) {
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+}
+
 static void ensure_capacity(Deque *d, int64_t required) {
     if (required <= d->cap)
         return;
@@ -99,8 +104,18 @@ void *rt_deque_new(void) {
 
 static void deque_finalize(void *obj) {
     Deque *d = (Deque *)obj;
-    if (d && d->data)
+    if (d && d->data) {
+        for (int64_t i = 0; i < d->len; i++) {
+            int64_t idx = (d->front + i) % d->cap;
+            deque_release_value(d->data[idx]);
+            d->data[idx] = NULL;
+        }
         free(d->data);
+        d->data = NULL;
+        d->len = 0;
+        d->cap = 0;
+        d->front = 0;
+    }
 }
 
 void *rt_deque_with_capacity(int64_t cap) {
@@ -109,16 +124,15 @@ void *rt_deque_with_capacity(int64_t cap) {
 
     Deque *d = (Deque *)rt_obj_new_i64(0, (int64_t)sizeof(Deque));
     if (!d)
-        return NULL;
+        trap_with_message("Deque: memory allocation failed");
 
     if ((uint64_t)cap > SIZE_MAX / sizeof(void *))
         trap_with_message("Deque: allocation size overflow");
     d->data = (void **)malloc((size_t)cap * sizeof(void *));
     if (!d->data) {
-        d->cap = 0;
-        d->len = 0;
-        d->front = 0;
-        return d;
+        if (rt_obj_release_check0(d))
+            rt_obj_free(d);
+        trap_with_message("Deque: memory allocation failed");
     }
 
     d->cap = cap;
@@ -179,6 +193,7 @@ void rt_deque_push_front(void *obj, void *elem) {
         trap_with_message("Deque: maximum capacity reached");
     ensure_capacity(d, d->len + 1);
 
+    rt_obj_retain_maybe(elem);
     // Move front pointer backward (with wrap-around)
     d->front = (d->front - 1 + d->cap) % d->cap;
     d->data[d->front] = elem;
@@ -197,6 +212,9 @@ void *rt_deque_pop_front(void *obj) {
         trap_with_message("PopFront called on empty deque");
 
     void *val = d->data[d->front];
+    rt_obj_retain_maybe(val);
+    deque_release_value(d->data[d->front]);
+    d->data[d->front] = NULL;
     d->front = (d->front + 1) % d->cap;
     d->len--;
     return val;
@@ -229,9 +247,12 @@ void rt_deque_push_back(void *obj, void *elem) {
         return;
     Deque *d = (Deque *)obj;
 
+    if (d->len >= INT64_MAX)
+        trap_with_message("Deque: maximum capacity reached");
     ensure_capacity(d, d->len + 1);
 
     int64_t back = (d->front + d->len) % d->cap;
+    rt_obj_retain_maybe(elem);
     d->data[back] = elem;
     d->len++;
 }
@@ -249,6 +270,9 @@ void *rt_deque_pop_back(void *obj) {
 
     int64_t back = (d->front + d->len - 1) % d->cap;
     void *val = d->data[back];
+    rt_obj_retain_maybe(val);
+    deque_release_value(d->data[back]);
+    d->data[back] = NULL;
     d->len--;
     return val;
 }
@@ -301,6 +325,8 @@ void rt_deque_set(void *obj, int64_t idx, void *elem) {
         trap_with_message("Index out of bounds");
 
     int64_t actual = (d->front + idx) % d->cap;
+    rt_obj_retain_maybe(elem);
+    deque_release_value(d->data[actual]);
     d->data[actual] = elem;
 }
 
@@ -315,6 +341,11 @@ void rt_deque_clear(void *obj) {
     if (!obj)
         return;
     Deque *d = (Deque *)obj;
+    for (int64_t i = 0; i < d->len; i++) {
+        int64_t idx = (d->front + i) % d->cap;
+        deque_release_value(d->data[idx]);
+        d->data[idx] = NULL;
+    }
     d->len = 0;
     d->front = 0;
 }
@@ -390,6 +421,9 @@ void *rt_deque_try_pop_front(void *obj) {
         return NULL;
 
     void *val = d->data[d->front];
+    rt_obj_retain_maybe(val);
+    deque_release_value(d->data[d->front]);
+    d->data[d->front] = NULL;
     d->front = (d->front + 1) % d->cap;
     d->len--;
     return val;
@@ -407,6 +441,9 @@ void *rt_deque_try_pop_back(void *obj) {
 
     int64_t back = (d->front + d->len - 1) % d->cap;
     void *val = d->data[back];
+    rt_obj_retain_maybe(val);
+    deque_release_value(d->data[back]);
+    d->data[back] = NULL;
     d->len--;
     return val;
 }

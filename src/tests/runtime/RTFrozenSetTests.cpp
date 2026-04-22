@@ -21,6 +21,10 @@ static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
+static rt_string make_bytes(const char *s, size_t len) {
+    return rt_string_from_bytes(s, len);
+}
+
 static void test_empty() {
     void *fs = rt_frozenset_empty();
     assert(fs != NULL);
@@ -67,6 +71,24 @@ static void test_dedup() {
 
     void *fs = rt_frozenset_from_seq(seq);
     assert(rt_frozenset_len(fs) == 2);
+}
+
+static void test_embedded_nul_items_are_distinct() {
+    void *seq = rt_seq_new();
+    const char bytes[] = {'a', '\0', 'b'};
+    rt_string k1 = make_bytes(bytes, sizeof(bytes));
+    rt_string k2 = make_str("a");
+
+    rt_seq_push(seq, k1);
+    rt_seq_push(seq, k2);
+
+    void *fs = rt_frozenset_from_seq(seq);
+    assert(rt_frozenset_len(fs) == 2);
+    assert(rt_frozenset_has(fs, k1) == 1);
+    assert(rt_frozenset_has(fs, k2) == 1);
+
+    rt_string_unref(k1);
+    rt_string_unref(k2);
 }
 
 static void test_items() {
@@ -210,6 +232,7 @@ int main() {
     test_from_seq();
     test_has();
     test_dedup();
+    test_embedded_nul_items_are_distinct();
     test_items();
     test_union();
     test_intersect();

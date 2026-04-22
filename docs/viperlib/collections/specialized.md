@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-22
 ---
 
 # Specialized Structures
@@ -172,6 +172,8 @@ expected number of elements and desired false positive rate
 - The actual false positive rate depends on the number of elements added relative to the configured capacity
 - `Merge` combines two filters that were created with the same capacity and false positive rate parameters
 - After `Clear()`, `MightContain` returns false for all elements
+- Invalid false-positive rates such as NaN, infinity, or values outside `(0, 1)` are sanitized to a safe default
+- Sizing and item-count overflow trap instead of wrapping
 
 ### Zia Example
 
@@ -290,6 +292,8 @@ existence checking, longest prefix matching, and retrieving all keys with a give
 - `Has` checks for an exact key, not a prefix; use `HasPrefix` for prefix existence checks
 - `LongestPrefix` finds the longest stored key that is a prefix of the input string (useful for routing)
 - `WithPrefix` returns all keys that start with the given prefix, including exact matches
+- Trie keys and prefixes use the full runtime string byte length; embedded NUL bytes are part of the key
+- `WithPrefix()` and `Keys()` return owning snapshots of copied strings
 - Removing a key does not affect other keys that share the same prefix
 
 ### Zia Example
@@ -705,6 +709,12 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 | `WriteI32BE(offset, value)`              | `Void(Integer, Integer)`  | Write 32-bit integer at offset (big-endian)                           |
 | `WriteI64LE(offset, value)`              | `Void(Integer, Integer)`  | Write 64-bit integer at offset (little-endian)                        |
 | `WriteI64BE(offset, value)`              | `Void(Integer, Integer)`  | Write 64-bit integer at offset (big-endian)                           |
+
+### Notes
+
+- `FromHex()` and `FromBase64()` validate the full runtime string byte length. Embedded NUL bytes do not truncate parsing.
+- `Copy()` traps when source or destination ranges overflow or exceed bounds.
+- Raw byte inputs larger than the maximum runtime `Bytes` length are rejected before allocation.
 
 ### Zia Example
 

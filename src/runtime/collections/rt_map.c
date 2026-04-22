@@ -109,12 +109,21 @@ typedef struct rt_map_impl {
 /// @return Pointer to the string's character data (not owned by caller).
 ///         Returns "" with length 0 if key is NULL.
 static const char *get_key_data(rt_string key, size_t *out_len) {
+    if (!key) {
+        *out_len = 0;
+        return "";
+    }
+    int64_t len = rt_str_len(key);
+    if (len <= 0) {
+        *out_len = 0;
+        return "";
+    }
     const char *cstr = rt_string_cstr(key);
     if (!cstr) {
         *out_len = 0;
         return "";
     }
-    *out_len = strlen(cstr);
+    *out_len = (size_t)len;
     return cstr;
 }
 
@@ -188,6 +197,8 @@ static void rt_map_finalize(void *obj) {
 /// @note On allocation failure, the old buckets are kept (silent failure).
 /// @note O(n) time complexity where n is the number of entries.
 static void map_resize(rt_map_impl *map, size_t new_capacity) {
+    if (new_capacity > SIZE_MAX / sizeof(rt_map_entry *))
+        rt_trap("Map: allocation size overflow");
     rt_map_entry **new_buckets = (rt_map_entry **)calloc(new_capacity, sizeof(rt_map_entry *));
     if (!new_buckets)
         return; // Keep old buckets on allocation failure
@@ -219,7 +230,8 @@ static void map_resize(rt_map_impl *map, size_t new_capacity) {
 /// @note The capacity doubles on each resize.
 static void maybe_resize(rt_map_impl *map) {
     // Resize when count * DEN > capacity * NUM (i.e., load factor > NUM/DEN)
-    if (map->count * MAP_LOAD_FACTOR_DEN > map->capacity * MAP_LOAD_FACTOR_NUM) {
+    if ((long double)map->count * (long double)MAP_LOAD_FACTOR_DEN >
+        (long double)map->capacity * (long double)MAP_LOAD_FACTOR_NUM) {
         if (map->capacity > SIZE_MAX / 2)
             return;
         map_resize(map, map->capacity * 2);
@@ -374,6 +386,10 @@ void rt_map_set(void *obj, rt_string key, void *value) {
     if (!entry)
         rt_trap("Map.Set: memory allocation failed");
 
+    if (key_len == SIZE_MAX) {
+        free(entry);
+        rt_trap("Map.Set: key allocation overflow");
+    }
     entry->key = (char *)malloc(key_len + 1);
     if (!entry->key) {
         free(entry);
@@ -573,6 +589,10 @@ int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value) {
     if (!entry)
         return 0;
 
+    if (key_len == SIZE_MAX) {
+        free(entry);
+        return 0;
+    }
     entry->key = (char *)malloc(key_len + 1);
     if (!entry->key) {
         free(entry);

@@ -203,18 +203,45 @@ void *rt_iter_from_set(void *set) {
     return make_iter_snapshot(items, rt_seq_len(items));
 }
 
-/// @brief Currently returns an empty-snapshot iterator — Stack has no indexed access. Convert
-/// the stack to a Seq first if you need real iteration.
+/// @brief Snapshot a Stack into bottom-to-top iteration order without changing the source.
 void *rt_iter_from_stack(void *stack) {
     void *snapshot;
+    void **items;
+    int64_t len;
+    int64_t count = 0;
     if (!stack)
         return NULL;
-    /* Stack has no indexed access, so we produce an empty snapshot.
-       Users should convert stack to seq first for full iteration. */
-    snapshot = rt_seq_new();
+    len = rt_stack_len(stack);
+    if (len <= 0)
+        snapshot = rt_seq_new();
+    else
+        snapshot = rt_seq_with_capacity(len);
     if (!snapshot)
         return NULL;
-    return make_iter_snapshot(snapshot, 0);
+    if (len <= 0)
+        return make_iter_snapshot(snapshot, 0);
+    if ((uint64_t)len > SIZE_MAX / sizeof(void *)) {
+        if (rt_obj_release_check0(snapshot))
+            rt_obj_free(snapshot);
+        rt_trap("Iterator: stack snapshot too large");
+    }
+    items = (void **)malloc((size_t)len * sizeof(void *));
+    if (!items) {
+        if (rt_obj_release_check0(snapshot))
+            rt_obj_free(snapshot);
+        rt_trap("Iterator: allocation failed");
+    }
+
+    while (!rt_stack_is_empty(stack) && count < len)
+        items[count++] = rt_stack_pop(stack);
+
+    for (int64_t i = count; i > 0; --i) {
+        void *item = items[i - 1];
+        rt_seq_push(snapshot, item);
+        rt_stack_push(stack, item);
+    }
+    free(items);
+    return make_iter_snapshot(snapshot, rt_seq_len(snapshot));
 }
 
 //=============================================================================

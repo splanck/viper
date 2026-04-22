@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-22
 ---
 
 # Maps & Sets
@@ -54,6 +54,12 @@ Convenience methods for storing and retrieving typed values without manual boxin
 | `GetFloatOr(key, default)`      | `Number(String, Number)`     | Get a floating-point value, or return `default` if missing        |
 | `SetStr(key, value)`            | `Void(String, String)`       | Store a string value                                              |
 | `GetStr(key)`                   | `String(String)`             | Get a string value (returns empty string if key not found)        |
+
+### Notes
+
+- String keys are compared by full byte length; embedded NUL bytes are part of the key.
+- Values are retained while stored and released when overwritten, removed, cleared, or finalized.
+- Map growth and key-copy allocation paths trap on overflow instead of wrapping.
 
 ### Zia Example
 
@@ -310,6 +316,9 @@ regardless of updates.
 - Updating an existing key's value does *not* change its position in the insertion order
 - `KeyAt` provides O(1) access to keys by their insertion position
 - After removing a key, subsequent keys shift down in their positional indices
+- String keys are compared by full byte length; embedded NUL bytes are part of the key
+- Passing a null key through the runtime API is treated as the empty string key
+- Values are retained while stored and released when overwritten, removed, cleared, or finalized
 - Values are boxed objects in Zia (use `Viper.Core.Box`); BASIC auto-boxes string values
 
 ### Zia Example
@@ -456,13 +465,20 @@ keeps elements sorted, enabling efficient range queries, ordered iteration, and 
 | `At(index)`         | `String(Integer)`          | Get element at index in sorted order                               |
 | `IndexOf(str)`      | `Integer(String)`          | Get index of element (-1 if not found)                             |
 | `Items()`           | `Seq()`                    | Get all elements as a Seq in sorted order                          |
-| `Range(from, to)`   | `Seq(String, String)`      | Get elements in range [from, to)                                   |
+| `Range(from, to)`   | `Seq(String, String)`      | Get elements in range [from, to]; null `to` is open-ended          |
 | `Take(n)`           | `Seq(Integer)`             | Get first n elements                                               |
 | `Skip(n)`           | `Seq(Integer)`             | Get all elements except first n                                    |
 | `Union(other)`      | `SortedSet(SortedSet)`     | Return new set with union of both sets                             |
 | `Intersect(other)`  | `SortedSet(SortedSet)`     | Return new set with intersection of both sets                      |
 | `Diff(other)`       | `SortedSet(SortedSet)`     | Return new set with elements in this but not other                 |
 | `IsSubset(other)`   | `Boolean(SortedSet)`       | True if this set is a subset of other                              |
+
+### Notes
+
+- Elements are compared by full byte length; embedded NUL bytes are part of element identity.
+- `Range(from, to)` includes both bounds. Pass null for `to` through the runtime API to scan to the end.
+- `Items()`, `Range()`, `Take()`, and `Skip()` return independent snapshots containing copied strings.
+- Capacity growth traps on overflow instead of wrapping.
 
 ### Zia Example
 
@@ -501,10 +517,10 @@ FOR i = 0 TO all.Length - 1
     PRINT all.Get(i)     ' Output: apple, banana, cherry, date
 NEXT
 
-' Get range [b, d) - from "b" to "d" exclusive
+' Get range [b, d] - from "b" through "d" inclusive
 DIM range AS OBJECT = words.Range("b", "d")
 FOR i = 0 TO range.Length - 1
-    PRINT range.Get(i)   ' Output: banana, cherry
+    PRINT range.Get(i)   ' Output: banana, cherry, date
 NEXT
 
 ' Set operations
@@ -597,6 +613,8 @@ lookup, merging (which returns a new FrozenMap), and equality comparison.
 - FrozenMap is truly immutable: there are no Set, Remove, or Clear methods
 - `Merge` returns a new FrozenMap; when both maps have the same key, the other map's value wins
 - `Equals` compares by value, not reference identity
+- Keys are compared by full byte length; embedded NUL bytes are part of the key
+- Keys and values are retained by the frozen map until the map is released
 
 ### Zia Example
 
@@ -740,6 +758,7 @@ that return new FrozenSet instances.
 - Duplicate elements in the source Seq are automatically removed
 - All set operations return new FrozenSet instances; originals are unchanged
 - `Equals` compares by value regardless of insertion order
+- Elements are compared by full byte length; embedded NUL bytes are part of element identity
 
 ### Zia Example
 
@@ -883,6 +902,11 @@ Supports range queries via Floor/Ceil operations.
 | `Last()`          | `String()`             | Get the largest (last) key; returns empty string if empty       |
 | `Floor(key)`      | `String(String)`       | Get the largest key <= given key; returns empty string if none  |
 | `Ceil(key)`       | `String(String)`       | Get the smallest key >= given key; returns empty string if none |
+
+### Notes
+
+- Keys are compared by full byte length in sorted byte order; embedded NUL bytes are part of the key.
+- Values are retained while stored and released when overwritten, removed, cleared, or finalized.
 
 ### Zia Example
 

@@ -11,7 +11,7 @@
 //   - Every key maps to exactly one value and every value maps to exactly one key.
 //   - Putting a key/value pair that conflicts with an existing mapping evicts the old entry.
 //   - Lookup by key and lookup by value are both O(1) average.
-//   - Keys and values must be distinct non-NULL strings.
+//   - Keys and values are compared by full runtime string byte length.
 //
 // Ownership/Lifetime:
 //   - BiMap objects are heap-allocated; caller is responsible for lifetime management.
@@ -89,12 +89,12 @@ int8_t rt_bimap_remove_by_key(void *obj, rt_string key);
 /// @return 1 if removed, 0 if not found.
 int8_t rt_bimap_remove_by_value(void *obj, rt_string value);
 
-/// @brief Get all keys as a Seq.
+/// @brief Get all keys as an owning Seq of copied strings.
 /// @param obj BiMap pointer.
 /// @return New Seq containing all keys.
 void *rt_bimap_keys(void *obj);
 
-/// @brief Get all values as a Seq.
+/// @brief Get all values as an owning Seq of copied strings.
 /// @param obj BiMap pointer.
 /// @return New Seq containing all values.
 void *rt_bimap_values(void *obj);

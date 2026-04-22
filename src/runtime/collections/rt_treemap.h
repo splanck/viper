@@ -8,7 +8,7 @@
 // floor/ceil/first/last navigation and ordered range iteration.
 //
 // Key invariants:
-//   - Keys are maintained in sorted lexicographic order at all times.
+//   - Keys are byte-length-aware strings maintained in sorted lexicographic order.
 //   - rt_treemap_floor returns the largest key <= query; rt_treemap_ceil returns the smallest >=
 //   query.
 //   - rt_treemap_first/last return the minimum/maximum keys.

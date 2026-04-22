@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_weakmap.h"
@@ -20,6 +21,21 @@ extern "C" void vm_trap(const char *msg) {
 
 static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
+}
+
+static rt_string make_bytes(const char *s, size_t len) {
+    return rt_string_from_bytes(s, len);
+}
+
+static void *new_obj() {
+    void *p = rt_obj_new_i64(0, 8);
+    assert(p != nullptr);
+    return p;
+}
+
+static void release_obj(void *p) {
+    if (p && rt_obj_release_check0(p))
+        rt_obj_free(p);
 }
 
 static void test_basic() {
@@ -113,11 +129,51 @@ static void test_compact() {
     /// @brief Rt_weakmap_set.
     rt_weakmap_set(m, k2, NULL); // Simulate collected value
 
-    assert(rt_weakmap_len(m) == 2);
+    assert(rt_weakmap_len(m) == 1);
     int64_t removed = rt_weakmap_compact(m);
     assert(removed == 1);
     assert(rt_weakmap_len(m) == 1);
 
+    rt_string_unref(k1);
+    rt_string_unref(k2);
+}
+
+static void test_zeroing_weak_values() {
+    void *m = rt_weakmap_new();
+    rt_string k = make_str("weak");
+    void *value = new_obj();
+
+    rt_weakmap_set(m, k, value);
+    assert(rt_weakmap_get(m, k) == value);
+    assert(rt_weakmap_has(m, k) == 1);
+    assert(rt_weakmap_len(m) == 1);
+
+    release_obj(value);
+    assert(rt_weakmap_get(m, k) == NULL);
+    assert(rt_weakmap_has(m, k) == 0);
+    assert(rt_weakmap_len(m) == 0);
+    assert(rt_weakmap_compact(m) == 1);
+
+    rt_string_unref(k);
+}
+
+static void test_embedded_nul_keys() {
+    void *m = rt_weakmap_new();
+    const char bytes[] = {'a', '\0', 'b'};
+    rt_string k1 = make_bytes(bytes, sizeof(bytes));
+    rt_string k2 = make_str("a");
+    void *v1 = new_obj();
+    void *v2 = new_obj();
+
+    rt_weakmap_set(m, k1, v1);
+    rt_weakmap_set(m, k2, v2);
+
+    assert(rt_weakmap_len(m) == 2);
+    assert(rt_weakmap_get(m, k1) == v1);
+    assert(rt_weakmap_get(m, k2) == v2);
+
+    release_obj(v1);
+    release_obj(v2);
     rt_string_unref(k1);
     rt_string_unref(k2);
 }
@@ -161,6 +217,8 @@ int main() {
     test_keys();
     test_clear();
     test_compact();
+    test_zeroing_weak_values();
+    test_embedded_nul_keys();
     test_many_entries();
     test_null_safety();
     return 0;

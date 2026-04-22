@@ -34,8 +34,18 @@ static void *new_obj() {
     return p;
 }
 
+static int g_finalizer_calls = 0;
+
+static void count_finalizer(void *) {
+    ++g_finalizer_calls;
+}
+
 static rt_string make_key(const char *text) {
     return rt_string_from_bytes(text, strlen(text));
+}
+
+static rt_string make_key_bytes(const char *text, size_t len) {
+    return rt_string_from_bytes(text, len);
 }
 
 static void test_new() {
@@ -179,6 +189,46 @@ static void test_get_missing_returns_empty_seq() {
     rt_release_obj(mm);
 }
 
+static void test_values_are_retained() {
+    void *mm = rt_multimap_new();
+    rt_string k = make_key("owned");
+    void *value = new_obj();
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_multimap_put(mm, k, value);
+    rt_release_obj(value);
+    assert(g_finalizer_calls == 0);
+
+    assert(rt_multimap_remove_all(mm, k) == 1);
+    assert(g_finalizer_calls == 1);
+
+    rt_string_unref(k);
+    rt_release_obj(mm);
+}
+
+static void test_embedded_nul_keys_are_distinct() {
+    void *mm = rt_multimap_new();
+    const char bytes[] = {'a', '\0', 'b'};
+    rt_string k1 = make_key_bytes(bytes, sizeof(bytes));
+    rt_string k2 = make_key("a");
+    void *v1 = new_obj();
+    void *v2 = new_obj();
+
+    rt_multimap_put(mm, k1, v1);
+    rt_multimap_put(mm, k2, v2);
+
+    assert(rt_multimap_key_count(mm) == 2);
+    assert(rt_multimap_get_first(mm, k1) == v1);
+    assert(rt_multimap_get_first(mm, k2) == v2);
+
+    rt_string_unref(k1);
+    rt_string_unref(k2);
+    rt_release_obj(v1);
+    rt_release_obj(v2);
+    rt_release_obj(mm);
+}
+
 static void test_null_safety() {
     rt_string k = make_key("test");
     assert(rt_multimap_len(NULL) == 0);
@@ -201,6 +251,8 @@ int main() {
     test_clear();
     test_keys();
     test_get_missing_returns_empty_seq();
+    test_values_are_retained();
+    test_embedded_nul_keys_are_distinct();
     test_null_safety();
     return 0;
 }

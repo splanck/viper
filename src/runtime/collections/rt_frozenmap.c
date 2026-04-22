@@ -37,6 +37,7 @@
 
 #include "rt_box.h"
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -82,11 +83,44 @@ static uint64_t fm_hash(const char *data, int64_t len) {
 }
 
 static uint64_t fm_str_hash(rt_string s) {
+    if (!s)
+        return fm_hash("", 0);
+    int64_t len = rt_str_len(s);
     const char *cstr = rt_string_cstr(s);
-    return fm_hash(cstr, rt_str_len(s));
+    return fm_hash(cstr ? cstr : "", len > 0 && cstr ? len : 0);
 }
 
 // --- Internal helpers ---
+
+static const char *fm_key_data(rt_string key, int64_t *out_len) {
+    if (!key) {
+        *out_len = 0;
+        return "";
+    }
+    int64_t len = rt_str_len(key);
+    if (len <= 0) {
+        *out_len = 0;
+        return "";
+    }
+    const char *data = rt_string_cstr(key);
+    if (!data) {
+        *out_len = 0;
+        return "";
+    }
+    *out_len = len;
+    return data;
+}
+
+static int8_t fm_key_equals(rt_string key, const char *data, int64_t len) {
+    int64_t key_len = 0;
+    const char *key_data = fm_key_data(key, &key_len);
+    return key_len == len && memcmp(key_data, data, (size_t)len) == 0 ? 1 : 0;
+}
+
+static void fm_release_value(void *value) {
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+}
 
 static void fm_finalizer(void *obj) {
     rt_frozenmap_impl *fm = (rt_frozenmap_impl *)obj;
@@ -94,7 +128,7 @@ static void fm_finalizer(void *obj) {
         for (int64_t i = 0; i < fm->capacity; i++) {
             if (fm->slots[i].key) {
                 rt_string_unref(fm->slots[i].key);
-                rt_obj_release_check0(fm->slots[i].value);
+                fm_release_value(fm->slots[i].value);
             }
         }
         free(fm->slots);
@@ -113,13 +147,26 @@ static int64_t fm_next_pow2(int64_t n) {
 }
 
 static rt_frozenmap_impl *fm_alloc(int64_t count) {
-    int64_t cap = fm_next_pow2(count < 4 ? 8 : count * 2);
+    int64_t needed = 8;
+    if (count >= 4) {
+        if (count > INT64_MAX / 2)
+            rt_trap("FrozenMap: capacity overflow");
+        needed = count * 2;
+    }
+    int64_t cap = fm_next_pow2(needed);
     rt_frozenmap_impl *fm = (rt_frozenmap_impl *)rt_obj_new_i64(0, sizeof(rt_frozenmap_impl));
+    if (!fm)
+        rt_trap("FrozenMap: memory allocation failed");
     fm->count = 0;
     fm->capacity = cap;
+    if ((uint64_t)cap > SIZE_MAX / sizeof(fm_slot))
+        rt_trap("FrozenMap: allocation size overflow");
     fm->slots = (fm_slot *)calloc((size_t)cap, sizeof(fm_slot));
-    if (!fm->slots)
+    if (!fm->slots) {
+        if (rt_obj_release_check0(fm))
+            rt_obj_free(fm);
         rt_trap("rt_frozenmap: memory allocation failed");
+    }
     rt_obj_set_finalizer(fm, fm_finalizer);
     return fm;
 }
@@ -129,7 +176,8 @@ static int8_t fm_insert(rt_frozenmap_impl *fm, rt_string key, void *value) {
     uint64_t h = fm_str_hash(key);
     int64_t mask = fm->capacity - 1;
     int64_t idx = (int64_t)(h & (uint64_t)mask);
-    const char *key_cstr = rt_string_cstr(key);
+    int64_t key_len = 0;
+    const char *key_data = fm_key_data(key, &key_len);
 
     for (int64_t i = 0; i < fm->capacity; i++) {
         int64_t slot = (idx + i) & mask;
@@ -141,11 +189,11 @@ static int8_t fm_insert(rt_frozenmap_impl *fm, rt_string key, void *value) {
             fm->count++;
             return 1;
         }
-        if (strcmp(rt_string_cstr(fm->slots[slot].key), key_cstr) == 0) {
+        if (fm_key_equals(fm->slots[slot].key, key_data, key_len)) {
             // Update value (last writer wins)
-            rt_obj_release_check0(fm->slots[slot].value);
-            fm->slots[slot].value = value;
             rt_obj_retain_maybe(value);
+            fm_release_value(fm->slots[slot].value);
+            fm->slots[slot].value = value;
             return 0;
         }
     }
@@ -158,13 +206,14 @@ static fm_slot *fm_find(rt_frozenmap_impl *fm, rt_string key) {
     uint64_t h = fm_str_hash(key);
     int64_t mask = fm->capacity - 1;
     int64_t idx = (int64_t)(h & (uint64_t)mask);
-    const char *key_cstr = rt_string_cstr(key);
+    int64_t key_len = 0;
+    const char *key_data = fm_key_data(key, &key_len);
 
     for (int64_t i = 0; i < fm->capacity; i++) {
         int64_t slot = (idx + i) & mask;
         if (!fm->slots[slot].key)
             return NULL;
-        if (strcmp(rt_string_cstr(fm->slots[slot].key), key_cstr) == 0)
+        if (fm_key_equals(fm->slots[slot].key, key_data, key_len))
             return &fm->slots[slot];
     }
     return NULL;

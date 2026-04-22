@@ -24,6 +24,10 @@ static void test_result(const char *name, bool passed) {
     assert(passed);
 }
 
+static rt_string make_bytes(const char *s, size_t len) {
+    return rt_string_from_bytes(s, len);
+}
+
 //=============================================================================
 // Basic Tests
 //=============================================================================
@@ -195,6 +199,83 @@ static void test_sortedset_items() {
     printf("\n");
 }
 
+static void test_sortedset_embedded_nul_items_are_distinct() {
+    printf("Testing SortedSet embedded NUL items:\n");
+
+    void *set = rt_sortedset_new();
+    const char bytes[] = {'a', '\0', 'b'};
+    rt_string k1 = make_bytes(bytes, sizeof(bytes));
+    rt_string k2 = rt_const_cstr("a");
+
+    test_result("Add embedded-NUL item", rt_sortedset_add(set, k1) == 1);
+    test_result("Add prefix item", rt_sortedset_add(set, k2) == 1);
+    test_result("Set keeps both distinct items", rt_sortedset_len(set) == 2);
+    test_result("Has embedded-NUL item", rt_sortedset_has(set, k1) == 1);
+    test_result("Has prefix item", rt_sortedset_has(set, k2) == 1);
+    test_result("Prefix sorts before longer item", rt_str_len(rt_sortedset_at(set, 0)) == 1);
+    test_result("Longer item sorts after prefix", rt_str_len(rt_sortedset_at(set, 1)) == 3);
+
+    rt_string_unref(k1);
+    printf("\n");
+}
+
+static void test_sortedset_range_inclusive_and_open_upper() {
+    printf("Testing SortedSet Range bounds:\n");
+
+    void *set = rt_sortedset_new();
+    rt_sortedset_add(set, rt_const_cstr("a"));
+    rt_sortedset_add(set, rt_const_cstr("b"));
+    rt_sortedset_add(set, rt_const_cstr("c"));
+    rt_sortedset_add(set, rt_const_cstr("d"));
+
+    void *inclusive = rt_sortedset_range(set, rt_const_cstr("b"), rt_const_cstr("d"));
+    test_result("Range includes both bounds", rt_seq_len(inclusive) == 3);
+    test_result("Range starts at b",
+                strcmp(rt_string_cstr((rt_string)rt_seq_get(inclusive, 0)), "b") == 0);
+    test_result("Range includes upper bound d",
+                strcmp(rt_string_cstr((rt_string)rt_seq_get(inclusive, 2)), "d") == 0);
+
+    void *open_upper = rt_sortedset_range(set, rt_const_cstr("c"), NULL);
+    test_result("NULL upper bound is open-ended", rt_seq_len(open_upper) == 2);
+    test_result("Open range starts at c",
+                strcmp(rt_string_cstr((rt_string)rt_seq_get(open_upper, 0)), "c") == 0);
+    test_result("Open range includes final item",
+                strcmp(rt_string_cstr((rt_string)rt_seq_get(open_upper, 1)), "d") == 0);
+
+    printf("\n");
+}
+
+static void test_sortedset_sequences_are_independent_snapshots() {
+    printf("Testing SortedSet snapshot ownership:\n");
+
+    void *set = rt_sortedset_new();
+    rt_sortedset_add(set, rt_const_cstr("a"));
+    rt_sortedset_add(set, rt_const_cstr("b"));
+    rt_sortedset_add(set, rt_const_cstr("c"));
+
+    void *items = rt_sortedset_items(set);
+    void *range = rt_sortedset_range(set, rt_const_cstr("a"), rt_const_cstr("b"));
+    void *take = rt_sortedset_take(set, 2);
+    void *skip = rt_sortedset_skip(set, 1);
+
+    test_result("Items string is copied", rt_seq_get(items, 0) != rt_sortedset_at(set, 0));
+    test_result("Range string is copied", rt_seq_get(range, 0) != rt_sortedset_at(set, 0));
+    test_result("Take string is copied", rt_seq_get(take, 0) != rt_sortedset_at(set, 0));
+    test_result("Skip string is copied", rt_seq_get(skip, 0) != rt_sortedset_at(set, 1));
+
+    rt_sortedset_clear(set);
+    test_result("Items survive clear",
+                strcmp(rt_string_cstr((rt_string)rt_seq_get(items, 0)), "a") == 0);
+    test_result("Range survives clear",
+                strcmp(rt_string_cstr((rt_string)rt_seq_get(range, 1)), "b") == 0);
+    test_result("Take survives clear",
+                strcmp(rt_string_cstr((rt_string)rt_seq_get(take, 1)), "b") == 0);
+    test_result("Skip survives clear",
+                strcmp(rt_string_cstr((rt_string)rt_seq_get(skip, 0)), "b") == 0);
+
+    printf("\n");
+}
+
 //=============================================================================
 // Set Operations Tests
 //=============================================================================
@@ -314,6 +395,9 @@ int main() {
     test_sortedset_floor_ceil();
     test_sortedset_lower_higher();
     test_sortedset_items();
+    test_sortedset_embedded_nul_items_are_distinct();
+    test_sortedset_range_inclusive_and_open_upper();
+    test_sortedset_sequences_are_independent_snapshots();
     test_sortedset_union();
     test_sortedset_intersect();
     test_sortedset_diff();

@@ -8,11 +8,11 @@
 // (floor, ceil, between) and ordered forward/backward iteration.
 //
 // Key invariants:
-//   - Elements are unique strings maintained in sorted order.
+//   - Elements are unique byte-length-aware strings maintained in sorted order.
 //   - All operations maintain the sorted invariant.
 //   - rt_sortedset_floor returns the largest element <= key; rt_sortedset_ceil returns the smallest
 //   >= key.
-//   - Returned subsets from range queries are newly allocated.
+//   - Returned subsets from range queries are owning snapshots of copied strings.
 //
 // Ownership/Lifetime:
 //   - SortedSet objects are heap-allocated; caller is responsible for lifetime management.
@@ -128,28 +128,28 @@ int64_t rt_sortedset_index_of(void *obj, rt_string str);
 // Range Operations
 //=============================================================================
 
-/// @brief Get all elements in a range [from, to).
+/// @brief Get all elements in a range [from, to].
 /// @param obj SortedSet pointer.
 /// @param from Start of range (inclusive).
-/// @param to End of range (exclusive).
-/// @return Seq of elements in the range.
+/// @param to End of range (inclusive), or NULL for an open upper bound.
+/// @return Owning Seq of copied elements in the range.
 void *rt_sortedset_range(void *obj, rt_string from, rt_string to);
 
 /// @brief Get all elements as a Seq in sorted order.
 /// @param obj SortedSet pointer.
-/// @return Seq containing all elements (sorted).
+/// @return Owning Seq containing copied elements (sorted).
 void *rt_sortedset_items(void *obj);
 
 /// @brief Get the first n elements.
 /// @param obj SortedSet pointer.
 /// @param n Number of elements to get.
-/// @return Seq of first n elements.
+/// @return Owning Seq of copied first n elements.
 void *rt_sortedset_take(void *obj, int64_t n);
 
 /// @brief Get all elements except the first n.
 /// @param obj SortedSet pointer.
 /// @param n Number of elements to skip.
-/// @return Seq of remaining elements.
+/// @return Owning Seq of copied remaining elements.
 void *rt_sortedset_skip(void *obj, int64_t n);
 
 //=============================================================================

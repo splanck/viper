@@ -54,6 +54,10 @@ static rt_string make_key(const char *text) {
     return rt_string_from_bytes(text, strlen(text));
 }
 
+static rt_string make_key_bytes(const char *text, size_t len) {
+    return rt_string_from_bytes(text, len);
+}
+
 static bool str_eq(rt_string s, const char *expected) {
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
@@ -347,6 +351,28 @@ static void test_keys_and_values_order() {
     rt_release_obj(cache);
 }
 
+static void test_embedded_nul_keys_are_distinct() {
+    void *cache = rt_lrucache_new(5);
+    const char bytes[] = {'a', '\0', 'b'};
+    rt_string k1 = make_key_bytes(bytes, sizeof(bytes));
+    rt_string k2 = make_key("a");
+    void *v1 = new_obj();
+    void *v2 = new_obj();
+
+    rt_lrucache_put(cache, k1, v1);
+    rt_lrucache_put(cache, k2, v2);
+
+    assert(rt_lrucache_len(cache) == 2);
+    assert(rt_lrucache_get(cache, k1) == v1);
+    assert(rt_lrucache_get(cache, k2) == v2);
+
+    rt_string_unref(k1);
+    rt_string_unref(k2);
+    rt_release_obj(v1);
+    rt_release_obj(v2);
+    rt_release_obj(cache);
+}
+
 static void test_finalizer_on_eviction() {
     void *cache = rt_lrucache_new(2);
     rt_string k1 = make_key("a");
@@ -453,6 +479,7 @@ int main() {
     test_remove_oldest();
     test_clear();
     test_keys_and_values_order();
+    test_embedded_nul_keys_are_distinct();
     test_finalizer_on_eviction();
     test_finalizer_on_cache_free();
     test_null_safety();

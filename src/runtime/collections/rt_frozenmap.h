@@ -9,6 +9,7 @@
 //
 // Key invariants:
 //   - Once created, the map cannot be modified; there are no put/remove operations.
+//   - Keys are byte-length-aware strings; embedded NUL bytes are part of key identity.
 //   - Lookup is O(1) average using the same hash strategy as the mutable Map.
 //   - Constructed from an existing Map or from parallel key and value Seqs.
 //   - rt_frozenmap_has returns 1 if key exists, 0 otherwise.

@@ -9,6 +9,7 @@
 //
 // Key invariants:
 //   - rt_defaultmap_get never returns NULL; it returns the configured default for missing keys.
+//   - NULL keys are treated as the empty key; embedded NUL bytes are part of key identity.
 //   - The default value is set at creation time and cannot be changed.
 //   - Values are retained in the map; the default value is also retained.
 //   - All operations are O(1) average-case.

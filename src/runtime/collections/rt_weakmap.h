@@ -4,19 +4,19 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/collections/rt_weakmap.h
-// Purpose: String-keyed map holding weak (non-retaining) references to values, so values may be
-// collected; getting a collected value returns NULL.
+// Purpose: String-keyed map holding zeroing weak references to values, so values may be freed
+// without leaving dangling map reads; getting a collected value returns NULL.
 //
 // Key invariants:
-//   - Values are stored without retaining; the map does not prevent collection.
+//   - Values are wrapped in rt_weakref handles; the map does not retain values.
 //   - rt_weakmap_get returns NULL for both missing keys and collected values.
-//   - String keys are copied; the map owns its key copies.
-//   - Iterating a weakmap may skip entries whose values were collected.
+//   - String keys are retained and compared by byte length; embedded NUL bytes are significant.
+//   - Public length, emptiness, Has, and Keys expose only live weak values.
 //
 // Ownership/Lifetime:
-//   - Caller manages weakmap lifetime; no reference counting on the map itself.
-//   - Values must not be freed while the weakmap holds a pointer to them unless the caller accounts
-//   for it.
+//   - WeakMap objects are GC-managed.
+//   - Entry keys and weak-reference handles are owned by the map.
+//   - Values should be runtime heap objects so rt_obj_free can zero registered weak references.
 //
 // Links: src/runtime/collections/rt_weakmap.c (implementation), src/runtime/core/rt_string.h
 //
@@ -35,9 +35,9 @@ extern "C" {
 /// @return New weak map object.
 void *rt_weakmap_new(void);
 
-/// @brief Get the number of entries (including potentially collected ones).
+/// @brief Get the number of live entries.
 /// @param map Weak map.
-/// @return Number of entries.
+/// @return Number of entries whose weak value is still live.
 int64_t rt_weakmap_len(void *map);
 
 /// @brief Check if the map is empty.
@@ -69,7 +69,7 @@ int8_t rt_weakmap_has(void *map, rt_string key);
 /// @return 1 if removed, 0 if not found.
 int8_t rt_weakmap_remove(void *map, rt_string key);
 
-/// @brief Get all keys currently in the map.
+/// @brief Get all keys whose weak values are currently live.
 /// @param map Weak map.
 /// @return Seq of string keys.
 void *rt_weakmap_keys(void *map);
@@ -78,7 +78,7 @@ void *rt_weakmap_keys(void *map);
 /// @param map Weak map.
 void rt_weakmap_clear(void *map);
 
-/// @brief Compact the map by removing entries with NULL values.
+/// @brief Compact the map by removing entries with NULL or collected values.
 /// @param map Weak map.
 /// @return Number of entries removed.
 int64_t rt_weakmap_compact(void *map);

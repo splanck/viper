@@ -654,8 +654,8 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 | `WriteI32BE(v)`     | void    | Write 32-bit integer (big-endian)                |
 | `WriteI64LE(v)`     | void    | Write 64-bit integer (little-endian)             |
 | `WriteI64BE(v)`     | void    | Write 64-bit integer (big-endian)                |
-| `WriteStr(s)`       | void    | Write string as UTF-8 bytes                      |
-| `WriteBytes(b)`     | void    | Write all bytes from a Bytes object              |
+| `WriteStr(s)`       | void    | Write 32-bit length prefix plus full string bytes |
+| `WriteBytes(b)`     | void    | Write 32-bit length prefix plus all Bytes data   |
 
 ### Read Methods
 
@@ -677,6 +677,11 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 |--------------|---------|------------------------------------------|
 | `ToBytes()`  | Bytes   | Copy all data to a new Bytes object      |
 | `Reset()`    | void    | Reset buffer to empty state (Pos=0, Len=0) |
+
+### Notes
+
+- `WriteStr()` uses the runtime string byte length, so embedded NUL bytes are preserved.
+- `WriteStr()` and `WriteBytes()` trap if the payload length cannot fit in their signed 32-bit length prefix.
 
 ### Zia Example
 

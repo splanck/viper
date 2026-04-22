@@ -27,9 +27,18 @@ static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
+static rt_string make_bytes(const char *bytes, size_t len) {
+    return rt_string_from_bytes(bytes, len);
+}
+
 static bool str_eq(rt_string s, const char *expected) {
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
+}
+
+static bool str_bytes_eq(rt_string s, const char *expected, size_t len) {
+    const char *data = rt_string_cstr(s);
+    return data && rt_str_len(s) == (int64_t)len && memcmp(data, expected, len) == 0;
 }
 
 static void test_new_empty() {
@@ -244,6 +253,33 @@ static void test_get_missing() {
     rt_string_unref(k);
 }
 
+static void test_embedded_nul_key_and_value() {
+    void *bm = rt_bimap_new();
+    const char key_bytes[] = {'k', '\0', '1'};
+    const char value_bytes[] = {'v', '\0', '2'};
+    rt_string k = make_bytes(key_bytes, sizeof(key_bytes));
+    rt_string v = make_bytes(value_bytes, sizeof(value_bytes));
+
+    rt_bimap_put(bm, k, v);
+    assert(rt_bimap_len(bm) == 1);
+    assert(rt_bimap_has_key(bm, k) == 1);
+    assert(rt_bimap_has_value(bm, v) == 1);
+
+    rt_string got = rt_bimap_get_by_key(bm, k);
+    assert(str_bytes_eq(got, value_bytes, sizeof(value_bytes)));
+    rt_string_unref(got);
+
+    rt_string inv = rt_bimap_get_by_value(bm, v);
+    assert(str_bytes_eq(inv, key_bytes, sizeof(key_bytes)));
+    rt_string_unref(inv);
+
+    assert(rt_bimap_remove_by_key(bm, k) == 1);
+    assert(rt_bimap_len(bm) == 0);
+
+    rt_string_unref(k);
+    rt_string_unref(v);
+}
+
 static void test_null_safety() {
     assert(rt_bimap_len(NULL) == 0);
     assert(rt_bimap_is_empty(NULL) == 1);
@@ -265,6 +301,7 @@ int main() {
     test_clear();
     test_many_entries();
     test_get_missing();
+    test_embedded_nul_key_and_value();
     test_null_safety();
 
     return 0;

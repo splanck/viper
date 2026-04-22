@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-22
 ---
 
 # Specialized Maps
@@ -46,7 +46,9 @@ directions. Each key maps to exactly one value, and each value maps to exactly o
 - Maintains strict one-to-one relationships: updating a key to a new value removes the old value's reverse mapping
 - Both key-to-value and value-to-key lookups are O(1) average case
 - `Put` with an existing key replaces the old value and removes the old value's reverse entry
-- Keys and values are both strings
+- Keys and values are strings compared by full byte length; embedded NUL bytes are part of identity
+- `Put` prepares the replacement entry before removing conflicting mappings, so allocation failures do not drop the previous entry
+- `Keys()` and `Values()` return owning snapshots of copied strings
 
 ### Zia Example
 
@@ -151,6 +153,8 @@ stores a list of values for each key.
 - `Length` is the *total* number of values across all keys, not the number of distinct keys
 - `KeyCount` gives the number of distinct keys
 - `Get` returns an empty Seq (not null) if the key does not exist
+- `Get` returns an owning snapshot Seq; values remain retained by the snapshot until it is released
+- String keys are compared by full byte length; embedded NUL bytes are part of the key
 - Values are boxed objects in Zia (use `Viper.Core.Box`); BASIC auto-boxes string values
 
 ### Zia Example
@@ -291,6 +295,8 @@ ranking operations for counting occurrences.
 - `Get` returns 0 for keys that have never been added (does not insert)
 - `MostCommon` returns keys ordered from highest count to lowest
 - `Total` is the sum of all counts, not the number of distinct keys
+- String keys are compared by full byte length; embedded NUL bytes are part of the key
+- Count and total overflow trap instead of wrapping
 
 ### Zia Example
 
@@ -411,8 +417,14 @@ An integer-keyed dictionary for efficient mapping of integer keys to object valu
 | `Has(key)`                    | `Boolean(Integer)`         | Check if key exists                                                      |
 | `Remove(key)`                 | `Boolean(Integer)`         | Remove key-value pair; returns true if found                             |
 | `Clear()`                     | `Void()`                   | Remove all entries                                                       |
-| `Keys()`                      | `Seq()`                    | Get sequence of all keys                                                 |
+| `Keys()`                      | `Seq()`                    | Get sequence of all keys as boxed i64 values                             |
 | `Values()`                    | `Seq()`                    | Get sequence of all values                                               |
+
+### Notes
+
+- Keys are stored as signed 64-bit integers; no pointer casts are used for returned key snapshots.
+- `Keys()` returns an owning snapshot whose elements are boxed `i64` values.
+- Values are retained while stored and released on overwrite, removal, clear, or finalization.
 
 ### Zia Example
 
@@ -517,6 +529,9 @@ value specified at construction time via `Viper.Core.Box`.
 
 - `Get` for a missing key returns the default value but does *not* insert the key into the map
 - The default value is set at construction time and cannot be changed
+- Passing a null key through the runtime API is treated as the empty string key
+- String keys are compared by full byte length; embedded NUL bytes are part of the key
+- Values and the configured default value are retained while stored
 - Values are boxed objects; use `Viper.Core.Box` to create and unwrap values
 - In BASIC, string values are automatically boxed when passed to `Set`
 
@@ -638,6 +653,8 @@ eviction operations. Values are accessed by string keys.
 - `Get` promotes the accessed entry to most recently used; `Peek` does not
 - When `Put` is called at capacity, the least recently used entry is automatically evicted
 - Updating an existing key with `Put` promotes it to most recently used without eviction
+- String keys are compared by full byte length; embedded NUL bytes are part of the key
+- Cached values are retained while stored and released on overwrite, eviction, remove, clear, or finalization
 - Values are boxed objects in Zia (use `Viper.Core.Box`); BASIC auto-boxes string values
 
 ### Zia Example
@@ -749,8 +766,8 @@ A map with weak value references. Values may become NULL when their referent is 
 
 | Property  | Type    | Description                                              |
 |-----------|---------|----------------------------------------------------------|
-| `Length`     | Integer | Number of entries (including potentially collected ones) |
-| `IsEmpty` | Boolean | True if map has no entries                               |
+| `Length`     | Integer | Number of entries whose weak values are still live       |
+| `IsEmpty` | Boolean | True if map has no live entries                          |
 
 ### Methods
 
@@ -758,9 +775,9 @@ A map with weak value references. Values may become NULL when their referent is 
 |------------------|------------------------|------------------------------------------------------------|
 | `Set(key, value)`| `Void(String, Object)` | Set a value (stored as weak reference)                     |
 | `Get(key)`       | `Object(String)`       | Get value for key (NULL if not found or collected)         |
-| `Has(key)`       | `Boolean(String)`      | Check if key exists                                        |
+| `Has(key)`       | `Boolean(String)`      | Check if key exists and its weak value is still live       |
 | `Remove(key)`    | `Boolean(String)`      | Remove entry; returns true if found                        |
-| `Keys()`         | `Seq()`                | Get all keys currently in the map                          |
+| `Keys()`         | `Seq()`                | Get all keys whose weak values are still live              |
 | `Clear()`        | `Void()`               | Remove all entries                                         |
 | `Compact()`      | `Integer()`            | Remove entries with collected values; returns count removed |
 
@@ -768,8 +785,9 @@ A map with weak value references. Values may become NULL when their referent is 
 
 - **Weak references:** Values are stored without preventing garbage collection. If the only reference to an object is through a WeakMap, it may be collected.
 - **Stale entries:** After a value is collected, `Get()` returns NULL for that key. Use `Compact()` to clean up stale entries.
-- **String keys:** Keys are regular (strong) string references.
-- **Length includes stale:** `Length` counts all entries including those with collected values. Call `Compact()` first for an accurate live count.
+- **String keys:** Keys are regular strong string references and are compared by full byte length; embedded NUL bytes are part of the key.
+- **Live views:** `Length`, `IsEmpty`, `Has`, and `Keys` expose live weak values only. `Compact()` removes the stale internal slots.
+- **Runtime objects:** Values should be runtime heap objects so `rt_obj_free` can zero the registered weak references.
 
 ### Zia Example
 
@@ -854,7 +872,7 @@ for gaps. Only occupied indices consume storage.
 | `Get(index)`       | `Object(Integer)`       | Get value at the given index (null if not set)         |
 | `Has(index)`       | `Boolean(Integer)`      | Check if an index has a value                          |
 | `Remove(index)`    | `Boolean(Integer)`      | Remove value at index; returns true if found           |
-| `Indices()`        | `Seq()`                 | Get all occupied indices as a Seq                      |
+| `Indices()`        | `Seq()`                 | Get all occupied indices as boxed i64 values           |
 | `Values()`         | `Seq()`                 | Get all values as a Seq                                |
 | `Clear()`          | `Void()`                | Remove all entries                                     |
 
@@ -862,7 +880,8 @@ for gaps. Only occupied indices consume storage.
 
 - Indices can be any integer, including negative numbers (e.g., -5, 0, 1000)
 - Only occupied indices consume memory; gaps between indices cost nothing
-- `Indices()` returns the set of indices that have been assigned values
+- Setting an index to null removes that entry, matching `Remove(index)`
+- `Indices()` returns an owning snapshot of boxed `i64` values for every occupied index
 - Values are boxed objects in Zia (use `Viper.Core.Box`); BASIC auto-boxes string values
 
 ### Zia Example
@@ -903,9 +922,13 @@ func start() {
     sa.Remove(1000);
     SayInt(sa.Length);                               // 3
 
+    // Setting null also removes an entry
+    sa.Set(100, null);
+    SayBool(sa.Has(100));                         // 0
+
     // Get all indices and values
     var indices = sa.Indices();
-    SayInt(indices.Length);                          // 3
+    SayInt(indices.Length);                          // 2
 }
 ```
 
@@ -942,14 +965,19 @@ PRINT sa.Remove(1000)    ' 1
 PRINT sa.Has(1000)       ' 0
 PRINT sa.Length             ' 3
 
+' Setting NULL also removes an entry
+sa.Set(100, NULL)
+PRINT sa.Has(100)        ' 0
+PRINT sa.Length             ' 2
+
 ' Get all indices and values
 DIM indices AS OBJECT
 indices = sa.Indices()
-PRINT indices.Length        ' 3
+PRINT indices.Length        ' 2
 
 DIM vals AS OBJECT
 vals = sa.Values()
-PRINT vals.Length           ' 3
+PRINT vals.Length           ' 2
 
 ' Clear all
 sa.Clear()

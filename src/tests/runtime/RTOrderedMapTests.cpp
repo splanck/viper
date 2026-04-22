@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_orderedmap.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -20,6 +21,27 @@ extern "C" void vm_trap(const char *msg) {
 
 static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
+}
+
+static rt_string make_bytes(const char *s, size_t len) {
+    return rt_string_from_bytes(s, len);
+}
+
+static int g_finalizer_calls = 0;
+
+static void count_finalizer(void *) {
+    ++g_finalizer_calls;
+}
+
+static void *new_obj() {
+    void *p = rt_obj_new_i64(0, 8);
+    assert(p != nullptr);
+    return p;
+}
+
+static void release_obj(void *p) {
+    if (p && rt_obj_release_check0(p))
+        rt_obj_free(p);
 }
 
 static bool str_eq(rt_string s, const char *expected) {
@@ -185,6 +207,42 @@ static void test_many_entries() {
     rt_string_unref(last);
 }
 
+static void test_value_release_on_clear() {
+    void *m = rt_orderedmap_new();
+    rt_string k = make_str("owned");
+    void *value = new_obj();
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_orderedmap_set(m, k, value);
+    release_obj(value);
+    assert(g_finalizer_calls == 0);
+
+    rt_orderedmap_clear(m);
+    assert(g_finalizer_calls == 1);
+
+    rt_string_unref(k);
+}
+
+static void test_embedded_nul_keys_are_distinct() {
+    void *m = rt_orderedmap_new();
+    const char bytes[] = {'a', '\0', 'b'};
+    rt_string k1 = make_bytes(bytes, sizeof(bytes));
+    rt_string k2 = make_str("a");
+    rt_string v1 = make_str("v1");
+    rt_string v2 = make_str("v2");
+
+    rt_orderedmap_set(m, k1, v1);
+    rt_orderedmap_set(m, k2, v2);
+
+    assert(rt_orderedmap_len(m) == 2);
+    assert(rt_orderedmap_get(m, k1) == v1);
+    assert(rt_orderedmap_get(m, k2) == v2);
+
+    rt_string_unref(k1);
+    rt_string_unref(k2);
+}
+
 static void test_null_safety() {
     assert(rt_orderedmap_len(NULL) == 0);
     assert(rt_orderedmap_is_empty(NULL) == 1);
@@ -205,6 +263,8 @@ int main() {
     test_key_at();
     test_clear();
     test_many_entries();
+    test_value_release_on_clear();
+    test_embedded_nul_keys_are_distinct();
     test_null_safety();
 
     return 0;

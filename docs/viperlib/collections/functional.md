@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-22
 ---
 
 # Functional & Lazy
@@ -70,6 +70,12 @@ push/pop, insert/remove, and slicing operations.
 | `ToQueue()`            | `Queue()`                 | Returns elements as a new Queue                                                       |
 | `ToDeque()`            | `Deque()`                 | Returns elements as a new Deque                                                       |
 | `ToBag()`              | `Bag()`                   | Returns unique string elements as a new Bag                                           |
+
+### Notes
+
+- Public `Seq` instances borrow elements by default. Runtime-owned snapshots can enable element ownership before insertion so values are retained and released with the sequence.
+- Ownership mode must be selected while the sequence is empty; changing it after insertion traps.
+- `Push`, `PushAll`, and capacity growth trap on length or allocation overflow instead of wrapping.
 
 ### Zia Example
 
@@ -431,6 +437,7 @@ capabilities.
 - In BASIC, `Next()` and `Peek()` return values directly
 - `Skip(n)` returns the actual number of elements skipped, which may be less than n if the iterator is near the end
 - `ToSeq()` collects only the *remaining* elements from the current position onward
+- Stack iterators snapshot the stack in bottom-to-top order and restore the source stack unchanged
 
 ### Zia Example
 

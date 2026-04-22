@@ -79,7 +79,7 @@ void rt_intmap_clear(void *obj);
 
 /// @brief Get all keys as a Seq of boxed integers.
 /// @param obj IntMap pointer.
-/// @return New Seq containing all keys as boxed i64.
+/// @return New owning Seq containing all keys as boxed i64 values.
 void *rt_intmap_keys(void *obj);
 
 /// @brief Get all values as a Seq.

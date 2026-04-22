@@ -40,6 +40,7 @@
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -75,10 +76,18 @@ typedef struct rt_bimap_impl {
 typedef struct rt_bm_inv_link rt_bm_inv_link;
 
 static const char *get_str_data(rt_string s, size_t *out_len) {
-    *out_len = (size_t)rt_str_len(s);
-    if (*out_len == 0)
+    int64_t len = rt_str_len(s);
+    if (len <= 0) {
+        *out_len = 0;
         return "";
-    return s->data;
+    }
+    const char *data = rt_string_cstr(s);
+    if (!data) {
+        *out_len = 0;
+        return "";
+    }
+    *out_len = (size_t)len;
+    return data;
 }
 
 static rt_bm_entry *find_fwd(rt_bm_entry *head, const char *key, size_t key_len) {
@@ -112,13 +121,10 @@ static void remove_inv_link(rt_bimap_impl *bm, const char *val, size_t val_len) 
     }
 }
 
-static void add_inv_link(rt_bimap_impl *bm, rt_bm_entry *entry) {
+static void insert_inv_link(rt_bimap_impl *bm, rt_bm_inv_link *link) {
+    rt_bm_entry *entry = link->entry;
     uint64_t h = rt_fnv1a(entry->value, entry->value_len);
     size_t idx = (size_t)(h % bm->inv_capacity);
-    rt_bm_inv_link *link = (rt_bm_inv_link *)malloc(sizeof(rt_bm_inv_link));
-    if (!link)
-        return;
-    link->entry = entry;
     link->next = bm->inv_chains[idx];
     bm->inv_chains[idx] = link;
 }
@@ -215,7 +221,7 @@ static void resize_inv(rt_bimap_impl *bm) {
 void *rt_bimap_new(void) {
     rt_bimap_impl *bm = (rt_bimap_impl *)rt_obj_new_i64(0, sizeof(rt_bimap_impl));
     if (!bm)
-        return NULL;
+        rt_trap("BiMap: memory allocation failed");
 
     bm->fwd_capacity = BM_INITIAL_CAPACITY;
     bm->inv_capacity = BM_INITIAL_CAPACITY;
@@ -227,7 +233,7 @@ void *rt_bimap_new(void) {
         free(bm->inv_chains);
         if (rt_obj_release_check0(bm))
             rt_obj_free(bm);
-        return NULL;
+        rt_trap("BiMap: memory allocation failed");
     }
 
     rt_obj_set_finalizer(bm, bimap_finalizer);
@@ -259,12 +265,6 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value) {
     const char *kdata = get_str_data(key, &klen);
     const char *vdata = get_str_data(value, &vlen);
 
-    // Remove existing mapping for this key (if any)
-    rt_bimap_remove_by_key(obj, key);
-
-    // Remove existing mapping for this value (if any)
-    rt_bimap_remove_by_value(obj, value);
-
     // Check load factor on forward table
     if (bm->count * BM_LOAD_FACTOR_DEN >= bm->fwd_capacity * BM_LOAD_FACTOR_NUM)
         resize_fwd(bm);
@@ -274,14 +274,14 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value) {
     // Create entry
     rt_bm_entry *entry = (rt_bm_entry *)malloc(sizeof(rt_bm_entry));
     if (!entry)
-        return;
+        rt_trap("BiMap: memory allocation failed");
     entry->key = (char *)malloc(klen + 1);
     entry->value = (char *)malloc(vlen + 1);
     if (!entry->key || !entry->value) {
         free(entry->key);
         free(entry->value);
         free(entry);
-        return;
+        rt_trap("BiMap: memory allocation failed");
     }
     memcpy(entry->key, kdata, klen);
     entry->key[klen] = '\0';
@@ -290,6 +290,19 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value) {
     entry->value[vlen] = '\0';
     entry->value_len = vlen;
 
+    rt_bm_inv_link *inv_link = (rt_bm_inv_link *)malloc(sizeof(rt_bm_inv_link));
+    if (!inv_link) {
+        free_entry(entry);
+        rt_trap("BiMap: memory allocation failed");
+    }
+    inv_link->entry = entry;
+    inv_link->next = NULL;
+
+    // All allocations for the replacement entry have succeeded. It is now safe
+    // to remove any conflicting key or value mappings before committing.
+    rt_bimap_remove_by_key(obj, key);
+    rt_bimap_remove_by_value(obj, value);
+
     // Insert into forward table
     uint64_t fh = rt_fnv1a(kdata, klen);
     size_t fidx = (size_t)(fh % bm->fwd_capacity);
@@ -297,7 +310,7 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value) {
     bm->fwd_buckets[fidx] = entry;
 
     // Insert into inverse chain
-    add_inv_link(bm, entry);
+    insert_inv_link(bm, inv_link);
 
     bm->count++;
 }

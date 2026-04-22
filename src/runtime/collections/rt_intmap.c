@@ -335,6 +335,7 @@ void rt_intmap_clear(void *obj) {
 /// @return New Seq containing all keys as boxed i64 values.
 void *rt_intmap_keys(void *obj) {
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
     if (!obj)
         return result;
 
@@ -346,6 +347,8 @@ void *rt_intmap_keys(void *obj) {
         while (entry) {
             void *boxed = rt_box_i64(entry->key);
             rt_seq_push(result, boxed);
+            if (boxed && rt_obj_release_check0(boxed))
+                rt_obj_free(boxed);
             entry = entry->next;
         }
     }

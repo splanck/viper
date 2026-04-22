@@ -281,16 +281,18 @@ void *rt_bytes_from_str(rt_string str) {
 ///
 /// @see rt_bytes_to_hex For the reverse operation
 void *rt_bytes_from_hex(rt_string hex) {
+    int64_t hex_len_i64 = rt_str_len(hex);
+    if (hex_len_i64 <= 0)
+        return rt_bytes_new(0);
+
     const char *hex_str = rt_string_cstr(hex);
     if (!hex_str)
         return rt_bytes_new(0);
 
-    size_t hex_len = strlen(hex_str);
-
-    if (hex_len % 2 != 0)
+    if ((hex_len_i64 % 2) != 0)
         rt_bytes_trap_domain("Bytes.FromHex: hex string length must be even");
 
-    int64_t len = (int64_t)(hex_len / 2);
+    int64_t len = hex_len_i64 / 2;
     rt_bytes_impl *bytes = rt_bytes_alloc(len);
     for (int64_t i = 0; i < len; i++) {
         int hi = rt_hex_digit_value(hex_str[i * 2]);
@@ -503,10 +505,10 @@ void rt_bytes_copy(void *dst, int64_t dst_idx, void *src, int64_t src_idx, int64
     if (count == 0)
         return;
 
-    if (src_idx < 0 || src_idx + count > src_bytes->len)
+    if (src_idx < 0 || count > src_bytes->len || src_idx > src_bytes->len - count)
         rt_bytes_trap_bounds("Bytes.Copy: source range out of bounds");
 
-    if (dst_idx < 0 || dst_idx + count > dst_bytes->len)
+    if (dst_idx < 0 || count > dst_bytes->len || dst_idx > dst_bytes->len - count)
         rt_bytes_trap_bounds("Bytes.Copy: destination range out of bounds");
 
     memmove(dst_bytes->data + dst_idx, src_bytes->data + src_idx, (size_t)count);
@@ -620,7 +622,14 @@ rt_string rt_bytes_to_base64(void *obj) {
         return rt_string_from_bytes("", 0);
 
     size_t input_len = (size_t)bytes->len;
-    size_t output_len = ((input_len + 2) / 3) * 4;
+    if (input_len > SIZE_MAX - 2)
+        rt_bytes_trap_overflow("Bytes.ToBase64: output size overflow");
+    size_t groups = (input_len + 2) / 3;
+    if (groups > SIZE_MAX / 4)
+        rt_bytes_trap_overflow("Bytes.ToBase64: output size overflow");
+    size_t output_len = groups * 4;
+    if (output_len == SIZE_MAX)
+        rt_bytes_trap_overflow("Bytes.ToBase64: output size overflow");
 
     char *out = (char *)malloc(output_len + 1);
     if (!out)
@@ -696,14 +705,15 @@ rt_string rt_bytes_to_base64(void *obj) {
 ///
 /// @see rt_bytes_to_base64 For the reverse operation
 void *rt_bytes_from_base64(rt_string b64) {
+    int64_t b64_len_i64 = rt_str_len(b64);
+    if (b64_len_i64 <= 0)
+        return rt_bytes_new(0);
+
     const char *b64_str = rt_string_cstr(b64);
     if (!b64_str)
         return rt_bytes_new(0);
 
-    size_t b64_len = strlen(b64_str);
-    if (b64_len == 0)
-        return rt_bytes_new(0);
-
+    size_t b64_len = (size_t)b64_len_i64;
     if (b64_len % 4 != 0)
         rt_bytes_trap_domain("Bytes.FromBase64: base64 length must be a multiple of 4");
 
@@ -1080,6 +1090,8 @@ void rt_bytes_write_i64be(void *obj, int64_t offset, int64_t value) {
 ///
 /// @return New Bytes object containing a copy of the data.
 void *rt_bytes_from_raw(const uint8_t *data, size_t len) {
+    if (len > (size_t)INT64_MAX)
+        rt_bytes_trap_overflow("Bytes.FromRaw: length exceeds maximum Bytes size");
     rt_bytes_impl *bytes = rt_bytes_alloc((int64_t)len);
     if (len > 0 && data)
         memcpy(bytes->data, data, len);

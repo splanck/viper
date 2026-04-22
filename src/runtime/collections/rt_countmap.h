@@ -9,6 +9,8 @@
 //
 // Key invariants:
 //   - Counts are always >= 0; decrementing a count to 0 removes the entry.
+//   - Keys are copied by byte length; embedded NUL bytes are part of key identity.
+//   - Count and total overflow trap instead of wrapping.
 //   - rt_countmap_get returns 0 for keys not present.
 //   - All operations are O(1) average-case.
 //   - rt_countmap_top_n returns up to N keys with highest counts.

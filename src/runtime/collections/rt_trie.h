@@ -8,14 +8,14 @@
 // auto-complete queries with O(k) operations where k is the key length.
 //
 // Key invariants:
-//   - Keys are stored as sequences of ASCII characters.
+//   - Keys are stored as byte sequences using the full runtime string length.
 //   - Prefix search returns all keys with the given prefix.
 //   - rt_trie_has returns 1 only for exact key matches, not just prefixes.
 //   - Values are retained while stored in the trie.
 //
 // Ownership/Lifetime:
 //   - Trie objects are heap-allocated; caller is responsible for lifetime management.
-//   - String keys are used as-is; internal nodes store individual characters.
+//   - String keys are used as-is; internal nodes store individual bytes.
 //
 // Links: src/runtime/collections/rt_trie.c (implementation), src/runtime/core/rt_string.h
 //
@@ -71,7 +71,7 @@ int8_t rt_trie_has_prefix(void *obj, rt_string prefix);
 /// @brief Get all keys that start with the given prefix.
 /// @param obj Trie pointer.
 /// @param prefix String prefix.
-/// @return Seq of matching keys.
+/// @return Owning Seq of copied matching keys.
 void *rt_trie_with_prefix(void *obj, rt_string prefix);
 
 /// @brief Find the longest key that is a prefix of the given string.
@@ -90,7 +90,7 @@ int8_t rt_trie_remove(void *obj, rt_string key);
 /// @param obj Trie pointer.
 void rt_trie_clear(void *obj);
 
-/// @brief Get all keys as a Seq.
+/// @brief Get all keys as an owning Seq of copied strings.
 /// @param obj Trie pointer.
 /// @return Seq of all keys (sorted lexicographically).
 void *rt_trie_keys(void *obj);

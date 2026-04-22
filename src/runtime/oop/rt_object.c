@@ -237,10 +237,13 @@ void rt_obj_free(void *p) {
     if (!rt_heap_try_get_header(p, &hdr))
         return;
     if (hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT &&
-        __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) == 0 && hdr->finalizer) {
-        rt_heap_finalizer_t fin = hdr->finalizer;
-        hdr->finalizer = NULL;
-        fin(p);
+        __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) == 0) {
+        rt_gc_clear_weak_refs(p);
+        if (hdr->finalizer) {
+            rt_heap_finalizer_t fin = hdr->finalizer;
+            hdr->finalizer = NULL;
+            fin(p);
+        }
     }
     rt_monitor_forget(p);
     rt_heap_free_zero_ref(p);

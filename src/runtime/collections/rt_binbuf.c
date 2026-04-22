@@ -297,7 +297,9 @@ void rt_binbuf_write_str(void *obj, rt_string value) {
         rt_trap("BinaryBuffer: null buffer");
 
     const char *cstr = rt_string_cstr(value);
-    int64_t slen = cstr ? (int64_t)strlen(cstr) : 0;
+    int64_t slen = cstr ? rt_str_len(value) : 0;
+    if (slen > INT32_MAX)
+        rt_trap("BinaryBuffer: string length exceeds i32 length prefix");
 
     // Write 4-byte LE length prefix
     rt_binbuf_write_i32le(obj, slen);
@@ -318,6 +320,8 @@ void rt_binbuf_write_bytes(void *obj, void *data) {
         rt_trap("BinaryBuffer: null buffer");
 
     int64_t blen = data ? rt_bytes_len(data) : 0;
+    if (blen > INT32_MAX)
+        rt_trap("BinaryBuffer: byte length exceeds i32 length prefix");
 
     // Write 4-byte LE length prefix
     rt_binbuf_write_i32le(obj, blen);
