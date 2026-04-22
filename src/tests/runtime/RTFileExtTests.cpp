@@ -212,6 +212,30 @@ static void test_copy_same_file_traps() {
     printf("\n");
 }
 
+/// @brief Test rt_file_copy does not overwrite an existing destination.
+static void test_copy_existing_destination_traps() {
+    printf("Testing rt_file_copy no-overwrite contract:\n");
+
+    const char *base = get_test_base();
+    char src_path[512], dst_path[512];
+    snprintf(src_path, sizeof(src_path), "%s_copy_existing_src.txt", base);
+    snprintf(dst_path, sizeof(dst_path), "%s_copy_existing_dst.txt", base);
+
+    create_test_file(src_path, "new content");
+    create_test_file(dst_path, "old content");
+
+    rt_string src = rt_const_cstr(src_path);
+    rt_string dst = rt_const_cstr(dst_path);
+
+    EXPECT_TRAP(rt_file_copy(src, dst));
+    test_result("destination content preserved",
+                rt_str_eq(rt_io_file_read_all_text(dst), rt_const_cstr("old content")));
+
+    remove_file(src_path);
+    remove_file(dst_path);
+    printf("\n");
+}
+
 /// @brief Test rt_file_move.
 static void test_move() {
     printf("Testing rt_file_move:\n");
@@ -291,9 +315,49 @@ static void test_size() {
     rt_string nonexist = rt_const_cstr(get_missing_path());
     test_result("non-existent returns -1", rt_file_size(nonexist) == -1);
 
+    char dir_path[512];
+    snprintf(dir_path, sizeof(dir_path), "%s_size_dir", base);
+    mkdir_p(dir_path);
+    rt_string dir = rt_const_cstr(dir_path);
+    test_result("directory size returns -1", rt_file_size(dir) == -1);
+
     // Clean up
     remove_file(file_path);
+    rmdir_p(dir_path);
 
+    printf("\n");
+}
+
+/// @brief Test whole-file readers reject directories and special paths.
+static void test_read_regular_file_required() {
+    printf("Testing regular-file read requirement:\n");
+
+    const char *base = get_test_base();
+    char dir_path[512];
+    snprintf(dir_path, sizeof(dir_path), "%s_read_dir", base);
+    mkdir_p(dir_path);
+    rt_string dir = rt_const_cstr(dir_path);
+
+    EXPECT_TRAP(rt_io_file_read_all_text(dir));
+    EXPECT_TRAP(rt_io_file_read_all_bytes(dir));
+    EXPECT_TRAP(rt_io_file_read_all_lines(dir));
+    test_result("directory reads trap", true);
+
+    rmdir_p(dir_path);
+    printf("\n");
+}
+
+/// @brief Test embedded NUL bytes are rejected before paths reach C APIs.
+static void test_embedded_nul_path_rejected() {
+    printf("Testing embedded NUL path rejection:\n");
+
+    const char raw_path[] = {'/', 't', 'm', 'p', '/', 'v', 'i', 'p', 'e', 'r', '\0', 'x'};
+    rt_string bad_path = rt_string_from_bytes(raw_path, sizeof(raw_path));
+
+    test_result("embedded NUL path does not exist", rt_io_file_exists(bad_path) == 0);
+    EXPECT_TRAP(rt_io_file_read_all_text(bad_path));
+
+    rt_string_unref(bad_path);
     printf("\n");
 }
 
@@ -665,9 +729,12 @@ int main() {
     test_exists();
     test_copy();
     test_copy_same_file_traps();
+    test_copy_existing_destination_traps();
     test_move();
     test_move_overwrite();
     test_size();
+    test_read_regular_file_required();
+    test_embedded_nul_path_rejected();
     test_read_write_bytes();
     test_read_write_lines();
     test_append();

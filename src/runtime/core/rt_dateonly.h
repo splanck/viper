@@ -10,8 +10,8 @@
 // Key invariants:
 //   - Month is 1-indexed (1=January, 12=December); day is 1-indexed.
 //   - Days since epoch are counted from 1970-01-01 (Unix epoch, day 0).
-//   - ISO format for parsing and formatting is YYYY-MM-DD.
-//   - Date arithmetic (add/subtract days) wraps correctly across month and year boundaries.
+//   - ISO format for parsing and formatting is exactly YYYY-MM-DD.
+//   - Date arithmetic traps on signed 64-bit overflow.
 //
 // Ownership/Lifetime:
 //   - DateOnly objects are heap-allocated opaque pointers.
@@ -44,8 +44,8 @@ void *rt_dateonly_create(int64_t year, int64_t month, int64_t day);
 /// @return Opaque DateOnly object pointer.
 void *rt_dateonly_today(void);
 
-/// @brief Parse a date from ISO format string (YYYY-MM-DD).
-/// @param s Date string.
+/// @brief Parse a date from exact ISO format string (YYYY-MM-DD).
+/// @param s Date string with no trailing characters.
 /// @return Opaque DateOnly object pointer, or NULL if invalid.
 void *rt_dateonly_parse(rt_string s);
 
@@ -95,25 +95,25 @@ int64_t rt_dateonly_to_days(void *obj);
 /// @brief Add days to the date.
 /// @param obj Opaque DateOnly object pointer.
 /// @param days Number of days to add (can be negative).
-/// @return New DateOnly object.
+/// @return New DateOnly object. Traps on signed 64-bit overflow.
 void *rt_dateonly_add_days(void *obj, int64_t days);
 
 /// @brief Add months to the date.
 /// @param obj Opaque DateOnly object pointer.
 /// @param months Number of months to add (can be negative).
-/// @return New DateOnly object.
+/// @return New DateOnly object. Traps on signed 64-bit overflow.
 void *rt_dateonly_add_months(void *obj, int64_t months);
 
 /// @brief Add years to the date.
 /// @param obj Opaque DateOnly object pointer.
 /// @param years Number of years to add (can be negative).
-/// @return New DateOnly object.
+/// @return New DateOnly object. Traps on signed 64-bit overflow.
 void *rt_dateonly_add_years(void *obj, int64_t years);
 
 /// @brief Get the difference in days between two dates.
 /// @param a First date.
 /// @param b Second date.
-/// @return Number of days (a - b).
+/// @return Number of days (a - b). Traps on signed 64-bit overflow.
 int64_t rt_dateonly_diff_days(void *a, void *b);
 
 //=========================================================================

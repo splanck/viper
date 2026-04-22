@@ -25,9 +25,9 @@ File system operations.
 | `ReadAllText(path)`           | `String(String)`       | Reads the entire file contents as a string; traps on I/O errors                           |
 | `WriteAllText(path, content)` | `Void(String, String)` | Atomically replaces a text file with new contents                                          |
 | `Delete(path)`                | `Void(String)`         | Deletes a file; missing files are ignored, other failures trap                            |
-| `Copy(src, dst)`              | `Void(String, String)` | Copies a file from src to dst; traps if both paths name the same file                     |
+| `Copy(src, dst)`              | `Void(String, String)` | Copies a file from src to dst; traps if `dst` already exists or both paths name the same file |
 | `Move(src, dst)`              | `Void(String, String)` | Moves or renames a file, replacing `dst` when supported by the platform                   |
-| `Size(path)`                  | `Integer(String)`      | Returns file size in bytes, or -1 if not found                                            |
+| `Size(path)`                  | `Integer(String)`      | Returns regular-file size in bytes, or -1 if not found or not a regular file              |
 | `ReadBytes(path)`             | `ptr(String)`          | Reads the entire file as a raw runtime buffer; traps on I/O errors                        |
 | `WriteBytes(path, data)`      | `Void(String, ptr)`    | Atomically replaces a file with a raw runtime buffer                                      |
 | `ReadAllBytes(path)`          | `Bytes(String)`        | Reads the entire file as binary data (traps on I/O errors)                                |
@@ -44,8 +44,10 @@ File system operations.
 
 - `AppendLine` always appends a single `\n` byte (no platform newline normalization).
 - `Exists` returns false for directories; use `Dir.Exists` for directory checks.
+- Path strings with embedded NUL bytes are rejected before reaching platform file APIs.
+- `ReadAllText`, `ReadAllBytes`, and `ReadAllLines` require a regular file and trap on directories or special files.
 - `WriteAllText`, `WriteAllBytes`, `WriteBytes`, and `WriteLines` write to an exclusive temporary file in the destination directory and then replace the live file. Failed writes trap instead of silently leaving a partial overwrite behind.
-- `Move` first attempts an in-place replace/rename. It only falls back to copy-plus-delete when the source and destination are on different filesystems or volumes.
+- `Copy` never overwrites an existing destination. `Move` first attempts an in-place replace/rename and only falls back to copy-plus-delete when the source and destination are on different filesystems or volumes.
 - `ReadAllLines` splits on `\n`, `\r`, and `\r\n` and does not include line endings in returned strings. Trailing empty lines are preserved.
 - `WriteAllText`, `ReadAllText`, `ReadBytes`, `ReadAllBytes`, `WriteAllBytes`, `ReadAllLines`, `WriteBytes`, `WriteLines`, `Append`, and `Touch` trap on I/O errors.
 - `ReadBytes` and `ReadLines` return raw `ptr` values representing internal runtime buffer objects. They are intended for use with other low-level runtime functions and are not strongly-typed Zia objects. Similarly, `WriteBytes` accepts a raw `ptr` for the data parameter. For strongly-typed binary and line I/O, prefer `ReadAllBytes`, `WriteAllBytes`, and `ReadAllLines`.
@@ -192,6 +194,7 @@ Binary file stream for reading and writing raw bytes with random access capabili
 | `"ab"` | Append binary alias                       |
 
 `Close()` and `Flush()` trap if the platform reports a delayed write or close failure.
+`BinFile` also normalizes the required C stdio transition between reads and writes on `"rw"`/`"r+"` streams, so switching direction does not rely on undefined buffered-stdio state.
 
 ### Properties
 
@@ -429,7 +432,7 @@ Cross-platform directory operations for creating, removing, listing, and navigat
 | `Make(path)`       | `Void(String)`         | Creates a single directory (parent must exist)                                            |
 | `MakeAll(path)`    | `Void(String)`         | Creates a directory and all parent directories                                            |
 | `Remove(path)`     | `Void(String)`         | Removes an empty directory                                                                |
-| `RemoveAll(path)`  | `Void(String)`         | Recursively removes a directory and all its contents                                      |
+| `RemoveAll(path)`  | `Void(String)`         | Recursively removes a directory and all its contents without following symlinks into targets |
 | `Entries(path)`    | `Seq(String)`          | Returns directory entries (files + subdirectories); traps if the directory does not exist |
 | `List(path)`       | `Seq(String)`          | Returns all entries in a directory (excluding `.` and `..`)                               |
 | `ListSeq(path)`    | `Seq(String)`          | Seq-returning alias of `List(path)` (same semantics)                                      |
@@ -445,6 +448,7 @@ Cross-platform directory operations for creating, removing, listing, and navigat
 `Viper.IO.Path.Join(dir, name)` to build full paths when needed.
 
 `Make()` and `MakeAll()` are idempotent for existing directories, but they trap if the target path or any intermediate path component already exists as a non-directory. `MakeAll()` accepts both `/` and `\` as path separators.
+`Files()` excludes symbolic links to files on POSIX. `RemoveAll()` removes a top-level symlink itself and does not recurse into the linked directory.
 
 ### Zia Example
 

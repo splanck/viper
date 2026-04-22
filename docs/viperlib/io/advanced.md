@@ -66,6 +66,7 @@ The archive uses DEFLATE compression (method 8) by default for added entries. Sm
 ### Disk Write Semantics
 
 `Create(path)` checks that the destination can be written, but it does not truncate or replace an existing file until `Finish()`. `Finish()`, `Extract()`, and `ExtractAll()` write through an exclusive temporary file in the destination directory and then atomically replace the final path. Failed writes trap and remove their temporary file.
+Archive path arguments reject embedded NUL bytes before calling platform file APIs.
 
 ### Entry Name Rules
 
@@ -73,8 +74,13 @@ The archive uses DEFLATE compression (method 8) by default for added entries. Sm
 - `..` path segments are rejected
 - `.` segments are ignored
 - Backslashes are normalized to `/`
+- Embedded NUL bytes in archive entry names are rejected. Malformed ZIP central directories with NUL-containing names also fail to open.
 
 Invalid names trap with `Archive: invalid entry name`.
+
+### Extraction Safety
+
+`ExtractAll(dir)` creates missing directories under `dir`, but it refuses to extract through existing symlinked or reparse-point directory components inside the destination tree. This prevents an archive entry such as `assets/config.json` from writing outside `dir` when `dir/assets` is already a symlink. The destination root itself must not be a symlink.
 
 ### Info Map Keys
 
@@ -210,6 +216,7 @@ Archive operations trap on errors:
 - `FromBytes()` traps if the buffer is not a valid ZIP archive
 - `Read()`/`ReadStr()` trap if entry doesn't exist
 - `Extract()` traps if entry doesn't exist or destination is unwritable
+- `ExtractAll()` traps if an existing destination component under the extraction root is a symlink or reparse point
 - `Finish()` must be called before a created archive is valid; until then an existing output path remains unchanged
 - Invalid or corrupted entries may trap during reading
 
@@ -220,7 +227,7 @@ Archive operations trap on errors:
 - **Features:** Directory entries, file attributes, CRC32 validation
 - **Limitations:** ZIP64 not supported, encryption not supported
 - Oversize entry counts or file sizes that require ZIP64 trap instead of producing a truncated archive
-- Corrupt compressed data, CRC mismatches, size mismatches, and internal buffer overflows trap instead of returning partial data
+- Corrupt central directories, local-header offsets, compressed data, CRC mismatches, size mismatches, and internal buffer overflows trap instead of returning partial data
 
 ### Use Cases
 
@@ -362,6 +369,7 @@ Compression traps on:
 - Invalid or truncated compressed data
 - Reserved GZIP flags, malformed optional headers, header CRC mismatches, trailer CRC32 mismatches, or trailer size mismatches
 - Corrupted DEFLATE stream
+- Trailing non-padding data after the final DEFLATE block
 - Inflated output exceeding the runtime safety cap (256 MiB)
 
 ### Implementation Notes

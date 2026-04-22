@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-22
 ---
 
 # Time & Timing
@@ -128,6 +128,7 @@ interval has expired.
 - `Expired` becomes true when elapsed time reaches or exceeds the interval
 - `Wait()` blocks the current thread until expiration; returns immediately if already expired
 - Changing `Interval` while running affects when `Expired` becomes true
+- Instance methods and properties require a valid Countdown object; null receivers trap as runtime errors
 
 ### Zia Example
 
@@ -216,7 +217,8 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 - `ToISO` formats in **UTC** (appends `Z` suffix)
 - `ToLocal` formats in the **local time zone** (no `Z` suffix) — use this for consistent round-trips with `Create`
 - `Format` uses the **local time zone** with strftime-style format strings
-- `Diff` returns absolute seconds regardless of time zones
+- `Diff(t1, t2)` returns the signed difference `t1 - t2` in seconds
+- `AddSeconds`, `AddDays`, and `Diff` trap on signed 64-bit overflow
 
 ### Parsing Methods
 
@@ -227,10 +229,11 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 | `ParseTime`  | `"14:30:00"`                          | Seconds since midnight (0-86399)       |
 | `TryParse`   | Any of the above formats              | Unix timestamp, or 0 on failure        |
 
-- `ParseISO` accepts ISO 8601 datetime strings with or without the `Z` suffix
-- `ParseDate` parses date-only strings and returns the timestamp at midnight
-- `ParseTime` returns seconds since midnight (not a Unix timestamp)
-- `TryParse` auto-detects the input format and returns 0 if the string cannot be parsed
+- `ParseISO` accepts exact ISO 8601 datetime strings with or without the `Z` suffix; `Z` is interpreted as UTC, while no suffix means local time
+- `ParseDate` parses exact `YYYY-MM-DD` strings and returns the timestamp at local midnight
+- `ParseTime` returns seconds since midnight (not a Unix timestamp) for exact `HH:MM` or `HH:MM:SS` strings
+- Invalid calendar values, out-of-range times, and trailing characters are rejected
+- `TryParse` auto-detects the input format and returns 0 if the string cannot be parsed. A valid parse of the Unix epoch also returns 0, so callers that need to distinguish those cases should use a known format-specific parser and validate the input separately.
 
 ### Zia Example
 
@@ -355,6 +358,7 @@ resolution.
 - Reading `ElapsedMs`/`ElapsedUs`/`ElapsedNs` while running returns current elapsed time
 - `Start()` has no effect if already running (doesn't reset)
 - `Stop()` has no effect if already stopped
+- Instance methods and properties require a valid Stopwatch object; null receivers trap as runtime errors
 
 ### Zia Example
 
@@ -443,7 +447,8 @@ Date-only type for working with calendar dates without time components. Represen
 - DateOnly is immutable -- all mutation methods return new DateOnly instances
 - `DiffDays(other)` returns a negative value if `other` is after this date
 - `AddMonths` and `AddYears` clamp the day to the last valid day of the resulting month
-- `Parse` expects ISO 8601 date format: "YYYY-MM-DD"
+- `Parse` expects an exact ISO 8601 date format: "YYYY-MM-DD"; non-padded fields and trailing characters are rejected
+- `AddDays`, `AddMonths`, `AddYears`, and `DiffDays` trap on signed 64-bit overflow
 
 ### Zia Example
 
@@ -570,6 +575,8 @@ Duration type for representing and manipulating time spans. Duration is a static
 - No heap allocation is needed; durations are plain integers
 - Negative durations are supported and represent time spans in the past
 - `TotalSecondsF` returns a `f64` for sub-second precision
+- Factories and arithmetic methods trap on signed 64-bit overflow
+- `Div(dur, divisor)` traps when `divisor` is 0 and when dividing `INT64_MIN` by `-1`
 
 ### Zia Example
 
@@ -655,6 +662,7 @@ A time range defined by start and end timestamps (in seconds). Useful for repres
 - `Contains` checks if `Start <= ts <= End`
 - `Intersection` returns `null` if the ranges do not overlap (does not trap)
 - `Union` returns `null` if the ranges are neither overlapping nor contiguous
+- `Days`, `Hours`, and `Duration` trap if the range span cannot be represented as a signed 64-bit integer
 
 ### Zia Example
 
@@ -719,12 +727,12 @@ Formats time durations and timestamps into human-readable relative descriptions.
 | `Format(timestamp)`     | `String(Integer)`           | Format a timestamp relative to now (e.g., "2 hours ago", "in 3 days", "just now") |
 | `FormatFrom(ts, base)`  | `String(Integer, Integer)`  | Format a timestamp relative to a given base timestamp              |
 | `FormatDuration(ms)`    | `String(Integer)`           | Format a duration in milliseconds (e.g., "45s", "2h 30m", "1d 5h 20m") |
-| `FormatShort(timestamp)`| `String(Integer)`           | Format a timestamp relative to now in short form (e.g., "2h", "3d", "5m") |
+| `FormatShort(timestamp)`| `String(Integer)`           | Format a timestamp relative to now in short form (e.g., "2h ago", "in 3d", "5m ago") |
 
 ### Notes
 
 - `Format` produces verbose, locale-friendly strings like "2 hours ago", "in 3 days", "just now"
-- `FormatShort` produces compact single-unit strings like "2h", "3d", "5m", "now"
+- `FormatShort` produces compact single-unit strings with direction, like "2h ago", "in 3d", "5m ago", "now"
 - `FormatDuration` produces compact multi-unit strings like "45s", "2h 30m", "1d 5h 20m"
 - `Format` and `FormatShort` compare against the current system time
 

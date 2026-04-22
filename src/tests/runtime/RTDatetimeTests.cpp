@@ -21,8 +21,33 @@
 #include "rt_string.h"
 
 #include <assert.h>
+#include <setjmp.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
+
+static jmp_buf g_trap_env;
+static int g_expect_trap = 0;
+
+extern "C" void vm_trap(const char *msg) {
+    if (g_expect_trap)
+        longjmp(g_trap_env, 1);
+    fprintf(stderr, "unexpected trap: %s\n", msg ? msg : "(null)");
+    abort();
+}
+
+#define EXPECT_TRAP(expr)                                                                         \
+    do {                                                                                          \
+        g_expect_trap = 1;                                                                         \
+        if (setjmp(g_trap_env) == 0) {                                                            \
+            (void)(expr);                                                                          \
+            g_expect_trap = 0;                                                                     \
+            assert(!"expected runtime trap");                                                     \
+        } else {                                                                                   \
+            g_expect_trap = 0;                                                                     \
+        }                                                                                          \
+    } while (0)
 
 static void check(const char *label, int ok) {
     printf("  %-50s %s\n", label, ok ? "PASS" : "FAIL");
@@ -74,11 +99,53 @@ static void test_now(void) {
     check("now_ms >= now * 1000", ms >= ts * 1000LL);
 }
 
+static void test_parsing(void) {
+    printf("rt_datetime parsing:\n");
+
+    int64_t parsed = rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00Z"));
+    rt_string roundtrip = rt_datetime_to_iso(parsed);
+    check("UTC parse round-trips through ToISO",
+          strcmp(rt_string_cstr(roundtrip), "2024-01-15T10:30:00Z") == 0);
+    rt_string_unref(roundtrip);
+
+    check("epoch ISO is a successful zero timestamp",
+          rt_datetime_parse_iso(rt_const_cstr("1970-01-01T00:00:00Z")) == 0);
+    check("TryParse accepts epoch ISO",
+          rt_datetime_try_parse(rt_const_cstr("1970-01-01T00:00:00Z")) == 0);
+    check("ParseISO rejects trailing characters",
+          rt_datetime_parse_iso(rt_const_cstr("2024-01-15T10:30:00Zx")) == 0);
+    check("ParseISO rejects invalid calendar date",
+          rt_datetime_parse_iso(rt_const_cstr("2024-02-30T00:00:00Z")) == 0);
+    check("ParseISO rejects invalid time",
+          rt_datetime_parse_iso(rt_const_cstr("2024-01-15T24:00:00Z")) == 0);
+    check("ParseDate rejects trailing characters",
+          rt_datetime_parse_date(rt_const_cstr("2024-01-15x")) == 0);
+    check("ParseDate rejects invalid calendar date",
+          rt_datetime_parse_date(rt_const_cstr("2024-02-30")) == 0);
+    check("ParseTime rejects trailing characters",
+          rt_datetime_parse_time(rt_const_cstr("10:30:00x")) == -1);
+    check("ParseTime rejects out-of-range hour",
+          rt_datetime_parse_time(rt_const_cstr("24:00:00")) == -1);
+}
+
+static void test_checked_arithmetic(void) {
+    printf("rt_datetime checked arithmetic:\n");
+    check("AddSeconds normal case", rt_datetime_add_seconds(100, 25) == 125);
+    check("AddDays normal case", rt_datetime_add_days(100, 2) == 172900);
+    check("Diff normal case", rt_datetime_diff(125, 100) == 25);
+    EXPECT_TRAP(rt_datetime_add_seconds(INT64_MAX, 1));
+    EXPECT_TRAP(rt_datetime_add_days(INT64_MAX, 1));
+    EXPECT_TRAP(rt_datetime_diff(INT64_MIN, 1));
+    check("overflow cases trap", 1);
+}
+
 int main(void) {
     printf("=== RTDatetimeTests ===\n");
     test_components();
     test_to_iso();
     test_now();
+    test_parsing();
+    test_checked_arithmetic();
     printf("All datetime tests passed.\n");
     return 0;
 }

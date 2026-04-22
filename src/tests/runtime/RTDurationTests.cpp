@@ -14,9 +14,35 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <climits>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <setjmp.h>
+
+static jmp_buf g_trap_env;
+static int g_expect_trap = 0;
+
+extern "C" void vm_trap(const char *msg) {
+    if (g_expect_trap)
+        longjmp(g_trap_env, 1);
+    fprintf(stderr, "unexpected trap: %s\n", msg ? msg : "(null)");
+    abort();
+}
+
+#define EXPECT_TRAP(expr)                                                                         \
+    do {                                                                                          \
+        g_expect_trap = 1;                                                                         \
+        if (setjmp(g_trap_env) == 0) {                                                            \
+            (void)(expr);                                                                          \
+            g_expect_trap = 0;                                                                     \
+            assert(!"expected runtime trap");                                                     \
+        } else {                                                                                   \
+            g_expect_trap = 0;                                                                     \
+        }                                                                                          \
+    } while (0)
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -145,6 +171,10 @@ static void test_duration_components() {
     int64_t neg = -d;
     test_result("Negative - Days component", rt_duration_get_days(neg) == 1);
     test_result("Negative - Hours component", rt_duration_get_hours(neg) == 2);
+    test_result("INT64_MIN days component safe", rt_duration_get_days(INT64_MIN) > 0);
+    test_result("INT64_MIN millis component safe",
+                rt_duration_get_millis(INT64_MIN) >= 0 &&
+                    rt_duration_get_millis(INT64_MIN) < 1000);
 
     printf("\n");
 }
@@ -172,6 +202,21 @@ static void test_duration_operations() {
     test_result("Cmp d2 < d1", rt_duration_cmp(d2, d1) == -1);
     test_result("Cmp d1 == d1", rt_duration_cmp(d1, d1) == 0);
 
+    printf("\n");
+}
+
+static void test_duration_overflow() {
+    printf("Testing Duration overflow handling:\n");
+
+    EXPECT_TRAP(rt_duration_from_seconds(INT64_MAX));
+    EXPECT_TRAP(rt_duration_create(INT64_MAX, 0, 0, 0, 0));
+    EXPECT_TRAP(rt_duration_add(INT64_MAX, 1));
+    EXPECT_TRAP(rt_duration_sub(INT64_MIN, 1));
+    EXPECT_TRAP(rt_duration_mul(INT64_MAX, 2));
+    EXPECT_TRAP(rt_duration_div(1000, 0));
+    EXPECT_TRAP(rt_duration_div(INT64_MIN, -1));
+
+    test_result("Overflowing arithmetic traps", true);
     printf("\n");
 }
 
@@ -224,6 +269,20 @@ static void test_duration_formatting() {
         test_result("ToISO PT0S", strcmp(rt_string_cstr(s), "PT0S") == 0);
     }
 
+    // Test 7: INT64_MIN magnitude is formatted without signed negation overflow
+    {
+        rt_string s = rt_duration_to_string(INT64_MIN);
+        test_result("ToString INT64_MIN non-empty", rt_str_len(s) > 0);
+        test_result("ToString INT64_MIN negative", rt_string_cstr(s)[0] == '-');
+    }
+
+    // Test 8: INT64_MIN ISO formatting is safe
+    {
+        rt_string s = rt_duration_to_iso(INT64_MIN);
+        test_result("ToISO INT64_MIN non-empty", rt_str_len(s) > 0);
+        test_result("ToISO INT64_MIN negative", rt_string_cstr(s)[0] == '-');
+    }
+
     printf("\n");
 }
 
@@ -238,6 +297,7 @@ int main() {
     test_duration_totals();
     test_duration_components();
     test_duration_operations();
+    test_duration_overflow();
     test_duration_formatting();
 
     printf("All Duration tests passed!\n");

@@ -118,6 +118,7 @@ Data is stored as a flat JSON object. Integer values are stored as numbers; stri
 ```
 
 String values are emitted with standard JSON escaping for control characters. `Load()` rejects malformed or trailing garbage and leaves the in-memory state unchanged on failure.
+Numeric values loaded from JSON must be finite integral values within the signed 64-bit range. Fractional, infinite, or out-of-range numbers make `Load()` return false and leave the existing in-memory state unchanged.
 
 ---
 

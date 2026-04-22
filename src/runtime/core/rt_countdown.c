@@ -37,8 +37,9 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_time.h"
+#include "rt_trap.h"
 
-#include <errno.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -47,7 +48,6 @@
 #include <windows.h>
 #else
 #include <time.h>
-#include <unistd.h>
 #endif
 
 /// @brief Internal countdown structure.
@@ -58,19 +58,49 @@ typedef struct {
     bool running;           ///< True if countdown is currently timing.
 } ViperCountdown;
 
+static int countdown_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
+    if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b))
+        return 1;
+    *out = a + b;
+    return 0;
+}
+
+static int countdown_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
+    if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b))
+        return 1;
+    *out = a - b;
+    return 0;
+}
+
+static ViperCountdown *require_countdown(void *obj) {
+    if (!obj) {
+        rt_trap("Countdown: null receiver");
+        return NULL;
+    }
+    return (ViperCountdown *)obj;
+}
+
 /// @brief Get current timestamp in milliseconds from monotonic clock.
 /// @return Milliseconds since unspecified epoch.
 static int64_t get_timestamp_ms(void) {
 #if defined(_WIN32)
     // Benign race: QPC frequency is constant; duplicate init is harmless.
     static LARGE_INTEGER freq = {0};
-    if (freq.QuadPart == 0) {
-        QueryPerformanceFrequency(&freq);
+    if (freq.QuadPart == 0 && (!QueryPerformanceFrequency(&freq) || freq.QuadPart <= 0)) {
+        return (int64_t)GetTickCount64();
     }
 
     LARGE_INTEGER counter;
-    QueryPerformanceCounter(&counter);
-    return (int64_t)((counter.QuadPart * 1000LL) / freq.QuadPart);
+    if (!QueryPerformanceCounter(&counter))
+        return (int64_t)GetTickCount64();
+
+    int64_t whole = counter.QuadPart / freq.QuadPart;
+    int64_t rem = counter.QuadPart % freq.QuadPart;
+    if (whole > INT64_MAX / 1000LL) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return whole * 1000LL + (int64_t)(((long double)rem * 1000.0L) / (long double)freq.QuadPart);
 #elif defined(__viperdos__)
     return rt_timer_ms();
 #else
@@ -95,7 +125,12 @@ static int64_t countdown_get_elapsed_ms(ViperCountdown *cd) {
     int64_t total = cd->accumulated_ms;
 
     if (cd->running) {
-        total += get_timestamp_ms() - cd->start_time_ms;
+        int64_t interval;
+        if (countdown_checked_sub_i64(get_timestamp_ms(), cd->start_time_ms, &interval) ||
+            countdown_checked_add_i64(total, interval, &total)) {
+            rt_trap_ovf();
+            return 0;
+        }
     }
 
     return total;
@@ -107,18 +142,7 @@ static void sleep_ms(int64_t ms) {
     if (ms <= 0)
         return;
 
-#if defined(_WIN32)
-    Sleep((DWORD)ms);
-#elif defined(__viperdos__)
-    rt_sleep_ms((int32_t)ms);
-#else
-    struct timespec ts;
-    ts.tv_sec = ms / 1000;
-    ts.tv_nsec = (ms % 1000) * 1000000L;
-    // Retry on EINTR to handle signal interrupts correctly
-    while (nanosleep(&ts, &ts) == -1 && errno == EINTR)
-        ;
-#endif
+    rt_clock_sleep(ms);
 }
 
 //=============================================================================
@@ -199,9 +223,7 @@ void *rt_countdown_new(int64_t interval_ms) {
 /// @see rt_countdown_stop For pausing the countdown
 /// @see rt_countdown_reset For resetting to initial state
 void rt_countdown_start(void *obj) {
-    if (!obj)
-        return;
-    ViperCountdown *cd = (ViperCountdown *)obj;
+    ViperCountdown *cd = require_countdown(obj);
 
     if (!cd->running) {
         cd->start_time_ms = get_timestamp_ms();
@@ -239,13 +261,16 @@ void rt_countdown_start(void *obj) {
 /// @see rt_countdown_start For resuming the countdown
 /// @see rt_countdown_reset For clearing elapsed time
 void rt_countdown_stop(void *obj) {
-    if (!obj)
-        return;
-    ViperCountdown *cd = (ViperCountdown *)obj;
+    ViperCountdown *cd = require_countdown(obj);
 
     if (cd->running) {
         int64_t now = get_timestamp_ms();
-        cd->accumulated_ms += now - cd->start_time_ms;
+        int64_t interval;
+        if (countdown_checked_sub_i64(now, cd->start_time_ms, &interval) ||
+            countdown_checked_add_i64(cd->accumulated_ms, interval, &cd->accumulated_ms)) {
+            rt_trap_ovf();
+            return;
+        }
         cd->running = false;
     }
 }
@@ -275,9 +300,7 @@ void rt_countdown_stop(void *obj) {
 /// @see rt_countdown_start For starting after reset
 /// @see rt_countdown_set_interval For changing the interval
 void rt_countdown_reset(void *obj) {
-    if (!obj)
-        return;
-    ViperCountdown *cd = (ViperCountdown *)obj;
+    ViperCountdown *cd = require_countdown(obj);
 
     cd->accumulated_ms = 0;
     cd->start_time_ms = 0;
@@ -309,7 +332,7 @@ void rt_countdown_reset(void *obj) {
 /// @see rt_countdown_remaining For time left until expiration
 /// @see rt_countdown_expired For checking if time has run out
 int64_t rt_countdown_elapsed(void *obj) {
-    return countdown_get_elapsed_ms((ViperCountdown *)obj);
+    return countdown_get_elapsed_ms(require_countdown(obj));
 }
 
 /// @brief Gets the remaining time until expiration in milliseconds.
@@ -341,9 +364,13 @@ int64_t rt_countdown_elapsed(void *obj) {
 /// @see rt_countdown_elapsed For total time passed
 /// @see rt_countdown_expired For boolean expiration check
 int64_t rt_countdown_remaining(void *obj) {
-    ViperCountdown *cd = (ViperCountdown *)obj;
+    ViperCountdown *cd = require_countdown(obj);
     int64_t elapsed = countdown_get_elapsed_ms(cd);
-    int64_t remaining = cd->interval_ms - elapsed;
+    int64_t remaining;
+    if (countdown_checked_sub_i64(cd->interval_ms, elapsed, &remaining)) {
+        rt_trap_ovf();
+        return 0;
+    }
     return remaining > 0 ? remaining : 0;
 }
 
@@ -379,7 +406,7 @@ int64_t rt_countdown_remaining(void *obj) {
 /// @see rt_countdown_remaining For checking exact time left
 /// @see rt_countdown_reset For restarting after expiration
 int8_t rt_countdown_expired(void *obj) {
-    ViperCountdown *cd = (ViperCountdown *)obj;
+    ViperCountdown *cd = require_countdown(obj);
     int64_t elapsed = countdown_get_elapsed_ms(cd);
     return elapsed >= cd->interval_ms ? 1 : 0;
 }
@@ -407,7 +434,7 @@ int8_t rt_countdown_expired(void *obj) {
 /// @see rt_countdown_set_interval For changing the interval
 /// @see rt_countdown_remaining For time left
 int64_t rt_countdown_interval(void *obj) {
-    return ((ViperCountdown *)obj)->interval_ms;
+    return require_countdown(obj)->interval_ms;
 }
 
 /// @brief Sets a new countdown interval.
@@ -441,7 +468,7 @@ int64_t rt_countdown_interval(void *obj) {
 /// @see rt_countdown_interval For getting the current interval
 /// @see rt_countdown_reset For resetting elapsed time
 void rt_countdown_set_interval(void *obj, int64_t interval_ms) {
-    ((ViperCountdown *)obj)->interval_ms = interval_ms > 0 ? interval_ms : 0;
+    require_countdown(obj)->interval_ms = interval_ms > 0 ? interval_ms : 0;
 }
 
 /// @brief Checks if the countdown is currently running.
@@ -470,7 +497,7 @@ void rt_countdown_set_interval(void *obj, int64_t interval_ms) {
 /// @see rt_countdown_start For starting the timer
 /// @see rt_countdown_stop For stopping the timer
 int8_t rt_countdown_is_running(void *obj) {
-    return ((ViperCountdown *)obj)->running ? 1 : 0;
+    return require_countdown(obj)->running ? 1 : 0;
 }
 
 /// @brief Blocks execution until the countdown expires.
@@ -507,7 +534,7 @@ int8_t rt_countdown_is_running(void *obj) {
 /// @see rt_countdown_remaining For non-blocking time checks
 /// @see rt_countdown_expired For non-blocking expiration checks
 void rt_countdown_wait(void *obj) {
-    ViperCountdown *cd = (ViperCountdown *)obj;
+    ViperCountdown *cd = require_countdown(obj);
 
     // Start if not running
     if (!cd->running) {

@@ -12,6 +12,7 @@
 //   - Elapsed time accumulates only while the timer is running.
 //   - All times are measured in milliseconds.
 //   - Expired is true when elapsed >= interval; the timer continues running after expiry.
+//   - Instance methods trap when passed a NULL countdown pointer.
 //
 // Ownership/Lifetime:
 //   - Countdown objects are heap-allocated; the caller is responsible for lifetime management.

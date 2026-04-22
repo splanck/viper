@@ -179,6 +179,19 @@ static void write_u32_le(std::vector<uint8_t> &bytes, size_t offset, uint32_t va
     bytes[offset + 3] = (uint8_t)((value >> 24) & 0xFF);
 }
 
+static void write_u16_le(std::vector<uint8_t> &bytes, size_t offset, uint16_t value) {
+    assert(offset + 2 <= bytes.size());
+    bytes[offset + 0] = (uint8_t)(value & 0xFF);
+    bytes[offset + 1] = (uint8_t)((value >> 8) & 0xFF);
+}
+
+static void *bytes_from_vector(const std::vector<uint8_t> &bytes) {
+    void *result = rt_bytes_new((int64_t)bytes.size());
+    if (!bytes.empty())
+        memcpy(get_bytes_data(result), bytes.data(), bytes.size());
+    return result;
+}
+
 //=============================================================================
 // Basic Archive Tests
 //=============================================================================
@@ -644,6 +657,130 @@ static void test_stored_size_mismatch_traps() {
     delete_file(path);
 }
 
+static void test_central_directory_count_mismatch_traps() {
+    printf("Testing Central Directory Count Validation:\n");
+
+    const char *path = get_temp_path("test_cd_count.zip");
+    delete_file(path);
+
+    void *ar = rt_archive_create(rt_const_cstr(path));
+    rt_archive_add_str(ar, rt_const_cstr("one.txt"), rt_const_cstr("one"));
+    rt_archive_finish(ar);
+
+    std::vector<uint8_t> bytes = read_file_bytes(path);
+    bool patched = false;
+    for (size_t i = 0; i + 22 <= bytes.size(); ++i) {
+        if (bytes[i] == 0x50 && bytes[i + 1] == 0x4b && bytes[i + 2] == 0x05 &&
+            bytes[i + 3] == 0x06) {
+            write_u16_le(bytes, i + 8, 2);
+            write_u16_le(bytes, i + 10, 2);
+            patched = true;
+            break;
+        }
+    }
+    assert(patched);
+
+    void *zip_bytes = bytes_from_vector(bytes);
+    EXPECT_TRAP(rt_archive_from_bytes(zip_bytes));
+    test_result("central directory count mismatch traps", true);
+
+    delete_file(path);
+}
+
+static void test_central_directory_nul_name_traps() {
+    printf("Testing Central Directory NUL Name Validation:\n");
+
+    const char *path = get_temp_path("test_cd_nul.zip");
+    delete_file(path);
+
+    void *ar = rt_archive_create(rt_const_cstr(path));
+    rt_archive_add_str(ar, rt_const_cstr("nul.txt"), rt_const_cstr("payload"));
+    rt_archive_finish(ar);
+
+    std::vector<uint8_t> bytes = read_file_bytes(path);
+    bool patched = false;
+    for (size_t i = 0; i + 46 <= bytes.size(); ++i) {
+        if (bytes[i] == 0x50 && bytes[i + 1] == 0x4b && bytes[i + 2] == 0x01 &&
+            bytes[i + 3] == 0x02) {
+            bytes[i + 46] = 0;
+            patched = true;
+            break;
+        }
+    }
+    assert(patched);
+
+    void *zip_bytes = bytes_from_vector(bytes);
+    EXPECT_TRAP(rt_archive_from_bytes(zip_bytes));
+    test_result("central directory NUL name traps", true);
+
+    delete_file(path);
+}
+
+static void test_corrupt_local_header_offset_traps_on_read() {
+    printf("Testing Local Header Offset Validation:\n");
+
+    const char *path = get_temp_path("test_local_offset.zip");
+    delete_file(path);
+
+    void *ar = rt_archive_create(rt_const_cstr(path));
+    rt_archive_add_str(ar, rt_const_cstr("offset.txt"), rt_const_cstr("payload"));
+    rt_archive_finish(ar);
+
+    std::vector<uint8_t> bytes = read_file_bytes(path);
+    bool patched = false;
+    for (size_t i = 0; i + 46 <= bytes.size(); ++i) {
+        if (bytes[i] == 0x50 && bytes[i + 1] == 0x4b && bytes[i + 2] == 0x01 &&
+            bytes[i + 3] == 0x02) {
+            write_u32_le(bytes, i + 42, 0xFFFFFFF0U);
+            patched = true;
+            break;
+        }
+    }
+    assert(patched);
+
+    void *zip_bytes = bytes_from_vector(bytes);
+    void *bad_archive = rt_archive_from_bytes(zip_bytes);
+    EXPECT_TRAP(rt_archive_read(bad_archive, rt_const_cstr("offset.txt")));
+    test_result("corrupt local header offset traps", true);
+
+    delete_file(path);
+}
+
+#ifndef _WIN32
+static void test_extract_all_rejects_symlink_parent() {
+    printf("Testing ExtractAll symlink parent rejection:\n");
+
+    const char *zip_path = get_temp_path("test_extract_symlink.zip");
+    const char *dest_dir = get_temp_path("test_extract_symlink_dest");
+    const char *target_dir = get_temp_path("test_extract_symlink_target");
+    delete_file(zip_path);
+    rt_dir_remove_all(rt_const_cstr(dest_dir));
+    rt_dir_remove_all(rt_const_cstr(target_dir));
+
+    void *ar = rt_archive_create(rt_const_cstr(zip_path));
+    rt_archive_add_str(ar, rt_const_cstr("link/evil.txt"), rt_const_cstr("payload"));
+    rt_archive_finish(ar);
+
+    mkdir_p(dest_dir);
+    mkdir_p(target_dir);
+    char link_path[512];
+    char target_file[512];
+    snprintf(link_path, sizeof(link_path), "%s/link", dest_dir);
+    snprintf(target_file, sizeof(target_file), "%s/evil.txt", target_dir);
+    (void)unlink(link_path);
+    assert(symlink(target_dir, link_path) == 0);
+
+    void *reader = rt_archive_open(rt_const_cstr(zip_path));
+    EXPECT_TRAP(rt_archive_extract_all(reader, rt_const_cstr(dest_dir)));
+    test_result("target file was not written", !file_equals_text(target_file, "payload"));
+
+    unlink(link_path);
+    rt_dir_remove_all(rt_const_cstr(dest_dir));
+    rt_dir_remove_all(rt_const_cstr(target_dir));
+    delete_file(zip_path);
+}
+#endif
+
 //=============================================================================
 // Static Methods Tests
 //=============================================================================
@@ -801,6 +938,16 @@ int main() {
     printf("\n");
     test_stored_size_mismatch_traps();
     printf("\n");
+    test_central_directory_count_mismatch_traps();
+    printf("\n");
+    test_central_directory_nul_name_traps();
+    printf("\n");
+    test_corrupt_local_header_offset_traps_on_read();
+    printf("\n");
+#ifndef _WIN32
+    test_extract_all_rejects_symlink_parent();
+    printf("\n");
+#endif
 
     // Static method tests
     test_is_zip();

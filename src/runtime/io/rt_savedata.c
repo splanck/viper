@@ -35,6 +35,7 @@
 #include "rt_string_builder.h"
 
 #include <errno.h>
+#include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -94,6 +95,13 @@ typedef struct {
 // Internal Helpers
 //=========================================================================
 
+/// @brief Linear-search the entry list for a key by raw bytes + length.
+///
+/// Uses `memcmp` on the stored key bytes rather than NUL-terminated
+/// compare so embedded NULs are handled correctly. The list is
+/// singly-linked in insertion order; lookups are O(n). Save files are
+/// typically small (a handful to low hundreds of keys), so a hash
+/// table isn't worth the complexity and memory overhead.
 static SaveEntry *find_entry(rt_savedata_impl *sd, const char *key, size_t key_len) {
     if (!sd || !key)
         return NULL;
@@ -118,6 +126,29 @@ static void free_entry(SaveEntry *e) {
     }
 }
 
+/// @brief Convert a parsed JSON number to `int64_t` only when integral and in range.
+///
+/// JSON numbers are doubles, but save-data integers are int64. Rejects
+/// NaN, ±infinity, and any value that would overflow int64. The
+/// `(double)candidate != value` round-trip check catches fractional
+/// values like 1.5 that cast to 1 but aren't actually integers.
+static int savedata_number_to_i64(double value, int64_t *out) {
+    if (!out || value != value || value > DBL_MAX || value < -DBL_MAX)
+        return 0;
+
+    const double min_i64 = -9223372036854775807.0 - 1.0;
+    const double max_i64_exclusive = 9223372036854775808.0;
+    if (value < min_i64 || value >= max_i64_exclusive)
+        return 0;
+
+    int64_t candidate = (int64_t)value;
+    if ((double)candidate != value)
+        return 0;
+
+    *out = candidate;
+    return 1;
+}
+
 static void free_all_entries(rt_savedata_impl *sd) {
     SaveEntry *e = sd->entries;
     while (e) {
@@ -128,6 +159,12 @@ static void free_all_entries(rt_savedata_impl *sd) {
     sd->entries = NULL;
 }
 
+/// @brief Resolve the user's home directory as a fresh heap-allocated C string.
+///
+/// Windows tries `USERPROFILE` first, falls back to concatenating
+/// `HOMEDRIVE`+`HOMEPATH`, then to `"."`. POSIX tries `HOME`, then
+/// falls back to `getpwuid(getuid())`, then `"."`. Always returns
+/// an owned string so the caller can `free` unconditionally.
 static char *get_home_dir(void) {
 #ifdef _WIN32
     const char *home = getenv("USERPROFILE");
@@ -210,6 +247,16 @@ static int savedata_sync_file(FILE *fp) {
     return _commit(_fileno(fp)) == 0 ? 1 : 0;
 }
 
+/// @brief Fsync the directory containing `path` so renames are durable.
+///
+/// On POSIX, a successful `rename()` plus `fsync()` on the file is
+/// *not* enough — the directory's own dirent must also be fsync'd so
+/// a crash after the rename can't leave the old name pointing at the
+/// new inode. Windows' `MoveFileExW(... | MOVEFILE_WRITE_THROUGH)`
+/// already synchronizes, so this opens the parent with
+/// `FILE_FLAG_BACKUP_SEMANTICS` just to call `FlushFileBuffers`; some
+/// filesystems (e.g. exFAT) return INVALID_HANDLE — treated as
+/// success to avoid failing on portable drives.
 static int savedata_sync_parent_dir(const char *path) {
     char *parent = savedata_parent_dir_dup(path);
     if (!parent)
@@ -309,6 +356,16 @@ static int is_safe_game_name(const char *name) {
     return 1;
 }
 
+/// @brief Build the platform-appropriate save file path for `game_name`.
+///
+/// Locations follow each OS's convention for per-user data:
+///   - Windows: `%APPDATA%\Viper\<game>\save.json` (or `%HOME%\AppData\...`
+///     if APPDATA is unset).
+///   - macOS: `~/Library/Application Support/Viper/<game>/save.json`.
+///   - Linux: `~/.local/share/viper/<game>/save.json` (XDG default).
+/// Rejects unsafe game names up front — any path-traversal characters
+/// trap before we compose the path. Returns a heap-allocated string
+/// that the caller owns (via `free`).
 static char *compute_save_path(const char *game_name) {
     if (!is_safe_game_name(game_name)) {
         rt_trap("SaveData: invalid game name (must be alphanumeric, dash, or underscore, max 64 "
@@ -356,6 +413,13 @@ static void ensure_parent_dir(const char *file_path) {
     free(dir);
 }
 
+/// @brief Insert or update an int entry at the head of the list.
+///
+/// If `key` already exists, releases any previous string payload and
+/// rewrites the slot (type-converting string→int is intentional —
+/// callers can change the stored type). Otherwise allocates a new
+/// node and pushes it to the head so the most-recently-written key
+/// stays cheap to look up in LIFO workloads. Returns 0 only on OOM.
 static int savedata_set_int_entry(SaveEntry **head, rt_string key, int64_t value) {
     if (!head || !key)
         return 0;
@@ -439,6 +503,13 @@ static void savedata_free_parser(void *parser) {
         rt_obj_free(parser);
 }
 
+/// @brief Append a raw UTF-8 string to the builder with JSON escaping.
+///
+/// Handles all RFC 8259 short escapes (`"` `\` `\b` `\f` `\n` `\r`
+/// `\t`) and `\u00XX` for any remaining control character under 0x20.
+/// Non-control bytes pass through unchanged, so valid UTF-8 is
+/// preserved without re-encoding to `\u` escapes — keeping save
+/// files compact and diff-friendly.
 static void json_escape_append(rt_string_builder *sb, const char *str, size_t len) {
     static const char hex[] = "0123456789abcdef";
     for (size_t i = 0; i < len; i++) {
@@ -478,6 +549,19 @@ static void json_escape_append(rt_string_builder *sb, const char *str, size_t le
     }
 }
 
+/// @brief Atomically write `len` bytes to `path` via temp-file-and-rename.
+///
+/// Protects save files from torn writes and crashes mid-save:
+///   1. Open `<path>.tmp.<pid>.<addr>.<attempt>` with O_EXCL to avoid
+///      colliding with a concurrent writer (retried up to 128 times).
+///   2. Write all bytes, flush, and fsync the file so its data hits
+///      stable storage.
+///   3. Rename the temp onto the real path (atomic on POSIX;
+///      MOVEFILE_REPLACE_EXISTING + WRITE_THROUGH on Windows).
+///   4. Fsync the parent directory so the dirent update itself is
+///      durable.
+/// On any failure the temp file is removed so we don't leave garbage
+/// alongside real saves.
 static int savedata_write_atomic(const char *path, const char *data, size_t len) {
     size_t path_len = strlen(path);
 #ifdef _WIN32
@@ -784,7 +868,12 @@ int8_t rt_savedata_load(void *obj) {
         tok = rt_json_stream_next(parser);
         if (tok == TOK_NUMBER) {
             double val = rt_json_stream_number_value(parser);
-            if (!savedata_set_int_entry(&loaded_entries, key_str, (int64_t)val)) {
+            int64_t int_val = 0;
+            if (!savedata_number_to_i64(val, &int_val)) {
+                rt_string_unref(key_str);
+                goto done;
+            }
+            if (!savedata_set_int_entry(&loaded_entries, key_str, int_val)) {
                 rt_string_unref(key_str);
                 goto done;
             }

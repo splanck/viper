@@ -37,6 +37,7 @@
 #include "rt_internal.h"
 
 #include <fcntl.h>
+#include <string.h>
 
 #ifdef _WIN32
 #include <stdlib.h>
@@ -152,6 +153,11 @@ int8_t rt_file_path_from_vstr(const ViperString *path, const char **out_path) {
         *out_path = NULL;
     if (!path || !rt_string_is_handle(path) || !path->data)
         return 0;
+    size_t len = path->literal_len;
+    if (path->heap && path->heap != RT_SSO_SENTINEL)
+        len = rt_heap_len(path->data);
+    if (memchr(path->data, '\0', len) != NULL)
+        return 0;
     if (out_path)
         *out_path = path->data;
     return 1;
@@ -180,6 +186,15 @@ size_t rt_file_string_view(const ViperString *s, const uint8_t **data_out) {
 }
 
 #ifdef _WIN32
+/// @brief Convert a UTF-8 C string to a freshly allocated wide-char string.
+///
+/// Used ubiquitously before calling the `W` variants of Win32/CRT
+/// APIs — the `A` variants use the system ANSI codepage, which loses
+/// data for non-ASCII filenames. Tries strict (MB_ERR_INVALID_CHARS)
+/// conversion first so malformed UTF-8 is rejected; falls back to
+/// lenient conversion (replaces bad sequences with U+FFFD) so legacy
+/// mis-encoded paths still open rather than hard-failing. Caller
+/// owns the returned buffer via `free`.
 wchar_t *rt_file_path_utf8_to_wide(const char *utf8) {
     if (!utf8)
         return NULL;
@@ -201,6 +216,13 @@ wchar_t *rt_file_path_utf8_to_wide(const char *utf8) {
     return wide;
 }
 
+/// @brief Convert a wide-char string to a Viper `rt_string` (UTF-8 encoded).
+///
+/// Two-pass conversion: first call with NULL output buffer to size
+/// the target, then allocate and fill. Returns `rt_str_empty()` on
+/// any failure so the caller can proceed without null-checking —
+/// callers that need to distinguish "empty input" from "conversion
+/// failure" should validate upstream.
 rt_string rt_file_path_wide_to_string(const wchar_t *wide) {
     if (!wide)
         return rt_str_empty();

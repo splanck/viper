@@ -85,6 +85,38 @@ static inline uint8_t *file_bytes_data(void *obj) {
 #define PATH_MAX 4096
 #endif
 
+static char *rt_fileext_make_parent_temp_path(const char *path, const char *prefix, unsigned attempt) {
+    size_t path_len = strlen(path);
+    size_t parent_len = 0;
+    for (size_t i = 0; i < path_len; ++i) {
+#if RT_PLATFORM_WINDOWS
+        if (path[i] == '/' || path[i] == '\\')
+#else
+        if (path[i] == '/')
+#endif
+            parent_len = i + 1;
+    }
+
+    size_t cap = parent_len + 96;
+    char *tmp = (char *)malloc(cap);
+    if (!tmp)
+        return NULL;
+    if (parent_len > 0)
+        memcpy(tmp, path, parent_len);
+#if RT_PLATFORM_WINDOWS
+    unsigned long pid = (unsigned long)_getpid();
+#else
+    unsigned long pid = (unsigned long)getpid();
+#endif
+    int written =
+        snprintf(tmp + parent_len, cap - parent_len, "%s%lu.%p.%u", prefix, pid, (const void *)path, attempt);
+    if (written < 0 || (size_t)written >= cap - parent_len) {
+        free(tmp);
+        return NULL;
+    }
+    return tmp;
+}
+
 // =============================================================================
 // Platform shims
 // Each cross-platform helper wraps the OS-specific primitive with a uniform
@@ -150,6 +182,13 @@ static int rt_fileext_utime(const char *path, struct _utimbuf *times) {
     return rc;
 }
 
+/// @brief Write `len` bytes to `fd`, looping through short writes and EINTR.
+///
+/// `write()` may return fewer bytes than requested on regular files
+/// (rare) or fatal-signal interrupts (EINTR), so the loop retries
+/// from the running offset. A zero return (neither progress nor
+/// error) is treated as failure so we don't spin forever. Returns 1
+/// on a complete write, 0 on any error.
 static int rt_fileext_write_all_fd(int fd, const uint8_t *data, size_t len) {
     size_t written = 0;
     while (written < len) {
@@ -167,13 +206,7 @@ static int rt_fileext_write_all_fd(int fd, const uint8_t *data, size_t len) {
 }
 
 static char *rt_fileext_make_temp_path(const char *path, unsigned attempt) {
-    size_t path_len = strlen(path);
-    char *tmp = (char *)malloc(path_len + 96);
-    if (!tmp)
-        return NULL;
-    unsigned long pid = (unsigned long)_getpid();
-    snprintf(tmp, path_len + 96, "%s.tmp.%lu.%p.%u", path, pid, (void *)tmp, attempt);
-    return tmp;
+    return rt_fileext_make_parent_temp_path(path, ".viper-tmp.", attempt);
 }
 
 static int rt_fileext_replace_utf8(const char *src, const char *dst) {
@@ -195,6 +228,13 @@ static int rt_fileext_replace_utf8(const char *src, const char *dst) {
 #define rt_fileext_unlink unlink
 #define rt_fileext_utime utime
 
+/// @brief Write `len` bytes to `fd`, looping through short writes and EINTR.
+///
+/// `write()` may return fewer bytes than requested on regular files
+/// (rare) or fatal-signal interrupts (EINTR), so the loop retries
+/// from the running offset. A zero return (neither progress nor
+/// error) is treated as failure so we don't spin forever. Returns 1
+/// on a complete write, 0 on any error.
 static int rt_fileext_write_all_fd(int fd, const uint8_t *data, size_t len) {
     size_t written = 0;
     while (written < len) {
@@ -212,13 +252,7 @@ static int rt_fileext_write_all_fd(int fd, const uint8_t *data, size_t len) {
 }
 
 static char *rt_fileext_make_temp_path(const char *path, unsigned attempt) {
-    size_t path_len = strlen(path);
-    char *tmp = (char *)malloc(path_len + 96);
-    if (!tmp)
-        return NULL;
-    unsigned long pid = (unsigned long)getpid();
-    snprintf(tmp, path_len + 96, "%s.tmp.%lu.%p.%u", path, pid, (void *)tmp, attempt);
-    return tmp;
+    return rt_fileext_make_parent_temp_path(path, ".viper-tmp.", attempt);
 }
 
 static int rt_fileext_replace_utf8(const char *src, const char *dst) {
@@ -226,6 +260,52 @@ static int rt_fileext_replace_utf8(const char *src, const char *dst) {
 }
 #endif
 
+/// @brief Move the staged temp file to its final destination.
+///
+/// When `replace=1`, clobbers any existing destination (used by
+/// `WriteAllText`/`WriteAllBytes` where the user expects overwrite).
+/// When `replace=0`, refuses to overwrite (used by `Move` and similar
+/// no-clobber operations): Windows uses `MoveFileExW` without
+/// REPLACE_EXISTING; POSIX uses `link()` + `unlink()` since `rename`
+/// overwrites unconditionally. The link/unlink dance atomically
+/// reserves the new name and cleans up the source, rolling back on
+/// failure.
+static int rt_fileext_commit_utf8(const char *src, const char *dst, int replace) {
+    if (replace)
+        return rt_fileext_replace_utf8(src, dst);
+#if RT_PLATFORM_WINDOWS
+    wchar_t *wsrc = rt_file_path_utf8_to_wide(src);
+    wchar_t *wdst = rt_file_path_utf8_to_wide(dst);
+    if (!wsrc || !wdst) {
+        free(wsrc);
+        free(wdst);
+        return 0;
+    }
+    BOOL ok = MoveFileExW(wsrc, wdst, MOVEFILE_WRITE_THROUGH);
+    free(wsrc);
+    free(wdst);
+    return ok ? 1 : 0;
+#else
+    if (link(src, dst) != 0)
+        return 0;
+    if (unlink(src) != 0) {
+        int saved = errno;
+        (void)unlink(dst);
+        errno = saved;
+        return 0;
+    }
+    return 1;
+#endif
+}
+
+/// @brief Open an exclusive temp file beside `path` for atomic-write staging.
+///
+/// Tries up to 128 distinct `.viper-tmp.<pid>.<attempt>` sidecar names
+/// until O_EXCL succeeds. O_NOFOLLOW (when available) prevents a
+/// symlink attack that would redirect the write elsewhere. On success,
+/// writes the chosen temp path into `*out_tmp` for the caller to rename
+/// (or unlink on error). Returns the open fd, or -1 on failure with
+/// errno preserved.
 static int rt_fileext_open_temp_utf8(const char *path, int binary, char **out_tmp) {
     if (out_tmp)
         *out_tmp = NULL;
@@ -255,6 +335,14 @@ static int rt_fileext_open_temp_utf8(const char *path, int binary, char **out_tm
     return -1;
 }
 
+/// @brief Fsync the directory containing `path` so a rename is crash-durable.
+///
+/// On POSIX, the rename itself hits the filesystem journal but the
+/// parent directory's updated dirent doesn't necessarily reach disk
+/// until its inode is fsync'd. Opens the parent with O_DIRECTORY
+/// (where supported) to avoid accidentally sync'ing a regular file.
+/// On Windows this is a no-op because `MoveFileExW | WRITE_THROUGH`
+/// already handles durability.
 static int rt_fileext_sync_parent_dir(const char *path) {
 #if RT_PLATFORM_WINDOWS
     (void)path;
@@ -303,6 +391,14 @@ static void rt_fileext_close_or_trap(int fd, const char *context) {
         rt_trap(context);
 }
 
+/// @brief Test whether two paths refer to the same on-disk inode/file.
+///
+/// Used by `Copy` to short-circuit self-copies (which would truncate
+/// the file when the temp-rename step overwrote the source). On POSIX
+/// compares (dev, ino); on Windows compares
+/// (volume, fileIndexHigh, fileIndexLow). Returns 0 if either path
+/// can't be stat'd — treating inaccessible paths as distinct so the
+/// copy attempt can fail with a clearer error.
 static int rt_fileext_same_existing_file(const char *src_path, const char *dst_path) {
 #if RT_PLATFORM_WINDOWS
     wchar_t *wsrc = rt_file_path_utf8_to_wide(src_path);
@@ -357,6 +453,14 @@ static int rt_fileext_same_existing_file(const char *src_path, const char *dst_p
     if (stat(dst_path, &dst_st) != 0)
         return 0;
     return src_st.st_dev == dst_st.st_dev && src_st.st_ino == dst_st.st_ino;
+#endif
+}
+
+static int rt_fileext_is_regular_mode(mode_t mode) {
+#if RT_PLATFORM_WINDOWS
+    return (mode & _S_IFREG) != 0;
+#else
+    return S_ISREG(mode) ? 1 : 0;
 #endif
 }
 
@@ -438,6 +542,10 @@ rt_string rt_io_file_read_all_text(rt_string path) {
     if (fstat(fd, &st) != 0) {
         close(fd);
         rt_trap("Viper.IO.File.ReadAllText: failed to stat file");
+    }
+    if (!rt_fileext_is_regular_mode(st.st_mode)) {
+        close(fd);
+        rt_trap("Viper.IO.File.ReadAllText: path is not a regular file");
     }
     if (st.st_size < 0 || (uint64_t)st.st_size > (uint64_t)SIZE_MAX) {
         close(fd);
@@ -558,6 +666,10 @@ void *rt_io_file_read_all_bytes(rt_string path) {
         (void)close(fd);
         rt_trap("Viper.IO.File.ReadAllBytes: failed to stat file");
     }
+    if (!rt_fileext_is_regular_mode(st.st_mode)) {
+        (void)close(fd);
+        rt_trap("Viper.IO.File.ReadAllBytes: path is not a regular file");
+    }
     if (st.st_size < 0 || (uint64_t)st.st_size > (uint64_t)SIZE_MAX) {
         (void)close(fd);
         rt_trap("Viper.IO.File.ReadAllBytes: file too large");
@@ -640,6 +752,10 @@ void *rt_io_file_read_all_lines(rt_string path) {
         (void)close(fd);
         rt_trap("Viper.IO.File.ReadAllLines: failed to stat file");
     }
+    if (!rt_fileext_is_regular_mode(st.st_mode)) {
+        (void)close(fd);
+        rt_trap("Viper.IO.File.ReadAllLines: path is not a regular file");
+    }
     if (st.st_size < 0 || (uint64_t)st.st_size > (uint64_t)SIZE_MAX) {
         (void)close(fd);
         rt_trap("Viper.IO.File.ReadAllLines: file too large");
@@ -648,7 +764,9 @@ void *rt_io_file_read_all_lines(rt_string path) {
     size_t size = (st.st_size > 0) ? (size_t)st.st_size : 0;
     if (size == 0) {
         (void)close(fd);
-        return rt_seq_new();
+        void *empty = rt_seq_new();
+        rt_seq_set_owns_elements(empty, 1);
+        return empty;
     }
 
     char *buf = (char *)malloc(size);
@@ -674,6 +792,7 @@ void *rt_io_file_read_all_lines(rt_string path) {
     (void)close(fd);
 
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
     size_t i = 0;
     while (i < off) {
         size_t start = i;
@@ -684,6 +803,7 @@ void *rt_io_file_read_all_lines(rt_string path) {
         rt_string line =
             (end == start) ? rt_str_empty() : rt_string_from_bytes(buf + start, end - start);
         rt_seq_push(seq, line);
+        rt_string_unref(line);
 
         if (i >= off)
             break;
@@ -695,8 +815,11 @@ void *rt_io_file_read_all_lines(rt_string path) {
         } else {
             ++i; // '\n'
         }
-        if (i == off)
-            rt_seq_push(seq, rt_str_empty());
+        if (i == off) {
+            rt_string trailing = rt_str_empty();
+            rt_seq_push(seq, trailing);
+            rt_string_unref(trailing);
+        }
     }
 
     free(buf);
@@ -714,12 +837,16 @@ void rt_io_file_delete(rt_string path) {
         rt_trap("Viper.IO.File.Delete: failed to delete file");
 }
 
-/// What: Copy a file from @p src to @p dst.
-/// Why:  Allow file duplication without platform-specific APIs.
-/// How:  Reads src file and writes to dst file.
-/// @brief Copy file `src` to `dst`. Streams in chunks to avoid loading the whole file into RAM
-/// (important for large files). Overwrites the destination if it exists.
-void rt_file_copy(rt_string src, rt_string dst) {
+/// @brief Core file-copy routine used by `File.Copy` and `File.CopyOver`.
+///
+/// Copies via a staging temp file + atomic rename so a crash mid-copy
+/// never leaves a truncated destination. Path validation, same-file
+/// short-circuit, regular-file check, and non-clobber policing all
+/// happen up front before any write. The transfer itself uses an 8KB
+/// stack buffer — large enough to amortize syscall overhead on fast
+/// storage, small enough to keep stack use predictable. `replace` chooses
+/// between overwrite (`Copy`) and fail-if-exists (`CopyOver` inverted).
+static void rt_file_copy_impl(rt_string src, rt_string dst, int replace) {
     const char *src_path = rt_io_file_require_path(src, "File.Copy: invalid source path");
     const char *dst_path = rt_io_file_require_path(dst, "File.Copy: invalid destination path");
 
@@ -736,6 +863,22 @@ void rt_file_copy(rt_string src, rt_string dst) {
         close(src_fd);
         rt_trap("File.Copy: source and destination are the same file");
         return;
+    }
+
+    struct stat src_st;
+    if (fstat(src_fd, &src_st) != 0 || !rt_fileext_is_regular_mode(src_st.st_mode)) {
+        close(src_fd);
+        rt_trap("File.Copy: source is not a regular file");
+        return;
+    }
+
+    if (!replace) {
+        struct stat dst_st;
+        if (rt_fileext_stat_path(dst_path, &dst_st) == 0) {
+            close(src_fd);
+            rt_trap("File.Copy: destination already exists");
+            return;
+        }
     }
 
     char *tmp_path = NULL;
@@ -808,7 +951,7 @@ void rt_file_copy(rt_string src, rt_string dst) {
     if (close(dst_fd) != 0)
         ok = 0;
     if (ok)
-        ok = rt_fileext_replace_utf8(tmp_path, dst_path);
+        ok = rt_fileext_commit_utf8(tmp_path, dst_path, replace);
     if (ok)
         ok = rt_fileext_sync_parent_dir(dst_path);
     if (!ok) {
@@ -819,6 +962,15 @@ void rt_file_copy(rt_string src, rt_string dst) {
         return;
     }
     free(tmp_path);
+}
+
+/// What: Copy a file from @p src to @p dst.
+/// Why:  Allow file duplication without platform-specific APIs.
+/// How:  Reads src file and writes to dst file.
+/// @brief Copy file `src` to `dst`. Streams in chunks to avoid loading the whole file into RAM
+/// (important for large files). Traps if the destination already exists.
+void rt_file_copy(rt_string src, rt_string dst) {
+    rt_file_copy_impl(src, dst, 0);
 }
 
 /// What: Move/rename a file from @p src to @p dst.
@@ -848,7 +1000,7 @@ void rt_file_move(rt_string src, rt_string dst) {
     }
 #endif
 
-    rt_file_copy(src, dst);
+    rt_file_copy_impl(src, dst, 1);
     if (rt_fileext_unlink(src_path) != 0)
         rt_trap("File.Move: failed to remove source after cross-device copy");
 }
@@ -864,6 +1016,8 @@ int64_t rt_file_size(rt_string path) {
 
     struct stat st;
     if (rt_fileext_stat_path(cpath, &st) != 0)
+        return -1;
+    if (!rt_fileext_is_regular_mode(st.st_mode))
         return -1;
 
     return (int64_t)st.st_size;

@@ -64,7 +64,7 @@ Unified stream abstraction providing a common interface over file and memory str
 
 ### Ownership and Closed Streams
 
-`OpenFile`, `OpenMemory`, and `OpenBytes` create streams that own their backing `BinFile` or `MemStream`; `Close()` releases that backing object. `FromBinFile` and `FromMemStream` borrow an existing object, so closing the wrapper does not close or free the original.
+`OpenFile`, `OpenMemory`, and `OpenBytes` create streams that own their backing `BinFile` or `MemStream`; `Close()` releases that backing object. `FromBinFile` and `FromMemStream` retain the existing object for the wrapper's lifetime, so the wrapper remains valid even if another owner releases its reference. Closing the wrapper releases the wrapper's retained reference.
 
 All operations except `Close()` trap on a null or already-closed stream. `Write(bytes)` also traps when `bytes` is null. This avoids silent reads from or writes to invalid backing objects.
 
@@ -141,10 +141,9 @@ DIM wrapped AS OBJECT = Viper.IO.Stream.FromBinFile(bf)
 ' Use the unified interface
 DIM data AS OBJECT = wrapped.Read(100)
 
-' The wrapped stream does NOT own the BinFile
-' You must close the original BinFile separately
-wrapped.Close()  ' Releases wrapper only
-bf.Close()       ' Closes the actual file
+' The wrapper retains the BinFile while it is open
+wrapped.Close()  ' Releases the wrapper's retained reference
+bf.Close()       ' Close the original owner when you are done with it
 
 ' Wrap an existing MemStream
 DIM ms AS OBJECT = Viper.IO.MemStream.New()

@@ -30,6 +30,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_path.h"
+#include "rt_file_path.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_string.h"
@@ -44,7 +45,6 @@
 #ifdef _WIN32
 #include <direct.h>
 #include <windows.h>
-#define getcwd _getcwd
 #define PATH_SEP '\\'
 #define PATH_SEP_STR "\\"
 #elif defined(__viperdos__)
@@ -70,6 +70,13 @@ static inline int is_path_sep(char c) {
     return c == '/' || c == '\\';
 }
 
+/// @brief Platform-specific path-separator test used by `rt_path_join`.
+///
+/// Differs from `is_path_sep` on POSIX: join logic treats `\` as a
+/// literal character on Unix (valid in filenames), so only `/` is
+/// considered a separator for trimming trailing-sep on the left
+/// operand. Windows uses the permissive rule since `\` is always
+/// a separator there.
 static inline int is_join_sep(char c) {
 #ifdef _WIN32
     return is_path_sep(c);
@@ -761,6 +768,26 @@ rt_string rt_path_abs(rt_string path) {
         return rt_path_norm(path);
 
     // Get current working directory with a dynamic buffer so deep paths work.
+#ifdef _WIN32
+    DWORD needed = GetCurrentDirectoryW(0, NULL);
+    if (needed == 0) {
+        rt_trap("Path.Abs: failed to get current directory");
+        return rt_const_cstr("");
+    }
+    wchar_t *cwd_wide = (wchar_t *)malloc((size_t)needed * sizeof(wchar_t));
+    if (!cwd_wide) {
+        rt_trap("Path.Abs: memory allocation failed");
+        return rt_const_cstr("");
+    }
+    DWORD written = GetCurrentDirectoryW(needed, cwd_wide);
+    if (written == 0 || written >= needed) {
+        free(cwd_wide);
+        rt_trap("Path.Abs: failed to get current directory");
+        return rt_const_cstr("");
+    }
+    rt_string cwd_str = rt_file_path_wide_to_string(cwd_wide);
+    free(cwd_wide);
+#else
     char *cwd = getcwd(NULL, 0);
     if (!cwd) {
         rt_trap("Path.Abs: failed to get current directory");
@@ -770,6 +797,7 @@ rt_string rt_path_abs(rt_string path) {
     // Join cwd with path
     rt_string cwd_str = rt_string_from_bytes(cwd, strlen(cwd));
     free(cwd);
+#endif
     rt_string path_str = rt_string_from_bytes(data, len);
     rt_string joined = rt_path_join(cwd_str, path_str);
 

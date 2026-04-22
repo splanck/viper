@@ -26,6 +26,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_asset.h"
+#include "rt_file_path.h"
+#include "rt_internal.h"
+#include "rt_seq.h"
 #include "rt_vpa_reader.h"
 
 #include <stdio.h>
@@ -51,10 +54,6 @@ extern void *rt_bytes_from_raw(const uint8_t *data, size_t len);
 
 // Type-dispatched decoder (rt_asset_decode.c)
 extern void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t size);
-
-// seq<str>
-extern void *rt_seq_new(void);
-extern void rt_seq_push(void *seq, void *val);
 
 // Exe directory detection
 extern char *rt_path_exe_dir_cstr(void);
@@ -88,7 +87,78 @@ static struct {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/// @brief Find asset data across all sources. Returns malloc'd buffer.
+static const char *asset_name_cstr(rt_string name) {
+    const uint8_t *data = NULL;
+    size_t len = rt_file_string_view((const ViperString *)name, &data);
+    if (!data)
+        return NULL;
+    if (memchr(data, '\0', len) != NULL)
+        return NULL;
+    return (const char *)data;
+}
+
+#ifdef _WIN32
+static FILE *asset_fopen_utf8(const char *path) {
+    wchar_t *wide = rt_file_path_utf8_to_wide(path);
+    if (!wide)
+        return NULL;
+    FILE *fp = _wfopen(wide, L"rb");
+    free(wide);
+    return fp;
+}
+
+static int asset_regular_file_size(const char *path, uint64_t *out_size) {
+    if (out_size)
+        *out_size = 0;
+    wchar_t *wide = rt_file_path_utf8_to_wide(path);
+    if (!wide)
+        return 0;
+    WIN32_FILE_ATTRIBUTE_DATA attrs;
+    BOOL ok = GetFileAttributesExW(wide, GetFileExInfoStandard, &attrs);
+    free(wide);
+    if (!ok)
+        return 0;
+    if ((attrs.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+        return 0;
+    if ((attrs.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+        return 0;
+    if (out_size) {
+        *out_size = ((uint64_t)attrs.nFileSizeHigh << 32) | (uint64_t)attrs.nFileSizeLow;
+    }
+    return 1;
+}
+#else
+static FILE *asset_fopen_utf8(const char *path) {
+    return fopen(path, "rb");
+}
+
+static int asset_regular_file_size(const char *path, uint64_t *out_size) {
+    if (out_size)
+        *out_size = 0;
+    struct stat st;
+    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode))
+        return 0;
+    if (st.st_size < 0)
+        return 0;
+    if (out_size)
+        *out_size = (uint64_t)st.st_size;
+    return 1;
+}
+#endif
+
+/// @brief Resolve an asset name across the layered asset sources.
+///
+/// Lookup order (first-hit wins):
+///   1. The embedded VPA baked into the executable's .rodata — always
+///      tried first so shipped binaries stay self-contained.
+///   2. Mounted packs, iterated in *reverse* mount order — later
+///      mounts shadow earlier ones, letting mod/DLC loads override
+///      the base game's assets cleanly.
+///   3. The filesystem, relative to the current working directory —
+///      dev-mode convenience that lets you drop a file in-place
+///      without rebuilding a VPA.
+/// Returns a heap-allocated buffer (caller frees) or NULL if not found
+/// or on any read error.
 static uint8_t *asset_find_data(const char *name, size_t *out_size) {
     // 1. Embedded registry
     if (g_asset_mgr.embedded) {
@@ -107,23 +177,23 @@ static uint8_t *asset_find_data(const char *name, size_t *out_size) {
     }
 
     // 3. Filesystem fallback (CWD-relative)
-    FILE *f = fopen(name, "rb");
-    if (f) {
-        fseek(f, 0, SEEK_END);
-        long fsize = ftell(f);
-        if (fsize < 0) {
+    uint64_t fsize = 0;
+    if (asset_regular_file_size(name, &fsize)) {
+        if (fsize > SIZE_MAX)
+            return NULL;
+        FILE *f = asset_fopen_utf8(name);
+        if (!f)
+            return NULL;
+        *out_size = (size_t)fsize;
+        uint8_t *buf = (uint8_t *)malloc(*out_size > 0 ? *out_size : 1);
+        if (!buf) {
             fclose(f);
             return NULL;
         }
-        rewind(f);
-        *out_size = (size_t)fsize;
-        uint8_t *buf = (uint8_t *)malloc(*out_size);
-        if (buf) {
-            if (fread(buf, 1, *out_size, f) != *out_size) {
-                free(buf);
-                fclose(f);
-                return NULL;
-            }
+        if (*out_size > 0 && fread(buf, 1, *out_size, f) != *out_size) {
+            free(buf);
+            fclose(f);
+            return NULL;
         }
         fclose(f);
         return buf;
@@ -249,7 +319,9 @@ void *rt_asset_load(rt_string name) {
         return NULL;
     ensure_init();
 
-    const char *cname = rt_string_cstr(name);
+    const char *cname = asset_name_cstr(name);
+    if (!cname || *cname == '\0')
+        return NULL;
     size_t data_size = 0;
     uint8_t *data = asset_find_data(cname, &data_size);
     if (!data)
@@ -276,7 +348,9 @@ void *rt_asset_load_bytes(rt_string name) {
         return NULL;
     ensure_init();
 
-    const char *cname = rt_string_cstr(name);
+    const char *cname = asset_name_cstr(name);
+    if (!cname || *cname == '\0')
+        return NULL;
     size_t data_size = 0;
     uint8_t *data = asset_find_data(cname, &data_size);
     if (!data)
@@ -295,7 +369,9 @@ int64_t rt_asset_exists(rt_string name) {
         return 0;
     ensure_init();
 
-    const char *cname = rt_string_cstr(name);
+    const char *cname = asset_name_cstr(name);
+    if (!cname || *cname == '\0')
+        return 0;
 
     // Check embedded
     if (g_asset_mgr.embedded && vpa_find(g_asset_mgr.embedded, cname))
@@ -308,11 +384,8 @@ int64_t rt_asset_exists(rt_string name) {
     }
 
     // Check filesystem
-    FILE *f = fopen(cname, "rb");
-    if (f) {
-        fclose(f);
+    if (asset_regular_file_size(cname, NULL))
         return 1;
-    }
 
     return 0;
 }
@@ -325,7 +398,9 @@ int64_t rt_asset_size(rt_string name) {
         return 0;
     ensure_init();
 
-    const char *cname = rt_string_cstr(name);
+    const char *cname = asset_name_cstr(name);
+    if (!cname || *cname == '\0')
+        return 0;
 
     // Check embedded
     if (g_asset_mgr.embedded) {
@@ -344,13 +419,9 @@ int64_t rt_asset_size(rt_string name) {
     }
 
     // Check filesystem
-    FILE *f = fopen(cname, "rb");
-    if (f) {
-        fseek(f, 0, SEEK_END);
-        long sz = ftell(f);
-        fclose(f);
-        return (int64_t)(sz >= 0 ? sz : 0);
-    }
+    uint64_t fs_size = 0;
+    if (asset_regular_file_size(cname, &fs_size) && fs_size <= INT64_MAX)
+        return (int64_t)fs_size;
 
     return 0;
 }
@@ -362,6 +433,7 @@ void *rt_asset_list(void) {
     ensure_init();
 
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
 
     // Add embedded asset names
     if (g_asset_mgr.embedded) {
@@ -369,6 +441,7 @@ void *rt_asset_list(void) {
             const char *n = g_asset_mgr.embedded->entries[i].name;
             rt_string s = rt_string_from_bytes(n, strlen(n));
             rt_seq_push(seq, (void *)s);
+            rt_string_unref(s);
         }
     }
 
@@ -380,6 +453,7 @@ void *rt_asset_list(void) {
             const char *n = g_asset_mgr.packs[p]->entries[i].name;
             rt_string s = rt_string_from_bytes(n, strlen(n));
             rt_seq_push(seq, (void *)s);
+            rt_string_unref(s);
         }
     }
 
@@ -397,7 +471,9 @@ int64_t rt_asset_mount(rt_string path) {
     if (g_asset_mgr.pack_count >= RT_ASSET_MAX_PACKS)
         return 0;
 
-    const char *cpath = rt_string_cstr(path);
+    const char *cpath = NULL;
+    if (!rt_file_path_from_vstr((const ViperString *)path, &cpath) || !cpath || *cpath == '\0')
+        return 0;
     vpa_archive_t *archive = vpa_open_file(cpath);
     if (!archive)
         return 0;
@@ -416,7 +492,9 @@ int64_t rt_asset_unmount(rt_string path) {
         return 0;
     ensure_init();
 
-    const char *cpath = rt_string_cstr(path);
+    const char *cpath = NULL;
+    if (!rt_file_path_from_vstr((const ViperString *)path, &cpath) || !cpath || *cpath == '\0')
+        return 0;
 
     // Find the pack by path (search from end for LIFO behavior)
     for (int i = g_asset_mgr.pack_count - 1; i >= 0; --i) {

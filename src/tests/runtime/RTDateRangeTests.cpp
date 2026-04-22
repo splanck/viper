@@ -10,11 +10,34 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <climits>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <setjmp.h>
+
+static jmp_buf g_trap_env;
+static int g_expect_trap = 0;
 
 extern "C" void vm_trap(const char *msg) {
-    rt_abort(msg);
+    if (g_expect_trap)
+        longjmp(g_trap_env, 1);
+    fprintf(stderr, "unexpected trap: %s\n", msg ? msg : "(null)");
+    abort();
 }
+
+#define EXPECT_TRAP(expr)                                                                         \
+    do {                                                                                          \
+        g_expect_trap = 1;                                                                         \
+        if (setjmp(g_trap_env) == 0) {                                                            \
+            (void)(expr);                                                                          \
+            g_expect_trap = 0;                                                                     \
+            assert(!"expected runtime trap");                                                     \
+        } else {                                                                                   \
+            g_expect_trap = 0;                                                                     \
+        }                                                                                          \
+    } while (0)
 
 static bool str_eq(rt_string s, const char *expected) {
     const char *cstr = rt_string_cstr(s);
@@ -119,6 +142,16 @@ static void test_union_gap() {
     assert(result == NULL);
 }
 
+static void test_union_int64_boundaries() {
+    void *a = rt_daterange_new(INT64_MAX - 1, INT64_MAX - 1);
+    void *b = rt_daterange_new(INT64_MAX, INT64_MAX);
+    void *result = rt_daterange_union_range(a, b);
+
+    assert(result != NULL);
+    assert(rt_daterange_start(result) == INT64_MAX - 1);
+    assert(rt_daterange_end(result) == INT64_MAX);
+}
+
 // ---------------------------------------------------------------------------
 // Duration queries
 // ---------------------------------------------------------------------------
@@ -136,6 +169,13 @@ static void test_hours() {
 static void test_duration() {
     void *r = rt_daterange_new(JAN_1, JAN_1 + 3600);
     assert(rt_daterange_duration(r) == 3600);
+}
+
+static void test_duration_overflow_traps() {
+    void *r = rt_daterange_new(INT64_MIN, INT64_MAX);
+    EXPECT_TRAP(rt_daterange_duration(r));
+    EXPECT_TRAP(rt_daterange_days(r));
+    EXPECT_TRAP(rt_daterange_hours(r));
 }
 
 // ---------------------------------------------------------------------------
@@ -178,9 +218,11 @@ int main() {
     test_intersection_no_overlap();
     test_union();
     test_union_gap();
+    test_union_int64_boundaries();
     test_days();
     test_hours();
     test_duration();
+    test_duration_overflow_traps();
     test_to_string();
     test_null_safety();
 

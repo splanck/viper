@@ -17,11 +17,31 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <ctime>
+#include <setjmp.h>
+
+static jmp_buf g_trap_env;
+static int g_expect_trap = 0;
 
 extern "C" void vm_trap(const char *msg) {
-    rt_abort(msg);
+    if (g_expect_trap)
+        longjmp(g_trap_env, 1);
+    fprintf(stderr, "unexpected trap: %s\n", msg ? msg : "(null)");
+    abort();
 }
+
+#define EXPECT_TRAP(expr)                                                                         \
+    do {                                                                                          \
+        g_expect_trap = 1;                                                                         \
+        if (setjmp(g_trap_env) == 0) {                                                            \
+            (void)(expr);                                                                          \
+            g_expect_trap = 0;                                                                     \
+            assert(!"expected runtime trap");                                                     \
+        } else {                                                                                   \
+            g_expect_trap = 0;                                                                     \
+        }                                                                                          \
+    } while (0)
 
 // ============================================================================
 // Basic Creation Tests
@@ -255,6 +275,21 @@ static void test_wait_already_expired() {
     printf("test_wait_already_expired: PASSED\n");
 }
 
+static void test_null_receiver_traps() {
+    EXPECT_TRAP(rt_countdown_start(nullptr));
+    EXPECT_TRAP(rt_countdown_stop(nullptr));
+    EXPECT_TRAP(rt_countdown_reset(nullptr));
+    EXPECT_TRAP(rt_countdown_elapsed(nullptr));
+    EXPECT_TRAP(rt_countdown_remaining(nullptr));
+    EXPECT_TRAP(rt_countdown_expired(nullptr));
+    EXPECT_TRAP(rt_countdown_interval(nullptr));
+    EXPECT_TRAP(rt_countdown_set_interval(nullptr, 100));
+    EXPECT_TRAP(rt_countdown_is_running(nullptr));
+    EXPECT_TRAP(rt_countdown_wait(nullptr));
+
+    printf("test_null_receiver_traps: PASSED\n");
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -289,6 +324,7 @@ int main() {
     test_wait_short();
     test_wait_already_running();
     test_wait_already_expired();
+    test_null_receiver_traps();
 
     printf("\nAll RTCountdownTests passed!\n");
     return 0;

@@ -143,6 +143,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "lstat",
         "mkdir",
         "rmdir",
+        "link",
         "unlink",
         "remove",
         "rename",

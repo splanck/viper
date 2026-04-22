@@ -857,15 +857,20 @@ static int rt_dir_remove_all_cpath(const char *cpath) {
     free(dir_path);
     return ok;
 #else
-    DIR *dir = opendir(cpath);
-    if (!dir) {
+    struct stat root_st;
+    if (lstat(cpath, &root_st) != 0) {
         if (errno == ENOENT)
             return 1;
-        struct stat st;
-        if (lstat(cpath, &st) == 0 && !S_ISDIR(st.st_mode))
-            return 0;
-        return rmdir(cpath) == 0 || errno == ENOENT;
+        return 0;
     }
+    if (S_ISLNK(root_st.st_mode))
+        return unlink(cpath) == 0 || errno == ENOENT;
+    if (!S_ISDIR(root_st.st_mode))
+        return 0;
+
+    DIR *dir = opendir(cpath);
+    if (!dir)
+        return errno == ENOENT ? 1 : 0;
 
     int ok = 1;
     struct dirent *ent;
@@ -1018,6 +1023,7 @@ void rt_dir_remove_all(rt_string path) {
 /// @see rt_dir_entries_seq For trapping version
 void *rt_dir_list(rt_string path) {
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
 
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
@@ -1039,6 +1045,7 @@ void *rt_dir_list(rt_string path) {
         if (!rt_dir_win_is_dot_name(fd.cFileName)) {
             rt_string name = rt_dir_win_wide_to_string(fd.cFileName);
             rt_seq_push(result, (void *)name);
+            rt_string_unref(name);
         }
     } while (FindNextFileW(h, &fd));
 
@@ -1055,6 +1062,7 @@ void *rt_dir_list(rt_string path) {
         if (strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0) {
             rt_string name = rt_string_from_bytes(ent->d_name, strlen(ent->d_name));
             rt_seq_push(result, (void *)name);
+            rt_string_unref(name);
         }
     }
 
@@ -1149,6 +1157,7 @@ void *rt_dir_entries_seq(rt_string path) {
 #endif
 
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
 
 #ifdef _WIN32
     wchar_t *pattern = rt_dir_win_make_pattern(cpath);
@@ -1171,6 +1180,7 @@ void *rt_dir_entries_seq(rt_string path) {
         if (!rt_dir_win_is_dot_name(fd.cFileName)) {
             rt_string name = rt_dir_win_wide_to_string(fd.cFileName);
             rt_seq_push(result, (void *)name);
+            rt_string_unref(name);
         }
     } while (FindNextFileW(h, &fd));
 
@@ -1187,6 +1197,7 @@ void *rt_dir_entries_seq(rt_string path) {
         if (strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0) {
             rt_string name = rt_string_from_bytes(ent->d_name, strlen(ent->d_name));
             rt_seq_push(result, (void *)name);
+            rt_string_unref(name);
         }
     }
 
@@ -1247,6 +1258,7 @@ void *rt_dir_entries_seq(rt_string path) {
 /// @see rt_dir_files_seq For wrapper version
 void *rt_dir_files(rt_string path) {
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
 
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
@@ -1268,6 +1280,7 @@ void *rt_dir_files(rt_string path) {
         if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             rt_string name = rt_dir_win_wide_to_string(fd.cFileName);
             rt_seq_push(result, (void *)name);
+            rt_string_unref(name);
         }
     } while (FindNextFileW(h, &fd));
 
@@ -1288,9 +1301,10 @@ void *rt_dir_files(rt_string path) {
         if (!full)
             break;
         struct stat st;
-        if (stat(full, &st) == 0 && S_ISREG(st.st_mode)) {
+        if (lstat(full, &st) == 0 && S_ISREG(st.st_mode)) {
             rt_string name = rt_string_from_bytes(ent->d_name, strlen(ent->d_name));
             rt_seq_push(result, (void *)name);
+            rt_string_unref(name);
         }
         free(full);
     }
@@ -1375,6 +1389,7 @@ void *rt_dir_files_seq(rt_string path) {
 /// @see rt_dir_dirs_seq For wrapper version
 void *rt_dir_dirs(rt_string path) {
     void *result = rt_seq_new();
+    rt_seq_set_owns_elements(result, 1);
 
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
@@ -1397,6 +1412,7 @@ void *rt_dir_dirs(rt_string path) {
             !rt_dir_win_is_dot_name(fd.cFileName)) {
             rt_string name = rt_dir_win_wide_to_string(fd.cFileName);
             rt_seq_push(result, (void *)name);
+            rt_string_unref(name);
         }
     } while (FindNextFileW(h, &fd));
 
@@ -1420,6 +1436,7 @@ void *rt_dir_dirs(rt_string path) {
         if (stat(full, &st) == 0 && S_ISDIR(st.st_mode)) {
             rt_string name = rt_string_from_bytes(ent->d_name, strlen(ent->d_name));
             rt_seq_push(result, (void *)name);
+            rt_string_unref(name);
         }
         free(full);
     }

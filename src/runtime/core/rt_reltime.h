@@ -49,7 +49,7 @@ rt_string rt_reltime_format_from(int64_t timestamp, int64_t reference);
 rt_string rt_reltime_format_duration(int64_t duration_ms);
 
 /// @brief Format timestamp relative to now in short form.
-/// @details Produces strings like "2h", "3d", "5m", "now".
+/// @details Produces strings like "2h ago", "in 3d", "5m ago", "now".
 /// @param timestamp Unix timestamp in seconds.
 /// @return Short relative time string.
 rt_string rt_reltime_format_short(int64_t timestamp);

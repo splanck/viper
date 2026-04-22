@@ -302,7 +302,17 @@ typedef struct {
     size_t table_size; // Size of lookup table
 } huffman_tree_t;
 
-/// @brief Build Huffman tree from code lengths
+/// @brief Build a canonical-Huffman lookup table from per-symbol code lengths.
+///
+/// Follows RFC 1951 §3.2.2: from the length histogram it derives the
+/// starting code for each bit-length, assigns codes in symbol order,
+/// then bit-reverses each code to LSB-first order (since DEFLATE reads
+/// bits LSB-first). The resulting table is a 2^max_len array where each
+/// slot holds a packed `(len << 12) | symbol` entry — one lookup decodes
+/// any symbol using `tree->table_bits` bits peeked from the stream.
+/// Short codes are replicated across all matching prefix slots so the
+/// table is a direct-mapped decoder. Returns false on invalid input
+/// (code length >15) or allocation failure.
 static bool build_huffman_tree(huffman_tree_t *tree, const uint8_t *lengths, int num_codes) {
     // Count code lengths
     int bl_count[MAX_BITS + 1] = {0};
@@ -369,7 +379,13 @@ static bool build_huffman_tree(huffman_tree_t *tree, const uint8_t *lengths, int
     return true;
 }
 
-/// @brief Decode one symbol using Huffman tree
+/// @brief Decode a single Huffman-coded symbol from the bit stream.
+///
+/// Peeks `table_bits` bits, uses them as a direct index into the
+/// precomputed lookup table, and consumes only the actual code length
+/// stored in the high 4 bits of the entry. Returns -1 if the stream
+/// runs dry or the entry is zero (invalid code — the canonical
+/// construction leaves unassigned prefixes as zero entries).
 static int decode_symbol(huffman_tree_t *tree, bit_reader_t *br) {
     if (!br_fill(br, tree->table_bits))
         return -1;
@@ -576,7 +592,13 @@ static void out_free(output_buffer_t *out) {
 // DEFLATE Decompression
 //=============================================================================
 
-/// @brief Inflate a stored block (no compression)
+/// @brief Inflate a DEFLATE type-0 (stored/uncompressed) block.
+///
+/// Aligns the bit reader to a byte boundary, reads the 16-bit LEN and
+/// its bitwise complement NLEN, verifies LEN ^ NLEN == 0xFFFF as
+/// specified in RFC 1951 §3.2.4, then copies LEN bytes verbatim into
+/// the output. Returns false on truncated data or the LEN/NLEN check
+/// failing.
 static bool inflate_stored(bit_reader_t *br, output_buffer_t *out) {
     // Align to byte boundary
     br_align(br);
@@ -605,7 +627,17 @@ static bool inflate_stored(bit_reader_t *br, output_buffer_t *out) {
     return true;
 }
 
-/// @brief Inflate a Huffman-coded block
+/// @brief Inflate a DEFLATE Huffman-coded block (type 1 fixed or type 2 dynamic).
+///
+/// Runs the literal/length/end-of-block symbol loop: symbols 0..255
+/// are literal bytes written straight to output; 256 ends the block;
+/// 257..285 are length codes that pair with a following distance code
+/// to form an LZ77 back-reference. Extra bits follow length/distance
+/// codes per RFC 1951 §3.2.5. Validates the back-reference distance
+/// against the current output length before calling `out_copy` (which
+/// handles overlapping copies for RLE-style expansion). The two tree
+/// arguments are shared between fixed and dynamic callers — same loop,
+/// different trees.
 static bool inflate_huffman(bit_reader_t *br,
                             output_buffer_t *out,
                             huffman_tree_t *lit_tree,
@@ -657,7 +689,20 @@ static bool inflate_huffman(bit_reader_t *br,
     }
 }
 
-/// @brief Inflate a dynamic Huffman block
+/// @brief Inflate a DEFLATE type-2 (dynamic Huffman) block.
+///
+/// Dynamic blocks ship their own Huffman trees, built via a three-level
+/// scheme (RFC 1951 §3.2.7):
+///   1. Read HLIT/HDIST/HCLEN counts, then HCLEN 3-bit lengths in the
+///      permuted `code_length_order` sequence to build a meta-tree for
+///      decoding code-length values.
+///   2. Use the meta-tree to decode HLIT+HDIST code lengths, with
+///      special symbols 16/17/18 encoding run-length-compressed
+///      repeats of prior/zero lengths.
+///   3. Split the decoded lengths into literal/length and distance
+///      trees, then delegate the symbol loop to `inflate_huffman`.
+/// Frees all transient trees on every exit path — traps aren't used
+/// here because the caller may need to fall back cleanly.
 static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out) {
     // Read header
     int hlit = br_read(br, 5) + 257; // Number of literal/length codes
@@ -757,7 +802,15 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out) {
     return ok;
 }
 
-/// @brief Main DEFLATE decompression function
+/// @brief Top-level DEFLATE decompression driver.
+///
+/// Walks a stream of DEFLATE blocks until BFINAL=1 is seen. Each block
+/// is decoded via `inflate_stored`, `inflate_huffman` (with shared
+/// fixed trees), or `inflate_dynamic` based on its 2-bit type. Traps
+/// on truncated input, invalid block types, or output exceeding the
+/// 256MB decompression-bomb limit. After the final block, any residual
+/// non-zero bits in the byte-aligned tail are a stream corruption —
+/// not just padding — and also trap.
 static void *inflate_data(const uint8_t *data, size_t len) {
     init_fixed_trees();
 
@@ -806,6 +859,19 @@ static void *inflate_data(const uint8_t *data, size_t len) {
         }
     }
 
+    if (br.bits_in_buf > 0) {
+        int padding_bits = br.bits_in_buf > 7 ? 7 : br.bits_in_buf;
+        uint32_t padding_mask = (1U << padding_bits) - 1U;
+        if ((br.buffer & padding_mask) != 0 || br.bits_in_buf > 7) {
+            out_free(&out);
+            rt_trap("Inflate: trailing data after final block");
+        }
+    }
+    if (br.pos < br.len) {
+        out_free(&out);
+        rt_trap("Inflate: trailing data after final block");
+    }
+
     // Create output Bytes object
     void *result = rt_bytes_new(out.len);
     memcpy(bytes_data(result), out.data, out.len);
@@ -835,7 +901,14 @@ static inline int compute_hash(const uint8_t *data) {
     return ((data[0] << 10) ^ (data[1] << 5) ^ data[2]) & HASH_MASK;
 }
 
-/// @brief Initialize LZ77 state
+/// @brief Allocate the LZ77 hash-chain tables for match finding.
+///
+/// Two arrays back the sliding-window match search: `head` (HASH_SIZE
+/// slots) maps a 3-byte-prefix hash to the most recent position seen,
+/// and `prev` (WINDOW_SIZE slots) chains older positions sharing the
+/// same hash. NIL (-1) marks unused slots. Together they form a
+/// hash-chained lookup that `find_match` walks to locate the longest
+/// back-reference. Traps on OOM.
 static bool lz77_init(lz77_state_t *lz) {
     lz->head = (int *)malloc(HASH_SIZE * sizeof(int));
     lz->prev = (int *)malloc(WINDOW_SIZE * sizeof(int));
@@ -861,7 +934,15 @@ static void lz77_free(lz77_state_t *lz) {
     free(lz->prev);
 }
 
-/// @brief Find best match at current position
+/// @brief Find the longest LZ77 back-reference match at `pos`.
+///
+/// Hashes the 3 bytes at `pos`, walks the hash chain of prior positions
+/// with the same prefix, and returns the longest match found (up to
+/// `MAX_MATCH_LEN = 258`). `max_chain` caps the walk depth — higher
+/// compression levels use longer chains (`4 << level`) for better
+/// matches at the cost of speed. Refuses matches with distance
+/// exceeding 32KB or below `MIN_MATCH_LEN = 3` (short matches cost
+/// more bits than the literals they replace).
 static int find_match(
     lz77_state_t *lz, const uint8_t *data, size_t pos, size_t len, int max_chain, int *match_dist) {
     if (pos + MIN_MATCH_LEN > len)
@@ -904,14 +985,24 @@ static int find_match(
     return best_len >= MIN_MATCH_LEN ? best_len : 0;
 }
 
-/// @brief Update hash chain
+/// @brief Insert `pos` at the head of the hash chain for its 3-byte prefix.
+///
+/// Maintains the `prev[pos] = head[hash]; head[hash] = pos` invariant
+/// that lets `find_match` walk back through older occurrences. Called
+/// after emitting a literal or (per byte) inside a match so later
+/// positions can find it.
 static void update_hash(lz77_state_t *lz, const uint8_t *data, size_t pos) {
     int hash = compute_hash(data + pos);
     lz->prev[pos & WINDOW_MASK] = lz->head[hash];
     lz->head[hash] = (int)pos;
 }
 
-/// @brief Get length code for a match length
+/// @brief Map an LZ77 match length (3..258) to the DEFLATE length code (257..285).
+///
+/// Scans the `length_base` table for the first entry whose next slot
+/// exceeds `length`, which identifies the code whose range covers it.
+/// Lengths of exactly 258 are encoded as code 285 (the sentinel final
+/// entry, which has zero extra bits).
 static int get_length_code(int length) {
     for (int i = 0; i < 29; i++) {
         if (i == 28)
@@ -922,7 +1013,11 @@ static int get_length_code(int length) {
     return 285;
 }
 
-/// @brief Get distance code for a distance
+/// @brief Map a back-reference distance (1..32768) to the DEFLATE distance code (0..29).
+///
+/// Linear scan of `dist_base`; the extra-bits table on the matching
+/// code handles the offset within each code's range. 30 distance
+/// codes cover the full 32KB window.
 static int get_dist_code(int dist) {
     for (int i = 0; i < 30; i++) {
         if (i == 29 || dist < dist_base[i + 1])
@@ -931,7 +1026,12 @@ static int get_dist_code(int dist) {
     return 29;
 }
 
-/// @brief Write bits in reverse order (LSB first as required by DEFLATE)
+/// @brief Emit a canonical Huffman code with DEFLATE's LSB-first bit order.
+///
+/// Canonical Huffman codes are conceptually MSB-first, but DEFLATE's
+/// bit stream reads LSB-first — so the code must be bit-reversed
+/// before `bw_write` emits it LSB-first and the decoder's
+/// `decode_symbol` reassembles the original MSB-first prefix.
 static void write_code(bit_writer_t *bw, uint16_t code, int len) {
     // Reverse the code bits
     uint16_t rev = 0;
@@ -942,7 +1042,14 @@ static void write_code(bit_writer_t *bw, uint16_t code, int len) {
     bw_write(bw, rev, len);
 }
 
-/// @brief Compress data using DEFLATE with stored blocks (simplest approach)
+/// @brief Emit a sequence of DEFLATE type-0 (stored/uncompressed) blocks.
+///
+/// Used at level 1 or for very small payloads where Huffman overhead
+/// would exceed any savings. Each block carries up to 65535 bytes (LEN
+/// is a u16), so large inputs are chunked across multiple back-to-back
+/// stored blocks with BFINAL=0 until the last one. An empty input
+/// still needs one final block so the stream is well-formed — handled
+/// as a special case up front.
 static void deflate_stored(bit_writer_t *bw, const uint8_t *data, size_t len) {
     // Handle empty data - still need a final block
     if (len == 0) {
@@ -991,7 +1098,16 @@ static void deflate_stored(bit_writer_t *bw, const uint8_t *data, size_t len) {
     }
 }
 
-/// @brief Compress data using fixed Huffman codes
+/// @brief Emit a single DEFLATE type-1 (fixed Huffman) block with LZ77 matching.
+///
+/// At each input position, queries `find_match` for the longest
+/// back-reference. If the match meets the minimum length, emits a
+/// length-code + distance-code pair (with their extra-bits suffixes)
+/// using the canonical fixed Huffman assignment — literals 0..143
+/// use 8-bit codes 0x30..0xBF, 144..255 use 9-bit codes, end-of-block
+/// is 7 bits, etc. Otherwise falls back to a literal. Hash chain is
+/// advanced one byte per input regardless so future positions can
+/// still find matches even inside earlier matches.
 static int deflate_fixed(bit_writer_t *bw, const uint8_t *data, size_t len, int level) {
     init_fixed_trees();
 
@@ -1075,7 +1191,14 @@ static int deflate_fixed(bit_writer_t *bw, const uint8_t *data, size_t len, int 
     return 1;
 }
 
-/// @brief Main DEFLATE compression function
+/// @brief Top-level DEFLATE compression driver.
+///
+/// Picks the block strategy: inputs of ≤64 bytes or level=1 use stored
+/// blocks (no Huffman savings worth the overhead); everything else uses
+/// a single fixed-Huffman block with LZ77. Dynamic Huffman (block type
+/// 2) is not currently emitted — decoder supports it for
+/// interoperability, but the encoder keeps encoding simple. Level is
+/// clamped to [1..9].
 static void *deflate_data(const uint8_t *data, size_t len, int level) {
     if (level < DEFLATE_MIN_LEVEL)
         level = DEFLATE_MIN_LEVEL;
@@ -1110,7 +1233,13 @@ static void *deflate_data(const uint8_t *data, size_t len, int level) {
 // GZIP Wrapper
 //=============================================================================
 
-/// @brief Compress data with GZIP wrapper
+/// @brief Wrap a DEFLATE payload in the RFC 1952 GZIP envelope.
+///
+/// Layout: 10-byte header (magic 0x1F 0x8B, method=8 deflate, flags=0,
+/// zeroed MTIME, XFL, OS=0xFF unknown) + DEFLATE payload + 8-byte
+/// trailer (CRC32 of the original uncompressed data + ISIZE =
+/// uncompressed length mod 2^32, both little-endian). CRC32 is computed
+/// over the raw input, not the compressed bytes.
 static void *gzip_data(const uint8_t *data, size_t len, int level) {
     // First compress with DEFLATE
     void *deflated = deflate_data(data, len, level);
@@ -1160,7 +1289,16 @@ static void *gzip_data(const uint8_t *data, size_t len, int level) {
     return result;
 }
 
-/// @brief Decompress GZIP data
+/// @brief Decode a GZIP-wrapped DEFLATE stream per RFC 1952.
+///
+/// Validates magic bytes (0x1F 0x8B), checks method=deflate, then walks
+/// the optional header fields selected by the flags byte: FEXTRA (2-byte
+/// length + payload), FNAME (NUL-terminated), FCOMMENT (NUL-terminated),
+/// FHCRC (2-byte CRC16 of the header so far). After the DEFLATE stream
+/// ends, validates the 8-byte trailer (CRC32 of inflated data + ISIZE)
+/// against the actual inflated result. Traps on any mismatch.
+/// Multi-member GZIP streams are not supported — only the first
+/// member is read.
 static void *gunzip_data(const uint8_t *data, size_t len) {
     if (len < 18) {
         rt_trap("Gunzip: data too short");

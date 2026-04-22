@@ -395,6 +395,67 @@ static void test_files() {
     printf("\n");
 }
 
+/// @brief Test rt_dir_files excludes symlinks to files on POSIX.
+static void test_files_excludes_file_symlink() {
+    printf("Testing rt_dir_files symlink filtering:\n");
+
+    const char *base = get_test_base();
+    char file_path[512], link_path[512];
+    snprintf(file_path, sizeof(file_path), "%s/real.txt", base);
+    snprintf(link_path, sizeof(link_path), "%s/link.txt", base);
+
+    mkdir_p(base);
+    create_file(file_path);
+    (void)unlink(link_path);
+    assert(symlink(file_path, link_path) == 0);
+
+    void *files = rt_dir_files(rt_const_cstr(base));
+    int64_t count = rt_seq_len(files);
+    bool found_real = false;
+    bool found_link = false;
+    for (int64_t i = 0; i < count; ++i) {
+        rt_string entry = (rt_string)rt_seq_get(files, i);
+        if (rt_str_eq(entry, rt_const_cstr("real.txt")))
+            found_real = true;
+        if (rt_str_eq(entry, rt_const_cstr("link.txt")))
+            found_link = true;
+    }
+
+    test_result("regular file included", found_real);
+    test_result("symlink to file excluded", !found_link);
+
+    unlink(link_path);
+    remove_file(file_path);
+    rmdir_p(base);
+    printf("\n");
+}
+
+/// @brief Test rt_dir_remove_all removes a top-level symlink without deleting its target.
+static void test_remove_all_symlink_does_not_delete_target() {
+    printf("Testing rt_dir_remove_all top-level symlink safety:\n");
+
+    const char *base = get_test_base();
+    char target_dir[512], target_file[512], link_path[512];
+    snprintf(target_dir, sizeof(target_dir), "%s_target", base);
+    snprintf(target_file, sizeof(target_file), "%s_target/keep.txt", base);
+    snprintf(link_path, sizeof(link_path), "%s_link", base);
+
+    mkdir_p(target_dir);
+    create_file(target_file);
+    (void)unlink(link_path);
+    assert(symlink(target_dir, link_path) == 0);
+
+    rt_dir_remove_all(rt_const_cstr(link_path));
+
+    struct stat st;
+    test_result("symlink removed", lstat(link_path, &st) != 0);
+    test_result("target directory preserved", rt_dir_exists(rt_const_cstr(target_dir)) == 1);
+
+    remove_file(target_file);
+    rmdir_p(target_dir);
+    printf("\n");
+}
+
 /// @brief Test rt_dir_dirs.
 static void test_dirs() {
     printf("Testing rt_dir_dirs:\n");
@@ -652,6 +713,8 @@ int main() {
     test_list();
     test_entries();
     test_files();
+    test_files_excludes_file_symlink();
+    test_remove_all_symlink_does_not_delete_target();
     test_dirs();
     test_list_seq_wrappers();
     test_current();

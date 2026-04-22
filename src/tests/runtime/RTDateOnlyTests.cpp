@@ -14,8 +14,34 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <climits>
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <setjmp.h>
+
+static jmp_buf g_trap_env;
+static int g_expect_trap = 0;
+
+extern "C" void vm_trap(const char *msg) {
+    if (g_expect_trap)
+        longjmp(g_trap_env, 1);
+    fprintf(stderr, "unexpected trap: %s\n", msg ? msg : "(null)");
+    abort();
+}
+
+#define EXPECT_TRAP(expr)                                                                         \
+    do {                                                                                          \
+        g_expect_trap = 1;                                                                         \
+        if (setjmp(g_trap_env) == 0) {                                                            \
+            (void)(expr);                                                                          \
+            g_expect_trap = 0;                                                                     \
+            assert(!"expected runtime trap");                                                     \
+        } else {                                                                                   \
+            g_expect_trap = 0;                                                                     \
+        }                                                                                          \
+    } while (0)
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -91,6 +117,24 @@ static void test_dateonly_parsing() {
         test_result("Invalid format returns NULL", d == NULL);
     }
 
+    // Test 3: Strict parser rejects trailing characters
+    {
+        void *d = rt_dateonly_parse(rt_const_cstr("2024-06-15x"));
+        test_result("Trailing characters return NULL", d == NULL);
+    }
+
+    // Test 4: Strict parser rejects non-padded fields
+    {
+        void *d = rt_dateonly_parse(rt_const_cstr("2024-6-15"));
+        test_result("Non-padded date returns NULL", d == NULL);
+    }
+
+    // Test 5: Strict parser rejects invalid dates
+    {
+        void *d = rt_dateonly_parse(rt_const_cstr("2024-02-30"));
+        test_result("Invalid parsed date returns NULL", d == NULL);
+    }
+
     printf("\n");
 }
 
@@ -117,6 +161,13 @@ static void test_dateonly_components() {
         int64_t days = rt_dateonly_to_days(d);
         void *d2 = rt_dateonly_from_days(days);
         test_result("Round-trip to days", rt_dateonly_equals(d, d2) == 1);
+    }
+
+    // Test 4: Dates before the Unix epoch normalize weekday into 0..6
+    {
+        void *pre_epoch = rt_dateonly_create(1969, 12, 27); // Saturday
+        test_result("Pre-epoch day of week is non-negative",
+                    rt_dateonly_day_of_week(pre_epoch) == 6);
     }
 
     printf("\n");
@@ -146,6 +197,13 @@ static void test_dateonly_arithmetic() {
         test_result("Add 3 months", rt_dateonly_month(d2) == 4);
     }
 
+    // Test 3b: Add negative months
+    {
+        void *d2 = rt_dateonly_add_months(d, -1);
+        test_result("Subtract 1 month crosses year", rt_dateonly_year(d2) == 2023);
+        test_result("Subtract 1 month month", rt_dateonly_month(d2) == 12);
+    }
+
     // Test 4: Add months with day clamping (Jan 31 + 1 month)
     {
         void *jan31 = rt_dateonly_create(2024, 1, 31);
@@ -171,6 +229,19 @@ static void test_dateonly_arithmetic() {
         void *d1 = rt_dateonly_create(2024, 1, 1);
         void *d2 = rt_dateonly_create(2024, 1, 11);
         test_result("Diff days", rt_dateonly_diff_days(d2, d1) == 10);
+    }
+
+    // Test 8: Large month offsets normalize without iterative loops
+    {
+        void *d2 = rt_dateonly_add_months(d, INT64_MAX);
+        test_result("Huge AddMonths returns a date", d2 != nullptr);
+    }
+
+    // Test 9: Overflowing arithmetic traps
+    {
+        EXPECT_TRAP(rt_dateonly_add_days(d, INT64_MAX));
+        EXPECT_TRAP(rt_dateonly_add_years(d, INT64_MAX));
+        test_result("DateOnly overflow traps", true);
     }
 
     printf("\n");

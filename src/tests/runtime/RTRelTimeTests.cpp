@@ -10,6 +10,8 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <climits>
+#include <cstdint>
 #include <cstring>
 #include <ctime>
 
@@ -110,6 +112,20 @@ static void test_in_future() {
     rt_string_unref(r);
 }
 
+static void test_extreme_timestamp_diff() {
+    rt_string r = rt_reltime_format_from(INT64_MIN, INT64_MAX);
+    const char *cstr = rt_string_cstr(r);
+    assert(cstr != NULL);
+    assert(strstr(cstr, "ago") != NULL);
+    rt_string_unref(r);
+
+    r = rt_reltime_format_from(INT64_MAX, INT64_MIN);
+    cstr = rt_string_cstr(r);
+    assert(cstr != NULL);
+    assert(strncmp(cstr, "in ", 3) == 0);
+    rt_string_unref(r);
+}
+
 // ---------------------------------------------------------------------------
 // format_duration tests
 // ---------------------------------------------------------------------------
@@ -164,6 +180,18 @@ static void test_short_format() {
     assert(cstr != NULL);
     assert(str_eq(r, "now"));
     rt_string_unref(r);
+
+    r = rt_reltime_format_short(now - 120);
+    cstr = rt_string_cstr(r);
+    assert(cstr != NULL);
+    assert(strstr(cstr, "ago") != NULL);
+    rt_string_unref(r);
+
+    r = rt_reltime_format_short(now + 120);
+    cstr = rt_string_cstr(r);
+    assert(cstr != NULL);
+    assert(strncmp(cstr, "in ", 3) == 0);
+    rt_string_unref(r);
 }
 
 /// @brief Main.
@@ -179,6 +207,7 @@ int main() {
     test_months_ago();
     test_years_ago();
     test_in_future();
+    test_extreme_timestamp_diff();
 
     // format_duration
     test_duration_seconds();

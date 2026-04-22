@@ -15,12 +15,11 @@
 // Key invariants:
 //   - A Duration is represented as a plain int64_t (milliseconds); there is no
 //     wrapper struct or heap object — values are passed by value.
-//   - All factory and conversion functions are pure arithmetic; no validation
-//     is performed on overflow (callers are responsible).
+//   - Factories and arithmetic functions trap on signed 64-bit overflow.
 //   - Component extraction (e.g., rt_duration_hours_part) returns the whole-
 //     unit component after subtracting larger units, analogous to .NET TimeSpan.
-//   - Negative durations represent intervals in the past; component parts may
-//     be negative when the total duration is negative.
+//   - Negative durations represent intervals in the past; component extraction
+//     uses the unsigned magnitude so INT64_MIN is handled without negation UB.
 //
 // Ownership/Lifetime:
 //   - Duration values are scalar int64_t; no heap allocation is performed.
@@ -36,7 +35,9 @@
 #include "rt_duration.h"
 
 #include "rt_string.h"
+#include "rt_trap.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,6 +47,64 @@
 #define MS_PER_MINUTE (60LL * MS_PER_SECOND)
 #define MS_PER_HOUR (60LL * MS_PER_MINUTE)
 #define MS_PER_DAY (24LL * MS_PER_HOUR)
+
+static int dur_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
+    if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b))
+        return 1;
+    *out = a + b;
+    return 0;
+}
+
+static int dur_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
+    if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b))
+        return 1;
+    *out = a - b;
+    return 0;
+}
+
+static int dur_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_mul_overflow(a, b, out);
+#else
+    if (a == 0 || b == 0) {
+        *out = 0;
+        return 0;
+    }
+    if (a > 0) {
+        if (b > 0) {
+            if (a > INT64_MAX / b)
+                return 1;
+        } else if (b < INT64_MIN / a) {
+            return 1;
+        }
+    } else {
+        if (b > 0) {
+            if (a < INT64_MIN / b)
+                return 1;
+        } else if (a < INT64_MAX / b) {
+            return 1;
+        }
+    }
+    *out = a * b;
+    return 0;
+#endif
+}
+
+static uint64_t dur_abs_u64(int64_t duration) {
+    if (duration >= 0)
+        return (uint64_t)duration;
+    return (uint64_t)(-(duration + 1)) + 1u;
+}
+
+static void dur_append_snprintf(char **p, char *end, int len) {
+    if (len < 0)
+        return;
+    if (len >= end - *p) {
+        *p = end;
+        return;
+    }
+    *p += len;
+}
 
 //=============================================================================
 // Duration Creation
@@ -62,34 +121,67 @@ int64_t rt_duration_from_millis(int64_t ms) {
 /// @param seconds Number of seconds.
 /// @return Duration in milliseconds (seconds * 1000).
 int64_t rt_duration_from_seconds(int64_t seconds) {
-    return seconds * MS_PER_SECOND;
+    int64_t result;
+    if (dur_checked_mul_i64(seconds, MS_PER_SECOND, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
 }
 
 /// @brief Create a Duration from a count of minutes.
 /// @param minutes Number of minutes.
 /// @return Duration in milliseconds (minutes * 60000).
 int64_t rt_duration_from_minutes(int64_t minutes) {
-    return minutes * MS_PER_MINUTE;
+    int64_t result;
+    if (dur_checked_mul_i64(minutes, MS_PER_MINUTE, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
 }
 
 /// @brief Create a Duration from a count of hours.
 /// @param hours Number of hours.
 /// @return Duration in milliseconds (hours * 3600000).
 int64_t rt_duration_from_hours(int64_t hours) {
-    return hours * MS_PER_HOUR;
+    int64_t result;
+    if (dur_checked_mul_i64(hours, MS_PER_HOUR, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
 }
 
 /// @brief Create a Duration from a count of days.
 /// @param days Number of days.
 /// @return Duration in milliseconds (days * 86400000).
 int64_t rt_duration_from_days(int64_t days) {
-    return days * MS_PER_DAY;
+    int64_t result;
+    if (dur_checked_mul_i64(days, MS_PER_DAY, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
 }
 
 int64_t rt_duration_create(
     int64_t days, int64_t hours, int64_t minutes, int64_t seconds, int64_t millis) {
-    return days * MS_PER_DAY + hours * MS_PER_HOUR + minutes * MS_PER_MINUTE +
-           seconds * MS_PER_SECOND + millis;
+    int64_t total = 0;
+    int64_t part;
+    if (dur_checked_mul_i64(days, MS_PER_DAY, &part) ||
+        dur_checked_add_i64(total, part, &total) ||
+        dur_checked_mul_i64(hours, MS_PER_HOUR, &part) ||
+        dur_checked_add_i64(total, part, &total) ||
+        dur_checked_mul_i64(minutes, MS_PER_MINUTE, &part) ||
+        dur_checked_add_i64(total, part, &total) ||
+        dur_checked_mul_i64(seconds, MS_PER_SECOND, &part) ||
+        dur_checked_add_i64(total, part, &total) ||
+        dur_checked_add_i64(total, millis, &total)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return total;
 }
 
 //=============================================================================
@@ -148,40 +240,40 @@ double rt_duration_total_seconds_f(int64_t duration) {
 /// @param duration Duration in milliseconds.
 /// @return Unsigned day count.
 int64_t rt_duration_get_days(int64_t duration) {
-    int64_t abs_dur = duration >= 0 ? duration : -duration;
-    return abs_dur / MS_PER_DAY;
+    uint64_t abs_dur = dur_abs_u64(duration);
+    return (int64_t)(abs_dur / MS_PER_DAY);
 }
 
 /// @brief Extract the hours component (0-23 after removing days).
 /// @param duration Duration in milliseconds.
 /// @return Hours remaining after subtracting whole days.
 int64_t rt_duration_get_hours(int64_t duration) {
-    int64_t abs_dur = duration >= 0 ? duration : -duration;
-    return (abs_dur % MS_PER_DAY) / MS_PER_HOUR;
+    uint64_t abs_dur = dur_abs_u64(duration);
+    return (int64_t)((abs_dur % MS_PER_DAY) / MS_PER_HOUR);
 }
 
 /// @brief Extract the minutes component (0-59 after removing hours).
 /// @param duration Duration in milliseconds.
 /// @return Minutes remaining after subtracting whole hours.
 int64_t rt_duration_get_minutes(int64_t duration) {
-    int64_t abs_dur = duration >= 0 ? duration : -duration;
-    return (abs_dur % MS_PER_HOUR) / MS_PER_MINUTE;
+    uint64_t abs_dur = dur_abs_u64(duration);
+    return (int64_t)((abs_dur % MS_PER_HOUR) / MS_PER_MINUTE);
 }
 
 /// @brief Extract the seconds component (0-59 after removing minutes).
 /// @param duration Duration in milliseconds.
 /// @return Seconds remaining after subtracting whole minutes.
 int64_t rt_duration_get_seconds(int64_t duration) {
-    int64_t abs_dur = duration >= 0 ? duration : -duration;
-    return (abs_dur % MS_PER_MINUTE) / MS_PER_SECOND;
+    uint64_t abs_dur = dur_abs_u64(duration);
+    return (int64_t)((abs_dur % MS_PER_MINUTE) / MS_PER_SECOND);
 }
 
 /// @brief Extract the milliseconds component (0-999 after removing seconds).
 /// @param duration Duration in milliseconds.
 /// @return Milliseconds remaining after subtracting whole seconds.
 int64_t rt_duration_get_millis(int64_t duration) {
-    int64_t abs_dur = duration >= 0 ? duration : -duration;
-    return abs_dur % MS_PER_SECOND;
+    uint64_t abs_dur = dur_abs_u64(duration);
+    return (int64_t)(abs_dur % MS_PER_SECOND);
 }
 
 //=============================================================================
@@ -193,7 +285,12 @@ int64_t rt_duration_get_millis(int64_t duration) {
 /// @param d2 Second duration in milliseconds.
 /// @return Sum (d1 + d2) in milliseconds.
 int64_t rt_duration_add(int64_t d1, int64_t d2) {
-    return d1 + d2;
+    int64_t result;
+    if (dur_checked_add_i64(d1, d2, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
 }
 
 /// @brief Subtract two durations.
@@ -201,7 +298,12 @@ int64_t rt_duration_add(int64_t d1, int64_t d2) {
 /// @param d2 Second duration in milliseconds.
 /// @return Difference (d1 - d2) in milliseconds.
 int64_t rt_duration_sub(int64_t d1, int64_t d2) {
-    return d1 - d2;
+    int64_t result;
+    if (dur_checked_sub_i64(d1, d2, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
 }
 
 /// @brief Scale a duration by an integer factor.
@@ -209,7 +311,12 @@ int64_t rt_duration_sub(int64_t d1, int64_t d2) {
 /// @param factor Multiplier.
 /// @return Scaled duration (duration * factor).
 int64_t rt_duration_mul(int64_t duration, int64_t factor) {
-    return duration * factor;
+    int64_t result;
+    if (dur_checked_mul_i64(duration, factor, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
 }
 
 /// @brief Divide a duration by an integer divisor.
@@ -218,8 +325,14 @@ int64_t rt_duration_mul(int64_t duration, int64_t factor) {
 /// @param divisor Divisor (must be non-zero).
 /// @return Truncated quotient (duration / divisor).
 int64_t rt_duration_div(int64_t duration, int64_t divisor) {
-    if (divisor == 0)
-        return 0; // Avoid division by zero
+    if (divisor == 0) {
+        rt_trap_div0();
+        return 0;
+    }
+    if (duration == INT64_MIN && divisor == -1) {
+        rt_trap_ovf();
+        return 0;
+    }
     return duration / divisor;
 }
 
@@ -266,13 +379,13 @@ rt_string rt_duration_to_string(int64_t duration) {
     char buffer[64];
 
     int negative = duration < 0;
-    int64_t abs_dur = negative ? -duration : duration;
+    uint64_t abs_dur = dur_abs_u64(duration);
 
-    int64_t days = abs_dur / MS_PER_DAY;
-    int64_t hours = (abs_dur % MS_PER_DAY) / MS_PER_HOUR;
-    int64_t minutes = (abs_dur % MS_PER_HOUR) / MS_PER_MINUTE;
-    int64_t seconds = (abs_dur % MS_PER_MINUTE) / MS_PER_SECOND;
-    int64_t millis = abs_dur % MS_PER_SECOND;
+    uint64_t days = abs_dur / MS_PER_DAY;
+    uint64_t hours = (abs_dur % MS_PER_DAY) / MS_PER_HOUR;
+    uint64_t minutes = (abs_dur % MS_PER_HOUR) / MS_PER_MINUTE;
+    uint64_t seconds = (abs_dur % MS_PER_MINUTE) / MS_PER_SECOND;
+    uint64_t millis = abs_dur % MS_PER_SECOND;
 
     const char *sign = negative ? "-" : "";
 
@@ -280,41 +393,41 @@ rt_string rt_duration_to_string(int64_t duration) {
         if (millis > 0) {
             snprintf(buffer,
                      sizeof(buffer),
-                     "%s%lld.%02lld:%02lld:%02lld.%03lld",
+                     "%s%llu.%02llu:%02llu:%02llu.%03llu",
                      sign,
-                     (long long)days,
-                     (long long)hours,
-                     (long long)minutes,
-                     (long long)seconds,
-                     (long long)millis);
+                     (unsigned long long)days,
+                     (unsigned long long)hours,
+                     (unsigned long long)minutes,
+                     (unsigned long long)seconds,
+                     (unsigned long long)millis);
         } else {
             snprintf(buffer,
                      sizeof(buffer),
-                     "%s%lld.%02lld:%02lld:%02lld",
+                     "%s%llu.%02llu:%02llu:%02llu",
                      sign,
-                     (long long)days,
-                     (long long)hours,
-                     (long long)minutes,
-                     (long long)seconds);
+                     (unsigned long long)days,
+                     (unsigned long long)hours,
+                     (unsigned long long)minutes,
+                     (unsigned long long)seconds);
         }
     } else {
         if (millis > 0) {
             snprintf(buffer,
                      sizeof(buffer),
-                     "%s%02lld:%02lld:%02lld.%03lld",
+                     "%s%02llu:%02llu:%02llu.%03llu",
                      sign,
-                     (long long)hours,
-                     (long long)minutes,
-                     (long long)seconds,
-                     (long long)millis);
+                     (unsigned long long)hours,
+                     (unsigned long long)minutes,
+                     (unsigned long long)seconds,
+                     (unsigned long long)millis);
         } else {
             snprintf(buffer,
                      sizeof(buffer),
-                     "%s%02lld:%02lld:%02lld",
+                     "%s%02llu:%02llu:%02llu",
                      sign,
-                     (long long)hours,
-                     (long long)minutes,
-                     (long long)seconds);
+                     (unsigned long long)hours,
+                     (unsigned long long)minutes,
+                     (unsigned long long)seconds);
         }
     }
 
@@ -329,50 +442,62 @@ rt_string rt_duration_to_string(int64_t duration) {
 rt_string rt_duration_to_iso(int64_t duration) {
     char buffer[64];
     char *p = buffer;
+    char *end = buffer + sizeof(buffer);
 
     int negative = duration < 0;
-    int64_t abs_dur = negative ? -duration : duration;
+    uint64_t abs_dur = dur_abs_u64(duration);
 
-    int64_t days = abs_dur / MS_PER_DAY;
-    int64_t hours = (abs_dur % MS_PER_DAY) / MS_PER_HOUR;
-    int64_t minutes = (abs_dur % MS_PER_HOUR) / MS_PER_MINUTE;
-    int64_t seconds = (abs_dur % MS_PER_MINUTE) / MS_PER_SECOND;
-    int64_t millis = abs_dur % MS_PER_SECOND;
+    uint64_t days = abs_dur / MS_PER_DAY;
+    uint64_t hours = (abs_dur % MS_PER_DAY) / MS_PER_HOUR;
+    uint64_t minutes = (abs_dur % MS_PER_HOUR) / MS_PER_MINUTE;
+    uint64_t seconds = (abs_dur % MS_PER_MINUTE) / MS_PER_SECOND;
+    uint64_t millis = abs_dur % MS_PER_SECOND;
 
     if (negative)
         *p++ = '-';
     *p++ = 'P';
 
-    char *end = buffer + sizeof(buffer);
     if (days > 0) {
-        p += snprintf(p, (size_t)(end - p), "%lldD", (long long)days);
+        dur_append_snprintf(
+            &p, end, snprintf(p, (size_t)(end - p), "%lluD", (unsigned long long)days));
     }
 
     if (hours > 0 || minutes > 0 || seconds > 0 || millis > 0) {
-        *p++ = 'T';
+        if (p < end)
+            *p++ = 'T';
         if (hours > 0) {
-            p += snprintf(p, (size_t)(end - p), "%lldH", (long long)hours);
+            dur_append_snprintf(
+                &p, end, snprintf(p, (size_t)(end - p), "%lluH", (unsigned long long)hours));
         }
         if (minutes > 0) {
-            p += snprintf(p, (size_t)(end - p), "%lldM", (long long)minutes);
+            dur_append_snprintf(
+                &p, end, snprintf(p, (size_t)(end - p), "%lluM", (unsigned long long)minutes));
         }
         if (seconds > 0 || millis > 0) {
             if (millis > 0) {
-                p += snprintf(
-                    p, (size_t)(end - p), "%lld.%03lldS", (long long)seconds, (long long)millis);
+                dur_append_snprintf(&p,
+                                    end,
+                                    snprintf(p,
+                                             (size_t)(end - p),
+                                             "%llu.%03lluS",
+                                             (unsigned long long)seconds,
+                                             (unsigned long long)millis));
             } else {
-                p += snprintf(p, (size_t)(end - p), "%lldS", (long long)seconds);
+                dur_append_snprintf(
+                    &p, end, snprintf(p, (size_t)(end - p), "%lluS", (unsigned long long)seconds));
             }
         }
     }
 
     // Handle zero duration
-    if (p == buffer + 1 || (p == buffer + 2 && negative)) {
+    if ((p == buffer + 1 || (p == buffer + 2 && negative)) && p + 3 < end) {
         *p++ = 'T';
         *p++ = '0';
         *p++ = 'S';
     }
 
+    if (p >= end)
+        p = end - 1;
     *p = '\0';
     return rt_string_from_bytes(buffer, strlen(buffer));
 }

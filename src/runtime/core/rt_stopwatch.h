@@ -13,6 +13,7 @@
 //   - Nanosecond resolution is used where the platform clock permits.
 //   - Elapsed queries while running include time since the last start call.
 //   - rt_stopwatch_restart resets elapsed to zero and immediately starts timing.
+//   - Instance methods trap when passed a NULL stopwatch pointer.
 //
 // Ownership/Lifetime:
 //   - Stopwatch objects are heap-allocated; caller is responsible for lifetime management.

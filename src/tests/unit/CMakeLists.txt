@@ -828,6 +828,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_file_ext PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_file_ext test_rt_file_ext)
 
+    viper_add_test(test_rt_asset ${VIPER_TESTS_DIR}/runtime/RTAssetTests.cpp)
+    target_link_libraries(test_rt_asset PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_asset test_rt_asset)
+
     viper_add_test(test_rt_savedata ${VIPER_TESTS_DIR}/runtime/RTSaveDataTests.cpp)
     target_link_libraries(test_rt_savedata PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_savedata test_rt_savedata)

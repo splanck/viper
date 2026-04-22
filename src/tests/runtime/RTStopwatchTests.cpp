@@ -16,6 +16,30 @@
 
 #include <cassert>
 #include <cstdio>
+#include <cstdlib>
+#include <setjmp.h>
+
+static jmp_buf g_trap_env;
+static int g_expect_trap = 0;
+
+extern "C" void vm_trap(const char *msg) {
+    if (g_expect_trap)
+        longjmp(g_trap_env, 1);
+    fprintf(stderr, "unexpected trap: %s\n", msg ? msg : "(null)");
+    abort();
+}
+
+#define EXPECT_TRAP(expr)                                                                         \
+    do {                                                                                          \
+        g_expect_trap = 1;                                                                         \
+        if (setjmp(g_trap_env) == 0) {                                                            \
+            (void)(expr);                                                                          \
+            g_expect_trap = 0;                                                                     \
+            assert(!"expected runtime trap");                                                     \
+        } else {                                                                                   \
+            g_expect_trap = 0;                                                                     \
+        }                                                                                          \
+    } while (0)
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -304,6 +328,22 @@ static void test_time_units() {
     printf("\n");
 }
 
+static void test_null_receiver_traps() {
+    printf("Testing null receiver traps:\n");
+
+    EXPECT_TRAP(rt_stopwatch_start(nullptr));
+    EXPECT_TRAP(rt_stopwatch_stop(nullptr));
+    EXPECT_TRAP(rt_stopwatch_reset(nullptr));
+    EXPECT_TRAP(rt_stopwatch_restart(nullptr));
+    EXPECT_TRAP(rt_stopwatch_elapsed_ns(nullptr));
+    EXPECT_TRAP(rt_stopwatch_elapsed_us(nullptr));
+    EXPECT_TRAP(rt_stopwatch_elapsed_ms(nullptr));
+    EXPECT_TRAP(rt_stopwatch_is_running(nullptr));
+
+    test_result("Null receiver methods trap", true);
+    printf("\n");
+}
+
 /// @brief Entry point for Stopwatch tests.
 int main() {
     printf("=== RT Stopwatch Tests ===\n\n");
@@ -318,6 +358,7 @@ int main() {
     test_accumulation();
     test_elapsed_while_running();
     test_time_units();
+    test_null_receiver_traps();
 
     printf("All Stopwatch tests passed!\n");
     return 0;

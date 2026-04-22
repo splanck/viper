@@ -402,6 +402,43 @@ static void test_read_write_mode() {
     cleanup_test_file();
 }
 
+static void test_read_to_write_transition_without_user_seek() {
+    cleanup_test_file();
+
+    {
+        rt_string path = make_string(test_file);
+        rt_string mode = make_string("w");
+        void *bf = rt_binfile_open(path, mode);
+        rt_binfile_write_byte(bf, 'A');
+        rt_binfile_write_byte(bf, 'B');
+        rt_binfile_write_byte(bf, 'C');
+        rt_binfile_write_byte(bf, 'D');
+        rt_binfile_close(bf);
+    }
+
+    {
+        rt_string path = make_string(test_file);
+        rt_string mode = make_string("rw");
+        void *bf = rt_binfile_open(path, mode);
+        assert(rt_binfile_read_byte(bf) == 'A');
+        rt_binfile_write_byte(bf, 'Z');
+        rt_binfile_close(bf);
+    }
+
+    {
+        rt_string path = make_string(test_file);
+        rt_string mode = make_string("r");
+        void *bf = rt_binfile_open(path, mode);
+        assert(rt_binfile_read_byte(bf) == 'A');
+        assert(rt_binfile_read_byte(bf) == 'Z');
+        assert(rt_binfile_read_byte(bf) == 'C');
+        assert(rt_binfile_read_byte(bf) == 'D');
+        rt_binfile_close(bf);
+    }
+
+    cleanup_test_file();
+}
+
 static void test_partial_read() {
     cleanup_test_file();
 
@@ -541,6 +578,7 @@ int main() {
     test_eof();
     test_append_mode();
     test_read_write_mode();
+    test_read_to_write_transition_without_user_seek();
     test_partial_read();
     test_partial_write();
     test_flush();

@@ -118,6 +118,23 @@ static void archive_release_temp_object(void *obj) {
         rt_obj_free(obj);
 }
 
+static const char *archive_require_path(rt_string path, const char *context) {
+    const char *cpath = NULL;
+    if (!rt_file_path_from_vstr((const ViperString *)path, &cpath) || !cpath || *cpath == '\0')
+        rt_trap(context);
+    return cpath;
+}
+
+static const char *archive_entry_name_cstr(rt_string name) {
+    const uint8_t *data = NULL;
+    size_t len = rt_file_string_view((const ViperString *)name, &data);
+    if (!data || len == 0)
+        return NULL;
+    if (memchr(data, '\0', len) != NULL)
+        return NULL;
+    return (const char *)data;
+}
+
 #ifdef _WIN32
 /// @brief Open a UTF-8 path on Windows via the wide-string CreateFileW API.
 ///
@@ -223,15 +240,36 @@ static void archive_write_exact_posix(int fd, const uint8_t *src, size_t total, 
 
 static char *archive_make_temp_path(const char *path, unsigned attempt) {
     size_t path_len = strlen(path);
-    char *tmp = (char *)malloc(path_len + 96);
+    size_t parent_len = 0;
+    for (size_t i = 0; i < path_len; ++i) {
+#ifdef _WIN32
+        if (path[i] == '/' || path[i] == '\\')
+#else
+        if (path[i] == '/')
+#endif
+            parent_len = i + 1;
+    }
+
+    char *tmp = (char *)malloc(parent_len + 96);
     if (!tmp)
         return NULL;
+    if (parent_len > 0)
+        memcpy(tmp, path, parent_len);
 #ifdef _WIN32
     unsigned long pid = (unsigned long)GetCurrentProcessId();
 #else
     unsigned long pid = (unsigned long)getpid();
 #endif
-    snprintf(tmp, path_len + 96, "%s.tmp.%lu.%p.%u", path, pid, (void *)tmp, attempt);
+    int written = snprintf(tmp + parent_len,
+                           96,
+                           ".viper-archive-tmp.%lu.%p.%u",
+                           pid,
+                           (const void *)path,
+                           attempt);
+    if (written < 0 || written >= 96) {
+        free(tmp);
+        return NULL;
+    }
     return tmp;
 }
 
@@ -411,6 +449,77 @@ static void archive_write_bytes_to_path(const char *cpath, void *data) {
     archive_write_file_all_utf8(cpath, src, total, "Archive: failed to write destination file");
 }
 
+static int archive_is_sep(char c) {
+    return c == '/' || c == '\\';
+}
+
+static size_t archive_trim_trailing_seps(const char *path, size_t len) {
+    while (len > 1 && archive_is_sep(path[len - 1]))
+        --len;
+    return len;
+}
+
+static int archive_path_is_reparse_or_symlink(const char *path) {
+#ifdef _WIN32
+    wchar_t *wide = rt_file_path_utf8_to_wide(path);
+    if (!wide)
+        return 0;
+    DWORD attrs = GetFileAttributesW(wide);
+    free(wide);
+    if (attrs == INVALID_FILE_ATTRIBUTES)
+        return 0;
+    return (attrs & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+#else
+    struct stat st;
+    if (lstat(path, &st) != 0)
+        return 0;
+    return S_ISLNK(st.st_mode) ? 1 : 0;
+#endif
+}
+
+static void archive_reject_symlink_components(const char *path, size_t root_len, int include_leaf) {
+    if (!path)
+        return;
+    size_t len = strlen(path);
+    if (root_len > len)
+        root_len = len;
+    root_len = archive_trim_trailing_seps(path, root_len);
+
+    char *scratch = (char *)malloc(len + 1);
+    if (!scratch)
+        rt_trap("Archive: memory allocation failed");
+
+    if (root_len > 0) {
+        memcpy(scratch, path, root_len);
+        scratch[root_len] = '\0';
+        if (archive_path_is_reparse_or_symlink(scratch)) {
+            free(scratch);
+            rt_trap("Archive: refusing to extract through symlink");
+        }
+    }
+
+    size_t i = root_len;
+    while (i < len) {
+        while (i < len && archive_is_sep(path[i]))
+            ++i;
+        if (i >= len)
+            break;
+        while (i < len && !archive_is_sep(path[i]))
+            ++i;
+        if (i == len && !include_leaf)
+            break;
+
+        memcpy(scratch, path, i);
+        scratch[i] = '\0';
+        if (archive_path_is_reparse_or_symlink(scratch)) {
+            free(scratch);
+            rt_trap("Archive: refusing to extract through symlink");
+        }
+    }
+
+    free(scratch);
+}
+
 //=============================================================================
 // ZIP Entry Structure
 //=============================================================================
@@ -538,6 +647,14 @@ static void archive_free_entries(rt_archive_t *ar) {
     }
 }
 
+static void archive_free_entry_array(zip_entry_t *entries, int count) {
+    if (!entries)
+        return;
+    for (int i = 0; i < count; ++i)
+        free(entries[i].name);
+    free(entries);
+}
+
 /// @brief GC finalizer for archive objects.
 ///
 /// Called when the GC drops the last reference. Releases the path
@@ -651,13 +768,13 @@ static bool parse_central_directory(rt_archive_t *ar) {
         return false;
 
     // Validate central directory bounds
-    if ((size_t)cd_offset + cd_size > eocd_offset)
+    if ((size_t)cd_offset > eocd_offset || (size_t)cd_size > eocd_offset - (size_t)cd_offset)
         return false;
 
-    ar->entry_count = total_entries;
+    zip_entry_t *entries = NULL;
     if (total_entries > 0) {
-        ar->entries = (zip_entry_t *)calloc(total_entries, sizeof(zip_entry_t));
-        if (!ar->entries)
+        entries = (zip_entry_t *)calloc(total_entries, sizeof(zip_entry_t));
+        if (!entries)
             return false;
     }
 
@@ -665,22 +782,33 @@ static bool parse_central_directory(rt_archive_t *ar) {
     const uint8_t *p = ar->data + cd_offset;
     const uint8_t *cd_end = p + cd_size;
 
-    for (int i = 0; i < total_entries && p + ZIP_CENTRAL_HEADER_SIZE <= cd_end; i++) {
+    int parsed = 0;
+    for (; parsed < total_entries; parsed++) {
+        if ((size_t)(cd_end - p) < ZIP_CENTRAL_HEADER_SIZE) {
+            archive_free_entry_array(entries, parsed);
+            return false;
+        }
         if (read_u32(p) != ZIP_CENTRAL_HEADER_SIG) {
-            archive_free_entries(ar);
+            archive_free_entry_array(entries, parsed);
             return false;
         }
 
         uint16_t name_len = read_u16(p + 28);
         uint16_t extra_len = read_u16(p + 30);
         uint16_t comment_len = read_u16(p + 32);
+        size_t record_len =
+            ZIP_CENTRAL_HEADER_SIZE + (size_t)name_len + (size_t)extra_len + (size_t)comment_len;
 
-        if (p + ZIP_CENTRAL_HEADER_SIZE + name_len + extra_len + comment_len > cd_end) {
-            archive_free_entries(ar);
+        if ((size_t)(cd_end - p) < record_len) {
+            archive_free_entry_array(entries, parsed);
+            return false;
+        }
+        if (name_len == 0 || memchr(p + ZIP_CENTRAL_HEADER_SIZE, '\0', name_len) != NULL) {
+            archive_free_entry_array(entries, parsed);
             return false;
         }
 
-        zip_entry_t *e = &ar->entries[i];
+        zip_entry_t *e = &entries[parsed];
         e->method = read_u16(p + 10);
         e->mod_time = read_u16(p + 12);
         e->mod_date = read_u16(p + 14);
@@ -692,7 +820,7 @@ static bool parse_central_directory(rt_archive_t *ar) {
         // Copy name
         e->name = (char *)malloc(name_len + 1);
         if (!e->name) {
-            archive_free_entries(ar);
+            archive_free_entry_array(entries, parsed);
             return false;
         }
         memcpy(e->name, p + ZIP_CENTRAL_HEADER_SIZE, name_len);
@@ -701,9 +829,16 @@ static bool parse_central_directory(rt_archive_t *ar) {
         // Check if directory
         e->is_directory = (name_len > 0 && e->name[name_len - 1] == '/');
 
-        p += ZIP_CENTRAL_HEADER_SIZE + name_len + extra_len + comment_len;
+        p += record_len;
     }
 
+    if (parsed != total_entries || p != cd_end) {
+        archive_free_entry_array(entries, parsed);
+        return false;
+    }
+
+    ar->entries = entries;
+    ar->entry_count = parsed;
     return true;
 }
 
@@ -742,23 +877,24 @@ static zip_entry_t *find_entry(rt_archive_t *ar, const char *name) {
 /// @return Owned `rt_bytes` containing the uncompressed payload.
 static void *read_entry_data(rt_archive_t *ar, zip_entry_t *e) {
     // Find local header
-    if (e->local_offset + ZIP_LOCAL_HEADER_SIZE > ar->data_len)
+    size_t local_offset = (size_t)e->local_offset;
+    if (local_offset > ar->data_len || ar->data_len - local_offset < ZIP_LOCAL_HEADER_SIZE)
         rt_trap("Archive: corrupt local header offset");
 
-    const uint8_t *local = ar->data + e->local_offset;
+    const uint8_t *local = ar->data + local_offset;
     if (read_u32(local) != ZIP_LOCAL_HEADER_SIG)
         rt_trap("Archive: invalid local header signature");
 
     uint16_t name_len = read_u16(local + 26);
     uint16_t extra_len = read_u16(local + 28);
 
-    if ((size_t)e->local_offset > SIZE_MAX - ZIP_LOCAL_HEADER_SIZE - name_len - extra_len) {
+    size_t header_total = ZIP_LOCAL_HEADER_SIZE + (size_t)name_len + (size_t)extra_len;
+    if (local_offset > ar->data_len || ar->data_len - local_offset < header_total) {
         rt_trap("Archive: corrupt entry data");
         return NULL;
     }
-    size_t data_offset = (size_t)e->local_offset + ZIP_LOCAL_HEADER_SIZE + name_len + extra_len;
-    if ((size_t)e->compressed_size > ar->data_len ||
-        data_offset > ar->data_len - (size_t)e->compressed_size) {
+    size_t data_offset = local_offset + header_total;
+    if ((size_t)e->compressed_size > ar->data_len - data_offset) {
         rt_trap("Archive: corrupt entry data");
         return NULL;
     }
@@ -1027,11 +1163,7 @@ static void get_dos_time(uint16_t *time, uint16_t *date) {
 /// @param path UTF-8 file path.
 /// @return Owned `Archive` handle in read mode.
 void *rt_archive_open(rt_string path) {
-    const char *cpath = rt_string_cstr(path);
-    if (!cpath || *cpath == '\0') {
-        rt_trap("Archive: invalid path");
-        return NULL;
-    }
+    const char *cpath = archive_require_path(path, "Archive: invalid path");
 
     // Open and read file
 #ifdef _WIN32
@@ -1045,6 +1177,12 @@ void *rt_archive_open(rt_string path) {
     if (!GetFileSizeEx(h, &size)) {
         CloseHandle(h);
         rt_trap("Archive: failed to get file size");
+    }
+    BY_HANDLE_FILE_INFORMATION info;
+    if (!GetFileInformationByHandle(h, &info) ||
+        (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+        CloseHandle(h);
+        rt_trap("Archive: path is not a regular file");
     }
 
     if (size.QuadPart < 0 || (uint64_t)size.QuadPart > SIZE_MAX) {
@@ -1071,6 +1209,10 @@ void *rt_archive_open(rt_string path) {
     if (fstat(fd, &st) != 0) {
         close(fd);
         rt_trap("Archive: failed to get file size");
+    }
+    if (!S_ISREG(st.st_mode)) {
+        close(fd);
+        rt_trap("Archive: path is not a regular file");
     }
 
     if (st.st_size < 0) {
@@ -1114,11 +1256,7 @@ void *rt_archive_open(rt_string path) {
 /// @param path UTF-8 destination path.
 /// @return Owned `Archive` handle in write mode.
 void *rt_archive_create(rt_string path) {
-    const char *cpath = rt_string_cstr(path);
-    if (!cpath || *cpath == '\0') {
-        rt_trap("Archive: invalid path");
-        return NULL;
-    }
+    const char *cpath = archive_require_path(path, "Archive: invalid path");
 
 #ifdef _WIN32
     char *probe_tmp = NULL;
@@ -1280,6 +1418,7 @@ int64_t rt_archive_count(void *obj) {
 void *rt_archive_names(void *obj) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
 
     if (!ar)
         return seq;
@@ -1288,11 +1427,13 @@ void *rt_archive_names(void *obj) {
         for (int i = 0; i < ar->write_entry_count; i++) {
             rt_string name = rt_const_cstr(ar->write_entries[i].name);
             rt_seq_push(seq, name);
+            rt_string_unref(name);
         }
     } else {
         for (int i = 0; i < ar->entry_count; i++) {
             rt_string name = rt_const_cstr(ar->entries[i].name);
             rt_seq_push(seq, name);
+            rt_string_unref(name);
         }
     }
 
@@ -1319,7 +1460,7 @@ int8_t rt_archive_has(void *obj, rt_string name) {
     if (!ar || ar->is_writing)
         return 0;
 
-    const char *cname = rt_string_cstr(name);
+    const char *cname = archive_entry_name_cstr(name);
     if (!cname)
         return 0;
     const bool wants_dir = name_ends_with_sep(cname);
@@ -1354,7 +1495,7 @@ void *rt_archive_read(void *obj, rt_string name) {
     if (ar->is_writing)
         rt_trap("Archive: cannot read from write-only archive");
 
-    const char *cname = rt_string_cstr(name);
+    const char *cname = archive_entry_name_cstr(name);
     if (!cname)
         rt_trap("Archive: NULL entry name");
 
@@ -1401,11 +1542,7 @@ rt_string rt_archive_read_str(void *obj, rt_string name) {
 /// @param name      Entry to extract.
 /// @param dest_path UTF-8 destination file path.
 void rt_archive_extract(void *obj, rt_string name, rt_string dest_path) {
-    const char *cpath = rt_string_cstr(dest_path);
-    if (!cpath || *cpath == '\0') {
-        rt_trap("Archive: invalid destination path");
-        return;
-    }
+    const char *cpath = archive_require_path(dest_path, "Archive: invalid destination path");
 
     void *data = rt_archive_read(obj, name);
     archive_write_bytes_to_path(cpath, data);
@@ -1431,12 +1568,13 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir) {
     if (ar->is_writing)
         rt_trap("Archive: cannot extract from write-only archive");
 
-    const char *cdir = rt_string_cstr(dest_dir);
-    if (!cdir || *cdir == '\0')
-        rt_trap("Archive: invalid destination directory");
+    const char *cdir = archive_require_path(dest_dir, "Archive: invalid destination directory");
 
-    rt_dir_make_all(dest_dir);
     size_t dir_len = strlen(cdir);
+    size_t root_len = archive_trim_trailing_seps(cdir, dir_len);
+    archive_reject_symlink_components(cdir, root_len, 1);
+    rt_dir_make_all(dest_dir);
+    archive_reject_symlink_components(cdir, root_len, 1);
 
     for (int i = 0; i < ar->entry_count; i++) {
         zip_entry_t *e = &ar->entries[i];
@@ -1476,20 +1614,25 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir) {
 
         if (e->is_directory) {
             // Create directory
+            archive_reject_symlink_components(full_path, root_len, 1);
             rt_string dir_path = rt_const_cstr(full_path);
             rt_dir_make_all(dir_path);
             rt_string_unref(dir_path);
+            archive_reject_symlink_components(full_path, root_len, 1);
         } else {
             // Create parent directory
             char *last_sep = strrchr(full_path, PATH_SEP);
             if (last_sep && last_sep > full_path + dir_len) {
                 *last_sep = '\0';
+                archive_reject_symlink_components(full_path, root_len, 1);
                 rt_string parent = rt_const_cstr(full_path);
                 rt_dir_make_all(parent);
                 rt_string_unref(parent);
+                archive_reject_symlink_components(full_path, root_len, 1);
                 *last_sep = PATH_SEP;
             }
 
+            archive_reject_symlink_components(full_path, root_len, 0);
             void *data = read_entry_data(ar, e);
             archive_write_bytes_to_path(full_path, data);
             archive_release_temp_object(data);
@@ -1520,7 +1663,7 @@ void *rt_archive_info(void *obj, rt_string name) {
     if (ar->is_writing)
         rt_trap("Archive: cannot get info from write-only archive");
 
-    const char *cname = rt_string_cstr(name);
+    const char *cname = archive_entry_name_cstr(name);
     if (!cname)
         rt_trap("Archive: NULL entry name");
     const bool wants_dir = name_ends_with_sep(cname);
@@ -1625,7 +1768,7 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
     if (ar->is_finished)
         rt_trap("Archive: archive already finished");
 
-    const char *cname = rt_string_cstr(name);
+    const char *cname = archive_entry_name_cstr(name);
     if (!cname || *cname == '\0')
         rt_trap("Archive: invalid entry name");
 
@@ -1722,9 +1865,7 @@ void rt_archive_add_str(void *obj, rt_string name, rt_string text) {
 /// @param name     Name to use inside the archive.
 /// @param src_path UTF-8 source file path on disk.
 void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
-    const char *cpath = rt_string_cstr(src_path);
-    if (!cpath || *cpath == '\0')
-        rt_trap("Archive: invalid source path");
+    const char *cpath = archive_require_path(src_path, "Archive: invalid source path");
 
     // Read file contents
 #ifdef _WIN32
@@ -1736,6 +1877,12 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
     if (!GetFileSizeEx(h, &size)) {
         CloseHandle(h);
         rt_trap("Archive: failed to get file size");
+    }
+    BY_HANDLE_FILE_INFORMATION info;
+    if (!GetFileInformationByHandle(h, &info) ||
+        (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+        CloseHandle(h);
+        rt_trap("Archive: source path is not a regular file");
     }
 
     if (size.QuadPart < 0 || (uint64_t)size.QuadPart > INT64_MAX) {
@@ -1756,6 +1903,10 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
     if (fstat(fd, &st) != 0) {
         close(fd);
         rt_trap("Archive: failed to get file size");
+    }
+    if (!S_ISREG(st.st_mode)) {
+        close(fd);
+        rt_trap("Archive: source path is not a regular file");
     }
 
     if (st.st_size < 0) {
@@ -1792,7 +1943,7 @@ void rt_archive_add_dir(void *obj, rt_string name) {
     if (ar->is_finished)
         rt_trap("Archive: archive already finished");
 
-    const char *cname = rt_string_cstr(name);
+    const char *cname = archive_entry_name_cstr(name);
     if (!cname || *cname == '\0')
         rt_trap("Archive: invalid entry name");
 
@@ -1920,7 +2071,7 @@ void rt_archive_finish(void *obj) {
     write_bytes(ar, eocd, ZIP_END_RECORD_SIZE);
 
     // Write to file
-    const char *cpath = rt_string_cstr(ar->path);
+    const char *cpath = archive_require_path(ar->path, "Archive: invalid path");
     archive_write_file_all_utf8(cpath, ar->write_buf, ar->write_len, "Archive: failed to write archive file");
 
     ar->is_finished = true;
@@ -1948,8 +2099,8 @@ void rt_archive_finish(void *obj) {
 /// @param path UTF-8 file path.
 /// @return 1 if the file looks like a ZIP, 0 otherwise.
 int8_t rt_archive_is_zip(rt_string path) {
-    const char *cpath = rt_string_cstr(path);
-    if (!cpath || *cpath == '\0')
+    const char *cpath = NULL;
+    if (!rt_file_path_from_vstr((const ViperString *)path, &cpath) || !cpath || *cpath == '\0')
         return 0;
 
 #ifdef _WIN32

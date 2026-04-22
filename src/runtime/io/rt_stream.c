@@ -75,6 +75,13 @@ static void stream_release_object(void *obj) {
         rt_obj_free(obj);
 }
 
+/// @brief Tear down the stream's reference to its underlying BinFile/MemStream.
+///
+/// Clears `wrapped` and marks the stream closed *before* releasing,
+/// so a finalizer running in parallel with an explicit `Close` call
+/// can't double-release. Only drops the reference when the stream
+/// owns the wrapped object — externally-wrapped streams (see
+/// `_from_binfile` / `_from_memstream`) leave cleanup to the owner.
 static void stream_release_wrapped(stream_impl *s) {
     if (!s)
         return;
@@ -91,6 +98,14 @@ static void stream_dispose_bytes(void *bytes) {
         rt_obj_free(bytes);
 }
 
+/// @brief Right-size a read buffer after a possibly-short read.
+///
+/// BinFile reads allocate a buffer sized to the requested count, but
+/// may actually return fewer bytes if EOF is hit mid-call. Rather
+/// than returning a buffer with trailing garbage, this helper slices
+/// the first `len` bytes into a fresh Bytes object and drops the
+/// oversized original. Fast-paths the equal-length case so full
+/// reads don't pay an allocation penalty.
 static void *stream_shrink_bytes(void *bytes, int64_t len) {
     if (!bytes)
         return rt_bytes_new(0);
@@ -116,6 +131,12 @@ static stream_impl *stream_alloc(void) {
     return s;
 }
 
+/// @brief Trap-guarded dereference: returns the `stream_impl` or traps.
+///
+/// Two failure modes: NULL handle (use-after-new-fail or uninitialized
+/// field) traps with the caller-provided context, and already-closed
+/// stream (use-after-close) traps with a generic message. Saves every
+/// public entry point from having to open-code these two checks.
 static stream_impl *stream_require_open(void *stream, const char *context) {
     if (!stream) {
         rt_trap(context);
@@ -204,8 +225,7 @@ void *rt_stream_open_bytes(void *bytes) {
     return s;
 }
 
-/// @brief Wrap an existing BinFile as a Stream WITHOUT taking ownership. The wrapper survives
-/// independently — caller must keep the BinFile alive for the Stream's lifetime.
+/// @brief Wrap an existing BinFile as a Stream, retaining it for the wrapper's lifetime.
 void *rt_stream_from_binfile(void *binfile) {
     if (!binfile) {
         rt_trap("Stream.FromBinFile: binfile is null");
@@ -216,16 +236,16 @@ void *rt_stream_from_binfile(void *binfile) {
     if (!s)
         return NULL;
     s->type = RT_STREAM_TYPE_BINFILE;
+    rt_obj_retain_maybe(binfile);
     s->wrapped = binfile;
-    s->owns = 0; // Don't own it, caller retains ownership
+    s->owns = 1;
     s->closed = 0;
 
     rt_obj_set_finalizer(s, stream_finalizer);
     return s;
 }
 
-/// @brief Wrap an existing MemStream as a Stream WITHOUT ownership transfer. Same pattern as
-/// `_from_binfile` — useful for unifying APIs that consume Stream over either backing kind.
+/// @brief Wrap an existing MemStream as a Stream, retaining it for the wrapper's lifetime.
 void *rt_stream_from_memstream(void *memstream) {
     if (!memstream) {
         rt_trap("Stream.FromMemStream: memstream is null");
@@ -236,8 +256,9 @@ void *rt_stream_from_memstream(void *memstream) {
     if (!s)
         return NULL;
     s->type = RT_STREAM_TYPE_MEMSTREAM;
+    rt_obj_retain_maybe(memstream);
     s->wrapped = memstream;
-    s->owns = 0; // Don't own it, caller retains ownership
+    s->owns = 1;
     s->closed = 0;
 
     rt_obj_set_finalizer(s, stream_finalizer);

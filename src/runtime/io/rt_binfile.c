@@ -67,7 +67,67 @@ typedef struct rt_binfile_impl {
     FILE *fp;      ///< File pointer.
     int8_t eof;    ///< EOF flag.
     int8_t closed; ///< Closed flag.
+    int8_t last_op; ///< Last stdio direction used on update streams.
 } rt_binfile_impl;
+
+#define BINFILE_OP_NONE 0
+#define BINFILE_OP_READ 1
+#define BINFILE_OP_WRITE 2
+
+/// @brief Transition the FILE* from write mode to read mode before a read call.
+///
+/// C stdio requires a "sync point" (fflush, fseek, or fsetpos) between
+/// write and read operations on the same stream when opened in
+/// update ("r+" / "w+") mode — without one, the read can return
+/// buffered data in undefined ways. Tracking the last op locally
+/// lets us fflush only when actually switching direction, so
+/// sequential reads don't pay the flush cost. Traps on flush
+/// failure so the caller never silently reads stale data.
+static void binfile_prepare_read(rt_binfile_impl *bf) {
+    if (!bf || !bf->fp)
+        return;
+    if (bf->last_op == BINFILE_OP_WRITE) {
+        if (fflush(bf->fp) != 0)
+            rt_trap("BinFile: failed to switch from write to read");
+    }
+    bf->last_op = BINFILE_OP_READ;
+}
+
+/// @brief Transition the FILE* from read mode to write mode before a write call.
+///
+/// Symmetric counterpart to `binfile_prepare_read`. A zero-distance
+/// `fseek(SEEK_CUR)` is the canonical stdio idiom for "discard read
+/// buffer, keep position" — cheaper than closing/reopening. Also
+/// clears any EOF flag that could otherwise poison the next write's
+/// error check.
+static void binfile_prepare_write(rt_binfile_impl *bf) {
+    if (!bf || !bf->fp)
+        return;
+    if (bf->last_op == BINFILE_OP_READ) {
+        if (binfile_fseek(bf->fp, 0, SEEK_CUR) != 0)
+            rt_trap("BinFile: failed to switch from read to write");
+        clearerr(bf->fp);
+    }
+    bf->last_op = BINFILE_OP_WRITE;
+    bf->eof = 0;
+}
+
+/// @brief Prepare the FILE* for a seek by flushing any pending writes.
+///
+/// Unlike the read/write transitions, this doesn't trap on flush
+/// failure — returns 0 instead so the caller can convert to a
+/// boolean success for user code. After a successful prep the
+/// direction tracker resets to NONE since seeking leaves the
+/// stream in a neutral state.
+static int binfile_prepare_seek(rt_binfile_impl *bf) {
+    if (!bf || !bf->fp)
+        return 0;
+    if (bf->last_op == BINFILE_OP_WRITE && fflush(bf->fp) != 0)
+        return 0;
+    clearerr(bf->fp);
+    bf->last_op = BINFILE_OP_NONE;
+    return 1;
+}
 
 static FILE *rt_binfile_fopen_utf8(const char *path, const char *mode) {
 #if defined(_WIN32)
@@ -169,10 +229,10 @@ void *rt_binfile_open(void *path, void *mode) {
         return NULL;
     }
 
-    const char *path_str = rt_string_cstr((rt_string)path);
+    const char *path_str = NULL;
     const char *mode_str = rt_string_cstr((rt_string)mode);
 
-    if (!path_str || !mode_str) {
+    if (!rt_file_path_from_vstr((const ViperString *)path, &path_str) || !path_str || !mode_str) {
         rt_trap("BinFile.Open: invalid path or mode");
         return NULL;
     }
@@ -212,6 +272,7 @@ void *rt_binfile_open(void *path, void *mode) {
     bf->fp = fp;
     bf->eof = 0;
     bf->closed = 0;
+    bf->last_op = BINFILE_OP_NONE;
     rt_obj_set_finalizer(bf, rt_binfile_finalize);
 
     return bf;
@@ -324,6 +385,7 @@ int64_t rt_binfile_read(void *obj, void *bytes, int64_t offset, int64_t count) {
     if (count > b->len - offset)
         count = b->len - offset;
 
+    binfile_prepare_read(bf);
     size_t read = fread(b->data + offset, 1, (size_t)count, bf->fp);
 
     if (read < (size_t)count && ferror(bf->fp)) {
@@ -407,6 +469,7 @@ void rt_binfile_write(void *obj, void *bytes, int64_t offset, int64_t count) {
     if (count > b->len - offset)
         count = b->len - offset;
 
+    binfile_prepare_write(bf);
     size_t written = fwrite(b->data + offset, 1, (size_t)count, bf->fp);
     if (written < (size_t)count) {
         rt_trap("BinFile.Write: write failed");
@@ -458,6 +521,7 @@ int64_t rt_binfile_read_byte(void *obj) {
         return -1;
     }
 
+    binfile_prepare_read(bf);
     int c = fgetc(bf->fp);
     if (c == EOF) {
         if (ferror(bf->fp)) {
@@ -516,6 +580,7 @@ void rt_binfile_write_byte(void *obj, int64_t byte) {
         return;
     }
 
+    binfile_prepare_write(bf);
     if (fputc((unsigned char)(byte & 0xFF), bf->fp) == EOF) {
         rt_trap("BinFile.WriteByte: write failed");
     }
@@ -587,7 +652,7 @@ int64_t rt_binfile_seek(void *obj, int64_t offset, int64_t origin) {
             return -1;
     }
 
-    if (binfile_fseek(bf->fp, offset, whence) != 0) {
+    if (!binfile_prepare_seek(bf) || binfile_fseek(bf->fp, offset, whence) != 0) {
         return -1;
     }
 
@@ -667,6 +732,8 @@ int64_t rt_binfile_size(void *obj) {
         return -1;
 
     // Save current position (IO-C-3: use 64-bit tell/seek for >2GB files)
+    if (!binfile_prepare_seek(bf))
+        return -1;
     int64_t pos = (int64_t)binfile_ftell(bf->fp);
     if (pos < 0)
         return -1;
@@ -720,6 +787,7 @@ void rt_binfile_flush(void *obj) {
         rt_trap("BinFile.Flush: flush failed (disk full or I/O error)");
         return;
     }
+    bf->last_op = BINFILE_OP_NONE;
 }
 
 /// @brief Checks whether the end of file has been reached.

@@ -10,7 +10,7 @@
 // Key invariants:
 //   - rt_file_mode_string returns NULL for invalid mode enumerations.
 //   - rt_file_mode_to_flags sets flags_out only on success; it is not modified on failure.
-//   - Path extraction validates that the input is non-null and non-empty.
+//   - Path extraction validates that the input is non-null and contains no embedded NUL bytes.
 //   - All returned pointers are views into existing data; no allocation occurs.
 //
 // Ownership/Lifetime:
@@ -51,7 +51,7 @@ int8_t rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_ou
 /// @brief Extract a filesystem path pointer from a runtime string.
 /// @param path Runtime string containing the path; may be NULL.
 /// @param out_path Receives pointer to the UTF-8 data on success.
-/// @return 1 when a valid path pointer is produced, 0 otherwise.
+/// @return 1 when a valid NUL-terminated path pointer is produced, 0 otherwise.
 int8_t rt_file_path_from_vstr(const ViperString *path, const char **out_path);
 
 /// @brief Produce a byte view for a runtime string suitable for writing to a file.

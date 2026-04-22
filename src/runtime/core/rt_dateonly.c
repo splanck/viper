@@ -38,7 +38,9 @@
 #include "rt_object.h"
 #include "rt_platform.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -69,6 +71,34 @@ static int64_t days_in_month_impl(int64_t year, int64_t month) {
     if (month == 2 && is_leap_year(year))
         return 29;
     return days[month];
+}
+
+static int date_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
+    if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b))
+        return 1;
+    *out = a + b;
+    return 0;
+}
+
+static int date_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
+    if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b))
+        return 1;
+    *out = a - b;
+    return 0;
+}
+
+static int date_is_digit(char c) {
+    return c >= '0' && c <= '9';
+}
+
+static int date_parse_digits(const char *s, int count) {
+    int value = 0;
+    for (int i = 0; i < count; i++) {
+        if (!date_is_digit(s[i]))
+            return -1;
+        value = value * 10 + (s[i] - '0');
+    }
+    return value;
 }
 
 /// @brief Convert a Gregorian date to days since Unix epoch (1970-01-01).
@@ -162,9 +192,15 @@ void *rt_dateonly_today(void) {
 /// @return New DateOnly, or NULL if the string is malformed or out of range.
 void *rt_dateonly_parse(rt_string s) {
     const char *str = rt_string_cstr(s);
-    int year, month, day;
+    if (!str)
+        return NULL;
+    if (strlen(str) != 10 || str[4] != '-' || str[7] != '-')
+        return NULL;
 
-    if (sscanf(str, "%d-%d-%d", &year, &month, &day) != 3)
+    int year = date_parse_digits(str, 4);
+    int month = date_parse_digits(str + 5, 2);
+    int day = date_parse_digits(str + 8, 2);
+    if (year < 0 || month < 0 || day < 0)
         return NULL;
 
     return rt_dateonly_create(year, month, day);
@@ -230,7 +266,8 @@ int64_t rt_dateonly_day_of_week(void *obj) {
     // Zeller's formula (modified for Sunday = 0)
     int64_t days = to_days_since_epoch(d->year, d->month, d->day);
     // Jan 1, 1970 was Thursday (day 4)
-    return (days + 4) % 7;
+    int64_t dow = (days % 7 + 4) % 7;
+    return dow < 0 ? dow + 7 : dow;
 }
 
 /// @brief Return the 1-based day-of-year (1-366).
@@ -278,7 +315,12 @@ void *rt_dateonly_add_days(void *obj, int64_t days) {
     if (!obj)
         return NULL;
     DateOnly *d = (DateOnly *)obj;
-    int64_t total = to_days_since_epoch(d->year, d->month, d->day) + days;
+    int64_t base = to_days_since_epoch(d->year, d->month, d->day);
+    int64_t total;
+    if (date_checked_add_i64(base, days, &total)) {
+        rt_trap_ovf();
+        return NULL;
+    }
     return rt_dateonly_from_days(total);
 }
 
@@ -295,18 +337,25 @@ void *rt_dateonly_add_months(void *obj, int64_t months) {
         return NULL;
     DateOnly *d = (DateOnly *)obj;
 
-    int64_t year = d->year;
-    int64_t month = d->month + months;
+    int64_t month_index;
+    if (date_checked_add_i64(d->month - 1, months, &month_index)) {
+        rt_trap_ovf();
+        return NULL;
+    }
 
-    // Normalize months
-    while (month > 12) {
-        month -= 12;
-        year++;
+    int64_t year_delta = month_index / 12;
+    int64_t month_zero = month_index % 12;
+    if (month_zero < 0) {
+        month_zero += 12;
+        year_delta--;
     }
-    while (month < 1) {
-        month += 12;
-        year--;
+
+    int64_t year;
+    if (date_checked_add_i64(d->year, year_delta, &year)) {
+        rt_trap_ovf();
+        return NULL;
     }
+    int64_t month = month_zero + 1;
 
     // Clamp day to valid range for new month
     int64_t max_day = days_in_month_impl(year, month);
@@ -329,7 +378,11 @@ void *rt_dateonly_add_years(void *obj, int64_t years) {
         return NULL;
     DateOnly *d = (DateOnly *)obj;
 
-    int64_t year = d->year + years;
+    int64_t year;
+    if (date_checked_add_i64(d->year, years, &year)) {
+        rt_trap_ovf();
+        return NULL;
+    }
     int64_t month = d->month;
     int64_t day = d->day;
 
@@ -350,7 +403,12 @@ void *rt_dateonly_add_years(void *obj, int64_t years) {
 int64_t rt_dateonly_diff_days(void *a, void *b) {
     if (!a || !b)
         return 0;
-    return rt_dateonly_to_days(a) - rt_dateonly_to_days(b);
+    int64_t result;
+    if (date_checked_sub_i64(rt_dateonly_to_days(a), rt_dateonly_to_days(b), &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
 }
 
 //=============================================================================

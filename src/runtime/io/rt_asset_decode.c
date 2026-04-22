@@ -71,7 +71,18 @@ static int iext(const char *name, const char *ext) {
 #endif
 }
 
-/// @brief Write data to a temp file, call a file-based loader, delete temp.
+/// @brief Adapter that lets file-based image decoders consume in-memory bytes.
+///
+/// Viper's decoder suite is split: JPEG and audio codecs accept raw
+/// memory buffers (`_decode_buffer`, `_load_mem`), but PNG, BMP, and
+/// GIF decoders only have file-path entry points (they rely on
+/// file-handle seek semantics internally). To feed those loaders
+/// from embedded/mounted assets, we spill the bytes to a per-PID
+/// temp file, call the path-based loader, and unlink. OS temp-dir
+/// (`TMPDIR`/`GetTempPathA`) is used so the spill lives on the
+/// volume most likely to have scratch space. Filename includes PID
+/// to avoid cross-process collisions; within a process the spill
+/// is overwritten serially per call.
 static void *load_via_tempfile(const uint8_t *data,
                                size_t size,
                                const char *ext,

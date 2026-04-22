@@ -9,9 +9,9 @@
 //
 // Key invariants:
 //   - Start and end are Unix timestamps in seconds since epoch (UTC).
-//   - Start must be <= End; violating this constraint produces undefined behavior.
+//   - Constructor normalizes reversed inputs so Start <= End.
 //   - Contains check is inclusive on both ends.
-//   - Duration returns end - start in seconds; may be zero for point ranges.
+//   - Duration returns end - start in seconds; may be zero for point ranges and traps on overflow.
 //
 // Ownership/Lifetime:
 //   - DateRange objects are GC-managed opaque pointers.
@@ -74,17 +74,17 @@ void *rt_daterange_union_range(void *range, void *other);
 
 /// @brief Get the number of days in the range.
 /// @param range Date range object.
-/// @return Number of days (rounded down).
+/// @return Number of days (rounded down). Traps on signed 64-bit overflow.
 int64_t rt_daterange_days(void *range);
 
 /// @brief Get the number of hours in the range.
 /// @param range Date range object.
-/// @return Number of hours (rounded down).
+/// @return Number of hours (rounded down). Traps on signed 64-bit overflow.
 int64_t rt_daterange_hours(void *range);
 
 /// @brief Get the duration of the range in seconds.
 /// @param range Date range object.
-/// @return Duration in seconds.
+/// @return Duration in seconds. Traps on signed 64-bit overflow.
 int64_t rt_daterange_duration(void *range);
 
 /// @brief Format range as a string.

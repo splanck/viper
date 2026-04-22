@@ -104,19 +104,19 @@ int64_t rt_datetime_create(
 /// @brief Add seconds to timestamp.
 /// @param timestamp Base timestamp in seconds.
 /// @param seconds Seconds to add (can be negative).
-/// @return New timestamp.
+/// @return New timestamp. Traps on signed 64-bit overflow.
 int64_t rt_datetime_add_seconds(int64_t timestamp, int64_t seconds);
 
 /// @brief Add days to timestamp.
 /// @param timestamp Base timestamp in seconds.
 /// @param days Days to add (can be negative).
-/// @return New timestamp.
+/// @return New timestamp. Traps on signed 64-bit overflow.
 int64_t rt_datetime_add_days(int64_t timestamp, int64_t days);
 
 /// @brief Calculate difference between two timestamps.
 /// @param ts1 First timestamp in seconds.
 /// @param ts2 Second timestamp in seconds.
-/// @return Difference (ts1 - ts2) in seconds.
+/// @return Difference (ts1 - ts2) in seconds. Traps on signed 64-bit overflow.
 int64_t rt_datetime_diff(int64_t ts1, int64_t ts2);
 
 //=========================================================================
@@ -124,17 +124,17 @@ int64_t rt_datetime_diff(int64_t ts1, int64_t ts2);
 //=========================================================================
 
 /// @brief Parse an ISO 8601 datetime string to timestamp.
-/// @param s String like "2024-01-15T10:30:00" or "2024-01-15T10:30:00Z".
+/// @param s Exact string like "2024-01-15T10:30:00" or "2024-01-15T10:30:00Z".
 /// @return Unix timestamp, or 0 on parse failure.
 int64_t rt_datetime_parse_iso(rt_string s);
 
 /// @brief Parse a date string to timestamp (midnight).
-/// @param s String like "2024-01-15".
+/// @param s Exact string like "2024-01-15".
 /// @return Unix timestamp at midnight, or 0 on parse failure.
 int64_t rt_datetime_parse_date(rt_string s);
 
 /// @brief Parse a time string to seconds since midnight.
-/// @param s String like "10:30:00" or "10:30".
+/// @param s Exact string like "10:30:00" or "10:30".
 /// @return Seconds since midnight, or -1 on parse failure.
 int64_t rt_datetime_parse_time(rt_string s);
 

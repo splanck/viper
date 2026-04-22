@@ -10,8 +10,7 @@
 // Key invariants:
 //   - Duration is stored as a signed 64-bit integer in milliseconds.
 //   - Negative durations are valid and represent time in the past.
-//   - Conversion helpers (from_seconds, from_minutes, from_hours) never overflow for reasonable
-//   inputs.
+//   - Conversion helpers and arithmetic methods trap on signed 64-bit overflow.
 //   - Arithmetic operations on durations return value types, not heap objects.
 //
 // Ownership/Lifetime:

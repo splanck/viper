@@ -54,6 +54,16 @@ static int64_t i64_abs(int64_t x) {
     return x < 0 ? -x : x;
 }
 
+static void reltime_diff(int64_t timestamp, int64_t reference, int *in_future, uint64_t *abs_diff) {
+    if (timestamp >= reference) {
+        *in_future = timestamp > reference;
+        *abs_diff = (uint64_t)timestamp - (uint64_t)reference;
+    } else {
+        *in_future = 0;
+        *abs_diff = (uint64_t)reference - (uint64_t)timestamp;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // rt_reltime_format_from
 // ---------------------------------------------------------------------------
@@ -65,12 +75,12 @@ static int64_t i64_abs(int64_t x) {
 /// @param reference The baseline Unix timestamp to compare against.
 /// @return Newly allocated runtime string like "3 minutes ago" or "in 2 hours".
 rt_string rt_reltime_format_from(int64_t timestamp, int64_t reference) {
-    int64_t diff = timestamp - reference; // positive = future, negative = past
-    int64_t abs_diff = i64_abs(diff);
-    int in_future = diff > 0;
+    uint64_t abs_diff;
+    int in_future;
+    reltime_diff(timestamp, reference, &in_future, &abs_diff);
 
     const char *unit = NULL;
-    int64_t value = 0;
+    uint64_t value = 0;
 
     if (abs_diff < 10) {
         return rt_string_from_bytes("just now", 8);
@@ -99,9 +109,9 @@ rt_string rt_reltime_format_from(int64_t timestamp, int64_t reference) {
     char buf[128];
     int len;
     if (in_future)
-        len = snprintf(buf, sizeof(buf), "in %lld %s", (long long)value, unit);
+        len = snprintf(buf, sizeof(buf), "in %llu %s", (unsigned long long)value, unit);
     else
-        len = snprintf(buf, sizeof(buf), "%lld %s ago", (long long)value, unit);
+        len = snprintf(buf, sizeof(buf), "%llu %s ago", (unsigned long long)value, unit);
 
     if (len < 0)
         len = 0;
@@ -189,26 +199,39 @@ rt_string rt_reltime_format_duration(int64_t duration_ms) {
 /// @return Newly allocated runtime string with abbreviated relative time.
 rt_string rt_reltime_format_short(int64_t timestamp) {
     int64_t now = current_unix_seconds();
-    int64_t diff = timestamp - now;
-    int64_t abs_diff = i64_abs(diff);
+    uint64_t abs_diff;
+    int in_future;
+    reltime_diff(timestamp, now, &in_future, &abs_diff);
 
-    char buf[32];
+    char amount[32];
+    char buf[64];
     int len;
 
     if (abs_diff < 10) {
         return rt_string_from_bytes("now", 3);
     } else if (abs_diff < 60) {
-        len = snprintf(buf, sizeof(buf), "%llds", (long long)abs_diff);
+        len = snprintf(amount, sizeof(amount), "%llus", (unsigned long long)abs_diff);
     } else if (abs_diff < 3600) {
-        len = snprintf(buf, sizeof(buf), "%lldm", (long long)(abs_diff / 60));
+        len = snprintf(amount, sizeof(amount), "%llum", (unsigned long long)(abs_diff / 60));
     } else if (abs_diff < 86400) {
-        len = snprintf(buf, sizeof(buf), "%lldh", (long long)(abs_diff / 3600));
+        len = snprintf(amount, sizeof(amount), "%lluh", (unsigned long long)(abs_diff / 3600));
     } else if (abs_diff < 2592000) {
-        len = snprintf(buf, sizeof(buf), "%lldd", (long long)(abs_diff / 86400));
+        len = snprintf(amount, sizeof(amount), "%llud", (unsigned long long)(abs_diff / 86400));
     } else if (abs_diff < 31536000) {
-        len = snprintf(buf, sizeof(buf), "%lldmo", (long long)(abs_diff / 2592000));
+        len = snprintf(amount, sizeof(amount), "%llumo", (unsigned long long)(abs_diff / 2592000));
     } else {
-        len = snprintf(buf, sizeof(buf), "%lldy", (long long)(abs_diff / 31536000));
+        len = snprintf(amount, sizeof(amount), "%lluy", (unsigned long long)(abs_diff / 31536000));
+    }
+
+    if (len < 0)
+        return rt_string_from_bytes("", 0);
+    if ((size_t)len >= sizeof(amount))
+        amount[sizeof(amount) - 1] = '\0';
+
+    if (in_future) {
+        len = snprintf(buf, sizeof(buf), "in %s", amount);
+    } else {
+        len = snprintf(buf, sizeof(buf), "%s ago", amount);
     }
 
     if (len < 0)

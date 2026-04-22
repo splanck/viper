@@ -163,6 +163,15 @@ static void rt_watcher_finalize(void *obj) {
 }
 
 #if defined(__linux__) || defined(_WIN32)
+/// @brief Convert a relative name from an OS event into a full path string.
+///
+/// inotify and ReadDirectoryChangesW report names relative to the
+/// watched directory. When watching a single file (not a directory),
+/// they still fire on siblings in the parent dir — we filter those
+/// out by checking the event's leaf name against `watch_leaf_name`
+/// and returning NULL for mismatches. For directory watches the name
+/// is joined onto `watch_dir_path` to yield an absolute-style path;
+/// empty names (e.g., the self-event) become the watched path itself.
 static rt_string watcher_event_path_from_relative(rt_watcher_impl *w, const char *path) {
     if (!w)
         return NULL;
@@ -186,7 +195,14 @@ static rt_string watcher_event_path_from_relative(rt_watcher_impl *w, const char
 }
 #endif
 
-/// @brief Queue an event internally.
+/// @brief Push an event into the ring buffer, dropping the oldest on overflow.
+///
+/// The queue is a fixed-size ring of 64 events; if the producer
+/// outpaces the consumer, older events are discarded rather than
+/// growing unbounded — file-system events are advisory, so dropping
+/// is better than stalling the OS event thread. Takes ownership of
+/// the passed-in `path` string (already `_ref`'d by the caller); the
+/// discarded old event's path is released.
 static void watcher_queue_event_owned(rt_watcher_impl *w, int64_t type, rt_string path) {
     if (w->event_count >= WATCHER_EVENT_QUEUE_SIZE) {
         // Queue full, drop oldest
@@ -202,7 +218,12 @@ static void watcher_queue_event_owned(rt_watcher_impl *w, int64_t type, rt_strin
     w->event_count++;
 }
 
-/// @brief Dequeue an event.
+/// @brief Pop the oldest queued event into `*out`, transferring string ownership.
+///
+/// Zeroes the slot's path pointer so the ring-buffer's own reference
+/// count isn't decremented when the slot is later overwritten or the
+/// watcher is finalized. The caller becomes responsible for
+/// releasing `out->path`.
 static int watcher_dequeue_event(rt_watcher_impl *w, watcher_event *out) {
     if (w->event_count == 0)
         return 0;
@@ -215,7 +236,16 @@ static int watcher_dequeue_event(rt_watcher_impl *w, watcher_event *out) {
 }
 
 #if defined(__linux__)
-/// @brief Read and process inotify events (Linux).
+/// @brief Drain pending inotify events from the kernel and translate to RT_WATCH_EVENT_*.
+///
+/// A single `read` can return multiple packed `struct inotify_event`
+/// records — the loop walks them using each event's `len` field for
+/// stride. Maps inotify's event flags to the Viper event taxonomy:
+/// MOVED_FROM/TO/MOVE_SELF collapse to RENAMED, DELETE/DELETE_SELF to
+/// DELETED. Each event's `name` (relative to the watched dir) is
+/// converted to a full path via `watcher_event_path_from_relative`,
+/// which also discards sibling-file events when the watcher is
+/// configured for a specific file rather than a directory.
 static void watcher_read_inotify_events(rt_watcher_impl *w) {
     char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
     ssize_t len = read(w->inotify_fd, buf, sizeof(buf));
@@ -249,7 +279,15 @@ static void watcher_read_inotify_events(rt_watcher_impl *w) {
 #endif
 
 #if defined(__APPLE__)
-/// @brief Read and process kqueue events (macOS).
+/// @brief Wait up to `timeout_ms` for a kqueue EVFILT_VNODE event and queue it.
+///
+/// Unlike inotify/ReadDirectoryChangesW, kqueue reports vnode changes
+/// against the *watched inode* rather than by filename — so every
+/// event is associated with the watched path itself, and the queued
+/// event's path is just `w->watch_path`. The filter bits are mapped
+/// to Viper event types (DELETE→DELETED, WRITE/EXTEND/ATTRIB→
+/// MODIFIED, RENAME→RENAMED). `timeout_ms < 0` means wait forever;
+/// 0 is a non-blocking poll.
 static void watcher_read_kqueue_events(rt_watcher_impl *w, int timeout_ms) {
     struct kevent event;
     struct timespec ts;
@@ -279,7 +317,16 @@ static void watcher_read_kqueue_events(rt_watcher_impl *w, int timeout_ms) {
 #endif
 
 #if defined(_WIN32)
-/// @brief Read and process Windows directory changes.
+/// @brief Process a completed ReadDirectoryChangesW batch and rearm for the next.
+///
+/// ReadDirectoryChangesW is overlapped/async — `GetOverlappedResult`
+/// checks whether the pending request has completed. If so, the
+/// buffer holds a packed chain of `FILE_NOTIFY_INFORMATION` records
+/// (one per changed file, with a linked-list offset between them).
+/// Each record's FileName is UTF-16; decoded to UTF-8 via
+/// `WideCharToMultiByte`, then turned into a full path and queued.
+/// After decoding, immediately re-issues the overlapped read so we
+/// never miss a window of events while the queue is being consumed.
 static void watcher_read_windows_events(rt_watcher_impl *w) {
     if (!w->pending_read)
         return;
@@ -340,17 +387,17 @@ static void watcher_read_windows_events(rt_watcher_impl *w) {
     // Start another read
     if (w->overlapped.hEvent)
         ResetEvent(w->overlapped.hEvent);
-    ReadDirectoryChangesW(w->dir_handle,
-                          w->buffer,
-                          sizeof(w->buffer),
-                          FALSE,
-                          FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME |
-                              FILE_NOTIFY_CHANGE_ATTRIBUTES | FILE_NOTIFY_CHANGE_SIZE |
-                              FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION,
-                          NULL,
-                          &w->overlapped,
-                          NULL);
-    w->pending_read = TRUE;
+    BOOL ok = ReadDirectoryChangesW(w->dir_handle,
+                                    w->buffer,
+                                    sizeof(w->buffer),
+                                    FALSE,
+                                    FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME |
+                                        FILE_NOTIFY_CHANGE_ATTRIBUTES | FILE_NOTIFY_CHANGE_SIZE |
+                                        FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_CREATION,
+                                    NULL,
+                                    &w->overlapped,
+                                    NULL);
+    w->pending_read = ok ? TRUE : FALSE;
 }
 #endif
 
@@ -361,14 +408,26 @@ void *rt_watcher_new(rt_string path) {
     if (!path)
         rt_trap("Watcher.New: null path");
 
-    const char *cpath = rt_string_cstr(path);
-    if (!cpath || cpath[0] == '\0')
+    const char *cpath = NULL;
+    if (!rt_file_path_from_vstr((const ViperString *)path, &cpath) || !cpath || cpath[0] == '\0')
         rt_trap("Watcher.New: empty path");
 
     // Check if path exists
+#ifdef _WIN32
+    wchar_t *wide_path = rt_file_path_utf8_to_wide(cpath);
+    if (!wide_path)
+        rt_trap("Watcher.New: invalid path");
+    DWORD attrs = GetFileAttributesW(wide_path);
+    free(wide_path);
+    if (attrs == INVALID_FILE_ATTRIBUTES)
+        rt_trap("Watcher.New: path does not exist");
+    int is_directory = (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0 ? 1 : 0;
+#else
     struct stat st;
     if (stat(cpath, &st) != 0)
         rt_trap("Watcher.New: path does not exist");
+    int is_directory = S_ISDIR(st.st_mode) ? 1 : 0;
+#endif
 
     rt_watcher_impl *w = (rt_watcher_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_watcher_impl));
     if (!w)
@@ -376,7 +435,7 @@ void *rt_watcher_new(rt_string path) {
 
     memset(w, 0, sizeof(rt_watcher_impl));
     w->watch_path = str_from_cstr(cpath);
-    w->is_directory = S_ISDIR(st.st_mode) ? 1 : 0;
+    w->is_directory = is_directory;
     if (w->is_directory) {
         w->watch_dir_path = rt_string_ref((rt_string)w->watch_path);
         w->watch_leaf_name = NULL;
@@ -506,6 +565,11 @@ void rt_watcher_start(void *obj) {
 
     memset(&w->overlapped, 0, sizeof(w->overlapped));
     w->overlapped.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+    if (!w->overlapped.hEvent) {
+        CloseHandle(w->dir_handle);
+        w->dir_handle = INVALID_HANDLE_VALUE;
+        rt_trap("Watcher.Start: failed to create event");
+    }
 
     BOOL ok = ReadDirectoryChangesW(w->dir_handle,
                                     w->buffer,

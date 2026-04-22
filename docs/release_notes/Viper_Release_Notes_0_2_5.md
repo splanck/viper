@@ -21,9 +21,9 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator b
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 54 | +54 |
+| Commits | — | 55 | +55 |
 | Source files | 2,869 | 2,900 | +31 |
-| Production SLOC | 450K | 496K | +46K |
+| Production SLOC | 450K | 497K | +47K |
 | Test SLOC | 183K | 202K | +19K |
 | Demo SLOC | 177K | 189K | +12K |
 
@@ -87,6 +87,7 @@ Four rounds of widget audit. Themes: dark-theme palette refresh, HiDPI consisten
 - **Input correctness:** action chord release on the same frame the last held key drops; debounced press-edge detection; KeyChord wrong-order reset; real UTF-8 encoding for text input (up to U+10FFFF).
 - **Collections diagnostic:** `rt_list_get` traps now include the actual index and count.
 - **Async use-after-free fix:** `Async.Run` / `Thread.Start` worker VMs (both bytecode and native) now retain the Future payload past worker unwind. Pinned down by a 25× regression loop.
+- **Config.Load** pre-checks file existence so a missing config returns NULL (documented soft-fail) instead of propagating the hardened I/O-layer trap.
 
 ### Collections runtime
 
@@ -103,11 +104,15 @@ Four rounds of widget audit. Themes: dark-theme palette refresh, HiDPI consisten
 
 - File replacement paths (`WriteAllText`, `WriteAllBytes`, `WriteBytes`, `WriteLines`, `Archive.Finish`, `Archive.Extract`, `Archive.ExtractAll`, and `SaveData.Save`) now write exclusive temp sidecars, flush them, and atomically replace the destination. Failed writes trap and clean up temp files instead of leaving partial destinations.
 - `Archive.Create(path)` no longer truncates an existing archive before `Finish()`. Stored ZIP entries now validate compressed/uncompressed size agreement, entry data bounds, CRCs, and inflated sizes before returning data.
-- Stream wrappers now distinguish owning `Open*` constructors from borrowed `From*` wrappers. Closed or null streams trap on all operations except `Close(NULL)`, and `Write(NULL)` traps instead of silently succeeding.
-- Directory cleanup now propagates recursive delete failures while still treating a missing top-level directory as success. `Dir.MakeAll` accepts backslash separators on POSIX too.
+- Archive parsing now rejects embedded-NUL entry names, inconsistent central-directory entry counts, corrupt local-header offsets, and `ExtractAll` traversal through existing symlinked directories under the extraction root.
+- File path arguments reject embedded NUL bytes. Whole-file reads and `File.Size` require regular files, and `File.Copy` now enforces its no-overwrite contract while `Move` preserves replace semantics.
+- Stream `FromBinFile` / `FromMemStream` wrappers retain the wrapped object for the wrapper lifetime. Closed or null streams trap on all operations except `Close(NULL)`, and `Write(NULL)` traps instead of silently succeeding.
+- Directory cleanup now propagates recursive delete failures while still treating a missing top-level directory as success. `Dir.RemoveAll` removes a top-level symlink without recursing into its target, `Dir.Files` excludes symlinks to files on POSIX, and `Dir.MakeAll` accepts backslash separators on POSIX too.
 - `Path.Dir` preserves roots and trims trailing separators correctly; `Path.ExeDir()` is registered in the runtime catalog. `Glob.Match` documents and enforces `(path, pattern)` order, and glob helpers return false/empty on null inputs.
-- GZIP decompression now rejects reserved flags, malformed optional headers, bad FHCRC, CRC mismatches, and size mismatches. Compression string helpers release temporary byte buffers eagerly.
-- `SaveData.Load()` treats a missing save file as a successful empty load and clears stale in-memory entries; malformed JSON still leaves the prior state intact.
+- `BinFile` now performs the required stdio flush/seek handoff when switching read/write direction in update modes.
+- GZIP decompression now rejects reserved flags, malformed optional headers, bad FHCRC, CRC mismatches, and size mismatches; raw DEFLATE inflate rejects trailing data after the final block. Compression string helpers release temporary byte buffers eagerly.
+- Filesystem asset fallback now treats only regular files as assets and loads zero-byte files as empty `Bytes` instead of returning null.
+- `SaveData.Load()` treats a missing save file as a successful empty load and clears stale in-memory entries; malformed JSON or non-integral/out-of-range numbers still leave the prior state intact.
 
 ### Text runtime
 

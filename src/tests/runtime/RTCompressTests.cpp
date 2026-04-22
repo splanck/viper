@@ -91,6 +91,15 @@ static void *make_bytes_str(const char *str) {
     return make_bytes((const uint8_t *)str, len);
 }
 
+static void *bytes_with_extra_byte(void *bytes, uint8_t extra) {
+    int64_t len = get_bytes_len(bytes);
+    void *out = rt_bytes_new(len + 1);
+    if (len > 0)
+        memcpy(get_bytes_data(out), get_bytes_data(bytes), (size_t)len);
+    get_bytes_data(out)[len] = extra;
+    return out;
+}
+
 //=============================================================================
 // DEFLATE Tests
 //=============================================================================
@@ -470,6 +479,19 @@ static void test_random_data() {
            (long long)get_bytes_len(compressed));
 }
 
+static void test_inflate_rejects_trailing_data() {
+    printf("Testing Inflate Trailing Data Rejection:\n");
+
+    void *original = make_bytes_str("payload payload payload payload");
+    void *compressed = rt_compress_deflate(original);
+    void *with_trailing_zero = bytes_with_extra_byte(compressed, 0x00);
+    void *with_trailing_nonzero = bytes_with_extra_byte(compressed, 0x80);
+
+    EXPECT_TRAP(rt_compress_inflate(with_trailing_zero));
+    EXPECT_TRAP(rt_compress_inflate(with_trailing_nonzero));
+    test_result("Trailing bytes rejected", true);
+}
+
 //=============================================================================
 // Entry Point
 //=============================================================================
@@ -521,6 +543,8 @@ int main() {
     test_inflate_known_data();
     printf("\n");
     test_inflate_truncated_data_traps();
+    printf("\n");
+    test_inflate_rejects_trailing_data();
     printf("\n");
 
     // Large data

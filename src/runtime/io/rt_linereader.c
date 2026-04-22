@@ -156,8 +156,8 @@ void *rt_linereader_open(rt_string path) {
         return NULL;
     }
 
-    const char *path_str = rt_string_cstr(path);
-    if (!path_str) {
+    const char *path_str = NULL;
+    if (!rt_file_path_from_vstr((const ViperString *)path, &path_str) || !path_str) {
         rt_trap("LineReader.Open: invalid path");
         return NULL;
     }

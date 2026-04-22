@@ -37,9 +37,11 @@
 
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_trap.h"
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <limits.h>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -55,6 +57,28 @@ typedef struct {
     bool running;           ///< True if stopwatch is currently timing.
 } ViperStopwatch;
 
+static int stopwatch_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
+    if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b))
+        return 1;
+    *out = a + b;
+    return 0;
+}
+
+static int stopwatch_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
+    if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b))
+        return 1;
+    *out = a - b;
+    return 0;
+}
+
+static ViperStopwatch *require_stopwatch(void *obj) {
+    if (!obj) {
+        rt_trap("Stopwatch: null receiver");
+        return NULL;
+    }
+    return (ViperStopwatch *)obj;
+}
+
 /// @brief Get current timestamp in nanoseconds from monotonic clock.
 /// @return Nanoseconds since unspecified epoch.
 static int64_t get_timestamp_ns(void) {
@@ -62,14 +86,30 @@ static int64_t get_timestamp_ns(void) {
     // Benign race: concurrent first calls may both query frequency, but QPC
     // frequency is constant so duplicate init produces identical results.
     static LARGE_INTEGER freq = {0};
-    if (freq.QuadPart == 0) {
-        QueryPerformanceFrequency(&freq);
+    if (freq.QuadPart == 0 && (!QueryPerformanceFrequency(&freq) || freq.QuadPart <= 0)) {
+        return (int64_t)GetTickCount64() * 1000000LL;
     }
 
     LARGE_INTEGER counter;
-    QueryPerformanceCounter(&counter);
-    // Note: nanosecond multiply can overflow after ~29 years of uptime at 10 MHz QPC.
-    return (int64_t)((counter.QuadPart * 1000000000LL) / freq.QuadPart);
+    if (!QueryPerformanceCounter(&counter))
+        return (int64_t)GetTickCount64() * 1000000LL;
+
+    int64_t whole = counter.QuadPart / freq.QuadPart;
+    int64_t rem = counter.QuadPart % freq.QuadPart;
+    int64_t whole_ns;
+    int64_t result;
+    if (whole > INT64_MAX / 1000000000LL) {
+        rt_trap_ovf();
+        return 0;
+    }
+    whole_ns = whole * 1000000000LL;
+    int64_t rem_ns =
+        (int64_t)(((long double)rem * 1000000000.0L) / (long double)freq.QuadPart);
+    if (stopwatch_checked_add_i64(whole_ns, rem_ns, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
 #else
     // Unix and ViperDOS: use clock_gettime.
     struct timespec ts;
@@ -93,7 +133,12 @@ static int64_t stopwatch_get_elapsed_ns(ViperStopwatch *sw) {
     int64_t total = sw->accumulated_ns;
 
     if (sw->running) {
-        total += get_timestamp_ns() - sw->start_time_ns;
+        int64_t interval;
+        if (stopwatch_checked_sub_i64(get_timestamp_ns(), sw->start_time_ns, &interval) ||
+            stopwatch_checked_add_i64(total, interval, &total)) {
+            rt_trap_ovf();
+            return 0;
+        }
     }
 
     return total;
@@ -203,9 +248,7 @@ void *rt_stopwatch_start_new(void) {
 /// @see rt_stopwatch_stop For pausing the stopwatch
 /// @see rt_stopwatch_restart For resetting and starting
 void rt_stopwatch_start(void *obj) {
-    if (!obj)
-        return;
-    ViperStopwatch *sw = (ViperStopwatch *)obj;
+    ViperStopwatch *sw = require_stopwatch(obj);
 
     if (!sw->running) {
         sw->start_time_ns = get_timestamp_ns();
@@ -242,13 +285,16 @@ void rt_stopwatch_start(void *obj) {
 /// @see rt_stopwatch_start For resuming the stopwatch
 /// @see rt_stopwatch_reset For clearing elapsed time
 void rt_stopwatch_stop(void *obj) {
-    if (!obj)
-        return;
-    ViperStopwatch *sw = (ViperStopwatch *)obj;
+    ViperStopwatch *sw = require_stopwatch(obj);
 
     if (sw->running) {
         int64_t now = get_timestamp_ns();
-        sw->accumulated_ns += now - sw->start_time_ns;
+        int64_t interval;
+        if (stopwatch_checked_sub_i64(now, sw->start_time_ns, &interval) ||
+            stopwatch_checked_add_i64(sw->accumulated_ns, interval, &sw->accumulated_ns)) {
+            rt_trap_ovf();
+            return;
+        }
         sw->running = false;
     }
 }
@@ -277,9 +323,7 @@ void rt_stopwatch_stop(void *obj) {
 /// @see rt_stopwatch_restart For resetting and immediately starting
 /// @see rt_stopwatch_start For starting after reset
 void rt_stopwatch_reset(void *obj) {
-    if (!obj)
-        return;
-    ViperStopwatch *sw = (ViperStopwatch *)obj;
+    ViperStopwatch *sw = require_stopwatch(obj);
 
     sw->accumulated_ns = 0;
     sw->start_time_ns = 0;
@@ -318,7 +362,7 @@ void rt_stopwatch_reset(void *obj) {
 /// @see rt_stopwatch_reset For resetting without starting
 /// @see rt_stopwatch_start For starting without resetting
 void rt_stopwatch_restart(void *obj) {
-    ViperStopwatch *sw = (ViperStopwatch *)obj;
+    ViperStopwatch *sw = require_stopwatch(obj);
 
     sw->accumulated_ns = 0;
     sw->start_time_ns = get_timestamp_ns();
@@ -348,7 +392,7 @@ void rt_stopwatch_restart(void *obj) {
 /// @see rt_stopwatch_elapsed_us For microseconds
 /// @see rt_stopwatch_elapsed_ms For milliseconds
 int64_t rt_stopwatch_elapsed_ns(void *obj) {
-    return stopwatch_get_elapsed_ns((ViperStopwatch *)obj);
+    return stopwatch_get_elapsed_ns(require_stopwatch(obj));
 }
 
 /// @brief Gets the total elapsed time in microseconds.
@@ -372,7 +416,7 @@ int64_t rt_stopwatch_elapsed_ns(void *obj) {
 /// @see rt_stopwatch_elapsed_ns For nanoseconds (highest precision)
 /// @see rt_stopwatch_elapsed_ms For milliseconds
 int64_t rt_stopwatch_elapsed_us(void *obj) {
-    return stopwatch_get_elapsed_ns((ViperStopwatch *)obj) / 1000;
+    return stopwatch_get_elapsed_ns(require_stopwatch(obj)) / 1000;
 }
 
 /// @brief Gets the total elapsed time in milliseconds.
@@ -401,7 +445,7 @@ int64_t rt_stopwatch_elapsed_us(void *obj) {
 /// @see rt_stopwatch_elapsed_ns For nanoseconds (highest precision)
 /// @see rt_stopwatch_elapsed_us For microseconds
 int64_t rt_stopwatch_elapsed_ms(void *obj) {
-    return stopwatch_get_elapsed_ns((ViperStopwatch *)obj) / 1000000;
+    return stopwatch_get_elapsed_ns(require_stopwatch(obj)) / 1000000;
 }
 
 /// @brief Checks if the stopwatch is currently running.
@@ -430,5 +474,5 @@ int64_t rt_stopwatch_elapsed_ms(void *obj) {
 /// @see rt_stopwatch_start For starting the stopwatch
 /// @see rt_stopwatch_stop For stopping the stopwatch
 int8_t rt_stopwatch_is_running(void *obj) {
-    return ((ViperStopwatch *)obj)->running ? 1 : 0;
+    return require_stopwatch(obj)->running ? 1 : 0;
 }

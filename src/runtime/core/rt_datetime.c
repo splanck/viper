@@ -36,7 +36,9 @@
 
 #include "rt_datetime.h"
 #include "rt_platform.h"
+#include "rt_trap.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -44,6 +46,48 @@
 #if RT_PLATFORM_MACOS
 #include <sys/time.h>
 #endif
+
+static int dt_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
+    if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b))
+        return 1;
+    *out = a + b;
+    return 0;
+}
+
+static int dt_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
+    if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b))
+        return 1;
+    *out = a - b;
+    return 0;
+}
+
+static int dt_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_mul_overflow(a, b, out);
+#else
+    if (a == 0 || b == 0) {
+        *out = 0;
+        return 0;
+    }
+    if (a > 0) {
+        if (b > 0) {
+            if (a > INT64_MAX / b)
+                return 1;
+        } else if (b < INT64_MIN / a) {
+            return 1;
+        }
+    } else {
+        if (b > 0) {
+            if (a < INT64_MIN / b)
+                return 1;
+        } else if (a < INT64_MAX / b) {
+            return 1;
+        }
+    }
+    *out = a * b;
+    return 0;
+#endif
+}
 
 /// @brief Gets the current date/time as a Unix timestamp.
 ///
@@ -495,7 +539,14 @@ rt_string rt_datetime_to_iso(int64_t timestamp) {
                        tm->tm_min,
                        tm->tm_sec);
 
-    return rt_string_from_bytes(buffer, (size_t)len);
+    if (len < 0) {
+        return rt_string_from_bytes("", 0);
+    }
+    size_t out_len = (size_t)len;
+    if (out_len >= sizeof(buffer)) {
+        out_len = sizeof(buffer) - 1;
+    }
+    return rt_string_from_bytes(buffer, out_len);
 }
 
 /// @brief Converts a timestamp to local ISO 8601 format (no Z suffix).
@@ -524,7 +575,14 @@ rt_string rt_datetime_to_local(int64_t timestamp) {
                        tm->tm_min,
                        tm->tm_sec);
 
-    return rt_string_from_bytes(buffer, (size_t)len);
+    if (len < 0) {
+        return rt_string_from_bytes("", 0);
+    }
+    size_t out_len = (size_t)len;
+    if (out_len >= sizeof(buffer)) {
+        out_len = sizeof(buffer) - 1;
+    }
+    return rt_string_from_bytes(buffer, out_len);
 }
 
 /// @brief Creates a Unix timestamp from date/time components.
@@ -624,12 +682,17 @@ int64_t rt_datetime_create(
 /// @return New timestamp offset by the specified seconds.
 ///
 /// @note O(1) time complexity - simple addition.
-/// @note No overflow checking is performed.
+/// @note Traps on signed 64-bit overflow.
 ///
 /// @see rt_datetime_add_days For adding days
 /// @see rt_datetime_diff For calculating time differences
 int64_t rt_datetime_add_seconds(int64_t timestamp, int64_t seconds) {
-    return timestamp + seconds;
+    int64_t result;
+    if (dt_checked_add_i64(timestamp, seconds, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
 }
 
 /// @brief Adds days to a timestamp.
@@ -661,12 +724,19 @@ int64_t rt_datetime_add_seconds(int64_t timestamp, int64_t seconds) {
 /// @note Does not account for daylight saving time transitions (always adds
 ///       exactly 86,400 seconds per day). For calendar-aware day arithmetic,
 ///       use DateTime.Create with adjusted day values.
-/// @note No overflow checking is performed.
+/// @note Traps on signed 64-bit overflow.
 ///
 /// @see rt_datetime_add_seconds For adding arbitrary time intervals
 /// @see rt_datetime_diff For calculating time differences
 int64_t rt_datetime_add_days(int64_t timestamp, int64_t days) {
-    return timestamp + (days * 86400); // 86400 seconds per day
+    int64_t seconds;
+    int64_t result;
+    if (dt_checked_mul_i64(days, 86400, &seconds) ||
+        dt_checked_add_i64(timestamp, seconds, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
 }
 
 /// @brief Calculates the difference between two timestamps in seconds.
@@ -711,7 +781,12 @@ int64_t rt_datetime_add_days(int64_t timestamp, int64_t days) {
 /// @see rt_datetime_add_seconds For the inverse operation
 /// @see rt_datetime_add_days For adding day intervals
 int64_t rt_datetime_diff(int64_t ts1, int64_t ts2) {
-    return ts1 - ts2;
+    int64_t result;
+    if (dt_checked_sub_i64(ts1, ts2, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
 }
 
 //=============================================================================
@@ -736,22 +811,94 @@ static int dt_parse_digits(const char *s, int n, const char **end) {
     return val;
 }
 
-/// @brief Parse an ISO 8601 datetime string to a Unix timestamp.
-/// @details Accepts "YYYY-MM-DDTHH:MM:SS" with optional 'Z' suffix for UTC.
-///          Without 'Z', the time is interpreted as local. The 'T' separator
-///          can also be a space. Returns 0 on parse failure — callers cannot
-///          distinguish a failure from the actual epoch timestamp (rare edge case).
-/// @param s Runtime string containing the ISO datetime.
-/// @return Unix timestamp in seconds, or 0 on parse failure.
-int64_t rt_datetime_parse_iso(rt_string s) {
+static int dt_is_leap_year(int64_t year) {
+    return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+}
+
+static int dt_days_in_month(int64_t year, int month) {
+    static const int days[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (month < 1 || month > 12)
+        return 0;
+    if (month == 2 && dt_is_leap_year(year))
+        return 29;
+    return days[month];
+}
+
+static int dt_is_valid_datetime(int year, int month, int day, int hour, int minute, int second) {
+    int max_day = dt_days_in_month(year, month);
+    return max_day > 0 && day >= 1 && day <= max_day && hour >= 0 && hour <= 23 &&
+           minute >= 0 && minute <= 59 && second >= 0 && second <= 59;
+}
+
+static int dt_days_from_civil_utc(int64_t year, int64_t month, int64_t day, int64_t *out) {
+    year -= month <= 2;
+    int64_t era = (year >= 0 ? year : year - 399) / 400;
+    uint64_t yoe = (uint64_t)(year - era * 400);
+    uint64_t doy = (uint64_t)((153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1);
+    uint64_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+
+    int64_t era_days;
+    int64_t total;
+    if (dt_checked_mul_i64(era, 146097, &era_days) ||
+        dt_checked_add_i64(era_days, (int64_t)doe, &total) ||
+        dt_checked_sub_i64(total, 719468, out))
+        return 0;
+    return 1;
+}
+
+static int dt_make_utc_timestamp(
+    int year, int month, int day, int hour, int minute, int second, int64_t *out) {
+    int64_t days;
+    if (!dt_days_from_civil_utc(year, month, day, &days))
+        return 0;
+
+    int64_t day_seconds;
+    int64_t hour_seconds;
+    int64_t minute_seconds;
+    int64_t total;
+    if (dt_checked_mul_i64(days, 86400, &day_seconds) ||
+        dt_checked_mul_i64(hour, 3600, &hour_seconds) ||
+        dt_checked_add_i64(day_seconds, hour_seconds, &total) ||
+        dt_checked_mul_i64(minute, 60, &minute_seconds) ||
+        dt_checked_add_i64(total, minute_seconds, &total) ||
+        dt_checked_add_i64(total, second, out))
+        return 0;
+    return 1;
+}
+
+static int dt_make_local_timestamp(
+    int year, int month, int day, int hour, int minute, int second, int64_t *out) {
+    struct tm tm = {0};
+    tm.tm_year = year - 1900;
+    tm.tm_mon = month - 1;
+    tm.tm_mday = day;
+    tm.tm_hour = hour;
+    tm.tm_min = minute;
+    tm.tm_sec = second;
+    tm.tm_isdst = -1;
+
+    time_t t = mktime(&tm);
+    struct tm check_buf;
+    struct tm *check = rt_localtime_r(&t, &check_buf);
+    if (!check)
+        return 0;
+    if (check->tm_year != year - 1900 || check->tm_mon != month - 1 ||
+        check->tm_mday != day || check->tm_hour != hour || check->tm_min != minute ||
+        check->tm_sec != second)
+        return 0;
+
+    *out = (int64_t)t;
+    return 1;
+}
+
+static int dt_parse_iso_impl(rt_string s, int64_t *out) {
     const char *str = rt_string_cstr(s);
-    if (!str)
+    if (!str || !out)
         return 0;
 
     const char *p = str;
     const char *end;
 
-    // Parse YYYY-MM-DDTHH:MM:SS[Z]
     int year = dt_parse_digits(p, 4, &end);
     if (year < 0 || *end != '-')
         return 0;
@@ -786,59 +933,30 @@ int64_t rt_datetime_parse_iso(rt_string s) {
         return 0;
     p = end;
 
-    // Check for Z suffix (UTC) or end of string
-    int is_utc = (*p == 'Z' || *p == 'z');
-
-    struct tm tm = {0};
-    tm.tm_year = year - 1900;
-    tm.tm_mon = month - 1;
-    tm.tm_mday = day;
-    tm.tm_hour = hour;
-    tm.tm_min = minute;
-    tm.tm_sec = second;
-
-    if (is_utc) {
-        // Portable UTC mktime: use mktime (local), then adjust by the UTC offset.
-        // First, convert with mktime (local time interpretation)
-        struct tm utc_tm = tm;
-        utc_tm.tm_isdst = 0;
-        time_t local_t = mktime(&utc_tm);
-        if (local_t == (time_t)-1)
-            return 0;
-        // Find the UTC offset: gmtime(local_t) gives UTC representation
-        struct tm gm_buf;
-        struct tm *gm = rt_gmtime_r(&local_t, &gm_buf);
-        if (!gm)
-            return 0;
-        // Difference between local interpretation and actual UTC
-        struct tm local_buf;
-        struct tm *loc = rt_localtime_r(&local_t, &local_buf);
-        if (!loc)
-            return 0;
-        // UTC offset in seconds
-        int64_t utc_off = (int64_t)mktime(loc) - (int64_t)mktime(gm);
-        return (int64_t)local_t - utc_off;
-    } else {
-        tm.tm_isdst = -1;
-        time_t t = mktime(&tm);
-        return (int64_t)t;
+    int is_utc = 0;
+    if (*p == 'Z' || *p == 'z') {
+        is_utc = 1;
+        p++;
     }
+    if (*p != '\0')
+        return 0;
+
+    if (!dt_is_valid_datetime(year, month, day, hour, minute, second))
+        return 0;
+
+    if (is_utc)
+        return dt_make_utc_timestamp(year, month, day, hour, minute, second, out);
+    return dt_make_local_timestamp(year, month, day, hour, minute, second, out);
 }
 
-/// @brief Parse a date-only string (YYYY-MM-DD) to a Unix timestamp at midnight.
-/// @details Interprets the date as local midnight (00:00:00) and converts via
-///          mktime. Returns 0 on parse failure.
-/// @param s Runtime string containing the date in ISO format.
-/// @return Unix timestamp at midnight on the given date, or 0 on failure.
-int64_t rt_datetime_parse_date(rt_string s) {
+static int dt_parse_date_impl(rt_string s, int64_t *out) {
     const char *str = rt_string_cstr(s);
-    if (!str)
+    if (!str || !out)
         return 0;
 
     const char *p = str;
     const char *end;
 
-    // Parse YYYY-MM-DD
     int year = dt_parse_digits(p, 4, &end);
     if (year < 0 || *end != '-')
         return 0;
@@ -852,18 +970,71 @@ int64_t rt_datetime_parse_date(rt_string s) {
     int day = dt_parse_digits(p, 2, &end);
     if (day < 0)
         return 0;
+    p = end;
+    if (*p != '\0')
+        return 0;
 
-    struct tm tm = {0};
-    tm.tm_year = year - 1900;
-    tm.tm_mon = month - 1;
-    tm.tm_mday = day;
-    tm.tm_hour = 0;
-    tm.tm_min = 0;
-    tm.tm_sec = 0;
-    tm.tm_isdst = -1;
+    if (!dt_is_valid_datetime(year, month, day, 0, 0, 0))
+        return 0;
+    return dt_make_local_timestamp(year, month, day, 0, 0, 0, out);
+}
 
-    time_t t = mktime(&tm);
-    return (int64_t)t;
+static int dt_parse_time_impl(rt_string s, int64_t *out) {
+    const char *str = rt_string_cstr(s);
+    if (!str || !out)
+        return 0;
+
+    const char *p = str;
+    const char *end;
+
+    int hour = dt_parse_digits(p, 2, &end);
+    if (hour < 0 || *end != ':')
+        return 0;
+    p = end + 1;
+
+    int minute = dt_parse_digits(p, 2, &end);
+    if (minute < 0)
+        return 0;
+    p = end;
+
+    int second = 0;
+    if (*p == ':') {
+        p++;
+        second = dt_parse_digits(p, 2, &end);
+        if (second < 0)
+            return 0;
+        p = end;
+    }
+
+    if (*p != '\0')
+        return 0;
+    if (hour > 23 || minute > 59 || second > 59)
+        return 0;
+
+    *out = (int64_t)(hour * 3600 + minute * 60 + second);
+    return 1;
+}
+
+/// @brief Parse an ISO 8601 datetime string to a Unix timestamp.
+/// @details Accepts "YYYY-MM-DDTHH:MM:SS" with optional 'Z' suffix for UTC.
+///          Without 'Z', the time is interpreted as local. The 'T' separator
+///          can also be a space. Returns 0 on parse failure — callers cannot
+///          distinguish a failure from the actual epoch timestamp (rare edge case).
+/// @param s Runtime string containing the ISO datetime.
+/// @return Unix timestamp in seconds, or 0 on parse failure.
+int64_t rt_datetime_parse_iso(rt_string s) {
+    int64_t result;
+    return dt_parse_iso_impl(s, &result) ? result : 0;
+}
+
+/// @brief Parse a date-only string (YYYY-MM-DD) to a Unix timestamp at midnight.
+/// @details Interprets the date as local midnight (00:00:00) and converts via
+///          mktime. Returns 0 on parse failure.
+/// @param s Runtime string containing the date in ISO format.
+/// @return Unix timestamp at midnight on the given date, or 0 on failure.
+int64_t rt_datetime_parse_date(rt_string s) {
+    int64_t result;
+    return dt_parse_date_impl(s, &result) ? result : 0;
 }
 
 /// @brief Parse a time string (HH:MM or HH:MM:SS) to seconds since midnight.
@@ -873,36 +1044,8 @@ int64_t rt_datetime_parse_date(rt_string s) {
 /// @param s Runtime string containing the time text.
 /// @return Seconds since midnight (0-86399), or -1 on parse failure.
 int64_t rt_datetime_parse_time(rt_string s) {
-    const char *str = rt_string_cstr(s);
-    if (!str)
-        return -1;
-
-    const char *p = str;
-    const char *end;
-
-    // Parse HH:MM[:SS]
-    int hour = dt_parse_digits(p, 2, &end);
-    if (hour < 0 || *end != ':')
-        return -1;
-    p = end + 1;
-
-    int minute = dt_parse_digits(p, 2, &end);
-    if (minute < 0)
-        return -1;
-    p = end;
-
-    int second = 0;
-    if (*p == ':') {
-        p++;
-        second = dt_parse_digits(p, 2, &end);
-        if (second < 0)
-            return -1;
-    }
-
-    if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59)
-        return -1;
-
-    return (int64_t)(hour * 3600 + minute * 60 + second);
+    int64_t result;
+    return dt_parse_time_impl(s, &result) ? result : -1;
 }
 
 /// @brief Attempt to parse a datetime string in any supported format.
@@ -919,24 +1062,21 @@ int64_t rt_datetime_try_parse(rt_string s) {
 
     size_t len = strlen(str);
 
-    // Try ISO 8601 first (contains 'T' or space separator)
     if (len >= 19) {
-        int64_t result = rt_datetime_parse_iso(s);
-        if (result != 0)
+        int64_t result;
+        if (dt_parse_iso_impl(s, &result))
             return result;
     }
 
-    // Try date-only (YYYY-MM-DD, length 10)
     if (len == 10 && str[4] == '-' && str[7] == '-') {
-        int64_t result = rt_datetime_parse_date(s);
-        if (result != 0)
+        int64_t result;
+        if (dt_parse_date_impl(s, &result))
             return result;
     }
 
-    // Try time-only (HH:MM or HH:MM:SS)
     if ((len == 5 || len == 8) && str[2] == ':') {
-        int64_t result = rt_datetime_parse_time(s);
-        if (result >= 0)
+        int64_t result;
+        if (dt_parse_time_impl(s, &result))
             return result;
     }
 

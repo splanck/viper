@@ -117,8 +117,8 @@ static void *rt_linewriter_open_mode(rt_string path, const char *mode) {
         return NULL;
     }
 
-    const char *path_str = rt_string_cstr(path);
-    if (!path_str) {
+    const char *path_str = NULL;
+    if (!rt_file_path_from_vstr((const ViperString *)path, &path_str) || !path_str) {
         rt_trap("LineWriter: invalid path");
         return NULL;
     }

@@ -38,7 +38,9 @@
 #include "rt_object.h"
 #include "rt_platform.h"
 #include "rt_string_builder.h"
+#include "rt_trap.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <time.h>
 
@@ -51,6 +53,21 @@ typedef struct {
     int64_t start; // Unix timestamp in seconds
     int64_t end;   // Unix timestamp in seconds
 } rt_daterange_impl;
+
+static int daterange_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
+    if ((b < 0 && a > INT64_MAX + b) || (b > 0 && a < INT64_MIN + b))
+        return 1;
+    *out = a - b;
+    return 0;
+}
+
+static int daterange_has_gap(int64_t left_end, int64_t right_start) {
+    if (right_start <= left_end)
+        return 0;
+    if (left_end == INT64_MAX)
+        return 0;
+    return right_start > left_end + 1;
+}
 
 // ---------------------------------------------------------------------------
 // Constructor
@@ -167,8 +184,7 @@ void *rt_daterange_union_range(void *range, void *other) {
     rt_daterange_impl *a = (rt_daterange_impl *)range;
     rt_daterange_impl *b = (rt_daterange_impl *)other;
 
-    // Check if ranges overlap or are contiguous (within 1 second)
-    if (a->start > b->end + 1 || b->start > a->end + 1)
+    if (daterange_has_gap(a->end, b->start) || daterange_has_gap(b->end, a->start))
         return NULL; // gap between ranges
 
     int64_t s = a->start < b->start ? a->start : b->start;
@@ -189,7 +205,12 @@ int64_t rt_daterange_days(void *range) {
     if (!range)
         return 0;
     rt_daterange_impl *r = (rt_daterange_impl *)range;
-    return (r->end - r->start) / 86400;
+    int64_t seconds;
+    if (daterange_checked_sub_i64(r->end, r->start, &seconds)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return seconds / 86400;
 }
 
 /// @brief Return the number of whole hours spanned by the range.
@@ -200,7 +221,12 @@ int64_t rt_daterange_hours(void *range) {
     if (!range)
         return 0;
     rt_daterange_impl *r = (rt_daterange_impl *)range;
-    return (r->end - r->start) / 3600;
+    int64_t seconds;
+    if (daterange_checked_sub_i64(r->end, r->start, &seconds)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return seconds / 3600;
 }
 
 /// @brief Return the exact duration of the range in seconds.
@@ -213,7 +239,12 @@ int64_t rt_daterange_duration(void *range) {
     if (!range)
         return 0;
     rt_daterange_impl *r = (rt_daterange_impl *)range;
-    return r->end - r->start;
+    int64_t seconds;
+    if (daterange_checked_sub_i64(r->end, r->start, &seconds)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return seconds;
 }
 
 // ---------------------------------------------------------------------------
@@ -235,8 +266,8 @@ rt_string rt_daterange_to_string(void *range) {
     time_t st = (time_t)r->start;
     time_t et = (time_t)r->end;
     struct tm ts, te;
-    rt_gmtime_r(&st, &ts);
-    rt_gmtime_r(&et, &te);
+    if (!rt_gmtime_r(&st, &ts) || !rt_gmtime_r(&et, &te))
+        return rt_string_from_bytes("", 0);
 
     int len = snprintf(buf,
                        sizeof(buf),

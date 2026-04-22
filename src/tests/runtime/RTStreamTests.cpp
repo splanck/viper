@@ -219,6 +219,11 @@ static void test_stream_conversion() {
         rt_stream_set_pos(wrapped, 0);
         void *data = rt_stream_read(wrapped, 4);
         test_result("Wrapped reads same data", rt_bytes_len(data) == 4);
+
+        rt_stream_close(original);
+        rt_stream_set_pos(wrapped, 0);
+        void *after_close = rt_stream_read(wrapped, 4);
+        test_result("Wrapped retains MemStream", rt_bytes_len(after_close) == 4);
     }
 
     printf("\n");

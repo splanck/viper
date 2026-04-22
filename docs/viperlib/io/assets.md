@@ -41,15 +41,15 @@ Returns null if not found.
 
 ### Assets.LoadBytes(name: String) -> Bytes?
 
-Load raw bytes regardless of extension. Returns null if not found.
+Load raw bytes regardless of extension. Returns null if not found. A zero-byte loose filesystem asset returns a `Bytes` object with length 0.
 
 ### Assets.Exists(name: String) -> Integer
 
-Returns 1 if asset exists (embedded, in pack, or on disk), 0 otherwise.
+Returns 1 if asset exists (embedded, in pack, or as a regular file on disk), 0 otherwise. Directories and special filesystem nodes are not assets.
 
 ### Assets.Size(name: String) -> Integer
 
-Returns asset size in bytes, or 0 if not found.
+Returns asset size in bytes, or 0 if not found. A found zero-byte asset also reports 0; use `Exists()` to distinguish it from a missing asset.
 
 ### Assets.List() -> seq\<String\>
 
@@ -80,6 +80,7 @@ When `Assets.Load("sprites/hero.png")` is called:
 3. **Filesystem** (CWD-relative) — development fallback
 
 This means existing code keeps working during development (step 3), and packaged apps find their assets automatically (steps 1-2).
+Loose filesystem fallback only loads regular files. Asset names and mount paths containing embedded NUL bytes are rejected.
 
 ## VPA Format
 

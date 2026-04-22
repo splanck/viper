@@ -509,6 +509,30 @@ static void test_load_rejects_malformed_json() {
     printf("  test_load_rejects_malformed_json: PASSED\n");
 }
 
+static void test_load_rejects_non_int64_numbers() {
+    char game[64];
+    snprintf(game, sizeof(game), "viper-number-range-%d", (int)GETPID());
+
+    void *sd = rt_savedata_new(S(game));
+    assert(sd != nullptr);
+    rt_savedata_set_int(sd, S("score"), 7);
+    assert(rt_savedata_save(sd) == 1);
+
+    rt_string path = rt_savedata_get_path(sd);
+    write_file_exact(rt_string_cstr(path), "{\"score\": 1.5}", strlen("{\"score\": 1.5}"));
+    assert(rt_savedata_load(sd) == 0);
+    assert(rt_savedata_get_int(sd, S("score"), -1) == 7);
+
+    write_file_exact(rt_string_cstr(path),
+                     "{\"score\": 9223372036854775808}",
+                     strlen("{\"score\": 9223372036854775808}"));
+    assert(rt_savedata_load(sd) == 0);
+    assert(rt_savedata_get_int(sd, S("score"), -1) == 7);
+
+    remove(rt_string_cstr(path));
+    printf("  test_load_rejects_non_int64_numbers: PASSED\n");
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -546,6 +570,7 @@ int main() {
     test_large_int_values();
     test_binary_safe_string_round_trip();
     test_load_rejects_malformed_json();
+    test_load_rejects_non_int64_numbers();
 
     printf("\n=== All RTSaveDataTests passed! ===\n");
     return 0;
