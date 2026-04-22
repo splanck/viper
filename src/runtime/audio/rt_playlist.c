@@ -75,6 +75,8 @@ static void generate_shuffle_order(playlist_impl *pl) {
         return;
 
     pl->shuffle_order = rt_seq_new();
+    if (!pl->shuffle_order)
+        rt_trap("rt_playlist: memory allocation failed");
 
     // Create sequential order first
     int64_t *indices = (int64_t *)malloc(count * sizeof(int64_t));
@@ -262,9 +264,15 @@ static void playlist_finalize(void *obj) {
 /// @brief Create a new playlist with shuffle, repeat, crossfade, and auto-advance support.
 void *rt_playlist_new(void) {
     playlist_impl *pl = (playlist_impl *)rt_obj_new_i64(0, (int64_t)sizeof(playlist_impl));
+    if (!pl)
+        rt_trap("rt_playlist: memory allocation failed");
     memset(pl, 0, sizeof(playlist_impl));
 
     pl->tracks = rt_seq_new();
+    if (!pl->tracks) {
+        rt_obj_free(pl);
+        rt_trap("rt_playlist: memory allocation failed");
+    }
     rt_seq_set_owns_elements(pl->tracks, 1);
     pl->current = -1;
     pl->music = NULL;
@@ -447,7 +455,9 @@ rt_string rt_playlist_get(void *obj, int64_t index) {
     if (index < 0 || index >= rt_seq_len(pl->tracks))
         return rt_const_cstr("");
 
-    return (rt_string)rt_seq_get(pl->tracks, index);
+    rt_string track = (rt_string)rt_seq_get(pl->tracks, index);
+    rt_str_retain_maybe(track);
+    return track;
 }
 
 //=============================================================================

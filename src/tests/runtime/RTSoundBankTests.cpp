@@ -19,6 +19,7 @@
 
 #include "rt_soundbank.h"
 #include "rt_synth.h"
+#include "rt_audio.h"
 #include "rt_object.h"
 
 #include <cassert>
@@ -34,6 +35,10 @@ static rt_string S(const char *s) {
 }
 
 static void *make_registry_sound() {
+    return rt_synth_tone(440, 20, 0);
+}
+
+static void *make_fake_object() {
     void *sound = rt_obj_new_i64(0, 8);
     assert(sound != nullptr);
     return sound;
@@ -80,6 +85,10 @@ static void test_create() {
 static void test_register_sound() {
     void *bank = rt_soundbank_new();
     void *snd = make_registry_sound();
+    if (!snd) {
+        printf("  test_register_sound: SKIPPED (audio unavailable)\n");
+        return;
+    }
 
     // RegisterSound returns 1 on success
     int64_t ok = rt_soundbank_register_sound(bank, S("test"), snd);
@@ -112,11 +121,29 @@ static void test_register_null_sound_rejected() {
     printf("  test_register_null_sound_rejected: PASSED\n");
 }
 
+static void test_register_non_sound_rejected() {
+    void *bank = rt_soundbank_new();
+    void *fake = make_fake_object();
+
+    assert(rt_soundbank_register_sound(bank, S("fake"), fake) == 0);
+    assert(rt_soundbank_count(bank) == 0);
+    assert(rt_soundbank_has(bank, S("fake")) == 0);
+    release_obj(fake);
+
+    printf("  test_register_non_sound_rejected: PASSED\n");
+}
+
 static void test_register_overwrite() {
     void *bank = rt_soundbank_new();
 
     void *snd1 = make_registry_sound();
     void *snd2 = make_registry_sound();
+    if (!snd1 || !snd2) {
+        release_obj(snd1);
+        release_obj(snd2);
+        printf("  test_register_overwrite: SKIPPED (audio unavailable)\n");
+        return;
+    }
 
     rt_soundbank_register_sound(bank, S("beep"), snd1);
     assert(rt_soundbank_count(bank) == 1);
@@ -138,6 +165,10 @@ static void test_register_overwrite() {
 static void test_register_overwrite_same_sound() {
     void *bank = rt_soundbank_new();
     void *snd = make_registry_sound();
+    if (!snd) {
+        printf("  test_register_overwrite_same_sound: SKIPPED (audio unavailable)\n");
+        return;
+    }
 
     assert(rt_soundbank_register_sound(bank, S("beep"), snd) == 1);
     assert(rt_soundbank_register_sound(bank, S("beep"), snd) == 1);
@@ -161,6 +192,12 @@ static void test_long_names_do_not_alias() {
 
     void *snd1 = make_registry_sound();
     void *snd2 = make_registry_sound();
+    if (!snd1 || !snd2) {
+        release_obj(snd1);
+        release_obj(snd2);
+        printf("  test_long_names_do_not_alias: SKIPPED (audio unavailable)\n");
+        return;
+    }
 
     rt_soundbank_register_sound(bank, S(name1), snd1);
     rt_soundbank_register_sound(bank, S(name2), snd2);
@@ -196,6 +233,12 @@ static void test_remove() {
     void *bank = rt_soundbank_new();
     void *snd1 = make_registry_sound();
     void *snd2 = make_registry_sound();
+    if (!snd1 || !snd2) {
+        release_obj(snd1);
+        release_obj(snd2);
+        printf("  test_remove: SKIPPED (audio unavailable)\n");
+        return;
+    }
 
     rt_soundbank_register_sound(bank, S("a"), snd1);
     rt_soundbank_register_sound(bank, S("b"), snd2);
@@ -220,6 +263,13 @@ static void test_clear() {
     void *snd1 = make_registry_sound();
     void *snd2 = make_registry_sound();
     void *snd3 = make_registry_sound();
+    if (!snd1 || !snd2 || !snd3) {
+        release_obj(snd1);
+        release_obj(snd2);
+        release_obj(snd3);
+        printf("  test_clear: SKIPPED (audio unavailable)\n");
+        return;
+    }
 
     rt_soundbank_register_sound(bank, S("x"), snd1);
     rt_soundbank_register_sound(bank, S("y"), snd2);
@@ -242,17 +292,21 @@ static void test_clear() {
 
 static void test_multiple_entries() {
     void *bank = rt_soundbank_new();
+    void *sound = make_registry_sound();
+    if (!sound) {
+        printf("  test_multiple_entries: SKIPPED (audio unavailable)\n");
+        return;
+    }
 
     // Register several sounds
     for (int i = 0; i < 10; i++) {
         char name[8];
-        void *sound = make_registry_sound();
         name[0] = 'S';
         name[1] = '0' + (char)i;
         name[2] = '\0';
         rt_soundbank_register_sound(bank, S(name), sound);
-        release_obj(sound);
     }
+    release_obj(sound);
 
     assert(rt_soundbank_count(bank) == 10);
     assert(rt_soundbank_has(bank, S("S0")) == 1);
@@ -325,6 +379,7 @@ int main() {
     test_create();
     test_register_sound();
     test_register_null_sound_rejected();
+    test_register_non_sound_rejected();
     test_register_overwrite();
     test_register_overwrite_same_sound();
     test_long_names_do_not_alias();

@@ -44,6 +44,7 @@
 #include "rt_vorbis.h"
 
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -58,16 +59,21 @@ static int64_t g_group_volume[RT_MIXGROUP_COUNT] = {100, 100};
 #ifdef VIPER_ENABLE_AUDIO
 #include "vaud.h"
 
+#define RT_AUDIO_MAX_DECODED_SOUND_BYTES ((size_t)100 * 1024 * 1024)
+#define RT_AUDIO_MAX_SAMPLE_RATE 384000
+#define RT_SOUND_MAGIC 0x56534E44u /* VSND */
+#define RT_MUSIC_MAGIC 0x564D5553u /* VMUS */
+
 typedef struct {
-    void *fade_out;      ///< Music being faded out (NULL when not crossfading).
-    void *fade_in;       ///< Music being faded in (NULL when not crossfading).
-    int64_t elapsed;     ///< Milliseconds elapsed in crossfade.
-    int64_t duration;    ///< Total crossfade duration in ms.
-    int64_t vol_out;     ///< Target logical volume of the fade-out track.
-    int64_t vol_in;      ///< Target logical volume of the fade-in track.
+    void *fade_out;       ///< Music being faded out (NULL when not crossfading).
+    void *fade_in;        ///< Music being faded in (NULL when not crossfading).
+    int64_t elapsed;      ///< Milliseconds elapsed in crossfade.
+    int64_t duration;     ///< Total crossfade duration in ms.
+    int64_t vol_out;      ///< Target logical volume of the fade-out track.
+    int64_t vol_in;       ///< Target logical volume of the fade-in track.
     int64_t last_tick_ms; ///< Last monotonic tick used to advance the fade.
-    int8_t paused;       ///< 1 while the crossfade is locally paused.
-    int8_t active;       ///< 1 if crossfade in progress.
+    int8_t paused;        ///< 1 while the crossfade is locally paused.
+    int8_t active;        ///< 1 if crossfade in progress.
 } rt_music_crossfade_state;
 
 static rt_music_crossfade_state g_crossfades[VAUD_MAX_MUSIC];
@@ -137,6 +143,7 @@ typedef struct {
 /// @details Contains the vptr (for future OOP support) and the vaud sound handle.
 typedef struct rt_sound {
     void *vptr;            ///< VTable pointer (reserved for future use)
+    uint32_t magic;        ///< Runtime wrapper discriminator.
     vaud_sound_t sound;    ///< ViperAUD sound handle
     struct rt_sound *prev; ///< Registry linkage
     struct rt_sound *next; ///< Registry linkage
@@ -167,6 +174,16 @@ static void sound_registry_remove(rt_sound *snd) {
     snd->next = NULL;
 }
 
+static rt_sound *rt_sound_from_handle_locked(void *sound) {
+    if (!sound)
+        return NULL;
+    for (rt_sound *cur = g_sound_wrappers; cur; cur = cur->next) {
+        if ((void *)cur == sound && cur->magic == RT_SOUND_MAGIC)
+            return cur;
+    }
+    return NULL;
+}
+
 /// @brief Finalizer for sound objects.
 static void rt_sound_finalize(void *obj) {
     if (!obj)
@@ -175,11 +192,13 @@ static void rt_sound_finalize(void *obj) {
     rt_sound *snd = (rt_sound *)obj;
     audio_state_lock();
     sound_registry_remove(snd);
+    vaud_sound_t raw = snd->sound;
+    snd->sound = NULL;
+    snd->magic = 0;
     audio_state_unlock();
-    if (snd->sound) {
-        vaud_free_sound(snd->sound);
-        snd->sound = NULL;
-    }
+
+    if (raw)
+        vaud_free_sound(raw);
 }
 
 //===----------------------------------------------------------------------===//
@@ -189,13 +208,14 @@ static void rt_sound_finalize(void *obj) {
 /// @brief Internal music wrapper structure.
 /// @details Contains the vptr (for future OOP support) and the vaud music handle.
 typedef struct rt_music {
-    void *vptr;            ///< VTable pointer (reserved for future use)
-    vaud_music_t music;    ///< ViperAUD music handle
+    void *vptr;             ///< VTable pointer (reserved for future use)
+    uint32_t magic;         ///< Runtime wrapper discriminator.
+    vaud_music_t music;     ///< ViperAUD music handle
     int64_t logical_volume; ///< User-facing 0-100 volume before mix-group scaling
-    int8_t logical_loop;   ///< User-facing loop preference preserved across crossfades
-    int8_t paused;         ///< Runtime pause state used by Resume() arbitration
-    struct rt_music *prev; ///< Registry linkage
-    struct rt_music *next; ///< Registry linkage
+    int8_t logical_loop;    ///< User-facing loop preference preserved across crossfades
+    int8_t paused;          ///< Runtime pause state used by Resume() arbitration
+    struct rt_music *prev;  ///< Registry linkage
+    struct rt_music *next;  ///< Registry linkage
 } rt_music;
 
 static rt_music *g_music_wrappers = NULL;
@@ -223,6 +243,16 @@ static void music_registry_remove(rt_music *mus) {
     mus->next = NULL;
 }
 
+static rt_music *rt_music_from_handle_locked(void *music) {
+    if (!music)
+        return NULL;
+    for (rt_music *cur = g_music_wrappers; cur; cur = cur->next) {
+        if ((void *)cur == music && cur->magic == RT_MUSIC_MAGIC)
+            return cur;
+    }
+    return NULL;
+}
+
 /// @brief Finalizer for music objects.
 static void rt_music_finalize(void *obj) {
     if (!obj)
@@ -231,11 +261,13 @@ static void rt_music_finalize(void *obj) {
     rt_music *mus = (rt_music *)obj;
     audio_state_lock();
     music_registry_remove(mus);
+    vaud_music_t raw = mus->music;
+    mus->music = NULL;
+    mus->magic = 0;
     audio_state_unlock();
-    if (mus->music) {
-        vaud_free_music(mus->music);
-        mus->music = NULL;
-    }
+
+    if (raw)
+        vaud_free_music(raw);
 }
 
 //===----------------------------------------------------------------------===//
@@ -267,8 +299,8 @@ static int ensure_audio_init(void) {
 #else
     int state = __atomic_load_n(&g_audio_initialized, __ATOMIC_ACQUIRE);
 #endif
-    if (state != 0)
-        return state > 0;
+    if (state > 0)
+        return 1;
 
     // Slow path: acquire spinlock and double-check
 #if RT_COMPILER_MSVC
@@ -290,14 +322,14 @@ static int ensure_audio_init(void) {
 #else
     state = __atomic_load_n(&g_audio_initialized, __ATOMIC_RELAXED);
 #endif
-    if (state != 0) {
+    if (state > 0) {
         // Another thread already initialized - release lock and return
 #if RT_COMPILER_MSVC
         _InterlockedExchange8((volatile char *)&g_audio_init_lock, 0);
 #else
         __atomic_clear(&g_audio_init_lock, __ATOMIC_RELEASE);
 #endif
-        return state > 0;
+        return 1;
     }
 
     // We are the initializing thread
@@ -328,6 +360,14 @@ static int64_t clamp_volume_100(int64_t volume) {
     return volume;
 }
 
+/// @brief Compose a per-voice volume with its mix-group volume into a single
+///        effective gain in the `[0, 100]` range.
+/// @details Both inputs are fixed-point `[0, 100]` scalars (not dB). The result
+///          is `(voice_volume / 100) * (group_volume / 100) * 100` — a straight
+///          multiplicative blend with integer math so the `(0, 100] → (0, 100]`
+///          mapping stays monotonic and clamping-free. An out-of-range group
+///          index silently maps to `SFX` so a caller-mistyped index can't index
+///          out of `g_group_volume`.
 static int64_t apply_group_volume(int64_t volume, int64_t group) {
     if (group < 0 || group >= RT_MIXGROUP_COUNT)
         group = RT_MIXGROUP_SFX;
@@ -370,6 +410,25 @@ static void tracked_voice_remove(int64_t voice_id) {
     int32_t index = tracked_voice_find(voice_id);
     if (index >= 0)
         tracked_voice_remove_at(index);
+}
+
+/// @brief Remove any tracked-voice entries whose underlying backend voice has
+///        already stopped playing.
+/// @details Voices can stop asynchronously (natural end-of-sample, stolen by a
+///          higher-priority voice, backend reset). This sweep catches those and
+///          collapses the tracking array so lookups stay fast and the slot
+///          budget `VAUD_MAX_VOICES` doesn't fill with dead entries that would
+///          evict live ones on next `tracked_voice_set`. Walks the array back-
+///          to-front because `tracked_voice_remove_at` is a shift-down — iterating
+///          forward would skip the entry that shifts into the just-processed
+///          slot. The `_locked` suffix means the caller must already hold the
+///          audio-context mutex.
+static void tracked_voice_prune_locked(void) {
+    for (int32_t i = g_tracked_voice_count - 1; i >= 0; i--) {
+        int64_t voice_id = g_tracked_voices[i].voice_id;
+        if (!g_audio_ctx || !vaud_voice_is_playing(g_audio_ctx, (vaud_voice_id)voice_id))
+            tracked_voice_remove_at(i);
+    }
 }
 
 static int32_t rt_audio_find_crossfade_by_music_locked(const void *music) {
@@ -441,6 +500,29 @@ static void rt_audio_release_crossfade_refs_locked(rt_music_crossfade_state *xf,
     xf->active = 0;
 }
 
+/// @brief Push the crossfade's current `(elapsed, duration)` state into both
+///        participating music tracks' volumes, producing an equal-power-ish
+///        linear blend.
+/// @details Called after any state-affecting operation — advance, pause/resume,
+///          external volume change on either track — so the mixer always sees
+///          the correct instantaneous fade-out / fade-in volumes. Uses a
+///          fixed-point `progress` in `[0, 1000]` (1000 == 1.0x complete):
+///            - `elapsed <= 0` → progress 0 (fully fade-out, silent fade-in)
+///            - `elapsed >= duration` → progress 1000 (silent fade-out, fully
+///              fade-in, end-of-crossfade)
+///            - otherwise `progress = round(elapsed * 1000 / duration)`, via
+///              `long double` so very long durations (hours) don't lose
+///              precision in the scale.
+///          The output volumes are straight linear blends:
+///            - fade-out: `vol_out * (1000 - progress) / 1000`
+///            - fade-in: `vol_in * progress / 1000`
+///          The sum tracks `vol_out + vol_in` at the endpoints but dips slightly
+///          in the middle because the two linear envelopes cross at 500
+///          without the sqrt(2) compensation an equal-power curve would use —
+///          acceptable trade-off for the integer-math simplicity.
+///          Zero-duration is the degenerate "jump cut" case: fade-out immediately
+///          drops to 0 and fade-in jumps to `vol_in` so the crossfade completes
+///          in a single tick. `_locked` suffix: caller must hold the audio mutex.
 static void rt_audio_reapply_crossfade_locked(rt_music_crossfade_state *xf) {
     if (!xf || !xf->active)
         return;
@@ -453,7 +535,15 @@ static void rt_audio_reapply_crossfade_locked(rt_music_crossfade_state *xf) {
         return;
     }
 
-    int64_t progress = (xf->elapsed * 1000) / xf->duration;
+    int64_t progress = 0;
+    if (xf->elapsed <= 0) {
+        progress = 0;
+    } else if (xf->elapsed >= xf->duration) {
+        progress = 1000;
+    } else {
+        long double scaled = ((long double)xf->elapsed * 1000.0L) / (long double)xf->duration;
+        progress = (int64_t)scaled;
+    }
     if (progress < 0)
         progress = 0;
     if (progress > 1000)
@@ -469,7 +559,7 @@ static void rt_audio_reapply_crossfade_locked(rt_music_crossfade_state *xf) {
     }
 }
 
-static void rt_audio_refresh_music_group_volumes(void) {
+static void rt_audio_refresh_music_group_volumes_locked(void) {
     for (rt_music *mus = g_music_wrappers; mus; mus = mus->next) {
         if (mus->music && rt_audio_find_crossfade_by_music_locked(mus) < 0)
             rt_audio_apply_music_volume(mus);
@@ -481,12 +571,9 @@ static void rt_audio_refresh_music_group_volumes(void) {
 }
 
 static void rt_audio_refresh_voice_group_volumes(int64_t group) {
+    tracked_voice_prune_locked();
     for (int32_t i = g_tracked_voice_count - 1; i >= 0; i--) {
         int64_t voice_id = g_tracked_voices[i].voice_id;
-        if (!g_audio_ctx || !vaud_voice_is_playing(g_audio_ctx, (vaud_voice_id)voice_id)) {
-            tracked_voice_remove_at(i);
-            continue;
-        }
         if (g_tracked_voices[i].group != group)
             continue;
         int64_t effective = apply_group_volume(g_tracked_voices[i].base_volume, group);
@@ -652,15 +739,22 @@ void rt_audio_set_master_volume(int64_t volume) {
     if (volume > 100)
         volume = 100;
 
-    vaud_set_master_volume(g_audio_ctx, (float)volume / 100.0f);
+    audio_state_lock();
+    if (g_audio_ctx)
+        vaud_set_master_volume(g_audio_ctx, (float)volume / 100.0f);
+    audio_state_unlock();
 }
 
 /// @brief Get the current master volume as an integer (0–100).
 int64_t rt_audio_get_master_volume(void) {
-    if (!g_audio_ctx)
+    audio_state_lock();
+    if (!g_audio_ctx) {
+        audio_state_unlock();
         return 0;
+    }
 
     float vol = vaud_get_master_volume(g_audio_ctx);
+    audio_state_unlock();
     return (int64_t)(vol * 100.0f + 0.5f);
 }
 
@@ -718,9 +812,9 @@ void rt_audio_update(void) {
 
 /// @brief Stop all currently playing sound effects (music is unaffected).
 void rt_audio_stop_all_sounds(void) {
+    audio_state_lock();
     if (g_audio_ctx)
         vaud_stop_all_sounds(g_audio_ctx);
-    audio_state_lock();
     g_tracked_voice_count = 0;
     audio_state_unlock();
 }
@@ -761,14 +855,24 @@ static int detect_audio_format(const char *filepath) {
 static int build_wav_from_pcm(const int16_t *pcm,
                               size_t frames,
                               int channels,
-                              int sample_rate,
-                              uint8_t **out_data,
-                              size_t *out_len) {
+    int sample_rate,
+    uint8_t **out_data,
+    size_t *out_len) {
     if (!pcm || !out_data || !out_len || frames == 0 || channels < 1 || channels > 2 ||
-        sample_rate <= 0)
+        sample_rate <= 0 || sample_rate > RT_AUDIO_MAX_SAMPLE_RATE)
         return -1;
 
-    size_t data_size = frames * (size_t)channels * sizeof(int16_t);
+    if (frames > SIZE_MAX / (size_t)channels)
+        return -1;
+    size_t sample_count = frames * (size_t)channels;
+    if (sample_count > SIZE_MAX / sizeof(int16_t))
+        return -1;
+
+    size_t data_size = sample_count * sizeof(int16_t);
+    if (data_size > RT_AUDIO_MAX_DECODED_SOUND_BYTES || data_size > UINT32_MAX - 36 ||
+        data_size > SIZE_MAX - 44)
+        return -1;
+
     size_t wav_size = 44 + data_size;
     uint8_t *wav = (uint8_t *)malloc(wav_size);
     if (!wav)
@@ -792,7 +896,12 @@ static int build_wav_from_pcm(const int16_t *pcm,
     wav[25] = (uint8_t)(sample_rate >> 8);
     wav[26] = (uint8_t)(sample_rate >> 16);
     wav[27] = (uint8_t)(sample_rate >> 24);
-    uint32_t byte_rate = (uint32_t)(sample_rate * channels * 2);
+    uint64_t byte_rate64 = (uint64_t)sample_rate * (uint64_t)channels * 2u;
+    if (byte_rate64 > UINT32_MAX) {
+        free(wav);
+        return -1;
+    }
+    uint32_t byte_rate = (uint32_t)byte_rate64;
     wav[28] = (uint8_t)(byte_rate);
     wav[29] = (uint8_t)(byte_rate >> 8);
     wav[30] = (uint8_t)(byte_rate >> 16);
@@ -833,7 +942,8 @@ static int ogg_decode_reader_to_wav(ogg_reader_t *reader, uint8_t **out_data, si
 
     int channels = vorbis_get_channels(dec);
     int sample_rate = vorbis_get_sample_rate(dec);
-    if (channels < 1 || channels > 2 || sample_rate <= 0) {
+    if (channels < 1 || channels > 2 || sample_rate <= 0 ||
+        sample_rate > RT_AUDIO_MAX_SAMPLE_RATE) {
         vorbis_decoder_free(dec);
         return -1;
     }
@@ -856,9 +966,20 @@ static int ogg_decode_reader_to_wav(ogg_reader_t *reader, uint8_t **out_data, si
             continue;
 
         size_t needed = pcm_frames + (size_t)frame_samples;
+        if (needed < pcm_frames || needed > SIZE_MAX / (size_t)channels ||
+            needed * (size_t)channels > SIZE_MAX / sizeof(int16_t) ||
+            needed * (size_t)channels * sizeof(int16_t) > RT_AUDIO_MAX_DECODED_SOUND_BYTES) {
+            free(pcm_buf);
+            vorbis_decoder_free(dec);
+            return -1;
+        }
         if (needed > pcm_cap) {
-            size_t new_cap = pcm_cap ? pcm_cap * 2 : 65536;
+            size_t new_cap = pcm_cap ? (pcm_cap > SIZE_MAX / 2 ? needed : pcm_cap * 2) : 65536;
             if (new_cap < needed)
+                new_cap = needed;
+            if (new_cap > SIZE_MAX / (size_t)channels ||
+                new_cap * (size_t)channels > SIZE_MAX / sizeof(int16_t) ||
+                new_cap * (size_t)channels * sizeof(int16_t) > RT_AUDIO_MAX_DECODED_SOUND_BYTES)
                 new_cap = needed;
             int16_t *new_buf =
                 (int16_t *)realloc(pcm_buf, new_cap * (size_t)channels * sizeof(int16_t));
@@ -906,10 +1027,7 @@ static int ogg_mem_to_wav(const void *data, size_t size, uint8_t **out_data, siz
     return rc;
 }
 
-static int mp3_data_to_wav(const uint8_t *data,
-                           size_t size,
-                           uint8_t **out_data,
-                           size_t *out_len) {
+static int mp3_data_to_wav(const uint8_t *data, size_t size, uint8_t **out_data, size_t *out_len) {
     if (!data || size == 0)
         return -1;
 
@@ -924,7 +1042,8 @@ static int mp3_data_to_wav(const uint8_t *data,
     int rc = mp3_decode_file(dec, data, size, &pcm, &samples, &channels, &sample_rate);
     mp3_decoder_free(dec);
 
-    if (rc != 0 || !pcm || samples <= 0 || channels < 1 || channels > 2 || sample_rate <= 0) {
+    if (rc != 0 || !pcm || samples <= 0 || channels < 1 || channels > 2 || sample_rate <= 0 ||
+        sample_rate > RT_AUDIO_MAX_SAMPLE_RATE) {
         free(pcm);
         return -1;
     }
@@ -963,6 +1082,26 @@ static int mp3_file_to_wav(const char *filepath, uint8_t **out_data, size_t *out
     return rc;
 }
 
+static void *rt_sound_wrap_loaded_locked(vaud_sound_t snd) {
+    if (!snd)
+        return NULL;
+
+    rt_sound *wrapper = (rt_sound *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sound));
+    if (!wrapper) {
+        vaud_free_sound(snd);
+        return NULL;
+    }
+
+    wrapper->vptr = NULL;
+    wrapper->magic = RT_SOUND_MAGIC;
+    wrapper->sound = snd;
+    wrapper->prev = NULL;
+    wrapper->next = NULL;
+    rt_obj_set_finalizer(wrapper, rt_sound_finalize);
+    sound_registry_add(wrapper);
+    return wrapper;
+}
+
 /// @brief Load a sound effect from a file (WAV, OGG, or MP3 auto-detected from magic bytes).
 /// @details OGG and MP3 files are decoded to WAV in memory before loading into the
 ///          audio engine. The returned handle can be played multiple times concurrently.
@@ -977,7 +1116,7 @@ void *rt_sound_load(rt_string path) {
     if (!path_str)
         return NULL;
 
-    vaud_sound_t snd = NULL;
+    void *wrapper = NULL;
 
     // Detect format and dispatch
     int fmt = detect_audio_format(path_str);
@@ -987,7 +1126,12 @@ void *rt_sound_load(rt_string path) {
         size_t wav_len = 0;
         if (ogg_file_to_wav(path_str, &wav_data, &wav_len) != 0)
             return NULL;
-        snd = vaud_load_sound_mem(g_audio_ctx, wav_data, wav_len);
+        audio_state_lock();
+        if (g_audio_ctx) {
+            vaud_sound_t snd = vaud_load_sound_mem(g_audio_ctx, wav_data, wav_len);
+            wrapper = rt_sound_wrap_loaded_locked(snd);
+        }
+        audio_state_unlock();
         free(wav_data);
     } else if (fmt == 3) {
         // MP3
@@ -995,30 +1139,22 @@ void *rt_sound_load(rt_string path) {
         size_t wav_len = 0;
         if (mp3_file_to_wav(path_str, &wav_data, &wav_len) != 0)
             return NULL;
-        snd = vaud_load_sound_mem(g_audio_ctx, wav_data, wav_len);
+        audio_state_lock();
+        if (g_audio_ctx) {
+            vaud_sound_t snd = vaud_load_sound_mem(g_audio_ctx, wav_data, wav_len);
+            wrapper = rt_sound_wrap_loaded_locked(snd);
+        }
+        audio_state_unlock();
         free(wav_data);
     } else {
         /* WAV path */
-        snd = vaud_load_sound(g_audio_ctx, path_str);
+        audio_state_lock();
+        if (g_audio_ctx) {
+            vaud_sound_t snd = vaud_load_sound(g_audio_ctx, path_str);
+            wrapper = rt_sound_wrap_loaded_locked(snd);
+        }
+        audio_state_unlock();
     }
-    if (!snd)
-        return NULL;
-
-    /* Allocate wrapper object */
-    rt_sound *wrapper = (rt_sound *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sound));
-    if (!wrapper) {
-        vaud_free_sound(snd);
-        return NULL;
-    }
-
-    wrapper->vptr = NULL;
-    wrapper->sound = snd;
-    wrapper->prev = NULL;
-    wrapper->next = NULL;
-    rt_obj_set_finalizer(wrapper, rt_sound_finalize);
-    audio_state_lock();
-    sound_registry_add(wrapper);
-    audio_state_unlock();
 
     return wrapper;
 }
@@ -1027,47 +1163,47 @@ void *rt_sound_load(rt_string path) {
 void *rt_sound_load_mem(const void *data, int64_t size) {
     if (!data || size <= 0)
         return NULL;
+    if ((uint64_t)size > (uint64_t)SIZE_MAX)
+        return NULL;
 
     if (!ensure_audio_init())
         return NULL;
 
-    vaud_sound_t snd = NULL;
-    int fmt = detect_audio_format_mem(data, (size_t)size);
+    size_t data_size = (size_t)size;
+    void *wrapper = NULL;
+    int fmt = detect_audio_format_mem(data, data_size);
     if (fmt == 2) {
         uint8_t *wav_data = NULL;
         size_t wav_len = 0;
-        if (ogg_mem_to_wav(data, (size_t)size, &wav_data, &wav_len) != 0)
+        if (ogg_mem_to_wav(data, data_size, &wav_data, &wav_len) != 0)
             return NULL;
-        snd = vaud_load_sound_mem(g_audio_ctx, wav_data, wav_len);
+        audio_state_lock();
+        if (g_audio_ctx) {
+            vaud_sound_t snd = vaud_load_sound_mem(g_audio_ctx, wav_data, wav_len);
+            wrapper = rt_sound_wrap_loaded_locked(snd);
+        }
+        audio_state_unlock();
         free(wav_data);
     } else if (fmt == 3) {
         uint8_t *wav_data = NULL;
         size_t wav_len = 0;
-        if (mp3_data_to_wav((const uint8_t *)data, (size_t)size, &wav_data, &wav_len) != 0)
+        if (mp3_data_to_wav((const uint8_t *)data, data_size, &wav_data, &wav_len) != 0)
             return NULL;
-        snd = vaud_load_sound_mem(g_audio_ctx, wav_data, wav_len);
+        audio_state_lock();
+        if (g_audio_ctx) {
+            vaud_sound_t snd = vaud_load_sound_mem(g_audio_ctx, wav_data, wav_len);
+            wrapper = rt_sound_wrap_loaded_locked(snd);
+        }
+        audio_state_unlock();
         free(wav_data);
     } else {
-        snd = vaud_load_sound_mem(g_audio_ctx, data, (size_t)size);
+        audio_state_lock();
+        if (g_audio_ctx) {
+            vaud_sound_t snd = vaud_load_sound_mem(g_audio_ctx, data, data_size);
+            wrapper = rt_sound_wrap_loaded_locked(snd);
+        }
+        audio_state_unlock();
     }
-    if (!snd)
-        return NULL;
-
-    /* Allocate wrapper object */
-    rt_sound *wrapper = (rt_sound *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sound));
-    if (!wrapper) {
-        vaud_free_sound(snd);
-        return NULL;
-    }
-
-    wrapper->vptr = NULL;
-    wrapper->sound = snd;
-    wrapper->prev = NULL;
-    wrapper->next = NULL;
-    rt_obj_set_finalizer(wrapper, rt_sound_finalize);
-    audio_state_lock();
-    sound_registry_add(wrapper);
-    audio_state_unlock();
 
     return wrapper;
 }
@@ -1077,96 +1213,94 @@ void rt_sound_destroy(void *sound) {
     if (!sound)
         return;
 
+    if (!rt_sound_is_handle(sound))
+        return;
+
     if (rt_obj_release_check0(sound))
         rt_obj_free(sound);
 }
 
-/// @brief Play a sound effect at default volume and center pan. Returns a voice ID.
-int64_t rt_sound_play(void *sound) {
+static int64_t rt_sound_play_internal(
+    void *sound, int64_t volume, int64_t pan, int loop, int64_t group) {
     if (!sound)
         return -1;
 
-    rt_sound *snd = (rt_sound *)sound;
-    if (!snd->sound)
-        return -1;
+    volume = clamp_volume_100(volume);
+    if (pan < -100)
+        pan = -100;
+    if (pan > 100)
+        pan = 100;
+    if (group < 0 || group >= RT_MIXGROUP_COUNT)
+        group = RT_MIXGROUP_SFX;
 
-    vaud_voice_id voice = vaud_play(snd->sound);
-    return (int64_t)voice;
+    audio_state_lock();
+    rt_sound *snd = rt_sound_from_handle_locked(sound);
+    if (!snd || !snd->sound) {
+        audio_state_unlock();
+        return -1;
+    }
+
+    int64_t effective = apply_group_volume(volume, group);
+    float vol = (float)effective / 100.0f;
+    float p = (float)pan / 100.0f;
+
+    vaud_voice_id voice =
+        loop ? vaud_play_loop(snd->sound, vol, p) : vaud_play_ex(snd->sound, vol, p);
+    int64_t result = (int64_t)voice;
+    tracked_voice_prune_locked();
+    tracked_voice_set(result, group, volume);
+    audio_state_unlock();
+    return result;
+}
+
+int64_t rt_sound_is_handle(void *sound) {
+    if (!sound)
+        return 0;
+    audio_state_lock();
+    int64_t ok = rt_sound_from_handle_locked(sound) ? 1 : 0;
+    audio_state_unlock();
+    return ok;
+}
+
+/// @brief Play a sound effect at default volume and center pan. Returns a voice ID.
+int64_t rt_sound_play(void *sound) {
+    return rt_sound_play_internal(sound, 100, 0, 0, RT_MIXGROUP_SFX);
 }
 
 /// @brief Play a sound with explicit volume (0–100) and stereo pan (-100 to 100).
 int64_t rt_sound_play_ex(void *sound, int64_t volume, int64_t pan) {
-    if (!sound)
-        return -1;
-
-    rt_sound *snd = (rt_sound *)sound;
-    if (!snd->sound)
-        return -1;
-
-    /* Convert from 0-100 to 0.0-1.0 */
-    if (volume < 0)
-        volume = 0;
-    if (volume > 100)
-        volume = 100;
-    float vol = (float)volume / 100.0f;
-
-    /* Convert from -100 to 100 to -1.0 to 1.0 */
-    if (pan < -100)
-        pan = -100;
-    if (pan > 100)
-        pan = 100;
-    float p = (float)pan / 100.0f;
-
-    vaud_voice_id voice = vaud_play_ex(snd->sound, vol, p);
-    return (int64_t)voice;
+    return rt_sound_play_internal(sound, volume, pan, 0, RT_MIXGROUP_SFX);
 }
 
 /// @brief Play a sound in a continuous loop with explicit volume and pan. Returns a voice ID.
 int64_t rt_sound_play_loop(void *sound, int64_t volume, int64_t pan) {
-    if (!sound)
-        return -1;
-
-    rt_sound *snd = (rt_sound *)sound;
-    if (!snd->sound)
-        return -1;
-
-    /* Convert from 0-100 to 0.0-1.0 */
-    if (volume < 0)
-        volume = 0;
-    if (volume > 100)
-        volume = 100;
-    float vol = (float)volume / 100.0f;
-
-    /* Convert from -100 to 100 to -1.0 to 1.0 */
-    if (pan < -100)
-        pan = -100;
-    if (pan > 100)
-        pan = 100;
-    float p = (float)pan / 100.0f;
-
-    vaud_voice_id voice = vaud_play_loop(snd->sound, vol, p);
-    return (int64_t)voice;
+    return rt_sound_play_internal(sound, volume, pan, 1, RT_MIXGROUP_SFX);
 }
 
 /// @brief Stop a playing voice immediately by its voice ID.
 void rt_voice_stop(int64_t voice_id) {
-    if (!g_audio_ctx || voice_id < 0)
+    if (voice_id < 0)
         return;
 
-    vaud_stop_voice(g_audio_ctx, (vaud_voice_id)voice_id);
     audio_state_lock();
+    if (g_audio_ctx)
+        vaud_stop_voice(g_audio_ctx, (vaud_voice_id)voice_id);
     tracked_voice_remove(voice_id);
     audio_state_unlock();
 }
 
 /// @brief Change the volume of a playing voice (0–100).
 void rt_voice_set_volume(int64_t voice_id, int64_t volume) {
-    if (!g_audio_ctx || voice_id < 0)
+    if (voice_id < 0)
         return;
 
     volume = clamp_volume_100(volume);
 
     audio_state_lock();
+    if (!g_audio_ctx) {
+        audio_state_unlock();
+        return;
+    }
     int32_t index = tracked_voice_find(voice_id);
     if (index >= 0) {
         g_tracked_voices[index].base_volume = volume;
@@ -1180,7 +1314,7 @@ void rt_voice_set_volume(int64_t voice_id, int64_t volume) {
 
 /// @brief Change the stereo pan of a playing voice (-100 = full left, 100 = full right).
 void rt_voice_set_pan(int64_t voice_id, int64_t pan) {
-    if (!g_audio_ctx || voice_id < 0)
+    if (voice_id < 0)
         return;
 
     if (pan < -100)
@@ -1189,20 +1323,23 @@ void rt_voice_set_pan(int64_t voice_id, int64_t pan) {
         pan = 100;
     float p = (float)pan / 100.0f;
 
-    vaud_set_voice_pan(g_audio_ctx, (vaud_voice_id)voice_id, p);
+    audio_state_lock();
+    if (g_audio_ctx)
+        vaud_set_voice_pan(g_audio_ctx, (vaud_voice_id)voice_id, p);
+    audio_state_unlock();
 }
 
 /// @brief Check whether a voice is currently playing.
 int64_t rt_voice_is_playing(int64_t voice_id) {
-    if (!g_audio_ctx || voice_id < 0)
+    if (voice_id < 0)
         return 0;
 
-    int64_t playing = vaud_voice_is_playing(g_audio_ctx, (vaud_voice_id)voice_id) ? 1 : 0;
-    if (!playing) {
-        audio_state_lock();
+    audio_state_lock();
+    int64_t playing =
+        (g_audio_ctx && vaud_voice_is_playing(g_audio_ctx, (vaud_voice_id)voice_id)) ? 1 : 0;
+    if (!playing)
         tracked_voice_remove(voice_id);
-        audio_state_unlock();
-    }
+    audio_state_unlock();
     return playing;
 }
 
@@ -1227,6 +1364,13 @@ void *rt_music_load(rt_string path) {
     /* Detect format and load via appropriate ViperAUD function */
     int fmt = detect_audio_format(path_str);
     vaud_music_t mus = NULL;
+    void *wrapper_obj = NULL;
+
+    audio_state_lock();
+    if (!g_audio_ctx) {
+        audio_state_unlock();
+        return NULL;
+    }
     switch (fmt) {
         case 2:
             mus = vaud_load_music_ogg(g_audio_ctx, path_str);
@@ -1238,17 +1382,21 @@ void *rt_music_load(rt_string path) {
             mus = vaud_load_music(g_audio_ctx, path_str);
             break;
     }
-    if (!mus)
+    if (!mus) {
+        audio_state_unlock();
         return NULL;
+    }
 
     /* Allocate wrapper object */
     rt_music *wrapper = (rt_music *)rt_obj_new_i64(0, (int64_t)sizeof(rt_music));
     if (!wrapper) {
         vaud_free_music(mus);
+        audio_state_unlock();
         return NULL;
     }
 
     wrapper->vptr = NULL;
+    wrapper->magic = RT_MUSIC_MAGIC;
     wrapper->music = mus;
     wrapper->logical_volume = 100;
     wrapper->logical_loop = 0;
@@ -1256,12 +1404,12 @@ void *rt_music_load(rt_string path) {
     wrapper->prev = NULL;
     wrapper->next = NULL;
     rt_obj_set_finalizer(wrapper, rt_music_finalize);
-    audio_state_lock();
     music_registry_add(wrapper);
     rt_audio_apply_music_volume(wrapper);
+    wrapper_obj = wrapper;
     audio_state_unlock();
 
-    return wrapper;
+    return wrapper_obj;
 }
 
 /// @brief Destroy a music handle and release streaming resources.
@@ -1269,8 +1417,20 @@ void rt_music_destroy(void *music) {
     if (!music)
         return;
 
+    if (!rt_music_is_handle(music))
+        return;
+
     if (rt_obj_release_check0(music))
         rt_obj_free(music);
+}
+
+int64_t rt_music_is_handle(void *music) {
+    if (!music)
+        return 0;
+    audio_state_lock();
+    int64_t ok = rt_music_from_handle_locked(music) ? 1 : 0;
+    audio_state_unlock();
+    return ok;
 }
 
 /// @brief Start playing a music track (loop=1 for continuous looping, 0 for one-shot).
@@ -1279,14 +1439,16 @@ void rt_music_play(void *music, int64_t loop) {
         return;
 
     rt_music *mus = (rt_music *)music;
-    if (!mus->music)
-        return;
-
     rt_deferred_release_list releases = {0};
-    mus->logical_loop = loop ? 1 : 0;
-    mus->paused = 0;
 
     audio_state_lock();
+    mus = rt_music_from_handle_locked(music);
+    if (!mus || !mus->music) {
+        audio_state_unlock();
+        return;
+    }
+    mus->logical_loop = loop ? 1 : 0;
+    mus->paused = 0;
     rt_audio_prepare_music_for_foreground_locked(mus, &releases);
     vaud_music_set_loop(mus->music, mus->logical_loop);
     vaud_music_play(mus->music, mus->logical_loop);
@@ -1315,9 +1477,16 @@ void rt_music_set_loop(void *music, int64_t loop) {
         return;
 
     rt_music *mus = (rt_music *)music;
+    audio_state_lock();
+    mus = rt_music_from_handle_locked(music);
+    if (!mus) {
+        audio_state_unlock();
+        return;
+    }
     mus->logical_loop = loop ? 1 : 0;
     if (mus->music)
         vaud_music_set_loop(mus->music, mus->logical_loop);
+    audio_state_unlock();
 }
 
 /// @brief Set the music playback volume (0–100).
@@ -1326,11 +1495,13 @@ void rt_music_set_volume(void *music, int64_t volume) {
         return;
 
     rt_music *mus = (rt_music *)music;
-    if (!mus->music)
-        return;
-
-    mus->logical_volume = clamp_volume_100(volume);
     audio_state_lock();
+    mus = rt_music_from_handle_locked(music);
+    if (!mus || !mus->music) {
+        audio_state_unlock();
+        return;
+    }
+    mus->logical_volume = clamp_volume_100(volume);
     int32_t xf_idx = rt_audio_find_crossfade_by_music_locked(mus);
     if (xf_idx >= 0) {
         rt_music_crossfade_state *xf = &g_crossfades[xf_idx];
@@ -1351,10 +1522,16 @@ int64_t rt_music_get_volume(void *music) {
         return 0;
 
     rt_music *mus = (rt_music *)music;
-    if (!mus->music)
+    audio_state_lock();
+    mus = rt_music_from_handle_locked(music);
+    if (!mus || !mus->music) {
+        audio_state_unlock();
         return 0;
+    }
 
-    return mus->logical_volume;
+    int64_t volume = mus->logical_volume;
+    audio_state_unlock();
+    return volume;
 }
 
 /// @brief Check whether a music track is currently playing.
@@ -1363,10 +1540,17 @@ int64_t rt_music_is_playing(void *music) {
         return 0;
 
     rt_music *mus = (rt_music *)music;
-    if (!mus->music)
+    audio_state_lock();
+    mus = rt_music_from_handle_locked(music);
+    if (!mus || !mus->music) {
+        audio_state_unlock();
         return 0;
+    }
 
-    return vaud_music_is_playing(mus->music) ? 1 : 0;
+    int64_t playing = vaud_music_is_playing(mus->music) ? 1 : 0;
+    audio_state_unlock();
+
+    return playing;
 }
 
 /// @brief Seek to a position in the music track (in milliseconds from the start).
@@ -1375,14 +1559,16 @@ void rt_music_seek(void *music, int64_t position_ms) {
         return;
 
     rt_music *mus = (rt_music *)music;
-    if (!mus->music)
-        return;
-
     if (position_ms < 0)
         position_ms = 0;
     float seconds = (float)position_ms / 1000.0f;
 
     audio_state_lock();
+    mus = rt_music_from_handle_locked(music);
+    if (!mus || !mus->music) {
+        audio_state_unlock();
+        return;
+    }
     vaud_music_seek(mus->music, seconds);
     int32_t xf_idx = rt_audio_find_crossfade_by_music_locked(mus);
     if (xf_idx >= 0)
@@ -1398,10 +1584,15 @@ int64_t rt_music_get_position(void *music) {
         return 0;
 
     rt_music *mus = (rt_music *)music;
-    if (!mus->music)
+    audio_state_lock();
+    mus = rt_music_from_handle_locked(music);
+    if (!mus || !mus->music) {
+        audio_state_unlock();
         return 0;
+    }
 
     float seconds = vaud_music_get_position(mus->music);
+    audio_state_unlock();
     return (int64_t)(seconds * 1000.0f + 0.5f);
 }
 
@@ -1411,10 +1602,15 @@ int64_t rt_music_get_duration(void *music) {
         return 0;
 
     rt_music *mus = (rt_music *)music;
-    if (!mus->music)
+    audio_state_lock();
+    mus = rt_music_from_handle_locked(music);
+    if (!mus || !mus->music) {
+        audio_state_unlock();
         return 0;
+    }
 
     float seconds = vaud_music_get_duration(mus->music);
+    audio_state_unlock();
     return (int64_t)(seconds * 1000.0f + 0.5f);
 }
 
@@ -1423,10 +1619,12 @@ void rt_music_pause_related(void *music) {
         return;
 
     rt_music *mus = (rt_music *)music;
-    if (!mus->music)
-        return;
-
     audio_state_lock();
+    mus = rt_music_from_handle_locked(music);
+    if (!mus || !mus->music) {
+        audio_state_unlock();
+        return;
+    }
     int32_t xf_idx = rt_audio_find_crossfade_by_music_locked(mus);
     if (xf_idx >= 0) {
         rt_music_crossfade_state *xf = &g_crossfades[xf_idx];
@@ -1454,12 +1652,14 @@ void rt_music_resume_related(void *music) {
         return;
 
     rt_music *mus = (rt_music *)music;
-    if (!mus->music)
-        return;
-
     rt_deferred_release_list releases = {0};
 
     audio_state_lock();
+    mus = rt_music_from_handle_locked(music);
+    if (!mus || !mus->music) {
+        audio_state_unlock();
+        return;
+    }
     int32_t xf_idx = rt_audio_find_crossfade_by_music_locked(mus);
     if (xf_idx >= 0) {
         rt_music_crossfade_state *xf = &g_crossfades[xf_idx];
@@ -1492,12 +1692,14 @@ void rt_music_stop_related(void *music) {
         return;
 
     rt_music *mus = (rt_music *)music;
-    if (!mus->music)
-        return;
-
     rt_deferred_release_list releases = {0};
 
     audio_state_lock();
+    mus = rt_music_from_handle_locked(music);
+    if (!mus || !mus->music) {
+        audio_state_unlock();
+        return;
+    }
     int32_t xf_idx = rt_audio_find_crossfade_by_music_locked(mus);
     if (xf_idx >= 0) {
         rt_audio_crossfade_cancel_entry_locked(&g_crossfades[xf_idx], 1, 1, 0, &releases);
@@ -1514,12 +1716,14 @@ void rt_music_set_crossfade_pair_volume(void *music, int64_t volume) {
         return;
 
     rt_music *mus = (rt_music *)music;
-    if (!mus->music)
-        return;
-
     volume = clamp_volume_100(volume);
 
     audio_state_lock();
+    mus = rt_music_from_handle_locked(music);
+    if (!mus || !mus->music) {
+        audio_state_unlock();
+        return;
+    }
     int32_t xf_idx = rt_audio_find_crossfade_by_music_locked(mus);
     if (xf_idx >= 0) {
         rt_music_crossfade_state *xf = &g_crossfades[xf_idx];
@@ -1547,11 +1751,11 @@ void rt_music_set_crossfade_pair_volume(void *music, int64_t volume) {
 void rt_audio_set_group_volume(int64_t group, int64_t volume) {
     if (group < 0 || group >= RT_MIXGROUP_COUNT)
         return;
-    g_group_volume[group] = clamp_volume_100(volume);
 
     audio_state_lock();
+    g_group_volume[group] = clamp_volume_100(volume);
     if (group == RT_MIXGROUP_MUSIC)
-        rt_audio_refresh_music_group_volumes();
+        rt_audio_refresh_music_group_volumes_locked();
     else
         rt_audio_refresh_voice_group_volumes(group);
     audio_state_unlock();
@@ -1561,7 +1765,10 @@ void rt_audio_set_group_volume(int64_t group, int64_t volume) {
 int64_t rt_audio_get_group_volume(int64_t group) {
     if (group < 0 || group >= RT_MIXGROUP_COUNT)
         return 100;
-    return g_group_volume[group];
+    audio_state_lock();
+    int64_t volume = g_group_volume[group];
+    audio_state_unlock();
+    return volume;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1576,7 +1783,19 @@ void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duratio
 
     audio_state_lock();
 
-    if ((!current_music && !new_music) || current_music == new_music) {
+    rt_music *current = current_music ? rt_music_from_handle_locked(current_music) : NULL;
+    rt_music *next = new_music ? rt_music_from_handle_locked(new_music) : NULL;
+    if ((current_music && !current) || (new_music && !next)) {
+        audio_state_unlock();
+        return;
+    }
+
+    if (current && (!current->music || !vaud_music_is_attached(current->music)))
+        current = NULL;
+    if (next && (!next->music || !vaud_music_is_attached(next->music)))
+        next = NULL;
+
+    if ((!current && !next) || current == next) {
         audio_state_unlock();
         return;
     }
@@ -1586,8 +1805,8 @@ void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duratio
         if (!xf->active)
             continue;
 
-        int keep_fade_out = (xf->fade_out == current_music || xf->fade_out == new_music);
-        int keep_fade_in = (xf->fade_in == current_music || xf->fade_in == new_music);
+        int keep_fade_out = (xf->fade_out == current || xf->fade_out == next);
+        int keep_fade_in = (xf->fade_in == current || xf->fade_in == next);
         if (!keep_fade_out && !keep_fade_in)
             continue;
         rt_audio_crossfade_cancel_entry_locked(
@@ -1595,16 +1814,16 @@ void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duratio
     }
 
     if (duration_ms <= 0) {
-        if (current_music && ((rt_music *)current_music)->music) {
-            ((rt_music *)current_music)->paused = 0;
-            vaud_music_stop(((rt_music *)current_music)->music);
+        if (current) {
+            current->paused = 0;
+            vaud_music_stop(current->music);
         }
-        if (new_music && ((rt_music *)new_music)->music) {
-            ((rt_music *)new_music)->paused = 0;
-            vaud_music_set_loop(
-                ((rt_music *)new_music)->music, ((rt_music *)new_music)->logical_loop);
-            vaud_music_play(((rt_music *)new_music)->music, ((rt_music *)new_music)->logical_loop);
-            rt_audio_apply_music_volume((rt_music *)new_music);
+        if (next) {
+            rt_audio_stop_unrelated_music_locked(current, next, &releases);
+            next->paused = 0;
+            vaud_music_set_loop(next->music, next->logical_loop);
+            vaud_music_play(next->music, next->logical_loop);
+            rt_audio_apply_music_volume(next);
         }
         audio_state_unlock();
         rt_audio_drain_releases(&releases);
@@ -1619,48 +1838,50 @@ void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duratio
         }
     }
     if (slot < 0) {
-        if (current_music && ((rt_music *)current_music)->music) {
-            ((rt_music *)current_music)->paused = 0;
-            vaud_music_stop(((rt_music *)current_music)->music);
+        if (current) {
+            current->paused = 0;
+            vaud_music_stop(current->music);
         }
-        if (new_music && ((rt_music *)new_music)->music) {
-            ((rt_music *)new_music)->paused = 0;
-            vaud_music_set_loop(
-                ((rt_music *)new_music)->music, ((rt_music *)new_music)->logical_loop);
-            vaud_music_play(((rt_music *)new_music)->music, ((rt_music *)new_music)->logical_loop);
-            rt_audio_apply_music_volume((rt_music *)new_music);
+        if (next) {
+            rt_audio_stop_unrelated_music_locked(current, next, &releases);
+            next->paused = 0;
+            vaud_music_set_loop(next->music, next->logical_loop);
+            vaud_music_play(next->music, next->logical_loop);
+            rt_audio_apply_music_volume(next);
         }
         audio_state_unlock();
         rt_audio_drain_releases(&releases);
         return;
     }
 
-    if (current_music)
-        rt_obj_retain_maybe(current_music);
-    if (new_music)
-        rt_obj_retain_maybe(new_music);
+    rt_audio_stop_unrelated_music_locked(current, next, &releases);
+
+    if (current)
+        rt_obj_retain_maybe(current);
+    if (next)
+        rt_obj_retain_maybe(next);
 
     rt_music_crossfade_state *xf = &g_crossfades[slot];
-    xf->fade_out = current_music;
-    xf->fade_in = new_music;
+    xf->fade_out = current;
+    xf->fade_in = next;
     xf->duration = duration_ms;
     xf->elapsed = 0;
     xf->active = 1;
     xf->paused = 0;
     xf->last_tick_ms = rt_timer_ms();
-    xf->vol_out = current_music ? ((rt_music *)current_music)->logical_volume : 100;
-    xf->vol_in = new_music ? ((rt_music *)new_music)->logical_volume : 100;
+    xf->vol_out = current ? current->logical_volume : 100;
+    xf->vol_in = next ? next->logical_volume : 100;
 
-    if (current_music && ((rt_music *)current_music)->music) {
-        ((rt_music *)current_music)->paused = 0;
-        vaud_music_set_loop(((rt_music *)current_music)->music, 0);
+    if (current) {
+        current->paused = 0;
+        vaud_music_set_loop(current->music, 0);
         rt_audio_reapply_crossfade_locked(xf);
     }
-    if (new_music && ((rt_music *)new_music)->music) {
-        ((rt_music *)new_music)->paused = 0;
-        rt_audio_apply_music_volume_value((rt_music *)new_music, 0);
-        vaud_music_set_loop(((rt_music *)new_music)->music, ((rt_music *)new_music)->logical_loop);
-        vaud_music_play(((rt_music *)new_music)->music, ((rt_music *)new_music)->logical_loop);
+    if (next) {
+        next->paused = 0;
+        rt_audio_apply_music_volume_value(next, 0);
+        vaud_music_set_loop(next->music, next->logical_loop);
+        vaud_music_play(next->music, next->logical_loop);
     }
     audio_state_unlock();
     rt_audio_drain_releases(&releases);
@@ -1668,7 +1889,6 @@ void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duratio
 
 /// @brief Check whether a music crossfade is currently in progress.
 int8_t rt_music_is_crossfading(void) {
-    rt_audio_update();
     audio_state_lock();
     int8_t active = 0;
     for (int32_t i = 0; i < VAUD_MAX_MUSIC; i++) {
@@ -1702,6 +1922,25 @@ void rt_music_crossfade_update(int64_t dt_ms) {
     rt_audio_drain_releases(&releases);
 }
 
+/// @brief Advance a single crossfade by `dt_ms` and either update envelopes or
+///        finalize the transition.
+/// @details Per-frame driver for the crossfade state machine. Each tick:
+///          1. Clamp `dt_ms` to the remaining duration so we can't overshoot the
+///             end-of-crossfade point — critical because an overshoot would leave
+///             `elapsed > duration` and confuse the progress computation.
+///          2. **End-of-crossfade branch** (`elapsed >= duration`): stop the
+///             fade-out music at the backend, re-apply its base volume so a
+///             later play-again starts from the user-configured level, resume
+///             the fade-in track (clearing any lingering pause), and release
+///             the crossfade's retained references via the deferred-release
+///             list — `releases` is drained by the caller outside the audio
+///             lock so finalizers (which may take other locks) don't deadlock.
+///          3. **Normal advance branch**: push the updated `(elapsed, duration)`
+///             through `rt_audio_reapply_crossfade_locked` to re-emit the
+///             instantaneous fade-out / fade-in volumes. Zero-duration (jump
+///             cut) keeps `elapsed = 0` so the reapply branch hits the
+///             degenerate "fully transition in one tick" path.
+///          `_locked` suffix: caller must hold the audio mutex.
 static void rt_audio_update_crossfade_entry_locked(rt_music_crossfade_state *xf,
                                                    int64_t dt_ms,
                                                    rt_deferred_release_list *releases) {
@@ -1710,7 +1949,13 @@ static void rt_audio_update_crossfade_entry_locked(rt_music_crossfade_state *xf,
     if (dt_ms <= 0)
         return;
 
-    xf->elapsed += dt_ms;
+    if (xf->duration <= 0) {
+        xf->elapsed = 0;
+    } else if (xf->elapsed >= xf->duration || dt_ms >= xf->duration - xf->elapsed) {
+        xf->elapsed = xf->duration;
+    } else {
+        xf->elapsed += dt_ms;
+    }
 
     if (xf->elapsed >= xf->duration) {
         if (xf->fade_out) {
@@ -1737,35 +1982,17 @@ static void rt_audio_update_crossfade_entry_locked(rt_music_crossfade_state *xf,
 
 /// @brief Play a sound at default volume, scaled by the given mix group's volume.
 int64_t rt_sound_play_in_group(void *sound, int64_t group) {
-    if (!sound)
-        return -1;
-    int64_t voice = rt_sound_play_ex(sound, apply_group_volume(100, group), 0);
-    audio_state_lock();
-    tracked_voice_set(voice, group, 100);
-    audio_state_unlock();
-    return voice;
+    return rt_sound_play_internal(sound, 100, 0, 0, group);
 }
 
 /// @brief Play a sound with explicit volume/pan, scaled by the mix group's volume.
 int64_t rt_sound_play_ex_in_group(void *sound, int64_t volume, int64_t pan, int64_t group) {
-    if (!sound)
-        return -1;
-    int64_t voice = rt_sound_play_ex(sound, apply_group_volume(volume, group), pan);
-    audio_state_lock();
-    tracked_voice_set(voice, group, volume);
-    audio_state_unlock();
-    return voice;
+    return rt_sound_play_internal(sound, volume, pan, 0, group);
 }
 
 /// @brief Play a looping sound with explicit volume/pan, scaled by the mix group's volume.
 int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, int64_t group) {
-    if (!sound)
-        return -1;
-    int64_t voice = rt_sound_play_loop(sound, apply_group_volume(volume, group), pan);
-    audio_state_lock();
-    tracked_voice_set(voice, group, volume);
-    audio_state_unlock();
-    return voice;
+    return rt_sound_play_internal(sound, volume, pan, 1, group);
 }
 
 #else /* !VIPER_ENABLE_AUDIO */
@@ -1859,6 +2086,11 @@ void rt_sound_destroy(void *sound) {
     (void)sound;
 }
 
+int64_t rt_sound_is_handle(void *sound) {
+    (void)sound;
+    return 0;
+}
+
 /// @brief Audio-disabled stub for `Sound.Play` — traps so the absence
 ///        of audio surfaces clearly rather than returning a fake voice
 ///        id that callers might pass to `Voice.Stop`.
@@ -1944,6 +2176,11 @@ void *rt_music_load(rt_string path) {
 /// @param music Ignored.
 void rt_music_destroy(void *music) {
     (void)music;
+}
+
+int64_t rt_music_is_handle(void *music) {
+    (void)music;
+    return 0;
 }
 
 /// @brief Audio-disabled stub for `Music.Play`. Traps.
@@ -2081,7 +2318,7 @@ void rt_audio_set_group_volume(int64_t group, int64_t volume) {
         volume = 0;
     if (volume > 100)
         volume = 100;
-    g_group_volume[group] = volume;
+    __atomic_store_n(&g_group_volume[group], volume, __ATOMIC_RELEASE);
 }
 
 /// @brief Read the per-mix-group volume in audio-disabled builds.
@@ -2095,7 +2332,7 @@ void rt_audio_set_group_volume(int64_t group, int64_t volume) {
 int64_t rt_audio_get_group_volume(int64_t group) {
     if (group < 0 || group >= RT_MIXGROUP_COUNT)
         return 100;
-    return g_group_volume[group];
+    return __atomic_load_n(&g_group_volume[group], __ATOMIC_ACQUIRE);
 }
 
 /// @brief Audio-disabled stub for `Music.CrossfadeTo`. Traps because

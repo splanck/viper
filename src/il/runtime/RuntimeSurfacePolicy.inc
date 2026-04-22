@@ -71,6 +71,8 @@ RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/text/rt_keyderive_internal.h")
 // runtime.def plus lower-level helper declarations that are intentionally
 // internal to the runtime implementation.
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sound_load_mem")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sound_is_handle")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_music_is_handle")
 
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_music_crossfade_update")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_music_pause_related")

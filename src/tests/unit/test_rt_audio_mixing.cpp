@@ -30,6 +30,7 @@
 #include "rt_playlist.h"
 #include <cassert>
 #include <cstdio>
+#include <thread>
 
 // Trap handler
 extern "C" void vm_trap(const char *msg) {
@@ -131,6 +132,34 @@ static void test_group_independence(void) {
     PASS();
 }
 
+static void test_group_volume_threaded_stress(void) {
+    TEST("Group volume set/get is safe under concurrent access");
+
+    auto writer = [](int64_t group) {
+        for (int i = 0; i < 1000; i++)
+            rt_audio_set_group_volume(group, i % 125 - 10);
+    };
+    auto reader = []() {
+        for (int i = 0; i < 1000; i++) {
+            int64_t music = rt_audio_get_group_volume(RT_MIXGROUP_MUSIC);
+            int64_t sfx = rt_audio_get_group_volume(RT_MIXGROUP_SFX);
+            assert(music >= 0 && music <= 100);
+            assert(sfx >= 0 && sfx <= 100);
+        }
+    };
+
+    std::thread t1(writer, RT_MIXGROUP_MUSIC);
+    std::thread t2(writer, RT_MIXGROUP_SFX);
+    std::thread t3(reader);
+    t1.join();
+    t2.join();
+    t3.join();
+
+    rt_audio_set_group_volume(RT_MIXGROUP_MUSIC, 100);
+    rt_audio_set_group_volume(RT_MIXGROUP_SFX, 100);
+    PASS();
+}
+
 //=============================================================================
 // Crossfade State Tests
 //=============================================================================
@@ -226,6 +255,7 @@ int main() {
     test_group_volume_zero();
     test_group_volume_invalid_group();
     test_group_independence();
+    test_group_volume_threaded_stress();
 
     // Crossfade state
     test_crossfade_initially_inactive();

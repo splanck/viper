@@ -47,8 +47,8 @@
 typedef struct {
     snd_pcm_t *pcm;              ///< ALSA PCM device handle
     pthread_t thread;            ///< Audio thread
-    int running;                 ///< Thread running flag
-    int paused;                  ///< Pause state
+    volatile int running;        ///< Thread running flag
+    volatile int paused;         ///< Pause state
     pthread_mutex_t pause_mutex; ///< Protects pause state
     pthread_cond_t pause_cond;   ///< Signal for pause/resume
 } vaud_linux_data;
@@ -68,19 +68,20 @@ static void *audio_thread_func(void *arg) {
     int16_t *buffer = (int16_t *)malloc(VAUD_BUFFER_FRAMES * VAUD_CHANNELS * sizeof(int16_t));
     if (!buffer) {
         /* H-5: signal that the thread failed so callers don't assume audio is active */
-        plat->running = 0;
+        __atomic_store_n(&plat->running, 0, __ATOMIC_RELEASE);
         return NULL;
     }
 
-    while (plat->running) {
+    while (__atomic_load_n(&plat->running, __ATOMIC_ACQUIRE)) {
         /* Check for pause state */
         pthread_mutex_lock(&plat->pause_mutex);
-        while (plat->paused && plat->running) {
+        while (__atomic_load_n(&plat->paused, __ATOMIC_ACQUIRE) &&
+               __atomic_load_n(&plat->running, __ATOMIC_ACQUIRE)) {
             pthread_cond_wait(&plat->pause_cond, &plat->pause_mutex);
         }
         pthread_mutex_unlock(&plat->pause_mutex);
 
-        if (!plat->running)
+        if (!__atomic_load_n(&plat->running, __ATOMIC_ACQUIRE))
             break;
 
         /* Render mixed audio */
@@ -126,8 +127,8 @@ int vaud_platform_init(vaud_context_t ctx) {
     }
 
     ctx->platform_data = plat;
-    plat->running = 0;
-    plat->paused = 0;
+    __atomic_store_n(&plat->running, 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&plat->paused, 0, __ATOMIC_RELAXED);
 
     /* Initialize synchronization primitives */
     pthread_mutex_init(&plat->pause_mutex, NULL);
@@ -165,10 +166,10 @@ int vaud_platform_init(vaud_context_t ctx) {
     }
 
     /* Start the audio thread */
-    plat->running = 1;
+    __atomic_store_n(&plat->running, 1, __ATOMIC_RELEASE);
     err = pthread_create(&plat->thread, NULL, audio_thread_func, ctx);
     if (err != 0) {
-        plat->running = 0;
+        __atomic_store_n(&plat->running, 0, __ATOMIC_RELEASE);
         snd_pcm_close(plat->pcm);
         pthread_mutex_destroy(&plat->pause_mutex);
         pthread_cond_destroy(&plat->pause_cond);
@@ -189,8 +190,8 @@ void vaud_platform_shutdown(vaud_context_t ctx) {
 
     /* Signal thread to stop */
     pthread_mutex_lock(&plat->pause_mutex);
-    plat->running = 0;
-    plat->paused = 0; /* Unpause to allow thread to exit */
+    __atomic_store_n(&plat->running, 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&plat->paused, 0, __ATOMIC_RELEASE); /* Unpause to allow thread to exit */
     pthread_cond_signal(&plat->pause_cond);
     pthread_mutex_unlock(&plat->pause_mutex);
 
@@ -216,11 +217,13 @@ void vaud_platform_pause(vaud_context_t ctx) {
     vaud_linux_data *plat = (vaud_linux_data *)ctx->platform_data;
 
     pthread_mutex_lock(&plat->pause_mutex);
-    plat->paused = 1;
+    __atomic_store_n(&plat->paused, 1, __ATOMIC_RELEASE);
     pthread_mutex_unlock(&plat->pause_mutex);
 
     /* Pause ALSA playback */
-    snd_pcm_pause(plat->pcm, 1);
+    int rc = snd_pcm_pause(plat->pcm, 1);
+    if (rc < 0 && rc != -ENOSYS)
+        snd_pcm_recover(plat->pcm, rc, 0);
 }
 
 void vaud_platform_resume(vaud_context_t ctx) {
@@ -230,10 +233,12 @@ void vaud_platform_resume(vaud_context_t ctx) {
     vaud_linux_data *plat = (vaud_linux_data *)ctx->platform_data;
 
     /* Resume ALSA playback */
-    snd_pcm_pause(plat->pcm, 0);
+    int rc = snd_pcm_pause(plat->pcm, 0);
+    if (rc < 0 && rc != -ENOSYS)
+        snd_pcm_recover(plat->pcm, rc, 0);
 
     pthread_mutex_lock(&plat->pause_mutex);
-    plat->paused = 0;
+    __atomic_store_n(&plat->paused, 0, __ATOMIC_RELEASE);
     pthread_cond_signal(&plat->pause_cond);
     pthread_mutex_unlock(&plat->pause_mutex);
 }

@@ -144,7 +144,12 @@ static void test_async_run_basic() {
     assert(future != NULL);
 
     rt_future_wait(future);
-    assert(rt_future_value_is_owned(future) == 0);
+    // Since d954bee0c / dcb4c46e9 unified rt_promise_set / rt_promise_set_owned
+    // retain semantics (UAF fix: worker VMs unwind before the caller reads the
+    // Future, so the Future must retain the payload itself), every non-null
+    // resolution sets owns_value = 1. This test previously expected == 0 under
+    // the old "set() doesn't retain" contract; update to the current contract.
+    assert(rt_future_value_is_owned(future) == 1);
     void *result = rt_future_get(future);
     assert(result == val);
 }

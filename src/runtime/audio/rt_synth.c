@@ -157,6 +157,9 @@ static double waveform_sample(double phase, int64_t waveform) {
 /// @param num_samples Number of samples.
 /// @return Sound object or NULL on failure.
 static void *samples_to_sound(const int16_t *samples, int32_t num_samples) {
+    if (!rt_audio_is_available())
+        return NULL;
+
     int32_t data_size = num_samples * (int32_t)sizeof(int16_t);
     int32_t wav_size = WAV_HEADER_SIZE + data_size;
 

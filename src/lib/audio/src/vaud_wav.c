@@ -592,26 +592,66 @@ int vaud_wav_open_stream(const char *path,
     return 1;
 }
 
-int32_t vaud_wav_read_frames(
-    void *file,
-    int16_t *samples,
-    int32_t frames,
-    int32_t channels,
-    int32_t bits_per_sample,
-    int32_t audio_format) {
+int32_t vaud_wav_read_frames(void *file,
+                             int16_t *samples,
+                             int32_t frames,
+                             int32_t channels,
+                             int32_t bits_per_sample,
+                             int32_t audio_format) {
     if (!file || !samples || frames <= 0)
         return 0;
 
-    FILE *f = (FILE *)file;
+    if (channels <= 0 || bits_per_sample <= 0)
+        return 0;
     int32_t bytes_per_sample = bits_per_sample / 8;
+    if (bytes_per_sample > 0 && channels > INT32_MAX / bytes_per_sample)
+        return 0;
     int32_t bytes_per_frame = bytes_per_sample * channels;
-    size_t buffer_size = (size_t)(frames * bytes_per_frame);
+    if (bytes_per_sample <= 0 || bytes_per_frame <= 0)
+        return 0;
+    if ((size_t)frames > SIZE_MAX / (size_t)bytes_per_frame)
+        return 0;
+    size_t buffer_size = (size_t)frames * (size_t)bytes_per_frame;
 
     /* Temporary buffer for reading raw data */
     uint8_t *temp = (uint8_t *)malloc(buffer_size);
     if (!temp)
         return 0;
 
+    int32_t frames_read = vaud_wav_read_frames_buffered(
+        file, samples, frames, channels, bits_per_sample, audio_format, temp, buffer_size);
+
+    free(temp);
+    return frames_read;
+}
+
+int32_t vaud_wav_read_frames_buffered(void *file,
+                                      int16_t *samples,
+                                      int32_t frames,
+                                      int32_t channels,
+                                      int32_t bits_per_sample,
+                                      int32_t audio_format,
+                                      uint8_t *temp,
+                                      size_t temp_size) {
+    if (!file || !samples || !temp || frames <= 0)
+        return 0;
+
+    if (channels <= 0 || bits_per_sample <= 0)
+        return 0;
+    int32_t bytes_per_sample = bits_per_sample / 8;
+    if (bytes_per_sample > 0 && channels > INT32_MAX / bytes_per_sample)
+        return 0;
+    int32_t bytes_per_frame = bytes_per_sample * channels;
+    if (bytes_per_sample <= 0 || bytes_per_frame <= 0)
+        return 0;
+
+    if ((size_t)frames > SIZE_MAX / (size_t)bytes_per_frame)
+        return 0;
+    size_t buffer_size = (size_t)frames * (size_t)bytes_per_frame;
+    if (buffer_size > temp_size)
+        return 0;
+
+    FILE *f = (FILE *)file;
     size_t bytes_read = fread(temp, 1, buffer_size, f);
     int32_t frames_read = (int32_t)(bytes_read / (size_t)bytes_per_frame);
 
@@ -627,7 +667,6 @@ int32_t vaud_wav_read_frames(
         src += bytes_per_frame;
     }
 
-    free(temp);
     return frames_read;
 }
 
@@ -636,8 +675,12 @@ int32_t vaud_wav_read_frames(
 //===----------------------------------------------------------------------===//
 
 int64_t vaud_resample_output_frames(int64_t in_frames, int32_t in_rate, int32_t out_rate) {
+    if (in_frames <= 0 || in_rate <= 0 || out_rate <= 0)
+        return 0;
     if (in_rate == out_rate)
         return in_frames;
+    if (in_frames > (INT64_MAX - in_rate + 1) / out_rate)
+        return INT64_MAX;
     return (in_frames * out_rate + in_rate - 1) / in_rate;
 }
 

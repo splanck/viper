@@ -292,11 +292,11 @@ bind Viper.Sound;
 Audio.Init();
 
 // Where the paddle bounce happens (after score = score + 1):
-var bounce = Synth.Sfx("coin");
+var bounce = Synth.Sfx(1); // coin
 bounce.Play();
 
 // Where the ball resets (after score = 0):
-var miss = Synth.Sfx("hit");
+var miss = Synth.Sfx(2); // hit
 miss.Play();
 ```
 
@@ -308,16 +308,16 @@ Viper.Sound.Audio.Init()
 
 ' Where the paddle bounce happens:
 DIM bounce AS Viper.Sound.Sound
-bounce = Viper.Sound.Synth.Sfx("coin")
+bounce = Viper.Sound.Synth.Sfx(1) ' coin
 bounce.Play()
 
 ' Where the ball resets:
 DIM miss AS Viper.Sound.Sound
-miss = Viper.Sound.Synth.Sfx("hit")
+miss = Viper.Sound.Synth.Sfx(2) ' hit
 miss.Play()
 ```
 
-**Synth presets:** `"jump"`, `"coin"`, `"hit"`, `"explosion"`, `"powerup"`, `"laser"` — no audio files required. For custom sounds, load WAV files with `Sound.Load("path/to/file.wav")`.
+**Synth presets:** `0` jump, `1` coin, `2` hit, `3` explosion, `4` powerup, `5` laser — no audio files required. For custom sounds, load WAV files with `Sound.Load("path/to/file.wav")`.
 
 ---
 

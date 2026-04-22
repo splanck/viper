@@ -16,6 +16,7 @@
 // Ownership/Lifetime:
 //   - Playlist objects are GC-managed runtime objects; they are freed when their refcount drops to 0.
 //   - Track strings are retained by the underlying sequence; callers keep ownership of their inputs too.
+//   - rt_playlist_get returns a retained string reference; C callers must release it when done.
 //
 // Links: src/runtime/audio/rt_playlist.c (implementation), src/runtime/audio/rt_audio.h
 //
@@ -72,7 +73,7 @@ int64_t rt_playlist_len(void *playlist);
 /// @brief Get the path of a track at a given index.
 /// @param playlist Playlist object.
 /// @param index Track index.
-/// @return Path string, or empty if index out of bounds.
+/// @return Retained path string, or retained empty string if index out of bounds.
 rt_string rt_playlist_get(void *playlist, int64_t index);
 
 //=============================================================================

@@ -68,8 +68,9 @@ typedef struct {
     HANDLE event;               ///< Buffer event
     HANDLE stop_event;          ///< Stop signal event
     UINT32 buffer_frames;       ///< Total buffer size in frames
-    int running;                ///< Thread running flag
-    int paused;                 ///< Pause state
+    volatile LONG running;      ///< Thread running flag
+    volatile LONG paused;       ///< Pause state
+    int com_initialized;        ///< This backend owns a COM apartment reference.
     CRITICAL_SECTION pause_cs;  ///< Protects pause state
 } vaud_win32_data;
 
@@ -88,11 +89,12 @@ static DWORD WINAPI audio_thread_func(LPVOID arg) {
     /* Events to wait on */
     HANDLE events[2] = {plat->event, plat->stop_event};
 
-    while (plat->running) {
+    while (InterlockedCompareExchange(&plat->running, 0, 0)) {
         /* Wait for buffer space or stop signal */
         DWORD wait_result = WaitForMultipleObjects(2, events, FALSE, 100);
 
-        if (!plat->running || wait_result == WAIT_OBJECT_0 + 1) {
+        if (!InterlockedCompareExchange(&plat->running, 0, 0) ||
+            wait_result == WAIT_OBJECT_0 + 1) {
             /* Stop event signaled */
             break;
         }
@@ -103,7 +105,7 @@ static DWORD WINAPI audio_thread_func(LPVOID arg) {
 
         /* Check pause state */
         EnterCriticalSection(&plat->pause_cs);
-        int is_paused = plat->paused;
+        int is_paused = (int)InterlockedCompareExchange(&plat->paused, 0, 0);
         LeaveCriticalSection(&plat->pause_cs);
 
         if (is_paused) {
@@ -162,8 +164,8 @@ int vaud_platform_init(vaud_context_t ctx) {
     }
 
     ctx->platform_data = plat;
-    plat->running = 0;
-    plat->paused = 0;
+    InterlockedExchange(&plat->running, 0);
+    InterlockedExchange(&plat->paused, 0);
 
     InitializeCriticalSection(&plat->pause_cs);
 
@@ -176,6 +178,7 @@ int vaud_platform_init(vaud_context_t ctx) {
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to initialize COM");
         return 0;
     }
+    plat->com_initialized = (hr == S_OK || hr == S_FALSE);
 
     /* Create device enumerator */
     IMMDeviceEnumerator *enumerator = NULL;
@@ -187,6 +190,8 @@ int vaud_platform_init(vaud_context_t ctx) {
 
     if (FAILED(hr)) {
         DeleteCriticalSection(&plat->pause_cs);
+        if (plat->com_initialized)
+            CoUninitialize();
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to create device enumerator");
@@ -200,6 +205,8 @@ int vaud_platform_init(vaud_context_t ctx) {
 
     if (FAILED(hr)) {
         DeleteCriticalSection(&plat->pause_cs);
+        if (plat->com_initialized)
+            CoUninitialize();
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to get audio endpoint");
@@ -213,6 +220,8 @@ int vaud_platform_init(vaud_context_t ctx) {
     if (FAILED(hr)) {
         IMMDevice_Release(plat->device);
         DeleteCriticalSection(&plat->pause_cs);
+        if (plat->com_initialized)
+            CoUninitialize();
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to activate audio client");
@@ -245,6 +254,8 @@ int vaud_platform_init(vaud_context_t ctx) {
         IAudioClient_Release(plat->client);
         IMMDevice_Release(plat->device);
         DeleteCriticalSection(&plat->pause_cs);
+        if (plat->com_initialized)
+            CoUninitialize();
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to initialize audio client");
@@ -257,6 +268,8 @@ int vaud_platform_init(vaud_context_t ctx) {
         IAudioClient_Release(plat->client);
         IMMDevice_Release(plat->device);
         DeleteCriticalSection(&plat->pause_cs);
+        if (plat->com_initialized)
+            CoUninitialize();
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to get buffer size");
@@ -275,6 +288,8 @@ int vaud_platform_init(vaud_context_t ctx) {
         IAudioClient_Release(plat->client);
         IMMDevice_Release(plat->device);
         DeleteCriticalSection(&plat->pause_cs);
+        if (plat->com_initialized)
+            CoUninitialize();
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to create events");
@@ -289,6 +304,8 @@ int vaud_platform_init(vaud_context_t ctx) {
         IAudioClient_Release(plat->client);
         IMMDevice_Release(plat->device);
         DeleteCriticalSection(&plat->pause_cs);
+        if (plat->com_initialized)
+            CoUninitialize();
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to set event handle");
@@ -305,6 +322,8 @@ int vaud_platform_init(vaud_context_t ctx) {
         IAudioClient_Release(plat->client);
         IMMDevice_Release(plat->device);
         DeleteCriticalSection(&plat->pause_cs);
+        if (plat->com_initialized)
+            CoUninitialize();
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to get render client");
@@ -312,17 +331,19 @@ int vaud_platform_init(vaud_context_t ctx) {
     }
 
     /* Start audio thread */
-    plat->running = 1;
+    InterlockedExchange(&plat->running, 1);
     plat->thread = CreateThread(NULL, 0, audio_thread_func, ctx, 0, NULL);
 
     if (!plat->thread) {
-        plat->running = 0;
+        InterlockedExchange(&plat->running, 0);
         IAudioRenderClient_Release(plat->render);
         CloseHandle(plat->event);
         CloseHandle(plat->stop_event);
         IAudioClient_Release(plat->client);
         IMMDevice_Release(plat->device);
         DeleteCriticalSection(&plat->pause_cs);
+        if (plat->com_initialized)
+            CoUninitialize();
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to create audio thread");
@@ -332,7 +353,7 @@ int vaud_platform_init(vaud_context_t ctx) {
     /* Start audio client */
     hr = IAudioClient_Start(plat->client);
     if (FAILED(hr)) {
-        plat->running = 0;
+        InterlockedExchange(&plat->running, 0);
         SetEvent(plat->stop_event);
         WaitForSingleObject(plat->thread, INFINITE);
         CloseHandle(plat->thread);
@@ -342,6 +363,8 @@ int vaud_platform_init(vaud_context_t ctx) {
         IAudioClient_Release(plat->client);
         IMMDevice_Release(plat->device);
         DeleteCriticalSection(&plat->pause_cs);
+        if (plat->com_initialized)
+            CoUninitialize();
         free(plat);
         ctx->platform_data = NULL;
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to start audio client");
@@ -358,7 +381,7 @@ void vaud_platform_shutdown(vaud_context_t ctx) {
     vaud_win32_data *plat = (vaud_win32_data *)ctx->platform_data;
 
     /* Signal thread to stop */
-    plat->running = 0;
+    InterlockedExchange(&plat->running, 0);
     SetEvent(plat->stop_event);
 
     /* Wait for thread */
@@ -386,11 +409,13 @@ void vaud_platform_shutdown(vaud_context_t ctx) {
     if (plat->stop_event)
         CloseHandle(plat->stop_event);
 
+    int com_initialized = plat->com_initialized;
     DeleteCriticalSection(&plat->pause_cs);
     free(plat);
     ctx->platform_data = NULL;
 
-    CoUninitialize();
+    if (com_initialized)
+        CoUninitialize();
 }
 
 void vaud_platform_pause(vaud_context_t ctx) {
@@ -400,7 +425,7 @@ void vaud_platform_pause(vaud_context_t ctx) {
     vaud_win32_data *plat = (vaud_win32_data *)ctx->platform_data;
 
     EnterCriticalSection(&plat->pause_cs);
-    plat->paused = 1;
+    InterlockedExchange(&plat->paused, 1);
     LeaveCriticalSection(&plat->pause_cs);
 
     if (plat->client) {
@@ -419,7 +444,7 @@ void vaud_platform_resume(vaud_context_t ctx) {
     }
 
     EnterCriticalSection(&plat->pause_cs);
-    plat->paused = 0;
+    InterlockedExchange(&plat->paused, 0);
     LeaveCriticalSection(&plat->pause_cs);
 }
 

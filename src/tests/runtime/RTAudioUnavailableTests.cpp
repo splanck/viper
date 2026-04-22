@@ -13,6 +13,8 @@
 
 #include "rt.hpp"
 #include "rt_audio.h"
+#include "rt_musicgen.h"
+#include "rt_synth.h"
 #include "tests/common/PlatformSkip.h"
 
 #include <cassert>
@@ -58,6 +60,21 @@ static void trap_music_play() {
     rt_music_play(reinterpret_cast<void *>(1), 0);
 }
 
+static void test_builder_apis_return_null_without_trapping() {
+    assert(rt_synth_tone(440, 10, 0) == nullptr);
+    assert(rt_synth_sweep(220, 440, 10, 1) == nullptr);
+    assert(rt_synth_noise(10, 50) == nullptr);
+    assert(rt_synth_sfx(0) == nullptr);
+
+    void *song = rt_musicgen_new(120);
+    assert(song != nullptr);
+    int64_t ch = rt_musicgen_add_channel(song, 1);
+    assert(ch == 0);
+    rt_musicgen_set_length(song, 100);
+    assert(rt_musicgen_add_note(song, ch, 0, 60, 50) == 1);
+    assert(rt_musicgen_build(song) == nullptr);
+}
+
 } // namespace
 #endif
 
@@ -71,6 +88,7 @@ int main() {
     expect_invalid_operation(trap_sound_play, "not compiled in");
     expect_invalid_operation(trap_music_load, "not compiled in");
     expect_invalid_operation(trap_music_play, "not compiled in");
+    test_builder_apis_return_null_without_trapping();
     std::printf("All audio-unavailable tests passed.\n");
     return 0;
 #endif

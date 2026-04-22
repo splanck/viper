@@ -117,6 +117,24 @@ static int64_t mg_clamp(int64_t v, int64_t lo, int64_t hi) {
     return v;
 }
 
+static int64_t mg_max_centbeats_for_bpm(int64_t bpm) {
+    bpm = mg_clamp(bpm, 20, 300);
+    return ((int64_t)MG_MAX_DURATION_S * bpm * 100) / 60;
+}
+
+static int mg_centbeats_to_frames(int64_t centbeats,
+                                  int32_t samples_per_beat,
+                                  int64_t *out_frames) {
+    if (!out_frames || samples_per_beat <= 0)
+        return 0;
+    if (centbeats < 0)
+        centbeats = 0;
+    if (centbeats > INT64_MAX / (int64_t)samples_per_beat)
+        return 0;
+    *out_frames = (centbeats * (int64_t)samples_per_beat) / 100;
+    return 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Sine Approximation (no libm — identical to rt_synth.c)
 //===----------------------------------------------------------------------===//
@@ -555,7 +573,9 @@ static void mg_render_note(int32_t *accum,
                            mg_render_state_t *state,
                            int32_t channel_count) {
     /* Calculate note timing */
-    int32_t start = (int32_t)((note->beat_pos * (int64_t)samples_per_beat) / 100);
+    int64_t start64 = 0;
+    if (!mg_centbeats_to_frames(note->beat_pos, samples_per_beat, &start64))
+        return;
 
     /* Apply swing: shift notes on off-beats (at half-beat boundaries) */
     if (swing > 0) {
@@ -563,21 +583,33 @@ static void mg_render_note(int32_t *accum,
         /* Check if this note falls on an odd half-beat */
         int64_t half_beats = note->beat_pos / half_beat;
         if ((half_beats % 2) == 1) {
-            int32_t shift = (int32_t)((swing * samples_per_beat / 2) / 100);
-            start += shift;
+            int64_t shift = (swing * (int64_t)samples_per_beat / 2) / 100;
+            if (start64 > INT64_MAX - shift)
+                return;
+            start64 += shift;
         }
     }
 
-    int32_t dur = (int32_t)((note->duration * (int64_t)samples_per_beat) / 100);
-    int32_t rel_samples = (int32_t)(chan->envelope.release_ms * MG_SAMPLE_RATE / 1000);
-    int32_t end = start + dur + rel_samples;
-
-    if (start >= total_frames)
+    int64_t dur64 = 0;
+    if (!mg_centbeats_to_frames(note->duration, samples_per_beat, &dur64))
         return;
-    if (end > total_frames)
-        end = total_frames;
-    if (start < 0)
-        start = 0;
+    if (dur64 < 1)
+        dur64 = 1;
+    int64_t rel_samples64 = (chan->envelope.release_ms * (int64_t)MG_SAMPLE_RATE) / 1000;
+    if (start64 >= total_frames)
+        return;
+    if (dur64 > INT64_MAX - rel_samples64 || start64 > INT64_MAX - dur64 - rel_samples64)
+        return;
+
+    int64_t end64 = start64 + dur64 + rel_samples64;
+    if (end64 > total_frames)
+        end64 = total_frames;
+    if (end64 <= start64)
+        return;
+
+    int32_t start = (int32_t)start64;
+    int32_t end = (int32_t)end64;
+    int32_t dur = (dur64 > INT32_MAX) ? INT32_MAX : (int32_t)dur64;
 
     /* Base frequency from MIDI table */
     int64_t base_midi = mg_clamp(note->midi_note, 0, 127);
@@ -893,18 +925,17 @@ void rt_musicgen_set_portamento(void *song, int64_t ch, int64_t speed_ms) {
 // Public API — Notes
 //===----------------------------------------------------------------------===//
 
-/// @brief Schedule a note on a track. Equivalent to `add_note_vel` with full velocity (127).
+/// @brief Schedule a note on a track. Equivalent to `add_note_vel` with full velocity.
 int64_t rt_musicgen_add_note(
     void *song, int64_t ch, int64_t beat_pos, int64_t midi_note, int64_t duration) {
     return rt_musicgen_add_note_vel(song, ch, beat_pos, midi_note, duration, 100);
 }
 
-/// @brief Schedule a note with explicit MIDI velocity (0-127) on a track.
+/// @brief Schedule a note with explicit velocity (0-100) on a track.
 ///
-/// `time_ms` is the song-time start, `duration_ms` how long the
-/// note sounds, `pitch` is the MIDI note number (0-127, 60 = middle C).
-/// Velocity scales note volume linearly. Returns a sequential
-/// note ID (0-based) for later editing.
+/// `beat_pos` and `duration` are centbeats (100 = one beat), and
+/// `midi_note` is the MIDI note number (0-127, 60 = middle C).
+/// Velocity scales note volume linearly. Returns 1 on success or 0 on failure.
 int64_t rt_musicgen_add_note_vel(void *song_ptr,
                                  int64_t ch,
                                  int64_t beat_pos,
@@ -918,10 +949,21 @@ int64_t rt_musicgen_add_note_vel(void *song_ptr,
     if (c->note_count >= MUSICGEN_MAX_NOTES)
         return 0;
 
+    mg_song_t *song = (mg_song_t *)song_ptr;
+    int64_t max_centbeats = mg_max_centbeats_for_bpm(song->bpm);
+    if (beat_pos < 0)
+        beat_pos = 0;
+    if (beat_pos > max_centbeats)
+        beat_pos = max_centbeats;
+    if (duration < 1)
+        duration = 1;
+    if (duration > max_centbeats - beat_pos)
+        duration = (max_centbeats > beat_pos) ? (max_centbeats - beat_pos) : 1;
+
     mg_note_t *note = &c->notes[c->note_count];
-    note->beat_pos = (beat_pos < 0) ? 0 : beat_pos;
+    note->beat_pos = beat_pos;
     note->midi_note = mg_clamp(midi_note, 0, 127);
-    note->duration = (duration < 1) ? 1 : duration;
+    note->duration = duration;
     note->velocity = mg_clamp(velocity, 0, 100);
 
     c->note_count++;
@@ -937,7 +979,7 @@ void rt_musicgen_set_length(void *song_ptr, int64_t length_centbeats) {
     if (!song_ptr)
         return;
     mg_song_t *song = (mg_song_t *)song_ptr;
-    song->length_centbeats = (length_centbeats < 0) ? 0 : length_centbeats;
+    song->length_centbeats = mg_clamp(length_centbeats, 0, mg_max_centbeats_for_bpm(song->bpm));
 }
 
 /// @brief Set the swing amount (0–100; offbeat notes shifted later for groove feel).
@@ -989,6 +1031,9 @@ int64_t rt_musicgen_get_channel_count(void *song_ptr) {
 void *rt_musicgen_build(void *song_ptr) {
     if (!song_ptr)
         return NULL;
+    if (!rt_audio_is_available())
+        return NULL;
+
     mg_song_t *song = (mg_song_t *)song_ptr;
 
     if (song->channel_count <= 0 || song->length_centbeats <= 0)
@@ -996,7 +1041,9 @@ void *rt_musicgen_build(void *song_ptr) {
 
     /* Calculate total frames */
     int32_t samples_per_beat = (int32_t)((int64_t)MG_SAMPLE_RATE * 60 / song->bpm);
-    int64_t total_frames_64 = (song->length_centbeats * (int64_t)samples_per_beat) / 100;
+    int64_t total_frames_64 = 0;
+    if (!mg_centbeats_to_frames(song->length_centbeats, samples_per_beat, &total_frames_64))
+        return NULL;
 
     /* Cap at 5 minutes */
     int64_t max_frames = (int64_t)MG_MAX_DURATION_S * MG_SAMPLE_RATE;
@@ -1013,14 +1060,6 @@ void *rt_musicgen_build(void *song_ptr) {
     if (!accum)
         return NULL;
 
-    /* Sort each channel's notes by beat position (required for portamento) */
-    for (int32_t ch = 0; ch < song->channel_count; ch++) {
-        mg_channel_t *chan = &song->channels[ch];
-        if (chan->note_count > 1) {
-            qsort(chan->notes, (size_t)chan->note_count, sizeof(mg_note_t), mg_note_compare);
-        }
-    }
-
     int32_t active_channel_count = 0;
     for (int32_t ch = 0; ch < song->channel_count; ch++) {
         mg_channel_t *chan = &song->channels[ch];
@@ -1035,19 +1074,33 @@ void *rt_musicgen_build(void *song_ptr) {
         mg_channel_t *chan = &song->channels[ch];
         if (chan->note_count <= 0 || mg_clamp(chan->volume, 0, 100) <= 0)
             continue;
+        mg_note_t *notes = chan->notes;
+        mg_note_t *sorted_notes = NULL;
+        if (chan->note_count > 1) {
+            sorted_notes = (mg_note_t *)malloc((size_t)chan->note_count * sizeof(mg_note_t));
+            if (!sorted_notes) {
+                free(accum);
+                return NULL;
+            }
+            memcpy(sorted_notes, chan->notes, (size_t)chan->note_count * sizeof(mg_note_t));
+            qsort(sorted_notes, (size_t)chan->note_count, sizeof(mg_note_t), mg_note_compare);
+            notes = sorted_notes;
+        }
+
         mg_render_state_t state;
         state.prev_freq = 0.0;
 
         for (int32_t n = 0; n < chan->note_count; n++) {
             mg_render_note(accum,
                            total_frames,
-                           &chan->notes[n],
+                           &notes[n],
                            chan,
                            samples_per_beat,
                            song->swing,
                            &state,
                            active_channel_count);
         }
+        free(sorted_notes);
     }
 
     /* Soft-clip to 16-bit stereo */

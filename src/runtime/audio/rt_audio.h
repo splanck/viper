@@ -124,6 +124,12 @@ void rt_voice_set_pan(int64_t voice_id, int64_t pan);
 /// @return 1 if playing, 0 if stopped or invalid.
 int64_t rt_voice_is_playing(int64_t voice_id);
 
+/// @brief Return non-zero when @p sound is a live runtime Sound wrapper.
+/// @details This is intentionally a runtime-handle check, not a playback-capability
+///          check. A detached Sound after Audio.Shutdown() is still a Sound object,
+///          but playback will fail until a new handle is loaded.
+int64_t rt_sound_is_handle(void *sound);
+
 //=========================================================================
 // Music Streaming
 //=========================================================================
@@ -189,6 +195,9 @@ int64_t rt_music_get_position(void *music);
 /// @param music Music handle.
 /// @return Duration in milliseconds, or 0 if NULL.
 int64_t rt_music_get_duration(void *music);
+
+/// @brief Return non-zero when @p music is a live runtime Music wrapper.
+int64_t rt_music_is_handle(void *music);
 
 /// @brief Pause a music stream and any active crossfade companion tied to it.
 /// @details Pauses the companion streams and freezes the shared crossfade clock.

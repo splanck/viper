@@ -2816,23 +2816,23 @@ RT_FUNC(AudioStopAllSounds,    rt_audio_stop_all_sounds,  "Viper.Sound.Audio.Sto
 // Mix Groups & Crossfade
 RT_FUNC(AudioSetGroupVolume,  rt_audio_set_group_volume,  "Viper.Sound.Audio.SetGroupVolume",  "void(i64,i64)")
 RT_FUNC(AudioGetGroupVolume,  rt_audio_get_group_volume,  "Viper.Sound.Audio.GetGroupVolume",  "i64(i64)")
-RT_FUNC(MusicCrossfadeTo,     rt_music_crossfade_to,      "Viper.Sound.Music.CrossfadeTo",     "void(obj,obj,i64)")
+RT_FUNC(MusicCrossfadeTo,     rt_music_crossfade_to,      "Viper.Sound.Music.CrossfadeTo",     "void(obj<Viper.Sound.Music>,obj<Viper.Sound.Music>,i64)")
 RT_FUNC(MusicIsCrossfading,   rt_music_is_crossfading,    "Viper.Sound.Audio.get_IsCrossfading","i1()")
 RT_FUNC(PlaylistSetCrossfade, rt_playlist_set_crossfade,  "Viper.Sound.Playlist.set_Crossfade","void(obj,i64)")
 RT_FUNC(PlaylistGetCrossfade, rt_playlist_get_crossfade,  "Viper.Sound.Playlist.get_Crossfade","i64(obj)")
-RT_FUNC(SoundPlayGroup,       rt_sound_play_in_group,      "Viper.Sound.Sound.PlayGroup",       "i64(obj,i64)")
-RT_FUNC(SoundPlayExGroup,     rt_sound_play_ex_in_group,   "Viper.Sound.Sound.PlayExGroup",     "i64(obj,i64,i64,i64)")
-RT_FUNC(SoundPlayLoopGroup,   rt_sound_play_loop_in_group, "Viper.Sound.Sound.PlayLoopGroup",   "i64(obj,i64,i64,i64)")
+RT_FUNC(SoundPlayGroup,       rt_sound_play_in_group,      "Viper.Sound.Sound.PlayGroup",       "i64(obj<Viper.Sound.Sound>,i64)")
+RT_FUNC(SoundPlayExGroup,     rt_sound_play_ex_in_group,   "Viper.Sound.Sound.PlayExGroup",     "i64(obj<Viper.Sound.Sound>,i64,i64,i64)")
+RT_FUNC(SoundPlayLoopGroup,   rt_sound_play_loop_in_group, "Viper.Sound.Sound.PlayLoopGroup",   "i64(obj<Viper.Sound.Sound>,i64,i64,i64)")
 
 //=============================================================================
 // SOUND - SOUND EFFECTS
 //=============================================================================
 
-RT_FUNC(SoundLoad,     rt_sound_load,      "Viper.Sound.Sound.Load",     "obj(str)")
-RT_FUNC(SoundDestroy,  rt_sound_destroy,   "Viper.Sound.Sound.Destroy",  "void(obj)")
-RT_FUNC(SoundPlay,     rt_sound_play,      "Viper.Sound.Sound.Play",     "i64(obj)")
-RT_FUNC(SoundPlayEx,   rt_sound_play_ex,   "Viper.Sound.Sound.PlayEx",   "i64(obj,i64,i64)")
-RT_FUNC(SoundPlayLoop, rt_sound_play_loop, "Viper.Sound.Sound.PlayLoop", "i64(obj,i64,i64)")
+RT_FUNC(SoundLoad,     rt_sound_load,      "Viper.Sound.Sound.Load",     "obj<Viper.Sound.Sound>(str)")
+RT_FUNC(SoundDestroy,  rt_sound_destroy,   "Viper.Sound.Sound.Destroy",  "void(obj<Viper.Sound.Sound>)")
+RT_FUNC(SoundPlay,     rt_sound_play,      "Viper.Sound.Sound.Play",     "i64(obj<Viper.Sound.Sound>)")
+RT_FUNC(SoundPlayEx,   rt_sound_play_ex,   "Viper.Sound.Sound.PlayEx",   "i64(obj<Viper.Sound.Sound>,i64,i64)")
+RT_FUNC(SoundPlayLoop, rt_sound_play_loop, "Viper.Sound.Sound.PlayLoop", "i64(obj<Viper.Sound.Sound>,i64,i64)")
 
 //=============================================================================
 // SOUND - VOICE CONTROL
@@ -2847,19 +2847,19 @@ RT_FUNC(VoiceIsPlaying, rt_voice_is_playing, "Viper.Sound.Voice.IsPlaying", "i64
 // SOUND - MUSIC STREAMING
 //=============================================================================
 
-RT_FUNC(MusicLoad,        rt_music_load,         "Viper.Sound.Music.Load",        "obj(str)")
-RT_FUNC(MusicDestroy,     rt_music_destroy,      "Viper.Sound.Music.Destroy",     "void(obj)")
-RT_FUNC(MusicPlay,        rt_music_play,         "Viper.Sound.Music.Play",        "void(obj,i64)")
-RT_FUNC(MusicStop,        rt_music_stop,         "Viper.Sound.Music.Stop",        "void(obj)")
-RT_FUNC(MusicPause,       rt_music_pause,        "Viper.Sound.Music.Pause",       "void(obj)")
-RT_FUNC(MusicResume,      rt_music_resume,       "Viper.Sound.Music.Resume",      "void(obj)")
-RT_FUNC(MusicSetLoop,     rt_music_set_loop,     "Viper.Sound.Music.SetLoop",     "void(obj,i64)")
-RT_FUNC(MusicSetVolume,   rt_music_set_volume,   "Viper.Sound.Music.SetVolume",   "void(obj,i64)")
-RT_FUNC(MusicGetVolume,   rt_music_get_volume,   "Viper.Sound.Music.get_Volume",  "i64(obj)")
-RT_FUNC(MusicIsPlaying,   rt_music_is_playing,   "Viper.Sound.Music.IsPlaying",   "i64(obj)")
-RT_FUNC(MusicSeek,        rt_music_seek,         "Viper.Sound.Music.Seek",        "void(obj,i64)")
-RT_FUNC(MusicGetPosition, rt_music_get_position, "Viper.Sound.Music.get_Position", "i64(obj)")
-RT_FUNC(MusicGetDuration, rt_music_get_duration, "Viper.Sound.Music.get_Duration", "i64(obj)")
+RT_FUNC(MusicLoad,        rt_music_load,         "Viper.Sound.Music.Load",        "obj<Viper.Sound.Music>(str)")
+RT_FUNC(MusicDestroy,     rt_music_destroy,      "Viper.Sound.Music.Destroy",     "void(obj<Viper.Sound.Music>)")
+RT_FUNC(MusicPlay,        rt_music_play,         "Viper.Sound.Music.Play",        "void(obj<Viper.Sound.Music>,i64)")
+RT_FUNC(MusicStop,        rt_music_stop,         "Viper.Sound.Music.Stop",        "void(obj<Viper.Sound.Music>)")
+RT_FUNC(MusicPause,       rt_music_pause,        "Viper.Sound.Music.Pause",       "void(obj<Viper.Sound.Music>)")
+RT_FUNC(MusicResume,      rt_music_resume,       "Viper.Sound.Music.Resume",      "void(obj<Viper.Sound.Music>)")
+RT_FUNC(MusicSetLoop,     rt_music_set_loop,     "Viper.Sound.Music.SetLoop",     "void(obj<Viper.Sound.Music>,i64)")
+RT_FUNC(MusicSetVolume,   rt_music_set_volume,   "Viper.Sound.Music.SetVolume",   "void(obj<Viper.Sound.Music>,i64)")
+RT_FUNC(MusicGetVolume,   rt_music_get_volume,   "Viper.Sound.Music.get_Volume",  "i64(obj<Viper.Sound.Music>)")
+RT_FUNC(MusicIsPlaying,   rt_music_is_playing,   "Viper.Sound.Music.IsPlaying",   "i64(obj<Viper.Sound.Music>)")
+RT_FUNC(MusicSeek,        rt_music_seek,         "Viper.Sound.Music.Seek",        "void(obj<Viper.Sound.Music>,i64)")
+RT_FUNC(MusicGetPosition, rt_music_get_position, "Viper.Sound.Music.get_Position", "i64(obj<Viper.Sound.Music>)")
+RT_FUNC(MusicGetDuration, rt_music_get_duration, "Viper.Sound.Music.get_Duration", "i64(obj<Viper.Sound.Music>)")
 
 //=============================================================================
 // IO - DIRECTORY
@@ -7921,7 +7921,7 @@ RT_CLASS_BEGIN("Viper.Sound.Music", Music, "obj", MusicLoad)
     RT_METHOD("IsPlaying", "i64()", MusicIsPlaying)
     RT_METHOD("Seek", "void(i64)", MusicSeek)
     RT_METHOD("Free", "void()", MusicDestroy)
-    RT_METHOD("CrossfadeTo", "void(obj,i64)", MusicCrossfadeTo)
+    RT_METHOD("CrossfadeTo", "void(obj<Viper.Sound.Music>,i64)", MusicCrossfadeTo)
 RT_CLASS_END()
 
 // Viper.Sound.Playlist - music playlist with queue management
@@ -7978,7 +7978,7 @@ RT_CLASS_END()
 // Viper.Sound.SoundBank - named sound registry
 RT_FUNC(SoundBankNew,            rt_soundbank_new,            "Viper.Sound.SoundBank.New",            "obj()")
 RT_FUNC(SoundBankRegister,       rt_soundbank_register,       "Viper.Sound.SoundBank.Register",       "i64(obj,str,str)")
-RT_FUNC(SoundBankRegisterSound,  rt_soundbank_register_sound, "Viper.Sound.SoundBank.RegisterSound",  "i64(obj,str,obj)")
+RT_FUNC(SoundBankRegisterSound,  rt_soundbank_register_sound, "Viper.Sound.SoundBank.RegisterSound",  "i64(obj,str,obj<Viper.Sound.Sound>)")
 RT_FUNC(SoundBankPlay,           rt_soundbank_play,           "Viper.Sound.SoundBank.Play",           "i64(obj,str)")
 RT_FUNC(SoundBankPlayEx,         rt_soundbank_play_ex,        "Viper.Sound.SoundBank.PlayEx",         "i64(obj,str,i64,i64)")
 RT_FUNC(SoundBankHas,            rt_soundbank_has,            "Viper.Sound.SoundBank.Has",            "i1(obj,str)")
@@ -7988,7 +7988,7 @@ RT_FUNC(SoundBankClear,          rt_soundbank_clear,          "Viper.Sound.Sound
 RT_FUNC(SoundBankCount,          rt_soundbank_count,          "Viper.Sound.SoundBank.get_Count",      "i64(obj)")
 RT_CLASS_BEGIN("Viper.Sound.SoundBank", SoundBank, "obj", SoundBankNew)
     RT_METHOD("Register", "i64(str,str)", SoundBankRegister)
-    RT_METHOD("RegisterSound", "i64(str,obj)", SoundBankRegisterSound)
+    RT_METHOD("RegisterSound", "i64(str,obj<Viper.Sound.Sound>)", SoundBankRegisterSound)
     RT_METHOD("Play", "i64(str)", SoundBankPlay)
     RT_METHOD("PlayEx", "i64(str,i64,i64)", SoundBankPlayEx)
     RT_METHOD("Has", "i1(str)", SoundBankHas)
@@ -8044,6 +8044,7 @@ RT_CLASS_BEGIN("Viper.Sound.MusicGen", MusicGen, "obj", MusicGenNew)
     RT_METHOD("SetPortamento", "void(i64,i64)", MusicGenSetPortamento)
     RT_METHOD("AddNote", "i64(i64,i64,i64,i64)", MusicGenAddNote)
     RT_METHOD("AddNoteVel", "i64(i64,i64,i64,i64,i64)", MusicGenAddNoteVel)
+    RT_METHOD("SetLength", "void(i64)", MusicGenSetLength)
     RT_METHOD("SetSwing", "void(i64)", MusicGenSetSwing)
     RT_METHOD("SetLoopable", "void(i64)", MusicGenSetLoopable)
     RT_METHOD("Build", "obj()", MusicGenBuild)

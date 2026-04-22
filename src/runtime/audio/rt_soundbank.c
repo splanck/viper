@@ -162,6 +162,8 @@ int64_t rt_soundbank_register(void *bank_ptr, rt_string name, rt_string path) {
 int64_t rt_soundbank_register_sound(void *bank_ptr, rt_string name, void *sound) {
     if (!bank_ptr || !name || !sound)
         return 0;
+    if (!rt_sound_is_handle(sound))
+        return 0;
 
     rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
     int replacing;

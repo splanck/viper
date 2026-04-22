@@ -184,6 +184,10 @@ void vaud_free_sound(vaud_sound_t sound);
 /// @param sound Sound to detach (may be NULL).
 void vaud_detach_sound(vaud_sound_t sound);
 
+/// @brief Return non-zero when a sound is still attached to a live context.
+/// @param sound Sound to inspect (may be NULL).
+int vaud_sound_is_attached(vaud_sound_t sound);
+
 /// @brief Play a sound effect.
 /// @details Starts playback immediately using the next available voice. If all
 ///          voices are in use, the oldest non-looping voice is stolen.
@@ -261,6 +265,10 @@ void vaud_free_music(vaud_music_t music);
 ///          the music later without touching a destroyed context.
 /// @param music Music to detach (may be NULL).
 void vaud_detach_music(vaud_music_t music);
+
+/// @brief Return non-zero when a music stream is still attached to a live context.
+/// @param music Music stream to inspect (may be NULL).
+int vaud_music_is_attached(vaud_music_t music);
 
 /// @brief Start music playback.
 /// @details Begins streaming playback from the beginning of the file.

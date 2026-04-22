@@ -77,8 +77,10 @@ static inline int16_t soft_clip(int32_t sample) {
 /// @param source_channels Original source channel count (1 = mono, 2 = stereo).
 /// @param left_gain Output: left channel gain.
 /// @param right_gain Output: right channel gain.
-static void calculate_pan_gains(
-    float pan, int32_t source_channels, float *left_gain, float *right_gain) {
+static void calculate_pan_gains(float pan,
+                                int32_t source_channels,
+                                float *left_gain,
+                                float *right_gain) {
     if (pan < -1.0f)
         pan = -1.0f;
     if (pan > 1.0f)
@@ -267,6 +269,35 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
 // Voice Management
 //===----------------------------------------------------------------------===//
 
+static vaud_voice_id vaud_next_voice_id(vaud_context_t ctx) {
+    if (!ctx)
+        return VAUD_INVALID_VOICE;
+
+    for (int32_t attempts = 0; attempts < INT32_MAX; attempts++) {
+        int32_t candidate = ctx->next_voice_id;
+        if (ctx->next_voice_id >= INT32_MAX || ctx->next_voice_id <= 0 ||
+            ctx->next_voice_id == VAUD_INVALID_VOICE) {
+            ctx->next_voice_id = 1;
+        } else {
+            ctx->next_voice_id++;
+        }
+        if (candidate <= 0 || candidate == VAUD_INVALID_VOICE)
+            continue;
+
+        int in_use = 0;
+        for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
+            if (ctx->voices[i].state != VAUD_VOICE_INACTIVE && ctx->voices[i].id == candidate) {
+                in_use = 1;
+                break;
+            }
+        }
+        if (!in_use)
+            return (vaud_voice_id)candidate;
+    }
+
+    return VAUD_INVALID_VOICE;
+}
+
 vaud_voice *vaud_alloc_voice(vaud_context_t ctx) {
     if (!ctx)
         return NULL;
@@ -277,7 +308,9 @@ vaud_voice *vaud_alloc_voice(vaud_context_t ctx) {
     /* First pass: look for inactive voice */
     for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
         if (ctx->voices[i].state == VAUD_VOICE_INACTIVE) {
-            ctx->voices[i].id = ctx->next_voice_id++;
+            ctx->voices[i].id = vaud_next_voice_id(ctx);
+            if (ctx->voices[i].id == VAUD_INVALID_VOICE)
+                return NULL;
             ctx->voices[i].start_time = ctx->frame_counter;
             return &ctx->voices[i];
         }
@@ -293,7 +326,9 @@ vaud_voice *vaud_alloc_voice(vaud_context_t ctx) {
     if (oldest) {
         oldest->state = VAUD_VOICE_INACTIVE;
         oldest->sound = NULL;
-        oldest->id = ctx->next_voice_id++;
+        oldest->id = vaud_next_voice_id(ctx);
+        if (oldest->id == VAUD_INVALID_VOICE)
+            return NULL;
         oldest->start_time = ctx->frame_counter;
         return oldest;
     }
@@ -309,7 +344,9 @@ vaud_voice *vaud_alloc_voice(vaud_context_t ctx) {
     if (oldest) {
         oldest->state = VAUD_VOICE_INACTIVE;
         oldest->sound = NULL;
-        oldest->id = ctx->next_voice_id++;
+        oldest->id = vaud_next_voice_id(ctx);
+        if (oldest->id == VAUD_INVALID_VOICE)
+            return NULL;
         oldest->start_time = ctx->frame_counter;
         return oldest;
     }

@@ -142,10 +142,30 @@ static float float32_unpack(uint32_t val) {
 /// @brief Construct the sorted (code, index) table used by Huffman decoding.
 ///
 /// Walks the codebook's per-entry length array, assigning canonical
-/// codewords via the Vorbis spec's marker-array algorithm. Reverses
-/// each codeword to match the LSB-first bitstream reader so the
-/// `codebook_decode_scalar` linear scan can match without further
-/// transformation.
+/// @brief Build a canonical-Huffman code table from the codebook's per-entry bit
+///        lengths, using the Vorbis-spec marker-array algorithm.
+/// @details The codebook header gives us only a list of code *lengths* per entry;
+///          we have to derive the actual codeword bits ourselves such that the
+///          resulting set is prefix-free. The marker array tracks the "next free
+///          codeword" at each bit length:
+///            - `marker[len]` starts at 0 and advances by 1 each time an entry of
+///              that length claims a codeword.
+///            - After each claim, the carry-propagation loop updates shorter
+///              markers so the tree stays consistent (any length whose marker has
+///              overflowed its bit range gets bumped to the next level).
+///
+///          Each assigned codeword is then *bit-reversed* within its length
+///          because the Vorbis bitstream reader pulls bits LSB-first: reversing
+///          up front means `codebook_decode_scalar` can do a simple linear scan
+///          of `sorted_codes` and match an incoming bit pattern directly without
+///          having to reverse on every lookup.
+///
+///          The length is packed into the upper 8 bits of `sorted_codes[i]`
+///          (`rev | (len << 24)`) so the decoder can recover it without a second
+///          parallel array. Entries with length 0 or > 32 are skipped (unused
+///          slots in the codebook). On allocation failure `sorted_count` stays
+///          set but the pointers are NULL — the decoder detects this and fails
+///          gracefully.
 static void codebook_build_tree(vorbis_codebook_t *cb) {
     // Count valid entries
     int count = 0;
@@ -394,8 +414,37 @@ static void fft_radix2(float *re, float *im, int n) {
     }
 }
 
-/// @brief Fast IMDCT via N/4-point FFT with pre/post twiddle.
-/// O(N log N) for power-of-2 sizes; falls back to O(N²) for non-power-of-2.
+/// @brief Inverse Modified Discrete Cosine Transform used per Vorbis window.
+/// @details The IMDCT converts each block's frequency-domain spectrum back to
+///          2N overlapping time-domain samples. Two paths:
+///
+///          **Fast path (`n/4` is a power of two):** O(N log N) via an N/4-point
+///          complex FFT sandwiched between pre-twiddle and post-twiddle passes.
+///            1. **Pre-twiddle.** Pack the N input frequency samples into N/4
+///               complex numbers by combining symmetric pairs multiplied by
+///               e^(-j·2π·(k+1/8)/N), which folds the MDCT's cosine kernel into
+///               an equivalent FFT kernel.
+///            2. **FFT.** Standard iterative Cooley-Tukey butterfly passes at
+///               each length `len = 2, 4, 8, …, n`. Inner loop carries an
+///               incrementally-updated `(cur_re, cur_im)` twiddle factor via
+///               the rotation identity so only one `cos`/`sin` call per pass
+///               level is needed.
+///            3. **Post-twiddle + output reordering.** Multiply the FFT output
+///               by e^(-j·2π·(k+1/8)/N) again, then expand the N/4 complex
+///               results into the 2N-sample output array using the MDCT's
+///               even-symmetry + odd-antisymmetry rules.
+///
+///          **Fallback (`n/4` not power of two):** O(N²) direct cosine
+///          evaluation for each output sample. Matches the reference formula
+///          exactly, just slower. Only hit for unusual block sizes that Vorbis
+///          specifies but rarely uses in practice.
+///
+///          The fast path preserves float precision by keeping twiddles in
+///          double during trig computation and converting to float only for
+///          the running accumulator.
+/// @param in Frequency-domain input, size `n/2`.
+/// @param out Time-domain output, size `n`.
+/// @param n Transform size (must be even; fast path requires n/4 to be a power of 2).
 static void imdct(const float *in, float *out, int n) {
     int n2 = n / 2;
     int n4 = n / 4;
@@ -834,14 +883,45 @@ int vorbis_decode_header(vorbis_decoder_t *dec, const uint8_t *data, size_t len,
 //===----------------------------------------------------------------------===//
 
 /// @brief Decode one audio packet — produces `n/4 .. n/2` PCM samples per channel.
+/// @details Audio packets are the bulk of a Vorbis stream; each one carries one
+///          block's worth of compressed spectral data. The five-stage pipeline:
 ///
-/// For each packet:
-///   1. Read mode byte and per-channel floor configuration.
-///   2. Decode floor curves and residue vectors.
-///   3. Apply channel coupling / submap demixing.
-///   4. Inverse-MDCT the spectrum to time-domain samples.
-///   5. Multiply by the windowing function and overlap-add with
-///      the previous frame's tail (`overlap_buf`).
+///          1. **Mode + window selection.** Read a 1-bit packet type (must be 0),
+///             then the mode index. The mode determines block size (short vs long
+///             window) and which mapping / floors / residues / couplings to use.
+///             If the previous frame and this one use different window sizes,
+///             the blocktype flags determine which half of each window is long vs
+///             short so overlap-add lines up.
+///
+///          2. **Floor decode.** For each channel, run the mode's assigned floor
+///             decoder. Floor1 (the only one used in practice) reconstructs a
+///             piecewise-linear spectral envelope from coarsely-coded
+///             `(x, y)` breakpoints plus residue-corrected interpolation
+///             between them. A "no energy" flag on any channel shortcuts to
+///             silence for that channel.
+///
+///          3. **Residue decode + inverse coupling.** Residues carry the
+///             fine-grained spectral detail on top of the floor. Vorbis coupling
+///             pairs share residue vectors between a "magnitude" and an "angle"
+///             channel to exploit stereo redundancy; after decode, an inverse
+///             coupling pass expands each pair back into two full spectra using
+///             the standard `(mag, ang) → (L, R)` rules with sign-carry
+///             semantics that depend on the quadrant of `mag`.
+///
+///          4. **Floor × residue + IMDCT.** Multiply the floor curve by the
+///             residue spectrum to get the final frequency-domain block, then
+///             inverse-MDCT (see `imdct` above) to 2N time-domain samples.
+///
+///          5. **Window + overlap-add.** Apply the current mode's window
+///             function, then overlap-add the first half of the current block
+///             onto `dec->overlap_buf` (the previous block's second-half
+///             residue). The result is the N/2 .. N/4 samples emitted this
+///             packet; the current block's second half is stashed in
+///             `overlap_buf` for the next packet.
+///
+///          Clips final int16 PCM to `[-32768, 32767]` so downstream mixers
+///          don't have to. Allocates `*out_pcm` on first call and grows it as
+///          needed; caller retains the buffer across calls to amortize allocation.
 /// @return Number of PCM samples per channel emitted, or -1 on malformed packet.
 int vorbis_decode_packet(
     vorbis_decoder_t *dec, const uint8_t *data, size_t len, int16_t **out_pcm, int *out_samples) {

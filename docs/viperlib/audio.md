@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-17
+last-verified: 2026-04-21
 ---
 
 # Audio
@@ -43,9 +43,9 @@ Sound effect class for short audio clips. Sounds are loaded entirely into memory
 
 | Method                   | Signature                          | Description                                              |
 |--------------------------|------------------------------------|----------------------------------------------------------|
-| `Play()`                 | `Integer()`                        | Play the sound once. Returns voice ID for control        |
-| `PlayEx(volume, pan)`    | `Integer(Integer, Integer)`        | Play with volume (0–100) and pan (−100 to +100)          |
-| `PlayLoop(volume, pan)`  | `Integer(Integer, Integer)`        | Play looped with volume and pan. Returns voice ID        |
+| `Play()`                 | `Integer()`                        | Play once through the SFX mix group. Returns voice ID for control |
+| `PlayEx(volume, pan)`    | `Integer(Integer, Integer)`        | Play through the SFX mix group with volume (0–100) and pan (−100 to +100) |
+| `PlayLoop(volume, pan)`  | `Integer(Integer, Integer)`        | Play looped through the SFX mix group with volume and pan |
 
 > **Voice limit:** Up to 32 sounds may play simultaneously. A 33rd `Play()` call stops
 > the **oldest** playing (non-looping) sound to make room — called LRU eviction. The
@@ -271,6 +271,7 @@ Static class for controlling individual playing voices (sound instances).
 
 > **Invalid IDs:** All voice functions are safe to call with any integer ID. If the
 > voice has already stopped or the ID was never valid, the call is a no-op.
+> Voice IDs never use 0 or -1 and are not reused while the older voice is still active.
 
 ### Zia Example
 
@@ -323,6 +324,12 @@ Global audio system control functions.
 | `SetMasterVolume(vol)`          | `Void(Integer)`                | Set master volume for all audio (0–100)           |
 | `Shutdown()`                    | `Void()`                       | Shut down the audio system                        |
 | `StopAllSounds()`               | `Void()`                       | Stop all playing sounds (does not affect music)   |
+| `Update()`                      | `Void()`                       | Advance active music crossfades                   |
+
+`Audio.Init()` may be called again after a failed initialization or after
+`Audio.Shutdown()`. `Audio.Shutdown()` detaches existing `Sound` and `Music` handles:
+destroying those handles remains safe, but playback calls on them fail until the asset is
+loaded again.
 
 ### Zia Example
 
@@ -410,6 +417,8 @@ Named sound registry that maps string names to loaded Sound objects. Games use S
 | `Clear()`                 | `Void()`                           | Remove all entries                                                  |
 
 Max 64 entries per bank. Names are matched exactly and are not truncated.
+`RegisterSound` accepts only real `Sound` objects returned by `Sound.Load`, `Sound.LoadMem`,
+`Synth`, or `MusicGen.Build`; generic objects are rejected and return 0.
 
 ### Zia Example
 
@@ -443,6 +452,10 @@ func start() {
 ## Viper.Sound.Synth
 
 Procedural sound synthesis — generates Sound objects from parameters without WAV files. All generated sounds are 16-bit PCM mono at 44100 Hz.
+
+In audio-disabled builds, Synth methods return `null` instead of trapping. This lets
+asset setup code degrade cleanly while direct `Sound.Load`, `Sound.Play`, and `Music`
+playback APIs still report that audio support is unavailable.
 
 **Type:** Static utility class
 
@@ -576,9 +589,13 @@ Procedural music composition — a tracker-style sequencer that builds multi-cha
 | `Bpm` (read-only)          | `Integer`               | Tempo in beats per minute                                         |
 | `Length` (read/write)       | `Integer`               | Song length in centbeats (100 = 1 beat)                           |
 | `ChannelCount` (read-only) | `Integer`               | Number of channels added                                          |
+| `SetLength(length)`        | `void(Integer)`         | Set song length in centbeats; equivalent to assigning `Length`    |
 | `SetSwing(amount)`         | `void(Integer)`         | Swing feel (0-100). Shifts off-beat notes forward. 0 = straight   |
 | `SetLoopable(flag)`        | `void(Integer)`         | 1 = apply crossfade at loop boundary for click-free looping       |
 | `Build()`                  | `Sound()`               | Pre-render all channels to a Sound object. Returns null on failure |
+
+`Length`, note positions, and note durations are clamped to the maximum renderable
+song span for the selected BPM. `Build()` returns `null` in audio-disabled builds.
 
 ### Noise Channel — Percussion
 
@@ -705,7 +722,11 @@ Independent volume control for music vs sound effects. Players expect to adjust 
 | `Sound.PlayExGroup(vol, pan, group)` | `Integer(Int, Int, Int)` | Play with volume/pan in group |
 | `Sound.PlayLoopGroup(vol, pan, group)` | `Integer(Int, Int, Int)` | Loop with volume/pan in group |
 
-Effective volume = `voice_volume × group_volume / 100`. Master volume is applied on top by the audio system.
+Plain `Sound.Play`, `Sound.PlayEx`, and `Sound.PlayLoop` use the SFX group by default.
+Group-specific play methods apply the requested group volume exactly once. Effective
+volume = `voice_volume × group_volume / 100`; master volume is applied on top by the
+audio system. Group volume setters/getters are safe to call concurrently with playback,
+including audio-disabled builds where they remain pure settings state.
 
 ---
 
@@ -728,7 +749,7 @@ and `Playlist.Update()` do not advance a paused transition.
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `Audio.IsCrossfading` | Boolean (read-only) | True during an active crossfade |
+| `Audio.IsCrossfading` | Boolean (read-only) | True during an active crossfade; reading it does not advance or complete the fade |
 
 ### Audio Methods (Crossfade)
 
@@ -755,7 +776,7 @@ Audio.SetGroupVolume(1, 100); // SFX at 100%
 explosionSound.PlayGroup(1);
 
 // Crossfade between music tracks
-Music.CrossfadeTo(currentTrack, newTrack, 2000); // 2-second crossfade
+currentTrack.CrossfadeTo(newTrack, 2000); // 2-second crossfade
 Audio.Update(); // call each frame while the crossfade runs
 
 // Enable auto-crossfade on playlist
@@ -801,18 +822,21 @@ auto-detected from file magic bytes — no extension matching required.
 | Max simultaneous Sound voices | **32** | Oldest non-looping voice is evicted (LRU) when full |
 | Max simultaneous Music streams | **4** | `Music.Load()` returns `null` when exceeded |
 | Supported audio formats | **WAV, OGG Vorbis, MP3** | Sounds load fully into memory; music uses buffered incremental playback |
-| Music sample rate | **Any** | Automatically resampled to 44100 Hz |
-| Sound sample rate | Any | Resampled to 44100 Hz at load time |
+| Music sample rate | **1-384000 Hz** | Automatically resampled to 44100 Hz |
+| Sound sample rate | **1-384000 Hz** | Resampled to 44100 Hz at load time |
 | Pan range | −100 to +100 | −100 = hard left, 0 = center, +100 = hard right |
 | Volume range | 0 to 100 | Applies to Sound, Music, and Voice |
 | Max SoundBank entries | **64** | Keys are exact strings; long names remain distinct |
 | Max MusicGen channels | **8** | Per song builder instance |
 | Max MusicGen notes/channel | **4,096** | `AddNote()` returns 0 when full |
 | Max MusicGen duration | **5 min** | `Build()` caps at 5 minutes |
+| Max decoded Sound data | **100 MB** | Compressed sounds that decode beyond this return `null` |
 
 Behavior notes:
 `Playlist.Insert(index, path)` clamps out-of-range indices to the valid `[0, Count]` insertion range.
 `Music.CrossfadeTo` keeps the destination track's current loop setting instead of forcing one-shot playback.
+`Music.CrossfadeTo` rejects detached handles after `Audio.Shutdown()`; load the asset again after reinitializing audio.
+Zero-length music streams fail to load rather than entering loop-rewind playback.
 
 ---
 

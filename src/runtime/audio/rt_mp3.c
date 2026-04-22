@@ -36,6 +36,7 @@
 #define MP3_MAX_CHANNELS 2
 #define MP3_SUBBANDS 32
 #define MP3_SBLIMIT 576 // 32 subbands × 18 samples
+#define MP3_MAX_DECODED_PCM_BYTES ((size_t)100 * 1024 * 1024)
 
 //===----------------------------------------------------------------------===//
 // MSB-first bitstream reader
@@ -624,14 +625,11 @@ static int mp3_decode_frame_internal(mp3_decoder_t *dec,
             to_save = (int)sizeof(dec->reservoir);
         if (dec->reservoir_size + to_save > (int)sizeof(dec->reservoir)) {
             int shift = dec->reservoir_size + to_save - (int)sizeof(dec->reservoir);
-            memmove(dec->reservoir,
-                    dec->reservoir + shift,
-                    (size_t)(dec->reservoir_size - shift));
+            memmove(dec->reservoir, dec->reservoir + shift, (size_t)(dec->reservoir_size - shift));
             dec->reservoir_size -= shift;
         }
-        memcpy(dec->reservoir + dec->reservoir_size,
-               frame_data + hdr.side_info_size,
-               (size_t)to_save);
+        memcpy(
+            dec->reservoir + dec->reservoir_size, frame_data + hdr.side_info_size, (size_t)to_save);
         dec->reservoir_size += to_save;
     }
 
@@ -675,21 +673,17 @@ static int mp3_decode_frame_internal(mp3_decoder_t *dec,
                         scalefac_l[sfb] = slen1 > 0 ? (int)mp3_bits_read(&bits, slen1) : 0;
                     for (int sfb = 3; sfb < 6; sfb++)
                         for (int win = 0; win < 3; win++)
-                            scalefac_s[sfb][win] =
-                                slen1 > 0 ? (int)mp3_bits_read(&bits, slen1) : 0;
+                            scalefac_s[sfb][win] = slen1 > 0 ? (int)mp3_bits_read(&bits, slen1) : 0;
                     for (int sfb = 6; sfb < 12; sfb++)
                         for (int win = 0; win < 3; win++)
-                            scalefac_s[sfb][win] =
-                                slen2 > 0 ? (int)mp3_bits_read(&bits, slen2) : 0;
+                            scalefac_s[sfb][win] = slen2 > 0 ? (int)mp3_bits_read(&bits, slen2) : 0;
                 } else {
                     for (int sfb = 0; sfb < 6; sfb++)
                         for (int win = 0; win < 3; win++)
-                            scalefac_s[sfb][win] =
-                                slen1 > 0 ? (int)mp3_bits_read(&bits, slen1) : 0;
+                            scalefac_s[sfb][win] = slen1 > 0 ? (int)mp3_bits_read(&bits, slen1) : 0;
                     for (int sfb = 6; sfb < 12; sfb++)
                         for (int win = 0; win < 3; win++)
-                            scalefac_s[sfb][win] =
-                                slen2 > 0 ? (int)mp3_bits_read(&bits, slen2) : 0;
+                            scalefac_s[sfb][win] = slen2 > 0 ? (int)mp3_bits_read(&bits, slen2) : 0;
                 }
             } else {
                 for (int sfb = 0; sfb < 11; sfb++)
@@ -711,8 +705,7 @@ static int mp3_decode_frame_internal(mp3_decoder_t *dec,
                 int r0 = gi->region0_count + 1;
                 int r1 = gi->region1_count + 1;
                 region1_start = (r0 < 22) ? mp3_sfb_long_cumul[sr_idx][r0] : MP3_SBLIMIT;
-                region2_start =
-                    (r0 + r1 < 22) ? mp3_sfb_long_cumul[sr_idx][r0 + r1] : MP3_SBLIMIT;
+                region2_start = (r0 + r1 < 22) ? mp3_sfb_long_cumul[sr_idx][r0 + r1] : MP3_SBLIMIT;
             }
             if (region1_start > gi->big_values * 2)
                 region1_start = gi->big_values * 2;
@@ -801,8 +794,7 @@ static int mp3_decode_frame_internal(mp3_decoder_t *dec,
                     for (int win = 0; win < 3; win++) {
                         double sfac_pow =
                             pow(2.0, -0.5 * (double)(scalefac_s[sfb][win] * sfac_scale));
-                        double subblock_pow =
-                            pow(2.0, -0.5 * (double)(gi->subblock_gain[win] * 8));
+                        double subblock_pow = pow(2.0, -0.5 * (double)(gi->subblock_gain[win] * 8));
                         for (int i = 0; i < width; i++) {
                             int idx = sfb * 3 * width + win * width + i;
                             if (idx >= MP3_SBLIMIT)
@@ -816,8 +808,7 @@ static int mp3_decode_frame_internal(mp3_decoder_t *dec,
             } else {
                 for (int sfb = 0; sfb < 21; sfb++) {
                     int start = (sr_idx < 3) ? mp3_sfb_long_cumul[sr_idx][sfb] : sfb * 18;
-                    int end =
-                        (sr_idx < 3) ? mp3_sfb_long_cumul[sr_idx][sfb + 1] : (sfb + 1) * 18;
+                    int end = (sr_idx < 3) ? mp3_sfb_long_cumul[sr_idx][sfb + 1] : (sfb + 1) * 18;
                     if (end > MP3_SBLIMIT)
                         end = MP3_SBLIMIT;
 
@@ -906,11 +897,10 @@ static int mp3_decode_frame_internal(mp3_decoder_t *dec,
                 mp3_synth_filter(dec, ch, subbands, pcm_samples);
 
                 for (int j = 0; j < 32; j++) {
-                    size_t out_idx =
-                        ((size_t)gr * (size_t)(samples_per_frame / ngranules) + (size_t)ss * 32 +
-                         (size_t)j) *
-                            (size_t)hdr.channels +
-                        (size_t)ch;
+                    size_t out_idx = ((size_t)gr * (size_t)(samples_per_frame / ngranules) +
+                                      (size_t)ss * 32 + (size_t)j) *
+                                         (size_t)hdr.channels +
+                                     (size_t)ch;
                     pcm_out[out_idx] = pcm_samples[j];
                 }
             }
@@ -937,8 +927,7 @@ int mp3_decode_file(mp3_decoder_t *dec,
                     int *out_samples,
                     int *out_channels,
                     int *out_sample_rate) {
-    if (!dec || !data || len < 4 || !out_pcm || !out_samples || !out_channels ||
-        !out_sample_rate) {
+    if (!dec || !data || len < 4 || !out_pcm || !out_samples || !out_channels || !out_sample_rate) {
         return -1;
     }
 
@@ -952,17 +941,18 @@ int mp3_decode_file(mp3_decoder_t *dec,
     int channels = 0;
     int sample_rate = 0;
     int total_samples = 0;
-    if (mp3_scan_stream_metadata(data,
-                                 len,
-                                 &first_frame_pos,
-                                 &effective_len,
-                                 &channels,
-                                 &sample_rate,
-                                 &total_samples) != 0) {
+    if (mp3_scan_stream_metadata(
+            data, len, &first_frame_pos, &effective_len, &channels, &sample_rate, &total_samples) !=
+        0) {
         return -1;
     }
 
+    if (total_samples <= 0 || channels <= 0 || (size_t)total_samples > SIZE_MAX / (size_t)channels)
+        return -1;
     size_t pcm_values = (size_t)total_samples * (size_t)channels;
+    if (pcm_values > SIZE_MAX / sizeof(int16_t) ||
+        pcm_values * sizeof(int16_t) > MP3_MAX_DECODED_PCM_BYTES)
+        return -1;
     int16_t *pcm = (int16_t *)malloc(pcm_values * sizeof(int16_t));
     if (!pcm)
         return -1;

@@ -46,7 +46,7 @@ typedef struct {
     AudioQueueRef queue;                                 ///< The audio queue
     AudioQueueBufferRef buffers[VAUD_MACOS_NUM_BUFFERS]; ///< Audio buffers
     AudioStreamBasicDescription format;                  ///< Audio format description
-    int paused;                                          ///< Pause state
+    volatile int paused;                                 ///< Pause state
 } vaud_macos_data;
 
 //===----------------------------------------------------------------------===//
@@ -63,7 +63,8 @@ static void audio_callback(void *user_data, AudioQueueRef queue, AudioQueueBuffe
     vaud_context_t ctx = (vaud_context_t)user_data;
     vaud_macos_data *plat = (vaud_macos_data *)ctx->platform_data;
 
-    if (!ctx->running || plat->paused) {
+    if (!__atomic_load_n(&ctx->running, __ATOMIC_ACQUIRE) ||
+        __atomic_load_n(&plat->paused, __ATOMIC_ACQUIRE)) {
         /* Fill with silence when paused or stopping */
         memset(buffer->mAudioData, 0, buffer->mAudioDataBytesCapacity);
     } else {
@@ -95,7 +96,7 @@ int vaud_platform_init(vaud_context_t ctx) {
     }
 
     ctx->platform_data = plat;
-    plat->paused = 0;
+    __atomic_store_n(&plat->paused, 0, __ATOMIC_RELEASE);
 
     /* Configure audio format: 16-bit stereo PCM at 44.1kHz */
     plat->format.mSampleRate = (Float64)VAUD_SAMPLE_RATE;
@@ -183,7 +184,7 @@ void vaud_platform_pause(vaud_context_t ctx) {
         return;
 
     vaud_macos_data *plat = (vaud_macos_data *)ctx->platform_data;
-    plat->paused = 1;
+    __atomic_store_n(&plat->paused, 1, __ATOMIC_RELEASE);
 
     AudioQueuePause(plat->queue);
 }
@@ -193,7 +194,7 @@ void vaud_platform_resume(vaud_context_t ctx) {
         return;
 
     vaud_macos_data *plat = (vaud_macos_data *)ctx->platform_data;
-    plat->paused = 0;
+    __atomic_store_n(&plat->paused, 0, __ATOMIC_RELEASE);
 
     AudioQueueStart(plat->queue, NULL);
 }

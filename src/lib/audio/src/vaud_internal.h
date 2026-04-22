@@ -112,6 +112,7 @@ struct vaud_music {
     int64_t data_offset;        ///< Offset to PCM data in file
     int64_t data_size;          ///< Total PCM data size in bytes
     int64_t frame_count;        ///< Total output frames after any resampling
+    int64_t source_position;    ///< Source frames consumed from a WAV data chunk
     int32_t sample_rate;        ///< Playback sample rate (always mixer rate)
     int32_t source_sample_rate; ///< Source file/stream sample rate before resampling
     int32_t channels;           ///< File channel count
@@ -132,6 +133,10 @@ struct vaud_music {
     // Resampling support (allocated when sample_rate != VAUD_SAMPLE_RATE)
     int16_t *resample_buf; ///< Temp buffer for raw frames before resampling
     int64_t resample_cap;  ///< Capacity of resample_buf in frames
+
+    // WAV streaming scratch buffer (allocated before playback, never in mixer callback)
+    uint8_t *wav_read_buf; ///< Raw bytes for WAV frame decode
+    size_t wav_read_cap;   ///< Capacity of wav_read_buf in bytes
 
     // Format-specific streaming (0=WAV, 1=OGG, 2=MP3)
     int format;          ///< Audio format identifier
@@ -171,8 +176,8 @@ struct vaud_context {
 
     // Thread synchronization
     vaud_mutex_t mutex; ///< Protects voice and music state
-    int running;        ///< Audio thread running flag
-    int paused;         ///< Global pause flag
+    volatile int running; ///< Audio thread running flag
+    volatile int paused;  ///< Global pause flag
 
     // Platform-specific data
     void *platform_data; ///< Platform backend state (AudioQueue, ALSA, WASAPI)
@@ -261,13 +266,24 @@ int vaud_wav_open_stream(const char *path,
 /// @param channels Channel count.
 /// @param bits_per_sample Bits per sample.
 /// @return Number of frames actually read.
-int32_t vaud_wav_read_frames(
-    void *file,
-    int16_t *samples,
-    int32_t frames,
-    int32_t channels,
-    int32_t bits_per_sample,
-    int32_t audio_format);
+int32_t vaud_wav_read_frames(void *file,
+                             int16_t *samples,
+                             int32_t frames,
+                             int32_t channels,
+                             int32_t bits_per_sample,
+                             int32_t audio_format);
+
+/// @brief Read frames using caller-owned raw byte storage.
+/// @details Same conversion behavior as `vaud_wav_read_frames`, but avoids
+///          allocating inside the mixer path.
+int32_t vaud_wav_read_frames_buffered(void *file,
+                                      int16_t *samples,
+                                      int32_t frames,
+                                      int32_t channels,
+                                      int32_t bits_per_sample,
+                                      int32_t audio_format,
+                                      uint8_t *temp,
+                                      size_t temp_size);
 
 //===----------------------------------------------------------------------===//
 // Resampling Functions
