@@ -36,6 +36,7 @@
 /// @brief WAV file parser for ViperAUD.
 
 #include "vaud_internal.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -82,6 +83,8 @@ static inline int16_t s24_to_s16(const uint8_t *p) {
 static inline int16_t f32_to_s16(const uint8_t *p) {
     float val;
     memcpy(&val, p, sizeof(float));
+    if (!isfinite(val))
+        val = 0.0f;
     if (val > 1.0f)
         val = 1.0f;
     if (val < -1.0f)
@@ -187,9 +190,14 @@ static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *inf
     while (offset + 8 <= size) {
         uint32_t chunk_id = read_u32_le(data + offset);
         uint32_t chunk_size = read_u32_le(data + offset + 4);
+        size_t available = size - offset - 8;
+        if ((size_t)chunk_size > available) {
+            vaud_set_error(VAUD_ERR_FORMAT, "WAV chunk extends beyond file");
+            return 0;
+        }
 
         if (chunk_id == WAV_FMT_ID) {
-            if (chunk_size < 16 || offset + 8 + chunk_size > size) {
+            if (chunk_size < 16) {
                 vaud_set_error(VAUD_ERR_FORMAT, "Invalid fmt chunk");
                 return 0;
             }
@@ -239,8 +247,8 @@ static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *inf
         }
 
         /* Move to next chunk (chunks are word-aligned) */
-        offset += 8 + chunk_size;
-        if (chunk_size & 1)
+        offset += 8 + (size_t)chunk_size;
+        if ((chunk_size & 1) && offset < size)
             offset++; /* Pad byte */
 
         if (found_fmt && found_data)
@@ -429,6 +437,10 @@ static int convert_pcm_to_stereo_s16(const uint8_t *data,
     int32_t bytes_per_sample = info->bits_per_sample / 8;
     int32_t bytes_per_frame = bytes_per_sample * info->channels;
     int64_t frame_count = info->data_size / bytes_per_frame;
+    if (frame_count <= 0 || (uint64_t)frame_count > SIZE_MAX / (2u * sizeof(int16_t))) {
+        vaud_set_error(VAUD_ERR_FORMAT, "Invalid WAV data size");
+        return 0;
+    }
 
     /* Allocate output buffer (always stereo) */
     int16_t *samples = (int16_t *)malloc((size_t)(frame_count * 2 * sizeof(int16_t)));

@@ -555,6 +555,15 @@ typedef struct {
     double prev_freq; /* last note's target frequency (for portamento) */
 } mg_render_state_t;
 
+static void mg_accum_add_saturated(int32_t *dst, int32_t value) {
+    int64_t sum = (int64_t)*dst + (int64_t)value;
+    if (sum > INT32_MAX)
+        sum = INT32_MAX;
+    else if (sum < INT32_MIN)
+        sum = INT32_MIN;
+    *dst = (int32_t)sum;
+}
+
 /// @brief Render one note's audio into the stereo accumulator.
 /// @param accum 32-bit stereo interleaved accumulator.
 /// @param total_frames Total frames in the accumulator.
@@ -725,8 +734,8 @@ static void mg_render_note(int32_t *accum,
 
         /* Accumulate into stereo buffer */
         int32_t idx = i * 2;
-        accum[idx] += (int32_t)(amp * left_gain);
-        accum[idx + 1] += (int32_t)(amp * right_gain);
+        mg_accum_add_saturated(&accum[idx], (int32_t)(amp * left_gain));
+        mg_accum_add_saturated(&accum[idx + 1], (int32_t)(amp * right_gain));
     }
 }
 
@@ -936,6 +945,8 @@ int64_t rt_musicgen_add_note(
 /// `beat_pos` and `duration` are centbeats (100 = one beat), and
 /// `midi_note` is the MIDI note number (0-127, 60 = middle C).
 /// Velocity scales note volume linearly. Returns 1 on success or 0 on failure.
+/// Notes at or beyond the maximum renderable span are rejected so clamped
+/// extreme timestamps cannot create zero-length notes at the end boundary.
 int64_t rt_musicgen_add_note_vel(void *song_ptr,
                                  int64_t ch,
                                  int64_t beat_pos,
@@ -955,10 +966,12 @@ int64_t rt_musicgen_add_note_vel(void *song_ptr,
         beat_pos = 0;
     if (beat_pos > max_centbeats)
         beat_pos = max_centbeats;
+    if (beat_pos >= max_centbeats)
+        return 0;
     if (duration < 1)
         duration = 1;
     if (duration > max_centbeats - beat_pos)
-        duration = (max_centbeats > beat_pos) ? (max_centbeats - beat_pos) : 1;
+        duration = max_centbeats - beat_pos;
 
     mg_note_t *note = &c->notes[c->note_count];
     note->beat_pos = beat_pos;
@@ -1137,9 +1150,7 @@ void *rt_musicgen_build(void *song_ptr) {
                 }
             }
 
-            /* Trim the tail that we've folded into the start */
-            total_frames -= fade_frames;
-            pcm_count = (size_t)total_frames * 2;
+            /* Keep the requested length; loop timing must not drift. */
         }
     }
 

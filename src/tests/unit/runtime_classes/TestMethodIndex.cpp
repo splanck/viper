@@ -165,6 +165,37 @@ TEST(RuntimeMethodIndexBasic, CollectionReturningMethodsPreserveConcreteClass) {
     EXPECT_EQ(lazyToSeqN->returnClassQName, std::string("Viper.Collections.Seq"));
 }
 
+TEST(RuntimeMethodIndexBasic, SoundFactoriesPreserveConcreteReturnClass) {
+    runtimeMethodIndex().seed();
+
+    auto tone = runtimeMethodIndex().find("Viper.Sound.Synth", "Tone", 3);
+    ASSERT_TRUE(tone.has_value());
+    EXPECT_EQ(tone->target, std::string("Viper.Sound.Synth.Tone"));
+    EXPECT_EQ(tone->ret, BasicType::Object);
+    EXPECT_EQ(tone->returnClassQName, std::string("Viper.Sound.Sound"));
+
+    auto sweep = runtimeMethodIndex().find("Viper.Sound.Synth", "Sweep", 4);
+    ASSERT_TRUE(sweep.has_value());
+    EXPECT_EQ(sweep->ret, BasicType::Object);
+    EXPECT_EQ(sweep->returnClassQName, std::string("Viper.Sound.Sound"));
+
+    auto noise = runtimeMethodIndex().find("Viper.Sound.Synth", "Noise", 2);
+    ASSERT_TRUE(noise.has_value());
+    EXPECT_EQ(noise->ret, BasicType::Object);
+    EXPECT_EQ(noise->returnClassQName, std::string("Viper.Sound.Sound"));
+
+    auto sfx = runtimeMethodIndex().find("Viper.Sound.Synth", "Sfx", 1);
+    ASSERT_TRUE(sfx.has_value());
+    EXPECT_EQ(sfx->ret, BasicType::Object);
+    EXPECT_EQ(sfx->returnClassQName, std::string("Viper.Sound.Sound"));
+
+    auto build = runtimeMethodIndex().find("Viper.Sound.MusicGen", "Build", 0);
+    ASSERT_TRUE(build.has_value());
+    EXPECT_EQ(build->target, std::string("Viper.Sound.MusicGen.Build"));
+    EXPECT_EQ(build->ret, BasicType::Object);
+    EXPECT_EQ(build->returnClassQName, std::string("Viper.Sound.Sound"));
+}
+
 TEST(RuntimeMethodIndexBasic, JsonStreamInstanceMethodsDoNotRequireExplicitReceiver) {
     runtimeMethodIndex().seed();
 

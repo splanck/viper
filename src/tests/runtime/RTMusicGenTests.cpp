@@ -442,6 +442,19 @@ static void test_song_properties() {
     printf("  test_song_properties: PASSED\n");
 }
 
+static void test_notes_at_song_end_are_rejected() {
+    void *song = rt_musicgen_new(300);
+    int64_t ch = rt_musicgen_add_channel(song, 1);
+    rt_musicgen_set_length(song, INT64_MAX);
+    assert(rt_musicgen_get_length(song) == 150000);
+
+    assert(rt_musicgen_add_note_vel(song, ch, 149999, 60, 50, 100) == 1);
+    assert(rt_musicgen_add_note_vel(song, ch, 150000, 60, 50, 100) == 0);
+    assert(rt_musicgen_add_note_vel(song, ch, INT64_MAX, 60, 50, 100) == 0);
+
+    printf("  test_notes_at_song_end_are_rejected: PASSED\n");
+}
+
 static void test_extreme_timing_is_clamped() {
     void *song = rt_musicgen_new(300);
     int64_t ch = rt_musicgen_add_channel(song, 1);
@@ -449,7 +462,8 @@ static void test_extreme_timing_is_clamped() {
     rt_musicgen_set_length(song, INT64_MAX);
     assert(rt_musicgen_get_length(song) == 150000);
 
-    assert(rt_musicgen_add_note_vel(song, ch, INT64_MAX, 60, INT64_MAX, 100) == 1);
+    assert(rt_musicgen_add_note_vel(song, ch, INT64_MAX, 60, INT64_MAX, 100) == 0);
+    assert(rt_musicgen_add_note_vel(song, ch, 0, 60, INT64_MAX, 100) == 1);
     rt_musicgen_set_length(song, 100);
     void *sound = rt_musicgen_build(song);
     if (sound)
@@ -484,6 +498,7 @@ int main() {
     test_short_note_release_from_attack();
     test_silent_placeholder_channels_do_not_change_buildability();
     test_song_properties();
+    test_notes_at_song_end_are_rejected();
     test_extreme_timing_is_clamped();
 
     printf("RTMusicGenTests: ALL PASSED\n");

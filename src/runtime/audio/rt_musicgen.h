@@ -145,7 +145,7 @@ void rt_musicgen_set_portamento(void *song, int64_t ch, int64_t speed_ms);
 /// @param beat_pos Beat position in centbeats (100 = 1 beat).
 /// @param midi_note MIDI note number (0-127, 60=C4, 69=A4=440Hz).
 /// @param duration Note duration in centbeats.
-/// @return 1 on success, 0 if channel is full.
+/// @return 1 on success, 0 if channel is full or beat_pos is at/after max span.
 int64_t rt_musicgen_add_note(
     void *song, int64_t ch, int64_t beat_pos, int64_t midi_note, int64_t duration);
 
@@ -156,7 +156,7 @@ int64_t rt_musicgen_add_note(
 /// @param midi_note MIDI note number (0-127).
 /// @param duration Note duration in centbeats.
 /// @param velocity Note velocity (0-100).
-/// @return 1 on success, 0 if channel is full.
+/// @return 1 on success, 0 if channel is full or beat_pos is at/after max span.
 int64_t rt_musicgen_add_note_vel(void *song,
                                  int64_t ch,
                                  int64_t beat_pos,
@@ -200,8 +200,9 @@ int64_t rt_musicgen_get_channel_count(void *song);
 ///
 /// Renders all channels and notes into a stereo 16-bit PCM buffer,
 /// applies effects (vibrato, arpeggio, tremolo, portamento, detune),
-/// ADSR envelopes, and soft-clipping. If loopable is set, applies a
-/// 10ms crossfade at the loop boundary for click-free looping.
+/// ADSR envelopes, and soft-clipping. If loopable is set, blends a
+/// 10ms crossfade at the loop boundary for click-free looping while
+/// preserving the requested song length.
 ///
 /// @param song Song builder handle.
 /// @return Sound object ready for playback, or NULL on failure.

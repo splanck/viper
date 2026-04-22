@@ -119,7 +119,7 @@ static int mix_voice(vaud_voice *voice, int32_t *output, int32_t frames, float m
     int64_t pos = voice->position;
 
     float left_gain, right_gain;
-    calculate_pan_gains(voice->pan, sound->channels, &left_gain, &right_gain);
+    calculate_pan_gains(voice->pan, sound->source_channels, &left_gain, &right_gain);
 
     float vol = voice->volume * master_vol;
     left_gain *= vol;
@@ -176,24 +176,20 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
     int32_t output_offset = 0;
 
     while (frames_remaining > 0) {
-        /* Check if we need to refill buffer */
         if (music->buffer_position >= music->buffer_frames[music->current_buffer]) {
-            int32_t read = vaud_music_fill_buffer(music, music->current_buffer);
-            if (read == 0 && music->loop) {
-                if (!vaud_music_seek_output_frame(music, 0)) {
-                    music->state = VAUD_MUSIC_STOPPED;
-                    return;
-                }
-                continue;
-            }
+            music->buffer_frames[music->current_buffer] = 0;
+            music->buffer_position = 0;
+            music->current_buffer = (music->current_buffer + 1) % VAUD_MUSIC_BUFFER_COUNT;
 
-            if (read == 0) {
-                music->state = VAUD_MUSIC_STOPPED;
+            if (music->buffer_frames[music->current_buffer] <= 0) {
+                if (music->loop && music->stream_eof) {
+                    music->stream_loop_pending = 1;
+                    music->stream_eof = 0;
+                } else if (!music->loop && music->stream_eof) {
+                    music->state = VAUD_MUSIC_STOPPED;
+                }
                 return;
             }
-
-            music->buffer_frames[music->current_buffer] = read;
-            music->buffer_position = 0;
         }
 
         /* Mix from current buffer */

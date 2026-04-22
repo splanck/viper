@@ -671,13 +671,20 @@ class EnemyManager {
     hide func updateBoss(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         // Skip AI logic during hurt state (etimer is shared with hurt handler)
         if estate.get(i) == 1 {
-            // Still apply gravity during hurt so boss doesn't float
+            // Still apply gravity during hurt so boss doesn't float — but
+            // route the displacement through phys.moveAndCollide so compounded
+            // hits (rapid fire refreshes etimer before it expires) can't
+            // accumulate downward velocity across many un-clipped frames and
+            // push the boss through the floor. Boss does not move laterally
+            // during hurt, so dispX = 0.
             var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
             if curVy > MAX_FALL { curVy = MAX_FALL; }
             evy.set(i, curVy);
             var dispY = curVy * dt / DT_BASE;
-            var newY = ey.get(i) + dispY;
-            ey.set(i, newY);
+            var result = phys.moveAndCollide(ex.get(i), ey.get(i), 0, dispY, BOSS_W, BOSS_H, level);
+            ey.set(i, result.y);
+            if result.hitFloor { evy.set(i, 0); }
+            if result.hitCeiling { evy.set(i, 0); }
             return;
         }
 
@@ -1455,10 +1462,18 @@ class EnemyManager {
     ///        defeat.
     hide func updateSporeMother(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         if estate.get(i) == 1 {
+            // Route hurt-state gravity through phys.moveAndCollide so
+            // compounded hits can't push the boss through the floor.
+            // Mirrors the fix in updateBoss.
             var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
             if curVy > MAX_FALL { curVy = MAX_FALL; }
             evy.set(i, curVy);
-            ey.set(i, ey.get(i) + curVy * dt / DT_BASE);
+            var dispY = curVy * dt / DT_BASE;
+            var result = phys.moveAndCollide(ex.get(i), ey.get(i), 0, dispY,
+                                             SPORE_MOTHER_W, SPORE_MOTHER_H, level);
+            ey.set(i, result.y);
+            if result.hitFloor { evy.set(i, 0); }
+            if result.hitCeiling { evy.set(i, 0); }
             return;
         }
         var hp = ehp.get(i);
@@ -1517,9 +1532,19 @@ class EnemyManager {
     ///        ability on defeat.
     hide func updateCrystalWyrm(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         if estate.get(i) == 1 {
+            // Route hurt-state gravity through phys.moveAndCollide so
+            // compounded hits can't push the boss through the floor.
+            // Mirrors the fix in updateBoss; also added the MAX_FALL clamp
+            // that was missing here.
             var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+            if curVy > MAX_FALL { curVy = MAX_FALL; }
             evy.set(i, curVy);
-            ey.set(i, ey.get(i) + curVy * dt / DT_BASE);
+            var dispY = curVy * dt / DT_BASE;
+            var result = phys.moveAndCollide(ex.get(i), ey.get(i), 0, dispY,
+                                             CRYSTAL_WYRM_W, CRYSTAL_WYRM_H, level);
+            ey.set(i, result.y);
+            if result.hitFloor { evy.set(i, 0); }
+            if result.hitCeiling { evy.set(i, 0); }
             return;
         }
         var hp = ehp.get(i);
@@ -1637,9 +1662,19 @@ class EnemyManager {
     ///        the game.
     hide func updateArchitect(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         if estate.get(i) == 1 {
+            // Route hurt-state gravity through phys.moveAndCollide so
+            // compounded hits can't push the boss through the floor.
+            // Mirrors the fix in updateBoss; also added the MAX_FALL clamp
+            // that was missing here.
             var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
+            if curVy > MAX_FALL { curVy = MAX_FALL; }
             evy.set(i, curVy);
-            ey.set(i, ey.get(i) + curVy * dt / DT_BASE);
+            var dispY = curVy * dt / DT_BASE;
+            var result = phys.moveAndCollide(ex.get(i), ey.get(i), 0, dispY,
+                                             ARCHITECT_W, ARCHITECT_H, level);
+            ey.set(i, result.y);
+            if result.hitFloor { evy.set(i, 0); }
+            if result.hitCeiling { evy.set(i, 0); }
             return;
         }
         var hp = ehp.get(i);

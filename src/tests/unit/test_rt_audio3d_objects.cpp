@@ -26,7 +26,7 @@ extern void *rt_vec3_new(double x, double y, double z);
 extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
-extern void *rt_synth_tone(int64_t hz, int64_t duration_ms, int64_t volume);
+extern void *rt_synth_tone(int64_t hz, int64_t duration_ms, int64_t waveform);
 }
 
 static int tests_passed = 0;
@@ -125,7 +125,7 @@ static void test_source_play_stop_when_audio_is_available() {
     }
 
     void *listener = rt_audiolistener3d_new();
-    void *sound = rt_synth_tone(440, 200, 80);
+    void *sound = rt_synth_tone(440, 200, 0);
     void *source = rt_audiosource3d_new(sound);
     int64_t voice;
 

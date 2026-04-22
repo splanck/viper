@@ -34,11 +34,11 @@
 #include "rt_internal.h"
 #include "rt_mixgroup.h"
 #include "rt_object.h"
+#include "rt_random.h"
 #include "rt_seq.h"
 
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #include "rt_trap.h"
 
@@ -86,25 +86,9 @@ static void generate_shuffle_order(playlist_impl *pl) {
         indices[i] = i;
     }
 
-    // Fisher-Yates shuffle using thread-safe local PRNG
-    uint64_t rng_state = (uint64_t)time(NULL) ^ (uint64_t)(uintptr_t)&indices;
-    // Warm up the PRNG
-    for (int w = 0; w < 5; w++) {
-        rng_state ^= rng_state >> 12;
-        rng_state ^= rng_state << 25;
-        rng_state ^= rng_state >> 27;
-        rng_state *= 0x2545F4914F6CDD1DULL;
-    }
-
+    // Fisher-Yates shuffle using the runtime RNG; callers can seed it for determinism.
     for (int64_t i = count - 1; i > 0; i--) {
-        // xorshift64star step
-        rng_state ^= rng_state >> 12;
-        rng_state ^= rng_state << 25;
-        rng_state ^= rng_state >> 27;
-        uint64_t r = rng_state * 0x2545F4914F6CDD1DULL;
-        // Modulo reduction has slight bias for non-power-of-2 ranges,
-        // but negligible for playlist shuffle (max ~2^-58 bias per element)
-        int64_t j = (int64_t)(r % (uint64_t)(i + 1));
+        int64_t j = (int64_t)rt_rand_int((long long)(i + 1));
         int64_t tmp = indices[i];
         indices[i] = indices[j];
         indices[j] = tmp;
@@ -693,8 +677,9 @@ void rt_playlist_set_volume(void *obj, int64_t volume) {
 
 /// @brief Enable or disable shuffle mode.
 /// @details When enabled, generates a random permutation of track indices
-///          using a xorshift64* PRNG seeded from the current time. The
-///          permutation is regenerated each time shuffle is toggled on.
+///          using the runtime RNG. `Viper.Math.Random.Seed` can make the
+///          permutation deterministic. The permutation is regenerated each
+///          time shuffle is toggled on.
 /// @param obj Playlist object pointer; no-op if NULL.
 /// @param shuffle 1 to enable shuffle, 0 to disable.
 void rt_playlist_set_shuffle(void *obj, int8_t shuffle) {

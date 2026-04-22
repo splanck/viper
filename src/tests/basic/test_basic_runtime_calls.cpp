@@ -524,7 +524,7 @@ Viper.Graphics3D.Scene3D.Add(scene, parent)
 listener = Viper.Graphics3D.AudioListener3D.New()
 listener.BindCamera(cam)
 listener.IsActive = 1
-source = Viper.Graphics3D.AudioSource3D.New(Viper.Sound.Synth.Tone(440, 120, 80))
+source = Viper.Graphics3D.AudioSource3D.New(Viper.Sound.Synth.Tone(440, 120, 0))
 source.BindNode(node)
 source.MaxDistance = 18.0
 source.Volume = 70

@@ -609,6 +609,8 @@ static void rt_audio_crossfade_cancel_entry_locked(rt_music_crossfade_state *xf,
             if (fade_out->music)
                 vaud_music_stop(fade_out->music);
         } else if (restore_volumes) {
+            if (fade_out->music)
+                vaud_music_set_loop(fade_out->music, fade_out->logical_loop);
             rt_audio_apply_music_volume_value(fade_out, fade_out->logical_volume);
         }
         fade_out->paused = 0;
@@ -620,6 +622,8 @@ static void rt_audio_crossfade_cancel_entry_locked(rt_music_crossfade_state *xf,
             if (fade_in->music)
                 vaud_music_stop(fade_in->music);
         } else if (restore_volumes) {
+            if (fade_in->music)
+                vaud_music_set_loop(fade_in->music, fade_in->logical_loop);
             rt_audio_apply_music_volume_value(fade_in, fade_in->logical_volume);
         }
         fade_in->paused = 0;
@@ -781,6 +785,8 @@ void rt_audio_update(void) {
     rt_deferred_release_list releases = {0};
 
     audio_state_lock();
+    if (g_audio_ctx)
+        vaud_update(g_audio_ctx);
     int8_t any_active = 0;
     for (int32_t i = 0; i < VAUD_MAX_MUSIC; i++) {
         if (g_crossfades[i].active) {
@@ -930,14 +936,36 @@ static int ogg_decode_reader_to_wav(ogg_reader_t *reader, uint8_t **out_data, si
     if (!dec)
         return -1;
 
-    for (int i = 0; i < 3; i++) {
-        const uint8_t *pkt_data = NULL;
-        size_t pkt_len = 0;
-        if (!ogg_reader_next_packet(reader, &pkt_data, &pkt_len) ||
-            vorbis_decode_header(dec, pkt_data, pkt_len, i) != 0) {
+    uint32_t vorbis_serial = 0;
+    int header_num = 0;
+    int have_audio_packet = 0;
+    const uint8_t *pkt_data = NULL;
+    size_t pkt_len = 0;
+    ogg_packet_info_t info;
+
+    while (ogg_reader_next_packet_ex(reader, &pkt_data, &pkt_len, &info)) {
+        if (vorbis_serial == 0) {
+            if (!info.bos || pkt_len < 7 || pkt_data[0] != 1 ||
+                memcmp(pkt_data + 1, "vorbis", 6) != 0)
+                continue;
+            vorbis_serial = info.serial_number;
+        }
+        if (info.serial_number != vorbis_serial)
+            continue;
+        if (header_num >= 3) {
+            have_audio_packet = 1;
+            break;
+        }
+        if (vorbis_decode_header(dec, pkt_data, pkt_len, header_num) != 0) {
             vorbis_decoder_free(dec);
             return -1;
         }
+        header_num++;
+    }
+
+    if (vorbis_serial == 0 || header_num < 3 || !have_audio_packet) {
+        vorbis_decoder_free(dec);
+        return -1;
     }
 
     int channels = vorbis_get_channels(dec);
@@ -952,9 +980,9 @@ static int ogg_decode_reader_to_wav(ogg_reader_t *reader, uint8_t **out_data, si
     size_t pcm_frames = 0;
     size_t pcm_cap = 0;
 
-    const uint8_t *pkt_data = NULL;
-    size_t pkt_len = 0;
-    while (ogg_reader_next_packet(reader, &pkt_data, &pkt_len)) {
+    do {
+        if (info.serial_number != vorbis_serial)
+            continue;
         int16_t *frame_pcm = NULL;
         int frame_samples = 0;
         if (vorbis_decode_packet(dec, pkt_data, pkt_len, &frame_pcm, &frame_samples) != 0) {
@@ -996,7 +1024,7 @@ static int ogg_decode_reader_to_wav(ogg_reader_t *reader, uint8_t **out_data, si
                frame_pcm,
                (size_t)frame_samples * (size_t)channels * sizeof(int16_t));
         pcm_frames += (size_t)frame_samples;
-    }
+    } while (ogg_reader_next_packet_ex(reader, &pkt_data, &pkt_len, &info));
 
     vorbis_decoder_free(dec);
     if (pcm_frames == 0) {
@@ -1302,13 +1330,15 @@ void rt_voice_set_volume(int64_t voice_id, int64_t volume) {
         return;
     }
     int32_t index = tracked_voice_find(voice_id);
+    int64_t group = RT_MIXGROUP_SFX;
     if (index >= 0) {
         g_tracked_voices[index].base_volume = volume;
-        int64_t effective = apply_group_volume(volume, g_tracked_voices[index].group);
-        vaud_set_voice_volume(g_audio_ctx, (vaud_voice_id)voice_id, (float)effective / 100.0f);
-    } else {
-        vaud_set_voice_volume(g_audio_ctx, (vaud_voice_id)voice_id, (float)volume / 100.0f);
+        group = g_tracked_voices[index].group;
+    } else if (vaud_voice_is_playing(g_audio_ctx, (vaud_voice_id)voice_id)) {
+        tracked_voice_set(voice_id, group, volume);
     }
+    int64_t effective = apply_group_volume(volume, group);
+    vaud_set_voice_volume(g_audio_ctx, (vaud_voice_id)voice_id, (float)effective / 100.0f);
     audio_state_unlock();
 }
 
@@ -1484,8 +1514,13 @@ void rt_music_set_loop(void *music, int64_t loop) {
         return;
     }
     mus->logical_loop = loop ? 1 : 0;
-    if (mus->music)
-        vaud_music_set_loop(mus->music, mus->logical_loop);
+    if (mus->music) {
+        int32_t xf_idx = rt_audio_find_crossfade_by_music_locked(mus);
+        if (xf_idx >= 0 && g_crossfades[xf_idx].fade_out == mus)
+            vaud_music_set_loop(mus->music, 0);
+        else
+            vaud_music_set_loop(mus->music, mus->logical_loop);
+    }
     audio_state_unlock();
 }
 
@@ -1702,7 +1737,11 @@ void rt_music_stop_related(void *music) {
     }
     int32_t xf_idx = rt_audio_find_crossfade_by_music_locked(mus);
     if (xf_idx >= 0) {
-        rt_audio_crossfade_cancel_entry_locked(&g_crossfades[xf_idx], 1, 1, 0, &releases);
+        rt_music_crossfade_state *xf = &g_crossfades[xf_idx];
+        int stop_fade_out = (xf->fade_out == mus);
+        int stop_fade_in = (xf->fade_in == mus);
+        rt_audio_crossfade_cancel_entry_locked(
+            xf, stop_fade_out, stop_fade_in, 1, &releases);
     } else {
         mus->paused = 0;
         vaud_music_stop(mus->music);
@@ -2318,7 +2357,7 @@ void rt_audio_set_group_volume(int64_t group, int64_t volume) {
         volume = 0;
     if (volume > 100)
         volume = 100;
-    __atomic_store_n(&g_group_volume[group], volume, __ATOMIC_RELEASE);
+    rt_atomic_store_i64(&g_group_volume[group], volume, __ATOMIC_RELEASE);
 }
 
 /// @brief Read the per-mix-group volume in audio-disabled builds.
@@ -2332,7 +2371,7 @@ void rt_audio_set_group_volume(int64_t group, int64_t volume) {
 int64_t rt_audio_get_group_volume(int64_t group) {
     if (group < 0 || group >= RT_MIXGROUP_COUNT)
         return 100;
-    return __atomic_load_n(&g_group_volume[group], __ATOMIC_ACQUIRE);
+    return rt_atomic_load_i64(&g_group_volume[group], __ATOMIC_ACQUIRE);
 }
 
 /// @brief Audio-disabled stub for `Music.CrossfadeTo`. Traps because

@@ -255,6 +255,13 @@ vaud_music_t vaud_load_music_ogg(vaud_context_t ctx, const char *path);
 /// @brief Load an MP3 file for streaming music playback.
 vaud_music_t vaud_load_music_mp3(vaud_context_t ctx, const char *path);
 
+/// @brief Service streaming music buffers outside the audio render callback.
+/// @details Decodes/refills empty music buffers and processes pending loop rewinds.
+///          Applications using the high-level Viper runtime should call
+///          `Viper.Sound.Audio.Update()` each frame; it forwards here.
+/// @param ctx Audio context.
+void vaud_update(vaud_context_t ctx);
+
 /// @brief Free a loaded music stream.
 /// @details Stops playback if playing, closes the file, and frees resources.
 /// @param music Music to free (may be NULL).

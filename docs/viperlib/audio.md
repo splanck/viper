@@ -324,12 +324,14 @@ Global audio system control functions.
 | `SetMasterVolume(vol)`          | `Void(Integer)`                | Set master volume for all audio (0–100)           |
 | `Shutdown()`                    | `Void()`                       | Shut down the audio system                        |
 | `StopAllSounds()`               | `Void()`                       | Stop all playing sounds (does not affect music)   |
-| `Update()`                      | `Void()`                       | Advance active music crossfades                   |
+| `Update()`                      | `Void()`                       | Advance music crossfades and service streaming buffers |
 
 `Audio.Init()` may be called again after a failed initialization or after
 `Audio.Shutdown()`. `Audio.Shutdown()` detaches existing `Sound` and `Music` handles:
 destroying those handles remains safe, but playback calls on them fail until the asset is
 loaded again.
+Call `Audio.Update()` once per frame when using streaming `Music` or direct
+`Music.CrossfadeTo`; `Playlist.Update()` already forwards through the same update path.
 
 ### Zia Example
 
@@ -417,7 +419,7 @@ Named sound registry that maps string names to loaded Sound objects. Games use S
 | `Clear()`                 | `Void()`                           | Remove all entries                                                  |
 
 Max 64 entries per bank. Names are matched exactly and are not truncated.
-`RegisterSound` accepts only real `Sound` objects returned by `Sound.Load`, `Sound.LoadMem`,
+`RegisterSound` accepts only real `Sound` objects returned by `Sound.Load`,
 `Synth`, or `MusicGen.Build`; generic objects are rejected and return 0.
 
 ### Zia Example
@@ -487,6 +489,9 @@ playback APIs still report that audio support is unavailable.
 | `Sweep(startHz, endHz, duration, wave)` | `Sound(Integer, Integer, Integer, Integer)` | Generate a frequency sweep between two frequencies                                              |
 | `Noise(duration, volume)`           | `Sound(Integer, Integer)`                  | Generate white noise with exponential decay. volume: 0-100                                        |
 | `Sfx(type)`                         | `Sound(Integer)`                           | Generate a preset game sound effect                                                               |
+
+`Tone` and `Sweep` use their waveform argument for oscillator shape, not volume.
+Use `Sound.PlayEx`, `Sound.PlayLoop`, or `Voice.SetVolume` to control playback volume.
 
 ### Zia Example
 
@@ -595,7 +600,10 @@ Procedural music composition — a tracker-style sequencer that builds multi-cha
 | `Build()`                  | `Sound()`               | Pre-render all channels to a Sound object. Returns null on failure |
 
 `Length`, note positions, and note durations are clamped to the maximum renderable
-song span for the selected BPM. `Build()` returns `null` in audio-disabled builds.
+song span for the selected BPM. Notes whose start position is at or after that
+maximum span are rejected. `Build()` returns `null` in audio-disabled builds.
+Loopable output keeps the requested length and blends only the loop boundary; it
+does not shorten the generated sound.
 
 ### Noise Channel — Percussion
 
@@ -755,7 +763,7 @@ and `Playlist.Update()` do not advance a paused transition.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Audio.Update()` | `void()` | Advance active crossfades; call once per frame when using `Music.CrossfadeTo` directly (paused crossfades stay frozen) |
+| `Audio.Update()` | `void()` | Advance active crossfades and service streaming music buffers; call once per frame when using `Music.CrossfadeTo` or direct `Music` playback (paused crossfades stay frozen) |
 
 ### Playlist Properties (Crossfade)
 
@@ -777,7 +785,7 @@ explosionSound.PlayGroup(1);
 
 // Crossfade between music tracks
 currentTrack.CrossfadeTo(newTrack, 2000); // 2-second crossfade
-Audio.Update(); // call each frame while the crossfade runs
+Audio.Update(); // call each frame while direct music/crossfades run
 
 // Enable auto-crossfade on playlist
 playlist.Crossfade = 1000; // 1-second crossfade between tracks
@@ -836,6 +844,7 @@ Behavior notes:
 `Playlist.Insert(index, path)` clamps out-of-range indices to the valid `[0, Count]` insertion range.
 `Music.CrossfadeTo` keeps the destination track's current loop setting instead of forcing one-shot playback.
 `Music.CrossfadeTo` rejects detached handles after `Audio.Shutdown()`; load the asset again after reinitializing audio.
+`Playlist.Shuffle` uses the runtime RNG, so `Viper.Math.Random.Seed()` can make shuffle order reproducible.
 Zero-length music streams fail to load rather than entering loop-rewind playback.
 
 ---

@@ -85,12 +85,13 @@ typedef struct {
 /// @invariant samples != NULL after successful load.
 /// @invariant frame_count > 0 after successful load.
 struct vaud_sound {
-    vaud_context_t ctx;   ///< Owning context
-    int16_t *samples;     ///< Interleaved stereo PCM data
-    int64_t frame_count;  ///< Number of frames (samples / channels)
-    int32_t sample_rate;  ///< Original sample rate (for reference)
-    int32_t channels;     ///< Original channel count (for reference)
-    float default_volume; ///< Default playback volume
+    vaud_context_t ctx;      ///< Owning context
+    int16_t *samples;        ///< Interleaved stereo PCM data
+    int64_t frame_count;     ///< Number of frames (samples / channels)
+    int32_t sample_rate;     ///< Internal sample rate (always VAUD_SAMPLE_RATE).
+    int32_t channels;        ///< Internal channel count (always VAUD_CHANNELS).
+    int32_t source_channels; ///< Original source channel count for pan semantics.
+    float default_volume;    ///< Default playback volume
 };
 
 //===----------------------------------------------------------------------===//
@@ -129,6 +130,8 @@ struct vaud_music {
     int32_t buffer_frames[VAUD_MUSIC_BUFFER_COUNT]; ///< Frames in each buffer
     int32_t current_buffer;                         ///< Index of buffer being played
     int32_t buffer_position;                        ///< Frame position within current buffer
+    int stream_eof;                                 ///< Decoder reached EOF while pre-filling.
+    int stream_loop_pending;                        ///< Mixer requested a loop rewind.
 
     // Resampling support (allocated when sample_rate != VAUD_SAMPLE_RATE)
     int16_t *resample_buf; ///< Temp buffer for raw frames before resampling
@@ -321,6 +324,10 @@ int64_t vaud_resample_output_frames(int64_t in_frames, int32_t in_rate, int32_t 
 /// @param buf_idx Index of the buffer to fill (0..VAUD_MUSIC_BUFFER_COUNT-1).
 /// @return Number of output frames written to the buffer.
 int32_t vaud_music_fill_buffer(struct vaud_music *music, int32_t buf_idx);
+
+/// @brief Fill all empty music buffers that can be safely prepared off-callback.
+/// @details Caller must hold the owning context mutex.
+void vaud_music_prefill_locked(struct vaud_music *music);
 
 /// @brief Rewind or seek a music stream to the given output frame.
 /// @details Resets format-specific decoder state, primes buffer 0, and leaves

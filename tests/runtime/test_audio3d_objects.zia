@@ -22,7 +22,7 @@ func start() {
     AudioListener3D.BindCamera(listener, cam);
     AudioListener3D.set_IsActive(listener, true);
 
-    var source = AudioSource3D.New(Synth.Tone(440, 200, 80));
+    var source = AudioSource3D.New(Synth.Tone(440, 200, 0));
     AudioSource3D.BindNode(source, node);
     AudioSource3D.set_MaxDistance(source, 18.0);
     AudioSource3D.set_Volume(source, 70);

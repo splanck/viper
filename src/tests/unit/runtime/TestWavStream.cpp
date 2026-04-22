@@ -13,6 +13,7 @@
 #include "tests/TestHarness.hpp"
 
 #include <cstdint>
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 
@@ -31,6 +32,13 @@ static void write_u32_le(FILE *f, uint32_t value) {
                         (uint8_t)((value >> 16) & 0xFFu),
                         (uint8_t)((value >> 24) & 0xFFu)};
     fwrite(bytes, 1, sizeof(bytes), f);
+}
+
+static void put_u32_le(uint8_t *p, uint32_t value) {
+    p[0] = (uint8_t)(value & 0xFFu);
+    p[1] = (uint8_t)((value >> 8) & 0xFFu);
+    p[2] = (uint8_t)((value >> 16) & 0xFFu);
+    p[3] = (uint8_t)((value >> 24) & 0xFFu);
 }
 
 static bool write_float_wav(const char *path) {
@@ -62,6 +70,40 @@ static bool write_float_wav(const char *path) {
     fwrite("data", 1, 4, f);
     write_u32_le(f, data_size);
     fwrite(samples, sizeof(float), sizeof(samples) / sizeof(samples[0]), f);
+
+    fclose(f);
+    return true;
+}
+
+static bool write_float_nonfinite_wav(const char *path) {
+    FILE *f = fopen(path, "wb");
+    if (!f)
+        return false;
+
+    const uint32_t channels = 1;
+    const uint32_t sample_rate = 44100;
+    const uint32_t bits_per_sample = 32;
+    const uint32_t frame_count = 2;
+    const uint32_t data_size = frame_count * channels * (bits_per_sample / 8);
+    const uint32_t riff_size = 36 + data_size;
+    const uint32_t samples[] = {0x7FC00000u, 0x7F800000u};
+
+    fwrite("RIFF", 1, 4, f);
+    write_u32_le(f, riff_size);
+    fwrite("WAVE", 1, 4, f);
+
+    fwrite("fmt ", 1, 4, f);
+    write_u32_le(f, 16);
+    write_u16_le(f, 3);
+    write_u16_le(f, (uint16_t)channels);
+    write_u32_le(f, sample_rate);
+    write_u32_le(f, sample_rate * channels * (bits_per_sample / 8));
+    write_u16_le(f, (uint16_t)(channels * (bits_per_sample / 8)));
+    write_u16_le(f, (uint16_t)bits_per_sample);
+
+    fwrite("data", 1, 4, f);
+    write_u32_le(f, data_size);
+    fwrite(samples, sizeof(uint32_t), sizeof(samples) / sizeof(samples[0]), f);
 
     fclose(f);
     return true;
@@ -319,6 +361,47 @@ TEST(WavStreamTest, EmptyStreamSeekFailsInsteadOfPretendingBuffered) {
     remove(path);
 }
 
+TEST(WavStreamTest, ExactEndSeekPositionsAtEof) {
+    const char *path = "/tmp/viper_test_exact_end_seek.wav";
+    ASSERT_TRUE(write_pcm16_wav(path, 4));
+
+    void *file = nullptr;
+    int64_t data_offset = 0;
+    int64_t data_size = 0;
+    int64_t frames = 0;
+    int32_t sample_rate = 0;
+    int32_t channels = 0;
+    int32_t bits = 0;
+    int32_t format = 0;
+
+    ASSERT_TRUE(vaud_wav_open_stream(
+        path, &file, &data_offset, &data_size, &frames, &sample_rate, &channels, &bits, &format));
+
+    struct vaud_music music = {};
+    int16_t decoded[VAUD_MUSIC_BUFFER_FRAMES * 2] = {};
+    uint8_t scratch[VAUD_MUSIC_BUFFER_FRAMES * 2] = {};
+    music.file = file;
+    music.data_offset = data_offset;
+    music.data_size = data_size;
+    music.frame_count = frames;
+    music.sample_rate = VAUD_SAMPLE_RATE;
+    music.source_sample_rate = sample_rate;
+    music.channels = channels;
+    music.bits_per_sample = bits;
+    music.audio_format = format;
+    music.buffers[0] = decoded;
+    music.wav_read_buf = scratch;
+    music.wav_read_cap = sizeof(scratch);
+
+    EXPECT_EQ(vaud_music_seek_output_frame(&music, frames), 1);
+    EXPECT_EQ(music.position, frames);
+    EXPECT_EQ(music.buffer_frames[0], 0);
+    EXPECT_EQ(music.stream_eof, 1);
+
+    fclose((FILE *)file);
+    remove(path);
+}
+
 TEST(WavStreamTest, MusicFillStopsAtWavDataChunk) {
     const char *path = "/tmp/viper_test_stream_trailer.wav";
     ASSERT_TRUE(write_pcm16_wav_with_trailer(path));
@@ -361,6 +444,94 @@ TEST(WavStreamTest, MusicFillStopsAtWavDataChunk) {
 
     fclose((FILE *)file);
     remove(path);
+}
+
+TEST(WavStreamTest, MalformedMemoryChunkSizeIsRejected) {
+    uint8_t wav[44] = {};
+    memcpy(wav + 0, "RIFF", 4);
+    put_u32_le(wav + 4, 36);
+    memcpy(wav + 8, "WAVE", 4);
+    memcpy(wav + 12, "fmt ", 4);
+    put_u32_le(wav + 16, 0xFFFFFF00u);
+
+    int16_t *samples = nullptr;
+    int64_t frames = 0;
+    int32_t sample_rate = 0;
+    int32_t channels = 0;
+    EXPECT_EQ(vaud_wav_load_mem(wav, sizeof(wav), &samples, &frames, &sample_rate, &channels), 0);
+    EXPECT_TRUE(samples == nullptr);
+}
+
+TEST(WavStreamTest, NonFiniteFloatSamplesDecodeAsSilence) {
+    const char *path = "/tmp/viper_test_nonfinite_float.wav";
+    ASSERT_TRUE(write_float_nonfinite_wav(path));
+
+    void *file = nullptr;
+    int64_t data_offset = 0;
+    int64_t data_size = 0;
+    int64_t frames = 0;
+    int32_t sample_rate = 0;
+    int32_t channels = 0;
+    int32_t bits = 0;
+    int32_t format = 0;
+
+    ASSERT_TRUE(vaud_wav_open_stream(
+        path, &file, &data_offset, &data_size, &frames, &sample_rate, &channels, &bits, &format));
+    EXPECT_EQ(frames, 2);
+    EXPECT_EQ(format, 3);
+
+    int16_t decoded[4] = {};
+    ASSERT_EQ(vaud_wav_read_frames(file, decoded, 2, channels, bits, format), 2);
+    EXPECT_EQ(decoded[0], 0);
+    EXPECT_EQ(decoded[1], 0);
+    EXPECT_EQ(decoded[2], 0);
+    EXPECT_EQ(decoded[3], 0);
+
+    fclose((FILE *)file);
+    remove(path);
+}
+
+TEST(WavStreamTest, SoundPanUsesOriginalChannelSemantics) {
+    struct vaud_context ctx = {};
+    vaud_mutex_init(&ctx.mutex);
+    ctx.master_volume = 1.0f;
+    ctx.running = 1;
+    ctx.next_voice_id = 1;
+
+    int16_t samples[2] = {10000, 10000};
+    struct vaud_sound sound = {};
+    sound.samples = samples;
+    sound.frame_count = 1;
+    sound.sample_rate = VAUD_SAMPLE_RATE;
+    sound.channels = VAUD_CHANNELS;
+    sound.default_volume = 1.0f;
+
+    int16_t out[2] = {};
+
+    sound.source_channels = 1;
+    ctx.voices[0].state = VAUD_VOICE_PLAYING;
+    ctx.voices[0].sound = &sound;
+    ctx.voices[0].volume = 1.0f;
+    ctx.voices[0].pan = 0.0f;
+    ctx.voices[0].id = 1;
+    vaud_mixer_render(&ctx, out, 1);
+    EXPECT_NEAR(out[0], 7070, 80);
+    EXPECT_NEAR(out[1], 7070, 80);
+
+    out[0] = 0;
+    out[1] = 0;
+    sound.source_channels = 2;
+    ctx.voices[0].state = VAUD_VOICE_PLAYING;
+    ctx.voices[0].sound = &sound;
+    ctx.voices[0].position = 0;
+    ctx.voices[0].volume = 1.0f;
+    ctx.voices[0].pan = 0.0f;
+    ctx.voices[0].id = 2;
+    vaud_mixer_render(&ctx, out, 1);
+    EXPECT_NEAR(out[0], 10000, 80);
+    EXPECT_NEAR(out[1], 10000, 80);
+
+    vaud_mutex_destroy(&ctx.mutex);
 }
 
 TEST(WavStreamTest, VoiceIdsWrapWithoutReusingActiveId) {
