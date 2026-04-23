@@ -28,6 +28,8 @@
 extern "C" {
 #endif
 
+#define RT_TIMER_CLASS_ID INT64_C(-0x510201)
+
 /// Opaque handle to a Timer instance.
 typedef struct rt_timer_impl *rt_timer;
 

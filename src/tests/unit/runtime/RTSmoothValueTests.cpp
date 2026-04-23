@@ -120,6 +120,20 @@ TEST(velocity) {
     rt_smoothvalue_destroy(sv);
 }
 
+TEST(nonfinite_inputs_are_sanitized) {
+    rt_smoothvalue sv = rt_smoothvalue_new(NAN, INFINITY);
+    ASSERT(rt_smoothvalue_get(sv) == 0.0);
+    ASSERT(rt_smoothvalue_smoothing(sv) == 0.0);
+
+    rt_smoothvalue_set_target(sv, INFINITY);
+    ASSERT(rt_smoothvalue_target(sv) == 0.0);
+
+    rt_smoothvalue_impulse(sv, NAN);
+    ASSERT(std::isfinite(rt_smoothvalue_get(sv)));
+
+    rt_smoothvalue_destroy(sv);
+}
+
 /// @brief Main.
 int main() {
     printf("RTSmoothValueTests:\n");
@@ -131,6 +145,7 @@ int main() {
     RUN_TEST(at_target);
     RUN_TEST(value_i64);
     RUN_TEST(velocity);
+    RUN_TEST(nonfinite_inputs_are_sanitized);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

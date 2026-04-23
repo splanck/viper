@@ -43,7 +43,9 @@
 
 #include "rt_tween.h"
 #include "rt_object.h"
+#include "rt_trap.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 
@@ -63,6 +65,38 @@ struct rt_tween_impl {
     int8_t complete;   ///< 1 if tween has completed.
     int8_t paused;     ///< 1 if tween is paused.
 };
+
+static rt_tween checked_tween(rt_tween tween, const char *api) {
+    if (!tween)
+        return NULL;
+    if (rt_obj_class_id(tween) != RT_TWEEN_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return tween;
+}
+
+static double tween_finite_or(double value, double fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
+static int64_t tween_round_to_i64(double value) {
+    if (!isfinite(value))
+        return 0;
+    if (value >= (double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)(value + (value >= 0 ? 0.5 : -0.5));
+}
+
+static int64_t tween_percent_i64(int64_t value, int64_t total) {
+    if (value <= 0 || total <= 0)
+        return 0;
+    long double scaled = ((long double)value * 100.0L) / (long double)total;
+    int64_t pct = scaled >= (long double)INT64_MAX ? INT64_MAX : (int64_t)scaled;
+    return pct > 100 ? 100 : pct;
+}
 
 // Forward declaration of public easing function
 /// @brief Apply an easing curve to a linear progress value t in [0,1].
@@ -93,8 +127,8 @@ static double ease_in_out_bounce(double t);
 
 /// @brief Create a new tween interpolator (starts inactive until start() is called).
 rt_tween rt_tween_new(void) {
-    struct rt_tween_impl *tween =
-        (struct rt_tween_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_tween_impl));
+    struct rt_tween_impl *tween = (struct rt_tween_impl *)rt_obj_new_i64(
+        RT_TWEEN_CLASS_ID, (int64_t)sizeof(struct rt_tween_impl));
     if (!tween)
         return NULL;
 
@@ -113,14 +147,18 @@ rt_tween rt_tween_new(void) {
 
 /// @brief Destroy a tween and release its GC allocation.
 void rt_tween_destroy(rt_tween tween) {
+    tween = checked_tween(tween, "Tween.Destroy: expected Viper.Game.Tween");
     if (tween && rt_obj_release_check0(tween))
         rt_obj_free(tween);
 }
 
 /// @brief Start interpolating from one value to another over the given duration with easing.
 void rt_tween_start(rt_tween tween, double from, double to, int64_t duration, int64_t ease_type) {
+    tween = checked_tween(tween, "Tween.Start: expected Viper.Game.Tween");
     if (!tween)
         return;
+    from = tween_finite_or(from, 0.0);
+    to = tween_finite_or(to, from);
     if (duration < 1)
         duration = 1;
     if (ease_type < 0 || ease_type >= RT_EASE_COUNT)
@@ -145,12 +183,14 @@ void rt_tween_start_i64(
 
 /// @brief Advance the tween by one tick. Returns 1 if the tween just completed.
 int8_t rt_tween_update(rt_tween tween) {
+    tween = checked_tween(tween, "Tween.Update: expected Viper.Game.Tween");
     if (!tween)
         return 0;
     if (!tween->running || tween->paused)
         return 0;
 
-    tween->elapsed++;
+    if (tween->elapsed < INT64_MAX)
+        tween->elapsed++;
 
     // Calculate progress (0.0 to 1.0)
     double t = (double)tween->elapsed / (double)tween->duration;
@@ -176,6 +216,7 @@ int8_t rt_tween_update(rt_tween tween) {
 
 /// @brief Get the current interpolated value as a double.
 double rt_tween_value(rt_tween tween) {
+    tween = checked_tween(tween, "Tween.Value: expected Viper.Game.Tween");
     if (!tween)
         return 0.0;
     return tween->current;
@@ -183,14 +224,16 @@ double rt_tween_value(rt_tween tween) {
 
 /// @brief Get the current interpolated value rounded to the nearest integer.
 int64_t rt_tween_value_i64(rt_tween tween) {
+    tween = checked_tween(tween, "Tween.ValueI64: expected Viper.Game.Tween");
     if (!tween)
         return 0;
     // Round to nearest integer
-    return (int64_t)(tween->current + (tween->current >= 0 ? 0.5 : -0.5));
+    return tween_round_to_i64(tween->current);
 }
 
 /// @brief Check whether the tween is actively interpolating (running and not paused).
 int8_t rt_tween_is_running(rt_tween tween) {
+    tween = checked_tween(tween, "Tween.IsRunning: expected Viper.Game.Tween");
     if (!tween)
         return 0;
     return tween->running && !tween->paused;
@@ -198,6 +241,7 @@ int8_t rt_tween_is_running(rt_tween tween) {
 
 /// @brief Check whether the tween has reached its end value.
 int8_t rt_tween_is_complete(rt_tween tween) {
+    tween = checked_tween(tween, "Tween.IsComplete: expected Viper.Game.Tween");
     if (!tween)
         return 0;
     return tween->complete;
@@ -205,16 +249,15 @@ int8_t rt_tween_is_complete(rt_tween tween) {
 
 /// @brief Get the tween progress as a percentage (0–100).
 int64_t rt_tween_progress(rt_tween tween) {
+    tween = checked_tween(tween, "Tween.Progress: expected Viper.Game.Tween");
     if (!tween || tween->duration == 0)
         return 0;
-    int64_t progress = (tween->elapsed * 100) / tween->duration;
-    if (progress > 100)
-        progress = 100;
-    return progress;
+    return tween_percent_i64(tween->elapsed, tween->duration);
 }
 
 /// @brief Get the number of ticks elapsed since the tween was started.
 int64_t rt_tween_elapsed(rt_tween tween) {
+    tween = checked_tween(tween, "Tween.Elapsed: expected Viper.Game.Tween");
     if (!tween)
         return 0;
     return tween->elapsed;
@@ -222,6 +265,7 @@ int64_t rt_tween_elapsed(rt_tween tween) {
 
 /// @brief Get the total duration of the tween in ticks.
 int64_t rt_tween_duration(rt_tween tween) {
+    tween = checked_tween(tween, "Tween.Duration: expected Viper.Game.Tween");
     if (!tween)
         return 0;
     return tween->duration;
@@ -229,6 +273,7 @@ int64_t rt_tween_duration(rt_tween tween) {
 
 /// @brief Stop the tween and clear the paused state.
 void rt_tween_stop(rt_tween tween) {
+    tween = checked_tween(tween, "Tween.Stop: expected Viper.Game.Tween");
     if (!tween)
         return;
     tween->running = 0;
@@ -237,6 +282,7 @@ void rt_tween_stop(rt_tween tween) {
 
 /// @brief Reset the tween to its start value and restart playback.
 void rt_tween_reset(rt_tween tween) {
+    tween = checked_tween(tween, "Tween.Reset: expected Viper.Game.Tween");
     if (!tween)
         return;
     tween->elapsed = 0;
@@ -249,6 +295,7 @@ void rt_tween_reset(rt_tween tween) {
 
 /// @brief Pause the tween at the current position (can be resumed).
 void rt_tween_pause(rt_tween tween) {
+    tween = checked_tween(tween, "Tween.Pause: expected Viper.Game.Tween");
     if (!tween)
         return;
     tween->paused = 1;
@@ -256,6 +303,7 @@ void rt_tween_pause(rt_tween tween) {
 
 /// @brief Resume a paused tween from where it left off.
 void rt_tween_resume(rt_tween tween) {
+    tween = checked_tween(tween, "Tween.Resume: expected Viper.Game.Tween");
     if (!tween)
         return;
     tween->paused = 0;
@@ -263,6 +311,7 @@ void rt_tween_resume(rt_tween tween) {
 
 /// @brief Check whether the tween is currently paused.
 int8_t rt_tween_is_paused(rt_tween tween) {
+    tween = checked_tween(tween, "Tween.IsPaused: expected Viper.Game.Tween");
     if (!tween)
         return 0;
     return tween->paused;
@@ -276,12 +325,14 @@ int8_t rt_tween_is_paused(rt_tween tween) {
 
 /// @brief Linearly interpolate between two integers at parameter t, rounded to nearest.
 int64_t rt_tween_lerp_i64(int64_t from, int64_t to, double t) {
+    if (!isfinite(t))
+        t = 0.0;
     if (t < 0.0)
         t = 0.0;
     if (t > 1.0)
         t = 1.0;
     double result = (double)from + ((double)to - (double)from) * t;
-    return (int64_t)(result + (result >= 0 ? 0.5 : -0.5));
+    return tween_round_to_i64(result);
 }
 
 /// @brief Apply an easing curve to a linear progress value t in [0,1].
@@ -289,6 +340,8 @@ int64_t rt_tween_lerp_i64(int64_t from, int64_t to, double t) {
 ///          expo, back, bounce — each in in/out/in-out variants). Returns 0 for
 ///          t<=0 and 1 for t>=1 to guarantee exact endpoints.
 double rt_tween_ease(double t, int64_t ease_type) {
+    if (!isfinite(t))
+        return 0.0;
     if (t <= 0.0)
         return 0.0;
     if (t >= 1.0)

@@ -94,6 +94,21 @@ TEST(AnimStateNamed, EventAutoClears) {
     EXPECT_FALSE(rt_animstate_event_fired(sm)); // second check: auto-cleared
 }
 
+TEST(AnimStateNamed, EventDoesNotRetriggerWhileFrameIsUnchanged) {
+    void *sm = rt_animstate_new();
+    rt_animstate_add_named(sm, (void *)rt_const_cstr("hold"), 0, 1, 4, 0);
+    rt_animstate_set_initial(sm, 0);
+    rt_animstate_set_event_frame(sm, 1);
+
+    for (int i = 0; i < 4; ++i)
+        rt_animstate_update(sm);
+    EXPECT_TRUE(rt_animstate_event_fired(sm));
+
+    rt_animstate_update(sm);
+    rt_animstate_update(sm);
+    EXPECT_FALSE(rt_animstate_event_fired(sm));
+}
+
 int main() {
     return viper_test::run_all_tests();
 }

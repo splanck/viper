@@ -24,8 +24,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
+#include "rt_bitmapfont.h"
 #include "rt_gameui.h"
 #include "rt_internal.h"
+#include "rt_object.h"
+#include "rt_pixels.h"
 #include <cassert>
 #include <cstdio>
 
@@ -40,6 +43,7 @@ extern "C" void vm_trap(const char *msg) {
 
 static int tests_passed = 0;
 static int tests_total = 0;
+static int finalizer_calls = 0;
 
 #define TEST(name)                                                                                 \
     do {                                                                                           \
@@ -52,6 +56,54 @@ static int tests_total = 0;
         tests_passed++;                                                                            \
         printf("ok\n");                                                                            \
     } while (0)
+
+static void release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+extern "C" void test_ref_finalizer(void *) {
+    finalizer_calls++;
+}
+
+static const char *gameui_test_bdf =
+    "STARTFONT 2.1\n"
+    "FONT -Test-Medium-R-Normal--8-80-75-75-C-80-ISO10646-1\n"
+    "SIZE 8 75 75\n"
+    "FONTBOUNDINGBOX 8 8 0 0\n"
+    "STARTPROPERTIES 2\n"
+    "FONT_ASCENT 7\n"
+    "FONT_DESCENT 1\n"
+    "ENDPROPERTIES\n"
+    "CHARS 2\n"
+    "STARTCHAR space\n"
+    "ENCODING 32\n"
+    "SWIDTH 500 0\n"
+    "DWIDTH 8 0\n"
+    "BBX 8 8 0 0\n"
+    "BITMAP\n"
+    "00\n00\n00\n00\n00\n00\n00\n00\n"
+    "ENDCHAR\n"
+    "STARTCHAR question\n"
+    "ENCODING 63\n"
+    "SWIDTH 500 0\n"
+    "DWIDTH 8 0\n"
+    "BBX 8 8 0 0\n"
+    "BITMAP\n"
+    "7C\nC6\n0C\n18\n18\n00\n18\n00\n"
+    "ENDCHAR\n"
+    "ENDFONT\n";
+
+static void *make_test_font(void) {
+    const char *path = "/tmp/viper_gameui_test_font.bdf";
+    FILE *f = fopen(path, "w");
+    assert(f != NULL);
+    fputs(gameui_test_bdf, f);
+    fclose(f);
+    void *font = rt_bitmapfont_load_bdf(rt_const_cstr(path));
+    assert(font != NULL);
+    return font;
+}
 
 //=============================================================================
 // UILabel tests
@@ -102,6 +154,22 @@ static void test_label_scale_clamp(void) {
     rt_uilabel_set_scale(label, 0);  // Should clamp to 1
     rt_uilabel_set_scale(label, -5); // Should clamp to 1
     // We can't read scale back, but no crash = success
+    PASS();
+}
+
+static void test_label_retains_font(void) {
+    TEST("UILabel retains and releases assigned font");
+    finalizer_calls = 0;
+    void *font = make_test_font();
+    rt_obj_set_finalizer(font, test_ref_finalizer);
+    void *label = rt_uilabel_new(0, 0, rt_const_cstr("Font"), 0xFFFFFF);
+
+    rt_uilabel_set_font(label, font);
+    release_obj(font);
+    assert(finalizer_calls == 0);
+
+    release_obj(label);
+    assert(finalizer_calls == 1);
     PASS();
 }
 
@@ -203,6 +271,23 @@ static void test_nineslice_null_pixels(void) {
 static void test_nineslice_draw_null(void) {
     TEST("UINineSlice draw with NULL is no-op");
     rt_uinineslice_draw(NULL, NULL, 0, 0, 100, 100); // No crash
+    PASS();
+}
+
+static void test_nineslice_retains_pixels(void) {
+    TEST("UINineSlice retains and releases Pixels source");
+    finalizer_calls = 0;
+    void *pixels = rt_pixels_new(3, 3);
+    rt_pixels_set(pixels, 1, 1, 0xFFFFFFFF);
+    rt_obj_set_finalizer(pixels, test_ref_finalizer);
+
+    void *ns = rt_uinineslice_new(pixels, 1, 1, 1, 1);
+    assert(ns != NULL);
+    release_obj(pixels);
+    assert(finalizer_calls == 0);
+
+    release_obj(ns);
+    assert(finalizer_calls == 1);
     PASS();
 }
 
@@ -330,6 +415,100 @@ static void test_menulist_null_text(void) {
     PASS();
 }
 
+static void test_menulist_hidden_handle_input_noop(void) {
+    TEST("UIMenuList hidden HandleInput is no-op");
+    void *menu = rt_uimenulist_new(0, 0, 20);
+    rt_uimenulist_add_item(menu, rt_const_cstr("A"));
+    rt_uimenulist_add_item(menu, rt_const_cstr("B"));
+    rt_uimenulist_set_visible(menu, 0);
+
+    int64_t result = rt_uimenulist_handle_input(menu, 0, 1, 1);
+    assert(result == -1);
+    assert(rt_uimenulist_get_selected(menu) == 0);
+    PASS();
+}
+
+static void test_menulist_conflicting_direction_input_noop(void) {
+    TEST("UIMenuList HandleInput ignores simultaneous up/down");
+    void *menu = rt_uimenulist_new(0, 0, 20);
+    rt_uimenulist_add_item(menu, rt_const_cstr("A"));
+    rt_uimenulist_add_item(menu, rt_const_cstr("B"));
+    rt_uimenulist_add_item(menu, rt_const_cstr("C"));
+    rt_uimenulist_set_selected(menu, 1);
+
+    int64_t result = rt_uimenulist_handle_input(menu, 1, 1, 1);
+    assert(result == 1);
+    assert(rt_uimenulist_get_selected(menu) == 1);
+    PASS();
+}
+
+static void test_menulist_retains_font(void) {
+    TEST("UIMenuList retains and releases assigned font");
+    finalizer_calls = 0;
+    void *font = make_test_font();
+    rt_obj_set_finalizer(font, test_ref_finalizer);
+    void *menu = rt_uimenulist_new(0, 0, 20);
+
+    rt_uimenulist_set_font(menu, font);
+    release_obj(font);
+    assert(finalizer_calls == 0);
+
+    release_obj(menu);
+    assert(finalizer_calls == 1);
+    PASS();
+}
+
+//=============================================================================
+// GameButton tests
+//=============================================================================
+
+static void test_gamebutton_creation_and_position(void) {
+    TEST("GameButton creation and position properties");
+    void *button = rt_gamebutton_new(10, 20, -100, 0, rt_const_cstr("Start"));
+    assert(button != NULL);
+    assert(rt_gamebutton_get_x(button) == 10);
+    assert(rt_gamebutton_get_y(button) == 20);
+    assert(rt_gamebutton_get_width(button) == 1);
+    assert(rt_gamebutton_get_height(button) == 1);
+
+    rt_gamebutton_set_x(button, 30);
+    rt_gamebutton_set_y(button, 40);
+    assert(rt_gamebutton_get_x(button) == 30);
+    assert(rt_gamebutton_get_y(button) == 40);
+    PASS();
+}
+
+static void test_gamebutton_size_visible_and_text_scale(void) {
+    TEST("GameButton size, visibility, and text scale properties");
+    void *button = rt_gamebutton_new(0, 0, 100, 20, rt_const_cstr("Start"));
+    assert(rt_gamebutton_get_width(button) == 100);
+    assert(rt_gamebutton_get_height(button) == 20);
+    assert(rt_gamebutton_get_visible(button) == 1);
+    assert(rt_gamebutton_get_text_scale(button) == 1);
+
+    rt_gamebutton_set_size(button, -4, 20000);
+    assert(rt_gamebutton_get_width(button) == 1);
+    assert(rt_gamebutton_get_height(button) == 16384);
+
+    rt_gamebutton_set_visible(button, 0);
+    assert(rt_gamebutton_get_visible(button) == 0);
+    rt_gamebutton_set_text_scale(button, 0);
+    assert(rt_gamebutton_get_text_scale(button) == 1);
+    rt_gamebutton_set_text_scale(button, 20);
+    assert(rt_gamebutton_get_text_scale(button) == 16);
+    PASS();
+}
+
+static void test_gamebutton_null_text_and_border(void) {
+    TEST("GameButton NULL text and negative border are safe");
+    void *button = rt_gamebutton_new(0, 0, 100, 20, NULL);
+    rt_gamebutton_set_text(button, rt_const_cstr("Play"));
+    rt_gamebutton_set_text(button, NULL);
+    rt_gamebutton_set_border(button, -5, 0xFFFFFF);
+    rt_gamebutton_draw(button, NULL, 1);
+    PASS();
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -343,6 +522,7 @@ int main() {
     test_label_null_safety();
     test_label_draw_null_canvas();
     test_label_scale_clamp();
+    test_label_retains_font();
 
     // Bar
     test_bar_creation();
@@ -358,6 +538,7 @@ int main() {
     // NineSlice
     test_nineslice_null_pixels();
     test_nineslice_draw_null();
+    test_nineslice_retains_pixels();
 
     // MenuList
     test_menulist_creation();
@@ -370,6 +551,14 @@ int main() {
     test_menulist_set_selected_clamp();
     test_menulist_null_safety();
     test_menulist_null_text();
+    test_menulist_hidden_handle_input_noop();
+    test_menulist_conflicting_direction_input_noop();
+    test_menulist_retains_font();
+
+    // GameButton
+    test_gamebutton_creation_and_position();
+    test_gamebutton_size_visible_and_text_scale();
+    test_gamebutton_null_text_and_border();
 
     printf("\n  %d/%d tests passed\n", tests_passed, tests_total);
     assert(tests_passed == tests_total);

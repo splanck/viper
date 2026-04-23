@@ -107,7 +107,7 @@ rt_pixels_impl *pixels_alloc(int64_t width, int64_t height) {
         return NULL;
     }
 
-    rt_pixels_impl *pixels = (rt_pixels_impl *)rt_obj_new_i64(0, (int64_t)total);
+    rt_pixels_impl *pixels = (rt_pixels_impl *)rt_obj_new_i64(RT_PIXELS_CLASS_ID, (int64_t)total);
     if (!pixels) {
         rt_trap("Pixels: memory allocation failed");
         return NULL;
@@ -161,6 +161,12 @@ int64_t rt_pixels_height(void *pixels) {
         return 0;
     }
     return ((rt_pixels_impl *)pixels)->height;
+}
+
+uint64_t rt_pixels_generation(void *pixels) {
+    if (!pixels)
+        return 0;
+    return ((rt_pixels_impl *)pixels)->generation;
 }
 
 //=============================================================================

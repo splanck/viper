@@ -5,6 +5,7 @@
 
 #include "rt_quadtree.h"
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
 
 static int tests_passed = 0;
@@ -35,6 +36,13 @@ TEST(create_destroy) {
     rt_quadtree_destroy(tree);
 }
 
+TEST(invalid_bounds_rejected) {
+    ASSERT(rt_quadtree_new(0, 0, 0, 1000) == NULL);
+    ASSERT(rt_quadtree_new(0, 0, 1000, 0) == NULL);
+    ASSERT(rt_quadtree_new(0, 0, -1, 1000) == NULL);
+    ASSERT(rt_quadtree_new(0, 0, 1000, -1) == NULL);
+}
+
 TEST(insert) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
@@ -46,11 +54,40 @@ TEST(insert) {
     rt_quadtree_destroy(tree);
 }
 
+TEST(insert_rejects_nonpositive_item_size) {
+    rt_quadtree tree = rt_quadtree_new(0, 0, 1000, 1000);
+
+    ASSERT(rt_quadtree_insert(tree, 1, 100, 100, 0, 10) == 0);
+    ASSERT(rt_quadtree_insert(tree, 2, 100, 100, 10, 0) == 0);
+    ASSERT(rt_quadtree_insert(tree, 3, 100, 100, -1, 10) == 0);
+    ASSERT(rt_quadtree_insert(tree, 4, 100, 100, 10, -1) == 0);
+    ASSERT(rt_quadtree_item_count(tree) == 0);
+
+    rt_quadtree_destroy(tree);
+}
+
 TEST(insert_out_of_bounds) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 100000, 100000);
 
     // Completely outside bounds
     ASSERT(rt_quadtree_insert(tree, 1, 200000, 200000, 10000, 10000) == 0);
+
+    rt_quadtree_destroy(tree);
+}
+
+TEST(overflow_edge_geometry_remains_queryable) {
+    rt_quadtree tree = rt_quadtree_new(INT64_MAX - 1000, INT64_MAX - 1000, 1000, 1000);
+    ASSERT(tree != NULL);
+
+    ASSERT(rt_quadtree_insert(tree, 77, INT64_MAX - 500, INT64_MAX - 500, 200, 200) == 1);
+
+    int64_t count = rt_quadtree_query_rect(tree, INT64_MAX - 900, INT64_MAX - 900, 800, 800);
+    ASSERT(count == 1);
+    ASSERT(rt_quadtree_get_result(tree, 0) == 77);
+
+    count = rt_quadtree_query_point(tree, INT64_MAX - 500, INT64_MAX - 500, 100);
+    ASSERT(count == 1);
+    ASSERT(rt_quadtree_get_result(tree, 0) == 77);
 
     rt_quadtree_destroy(tree);
 }
@@ -300,8 +337,11 @@ TEST(reuses_inactive_slots_after_remove) {
 int main() {
     printf("RTQuadtreeTests:\n");
     RUN_TEST(create_destroy);
+    RUN_TEST(invalid_bounds_rejected);
     RUN_TEST(insert);
+    RUN_TEST(insert_rejects_nonpositive_item_size);
     RUN_TEST(insert_out_of_bounds);
+    RUN_TEST(overflow_edge_geometry_remains_queryable);
     RUN_TEST(remove);
     RUN_TEST(query_rect);
     RUN_TEST(query_point);

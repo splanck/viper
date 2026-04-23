@@ -7,9 +7,9 @@
 //
 // File: src/runtime/game/rt_gameui.c
 // Purpose: Lightweight in-game UI widgets that draw directly to a Canvas.
-//   Provides Label, Bar, Panel, NineSlice, and MenuList — the building blocks
-//   for game HUDs, menus, and overlays without the overhead of the desktop
-//   ViperGUI widget system.
+//   Provides Label, Bar, Panel, NineSlice, MenuList, and GameButton — the
+//   building blocks for game HUDs, menus, and overlays without the overhead of
+//   the desktop ViperGUI widget system.
 //
 // Key invariants:
 //   - All widgets are GC-managed via rt_obj_new_i64 (no manual free).
@@ -17,12 +17,14 @@
 //   - UIBar values are clamped: value in [0, max], max >= 1.
 //   - UIMenuList selection wraps: MoveUp at 0 → last item, MoveDown at last → 0.
 //   - UILabel falls back to built-in 8x8 font when font is NULL.
+//   - Fixed-size text buffers are truncated on UTF-8 codepoint boundaries.
 //
 // Ownership/Lifetime:
 //   - Widgets are GC-managed.
-//   - UILabel text is stored as rt_string (GC-managed).
-//   - UIMenuList item strings are strdup'd copies; freed in clear/destroy.
-//   - UINineSlice keeps a raw pointer to its Pixels source.
+//   - UILabel and GameButton copy text into widget-owned buffers.
+//   - UIMenuList stores item text in fixed widget-owned buffers.
+//   - UILabel/UIMenuList retain assigned BitmapFont handles.
+//   - UINineSlice retains its Pixels source.
 //
 // Links: rt_gameui.h (public API), rt_graphics.h (Canvas drawing),
 //        rt_bitmapfont.h (custom font support), rt_pixels.h (NineSlice source)
@@ -36,8 +38,216 @@
 #include "rt_object.h"
 #include "rt_pixels.h"
 
+#include <limits.h>
+#include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define UI_MAX_DIM INT64_C(16384)
+
+static int64_t ui_clamp_dim(int64_t value) {
+    if (value <= 0)
+        return 1;
+    return value > UI_MAX_DIM ? UI_MAX_DIM : value;
+}
+
+static int64_t ui_clamp_scale(int64_t scale) {
+    if (scale < 1)
+        return 1;
+    if (scale > 16)
+        return 16;
+    return scale;
+}
+
+static int8_t ui_is_bitmapfont(void *obj) {
+    return obj && rt_obj_class_id(obj) == RT_BITMAPFONT_CLASS_ID;
+}
+
+static int8_t ui_is_pixels(void *obj) {
+    return obj && rt_obj_class_id(obj) == RT_PIXELS_CLASS_ID;
+}
+
+static int8_t ui_validate_bitmapfont(void *font, const char *api) {
+    if (!font)
+        return 1;
+    if (!ui_is_bitmapfont(font)) {
+        rt_trap(api);
+        return 0;
+    }
+    return 1;
+}
+
+static int8_t ui_validate_pixels(void *pixels, const char *api) {
+    if (!pixels)
+        return 0;
+    if (!ui_is_pixels(pixels)) {
+        rt_trap(api);
+        return 0;
+    }
+    return 1;
+}
+
+static int8_t ui_validate_canvas(void *canvas, const char *api) {
+    if (!canvas)
+        return 0;
+    if (!rt_canvas_is_handle(canvas)) {
+        rt_trap(api);
+        return 0;
+    }
+    return 1;
+}
+
+static size_t ui_visible_len(const char *s, size_t max_len) {
+    size_t len = 0;
+    if (!s)
+        return 0;
+    while (len < max_len && s[len] != '\0')
+        len++;
+    return len;
+}
+
+static int ui_is_continuation(unsigned char c) {
+    return (c & 0xC0u) == 0x80u;
+}
+
+static size_t ui_utf8_cp_len(const char *s, size_t len, size_t pos) {
+    unsigned char c = (unsigned char)s[pos];
+    if (c < 0x80u)
+        return 1;
+    if (c >= 0xC2u && c <= 0xDFu) {
+        if (pos + 1 < len && ui_is_continuation((unsigned char)s[pos + 1]))
+            return 2;
+        return 1;
+    }
+    if ((c & 0xF0u) == 0xE0u) {
+        unsigned char c1 = pos + 1 < len ? (unsigned char)s[pos + 1] : 0;
+        unsigned char c2 = pos + 2 < len ? (unsigned char)s[pos + 2] : 0;
+        if (pos + 2 < len && ui_is_continuation(c1) && ui_is_continuation(c2) &&
+            !(c == 0xE0u && c1 < 0xA0u) && !(c == 0xEDu && c1 >= 0xA0u))
+            return 3;
+        return 1;
+    }
+    if ((c & 0xF8u) == 0xF0u) {
+        unsigned char c1 = pos + 1 < len ? (unsigned char)s[pos + 1] : 0;
+        unsigned char c2 = pos + 2 < len ? (unsigned char)s[pos + 2] : 0;
+        unsigned char c3 = pos + 3 < len ? (unsigned char)s[pos + 3] : 0;
+        if (c >= 0xF0u && c <= 0xF4u && pos + 3 < len && ui_is_continuation(c1) &&
+            ui_is_continuation(c2) && ui_is_continuation(c3) &&
+            !(c == 0xF0u && c1 < 0x90u) && !(c == 0xF4u && c1 > 0x8Fu))
+            return 4;
+        return 1;
+    }
+    return 1;
+}
+
+static size_t ui_utf8_trunc_len(const char *s, size_t len, size_t max_bytes) {
+    size_t pos = 0;
+    size_t last = 0;
+    while (pos < len && pos < max_bytes) {
+        size_t cp_len = ui_utf8_cp_len(s, len, pos);
+        if (pos + cp_len > len || pos + cp_len > max_bytes)
+            break;
+        pos += cp_len;
+        last = pos;
+    }
+    return last;
+}
+
+static size_t ui_utf8_trunc_codepoints(const char *s, size_t len, size_t max_codepoints) {
+    size_t pos = 0;
+    size_t count = 0;
+    if (!s || max_codepoints == 0)
+        return 0;
+    while (pos < len && count < max_codepoints) {
+        size_t cp_len = ui_utf8_cp_len(s, len, pos);
+        if (pos + cp_len > len)
+            break;
+        pos += cp_len;
+        count++;
+    }
+    return pos;
+}
+
+static void ui_copy_text(char *dst, size_t cap, rt_string text) {
+    if (!dst || cap == 0)
+        return;
+    dst[0] = '\0';
+    if (!text)
+        return;
+
+    const char *s = rt_string_cstr(text);
+    if (!s)
+        return;
+    size_t len = ui_visible_len(s, (size_t)rt_str_len(text));
+    size_t copy_len = ui_utf8_trunc_len(s, len, cap - 1);
+    memcpy(dst, s, copy_len);
+    dst[copy_len] = '\0';
+}
+
+static void ui_release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void ui_replace_ref(void **slot, void *value) {
+    if (!slot || *slot == value)
+        return;
+    if (value)
+        rt_obj_retain_maybe(value);
+    ui_release_obj(*slot);
+    *slot = value;
+}
+
+static void ui_round_box_alpha(void *canvas,
+                               int64_t x,
+                               int64_t y,
+                               int64_t w,
+                               int64_t h,
+                               int64_t radius,
+                               int64_t color,
+                               int64_t alpha) {
+    if (!canvas || w <= 0 || h <= 0 || alpha <= 0)
+        return;
+    if (alpha >= 255) {
+        rt_canvas_round_box(canvas, x, y, w, h, radius, color);
+        return;
+    }
+
+    int64_t max_radius = (w < h ? w : h) / 2;
+    if (radius < 0)
+        radius = 0;
+    if (radius > max_radius)
+        radius = max_radius;
+    if (radius <= 0) {
+        rt_canvas_box_alpha(canvas, x, y, w, h, color, alpha);
+        return;
+    }
+
+    long double r = (long double)radius;
+    long double rr = r * r;
+    for (int64_t py = 0; py < h; py++) {
+        int64_t inset = 0;
+        if (py < radius || py >= h - radius) {
+            long double dy = py < radius ? (r - 1.0L - (long double)py)
+                                         : ((long double)py - (long double)(h - radius));
+            long double inside = rr - dy * dy;
+            if (inside < 0.0L)
+                inside = 0.0L;
+            long double extent = sqrtl(inside);
+            long double raw_inset = r - extent - 1.0L;
+            if (raw_inset > 0.0L) {
+                if (raw_inset > (long double)radius)
+                    inset = radius;
+                else
+                    inset = (int64_t)raw_inset;
+            }
+        }
+        int64_t row_w = w - inset * 2;
+        if (row_w > 0)
+            rt_canvas_box_alpha(canvas, x + inset, y + py, row_w, 1, color, alpha);
+    }
+}
 
 //=============================================================================
 // UILabel
@@ -47,6 +257,7 @@
 #define LABEL_MAX_TEXT 512
 
 typedef struct {
+    void *vptr;
     int64_t x, y;
     char text[LABEL_MAX_TEXT];
     int64_t color;
@@ -55,8 +266,27 @@ typedef struct {
     int8_t visible;
 } rt_uilabel_impl;
 
+static rt_uilabel_impl *checked_label(void *ptr, const char *api) {
+    if (!ptr)
+        return NULL;
+    if (rt_obj_class_id(ptr) != RT_UILABEL_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (rt_uilabel_impl *)ptr;
+}
+
+static void uilabel_finalizer(void *obj) {
+    rt_uilabel_impl *label = (rt_uilabel_impl *)obj;
+    if (!label)
+        return;
+    ui_release_obj(label->font);
+    label->font = NULL;
+}
+
 void *rt_uilabel_new(int64_t x, int64_t y, rt_string text, int64_t color) {
-    rt_uilabel_impl *label = (rt_uilabel_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_uilabel_impl));
+    rt_uilabel_impl *label =
+        (rt_uilabel_impl *)rt_obj_new_i64(RT_UILABEL_CLASS_ID, (int64_t)sizeof(rt_uilabel_impl));
     if (!label)
         return NULL;
 
@@ -66,90 +296,71 @@ void *rt_uilabel_new(int64_t x, int64_t y, rt_string text, int64_t color) {
     label->color = color;
     label->scale = 1;
     label->visible = 1;
-
-    if (text) {
-        const char *s = rt_string_cstr(text);
-        if (s) {
-            size_t len = strlen(s);
-            if (len >= LABEL_MAX_TEXT)
-                len = LABEL_MAX_TEXT - 1;
-            memcpy(label->text, s, len);
-            label->text[len] = '\0';
-        }
-    }
+    ui_copy_text(label->text, sizeof(label->text), text);
+    rt_obj_set_finalizer(label, uilabel_finalizer);
 
     return label;
 }
 
 /// @brief Replace the label's displayed text, truncating to 511 bytes if needed.
 void rt_uilabel_set_text(void *ptr, rt_string text) {
-    if (!ptr)
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetText: expected Viper.Game.UI.Label");
+    if (!label)
         return;
-    rt_uilabel_impl *label = (rt_uilabel_impl *)ptr;
-    label->text[0] = '\0';
-    if (text) {
-        const char *s = rt_string_cstr(text);
-        if (s) {
-            size_t len = strlen(s);
-            if (len >= LABEL_MAX_TEXT)
-                len = LABEL_MAX_TEXT - 1;
-            memcpy(label->text, s, len);
-            label->text[len] = '\0';
-        }
-    }
+    ui_copy_text(label->text, sizeof(label->text), text);
 }
 
 /// @brief Reposition the label to screen coordinates (x, y).
 void rt_uilabel_set_pos(void *ptr, int64_t x, int64_t y) {
-    if (!ptr)
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetPos: expected Viper.Game.UI.Label");
+    if (!label)
         return;
-    rt_uilabel_impl *label = (rt_uilabel_impl *)ptr;
     label->x = x;
     label->y = y;
 }
 
 /// @brief Set the label's text color (RGBA packed integer).
 void rt_uilabel_set_color(void *ptr, int64_t color) {
-    if (!ptr)
-        return;
-    ((rt_uilabel_impl *)ptr)->color = color;
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetColor: expected Viper.Game.UI.Label");
+    if (label)
+        label->color = color;
 }
 
 /// @brief Assign a BitmapFont for rendering; NULL uses the built-in 8x8 font.
 void rt_uilabel_set_font(void *ptr, void *font) {
-    if (!ptr)
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetFont: expected Viper.Game.UI.Label");
+    if (!label)
         return;
-    ((rt_uilabel_impl *)ptr)->font = font;
+    if (!ui_validate_bitmapfont(font, "UILabel.SetFont: expected BitmapFont"))
+        return;
+    ui_replace_ref(&label->font, font);
 }
 
 /// @brief Set the integer pixel scale for text rendering (minimum 1).
 void rt_uilabel_set_scale(void *ptr, int64_t scale) {
-    if (!ptr)
-        return;
-    if (scale < 1)
-        scale = 1;
-    ((rt_uilabel_impl *)ptr)->scale = scale;
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.SetScale: expected Viper.Game.UI.Label");
+    if (label)
+        label->scale = ui_clamp_scale(scale);
 }
 
 /// @brief Show or hide the label; hidden labels are skipped during draw.
 void rt_uilabel_set_visible(void *ptr, int8_t visible) {
-    if (!ptr)
-        return;
-    ((rt_uilabel_impl *)ptr)->visible = visible ? 1 : 0;
+    rt_uilabel_impl *label =
+        checked_label(ptr, "UILabel.SetVisible: expected Viper.Game.UI.Label");
+    if (label)
+        label->visible = visible ? 1 : 0;
 }
 
 /// @brief Return the label's current X position in screen coordinates.
 int64_t rt_uilabel_get_x(void *ptr) {
-    if (!ptr)
-        return 0;
-    return ((rt_uilabel_impl *)ptr)->x;
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.X: expected Viper.Game.UI.Label");
+    return label ? label->x : 0;
 }
 
 /// @brief Return the label's current Y position in screen coordinates.
 int64_t rt_uilabel_get_y(void *ptr) {
-    if (!ptr)
-        return 0;
-    return ((rt_uilabel_impl *)ptr)->y;
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.Y: expected Viper.Game.UI.Label");
+    return label ? label->y : 0;
 }
 
 /// @brief Render the label onto the canvas using its font, scale, and color.
@@ -159,7 +370,9 @@ int64_t rt_uilabel_get_y(void *ptr) {
 void rt_uilabel_draw(void *ptr, void *canvas) {
     if (!ptr || !canvas)
         return;
-    rt_uilabel_impl *label = (rt_uilabel_impl *)ptr;
+    rt_uilabel_impl *label = checked_label(ptr, "UILabel.Draw: expected Viper.Game.UI.Label");
+    if (!label || !ui_validate_canvas(canvas, "UILabel.Draw: expected Canvas"))
+        return;
     if (!label->visible || label->text[0] == '\0')
         return;
 
@@ -190,6 +403,7 @@ void rt_uilabel_draw(void *ptr, void *canvas) {
 #define BAR_DIR_TOP_TO_BOTTOM 3
 
 typedef struct {
+    void *vptr;
     int64_t x, y, w, h;
     int64_t value, max_value;
     int64_t fg_color, bg_color;
@@ -198,15 +412,27 @@ typedef struct {
     int8_t visible;
 } rt_uibar_impl;
 
+static rt_uibar_impl *checked_bar(void *ptr, const char *api) {
+    if (!ptr)
+        return NULL;
+    if (rt_obj_class_id(ptr) != RT_UIBAR_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (rt_uibar_impl *)ptr;
+}
+
 void *rt_uibar_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t fg_color, int64_t bg_color) {
-    rt_uibar_impl *bar = (rt_uibar_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_uibar_impl));
+    rt_uibar_impl *bar =
+        (rt_uibar_impl *)rt_obj_new_i64(RT_UIBAR_CLASS_ID, (int64_t)sizeof(rt_uibar_impl));
     if (!bar)
         return NULL;
 
+    bar->vptr = NULL;
     bar->x = x;
     bar->y = y;
-    bar->w = w > 0 ? w : 1;
-    bar->h = h > 0 ? h : 1;
+    bar->w = ui_clamp_dim(w);
+    bar->h = ui_clamp_dim(h);
     bar->value = 0;
     bar->max_value = 100;
     bar->fg_color = fg_color;
@@ -222,9 +448,9 @@ void *rt_uibar_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t fg_color,
 /// @details max_value is forced to at least 1 to prevent division by zero
 ///          during fill-ratio computation in the draw function.
 void rt_uibar_set_value(void *ptr, int64_t value, int64_t max_value) {
-    if (!ptr)
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetValue: expected Viper.Game.UI.Bar");
+    if (!bar)
         return;
-    rt_uibar_impl *bar = (rt_uibar_impl *)ptr;
     if (max_value < 1)
         max_value = 1;
     if (value < 0)
@@ -237,73 +463,88 @@ void rt_uibar_set_value(void *ptr, int64_t value, int64_t max_value) {
 
 /// @brief Reposition the bar to screen coordinates (x, y).
 void rt_uibar_set_pos(void *ptr, int64_t x, int64_t y) {
-    if (!ptr)
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetPos: expected Viper.Game.UI.Bar");
+    if (!bar)
         return;
-    rt_uibar_impl *bar = (rt_uibar_impl *)ptr;
     bar->x = x;
     bar->y = y;
 }
 
 /// @brief Set the bar's width and height in pixels (minimum 1 each).
 void rt_uibar_set_size(void *ptr, int64_t w, int64_t h) {
-    if (!ptr)
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetSize: expected Viper.Game.UI.Bar");
+    if (!bar)
         return;
-    rt_uibar_impl *bar = (rt_uibar_impl *)ptr;
-    bar->w = w > 0 ? w : 1;
-    bar->h = h > 0 ? h : 1;
+    bar->w = ui_clamp_dim(w);
+    bar->h = ui_clamp_dim(h);
 }
 
 /// @brief Set the foreground (filled portion) and background colors of the bar.
 void rt_uibar_set_colors(void *ptr, int64_t fg, int64_t bg) {
-    if (!ptr)
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetColors: expected Viper.Game.UI.Bar");
+    if (!bar)
         return;
-    rt_uibar_impl *bar = (rt_uibar_impl *)ptr;
     bar->fg_color = fg;
     bar->bg_color = bg;
 }
 
 /// @brief Set the bar's border color; 0 disables the border outline.
 void rt_uibar_set_border(void *ptr, int64_t color) {
-    if (!ptr)
-        return;
-    ((rt_uibar_impl *)ptr)->border_color = color;
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetBorder: expected Viper.Game.UI.Bar");
+    if (bar)
+        bar->border_color = color;
 }
 
 /// @brief Set the bar's fill direction (0=L→R, 1=R→L, 2=B→T, 3=T→B).
 void rt_uibar_set_direction(void *ptr, int64_t dir) {
-    if (!ptr)
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetDirection: expected Viper.Game.UI.Bar");
+    if (!bar)
         return;
     if (dir < 0 || dir > 3)
         dir = BAR_DIR_LEFT_TO_RIGHT;
-    ((rt_uibar_impl *)ptr)->direction = dir;
+    bar->direction = dir;
 }
 
 /// @brief Show or hide the bar; hidden bars are skipped during draw.
 void rt_uibar_set_visible(void *ptr, int8_t visible) {
-    if (!ptr)
-        return;
-    ((rt_uibar_impl *)ptr)->visible = visible ? 1 : 0;
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.SetVisible: expected Viper.Game.UI.Bar");
+    if (bar)
+        bar->visible = visible ? 1 : 0;
 }
 
 /// @brief Return the bar's current fill value.
 int64_t rt_uibar_get_value(void *ptr) {
-    if (!ptr)
-        return 0;
-    return ((rt_uibar_impl *)ptr)->value;
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.Value: expected Viper.Game.UI.Bar");
+    return bar ? bar->value : 0;
 }
 
 /// @brief Return the bar's maximum value (the denominator for fill ratio).
 int64_t rt_uibar_get_max(void *ptr) {
-    if (!ptr)
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.Max: expected Viper.Game.UI.Bar");
+    return bar ? bar->max_value : 0;
+}
+
+static int64_t ui_scaled_fill(int64_t value, int64_t extent, int64_t max_value) {
+    if (value <= 0 || extent <= 0 || max_value <= 0)
         return 0;
-    return ((rt_uibar_impl *)ptr)->max_value;
+    long double fill = ((long double)value * (long double)extent) / (long double)max_value;
+    if (fill <= 0.0L)
+        return 0;
+    if (fill >= (long double)extent)
+        return extent;
+    int64_t pixels = (int64_t)ceill(fill);
+    if (pixels < 1)
+        pixels = 1;
+    return pixels > extent ? extent : pixels;
 }
 
 /// @brief Draw the uibar.
 void rt_uibar_draw(void *ptr, void *canvas) {
     if (!ptr || !canvas)
         return;
-    rt_uibar_impl *bar = (rt_uibar_impl *)ptr;
+    rt_uibar_impl *bar = checked_bar(ptr, "UIBar.Draw: expected Viper.Game.UI.Bar");
+    if (!bar || !ui_validate_canvas(canvas, "UIBar.Draw: expected Canvas"))
+        return;
     if (!bar->visible)
         return;
 
@@ -315,19 +556,19 @@ void rt_uibar_draw(void *ptr, void *canvas) {
         int64_t fill;
         switch (bar->direction) {
             case BAR_DIR_RIGHT_TO_LEFT:
-                fill = bar->value * bar->w / bar->max_value;
+                fill = ui_scaled_fill(bar->value, bar->w, bar->max_value);
                 rt_canvas_box(canvas, bar->x + bar->w - fill, bar->y, fill, bar->h, bar->fg_color);
                 break;
             case BAR_DIR_TOP_TO_BOTTOM:
-                fill = bar->value * bar->h / bar->max_value;
+                fill = ui_scaled_fill(bar->value, bar->h, bar->max_value);
                 rt_canvas_box(canvas, bar->x, bar->y, bar->w, fill, bar->fg_color);
                 break;
             case BAR_DIR_BOTTOM_TO_TOP:
-                fill = bar->value * bar->h / bar->max_value;
+                fill = ui_scaled_fill(bar->value, bar->h, bar->max_value);
                 rt_canvas_box(canvas, bar->x, bar->y + bar->h - fill, bar->w, fill, bar->fg_color);
                 break;
             default: // LEFT_TO_RIGHT
-                fill = bar->value * bar->w / bar->max_value;
+                fill = ui_scaled_fill(bar->value, bar->w, bar->max_value);
                 rt_canvas_box(canvas, bar->x, bar->y, fill, bar->h, bar->fg_color);
                 break;
         }
@@ -343,6 +584,7 @@ void rt_uibar_draw(void *ptr, void *canvas) {
 //=============================================================================
 
 typedef struct {
+    void *vptr;
     int64_t x, y, w, h;
     int64_t bg_color;
     int64_t alpha;        ///< 0-255
@@ -352,15 +594,27 @@ typedef struct {
     int8_t visible;
 } rt_uipanel_impl;
 
+static rt_uipanel_impl *checked_panel(void *ptr, const char *api) {
+    if (!ptr)
+        return NULL;
+    if (rt_obj_class_id(ptr) != RT_UIPANEL_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (rt_uipanel_impl *)ptr;
+}
+
 void *rt_uipanel_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t bg_color, int64_t alpha) {
-    rt_uipanel_impl *panel = (rt_uipanel_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_uipanel_impl));
+    rt_uipanel_impl *panel =
+        (rt_uipanel_impl *)rt_obj_new_i64(RT_UIPANEL_CLASS_ID, (int64_t)sizeof(rt_uipanel_impl));
     if (!panel)
         return NULL;
 
+    panel->vptr = NULL;
     panel->x = x;
     panel->y = y;
-    panel->w = w > 0 ? w : 1;
-    panel->h = h > 0 ? h : 1;
+    panel->w = ui_clamp_dim(w);
+    panel->h = ui_clamp_dim(h);
     panel->bg_color = bg_color;
     panel->alpha = alpha < 0 ? 0 : (alpha > 255 ? 255 : alpha);
     panel->border_color = 0;
@@ -373,52 +627,59 @@ void *rt_uipanel_new(int64_t x, int64_t y, int64_t w, int64_t h, int64_t bg_colo
 
 /// @brief Reposition the panel to screen coordinates (x, y).
 void rt_uipanel_set_pos(void *ptr, int64_t x, int64_t y) {
-    if (!ptr)
+    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.SetPos: expected Viper.Game.UI.Panel");
+    if (!panel)
         return;
-    rt_uipanel_impl *panel = (rt_uipanel_impl *)ptr;
     panel->x = x;
     panel->y = y;
 }
 
 /// @brief Set the panel's width and height in pixels (minimum 1 each).
 void rt_uipanel_set_size(void *ptr, int64_t w, int64_t h) {
-    if (!ptr)
+    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.SetSize: expected Viper.Game.UI.Panel");
+    if (!panel)
         return;
-    rt_uipanel_impl *panel = (rt_uipanel_impl *)ptr;
-    panel->w = w > 0 ? w : 1;
-    panel->h = h > 0 ? h : 1;
+    panel->w = ui_clamp_dim(w);
+    panel->h = ui_clamp_dim(h);
 }
 
 /// @brief Set the panel's background color and alpha (opacity 0-255).
 void rt_uipanel_set_color(void *ptr, int64_t bg_color, int64_t alpha) {
-    if (!ptr)
+    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.SetColor: expected Viper.Game.UI.Panel");
+    if (!panel)
         return;
-    rt_uipanel_impl *panel = (rt_uipanel_impl *)ptr;
     panel->bg_color = bg_color;
     panel->alpha = alpha < 0 ? 0 : (alpha > 255 ? 255 : alpha);
 }
 
-/// @brief Set the panel's border color and thickness (minimum 1 pixel).
+/// @brief Set the panel's border color and thickness. Color 0 or thickness <= 0 disables the border.
 void rt_uipanel_set_border(void *ptr, int64_t color, int64_t thickness) {
-    if (!ptr)
+    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.SetBorder: expected Viper.Game.UI.Panel");
+    if (!panel)
         return;
-    rt_uipanel_impl *panel = (rt_uipanel_impl *)ptr;
+    if (color == 0 || thickness <= 0) {
+        panel->border_color = 0;
+        panel->border_thickness = 0;
+        return;
+    }
     panel->border_color = color;
-    panel->border_thickness = thickness > 0 ? thickness : 1;
+    panel->border_thickness = thickness > UI_MAX_DIM ? UI_MAX_DIM : thickness;
 }
 
 /// @brief Set the corner radius for rounded-rectangle drawing (0 = sharp).
 void rt_uipanel_set_corner_radius(void *ptr, int64_t radius) {
-    if (!ptr)
-        return;
-    ((rt_uipanel_impl *)ptr)->corner_radius = radius < 0 ? 0 : radius;
+    rt_uipanel_impl *panel =
+        checked_panel(ptr, "UIPanel.SetCornerRadius: expected Viper.Game.UI.Panel");
+    if (panel)
+        panel->corner_radius = radius < 0 ? 0 : radius;
 }
 
 /// @brief Show or hide the panel; hidden panels are skipped during draw.
 void rt_uipanel_set_visible(void *ptr, int8_t visible) {
-    if (!ptr)
-        return;
-    ((rt_uipanel_impl *)ptr)->visible = visible ? 1 : 0;
+    rt_uipanel_impl *panel =
+        checked_panel(ptr, "UIPanel.SetVisible: expected Viper.Game.UI.Panel");
+    if (panel)
+        panel->visible = visible ? 1 : 0;
 }
 
 /// @brief Render the panel onto the canvas as a filled rectangle.
@@ -427,7 +688,9 @@ void rt_uipanel_set_visible(void *ptr, int8_t visible) {
 void rt_uipanel_draw(void *ptr, void *canvas) {
     if (!ptr || !canvas)
         return;
-    rt_uipanel_impl *panel = (rt_uipanel_impl *)ptr;
+    rt_uipanel_impl *panel = checked_panel(ptr, "UIPanel.Draw: expected Viper.Game.UI.Panel");
+    if (!panel || !ui_validate_canvas(canvas, "UIPanel.Draw: expected Canvas"))
+        return;
     if (!panel->visible)
         return;
 
@@ -444,27 +707,51 @@ void rt_uipanel_draw(void *ptr, void *canvas) {
         else
             rt_canvas_box(canvas, panel->x, panel->y, panel->w, panel->h, panel->bg_color);
     } else if (panel->alpha > 0) {
-        rt_canvas_box_alpha(
-            canvas, panel->x, panel->y, panel->w, panel->h, panel->bg_color, panel->alpha);
+        if (panel->corner_radius > 0)
+            ui_round_box_alpha(canvas,
+                               panel->x,
+                               panel->y,
+                               panel->w,
+                               panel->h,
+                               panel->corner_radius,
+                               panel->bg_color,
+                               panel->alpha);
+        else
+            rt_canvas_box_alpha(
+                canvas, panel->x, panel->y, panel->w, panel->h, panel->bg_color, panel->alpha);
     }
 
     // Border
-    if (panel->border_color != 0) {
-        for (int64_t t = 0; t < panel->border_thickness; t++) {
-            if (panel->corner_radius > 0)
+    if (panel->border_color != 0 && panel->border_thickness > 0) {
+        int64_t max_t = (panel->w < panel->h ? panel->w : panel->h) / 2;
+        if (max_t < 1)
+            max_t = 1;
+        int64_t thickness = panel->border_thickness > max_t ? max_t : panel->border_thickness;
+        for (int64_t t = 0; t < thickness; t++) {
+            int64_t iw = panel->w - t * 2;
+            int64_t ih = panel->h - t * 2;
+            if (iw <= 0 || ih <= 0)
+                break;
+            int64_t radius = panel->corner_radius - t;
+            if (radius < 0)
+                radius = 0;
+            int64_t max_radius = (iw < ih ? iw : ih) / 2;
+            if (radius > max_radius)
+                radius = max_radius;
+            if (radius > 0)
                 rt_canvas_round_frame(canvas,
                                       panel->x + t,
                                       panel->y + t,
-                                      panel->w - t * 2,
-                                      panel->h - t * 2,
-                                      panel->corner_radius,
+                                      iw,
+                                      ih,
+                                      radius,
                                       panel->border_color);
             else
                 rt_canvas_frame(canvas,
                                 panel->x + t,
                                 panel->y + t,
-                                panel->w - t * 2,
-                                panel->h - t * 2,
+                                iw,
+                                ih,
                                 panel->border_color);
         }
     }
@@ -475,7 +762,11 @@ void rt_uipanel_draw(void *ptr, void *canvas) {
 //=============================================================================
 
 typedef struct {
-    void *pixels;   ///< Source Pixels handle (not owned — caller keeps alive)
+    void *vptr;
+    void *pixels;        ///< Source Pixels handle (retained)
+    void *tinted_pixels; ///< Cached tinted source, if tint != 0
+    uint64_t tinted_source_generation;
+    int64_t tinted_color;
     int64_t left;   ///< Left margin (corner width)
     int64_t top;    ///< Top margin (corner height)
     int64_t right;  ///< Right margin
@@ -483,15 +774,36 @@ typedef struct {
     int64_t tint;   ///< Tint color (0 = no tint)
 } rt_uinineslice_impl;
 
+static rt_uinineslice_impl *checked_nineslice(void *ptr, const char *api) {
+    if (!ptr)
+        return NULL;
+    if (rt_obj_class_id(ptr) != RT_UININESLICE_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (rt_uinineslice_impl *)ptr;
+}
+
+static void uinineslice_finalizer(void *obj) {
+    rt_uinineslice_impl *ns = (rt_uinineslice_impl *)obj;
+    if (!ns)
+        return;
+    ui_release_obj(ns->pixels);
+    ui_release_obj(ns->tinted_pixels);
+    ns->pixels = NULL;
+    ns->tinted_pixels = NULL;
+}
+
 void *rt_uinineslice_new(void *pixels, int64_t left, int64_t top, int64_t right, int64_t bottom) {
-    if (!pixels)
+    if (!ui_validate_pixels(pixels, "UINineSlice: expected Pixels"))
         return NULL;
 
-    rt_uinineslice_impl *ns =
-        (rt_uinineslice_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_uinineslice_impl));
+    rt_uinineslice_impl *ns = (rt_uinineslice_impl *)rt_obj_new_i64(
+        RT_UININESLICE_CLASS_ID, (int64_t)sizeof(rt_uinineslice_impl));
     if (!ns)
         return NULL;
 
+    ns->vptr = NULL;
     int64_t pw = rt_pixels_width(pixels);
     int64_t ph = rt_pixels_height(pixels);
 
@@ -504,70 +816,107 @@ void *rt_uinineslice_new(void *pixels, int64_t left, int64_t top, int64_t right,
         right = 0;
     if (bottom < 0)
         bottom = 0;
-    if (left + right > pw) {
+    if (left > pw || right > pw || left > pw - right) {
         left = pw / 2;
         right = pw - left;
     }
-    if (top + bottom > ph) {
+    if (top > ph || bottom > ph || top > ph - bottom) {
         top = ph / 2;
         bottom = ph - top;
     }
 
+    rt_obj_retain_maybe(pixels);
     ns->pixels = pixels;
+    ns->tinted_pixels = NULL;
+    ns->tinted_source_generation = 0;
+    ns->tinted_color = 0;
     ns->left = left;
     ns->top = top;
     ns->right = right;
     ns->bottom = bottom;
     ns->tint = 0;
+    rt_obj_set_finalizer(ns, uinineslice_finalizer);
 
     return ns;
 }
 
 /// @brief Set a color tint applied over the nine-slice texture when drawn.
 void rt_uinineslice_set_tint(void *ptr, int64_t color) {
-    if (!ptr)
+    rt_uinineslice_impl *ns =
+        checked_nineslice(ptr, "UINineSlice.SetTint: expected Viper.Game.UI.NineSlice");
+    if (!ns)
         return;
-    ((rt_uinineslice_impl *)ptr)->tint = color;
+    if (ns->tint == color)
+        return;
+    ns->tint = color;
+    ui_release_obj(ns->tinted_pixels);
+    ns->tinted_pixels = NULL;
+    ns->tinted_source_generation = 0;
+    ns->tinted_color = 0;
+}
+
+static void *uinineslice_draw_source(rt_uinineslice_impl *ns) {
+    if (!ns || !ns->pixels || ns->tint == 0)
+        return ns ? ns->pixels : NULL;
+
+    uint64_t generation = rt_pixels_generation(ns->pixels);
+    if (!ns->tinted_pixels || ns->tinted_source_generation != generation ||
+        ns->tinted_color != ns->tint) {
+        ui_release_obj(ns->tinted_pixels);
+        ns->tinted_pixels = rt_pixels_tint(ns->pixels, ns->tint);
+        ns->tinted_source_generation = generation;
+        ns->tinted_color = ns->tint;
+    }
+    return ns->tinted_pixels ? ns->tinted_pixels : ns->pixels;
 }
 
 /// @brief Render the nine-slice texture onto the canvas at the given rect.
 /// @details Splits the source texture into 9 patches using the configured insets
-///          (left/top/right/bottom) and stretches the center/edge patches to fill
+///          (left/top/right/bottom) and tiles the center/edge patches to fill
 ///          the destination rectangle while keeping corners at their natural size.
 void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t w, int64_t h) {
     if (!ptr || !canvas)
         return;
-    rt_uinineslice_impl *ns = (rt_uinineslice_impl *)ptr;
-    if (!ns->pixels)
+    rt_uinineslice_impl *ns =
+        checked_nineslice(ptr, "UINineSlice.Draw: expected Viper.Game.UI.NineSlice");
+    if (!ns || !ui_validate_canvas(canvas, "UINineSlice.Draw: expected Canvas"))
+        return;
+    if (!ns->pixels || w <= 0 || h <= 0)
         return;
 
-    int64_t pw = rt_pixels_width(ns->pixels);
-    int64_t ph = rt_pixels_height(ns->pixels);
-    int64_t L = ns->left, T = ns->top, R = ns->right, B = ns->bottom;
+    w = ui_clamp_dim(w);
+    h = ui_clamp_dim(h);
+    void *source_pixels = uinineslice_draw_source(ns);
+    if (!source_pixels)
+        return;
+
+    int64_t pw = rt_pixels_width(source_pixels);
+    int64_t ph = rt_pixels_height(source_pixels);
+    int64_t src_l = ns->left, src_t = ns->top, src_r = ns->right, src_b = ns->bottom;
+    int64_t L = src_l < w ? src_l : w;
+    int64_t R = src_r < w - L ? src_r : w - L;
+    int64_t T = src_t < h ? src_t : h;
+    int64_t B = src_b < h - T ? src_b : h - T;
 
     // Source center region
-    int64_t src_cx = L;
-    int64_t src_cy = T;
-    int64_t src_cw = pw - L - R;
-    int64_t src_ch = ph - T - B;
+    int64_t src_cx = src_l;
+    int64_t src_cy = src_t;
+    int64_t src_cw = pw - src_l - src_r;
+    int64_t src_ch = ph - src_t - src_b;
 
     // Destination center region
     int64_t dst_cw = w - L - R;
     int64_t dst_ch = h - T - B;
-    if (dst_cw < 0)
-        dst_cw = 0;
-    if (dst_ch < 0)
-        dst_ch = 0;
 
     // Draw 4 corners (unscaled — blit directly)
     if (T > 0 && L > 0) // top-left
-        rt_canvas_blit_region(canvas, x, y, ns->pixels, 0, 0, L, T);
+        rt_canvas_blit_region(canvas, x, y, source_pixels, 0, 0, L, T);
     if (T > 0 && R > 0) // top-right
-        rt_canvas_blit_region(canvas, x + w - R, y, ns->pixels, pw - R, 0, R, T);
+        rt_canvas_blit_region(canvas, x + w - R, y, source_pixels, pw - R, 0, R, T);
     if (B > 0 && L > 0) // bottom-left
-        rt_canvas_blit_region(canvas, x, y + h - B, ns->pixels, 0, ph - B, L, B);
+        rt_canvas_blit_region(canvas, x, y + h - B, source_pixels, 0, ph - B, L, B);
     if (B > 0 && R > 0) // bottom-right
-        rt_canvas_blit_region(canvas, x + w - R, y + h - B, ns->pixels, pw - R, ph - B, R, B);
+        rt_canvas_blit_region(canvas, x + w - R, y + h - B, source_pixels, pw - R, ph - B, R, B);
 
     // Draw 4 edges (stretched by tiling the 1-pixel-wide/tall source strip)
     // Top edge
@@ -576,7 +925,7 @@ void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t 
             int64_t bw = src_cw;
             if (dx + bw > dst_cw)
                 bw = dst_cw - dx;
-            rt_canvas_blit_region(canvas, x + L + dx, y, ns->pixels, src_cx, 0, bw, T);
+            rt_canvas_blit_region(canvas, x + L + dx, y, source_pixels, src_cx, 0, bw, T);
         }
     }
     // Bottom edge
@@ -585,7 +934,8 @@ void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t 
             int64_t bw = src_cw;
             if (dx + bw > dst_cw)
                 bw = dst_cw - dx;
-            rt_canvas_blit_region(canvas, x + L + dx, y + h - B, ns->pixels, src_cx, ph - B, bw, B);
+            rt_canvas_blit_region(
+                canvas, x + L + dx, y + h - B, source_pixels, src_cx, ph - B, bw, B);
         }
     }
     // Left edge
@@ -594,7 +944,7 @@ void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t 
             int64_t bh = src_ch;
             if (dy + bh > dst_ch)
                 bh = dst_ch - dy;
-            rt_canvas_blit_region(canvas, x, y + T + dy, ns->pixels, 0, src_cy, L, bh);
+            rt_canvas_blit_region(canvas, x, y + T + dy, source_pixels, 0, src_cy, L, bh);
         }
     }
     // Right edge
@@ -603,7 +953,8 @@ void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t 
             int64_t bh = src_ch;
             if (dy + bh > dst_ch)
                 bh = dst_ch - dy;
-            rt_canvas_blit_region(canvas, x + w - R, y + T + dy, ns->pixels, pw - R, src_cy, R, bh);
+            rt_canvas_blit_region(
+                canvas, x + w - R, y + T + dy, source_pixels, pw - R, src_cy, R, bh);
         }
     }
 
@@ -618,7 +969,7 @@ void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t 
                 if (dx + bw > dst_cw)
                     bw = dst_cw - dx;
                 rt_canvas_blit_region(
-                    canvas, x + L + dx, y + T + dy, ns->pixels, src_cx, src_cy, bw, bh);
+                    canvas, x + L + dx, y + T + dy, source_pixels, src_cx, src_cy, bw, bh);
             }
         }
     }
@@ -632,6 +983,7 @@ void rt_uinineslice_draw(void *ptr, void *canvas, int64_t x, int64_t y, int64_t 
 #define MENULIST_MAX_TEXT 128
 
 typedef struct {
+    void *vptr;
     int64_t x, y;
     int64_t item_height;
     char items[RT_UIMENULIST_MAX_ITEMS][MENULIST_MAX_TEXT];
@@ -644,59 +996,77 @@ typedef struct {
     int8_t visible;
 } rt_uimenulist_impl;
 
+static rt_uimenulist_impl *checked_menulist(void *ptr, const char *api) {
+    if (!ptr)
+        return NULL;
+    if (rt_obj_class_id(ptr) != RT_UIMENULIST_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (rt_uimenulist_impl *)ptr;
+}
+
+static void uimenulist_finalizer(void *obj) {
+    rt_uimenulist_impl *menu = (rt_uimenulist_impl *)obj;
+    if (!menu)
+        return;
+    ui_release_obj(menu->font);
+    menu->font = NULL;
+}
+
 void *rt_uimenulist_new(int64_t x, int64_t y, int64_t item_height) {
-    rt_uimenulist_impl *menu =
-        (rt_uimenulist_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_uimenulist_impl));
+    rt_uimenulist_impl *menu = (rt_uimenulist_impl *)rt_obj_new_i64(
+        RT_UIMENULIST_CLASS_ID, (int64_t)sizeof(rt_uimenulist_impl));
     if (!menu)
         return NULL;
 
     memset(menu, 0, sizeof(rt_uimenulist_impl));
     menu->x = x;
     menu->y = y;
-    menu->item_height = item_height > 0 ? item_height : 16;
+    menu->item_height = item_height > 0 ? ui_clamp_dim(item_height) : 16;
     menu->selected = 0;
     menu->text_color = 0xFFFFFF;     // White
     menu->selected_color = 0xFFFF00; // Yellow
     menu->highlight_bg = 0x333333;   // Dark gray
     menu->visible = 1;
+    rt_obj_set_finalizer(menu, uimenulist_finalizer);
 
     return menu;
 }
 
-/// @brief Append a text item to the menu list (max 32 items, 127 chars each).
+/// @brief Append a text item to the menu list (max 64 items, 127 bytes each).
 void rt_uimenulist_add_item(void *ptr, rt_string text) {
     if (!ptr || !text)
         return;
-    rt_uimenulist_impl *menu = (rt_uimenulist_impl *)ptr;
-    if (menu->count >= RT_UIMENULIST_MAX_ITEMS)
+    rt_uimenulist_impl *menu =
+        checked_menulist(ptr, "UIMenuList.AddItem: expected Viper.Game.UI.MenuList");
+    if (!menu)
         return;
-
-    const char *s = rt_string_cstr(text);
-    if (!s)
+    if (menu->count >= RT_UIMENULIST_MAX_ITEMS) {
+        rt_trap("UIMenuList.AddItem: item limit exceeded (max 64)");
         return;
+    }
 
-    size_t len = strlen(s);
-    if (len >= MENULIST_MAX_TEXT)
-        len = MENULIST_MAX_TEXT - 1;
-    memcpy(menu->items[menu->count], s, len);
-    menu->items[menu->count][len] = '\0';
+    ui_copy_text(menu->items[menu->count], sizeof(menu->items[menu->count]), text);
     menu->count++;
 }
 
 /// @brief Remove all entries from the uimenulist.
 void rt_uimenulist_clear(void *ptr) {
-    if (!ptr)
+    rt_uimenulist_impl *menu =
+        checked_menulist(ptr, "UIMenuList.Clear: expected Viper.Game.UI.MenuList");
+    if (!menu)
         return;
-    rt_uimenulist_impl *menu = (rt_uimenulist_impl *)ptr;
     menu->count = 0;
     menu->selected = 0;
 }
 
 /// @brief Set the selected item index, clamped to [0, count-1].
 void rt_uimenulist_set_selected(void *ptr, int64_t index) {
-    if (!ptr)
+    rt_uimenulist_impl *menu =
+        checked_menulist(ptr, "UIMenuList.SetSelected: expected Viper.Game.UI.MenuList");
+    if (!menu)
         return;
-    rt_uimenulist_impl *menu = (rt_uimenulist_impl *)ptr;
     if (menu->count == 0) {
         menu->selected = 0;
         return;
@@ -710,16 +1080,17 @@ void rt_uimenulist_set_selected(void *ptr, int64_t index) {
 
 /// @brief Return the zero-based index of the currently highlighted menu item.
 int64_t rt_uimenulist_get_selected(void *ptr) {
-    if (!ptr)
-        return 0;
-    return ((rt_uimenulist_impl *)ptr)->selected;
+    rt_uimenulist_impl *menu =
+        checked_menulist(ptr, "UIMenuList.Selected: expected Viper.Game.UI.MenuList");
+    return menu ? menu->selected : 0;
 }
 
 /// @brief Move the selection cursor up by one; wraps from first to last item.
 void rt_uimenulist_move_up(void *ptr) {
-    if (!ptr)
+    rt_uimenulist_impl *menu =
+        checked_menulist(ptr, "UIMenuList.MoveUp: expected Viper.Game.UI.MenuList");
+    if (!menu)
         return;
-    rt_uimenulist_impl *menu = (rt_uimenulist_impl *)ptr;
     if (menu->count == 0)
         return;
     if (menu->selected <= 0)
@@ -730,9 +1101,10 @@ void rt_uimenulist_move_up(void *ptr) {
 
 /// @brief Move the selection cursor down by one; wraps from last to first item.
 void rt_uimenulist_move_down(void *ptr) {
-    if (!ptr)
+    rt_uimenulist_impl *menu =
+        checked_menulist(ptr, "UIMenuList.MoveDown: expected Viper.Game.UI.MenuList");
+    if (!menu)
         return;
-    rt_uimenulist_impl *menu = (rt_uimenulist_impl *)ptr;
     if (menu->count == 0)
         return;
     if (menu->selected >= menu->count - 1)
@@ -747,9 +1119,10 @@ void rt_uimenulist_set_colors(void *ptr,
                               int64_t text_color,
                               int64_t selected_color,
                               int64_t highlight_bg) {
-    if (!ptr)
+    rt_uimenulist_impl *menu =
+        checked_menulist(ptr, "UIMenuList.SetColors: expected Viper.Game.UI.MenuList");
+    if (!menu)
         return;
-    rt_uimenulist_impl *menu = (rt_uimenulist_impl *)ptr;
     menu->text_color = text_color;
     menu->selected_color = selected_color;
     menu->highlight_bg = highlight_bg;
@@ -757,30 +1130,38 @@ void rt_uimenulist_set_colors(void *ptr,
 
 /// @brief Assign a BitmapFont for menu item text; NULL uses the default font.
 void rt_uimenulist_set_font(void *ptr, void *font) {
-    if (!ptr)
+    rt_uimenulist_impl *menu =
+        checked_menulist(ptr, "UIMenuList.SetFont: expected Viper.Game.UI.MenuList");
+    if (!menu)
         return;
-    ((rt_uimenulist_impl *)ptr)->font = font;
+    if (!ui_validate_bitmapfont(font, "UIMenuList.SetFont: expected BitmapFont"))
+        return;
+    ui_replace_ref(&menu->font, font);
 }
 
 /// @brief Show or hide the menu list; hidden menus are skipped during draw.
 void rt_uimenulist_set_visible(void *ptr, int8_t visible) {
-    if (!ptr)
-        return;
-    ((rt_uimenulist_impl *)ptr)->visible = visible ? 1 : 0;
+    rt_uimenulist_impl *menu =
+        checked_menulist(ptr, "UIMenuList.SetVisible: expected Viper.Game.UI.MenuList");
+    if (menu)
+        menu->visible = visible ? 1 : 0;
 }
 
 /// @brief Return the count of elements in the uimenulist.
 int64_t rt_uimenulist_get_count(void *ptr) {
-    if (!ptr)
-        return 0;
-    return ((rt_uimenulist_impl *)ptr)->count;
+    rt_uimenulist_impl *menu =
+        checked_menulist(ptr, "UIMenuList.Count: expected Viper.Game.UI.MenuList");
+    return menu ? menu->count : 0;
 }
 
 /// @brief Draw the uimenulist.
 void rt_uimenulist_draw(void *ptr, void *canvas) {
     if (!ptr || !canvas)
         return;
-    rt_uimenulist_impl *menu = (rt_uimenulist_impl *)ptr;
+    rt_uimenulist_impl *menu =
+        checked_menulist(ptr, "UIMenuList.Draw: expected Viper.Game.UI.MenuList");
+    if (!menu || !ui_validate_canvas(canvas, "UIMenuList.Draw: expected Canvas"))
+        return;
     if (!menu->visible || menu->count == 0)
         return;
 
@@ -797,7 +1178,7 @@ void rt_uimenulist_draw(void *ptr, void *canvas) {
             if (menu->font)
                 hw = rt_bitmapfont_text_width(menu->font, rtext) + 16;
             else
-                hw = rt_str_len(rtext) * 8 + 16;
+                hw = rt_canvas_text_width(rtext) + 16;
             rt_canvas_box(canvas, menu->x - 4, iy, hw, menu->item_height, menu->highlight_bg);
         }
 
@@ -813,18 +1194,19 @@ void rt_uimenulist_draw(void *ptr, void *canvas) {
 
 /// @brief Handle input for menu navigation. Returns selected index on confirm, -1 otherwise.
 int64_t rt_uimenulist_handle_input(void *ptr, int8_t up, int8_t down, int8_t confirm) {
-    if (!ptr)
+    rt_uimenulist_impl *menu =
+        checked_menulist(ptr, "UIMenuList.HandleInput: expected Viper.Game.UI.MenuList");
+    if (!menu)
         return -1;
-    rt_uimenulist_impl *menu = (rt_uimenulist_impl *)ptr;
-    if (menu->count == 0)
+    if (!menu->visible || menu->count == 0)
         return -1;
 
-    if (up) {
+    if (up && !down) {
         menu->selected--;
         if (menu->selected < 0)
             menu->selected = menu->count - 1; // wrap
     }
-    if (down) {
+    if (down && !up) {
         menu->selected++;
         if (menu->selected >= menu->count)
             menu->selected = 0; // wrap
@@ -839,6 +1221,7 @@ int64_t rt_uimenulist_handle_input(void *ptr, int8_t up, int8_t down, int8_t con
 //=============================================================================
 
 typedef struct {
+    void *vptr;
     int64_t x, y, width, height;
     char text[64];
     int64_t text_scale;
@@ -851,19 +1234,29 @@ typedef struct {
     int8_t visible;
 } rt_gamebutton_impl;
 
+static rt_gamebutton_impl *checked_gamebutton(void *ptr, const char *api) {
+    if (!ptr)
+        return NULL;
+    if (rt_obj_class_id(ptr) != RT_GAMEBUTTON_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (rt_gamebutton_impl *)ptr;
+}
+
 /// @brief Construct a styled game button at (x, y) with size (w, h) and label text. Defaults:
 /// dark gray normal, blue selected, light gray text, 1 px border, scale 1, visible. Text is
 /// truncated to 63 bytes.
 void *rt_gamebutton_new(int64_t x, int64_t y, int64_t w, int64_t h, void *text) {
-    rt_gamebutton_impl *btn =
-        (rt_gamebutton_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_gamebutton_impl));
+    rt_gamebutton_impl *btn = (rt_gamebutton_impl *)rt_obj_new_i64(
+        RT_GAMEBUTTON_CLASS_ID, (int64_t)sizeof(rt_gamebutton_impl));
     if (!btn)
         return NULL;
     memset(btn, 0, sizeof(rt_gamebutton_impl));
     btn->x = x;
     btn->y = y;
-    btn->width = w;
-    btn->height = h;
+    btn->width = ui_clamp_dim(w);
+    btn->height = ui_clamp_dim(h);
     btn->text_scale = 1;
     btn->color_normal = 0x333333;
     btn->color_selected = 0x4444AA;
@@ -872,75 +1265,131 @@ void *rt_gamebutton_new(int64_t x, int64_t y, int64_t w, int64_t h, void *text) 
     btn->border_color = 0x666666;
     btn->border_width = 1;
     btn->visible = 1;
-    if (text) {
-        const char *s = rt_string_cstr((rt_string)text);
-        if (s) {
-            strncpy(btn->text, s, 63);
-            btn->text[63] = '\0';
-        }
-    }
+    ui_copy_text(btn->text, sizeof(btn->text), (rt_string)text);
     return btn;
 }
 
 /// @brief Replace the button's label text (truncated to 63 bytes).
 void rt_gamebutton_set_text(void *ptr, void *text) {
-    if (!ptr || !text)
+    rt_gamebutton_impl *btn =
+        checked_gamebutton(ptr, "GameButton.SetText: expected Viper.Game.UI.GameButton");
+    if (!btn)
         return;
-    rt_gamebutton_impl *btn = (rt_gamebutton_impl *)ptr;
-    const char *s = rt_string_cstr((rt_string)text);
-    if (s) {
-        strncpy(btn->text, s, 63);
-        btn->text[63] = '\0';
-    }
+    ui_copy_text(btn->text, sizeof(btn->text), (rt_string)text);
 }
 
 /// @brief Set the box-fill colors for unselected (`normal`) and selected (highlighted) states.
 void rt_gamebutton_set_colors(void *ptr, int64_t normal, int64_t selected) {
-    if (!ptr)
+    rt_gamebutton_impl *btn =
+        checked_gamebutton(ptr, "GameButton.SetColors: expected Viper.Game.UI.GameButton");
+    if (!btn)
         return;
-    rt_gamebutton_impl *btn = (rt_gamebutton_impl *)ptr;
     btn->color_normal = normal;
     btn->color_selected = selected;
 }
 
 /// @brief Set the text colors for unselected and selected states.
 void rt_gamebutton_set_text_colors(void *ptr, int64_t normal, int64_t selected) {
-    if (!ptr)
+    rt_gamebutton_impl *btn =
+        checked_gamebutton(ptr, "GameButton.SetTextColors: expected Viper.Game.UI.GameButton");
+    if (!btn)
         return;
-    rt_gamebutton_impl *btn = (rt_gamebutton_impl *)ptr;
     btn->text_color = normal;
     btn->text_color_selected = selected;
 }
 
 /// @brief Set border outline width (px) and color. Width 0 disables the border.
 void rt_gamebutton_set_border(void *ptr, int64_t width, int64_t color) {
-    if (!ptr)
+    rt_gamebutton_impl *btn =
+        checked_gamebutton(ptr, "GameButton.SetBorder: expected Viper.Game.UI.GameButton");
+    if (!btn)
         return;
-    rt_gamebutton_impl *btn = (rt_gamebutton_impl *)ptr;
-    btn->border_width = width;
+    btn->border_width = width > 0 ? width : 0;
     btn->border_color = color;
 }
 
 /// @brief Read the button's screen X position.
 int64_t rt_gamebutton_get_x(void *ptr) {
-    return ptr ? ((rt_gamebutton_impl *)ptr)->x : 0;
+    rt_gamebutton_impl *btn =
+        checked_gamebutton(ptr, "GameButton.X: expected Viper.Game.UI.GameButton");
+    return btn ? btn->x : 0;
 }
 
 /// @brief Read the button's screen Y position.
 int64_t rt_gamebutton_get_y(void *ptr) {
-    return ptr ? ((rt_gamebutton_impl *)ptr)->y : 0;
+    rt_gamebutton_impl *btn =
+        checked_gamebutton(ptr, "GameButton.Y: expected Viper.Game.UI.GameButton");
+    return btn ? btn->y : 0;
+}
+
+/// @brief Read the button width in pixels.
+int64_t rt_gamebutton_get_width(void *ptr) {
+    rt_gamebutton_impl *btn =
+        checked_gamebutton(ptr, "GameButton.Width: expected Viper.Game.UI.GameButton");
+    return btn ? btn->width : 0;
+}
+
+/// @brief Read the button height in pixels.
+int64_t rt_gamebutton_get_height(void *ptr) {
+    rt_gamebutton_impl *btn =
+        checked_gamebutton(ptr, "GameButton.Height: expected Viper.Game.UI.GameButton");
+    return btn ? btn->height : 0;
 }
 
 /// @brief Set the button's screen X position.
 void rt_gamebutton_set_x(void *ptr, int64_t v) {
-    if (ptr)
-        ((rt_gamebutton_impl *)ptr)->x = v;
+    rt_gamebutton_impl *btn =
+        checked_gamebutton(ptr, "GameButton.SetX: expected Viper.Game.UI.GameButton");
+    if (btn)
+        btn->x = v;
 }
 
 /// @brief Set the button's screen Y position.
 void rt_gamebutton_set_y(void *ptr, int64_t v) {
-    if (ptr)
-        ((rt_gamebutton_impl *)ptr)->y = v;
+    rt_gamebutton_impl *btn =
+        checked_gamebutton(ptr, "GameButton.SetY: expected Viper.Game.UI.GameButton");
+    if (btn)
+        btn->y = v;
+}
+
+/// @brief Resize the button, clamping dimensions to the UI maximum.
+void rt_gamebutton_set_size(void *ptr, int64_t w, int64_t h) {
+    rt_gamebutton_impl *btn =
+        checked_gamebutton(ptr, "GameButton.SetSize: expected Viper.Game.UI.GameButton");
+    if (!btn)
+        return;
+    btn->width = ui_clamp_dim(w);
+    btn->height = ui_clamp_dim(h);
+}
+
+/// @brief Toggle visibility.
+void rt_gamebutton_set_visible(void *ptr, int8_t visible) {
+    rt_gamebutton_impl *btn =
+        checked_gamebutton(ptr, "GameButton.SetVisible: expected Viper.Game.UI.GameButton");
+    if (btn)
+        btn->visible = visible ? 1 : 0;
+}
+
+/// @brief Return 1 if the button is visible.
+int8_t rt_gamebutton_get_visible(void *ptr) {
+    rt_gamebutton_impl *btn =
+        checked_gamebutton(ptr, "GameButton.Visible: expected Viper.Game.UI.GameButton");
+    return btn ? btn->visible : 0;
+}
+
+/// @brief Set integer text scale, clamped to [1, 16].
+void rt_gamebutton_set_text_scale(void *ptr, int64_t scale) {
+    rt_gamebutton_impl *btn =
+        checked_gamebutton(ptr, "GameButton.SetTextScale: expected Viper.Game.UI.GameButton");
+    if (btn)
+        btn->text_scale = ui_clamp_scale(scale);
+}
+
+/// @brief Return the current integer text scale.
+int64_t rt_gamebutton_get_text_scale(void *ptr) {
+    rt_gamebutton_impl *btn =
+        checked_gamebutton(ptr, "GameButton.TextScale: expected Viper.Game.UI.GameButton");
+    return btn ? btn->text_scale : 1;
 }
 
 /// @brief Render the button to `canvas`. Picks colors based on `is_selected`, draws box +
@@ -948,7 +1397,10 @@ void rt_gamebutton_set_y(void *ptr, int64_t v) {
 void rt_gamebutton_draw(void *ptr, void *canvas, int8_t is_selected) {
     if (!ptr || !canvas)
         return;
-    rt_gamebutton_impl *btn = (rt_gamebutton_impl *)ptr;
+    rt_gamebutton_impl *btn =
+        checked_gamebutton(ptr, "GameButton.Draw: expected Viper.Game.UI.GameButton");
+    if (!btn || !ui_validate_canvas(canvas, "GameButton.Draw: expected Canvas"))
+        return;
     if (!btn->visible)
         return;
 
@@ -959,12 +1411,40 @@ void rt_gamebutton_draw(void *ptr, void *canvas, int8_t is_selected) {
     rt_canvas_box(canvas, btn->x, btn->y, btn->width, btn->height, bg);
 
     // Border
-    if (btn->border_width > 0)
-        rt_canvas_frame(canvas, btn->x, btn->y, btn->width, btn->height, btn->border_color);
+    if (btn->border_width > 0 && btn->border_color != 0) {
+        int64_t max_t = (btn->width < btn->height ? btn->width : btn->height) / 2;
+        if (max_t < 1)
+            max_t = 1;
+        int64_t border = btn->border_width > max_t ? max_t : btn->border_width;
+        for (int64_t t = 0; t < border; t++) {
+            int64_t bw = btn->width - t * 2;
+            int64_t bh = btn->height - t * 2;
+            if (bw <= 0 || bh <= 0)
+                break;
+            rt_canvas_frame(canvas, btn->x + t, btn->y + t, bw, bh, btn->border_color);
+        }
+    }
 
     // Centered text
-    rt_string rtext = rt_const_cstr(btn->text);
-    int64_t text_x = btn->x + btn->width / 2 - (int64_t)strlen(btn->text) * 4;
-    int64_t text_y = btn->y + btn->height / 2 - 4;
-    rt_canvas_text(canvas, text_x, text_y, rtext, tc);
+    if (btn->text[0] != '\0') {
+        int64_t scale = ui_clamp_scale(btn->text_scale);
+        int64_t cell_w = 8 * scale;
+        int64_t max_codepoints = cell_w > 0 ? btn->width / cell_w : 0;
+        if (max_codepoints <= 0)
+            return;
+        char clipped[sizeof(btn->text)];
+        size_t text_len = ui_visible_len(btn->text, sizeof(btn->text));
+        size_t clipped_len = ui_utf8_trunc_codepoints(btn->text, text_len, (size_t)max_codepoints);
+        memcpy(clipped, btn->text, clipped_len);
+        clipped[clipped_len] = '\0';
+        rt_string rtext = rt_const_cstr(clipped);
+        int64_t text_w = rt_canvas_text_scaled_width(rtext, scale);
+        int64_t text_h = rt_canvas_text_height() * scale;
+        int64_t text_x = btn->x + (btn->width - text_w) / 2;
+        int64_t text_y = btn->y + (btn->height - text_h) / 2;
+        if (scale > 1)
+            rt_canvas_text_scaled(canvas, text_x, text_y, rtext, scale, tc);
+        else
+            rt_canvas_text(canvas, text_x, text_y, rtext, tc);
+    }
 }

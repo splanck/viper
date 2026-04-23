@@ -34,6 +34,8 @@
 extern "C" {
 #endif
 
+#define RT_ANIMSTATE_CLASS_ID INT64_C(-0x51020C)
+
 //=========================================================================
 // AnimStateMachine Creation
 //=========================================================================
@@ -69,7 +71,8 @@ int8_t rt_animstate_set_initial(void *asm_, int64_t state_id);
 //=========================================================================
 
 /// @brief Transition to a new state, reconfiguring the animation clip.
-/// @return 1 on success, 0 if state not found or already in that state.
+/// @return 1 on success. Transitioning to the current state is a successful no-op.
+///         Returns 0 only if the state is not registered.
 int8_t rt_animstate_transition(void *asm_, int64_t state_id);
 
 /// @brief Advance one frame. Call once per game loop iteration.

@@ -10,11 +10,13 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 
 extern "C" {
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_physics2d.h"
+#include "rt_physics2d_internal.h"
 #include "rt_physics2d_joint.h"
 }
 
@@ -50,7 +52,7 @@ extern "C" void vm_trap(const char *msg) {
 
 static int tests_run = 0;
 static int tests_passed = 0;
-static int g_joint_finalizer_calls = 0;
+static int g_body_finalizer_calls = 0;
 
 static const double EPSILON = 1e-6;
 
@@ -71,8 +73,8 @@ static void release_obj(void *obj) {
         rt_obj_free(obj);
 }
 
-extern "C" void test_joint_finalizer(void *) {
-    g_joint_finalizer_calls++;
+extern "C" void test_body_finalizer(void *) {
+    g_body_finalizer_calls++;
 }
 
 //=============================================================================
@@ -117,6 +119,18 @@ static void test_world_add_multiple() {
     rt_obj_release_check0(world);
 }
 
+static void test_duplicate_body_add_ignored() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *body = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
+
+    rt_physics2d_world_add(world, body);
+    rt_physics2d_world_add(world, body);
+    ASSERT(rt_physics2d_world_body_count(world) == 1, "duplicate body add is ignored");
+
+    release_obj(body);
+    release_obj(world);
+}
+
 //=============================================================================
 // Body tests
 //=============================================================================
@@ -147,6 +161,8 @@ static void test_body_set_pos() {
     rt_physics2d_body_set_pos(body, 42.0, 99.0);
     ASSERT_NEAR(rt_physics2d_body_x(body), 42.0, "x after set_pos");
     ASSERT_NEAR(rt_physics2d_body_y(body), 99.0, "y after set_pos");
+    ASSERT_NEAR(rt_physics2d_body_prev_x(body), 42.0, "prev_x after set_pos");
+    ASSERT_NEAR(rt_physics2d_body_prev_y(body), 99.0, "prev_y after set_pos");
     rt_obj_release_check0(body);
 }
 
@@ -169,6 +185,41 @@ static void test_body_restitution_friction() {
     ASSERT_NEAR(rt_physics2d_body_restitution(body), 0.9, "restitution after set");
     ASSERT_NEAR(rt_physics2d_body_friction(body), 0.1, "friction after set");
     rt_obj_release_check0(body);
+}
+
+static void test_body_inputs_sanitized() {
+    double nan = std::nan("");
+    void *body = rt_physics2d_body_new(nan, nan, -2.0, 0.0, nan);
+
+    ASSERT_NEAR(rt_physics2d_body_x(body), 0.0, "NaN x sanitized to 0");
+    ASSERT_NEAR(rt_physics2d_body_y(body), 0.0, "NaN y sanitized to 0");
+    ASSERT_NEAR(rt_physics2d_body_w(body), 1.0, "invalid width sanitized to 1");
+    ASSERT_NEAR(rt_physics2d_body_h(body), 1.0, "invalid height sanitized to 1");
+    ASSERT(rt_physics2d_body_is_static(body) == 1, "invalid mass becomes static");
+
+    release_obj(body);
+}
+
+static void test_static_set_vel_ignored() {
+    void *body = rt_physics2d_body_new(0, 0, 10, 10, 0.0);
+    rt_physics2d_body_set_vel(body, 100.0, -25.0);
+    ASSERT_NEAR(rt_physics2d_body_vx(body), 0.0, "static body ignores set_vel vx");
+    ASSERT_NEAR(rt_physics2d_body_vy(body), 0.0, "static body ignores set_vel vy");
+    release_obj(body);
+}
+
+static void test_restitution_friction_clamped() {
+    void *body = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
+    rt_physics2d_body_set_restitution(body, 2.0);
+    rt_physics2d_body_set_friction(body, -1.0);
+    ASSERT_NEAR(rt_physics2d_body_restitution(body), 1.0, "restitution clamps high to 1");
+    ASSERT_NEAR(rt_physics2d_body_friction(body), 0.0, "friction clamps low to 0");
+
+    rt_physics2d_body_set_restitution(body, std::nan(""));
+    rt_physics2d_body_set_friction(body, std::nan(""));
+    ASSERT_NEAR(rt_physics2d_body_restitution(body), 0.0, "NaN restitution clamps to 0");
+    ASSERT_NEAR(rt_physics2d_body_friction(body), 0.0, "NaN friction clamps to 0");
+    release_obj(body);
 }
 
 //=============================================================================
@@ -360,6 +411,156 @@ static void test_set_gravity() {
     rt_obj_release_check0(world);
 }
 
+static void test_invalid_dt_noop() {
+    void *world = rt_physics2d_world_new(0.0, 10.0);
+    void *body = rt_physics2d_body_new(5.0, 5.0, 10.0, 10.0, 1.0);
+    rt_physics2d_world_add(world, body);
+
+    rt_physics2d_world_step(world, std::nan(""));
+    ASSERT_NEAR(rt_physics2d_body_x(body), 5.0, "x unchanged with NaN dt");
+    ASSERT_NEAR(rt_physics2d_body_y(body), 5.0, "y unchanged with NaN dt");
+    ASSERT_NEAR(rt_physics2d_body_vy(body), 0.0, "velocity unchanged with NaN dt");
+
+    release_obj(body);
+    release_obj(world);
+}
+
+static void test_separating_overlap_still_corrected() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
+    void *b = rt_physics2d_body_new(5, 0, 10, 10, 1.0);
+    rt_physics2d_body_set_vel(a, -10.0, 0.0);
+    rt_physics2d_body_set_vel(b, 10.0, 0.0);
+
+    rt_physics2d_world_add(world, a);
+    rt_physics2d_world_add(world, b);
+    rt_physics2d_world_step(world, 0.001);
+
+    ASSERT(rt_physics2d_body_x(b) - rt_physics2d_body_x(a) > 5.5,
+           "separating overlap still receives positional correction");
+
+    release_obj(a);
+    release_obj(b);
+    release_obj(world);
+}
+
+static void test_circle_body_collides_with_aabb() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *circle = rt_physics2d_circle_body_new(0.0, 0.0, 5.0, 1.0);
+    void *wall = rt_physics2d_body_new(4.0, -5.0, 10.0, 10.0, 0.0);
+    rt_physics2d_body_set_vel(circle, 10.0, 0.0);
+
+    rt_physics2d_world_add(world, circle);
+    rt_physics2d_world_add(world, wall);
+    rt_physics2d_world_step(world, 0.001);
+
+    ASSERT(rt_physics2d_body_vx(circle) < 10.0 - EPSILON,
+           "circle-vs-AABB overlap changes velocity");
+
+    release_obj(circle);
+    release_obj(wall);
+    release_obj(world);
+}
+
+static void test_swept_aabb_hits_thin_wall() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *body = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 1.0);
+    void *wall = rt_physics2d_body_new(50.0, 0.0, 1.0, 10.0, 0.0);
+    rt_physics2d_body_set_vel(body, 1000.0, 0.0);
+
+    rt_physics2d_world_add(world, body);
+    rt_physics2d_world_add(world, wall);
+    rt_physics2d_world_step(world, 0.1);
+
+    ASSERT(rt_physics2d_body_x(body) <= 40.0 + EPSILON,
+           "swept AABB collision stops at thin wall contact");
+    ASSERT(rt_physics2d_body_vx(body) < 0.0, "swept AABB collision applies bounce impulse");
+
+    release_obj(body);
+    release_obj(wall);
+    release_obj(world);
+}
+
+static void test_swept_circle_hits_thin_wall() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *circle = rt_physics2d_circle_body_new(0.0, 5.0, 5.0, 1.0);
+    void *wall = rt_physics2d_body_new(50.0, 0.0, 1.0, 10.0, 0.0);
+    rt_physics2d_body_set_vel(circle, 1000.0, 0.0);
+
+    rt_physics2d_world_add(world, circle);
+    rt_physics2d_world_add(world, wall);
+    rt_physics2d_world_step(world, 0.1);
+
+    ASSERT(rt_physics2d_body_x(circle) <= 45.0 + EPSILON,
+           "swept circle collision catches thin wall");
+    ASSERT(rt_physics2d_body_vx(circle) < 0.0, "swept circle collision applies bounce impulse");
+
+    release_obj(circle);
+    release_obj(wall);
+    release_obj(world);
+}
+
+static void test_circle_inside_aabb_resolves_outward() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *circle = rt_physics2d_circle_body_new(1.0, 5.0, 2.0, 1.0);
+    void *wall = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 0.0);
+
+    rt_physics2d_world_add(world, circle);
+    rt_physics2d_world_add(world, wall);
+    rt_physics2d_world_step(world, 0.001);
+
+    ASSERT(rt_physics2d_body_x(circle) < 1.0,
+           "circle center inside AABB resolves toward nearest exit side");
+
+    release_obj(circle);
+    release_obj(wall);
+    release_obj(world);
+}
+
+static void test_world_records_step_contacts() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *a = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 1.0);
+    void *b = rt_physics2d_body_new(5.0, 0.0, 10.0, 10.0, 1.0);
+
+    rt_physics2d_world_add(world, a);
+    rt_physics2d_world_add(world, b);
+    rt_physics2d_world_step(world, 0.001);
+
+    ASSERT(rt_physics2d_world_contact_count(world) >= 1, "overlap records at least one contact");
+    ASSERT(rt_physics2d_world_contact_body_a(world, 0) == a, "contact body A is exposed");
+    ASSERT(rt_physics2d_world_contact_body_b(world, 0) == b, "contact body B is exposed");
+    ASSERT(std::isfinite(rt_physics2d_world_contact_nx(world, 0)), "contact nx is finite");
+    ASSERT(std::isfinite(rt_physics2d_world_contact_ny(world, 0)), "contact ny is finite");
+    ASSERT(rt_physics2d_world_contact_depth(world, 0) > 0.0, "overlap contact has depth");
+
+    ASSERT(rt_physics2d_world_contact_body_a(world, -1) == NULL, "negative contact index is NULL");
+    ASSERT(rt_physics2d_world_contact_body_b(world, 999) == NULL, "large contact index is NULL");
+    ASSERT(rt_physics2d_world_contact_depth(world, 999) == 0.0, "invalid contact depth is zero");
+
+    release_obj(a);
+    release_obj(b);
+    release_obj(world);
+}
+
+static void test_extreme_forces_are_sanitized() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *body = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 1.0);
+    rt_physics2d_world_add(world, body);
+
+    double huge = std::numeric_limits<double>::max() / 4.0;
+    rt_physics2d_body_apply_impulse(body, huge, -huge);
+    rt_physics2d_body_apply_force(body, huge, huge);
+    rt_physics2d_world_step(world, huge);
+
+    ASSERT(std::isfinite(rt_physics2d_body_x(body)), "extreme force leaves finite x");
+    ASSERT(std::isfinite(rt_physics2d_body_y(body)), "extreme force leaves finite y");
+    ASSERT(std::isfinite(rt_physics2d_body_vx(body)), "extreme force leaves finite vx");
+    ASSERT(std::isfinite(rt_physics2d_body_vy(body)), "extreme force leaves finite vy");
+
+    release_obj(body);
+    release_obj(world);
+}
+
 //=============================================================================
 // Null safety
 //=============================================================================
@@ -395,6 +596,21 @@ static void test_null_safety() {
     tests_passed++; // If we get here, null safety passed
 }
 
+static void test_wrong_handle_traps() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *body = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 1.0);
+    void *fake = rt_obj_new_i64(0, 8);
+
+    EXPECT_TRAP(rt_physics2d_world_add(world, fake));
+    EXPECT_TRAP(rt_physics2d_distance_joint_new(body, fake, 10.0));
+    EXPECT_TRAP(rt_physics2d_world_add_joint(world, fake));
+    EXPECT_TRAP(rt_physics2d_body_radius(fake));
+
+    release_obj(fake);
+    release_obj(body);
+    release_obj(world);
+}
+
 static void test_zero_dt() {
     void *world = rt_physics2d_world_new(0.0, 10.0);
     void *body = rt_physics2d_body_new(5.0, 5.0, 10.0, 10.0, 1.0);
@@ -418,13 +634,11 @@ static void test_zero_dt() {
 //=============================================================================
 
 static void test_collision_mask_default_full() {
-    // Default mask must be 0xFFFFFFFF so layer 31 is reachable.
-    // Before fix: default was 0x7FFFFFFF (bit 31 excluded) and layer-31 bodies
-    // would never collide with default-masked bodies.
+    // Default mask must cover every 64-bit layer.
     void *body = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     int64_t mask = rt_physics2d_body_collision_mask(body);
     ASSERT((mask & (int64_t)0x80000000LL) != 0, "default mask covers bit 31 (GAME-H-6 fix)");
-    ASSERT(mask == (int64_t)0xFFFFFFFFLL, "default mask is 0xFFFFFFFF");
+    ASSERT(mask == INT64_C(-1), "default mask covers all 64 bits");
     rt_obj_release_check0(body);
 }
 
@@ -520,14 +734,15 @@ static void test_dense_cell_overflow_falls_back_to_all_pairs() {
     release_obj(world);
 }
 
-static void test_world_finalizer_releases_world_owned_joint() {
-    g_joint_finalizer_calls = 0;
+static void test_world_finalizer_releases_joint_retained_bodies() {
+    g_body_finalizer_calls = 0;
 
     void *world = rt_physics2d_world_new(0.0, 0.0);
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     void *b = rt_physics2d_body_new(20, 0, 10, 10, 1.0);
     void *joint = rt_physics2d_distance_joint_new(a, b, 20.0);
-    rt_obj_set_finalizer(joint, test_joint_finalizer);
+    rt_obj_set_finalizer(a, test_body_finalizer);
+    rt_obj_set_finalizer(b, test_body_finalizer);
 
     rt_physics2d_world_add(world, a);
     rt_physics2d_world_add(world, b);
@@ -540,7 +755,44 @@ static void test_world_finalizer_releases_world_owned_joint() {
     release_obj(b);
     release_obj(world);
 
-    ASSERT(g_joint_finalizer_calls == 1, "world finalizer releases attached joints");
+    ASSERT(g_body_finalizer_calls == 2, "joint/world finalizers release retained bodies");
+}
+
+static void test_add_joint_requires_world_bodies() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
+    void *b = rt_physics2d_body_new(20, 0, 10, 10, 1.0);
+    void *joint = rt_physics2d_distance_joint_new(a, b, 20.0);
+
+    EXPECT_TRAP(rt_physics2d_world_add_joint(world, joint));
+
+    release_obj(joint);
+    release_obj(a);
+    release_obj(b);
+    release_obj(world);
+}
+
+static void test_joint_limit_traps() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
+    void *b = rt_physics2d_body_new(20, 0, 10, 10, 1.0);
+    rt_physics2d_world_add(world, a);
+    rt_physics2d_world_add(world, b);
+
+    for (int i = 0; i < 64; i++) {
+        void *joint = rt_physics2d_distance_joint_new(a, b, 20.0 + i);
+        rt_physics2d_world_add_joint(world, joint);
+        release_obj(joint);
+    }
+    ASSERT(rt_physics2d_world_joint_count(world) == 64, "64 joints at limit");
+
+    void *extra = rt_physics2d_distance_joint_new(a, b, 100.0);
+    EXPECT_TRAP(rt_physics2d_world_add_joint(world, extra));
+    release_obj(extra);
+
+    release_obj(a);
+    release_obj(b);
+    release_obj(world);
 }
 
 //=============================================================================
@@ -572,6 +824,7 @@ int main() {
     test_world_new();
     test_world_add_remove();
     test_world_add_multiple();
+    test_duplicate_body_add_ignored();
 
     // Body tests
     test_body_new();
@@ -579,6 +832,9 @@ int main() {
     test_body_set_pos();
     test_body_set_vel();
     test_body_restitution_friction();
+    test_body_inputs_sanitized();
+    test_static_set_vel_ignored();
+    test_restitution_friction_clamped();
 
     // Integration tests
     test_gravity_integration();
@@ -592,9 +848,18 @@ int main() {
     test_no_collision_separated();
     test_collision_with_static();
     test_set_gravity();
+    test_invalid_dt_noop();
+    test_separating_overlap_still_corrected();
+    test_circle_body_collides_with_aabb();
+    test_swept_aabb_hits_thin_wall();
+    test_swept_circle_hits_thin_wall();
+    test_circle_inside_aabb_resolves_outward();
+    test_world_records_step_contacts();
+    test_extreme_forces_are_sanitized();
 
     // Safety tests
     test_null_safety();
+    test_wrong_handle_traps();
     test_zero_dt();
 
     // GAME-H-6: collision_mask default covers all 32 layers
@@ -602,7 +867,9 @@ int main() {
     test_collision_layer31_collides_with_default_mask();
     test_collision_mask_filtering_works();
     test_dense_cell_overflow_falls_back_to_all_pairs();
-    test_world_finalizer_releases_world_owned_joint();
+    test_world_finalizer_releases_joint_retained_bodies();
+    test_add_joint_requires_world_bodies();
+    test_joint_limit_traps();
 
     // GAME-C-4: body limit traps
     test_body_limit_traps();

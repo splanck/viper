@@ -195,6 +195,26 @@ TEST(draw_to_pixels_alpha_blends_over_existing_background) {
     rt_particle_emitter_destroy(pe);
 }
 
+TEST(nonfinite_configuration_is_sanitized) {
+    rt_particle_emitter pe = rt_particle_emitter_new(4);
+    rt_particle_emitter_set_position(pe, 10.0, 20.0);
+    rt_particle_emitter_set_position(pe, NAN, INFINITY);
+    ASSERT(fabs(rt_particle_emitter_x(pe) - 10.0) < 0.001);
+    ASSERT(fabs(rt_particle_emitter_y(pe) - 20.0) < 0.001);
+
+    rt_particle_emitter_set_rate(pe, INFINITY);
+    ASSERT(rt_particle_emitter_rate(pe) == 0.0);
+    rt_particle_emitter_set_velocity(pe, NAN, INFINITY, NAN, INFINITY);
+    rt_particle_emitter_set_gravity(pe, NAN, INFINITY);
+    rt_particle_emitter_set_size(pe, NAN, INFINITY);
+    rt_particle_emitter_set_lifetime(pe, 1, 1);
+    rt_particle_emitter_burst(pe, 1);
+    rt_particle_emitter_update(pe);
+    ASSERT(rt_particle_emitter_count(pe) <= 1);
+
+    rt_particle_emitter_destroy(pe);
+}
+
 /// @brief Main.
 int main() {
     printf("RTParticleTests:\n");
@@ -211,6 +231,7 @@ int main() {
     RUN_TEST(full_emitters_do_not_build_emission_debt);
     RUN_TEST(get_normalizes_legacy_rgb_alpha);
     RUN_TEST(draw_to_pixels_alpha_blends_over_existing_background);
+    RUN_TEST(nonfinite_configuration_is_sanitized);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

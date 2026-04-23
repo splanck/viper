@@ -9,7 +9,7 @@ Entity replaces the common pattern of parallel arrays + manual gravity/moveAndCo
 ## API
 
 ### Entity.New(x, y, width, height) -> Entity
-Create entity at position (x, y) in centipixels (x100) with size in pixels.
+Create entity at position (x, y) in centipixels (x100) with size in pixels. Width and height clamp to at least 1 pixel.
 
 ### Properties
 - `X`, `Y` — Position in centipixels (get/set)
@@ -23,11 +23,13 @@ Create entity at position (x, y) in centipixels (x100) with size in pixels.
 
 ### Methods
 - `ApplyGravity(gravity, maxFall, dt)` — Apply gravity to VY, cap at maxFall
-- `MoveAndCollide(tilemap, dt)` — Move by velocity, resolve against tilemap, set collision flags
+- `MoveAndCollide(tilemap, dt)` — Move by velocity, sweep against tilemap solids, preserve subpixel centipixel remainder, and set collision flags
 - `UpdatePhysics(tilemap, gravity, maxFall, dt)` — Combined ApplyGravity + MoveAndCollide
 - `AtEdge(tilemap)` — Returns true if no solid tile below leading edge (for patrol AI)
 - `PatrolReverse(speed)` — Reverse direction on wall hit, set VX to ±speed
 - `Overlaps(other)` — AABB overlap test with another Entity
+
+Positions use floor division when converting centipixels to tile pixels, so negative coordinates collide consistently instead of truncating toward zero.
 
 ## Example
 ```zia

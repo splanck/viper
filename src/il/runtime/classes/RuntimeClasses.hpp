@@ -244,6 +244,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_SpriteSheet,
     RTCLS_Physics2DWorld,
     RTCLS_Physics2DBody,
+    RTCLS_Physics2DCircleBody,
     RTCLS_DistanceJoint,
     RTCLS_SpringJoint,
     RTCLS_HingeJoint,
@@ -383,6 +384,7 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_UIPanel,
     RTCLS_UINineSlice,
     RTCLS_UIMenuList,
+    RTCLS_GameButton,
 
     // Graphics 2D production surface
     RTCLS_RenderTarget2D,

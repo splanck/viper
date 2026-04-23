@@ -240,6 +240,8 @@ static void test_invalid_dimensions() {
     assert(rt_grid2d_new(10, 0, 0) == nullptr);
     assert(rt_grid2d_new(-1, 10, 0) == nullptr);
     assert(rt_grid2d_new(10, -1, 0) == nullptr);
+    assert(rt_grid2d_new(RT_GRID2D_MAX_DIM + 1, 1, 0) == nullptr);
+    assert(rt_grid2d_new(1, RT_GRID2D_MAX_DIM + 1, 0) == nullptr);
 }
 
 static void test_tile_map_use_case() {

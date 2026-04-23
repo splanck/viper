@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-23
 ---
 
 # Physics & Collision
@@ -289,9 +289,9 @@ END IF
 
 ## Viper.Game.Physics2D
 
-Simple 2D physics engine with rigid body dynamics, gravity, and AABB collision detection. Uses fixed-timestep Euler integration and impulse-based collision resolution.
+Simple 2D physics engine with rigid body dynamics, gravity, AABB/circle collision detection, and basic joints. Uses fixed-timestep Euler integration and impulse-based collision resolution.
 
-**Type:** Compound — `Physics2D.World` (instance) + `Physics2D.Body` (instance)
+**Type:** Compound — `Physics2D.World`, `Physics2D.Body`, `Physics2D.CircleBody`, and joint classes
 
 ### World Constructor
 
@@ -303,7 +303,9 @@ Simple 2D physics engine with rigid body dynamics, gravity, and AABB collision d
 
 | Property    | Type                  | Description                  |
 |-------------|-----------------------|------------------------------|
-| `BodyCount` | `Integer` (read-only) | Number of bodies in the world|
+| `BodyCount` | `Integer` (read-only) | Number of bodies in the world |
+| `JointCount` | `Integer` (read-only) | Number of active joints in the world |
+| `ContactCount` | `Integer` (read-only) | Number of contacts detected during the most recent `Step` |
 
 ### World Methods
 
@@ -311,8 +313,15 @@ Simple 2D physics engine with rigid body dynamics, gravity, and AABB collision d
 |----------------------|-----------------------|-----------------------------------------|
 | `Add(body)`          | `Void(Body)`          | Add a body to the world                 |
 | `Remove(body)`       | `Void(Body)`          | Remove a body from the world            |
+| `AddJoint(joint)`    | `Void(Joint)`         | Add a joint whose bodies are already in this world |
+| `RemoveJoint(joint)` | `Void(Joint)`         | Remove a joint from the world |
 | `SetGravity(gx, gy)` | `Void(Double,Double)` | Change gravity vector                   |
 | `Step(dt)`           | `Void(Double)`        | Advance simulation by dt seconds        |
+| `ContactBodyA(index)` | `Body(Integer)`      | First body in a recorded contact, or null if invalid |
+| `ContactBodyB(index)` | `Body(Integer)`      | Second body in a recorded contact, or null if invalid |
+| `ContactNX(index)`    | `Double(Integer)`    | Contact normal X component from A toward B |
+| `ContactNY(index)`    | `Double(Integer)`    | Contact normal Y component from A toward B |
+| `ContactDepth(index)` | `Double(Integer)`    | Penetration depth for overlap contacts; 0 for swept contacts |
 
 ### Body Constructor
 
@@ -336,6 +345,8 @@ Simple 2D physics engine with rigid body dynamics, gravity, and AABB collision d
 | `Friction`       | `Double` (read/write)  | Surface friction (0-1)                   |
 | `CollisionLayer` | `Integer` (read/write) | Collision layer bitmask                  |
 | `CollisionMask`  | `Integer` (read/write) | Collision mask bitmask                   |
+| `Radius`         | `Double` (read-only)   | Circle radius, or 0 for AABB bodies      |
+| `IsCircle`       | `Boolean` (read-only)  | True for bodies created by `CircleBody.New` |
 
 ### Body Methods
 
@@ -346,14 +357,35 @@ Simple 2D physics engine with rigid body dynamics, gravity, and AABB collision d
 | `SetPos(x, y)`          | `Void(Double,Double)` | Set body position                   |
 | `SetVel(vx, vy)`        | `Void(Double,Double)` | Set body velocity                   |
 
+### Circle Bodies And Joints
+
+| Class/Method | Signature | Description |
+|--------------|-----------|-------------|
+| `CircleBody.New(cx, cy, radius, mass)` | `Body(Double,Double,Double,Double)` | Create a circle body centered at `(cx, cy)` |
+| `DistanceJoint.New(a, b, length)` | `DistanceJoint(Body,Body,Double)` | Keeps two bodies at a target distance |
+| `SpringJoint.New(a, b, rest, stiffness, damping)` | `SpringJoint(Body,Body,Double,Double,Double)` | Applies Hooke-style spring force |
+| `RopeJoint.New(a, b, maxLength)` | `RopeJoint(Body,Body,Double)` | Allows slack, constrains only beyond max length |
+| `HingeJoint.New(a, b, anchorX, anchorY)` | `HingeJoint(Body,Body,Double,Double)` | Pins the bodies at a shared anchor while preserving each body's local anchor offset |
+
+Joints retain their body handles. Add both bodies to the same world before calling `World.AddJoint`; otherwise the runtime traps instead of accepting a dangling or cross-world joint. Passing an object that is not a `Body`, `World`, or `Joint` to the matching Physics2D API also traps.
+
 ### Notes
 
 - **Static bodies** (mass = 0) are immovable — use for floors, walls, platforms
 - **Dynamic bodies** (mass > 0) are affected by gravity, forces, and collisions
-- `Step(dt)` performs integration and AABB collision detection/resolution
+- `ContactCount` and `Contact*` methods expose contacts from the latest successful `Step`; the list is cleared at the start of the next step
+- `SetPos(x, y)` is a teleport: it updates the previous-position state too, so the next step does not treat the teleport as swept motion
+- `Step(dt)` performs integration, joint solving, AABB/circle collision detection, and swept-bound checks for fast AABB and circle bodies
+- Swept collisions resolve at time of impact, then advance the remaining part of the step using the post-collision velocity
+- `Step(dt)` is a no-op for `dt <= 0` and for non-finite values
 - Collision response uses impulse-based resolution with restitution and friction
+- `Restitution` and `Friction` are clamped to `[0, 1]`
+- Collision layers and masks are 64-bit bitmasks; new bodies default to `CollisionLayer = 1` and `CollisionMask = -1` (all 64 bits)
+- `Body.New` sanitizes non-finite coordinates to 0, invalid size to 1, and non-finite or non-positive mass to static
+- Very large finite forces, impulses, positions, and velocities are clamped during stepping to keep the broad phase finite
+- `World.Add(body)` ignores duplicate body handles
 - Fixed timestep recommended (e.g., `Step(1.0 / 60.0)` for 60 FPS)
-- **Limit:** A world supports at most **256 bodies**. Bodies added beyond this limit are silently ignored and the returned body handle will be 0 (invalid). Check the returned handle before using it.
+- **Limits:** A world supports at most **256 bodies** and **64 joints**. Exceeding either limit traps.
 
 ### Zia Example
 

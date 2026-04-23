@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-23
 ---
 
 # Pathfinding
@@ -31,9 +31,9 @@ A* pathfinding on uniform-cost 2D grids. Supports 4-way (cardinal) and 8-way (ca
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `New(width, height)` | `Pathfinder(Integer, Integer)` | Blank walkable grid |
-| `FromTilemap(tilemap)` | `Pathfinder(Tilemap)` | Import collision data (collision != 0 → wall) |
-| `FromGrid2D(grid)` | `Pathfinder(Grid2D)` | Import cell values (non-zero → wall) |
+| `New(width, height)` | `Pathfinder(Integer, Integer)` | Blank walkable grid; returns null for invalid or >4096 dimensions |
+| `FromTilemap(tilemap)` | `Pathfinder(Tilemap)` | Import collision data (collision != 0 -> wall) and tile IDs for value searches |
+| `FromGrid2D(grid)` | `Pathfinder(Grid2D)` | Import cell values (non-zero -> wall) |
 
 ### Properties
 
@@ -56,7 +56,7 @@ A* pathfinding on uniform-cost 2D grids. Supports 4-way (cardinal) and 8-way (ca
 | `GetCost(x, y)` | `Integer(Integer, Integer)` | Get movement cost |
 | `FindPath(sx, sy, gx, gy)` | `List[Integer](Integer×4)` | Find path (returns interleaved x,y pairs) |
 | `FindPathLength(sx, sy, gx, gy)` | `Integer(Integer×4)` | Get path cost (-1 if no path) |
-| `FindNearest(sx, sy, value)` | `List[Integer](Integer×3)` | Find nearest cell with value (placeholder) |
+| `FindNearest(sx, sy, value)` | `List[Integer](Integer×3)` | Find a path to the nearest reachable cell with the stored tile/grid value |
 
 ---
 
@@ -94,6 +94,7 @@ The actual movement cost for a step is: `base_cost × cell_cost / 100`
 
 ### FromTilemap
 Reads the tilemap's collision types. Tiles with `SetCollision(tile, type)` where `type != 0` are marked as non-walkable.
+The original tile ID is stored for `FindNearest`, so marker tiles can be used as reachable goals when their collision type is `0`.
 
 ```zia
 var tilemap = Tilemap.New(20, 15, 16, 16);
@@ -106,6 +107,7 @@ var path = pf.FindPath(0, 0, 19, 14);
 
 ### FromGrid2D
 Reads cell values. Non-zero cells are treated as walls.
+The original cell value is stored for `FindNearest`. Because non-zero cells are blocked in this factory, non-zero targets are normally used with `FromTilemap` unless the cells are later made walkable through `SetWalkable`.
 
 ```zia
 var grid = Grid2D.New(20, 15, 0); // 0 = walkable
@@ -113,6 +115,10 @@ grid.Set(5, 5, 1);                // 1 = wall
 
 var pf = Pathfinder.FromGrid2D(grid);
 ```
+
+### FindNearest
+
+`FindNearest(sx, sy, value)` performs a breadth-first search from the start cell and returns the full path as interleaved `x,y` pairs. It returns an empty list and sets `LastFound` false if the start is outside the grid, blocked, the step budget is exhausted, or no reachable matching value exists.
 
 ---
 

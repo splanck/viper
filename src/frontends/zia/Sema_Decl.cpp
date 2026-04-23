@@ -334,12 +334,18 @@ void Sema::importNamespaceSymbols(const std::string &ns) {
             importedSymbols_[shortName] = target;
         }
 
-        // Also import properties by their display name (e.g., "Length")
-        // mapped to the getter's qualified name (e.g., "Viper.String.get_Length")
+        // Also import properties by their display name for namespace-like
+        // runtime classes (e.g., Viper.String.Length -> Viper.String.get_Length).
+        // Do not import nested class properties from a broad namespace such as
+        // Viper.Game; otherwise names like Grid2D.Length become global
+        // Length() candidates and can shadow Viper.String.Length.
         for (const auto &p : cls.properties) {
             if (p.getter && p.name) {
                 std::string getter(p.getter);
                 if (getter.rfind(prefix, 0) != 0)
+                    continue;
+                std::string getterTail = getter.substr(prefix.size());
+                if (getterTail.find('.') != std::string::npos)
                     continue;
 
                 std::string shortName(p.name);

@@ -59,6 +59,8 @@ func start() {
 
     // Test 6: Joint count management
     var w2 = Viper.Game.Physics2D.World.New(0.0, 0.0);
+    Viper.Game.Physics2D.World.Add(w2, c);
+    Viper.Game.Physics2D.World.Add(w2, d);
     Viper.Game.Physics2D.World.AddJoint(w2, sj);
     Viper.Game.Physics2D.World.AddJoint(w2, rj);
     if (w2.JointCount != 2) {

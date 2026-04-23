@@ -126,6 +126,17 @@ TEST(lerp_i64) {
     ASSERT(rt_tween_lerp_i64(-100, 100, 0.5) == 0);
 }
 
+TEST(nonfinite_inputs_are_sanitized) {
+    rt_tween tw = rt_tween_new();
+    rt_tween_start(tw, NAN, INFINITY, 2, RT_EASE_LINEAR);
+    ASSERT(rt_tween_value(tw) == 0.0);
+    rt_tween_update(tw);
+    ASSERT(std::isfinite(rt_tween_value(tw)));
+    ASSERT(rt_tween_lerp_i64(0, 100, NAN) == 0);
+    ASSERT(rt_tween_ease(NAN, RT_EASE_LINEAR) == 0.0);
+    rt_tween_destroy(tw);
+}
+
 /// @brief Main.
 int main() {
     printf("RTTweenTests:\n");
@@ -136,6 +147,7 @@ int main() {
     RUN_TEST(stop_reset);
     RUN_TEST(ease_functions);
     RUN_TEST(lerp_i64);
+    RUN_TEST(nonfinite_inputs_are_sanitized);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

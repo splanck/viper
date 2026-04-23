@@ -279,7 +279,7 @@ void *rt_bitmapfont_load_bdf(rt_string path) {
         return NULL;
 
     rt_bitmapfont_impl *font =
-        (rt_bitmapfont_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_bitmapfont_impl));
+        (rt_bitmapfont_impl *)rt_obj_new_i64(RT_BITMAPFONT_CLASS_ID, (int64_t)sizeof(rt_bitmapfont_impl));
     if (!font) {
         fclose(f);
         return NULL;
@@ -519,7 +519,7 @@ void *rt_bitmapfont_load_psf(rt_string path) {
         glyph_count = BF_MAX_GLYPHS;
 
     rt_bitmapfont_impl *font =
-        (rt_bitmapfont_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_bitmapfont_impl));
+        (rt_bitmapfont_impl *)rt_obj_new_i64(RT_BITMAPFONT_CLASS_ID, (int64_t)sizeof(rt_bitmapfont_impl));
     if (!font) {
         fclose(f);
         return NULL;

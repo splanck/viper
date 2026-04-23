@@ -40,7 +40,9 @@
 
 #include "rt_smoothvalue.h"
 #include "rt_object.h"
+#include "rt_trap.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 
@@ -55,35 +57,67 @@ struct rt_smoothvalue_impl {
     double velocity;  ///< Current rate of change.
 };
 
+static rt_smoothvalue checked_smoothvalue(rt_smoothvalue sv, const char *api) {
+    if (!sv)
+        return NULL;
+    if (rt_obj_class_id(sv) != RT_SMOOTHVALUE_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return sv;
+}
+
+static double smooth_finite_or(double value, double fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
+static double smooth_clamp_smoothing(double smoothing) {
+    if (!isfinite(smoothing))
+        return 0.0;
+    if (smoothing < 0.0)
+        return 0.0;
+    if (smoothing > 0.999)
+        return 0.999;
+    return smoothing;
+}
+
+static int64_t smooth_round_to_i64(double value) {
+    if (!isfinite(value))
+        return 0;
+    if (value >= (double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)(value + (value >= 0 ? 0.5 : -0.5));
+}
+
 /// @brief Create a new smoothvalue object.
 rt_smoothvalue rt_smoothvalue_new(double initial, double smoothing) {
     struct rt_smoothvalue_impl *sv = (struct rt_smoothvalue_impl *)rt_obj_new_i64(
-        0, (int64_t)sizeof(struct rt_smoothvalue_impl));
+        RT_SMOOTHVALUE_CLASS_ID, (int64_t)sizeof(struct rt_smoothvalue_impl));
     if (!sv)
         return NULL;
 
+    initial = smooth_finite_or(initial, 0.0);
     sv->current = initial;
     sv->target = initial;
     sv->velocity = 0.0;
 
-    // Clamp smoothing to valid range
-    if (smoothing < 0.0)
-        smoothing = 0.0;
-    if (smoothing > 0.999)
-        smoothing = 0.999; // Prevent complete stall
-    sv->smoothing = smoothing;
+    sv->smoothing = smooth_clamp_smoothing(smoothing);
 
     return sv;
 }
 
 /// @brief Release resources and destroy the smoothvalue.
 void rt_smoothvalue_destroy(rt_smoothvalue sv) {
+    sv = checked_smoothvalue(sv, "SmoothValue.Destroy: expected Viper.Game.SmoothValue");
     if (sv && rt_obj_release_check0(sv))
         rt_obj_free(sv);
 }
 
 /// @brief Get the current smoothed value.
 double rt_smoothvalue_get(rt_smoothvalue sv) {
+    sv = checked_smoothvalue(sv, "SmoothValue.Value: expected Viper.Game.SmoothValue");
     if (!sv)
         return 0.0;
     return sv->current;
@@ -91,13 +125,15 @@ double rt_smoothvalue_get(rt_smoothvalue sv) {
 
 /// @brief Return the current smoothed value rounded to the nearest integer.
 int64_t rt_smoothvalue_get_i64(rt_smoothvalue sv) {
+    sv = checked_smoothvalue(sv, "SmoothValue.ValueI64: expected Viper.Game.SmoothValue");
     if (!sv)
         return 0;
-    return (int64_t)(sv->current + (sv->current >= 0 ? 0.5 : -0.5));
+    return smooth_round_to_i64(sv->current);
 }
 
 /// @brief Get the target value that the smooth value is converging toward.
 double rt_smoothvalue_target(rt_smoothvalue sv) {
+    sv = checked_smoothvalue(sv, "SmoothValue.Target: expected Viper.Game.SmoothValue");
     if (!sv)
         return 0.0;
     return sv->target;
@@ -105,15 +141,18 @@ double rt_smoothvalue_target(rt_smoothvalue sv) {
 
 /// @brief Set a new target value for the smooth interpolation to converge toward.
 void rt_smoothvalue_set_target(rt_smoothvalue sv, double target) {
+    sv = checked_smoothvalue(sv, "SmoothValue.Target.set: expected Viper.Game.SmoothValue");
     if (!sv)
         return;
-    sv->target = target;
+    sv->target = smooth_finite_or(target, sv->target);
 }
 
 /// @brief Snap both current and target to a value instantly (no interpolation).
 void rt_smoothvalue_set_immediate(rt_smoothvalue sv, double value) {
+    sv = checked_smoothvalue(sv, "SmoothValue.SetImmediate: expected Viper.Game.SmoothValue");
     if (!sv)
         return;
+    value = smooth_finite_or(value, 0.0);
     sv->current = value;
     sv->target = value;
     sv->velocity = 0.0;
@@ -121,6 +160,7 @@ void rt_smoothvalue_set_immediate(rt_smoothvalue sv, double value) {
 
 /// @brief Return the current smoothing factor.
 double rt_smoothvalue_smoothing(rt_smoothvalue sv) {
+    sv = checked_smoothvalue(sv, "SmoothValue.Smoothing: expected Viper.Game.SmoothValue");
     if (!sv)
         return 0.0;
     return sv->smoothing;
@@ -128,17 +168,15 @@ double rt_smoothvalue_smoothing(rt_smoothvalue sv) {
 
 /// @brief Set the smoothing factor [0.0, 0.999]; higher = slower interpolation.
 void rt_smoothvalue_set_smoothing(rt_smoothvalue sv, double smoothing) {
+    sv = checked_smoothvalue(sv, "SmoothValue.Smoothing.set: expected Viper.Game.SmoothValue");
     if (!sv)
         return;
-    if (smoothing < 0.0)
-        smoothing = 0.0;
-    if (smoothing > 0.999)
-        smoothing = 0.999;
-    sv->smoothing = smoothing;
+    sv->smoothing = smooth_clamp_smoothing(smoothing);
 }
 
 /// @brief Update the smoothvalue state (called per frame/tick).
 void rt_smoothvalue_update(rt_smoothvalue sv) {
+    sv = checked_smoothvalue(sv, "SmoothValue.Update: expected Viper.Game.SmoothValue");
     if (!sv)
         return;
 
@@ -146,6 +184,8 @@ void rt_smoothvalue_update(rt_smoothvalue sv) {
     double prev = sv->current;
     double factor = 1.0 - sv->smoothing;
     sv->current = sv->current * sv->smoothing + sv->target * factor;
+    if (!isfinite(sv->current))
+        sv->current = sv->target;
 
     // Calculate velocity
     sv->velocity = sv->current - prev;
@@ -159,6 +199,7 @@ void rt_smoothvalue_update(rt_smoothvalue sv) {
 
 /// @brief Check whether the current value has converged to the target (within epsilon).
 int8_t rt_smoothvalue_at_target(rt_smoothvalue sv) {
+    sv = checked_smoothvalue(sv, "SmoothValue.AtTarget: expected Viper.Game.SmoothValue");
     if (!sv)
         return 1;
     return fabs(sv->current - sv->target) < SMOOTH_EPSILON ? 1 : 0;
@@ -166,6 +207,7 @@ int8_t rt_smoothvalue_at_target(rt_smoothvalue sv) {
 
 /// @brief Get the per-frame velocity (change in value since last update).
 double rt_smoothvalue_velocity(rt_smoothvalue sv) {
+    sv = checked_smoothvalue(sv, "SmoothValue.Velocity: expected Viper.Game.SmoothValue");
     if (!sv)
         return 0.0;
     return sv->velocity;
@@ -173,7 +215,12 @@ double rt_smoothvalue_velocity(rt_smoothvalue sv) {
 
 /// @brief Apply an instant offset to the current value (bypasses smoothing).
 void rt_smoothvalue_impulse(rt_smoothvalue sv, double impulse) {
+    sv = checked_smoothvalue(sv, "SmoothValue.Impulse: expected Viper.Game.SmoothValue");
     if (!sv)
         return;
+    if (!isfinite(impulse))
+        return;
     sv->current += impulse;
+    if (!isfinite(sv->current))
+        sv->current = sv->target;
 }

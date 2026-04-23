@@ -658,6 +658,7 @@ set(ZIA_RUNTIME_TESTS
         test_list_sort
         test_bytes_nullbyte
         test_final_const_expr
+        test_namespace_length_collision
 )
 
 foreach (test_name IN LISTS ZIA_RUNTIME_TESTS)

@@ -28,6 +28,8 @@
 extern "C" {
 #endif
 
+#define RT_TWEEN_CLASS_ID INT64_C(-0x510202)
+
 /// Easing function types.
 typedef enum {
     RT_EASE_LINEAR = 0,    ///< Linear interpolation (no easing)

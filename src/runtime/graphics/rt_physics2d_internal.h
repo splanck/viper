@@ -21,13 +21,22 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include "rt_object.h"
+
 #include <stdint.h>
 
 #define PH_MAX_BODIES 256
 #define PH_MAX_JOINTS 64
+#define PH_MAX_CONTACTS 256
 #define PH_JOINT_ITERATIONS 4
 
 #define RT_PH_MAX_BODIES_STR "256"
+#define RT_PH_MAX_JOINTS_STR "64"
+#define RT_PH_MAX_CONTACTS_STR "256"
+
+#define RT_PHYSICS2D_WORLD_CLASS_ID INT64_C(-0x500201)
+#define RT_PHYSICS2D_BODY_CLASS_ID INT64_C(-0x500202)
+#define RT_PHYSICS2D_JOINT_CLASS_ID INT64_C(-0x500203)
 
 /// @brief Internal representation of a single rigid body (AABB or circle).
 typedef struct {
@@ -59,6 +68,14 @@ typedef struct {
     int64_t body_count;
     ph_joint *joints[PH_MAX_JOINTS];
     int32_t joint_count;
+    struct {
+        rt_body_impl *body_a;
+        rt_body_impl *body_b;
+        double nx;
+        double ny;
+        double penetration;
+    } contacts[PH_MAX_CONTACTS];
+    int32_t contact_count;
 } rt_world_impl;
 
 /// @brief Joint internal representation.
@@ -68,11 +85,28 @@ struct ph_joint {
     void *body_a;
     void *body_b;
     double anchor_x, anchor_y; ///< World-space anchor (hinge)
+    double anchor_ax, anchor_ay; ///< Body A local hinge anchor offset from center.
+    double anchor_bx, anchor_by; ///< Body B local hinge anchor offset from center.
     double length;             ///< Target distance (distance/rope)
     double stiffness;          ///< Spring stiffness
     double damping;            ///< Spring damping
     int8_t active;
 };
 
+static inline int8_t rt_physics2d_is_world_handle(void *obj) {
+    return obj && rt_obj_class_id(obj) == RT_PHYSICS2D_WORLD_CLASS_ID;
+}
+
+static inline int8_t rt_physics2d_is_body_handle(void *obj) {
+    return obj && rt_obj_class_id(obj) == RT_PHYSICS2D_BODY_CLASS_ID;
+}
+
+static inline int8_t rt_physics2d_is_joint_handle(void *obj) {
+    return obj && rt_obj_class_id(obj) == RT_PHYSICS2D_JOINT_CLASS_ID;
+}
+
 double rt_physics2d_body_prev_x(void *body);
 double rt_physics2d_body_prev_y(void *body);
+void rt_physics2d_solve_joints(void *world, double dt);
+void rt_physics2d_solve_spring_joints(void *world, double dt);
+void rt_physics2d_solve_position_joints(void *world, double dt);

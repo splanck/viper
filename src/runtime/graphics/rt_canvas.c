@@ -95,8 +95,7 @@ static void rt_canvas_update_mouse_from_physical(vgfx_window_t gfx_win, int32_t 
     float scale = vgfx_window_get_scale(gfx_win);
     if (scale < 0.001f)
         scale = 1.0f;
-    rt_mouse_update_pos((int64_t)((double)x / (double)scale),
-                        (int64_t)((double)y / (double)scale));
+    rt_mouse_update_pos((int64_t)((double)x / (double)scale), (int64_t)((double)y / (double)scale));
 }
 
 /// @brief Report that Canvas support is compiled into this runtime.
@@ -120,7 +119,7 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
     if (win_width <= 0 || win_height <= 0)
         return NULL;
 
-    rt_canvas *canvas = (rt_canvas *)rt_obj_new_i64(0, (int64_t)sizeof(rt_canvas));
+    rt_canvas *canvas = (rt_canvas *)rt_obj_new_i64(RT_CANVAS_CLASS_ID, (int64_t)sizeof(rt_canvas));
     if (!canvas)
         return NULL;
 
@@ -187,6 +186,10 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
     rt_pad_init();
 
     return canvas;
+}
+
+int8_t rt_canvas_is_handle(void *canvas_ptr) {
+    return rt_canvas_checked(canvas_ptr) != NULL ? 1 : 0;
 }
 
 /// @brief Destroy a Canvas, releasing the window and associated resources.
@@ -380,25 +383,23 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
 
         // Forward mouse events to mouse module (convert physical -> logical)
         if (canvas->last_event.type == VGFX_EVENT_MOUSE_MOVE) {
-            rt_canvas_update_mouse_from_physical(
-                canvas->gfx_win,
-                canvas->last_event.data.mouse_move.x,
-                canvas->last_event.data.mouse_move.y);
+            rt_canvas_update_mouse_from_physical(canvas->gfx_win,
+                                                 canvas->last_event.data.mouse_move.x,
+                                                 canvas->last_event.data.mouse_move.y);
         } else if (canvas->last_event.type == VGFX_EVENT_MOUSE_DOWN) {
-            rt_canvas_update_mouse_from_physical(
-                canvas->gfx_win,
-                canvas->last_event.data.mouse_button.x,
-                canvas->last_event.data.mouse_button.y);
+            rt_canvas_update_mouse_from_physical(canvas->gfx_win,
+                                                 canvas->last_event.data.mouse_button.x,
+                                                 canvas->last_event.data.mouse_button.y);
             rt_mouse_button_down((int64_t)canvas->last_event.data.mouse_button.button);
         } else if (canvas->last_event.type == VGFX_EVENT_MOUSE_UP) {
-            rt_canvas_update_mouse_from_physical(
-                canvas->gfx_win,
-                canvas->last_event.data.mouse_button.x,
-                canvas->last_event.data.mouse_button.y);
+            rt_canvas_update_mouse_from_physical(canvas->gfx_win,
+                                                 canvas->last_event.data.mouse_button.x,
+                                                 canvas->last_event.data.mouse_button.y);
             rt_mouse_button_up((int64_t)canvas->last_event.data.mouse_button.button);
         } else if (canvas->last_event.type == VGFX_EVENT_SCROLL) {
-            rt_canvas_update_mouse_from_physical(
-                canvas->gfx_win, canvas->last_event.data.scroll.x, canvas->last_event.data.scroll.y);
+            rt_canvas_update_mouse_from_physical(canvas->gfx_win,
+                                                 canvas->last_event.data.scroll.x,
+                                                 canvas->last_event.data.scroll.y);
             rt_mouse_update_wheel((double)canvas->last_event.data.scroll.delta_x,
                                   (double)canvas->last_event.data.scroll.delta_y);
         }

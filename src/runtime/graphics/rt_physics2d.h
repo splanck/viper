@@ -4,15 +4,16 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/graphics/rt_physics2d.h
-// Purpose: 2D physics engine for game entities providing AABB rigid-body simulation, impulse-based
-// collision resolution, bitmask collision filtering, and a simple world step loop.
+// Purpose: 2D physics engine for game entities providing AABB/circle rigid-body simulation,
+// impulse-based collision resolution, bitmask collision filtering, and a simple world step loop.
 //
 // Key invariants:
-//   - Bodies are AABB only; no rotational physics.
+//   - Bodies are AABB or circle shapes; no rotational physics.
 //   - A world holds at most PH_MAX_BODIES (256) bodies; exceeding this traps.
 //   - Bodies with mass == 0.0 are static (immovable).
 //   - Collision filtering: bodies collide only when (A.layer & B.mask) != 0 AND (B.layer & A.mask)
 //   != 0.
+//   - Collision layer/mask values are 64-bit bitmasks; the default mask is all bits set.
 //
 // Ownership/Lifetime:
 //   - World objects are GC-managed; body handles are reference-counted.
@@ -41,12 +42,12 @@ extern "C" {
 /// @return Opaque world handle.
 void *rt_physics2d_world_new(double gravity_x, double gravity_y);
 
-/// @brief Step the physics simulation forward.
+/// @brief Step the physics simulation forward. Non-finite and non-positive dt values are no-ops.
 /// @param world World handle.
 /// @param dt Delta time in seconds.
 void rt_physics2d_world_step(void *world, double dt);
 
-/// @brief Add a body to the world.
+/// @brief Add a body to the world. Duplicate adds are ignored; exceeding capacity traps.
 /// @param world World handle.
 /// @param body Body handle.
 void rt_physics2d_world_add(void *world, void *body);
@@ -67,11 +68,30 @@ int64_t rt_physics2d_world_body_count(void *world);
 /// @param gy Vertical gravity.
 void rt_physics2d_world_set_gravity(void *world, double gx, double gy);
 
+/// @brief Number of contacts detected during the most recent world step.
+/// The contact list is cleared at the start of each successful Step().
+int64_t rt_physics2d_world_contact_count(void *world);
+
+/// @brief Body A for a contact from the most recent world step, or NULL if index is invalid.
+void *rt_physics2d_world_contact_body_a(void *world, int64_t index);
+
+/// @brief Body B for a contact from the most recent world step, or NULL if index is invalid.
+void *rt_physics2d_world_contact_body_b(void *world, int64_t index);
+
+/// @brief Contact normal X component from A toward B for the most recent world step.
+double rt_physics2d_world_contact_nx(void *world, int64_t index);
+
+/// @brief Contact normal Y component from A toward B for the most recent world step.
+double rt_physics2d_world_contact_ny(void *world, int64_t index);
+
+/// @brief Contact penetration depth for overlap contacts, 0 for swept contacts.
+double rt_physics2d_world_contact_depth(void *world, int64_t index);
+
 //=========================================================================
 // Rigid Body
 //=========================================================================
 
-/// @brief Create a new rigid body (AABB shape).
+/// @brief Create a new rigid body (AABB shape). Invalid size clamps to 1; invalid mass is static.
 /// @param x Initial X position.
 /// @param y Initial Y position.
 /// @param w Width.
@@ -101,7 +121,7 @@ double rt_physics2d_body_vy(void *body);
 /// @brief Set body position.
 void rt_physics2d_body_set_pos(void *body, double x, double y);
 
-/// @brief Set body velocity.
+/// @brief Set body velocity. Static bodies ignore velocity writes.
 void rt_physics2d_body_set_vel(void *body, double vx, double vy);
 
 /// @brief Apply a force to the body (accumulated until next step).
@@ -110,11 +130,11 @@ void rt_physics2d_body_apply_force(void *body, double fx, double fy);
 /// @brief Apply an impulse (instant velocity change).
 void rt_physics2d_body_apply_impulse(void *body, double ix, double iy);
 
-/// @brief Get/set restitution (bounciness, 0-1).
+/// @brief Get/set restitution (bounciness, clamped to 0-1).
 double rt_physics2d_body_restitution(void *body);
 void rt_physics2d_body_set_restitution(void *body, double r);
 
-/// @brief Get/set friction (0-1).
+/// @brief Get/set friction (clamped to 0-1).
 double rt_physics2d_body_friction(void *body);
 void rt_physics2d_body_set_friction(void *body, double f);
 

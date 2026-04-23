@@ -125,6 +125,11 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
     RT_GRAPHICS_TRAP_RET("Canvas.New: graphics support not compiled in", NULL);
 }
 
+int8_t rt_canvas_is_handle(void *canvas) {
+    (void)canvas;
+    return 0;
+}
+
 /// @brief Stub for `Canvas.Destroy` — would normally release the underlying
 ///        OS window, framebuffer, and event queue.
 ///

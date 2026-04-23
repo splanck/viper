@@ -1,0 +1,27 @@
+// Regression: binding a broad runtime namespace must not make nested class
+// properties shadow Viper.String.Length as an unqualified function.
+module namespace_length_collision;
+
+bind Viper.Game;
+bind Viper.String;
+bind Viper.Terminal;
+
+func start() {
+    var s = "abcdef";
+    if Length(s) != 6 {
+        Say("RESULT: fail string Length resolved incorrectly");
+        return;
+    }
+
+    var g = Grid2D.New(3, 4, 0);
+    if g == null {
+        Say("RESULT: fail grid create");
+        return;
+    }
+    if g.Size != 12 || g.Length != 12 {
+        Say("RESULT: fail grid property access");
+        return;
+    }
+
+    Say("RESULT: ok");
+}

@@ -527,7 +527,8 @@ Lerps a value toward a target each frame using a configurable smoothing factor.
 ## Viper.Game.ButtonGroup
 
 Manages a group of mutually exclusive button IDs (like radio buttons). At most one button
-can be selected at a time. Traps if the button limit is exceeded.
+can be selected at a time. Button IDs are arbitrary integers, including `-1`; use
+`HasSelection()` to distinguish no selection from selecting ID `-1`. Traps if the button limit is exceeded.
 
 **Type:** Instance (obj)
 **Constructor:** `ButtonGroup.New()`

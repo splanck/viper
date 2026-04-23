@@ -11,7 +11,8 @@
 //   - At most one button is selected at any time; selecting a new button deselects the previous.
 //   - Button IDs within a group are unique; duplicate IDs cause assertion failure.
 //   - Maximum group size is RT_BUTTONGROUP_MAX (256) buttons.
-//   - An empty group has no selected button (selected ID is -1).
+//   - An empty group has no selected button. Selected() returns -1 for no selection,
+//     so use HasSelection when -1 is also a registered button ID.
 //
 // Ownership/Lifetime:
 //   - Caller owns the group handle; must destroy with rt_buttongroup_destroy.
@@ -27,6 +28,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define RT_BUTTONGROUP_CLASS_ID INT64_C(-0x51020A)
 
 /// Maximum number of buttons in a group.
 #define RT_BUTTONGROUP_MAX 256
@@ -80,7 +83,8 @@ void rt_buttongroup_clear_selection(rt_buttongroup group);
 
 /// @brief Get the currently selected button.
 /// @param group The button group.
-/// @return Selected button ID, or -1 if no button is selected.
+/// @return Selected button ID, or -1 if no button is selected. Use HasSelection to
+///         distinguish "none" from a selected button whose ID is -1.
 int64_t rt_buttongroup_selected(rt_buttongroup group);
 
 /// @brief Check if a specific button is the currently selected one.

@@ -68,8 +68,19 @@ TEST(AnimState, TransitionChangesClip) {
     EXPECT_EQ(rt_animstate_just_entered(a), 1);
     EXPECT_EQ(rt_animstate_just_exited(a), 1);
 
-    // Transition to same state is no-op
-    EXPECT_EQ(rt_animstate_transition(a, 1), 0);
+    // Transition to same state is a successful no-op that does not relatch flags.
+    rt_animstate_clear_flags(a);
+    EXPECT_EQ(rt_animstate_transition(a, 1), 1);
+    EXPECT_EQ(rt_animstate_just_entered(a), 0);
+    EXPECT_EQ(rt_animstate_just_exited(a), 0);
+}
+
+TEST(AnimState, UpdateWithoutInitialStateDoesNotAdvanceFrames) {
+    void *a = rt_animstate_new();
+    rt_animstate_add_state(a, 0, 0, 3, 1, 1);
+    rt_animstate_update(a);
+    EXPECT_EQ(rt_animstate_frames_in_state(a), 0);
+    EXPECT_EQ(rt_animstate_current_state(a), -1);
 }
 
 TEST(AnimState, UpdateAdvancesFrame) {

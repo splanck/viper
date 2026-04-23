@@ -14,6 +14,7 @@
 
 extern "C" {
 #include "rt_entity.h"
+#include "rt_tilemap.h"
 }
 
 TEST(Entity, CreateAndGetPos) {
@@ -53,6 +54,29 @@ TEST(Entity, MoveWithoutTilemap) {
     EXPECT_EQ(rt_entity_get_y(e), 20000 - 200);    // moved by vy
 }
 
+TEST(Entity, MoveWithTilemapPreservesSubpixelRemainder) {
+    void *tm = rt_tilemap_new(10, 2, 16, 16);
+    void *e = rt_entity_new(0, 0, 8, 8);
+    rt_entity_set_vx(e, 50); // 0.5 px/frame
+    rt_entity_move_and_collide(e, tm, 16);
+    EXPECT_EQ(rt_entity_get_x(e), 50); // not truncated back to 0 px
+    EXPECT_EQ(rt_entity_get_y(e), 0);
+}
+
+TEST(Entity, SweptTileCollisionStopsTunneling) {
+    void *tm = rt_tilemap_new(10, 2, 16, 16);
+    rt_tilemap_set_tile(tm, 2, 0, 1);
+    rt_tilemap_set_collision(tm, 1, RT_TILE_COLLISION_SOLID);
+
+    void *e = rt_entity_new(0, 0, 8, 8);
+    rt_entity_set_vx(e, 8000); // 80 px in one frame
+    rt_entity_move_and_collide(e, tm, 16);
+
+    EXPECT_EQ(rt_entity_get_x(e), 2400); // tile x=32 minus width=8, in centipixels
+    EXPECT_EQ(rt_entity_get_vx(e), 0);
+    EXPECT_TRUE(rt_entity_hit_right(e));
+}
+
 TEST(Entity, HPProperties) {
     void *e = rt_entity_new(0, 0, 10, 10);
     rt_entity_set_hp(e, 5);
@@ -76,6 +100,12 @@ TEST(Entity, OverlapsAABB) {
 
     void *c = rt_entity_new(2000, 2000, 10, 10); // (20,20) — no overlap
     EXPECT_FALSE(rt_entity_overlaps(a, c));
+}
+
+TEST(Entity, NegativeCentipixelsUseFloorPixelsForOverlap) {
+    void *a = rt_entity_new(-50, 0, 1, 1); // -0.5 px floors to pixel -1
+    void *b = rt_entity_new(0, 0, 1, 1);
+    EXPECT_FALSE(rt_entity_overlaps(a, b));
 }
 
 TEST(Entity, NullSafe) {

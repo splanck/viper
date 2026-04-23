@@ -6,14 +6,14 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_physics2d.c
-// Purpose: Simple 2D rigid-body physics engine with AABB collision detection
+// Purpose: Simple 2D rigid-body physics engine with AABB/circle collision detection
 //   and impulse-based collision response. Designed for game use cases: enemies,
 //   platforms, bullets, and other simple rectangular entities. Intentionally
 //   not a general-purpose physics engine — correctness and simplicity are
 //   favoured over feature completeness.
 //
 // Key invariants:
-//   - All bodies are axis-aligned bounding boxes (AABB). No rotational physics.
+//   - Bodies are axis-aligned boxes (AABB) or circles. No rotational physics.
 //   - Integration is symplectic Euler: forces → velocity, then velocity →
 //     position, then collision resolution. Simple and stable for games.
 //   - A body with mass == 0.0 is "static" (immovable). Its inv_mass is 0,
@@ -60,7 +60,163 @@
 // Internal types are in rt_physics2d_internal.h
 
 static int8_t aabb_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *pen);
+static int8_t shape_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *pen);
+static int8_t swept_bounds_pair(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry);
 static void resolve_collision(rt_body_impl *a, rt_body_impl *b, double nx, double ny, double pen);
+
+static void world_record_contact(
+    rt_world_impl *w, rt_body_impl *a, rt_body_impl *b, double nx, double ny, double pen) {
+    if (!w || !a || !b || w->contact_count >= PH_MAX_CONTACTS)
+        return;
+    if (!isfinite(nx) || !isfinite(ny) || !isfinite(pen))
+        return;
+    int32_t idx = w->contact_count++;
+    w->contacts[idx].body_a = a;
+    w->contacts[idx].body_b = b;
+    w->contacts[idx].nx = nx;
+    w->contacts[idx].ny = ny;
+    w->contacts[idx].penetration = pen > 0.0 ? pen : 0.0;
+}
+
+static double finite_or(double value, double fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
+static double positive_or(double value, double fallback) {
+    return (isfinite(value) && value > 0.0) ? value : fallback;
+}
+
+static double clamp01(double value) {
+    if (!isfinite(value))
+        return 0.0;
+    if (value < 0.0)
+        return 0.0;
+    if (value > 1.0)
+        return 1.0;
+    return value;
+}
+
+static double clamp_abs_finite(double value, double fallback, double limit) {
+    if (!isfinite(value))
+        return fallback;
+    if (value > limit)
+        return limit;
+    if (value < -limit)
+        return -limit;
+    return value;
+}
+
+static rt_world_impl *checked_world(void *obj, const char *api) {
+    if (!obj)
+        return NULL;
+    if (!rt_physics2d_is_world_handle(obj)) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (rt_world_impl *)obj;
+}
+
+static rt_body_impl *checked_body(void *obj, const char *api) {
+    if (!obj)
+        return NULL;
+    if (!rt_physics2d_is_body_handle(obj)) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (rt_body_impl *)obj;
+}
+
+static void sanitize_body_state(rt_body_impl *b) {
+    if (!b)
+        return;
+
+    const double max_pos = 1.0e12;
+    const double max_size = 1.0e9;
+    const double max_vel = 1.0e9;
+    const double max_force = 1.0e12;
+
+    double fallback_x = isfinite(b->prev_x) ? b->prev_x : 0.0;
+    double fallback_y = isfinite(b->prev_y) ? b->prev_y : 0.0;
+    b->x = clamp_abs_finite(b->x, fallback_x, max_pos);
+    b->y = clamp_abs_finite(b->y, fallback_y, max_pos);
+    b->prev_x = clamp_abs_finite(b->prev_x, b->x, max_pos);
+    b->prev_y = clamp_abs_finite(b->prev_y, b->y, max_pos);
+    b->w = (isfinite(b->w) && b->w > 0.0) ? (b->w > max_size ? max_size : b->w) : 1.0;
+    b->h = (isfinite(b->h) && b->h > 0.0) ? (b->h > max_size ? max_size : b->h) : 1.0;
+    b->radius =
+        (isfinite(b->radius) && b->radius > 0.0)
+            ? (b->radius > max_size ? max_size : b->radius)
+            : (b->is_circle ? 1.0 : 0.0);
+    b->vx = clamp_abs_finite(b->vx, 0.0, max_vel);
+    b->vy = clamp_abs_finite(b->vy, 0.0, max_vel);
+    b->fx = clamp_abs_finite(b->fx, 0.0, max_force);
+    b->fy = clamp_abs_finite(b->fy, 0.0, max_force);
+    b->mass = (isfinite(b->mass) && b->mass > 0.0) ? b->mass : 0.0;
+    b->inv_mass = (isfinite(b->inv_mass) && b->inv_mass > 0.0) ? b->inv_mass : 0.0;
+    if (b->mass <= 0.0)
+        b->inv_mass = 0.0;
+    b->restitution = clamp01(b->restitution);
+    b->friction = clamp01(b->friction);
+    b->is_circle = b->is_circle ? 1 : 0;
+    if (!b->is_circle)
+        b->radius = 0.0;
+}
+
+static double body_min_x(rt_body_impl *b) {
+    return b->is_circle ? b->x - b->radius : b->x;
+}
+
+static double body_min_y(rt_body_impl *b) {
+    return b->is_circle ? b->y - b->radius : b->y;
+}
+
+static double body_max_x(rt_body_impl *b) {
+    return b->is_circle ? b->x + b->radius : b->x + b->w;
+}
+
+static double body_max_y(rt_body_impl *b) {
+    return b->is_circle ? b->y + b->radius : b->y + b->h;
+}
+
+static double body_prev_min_x(rt_body_impl *b) {
+    return b->is_circle ? b->prev_x - b->radius : b->prev_x;
+}
+
+static double body_prev_min_y(rt_body_impl *b) {
+    return b->is_circle ? b->prev_y - b->radius : b->prev_y;
+}
+
+static double body_prev_max_x(rt_body_impl *b) {
+    return b->is_circle ? b->prev_x + b->radius : b->prev_x + b->w;
+}
+
+static double body_prev_max_y(rt_body_impl *b) {
+    return b->is_circle ? b->prev_y + b->radius : b->prev_y + b->h;
+}
+
+static double body_swept_min_x(rt_body_impl *b) {
+    double now = body_min_x(b);
+    double prev = body_prev_min_x(b);
+    return now < prev ? now : prev;
+}
+
+static double body_swept_min_y(rt_body_impl *b) {
+    double now = body_min_y(b);
+    double prev = body_prev_min_y(b);
+    return now < prev ? now : prev;
+}
+
+static double body_swept_max_x(rt_body_impl *b) {
+    double now = body_max_x(b);
+    double prev = body_prev_max_x(b);
+    return now > prev ? now : prev;
+}
+
+static double body_swept_max_y(rt_body_impl *b) {
+    double now = body_max_y(b);
+    double prev = body_prev_max_y(b);
+    return now > prev ? now : prev;
+}
 
 static void world_release_joint_at(rt_world_impl *w, int32_t joint_index) {
     if (!w || joint_index < 0 || joint_index >= w->joint_count)
@@ -91,7 +247,7 @@ static void world_remove_joints_for_body(rt_world_impl *w, rt_body_impl *body) {
     }
 }
 
-static void maybe_resolve_pair(rt_world_impl *w, int ii, int jj) {
+static void maybe_resolve_pair(rt_world_impl *w, int ii, int jj, double dt) {
     if (!w || ii < 0 || jj < 0 || ii >= w->body_count || jj >= w->body_count)
         return;
 
@@ -103,9 +259,27 @@ static void maybe_resolve_pair(rt_world_impl *w, int ii, int jj) {
     if (!((bi->collision_layer & bj->collision_mask) && (bj->collision_layer & bi->collision_mask)))
         return;
 
-    double nx, ny, pen;
-    if (aabb_overlap(bi, bj, &nx, &ny, &pen))
+    double nx, ny, pen, entry;
+    if (shape_overlap(bi, bj, &nx, &ny, &pen)) {
+        world_record_contact(w, bi, bj, nx, ny, pen);
         resolve_collision(bi, bj, nx, ny, pen);
+    } else if (swept_bounds_pair(bi, bj, &nx, &ny, &entry)) {
+        world_record_contact(w, bi, bj, nx, ny, 0.0);
+        resolve_collision(bi, bj, nx, ny, 0.0);
+        double remaining = dt * (1.0 - entry);
+        if (remaining > 0.0 && isfinite(remaining)) {
+            if (bi->inv_mass > 0.0) {
+                bi->x += bi->vx * remaining;
+                bi->y += bi->vy * remaining;
+            }
+            if (bj->inv_mass > 0.0) {
+                bj->x += bj->vx * remaining;
+                bj->y += bj->vy * remaining;
+            }
+        }
+    }
+    sanitize_body_state(bi);
+    sanitize_body_state(bj);
 }
 
 //=============================================================================
@@ -152,6 +326,190 @@ static int8_t aabb_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double 
     return 1;
 }
 
+static int8_t circle_circle_overlap(
+    rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *pen) {
+    double dx = b->x - a->x;
+    double dy = b->y - a->y;
+    double radii = a->radius + b->radius;
+    double dist_sq = dx * dx + dy * dy;
+
+    if (dist_sq >= radii * radii)
+        return 0;
+
+    if (dist_sq < 1e-12) {
+        *nx = 1.0;
+        *ny = 0.0;
+        *pen = radii;
+        return 1;
+    }
+
+    double dist = sqrt(dist_sq);
+    *nx = dx / dist;
+    *ny = dy / dist;
+    *pen = radii - dist;
+    return 1;
+}
+
+static int8_t circle_aabb_overlap(
+    rt_body_impl *circle, rt_body_impl *rect, double *nx, double *ny, double *pen) {
+    double rx1 = rect->x;
+    double ry1 = rect->y;
+    double rx2 = rect->x + rect->w;
+    double ry2 = rect->y + rect->h;
+    double cx = circle->x;
+    double cy = circle->y;
+    double closest_x = cx < rx1 ? rx1 : (cx > rx2 ? rx2 : cx);
+    double closest_y = cy < ry1 ? ry1 : (cy > ry2 ? ry2 : cy);
+    double dx = closest_x - cx;
+    double dy = closest_y - cy;
+    double dist_sq = dx * dx + dy * dy;
+    double radius = circle->radius;
+
+    if (dist_sq > radius * radius)
+        return 0;
+
+    if (dist_sq > 1e-12) {
+        double dist = sqrt(dist_sq);
+        *nx = dx / dist;
+        *ny = dy / dist;
+        *pen = radius - dist;
+        return 1;
+    }
+
+    /* Circle center is inside the rectangle. Choose the nearest exit side and
+     * use the minimum translation vector that moves the circle fully outside. */
+    double left = cx - rx1;
+    double right = rx2 - cx;
+    double top = cy - ry1;
+    double bottom = ry2 - cy;
+    double best = left;
+    *nx = 1.0;
+    *ny = 0.0;
+
+    if (right < best) {
+        best = right;
+        *nx = -1.0;
+        *ny = 0.0;
+    }
+    if (top < best) {
+        best = top;
+        *nx = 0.0;
+        *ny = 1.0;
+    }
+    if (bottom < best) {
+        best = bottom;
+        *nx = 0.0;
+        *ny = -1.0;
+    }
+    *pen = radius + best;
+    return 1;
+}
+
+static int8_t shape_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *pen) {
+    if (!a || !b || !nx || !ny || !pen)
+        return 0;
+
+    if (a->is_circle && b->is_circle)
+        return circle_circle_overlap(a, b, nx, ny, pen);
+
+    if (a->is_circle && !b->is_circle)
+        return circle_aabb_overlap(a, b, nx, ny, pen);
+
+    if (!a->is_circle && b->is_circle) {
+        int8_t hit = circle_aabb_overlap(b, a, nx, ny, pen);
+        if (hit) {
+            *nx = -*nx;
+            *ny = -*ny;
+        }
+        return hit;
+    }
+
+    return aabb_overlap(a, b, nx, ny, pen);
+}
+
+static int8_t swept_axis(double a_min,
+                         double a_max,
+                         double b_min,
+                         double b_max,
+                         double rel,
+                         double *entry,
+                         double *exit) {
+    if (rel > 0.0) {
+        *entry = (b_min - a_max) / rel;
+        *exit = (b_max - a_min) / rel;
+        return 1;
+    }
+    if (rel < 0.0) {
+        *entry = (b_max - a_min) / rel;
+        *exit = (b_min - a_max) / rel;
+        return 1;
+    }
+
+    if (a_max <= b_min || b_max <= a_min)
+        return 0;
+    *entry = -INFINITY;
+    *exit = INFINITY;
+    return 1;
+}
+
+static int8_t swept_bounds_pair(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry_out) {
+    if (!a || !b || !nx || !ny || !entry_out)
+        return 0;
+
+    double adx = a->x - a->prev_x;
+    double ady = a->y - a->prev_y;
+    double bdx = b->x - b->prev_x;
+    double bdy = b->y - b->prev_y;
+    if (!isfinite(adx) || !isfinite(ady) || !isfinite(bdx) || !isfinite(bdy))
+        return 0;
+
+    double rvx = adx - bdx;
+    double rvy = ady - bdy;
+    if (fabs(rvx) < 1e-12 && fabs(rvy) < 1e-12)
+        return 0;
+
+    double x_entry, x_exit, y_entry, y_exit;
+    if (!swept_axis(body_prev_min_x(a),
+                    body_prev_max_x(a),
+                    body_prev_min_x(b),
+                    body_prev_max_x(b),
+                    rvx,
+                    &x_entry,
+                    &x_exit) ||
+        !swept_axis(body_prev_min_y(a),
+                    body_prev_max_y(a),
+                    body_prev_min_y(b),
+                    body_prev_max_y(b),
+                    rvy,
+                    &y_entry,
+                    &y_exit))
+        return 0;
+
+    double entry = x_entry > y_entry ? x_entry : y_entry;
+    double exit = x_exit < y_exit ? x_exit : y_exit;
+    if (entry > exit || entry < 0.0 || entry > 1.0 || !isfinite(entry))
+        return 0;
+
+    if (x_entry > y_entry) {
+        *nx = rvx > 0.0 ? 1.0 : -1.0;
+        *ny = 0.0;
+    } else {
+        *nx = 0.0;
+        *ny = rvy > 0.0 ? 1.0 : -1.0;
+    }
+
+    if (a->inv_mass > 0.0) {
+        a->x = a->prev_x + adx * entry;
+        a->y = a->prev_y + ady * entry;
+    }
+    if (b->inv_mass > 0.0) {
+        b->x = b->prev_x + bdx * entry;
+        b->y = b->prev_y + bdy * entry;
+    }
+    *entry_out = entry;
+    return 1;
+}
+
 /// @brief Resolves a collision between two bodies using impulse-based dynamics.
 ///
 /// Implements the standard game-physics collision response algorithm:
@@ -177,10 +535,13 @@ static int8_t aabb_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double 
 /// @param ny  Contact normal Y (from A toward B, magnitude 1).
 /// @param pen Penetration depth along the contact normal.
 static void resolve_collision(rt_body_impl *a, rt_body_impl *b, double nx, double ny, double pen) {
-    double rvx, rvy, vel_along_n, e, j, total_inv, correction;
+    double rvx, rvy, vel_along_n, total_inv, correction;
 
     /* Both static — neither body can move, skip entirely */
     if (a->inv_mass == 0.0 && b->inv_mass == 0.0)
+        return;
+    total_inv = a->inv_mass + b->inv_mass;
+    if (total_inv <= 0.0 || !isfinite(total_inv))
         return;
 
     /* Relative velocity of B w.r.t. A along all axes */
@@ -190,50 +551,50 @@ static void resolve_collision(rt_body_impl *a, rt_body_impl *b, double nx, doubl
     /* Project relative velocity onto the contact normal */
     vel_along_n = rvx * nx + rvy * ny;
 
-    /* If bodies are separating (positive projection) do nothing — applying an
-     * impulse to separating bodies would pull them back together */
-    if (vel_along_n > 0.0)
-        return;
+    if (vel_along_n <= 0.0 && isfinite(vel_along_n)) {
+        double e, j;
 
-    /* Use the less elastic material's coefficient so a rubber ball bouncing on
-     * concrete uses the concrete's zero restitution, not the ball's high one */
-    e = a->restitution < b->restitution ? a->restitution : b->restitution;
+        /* Use the less elastic material's coefficient so a rubber ball bouncing on
+         * concrete uses the concrete's zero restitution, not the ball's high one */
+        e = a->restitution < b->restitution ? a->restitution : b->restitution;
 
-    /* Scalar impulse magnitude. Derivation: we want the post-collision relative
-     * velocity along n to equal -e * vel_along_n (restitution). Solving for j
-     * gives: j = -(1+e)*vel_along_n / (1/mA + 1/mB) */
-    total_inv = a->inv_mass + b->inv_mass;
-    j = -(1.0 + e) * vel_along_n / total_inv;
+        /* Scalar impulse magnitude. Derivation: we want the post-collision relative
+         * velocity along n to equal -e * vel_along_n (restitution). Solving for j
+         * gives: j = -(1+e)*vel_along_n / (1/mA + 1/mB) */
+        j = -(1.0 + e) * vel_along_n / total_inv;
 
-    /* Apply the normal impulse to each body proportional to its inverse mass */
-    a->vx -= j * a->inv_mass * nx;
-    a->vy -= j * a->inv_mass * ny;
-    b->vx += j * b->inv_mass * nx;
-    b->vy += j * b->inv_mass * ny;
+        /* Apply the normal impulse to each body proportional to its inverse mass */
+        a->vx -= j * a->inv_mass * nx;
+        a->vy -= j * a->inv_mass * ny;
+        b->vx += j * b->inv_mass * nx;
+        b->vy += j * b->inv_mass * ny;
 
-    /* Friction impulse: computed in the tangent direction (perpendicular to n).
-     * Clamped to Coulomb's law (|jt| <= mu * |j|) to prevent friction from
-     * exceeding the normal force. */
-    {
-        double tx = rvx - vel_along_n * nx;
-        double ty = rvy - vel_along_n * ny;
-        double t_len = sqrt(tx * tx + ty * ty);
-        if (t_len > 1e-9) {
-            double mu, jt, vel_along_t;
-            tx /= t_len; /* Normalise tangent */
-            ty /= t_len;
-            vel_along_t = rvx * tx + rvy * ty;
-            mu = (a->friction + b->friction) * 0.5; /* Average both surfaces */
-            jt = -vel_along_t / total_inv;
-            /* Clamp to Coulomb friction cone */
-            if (jt > j * mu)
-                jt = j * mu;
-            else if (jt < -j * mu)
-                jt = -j * mu;
-            a->vx -= jt * a->inv_mass * tx;
-            a->vy -= jt * a->inv_mass * ty;
-            b->vx += jt * b->inv_mass * tx;
-            b->vy += jt * b->inv_mass * ty;
+        /* Friction impulse: computed from the post-normal-impulse relative
+         * velocity in the tangent direction. */
+        rvx = b->vx - a->vx;
+        rvy = b->vy - a->vy;
+        {
+            double vel_n_after = rvx * nx + rvy * ny;
+            double tx = rvx - vel_n_after * nx;
+            double ty = rvy - vel_n_after * ny;
+            double t_len = sqrt(tx * tx + ty * ty);
+            if (t_len > 1e-9) {
+                double mu, jt, vel_along_t;
+                tx /= t_len; /* Normalise tangent */
+                ty /= t_len;
+                vel_along_t = rvx * tx + rvy * ty;
+                mu = (a->friction + b->friction) * 0.5; /* Average both surfaces */
+                jt = -vel_along_t / total_inv;
+                /* Clamp to Coulomb friction cone */
+                if (jt > j * mu)
+                    jt = j * mu;
+                else if (jt < -j * mu)
+                    jt = -j * mu;
+                a->vx -= jt * a->inv_mass * tx;
+                a->vy -= jt * a->inv_mass * ty;
+                b->vx += jt * b->inv_mass * tx;
+                b->vy += jt * b->inv_mass * ty;
+            }
         }
     }
 
@@ -285,18 +646,21 @@ static void world_finalizer(void *obj) {
 //=============================================================================
 
 void *rt_physics2d_world_new(double gravity_x, double gravity_y) {
-    rt_world_impl *w = (rt_world_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_world_impl));
+    rt_world_impl *w =
+        (rt_world_impl *)rt_obj_new_i64(RT_PHYSICS2D_WORLD_CLASS_ID, (int64_t)sizeof(rt_world_impl));
     if (!w) {
         rt_trap("Physics2D.World: allocation failed");
         return NULL;
     }
     w->vptr = NULL;
-    w->gravity_x = gravity_x;
-    w->gravity_y = gravity_y;
+    w->gravity_x = finite_or(gravity_x, 0.0);
+    w->gravity_y = finite_or(gravity_y, 0.0);
     w->body_count = 0;
     w->joint_count = 0;
+    w->contact_count = 0;
     memset(w->bodies, 0, sizeof(w->bodies));
     memset(w->joints, 0, sizeof(w->joints));
+    memset(w->contacts, 0, sizeof(w->contacts));
     rt_obj_set_finalizer(w, world_finalizer);
     return w;
 }
@@ -304,19 +668,24 @@ void *rt_physics2d_world_new(double gravity_x, double gravity_y) {
 /// @brief Advance the physics world by `dt` seconds. Stages: (1) apply gravity + accumulated
 /// forces to dynamic body velocities (symplectic Euler) and reset force accumulators; (2)
 /// integrate velocity → position; (2.5) iteratively solve joint constraints; (3) broad-phase
-/// 8×8 grid + narrow-phase AABB overlap collision detection with bit-matrix de-dup, then resolve
-/// each collision per the bodies' restitution/friction/collision filter. No-op for dt ≤ 0.
+/// 8×8 grid + narrow-phase shape overlap/CCD detection with bit-matrix de-dup, then resolve each
+/// collision per the bodies' restitution/friction/collision filter. No-op for invalid dt or dt ≤ 0.
 void rt_physics2d_world_step(void *obj, double dt) {
     rt_world_impl *w;
     int64_t i;
-    if (!obj || dt <= 0.0)
+    if (!obj || dt <= 0.0 || !isfinite(dt))
         return;
-    w = (rt_world_impl *)obj;
+    w = checked_world(obj, "Physics2D.World.Step: expected Physics2D.World");
+    if (!w)
+        return;
+    w->contact_count = 0;
+    memset(w->contacts, 0, sizeof(w->contacts));
 
     for (i = 0; i < w->body_count; i++) {
         rt_body_impl *b = w->bodies[i];
         if (!b)
             continue;
+        sanitize_body_state(b);
         b->prev_x = b->x;
         b->prev_y = b->y;
     }
@@ -327,37 +696,54 @@ void rt_physics2d_world_step(void *obj, double dt) {
      * multiple Step() calls within the same frame if the caller uses sub-steps. */
     for (i = 0; i < w->body_count; i++) {
         rt_body_impl *b = w->bodies[i];
-        if (!b || b->inv_mass == 0.0)
+        if (!b)
+            continue;
+        if (b->inv_mass == 0.0) {
+            b->fx = 0.0;
+            b->fy = 0.0;
             continue; /* Skip static bodies */
+        }
         b->vx += (b->fx * b->inv_mass + w->gravity_x) * dt;
         b->vy += (b->fy * b->inv_mass + w->gravity_y) * dt;
         b->fx = 0.0;
         b->fy = 0.0;
+        sanitize_body_state(b);
+    }
+
+    if (w->joint_count > 0) {
+        rt_physics2d_solve_spring_joints(obj, dt);
+        for (i = 0; i < w->body_count; i++)
+            sanitize_body_state(w->bodies[i]);
     }
 
     /* Step 2: Integrate velocity → position for each dynamic body.
      * Done in a separate pass from Step 1 so all velocity changes from forces
-     * are committed before any position updates occur. */
+     * and springs are committed before any position updates occur. */
     for (i = 0; i < w->body_count; i++) {
         rt_body_impl *b = w->bodies[i];
         if (!b || b->inv_mass == 0.0)
             continue;
         b->x += b->vx * dt;
         b->y += b->vy * dt;
+        sanitize_body_state(b);
     }
 
     /* Step 2.5: Solve joint constraints (iterative relaxation).
      * Joints are solved after velocity integration but before collision
      * detection so that constrained bodies are in valid positions before
      * the broad/narrow phase runs. */
-    if (w->joint_count > 0)
-        rt_physics2d_solve_joints(obj, dt);
+    if (w->joint_count > 0) {
+        rt_physics2d_solve_position_joints(obj, dt);
+        for (i = 0; i < w->body_count; i++)
+            sanitize_body_state(w->bodies[i]);
+    }
 
     /* Step 3: Broad-phase + narrow-phase collision detection and resolution.
      *
      * Broad phase: uniform 8×8 grid. The grid is recomputed from scratch each
-     * step. The world AABB is computed first, then divided into BPG_DIM×BPG_DIM
-     * cells. Each body is registered in every cell its AABB overlaps.
+     * step. The world swept AABB is computed first, then divided into
+     * BPG_DIM×BPG_DIM cells. Each body is registered in every cell its swept
+     * bounds overlap.
      *
      * All grid arrays are stack-local, making this function safe to call on
      * concurrent worlds from separate threads with no data sharing.
@@ -368,7 +754,7 @@ void rt_physics2d_world_step(void *obj, double dt) {
      * collision correctness is preserved in dense scenes.
      *
      * Narrow phase: for each pair of bodies that share a grid cell, test with
-     * aabb_overlap() and call resolve_collision() if they overlap.
+     * shape_overlap() or swept AABB and call resolve_collision() if they collide.
      *
      * De-duplication: a 256×256 bit-matrix (pair_checked) ensures each pair
      * (i, j) is resolved at most once per step, even when the two bodies share
@@ -380,20 +766,24 @@ void rt_physics2d_world_step(void *obj, double dt) {
 #define BPG_CELL_MAX 32 /* Maximum body indices stored per grid cell */
 
     if (w->body_count >= 2) {
-        /* --- Step 3a: Compute the world AABB that tightly encloses all bodies --- */
+        /* --- Step 3a: Compute the world swept AABB that encloses all bodies --- */
         double wx0 = 1e18, wy0 = 1e18, wx1 = -1e18, wy1 = -1e18;
         for (i = 0; i < w->body_count; i++) {
             rt_body_impl *b = w->bodies[i];
             if (!b)
                 continue;
-            if (b->x < wx0)
-                wx0 = b->x;
-            if (b->y < wy0)
-                wy0 = b->y;
-            if (b->x + b->w > wx1)
-                wx1 = b->x + b->w;
-            if (b->y + b->h > wy1)
-                wy1 = b->y + b->h;
+            double bx0 = body_swept_min_x(b);
+            double by0 = body_swept_min_y(b);
+            double bx1 = body_swept_max_x(b);
+            double by1 = body_swept_max_y(b);
+            if (bx0 < wx0)
+                wx0 = bx0;
+            if (by0 < wy0)
+                wy0 = by0;
+            if (bx1 > wx1)
+                wx1 = bx1;
+            if (by1 > wy1)
+                wy1 = by1;
         }
         /* Guard: ensure minimum cell size of 1 so division below never divides
          * by zero (can happen when all bodies occupy the exact same point). */
@@ -405,9 +795,9 @@ void rt_physics2d_world_step(void *obj, double dt) {
         double cell_h = (wy1 - wy0) / BPG_DIM;
 
         /* --- Step 3b: Populate the broad-phase grid (stack-local) ---
-         * Each body is inserted into every cell its AABB touches. A body that
-         * straddles a cell boundary appears in both cells so it will be paired
-         * with neighbours on either side. */
+         * Each body is inserted into every cell its swept bounds touch. A body
+         * that straddles a cell boundary appears in both cells so it will be
+         * paired with neighbours on either side. */
         uint8_t grid_bodies[BPG_DIM * BPG_DIM][BPG_CELL_MAX];
         int grid_count[BPG_DIM * BPG_DIM];
         int grid_overflow = 0;
@@ -417,22 +807,26 @@ void rt_physics2d_world_step(void *obj, double dt) {
             rt_body_impl *b = w->bodies[i];
             if (!b)
                 continue;
-            int cx0 = (int)((b->x - wx0) / cell_w);
+            double bx0 = body_swept_min_x(b);
+            double by0 = body_swept_min_y(b);
+            double bx1 = body_swept_max_x(b);
+            double by1 = body_swept_max_y(b);
+            int cx0 = (int)((bx0 - wx0) / cell_w);
             if (cx0 < 0)
                 cx0 = 0;
             if (cx0 >= BPG_DIM)
                 cx0 = BPG_DIM - 1;
-            int cy0 = (int)((b->y - wy0) / cell_h);
+            int cy0 = (int)((by0 - wy0) / cell_h);
             if (cy0 < 0)
                 cy0 = 0;
             if (cy0 >= BPG_DIM)
                 cy0 = BPG_DIM - 1;
-            int cx1 = (int)((b->x + b->w - wx0) / cell_w);
+            int cx1 = (int)((bx1 - wx0) / cell_w);
             if (cx1 < 0)
                 cx1 = 0;
             if (cx1 >= BPG_DIM)
                 cx1 = BPG_DIM - 1;
-            int cy1 = (int)((b->y + b->h - wy0) / cell_h);
+            int cy1 = (int)((by1 - wy0) / cell_h);
             if (cy1 < 0)
                 cy1 = 0;
             if (cy1 >= BPG_DIM)
@@ -454,7 +848,7 @@ void rt_physics2d_world_step(void *obj, double dt) {
         if (grid_overflow) {
             for (int ii = 0; ii < w->body_count; ii++) {
                 for (int jj = ii + 1; jj < w->body_count; jj++)
-                    maybe_resolve_pair(w, ii, jj);
+                    maybe_resolve_pair(w, ii, jj, dt);
             }
         } else {
             /* --- Step 3c: Narrow phase — test each cell's candidate pairs ---
@@ -479,7 +873,7 @@ void rt_physics2d_world_step(void *obj, double dt) {
                         if (pair_checked[bit >> 3] & (uint8_t)(1u << (bit & 7)))
                             continue;
                         pair_checked[bit >> 3] |= (uint8_t)(1u << (bit & 7));
-                        maybe_resolve_pair(w, ii, jj);
+                        maybe_resolve_pair(w, ii, jj, dt);
                     }
                 }
             }
@@ -496,7 +890,18 @@ void rt_physics2d_world_add(void *obj, void *body) {
     rt_world_impl *w;
     if (!obj || !body)
         return;
-    w = (rt_world_impl *)obj;
+    w = checked_world(obj, "Physics2D.World.Add: expected Physics2D.World");
+    if (!w)
+        return;
+    if (!rt_physics2d_is_body_handle(body)) {
+        rt_trap("Physics2D.World.Add: expected Physics2D.Body");
+        return;
+    }
+    sanitize_body_state((rt_body_impl *)body);
+    for (int64_t i = 0; i < w->body_count; i++) {
+        if (w->bodies[i] == (rt_body_impl *)body)
+            return;
+    }
     if (w->body_count >= PH_MAX_BODIES) {
         rt_trap("Physics2D.World.Add: body limit exceeded (max " RT_PH_MAX_BODIES_STR
                 "); increase PH_MAX_BODIES and recompile");
@@ -513,7 +918,13 @@ void rt_physics2d_world_remove(void *obj, void *body) {
     int64_t i;
     if (!obj || !body)
         return;
-    w = (rt_world_impl *)obj;
+    w = checked_world(obj, "Physics2D.World.Remove: expected Physics2D.World");
+    if (!w)
+        return;
+    if (!rt_physics2d_is_body_handle(body)) {
+        rt_trap("Physics2D.World.Remove: expected Physics2D.Body");
+        return;
+    }
     for (i = 0; i < w->body_count; i++) {
         if (w->bodies[i] == (rt_body_impl *)body) {
             world_remove_joints_for_body(w, w->bodies[i]);
@@ -532,15 +943,55 @@ void rt_physics2d_world_remove(void *obj, void *body) {
 int64_t rt_physics2d_world_body_count(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_world_impl *)obj)->body_count;
+    rt_world_impl *w = checked_world(obj, "Physics2D.World.BodyCount: expected Physics2D.World");
+    return w ? w->body_count : 0;
 }
 
 /// @brief Set world gravity in world-units per second² (typical: gx=0, gy=9.8 for downward grav).
 void rt_physics2d_world_set_gravity(void *obj, double gx, double gy) {
     if (!obj)
         return;
-    ((rt_world_impl *)obj)->gravity_x = gx;
-    ((rt_world_impl *)obj)->gravity_y = gy;
+    rt_world_impl *w = checked_world(obj, "Physics2D.World.SetGravity: expected Physics2D.World");
+    if (!w)
+        return;
+    w->gravity_x = finite_or(gx, 0.0);
+    w->gravity_y = finite_or(gy, 0.0);
+}
+
+int64_t rt_physics2d_world_contact_count(void *obj) {
+    if (!obj)
+        return 0;
+    rt_world_impl *w = checked_world(obj, "Physics2D.World.ContactCount: expected Physics2D.World");
+    return w ? w->contact_count : 0;
+}
+
+static int8_t checked_contact(rt_world_impl *w, int64_t index) {
+    return w && index >= 0 && index < w->contact_count;
+}
+
+void *rt_physics2d_world_contact_body_a(void *obj, int64_t index) {
+    rt_world_impl *w = checked_world(obj, "Physics2D.World.ContactBodyA: expected Physics2D.World");
+    return checked_contact(w, index) ? w->contacts[index].body_a : NULL;
+}
+
+void *rt_physics2d_world_contact_body_b(void *obj, int64_t index) {
+    rt_world_impl *w = checked_world(obj, "Physics2D.World.ContactBodyB: expected Physics2D.World");
+    return checked_contact(w, index) ? w->contacts[index].body_b : NULL;
+}
+
+double rt_physics2d_world_contact_nx(void *obj, int64_t index) {
+    rt_world_impl *w = checked_world(obj, "Physics2D.World.ContactNX: expected Physics2D.World");
+    return checked_contact(w, index) ? w->contacts[index].nx : 0.0;
+}
+
+double rt_physics2d_world_contact_ny(void *obj, int64_t index) {
+    rt_world_impl *w = checked_world(obj, "Physics2D.World.ContactNY: expected Physics2D.World");
+    return checked_contact(w, index) ? w->contacts[index].ny : 0.0;
+}
+
+double rt_physics2d_world_contact_depth(void *obj, int64_t index) {
+    rt_world_impl *w = checked_world(obj, "Physics2D.World.ContactDepth: expected Physics2D.World");
+    return checked_contact(w, index) ? w->contacts[index].penetration : 0.0;
 }
 
 //=============================================================================
@@ -549,14 +1000,20 @@ void rt_physics2d_world_set_gravity(void *obj, double gx, double gy) {
 
 /// @brief Construct a 2D rigid body with bottom-left position (x, y), size (w, h), and `mass`.
 /// `mass <= 0` ⇒ static (immovable, infinite mass). Defaults: restitution 0.5 (moderately bouncy),
-/// friction 0.3, collision_layer 1, collision_mask 0xFFFFFFFF (collides with all 32 layers).
+/// friction 0.3, collision_layer 1, collision_mask -1 (collides with all 64 layers).
 void *rt_physics2d_body_new(double x, double y, double w, double h, double mass) {
-    rt_body_impl *b = (rt_body_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_body_impl));
+    rt_body_impl *b =
+        (rt_body_impl *)rt_obj_new_i64(RT_PHYSICS2D_BODY_CLASS_ID, (int64_t)sizeof(rt_body_impl));
     if (!b) {
         rt_trap("Physics2D.Body: allocation failed");
         return NULL;
     }
     b->vptr = NULL;
+    x = finite_or(x, 0.0);
+    y = finite_or(y, 0.0);
+    w = positive_or(w, 1.0);
+    h = positive_or(h, 1.0);
+    mass = (isfinite(mass) && mass > 0.0) ? mass : 0.0;
     b->x = x;
     b->y = y;
     b->prev_x = x;
@@ -572,7 +1029,7 @@ void *rt_physics2d_body_new(double x, double y, double w, double h, double mass)
     b->restitution = 0.5;           /* Moderately bouncy by default */
     b->friction = 0.3;              /* Moderate friction by default */
     b->collision_layer = 1;         /* Default: layer 0, bit 0 set */
-    b->collision_mask = 0xFFFFFFFF; /* Default: collide with all 32 layers */
+    b->collision_mask = INT64_C(-1); /* Default: collide with all 64 layers */
     b->radius = 0.0;
     b->is_circle = 0;
     return b;
@@ -583,40 +1040,48 @@ void *rt_physics2d_body_new(double x, double y, double w, double h, double mass)
 
 /// @brief Bottom-left X position in world units.
 double rt_physics2d_body_x(void *obj) {
-    return obj ? ((rt_body_impl *)obj)->x : 0.0;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.X: expected Physics2D.Body");
+    return b ? b->x : 0.0;
 }
 
 /// @brief Bottom-left Y position in world units.
 double rt_physics2d_body_y(void *obj) {
-    return obj ? ((rt_body_impl *)obj)->y : 0.0;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.Y: expected Physics2D.Body");
+    return b ? b->y : 0.0;
 }
 
 double rt_physics2d_body_prev_x(void *obj) {
-    return obj ? ((rt_body_impl *)obj)->prev_x : 0.0;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.PrevX: expected Physics2D.Body");
+    return b ? b->prev_x : 0.0;
 }
 
 double rt_physics2d_body_prev_y(void *obj) {
-    return obj ? ((rt_body_impl *)obj)->prev_y : 0.0;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.PrevY: expected Physics2D.Body");
+    return b ? b->prev_y : 0.0;
 }
 
 /// @brief AABB width in world units.
 double rt_physics2d_body_w(void *obj) {
-    return obj ? ((rt_body_impl *)obj)->w : 0.0;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.Width: expected Physics2D.Body");
+    return b ? b->w : 0.0;
 }
 
 /// @brief AABB height in world units.
 double rt_physics2d_body_h(void *obj) {
-    return obj ? ((rt_body_impl *)obj)->h : 0.0;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.Height: expected Physics2D.Body");
+    return b ? b->h : 0.0;
 }
 
 /// @brief Linear X-velocity in world units per second.
 double rt_physics2d_body_vx(void *obj) {
-    return obj ? ((rt_body_impl *)obj)->vx : 0.0;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.VX: expected Physics2D.Body");
+    return b ? b->vx : 0.0;
 }
 
 /// @brief Linear Y-velocity in world units per second.
 double rt_physics2d_body_vy(void *obj) {
-    return obj ? ((rt_body_impl *)obj)->vy : 0.0;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.VY: expected Physics2D.Body");
+    return b ? b->vy : 0.0;
 }
 
 /// @brief Teleport the body to (x, y) world coordinates. Bypasses collision (the next `_step`
@@ -624,7 +1089,11 @@ double rt_physics2d_body_vy(void *obj) {
 void rt_physics2d_body_set_pos(void *obj, double x, double y) {
     if (!obj)
         return;
-    rt_body_impl *body = (rt_body_impl *)obj;
+    if (!isfinite(x) || !isfinite(y))
+        return;
+    rt_body_impl *body = checked_body(obj, "Physics2D.Body.SetPos: expected Physics2D.Body");
+    if (!body)
+        return;
     body->x = x;
     body->y = y;
     body->prev_x = x;
@@ -636,8 +1105,19 @@ void rt_physics2d_body_set_pos(void *obj, double x, double y) {
 void rt_physics2d_body_set_vel(void *obj, double vx, double vy) {
     if (!obj)
         return;
-    ((rt_body_impl *)obj)->vx = vx;
-    ((rt_body_impl *)obj)->vy = vy;
+    if (!isfinite(vx) || !isfinite(vy))
+        return;
+    rt_body_impl *body = checked_body(obj, "Physics2D.Body.SetVel: expected Physics2D.Body");
+    if (!body)
+        return;
+    if (body->inv_mass == 0.0) {
+        body->vx = 0.0;
+        body->vy = 0.0;
+        return;
+    }
+    body->vx = vx;
+    body->vy = vy;
+    sanitize_body_state(body);
 }
 
 /// @brief Add (fx, fy) to the body's accumulated force vector. Forces are integrated and
@@ -645,10 +1125,18 @@ void rt_physics2d_body_set_vel(void *obj, double vx, double vy) {
 void rt_physics2d_body_apply_force(void *obj, double fx, double fy) {
     if (!obj)
         return;
+    if (!isfinite(fx) || !isfinite(fy))
+        return;
+    rt_body_impl *body = checked_body(obj, "Physics2D.Body.ApplyForce: expected Physics2D.Body");
+    if (!body)
+        return;
+    if (body->inv_mass == 0.0)
+        return;
     /* Forces accumulate until the next Step(); they are additive so multiple
      * ApplyForce calls in the same frame combine correctly. */
-    ((rt_body_impl *)obj)->fx += fx;
-    ((rt_body_impl *)obj)->fy += fy;
+    body->fx += fx;
+    body->fy += fy;
+    sanitize_body_state(body);
 }
 
 /// @brief Apply an instantaneous velocity change of (ix, iy) * inv_mass. Use for jumps,
@@ -658,69 +1146,84 @@ void rt_physics2d_body_apply_impulse(void *obj, double ix, double iy) {
     rt_body_impl *b;
     if (!obj)
         return;
-    b = (rt_body_impl *)obj;
+    if (!isfinite(ix) || !isfinite(iy))
+        return;
+    b = checked_body(obj, "Physics2D.Body.ApplyImpulse: expected Physics2D.Body");
+    if (!b)
+        return;
     if (b->inv_mass == 0.0)
         return; /* Static bodies cannot be moved by impulses */
     /* An impulse is an instantaneous velocity change: Δv = impulse / mass,
      * equivalently: Δv = impulse * inv_mass. */
     b->vx += ix * b->inv_mass;
     b->vy += iy * b->inv_mass;
+    sanitize_body_state(b);
 }
 
 /// @brief Read the body's bounciness coefficient ([0, 1] typical).
 double rt_physics2d_body_restitution(void *obj) {
-    return obj ? ((rt_body_impl *)obj)->restitution : 0.0;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.Restitution: expected Physics2D.Body");
+    return b ? b->restitution : 0.0;
 }
 
 /// @brief Set bounciness: 0 = no bounce, 1 = perfectly elastic. Pair-wise restitution averages
 /// both bodies' values during collision response.
 void rt_physics2d_body_set_restitution(void *obj, double r) {
-    if (obj)
-        ((rt_body_impl *)obj)->restitution = r;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.Restitution.set: expected Physics2D.Body");
+    if (b)
+        b->restitution = clamp01(r);
 }
 
 /// @brief Read the body's friction coefficient ([0, 1] typical).
 double rt_physics2d_body_friction(void *obj) {
-    return obj ? ((rt_body_impl *)obj)->friction : 0.0;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.Friction: expected Physics2D.Body");
+    return b ? b->friction : 0.0;
 }
 
 /// @brief Set friction: 0 = ice, 1 = sandpaper. Applied as a tangential damping during contact.
 void rt_physics2d_body_set_friction(void *obj, double f) {
-    if (obj)
-        ((rt_body_impl *)obj)->friction = f;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.Friction.set: expected Physics2D.Body");
+    if (b)
+        b->friction = clamp01(f);
 }
 
 /// @brief Returns 1 if the body is static (mass=0, immovable). Static bodies skip integration.
 int8_t rt_physics2d_body_is_static(void *obj) {
     /* A body is static when its inverse-mass is zero (mass == 0 at creation) */
-    return (obj && ((rt_body_impl *)obj)->inv_mass == 0.0) ? 1 : 0;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.IsStatic: expected Physics2D.Body");
+    return (b && b->inv_mass == 0.0) ? 1 : 0;
 }
 
 /// @brief Read the body's mass (0 if static or NULL).
 double rt_physics2d_body_mass(void *obj) {
-    return obj ? ((rt_body_impl *)obj)->mass : 0.0;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.Mass: expected Physics2D.Body");
+    return b ? b->mass : 0.0;
 }
 
 /// @brief Read the body's collision-layer bitmask (which layers it belongs to).
 int64_t rt_physics2d_body_collision_layer(void *obj) {
-    return obj ? ((rt_body_impl *)obj)->collision_layer : 0;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.CollisionLayer: expected Physics2D.Body");
+    return b ? b->collision_layer : 0;
 }
 
 /// @brief Set the collision-layer bitmask. Combined with the *other* body's collision_mask
 /// during overlap tests — only pairs where each body's layer matches the other's mask collide.
 void rt_physics2d_body_set_collision_layer(void *obj, int64_t layer) {
-    if (obj)
-        ((rt_body_impl *)obj)->collision_layer = layer;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.CollisionLayer.set: expected Physics2D.Body");
+    if (b)
+        b->collision_layer = layer;
 }
 
 /// @brief Read the body's collision-mask bitmask (which layers it tests against).
 int64_t rt_physics2d_body_collision_mask(void *obj) {
-    return obj ? ((rt_body_impl *)obj)->collision_mask : 0;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.CollisionMask: expected Physics2D.Body");
+    return b ? b->collision_mask : 0;
 }
 
 /// @brief Set the collision-mask. Each bit corresponds to a layer this body collides with.
-/// Default 0xFFFFFFFF = collides with all 32 layers. Use 0 to make the body collision-free.
+/// Default -1 = collides with all 64 layers. Use 0 to make the body collision-free.
 void rt_physics2d_body_set_collision_mask(void *obj, int64_t mask) {
-    if (obj)
-        ((rt_body_impl *)obj)->collision_mask = mask;
+    rt_body_impl *b = checked_body(obj, "Physics2D.Body.CollisionMask.set: expected Physics2D.Body");
+    if (b)
+        b->collision_mask = mask;
 }

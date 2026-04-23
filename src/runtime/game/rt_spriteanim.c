@@ -39,7 +39,10 @@
 
 #include "rt_spriteanim.h"
 #include "rt_object.h"
+#include "rt_trap.h"
 
+#include <limits.h>
+#include <math.h>
 #include <stdlib.h>
 
 /// Internal structure for SpriteAnimation.
@@ -61,6 +64,24 @@ struct rt_spriteanim_impl {
     int8_t direction;     ///< 1 = forward, -1 = backward (for pingpong).
     int8_t frame_changed; ///< 1 if frame changed this update.
 };
+
+static rt_spriteanim checked_spriteanim(rt_spriteanim anim, const char *api) {
+    if (!anim)
+        return NULL;
+    if (rt_obj_class_id(anim) != RT_SPRITEANIM_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return anim;
+}
+
+static int64_t spriteanim_percent_i64(int64_t value, int64_t total) {
+    if (value <= 0 || total <= 0)
+        return 0;
+    long double scaled = ((long double)value * 100.0L) / (long double)total;
+    int64_t pct = scaled >= (long double)INT64_MAX ? INT64_MAX : (int64_t)scaled;
+    return pct > 100 ? 100 : pct;
+}
 
 static int8_t rt_spriteanim_advance_one_frame(rt_spriteanim anim) {
     anim->current_frame += anim->direction;
@@ -107,8 +128,8 @@ static int8_t rt_spriteanim_advance_one_frame(rt_spriteanim anim) {
 
 /// @brief Create a new spriteanim object.
 rt_spriteanim rt_spriteanim_new(void) {
-    struct rt_spriteanim_impl *anim =
-        (struct rt_spriteanim_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_spriteanim_impl));
+    struct rt_spriteanim_impl *anim = (struct rt_spriteanim_impl *)rt_obj_new_i64(
+        RT_SPRITEANIM_CLASS_ID, (int64_t)sizeof(struct rt_spriteanim_impl));
     if (!anim)
         return NULL;
 
@@ -134,6 +155,7 @@ rt_spriteanim rt_spriteanim_new(void) {
 
 /// @brief Release resources and destroy the spriteanim.
 void rt_spriteanim_destroy(rt_spriteanim anim) {
+    anim = checked_spriteanim(anim, "SpriteAnimation.Destroy: expected Viper.Game.SpriteAnimation");
     (void)anim;
 }
 
@@ -141,6 +163,7 @@ void rt_spriteanim_setup(rt_spriteanim anim,
                          int64_t start_frame,
                          int64_t end_frame,
                          int64_t frame_duration) {
+    anim = checked_spriteanim(anim, "SpriteAnimation.Setup: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return;
 
@@ -162,6 +185,7 @@ void rt_spriteanim_setup(rt_spriteanim anim,
 
 /// @brief Enable or disable looping; when enabled, the animation restarts after the last frame.
 void rt_spriteanim_set_loop(rt_spriteanim anim, int8_t loop) {
+    anim = checked_spriteanim(anim, "SpriteAnimation.SetLoop: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return;
     anim->loop = loop ? 1 : 0;
@@ -169,6 +193,8 @@ void rt_spriteanim_set_loop(rt_spriteanim anim, int8_t loop) {
 
 /// @brief Enable or disable ping-pong mode (forward then reverse, then forward again).
 void rt_spriteanim_set_pingpong(rt_spriteanim anim, int8_t pingpong) {
+    anim = checked_spriteanim(anim,
+                              "SpriteAnimation.SetPingPong: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return;
     anim->pingpong = pingpong ? 1 : 0;
@@ -176,16 +202,20 @@ void rt_spriteanim_set_pingpong(rt_spriteanim anim, int8_t pingpong) {
 
 /// @brief Return whether looping is enabled for this animation.
 int8_t rt_spriteanim_loop(rt_spriteanim anim) {
+    anim = checked_spriteanim(anim, "SpriteAnimation.Loop: expected Viper.Game.SpriteAnimation");
     return anim ? anim->loop : 0;
 }
 
 /// @brief Return whether ping-pong mode is enabled for this animation.
 int8_t rt_spriteanim_pingpong(rt_spriteanim anim) {
+    anim =
+        checked_spriteanim(anim, "SpriteAnimation.PingPong: expected Viper.Game.SpriteAnimation");
     return anim ? anim->pingpong : 0;
 }
 
 /// @brief Start playback from the first frame, resetting all internal counters.
 void rt_spriteanim_play(rt_spriteanim anim) {
+    anim = checked_spriteanim(anim, "SpriteAnimation.Play: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return;
     anim->current_frame = anim->start_frame;
@@ -199,6 +229,7 @@ void rt_spriteanim_play(rt_spriteanim anim) {
 
 /// @brief Stop playback entirely (not paused — position is not preserved for resume).
 void rt_spriteanim_stop(rt_spriteanim anim) {
+    anim = checked_spriteanim(anim, "SpriteAnimation.Stop: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return;
     anim->current_frame = anim->start_frame;
@@ -213,6 +244,7 @@ void rt_spriteanim_stop(rt_spriteanim anim) {
 
 /// @brief Pause a playing animation so it can be resumed from the current frame.
 void rt_spriteanim_pause(rt_spriteanim anim) {
+    anim = checked_spriteanim(anim, "SpriteAnimation.Pause: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return;
     if (anim->playing)
@@ -221,6 +253,7 @@ void rt_spriteanim_pause(rt_spriteanim anim) {
 
 /// @brief Resume a paused animation from the frame where it was paused.
 void rt_spriteanim_resume(rt_spriteanim anim) {
+    anim = checked_spriteanim(anim, "SpriteAnimation.Resume: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return;
     anim->paused = 0;
@@ -228,6 +261,7 @@ void rt_spriteanim_resume(rt_spriteanim anim) {
 
 /// @brief Reset the animation to its first frame without changing play/pause state.
 void rt_spriteanim_reset(rt_spriteanim anim) {
+    anim = checked_spriteanim(anim, "SpriteAnimation.Reset: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return;
     anim->current_frame = anim->start_frame;
@@ -239,6 +273,7 @@ void rt_spriteanim_reset(rt_spriteanim anim) {
 
 /// @brief Update the spriteanim state (called per frame/tick).
 int8_t rt_spriteanim_update(rt_spriteanim anim) {
+    anim = checked_spriteanim(anim, "SpriteAnimation.Update: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return 0;
 
@@ -248,7 +283,13 @@ int8_t rt_spriteanim_update(rt_spriteanim anim) {
         return 0;
 
     // Apply speed multiplier
+    if (!isfinite(anim->speed) || anim->speed < 0.0)
+        anim->speed = 0.0;
+    if (!isfinite(anim->speed_accum))
+        anim->speed_accum = 0.0;
     anim->speed_accum += anim->speed;
+    if (!isfinite(anim->speed_accum))
+        anim->speed_accum = 0.0;
     while (anim->speed_accum >= 1.0) {
         anim->speed_accum -= 1.0;
         anim->frame_counter++;
@@ -266,6 +307,7 @@ int8_t rt_spriteanim_update(rt_spriteanim anim) {
 
 /// @brief Return the current frame index within the sprite sheet.
 int64_t rt_spriteanim_frame(rt_spriteanim anim) {
+    anim = checked_spriteanim(anim, "SpriteAnimation.Frame: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return 0;
     return anim->current_frame;
@@ -273,6 +315,8 @@ int64_t rt_spriteanim_frame(rt_spriteanim anim) {
 
 /// @brief Jump to a specific frame, clamped to [start_frame, end_frame].
 void rt_spriteanim_set_frame(rt_spriteanim anim, int64_t frame) {
+    anim =
+        checked_spriteanim(anim, "SpriteAnimation.SetFrame: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return;
     if (frame < anim->start_frame)
@@ -285,6 +329,8 @@ void rt_spriteanim_set_frame(rt_spriteanim anim, int64_t frame) {
 
 /// @brief Return how many update ticks each frame is displayed before advancing.
 int64_t rt_spriteanim_frame_duration(rt_spriteanim anim) {
+    anim = checked_spriteanim(anim,
+                              "SpriteAnimation.FrameDuration: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return 0;
     return anim->frame_duration;
@@ -292,6 +338,8 @@ int64_t rt_spriteanim_frame_duration(rt_spriteanim anim) {
 
 /// @brief Set how many update ticks each frame is displayed (minimum 1).
 void rt_spriteanim_set_frame_duration(rt_spriteanim anim, int64_t duration) {
+    anim = checked_spriteanim(
+        anim, "SpriteAnimation.SetFrameDuration: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return;
     if (duration < 1)
@@ -301,13 +349,19 @@ void rt_spriteanim_set_frame_duration(rt_spriteanim anim, int64_t duration) {
 
 /// @brief Return the count of elements in the spriteanim.
 int64_t rt_spriteanim_frame_count(rt_spriteanim anim) {
+    anim =
+        checked_spriteanim(anim, "SpriteAnimation.FrameCount: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return 0;
+    if (anim->end_frame >= INT64_MAX - anim->start_frame)
+        return INT64_MAX;
     return anim->end_frame - anim->start_frame + 1;
 }
 
 /// @brief Check whether the animation is currently playing (not paused or stopped).
 int8_t rt_spriteanim_is_playing(rt_spriteanim anim) {
+    anim =
+        checked_spriteanim(anim, "SpriteAnimation.IsPlaying: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return 0;
     return anim->playing && !anim->paused;
@@ -315,6 +369,8 @@ int8_t rt_spriteanim_is_playing(rt_spriteanim anim) {
 
 /// @brief Check whether the animation is paused (can be resumed).
 int8_t rt_spriteanim_is_paused(rt_spriteanim anim) {
+    anim =
+        checked_spriteanim(anim, "SpriteAnimation.IsPaused: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return 0;
     return anim->paused;
@@ -322,6 +378,8 @@ int8_t rt_spriteanim_is_paused(rt_spriteanim anim) {
 
 /// @brief Check whether a non-looping animation has reached its last frame.
 int8_t rt_spriteanim_is_finished(rt_spriteanim anim) {
+    anim =
+        checked_spriteanim(anim, "SpriteAnimation.IsFinished: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return 0;
     return anim->finished;
@@ -329,20 +387,24 @@ int8_t rt_spriteanim_is_finished(rt_spriteanim anim) {
 
 /// @brief Return the animation progress as a percentage (0-100).
 int64_t rt_spriteanim_progress(rt_spriteanim anim) {
+    anim =
+        checked_spriteanim(anim, "SpriteAnimation.Progress: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return 0;
     int64_t total = anim->end_frame - anim->start_frame;
     if (total <= 0)
         return 100;
     int64_t current = anim->current_frame - anim->start_frame;
-    return (current * 100) / total;
+    return spriteanim_percent_i64(current, total);
 }
 
 /// @brief Set the playback speed multiplier, clamped to [0.0, 10.0] (1.0 = normal).
 void rt_spriteanim_set_speed(rt_spriteanim anim, double speed) {
+    anim =
+        checked_spriteanim(anim, "SpriteAnimation.SetSpeed: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return;
-    if (speed < 0.0)
+    if (!isfinite(speed) || speed < 0.0)
         speed = 0.0;
     if (speed > 10.0)
         speed = 10.0;
@@ -351,6 +413,7 @@ void rt_spriteanim_set_speed(rt_spriteanim anim, double speed) {
 
 /// @brief Return the current playback speed multiplier.
 double rt_spriteanim_speed(rt_spriteanim anim) {
+    anim = checked_spriteanim(anim, "SpriteAnimation.Speed: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return 1.0;
     return anim->speed;
@@ -358,6 +421,8 @@ double rt_spriteanim_speed(rt_spriteanim anim) {
 
 /// @brief Check whether the current frame changed during the last update call.
 int8_t rt_spriteanim_frame_changed(rt_spriteanim anim) {
+    anim = checked_spriteanim(anim,
+                              "SpriteAnimation.FrameChanged: expected Viper.Game.SpriteAnimation");
     if (!anim)
         return 0;
     return anim->frame_changed;

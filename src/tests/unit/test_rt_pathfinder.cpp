@@ -28,7 +28,9 @@
 #include "rt_internal.h"
 #include "rt_list.h"
 #include "rt_pathfinder.h"
+#include "rt_tilemap.h"
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
 
 // Trap handler for runtime
@@ -293,6 +295,56 @@ static void test_walkable_out_of_bounds(void) {
     PASS();
 }
 
+static void test_invalid_dimensions_rejected(void) {
+    TEST("Invalid and oversized dimensions are rejected");
+    assert(rt_pathfinder_new(0, 5) == NULL);
+    assert(rt_pathfinder_new(5, 0) == NULL);
+    assert(rt_pathfinder_new(4097, 1) == NULL);
+    assert(rt_pathfinder_new(1, 4097) == NULL);
+    assert(rt_pathfinder_new(INT64_MAX, 2) == NULL);
+    PASS();
+}
+
+static void test_oob_search_clears_last_found(void) {
+    TEST("Out-of-bounds search clears LastFound");
+    void *pf = rt_pathfinder_new(3, 3);
+    void *path = rt_pathfinder_find_path(pf, 0, 0, 1, 0);
+    assert(path != NULL);
+    assert(rt_pathfinder_get_last_found(pf) == 1);
+
+    path = rt_pathfinder_find_path(pf, INT64_MAX, 0, 1, 0);
+    assert(path != NULL);
+    assert(rt_list_len(path) == 0);
+    assert(rt_pathfinder_get_last_found(pf) == 0);
+    assert(rt_pathfinder_get_last_steps(pf) == 0);
+
+    assert(rt_pathfinder_find_path_length(pf, 0, 0, INT64_MAX, 0) == -1);
+    assert(rt_pathfinder_get_last_found(pf) == 0);
+    assert(rt_pathfinder_get_last_steps(pf) == 0);
+    PASS();
+}
+
+static void test_find_nearest_tile_value_returns_path(void) {
+    TEST("FindNearest returns path to nearest matching tile value");
+    void *tm = rt_tilemap_new(5, 3, 16, 16);
+    assert(tm != NULL);
+    rt_tilemap_set_tile(tm, 3, 1, 7);
+    rt_tilemap_set_tile(tm, 2, 0, 9);
+    rt_tilemap_set_collision(tm, 9, RT_TILE_COLLISION_SOLID);
+
+    void *pf = rt_pathfinder_from_tilemap(tm);
+    assert(pf != NULL);
+    void *path = rt_pathfinder_find_nearest(pf, 0, 1, 7);
+    assert(path != NULL);
+    assert(rt_list_len(path) == 8);
+    assert(list_get_i64(path, 0) == 0);
+    assert(list_get_i64(path, 1) == 1);
+    assert(list_get_i64(path, 6) == 3);
+    assert(list_get_i64(path, 7) == 1);
+    assert(rt_pathfinder_get_last_found(pf) == 1);
+    PASS();
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -317,6 +369,9 @@ int main() {
     test_cost_get_set();
     test_null_safety();
     test_walkable_out_of_bounds();
+    test_invalid_dimensions_rejected();
+    test_oob_search_clears_last_found();
+    test_find_nearest_tile_value_returns_path();
 
     printf("\n  %d/%d tests passed\n", tests_passed, tests_total);
     assert(tests_passed == tests_total);

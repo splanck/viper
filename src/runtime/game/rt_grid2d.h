@@ -28,6 +28,11 @@
 extern "C" {
 #endif
 
+#define RT_GRID2D_CLASS_ID INT64_C(-0x51020B)
+
+/// Maximum Grid2D width or height. Keeps dense cell allocation bounded.
+#define RT_GRID2D_MAX_DIM 4096
+
 /// Opaque handle to a Grid2D instance.
 typedef struct rt_grid2d_impl *rt_grid2d;
 
@@ -35,7 +40,8 @@ typedef struct rt_grid2d_impl *rt_grid2d;
 /// @param width The width of the grid (number of columns).
 /// @param height The height of the grid (number of rows).
 /// @param default_value The initial value for all cells.
-/// @return A new Grid2D instance, or NULL on failure.
+/// @return A new Grid2D instance, or NULL on invalid dimensions, dimensions above
+///         RT_GRID2D_MAX_DIM, allocation failure, or size overflow.
 rt_grid2d rt_grid2d_new(int64_t width, int64_t height, int64_t default_value);
 
 /// @brief Destroy a Grid2D and free its memory.

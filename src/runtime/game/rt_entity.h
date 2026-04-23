@@ -32,8 +32,10 @@
 extern "C" {
 #endif
 
-/// @brief Create a 2D entity at pixel coordinates (x, y) with size (w × h) pixels.
-/// Position is internally stored in centipixels (×100); HP defaults to 1.
+#define RT_ENTITY_CLASS_ID INT64_C(-0x510206)
+
+/// @brief Create a 2D entity at centipixel coordinates (x, y) with size (w × h) pixels.
+/// Width/height clamp to at least 1 pixel; HP defaults to 1.
 void *rt_entity_new(int64_t x, int64_t y, int64_t w, int64_t h);
 
 // Position (centipixels)
@@ -103,7 +105,8 @@ int8_t rt_entity_hit_ceiling(void *ent);
 /// @brief Apply gravity to vy, capped at max_fall. Call once per frame.
 void rt_entity_apply_gravity(void *ent, int64_t gravity, int64_t max_fall, int64_t dt);
 
-/// @brief Move by velocity*dt, resolve against tilemap. Sets collision flags.
+/// @brief Move by velocity*dt, resolve against tilemap with swept tile checks.
+/// Preserves subpixel centipixel remainder and sets collision flags.
 void rt_entity_move_and_collide(void *ent, void *tilemap, int64_t dt);
 
 /// @brief Apply gravity + move + collide in one call.

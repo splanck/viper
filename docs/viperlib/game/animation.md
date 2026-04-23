@@ -294,6 +294,8 @@ Eliminates the boilerplate of manually wiring StateMachine and SpriteAnimation t
 | `CurrentFrame`   | Integer | Read   | Current animation frame index                     |
 | `IsAnimFinished` | Boolean | Read   | 1 if the current one-shot clip has finished       |
 | `Progress`       | Integer | Read   | Animation progress 0-100 within the current clip  |
+| `StateName`      | String  | Read   | Name of the current named state, or empty string  |
+| `EventFired`     | Boolean | Read   | True once when the configured event frame is reached |
 
 ### Methods
 
@@ -301,9 +303,12 @@ Eliminates the boilerplate of manually wiring StateMachine and SpriteAnimation t
 |--------|-----------|-------------|
 | `AddState(id, start, end, dur, loop)` | `Void(Integer, Integer, Integer, Integer, Boolean)` | Register a state with its animation clip |
 | `SetInitial(id)` | `Boolean(Integer)` | Set the initial state (must be added first) |
-| `Transition(id)` | `Boolean(Integer)` | Transition to a new state (no-op if same state) |
+| `Transition(id)` | `Boolean(Integer)` | Transition to a new state; same-state transitions are successful no-ops |
 | `Update()` | `Void()` | Advance one frame — call once per game loop |
 | `ClearFlags()` | `Void()` | Clear JustEntered / JustExited edge flags |
+| `AddNamed(name, start, end, dur, loop)` | `Void(String, Integer, Integer, Integer, Boolean)` | Register a named state |
+| `Play(name)` | `Void(String)` | Transition to a named state |
+| `SetEventFrame(frame)` | `Void(Integer)` | Configure a frame event |
 
 ### Zia Example
 
@@ -348,6 +353,12 @@ func start() {
     anim.ClearFlags();
 }
 ```
+
+### Notes
+
+- `Update()` does nothing until an initial state has been set.
+- Transitioning to the current state returns true without relatching `JustEntered` / `JustExited`.
+- Frame events fire once when playback reaches the configured frame and do not retrigger while the frame remains unchanged.
 
 ---
 
@@ -610,7 +621,7 @@ LOOP
 
 ## Viper.Game.ButtonGroup
 
-Manages mutually exclusive button selection, like radio buttons or tool palettes. Only one button can be selected at a time.
+Manages mutually exclusive button selection, like radio buttons or tool palettes. Only one button can be selected at a time. Button IDs are arbitrary integers, including `-1`; use `HasSelection` to distinguish "no selection" from selecting a button whose ID is `-1`.
 
 **Type:** Instance class (requires `New()`)
 
@@ -625,7 +636,7 @@ Manages mutually exclusive button selection, like radio buttons or tool palettes
 | Property           | Type                  | Description                                    |
 |--------------------|-----------------------|------------------------------------------------|
 | `Count`            | `Integer` (read-only) | Number of buttons in the group                 |
-| `Selected`         | `Integer` (read-only) | Currently selected button ID (-1 if none)      |
+| `Selected`         | `Integer` (read-only) | Currently selected button ID, or -1 if none    |
 | `HasSelection`     | `Boolean` (read-only) | True if any button is selected                 |
 | `SelectionChanged` | `Boolean` (read-only) | True if selection just changed this frame      |
 

@@ -32,6 +32,8 @@
 
 #include <stdint.h>
 
+#define RT_BITMAPFONT_CLASS_ID INT64_C(-0x600202)
+
 #ifdef __cplusplus
 extern "C" {
 #endif

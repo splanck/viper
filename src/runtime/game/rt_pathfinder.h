@@ -35,11 +35,14 @@
 extern "C" {
 #endif
 
+#define RT_PATHFINDER_CLASS_ID INT64_C(-0x510207)
+
 //=========================================================================
 // Construction
 //=========================================================================
 
 /// @brief Create a new pathfinder with a blank walkable grid.
+/// @return NULL when width/height are non-positive or exceed 4096.
 void *rt_pathfinder_new(int64_t width, int64_t height);
 
 /// @brief Create a pathfinder from a Tilemap's collision data.
@@ -82,8 +85,8 @@ void *rt_pathfinder_find_path(void *pf, int64_t sx, int64_t sy, int64_t gx, int6
 /// @return Total path cost, or -1 if no path.
 int64_t rt_pathfinder_find_path_length(void *pf, int64_t sx, int64_t sy, int64_t gx, int64_t gy);
 
-/// @brief Find nearest reachable cell with the given Grid2D value.
-/// @return List[Integer] with two elements [x, y], or empty list.
+/// @brief Find nearest reachable cell with the given source tile/grid value.
+/// @return List[Integer] of interleaved x,y pairs from start to target, or empty list.
 void *rt_pathfinder_find_nearest(void *pf, int64_t sx, int64_t sy, int64_t target_value);
 
 #ifdef __cplusplus

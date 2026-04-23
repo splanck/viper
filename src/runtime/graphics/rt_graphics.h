@@ -32,6 +32,8 @@
 extern "C" {
 #endif
 
+#define RT_CANVAS_CLASS_ID INT64_C(-0x520001)
+
 //=========================================================================
 // Canvas Functions
 //=========================================================================
@@ -46,6 +48,9 @@ int8_t rt_canvas_is_available(void);
 /// @param height Canvas height in pixels.
 /// @return Opaque canvas handle, or NULL on failure.
 void *rt_canvas_new(rt_string title, int64_t width, int64_t height);
+
+/// @brief Return 1 if @p canvas is a live Canvas handle, 0 otherwise.
+int8_t rt_canvas_is_handle(void *canvas);
 
 /// @brief Destroy a graphics canvas and free resources.
 /// @param canvas Canvas handle from rt_canvas_new.

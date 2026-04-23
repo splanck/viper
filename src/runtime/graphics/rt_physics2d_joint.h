@@ -109,9 +109,6 @@ void rt_physics2d_world_remove_joint(void *world, void *joint);
 /// @brief Number of joints currently registered in the world.
 int64_t rt_physics2d_world_joint_count(void *world);
 
-/// @brief Iterate the joint solver for one substep (called internally from `world_step`).
-void rt_physics2d_solve_joints(void *world, double dt);
-
 //=========================================================================
 // Circle Bodies
 //=========================================================================

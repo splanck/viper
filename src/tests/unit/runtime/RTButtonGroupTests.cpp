@@ -105,6 +105,18 @@ TEST(select) {
     rt_buttongroup_destroy(bg);
 }
 
+TEST(select_negative_one_id) {
+    rt_buttongroup bg = rt_buttongroup_new();
+    ASSERT(rt_buttongroup_add(bg, -1) == 1);
+    ASSERT(rt_buttongroup_select(bg, -1) == 1);
+    ASSERT(rt_buttongroup_selected(bg) == -1);
+    ASSERT(rt_buttongroup_has_selection(bg) == 1);
+    ASSERT(rt_buttongroup_is_selected(bg, -1) == 1);
+    rt_buttongroup_clear_selection(bg);
+    ASSERT(rt_buttongroup_has_selection(bg) == 0);
+    rt_buttongroup_destroy(bg);
+}
+
 TEST(clear_selection) {
     rt_buttongroup bg = rt_buttongroup_new();
     rt_buttongroup_add(bg, 1);
@@ -185,6 +197,7 @@ int main() {
     RUN_TEST(create_destroy);
     RUN_TEST(add_buttons);
     RUN_TEST(select);
+    RUN_TEST(select_negative_one_id);
     RUN_TEST(clear_selection);
     RUN_TEST(select_next_prev);
     RUN_TEST(remove);

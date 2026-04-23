@@ -22,9 +22,9 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator b
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 64 | +64 |
+| Commits | — | 65 | +65 |
 | Source files | 2,869 | 2,947 | +78 |
-| Production SLOC | 450K | 506K | +56K |
+| Production SLOC | 450K | 507K | +57K |
 | Test SLOC | 183K | 207K | +24K |
 | Demo SLOC | 177K | 189K | +12K |
 
@@ -85,7 +85,8 @@ Four rounds of widget audit plus a late-cycle app-registry + widget-family overh
 ### Game runtime
 
 - **Dialogue:** rewritten against the real BitmapFont measurement surface; UTF-8 codepoint boundaries for wrap and reveal.
-- **Quadtree, Physics2D, PathFollower, SpriteAnimation, SceneManager, ParticleEmitter, Achievement, ButtonGroup:** correctness fixes in zero-length segments, ping-pong completion, grid validation, transition latching, alpha/pool behavior.
+- **Viper.Game hardening pass:** Entity movement now preserves centipixel remainders, sweeps tile collisions, and handles negative coordinates consistently; Pathfinder rejects oversized grids, fixes heap updates and `FindNearest`; Physics2D exposes `CircleBody` and per-step contacts; Game UI validates handles, clips text, and documents tiled nine-slice behavior.
+- **Quadtree, Physics2D, PathFollower, SpriteAnimation, SceneManager, ParticleEmitter, Achievement, ButtonGroup:** correctness fixes in zero-length segments, ping-pong completion, overflow geometry, grid validation, transition latching, alpha/pool behavior, and `-1` selection IDs.
 - **Input correctness:** action chord release on the same frame the last held key drops; debounced press-edge detection; KeyChord wrong-order reset; real UTF-8 encoding for text input (up to U+10FFFF).
 - **Collections diagnostic:** `rt_list_get` traps now include the actual index and count.
 - **Async use-after-free fix:** `Async.Run` / `Thread.Start` worker VMs (both bytecode and native) now retain the Future payload past worker unwind. Pinned down by a 25× regression loop.
@@ -131,6 +132,9 @@ Eleven-class `Viper.Localization.*` namespace providing locale-aware formatting,
 - **TextDirection.** Strong-RTL classifier covering Hebrew / Arabic / Syriac / Thaana / N'Ko plus presentation forms. `Detect` / `IsRTL` / `IsLTR` / `FirstStrong` / `Bidi` (RLO/PDF wrapping for mixed runs; does not implement the full Unicode BiDi algorithm).
 - **Shared `numfmt_group_digits()` helper.** Extracted from the existing `Viper.Text.NumberFormat.Thousands` into `rt_numfmt_internal.h`; consumed by both the existing `Viper.Text.NumberFormat.*` surface and every new `Viper.Localization.NumberFormat.*` path. Zero public-surface breakage.
 - **Hardening continuation.** `LocaleManager` JSON / VPA asset loading + filesystem search-path registry fleshed out (`LoadFromJson` / `TryLoadFromJson` / `LoadFromAsset` / `TryLoadFromAsset` / `AddSearchPath` / `SearchPath` / `Unload` / `Reset` all live). `rt_numformat` format and parse now route through a C-locale isolated `snprintf` wrapper matching `rt_fmt.c`'s pattern (POSIX `uselocale`, Windows `_create_locale` + `_vsnprintf_l`) — eliminates LC_NUMERIC interference from host-locale state. `rt_collator` picks up a finalizer (`col_finalizer`) that releases the captured locale data and the handle reference so Collators no longer leak. `rt_text_direction`'s UTF-8 decoder was rewritten with explicit first-byte range checks (C2-DF / E0-EF / F0-F4) and overlong-encoding rejection via `min_cp` validation.
+- **Refcount + lifetime discipline pass across every Localization class.** Finalizers in `rt_plural_rules`, `rt_reltime_format`, `rt_message_bundle`, `rt_collator`, `rt_locale` now route handle release through a canonical `rt_obj_release_check0` → `rt_obj_free` path instead of bare `rt_heap_release` — GC-tracked objects no longer leak their follow-on state on zero-ref. `rt_locale_manager.c` adds atomic (`__atomic_load_n` ACQUIRE) reads of `formatter_refs` so `LocaleManager.Unload` in-use checks observe the real count without serializing through the rwlock. `MessageBundle` now retains the locale-data record directly so `Plural()` lookups work without the caller holding a live `PluralRules` instance.
+- **DateFormat pattern emitter: locale-digit + UTF-8.** `rt_dateformat_patterns.c` adds a `digit_spans_t` table so CLDR patterns emit the locale's `digits[]` (Arabic-Indic / Devanagari / Thai / etc.) instead of hard-coded 0-9. UTF-8 codepoint boundaries respected when slicing for narrow MonthName / DayName forms; unknown codepoints fall through to literal emission.
+- **PluralRules INT64_MIN precision.** Added an `i_d` (integer part as double) operand alongside `i` (int64). Without it, a rule querying the integer-part absolute value with input `INT64_MIN` overflowed during negation; `i_d = fabs((double)n_i64)` preserves magnitude without losing precision at the signed-64 extreme.
 
 ### Core runtime formatting
 
@@ -208,6 +212,6 @@ Marquee demo addition is a text-mode human-manager baseball-franchise simulator;
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 64-commit history. Commits pair feature-add and follow-up hardening in the same subsystem (e.g. Production 2D → overflow hardening; threads timeout fixes → handle-magic validation; glTF skin import → sparse accessors + KHR extensions; new POSIX atomic-move path → linker-policy `link()` classification; `Viper.Localization.*` introduction → `numfmt_group_digits()` extraction + rt_fmt C-locale isolation + GUI app-registry refactor in the same wrapping commit).
+See `git log a91d388db..HEAD -- .` for the full 65-commit history. Commits pair feature-add and follow-up hardening in the same subsystem (e.g. Production 2D → overflow hardening; threads timeout fixes → handle-magic validation; glTF skin import → sparse accessors + KHR extensions; new POSIX atomic-move path → linker-policy `link()` classification; `Viper.Localization.*` introduction → `numfmt_group_digits()` extraction + rt_fmt C-locale isolation + GUI app-registry refactor in the same wrapping commit).
 
 <!-- END DRAFT -->

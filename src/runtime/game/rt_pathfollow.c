@@ -40,6 +40,7 @@
 
 #include "rt_pathfollow.h"
 #include "rt_object.h"
+#include "rt_trap.h"
 
 #include <limits.h>
 #include <math.h>
@@ -68,6 +69,45 @@ struct rt_pathfollow_impl {
     int64_t total_length;      ///< Total path length (cached).
     int64_t *segment_lengths;  ///< Cached segment lengths.
 };
+
+static rt_pathfollow checked_pathfollow(rt_pathfollow path, const char *api) {
+    if (!path)
+        return NULL;
+    if (rt_obj_class_id(path) != RT_PATHFOLLOW_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return path;
+}
+
+static int64_t pathfollow_saturating_add(int64_t a, int64_t b) {
+    if (b > 0 && a > INT64_MAX - b)
+        return INT64_MAX;
+    if (b < 0 && a < INT64_MIN - b)
+        return INT64_MIN;
+    return a + b;
+}
+
+static int64_t pathfollow_scaled(int64_t value, int64_t scale, int64_t divisor) {
+    if (divisor == 0)
+        return 0;
+    long double result = ((long double)value * (long double)scale) / (long double)divisor;
+    if (result > (long double)INT64_MAX)
+        return INT64_MAX;
+    if (result < (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)result;
+}
+
+static int64_t pathfollow_lerp(int64_t a, int64_t b, int64_t per_mille) {
+    long double value =
+        (long double)a + ((long double)b - (long double)a) * ((long double)per_mille / 1000.0L);
+    if (value > (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value < (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)value;
+}
 
 /// @brief Euclidean distance between two fixed-point points.
 /// Uses long-double arithmetic so very short segments remain non-zero while
@@ -170,7 +210,8 @@ static void recalculate_lengths(rt_pathfollow path) {
     for (int64_t i = 0; i < segments; i++) {
         path->segment_lengths[i] = distance(
             path->points[i].x, path->points[i].y, path->points[i + 1].x, path->points[i + 1].y);
-        path->total_length += path->segment_lengths[i];
+        path->total_length =
+            pathfollow_saturating_add(path->total_length, path->segment_lengths[i]);
     }
 }
 
@@ -185,8 +226,8 @@ static void pathfollow_finalize(void *obj) {
 /// 100 world units / second (i.e. 100000 in fixed-point). Caller adds points via `add_point`.
 /// Returns a GC-managed handle wired to `pathfollow_finalize`; NULL on allocation failure.
 rt_pathfollow rt_pathfollow_new(void) {
-    struct rt_pathfollow_impl *path =
-        (struct rt_pathfollow_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_pathfollow_impl));
+    struct rt_pathfollow_impl *path = (struct rt_pathfollow_impl *)rt_obj_new_i64(
+        RT_PATHFOLLOW_CLASS_ID, (int64_t)sizeof(struct rt_pathfollow_impl));
     if (!path)
         return NULL;
 
@@ -200,6 +241,7 @@ rt_pathfollow rt_pathfollow_new(void) {
 /// @brief Release the PathFollower; frees the segment-length cache via the finalizer when the
 /// refcount reaches zero. Documented as a no-op for API symmetry — GC handles cleanup.
 void rt_pathfollow_destroy(rt_pathfollow path) {
+    path = checked_pathfollow(path, "PathFollower.Destroy: expected Viper.Game.PathFollower");
     if (!path)
         return;
 
@@ -210,6 +252,7 @@ void rt_pathfollow_destroy(rt_pathfollow path) {
 /// @brief Reset the follower to a blank slate: no waypoints, no progress, inactive, freed cache.
 /// Useful for re-using a PathFollower handle across multiple level loads.
 void rt_pathfollow_clear(rt_pathfollow path) {
+    path = checked_pathfollow(path, "PathFollower.Clear: expected Viper.Game.PathFollower");
     if (!path)
         return;
 
@@ -233,6 +276,7 @@ void rt_pathfollow_clear(rt_pathfollow path) {
 /// the follower's starting position. Returns 0 if the cap (`RT_PATHFOLLOW_MAX_POINTS`) is hit.
 /// Triggers a full `recalculate_lengths` (O(n)) so the segment cache stays in sync.
 int8_t rt_pathfollow_add_point(rt_pathfollow path, int64_t x, int64_t y) {
+    path = checked_pathfollow(path, "PathFollower.AddPoint: expected Viper.Game.PathFollower");
     if (!path)
         return 0;
     if (path->point_count >= RT_PATHFOLLOW_MAX_POINTS)
@@ -254,12 +298,14 @@ int8_t rt_pathfollow_add_point(rt_pathfollow path, int64_t x, int64_t y) {
 
 /// @brief Number of waypoints currently in the path (0 to RT_PATHFOLLOW_MAX_POINTS).
 int64_t rt_pathfollow_point_count(rt_pathfollow path) {
+    path = checked_pathfollow(path, "PathFollower.PointCount: expected Viper.Game.PathFollower");
     return path ? path->point_count : 0;
 }
 
 /// @brief Select traversal mode: ONCE (stops at end), LOOP (wraps to start), PINGPONG (reverses).
 /// Out-of-range values are silently ignored (mode is preserved).
 void rt_pathfollow_set_mode(rt_pathfollow path, int64_t mode) {
+    path = checked_pathfollow(path, "PathFollower.SetMode: expected Viper.Game.PathFollower");
     if (!path)
         return;
     if (mode >= RT_PATHFOLLOW_ONCE && mode <= RT_PATHFOLLOW_PINGPONG)
@@ -268,24 +314,28 @@ void rt_pathfollow_set_mode(rt_pathfollow path, int64_t mode) {
 
 /// @brief Read the current traversal mode (ONCE/LOOP/PINGPONG as integer constants).
 int64_t rt_pathfollow_get_mode(rt_pathfollow path) {
+    path = checked_pathfollow(path, "PathFollower.Mode: expected Viper.Game.PathFollower");
     return path ? path->mode : 0;
 }
 
 /// @brief Set traversal speed in fixed-point world-units/second (×1000). Non-positive ignored.
 /// Per-frame movement is computed as `(speed * dt_ms) / 1000`.
 void rt_pathfollow_set_speed(rt_pathfollow path, int64_t speed) {
+    path = checked_pathfollow(path, "PathFollower.SetSpeed: expected Viper.Game.PathFollower");
     if (path && speed > 0)
         path->speed = speed;
 }
 
 /// @brief Read the current speed in fixed-point world-units/second.
 int64_t rt_pathfollow_get_speed(rt_pathfollow path) {
+    path = checked_pathfollow(path, "PathFollower.Speed: expected Viper.Game.PathFollower");
     return path ? path->speed : 0;
 }
 
 /// @brief Begin (or resume) following the path. Requires at least 2 waypoints; otherwise no-op.
 /// Clears the `finished` flag so a previously completed ONCE path can be replayed.
 void rt_pathfollow_start(rt_pathfollow path) {
+    path = checked_pathfollow(path, "PathFollower.Start: expected Viper.Game.PathFollower");
     if (!path || path->point_count < 2)
         return;
 
@@ -298,6 +348,7 @@ void rt_pathfollow_start(rt_pathfollow path) {
 
 /// @brief Suspend updates while preserving segment + progress; resume with `start()`.
 void rt_pathfollow_pause(rt_pathfollow path) {
+    path = checked_pathfollow(path, "PathFollower.Pause: expected Viper.Game.PathFollower");
     if (path)
         path->active = 0;
 }
@@ -305,6 +356,7 @@ void rt_pathfollow_pause(rt_pathfollow path) {
 /// @brief Stop and rewind to the first waypoint (segment=0, progress=0). Waypoints are preserved.
 /// Differs from `pause()` (which keeps current position) and `clear()` (which discards waypoints).
 void rt_pathfollow_stop(rt_pathfollow path) {
+    path = checked_pathfollow(path, "PathFollower.Stop: expected Viper.Game.PathFollower");
     if (!path)
         return;
 
@@ -315,20 +367,25 @@ void rt_pathfollow_stop(rt_pathfollow path) {
 
 /// @brief Returns 1 while the follower is actively advancing each `update()` tick.
 int8_t rt_pathfollow_is_active(rt_pathfollow path) {
+    path = checked_pathfollow(path, "PathFollower.IsActive: expected Viper.Game.PathFollower");
     return path ? path->active : 0;
 }
 
-/// @brief Returns 1 once a ONCE-mode path has reached its final waypoint. Always 0 for LOOP/PINGPONG.
+/// @brief Returns 1 once a ONCE-mode path has reached its final waypoint. Always 0 for
+/// LOOP/PINGPONG.
 int8_t rt_pathfollow_is_finished(rt_pathfollow path) {
+    path = checked_pathfollow(path, "PathFollower.IsFinished: expected Viper.Game.PathFollower");
     return path ? path->finished : 0;
 }
 
-/// @brief Advance the follower by `dt` milliseconds. Spends `(speed * dt) / 1000` units of distance,
-/// crossing segment boundaries as needed (a single update can traverse multiple short segments).
-/// At end-of-path: ONCE → mark finished/inactive; LOOP → wrap to first segment; PINGPONG → flip
-/// `reverse` flag and walk back. Recomputes `current_x/y` once at the end via linear interp of
+/// @brief Advance the follower by `dt` milliseconds. Spends `(speed * dt) / 1000` units of
+/// distance, crossing segment boundaries as needed (a single update can traverse multiple short
+/// segments). At end-of-path: ONCE → mark finished/inactive; LOOP → wrap to first segment; PINGPONG
+/// → flip `reverse` flag and walk back. Recomputes `current_x/y` once at the end via linear interp
+/// of
 /// `(segment, segment_progress)`. Inactive/finished/empty paths early-out.
 void rt_pathfollow_update(rt_pathfollow path, int64_t dt) {
+    path = checked_pathfollow(path, "PathFollower.Update: expected Viper.Game.PathFollower");
     if (!path || !path->active || path->finished || path->point_count < 2)
         return;
 
@@ -340,9 +397,8 @@ void rt_pathfollow_update(rt_pathfollow path, int64_t dt) {
     // Calculate distance to move this frame
     // speed is units/sec (fixed-point 1000), dt is ms
     long double scaled_move_dist = ((long double)path->speed * (long double)dt) / 1000.0L;
-    int64_t move_dist = scaled_move_dist >= (long double)INT64_MAX
-                            ? INT64_MAX
-                            : (int64_t)scaled_move_dist;
+    int64_t move_dist =
+        scaled_move_dist >= (long double)INT64_MAX ? INT64_MAX : (int64_t)scaled_move_dist;
     int64_t zero_hops = 0;
 
     while (move_dist > 0 && !path->finished) {
@@ -365,7 +421,7 @@ void rt_pathfollow_update(rt_pathfollow path, int64_t dt) {
         zero_hops = 0;
 
         // Calculate remaining distance in current segment
-        int64_t seg_traveled = (seg_len * path->segment_progress) / 1000;
+        int64_t seg_traveled = pathfollow_scaled(seg_len, path->segment_progress, 1000);
         int64_t seg_remaining = seg_len - seg_traveled;
 
         if (path->reverse) {
@@ -379,7 +435,7 @@ void rt_pathfollow_update(rt_pathfollow path, int64_t dt) {
             rt_pathfollow_advance_segment_boundary(path);
         } else {
             // Partial movement within segment
-            int64_t progress_delta = (move_dist * 1000) / seg_len;
+            int64_t progress_delta = pathfollow_scaled(move_dist, 1000, seg_len);
             if (path->reverse)
                 path->segment_progress -= progress_delta;
             else
@@ -406,18 +462,20 @@ void rt_pathfollow_update(rt_pathfollow path, int64_t dt) {
     int64_t x2 = path->points[seg + 1].x;
     int64_t y2 = path->points[seg + 1].y;
 
-    path->current_x = x1 + ((x2 - x1) * p) / 1000;
-    path->current_y = y1 + ((y2 - y1) * p) / 1000;
+    path->current_x = pathfollow_lerp(x1, x2, p);
+    path->current_y = pathfollow_lerp(y1, y2, p);
 }
 
 /// @brief Read the follower's current world X position (fixed-point ×1000). Caller divides by
 /// 1000 to recover pixel coordinates.
 int64_t rt_pathfollow_get_x(rt_pathfollow path) {
+    path = checked_pathfollow(path, "PathFollower.X: expected Viper.Game.PathFollower");
     return path ? path->current_x : 0;
 }
 
 /// @brief Read the follower's current world Y position (fixed-point ×1000).
 int64_t rt_pathfollow_get_y(rt_pathfollow path) {
+    path = checked_pathfollow(path, "PathFollower.Y: expected Viper.Game.PathFollower");
     return path ? path->current_y : 0;
 }
 
@@ -425,23 +483,27 @@ int64_t rt_pathfollow_get_y(rt_pathfollow path) {
 /// segment lengths plus the partial distance into the current segment, divides by `total_length`.
 /// Returns 0 for empty/unbuilt paths.
 int64_t rt_pathfollow_get_progress(rt_pathfollow path) {
+    path = checked_pathfollow(path, "PathFollower.Progress: expected Viper.Game.PathFollower");
     if (!path || path->point_count < 2 || path->total_length == 0)
         return 0;
 
     // Calculate total distance traveled
     int64_t traveled = 0;
     for (int64_t i = 0; i < path->segment; i++) {
-        traveled += path->segment_lengths[i];
+        traveled = pathfollow_saturating_add(traveled, path->segment_lengths[i]);
     }
-    traveled += (path->segment_lengths[path->segment] * path->segment_progress) / 1000;
+    traveled = pathfollow_saturating_add(
+        traveled,
+        pathfollow_scaled(path->segment_lengths[path->segment], path->segment_progress, 1000));
 
-    return (traveled * 1000) / path->total_length;
+    return pathfollow_scaled(traveled, 1000, path->total_length);
 }
 
 /// @brief Teleport the follower to a fractional path position (0–1000 per mille). Walks the
 /// segment cache until the accumulated distance covers `target_dist`, then sets segment +
 /// progress and updates `current_x/y`. Useful for cinematic seeks or save-state restoration.
 void rt_pathfollow_set_progress(rt_pathfollow path, int64_t progress) {
+    path = checked_pathfollow(path, "PathFollower.SetProgress: expected Viper.Game.PathFollower");
     if (!path || path->point_count < 2 || path->total_length == 0)
         return;
 
@@ -451,33 +513,33 @@ void rt_pathfollow_set_progress(rt_pathfollow path, int64_t progress) {
         progress = 1000;
 
     // Find the segment for this progress
-    int64_t target_dist = (path->total_length * progress) / 1000;
+    int64_t target_dist = pathfollow_scaled(path->total_length, progress, 1000);
     int64_t accumulated = 0;
 
     for (int64_t i = 0; i < path->point_count - 1; i++) {
-        if (accumulated + path->segment_lengths[i] >= target_dist) {
+        if (pathfollow_saturating_add(accumulated, path->segment_lengths[i]) >= target_dist) {
             path->segment = i;
             int64_t seg_dist = target_dist - accumulated;
             if (path->segment_lengths[i] == 0)
                 path->segment_progress = 0;
             else
-                path->segment_progress = (seg_dist * 1000) / path->segment_lengths[i];
+                path->segment_progress =
+                    pathfollow_scaled(seg_dist, 1000, path->segment_lengths[i]);
             break;
         }
-        accumulated += path->segment_lengths[i];
+        accumulated = pathfollow_saturating_add(accumulated, path->segment_lengths[i]);
     }
 
     // Update position
     int64_t seg = path->segment;
     int64_t p = path->segment_progress;
-    path->current_x =
-        path->points[seg].x + ((path->points[seg + 1].x - path->points[seg].x) * p) / 1000;
-    path->current_y =
-        path->points[seg].y + ((path->points[seg + 1].y - path->points[seg].y) * p) / 1000;
+    path->current_x = pathfollow_lerp(path->points[seg].x, path->points[seg + 1].x, p);
+    path->current_y = pathfollow_lerp(path->points[seg].y, path->points[seg + 1].y, p);
 }
 
 /// @brief Read the index of the segment the follower is currently traversing (0..point_count-2).
 int64_t rt_pathfollow_get_segment(rt_pathfollow path) {
+    path = checked_pathfollow(path, "PathFollower.Segment: expected Viper.Game.PathFollower");
     return path ? path->segment : 0;
 }
 
@@ -485,12 +547,17 @@ int64_t rt_pathfollow_get_segment(rt_pathfollow path) {
 /// @note Returns one of 8 cardinal/ordinal directions (0, 45, 90, ..., 315 degrees).
 ///       For smoother rotation, use atan2 on consecutive positions instead.
 int64_t rt_pathfollow_get_angle(rt_pathfollow path) {
+    path = checked_pathfollow(path, "PathFollower.Angle: expected Viper.Game.PathFollower");
     if (!path || path->point_count < 2)
         return 0;
 
     int64_t seg = path->segment;
-    int64_t dx = path->points[seg + 1].x - path->points[seg].x;
-    int64_t dy = path->points[seg + 1].y - path->points[seg].y;
+    int64_t dx = (path->points[seg + 1].x > path->points[seg].x)
+                     ? 1
+                     : (path->points[seg + 1].x < path->points[seg].x ? -1 : 0);
+    int64_t dy = (path->points[seg + 1].y > path->points[seg].y)
+                     ? 1
+                     : (path->points[seg + 1].y < path->points[seg].y ? -1 : 0);
 
     if (path->reverse) {
         dx = -dx;

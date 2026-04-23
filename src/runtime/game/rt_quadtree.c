@@ -52,7 +52,9 @@
 
 #include "rt_quadtree.h"
 #include "rt_object.h"
+#include "rt_trap.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -99,6 +101,48 @@ struct rt_quadtree_impl {
     struct qt_pair pairs[MAX_PAIRS];
     int64_t pair_count;
 };
+
+static rt_quadtree checked_quadtree(rt_quadtree tree, const char *api) {
+    if (!tree)
+        return NULL;
+    if (rt_obj_class_id(tree) != RT_QUADTREE_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return tree;
+}
+
+static int64_t qt_saturating_add(int64_t a, int64_t b) {
+    if (b > 0 && a > INT64_MAX - b)
+        return INT64_MAX;
+    if (b < 0 && a < INT64_MIN - b)
+        return INT64_MIN;
+    return a + b;
+}
+
+static int64_t qt_saturating_sub(int64_t a, int64_t b) {
+    if (b == INT64_MIN)
+        return INT64_MAX;
+    return qt_saturating_add(a, -b);
+}
+
+static int64_t qt_saturating_mul(int64_t a, int64_t b) {
+#if defined(__SIZEOF_INT128__)
+    __int128 result = (__int128)a * (__int128)b;
+    if (result > INT64_MAX)
+        return INT64_MAX;
+    if (result < INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)result;
+#else
+    long double result = (long double)a * (long double)b;
+    if (result > (long double)INT64_MAX)
+        return INT64_MAX;
+    if (result < (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)result;
+#endif
+}
 
 /// Creates a new node.
 static struct qt_node *create_node(
@@ -176,8 +220,20 @@ static int8_t ensure_node_capacity(struct qt_node *node, int64_t needed) {
 
 /// Check if a rectangle intersects a node's bounds.
 static int8_t intersects(struct qt_node *node, int64_t x, int64_t y, int64_t w, int64_t h) {
-    return !(x >= node->x + node->width || x + w <= node->x || y >= node->y + node->height ||
-             y + h <= node->y);
+    int64_t node_right = qt_saturating_add(node->x, node->width);
+    int64_t node_bottom = qt_saturating_add(node->y, node->height);
+    int64_t right = qt_saturating_add(x, w);
+    int64_t bottom = qt_saturating_add(y, h);
+    return !(x >= node_right || right <= node->x || y >= node_bottom || bottom <= node->y);
+}
+
+static int8_t rects_intersect(
+    int64_t ax, int64_t ay, int64_t aw, int64_t ah, int64_t bx, int64_t by, int64_t bw, int64_t bh) {
+    int64_t ar = qt_saturating_add(ax, aw);
+    int64_t ab = qt_saturating_add(ay, ah);
+    int64_t br = qt_saturating_add(bx, bw);
+    int64_t bb = qt_saturating_add(by, bh);
+    return !(ax >= br || ar <= bx || ay >= bb || ab <= by);
 }
 
 /// Check whether an AABB intersects a circle.
@@ -187,46 +243,68 @@ static int8_t rect_intersects_circle(
     int64_t nearest_y = cy;
     if (nearest_x < rx)
         nearest_x = rx;
-    else if (nearest_x > rx + rw)
-        nearest_x = rx + rw;
+    else if (nearest_x > qt_saturating_add(rx, rw))
+        nearest_x = qt_saturating_add(rx, rw);
     if (nearest_y < ry)
         nearest_y = ry;
-    else if (nearest_y > ry + rh)
-        nearest_y = ry + rh;
+    else if (nearest_y > qt_saturating_add(ry, rh))
+        nearest_y = qt_saturating_add(ry, rh);
 
-    int64_t dx = cx - nearest_x;
-    int64_t dy = cy - nearest_y;
-    return dx * dx + dy * dy <= radius * radius;
+    int64_t dx = qt_saturating_sub(cx, nearest_x);
+    int64_t dy = qt_saturating_sub(cy, nearest_y);
+    int64_t dx2 = qt_saturating_mul(dx, dx);
+    int64_t dy2 = qt_saturating_mul(dy, dy);
+    int64_t rr = qt_saturating_mul(radius, radius);
+    return qt_saturating_add(dx2, dy2) <= rr;
 }
 
-/// Split a node into 4 children.
-static void split_node(struct qt_node *node) {
+/// Split a node into 4 children. Returns 0 if any child allocation fails.
+static int8_t split_node(struct qt_node *node) {
     if (node->is_split || node->depth >= RT_QUADTREE_MAX_DEPTH)
-        return;
+        return 0;
 
     int64_t half_w = node->width / 2;
     int64_t half_h = node->height / 2;
+    if (half_w <= 0 || half_h <= 0)
+        return 0;
     int64_t next_depth = node->depth + 1;
 
     // NW, NE, SW, SE
     node->children[0] = create_node(node->x, node->y, half_w, half_h, next_depth);
-    node->children[1] = create_node(node->x + half_w, node->y, half_w, half_h, next_depth);
-    node->children[2] = create_node(node->x, node->y + half_h, half_w, half_h, next_depth);
-    node->children[3] = create_node(node->x + half_w, node->y + half_h, half_w, half_h, next_depth);
+    node->children[1] =
+        create_node(qt_saturating_add(node->x, half_w), node->y, half_w, half_h, next_depth);
+    node->children[2] =
+        create_node(node->x, qt_saturating_add(node->y, half_h), half_w, half_h, next_depth);
+    node->children[3] = create_node(qt_saturating_add(node->x, half_w),
+                                    qt_saturating_add(node->y, half_h),
+                                    half_w,
+                                    half_h,
+                                    next_depth);
+    for (int i = 0; i < 4; ++i) {
+        if (node->children[i])
+            continue;
+        for (int j = 0; j < 4; ++j) {
+            destroy_node(node->children[j]);
+            node->children[j] = NULL;
+        }
+        node->is_split = 0;
+        return 0;
+    }
 
     node->is_split = 1;
+    return 1;
 }
 
 /// Get which child quadrant(s) an item belongs to.
 /// Returns -1 if item spans multiple quadrants.
 static int get_quadrant(struct qt_node *node, int64_t x, int64_t y, int64_t w, int64_t h) {
-    int64_t mid_x = node->x + node->width / 2;
-    int64_t mid_y = node->y + node->height / 2;
+    int64_t mid_x = qt_saturating_add(node->x, node->width / 2);
+    int64_t mid_y = qt_saturating_add(node->y, node->height / 2);
 
     int8_t in_top = y < mid_y;
-    int8_t in_bottom = y + h > mid_y;
+    int8_t in_bottom = qt_saturating_add(y, h) > mid_y;
     int8_t in_left = x < mid_x;
-    int8_t in_right = x + w > mid_x;
+    int8_t in_right = qt_saturating_add(x, w) > mid_x;
 
     // If spanning multiple quadrants, stay in parent
     if ((in_top && in_bottom) || (in_left && in_right))
@@ -252,8 +330,8 @@ static int8_t insert_into_node(struct rt_quadtree_impl *tree,
         return 0;
 
     struct qt_item *item = &tree->items[item_idx];
-    int64_t x = item->x - item->width / 2; // Convert center to top-left
-    int64_t y = item->y - item->height / 2;
+    int64_t x = qt_saturating_sub(item->x, item->width / 2); // Convert center to top-left
+    int64_t y = qt_saturating_sub(item->y, item->height / 2);
 
     // If node is split, try to insert into child
     if (node->is_split) {
@@ -276,20 +354,26 @@ static int8_t insert_into_node(struct rt_quadtree_impl *tree,
 
     // Node is full, try to split
     if (!node->is_split && node->depth < RT_QUADTREE_MAX_DEPTH) {
-        split_node(node);
+        if (!split_node(node)) {
+            if (!ensure_node_capacity(node, node->item_count + 1))
+                return 0;
+            node->items[node->item_count++] = item_idx;
+            return 1;
+        }
 
         // Re-distribute existing items
         for (int64_t i = 0; i < node->item_count; i++) {
             struct qt_item *existing = &tree->items[node->items[i]];
-            int64_t ex = existing->x - existing->width / 2;
-            int64_t ey = existing->y - existing->height / 2;
+            int64_t ex = qt_saturating_sub(existing->x, existing->width / 2);
+            int64_t ey = qt_saturating_sub(existing->y, existing->height / 2);
             int quad = get_quadrant(node, ex, ey, existing->width, existing->height);
             if (quad >= 0 && node->children[quad]) {
-                insert_into_node(tree, node->children[quad], node->items[i]);
-                // Move last item to this slot
-                node->items[i] = node->items[node->item_count - 1];
-                node->item_count--;
-                i--; // Re-check this slot
+                if (insert_into_node(tree, node->children[quad], node->items[i])) {
+                    // Move last item to this slot
+                    node->items[i] = node->items[node->item_count - 1];
+                    node->item_count--;
+                    i--; // Re-check this slot
+                }
             }
         }
 
@@ -336,10 +420,10 @@ static void query_node(struct rt_quadtree_impl *tree,
             continue;
 
         // Check if item intersects query region
-        int64_t ix = item->x - item->width / 2;
-        int64_t iy = item->y - item->height / 2;
+        int64_t ix = qt_saturating_sub(item->x, item->width / 2);
+        int64_t iy = qt_saturating_sub(item->y, item->height / 2);
 
-        if (!(ix >= x + w || ix + item->width <= x || iy >= y + h || iy + item->height <= y)) {
+        if (rects_intersect(x, y, w, h, ix, iy, item->width, item->height)) {
             tree->results[tree->result_count++] = item->id;
         }
     }
@@ -447,7 +531,10 @@ static void quadtree_finalizer(void *obj) {
 
 /// @brief Create a new quadtree object.
 rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height) {
-    struct rt_quadtree_impl *tree = rt_obj_new_i64(0, sizeof(struct rt_quadtree_impl));
+    if (width <= 0 || height <= 0)
+        return NULL;
+    struct rt_quadtree_impl *tree =
+        rt_obj_new_i64(RT_QUADTREE_CLASS_ID, sizeof(struct rt_quadtree_impl));
     if (!tree)
         return NULL;
 
@@ -466,12 +553,14 @@ rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height)
 
 /// @brief Release resources and destroy the quadtree.
 void rt_quadtree_destroy(rt_quadtree tree) {
+    tree = checked_quadtree(tree, "Quadtree.Destroy: expected Viper.Game.Quadtree");
     // Object is GC-managed; finalizer frees internal nodes.
     (void)tree;
 }
 
 /// @brief Remove all entries from the quadtree.
 void rt_quadtree_clear(rt_quadtree tree) {
+    tree = checked_quadtree(tree, "Quadtree.Clear: expected Viper.Game.Quadtree");
     if (!tree)
         return;
 
@@ -494,7 +583,10 @@ void rt_quadtree_clear(rt_quadtree tree) {
 /// already present (use `_update` to move an existing item instead).
 int8_t rt_quadtree_insert(
     rt_quadtree tree, int64_t id, int64_t x, int64_t y, int64_t width, int64_t height) {
+    tree = checked_quadtree(tree, "Quadtree.Insert: expected Viper.Game.Quadtree");
     if (!tree)
+        return 0;
+    if (width <= 0 || height <= 0)
         return 0;
 
     // Guard against duplicate IDs — inserting the same ID twice leaves a ghost
@@ -505,8 +597,8 @@ int8_t rt_quadtree_insert(
     }
 
     // Check bounds
-    int64_t left = x - width / 2;
-    int64_t top = y - height / 2;
+    int64_t left = qt_saturating_sub(x, width / 2);
+    int64_t top = qt_saturating_sub(y, height / 2);
     if (!intersects(tree->root, left, top, width, height))
         return 0;
 
@@ -547,6 +639,7 @@ int8_t rt_quadtree_insert(
 
 /// @brief Remove an entry from the quadtree.
 int8_t rt_quadtree_remove(rt_quadtree tree, int64_t id) {
+    tree = checked_quadtree(tree, "Quadtree.Remove: expected Viper.Game.Quadtree");
     if (!tree)
         return 0;
 
@@ -566,14 +659,17 @@ int8_t rt_quadtree_remove(rt_quadtree tree, int64_t id) {
 /// Returns 0 if the ID is not present.
 int8_t rt_quadtree_update(
     rt_quadtree tree, int64_t id, int64_t x, int64_t y, int64_t width, int64_t height) {
+    tree = checked_quadtree(tree, "Quadtree.Update: expected Viper.Game.Quadtree");
     if (!tree)
+        return 0;
+    if (width <= 0 || height <= 0)
         return 0;
 
     // Find and update item
     for (int64_t i = 0; i < tree->item_count; i++) {
         if (tree->items[i].id == id && tree->items[i].active) {
-            int64_t left = x - width / 2;
-            int64_t top = y - height / 2;
+            int64_t left = qt_saturating_sub(x, width / 2);
+            int64_t top = qt_saturating_sub(y, height / 2);
             if (!intersects(tree->root, left, top, width, height))
                 return 0;
 
@@ -608,7 +704,10 @@ int8_t rt_quadtree_update(
 /// `_query_was_truncated` returns 1.
 int64_t rt_quadtree_query_rect(
     rt_quadtree tree, int64_t x, int64_t y, int64_t width, int64_t height) {
+    tree = checked_quadtree(tree, "Quadtree.QueryRect: expected Viper.Game.Quadtree");
     if (!tree)
+        return 0;
+    if (width <= 0 || height <= 0)
         return 0;
 
     tree->result_count = 0;
@@ -619,15 +718,23 @@ int64_t rt_quadtree_query_rect(
 
 /// @brief Check whether the last query hit the result capacity limit.
 int8_t rt_quadtree_query_was_truncated(rt_quadtree tree) {
+    tree = checked_quadtree(tree, "Quadtree.QueryWasTruncated: expected Viper.Game.Quadtree");
     return tree ? tree->query_truncated : 0;
 }
 
 /// @brief Find all items within a circular area centered at (x, y) with given radius.
 int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t radius) {
+    tree = checked_quadtree(tree, "Quadtree.QueryPoint: expected Viper.Game.Quadtree");
     if (!tree)
         return 0;
+    if (radius < 0)
+        radius = 0;
 
-    rt_quadtree_query_rect(tree, x - radius, y - radius, radius * 2, radius * 2);
+    rt_quadtree_query_rect(tree,
+                           qt_saturating_sub(x, radius),
+                           qt_saturating_sub(y, radius),
+                           qt_saturating_mul(radius, 2),
+                           qt_saturating_mul(radius, 2));
 
     int64_t filtered_count = 0;
     for (int64_t i = 0; i < tree->result_count; i++) {
@@ -637,8 +744,8 @@ int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t 
             if (!item->active || item->id != id)
                 continue;
 
-            int64_t ix = item->x - item->width / 2;
-            int64_t iy = item->y - item->height / 2;
+            int64_t ix = qt_saturating_sub(item->x, item->width / 2);
+            int64_t iy = qt_saturating_sub(item->y, item->height / 2);
             if (rect_intersects_circle(ix, iy, item->width, item->height, x, y, radius))
                 tree->results[filtered_count++] = id;
             break;
@@ -651,6 +758,7 @@ int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t 
 
 /// @brief Return the item ID at a given index in the most recent query result set.
 int64_t rt_quadtree_get_result(rt_quadtree tree, int64_t index) {
+    tree = checked_quadtree(tree, "Quadtree.GetResult: expected Viper.Game.Quadtree");
     if (!tree || index < 0 || index >= tree->result_count)
         return -1;
     return tree->results[index];
@@ -658,11 +766,13 @@ int64_t rt_quadtree_get_result(rt_quadtree tree, int64_t index) {
 
 /// @brief Get the number of results from the most recent query.
 int64_t rt_quadtree_result_count(rt_quadtree tree) {
+    tree = checked_quadtree(tree, "Quadtree.ResultCount: expected Viper.Game.Quadtree");
     return tree ? tree->result_count : 0;
 }
 
 /// @brief Get the total number of active items in the quadtree.
 int64_t rt_quadtree_item_count(rt_quadtree tree) {
+    tree = checked_quadtree(tree, "Quadtree.ItemCount: expected Viper.Game.Quadtree");
     if (!tree)
         return 0;
 
@@ -677,6 +787,7 @@ int64_t rt_quadtree_item_count(rt_quadtree tree) {
 /// @brief Compute all potentially-colliding pairs in the quadtree and return the count.
 /// @details Traverses the tree collecting pairs of items that share a leaf node.
 int64_t rt_quadtree_get_pairs(rt_quadtree tree) {
+    tree = checked_quadtree(tree, "Quadtree.GetPairs: expected Viper.Game.Quadtree");
     if (!tree)
         return 0;
 
@@ -688,6 +799,7 @@ int64_t rt_quadtree_get_pairs(rt_quadtree tree) {
 
 /// @brief Return the first item ID in a collision pair at the given index.
 int64_t rt_quadtree_pair_first(rt_quadtree tree, int64_t pair_index) {
+    tree = checked_quadtree(tree, "Quadtree.PairFirst: expected Viper.Game.Quadtree");
     if (!tree || pair_index < 0 || pair_index >= tree->pair_count)
         return -1;
     return tree->pairs[pair_index].first;
@@ -695,6 +807,7 @@ int64_t rt_quadtree_pair_first(rt_quadtree tree, int64_t pair_index) {
 
 /// @brief Return the second item ID in a collision pair at the given index.
 int64_t rt_quadtree_pair_second(rt_quadtree tree, int64_t pair_index) {
+    tree = checked_quadtree(tree, "Quadtree.PairSecond: expected Viper.Game.Quadtree");
     if (!tree || pair_index < 0 || pair_index >= tree->pair_count)
         return -1;
     return tree->pairs[pair_index].second;

@@ -5,6 +5,7 @@
 
 #include "rt_spriteanim.h"
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 
 static int tests_passed = 0;
@@ -233,6 +234,17 @@ TEST(single_frame_pingpong_one_shot_finishes_immediately) {
     rt_spriteanim_destroy(sa);
 }
 
+TEST(nonfinite_speed_is_clamped_to_zero) {
+    rt_spriteanim sa = rt_spriteanim_new();
+    rt_spriteanim_setup(sa, 0, 3, 1);
+    rt_spriteanim_set_speed(sa, NAN);
+    ASSERT(rt_spriteanim_speed(sa) == 0.0);
+    rt_spriteanim_play(sa);
+    rt_spriteanim_update(sa);
+    ASSERT(rt_spriteanim_frame(sa) == 0);
+    rt_spriteanim_destroy(sa);
+}
+
 /// @brief Main.
 int main() {
     printf("RTSpriteAnimTests:\n");
@@ -249,6 +261,7 @@ int main() {
     RUN_TEST(speed_can_advance_multiple_frames_in_one_update);
     RUN_TEST(stop_resets_to_start_frame);
     RUN_TEST(single_frame_pingpong_one_shot_finishes_immediately);
+    RUN_TEST(nonfinite_speed_is_clamped_to_zero);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

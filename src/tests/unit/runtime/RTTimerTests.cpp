@@ -291,6 +291,20 @@ static void test_ghost_mode_timer_use_case() {
     rt_timer_destroy(frightened_timer);
 }
 
+static void test_repeating_ms_preserves_large_overshoot() {
+    printf("  test_repeating_ms_preserves_large_overshoot...\n");
+
+    rt_timer timer = rt_timer_new();
+    assert(timer != nullptr);
+
+    rt_timer_start_repeating_ms(timer, 100);
+    assert(rt_timer_update_ms(timer, 450) == 1);
+    assert(rt_timer_elapsed_ms(timer) == 50);
+    assert(rt_timer_remaining_ms(timer) == 50);
+
+    rt_timer_destroy(timer);
+}
+
 int main() {
     printf("RTTimerTests:\n");
 
@@ -305,6 +319,7 @@ int main() {
     test_set_duration();
     test_animation_use_case();
     test_ghost_mode_timer_use_case();
+    test_repeating_ms_preserves_large_overshoot();
 
     printf("All Timer tests passed!\n");
     return 0;

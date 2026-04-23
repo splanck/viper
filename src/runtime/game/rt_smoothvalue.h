@@ -28,6 +28,8 @@
 extern "C" {
 #endif
 
+#define RT_SMOOTHVALUE_CLASS_ID INT64_C(-0x510203)
+
 /// Opaque handle to a SmoothValue instance.
 typedef struct rt_smoothvalue_impl *rt_smoothvalue;
 

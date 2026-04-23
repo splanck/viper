@@ -33,7 +33,9 @@
 #include "rt_list.h"
 #include "rt_object.h"
 #include "rt_tilemap.h"
+#include "rt_trap.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -44,6 +46,7 @@
 /// @brief Per-cell static data.
 typedef struct {
     int16_t cost;    ///< Movement cost multiplier (100 = normal, 0 = impassable).
+    int64_t value;   ///< Source grid/tile value for nearest-value queries.
     int8_t walkable; ///< 1 = passable, 0 = wall.
 } pf_cell;
 
@@ -77,6 +80,20 @@ static inline int8_t pf_in_bounds(const rt_pathfinder_impl *pf, int32_t x, int32
     return x >= 0 && x < pf->width && y >= 0 && y < pf->height;
 }
 
+static inline int8_t pf_in_bounds_i64(const rt_pathfinder_impl *pf, int64_t x, int64_t y) {
+    return x >= 0 && y >= 0 && x < pf->width && y < pf->height;
+}
+
+static rt_pathfinder_impl *checked_pathfinder(void *ptr, const char *api) {
+    if (!ptr)
+        return NULL;
+    if (rt_obj_class_id(ptr) != RT_PATHFINDER_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (rt_pathfinder_impl *)ptr;
+}
+
 //=============================================================================
 // GC Finalizer
 //=============================================================================
@@ -100,8 +117,8 @@ static rt_pathfinder_impl *pf_alloc(int32_t w, int32_t h) {
     if (h > PF_MAX_DIM)
         h = PF_MAX_DIM;
 
-    rt_pathfinder_impl *pf =
-        (rt_pathfinder_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_pathfinder_impl));
+    rt_pathfinder_impl *pf = (rt_pathfinder_impl *)rt_obj_new_i64(
+        RT_PATHFINDER_CLASS_ID, (int64_t)sizeof(rt_pathfinder_impl));
     if (!pf)
         return NULL;
 
@@ -124,6 +141,7 @@ static rt_pathfinder_impl *pf_alloc(int32_t w, int32_t h) {
     for (int32_t i = 0; i < count; i++) {
         pf->cells[i].walkable = 1;
         pf->cells[i].cost = PF_COST_CARDINAL;
+        pf->cells[i].value = 0;
     }
 
     rt_obj_set_finalizer(pf, pf_finalizer);
@@ -131,9 +149,11 @@ static rt_pathfinder_impl *pf_alloc(int32_t w, int32_t h) {
 }
 
 /// @brief Construct an empty grid pathfinder of `width × height` cells. All cells start
-/// walkable with cost 0. Configure with `_set_walkable` / `_set_cost` before pathing. The
+/// walkable with cost 100. Configure with `_set_walkable` / `_set_cost` before pathing. The
 /// algorithm is A* with octile (or 4-connected) neighborhood.
 void *rt_pathfinder_new(int64_t width, int64_t height) {
+    if (width <= 0 || height <= 0 || width > PF_MAX_DIM || height > PF_MAX_DIM)
+        return NULL;
     return pf_alloc((int32_t)width, (int32_t)height);
 }
 
@@ -143,8 +163,12 @@ void *rt_pathfinder_from_tilemap(void *tilemap) {
     if (!tilemap)
         return NULL;
 
-    int32_t w = (int32_t)rt_tilemap_get_width(tilemap);
-    int32_t h = (int32_t)rt_tilemap_get_height(tilemap);
+    int64_t tw = rt_tilemap_get_width(tilemap);
+    int64_t th = rt_tilemap_get_height(tilemap);
+    if (tw <= 0 || th <= 0 || tw > PF_MAX_DIM || th > PF_MAX_DIM)
+        return NULL;
+    int32_t w = (int32_t)tw;
+    int32_t h = (int32_t)th;
     rt_pathfinder_impl *pf = pf_alloc(w, h);
     if (!pf)
         return NULL;
@@ -154,7 +178,9 @@ void *rt_pathfinder_from_tilemap(void *tilemap) {
         for (int32_t x = 0; x < w; x++) {
             int64_t tile = rt_tilemap_get_tile(tilemap, x, y);
             int64_t collision = rt_tilemap_get_collision(tilemap, tile);
-            pf->cells[pf_idx(pf, x, y)].walkable = (collision == 0) ? 1 : 0;
+            pf_cell *cell = &pf->cells[pf_idx(pf, x, y)];
+            cell->value = tile;
+            cell->walkable = (collision == 0) ? 1 : 0;
         }
     }
 
@@ -171,6 +197,8 @@ void *rt_pathfinder_from_grid2d(void *grid) {
     rt_grid2d g = (rt_grid2d)grid;
     int64_t w = rt_grid2d_width(g);
     int64_t h = rt_grid2d_height(g);
+    if (w <= 0 || h <= 0 || w > PF_MAX_DIM || h > PF_MAX_DIM)
+        return NULL;
     rt_pathfinder_impl *pf = pf_alloc((int32_t)w, (int32_t)h);
     if (!pf)
         return NULL;
@@ -179,7 +207,9 @@ void *rt_pathfinder_from_grid2d(void *grid) {
     for (int32_t y = 0; y < (int32_t)h; y++) {
         for (int32_t x = 0; x < (int32_t)w; x++) {
             int64_t val = rt_grid2d_get(g, x, y);
-            pf->cells[pf_idx(pf, x, y)].walkable = (val == 0) ? 1 : 0;
+            pf_cell *cell = &pf->cells[pf_idx(pf, x, y)];
+            cell->value = val;
+            cell->walkable = (val == 0) ? 1 : 0;
         }
     }
 
@@ -192,20 +222,22 @@ void *rt_pathfinder_from_grid2d(void *grid) {
 
 /// @brief Mark cell (x, y) as walkable (1) or blocked (0). Out-of-bounds is a silent no-op.
 void rt_pathfinder_set_walkable(void *ptr, int64_t x, int64_t y, int8_t walkable) {
-    if (!ptr)
+    rt_pathfinder_impl *pf =
+        checked_pathfinder(ptr, "Pathfinder.SetWalkable: expected Viper.Game.Pathfinder");
+    if (!pf)
         return;
-    rt_pathfinder_impl *pf = (rt_pathfinder_impl *)ptr;
-    if (!pf_in_bounds(pf, (int32_t)x, (int32_t)y))
+    if (!pf_in_bounds_i64(pf, x, y))
         return;
     pf->cells[pf_idx(pf, (int32_t)x, (int32_t)y)].walkable = walkable ? 1 : 0;
 }
 
 /// @brief Returns 1 if cell (x, y) is walkable. Out-of-bounds returns 0 (treat as wall).
 int8_t rt_pathfinder_is_walkable(void *ptr, int64_t x, int64_t y) {
-    if (!ptr)
+    rt_pathfinder_impl *pf =
+        checked_pathfinder(ptr, "Pathfinder.IsWalkable: expected Viper.Game.Pathfinder");
+    if (!pf)
         return 0;
-    rt_pathfinder_impl *pf = (rt_pathfinder_impl *)ptr;
-    if (!pf_in_bounds(pf, (int32_t)x, (int32_t)y))
+    if (!pf_in_bounds_i64(pf, x, y))
         return 0;
     return pf->cells[pf_idx(pf, (int32_t)x, (int32_t)y)].walkable;
 }
@@ -213,10 +245,11 @@ int8_t rt_pathfinder_is_walkable(void *ptr, int64_t x, int64_t y) {
 /// @brief Set per-cell traversal cost (additive penalty for routing through it). Clamped to
 /// [0, 30000]. Useful for terrain types — sand/swamp slow movement without blocking.
 void rt_pathfinder_set_cost(void *ptr, int64_t x, int64_t y, int64_t cost) {
-    if (!ptr)
+    rt_pathfinder_impl *pf =
+        checked_pathfinder(ptr, "Pathfinder.SetCost: expected Viper.Game.Pathfinder");
+    if (!pf)
         return;
-    rt_pathfinder_impl *pf = (rt_pathfinder_impl *)ptr;
-    if (!pf_in_bounds(pf, (int32_t)x, (int32_t)y))
+    if (!pf_in_bounds_i64(pf, x, y))
         return;
     if (cost < 0)
         cost = 0;
@@ -227,27 +260,36 @@ void rt_pathfinder_set_cost(void *ptr, int64_t x, int64_t y, int64_t cost) {
 
 /// @brief Read the additional cost of cell (x, y). 0 = no penalty.
 int64_t rt_pathfinder_get_cost(void *ptr, int64_t x, int64_t y) {
-    if (!ptr)
+    rt_pathfinder_impl *pf =
+        checked_pathfinder(ptr, "Pathfinder.GetCost: expected Viper.Game.Pathfinder");
+    if (!pf)
         return 0;
-    rt_pathfinder_impl *pf = (rt_pathfinder_impl *)ptr;
-    if (!pf_in_bounds(pf, (int32_t)x, (int32_t)y))
+    if (!pf_in_bounds_i64(pf, x, y))
         return 0;
     return pf->cells[pf_idx(pf, (int32_t)x, (int32_t)y)].cost;
 }
 
 /// @brief Toggle diagonal moves. 1 = octile (8-neighbor), 0 = manhattan (4-neighbor only).
 void rt_pathfinder_set_diagonal(void *ptr, int8_t allow) {
-    if (!ptr)
+    rt_pathfinder_impl *pf =
+        checked_pathfinder(ptr, "Pathfinder.SetDiagonal: expected Viper.Game.Pathfinder");
+    if (!pf)
         return;
-    ((rt_pathfinder_impl *)ptr)->allow_diagonal = allow ? 1 : 0;
+    pf->allow_diagonal = allow ? 1 : 0;
 }
 
 /// @brief Cap the search-step budget — A* gives up after `max` cell expansions and reports
 /// "no path". 0 disables the cap. Useful to prevent runaway searches in pathological maps.
 void rt_pathfinder_set_max_steps(void *ptr, int64_t max) {
-    if (!ptr)
+    rt_pathfinder_impl *pf =
+        checked_pathfinder(ptr, "Pathfinder.SetMaxSteps: expected Viper.Game.Pathfinder");
+    if (!pf)
         return;
-    ((rt_pathfinder_impl *)ptr)->max_steps = (int32_t)(max < 0 ? 0 : max);
+    if (max < 0)
+        max = 0;
+    if (max > INT32_MAX)
+        max = INT32_MAX;
+    pf->max_steps = (int32_t)max;
 }
 
 //=============================================================================
@@ -256,23 +298,31 @@ void rt_pathfinder_set_max_steps(void *ptr, int64_t max) {
 
 /// @brief Grid width in cells.
 int64_t rt_pathfinder_get_width(void *ptr) {
-    return ptr ? ((rt_pathfinder_impl *)ptr)->width : 0;
+    rt_pathfinder_impl *pf =
+        checked_pathfinder(ptr, "Pathfinder.Width: expected Viper.Game.Pathfinder");
+    return pf ? pf->width : 0;
 }
 
 /// @brief Grid height in cells.
 int64_t rt_pathfinder_get_height(void *ptr) {
-    return ptr ? ((rt_pathfinder_impl *)ptr)->height : 0;
+    rt_pathfinder_impl *pf =
+        checked_pathfinder(ptr, "Pathfinder.Height: expected Viper.Game.Pathfinder");
+    return pf ? pf->height : 0;
 }
 
 /// @brief Number of cell expansions performed by the most recent `_find_path` call. Useful
 /// for performance tuning and verifying the max-steps cap.
 int64_t rt_pathfinder_get_last_steps(void *ptr) {
-    return ptr ? ((rt_pathfinder_impl *)ptr)->last_steps : 0;
+    rt_pathfinder_impl *pf =
+        checked_pathfinder(ptr, "Pathfinder.LastSteps: expected Viper.Game.Pathfinder");
+    return pf ? pf->last_steps : 0;
 }
 
 /// @brief Returns 1 if the most recent `_find_path` actually reached the goal, 0 otherwise.
 int8_t rt_pathfinder_get_last_found(void *ptr) {
-    return ptr ? ((rt_pathfinder_impl *)ptr)->last_found : 0;
+    rt_pathfinder_impl *pf =
+        checked_pathfinder(ptr, "Pathfinder.LastFound: expected Viper.Game.Pathfinder");
+    return pf ? pf->last_found : 0;
 }
 
 //=============================================================================
@@ -281,8 +331,8 @@ int8_t rt_pathfinder_get_last_found(void *ptr) {
 
 /// @brief Per-node search state (allocated per search call).
 typedef struct {
-    int32_t g;      ///< Cost from start to this node.
-    int32_t f;      ///< g + heuristic (total estimated cost).
+    int64_t g;      ///< Cost from start to this node.
+    int64_t f;      ///< g + heuristic (total estimated cost).
     int32_t parent; ///< Parent node index (-1 = start/none).
     int8_t open;    ///< 1 = in open set.
     int8_t closed;  ///< 1 = already expanded.
@@ -290,16 +340,19 @@ typedef struct {
 
 /// @brief Binary min-heap for the open set (heapified by f-cost).
 typedef struct {
-    int32_t *data;    ///< Array of node indices.
-    int32_t count;    ///< Current number of elements.
-    int32_t capacity; ///< Allocated capacity.
-    pf_node *nodes;   ///< Reference to node array (for f-cost comparison).
+    int32_t *data;     ///< Array of node indices.
+    int32_t *position; ///< Node index -> heap slot, or -1 if not queued.
+    int32_t count;     ///< Current number of elements.
+    int32_t capacity;  ///< Allocated capacity.
+    pf_node *nodes;    ///< Reference to node array (for f-cost comparison).
 } pf_heap;
 
 static void heap_swap(pf_heap *h, int32_t a, int32_t b) {
     int32_t tmp = h->data[a];
     h->data[a] = h->data[b];
     h->data[b] = tmp;
+    h->position[h->data[a]] = a;
+    h->position[h->data[b]] = b;
 }
 
 static void heap_sift_up(pf_heap *h, int32_t i) {
@@ -333,9 +386,16 @@ static void heap_sift_down(pf_heap *h, int32_t i) {
 }
 
 static void heap_push(pf_heap *h, int32_t node_idx) {
+    if (node_idx < 0)
+        return;
+    if (h->position[node_idx] >= 0) {
+        heap_sift_up(h, h->position[node_idx]);
+        return;
+    }
     if (h->count >= h->capacity)
         return; // Should never happen with correct pre-allocation
     h->data[h->count] = node_idx;
+    h->position[node_idx] = h->count;
     heap_sift_up(h, h->count);
     h->count++;
 }
@@ -344,28 +404,30 @@ static int32_t heap_pop(pf_heap *h) {
     if (h->count == 0)
         return -1;
     int32_t top = h->data[0];
+    h->position[top] = -1;
     h->count--;
     if (h->count > 0) {
         h->data[0] = h->data[h->count];
+        h->position[h->data[0]] = 0;
         heap_sift_down(h, 0);
     }
     return top;
 }
 
 /// @brief Compute heuristic from (ax,ay) to (bx,by).
-static int32_t pf_heuristic(int32_t ax, int32_t ay, int32_t bx, int32_t by, int8_t diagonal) {
+static int64_t pf_heuristic(int32_t ax, int32_t ay, int32_t bx, int32_t by, int8_t diagonal) {
     int32_t dx = ax > bx ? ax - bx : bx - ax;
     int32_t dy = ay > by ? ay - by : by - ay;
 
     if (diagonal) {
         // Octile distance: max(dx,dy)*100 + (√2-1)*min(dx,dy)*100
         // ≈ max*100 + min*41
-        int32_t mn = dx < dy ? dx : dy;
-        int32_t mx = dx > dy ? dx : dy;
+        int64_t mn = dx < dy ? dx : dy;
+        int64_t mx = dx > dy ? dx : dy;
         return mx * PF_COST_CARDINAL + mn * (PF_COST_DIAGONAL - PF_COST_CARDINAL);
     } else {
         // Manhattan distance
-        return (dx + dy) * PF_COST_CARDINAL;
+        return ((int64_t)dx + (int64_t)dy) * PF_COST_CARDINAL;
     }
 }
 
@@ -427,7 +489,7 @@ static void *pf_astar(rt_pathfinder_impl *pf,
                       int32_t gx,
                       int32_t gy,
                       int8_t cost_only,
-                      int32_t *out_cost) {
+                      int64_t *out_cost) {
     pf->last_found = 0;
     pf->last_steps = 0;
     if (out_cost)
@@ -445,8 +507,14 @@ static void *pf_astar(rt_pathfinder_impl *pf,
         if (cost_only)
             return NULL;
         void *list = rt_list_new();
-        rt_list_push(list, rt_box_i64(sx));
-        rt_list_push(list, rt_box_i64(sy));
+        void *bx = rt_box_i64(sx);
+        rt_list_push(list, bx);
+        if (bx && rt_obj_release_check0(bx))
+            rt_obj_free(bx);
+        void *by = rt_box_i64(sy);
+        rt_list_push(list, by);
+        if (by && rt_obj_release_check0(by))
+            rt_obj_free(by);
         return list;
     }
 
@@ -465,8 +533,8 @@ static void *pf_astar(rt_pathfinder_impl *pf,
 
     // Initialize all nodes
     for (int32_t i = 0; i < total; i++) {
-        nodes[i].g = INT32_MAX / 2;
-        nodes[i].f = INT32_MAX / 2;
+        nodes[i].g = INT64_MAX / 4;
+        nodes[i].f = INT64_MAX / 4;
         nodes[i].parent = -1;
         nodes[i].open = 0;
         nodes[i].closed = 0;
@@ -475,14 +543,19 @@ static void *pf_astar(rt_pathfinder_impl *pf,
     // Heap
     pf_heap heap;
     heap.data = (int32_t *)malloc((size_t)total * sizeof(int32_t));
+    heap.position = (int32_t *)malloc((size_t)total * sizeof(int32_t));
     heap.count = 0;
     heap.capacity = total;
     heap.nodes = nodes;
 
-    if (!heap.data) {
+    if (!heap.data || !heap.position) {
+        free(heap.position);
+        free(heap.data);
         free(nodes);
         return cost_only ? NULL : rt_list_new();
     }
+    for (int32_t i = 0; i < total; ++i)
+        heap.position[i] = -1;
 
     // Initialize start node
     nodes[si].g = 0;
@@ -515,6 +588,7 @@ static void *pf_astar(rt_pathfinder_impl *pf,
                 *out_cost = nodes[cur].g;
             if (!cost_only)
                 result = pf_build_path(nodes, gi, pf->width);
+            free(heap.position);
             free(heap.data);
             free(nodes);
             return result ? result : (cost_only ? NULL : rt_list_new());
@@ -537,18 +611,23 @@ static void *pf_astar(rt_pathfinder_impl *pf,
             // For diagonal moves, check that both cardinal neighbors are walkable
             // (prevents cutting through wall corners)
             if (d >= 4) {
-                int32_t adj1 = pf_idx(pf, cx + dx[d], cy);
-                int32_t adj2 = pf_idx(pf, cx, cy + dy[d]);
-                if (!pf_in_bounds(pf, cx + dx[d], cy) || !pf->cells[adj1].walkable)
+                if (!pf_in_bounds(pf, cx + dx[d], cy))
                     continue;
-                if (!pf_in_bounds(pf, cx, cy + dy[d]) || !pf->cells[adj2].walkable)
+                int32_t adj1 = pf_idx(pf, cx + dx[d], cy);
+                if (!pf->cells[adj1].walkable)
+                    continue;
+                if (!pf_in_bounds(pf, cx, cy + dy[d]))
+                    continue;
+                int32_t adj2 = pf_idx(pf, cx, cy + dy[d]);
+                if (!pf->cells[adj2].walkable)
                     continue;
             }
 
             // Movement cost: base cost × cell cost / 100
-            int32_t base_cost = (d < 4) ? PF_COST_CARDINAL : PF_COST_DIAGONAL;
-            int32_t move_cost = base_cost * pf->cells[ni].cost / PF_COST_CARDINAL;
-            int32_t tentative_g = nodes[cur].g + move_cost;
+            int64_t base_cost = (d < 4) ? PF_COST_CARDINAL : PF_COST_DIAGONAL;
+            int64_t move_cost = base_cost * pf->cells[ni].cost / PF_COST_CARDINAL;
+            int64_t tentative_g =
+                nodes[cur].g > INT64_MAX - move_cost ? INT64_MAX : nodes[cur].g + move_cost;
 
             if (tentative_g < nodes[ni].g) {
                 nodes[ni].g = tentative_g;
@@ -559,9 +638,6 @@ static void *pf_astar(rt_pathfinder_impl *pf,
                     nodes[ni].open = 1;
                     heap_push(&heap, ni);
                 } else {
-                    // Decrease-key: re-sift the node.
-                    // Since we don't track heap position, we push a duplicate.
-                    // Duplicates with higher f are ignored when popped (already closed).
                     heap_push(&heap, ni);
                 }
             }
@@ -570,6 +646,7 @@ static void *pf_astar(rt_pathfinder_impl *pf,
 
     // No path found
     pf->last_steps = steps;
+    free(heap.position);
     free(heap.data);
     free(nodes);
     return cost_only ? NULL : rt_list_new();
@@ -583,19 +660,31 @@ static void *pf_astar(rt_pathfinder_impl *pf,
 /// neighborhood + costs. Returns a List of (x, y) cell pairs (each entry is a 2-int Seq).
 /// Empty list if no path exists or `max_steps` was hit before reaching the goal.
 void *rt_pathfinder_find_path(void *ptr, int64_t sx, int64_t sy, int64_t gx, int64_t gy) {
-    if (!ptr)
+    rt_pathfinder_impl *pf =
+        checked_pathfinder(ptr, "Pathfinder.FindPath: expected Viper.Game.Pathfinder");
+    if (!pf)
         return rt_list_new();
-    rt_pathfinder_impl *pf = (rt_pathfinder_impl *)ptr;
+    if (!pf_in_bounds_i64(pf, sx, sy) || !pf_in_bounds_i64(pf, gx, gy)) {
+        pf->last_found = 0;
+        pf->last_steps = 0;
+        return rt_list_new();
+    }
     return pf_astar(pf, (int32_t)sx, (int32_t)sy, (int32_t)gx, (int32_t)gy, 0, NULL);
 }
 
 /// @brief Compute just the path length (number of steps) from start to goal — faster than
 /// `_find_path` when you don't need the path itself. -1 if no path exists.
 int64_t rt_pathfinder_find_path_length(void *ptr, int64_t sx, int64_t sy, int64_t gx, int64_t gy) {
-    if (!ptr)
+    rt_pathfinder_impl *pf =
+        checked_pathfinder(ptr, "Pathfinder.FindPathLength: expected Viper.Game.Pathfinder");
+    if (!pf)
         return -1;
-    rt_pathfinder_impl *pf = (rt_pathfinder_impl *)ptr;
-    int32_t cost = -1;
+    if (!pf_in_bounds_i64(pf, sx, sy) || !pf_in_bounds_i64(pf, gx, gy)) {
+        pf->last_found = 0;
+        pf->last_steps = 0;
+        return -1;
+    }
+    int64_t cost = -1;
     pf_astar(pf, (int32_t)sx, (int32_t)sy, (int32_t)gx, (int32_t)gy, 1, &cost);
     return cost;
 }
@@ -604,13 +693,81 @@ int64_t rt_pathfinder_find_path_length(void *ptr, int64_t sx, int64_t sy, int64_
 /// reachable cell whose stored value matches `target_value`. Useful for "find nearest
 /// resource / enemy / waypoint marker" workflows. Empty list if none found within `max_steps`.
 void *rt_pathfinder_find_nearest(void *ptr, int64_t sx, int64_t sy, int64_t target_value) {
-    // Simple BFS-based nearest search: expand from start, return first matching cell.
-    // This reuses the A* infrastructure but with heuristic=0 (degrades to Dijkstra).
-    // For now, implement as a simple BFS since we don't have Grid2D value access here.
-    (void)target_value;
-    if (!ptr)
+    rt_pathfinder_impl *pf =
+        checked_pathfinder(ptr, "Pathfinder.FindNearest: expected Viper.Game.Pathfinder");
+    if (!pf)
+        return rt_list_new();
+    pf->last_found = 0;
+    pf->last_steps = 0;
+    if (!pf_in_bounds_i64(pf, sx, sy))
         return rt_list_new();
 
-    // Placeholder: returns empty list (full implementation requires Grid2D value lookback).
-    return rt_list_new();
+    int32_t start = pf_idx(pf, (int32_t)sx, (int32_t)sy);
+    if (!pf->cells[start].walkable)
+        return rt_list_new();
+
+    int32_t total = pf->width * pf->height;
+    pf_node *nodes = (pf_node *)calloc((size_t)total, sizeof(pf_node));
+    int32_t *queue = (int32_t *)malloc((size_t)total * sizeof(int32_t));
+    if (!nodes || !queue) {
+        free(queue);
+        free(nodes);
+        return rt_list_new();
+    }
+    for (int32_t i = 0; i < total; ++i)
+        nodes[i].parent = -1;
+
+    int32_t head = 0;
+    int32_t tail = 0;
+    int32_t steps = 0;
+    int32_t max = pf->max_steps > 0 ? pf->max_steps : INT32_MAX;
+    int32_t found = -1;
+    nodes[start].closed = 1;
+    queue[tail++] = start;
+
+    int32_t dir_count = pf->allow_diagonal ? 8 : 4;
+    const int32_t *dx = pf->allow_diagonal ? dir8_dx : dir4_dx;
+    const int32_t *dy = pf->allow_diagonal ? dir8_dy : dir4_dy;
+
+    while (head < tail && steps < max) {
+        int32_t cur = queue[head++];
+        steps++;
+        if (pf->cells[cur].value == target_value) {
+            found = cur;
+            break;
+        }
+
+        int32_t cx = cur % pf->width;
+        int32_t cy = cur / pf->width;
+        for (int32_t d = 0; d < dir_count; ++d) {
+            int32_t nx = cx + dx[d];
+            int32_t ny = cy + dy[d];
+            if (!pf_in_bounds(pf, nx, ny))
+                continue;
+            int32_t ni = pf_idx(pf, nx, ny);
+            if (nodes[ni].closed || !pf->cells[ni].walkable)
+                continue;
+            if (d >= 4) {
+                if (!pf_in_bounds(pf, cx + dx[d], cy) ||
+                    !pf->cells[pf_idx(pf, cx + dx[d], cy)].walkable)
+                    continue;
+                if (!pf_in_bounds(pf, cx, cy + dy[d]) ||
+                    !pf->cells[pf_idx(pf, cx, cy + dy[d])].walkable)
+                    continue;
+            }
+            nodes[ni].closed = 1;
+            nodes[ni].parent = cur;
+            queue[tail++] = ni;
+        }
+    }
+
+    pf->last_steps = steps;
+    void *result = NULL;
+    if (found >= 0) {
+        pf->last_found = 1;
+        result = pf_build_path(nodes, found, pf->width);
+    }
+    free(queue);
+    free(nodes);
+    return result ? result : rt_list_new();
 }

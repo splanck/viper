@@ -29,6 +29,8 @@
 extern "C" {
 #endif
 
+#define RT_PARTICLE_EMITTER_CLASS_ID INT64_C(-0x510204)
+
 /// Maximum particles per emitter.
 #define RT_PARTICLE_MAX 1024
 

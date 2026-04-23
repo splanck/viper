@@ -29,6 +29,8 @@
 extern "C" {
 #endif
 
+#define RT_PATHFOLLOW_CLASS_ID INT64_C(-0x510208)
+
 /// Maximum waypoints per path.
 #define RT_PATHFOLLOW_MAX_POINTS 64
 

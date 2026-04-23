@@ -38,6 +38,8 @@
 
 #include "rt_timer.h"
 #include "rt_object.h"
+#include "rt_trap.h"
+#include <limits.h>
 #include <stdlib.h>
 
 /// Internal structure for Timer.
@@ -49,10 +51,36 @@ struct rt_timer_impl {
     int8_t ms_mode;   // 1 if using millisecond-based timing
 };
 
+static rt_timer checked_timer(rt_timer timer, const char *api) {
+    if (!timer)
+        return NULL;
+    if (rt_obj_class_id(timer) != RT_TIMER_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return timer;
+}
+
+static int64_t timer_add_sat_i64(int64_t a, int64_t b) {
+    if (b > 0 && a > INT64_MAX - b)
+        return INT64_MAX;
+    if (b < 0 && a < INT64_MIN - b)
+        return INT64_MIN;
+    return a + b;
+}
+
+static int64_t timer_percent_i64(int64_t value, int64_t total) {
+    if (value <= 0 || total <= 0)
+        return 0;
+    long double scaled = ((long double)value * 100.0L) / (long double)total;
+    int64_t pct = scaled >= (long double)INT64_MAX ? INT64_MAX : (int64_t)scaled;
+    return pct > 100 ? 100 : pct;
+}
+
 /// @brief Create a new timer (starts stopped with zero duration).
 rt_timer rt_timer_new(void) {
-    struct rt_timer_impl *timer =
-        (struct rt_timer_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_timer_impl));
+    struct rt_timer_impl *timer = (struct rt_timer_impl *)rt_obj_new_i64(
+        RT_TIMER_CLASS_ID, (int64_t)sizeof(struct rt_timer_impl));
     if (!timer) {
         return NULL;
     }
@@ -68,12 +96,14 @@ rt_timer rt_timer_new(void) {
 
 /// @brief Destroy a timer and release its GC allocation.
 void rt_timer_destroy(rt_timer timer) {
+    timer = checked_timer(timer, "Timer.Destroy: expected Viper.Game.Timer");
     if (timer && rt_obj_release_check0(timer))
         rt_obj_free(timer);
 }
 
 /// @brief Start a one-shot timer that expires after the given number of frames.
 void rt_timer_start(rt_timer timer, int64_t frames) {
+    timer = checked_timer(timer, "Timer.Start: expected Viper.Game.Timer");
     if (!timer || frames <= 0)
         return;
 
@@ -85,6 +115,7 @@ void rt_timer_start(rt_timer timer, int64_t frames) {
 
 /// @brief Start a repeating timer that auto-restarts when it expires.
 void rt_timer_start_repeating(rt_timer timer, int64_t frames) {
+    timer = checked_timer(timer, "Timer.StartRepeating: expected Viper.Game.Timer");
     if (!timer || frames <= 0)
         return;
 
@@ -96,6 +127,7 @@ void rt_timer_start_repeating(rt_timer timer, int64_t frames) {
 
 /// @brief Stop the timer (elapsed value is preserved for queries).
 void rt_timer_stop(rt_timer timer) {
+    timer = checked_timer(timer, "Timer.Stop: expected Viper.Game.Timer");
     if (!timer)
         return;
     timer->running = 0;
@@ -103,6 +135,7 @@ void rt_timer_stop(rt_timer timer) {
 
 /// @brief Reset the elapsed counter to zero without changing running/repeating state.
 void rt_timer_reset(rt_timer timer) {
+    timer = checked_timer(timer, "Timer.Reset: expected Viper.Game.Timer");
     if (!timer)
         return;
     timer->elapsed = 0;
@@ -110,6 +143,7 @@ void rt_timer_reset(rt_timer timer) {
 
 /// @brief Advance the timer by one tick. Returns 1 if the timer expired this tick.
 int8_t rt_timer_update(rt_timer timer) {
+    timer = checked_timer(timer, "Timer.Update: expected Viper.Game.Timer");
     if (!timer || !timer->running) {
         return 0;
     }
@@ -131,11 +165,13 @@ int8_t rt_timer_update(rt_timer timer) {
 
 /// @brief Check whether the timer is currently counting.
 int8_t rt_timer_is_running(rt_timer timer) {
+    timer = checked_timer(timer, "Timer.IsRunning: expected Viper.Game.Timer");
     return timer ? timer->running : 0;
 }
 
 /// @brief Check whether the timer has expired (stopped and elapsed >= duration).
 int8_t rt_timer_is_expired(rt_timer timer) {
+    timer = checked_timer(timer, "Timer.IsExpired: expected Viper.Game.Timer");
     if (!timer)
         return 0;
     return (!timer->running && timer->elapsed >= timer->duration) ? 1 : 0;
@@ -143,11 +179,13 @@ int8_t rt_timer_is_expired(rt_timer timer) {
 
 /// @brief Get the number of ticks elapsed since the timer was started.
 int64_t rt_timer_elapsed(rt_timer timer) {
+    timer = checked_timer(timer, "Timer.Elapsed: expected Viper.Game.Timer");
     return timer ? timer->elapsed : 0;
 }
 
 /// @brief Get the number of ticks remaining before the timer expires.
 int64_t rt_timer_remaining(rt_timer timer) {
+    timer = checked_timer(timer, "Timer.Remaining: expected Viper.Game.Timer");
     if (!timer || timer->duration == 0)
         return 0;
 
@@ -157,20 +195,22 @@ int64_t rt_timer_remaining(rt_timer timer) {
 
 /// @brief Get the timer progress as a percentage (0–100).
 int64_t rt_timer_progress(rt_timer timer) {
+    timer = checked_timer(timer, "Timer.Progress: expected Viper.Game.Timer");
     if (!timer || timer->duration == 0)
         return 0;
 
-    int64_t progress = (timer->elapsed * 100) / timer->duration;
-    return (progress > 100) ? 100 : progress;
+    return timer_percent_i64(timer->elapsed, timer->duration);
 }
 
 /// @brief Get the total duration the timer was started with.
 int64_t rt_timer_duration(rt_timer timer) {
+    timer = checked_timer(timer, "Timer.Duration: expected Viper.Game.Timer");
     return timer ? timer->duration : 0;
 }
 
 /// @brief Check whether the timer is in repeating (auto-restart) mode.
 int8_t rt_timer_is_repeating(rt_timer timer) {
+    timer = checked_timer(timer, "Timer.IsRepeating: expected Viper.Game.Timer");
     return timer ? timer->repeating : 0;
 }
 
@@ -178,6 +218,7 @@ int8_t rt_timer_is_repeating(rt_timer timer) {
 /// @param timer
 /// @param frames
 void rt_timer_set_duration(rt_timer timer, int64_t frames) {
+    timer = checked_timer(timer, "Timer.Duration.set: expected Viper.Game.Timer");
     if (!timer || frames <= 0)
         return;
     timer->duration = frames;
@@ -190,6 +231,7 @@ void rt_timer_set_duration(rt_timer timer, int64_t frames) {
 /// @brief Start a one-shot millisecond-based timer (drive with `_update_ms(dt_ms)`).
 /// Switches the timer into ms mode; subsequent frame-based ops should use the ms variants.
 void rt_timer_start_ms(rt_timer timer, int64_t duration_ms) {
+    timer = checked_timer(timer, "Timer.StartMs: expected Viper.Game.Timer");
     if (!timer || duration_ms <= 0)
         return;
     timer->duration = duration_ms;
@@ -201,6 +243,7 @@ void rt_timer_start_ms(rt_timer timer, int64_t duration_ms) {
 
 /// @brief Start a repeating millisecond-based timer that fires every @p interval_ms.
 void rt_timer_start_repeating_ms(rt_timer timer, int64_t interval_ms) {
+    timer = checked_timer(timer, "Timer.StartRepeatingMs: expected Viper.Game.Timer");
     if (!timer || interval_ms <= 0)
         return;
     timer->duration = interval_ms;
@@ -213,15 +256,16 @@ void rt_timer_start_repeating_ms(rt_timer timer, int64_t interval_ms) {
 /// @brief Advance an ms-mode timer by @p dt milliseconds. Returns 1 on the tick it expires.
 /// Repeating timers preserve overshoot (`elapsed -= duration`) for sub-millisecond accuracy.
 int8_t rt_timer_update_ms(rt_timer timer, int64_t dt) {
+    timer = checked_timer(timer, "Timer.UpdateMs: expected Viper.Game.Timer");
     if (!timer || !timer->running || dt <= 0)
         return 0;
 
-    timer->elapsed += dt;
+    timer->elapsed = timer_add_sat_i64(timer->elapsed, dt);
 
     if (timer->elapsed >= timer->duration) {
         if (timer->repeating) {
             // Wrap around, preserving overshoot for accuracy
-            timer->elapsed -= timer->duration;
+            timer->elapsed %= timer->duration;
             if (timer->elapsed < 0)
                 timer->elapsed = 0;
         } else {
@@ -236,11 +280,13 @@ int8_t rt_timer_update_ms(rt_timer timer, int64_t dt) {
 
 /// @brief Read the elapsed milliseconds since the timer started.
 int64_t rt_timer_elapsed_ms(rt_timer timer) {
+    timer = checked_timer(timer, "Timer.ElapsedMs: expected Viper.Game.Timer");
     return timer ? timer->elapsed : 0;
 }
 
 /// @brief Read the milliseconds remaining before an ms-mode timer expires (0 if past).
 int64_t rt_timer_remaining_ms(rt_timer timer) {
+    timer = checked_timer(timer, "Timer.RemainingMs: expected Viper.Game.Timer");
     if (!timer || timer->duration == 0)
         return 0;
     int64_t remaining = timer->duration - timer->elapsed;

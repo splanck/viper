@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-17
+last-verified: 2026-04-23
 ---
 
 # Game UI Widgets
@@ -17,6 +17,7 @@ last-verified: 2026-04-17
 - [Viper.Game.UI.Panel](#vipergameuipanel)
 - [Viper.Game.UI.NineSlice](#vipergameuinineslice)
 - [Viper.Game.UI.MenuList](#vipergameuimenulist)
+- [Viper.Game.UI.GameButton](#vipergameuigamebutton)
 - [Viper.Game.UI.Dialogue](#vipergameuidialogue)
 - [Usage Example](#usage-example)
 
@@ -44,9 +45,11 @@ Positioned text widget with optional BitmapFont support and integer scaling.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `SetText(text)` | `void(String)` | Update label text (max 511 chars) |
+| `SetText(text)` | `void(String)` | Update label text (max 511 bytes, UTF-8-safe truncation) |
 | `SetPos(x, y)` | `void(Integer, Integer)` | Move to new position |
 | `Draw(canvas)` | `void(Canvas)` | Render to canvas |
+
+The assigned `Font` must be `null` or a `BitmapFont`. It is retained by the label and released when replaced or when the label is freed.
 
 ---
 
@@ -77,6 +80,8 @@ Progress/health/XP bar with configurable fill direction, colors, and optional bo
 | `SetColors(fg, bg)` | `void(Integer, Integer)` | Update fill and background colors |
 | `Draw(canvas)` | `void(Canvas)` | Render to canvas |
 
+Positive non-zero values always draw at least one pixel of fill, so low health/progress does not disappear before reaching zero.
+
 ---
 
 ## Viper.Game.UI.Panel
@@ -100,31 +105,35 @@ Semi-transparent rectangular panel with optional border and rounded corners. Ide
 | `SetPos(x, y)` | `void(Integer, Integer)` | Move to new position |
 | `SetSize(w, h)` | `void(Integer, Integer)` | Resize the panel |
 | `SetColor(color, alpha)` | `void(Integer, Integer)` | Update background color and alpha (0-255) |
-| `SetBorder(color, thickness)` | `void(Integer, Integer)` | Set border color and thickness |
+| `SetBorder(color, thickness)` | `void(Integer, Integer)` | Set border color and thickness; color 0 or thickness <= 0 disables the border |
 | `Draw(canvas)` | `void(Canvas)` | Render to canvas |
+
+Rounded corners are preserved for both opaque and alpha-blended panel fills. Border thickness is clamped to fit inside the current panel size.
 
 ---
 
 ## Viper.Game.UI.NineSlice
 
-Scalable bordered UI element that stretches a source image using the 9-slice technique. Corners stay fixed, edges tile along one axis, center tiles to fill. Perfect for dialogue boxes, buttons, and inventory slots.
+Scalable bordered UI element that draws a source image using the 9-slice technique. Corners stay fixed, edges tile along one axis, center tiles to fill. Perfect for dialogue boxes, buttons, and inventory slots.
 
 **Type:** Instance (obj)
 **Constructor:** `NineSlice.New(pixels, left, top, right, bottom)`
 
-The margins define the sizes of the corner/edge regions in the source Pixels image.
+The margins define the sizes of the corner/edge regions in the source Pixels image. `NineSlice` requires a real `Pixels` handle and retains it, so callers do not need to keep a separate owner alive after construction.
 
 ### Properties
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
-| `Tint` | Integer | Write | Color tint (0 = no tint) |
+| `Tint` | Integer | Write | Multiplicative color tint applied at draw time (0 = no tint) |
 
 ### Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Draw(canvas, x, y, w, h)` | `void(Canvas, Integer, Integer, Integer, Integer)` | Draw at position with target size |
+
+When the target rectangle is smaller than the configured margins, corners and edges are cropped to the target size instead of drawing outside it. Tinted sources are cached and refreshed when the tint or source pixels change.
 
 ---
 
@@ -148,18 +157,56 @@ Vertical menu with selection highlight and keyboard-friendly wrap-around navigat
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `AddItem(text)` | `void(String)` | Append a menu item (max 64 items) |
+| `AddItem(text)` | `void(String)` | Append a menu item (max 64 items; exceeding the cap traps) |
 | `Clear()` | `void()` | Remove all items and reset selection |
 | `MoveUp()` | `void()` | Move selection up (wraps to bottom at index 0) |
 | `MoveDown()` | `void()` | Move selection down (wraps to top at last item) |
 | `SetColors(text, selected, highlight)` | `void(Integer, Integer, Integer)` | Set text, selected text, and highlight background colors |
 | `Draw(canvas)` | `void(Canvas)` | Render to canvas |
+| `HandleInput(up, down, confirm)` | `Integer(Boolean, Boolean, Boolean)` | Move selection and return selected index on confirm, otherwise -1 |
 
 ### Navigation Behavior
 
 - `MoveUp()` at index 0 wraps to `Count - 1`
 - `MoveDown()` at `Count - 1` wraps to 0
 - Navigation on an empty list is a no-op
+- Hidden menus ignore `HandleInput`
+- If both `up` and `down` are true in `HandleInput`, selection does not move; `confirm` is still honored
+- Item text is copied into fixed buffers and truncated on UTF-8 codepoint boundaries
+- The assigned `Font` must be `null` or a `BitmapFont`; it is retained and released when replaced or when the menu is freed
+
+---
+
+## Viper.Game.UI.GameButton
+
+Standalone styled button for custom game menus and HUD layouts.
+
+**Type:** Instance (obj)
+**Constructor:** `GameButton.New(x, y, width, height, text)`
+
+### Properties
+
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `X` | Integer | Read/Write | X position |
+| `Y` | Integer | Read/Write | Y position |
+| `Width` | Integer | Read | Width in pixels |
+| `Height` | Integer | Read | Height in pixels |
+| `Visible` | Boolean | Read/Write | Visibility toggle |
+| `TextScale` | Integer | Read/Write | Built-in font scale, clamped to 1-16 |
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `SetText(text)` | `void(String)` | Update button text (max 63 bytes, UTF-8-safe truncation; null clears text) |
+| `SetSize(width, height)` | `void(Integer, Integer)` | Resize the button |
+| `SetColors(normal, selected)` | `void(Integer, Integer)` | Set fill colors for normal and selected states |
+| `SetTextColors(normal, selected)` | `void(Integer, Integer)` | Set text colors for normal and selected states |
+| `SetBorder(width, color)` | `void(Integer, Integer)` | Set border width and color; width <= 0 disables the border |
+| `Draw(canvas, isSelected)` | `void(Canvas, Boolean)` | Draw the button using the selected or normal colorway |
+
+Button text is centered and clipped to the inner button width on UTF-8 codepoint boundaries, so long labels do not draw outside the control. Invalid constructor and `SetSize` width/height values are clamped to 1 pixel. Large widget dimensions are capped at 16384 pixels.
 
 ---
 
@@ -259,15 +306,17 @@ if downPressed { menu.MoveDown(); }
 
 | Limit | Value |
 |-------|-------|
-| Label text length | 511 characters |
+| Label text length | 511 bytes (UTF-8-safe truncation) |
+| GameButton text length | 63 bytes (UTF-8-safe truncation) |
 | MenuList max items | 64 |
-| MenuList item text length | 127 characters |
+| MenuList item text length | 127 bytes (UTF-8-safe truncation) |
 | Dialogue queued lines | 64 |
 | Dialogue text payload | 511 bytes (UTF-8-safe truncation) |
 | Dialogue speaker label | 63 bytes (UTF-8-safe truncation) |
 | Panel alpha range | 0-255 (clamped) |
 | Bar value | Clamped to [0, max] |
 | Bar max | Clamped to >= 1 |
+| UI widget dimensions | Clamped to 1-16384 pixels |
 
 ---
 

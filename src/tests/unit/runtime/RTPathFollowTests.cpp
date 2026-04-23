@@ -5,6 +5,7 @@
 
 #include "rt_pathfollow.h"
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 
@@ -283,6 +284,20 @@ TEST(pingpong_mode_skips_zero_length_end_segments) {
     rt_pathfollow_destroy(path);
 }
 
+TEST(extreme_coordinates_keep_direction_and_progress_safe) {
+    rt_pathfollow path = rt_pathfollow_new();
+    rt_pathfollow_add_point(path, INT64_MIN + 1000, INT64_MIN + 1000);
+    rt_pathfollow_add_point(path, INT64_MAX, INT64_MAX);
+
+    rt_pathfollow_set_progress(path, 500);
+    int64_t progress = rt_pathfollow_get_progress(path);
+    ASSERT(progress > 0);
+    ASSERT(progress < 1000);
+    ASSERT(rt_pathfollow_get_angle(path) == 45000);
+
+    rt_pathfollow_destroy(path);
+}
+
 /// @brief Main.
 int main() {
     printf("RTPathFollowTests:\n");
@@ -301,6 +316,7 @@ int main() {
     RUN_TEST(short_segments_keep_nonzero_length);
     RUN_TEST(loop_mode_skips_zero_length_segments);
     RUN_TEST(pingpong_mode_skips_zero_length_end_segments);
+    RUN_TEST(extreme_coordinates_keep_direction_and_progress_safe);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

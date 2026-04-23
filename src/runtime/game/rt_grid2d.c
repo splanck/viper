@@ -37,6 +37,8 @@
 
 #include "rt_grid2d.h"
 #include "rt_object.h"
+#include "rt_trap.h"
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -46,6 +48,16 @@ struct rt_grid2d_impl {
     int64_t height;
     int64_t *data; // Row-major storage: data[y * width + x]
 };
+
+static struct rt_grid2d_impl *checked_grid(rt_grid2d grid, const char *api) {
+    if (!grid)
+        return NULL;
+    if (rt_obj_class_id(grid) != RT_GRID2D_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return grid;
+}
 
 static void grid2d_finalizer(void *obj) {
     struct rt_grid2d_impl *grid = (struct rt_grid2d_impl *)obj;
@@ -57,7 +69,7 @@ static void grid2d_finalizer(void *obj) {
 /// @details Allocates a flat array of width*height int64_t cells. Used for
 ///          tile-based game data: collision maps, influence maps, fog-of-war grids.
 rt_grid2d rt_grid2d_new(int64_t width, int64_t height, int64_t default_value) {
-    if (width <= 0 || height <= 0) {
+    if (width <= 0 || height <= 0 || width > RT_GRID2D_MAX_DIM || height > RT_GRID2D_MAX_DIM) {
         return NULL;
     }
 
@@ -67,8 +79,10 @@ rt_grid2d rt_grid2d_new(int64_t width, int64_t height, int64_t default_value) {
     }
 
     int64_t size = width * height;
+    if ((uint64_t)size > (uint64_t)SIZE_MAX / sizeof(int64_t))
+        return NULL;
 
-    struct rt_grid2d_impl *grid = rt_obj_new_i64(0, sizeof(struct rt_grid2d_impl));
+    struct rt_grid2d_impl *grid = rt_obj_new_i64(RT_GRID2D_CLASS_ID, sizeof(struct rt_grid2d_impl));
     if (!grid) {
         return NULL;
     }
@@ -94,12 +108,14 @@ rt_grid2d rt_grid2d_new(int64_t width, int64_t height, int64_t default_value) {
 
 /// @brief Release resources and destroy the grid2d.
 void rt_grid2d_destroy(rt_grid2d grid) {
-    // Object is GC-managed; finalizer frees internal data.
-    (void)grid;
+    grid = checked_grid(grid, "Grid2D.Destroy: expected Viper.Game.Grid2D");
+    if (grid && rt_obj_release_check0(grid))
+        rt_obj_free(grid);
 }
 
 /// @brief Get a value from the grid2d.
 int64_t rt_grid2d_get(rt_grid2d grid, int64_t x, int64_t y) {
+    grid = checked_grid(grid, "Grid2D.Get: expected Viper.Game.Grid2D");
     if (!grid)
         return 0;
     if (x < 0 || x >= grid->width || y < 0 || y >= grid->height) {
@@ -110,6 +126,7 @@ int64_t rt_grid2d_get(rt_grid2d grid, int64_t x, int64_t y) {
 
 /// @brief Set a value in the grid2d.
 void rt_grid2d_set(rt_grid2d grid, int64_t x, int64_t y, int64_t value) {
+    grid = checked_grid(grid, "Grid2D.Set: expected Viper.Game.Grid2D");
     if (!grid)
         return;
     if (x < 0 || x >= grid->width || y < 0 || y >= grid->height) {
@@ -120,6 +137,7 @@ void rt_grid2d_set(rt_grid2d grid, int64_t x, int64_t y, int64_t value) {
 
 /// @brief Fill the grid2d.
 void rt_grid2d_fill(rt_grid2d grid, int64_t value) {
+    grid = checked_grid(grid, "Grid2D.Fill: expected Viper.Game.Grid2D");
     if (!grid)
         return;
 
@@ -136,16 +154,19 @@ void rt_grid2d_clear(rt_grid2d grid) {
 
 /// @brief Get the width of the grid in cells.
 int64_t rt_grid2d_width(rt_grid2d grid) {
+    grid = checked_grid(grid, "Grid2D.Width: expected Viper.Game.Grid2D");
     return grid ? grid->width : 0;
 }
 
 /// @brief Get the height of the grid in cells.
 int64_t rt_grid2d_height(rt_grid2d grid) {
+    grid = checked_grid(grid, "Grid2D.Height: expected Viper.Game.Grid2D");
     return grid ? grid->height : 0;
 }
 
 /// @brief Check whether (x, y) is within the grid dimensions.
 int8_t rt_grid2d_in_bounds(rt_grid2d grid, int64_t x, int64_t y) {
+    grid = checked_grid(grid, "Grid2D.InBounds: expected Viper.Game.Grid2D");
     if (!grid)
         return 0;
     return (x >= 0 && x < grid->width && y >= 0 && y < grid->height) ? 1 : 0;
@@ -153,11 +174,13 @@ int8_t rt_grid2d_in_bounds(rt_grid2d grid, int64_t x, int64_t y) {
 
 /// @brief Return the total number of cells (width * height).
 int64_t rt_grid2d_size(rt_grid2d grid) {
+    grid = checked_grid(grid, "Grid2D.Size: expected Viper.Game.Grid2D");
     return grid ? grid->width * grid->height : 0;
 }
 
 /// @brief Check whether the grid2d has no entries.
 int8_t rt_grid2d_is_empty(rt_grid2d grid) {
+    grid = checked_grid(grid, "Grid2D.IsEmpty: expected Viper.Game.Grid2D");
     if (!grid)
         return 1;
     return (grid->width == 0 || grid->height == 0) ? 1 : 0;
@@ -165,6 +188,8 @@ int8_t rt_grid2d_is_empty(rt_grid2d grid) {
 
 /// @brief Copy all cell values from another grid of the same dimensions.
 int8_t rt_grid2d_copy_from(rt_grid2d dest, rt_grid2d src) {
+    dest = checked_grid(dest, "Grid2D.CopyFrom: expected destination Viper.Game.Grid2D");
+    src = checked_grid(src, "Grid2D.CopyFrom: expected source Viper.Game.Grid2D");
     if (!dest || !src)
         return 0;
     if (dest->width != src->width || dest->height != src->height) {
@@ -178,6 +203,7 @@ int8_t rt_grid2d_copy_from(rt_grid2d dest, rt_grid2d src) {
 
 /// @brief Count how many cells contain the given value.
 int64_t rt_grid2d_count(rt_grid2d grid, int64_t value) {
+    grid = checked_grid(grid, "Grid2D.Count: expected Viper.Game.Grid2D");
     if (!grid)
         return 0;
 
@@ -193,6 +219,7 @@ int64_t rt_grid2d_count(rt_grid2d grid, int64_t value) {
 
 /// @brief Find the first cell containing the given value (row-major scan order).
 int8_t rt_grid2d_find(rt_grid2d grid, int64_t value, int64_t *out_x, int64_t *out_y) {
+    grid = checked_grid(grid, "Grid2D.Find: expected Viper.Game.Grid2D");
     if (!grid)
         return 0;
 
@@ -212,6 +239,7 @@ int8_t rt_grid2d_find(rt_grid2d grid, int64_t value, int64_t *out_x, int64_t *ou
 
 /// @brief Replace all occurrences of old_value with new_value; returns the number replaced.
 int64_t rt_grid2d_replace(rt_grid2d grid, int64_t old_value, int64_t new_value) {
+    grid = checked_grid(grid, "Grid2D.Replace: expected Viper.Game.Grid2D");
     if (!grid)
         return 0;
 

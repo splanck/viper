@@ -7,8 +7,8 @@
 //
 // File: src/runtime/game/rt_gameui.h
 // Purpose: Lightweight in-game UI widgets (Label, Bar, Panel, NineSlice,
-//   MenuList) that draw directly to a Canvas. Purpose-built for game HUDs,
-//   menus, and overlays — separate from the desktop ViperGUI widget system.
+//   MenuList, GameButton) that draw directly to a Canvas. Purpose-built for
+//   game HUDs, menus, and overlays — separate from the desktop ViperGUI widget system.
 //
 // Key invariants:
 //   - All widgets are GC-managed via rt_obj_new_i64.
@@ -16,11 +16,13 @@
 //   - Widgets use immediate-mode rendering (no retained widget tree).
 //   - UIBar values are clamped to [0, max].
 //   - UIMenuList selection wraps around on MoveUp/MoveDown.
+//   - Fixed-size widget text buffers truncate on UTF-8 codepoint boundaries.
 //
 // Ownership/Lifetime:
 //   - Widget objects are GC-managed; no manual free needed.
-//   - UIMenuList item strings are copied (strdup); freed on Clear/destroy.
-//   - UINineSlice holds a reference to its Pixels source (not copied).
+//   - UILabel/GameButton/MenuList copy text into widget-owned buffers.
+//   - UILabel/MenuList retain assigned BitmapFont handles.
+//   - UINineSlice retains a reference to its Pixels source (not copied).
 //
 // Links: src/runtime/game/rt_gameui.c (implementation),
 //        src/runtime/graphics/rt_graphics.h (Canvas drawing API),
@@ -36,6 +38,13 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define RT_UILABEL_CLASS_ID INT64_C(-0x510101)
+#define RT_UIBAR_CLASS_ID INT64_C(-0x510102)
+#define RT_UIPANEL_CLASS_ID INT64_C(-0x510103)
+#define RT_UININESLICE_CLASS_ID INT64_C(-0x510104)
+#define RT_UIMENULIST_CLASS_ID INT64_C(-0x510105)
+#define RT_GAMEBUTTON_CLASS_ID INT64_C(-0x510106)
 
 //=========================================================================
 // UILabel — Positioned text with optional BitmapFont
@@ -76,9 +85,10 @@ void rt_uibar_set_pos(void *bar, int64_t x, int64_t y);
 void rt_uibar_set_size(void *bar, int64_t w, int64_t h);
 /// @brief Change the foreground (filled) and background (empty) colors.
 void rt_uibar_set_colors(void *bar, int64_t fg, int64_t bg);
-/// @brief Set the border color (use -1 to disable the border).
+/// @brief Set the border color (use 0 to disable the border).
 void rt_uibar_set_border(void *bar, int64_t color);
-/// @brief Set the fill direction (0 = left-to-right, 1 = right-to-left, 2 = bottom-up, 3 = top-down).
+/// @brief Set the fill direction (0 = left-to-right, 1 = right-to-left, 2 = bottom-up, 3 =
+/// top-down).
 void rt_uibar_set_direction(void *bar, int64_t dir);
 /// @brief Toggle visibility.
 void rt_uibar_set_visible(void *bar, int8_t visible);
@@ -101,7 +111,7 @@ void rt_uipanel_set_pos(void *panel, int64_t x, int64_t y);
 void rt_uipanel_set_size(void *panel, int64_t w, int64_t h);
 /// @brief Change the panel's background color and per-pixel alpha (0–255).
 void rt_uipanel_set_color(void *panel, int64_t bg_color, int64_t alpha);
-/// @brief Set border color and thickness in pixels (thickness 0 disables the border).
+/// @brief Set border color and thickness in pixels (color 0 disables the border).
 void rt_uipanel_set_border(void *panel, int64_t color, int64_t thickness);
 /// @brief Set rounded-corner radius in pixels (0 = sharp corners).
 void rt_uipanel_set_corner_radius(void *panel, int64_t radius);
@@ -115,9 +125,9 @@ void rt_uipanel_draw(void *panel, void *canvas);
 //=========================================================================
 
 /// @brief Create a 9-slice scalable bordered widget from a Pixels source with corner insets.
-/// Corners stay fixed-size; edges stretch along their axis; center stretches both axes.
+/// Corners stay fixed-size; edges tile along their axis; center tiles to fill.
 void *rt_uinineslice_new(void *pixels, int64_t left, int64_t top, int64_t right, int64_t bottom);
-/// @brief Render the 9-slice at (x, y) stretched to (w × h).
+/// @brief Render the 9-slice at (x, y) tiled to fill (w × h).
 void rt_uinineslice_draw(void *ns, void *canvas, int64_t x, int64_t y, int64_t w, int64_t h);
 /// @brief Apply a per-channel multiplicative tint to subsequent draws.
 void rt_uinineslice_set_tint(void *ns, int64_t color);
@@ -179,10 +189,24 @@ void rt_gamebutton_draw(void *btn, void *canvas, int8_t is_selected);
 int64_t rt_gamebutton_get_x(void *btn);
 /// @brief Get the button's y-coordinate.
 int64_t rt_gamebutton_get_y(void *btn);
+/// @brief Get the button's width.
+int64_t rt_gamebutton_get_width(void *btn);
+/// @brief Get the button's height.
+int64_t rt_gamebutton_get_height(void *btn);
 /// @brief Set the button's x-coordinate.
 void rt_gamebutton_set_x(void *btn, int64_t x);
 /// @brief Set the button's y-coordinate.
 void rt_gamebutton_set_y(void *btn, int64_t y);
+/// @brief Set the button's width and height.
+void rt_gamebutton_set_size(void *btn, int64_t w, int64_t h);
+/// @brief Toggle the button's visibility.
+void rt_gamebutton_set_visible(void *btn, int8_t visible);
+/// @brief Return whether the button is visible.
+int8_t rt_gamebutton_get_visible(void *btn);
+/// @brief Set the button text scale.
+void rt_gamebutton_set_text_scale(void *btn, int64_t scale);
+/// @brief Get the button text scale.
+int64_t rt_gamebutton_get_text_scale(void *btn);
 
 #ifdef __cplusplus
 }

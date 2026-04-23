@@ -28,6 +28,8 @@
 extern "C" {
 #endif
 
+#define RT_QUADTREE_CLASS_ID INT64_C(-0x510209)
+
 /// Maximum items per node before splitting.
 #define RT_QUADTREE_MAX_ITEMS 8
 
@@ -45,7 +47,7 @@ typedef struct rt_quadtree_impl *rt_quadtree;
 /// @param y Bounds Y (top-left).
 /// @param width Bounds width.
 /// @param height Bounds height.
-/// @return A new Quadtree instance.
+/// @return A new Quadtree instance, or NULL if width/height are non-positive.
 rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height);
 
 /// @brief Destroy a Quadtree and free all associated memory.
@@ -63,7 +65,8 @@ void rt_quadtree_clear(rt_quadtree tree);
 /// @param y Item Y position (center).
 /// @param width Item width.
 /// @param height Item height.
-/// @return 1 on success, 0 if out of bounds or tree is full.
+/// @return 1 on success, 0 if dimensions are non-positive, out of bounds, duplicate,
+///         or tree is full.
 int8_t rt_quadtree_insert(
     rt_quadtree tree, int64_t id, int64_t x, int64_t y, int64_t width, int64_t height);
 
@@ -80,7 +83,7 @@ int8_t rt_quadtree_remove(rt_quadtree tree, int64_t id);
 /// @param y New Y position.
 /// @param width Item width.
 /// @param height Item height.
-/// @return 1 on success, 0 on failure.
+/// @return 1 on success, 0 if missing, dimensions are non-positive, or placement fails.
 int8_t rt_quadtree_update(
     rt_quadtree tree, int64_t id, int64_t x, int64_t y, int64_t width, int64_t height);
 

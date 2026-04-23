@@ -25,6 +25,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define RT_PIXELS_CLASS_ID INT64_C(-0x600201)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -59,6 +61,9 @@ void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
 /// @param pixels Pixels object.
 /// @return Pointer to width*height uint32_t values (0xRRGGBBAA), or NULL.
 const uint32_t *rt_pixels_raw_buffer(void *pixels);
+
+/// @brief Return the mutation generation for cache invalidation.
+uint64_t rt_pixels_generation(void *pixels);
 
 /// @brief Fill entire buffer with a color.
 /// @param pixels Pixels object.

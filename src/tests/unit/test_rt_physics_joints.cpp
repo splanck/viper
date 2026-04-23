@@ -106,6 +106,23 @@ static void test_distance_joint_converges(void) {
     PASS();
 }
 
+static void test_distance_joint_separates_coincident_bodies(void) {
+    TEST("Distance joint separates coincident bodies");
+    void *a = rt_physics2d_circle_body_new(0, 0, 1.0, 1.0);
+    void *b = rt_physics2d_circle_body_new(0, 0, 1.0, 1.0);
+    void *j = rt_physics2d_distance_joint_new(a, b, 20.0);
+    void *w = rt_physics2d_world_new(0.0, 0.0);
+    rt_physics2d_world_add(w, a);
+    rt_physics2d_world_add(w, b);
+    rt_physics2d_world_add_joint(w, j);
+
+    rt_physics2d_world_step(w, 1.0 / 60.0);
+
+    double d = dist_between(a, b);
+    assert(fabs(d - 20.0) < 1.0);
+    PASS();
+}
+
 static void test_spring_joint_creation(void) {
     TEST("Spring joint creation");
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
@@ -167,6 +184,24 @@ static void test_hinge_joint_angle(void) {
     PASS();
 }
 
+static void test_hinge_joint_preserves_local_anchor_offset(void) {
+    TEST("Hinge joint preserves local anchor offset");
+    void *a = rt_physics2d_body_new(0, 0, 10, 10, 0.0);
+    void *b = rt_physics2d_body_new(40, 0, 10, 10, 1.0);
+    void *j = rt_physics2d_hinge_joint_new(a, b, 10.0, 5.0);
+    void *w = rt_physics2d_world_new(0.0, 0.0);
+    rt_physics2d_world_add(w, a);
+    rt_physics2d_world_add(w, b);
+    rt_physics2d_world_add_joint(w, j);
+    rt_physics2d_body_set_vel(b, 200.0, 0.0);
+
+    for (int i = 0; i < 20; i++)
+        rt_physics2d_world_step(w, 1.0 / 60.0);
+
+    assert(fabs(dist_between(a, b) - 40.0) < 1.0);
+    PASS();
+}
+
 static void test_circle_body(void) {
     TEST("Circle body creation");
     void *c = rt_physics2d_circle_body_new(50.0, 50.0, 25.0, 1.0);
@@ -195,6 +230,8 @@ static void test_world_joint_count(void) {
     void *j2 = rt_physics2d_spring_joint_new(a, b, 50.0, 10.0, 1.0);
     void *j3 = rt_physics2d_rope_joint_new(a, b, 100.0);
 
+    rt_physics2d_world_add(w, a);
+    rt_physics2d_world_add(w, b);
     rt_physics2d_world_add_joint(w, j1);
     rt_physics2d_world_add_joint(w, j2);
     rt_physics2d_world_add_joint(w, j3);
@@ -212,6 +249,8 @@ static void test_duplicate_world_add_joint_is_ignored(void) {
     void *b = rt_physics2d_body_new(50, 0, 10, 10, 1.0);
     void *j = rt_physics2d_distance_joint_new(a, b, 50.0);
 
+    rt_physics2d_world_add(w, a);
+    rt_physics2d_world_add(w, b);
     rt_physics2d_world_add_joint(w, j);
     rt_physics2d_world_add_joint(w, j);
     assert(rt_physics2d_world_joint_count(w) == 1);
@@ -225,6 +264,8 @@ static void test_removed_joint_reports_inactive(void) {
     void *b = rt_physics2d_body_new(50, 0, 10, 10, 1.0);
     void *j = rt_physics2d_distance_joint_new(a, b, 50.0);
 
+    rt_physics2d_world_add(w, a);
+    rt_physics2d_world_add(w, b);
     rt_physics2d_world_add_joint(w, j);
     assert(rt_physics2d_joint_is_active(j) == 1);
     rt_physics2d_world_remove_joint(w, j);
@@ -288,10 +329,12 @@ int main() {
 
     test_distance_joint_creation();
     test_distance_joint_converges();
+    test_distance_joint_separates_coincident_bodies();
     test_spring_joint_creation();
     test_rope_joint_slack();
     test_rope_joint_clamps();
     test_hinge_joint_angle();
+    test_hinge_joint_preserves_local_anchor_offset();
     test_circle_body();
     test_aabb_body_not_circle();
     test_world_joint_count();
