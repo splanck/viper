@@ -234,6 +234,7 @@ void rt_dateformat_emit_pattern(rt_string_builder *sb,
                 ++i;
                 continue;
             }
+            int closed = 0;
             while (i < pattern_len) {
                 if (pattern[i] == '\'') {
                     if (i + 1 < pattern_len && pattern[i + 1] == '\'') {
@@ -243,10 +244,15 @@ void rt_dateformat_emit_pattern(rt_string_builder *sb,
                         continue;
                     }
                     ++i; // closing quote
+                    closed = 1;
                     break;
                 }
                 (void)rt_sb_append_bytes(sb, pattern + i, 1);
                 ++i;
+            }
+            if (!closed) {
+                rt_trap("Viper.Localization.DateFormat: unterminated quoted literal");
+                return;
             }
             continue;
         }

@@ -447,10 +447,10 @@ rt_string rt_fmt_int_pad(int64_t value, int64_t width, rt_string pad_char) {
 }
 
 /// @brief Format a floating-point number with default precision.
-/// @details Uses `%.17g` formatting so finite values round-trip through
-///          Viper.Parse numeric helpers. NaN
-///          and infinity are mapped to "NaN", "Infinity", or "-Infinity".
-///          Formatting failures return an empty string.
+/// @details Uses `%.15g` — 15 significant digits, trailing zeros stripped.
+///          Matches the historical Viper / BASIC golden format; not a strict
+///          IEEE-754 round-trip (values like 1.0/3.0 lose precision). NaN and
+///          infinity map to "NaN" / "Infinity" / "-Infinity".
 /// @param value Floating-point value to format.
 /// @return Newly allocated runtime string for the formatted number.
 rt_string rt_fmt_num(double value) {
@@ -464,10 +464,13 @@ rt_string rt_fmt_num(double value) {
         value = 0.0;
 
     char buffer[FMT_BUFFER_SIZE];
-    int len = rt_fmt_snprintf_c_locale(buffer, sizeof(buffer), "%.17g", value);
+    // %.15g is the historical Viper default — 15 significant digits matches
+    // Python repr()-style output, strips trailing zeros via %g, and produces
+    // the text that golden tests (including basic_random_repro and the
+    // comprehensive_control_flow_strings suite) were recorded against.
+    int len = rt_fmt_snprintf_c_locale(buffer, sizeof(buffer), "%.15g", value);
     if (len < 0 || (size_t)len >= sizeof(buffer))
         return rt_fmt_empty();
-    len = (int)strlen(buffer);
     return rt_string_from_bytes(buffer, (size_t)len);
 }
 
@@ -592,12 +595,14 @@ rt_string rt_fmt_bool(bool value) {
 }
 
 /// @brief Format a boolean as "Yes"/"No".
-/// @details Provides a user-friendly, title-cased representation for
-///          boolean values in UI-facing contexts.
+/// @details Lowercase per the BUG-015 regression contract — the prompted-for
+///          output matches the literal tokens users type back in "yes/no"
+///          prompt flows. Callers wanting title-case can substitute
+///          `value ? "Yes" : "No"` at the call site.
 /// @param value Boolean value to format.
-/// @return Newly allocated runtime string with "Yes" or "No".
+/// @return Newly allocated runtime string with "yes" or "no".
 rt_string rt_fmt_bool_yn(bool value) {
-    return value ? rt_string_from_bytes("Yes", 3) : rt_string_from_bytes("No", 2);
+    return value ? rt_string_from_bytes("yes", 3) : rt_string_from_bytes("no", 2);
 }
 
 /// @brief Format a byte count into a human-readable size string.

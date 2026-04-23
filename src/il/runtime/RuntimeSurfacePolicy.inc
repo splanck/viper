@@ -66,6 +66,14 @@ RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/rt_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/rt_platform.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/text/rt_hash_util.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/text/rt_keyderive_internal.h")
+RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/text/rt_numfmt_internal.h")
+
+// Localization: Collator ships the C implementation + docs + tests, but the
+// frontend class is intentionally not registered in runtime.def for v1.
+RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/localization/rt_collator.h")
+// Platform adapter — raw system-locale detection called only from
+// rt_locale_manager bootstrap, never from the frontend surface.
+RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/localization/rt_locale_platform.h")
 
 // Mixed headers below contain frontend-visible wrapper functions that stay in
 // runtime.def plus lower-level helper declarations that are intentionally
@@ -424,6 +432,21 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_realloc")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_release_deferred")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_set_len")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_try_get_header")
+
+// Localization internal helpers — not part of the frontend Viper.Localization.*
+// surface. Locale parsing, data registry access, and plural-rule evaluation
+// internals live in shared headers alongside their public counterparts.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_locale_bind_data")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_locale_data_en_us")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_locale_get_data")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_locale_manager_lookup_data")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_locale_manager_release_data")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_locale_manager_retain_data")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_locale_parse_internal")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_plural_rules_category_name")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_plural_rules_select_cardinal")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_plural_rules_select_cardinal_int")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_plural_rules_select_ordinal")
 
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.MessageBox.New", "rt_messagebox_new")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.GUI.MessageBox.NewInfo", "rt_messagebox_new_info")

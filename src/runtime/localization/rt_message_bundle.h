@@ -47,7 +47,7 @@ void *rt_message_bundle_new(void);
 
 /// @brief Load a translation map from a JSON file at @p path.
 /// @details Expects a flat object: {"key": "value", ...}. Non-string values
-///          are ignored. Traps on file/JSON errors.
+///          are rejected. Traps on file/JSON errors.
 void *rt_message_bundle_load_from_json(void *locale, rt_string path);
 
 /// @brief Load a translation map from a VPA-embedded asset by @p name.
@@ -80,7 +80,7 @@ int8_t rt_message_bundle_has(void *self, rt_string key);
 /// @brief Interpolate a message template with named placeholders.
 /// @details Placeholder syntax: `{name}`. Uses the resolved template string
 ///          via Get (so fallback chain applies). Missing placeholders in
-///          @p vars are replaced with empty strings.
+///          @p vars are preserved literally.
 rt_string rt_message_bundle_format(void *self, rt_string key, void *vars);
 
 /// @brief Positional interpolation; `{0}`, `{1}`, … index into @p values.
@@ -89,13 +89,13 @@ rt_string rt_message_bundle_format_with(void *self, rt_string key, void *values)
 /// @brief Plural-aware lookup and substitution.
 /// @details Evaluates the bundle's locale's cardinal plural category for
 ///          @p n, then looks up "<key>.<category>" (falling back to
-///          "<key>.other"). Substitutes `{n}` with the numeric value and
-///          any names from @p vars.
+///          "<key>.other"). Substitutes `{n}` with the numeric value using a
+///          temporary variable map; @p vars is not mutated.
 rt_string rt_message_bundle_plural(void *self, rt_string key, int64_t n, void *vars);
 
 /// @brief Set the fallback bundle (returns self for chaining).
-/// @details Traps on self-cycle. Non-owning reference is stored; the caller
-///          must keep the fallback live for the consumer's lifetime.
+/// @details Traps on self-cycle. The fallback is retained until replaced or
+///          the bundle is finalized.
 void *rt_message_bundle_set_fallback(void *self, void *fallback);
 
 /// @brief Enumerate the keys defined in this bundle (excludes fallback).

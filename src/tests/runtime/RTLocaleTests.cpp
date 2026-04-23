@@ -151,6 +151,14 @@ static void test_parse_canonicalization() {
         rt_string_unref(in);
         test_result("Parse(\"root\") -> root", tag_eq(loc, "root"));
     }
+    // Variants/extensions/private-use are preserved and canonicalized.
+    {
+        rt_string in = S("EN_us-u-CA-gregory-x-PRIVATE");
+        void *loc = rt_locale_parse(in);
+        rt_string_unref(in);
+        test_result("Parse extension/private-use canonical",
+                    tag_eq(loc, "en-US-u-ca-gregory-x-private"));
+    }
 }
 
 //=============================================================================
@@ -293,6 +301,29 @@ static void test_fallbacks() {
         test_result("root chain length 1", list_len(chain) == 1);
         test_result("chain[0] = root",     list_tag_at(chain, 0, "root"));
     }
+    // Extensions/variants fall back through their base tag.
+    {
+        rt_string in = S("en-US-u-ca-gregory-x-private");
+        void *loc = rt_locale_parse(in);
+        rt_string_unref(in);
+        void *chain = rt_locale_fallbacks(loc);
+        test_result("extension chain length 4", list_len(chain) == 4);
+        test_result("extension chain[0] full tag",
+                    list_tag_at(chain, 0, "en-US-u-ca-gregory-x-private"));
+        test_result("extension chain[1] = en-US", list_tag_at(chain, 1, "en-US"));
+        test_result("extension chain[2] = en",    list_tag_at(chain, 2, "en"));
+        test_result("extension chain[3] = root",  list_tag_at(chain, 3, "root"));
+    }
+    {
+        rt_string in = S("sl-rozaj-biske");
+        void *loc = rt_locale_parse(in);
+        rt_string_unref(in);
+        void *chain = rt_locale_fallbacks(loc);
+        test_result("variant chain length 3", list_len(chain) == 3);
+        test_result("variant chain[0] full tag", list_tag_at(chain, 0, "sl-rozaj-biske"));
+        test_result("variant chain[1] = sl",      list_tag_at(chain, 1, "sl"));
+        test_result("variant chain[2] = root",    list_tag_at(chain, 2, "root"));
+    }
 }
 
 //=============================================================================
@@ -324,6 +355,26 @@ static void test_trap_empty() {
     EXPECT_TRAP(rt_locale_parse(toolong));
     rt_string_unref(toolong);
     test_result("Parse(\"englishlang\") traps", true);
+
+    rt_string dup_sep = S("en--US");
+    EXPECT_TRAP(rt_locale_parse(dup_sep));
+    rt_string_unref(dup_sep);
+    test_result("Parse(\"en--US\") traps", true);
+
+    rt_string leading_sep = S("-en-US");
+    EXPECT_TRAP(rt_locale_parse(leading_sep));
+    rt_string_unref(leading_sep);
+    test_result("Parse(\"-en-US\") traps", true);
+
+    rt_string trailing_sep = S("en-US-");
+    EXPECT_TRAP(rt_locale_parse(trailing_sep));
+    rt_string_unref(trailing_sep);
+    test_result("Parse(\"en-US-\") traps", true);
+
+    rt_string dangling_ext = S("en-US-u");
+    EXPECT_TRAP(rt_locale_parse(dangling_ext));
+    rt_string_unref(dangling_ext);
+    test_result("Parse(\"en-US-u\") traps", true);
 }
 
 static void test_try_parse_returns_null() {

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-04-23
 ---
 
 # Messages & Plural Rules
@@ -43,9 +43,10 @@ Translation catalog keyed by message ID. Supports placeholder interpolation, fal
 ### Notes
 
 - **Fallback chain.** `Get` walks fallbacks depth-first up to 16 bundles before giving up. `Fallback` detects self-cycles and traps.
-- **Plural.** `Plural(key, n, vars)` evaluates the bound locale's cardinal plural category for `n`, then looks up `<key>.<category>` (falling through to `<key>.other` if missing). `{n}` is seeded into `vars` automatically.
-- **Missing placeholders.** Placeholders referencing absent keys in `vars` are replaced with empty strings — this keeps non-critical omissions from throwing.
-- JSON loader expects a flat `{"key": "value", ...}` object; nested structures are ignored.
+- **Plural.** `Plural(key, n, vars)` evaluates the bound locale's cardinal plural category for `n`, then looks up `<key>.<category>` (falling through to `<key>.other` if missing). `{n}` is added to a temporary copy of `vars`; the caller's map is not mutated.
+- **Missing placeholders.** Placeholders referencing absent keys in `vars` are preserved literally, e.g. `{name}` stays `{name}`.
+- **Escaping.** Use `{{` and `}}` for literal braces.
+- JSON loaders expect a flat `{"key": "value", ...}` object and reject non-string values.
 
 ### Zia Example
 

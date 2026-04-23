@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-04-23
 ---
 
 # Locale Data Files
@@ -14,7 +14,7 @@ JSON schema for locale data files loaded via `LocaleManager.LoadFromJson(path)` 
 
 ## Overview
 
-Viper ships with **en-US** baked into the runtime. Every other locale is loaded at runtime from a JSON file matching the schema below. Files are typically named `<tag>.json` (e.g. `fr-FR.json`) and placed either in the filesystem (see [search path](README.md#search-path-filesystem)) or embedded as VPA assets at build time.
+Viper ships with **en-US** baked into the runtime. Every other locale is loaded at runtime from a JSON file matching the schema below. Files are typically named `<tag>.json` (e.g. `fr-FR.json`) and placed either in the filesystem (see [search path](README.md#search-path)) or embedded as VPA assets at build time.
 
 ## Schema
 
@@ -109,12 +109,12 @@ Viper ships with **en-US** baked into the runtime. Every other locale is loaded 
 ## Field rules
 
 - **`tag`** — must parse as valid BCP-47. Canonicalized on load.
+- **Missing optional fields** — inherit the baked en-US default for that field.
 - **Months/Days arrays** — exact lengths required: 12 months, 7 days (index 0 = Sunday).
 - **String length** — individual string fields capped at 256 bytes.
 - **File size** — total capped at 256 KB.
-- **JSON depth** — nesting capped at 16.
-- **Unknown top-level keys** — warn but accept.
-- **Unknown nested keys** — silently ignore.
+- **Unknown keys** — ignored.
+- **Loaded data lifetime** — `Unload` and `Reset` free JSON/VPA data only when no live formatter/collator/message object is retaining it.
 
 ## Plural rule mini-language
 
@@ -148,6 +148,7 @@ Rule length capped at 256 chars; AST depth capped at 8.
 Examples:
 - en-US: `"{s}{n}"` → `"$1,234.56"`
 - fr-FR: `"{n} {s}"` → `"1 234,56 €"`
+- Accounting style: `"({s}{n})"` → `"($1,234.56)"` for negative values.
 
 ## List format templates
 

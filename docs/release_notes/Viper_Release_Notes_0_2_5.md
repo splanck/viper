@@ -8,12 +8,13 @@
 
 ### What this release is about
 
-A polish-and-hardening cycle with two notable new capabilities.
+A polish-and-hardening cycle with three notable new capabilities.
 
 - **Hardening across every runtime subsystem.** Integer-overflow, handle-validation, timeout-clamping, and lifetime-correctness passes applied consistently to graphics, text, threads, audio, and network. Most code paths now fail cleanly on malformed input instead of producing wrapped-small allocations, dangling handles, or stalled state machines.
 - **Production 2D Graphics module (new).** ~40 new classes on top of `Pixels` / `Canvas` / `ParticleEmitter` — offscreen surfaces, texture handles, a retained command stream, materials / shaders / post-effects, viewport scaling, tile / object layers, path + shape drawing, text layout, nine-slice UI, debug-draw, animation, a render-pass graph, and external-format adapters.
 - **Full 3D asset pipeline.** glTF and FBX now import real skeletons + per-vertex skinning + animations (including glTF sparse-accessor morph deltas and KHR texture-transform / emissive-strength / unlit / lights-punctual extensions). HDR RenderTarget3D, deterministic shadow-light selection, and a backend-capability introspection surface (`Canvas3D.BackendCapabilities` / `BackendSupports`) complete the picture.
 - **Network stack became a platform.** TLS-backed `HttpsServer` + `WssServer`, from-scratch HTTP/2 (HPACK + stream reuse), native RSA, in-tree X.509 chain validator (macOS no longer links `Security.framework`), cookie jar, streaming downloads, chunked request bodies, SSE reconnect, connection pooling.
+- **Viper.Localization.* (new).** Eleven-class namespace giving programs locale-aware number / date / relative-time / list formatting, translation catalogs with fallback chains, CLDR plural selection, locale-aware collation, and text-direction utilities. Zero external dependencies (no ICU, no libintl); en-US baked into the runtime, all other locales load from JSON via filesystem or VPA-embedded assets.
 
 The biggest user-visible new thing is a text-mode baseball-franchise simulator built on the existing baseball engine.
 
@@ -21,10 +22,10 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator b
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 59 | +59 |
-| Source files | 2,869 | 2,902 | +33 |
-| Production SLOC | 450K | 498K | +48K |
-| Test SLOC | 183K | 203K | +20K |
+| Commits | — | 60 | +60 |
+| Source files | 2,869 | 2,947 | +78 |
+| Production SLOC | 450K | 505K | +55K |
+| Test SLOC | 183K | 207K | +24K |
 | Demo SLOC | 177K | 189K | +12K |
 
 Counts via `scripts/count_sloc.sh`.
@@ -41,12 +42,13 @@ Counts via `scripts/count_sloc.sh`.
 
 ### GUI Library
 
-Four rounds of widget audit. Themes: dark-theme palette refresh, HiDPI consistency, keyboard accessibility, lifetime correctness.
+Four rounds of widget audit plus a late-cycle app-registry + widget-family overhaul. Themes: dark-theme palette refresh, HiDPI consistency, keyboard accessibility, lifetime correctness, handle validity.
 
 - **CodeEditor, TabBar, Toolbar/MenuBar, FindBar, Dropdown, TextInput (single + multi-line), TreeView, ListBox, Spinner, SplitPane, FileDialog, CommandPalette** — keyboard navigation, redo + word-select, multi-select with Ctrl / Shift, ellipsis fitting, press-release coupling, typeahead, panel placement, save-name editing. Behavior now matches desktop-app conventions.
 - **Dialog, Tooltip, Notification, Breadcrumb, ContextMenu, FloatingPanel** — rewritten paint: rounded card, scaled metrics, text wrap, fade + slide animation, anchored screen-bounds, clip-aware text.
 - **Layout and framework** — flex non-stretch alignment, VBox/HBox margin budgets, SplitPane keyboard nav, synthesized double-click, Tab / Shift+Tab focus traversal at dispatch level.
 - Lifetime crashes closed across Tooltip (dangling pointer on destroy), Dialog (nested-close use-after-free), Notification (auto-dismiss), CodeEditor (line-slot stability), VideoWidget (destroy order).
+- **App-registry + widget-family refactor.** `rt_gui_app.c` gains `s_registered_apps` + `s_destroyed_app_handles` arrays enabling safe is-this-a-live-handle queries across lifecycle (`rt_gui_is_app_handle_known` / `register_app` / `unregister_app` / `forget_destroyed_app_handle`). Coordinated refactor across codeeditor / features / internal / menus / system / widgets / widgets-complex with typed nullable-string helpers (`rt_str_empty`, size-aware casts) and a handle-validation pass on every public entry; `vg_widgets.h` / `vg_image.c` / `vg_listbox.c` pick up matching polish (dangling paint-callback guards, multi-select accumulator tightening).
 
 ### Graphics runtime (2D)
 
@@ -114,6 +116,27 @@ Four rounds of widget audit. Themes: dark-theme palette refresh, HiDPI consisten
 - Filesystem asset fallback now treats only regular files as assets and loads zero-byte files as empty `Bytes` instead of returning null.
 - `SaveData.Load()` treats a missing save file as a successful empty load and clears stale in-memory entries; malformed JSON or non-integral/out-of-range numbers still leave the prior state intact.
 
+### Localization runtime (new)
+
+Eleven-class `Viper.Localization.*` namespace providing locale-aware formatting, parsing, translation, collation, and text-direction. Zero external dependencies. en-US baked as a static `rt_locale_data_t` record; every other locale loads at runtime from JSON via `LocaleManager.LoadFromJson(path)` or `LocaleManager.LoadFromAsset(name)`.
+
+- **Locale / LocaleInfo / LocaleManager.** BCP-47 parser with case canonicalization, fallback-chain walk (`en-Latn-US → en-US → en → root`), rwlock-guarded process-global registry, lazy-init bootstrap with system-locale detection (Windows `GetUserDefaultLocaleName`; macOS/Linux `$LANG` / `$LC_ALL` / `$LC_MESSAGES` cascade with `.UTF-8` / `@modifier` suffix stripping). No Foundation.framework dependency on macOS.
+- **NumberFormat (format + parse).** `Decimal` / `DecimalN` / `Integer` / `Percent` / `Currency` / `CurrencyOf` / `Scientific` / `Ordinal` format methods paired with `ParseDecimal` / `ParseInteger` / `ParseCurrency` (traps) and `TryParse*` (`Optional<f64>` / `Optional<i64>`). Six rounding modes (`halfEven` default, `halfUp` / `halfDown` / `up` / `down` / `ceiling` / `floor`). Strict mode rejects ambiguous group placements; lenient accepts.
+- **DateFormat.** CLDR pattern-letter emitter supporting `y / M / d / E / H / h / m / s / a` plus quoted literals (`'text'`, `''` for literal apostrophe). Canonical `Short` / `Medium` / `Long` / `Full` / `TimeShort` / `TimeMedium` / `DateTimeShort` / `DateTimeMedium` / `Custom` / `DateOnly` methods plus `MonthName` / `DayName` (with abbr toggle) / `AmPm`.
+- **RelativeTimeFormat.** Auto unit selection across 7 thresholds (year / month / week / day / hour / minute / second) with plural form picked via `PluralRules`. `FormatFrom(then, now)` + explicit `Numeric(value, unit)` entry. Past/future sign-aware template expansion.
+- **MessageBundle.** `FromMap` / `LoadFromJson` / `LoadFromAsset` construction; `Get` / `TryGet` / `Has` lookup with fallback-chain walk (depth-16 cap, self-cycle detection on `Fallback` assignment); `Format` named placeholders `{name}`; `FormatWith` positional `{0}` / `{1}`; `Plural(key, n, vars)` routing through `PluralRules` with `<key>.other` fallback.
+- **PluralRules.** CLDR cardinal + ordinal rule chains evaluated on a compact AST (7 node kinds: `TRUE`/`OR`/`AND`/`EQ`/`NE`/`VAR`/`INT`). Five operand variables (`n` / `i` / `v` / `f` / `t`) computed from either int or double inputs with trailing-zero handling. en-US rules cover `one` (cardinal) and `one`/`two`/`few`/`other` (ordinal — correctly handles the 11th/12th/13th teen-exception).
+- **Collator.** DUCET-lite weight classifier covering basic Latin + Latin-1 Supplement + Latin Extended-A, with sv-SE tailoring (å/ä/ö after z). Strengths 1 (primary) / 2 (secondary) / 3 (tertiary, default); strength 4 clamps with warning. `IgnoreCase` / `IgnoreAccents` toggles elide tertiary / secondary levels. `SortKey` returns hex-encoded bytes whose byte-wise comparison matches `Compare`. `Sort` returns a fresh ordered `List<String>`.
+- **ListFormat.** 0 / 1 / 2 / 3+ item joining via the locale's `And` / `Or` / `Unit` / `Short` templates with `pair` / `start` / `middle` / `end` recursive combine.
+- **TextDirection.** Strong-RTL classifier covering Hebrew / Arabic / Syriac / Thaana / N'Ko plus presentation forms. `Detect` / `IsRTL` / `IsLTR` / `FirstStrong` / `Bidi` (RLO/PDF wrapping for mixed runs; does not implement the full Unicode BiDi algorithm).
+- **Shared `numfmt_group_digits()` helper.** Extracted from the existing `Viper.Text.NumberFormat.Thousands` into `rt_numfmt_internal.h`; consumed by both the existing `Viper.Text.NumberFormat.*` surface and every new `Viper.Localization.NumberFormat.*` path. Zero public-surface breakage.
+
+### Core runtime formatting
+
+- **`rt_fmt` locale-aware rewrite.** Float / currency / percent paths now route through an isolated C-locale `snprintf` (LC_NUMERIC swap on POSIX via `uselocale`; `_create_locale` / `_vsnprintf_l` on Windows) so numeric output stays deterministic regardless of process-wide `setlocale` state. Float formatting adds thousands-separator / grouping support and integrates with the updated `rt_string_format` pipeline.
+- **`rt_parse` tightening.** Stricter integer and double parsers; expanded `rt_input_numeric_fail` coverage; RTParseTests now exercises the failure matrix.
+- **`rt_log` / `rt_numeric` / `rt_numeric_conv` / `rt_string_format`** pick up matching string-allocation, log-level-routing, and representability guards tied to the formatting rewrite.
+
 ### Time runtime
 
 - **Overflow-checked arithmetic across every module** (`DateTime`, `DateOnly`, `DateRange`, `Duration`, `RelTime`, `Stopwatch`, `Countdown`). Shared `dt_checked_add_i64` / `dt_checked_sub_i64` / `dt_checked_mul_i64` helpers (preferring `__builtin_*_overflow` on GCC/Clang, portable fallback elsewhere) now route every public arithmetic path. `AddSeconds`, `AddDays`, `Diff`, and their Duration / Stopwatch / Countdown / RelTime counterparts trap on signed 64-bit overflow via `rt_trap_ovf()` instead of wrapping silently. Unit-conversion helpers (days ↔ seconds, ns ↔ μs/ms/s, span composition) are all overflow-checked.
@@ -156,10 +179,12 @@ Four rounds of widget audit. Themes: dark-theme palette refresh, HiDPI consisten
 
 ### Linker, codegen, tools, IL, build
 
-- Linker: C++ Itanium-ABI symbol classification on macOS (with `$DARWIN_EXTSN` handling); `uname` / `gethostname` / `sysctlbyname` routed to the right dylib; `link()` added to the dynamic-import allowlist alongside its `unlink()` partner (closed a runtime-import-audit gap opened by the new POSIX no-clobber atomic-move path in `rt_file_ext`).
+- Linker: C++ Itanium-ABI symbol classification on macOS (with `$DARWIN_EXTSN` handling); `uname` / `gethostname` / `sysctlbyname` routed to the right dylib; `link()` + `strnlen()` added to the dynamic-import allowlist alongside their partners (closed two runtime-import-audit gaps opened by the new POSIX no-clobber atomic-move path in `rt_file_ext` and by the localization BCP-47 parser).
+- Codegen: `RtComponent::Localization` enum entry with `rt_locale_*` symbol prefix classifier and `Viper.Localization.*` namespace classifier; `viper_rt_localization` archive participates in the toolchain install manifest.
+- BASIC frontend: four references in `IoStatementLowerer.cpp` namespace-qualified (`il::frontends::basic::runtime::kConvertToDouble` / `kConvertToInt` / `kParseDouble` / `kParseInt64`) to resolve an rtgen-emitted alias-name collision.
 - Tools: frontend `--` separator, collision-safe `native_compiler` temp paths, x64 `--asset-blob` gate.
-- IL: `Canvas.CopyRect` / `Screenshot` return `Pixels`; `AudioUpdate` added, `AudioEncode` removed.
-- Build: VERSION `0.2.4-dev` → `0.2.5-snapshot`; GUI test targets key off `VIPER_BUILD_TESTING`.
+- IL: `Canvas.CopyRect` / `Screenshot` return `Pixels`; `AudioUpdate` added, `AudioEncode` removed; eleven new `RTCLS_Loc*` `RuntimeTypeId` entries.
+- Build: VERSION `0.2.4-dev` → `0.2.5-snapshot`; GUI test targets key off `VIPER_BUILD_TESTING`; `scripts/clean.sh` polish.
 
 ### Platform input
 
@@ -168,16 +193,16 @@ Four rounds of widget audit. Themes: dark-theme palette refresh, HiDPI consisten
 
 ### Tests
 
-Roughly 17K lines of new coverage across runtime, GUI, codegen, linker. Highlights: Canvas3D production-readiness harness with fake backend hooks; async 25-iteration repeat loop; shared `viper_display` CTest resource lock for display-holding smoke tests; human-manager baseball probes; new 2D-graphics contract suites; overflow-boundary tests for every hardened parser.
+Roughly 20K lines of new coverage across runtime, GUI, codegen, linker. Highlights: Canvas3D production-readiness harness with fake backend hooks; async 25-iteration repeat loop; shared `viper_display` CTest resource lock for display-holding smoke tests; human-manager baseball probes; new 2D-graphics contract suites; overflow-boundary tests for every hardened parser; 11 new Localization runtime test files (~360 assertions); 3 libFuzzer harnesses for the plural-rule parser, CLDR date-pattern parser, and locale-JSON loader (gated on `VIPER_ENABLE_FUZZ`).
 
 ### Demos & docs
 
-Marquee demo addition is a text-mode human-manager baseball-franchise simulator; Pac-Man was rewritten and renamed as Crackman (session / progression / frontend split, audio banks); two new 3D demos (`3dbaseball`, `3dscene`), Paint gains layers + undo/redo + expanded tools, ViperIDE adopts the new GUI APIs, 3D Bowling gets a cinematic-postfx smoke probe, Chess AI-hardening pass, and XENOSCAPE gets the boss-sink-through-floor fix plus the player-facing `Pixels.FlipH` direction fix. Docs: comprehensive `viperlib/` sweep (audio / GUI / crypto / network / graphics / text / threads / time / io), new `viperlib/graphics/production2d.md`, `README.md` refreshed to a master snapshot, and a Doxygen comment pass across ~100 runtime `.c` files.
+Marquee demo addition is a text-mode human-manager baseball-franchise simulator; Pac-Man was rewritten and renamed as Crackman (session / progression / frontend split, audio banks); two new 3D demos (`3dbaseball`, `3dscene`), Paint gains layers + undo/redo + expanded tools, ViperIDE adopts the new GUI APIs, 3D Bowling gets a cinematic-postfx smoke probe, Chess AI-hardening pass, XENOSCAPE gets the boss-sink-through-floor fix plus the player-facing `Pixels.FlipH` direction fix, and three new `examples/localization/` Zia programs (`hello-localized` / `intl-numbers` / `translated-app`) ship with en-US + fr-FR + messages-en-US JSON data files. Docs: comprehensive `viperlib/` sweep (audio / GUI / crypto / network / graphics / text / threads / time / io), new `viperlib/graphics/production2d.md`, new `viperlib/localization/` set (README + locale + formatting + messages + collation + data-files), `README.md` refreshed to a master snapshot, `docs/basic-namespaces.md` + `basic-reference.md` pick up the Localization namespace, `cross-platform/platform-differences.md` documents locale-detection behavior, and a Doxygen comment pass across ~100 runtime `.c` files.
 
 ---
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 59-commit history. Commits pair feature-add and follow-up hardening in the same subsystem (e.g. Production 2D → overflow hardening; threads timeout fixes → handle-magic validation; glTF skin import → sparse accessors + KHR extensions; new POSIX atomic-move path → linker-policy `link()` classification).
+See `git log a91d388db..HEAD -- .` for the full 60-commit history. Commits pair feature-add and follow-up hardening in the same subsystem (e.g. Production 2D → overflow hardening; threads timeout fixes → handle-magic validation; glTF skin import → sparse accessors + KHR extensions; new POSIX atomic-move path → linker-policy `link()` classification; `Viper.Localization.*` introduction → `numfmt_group_digits()` extraction + rt_fmt C-locale isolation + GUI app-registry refactor in the same wrapping commit).
 
 <!-- END DRAFT -->

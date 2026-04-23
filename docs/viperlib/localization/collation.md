@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-04-23
 ---
 
 # Collation & Text Direction
@@ -53,8 +53,10 @@ Locale-aware string comparison + sort-key generation with configurable strength 
 ### Notes
 
 - Inputs exceeding 1 MiB trap with `"input exceeds 1 MiB cap"`.
+- UTF-8 decoding rejects overlong encodings, surrogate codepoints, and codepoints above U+10FFFF by weighting them as replacement characters.
+- Common combining marks are folded onto the previous base letter for sort keys, so composed and decomposed accents compare consistently.
 - `SortKey` output is hex-encoded bytes; byte-wise string comparison of two keys matches the Collator's `Compare` result.
-- `Sort` uses insertion sort (fine up to ~5000 items); larger inputs deferred to a future merge-sort implementation.
+- `Sort` caches sort keys before sorting, so each item is keyed once.
 
 ### Zia Example
 
@@ -91,15 +93,16 @@ Static utilities for classifying text as LTR / RTL / mixed.
 | `IsRTL(s)` | `Bool(String)` | Majority-RTL strong codepoints. |
 | `IsLTR(s)` | `Bool(String)` | |
 | `FirstStrong(s)` | `String(String)` | `"ltr"` / `"rtl"` / `"neutral"` based on first strong codepoint. |
-| `Bidi(s)` | `String(String)` | Wraps RTL runs with U+202E/U+202C marks for mixed-content strings. |
+| `Bidi(s)` | `String(String)` | Wraps RTL runs with U+2067/U+2069 isolates for mixed-content strings. |
 
 ### RTL scripts recognized
 
-Hebrew (U+0590–U+05FF), Arabic (U+0600–U+06FF, U+0750–U+077F), Syriac (U+0700–U+074F), Thaana (U+0780–U+07BF), N'Ko (U+07C0–U+07FF), plus Arabic/Hebrew presentation forms. Everything else classifies as LTR.
+Hebrew, Arabic, Syriac, Thaana, N'Ko, Samaritan, Mandaic, Arabic Extended-A/B/C, major historical RTL blocks, and Arabic/Hebrew presentation forms. Everything else classifies as LTR unless neutral.
 
 ### Notes
 
-- `Bidi` does **not** implement the full Unicode BiDi algorithm — only run-level marker wrapping. Pure-LTR and pure-RTL inputs pass through unchanged.
+- `Bidi` does **not** implement the full Unicode BiDi algorithm — only run-level isolate wrapping. Pure-LTR and pure-RTL inputs pass through unchanged.
+- Malformed UTF-8 is decoded as replacement characters, which are neutral for direction detection.
 - Digits, punctuation, and whitespace are classified as neutral; `FirstStrong` skips them to find the first directional codepoint.
 
 ### Zia Example

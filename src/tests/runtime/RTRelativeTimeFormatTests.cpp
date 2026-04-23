@@ -77,9 +77,11 @@ static void test_past_units() {
     printf("Testing Format past units (en-US):\n");
     void *f = en_rtf();
 
-    // Sub-second durations yield "0 seconds ago".
-    test_result("Format(500ms) = 0 seconds ago",
-                eq(rt_reltimefmt_format(f, 500), "0 seconds ago"));
+    // Sub-second durations yield the neutral relative phrase.
+    test_result("Format(500ms) = now",
+                eq(rt_reltimefmt_format(f, 500), "now"));
+    test_result("Format(0ms) = now",
+                eq(rt_reltimefmt_format(f, 0), "now"));
     test_result("Format(1000ms) = 1 second ago",
                 eq(rt_reltimefmt_format(f, 1000), "1 second ago"));
     test_result("Format(5s) = 5 seconds ago",
@@ -162,6 +164,11 @@ static void test_numeric() {
     test_result("Numeric(1, hour) = 1 hour ago",
                 eq(rt_reltimefmt_numeric(f, 1, hour), "1 hour ago"));
     rt_string_unref(hour);
+
+    rt_string second = S("second");
+    test_result("Numeric(0, second) = now",
+                eq(rt_reltimefmt_numeric(f, 0, second), "now"));
+    rt_string_unref(second);
 
     rt_string bad = S("eon");
     EXPECT_TRAP(rt_reltimefmt_numeric(f, 1, bad));

@@ -29,6 +29,7 @@
 #include "rt_dateformat.h"
 
 #include "rt_internal.h"
+#include "rt_heap.h"
 #include "rt_locale.h"
 #include "rt_locale_data.h"
 #include "rt_locale_manager.h"
@@ -63,6 +64,17 @@ static rt_dateformat_inst_t *as_fmt(void *obj) {
     return (rt_dateformat_inst_t *)obj;
 }
 
+static void df_finalizer(void *obj) {
+    rt_dateformat_inst_t *fmt = (rt_dateformat_inst_t *)obj;
+    if (!fmt)
+        return;
+    rt_locale_manager_release_data(fmt->data);
+    if (fmt->locale)
+        rt_heap_release(fmt->locale);
+    fmt->locale = NULL;
+    fmt->data = NULL;
+}
+
 //===----------------------------------------------------------------------===//
 // Constructors
 //===----------------------------------------------------------------------===//
@@ -75,12 +87,20 @@ static void *df_alloc(void *locale) {
         return NULL;
     }
     fmt->locale = locale;
+    if (fmt->locale)
+        rt_heap_retain(fmt->locale);
     fmt->data = rt_locale_get_data(locale);
+    rt_locale_manager_retain_data(fmt->data);
+    rt_obj_set_finalizer(fmt, df_finalizer);
     return fmt;
 }
 
 void *rt_dateformat_new(void) {
-    return df_alloc(rt_locale_manager_current());
+    void *current = rt_locale_manager_current();
+    void *fmt = df_alloc(current);
+    if (current)
+        rt_heap_release(current);
+    return fmt;
 }
 
 void *rt_dateformat_for_locale(void *locale) {

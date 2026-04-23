@@ -16,6 +16,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_locale.h"
+#include "rt_locale_manager.h"
 #include "rt_numformat.h"
 #include "rt_option.h"
 #include "rt_string.h"
@@ -26,7 +27,21 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <setjmp.h>
+#include <string>
+
+#if defined(_WIN32)
+#include <direct.h>
+#include <process.h>
+#define TEST_MKDIR(path) _mkdir(path)
+#define TEST_GETPID() _getpid()
+#else
+#include <sys/stat.h>
+#include <unistd.h>
+#define TEST_MKDIR(path) mkdir(path, 0700)
+#define TEST_GETPID() getpid()
+#endif
 
 static jmp_buf g_trap_env;
 static int g_expect_trap = 0;
@@ -68,6 +83,81 @@ static bool eq(rt_string s, const char *expected) {
 
 static void *en_fmt() {
     rt_string in = S("en-US");
+    void *loc = rt_locale_parse(in);
+    rt_string_unref(in);
+    return rt_numformat_for_locale(loc);
+}
+
+static std::string temp_dir(const char *name) {
+    const char *base = getenv("TMPDIR");
+    if (!base || !*base)
+        base = "/tmp";
+    char buf[512];
+    snprintf(buf, sizeof(buf), "%s/viper_numfmt_%ld_%s",
+             base, (long)TEST_GETPID(), name);
+    TEST_MKDIR(buf);
+    return std::string(buf);
+}
+
+static void write_text_file(const std::string &path, const char *text) {
+    FILE *f = fopen(path.c_str(), "wb");
+    assert(f && "failed to create temp locale JSON");
+    size_t len = strlen(text);
+    assert(fwrite(text, 1, len, f) == len);
+    fclose(f);
+}
+
+static const char *ARABIC_DIGIT_JSON = R"json({
+  "tag": "ar-XB",
+  "text_direction": "rtl",
+  "numbers": {
+    "decimal_sep": ".",
+    "group_sep": ",",
+    "group_size": 3,
+    "minus": "-",
+    "plus": "+",
+    "percent": "%",
+    "infinity": "Infinity",
+    "nan": "NaN",
+    "exponent": "E",
+    "digits": "\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669"
+  }
+})json";
+
+static const char *ACCOUNTING_JSON = R"json({
+  "tag": "en-XA",
+  "numbers": {
+    "decimal_sep": ".",
+    "group_sep": ",",
+    "group_size": 3,
+    "minus": "-",
+    "plus": "+",
+    "percent": "%",
+    "infinity": "Infinity",
+    "nan": "NaN",
+    "exponent": "E",
+    "digits": "0123456789"
+  },
+  "currency": {
+    "default_code": "USD",
+    "symbol": "$",
+    "pattern_positive": "{s}{n}",
+    "pattern_negative": "({s}{n})",
+    "fraction_digits": 2
+  }
+})json";
+
+static void load_locale_json(const char *name, const char *json) {
+    std::string dir = temp_dir(name);
+    std::string file = dir + "/" + name + ".json";
+    write_text_file(file, json);
+    rt_string path = S(file.c_str());
+    rt_locale_manager_load_from_json(path);
+    rt_string_unref(path);
+}
+
+static void *fmt_for_tag(const char *tag) {
+    rt_string in = S(tag);
     void *loc = rt_locale_parse(in);
     rt_string_unref(in);
     return rt_numformat_for_locale(loc);
@@ -115,6 +205,12 @@ static void test_format_integer() {
                 eq(rt_numformat_integer(fmt, -1234567), "-1,234,567"));
     test_result("Integer(0) = \"0\"",
                 eq(rt_numformat_integer(fmt, 0), "0"));
+    test_result("Integer(INT64_MAX) exact",
+                eq(rt_numformat_integer(fmt, std::numeric_limits<int64_t>::max()),
+                   "9,223,372,036,854,775,807"));
+    test_result("Integer(INT64_MIN) exact",
+                eq(rt_numformat_integer(fmt, std::numeric_limits<int64_t>::min()),
+                   "-9,223,372,036,854,775,808"));
 }
 
 static void test_format_percent() {
@@ -310,6 +406,28 @@ static void test_parse_integer() {
     EXPECT_TRAP(rt_numformat_parse_integer(fmt, s2));
     rt_string_unref(s2);
     test_result("ParseInteger rejects fractional", true);
+
+    rt_string max_s = S("9,223,372,036,854,775,807");
+    int64_t max_v = rt_numformat_parse_integer(fmt, max_s);
+    rt_string_unref(max_s);
+    test_result("ParseInteger(INT64_MAX) exact",
+                max_v == std::numeric_limits<int64_t>::max());
+
+    rt_string min_s = S("-9,223,372,036,854,775,808");
+    int64_t min_v = rt_numformat_parse_integer(fmt, min_s);
+    rt_string_unref(min_s);
+    test_result("ParseInteger(INT64_MIN) exact",
+                min_v == std::numeric_limits<int64_t>::min());
+
+    rt_string overflow = S("9223372036854775808");
+    EXPECT_TRAP(rt_numformat_parse_integer(fmt, overflow));
+    rt_string_unref(overflow);
+    test_result("ParseInteger overflow traps", true);
+
+    rt_string underflow = S("-9223372036854775809");
+    void *under = rt_numformat_try_parse_integer(fmt, underflow);
+    rt_string_unref(underflow);
+    test_result("TryParseInteger underflow -> None", rt_option_is_none(under) == 1);
 }
 
 static void test_parse_currency() {
@@ -327,6 +445,33 @@ static void test_parse_currency() {
     rt_string_unref(s2);
     test_result("ParseCurrency(symbol-less) == 1000",
                 std::fabs(v2 - 1000.0) < 1e-9);
+
+    load_locale_json("en-XA", ACCOUNTING_JSON);
+    void *acct = fmt_for_tag("en-XA");
+    test_result("Currency(-1234.56) uses accounting pattern",
+                eq(rt_numformat_currency(acct, -1234.56), "($1,234.56)"));
+
+    rt_string s3 = S("($1,234.56)");
+    double v3 = rt_numformat_parse_currency(acct, s3);
+    rt_string_unref(s3);
+    test_result("ParseCurrency accounting negative == -1234.56",
+                std::fabs(v3 + 1234.56) < 1e-9);
+}
+
+static void test_localized_digits() {
+    printf("Testing localized digit sets:\n");
+    load_locale_json("ar-XB", ARABIC_DIGIT_JSON);
+    void *fmt = fmt_for_tag("ar-XB");
+
+    const char *expected =
+        "\xD9\xA1\xD9\xA2\xD9\xA3,\xD9\xA4\xD9\xA5\xD9\xA6";
+    test_result("Integer formats Arabic-Indic digits",
+                eq(rt_numformat_integer(fmt, 123456), expected));
+
+    rt_string localized = S(expected);
+    int64_t parsed = rt_numformat_parse_integer(fmt, localized);
+    rt_string_unref(localized);
+    test_result("ParseInteger accepts Arabic-Indic digits", parsed == 123456);
 }
 
 //=============================================================================
@@ -377,6 +522,7 @@ int main() {
     test_parse_decimal_traps();
     test_parse_integer();
     test_parse_currency();
+    test_localized_digits();
     test_strict_mode_rejects_ambiguous();
     printf("\nAll LocaleNumberFormat tests passed!\n");
     return 0;

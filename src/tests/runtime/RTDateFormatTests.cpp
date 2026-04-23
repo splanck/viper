@@ -327,6 +327,11 @@ static void test_trap_paths() {
     EXPECT_TRAP(rt_dateformat_custom(fmt, ts, bad_letter));
     rt_string_unref(bad_letter);
     test_result("Custom with unknown letter traps", true);
+
+    rt_string bad_quote = S("yyyy-'unterminated");
+    EXPECT_TRAP(rt_dateformat_custom(fmt, ts, bad_quote));
+    rt_string_unref(bad_quote);
+    test_result("Custom with unterminated quote traps", true);
 }
 
 //=============================================================================

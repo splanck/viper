@@ -1011,7 +1011,7 @@ RT_FUNC(DurationToISO,    rt_duration_to_iso,    "Viper.Time.Duration.ToISO",   
 RT_FUNC(RelTimeFormat,         rt_reltime_format,          "Viper.Time.RelativeTime.Format",         "str(i64)")
 RT_FUNC(RelTimeFormatFrom,     rt_reltime_format_from,     "Viper.Time.RelativeTime.FormatFrom",     "str(i64,i64)")
 RT_FUNC(RelTimeFormatDuration, rt_reltime_format_duration, "Viper.Time.RelativeTime.FormatDuration", "str(i64)")
-RT_FUNC(RelTimeFormatShort,    rt_reltimefmt_short,    "Viper.Time.RelativeTime.FormatShort",    "str(i64)")
+RT_FUNC(RelTimeFormatShort,    rt_reltime_format_short,    "Viper.Time.RelativeTime.FormatShort",    "str(i64)")
 
 //=============================================================================
 // DATE RANGE

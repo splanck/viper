@@ -31,6 +31,9 @@
 
 #include "rt_message_bundle.h"
 
+#include "rt_asset.h"
+#include "rt_bytes.h"
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_list.h"
 #include "rt_locale.h"
@@ -39,6 +42,7 @@
 #include "rt_map.h"
 #include "rt_object.h"
 #include "rt_plural_rules.h"
+#include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
 #include "rt_trap.h"
@@ -52,7 +56,6 @@
 //===----------------------------------------------------------------------===//
 
 extern rt_string rt_io_file_read_all_text(rt_string path);
-extern void *rt_asset_load(rt_string name);
 extern void *rt_json_parse_object(rt_string text);
 
 //===----------------------------------------------------------------------===//
@@ -71,11 +74,47 @@ static rt_message_bundle_t *as_bundle(void *obj) {
     return (rt_message_bundle_t *)obj;
 }
 
+static void release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void bundle_finalizer(void *obj) {
+    rt_message_bundle_t *bundle = (rt_message_bundle_t *)obj;
+    if (!bundle)
+        return;
+    if (bundle->locale)
+        rt_heap_release(bundle->locale);
+    release_object(bundle->entries);
+    release_object(bundle->fallback);
+    bundle->locale = NULL;
+    bundle->entries = NULL;
+    bundle->fallback = NULL;
+}
+
+static int validate_message_map(void *map) {
+    if (!map)
+        return 0;
+    void *keys = rt_map_keys(map);
+    int ok = 1;
+    int64_t n = keys ? rt_seq_len(keys) : 0;
+    for (int64_t i = 0; i < n; ++i) {
+        rt_string key = (rt_string)rt_seq_get(keys, i);
+        void *value = rt_map_get(map, key);
+        if (!value || !rt_string_is_handle(value)) {
+            ok = 0;
+            break;
+        }
+    }
+    release_object(keys);
+    return ok;
+}
+
 //===----------------------------------------------------------------------===//
 // Constructors
 //===----------------------------------------------------------------------===//
 
-static void *bundle_alloc(void *locale, void *map) {
+static void *bundle_alloc(void *locale, void *map, int take_map) {
     rt_message_bundle_t *bundle = (rt_message_bundle_t *)rt_obj_new_i64(
         0, (int64_t)sizeof(rt_message_bundle_t));
     if (!bundle) {
@@ -83,17 +122,30 @@ static void *bundle_alloc(void *locale, void *map) {
         return NULL;
     }
     bundle->locale = locale;
+    if (bundle->locale)
+        rt_heap_retain(bundle->locale);
     bundle->entries = map ? map : rt_map_new();
+    if (bundle->entries && !take_map)
+        rt_obj_retain_maybe(bundle->entries);
     bundle->fallback = NULL;
+    rt_obj_set_finalizer(bundle, bundle_finalizer);
     return bundle;
 }
 
 void *rt_message_bundle_new(void) {
-    return bundle_alloc(rt_locale_manager_current(), NULL);
+    void *current = rt_locale_manager_current();
+    void *bundle = bundle_alloc(current, NULL, 1);
+    if (current)
+        rt_heap_release(current);
+    return bundle;
 }
 
 void *rt_message_bundle_from_map(void *locale, void *map) {
-    return bundle_alloc(locale, map);
+    if (map && !validate_message_map(map)) {
+        rt_trap("Viper.Localization.MessageBundle: map values must be strings");
+        return NULL;
+    }
+    return bundle_alloc(locale, map, 0);
 }
 
 void *rt_message_bundle_load_from_json(void *locale, rt_string path) {
@@ -112,7 +164,12 @@ void *rt_message_bundle_load_from_json(void *locale, rt_string path) {
         rt_trap("Viper.Localization.MessageBundle: malformed JSON");
         return NULL;
     }
-    return bundle_alloc(locale, map);
+    if (!validate_message_map(map)) {
+        release_object(map);
+        rt_trap("Viper.Localization.MessageBundle: JSON values must be strings");
+        return NULL;
+    }
+    return bundle_alloc(locale, map, 1);
 }
 
 void *rt_message_bundle_load_from_asset(void *locale, rt_string name) {
@@ -120,18 +177,29 @@ void *rt_message_bundle_load_from_asset(void *locale, rt_string name) {
         rt_trap("Viper.Localization.MessageBundle: LoadFromAsset requires a name");
         return NULL;
     }
-    // rt_asset_load returns an rt_string when the asset is a text resource.
-    void *loaded = rt_asset_load(name);
-    if (!loaded) {
+    void *bytes = rt_asset_load_bytes(name);
+    if (!bytes) {
         rt_trap("Viper.Localization.MessageBundle: asset not found");
         return NULL;
     }
-    void *map = rt_json_parse_object((rt_string)loaded);
+    rt_string text = rt_bytes_to_str(bytes);
+    release_object(bytes);
+    if (!text) {
+        rt_trap("Viper.Localization.MessageBundle: asset is not valid text");
+        return NULL;
+    }
+    void *map = rt_json_parse_object(text);
+    rt_string_unref(text);
     if (!map) {
         rt_trap("Viper.Localization.MessageBundle: malformed JSON asset");
         return NULL;
     }
-    return bundle_alloc(locale, map);
+    if (!validate_message_map(map)) {
+        release_object(map);
+        rt_trap("Viper.Localization.MessageBundle: JSON asset values must be strings");
+        return NULL;
+    }
+    return bundle_alloc(locale, map, 1);
 }
 
 //===----------------------------------------------------------------------===//
@@ -210,16 +278,18 @@ int8_t rt_message_bundle_has(void *self, rt_string key) {
 /// @details rt_map_get_str returns a borrowed reference — we MUST NOT unref
 ///          it. The map retains its entries for its own lifetime; our job
 ///          is to read the cstr contents and move on.
-static void append_value(rt_string_builder *sb, const char *name, size_t name_len,
-                         void *vars) {
+static int append_value(rt_string_builder *sb, const char *name, size_t name_len,
+                        void *vars) {
     if (!vars)
-        return;
+        return 0;
     rt_string key = rt_string_from_bytes(name, name_len);
+    int found = 0;
     // rt_map_has returns 0 when key is absent; without this guard,
     // rt_map_get_str would return a fresh empty string that we'd leak.
     if (rt_map_has(vars, key)) {
         rt_string value = rt_map_get_str(vars, key);
         if (value) {
+            found = 1;
             const char *cs = rt_string_cstr(value);
             int64_t vlen = rt_str_len(value);
             if (cs && vlen > 0)
@@ -227,6 +297,7 @@ static void append_value(rt_string_builder *sb, const char *name, size_t name_le
         }
     }
     rt_string_unref(key);
+    return found;
 }
 
 /// @brief Named-placeholder substitution: scans for `{name}` runs.
@@ -241,13 +312,24 @@ static rt_string interp_named(rt_string tmpl, void *vars) {
     rt_string_builder sb;
     rt_sb_init(&sb);
     for (int64_t i = 0; i < len;) {
+        if (cs[i] == '{' && i + 1 < len && cs[i + 1] == '{') {
+            (void)rt_sb_append_bytes(&sb, "{", 1);
+            i += 2;
+            continue;
+        }
+        if (cs[i] == '}' && i + 1 < len && cs[i + 1] == '}') {
+            (void)rt_sb_append_bytes(&sb, "}", 1);
+            i += 2;
+            continue;
+        }
         if (cs[i] == '{') {
             // Scan for matching '}'.
             int64_t j = i + 1;
             while (j < len && cs[j] != '}')
                 ++j;
             if (j < len && j > i + 1) {
-                append_value(&sb, cs + i + 1, (size_t)(j - i - 1), vars);
+                if (!append_value(&sb, cs + i + 1, (size_t)(j - i - 1), vars))
+                    (void)rt_sb_append_bytes(&sb, cs + i, (size_t)(j - i + 1));
                 i = j + 1;
                 continue;
             }
@@ -273,6 +355,16 @@ static rt_string interp_positional(rt_string tmpl, void *values_list) {
     rt_string_builder sb;
     rt_sb_init(&sb);
     for (int64_t i = 0; i < len;) {
+        if (cs[i] == '{' && i + 1 < len && cs[i + 1] == '{') {
+            (void)rt_sb_append_bytes(&sb, "{", 1);
+            i += 2;
+            continue;
+        }
+        if (cs[i] == '}' && i + 1 < len && cs[i + 1] == '}') {
+            (void)rt_sb_append_bytes(&sb, "}", 1);
+            i += 2;
+            continue;
+        }
         if (cs[i] == '{') {
             int64_t j = i + 1;
             int64_t idx = 0;
@@ -291,6 +383,8 @@ static rt_string interp_positional(rt_string tmpl, void *values_list) {
                         if (vcs && vlen > 0)
                             (void)rt_sb_append_bytes(&sb, vcs, (size_t)vlen);
                     }
+                } else {
+                    (void)rt_sb_append_bytes(&sb, cs + i, (size_t)(j - i + 1));
                 }
                 i = j + 1;
                 continue;
@@ -385,7 +479,7 @@ rt_string rt_message_bundle_plural(void *self, rt_string key, int64_t n, void *v
     }
 
     // Seed `{n}` into the vars map so it's available to the substitutor.
-    void *effective_vars = vars ? vars : rt_map_new();
+    void *effective_vars = vars ? rt_map_clone(vars) : rt_map_new();
     char num_buf[32];
     int nlen = snprintf(num_buf, sizeof(num_buf), "%lld", (long long)n);
     if (nlen > 0) {
@@ -397,6 +491,7 @@ rt_string rt_message_bundle_plural(void *self, rt_string key, int64_t n, void *v
     }
 
     rt_string out = interp_named(tmpl, effective_vars);
+    release_object(effective_vars);
     rt_string_unref(tmpl);
     return out;
 }
@@ -420,7 +515,13 @@ void *rt_message_bundle_set_fallback(void *self, void *fallback) {
         cur = as_bundle(cur)->fallback;
         ++depth;
     }
+    if (bundle->fallback == fallback)
+        return self;
+    if (fallback)
+        rt_obj_retain_maybe(fallback);
+    void *old = bundle->fallback;
     bundle->fallback = fallback;
+    release_object(old);
     return self;
 }
 
@@ -439,5 +540,6 @@ void *rt_message_bundle_keys(void *self) {
     for (int64_t i = 0; i < n; ++i) {
         rt_list_push(list, rt_seq_get(seq, i));
     }
+    release_object(seq);
     return list;
 }

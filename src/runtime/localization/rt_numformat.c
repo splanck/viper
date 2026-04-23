@@ -34,6 +34,7 @@
 
 #include "rt_numformat.h"
 
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_locale.h"
 #include "rt_locale_data.h"
@@ -45,12 +46,21 @@
 #include "rt_string_builder.h"
 #include "rt_trap.h"
 
+#include <errno.h>
 #include <ctype.h>
+#include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
+
+#if defined(_WIN32)
+#include <locale.h>
+#else
+#include <locale.h>
+#endif
 
 //===----------------------------------------------------------------------===//
 // Rounding modes
@@ -91,6 +101,71 @@ static rounding_mode_t rounding_mode_parse(const char *s) {
     return ROUND_HALF_EVEN;
 }
 
+static int loc_vsnprintf_c(char *out, size_t cap, const char *fmt, va_list args) {
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
+#endif
+#if defined(_WIN32)
+    _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
+    int n = c_locale ? _vsnprintf_l(out, cap, fmt, c_locale, args)
+                     : vsnprintf(out, cap, fmt, args);
+    if (c_locale)
+        _free_locale(c_locale);
+#else
+    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+    int n;
+    if (!c_locale) {
+        n = vsnprintf(out, cap, fmt, args);
+    } else {
+        locale_t old = uselocale(c_locale);
+        if (!old) {
+            n = vsnprintf(out, cap, fmt, args);
+        } else {
+            n = vsnprintf(out, cap, fmt, args);
+            uselocale(old);
+        }
+        freelocale(c_locale);
+    }
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+    return n;
+}
+
+static int loc_snprintf_c(char *out, size_t cap, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int n = loc_vsnprintf_c(out, cap, fmt, args);
+    va_end(args);
+    return n;
+}
+
+static double loc_strtod_c(const char *input, char **endptr) {
+#if defined(_WIN32)
+    _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
+    if (!c_locale)
+        return strtod(input, endptr);
+    double v = _strtod_l(input, endptr, c_locale);
+    _free_locale(c_locale);
+    return v;
+#else
+    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+    if (!c_locale)
+        return strtod(input, endptr);
+    locale_t old = uselocale(c_locale);
+    if (!old) {
+        freelocale(c_locale);
+        return strtod(input, endptr);
+    }
+    double v = strtod(input, endptr);
+    uselocale(old);
+    freelocale(c_locale);
+    return v;
+#endif
+}
+
 //===----------------------------------------------------------------------===//
 // Instance struct
 //===----------------------------------------------------------------------===//
@@ -109,6 +184,17 @@ static rt_numformat_t *as_fmt(void *obj) {
     return (rt_numformat_t *)obj;
 }
 
+static void fmt_finalizer(void *obj) {
+    rt_numformat_t *fmt = (rt_numformat_t *)obj;
+    if (!fmt)
+        return;
+    rt_locale_manager_release_data(fmt->data);
+    if (fmt->locale)
+        rt_heap_release(fmt->locale);
+    fmt->locale = NULL;
+    fmt->data = NULL;
+}
+
 //===----------------------------------------------------------------------===//
 // Constructors
 //===----------------------------------------------------------------------===//
@@ -122,18 +208,25 @@ static rt_numformat_t *fmt_alloc(void *locale) {
     }
     memset(fmt, 0, sizeof(*fmt));
     fmt->locale = locale;
+    if (fmt->locale)
+        rt_heap_retain(fmt->locale);
     fmt->data = rt_locale_get_data(locale);
+    rt_locale_manager_retain_data(fmt->data);
     fmt->min_frac = 0;
     fmt->max_frac = 3;  // default matches common display conventions
     fmt->grouping = 1;
     fmt->strict = 0;
     fmt->rounding = ROUND_HALF_EVEN;
+    rt_obj_set_finalizer(fmt, fmt_finalizer);
     return fmt;
 }
 
 void *rt_numformat_new(void) {
     void *current = rt_locale_manager_current();
-    return fmt_alloc(current);
+    void *fmt = fmt_alloc(current);
+    if (current)
+        rt_heap_release(current);
+    return fmt;
 }
 
 void *rt_numformat_for_locale(void *locale) {
@@ -246,6 +339,75 @@ static double apply_rounding(double value, int digits, rounding_mode_t mode) {
 // Core format helper: render a double with locale decimal + group separators
 //===----------------------------------------------------------------------===//
 
+typedef struct digit_spans {
+    const char *ptr[10];
+    size_t len[10];
+    int valid;
+} digit_spans_t;
+
+static size_t utf8_cp_len(const char *s) {
+    if (!s || !*s) return 0;
+    unsigned char c = (unsigned char)s[0];
+    if (c < 0x80) return 1;
+    if ((c & 0xE0) == 0xC0 && s[1]) return 2;
+    if ((c & 0xF0) == 0xE0 && s[1] && s[2]) return 3;
+    if ((c & 0xF8) == 0xF0 && s[1] && s[2] && s[3]) return 4;
+    return 1;
+}
+
+static digit_spans_t digit_spans_from_locale(const rt_locdata_numbers_t *nums) {
+    digit_spans_t ds;
+    memset(&ds, 0, sizeof(ds));
+    const char *digits = nums && nums->digits ? nums->digits : "0123456789";
+    const char *p = digits;
+    for (int i = 0; i < 10; ++i) {
+        size_t l = utf8_cp_len(p);
+        if (l == 0) {
+            ds.valid = 0;
+            return ds;
+        }
+        ds.ptr[i] = p;
+        ds.len[i] = l;
+        p += l;
+    }
+    ds.valid = *p == '\0';
+    return ds;
+}
+
+static void append_localized_bytes(rt_string_builder *sb,
+                                   const rt_locdata_numbers_t *nums,
+                                   const char *bytes,
+                                   size_t len) {
+    digit_spans_t ds = digit_spans_from_locale(nums);
+    for (size_t i = 0; i < len; ++i) {
+        unsigned char c = (unsigned char)bytes[i];
+        if (ds.valid && c >= '0' && c <= '9') {
+            int d = (int)(c - '0');
+            (void)rt_sb_append_bytes(sb, ds.ptr[d], ds.len[d]);
+        } else {
+            (void)rt_sb_append_bytes(sb, bytes + i, 1);
+        }
+    }
+}
+
+static void append_grouped_ascii_number(rt_string_builder *sb,
+                                        const rt_numformat_t *fmt,
+                                        const char *digits,
+                                        int digit_len) {
+    const rt_locdata_numbers_t *nums = &fmt->data->numbers;
+    rt_string_builder tmp;
+    rt_sb_init(&tmp);
+    if (fmt->grouping && nums->group_sep && nums->group_sep[0] != '\0') {
+        rt_numfmt_group_digits(&tmp, digits, digit_len,
+                               nums->group_sep, strlen(nums->group_sep),
+                               nums->group_size > 0 ? nums->group_size : 3);
+    } else {
+        (void)rt_sb_append_bytes(&tmp, digits, (size_t)digit_len);
+    }
+    append_localized_bytes(sb, nums, tmp.data, tmp.len);
+    rt_sb_free(&tmp);
+}
+
 /// @brief Emit @p value into @p sb using locale numeric conventions and
 ///        effective fraction-digit limits.
 /// @param sb         destination
@@ -292,7 +454,7 @@ static void fmt_render_number(rt_string_builder *sb, const rt_numformat_t *fmt,
 
     // Render integer + fraction as two buffers with a high-precision snprintf.
     char whole[64];
-    int int_len = snprintf(whole, sizeof(whole), "%.0f", floor(abs_val));
+    int int_len = loc_snprintf_c(whole, sizeof(whole), "%.0f", floor(abs_val));
     if (int_len < 0)
         int_len = 0;
     if (int_len == 0) {
@@ -303,7 +465,7 @@ static void fmt_render_number(rt_string_builder *sb, const rt_numformat_t *fmt,
 
     // Fractional part: snprintf with fixed decimals, then strip the integer part.
     char full[96];
-    int full_len = snprintf(full, sizeof(full), "%.*f", digits_used, abs_val);
+    int full_len = loc_snprintf_c(full, sizeof(full), "%.*f", digits_used, abs_val);
     if (full_len < 0)
         full_len = 0;
 
@@ -325,15 +487,8 @@ static void fmt_render_number(rt_string_builder *sb, const rt_numformat_t *fmt,
     }
 
     // Emit integer part with optional grouping.
-    const char *whole_ptr = full;
     int whole_len = frac_ptr ? (int)((frac_ptr - full) - 1) : full_len;
-    if (fmt->grouping && nums->group_sep && nums->group_sep[0] != '\0') {
-        rt_numfmt_group_digits(sb, whole_ptr, whole_len,
-                               nums->group_sep, strlen(nums->group_sep),
-                               nums->group_size > 0 ? nums->group_size : 3);
-    } else {
-        (void)rt_sb_append_bytes(sb, whole_ptr, (size_t)whole_len);
-    }
+    append_grouped_ascii_number(sb, fmt, full, whole_len);
 
     // Determine how many fraction digits to emit: clamp to [min_frac, digits_used]
     // and strip trailing zeros past min_frac.
@@ -348,8 +503,34 @@ static void fmt_render_number(rt_string_builder *sb, const rt_numformat_t *fmt,
     if (emit_digits > 0 && frac_ptr) {
         const char *dec_sep = nums->decimal_sep ? nums->decimal_sep : ".";
         (void)rt_sb_append_cstr(sb, dec_sep);
-        (void)rt_sb_append_bytes(sb, frac_ptr, (size_t)emit_digits);
+        append_localized_bytes(sb, nums, frac_ptr, (size_t)emit_digits);
     }
+}
+
+static void fmt_render_integer_exact(rt_string_builder *sb, const rt_numformat_t *fmt,
+                                     int64_t value) {
+    const rt_locdata_numbers_t *nums = &fmt->data->numbers;
+    uint64_t mag;
+    if (value < 0) {
+        const char *minus = nums->minus ? nums->minus : "-";
+        (void)rt_sb_append_cstr(sb, minus);
+        mag = (uint64_t)(-(value + 1)) + 1u;
+    } else {
+        mag = (uint64_t)value;
+    }
+
+    char digits[32];
+    size_t pos = sizeof(digits);
+    digits[--pos] = '\0';
+    if (mag == 0) {
+        digits[--pos] = '0';
+    } else {
+        while (mag > 0) {
+            digits[--pos] = (char)('0' + (mag % 10u));
+            mag /= 10u;
+        }
+    }
+    append_grouped_ascii_number(sb, fmt, digits + pos, (int)(sizeof(digits) - pos - 1));
 }
 
 //===----------------------------------------------------------------------===//
@@ -383,7 +564,14 @@ rt_string rt_numformat_decimal_n(void *self, double value, int64_t digits) {
 }
 
 rt_string rt_numformat_integer(void *self, int64_t value) {
-    return rt_numformat_decimal_n(self, (double)value, 0);
+    if (!self)
+        return rt_string_from_bytes("", 0);
+    rt_string_builder sb;
+    rt_sb_init(&sb);
+    fmt_render_integer_exact(&sb, as_fmt(self), value);
+    rt_string r = rt_string_from_bytes(sb.data, sb.len);
+    rt_sb_free(&sb);
+    return r;
 }
 
 rt_string rt_numformat_percent(void *self, double value) {
@@ -516,7 +704,7 @@ rt_string rt_numformat_scientific(void *self, double value, int64_t digits) {
     if (d > 20) d = 20;
 
     char buf[64];
-    int len = snprintf(buf, sizeof(buf), "%.*e", d, value);
+    int len = loc_snprintf_c(buf, sizeof(buf), "%.*e", d, value);
     if (len < 0) len = 0;
 
     // Substitute decimal separator if the locale differs from ".".
@@ -530,7 +718,7 @@ rt_string rt_numformat_scientific(void *self, double value, int64_t digits) {
         } else if ((buf[i] == 'e' || buf[i] == 'E') && exp_char) {
             (void)rt_sb_append_cstr(&sb, exp_char);
         } else {
-            (void)rt_sb_append_bytes(&sb, buf + i, 1);
+            append_localized_bytes(&sb, &fmt->data->numbers, buf + i, 1);
         }
     }
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
@@ -571,23 +759,58 @@ typedef struct {
     double  value;          ///< parsed value (double precision)
     int     had_sign;       ///< 1 if input had an explicit sign
     int     negative;
+    int64_t int_value;      ///< exact integer value when allow_fraction == 0
 } parse_result_t;
 
-/// @brief Parse a locale-formatted decimal number from @p input.
-/// @details Strips leading/trailing whitespace, optional sign, recognizes the
-///          locale's minus/plus tokens, decimal separator, and group separators
-///          (tolerated in lenient mode; position-checked in strict mode).
-static parse_result_t parse_decimal(const char *input, size_t input_len,
-                                    const rt_numformat_t *fmt,
-                                    int allow_fraction) {
-    parse_result_t pr = {0};
-    pr.success = 0;
+static int match_locale_digit(const char *input, size_t input_len,
+                              const rt_locdata_numbers_t *nums,
+                              size_t *consumed) {
+    if (consumed) *consumed = 0;
+    if (input_len == 0)
+        return -1;
+    if (input[0] >= '0' && input[0] <= '9') {
+        if (consumed) *consumed = 1;
+        return input[0] - '0';
+    }
+    digit_spans_t ds = digit_spans_from_locale(nums);
+    if (!ds.valid)
+        return -1;
+    for (int d = 0; d < 10; ++d) {
+        if (ds.len[d] > 0 && input_len >= ds.len[d] &&
+            memcmp(input, ds.ptr[d], ds.len[d]) == 0) {
+            if (consumed) *consumed = ds.len[d];
+            return d;
+        }
+    }
+    return -1;
+}
 
-    // Skip leading whitespace.
+typedef struct {
+    int success;
+    int negative;
+    int had_sign;
+    int had_frac;
+    rt_string_builder digits;
+    rt_string_builder frac;
+} scan_number_t;
+
+static void scan_number_free(scan_number_t *sn) {
+    rt_sb_free(&sn->digits);
+    rt_sb_free(&sn->frac);
+}
+
+static scan_number_t scan_number_parts(const char *input, size_t input_len,
+                                       const rt_numformat_t *fmt,
+                                       int allow_fraction) {
+    scan_number_t sn;
+    memset(&sn, 0, sizeof(sn));
+    rt_sb_init(&sn.digits);
+    rt_sb_init(&sn.frac);
+
     size_t i = 0;
     while (i < input_len && isspace((unsigned char)input[i])) ++i;
     if (i >= input_len)
-        return pr;
+        return sn;
 
     const rt_locdata_numbers_t *nums = &fmt->data->numbers;
     const char *minus = nums->minus ? nums->minus : "-";
@@ -600,42 +823,42 @@ static parse_result_t parse_decimal(const char *input, size_t input_len,
     // Sign.
     size_t adv = match_prefix(input + i, input_len - i, minus);
     if (adv) {
-        pr.had_sign = 1;
-        pr.negative = 1;
+        sn.had_sign = 1;
+        sn.negative = 1;
         i += adv;
     } else {
         adv = match_prefix(input + i, input_len - i, plus);
         if (adv) {
-            pr.had_sign = 1;
+            sn.had_sign = 1;
             i += adv;
         }
     }
 
-    // Integer part: digits, possibly interspersed with group separators.
-    char digits[96];
     size_t digit_count = 0;
     int group_run = 0;          // digits since last separator
     int had_group_sep = 0;
     int first_group_len = -1;   // length of leading group when we hit first sep
 
     while (i < input_len) {
-        if (input[i] >= '0' && input[i] <= '9') {
-            if (digit_count + 1 >= sizeof(digits))
-                return pr;
-            digits[digit_count++] = input[i];
-            ++i;
+        size_t consumed = 0;
+        int digit = match_locale_digit(input + i, input_len - i, nums, &consumed);
+        if (digit >= 0) {
+            char c = (char)('0' + digit);
+            (void)rt_sb_append_bytes(&sn.digits, &c, 1);
+            digit_count++;
+            i += consumed;
             ++group_run;
         } else if (grp_len && i + grp_len <= input_len
                    && memcmp(input + i, grp_sep, grp_len) == 0) {
             if (digit_count == 0)
-                return pr; // leading group sep
+                return sn; // leading group sep
             if (!had_group_sep) {
                 first_group_len = group_run;
                 had_group_sep = 1;
             } else if (fmt->strict && group_run != (nums->group_size > 0
                                                      ? nums->group_size
                                                      : 3)) {
-                return pr; // strict: inner groups must be exactly group_size
+                return sn; // strict: inner groups must be exactly group_size
             }
             group_run = 0;
             i += grp_len;
@@ -647,70 +870,120 @@ static parse_result_t parse_decimal(const char *input, size_t input_len,
     if (fmt->strict && had_group_sep) {
         int expected = nums->group_size > 0 ? nums->group_size : 3;
         if (group_run != expected)
-            return pr;
+            return sn;
         if (first_group_len <= 0 || first_group_len > expected)
-            return pr;
+            return sn;
     }
 
-    digits[digit_count] = '\0';
-
     // Fractional part.
-    char frac[32];
     size_t frac_count = 0;
-    int had_frac = 0;
     if (allow_fraction && i + dec_len <= input_len
         && memcmp(input + i, dec_sep, dec_len) == 0) {
         i += dec_len;
-        had_frac = 1;
+        sn.had_frac = 1;
         while (i < input_len) {
-            if (input[i] >= '0' && input[i] <= '9') {
-                if (frac_count + 1 >= sizeof(frac))
-                    return pr;
-                frac[frac_count++] = input[i];
-                ++i;
+            size_t consumed = 0;
+            int digit = match_locale_digit(input + i, input_len - i, nums, &consumed);
+            if (digit >= 0) {
+                char c = (char)('0' + digit);
+                (void)rt_sb_append_bytes(&sn.frac, &c, 1);
+                frac_count++;
+                i += consumed;
             } else {
                 break;
             }
         }
         if (frac_count == 0)
-            return pr; // bare separator with no digits
+            return sn; // bare separator with no digits
     }
-    frac[frac_count] = '\0';
 
     // Trailing whitespace tolerated; anything else is a failure.
     while (i < input_len && isspace((unsigned char)input[i])) ++i;
     if (i != input_len)
-        return pr;
+        return sn;
 
     if (digit_count == 0 && frac_count == 0)
+        return sn;
+
+    sn.success = 1;
+    return sn;
+}
+
+/// @brief Parse a locale-formatted decimal number from @p input.
+static parse_result_t parse_decimal(const char *input, size_t input_len,
+                                    const rt_numformat_t *fmt,
+                                    int allow_fraction) {
+    parse_result_t pr = {0};
+    scan_number_t sn = scan_number_parts(input, input_len, fmt, allow_fraction);
+    if (!sn.success) {
+        scan_number_free(&sn);
         return pr;
+    }
 
     // Build a canonical "." decimal string and strtod it.
-    char canonical[160];
-    size_t cpos = 0;
-    if (pr.negative && cpos + 1 < sizeof(canonical))
-        canonical[cpos++] = '-';
-    if (digit_count == 0)
-        canonical[cpos++] = '0';
-    else {
-        for (size_t k = 0; k < digit_count && cpos + 1 < sizeof(canonical); ++k)
-            canonical[cpos++] = digits[k];
+    rt_string_builder canonical;
+    rt_sb_init(&canonical);
+    if (sn.negative)
+        (void)rt_sb_append_bytes(&canonical, "-", 1);
+    if (sn.digits.len == 0)
+        (void)rt_sb_append_bytes(&canonical, "0", 1);
+    else
+        (void)rt_sb_append_bytes(&canonical, sn.digits.data, sn.digits.len);
+    if (sn.had_frac) {
+        (void)rt_sb_append_bytes(&canonical, ".", 1);
+        (void)rt_sb_append_bytes(&canonical, sn.frac.data, sn.frac.len);
     }
-    if (had_frac) {
-        if (cpos + 1 < sizeof(canonical))
-            canonical[cpos++] = '.';
-        for (size_t k = 0; k < frac_count && cpos + 1 < sizeof(canonical); ++k)
-            canonical[cpos++] = frac[k];
-    }
-    canonical[cpos] = '\0';
+    (void)rt_sb_append_bytes(&canonical, "\0", 1);
 
     char *end = NULL;
-    double v = strtod(canonical, &end);
-    if (end == canonical)
+    errno = 0;
+    double v = loc_strtod_c(canonical.data, &end);
+    if (end == canonical.data || errno == ERANGE || !isfinite(v)) {
+        rt_sb_free(&canonical);
+        scan_number_free(&sn);
         return pr;
+    }
 
     pr.value = v;
+    pr.had_sign = sn.had_sign;
+    pr.negative = sn.negative;
     pr.success = 1;
+    rt_sb_free(&canonical);
+    scan_number_free(&sn);
+    return pr;
+}
+
+static parse_result_t parse_integer_exact(const char *input, size_t input_len,
+                                          const rt_numformat_t *fmt) {
+    parse_result_t pr = {0};
+    scan_number_t sn = scan_number_parts(input, input_len, fmt, /*allow_fraction=*/0);
+    if (!sn.success || sn.digits.len == 0) {
+        scan_number_free(&sn);
+        return pr;
+    }
+    uint64_t limit = sn.negative ? ((uint64_t)INT64_MAX + 1u) : (uint64_t)INT64_MAX;
+    uint64_t acc = 0;
+    for (size_t i = 0; i < sn.digits.len; ++i) {
+        unsigned digit = (unsigned)(sn.digits.data[i] - '0');
+        if (acc > (limit - digit) / 10u) {
+            scan_number_free(&sn);
+            return pr;
+        }
+        acc = acc * 10u + digit;
+    }
+    if (sn.negative) {
+        if (acc == ((uint64_t)INT64_MAX + 1u))
+            pr.int_value = INT64_MIN;
+        else
+            pr.int_value = -(int64_t)acc;
+    } else {
+        pr.int_value = (int64_t)acc;
+    }
+    pr.value = (double)pr.int_value;
+    pr.had_sign = sn.had_sign;
+    pr.negative = sn.negative;
+    pr.success = 1;
+    scan_number_free(&sn);
     return pr;
 }
 
@@ -753,13 +1026,12 @@ int64_t rt_numformat_parse_integer(void *self, rt_string input) {
     }
     const char *cs = rt_string_cstr(input);
     int64_t len = rt_str_len(input);
-    parse_result_t pr = parse_decimal(cs, (size_t)len, as_fmt(self),
-                                       /*allow_fraction=*/0);
+    parse_result_t pr = parse_integer_exact(cs, (size_t)len, as_fmt(self));
     if (!pr.success) {
         rt_trap("Viper.Localization.NumberFormat: cannot parse input as an integer");
         return 0;
     }
-    return (int64_t)pr.value;
+    return pr.int_value;
 }
 
 void *rt_numformat_try_parse_integer(void *self, rt_string input) {
@@ -767,11 +1039,10 @@ void *rt_numformat_try_parse_integer(void *self, rt_string input) {
         return rt_option_none();
     const char *cs = rt_string_cstr(input);
     int64_t len = rt_str_len(input);
-    parse_result_t pr = parse_decimal(cs, (size_t)len, as_fmt(self),
-                                       /*allow_fraction=*/0);
+    parse_result_t pr = parse_integer_exact(cs, (size_t)len, as_fmt(self));
     if (!pr.success)
         return rt_option_none();
-    return rt_option_some_i64((int64_t)pr.value);
+    return rt_option_some_i64(pr.int_value);
 }
 
 /// @brief Trim the locale's currency symbol (and the default ISO code) from
@@ -830,6 +1101,96 @@ static void strip_currency_affixes(const rt_numformat_t *fmt,
     *out_len = len;
 }
 
+static int expand_currency_pattern_affix(rt_string_builder *sb, const char *p,
+                                         size_t len, const char *symbol) {
+    for (size_t i = 0; i < len;) {
+        if (i + 3 <= len && p[i] == '{' && p[i + 1] == 's' && p[i + 2] == '}') {
+            if (symbol)
+                (void)rt_sb_append_cstr(sb, symbol);
+            i += 3;
+        } else if (i + 3 <= len && p[i] == '{' && p[i + 1] == 'n' && p[i + 2] == '}') {
+            return 0;
+        } else {
+            (void)rt_sb_append_bytes(sb, p + i, 1);
+            ++i;
+        }
+    }
+    return 1;
+}
+
+static int match_currency_pattern(const char *pattern, const char *symbol,
+                                  const char *input, size_t input_len,
+                                  const char **out_start, size_t *out_len) {
+    if (!pattern)
+        return 0;
+    const char *nph = strstr(pattern, "{n}");
+    if (!nph)
+        return 0;
+    rt_string_builder pre;
+    rt_string_builder suf;
+    rt_sb_init(&pre);
+    rt_sb_init(&suf);
+    if (!expand_currency_pattern_affix(&pre, pattern, (size_t)(nph - pattern), symbol) ||
+        !expand_currency_pattern_affix(&suf, nph + 3, strlen(nph + 3), symbol)) {
+        rt_sb_free(&pre);
+        rt_sb_free(&suf);
+        return 0;
+    }
+    if (input_len < pre.len + suf.len ||
+        (pre.len && memcmp(input, pre.data, pre.len) != 0) ||
+        (suf.len && memcmp(input + input_len - suf.len, suf.data, suf.len) != 0)) {
+        rt_sb_free(&pre);
+        rt_sb_free(&suf);
+        return 0;
+    }
+    *out_start = input + pre.len;
+    *out_len = input_len - pre.len - suf.len;
+    rt_sb_free(&pre);
+    rt_sb_free(&suf);
+    return 1;
+}
+
+static int extract_currency_number(const rt_numformat_t *fmt,
+                                   const char *input, size_t input_len,
+                                   const char **out_start, size_t *out_len,
+                                   int *out_negative) {
+    const char *p = input;
+    size_t len = input_len;
+    while (len > 0 && isspace((unsigned char)p[0])) { ++p; --len; }
+    while (len > 0 && isspace((unsigned char)p[len - 1])) { --len; }
+
+    int accounting = 0;
+    if (len >= 2 && p[0] == '(' && p[len - 1] == ')') {
+        accounting = 1;
+        ++p;
+        len -= 2;
+        while (len > 0 && isspace((unsigned char)p[0])) { ++p; --len; }
+        while (len > 0 && isspace((unsigned char)p[len - 1])) { --len; }
+    }
+
+    const char *inner = NULL;
+    size_t inner_len = 0;
+    const char *symbol = fmt->data->currency.symbol;
+    const char *code = fmt->data->currency.default_code;
+    if (match_currency_pattern(fmt->data->currency.pattern_negative, symbol, p, len, &inner, &inner_len) ||
+        match_currency_pattern(fmt->data->currency.pattern_negative, code, p, len, &inner, &inner_len)) {
+        *out_start = inner;
+        *out_len = inner_len;
+        *out_negative = 1;
+        return 1;
+    }
+    if (match_currency_pattern(fmt->data->currency.pattern_positive, symbol, p, len, &inner, &inner_len) ||
+        match_currency_pattern(fmt->data->currency.pattern_positive, code, p, len, &inner, &inner_len)) {
+        *out_start = inner;
+        *out_len = inner_len;
+        *out_negative = accounting;
+        return 1;
+    }
+    strip_currency_affixes(fmt, p, len, out_start, out_len);
+    *out_negative = accounting;
+    return 1;
+}
+
 double rt_numformat_parse_currency(void *self, rt_string input) {
     if (!self || !input) {
         rt_trap("Viper.Localization.NumberFormat: ParseCurrency received null input");
@@ -840,14 +1201,15 @@ double rt_numformat_parse_currency(void *self, rt_string input) {
     int64_t len = rt_str_len(input);
     const char *inner = NULL;
     size_t inner_len = 0;
-    strip_currency_affixes(fmt, cs, (size_t)len, &inner, &inner_len);
+    int negative_pattern = 0;
+    extract_currency_number(fmt, cs, (size_t)len, &inner, &inner_len, &negative_pattern);
     parse_result_t pr = parse_decimal(inner, inner_len, fmt,
                                        /*allow_fraction=*/1);
     if (!pr.success) {
         rt_trap("Viper.Localization.NumberFormat: cannot parse input as currency");
         return 0;
     }
-    return pr.value;
+    return negative_pattern && pr.value > 0 ? -pr.value : pr.value;
 }
 
 void *rt_numformat_try_parse_currency(void *self, rt_string input) {
@@ -858,10 +1220,11 @@ void *rt_numformat_try_parse_currency(void *self, rt_string input) {
     int64_t len = rt_str_len(input);
     const char *inner = NULL;
     size_t inner_len = 0;
-    strip_currency_affixes(fmt, cs, (size_t)len, &inner, &inner_len);
+    int negative_pattern = 0;
+    extract_currency_number(fmt, cs, (size_t)len, &inner, &inner_len, &negative_pattern);
     parse_result_t pr = parse_decimal(inner, inner_len, fmt,
                                        /*allow_fraction=*/1);
     if (!pr.success)
         return rt_option_none();
-    return rt_option_some_f64(pr.value);
+    return rt_option_some_f64(negative_pattern && pr.value > 0 ? -pr.value : pr.value);
 }

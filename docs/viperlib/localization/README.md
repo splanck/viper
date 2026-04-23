@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-04-23
 ---
 
 # Localization
@@ -59,13 +59,11 @@ for step in loc.Fallbacks():
 # root
 ```
 
-## Search path (filesystem)
+## Search Path
 
-`LocaleManager.LoadFromJson` consults, in order:
+`LocaleManager.LoadFromJson(path)` loads exactly the file you pass. `LocaleManager.Load(tag)` canonicalizes the tag, then looks for `<tag>.json` in the directories added with `LocaleManager.AddSearchPath(path)`.
 
-1. Explicit paths added via `LocaleManager.AddSearchPath(path)`.
-2. Platform-convention user dir (`$XDG_DATA_HOME/viper/locales`, `%APPDATA%\Viper\locales`, `~/Library/Application Support/Viper/locales`).
-3. Install-relative dir (`<exe>/../share/viper/locales`).
+VPA assets are loaded explicitly with `LocaleManager.LoadFromAsset(name)`.
 
 ## See Also
 

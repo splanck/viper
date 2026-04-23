@@ -7,8 +7,8 @@
 //
 // File: tests/runtime/RTLocaleManagerTests.cpp
 // Purpose: Validate Viper.Localization.LocaleManager bootstrap, current/system
-//          queries, registry surface, and the stub LoadFromJson / LoadFromAsset
-//          surface that traps until Phase 2.
+//          queries, registry surface, JSON loading, search-path resolution,
+//          and unload/reset behavior.
 //
 //===----------------------------------------------------------------------===//
 
@@ -23,6 +23,19 @@
 #include <cstdlib>
 #include <cstring>
 #include <setjmp.h>
+#include <string>
+
+#if defined(_WIN32)
+#include <direct.h>
+#include <process.h>
+#define TEST_MKDIR(path) _mkdir(path)
+#define TEST_GETPID() _getpid()
+#else
+#include <sys/stat.h>
+#include <unistd.h>
+#define TEST_MKDIR(path) mkdir(path, 0700)
+#define TEST_GETPID() getpid()
+#endif
 
 static jmp_buf g_trap_env;
 static int g_expect_trap = 0;
@@ -62,6 +75,52 @@ static bool tag_eq(void *locale, const char *expected) {
     rt_string_unref(t);
     return ok;
 }
+
+static std::string temp_dir(const char *name) {
+    const char *base = getenv("TMPDIR");
+    if (!base || !*base)
+        base = "/tmp";
+    char buf[512];
+    snprintf(buf, sizeof(buf), "%s/viper_locale_mgr_%ld_%s",
+             base, (long)TEST_GETPID(), name);
+    TEST_MKDIR(buf);
+    return std::string(buf);
+}
+
+static void write_text_file(const std::string &path, const char *text) {
+    FILE *f = fopen(path.c_str(), "wb");
+    assert(f && "failed to create temp locale JSON");
+    size_t len = strlen(text);
+    assert(fwrite(text, 1, len, f) == len);
+    fclose(f);
+}
+
+static const char *FR_JSON = R"json({
+  "tag": "fr-FR",
+  "names": { "language": "francais", "region": "France", "display": "francais (France)" },
+  "text_direction": "ltr",
+  "first_day_of_week": 1,
+  "measurement": "metric",
+  "numbers": {
+    "decimal_sep": ",",
+    "group_sep": " ",
+    "group_size": 3,
+    "minus": "-",
+    "plus": "+",
+    "percent": "%",
+    "infinity": "Infinity",
+    "nan": "NaN",
+    "exponent": "e",
+    "digits": "0123456789"
+  },
+  "currency": {
+    "default_code": "EUR",
+    "symbol": "EUR",
+    "pattern_positive": "{n} {s}",
+    "pattern_negative": "-{n} {s}",
+    "fraction_digits": 2
+  }
+})json";
 
 //=============================================================================
 // Bootstrap + Current/System
@@ -189,36 +248,59 @@ static void test_load_builtin_unknown_traps() {
 }
 
 //=============================================================================
-// LoadFromJson / LoadFromAsset — Phase 1 stubs
+// LoadFromJson / LoadFromAsset
 //=============================================================================
 
-static void test_load_from_json_stub_traps() {
-    printf("Testing LocaleManager.LoadFromJson stub:\n");
+static void test_load_from_json_registers_locale() {
+    printf("Testing LocaleManager.LoadFromJson:\n");
+
+    rt_locale_manager_reset();
+    std::string dir = temp_dir("json");
+    std::string file = dir + "/fr-FR.json";
+    write_text_file(file, FR_JSON);
+
+    rt_string path = S(file.c_str());
+    rt_locale_manager_load_from_json(path);
+    rt_string_unref(path);
+
+    rt_string fr_tag = S("fr-FR");
+    void *fr = rt_locale_parse(fr_tag);
+    rt_string_unref(fr_tag);
+    test_result("LoadFromJson registers fr-FR",
+                rt_locale_manager_is_loaded(fr) == 1);
+
+    rt_string path2 = S(file.c_str());
+    int8_t ok = rt_locale_manager_try_load_from_json(path2);
+    rt_string_unref(path2);
+    test_result("TryLoadFromJson existing file returns 1", ok == 1);
+
+    rt_string missing = S("nonexistent.json");
+    int8_t missing_ok = rt_locale_manager_try_load_from_json(missing);
+    rt_string_unref(missing);
+    test_result("TryLoadFromJson missing file returns 0", missing_ok == 0);
+}
+
+static void test_load_from_json_missing_traps() {
+    printf("Testing LocaleManager.LoadFromJson missing path:\n");
 
     rt_string path = S("nonexistent.json");
     EXPECT_TRAP(rt_locale_manager_load_from_json(path));
     rt_string_unref(path);
-    test_result("LoadFromJson(\"nonexistent.json\") traps (Phase 1 stub)", true);
-
-    // Try* variant must NOT trap and must return 0.
-    rt_string path2 = S("nonexistent.json");
-    int8_t ok = rt_locale_manager_try_load_from_json(path2);
-    rt_string_unref(path2);
-    test_result("TryLoadFromJson returns 0 without trap", ok == 0);
+    test_result("LoadFromJson(\"nonexistent.json\") traps", true);
 }
 
-static void test_load_from_asset_stub_traps() {
-    printf("Testing LocaleManager.LoadFromAsset stub:\n");
+static void test_load_from_asset_missing() {
+    printf("Testing LocaleManager.LoadFromAsset missing asset:\n");
 
     rt_string name = S("locales/fr-FR.json");
     EXPECT_TRAP(rt_locale_manager_load_from_asset(name));
     rt_string_unref(name);
-    test_result("LoadFromAsset traps (Phase 1 stub)", true);
+    test_result("LoadFromAsset missing asset traps", true);
 
     rt_string name2 = S("locales/fr-FR.json");
     int8_t ok = rt_locale_manager_try_load_from_asset(name2);
     rt_string_unref(name2);
-    test_result("TryLoadFromAsset returns 0 without trap", ok == 0);
+    test_result("TryLoadFromAsset missing asset returns 0", ok == 0);
 }
 
 //=============================================================================
@@ -277,6 +359,7 @@ static void test_search_path_roundtrip() {
 static void test_load_high_level() {
     printf("Testing LocaleManager.Load:\n");
 
+    rt_locale_manager_reset();
     rt_string en_tag = S("en-US");
     void *en = rt_locale_manager_load(en_tag);
     rt_string_unref(en_tag);
@@ -288,6 +371,18 @@ static void test_load_high_level() {
     void *fr = rt_locale_manager_load(fr_tag);
     rt_string_unref(fr_tag);
     test_result("Load(\"fr-FR\") returns NULL (not registered)", fr == nullptr);
+
+    std::string dir = temp_dir("search");
+    write_text_file(dir + "/fr-FR.json", FR_JSON);
+    rt_string path = S(dir.c_str());
+    rt_locale_manager_add_search_path(path);
+    rt_string_unref(path);
+
+    rt_string mixed_tag = S("FR_fr");
+    void *loaded_fr = rt_locale_manager_load(mixed_tag);
+    rt_string_unref(mixed_tag);
+    test_result("Load canonicalizes and searches for fr-FR", loaded_fr != nullptr);
+    test_result("Loaded searched locale has canonical tag", tag_eq(loaded_fr, "fr-FR"));
 }
 
 //=============================================================================
@@ -323,8 +418,9 @@ int main() {
     test_set_current_null_traps();
     test_load_builtin_idempotent();
     test_load_builtin_unknown_traps();
-    test_load_from_json_stub_traps();
-    test_load_from_asset_stub_traps();
+    test_load_from_json_registers_locale();
+    test_load_from_json_missing_traps();
+    test_load_from_asset_missing();
     test_search_path_roundtrip();
     test_load_high_level();
     test_unload_current_refused();

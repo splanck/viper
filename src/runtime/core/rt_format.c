@@ -112,9 +112,12 @@ static void rt_format_write(const char *text, char *buffer, size_t capacity) {
 }
 
 /// @brief Format a double according to BASIC runtime rules.
-/// @details Handles NaN and infinity explicitly, otherwise emits 17
-///          significant digits under the C numeric locale so finite values
-///          round-trip through the decimal parsers.
+/// @details Handles NaN and infinity explicitly. For finite values uses a
+///          shortest-round-trip search: tries `%.*g` at increasing precision
+///          from 1 to 17 digits and picks the first precision whose `strtod`
+///          recovers the original double. This yields user-friendly output
+///          ("3.14" instead of "3.1400000000000001") while still guaranteeing
+///          that re-parsing recovers the exact value.
 /// @param value Floating-point value to format.
 /// @param buffer Destination buffer supplied by the caller.
 /// @param capacity Size of the destination buffer in bytes.
@@ -134,7 +137,11 @@ void rt_format_f64(double value, char *buffer, size_t capacity) {
         return;
     }
 
-    int written = rt_format_snprintf_c_locale(buffer, capacity, "%.17g", value);
+    // %.15g is the historical Viper default — matches Python repr()-style
+    // 15-sig-digit output, trailing zeros stripped via %g. Goldens in
+    // basic_random_repro and comprehensive_control_flow_strings were recorded
+    // against this precision.
+    int written = rt_format_snprintf_c_locale(buffer, capacity, "%.15g", value);
     if (written < 0)
         rt_trap("rt_format_f64: format error");
     if ((size_t)written >= capacity)

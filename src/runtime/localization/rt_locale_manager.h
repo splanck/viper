@@ -10,9 +10,8 @@
 //          process-global registry mapping canonical BCP-47 tags to
 //          rt_locale_data_t records; tracks the "current" and "system"
 //          locale pointers; exposes search-path configuration and the
-//          load/unload/reset lifecycle. Phase 1 ships the registry, the
-//          bootstrap/init, and the builtin en-US registration. Phase 2
-//          wires in JSON and VPA loaders.
+//          load/unload/reset lifecycle. Supports baked en-US plus JSON/VPA
+//          loaded records.
 //
 // Key invariants:
 //   - All mutation is serialized through a single process-global rwlock.
@@ -74,16 +73,16 @@ void *rt_locale_manager_available(void);
 int8_t rt_locale_manager_is_loaded(void *locale);
 
 /// @brief Load locale data from a JSON file on the filesystem.
-/// @details Phase 1: stub that traps with "not implemented". Phase 2 wires in
-///          the JSON loader.
+/// @details Parses and registers the locale data record under its canonical
+///          BCP-47 tag. Traps on missing, malformed, or invalid files.
 void rt_locale_manager_load_from_json(rt_string path);
 
 /// @brief Soft variant: returns 0 on any failure; 1 on success. Never traps.
 int8_t rt_locale_manager_try_load_from_json(rt_string path);
 
 /// @brief Load locale data from a VPA-embedded asset by name.
-/// @details Phase 1: stub that traps with "not implemented". Phase 2 wires in
-///          the asset loader.
+/// @details Loads raw asset bytes, decodes them as text, then applies the same
+///          JSON schema as @ref rt_locale_manager_load_from_json.
 void rt_locale_manager_load_from_asset(rt_string name);
 
 /// @brief Soft variant: returns 0 on any failure; 1 on success.
@@ -93,10 +92,9 @@ int8_t rt_locale_manager_try_load_from_asset(rt_string name);
 /// @details v1 only knows "en-US". Calling with anything else traps. Idempotent.
 void rt_locale_manager_load_builtin(rt_string tag);
 
-/// @brief High-level load: tries filesystem search paths first, then VPA
-///        assets. Returns the registered Locale on success, NULL otherwise.
-///        Phase 1 only resolves "en-US" (the baked locale) so the happy path
-///        exists for demos; all other tags return NULL.
+/// @brief High-level load: canonicalizes @p tag, returns a registered Locale,
+///        or tries filesystem search paths for `<canonical-tag>.json`.
+/// @return Registered Locale on success, NULL otherwise.
 void *rt_locale_manager_load(rt_string tag);
 
 /// @brief Return the active search path list joined by the platform
@@ -110,9 +108,10 @@ void rt_locale_manager_add_search_path(rt_string path);
 ///        refused (locale currently selected, in use by formatter, or baked).
 int8_t rt_locale_manager_unload(void *locale);
 
-/// @brief Reset the registry to the initial state (en-US only).
-/// @details Traps when any loaded record has live formatters — test code
-///          should tear down formatters before calling Reset.
+/// @brief Reset search paths and remove loaded locale records that are not
+///        currently retained by formatter/collator/message objects.
+/// @details Baked en-US always remains. In-use loaded records stay registered
+///          so existing objects cannot hold dangling data pointers.
 void rt_locale_manager_reset(void);
 
 //===----------------------------------------------------------------------===//

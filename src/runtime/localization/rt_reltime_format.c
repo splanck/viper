@@ -32,6 +32,7 @@
 
 #include "rt_reltime_format.h"
 
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_locale.h"
 #include "rt_locale_data.h"
@@ -66,6 +67,17 @@ static rt_reltimefmt_inst_t *as_fmt(void *obj) {
     return (rt_reltimefmt_inst_t *)obj;
 }
 
+static void rtf_finalizer(void *obj) {
+    rt_reltimefmt_inst_t *fmt = (rt_reltimefmt_inst_t *)obj;
+    if (!fmt)
+        return;
+    rt_locale_manager_release_data(fmt->data);
+    if (fmt->locale)
+        rt_heap_release(fmt->locale);
+    fmt->locale = NULL;
+    fmt->data = NULL;
+}
+
 //===----------------------------------------------------------------------===//
 // Constructors
 //===----------------------------------------------------------------------===//
@@ -78,13 +90,21 @@ static void *rtf_alloc(void *locale) {
         return NULL;
     }
     fmt->locale = locale;
+    if (fmt->locale)
+        rt_heap_retain(fmt->locale);
     fmt->data = rt_locale_get_data(locale);
+    rt_locale_manager_retain_data(fmt->data);
     fmt->style = RTF_STYLE_LONG;
+    rt_obj_set_finalizer(fmt, rtf_finalizer);
     return fmt;
 }
 
 void *rt_reltimefmt_new(void) {
-    return rtf_alloc(rt_locale_manager_current());
+    void *current = rt_locale_manager_current();
+    void *fmt = rtf_alloc(current);
+    if (current)
+        rt_heap_release(current);
+    return fmt;
 }
 
 void *rt_reltimefmt_for_locale(void *locale) {
@@ -234,7 +254,11 @@ static void expand_template(rt_string_builder *sb, const char *tmpl,
 
 static rt_string format_core(rt_reltimefmt_inst_t *fmt, int64_t duration) {
     int is_past = duration >= 0;
-    int64_t abs_ms = duration < 0 ? -duration : duration;
+    int64_t abs_ms = duration < 0
+                         ? (duration == INT64_MIN ? INT64_MAX : -duration)
+                         : duration;
+    if (abs_ms < 1000)
+        return rt_string_from_bytes("now", 3);
 
     unit_pick_t pick = pick_unit(abs_ms);
 
@@ -269,6 +293,11 @@ rt_string rt_reltimefmt_format_from(void *self, int64_t then_ts, int64_t now_ts)
     // Both timestamps are Unix seconds; convert the delta to milliseconds so
     // the core formatter sees the same unit as rt_duration's total_millis.
     // Check for overflow before the multiply by 1000.
+    if ((then_ts < 0 && now_ts > INT64_MAX + then_ts) ||
+        (then_ts > 0 && now_ts < INT64_MIN + then_ts)) {
+        rt_trap("Viper.Localization.RelativeTimeFormat: FormatFrom delta overflow");
+        return rt_string_from_bytes("", 0);
+    }
     int64_t delta_sec = now_ts - then_ts;
     int64_t delta_ms;
     if (delta_sec > INT64_MAX / 1000 || delta_sec < INT64_MIN / 1000) {
@@ -304,7 +333,9 @@ rt_string rt_reltimefmt_numeric(void *self, int64_t value, rt_string unit) {
     rt_reltimefmt_inst_t *fmt = as_fmt(self);
 
     int is_past = value >= 0;
-    int64_t count = value < 0 ? -value : value;
+    int64_t count = value < 0 ? (value == INT64_MIN ? INT64_MAX : -value) : value;
+    if (count == 0)
+        return rt_string_from_bytes("now", 3);
 
     rt_plural_category_t cat =
         rt_plural_rules_select_cardinal_int(fmt->data, count);

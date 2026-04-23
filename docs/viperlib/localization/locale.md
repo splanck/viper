@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-04-23
 ---
 
 # Locale, LocaleInfo, LocaleManager
@@ -39,7 +39,9 @@ Immutable handle representing a BCP-47 language tag. Parsed from strings like `"
 
 ### Notes
 
-- Input canonicalization: language lowercased, script Title-case, region uppercased, underscores normalized to dashes, encoding suffixes (`.UTF-8`) stripped.
+- Input canonicalization: language lowercased, script Title-case, region uppercased, underscores normalized to dashes, extension/private-use subtags lowercased, encoding suffixes (`.UTF-8`) stripped.
+- Leading, trailing, and duplicate separators are rejected (`"-en"`, `"en-"`, `"en--US"`).
+- Variants, Unicode extensions, and private-use tails are preserved in `Tag`. Fallbacks walk from the full tag to its base language/script/region chain, then `root`.
 - Parsed-but-unloaded locales are still usable for `Tag` / `Fallbacks()` — info queries fall through to the invariant until the locale is registered.
 - `Parse` traps with message `"Viper.Localization.Locale: invalid BCP-47 tag ..."` on empty input, single-char input, subtags longer than 8 chars, or non-alphanumeric content.
 
@@ -119,17 +121,20 @@ Static process-global registry of loaded locales + current/system-locale state.
 | `LoadFromAsset(name)` | `Void(String)` | Load from VPA asset. |
 | `TryLoadFromAsset(name)` | `Bool(String)` | Returns `false` on failure. |
 | `LoadBuiltin(tag)` | `Void(String)` | Load one of the C-baked locales (`"en-US"` only in v1). |
-| `Load(tag)` | `Locale(String)` | High-level: tries filesystem, then VPA. |
+| `Load(tag)` | `Locale(String)` | High-level: canonicalizes the tag, then tries registered locales and filesystem search paths. |
 | `SearchPath()` | `String()` | Current search path list. |
 | `AddSearchPath(path)` | `Void(String)` | Append a filesystem search dir. |
 | `Unload(loc)` | `Bool(Locale)` | Remove a locale; refuses when in use. |
-| `Reset()` | `Void()` | Clear registry back to baked en-US. |
+| `Reset()` | `Void()` | Clear search paths and remove unused loaded locales; baked en-US remains. |
 
 ### Notes
 
 - First access triggers lazy init: registers baked en-US, detects system, sets current.
 - Thread-safe via a process-global rwlock; hot-path formatters capture the locale's data pointer at construction and never re-lock.
+- `LoadFromJson(path)` and `LoadFromAsset(name)` parse locale JSON and register the canonical tag. `Try*` variants return `false` on missing/malformed input instead of trapping.
+- `Load(tag)` looks for `<canonical-tag>.json` in directories added with `AddSearchPath`.
 - `Unload` returns `false` (does not trap) when the locale is the current or system locale, or when formatter instances still hold its data pointer.
+- `Reset` leaves in-use loaded records registered so existing formatter objects cannot dangle; unload them after those objects are released.
 
 ### See Also
 

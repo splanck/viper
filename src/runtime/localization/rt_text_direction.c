@@ -53,18 +53,22 @@ static uint32_t decode_codepoint(const char *s, size_t len, size_t *pos) {
     uint8_t c = (uint8_t)s[i];
     uint32_t cp;
     size_t need;
+    uint32_t min_cp = 0;
     if (c < 0x80) {
         cp = c;
         need = 1;
-    } else if ((c & 0xE0) == 0xC0) {
+    } else if (c >= 0xC2 && c <= 0xDF) {
         cp = c & 0x1F;
         need = 2;
-    } else if ((c & 0xF0) == 0xE0) {
+        min_cp = 0x80;
+    } else if (c >= 0xE0 && c <= 0xEF) {
         cp = c & 0x0F;
         need = 3;
-    } else if ((c & 0xF8) == 0xF0) {
+        min_cp = 0x800;
+    } else if (c >= 0xF0 && c <= 0xF4) {
         cp = c & 0x07;
         need = 4;
+        min_cp = 0x10000;
     } else {
         *pos = i + 1;
         return 0xFFFD;
@@ -80,6 +84,11 @@ static uint32_t decode_codepoint(const char *s, size_t len, size_t *pos) {
             return 0xFFFD;
         }
         cp = (cp << 6) | (nc & 0x3F);
+    }
+    if ((need > 1 && cp < min_cp) || (cp >= 0xD800 && cp <= 0xDFFF) ||
+        cp > 0x10FFFF) {
+        *pos = i + 1;
+        return 0xFFFD;
     }
     *pos = i + need;
     return cp;
@@ -107,9 +116,23 @@ static cp_dir_t classify(uint32_t cp) {
     if (cp >= 0x0750 && cp <= 0x077F) return DIR_RTL;  // Arabic Supplement
     if (cp >= 0x0780 && cp <= 0x07BF) return DIR_RTL;  // Thaana
     if (cp >= 0x07C0 && cp <= 0x07FF) return DIR_RTL;  // N'Ko
+    if (cp >= 0x0800 && cp <= 0x083F) return DIR_RTL;  // Samaritan
+    if (cp >= 0x0840 && cp <= 0x085F) return DIR_RTL;  // Mandaic
+    if (cp >= 0x0860 && cp <= 0x086F) return DIR_RTL;  // Syriac Supplement
+    if (cp >= 0x0870 && cp <= 0x089F) return DIR_RTL;  // Arabic Extended-B
+    if (cp >= 0x08A0 && cp <= 0x08FF) return DIR_RTL;  // Arabic Extended-A
     if (cp >= 0xFB1D && cp <= 0xFB4F) return DIR_RTL;  // Hebrew presentation
     if (cp >= 0xFB50 && cp <= 0xFDFF) return DIR_RTL;  // Arabic presentation
     if (cp >= 0xFE70 && cp <= 0xFEFF) return DIR_RTL;  // Arabic presentation-B
+    if (cp >= 0x10800 && cp <= 0x1091F) return DIR_RTL; // Cypriot/Kharoshthi
+    if (cp >= 0x10A00 && cp <= 0x10A5F) return DIR_RTL; // Kharoshthi
+    if (cp >= 0x10A60 && cp <= 0x10A7F) return DIR_RTL; // Old South Arabian
+    if (cp >= 0x10AC0 && cp <= 0x10AFF) return DIR_RTL; // Manichaean
+    if (cp >= 0x10B00 && cp <= 0x10B7F) return DIR_RTL; // Avestan/Inscriptional
+    if (cp >= 0x10D00 && cp <= 0x10D3F) return DIR_RTL; // Hanifi Rohingya
+    if (cp >= 0x10E60 && cp <= 0x10E7F) return DIR_RTL; // Rumi numerals
+    if (cp >= 0x10EC0 && cp <= 0x10EFF) return DIR_RTL; // Arabic Extended-C
+    if (cp >= 0x1E800 && cp <= 0x1E95F) return DIR_RTL; // Mende/Adlam
 
     // Common neutrals: ASCII space, punctuation, digits, control.
     if (cp < 0x30) return DIR_NEUTRAL;                   // controls + space + punct
@@ -229,11 +252,12 @@ rt_string rt_text_direction_bidi(rt_string s) {
         return s;
     }
 
-    // Mixed: walk codepoints, emit RLO..PDF markers around RTL runs.
-    // U+202E RIGHT-TO-LEFT OVERRIDE = 0xE2 0x80 0xAE
-    // U+202C POP DIRECTIONAL FORMATTING = 0xE2 0x80 0xAC
-    static const char RLO[] = "\xE2\x80\xAE";
-    static const char PDF[] = "\xE2\x80\xAC";
+    // Mixed: walk codepoints, isolate RTL runs instead of overriding their
+    // embedding direction. Isolates do not leak into surrounding text.
+    // U+2067 RIGHT-TO-LEFT ISOLATE = 0xE2 0x81 0xA7
+    // U+2069 POP DIRECTIONAL ISOLATE = 0xE2 0x81 0xA9
+    static const char RLI[] = "\xE2\x81\xA7";
+    static const char PDI[] = "\xE2\x81\xA9";
 
     rt_string_builder sb;
     rt_sb_init(&sb);
@@ -244,16 +268,16 @@ rt_string rt_text_direction_bidi(rt_string s) {
         uint32_t cp = decode_codepoint(cs, (size_t)len, &pos);
         cp_dir_t d = classify(cp);
         if (d == DIR_RTL && !in_rtl_run) {
-            (void)rt_sb_append_bytes(&sb, RLO, 3);
+            (void)rt_sb_append_bytes(&sb, RLI, 3);
             in_rtl_run = 1;
         } else if (d == DIR_LTR && in_rtl_run) {
-            (void)rt_sb_append_bytes(&sb, PDF, 3);
+            (void)rt_sb_append_bytes(&sb, PDI, 3);
             in_rtl_run = 0;
         }
         (void)rt_sb_append_bytes(&sb, cs + cp_start, pos - cp_start);
     }
     if (in_rtl_run)
-        (void)rt_sb_append_bytes(&sb, PDF, 3);
+        (void)rt_sb_append_bytes(&sb, PDI, 3);
     rt_string out = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return out;

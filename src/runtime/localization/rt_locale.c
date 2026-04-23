@@ -36,6 +36,7 @@
 #include "rt_locale.h"
 
 #include "rt_internal.h"
+#include "rt_heap.h"
 #include "rt_list.h"
 #include "rt_locale_data.h"
 #include "rt_locale_manager.h"
@@ -85,12 +86,13 @@ static int loc_is_separator(char c) {
 //===----------------------------------------------------------------------===//
 
 /// @brief Split the input tag into subtags and classify each.
-/// @details Skips duplicate separators. Rejects subtags that exceed fixed
-///          storage or that fail their shape test. On success, populates the
-///          language/script/region fields of @p out and builds the canonical
-///          `tag`. Variant / extension subtags are accepted and appended to
-///          `tag` as-is, lower-cased; they are preserved for Equals/ToString
-///          but do not affect Locale's behavioural queries.
+/// @details Accepts '-' and '_' as separators but rejects empty subtags, so
+///          leading, trailing, and duplicate separators are invalid. The parser
+///          implements the BCP-47 shape used by the runtime: language,
+///          optional script, optional region, optional variants, optional
+///          extensions, and optional private-use tail. Variant / extension
+///          subtags are preserved in `tag` but do not affect Locale's
+///          language/script/region behavioural queries.
 /// @return 0 on success, -1 on structural failure.
 int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale_t *out);
 int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale_t *out) {
@@ -102,34 +104,69 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
     if (input_len > RT_LOCALE_TAG_CAP * 2) // allow some slack for case/underscore input
         return -1;
 
+    if (loc_is_separator(input[0]) || loc_is_separator(input[input_len - 1]))
+        return -1;
+
+    const size_t MAX_SUBTAGS = 32;
+    char subtags[MAX_SUBTAGS][9];
+    size_t sub_lens[MAX_SUBTAGS];
+    size_t sub_count = 0;
     size_t i = 0;
-    int subtag_idx = 0;
-    size_t canonical_len = 0;
-    char canonical[RT_LOCALE_TAG_CAP];
-    canonical[0] = '\0';
-
     while (i < input_len) {
-        // Skip leading separators (tolerate "en--US", " en _us ", etc.)
-        while (i < input_len && loc_is_separator(input[i]))
-            ++i;
-        if (i >= input_len)
-            break;
-
+        if (sub_count >= MAX_SUBTAGS)
+            return -1;
+        if (loc_is_separator(input[i]))
+            return -1;
         size_t start = i;
         while (i < input_len && !loc_is_separator(input[i]))
             ++i;
         size_t sub_len = i - start;
         if (sub_len == 0 || sub_len > 8)
             return -1;
-
-        // Copy + classify
-        char sub[16];
         for (size_t k = 0; k < sub_len; ++k) {
             if (!loc_is_alnum(input[start + k]))
                 return -1;
-            sub[k] = input[start + k];
+            subtags[sub_count][k] = input[start + k];
         }
-        sub[sub_len] = '\0';
+        subtags[sub_count][sub_len] = '\0';
+        sub_lens[sub_count] = sub_len;
+        ++sub_count;
+        if (i < input_len) {
+            if (!loc_is_separator(input[i]))
+                return -1;
+            ++i;
+            if (i >= input_len || loc_is_separator(input[i]))
+                return -1;
+        }
+    }
+    if (sub_count == 0)
+        return -1;
+
+    // Special invariant tag.
+    if (sub_count == 1 && sub_lens[0] == 4) {
+        char root[5];
+        for (size_t k = 0; k < 4; ++k)
+            root[k] = loc_to_lower(subtags[0][k]);
+        root[4] = '\0';
+        if (strcmp(root, "root") == 0) {
+            memcpy(out->language, "root", 5);
+            memcpy(out->tag, "root", 5);
+            return 0;
+        }
+    }
+
+    int subtag_idx = 0;
+    size_t canonical_len = 0;
+    char canonical[RT_LOCALE_TAG_CAP];
+    canonical[0] = '\0';
+    int after_extension = 0;
+    int saw_private = 0;
+
+    for (size_t st = 0; st < sub_count; ++st) {
+        char *sub = subtags[st];
+        size_t sub_len = sub_lens[st];
+        int is_script_subtag = 0;
+        int is_region_subtag = 0;
 
         // Classification: position-sensitive, per RFC 5646 conventions
         if (subtag_idx == 0) {
@@ -144,28 +181,52 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
             for (size_t k = 0; k < sub_len; ++k)
                 out->language[k] = loc_to_lower(sub[k]);
             out->language[sub_len] = '\0';
-        } else if (sub_len == 4 && out->script[0] == '\0' && out->region[0] == '\0'
+        } else if (!after_extension && !saw_private
+                   && sub_len == 4 && out->script[0] == '\0' && out->region[0] == '\0'
                    && loc_is_alpha(sub[0]) && loc_is_alpha(sub[1])
                    && loc_is_alpha(sub[2]) && loc_is_alpha(sub[3])) {
             // Script: exactly 4 letters, Title-case
+            is_script_subtag = 1;
             out->script[0] = loc_to_upper(sub[0]);
             for (size_t k = 1; k < 4; ++k)
                 out->script[k] = loc_to_lower(sub[k]);
             out->script[4] = '\0';
-        } else if (out->region[0] == '\0'
+        } else if (!after_extension && !saw_private
+                   && out->region[0] == '\0'
                    && ((sub_len == 2 && loc_is_alpha(sub[0]) && loc_is_alpha(sub[1]))
                        || (sub_len == 3 && loc_is_digit(sub[0])
                            && loc_is_digit(sub[1]) && loc_is_digit(sub[2])))) {
             // Region: 2 letters or 3 digits
+            is_region_subtag = 1;
             if (sub_len + 1 > RT_LOCALE_REGION_CAP)
                 return -1;
             for (size_t k = 0; k < sub_len; ++k)
                 out->region[k] = loc_is_alpha(sub[k]) ? loc_to_upper(sub[k]) : sub[k];
             out->region[sub_len] = '\0';
+        } else {
+            int is_singleton = sub_len == 1 && loc_is_alnum(sub[0]);
+            int is_private_singleton = is_singleton && (sub[0] == 'x' || sub[0] == 'X');
+            if (saw_private) {
+                if (sub_len < 1 || sub_len > 8)
+                    return -1;
+            } else if (is_private_singleton) {
+                if (st + 1 >= sub_count)
+                    return -1;
+                saw_private = 1;
+            } else if (is_singleton) {
+                if (st + 1 >= sub_count)
+                    return -1;
+                after_extension = 1;
+            } else if (after_extension) {
+                if (sub_len < 2 || sub_len > 8)
+                    return -1;
+            } else {
+                int valid_variant = (sub_len >= 5 && sub_len <= 8)
+                                    || (sub_len == 4 && loc_is_digit(sub[0]));
+                if (!valid_variant)
+                    return -1;
+            }
         }
-        // Variant/extension subtags are accepted but don't populate the
-        // structured fields. They're still written to `canonical` below so
-        // ToString round-trips the user's input.
 
         // Append subtag to canonical tag with '-' separator and proper casing.
         if (canonical_len > 0) {
@@ -181,14 +242,11 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
             // Apply canonical casing by position.
             if (subtag_idx == 0)
                 c = loc_to_lower(c);
-            else if (sub_len == 4 && out->script[0] != '\0' && k == 0
-                     && subtag_idx == 1)
+            else if (is_script_subtag && k == 0)
                 c = loc_to_upper(c);
-            else if (sub_len == 4 && out->script[0] != '\0' && k > 0
-                     && subtag_idx == 1)
+            else if (is_script_subtag)
                 c = loc_to_lower(c);
-            else if ((sub_len == 2 || sub_len == 3)
-                     && loc_is_alpha(c))
+            else if (is_region_subtag && loc_is_alpha(c))
                 c = loc_to_upper(c);
             else
                 c = loc_to_lower(c);
@@ -229,6 +287,25 @@ static void *loc_make_invariant(void) {
     memcpy(loc->tag, "root", 5);
     loc->data = rt_locale_data_en_us();
     return loc;
+}
+
+static void *loc_from_canonical_tag(const char *tag) {
+    if (!tag || strcmp(tag, "root") == 0)
+        return loc_make_invariant();
+    rt_locale_t parsed;
+    if (rt_locale_internal_parse_into(tag, strlen(tag), &parsed) != 0)
+        return loc_make_invariant();
+    rt_locale_t *loc = (rt_locale_t *)loc_alloc();
+    *loc = parsed;
+    loc->data = rt_locale_manager_lookup_data(loc->tag);
+    return loc;
+}
+
+static void loc_list_push_owned(void *list, void *loc) {
+    if (!loc)
+        return;
+    rt_list_push(list, loc);
+    rt_heap_release(loc);
 }
 
 void *rt_locale_new(void) {
@@ -408,7 +485,7 @@ void *rt_locale_fallbacks(void *locale) {
 
     if (!locale) {
         // Invariant only.
-        rt_list_push(list, loc_make_invariant());
+        loc_list_push_owned(list, loc_make_invariant());
         return list;
     }
 
@@ -416,47 +493,61 @@ void *rt_locale_fallbacks(void *locale) {
 
     // Short-circuit: the invariant ("root") locale's chain is just [root].
     if (l->language[0] == '\0') {
-        rt_list_push(list, loc_make_invariant());
+        loc_list_push_owned(list, loc_make_invariant());
         return list;
     }
 
-    // Emit the full handle first (a fresh copy so mutation on the original
-    // doesn't leak through the list).
-    rt_locale_t *full = (rt_locale_t *)loc_alloc();
-    *full = *l;
-    rt_list_push(list, full);
+    // Emit the full handle first, preserving variants/extensions.
+    loc_list_push_owned(list, loc_from_canonical_tag(l->tag));
+
+    char base_tag[RT_LOCALE_TAG_CAP];
+    size_t base_pos = 0;
+    size_t ll = strnlen(l->language, RT_LOCALE_LANG_CAP);
+    memcpy(base_tag, l->language, ll);
+    base_pos += ll;
+    if (l->script[0] != '\0') {
+        base_tag[base_pos++] = '-';
+        size_t sl = strnlen(l->script, RT_LOCALE_SCRIPT_CAP);
+        memcpy(base_tag + base_pos, l->script, sl);
+        base_pos += sl;
+    }
+    if (l->region[0] != '\0') {
+        base_tag[base_pos++] = '-';
+        size_t rl = strnlen(l->region, RT_LOCALE_REGION_CAP);
+        memcpy(base_tag + base_pos, l->region, rl);
+        base_pos += rl;
+    }
+    base_tag[base_pos] = '\0';
+
+    // If variants/extensions were present, fall back to the base
+    // language/script/region tag before dropping script/region.
+    if (base_tag[0] != '\0' && strcmp(base_tag, l->tag) != 0)
+        loc_list_push_owned(list, loc_from_canonical_tag(base_tag));
 
     // If a script is present, produce a `<lang>-<region>` step (drop script).
     if (l->script[0] != '\0' && l->region[0] != '\0') {
-        rt_locale_t *step = (rt_locale_t *)loc_alloc();
-        memcpy(step->language, l->language, RT_LOCALE_LANG_CAP);
-        memcpy(step->region, l->region, RT_LOCALE_REGION_CAP);
+        char tag[RT_LOCALE_TAG_CAP];
         size_t pos = 0;
-        size_t ll = strnlen(l->language, RT_LOCALE_LANG_CAP);
-        memcpy(step->tag, l->language, ll);
+        memcpy(tag, l->language, ll);
         pos += ll;
-        step->tag[pos++] = '-';
+        tag[pos++] = '-';
         size_t rl = strnlen(l->region, RT_LOCALE_REGION_CAP);
-        memcpy(step->tag + pos, l->region, rl);
+        memcpy(tag + pos, l->region, rl);
         pos += rl;
-        step->tag[pos] = '\0';
-        step->data = rt_locale_manager_lookup_data(step->tag);
-        rt_list_push(list, step);
+        tag[pos] = '\0';
+        loc_list_push_owned(list, loc_from_canonical_tag(tag));
     }
 
     // Language-only step, unless the original was already language-only.
     if (l->language[0] != '\0' && (l->script[0] != '\0' || l->region[0] != '\0')) {
-        rt_locale_t *step = (rt_locale_t *)loc_alloc();
-        memcpy(step->language, l->language, RT_LOCALE_LANG_CAP);
-        size_t ll = strnlen(l->language, RT_LOCALE_LANG_CAP);
-        memcpy(step->tag, l->language, ll);
-        step->tag[ll] = '\0';
-        step->data = rt_locale_manager_lookup_data(step->tag);
-        rt_list_push(list, step);
+        char tag[RT_LOCALE_TAG_CAP];
+        memcpy(tag, l->language, ll);
+        tag[ll] = '\0';
+        loc_list_push_owned(list, loc_from_canonical_tag(tag));
     }
 
     // Invariant terminator.
-    rt_list_push(list, loc_make_invariant());
+    loc_list_push_owned(list, loc_make_invariant());
     return list;
 }
 

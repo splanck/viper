@@ -25,6 +25,19 @@
 #include <cstdlib>
 #include <cstring>
 #include <setjmp.h>
+#include <string>
+
+#if defined(_WIN32)
+#include <direct.h>
+#include <process.h>
+#define TEST_MKDIR(path) _mkdir(path)
+#define TEST_GETPID() _getpid()
+#else
+#include <sys/stat.h>
+#include <unistd.h>
+#define TEST_MKDIR(path) mkdir(path, 0700)
+#define TEST_GETPID() getpid()
+#endif
 
 static jmp_buf g_trap_env;
 static int g_expect_trap = 0;
@@ -69,6 +82,25 @@ static void *en_locale() {
     void *loc = rt_locale_parse(in);
     rt_string_unref(in);
     return loc;
+}
+
+static std::string temp_dir(const char *name) {
+    const char *base = getenv("TMPDIR");
+    if (!base || !*base)
+        base = "/tmp";
+    char buf[512];
+    snprintf(buf, sizeof(buf), "%s/viper_msg_%ld_%s",
+             base, (long)TEST_GETPID(), name);
+    TEST_MKDIR(buf);
+    return std::string(buf);
+}
+
+static void write_text_file(const std::string &path, const char *text) {
+    FILE *f = fopen(path.c_str(), "wb");
+    assert(f && "failed to create temp message JSON");
+    size_t len = strlen(text);
+    assert(fwrite(text, 1, len, f) == len);
+    fclose(f);
 }
 
 // Build a Map<str, str> from pairs (alternating key, value). Terminated by NULL.
@@ -159,10 +191,32 @@ static void test_format_missing_placeholder() {
     void *vars = rt_map_new();
 
     rt_string key = S("greet");
-    // Missing placeholder substitutes with empty string.
-    test_result("Format missing var -> \"Hello, !\"",
-                eq(rt_message_bundle_format(b, key, vars), "Hello, !"));
+    // Missing placeholders are preserved so translator/key mistakes remain visible.
+    test_result("Format missing var preserves placeholder",
+                eq(rt_message_bundle_format(b, key, vars), "Hello, {name}!"));
     rt_string_unref(key);
+}
+
+static void test_format_escaped_braces() {
+    printf("Testing Format escaped braces:\n");
+    const char *pairs[] = {"tmpl", "{{Hello}} {name}", "pos", "{{{0}}}", nullptr};
+    void *b = rt_message_bundle_from_map(en_locale(), build_map(pairs));
+
+    const char *vpairs[] = {"name", "Alice", nullptr};
+    void *vars = build_map(vpairs);
+    rt_string key = S("tmpl");
+    test_result("Format handles {{ and }}",
+                eq(rt_message_bundle_format(b, key, vars), "{Hello} Alice"));
+    rt_string_unref(key);
+
+    void *list = rt_list_new();
+    rt_string x = S("X");
+    rt_list_push(list, x);
+    rt_string_unref(x);
+    rt_string pos = S("pos");
+    test_result("FormatWith handles escaped braces",
+                eq(rt_message_bundle_format_with(b, pos, list), "{X}"));
+    rt_string_unref(pos);
 }
 
 static void test_format_with_positional() {
@@ -227,6 +281,45 @@ static void test_plural_other_fallback() {
     test_result("Plural(days, 1) falls back to other",
                 eq(rt_message_bundle_plural(b, key, 1, vars), "1 days"));
     rt_string_unref(key);
+}
+
+static void test_plural_does_not_mutate_vars() {
+    printf("Testing Plural does not mutate vars:\n");
+    const char *pairs[] = {"items.other", "{n} items for {name}", nullptr};
+    void *b = rt_message_bundle_from_map(en_locale(), build_map(pairs));
+    const char *vpairs[] = {"name", "Alice", nullptr};
+    void *vars = build_map(vpairs);
+
+    rt_string key = S("items");
+    test_result("Plural formats using cloned vars",
+                eq(rt_message_bundle_plural(b, key, 7, vars), "7 items for Alice"));
+    rt_string_unref(key);
+
+    rt_string n_key = S("n");
+    test_result("Original vars does not gain n", rt_map_has(vars, n_key) == 0);
+    rt_string_unref(n_key);
+}
+
+static void test_load_from_json_schema() {
+    printf("Testing MessageBundle.LoadFromJson schema:\n");
+    std::string dir = temp_dir("json");
+    std::string good = dir + "/messages.json";
+    write_text_file(good, "{\"hello\":\"Hello\",\"bye\":\"Bye\"}");
+
+    rt_string good_path = S(good.c_str());
+    void *b = rt_message_bundle_load_from_json(en_locale(), good_path);
+    rt_string_unref(good_path);
+    rt_string hello = S("hello");
+    test_result("LoadFromJson string map works",
+                eq(rt_message_bundle_get(b, hello), "Hello"));
+    rt_string_unref(hello);
+
+    std::string bad = dir + "/bad.json";
+    write_text_file(bad, "{\"hello\":1}");
+    rt_string bad_path = S(bad.c_str());
+    EXPECT_TRAP(rt_message_bundle_load_from_json(en_locale(), bad_path));
+    rt_string_unref(bad_path);
+    test_result("LoadFromJson rejects non-string values", true);
 }
 
 //=============================================================================
@@ -301,9 +394,12 @@ int main() {
     test_has();
     test_format_named();
     test_format_missing_placeholder();
+    test_format_escaped_braces();
     test_format_with_positional();
     test_plural_basic();
     test_plural_other_fallback();
+    test_plural_does_not_mutate_vars();
+    test_load_from_json_schema();
     test_fallback_chain();
     test_fallback_cycle_trap();
     test_get_missing_traps();

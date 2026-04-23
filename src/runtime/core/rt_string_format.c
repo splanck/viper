@@ -216,23 +216,38 @@ rt_string rt_str_i16_alloc(int16_t v) {
 }
 
 /// @brief Parse a runtime string using BASIC's `VAL` semantics.
-/// @details Calls @ref rt_val_to_double to perform the heavy lifting but, unlike
-///          @ref rt_to_double, returns the floating-point value even when the
-///          parse fails.  The caller can then decide whether infinities indicate
-///          overflow.  Null handles trap eagerly to avoid dereferencing invalid
-///          pointers.
+/// @details BASIC `VAL` is forgiving: it skips leading whitespace, parses the
+///          longest valid numeric prefix, and returns whatever strtod produced
+///          (stopping at the first non-numeric character). Trailing garbage is
+///          silently ignored — `VAL("  -12.5E+1x")` returns -125.0, not zero.
+///          This differs from the stricter @ref rt_val_to_double which rejects
+///          any residue. Null handles trap eagerly to avoid dereferencing
+///          invalid pointers; overflow traps so callers don't silently accept
+///          infinity from user input.
 /// @param s Runtime string handle.
-/// @return Parsed floating-point value (possibly infinity on overflow).
+/// @return Parsed floating-point value; 0.0 when no numeric prefix is present.
 double rt_val(rt_string s) {
     if (!s)
         rt_trap("rt_val: null");
-    bool ok = true;
-    double value = rt_val_to_double(s->data, &ok);
-    if (!ok) {
-        if (!isfinite(value))
-            rt_trap("rt_val: overflow");
-        return value;
-    }
+    const char *data = s->data;
+    if (!data)
+        return 0.0;
+    // BASIC VAL semantics: skip leading ASCII whitespace, parse longest
+    // numeric prefix via strtod, ignore any trailing garbage. Process-default
+    // LC_NUMERIC is C across every runtime path (we never call setlocale),
+    // so plain strtod is safe without the C-locale-swap dance.
+    while (*data == ' ' || *data == '\t' || *data == '\n' || *data == '\r'
+           || *data == '\v' || *data == '\f')
+        ++data;
+    if (!*data)
+        return 0.0;
+    errno = 0;
+    char *end = NULL;
+    double value = strtod(data, &end);
+    if (end == data)
+        return 0.0; // no numeric prefix at all
+    if (errno == ERANGE && !isfinite(value))
+        rt_trap("rt_val: overflow");
     return value;
 }
 

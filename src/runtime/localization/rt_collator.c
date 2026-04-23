@@ -33,6 +33,7 @@
 
 #include "rt_collator.h"
 
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_list.h"
 #include "rt_locale.h"
@@ -70,6 +71,17 @@ typedef struct rt_collator {
 
 static rt_collator_t *as_col(void *obj) { return (rt_collator_t *)obj; }
 
+static void col_finalizer(void *obj) {
+    rt_collator_t *c = (rt_collator_t *)obj;
+    if (!c)
+        return;
+    rt_locale_manager_release_data(c->data);
+    if (c->locale)
+        rt_heap_release(c->locale);
+    c->locale = NULL;
+    c->data = NULL;
+}
+
 //===----------------------------------------------------------------------===//
 // Constructors
 //===----------------------------------------------------------------------===//
@@ -82,7 +94,10 @@ static void *col_alloc(void *locale) {
         return NULL;
     }
     c->locale = locale;
+    if (c->locale)
+        rt_heap_retain(c->locale);
     c->data = rt_locale_get_data(locale);
+    rt_locale_manager_retain_data(c->data);
     c->strength = c->data->collation.strength > 0 ? c->data->collation.strength : 3;
     if (c->strength > 3) c->strength = 3;
     c->ignore_case = 0;
@@ -103,10 +118,17 @@ static void *col_alloc(void *locale) {
         c->patches = rt_collator_locale_patches(c->data->tag, &c->patch_count);
     }
 
+    rt_obj_set_finalizer(c, col_finalizer);
     return c;
 }
 
-void *rt_collator_new(void) { return col_alloc(rt_locale_manager_current()); }
+void *rt_collator_new(void) {
+    void *current = rt_locale_manager_current();
+    void *col = col_alloc(current);
+    if (current)
+        rt_heap_release(current);
+    return col;
+}
 void *rt_collator_for_locale(void *locale) { return col_alloc(locale); }
 void *rt_collator_get_locale(void *self) { return self ? as_col(self)->locale : NULL; }
 
@@ -157,16 +179,22 @@ static uint32_t col_decode(const char *s, size_t len, size_t *pos) {
     uint8_t c = (uint8_t)s[i];
     uint32_t cp;
     size_t need;
+    uint32_t min_cp = 0;
     if (c < 0x80) { cp = c; need = 1; }
-    else if ((c & 0xE0) == 0xC0) { cp = c & 0x1F; need = 2; }
-    else if ((c & 0xF0) == 0xE0) { cp = c & 0x0F; need = 3; }
-    else if ((c & 0xF8) == 0xF0) { cp = c & 0x07; need = 4; }
+    else if (c >= 0xC2 && c <= 0xDF) { cp = c & 0x1F; need = 2; min_cp = 0x80; }
+    else if (c >= 0xE0 && c <= 0xEF) { cp = c & 0x0F; need = 3; min_cp = 0x800; }
+    else if (c >= 0xF0 && c <= 0xF4) { cp = c & 0x07; need = 4; min_cp = 0x10000; }
     else { *pos = i + 1; return 0xFFFD; }
     if (i + need > len) { *pos = len; return 0xFFFD; }
     for (size_t k = 1; k < need; ++k) {
         uint8_t nc = (uint8_t)s[i + k];
         if ((nc & 0xC0) != 0x80) { *pos = i + 1; return 0xFFFD; }
         cp = (cp << 6) | (nc & 0x3F);
+    }
+    if ((need > 1 && cp < min_cp) || (cp >= 0xD800 && cp <= 0xDFFF) ||
+        cp > 0x10FFFF) {
+        *pos = i + 1;
+        return 0xFFFD;
     }
     *pos = i + need;
     return cp;
@@ -192,6 +220,69 @@ static void get_weights(rt_collator_t *col, uint32_t cp,
     (void)rt_collator_codepoint_weights(cp, pri, sec, ter);
 }
 
+typedef struct sort_weight {
+    uint32_t pri;
+    uint16_t sec;
+    uint16_t ter;
+} sort_weight_t;
+
+static uint16_t combining_secondary(uint32_t cp) {
+    switch (cp) {
+        case 0x0300: return 1; // grave
+        case 0x0301: return 2; // acute
+        case 0x0302: return 3; // circumflex
+        case 0x0303: return 4; // tilde
+        case 0x0308: return 5; // diaeresis
+        case 0x030A: return 6; // ring
+        case 0x0327: return 7; // cedilla
+        default:
+            if (cp >= 0x0300 && cp <= 0x036F)
+                return 9;
+            return 0;
+    }
+}
+
+static sort_weight_t *collect_weights(rt_collator_t *col, const char *s,
+                                      size_t len, size_t *out_count) {
+    if (len > MAX_INPUT_BYTES) {
+        rt_trap("Viper.Localization.Collator: input exceeds 1 MiB cap");
+        return NULL;
+    }
+    size_t cap = len > 0 ? len : 1;
+    if (cap > SIZE_MAX / sizeof(sort_weight_t)) {
+        rt_trap("Viper.Localization.Collator: key allocation overflow");
+        return NULL;
+    }
+    sort_weight_t *weights = (sort_weight_t *)malloc(cap * sizeof(sort_weight_t));
+    if (!weights) {
+        rt_trap("Viper.Localization.Collator: key allocation failed");
+        return NULL;
+    }
+    size_t count = 0;
+    size_t p = 0;
+    while (p < len) {
+        uint32_t cp = col_decode(s, len, &p);
+        uint16_t comb = combining_secondary(cp);
+        if (comb) {
+            if (count > 0 && weights[count - 1].sec == 0)
+                weights[count - 1].sec = comb;
+            else if (count > 0 && comb > weights[count - 1].sec)
+                weights[count - 1].sec = comb;
+            continue;
+        }
+
+        uint32_t pri = 0;
+        uint16_t sec = 0, ter = 0;
+        get_weights(col, cp, &pri, &sec, &ter);
+        weights[count].pri = pri;
+        weights[count].sec = sec;
+        weights[count].ter = ter;
+        ++count;
+    }
+    *out_count = count;
+    return weights;
+}
+
 //===----------------------------------------------------------------------===//
 // Raw sort key bytes
 //===----------------------------------------------------------------------===//
@@ -207,21 +298,22 @@ static uint8_t *build_raw_key(rt_collator_t *col, const char *s, size_t len,
         return NULL;
     }
 
-    // Count codepoints first for allocation.
     size_t n = 0;
-    {
-        size_t p = 0;
-        while (p < len) {
-            (void)col_decode(s, len, &p);
-            ++n;
-        }
-    }
+    sort_weight_t *weights = collect_weights(col, s, len, &n);
+    if (!weights)
+        return NULL;
 
     // Per codepoint: up to 4 bytes primary + 2 bytes secondary + 1 byte tertiary,
     // plus 3 level separators (2 bytes each). Worst case ~7 bytes/cp + 6.
+    if (n > (SIZE_MAX - 16) / 8) {
+        free(weights);
+        rt_trap("Viper.Localization.Collator: key allocation overflow");
+        return NULL;
+    }
     size_t cap = n * 8 + 16;
     uint8_t *buf = (uint8_t *)malloc(cap);
     if (!buf) {
+        free(weights);
         rt_trap("Viper.Localization.Collator: key allocation failed");
         return NULL;
     }
@@ -229,12 +321,8 @@ static uint8_t *build_raw_key(rt_collator_t *col, const char *s, size_t len,
 
     // Primary level.
     {
-        size_t p = 0;
-        while (p < len) {
-            uint32_t cp = col_decode(s, len, &p);
-            uint32_t pri = 0;
-            uint16_t sec = 0, ter = 0;
-            get_weights(col, cp, &pri, &sec, &ter);
+        for (size_t i = 0; i < n; ++i) {
+            uint32_t pri = weights[i].pri;
             if (col->strength >= 1) {
                 // Big-endian 4-byte primary.
                 buf[off++] = (uint8_t)((pri >> 24) & 0xFF);
@@ -248,12 +336,8 @@ static uint8_t *build_raw_key(rt_collator_t *col, const char *s, size_t len,
 
     // Secondary level.
     if (col->strength >= 2 && !col->ignore_accents) {
-        size_t p = 0;
-        while (p < len) {
-            uint32_t cp = col_decode(s, len, &p);
-            uint32_t pri = 0;
-            uint16_t sec = 0, ter = 0;
-            get_weights(col, cp, &pri, &sec, &ter);
+        for (size_t i = 0; i < n; ++i) {
+            uint16_t sec = weights[i].sec;
             buf[off++] = (uint8_t)((sec >> 8) & 0xFF);
             buf[off++] = (uint8_t)(sec & 0xFF);
         }
@@ -262,16 +346,13 @@ static uint8_t *build_raw_key(rt_collator_t *col, const char *s, size_t len,
 
     // Tertiary level.
     if (col->strength >= 3 && !col->ignore_case) {
-        size_t p = 0;
-        while (p < len) {
-            uint32_t cp = col_decode(s, len, &p);
-            uint32_t pri = 0;
-            uint16_t sec = 0, ter = 0;
-            get_weights(col, cp, &pri, &sec, &ter);
+        for (size_t i = 0; i < n; ++i) {
+            uint16_t ter = weights[i].ter;
             buf[off++] = (uint8_t)(ter & 0xFF);
         }
     }
 
+    free(weights);
     *out_len = off;
     return buf;
 }
@@ -290,9 +371,14 @@ int64_t rt_collator_compare(void *self, rt_string a, rt_string b) {
     size_t ka_len = 0, kb_len = 0;
     uint8_t *ka = build_raw_key(as_col(self), as, (size_t)alen, &ka_len);
     uint8_t *kb = build_raw_key(as_col(self), bs, (size_t)blen, &kb_len);
+    if (!ka || !kb) {
+        free(ka);
+        free(kb);
+        return 0;
+    }
 
     size_t min_len = ka_len < kb_len ? ka_len : kb_len;
-    int cmp = memcmp(ka, kb, min_len);
+    int cmp = min_len > 0 ? memcmp(ka, kb, min_len) : 0;
     if (cmp == 0 && ka_len != kb_len)
         cmp = ka_len < kb_len ? -1 : 1;
 
@@ -348,23 +434,42 @@ void *rt_collator_sort(void *self, void *items) {
     void *out = rt_list_new();
     if (n <= 0) return out;
 
-    // Extract + retain all items into a temp array.
-    rt_string *arr = (rt_string *)malloc(sizeof(rt_string) * (size_t)n);
+    typedef struct sort_item {
+        rt_string value;
+        uint8_t *key;
+        size_t key_len;
+    } sort_item_t;
+
+    sort_item_t *arr = (sort_item_t *)calloc((size_t)n, sizeof(sort_item_t));
     if (!arr) {
         rt_trap("Viper.Localization.Collator: Sort allocation failed");
         return out;
     }
     for (int64_t i = 0; i < n; ++i) {
-        arr[i] = (rt_string)rt_list_get(items, i);
+        arr[i].value = (rt_string)rt_list_get(items, i);
+        const char *cs = arr[i].value ? rt_string_cstr(arr[i].value) : "";
+        int64_t len = arr[i].value ? rt_str_len(arr[i].value) : 0;
+        arr[i].key = build_raw_key(as_col(self), cs, (size_t)len, &arr[i].key_len);
+        if (!arr[i].key) {
+            for (int64_t j = 0; j < i; ++j)
+                free(arr[j].key);
+            free(arr);
+            return out;
+        }
     }
 
-    // Insertion sort — O(n^2) but constant factors are small and our tests
-    // exercise <= 500 elements. For larger inputs a merge sort would be
-    // better; deferred.
+    // Stable insertion sort using cached keys. This avoids rebuilding sort
+    // keys O(n^2) times and keeps equal-key input order intact.
     for (int64_t i = 1; i < n; ++i) {
-        rt_string key = arr[i];
+        sort_item_t key = arr[i];
         int64_t j = i - 1;
-        while (j >= 0 && rt_collator_compare(self, arr[j], key) > 0) {
+        while (j >= 0) {
+            size_t min_len = arr[j].key_len < key.key_len ? arr[j].key_len : key.key_len;
+            int cmp = min_len > 0 ? memcmp(arr[j].key, key.key, min_len) : 0;
+            if (cmp == 0 && arr[j].key_len != key.key_len)
+                cmp = arr[j].key_len < key.key_len ? -1 : 1;
+            if (cmp <= 0)
+                break;
             arr[j + 1] = arr[j];
             --j;
         }
@@ -372,8 +477,10 @@ void *rt_collator_sort(void *self, void *items) {
     }
 
     for (int64_t i = 0; i < n; ++i)
-        rt_list_push(out, arr[i]);
+        rt_list_push(out, arr[i].value);
 
+    for (int64_t i = 0; i < n; ++i)
+        free(arr[i].key);
     free(arr);
     return out;
 }

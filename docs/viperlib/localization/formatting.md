@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-04-23
 ---
 
 # Formatting
@@ -55,6 +55,10 @@ Locale-aware number formatting **and parsing** with configurable fraction digits
 ### Notes
 
 - Format output uses the locale's `numbers.decimal_sep`, `numbers.group_sep`, `numbers.percent`, `currency.symbol`, and `currency.pattern_*` templates.
+- Integer formatting/parsing is exact across the full signed 64-bit range, including `-9223372036854775808`.
+- `numbers.digits` is honored for both formatting and parsing, so non-Latin digit sets round-trip.
+- Decimal and scientific formatting/parsing use C-locale numeric conversion internally, then apply locale separators, so host process locale does not change results.
+- Currency parsing accepts the locale's positive and negative patterns, including accounting parentheses such as `"($1,234.56)"`.
 - **Strict mode parses**: strict rejects inputs where a group separator appears at a non-group-size position (e.g. `"1,00"` under en-US where `group_size=3`). Lenient accepts the same input by treating the separator as informational.
 - Rounding: `halfEven` (banker's) is the default; matches IEEE 754 round-to-nearest-even semantics.
 - Ordinal in v1 delegates to `Viper.Text.NumberFormat.Ordinal` (English suffixes); locale-specific ordinal suffix tables are a future phase.
@@ -126,6 +130,7 @@ CLDR-pattern-letter date and time formatting.
 
 - Timestamp inputs are Unix seconds (matches `rt_datetime` convention).
 - Unsupported pattern letters (`G`, `Q`, `D`, `w`, `k`, `K`, `z`, `Z`, `v`, `V`) trap with `"unsupported pattern letter"`.
+- Unterminated quoted literals trap instead of silently treating the rest of the pattern as literal text.
 - Pattern length capped at 256 chars.
 
 ### Zia Example
@@ -170,6 +175,7 @@ Human-readable "N units ago" / "in N units" strings.
 ### Notes
 
 - Unit thresholds: `>= 1y`, `>= 30d`, `>= 7d`, `>= 1d`, `>= 1h`, `>= 1m`, else second.
+- Durations whose absolute value is less than one second format as `"now"`.
 - Plural form selected via the bound locale's `PluralRules` cardinal table.
 - Short/Long templates share data in v1 (baked en-US only); future locales will distinguish.
 

@@ -28,6 +28,7 @@
 
 #include "rt_list_format.h"
 
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_list.h"
 #include "rt_locale.h"
@@ -54,6 +55,17 @@ static rt_list_format_inst_t *as_fmt(void *obj) {
     return (rt_list_format_inst_t *)obj;
 }
 
+static void lf_finalizer(void *obj) {
+    rt_list_format_inst_t *f = (rt_list_format_inst_t *)obj;
+    if (!f)
+        return;
+    rt_locale_manager_release_data(f->data);
+    if (f->locale)
+        rt_heap_release(f->locale);
+    f->locale = NULL;
+    f->data = NULL;
+}
+
 //===----------------------------------------------------------------------===//
 // Constructors / properties
 //===----------------------------------------------------------------------===//
@@ -66,12 +78,20 @@ static void *lf_alloc(void *locale) {
         return NULL;
     }
     f->locale = locale;
+    if (f->locale)
+        rt_heap_retain(f->locale);
     f->data = rt_locale_get_data(locale);
+    rt_locale_manager_retain_data(f->data);
+    rt_obj_set_finalizer(f, lf_finalizer);
     return f;
 }
 
 void *rt_list_format_new(void) {
-    return lf_alloc(rt_locale_manager_current());
+    void *current = rt_locale_manager_current();
+    void *fmt = lf_alloc(current);
+    if (current)
+        rt_heap_release(current);
+    return fmt;
 }
 
 void *rt_list_format_for_locale(void *locale) {

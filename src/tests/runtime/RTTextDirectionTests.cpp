@@ -78,6 +78,12 @@ static void test_detect_rtl() {
     test_result("Detect(Arabic) = rtl",
                 eq(rt_text_direction_detect(ar), "rtl"));
     rt_string_unref(ar);
+
+    // Arabic Extended-A codepoint U+08A0 should also classify RTL.
+    rt_string ext = S("\xE0\xA2\xA0");
+    test_result("Detect(Arabic Extended-A) = rtl",
+                eq(rt_text_direction_detect(ext), "rtl"));
+    rt_string_unref(ext);
 }
 
 static void test_detect_mixed() {
@@ -149,19 +155,29 @@ static void test_bidi() {
                 eq(wrapped, "Hello"));
     rt_string_unref(pure_ltr);
 
-    // Mixed gets RLO...PDF marks around the RTL run.
+    // Mixed gets RLI...PDI isolates around the RTL run.
     char buf[64];
     snprintf(buf, sizeof(buf), "a%sb", HEBREW_SHALOM);
     rt_string mixed = S(buf);
     rt_string bidi = rt_text_direction_bidi(mixed);
     const char *bcs = rt_string_cstr(bidi);
     // Expect marks to be present.
-    bool has_rlo = bcs && strstr(bcs, "\xE2\x80\xAE") != nullptr;
-    bool has_pdf = bcs && strstr(bcs, "\xE2\x80\xAC") != nullptr;
-    test_result("Bidi(mixed) contains RLO mark", has_rlo);
-    test_result("Bidi(mixed) contains PDF mark", has_pdf);
+    bool has_rli = bcs && strstr(bcs, "\xE2\x81\xA7") != nullptr;
+    bool has_pdi = bcs && strstr(bcs, "\xE2\x81\xA9") != nullptr;
+    bool no_rlo = !bcs || strstr(bcs, "\xE2\x80\xAE") == nullptr;
+    test_result("Bidi(mixed) contains RLI isolate", has_rli);
+    test_result("Bidi(mixed) contains PDI isolate", has_pdi);
+    test_result("Bidi(mixed) does not use RLO override", no_rlo);
     rt_string_unref(mixed);
     rt_string_unref(bidi);
+}
+
+static void test_malformed_utf8() {
+    printf("Testing malformed UTF-8 detection stability:\n");
+    rt_string bad = S("\xC0\xAF");
+    test_result("Detect(malformed UTF-8) defaults ltr",
+                eq(rt_text_direction_detect(bad), "ltr"));
+    rt_string_unref(bad);
 }
 
 //=============================================================================
@@ -189,6 +205,7 @@ int main() {
     test_is_rtl_is_ltr();
     test_first_strong();
     test_bidi();
+    test_malformed_utf8();
     test_of_locale();
     printf("\nAll TextDirection tests passed!\n");
     return 0;

@@ -148,6 +148,31 @@ static void test_diacritic_order_default() {
     rt_string_unref(a_acute);
 }
 
+static void test_decomposed_combining_mark() {
+    printf("Testing composed/decomposed accent equivalence:\n");
+    void *c = en_col();
+    rt_string composed = S("\xC3\xA9");   // é
+    rt_string decomposed = S("e\xCC\x81"); // e + U+0301
+    test_result("é equals e + combining acute at strength 3",
+                rt_collator_equals(c, composed, decomposed) == 1);
+    rt_collator_set_strength(c, 1);
+    test_result("é equals e + combining acute at strength 1",
+                rt_collator_equals(c, composed, decomposed) == 1);
+    rt_string_unref(composed);
+    rt_string_unref(decomposed);
+}
+
+static void test_malformed_utf8_is_replacement_weighted() {
+    printf("Testing malformed UTF-8 handling:\n");
+    void *c = en_col();
+    rt_string bad = S("\xC0\xAF");
+    rt_string key = rt_collator_sort_key(c, bad);
+    test_result("SortKey(malformed UTF-8) returns deterministic key",
+                rt_str_len(key) > 0);
+    rt_string_unref(bad);
+    rt_string_unref(key);
+}
+
 //=============================================================================
 // Swedish tailoring: å after z
 //=============================================================================
@@ -266,6 +291,8 @@ int main() {
     test_ignore_case();
     test_ignore_accents();
     test_diacritic_order_default();
+    test_decomposed_combining_mark();
+    test_malformed_utf8_is_replacement_weighted();
     test_swedish_tailoring();
     test_sort_key_determinism();
     test_sort_key_order();

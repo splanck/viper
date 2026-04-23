@@ -12,14 +12,15 @@
 //          against a fixed RTL-script range table.
 //
 // Key invariants:
-//   - Codepoint classification: characters in Hebrew / Arabic / Syriac /
-//     Thaana / N'Ko ranges are strong-RTL; Latin / Greek / Cyrillic / CJK
-//     / etc. are strong-LTR; digits / punctuation / whitespace are neutral.
+//   - Codepoint classification: characters in recognized RTL script ranges
+//     (Hebrew, Arabic, Syriac, Thaana, N'Ko, Samaritan, Mandaic, and related
+//     extensions/presentation forms) are strong-RTL; Latin / Greek / Cyrillic
+//     / CJK / etc. are strong-LTR; digits / punctuation / whitespace are neutral.
 //   - IsRTL is true only when a dominant RTL signal is present (first strong
 //     codepoint is RTL, or the majority of strong codepoints are RTL).
 //   - Bidi(str) does NOT implement the full Unicode BiDi algorithm; it only
-//     wraps RTL runs with U+202E (RLO) / U+202C (PDF) marks so mixed-script
-//     strings render with deterministic direction. Full UBA is out of scope.
+//     wraps RTL runs with U+2067 (RLI) / U+2069 (PDI) isolates so mixed-script
+//     strings render with bounded direction. Full UBA is out of scope.
 //
 // Ownership/Lifetime:
 //   - Static class; no instance state. All functions take explicit input
@@ -55,7 +56,7 @@ int8_t rt_text_direction_is_ltr(rt_string s);
 /// @brief Return "ltr"/"rtl"/"neutral" based on the first strong codepoint.
 rt_string rt_text_direction_first_strong(rt_string s);
 
-/// @brief Wrap mixed-script @p s with BiDi override marks when it contains
+/// @brief Wrap mixed-script @p s with BiDi isolates when it contains
 ///        both LTR and RTL content. Pure-LTR and pure-RTL inputs pass
 ///        through unchanged.
 rt_string rt_text_direction_bidi(rt_string s);

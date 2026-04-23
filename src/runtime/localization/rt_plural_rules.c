@@ -34,16 +34,20 @@
 
 #include "rt_plural_rules.h"
 
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_list.h"
 #include "rt_locale.h"
 #include "rt_locale_data.h"
+#include "rt_locale_manager.h"
 #include "rt_object.h"
 #include "rt_string.h"
 #include "rt_trap.h"
 
 #include <math.h>
+#include <locale.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,6 +60,46 @@ typedef struct rt_plural_rules_inst {
     void                    *locale;  ///< strong Locale handle ref
     const rt_locale_data_t  *data;    ///< non-owning
 } rt_plural_rules_inst_t;
+
+static void plural_finalizer(void *obj) {
+    rt_plural_rules_inst_t *self = (rt_plural_rules_inst_t *)obj;
+    if (!self)
+        return;
+    rt_locale_manager_release_data(self->data);
+    if (self->locale)
+        rt_heap_release(self->locale);
+    self->locale = NULL;
+    self->data = NULL;
+}
+
+static int plural_snprintf_c(char *out, size_t cap, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
+#endif
+#if defined(_WIN32)
+    _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
+    int n = c_locale ? _vsnprintf_l(out, cap, fmt, c_locale, args)
+                     : vsnprintf(out, cap, fmt, args);
+    if (c_locale)
+        _free_locale(c_locale);
+#else
+    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+    locale_t old = c_locale ? uselocale(c_locale) : (locale_t)0;
+    int n = vsnprintf(out, cap, fmt, args);
+    if (old)
+        uselocale(old);
+    if (c_locale)
+        freelocale(c_locale);
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+    va_end(args);
+    return n;
+}
 
 //===----------------------------------------------------------------------===//
 // CLDR operand computation
@@ -73,8 +117,9 @@ typedef struct {
 /// @brief Compute plural operands from an integer input (all-integer path).
 static plural_operands_t operands_from_int(int64_t n) {
     plural_operands_t op;
-    op.n = (double)(n < 0 ? -n : n);
-    op.i = n < 0 ? -n : n;
+    int64_t abs_i = n < 0 ? (n == INT64_MIN ? INT64_MAX : -n) : n;
+    op.n = n == INT64_MIN ? 9223372036854775808.0 : (double)abs_i;
+    op.i = abs_i;
     op.v = 0;
     op.f = 0;
     op.t = 0;
@@ -93,8 +138,8 @@ static plural_operands_t operands_from_double(double n) {
     op.n = abs_n;
 
     // Integer-valued double: skip the string parse entirely.
-    if (!isfinite(abs_n) || floor(abs_n) == abs_n) {
-        op.i = (int64_t)abs_n;
+    if (!isfinite(abs_n) || abs_n > (double)INT64_MAX || floor(abs_n) == abs_n) {
+        op.i = abs_n > (double)INT64_MAX ? INT64_MAX : (int64_t)abs_n;
         op.v = 0;
         op.f = 0;
         op.t = 0;
@@ -104,7 +149,7 @@ static plural_operands_t operands_from_double(double n) {
     // Render via %g which strips trailing zeros by default; %.15g gives us
     // enough precision for any IEEE-754 double without false precision.
     char buf[64];
-    int len = snprintf(buf, sizeof(buf), "%.15g", abs_n);
+    int len = plural_snprintf_c(buf, sizeof(buf), "%.15g", abs_n);
     if (len < 0 || len >= (int)sizeof(buf)) {
         op.i = (int64_t)abs_n;
         op.v = 0;
@@ -269,7 +314,11 @@ void *rt_plural_rules_for_locale(void *locale) {
         return NULL;
     }
     self->locale = locale;
+    if (self->locale)
+        rt_heap_retain(self->locale);
     self->data = rt_locale_get_data(locale);
+    rt_locale_manager_retain_data(self->data);
+    rt_obj_set_finalizer(self, plural_finalizer);
     return self;
 }
 

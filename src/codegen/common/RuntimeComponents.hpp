@@ -154,7 +154,10 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         return RtComponent::Network;
 
     // Localization component
-    if (starts("rt_locale_"))
+    if (starts("rt_locale_") || starts("rt_numformat_") || starts("rt_dateformat_") ||
+        starts("rt_reltimefmt_") || starts("rt_message_bundle_") ||
+        starts("rt_list_format_") || starts("rt_text_direction_") ||
+        starts("rt_collator_") || starts("rt_plural_rules_"))
         return RtComponent::Localization;
 
     // Base component (time, math, formatting, etc.)

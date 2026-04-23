@@ -9,7 +9,7 @@
 // Purpose: Validate Viper.Localization.LocaleInfo queries against the baked
 //          en-US record. Each field is round-tripped through both a parsed
 //          Locale handle and an unregistered Locale (which should fall back
-//          to the invariant defaults matching en-US in v0.2.6).
+//          to the invariant defaults matching en-US).
 //
 //===----------------------------------------------------------------------===//
 
