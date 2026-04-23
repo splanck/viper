@@ -15,7 +15,10 @@
 #include "rt_pixels.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 extern void rt_gui_set_clicked_statusbar_item(void *item);
@@ -55,6 +58,10 @@ static void cleanup_fake_app(rt_gui_app_t *app) {
         vg_theme_destroy(app->theme);
         app->theme = NULL;
     }
+    free(app->retired_fonts);
+    app->retired_fonts = NULL;
+    app->retired_font_count = 0;
+    app->retired_font_cap = 0;
 }
 
 static void test_shortcuts_are_app_scoped(void) {
@@ -99,19 +106,24 @@ static void test_file_drop_is_app_scoped(void) {
     rt_gui_file_drop_add(&app_a, "/tmp/a.txt");
     rt_gui_file_drop_add(&app_b, "/tmp/b.txt");
 
+    rt_gui_activate_app(&app_a);
     assert(rt_app_was_file_dropped(&app_a) == 1);
     assert(rt_app_get_dropped_file_count(&app_a) == 1);
     assert(strcmp(rt_string_cstr(rt_app_get_dropped_file(&app_a, 0)), "/tmp/a.txt") == 0);
 
+    rt_gui_activate_app(&app_b);
     assert(rt_app_was_file_dropped(&app_b) == 1);
     assert(rt_app_get_dropped_file_count(&app_b) == 1);
     assert(strcmp(rt_string_cstr(rt_app_get_dropped_file(&app_b, 0)), "/tmp/b.txt") == 0);
 
+    rt_gui_activate_app(&app_a);
     assert(rt_app_was_file_dropped(&app_a) == 0);
+    rt_gui_activate_app(&app_b);
     assert(rt_app_was_file_dropped(&app_b) == 0);
 
     rt_gui_features_cleanup(&app_a);
     rt_gui_features_cleanup(&app_b);
+    rt_gui_activate_app(NULL);
 
     printf("test_file_drop_is_app_scoped: PASSED\n");
 }
@@ -282,7 +294,7 @@ static void test_app_handles_resolve_to_root_widgets_for_overlays(void) {
     reset_fake_app(&app);
     app.root = vg_widget_create(VG_WIDGET_CONTAINER);
     app.root->user_data = &app;
-    s_current_app = &app;
+    rt_gui_activate_app(&app);
 
     vg_floatingpanel_t *panel = (vg_floatingpanel_t *)rt_floatingpanel_new(&app);
     assert(panel);
@@ -578,6 +590,175 @@ static void test_tabbar_close_click_index_survives_auto_close(void) {
     printf("test_tabbar_close_click_index_survives_auto_close: PASSED\n");
 }
 
+static void test_widget_destroy_refuses_app_root_and_app_handle(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(child);
+    vg_widget_add_child(app.root, child);
+    assert(app.root->child_count == 1);
+
+    rt_widget_destroy(app.root);
+    assert(app.root != NULL);
+    assert(app.root->child_count == 1);
+
+    rt_widget_destroy(&app);
+    assert(app.root != NULL);
+    assert(app.root->child_count == 1);
+
+    cleanup_fake_app(&app);
+    printf("test_widget_destroy_refuses_app_root_and_app_handle: PASSED\n");
+}
+
+static void test_widget_focus_null_is_noop(void) {
+    rt_widget_focus(NULL);
+    printf("test_widget_focus_null_is_noop: PASSED\n");
+}
+
+static void test_image_set_pixels_converts_viper_pixels_to_rgba(void) {
+    void *pixels = rt_pixels_new(1, 1);
+    assert(pixels);
+    rt_pixels_set(pixels, 0, 0, 0x11223344);
+
+    vg_image_t *image = vg_image_create(NULL);
+    assert(image);
+    rt_image_set_pixels(image, pixels, 0, 0);
+
+    assert(image->img_width == 1);
+    assert(image->img_height == 1);
+    assert(image->pixels);
+    assert(image->pixels[0] == 0x11);
+    assert(image->pixels[1] == 0x22);
+    assert(image->pixels[2] == 0x33);
+    assert(image->pixels[3] == 0x44);
+
+    rt_image_set_pixels(image, NULL, 0, 0);
+    assert(image->pixels == NULL);
+    assert(image->img_width == 0);
+    assert(image->img_height == 0);
+
+    vg_widget_destroy(&image->base);
+    printf("test_image_set_pixels_converts_viper_pixels_to_rgba: PASSED\n");
+}
+
+static void test_treeview_and_listbox_data_preserve_embedded_nuls(void) {
+    char payload[] = {'a', '\0', 'b'};
+    rt_string data = rt_string_from_bytes(payload, sizeof(payload));
+
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    assert(tree);
+    vg_tree_node_t *node = vg_treeview_add_node(tree, NULL, "node");
+    assert(node);
+    rt_treeview_node_set_data(node, data);
+    rt_string tree_data = rt_treeview_node_get_data(node);
+    assert(rt_str_len(tree_data) == (int64_t)sizeof(payload));
+    assert(memcmp(rt_string_cstr(tree_data), payload, sizeof(payload)) == 0);
+
+    vg_listbox_t *listbox = vg_listbox_create(NULL);
+    assert(listbox);
+    vg_listbox_item_t *item = vg_listbox_add_item(listbox, "item", NULL);
+    assert(item);
+    rt_listbox_item_set_data(item, data);
+    rt_string list_data = rt_listbox_item_get_data(item);
+    assert(rt_str_len(list_data) == (int64_t)sizeof(payload));
+    assert(memcmp(rt_string_cstr(list_data), payload, sizeof(payload)) == 0);
+    assert(item->owns_user_data);
+
+    vg_widget_destroy(&listbox->base);
+    vg_widget_destroy(&tree->base);
+    printf("test_treeview_and_listbox_data_preserve_embedded_nuls: PASSED\n");
+}
+
+static void test_numeric_setters_sanitize_invalid_values(void) {
+    vg_widget_t *widget = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(widget);
+    rt_widget_set_size(widget, -5, INT64_MAX);
+    assert(widget->constraints.preferred_width == 0.0f);
+    assert(widget->constraints.preferred_height == (float)RT_GUI_MAX_LAYOUT_VALUE);
+
+    rt_widget_set_flex(widget, NAN);
+    assert(widget->layout.flex == 0.0f);
+    rt_widget_set_margin(widget, -9);
+    assert(widget->layout.margin_left == 0.0f);
+    rt_widget_set_position(widget, INT64_MIN, INT64_MAX);
+    assert(widget->x == (float)-RT_GUI_MAX_LAYOUT_VALUE);
+    assert(widget->y == (float)RT_GUI_MAX_LAYOUT_VALUE);
+
+    vg_splitpane_t *split = vg_splitpane_create(NULL, VG_SPLIT_HORIZONTAL);
+    assert(split);
+    rt_splitpane_set_position(split, NAN);
+    assert(split->split_position == 0.5f);
+
+    vg_slider_t *slider = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
+    assert(slider);
+    rt_slider_set_range(slider, 10.0, -5.0);
+    assert(slider->min_value == -5.0f);
+    assert(slider->max_value == 10.0f);
+    rt_slider_set_step(slider, -1.0);
+    assert(slider->step == 0.0f);
+
+    vg_image_t *image = vg_image_create(NULL);
+    assert(image);
+    rt_image_set_opacity(image, NAN);
+    assert(image->opacity == 1.0f);
+    rt_image_set_opacity(image, 2.0);
+    assert(image->opacity == 1.0f);
+    rt_image_set_opacity(image, -1.0);
+    assert(image->opacity == 0.0f);
+
+    vg_progressbar_t *progress = vg_progressbar_create(NULL);
+    assert(progress);
+    rt_progressbar_set_value(progress, NAN);
+    assert(progress->value == 0.0f);
+    rt_progressbar_set_value(progress, 2.0);
+    assert(progress->value == 1.0f);
+
+    vg_widget_destroy(&progress->base);
+    vg_widget_destroy(&image->base);
+    vg_widget_destroy(&slider->base);
+    vg_widget_destroy(&split->base);
+    vg_widget_destroy(widget);
+    printf("test_numeric_setters_sanitize_invalid_values: PASSED\n");
+}
+
+static void test_font_destroy_defers_live_app_font(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.default_font = (vg_font_t *)0x5000;
+    app.default_font_owned = 1;
+    app.default_font_size = 14.0f;
+    rt_gui_activate_app(&app);
+
+    rt_font_destroy(app.default_font);
+    assert(app.retired_font_count == 1);
+    assert(app.retired_fonts[0] == app.default_font);
+
+    app.default_font = NULL;
+    cleanup_fake_app(&app);
+    printf("test_font_destroy_defers_live_app_font: PASSED\n");
+}
+
+static void test_detached_widgets_do_not_inherit_current_app_font(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.default_font = (vg_font_t *)0x1;
+    app.default_font_size = 23.0f;
+    rt_gui_activate_app(&app);
+
+    vg_label_t *label = (vg_label_t *)rt_label_new(NULL, rt_const_cstr("detached"));
+    assert(label);
+    assert(label->font != app.default_font);
+
+    vg_widget_destroy(&label->base);
+    cleanup_fake_app(&app);
+    printf("test_detached_widgets_do_not_inherit_current_app_font: PASSED\n");
+}
+
 int main(void) {
     printf("=== GUI Runtime Regression Tests ===\n\n");
 
@@ -602,6 +783,13 @@ int main(void) {
     test_tabbar_close_click_index_survives_auto_close();
     test_findbar_runtime_reads_live_text_and_reports_noop_replace();
     test_menu_and_toolbar_pixel_icons_become_image_icons();
+    test_widget_destroy_refuses_app_root_and_app_handle();
+    test_widget_focus_null_is_noop();
+    test_image_set_pixels_converts_viper_pixels_to_rgba();
+    test_treeview_and_listbox_data_preserve_embedded_nuls();
+    test_numeric_setters_sanitize_invalid_values();
+    test_font_destroy_defers_live_app_font();
+    test_detached_widgets_do_not_inherit_current_app_font();
 
     printf("\nAll GUI runtime regression tests passed!\n");
     return 0;

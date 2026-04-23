@@ -585,7 +585,9 @@ void rt_contextmenu_clear(void *menu) {
 void rt_contextmenu_show(void *menu, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
     if (menu) {
-        vg_contextmenu_show_at((vg_contextmenu_t *)menu, (int)x, (int)y);
+        vg_contextmenu_show_at((vg_contextmenu_t *)menu,
+                               rt_gui_clamp_i64_to_i32(x, INT32_MIN, INT32_MAX),
+                               rt_gui_clamp_i64_to_i32(y, INT32_MIN, INT32_MAX));
     }
 }
 
@@ -909,7 +911,9 @@ void rt_statusbaritem_set_progress(void *item, double value) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
-    vg_statusbar_item_set_progress((vg_statusbar_item_t *)item, (float)value);
+    double sanitized = rt_gui_double_is_finite(value) ? value : 0.0;
+    vg_statusbar_item_set_progress((vg_statusbar_item_t *)item,
+                                   (float)rt_gui_clamp_f64(sanitized, 0.0, 1.0));
 }
 
 /// @brief Get the progress of the statusbaritem.
@@ -1167,7 +1171,8 @@ void rt_toolbar_set_icon_size(void *toolbar, int64_t size) {
     RT_ASSERT_MAIN_THREAD();
     if (!toolbar)
         return;
-    vg_toolbar_set_icon_size((vg_toolbar_t *)toolbar, (vg_toolbar_icon_size_t)size);
+    vg_toolbar_set_icon_size((vg_toolbar_t *)toolbar,
+                             (vg_toolbar_icon_size_t)rt_gui_clamp_i64_to_i32(size, 0, 2));
 }
 
 /// @brief Get a size property of the toolbar (button width or height).

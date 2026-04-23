@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-22
 ---
 
 # Core & Application
@@ -104,6 +104,7 @@ Main application class that manages the window and widget tree.
 
 | Method                  | Signature            | Description                              |
 |-------------------------|----------------------|------------------------------------------|
+| `Destroy()`             | `Void()`             | Destroy the app and owned root widget tree |
 | `GetDroppedFile(index)` | `String(Integer)`    | Get path of dropped file by index        |
 | `GetDroppedFileCount()` | `Integer()`          | Number of files dropped                  |
 | `Poll()`                | `Void()`             | Poll events and update widget states     |
@@ -126,15 +127,21 @@ Main application class that manages the window and widget tree.
 | `SetFullscreen(enabled)`  | `Void(Integer)`   | Enter or exit fullscreen mode                        |
 | `Focus()`                 | `Void()`          | Bring the window to the front and focus it           |
 | `IsFocused()`             | `Boolean()`       | Check if the window has focus                        |
-| `PreventClose()`          | `Void()`          | Prevent the window close button from closing the app |
+| `SetPreventClose(prevent)` | `Void(Boolean)`  | Enable or disable close-button prevention            |
 | `GetFps()`                | `Number()`        | Get current frames per second                        |
 | `SetFps(fps)`             | `Void(Number)`    | Set target frames per second                         |
 | `GetScale()`              | `Number()`        | Get display scale factor (e.g. 2.0 for HiDPI)        |
 | `GetMonitorWidth()`       | `Integer()`       | Get monitor width in pixels                          |
 | `GetMonitorHeight()`      | `Integer()`       | Get monitor height in pixels                         |
 | `SetWindowSize(w, h)`     | `Void(Integer, Integer)` | Resize the window                           |
-| `GetFontSize()`           | `Integer()`       | Get current UI font size                             |
-| `SetFontSize(size)`       | `Void(Integer)`   | Set UI font size                                     |
+| `GetFontSize()`           | `Number()`        | Get current UI font size                             |
+| `SetFontSize(size)`       | `Void(Number)`    | Set UI font size                                     |
+
+### Lifecycle And Validation
+
+`Destroy()` is idempotent. After an app is destroyed, app methods reject the stale handle without dereferencing it. The `Root` widget is owned by the app, so destroy the application with `app.Destroy()`; calling widget `Destroy()` on `app.Root` is ignored.
+
+`SetSize()` and `SetWindowSize()` share the same window-size validation. Width and height are clamped to at least one pixel and to the platform `int32` range, and invalid font sizes, scale factors, and non-finite numeric values fall back to bounded defaults.
 
 ### Example
 
@@ -181,6 +188,9 @@ Font loading for GUI widgets. Supports TrueType (.ttf) fonts.
 | Method       | Signature        | Description                                 |
 |--------------|------------------|---------------------------------------------|
 | `Load(path)` | `Font(String)`   | Load font from TTF file. Returns NULL on failure |
+| `Destroy()`  | `Void()`         | Destroy the font, or defer it while live GUI objects still reference it |
+
+`Font.Destroy()` is safe to call while a live app or widget still references the font. In that case the runtime retires the font and frees it during app teardown, preventing dangling GUI font pointers.
 
 ### Example
 
@@ -206,6 +216,8 @@ app.SetFont(font, 14);
 All widgets share these common functions:
 
 Focusable widgets now participate in standard desktop keyboard traversal: `Tab` moves to the next focusable widget and `Shift+Tab` moves to the previous one, respecting modal roots when a dialog or popup is active.
+Passing `NULL` to `Focus()` is a no-op. Detached widgets no longer inherit the current app's font or theme until they are attached to an app-owned tree or explicitly configured.
+Common numeric setters clamp invalid input: negative sizes and margins become zero, very large layout values are bounded, and non-finite doubles use safe defaults.
 
 | Method                        | Signature                | Description                              |
 |-------------------------------|--------------------------|------------------------------------------|

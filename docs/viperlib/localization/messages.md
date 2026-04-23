@@ -1,0 +1,118 @@
+---
+status: active
+audience: public
+last-verified: 2026-04-22
+---
+
+# Messages & Plural Rules
+
+**Part of [Viper Runtime Library](../README.md) › [Localization](README.md)**
+
+Translation catalogs with fallback chains and CLDR-style plural category selection.
+
+---
+
+## Viper.Localization.MessageBundle
+
+Translation catalog keyed by message ID. Supports placeholder interpolation, fallback stacks, and plural-aware lookup.
+
+### Methods
+
+| Method | Signature | Description |
+|---|---|---|
+| `New()` | `MessageBundle()` | Empty bundle bound to the current locale. |
+| `LoadFromJson(loc, path)` | `MessageBundle(Locale, String)` | Load from filesystem JSON. |
+| `LoadFromAsset(loc, name)` | `MessageBundle(Locale, String)` | Load from VPA asset. |
+| `FromMap(loc, map)` | `MessageBundle(Locale, Map[String, String])` | Use an existing map. |
+| `Get(key)` | `String(String)` | Traps when no bundle in the chain has `key`. |
+| `TryGet(key)` | `String(String)` | Returns `""` when missing. |
+| `Has(key)` | `Bool(String)` | |
+| `Format(key, vars)` | `String(String, Map[String, String])` | `{name}`-style placeholders. |
+| `FormatWith(key, values)` | `String(String, List[String])` | Positional `{0}`, `{1}`, … |
+| `Plural(key, n, vars)` | `String(String, Int, Map[String, String])` | Plural-aware lookup (see Notes). |
+| `Fallback(other)` | `MessageBundle(MessageBundle)` | Attach a fallback; traps on cycle. |
+| `Keys()` | `List[String]()` | Keys defined by this bundle (excludes fallback). |
+
+### Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `Locale` | `Locale` | |
+| `Count` | `Int` | Entries in this bundle (excludes fallback). |
+
+### Notes
+
+- **Fallback chain.** `Get` walks fallbacks depth-first up to 16 bundles before giving up. `Fallback` detects self-cycles and traps.
+- **Plural.** `Plural(key, n, vars)` evaluates the bound locale's cardinal plural category for `n`, then looks up `<key>.<category>` (falling through to `<key>.other` if missing). `{n}` is seeded into `vars` automatically.
+- **Missing placeholders.** Placeholders referencing absent keys in `vars` are replaced with empty strings — this keeps non-critical omissions from throwing.
+- JSON loader expects a flat `{"key": "value", ...}` object; nested structures are ignored.
+
+### Zia Example
+
+```zia
+bind MessageBundle : Viper.Localization.MessageBundle
+bind Locale        : Viper.Localization.Locale
+
+var msgs = MessageBundle.FromMap(
+    Locale.Parse("en-US"),
+    {
+        "greet": "Hello, {name}!",
+        "items.one": "1 item",
+        "items.other": "{n} items"
+    }
+)
+
+Say(msgs.Format("greet", {"name": "Alice"}))   # "Hello, Alice!"
+Say(msgs.Plural("items", 1, {}))               # "1 item"
+Say(msgs.Plural("items", 5, {}))               # "5 items"
+```
+
+### See Also
+
+- [PluralRules](#viperslocalizationpluralrules) — underlying category evaluator.
+- [Data files](data-files.md) — JSON schema for loaded messages.
+
+---
+
+## Viper.Localization.PluralRules
+
+CLDR plural category selection for cardinal and ordinal numeric forms.
+
+### Methods
+
+| Method | Signature | Description |
+|---|---|---|
+| `ForLocale(loc)` | `PluralRules(Locale)` | |
+| `Cardinal(n)` | `String(Float)` | Returns `"zero"/"one"/"two"/"few"/"many"/"other"`. |
+| `CardinalInt(n)` | `String(Int)` | Integer fast path. |
+| `Ordinal(n)` | `String(Int)` | English: `"one"/"two"/"few"/"other"` (1st/2nd/3rd/4th). |
+| `Categories()` | `List[String]()` | Distinct categories used by this locale. |
+
+### Notes
+
+- **Operands.** CLDR plural operands (`n`, `i`, `v`, `f`, `t`) are computed from the input:
+  - `n` = absolute value
+  - `i` = integer part
+  - `v` = visible fraction digit count (incl. trailing zeros)
+  - `f` = visible fraction digits as integer (with trailing zeros)
+  - `t` = visible fraction digits without trailing zeros
+- Integer-valued doubles skip the decimal-string pass: `v=f=t=0`.
+- **en-US** cardinal: `one` for `i=1 && v=0`; else `other`.
+- **en-US** ordinal: `one` for `n mod 10 = 1 && n mod 100 != 11`; `two` for `n mod 10 = 2 && n mod 100 != 12`; `few` for `n mod 10 = 3 && n mod 100 != 13`; else `other`.
+
+### Zia Example
+
+```zia
+bind PluralRules : Viper.Localization.PluralRules
+bind Locale      : Viper.Localization.Locale
+
+var pr = PluralRules.ForLocale(Locale.Parse("en-US"))
+Say(pr.CardinalInt(1))    # "one"
+Say(pr.CardinalInt(5))    # "other"
+Say(pr.Ordinal(11))       # "other"  (11th, not 11st)
+Say(pr.Ordinal(21))       # "one"    (21st)
+```
+
+### See Also
+
+- [Formatting › RelativeTimeFormat](formatting.md#viperslocalizationrelativetimeformat) — the primary consumer of `PluralRules` inside the runtime.

@@ -42,6 +42,7 @@ Basic timing utilities for sleeping and measuring elapsed time.
 - `Ticks()` and `TicksUs()` return monotonic, non-decreasing values suitable for measuring elapsed time
 - The epoch (starting point) is unspecified - only use these functions for measuring durations, not absolute time
 - `TicksUs()` provides microsecond resolution for high-precision timing
+- Tick conversions trap on signed 64-bit overflow instead of wrapping
 - `Sleep(0)` returns immediately without sleeping
 - Negative values passed to `Sleep()` are treated as 0
 
@@ -127,6 +128,7 @@ interval has expired.
 - `Remaining` returns 0 once expired (never negative)
 - `Expired` becomes true when elapsed time reaches or exceeds the interval
 - `Wait()` blocks the current thread until expiration; returns immediately if already expired
+- `Wait()` handles intervals larger than the platform's single-sleep limit by sleeping in chunks until expired
 - Changing `Interval` while running affects when `Expired` becomes true
 - Instance methods and properties require a valid Countdown object; null receivers trap as runtime errors
 
@@ -213,10 +215,12 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 ### Notes
 
 - `Create` interprets components in the **local time zone**
+- `Create` returns `-1` if components or the resulting local timestamp cannot be represented safely by the platform time APIs; otherwise it preserves platform `mktime` normalization such as month 13 becoming January of the next year
 - `Year`, `Month`, `Day`, `Hour`, `Minute`, `Second` extract components in the **local time zone**
 - `ToISO` formats in **UTC** (appends `Z` suffix)
 - `ToLocal` formats in the **local time zone** (no `Z` suffix) — use this for consistent round-trips with `Create`
 - `Format` uses the **local time zone** with strftime-style format strings
+- Timestamp accessors and formatters return 0 or an empty string when a timestamp cannot be represented by the platform `time_t`
 - `Diff(t1, t2)` returns the signed difference `t1 - t2` in seconds
 - `AddSeconds`, `AddDays`, and `Diff` trap on signed 64-bit overflow
 
@@ -356,6 +360,7 @@ resolution.
 - Stopwatch provides nanosecond resolution on supported platforms
 - Time accumulates across multiple Start/Stop cycles until Reset
 - Reading `ElapsedMs`/`ElapsedUs`/`ElapsedNs` while running returns current elapsed time
+- Stopwatch timestamp conversions trap on signed 64-bit overflow instead of wrapping
 - `Start()` has no effect if already running (doesn't reset)
 - `Stop()` has no effect if already stopped
 - Instance methods and properties require a valid Stopwatch object; null receivers trap as runtime errors
@@ -448,7 +453,7 @@ Date-only type for working with calendar dates without time components. Represen
 - `DiffDays(other)` returns a negative value if `other` is after this date
 - `AddMonths` and `AddYears` clamp the day to the last valid day of the resulting month
 - `Parse` expects an exact ISO 8601 date format: "YYYY-MM-DD"; non-padded fields and trailing characters are rejected
-- `AddDays`, `AddMonths`, `AddYears`, and `DiffDays` trap on signed 64-bit overflow
+- `FromDays`, `ToDays`, `DayOfWeek`, `AddDays`, `AddMonths`, `AddYears`, and `DiffDays` trap on signed 64-bit overflow
 
 ### Zia Example
 
@@ -576,6 +581,7 @@ Duration type for representing and manipulating time spans. Duration is a static
 - Negative durations are supported and represent time spans in the past
 - `TotalSecondsF` returns a `f64` for sub-second precision
 - Factories and arithmetic methods trap on signed 64-bit overflow
+- `Abs(INT64_MIN)` and `Neg(INT64_MIN)` trap because the positive magnitude cannot be represented as a signed 64-bit value
 - `Div(dur, divisor)` traps when `divisor` is 0 and when dividing `INT64_MIN` by `-1`
 
 ### Zia Example
@@ -663,6 +669,7 @@ A time range defined by start and end timestamps (in seconds). Useful for repres
 - `Intersection` returns `null` if the ranges do not overlap (does not trap)
 - `Union` returns `null` if the ranges are neither overlapping nor contiguous
 - `Days`, `Hours`, and `Duration` trap if the range span cannot be represented as a signed 64-bit integer
+- `ToString` returns an empty string if either endpoint cannot be represented by the platform time APIs
 
 ### Zia Example
 

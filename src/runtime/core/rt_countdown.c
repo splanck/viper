@@ -72,6 +72,45 @@ static int countdown_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
     return 0;
 }
 
+static int countdown_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_mul_overflow(a, b, out);
+#else
+    if (a == 0 || b == 0) {
+        *out = 0;
+        return 0;
+    }
+    if (a > 0) {
+        if (b > 0) {
+            if (a > INT64_MAX / b)
+                return 1;
+        } else if (b < INT64_MIN / a) {
+            return 1;
+        }
+    } else {
+        if (b > 0) {
+            if (a < INT64_MIN / b)
+                return 1;
+        } else if (a < INT64_MAX / b) {
+            return 1;
+        }
+    }
+    *out = a * b;
+    return 0;
+#endif
+}
+
+#if defined(_WIN32)
+static int64_t countdown_tick_count_ms(void) {
+    ULONGLONG ticks = GetTickCount64();
+    if (ticks > (ULONGLONG)INT64_MAX) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return (int64_t)ticks;
+}
+#endif
+
 static ViperCountdown *require_countdown(void *obj) {
     if (!obj) {
         rt_trap("Countdown: null receiver");
@@ -80,6 +119,19 @@ static ViperCountdown *require_countdown(void *obj) {
     return (ViperCountdown *)obj;
 }
 
+#if !defined(_WIN32) && !defined(__viperdos__)
+static int64_t countdown_timespec_to_ms(struct timespec ts) {
+    int64_t seconds_ms;
+    int64_t result;
+    if (countdown_checked_mul_i64((int64_t)ts.tv_sec, 1000LL, &seconds_ms) ||
+        countdown_checked_add_i64(seconds_ms, (int64_t)ts.tv_nsec / 1000000LL, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
+}
+#endif
+
 /// @brief Get current timestamp in milliseconds from monotonic clock.
 /// @return Milliseconds since unspecified epoch.
 static int64_t get_timestamp_ms(void) {
@@ -87,12 +139,12 @@ static int64_t get_timestamp_ms(void) {
     // Benign race: QPC frequency is constant; duplicate init is harmless.
     static LARGE_INTEGER freq = {0};
     if (freq.QuadPart == 0 && (!QueryPerformanceFrequency(&freq) || freq.QuadPart <= 0)) {
-        return (int64_t)GetTickCount64();
+        return countdown_tick_count_ms();
     }
 
     LARGE_INTEGER counter;
     if (!QueryPerformanceCounter(&counter))
-        return (int64_t)GetTickCount64();
+        return countdown_tick_count_ms();
 
     int64_t whole = counter.QuadPart / freq.QuadPart;
     int64_t rem = counter.QuadPart % freq.QuadPart;
@@ -100,20 +152,28 @@ static int64_t get_timestamp_ms(void) {
         rt_trap_ovf();
         return 0;
     }
-    return whole * 1000LL + (int64_t)(((long double)rem * 1000.0L) / (long double)freq.QuadPart);
+    int64_t whole_ms = whole * 1000LL;
+    int64_t rem_ms = (int64_t)(((long double)rem * 1000.0L) / (long double)freq.QuadPart);
+    int64_t result;
+    if (countdown_checked_add_i64(whole_ms, rem_ms, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
 #elif defined(__viperdos__)
     return rt_timer_ms();
 #else
     struct timespec ts;
 #ifdef CLOCK_MONOTONIC
     if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
-        return (int64_t)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
+        return countdown_timespec_to_ms(ts);
     }
 #endif
     // Fallback to CLOCK_REALTIME
     if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
-        return (int64_t)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
+        return countdown_timespec_to_ms(ts);
     }
+    rt_trap("Countdown: clock unavailable");
     return 0;
 #endif
 }
@@ -541,9 +601,8 @@ void rt_countdown_wait(void *obj) {
         rt_countdown_start(obj);
     }
 
-    // Get remaining time and sleep
-    int64_t remaining = rt_countdown_remaining(obj);
-    if (remaining > 0) {
+    int64_t remaining;
+    while ((remaining = rt_countdown_remaining(obj)) > 0) {
         sleep_ms(remaining);
     }
 }

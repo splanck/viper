@@ -38,6 +38,7 @@ implemented in C and exposed through the IL runtime system.
 | [Text & Data](text/README.md)          | `Codec`, `CompiledPattern`, `Csv`, `Diff`, `Html`, `Ini`, `Json`, `JsonPath`, `JsonStream`, `Markdown`, `NumberFormat`, `Pattern`, `Pluralize`, `Scanner`, `StringBuilder`, `Template`, `TextWrapper`, `Toml`, `Uuid`, `Version`; `Viper.Data`: `Serialize`, `Xml`, `Yaml` |
 | [Threads](threads.md)           | `Async`, `Barrier`, `CancelToken`, `Channel`, `ConcurrentMap`, `Debouncer`, `Future`, `Gate`, `Monitor`, `Parallel`, `Pool`, `Promise`, `RwLock`, `SafeI64`, `Scheduler`, `Thread`, `Throttler` |
 | [Time & Timing](time.md)        | `Clock`, `Countdown`, `DateOnly`, `DateRange`, `DateTime`, `Duration`, `RelativeTime`, `Stopwatch` |
+| [Localization](localization/README.md) | `Locale`, `LocaleInfo`, `LocaleManager`, `NumberFormat`, `DateFormat`, `RelativeTimeFormat`, `MessageBundle`, `PluralRules`, `Collator`, `ListFormat`, `TextDirection` |
 | [Utilities](utilities.md)       | `Convert`, `Fmt`, `Log`, `Parse`                                          |
 
 ---

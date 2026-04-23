@@ -734,6 +734,8 @@ void vg_listbox_remove_item(vg_listbox_t *listbox, vg_listbox_item_t *item) {
         listbox->hovered = NULL;
 
     free(item->text);
+    if (item->owns_user_data)
+        free(item->user_data);
     free(item);
     listbox->item_count--;
     listbox->base.needs_layout = true;
@@ -749,6 +751,8 @@ void vg_listbox_clear(vg_listbox_t *listbox) {
     while (item) {
         vg_listbox_item_t *next = item->next;
         free(item->text);
+        if (item->owns_user_data)
+            free(item->user_data);
         free(item);
         item = next;
     }

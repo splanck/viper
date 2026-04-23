@@ -49,6 +49,102 @@
 // Global pointer to the app currently bound to the runtime-facing constructors.
 rt_gui_app_t *s_current_app = NULL;
 static rt_gui_app_t *s_active_app = NULL;
+static rt_gui_app_t **s_registered_apps = NULL;
+static int s_registered_app_count = 0;
+static int s_registered_app_cap = 0;
+static const void **s_destroyed_app_handles = NULL;
+static int s_destroyed_app_count = 0;
+static int s_destroyed_app_cap = 0;
+
+static int rt_gui_app_index(const rt_gui_app_t *app) {
+    if (!app)
+        return -1;
+    for (int i = 0; i < s_registered_app_count; i++) {
+        if (s_registered_apps[i] == app)
+            return i;
+    }
+    return -1;
+}
+
+static int rt_gui_destroyed_app_index(const void *handle) {
+    if (!handle)
+        return -1;
+    for (int i = 0; i < s_destroyed_app_count; i++) {
+        if (s_destroyed_app_handles[i] == handle)
+            return i;
+    }
+    return -1;
+}
+
+int rt_gui_is_destroyed_app_handle(const void *handle) {
+    return rt_gui_destroyed_app_index(handle) >= 0;
+}
+
+int rt_gui_is_app_handle_known(const void *handle) {
+    if (!handle)
+        return 0;
+    if (handle == s_current_app || handle == s_active_app)
+        return 1;
+    return rt_gui_app_index((const rt_gui_app_t *)handle) >= 0;
+}
+
+static void rt_gui_forget_destroyed_app_handle(const void *handle) {
+    int idx = rt_gui_destroyed_app_index(handle);
+    if (idx < 0)
+        return;
+    memmove(&s_destroyed_app_handles[idx],
+            &s_destroyed_app_handles[idx + 1],
+            (size_t)(s_destroyed_app_count - idx - 1) * sizeof(*s_destroyed_app_handles));
+    s_destroyed_app_count--;
+}
+
+static void rt_gui_note_destroyed_app_handle(const void *handle) {
+    if (!handle || rt_gui_destroyed_app_index(handle) >= 0)
+        return;
+    if (s_destroyed_app_count >= s_destroyed_app_cap) {
+        if (s_destroyed_app_cap > INT_MAX / 2)
+            return;
+        int new_cap = s_destroyed_app_cap ? s_destroyed_app_cap * 2 : 4;
+        void *p =
+            realloc(s_destroyed_app_handles, (size_t)new_cap * sizeof(*s_destroyed_app_handles));
+        if (!p)
+            return;
+        s_destroyed_app_handles = (const void **)p;
+        s_destroyed_app_cap = new_cap;
+    }
+    s_destroyed_app_handles[s_destroyed_app_count++] = handle;
+}
+
+static int rt_gui_register_app(rt_gui_app_t *app) {
+    if (!app)
+        return 0;
+    rt_gui_forget_destroyed_app_handle(app);
+    if (rt_gui_app_index(app) >= 0)
+        return 1;
+    if (s_registered_app_count >= s_registered_app_cap) {
+        if (s_registered_app_cap > INT_MAX / 2)
+            return 0;
+        int new_cap = s_registered_app_cap ? s_registered_app_cap * 2 : 4;
+        void *p = realloc(s_registered_apps, (size_t)new_cap * sizeof(*s_registered_apps));
+        if (!p)
+            return 0;
+        s_registered_apps = (rt_gui_app_t **)p;
+        s_registered_app_cap = new_cap;
+    }
+    s_registered_apps[s_registered_app_count++] = app;
+    return 1;
+}
+
+static void rt_gui_unregister_app(rt_gui_app_t *app) {
+    int idx = rt_gui_app_index(app);
+    if (idx < 0)
+        return;
+    memmove(&s_registered_apps[idx],
+            &s_registered_apps[idx + 1],
+            (size_t)(s_registered_app_count - idx - 1) * sizeof(*s_registered_apps));
+    s_registered_app_count--;
+    rt_gui_note_destroyed_app_handle(app);
+}
 
 /// @brief Return the current wall-clock time in milliseconds.
 /// @details Converts the microsecond-precision platform clock to milliseconds.
@@ -171,7 +267,7 @@ static bool rt_gui_widget_tree_needs_layout(const vg_widget_t *widget) {
 static void rt_gui_scale_theme(vg_theme_t *theme, float scale) {
     if (!theme)
         return;
-    if (scale <= 0.0f)
+    if (!isfinite(scale) || scale <= 0.0f)
         scale = 1.0f;
     theme->ui_scale = scale;
     theme->typography.size_small *= scale;
@@ -210,7 +306,7 @@ void rt_gui_refresh_theme(rt_gui_app_t *app) {
 
     const vg_theme_t *base = rt_gui_theme_base(app->theme_kind);
     float scale = app->window ? vgfx_window_get_scale(app->window) : 1.0f;
-    if (scale <= 0.0f)
+    if (!isfinite(scale) || scale <= 0.0f)
         scale = 1.0f;
 
     if (app->theme && app->theme_base == base && app->theme_scale == scale) {
@@ -291,19 +387,22 @@ void rt_gui_activate_app(rt_gui_app_t *app) {
 ///          the root widget's user_data is set to the app pointer at creation.
 ///          This function walks up the parent chain until it finds a root
 ///          (parentless) widget and returns its user_data. If the pointer is
-///          actually an app handle (magic check), it's returned directly. Falls
-///          back to s_current_app if the walk fails.
+///          actually an app handle (registry check), it's returned directly.
 /// @param widget Any widget in the tree.
-/// @return The owning rt_gui_app_t, or s_current_app as a last resort.
+/// @return The owning rt_gui_app_t, or NULL if the widget is detached.
 rt_gui_app_t *rt_gui_app_from_widget(vg_widget_t *widget) {
+    if (rt_gui_is_destroyed_app_handle(widget))
+        return NULL;
     if (rt_gui_is_app_handle(widget))
         return (rt_gui_app_t *)widget;
     for (vg_widget_t *w = widget; w; w = w->parent) {
         if (!w->parent && w->user_data) {
-            return (rt_gui_app_t *)w->user_data;
+            rt_gui_app_t *candidate = (rt_gui_app_t *)w->user_data;
+            if (rt_gui_is_app_handle(candidate))
+                return candidate;
         }
     }
-    return s_current_app;
+    return NULL;
 }
 
 /// @brief Double the dialog stack capacity when full (amortized O(1) growth).
@@ -311,15 +410,18 @@ rt_gui_app_t *rt_gui_app_from_widget(vg_widget_t *widget) {
 ///          avoids per-push allocation while keeping memory usage reasonable
 ///          for the typical case (1-3 nested dialogs).
 /// @param app App whose dialog stack to grow.
-static void rt_gui_grow_dialog_stack(rt_gui_app_t *app) {
+static int rt_gui_grow_dialog_stack(rt_gui_app_t *app) {
     if (!app || app->dialog_count < app->dialog_cap)
-        return;
+        return app != NULL;
+    if (app->dialog_cap > INT_MAX / 2)
+        return 0;
     int new_cap = app->dialog_cap ? app->dialog_cap * 2 : 4;
     void *p = realloc(app->dialog_stack, (size_t)new_cap * sizeof(*app->dialog_stack));
     if (!p)
-        return;
+        return 0;
     app->dialog_stack = p;
     app->dialog_cap = new_cap;
+    return 1;
 }
 
 /// @brief Compact the dialog stack and set the topmost open dialog as modal root.
@@ -363,7 +465,8 @@ void rt_gui_push_dialog(rt_gui_app_t *app, vg_dialog_t *dlg) {
         if (app->dialog_stack[i] == dlg)
             return;
     }
-    rt_gui_grow_dialog_stack(app);
+    if (!rt_gui_grow_dialog_stack(app))
+        return;
     if (app->dialog_count < app->dialog_cap) {
         dlg->base.user_data = app;
         app->dialog_stack[app->dialog_count++] = dlg;
@@ -411,15 +514,18 @@ vg_dialog_t *rt_gui_top_dialog(rt_gui_app_t *app) {
 ///          more than 1-2 command palettes, but the dynamic array handles the
 ///          general case safely.
 /// @param app App whose command palette array to grow.
-static void rt_gui_grow_command_palette_array(rt_gui_app_t *app) {
+static int rt_gui_grow_command_palette_array(rt_gui_app_t *app) {
     if (!app || app->command_palette_count < app->command_palette_cap)
-        return;
+        return app != NULL;
+    if (app->command_palette_cap > INT_MAX / 2)
+        return 0;
     int new_cap = app->command_palette_cap ? app->command_palette_cap * 2 : 4;
     void *p = realloc(app->command_palettes, (size_t)new_cap * sizeof(*app->command_palettes));
     if (!p)
-        return;
+        return 0;
     app->command_palettes = p;
     app->command_palette_cap = new_cap;
+    return 1;
 }
 
 /// @brief Register a command palette with the app for event routing and rendering.
@@ -436,7 +542,8 @@ void rt_gui_register_command_palette(rt_gui_app_t *app, vg_commandpalette_t *pal
         if (app->command_palettes[i] == palette)
             return;
     }
-    rt_gui_grow_command_palette_array(app);
+    if (!rt_gui_grow_command_palette_array(app))
+        return;
     if (app->command_palette_count < app->command_palette_cap) {
         app->command_palettes[app->command_palette_count++] = palette;
     }
@@ -513,25 +620,78 @@ static void rt_gui_app_resize_render(void *userdata, int32_t w, int32_t h) {
     rt_gui_app_render(userdata);
 }
 
+static int rt_gui_widget_tree_uses_font(vg_widget_t *widget, vg_font_t *font);
+
 /// @brief Keep a font alive until the app is destroyed (prevents use-after-free).
-/// @details When the user calls App.SetFont, the old default font may still be
-///          referenced by widgets that haven't been repainted yet. Rather than
-///          immediately freeing the old font (risking dangling pointers), we
-///          move it to a "retired fonts" list that is freed in app_destroy.
+/// @details When the user calls App.SetFont or Font.Destroy while a GUI object
+///          still references the font, defer destruction to app teardown.
 /// @param app App that will own the retired font.
 /// @param font Font to retain (must not be NULL).
-static void rt_gui_retain_font(rt_gui_app_t *app, vg_font_t *font) {
+int rt_gui_retire_font(rt_gui_app_t *app, vg_font_t *font) {
     if (!app || !font)
-        return;
+        return 0;
+    for (int i = 0; i < app->retired_font_count; i++) {
+        if (app->retired_fonts[i] == font)
+            return 1;
+    }
     if (app->retired_font_count >= app->retired_font_cap) {
+        if (app->retired_font_cap > INT_MAX / 2)
+            return 0;
         int new_cap = app->retired_font_cap ? app->retired_font_cap * 2 : 4;
         void *p = realloc(app->retired_fonts, (size_t)new_cap * sizeof(*app->retired_fonts));
         if (!p)
-            return;
+            return 0;
         app->retired_fonts = p;
         app->retired_font_cap = new_cap;
     }
     app->retired_fonts[app->retired_font_count++] = font;
+    return 1;
+}
+
+static int rt_gui_app_uses_font(rt_gui_app_t *app, vg_font_t *font) {
+    if (!app || !font)
+        return 0;
+    if (app->default_font == font)
+        return 1;
+    for (int i = 0; i < app->retired_font_count; i++) {
+        if (app->retired_fonts[i] == font)
+            return 1;
+    }
+    if (rt_gui_widget_tree_uses_font(app->root, font))
+        return 1;
+    for (int i = 0; i < app->dialog_count; i++) {
+        if (app->dialog_stack[i] && app->dialog_stack[i]->font == font)
+            return 1;
+        if (app->dialog_stack[i] &&
+            rt_gui_widget_tree_uses_font(&app->dialog_stack[i]->base, font))
+            return 1;
+    }
+    for (int i = 0; i < app->command_palette_count; i++) {
+        if (app->command_palettes[i] && app->command_palettes[i]->font == font)
+            return 1;
+    }
+    if (app->notification_manager && app->notification_manager->font == font)
+        return 1;
+    if (app->manual_tooltip && app->manual_tooltip->font == font)
+        return 1;
+    return 0;
+}
+
+int rt_gui_retire_font_if_in_use(vg_font_t *font) {
+    if (!font)
+        return 0;
+    rt_gui_app_t *candidates[2] = {s_active_app, s_current_app};
+    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
+        rt_gui_app_t *app = candidates[i];
+        if (app && rt_gui_app_uses_font(app, font))
+            return rt_gui_retire_font(app, font);
+    }
+    for (int i = 0; i < s_registered_app_count; i++) {
+        rt_gui_app_t *app = s_registered_apps[i];
+        if (app && rt_gui_app_uses_font(app, font))
+            return rt_gui_retire_font(app, font);
+    }
+    return 0;
 }
 
 /// @brief Recursively apply a font and size to a widget and all its descendants.
@@ -611,6 +771,63 @@ static void rt_gui_apply_font_to_widget(vg_widget_t *widget, vg_font_t *font, fl
     for (vg_widget_t *child = widget->first_child; child; child = child->next_sibling) {
         rt_gui_apply_font_to_widget(child, font, size);
     }
+}
+
+static int rt_gui_widget_uses_font(vg_widget_t *widget, vg_font_t *font) {
+    if (!widget || !font)
+        return 0;
+    switch (widget->type) {
+        case VG_WIDGET_LABEL:
+            return ((vg_label_t *)widget)->font == font;
+        case VG_WIDGET_BUTTON:
+            return ((vg_button_t *)widget)->font == font;
+        case VG_WIDGET_TEXTINPUT:
+            return ((vg_textinput_t *)widget)->font == font;
+        case VG_WIDGET_CHECKBOX:
+            return ((vg_checkbox_t *)widget)->font == font;
+        case VG_WIDGET_LISTBOX:
+            return ((vg_listbox_t *)widget)->font == font;
+        case VG_WIDGET_DROPDOWN:
+            return ((vg_dropdown_t *)widget)->font == font;
+        case VG_WIDGET_SLIDER:
+            return ((vg_slider_t *)widget)->font == font;
+        case VG_WIDGET_PROGRESS:
+            return ((vg_progressbar_t *)widget)->font == font;
+        case VG_WIDGET_SPINNER:
+            return ((vg_spinner_t *)widget)->font == font;
+        case VG_WIDGET_COLORPICKER:
+            return ((vg_colorpicker_t *)widget)->font == font;
+        case VG_WIDGET_TREEVIEW:
+            return ((vg_treeview_t *)widget)->font == font;
+        case VG_WIDGET_TABBAR:
+            return ((vg_tabbar_t *)widget)->font == font;
+        case VG_WIDGET_MENUBAR:
+            return ((vg_menubar_t *)widget)->font == font;
+        case VG_WIDGET_TOOLBAR:
+            return ((vg_toolbar_t *)widget)->font == font;
+        case VG_WIDGET_STATUSBAR:
+            return ((vg_statusbar_t *)widget)->font == font;
+        case VG_WIDGET_DIALOG:
+            return ((vg_dialog_t *)widget)->font == font;
+        case VG_WIDGET_CODEEDITOR:
+            return ((vg_codeeditor_t *)widget)->font == font;
+        case VG_WIDGET_RADIO:
+            return ((vg_radiobutton_t *)widget)->font == font;
+        default:
+            return 0;
+    }
+}
+
+static int rt_gui_widget_tree_uses_font(vg_widget_t *widget, vg_font_t *font) {
+    if (!widget || !font)
+        return 0;
+    if (rt_gui_widget_uses_font(widget, font))
+        return 1;
+    for (vg_widget_t *child = widget->first_child; child; child = child->next_sibling) {
+        if (rt_gui_widget_tree_uses_font(child, font))
+            return 1;
+    }
+    return 0;
 }
 
 /// @brief Return whether the font handle is safe to pass through metric APIs.
@@ -792,8 +1009,6 @@ void rt_gui_apply_default_font(vg_widget_t *widget) {
         return;
     rt_gui_app_t *app = rt_gui_app_from_widget(widget);
     if (!app)
-        app = s_current_app;
-    if (!app)
         return;
 
     rt_gui_activate_app(app);
@@ -859,11 +1074,27 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     // with vg_widget_set_fixed_size — that creates hard min=max constraints that
     // prevent the layout engine from resizing the root on window resize.
     app->root = vg_widget_create(VG_WIDGET_CONTAINER);
+    if (!app->root) {
+        vgfx_destroy_window(app->window);
+        free(app->title);
+        app->title = NULL;
+        memset(app, 0, sizeof(rt_gui_app_t));
+        return NULL;
+    }
 
     app->theme_kind = RT_GUI_THEME_DARK;
     app->root->user_data = app;
     app->shortcuts_global_enabled = 1;
     app->manual_tooltip_delay_ms = 500;
+
+    if (!rt_gui_register_app(app)) {
+        vg_widget_destroy(app->root);
+        vgfx_destroy_window(app->window);
+        free(app->title);
+        app->title = NULL;
+        memset(app, 0, sizeof(rt_gui_app_t));
+        return NULL;
+    }
 
     rt_gui_activate_app(app);
     return app;
@@ -891,6 +1122,8 @@ void rt_gui_ensure_default_font(void) {
         // Scale the raster size by the HiDPI factor so glyphs are rendered at
         // native resolution (e.g. 28 px on a 2× Retina display for 14 pt text).
         float _scale = s_current_app->window ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
+        if (!isfinite(_scale) || _scale <= 0.0f)
+            _scale = 1.0f;
         s_current_app->default_font_size = 14.0f * _scale;
         return;
     }
@@ -910,6 +1143,8 @@ void rt_gui_ensure_default_font(void) {
             s_current_app->default_font_owned = 1;
             float _scale =
                 s_current_app->window ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
+            if (!isfinite(_scale) || _scale <= 0.0f)
+                _scale = 1.0f;
             s_current_app->default_font_size = 14.0f * _scale;
             break;
         }
@@ -932,7 +1167,10 @@ void rt_gui_app_destroy(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
         return;
-    rt_gui_app_t *app = (rt_gui_app_t *)app_ptr;
+    rt_gui_app_t *app = rt_gui_app_handle_checked(app_ptr);
+    if (!app)
+        return;
+    rt_gui_app_t *previous_active = s_active_app;
     rt_gui_activate_app(app);
     rt_gui_features_cleanup(app);
 
@@ -979,7 +1217,15 @@ void rt_gui_app_destroy(void *app_ptr) {
         app->theme = NULL;
     }
     if (app->default_font && app->default_font_owned) {
-        vg_font_destroy(app->default_font);
+        int default_is_retired = 0;
+        for (int i = 0; i < app->retired_font_count; i++) {
+            if (app->retired_fonts[i] == app->default_font) {
+                default_is_retired = 1;
+                break;
+            }
+        }
+        if (!default_is_retired)
+            vg_font_destroy(app->default_font);
         app->default_font = NULL;
     }
     for (int i = 0; i < app->retired_font_count; i++) {
@@ -992,11 +1238,17 @@ void rt_gui_app_destroy(void *app_ptr) {
     app->retired_font_cap = 0;
     if (app->root) {
         vg_widget_destroy(app->root);
+        app->root = NULL;
     }
     if (app->window) {
         vgfx_destroy_window(app->window);
+        app->window = NULL;
     }
+    rt_gui_unregister_app(app);
     app->magic = 0;
+    if (previous_active && previous_active != app && rt_gui_is_app_handle(previous_active)) {
+        rt_gui_activate_app(previous_active);
+    }
 }
 
 /// @brief Query whether the application's window has been closed.
@@ -1008,9 +1260,9 @@ void rt_gui_app_destroy(void *app_ptr) {
 /// @return 1 if the window should close, 0 otherwise. Returns 1 for NULL.
 int64_t rt_gui_app_should_close(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app_ptr)
+    rt_gui_app_t *app = rt_gui_app_handle_checked(app_ptr);
+    if (!app)
         return 1;
-    rt_gui_app_t *app = (rt_gui_app_t *)app_ptr;
     return app->should_close;
 }
 
@@ -1182,9 +1434,9 @@ static int rt_gui_palette_contains_point(vg_commandpalette_t *palette, float x, 
 /// @param app_ptr Pointer to the app.
 void rt_gui_app_poll(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app_ptr)
+    rt_gui_app_t *app = rt_gui_app_handle_checked(app_ptr);
+    if (!app)
         return;
-    rt_gui_app_t *app = (rt_gui_app_t *)app_ptr;
     if (!app->window)
         return;
     rt_gui_activate_app(app);
@@ -1356,9 +1608,9 @@ void rt_gui_app_poll(void *app_ptr) {
 /// @param app_ptr Pointer to the app.
 void rt_gui_app_render(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app_ptr)
+    rt_gui_app_t *app = rt_gui_app_handle_checked(app_ptr);
+    if (!app)
         return;
-    rt_gui_app_t *app = (rt_gui_app_t *)app_ptr;
     if (!app->window)
         return;
     rt_gui_activate_app(app);
@@ -1509,9 +1761,9 @@ void rt_gui_app_render(void *app_ptr) {
 /// @return Root vg_widget_t pointer, or NULL if the app is NULL.
 void *rt_gui_app_get_root(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app_ptr)
+    rt_gui_app_t *app = rt_gui_app_handle_checked(app_ptr);
+    if (!app)
         return NULL;
-    rt_gui_app_t *app = (rt_gui_app_t *)app_ptr;
     return app->root;
 }
 
@@ -1529,17 +1781,18 @@ void *rt_gui_app_get_root(void *app_ptr) {
 ///                applying the window scale factor.
 void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app_ptr)
+    rt_gui_app_t *app = rt_gui_app_handle_checked(app_ptr);
+    if (!app)
         return;
-    rt_gui_app_t *app = (rt_gui_app_t *)app_ptr;
     rt_gui_activate_app(app);
     vg_font_t *old_font = app->default_font;
     int old_owned = app->default_font_owned;
     float _scale = app->window ? vgfx_window_get_scale(app->window) : 1.0f;
-    if (_scale <= 0.0f)
+    if (!isfinite(_scale) || _scale <= 0.0f)
         _scale = 1.0f;
+    double logical_size = rt_gui_sanitize_font_size(size, 14.0);
     app->default_font = (vg_font_t *)font;
-    app->default_font_size = (float)size * _scale;
+    app->default_font_size = (float)logical_size * _scale;
     app->default_font_owned = 0;
 
     if (app->root && app->default_font) {
@@ -1566,7 +1819,7 @@ void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
         }
     }
     if (old_owned && old_font && old_font != app->default_font)
-        rt_gui_retain_font(app, old_font);
+        rt_gui_retire_font(app, old_font);
 }
 
 // Render widget tree. Accumulates absolute offsets from parent positions

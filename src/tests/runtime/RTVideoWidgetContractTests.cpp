@@ -71,8 +71,6 @@ struct rt_videowidget_view {
     double slider_last_value;
     int32_t video_width;
     int32_t video_height;
-    uint8_t *rgba_buf;
-    int32_t rgba_buf_size;
 };
 
 bool g_open_should_fail = false;
@@ -307,12 +305,12 @@ static void test_successful_construction_sets_up_widgets() {
     assert(widget->root_widget != nullptr);
     assert(widget->image_widget != nullptr);
     assert(widget->controls_widget != nullptr);
-    assert(widget->rgba_buf != nullptr);
     assert(widget->video_width == g_open_width);
     assert(widget->video_height == g_open_height);
 
+    auto *player = static_cast<StubPlayer *>(widget->player);
     auto *image = static_cast<StubWidget *>(widget->image_widget);
-    assert(image->last_pixels != nullptr);
+    assert(image->last_pixels == player->frame);
     assert(image->last_pixels_w == g_open_width);
     assert(image->last_pixels_h == g_open_height);
 }
@@ -389,7 +387,6 @@ static void test_destroy_releases_player_and_widget_tree() {
     assert(widget != nullptr);
     assert(widget->player != nullptr);
     assert(widget->root_widget != nullptr);
-    assert(widget->rgba_buf != nullptr);
 
     rt_videowidget_destroy(widget);
 
@@ -397,8 +394,6 @@ static void test_destroy_releases_player_and_widget_tree() {
     assert(widget->root_widget == nullptr);
     assert(widget->image_widget == nullptr);
     assert(widget->controls_widget == nullptr);
-    assert(widget->rgba_buf == nullptr);
-    assert(widget->rgba_buf_size == 0);
     assert(g_release_count > 0);
     assert(g_widget_destroy_count == 1);
 

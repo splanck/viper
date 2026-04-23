@@ -824,15 +824,26 @@ String manipulation:
 
 Type conversion:
 
+- `Viper.Convert.ToInt(str)->i64` — Convert string to integer (alias for ToInt64, throws on error)
 - `Viper.Convert.ToInt64(str)->i64` — Convert string to integer (throws on error)
 - `Viper.Convert.ToDouble(str)->f64` — Convert string to double (throws on error)
+- `Viper.Convert.NumToInt(f64)->i64` — Truncate finite double to integer; NaN becomes 0 and out-of-range values clamp
 - `Viper.Convert.ToString_Int(i64)->str` — Convert integer to string
-- `Viper.Convert.ToString_Double(f64)->str` — Convert double to string
+- `Viper.Convert.ToString_Double(f64)->str` — Convert double to round-trip decimal string
 
 #### Viper.Parse
 
 Type parsing (with explicit error handling):
 
+- `Viper.Parse.TryInt(str, ptr i64)->i1` — Try to parse integer
+- `Viper.Parse.TryNum(str, ptr f64)->i1` — Try to parse double
+- `Viper.Parse.TryBool(str, ptr i1)->i1` — Try to parse boolean
+- `Viper.Parse.IntOr(str, i64)->i64` — Parse integer or return default
+- `Viper.Parse.NumOr(str, f64)->f64` — Parse double or return default
+- `Viper.Parse.BoolOr(str, i1)->i1` — Parse boolean or return default
+- `Viper.Parse.IsInt(str)->i1` — Validate integer text
+- `Viper.Parse.IsNum(str)->i1` — Validate numeric text
+- `Viper.Parse.IntRadix(str, i64, i64)->i64` — Parse radix 2-36 integer or return default
 - `Viper.Parse.Int64(cstr, ptr i64)->i32` — Parse int64, returns success code
 - `Viper.Parse.Double(cstr, ptr f64)->i32` — Parse double, returns success code
 

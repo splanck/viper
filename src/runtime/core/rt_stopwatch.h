@@ -59,17 +59,17 @@ void rt_stopwatch_restart(void *obj);
 
 /// @brief Get elapsed time in nanoseconds.
 /// @param obj Stopwatch pointer.
-/// @return Total elapsed nanoseconds.
+/// @return Total elapsed nanoseconds. Traps on signed 64-bit overflow.
 int64_t rt_stopwatch_elapsed_ns(void *obj);
 
 /// @brief Get elapsed time in microseconds.
 /// @param obj Stopwatch pointer.
-/// @return Total elapsed microseconds.
+/// @return Total elapsed microseconds. Traps on signed 64-bit overflow before unit conversion.
 int64_t rt_stopwatch_elapsed_us(void *obj);
 
 /// @brief Get elapsed time in milliseconds.
 /// @param obj Stopwatch pointer.
-/// @return Total elapsed milliseconds.
+/// @return Total elapsed milliseconds. Traps on signed 64-bit overflow before unit conversion.
 int64_t rt_stopwatch_elapsed_ms(void *obj);
 
 /// @brief Check if the stopwatch is currently running.

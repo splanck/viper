@@ -66,6 +66,8 @@ typedef enum {
 void *rt_gui_app_new(rt_string title, int64_t width, int64_t height);
 
 /// @brief Destroy a GUI application and free resources.
+/// @details Safe to call more than once. After destruction, app methods reject
+///          the stale handle without dereferencing it.
 /// @param app GUI application handle.
 void rt_gui_app_destroy(void *app);
 
@@ -83,6 +85,8 @@ void rt_gui_app_poll(void *app);
 void rt_gui_app_render(void *app);
 
 /// @brief Get the root widget container.
+/// @details The root widget is owned by the app. Destroy the app with
+///          rt_gui_app_destroy rather than destroying the root widget directly.
 /// @param app GUI application handle.
 /// @return Root widget handle.
 void *rt_gui_app_get_root(void *app);
@@ -103,6 +107,8 @@ void rt_gui_app_set_font(void *app, void *font, double size);
 void *rt_font_load(rt_string path);
 
 /// @brief Destroy a font and free resources.
+/// @details If the font is still referenced by a live app or widget tree, the
+///          actual free is deferred until the owning app is destroyed.
 /// @param font Font handle.
 void rt_font_destroy(void *font);
 
@@ -111,6 +117,8 @@ void rt_font_destroy(void *font);
 //=========================================================================
 
 /// @brief Destroy a widget and all its children.
+/// @details App handles and app-owned root widgets are ignored; use App.Destroy
+///          for app teardown.
 /// @param widget Widget handle.
 void rt_widget_destroy(void *widget);
 
@@ -173,6 +181,7 @@ int64_t rt_widget_is_pressed(void *widget);
 int64_t rt_widget_is_focused(void *widget);
 
 /// @brief Move keyboard focus to the specified widget.
+/// @details Passing NULL is a no-op.
 /// @param widget Widget handle.
 void rt_widget_focus(void *widget);
 
@@ -394,6 +403,8 @@ int64_t rt_treeview_was_selection_changed(void *tree);
 rt_string rt_treeview_node_get_text(void *node);
 
 /// @brief Store user data (file path) in a tree node.
+/// @details Runtime strings are stored with their explicit length, so embedded
+///          NUL bytes round-trip through GetData.
 /// @param node Tree node handle.
 /// @param data String data to store.
 void rt_treeview_node_set_data(void *node, rt_string data);
@@ -738,6 +749,8 @@ rt_string rt_listbox_item_get_text(void *item);
 void rt_listbox_item_set_text(void *item, rt_string text);
 
 /// @brief Store user data in a list box item.
+/// @details Runtime strings are stored with their explicit length, so embedded
+///          NUL bytes round-trip through ItemGetData.
 /// @param item ListBox item handle.
 /// @param data String data to store.
 void rt_listbox_item_set_data(void *item, rt_string data);
@@ -827,8 +840,13 @@ void rt_spinner_set_decimals(void *spinner, int64_t decimals);
 void *rt_image_new(void *parent);
 
 /// @brief Set image pixels.
+/// @details Pixels must be a Viper.Graphics.Pixels object whose elements are
+///          packed as 0xRRGGBBAA. Values are converted to byte RGBA for the
+///          GUI image. Width or height <= 0 uses the source dimensions; larger
+///          requested dimensions are clamped to the source bounds. NULL pixels
+///          clears the image.
 /// @param image Image widget handle.
-/// @param pixels Pixel data (RGBA format).
+/// @param pixels Viper.Graphics.Pixels object.
 /// @param width Image width.
 /// @param height Image height.
 void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t height);
@@ -847,7 +865,7 @@ void rt_image_set_scale_mode(void *image, int64_t mode);
 /// @param opacity Opacity (0.0 to 1.0).
 void rt_image_set_opacity(void *image, double opacity);
 
-/// @brief Load an image file (BMP or PNG) into the image widget.
+/// @brief Load an image file (PNG, BMP, JPEG, or GIF) into the image widget.
 /// @param image Image widget handle.
 /// @param path File path (runtime string).
 /// @return 1 on success, 0 on failure.

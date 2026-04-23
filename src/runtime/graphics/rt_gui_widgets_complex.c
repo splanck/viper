@@ -218,7 +218,9 @@ void *rt_splitpane_new(void *parent, int64_t horizontal) {
 void rt_splitpane_set_position(void *split, double position) {
     RT_ASSERT_MAIN_THREAD();
     if (split) {
-        vg_splitpane_set_position((vg_splitpane_t *)split, (float)position);
+        vg_splitpane_set_position((vg_splitpane_t *)split,
+                                  (float)rt_gui_clamp_f64(
+                                      rt_gui_double_is_finite(position) ? position : 0.5, 0.0, 1.0));
     }
 }
 
@@ -307,7 +309,9 @@ rt_string rt_codeeditor_get_selected_text(void *editor) {
 void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col) {
     RT_ASSERT_MAIN_THREAD();
     if (editor) {
-        vg_codeeditor_set_cursor((vg_codeeditor_t *)editor, (int)line, (int)col);
+        vg_codeeditor_set_cursor((vg_codeeditor_t *)editor,
+                                 rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX),
+                                 rt_gui_clamp_i64_to_i32(col, 0, INT32_MAX));
     }
 }
 
@@ -315,7 +319,8 @@ void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col) {
 void rt_codeeditor_scroll_to_line(void *editor, int64_t line) {
     RT_ASSERT_MAIN_THREAD();
     if (editor) {
-        vg_codeeditor_scroll_to_line((vg_codeeditor_t *)editor, (int)line);
+        vg_codeeditor_scroll_to_line((vg_codeeditor_t *)editor,
+                                     rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX));
     }
 }
 
@@ -349,9 +354,11 @@ void rt_codeeditor_set_font(void *editor, void *font, double size) {
     if (editor) {
         rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)editor);
         float _s = (app && app->window) ? vgfx_window_get_scale(app->window) : 1.0f;
-        if (_s <= 0.0f)
+        if (!isfinite(_s) || _s <= 0.0f)
             _s = 1.0f;
-        vg_codeeditor_set_font((vg_codeeditor_t *)editor, (vg_font_t *)font, (float)size * _s);
+        vg_codeeditor_set_font((vg_codeeditor_t *)editor,
+                               (vg_font_t *)font,
+                               (float)rt_gui_sanitize_font_size(size, 14.0) * _s);
     }
 }
 
@@ -364,7 +371,7 @@ double rt_codeeditor_get_font_size(void *editor) {
     rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)editor);
     // Return logical pt size — divide stored physical pixels by HiDPI scale.
     float _s = (app && app->window) ? vgfx_window_get_scale(app->window) : 1.0f;
-    if (_s <= 0.0f)
+    if (!isfinite(_s) || _s <= 0.0f)
         _s = 1.0f;
     return (double)(ed->font_size / _s);
 }
@@ -375,13 +382,13 @@ void rt_codeeditor_set_font_size(void *editor, double size) {
     if (!editor)
         return;
     vg_codeeditor_t *ed = (vg_codeeditor_t *)editor;
-    if (size > 0.0) {
+    if (rt_gui_double_is_finite(size) && size > 0.0) {
         rt_gui_app_t *app = rt_gui_app_from_widget((vg_widget_t *)editor);
         // Store physical pixels — multiply logical pt size by HiDPI scale.
         float _s = (app && app->window) ? vgfx_window_get_scale(app->window) : 1.0f;
-        if (_s <= 0.0f)
+        if (!isfinite(_s) || _s <= 0.0f)
             _s = 1.0f;
-        vg_codeeditor_set_font(ed, ed->font, (float)size * _s);
+        vg_codeeditor_set_font(ed, ed->font, (float)rt_gui_sanitize_font_size(size, 14.0) * _s);
     }
 }
 
@@ -452,14 +459,17 @@ void rt_container_set_spacing(void *container, double spacing) {
     RT_ASSERT_MAIN_THREAD();
     if (!container)
         return;
-    vg_container_set_spacing((vg_widget_t *)container, (float)spacing);
+    vg_container_set_spacing((vg_widget_t *)container,
+                             rt_gui_sanitize_nonnegative_float(spacing, RT_GUI_MAX_LAYOUT_VALUE));
 }
 
 /// @brief Set the padding of the container.
 void rt_container_set_padding(void *container, double padding) {
     RT_ASSERT_MAIN_THREAD();
     if (container) {
-        vg_widget_set_padding((vg_widget_t *)container, (float)padding);
+        vg_widget_set_padding(
+            (vg_widget_t *)container,
+            rt_gui_sanitize_nonnegative_float(padding, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -494,6 +504,8 @@ int64_t rt_widget_is_focused(void *widget) {
 /// @brief Move keyboard focus to a widget that participates in the tab order.
 void rt_widget_focus(void *widget) {
     RT_ASSERT_MAIN_THREAD();
+    if (!widget)
+        return;
     vg_widget_set_focus((vg_widget_t *)widget);
 }
 
@@ -524,8 +536,8 @@ void rt_widget_set_position(void *widget, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
     if (widget) {
         vg_widget_t *w = (vg_widget_t *)widget;
-        w->x = (float)x;
-        w->y = (float)y;
+        w->x = rt_gui_sanitize_signed_float((double)x, RT_GUI_MAX_LAYOUT_VALUE);
+        w->y = rt_gui_sanitize_signed_float((double)y, RT_GUI_MAX_LAYOUT_VALUE);
         vg_widget_invalidate_layout(w);
         vg_widget_invalidate(w);
     }
@@ -558,7 +570,8 @@ int64_t rt_dropdown_add_item(void *dropdown, rt_string text) {
 void rt_dropdown_remove_item(void *dropdown, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (dropdown) {
-        vg_dropdown_remove_item((vg_dropdown_t *)dropdown, (int)index);
+        vg_dropdown_remove_item((vg_dropdown_t *)dropdown,
+                                rt_gui_clamp_i64_to_i32(index, INT32_MIN, INT32_MAX));
     }
 }
 
@@ -574,7 +587,8 @@ void rt_dropdown_clear(void *dropdown) {
 void rt_dropdown_set_selected(void *dropdown, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (dropdown) {
-        vg_dropdown_set_selected((vg_dropdown_t *)dropdown, (int)index);
+        vg_dropdown_set_selected((vg_dropdown_t *)dropdown,
+                                 rt_gui_clamp_i64_to_i32(index, INT32_MIN, INT32_MAX));
     }
 }
 
@@ -623,7 +637,10 @@ void *rt_slider_new(void *parent, int64_t horizontal) {
 void rt_slider_set_value(void *slider, double value) {
     RT_ASSERT_MAIN_THREAD();
     if (slider) {
-        vg_slider_set_value((vg_slider_t *)slider, (float)value);
+        if (!rt_gui_double_is_finite(value))
+            return;
+        vg_slider_set_value((vg_slider_t *)slider,
+                            rt_gui_sanitize_signed_float(value, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -639,7 +656,16 @@ double rt_slider_get_value(void *slider) {
 void rt_slider_set_range(void *slider, double min_val, double max_val) {
     RT_ASSERT_MAIN_THREAD();
     if (slider) {
-        vg_slider_set_range((vg_slider_t *)slider, (float)min_val, (float)max_val);
+        if (!rt_gui_double_is_finite(min_val) || !rt_gui_double_is_finite(max_val))
+            return;
+        if (min_val > max_val) {
+            double tmp = min_val;
+            min_val = max_val;
+            max_val = tmp;
+        }
+        vg_slider_set_range((vg_slider_t *)slider,
+                            rt_gui_sanitize_signed_float(min_val, RT_GUI_MAX_LAYOUT_VALUE),
+                            rt_gui_sanitize_signed_float(max_val, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -647,7 +673,8 @@ void rt_slider_set_range(void *slider, double min_val, double max_val) {
 void rt_slider_set_step(void *slider, double step) {
     RT_ASSERT_MAIN_THREAD();
     if (slider) {
-        vg_slider_set_step((vg_slider_t *)slider, (float)step);
+        vg_slider_set_step((vg_slider_t *)slider,
+                           rt_gui_sanitize_nonnegative_float(step, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -665,7 +692,9 @@ void *rt_progressbar_new(void *parent) {
 void rt_progressbar_set_value(void *progress, double value) {
     RT_ASSERT_MAIN_THREAD();
     if (progress) {
-        vg_progressbar_set_value((vg_progressbar_t *)progress, (float)value);
+        double sanitized = rt_gui_double_is_finite(value) ? value : 0.0;
+        vg_progressbar_set_value((vg_progressbar_t *)progress,
+                                 (float)rt_gui_clamp_f64(sanitized, 0.0, 1.0));
     }
 }
 
@@ -811,10 +840,10 @@ void rt_listbox_item_set_data(void *item, rt_string data) {
     if (!item)
         return;
     vg_listbox_item_t *it = (vg_listbox_item_t *)item;
-    if (it->user_data)
+    if (it->owns_user_data && it->user_data)
         free(it->user_data);
-    char *cdata = rt_string_to_cstr(data);
-    it->user_data = cdata; // Takes ownership
+    it->user_data = rt_gui_string_data_new(data);
+    it->owns_user_data = it->user_data != NULL;
 }
 
 /// @brief Retrieve the string data previously attached to a listbox item.
@@ -823,17 +852,18 @@ rt_string rt_listbox_item_get_data(void *item) {
     if (!item)
         return rt_str_empty();
     vg_listbox_item_t *it = (vg_listbox_item_t *)item;
-    char *data = (char *)it->user_data;
-    if (data)
-        return rt_string_from_bytes(data, strlen(data));
-    return rt_str_empty();
+    if (!it->user_data || !it->owns_user_data)
+        return rt_str_empty();
+    return rt_gui_string_data_to_rt_string(it->user_data);
 }
 
 /// @brief Set the font of the listbox.
 void rt_listbox_set_font(void *listbox, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (listbox) {
-        vg_listbox_set_font((vg_listbox_t *)listbox, (vg_font_t *)font, (float)size);
+        vg_listbox_set_font((vg_listbox_t *)listbox,
+                            (vg_font_t *)font,
+                            (float)rt_gui_sanitize_font_size(size, 14.0));
     }
 }
 
@@ -897,7 +927,11 @@ void *rt_spinner_new(void *parent) {
 void rt_spinner_set_value(void *spinner, double value) {
     RT_ASSERT_MAIN_THREAD();
     if (spinner) {
-        vg_spinner_set_value((vg_spinner_t *)spinner, value);
+        if (!rt_gui_double_is_finite(value))
+            return;
+        vg_spinner_set_value((vg_spinner_t *)spinner,
+                             rt_gui_clamp_f64(
+                                 value, -RT_GUI_MAX_LAYOUT_VALUE, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -913,6 +947,15 @@ double rt_spinner_get_value(void *spinner) {
 void rt_spinner_set_range(void *spinner, double min_val, double max_val) {
     RT_ASSERT_MAIN_THREAD();
     if (spinner) {
+        if (!rt_gui_double_is_finite(min_val) || !rt_gui_double_is_finite(max_val))
+            return;
+        if (min_val > max_val) {
+            double tmp = min_val;
+            min_val = max_val;
+            max_val = tmp;
+        }
+        min_val = rt_gui_clamp_f64(min_val, -RT_GUI_MAX_LAYOUT_VALUE, RT_GUI_MAX_LAYOUT_VALUE);
+        max_val = rt_gui_clamp_f64(max_val, -RT_GUI_MAX_LAYOUT_VALUE, RT_GUI_MAX_LAYOUT_VALUE);
         vg_spinner_set_range((vg_spinner_t *)spinner, min_val, max_val);
     }
 }
@@ -921,7 +964,8 @@ void rt_spinner_set_range(void *spinner, double min_val, double max_val) {
 void rt_spinner_set_step(void *spinner, double step) {
     RT_ASSERT_MAIN_THREAD();
     if (spinner) {
-        vg_spinner_set_step((vg_spinner_t *)spinner, step);
+        vg_spinner_set_step((vg_spinner_t *)spinner,
+                            (double)rt_gui_sanitize_nonnegative_float(step, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -929,7 +973,8 @@ void rt_spinner_set_step(void *spinner, double step) {
 void rt_spinner_set_decimals(void *spinner, int64_t decimals) {
     RT_ASSERT_MAIN_THREAD();
     if (spinner) {
-        vg_spinner_set_decimals((vg_spinner_t *)spinner, (int)decimals);
+        vg_spinner_set_decimals((vg_spinner_t *)spinner,
+                                rt_gui_clamp_i64_to_i32(decimals, 0, 9));
     }
 }
 
@@ -943,12 +988,67 @@ void *rt_image_new(void *parent) {
     return vg_image_create(rt_gui_widget_parent_from_handle(parent));
 }
 
+static int rt_image_set_from_pixels_object(vg_image_t *image,
+                                           void *pixels,
+                                           int64_t width,
+                                           int64_t height) {
+    if (!image)
+        return 0;
+    if (!pixels) {
+        vg_image_clear(image);
+        return 1;
+    }
+
+    int64_t source_w = rt_pixels_width(pixels);
+    int64_t source_h = rt_pixels_height(pixels);
+    const uint32_t *src = rt_pixels_raw_buffer(pixels);
+    if (source_w <= 0 || source_h <= 0 || !src)
+        return 0;
+    if ((size_t)source_w > SIZE_MAX / (size_t)source_h)
+        return 0;
+
+    if (width <= 0)
+        width = source_w;
+    if (height <= 0)
+        height = source_h;
+    if (width > source_w)
+        width = source_w;
+    if (height > source_h)
+        height = source_h;
+    if (width <= 0 || height <= 0 || width > INT32_MAX || height > INT32_MAX)
+        return 0;
+
+    size_t w = (size_t)width;
+    size_t h = (size_t)height;
+    if (w > SIZE_MAX / h || w * h > SIZE_MAX / 4)
+        return 0;
+
+    size_t pixel_count = w * h;
+    uint8_t *rgba = (uint8_t *)malloc(pixel_count * 4);
+    if (!rgba)
+        return 0;
+
+    size_t stride = (size_t)source_w;
+    for (size_t y = 0; y < h; y++) {
+        for (size_t x = 0; x < w; x++) {
+            uint32_t px = src[y * stride + x];
+            size_t out = (y * w + x) * 4;
+            rgba[out + 0] = (uint8_t)((px >> 24) & 0xFF);
+            rgba[out + 1] = (uint8_t)((px >> 16) & 0xFF);
+            rgba[out + 2] = (uint8_t)((px >> 8) & 0xFF);
+            rgba[out + 3] = (uint8_t)(px & 0xFF);
+        }
+    }
+
+    vg_image_set_pixels(image, rgba, (int)width, (int)height);
+    free(rgba);
+    return 1;
+}
+
 /// @brief Set the pixels of the image.
 void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
-    if (image && pixels) {
-        vg_image_set_pixels((vg_image_t *)image, (const uint8_t *)pixels, (int)width, (int)height);
-    }
+    rt_image_set_from_pixels_object((vg_image_t *)image, pixels, width, height);
 }
 
 /// @brief Clear the image widget's pixel data, showing nothing.
@@ -963,7 +1063,8 @@ void rt_image_clear(void *image) {
 void rt_image_set_scale_mode(void *image, int64_t mode) {
     RT_ASSERT_MAIN_THREAD();
     if (image) {
-        vg_image_set_scale_mode((vg_image_t *)image, (vg_image_scale_t)mode);
+        vg_image_set_scale_mode((vg_image_t *)image,
+                                (vg_image_scale_t)rt_gui_clamp_i64_to_i32(mode, 0, 3));
     }
 }
 
@@ -971,11 +1072,13 @@ void rt_image_set_scale_mode(void *image, int64_t mode) {
 void rt_image_set_opacity(void *image, double opacity) {
     RT_ASSERT_MAIN_THREAD();
     if (image) {
-        vg_image_set_opacity((vg_image_t *)image, (float)opacity);
+        double sanitized = rt_gui_double_is_finite(opacity) ? opacity : 1.0;
+        vg_image_set_opacity((vg_image_t *)image,
+                             (float)rt_gui_clamp_f64(sanitized, 0.0, 1.0));
     }
 }
 
-/// @brief Load an image file (BMP or PNG) into the image widget.
+/// @brief Load an image file (PNG, BMP, JPEG, or GIF) into the image widget.
 /// @details Auto-detects format from file magic bytes, decodes using rt_pixels,
 ///          converts from packed 0xRRGGBBAA to byte RGBA, and sets the widget pixels.
 /// @param image Image widget.
@@ -997,43 +1100,10 @@ int64_t rt_image_load_file(void *image, void *path) {
     if (!pixels)
         return 0;
 
-    int64_t w = rt_pixels_width(pixels);
-    int64_t h = rt_pixels_height(pixels);
-    if (w <= 0 || h <= 0) {
-        if (rt_obj_release_check0(pixels))
-            rt_obj_free(pixels);
-        return 0;
-    }
-
-    // Convert from packed uint32_t (0xRRGGBBAA) to byte RGBA
-    const uint32_t *src = rt_pixels_raw_buffer(pixels);
-    if (!src) {
-        if (rt_obj_release_check0(pixels))
-            rt_obj_free(pixels);
-        return 0;
-    }
-
-    size_t pixel_count = (size_t)w * (size_t)h;
-    uint8_t *rgba = (uint8_t *)malloc(pixel_count * 4);
-    if (!rgba) {
-        if (rt_obj_release_check0(pixels))
-            rt_obj_free(pixels);
-        return 0;
-    }
-
-    for (size_t i = 0; i < pixel_count; i++) {
-        uint32_t px = src[i];
-        rgba[i * 4 + 0] = (uint8_t)((px >> 24) & 0xFF); // R
-        rgba[i * 4 + 1] = (uint8_t)((px >> 16) & 0xFF); // G
-        rgba[i * 4 + 2] = (uint8_t)((px >> 8) & 0xFF);  // B
-        rgba[i * 4 + 3] = (uint8_t)(px & 0xFF);         // A
-    }
-
-    vg_image_set_pixels((vg_image_t *)image, rgba, (int)w, (int)h);
-    free(rgba);
+    int ok = rt_image_set_from_pixels_object((vg_image_t *)image, pixels, 0, 0);
     if (rt_obj_release_check0(pixels))
         rt_obj_free(pixels);
-    return 1;
+    return ok ? 1 : 0;
 }
 
 //=============================================================================
@@ -1054,14 +1124,20 @@ void *rt_floatingpanel_new(void *root) {
 void rt_floatingpanel_set_position(void *panel, double x, double y) {
     RT_ASSERT_MAIN_THREAD();
     if (panel)
-        vg_floatingpanel_set_position((vg_floatingpanel_t *)panel, (float)x, (float)y);
+        vg_floatingpanel_set_position(
+            (vg_floatingpanel_t *)panel,
+            rt_gui_sanitize_signed_float(x, RT_GUI_MAX_LAYOUT_VALUE),
+            rt_gui_sanitize_signed_float(y, RT_GUI_MAX_LAYOUT_VALUE));
 }
 
 /// @brief Set the width and height of a floating panel.
 void rt_floatingpanel_set_size(void *panel, double w, double h) {
     RT_ASSERT_MAIN_THREAD();
     if (panel)
-        vg_floatingpanel_set_size((vg_floatingpanel_t *)panel, (float)w, (float)h);
+        vg_floatingpanel_set_size(
+            (vg_floatingpanel_t *)panel,
+            rt_gui_sanitize_nonnegative_float(w, RT_GUI_MAX_LAYOUT_VALUE),
+            rt_gui_sanitize_nonnegative_float(h, RT_GUI_MAX_LAYOUT_VALUE));
 }
 
 /// @brief Show or hide a floating panel overlay.

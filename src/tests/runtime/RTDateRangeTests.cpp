@@ -192,6 +192,15 @@ static void test_to_string() {
     rt_string_unref(s);
 }
 
+static void test_to_string_extreme_timestamp() {
+    void *r = rt_daterange_new(INT64_MAX, INT64_MAX);
+    rt_string s = rt_daterange_to_string(r);
+    const char *cstr = rt_string_cstr(s);
+    assert(cstr != NULL);
+    assert(strlen(cstr) == 0 || strstr(cstr, " - ") != NULL);
+    rt_string_unref(s);
+}
+
 // ---------------------------------------------------------------------------
 // Null safety
 // ---------------------------------------------------------------------------
@@ -224,6 +233,7 @@ int main() {
     test_duration();
     test_duration_overflow_traps();
     test_to_string();
+    test_to_string_extreme_timestamp();
     test_null_safety();
 
     return 0;

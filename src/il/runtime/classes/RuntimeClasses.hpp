@@ -479,6 +479,17 @@ enum class RuntimeTypeId : std::size_t {
     RTCLS_TextureAtlas3D,
     RTCLS_TextureAtlas2D,
     RTCLS_AnimStateMachine,
+    RTCLS_Locale,
+    RTCLS_LocaleInfo,
+    RTCLS_LocaleManager,
+    RTCLS_LocPluralRules,
+    RTCLS_LocNumberFormat,
+    RTCLS_LocDateFormat,
+    RTCLS_LocRelTimeFormat,
+    RTCLS_LocMessageBundle,
+    RTCLS_LocListFormat,
+    RTCLS_LocTextDirection,
+    RTCLS_LocCollator,
 };
 
 /// @brief Describes a property on a runtime class.

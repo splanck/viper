@@ -921,6 +921,50 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_duration PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_duration test_rt_duration)
 
+    viper_add_test(test_rt_locale ${VIPER_TESTS_DIR}/runtime/RTLocaleTests.cpp)
+    target_link_libraries(test_rt_locale PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_locale test_rt_locale)
+
+    viper_add_test(test_rt_locale_manager ${VIPER_TESTS_DIR}/runtime/RTLocaleManagerTests.cpp)
+    target_link_libraries(test_rt_locale_manager PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_locale_manager test_rt_locale_manager)
+
+    viper_add_test(test_rt_locale_info ${VIPER_TESTS_DIR}/runtime/RTLocaleInfoTests.cpp)
+    target_link_libraries(test_rt_locale_info PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_locale_info test_rt_locale_info)
+
+    viper_add_test(test_rt_plural_rules ${VIPER_TESTS_DIR}/runtime/RTPluralRulesTests.cpp)
+    target_link_libraries(test_rt_plural_rules PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_plural_rules test_rt_plural_rules)
+
+    viper_add_test(test_rt_locale_numformat ${VIPER_TESTS_DIR}/runtime/RTLocaleNumberFormatTests.cpp)
+    target_link_libraries(test_rt_locale_numformat PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_locale_numformat test_rt_locale_numformat)
+
+    viper_add_test(test_rt_dateformat ${VIPER_TESTS_DIR}/runtime/RTDateFormatTests.cpp)
+    target_link_libraries(test_rt_dateformat PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_dateformat test_rt_dateformat)
+
+    viper_add_test(test_rt_reltime_format ${VIPER_TESTS_DIR}/runtime/RTRelativeTimeFormatTests.cpp)
+    target_link_libraries(test_rt_reltime_format PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_reltime_format test_rt_reltime_format)
+
+    viper_add_test(test_rt_message_bundle ${VIPER_TESTS_DIR}/runtime/RTMessageBundleTests.cpp)
+    target_link_libraries(test_rt_message_bundle PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_message_bundle test_rt_message_bundle)
+
+    viper_add_test(test_rt_list_format ${VIPER_TESTS_DIR}/runtime/RTListFormatTests.cpp)
+    target_link_libraries(test_rt_list_format PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_list_format test_rt_list_format)
+
+    viper_add_test(test_rt_text_direction ${VIPER_TESTS_DIR}/runtime/RTTextDirectionTests.cpp)
+    target_link_libraries(test_rt_text_direction PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_text_direction test_rt_text_direction)
+
+    viper_add_test(test_rt_collator ${VIPER_TESTS_DIR}/runtime/RTCollatorTests.cpp)
+    target_link_libraries(test_rt_collator PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_collator test_rt_collator)
+
     viper_add_test(test_rt_glob ${VIPER_TESTS_DIR}/runtime/RTGlobTests.cpp)
     target_link_libraries(test_rt_glob PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_glob test_rt_glob)

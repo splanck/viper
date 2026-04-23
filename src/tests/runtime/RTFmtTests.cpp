@@ -16,9 +16,11 @@
 
 #include <cassert>
 #include <cfloat>
+#include <clocale>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 extern "C" void vm_trap(const char *msg) {
@@ -36,6 +38,11 @@ static rt_string make_str(const char *s) {
 static bool str_eq(rt_string s, const char *expected) {
     const char *data = rt_string_cstr(s);
     return data != nullptr && strcmp(data, expected) == 0;
+}
+
+static bool bytes_eq(rt_string s, const char *expected, size_t len) {
+    const char *data = rt_string_cstr(s);
+    return data != nullptr && (size_t)rt_str_len(s) == len && memcmp(data, expected, len) == 0;
 }
 
 // ============================================================================
@@ -87,10 +94,34 @@ static void test_fmt_int_radix() {
 static void test_fmt_int_pad() {
     assert(str_eq(rt_fmt_int_pad(42, 5, make_str("0")), "00042"));
     assert(str_eq(rt_fmt_int_pad(42, 5, make_str(" ")), "   42"));
+    assert(str_eq(rt_fmt_int_pad(42, 5, NULL), "   42"));
+    assert(str_eq(rt_fmt_int_pad(42, 5, make_str("")), "   42"));
     assert(str_eq(rt_fmt_int_pad(-42, 5, make_str("0")), "-0042"));
     assert(str_eq(rt_fmt_int_pad(-42, 5, make_str(" ")), "  -42"));
     assert(str_eq(rt_fmt_int_pad(12345, 3, make_str("0")), "12345")); // No truncation
     assert(str_eq(rt_fmt_int_pad(7, 1, make_str("0")), "7"));
+    rt_string wide = rt_fmt_int_pad(7, 300, make_str("0"));
+    const char *wide_text = rt_string_cstr(wide);
+    assert((size_t)rt_str_len(wide) == 300);
+    assert(wide_text[0] == '0');
+    assert(wide_text[298] == '0');
+    assert(wide_text[299] == '7');
+    rt_string_unref(wide);
+
+    const char e_acute[] = {(char)0xC3, (char)0xA9};
+    const char e_expected[] = {(char)0xC3, (char)0xA9, (char)0xC3, (char)0xA9, '4', '2'};
+    rt_string utf8_pad = rt_string_from_bytes(e_acute, sizeof(e_acute));
+    rt_string utf8_result = rt_fmt_int_pad(42, 4, utf8_pad);
+    assert(bytes_eq(utf8_result, e_expected, sizeof(e_expected)));
+    rt_string_unref(utf8_result);
+    rt_string_unref(utf8_pad);
+
+    const char invalid_utf8[] = {(char)0xC0, (char)0xAF};
+    rt_string invalid_pad = rt_string_from_bytes(invalid_utf8, sizeof(invalid_utf8));
+    rt_string invalid_result = rt_fmt_int_pad(42, 4, invalid_pad);
+    assert(str_eq(invalid_result, "  42"));
+    rt_string_unref(invalid_result);
+    rt_string_unref(invalid_pad);
 
     printf("test_fmt_int_pad: PASSED\n");
 }
@@ -103,7 +134,7 @@ static void test_fmt_num() {
     rt_string s = rt_fmt_num(3.14159);
     const char *data = rt_string_cstr(s);
     assert(data != nullptr);
-    // %g format removes trailing zeros
+    // General format removes trailing zeros.
     assert(strstr(data, "3.14") != nullptr);
 
     assert(str_eq(rt_fmt_num(42.0), "42"));
@@ -115,12 +146,41 @@ static void test_fmt_num() {
     printf("test_fmt_num: PASSED\n");
 }
 
+static void test_fmt_num_roundtrip() {
+    const double values[] = {
+        0.1,
+        1.0 / 3.0,
+        DBL_MIN,
+        DBL_MAX,
+        9007199254740992.0,
+        1.2345678901234567e-120,
+        -1.2345678901234567e120,
+    };
+
+    for (double value : values) {
+        rt_string s = rt_fmt_num(value);
+        const char *data = rt_string_cstr(s);
+        char *end = nullptr;
+        double parsed = strtod(data, &end);
+        assert(end != data);
+        assert(end && *end == '\0');
+        assert(parsed == value);
+        rt_string_unref(s);
+    }
+
+    printf("test_fmt_num_roundtrip: PASSED\n");
+}
+
 static void test_fmt_num_fixed() {
     assert(str_eq(rt_fmt_num_fixed(3.14159, 2), "3.14"));
     assert(str_eq(rt_fmt_num_fixed(3.14159, 0), "3"));
     assert(str_eq(rt_fmt_num_fixed(3.14159, 4), "3.1416"));
     assert(str_eq(rt_fmt_num_fixed(42.0, 2), "42.00"));
     assert(str_eq(rt_fmt_num_fixed(NAN, 2), "NaN"));
+    rt_string max_fixed = rt_fmt_num_fixed(DBL_MAX, 2);
+    assert((size_t)rt_str_len(max_fixed) > 300);
+    assert(strstr(rt_string_cstr(max_fixed), ".00") != nullptr);
+    rt_string_unref(max_fixed);
 
     printf("test_fmt_num_fixed: PASSED\n");
 }
@@ -146,8 +206,46 @@ static void test_fmt_num_pct() {
     assert(str_eq(rt_fmt_num_pct(0.0, 1), "0.0%"));
     assert(str_eq(rt_fmt_num_pct(0.123, 1), "12.3%"));
     assert(str_eq(rt_fmt_num_pct(NAN, 2), "NaN%"));
+    assert(str_eq(rt_fmt_num_pct(DBL_MAX, 2), "Infinity%"));
+    assert(str_eq(rt_fmt_num_pct(-DBL_MAX, 2), "-Infinity%"));
 
     printf("test_fmt_num_pct: PASSED\n");
+}
+
+static void test_fmt_num_signed_zero() {
+    double neg_zero = -0.0;
+    assert(str_eq(rt_fmt_num(neg_zero), "0"));
+    assert(str_eq(rt_fmt_num_fixed(neg_zero, 2), "0.00"));
+    assert(str_eq(rt_fmt_num_sci(neg_zero, 2), "0.00e+00"));
+    assert(str_eq(rt_fmt_num_pct(neg_zero, 1), "0.0%"));
+    assert(str_eq(rt_fmt_num_fixed(-0.004, 2), "0.00"));
+    assert(str_eq(rt_fmt_num_pct(-0.00004, 2), "0.00%"));
+
+    printf("test_fmt_num_signed_zero: PASSED\n");
+}
+
+static void test_fmt_num_locale_independent() {
+    char original[128] = "C";
+    const char *current = setlocale(LC_NUMERIC, NULL);
+    if (current)
+        snprintf(original, sizeof(original), "%s", current);
+
+    const char *candidates[] = {
+        "fr_FR.UTF-8", "de_DE.UTF-8", "fr_FR", "de_DE", "French_France.1252", NULL};
+    bool changed = false;
+    for (const char **candidate = candidates; *candidate; ++candidate) {
+        if (setlocale(LC_NUMERIC, *candidate)) {
+            changed = true;
+            break;
+        }
+    }
+
+    assert(str_eq(rt_fmt_num_fixed(1.5, 1), "1.5"));
+    assert(str_eq(rt_fmt_num_sci(12.6, 1), "1.3e+01"));
+    assert(str_eq(rt_fmt_num_pct(0.125, 1), "12.5%"));
+
+    setlocale(LC_NUMERIC, original);
+    printf("test_fmt_num_locale_independent: PASSED%s\n", changed ? "" : " (C locale only)");
 }
 
 // ============================================================================
@@ -162,8 +260,8 @@ static void test_fmt_bool() {
 }
 
 static void test_fmt_bool_yn() {
-    assert(str_eq(rt_fmt_bool_yn(true), "yes"));
-    assert(str_eq(rt_fmt_bool_yn(false), "no"));
+    assert(str_eq(rt_fmt_bool_yn(true), "Yes"));
+    assert(str_eq(rt_fmt_bool_yn(false), "No"));
 
     printf("test_fmt_bool_yn: PASSED\n");
 }
@@ -179,6 +277,9 @@ static void test_fmt_size() {
     assert(str_eq(rt_fmt_size(1536), "1.5 KB"));
     assert(str_eq(rt_fmt_size(1048576), "1.0 MB"));
     assert(str_eq(rt_fmt_size(1073741824), "1.0 GB"));
+    rt_string near_eb = rt_fmt_size((INT64_C(1) << 60) - 1);
+    assert(str_eq(near_eb, "1.0 EB"));
+    rt_string_unref(near_eb);
 
     printf("test_fmt_size: PASSED\n");
 }
@@ -245,9 +346,12 @@ int main() {
 
     // Num formatting
     test_fmt_num();
+    test_fmt_num_roundtrip();
     test_fmt_num_fixed();
     test_fmt_num_sci();
     test_fmt_num_pct();
+    test_fmt_num_signed_zero();
+    test_fmt_num_locale_independent();
 
     // Bool formatting
     test_fmt_bool();

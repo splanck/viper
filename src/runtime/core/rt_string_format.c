@@ -42,7 +42,6 @@
 #include "rt_string.h"
 #include "rt_string_builder.h"
 
-#include <ctype.h>
 #include <errno.h>
 #include <math.h>
 #include <stddef.h>
@@ -50,14 +49,26 @@
 #include <stdlib.h>
 #include <string.h>
 
+static bool rt_string_contains_embedded_nul(rt_string s) {
+    if (!s)
+        return false;
+    const char *data = s->data;
+    size_t len = (size_t)rt_str_len(s);
+    return data && memchr(data, '\0', len) != NULL;
+}
+
+static bool rt_string_format_is_ascii_space(unsigned char ch) {
+    return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' ||
+           ch == '\v';
+}
+
 /// @brief Parse a runtime string as a signed 64-bit integer.
 /// @details Performs a staged conversion so diagnostics match the historical
 ///          BASIC runtime:
 ///          1. Trim leading/trailing ASCII whitespace without touching locale
 ///             state.
-///          2. Copy the trimmed slice into a scratch buffer allocated via
-///             @ref rt_alloc so the process works even with embedded NUL bytes
-///             (which trap later).
+///          2. Reject embedded NUL bytes, then copy the trimmed slice into a
+///             scratch buffer allocated via @ref rt_alloc.
 ///          3. Invoke @ref strtoll to honour sign handling and detect overflow.
 ///          4. Trap with a BASIC-style message on overflow or trailing junk.
 /// @param s Runtime string containing the textual representation.
@@ -68,14 +79,16 @@ int64_t rt_to_int(rt_string s) {
     const char *p = s->data;
     size_t len = (size_t)rt_str_len(s);
     size_t i = 0;
-    while (i < len && isspace((unsigned char)p[i]))
+    while (i < len && rt_string_format_is_ascii_space((unsigned char)p[i]))
         ++i;
     size_t j = len;
-    while (j > i && isspace((unsigned char)p[j - 1]))
+    while (j > i && rt_string_format_is_ascii_space((unsigned char)p[j - 1]))
         --j;
     if (i == j)
         rt_trap("INPUT: expected numeric value");
     size_t sz = j - i;
+    if (memchr(p + i, '\0', sz))
+        rt_trap("INPUT: expected numeric value");
     char *buf = (char *)rt_alloc(sz + 1);
     memcpy(buf, p + i, sz);
     buf[sz] = '\0';
@@ -105,6 +118,8 @@ int64_t rt_to_int(rt_string s) {
 double rt_to_double(rt_string s) {
     if (!s)
         rt_trap("rt_to_double: null");
+    if (rt_string_contains_embedded_nul(s))
+        rt_trap("INPUT: expected numeric value");
     bool ok = true;
     double value = rt_val_to_double(s->data, &ok);
     if (!ok) {

@@ -8,16 +8,18 @@
 // File: src/runtime/core/rt_log.c
 // Purpose: Implements the Viper.Log namespace — a lightweight structured
 //          logging system with five severity levels (DEBUG, INFO, WARN, ERROR,
-//          OFF). Log messages are written to stderr with a "[LEVEL] HH:MM:SS"
-//          timestamp prefix and are filtered by the active global log level.
+//          OFF). Log messages are written to stderr with a
+//          "[LEVEL] YYYY-MM-DD HH:MM:SS" timestamp prefix and are filtered by
+//          the active global log level.
 //
 // Key invariants:
 //   - The global log level is an atomic integer; reads and writes are
 //     thread-safe without a mutex.
 //   - Messages below the current level are discarded before any string
 //     processing; the level check is O(1).
-//   - Each log message is emitted as a single fprintf call followed by an
-//     immediate fflush; individual messages are atomic on most platforms.
+//   - Message bytes are written length-aware; embedded NUL and control bytes
+//     are escaped instead of truncating or injecting extra lines.
+//   - Each accepted log call is emitted as one complete physical line.
 //   - Message ordering across concurrent threads is not guaranteed.
 //   - Output always goes to stderr; stdout is not touched.
 //   - Default log level is INFO (1); DEBUG messages are suppressed by default.
@@ -39,7 +41,15 @@
 #include "rt_platform.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
+
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <sched.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,25 +62,158 @@ extern "C" {
 /// Can be changed at runtime via rt_log_set_level().
 // Accessed across threads — use atomic operations for reads/writes
 static volatile int64_t g_log_level = RT_LOG_INFO;
+static volatile unsigned char g_log_write_lock = 0;
 
-/// @brief Formats the current time as an HH:MM:SS string for log timestamps.
+static void rt_log_yield(void) {
+#if defined(_WIN32)
+    Sleep(0);
+#else
+    (void)sched_yield();
+#endif
+}
+
+static void rt_log_lock(void) {
+    unsigned spins = 0;
+    while (__atomic_test_and_set(&g_log_write_lock, __ATOMIC_ACQUIRE)) {
+        if (++spins >= 64) {
+            rt_log_yield();
+            spins = 0;
+        }
+    }
+}
+
+static void rt_log_unlock(void) {
+    __atomic_clear(&g_log_write_lock, __ATOMIC_RELEASE);
+}
+
+/// @brief Formats the current time as a date-time string for log timestamps.
 ///
 /// Uses thread-safe rt_localtime_r() to get the current time in the local
 /// timezone and formats it as a human-readable timestamp for log output.
 ///
 /// @param buf Output buffer for the formatted time string.
-/// @param size Size of the output buffer in bytes (should be at least 9).
+/// @param size Size of the output buffer in bytes (should be at least 20).
 ///
 /// @note If localtime fails (extremely rare), buf[0] is set to '\0'.
-/// @note Uses 24-hour format.
+/// @note Uses local date and 24-hour time.
 static void get_time_str(char *buf, size_t size) {
     time_t now = time(NULL);
     struct tm tm_buf;
     struct tm *tm_info = rt_localtime_r(&now, &tm_buf);
     if (tm_info) {
-        strftime(buf, size, "%H:%M:%S", tm_info);
+        strftime(buf, size, "%Y-%m-%d %H:%M:%S", tm_info);
     } else {
         buf[0] = '\0';
+    }
+}
+
+static size_t log_escaped_message_len(rt_string message) {
+    if (!message || !rt_string_is_handle((const void *)message) || !message->data)
+        return 0;
+
+    const unsigned char *data = (const unsigned char *)message->data;
+    size_t len = (size_t)rt_str_len(message);
+    size_t escaped_len = 0;
+    for (size_t i = 0; i < len; ++i) {
+        unsigned char ch = data[i];
+        size_t add = 1;
+        if (ch == '\0' || ch == '\n' || ch == '\r' || ch == '\t')
+            add = 2;
+        else if (ch < 0x20 || ch == 0x7f)
+            add = 4;
+        if (escaped_len > SIZE_MAX - add)
+            return SIZE_MAX;
+        escaped_len += add;
+    }
+    return escaped_len;
+}
+
+static void log_append_escaped_message(char *dst, size_t *pos, rt_string message) {
+    static const char hex[] = "0123456789ABCDEF";
+    if (!dst || !pos || !message || !rt_string_is_handle((const void *)message) || !message->data)
+        return;
+
+    const unsigned char *data = (const unsigned char *)message->data;
+    size_t len = (size_t)rt_str_len(message);
+    for (size_t i = 0; i < len; ++i) {
+        unsigned char ch = data[i];
+        switch (ch) {
+        case '\0':
+            dst[(*pos)++] = '\\';
+            dst[(*pos)++] = '0';
+            break;
+        case '\n':
+            dst[(*pos)++] = '\\';
+            dst[(*pos)++] = 'n';
+            break;
+        case '\r':
+            dst[(*pos)++] = '\\';
+            dst[(*pos)++] = 'r';
+            break;
+        case '\t':
+            dst[(*pos)++] = '\\';
+            dst[(*pos)++] = 't';
+            break;
+        default:
+            if (ch < 0x20 || ch == 0x7f) {
+                dst[(*pos)++] = '\\';
+                dst[(*pos)++] = 'x';
+                dst[(*pos)++] = hex[ch >> 4];
+                dst[(*pos)++] = hex[ch & 0x0f];
+            } else {
+                dst[(*pos)++] = (char)ch;
+            }
+            break;
+        }
+    }
+}
+
+static void log_write_escaped_message(FILE *stream, rt_string message) {
+    static const char hex[] = "0123456789ABCDEF";
+    if (!stream || !message || !rt_string_is_handle((const void *)message) || !message->data)
+        return;
+
+    const unsigned char *data = (const unsigned char *)message->data;
+    size_t len = (size_t)rt_str_len(message);
+    for (size_t i = 0; i < len; ++i) {
+        unsigned char ch = data[i];
+        char escaped[4];
+        size_t escaped_len = 0;
+        switch (ch) {
+        case '\0':
+            escaped[0] = '\\';
+            escaped[1] = '0';
+            escaped_len = 2;
+            break;
+        case '\n':
+            escaped[0] = '\\';
+            escaped[1] = 'n';
+            escaped_len = 2;
+            break;
+        case '\r':
+            escaped[0] = '\\';
+            escaped[1] = 'r';
+            escaped_len = 2;
+            break;
+        case '\t':
+            escaped[0] = '\\';
+            escaped[1] = 't';
+            escaped_len = 2;
+            break;
+        default:
+            if (ch < 0x20 || ch == 0x7f) {
+                escaped[0] = '\\';
+                escaped[1] = 'x';
+                escaped[2] = hex[ch >> 4];
+                escaped[3] = hex[ch & 0x0f];
+                escaped_len = 4;
+            } else {
+                escaped[0] = (char)ch;
+                escaped_len = 1;
+            }
+            break;
+        }
+        (void)fwrite(escaped, 1, escaped_len, stream);
     }
 }
 
@@ -79,7 +222,7 @@ static void get_time_str(char *buf, size_t size) {
 /// This is the core logging implementation. It checks the log level, formats
 /// the message with timestamp and level prefix, writes to stderr, and flushes.
 ///
-/// **Output format:** `[LEVEL] HH:MM:SS message`
+/// **Output format:** `[LEVEL] YYYY-MM-DD HH:MM:SS message`
 ///
 /// @param level The severity level of this message (RT_LOG_DEBUG, etc.).
 /// @param level_str Human-readable level name ("DEBUG", "INFO", etc.).
@@ -89,21 +232,50 @@ static void get_time_str(char *buf, size_t size) {
 /// @note Messages below g_log_level are silently discarded.
 /// @note Output is flushed immediately after each message.
 static void log_message(int64_t level, const char *level_str, rt_string message) {
-    if (level < g_log_level)
+    int64_t current_level = __atomic_load_n(&g_log_level, __ATOMIC_ACQUIRE);
+    if (level < current_level)
         return;
 
-    const char *msg = "";
-    if (message && message->data) {
-        msg = rt_string_cstr(message);
-        if (!msg)
-            msg = "";
-    }
-
-    char time_buf[16];
+    char time_buf[32];
     get_time_str(time_buf, sizeof(time_buf));
 
-    fprintf(stderr, "[%s] %s %s\n", level_str, time_buf, msg);
-    fflush(stderr);
+    char prefix[64];
+    int prefix_len = snprintf(prefix, sizeof(prefix), "[%s] %s ", level_str, time_buf);
+    if (prefix_len < 0 || (size_t)prefix_len >= sizeof(prefix))
+        return;
+
+    size_t escaped_len = log_escaped_message_len(message);
+    if (escaped_len == SIZE_MAX)
+        return;
+
+    size_t total = (size_t)prefix_len;
+    if (escaped_len > SIZE_MAX - total - 1)
+        return;
+    total += escaped_len + 1;
+
+    char *line = (char *)malloc(total);
+    if (!line) {
+        rt_log_lock();
+        (void)fwrite(prefix, 1, (size_t)prefix_len, stderr);
+        log_write_escaped_message(stderr, message);
+        (void)fwrite("\n", 1, 1, stderr);
+        (void)fflush(stderr);
+        rt_log_unlock();
+        return;
+    }
+
+    size_t pos = 0;
+    memcpy(line + pos, prefix, (size_t)prefix_len);
+    pos += (size_t)prefix_len;
+    log_append_escaped_message(line, &pos, message);
+    line[pos++] = '\n';
+
+    rt_log_lock();
+    (void)fwrite(line, 1, pos, stderr);
+    (void)fflush(stderr);
+    rt_log_unlock();
+
+    free(line);
 }
 
 /// @brief Logs a message at DEBUG level.
@@ -121,7 +293,7 @@ static void log_message(int64_t level, const char *level_str, rt_string message)
 /// @param message The message text to log. NULL is handled as empty string.
 ///
 /// @note Only output if current log level is DEBUG (0).
-/// @note Output format: `[DEBUG] HH:MM:SS message`
+/// @note Output format: `[DEBUG] YYYY-MM-DD HH:MM:SS message`
 ///
 /// @see rt_log_set_level For enabling debug output
 void rt_log_debug(rt_string message) {
@@ -143,7 +315,7 @@ void rt_log_debug(rt_string message) {
 /// @param message The message text to log. NULL is handled as empty string.
 ///
 /// @note Output if current log level is INFO (1) or lower.
-/// @note Output format: `[INFO] HH:MM:SS message`
+/// @note Output format: `[INFO] YYYY-MM-DD HH:MM:SS message`
 void rt_log_info(rt_string message) {
     log_message(RT_LOG_INFO, "INFO", message);
 }
@@ -163,7 +335,7 @@ void rt_log_info(rt_string message) {
 /// @param message The message text to log. NULL is handled as empty string.
 ///
 /// @note Output if current log level is WARN (2) or lower.
-/// @note Output format: `[WARN] HH:MM:SS message`
+/// @note Output format: `[WARN] YYYY-MM-DD HH:MM:SS message`
 void rt_log_warn(rt_string message) {
     log_message(RT_LOG_WARN, "WARN", message);
 }
@@ -183,7 +355,7 @@ void rt_log_warn(rt_string message) {
 /// @param message The message text to log. NULL is handled as empty string.
 ///
 /// @note Output if current log level is ERROR (3) or lower.
-/// @note Output format: `[ERROR] HH:MM:SS message`
+/// @note Output format: `[ERROR] YYYY-MM-DD HH:MM:SS message`
 /// @note For fatal errors that terminate the program, use rt_trap instead.
 ///
 /// @see rt_trap For fatal errors
@@ -210,7 +382,7 @@ void rt_log_error(rt_string message) {
 ///
 /// @see rt_log_set_level For changing the log level
 int64_t rt_log_level(void) {
-    return g_log_level;
+    return __atomic_load_n(&g_log_level, __ATOMIC_ACQUIRE);
 }
 
 /// @brief Sets the current log level.
@@ -251,7 +423,7 @@ void rt_log_set_level(int64_t level) {
         level = RT_LOG_DEBUG;
     if (level > RT_LOG_OFF)
         level = RT_LOG_OFF;
-    g_log_level = level;
+    __atomic_store_n(&g_log_level, level, __ATOMIC_RELEASE);
 }
 
 /// @brief Checks if a specific log level is currently enabled.
@@ -275,7 +447,8 @@ void rt_log_set_level(int64_t level) {
 ///
 /// @note Returns false for LEVEL_OFF (4) - that level is never "enabled".
 int8_t rt_log_enabled(int64_t level) {
-    return level >= g_log_level && level < RT_LOG_OFF;
+    int64_t current_level = __atomic_load_n(&g_log_level, __ATOMIC_ACQUIRE);
+    return level >= current_level && level < RT_LOG_OFF;
 }
 
 /// @brief Returns the DEBUG level constant (0).

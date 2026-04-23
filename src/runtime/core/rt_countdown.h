@@ -84,6 +84,7 @@ int8_t rt_countdown_is_running(void *obj);
 /// @brief Wait (block) until the countdown expires.
 /// @param obj Countdown pointer.
 /// @details If already expired, returns immediately. Starts timer if not running.
+/// Long waits are slept in chunks until the timer actually expires.
 void rt_countdown_wait(void *obj);
 
 #ifdef __cplusplus

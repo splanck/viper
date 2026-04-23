@@ -68,20 +68,48 @@ void *rt_font_load(rt_string path) {
 
 /// @brief Free a previously loaded font and release its resources.
 /// @details Destroys the vg_font_t, freeing rasterized glyph caches and the
-///          font data buffer. Any widgets still referencing this font will have
-///          a dangling pointer — the caller must ensure the font outlives all
-///          widgets that use it.
+///          font data buffer. If a live app or widget tree still references the
+///          font, destruction is deferred until the owning app is torn down.
 /// @param font Opaque font handle from rt_font_load (safe to pass NULL).
 void rt_font_destroy(void *font) {
     RT_ASSERT_MAIN_THREAD();
-    if (font) {
-        vg_font_destroy((vg_font_t *)font);
-    }
+    if (!font)
+        return;
+    if (rt_gui_retire_font_if_in_use((vg_font_t *)font))
+        return;
+    vg_font_destroy((vg_font_t *)font);
 }
 
 //=============================================================================
 // Widget Functions
 //=============================================================================
+
+static int rt_widget_tree_contains(vg_widget_t *root, vg_widget_t *candidate) {
+    if (!root || !candidate)
+        return 0;
+    if (root == candidate)
+        return 1;
+    for (vg_widget_t *child = root->first_child; child; child = child->next_sibling) {
+        if (rt_widget_tree_contains(child, candidate))
+            return 1;
+    }
+    return 0;
+}
+
+static void rt_widget_forget_runtime_refs(rt_gui_app_t *app, vg_widget_t *widget) {
+    if (!app || !widget)
+        return;
+    if (rt_widget_tree_contains(widget, app->last_clicked))
+        app->last_clicked = NULL;
+    if (rt_widget_tree_contains(widget, app->drag_source))
+        app->drag_source = NULL;
+    if (rt_widget_tree_contains(widget, app->drag_over_widget))
+        app->drag_over_widget = NULL;
+    if (widget->type == VG_WIDGET_STATUSBAR)
+        app->last_statusbar_clicked = NULL;
+    if (widget->type == VG_WIDGET_TOOLBAR)
+        app->last_toolbar_clicked = NULL;
+}
 
 /// @brief Destroy a widget and its entire subtree, freeing all resources.
 /// @details Delegates to vg_widget_destroy, which recursively frees all child
@@ -90,9 +118,16 @@ void rt_font_destroy(void *font) {
 /// @param widget Widget to destroy (opaque handle).
 void rt_widget_destroy(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget) {
-        vg_widget_destroy((vg_widget_t *)widget);
-    }
+    if (!widget || rt_gui_is_destroyed_app_handle(widget) || rt_gui_is_app_handle(widget))
+        return;
+
+    vg_widget_t *w = (vg_widget_t *)widget;
+    rt_gui_app_t *app = rt_gui_app_from_widget(w);
+    if (app && app->root == w)
+        return;
+
+    rt_widget_forget_runtime_refs(app, w);
+    vg_widget_destroy(w);
 }
 
 /// @brief Show or hide a widget.
@@ -133,7 +168,10 @@ void rt_widget_set_enabled(void *widget, int64_t enabled) {
 void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
     if (widget) {
-        vg_widget_set_fixed_size((vg_widget_t *)widget, (float)width, (float)height);
+        vg_widget_set_fixed_size(
+            (vg_widget_t *)widget,
+            rt_gui_sanitize_nonnegative_float((double)width, RT_GUI_MAX_LAYOUT_VALUE),
+            rt_gui_sanitize_nonnegative_float((double)height, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -147,7 +185,8 @@ void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
 void rt_widget_set_flex(void *widget, double flex) {
     RT_ASSERT_MAIN_THREAD();
     if (widget) {
-        vg_widget_set_flex((vg_widget_t *)widget, (float)flex);
+        vg_widget_set_flex(
+            (vg_widget_t *)widget, rt_gui_sanitize_nonnegative_float(flex, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -176,7 +215,9 @@ void rt_widget_add_child(void *parent, void *child) {
 void rt_widget_set_margin(void *widget, int64_t margin) {
     RT_ASSERT_MAIN_THREAD();
     if (widget)
-        vg_widget_set_margin((vg_widget_t *)widget, (float)margin);
+        vg_widget_set_margin(
+            (vg_widget_t *)widget,
+            rt_gui_sanitize_nonnegative_float((double)margin, RT_GUI_MAX_LAYOUT_VALUE));
 }
 
 /// @brief Set the tab-order index for keyboard navigation.
@@ -188,7 +229,8 @@ void rt_widget_set_margin(void *widget, int64_t margin) {
 void rt_widget_set_tab_index(void *widget, int64_t idx) {
     RT_ASSERT_MAIN_THREAD();
     if (widget)
-        vg_widget_set_tab_index((vg_widget_t *)widget, (int)idx);
+        vg_widget_set_tab_index(
+            (vg_widget_t *)widget, rt_gui_clamp_i64_to_i32(idx, -1, INT32_MAX));
 }
 
 /// @brief Check whether the widget is currently visible.
@@ -299,15 +341,18 @@ void rt_label_set_text(void *label, rt_string text) {
 
 /// @brief Override the font and size used by a label widget.
 /// @details Replaces the label's font with a user-provided font. The font
-///          pointer is borrowed — the label does not take ownership, so the
-///          caller must ensure the font outlives the label.
+///          pointer is borrowed. Font.Destroy defers freeing while a live app
+///          tree references the font; detached widgets still need an owner to
+///          keep the font alive.
 /// @param label Label widget handle.
 /// @param font  Font handle from rt_font_load.
 /// @param size  Font size in points.
 void rt_label_set_font(void *label, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (label) {
-        vg_label_set_font((vg_label_t *)label, (vg_font_t *)font, (float)size);
+        vg_label_set_font((vg_label_t *)label,
+                          (vg_font_t *)font,
+                          (float)rt_gui_sanitize_font_size(size, 14.0));
     }
 }
 
@@ -358,7 +403,9 @@ void rt_button_set_text(void *button, rt_string text) {
 void rt_button_set_font(void *button, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (button) {
-        vg_button_set_font((vg_button_t *)button, (vg_font_t *)font, (float)size);
+        vg_button_set_font((vg_button_t *)button,
+                           (vg_font_t *)font,
+                           (float)rt_gui_sanitize_font_size(size, 14.0));
     }
 }
 
@@ -464,7 +511,9 @@ void rt_textinput_set_placeholder(void *input, rt_string placeholder) {
 void rt_textinput_set_font(void *input, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (input) {
-        vg_textinput_set_font((vg_textinput_t *)input, (vg_font_t *)font, (float)size);
+        vg_textinput_set_font((vg_textinput_t *)input,
+                              (vg_font_t *)font,
+                              (float)rt_gui_sanitize_font_size(size, 14.0));
     }
 }
 
@@ -546,7 +595,9 @@ void *rt_scrollview_new(void *parent) {
 void rt_scrollview_set_scroll(void *scroll, double x, double y) {
     RT_ASSERT_MAIN_THREAD();
     if (scroll) {
-        vg_scrollview_set_scroll((vg_scrollview_t *)scroll, (float)x, (float)y);
+        vg_scrollview_set_scroll((vg_scrollview_t *)scroll,
+                                 rt_gui_sanitize_signed_float(x, RT_GUI_MAX_LAYOUT_VALUE),
+                                 rt_gui_sanitize_signed_float(y, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -560,7 +611,10 @@ void rt_scrollview_set_scroll(void *scroll, double x, double y) {
 void rt_scrollview_set_content_size(void *scroll, double width, double height) {
     RT_ASSERT_MAIN_THREAD();
     if (scroll) {
-        vg_scrollview_set_content_size((vg_scrollview_t *)scroll, (float)width, (float)height);
+        vg_scrollview_set_content_size(
+            (vg_scrollview_t *)scroll,
+            rt_gui_sanitize_nonnegative_float(width, RT_GUI_MAX_LAYOUT_VALUE),
+            rt_gui_sanitize_nonnegative_float(height, RT_GUI_MAX_LAYOUT_VALUE));
     }
 }
 
@@ -667,7 +721,9 @@ void rt_treeview_select(void *tree, void *node) {
 void rt_treeview_set_font(void *tree, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (tree) {
-        vg_treeview_set_font((vg_treeview_t *)tree, (vg_font_t *)font, (float)size);
+        vg_treeview_set_font((vg_treeview_t *)tree,
+                             (vg_font_t *)font,
+                             (float)rt_gui_sanitize_font_size(size, 14.0));
     }
 }
 
@@ -716,9 +772,8 @@ void rt_treeview_node_set_data(void *node, rt_string data) {
     // Free old data if it exists and is owned by the runtime string wrapper.
     if (n->owns_user_data && n->user_data)
         free(n->user_data);
-    // Store a copy of the string as user_data
-    const char *cstr = rt_string_cstr(data);
-    n->user_data = cstr ? strdup(cstr) : NULL;
+    // Store length-tagged data so embedded NUL bytes round-trip correctly.
+    n->user_data = rt_gui_string_data_new(data);
     n->owns_user_data = n->user_data != NULL;
 }
 
@@ -728,10 +783,9 @@ rt_string rt_treeview_node_get_data(void *node) {
     if (!node)
         return rt_str_empty();
     vg_tree_node_t *n = (vg_tree_node_t *)node;
-    if (!n->user_data)
+    if (!n->user_data || !n->owns_user_data)
         return rt_str_empty();
-    const char *data = (const char *)n->user_data;
-    return rt_string_from_bytes(data, strlen(data));
+    return rt_gui_string_data_to_rt_string(n->user_data);
 }
 
 /// @brief Check whether a tree node is currently in the expanded state.

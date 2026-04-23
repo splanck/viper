@@ -1,0 +1,31 @@
+// intl-numbers.zia
+// Number format + parse round-trip demo across multiple locales. Shows that
+// Viper.Localization.NumberFormat preserves value identity through
+// locale-specific separators in strict mode.
+
+bind Locale        : Viper.Localization.Locale
+bind LocaleManager : Viper.Localization.LocaleManager
+bind NumberFormat  : Viper.Localization.NumberFormat
+
+func showRoundTrip(tagName: String, value: Float)
+    var loc = Locale.Parse(tagName)
+    var fmt = NumberFormat.ForLocale(loc)
+    var formatted = fmt.Decimal(value)
+    var parsed = fmt.ParseDecimal(formatted)
+    Say(tagName + ": " + formatted + " -> parses to " + parsed.ToString())
+end func
+
+func main()
+    LocaleManager.AddSearchPath("./locales")
+    LocaleManager.TryLoadFromJson("./locales/fr-FR.json")
+    LocaleManager.TryLoadFromJson("./locales/de-DE.json")
+    LocaleManager.TryLoadFromJson("./locales/ja-JP.json")
+
+    var value = 1234567.89
+    showRoundTrip("en-US", value)
+    // Non-baked locales silently fall back to invariant if their JSON is
+    // missing; the TryLoad* calls above populate them when present.
+    showRoundTrip("fr-FR", value)
+    showRoundTrip("de-DE", value)
+    showRoundTrip("ja-JP", value)
+end func

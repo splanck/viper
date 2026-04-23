@@ -10,12 +10,14 @@
 // Key invariants:
 //   - Log levels are ordered: DEBUG(0) < INFO(1) < WARN(2) < ERROR(3) < OFF(4).
 //   - Messages below the current minimum level are silently discarded.
-//   - Output format is: [LEVEL] HH:MM:SS message, written to stderr.
+//   - Output format is: [LEVEL] YYYY-MM-DD HH:MM:SS message, written to stderr.
+//   - Message bytes are length-aware; embedded NUL and control bytes are escaped.
+//   - Each accepted log call is emitted as one complete physical log line.
 //   - The default minimum level is INFO (1).
 //
 // Ownership/Lifetime:
 //   - Log functions do not retain input strings; callers retain ownership.
-//   - The global minimum level is process-wide state with no thread safety guarantees.
+//   - The global minimum level is process-wide atomic state.
 //
 // Links: src/runtime/core/rt_log.c (implementation), src/runtime/core/rt_string.h
 //

@@ -13,6 +13,7 @@
 #include "../../include/vg_widgets.h"
 #include "../../../graphics/src/vgfx_internal.h"
 #include "vgfx.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -233,7 +234,14 @@ void vg_image_set_pixels(vg_image_t *image, const uint8_t *pixels, int width, in
         return;
     }
 
-    size_t size = (size_t)width * (size_t)height * 4;
+    size_t w = (size_t)width;
+    size_t h = (size_t)height;
+    if (w > SIZE_MAX / h || w * h > SIZE_MAX / 4) {
+        image->base.needs_layout = true;
+        image->base.needs_paint = true;
+        return;
+    }
+    size_t size = w * h * 4;
     image->pixels = malloc(size);
     if (!image->pixels) {
         image->base.needs_layout = true;

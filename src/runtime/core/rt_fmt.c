@@ -18,15 +18,16 @@
 //     decimal output.
 //   - Radix formatting (rt_fmt_int_radix) supports bases 2-36; values outside
 //     this range return an empty string.
-//   - Float formatting (rt_fmt_float) uses snprintf with %g; NaN and infinity
-//     are formatted as their canonical string representations.
+//   - Float formatting uses an isolated C locale; NaN and infinity are
+//     formatted as their canonical string representations.
 //   - All functions return newly allocated rt_string values.
 //
 // Ownership/Lifetime:
 //   - All returned rt_string values are newly allocated and transfer ownership
 //     to the caller; the caller must call rt_string_unref when done.
 //   - Intermediate stack buffers (FMT_BUFFER_SIZE = 128) are used for most
-//     operations; no heap allocation occurs for formatting itself.
+//     operations; heap allocation is used when output size depends on caller
+//     supplied multi-byte padding, grouping, or currency symbols.
 //
 // Links: src/runtime/core/rt_fmt.h (public API),
 //        src/runtime/core/rt_format.c (floating-point and CSV formatting),
@@ -34,14 +35,24 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+
 #include "rt_fmt.h"
 #include "rt_internal.h"
 
 #include <inttypes.h>
+#include <locale.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(__APPLE__)
+#include <xlocale.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,22 +63,265 @@ extern "C" {
 /// @details Chosen to accommodate typical numeric formats without heap
 ///          allocation while keeping stack usage predictable.
 #define FMT_BUFFER_SIZE 128
+/// @brief Buffer size for fixed-point double formatting at full double range.
+/// @details DBL_MAX has 309 integer digits; with 20 decimals, sign, decimal
+///          point, and terminator, 384 bytes leaves headroom without heap use.
+#define FMT_FIXED_BUFFER_SIZE 384
 // Buffer size for binary formatting (64 bits + null)
 /// @brief Buffer size for binary formatting of 64-bit values.
 /// @details Holds 64 digits plus a NUL terminator.
 #define FMT_BIN_BUFFER_SIZE 65
 
+static rt_string rt_fmt_empty(void) {
+    return rt_string_from_bytes("", 0);
+}
+
+static int rt_fmt_checked_add(size_t a, size_t b, size_t *out) {
+    if (a > SIZE_MAX - b)
+        return 0;
+    *out = a + b;
+    return 1;
+}
+
+static int rt_fmt_vsnprintf_c_locale(char *buffer, size_t size, const char *fmt, va_list args) {
+    if (!buffer || size == 0 || !fmt)
+        return -1;
+
+#if defined(_WIN32)
+    _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
+    if (!c_locale)
+        return -1;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+    int written = _vsnprintf_l(buffer, size, fmt, c_locale, args);
+#pragma GCC diagnostic pop
+    _free_locale(c_locale);
+    return written;
+#else
+    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+    if (!c_locale)
+        return -1;
+    locale_t previous = uselocale(c_locale);
+    if (previous == (locale_t)0) {
+        freelocale(c_locale);
+        return -1;
+    }
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+    int written = vsnprintf(buffer, size, fmt, args);
+#pragma GCC diagnostic pop
+    uselocale(previous);
+    freelocale(c_locale);
+    return written;
+#endif
+}
+
+static int rt_fmt_snprintf_c_locale(char *buffer, size_t size, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int written = rt_fmt_vsnprintf_c_locale(buffer, size, fmt, args);
+    va_end(args);
+    return written;
+}
+
+static const char *rt_fmt_string_bytes(rt_string s, const char *fallback, size_t *out_len) {
+    if (!out_len)
+        return fallback;
+    if (!s) {
+        *out_len = strlen(fallback);
+        return fallback;
+    }
+
+    if (!rt_string_is_handle((const void *)s) || !s->data) {
+        *out_len = strlen(fallback);
+        return fallback;
+    }
+
+    const char *data = s->data;
+    size_t len = (size_t)rt_str_len(s);
+    if (!data || len == 0) {
+        *out_len = strlen(fallback);
+        return fallback;
+    }
+
+    *out_len = len;
+    return data;
+}
+
+static const char *rt_fmt_string_bytes_allow_empty(rt_string s,
+                                                   const char *fallback,
+                                                   size_t *out_len) {
+    if (!out_len)
+        return fallback;
+    if (!s || !rt_string_is_handle((const void *)s) || !s->data) {
+        *out_len = strlen(fallback);
+        return fallback;
+    }
+
+    *out_len = (size_t)rt_str_len(s);
+    return s->data;
+}
+
+static int rt_fmt_is_utf8_cont(unsigned char ch) {
+    return (ch & 0xC0) == 0x80;
+}
+
+static size_t rt_fmt_first_utf8_len(const char *data, size_t len) {
+    if (!data || len == 0)
+        return 0;
+
+    unsigned char first = (unsigned char)data[0];
+    if (first < 0x80)
+        return 1;
+
+    if (first >= 0xC2 && first <= 0xDF) {
+        if (len >= 2 && rt_fmt_is_utf8_cont((unsigned char)data[1]))
+            return 2;
+        return 0;
+    }
+
+    if (first == 0xE0) {
+        if (len >= 3 && (unsigned char)data[1] >= 0xA0 &&
+            (unsigned char)data[1] <= 0xBF && rt_fmt_is_utf8_cont((unsigned char)data[2]))
+            return 3;
+        return 0;
+    }
+
+    if ((first >= 0xE1 && first <= 0xEC) || (first >= 0xEE && first <= 0xEF)) {
+        if (len >= 3 && rt_fmt_is_utf8_cont((unsigned char)data[1]) &&
+            rt_fmt_is_utf8_cont((unsigned char)data[2]))
+            return 3;
+        return 0;
+    }
+
+    if (first == 0xED) {
+        if (len >= 3 && (unsigned char)data[1] >= 0x80 &&
+            (unsigned char)data[1] <= 0x9F && rt_fmt_is_utf8_cont((unsigned char)data[2]))
+            return 3;
+        return 0;
+    }
+
+    if (first == 0xF0) {
+        if (len >= 4 && (unsigned char)data[1] >= 0x90 &&
+            (unsigned char)data[1] <= 0xBF && rt_fmt_is_utf8_cont((unsigned char)data[2]) &&
+            rt_fmt_is_utf8_cont((unsigned char)data[3]))
+            return 4;
+        return 0;
+    }
+
+    if (first >= 0xF1 && first <= 0xF3) {
+        if (len >= 4 && rt_fmt_is_utf8_cont((unsigned char)data[1]) &&
+            rt_fmt_is_utf8_cont((unsigned char)data[2]) &&
+            rt_fmt_is_utf8_cont((unsigned char)data[3]))
+            return 4;
+        return 0;
+    }
+
+    if (first == 0xF4) {
+        if (len >= 4 && (unsigned char)data[1] >= 0x80 &&
+            (unsigned char)data[1] <= 0x8F && rt_fmt_is_utf8_cont((unsigned char)data[2]) &&
+            rt_fmt_is_utf8_cont((unsigned char)data[3]))
+            return 4;
+        return 0;
+    }
+
+    return 0;
+}
+
+static int rt_fmt_decimal_string_is_zero(const char *text, size_t len) {
+    if (!text)
+        return 1;
+    for (size_t i = 0; i < len; ++i) {
+        char ch = text[i];
+        if (ch == '.' || ch == '+' || ch == '-' || ch == 'e' || ch == 'E' || ch == '%')
+            continue;
+        if (ch != '0')
+            return 0;
+    }
+    return 1;
+}
+
+static char *rt_fmt_group_digits_alloc(const char *digits,
+                                       size_t digits_len,
+                                       const char *sep,
+                                       size_t sep_len,
+                                       int negative,
+                                       size_t *out_len) {
+    if (out_len)
+        *out_len = 0;
+    if (!digits || digits_len == 0 || !sep)
+        return NULL;
+
+    size_t groups = (digits_len - 1) / 3;
+    size_t sep_total = 0;
+    if (groups != 0) {
+        if (sep_len > SIZE_MAX / groups)
+            return NULL;
+        sep_total = groups * sep_len;
+    }
+
+    size_t total = digits_len;
+    if (!rt_fmt_checked_add(total, sep_total, &total))
+        return NULL;
+    if (negative && !rt_fmt_checked_add(total, 1, &total))
+        return NULL;
+    if (total == SIZE_MAX)
+        return NULL;
+
+    char *buf = (char *)malloc(total + 1);
+    if (!buf)
+        return NULL;
+
+    char *dst = buf;
+    if (negative)
+        *dst++ = '-';
+
+    size_t first_group = digits_len % 3;
+    if (first_group == 0)
+        first_group = 3;
+
+    memcpy(dst, digits, first_group);
+    dst += first_group;
+    size_t pos = first_group;
+    while (pos < digits_len) {
+        memcpy(dst, sep, sep_len);
+        dst += sep_len;
+        memcpy(dst, digits + pos, 3);
+        dst += 3;
+        pos += 3;
+    }
+    *dst = '\0';
+
+    if (out_len)
+        *out_len = (size_t)(dst - buf);
+    return buf;
+}
+
+static int rt_fmt_append_bytes(char *buf, size_t cap, size_t *pos, const char *text, size_t len) {
+    if (!buf || !pos || !text || *pos > cap)
+        return 0;
+    if (len > cap - *pos)
+        return 0;
+    memcpy(buf + *pos, text, len);
+    *pos += len;
+    return 1;
+}
+
+static int rt_fmt_append_cstr(char *buf, size_t cap, size_t *pos, const char *text) {
+    return rt_fmt_append_bytes(buf, cap, pos, text, strlen(text));
+}
+
 /// @brief Format a signed 64-bit integer in decimal.
-/// @details Uses `snprintf` with the C locale and returns an empty string
-///          on formatting failure or truncation. The result owns its bytes
-///          and must be released by the caller.
+/// @details Uses `snprintf` and returns an empty string on formatting failure
+///          or truncation. The result owns its bytes and must be released by
+///          the caller.
 /// @param value Integer value to format.
 /// @return Newly allocated runtime string with decimal text.
 rt_string rt_fmt_int(int64_t value) {
     char buffer[FMT_BUFFER_SIZE];
     int len = snprintf(buffer, sizeof(buffer), "%" PRId64, value);
     if (len < 0 || (size_t)len >= sizeof(buffer))
-        return rt_string_from_bytes("", 0);
+        return rt_fmt_empty();
     return rt_string_from_bytes(buffer, (size_t)len);
 }
 
@@ -82,7 +336,7 @@ rt_string rt_fmt_int(int64_t value) {
 rt_string rt_fmt_int_radix(int64_t value, int64_t radix) {
     // Validate radix
     if (radix < 2 || radix > 36)
-        return rt_string_from_bytes("", 0);
+        return rt_fmt_empty();
 
     // Handle zero specially
     if (value == 0)
@@ -120,60 +374,81 @@ rt_string rt_fmt_int_radix(int64_t value, int64_t radix) {
 }
 
 /// @brief Format an integer with a minimum width and pad character.
-/// @details The output is left-padded to @p width using the first character
-///          of @p pad_char (defaulting to space if empty). When padding with
+/// @details The output is left-padded to @p width using the first valid UTF-8
+///          code point of @p pad_char (defaulting to space if empty or invalid). When padding with
 ///          '0' and the value is negative, the sign is emitted before the
-///          zeros to match typical numeric formatting conventions. Width is
-///          clamped to the internal buffer size to avoid overflow.
+///          zeros to match typical numeric formatting conventions. Very large
+///          widths that cannot be allocated return an empty string.
 /// @param value Integer to format.
 /// @param width Minimum output width in characters.
 /// @param pad_char Runtime string containing the pad character.
 /// @return Newly allocated string containing the padded number.
 rt_string rt_fmt_int_pad(int64_t value, int64_t width, rt_string pad_char) {
-    // Get the pad character (default to space)
-    char pad = ' ';
-    const char *pad_str = rt_string_cstr(pad_char);
-    if (pad_str && pad_str[0] != '\0')
-        pad = pad_str[0];
+    const char *pad_data = " ";
+    size_t pad_len = 1;
+    if (pad_char && rt_string_is_handle((const void *)pad_char) && pad_char->data) {
+        size_t candidate_len = (size_t)rt_str_len(pad_char);
+        size_t first_len = rt_fmt_first_utf8_len(pad_char->data, candidate_len);
+        if (first_len > 0) {
+            pad_data = pad_char->data;
+            pad_len = first_len;
+        }
+    }
 
     // Format the number
     char num_buf[FMT_BUFFER_SIZE];
     int num_len = snprintf(num_buf, sizeof(num_buf), "%" PRId64, value);
     if (num_len < 0 || (size_t)num_len >= sizeof(num_buf))
-        return rt_string_from_bytes("", 0);
+        return rt_fmt_empty();
 
     // If width <= number length, return as-is
     if (width <= 0 || width <= num_len)
         return rt_string_from_bytes(num_buf, (size_t)num_len);
 
-    // Build padded result
-    char buffer[FMT_BUFFER_SIZE * 2];
-    if ((size_t)width >= sizeof(buffer))
-        width = (int64_t)(sizeof(buffer) - 1);
+    if ((uint64_t)width > SIZE_MAX)
+        return rt_fmt_empty();
 
     size_t pad_count = (size_t)width - (size_t)num_len;
+    size_t pad_bytes = 0;
+    if (pad_count > SIZE_MAX / pad_len)
+        return rt_fmt_empty();
+    pad_bytes = pad_count * pad_len;
+
+    size_t out_len = 0;
+    if (!rt_fmt_checked_add((size_t)num_len, pad_bytes, &out_len) || out_len == SIZE_MAX)
+        return rt_fmt_empty();
+
+    char *buffer = (char *)malloc(out_len + 1);
+    if (!buffer)
+        return rt_fmt_empty();
 
     // Handle negative numbers: put sign before padding if pad is '0'
     size_t pos = 0;
-    if (value < 0 && pad == '0') {
+    if (value < 0 && pad_len == 1 && pad_data[0] == '0') {
         buffer[pos++] = '-';
         // Skip the minus sign in num_buf
         for (size_t i = 0; i < pad_count; ++i)
-            buffer[pos++] = pad;
+            buffer[pos++] = pad_data[0];
         memcpy(buffer + pos, num_buf + 1, (size_t)num_len - 1);
         pos += (size_t)num_len - 1;
     } else {
-        for (size_t i = 0; i < pad_count; ++i)
-            buffer[pos++] = pad;
+        for (size_t i = 0; i < pad_count; ++i) {
+            memcpy(buffer + pos, pad_data, pad_len);
+            pos += pad_len;
+        }
         memcpy(buffer + pos, num_buf, (size_t)num_len);
         pos += (size_t)num_len;
     }
+    buffer[pos] = '\0';
 
-    return rt_string_from_bytes(buffer, pos);
+    rt_string result = rt_string_from_bytes(buffer, pos);
+    free(buffer);
+    return result;
 }
 
 /// @brief Format a floating-point number with default precision.
-/// @details Uses `%g` formatting to produce a compact representation. NaN
+/// @details Uses `%.17g` formatting so finite values round-trip through
+///          Viper.Parse numeric helpers. NaN
 ///          and infinity are mapped to "NaN", "Infinity", or "-Infinity".
 ///          Formatting failures return an empty string.
 /// @param value Floating-point value to format.
@@ -185,17 +460,21 @@ rt_string rt_fmt_num(double value) {
     if (isinf(value))
         return value > 0 ? rt_string_from_bytes("Infinity", 8)
                          : rt_string_from_bytes("-Infinity", 9);
+    if (value == 0.0)
+        value = 0.0;
 
     char buffer[FMT_BUFFER_SIZE];
-    int len = snprintf(buffer, sizeof(buffer), "%g", value);
+    int len = rt_fmt_snprintf_c_locale(buffer, sizeof(buffer), "%.17g", value);
     if (len < 0 || (size_t)len >= sizeof(buffer))
-        return rt_string_from_bytes("", 0);
+        return rt_fmt_empty();
+    len = (int)strlen(buffer);
     return rt_string_from_bytes(buffer, (size_t)len);
 }
 
 /// @brief Format a floating-point number with fixed decimal places.
-/// @details Decimal places are clamped to [0, 20] to keep buffer usage
-///          bounded. NaN and infinity are mapped to their textual forms.
+/// @details Decimal places are clamped to [0, 20]. The fixed buffer is sized
+///          for the largest finite double at the maximum precision. NaN and
+///          infinity are mapped to their textual forms.
 /// @param value Floating-point value to format.
 /// @param decimals Requested number of fractional digits.
 /// @return Newly allocated runtime string for the formatted number.
@@ -212,11 +491,18 @@ rt_string rt_fmt_num_fixed(double value, int64_t decimals) {
         decimals = 0;
     if (decimals > 20)
         decimals = 20;
+    if (value == 0.0)
+        value = 0.0;
 
-    char buffer[FMT_BUFFER_SIZE];
-    int len = snprintf(buffer, sizeof(buffer), "%.*f", (int)decimals, value);
+    char buffer[FMT_FIXED_BUFFER_SIZE];
+    int len = rt_fmt_snprintf_c_locale(buffer, sizeof(buffer), "%.*f", (int)decimals, value);
     if (len < 0 || (size_t)len >= sizeof(buffer))
-        return rt_string_from_bytes("", 0);
+        return rt_fmt_empty();
+    if (buffer[0] == '-' && rt_fmt_decimal_string_is_zero(buffer, (size_t)len)) {
+        memmove(buffer, buffer + 1, (size_t)len);
+        --len;
+    }
+    len = (int)strlen(buffer);
     return rt_string_from_bytes(buffer, (size_t)len);
 }
 
@@ -239,11 +525,18 @@ rt_string rt_fmt_num_sci(double value, int64_t decimals) {
         decimals = 0;
     if (decimals > 20)
         decimals = 20;
+    if (value == 0.0)
+        value = 0.0;
 
     char buffer[FMT_BUFFER_SIZE];
-    int len = snprintf(buffer, sizeof(buffer), "%.*e", (int)decimals, value);
+    int len = rt_fmt_snprintf_c_locale(buffer, sizeof(buffer), "%.*e", (int)decimals, value);
     if (len < 0 || (size_t)len >= sizeof(buffer))
-        return rt_string_from_bytes("", 0);
+        return rt_fmt_empty();
+    if (buffer[0] == '-' && rt_fmt_decimal_string_is_zero(buffer, (size_t)len)) {
+        memmove(buffer, buffer + 1, (size_t)len);
+        --len;
+    }
+    len = (int)strlen(buffer);
     return rt_string_from_bytes(buffer, (size_t)len);
 }
 
@@ -269,10 +562,23 @@ rt_string rt_fmt_num_pct(double value, int64_t decimals) {
         decimals = 20;
 
     double pct = value * 100.0;
+    if (isnan(pct))
+        return rt_string_from_bytes("NaN%", 4);
+    if (isinf(pct))
+        return pct > 0 ? rt_string_from_bytes("Infinity%", 9)
+                       : rt_string_from_bytes("-Infinity%", 10);
+    if (pct == 0.0)
+        pct = 0.0;
+
     char buffer[FMT_BUFFER_SIZE];
-    int len = snprintf(buffer, sizeof(buffer), "%.*f%%", (int)decimals, pct);
+    int len = rt_fmt_snprintf_c_locale(buffer, sizeof(buffer), "%.*f%%", (int)decimals, pct);
     if (len < 0 || (size_t)len >= sizeof(buffer))
-        return rt_string_from_bytes("", 0);
+        return rt_fmt_empty();
+    if (buffer[0] == '-' && rt_fmt_decimal_string_is_zero(buffer, (size_t)len)) {
+        memmove(buffer, buffer + 1, (size_t)len);
+        --len;
+    }
+    len = (int)strlen(buffer);
     return rt_string_from_bytes(buffer, (size_t)len);
 }
 
@@ -289,9 +595,9 @@ rt_string rt_fmt_bool(bool value) {
 /// @details Provides a user-friendly, title-cased representation for
 ///          boolean values in UI-facing contexts.
 /// @param value Boolean value to format.
-/// @return Newly allocated runtime string with "yes" or "no".
+/// @return Newly allocated runtime string with "Yes" or "No".
 rt_string rt_fmt_bool_yn(bool value) {
-    return value ? rt_string_from_bytes("yes", 3) : rt_string_from_bytes("no", 2);
+    return value ? rt_string_from_bytes("Yes", 3) : rt_string_from_bytes("No", 2);
 }
 
 /// @brief Format a byte count into a human-readable size string.
@@ -314,12 +620,18 @@ rt_string rt_fmt_size(int64_t bytes) {
     else
         ubytes = (uint64_t)bytes;
 
-    double size = (double)ubytes;
     int unit_idx = 0;
+    uint64_t divisor = 1;
 
-    while (size >= 1024.0 && unit_idx < num_units - 1) {
-        size /= 1024.0;
+    while (unit_idx < num_units - 1 && ubytes / divisor >= 1024ULL) {
+        divisor *= 1024ULL;
         ++unit_idx;
+    }
+    double size = (double)ubytes / (double)divisor;
+    if (unit_idx > 0 && unit_idx < num_units - 1 && size >= 1023.95) {
+        divisor *= 1024ULL;
+        ++unit_idx;
+        size = (double)ubytes / (double)divisor;
     }
 
     char buffer[FMT_BUFFER_SIZE];
@@ -335,12 +647,13 @@ rt_string rt_fmt_size(int64_t bytes) {
                        units[unit_idx]);
     } else {
         // Units >= KB always show one decimal digit (e.g., 1.0 KB).
-        len = snprintf(
+        len = rt_fmt_snprintf_c_locale(
             buffer, sizeof(buffer), "%s%.1f %s", negative ? "-" : "", size, units[unit_idx]);
     }
 
     if (len < 0 || (size_t)len >= sizeof(buffer))
-        return rt_string_from_bytes("", 0);
+        return rt_fmt_empty();
+    len = (int)strlen(buffer);
     return rt_string_from_bytes(buffer, (size_t)len);
 }
 
@@ -353,7 +666,7 @@ rt_string rt_fmt_hex(int64_t value) {
     char buffer[FMT_BUFFER_SIZE];
     int len = snprintf(buffer, sizeof(buffer), "%" PRIx64, (uint64_t)value);
     if (len < 0 || (size_t)len >= sizeof(buffer))
-        return rt_string_from_bytes("", 0);
+        return rt_fmt_empty();
     return rt_string_from_bytes(buffer, (size_t)len);
 }
 
@@ -372,7 +685,7 @@ rt_string rt_fmt_hex_pad(int64_t value, int64_t width) {
     char buffer[FMT_BUFFER_SIZE];
     int len = snprintf(buffer, sizeof(buffer), "%0*" PRIx64, (int)width, (uint64_t)value);
     if (len < 0 || (size_t)len >= sizeof(buffer))
-        return rt_string_from_bytes("", 0);
+        return rt_fmt_empty();
     return rt_string_from_bytes(buffer, (size_t)len);
 }
 
@@ -410,7 +723,7 @@ rt_string rt_fmt_oct(int64_t value) {
     char buffer[FMT_BUFFER_SIZE];
     int len = snprintf(buffer, sizeof(buffer), "%" PRIo64, (uint64_t)value);
     if (len < 0 || (size_t)len >= sizeof(buffer))
-        return rt_string_from_bytes("", 0);
+        return rt_fmt_empty();
     return rt_string_from_bytes(buffer, (size_t)len);
 }
 
@@ -428,10 +741,8 @@ rt_string rt_fmt_oct(int64_t value) {
 /// @param sep Separator string; defaults to "," if NULL or empty.
 /// @return Newly allocated string with grouped digits, or empty on OOM.
 rt_string rt_fmt_int_grouped(int64_t value, rt_string sep) {
-    const char *sep_str = sep ? rt_string_cstr(sep) : ",";
-    if (!sep_str || *sep_str == '\0')
-        sep_str = ",";
-    size_t sep_len = strlen(sep_str);
+    size_t sep_len = 0;
+    const char *sep_str = rt_fmt_string_bytes(sep, ",", &sep_len);
 
     // Format the number without grouping first
     char raw[FMT_BUFFER_SIZE];
@@ -445,40 +756,16 @@ rt_string rt_fmt_int_grouped(int64_t value, rt_string sep) {
         uval = (uint64_t)value;
     }
     rlen = snprintf(raw, sizeof(raw), "%" PRIu64, uval);
-    if (rlen < 0)
-        return rt_string_from_bytes("", 0);
+    if (rlen < 0 || (size_t)rlen >= sizeof(raw))
+        return rt_fmt_empty();
 
-    // Count how many separators we need
-    int digits = rlen;
-    int groups = (digits - 1) / 3;
-    size_t out_len = (size_t)digits + (size_t)groups * sep_len + (negative ? 1 : 0);
-
-    char *buf = (char *)malloc(out_len + 1);
+    size_t out_len = 0;
+    char *buf = rt_fmt_group_digits_alloc(
+        raw, (size_t)rlen, sep_str, sep_len, negative, &out_len);
     if (!buf)
-        return rt_string_from_bytes("", 0);
+        return rt_fmt_empty();
 
-    char *dst = buf;
-    if (negative)
-        *dst++ = '-';
-
-    int first_group = digits % 3;
-    if (first_group == 0)
-        first_group = 3;
-
-    const char *src = raw;
-    for (int i = 0; i < first_group; ++i)
-        *dst++ = *src++;
-
-    while (*src) {
-        memcpy(dst, sep_str, sep_len);
-        dst += sep_len;
-        *dst++ = *src++;
-        *dst++ = *src++;
-        *dst++ = *src++;
-    }
-    *dst = '\0';
-
-    rt_string result = rt_string_from_bytes(buf, (size_t)(dst - buf));
+    rt_string result = rt_string_from_bytes(buf, out_len);
     free(buf);
     return result;
 }
@@ -500,41 +787,50 @@ rt_string rt_fmt_currency(double value, int64_t decimals, rt_string symbol) {
     if (decimals > 20)
         decimals = 20;
 
-    const char *sym = symbol ? rt_string_cstr(symbol) : "$";
-    if (!sym)
-        sym = "$";
-    size_t sym_len = strlen(sym);
+    if (isnan(value))
+        return rt_string_from_bytes("NaN", 3);
+    if (isinf(value))
+        return value > 0 ? rt_string_from_bytes("Infinity", 8)
+                         : rt_string_from_bytes("-Infinity", 9);
 
-    // Separate integer and fractional parts
-    int negative = value < 0;
-    double abs_val = negative ? -value : value;
+    size_t sym_len = 0;
+    const char *sym = rt_fmt_string_bytes_allow_empty(symbol, "$", &sym_len);
 
-    // Format the decimal part
-    char dec_buf[32];
-    int dlen = 0;
-    if (decimals > 0) {
-        double frac = abs_val - floor(abs_val);
-        double multiplier = 1.0;
-        for (int64_t i = 0; i < decimals; ++i)
-            multiplier *= 10.0;
-        int64_t frac_int = (int64_t)(frac * multiplier + 0.5);
-        dlen = snprintf(dec_buf, sizeof(dec_buf), ".%0*" PRId64, (int)decimals, frac_int);
-    }
+    double abs_val = fabs(value);
 
-    // Format the integer part with grouping
-    int64_t int_part = (int64_t)floor(abs_val);
-    rt_string comma = rt_string_from_bytes(",", 1);
-    rt_string grouped = rt_fmt_int_grouped(int_part, comma);
-    rt_string_unref(comma);
-    const char *grp_str = rt_string_cstr(grouped);
-    size_t grp_len = grp_str ? strlen(grp_str) : 0;
+    char fixed[384];
+    int fixed_len = rt_fmt_snprintf_c_locale(fixed, sizeof(fixed), "%.*f", (int)decimals, abs_val);
+    if (fixed_len < 0 || (size_t)fixed_len >= sizeof(fixed))
+        return rt_fmt_empty();
+    fixed_len = (int)strlen(fixed);
+    int negative = signbit(value) && !rt_fmt_decimal_string_is_zero(fixed, (size_t)fixed_len);
+
+    const char *dot = memchr(fixed, '.', (size_t)fixed_len);
+    size_t integer_len = dot ? (size_t)(dot - fixed) : (size_t)fixed_len;
+    size_t frac_len = dot ? (size_t)fixed_len - integer_len : 0;
+
+    size_t grp_len = 0;
+    char *grouped = rt_fmt_group_digits_alloc(fixed, integer_len, ",", 1, 0, &grp_len);
+    if (!grouped)
+        return rt_fmt_empty();
 
     // Build final: [-]symbol + grouped + decimals
-    size_t total = (negative ? 1 : 0) + sym_len + grp_len + (size_t)dlen;
+    size_t total = negative ? 1 : 0;
+    if (!rt_fmt_checked_add(total, sym_len, &total) ||
+        !rt_fmt_checked_add(total, grp_len, &total) ||
+        !rt_fmt_checked_add(total, frac_len, &total)) {
+        free(grouped);
+        return rt_fmt_empty();
+    }
+    if (total == SIZE_MAX) {
+        free(grouped);
+        return rt_fmt_empty();
+    }
+
     char *buf = (char *)malloc(total + 1);
     if (!buf) {
-        rt_string_unref(grouped);
-        return rt_string_from_bytes("", 0);
+        free(grouped);
+        return rt_fmt_empty();
     }
 
     char *dst = buf;
@@ -542,19 +838,17 @@ rt_string rt_fmt_currency(double value, int64_t decimals, rt_string symbol) {
         *dst++ = '-';
     memcpy(dst, sym, sym_len);
     dst += sym_len;
-    if (grp_str) {
-        memcpy(dst, grp_str, grp_len);
-        dst += grp_len;
-    }
-    if (dlen > 0) {
-        memcpy(dst, dec_buf, (size_t)dlen);
-        dst += dlen;
+    memcpy(dst, grouped, grp_len);
+    dst += grp_len;
+    if (frac_len > 0) {
+        memcpy(dst, dot, frac_len);
+        dst += frac_len;
     }
     *dst = '\0';
 
     rt_string result = rt_string_from_bytes(buf, (size_t)(dst - buf));
     free(buf);
-    rt_string_unref(grouped);
+    free(grouped);
     return result;
 }
 
@@ -574,34 +868,40 @@ static const char *tens_words[] = {
 /// @param cap Remaining capacity of buf.
 /// @param n Value in range [0, 999].
 /// @return Number of characters written (not including NUL terminator).
-static size_t words_chunk(char *buf, size_t cap, int64_t n) {
+static int words_chunk(char *buf, size_t cap, size_t *pos, uint64_t n) {
     if (n == 0)
-        return 0;
-    size_t written = 0;
+        return 1;
     if (n >= 100) {
         int h = (int)(n / 100);
-        written += (size_t)snprintf(buf + written, cap - written, "%s hundred", ones[h]);
+        if (!rt_fmt_append_cstr(buf, cap, pos, ones[h]) ||
+            !rt_fmt_append_cstr(buf, cap, pos, " hundred"))
+            return 0;
         n %= 100;
-        if (n > 0)
-            written += (size_t)snprintf(buf + written, cap - written, " ");
+        if (n > 0 && !rt_fmt_append_cstr(buf, cap, pos, " "))
+            return 0;
     }
     if (n >= 20) {
         int t = (int)(n / 10);
-        written += (size_t)snprintf(buf + written, cap - written, "%s", tens_words[t]);
+        if (!rt_fmt_append_cstr(buf, cap, pos, tens_words[t]))
+            return 0;
         n %= 10;
-        if (n > 0)
-            written += (size_t)snprintf(buf + written, cap - written, "-%s", ones[n]);
+        if (n > 0 &&
+            (!rt_fmt_append_cstr(buf, cap, pos, "-") ||
+             !rt_fmt_append_cstr(buf, cap, pos, ones[n])))
+            return 0;
     } else if (n > 0) {
-        written += (size_t)snprintf(buf + written, cap - written, "%s", ones[n]);
+        if (!rt_fmt_append_cstr(buf, cap, pos, ones[n]))
+            return 0;
     }
-    return written;
+    return 1;
 }
 
-/// @brief Convert a non-negative integer to its English word representation.
+/// @brief Convert an integer to its English word representation.
 /// @details Decomposes the number into groups of three digits (ones, thousands,
-///          millions, billions, trillions) and converts each group to words via
-///          words_chunk. Groups are joined with scale labels. Supports values up
-///          to the trillions. Negative numbers are prefixed with "negative ".
+///          millions, billions, trillions, quadrillions, and quintillions) and
+///          converts each group to words via words_chunk. Groups are joined with
+///          scale labels. Supports the full signed 64-bit integer range.
+///          Negative numbers are prefixed with "negative ".
 ///          Zero is special-cased to return "zero" directly.
 /// @param value Integer to convert.
 /// @return Newly allocated string such as "one hundred twenty-three thousand".
@@ -609,7 +909,7 @@ rt_string rt_fmt_to_words(int64_t value) {
     if (value == 0)
         return rt_string_from_bytes("zero", 4);
 
-    char buf[512];
+    char buf[1024];
     size_t pos = 0;
     int negative = 0;
     uint64_t uvalue;
@@ -621,27 +921,31 @@ rt_string rt_fmt_to_words(int64_t value) {
         uvalue = (uint64_t)value;
     }
 
-    if (negative)
-        pos += (size_t)snprintf(buf + pos, sizeof(buf) - pos, "negative ");
+    if (negative && !rt_fmt_append_cstr(buf, sizeof(buf), &pos, "negative "))
+        return rt_fmt_empty();
 
-    static const char *scale[] = {"", " thousand", " million", " billion", " trillion"};
-    int64_t parts[5] = {0};
+    static const char *scale[] = {
+        "", " thousand", " million", " billion", " trillion", " quadrillion", " quintillion"};
+    uint64_t parts[sizeof(scale) / sizeof(scale[0])] = {0};
     int part_count = 0;
 
     uint64_t temp = uvalue;
-    while (temp > 0 && part_count < 5) {
-        parts[part_count++] = (int64_t)(temp % 1000);
+    while (temp > 0 && part_count < (int)(sizeof(parts) / sizeof(parts[0]))) {
+        parts[part_count++] = temp % 1000;
         temp /= 1000;
     }
+    if (temp > 0)
+        return rt_fmt_empty();
 
     int first = 1;
     for (int i = part_count - 1; i >= 0; --i) {
         if (parts[i] == 0)
             continue;
-        if (!first)
-            pos += (size_t)snprintf(buf + pos, sizeof(buf) - pos, " ");
-        pos += words_chunk(buf + pos, sizeof(buf) - pos, parts[i]);
-        pos += (size_t)snprintf(buf + pos, sizeof(buf) - pos, "%s", scale[i]);
+        if (!first && !rt_fmt_append_cstr(buf, sizeof(buf), &pos, " "))
+            return rt_fmt_empty();
+        if (!words_chunk(buf, sizeof(buf), &pos, parts[i]) ||
+            !rt_fmt_append_cstr(buf, sizeof(buf), &pos, scale[i]))
+            return rt_fmt_empty();
         first = 0;
     }
 
@@ -659,9 +963,9 @@ rt_string rt_fmt_to_words(int64_t value) {
 rt_string rt_fmt_ordinal(int64_t value) {
     char buf[FMT_BUFFER_SIZE];
     const char *suffix;
-    int64_t abs_val = value < 0 ? -value : value;
-    int64_t last_two = abs_val % 100;
-    int64_t last_one = abs_val % 10;
+    uint64_t abs_val = value < 0 ? 0 - (uint64_t)value : (uint64_t)value;
+    uint64_t last_two = abs_val % 100;
+    uint64_t last_one = abs_val % 10;
 
     if (last_two >= 11 && last_two <= 13)
         suffix = "th";
@@ -676,7 +980,7 @@ rt_string rt_fmt_ordinal(int64_t value) {
 
     int len = snprintf(buf, sizeof(buf), "%" PRId64 "%s", value, suffix);
     if (len < 0 || (size_t)len >= sizeof(buf))
-        return rt_string_from_bytes("", 0);
+        return rt_fmt_empty();
     return rt_string_from_bytes(buf, (size_t)len);
 }
 

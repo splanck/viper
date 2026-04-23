@@ -89,6 +89,40 @@ static int dt_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
 #endif
 }
 
+static int dt_i64_to_int(int64_t value, int *out) {
+    if (value < INT_MIN || value > INT_MAX)
+        return 0;
+    *out = (int)value;
+    return 1;
+}
+
+static int dt_i64_to_time_t(int64_t value, time_t *out) {
+    time_t t = (time_t)value;
+    if ((int64_t)t != value)
+        return 0;
+    *out = t;
+    return 1;
+}
+
+static int dt_time_t_to_i64(time_t value, int64_t *out) {
+    int64_t result = (int64_t)value;
+    if ((time_t)result != value)
+        return 0;
+    *out = result;
+    return 1;
+}
+
+static int64_t dt_epoch_millis_from_parts(int64_t seconds, int64_t millis_part) {
+    int64_t millis;
+    int64_t result;
+    if (dt_checked_mul_i64(seconds, 1000, &millis) ||
+        dt_checked_add_i64(millis, millis_part, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
+}
+
 /// @brief Gets the current date/time as a Unix timestamp.
 ///
 /// Returns the current time as the number of seconds elapsed since the Unix
@@ -159,17 +193,20 @@ int64_t rt_datetime_now_ms(void) {
     // ViperDOS provides clock_gettime via libc.
     {
         struct timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        return (int64_t)ts.tv_sec * 1000 + (int64_t)ts.tv_nsec / 1000000;
+        if (clock_gettime(CLOCK_REALTIME, &ts) != 0)
+            return 0;
+        return dt_epoch_millis_from_parts((int64_t)ts.tv_sec, (int64_t)ts.tv_nsec / 1000000);
     }
 #elif RT_PLATFORM_MACOS
     struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (int64_t)tv.tv_sec * 1000 + (int64_t)tv.tv_usec / 1000;
+    if (gettimeofday(&tv, NULL) != 0)
+        return 0;
+    return dt_epoch_millis_from_parts((int64_t)tv.tv_sec, (int64_t)tv.tv_usec / 1000);
 #else
     struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    return (int64_t)ts.tv_sec * 1000 + (int64_t)ts.tv_nsec / 1000000;
+    if (clock_gettime(CLOCK_REALTIME, &ts) != 0)
+        return 0;
+    return dt_epoch_millis_from_parts((int64_t)ts.tv_sec, (int64_t)ts.tv_nsec / 1000000);
 #endif
 }
 
@@ -195,7 +232,9 @@ int64_t rt_datetime_now_ms(void) {
 /// @see rt_datetime_month For extracting the month
 /// @see rt_datetime_day For extracting the day
 int64_t rt_datetime_year(int64_t timestamp) {
-    time_t t = (time_t)timestamp;
+    time_t t;
+    if (!dt_i64_to_time_t(timestamp, &t))
+        return 0;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
     return tm ? (int64_t)(tm->tm_year + 1900) : 0;
@@ -234,7 +273,9 @@ int64_t rt_datetime_year(int64_t timestamp) {
 /// @see rt_datetime_year For extracting the year
 /// @see rt_datetime_day For extracting the day
 int64_t rt_datetime_month(int64_t timestamp) {
-    time_t t = (time_t)timestamp;
+    time_t t;
+    if (!dt_i64_to_time_t(timestamp, &t))
+        return 0;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
     return tm ? (int64_t)(tm->tm_mon + 1) : 0;
@@ -263,7 +304,9 @@ int64_t rt_datetime_month(int64_t timestamp) {
 /// @see rt_datetime_month For extracting the month
 /// @see rt_datetime_day_of_week For getting the weekday
 int64_t rt_datetime_day(int64_t timestamp) {
-    time_t t = (time_t)timestamp;
+    time_t t;
+    if (!dt_i64_to_time_t(timestamp, &t))
+        return 0;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
     return tm ? (int64_t)tm->tm_mday : 0;
@@ -298,7 +341,9 @@ int64_t rt_datetime_day(int64_t timestamp) {
 /// @see rt_datetime_minute For extracting minutes
 /// @see rt_datetime_second For extracting seconds
 int64_t rt_datetime_hour(int64_t timestamp) {
-    time_t t = (time_t)timestamp;
+    time_t t;
+    if (!dt_i64_to_time_t(timestamp, &t))
+        return 0;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
     return tm ? (int64_t)tm->tm_hour : 0;
@@ -327,7 +372,9 @@ int64_t rt_datetime_hour(int64_t timestamp) {
 /// @see rt_datetime_hour For extracting the hour
 /// @see rt_datetime_second For extracting seconds
 int64_t rt_datetime_minute(int64_t timestamp) {
-    time_t t = (time_t)timestamp;
+    time_t t;
+    if (!dt_i64_to_time_t(timestamp, &t))
+        return 0;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
     return tm ? (int64_t)tm->tm_min : 0;
@@ -355,7 +402,9 @@ int64_t rt_datetime_minute(int64_t timestamp) {
 /// @see rt_datetime_minute For extracting minutes
 /// @see rt_datetime_hour For extracting the hour
 int64_t rt_datetime_second(int64_t timestamp) {
-    time_t t = (time_t)timestamp;
+    time_t t;
+    if (!dt_i64_to_time_t(timestamp, &t))
+        return 0;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
     return tm ? (int64_t)tm->tm_sec : 0;
@@ -400,7 +449,9 @@ int64_t rt_datetime_second(int64_t timestamp) {
 ///
 /// @see rt_datetime_day For the day of month
 int64_t rt_datetime_day_of_week(int64_t timestamp) {
-    time_t t = (time_t)timestamp;
+    time_t t;
+    if (!dt_i64_to_time_t(timestamp, &t))
+        return 0;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
     return tm ? (int64_t)tm->tm_wday : 0;
@@ -458,7 +509,9 @@ int64_t rt_datetime_day_of_week(int64_t timestamp) {
 ///
 /// @see rt_datetime_to_iso For ISO 8601 format (UTC)
 rt_string rt_datetime_format(int64_t timestamp, rt_string format) {
-    time_t t = (time_t)timestamp;
+    time_t t;
+    if (!dt_i64_to_time_t(timestamp, &t))
+        return rt_string_from_bytes("", 0);
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
     if (!tm) {
@@ -521,7 +574,9 @@ rt_string rt_datetime_format(int64_t timestamp, rt_string format) {
 /// @see rt_datetime_format For custom formatting in local time
 /// @see rt_datetime_create For creating timestamps from components
 rt_string rt_datetime_to_iso(int64_t timestamp) {
-    time_t t = (time_t)timestamp;
+    time_t t;
+    if (!dt_i64_to_time_t(timestamp, &t))
+        return rt_string_from_bytes("", 0);
     struct tm tm_buf;
     struct tm *tm = rt_gmtime_r(&t, &tm_buf); // Use UTC for ISO format
     if (!tm) {
@@ -557,7 +612,9 @@ rt_string rt_datetime_to_iso(int64_t timestamp) {
 /// @param timestamp Unix timestamp (seconds since epoch).
 /// @return Local ISO 8601 formatted string, or empty string if invalid.
 rt_string rt_datetime_to_local(int64_t timestamp) {
-    time_t t = (time_t)timestamp;
+    time_t t;
+    if (!dt_i64_to_time_t(timestamp, &t))
+        return rt_string_from_bytes("", 0);
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
     if (!tm) {
@@ -636,17 +693,47 @@ rt_string rt_datetime_to_local(int64_t timestamp) {
 /// @see rt_datetime_to_iso For formatting timestamps
 int64_t rt_datetime_create(
     int64_t year, int64_t month, int64_t day, int64_t hour, int64_t minute, int64_t second) {
+    int64_t year_offset;
+    int64_t month_offset;
+    if (dt_checked_sub_i64(year, 1900, &year_offset))
+        return -1;
+    if (dt_checked_sub_i64(month, 1, &month_offset))
+        return -1;
+
+    int tm_year;
+    int tm_mon;
+    int tm_mday;
+    int tm_hour;
+    int tm_min;
+    int tm_sec;
+    if (!dt_i64_to_int(year_offset, &tm_year) || !dt_i64_to_int(month_offset, &tm_mon) ||
+        !dt_i64_to_int(day, &tm_mday) || !dt_i64_to_int(hour, &tm_hour) ||
+        !dt_i64_to_int(minute, &tm_min) || !dt_i64_to_int(second, &tm_sec))
+        return -1;
+
     struct tm tm = {0};
-    tm.tm_year = (int)(year - 1900);
-    tm.tm_mon = (int)(month - 1);
-    tm.tm_mday = (int)day;
-    tm.tm_hour = (int)hour;
-    tm.tm_min = (int)minute;
-    tm.tm_sec = (int)second;
+    tm.tm_year = tm_year;
+    tm.tm_mon = tm_mon;
+    tm.tm_mday = tm_mday;
+    tm.tm_hour = tm_hour;
+    tm.tm_min = tm_min;
+    tm.tm_sec = tm_sec;
     tm.tm_isdst = -1; // Let the system determine DST
 
     time_t t = mktime(&tm);
-    return (int64_t)t;
+    struct tm check_buf;
+    struct tm *check = rt_localtime_r(&t, &check_buf);
+    if (!check)
+        return -1;
+    if (check->tm_year != tm.tm_year || check->tm_mon != tm.tm_mon ||
+        check->tm_mday != tm.tm_mday || check->tm_hour != tm.tm_hour ||
+        check->tm_min != tm.tm_min || check->tm_sec != tm.tm_sec)
+        return -1;
+
+    int64_t result;
+    if (!dt_time_t_to_i64(t, &result))
+        return -1;
+    return result;
 }
 
 /// @brief Adds seconds to a timestamp.
@@ -803,7 +890,7 @@ static int dt_is_digit(char c) {
 static int dt_parse_digits(const char *s, int n, const char **end) {
     int val = 0;
     for (int i = 0; i < n; ++i) {
-        if (!dt_is_digit(s[i]))
+        if (s[i] == '\0' || !dt_is_digit(s[i]))
             return -1;
         val = val * 10 + (s[i] - '0');
     }
@@ -887,8 +974,7 @@ static int dt_make_local_timestamp(
         check->tm_sec != second)
         return 0;
 
-    *out = (int64_t)t;
-    return 1;
+    return dt_time_t_to_i64(t, out);
 }
 
 static int dt_parse_iso_impl(rt_string s, int64_t *out) {

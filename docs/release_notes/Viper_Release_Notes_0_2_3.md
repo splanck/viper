@@ -1,1289 +1,196 @@
-# Viper Compiler Platform - Release Notes
+# Viper Compiler Platform — Release Notes
 
-> **Development Status**: Pre-Alpha
-> These are early development releases. Viper is under active development and not ready for production use.
-> Future milestones will define supported releases when appropriate.
+> **Development Status:** Pre-Alpha. Viper is under active development and not ready for production use.
 
-## Version 0.2.3 - Pre-Alpha (March 25, 2026)
+## Version 0.2.3 — Pre-Alpha (2026-03-25)
 
-### Release Overview
+### What this release is about
 
-Version 0.2.3 is a major hardening, tooling, and infrastructure release. Highlights:
+A major hardening, tooling, and infrastructure cycle. Five themes:
 
-- **3D Graphics Engine** — 28-class engine with scene graph, skeletal animation, physics, particles, terrain, post-processing, and FBX loading. Four backends: Metal, D3D11, OpenGL, software rasterizer.
-- **Native Assembler + Linker** — zero external tool dependencies. Source → executable using only Viper's own code. DWARF v5 debug info, ICF, branch trampolines, Mach-O two-level namespace.
-- **Enum Types** — for both Zia and BASIC, with match exhaustiveness checking.
-- **Language Server** — dual-protocol (LSP + MCP) `zia-server` for editors and AI assistants.
-- **AArch64 Performance** — post-RA scheduler, register coalescer, loop-invariant hoisting, cross-block store-load forwarding, division strength reduction. **24-87% benchmark improvements** on Apple M4 Max.
-- **3 New IL Optimizer Passes** — EH optimization, loop rotation, reassociation. Full O2 pipeline restored (10 passes were missing from native codegen).
-- **Interactive REPL** — `viper repl` for both Zia and BASIC with tab completion, persistent history, and meta-commands.
-- **O1 Native Codegen Correctness** — 10+ optimizer bug fixes enabling reliable -O1 compilation across all demos. Inliner escape analysis, DCE alloca observation, SimplifyCFG param preservation, and compilation performance (27x speedup for medium modules).
-- **Network Runtime Expansion** — comprehensive security audit of 14K lines + 10 new networking classes (HttpServer, WebSocketServer, ConnectionPool, SmtpClient, etc.) + AES-128-GCM cipher suite.
-- **Comprehensive Safety Audits** — VM, codegen, runtime, network, 3D graphics, and concurrency hardening with TSan verification.
-- **Backend Codegen Review** — decomposed monolithic files, CFG-aware register allocation liveness, shared infrastructure across both backends.
-- **Game Engine Framework** — GameBase/IScene, screen transitions, A* pathfinding, SaveData, DebugOverlay, SoundBank/Synth.
-- **Language Audit** — comprehensive Zia/BASIC feature verification (13 findings: 6 confirmed fixed, 7 filed as open bugs), reference doc corrections, 13 new Zia feature/runtime tests.
-- **Frontend Decomposition** — shared utilities, parser/lowerer file splits, CRTP LexerBase.
-- **Codebase Reorganization** — demos consolidated into `examples/`, devdocs merged into `docs/`, 900+ doc fixes.
+- **3D Graphics Engine (new).** A 28-class zero-dependency C runtime with four pluggable backends (Metal / D3D11 / OpenGL / software rasterizer): scene graph with frustum culling, skeletal animation + morph targets + blend trees, Physics3DBody + Physics3DWorld + Trigger3D, particles, terrain, water, post-FX (bloom / vignette / color grading), cubemap skybox, instance batching, FBX loader, NavMesh3D + Path3D, render-to-texture, Character3D controller.
+- **Native assembler + linker (new).** `viper build` goes source → executable with zero external tools. Binary encoders for x86-64 (49 opcode encodings) and AArch64 (70+ opcodes), object-file writers for ELF / Mach-O / PE/COFF, archive reader (GNU ar / BSD ar / COFF), symbol resolution with archive demand-pull, section merging, relocation application, executable writers for all three formats. DWARF v5 `.debug_line` encoding, Identical Code Folding, branch trampolines for out-of-range relocations, Mach-O two-level namespace (fixes macOS ARM64 PAC pointer-auth traps), ad-hoc code signing. 11 demos build and run through the native pipeline.
+- **AArch64 performance overhaul.** Post-RA list scheduler with latency-based priority, pre-regalloc register coalescer (`MovRR` / `FMovRR` elimination via live-interval interference, ~270 LOC), MIR loop-invariant constant hoisting, cross-block store-load forwarding, division/modulo strength reduction (`SDIV` by power-of-2: 22→4 cycles; `UREM` by power-of-2: 26→1 cycle). Full O2 pipeline restored — 10 IL optimizer passes were missing from native codegen. **24-87% benchmark improvements** on Apple M4 Max.
+- **Interactive REPL + Language Server.** `viper repl` / `zia` / `vbasic` with tab completion, persistent history, meta-commands (`.il`, `.time`, `.load`, `.save`, …), piped input, Windows support; built on the TUI framework with zero external deps. New dual-protocol `zia-server` speaks both MCP (for AI assistants) and LSP (for editors), ships with VS Code extension auto-discovery.
+- **Comprehensive safety audits.** Multi-phase hardening touching every layer: VM execution loop, x86-64 and AArch64 codegen, runtime resource lifecycle, capacity-overflow guards across 16 collection files, file operations, allocation-failure paths, type system, network/TLS security (14K-line audit + 10 new classes), 3D graphics, and TSan-verified concurrency.
 
-#### By the Numbers
+Cross-cutting: 3 new IL optimizer passes (EH optimization, loop rotation, reassociation), enum types in Zia and BASIC with match exhaustiveness, async/await, codebase reorganization (demos consolidated under `examples/`, devdocs merged into `docs/`, 900+ doc fixes).
 
-| Metric | Value |
-|--------|-------|
-| Commits | 100 |
-| Files changed | 3,557 |
-| Lines added | ~279K |
-| Lines removed | ~323K |
-| Source files | 2,671 |
-| Test count | 1,351 |
-| Codebase | ~348K SLOC (production C/C++/ObjC) |
+### By the Numbers
+
+| Metric | v0.2.2 | v0.2.3 | Delta |
+|---|---|---|---|
+| Commits | — | 100 | +100 |
+| Source files | 2,288 | 2,671 | +383 |
+| Production SLOC | ~310K | ~348K | +38K |
+| Test count | 1,261 | 1,351 | +90 |
+| Runtime classes | 226 | 272 | +46 |
+| IL optimizer passes | 35 | 38 | +3 |
+
+Lines added / removed: ~279K / ~323K — net removal because ~1,100 stale files were deleted (obsolete test fixtures, dead demos, devdocs, zia-review).
 
 ---
 
-### New Features
-
-#### Interactive REPL
-
-A full-featured interactive REPL accessible via `viper repl`, `zia` (no args), or `vbasic` (no args).
-Built on the TUI framework's TerminalSession/InputDecoder for raw-mode terminal I/O — zero external
-dependencies.
-
-- Expression auto-print with type-aware coloring (Bool/Int/Num/String/Object)
-- Variable and function persistence across inputs via statement replay
-- Entity, value, and interface definition support
-- Multi-line input via bracket depth (Zia) and block keyword tracking (BASIC)
-- Tab completion via CompletionEngine (Zia) and keyword matching (BASIC)
-- Meta-commands: `.help`, `.quit`, `.clear`, `.vars`, `.funcs`, `.binds`, `.type`,
-  `.il`, `.time`, `.load`, `.save`
-- Persistent history (`~/.viper/repl_history_{lang}`), double Ctrl-C exit
-- Non-interactive piped input mode
-- Windows support via `_pipe`/`_dup`/`_dup2`/`_read` stdout capture
-- 86 unit tests (51 Zia + 35 BASIC)
-
-```bash
-$ zia
-zia> var x = 42
-zia> x * 2
-84 : Integer
-zia> .il
-; IL output for last expression...
-```
-
-#### Native Assembler and Linker
-
-A complete in-process assembler and linker that eliminates all external tool dependencies (`as`, `ld`,
-`link.exe`) from the native compilation pipeline. Viper can now go from source to executable using
-only its own code — zero external dependencies, true to the project philosophy.
-
-**Assembler (MIR → .o)**
-
-- Binary encoders for both x86-64 (49 opcode encodings, REX/ModR/M/SIB, RIP-relative relocations)
-  and AArch64 (70+ opcodes, branch resolution, FP literal materialization)
-- Object file writers for ELF (x86_64 + AArch64), Mach-O (x86_64 + AArch64), and PE/COFF (Windows)
-- Per-function text sections for dead stripping
-- `--native-asm` / `--system-asm` CLI flags to choose pipeline
-
-**Linker (.o + archives → executable)**
-
-- Archive reader supporting GNU ar, BSD ar, and COFF archive formats
-- Object file readers for ELF, Mach-O, and COFF with unified `ObjFile` API
-- Symbol resolution with weak/strong precedence and archive demand-pull
-- Section merging with ObjC metadata preservation and page-aligned layout
-- Relocation application for x86-64 and AArch64 (PC-rel, absolute, ADRP/PageOff12)
-- Executable writers for Mach-O (dyld bind opcodes, GOT generation), ELF (program headers,
-  dynamic section), and PE (import tables, DOS stub)
-- Native ad-hoc code signing with `CS_LINKER_SIGNED` flag (arm64 macOS)
-- `--native-link` / `--system-link` CLI flags
-
-**Optimizations**
-
-- Mark-and-sweep dead section stripping (`DeadStripPass`) — ~53% binary size reduction
-- Cross-module string deduplication (promotes duplicate LOCAL rodata to shared GLOBAL symbols)
-- Segment-level VA packing instead of per-section page alignment
-- Debug/metadata section filtering
-
-**Debug Info & Advanced Linker Features**
-
-- DWARF v5 `.debug_line` section encoding via `DebugLineTable` — maps machine instructions back
-  to source file, line, and column for debugger integration
-- Non-alloc debug section handling across all three executable writers:
-  ELF (`SHT_PROGBITS` without `SHF_ALLOC`, emitted after `PT_LOAD` segments),
-  Mach-O (`__DWARF` segment with `vmaddr=0`, no VM permissions),
-  PE (`IMAGE_SCN_MEM_DISCARDABLE`, excluded from `SizeOfImage`)
-- Identical Code Folding (ICF) pass — merges functions with byte-identical `.text` content and
-  matching relocations, reducing binary size for template-heavy or copy-heavy codegen output
-- Branch trampoline generation for out-of-range relocations — automatically inserts veneer stubs
-  when branch targets exceed architecture-specific displacement limits (±128MB on AArch64,
-  ±2GB on x86-64)
-- `OutputSection.alloc` flag distinguishes loadable sections from debug/metadata sections
-
-**Mach-O Two-Level Namespace**
-
-- Add `MH_TWOLEVEL` flag to Mach-O header, replacing flat namespace resolution. Required for
-  macOS ARM64 — without it, CoreAnimation PAC pointer authentication traps fire ~1 second after
-  window creation
-- Per-symbol dylib ordinal assignment in bind opcodes using
-  `BIND_OPCODE_SET_DYLIB_ORDINAL_IMM`/`ULEB` instead of flat lookup
-- Flat lookup (ordinal -2) fallback for `OBJC_CLASS_$`/`OBJC_METACLASS_$` symbols whose defining
-  framework can't be determined by prefix alone
-- Fix dylib detection to strip leading underscores before prefix matching (handles
-  `_objc_empty_cache`, `__CFConstantStringClassReference`)
-- Update nlist library ordinals in symbol table for two-level namespace compatibility
-
-**Hardening**
-
-- Archive member size limits, relocation bounds checks, section/symbol count caps
-- `isCStringSection` flag prevents string dedup from corrupting binary data sections
-- Expanded dynamic symbol recognition to avoid false undefined-symbol errors
-
-**Assembler & Linker Layer Review (15 items)**
-
-Systematic review and refactoring of the native assembler/linker infrastructure:
-
-- Reverse-index map for `findOutputLocation` (O(S×C) → O(1) lookup)
-- Named relocation constants (`RelocConstants.hpp`) replacing magic numbers
-- Shared `ObjFileWriterUtil.hpp` deduplicating 3× `appendLE`/`alignUp`/`padTo` implementations
-- Centralized Mach-O name mangling (`NameMangling.hpp`)
-- Extracted relocation classification (`RelocClassify.hpp`, 189 LOC)
-- Immediate range validation asserts (AArch64 imm12, x86-64 imm32)
-- Dead-strip statistics reporting to stderr
-- Shared segment layout utilities (`classifySections`, `computeSegmentSpan`)
-- Local symbol offset bounds check in `RelocApplier`
-- Split `MachOExeWriter` (1,029 → 670 LOC) into `MachOCodeSign` + `MachOBindRebase` modules
-- Data-driven framework detection (`kFrameworkRules[]` table replacing ad-hoc prefix checks)
-
-All 11 demos build and run with the native pipeline. 13 new assembler tests, 6 string dedup tests,
-11 debug line tests, 9 debug section tests, 10 ELF exe writer tests, 7 linker integration tests,
-plus ICF, branch trampoline, symbol resolver, and relocation edge-case test suites.
-
-#### Zia Language Server (zia-server)
-
-A dual-protocol language server supporting both MCP (for AI assistants) and LSP (for editors):
-
-- JSON value type + recursive-descent parser/emitter (zero dependencies)
-- MCP transport (newline-delimited) with 11 tool definitions for AI assistants
-- LSP transport (Content-Length framed) with diagnostics, completions, hover, and document symbols
-- JSON-RPC 2.0 request/response handling
-- `CompilerBridge` facade wrapping Zia compiler APIs, including class field hover
-- VS Code extension with auto-discovery of `zia-server` binary
-- Completion engine improvements for both Zia and BASIC frontends
-
-#### Zia Language Features
-
-**Enum Types**
-
-Enumeration types for both Zia and BASIC frontends:
-
-```rust
-enum Color { Red, Green = 5, Blue }
-match c {
-    Color.Red => Say("red")
-    Color.Green => Say("green")
-    _ => Say("other")
-}
-```
-
-- Zia: `enum` declaration, explicit/auto-increment values, `expose` visibility, match exhaustiveness
-  checking, variant access via dot notation
-- BASIC: `ENUM...END ENUM` blocks, explicit/negative values, keyword-as-name collision handling
-- Variants lowered as I64 constants; 16 Zia + 8 BASIC enum tests
+### 3D Graphics Engine (new)
+
+- **Core architecture.** Scene graph with frustum culling and node hierarchy (`Scene3D`, `SceneNode3D`), transform system with parent-child propagation (`Transform3D`), material system with PBR properties + environment mapping + emissive surfaces (`Material3D`), camera system with shake / follow / smooth interpolation (`Camera3D`), lights (point / directional / spot, `Light3D`).
+- **Rendering.** Four backends: Metal (macOS), D3D11 (Windows), OpenGL (Linux), software rasterizer (fallback). Multi-pass pipeline with alpha blending + depth sorting. Render-to-texture (`RenderTarget3D`). Post-processing effects (bloom, vignette, color grading, screen-space) in `PostFX3D`. Skybox with cubemap (`CubeMap3D`). Instance batching (`InstanceBatch3D`). Decals (`Decal3D`), terrain (`Terrain3D`), water (`Water3D`).
+- **Animation + physics.** Skeletal animation with bone hierarchies and blend trees (`Skeleton3D`, `Animation3D`, `AnimBlend3D`, `AnimPlayer3D`). Morph targets for facial/mesh deformation (`MorphTarget3D`). `Character3D` combining skeletal animation + physics. 3D physics with rigid bodies and trigger volumes (`Physics3DBody`, `Physics3DWorld`, `Trigger3D`).
+- **Navigation + loading.** `NavMesh3D` for AI pathfinding, `Path3D` waypoint-based movement, FBX loader for meshes + skeletons + animations, `RayHit3D` raycasting, `Particles3D`.
+- **Post-audit hardening.** Canvas3D depth-buffer bounds validation + initialization guards; Mesh3D vertex/index bounds checking on construction; Scene3D node cleanup + dangling-reference prevention; software rasterizer triangle clipping + edge-case guards; Pixels module additional bounds checks for direct pixel operations.
+
+### Native toolchain (assembler + linker)
+
+- **Assembler (MIR → `.o`).** Binary encoders for x86-64 (49 opcode encodings, REX/ModR/M/SIB, RIP-relative relocations) and AArch64 (70+ opcodes, branch resolution, FP literal materialization). Object-file writers for ELF (x86_64 + AArch64), Mach-O (x86_64 + AArch64), PE/COFF (Windows). Per-function text sections for dead stripping. `--native-asm` / `--system-asm` CLI flags.
+- **Linker (`.o` + archives → executable).** Archive reader (GNU ar, BSD ar, COFF). Object readers for ELF / Mach-O / COFF with unified `ObjFile` API. Symbol resolution with weak/strong precedence + archive demand-pull. Section merging with ObjC metadata preservation + page-aligned layout. Relocation application for x86-64 and AArch64 (PC-rel, absolute, ADRP/PageOff12). Executable writers for Mach-O (dyld bind opcodes, GOT generation), ELF (program headers, dynamic section), PE (import tables, DOS stub). Native ad-hoc code signing with `CS_LINKER_SIGNED` (arm64 macOS). `--native-link` / `--system-link` CLI flags.
+- **Optimizations.** Mark-and-sweep dead section stripping (`DeadStripPass`) — ~53% binary size reduction. Cross-module string deduplication (promotes duplicate LOCAL rodata to shared GLOBAL symbols). Segment-level VA packing. Debug/metadata section filtering.
+- **Debug info + advanced features.** DWARF v5 `.debug_line` via `DebugLineTable` (maps machine instructions back to source file / line / column). Non-alloc debug section handling across all three writers (ELF `SHT_PROGBITS` without `SHF_ALLOC`, Mach-O `__DWARF` segment with `vmaddr=0`, PE `IMAGE_SCN_MEM_DISCARDABLE`). Identical Code Folding (ICF) merges functions with byte-identical `.text` + matching relocations. Branch trampoline generation for out-of-range relocations (±128MB AArch64, ±2GB x86-64) auto-inserts veneer stubs.
+- **Mach-O two-level namespace.** `MH_TWOLEVEL` flag replaces flat namespace — required for macOS ARM64 because CoreAnimation PAC pointer authentication traps fire ~1 second after window creation under flat namespace. Per-symbol dylib ordinal assignment via `BIND_OPCODE_SET_DYLIB_ORDINAL_IMM`/`ULEB`. Ordinal-`-2` fallback for `OBJC_CLASS_$` / `OBJC_METACLASS_$` symbols whose defining framework can't be determined by prefix. Leading-underscore strip before prefix matching.
+- **Assembler/linker layer review (15 items).** Reverse-index map for `findOutputLocation` (O(S×C) → O(1)). Named relocation constants (`RelocConstants.hpp`). Shared `ObjFileWriterUtil.hpp` deduplicating `appendLE` / `alignUp` / `padTo`. Centralized Mach-O name mangling (`NameMangling.hpp`). Extracted relocation classification (`RelocClassify.hpp`, 189 LOC). Immediate-range validation asserts. Dead-strip stats reporting. Shared segment layout utilities. `MachOExeWriter` split 1,029 → 670 LOC into `MachOCodeSign` + `MachOBindRebase`. Data-driven framework detection (`kFrameworkRules[]` table). 13 assembler tests, 6 string-dedup tests, 11 debug-line tests, 9 debug-section tests, 10 ELF-exe-writer tests, 7 linker integration tests.
+
+### IL optimizer
+
+- **EH optimization (new pass).** Removes redundant `eh.push` / `eh.pop` pairs when the protected region contains no potentially-throwing instructions. Dead handler blocks cleaned up by subsequent DCE/SimplifyCFG. Registered after check-opt in O2.
+- **Loop rotation (new pass).** Converts while-style loops into do-while form by duplicating the header condition into the latch and inserting a guard for the initial check. Eliminates one branch per iteration, improves LICM/unrolling. Conservative: single-latch, single-exit loops with pure headers.
+- **Reassociation (new pass).** Canonicalizes operand order for commutative+associative integer ops (Add/Mul/And/Or/Xor). Placed before EarlyCSE to expose more CSE opportunities.
+- **Pass improvements.** EarlyCSE fixpoint iteration (max 4 passes). LICM allows non-escaping alloca loads past modifying calls via `BasicAA::isNonEscapingAlloca()`. `ValueKey` adds `ConstStr` + `GAddr` to safe-CSE opcodes. Verifier replaces reachability check with full Cooper-Harvey-Kennedy dominator computation. SCCP treats block params as SSA φ-nodes merging only from executable predecessors. Inliner uses CallGraph SCC analysis (Tarjan) to block mutually-recursive inlining; cost model `maxCodeGrowth=2000`; integrated into O1 pipeline. SimplifyCFG converts hard asserts to soft early-returns for fuzz-test compatibility. CheckOpt removes the incorrect overflow-to-plain demotion (verifier requires `.ovf` variants). DCE fixes `predEdges` map invalidation after instruction removal.
+- **Full O2 pipeline restoration.** Restored 10 missing passes to native codegen: `loop-simplify`, `loop-rotate`, `indvars`, `loop-unroll`, `check-opt`, `eh-opt`, `sibling-recursion`, `constfold`, `licm`, `reassociate`. The codegen pipeline was running a stripped-down O1 optimizer despite `-O2` requests. x86-64 codegen O2 gating threshold also fixed.
+- **Alloca escape verification.** New Pass 4 in `FunctionVerifier` warns when a `ret` instruction directly returns an alloca-derived pointer, catching stack-pointer escapes at verification time.
+
+### O1 correctness + compilation performance
+
+All 11 demos now compile at O1; 9 of 11 run correctly at native `-O1`.
+
+- **Inliner.** Escaped value analysis resolves actual return types from the module's function lookup table instead of the Void instruction type (fixes paint-app O1 crash). Temp-name uniquification appends `_il{id}` to cloned block params + instruction results to prevent caller/callee scope collisions. `blockBudget=1` limits multi-block inlining until multi-block continuation value threading is hardened.
+- **DCE.** Alloca observation split into two passes (collect then observe) to prevent late-defined allocas from overwriting earlier observation marks. Observation checks for store-value operands, return operands, branch arguments. Entry-block param protection via positional ABI prefix preservation with `funcParamId` fast-path.
+- **SimplifyCFG.** Entry-block param protection (same as DCE) in `canonicalizeParamsAndArgs`. Verification hooks removed from hot path — debug-only `Verifier::verify()` was verifying the entire module per function per iteration (up to 40 full-module verifications per SimplifyCFG invocation). **27× speedup** for medium modules (viperide: 4 min → 8.5 s). Large modules (>100K instructions) auto-skip IL optimization entirely to dodge O(n²) behavior; AArch64 codegen peephole still runs. Reduces sqldb compilation from 8+ min to 11 s.
+- **BranchVerifier.** Void-typed branch arguments (from DCE-orphaned definitions) are compatible with any param type — register allocator tracks liveness independently of IL types.
+- **AArch64 LoopOpt disabled.** The `hoistLoopConstants` peephole was identifying non-loop control flow (if/else merges, function exits) as loops and removing MovRI instructions from mutually exclusive code paths (black ghosts in pacman, crashes in paint).
+- **IL peephole removed from O1.** Its global `replaceAll` created cross-block SSA violations when DCE's block-param compaction ran afterward. SCCP already handles constant folding; the AArch64 codegen peephole handles machine-level optimizations.
+- **LICM readonly-call safety.** Conservative guard prevents hoisting readonly calls when the loop contains mutating memory operations.
+
+### AArch64 backend
+
+- **Post-RA instruction scheduler.** List scheduler running after register allocation with latency-based priority ordering + anti-dependency tracking. Reorders instructions within basic blocks to improve pipeline utilization while respecting data dependencies + register constraints.
+- **Register coalescer (~270 LOC).** Pre-regalloc `MovRR` / `FMovRR` elimination via live-interval interference analysis. Integrated before the register allocator.
+- **MIR loop-invariant constant hoisting.** Hoists `MovRI` from loop bodies into preheaders when the register is callee-saved (x19-x28) and defined only by `MovRI` with the same immediate throughout the loop. Natural loop body computation via reverse-reachability BFS from the latch through predecessors (handles non-contiguous loop bodies correctly).
+- **Cross-block store-load forwarding.** Forwards stores to loads across basic-block boundaries when the layout predecessor has a single successor and they access the same FP-relative offset. Includes reachability verification.
+- **Division/modulo strength reduction.** `SDIV` by power-of-2: sign-corrected arithmetic shift (22→4 cycles). `SDIV` by arbitrary constant: magic-number multiply-high (22→6-8 cycles). `UREM` by power-of-2: AND mask (26→1 cycle). `SREM` by power-of-2: sign-corrected AND+SUB (26→5 cycles).
+- **Benchmark results (Apple M4 Max, native -O2 vs baseline):** `branch_stress` 180→24 ms (-87%), `redundant_stress` 315→104 ms (-67%), `mixed_stress` 83→30 ms (-63%), `udiv_stress` 180→74 ms (-59%), `inline_stress` 144→79 ms (-46%), `call_stress` 45→34 ms (-24%), `arith_stress` 140→119 ms (-15%).
+- **Additional peephole optimizations.** CSET+branch fusion, dead FP-store elimination, leaf-function register preference (low-numbered caller-saved registers), logical immediate emission (proper AArch64 encoding for AND/ORR/EOR immediates), dead overflow DCE, new `SmulhRRR` MIR opcode for proper signed multiply-high overflow detection.
+- **Peephole decomposition.** Monolithic 2,750-line `Peephole.cpp` split into 6 focused sub-passes under `peephole/`: `IdclassElim`, `StrengthReduce`, `CopyPropDCE`, `BranchOpt`, `MemoryOpt`, `LoopOpt`. Shared peephole templates (`PeepholeDCE.hpp`, `PeepholeCopyProp.hpp`) parameterized on target traits are used by both backends.
+- **PassManager integration.** Existing pass infrastructure wired into AArch64 `CodegenPipeline`, replacing monolithic per-function loop. Brings ARM64 architecture in line with x86-64.
+- **Full EH opcode support.** `EhPush`, `EhPop`, `EhEntry`, `TrapDiv`, `TrapOvf`, `TrapIdx`, `TrapNull`, `TrapCast`, `ErrGetMsg`, `ErrGetCode`, `Resume`.
+- **Fixes.** Dominator `intersect()` runtime guard for release builds. `AsmEmitter` `resolveBaseOffset()` helper extracted from 4 duplicated base+offset load/store functions. Loop-body BFS over-inclusion (crawling backwards past the header for BASIC two-header for-loop patterns) caused SIGBUS crashes. SLF reachability verification for cross-block store-load forwarding. Fast-path param stores for >8-argument functions in `lowerCallWithArgs` (was leaving uninitialized stack reads). AArch64 `MOVN` for simple negative immediates instead of multi-instruction `MOVZ`/`MOVK`. Schedule hash-maps replaced with `vector<optional<>>` for O(1) cache-friendly lookup. `CopyPropDCE` `MovRR` / `FMovRR` logic parameterized (90% duplication eliminated). Shared prologue/epilogue iteration (`FrameCodegen.hpp`) eliminates callee-saved register save/restore duplication between AsmEmitter and BinaryEncoder. Division handlers parameterized (4 near-identical → shared `lowerDivisionChk`). `OpcodeDispatch` refactored with handler table replacing 1K-line switch. AsmEmitter consolidated with `emit2Op` / `emit3Op` primitives.
+
+### x86-64 backend
+
+- **Peephole decomposition.** Monolithic 1,470-line `Peephole.cpp` split into 4 focused sub-passes under `peephole/`: `ArithSimplify` (MOV-zero→XOR, CMP-zero→TEST, strength reduction), `MovFolding` (redundant MOV elimination), `DCE` (dead code elimination with implicit register tracking), `BranchOpt` (branch optimization + cold-block reordering). Peephole iteration bounded by `kMaxIterations=100`.
+- **CFG-aware register allocation liveness.** Replaced the conservative "unconditional spill" hack (which force-spilled ALL cross-block vregs) with proper backward dataflow liveness analysis. New `LivenessAnalysis` class computes per-block `liveIn` / `liveOut` using standard fixed-point iteration — only vregs that are *truly* live across block boundaries get spill slots.
+- **Shared dataflow solver.** Backward dataflow liveness extracted into a shared template (`common/ra/DataflowLiveness.hpp`) used by both backends. AArch64 allocator's inline liveness code extracted into a separate `Liveness` class (matching x86-64's pattern); both delegate to the shared solver. Shared `buildPredecessors()` utility.
+- **Shared linker utilities.** Common encoding utilities (`ExeWriterUtil.hpp`) shared between Mach-O and PE executable writers: `writeLE16/32/64`, `writeBE32/64`, `writeULEB128`, `writePad`, `padTo`, `resolveMainAddress()`. ObjC dynamic-stub generation extracted from the native linker into `DynStubGen.hpp/cpp`.
+- **Fixes.** EFLAGS clobber: MOV-zero→XOR peephole guarded against EFLAGS clobber between TEST and CMOV (was silent miscompilation for `select` with `falseVal=0`). Block arguments: `EdgeArg` extended with `argValues` to carry full ILValue data for constant block args; constants materialized into fresh vregs via MOVri / MOVSDmr before PX_COPY. Peephole DCE: implicit register liveness for CQO (reads RAX) and IDIV/DIV (reads RAX+RDX) — DCE was incorrectly eliminating dividend loads. Deterministic labels: three static `uint32_t` counters replaced with per-function `nextLocalLabelId()`, reset to 0 per function for output determinism. Parallel-move resolution: entry-parameter MOV loop replaced with `PX_COPY` pseudo-instruction for topological sort + cycle-breaking (fixes crash in multi-param class init calls). GNU-stack marking: `.note.GNU-stack` section added to ELF output for non-executable stack. PE/COFF directives: `.rdata` section and ELF `.type @function` in AsmEmitter. PIE support: `-pie` flag for Linux linker. `LoweringRuleTable.hpp` declarations moved to `.cpp` for faster incremental compile times.
+
+### VM
+
+- **Execution loop hardening (8 fixes).** Convert assert-only guards to runtime traps in branch target lookup, switch index, and EH handlers. Null guard for `prepareTrap` handler. `fr.func->name` null checks in trap diagnostics. Defensive operand checks for trap/EH ops.
+- **Virtual dispatch lowering.** O(N) if-else chain replaced with `SwitchI32` for multi-implementation method dispatch.
+- **Match-expression lowering.** `SwitchI32` fast path for integer-only match arms without guards, falling back to generic lowering otherwise.
+- **ThreadsRuntime async execution.** Improved for async function handling, supporting `Future.Get` continuation semantics for `await` expressions.
+- **GC epoch tagging.** Per-entry survival counter skips promoted objects in trial-deletion, with periodic full scans to catch new cycles. Reduces GC overhead for long-lived objects.
+
+### REPL + language server
+
+- **Interactive REPL.** `viper repl` / `zia` (no args) / `vbasic` (no args). Built on the TUI framework's `TerminalSession` / `InputDecoder` for raw-mode terminal I/O with zero external dependencies. Expression auto-print with type-aware coloring (Bool / Int / Num / String / Object). Variable + function persistence across inputs via statement replay. Entity + value + interface definitions. Multi-line input via bracket depth (Zia) and block-keyword tracking (BASIC). Tab completion via CompletionEngine (Zia) and keyword matching (BASIC). Meta-commands: `.help`, `.quit`, `.clear`, `.vars`, `.funcs`, `.binds`, `.type`, `.il`, `.time`, `.load`, `.save`. Persistent history (`~/.viper/repl_history_{lang}`). Double Ctrl-C exit. Non-interactive piped input. Windows support via `_pipe` / `_dup` / `_dup2` / `_read` stdout capture. 86 unit tests (51 Zia + 35 BASIC).
+- **`zia-server` (dual MCP/LSP).** JSON value type + recursive-descent parser/emitter (zero deps). MCP transport (newline-delimited) with 11 tool definitions for AI assistants. LSP transport (Content-Length framed) with diagnostics, completions, hover, document symbols. JSON-RPC 2.0 request/response handling. `CompilerBridge` facade wraps Zia compiler APIs (including class-field hover). VS Code extension with auto-discovery of `zia-server` binary.
+
+### Zia frontend
+
+- **Enum types.** `enum Color { Red, Green = 5, Blue }` with explicit/auto-increment values, `expose` visibility, match exhaustiveness checking, variant access via dot notation. Variants lowered as I64 constants. 16 Zia + 8 BASIC enum tests.
+- **Match OR patterns.** `match x { 1 | 2 | 3 => … }` via new `Pattern::Kind::Or` lowered as a waterfall of test blocks — each subpattern's success jumps to the arm body; failure falls through to the next.
+- **Typed catch with list shorthand.** Exception handlers can now specify a type for the caught error, with list-literal shorthand syntax.
+- **Say/Print auto-dispatch.** `Say(42)`, `Say(3.14)`, `Say(true)` work without explicit `.ToString()` via typed runtime variants (`SayInt`, `SayNum`, `SayBool`, `PrintBool`).
+- **Async/await.** New `async` / `await` keywords with AST nodes, parser support, semantic checking, and lowering to `Future.Get` runtime calls.
+- **`.Len` → `.Length` rename.** Collection `.Len` property renamed to `.Length` across List / Map / Set for spec consistency; `.Len` retained as alias for back-compat.
+- **Bible audit remediation.** Three missing platform features: `Http.Put()` / `PutBytes()` / `Delete()` / `DeleteBytes()` completing the REST verb set; range iteration `.rev()` + `.step(n)` for `for i in range` loops; 10 named `Color` constants (`RED` through `ORANGE`) as static properties. Plus 900+ documentation fixes across the Bible reference manual.
+- **Fixes.** Static property resolution — the sema module-field handler now tries the `get_` prefix convention when resolving static properties through alias bindings (previously `Color.RED` errored with "Module has no exported symbol 'RED'"). P0 `BUG-EH-001`: Exception handler param types corrected (Ptr/I64 → Error/ResumeTok). P0 `BUG-OPT-001`: `Optional<String>` mapping corrected (Str → Ptr for nullable boxing). P1 `BUG-MATCH-002`: String match return type (I64 → I1). P1 `BUG-MATCH-003`: Boolean match with `Zext1` before `ICmpEq`. P1 `BUG-MATCH-001`: Negative literal patterns in match arms. P2 `BUG-VAL-001`: Value-type String field init/copy (raw ptr store + retain). P2 `BUG-OPT-002`: Nested-coalescing inner type derivation. P2 `BUG-IL-001`: Save/restore `IRBuilder` temp counter around lambda lowering. P2 `BUG-IL-002`: Type annotations for Dynamic result types in IL serializer; `call.indirect` parser/serializer support. Entity init overload resolution now matches parameter count + types against the call site (inherited init no longer fails "no init overload matching"). `override expose func` on class methods works for method dispatch. Deinit binding propagation — destructor blocks can access class fields through `self` bindings. Destructor dispatch lowering of `__dtor_TypeName` through inheritance chains. Guard-clause narrowing: assignment type checking uses original declared type; narrowing cleared on reassignment; force-unwrap allows reference/nullable after narrowing. `Optional<String>` maps to IL Str type (not Ptr) matching runtime externs. Match exhaustiveness checking (W019). Escape analysis in BasicAA (non-escaping allocas vs Param → NoAlias). Import deduplication in `ImportResolver`.
+- **Language audit findings.** 6 confirmed fixed (enum variant values, string instance methods, async/await runtime, deinit destructor field bindings, BASIC `EXPORT` keyword, entity property getter/setter resolution). 7 open bugs filed as `ZIA-BUG-001` / `-003` / `-004` / `-005` / `-006` / `-007` + `BASIC-BUG-001`.
+
+### BASIC frontend
+
+- **Enums.** `ENUM...END ENUM` blocks with explicit + negative values, keyword-as-name collision handling. Variants lowered as I64 constants.
+- **Fixes.** Runtime property setter calls on runtime classes (sema symbol lookup). Member-array field handling consolidated (4 bugs) into `MemberArrayResolver`. BASIC Lexer migrated to `LexerBase` CRTP (shared cursor management with Zia). `require*()` methods extracted to `lowerer/LowererRuntimeRequirements.hpp`.
+
+### Runtime
+
+- **Resource lifecycle (10 fixes).** GC epoch-counter overflow (`uint8` → `uint32` in `rt_gc.c`). String intern table dangling pointer on GC collect. TLS session cache stale pointer after context free. Parallel worker thread-local cleanup on join. `PkgDeflate` double-free on realloc failure. `ThreadsRuntime` detached-thread resource leak. File watcher handle leak on rewatch. Audio `waveOut` handle leak on close. Closure env pointer offset extracted to named constants with `static_assert`. GC shutdown flag guard for Windows re-init safety.
+- **Capacity overflow guards (16 files).** Integer overflow guards before capacity doubling across seq / deque / map / set / bag / bimap / countmap / defaultmap / frozenmap / frozenset / intmap / multimap / sortedset / sparsearray / treemap / weakmap. Prevents undefined behavior when capacity approaches `INT64_MAX/2` or `SIZE_MAX/2`.
+- **String operations (12 sites).** `strlen()` replaced with `rt_string_len_bytes()` / `rt_str_len()` in 5 case-conversion functions, 2 LIKE functions, box hash, bloomfilter, bimap/bag helpers, playlist operations.
+- **File operations.** 32-bit `ftell` / `fseek` overflow on Windows → 64-bit equivalents (linereader, PNG loader). Delete corrupt PNG file on partial write failure. Check `fclose()` return in HTTP download; remove partial file on failure. Validate stream state after `Serializer::write`. Check write result in `ArWriter::finishToFile`.
+- **Allocation failure handling.** Silent data-dropping replaced with `rt_trap` in `rt_list_push`, `rt_map_new`, `rt_map_set`, `rt_set_add`. Assert-only bounds checks in `rt_arr_str` / `rt_arr_obj` get/put replaced with `rt_trap` + `rt_arr_oob_panic`.
+- **Type system (5 fixes).** Zia `lowerAs()` missing numeric conversion instructions. Assignment coercion for Number↔Integer fields and vars. Checked `fptosi` (`CastFpToSiRteChk`) with NaN/overflow guards. Separate `CastFpToSiRteChk` from `Fptosi` in lowering pipeline.
+- **SipHash-2-4.** Replaces FNV-1a for all runtime hash maps. Uses per-process random seed from OS CSPRNG for HashDoS resistance.
+- **Consistency audit (7 phases).** (1) 40+ C functions renamed to `rt_<type>_<verb>` convention across collections (List / Set / Map / Stack / Queue / Deque / Ring / Heap / Seq / Bag / Bytes), key renames `Contains`→`Has`, `Count`→`Length`, `Size`→`Length`, plus `IsEmpty` property additions and `TryPop` / `TryPeek` safe-access variants. (2) `runtime.def` aligned to C implementations with missing `RT_METHOD` / `RT_PROP` / `RT_ALIAS` entries. (3) `Clone()` added to Stack / Queue / Set / Map; `First()` / `Last()` / `Reverse()` for Ring; `TryPopFront()` / `TryPopBack()` for Deque; `Items()` alias for Heap's `ToSeq()`. (4) 12 `#define` constant groups converted to `typedef enum { ... } rt_xxx_t;`. (5) 7 existing enum types normalized to `typedef enum { ... } rt_xxx_t;` with `_t` suffix. (6) 15 boolean-returning functions moved from `bool`/`int` to `int8_t` (matching IL `i1`). (7) viperlib docs updated to cover all API additions from phases 1-3.
+- **New APIs.** `AnimStateMachine` combined state machine + animation playback controller — maps each state to an animation clip (frame range, duration, loop flag); transitions auto-reconfigure the internal animation; surfaces `CurrentFrame`, `IsAnimFinished`, `Progress`, `JustEntered` / `JustExited` edge flags, `FramesInState`. `TextureAtlas` named-region 2D sprite-sheet atlas with grid-based auto-slicing (`LoadGrid`) and manual region definition (`Add`); integrates with SpriteBatch via `DrawAtlas` / `DrawAtlasScaled` / `DrawAtlasEx`. `Canvas.DeltaTime` + `Canvas.SetDTMax()` for frame-rate-independent physics. `ParticleEmitter.Draw()` / `DrawAt()` / `DrawToPixels()` direct rendering. `Camera.AddParallaxLayer()` / `RemoveLayer()` / `ClearLayers()` / `DrawParallax()` multi-layer parallax backgrounds. `Camera.SnapTo` for instant repositioning bypassing smooth-follow.
+- **230+ bugs fixed** across runtime C sources in four batches: bounds checking, null guards, integer overflow, format-string safety, memory-leak prevention, error handling — graphics, network, collections, core. Notable: `TextCenteredScaled` swapped scale/color params (was drawing enormous near-black rectangles during level intro overlays); canvas coordinate overflow guards; pixel-bounds validation; bitmap-font character-range checks; GUI widget input handling; navmesh boundary validation; FBX loader robustness; scene-graph cleanup; keychord + action unboxing; color-hex alpha parsing; circle-fill algorithm in `rt_drawing.c`; canvas coordinate guard in `rt_canvas.c`.
 
-**Match OR Patterns**
-
-```rust
-match x {
-    1 | 2 | 3 => Say("small")
-    10 | 20 => Say("round")
-    _ => Say("other")
-}
-```
-
-New `Pattern::Kind::Or` supports pipe-separated alternatives in match arms. Lowered as a waterfall
-of test blocks — each subpattern's success jumps to the arm body, failure falls through to the next.
-
-**Typed Catch with List Shorthand**
-
-Exception handlers can now specify a type for the caught error, with list-literal shorthand syntax.
-
-**Say/Print Auto-Dispatch**
-
-`Say(42)`, `Say(3.14)`, `Say(true)` now work without explicit `.ToString()` conversion via typed
-runtime variants (`SayInt`, `SayNum`, `SayBool`, `PrintBool`).
-
-**.Len → .Length Rename**
-
-Collection `.Len` property renamed to `.Length` across List, Map, and Set for consistency with the
-language specification. `.Len` remains as an alias for backward compatibility.
-
-#### Bible Audit Remediation
-
-Three missing platform features identified by the comprehensive documentation audit:
-
-- **Http.Put/Delete**: `Http.Put()`, `PutBytes()`, `Delete()`, `DeleteBytes()` completing the full
-  REST verb set
-- **Range iteration**: `.rev()` for reverse iteration and `.step(n)` for stepped iteration in
-  `for i in range` loops
-- **Color constants**: `Color.RED` through `Color.ORANGE` (10 named constants) as static properties
-
-Plus 900+ documentation fixes across the Bible reference manual.
-
-#### Language Audit
-
-Comprehensive end-to-end verification of all documented Zia and BASIC language features against the
-live compiler and runtime. Validated every feature claimed in the reference documentation, filed a
-structured bug report (`docs/bugs/language_audit_2026_03_25.md`) with 13 findings:
-
-**Confirmed Fixed (6)**
-- Enum variant values (previously all evaluated to 0)
-- String instance methods (`.Trim()`, `.Replace()`, `.Split()`)
-- Async/await syntax and runtime execution
-- Deinit destructor field bindings
-- BASIC `EXPORT` keyword
-- Entity property getter/setter resolution
-
-**Open Bugs Filed (7)**
-- ZIA-BUG-001: Guard clause narrowing for optional primitives at lowering
-- ZIA-BUG-003: Match arms don't accept bare `return` after `=>`
-- ZIA-BUG-004: Properties — getters/setters parse but hit sema/lowering errors
-- ZIA-BUG-005: Typed catch (`catch (e: Error)`) not yet supported
-- ZIA-BUG-006: Tuple destructuring not supported in Zia
-- ZIA-BUG-007: Child class overriding parent `init()` with different args
-- BASIC-BUG-001: `FOR EACH` loop off-by-one on collection iteration
-
-**Reference Documentation Corrections**
-- Zia reference: fixed try/catch syntax examples, added OR pattern documentation,
-  added limitation notes for properties and tuples, removed stale enum bug note
-- BASIC reference: added `EXPORT` keyword documentation
-
-**New Runtime Test Programs (6)**
-- `33_enum_runtime.zia` — enum declaration, variant access, match exhaustiveness
-- `34_async_functions.zia` — async/await with Future.Get runtime calls
-- `35_optional_primitive_narrowing.zia` — guard clause narrowing for `Integer?`
-- `36_class_properties.zia` — getter/setter property declarations
-- `37_string_instance_methods.zia` — `.Trim()`, `.Replace()`, `.Split()`, `.Contains()`
-- `38_deinit_bindings.zia` — destructor field binding propagation
-
-#### IL Optimizer — Three New Passes
-
-**EH Optimization (eh-opt)**
-
-Removes redundant `eh.push`/`eh.pop` pairs when the protected region contains no
-potentially-throwing instructions (calls, traps, checked operations). Dead handler blocks are
-cleaned up by subsequent DCE/SimplifyCFG. Registered in the O2 pipeline after check-opt.
-
-**Loop Rotation (loop-rotate)**
-
-Converts while-style loops into do-while form by duplicating the header condition into the latch
-block and inserting a guard for the initial check. Eliminates one branch per iteration and improves
-LICM/unrolling opportunities. Conservative: only rotates single-latch, single-exit loops with pure
-headers. Registered in the O2 pipeline after loop-simplify.
-
-**Reassociation (reassociate)**
-
-Canonicalizes operand order for commutative+associative integer ops (Add/Mul/And/Or/Xor). Placed
-before EarlyCSE in the O2 pipeline to expose more common subexpression elimination opportunities.
-
-#### IL Optimizer — Pass Improvements
-
-- **EarlyCSE**: Fixpoint iteration (max 4 passes) for multi-pass CSE
-- **LICM**: Refined load hoisting — allows non-escaping alloca loads past modifying calls via
-  `BasicAA::isNonEscapingAlloca()` accessor
-- **ValueKey**: Add ConstStr and GAddr to safe CSE opcodes, eliminating redundant address
-  materializations in EarlyCSE/GVN
-- **Verifier**: Replace reachability check with full Cooper-Harvey-Kennedy dominator computation
-  for proper dominance verification of SSA uses
-- **SCCP**: Block parameters treated as SSA φ-nodes merging only from executable predecessors
-- **Inliner**: CallGraph SCC analysis (Tarjan) to prevent inlining mutually-recursive functions;
-  cost model tuning (`maxCodeGrowth=2000`) and O1 pipeline integration
-- **SimplifyCFG**: Convert hard verification asserts to soft early-returns for fuzz test
-  compatibility
-- **CheckOpt**: Remove incorrect overflow-to-plain demotion that violated IL spec (verifier
-  requires signed arithmetic to use `.ovf` variants); overflow constant folding deferred to
-  ConstFold pass
-- **DCE**: Fix `predEdges` map invalidation after instruction removal (vector pointer stability)
-
-#### O1 Optimizer Correctness & Performance
-
-Major O1 optimization pipeline audit fixing multiple correctness bugs discovered through native
-demo testing. All 11 demos now compile at O1; 9 of 11 run correctly at native -O1.
-
-**Correctness Fixes**
-
-- **Inliner escaped value type resolution**: Call instruction types are canonically Void in the
-  parser. The inliner's escaped value analysis now resolves actual return types from the module's
-  function lookup table instead of using the Void instruction type — fixes paint app O1 crash
-- **Inliner temp name uniquification**: Append `_il{id}` suffix to cloned block params and
-  instruction results to prevent name collisions between caller and callee scopes
-- **DCE alloca observation tracking**: Split alloca tracking into two passes (collect then observe)
-  to prevent late-defined allocas from overwriting earlier observation marks. Added observation
-  checks for store-value operands, return operands, and branch arguments
-- **DCE entry block param protection**: Never remove function-argument block parameters from the
-  entry block — external callers pass a fixed argument count matching the function signature.
-  Uses positional ABI prefix preservation with funcParamId fast-path
-- **SimplifyCFG entry block param protection**: Same fix applied to `canonicalizeParamsAndArgs`
-  in SimplifyCFG's parameter canonicalization pass
-- **BranchVerifier Void compatibility**: Allow Void-typed branch arguments (from DCE-orphaned
-  definitions) as compatible with any parameter type, since the register allocator tracks
-  liveness independently of IL types
-- **AArch64 LoopOpt disabled**: The `hoistLoopConstants` peephole pass incorrectly identified
-  non-loop control flow (if/else merges, function exits) as loops, removing MovRI instructions
-  from mutually exclusive code paths — caused black ghosts in pacman and crashes in paint
-- **Multi-block inlining restricted**: `blockBudget=1` limits inlining to single-block callees
-  until multi-block continuation value threading is hardened. Single-block functions (getters,
-  setters, simple helpers) are the highest-value inline targets
-- **IL peephole removed from O1**: The peephole's global `replaceAll` creates cross-block SSA
-  violations when DCE's block param compaction runs afterward. SCCP already handles constant
-  folding; the AArch64 codegen peephole handles machine-level optimizations
-- **LICM readonly call safety**: Conservative guard prevents hoisting readonly calls when the
-  loop contains mutating memory operations
-
-**Compilation Performance**
-
-- **SimplifyCFG verification hooks removed**: Debug-only `Verifier::verify()` calls inside
-  SimplifyCFG verified the entire module per function per iteration (up to 40 full-module
-  verifications for a single SimplifyCFG invocation). Replaced with no-ops — the PassManager's
-  `-verify-each` flag provides equivalent functionality when needed. **27x speedup** for
-  medium-sized modules (viperide: 4 minutes → 8.5 seconds)
-- **Large module auto-downgrade**: Modules exceeding 100K instructions skip IL optimization
-  entirely to avoid O(n^2) behavior in SimplifyCFG and other passes. The AArch64 codegen
-  peephole still runs. Reduces sqldb compilation from 8+ minutes to 11 seconds
-
-#### Alloca Escape Verification
-
-New Pass 4 in FunctionVerifier warns when a `ret` instruction directly returns an alloca-derived
-pointer, catching dangerous stack-pointer escapes at verification time.
-
-#### Zia Lowering Optimizations
-
-- **Virtual dispatch**: O(N) if-else chain replaced with `SwitchI32` for multi-implementation
-  method dispatch
-- **Match expressions**: `SwitchI32` fast path for integer-only match arms without guards,
-  falling back to generic lowering otherwise
-
-#### Async/Await Syntax
-
-New `async`/`await` keywords with AST nodes, parser support, semantic checking, and lowering to
-`Future.Get` runtime calls:
-
-```rust
-func fetchData() -> String {
-    var result = await Http.GetAsync("https://example.com/data");
-    return result;
-}
-```
-
-#### Multi-Language Benchmark Suite
-
-Cross-language benchmark programs for performance comparison across C, C#, Java, Lua, Python, and
-Rust. Covers arithmetic stress, branch stress, call stress, fibonacci, inline stress, mixed stress,
-redundant stress, string stress, and unsigned division stress. Matching IL benchmark programs for
-direct Viper performance measurement.
-
-#### AArch64 Exception Handling
-
-Full EH opcode support for the AArch64 backend: `EhPush`, `EhPop`, `EhEntry`, `TrapDiv`,
-`TrapOvf`, `TrapIdx`, `TrapNull`, `TrapCast`, `ErrGetMsg`, `ErrGetCode`, `Resume`.
-
-#### SipHash-2-4 Hash Function
-
-Replace FNV-1a with keyed SipHash-2-4 using per-process random seed from OS CSPRNG for HashDoS
-resistance in all runtime hash maps.
-
-#### GC Epoch Tagging
-
-Per-entry survival counter skips promoted objects in trial-deletion, with periodic full scans to
-catch new cycles. Reduces GC overhead for long-lived objects.
-
-#### AArch64 PassManager
-
-Wire existing pass infrastructure into AArch64 `CodegenPipeline`, replacing monolithic per-function
-loop. Brings the ARM64 backend architecture in line with x86-64.
-
-#### AArch64 Performance Optimizations
-
-Major performance work across the AArch64 backend, adding several new optimization passes:
-
-**Post-RA Instruction Scheduler**
+### Network & TLS
 
-List scheduler running after register allocation with latency-based priority ordering and
-anti-dependency tracking. Reorders instructions within basic blocks to improve pipeline utilization
-while respecting data dependencies and register constraints.
+- **Security fixes (8 findings).** Native ECDSA P-256 verification for Linux TLS `CertificateVerify` (no OpenSSL dependency). WebSocket fragmentation reassembly capped at 64 MB with RFC 6455 close code 1009. TLS transcript buffer increased 8 KB → 32 KB for large cert chains. MSVC-compatible 128-bit arithmetic for ECDSA P-256 (`_addcarry_u64`, `_subborrow_u64`, `_umul128` replacing `__uint128_t`). TOML parser nesting depth limit (`kMaxTomlDepth=128`). BASIC parser `peek()` distance limit (`kMaxPeekDistance=1000`). Volatile memset for crypto key material wiping (HKDF, TLS). `atoi()` replaced with `strtol()` + range validation in WebSocket port parsing.
+- **Network audit (14,427-line review).** AES-128-GCM cipher suite implementation (~300 LOC) for TLS dual cipher support. ChaCha20 counter overflow protection + Poly1305 key zeroing. TLS buffered-data check for WebSocket + HTTP keep-alive. Windows socket type fix in TLS layer. Thread-safe CA certificate DER cache with heap-allocated PEM base64. HTTP HEAD response Content-Length fix. 303 redirect method rewrite. URL parsing memory leak fixes (`key_str` unref, parse validation). `recv_line` length cap to prevent unbounded reads. ViperDOS `ifaddrs` compatibility fix. `INT_MAX` socket send clamp.
+- **10 new network classes.** `HttpRouter` (path pattern matching + parameter extraction); `HttpServer` (multi-client event-loop); `ConnectionPool` (reuse with idle timeout + health checks); `MultipartParser` (multipart/form-data streaming); `NetUtils` (DNS resolution, interface enumeration, port checking); `WebSocketServer` (multi-client + broadcast); `SSEClient` (Server-Sent Events with auto-reconnect); `HttpClient` (high-level with cookie jar + redirects); `SmtpClient` (SMTP with AUTH + TLS); `AsyncSocket` (non-blocking with completion callbacks).
+- **Crypto additions.** HMAC-SHA256 for message authentication. HKDF (HMAC-based Key Derivation Function) for key expansion.
+- **Fixes.** Cipher `rt_cipher_decrypt` didn't fall back to legacy HKDF when PBKDF2-derived key failed.
 
-**Register Coalescer**
+### Concurrency (TSan-verified)
 
-Pre-regalloc `MovRR`/`FMovRR` elimination via live interval interference analysis (~270 LOC).
-Reduces unnecessary register-to-register moves by merging compatible live ranges before linear scan
-allocation. Integrated into the pipeline before the register allocator pass.
-
-**MIR Loop-Invariant Constant Hoisting**
-
-Hoists `MovRI` (move-immediate) instructions from loop bodies into preheader blocks when the
-register is callee-saved (x19-x28) and defined only by `MovRI` with the same immediate value
-throughout the loop. Uses natural loop body computation via reverse-reachability BFS from the latch
-through predecessors, correctly handling non-contiguous loop bodies (blocks placed after the latch in
-layout order).
-
-**Cross-Block Store-Load Forwarding**
+- **Pool allocator.** `block->next` pointer uses atomic load/store to prevent ARM64 memory-ordering corruption in the lock-free freelist.
+- **SipHash.** Non-atomic `rt_siphash_seeded_` fast-path check was causing stale seed reads on ARM64 weak memory model.
+- **GC.** Non-atomic `g_shutdown_registered` could double-register `atexit`. TOCTOU race removed by eliminating the unnecessary unlock/relock gap in snapshot.
+- **Init races.** `PTHREAD_MUTEX_INITIALIZER` / `InitOnceExecuteOnce` for all global init paths.
+- **ARM64 barriers.** `__dmb(_ARM64_BARRIER_ISH)` in `rt_platform.h` + `rt_pool.c`.
 
-Peephole optimization that forwards stores to loads across basic block boundaries when the layout
-predecessor has a single successor and the store/load access the same FP-relative offset. Includes
-reachability verification to ensure the predecessor actually reaches the successor (unconditional
-branch, conditional branch target, or fallthrough).
-
-**Division/Modulo Strength Reduction**
+### Graphics & GUI
 
-Peephole pass that replaces expensive SDIV/UDIV/SREM/UREM instructions with cheaper sequences:
-
-- `SDIV` by power-of-2: sign-corrected arithmetic shift (22 cycles → 4 cycles)
-- `SDIV` by arbitrary constant: magic number multiply-high (22 cycles → 6-8 cycles)
-- `UREM` by power-of-2: AND mask (26 cycles → 1 cycle)
-- `SREM` by power-of-2: sign-corrected AND+SUB (26 cycles → 5 cycles)
+- **Graphics fixes.** Present-before-events: reordered `vgfx_update` to present the frame before polling events (fixes visual glitches on rapid input during scene transitions). macOS resize alpha: opaque alpha (0xFF) on framebuffer clear during window resize (prevents transparent flicker artifacts). Linux X11: 32-bit TrueColor visual via `XMatchVisualInfo`; RGBA→BGRA swizzle in presentation buffer for correct color rendering. Linux linking: `-lX11` for graphics demos. macOS: frameworks guarded behind `#if defined(__APPLE__)` in AArch64 backend.
+- **GUI.** ListBox multi-select, search/filter with keyboard, scroll-to-selection. TextInput undo/redo stack, text selection with shift+arrows, clipboard integration. Improved dock layout edge cases, floating panel cleanup. Refined widget focus + keyboard event dispatch.
 
-**Full O2 Pipeline Restoration**
+### Game engine framework
 
-Restored 10 missing IL optimization passes to the native codegen O2 pipeline: loop-simplify,
-loop-rotate, indvars, loop-unroll, check-opt, eh-opt, sibling-recursion, constfold, licm,
-reassociate. The codegen pipeline was running a stripped-down O1-level optimizer despite requesting
-`-O2`. Also fixed x86-64 codegen O2 gating threshold.
+Built as pure Zia libraries and C runtime additions:
 
-**Benchmark Results** (Apple M4 Max, native -O2 vs previous baseline):
+- **GameBase + IScene** (Zia library). Reusable game-loop framework — `GameBase` handles canvas creation, frame pacing, DeltaTime clamping, scene management; `IScene` defines `update` / `draw` / `onEnter` / `onExit` lifecycle. Eliminates ~100 lines of boilerplate per game.
+- **Screen transitions.** `transitionTo()` orchestrates fade-out → scene switch → fade-in via ScreenFX. `shake()` and `flash()` for screen effects.
+- **Action presets (C runtime).** `Action.LoadPreset("platformer")` loads standard input bindings in one call: `standard_movement`, `menu_navigation`, `platformer`, `topdown`.
+- **Canvas frame helpers.** `BeginFrame()` combines Poll + ShouldClose check; `SetDTMax()` auto-clamps DeltaTime; `TextCentered` / `TextRight` / `TextCenteredScaled` layout helpers.
+- **SaveData.** Cross-platform key-value persistence. JSON storage in platform-appropriate directories (macOS Application Support, Linux XDG, Windows AppData).
+- **DebugOverlay.** Real-time FPS/dt/watch-variable overlay with color-coded FPS, 16-frame rolling average, up to 16 custom watch entries.
+- **SoundBank + Synth.** Named sound registry + procedural synth generating tones / sweeps / noise / 6 preset game SFX (jump / coin / hit / explosion / powerup / laser) without WAV files. Bhaskara I sine approximation, in-memory WAV generation.
 
-| Benchmark | Before | After | Improvement |
-|-----------|--------|-------|-------------|
-| branch_stress | 180ms | 24ms | **-87%** |
-| redundant_stress | 315ms | 104ms | **-67%** |
-| mixed_stress | 83ms | 30ms | **-63%** |
-| udiv_stress | 180ms | 74ms | **-59%** |
-| inline_stress | 144ms | 79ms | **-46%** |
-| call_stress | 45ms | 34ms | **-24%** |
-| arith_stress | 140ms | 119ms | **-15%** |
+### Tests
 
-**Additional Peephole Optimizations**
+Roughly +90 net tests (18K lines of new coverage). Highlights:
 
-- **CSET+branch fusion**: Fuses compare-and-set with subsequent conditional branch for tighter
-  conditional sequences
-- **Dead FP store elimination**: Removes redundant floating-point stores to the same stack slot
-- **Leaf function register preference**: Prefers low-numbered (caller-saved) registers for leaf
-  functions that don't need callee-saved save/restore
-- **Logical immediate emission**: Proper AArch64 encoding for `AND`/`ORR`/`EOR` immediate operands
-- **Dead overflow DCE**: Correct elimination of unused overflow-checked arithmetic results
-- **SmulhRRR opcode**: New MIR opcode for proper signed multiply-high overflow detection
+- **Frontends.** 25 Zia parser-error tests, 62 Zia lexer tests, 75 Zia frontend tests (35 parser + 24 sema + 16 lowerer), 24 Zia/BASIC enum tests, 6 Zia runtime programs (enums, async, properties, deinit, string methods, optional narrowing), 3 async tests, 3 destructor tests, 2 static-property tests, 2 string-method tests.
+- **Native toolchain.** 13 assembler, 6 string-dedup, 13 symbol-resolver, 8 relocation edge-case, 11 DWARF debug-line, 9 DWARF debug-section, 1 ICF, 1 branch-trampoline, 10 ELF exe-writer, 7 linker integration.
+- **Codegen.** 357 x86-64 determinism tests (8 scenarios, 407 compilations verifying byte-identical output — repeated compilation N=100, regalloc pressure N=50, rodata pool N=50, multi-function ordering N=50, complex CFG N=50, separate construction pointer-address independence, ISel patterns N=50, static counter awareness). 9 dataflow-liveness tests, 1 encoding-validation, 1 x86-64 peephole integration, 1 DCE param-compaction, 1 alias-precision, 1 inline round-trip, 3 canonical-pipeline.
+- **Runtime.** 86 REPL (51 Zia + 35 BASIC), 24 rt_map, 11 rt_pool, 5 VM equivalence, 2 crypto (HMAC-SHA256 + HKDF), 3 Pixels, 2 Canvas3D, 2 Scene3D, 1 network integration, 7 AnimStateMachine, 3 TextureAtlas.
+- **Fuzz.** 2 libFuzzer harnesses for Zia lexer + parser.
 
-**Peephole Decomposition**
+### Demos & docs
 
-Split the monolithic 2,750-line AArch64 `Peephole.cpp` into 6 focused sub-passes under `peephole/`:
-`IdclassElim`, `StrengthReduce`, `CopyPropDCE`, `BranchOpt`, `MemoryOpt`, `LoopOpt`. Shared
-peephole templates (`PeepholeDCE.hpp`, `PeepholeCopyProp.hpp`) parameterized on target traits are
-used by both AArch64 and x86-64 backends.
+Marquee demo is the sidescroller "Nova Run" — evolved across 8 phases from a single-level tech demo into a complete 5-level platformer (Training Grounds / Crystal Caverns / Volcanic Depths / Sky Fortress / Ancient Ruins) with 5 parallax backgrounds, 7 new tile types with 3D bevels + crystal facets + lava veins, all entities redrawn using `DrawTriangle` / `DrawEllipse` / `DrawBezier` / `DrawThickLine` / `Blur` / `Tint`, 4-frame player run cycle, frame-rate-independent DeltaTime physics, gamepad support via `Action.BindPadButton`, persistent CSV high scores, 12 procedurally-generated WAV SFX, `ParticleEmitter`-based projectile trails, landing dust + wall-slide sparks + jetpack flame + ambient lava glow + crystal shimmer + speed trail + level intro splashes. Plus a new Platformer Showcase Demo (~600 LOC across 6 files demonstrating 11+ runtime APIs in one cohesive game) and a new 3D Bowling demo (Physics3D showcase). Docs: all demos consolidated under `examples/` (`apps/`, `games/`, `embedding/`, `apiaudit/`, `basic/`, `il/`, `sqldb-basic/`), ~80 trivial/redundant demo files removed, 5 directories deleted; `devdocs/` merged into `docs/` with 28 files relocated, 25 stale files deleted, 117 broken relative links fixed, `docs/README.md` rebuilt as a clean navigation hub, YAML frontmatter added to 95 files, 548 bare code blocks tagged with language identifiers, terminology standardized ("standard library" → "ViperLib", "interpreter" → "VM"), 900+ Bible reference-manual fixes. Large-file splits for readability: `BytecodeVM.cpp` + `BytecodeVM_threaded.cpp`; `rt_graphics.c` + `rt_canvas.c` + `rt_drawing.c` + `rt_drawing_advanced.c`; `rt_network_http.c` + `rt_http_url.c`; `rt_tls.c` + `rt_tls_verify.c` + `rt_tls_internal.h`; `vg_ide_widgets.h` split into 6 focused sub-headers; `Peephole.cpp` decompositions (both backends); `RegAllocLinear.cpp` → 8 files in `ra/`; `Lowerer.hpp` foundation decomposition. Zia frontend file splits: `Parser_Expr.cpp` (1,804 LOC → 3 files), `Lowerer_Decl.cpp` (1,690 → 3), `Lowerer_Expr_Complex.cpp` (1,386 → 3). Sidescroller demo fixes: lock-free pool allocator race (reserve first slab block before sharing with freelist); `TILE_BRIDGE` missing from `isSolid()` (players fell through bridges into spike pits); `PS_HURT` state stuck permanently; turret/boss shared `etimer` corruption leaving enemies stuck in hurt state; clear nearby enemy bullets on enemy death (4-tile radius despawn).
 
-#### x86-64 Backend Improvements
+### Breaking changes
 
-**Comprehensive Backend Codegen Review** — 20-item systematic review of both backends with
-improvements across modularity, shared infrastructure, and test coverage:
-
-**x86-64 Peephole Decomposition**
-
-Split the 1,470-line monolithic `Peephole.cpp` into 4 focused sub-passes under `peephole/`:
-`ArithSimplify` (MOV-zero→XOR, CMP-zero→TEST, strength reduction), `MovFolding` (redundant MOV
-elimination), `DCE` (dead code elimination with implicit register tracking), `BranchOpt` (branch
-optimization and cold block reordering). Peephole iteration now bounded by `kMaxIterations=100`.
-
-**CFG-Aware Register Allocation Liveness**
-
-Replaced the conservative "unconditional spill" hack (which force-spilled ALL cross-block vregs)
-with proper backward dataflow liveness analysis. The new `LivenessAnalysis` class computes per-block
-`liveIn`/`liveOut` sets using the standard fixed-point iteration, so only vregs that are *truly* live
-across block boundaries get spill slots. This is the same algorithm used by production compilers.
-
-**Shared Dataflow Solver**
-
-Extracted the backward dataflow liveness algorithm into a shared template
-(`common/ra/DataflowLiveness.hpp`) used by both x86-64 and AArch64 backends. The AArch64 allocator's
-inline liveness code was extracted into a separate `Liveness` class (matching x86-64's pattern),
-both now delegating to the shared solver. Also includes a shared `buildPredecessors()` utility.
-
-**Shared Linker Utilities**
-
-Common encoding utilities (`ExeWriterUtil.hpp`) shared between Mach-O and PE executable writers:
-`writeLE16/32/64`, `writeBE32/64`, `writeULEB128`, `writePad`, `padTo`, and `resolveMainAddress()`.
-ObjC dynamic stub generation extracted from the native linker into `DynStubGen.hpp/cpp`.
-
-**Additional Improvements**
-
-- `LoweringRuleTable.hpp` declarations moved to `.cpp` for faster incremental compile times
-- AArch64 division handlers parameterized (4 near-identical → shared `lowerDivisionChk`)
-- AArch64 `OpcodeDispatch` refactored with handler table replacing 1K-line switch
-- AArch64 `AsmEmitter` consolidated with `emit2Op`/`emit3Op` primitives
-- `SchedulerPass` hash maps replaced with `vector<optional<>>` for O(1) cache-friendly lookup
-- `CopyPropDCE` `MovRR`/`FMovRR` logic parameterized (90% duplication eliminated)
-- Shared prologue/epilogue iteration (`FrameCodegen.hpp`) eliminates callee-saved
-  register save/restore duplication between AsmEmitter and BinaryEncoder
-- x86-64 peephole fixed-point iteration with `kMaxIterations=100` bound
-
-#### Game Engine Framework (10-Item Improvement Plan)
-
-A comprehensive game development infrastructure built as pure Zia libraries and C runtime additions:
-
-**GameBase + IScene (Zia library)** — Reusable game loop framework. `GameBase` class handles canvas
-creation, frame pacing, DeltaTime clamping, and scene management. `IScene` interface defines
-`update`/`draw`/`onEnter`/`onExit` lifecycle. Eliminates ~100 lines of boilerplate per game.
-
-**Screen Transitions** — `transitionTo()` on GameBase orchestrates fade-out → scene switch → fade-in
-using ScreenFX. Also adds `shake()` and `flash()` for screen effects.
-
-**Action Presets (C runtime)** — `Action.LoadPreset("platformer")` loads standard input bindings in
-one call. Four presets: `standard_movement`, `menu_navigation`, `platformer`, `topdown`.
-
-**Canvas Frame Helpers (C runtime)** — `BeginFrame()` combines Poll + ShouldClose check.
-`SetDTMax()` auto-clamps DeltaTime. Text layout: `TextCentered`, `TextRight`, `TextCenteredScaled`.
-
-**SaveData (C runtime)** — Cross-platform key-value persistence. JSON storage in platform-appropriate
-directories (macOS Application Support, Linux XDG, Windows AppData).
-
-**DebugOverlay (C runtime)** — Real-time FPS/dt/watch variable overlay with color-coded FPS,
-16-frame rolling average, and up to 16 custom watch entries.
-
-**SoundBank + Synth (C runtime)** — Named sound registry maps string names to Sound objects.
-Procedural synth generates tones, sweeps, noise, and 6 preset game SFX (jump/coin/hit/explosion/
-powerup/laser) without WAV files. Uses Bhaskara I sine approximation and in-memory WAV generation.
-
-**Platformer Showcase Demo** — ~600 LOC across 6 files demonstrating 11+ runtime APIs in one
-cohesive game: Tilemap, Camera, CollisionRect, StateMachine, SpriteAnimation, ObjectPool,
-PathFollower, ButtonGroup, DebugOverlay, ScreenFX, and Action presets.
-
-**Demo Refactoring** — Sidescroller demo refactored to use StateMachine (replacing manual integer
-state tracking) and ButtonGroup (replacing manual selection management).
-
-#### New Runtime APIs
-
-**AnimStateMachine** — Combined state machine and animation playback controller. Maps each
-state to an animation clip (frame range, duration, loop flag). Transitions automatically
-reconfigure the internal animation. Surfaces `CurrentFrame`, `IsAnimFinished`, `Progress`,
-`JustEntered`/`JustExited` edge flags, and `FramesInState`. Eliminates the boilerplate of
-manually wiring `StateMachine` and `SpriteAnimation` together in every character controller.
-
-**TextureAtlas** — Named-region 2D sprite sheet atlas. Maps string names to rectangular sub-regions
-of a Pixels buffer, enabling content pipelines where frames are referenced by name instead of raw
-pixel coordinates. Supports grid-based auto-slicing (`LoadGrid`) and manual region definition (`Add`).
-Integrates with SpriteBatch via `DrawAtlas`, `DrawAtlasScaled`, and `DrawAtlasEx` methods.
-
-**Canvas.DeltaTime** — Milliseconds elapsed since the last frame, available as a property. Combined
-with `Canvas.SetDTMax()` for automatic delta-time clamping, this enables frame-rate-independent
-physics without manual timer management.
-
-**ParticleEmitter Rendering** — `ParticleEmitter.Draw()`, `DrawAt()`, and `DrawToPixels()` methods
-for rendering particle systems directly, eliminating the need for manual particle array iteration in
-game loops.
-
-**Camera Parallax Layers** — `Camera.AddParallaxLayer()`, `RemoveLayer()`, `ClearLayers()`, and
-`DrawParallax()` for multi-layer parallax scrolling backgrounds with configurable scroll speeds.
-
-**Camera.SnapTo** — Instant camera repositioning for level transitions and respawn events, bypassing
-the normal smooth-follow interpolation.
-
-#### 3D Graphics Engine (Graphics3D)
-
-A complete 3D graphics engine built as a zero-dependency C runtime module with pluggable GPU backends.
-
-**Core Architecture**
-- Scene graph with frustum culling and node hierarchy (`Scene3D`, `SceneNode3D`)
-- Transform system with parent-child propagation (`Transform3D`)
-- Material system with PBR properties, environment mapping, and emissive surfaces (`Material3D`)
-- Camera system with shake, follow, and smooth interpolation (`Camera3D`)
-- Light system with point, directional, and spot lights (`Light3D`)
-
-**Rendering**
-- Four backends: Metal (macOS), D3D11 (Windows), OpenGL (Linux), software rasterizer (fallback)
-- Multi-pass rendering pipeline with alpha blending and depth sorting
-- Render-to-texture for post-processing and offscreen rendering (`RenderTarget3D`)
-- Post-processing effects: bloom, vignette, color grading, screen-space effects (`PostFX3D`)
-- Skybox rendering with cubemap support (`CubeMap3D`)
-- Instance batching for efficient rendering of repeated meshes (`InstanceBatch3D`)
-- Decal projection (`Decal3D`), terrain rendering (`Terrain3D`), water simulation (`Water3D`)
-
-**Animation & Physics**
-- Skeletal animation with bone hierarchies and blend trees (`Skeleton3D`, `Animation3D`, `AnimBlend3D`, `AnimPlayer3D`)
-- Morph targets for facial animation and mesh deformation (`MorphTarget3D`)
-- Character controller combining skeletal animation and physics (`Character3D`)
-- 3D physics with rigid bodies and trigger volumes (`Physics3DBody`, `Physics3DWorld`, `Trigger3D`)
-
-**Navigation & Loading**
-- Navigation mesh for AI pathfinding (`NavMesh3D`)
-- Path system for waypoint-based movement (`Path3D`)
-- FBX file loader for importing meshes, skeletons, and animations (`FBX`)
-- Raycasting for object picking and interaction (`RayHit3D`)
-- Particle systems (`Particles3D`)
-
-28 classes total. Documented in [Graphics3D Guide](../graphics3d-guide.md) and [Graphics3D Architecture](../graphics3d-architecture.md).
+1. **Directory restructure:** `demos/` consolidated into `examples/`. Update any hardcoded paths.
+2. **`devdocs/` removed:** all developer documentation now lives under `docs/`.
+3. **Runtime API renames:** 40+ C functions renamed to `rt_<type>_<verb>` convention (`Contains`→`Has`, `Count`→`Length`, `Size`→`Length`, plus `IsEmpty` property additions). `runtime.def` registrations updated accordingly.
+4. **Collection `.Len` → `.Length`** across List / Map / Set. `.Len` retained as alias for back-compat.
+5. **Boolean return types:** 15 runtime functions changed from `bool`/`int` to `int8_t` (matching IL `i1`). Affects C FFI callers using these functions directly.
 
 ---
 
-### Comprehensive Safety Audits
+### Commits
 
-The bulk of this release is a multi-phase safety audit touching every layer of the platform.
-
-#### VM Execution Loop (8 fixes)
-
-- Convert assert-only guards to runtime traps in branch target lookup, switch index, and EH handlers
-- Add null guard for `prepareTrap` handler
-- Fix `fr.func->name` null checks in trap diagnostics
-- Add defensive operand checks for trap/EH ops
-
-#### x86-64 Codegen (9 fixes)
-
-- **EFLAGS clobber**: Guard MOV-zero→XOR peephole against EFLAGS clobber between TEST and CMOV
-  (silent miscompilation for `select` with falseVal=0)
-- **Block arguments**: Extend `EdgeArg` with `argValues` to carry full ILValue data for constant
-  block arguments; materialize constants into fresh vregs via MOVri/MOVSDmr before PX_COPY
-- **Peephole DCE**: Fix implicit register liveness for CQO (reads RAX) and IDIV/DIV (reads RAX+RDX)
-  — DCE was incorrectly eliminating dividend loads
-- **Deterministic labels**: Replace three static `uint32_t` counters with per-function
-  `nextLocalLabelId()`, reset to 0 per function for output determinism
-- **Parallel move resolution**: Replace entry parameter MOV loop with PX_COPY pseudo-instruction
-  for topological sort and cycle-breaking (fixes crash in multi-param class init calls)
-- **GNU-stack marking**: Add `.note.GNU-stack` section to ELF output for non-executable stack
-- **PE/COFF directives**: `.rdata` section and ELF `.type @function` in AsmEmitter
-- **PIE support**: `-pie` flag for Linux linker
-
-#### AArch64 Codegen (5 fixes)
-
-- **Dominator intersect guard**: Add runtime guard in `Dominators.cpp intersect()` for release builds
-- **AsmEmitter refactor**: Extract `resolveBaseOffset()` helper from four duplicated base+offset
-  load/store functions
-- **Loop body BFS over-inclusion**: Fix natural loop body computation crawling backwards past
-  the header for BASIC two-header for-loop patterns, causing compilation crashes (SIGBUS)
-- **SLF reachability**: Add predecessor reachability verification for cross-block store-load
-  forwarding to prevent incorrect forwarding when the layout predecessor diverges
-- **Fast-path param stores**: Emit param-to-alloca stores for >8-argument functions in the call
-  fast path, fixing uninitialized stack reads in `lowerCallWithArgs`
-
-#### Runtime — Resource Lifecycle (10 fixes)
-
-- GC epoch-counter overflow: `uint8` → `uint32` (rt_gc.c)
-- String intern table dangling pointer on GC collect (rt_string_intern.c)
-- TLS session cache stale pointer after context free (rt_tls.c)
-- Parallel worker thread-local cleanup on join (rt_parallel.c)
-- PkgDeflate double-free on realloc failure (PkgDeflate.cpp)
-- ThreadsRuntime detached-thread resource leak (ThreadsRuntime.cpp)
-- File watcher handle leak on rewatch (rt_watcher.c)
-- Audio waveOut handle leak on close (vaud_platform_win32.c)
-- Closure env pointer offset extracted to named constants with `static_assert`
-- GC shutdown flag guard for Windows re-init safety
-
-#### Runtime — Capacity Overflow Guards (16 files)
-
-Integer overflow guards before capacity doubling in seq, deque, map, set, bag, bimap, countmap,
-defaultmap, frozenmap, frozenset, intmap, multimap, sortedset, sparsearray, treemap, and weakmap.
-Prevents undefined behavior when capacity approaches `INT64_MAX/2` or `SIZE_MAX/2`.
-
-#### Runtime — String Operations (12 sites)
-
-Replace `strlen()` with `rt_string_len_bytes()`/`rt_str_len()` in 5 case-conversion functions,
-2 LIKE functions, box hash, bloomfilter, bimap/bag helpers, and playlist operations.
-
-#### Runtime — File Operations (8 fixes)
-
-- 32-bit `ftell`/`fseek` overflow on Windows → 64-bit equivalents (linereader, PNG loader)
-- Delete corrupt PNG file on partial write failure
-- Check `fclose()` return in HTTP download, remove partial file on failure
-- Validate stream state after `Serializer::write`
-- Check write result in `ArWriter::finishToFile`
-
-#### Runtime — Allocation Failure Handling
-
-Replace silent data-dropping on allocation failure with `rt_trap` in `rt_list_push`, `rt_map_new`,
-`rt_map_set`, `rt_set_add`. Replace `assert`-only bounds checks in `rt_arr_str` and `rt_arr_obj`
-get/put with `rt_trap` + `rt_arr_oob_panic`.
-
-#### Runtime — Type System (5 fixes)
-
-- Zia `lowerAs()` missing numeric conversion instructions
-- Assignment coercion for Number↔Integer fields and vars
-- Checked `fptosi` (`CastFpToSiRteChk`) with NaN/overflow guards
-- Separate `CastFpToSiRteChk` from `Fptosi` in lowering pipeline
-
-#### Network & TLS Security (8 findings)
-
-- Native ECDSA P-256 verification for Linux TLS CertificateVerify (no OpenSSL dependency)
-- WebSocket fragmentation reassembly capped at 64MB with RFC 6455 close code 1009
-- TLS transcript buffer increased from 8KB to 32KB for large cert chains
-- MSVC-compatible 128-bit arithmetic for ECDSA P-256 (`_addcarry_u64`, `_subborrow_u64`,
-  `_umul128` replacing `__uint128_t`)
-- TOML parser nesting depth limit (`kMaxTomlDepth=128`)
-- BASIC parser `peek()` distance limit (`kMaxPeekDistance=1000`)
-- Volatile memset for crypto key material wiping (HKDF, TLS)
-- Replace `atoi()` with `strtol()` + range validation in WebSocket port parsing
-
-#### Network Audit & New Classes
-
-Comprehensive file-by-file security and correctness review of all 11 C source files (14,427 lines)
-in the network runtime, plus 10 new networking classes.
-
-**Security Fixes**
-
-- AES-128-GCM cipher suite implementation (~300 LOC) for TLS dual cipher support
-- ChaCha20 counter overflow protection and Poly1305 key zeroing
-- TLS buffered data check for WebSocket and HTTP keep-alive
-- Windows socket type fix in TLS layer
-- Thread-safe CA certificate DER cache with heap-allocated PEM base64
-- HTTP HEAD response Content-Length fix, 303 redirect method rewrite
-- Memory leak fixes in URL parsing (key_str unref, parse validation)
-- recv_line length cap to prevent unbounded reads
-- ViperDOS ifaddrs compatibility fix, INT_MAX socket send clamp
-
-**New Network Classes (10)**
-
-- `HttpRouter` — path pattern matching with parameter extraction
-- `HttpServer` — multi-client event-loop HTTP server
-- `ConnectionPool` — connection reuse with idle timeout and health checks
-- `MultipartParser` — multipart/form-data streaming parser
-- `NetUtils` — DNS resolution, interface enumeration, port checking
-- `WebSocketServer` — multi-client WebSocket server with broadcast
-- `SSEClient` — Server-Sent Events client with auto-reconnect
-- `HttpClient` — high-level HTTP client with cookie jar and redirects
-- `SmtpClient` — SMTP email sending with AUTH and TLS
-- `AsyncSocket` — non-blocking socket with completion callbacks
-
-**Crypto Additions**
-
-- HMAC-SHA256 implementation for message authentication
-- HKDF (HMAC-based Key Derivation Function) for key expansion
-
-#### 3D Graphics Hardening
-
-Post-audit fixes across the 3D graphics subsystem:
-
-- Canvas3D depth buffer bounds validation and initialization guards
-- Mesh3D vertex/index bounds checking on construction
-- Scene3D node cleanup and dangling reference prevention
-- Software rasterizer triangle clipping and edge-case guards
-- Pixels module additional bounds checks for direct pixel operations
-
-#### Concurrency Hardening (TSan-verified)
-
-- Pool allocator: `block->next` pointer uses atomic load/store to prevent ARM64 memory ordering
-  corruption in lock-free freelist
-- SipHash: Fix non-atomic `rt_siphash_seeded_` fast-path check causing stale seed reads on ARM64
-  weak memory model
-- GC: Fix non-atomic `g_shutdown_registered` causing potential double `atexit` registration
-- GC: Remove TOCTOU race by eliminating unnecessary unlock/relock gap in snapshot
-- Init races: `PTHREAD_MUTEX_INITIALIZER` / `InitOnceExecuteOnce` for all global init paths
-- ARM64 barriers: `__dmb(_ARM64_BARRIER_ISH)` in rt_platform.h + rt_pool.c
-
----
-
-### Zia Compiler Fixes
-
-#### Static Property Resolution
-
-- **Color.RED, Color.WHITE, etc. now work** — the sema's module field handler now tries the
-  `get_` prefix convention when resolving static properties through alias bindings. Previously,
-  `Color.RED` errored with "Module has no exported symbol 'RED'" because the getter was
-  registered as `Viper.Graphics.Color.get_RED` but the lookup tried
-  `Viper.Graphics.Color.RED`. This fix applies to ALL static properties on ALL runtime classes,
-  not just Color.
-
-#### P0 Bugs
-
-- **BUG-EH-001**: Exception handler param types corrected (Ptr/I64 → Error/ResumeTok)
-- **BUG-OPT-001**: `Optional<String>` mapping corrected (Str → Ptr for nullable boxing)
-
-#### P1 Bugs
-
-- **BUG-MATCH-002**: String match return type (I64 → I1)
-- **BUG-MATCH-003**: Boolean match with `Zext1` before `ICmpEq`
-- **BUG-MATCH-001**: Negative literal patterns in match arms
-
-#### P2-P3 Bugs
-
-- **BUG-VAL-001**: Value type String field init/copy (raw ptr store + retain)
-- **BUG-OPT-002**: Nested coalescing inner type derivation
-- **BUG-IL-001**: Save/restore IRBuilder temp counter around lambda lowering
-- **BUG-IL-002**: Type annotations for Dynamic result types in IL serializer; add `call.indirect`
-  parser/serializer support
-
-#### Entity & Inheritance Fixes
-
-- **Init overload resolution**: Entity `init()` methods now correctly match parameter count
-  and types against the call site. Previously, entities with inherited init from a parent
-  would fail with "no init overload matching the provided arguments"
-- **Override keyword**: `override expose func` on class methods now works for method
-  dispatch. Child entities can override parent methods with the `override` keyword
-- **Entity method dispatch**: Improved codegen routing for class method calls through
-  the inheritance chain
-
-#### Destructor & Property Fixes
-
-- **Deinit binding propagation**: Destructor (`deinit`) blocks can now access class fields
-  through `self` bindings — previously, field accesses inside `deinit` hit lowering errors
-  because the binding context wasn't propagated to the destructor scope
-- **Destructor dispatch**: Correct lowering of `__dtor_TypeName` IL function calls through
-  class inheritance chains
-- **Property access improvements**: Sema now correctly resolves property getter/setter
-  declarations and validates return types against the backing field type
-
-#### Async Improvements
-
-- **ThreadsRuntime async execution**: VM `ThreadsRuntime` improved for async function handling,
-  supporting `Future.Get` continuation semantics for `await` expressions
-- **Async test coverage**: New compiler and runtime tests validating async/await lowering
-  through the full pipeline (parser → sema → IL → VM execution)
-
-#### Sema Fixes
-
-- Guard-clause narrowing interaction: assignment type checking uses original declared type
-- Clear narrowing on reassignment to prevent stale type info
-- Force-unwrap allows reference/nullable types after narrowing
-- `Optional<String>` maps to IL Str type (not Ptr) matching runtime externs
-- Call instructions use extern-declared return type for IL verification
-- Match exhaustiveness checking (W019)
-- Escape analysis in BasicAA (non-escaping allocas vs Param → NoAlias)
-- Warning suppression improvements for class method self-parameter warnings
-- Import deduplication in `ImportResolver` to prevent redundant module loads
-
----
-
-### Sidescroller Demo — "Nova Run" (Full Game)
-
-The sidescroller demo evolved from a single-level tech demo into a complete 5-level platformer
-("Nova Run") across 8 phases of development:
-
-#### Content
-
-- 5 themed levels: Training Grounds, Crystal Caverns, Volcanic Depths, Sky Fortress, Ancient Ruins
-- 5 parallax backgrounds with round stars, atmospheric blur, and volumetric clouds
-- 7 new tile types across 3 level themes with 3D bevels, crystal facets, and lava veins
-- Gradient title screen with scrolling elements and pulsing animations
-- Data-driven boss health bar and all 5 level names displayed in HUD
-
-#### Sprite Art Overhaul
-
-All entities redrawn using `DrawTriangle`, `DrawEllipse`, `DrawBezier`, `DrawThickLine`, `Blur`,
-and `Tint` — replacing the original rectangles-only rendering. Includes 4-frame player run cycle
-(was 2), 4-frame slime animation (was 2), and boss attack wind-up frame.
-
-#### Physics & Systems
-
-- Frame-rate-independent physics via DeltaTime scaling across all subsystems
-- Gamepad support via `Action.BindPadButton` with integer button constants
-- Persistent high scores via CSV file I/O
-- 12 procedurally generated WAV sound effects with SoundManager class integration
-- ParticleEmitter-based effects replacing manual particle arrays
-- Projectile particle trails for player and enemy bullets
-
-#### Visual Effects
-
-Landing dust, wall-slide sparks, jetpack flame, ambient lava glow, crystal shimmer, speed trail,
-and level intro splash screens.
-
-#### Bug Fixes
-
-- Fix lock-free pool allocator race: reserve first slab block before sharing remainder with freelist
-- Fix `TILE_BRIDGE` missing from `isSolid()` — players fell through bridges into spike pits
-- Fix `PS_HURT` state stuck permanently — allow state transitions once iframes expire
-- Fix turret/boss shared `etimer` corruption: hurt handler and AI timer cancelled each other out,
-  leaving enemies stuck in permanent hurt state. Added hurt-state guards to turret and boss AI
-- Clear nearby enemy bullets on enemy death to prevent ghost collision damage at dead turret
-  positions (4-tile radius despawn)
-
----
-
-### Codebase Reorganization
-
-#### Directory Consolidation
-
-All demos and examples consolidated under a unified `examples/` root:
-
-```text
-examples/
-├── apps/       (viperide, paint, sqldb, webserver, varc, telnet)
-├── games/      (chess, pacman, centipede, sidescroller, frogger, vtris, ...)
-├── embedding/  (C++ VM integration examples)
-├── apiaudit/   (runtime API verification)
-├── basic/      (BASIC language examples)
-├── il/         (IL benchmark and test programs)
-└── sqldb-basic/ (SQL demo in BASIC)
-```
-
-~80 trivial/redundant/dead demo files removed. 5 entire directories deleted (gfx_centipede,
-gui_test, particles, classes, vedit). 7 broken/redundant scripts removed.
-
-#### Documentation Consolidation
-
-- Eliminated `devdocs/` directory: 28 files merged into `docs/` tree
-- 25 stale devdocs files deleted (outdated plans, superseded specs)
-- 117 broken relative links fixed across docs/
-- `docs/README.md` rebuilt as clean navigation hub
-- 286 obsolete test sources removed from `docs/bugs/bug_testing/`
-- YAML frontmatter added to 95 documentation files
-- 548 bare code blocks tagged with language identifiers
-- Terminology standardized: "standard library" → "ViperLib", "interpreter" → "VM"
-
-#### Frontend Decomposition
-
-Systematic 10-item improvement across BASIC, Zia, and shared frontend infrastructure:
-
-**Shared Infrastructure (fe_common/)**
-- Extract string escape processing to `EscapeSequences.hpp` (shared by both frontends)
-- Extract diagnostic formatter to `DiagnosticFormatter.hpp`
-- Replace O(n) linear searches with hash tables in BASIC parser/builtins
-
-**Zia File Splits**
-- `Parser_Expr.cpp` (1,804 LOC → 3 files)
-- `Lowerer_Decl.cpp` (1,690 LOC → 3 files)
-- `Lowerer_Expr_Complex.cpp` (1,386 LOC → 3 files)
-- Extract class layout helpers (`computeEntityFieldLayout`, `buildEntityVtable`,
-  `inheritEntityMembers`) from monolithic `registerEntityLayout`
-
-**BASIC Improvements**
-- Consolidate member array field handling (4 bugs) into `MemberArrayResolver`
-- Migrate BASIC Lexer to `LexerBase` CRTP (shared cursor management with Zia)
-
-**Header Decomposition**
-- Extract Zia type layout structs to `LowererTypes.hpp` (-195 LOC from header)
-- Extract Zia Sema support types to `sema/SemaTypes.hpp` (-159 LOC)
-- Extract BASIC `require*()` methods to `lowerer/LowererRuntimeRequirements.hpp`
-
-**Type Coercion Unification**
-- Unified numeric coercion logic between BASIC and Zia frontends
-
-#### Large File Splits
-
-Readability refactoring of the largest source files:
-
-| Original | Split Into | Purpose |
-|----------|-----------|---------|
-| `BytecodeVM.cpp` | + `BytecodeVM_threaded.cpp` | Threaded interpreter extracted |
-| `rt_graphics.c` | + `rt_canvas.c` + `rt_drawing.c` + `rt_drawing_advanced.c` + `rt_graphics_stubs.c` | Graphics rendering split (2,750 LOC) + stubs |
-| `rt_network_http.c` | + `rt_http_url.c` | URL parsing extracted |
-| `rt_tls.c` | + `rt_tls_verify.c` + `rt_tls_internal.h` | Cert verification extracted |
-| `vg_ide_widgets.h` | Split into 6 focused sub-headers | Umbrella include preserved |
-| `Peephole.cpp` (AArch64) | 6 sub-passes in `peephole/` directory | AArch64 peephole decomposition (2,750 LOC) |
-| `Peephole.cpp` (x86-64) | 4 sub-passes in `peephole/` directory | x86-64 peephole decomposition (1,470 LOC) |
-| `RegAllocLinear.cpp` | 8 files in `ra/` directory | AArch64 register allocator decomposition (1,478 LOC) |
-| `Lowerer.hpp` | + `LowererTypes.hpp` + `LowererSymbolTable.hpp` + `LowererTypeLayout.hpp` | Zia lowerer decomposition foundation |
-
-#### Cross-Platform Improvements
-
-- Network tests (`RTNetworkHardenTests`, `RTNetworkTimeoutTests`) ported to Windows via
-  `sock_t`/`SOCK_CLOSE`/`SOCK_INVALID` abstractions + WinSock2
-- Windows build script parity improvements
-
-#### Zia Review Cleanup
-
-Removed `zia-review/` directory (review complete). All findings resolved and tracked in main
-issue tracker.
-
----
-
-### Testing
-
-#### New Test Coverage
-
-| Suite | Tests Added | Description |
-|-------|-------------|-------------|
-| Zia parser errors | 25 | Parser negative/error-recovery tests |
-| Zia lexer | 62 | Lexer edge-case unit tests |
-| REPL | 86 | 51 Zia + 35 BASIC REPL tests |
-| x86-64 determinism | 357 | Backend output determinism stress (8 scenarios, 407 compilations) |
-| rt_map | 24 | Comprehensive map tests |
-| rt_pool | 11 | Pool allocator tests |
-| VM equivalence | 5 | VM vs BytecodeVM output equivalence |
-| Zia frontend | 75 | 35 parser + 24 sema + 16 lowerer unit tests |
-| Zia/BASIC enums | 24 | 16 Zia + 8 BASIC enum tests |
-| Native assembler | 13 | Binary encoder + object file writer tests |
-| String dedup | 6 | Cross-module string deduplication tests |
-| Symbol resolver | 13 | Weak/strong symbol resolution + archive demand-pull |
-| Relocation edge cases | 8 | Out-of-range branch, overflow, and boundary tests |
-| Dataflow liveness | 9 | Shared backward dataflow solver (31 assertions) |
-| Encoding validation | 1 | Opcode coverage validation for encoding tables |
-| x86-64 peephole | 1 | Peephole sub-pass integration test |
-| DWARF debug line | 11 | Line table encoding, file/directory entries, sequences |
-| DWARF debug sections | 9 | Non-alloc section handling across ELF/Mach-O/PE |
-| ICF | 1 | Identical Code Folding correctness |
-| Branch trampolines | 1 | Out-of-range relocation veneer generation |
-| ELF exe writer | 10 | ELF executable output validation |
-| Linker integration | 7 | End-to-end linker pipeline (multi-object, archives) |
-| Fuzz harnesses | 2 | libFuzzer harnesses for Zia lexer and parser |
-| DCE param compaction | 1 | Entry-block ABI param preservation test |
-| Alias precision | 1 | LICM alias analysis precision test |
-| Inline round-trip | 1 | Continuation block def-before-use serialization test |
-| Canonical pipeline | 3 | O0/O1/O2 pipeline configuration validation |
-| Crypto (new) | 2 | HMAC-SHA256, HKDF implementation tests |
-| Pixels (new) | 3 | Additional bounds-checking pixel operation tests |
-| Canvas3D (new) | 2 | Depth buffer and 3D canvas validation tests |
-| Scene3D (new) | 2 | Scene graph cleanup and node management tests |
-| Network runtime | 1 | Network operation integration tests |
-| AnimStateMachine | 7 | State transitions, frame advance, one-shot, progress, flags |
-| TextureAtlas | 3 | Grid slicing, named regions, SpriteBatch integration |
-| Zia async | 3 | Async function parsing, sema validation, lowering |
-| Zia destructors | 3 | Deinit blocks, binding propagation, field access |
-| Zia enums (runtime) | 2 | Enum variant values, match exhaustiveness at runtime |
-| Zia properties | 1 | Static property resolution through module aliases |
-| Zia string methods | 2 | Instance method dispatch (Trim, Replace, Split) |
-| Zia guard narrowing | 1 | Optional primitive narrowing after guard clause |
-| Zia runtime programs | 6 | End-to-end runtime tests (enums, async, properties, deinit, etc.) |
-| AArch64 Linux ABI | 1 | Linux calling convention validation |
-| Pipeline equivalence | 1 | x86-64 pipeline output consistency |
-
-#### Determinism Stress Test
-
-8 scenarios with 407 total compilations verify byte-identical assembly output:
-
-- Repeated compilation (N=100): same module compiled 100 times
-- RegAlloc pressure (N=50): 16 live vregs forcing spills
-- RoData pool (N=50): string/f64 literals with dedup
-- Multi-function ordering (N=50): 10 functions, insertion order
-- Complex CFG (N=50): switch + nested if/else + while loop
-- Separate construction: pointer-address independence
-- ISel patterns (N=50): strength reduction hash map stability
-- Static counter awareness: label normalization for known counters
-
----
-
-### Runtime Consistency Audit
-
-Systematic audit across all runtime C headers, `runtime.def` registrations, and viperlib documentation
-to enforce naming, behavioral, and type-safety consistency.
-
-#### C Function Naming (Phase 1)
-
-Renamed 40+ C functions to follow `rt_<type>_<verb>` naming convention. Affected collections: List,
-Set, Map, Stack, Queue, Deque, Ring, Heap, Seq, Bag, Bytes. Key renames include `Contains`→`Has`,
-`Count`→`Length`, `Size`→`Length`, `IsEmpty` property additions, and `TryPop`/`TryPeek` safe-access
-variants for Stack, Queue, Deque, and Heap.
-
-#### runtime.def Registration (Phase 2)
-
-Aligned all IL-level method names and signatures with their C implementations. Added missing
-`RT_METHOD`/`RT_PROP`/`RT_ALIAS` entries for newly renamed functions and ensured every `RT_FUNC`
-has corresponding class registrations.
-
-#### Collection Behavioral Consistency (Phase 3)
-
-Added missing operations to bring all collections to feature parity where semantically appropriate:
-`Clone()` for Stack, Queue, Set, Map; `First()`/`Last()`/`Reverse()` for Ring; `TryPopFront()`/
-`TryPopBack()` for Deque; `Items()` alias for Heap's `ToSeq()`.
-
-#### Enum Adoption (Phase 4)
-
-Converted 12 `#define` constant groups to `typedef enum { ... } rt_xxx_t;` enums for compile-time
-type safety. Affected: screen effect types, path-follow modes, easing types, string builder status,
-input grow results, JSON token types, and XML node types.
-
-#### Enum Naming Unification (Phase 5)
-
-Normalized 7 existing enum types from mixed naming styles (Style A tagged enums, PascalCase names)
-to a consistent Style B convention: anonymous `typedef enum { ... } rt_xxx_t;` with `_t` suffix.
-
-#### Boolean Return Type Consistency (Phase 6)
-
-Fixed 15 runtime functions that returned `bool` or `int` for boolean results to consistently return
-`int8_t`, matching the IL `i1` type. Affected: `rt_string_is_handle`, `rt_output_is_batch_mode`,
-`rt_is_main_thread`, `rt_type_is_a`, `rt_type_implements`, `rt_box_equal`, sprite overlap/contains
-functions, and GUI shortcut checks.
-
-#### Documentation Alignment (Phase 7)
-
-Updated viperlib collection documentation to reflect all API additions from Phases 1-3. Added
-missing methods to sequential, maps-sets, and specialized collection docs. Updated `runtime.def`
-table of contents to cover all 80+ sections.
-
----
-
-### Codegen Bug Fixes
-
-- **Two-level namespace PAC crash**: Native linker produced Mach-O binaries with flat namespace
-  (missing `MH_TWOLEVEL`), causing CoreAnimation PAC pointer authentication traps on macOS ARM64
-  ~1 second after window creation. Fixed with proper two-level namespace support and per-symbol
-  dylib ordinal assignment
-- **EH subsystem cleanup**: Auto-pop exception handler at dispatch, `TrapKind` enum alignment across
-  VM and codegen layers for consistent exception handling semantics
-- **AArch64 MOVN**: Binary encoder now emits `MOVN` for simple negative immediates (e.g., -1 through
-  -65536) instead of a multi-instruction `MOVZ`/`MOVK` sequence, reducing code size
-- **String dedup safety**: `isCStringSection` flag prevents string deduplication from corrupting
-  binary data sections (rodata containing non-string data)
-- **Native linker launch fixes**: Correct dynamic symbol recognition for Zia/graphics demo
-  executables, preventing false undefined-symbol errors at link time
-
-### Runtime Bug Fixes
-
-- **TextCenteredScaled**: Fix swapped `scale`/`color` parameters in `rt_canvas_text_centered_scaled`
-  that caused enormous near-black rectangles covering the screen during level intro overlays
-- **Comprehensive C Source Audit**: 230+ bugs fixed across all runtime C source files in four
-  batches. Covers bounds checking, null guards, integer overflow, format string safety,
-  memory leak prevention, and error handling across graphics, network, collections, and core
-  subsystems
-- **Graphics Audit**: Canvas coordinate overflow guards, pixel bounds validation, bitmap font
-  character range checks, GUI widget input handling fixes, navmesh boundary validation,
-  FBX loader robustness improvements, scene graph cleanup
-- **Input System**: Keychord and action unboxing fixes, color hex alpha parsing correction
-- **Drawing**: Circle fill algorithm fix in rt_drawing.c, canvas coordinate guard in rt_canvas.c
-
-### Graphics
-
-- **Present-before-events**: Reorder `vgfx_update` to present the frame before polling events,
-  fixing visual glitches on rapid input during scene transitions
-- **macOS resize alpha**: Set opaque alpha (0xFF) on framebuffer clear during window resize,
-  preventing transparent flicker artifacts on macOS
-- **Linux X11**: Fix 32-bit TrueColor visual via `XMatchVisualInfo`; add RGBA→BGRA swizzle in
-  presentation buffer for correct color rendering
-- **Linux linking**: Add `-lX11` for graphics demos
-- **macOS**: Guard frameworks behind `#if defined(__APPLE__)` in AArch64 backend
-
-### GUI Improvements
-
-- **ListBox**: Multi-select mode, search/filter with keyboard, scroll-to-selection
-- **TextInput**: Undo/redo stack, text selection with shift+arrows, clipboard integration
-- **Layout**: Improved dock layout edge cases, floating panel cleanup
-- **Event handling**: Refined widget focus and keyboard event dispatch
-
----
-
-### IL Pass Infrastructure
-
-- **Pass registry**: Strengthened pass lookup with better error messages for missing passes
-- **GVN**: Added safety guards for edge cases in global value numbering
-- **Pipeline executor**: Improved error reporting and pass metrics collection
-- **Analysis manager**: Extended with additional analysis invalidation hooks
-
----
-
-### Project Statistics
-
-| Metric              | v0.2.2    | v0.2.3         | Change     |
-|---------------------|-----------|----------------|------------|
-| Codebase (SLOC)     | ~310,000  | ~348,000       | +38K       |
-| Source Files         | 2,288     | 2,671          | +383       |
-| Test Count          | 1,261     | 1,351          | +90        |
-| Commits             | —         | 100            | —          |
-| Files Changed       | —         | 3,557          | —          |
-| Lines Added         | —         | ~279K          | —          |
-| Lines Removed       | —         | ~323K          | —          |
-
-> Lines removed exceed lines added because ~1,100 stale files were deleted (obsolete test
-> fixtures, dead demos, devdocs, zia-review). Net production SLOC grew by ~38K across 3D
-> graphics, game engine, native toolchain, optimizer, and new runtime classes.
-
----
-
-### Breaking Changes
-
-1. **Directory restructure**: `demos/` consolidated into `examples/`. Update any hardcoded paths.
-2. **devdocs/ removed**: All developer documentation now lives under `docs/`.
-3. **Runtime API renames**: 40+ C functions renamed to `rt_<type>_<verb>` convention. Key changes:
-   `Contains`→`Has`, `Count`→`Length`, `Size`→`Length`, plus `IsEmpty` property additions.
-   `runtime.def` registrations updated accordingly.
-4. **Collection .Len → .Length**: User-facing `.Len` property renamed to `.Length` across List, Map,
-   and Set. `.Len` retained as alias for backward compatibility.
-5. **Boolean return types**: 15 runtime functions changed from `bool`/`int` to `int8_t` (matching
-   IL `i1`). Affects C FFI callers using these functions directly.
-
----
-
-### Architecture
-
-```text
-┌──────────────┐  ┌──────────────┐
-│ BASIC Source │  │  Zia Source  │
-│    (.bas)    │  │    (.zia)    │
-└──────┬───────┘  └──────┬───────┘
-       │                 │
-       ▼                 ▼
-┌─────────────────────────────────────────────────────┐
-│                     Viper IL                        │
-│      SimplifyCFG → SCCP → Reassociate (NEW)         │
-│       → EarlyCSE → Mem2Reg → DSE (MemorySSA)        │
-│       → CheckOpt → EH-Opt (NEW) → LoopRotate (NEW)  │
-│       → Inliner                                     │
-│                                                     │
-│      Alloca Escape Verification (NEW)               │
-└─────────────────────┬───────────────────────────────┘
-                      │
-      ┌───────────────┼───────────────┐
-      ▼               ▼               ▼
-┌──────────┐    ┌──────────────┐ ┌───────────────┐
-│  IL VM   │    │   x86-64     │ │    AArch64    │
-│ Bytecode │    │ 4 Peephole   │ │  PassMgr (NEW)│
-│    VM    │    │ CFG Liveness │ │  Coalescer    │ (NEW)
-│  REPL    │    │   (NEW)      │ │  Scheduler    │ (NEW)
-│  (NEW)   │    └──────┬───────┘ │  Loop Hoist   │ (NEW)
-└──────────┘           │         │  6 Peephole   │ (NEW)
-                       │         └──────┬────────┘
-                       └────────┬───────┘
-                                ▼
-                  ┌───────────────────────────┐
-                  │  Shared Infrastructure    │
-                  │  DataflowLiveness (NEW)   │
-                  │  PeepholeDCE/CopyProp     │
-                  │  ParallelCopyResolver     │
-                  └────────────┬──────────────┘
-                               ▼
-                  ┌───────────────────────────┐
-                  │  Native Assembler (NEW)   │
-                  │  MIR → Binary Encoder     │
-                  │  → Object File Writer     │
-                  │  (ELF / Mach-O / PE)      │
-                  └────────────┬──────────────┘
-                               ▼
-                  ┌───────────────────────────┐
-                  │  Native Linker (NEW)      │
-                  │  Symbol Resolution        │
-                  │  Section Merging + ICF    │ (NEW)
-                  │  Dead Strip + String Dedup│
-                  │  DWARF Debug Info         │ (NEW)
-                  │  Branch Trampolines       │ (NEW)
-                  │  Two-Level Namespace      │ (NEW)
-                  │  → Executable Writer      │
-                  └───────────────────────────┘
-```
-
----
-
-### Feature Comparison
-
-| Feature | v0.2.2 | v0.2.3 |
-|---------|--------|--------|
-| **3D Graphics Engine** | No | 28-class engine: Metal/D3D11/OpenGL/software |
-| **Native Assembler/Linker** | External as/ld/link | In-process, zero deps, DWARF v5 |
-| **Interactive REPL** | No | Full REPL for Zia and BASIC |
-| **Enum Types** | No | Zia + BASIC, match exhaustiveness |
-| **Language Server** | No | Dual MCP/LSP (zia-server) |
-| **Game Engine Framework** | No | GameBase/IScene + 7 runtime APIs |
-| **Runtime Classes** | 226 | 272 (+46) |
-| **IL Optimizer Passes** | 35 | 38 (+EH-Opt, LoopRotate, Reassoc) |
-| **Test Count** | 1,261 | 1,351 (+90 net) |
-| **Full O2 Pipeline** | O1-level only | All 10 missing passes restored |
-| **Benchmark Results** | — | 24-87% improvement (Apple M4 Max) |
-| **AArch64 Peephole** | Monolithic (2750 LOC) | 6 sub-passes + shared templates |
-| **x86-64 Peephole** | Monolithic (1470 LOC) | 4 sub-passes in peephole/ |
-| **x86-64 Liveness** | Unconditional spill | CFG-aware backward dataflow |
-| **AArch64 Scheduler** | No | Post-RA list scheduler + coalescer |
-| **SipHash** | FNV-1a | SipHash-2-4 with OS CSPRNG seed |
-| **ECDSA P-256** | OpenSSL-dependent | Pure C, MSVC-compatible |
-| **Sidescroller Demo** | 1 level, rectangles | 5 levels, sprite art, full game |
-| **O1 Native Codegen** | Broken (paint, pacman crashes) | 9/11 demos correct at O1 |
-| **Network Classes** | 5 | 15 (+10 new classes) |
-| **Crypto** | ChaCha20-Poly1305, ECDSA | + AES-128-GCM, HMAC-SHA256, HKDF |
-| **3D Demo** | No | 3D Bowling — Physics3D showcase |
-| **Codebase Organization** | demos/ + devdocs/ | Unified examples/ + docs/ |
-| **Language Audit** | No | 13 findings validated, 6 fixed, 7 filed |
-
----
-
-### v0.2.x Roadmap
-
-Remaining v0.2.x focus areas:
-
-- Zia debugger integration with breakpoints and watch expressions
-- Native code generation coverage expansion
-- RISC-V backend exploration
-- GUI library maturation (accessibility, additional widget types)
-- Runtime API stability and performance improvements
-- Self-hosting compiler groundwork
-
----
-
-*Viper Compiler Platform v0.2.3 (Pre-Alpha)
-*Target: March 2026
-*Note: This is an early development release. Future milestones will define supported releases when appropriate.*
+See `git log <v0.2.2-anchor>..HEAD -- .` for the full 100-commit history. Commits pair feature-add and follow-up hardening in the same subsystem (e.g. native linker → ICF + branch trampolines + two-level namespace; AArch64 scheduler → coalescer + loop hoist + strength reduction; network class set → 14K-line audit + crypto additions; Sidescroller 8-phase evolution → ParticleEmitter + SoundManager + state machine refactor).

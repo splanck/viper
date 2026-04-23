@@ -33,11 +33,66 @@
 
 #include "viper/runtime/rt.h"
 
+#include <limits.h>
 #include <stdint.h>
+
+static int rt_time_checked_add_i64(int64_t a, int64_t b, int64_t *out) {
+    if ((b > 0 && a > INT64_MAX - b) || (b < 0 && a < INT64_MIN - b))
+        return 1;
+    *out = a + b;
+    return 0;
+}
+
+static int rt_time_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_mul_overflow(a, b, out);
+#else
+    if (a == 0 || b == 0) {
+        *out = 0;
+        return 0;
+    }
+    if (a > 0) {
+        if (b > 0) {
+            if (a > INT64_MAX / b)
+                return 1;
+        } else if (b < INT64_MIN / a) {
+            return 1;
+        }
+    } else {
+        if (b > 0) {
+            if (a < INT64_MIN / b)
+                return 1;
+        } else if (a < INT64_MAX / b) {
+            return 1;
+        }
+    }
+    *out = a * b;
+    return 0;
+#endif
+}
+
+static int64_t rt_time_scale_seconds(int64_t seconds, int64_t scale, int64_t fraction) {
+    int64_t whole;
+    int64_t result;
+    if (rt_time_checked_mul_i64(seconds, scale, &whole) ||
+        rt_time_checked_add_i64(whole, fraction, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
+}
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+static int64_t rt_time_u64_to_i64(uint64_t value) {
+    if (value > (uint64_t)INT64_MAX) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return (int64_t)value;
+}
 
 /// @brief Suspends execution for the specified number of milliseconds (Windows).
 ///
@@ -95,16 +150,17 @@ int64_t rt_timer_ms(void) {
     LARGE_INTEGER freq, counter;
     if (!QueryPerformanceFrequency(&freq) || freq.QuadPart == 0) {
         // Fallback to GetTickCount64 if QPC unavailable
-        return (int64_t)GetTickCount64();
+        return rt_time_u64_to_i64((uint64_t)GetTickCount64());
     }
 
-    QueryPerformanceCounter(&counter);
+    if (!QueryPerformanceCounter(&counter))
+        return rt_time_u64_to_i64((uint64_t)GetTickCount64());
 
-    // Convert to milliseconds: (counter * 1000) / freq
-    // Note: 64-bit multiply can overflow after ~29 years at 10 MHz QPC frequency.
-    // Acceptable for practical use; __int128 would be needed for true overflow safety.
-    int64_t ms = (int64_t)((counter.QuadPart * 1000LL) / freq.QuadPart);
-    return ms;
+    int64_t whole = counter.QuadPart / freq.QuadPart;
+    int64_t remainder = counter.QuadPart % freq.QuadPart;
+    int64_t fraction =
+        (int64_t)(((long double)remainder * 1000.0L) / (long double)freq.QuadPart);
+    return rt_time_scale_seconds(whole, 1000LL, fraction);
 }
 
 /// @brief Returns monotonic time in microseconds (Windows).
@@ -132,17 +188,21 @@ int64_t rt_clock_ticks_us(void) {
     LARGE_INTEGER freq, counter;
     if (!QueryPerformanceFrequency(&freq) || freq.QuadPart == 0) {
         // Fallback to GetTickCount64 (milliseconds) * 1000 for microseconds
-        return (int64_t)GetTickCount64() * 1000LL;
+        return rt_time_scale_seconds(
+            rt_time_u64_to_i64((uint64_t)GetTickCount64()), 1000LL, 0);
     }
 
-    QueryPerformanceCounter(&counter);
+    if (!QueryPerformanceCounter(&counter))
+        return rt_time_scale_seconds(
+            rt_time_u64_to_i64((uint64_t)GetTickCount64()), 1000LL, 0);
 
     // Convert to microseconds using split division to avoid overflow:
     // (counter / freq) * 1000000 + (counter % freq) * 1000000 / freq
     int64_t whole = counter.QuadPart / freq.QuadPart;
     int64_t remainder = counter.QuadPart % freq.QuadPart;
-    int64_t us = whole * 1000000LL + remainder * 1000000LL / freq.QuadPart;
-    return us;
+    int64_t fraction =
+        (int64_t)(((long double)remainder * 1000000.0L) / (long double)freq.QuadPart);
+    return rt_time_scale_seconds(whole, 1000000LL, fraction);
 }
 
 #elif defined(__viperdos__)
@@ -163,14 +223,16 @@ void rt_sleep_ms(int32_t ms) {
 
 int64_t rt_timer_ms(void) {
     struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (int64_t)ts.tv_sec * 1000 + (int64_t)(ts.tv_nsec / 1000000);
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+        return 0;
+    return rt_time_scale_seconds((int64_t)ts.tv_sec, 1000LL, (int64_t)(ts.tv_nsec / 1000000));
 }
 
 int64_t rt_clock_ticks_us(void) {
     struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (int64_t)ts.tv_sec * 1000000 + (int64_t)(ts.tv_nsec / 1000);
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+        return 0;
+    return rt_time_scale_seconds((int64_t)ts.tv_sec, 1000000LL, (int64_t)(ts.tv_nsec / 1000));
 }
 
 #else
@@ -252,15 +314,13 @@ int64_t rt_timer_ms(void) {
 #ifdef CLOCK_MONOTONIC
     if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
         // Convert to milliseconds: seconds * 1000 + nanoseconds / 1000000
-        int64_t ms = (int64_t)ts.tv_sec * 1000LL + (int64_t)ts.tv_nsec / 1000000LL;
-        return ms;
+        return rt_time_scale_seconds((int64_t)ts.tv_sec, 1000LL, (int64_t)ts.tv_nsec / 1000000LL);
     }
 #endif
 
     // Fallback to CLOCK_REALTIME if CLOCK_MONOTONIC unavailable
     if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
-        int64_t ms = (int64_t)ts.tv_sec * 1000LL + (int64_t)ts.tv_nsec / 1000000LL;
-        return ms;
+        return rt_time_scale_seconds((int64_t)ts.tv_sec, 1000LL, (int64_t)ts.tv_nsec / 1000000LL);
     }
 
     // Last resort: return 0 if all clock sources fail
@@ -294,15 +354,15 @@ int64_t rt_clock_ticks_us(void) {
 #ifdef CLOCK_MONOTONIC
     if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
         // Convert to microseconds: seconds * 1000000 + nanoseconds / 1000
-        int64_t us = (int64_t)ts.tv_sec * 1000000LL + (int64_t)ts.tv_nsec / 1000LL;
-        return us;
+        return rt_time_scale_seconds(
+            (int64_t)ts.tv_sec, 1000000LL, (int64_t)ts.tv_nsec / 1000LL);
     }
 #endif
 
     // Fallback to CLOCK_REALTIME if CLOCK_MONOTONIC unavailable
     if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
-        int64_t us = (int64_t)ts.tv_sec * 1000000LL + (int64_t)ts.tv_nsec / 1000LL;
-        return us;
+        return rt_time_scale_seconds(
+            (int64_t)ts.tv_sec, 1000000LL, (int64_t)ts.tv_nsec / 1000LL);
     }
 
     // Last resort: return 0 if all clock sources fail

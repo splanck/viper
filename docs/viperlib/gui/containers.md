@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-18
+last-verified: 2026-04-22
 ---
 
 # Containers & Advanced
@@ -193,6 +193,7 @@ Hierarchical tree view with expandable nodes.
 
 Mouse hit testing is widget-local, so nested trees continue to select the correct row after layout shifts. Removing a node also clears any selected or hovered state inside the removed subtree.
 Node glyph icons are rendered when present, and lazy/loading nodes now show an inline loading indicator instead of a blank row. Long labels are ellipsized instead of hard-clipping mid-string, and drag-and-drop callbacks now fire with validated `before` / `after` / `into` targets.
+`node.SetData()` stores runtime strings with their explicit length, so embedded NUL bytes round-trip through `node.GetData()`. Runtime-owned node data is freed when the node or tree is removed.
 
 **Constructor:** `NEW Viper.GUI.TreeView(parent)`
 

@@ -173,6 +173,32 @@ static void test_dateonly_components() {
     printf("\n");
 }
 
+static void test_dateonly_extreme_conversions() {
+    printf("Testing DateOnly Extreme Conversion Bounds:\n");
+
+    {
+        void *d = rt_dateonly_from_days(INT64_MAX - 719468);
+        test_result("Largest safe FromDays input returns date", d != nullptr);
+        test_result("Largest safe FromDays round-trips", rt_dateonly_to_days(d) == INT64_MAX - 719468);
+    }
+
+    {
+        EXPECT_TRAP(rt_dateonly_from_days(INT64_MAX));
+        test_result("Overflowing FromDays traps", true);
+    }
+
+    {
+        void *extreme = rt_dateonly_create(INT64_MAX, 1, 1);
+        test_result("Extreme component date can be created", extreme != nullptr);
+        EXPECT_TRAP(rt_dateonly_to_days(extreme));
+        EXPECT_TRAP(rt_dateonly_day_of_week(extreme));
+        EXPECT_TRAP(rt_dateonly_add_days(extreme, 1));
+        test_result("Extreme ToDays consumers trap", true);
+    }
+
+    printf("\n");
+}
+
 static void test_dateonly_arithmetic() {
     printf("Testing DateOnly Arithmetic:\n");
 
@@ -349,6 +375,7 @@ int main() {
     test_dateonly_creation();
     test_dateonly_parsing();
     test_dateonly_components();
+    test_dateonly_extreme_conversions();
     test_dateonly_arithmetic();
     test_dateonly_queries();
     test_dateonly_comparison();

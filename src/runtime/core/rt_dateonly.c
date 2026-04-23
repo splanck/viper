@@ -15,7 +15,8 @@
 //   - Dates are represented internally as (year, month, day) tuples with no
 //     timezone or time information.
 //   - Internal conversion between dates and "days since Unix epoch" uses the
-//     Julian Day Number algorithm for correctness across the Gregorian calendar.
+//     overflow-checked civil calendar arithmetic for correctness across the
+//     proleptic Gregorian calendar.
 //   - Month values are 1-based (January = 1, December = 12).
 //   - Leap years follow the Gregorian rule: divisible by 4, except centuries
 //     unless also divisible by 400.
@@ -87,6 +88,42 @@ static int date_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
     return 0;
 }
 
+static int date_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_mul_overflow(a, b, out);
+#else
+    if (a == 0 || b == 0) {
+        *out = 0;
+        return 0;
+    }
+    if (a > 0) {
+        if (b > 0) {
+            if (a > INT64_MAX / b)
+                return 1;
+        } else if (b < INT64_MIN / a) {
+            return 1;
+        }
+    } else {
+        if (b > 0) {
+            if (a < INT64_MIN / b)
+                return 1;
+        } else if (a < INT64_MAX / b) {
+            return 1;
+        }
+    }
+    *out = a * b;
+    return 0;
+#endif
+}
+
+static int64_t date_floor_div(int64_t value, int64_t divisor) {
+    int64_t quotient = value / divisor;
+    int64_t remainder = value % divisor;
+    if (remainder != 0 && ((remainder < 0) != (divisor < 0)))
+        quotient--;
+    return quotient;
+}
+
 static int date_is_digit(char c) {
     return c >= '0' && c <= '9';
 }
@@ -102,44 +139,86 @@ static int date_parse_digits(const char *s, int count) {
 }
 
 /// @brief Convert a Gregorian date to days since Unix epoch (1970-01-01).
-/// @details Uses the Julian Day Number algorithm: first adjusts the calendar
-///          so March is month 0 (simplifies the variable-length February),
-///          computes the JDN, then subtracts the JDN of the Unix epoch
-///          (2440588). The algorithm is valid for any proleptic Gregorian date.
+/// @details Uses overflow-checked civil calendar arithmetic. The calendar is
+///          adjusted so March is month 0, then reduced into 400-year Gregorian
+///          eras before subtracting the Unix epoch day offset.
+static int to_days_since_epoch_checked(int64_t year, int64_t month, int64_t day, int64_t *out) {
+    int64_t adjusted_year = year;
+    if (month <= 2 && date_checked_sub_i64(adjusted_year, 1, &adjusted_year))
+        return 0;
+
+    int64_t era_numerator = adjusted_year;
+    if (adjusted_year < 0 && date_checked_sub_i64(adjusted_year, 399, &era_numerator))
+        return 0;
+
+    int64_t era = era_numerator / 400;
+    int64_t era_years;
+    int64_t yoe_i64;
+    if (date_checked_mul_i64(era, 400, &era_years) ||
+        date_checked_sub_i64(adjusted_year, era_years, &yoe_i64))
+        return 0;
+
+    uint64_t yoe = (uint64_t)yoe_i64;
+    uint64_t month_term = (uint64_t)(month + (month > 2 ? -3 : 9));
+    uint64_t doy = (153u * month_term + 2u) / 5u + (uint64_t)day - 1u;
+    uint64_t doe_u = yoe * 365u + yoe / 4u - yoe / 100u + doy;
+    if (doe_u > INT64_MAX)
+        return 0;
+
+    int64_t era_days;
+    int64_t total;
+    if (date_checked_mul_i64(era, 146097, &era_days) ||
+        date_checked_add_i64(era_days, (int64_t)doe_u, &total) ||
+        date_checked_sub_i64(total, 719468, out))
+        return 0;
+    return 1;
+}
+
 static int64_t to_days_since_epoch(int64_t year, int64_t month, int64_t day) {
-    // Adjust for months starting from March
-    int64_t a = (14 - month) / 12;
-    int64_t y = year + 4800 - a;
-    int64_t m = month + 12 * a - 3;
-
-    // Julian day number
-    int64_t jdn = day + (153 * m + 2) / 5 + 365 * y + y / 4 - y / 100 + y / 400 - 32045;
-
-    // Subtract Unix epoch (Jan 1, 1970 = JDN 2440588)
-    return jdn - 2440588;
+    int64_t result;
+    if (!to_days_since_epoch_checked(year, month, day, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
 }
 
 /// @brief Convert days since Unix epoch back to Gregorian year/month/day.
-/// @details Inverse of to_days_since_epoch. Adds the epoch JDN, then reverses
-///          the Julian Day Number formula to recover year, month, and day.
-///          The magic constants (146097, 1461, 153) come from the cycle lengths
-///          of the Gregorian calendar: 400-year cycle = 146097 days,
-///          4-year cycle = 1461 days, 5-month group = 153 days.
-static void from_days_since_epoch(int64_t days, int64_t *year, int64_t *month, int64_t *day) {
-    // Add Unix epoch offset
-    int64_t jdn = days + 2440588;
+/// @details Inverse of to_days_since_epoch. Adds the epoch day offset, then
+///          reverses the Gregorian era/month transform to recover year, month,
+///          and day. The constants come from Gregorian cycle lengths: 400-year
+///          cycle = 146097 days, and 5-month group = 153 days.
+static int from_days_since_epoch_checked(
+    int64_t days, int64_t *year, int64_t *month, int64_t *day) {
+    int64_t z;
+    if (date_checked_add_i64(days, 719468, &z))
+        return 0;
 
-    // Convert from Julian day number
-    int64_t a = jdn + 32044;
-    int64_t b = (4 * a + 3) / 146097;
-    int64_t c = a - (146097 * b) / 4;
-    int64_t d = (4 * c + 3) / 1461;
-    int64_t e = c - (1461 * d) / 4;
-    int64_t m = (5 * e + 2) / 153;
+    int64_t era = date_floor_div(z, 146097);
+    int64_t era_days;
+    int64_t doe;
+    if (date_checked_mul_i64(era, 146097, &era_days) ||
+        date_checked_sub_i64(z, era_days, &doe))
+        return 0;
 
-    *day = e - (153 * m + 2) / 5 + 1;
-    *month = m + 3 - 12 * (m / 10);
-    *year = 100 * b + d - 4800 + m / 10;
+    int64_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    int64_t yoe_days = 365 * yoe + yoe / 4 - yoe / 100;
+    int64_t doy = doe - yoe_days;
+    int64_t mp = (5 * doy + 2) / 153;
+    int64_t d = doy - (153 * mp + 2) / 5 + 1;
+    int64_t m = mp + (mp < 10 ? 3 : -9);
+
+    int64_t era_years;
+    int64_t y;
+    if (date_checked_mul_i64(era, 400, &era_years) ||
+        date_checked_add_i64(yoe, era_years, &y) ||
+        (m <= 2 && date_checked_add_i64(y, 1, &y)))
+        return 0;
+
+    *year = y;
+    *month = m;
+    *day = d;
+    return 1;
 }
 
 //=============================================================================
@@ -208,13 +287,16 @@ void *rt_dateonly_parse(rt_string s) {
 
 /// @brief Create a DateOnly from a days-since-epoch count.
 /// @details Converts the signed day offset back to year/month/day using the
-///          inverse Julian Day Number algorithm. Day 0 = January 1, 1970.
+///          checked Gregorian civil-date inverse. Day 0 = January 1, 1970.
 ///          Negative values represent dates before the Unix epoch.
 /// @param days Signed offset from 1970-01-01.
 /// @return New DateOnly for the corresponding calendar date.
 void *rt_dateonly_from_days(int64_t days) {
     int64_t year, month, day;
-    from_days_since_epoch(days, &year, &month, &day);
+    if (!from_days_since_epoch_checked(days, &year, &month, &day)) {
+        rt_trap_ovf();
+        return NULL;
+    }
     return rt_dateonly_create(year, month, day);
 }
 
@@ -289,7 +371,7 @@ int64_t rt_dateonly_day_of_year(void *obj) {
 }
 
 /// @brief Convert the date to days since Unix epoch (1970-01-01 = day 0).
-/// @details Delegates to the Julian Day Number conversion. Useful for
+/// @details Delegates to checked civil-date conversion. Useful for
 ///          serialization, date arithmetic, and comparing dates numerically.
 /// @param obj DateOnly object pointer; returns 0 if NULL.
 /// @return Signed day offset (negative for dates before 1970).

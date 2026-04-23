@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-21
+last-verified: 2026-04-22
 ---
 
 # Utilities
@@ -24,7 +24,7 @@ last-verified: 2026-04-21
 Type conversion utilities.
 
 **Type:** Static utility class
-**Runtime namespace:** `Viper.Core.Convert` (accessible as `Viper.Convert` via bind)
+**Runtime namespace:** `Viper.Core.Convert`; public alias: `Viper.Convert`
 
 ### Methods
 
@@ -36,6 +36,14 @@ Type conversion utilities.
 | `NumToInt(value)`        | `Integer(Double)` | Converts a floating-point value to integer (truncates) |
 | `ToString_Int(value)`    | `String(Integer)` | Converts an integer to its string representation |
 | `ToString_Double(value)` | `String(Double)`  | Converts a double to its string representation   |
+
+### Conversion Rules
+
+- `ToInt` and `ToInt64` parse decimal integer text with optional leading/trailing ASCII whitespace.
+- `ToDouble` parses locale-independent decimal floating-point text with `.` as the decimal separator. C-style hexadecimal floats such as `0x1p4` are rejected.
+- `ToString_Double` uses locale-independent round-trip precision for finite values, so text it emits can be parsed back to the same `Double`.
+- Embedded NUL bytes and non-whitespace trailing characters are rejected.
+- `NumToInt` truncates finite values toward zero. `NaN` converts to `0`; values outside the signed 64-bit range clamp to the nearest endpoint.
 
 ### Zia Example
 
@@ -110,6 +118,18 @@ String formatting utilities for converting values to formatted strings.
 | `ToWords(value)`            | `String(Integer)`                  | Convert integer to English words         |
 | `Ordinal(value)`            | `String(Integer)`                  | Convert integer to ordinal (1st, 2nd, 3rd...) |
 
+### Formatting Rules
+
+- Numeric formatting is locale-stable: decimal output uses `.` even when the process locale uses another separator.
+- `Num` emits enough significant digits for finite values to round-trip through the `Viper.Parse` numeric helpers.
+- Signed zero formats as zero in `Num`, `NumFixed`, `NumSci`, `NumPct`, and `Currency`.
+- `IntPad` defaults to space padding when the pad string is null, empty, or does not start with a valid UTF-8 character. It uses the first full UTF-8 character from valid pad strings and supports widths beyond 255 subject to allocation limits.
+- `Size` chooses units using integer byte thresholds, then promotes near-boundary rounded displays so output does not show values such as `1024.0 PB`.
+- `IntGrouped` preserves the full separator byte sequence and defaults to `","` only when the separator is null or empty.
+- `Currency` preserves the full symbol byte sequence, including embedded NUL bytes. Null symbols default to `"$"`; empty symbols are emitted as empty.
+- `Currency` returns `NaN`, `Infinity`, or `-Infinity` for non-finite inputs. Large finite values are formatted without integer casts, avoiding overflow.
+- `ToWords` supports the full signed 64-bit integer range, including quadrillions and quintillions.
+
 ### Zia Example
 
 ```rust
@@ -148,7 +168,7 @@ PRINT Viper.Fmt.IntRadix(255, 16)       ' Output: "ff"
 PRINT Viper.Fmt.IntPad(42, 5, "0")      ' Output: "00042"
 
 ' Number formatting
-PRINT Viper.Fmt.Num(3.14159)            ' Output: "3.14159"
+PRINT Viper.Fmt.Num(2.5)                ' Output: "2.5"
 PRINT Viper.Fmt.NumFixed(3.14159, 2)    ' Output: "3.14"
 PRINT Viper.Fmt.NumSci(1234.5, 2)       ' Output: "1.23e+03"
 PRINT Viper.Fmt.NumPct(0.756, 1)        ' Output: "75.6%"
@@ -208,6 +228,8 @@ Structured logging with configurable log levels.
 - Default log level is `INFO` (debug messages suppressed)
 - Log output goes to stderr with timestamp and level prefix
 - Format: `[LEVEL] YYYY-MM-DD HH:MM:SS message`
+- Message output is length-aware. Embedded NUL bytes and control characters such as newline, carriage return, and tab are escaped so one log call produces one physical log line, even when multiple threads log concurrently. If heap allocation for the full line fails, the logger falls back to serialized streaming instead of dropping the message.
+- Log level reads and writes are atomic and safe to call concurrently.
 - Set `Level = Viper.Log.OFF` to disable all logging
 
 ### Zia Example
@@ -263,7 +285,7 @@ Safe parsing utilities with error handling. Unlike `Viper.Convert` which traps o
 graceful error handling.
 
 **Type:** Static utility class
-**Runtime namespace:** `Viper.Core.Parse` (accessible as `Viper.Parse` via bind)
+**Runtime namespace:** `Viper.Core.Parse`; public alias: `Viper.Parse`
 
 ### Methods
 
@@ -278,6 +300,8 @@ graceful error handling.
 | `IsInt(text)`                    | `Boolean(String)`                   | Check if string is a valid integer        |
 | `IsNum(text)`                    | `Boolean(String)`                   | Check if string is a valid number         |
 | `IntRadix(text, radix, default)` | `Integer(String, Integer, Integer)` | Parse integer in given radix with default |
+| `Int64(cstr, outPtr)`            | `Int32(Ptr, Ptr)`                   | Low-level C-string parser with error code |
+| `Double(cstr, outPtr)`           | `Int32(Ptr, Ptr)`                   | Low-level C-string parser with error code |
 
 ### Notes
 
@@ -288,8 +312,10 @@ graceful error handling.
 - `TryInt`, `TryNum`, and `TryBool` require an output pointer; frontends without pointer/out parameters should use
   `IntOr`, `NumOr`, `BoolOr`, `IsInt`, or `IsNum` instead.
 - Null input is treated as parse failure: `Try*` returns false, `Is*` returns false, and `*Or`/`IntRadix` returns the supplied default.
-- `IntRadix` supports radix 2-36 (digits 0-9, letters a-z)
+- `IntRadix` supports radix 2-36 (digits 0-9, letters a-z). Radix 10 accepts a leading `-`; other radices parse unsigned 64-bit bit patterns so `Viper.Fmt.Hex(-1)` and `Viper.Fmt.Bin(-1)` round-trip to `-1`. Prefixes such as `0x` and leading `+` are rejected.
 - Leading/trailing whitespace is trimmed before parsing
+- Numeric parsing is locale-independent, uses `.` as the decimal separator, and accepts only decimal float syntax. C-style hexadecimal floats such as `0x1p4` are rejected.
+- Embedded NUL bytes are rejected, even when the bytes before the NUL form a valid value.
 
 ### Zia Example
 

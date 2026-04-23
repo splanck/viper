@@ -11,8 +11,8 @@
 // Key invariants:
 //   - All formatting functions return newly allocated rt_string objects.
 //   - Radix formatting accepts bases 2-36; invalid radix returns an empty string.
-//   - rt_fmt_size uses IEC binary prefixes (KiB, MiB, GiB) for byte counts.
-//   - Boolean formatting produces 'True'/'False' (rt_fmt_bool) or 'Yes'/'No' (rt_fmt_bool_yn).
+//   - rt_fmt_size scales by 1024 and uses B through EB display suffixes.
+//   - Boolean formatting produces 'true'/'false' (rt_fmt_bool) or 'Yes'/'No' (rt_fmt_bool_yn).
 //
 // Ownership/Lifetime:
 //   - Returned strings are newly allocated with refcount 1; callers must release them.
@@ -46,13 +46,13 @@ rt_string rt_fmt_int_radix(int64_t value, int64_t radix);
 /// @brief Format an integer with minimum width and padding character.
 /// @param value The integer to format.
 /// @param width Minimum width (pads on left if needed).
-/// @param pad_char String containing pad character (uses first char).
+/// @param pad_char String containing pad character (uses first valid UTF-8 character).
 /// @return Formatted string with padding.
 rt_string rt_fmt_int_pad(int64_t value, int64_t width, rt_string pad_char);
 
-/// @brief Format a number as decimal string with default precision.
+/// @brief Format a number as decimal string with round-trip precision.
 /// @param value The number to format.
-/// @return Formatted string (e.g., "3.14159").
+/// @return Formatted string (e.g., "2.5").
 rt_string rt_fmt_num(double value);
 
 /// @brief Format a number with fixed decimal places.
@@ -122,8 +122,8 @@ rt_string rt_fmt_int_grouped(int64_t value, rt_string sep);
 /// @return Formatted string (e.g., "$1,234.56").
 rt_string rt_fmt_currency(double value, int64_t decimals, rt_string symbol);
 
-/// @brief Convert a non-negative integer to English words.
-/// @param value The number (0 to 999,999,999,999).
+/// @brief Convert an integer to English words.
+/// @param value The number, covering the full signed 64-bit range.
 /// @return English text (e.g., "one hundred twenty-three").
 rt_string rt_fmt_to_words(int64_t value);
 

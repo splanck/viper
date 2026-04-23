@@ -7,6 +7,45 @@ if (NOT VIPER_ENABLE_FUZZ)
     return()
 endif ()
 
+# ── Localization Plural-Rule Parser Fuzzer ──────────────────────────────────
+add_executable(fuzz_plural_rule_parser fuzz_plural_rule_parser.cpp)
+target_include_directories(fuzz_plural_rule_parser PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_BINARY_DIR}/generated
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/runtime
+        ${CMAKE_SOURCE_DIR}/src/runtime/core
+        ${CMAKE_SOURCE_DIR}/src/runtime/localization)
+target_link_libraries(fuzz_plural_rule_parser PRIVATE viper_runtime)
+target_compile_options(fuzz_plural_rule_parser PRIVATE -fsanitize=fuzzer)
+target_link_options(fuzz_plural_rule_parser PRIVATE -fsanitize=fuzzer)
+
+# ── Localization Date-Pattern Parser Fuzzer ─────────────────────────────────
+add_executable(fuzz_date_pattern_parser fuzz_date_pattern_parser.cpp)
+target_include_directories(fuzz_date_pattern_parser PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_BINARY_DIR}/generated
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/runtime
+        ${CMAKE_SOURCE_DIR}/src/runtime/core
+        ${CMAKE_SOURCE_DIR}/src/runtime/localization)
+target_link_libraries(fuzz_date_pattern_parser PRIVATE viper_runtime)
+target_compile_options(fuzz_date_pattern_parser PRIVATE -fsanitize=fuzzer)
+target_link_options(fuzz_date_pattern_parser PRIVATE -fsanitize=fuzzer)
+
+# ── Localization Locale-JSON Loader Fuzzer ──────────────────────────────────
+add_executable(fuzz_locale_json_loader fuzz_locale_json_loader.cpp)
+target_include_directories(fuzz_locale_json_loader PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_BINARY_DIR}/generated
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/runtime
+        ${CMAKE_SOURCE_DIR}/src/runtime/core
+        ${CMAKE_SOURCE_DIR}/src/runtime/localization)
+target_link_libraries(fuzz_locale_json_loader PRIVATE viper_runtime)
+target_compile_options(fuzz_locale_json_loader PRIVATE -fsanitize=fuzzer)
+target_link_options(fuzz_locale_json_loader PRIVATE -fsanitize=fuzzer)
+
 # ── Zia Lexer Fuzzer ─────────────────────────────────────────────────────────
 add_executable(fuzz_zia_lexer fuzz_zia_lexer.cpp)
 target_include_directories(fuzz_zia_lexer PRIVATE

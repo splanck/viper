@@ -71,6 +71,58 @@ static int stopwatch_checked_sub_i64(int64_t a, int64_t b, int64_t *out) {
     return 0;
 }
 
+static int stopwatch_checked_mul_i64(int64_t a, int64_t b, int64_t *out) {
+#if defined(__GNUC__) || defined(__clang__)
+    return __builtin_mul_overflow(a, b, out);
+#else
+    if (a == 0 || b == 0) {
+        *out = 0;
+        return 0;
+    }
+    if (a > 0) {
+        if (b > 0) {
+            if (a > INT64_MAX / b)
+                return 1;
+        } else if (b < INT64_MIN / a) {
+            return 1;
+        }
+    } else {
+        if (b > 0) {
+            if (a < INT64_MIN / b)
+                return 1;
+        } else if (a < INT64_MAX / b) {
+            return 1;
+        }
+    }
+    *out = a * b;
+    return 0;
+#endif
+}
+
+#if defined(_WIN32)
+static int64_t stopwatch_tick_count_ns(void) {
+    ULONGLONG ticks = GetTickCount64();
+    if (ticks > (ULONGLONG)(INT64_MAX / 1000000LL)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return (int64_t)ticks * 1000000LL;
+}
+#endif
+
+#if !defined(_WIN32)
+static int64_t stopwatch_timespec_to_ns(struct timespec ts) {
+    int64_t seconds_ns;
+    int64_t result;
+    if (stopwatch_checked_mul_i64((int64_t)ts.tv_sec, 1000000000LL, &seconds_ns) ||
+        stopwatch_checked_add_i64(seconds_ns, (int64_t)ts.tv_nsec, &result)) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return result;
+}
+#endif
+
 static ViperStopwatch *require_stopwatch(void *obj) {
     if (!obj) {
         rt_trap("Stopwatch: null receiver");
@@ -87,12 +139,12 @@ static int64_t get_timestamp_ns(void) {
     // frequency is constant so duplicate init produces identical results.
     static LARGE_INTEGER freq = {0};
     if (freq.QuadPart == 0 && (!QueryPerformanceFrequency(&freq) || freq.QuadPart <= 0)) {
-        return (int64_t)GetTickCount64() * 1000000LL;
+        return stopwatch_tick_count_ns();
     }
 
     LARGE_INTEGER counter;
     if (!QueryPerformanceCounter(&counter))
-        return (int64_t)GetTickCount64() * 1000000LL;
+        return stopwatch_tick_count_ns();
 
     int64_t whole = counter.QuadPart / freq.QuadPart;
     int64_t rem = counter.QuadPart % freq.QuadPart;
@@ -115,12 +167,12 @@ static int64_t get_timestamp_ns(void) {
     struct timespec ts;
 #ifdef CLOCK_MONOTONIC
     if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
-        return (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+        return stopwatch_timespec_to_ns(ts);
     }
 #endif
     // Fallback to CLOCK_REALTIME
     if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
-        return (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+        return stopwatch_timespec_to_ns(ts);
     }
     return 0;
 #endif

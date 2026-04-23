@@ -21,10 +21,10 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator b
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 55 | +55 |
-| Source files | 2,869 | 2,900 | +31 |
-| Production SLOC | 450K | 497K | +47K |
-| Test SLOC | 183K | 202K | +19K |
+| Commits | — | 59 | +59 |
+| Source files | 2,869 | 2,902 | +33 |
+| Production SLOC | 450K | 498K | +48K |
+| Test SLOC | 183K | 203K | +20K |
 | Demo SLOC | 177K | 189K | +12K |
 
 Counts via `scripts/count_sloc.sh`.
@@ -114,6 +114,15 @@ Four rounds of widget audit. Themes: dark-theme palette refresh, HiDPI consisten
 - Filesystem asset fallback now treats only regular files as assets and loads zero-byte files as empty `Bytes` instead of returning null.
 - `SaveData.Load()` treats a missing save file as a successful empty load and clears stale in-memory entries; malformed JSON or non-integral/out-of-range numbers still leave the prior state intact.
 
+### Time runtime
+
+- **Overflow-checked arithmetic across every module** (`DateTime`, `DateOnly`, `DateRange`, `Duration`, `RelTime`, `Stopwatch`, `Countdown`). Shared `dt_checked_add_i64` / `dt_checked_sub_i64` / `dt_checked_mul_i64` helpers (preferring `__builtin_*_overflow` on GCC/Clang, portable fallback elsewhere) now route every public arithmetic path. `AddSeconds`, `AddDays`, `Diff`, and their Duration / Stopwatch / Countdown / RelTime counterparts trap on signed 64-bit overflow via `rt_trap_ovf()` instead of wrapping silently. Unit-conversion helpers (days ↔ seconds, ns ↔ μs/ms/s, span composition) are all overflow-checked.
+- **Representability hardening for platform time APIs.** `DateTime.Create` now range-checks components before `mktime`, accepts valid timestamp `-1` by round-tripping the normalized `struct tm`, and rejects non-representable results. DateTime and DateRange formatters validate `int64_t` → `time_t` before localtime/gmtime calls. `DateOnly` days-since-epoch conversion now traps cleanly for extreme year/day inputs instead of overflowing intermediate calendar math.
+- **Countdown and Stopwatch timing fixes.** Countdown now traps if no monotonic or realtime clock is available, uses checked millisecond math, and sleeps long waits in chunks instead of returning early after one platform-limited sleep. Stopwatch and Clock timestamp conversions use checked scale/add math for ns/us/ms values.
+- **Duration edge-case correctness.** `Duration.Abs(INT64_MIN)` and `Duration.Neg(INT64_MIN)` now trap because the positive magnitude cannot be represented; ISO duration formatting also avoids zero-length `snprintf` writes after its fixed buffer fills.
+- **snprintf length validation** on every string producer (`ToIso`, `ToLocal`, `ToString`, format helpers): negative returns become empty-on-error, and lengths `>= sizeof(buffer)` clamp before handing bytes to `rt_string_from_bytes`, eliminating a class of out-of-bounds reads on truncation.
+- **Tightened constructor validation.** `Create`, `FromComponents`, `ParseIso` reject out-of-range fields up front instead of reaching the underlying `mktime` / `timegm` with undefined inputs.
+
 ### Text runtime
 
 - **Overflow + validation hardening across the parsers.** JSON streaming gained an explicit per-depth context state machine (malformed `{key,}` / `[,,]` fail at the offending token); regex enforces `INT_MAX` on internal offsets; StringBuilder raises explicit overflow traps; TOML, CSV, Scanner, Template, Codec, GUID, numfmt, parse all got length / depth / byte-count guards.
@@ -147,7 +156,7 @@ Four rounds of widget audit. Themes: dark-theme palette refresh, HiDPI consisten
 
 ### Linker, codegen, tools, IL, build
 
-- Linker: C++ Itanium-ABI symbol classification on macOS (with `$DARWIN_EXTSN` handling); `uname` / `gethostname` / `sysctlbyname` routed to the right dylib.
+- Linker: C++ Itanium-ABI symbol classification on macOS (with `$DARWIN_EXTSN` handling); `uname` / `gethostname` / `sysctlbyname` routed to the right dylib; `link()` added to the dynamic-import allowlist alongside its `unlink()` partner (closed a runtime-import-audit gap opened by the new POSIX no-clobber atomic-move path in `rt_file_ext`).
 - Tools: frontend `--` separator, collision-safe `native_compiler` temp paths, x64 `--asset-blob` gate.
 - IL: `Canvas.CopyRect` / `Screenshot` return `Pixels`; `AudioUpdate` added, `AudioEncode` removed.
 - Build: VERSION `0.2.4-dev` → `0.2.5-snapshot`; GUI test targets key off `VIPER_BUILD_TESTING`.
@@ -163,14 +172,12 @@ Roughly 17K lines of new coverage across runtime, GUI, codegen, linker. Highligh
 
 ### Demos & docs
 
-**Demos.** Crackman (Pac-Man rewrite: session / progression / frontend split, audio banks; directory renamed `pacman/` → `crackman/` for tree consistency with the binary). Paint gains layers, undo/redo, expanded tools. ViperIDE adopts new GUI APIs (per-file IntelliSense, pixel hover, custom fonts, theme toggle, font zoom). New 3D demos: `3dbaseball`, `3dscene`. 3D Bowling gains a cinematic-postfx smoke probe with frame-validity checks. Chess: AI-hardening pass + single-thread and multi-thread probes + native smoke test. XENOSCAPE: player now faces left correctly when walking left (`Pixels.FlipH` return-value fix); bosses no longer sink through the floor during prolonged combat (hurt-state gravity now goes through `phys.moveAndCollide`). Marquee new piece: text-mode human-manager baseball-franchise simulator with dashboard / standings / league leaders / box scores / transactions / decisions reporting surfaces.
-
-**Docs.** Comprehensive sweep across `viperlib/` (audio, GUI, crypto, network, graphics, text, threads). New `viperlib/graphics/production2d.md` for the new 2D class library. `README.md` refreshed to a master snapshot (v0.2.4 stays the pinned release, with an "in development" pointer at v0.2.5; tables trimmed to concise summaries). Doxygen comment pass across ~100 runtime `.c` files — graphics runtime, text runtime, threads runtime, audio runtime, the RSA + ECDSA-P256 crypto cores, and the asset-loader hot spots.
+Marquee demo addition is a text-mode human-manager baseball-franchise simulator; Pac-Man was rewritten and renamed as Crackman (session / progression / frontend split, audio banks); two new 3D demos (`3dbaseball`, `3dscene`), Paint gains layers + undo/redo + expanded tools, ViperIDE adopts the new GUI APIs, 3D Bowling gets a cinematic-postfx smoke probe, Chess AI-hardening pass, and XENOSCAPE gets the boss-sink-through-floor fix plus the player-facing `Pixels.FlipH` direction fix. Docs: comprehensive `viperlib/` sweep (audio / GUI / crypto / network / graphics / text / threads / time / io), new `viperlib/graphics/production2d.md`, `README.md` refreshed to a master snapshot, and a Doxygen comment pass across ~100 runtime `.c` files.
 
 ---
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 53-commit history. Recent commits pair feature-add and follow-up hardening in the same subsystem (e.g. Production 2D → overflow hardening; threads timeout fixes → handle-magic validation; glTF skin import → sparse accessors + KHR extensions).
+See `git log a91d388db..HEAD -- .` for the full 59-commit history. Commits pair feature-add and follow-up hardening in the same subsystem (e.g. Production 2D → overflow hardening; threads timeout fixes → handle-magic validation; glTF skin import → sparse accessors + KHR extensions; new POSIX atomic-move path → linker-policy `link()` classification).
 
 <!-- END DRAFT -->

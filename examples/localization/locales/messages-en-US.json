@@ -1,0 +1,8 @@
+{
+  "greet":          "Hello, {name}!",
+  "cart.items.one":   "1 item in your cart",
+  "cart.items.other": "{n} items in your cart",
+  "cart.items.zero":  "Your cart is empty",
+  "checkout.confirm": "Proceed to checkout?",
+  "checkout.total":   "Total: {amount}"
+}

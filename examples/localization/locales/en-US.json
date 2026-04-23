@@ -1,0 +1,87 @@
+{
+  "tag": "en-US",
+  "names": {
+    "language": "English",
+    "region":   "United States",
+    "display":  "English (United States)"
+  },
+  "text_direction": "ltr",
+  "first_day_of_week": 0,
+  "measurement": "us",
+
+  "numbers": {
+    "decimal_sep": ".",
+    "group_sep":   ",",
+    "group_size":  3,
+    "minus":       "-",
+    "plus":        "+",
+    "percent":     "%",
+    "infinity":    "∞",
+    "nan":         "NaN",
+    "exponent":    "E",
+    "digits":      "0123456789"
+  },
+
+  "currency": {
+    "default_code":     "USD",
+    "symbol":           "$",
+    "pattern_positive": "{s}{n}",
+    "pattern_negative": "-{s}{n}",
+    "fraction_digits":  2
+  },
+
+  "dates": {
+    "months_wide": ["January","February","March","April","May","June",
+                    "July","August","September","October","November","December"],
+    "months_abbr": ["Jan","Feb","Mar","Apr","May","Jun",
+                    "Jul","Aug","Sep","Oct","Nov","Dec"],
+    "days_wide":   ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"],
+    "days_abbr":   ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"],
+    "am": "AM",
+    "pm": "PM",
+    "patterns": {
+      "short":       "M/d/yy",
+      "medium":      "MMM d, yyyy",
+      "long":        "MMMM d, yyyy",
+      "full":        "EEEE, MMMM d, yyyy",
+      "time_short":  "h:mm a",
+      "time_medium": "h:mm:ss a"
+    }
+  },
+
+  "relative_time": {
+    "past":   "{n} {unit} ago",
+    "future": "in {n} {unit}",
+    "units": {
+      "second": { "one": "second", "other": "seconds" },
+      "minute": { "one": "minute", "other": "minutes" },
+      "hour":   { "one": "hour",   "other": "hours"   },
+      "day":    { "one": "day",    "other": "days"    },
+      "week":   { "one": "week",   "other": "weeks"   },
+      "month":  { "one": "month",  "other": "months"  },
+      "year":   { "one": "year",   "other": "years"   }
+    }
+  },
+
+  "plural_cardinal": [
+    { "category": "one",   "rule": "i = 1 and v = 0" },
+    { "category": "other", "rule": "true" }
+  ],
+  "plural_ordinal": [
+    { "category": "one",   "rule": "n mod 10 = 1 and n mod 100 != 11" },
+    { "category": "two",   "rule": "n mod 10 = 2 and n mod 100 != 12" },
+    { "category": "few",   "rule": "n mod 10 = 3 and n mod 100 != 13" },
+    { "category": "other", "rule": "true" }
+  ],
+
+  "list_format": {
+    "and":  { "pair": "{0} and {1}", "start": "{0}, {1}",
+              "middle": "{0}, {1}",   "end": "{0}, and {1}" },
+    "or":   { "pair": "{0} or {1}",  "start": "{0}, {1}",
+              "middle": "{0}, {1}",   "end": "{0}, or {1}" },
+    "unit": { "pair": "{0} {1}",     "start": "{0} {1}",
+              "middle": "{0} {1}",    "end": "{0} {1}" }
+  },
+
+  "collation": { "strength": 3, "reorder": [], "overrides": [] }
+}

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-18
+last-verified: 2026-04-22
 ---
 
 # Basic Widgets
@@ -188,6 +188,7 @@ optA.SetSelected(1);
 ### Slider
 
 Draggable value slider.
+Non-finite values are rejected or replaced with bounded defaults; ranges are normalized so the minimum is never greater than the maximum.
 
 **Constructor:** `NEW Viper.GUI.Slider(parent, horizontal)`
 
@@ -228,6 +229,7 @@ Numeric input with increment/decrement buttons.
 
 The spinner now behaves as a real interactive widget: the up/down buttons repaint correctly, `Up` / `Down` keys adjust the value while focused, the mouse wheel steps the value when hovered, and the value field accepts direct keyboard entry.
 Typing while the spinner is focused starts inline editing, `Enter` commits the typed number, and `Escape` restores the previous formatted value.
+Programmatic values, ranges, steps, and decimal counts are clamped to finite supported ranges.
 
 **Constructor:** `NEW Viper.GUI.Spinner(parent)`
 
@@ -267,6 +269,7 @@ quantity.SetValue(1.0);
 Progress indicator bar.
 
 Indeterminate progress bars created through the underlying C GUI layer now advance their animation during the normal app render loop.
+Programmatic values are clamped to the `0.0` through `1.0` range, with non-finite values treated as `0.0`.
 
 **Constructor:** `NEW Viper.GUI.ProgressBar(parent)`
 
@@ -354,6 +357,7 @@ Scrollable list of selectable items with enhanced item management.
 
 Hit-testing uses widget-local coordinates, so nested list boxes select the correct row. Measured height also follows the actual item count for short lists instead of reserving five rows unconditionally. In multi-select mode, `Ctrl/Cmd+Click` toggles rows, `Shift+Click` extends the active range, and keyboard navigation with `Shift` extends the current selection.
 Item text is clipped to the viewport and item add/remove/clear/select operations invalidate the list immediately so the visual state updates on the same frame.
+`ItemSetData()` stores runtime strings with their explicit length, so embedded NUL bytes round-trip through `ItemGetData()`. Runtime-owned item data is freed automatically by `RemoveItem()` and `Clear()`.
 
 **Constructor:** `NEW Viper.GUI.ListBox(parent)`
 
@@ -479,12 +483,13 @@ if fileList.WasSelectionChanged() == 1 {
 Image display widget.
 
 `SetScaleMode()` and `SetOpacity()` affect the rendered output directly. If you do not call `SetSize()`, the widget measures to the image's natural pixel dimensions once pixels have been assigned.
+`SetPixels()` accepts a `Viper.Graphics.Pixels` object whose elements are packed as `0xRRGGBBAA`; the GUI layer converts them to byte RGBA. Width or height values less than or equal to zero use the source dimensions, requested sizes larger than the source are clamped, and `NULL` pixels clear the image.
 
 **Constructor:** `NEW Viper.GUI.Image(parent)`
 
 | Method                         | Signature                              | Description                    |
 |--------------------------------|----------------------------------------|--------------------------------|
-| `SetPixels(pixels, w, h)`      | `Void(Pixels, Integer, Integer)`       | Set image from Pixels buffer   |
+| `SetPixels(pixels, w, h)`      | `Void(Pixels, Integer, Integer)`       | Set image from a `Viper.Graphics.Pixels` buffer |
 | `LoadFile(path)`               | `Integer(String)`                      | Load PNG, BMP, JPEG, or GIF file directly (1=ok, 0=fail) |
 | `Clear()`                      | `Void()`                               | Clear image                    |
 | `SetScaleMode(mode)`           | `Void(Integer)`                        | 0=none, 1=fit, 2=fill, 3=stretch |
@@ -496,7 +501,7 @@ preview = NEW Viper.GUI.Image(root)
 preview.SetSize(200, 200)
 preview.SetScaleMode(1)  ' Fit
 
-' Load directly from file (BMP or PNG)
+' Load directly from file (PNG, BMP, JPEG, or GIF)
 preview.LoadFile("photo.png")
 ```
 
@@ -506,7 +511,7 @@ var preview = Image.New(root);
 preview.SetSize(200, 200);
 preview.SetScaleMode(1);  // Fit
 
-// Load directly from file (BMP or PNG)
+// Load directly from file (PNG, BMP, JPEG, or GIF)
 preview.LoadFile("photo.png");
 ```
 

@@ -314,7 +314,9 @@ void rt_tooltip_show(rt_string text, int64_t x, int64_t y) {
         }
         vg_tooltip_set_timing(app->manual_tooltip, app->manual_tooltip_delay_ms, 100, 0);
         vg_tooltip_set_text(app->manual_tooltip, ctext);
-        vg_tooltip_show_at(app->manual_tooltip, (int)x, (int)y);
+        vg_tooltip_show_at(app->manual_tooltip,
+                           rt_gui_clamp_i64_to_i32(x, INT32_MIN, INT32_MAX),
+                           rt_gui_clamp_i64_to_i32(y, INT32_MIN, INT32_MAX));
     }
 
     if (ctext)
@@ -352,7 +354,9 @@ void rt_tooltip_show_rich(rt_string title, rt_string body, int64_t x, int64_t y)
             vg_tooltip_set_text(app->manual_tooltip, combined);
             free(combined);
         }
-        vg_tooltip_show_at(app->manual_tooltip, (int)x, (int)y);
+        vg_tooltip_show_at(app->manual_tooltip,
+                           rt_gui_clamp_i64_to_i32(x, INT32_MIN, INT32_MAX),
+                           rt_gui_clamp_i64_to_i32(y, INT32_MIN, INT32_MAX));
     }
 
     if (ctitle)
@@ -378,6 +382,8 @@ void rt_tooltip_set_delay(int64_t delay_ms) {
         return;
     if (delay_ms < 0)
         delay_ms = 0;
+    if (delay_ms > UINT32_MAX)
+        delay_ms = UINT32_MAX;
     app->manual_tooltip_delay_ms = (uint32_t)delay_ms;
     if (app->manual_tooltip) {
         vg_tooltip_set_timing(app->manual_tooltip, app->manual_tooltip_delay_ms, 100, 0);
@@ -995,7 +1001,8 @@ void rt_breadcrumb_set_max_items(void *crumb, int64_t max) {
     if (!crumb)
         return;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
-    vg_breadcrumb_set_max_items(data->breadcrumb, (int)max);
+    vg_breadcrumb_set_max_items(data->breadcrumb,
+                                rt_gui_clamp_i64_to_i32(max, 0, INT32_MAX));
 }
 
 /// @brief Show or hide the breadcrumb widget.
@@ -1067,6 +1074,7 @@ void rt_minimap_destroy(void *minimap) {
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
     if (data->minimap) {
         vg_minimap_destroy(data->minimap);
+        data->minimap = NULL;
     }
 }
 
@@ -1076,6 +1084,8 @@ void rt_minimap_bind_editor(void *minimap, void *editor) {
     if (!minimap || !editor)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
+    if (!data->minimap)
+        return;
     vg_minimap_set_editor(data->minimap, (vg_codeeditor_t *)editor);
     vg_widget_invalidate(&data->minimap->base);
 }
@@ -1086,6 +1096,8 @@ void rt_minimap_unbind_editor(void *minimap) {
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
+    if (!data->minimap)
+        return;
     vg_minimap_set_editor(data->minimap, NULL);
     vg_widget_invalidate(&data->minimap->base);
 }
@@ -1096,12 +1108,14 @@ void rt_minimap_set_width(void *minimap, int64_t width) {
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
-    if (width < 64)
-        width = 64;
-    data->width = width;
-    data->minimap->base.constraints.min_width = (float)width;
-    data->minimap->base.constraints.preferred_width = (float)width;
-    data->minimap->base.constraints.max_width = (float)width;
+    if (!data->minimap)
+        return;
+    int32_t clamped_width =
+        rt_gui_clamp_i64_to_i32(width, 64, (int32_t)RT_GUI_MAX_LAYOUT_VALUE);
+    data->width = clamped_width;
+    data->minimap->base.constraints.min_width = (float)clamped_width;
+    data->minimap->base.constraints.preferred_width = (float)clamped_width;
+    data->minimap->base.constraints.max_width = (float)clamped_width;
     vg_widget_invalidate_layout(&data->minimap->base);
     vg_widget_invalidate(&data->minimap->base);
 }
@@ -1136,6 +1150,8 @@ int64_t rt_minimap_get_width(void *minimap) {
     if (!minimap)
         return 0;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
+    if (!data->minimap)
+        return 0;
     return data->width;
 }
 
@@ -1145,7 +1161,10 @@ void rt_minimap_set_scale(void *minimap, double scale) {
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
-    vg_minimap_set_scale(data->minimap, (float)scale);
+    if (!data->minimap)
+        return;
+    double sanitized = rt_gui_double_is_finite(scale) ? scale : 0.1;
+    vg_minimap_set_scale(data->minimap, (float)rt_gui_clamp_f64(sanitized, 0.05, 0.5));
     vg_widget_invalidate(&data->minimap->base);
 }
 
@@ -1155,6 +1174,8 @@ void rt_minimap_set_show_slider(void *minimap, int64_t show) {
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
+    if (!data->minimap)
+        return;
     vg_minimap_set_show_viewport(data->minimap, show != 0);
     vg_widget_invalidate(&data->minimap->base);
 }
@@ -1165,9 +1186,13 @@ void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t t
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
+    if (!data->minimap)
+        return;
     vg_minimap_t *mm = data->minimap;
 
     if (mm->marker_count >= mm->marker_cap) {
+        if (mm->marker_cap > INT_MAX / 2)
+            return;
         int new_cap = mm->marker_cap ? mm->marker_cap * 2 : 8;
         void *p = realloc(mm->markers, (size_t)new_cap * sizeof(*mm->markers));
         if (!p)
@@ -1176,9 +1201,9 @@ void rt_minimap_add_marker(void *minimap, int64_t line, int64_t color, int64_t t
         mm->marker_cap = new_cap;
     }
     struct vg_minimap_marker *m = &mm->markers[mm->marker_count++];
-    m->line = (int)line;
+    m->line = rt_gui_clamp_i64_to_i32(line, INT32_MIN, INT32_MAX);
     m->color = (uint32_t)color;
-    m->type = (int)type;
+    m->type = rt_gui_clamp_i64_to_i32(type, INT32_MIN, INT32_MAX);
     mm->base.needs_paint = true;
 }
 
@@ -1188,10 +1213,13 @@ void rt_minimap_remove_markers(void *minimap, int64_t line) {
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
+    if (!data->minimap)
+        return;
     vg_minimap_t *mm = data->minimap;
+    int32_t clamped_line = rt_gui_clamp_i64_to_i32(line, INT32_MIN, INT32_MAX);
     int w = 0;
     for (int i = 0; i < mm->marker_count; i++) {
-        if (mm->markers[i].line != (int)line)
+        if (mm->markers[i].line != clamped_line)
             mm->markers[w++] = mm->markers[i];
     }
     if (w != mm->marker_count) {
@@ -1206,6 +1234,8 @@ void rt_minimap_clear_markers(void *minimap) {
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
+    if (!data->minimap)
+        return;
     vg_minimap_t *mm = data->minimap;
     free(mm->markers);
     mm->markers = NULL;
@@ -1322,7 +1352,7 @@ rt_string rt_widget_get_drop_data(void *widget) {
 /// @brief Check whether files were dropped onto the app window this frame.
 int64_t rt_app_was_file_dropped(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    rt_gui_app_t *gui_app = rt_gui_app_handle_checked(app);
     if (!gui_app)
         return 0;
     int64_t result = gui_app->file_drop.was_dropped;
@@ -1333,14 +1363,14 @@ int64_t rt_app_was_file_dropped(void *app) {
 /// @brief Get the number of files dropped onto the app window.
 int64_t rt_app_get_dropped_file_count(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    rt_gui_app_t *gui_app = rt_gui_app_handle_checked(app);
     return gui_app ? gui_app->file_drop.file_count : 0;
 }
 
 /// @brief Get the dropped file of the app.
 rt_string rt_app_get_dropped_file(void *app, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    rt_gui_app_t *gui_app = rt_gui_app_handle_checked(app);
     if (gui_app && index >= 0 && index < gui_app->file_drop.file_count &&
         gui_app->file_drop.files) {
         char *file = gui_app->file_drop.files[index];

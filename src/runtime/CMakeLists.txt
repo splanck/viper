@@ -386,6 +386,31 @@ set(RT_THREADS_SOURCES
         threads/rt_scheduler.c
 )
 
+set(RT_LOCALIZATION_SOURCES
+        localization/rt_locale.c
+        localization/rt_locale_data_en_us.c
+        localization/rt_locale_info.c
+        localization/rt_locale_manager.c
+        localization/rt_numformat.c
+        localization/rt_plural_rules.c
+        localization/rt_dateformat.c
+        localization/rt_dateformat_patterns.c
+        localization/rt_reltime_format.c
+        localization/rt_message_bundle.c
+        localization/rt_list_format.c
+        localization/rt_text_direction.c
+        localization/rt_collator.c
+        localization/rt_collator_table.c
+)
+
+if (WIN32)
+    list(APPEND RT_LOCALIZATION_SOURCES localization/rt_locale_platform_windows.c)
+elseif (APPLE)
+    list(APPEND RT_LOCALIZATION_SOURCES localization/rt_locale_platform_macos.c)
+else ()
+    list(APPEND RT_LOCALIZATION_SOURCES localization/rt_locale_platform_posix.c)
+endif ()
+
 set(RT_NETWORK_SOURCES
         network/rt_network.c
         network/rt_network_udp.c
@@ -511,6 +536,7 @@ add_library(viper_rt_graphics_obj OBJECT ${RT_GRAPHICS_SOURCES})
 add_library(viper_rt_audio_obj OBJECT ${RT_AUDIO_SOURCES})
 add_library(viper_rt_threads_obj OBJECT ${RT_THREADS_SOURCES})
 add_library(viper_rt_network_obj OBJECT ${RT_NETWORK_SOURCES})
+add_library(viper_rt_localization_obj OBJECT ${RT_LOCALIZATION_SOURCES})
 
 add_library(viper_rt_base STATIC $<TARGET_OBJECTS:viper_rt_base_obj>)
 add_library(viper_rt_arrays STATIC $<TARGET_OBJECTS:viper_rt_arrays_obj>)
@@ -524,6 +550,7 @@ add_library(viper_rt_graphics STATIC $<TARGET_OBJECTS:viper_rt_graphics_obj>)
 add_library(viper_rt_audio STATIC $<TARGET_OBJECTS:viper_rt_audio_obj>)
 add_library(viper_rt_threads STATIC $<TARGET_OBJECTS:viper_rt_threads_obj>)
 add_library(viper_rt_network STATIC $<TARGET_OBJECTS:viper_rt_network_obj>)
+add_library(viper_rt_localization STATIC $<TARGET_OBJECTS:viper_rt_localization_obj>)
 
 add_library(viper_runtime STATIC
         $<TARGET_OBJECTS:viper_rt_base_obj>
@@ -538,6 +565,7 @@ add_library(viper_runtime STATIC
         $<TARGET_OBJECTS:viper_rt_audio_obj>
         $<TARGET_OBJECTS:viper_rt_threads_obj>
         $<TARGET_OBJECTS:viper_rt_network_obj>
+        $<TARGET_OBJECTS:viper_rt_localization_obj>
 )
 
 set(VIPER_RUNTIME_COMPONENT_OBJECT_LIBS
@@ -553,6 +581,7 @@ set(VIPER_RUNTIME_COMPONENT_OBJECT_LIBS
         viper_rt_audio_obj
         viper_rt_threads_obj
         viper_rt_network_obj
+        viper_rt_localization_obj
 )
 
 set(VIPER_RUNTIME_COMPONENT_LIBS
@@ -568,6 +597,7 @@ set(VIPER_RUNTIME_COMPONENT_LIBS
         viper_rt_audio
         viper_rt_threads
         viper_rt_network
+        viper_rt_localization
         viper_runtime
 )
 
@@ -587,6 +617,7 @@ set(_RT_SUBDIRS
         ${CMAKE_CURRENT_SOURCE_DIR}/audio
         ${CMAKE_CURRENT_SOURCE_DIR}/threads
         ${CMAKE_CURRENT_SOURCE_DIR}/network
+        ${CMAKE_CURRENT_SOURCE_DIR}/localization
 )
 
 foreach (_rtobj IN LISTS VIPER_RUNTIME_COMPONENT_OBJECT_LIBS)
@@ -636,6 +667,7 @@ foreach (_rtlib IN LISTS VIPER_RUNTIME_COMPONENT_LIBS)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/audio>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/threads>
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/network>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/localization>
             $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper_runtime>
             $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper/runtime>
@@ -652,6 +684,7 @@ target_link_libraries(viper_rt_exec PUBLIC viper_rt_collections viper_rt_base)
 target_link_libraries(viper_rt_graphics PUBLIC viper_rt_oop viper_rt_base)
 target_link_libraries(viper_rt_threads PUBLIC viper_rt_oop viper_rt_base)
 target_link_libraries(viper_rt_network PUBLIC viper_rt_collections viper_rt_base)
+target_link_libraries(viper_rt_localization PUBLIC viper_rt_collections viper_rt_oop viper_rt_threads viper_rt_base)
 
 # Windows requires ws2_32 for sockets
 if (WIN32)
@@ -718,6 +751,7 @@ set(VIPER_RUNTIME_COMPONENT_ARCHIVES
         viper_rt_graphics
         viper_rt_audio
         viper_rt_network
+        viper_rt_localization
         PARENT_SCOPE)
 
 if (NOT DEFINED VIPER_GRAPHICS_MODE)

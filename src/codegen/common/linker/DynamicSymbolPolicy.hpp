@@ -98,6 +98,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "memcmp",
         "memchr",
         "strlen",
+        "strnlen",
         "strcmp",
         "strcpy",
         "strncpy",

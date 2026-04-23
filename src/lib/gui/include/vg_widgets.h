@@ -487,9 +487,10 @@ void vg_scrollview_set_direction(vg_scrollview_t *scroll, vg_scroll_direction_t 
 
 /// @brief ListBox item structure
 typedef struct vg_listbox_item {
-    char *text;      ///< Item text (owned)
-    void *user_data; ///< User data
-    bool selected;   ///< Is item selected
+    char *text;          ///< Item text (owned)
+    void *user_data;     ///< User data
+    bool owns_user_data; ///< Free user_data when the item is destroyed
+    bool selected;       ///< Is item selected
     struct vg_listbox_item *next;
     struct vg_listbox_item *prev;
 } vg_listbox_item_t;

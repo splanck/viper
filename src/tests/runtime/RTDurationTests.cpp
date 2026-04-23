@@ -215,6 +215,8 @@ static void test_duration_overflow() {
     EXPECT_TRAP(rt_duration_mul(INT64_MAX, 2));
     EXPECT_TRAP(rt_duration_div(1000, 0));
     EXPECT_TRAP(rt_duration_div(INT64_MIN, -1));
+    EXPECT_TRAP(rt_duration_abs(INT64_MIN));
+    EXPECT_TRAP(rt_duration_neg(INT64_MIN));
 
     test_result("Overflowing arithmetic traps", true);
     printf("\n");

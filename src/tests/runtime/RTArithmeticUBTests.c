@@ -14,13 +14,25 @@
 #include "rt_string.h"
 
 #include <assert.h>
+#include <fenv.h>
 #include <math.h>
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int tests_run = 0;
 static int tests_failed = 0;
+static jmp_buf g_trap_env;
+static int g_expect_trap = 0;
+
+void vm_trap(const char *msg) {
+    if (g_expect_trap)
+        longjmp(g_trap_env, 1);
+    fprintf(stderr, "unexpected trap: %s\n", msg ? msg : "(null)");
+    abort();
+}
 
 #define ASSERT(cond)                                                                               \
     do {                                                                                           \
@@ -31,17 +43,26 @@ static int tests_failed = 0;
         }                                                                                          \
     } while (0)
 
+#define EXPECT_TRAP(expr)                                                                         \
+    do {                                                                                          \
+        tests_run++;                                                                              \
+        g_expect_trap = 1;                                                                        \
+        if (setjmp(g_trap_env) == 0) {                                                            \
+            (void)(expr);                                                                         \
+            g_expect_trap = 0;                                                                    \
+            tests_failed++;                                                                       \
+            fprintf(stderr, "FAIL %s:%d: expected trap for %s\n", __FILE__, __LINE__, #expr);     \
+        } else {                                                                                  \
+            g_expect_trap = 0;                                                                    \
+        }                                                                                         \
+    } while (0)
+
 //=============================================================================
 // rt_duration_abs — Bug R-13
 //=============================================================================
 
 static void test_duration_abs_int64_min(void) {
-    // INT64_MIN cannot be negated as signed without UB.
-    // The fix casts through uint64_t, so the result wraps to INT64_MIN
-    // (which is the only representable "abs" of INT64_MIN as int64_t).
-    int64_t result = rt_duration_abs(INT64_MIN);
-    // The wrapped result must not be positive (it equals INT64_MIN by two's complement).
-    ASSERT(result == INT64_MIN);
+    EXPECT_TRAP(rt_duration_abs(INT64_MIN));
 }
 
 static void test_duration_abs_positive(void) {
@@ -61,10 +82,7 @@ static void test_duration_abs_zero(void) {
 //=============================================================================
 
 static void test_duration_neg_int64_min(void) {
-    // Negating INT64_MIN as signed is UB.  The fix casts through uint64_t.
-    // -(uint64_t)INT64_MIN wraps around to INT64_MIN in two's complement.
-    int64_t result = rt_duration_neg(INT64_MIN);
-    ASSERT(result == INT64_MIN);
+    EXPECT_TRAP(rt_duration_neg(INT64_MIN));
 }
 
 static void test_duration_neg_positive(void) {
@@ -155,6 +173,38 @@ static void test_f64_to_i64_normal(void) {
     ASSERT(rt_f64_to_i64(3.9) == 3LL);
     ASSERT(rt_f64_to_i64(-3.9) == -3LL);
     ASSERT(rt_f64_to_i64(0.0) == 0LL);
+}
+
+static void test_f64_to_i64_boundaries(void) {
+    const double two63 = 0x1.0p63;
+    const double below_two63 = nextafter(two63, 0.0);
+    const double above_two63 = nextafter(two63, INFINITY);
+    ASSERT(rt_f64_to_i64(below_two63) == INT64_MAX - 1023LL);
+    ASSERT(rt_f64_to_i64(two63) == INT64_MAX);
+    ASSERT(rt_f64_to_i64(above_two63) == INT64_MAX);
+    ASSERT(rt_f64_to_i64(-two63) == INT64_MIN);
+    ASSERT(rt_f64_to_i64(nextafter(-two63, -INFINITY)) == INT64_MIN);
+}
+
+static void test_round_even_ignores_fenv_rounding_mode(void) {
+    int original = fegetround();
+    bool ok = true;
+
+    ASSERT(fesetround(FE_UPWARD) == 0);
+    ASSERT(rt_cint_from_double(2.1, &ok) == 2);
+    ASSERT(ok);
+    ASSERT(rt_cint_from_double(2.5, &ok) == 2);
+    ASSERT(ok);
+    ASSERT(rt_clng_from_double(3.5, &ok) == 4);
+    ASSERT(ok);
+
+    ASSERT(fesetround(FE_DOWNWARD) == 0);
+    ASSERT(rt_cint_from_double(-2.1, &ok) == -2);
+    ASSERT(ok);
+    ASSERT(rt_round_even(2.5, 0) == 2.0);
+    ASSERT(rt_round_even(3.5, 0) == 4.0);
+
+    ASSERT(fesetround(original) == 0);
 }
 
 //=============================================================================
@@ -279,6 +329,8 @@ int main(void) {
     test_f64_to_i64_positive_inf();
     test_f64_to_i64_negative_inf();
     test_f64_to_i64_normal();
+    test_f64_to_i64_boundaries();
+    test_round_even_ignores_fenv_rounding_mode();
 
     // rt_mat4_perspective
     test_mat4_perspective_zero_fov();

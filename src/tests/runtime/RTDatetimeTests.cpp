@@ -118,14 +118,30 @@ static void test_parsing(void) {
           rt_datetime_parse_iso(rt_const_cstr("2024-02-30T00:00:00Z")) == 0);
     check("ParseISO rejects invalid time",
           rt_datetime_parse_iso(rt_const_cstr("2024-01-15T24:00:00Z")) == 0);
+    check("ParseISO rejects too-short strings", rt_datetime_parse_iso(rt_const_cstr("1")) == 0);
     check("ParseDate rejects trailing characters",
           rt_datetime_parse_date(rt_const_cstr("2024-01-15x")) == 0);
     check("ParseDate rejects invalid calendar date",
           rt_datetime_parse_date(rt_const_cstr("2024-02-30")) == 0);
+    check("ParseDate rejects too-short strings", rt_datetime_parse_date(rt_const_cstr("1")) == 0);
     check("ParseTime rejects trailing characters",
           rt_datetime_parse_time(rt_const_cstr("10:30:00x")) == -1);
     check("ParseTime rejects out-of-range hour",
           rt_datetime_parse_time(rt_const_cstr("24:00:00")) == -1);
+    check("ParseTime rejects too-short strings", rt_datetime_parse_time(rt_const_cstr("1")) == -1);
+}
+
+static void test_create_bounds(void) {
+    printf("rt_datetime create bounds:\n");
+    check("Create rejects huge year", rt_datetime_create(INT64_MAX, 1, 1, 0, 0, 0) == -1);
+    check("Create rejects huge month", rt_datetime_create(2024, INT64_MAX, 1, 0, 0, 0) == -1);
+    check("Create rejects huge day", rt_datetime_create(2024, 1, INT64_MAX, 0, 0, 0) == -1);
+    check("Create rejects huge hour", rt_datetime_create(2024, 1, 1, INT64_MAX, 0, 0) == -1);
+
+    int64_t normalized = rt_datetime_create(2024, 13, 1, 0, 0, 0);
+    check("Create still normalizes in-range overflow components",
+          normalized != -1 && rt_datetime_year(normalized) == 2025 &&
+              rt_datetime_month(normalized) == 1);
 }
 
 static void test_checked_arithmetic(void) {
@@ -145,6 +161,7 @@ int main(void) {
     test_to_iso();
     test_now();
     test_parsing();
+    test_create_bounds();
     test_checked_arithmetic();
     printf("All datetime tests passed.\n");
     return 0;

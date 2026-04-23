@@ -69,6 +69,14 @@ static int daterange_has_gap(int64_t left_end, int64_t right_start) {
     return right_start > left_end + 1;
 }
 
+static int daterange_i64_to_time_t(int64_t value, time_t *out) {
+    time_t t = (time_t)value;
+    if ((int64_t)t != value)
+        return 0;
+    *out = t;
+    return 1;
+}
+
 // ---------------------------------------------------------------------------
 // Constructor
 // ---------------------------------------------------------------------------
@@ -263,8 +271,10 @@ rt_string rt_daterange_to_string(void *range) {
     rt_daterange_impl *r = (rt_daterange_impl *)range;
 
     char buf[128];
-    time_t st = (time_t)r->start;
-    time_t et = (time_t)r->end;
+    time_t st;
+    time_t et;
+    if (!daterange_i64_to_time_t(r->start, &st) || !daterange_i64_to_time_t(r->end, &et))
+        return rt_string_from_bytes("", 0);
     struct tm ts, te;
     if (!rt_gmtime_r(&st, &ts) || !rt_gmtime_r(&et, &te))
         return rt_string_from_bytes("", 0);

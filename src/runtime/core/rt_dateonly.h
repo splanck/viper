@@ -51,7 +51,7 @@ void *rt_dateonly_parse(rt_string s);
 
 /// @brief Create from days since epoch (Jan 1, 1970).
 /// @param days Days since epoch.
-/// @return Opaque DateOnly object pointer.
+/// @return Opaque DateOnly object pointer. Traps on signed 64-bit overflow.
 void *rt_dateonly_from_days(int64_t days);
 
 //=========================================================================
@@ -75,7 +75,7 @@ int64_t rt_dateonly_day(void *obj);
 
 /// @brief Get the day of week (0=Sunday, 6=Saturday).
 /// @param obj Opaque DateOnly object pointer.
-/// @return Day of week.
+/// @return Day of week. Traps on signed 64-bit overflow for extreme years.
 int64_t rt_dateonly_day_of_week(void *obj);
 
 /// @brief Get the day of year (1-366).
@@ -85,7 +85,7 @@ int64_t rt_dateonly_day_of_year(void *obj);
 
 /// @brief Get days since epoch (Jan 1, 1970).
 /// @param obj Opaque DateOnly object pointer.
-/// @return Days since epoch.
+/// @return Days since epoch. Traps on signed 64-bit overflow for extreme years.
 int64_t rt_dateonly_to_days(void *obj);
 
 //=========================================================================

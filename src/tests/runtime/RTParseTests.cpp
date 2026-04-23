@@ -11,6 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
+#include "rt_fmt.h"
+#include "rt_numeric.h"
 #include "rt_parse.h"
 #include "rt_string.h"
 
@@ -30,6 +32,10 @@ extern "C" void vm_trap(const char *msg) {
 
 static rt_string make_str(const char *s) {
     return rt_const_cstr(s);
+}
+
+static rt_string make_bytes(const char *s, size_t len) {
+    return rt_string_from_bytes(s, len);
 }
 
 // ============================================================================
@@ -94,8 +100,20 @@ static void test_try_num_invalid() {
     assert(rt_parse_try_num(make_str("abc"), &result) == 0);
     assert(rt_parse_try_num(make_str("12.34.56"), &result) == 0);
     assert(rt_parse_try_num(make_str("   "), &result) == 0);
+    assert(rt_parse_try_num(make_str("0x1p4"), &result) == 0);
+    assert(rt_parse_try_num(make_str("1e"), &result) == 0);
 
     printf("test_try_num_invalid: PASSED\n");
+}
+
+static void test_low_level_double_rejects_hex_float() {
+    double result = 123.0;
+    assert(rt_parse_double("0x1p4", &result) == (int32_t)Err_InvalidCast);
+    assert(result == 123.0);
+    assert(rt_parse_double("16.0", &result) == (int32_t)Err_None);
+    assert(result == 16.0);
+
+    printf("test_low_level_double_rejects_hex_float: PASSED\n");
 }
 
 // ============================================================================
@@ -250,6 +268,8 @@ static void test_int_radix() {
 
     // Decimal
     assert(rt_parse_int_radix(make_str("42"), 10, -1) == 42);
+    assert(rt_parse_int_radix(make_str("-42"), 10, -1) == -42);
+    assert(rt_parse_int_radix(make_str("-9223372036854775808"), 10, -1) == INT64_MIN);
 
     // Hexadecimal
     assert(rt_parse_int_radix(make_str("FF"), 16, -1) == 255);
@@ -268,6 +288,19 @@ static void test_int_radix() {
     // Invalid string returns default
     assert(rt_parse_int_radix(make_str("GG"), 16, -1) == -1);
     assert(rt_parse_int_radix(make_str(""), 10, -1) == -1);
+    assert(rt_parse_int_radix(make_str("0x10"), 16, -1) == -1);
+    assert(rt_parse_int_radix(make_str("+10"), 10, -1) == -1);
+    assert(rt_parse_int_radix(make_str("-2a"), 16, -1) == -1);
+    assert(rt_parse_int_radix(make_str("9223372036854775808"), 10, -1) == -1);
+
+    // Non-decimal radices parse full 64-bit bit patterns so Fmt output round-trips.
+    rt_string hex_minus_one = rt_fmt_hex(-1);
+    assert(rt_parse_int_radix(hex_minus_one, 16, 0) == -1);
+    rt_string_unref(hex_minus_one);
+
+    rt_string bin_minus_one = rt_fmt_bin(-1);
+    assert(rt_parse_int_radix(bin_minus_one, 2, 0) == -1);
+    rt_string_unref(bin_minus_one);
 
     printf("test_int_radix: PASSED\n");
 }
@@ -295,7 +328,53 @@ static void test_null_inputs() {
     assert(rt_parse_is_num(NULL) == 0);
     assert(rt_parse_int_radix(NULL, 10, 99) == 99);
 
+    rt_string bogus = (rt_string)(uintptr_t)1;
+    assert(rt_parse_try_int(bogus, &i) == 0);
+    assert(rt_parse_try_num(bogus, &d) == 0);
+    assert(rt_parse_try_bool(bogus, &b) == 0);
+    assert(rt_parse_is_int(bogus) == 0);
+    assert(rt_parse_is_num(bogus) == 0);
+    assert(rt_parse_int_radix(bogus, 10, 99) == 99);
+
     printf("test_null_inputs: PASSED\n");
+}
+
+// ============================================================================
+// Embedded NUL Tests
+// ============================================================================
+
+static void test_embedded_nul_inputs() {
+    const char int_bytes[] = {'1', '2', '3', '\0', 'j', 'u', 'n', 'k'};
+    const char num_bytes[] = {'1', '.', '5', '\0', 'j', 'u', 'n', 'k'};
+    const char bool_bytes[] = {'t', 'r', 'u', 'e', '\0', 'j', 'u', 'n', 'k'};
+
+    rt_string int_s = make_bytes(int_bytes, sizeof(int_bytes));
+    rt_string num_s = make_bytes(num_bytes, sizeof(num_bytes));
+    rt_string bool_s = make_bytes(bool_bytes, sizeof(bool_bytes));
+
+    int64_t i = 999;
+    double d = 9.0;
+    int8_t b = 0;
+
+    assert(rt_parse_try_int(int_s, &i) == 0);
+    assert(i == 999);
+    assert(rt_parse_try_num(num_s, &d) == 0);
+    assert(fabs(d - 9.0) < 0.001);
+    assert(rt_parse_try_bool(bool_s, &b) == 0);
+    assert(b == 0);
+
+    assert(rt_parse_int_or(int_s, -7) == -7);
+    assert(fabs(rt_parse_num_or(num_s, -7.5) - (-7.5)) < 0.001);
+    assert(rt_parse_bool_or(bool_s, 1) == 1);
+    assert(rt_parse_is_int(int_s) == 0);
+    assert(rt_parse_is_num(num_s) == 0);
+    assert(rt_parse_int_radix(int_s, 10, -8) == -8);
+
+    rt_string_unref(int_s);
+    rt_string_unref(num_s);
+    rt_string_unref(bool_s);
+
+    printf("test_embedded_nul_inputs: PASSED\n");
 }
 
 // ============================================================================
@@ -312,6 +391,7 @@ int main() {
     // TryNum
     test_try_num_valid();
     test_try_num_invalid();
+    test_low_level_double_rejects_hex_float();
 
     // TryBool
     test_try_bool_true_values();
@@ -332,6 +412,7 @@ int main() {
 
     // NULL input handling
     test_null_inputs();
+    test_embedded_nul_inputs();
 
     printf("\nAll RTParseTests passed!\n");
     return 0;

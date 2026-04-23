@@ -77,6 +77,10 @@ int8_t rt_parse_is_int(rt_string s);
 int8_t rt_parse_is_num(rt_string s);
 
 /// @brief Parse an integer with specified radix, returning default on failure.
+/// @details Radix 10 accepts a leading '-' for signed decimal values. Other
+///          radices parse unsigned 64-bit bit patterns so Fmt.Hex/Fmt.Bin
+///          negative outputs round-trip when cast back to int64_t. Prefixes
+///          such as 0x and leading '+' are rejected.
 /// @param s Input string to parse.
 /// @param radix Base for parsing (2-36).
 /// @param default_value Value to return if parsing fails or radix is invalid.

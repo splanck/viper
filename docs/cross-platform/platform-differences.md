@@ -178,15 +178,15 @@ All three backends validate server certificates against a trusted root source. W
 
 ### 1.10 Numeric Parsing (Locale)
 
-Float-to-string and string-to-float conversions use locale-independent parsing to ensure deterministic behavior, but the implementation varies.
+Float-to-string and string-to-float conversions use locale-independent formatting/parsing to ensure deterministic behavior, but the implementation varies.
 
 | Platform | Method |
 |----------|--------|
-| Windows | `_create_locale()` + `_strtod_l()` (MSVC C locale) |
-| macOS | `strtod_l()` with `<xlocale.h>` |
-| Linux | `strtod()` with `setlocale()` guards |
+| Windows | Per-call `_create_locale()` with `_strtod_l()` / `_vsnprintf_l()` |
+| macOS | `strtod()` / `vsnprintf()` with per-thread `uselocale()` guards |
+| Linux | `strtod()` / `vsnprintf()` with per-thread `uselocale()` guards |
 
-**User-visible difference:** None — all three paths produce identical results for well-formed numeric strings. The runtime guarantees that `Viper.Fmt.Num()` and `Viper.Parse.Num()` are locale-independent and round-trip consistent.
+**User-visible difference:** None — all three paths produce identical results for well-formed numeric strings. The runtime guarantees that `Viper.Fmt.Num()` and the `Viper.Parse` numeric helpers are locale-independent and round-trip consistent for finite values emitted by `Fmt.Num`.
 
 ---
 

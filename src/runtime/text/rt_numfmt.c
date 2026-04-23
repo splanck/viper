@@ -30,6 +30,7 @@
 
 #include "rt_numfmt.h"
 #include "rt_internal.h"
+#include "rt_numfmt_internal.h"
 #include "rt_string_builder.h"
 
 #include <inttypes.h>
@@ -146,37 +147,58 @@ rt_string rt_numfmt_thousands(int64_t n, rt_string sep) {
     if (dlen < 0)
         dlen = 0;
 
-    int num_seps = (dlen - 1) / 3;
-
     rt_string_builder sb;
     rt_sb_init(&sb);
 
     if (negative)
         numfmt_check_sb(rt_sb_append_cstr(&sb, "-"), "NumberFormat.Thousands: formatting failed");
 
-    int first_group = dlen % 3;
+    rt_numfmt_group_digits(&sb, digits, dlen, sep_bytes, sep_len, /*group_size=*/3);
+
+    rt_string result = rt_string_from_bytes(sb.data, sb.len);
+    rt_sb_free(&sb);
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// Shared helper: group digits with locale-specific separator (see
+// rt_numfmt_internal.h for the full contract).
+// ---------------------------------------------------------------------------
+void rt_numfmt_group_digits(rt_string_builder *sb,
+                            const char *digits, int dlen,
+                            const char *sep, size_t sep_len,
+                            int group_size) {
+    if (dlen <= 0)
+        return;
+
+    // Degenerate cases: no separator, zero-length separator, or group size
+    // that would swallow the entire input (<=0, or >=dlen). Emit the digits
+    // verbatim and skip the grouping machinery.
+    if (!sep || sep_len == 0 || group_size <= 0 || group_size >= dlen) {
+        numfmt_check_sb(
+            rt_sb_append_bytes(sb, digits, (size_t)dlen),
+            "NumberFormat.Thousands: formatting failed");
+        return;
+    }
+
+    int first_group = dlen % group_size;
     if (first_group == 0)
-        first_group = 3;
+        first_group = group_size;
 
     numfmt_check_sb(
-        rt_sb_append_bytes(&sb, digits, (size_t)first_group),
+        rt_sb_append_bytes(sb, digits, (size_t)first_group),
         "NumberFormat.Thousands: formatting failed");
     int pos = first_group;
 
     while (pos < dlen) {
         numfmt_check_sb(
-            rt_sb_append_bytes(&sb, sep_bytes, sep_len),
+            rt_sb_append_bytes(sb, sep, sep_len),
             "NumberFormat.Thousands: formatting failed");
         numfmt_check_sb(
-            rt_sb_append_bytes(&sb, digits + pos, 3),
+            rt_sb_append_bytes(sb, digits + pos, (size_t)group_size),
             "NumberFormat.Thousands: formatting failed");
-        pos += 3;
+        pos += group_size;
     }
-
-    (void)num_seps;
-    rt_string result = rt_string_from_bytes(sb.data, sb.len);
-    rt_sb_free(&sb);
-    return result;
 }
 
 // ---------------------------------------------------------------------------

@@ -443,12 +443,42 @@ int64_t rt_shortcuts_get_global_enabled(void) {
 // Window Management (Phase 1)
 //=============================================================================
 
+static rt_gui_app_t *rt_app_checked(void *app) {
+    return rt_gui_app_handle_checked(app);
+}
+
+static float rt_app_window_scale(rt_gui_app_t *app) {
+    float scale = (app && app->window) ? vgfx_window_get_scale(app->window) : 1.0f;
+    return (!isfinite(scale) || scale <= 0.0f) ? 1.0f : scale;
+}
+
+static void rt_app_set_window_size_checked(rt_gui_app_t *app, int64_t w, int64_t h) {
+    if (!app || !app->window)
+        return;
+
+    float scale = rt_app_window_scale(app);
+    double max_w_d = (double)VGFX_MAX_WIDTH / (double)scale;
+    double max_h_d = (double)VGFX_MAX_HEIGHT / (double)scale;
+    int32_t max_w = max_w_d > (double)INT32_MAX ? INT32_MAX : (int32_t)max_w_d;
+    int32_t max_h = max_h_d > (double)INT32_MAX ? INT32_MAX : (int32_t)max_h_d;
+    if (max_w < 1)
+        max_w = 1;
+    if (max_h < 1)
+        max_h = 1;
+
+    int32_t clamped_w = rt_gui_clamp_i64_to_i32(w, 1, max_w);
+    int32_t clamped_h = rt_gui_clamp_i64_to_i32(h, 1, max_h);
+    vgfx_set_window_size(app->window, clamped_w, clamped_h);
+    // Root sizing is handled by vg_widget_layout(root, phys_w, phys_h) in
+    // rt_gui_app_render; setting a root fixed size here would corrupt layout.
+}
+
 /// @brief Set the title of the app.
 void rt_app_set_title(void *app, rt_string title) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     if (!gui_app->window)
         return;
     char *cstr = rt_string_to_cstr(title);
@@ -465,9 +495,9 @@ void rt_app_set_title(void *app, rt_string title) {
 /// @brief Get the title of the app.
 rt_string rt_app_get_title(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return rt_str_empty();
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     if (gui_app->title)
         return rt_string_from_bytes(gui_app->title, strlen(gui_app->title));
     return rt_str_empty();
@@ -476,23 +506,15 @@ rt_string rt_app_get_title(void *app) {
 /// @brief Get a dimension of the app window (width, height, or scale factor).
 void rt_app_set_size(void *app, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
-        return;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
-    if (gui_app->window) {
-        vgfx_set_window_size(gui_app->window, (int32_t)width, (int32_t)height);
-        // Root sizing is handled by vg_widget_layout(root, phys_w, phys_h) in
-        // rt_gui_app_render — do not set root fixed size here, as that would
-        // prevent the layout engine from resizing the root on window resize.
-    }
+    rt_app_set_window_size_checked(rt_app_checked(app), width, height);
 }
 
 /// @brief Get the width of the app.
 int64_t rt_app_get_width(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return 0;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     if (!gui_app->window)
         return 0;
     int32_t w = 0, h = 0;
@@ -503,9 +525,9 @@ int64_t rt_app_get_width(void *app) {
 /// @brief Get the height of the app.
 int64_t rt_app_get_height(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return 0;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     if (!gui_app->window)
         return 0;
     int32_t w = 0, h = 0;
@@ -516,19 +538,21 @@ int64_t rt_app_get_height(void *app) {
 /// @brief Move the app window to a specific screen position.
 void rt_app_set_position(void *app, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     if (gui_app->window)
-        vgfx_set_position(gui_app->window, (int32_t)x, (int32_t)y);
+        vgfx_set_position(gui_app->window,
+                          rt_gui_clamp_i64_to_i32(x, INT32_MIN, INT32_MAX),
+                          rt_gui_clamp_i64_to_i32(y, INT32_MIN, INT32_MAX));
 }
 
 /// @brief Get the x of the app.
 int64_t rt_app_get_x(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return 0;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     if (!gui_app->window)
         return 0;
     int32_t x = 0, y = 0;
@@ -539,9 +563,9 @@ int64_t rt_app_get_x(void *app) {
 /// @brief Get the y of the app.
 int64_t rt_app_get_y(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return 0;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     if (!gui_app->window)
         return 0;
     int32_t x = 0, y = 0;
@@ -552,9 +576,9 @@ int64_t rt_app_get_y(void *app) {
 /// @brief Minimize the app.
 void rt_app_minimize(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     if (gui_app->window)
         vgfx_minimize(gui_app->window);
 }
@@ -562,9 +586,9 @@ void rt_app_minimize(void *app) {
 /// @brief Maximize the app.
 void rt_app_maximize(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     if (gui_app->window)
         vgfx_maximize(gui_app->window);
 }
@@ -572,9 +596,9 @@ void rt_app_maximize(void *app) {
 /// @brief Restore the app.
 void rt_app_restore(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     if (gui_app->window)
         vgfx_restore(gui_app->window);
 }
@@ -582,46 +606,46 @@ void rt_app_restore(void *app) {
 /// @brief Check whether the app window is currently minimized.
 int64_t rt_app_is_minimized(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return 0;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     return gui_app->window ? vgfx_is_minimized(gui_app->window) : 0;
 }
 
 /// @brief Check whether the app window is currently maximized.
 int64_t rt_app_is_maximized(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return 0;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     return gui_app->window ? vgfx_is_maximized(gui_app->window) : 0;
 }
 
 /// @brief Set the fullscreen of the app.
 void rt_app_set_fullscreen(void *app, int64_t fullscreen) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     if (gui_app->window)
-        vgfx_set_fullscreen(gui_app->window, (int32_t)fullscreen);
+        vgfx_set_fullscreen(gui_app->window, (int32_t)(fullscreen != 0));
 }
 
 /// @brief Check whether the app window is in fullscreen mode.
 int64_t rt_app_is_fullscreen(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return 0;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     return gui_app->window ? vgfx_is_fullscreen(gui_app->window) : 0;
 }
 
 /// @brief Focus the app.
 void rt_app_focus(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     if (gui_app->window)
         vgfx_focus(gui_app->window);
 }
@@ -629,121 +653,89 @@ void rt_app_focus(void *app) {
 /// @brief Check whether the app window currently has OS-level focus.
 int64_t rt_app_is_focused(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return 0;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     return gui_app->window ? vgfx_is_focused(gui_app->window) : 0;
 }
 
 /// @brief Set the prevent close of the app.
 void rt_app_set_prevent_close(void *app, int64_t prevent) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     if (gui_app->window)
-        vgfx_set_prevent_close(gui_app->window, (int32_t)prevent);
+        vgfx_set_prevent_close(gui_app->window, (int32_t)(prevent != 0));
 }
 
 /// @brief Check whether the window close was requested this frame.
 int64_t rt_app_was_close_requested(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return 0;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     return gui_app->should_close;
 }
 
 /// @brief Get the monitor width of the app.
 int64_t rt_app_get_monitor_width(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return 0;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     if (!gui_app->window)
         return 0;
     int32_t w = 0, h = 0;
     vgfx_get_monitor_size(gui_app->window, &w, &h);
-    float scale = vgfx_window_get_scale(gui_app->window);
-    if (scale <= 0.0f)
-        scale = 1.0f;
+    float scale = rt_app_window_scale(gui_app);
     return (int64_t)((double)w / (double)scale);
 }
 
 /// @brief Get the monitor height of the app.
 int64_t rt_app_get_monitor_height(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return 0;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     if (!gui_app->window)
         return 0;
     int32_t w = 0, h = 0;
     vgfx_get_monitor_size(gui_app->window, &w, &h);
-    float scale = vgfx_window_get_scale(gui_app->window);
-    if (scale <= 0.0f)
-        scale = 1.0f;
+    float scale = rt_app_window_scale(gui_app);
     return (int64_t)((double)h / (double)scale);
 }
 
 /// @brief Get a dimension of the app window (width, height, or scale factor).
 void rt_app_set_window_size(void *app, int64_t w, int64_t h) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
-        return;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
-    if (!gui_app->window)
-        return;
-    float scale = vgfx_window_get_scale(gui_app->window);
-    if (scale <= 0.0f)
-        scale = 1.0f;
-    int32_t max_w = (int32_t)((float)VGFX_MAX_WIDTH / scale);
-    int32_t max_h = (int32_t)((float)VGFX_MAX_HEIGHT / scale);
-    if (max_w < 1)
-        max_w = 1;
-    if (max_h < 1)
-        max_h = 1;
-    if (w > max_w)
-        w = max_w;
-    if (h > max_h)
-        h = max_h;
-    if (w < 1)
-        w = 1;
-    if (h < 1)
-        h = 1;
-    vgfx_set_window_size(gui_app->window, (int32_t)w, (int32_t)h);
-    // Root sizing is handled by vg_widget_layout(root, phys_w, phys_h) in
-    // rt_gui_app_render — do not set root->width/height here with the logical
-    // dimensions passed from Zia, as that would corrupt the layout geometry.
+    rt_app_set_window_size_checked(rt_app_checked(app), w, h);
 }
 
 /// @brief Get a dimension of the app window (width, height, or scale factor).
 double rt_app_get_font_size(void *app) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return 14.0;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
     // Return logical pt size — divide stored physical pixels by HiDPI scale.
-    float _s = gui_app->window ? vgfx_window_get_scale(gui_app->window) : 1.0f;
-    if (_s <= 0.0f)
-        _s = 1.0f;
+    float _s = rt_app_window_scale(gui_app);
     return (double)(gui_app->default_font_size / _s);
 }
 
 /// @brief Get a dimension of the app window (width, height, or scale factor).
 void rt_app_set_font_size(void *app, double size) {
     RT_ASSERT_MAIN_THREAD();
-    if (!app)
+    rt_gui_app_t *gui_app = rt_app_checked(app);
+    if (!gui_app)
         return;
-    rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
+    size = rt_gui_sanitize_font_size(size, rt_app_get_font_size(app));
     if (size < 6.0)
         size = 6.0;
     if (size > 72.0)
         size = 72.0;
     // Store physical pixels — multiply logical pt size by HiDPI scale.
-    float _s = gui_app->window ? vgfx_window_get_scale(gui_app->window) : 1.0f;
-    if (_s <= 0.0f)
-        _s = 1.0f;
+    float _s = rt_app_window_scale(gui_app);
     gui_app->default_font_size = (float)size * _s;
 }
 

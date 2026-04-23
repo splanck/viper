@@ -453,6 +453,8 @@ void rt_codeeditor_add_highlight(void *editor,
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (ce->highlight_span_count >= ce->highlight_span_cap) {
+        if (ce->highlight_span_cap > INT_MAX / 2)
+            return;
         int new_cap = ce->highlight_span_cap ? ce->highlight_span_cap * 2 : 8;
         void *p = realloc(ce->highlight_spans, (size_t)new_cap * sizeof(*ce->highlight_spans));
         if (!p)
@@ -461,10 +463,10 @@ void rt_codeeditor_add_highlight(void *editor,
         ce->highlight_span_cap = new_cap;
     }
     struct vg_highlight_span *s = &ce->highlight_spans[ce->highlight_span_count++];
-    s->start_line = (int)start_line;
-    s->start_col = (int)start_col;
-    s->end_line = (int)end_line;
-    s->end_col = (int)end_col;
+    s->start_line = rt_gui_clamp_i64_to_i32(start_line, 0, INT32_MAX);
+    s->start_col = rt_gui_clamp_i64_to_i32(start_col, 0, INT32_MAX);
+    s->end_line = rt_gui_clamp_i64_to_i32(end_line, 0, INT32_MAX);
+    s->end_col = rt_gui_clamp_i64_to_i32(end_col, 0, INT32_MAX);
     s->color = (uint32_t)color;
     ce->base.needs_paint = true;
 }
@@ -574,11 +576,12 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
     if (!editor)
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
     /* slot maps to icon type: 0=breakpoint, 1=warning, 2=error, 3=info */
     int type = (int)(slot & 3);
     /* Update existing icon on same line+type if present */
     for (int i = 0; i < ce->gutter_icon_count; i++) {
-        if (ce->gutter_icons[i].line == (int)line && ce->gutter_icons[i].type == type) {
+        if (ce->gutter_icons[i].line == line_i && ce->gutter_icons[i].type == type) {
             vg_icon_destroy(&ce->gutter_icons[i].image);
             ce->gutter_icons[i].image = rt_codeeditor_icon_from_pixels(pixels);
             ce->base.needs_paint = true;
@@ -586,6 +589,8 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
         }
     }
     if (ce->gutter_icon_count >= ce->gutter_icon_cap) {
+        if (ce->gutter_icon_cap > INT_MAX / 2)
+            return;
         int new_cap = ce->gutter_icon_cap ? ce->gutter_icon_cap * 2 : 8;
         void *p = realloc(ce->gutter_icons, (size_t)new_cap * sizeof(*ce->gutter_icons));
         if (!p)
@@ -599,7 +604,7 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
     /* Default color per type */
     static const uint32_t s_type_colors[] = {0xFFE81123, 0xFFFFB900, 0xFFE81123, 0xFF0078D4};
     struct vg_gutter_icon *icon = &ce->gutter_icons[ce->gutter_icon_count++];
-    icon->line = (int)line;
+    icon->line = line_i;
     icon->type = type;
     icon->color = s_type_colors[type < 0 || type >= 4 ? 0 : type];
     icon->image = rt_codeeditor_icon_from_pixels(pixels);
@@ -613,9 +618,10 @@ void rt_codeeditor_clear_gutter_icon(void *editor, int64_t line, int64_t slot) {
     if (!editor)
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
     int type = (int)(slot & 3);
     for (int i = 0; i < ce->gutter_icon_count; i++) {
-        if (ce->gutter_icons[i].line == (int)line && ce->gutter_icons[i].type == type) {
+        if (ce->gutter_icons[i].line == line_i && ce->gutter_icons[i].type == type) {
             int last = --ce->gutter_icon_count;
             vg_icon_destroy(&ce->gutter_icons[i].image);
             if (i != last) {
@@ -737,15 +743,19 @@ void rt_codeeditor_add_fold_region(void *editor, int64_t start_line, int64_t end
         end_line = ce->line_count - 1;
     if (end_line <= start_line)
         return;
+    int start_i = rt_gui_clamp_i64_to_i32(start_line, 0, INT32_MAX);
+    int end_i = rt_gui_clamp_i64_to_i32(end_line, 0, INT32_MAX);
     for (int i = 0; i < ce->fold_region_count; i++) {
-        if (ce->fold_regions[i].start_line == (int)start_line) {
-            ce->fold_regions[i].end_line = (int)end_line;
+        if (ce->fold_regions[i].start_line == start_i) {
+            ce->fold_regions[i].end_line = end_i;
             ce->fold_regions[i].folded = false;
             vg_codeeditor_refresh_layout_state(ce);
             return;
         }
     }
     if (ce->fold_region_count >= ce->fold_region_cap) {
+        if (ce->fold_region_cap > INT_MAX / 2)
+            return;
         int new_cap = ce->fold_region_cap ? ce->fold_region_cap * 2 : 8;
         void *p = realloc(ce->fold_regions, (size_t)new_cap * sizeof(*ce->fold_regions));
         if (!p)
@@ -754,8 +764,8 @@ void rt_codeeditor_add_fold_region(void *editor, int64_t start_line, int64_t end
         ce->fold_region_cap = new_cap;
     }
     struct vg_fold_region *r = &ce->fold_regions[ce->fold_region_count++];
-    r->start_line = (int)start_line;
-    r->end_line = (int)end_line;
+    r->start_line = start_i;
+    r->end_line = end_i;
     r->folded = false;
     vg_codeeditor_refresh_layout_state(ce);
 }
@@ -768,8 +778,9 @@ void rt_codeeditor_remove_fold_region(void *editor, int64_t start_line) {
     if (!editor)
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    int start_i = rt_gui_clamp_i64_to_i32(start_line, 0, INT32_MAX);
     for (int i = 0; i < ce->fold_region_count; i++) {
-        if (ce->fold_regions[i].start_line == (int)start_line) {
+        if (ce->fold_regions[i].start_line == start_i) {
             ce->fold_regions[i] = ce->fold_regions[--ce->fold_region_count];
             vg_codeeditor_refresh_layout_state(ce);
             return;
@@ -794,8 +805,9 @@ void rt_codeeditor_fold(void *editor, int64_t line) {
     if (!editor)
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
     for (int i = 0; i < ce->fold_region_count; i++) {
-        if (ce->fold_regions[i].start_line == (int)line) {
+        if (ce->fold_regions[i].start_line == line_i) {
             ce->fold_regions[i].folded = true;
             vg_codeeditor_refresh_layout_state(ce);
             return;
@@ -808,8 +820,9 @@ void rt_codeeditor_unfold(void *editor, int64_t line) {
     if (!editor)
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
     for (int i = 0; i < ce->fold_region_count; i++) {
-        if (ce->fold_regions[i].start_line == (int)line) {
+        if (ce->fold_regions[i].start_line == line_i) {
             ce->fold_regions[i].folded = false;
             vg_codeeditor_refresh_layout_state(ce);
             return;
@@ -822,8 +835,9 @@ void rt_codeeditor_toggle_fold(void *editor, int64_t line) {
     if (!editor)
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
     for (int i = 0; i < ce->fold_region_count; i++) {
-        if (ce->fold_regions[i].start_line == (int)line) {
+        if (ce->fold_regions[i].start_line == line_i) {
             ce->fold_regions[i].folded = !ce->fold_regions[i].folded;
             vg_codeeditor_refresh_layout_state(ce);
             return;
@@ -836,8 +850,9 @@ int64_t rt_codeeditor_is_folded(void *editor, int64_t line) {
     if (!editor)
         return 0;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
     for (int i = 0; i < ce->fold_region_count; i++) {
-        if (ce->fold_regions[i].start_line == (int)line)
+        if (ce->fold_regions[i].start_line == line_i)
             return ce->fold_regions[i].folded ? 1 : 0;
     }
     return 0;
@@ -924,6 +939,8 @@ void rt_codeeditor_set_auto_fold_detection(void *editor, int64_t enable) {
                 if (end_line > start_line) {
                     // Add fold region via realloc
                     if (ce->fold_region_count >= ce->fold_region_cap) {
+                        if (ce->fold_region_cap > INT_MAX / 2)
+                            break;
                         int new_cap = ce->fold_region_cap ? ce->fold_region_cap * 2 : 16;
                         void *p =
                             realloc(ce->fold_regions, (size_t)new_cap * sizeof(*ce->fold_regions));
@@ -990,6 +1007,8 @@ void rt_codeeditor_add_cursor(void *editor, int64_t line, int64_t col) {
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (ce->extra_cursor_count >= ce->extra_cursor_cap) {
+        if (ce->extra_cursor_cap > INT_MAX / 2)
+            return;
         int new_cap = ce->extra_cursor_cap ? ce->extra_cursor_cap * 2 : 4;
         void *p = realloc(ce->extra_cursors, (size_t)new_cap * sizeof(*ce->extra_cursors));
         if (!p)
@@ -998,8 +1017,8 @@ void rt_codeeditor_add_cursor(void *editor, int64_t line, int64_t col) {
         ce->extra_cursor_cap = new_cap;
     }
     struct vg_extra_cursor *c = &ce->extra_cursors[ce->extra_cursor_count++];
-    c->line = (int)line;
-    c->col = (int)col;
+    c->line = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
+    c->col = rt_gui_clamp_i64_to_i32(col, 0, INT32_MAX);
     rt_codeeditor_clamp_position(ce, &c->line, &c->col);
     memset(&c->selection, 0, sizeof(c->selection));
     c->has_selection = false;
@@ -1015,6 +1034,8 @@ void rt_codeeditor_remove_cursor(void *editor, int64_t index) {
     if (!editor)
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    if (index <= 0 || index > INT32_MAX)
+        return;
     int idx = (int)index - 1; /* index 0 = primary cursor (not in extra array) */
     if (idx < 0 || idx >= ce->extra_cursor_count)
         return;
@@ -1050,6 +1071,8 @@ int64_t rt_codeeditor_get_cursor_line_at(void *editor, int64_t index) {
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (index == 0)
         return ce->cursor_line;
+    if (index < 0 || index > INT32_MAX)
+        return 0;
     int extra_idx = (int)index - 1;
     if (extra_idx >= 0 && extra_idx < ce->extra_cursor_count)
         return ce->extra_cursors[extra_idx].line;
@@ -1063,6 +1086,8 @@ int64_t rt_codeeditor_get_cursor_col_at(void *editor, int64_t index) {
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (index == 0)
         return ce->cursor_col;
+    if (index < 0 || index > INT32_MAX)
+        return 0;
     int extra_idx = (int)index - 1;
     if (extra_idx >= 0 && extra_idx < ce->extra_cursor_count)
         return ce->extra_cursors[extra_idx].col;
@@ -1088,15 +1113,19 @@ void rt_codeeditor_set_cursor_position_at(void *editor, int64_t index, int64_t l
     if (!editor)
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
+    int line_i = rt_gui_clamp_i64_to_i32(line, 0, INT32_MAX);
+    int col_i = rt_gui_clamp_i64_to_i32(col, 0, INT32_MAX);
     if (index == 0) {
-        vg_codeeditor_set_cursor(ce, (int)line, (int)col);
+        vg_codeeditor_set_cursor(ce, line_i, col_i);
         return;
     }
+    if (index < 0 || index > INT32_MAX)
+        return;
     int extra_idx = (int)index - 1;
     if (extra_idx < 0 || extra_idx >= ce->extra_cursor_count)
         return;
-    ce->extra_cursors[extra_idx].line = (int)line;
-    ce->extra_cursors[extra_idx].col = (int)col;
+    ce->extra_cursors[extra_idx].line = line_i;
+    ce->extra_cursors[extra_idx].col = col_i;
     rt_codeeditor_clamp_position(
         ce, &ce->extra_cursors[extra_idx].line, &ce->extra_cursors[extra_idx].col);
     ce->extra_cursors[extra_idx].has_selection = false;
@@ -1118,10 +1147,10 @@ void rt_codeeditor_set_cursor_selection(void *editor,
     if (!editor)
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
-    int s_line = (int)start_line;
-    int s_col = (int)start_col;
-    int e_line = (int)end_line;
-    int e_col = (int)end_col;
+    int s_line = rt_gui_clamp_i64_to_i32(start_line, 0, INT32_MAX);
+    int s_col = rt_gui_clamp_i64_to_i32(start_col, 0, INT32_MAX);
+    int e_line = rt_gui_clamp_i64_to_i32(end_line, 0, INT32_MAX);
+    int e_col = rt_gui_clamp_i64_to_i32(end_col, 0, INT32_MAX);
     rt_codeeditor_clamp_position(ce, &s_line, &s_col);
     rt_codeeditor_clamp_position(ce, &e_line, &e_col);
 
@@ -1130,6 +1159,8 @@ void rt_codeeditor_set_cursor_selection(void *editor,
         return;
     }
 
+    if (index < 0 || index > INT32_MAX)
+        return;
     int extra_idx = (int)index - 1;
     if (extra_idx < 0 || extra_idx >= ce->extra_cursor_count)
         return;
@@ -1154,6 +1185,8 @@ int64_t rt_codeeditor_cursor_has_selection(void *editor, int64_t index) {
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
     if (index == 0)
         return ce->has_selection ? 1 : 0;
+    if (index < 0 || index > INT32_MAX)
+        return 0;
     int extra_idx = (int)index - 1;
     if (extra_idx < 0 || extra_idx >= ce->extra_cursor_count)
         return 0;

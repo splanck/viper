@@ -340,14 +340,22 @@ int64_t rt_duration_div(int64_t duration, int64_t divisor) {
 /// @param duration Duration in milliseconds (may be negative).
 /// @return Non-negative magnitude.
 int64_t rt_duration_abs(int64_t duration) {
-    return duration >= 0 ? duration : (int64_t)(0 - (uint64_t)duration);
+    if (duration == INT64_MIN) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return duration >= 0 ? duration : -duration;
 }
 
 /// @brief Negate a duration.
 /// @param duration Duration in milliseconds.
 /// @return Negated value (-duration).
 int64_t rt_duration_neg(int64_t duration) {
-    return (int64_t)(0 - (uint64_t)duration);
+    if (duration == INT64_MIN) {
+        rt_trap_ovf();
+        return 0;
+    }
+    return -duration;
 }
 
 //=============================================================================
@@ -458,33 +466,42 @@ rt_string rt_duration_to_iso(int64_t duration) {
     *p++ = 'P';
 
     if (days > 0) {
-        dur_append_snprintf(
-            &p, end, snprintf(p, (size_t)(end - p), "%lluD", (unsigned long long)days));
+        if (p < end)
+            dur_append_snprintf(
+                &p, end, snprintf(p, (size_t)(end - p), "%lluD", (unsigned long long)days));
     }
 
     if (hours > 0 || minutes > 0 || seconds > 0 || millis > 0) {
         if (p < end)
             *p++ = 'T';
         if (hours > 0) {
-            dur_append_snprintf(
-                &p, end, snprintf(p, (size_t)(end - p), "%lluH", (unsigned long long)hours));
+            if (p < end)
+                dur_append_snprintf(
+                    &p, end, snprintf(p, (size_t)(end - p), "%lluH", (unsigned long long)hours));
         }
         if (minutes > 0) {
-            dur_append_snprintf(
-                &p, end, snprintf(p, (size_t)(end - p), "%lluM", (unsigned long long)minutes));
+            if (p < end)
+                dur_append_snprintf(
+                    &p, end, snprintf(p, (size_t)(end - p), "%lluM", (unsigned long long)minutes));
         }
         if (seconds > 0 || millis > 0) {
             if (millis > 0) {
-                dur_append_snprintf(&p,
-                                    end,
-                                    snprintf(p,
-                                             (size_t)(end - p),
-                                             "%llu.%03lluS",
-                                             (unsigned long long)seconds,
-                                             (unsigned long long)millis));
+                if (p < end)
+                    dur_append_snprintf(&p,
+                                        end,
+                                        snprintf(p,
+                                                 (size_t)(end - p),
+                                                 "%llu.%03lluS",
+                                                 (unsigned long long)seconds,
+                                                 (unsigned long long)millis));
             } else {
-                dur_append_snprintf(
-                    &p, end, snprintf(p, (size_t)(end - p), "%lluS", (unsigned long long)seconds));
+                if (p < end)
+                    dur_append_snprintf(&p,
+                                        end,
+                                        snprintf(p,
+                                                 (size_t)(end - p),
+                                                 "%lluS",
+                                                 (unsigned long long)seconds));
             }
         }
     }

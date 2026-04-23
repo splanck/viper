@@ -96,10 +96,6 @@ typedef struct {
     /* Cached dimensions */
     int32_t video_width;
     int32_t video_height;
-    /* RGBA buffer for vg_image_set_pixels (Viper Pixels uses 0xRRGGBBAA uint32,
-     * but vg_image expects byte-order RGBA) */
-    uint8_t *rgba_buf;
-    int32_t rgba_buf_size;
 } rt_videowidget;
 
 static void videowidget_dispose(rt_videowidget *w, int destroy_widget_tree);
@@ -129,10 +125,6 @@ static void videowidget_dispose(rt_videowidget *w, int destroy_widget_tree) {
     w->stop_button = NULL;
     w->position_slider = NULL;
 
-    free(w->rgba_buf);
-    w->rgba_buf = NULL;
-    w->rgba_buf_size = 0;
-
     if (w->player) {
         release_gc_object(w->player);
         w->player = NULL;
@@ -147,22 +139,9 @@ static double clamp_volume(double vol) {
     return vol;
 }
 
-/// @brief Convert Viper Pixels (uint32 0xRRGGBBAA) to byte-order RGBA for vg_image.
-static void pixels_to_rgba_bytes(const uint32_t *src, uint8_t *dst, int32_t width, int32_t height) {
-    int32_t count = width * height;
-    for (int32_t i = 0; i < count; i++) {
-        uint32_t px = src[i];
-        dst[i * 4 + 0] = (uint8_t)((px >> 24) & 0xFF); /* R */
-        dst[i * 4 + 1] = (uint8_t)((px >> 16) & 0xFF); /* G */
-        dst[i * 4 + 2] = (uint8_t)((px >> 8) & 0xFF);  /* B */
-        dst[i * 4 + 3] = (uint8_t)(px & 0xFF);         /* A */
-    }
-}
-
 /// @brief Construct a video-playback GUI widget. Opens the file via `rt_videoplayer_open`,
 /// builds a vbox containing an Image widget (for frames) plus an hbox of Play/Pause/Stop buttons
-/// and a position-slider. Pre-allocates an RGBA conversion buffer sized to the video. Returns
-/// NULL if the file can't be opened or the video has zero dimensions.
+/// and a position-slider. Returns NULL if the file can't be opened or the video has zero dimensions.
 void *rt_videowidget_new(void *parent, void *path) {
     if (!parent || !path)
         return NULL;
@@ -227,15 +206,6 @@ void *rt_videowidget_new(void *parent, void *path) {
             rt_widget_set_flex(w->position_slider, 1.0);
             rt_slider_set_value(w->position_slider, 0.0);
         }
-    }
-
-    /* Allocate RGBA conversion buffer */
-    w->rgba_buf_size = vw * vh * 4;
-    w->rgba_buf = (uint8_t *)malloc((size_t)w->rgba_buf_size);
-    if (!w->rgba_buf) {
-        videowidget_dispose(w, 1);
-        release_gc_object(w);
-        return NULL;
     }
 
     rt_obj_set_finalizer(w, videowidget_finalizer);
@@ -318,11 +288,10 @@ void rt_videowidget_update(void *obj, double dt) {
 
     /* Update image widget with current frame */
     void *frame = rt_videoplayer_get_frame(w->player);
-    if (frame && w->image_widget && w->rgba_buf) {
+    if (frame && w->image_widget) {
         px_view *px = (px_view *)frame;
         if (px->data && px->width == w->video_width && px->height == w->video_height) {
-            pixels_to_rgba_bytes(px->data, w->rgba_buf, w->video_width, w->video_height);
-            rt_image_set_pixels(w->image_widget, w->rgba_buf, w->video_width, w->video_height);
+            rt_image_set_pixels(w->image_widget, frame, w->video_width, w->video_height);
         }
     }
 

@@ -16,7 +16,8 @@
 //   - NULL output pointers cause immediate false return without side effects.
 //   - Empty strings are treated as invalid for all types.
 //   - Integer overflow causes false return; the output is not written.
-//   - Floating-point parsing uses the current locale's decimal separator.
+//   - Floating-point parsing uses the C locale's decimal separator.
+//   - Embedded NUL bytes are rejected so hidden suffixes cannot be ignored.
 //   - Bool parsing accepts "true"/"false" case-insensitively.
 //
 // Ownership/Lifetime:
@@ -33,8 +34,8 @@
 #endif
 
 #include "rt_parse.h"
+#include "rt_internal.h"
 
-#include <ctype.h>
 #include <errno.h>
 #include <limits.h>
 #include <locale.h>
@@ -50,9 +51,15 @@
 extern "C" {
 #endif
 
+/// @brief Return true for the fixed ASCII whitespace set, independent of locale.
+static inline int is_ascii_space(unsigned char ch) {
+    return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' ||
+           ch == '\v';
+}
+
 /// @brief Advance a pointer past ASCII whitespace characters.
 static inline const char *skip_whitespace(const char *s) {
-    while (*s && isspace((unsigned char)*s))
+    while (*s && is_ascii_space((unsigned char)*s))
         ++s;
     return s;
 }
@@ -66,12 +73,82 @@ static inline int is_end_of_input(const char *s) {
 /// @brief Case-insensitive string comparison.
 static inline int str_eq_ci(const char *a, const char *b) {
     while (*a && *b) {
-        if (tolower((unsigned char)*a) != tolower((unsigned char)*b))
+        unsigned char ca = (unsigned char)*a;
+        unsigned char cb = (unsigned char)*b;
+        if (ca >= 'A' && ca <= 'Z')
+            ca = (unsigned char)(ca - 'A' + 'a');
+        if (cb >= 'A' && cb <= 'Z')
+            cb = (unsigned char)(cb - 'A' + 'a');
+        if (ca != cb)
             return 0;
         ++a;
         ++b;
     }
     return *a == *b;
+}
+
+static inline int radix_digit_value(unsigned char ch) {
+    if (ch >= '0' && ch <= '9')
+        return (int)(ch - '0');
+    if (ch >= 'a' && ch <= 'z')
+        return (int)(ch - 'a') + 10;
+    if (ch >= 'A' && ch <= 'Z')
+        return (int)(ch - 'A') + 10;
+    return -1;
+}
+
+static const char *string_cstr_without_embedded_nul(rt_string s) {
+    if (!s || !rt_string_is_handle((const void *)s) || !s->data)
+        return NULL;
+
+    const char *text = s->data;
+    size_t len = (size_t)rt_str_len(s);
+    if (memchr(text, '\0', len))
+        return NULL;
+
+    return text;
+}
+
+static const char *scan_decimal_float(const char *cursor) {
+    if (!cursor)
+        return NULL;
+
+    const char *p = cursor;
+    if (*p == '+' || *p == '-')
+        ++p;
+
+    int digits = 0;
+    while (*p >= '0' && *p <= '9') {
+        ++digits;
+        ++p;
+    }
+
+    if (*p == '.') {
+        ++p;
+        while (*p >= '0' && *p <= '9') {
+            ++digits;
+            ++p;
+        }
+    }
+
+    if (digits == 0)
+        return NULL;
+
+    if (*p == 'e' || *p == 'E') {
+        const char *exp = p + 1;
+        if (*exp == '+' || *exp == '-')
+            ++exp;
+        int exp_digits = 0;
+        while (*exp >= '0' && *exp <= '9') {
+            ++exp_digits;
+            ++exp;
+        }
+        if (exp_digits == 0)
+            return NULL;
+        p = exp;
+    }
+
+    return p;
 }
 
 /// @brief Parse a string as a 64-bit decimal integer; on success writes to `*out_value` and
@@ -84,7 +161,7 @@ int8_t rt_parse_try_int(rt_string s, int64_t *out_value) {
     if (!s)
         return 0;
 
-    const char *text = rt_string_cstr(s);
+    const char *text = string_cstr_without_embedded_nul(s);
     if (!text)
         return 0;
 
@@ -117,12 +194,16 @@ int8_t rt_parse_try_num(rt_string s, double *out_value) {
     if (!s)
         return 0;
 
-    const char *text = rt_string_cstr(s);
+    const char *text = string_cstr_without_embedded_nul(s);
     if (!text)
         return 0;
 
     const char *cursor = skip_whitespace(text);
     if (*cursor == '\0')
+        return 0;
+
+    const char *literal_end = scan_decimal_float(cursor);
+    if (!literal_end || !is_end_of_input(literal_end))
         return 0;
 
     errno = 0;
@@ -140,6 +221,10 @@ int8_t rt_parse_try_num(rt_string s, double *out_value) {
     if (!c_locale)
         return 0;
     locale_t previous = uselocale(c_locale);
+    if (previous == (locale_t)0) {
+        freelocale(c_locale);
+        return 0;
+    }
     value = strtod(cursor, &endptr);
     uselocale(previous);
     freelocale(c_locale);
@@ -165,7 +250,7 @@ int8_t rt_parse_try_bool(rt_string s, int8_t *out_value) {
     if (!s)
         return 0;
 
-    const char *text = rt_string_cstr(s);
+    const char *text = string_cstr_without_embedded_nul(s);
     if (!text)
         return 0;
 
@@ -176,7 +261,7 @@ int8_t rt_parse_try_bool(rt_string s, int8_t *out_value) {
     // Extract the word (until whitespace or end)
     char word[16];
     size_t i = 0;
-    while (*cursor && !isspace((unsigned char)*cursor) && i < sizeof(word) - 1)
+    while (*cursor && !is_ascii_space((unsigned char)*cursor) && i < sizeof(word) - 1)
         word[i++] = *cursor++;
     word[i] = '\0';
 
@@ -238,9 +323,12 @@ int8_t rt_parse_is_num(rt_string s) {
     return rt_parse_try_num(s, &dummy);
 }
 
-/// @brief Parse an integer in any radix from 2 to 36 (covers binary, octal, decimal, hex, base32,
-/// base36 for short URLs). Returns `default_value` for out-of-range radix or any parse failure.
-/// Like the standard `strtoll`, alphabetic digits beyond 9 use `a-z`/`A-Z` (case-insensitive).
+/// @brief Parse an integer in any radix from 2 to 36 (covers binary, octal,
+/// decimal, hex, base32, base36). Returns `default_value` for out-of-range
+/// radix or any parse failure. Alphabetic digits beyond 9 use `a-z`/`A-Z`
+/// case-insensitively. Decimal input may use a leading '-' so decimal
+/// Fmt.IntRadix output round-trips; non-decimal input parses the full unsigned
+/// 64-bit bit pattern and casts it back to int64_t.
 int64_t rt_parse_int_radix(rt_string s, int64_t radix, int64_t default_value) {
     // Validate radix range
     if (radix < 2 || radix > 36)
@@ -248,7 +336,7 @@ int64_t rt_parse_int_radix(rt_string s, int64_t radix, int64_t default_value) {
     if (!s)
         return default_value;
 
-    const char *text = rt_string_cstr(s);
+    const char *text = string_cstr_without_embedded_nul(s);
     if (!text)
         return default_value;
 
@@ -256,18 +344,51 @@ int64_t rt_parse_int_radix(rt_string s, int64_t radix, int64_t default_value) {
     if (*cursor == '\0')
         return default_value;
 
-    errno = 0;
-    char *endptr = NULL;
-    long long parsed = strtoll(cursor, &endptr, (int)radix);
+    int negative = 0;
+    if (*cursor == '-') {
+        if (radix != 10)
+            return default_value;
+        negative = 1;
+        ++cursor;
+    } else if (*cursor == '+') {
+        return default_value;
+    }
 
-    if (errno == ERANGE)
-        return default_value;
-    if (!endptr || endptr == cursor)
-        return default_value;
-    if (!is_end_of_input(endptr))
+    if (*cursor == '\0')
         return default_value;
 
-    return (int64_t)parsed;
+    uint64_t value = 0;
+    uint64_t limit = UINT64_MAX;
+    if (radix == 10)
+        limit = negative ? ((uint64_t)INT64_MAX + 1ULL) : (uint64_t)INT64_MAX;
+
+    const char *p = cursor;
+    for (; *p && !is_ascii_space((unsigned char)*p); ++p) {
+        int digit = radix_digit_value((unsigned char)*p);
+        if (digit < 0 || digit >= radix)
+            return default_value;
+        uint64_t udigit = (uint64_t)digit;
+        uint64_t uradix = (uint64_t)radix;
+        if (value > (limit - udigit) / uradix)
+            return default_value;
+        value = value * uradix + udigit;
+    }
+
+    if (p == cursor || !is_end_of_input(p))
+        return default_value;
+
+    if (radix == 10) {
+        if (negative) {
+            if (value == ((uint64_t)INT64_MAX + 1ULL))
+                return INT64_MIN;
+            return -(int64_t)value;
+        }
+        return (int64_t)value;
+    }
+
+    int64_t result = 0;
+    memcpy(&result, &value, sizeof(result));
+    return result;
 }
 
 #ifdef __cplusplus

@@ -17,6 +17,13 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <string>
+#include <thread>
+#include <vector>
+
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -29,6 +36,48 @@ extern "C" void vm_trap(const char *msg) {
 static rt_string make_str(const char *s) {
     return rt_const_cstr(s);
 }
+
+static rt_string make_bytes(const char *s, size_t len) {
+    return rt_string_from_bytes(s, len);
+}
+
+#if !defined(_WIN32)
+static std::string read_file(FILE *file) {
+    std::string out;
+    char buffer[256];
+    rewind(file);
+    while (true) {
+        size_t n = fread(buffer, 1, sizeof(buffer), file);
+        if (n > 0)
+            out.append(buffer, n);
+        if (n < sizeof(buffer))
+            break;
+    }
+    return out;
+}
+
+static std::string capture_stderr(void (*fn)()) {
+    fflush(stderr);
+    int stderr_fd = fileno(stderr);
+    int saved_fd = dup(stderr_fd);
+    assert(saved_fd >= 0);
+
+    FILE *tmp = tmpfile();
+    assert(tmp != nullptr);
+    int tmp_fd = fileno(tmp);
+    assert(tmp_fd >= 0);
+    assert(dup2(tmp_fd, stderr_fd) >= 0);
+
+    fn();
+    fflush(stderr);
+
+    std::string out = read_file(tmp);
+    assert(dup2(saved_fd, stderr_fd) >= 0);
+    close(saved_fd);
+    fclose(tmp);
+    return out;
+}
+#endif
 
 // ============================================================================
 // Level Constant Tests
@@ -133,41 +182,117 @@ static void test_enabled() {
 }
 
 // ============================================================================
-// Log Output Tests (visual inspection)
+// Log Output Tests
 // ============================================================================
 
-static void test_log_output() {
-    // Save original level
-    int64_t original = rt_log_level();
-
-    // Set to DEBUG so all messages are shown
+static void emit_sanitized_info() {
     rt_log_set_level(rt_log_level_debug());
+    const char bytes[] = {'l',  'i', 'n', 'e', '1', '\n', 'l', 'i', 'n', 'e',
+                          '2', '\0', 't', 'a', 'i', 'l', '\t', 'e', 'n', 'd'};
+    rt_string s = make_bytes(bytes, sizeof(bytes));
+    rt_log_info(s);
+    rt_string_unref(s);
+}
 
-    printf("\n--- Visual inspection of log output (expect 4 lines to stderr) ---\n");
-    fflush(stdout);
-
-    rt_log_debug(make_str("This is a debug message"));
-    rt_log_info(make_str("This is an info message"));
-    rt_log_warn(make_str("This is a warning message"));
-    rt_log_error(make_str("This is an error message"));
-
-    printf("--- End of log output ---\n\n");
-
-    // Test that disabled levels don't output
-    printf("--- Setting level to ERROR (should see no output) ---\n");
-    fflush(stdout);
-
+static void emit_suppressed_debug() {
     rt_log_set_level(rt_log_level_error());
     rt_log_debug(make_str("DEBUG - should NOT appear"));
-    rt_log_info(make_str("INFO - should NOT appear"));
-    rt_log_warn(make_str("WARN - should NOT appear"));
+}
 
-    printf("--- End of suppressed output test ---\n\n");
+static void emit_concurrent_info() {
+    rt_log_set_level(rt_log_level_info());
+    std::vector<std::thread> threads;
+    for (int t = 0; t < 6; ++t) {
+        threads.emplace_back([t]() {
+            for (int i = 0; i < 40; ++i) {
+                char buffer[160];
+                int len = snprintf(buffer,
+                                   sizeof(buffer),
+                                   "thread=%d item=%d payload=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                                   t,
+                                   i);
+                assert(len > 0 && (size_t)len < sizeof(buffer));
+                rt_string s = rt_string_from_bytes(buffer, (size_t)len);
+                rt_log_info(s);
+                rt_string_unref(s);
+            }
+        });
+    }
+    for (auto &thread : threads)
+        thread.join();
+}
 
-    // Restore original level
+static void test_log_output() {
+    int64_t original = rt_log_level();
+
+#if !defined(_WIN32)
+    std::string out = capture_stderr(emit_sanitized_info);
+    assert(out.rfind("[INFO] ", 0) == 0);
+    assert(out.size() >= 28);
+    assert(out[11] == '-');
+    assert(out[14] == '-');
+    assert(out[20] == ':');
+    assert(out[23] == ':');
+    assert(out.find("line1\\nline2\\0tail\\tend") != std::string::npos);
+    assert(out.find("line1\nline2") == std::string::npos);
+
+    out = capture_stderr(emit_suppressed_debug);
+    assert(out.empty());
+#else
+    emit_sanitized_info();
+    emit_suppressed_debug();
+#endif
+
     rt_log_set_level(original);
 
-    printf("test_log_output: PASSED (visual inspection)\n");
+    printf("test_log_output: PASSED\n");
+}
+
+static void test_concurrent_log_lines_are_atomic() {
+    int64_t original = rt_log_level();
+
+#if !defined(_WIN32)
+    std::string out = capture_stderr(emit_concurrent_info);
+    size_t lines = 0;
+    size_t start = 0;
+    while (start < out.size()) {
+        size_t end = out.find('\n', start);
+        assert(end != std::string::npos);
+        std::string line = out.substr(start, end - start);
+        assert(line.rfind("[INFO] ", 0) == 0);
+        assert(line.find("[INFO] ", 1) == std::string::npos);
+        assert(line.find("thread=") != std::string::npos);
+        assert(line.find("payload=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA") != std::string::npos);
+        ++lines;
+        start = end + 1;
+    }
+    assert(lines == 240);
+#else
+    emit_concurrent_info();
+#endif
+
+    rt_log_set_level(original);
+
+    printf("test_concurrent_log_lines_are_atomic: PASSED\n");
+}
+
+static void test_threaded_level_access() {
+    int64_t original = rt_log_level();
+    std::vector<std::thread> threads;
+    for (int t = 0; t < 8; ++t) {
+        threads.emplace_back([t]() {
+            for (int i = 0; i < 1000; ++i) {
+                rt_log_set_level((t + i) % 5);
+                (void)rt_log_level();
+                (void)rt_log_enabled(i % 5);
+            }
+        });
+    }
+    for (auto &thread : threads)
+        thread.join();
+    rt_log_set_level(original);
+
+    printf("test_threaded_level_access: PASSED\n");
 }
 
 // ============================================================================
@@ -200,6 +325,8 @@ int main() {
 
     // Log output (visual)
     test_log_output();
+    test_concurrent_log_lines_are_atomic();
+    test_threaded_level_access();
 
     // Default level
     test_default_level();

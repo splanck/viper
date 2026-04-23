@@ -16,7 +16,8 @@
 //     trap with a descriptive message rather than a null dereference.
 //   - Conversion failures are communicated through explicit bool* flags; the
 //     output value is set to 0 and the flag to false on failure.
-//   - Banker's rounding (nearbyint) is applied consistently to match the VM.
+//   - Banker's rounding is implemented explicitly so it is independent of the
+//     process floating-point rounding mode.
 //   - Range bounds are checked after NaN/infinity rejection; out-of-range
 //     values set the flag to false without trapping.
 //   - No outputs are left partially initialised; on failure the output is
@@ -39,7 +40,6 @@
 #include "rt.hpp"
 #include "rt_numeric.h"
 
-#include <ctype.h>
 #include <errno.h>
 #include <limits.h>
 #include <locale.h>
@@ -55,12 +55,30 @@ extern "C" {
 #endif
 
 /// @brief Round a floating-point value to the nearest even integer.
-/// @details Wraps @ref nearbyint so the rounding mode is governed by the C
-///          locale while guaranteeing ties are resolved towards the even
-///          integer.  Using a helper keeps the behaviour explicit and
-///          reusable across conversions.
+/// @details Implements round-half-to-even directly instead of using
+///          @c nearbyint, whose result depends on the process floating-point
+///          rounding mode. Values with magnitude >= 2^52 already have no
+///          fractional part representable in double precision.
 static double rt_round_nearest_even(double x) {
-    return nearbyint(x);
+    if (!isfinite(x))
+        return x;
+
+    double ax = fabs(x);
+    if (ax >= 0x1.0p52)
+        return x;
+
+    double lower = floor(ax);
+    double frac = ax - lower;
+    double rounded = lower;
+    if (frac > 0.5) {
+        rounded = lower + 1.0;
+    } else if (frac == 0.5) {
+        double half = fmod(lower, 2.0);
+        if (half != 0.0)
+            rounded = lower + 1.0;
+    }
+
+    return copysign(rounded, x);
 }
 
 /// @brief Validate a floating-point value before casting to an integer type.
@@ -204,16 +222,17 @@ double rt_fix_trunc(double x) {
 
 /// @brief Convert a double to a 64-bit signed integer by truncating toward zero.
 /// @details Provides a direct conversion from floating-point to integer,
-///          suitable for ViperLang's Number to Integer conversion.
-///          Non-finite values (NaN, Inf) are clamped to 0.
+///          suitable for ViperLang's Number to Integer conversion. NaN becomes
+///          0; infinities and finite out-of-range values clamp to the nearest
+///          signed 64-bit endpoint.
 /// @param x Input double.
 /// @return Truncated value as 64-bit signed integer.
 long long rt_f64_to_i64(double x) {
     if (isnan(x))
         return 0;
-    if (x >= (double)INT64_MAX)
+    if (x >= 0x1.0p63)
         return INT64_MAX;
-    if (x < (double)INT64_MIN)
+    if (x < -0x1.0p63)
         return INT64_MIN;
     return (long long)trunc(x);
 }
@@ -248,15 +267,71 @@ double rt_round_even(double x, int ndigits) {
     return rounded / factor;
 }
 
+/// @brief Return true for the fixed ASCII whitespace set, independent of locale.
+static inline int rt_is_ascii_space(unsigned char ch) {
+    return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' ||
+           ch == '\v';
+}
+
+static inline int rt_is_ascii_digit(unsigned char ch) {
+    return ch >= '0' && ch <= '9';
+}
+
 /// @brief Advance a pointer past ASCII whitespace characters.
-/// @details Iterates over space-like characters recognised by @ref isspace
-///          using the "C" locale so numeric parsing remains deterministic.
+/// @details Uses a fixed byte set instead of the process locale so numeric
+///          parsing remains deterministic.
 /// @param cursor Current position within a byte buffer.
 /// @return Pointer to the first non-whitespace byte (or the terminator).
 static inline const unsigned char *rt_skip_ascii_space(const unsigned char *cursor) {
-    while (*cursor && isspace(*cursor))
+    while (*cursor && rt_is_ascii_space(*cursor))
         ++cursor;
     return cursor;
+}
+
+/// @brief Return the end of a strict decimal floating literal.
+/// @details Accepts `[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?`.
+///          Hexadecimal C99 float syntax is intentionally rejected so the
+///          public parser matches the documented decimal grammar.
+static const unsigned char *rt_scan_decimal_float(const unsigned char *cursor) {
+    if (!cursor)
+        return NULL;
+
+    const unsigned char *p = cursor;
+    if (*p == '+' || *p == '-')
+        ++p;
+
+    int digits = 0;
+    while (rt_is_ascii_digit(*p)) {
+        ++digits;
+        ++p;
+    }
+
+    if (*p == '.') {
+        ++p;
+        while (rt_is_ascii_digit(*p)) {
+            ++digits;
+            ++p;
+        }
+    }
+
+    if (digits == 0)
+        return NULL;
+
+    if (*p == 'e' || *p == 'E') {
+        const unsigned char *exp = p + 1;
+        if (*exp == '+' || *exp == '-')
+            ++exp;
+        int exp_digits = 0;
+        while (rt_is_ascii_digit(*exp)) {
+            ++exp_digits;
+            ++exp;
+        }
+        if (exp_digits == 0)
+            return NULL;
+        p = exp;
+    }
+
+    return p;
 }
 
 /// @brief Parse a signed 64-bit integer from ASCII text.
@@ -306,6 +381,13 @@ static int32_t rt_parse_double_impl(const char *text, double *out_value) {
     if (*cursor == '\0')
         return (int32_t)Err_InvalidCast;
 
+    const unsigned char *literal_end = rt_scan_decimal_float(cursor);
+    if (!literal_end)
+        return (int32_t)Err_InvalidCast;
+    const unsigned char *literal_tail = rt_skip_ascii_space(literal_end);
+    if (*literal_tail != '\0')
+        return (int32_t)Err_InvalidCast;
+
     errno = 0;
     char *endptr = NULL;
     double value = 0.0;
@@ -321,6 +403,10 @@ static int32_t rt_parse_double_impl(const char *text, double *out_value) {
     if (!c_locale)
         return (int32_t)Err_RuntimeError;
     locale_t previous = uselocale(c_locale);
+    if (previous == (locale_t)0) {
+        freelocale(c_locale);
+        return (int32_t)Err_RuntimeError;
+    }
     value = strtod((const char *)cursor, &endptr);
     uselocale(previous);
     freelocale(c_locale);

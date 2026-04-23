@@ -1,3 +1,7 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
+
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the GNU GPL v3.
@@ -8,18 +12,18 @@
 // File: src/runtime/core/rt_format.c
 // Purpose: Implements numeric and CSV formatting helpers that mirror BASIC
 //          runtime semantics. Provides deterministic double-to-string
-//          conversion with locale-normalised decimal separators, special-value
+//          conversion with C-locale decimal separators, special-value
 //          handling (NaN, infinity), and CSV string quoting.
 //
 // Key invariants:
 //   - Caller-provided output buffers must be non-NULL and non-zero in capacity;
 //     invalid parameters cause an immediate trap via rt_trap.
-//   - Locale-specific decimal separators are rewritten to '.' post-format so
+//   - Floating-point formatting is performed under the C numeric locale so
 //     output is stable across host environments.
 //   - Truncation during formatting is treated as a fatal error; callers must
 //     provide buffers large enough for the expected value range.
 //   - NaN and infinity are formatted as their canonical string representations
-//     ("nan", "inf", "-inf") rather than locale-dependent variants.
+//     ("NaN", "Inf", "-Inf") rather than locale-dependent variants.
 //   - CSV quoting doubles internal double-quotes and wraps the result in
 //     double-quote delimiters.
 //
@@ -40,9 +44,56 @@
 
 #include <locale.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(__APPLE__)
+#include <xlocale.h>
+#endif
+
+static int rt_format_vsnprintf_c_locale(char *buffer, size_t capacity, const char *fmt, va_list args) {
+#if defined(_WIN32)
+    _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
+    if (!c_locale)
+        return -1;
+#if !defined(_MSC_VER)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#endif
+    int written = _vsnprintf_l(buffer, capacity, fmt, c_locale, args);
+#if !defined(_MSC_VER)
+#pragma GCC diagnostic pop
+#endif
+    _free_locale(c_locale);
+    return written;
+#else
+    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+    if (!c_locale)
+        return -1;
+    locale_t previous = uselocale(c_locale);
+    if (previous == (locale_t)0) {
+        freelocale(c_locale);
+        return -1;
+    }
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+    int written = vsnprintf(buffer, capacity, fmt, args);
+#pragma GCC diagnostic pop
+    uselocale(previous);
+    freelocale(c_locale);
+    return written;
+#endif
+}
+
+static int rt_format_snprintf_c_locale(char *buffer, size_t capacity, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int written = rt_format_vsnprintf_c_locale(buffer, capacity, fmt, args);
+    va_end(args);
+    return written;
+}
 
 /// @brief Copy formatted text into a caller-provided buffer.
 /// @details Validates buffer arguments, traps on truncation, and performs a
@@ -60,38 +111,10 @@ static void rt_format_write(const char *text, char *buffer, size_t capacity) {
     memcpy(buffer, text, len + 1);
 }
 
-/// @brief Replace locale-specific decimal separators with '.'.
-/// @details Scans the formatted buffer for the locale's decimal separator and
-///          rewrites it to a period so BASIC output remains deterministic across
-///          environments.  Multi-character separators are collapsed to a single
-///          '.' by shifting the trailing substring.
-/// @param buffer Mutable buffer containing the formatted number.
-/// @param decimal_point Locale-specific decimal separator string.
-static void rt_format_normalize_decimal(char *buffer, const char *decimal_point) {
-    if (!buffer || !decimal_point)
-        return;
-    if (decimal_point[0] == '\0' || (decimal_point[0] == '.' && decimal_point[1] == '\0'))
-        return;
-    size_t dp_len = strlen(decimal_point);
-    if (dp_len == 0)
-        return;
-
-    char *pos = strstr(buffer, decimal_point);
-    if (!pos)
-        return;
-
-    pos[0] = '.';
-    if (dp_len > 1) {
-        char *src = pos + dp_len;
-        memmove(pos + 1, src, strlen(src) + 1);
-    }
-}
-
 /// @brief Format a double according to BASIC runtime rules.
-/// @details Handles NaN and infinity explicitly, otherwise emits up to 15
-///          significant digits using `snprintf`.  After formatting, the locale
-///          decimal separator is normalised to a period via
-///          @ref rt_format_normalize_decimal.
+/// @details Handles NaN and infinity explicitly, otherwise emits 17
+///          significant digits under the C numeric locale so finite values
+///          round-trip through the decimal parsers.
 /// @param value Floating-point value to format.
 /// @param buffer Destination buffer supplied by the caller.
 /// @param capacity Size of the destination buffer in bytes.
@@ -111,16 +134,11 @@ void rt_format_f64(double value, char *buffer, size_t capacity) {
         return;
     }
 
-    int written = snprintf(buffer, capacity, "%.15g", value);
+    int written = rt_format_snprintf_c_locale(buffer, capacity, "%.17g", value);
     if (written < 0)
         rt_trap("rt_format_f64: format error");
     if ((size_t)written >= capacity)
         rt_trap("rt_format_f64: truncated");
-
-    struct lconv *info = localeconv();
-    const char *decimal_point = info ? info->decimal_point : NULL;
-    if (decimal_point)
-        rt_format_normalize_decimal(buffer, decimal_point);
 }
 
 /// @brief Allocate a freshly quoted CSV string from a runtime string handle.

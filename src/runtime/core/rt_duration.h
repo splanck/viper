@@ -162,12 +162,12 @@ int64_t rt_duration_div(int64_t duration, int64_t divisor);
 
 /// @brief Get the absolute value of a duration.
 /// @param duration Duration value (milliseconds).
-/// @return Absolute duration (milliseconds).
+/// @return Absolute duration (milliseconds). Traps for INT64_MIN.
 int64_t rt_duration_abs(int64_t duration);
 
 /// @brief Negate a duration.
 /// @param duration Duration value (milliseconds).
-/// @return Negated duration (milliseconds).
+/// @return Negated duration (milliseconds). Traps for INT64_MIN.
 int64_t rt_duration_neg(int64_t duration);
 
 //=========================================================================

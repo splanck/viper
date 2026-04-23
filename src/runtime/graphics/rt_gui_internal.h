@@ -41,6 +41,10 @@
 #endif
 
 #include <ctype.h>
+#include <float.h>
+#include <limits.h>
+#include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -145,12 +149,17 @@ void rt_gui_apply_default_font(vg_widget_t *widget);
 void rt_gui_register_command_palette(rt_gui_app_t *app, vg_commandpalette_t *palette);
 void rt_gui_unregister_command_palette(rt_gui_app_t *app, vg_commandpalette_t *palette);
 void rt_gui_file_drop_add(rt_gui_app_t *app, const char *path);
+int rt_gui_is_app_handle_known(const void *handle);
+int rt_gui_is_destroyed_app_handle(const void *handle);
+int rt_gui_retire_font(rt_gui_app_t *app, vg_font_t *font);
+int rt_gui_retire_font_if_in_use(vg_font_t *font);
 
 static inline int rt_gui_is_app_handle(const void *handle) {
-    if (!handle)
-        return 0;
-    const rt_gui_app_t *app = (const rt_gui_app_t *)handle;
-    return app->magic == RT_GUI_APP_MAGIC;
+    return rt_gui_is_app_handle_known(handle);
+}
+
+static inline rt_gui_app_t *rt_gui_app_handle_checked(void *handle) {
+    return rt_gui_is_app_handle(handle) ? (rt_gui_app_t *)handle : NULL;
 }
 
 static inline rt_gui_app_t *rt_gui_app_from_handle(void *handle) {
@@ -158,6 +167,8 @@ static inline rt_gui_app_t *rt_gui_app_from_handle(void *handle) {
         return rt_gui_get_active_app();
     if (rt_gui_is_app_handle(handle))
         return (rt_gui_app_t *)handle;
+    if (rt_gui_is_destroyed_app_handle(handle))
+        return NULL;
     return rt_gui_app_from_widget((vg_widget_t *)handle);
 }
 
@@ -168,7 +179,101 @@ static inline vg_widget_t *rt_gui_widget_parent_from_handle(void *handle) {
         rt_gui_app_t *app = (rt_gui_app_t *)handle;
         return app->root;
     }
+    if (rt_gui_is_destroyed_app_handle(handle))
+        return NULL;
     return (vg_widget_t *)handle;
+}
+
+#define RT_GUI_MAX_LAYOUT_VALUE 1000000.0
+#define RT_GUI_STRING_DATA_MAGIC UINT64_C(0x5254475544535452)
+
+typedef struct {
+    uint64_t magic;
+    size_t len;
+    char bytes[];
+} rt_gui_string_data_t;
+
+static inline int rt_gui_double_is_finite(double value) {
+    return isfinite(value) ? 1 : 0;
+}
+
+static inline double rt_gui_clamp_f64(double value, double min_value, double max_value) {
+    if (value < min_value)
+        return min_value;
+    if (value > max_value)
+        return max_value;
+    return value;
+}
+
+static inline float rt_gui_sanitize_nonnegative_float(double value, double max_value) {
+    if (!rt_gui_double_is_finite(value))
+        return 0.0f;
+    return (float)rt_gui_clamp_f64(value, 0.0, max_value);
+}
+
+static inline float rt_gui_sanitize_signed_float(double value, double max_abs_value) {
+    if (!rt_gui_double_is_finite(value))
+        return 0.0f;
+    return (float)rt_gui_clamp_f64(value, -max_abs_value, max_abs_value);
+}
+
+static inline int32_t rt_gui_clamp_i64_to_i32(int64_t value, int32_t min_value, int32_t max_value) {
+    if (value < (int64_t)min_value)
+        return min_value;
+    if (value > (int64_t)max_value)
+        return max_value;
+    return (int32_t)value;
+}
+
+static inline double rt_gui_sanitize_font_size(double size, double fallback) {
+    if (!rt_gui_double_is_finite(size))
+        return fallback;
+    return rt_gui_clamp_f64(size, 1.0, 256.0);
+}
+
+static inline rt_gui_string_data_t *rt_gui_string_data_new(rt_string value) {
+    int64_t len64 = rt_str_len(value);
+    if (len64 < 0)
+        return NULL;
+    size_t len = (size_t)len64;
+    if (len > SIZE_MAX - sizeof(rt_gui_string_data_t) - 1)
+        return NULL;
+    const char *bytes = len ? rt_string_cstr(value) : "";
+    if (len && !bytes)
+        return NULL;
+    rt_gui_string_data_t *data =
+        (rt_gui_string_data_t *)malloc(sizeof(rt_gui_string_data_t) + len + 1);
+    if (!data)
+        return NULL;
+    data->magic = RT_GUI_STRING_DATA_MAGIC;
+    data->len = len;
+    if (len)
+        memcpy(data->bytes, bytes, len);
+    data->bytes[len] = '\0';
+    return data;
+}
+
+static inline int rt_gui_string_data_is_owned(const void *ptr) {
+    if (!ptr)
+        return 0;
+    const rt_gui_string_data_t *data = (const rt_gui_string_data_t *)ptr;
+    return data->magic == RT_GUI_STRING_DATA_MAGIC;
+}
+
+static inline void rt_gui_string_data_free_if_owned(void *ptr) {
+    if (rt_gui_string_data_is_owned(ptr))
+        free(ptr);
+}
+
+static inline rt_string rt_gui_string_data_to_rt_string(const void *ptr) {
+    if (!ptr)
+        return rt_str_empty();
+    if (rt_gui_string_data_is_owned(ptr)) {
+        const rt_gui_string_data_t *data = (const rt_gui_string_data_t *)ptr;
+        return rt_string_from_bytes(data->bytes, data->len);
+    }
+    const char *cstr = (const char *)ptr;
+    return rt_string_from_bytes(cstr, strlen(cstr));
 }
 
 //=============================================================================

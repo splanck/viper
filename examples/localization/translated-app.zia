@@ -1,0 +1,28 @@
+// translated-app.zia
+// Small interactive program driven by a MessageBundle. Loads messages
+// from locales/messages-<tag>.json and uses Plural() for item-count text.
+
+bind Locale        : Viper.Localization.Locale
+bind LocaleManager : Viper.Localization.LocaleManager
+bind MessageBundle : Viper.Localization.MessageBundle
+
+func main()
+    LocaleManager.AddSearchPath("./locales")
+
+    var loc = Locale.Parse("en-US")
+    LocaleManager.SetCurrent(loc)
+
+    var msgs = MessageBundle.LoadFromJson(loc, "./locales/messages-en-US.json")
+
+    Say(msgs.Format("greet", { "name": "Alice" }))
+    Say(msgs.Plural("cart.items", 1, {}))
+    Say(msgs.Plural("cart.items", 3, {}))
+    Say(msgs.Plural("cart.items", 0, {}))
+
+    // Attach a French fallback so unknown English keys cascade to fr-FR.
+    // (Uncomment once a messages-fr-FR.json file exists alongside.)
+    // var fr = Locale.Parse("fr-FR")
+    // LocaleManager.LoadFromJson("./locales/fr-FR.json")
+    // var frmsgs = MessageBundle.LoadFromJson(fr, "./locales/messages-fr-FR.json")
+    // msgs.Fallback(frmsgs)
+end func

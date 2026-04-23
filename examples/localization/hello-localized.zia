@@ -1,0 +1,21 @@
+// hello-localized.zia
+// Minimal Viper.Localization demo: load fr-FR from a JSON file and format
+// a currency value in both en-US (baked) and fr-FR (loaded).
+
+bind Locale        : Viper.Localization.Locale
+bind LocaleManager : Viper.Localization.LocaleManager
+bind NumberFormat  : Viper.Localization.NumberFormat
+
+func main()
+    // Baked en-US is always available.
+    var us = Locale.Parse("en-US")
+    var usfmt = NumberFormat.ForLocale(us)
+    Say("en-US: " + usfmt.Currency(1234.56))
+
+    // Load fr-FR from this directory's locales/ folder.
+    LocaleManager.AddSearchPath("./locales")
+    LocaleManager.LoadFromJson("./locales/fr-FR.json")
+    var fr = Locale.Parse("fr-FR")
+    var frfmt = NumberFormat.ForLocale(fr)
+    Say("fr-FR: " + frfmt.Currency(1234.56))
+end func

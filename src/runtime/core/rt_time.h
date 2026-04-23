@@ -32,7 +32,7 @@ extern "C" {
 void rt_sleep_ms(int32_t ms);
 
 /// @brief Return monotonic milliseconds from an unspecified epoch.
-/// @return Monotonic millisecond tick count.
+/// @return Monotonic millisecond tick count. Traps on signed 64-bit overflow.
 int64_t rt_timer_ms(void);
 
 /// @brief Viper.Time.Clock.Sleep entry point.
@@ -40,11 +40,11 @@ int64_t rt_timer_ms(void);
 void rt_clock_sleep(int64_t ms);
 
 /// @brief Viper.Time.Clock.Ticks entry point.
-/// @return Monotonic millisecond tick count.
+/// @return Monotonic millisecond tick count. Traps on signed 64-bit overflow.
 int64_t rt_clock_ticks(void);
 
 /// @brief Viper.Time.Clock.TicksUs entry point.
-/// @return Monotonic microsecond tick count.
+/// @return Monotonic microsecond tick count. Traps on signed 64-bit overflow.
 int64_t rt_clock_ticks_us(void);
 
 #ifdef __cplusplus

@@ -89,7 +89,8 @@ int64_t rt_daterange_duration(void *range);
 
 /// @brief Format range as a string.
 /// @param range Date range object.
-/// @return String like "2025-01-01 00:00 - 2025-01-31 23:59".
+/// @return String like "2025-01-01 00:00 - 2025-01-31 23:59", or empty if an
+/// endpoint is not representable by platform time APIs.
 rt_string rt_daterange_to_string(void *range);
 
 #ifdef __cplusplus

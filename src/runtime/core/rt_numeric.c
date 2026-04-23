@@ -36,7 +36,6 @@
 #include "rt_numeric.h"
 #include "rt.hpp"
 
-#include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <locale.h>
@@ -60,6 +59,13 @@ extern "C" {
 ///          digits so conversions remain deterministic across platforms.
 static int rt_is_digit_char(char ch) {
     return ch >= '0' && ch <= '9';
+}
+
+/// @brief Determine whether a byte is ASCII whitespace.
+/// @details Keeps numeric parsing independent of the active process locale.
+static int rt_is_ascii_space(unsigned char ch) {
+    return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' ||
+           ch == '\v';
 }
 
 /// @brief Convert an ASCII letter to lowercase without invoking locale APIs.
@@ -141,24 +147,21 @@ static bool rt_parse_special_constant(const char *start, char **out_end, double 
 
 #if defined(_WIN32)
 /// @brief Parse a double using the C locale on Windows.
-/// @details Windows lacks `strtod_l`, so the implementation materialises a
-///          temporary `_locale_t`, calls `_strtod_l`, and then tears the
-///          locale down.  Successful parses advance @p out_end and store the
-///          resulting value in @p out_value.
+/// @details Materialises a per-call `_locale_t`, calls `_strtod_l`, and then
+///          tears the locale down. Per-call allocation avoids unsynchronised
+///          lazy global state during first-use races.
 static bool rt_strtod_c_locale(const char *input, char **out_end, double *out_value) {
     if (!input || !out_value)
         return false;
 
-    // Cache the C locale to avoid per-call allocation overhead
-    static _locale_t c_locale = NULL;
-    if (!c_locale)
-        c_locale = _create_locale(LC_NUMERIC, "C");
+    _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
     if (!c_locale)
         return false;
 
     errno = 0;
     char *endptr = NULL;
     double value = _strtod_l(input, &endptr, c_locale);
+    _free_locale(c_locale);
 
     if (endptr == input)
         return false;
@@ -183,6 +186,10 @@ static bool rt_strtod_c_locale(const char *input, char **out_end, double *out_va
         return false;
 
     locale_t previous = uselocale(c_locale);
+    if (previous == (locale_t)0) {
+        freelocale(c_locale);
+        return false;
+    }
     errno = 0;
     char *endptr = NULL;
     double value = strtod(input, &endptr);
@@ -198,6 +205,51 @@ static bool rt_strtod_c_locale(const char *input, char **out_end, double *out_va
     return true;
 }
 #endif
+
+/// @brief Return the end of a strict decimal floating literal.
+/// @details Accepts `[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?`.
+///          Hexadecimal C99 float syntax is intentionally rejected.
+static const unsigned char *rt_scan_decimal_float(const unsigned char *cursor) {
+    if (!cursor)
+        return NULL;
+
+    const unsigned char *p = cursor;
+    if (*p == '+' || *p == '-')
+        ++p;
+
+    int digits = 0;
+    while (rt_is_digit_char((char)*p)) {
+        ++digits;
+        ++p;
+    }
+
+    if (*p == '.') {
+        ++p;
+        while (rt_is_digit_char((char)*p)) {
+            ++digits;
+            ++p;
+        }
+    }
+
+    if (digits == 0)
+        return NULL;
+
+    if (*p == 'e' || *p == 'E') {
+        const unsigned char *exp = p + 1;
+        if (*exp == '+' || *exp == '-')
+            ++exp;
+        int exp_digits = 0;
+        while (rt_is_digit_char((char)*exp)) {
+            ++exp_digits;
+            ++exp;
+        }
+        if (exp_digits == 0)
+            return NULL;
+        p = exp;
+    }
+
+    return p;
+}
 
 /// @brief Convert a BASIC numeric literal into a double value.
 /// @details Skips leading whitespace, recognises special constants (INF/NAN)
@@ -218,7 +270,7 @@ double rt_val_to_double(const char *s, bool *ok) {
     }
 
     const unsigned char *p = (const unsigned char *)s;
-    while (*p && isspace(*p))
+    while (*p && rt_is_ascii_space(*p))
         ++p;
 
     const char *parse = (const char *)p;
@@ -233,23 +285,16 @@ double rt_val_to_double(const char *s, bool *ok) {
         return special_value;
     }
 
-    if (*parse == '+' || *parse == '-') {
-        const char next = parse[1];
-        if (next == '.') {
-            if (!rt_is_digit_char(parse[2])) {
-                *ok = false;
-                return 0.0;
-            }
-        } else if (!rt_is_digit_char(next)) {
-            *ok = false;
-            return 0.0;
-        }
-    } else if (*parse == '.') {
-        if (!rt_is_digit_char(parse[1])) {
-            *ok = false;
-            return 0.0;
-        }
-    } else if (!rt_is_digit_char(*parse)) {
+    const unsigned char *literal_end = rt_scan_decimal_float((const unsigned char *)parse);
+    if (!literal_end) {
+        *ok = false;
+        return 0.0;
+    }
+
+    const unsigned char *literal_tail = literal_end;
+    while (*literal_tail != '\0' && rt_is_ascii_space(*literal_tail))
+        ++literal_tail;
+    if (*literal_tail != '\0') {
         *ok = false;
         return 0.0;
     }
@@ -261,7 +306,7 @@ double rt_val_to_double(const char *s, bool *ok) {
         return 0.0;
     }
 
-    if (end && *end == ',') {
+    if ((const unsigned char *)end != literal_end) {
         *ok = false;
         return 0.0;
     }
@@ -271,18 +316,42 @@ double rt_val_to_double(const char *s, bool *ok) {
         return value;
     }
 
-    if (end) {
-        const unsigned char *tail = (const unsigned char *)end;
-        while (*tail != '\0' && isspace(*tail))
-            ++tail;
-        if (*tail != '\0') {
-            *ok = false;
-            return value;
-        }
-    }
-
     *ok = true;
     return value;
+}
+
+static int rt_vsnprintf_c_locale(char *out, size_t cap, const char *fmt, va_list args) {
+#if defined(_WIN32)
+    _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
+    if (!c_locale)
+        return -1;
+#if !defined(_MSC_VER)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#endif
+    int written = _vsnprintf_l(out, cap, fmt, c_locale, args);
+#if !defined(_MSC_VER)
+#pragma GCC diagnostic pop
+#endif
+    _free_locale(c_locale);
+    return written;
+#else
+    locale_t c_locale = newlocale(LC_NUMERIC_MASK, "C", NULL);
+    if (!c_locale)
+        return -1;
+    locale_t previous = uselocale(c_locale);
+    if (previous == (locale_t)0) {
+        freelocale(c_locale);
+        return -1;
+    }
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+    int written = vsnprintf(out, cap, fmt, args);
+#pragma GCC diagnostic pop
+    uselocale(previous);
+    freelocale(c_locale);
+    return written;
+#endif
 }
 
 /// @brief Format a floating-point or integer value into a caller buffer.
@@ -299,7 +368,7 @@ static void rt_format(char *out, size_t cap, const char *fmt, ...) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
 #endif
-    int written = vsnprintf(out, cap, fmt, args);
+    int written = rt_vsnprintf_c_locale(out, cap, fmt, args);
 #if !defined(_MSC_VER)
 #pragma GCC diagnostic pop
 #endif

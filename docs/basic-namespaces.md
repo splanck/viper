@@ -727,16 +727,31 @@ String manipulation:
 Type conversion:
 
 - `Viper.Core.Convert.ToDouble(str)->f64` — String to double (throws on error)
+- `Viper.Core.Convert.ToInt(str)->i64` — String to int (throws on error)
 - `Viper.Core.Convert.ToInt64(str)->i64` — String to int (throws on error)
-- `Viper.Core.Convert.ToString_Double(f64)->str` — Convert double to string
+- `Viper.Core.Convert.NumToInt(f64)->i64` — Truncate/clamp double to int
+- `Viper.Core.Convert.ToString_Double(f64)->str` — Convert double to round-trip decimal string
 - `Viper.Core.Convert.ToString_Int(i64)->str` — Convert int64 to string
+
+`Viper.Convert` is a public alias for the same methods.
 
 #### Viper.Core.Parse
 
 Type parsing with explicit error codes:
 
-- `Viper.Core.Parse.Double(ptr,ptr)->i64` — Parse double
-- `Viper.Core.Parse.Int64(ptr,ptr)->i64` — Parse int64
+- `Viper.Core.Parse.TryInt(str,ptr)->i1` — Try to parse integer
+- `Viper.Core.Parse.TryNum(str,ptr)->i1` — Try to parse double
+- `Viper.Core.Parse.TryBool(str,ptr)->i1` — Try to parse boolean
+- `Viper.Core.Parse.IntOr(str,i64)->i64` — Parse integer or default
+- `Viper.Core.Parse.NumOr(str,f64)->f64` — Parse double or default
+- `Viper.Core.Parse.BoolOr(str,i1)->i1` — Parse boolean or default
+- `Viper.Core.Parse.IsInt(str)->i1` — Validate integer text
+- `Viper.Core.Parse.IsNum(str)->i1` — Validate numeric text
+- `Viper.Core.Parse.IntRadix(str,i64,i64)->i64` — Parse radix 2-36 integer or default
+- `Viper.Core.Parse.Double(ptr,ptr)->i32` — Parse double
+- `Viper.Core.Parse.Int64(ptr,ptr)->i32` — Parse int64
+
+`Viper.Parse` is a public alias for the same methods.
 
 #### Viper.Core.Diagnostics
 

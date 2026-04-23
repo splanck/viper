@@ -46,6 +46,7 @@ enum class RtComponent {
     Graphics,    ///< Graphics (rt_canvas_*, rt_color_*, etc.)
     Audio,       ///< Audio (rt_audio_*, rt_playlist_*)
     Network,     ///< Network (rt_network_*, rt_restclient_*, etc.)
+    Localization,///< Localization (rt_locale_*, locale manager, LocaleInfo)
     Count,
 };
 
@@ -152,6 +153,10 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_dns_") || starts("rt_url_"))
         return RtComponent::Network;
 
+    // Localization component
+    if (starts("rt_locale_"))
+        return RtComponent::Localization;
+
     // Base component (time, math, formatting, etc.)
     if (starts("rt_context_") || starts("rt_crc32_") || starts("rt_error_") || starts("rt_trap_") ||
         sym == "rt_trap" || sym == "rt_init_stack_safety" || sym == "rt_trap_stack_overflow" ||
@@ -194,6 +199,8 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         return RtComponent::Threads;
     if (starts("Viper.Exec.") || starts("Viper.Machine."))
         return RtComponent::Exec;
+    if (starts("Viper.Localization."))
+        return RtComponent::Localization;
 
     return std::nullopt;
 }
