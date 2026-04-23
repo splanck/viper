@@ -17,7 +17,6 @@
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <vector>
 
 #include "tools/viper/cmd_codegen_arm64.hpp"
 

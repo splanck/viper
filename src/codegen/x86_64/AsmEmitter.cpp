@@ -33,6 +33,7 @@
 #include <iomanip>
 #include <span>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -231,19 +232,24 @@ void emitOperands(std::span<const Operand> operands, Out &out, const TargetInfo 
 void emitRoDataPool(std::span<const std::string> stringLiterals,
                     std::span<const std::size_t> stringLengths,
                     std::span<const double> f64Literals,
+                    objfile::ObjFormat format,
                     std::ostream &os) {
     if (stringLiterals.empty() && f64Literals.empty()) {
         return;
     }
     assert(stringLiterals.size() == stringLengths.size());
     static_cast<void>(stringLengths);
-#if defined(__APPLE__)
-    os << ".section __TEXT,__const\n";
-#elif defined(_WIN32)
-    os << ".section .rdata,\"dr\"\n";
-#else
-    os << ".section .rodata\n";
-#endif
+    switch (format) {
+        case objfile::ObjFormat::MachO:
+            os << ".section __TEXT,__const\n";
+            break;
+        case objfile::ObjFormat::COFF:
+            os << ".section .rdata,\"dr\"\n";
+            break;
+        case objfile::ObjFormat::ELF:
+            os << ".section .rodata\n";
+            break;
+    }
     for (std::size_t i = 0; i < stringLiterals.size(); ++i) {
         std::string label;
         label.reserve(16U);
@@ -361,7 +367,7 @@ std::string AsmEmitter::RoDataPool::f64Label(int index) const {
 ///          directives for each pooled string and floating literal. The method
 ///          preserves insertion order so indices map consistently to labels.
 /// @param os Output stream receiving assembly text.
-void AsmEmitter::RoDataPool::emit(std::ostream &os) const {
+void AsmEmitter::RoDataPool::emit(std::ostream &os, objfile::ObjFormat format) const {
     if (empty()) {
         return;
     }
@@ -369,6 +375,7 @@ void AsmEmitter::RoDataPool::emit(std::ostream &os) const {
     emitRoDataPool(std::span<const std::string>{stringLiterals_},
                    std::span<const std::size_t>{stringLengths_},
                    std::span<const double>{f64Literals_},
+                   format,
                    os);
 }
 
@@ -381,7 +388,8 @@ bool AsmEmitter::RoDataPool::empty() const noexcept {
 /// @brief Construct an emitter bound to a shared read-only data pool.
 /// @param pool Pool responsible for owning literal buffers referenced by the
 ///             emitted assembly.
-AsmEmitter::AsmEmitter(RoDataPool &pool) noexcept : pool_{&pool} {}
+AsmEmitter::AsmEmitter(RoDataPool &pool, objfile::ObjFormat format) noexcept
+    : pool_{&pool}, format_{format} {}
 
 /// @brief Emit an assembly function, including basic blocks and instructions.
 /// @details Writes the `.text` header, global symbol directive, function label,
@@ -397,9 +405,9 @@ void AsmEmitter::emitFunction(std::ostream &os,
     os << ".text\n";
     const std::string linkName = asmfmt::format_label(viper::common::MangleLink(func.name));
     os << ".globl " << linkName << "\n";
-#if !defined(__APPLE__) && !defined(_WIN32)
-    os << ".type " << linkName << ", @function\n";
-#endif
+    if (format_ == objfile::ObjFormat::ELF) {
+        os << ".type " << linkName << ", @function\n";
+    }
     os << linkName << ":\n";
 
     for (std::size_t i = 0; i < func.blocks.size(); ++i) {
@@ -426,7 +434,7 @@ void AsmEmitter::emitFunction(std::ostream &os,
 /// @param os Output stream receiving the assembly.
 void AsmEmitter::emitRoData(std::ostream &os) const {
     if (pool_ && !pool_->empty()) {
-        pool_->emit(os);
+        pool_->emit(os, format_);
     }
 }
 
@@ -508,10 +516,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
     const auto operands = std::span<const Operand>{instr.operands};
     const auto *row = find_encoding(instr.opcode, operands);
     if (!row) {
-        // Emit diagnostic comment with opcode number and operand count
-        os << "  # <unknown opcode: " << static_cast<int>(instr.opcode)
-           << ", operands: " << operands.size() << ">\n";
-        return;
+        throw std::runtime_error("x86-64 asm emitter: unknown opcode " +
+                                 std::to_string(static_cast<int>(instr.opcode)) + " with " +
+                                 std::to_string(operands.size()) + " operand(s)");
     }
 
     /// @brief Emits _from_row.

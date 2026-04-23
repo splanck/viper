@@ -24,6 +24,7 @@
 
 #include "tools/viper/cmd_codegen_arm64.hpp"
 
+#include <array>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -211,6 +212,52 @@ TEST(NativeAsmArm64, DotOOutput) {
     EXPECT_EQ(magic[3], 'F');
 #endif
     std::filesystem::remove(obj);
+}
+
+TEST(NativeAsmArm64, TargetFlagsSelectObjectFormat) {
+    const std::string in = outPath("nasm_target_formats.il");
+    const std::string darwinObj = outPath("nasm_target_formats_darwin.o");
+    const std::string linuxObj = outPath("nasm_target_formats_linux.o");
+    const std::string windowsObj = outPath("nasm_target_formats_windows.obj");
+    writeFile(in,
+              "il 0.1\n"
+              "func @main() -> i64 {\n"
+              "entry:\n"
+              "  ret 0\n"
+              "}\n");
+
+    ASSERT_EQ(runArm64({in.c_str(), "--native-asm", "-o", darwinObj.c_str(), "--target-darwin"}), 0);
+    ASSERT_EQ(runArm64({in.c_str(), "--native-asm", "-o", linuxObj.c_str(), "--target-linux"}), 0);
+    ASSERT_EQ(runArm64({in.c_str(), "--native-asm", "-o", windowsObj.c_str(), "--target-windows"}), 0);
+
+    auto readMagic = [](const std::string &path) {
+        std::array<uint8_t, 4> magic{};
+        std::ifstream f(path, std::ios::binary);
+        EXPECT_TRUE(static_cast<bool>(f));
+        f.read(reinterpret_cast<char *>(magic.data()), static_cast<std::streamsize>(magic.size()));
+        EXPECT_TRUE(static_cast<bool>(f));
+        return magic;
+    };
+
+    const auto darwinMagic = readMagic(darwinObj);
+    EXPECT_EQ(darwinMagic[0], 0xCF);
+    EXPECT_EQ(darwinMagic[1], 0xFA);
+    EXPECT_EQ(darwinMagic[2], 0xED);
+    EXPECT_EQ(darwinMagic[3], 0xFE);
+
+    const auto linuxMagic = readMagic(linuxObj);
+    EXPECT_EQ(linuxMagic[0], 0x7F);
+    EXPECT_EQ(linuxMagic[1], 'E');
+    EXPECT_EQ(linuxMagic[2], 'L');
+    EXPECT_EQ(linuxMagic[3], 'F');
+
+    const auto windowsMagic = readMagic(windowsObj);
+    EXPECT_EQ(windowsMagic[0], 0x64);
+    EXPECT_EQ(windowsMagic[1], 0xAA);
+
+    std::filesystem::remove(darwinObj);
+    std::filesystem::remove(linuxObj);
+    std::filesystem::remove(windowsObj);
 }
 
 // ---------------------------------------------------------------------------

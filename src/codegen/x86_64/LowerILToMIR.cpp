@@ -399,74 +399,76 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
     return makeImmOperand(0);
 }
 
-/// @brief Emit PX_COPY instructions to satisfy block parameter semantics.
-/// @details Inserts copies on outgoing edges so successor block parameters have
-///          the expected values.  Operates after each block's instructions are
-///          lowered to ensure value mappings exist.  For constant block arguments
-///          (sentinel -1 in argIds), materializes the value into a fresh vreg
-///          before emitting the copy.
-/// @param source IL block providing edge metadata.
-/// @param block Machine block receiving the copies.
-void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block) {
-    for (const auto &edge : source.terminatorEdges) {
-        const auto destIt = blockInfo_.find(edge.to);
-        if (destIt == blockInfo_.end()) {
-            phaseAUnsupported(("edge references non-existent block: " + edge.to).c_str());
-        }
-        if (destIt->second.paramVRegs.empty()) {
-            continue;
-        }
-        const auto &params = destIt->second.paramVRegs;
-        if (edge.argIds.empty()) {
-            continue;
-        }
-
-        MInstr px = MInstr::make(MOpcode::PX_COPY, {});
-        for (std::size_t idx = 0; idx < params.size() && idx < edge.argIds.size(); ++idx) {
-            Operand srcOp;
-            if (edge.argIds[idx] >= 0) {
-                // SSA temp: look up the existing vreg mapping.
-                const auto valIt = valueToVReg_.find(edge.argIds[idx]);
-                if (valIt == valueToVReg_.end()) {
-                    continue;
-                }
-                srcOp = makeVRegOperand(valIt->second.cls, valIt->second.id);
-            } else {
-                // Constant: materialize into a fresh vreg.
-                // PX_COPY requires register operands, so we must emit a MOV
-                // instruction that loads the constant into a temporary vreg.
-                if (idx >= edge.argValues.size())
-                    phaseAUnsupported("edge argument index out of bounds in block parameter copy");
-                const ILValue &val = edge.argValues[idx];
-                const RegClass cls = params[idx].cls;
-
-                if (cls == RegClass::XMM) {
-                    // F64 constant: load from rodata pool into XMM vreg.
-                    assert(roDataPool_ && "RoData pool unavailable for f64 block arg");
-                    const int poolIdx = roDataPool_->addF64Literal(val.f64);
-                    const std::string label = roDataPool_->f64Label(poolIdx);
-                    const VReg tmp = makeTempVReg(RegClass::XMM);
-                    srcOp = makeVRegOperand(tmp.cls, tmp.id);
-                    const Operand ripOp = makeRipLabelOperand(label);
-                    block.append(MInstr::make(MOpcode::MOVSDmr,
-                                              std::vector<Operand>{cloneOperand(srcOp), ripOp}));
-                } else {
-                    // Integer/pointer/bool constant: MOVri into GPR vreg.
-                    const VReg tmp = makeTempVReg(RegClass::GPR);
-                    srcOp = makeVRegOperand(tmp.cls, tmp.id);
-                    block.append(MInstr::make(
-                        MOpcode::MOVri,
-                        std::vector<Operand>{cloneOperand(srcOp), makeImmOperand(val.i64)}));
-                }
-            }
-            px.operands.push_back(makeVRegOperand(params[idx].cls, params[idx].id));
-            px.operands.push_back(srcOp);
-        }
-
-        if (!px.operands.empty()) {
-            block.append(std::move(px));
-        }
+/// @brief Materialize block-parameter copies on a dedicated outgoing edge block.
+/// @details Conditional and switch branches must only execute block-argument copies on
+///          the taken edge. This helper synthesizes a side block containing the required
+///          PX_COPY and a final jump to the real successor.
+/// @param func Machine function receiving the synthetic edge block.
+/// @param edge Successor edge metadata carrying the argument list.
+/// @param sourceBlock Source block whose terminator will branch to the helper block.
+/// @return Helper block label, or an empty string when the edge can branch directly.
+std::string LowerILToMIR::buildEdgeCopyBlock(MFunction &func,
+                                             const ILBlock::EdgeArg &edge,
+                                             const MBasicBlock &sourceBlock) {
+    const auto destIt = blockInfo_.find(edge.to);
+    if (destIt == blockInfo_.end()) {
+        phaseAUnsupported(("edge references non-existent block: " + edge.to).c_str());
     }
+    if (destIt->second.paramVRegs.empty() || edge.argIds.empty()) {
+        return {};
+    }
+
+    const auto &params = destIt->second.paramVRegs;
+    const std::string destLabel = func.blocks[destIt->second.index].label;
+
+    MBasicBlock edgeBlock{};
+    edgeBlock.label = func.makeLocalLabel(sourceBlock.label + ".edge");
+
+    MInstr px = MInstr::make(MOpcode::PX_COPY, {});
+    for (std::size_t idx = 0; idx < params.size() && idx < edge.argIds.size(); ++idx) {
+        Operand srcOp;
+        if (edge.argIds[idx] >= 0) {
+            const auto valIt = valueToVReg_.find(edge.argIds[idx]);
+            if (valIt == valueToVReg_.end()) {
+                phaseAUnsupported("missing SSA value for block parameter copy");
+            }
+            srcOp = makeVRegOperand(valIt->second.cls, valIt->second.id);
+        } else {
+            if (idx >= edge.argValues.size())
+                phaseAUnsupported("edge argument index out of bounds in block parameter copy");
+            const ILValue &val = edge.argValues[idx];
+            const RegClass cls = params[idx].cls;
+
+            if (cls == RegClass::XMM) {
+                assert(roDataPool_ && "RoData pool unavailable for f64 block arg");
+                const int poolIdx = roDataPool_->addF64Literal(val.f64);
+                const std::string label = roDataPool_->f64Label(poolIdx);
+                const VReg tmp = makeTempVReg(RegClass::XMM);
+                srcOp = makeVRegOperand(tmp.cls, tmp.id);
+                edgeBlock.append(MInstr::make(
+                    MOpcode::MOVSDmr,
+                    std::vector<Operand>{cloneOperand(srcOp), makeRipLabelOperand(label)}));
+            } else {
+                const VReg tmp = makeTempVReg(RegClass::GPR);
+                srcOp = makeVRegOperand(tmp.cls, tmp.id);
+                edgeBlock.append(MInstr::make(
+                    MOpcode::MOVri,
+                    std::vector<Operand>{cloneOperand(srcOp), makeImmOperand(val.i64)}));
+            }
+        }
+
+        px.operands.push_back(makeVRegOperand(params[idx].cls, params[idx].id));
+        px.operands.push_back(std::move(srcOp));
+    }
+
+    if (!px.operands.empty()) {
+        edgeBlock.append(std::move(px));
+    }
+    edgeBlock.append(MInstr::make(MOpcode::JMP, {x64::makeLabelOperand(destLabel)}));
+
+    const std::string helperLabel = edgeBlock.label;
+    func.addBlock(std::move(edgeBlock));
+    return helperLabel;
 }
 
 /// @brief Lower an IL function into machine IR using declarative rules.
@@ -618,27 +620,48 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
 
     for (std::size_t idx = 0; idx < func.blocks.size(); ++idx) {
         const auto &ilBlock = func.blocks[idx];
-        auto &mirBlock = result.blocks[idx];
-        MIRBuilder builder{*this, mirBlock};
 
         for (std::size_t instrIdx = 0; instrIdx < ilBlock.instrs.size(); ++instrIdx) {
-            const auto &instr = ilBlock.instrs[instrIdx];
+            ILInstr loweredInstr = ilBlock.instrs[instrIdx];
 
-            // Detect terminator instructions and emit edge copies BEFORE the terminator.
-            // This ensures block arguments are passed correctly before the branch.
-            const bool isTerminator = instr.opcode == "br" || instr.opcode == "cbr" ||
-                                      instr.opcode == "ret" || instr.opcode == "switch_i32";
-            if (isTerminator) {
-                emitEdgeCopies(ilBlock, mirBlock);
+            if (loweredInstr.opcode == "br" || loweredInstr.opcode == "cbr" ||
+                loweredInstr.opcode == "switch_i32") {
+                std::size_t edgeIndex = 0;
+                auto rewriteLabelOperand = [&](ILValue &labelValue) {
+                    if (edgeIndex >= ilBlock.terminatorEdges.size() ||
+                        labelValue.kind != ILValue::Kind::LABEL) {
+                        return;
+                    }
+                    const std::string helperLabel =
+                        buildEdgeCopyBlock(result, ilBlock.terminatorEdges[edgeIndex], result.blocks[idx]);
+                    ++edgeIndex;
+                    if (!helperLabel.empty()) {
+                        labelValue.label = helperLabel;
+                    }
+                };
+
+                if (loweredInstr.opcode == "br") {
+                    if (!loweredInstr.ops.empty()) {
+                        rewriteLabelOperand(loweredInstr.ops[0]);
+                    }
+                } else {
+                    for (std::size_t opIndex = 0; opIndex < loweredInstr.ops.size(); ++opIndex) {
+                        if (loweredInstr.ops[opIndex].kind == ILValue::Kind::LABEL) {
+                            rewriteLabelOperand(loweredInstr.ops[opIndex]);
+                        }
+                    }
+                }
             }
 
-            builder.setCurrentLoc(instr.loc);
+            auto &mirBlock = result.blocks[idx];
+            MIRBuilder builder{*this, mirBlock};
+            builder.setCurrentLoc(loweredInstr.loc);
 
-            const LoweringRule *rule = viper_select_rule(instr);
+            const LoweringRule *rule = viper_select_rule(loweredInstr);
             if (!rule) {
-                reportNoRule(instr);
+                reportNoRule(loweredInstr);
             }
-            rule->emit(instr, builder);
+            rule->emit(loweredInstr, builder);
         }
     }
 

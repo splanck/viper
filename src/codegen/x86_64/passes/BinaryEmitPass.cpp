@@ -12,7 +12,7 @@
 //   - Requires register allocation to have completed
 //   - Populates Module::binaryText and Module::binaryRodata
 // Ownership/Lifetime:
-//   - Pass borrows Module during run(), does not own any state beyond isDarwin_
+//   - Pass borrows Module during run(), does not own any state beyond options_
 // Links: codegen/x86_64/Backend.hpp (emitModuleToBinary)
 //
 //===----------------------------------------------------------------------===//
@@ -24,8 +24,7 @@
 
 namespace viper::codegen::x64::passes {
 
-BinaryEmitPass::BinaryEmitPass(bool isDarwin, CodegenOptions options) noexcept
-    : isDarwin_(isDarwin), options_(std::move(options)) {}
+BinaryEmitPass::BinaryEmitPass(CodegenOptions options) noexcept : options_(std::move(options)) {}
 
 bool BinaryEmitPass::run(Module &module, Diagnostics &diags) {
     if (!module.registersAllocated) {
@@ -41,8 +40,8 @@ bool BinaryEmitPass::run(Module &module, Diagnostics &diags) {
         return false;
     }
 
-    BinaryEmitResult result = emitMIRToBinary(
-        module.mir, module.frames, module.roData, *module.target, options_, isDarwin_);
+    BinaryEmitResult result =
+        emitMIRToBinary(module.mir, module.frames, module.roData, *module.target, options_);
     if (!result.errors.empty()) {
         std::string message = "error: x64 binary codegen failed:\n";
         message += result.errors;

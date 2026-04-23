@@ -52,16 +52,78 @@
 namespace viper::codegen::x64 {
 namespace {
 
-/// @brief Platform-specific C compiler command.
-/// @details On Windows, `cc` isn't available, so we use `clang` instead.
-///          On Unix-like systems, `cc` is typically a symlink to the default compiler.
-#if defined(_WIN32)
-constexpr const char *kCcCommand = "clang";
-#else
-constexpr const char *kCcCommand = "cc";
-#endif
+using TargetPlatform = CodegenOptions::TargetPlatform;
 
 constexpr std::size_t kLargeModuleIlOptThreshold = 100000;
+
+[[nodiscard]] TargetPlatform effectiveTargetPlatform(const CodegenPipeline::Options &opts) {
+    if (opts.target_platform != TargetPlatform::Host)
+        return opts.target_platform;
+    if (opts.target_abi == CodegenOptions::TargetABI::Win64)
+        return TargetPlatform::Windows;
+    switch (linker::detectLinkPlatform()) {
+        case linker::LinkPlatform::macOS:
+            return TargetPlatform::Darwin;
+        case linker::LinkPlatform::Windows:
+            return TargetPlatform::Windows;
+        case linker::LinkPlatform::Linux:
+            return TargetPlatform::Linux;
+    }
+    return TargetPlatform::Linux;
+}
+
+[[nodiscard]] objfile::ObjFormat targetObjectFormat(TargetPlatform platform) {
+    switch (platform) {
+        case TargetPlatform::Darwin:
+            return objfile::ObjFormat::MachO;
+        case TargetPlatform::Linux:
+            return objfile::ObjFormat::ELF;
+        case TargetPlatform::Windows:
+            return objfile::ObjFormat::COFF;
+        case TargetPlatform::Host:
+            return objfile::detectHostFormat();
+    }
+    return objfile::detectHostFormat();
+}
+
+[[nodiscard]] linker::LinkPlatform targetLinkPlatform(TargetPlatform platform) {
+    switch (platform) {
+        case TargetPlatform::Darwin:
+            return linker::LinkPlatform::macOS;
+        case TargetPlatform::Linux:
+            return linker::LinkPlatform::Linux;
+        case TargetPlatform::Windows:
+            return linker::LinkPlatform::Windows;
+        case TargetPlatform::Host:
+            return linker::detectLinkPlatform();
+    }
+    return linker::detectLinkPlatform();
+}
+
+[[nodiscard]] std::vector<std::string> systemAssemblerArgs(TargetPlatform platform) {
+    switch (platform) {
+        case TargetPlatform::Darwin:
+#if defined(__APPLE__)
+            return {"cc", "-arch", "x86_64"};
+#else
+            return {"clang", "--target=x86_64-apple-macos11"};
+#endif
+        case TargetPlatform::Linux:
+            return {"clang", "--target=x86_64-unknown-linux-gnu"};
+        case TargetPlatform::Windows:
+            return {"clang", "--target=x86_64-pc-windows-msvc"};
+        case TargetPlatform::Host:
+            switch (targetLinkPlatform(TargetPlatform::Host)) {
+                case linker::LinkPlatform::macOS:
+                    return systemAssemblerArgs(TargetPlatform::Darwin);
+                case linker::LinkPlatform::Windows:
+                    return systemAssemblerArgs(TargetPlatform::Windows);
+                case linker::LinkPlatform::Linux:
+                    return systemAssemblerArgs(TargetPlatform::Linux);
+            }
+    }
+    return {"clang", "--target=x86_64-unknown-linux-gnu"};
+}
 
 std::filesystem::path pickFirstExisting(std::initializer_list<std::filesystem::path> candidates) {
     for (const auto &candidate : candidates) {
@@ -104,25 +166,17 @@ std::filesystem::path deriveAssemblyPath(const CodegenPipeline::Options &opts) {
 /// @param opts Pipeline configuration describing the IL input.
 /// @return Filesystem path for the linked executable.
 std::filesystem::path deriveExecutablePath(const CodegenPipeline::Options &opts) {
+    const bool isWindowsTarget = effectiveTargetPlatform(opts) == TargetPlatform::Windows;
     std::filesystem::path exe = std::filesystem::path(opts.input_il_path);
     if (exe.empty()) {
-#if defined(_WIN32)
-        return std::filesystem::path("a.exe");
-#else
-        return std::filesystem::path("a.out");
-#endif
+        return isWindowsTarget ? std::filesystem::path("a.exe") : std::filesystem::path("a.out");
     }
     exe.replace_extension("");
     if (exe.filename().empty() || exe.filename() == ".") {
-#if defined(_WIN32)
-        return exe.parent_path() / "a.exe";
-#else
-        return exe.parent_path() / "a.out";
-#endif
+        return isWindowsTarget ? (exe.parent_path() / "a.exe") : (exe.parent_path() / "a.out");
     }
-#if defined(_WIN32)
-    exe.replace_extension(".exe");
-#endif
+    if (isWindowsTarget)
+        exe.replace_extension(".exe");
     return exe;
 }
 
@@ -162,17 +216,14 @@ std::string toNativePath(const std::filesystem::path &path) {
 /// @return Normalised assembler exit code (-1 when the command could not start).
 int invokeAssembler(const std::filesystem::path &asmPath,
                     const std::filesystem::path &objPath,
+                    TargetPlatform targetPlatform,
                     std::ostream &out,
                     std::ostream &err) {
-    std::vector<std::string> ccArgs = {kCcCommand};
-#if defined(__APPLE__)
-    ccArgs.push_back("-arch");
-    ccArgs.push_back("x86_64");
-#endif
+    const std::vector<std::string> ccArgs = systemAssemblerArgs(targetPlatform);
     const int exitCode =
         common::invokeAssembler(ccArgs, toNativePath(asmPath), toNativePath(objPath), out, err);
     if (exitCode != 0) {
-        err << "error: " << kCcCommand << " (assemble) exited with status " << exitCode << "\n";
+        err << "error: assembler driver exited with status " << exitCode << "\n";
     }
     return exitCode;
 }
@@ -238,6 +289,7 @@ void collectNativeLinkArchives(const common::LinkContext &ctx, std::vector<std::
 int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
                                const std::filesystem::path &exePath,
                                const common::LinkContext &ctx,
+                               TargetPlatform targetPlatform,
                                const std::vector<std::string> &extraObjects,
                                std::size_t stackSize,
                                std::ostream &out,
@@ -246,7 +298,7 @@ int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
     linkOpts.objPath = objPath.string();
     linkOpts.exePath = exePath.string();
     linkOpts.entrySymbol = "main";
-    linkOpts.platform = linker::detectLinkPlatform();
+    linkOpts.platform = targetLinkPlatform(targetPlatform);
     linkOpts.arch = linker::LinkArch::X86_64;
     linkOpts.stackSize = stackSize;
     collectNativeLinkArchives(ctx, linkOpts.archivePaths);
@@ -354,8 +406,10 @@ PipelineResult CodegenPipeline::run() {
     }
 
     CodegenOptions codegenOpts{};
+    const TargetPlatform targetPlatform = effectiveTargetPlatform(opts_);
     codegenOpts.optimizeLevel = opts_.optimize;
     codegenOpts.targetABI = opts_.target_abi;
+    codegenOpts.targetPlatform = targetPlatform;
     codegenOpts.debugSourcePath = opts_.input_il_path;
     pipelineModule.options = codegenOpts;
     pipelineModule.target = &selectTarget(pipelineModule.options.targetABI);
@@ -368,12 +422,7 @@ PipelineResult CodegenPipeline::run() {
     manager.addPass(std::make_unique<passes::PeepholePass>());
 
     if (useNativeAsm) {
-#if defined(__APPLE__)
-        constexpr bool isDarwin = true;
-#else
-        constexpr bool isDarwin = false;
-#endif
-        manager.addPass(std::make_unique<passes::BinaryEmitPass>(isDarwin, codegenOpts));
+        manager.addPass(std::make_unique<passes::BinaryEmitPass>(codegenOpts));
     } else {
         manager.addPass(std::make_unique<passes::EmitPass>(codegenOpts));
     }
@@ -398,13 +447,10 @@ PipelineResult CodegenPipeline::run() {
                 std::vector<uint8_t> assetBlob(static_cast<size_t>(blobSize));
                 af.read(reinterpret_cast<char *>(assetBlob.data()), blobSize);
 
-#if defined(__APPLE__)
-                constexpr const char *blobLabel = "_viper_asset_blob";
-                constexpr const char *sizeLabel = "_viper_asset_blob_size";
-#else
-                constexpr const char *blobLabel = "viper_asset_blob";
-                constexpr const char *sizeLabel = "viper_asset_blob_size";
-#endif
+                const bool isDarwin = targetObjectFormat(targetPlatform) == objfile::ObjFormat::MachO;
+                const char *blobLabel = isDarwin ? "_viper_asset_blob" : "viper_asset_blob";
+                const char *sizeLabel =
+                    isDarwin ? "_viper_asset_blob_size" : "viper_asset_blob_size";
                 auto &rodata = *pipelineModule.binaryRodata;
                 rodata.alignTo(16);
                 rodata.defineSymbol(
@@ -460,8 +506,8 @@ PipelineResult CodegenPipeline::run() {
         // Write the object file using the native writer for x86_64.
         // Must specify ObjArch::X86_64 explicitly — createHostObjectFileWriter()
         // would pick the host arch (e.g. arm64 on Apple Silicon).
-        auto writer =
-            objfile::createObjectFileWriter(objfile::detectHostFormat(), objfile::ObjArch::X86_64);
+        auto writer = objfile::createObjectFileWriter(
+            targetObjectFormat(targetPlatform), objfile::ObjArch::X86_64);
         if (!writer) {
             err << "error: no native object file writer for this platform\n";
             result.exit_code = 1;
@@ -518,7 +564,7 @@ PipelineResult CodegenPipeline::run() {
 
         const int linkExit =
             linkObjectWithNativeLinker(
-                objPath, exePath, ctx, opts_.extra_objects, opts_.stack_size, out, err);
+                objPath, exePath, ctx, targetPlatform, opts_.extra_objects, opts_.stack_size, out, err);
         if (linkExit != 0) {
             result.exit_code = linkExit == -1 ? 1 : linkExit;
             result.stdout_text = out.str();
@@ -590,7 +636,7 @@ PipelineResult CodegenPipeline::run() {
                                  looksLikeObjectFile(opts_.output_obj_path);
     if (wantsObjectOnly) {
         const std::filesystem::path objPath(opts_.output_obj_path);
-        const int assembleExit = invokeAssembler(asmPath, objPath, out, err);
+        const int assembleExit = invokeAssembler(asmPath, objPath, targetPlatform, out, err);
         if (assembleExit != 0) {
             result.exit_code = assembleExit == -1 ? 1 : assembleExit;
         } else {
@@ -622,7 +668,7 @@ PipelineResult CodegenPipeline::run() {
     std::filesystem::path objPath = std::filesystem::path(opts_.input_il_path);
     objPath.replace_extension(".o");
 
-    const int assembleExit = invokeAssembler(asmPath, objPath, out, err);
+    const int assembleExit = invokeAssembler(asmPath, objPath, targetPlatform, out, err);
     if (assembleExit != 0) {
         result.exit_code = assembleExit == -1 ? 1 : assembleExit;
         result.stdout_text = out.str();
@@ -643,7 +689,7 @@ PipelineResult CodegenPipeline::run() {
 
     const int linkExit =
         linkObjectWithNativeLinker(
-            objPath, exePath, ctx, opts_.extra_objects, opts_.stack_size, out, err);
+            objPath, exePath, ctx, targetPlatform, opts_.extra_objects, opts_.stack_size, out, err);
 
     {
         std::error_code ec;

@@ -210,8 +210,6 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
                                       objfile::CodeSection &text,
                                       objfile::CodeSection &rodata,
                                       ABIFormat abi) {
-    (void)abi;    // Symbol mangling deferred to ObjectFileWriter
-
     labelOffsets_.clear();
     pendingBranches_.clear();
     currentFn_ = &fn;
@@ -303,40 +301,43 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
             text.patch32LE(pb.offset, word);
         }
 
-        // Record compact unwind entry for this function.
-        // ARM64 frame-based encoding: bits [31:28] = 0x4 (UNWIND_ARM64_MODE_FRAME)
-        if (!skipFrame_) {
-            uint32_t encoding = 0x04000000u; // UNWIND_ARM64_MODE_FRAME
+        if (abi == ABIFormat::Darwin) {
+            // Mach-O compact unwind is Darwin-specific. ELF and COFF object
+            // writers must not inherit these entries.
+            if (!skipFrame_) {
+                uint32_t encoding = 0x04000000u; // UNWIND_ARM64_MODE_FRAME
 
-            // Encode callee-saved GPR pair count (bits [23:20], max 5 pairs: X19-X28)
-            uint32_t gprPairs = static_cast<uint32_t>(fn.savedGPRs.size() + 1) / 2;
-            if (gprPairs > 5)
-                gprPairs = 5;
-            encoding |= (gprPairs << 20);
+                // Encode callee-saved GPR pair count (bits [23:20], max 5 pairs: X19-X28)
+                uint32_t gprPairs = static_cast<uint32_t>(fn.savedGPRs.size() + 1) / 2;
+                if (gprPairs > 5)
+                    gprPairs = 5;
+                encoding |= (gprPairs << 20);
 
-            // Encode callee-saved FPR pair count (bits [27:24], max 4 pairs: D8-D15)
-            uint32_t fprPairs = static_cast<uint32_t>(fn.savedFPRs.size() + 1) / 2;
-            if (fprPairs > 4)
-                fprPairs = 4;
-            encoding |= (fprPairs << 24);
+                // Encode callee-saved FPR pair count (bits [27:24], max 4 pairs: D8-D15)
+                uint32_t fprPairs = static_cast<uint32_t>(fn.savedFPRs.size() + 1) / 2;
+                if (fprPairs > 4)
+                    fprPairs = 4;
+                encoding |= (fprPairs << 24);
 
-            const uint32_t funcLen = static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
+                const uint32_t funcLen =
+                    static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
 
-            objfile::CompactUnwindEntry entry{};
-            entry.symbolIndex = funcSymIdx;
-            entry.functionLength = funcLen;
-            entry.encoding = encoding;
-            text.addUnwindEntry(entry);
-        } else {
-            // Frameless leaf function — UNWIND_ARM64_MODE_FRAMELESS with zero encoding.
-            // Still record an entry so the unwinder knows this function exists.
-            const uint32_t funcLen = static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
+                objfile::CompactUnwindEntry entry{};
+                entry.symbolIndex = funcSymIdx;
+                entry.functionLength = funcLen;
+                entry.encoding = encoding;
+                text.addUnwindEntry(entry);
+            } else {
+                // Frameless leaf function — UNWIND_ARM64_MODE_FRAMELESS with zero encoding.
+                const uint32_t funcLen =
+                    static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
 
-            objfile::CompactUnwindEntry entry{};
-            entry.symbolIndex = funcSymIdx;
-            entry.functionLength = funcLen;
-            entry.encoding = 0x02000000u; // UNWIND_ARM64_MODE_FRAMELESS, stack size 0
-            text.addUnwindEntry(entry);
+                objfile::CompactUnwindEntry entry{};
+                entry.symbolIndex = funcSymIdx;
+                entry.functionLength = funcLen;
+                entry.encoding = 0x02000000u; // UNWIND_ARM64_MODE_FRAMELESS, stack size 0
+                text.addUnwindEntry(entry);
+            }
         }
 
         currentFn_ = nullptr;
@@ -637,6 +638,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             return;
         case MOpcode::SmulhRRR:
             emit32(encode3Reg(kSmulhRRR,
+                              hwGPR(getReg(mi.ops[0])),
+                              hwGPR(getReg(mi.ops[1])),
+                              hwGPR(getReg(mi.ops[2]))),
+                   cs);
+            return;
+        case MOpcode::UmulhRRR:
+            emit32(encode3Reg(kUmulhRRR,
                               hwGPR(getReg(mi.ops[0])),
                               hwGPR(getReg(mi.ops[1])),
                               hwGPR(getReg(mi.ops[2]))),

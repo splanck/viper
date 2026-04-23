@@ -80,8 +80,8 @@ void lowerOverflowOps(MFunction &fn) {
 
         MBasicBlock trapBlock{};
         trapBlock.name = trapLabel;
-        // bl rt_trap
-        trapBlock.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+        // bl rt_trap_ovf
+        trapBlock.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_ovf")}});
         fn.blocks.push_back(std::move(trapBlock));
         trapIndex = fn.blocks.size() - 1U;
         return *trapIndex;

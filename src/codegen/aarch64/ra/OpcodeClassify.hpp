@@ -32,6 +32,7 @@ inline bool isThreeAddrRRR(MOpcode opc) {
         case MOpcode::SubRRR:
         case MOpcode::MulRRR:
         case MOpcode::SmulhRRR:
+        case MOpcode::UmulhRRR:
         case MOpcode::SDivRRR:
         case MOpcode::UDivRRR:
         case MOpcode::AndRRR:

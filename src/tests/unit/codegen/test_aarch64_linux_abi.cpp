@@ -35,8 +35,10 @@
 #include <string>
 #include <vector>
 
+#include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/CodegenPipeline.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
+#include "codegen/aarch64/binenc/A64BinaryEncoder.hpp"
 #include "codegen/aarch64/passes/BinaryEmitPass.hpp"
 #include "codegen/aarch64/passes/EmitPass.hpp"
 #include "codegen/aarch64/passes/LoweringPass.hpp"
@@ -124,6 +126,28 @@ const char *kSimpleIL = "il 0.1\n"
                         "entry:\n"
                         "  ret 42\n"
                         "}\n";
+
+MFunction makeNonLeafFunc(const std::string &name) {
+    MFunction fn{};
+    fn.name = name;
+    fn.isLeaf = false;
+    fn.localFrameSize = 0;
+
+    MBasicBlock entry{};
+    entry.name = "entry";
+
+    MInstr call{};
+    call.opc = MOpcode::Bl;
+    call.ops.push_back(MOperand::labelOp("callee"));
+    entry.instrs.push_back(std::move(call));
+
+    MInstr ret{};
+    ret.opc = MOpcode::Ret;
+    entry.instrs.push_back(std::move(ret));
+
+    fn.blocks.push_back(std::move(entry));
+    return fn;
+}
 
 } // namespace
 
@@ -278,6 +302,26 @@ TEST(AArch64LinuxABI, BinaryEmitPassInjectsMainStartupWithNonLeafFrame) {
             ++callRelocs;
     }
     EXPECT_EQ(callRelocs, 2u);
+}
+
+TEST(AArch64LinuxABI, DarwinBinaryEncoderRecordsCompactUnwind) {
+    binenc::A64BinaryEncoder encoder;
+    viper::codegen::objfile::CodeSection text;
+    viper::codegen::objfile::CodeSection rodata;
+
+    encoder.encodeFunction(makeNonLeafFunc("darwin_unwind"), text, rodata, ABIFormat::Darwin);
+    EXPECT_FALSE(text.unwindEntries().empty());
+}
+
+TEST(AArch64LinuxABI, NonDarwinBinaryEncoderSkipsCompactUnwind) {
+    for (ABIFormat abi : {ABIFormat::Linux, ABIFormat::Windows}) {
+        binenc::A64BinaryEncoder encoder;
+        viper::codegen::objfile::CodeSection text;
+        viper::codegen::objfile::CodeSection rodata;
+
+        encoder.encodeFunction(makeNonLeafFunc("non_darwin_unwind"), text, rodata, abi);
+        EXPECT_TRUE(text.unwindEntries().empty());
+    }
 }
 
 int main(int argc, char **argv) {

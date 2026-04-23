@@ -85,6 +85,10 @@ namespace {
             return "DIVS64rr";
         case MOpcode::REMS64rr:
             return "REMS64rr";
+        case MOpcode::DIVS64Chk0rr:
+            return "DIVS64Chk0rr";
+        case MOpcode::REMS64Chk0rr:
+            return "REMS64Chk0rr";
         case MOpcode::DIVU64rr:
             return "DIVU64rr";
         case MOpcode::REMU64rr:

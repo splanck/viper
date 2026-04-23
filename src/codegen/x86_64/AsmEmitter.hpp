@@ -28,6 +28,7 @@
 #pragma once
 
 #include "MachineIR.hpp"
+#include "codegen/common/objfile/ObjectFileWriter.hpp"
 
 #include <array>
 #include <cstddef>
@@ -71,7 +72,7 @@ class AsmEmitter {
         [[nodiscard]] std::string f64Label(int index) const;
 
         /// \brief Emit the .rodata section containing all stored literals.
-        void emit(std::ostream &os) const;
+        void emit(std::ostream &os, objfile::ObjFormat format) const;
 
         /// \brief Determine whether the pool currently holds any literals.
         [[nodiscard]] bool empty() const noexcept;
@@ -105,7 +106,8 @@ class AsmEmitter {
     };
 
     /// \brief Construct an emitter operating on the provided literal pool.
-    explicit AsmEmitter(RoDataPool &pool) noexcept;
+    explicit AsmEmitter(RoDataPool &pool,
+                        objfile::ObjFormat format = objfile::detectHostFormat()) noexcept;
 
     /// \brief Emit the assembly for the supplied Machine IR function.
     void emitFunction(std::ostream &os, const MFunction &func, const TargetInfo &target) const;
@@ -121,6 +123,7 @@ class AsmEmitter {
 
   private:
     RoDataPool *pool_{nullptr};
+    objfile::ObjFormat format_{objfile::detectHostFormat()};
 
     /// \brief Emit assembly for a single basic block including its label.
     /// \param os Output stream for AT&T syntax assembly.

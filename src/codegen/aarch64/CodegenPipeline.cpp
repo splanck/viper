@@ -48,6 +48,7 @@ namespace viper::codegen::aarch64 {
 namespace {
 
 using viper::codegen::common::LinkContext;
+using TargetPlatform = CodegenPipeline::TargetPlatform;
 
 /// @brief Dump all MIR functions to the provided stream with a header tag.
 static void dumpMir(const passes::AArch64Module &module, const char *tag, std::ostream &os) {
@@ -57,19 +58,66 @@ static void dumpMir(const passes::AArch64Module &module, const char *tag, std::o
     }
 }
 
-static std::vector<std::string> systemAssemblerArgs() {
+static objfile::ObjFormat targetObjectFormat(TargetPlatform platform) {
+    switch (platform) {
+        case TargetPlatform::Darwin:
+            return objfile::ObjFormat::MachO;
+        case TargetPlatform::Linux:
+            return objfile::ObjFormat::ELF;
+        case TargetPlatform::Windows:
+            return objfile::ObjFormat::COFF;
+        case TargetPlatform::Host:
+            return objfile::detectHostFormat();
+    }
+    return objfile::detectHostFormat();
+}
+
+static linker::LinkPlatform targetLinkPlatform(TargetPlatform platform) {
+    switch (platform) {
+        case TargetPlatform::Darwin:
+            return linker::LinkPlatform::macOS;
+        case TargetPlatform::Linux:
+            return linker::LinkPlatform::Linux;
+        case TargetPlatform::Windows:
+            return linker::LinkPlatform::Windows;
+        case TargetPlatform::Host:
+            return linker::detectLinkPlatform();
+    }
+    return linker::detectLinkPlatform();
+}
+
+static std::vector<std::string> systemAssemblerArgs(TargetPlatform platform) {
+    switch (platform) {
+        case TargetPlatform::Darwin:
 #if defined(__APPLE__)
-    return {"cc", "-arch", "arm64"};
-#elif defined(_WIN32)
-    return {"clang", "--target=aarch64-pc-windows-msvc"};
+            return {"cc", "-arch", "arm64"};
 #else
-    return {"cc"};
+            return {"clang", "--target=arm64-apple-macos11"};
 #endif
+        case TargetPlatform::Linux:
+            return {"clang", "--target=aarch64-unknown-linux-gnu"};
+        case TargetPlatform::Windows:
+            return {"clang", "--target=aarch64-pc-windows-msvc"};
+        case TargetPlatform::Host:
+            return systemAssemblerArgs(
+                targetLinkPlatform(TargetPlatform::Host) == linker::LinkPlatform::macOS
+                    ? TargetPlatform::Darwin
+                    : targetLinkPlatform(TargetPlatform::Host) == linker::LinkPlatform::Windows
+                          ? TargetPlatform::Windows
+                          : TargetPlatform::Linux);
+    }
+    return {"clang", "--target=aarch64-unknown-linux-gnu"};
+}
+
+static bool isObjectOutputPath(const std::string &path) {
+    const std::string ext = std::filesystem::path(path).extension().string();
+    return ext == ".o" || ext == ".obj";
 }
 
 static int linkObjToExe(const std::string &objPath,
                         const std::string &exePath,
                         const LinkContext &ctx,
+                        TargetPlatform targetPlatform,
                         std::size_t stackSize,
                         const std::vector<std::string> &extraObjects,
                         std::ostream &out,
@@ -77,6 +125,7 @@ static int linkObjToExe(const std::string &objPath,
 
 static int linkToExe(const std::string &asmPath,
                      const std::string &exePath,
+                     TargetPlatform targetPlatform,
                      std::size_t stackSize,
                      const std::vector<std::string> &extraObjects,
                      std::ostream &out,
@@ -89,11 +138,13 @@ static int linkToExe(const std::string &asmPath,
 
     std::filesystem::path objPath = std::filesystem::path(asmPath);
     objPath.replace_extension(".o");
-    const int arc = invokeAssembler(systemAssemblerArgs(), asmPath, objPath.string(), out, err);
+    const int arc =
+        invokeAssembler(systemAssemblerArgs(targetPlatform), asmPath, objPath.string(), out, err);
     if (arc != 0)
         return arc;
 
-    const int lrc = linkObjToExe(objPath.string(), exePath, ctx, stackSize, extraObjects, out, err);
+    const int lrc =
+        linkObjToExe(objPath.string(), exePath, ctx, targetPlatform, stackSize, extraObjects, out, err);
     std::error_code ec;
     std::filesystem::remove(objPath, ec);
     return lrc;
@@ -141,6 +192,7 @@ static void collectNativeLinkArchives(const common::LinkContext &ctx,
 static int linkObjToExe(const std::string &objPath,
                         const std::string &exePath,
                         const LinkContext &ctx,
+                        TargetPlatform targetPlatform,
                         std::size_t stackSize,
                         const std::vector<std::string> &extraObjects,
                         std::ostream &out,
@@ -152,7 +204,7 @@ static int linkObjToExe(const std::string &objPath,
     linker::NativeLinkerOptions linkOpts;
     linkOpts.objPath = objPath;
     linkOpts.exePath = exePath;
-    linkOpts.platform = linker::detectLinkPlatform();
+    linkOpts.platform = targetLinkPlatform(targetPlatform);
     linkOpts.arch = linker::LinkArch::AArch64;
     linkOpts.entrySymbol = "main";
     linkOpts.stackSize = stackSize;
@@ -160,6 +212,25 @@ static int linkObjToExe(const std::string &objPath,
     collectNativeLinkArchives(ctx, linkOpts.archivePaths);
 
     return viper::codegen::linker::nativeLink(linkOpts, out, err);
+}
+
+static std::optional<std::string> findResidualStructuredEh(const il::core::Module &mod) {
+    for (const auto &fn : mod.functions) {
+        for (const auto &bb : fn.blocks) {
+            for (const auto &instr : bb.instructions) {
+                switch (instr.op) {
+                    case il::core::Opcode::ResumeSame:
+                    case il::core::Opcode::ResumeNext:
+                        return fn.name + ":" + bb.label + ": residual " +
+                               std::string(il::core::toString(instr.op)) +
+                               " after NativeEHLowering";
+                    default:
+                        break;
+                }
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel) {
@@ -346,6 +417,13 @@ PipelineResult CodegenPipeline::run() {
     }
 
     viper::codegen::common::lowerNativeEh(mod);
+    if (const auto residualEh = findResidualStructuredEh(mod)) {
+        err << "error: " << *residualEh << "\n";
+        result.exit_code = 1;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
 
     if (!runIlOptimizations(mod, opts_.optimize)) {
         err << "error: failed to run AArch64 IL optimization pipeline\n";
@@ -459,8 +537,7 @@ PipelineResult CodegenPipeline::run() {
     if (opts_.assembler_mode == AssemblerMode::Native && pipelineModule.binaryText) {
         std::filesystem::path objPath;
         bool outputIsObj = false;
-        if (!opts_.output_obj_path.empty() &&
-            std::filesystem::path(opts_.output_obj_path).extension() == ".o") {
+        if (!opts_.output_obj_path.empty() && isObjectOutputPath(opts_.output_obj_path)) {
             objPath = opts_.output_obj_path;
             outputIsObj = true;
         } else {
@@ -468,7 +545,7 @@ PipelineResult CodegenPipeline::run() {
         }
 
         using namespace viper::codegen::objfile;
-        auto writer = createObjectFileWriter(detectHostFormat(), ObjArch::AArch64);
+        auto writer = createObjectFileWriter(targetObjectFormat(opts_.target_platform), ObjArch::AArch64);
         if (!writer) {
             err << "error: no native object file writer for this platform\n";
             result.exit_code = 1;
@@ -520,7 +597,14 @@ PipelineResult CodegenPipeline::run() {
             err << "warning: --system-link is deprecated; using the native linker\n";
 
         const int lrc =
-            linkObjToExe(objPath.string(), exe.string(), ctx, opts_.stack_size, opts_.extra_objects, out, err);
+            linkObjToExe(objPath.string(),
+                         exe.string(),
+                         ctx,
+                         opts_.target_platform,
+                         opts_.stack_size,
+                         opts_.extra_objects,
+                         out,
+                         err);
 
         if (!outputIsObj) {
             std::error_code ec;
@@ -553,9 +637,9 @@ PipelineResult CodegenPipeline::run() {
 
     if (!opts_.output_obj_path.empty() && !opts_.run_native) {
         const std::string &outPath = opts_.output_obj_path;
-        if (std::filesystem::path(outPath).extension() == ".o") {
+        if (isObjectOutputPath(outPath)) {
             const int arc = viper::codegen::common::invokeAssembler(
-                systemAssemblerArgs(), asmPath, outPath, out, err);
+                systemAssemblerArgs(opts_.target_platform), asmPath, outPath, out, err);
             result.exit_code = arc == 0 ? 0 : 1;
             result.stdout_text = out.str();
             result.stderr_text = err.str();
@@ -565,7 +649,8 @@ PipelineResult CodegenPipeline::run() {
         if (opts_.link_mode == LinkMode::System)
             err << "warning: --system-link is deprecated; using the native linker\n";
         const int lrc =
-            linkToExe(asmPath, outPath, opts_.stack_size, opts_.extra_objects, out, err);
+            linkToExe(
+                asmPath, outPath, opts_.target_platform, opts_.stack_size, opts_.extra_objects, out, err);
         if (lrc == 0 && !opts_.emit_asm) {
             std::error_code ec;
             std::filesystem::remove(asmPath, ec);
@@ -583,7 +668,8 @@ PipelineResult CodegenPipeline::run() {
 
     if (opts_.link_mode == LinkMode::System)
         err << "warning: --system-link is deprecated; using the native linker\n";
-    if (linkToExe(asmPath, exe.string(), opts_.stack_size, opts_.extra_objects, out, err) != 0) {
+    if (linkToExe(
+            asmPath, exe.string(), opts_.target_platform, opts_.stack_size, opts_.extra_objects, out, err) != 0) {
         result.exit_code = 1;
         result.stdout_text = out.str();
         result.stderr_text = err.str();

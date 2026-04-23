@@ -200,13 +200,26 @@ Compile IL to native code.
 viper codegen x64 <in.il> -o <executable>
 viper codegen x64 <in.il> -S <out.s>  # Assembly only
 viper codegen x64 <in.il> -o <executable> --asset-blob assets.vpa --extra-obj assets.o
+viper codegen x64 <in.il> --native-asm -o <out.o>
+viper codegen x64 <in.il> --native-asm --target-linux -o <out.o>
+viper codegen x64 <in.il> --native-asm --target-windows -o <out.obj>
 
 # ARM64 (Apple Silicon validated)
 viper codegen arm64 <in.il> -S <out.s>
 viper codegen arm64 <in.il> -o <executable> --asset-blob assets.vpa --extra-obj assets.o
+viper codegen arm64 <in.il> --native-asm -o <out.o>
+viper codegen arm64 <in.il> --native-asm --target-linux -o <out.o>
+viper codegen arm64 <in.il> --native-asm --target-windows -o <out.obj>
 ```
 
 On x86-64, `--asset-blob` embeds the VPA payload directly when using `--native-asm`. If you force `--system-asm`, pair it with `--extra-obj <asset.o>` so the asset symbols are still linked into the final binary.
+
+On x86-64, `--target-darwin`, `--target-linux`, and `--target-windows` select the assembly dialect, native object
+format, and native-link platform together. `--target-win64` still switches the calling convention to Win64 and also
+selects the Windows platform policy. When you use `--native-asm` with `-o <file.o>` or `-o <file.obj>`, the compiler
+writes a relocatable object instead of linking an executable.
+
+On arm64, target selection is explicit: `--target-darwin`, `--target-linux`, and `--target-windows` select the assembly dialect, native object format, and native-link platform together. When you use `--native-asm` with `-o <file.o>` or `-o <file.obj>`, the compiler writes a relocatable object instead of linking an executable.
 
 ### viper install-package
 

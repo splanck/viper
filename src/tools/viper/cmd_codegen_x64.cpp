@@ -39,7 +39,8 @@ constexpr std::string_view kUsage =
     "usage: ilc codegen x64 <file.il> [-S <file.s>] [-o <a.out>] "
     "[-run-native] [--stack-size=SIZE] [--native-asm|--system-asm] "
     "[--native-link|--system-link(deprecated)] [--asset-blob <file.vpa>] "
-    "[--extra-obj <file.o>] [--target-host|--target-sysv|--target-win64]\n";
+    "[--extra-obj <file.o>] [--target-host|--target-sysv|--target-win64] "
+    "[--target-darwin|--target-linux|--target-windows]\n";
 
 // Use shared ArgvView from tools/common
 using viper::tools::ArgvView;
@@ -138,6 +139,7 @@ ParseOutcome parseCompileArgs(const ArgvView &args) {
         }
         if (arg == "--target-host") {
             opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::Host;
+            opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Host;
             continue;
         }
         if (arg == "--target-sysv") {
@@ -146,6 +148,19 @@ ParseOutcome parseCompileArgs(const ArgvView &args) {
         }
         if (arg == "--target-win64") {
             opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::Win64;
+            opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Windows;
+            continue;
+        }
+        if (arg == "--target-darwin") {
+            opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Darwin;
+            continue;
+        }
+        if (arg == "--target-linux") {
+            opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Linux;
+            continue;
+        }
+        if (arg == "--target-windows") {
+            opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Windows;
             continue;
         }
         if (arg == "--asset-blob") {

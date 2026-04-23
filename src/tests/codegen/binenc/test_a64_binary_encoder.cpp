@@ -213,6 +213,13 @@ static void testMulRRR() {
     CHECK(word == 0x9B027C20);
 }
 
+static void testUmulhRRR() {
+    // umulh x0, x1, x2 → 0x9BC27C20
+    MInstr mi{MOpcode::UmulhRRR, {gpr(PhysReg::X0), gpr(PhysReg::X1), gpr(PhysReg::X2)}};
+    uint32_t word = encodeSingleInstr({mi});
+    CHECK(word == 0x9BC27C20);
+}
+
 static void testSDivRRR() {
     // sdiv x0, x1, x2 → 0x9AC20C20
     MInstr mi{MOpcode::SDivRRR, {gpr(PhysReg::X0), gpr(PhysReg::X1), gpr(PhysReg::X2)}};
@@ -965,6 +972,7 @@ int main() {
     testOrrRRR();
     testEorRRR();
     testMulRRR();
+    testUmulhRRR();
     testSDivRRR();
     testMSubRRRR();
     testAddRI();
@@ -1058,6 +1066,7 @@ int main() {
                 case MOpcode::SubRRR:
                 case MOpcode::MulRRR:
                 case MOpcode::SmulhRRR:
+                case MOpcode::UmulhRRR:
                 case MOpcode::SDivRRR:
                 case MOpcode::UDivRRR:
                 case MOpcode::AndRRR:
@@ -1246,10 +1255,10 @@ int main() {
 
         // Verify we covered the expected counts.
         CHECK(pseudoCount == 5);   // 5 pseudo-opcodes
-        CHECK(encodedCount == 74); // 79 total - 5 pseudo = 74 real opcodes
+        CHECK(encodedCount == 75); // 80 total - 5 pseudo = 75 real opcodes
 
-        if (encodedCount == 74 && pseudoCount == 5)
-            std::cout << "  Encoding coverage: " << encodedCount << "/74 opcodes OK, "
+        if (encodedCount == 75 && pseudoCount == 5)
+            std::cout << "  Encoding coverage: " << encodedCount << "/75 opcodes OK, "
                       << pseudoCount << " pseudo-opcodes skipped.\n";
     }
 

@@ -126,6 +126,7 @@ inline constexpr uint32_t kAsrvRRR = 0x9AC02800; // asrv Xd, Xn, Xm
 
 inline constexpr uint32_t kMulRRR = 0x9B007C00;   // madd Xd, Xn, Xm, XZR (mul alias)
 inline constexpr uint32_t kSmulhRRR = 0x9B407C00; // smulh Xd, Xn, Xm
+inline constexpr uint32_t kUmulhRRR = 0x9BC07C00; // umulh Xd, Xn, Xm
 inline constexpr uint32_t kSDivRRR = 0x9AC00C00;  // sdiv Xd, Xn, Xm
 inline constexpr uint32_t kUDivRRR = 0x9AC00800;  // udiv Xd, Xn, Xm
 inline constexpr uint32_t kMSubRRRR = 0x9B008000; // msub Xd, Xn, Xm, Xa

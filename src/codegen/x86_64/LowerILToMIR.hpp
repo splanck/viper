@@ -269,12 +269,17 @@ class LowerILToMIR {
     /// @return True if the value can be encoded as an immediate operand.
     [[nodiscard]] bool isImmediate(const ILValue &value) const noexcept;
 
-    /// @brief Emit parallel copy pseudo-ops for block parameter passing along edges.
-    /// @details Walks the terminator edges of @p source and emits PCOPY instructions
-    ///          that move argument vregs to the destination block's parameter vregs.
-    /// @param source The IL block whose terminator edges define the copies.
-    /// @param block The machine block to append the copy instructions to.
-    void emitEdgeCopies(const ILBlock &source, MBasicBlock &block);
+    /// @brief Materialize one successor edge through a dedicated copy block when needed.
+    /// @details Builds a synthetic block that executes any required PX_COPY argument moves and
+    ///          then jumps to the real destination. Returns an empty string when the edge can
+    ///          branch directly without a helper block.
+    /// @param func Machine function receiving any new edge block.
+    /// @param edge Successor edge metadata carrying destination params and arguments.
+    /// @param sourceBlock Source machine block whose terminator will target the helper block.
+    /// @return Helper block label or empty string when no helper block was required.
+    [[nodiscard]] std::string buildEdgeCopyBlock(MFunction &func,
+                                                 const ILBlock::EdgeArg &edge,
+                                                 const MBasicBlock &sourceBlock);
 };
 
 } // namespace viper::codegen::x64

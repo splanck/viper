@@ -91,13 +91,85 @@
 #include "OpcodeMappings.hpp"
 
 #include <algorithm>
+#include <stdexcept>
 
 namespace viper::codegen::aarch64 {
 
 using il::core::Opcode;
 
 static const char *condForOpcode(Opcode op) {
-    return lookupCondition(op);
+    return lookupAnyCondition(op);
+}
+
+static void emitNullTrapCall(MBasicBlock &bb) {
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+    bb.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+}
+
+static void emitPhiEdgeCopies(
+    MBasicBlock &edgeBB,
+    const std::string &dst,
+    const std::vector<il::core::Value> &args,
+    const il::core::BasicBlock &inBB,
+    const TargetInfo &ti,
+    FrameBuilder &fb,
+    std::unordered_map<unsigned, uint16_t> &blockTempVReg,
+    std::unordered_map<unsigned, RegClass> &tempRegClass,
+    uint16_t &nextVRegId,
+    const std::unordered_map<std::string, std::vector<RegClass>> &phiRegClass,
+    const std::unordered_map<std::string, std::vector<int>> &phiSpillOffset) {
+    auto itSpill = phiSpillOffset.find(dst);
+    if (itSpill == phiSpillOffset.end())
+        return;
+    auto itClass = phiRegClass.find(dst);
+    if (itClass == phiRegClass.end())
+        return;
+    const auto &classes = itClass->second;
+    const auto &spillOffsets = itSpill->second;
+    for (std::size_t ai = 0; ai < args.size() && ai < spillOffsets.size(); ++ai) {
+        uint16_t sv = 0;
+        RegClass scls = RegClass::GPR;
+        if (!materializeValueToVReg(args[ai],
+                                    inBB,
+                                    ti,
+                                    fb,
+                                    edgeBB,
+                                    blockTempVReg,
+                                    tempRegClass,
+                                    nextVRegId,
+                                    sv,
+                                    scls)) {
+            throw std::runtime_error("AArch64 terminator lowering: failed to materialize phi-edge "
+                                     "argument for block '" +
+                                     dst + "'");
+        }
+        const RegClass dstCls = classes[ai];
+        const int offset = spillOffsets[ai];
+        if (dstCls == RegClass::FPR) {
+            if (scls != RegClass::FPR) {
+                const uint16_t cvt = allocateNextVReg(nextVRegId);
+                edgeBB.instrs.push_back(MInstr{MOpcode::SCvtF,
+                                               {MOperand::vregOp(RegClass::FPR, cvt),
+                                                MOperand::vregOp(RegClass::GPR, sv)}});
+                sv = cvt;
+            }
+            edgeBB.instrs.push_back(MInstr{MOpcode::PhiStoreFPR,
+                                           {MOperand::vregOp(RegClass::FPR, sv),
+                                            MOperand::immOp(offset)}});
+        } else {
+            if (scls == RegClass::FPR) {
+                const uint16_t cvt = allocateNextVReg(nextVRegId);
+                edgeBB.instrs.push_back(MInstr{MOpcode::FCvtZS,
+                                               {MOperand::vregOp(RegClass::GPR, cvt),
+                                                MOperand::vregOp(RegClass::FPR, sv)}});
+                sv = cvt;
+            }
+            edgeBB.instrs.push_back(MInstr{MOpcode::PhiStoreGPR,
+                                           {MOperand::vregOp(RegClass::GPR, sv),
+                                            MOperand::immOp(offset)}});
+        }
+    }
 }
 
 void lowerTerminators(const il::core::Function &fn,
@@ -110,8 +182,6 @@ void lowerTerminators(const il::core::Function &fn,
                       std::vector<std::unordered_map<unsigned, uint16_t>> &blockTempVRegSnapshot,
                       std::unordered_map<unsigned, RegClass> &tempRegClass,
                       uint16_t &nextVRegId) {
-    const auto &argOrder = ti.intArgOrder;
-
     for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
         const auto &inBB = fn.blocks[i];
         if (inBB.instructions.empty())
@@ -128,70 +198,17 @@ void lowerTerminators(const il::core::Function &fn,
                     // Emit phi edge copies for target - store to spill slots
                     if (!term.brArgs.empty() && !term.brArgs[0].empty()) {
                         const std::string &dst = term.labels[0];
-                        auto itIds = phiVregId.find(dst);
-                        auto itSpill = phiSpillOffset.find(dst);
-                        auto itClass = phiRegClass.find(dst);
-                        if (itIds != phiVregId.end() && itSpill != phiSpillOffset.end() &&
-                            itClass != phiRegClass.end()) {
-                            const auto &ids = itIds->second;
-                            const auto &classes = itClass->second;
-                            const auto &spillOffsets = itSpill->second;
-                            // Use the block's tempVReg snapshot to find correct vreg
-                            // mappings for temps defined in this block. This is critical
-                            // for phi-edge copies to emit correct values (e.g., loop
-                            // counter increments).
-                            for (std::size_t ai = 0; ai < term.brArgs[0].size() && ai < ids.size();
-                                 ++ai) {
-                                uint16_t sv = 0;
-                                RegClass scls = RegClass::GPR;
-                                if (!materializeValueToVReg(term.brArgs[0][ai],
-                                                            inBB,
-                                                            ti,
-                                                            fb,
-                                                            outBB,
-                                                            blockTempVReg,
-                                                            tempRegClass,
-                                                            nextVRegId,
-                                                            sv,
-                                                            scls))
-                                    continue;
-                                const RegClass dstCls = classes[ai];
-                                const int offset = spillOffsets[ai];
-                                if (dstCls == RegClass::FPR) {
-                                    if (scls != RegClass::FPR) {
-                                        const uint16_t cvt = allocateNextVReg(nextVRegId);
-                                        outBB.instrs.push_back(
-                                            MInstr{MOpcode::SCvtF,
-                                                   {MOperand::vregOp(RegClass::FPR, cvt),
-                                                    MOperand::vregOp(RegClass::GPR, sv)}});
-                                        sv = cvt;
-                                        scls = RegClass::FPR;
-                                    }
-                                    // Phi-edge FPR copy: clears dirty flag in RA to
-                                    // suppress redundant block-end spill of this vreg.
-                                    outBB.instrs.push_back(
-                                        MInstr{MOpcode::PhiStoreFPR,
-                                               {MOperand::vregOp(RegClass::FPR, sv),
-                                                MOperand::immOp(offset)}});
-                                } else {
-                                    if (scls == RegClass::FPR) {
-                                        const uint16_t cvt = allocateNextVReg(nextVRegId);
-                                        outBB.instrs.push_back(
-                                            MInstr{MOpcode::FCvtZS,
-                                                   {MOperand::vregOp(RegClass::GPR, cvt),
-                                                    MOperand::vregOp(RegClass::FPR, sv)}});
-                                        sv = cvt;
-                                        scls = RegClass::GPR;
-                                    }
-                                    // Phi-edge GPR copy: clears dirty flag in RA to
-                                    // suppress redundant block-end spill of this vreg.
-                                    outBB.instrs.push_back(
-                                        MInstr{MOpcode::PhiStoreGPR,
-                                               {MOperand::vregOp(RegClass::GPR, sv),
-                                                MOperand::immOp(offset)}});
-                                }
-                            }
-                        }
+                        emitPhiEdgeCopies(outBB,
+                                          dst,
+                                          term.brArgs[0],
+                                          inBB,
+                                          ti,
+                                          fb,
+                                          blockTempVReg,
+                                          tempRegClass,
+                                          nextVRegId,
+                                          phiRegClass,
+                                          phiSpillOffset);
                     }
                     outBB.instrs.push_back(
                         MInstr{MOpcode::Br, {MOperand::labelOp(term.labels[0])}});
@@ -207,42 +224,81 @@ void lowerTerminators(const il::core::Function &fn,
                     if (mi.opc == MOpcode::Bl && !mi.ops.empty() &&
                         mi.ops[0].kind == MOperand::Kind::Label) {
                         const std::string &callee = mi.ops[0].label;
-                        if (callee == "rt_arr_oob_panic" || callee == "rt_trap") {
+                        if (callee == "rt_arr_oob_panic" || callee == "rt_trap" ||
+                            callee == "rt_trap_div0" || callee == "rt_trap_ovf") {
                             hasNoreturnCall = true;
                             break;
                         }
                     }
                 }
                 if (!hasNoreturnCall) {
-                    outBB.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+                    if (!term.operands.empty()) {
+                        uint16_t trapArg = 0;
+                        RegClass trapArgCls = RegClass::GPR;
+                        if (!materializeValueToVReg(term.operands[0],
+                                                    inBB,
+                                                    ti,
+                                                    fb,
+                                                    outBB,
+                                                    blockTempVReg,
+                                                    tempRegClass,
+                                                    nextVRegId,
+                                                    trapArg,
+                                                    trapArgCls) ||
+                            trapArgCls != RegClass::GPR) {
+                            throw std::runtime_error(
+                                "AArch64 terminator lowering: failed to materialize trap payload");
+                        }
+                        outBB.instrs.push_back(
+                            MInstr{MOpcode::MovRR,
+                                   {MOperand::regOp(PhysReg::X0),
+                                    MOperand::vregOp(RegClass::GPR, trapArg)}});
+                        outBB.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+                    } else {
+                        emitNullTrapCall(outBB);
+                    }
                 }
                 break;
             }
 
             case Opcode::TrapFromErr: {
-                // Raise a classified trap derived from the legacy Err_* code.
-                if (!term.operands.empty()) {
-                    const auto &code = term.operands[0];
-                    if (code.kind == il::core::Value::Kind::ConstInt) {
-                        outBB.instrs.push_back(
-                            MInstr{MOpcode::MovRI,
-                                   {MOperand::regOp(PhysReg::X0), MOperand::immOp(code.i64)}});
-                    } else if (code.kind == il::core::Value::Kind::Temp) {
-                        int pIdx = indexOfParam(inBB, code.id);
-                        if (pIdx >= 0 && static_cast<std::size_t>(pIdx) < kMaxGPRArgs) {
-                            const PhysReg src = argOrder[static_cast<std::size_t>(pIdx)];
-                            if (src != PhysReg::X0)
-                                outBB.instrs.push_back(
-                                    MInstr{MOpcode::MovRR,
-                                           {MOperand::regOp(PhysReg::X0), MOperand::regOp(src)}});
-                        }
+                bool hasRaiseErrorCall = false;
+                for (const auto &mi : outBB.instrs) {
+                    if (mi.opc == MOpcode::Bl && !mi.ops.empty() &&
+                        mi.ops[0].kind == MOperand::Kind::Label &&
+                        mi.ops[0].label == "rt_trap_raise_error") {
+                        hasRaiseErrorCall = true;
+                        break;
                     }
-                } else {
-                    outBB.instrs.push_back(
-                        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
                 }
-                outBB.instrs.push_back(
-                    MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_raise_error")}});
+                if (!hasRaiseErrorCall) {
+                    if (term.operands.empty()) {
+                        emitNullTrapCall(outBB);
+                    } else {
+                        uint16_t errToken = 0;
+                        RegClass errCls = RegClass::GPR;
+                        if (!materializeValueToVReg(term.operands[0],
+                                                    inBB,
+                                                    ti,
+                                                    fb,
+                                                    outBB,
+                                                    blockTempVReg,
+                                                    tempRegClass,
+                                                    nextVRegId,
+                                                    errToken,
+                                                    errCls) ||
+                            errCls != RegClass::GPR) {
+                            throw std::runtime_error(
+                                "AArch64 terminator lowering: failed to materialize trap error token");
+                        }
+                        outBB.instrs.push_back(
+                            MInstr{MOpcode::MovRR,
+                                   {MOperand::regOp(PhysReg::X0),
+                                    MOperand::vregOp(RegClass::GPR, errToken)}});
+                        outBB.instrs.push_back(
+                            MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_raise_error")}});
+                    }
+                }
                 break;
             }
 
@@ -260,73 +316,6 @@ void lowerTerminators(const il::core::Function &fn,
                     const std::string falseEdgeLbl =
                         needFalseEdge ? outBB.name + ".Ledge_false_" + std::to_string(i)
                                       : falseLbl;
-
-                    auto emitEdgeCopies = [&](MBasicBlock &edgeBB,
-                                              const std::string &dst,
-                                              const std::vector<il::core::Value> &args) {
-                        auto itIds = phiVregId.find(dst);
-                        if (itIds == phiVregId.end())
-                            return;
-                        auto itSpill = phiSpillOffset.find(dst);
-                        if (itSpill == phiSpillOffset.end())
-                            return;
-                        auto itClass = phiRegClass.find(dst);
-                        if (itClass == phiRegClass.end())
-                            return;
-                        const auto &ids = itIds->second;
-                        const auto &classes = itClass->second;
-                        const auto &spillOffsets = itSpill->second;
-                        // Store phi values to spill slots since register allocator
-                        // releases vreg mappings at block boundaries
-                        for (std::size_t ai = 0; ai < args.size() && ai < ids.size(); ++ai) {
-                            uint16_t sv = 0;
-                            RegClass scls = RegClass::GPR;
-                            if (!materializeValueToVReg(args[ai],
-                                                        inBB,
-                                                        ti,
-                                                        fb,
-                                                        edgeBB,
-                                                        blockTempVReg,
-                                                        tempRegClass,
-                                                        nextVRegId,
-                                                        sv,
-                                                        scls))
-                                continue;
-                            const RegClass dstCls = classes[ai];
-                            const int offset = spillOffsets[ai];
-                            if (dstCls == RegClass::FPR) {
-                                if (scls != RegClass::FPR) {
-                                    const uint16_t cvt = allocateNextVReg(nextVRegId);
-                                    edgeBB.instrs.push_back(
-                                        MInstr{MOpcode::SCvtF,
-                                               {MOperand::vregOp(RegClass::FPR, cvt),
-                                                MOperand::vregOp(RegClass::GPR, sv)}});
-                                    sv = cvt;
-                                    scls = RegClass::FPR;
-                                }
-                                // Phi-edge FPR copy: clears dirty flag in RA to
-                                // suppress redundant block-end spill of this vreg.
-                                edgeBB.instrs.push_back(MInstr{MOpcode::PhiStoreFPR,
-                                                               {MOperand::vregOp(RegClass::FPR, sv),
-                                                                MOperand::immOp(offset)}});
-                            } else {
-                                if (scls == RegClass::FPR) {
-                                    const uint16_t cvt = allocateNextVReg(nextVRegId);
-                                    edgeBB.instrs.push_back(
-                                        MInstr{MOpcode::FCvtZS,
-                                               {MOperand::vregOp(RegClass::GPR, cvt),
-                                                MOperand::vregOp(RegClass::FPR, sv)}});
-                                    sv = cvt;
-                                    scls = RegClass::GPR;
-                                }
-                                // Phi-edge GPR copy: clears dirty flag in RA to
-                                // suppress redundant block-end spill of this vreg.
-                                edgeBB.instrs.push_back(MInstr{MOpcode::PhiStoreGPR,
-                                                               {MOperand::vregOp(RegClass::GPR, sv),
-                                                                MOperand::immOp(offset)}});
-                            }
-                        }
-                    };
 
                     // Try to lower compare producers directly to cmp/fcmp + b.<cond>.
                     const auto &cond = term.operands[0];
@@ -353,7 +342,7 @@ void lowerTerminators(const il::core::Function &fn,
                                                            nextVRegId,
                                                            lhs,
                                                            lhsCls)) {
-                                    const bool isFpCompare = isFloatingPointOp(cmpI.op);
+                                    const bool isFpCompare = isFloatingPointCompareOp(cmpI.op);
                                     if (isFpCompare) {
                                         uint16_t rhs = 0;
                                         RegClass rhsCls = RegClass::FPR;
@@ -455,7 +444,17 @@ void lowerTerminators(const il::core::Function &fn,
                         MBasicBlock trueEdgeBB;
                         trueEdgeBB.name = trueEdgeLbl;
                         if (term.brArgs.size() > 0)
-                            emitEdgeCopies(trueEdgeBB, trueLbl, term.brArgs[0]);
+                            emitPhiEdgeCopies(trueEdgeBB,
+                                              trueLbl,
+                                              term.brArgs[0],
+                                              inBB,
+                                              ti,
+                                              fb,
+                                              blockTempVReg,
+                                              tempRegClass,
+                                              nextVRegId,
+                                              phiRegClass,
+                                              phiSpillOffset);
                         trueEdgeBB.instrs.push_back(
                             MInstr{MOpcode::Br, {MOperand::labelOp(trueLbl)}});
                         mf.blocks.push_back(std::move(trueEdgeBB));
@@ -465,10 +464,123 @@ void lowerTerminators(const il::core::Function &fn,
                         MBasicBlock falseEdgeBB;
                         falseEdgeBB.name = falseEdgeLbl;
                         if (term.brArgs.size() > 1)
-                            emitEdgeCopies(falseEdgeBB, falseLbl, term.brArgs[1]);
+                            emitPhiEdgeCopies(falseEdgeBB,
+                                              falseLbl,
+                                              term.brArgs[1],
+                                              inBB,
+                                              ti,
+                                              fb,
+                                              blockTempVReg,
+                                              tempRegClass,
+                                              nextVRegId,
+                                              phiRegClass,
+                                              phiSpillOffset);
                         falseEdgeBB.instrs.push_back(
                             MInstr{MOpcode::Br, {MOperand::labelOp(falseLbl)}});
                         mf.blocks.push_back(std::move(falseEdgeBB));
+                    }
+                }
+                break;
+
+            case Opcode::SwitchI32:
+                if (!term.operands.empty()) {
+                    uint16_t sv = 0;
+                    RegClass scls = RegClass::GPR;
+                    if (!materializeValueToVReg(term.operands[0],
+                                                inBB,
+                                                ti,
+                                                fb,
+                                                outBB,
+                                                blockTempVReg,
+                                                tempRegClass,
+                                                nextVRegId,
+                                                sv,
+                                                scls)) {
+                        throw std::runtime_error(
+                            "AArch64 terminator lowering: failed to materialize switch scrutinee");
+                    }
+                    if (scls != RegClass::GPR) {
+                        throw std::runtime_error(
+                            "AArch64 terminator lowering: switch scrutinee lowered to non-GPR");
+                    }
+
+                    const std::size_t ncases = il::core::switchCaseCount(term);
+                    for (std::size_t ci = 0; ci < ncases; ++ci) {
+                        const auto &caseValue = il::core::switchCaseValue(term, ci);
+                        const std::string &caseLabel = il::core::switchCaseLabel(term, ci);
+                        long long imm = 0;
+                        if (caseValue.kind == il::core::Value::Kind::ConstInt)
+                            imm = caseValue.i64;
+                        if (isUImm12(imm)) {
+                            outBB.instrs.push_back(MInstr{
+                                MOpcode::CmpRI,
+                                {MOperand::vregOp(RegClass::GPR, sv), MOperand::immOp(imm)}});
+                        } else {
+                            const uint16_t caseV = allocateNextVReg(nextVRegId);
+                            outBB.instrs.push_back(MInstr{
+                                MOpcode::MovRI,
+                                {MOperand::vregOp(RegClass::GPR, caseV), MOperand::immOp(imm)}});
+                            outBB.instrs.push_back(MInstr{
+                                MOpcode::CmpRR,
+                                {MOperand::vregOp(RegClass::GPR, sv),
+                                 MOperand::vregOp(RegClass::GPR, caseV)}});
+                        }
+
+                        const auto &args = il::core::switchCaseArgs(term, ci);
+                        const bool needsEdge = !args.empty();
+                        const std::string edgeLabel =
+                            needsEdge
+                                ? outBB.name + ".Lswitch_case_" + std::to_string(i) + "_" +
+                                      std::to_string(ci)
+                                : caseLabel;
+                        outBB.instrs.push_back(MInstr{
+                            MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(edgeLabel)}});
+
+                        if (needsEdge) {
+                            MBasicBlock edgeBB;
+                            edgeBB.name = edgeLabel;
+                            emitPhiEdgeCopies(edgeBB,
+                                              caseLabel,
+                                              args,
+                                              inBB,
+                                              ti,
+                                              fb,
+                                              blockTempVReg,
+                                              tempRegClass,
+                                              nextVRegId,
+                                              phiRegClass,
+                                              phiSpillOffset);
+                            edgeBB.instrs.push_back(
+                                MInstr{MOpcode::Br, {MOperand::labelOp(caseLabel)}});
+                            mf.blocks.push_back(std::move(edgeBB));
+                        }
+                    }
+
+                    const std::string &defLbl = il::core::switchDefaultLabel(term);
+                    if (!defLbl.empty()) {
+                        const auto &defArgs = il::core::switchDefaultArgs(term);
+                        const bool needsEdge = !defArgs.empty();
+                        const std::string edgeLabel =
+                            needsEdge ? outBB.name + ".Lswitch_default_" + std::to_string(i) : defLbl;
+                        outBB.instrs.push_back(
+                            MInstr{MOpcode::Br, {MOperand::labelOp(edgeLabel)}});
+                        if (needsEdge) {
+                            MBasicBlock edgeBB;
+                            edgeBB.name = edgeLabel;
+                            emitPhiEdgeCopies(edgeBB,
+                                              defLbl,
+                                              defArgs,
+                                              inBB,
+                                              ti,
+                                              fb,
+                                              blockTempVReg,
+                                              tempRegClass,
+                                              nextVRegId,
+                                              phiRegClass,
+                                              phiSpillOffset);
+                            edgeBB.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(defLbl)}});
+                            mf.blocks.push_back(std::move(edgeBB));
+                        }
                     }
                 }
                 break;

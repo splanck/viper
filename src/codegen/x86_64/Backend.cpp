@@ -61,6 +61,20 @@ void lowerOverflowOps(MFunction &fn);
 
 namespace {
 
+[[nodiscard]] objfile::ObjFormat targetObjectFormat(CodegenOptions::TargetPlatform platform) {
+    switch (platform) {
+        case CodegenOptions::TargetPlatform::Darwin:
+            return objfile::ObjFormat::MachO;
+        case CodegenOptions::TargetPlatform::Linux:
+            return objfile::ObjFormat::ELF;
+        case CodegenOptions::TargetPlatform::Windows:
+            return objfile::ObjFormat::COFF;
+        case CodegenOptions::TargetPlatform::Host:
+            return objfile::detectHostFormat();
+    }
+    return objfile::detectHostFormat();
+}
+
 /// @brief Emit a warning message when unsupported syntax options are requested.
 ///
 /// @details Phase A only supports AT&T syntax emission.  When callers request
@@ -293,24 +307,30 @@ CodegenResult emitMIRToAssembly(const std::vector<MFunction> &mir,
         errorStream << warning;
     }
 
-    AsmEmitter::RoDataPool roDataCopy = roData;
-    AsmEmitter emitter{roDataCopy};
+    const objfile::ObjFormat format = targetObjectFormat(options.targetPlatform);
 
-    for (std::size_t index = 0; index < mir.size(); ++index) {
-        emitter.emitFunction(asmStream, mir[index], target);
-        if (index + 1U < mir.size()) {
-            asmStream << '\n';
+    try {
+        AsmEmitter::RoDataPool roDataCopy = roData;
+        AsmEmitter emitter{roDataCopy, format};
+
+        for (std::size_t index = 0; index < mir.size(); ++index) {
+            emitter.emitFunction(asmStream, mir[index], target);
+            if (index + 1U < mir.size()) {
+                asmStream << '\n';
+            }
         }
-    }
 
-    emitter.emitRoData(asmStream);
+        emitter.emitRoData(asmStream);
+    } catch (const std::exception &ex) {
+        errorStream << ex.what() << '\n';
+    }
 
     // Mark the stack as non-executable on ELF targets.  Without this directive
     // the GNU linker defaults to an executable stack, triggering a warning and
     // creating a security issue.
-#if !defined(__APPLE__) && !defined(_WIN32)
-    asmStream << "\n.section .note.GNU-stack,\"\",@progbits\n";
-#endif
+    if (format == objfile::ObjFormat::ELF) {
+        asmStream << "\n.section .note.GNU-stack,\"\",@progbits\n";
+    }
 
     result.asmText = asmStream.str();
     result.errors = errorStream.str();
@@ -370,10 +390,12 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
                                  const std::vector<FrameInfo> &frames,
                                  const AsmEmitter::RoDataPool &roData,
                                  const TargetInfo &target,
-                                 const CodegenOptions &opt,
-                                 bool isDarwin) {
+                                 const CodegenOptions &opt) {
     BinaryEmitResult result{};
     std::ostringstream errorStream{};
+    const objfile::ObjFormat format = targetObjectFormat(opt.targetPlatform);
+    const bool isDarwin = format == objfile::ObjFormat::MachO;
+    const bool emitWin64Unwind = format == objfile::ObjFormat::COFF;
 
     if (const auto warning = syntaxWarning(opt); !warning.empty()) {
         // Syntax warnings don't apply to binary emission, but keep parity.
@@ -421,7 +443,8 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
         binenc::X64BinaryEncoder funcEncoder;
         funcEncoder.setDebugLineTable(&funcDebugLines);
         try {
-            funcEncoder.encodeFunction(mir[i], funcText, result.rodata, isDarwin, &frames[i]);
+            funcEncoder.encodeFunction(
+                mir[i], funcText, result.rodata, isDarwin, &frames[i], emitWin64Unwind);
         } catch (const std::exception &ex) {
             BinaryEmitResult failure{};
             failure.errors =
@@ -442,7 +465,7 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
     return result;
 }
 
-BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &opt, bool isDarwin) {
+BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &opt) {
     const TargetInfo &target = selectTarget(opt.targetABI);
     AsmEmitter::RoDataPool roData{};
     std::vector<MFunction> mir;
@@ -454,7 +477,7 @@ BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &o
         return BinaryEmitResult{{}, {}, errors};
     if (!optimizeModuleMIR(mir, opt, errors))
         return BinaryEmitResult{{}, {}, errors};
-    return emitMIRToBinary(mir, frames, roData, target, opt, isDarwin);
+    return emitMIRToBinary(mir, frames, roData, target, opt);
 }
 
 } // namespace viper::codegen::x64

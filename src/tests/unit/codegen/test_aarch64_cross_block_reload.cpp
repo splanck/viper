@@ -116,6 +116,73 @@ TEST(AArch64CrossBlockReload, ReloadsSharedTempOncePerSuccessorBlock) {
     EXPECT_GE(sharedUseCount, 2u);
 }
 
+TEST(AArch64CrossBlockReload, ReloadsTempsUsedOnlyInBranchArguments) {
+    using namespace il::core;
+
+    Function fn;
+    fn.name = "reload_branch_args";
+    fn.retType = Type(Type::Kind::I64);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+
+    Instr makeShared;
+    makeShared.result = 0;
+    makeShared.op = Opcode::Add;
+    makeShared.type = Type(Type::Kind::I64);
+    makeShared.operands = {Value::constInt(20), Value::constInt(22)};
+
+    Instr toMid;
+    toMid.op = Opcode::Br;
+    toMid.type = Type(Type::Kind::Void);
+    toMid.labels = {"mid"};
+    toMid.brArgs = {{}};
+
+    entry.instructions = {makeShared, toMid};
+
+    BasicBlock mid;
+    mid.label = "mid";
+    mid.terminated = true;
+
+    Instr toUse;
+    toUse.op = Opcode::Br;
+    toUse.type = Type(Type::Kind::Void);
+    toUse.labels = {"use"};
+    toUse.brArgs = {{Value::temp(0)}};
+
+    mid.instructions = {toUse};
+
+    BasicBlock use;
+    use.label = "use";
+    use.params = {Param{.name = "x", .type = Type(Type::Kind::I64), .id = 1}};
+    use.terminated = true;
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(1)};
+
+    use.instructions = {ret};
+    fn.blocks = {entry, mid, use};
+
+    LowerILToMIR lowering{linuxTarget()};
+    const MFunction mir = lowering.lowerFunction(fn);
+
+    const auto midIt = std::find_if(mir.blocks.begin(), mir.blocks.end(), [](const MBasicBlock &bb) {
+        return bb.name == "mid";
+    });
+    ASSERT_TRUE(midIt != mir.blocks.end());
+
+    std::size_t reloadCount = 0;
+    for (const auto &mi : midIt->instrs) {
+        if (mi.opc == MOpcode::LdrRegFpImm)
+            ++reloadCount;
+    }
+
+    EXPECT_EQ(reloadCount, 1u);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

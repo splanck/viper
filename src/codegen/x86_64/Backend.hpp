@@ -36,9 +36,17 @@ struct CodegenOptions {
         Win64,
     };
 
+    enum class TargetPlatform {
+        Host,
+        Darwin,
+        Linux,
+        Windows,
+    };
+
     bool atandtSyntax{true}; ///< Emit AT&T syntax when true; Phase A only supports this form.
     int optimizeLevel{1};    ///< Optimization level: 0 = none, 1 = O1 (default), 2 = O2.
     TargetABI targetABI{TargetABI::Host}; ///< Target ABI used for lowering/allocation.
+    TargetPlatform targetPlatform{TargetPlatform::Host}; ///< Object/link/platform policy.
     std::string debugSourcePath{};        ///< Source path used for DWARF line table file entries.
 };
 
@@ -104,15 +112,10 @@ struct BinaryEmitResult {
                                                const std::vector<FrameInfo> &frames,
                                                const AsmEmitter::RoDataPool &roData,
                                                const TargetInfo &target,
-                                               const CodegenOptions &options,
-                                               bool isDarwin);
+                                               const CodegenOptions &options);
 
 /// \brief Lower an IL module to binary machine code via X64BinaryEncoder.
-/// @param mod     The lowered IL module.
-/// @param opt     Backend options (optimization level, etc.).
-/// @param isDarwin If true, symbol names get underscore-prefixed (Mach-O convention).
 [[nodiscard]] BinaryEmitResult emitModuleToBinary(const ILModule &mod,
-                                                  const CodegenOptions &opt,
-                                                  bool isDarwin);
+                                                  const CodegenOptions &opt);
 
 } // namespace viper::codegen::x64

@@ -30,6 +30,19 @@ static int countOpcode(const MFunction &func, MOpcode opc) {
     return count;
 }
 
+static bool hasCallTarget(const MFunction &func, const char *target) {
+    for (const auto &block : func.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.opcode != MOpcode::CALL || instr.operands.empty())
+                continue;
+            const auto *label = std::get_if<OpLabel>(&instr.operands[0]);
+            if (label && label->name == target)
+                return true;
+        }
+    }
+    return false;
+}
+
 // Helper to count stack probe instructions: MOVmr loading from (%rsp) into RAX
 // (the probe touch pattern). Excludes loads into RBP which are the standard
 // frame setup `mov (%rsp), %rbp`.
@@ -225,6 +238,46 @@ TEST(X64FrameLowering, ZeroFrameNoPrologue) {
     // should skip the prologue entirely (leaf frame elimination).
     int movCount = countOpcode(func, MOpcode::MOVrr);
     EXPECT_EQ(movCount, 0); // No prologue for leaf functions
+}
+
+TEST(X64FrameLowering, IncomingStackParamsPreventLeafElision) {
+    MFunction func;
+    func.name = "stack_params";
+    MBasicBlock block;
+    block.label = "entry";
+    const OpReg rbp{true, RegClass::GPR, static_cast<uint16_t>(PhysReg::RBP)};
+    block.instructions.push_back(MInstr::make(
+        MOpcode::MOVmr, {makeVRegOperand(RegClass::GPR, 1), makeMemOperand(rbp, 16)}));
+    block.instructions.push_back(MInstr::make(MOpcode::RET, {}));
+    func.blocks.push_back(std::move(block));
+
+    FrameInfo frame;
+    frame.frameSize = 0;
+
+    insertPrologueEpilogue(func, sysvTarget(), frame);
+
+    ASSERT_FALSE(func.blocks.empty());
+    ASSERT_GE(func.blocks.front().instructions.size(), 4u);
+    EXPECT_EQ(func.blocks.front().instructions[0].opcode, MOpcode::ADDri);
+    EXPECT_EQ(func.blocks.front().instructions[1].opcode, MOpcode::MOVrm);
+    EXPECT_EQ(func.blocks.front().instructions[2].opcode, MOpcode::MOVrr);
+}
+
+TEST(X64FrameLowering, MainGetsStackSafetyInitEvenWithoutFrame) {
+    MFunction func;
+    func.name = "main";
+    MBasicBlock block;
+    block.label = "entry";
+    block.instructions.push_back(MInstr::make(MOpcode::RET, {}));
+    func.blocks.push_back(std::move(block));
+
+    FrameInfo frame;
+    frame.frameSize = 0;
+
+    insertPrologueEpilogue(func, sysvTarget(), frame);
+
+    EXPECT_TRUE(hasCallTarget(func, "rt_init_stack_safety"));
+    EXPECT_GE(countOpcode(func, MOpcode::MOVrr), 1);
 }
 
 TEST(X64FrameLowering, LargeAllocaConsumesMultipleSlots) {

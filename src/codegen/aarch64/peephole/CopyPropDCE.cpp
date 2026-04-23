@@ -332,6 +332,7 @@ std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &st
             case MOpcode::SubsRI:
             case MOpcode::MulRRR:
             case MOpcode::SmulhRRR:
+            case MOpcode::UmulhRRR:
             case MOpcode::AndRRR:
             case MOpcode::OrrRRR:
             case MOpcode::EorRRR:

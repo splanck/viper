@@ -16,8 +16,10 @@
 
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/Peephole.hpp"
+#include "codegen/aarch64/peephole/PeepholeCommon.hpp"
 
 using namespace viper::codegen::aarch64;
+using namespace viper::codegen::aarch64::peephole;
 
 /// Unsigned division by 8 (power of 2) should become lsr by 3.
 TEST(AArch64DivStrength, UDivByPowerOf2BecomesLsr) {
@@ -93,10 +95,9 @@ TEST(AArch64DivStrength, SDivByPowerOf2BecomesShift) {
     EXPECT_EQ(bb.instrs[1].opc, MOpcode::AsrRI);
 }
 
-/// Signed division by arbitrary non-power-of-2 constant currently remains as SDIV.
-/// The previous magic-number lowering was disabled after it regressed truncation-
-/// toward-zero semantics in native O1 codegen.
-TEST(AArch64DivStrength, SDivByConstantNotReducedYet) {
+/// Signed division by arbitrary non-power-of-2 constant should lower to a
+/// multiply-high magic-number sequence that preserves truncation toward zero.
+TEST(AArch64DivStrength, SDivByConstantUsesMagicMultiply) {
     MFunction fn{};
     fn.name = "test_sdiv_const";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -111,12 +112,23 @@ TEST(AArch64DivStrength, SDivByConstantNotReducedYet) {
 
     auto stats = runPeephole(fn);
 
-    EXPECT_EQ(stats.strengthReductions, 0);
-    EXPECT_EQ(bb.instrs[1].opc, MOpcode::SDivRRR);
+    EXPECT_TRUE(stats.strengthReductions >= 1);
+    bool foundSmulh = false;
+    bool foundAsr = false;
+    for (const auto &instr : bb.instrs) {
+        if (instr.opc == MOpcode::SmulhRRR)
+            foundSmulh = true;
+        if (instr.opc == MOpcode::AsrRI)
+            foundAsr = true;
+        EXPECT_NE(instr.opc, MOpcode::SDivRRR);
+    }
+    EXPECT_TRUE(foundSmulh);
+    EXPECT_TRUE(foundAsr);
 }
 
-/// Non-power-of-2 divisor for UDIV should not be reduced (unsigned magic not implemented).
-TEST(AArch64DivStrength, UDivByNonPowerOf2NotReduced) {
+/// Unsigned division by arbitrary non-power-of-2 constant should lower to an
+/// unsigned multiply-high magic-number sequence.
+TEST(AArch64DivStrength, UDivByNonPowerOf2UsesMagicMultiply) {
     MFunction fn{};
     fn.name = "test_udiv_non_pow2";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -131,8 +143,144 @@ TEST(AArch64DivStrength, UDivByNonPowerOf2NotReduced) {
 
     auto stats = runPeephole(fn);
 
-    // 7 is not power of 2, should remain as UDivRRR
+    EXPECT_TRUE(stats.strengthReductions >= 1);
+    bool foundUmulh = false;
+    for (const auto &instr : bb.instrs) {
+        if (instr.opc == MOpcode::UmulhRRR)
+            foundUmulh = true;
+        EXPECT_NE(instr.opc, MOpcode::UDivRRR);
+    }
+    EXPECT_TRUE(foundUmulh);
+}
+
+/// Signed division by a negative constant should still preserve C/IL
+/// truncation-toward-zero semantics after strength reduction.
+TEST(AArch64DivStrength, SDivByNegativeConstantUsesMagicMultiply) {
+    MFunction fn{};
+    fn.name = "test_sdiv_neg_const";
+    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    auto &bb = fn.blocks.back();
+
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(-7)}});
+    bb.instrs.push_back(MInstr{MOpcode::SDivRRR,
+                               {MOperand::regOp(PhysReg::X0),
+                                MOperand::regOp(PhysReg::X2),
+                                MOperand::regOp(PhysReg::X1)}});
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    auto stats = runPeephole(fn);
+
+    EXPECT_TRUE(stats.strengthReductions >= 1);
+    bool foundSmulh = false;
+    bool foundNegate = false;
+    for (const auto &instr : bb.instrs) {
+        if (instr.opc == MOpcode::SmulhRRR)
+            foundSmulh = true;
+        if (instr.opc == MOpcode::SubRRR &&
+            instr.ops.size() == 3 &&
+            instr.ops[1].kind == MOperand::Kind::Reg &&
+            instr.ops[2].kind == MOperand::Kind::Reg) {
+            foundNegate = true;
+        }
+        EXPECT_NE(instr.opc, MOpcode::SDivRRR);
+    }
+    EXPECT_TRUE(foundSmulh);
+    EXPECT_TRUE(foundNegate);
+}
+
+/// Later constant reuses in the same block must not leak backward into earlier
+/// division strength reduction decisions.
+TEST(AArch64DivStrength, SDivStrengthReductionUsesDominatingConstant) {
+    constexpr long long kMagicDiv3 = 6148914691236517206LL;
+
+    MFunction fn{};
+    fn.name = "test_sdiv_const_dominating";
+    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    auto &bb = fn.blocks.back();
+
+    bb.instrs.push_back(MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X15), MOperand::immOp(3)}});
+    bb.instrs.push_back(MInstr{MOpcode::SDivRRR,
+                               {MOperand::regOp(PhysReg::X13),
+                                MOperand::regOp(PhysReg::X14),
+                                MOperand::regOp(PhysReg::X15)}});
+    bb.instrs.push_back(MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X13)}});
+    bb.instrs.push_back(MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X15), MOperand::immOp(5)}});
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    auto stats = runPeephole(fn);
+
+    EXPECT_TRUE(stats.strengthReductions >= 1);
+    bool foundMagicDiv3 = false;
+    for (const auto &instr : bb.instrs) {
+        if (instr.opc == MOpcode::MovRI && instr.ops.size() == 2 &&
+            instr.ops[0].kind == MOperand::Kind::Reg &&
+            instr.ops[0].reg.isPhys &&
+            instr.ops[1].kind == MOperand::Kind::Imm &&
+            instr.ops[1].imm == kMagicDiv3) {
+            foundMagicDiv3 = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundMagicDiv3);
+}
+
+/// Non-power-of-2 signed division must not be strength-reduced when the
+/// following MSUB still needs the divisor to form a remainder.
+TEST(AArch64DivStrength, SDivConstantRemainderKeepsDivSequence) {
+    MFunction fn{};
+    fn.name = "test_sdiv_const_preserve_divisor";
+    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    auto &bb = fn.blocks.back();
+
+    bb.instrs.push_back(MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(3)}});
+    bb.instrs.push_back(MInstr{MOpcode::SDivRRR,
+                               {MOperand::regOp(PhysReg::X3),
+                                MOperand::regOp(PhysReg::X2),
+                                MOperand::regOp(PhysReg::X1)}});
+    bb.instrs.push_back(MInstr{MOpcode::MSubRRRR,
+                               {MOperand::regOp(PhysReg::X0),
+                                MOperand::regOp(PhysReg::X3),
+                                MOperand::regOp(PhysReg::X1),
+                                MOperand::regOp(PhysReg::X2)}});
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    auto stats = runPeephole(fn);
+
+    EXPECT_EQ(stats.strengthReductions, 0);
+    ASSERT_GE(bb.instrs.size(), 4u);
+    EXPECT_EQ(bb.instrs[1].opc, MOpcode::SDivRRR);
+    EXPECT_EQ(bb.instrs[2].opc, MOpcode::MSubRRRR);
+    EXPECT_TRUE(samePhysReg(bb.instrs[2].ops[2], MOperand::regOp(PhysReg::X1)));
+}
+
+/// Non-power-of-2 unsigned division must also remain intact when an MSUB-based
+/// remainder still consumes the divisor register.
+TEST(AArch64DivStrength, UDivConstantRemainderKeepsDivSequence) {
+    MFunction fn{};
+    fn.name = "test_udiv_const_preserve_divisor";
+    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    auto &bb = fn.blocks.back();
+
+    bb.instrs.push_back(MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X1), MOperand::immOp(7)}});
+    bb.instrs.push_back(MInstr{MOpcode::UDivRRR,
+                               {MOperand::regOp(PhysReg::X3),
+                                MOperand::regOp(PhysReg::X2),
+                                MOperand::regOp(PhysReg::X1)}});
+    bb.instrs.push_back(MInstr{MOpcode::MSubRRRR,
+                               {MOperand::regOp(PhysReg::X0),
+                                MOperand::regOp(PhysReg::X3),
+                                MOperand::regOp(PhysReg::X1),
+                                MOperand::regOp(PhysReg::X2)}});
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    auto stats = runPeephole(fn);
+
+    EXPECT_EQ(stats.strengthReductions, 0);
+    ASSERT_GE(bb.instrs.size(), 4u);
     EXPECT_EQ(bb.instrs[1].opc, MOpcode::UDivRRR);
+    EXPECT_EQ(bb.instrs[2].opc, MOpcode::MSubRRRR);
+    EXPECT_TRUE(samePhysReg(bb.instrs[2].ops[2], MOperand::regOp(PhysReg::X1)));
 }
 
 /// UREM by power-of-2: udiv+msub -> and mask

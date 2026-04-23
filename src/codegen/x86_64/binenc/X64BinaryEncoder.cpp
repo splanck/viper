@@ -356,7 +356,8 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
                                       objfile::CodeSection &text,
                                       objfile::CodeSection &rodata,
                                       bool isDarwin,
-                                      const FrameInfo *frame) {
+                                      const FrameInfo *frame,
+                                      bool emitWin64Unwind) {
     // Reset per-function state.
     pendingBranches_.clear();
 
@@ -406,12 +407,8 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
         text.patch32LE(pb.patchOffset, static_cast<uint32_t>(rel));
     }
 
-#if defined(_WIN32)
-    if (!isDarwin && frame)
+    if (emitWin64Unwind && frame)
         recordWin64Unwind(fn, *frame, funcSymIdx, funcStartOffset, entryInstrEndOffsets, text);
-#else
-    (void)frame;
-#endif
 }
 
 // === Main instruction dispatch ===
@@ -493,6 +490,8 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         // --- Pseudo-instructions that should have been expanded ---
         case MOpcode::DIVS64rr:
         case MOpcode::REMS64rr:
+        case MOpcode::DIVS64Chk0rr:
+        case MOpcode::REMS64Chk0rr:
         case MOpcode::DIVU64rr:
         case MOpcode::REMU64rr:
         case MOpcode::ADDOvfrr:

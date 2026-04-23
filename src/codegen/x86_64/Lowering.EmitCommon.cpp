@@ -709,8 +709,14 @@ void EmitCommon::emitDivRem(const ILInstr &instr, std::string_view opcode) {
         if (opcode == "div" || opcode == "sdiv") {
             return MOpcode::DIVS64rr;
         }
+        if (opcode == "sdiv.chk0") {
+            return MOpcode::DIVS64Chk0rr;
+        }
         if (opcode == "rem" || opcode == "srem") {
             return MOpcode::REMS64rr;
+        }
+        if (opcode == "srem.chk0") {
+            return MOpcode::REMS64Chk0rr;
         }
         if (opcode == "udiv") {
             return MOpcode::DIVU64rr;

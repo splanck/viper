@@ -106,6 +106,7 @@ using viper::codegen::common::removeMarkedInstructions;
         case MOpcode::SubRRR:
         case MOpcode::MulRRR:
         case MOpcode::SmulhRRR:
+        case MOpcode::UmulhRRR:
         case MOpcode::SDivRRR:
         case MOpcode::UDivRRR:
         case MOpcode::AddRI:
@@ -218,6 +219,7 @@ using viper::codegen::common::removeMarkedInstructions;
         case MOpcode::SubRRR:
         case MOpcode::MulRRR:
         case MOpcode::SmulhRRR:
+        case MOpcode::UmulhRRR:
         case MOpcode::SDivRRR:
         case MOpcode::UDivRRR:
         case MOpcode::AndRRR:
@@ -367,6 +369,7 @@ using viper::codegen::common::removeMarkedInstructions;
         case MOpcode::SubRRR:
         case MOpcode::MulRRR:
         case MOpcode::SmulhRRR:
+        case MOpcode::UmulhRRR:
         case MOpcode::SDivRRR:
         case MOpcode::UDivRRR:
         case MOpcode::AndRRR:
@@ -512,6 +515,7 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
         case MOpcode::SubRRR:
         case MOpcode::MulRRR:
         case MOpcode::SmulhRRR:
+        case MOpcode::UmulhRRR:
         case MOpcode::SDivRRR:
         case MOpcode::UDivRRR:
         case MOpcode::AndRRR:
@@ -640,6 +644,7 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
         case MOpcode::SubRRR:
         case MOpcode::MulRRR:
         case MOpcode::SmulhRRR:
+        case MOpcode::UmulhRRR:
         case MOpcode::SDivRRR:
         case MOpcode::UDivRRR:
         case MOpcode::AndRRR:

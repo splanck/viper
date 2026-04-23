@@ -27,6 +27,25 @@
 #include "fastpaths/FastPathsInternal.hpp"
 
 namespace viper::codegen::aarch64 {
+namespace {
+
+template <typename AttemptFn>
+std::optional<MFunction> tryFastPathAttempt(const il::core::Function &fn,
+                                            const TargetInfo &ti,
+                                            const MFunction &seedMf,
+                                            const std::unordered_map<std::string, std::size_t>
+                                                *stringLiteralByteLengths,
+                                            AttemptFn &&attempt) {
+    MFunction scratchMf = seedMf;
+    FrameBuilder scratchFb(scratchMf);
+    fastpaths::FastPathContext scratchCtx(
+        fn, ti, scratchFb, scratchMf, stringLiteralByteLengths);
+    if (auto result = attempt(scratchCtx))
+        return std::move(*result);
+    return std::nullopt;
+}
+
+} // namespace
 
 std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
                                       const TargetInfo &ti,
@@ -36,9 +55,7 @@ std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
                                           *stringLiteralByteLengths) {
     if (fn.blocks.empty())
         return std::nullopt;
-
-    // Create fast-path context for all handlers
-    fastpaths::FastPathContext ctx(fn, ti, fb, mf, stringLiteralByteLengths);
+    (void)fb;
 
     // =========================================================================
     // Try fast-paths in order of specificity
@@ -47,27 +64,63 @@ std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
     // more general patterns (arithmetic, calls, returns).
 
     // Memory operations: alloca/store/load/ret pattern
-    if (auto result = fastpaths::tryMemoryFastPaths(ctx))
+    if (auto result = tryFastPathAttempt(fn,
+                                         ti,
+                                         mf,
+                                         stringLiteralByteLengths,
+                                         [](fastpaths::FastPathContext &ctx) {
+                                             return fastpaths::tryMemoryFastPaths(ctx);
+                                         }))
         return result;
 
     // Type conversions: zext1/trunc1, narrowing casts, FP conversions
-    if (auto result = fastpaths::tryCastFastPaths(ctx))
+    if (auto result = tryFastPathAttempt(fn,
+                                         ti,
+                                         mf,
+                                         stringLiteralByteLengths,
+                                         [](fastpaths::FastPathContext &ctx) {
+                                             return fastpaths::tryCastFastPaths(ctx);
+                                         }))
         return result;
 
     // Integer arithmetic: add/sub/mul/and/or/xor, comparisons, shifts
-    if (auto result = fastpaths::tryIntArithmeticFastPaths(ctx))
+    if (auto result = tryFastPathAttempt(fn,
+                                         ti,
+                                         mf,
+                                         stringLiteralByteLengths,
+                                         [](fastpaths::FastPathContext &ctx) {
+                                             return fastpaths::tryIntArithmeticFastPaths(ctx);
+                                         }))
         return result;
 
     // Floating-point arithmetic: fadd/fsub/fmul/fdiv
-    if (auto result = fastpaths::tryFPArithmeticFastPaths(ctx))
+    if (auto result = tryFastPathAttempt(fn,
+                                         ti,
+                                         mf,
+                                         stringLiteralByteLengths,
+                                         [](fastpaths::FastPathContext &ctx) {
+                                             return fastpaths::tryFPArithmeticFastPaths(ctx);
+                                         }))
         return result;
 
     // Call lowering: call @callee(args...) feeding ret
-    if (auto result = fastpaths::tryCallFastPaths(ctx))
+    if (auto result = tryFastPathAttempt(fn,
+                                         ti,
+                                         mf,
+                                         stringLiteralByteLengths,
+                                         [](fastpaths::FastPathContext &ctx) {
+                                             return fastpaths::tryCallFastPaths(ctx);
+                                         }))
         return result;
 
     // Simple returns: ret %param, ret const, ret const_str/addr_of
-    if (auto result = fastpaths::tryReturnFastPaths(ctx))
+    if (auto result = tryFastPathAttempt(fn,
+                                         ti,
+                                         mf,
+                                         stringLiteralByteLengths,
+                                         [](fastpaths::FastPathContext &ctx) {
+                                             return fastpaths::tryReturnFastPaths(ctx);
+                                         }))
         return result;
 
     // No fast-path matched

@@ -46,13 +46,22 @@ namespace viper::codegen::aarch64::peephole {
                                            const RegConstMap &knownConsts,
                                            PeepholeStats &stats);
 
+/// @brief Apply multi-instruction unsigned division strength reduction.
+///
+/// Handles unsigned division by arbitrary non-power-of-2 constants using
+/// `umulh` plus an optional correction/add sequence. Power-of-2 divisors stay
+/// on the single-instruction path above so they can collapse directly to `lsr`.
+[[nodiscard]] bool tryUDivStrengthReduction(std::vector<MInstr> &instrs,
+                                            std::size_t idx,
+                                            const RegConstMap &knownConsts,
+                                            PeepholeStats &stats);
+
 /// @brief Apply strength reduction: signed division by constant.
 ///
 /// Handles two cases:
 /// - SDIV by power-of-2: Replaces with ASR sign-correction sequence (4 instructions).
-/// - SDIV by arbitrary positive constant: currently left unchanged until a
-///   proven-correct magic-number lowering is reinstated
-///   sequence (4-6 instructions, but each ~1-3 cycles vs ~22 cycles for SDIV).
+/// - SDIV by arbitrary constant: Replaces with a proved-correct multiply-high
+///   magic-number sequence that preserves truncation-toward-zero semantics.
 ///
 /// @param instrs The instruction vector (may be modified via insertion/deletion).
 /// @param idx Index of the SDivRRR instruction.

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-04-23
 ---
 
 # AArch64 (arm64) Backend — Status and Plan
@@ -19,6 +19,11 @@ programs, and the development roadmap. It is kept developer-focused with concret
 - **Binary encoder**: Direct object code emission (bypassing assembler text)
 - **Fastpaths**: Arithmetic and call fastpath optimizations for common patterns
 - **Register allocator hardening**: Protected-use sets prevent source-operand eviction during def allocation; FPR load/store classification; operandRoles fix for immediate-ALU instructions; clean FPR spill slot reuse across calls; dead vreg early release
+- **Cross-target output plumbing**: `--target-darwin`, `--target-linux`, and `--target-windows` now drive the native object format, linker platform, and system-assembler target instead of silently falling back to the host
+- **Trap ABI fixes**: plain `trap` and `idx.chk` now marshal `x0 = NULL`, checked div/rem and overflow traps call `rt_trap_div0` / `rt_trap_ovf`, and `trap.from_err` now marshals its code into `x0` before calling `rt_trap_raise_error`
+- **Control-flow correctness**: `switch.i32` edge arguments now travel through phi spill slots via dedicated edge blocks, so untaken cases no longer clobber taken-edge values
+- **Emitter parity**: text assembly now emits the same BTI / PACIASP / AUTIASP hardening sequence as the binary encoder, and compact unwind records are emitted only for Darwin objects
+- **Strength reduction**: signed and unsigned division by arbitrary constants now lower through magic-multiply sequences; `UmulhRRR` is part of the MIR and binary encoder surface
 - **117 codegen test files**
 
 ## Source File Map
@@ -27,12 +32,13 @@ programs, and the development roadmap. It is kept developer-focused with concret
 
 | File | Purpose |
 |------|---------|
-| `src/codegen/aarch64/TargetAArch64.hpp`/`.cpp` | `PhysReg` enum (X0–X30, SP, V0–V31), `TargetInfo` struct, `darwinTarget()` singleton, `isGPR()`, `isFPR()`, `regName()` |
+| `src/codegen/aarch64/TargetAArch64.hpp`/`.cpp` | `PhysReg` enum (X0–X30, SP, V0–V31), `TargetInfo` struct, `darwinTarget()` / `linuxTarget()` / `windowsTarget()` singletons, `isGPR()`, `isFPR()`, `regName()` |
 
 `TargetInfo` contents:
 
-- `darwinTarget()` returns a `const TargetInfo &` singleton with:
+- `darwinTarget()`, `linuxTarget()`, and `windowsTarget()` return `const TargetInfo &` singletons with:
     - Caller/callee-saved sets (AAPCS64), arg register orders (X0–X7, V0–V7), return regs (X0, V0), stack alignment (16)
+- `TargetInfo::abiFormat` drives symbol mangling and assembler/object-file dialect (Mach-O, ELF, COFF)
 - `isGPR`, `isFPR` classify physical registers
 - `regName` renders canonical string names (e.g., `"x0"`, `"v15"`)
 
@@ -97,7 +103,7 @@ MIR opcode categories:
 |------|---------|
 | `src/codegen/aarch64/FastPaths.hpp`/`.cpp` | Fast-path dispatcher for common single-block patterns |
 | `src/codegen/aarch64/fastpaths/FastPaths_Arithmetic.cpp` | Arithmetic fast paths (register-register and register-immediate; shifts excluded from commutative swap) |
-| `src/codegen/aarch64/fastpaths/FastPaths_Call.cpp` | Call fast paths (argument marshalling, stack args); returns `std::nullopt` on failure to fall through to generic path |
+| `src/codegen/aarch64/fastpaths/FastPaths_Call.cpp` | Call fast paths (argument marshalling, stack args); transactional fallback and multi-stack-arg calls route through the generalized lowering path |
 | `src/codegen/aarch64/fastpaths/FastPaths_Cast.cpp` | Cast fast paths (narrowing overflow checks) |
 | `src/codegen/aarch64/fastpaths/FastPaths_Memory.cpp` | Memory operation fast paths |
 | `src/codegen/aarch64/fastpaths/FastPaths_Return.cpp` | Return fast paths |
@@ -135,7 +141,7 @@ MIR opcode categories:
 | `src/codegen/aarch64/peephole/IdentityElim.hpp`/`.cpp` | Identity operation removal |
 | `src/codegen/aarch64/peephole/LoopOpt.hpp`/`.cpp` | Loop-specific optimizations |
 | `src/codegen/aarch64/peephole/MemoryOpt.hpp`/`.cpp` | LDP/STP merging |
-| `src/codegen/aarch64/peephole/StrengthReduce.hpp`/`.cpp` | MADD fusion, immediate folding |
+| `src/codegen/aarch64/peephole/StrengthReduce.hpp`/`.cpp` | MADD fusion, immediate folding, signed/unsigned division-by-constant strength reduction |
 
 ### CLI driver integration
 
@@ -181,7 +187,7 @@ The AArch64 backend uses `CodegenPipeline` to orchestrate passes. The pipeline s
 9. **Assembly emission** (`AsmEmitter::emitFunction`) — MIR → text assembly
 10. **Binary encoding** (`A64BinaryEncoder`) — direct object code emission (optional)
 11. **Rodata emission** — string/FP constant pool to `.section __TEXT,__const` (macOS) or `.section .rodata` (Linux)
-12. **Assembly + linking** (`LinkerSupport`) — invoke assembler/linker, link with only the runtime archives and support libraries required by the module
+12. **Assembly + linking** (`LinkerSupport`) — invoke assembler/linker, link with only the runtime archives and support libraries required by the module; the selected target platform now also chooses the object format, linker platform, and system-assembler triple
 
 Before MIR lowering, `CodegenPipeline` now runs a selective IL optimization stage:
 
@@ -382,6 +388,41 @@ echo "Exit code: $?"  # Should print 15
 
 - **Was**: `std::fixed` applied to ostream but never restored, corrupting all subsequent FP emission
 - **Fix**: Save and restore `std::ostream` format flags around FP immediate materialization
+
+### BUG 12: `switch.i32` edge values were copied on untaken cases (FIXED)
+
+- **Was**: case-edge argument copies ran before each `b.eq`, so untaken edges could overwrite the values seen by the taken successor
+- **Fix**: `TerminatorLowering` now lowers `switch.i32` through dedicated edge blocks and phi spill-slot stores, matching the `br` / `cbr` path
+
+### BUG 13: `trap.from_err` did not reliably marshal its argument into `x0` (FIXED)
+
+- **Was**: nontrivial `trap.from_err` paths could reach `rt_trap_raise_error` without a guaranteed ABI move into `x0`
+- **Fix**: lowering now routes `trap.from_err` through the normal argument-marshalling helper path, and regression tests cover both constant and non-entry block-parameter inputs
+
+### BUG 14: checked trap helpers used the generic `rt_trap` ABI (FIXED)
+
+- **Was**: overflow, divide-by-zero, and bare trap paths relied on `rt_trap` in places where the runtime expects dedicated no-arg helpers or an explicit `x0 = NULL`
+- **Fix**: overflow and checked div/rem now lower to `rt_trap_ovf` / `rt_trap_div0`, while plain trap and `idx.chk` set `x0` to null before calling `rt_trap`
+
+### BUG 15: target selection stopped at instruction selection (FIXED)
+
+- **Was**: native object writing, system assembly, and native linking still followed the host platform even when `--target-linux` or `--target-windows` was selected
+- **Fix**: `CodegenPipeline` now threads the selected target platform through object writer selection, native linker selection, and system-assembler target arguments
+
+### BUG 16: text and binary emitters diverged on BTI/PAC hardening (FIXED)
+
+- **Was**: the binary encoder emitted `bti c`, `paciasp`, and `autiasp`, but the text emitter omitted them
+- **Fix**: `AsmEmitter` now emits the same hardening sequence, and dedicated tests keep the two paths aligned
+
+### BUG 17: non-Darwin objects inherited Mach-O compact-unwind metadata (FIXED)
+
+- **Was**: `A64BinaryEncoder` recorded compact-unwind entries even for ELF and COFF output modes
+- **Fix**: unwind entry emission is now gated by `ABIFormat::Darwin`
+
+### BUG 18: unsigned division by arbitrary constants was not strength-reduced (FIXED)
+
+- **Was**: only a subset of signed constant-division rewrites existed, and unsigned non-power-of-two division still fell back to `udiv`
+- **Fix**: the peephole pass now emits magic-multiply sequences using `UmulhRRR`, with focused unit coverage for signed and unsigned cases
 
 ## Peephole Optimizations Implemented
 

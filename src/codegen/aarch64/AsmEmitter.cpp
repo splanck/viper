@@ -223,9 +223,12 @@ void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) c
         os << ".globl " << sym << "\n";
     }
     os << sym << ":\n";
+    // Emit a BTI landing pad to match the binary encoder's function-entry hardening.
+    os << "  bti c\n";
 }
 
 void AsmEmitter::emitPrologue(std::ostream &os) const {
+    os << "  paciasp\n";
     // stp x29, x30, [sp, #-16]!; mov x29, sp
     os << "  stp x29, x30, [sp, #-16]!\n";
     os << "  mov x29, sp\n";
@@ -234,6 +237,7 @@ void AsmEmitter::emitPrologue(std::ostream &os) const {
 void AsmEmitter::emitEpilogue(std::ostream &os) const {
     // ldp x29, x30, [sp], #16; ret
     os << "  ldp x29, x30, [sp], #16\n";
+    os << "  autiasp\n";
     os << "  ret\n";
 }
 
@@ -324,6 +328,10 @@ void AsmEmitter::emitMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg 
 
 void AsmEmitter::emitSmulhRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3R(os, "smulh", dst, lhs, rhs);
+}
+
+void AsmEmitter::emitUmulhRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
+    emit3R(os, "umulh", dst, lhs, rhs);
 }
 
 void AsmEmitter::emitSDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
@@ -939,6 +947,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
             return;
         case MOpcode::SmulhRRR:
             emitSmulhRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]));
+            return;
+        case MOpcode::UmulhRRR:
+            emitUmulhRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]));
             return;
         case MOpcode::UDivRRR:
             emitUDivRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]));

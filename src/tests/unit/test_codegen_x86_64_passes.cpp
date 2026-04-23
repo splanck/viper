@@ -136,7 +136,7 @@ std::size_t binarySizeForOptLevel(int optimizeLevel) {
 
     viper::codegen::x64::CodegenOptions opts{};
     opts.optimizeLevel = optimizeLevel;
-    pm.addPass(std::make_unique<BinaryEmitPass>(false, opts));
+    pm.addPass(std::make_unique<BinaryEmitPass>(opts));
 
     if (!pm.run(module, diags) || !module.binaryText)
         return 0;
@@ -296,7 +296,7 @@ TEST(BinaryEmitPass, ReportsEncoderValidationFailures) {
 
     Diagnostics diags{};
     viper::codegen::x64::CodegenOptions opts{};
-    BinaryEmitPass pass{false, opts};
+    BinaryEmitPass pass{opts};
     EXPECT_FALSE(pass.run(module, diags));
     EXPECT_TRUE(diags.hasErrors());
 }

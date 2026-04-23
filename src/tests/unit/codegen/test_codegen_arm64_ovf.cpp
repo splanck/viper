@@ -42,6 +42,29 @@ static std::string readFile(const std::string &path) {
     return ss.str();
 }
 
+/// @brief Returns the expected mangled symbol name for a call target.
+static std::string blSym(const std::string &name) {
+#if defined(__APPLE__)
+    return "bl _" + name;
+#else
+    return "bl " + name;
+#endif
+}
+
+static bool hasExactCall(const std::string &asmText, const std::string &name) {
+    const std::string expected = blSym(name);
+    std::istringstream lines(asmText);
+    for (std::string line; std::getline(lines, line);) {
+        const std::size_t first = line.find_first_not_of(" \t");
+        if (first == std::string::npos)
+            continue;
+        const std::size_t last = line.find_last_not_of(" \t\r");
+        if (line.substr(first, last - first + 1) == expected)
+            return true;
+    }
+    return false;
+}
+
 TEST(Arm64CLI, OverflowVariantsRR) {
     struct Case {
         const char *op;
@@ -70,7 +93,7 @@ TEST(Arm64CLI, OverflowVariantsRR) {
         EXPECT_NE(asmText.find(c.expect), std::string::npos);
         if (c.expectTrap) {
             EXPECT_NE(asmText.find(c.expectTrap), std::string::npos);
-            EXPECT_NE(asmText.find("rt_trap"), std::string::npos);
+            EXPECT_TRUE(hasExactCall(asmText, "rt_trap_ovf"));
         }
     }
 }

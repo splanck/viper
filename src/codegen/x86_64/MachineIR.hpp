@@ -100,6 +100,8 @@ enum class MOpcode {
     IMULrr,    ///< Signed multiply registers.
     DIVS64rr,  ///< Signed 64-bit division pseudo (dest <- lhs / rhs).
     REMS64rr,  ///< Signed 64-bit remainder pseudo (dest <- lhs % rhs).
+    DIVS64Chk0rr, ///< Checked signed 64-bit division pseudo (trap on /0 or MIN/-1).
+    REMS64Chk0rr, ///< Checked signed 64-bit remainder pseudo (/0 trap, MIN%-1 = 0).
     DIVU64rr,  ///< Unsigned 64-bit division pseudo (dest <- lhs / rhs).
     REMU64rr,  ///< Unsigned 64-bit remainder pseudo (dest <- lhs % rhs).
     CQO,       ///< Sign-extend RAX into RDX:RAX.

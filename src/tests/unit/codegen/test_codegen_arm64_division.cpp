@@ -42,6 +42,29 @@ static std::string readFile(const std::string &path) {
     return ss.str();
 }
 
+/// @brief Returns the expected mangled symbol name for a call target.
+static std::string blSym(const std::string &name) {
+#if defined(__APPLE__)
+    return "bl _" + name;
+#else
+    return "bl " + name;
+#endif
+}
+
+static bool hasExactCall(const std::string &asmText, const std::string &name) {
+    const std::string expected = blSym(name);
+    std::istringstream lines(asmText);
+    for (std::string line; std::getline(lines, line);) {
+        const std::size_t first = line.find_first_not_of(" \t");
+        if (first == std::string::npos)
+            continue;
+        const std::size_t last = line.find_last_not_of(" \t\r");
+        if (line.substr(first, last - first + 1) == expected)
+            return true;
+    }
+    return false;
+}
+
 // Test 1: Simple signed division
 TEST(Arm64Division, SDivSimple) {
     const std::string in = outPath("arm64_div_sdiv.il");
@@ -100,6 +123,8 @@ TEST(Arm64Division, SDivChk0) {
         (asmText.find("cmp x") != std::string::npos && asmText.find("b.eq") != std::string::npos) ||
         (asmText.find("tst x") != std::string::npos && asmText.find("b.eq") != std::string::npos);
     EXPECT_TRUE(hasZeroCheck);
+    EXPECT_TRUE(hasExactCall(asmText, "rt_trap_div0"));
+    EXPECT_TRUE(hasExactCall(asmText, "rt_trap_ovf"));
 }
 
 // Test 4: Unsigned division with divide-by-zero check
@@ -124,6 +149,7 @@ TEST(Arm64Division, UDivChk0) {
         (asmText.find("cmp x") != std::string::npos && asmText.find("b.eq") != std::string::npos) ||
         (asmText.find("tst x") != std::string::npos && asmText.find("b.eq") != std::string::npos);
     EXPECT_TRUE(hasZeroCheck);
+    EXPECT_TRUE(hasExactCall(asmText, "rt_trap_div0"));
 }
 
 // Test 5: Signed remainder (srem = a - (a/b)*b using msub)
@@ -144,6 +170,24 @@ TEST(Arm64Division, SRemSimple) {
     EXPECT_NE(asmText.find("sdiv x"), std::string::npos);
     // Expect msub for the remainder calculation (dst = sub - mul1*mul2)
     EXPECT_NE(asmText.find("msub x"), std::string::npos);
+}
+
+TEST(Arm64Division, SRemChk0UsesZeroForMinOverflow) {
+    const std::string in = outPath("arm64_div_srem_chk0_overflow.il");
+    const std::string out = outPath("arm64_div_srem_chk0_overflow.s");
+    const std::string il = "il 0.1\n"
+                           "func @rem_chk(%a:i64, %b:i64) -> i64 {\n"
+                           "entry(%a:i64, %b:i64):\n"
+                           "  %r = srem.chk0 %a, %b\n"
+                           "  ret %r\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find("csel x"), std::string::npos);
+    EXPECT_TRUE(hasExactCall(asmText, "rt_trap_div0"));
+    EXPECT_EQ(asmText.find(blSym("rt_trap_ovf")), std::string::npos);
 }
 
 // Test 6: Unsigned remainder

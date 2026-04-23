@@ -68,11 +68,13 @@ class X64BinaryEncoder {
     /// @param rodata    CodeSection for .rodata (used for RIP-relative symbol lookup).
     /// @param isDarwin  If true, symbol names get underscore-prefixed.
     /// @param frame     Optional frame metadata used to emit Win64 unwind info.
+    /// @param emitWin64Unwind When true, emit PE/COFF unwind metadata regardless of host.
     void encodeFunction(const MFunction &fn,
                         objfile::CodeSection &text,
                         objfile::CodeSection &rodata,
                         bool isDarwin,
-                        const FrameInfo *frame = nullptr);
+                        const FrameInfo *frame = nullptr,
+                        bool emitWin64Unwind = false);
 
   private:
     using LabelOffsetMap = std::unordered_map<std::string, size_t>;

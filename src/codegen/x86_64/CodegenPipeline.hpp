@@ -61,6 +61,7 @@ class CodegenPipeline {
         std::string asset_blob_path; ///< Path to VPA asset blob for .rodata embedding (optional).
         std::vector<std::string> extra_objects; ///< Extra object files linked into the final image.
         CodegenOptions::TargetABI target_abi = CodegenOptions::TargetABI::Host;
+        CodegenOptions::TargetPlatform target_platform = CodegenOptions::TargetPlatform::Host;
     };
 
     /// \brief Construct a pipeline configured with @p opts.

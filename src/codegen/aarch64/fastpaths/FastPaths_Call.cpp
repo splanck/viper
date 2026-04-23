@@ -407,8 +407,6 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx) {
     // Register args: plan moves/imm loads/temps for 0..nargs-1
     const std::size_t nReg = ctx.argOrder.size();
     const std::size_t nRegArgs = (nargs < nReg) ? nargs : nReg;
-    const std::size_t nStackArgs = (nargs > nReg) ? (nargs - nReg) : 0;
-
     for (std::size_t i = 0; i < nRegArgs; ++i) {
         const PhysReg dst = ctx.argOrder[i];
         const auto &arg = binI.operands[i];
@@ -488,68 +486,9 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx) {
         bbMir.instrs.push_back(
             MInstr{MOpcode::MovRI, {MOperand::regOp(pr.first), MOperand::immOp(pr.second)}});
 
-    // Stack args: allocate area, materialize values, store at [sp, #offset]
-    if (nStackArgs > 0) {
-        long long frameBytes = static_cast<long long>(nStackArgs) * kSlotSizeBytes;
-        if (frameBytes % kStackAlignment != 0LL)
-            frameBytes += kSlotSizeBytes;
-        ctx.fb.setMaxOutgoingBytes(static_cast<int>(frameBytes));
-
-        for (std::size_t i = nReg; i < nargs; ++i) {
-            const auto &arg = binI.operands[i];
-            PhysReg valReg = kScratchGPR;
-            if (arg.kind == il::core::Value::Kind::ConstInt) {
-                if (scratchUsed >= kScratchPoolSize) {
-                    supported = false;
-                    break;
-                }
-                const PhysReg tmp = scratchPool[scratchUsed++];
-                bbMir.instrs.push_back(
-                    MInstr{MOpcode::MovRI, {MOperand::regOp(tmp), MOperand::immOp(arg.i64)}});
-                valReg = tmp;
-            } else if (arg.kind == il::core::Value::Kind::Temp) {
-                unsigned pIdx = 0;
-                if (isParamTemp(bb, ctx.argOrder, arg, pIdx) && pIdx < ctx.argOrder.size()) {
-                    valReg = ctx.argOrder[pIdx];
-                } else {
-                    if (scratchUsed >= kScratchPoolSize) {
-                        supported = false;
-                        break;
-                    }
-                    valReg = scratchPool[scratchUsed++];
-                    auto it = std::find_if(
-                        bb.instructions.begin(),
-                        bb.instructions.end(),
-                        [&](const il::core::Instr &I) { return I.result && *I.result == arg.id; });
-                    if (it == bb.instructions.end() ||
-                        !computeTempTo(*it, valReg, bb, ctx.argOrder, bbMir)) {
-                        supported = false;
-                        break;
-                    }
-                }
-            } else {
-                supported = false;
-                break;
-            }
-            const long long off = static_cast<long long>((i - nReg) * 8ULL);
-            bbMir.instrs.push_back(
-                MInstr{MOpcode::StrRegSpImm, {MOperand::regOp(valReg), MOperand::immOp(off)}});
-        }
-
-        if (!supported) {
-            // Cannot handle these stack args in the fast path — fall back to
-            // generic vreg-based lowering instead of emitting a bare Ret
-            // (which would silently skip the call).
-            return std::nullopt;
-        }
-
-        bbMir.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp(mappedCallee)}});
-        bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
-        ctx.fb.finalize();
-        return ctx.mf;
-    }
-
-    // No stack args; emit call directly
+    // Single-block fast path only handles register-passed arguments. Any call
+    // that needs stack marshalling is routed through the generalized lowering
+    // path above, which emits explicit SubSpImm/AddSpImm around the call.
     bbMir.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp(mappedCallee)}});
     bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
     ctx.fb.finalize();

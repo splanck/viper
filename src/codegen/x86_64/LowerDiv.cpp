@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -172,32 +173,39 @@ constexpr std::string_view kTrapLabel{".Ltrap_div0"};
 void lowerSignedDivRem(MFunction &fn) {
     // Make trap label unique per function to avoid conflicts when assembling
     const std::string trapLabel = ".Ltrap_div0_" + fn.name;
-    std::optional<std::size_t> trapIndex{};
+    const std::string ovfTrapLabel = ".Ltrap_ovf_" + fn.name;
+    std::optional<std::size_t> div0TrapIndex{};
+    std::optional<std::size_t> ovfTrapIndex{};
     unsigned sequenceId{0U};
 
-    auto ensureTrapBlock = [&]() -> std::size_t {
+    auto ensureTrapBlock = [&](const std::string &label,
+                               const char *callee,
+                               std::optional<std::size_t> &trapIndex) -> std::size_t {
         if (trapIndex) {
             return *trapIndex;
         }
 
-        if (auto existing = findBlockIndex(fn, trapLabel)) {
+        if (auto existing = findBlockIndex(fn, label)) {
             trapIndex = *existing;
             auto &trapBlock = fn.blocks[*trapIndex];
-            const bool hasCall =
-                std::any_of(trapBlock.instructions.begin(),
-                            trapBlock.instructions.end(),
-                            [](const MInstr &instr) { return instr.opcode == MOpcode::CALL; });
+            const bool hasCall = std::any_of(
+                trapBlock.instructions.begin(),
+                trapBlock.instructions.end(),
+                [&](const MInstr &instr) {
+                    return instr.opcode == MOpcode::CALL && !instr.operands.empty() &&
+                           std::holds_alternative<OpLabel>(instr.operands[0]) &&
+                           std::get<OpLabel>(instr.operands[0]).name == callee;
+                });
             if (!hasCall) {
                 trapBlock.append(MInstr::make(
-                    MOpcode::CALL, std::vector<Operand>{makeLabelOperand("rt_trap_div0")}));
+                    MOpcode::CALL, std::vector<Operand>{makeLabelOperand(callee)}));
             }
             return *trapIndex;
         }
 
         MBasicBlock trapBlock{};
-        trapBlock.label = trapLabel;
-        trapBlock.append(
-            MInstr::make(MOpcode::CALL, std::vector<Operand>{makeLabelOperand("rt_trap_div0")}));
+        trapBlock.label = label;
+        trapBlock.append(MInstr::make(MOpcode::CALL, std::vector<Operand>{makeLabelOperand(callee)}));
         fn.blocks.push_back(std::move(trapBlock));
         trapIndex = fn.blocks.size() - 1U;
         return *trapIndex;
@@ -209,9 +217,12 @@ void lowerSignedDivRem(MFunction &fn) {
             const MInstr &candidate = fn.blocks[blockIdx].instructions[instrIdx];
             const bool isSignedDiv = candidate.opcode == MOpcode::DIVS64rr;
             const bool isSignedRem = candidate.opcode == MOpcode::REMS64rr;
+            const bool isCheckedSignedDiv = candidate.opcode == MOpcode::DIVS64Chk0rr;
+            const bool isCheckedSignedRem = candidate.opcode == MOpcode::REMS64Chk0rr;
             const bool isUnsignedDiv = candidate.opcode == MOpcode::DIVU64rr;
             const bool isUnsignedRem = candidate.opcode == MOpcode::REMU64rr;
-            if (!isSignedDiv && !isSignedRem && !isUnsignedDiv && !isUnsignedRem) {
+            if (!isSignedDiv && !isSignedRem && !isCheckedSignedDiv && !isCheckedSignedRem &&
+                !isUnsignedDiv && !isUnsignedRem) {
                 continue;
             }
 
@@ -285,8 +296,10 @@ void lowerSignedDivRem(MFunction &fn) {
             }
 
             MInstr pseudo = std::move(fn.blocks[blockIdx].instructions[instrIdx]);
-            const bool isDiv = isSignedDiv || isUnsignedDiv;
-            const bool isSigned = isSignedDiv || isSignedRem;
+            const bool isDiv = isSignedDiv || isCheckedSignedDiv || isUnsignedDiv;
+            const bool isSigned =
+                isSignedDiv || isSignedRem || isCheckedSignedDiv || isCheckedSignedRem;
+            const bool isCheckedSigned = isCheckedSignedDiv || isCheckedSignedRem;
 
             MBasicBlock afterBlock{};
             afterBlock.label = makeContinuationLabel(fn, fn.blocks[blockIdx], sequenceId++);
@@ -302,7 +315,10 @@ void lowerSignedDivRem(MFunction &fn) {
                                          static_cast<std::ptrdiff_t>(instrIdx));
             }
 
-            ensureTrapBlock();
+            ensureTrapBlock(trapLabel, "rt_trap_div0", div0TrapIndex);
+            if (isCheckedSignedDiv) {
+                ensureTrapBlock(ovfTrapLabel, "rt_trap_ovf", ovfTrapIndex);
+            }
 
             auto &currentBlock = fn.blocks[blockIdx];
 
@@ -316,6 +332,53 @@ void lowerSignedDivRem(MFunction &fn) {
             currentBlock.append(
                 MInstr::make(MOpcode::JCC,
                              std::vector<Operand>{makeImmOperand(0), makeLabelOperand(trapLabel)}));
+
+            if (isCheckedSigned) {
+                const std::string skipOverflowLabel =
+                    fn.makeLocalLabel(currentBlock.label + ".divchk_skip");
+                const bool dividendIsImmediate = std::holds_alternative<OpImm>(dividendClone);
+                const bool dividendIsMin = dividendIsImmediate &&
+                                          std::get<OpImm>(dividendClone).val ==
+                                              std::numeric_limits<int64_t>::min();
+
+                if (!dividendIsImmediate) {
+                    const Operand r11Op = makePhysRegOperand(PhysReg::R11);
+                    currentBlock.append(MInstr::make(
+                        MOpcode::MOVri,
+                        std::vector<Operand>{cloneOperand(r11Op),
+                                             makeImmOperand(std::numeric_limits<int64_t>::min())}));
+                    currentBlock.append(MInstr::make(
+                        MOpcode::CMPrr,
+                        std::vector<Operand>{cloneOperand(dividendClone), cloneOperand(r11Op)}));
+                    currentBlock.append(MInstr::make(
+                        MOpcode::JCC,
+                        std::vector<Operand>{makeImmOperand(1), makeLabelOperand(skipOverflowLabel)}));
+                } else if (!dividendIsMin) {
+                    currentBlock.append(MInstr::make(
+                        MOpcode::JMP, std::vector<Operand>{makeLabelOperand(skipOverflowLabel)}));
+                }
+
+                currentBlock.append(MInstr::make(
+                    MOpcode::CMPri,
+                    std::vector<Operand>{cloneOperand(divisorClone), makeImmOperand(-1)}));
+                currentBlock.append(MInstr::make(
+                    MOpcode::JCC,
+                    std::vector<Operand>{makeImmOperand(1), makeLabelOperand(skipOverflowLabel)}));
+
+                if (isCheckedSignedDiv) {
+                    currentBlock.append(MInstr::make(
+                        MOpcode::JMP, std::vector<Operand>{makeLabelOperand(ovfTrapLabel)}));
+                } else {
+                    currentBlock.append(MInstr::make(
+                        MOpcode::MOVri, std::vector<Operand>{cloneOperand(destOp), makeImmOperand(0)}));
+                    currentBlock.append(MInstr::make(
+                        MOpcode::JMP, std::vector<Operand>{makeLabelOperand(afterBlock.label)}));
+                }
+
+                currentBlock.append(MInstr::make(
+                    MOpcode::LABEL,
+                    std::vector<Operand>{makeLabelOperand(skipOverflowLabel)}));
+            }
 
             const Operand raxOp = makePhysRegOperand(PhysReg::RAX);
             const Operand rdxOp = makePhysRegOperand(PhysReg::RDX);

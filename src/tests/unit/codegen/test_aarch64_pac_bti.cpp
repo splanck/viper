@@ -26,10 +26,13 @@
 
 #include "tests/TestHarness.hpp"
 
+#include "codegen/aarch64/AsmEmitter.hpp"
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/aarch64/binenc/A64BinaryEncoder.hpp"
 #include "codegen/common/objfile/CodeSection.hpp"
+
+#include <sstream>
 
 using namespace viper::codegen::aarch64;
 using namespace viper::codegen::aarch64::binenc;
@@ -197,6 +200,42 @@ TEST(AArch64PacBti, LeafFuncNoPac) {
     // Leaf functions skip prologue → no PACIASP or AUTIASP
     EXPECT_FALSE(containsWord(text, kPaciasp));
     EXPECT_FALSE(containsWord(text, kAutiasp));
+}
+
+TEST(AArch64PacBti, TextEmitterNonLeafMatchesHardeningSequence) {
+    auto fn = makeNonLeafFunc("text_nonleaf");
+    std::ostringstream os;
+    AsmEmitter emitter(darwinTarget());
+    emitter.emitFunction(os, fn);
+    const std::string asmText = os.str();
+
+    const std::size_t btiPos = asmText.find("bti c");
+    const std::size_t pacPos = asmText.find("paciasp");
+    const std::size_t autPos = asmText.find("autiasp");
+    const std::size_t retPos = asmText.rfind("ret");
+
+    EXPECT_NE(btiPos, std::string::npos);
+    EXPECT_NE(pacPos, std::string::npos);
+    EXPECT_NE(autPos, std::string::npos);
+    EXPECT_NE(retPos, std::string::npos);
+    if (btiPos != std::string::npos && pacPos != std::string::npos)
+        EXPECT_LT(btiPos, pacPos);
+    if (pacPos != std::string::npos && autPos != std::string::npos)
+        EXPECT_LT(pacPos, autPos);
+    if (autPos != std::string::npos && retPos != std::string::npos)
+        EXPECT_LT(autPos, retPos);
+}
+
+TEST(AArch64PacBti, TextEmitterLeafKeepsBtiWithoutPac) {
+    auto fn = makeLeafFunc("text_leaf");
+    std::ostringstream os;
+    AsmEmitter emitter(darwinTarget());
+    emitter.emitFunction(os, fn);
+    const std::string asmText = os.str();
+
+    EXPECT_NE(asmText.find("bti c"), std::string::npos);
+    EXPECT_EQ(asmText.find("paciasp"), std::string::npos);
+    EXPECT_EQ(asmText.find("autiasp"), std::string::npos);
 }
 
 int main(int argc, char **argv) {

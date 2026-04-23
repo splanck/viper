@@ -137,6 +137,14 @@ class AsmEmitter {
     /// @param rhs Right-hand operand GPR.
     void emitSmulhRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
 
+    /// @brief Emit unsigned multiply high: `umulh dst, lhs, rhs`.
+    /// @details Computes the upper 64 bits of a 128-bit unsigned multiply.
+    /// @param os Output stream to write assembly text.
+    /// @param dst Destination GPR for high bits.
+    /// @param lhs Left-hand operand GPR.
+    /// @param rhs Right-hand operand GPR.
+    void emitUmulhRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
+
     /// @brief Emit signed 64-bit division: `sdiv dst, lhs, rhs`.
     /// @param os Output stream to write assembly text.
     /// @param dst Destination GPR for quotient.

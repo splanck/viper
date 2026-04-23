@@ -364,12 +364,16 @@ class ModuleAdapter {
 
             // Division and remainder
             case il::core::Opcode::SDiv:
-            case il::core::Opcode::SDivChk0:
                 adaptIntDiv(instr, out, "sdiv");
                 break;
+            case il::core::Opcode::SDivChk0:
+                adaptIntDiv(instr, out, "sdiv.chk0");
+                break;
             case il::core::Opcode::SRem:
-            case il::core::Opcode::SRemChk0:
                 adaptIntDiv(instr, out, "srem");
+                break;
+            case il::core::Opcode::SRemChk0:
+                adaptIntDiv(instr, out, "srem.chk0");
                 break;
             case il::core::Opcode::UDiv:
             case il::core::Opcode::UDivChk0:

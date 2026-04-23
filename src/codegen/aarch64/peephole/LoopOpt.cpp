@@ -37,6 +37,53 @@ namespace {
            phys <= static_cast<uint32_t>(PhysReg::X28);
 }
 
+struct EdgeMove {
+    std::size_t storeInstrIdx;
+    MOperand srcReg;
+    MOperand dstReg;
+    RegClass cls;
+};
+
+[[nodiscard]] bool orderEdgeMoves(const std::vector<EdgeMove> &moves,
+                                  std::vector<EdgeMove> &ordered) {
+    ordered.clear();
+    ordered.reserve(moves.size());
+
+    std::vector<EdgeMove> pending;
+    pending.reserve(moves.size());
+    for (const auto &move : moves) {
+        if (move.srcReg.reg.idOrPhys == move.dstReg.reg.idOrPhys)
+            continue;
+        pending.push_back(move);
+    }
+
+    while (!pending.empty()) {
+        auto readyIt = pending.end();
+        for (auto it = pending.begin(); it != pending.end(); ++it) {
+            const auto dstPhys = it->dstReg.reg.idOrPhys;
+            bool dstUsedAsSource = false;
+            for (auto jt = pending.begin(); jt != pending.end(); ++jt) {
+                if (it == jt)
+                    continue;
+                if (jt->cls == it->cls && jt->srcReg.reg.idOrPhys == dstPhys) {
+                    dstUsedAsSource = true;
+                    break;
+                }
+            }
+            if (!dstUsedAsSource) {
+                readyIt = it;
+                break;
+            }
+        }
+        if (readyIt == pending.end())
+            return false;
+        ordered.push_back(*readyIt);
+        pending.erase(readyIt);
+    }
+
+    return true;
+}
+
 } // namespace
 
 std::size_t hoistLoopConstants(MFunction &fn) {
@@ -556,6 +603,12 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         }
     };
 
+    struct EdgePlan {
+        std::unordered_set<std::size_t> storeIndicesToRemove;
+        std::vector<EdgeMove> orderedMoves;
+        std::size_t eliminatedCount{0};
+    };
+
     std::size_t eliminated = 0;
 
     // Process each back-edge. We process at most one per pass to avoid
@@ -683,6 +736,52 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         if (!safeToEliminate)
             continue;
 
+        std::size_t firstNonPhiIdx = phiLoads.back().instrIdx + 1;
+
+        auto planEdgeMoves = [&](const std::vector<PhiStore> &stores, EdgePlan &plan) {
+            plan.storeIndicesToRemove.clear();
+            plan.orderedMoves.clear();
+            plan.eliminatedCount = 0;
+
+            std::vector<EdgeMove> moves;
+            for (const auto &load : phiLoads) {
+                bool matched = false;
+                for (const auto &store : stores) {
+                    if (load.fpOffset != store.fpOffset)
+                        continue;
+                    matched = true;
+                    plan.storeIndicesToRemove.insert(store.instrIdx);
+                    ++plan.eliminatedCount;
+                    if (store.srcReg.reg.idOrPhys != load.dstReg.reg.idOrPhys) {
+                        moves.push_back(
+                            EdgeMove{store.instrIdx, store.srcReg, load.dstReg, load.dstReg.reg.cls});
+                    }
+                    break;
+                }
+                if (!matched)
+                    return false;
+            }
+
+            if (!orderEdgeMoves(moves, plan.orderedMoves))
+                return false;
+            return true;
+        };
+
+        EdgePlan edgePlan;
+        if (edge.latchIdx == edge.headerIdx) {
+            std::vector<PhiStore> bodyPhiStores;
+            for (std::size_t i = firstNonPhiIdx; i < header.instrs.size(); ++i) {
+                (void)appendPhiStores(header.instrs[i],
+                                      i - firstNonPhiIdx,
+                                      bodyPhiStores,
+                                      phiLoadOffsets);
+            }
+            if (!planEdgeMoves(bodyPhiStores, edgePlan))
+                continue;
+        } else if (!planEdgeMoves(phiStores, edgePlan)) {
+            continue;
+        }
+
         // Step 5: Split the header block. Create a new body block that contains
         // everything after the phi loads. The back-edge will target this body block.
         std::string bodyName = header.name + "_body";
@@ -691,7 +790,6 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         // Build the body block with instructions after the phi loads.
         MBasicBlock bodyBlock;
         bodyBlock.name = bodyName;
-        std::size_t firstNonPhiIdx = phiLoads.back().instrIdx + 1;
         bodyBlock.instrs.assign(header.instrs.begin() + static_cast<std::ptrdiff_t>(firstNonPhiIdx),
                                 header.instrs.end());
 
@@ -712,27 +810,17 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
             bb.instrs = std::move(newInstrs);
         };
 
-        auto insertEdgeMoves = [&](MBasicBlock &bb, const std::vector<PhiStore> &stores) {
-            std::unordered_set<std::size_t> storeIndicesToRemove;
-            std::vector<MInstr> movs;
-            for (const auto &load : phiLoads) {
-                for (const auto &store : stores) {
-                    if (load.fpOffset != store.fpOffset)
-                        continue;
-                    storeIndicesToRemove.insert(store.instrIdx);
-                    if (store.srcReg.reg.idOrPhys != load.dstReg.reg.idOrPhys) {
-                        const MOpcode movOpc = (load.dstReg.reg.cls == RegClass::FPR)
-                                                   ? MOpcode::FMovRR
-                                                   : MOpcode::MovRR;
-                        movs.push_back(MInstr{movOpc, {load.dstReg, store.srcReg}});
-                    }
-                    ++eliminated;
-                    break;
-                }
-            }
-            removeStores(bb, storeIndicesToRemove);
-            if (movs.empty())
+        auto applyEdgeMoves = [&](MBasicBlock &bb, const EdgePlan &plan) {
+            removeStores(bb, plan.storeIndicesToRemove);
+            if (plan.orderedMoves.empty())
                 return;
+            std::vector<MInstr> movs;
+            movs.reserve(plan.orderedMoves.size());
+            for (const auto &move : plan.orderedMoves) {
+                const MOpcode movOpc =
+                    move.cls == RegClass::FPR ? MOpcode::FMovRR : MOpcode::MovRR;
+                movs.push_back(MInstr{movOpc, {move.dstReg, move.srcReg}});
+            }
             std::size_t insertPos = bb.instrs.size();
             while (insertPos > 0 && isTerminator(bb.instrs[insertPos - 1].opc))
                 --insertPos;
@@ -743,16 +831,14 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
 
         if (edge.latchIdx == edge.headerIdx) {
             // Self-loops carry the phi stores in the split body block itself.
-            std::vector<PhiStore> bodyPhiStores;
-            for (std::size_t i = 0; i < bodyBlock.instrs.size(); ++i)
-                (void)appendPhiStores(bodyBlock.instrs[i], i, bodyPhiStores, phiLoadOffsets);
-            insertEdgeMoves(bodyBlock, bodyPhiStores);
+            applyEdgeMoves(bodyBlock, edgePlan);
         } else {
             // Multi-block loops carry phi values in the latch block. If we redirect the
             // latch to the hot body, we must translate the phi-slot stores into register
             // edge moves there instead of relying on the cold reload header.
-            insertEdgeMoves(latch, phiStores);
+            applyEdgeMoves(latch, edgePlan);
         }
+        eliminated += edgePlan.eliminatedCount;
 
         auto redirectBackedgeTarget = [&](MBasicBlock &bb) {
             for (auto &mi : bb.instrs) {

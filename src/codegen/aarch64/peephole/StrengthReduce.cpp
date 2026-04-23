@@ -32,7 +32,10 @@
 #include "../TargetAArch64.hpp"
 #include "PeepholeCommon.hpp"
 
+#include <array>
 #include <cstdint>
+#include <limits>
+#include <optional>
 
 namespace viper::codegen::aarch64::peephole {
 namespace {
@@ -63,6 +66,63 @@ struct MagicNumber {
     bool needsAdd{false};    ///< True if we need to add the dividend after SMULH
                              ///< (when the multiplier overflows signed 64-bit).
 };
+
+/// @brief Magic number parameters for unsigned division by constant.
+struct UnsignedMagicNumber {
+    uint64_t multiplier{0}; ///< Magic multiplier M.
+    unsigned shift{0};      ///< Post-shift amount.
+    bool needsAdd{false};   ///< True when the libdivide-style add fixup is required.
+};
+
+[[nodiscard]] unsigned floorLog2U64(uint64_t value) noexcept {
+    unsigned log = 0;
+    while ((uint64_t{1} << (log + 1)) <= value && log < 63)
+        ++log;
+    return log;
+}
+
+[[nodiscard]] uint64_t divU128ByU64(uint64_t hi, uint64_t lo, uint64_t divisor, uint64_t &rem) noexcept {
+#if defined(_MSC_VER) && !defined(__clang__)
+    unsigned __int64 remainder = 0;
+    const unsigned __int64 quotient = _udiv128(hi, lo, divisor, &remainder);
+    rem = remainder;
+    return quotient;
+#else
+    const unsigned __int128 numerator =
+        (static_cast<unsigned __int128>(hi) << 64) | static_cast<unsigned __int128>(lo);
+    rem = static_cast<uint64_t>(numerator % divisor);
+    return static_cast<uint64_t>(numerator / divisor);
+#endif
+}
+
+[[nodiscard]] std::optional<MOperand> pickTempReg(const std::array<PhysReg, 3> &candidates,
+                                                  std::initializer_list<MOperand> avoid) {
+    for (PhysReg candidate : candidates) {
+        const MOperand reg = MOperand::regOp(candidate);
+        bool conflicts = false;
+        for (const auto &blocked : avoid) {
+            if (isPhysReg(blocked) && samePhysReg(blocked, reg)) {
+                conflicts = true;
+                break;
+            }
+        }
+        if (!conflicts)
+            return reg;
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] bool regUsedAfterBeforeRedef(const std::vector<MInstr> &instrs,
+                                           std::size_t idx,
+                                           const MOperand &reg) noexcept {
+    for (std::size_t i = idx + 1; i < instrs.size(); ++i) {
+        if (usesReg(instrs[i], reg))
+            return true;
+        if (definesReg(instrs[i], reg))
+            return false;
+    }
+    return false;
+}
 
 /// @brief Compute the magic number for signed division by a constant.
 ///
@@ -131,6 +191,34 @@ struct MagicNumber {
         result.needsAdd = true;
     }
 
+    return result;
+}
+
+[[nodiscard]] std::optional<UnsignedMagicNumber> computeUnsignedMagic(uint64_t d) noexcept {
+    if (d <= 1)
+        return std::nullopt;
+    if ((d & (d - 1)) == 0)
+        return std::nullopt;
+
+    const unsigned floorLog2 = floorLog2U64(d);
+    uint64_t rem = 0;
+    uint64_t proposed = divU128ByU64(uint64_t{1} << floorLog2, 0, d, rem);
+    const uint64_t e = d - rem;
+
+    UnsignedMagicNumber result{};
+    result.shift = floorLog2;
+    if (e < (uint64_t{1} << floorLog2)) {
+        result.multiplier = proposed + 1;
+        result.needsAdd = false;
+        return result;
+    }
+
+    proposed += proposed;
+    const uint64_t twiceRem = rem + rem;
+    if (twiceRem >= d || twiceRem < rem)
+        proposed += 1;
+    result.multiplier = proposed + 1;
+    result.needsAdd = true;
     return result;
 }
 
@@ -236,6 +324,77 @@ bool tryDivStrengthReduction(MInstr &instr, const RegConstMap &knownConsts, Peep
     return true;
 }
 
+bool tryUDivStrengthReduction(std::vector<MInstr> &instrs,
+                              std::size_t idx,
+                              const RegConstMap &knownConsts,
+                              PeepholeStats &stats) {
+    if (idx >= instrs.size())
+        return false;
+
+    auto &divInstr = instrs[idx];
+    if (divInstr.opc != MOpcode::UDivRRR || divInstr.ops.size() != 3)
+        return false;
+    if (!isPhysReg(divInstr.ops[0]) || !isPhysReg(divInstr.ops[1]) || !isPhysReg(divInstr.ops[2]))
+        return false;
+
+    auto rhsConst = getConstValue(divInstr.ops[2], knownConsts);
+    if (!rhsConst || *rhsConst <= 1)
+        return false;
+
+    const uint64_t divisor = static_cast<uint64_t>(*rhsConst);
+    if ((divisor & (divisor - 1)) == 0)
+        return false;
+
+    const auto magic = computeUnsignedMagic(divisor);
+    if (!magic.has_value())
+        return false;
+
+    const MOperand dst = divInstr.ops[0];
+    const MOperand lhs = divInstr.ops[1];
+    const MOperand rhsReg = divInstr.ops[2];
+
+    const bool rhsLiveAfter = regUsedAfterBeforeRedef(instrs, idx, rhsReg);
+    if (rhsLiveAfter)
+        return false;
+
+    const PhysReg rhsPhys = static_cast<PhysReg>(rhsReg.reg.idOrPhys);
+    const auto tempReg = pickTempReg({kScratchGPR, kScratchGPR2, rhsPhys}, {dst, lhs});
+    if (!tempReg.has_value())
+        return false;
+
+    MOperand lhsValue = lhs;
+    std::vector<MInstr> expansion;
+    if (magic->needsAdd && samePhysReg(dst, lhs)) {
+        const auto preservedLhs =
+            pickTempReg({kScratchGPR, kScratchGPR2, rhsPhys}, {dst, lhs, *tempReg});
+        if (!preservedLhs.has_value())
+            return false;
+        expansion.push_back(MInstr{MOpcode::MovRR, {*preservedLhs, lhs}});
+        lhsValue = *preservedLhs;
+    }
+
+    expansion.push_back(
+        MInstr{MOpcode::MovRI, {*tempReg, MOperand::immOp(static_cast<long long>(magic->multiplier))}});
+    expansion.push_back(MInstr{MOpcode::UmulhRRR, {dst, lhsValue, *tempReg}});
+
+    if (magic->needsAdd) {
+        expansion.push_back(MInstr{MOpcode::SubRRR, {*tempReg, lhsValue, dst}});
+        expansion.push_back(MInstr{MOpcode::LsrRI, {*tempReg, *tempReg, MOperand::immOp(1)}});
+        expansion.push_back(MInstr{MOpcode::AddRRR, {dst, *tempReg, dst}});
+    }
+
+    if (magic->shift > 0)
+        expansion.push_back(
+            MInstr{MOpcode::LsrRI, {dst, dst, MOperand::immOp(static_cast<long long>(magic->shift))}});
+
+    instrs.erase(instrs.begin() + static_cast<std::ptrdiff_t>(idx));
+    instrs.insert(
+        instrs.begin() + static_cast<std::ptrdiff_t>(idx), expansion.begin(), expansion.end());
+
+    ++stats.strengthReductions;
+    return true;
+}
+
 bool tryImmediateFolding(MInstr &instr, const RegConstMap &knownConsts, PeepholeStats &stats) {
     if (instr.ops.size() != 3)
         return false;
@@ -283,38 +442,50 @@ bool trySDivStrengthReduction(std::vector<MInstr> &instrs,
         return false;
 
     auto rhsConst = getConstValue(divInstr.ops[2], knownConsts);
-    if (!rhsConst || *rhsConst <= 1)
+    if (!rhsConst || *rhsConst == 0)
         return false;
 
     const long long divisor = *rhsConst;
     const MOperand dst = divInstr.ops[0];
     const MOperand lhs = divInstr.ops[1];
     const MOperand rhsReg = divInstr.ops[2]; // register holding the constant divisor
-
-    // Verify the divisor register is not live after this instruction.
-    // We will reuse it as a temporary register for the expansion.
-    if (!isPhysReg(rhsReg))
+    if (!isPhysReg(dst) || !isPhysReg(lhs) || !isPhysReg(rhsReg))
         return false;
 
-    bool rhsLiveAfter = false;
-    for (std::size_t i = idx + 1; i < instrs.size(); ++i) {
-        if (usesReg(instrs[i], rhsReg)) {
-            rhsLiveAfter = true;
-            break;
-        }
-        if (definesReg(instrs[i], rhsReg))
-            break;
+    if (divisor == 1) {
+        divInstr.opc = MOpcode::MovRR;
+        divInstr.ops = {dst, lhs};
+        ++stats.strengthReductions;
+        return true;
     }
 
-    // If divisor reg is used later, check if it's only used by an immediately
-    // following MSUB that is part of the same remainder pattern. In that case,
-    // we handle it in tryRemainderFusion instead.
-    if (rhsLiveAfter)
-        return false;
+    if (divisor == -1) {
+        const PhysReg rhsPhys = static_cast<PhysReg>(rhsReg.reg.idOrPhys);
+        const bool rhsLiveAfter = regUsedAfterBeforeRedef(instrs, idx, rhsReg);
+        if (rhsLiveAfter)
+            return false;
 
-    const int log = log2IfPowerOf2(divisor);
+        const auto zeroReg = pickTempReg({kScratchGPR, kScratchGPR2, rhsPhys}, {dst, lhs});
+        if (!zeroReg.has_value())
+            return false;
 
+        std::vector<MInstr> expansion;
+        expansion.push_back(MInstr{MOpcode::MovRI, {*zeroReg, MOperand::immOp(0)}});
+        expansion.push_back(MInstr{MOpcode::SubRRR, {dst, *zeroReg, lhs}});
+        instrs.erase(instrs.begin() + static_cast<std::ptrdiff_t>(idx));
+        instrs.insert(
+            instrs.begin() + static_cast<std::ptrdiff_t>(idx), expansion.begin(), expansion.end());
+        ++stats.strengthReductions;
+        return true;
+    }
+
+    const bool positiveDivisor = divisor > 0;
+    const int log = positiveDivisor ? log2IfPowerOf2(divisor) : -1;
     if (log >= 1 && log <= 63) {
+        const bool rhsLiveAfter = regUsedAfterBeforeRedef(instrs, idx, rhsReg);
+        if (rhsLiveAfter)
+            return false;
+
         // SDIV by power-of-2: Replace with sign-corrected arithmetic shift.
         //
         // For x / 2^k (signed), the standard sequence is:
@@ -348,16 +519,54 @@ bool trySDivStrengthReduction(std::vector<MInstr> &instrs,
         return true;
     }
 
-    // Non-power-of-two signed division strength reduction is temporarily
-    // disabled. The magic-number lowering used here was not semantically
-    // correct for all divisors under truncation-toward-zero semantics
-    // (for example 10 / 3 regressed to 2 in native O1 codegen). Keep the
-    // original SDIV until a proven-correct transform is reintroduced.
-    (void)dst;
-    (void)lhs;
-    (void)rhsReg;
-    (void)stats;
-    return false;
+    if (divisor == std::numeric_limits<long long>::min())
+        return false;
+
+    const long long absDivisor = divisor < 0 ? -divisor : divisor;
+    const auto magic = computeSignedMagic(absDivisor);
+    if (magic.multiplier == 0)
+        return false;
+
+    const bool rhsLiveAfter = regUsedAfterBeforeRedef(instrs, idx, rhsReg);
+    if (rhsLiveAfter)
+        return false;
+
+    const PhysReg rhsPhys = static_cast<PhysReg>(rhsReg.reg.idOrPhys);
+    const auto tempReg = pickTempReg({kScratchGPR, kScratchGPR2, rhsPhys}, {dst, lhs});
+    if (!tempReg.has_value())
+        return false;
+
+    MOperand lhsValue = lhs;
+    std::vector<MInstr> expansion;
+    if (samePhysReg(dst, lhs)) {
+        const auto preservedLhs =
+            pickTempReg({kScratchGPR, kScratchGPR2, rhsPhys}, {dst, lhs, *tempReg});
+        if (!preservedLhs.has_value())
+            return false;
+        expansion.push_back(MInstr{MOpcode::MovRR, {*preservedLhs, lhs}});
+        lhsValue = *preservedLhs;
+    }
+
+    expansion.push_back(MInstr{
+        MOpcode::MovRI, {*tempReg, MOperand::immOp(static_cast<long long>(magic.multiplier))}});
+    expansion.push_back(MInstr{MOpcode::SmulhRRR, {dst, lhsValue, *tempReg}});
+    if (magic.multiplier < 0)
+        expansion.push_back(MInstr{MOpcode::AddRRR, {dst, dst, lhsValue}});
+    if (magic.shift > 0)
+        expansion.push_back(MInstr{MOpcode::AsrRI, {dst, dst, MOperand::immOp(magic.shift)}});
+    expansion.push_back(MInstr{MOpcode::LsrRI, {*tempReg, lhsValue, MOperand::immOp(63)}});
+    expansion.push_back(MInstr{MOpcode::AddRRR, {dst, dst, *tempReg}});
+    if (divisor < 0) {
+        expansion.push_back(MInstr{MOpcode::MovRI, {*tempReg, MOperand::immOp(0)}});
+        expansion.push_back(MInstr{MOpcode::SubRRR, {dst, *tempReg, dst}});
+    }
+
+    instrs.erase(instrs.begin() + static_cast<std::ptrdiff_t>(idx));
+    instrs.insert(
+        instrs.begin() + static_cast<std::ptrdiff_t>(idx), expansion.begin(), expansion.end());
+
+    ++stats.strengthReductions;
+    return true;
 }
 
 bool tryRemainderFusion(std::vector<MInstr> &instrs,

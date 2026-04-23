@@ -2,7 +2,9 @@
 // Part of the Viper project, under the GNU GPL v3.
 //===----------------------------------------------------------------------===//
 // File: tests/unit/codegen/test_codegen_arm64_call_stack_args_multi.cpp
-// Purpose: Ensure outgoing stack arg area is reused across multiple calls.
+// Purpose: Ensure each multi-call stack-arg sequence reserves an explicit
+//          outgoing area around the call instead of writing into a stale frame
+//          reservation.
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"
 #include <filesystem>
@@ -34,7 +36,21 @@ static std::string readFile(const std::string &path) {
     return ss.str();
 }
 
-TEST(Arm64CLI, CallWithStackArgsReused) {
+namespace {
+
+size_t countSubstring(const std::string &text, const std::string &needle) {
+    size_t count = 0;
+    size_t pos = 0;
+    while ((pos = text.find(needle, pos)) != std::string::npos) {
+        ++count;
+        pos += needle.size();
+    }
+    return count;
+}
+
+} // namespace
+
+TEST(Arm64CLI, CallWithStackArgsUsesPerCallOutgoingArea) {
     const std::string in = outPath("arm64_call_stack_multi.il");
     const std::string out = outPath("arm64_call_stack_multi.s");
     const std::string il = "il 0.1\n"
@@ -51,12 +67,15 @@ TEST(Arm64CLI, CallWithStackArgsReused) {
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Allocation for outgoing args should be present once
-    EXPECT_NE(asmText.find("sub sp, sp"), std::string::npos);
+    const size_t subCount = countSubstring(asmText, "sub sp, sp");
+    const size_t addCount = countSubstring(asmText, "add sp, sp");
+
+    EXPECT_GE(subCount, 2u);
+    EXPECT_GE(addCount, 2u);
     // Both calls present
     EXPECT_NE(asmText.find("bl _h1"), std::string::npos);
     EXPECT_NE(asmText.find("bl _h2"), std::string::npos);
-    // Stores should target the shared outgoing area
+    // Stores should target the temporary outgoing area around each call.
     EXPECT_NE(asmText.find("[sp, #0]"), std::string::npos);
     EXPECT_NE(asmText.find("[sp, #8]"), std::string::npos);
 }

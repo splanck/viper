@@ -20,7 +20,10 @@
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"
+#include <algorithm>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/Peephole.hpp"
@@ -171,6 +174,70 @@ TEST(AArch64PeepholeSubpasses, MultiplePassesInteract) {
     EXPECT_GT(stats.identityMovesRemoved, 0);
     EXPECT_GT(stats.cmpZeroToTst, 0);
     EXPECT_GT(stats.branchesToNextRemoved, 0);
+}
+
+TEST(AArch64PeepholeSubpasses, LoopPhiEdgeMovesPreserveOverlappingSources) {
+    MFunction fn{};
+    fn.name = "loop_phi_overlap";
+    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    fn.blocks.push_back(MBasicBlock{"loop", {}});
+    fn.blocks.push_back(MBasicBlock{"body", {}});
+    fn.blocks.push_back(MBasicBlock{"latch", {}});
+    fn.blocks.push_back(MBasicBlock{"exit", {}});
+
+    auto &entry = fn.blocks[0];
+    auto &loop = fn.blocks[1];
+    auto &body = fn.blocks[2];
+    auto &latch = fn.blocks[3];
+    auto &exit = fn.blocks[4];
+
+    entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("loop")}});
+
+    loop.instrs.push_back(
+        MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X10), MOperand::immOp(-40)}});
+    loop.instrs.push_back(
+        MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X8), MOperand::immOp(-48)}});
+    loop.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("body")}});
+
+    body.instrs.push_back(MInstr{MOpcode::AddsRRR,
+                                 {MOperand::regOp(PhysReg::X11),
+                                  MOperand::regOp(PhysReg::X8),
+                                  MOperand::regOp(PhysReg::X10)}});
+    body.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("latch")}});
+
+    latch.instrs.push_back(
+        MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X17), MOperand::immOp(-104)}});
+    latch.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X17), MOperand::immOp(-40)}});
+    latch.instrs.push_back(
+        MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X10), MOperand::immOp(-96)}});
+    latch.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X10), MOperand::immOp(-48)}});
+    latch.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("loop")}});
+
+    exit.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    auto stats = runPeephole(fn);
+    EXPECT_GT(stats.loopConstsHoisted, 0);
+
+    const auto latchIt =
+        std::find_if(fn.blocks.begin(), fn.blocks.end(), [](const MBasicBlock &bb) {
+            return bb.name == "latch";
+        });
+    ASSERT_TRUE(latchIt != fn.blocks.end());
+
+    std::vector<std::pair<PhysReg, PhysReg>> movs;
+    for (const auto &instr : latchIt->instrs) {
+        if (instr.opc == MOpcode::MovRR && instr.ops.size() == 2 &&
+            instr.ops[0].kind == MOperand::Kind::Reg && instr.ops[1].kind == MOperand::Kind::Reg) {
+            movs.emplace_back(static_cast<PhysReg>(instr.ops[0].reg.idOrPhys),
+                              static_cast<PhysReg>(instr.ops[1].reg.idOrPhys));
+        }
+    }
+
+    ASSERT_GE(movs.size(), 2u);
+    EXPECT_EQ(movs[0], std::make_pair(PhysReg::X8, PhysReg::X10));
+    EXPECT_EQ(movs[1], std::make_pair(PhysReg::X10, PhysReg::X17));
 }
 
 int main(int argc, char **argv) {

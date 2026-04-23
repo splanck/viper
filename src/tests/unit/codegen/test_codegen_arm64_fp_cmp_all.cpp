@@ -144,6 +144,7 @@ TEST(Arm64FPCmpAll, CmpBranch) {
     const bool hasCbz = asmText.find("cbz ") != std::string::npos;
     const bool hasCbnz = asmText.find("cbnz ") != std::string::npos;
     EXPECT_TRUE(hasBCond || hasCbz || hasCbnz);
+    EXPECT_EQ(asmText.find("cset x"), std::string::npos);
 }
 
 // Test: Chained FP comparisons
@@ -192,6 +193,33 @@ TEST(Arm64FPCmpAll, CmpWithZero) {
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find("fcmp d"), std::string::npos);
+}
+
+// Test: FP compare used both as cbr condition and edge argument
+TEST(Arm64FPCmpAll, CmpConditionAlsoFeedsEdgeArgument) {
+    const std::string in = outPath("arm64_fp_cmp_edge_arg.il");
+    const std::string out = outPath("arm64_fp_cmp_edge_arg.s");
+    const std::string il = "il 0.1\n"
+                           "func @cmp_edge(%a:f64, %b:f64) -> i64 {\n"
+                           "entry(%a:f64, %b:f64):\n"
+                           "  %c = fcmp_gt %a, %b\n"
+                           "  cbr %c, yes(%c), no(%c)\n"
+                           "yes(%flag:i1):\n"
+                           "  %r1 = zext1 %flag\n"
+                           "  ret %r1\n"
+                           "no(%flag:i1):\n"
+                           "  %r0 = zext1 %flag\n"
+                           "  ret %r0\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find("fcmp d"), std::string::npos);
+    const bool hasBCond = asmText.find("b.") != std::string::npos;
+    const bool hasCbz = asmText.find("cbz ") != std::string::npos;
+    const bool hasCbnz = asmText.find("cbnz ") != std::string::npos;
+    EXPECT_TRUE(hasBCond || hasCbz || hasCbnz);
 }
 
 int main(int argc, char **argv) {

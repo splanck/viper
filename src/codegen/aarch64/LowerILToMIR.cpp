@@ -66,7 +66,7 @@ namespace {
 using il::core::Opcode;
 
 static const char *condForOpcode(Opcode op) {
-    return lookupCondition(op);
+    return lookupAnyCondition(op);
 }
 
 static std::vector<std::size_t> countTempUses(const il::core::Function &fn) {
@@ -415,6 +415,12 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                 if (op.kind == il::core::Value::Kind::Temp)
                     reloadCrossBlockTempAtBlockEntry(op.id);
             }
+            for (const auto &edgeArgs : ins.brArgs) {
+                for (const auto &arg : edgeArgs) {
+                    if (arg.kind == il::core::Value::Kind::Temp)
+                        reloadCrossBlockTempAtBlockEntry(arg.id);
+                }
+            }
         }
         // Also check terminator for cross-block temp uses (CBr condition)
         if (!bbIn.instructions.empty()) {
@@ -492,149 +498,6 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                     // URemChk0, FAdd, FSub, FMul, FDiv, FCmpEQ, FCmpNE, FCmpLT, FCmpLE, FCmpGT,
                     // FCmpGE, Sitofp, Fptosi are handled by lowerInstruction() above
 
-                case il::core::Opcode::SwitchI32: {
-                    using namespace il::core;
-                    // Scrutinee
-                    uint16_t sv = 0;
-                    RegClass scls = RegClass::GPR;
-                    if (ins.operands.empty() || !materializeValueToVReg(ins.operands[0],
-                                                                        bbIn,
-                                                                        *ti_,
-                                                                        fb,
-                                                                        bbOutFn(),
-                                                                        tempVReg,
-                                                                        tempRegClass,
-                                                                        nextVRegId,
-                                                                        sv,
-                                                                        scls)) {
-                        break;
-                    }
-                    const size_t ncases = switchCaseCount(ins);
-                    for (size_t ci = 0; ci < ncases; ++ci) {
-                        const Value &cval = switchCaseValue(ins, ci);
-                        const std::string &clabel = switchCaseLabel(ins, ci);
-                        long long imm = 0;
-                        if (cval.kind == Value::Kind::ConstInt)
-                            imm = cval.i64;
-                        bbOutFn().instrs.push_back(
-                            MInstr{MOpcode::CmpRI,
-                                   {MOperand::vregOp(RegClass::GPR, sv), MOperand::immOp(imm)}});
-                        // Phi copies for this case
-                        auto itIds = phiVregId.find(clabel);
-                        if (itIds != phiVregId.end()) {
-                            const auto &classes = phiRegClass[clabel];
-                            const auto &args = switchCaseArgs(ins, ci);
-                            for (std::size_t ai = 0; ai < args.size() && ai < itIds->second.size();
-                                 ++ai) {
-                                uint16_t pv = 0;
-                                RegClass pcls = RegClass::GPR;
-                                if (!materializeValueToVReg(args[ai],
-                                                            bbIn,
-                                                            *ti_,
-                                                            fb,
-                                                            bbOutFn(),
-                                                            tempVReg,
-                                                            tempRegClass,
-                                                            nextVRegId,
-                                                            pv,
-                                                            pcls))
-                                    continue;
-                                const uint16_t dstV = itIds->second[ai];
-                                const RegClass dstCls = classes[ai];
-                                if (dstCls == RegClass::FPR) {
-                                    if (pcls != RegClass::FPR) {
-                                        const uint16_t cvt = allocateNextVReg(nextVRegId);
-                                        bbOutFn().instrs.push_back(
-                                            MInstr{MOpcode::SCvtF,
-                                                   {MOperand::vregOp(RegClass::FPR, cvt),
-                                                    MOperand::vregOp(RegClass::GPR, pv)}});
-                                        pv = cvt;
-                                        pcls = RegClass::FPR;
-                                    }
-                                    bbOutFn().instrs.push_back(
-                                        MInstr{MOpcode::FMovRR,
-                                               {MOperand::vregOp(RegClass::FPR, dstV),
-                                                MOperand::vregOp(RegClass::FPR, pv)}});
-                                } else {
-                                    if (pcls == RegClass::FPR) {
-                                        const uint16_t cvt = allocateNextVReg(nextVRegId);
-                                        bbOutFn().instrs.push_back(
-                                            MInstr{MOpcode::FCvtZS,
-                                                   {MOperand::vregOp(RegClass::GPR, cvt),
-                                                    MOperand::vregOp(RegClass::FPR, pv)}});
-                                        pv = cvt;
-                                        pcls = RegClass::GPR;
-                                    }
-                                    bbOutFn().instrs.push_back(
-                                        MInstr{MOpcode::MovRR,
-                                               {MOperand::vregOp(RegClass::GPR, dstV),
-                                                MOperand::vregOp(RegClass::GPR, pv)}});
-                                }
-                            }
-                        }
-                        bbOutFn().instrs.push_back(MInstr{
-                            MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(clabel)}});
-                    }
-                    // Default
-                    const std::string &defLbl = switchDefaultLabel(ins);
-                    if (!defLbl.empty()) {
-                        auto itIds = phiVregId.find(defLbl);
-                        if (itIds != phiVregId.end()) {
-                            const auto &classes = phiRegClass[defLbl];
-                            const auto &dargs = switchDefaultArgs(ins);
-                            for (std::size_t ai = 0; ai < dargs.size() && ai < itIds->second.size();
-                                 ++ai) {
-                                uint16_t pv = 0;
-                                RegClass pcls = RegClass::GPR;
-                                if (!materializeValueToVReg(dargs[ai],
-                                                            bbIn,
-                                                            *ti_,
-                                                            fb,
-                                                            bbOutFn(),
-                                                            tempVReg,
-                                                            tempRegClass,
-                                                            nextVRegId,
-                                                            pv,
-                                                            pcls))
-                                    continue;
-                                const uint16_t dstV = itIds->second[ai];
-                                const RegClass dstCls = classes[ai];
-                                if (dstCls == RegClass::FPR) {
-                                    if (pcls != RegClass::FPR) {
-                                        const uint16_t cvt = allocateNextVReg(nextVRegId);
-                                        bbOutFn().instrs.push_back(
-                                            MInstr{MOpcode::SCvtF,
-                                                   {MOperand::vregOp(RegClass::FPR, cvt),
-                                                    MOperand::vregOp(RegClass::GPR, pv)}});
-                                        pv = cvt;
-                                        pcls = RegClass::FPR;
-                                    }
-                                    bbOutFn().instrs.push_back(
-                                        MInstr{MOpcode::FMovRR,
-                                               {MOperand::vregOp(RegClass::FPR, dstV),
-                                                MOperand::vregOp(RegClass::FPR, pv)}});
-                                } else {
-                                    if (pcls == RegClass::FPR) {
-                                        const uint16_t cvt = allocateNextVReg(nextVRegId);
-                                        bbOutFn().instrs.push_back(
-                                            MInstr{MOpcode::FCvtZS,
-                                                   {MOperand::vregOp(RegClass::GPR, cvt),
-                                                    MOperand::vregOp(RegClass::FPR, pv)}});
-                                        pv = cvt;
-                                        pcls = RegClass::GPR;
-                                    }
-                                    bbOutFn().instrs.push_back(
-                                        MInstr{MOpcode::MovRR,
-                                               {MOperand::vregOp(RegClass::GPR, dstV),
-                                                MOperand::vregOp(RegClass::GPR, pv)}});
-                                }
-                            }
-                        }
-                        bbOutFn().instrs.push_back(
-                            MInstr{MOpcode::Br, {MOperand::labelOp(defLbl)}});
-                    }
-                    break;
-                }
                 // NOTE: Br, CBr, Call, Store, GEP, Load, Ret, Alloca, FP ops,
                 // and conversions are all handled by lowerInstruction() in OpcodeDispatch.cpp
                 default:

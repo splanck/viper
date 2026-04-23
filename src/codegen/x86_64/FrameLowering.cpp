@@ -324,7 +324,23 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, FrameInfo
         return;
     }
 
-    (void)target;
+    const bool isWin64 = target.shadowSpace != 0;
+    const bool isMain = (func.name == "main" || func.name == "@main");
+
+    auto usesIncomingStackParams = [&]() {
+        for (const auto &block : func.blocks) {
+            for (const auto &instr : block.instructions) {
+                for (const auto &operand : instr.operands) {
+                    const auto *mem = std::get_if<OpMem>(&operand);
+                    if (!mem || !mem->base.isPhys)
+                        continue;
+                    if (static_cast<PhysReg>(mem->base.idOrPhys) == PhysReg::RBP && mem->disp > 0)
+                        return true;
+                }
+            }
+        }
+        return false;
+    };
 
     // Leaf function frame elimination: skip prologue/epilogue entirely when
     // the function makes no calls, uses no callee-saved registers, and has
@@ -341,7 +357,8 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, FrameInfo
             if (hasCall)
                 break;
         }
-        if (!hasCall && frame.usedCalleeSaved.empty() && frame.frameSize == 0) {
+        if (!hasCall && frame.usedCalleeSaved.empty() && frame.frameSize == 0 &&
+            !usesIncomingStackParams() && !isMain) {
             frame.prologueEmitted = false;
             frame.usesChkstk = false;
             frame.win64UnwindOps.clear();
@@ -360,20 +377,21 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, FrameInfo
     // matching unwind records; other platforms keep the explicit store form.
     std::vector<MInstr> prologue{};
     prologue.reserve(4 + frame.usedCalleeSaved.size());
-#if defined(_WIN32)
-    prologue.push_back(MInstr::make(MOpcode::PUSH, {rbpOperand}));
-#else
-    prologue.push_back(MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-kSlotSizeBytes)}));
-    prologue.push_back(MInstr::make(MOpcode::MOVrm, {makeMemOperand(rspBase, 0), rbpOperand}));
-#endif
+    if (isWin64) {
+        prologue.push_back(MInstr::make(MOpcode::PUSH, {rbpOperand}));
+    } else {
+        prologue.push_back(
+            MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-kSlotSizeBytes)}));
+        prologue.push_back(MInstr::make(MOpcode::MOVrm, {makeMemOperand(rspBase, 0), rbpOperand}));
+    }
     prologue.push_back(MInstr::make(MOpcode::MOVrr, {rbpOperand, rspOperand}));
 
-#if defined(_WIN32)
-    frame.prologueEmitted = true;
-    frame.usesChkstk = false;
-    frame.win64UnwindOps.clear();
-    frame.win64UnwindOps.push_back({Win64UnwindOpKind::PushNonVol, PhysReg::RBP, 0});
-#endif
+    if (isWin64) {
+        frame.prologueEmitted = true;
+        frame.usesChkstk = false;
+        frame.win64UnwindOps.clear();
+        frame.win64UnwindOps.push_back({Win64UnwindOpKind::PushNonVol, PhysReg::RBP, 0});
+    }
 
     if (frame.frameSize > 0) {
         // For large frames (> page size), we need to probe the stack to ensure
@@ -381,54 +399,49 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, FrameInfo
         // and crashing without a proper stack overflow exception.
         // On Windows, we call __chkstk which probes and adjusts RSP.
         // On other platforms, we emit inline probing code.
-#if defined(_WIN32)
-        if (frame.frameSize > kPageSize) {
-            // Windows: __chkstk expects allocation size in RAX
-            // It probes each page and subtracts from RSP
-            const auto raxOperand = makePhysOperand(RegClass::GPR, PhysReg::RAX);
-            prologue.push_back(
-                MInstr::make(MOpcode::MOVri, {raxOperand, makeImmOperand(frame.frameSize)}));
-            prologue.push_back(MInstr::make(MOpcode::CALL, {makeLabelOperand("__chkstk")}));
-            prologue.push_back(
-                MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
-            frame.usesChkstk = true;
-        } else {
-            prologue.push_back(
-                MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
-        }
-        frame.win64UnwindOps.push_back(
-            {Win64UnwindOpKind::AllocStack, PhysReg::RAX, static_cast<uint32_t>(frame.frameSize)});
-#else
-        // Unix/macOS: emit inline stack probing for large frames.
-        // Touch each page from RSP downward so the OS can grow the stack and detect
-        // overflows via the guard page rather than jumping past it.
-        // Probe toward the exact final target: subtract/touch full pages while
-        // remaining > kPageSize, then subtract the final tail once.  This avoids
-        // overshooting the real frame depth and touching a guard page the frame
-        // would never actually reach.
-        if (frame.frameSize > kPageSize) {
-            const auto raxOperand = makePhysOperand(RegClass::GPR, PhysReg::RAX);
-            int remaining = frame.frameSize;
-            while (remaining > kPageSize) {
+        if (isWin64) {
+            if (frame.frameSize > kPageSize) {
+                const auto raxOperand = makePhysOperand(RegClass::GPR, PhysReg::RAX);
                 prologue.push_back(
-                    MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-kPageSize)}));
-                // Touch the page via: mov (%rsp), %rax  (load to clobber-safe register)
+                    MInstr::make(MOpcode::MOVri, {raxOperand, makeImmOperand(frame.frameSize)}));
+                prologue.push_back(MInstr::make(MOpcode::CALL, {makeLabelOperand("__chkstk")}));
                 prologue.push_back(
-                    MInstr::make(MOpcode::MOVmr, {raxOperand, makeMemOperand(rspBase, 0)}));
-                remaining -= kPageSize;
+                    MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
+                frame.usesChkstk = true;
+            } else {
+                prologue.push_back(
+                    MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
             }
-            // Subtract the final tail (<= kPageSize).  The page was already probed
-            // by the preceding iteration or is within the first page below the
-            // prior probe, so no additional touch is needed.
-            if (remaining > 0) {
-                prologue.push_back(
-                    MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-remaining)}));
-            }
+            frame.win64UnwindOps.push_back({Win64UnwindOpKind::AllocStack,
+                                            PhysReg::RAX,
+                                            static_cast<uint32_t>(frame.frameSize)});
         } else {
-            prologue.push_back(
-                MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
+            // Unix/macOS: emit inline stack probing for large frames.
+            // Touch each page from RSP downward so the OS can grow the stack and detect
+            // overflows via the guard page rather than jumping past it.
+            // Probe toward the exact final target: subtract/touch full pages while
+            // remaining > kPageSize, then subtract the final tail once.  This avoids
+            // overshooting the real frame depth and touching a guard page the frame
+            // would never actually reach.
+            if (frame.frameSize > kPageSize) {
+                const auto raxOperand = makePhysOperand(RegClass::GPR, PhysReg::RAX);
+                int remaining = frame.frameSize;
+                while (remaining > kPageSize) {
+                    prologue.push_back(
+                        MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-kPageSize)}));
+                    prologue.push_back(
+                        MInstr::make(MOpcode::MOVmr, {raxOperand, makeMemOperand(rspBase, 0)}));
+                    remaining -= kPageSize;
+                }
+                if (remaining > 0) {
+                    prologue.push_back(
+                        MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-remaining)}));
+                }
+            } else {
+                prologue.push_back(
+                    MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
+            }
         }
-#endif
     }
 
     const auto csOffsets = calleeSavedOffsets(frame.usedCalleeSaved);
@@ -445,17 +458,16 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, FrameInfo
                 MOpcode::MOVUPSrm,
                 {makeMemOperand(rbpBase, offset), makePhysOperand(RegClass::XMM, reg)}));
         }
-#if defined(_WIN32)
-        frame.win64UnwindOps.push_back(
-            {isGPR(reg) ? Win64UnwindOpKind::SaveNonVol : Win64UnwindOpKind::SaveXmm128,
-             reg,
-             unwindOffsetFromFinalRsp(frame.frameSize, offset)});
-#endif
+        if (isWin64) {
+            frame.win64UnwindOps.push_back(
+                {isGPR(reg) ? Win64UnwindOpKind::SaveNonVol : Win64UnwindOpKind::SaveXmm128,
+                 reg,
+                 unwindOffsetFromFinalRsp(frame.frameSize, offset)});
+        }
     }
 
     // For the main function, inject rt_init_stack_safety() call to set up
     // exception handlers for graceful stack overflow detection.
-    const bool isMain = (func.name == "main" || func.name == "@main");
     if (isMain) {
         prologue.push_back(MInstr::make(MOpcode::CALL, {makeLabelOperand("rt_init_stack_safety")}));
     }
@@ -488,17 +500,18 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, FrameInfo
         }
     }
 
-#if defined(_WIN32)
-    if (frame.frameSize > 0) {
+    if (isWin64) {
+        if (frame.frameSize > 0) {
+            epilogue.push_back(
+                MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(frame.frameSize)}));
+        }
+        epilogue.push_back(MInstr::make(MOpcode::POP, {rbpOperand}));
+    } else {
+        epilogue.push_back(MInstr::make(MOpcode::MOVrr, {rspOperand, rbpOperand}));
+        epilogue.push_back(MInstr::make(MOpcode::MOVmr, {rbpOperand, makeMemOperand(rspBase, 0)}));
         epilogue.push_back(
-            MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(frame.frameSize)}));
+            MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(kSlotSizeBytes)}));
     }
-    epilogue.push_back(MInstr::make(MOpcode::POP, {rbpOperand}));
-#else
-    epilogue.push_back(MInstr::make(MOpcode::MOVrr, {rspOperand, rbpOperand}));
-    epilogue.push_back(MInstr::make(MOpcode::MOVmr, {rbpOperand, makeMemOperand(rspBase, 0)}));
-    epilogue.push_back(MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(kSlotSizeBytes)}));
-#endif
 
     for (auto &block : func.blocks) {
         for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {

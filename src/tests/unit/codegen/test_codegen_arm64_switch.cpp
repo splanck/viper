@@ -17,6 +17,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "tools/viper/cmd_codegen_arm64.hpp"
 
@@ -40,6 +41,13 @@ static std::string readFile(const std::string &path) {
     std::ostringstream ss;
     ss << ifs.rdbuf();
     return ss.str();
+}
+
+static int runArm64(std::initializer_list<const char *> args) {
+    std::vector<char *> argv;
+    for (const char *arg : args)
+        argv.push_back(const_cast<char *>(arg));
+    return cmd_codegen_arm64(static_cast<int>(argv.size()), argv.data());
 }
 
 TEST(Arm64CLI, SwitchSmall) {
@@ -115,6 +123,58 @@ TEST(Arm64CLI, SwitchDefaultOnly) {
     // 2. A fallthrough to the default block (no branch needed if immediately adjacent)
     // Both are correct; we just verify the default label exists
     EXPECT_NE(asmText.find("LLd:"), std::string::npos);
+}
+
+TEST(Arm64CLI, SwitchCaseArgsPreserveTakenEdgeValues) {
+    const std::string in = outPath("arm64_switch_case_args.il");
+    const std::string il = "il 0.1\n"
+                           "func @dispatch(%x:i32) -> i64 {\n"
+                           "entry(%x:i32):\n"
+                           "  switch.i32 %x, ^Ld(50, 5), 1 -> ^L1(10, 1), 2 -> ^L2(20, 2)\n"
+                           "L1(%a:i64, %b:i64):\n"
+                           "  %r1 = iadd.ovf %a, %b\n"
+                           "  ret %r1\n"
+                           "L2(%a:i64, %b:i64):\n"
+                           "  %r2 = iadd.ovf %a, %b\n"
+                           "  ret %r2\n"
+                           "Ld(%a:i64, %b:i64):\n"
+                           "  %rd = iadd.ovf %a, %b\n"
+                           "  ret %rd\n"
+                           "}\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %x:i32 = cast.si_narrow.chk 2\n"
+                           "  %r = call @dispatch(%x)\n"
+                           "  ret %r\n"
+                           "}\n";
+    writeFile(in, il);
+    ASSERT_EQ(runArm64({in.c_str(), "-run-native", "-O0"}), 22);
+}
+
+TEST(Arm64CLI, SwitchDefaultArgsPreserveDefaultEdgeValues) {
+    const std::string in = outPath("arm64_switch_default_args.il");
+    const std::string il = "il 0.1\n"
+                           "func @dispatch(%x:i32) -> i64 {\n"
+                           "entry(%x:i32):\n"
+                           "  switch.i32 %x, ^Ld(50, 5), 1 -> ^L1(10, 1), 2 -> ^L2(20, 2)\n"
+                           "L1(%a:i64, %b:i64):\n"
+                           "  %r1 = iadd.ovf %a, %b\n"
+                           "  ret %r1\n"
+                           "L2(%a:i64, %b:i64):\n"
+                           "  %r2 = iadd.ovf %a, %b\n"
+                           "  ret %r2\n"
+                           "Ld(%a:i64, %b:i64):\n"
+                           "  %rd = iadd.ovf %a, %b\n"
+                           "  ret %rd\n"
+                           "}\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %x:i32 = cast.si_narrow.chk 7\n"
+                           "  %r = call @dispatch(%x)\n"
+                           "  ret %r\n"
+                           "}\n";
+    writeFile(in, il);
+    ASSERT_EQ(runArm64({in.c_str(), "-run-native", "-O0"}), 55);
 }
 
 int main(int argc, char **argv) {

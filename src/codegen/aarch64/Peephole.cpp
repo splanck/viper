@@ -518,39 +518,41 @@ PeepholeStats runPeephole(MFunction &fn) {
         // because Pass 1 converts UDIV->LSR which would break the UDIV+MSUB
         // remainder pattern. Remainder fusion must see the original UDIV/SDIV.
         {
-            ph::RegConstMap divConsts;
-            for (std::size_t i = 0; i < instrs.size(); ++i)
-                ph::updateKnownConsts(instrs[i], divConsts);
-
-            // First pass: try remainder fusion (UDIV/SDIV + MSUB -> AND/shift sequence)
-            for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
-                if (ph::tryRemainderFusion(instrs, i, divConsts, stats)) {
-                    // Rebuild constant map after modification
-                    divConsts.clear();
-                    for (std::size_t j = 0; j < instrs.size(); ++j)
-                        ph::updateKnownConsts(instrs[j], divConsts);
-                    if (i > 0)
-                        --i;
+            // Track only dominating constants while walking forward. A full-block
+            // pre-scan lets later redefinitions leak backward into earlier div/rem
+            // patterns, which can rewrite `x / 3` as `x / 5` after the rhs register
+            // is reused later in the block.
+            bool changed = true;
+            while (changed) {
+                changed = false;
+                ph::RegConstMap divConsts;
+                for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
+                    if (ph::tryRemainderFusion(instrs, i, divConsts, stats)) {
+                        changed = true;
+                        break;
+                    }
+                    ph::updateKnownConsts(instrs[i], divConsts);
                 }
             }
 
-            // Second pass: try standalone SDIV strength reduction
-            // (only for SDivRRR not already consumed by remainder fusion)
-            divConsts.clear();
-            for (std::size_t i = 0; i < instrs.size(); ++i)
-                ph::updateKnownConsts(instrs[i], divConsts);
+            // Second pass: try standalone UDIV/SDIV strength reduction
+            // (only for divs not already consumed by remainder fusion)
+            changed = true;
+            while (changed) {
+                changed = false;
+                ph::RegConstMap divConsts;
+                for (std::size_t i = 0; i < instrs.size(); ++i) {
+                    bool localChange = false;
+                    if (instrs[i].opc == MOpcode::UDivRRR)
+                        localChange = ph::tryUDivStrengthReduction(instrs, i, divConsts, stats);
+                    else if (instrs[i].opc == MOpcode::SDivRRR)
+                        localChange = ph::trySDivStrengthReduction(instrs, i, divConsts, stats);
 
-            for (std::size_t i = 0; i < instrs.size(); ++i) {
-                if (instrs[i].opc == MOpcode::SDivRRR) {
-                    if (ph::trySDivStrengthReduction(instrs, i, divConsts, stats)) {
-                        // Rebuild constant map after modification
-                        divConsts.clear();
-                        for (std::size_t j = 0; j < instrs.size(); ++j)
-                            ph::updateKnownConsts(instrs[j], divConsts);
-                        // Don't decrement i -- the expansion replaces the current
-                        // index and we should continue scanning from the next
-                        // unprocessed instruction.
+                    if (localChange) {
+                        changed = true;
+                        break;
                     }
+                    ph::updateKnownConsts(instrs[i], divConsts);
                 }
             }
         }

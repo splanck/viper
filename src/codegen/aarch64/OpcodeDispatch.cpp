@@ -68,11 +68,11 @@
 ///
 /// **Trap Blocks for Checked Operations:**
 /// Checked operations (CastSiNarrowChk, SDivChk0, etc.) generate trap blocks
-/// that branch to `rt_trap` on overflow or divide-by-zero:
+/// that branch to dedicated trap helpers or a NULL-message `rt_trap` path:
 /// ```
 /// Block:                    Trap Block:
 /// cmp original, widened     .Ltrap_cast_N:
-/// b.ne .Ltrap_cast_N    →     bl rt_trap
+/// b.ne .Ltrap_cast_N    →     bl rt_trap_ovf
 /// mov result, value
 /// ```
 ///
@@ -163,7 +163,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                         ctx.nextVRegId,
                                         sv,
                                         scls))
-                return true;
+                return false;
             const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
             const uint16_t one = allocateNextVReg(ctx.nextVRegId);
@@ -236,7 +236,7 @@ bool lowerInstruction(const il::core::Instr &ins,
             ctx.mf.blocks.emplace_back();
             ctx.mf.blocks.back().name = trapLabel;
             ctx.mf.blocks.back().instrs.push_back(
-                MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+                MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_ovf")}});
             const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
             bbOut().instrs.push_back(MInstr{
@@ -315,32 +315,24 @@ bool lowerInstruction(const il::core::Instr &ins,
             return true;
         }
         case Opcode::SRemChk0:
-            lowerSRemChk0(ins, bbIn, ctx, bbOut());
-            return true;
+            return lowerSRemChk0(ins, bbIn, ctx, bbOut());
         case Opcode::SDivChk0:
-            lowerSDivChk0(ins, bbIn, ctx, bbOut());
-            return true;
+            return lowerSDivChk0(ins, bbIn, ctx, bbOut());
         case Opcode::UDivChk0:
-            lowerUDivChk0(ins, bbIn, ctx, bbOut());
-            return true;
+            return lowerUDivChk0(ins, bbIn, ctx, bbOut());
         case Opcode::URemChk0:
-            lowerURemChk0(ins, bbIn, ctx, bbOut());
-            return true;
+            return lowerURemChk0(ins, bbIn, ctx, bbOut());
         case Opcode::IdxChk:
-            lowerIdxChk(ins, bbIn, ctx, bbOut());
-            return true;
+            return lowerIdxChk(ins, bbIn, ctx, bbOut());
         case Opcode::SRem:
-            lowerSRem(ins, bbIn, ctx, bbOut());
-            return true;
+            return lowerSRem(ins, bbIn, ctx, bbOut());
         case Opcode::URem:
-            lowerURem(ins, bbIn, ctx, bbOut());
-            return true;
+            return lowerURem(ins, bbIn, ctx, bbOut());
         case Opcode::FAdd:
         case Opcode::FSub:
         case Opcode::FMul:
         case Opcode::FDiv:
-            lowerFpArithmetic(ins, bbIn, ctx, bbOut());
-            return true;
+            return lowerFpArithmetic(ins, bbIn, ctx, bbOut());
         case Opcode::FCmpEQ:
         case Opcode::FCmpNE:
         case Opcode::FCmpLT:
@@ -349,14 +341,11 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::FCmpGE:
         case Opcode::FCmpOrd:
         case Opcode::FCmpUno:
-            lowerFpCompare(ins, bbIn, ctx, bbOut());
-            return true;
+            return lowerFpCompare(ins, bbIn, ctx, bbOut());
         case Opcode::Sitofp:
-            lowerSitofp(ins, bbIn, ctx, bbOut());
-            return true;
+            return lowerSitofp(ins, bbIn, ctx, bbOut());
         case Opcode::Fptosi:
-            lowerFptosi(ins, bbIn, ctx, bbOut());
-            return true;
+            return lowerFptosi(ins, bbIn, ctx, bbOut());
         case Opcode::ConstF64: {
             // Lower const.f64 by materializing a floating-point constant.
             // We load the 64-bit IEEE-754 representation into a GPR and then
@@ -471,20 +460,16 @@ bool lowerInstruction(const il::core::Instr &ins,
             return true;
         }
         case Opcode::Store:
-            lowerStore(ins, bbIn, ctx, bbOut());
-            return true;
+            return lowerStore(ins, bbIn, ctx, bbOut());
         case Opcode::GEP:
-            lowerGEP(ins, bbIn, ctx, bbOut());
-            return true;
+            return lowerGEP(ins, bbIn, ctx, bbOut());
         case Opcode::Load:
-            lowerLoad(ins, bbIn, ctx, bbOut());
-            return true;
+            return lowerLoad(ins, bbIn, ctx, bbOut());
         case Opcode::Call:
             lowerCall(ins, bbIn, ctx, bbOut());
             return true;
         case Opcode::CallIndirect:
-            lowerCallIndirect(ins, bbIn, ctx, bbOut());
-            return true;
+            return lowerCallIndirect(ins, bbIn, ctx, bbOut());
         case Opcode::Ret:
             lowerRet(ins, bbIn, ctx, bbOut());
             return true;
@@ -493,6 +478,7 @@ bool lowerInstruction(const il::core::Instr &ins,
             return true;
         case Opcode::Br:
         case Opcode::CBr:
+        case Opcode::SwitchI32:
             // Terminators are lowered in a separate pass after all instructions
             return true;
 
@@ -506,10 +492,13 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::EhEntry:
             return true;
 
-        // Bare trap — no message available, pass NULL to rt_trap.
         case Opcode::Trap:
-            bbOut().instrs.push_back(
-                MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+            if (ins.operands.empty()) {
+                bbOut().instrs.push_back(
+                    MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+            } else {
+                moveValueToArg(ins.operands[0], bbIn, ctx, PhysReg::X0, bbOut(), "trap message");
+            }
             bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
             return true;
 
@@ -564,8 +553,18 @@ bool lowerInstruction(const il::core::Instr &ins,
         // resume.label is a branch to an explicit target label.
         // The resume token operand is ignored in native codegen.
         // Handled as a terminator in TerminatorLowering.cpp.
-        case Opcode::TrapFromErr:
+        case Opcode::TrapFromErr: {
+            if (ins.operands.empty()) {
+                bbOut().instrs.push_back(
+                    MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+            } else {
+                moveValueToArg(
+                    ins.operands[0], bbIn, ctx, PhysReg::X0, bbOut(), "trap.from_err code");
+            }
+            bbOut().instrs.push_back(
+                MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_raise_error")}});
             return true;
+        }
         case Opcode::ResumeLabel:
             return true;
 

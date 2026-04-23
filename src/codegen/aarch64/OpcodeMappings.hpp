@@ -301,17 +301,49 @@ inline const char *lookupCondition(il::core::Opcode op) {
     }
 }
 
-/// @brief Tests whether an IL opcode is a comparison operation.
+/// @brief Look up the AArch64 condition code for a floating-point compare.
+[[nodiscard]] inline const char *lookupFpCondition(il::core::Opcode op) {
+    switch (op) {
+        case il::core::Opcode::FCmpEQ:
+            return "eq";
+        case il::core::Opcode::FCmpNE:
+            return "ne";
+        case il::core::Opcode::FCmpLT:
+            return "mi";
+        case il::core::Opcode::FCmpLE:
+            return "ls";
+        case il::core::Opcode::FCmpGT:
+            return "gt";
+        case il::core::Opcode::FCmpGE:
+            return "ge";
+        case il::core::Opcode::FCmpOrd:
+            return "vc";
+        case il::core::Opcode::FCmpUno:
+            return "vs";
+        default:
+            return nullptr;
+    }
+}
+
+/// @brief Look up the AArch64 condition code for any compare opcode.
+[[nodiscard]] inline const char *lookupAnyCondition(il::core::Opcode op) {
+    if (const char *cc = lookupCondition(op))
+        return cc;
+    return lookupFpCondition(op);
+}
+
+/// @brief Tests whether an IL opcode is any comparison operation.
 ///
-/// Returns true for all integer comparison opcodes (ICmpEq, ICmpNe, SCmpLT,
-/// SCmpLE, SCmpGT, SCmpGE, UCmpLT, UCmpLE, UCmpGT, UCmpGE). These opcodes
-/// require special handling in code generation: they lower to CMP + CSET
-/// sequences rather than simple arithmetic instructions.
-///
-/// @param op The IL opcode to test.
-/// @return True if op is a comparison opcode, false otherwise.
+/// Returns true for both integer and floating-point comparison opcodes. These
+/// ops require special handling in code generation because they lower to
+/// CMP/FCMP plus a condition-consuming sequence rather than plain arithmetic.
 inline bool isCompareOp(il::core::Opcode op) {
-    return lookupCondition(op) != nullptr;
+    return lookupAnyCondition(op) != nullptr;
+}
+
+/// @brief Tests whether an IL opcode is a floating-point compare operation.
+inline bool isFloatingPointCompareOp(il::core::Opcode op) {
+    return lookupFpCondition(op) != nullptr;
 }
 
 /// @brief Tests whether an IL opcode is a floating-point arithmetic operation.
