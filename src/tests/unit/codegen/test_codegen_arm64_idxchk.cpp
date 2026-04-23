@@ -96,7 +96,7 @@ TEST(Arm64IdxChk, ImmediateBounds) {
     EXPECT_NE(asmText.find("cmp x"), std::string::npos);
 }
 
-TEST(Arm64IdxChk, TrapMarshalsNullMessage) {
+TEST(Arm64IdxChk, TrapRaisesStructuredBoundsError) {
     const std::string in = outPath("arm64_idxchk_trap_abi.il");
     const std::string out = outPath("arm64_idxchk_trap_abi.s");
     const std::string il = "il 0.1\n"
@@ -109,12 +109,12 @@ TEST(Arm64IdxChk, TrapMarshalsNullMessage) {
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    const std::size_t movNullPos = asmText.find("mov x0, #0");
-    const std::size_t trapCallPos = asmText.find(blSym("rt_trap"));
-    EXPECT_NE(movNullPos, std::string::npos);
+    const std::size_t errCodePos = asmText.find("mov x0, #7");
+    const std::size_t trapCallPos = asmText.find(blSym("rt_trap_raise_error"));
+    EXPECT_NE(errCodePos, std::string::npos);
     EXPECT_NE(trapCallPos, std::string::npos);
-    if (movNullPos != std::string::npos && trapCallPos != std::string::npos)
-        EXPECT_LT(movNullPos, trapCallPos);
+    if (errCodePos != std::string::npos && trapCallPos != std::string::npos)
+        EXPECT_LT(errCodePos, trapCallPos);
 }
 
 // Test 3: Multiple index checks in sequence

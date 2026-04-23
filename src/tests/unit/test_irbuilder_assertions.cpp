@@ -273,7 +273,12 @@ static void test_set_insert_point() {
 static void test_module_seeding() {
     Module m;
     // Pre-populate the module
-    m.functions.push_back({"existing_fn", Type(Type::Kind::Void), {}, {}, {}});
+    {
+        Function existing;
+        existing.name = "existing_fn";
+        existing.retType = Type(Type::Kind::Void);
+        m.functions.push_back(std::move(existing));
+    }
     m.externs.push_back({"existing_ext", Type(Type::Kind::I64), {}});
 
     IRBuilder b(m);

@@ -139,7 +139,10 @@ il::core::Function &IRBuilder::startFunction(const std::string &name,
     usedBlockLabelsPerFunc_[name].clear();
 #endif
 
-    mod.functions.push_back({name, ret, {}, {}, {}});
+    il::core::Function fn;
+    fn.name = name;
+    fn.retType = ret;
+    mod.functions.push_back(std::move(fn));
     calleeReturnTypes[name] = ret;
     curFunc = &mod.functions.back();
     curBlockIdx.reset();

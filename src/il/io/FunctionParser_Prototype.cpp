@@ -117,11 +117,29 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false
     cur.seek(rp + 1);
 
     std::vector<Param> params;
+    bool isVarArg = false;
     if (!paramsStr.empty()) {
         std::stringstream pss(paramsStr);
         std::string piece;
+        std::vector<std::string> rawPieces;
         while (std::getline(pss, piece, ',')) {
-            auto param = parseParameterToken(piece, cur.line());
+            rawPieces.push_back(piece);
+        }
+        for (std::size_t i = 0; i < rawPieces.size(); ++i) {
+            const std::string trimmed = trim(rawPieces[i]);
+            if (trimmed == "...") {
+                if (isVarArg || i + 1 != rawPieces.size()) {
+                    return Expected<PrototypeParseResult>{
+                        makeSyntaxError(cursorPos(cur), "variadic marker must appear last", {})};
+                }
+                isVarArg = true;
+                continue;
+            }
+            if (isVarArg) {
+                return Expected<PrototypeParseResult>{
+                    makeSyntaxError(cursorPos(cur), "variadic marker must appear last", {})};
+            }
+            auto param = parseParameterToken(rawPieces[i], cur.line());
             if (!param)
                 return Expected<PrototypeParseResult>{param.error()};
             params.push_back(std::move(param.value()));
@@ -152,7 +170,7 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false
         if (!retOk)
             return Expected<PrototypeParseResult>{
                 makeSyntaxError(cursorPos(cur), "unknown return type", {})};
-        return PrototypeParseResult{Prototype{retTy, std::move(params)}, ccSegment};
+        return PrototypeParseResult{Prototype{retTy, std::move(params), isVarArg}, ccSegment};
     }
 
     size_t brace = cur.view().find('{', cur.offset());
@@ -172,7 +190,7 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false
             makeSyntaxError(cursorPos(cur), "unknown return type", {})};
 
     cur.seek(brace);
-    return PrototypeParseResult{Prototype{retTy, std::move(params)}, ccSegment};
+    return PrototypeParseResult{Prototype{retTy, std::move(params), isVarArg}, ccSegment};
 }
 
 /// @brief Parse an optional calling convention specifier.
@@ -298,7 +316,11 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st) {
     }
     st.nextTemp = nextId;
 
-    il::core::Function fn{fh.name, fh.proto.retType, std::move(fh.proto.params), {}, {}};
+    il::core::Function fn;
+    fn.name = fh.name;
+    fn.retType = fh.proto.retType;
+    fn.params = std::move(fh.proto.params);
+    fn.isVarArg = fh.proto.isVarArg;
     fn.linkage = linkage;
     st.m.functions.push_back(std::move(fn));
     st.curFn = &st.m.functions.back();

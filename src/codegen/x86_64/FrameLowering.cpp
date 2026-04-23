@@ -270,6 +270,9 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     if (frame.outgoingArgArea < 0) {
         frame.outgoingArgArea = 0;
     }
+    if (target.shadowSpace != 0 && (func.name == "main" || func.name == "@main")) {
+        frame.outgoingArgArea = std::max(frame.outgoingArgArea, static_cast<int>(target.shadowSpace));
+    }
     frame.outgoingArgArea = roundUp(frame.outgoingArgArea, kStackAlignment);
 
     const int rawFrameSize = runningOffset + frame.outgoingArgArea;

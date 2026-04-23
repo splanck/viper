@@ -56,6 +56,12 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags) {
     }
 
     LowerILToMIR lowerer{ti, &stringLiteralByteLengths};
+    std::unordered_map<std::string, std::size_t> knownVarArgNamedArgCounts;
+    for (const auto &fn : ilMod.functions) {
+        if (fn.isVarArg)
+            knownVarArgNamedArgCounts.emplace(fn.name, fn.params.size());
+    }
+    lowerer.setKnownVarArgCallees(std::move(knownVarArgNamedArgCounts));
     const bool uniquify = (ilMod.functions.size() > 1);
 
     try {

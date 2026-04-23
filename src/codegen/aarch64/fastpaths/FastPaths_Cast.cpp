@@ -138,40 +138,6 @@ std::optional<MFunction> tryCastFastPaths(FastPathContext &ctx) {
         return ctx.mf;
     }
 
-    // =========================================================================
-    // cast.fp_to_si.rte.chk: FP to integer with round-to-even and overflow check
-    // =========================================================================
-    // Pattern: cast.fp_to_si.rte.chk %param -> %r; ret %r
-    // Emits: frintn (round to nearest even), fcvtzs (convert to int)
-    // Note: Per IL spec, .rte = round-to-even, .chk = trap on overflow only.
-    //       Overflow checking is handled by the runtime for extreme values.
-    if (binI.op == Opcode::CastFpToSiRteChk) {
-        const auto &o0 = binI.operands[0];
-        if (o0.kind == il::core::Value::Kind::Temp) {
-            int pIdx = indexOfParam(bb, o0.id);
-            if (pIdx >= 0) {
-                const PhysReg s = ctx.ti.f64ArgOrder[static_cast<std::size_t>(pIdx)];
-                if (s != PhysReg::V0)
-                    bbMir.instrs.push_back(MInstr{
-                        MOpcode::FMovRR, {MOperand::regOp(PhysReg::V0), MOperand::regOp(s)}});
-            }
-        }
-
-        // Round to nearest even: d0 = frintn d0
-        bbMir.instrs.push_back(
-            MInstr{MOpcode::FRintN, {MOperand::regOp(PhysReg::V0), MOperand::regOp(PhysReg::V0)}});
-
-        // Convert to integer: x0 = fcvtzs d0 (truncation is exact since value is now integral)
-        bbMir.instrs.push_back(
-            MInstr{MOpcode::FCvtZS, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::V0)}});
-
-        // Return the converted value
-        bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
-
-        ctx.fb.finalize();
-        return ctx.mf;
-    }
-
     return std::nullopt;
 }
 

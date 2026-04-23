@@ -17,9 +17,20 @@
 #include "LoweringRuleTable.hpp"
 
 #include "LowerILToMIR.hpp"
+#include "Lowering.EmitCommon.hpp"
 #include "MachineIR.hpp"
 
 namespace viper::codegen::x64::lowering {
+
+namespace {
+
+MInstr makePlannedCall(Operand target, uint32_t callPlanId) {
+    MInstr call = MInstr::make(MOpcode::CALL, std::vector<Operand>{std::move(target)});
+    call.callPlanId = callPlanId;
+    return call;
+}
+
+} // namespace
 
 void emitEhPush(const ILInstr &, MIRBuilder &) {
     // NativeEHLowering should have rewritten eh.push before MIR lowering.
@@ -36,27 +47,39 @@ void emitEhEntry(const ILInstr &, MIRBuilder &) {
     // fallback so residual markers remain harmless.
 }
 
-void emitTrap(const ILInstr &, MIRBuilder &builder) {
-    // Emit a call to rt_trap(NULL) which will longjmp to the thread-local
+void emitTrap(const ILInstr &instr, MIRBuilder &builder) {
+    // Emit a call to rt_trap(payload) which will longjmp to the thread-local
     // recovery point if one is set, or abort the process otherwise.
-    // The trap message (if any) is not forwarded in the current implementation;
-    // rt_trap(NULL) emits the generic "Trap" diagnostic.
 
-    // Record a call plan so lowerPendingCalls matches this CALL correctly.
     CallLoweringPlan plan{};
     plan.callee = "rt_trap";
     plan.numNamedArgs = 1;
-    // Pass NULL as the message argument.
-    CallArg nullArg{};
-    nullArg.cls = CallArgClass::GPR;
-    nullArg.isImm = true;
-    nullArg.imm = 0;
-    plan.args.push_back(nullArg);
-    const uint32_t callPlanId = builder.recordCallPlan(std::move(plan));
 
-    MInstr call = MInstr::make(MOpcode::CALL, std::vector<Operand>{makeLabelOperand("rt_trap")});
-    call.callPlanId = callPlanId;
-    builder.append(std::move(call));
+    CallArg trapArg{};
+    trapArg.cls = CallArgClass::GPR;
+    if (instr.ops.empty()) {
+        trapArg.isImm = true;
+        trapArg.imm = 0;
+    } else {
+        EmitCommon emit(builder);
+        Operand payload = builder.makeOperandForValue(instr.ops[0], RegClass::GPR);
+        if (!std::holds_alternative<OpReg>(payload) && !std::holds_alternative<OpImm>(payload)) {
+            payload = emit.materialise(std::move(payload), RegClass::GPR);
+        }
+        if (const auto *reg = std::get_if<OpReg>(&payload)) {
+            trapArg.vreg = reg->idOrPhys;
+        } else if (const auto *imm = std::get_if<OpImm>(&payload)) {
+            trapArg.isImm = true;
+            trapArg.imm = imm->val;
+        } else {
+            trapArg.isImm = true;
+            trapArg.imm = 0;
+        }
+    }
+    plan.args.push_back(trapArg);
+
+    const uint32_t callPlanId = builder.recordCallPlan(std::move(plan));
+    builder.append(makePlannedCall(makeLabelOperand(std::string{"rt_trap"}), callPlanId));
     // rt_trap does not return (either longjmp or _Exit), but emit UD2 as a
     // safety net so the CPU faults if we somehow fall through.
     builder.append(MInstr::make(MOpcode::UD2));

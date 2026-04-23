@@ -95,6 +95,8 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <optional>
+#include <string_view>
 #include <stdexcept>
 
 namespace viper::codegen::aarch64 {
@@ -188,6 +190,39 @@ uint16_t emitMaskedI1Value(MBasicBlock &out, uint16_t srcVReg, uint16_t &nextVRe
                                  MOperand::vregOp(RegClass::GPR, srcVReg),
                                  MOperand::vregOp(RegClass::GPR, mask)}});
     return masked;
+}
+
+std::optional<std::size_t> lookupKnownVarArgNamedArgs(
+    std::string_view callee,
+    const std::unordered_map<std::string, std::size_t> *knownVarArgNamedArgCounts) {
+    if (!knownVarArgNamedArgCounts)
+        return std::nullopt;
+    const auto it = knownVarArgNamedArgCounts->find(std::string(callee));
+    if (it == knownVarArgNamedArgCounts->end())
+        return std::nullopt;
+    return it->second;
+}
+
+bool isKnownVarArgCallee(std::string_view callee,
+                         const std::unordered_map<std::string, std::size_t>
+                             *knownVarArgNamedArgCounts) {
+    return lookupKnownVarArgNamedArgs(callee, knownVarArgNamedArgCounts).has_value();
+}
+
+void emitTrapRaiseError(MBasicBlock &bb, int code) {
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(code)}});
+    bb.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_raise_error")}});
+}
+
+void emitF64BitsToVReg(MBasicBlock &out, uint16_t dstVReg, uint64_t bits, uint16_t &nextVRegId) {
+    const uint16_t bitsGpr = allocateNextVReg(nextVRegId);
+    out.instrs.push_back(MInstr{MOpcode::MovRI,
+                                {MOperand::vregOp(RegClass::GPR, bitsGpr),
+                                 MOperand::immOp(static_cast<long long>(bits))}});
+    out.instrs.push_back(MInstr{MOpcode::FMovGR,
+                                {MOperand::vregOp(RegClass::FPR, dstVReg),
+                                 MOperand::vregOp(RegClass::GPR, bitsGpr)}});
 }
 
 bool marshalCallArgs(const std::vector<MaterializedCallArg> &args,
@@ -826,7 +861,9 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
                        LoweredCall &seq,
                        std::unordered_map<unsigned, uint16_t> &tempVReg,
                        std::unordered_map<unsigned, RegClass> &tempRegClass,
-                       uint16_t &nextVRegId) {
+                       uint16_t &nextVRegId,
+                       const std::unordered_map<std::string, std::size_t>
+                           *knownVarArgNamedArgCounts) {
     // Callee can be in either callI.callee field or operands[0] as GlobalAddr
     std::string callee;
     std::size_t argStart = 0;
@@ -853,7 +890,9 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
 
     // Detect variadic callee — AAPCS64 requires anonymous (variadic) args on stack.
     const bool isVarArg =
-        il::runtime::isVarArgCallee(mappedCallee) || il::runtime::isVarArgCallee(callee);
+        il::runtime::isVarArgCallee(mappedCallee) || il::runtime::isVarArgCallee(callee) ||
+        isKnownVarArgCallee(mappedCallee, knownVarArgNamedArgCounts) ||
+        isKnownVarArgCallee(callee, knownVarArgNamedArgCounts);
     std::size_t namedArgCount = SIZE_MAX; // default: all args are "named"
     if (isVarArg) {
         // Look up the function's signature to determine the named parameter count.
@@ -862,6 +901,12 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
             namedArgCount = sig->paramTypes.size();
         else if (const auto *sig2 = il::runtime::findRuntimeSignature(callee))
             namedArgCount = sig2->paramTypes.size();
+        else if (const auto mappedNamedArgs =
+                     lookupKnownVarArgNamedArgs(mappedCallee, knownVarArgNamedArgCounts))
+            namedArgCount = *mappedNamedArgs;
+        else if (const auto rawNamedArgs =
+                     lookupKnownVarArgNamedArgs(callee, knownVarArgNamedArgCounts))
+            namedArgCount = *rawNamedArgs;
         else
             namedArgCount = 0; // Conservative: all args to stack for unknown vararg callees
     }
@@ -1180,9 +1225,7 @@ bool lowerIdxChk(const il::core::Instr &ins,
     // the blocks vector, invalidating the `out` reference.
     ctx.mf.blocks.emplace_back();
     ctx.mf.blocks.back().name = trapLabel;
-    ctx.mf.blocks.back().instrs.push_back(
-        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
-    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
+    emitTrapRaiseError(ctx.mf.blocks.back(), 7);
 
     return true;
 }
@@ -1807,7 +1850,16 @@ bool lowerCall(const il::core::Instr &ins,
                MBasicBlock &out) {
     LoweredCall seq{};
     if (lowerCallWithArgs(
-            ins, bb, ctx.ti, ctx.fb, out, seq, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId)) {
+            ins,
+            bb,
+            ctx.ti,
+            ctx.fb,
+            out,
+            seq,
+            ctx.tempVReg,
+            ctx.tempRegClass,
+            ctx.nextVRegId,
+            ctx.knownVarArgNamedArgCounts)) {
         for (auto &mi : seq.prefix)
             out.instrs.push_back(std::move(mi));
         out.instrs.push_back(std::move(seq.call));
@@ -1828,9 +1880,15 @@ bool lowerCall(const il::core::Instr &ins,
                 ctx.tempVReg[*ins.result] = dst2;
             }
         }
-    } else if (!ins.callee.empty()) {
-        throw std::runtime_error("AArch64 lowering: failed to lower call arguments for " +
-                                 ins.callee);
+    } else {
+        std::string callee = "<malformed direct call>";
+        if (!ins.callee.empty()) {
+            callee = ins.callee;
+        } else if (!ins.operands.empty() &&
+                   ins.operands[0].kind == il::core::Value::Kind::GlobalAddr) {
+            callee = ins.operands[0].str;
+        }
+        throw std::runtime_error("AArch64 lowering: failed to lower call arguments for " + callee);
     }
     return true;
 }

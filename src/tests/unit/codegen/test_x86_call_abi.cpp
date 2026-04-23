@@ -335,6 +335,47 @@ TEST(X64CallABI, StringLoadsRetainBeforeConsumingCalls) {
     EXPECT_FALSE(lowering.callPlans()[0].args[0].isImm);
 }
 
+TEST(X64CallABI, I1EntryParamsAreNormalizedInRegistersAndOnStack) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0, 1, 2, 3, 4, 5, 6};
+    entry.paramKinds = {ILValue::Kind::I1,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I64,
+                        ILValue::Kind::I1};
+    entry.instrs = {makeRet(makeConstI64(0))};
+
+    ILFunction fn{};
+    fn.name = "bool_entry_params";
+    fn.blocks = {entry};
+
+    const MFunction mir = lowering.lower(fn);
+    ASSERT_FALSE(mir.blocks.empty());
+
+    int andCount = 0;
+    bool sawStackBoolLoad = false;
+    for (const auto &instr : mir.blocks.front().instructions) {
+        if (instr.opcode == MOpcode::ANDri)
+            ++andCount;
+        if (instr.opcode != MOpcode::MOVmr || instr.operands.size() < 2)
+            continue;
+        const auto *mem = asMem(instr.operands[1]);
+        if (!mem || !mem->base.isPhys)
+            continue;
+        if (static_cast<PhysReg>(mem->base.idOrPhys) == PhysReg::RBP && mem->disp == 16)
+            sawStackBoolLoad = true;
+    }
+
+    EXPECT_EQ(andCount, 2);
+    EXPECT_TRUE(sawStackBoolLoad);
+}
+
 TEST(X64CallABI, Win64VarArgFpRegisterIsDuplicatedIntoIntegerLane) {
     MBasicBlock block{};
     block.label = "entry";

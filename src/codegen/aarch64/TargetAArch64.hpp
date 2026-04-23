@@ -219,6 +219,8 @@ enum class ABIFormat {
 
 struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, kMaxGPRArgs, kMaxFPRArgs> {
     ABIFormat abiFormat = ABIFormat::Darwin;
+    bool emitBranchTargetIdentification{true};
+    bool emitReturnAddressSigning{true};
 
     /// @brief Returns true when emitting Linux ELF assembly.
     [[nodiscard]] bool isLinux() const noexcept {
@@ -228,6 +230,14 @@ struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, kMaxGPRArgs,
     /// @brief Returns true when emitting Windows ARM64 PE/COFF assembly.
     [[nodiscard]] bool isWindows() const noexcept {
         return abiFormat == ABIFormat::Windows;
+    }
+
+    [[nodiscard]] bool hasBranchTargetIdentification() const noexcept {
+        return emitBranchTargetIdentification;
+    }
+
+    [[nodiscard]] bool hasReturnAddressSigning() const noexcept {
+        return emitReturnAddressSigning;
     }
 };
 

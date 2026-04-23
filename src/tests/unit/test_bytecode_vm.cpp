@@ -9,11 +9,16 @@
 #include "bytecode/BytecodeModule.hpp"
 #include "bytecode/BytecodeVM.hpp"
 #include "il/build/IRBuilder.hpp"
+#include "il/runtime/signatures/Registry.hpp"
 #include "tests/common/PosixCompat.h"
+#include "viper/vm/RuntimeBridge.hpp"
+#include <atomic>
 #include <cassert>
 #include <chrono>
+#include <condition_variable>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <string>
 
 using namespace il::core;
@@ -21,10 +26,83 @@ using namespace il::build;
 using namespace viper::bytecode;
 
 using il::core::BasicBlock;
+using il::runtime::signatures::make_signature;
+using SigKind = il::runtime::signatures::SigParam::Kind;
 
 struct rt_string_impl;
 using rt_string = rt_string_impl *;
 extern "C" const char *rt_string_cstr(rt_string s);
+extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
+extern "C" void rt_obj_set_finalizer(void *p, void (*fn)(void *));
+extern "C" int32_t rt_obj_release_check0(void *p);
+extern "C" void rt_obj_free(void *p);
+
+namespace {
+
+std::mutex g_asyncArgMutex;
+std::condition_variable g_asyncArgCv;
+bool g_asyncArgGateOpen = false;
+std::atomic<int> g_asyncArgFinalized{0};
+
+void async_arg_marker_finalizer(void *obj) {
+    (void)obj;
+    g_asyncArgFinalized.fetch_add(1, std::memory_order_relaxed);
+}
+
+void reset_async_arg_state() {
+    {
+        std::lock_guard<std::mutex> lock(g_asyncArgMutex);
+        g_asyncArgGateOpen = false;
+    }
+    g_asyncArgFinalized.store(0, std::memory_order_relaxed);
+}
+
+void wait_async_arg_gate() {
+    std::unique_lock<std::mutex> lock(g_asyncArgMutex);
+    g_asyncArgCv.wait(lock, [] { return g_asyncArgGateOpen; });
+}
+
+void open_async_arg_gate() {
+    {
+        std::lock_guard<std::mutex> lock(g_asyncArgMutex);
+        g_asyncArgGateOpen = true;
+    }
+    g_asyncArgCv.notify_all();
+}
+
+void make_async_arg_marker(void **args, void *result) {
+    (void)args;
+    void *marker = rt_obj_new_i64(0, 1);
+    assert(marker != nullptr);
+    rt_obj_set_finalizer(marker, async_arg_marker_finalizer);
+    *reinterpret_cast<void **>(result) = marker;
+}
+
+void release_async_arg_marker(void **args, void *result) {
+    (void)result;
+    void *marker = (args && args[0]) ? *reinterpret_cast<void **>(args[0]) : nullptr;
+    if (rt_obj_release_check0(marker))
+        rt_obj_free(marker);
+}
+
+void count_async_arg_marker(void **args, void *result) {
+    (void)args;
+    *reinterpret_cast<int64_t *>(result) = g_asyncArgFinalized.load(std::memory_order_relaxed);
+}
+
+void wait_async_arg_native(void **args, void *result) {
+    (void)args;
+    (void)result;
+    wait_async_arg_gate();
+}
+
+void open_async_arg_native(void **args, void *result) {
+    (void)args;
+    (void)result;
+    open_async_arg_gate();
+}
+
+} // namespace
 
 /// Create a simple addition function for testing
 /// func @add(i64 %a, i64 %b) -> i64
@@ -1589,6 +1667,126 @@ static void test_thread_start_safe_reports_bytecode_trap() {
     std::cout << "PASSED\n";
 }
 
+/// Test that bytecode Async.Run retains its argument until the worker exits.
+static void test_async_run_retains_bytecode_argument() {
+    std::cout << "  test_async_run_retains_bytecode_argument: ";
+
+    BytecodeModule bcModule;
+    bcModule.magic = kBytecodeModuleMagic;
+    bcModule.version = kBytecodeVersion;
+    bcModule.flags = 0;
+
+    const uint16_t asyncRunIdx =
+        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Threads.Async.Run", 2, true));
+    const uint16_t futureGetIdx =
+        static_cast<uint16_t>(bcModule.addNativeFunc("Viper.Threads.Future.Get", 1, true));
+    const uint16_t makeMarkerIdx =
+        static_cast<uint16_t>(bcModule.addNativeFunc("test.marker.make", 0, true));
+    const uint16_t releaseMarkerIdx =
+        static_cast<uint16_t>(bcModule.addNativeFunc("test.marker.release", 1, false));
+    const uint16_t countMarkerIdx =
+        static_cast<uint16_t>(bcModule.addNativeFunc("test.marker.count", 0, true));
+    const uint16_t waitGateIdx =
+        static_cast<uint16_t>(bcModule.addNativeFunc("test.gate.wait", 0, false));
+    const uint16_t openGateIdx =
+        static_cast<uint16_t>(bcModule.addNativeFunc("test.gate.open", 0, false));
+
+    BytecodeFunction worker;
+    worker.name = "worker_async_hold";
+    worker.hasReturn = true;
+    worker.numParams = 1;
+    worker.numLocals = 1;
+    worker.maxStack = 1;
+    worker.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 0, waitGateIdx));
+    worker.code.push_back(encodeOp(BCOpcode::LOAD_NULL));
+    worker.code.push_back(encodeOp(BCOpcode::RETURN));
+
+    BytecodeFunction mainFunc;
+    mainFunc.name = "main";
+    mainFunc.hasReturn = true;
+    mainFunc.numParams = 0;
+    mainFunc.numLocals = 5;
+    mainFunc.maxStack = 2;
+
+    constexpr uint64_t kFuncPtrTag = 0x8000000000000000ULL;
+    bcModule.i64Pool.push_back(static_cast<int64_t>(kFuncPtrTag | 0ULL));
+    const uint16_t workerPtrIdx = static_cast<uint16_t>(bcModule.i64Pool.size() - 1);
+
+    mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 0, makeMarkerIdx));
+    mainFunc.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 0));
+    mainFunc.code.push_back(encodeOp16(BCOpcode::LOAD_I64, workerPtrIdx));
+    mainFunc.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0));
+    mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 2, asyncRunIdx));
+    mainFunc.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 1));
+    mainFunc.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 0));
+    mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 1, releaseMarkerIdx));
+    mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 0, countMarkerIdx));
+    mainFunc.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 2));
+    mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 0, openGateIdx));
+    mainFunc.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 1));
+    mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 1, futureGetIdx));
+    mainFunc.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 3));
+    mainFunc.code.push_back(encodeOp8_16(BCOpcode::CALL_NATIVE, 0, countMarkerIdx));
+    mainFunc.code.push_back(encodeOp8(BCOpcode::STORE_LOCAL, 4));
+    mainFunc.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 2));
+    mainFunc.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 10));
+    mainFunc.code.push_back(encodeOp(BCOpcode::MUL_I64));
+    mainFunc.code.push_back(encodeOp8(BCOpcode::LOAD_LOCAL, 4));
+    mainFunc.code.push_back(encodeOp(BCOpcode::ADD_I64));
+    mainFunc.code.push_back(encodeOp(BCOpcode::RETURN));
+
+    bcModule.functions.push_back(std::move(worker));
+    bcModule.functionIndex["worker_async_hold"] = 0;
+    bcModule.functions.push_back(std::move(mainFunc));
+    bcModule.functionIndex["main"] = 1;
+
+    auto registerExtern = [](const char *name,
+                             std::initializer_list<SigKind> params,
+                             std::initializer_list<SigKind> rets,
+                             void *fn) {
+        il::vm::ExternDesc ext;
+        ext.name = name;
+        ext.signature = make_signature(name, params, rets);
+        ext.fn = fn;
+        (void)il::vm::registerExternIn(il::vm::processGlobalExternRegistry(), ext);
+    };
+    registerExtern("test.marker.make",
+                   {},
+                   {SigKind::Ptr},
+                   reinterpret_cast<void *>(&make_async_arg_marker));
+    registerExtern("test.marker.release",
+                   {SigKind::Ptr},
+                   {},
+                   reinterpret_cast<void *>(&release_async_arg_marker));
+    registerExtern("test.marker.count",
+                   {},
+                   {SigKind::I64},
+                   reinterpret_cast<void *>(&count_async_arg_marker));
+    registerExtern(
+        "test.gate.wait", {}, {}, reinterpret_cast<void *>(&wait_async_arg_native));
+    registerExtern(
+        "test.gate.open", {}, {}, reinterpret_cast<void *>(&open_async_arg_native));
+
+    for (bool threaded : {false, true}) {
+        reset_async_arg_state();
+
+        BytecodeVM vm;
+        vm.setRuntimeBridgeEnabled(true);
+        vm.setThreadedDispatch(threaded);
+        vm.load(&bcModule);
+
+        BCSlot result = vm.exec("main", {});
+        if (vm.state() != VMState::Halted) {
+            std::cerr << "async arg retention test trapped (threaded=" << threaded
+                      << "): " << vm.trapMessage() << "\n";
+        }
+        assert(vm.state() == VMState::Halted);
+        assert(result.i64 == 1);
+    }
+
+    std::cout << "PASSED\n";
+}
+
 /// @brief Main.
 int main() {
     VIPER_DISABLE_ABORT_DIALOG();
@@ -1618,6 +1816,7 @@ int main() {
     test_invalid_branch_target();
     test_truncated_extended_instruction();
     test_thread_start_safe_reports_bytecode_trap();
+    test_async_run_retains_bytecode_argument();
 
     std::cout << "All bytecode VM tests PASSED!\n";
     return 0;

@@ -287,6 +287,7 @@ class ModuleAdapter {
 
         ILFunction adapted{};
         adapted.name = func.name;
+        adapted.isVarArg = func.isVarArg;
 
         // Register parameter kinds
         for (const auto &param : func.params) {
@@ -513,6 +514,7 @@ class ModuleAdapter {
                 break;
             case il::core::Opcode::Trap:
                 out.opcode = "trap";
+                convertOperands(instr, {std::nullopt}, out);
                 break;
             case il::core::Opcode::TrapFromErr:
                 adaptRuntimeCall(instr, out, "rt_trap_raise_error", {ILValue::Kind::I64});

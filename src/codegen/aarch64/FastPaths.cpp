@@ -35,11 +35,18 @@ std::optional<MFunction> tryFastPathAttempt(const il::core::Function &fn,
                                             const MFunction &seedMf,
                                             const std::unordered_map<std::string, std::size_t>
                                                 *stringLiteralByteLengths,
+                                            const std::unordered_map<std::string, std::size_t>
+                                                *knownVarArgNamedArgCounts,
                                             AttemptFn &&attempt) {
     MFunction scratchMf = seedMf;
     FrameBuilder scratchFb(scratchMf);
     fastpaths::FastPathContext scratchCtx(
-        fn, ti, scratchFb, scratchMf, stringLiteralByteLengths);
+        fn,
+        ti,
+        scratchFb,
+        scratchMf,
+        stringLiteralByteLengths,
+        knownVarArgNamedArgCounts);
     if (auto result = attempt(scratchCtx))
         return std::move(*result);
     return std::nullopt;
@@ -52,7 +59,9 @@ std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
                                       FrameBuilder &fb,
                                       MFunction &mf,
                                       const std::unordered_map<std::string, std::size_t>
-                                          *stringLiteralByteLengths) {
+                                          *stringLiteralByteLengths,
+                                      const std::unordered_map<std::string, std::size_t>
+                                          *knownVarArgNamedArgCounts) {
     if (fn.blocks.empty())
         return std::nullopt;
     (void)fb;
@@ -68,6 +77,7 @@ std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
                                          ti,
                                          mf,
                                          stringLiteralByteLengths,
+                                         knownVarArgNamedArgCounts,
                                          [](fastpaths::FastPathContext &ctx) {
                                              return fastpaths::tryMemoryFastPaths(ctx);
                                          }))
@@ -78,6 +88,7 @@ std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
                                          ti,
                                          mf,
                                          stringLiteralByteLengths,
+                                         knownVarArgNamedArgCounts,
                                          [](fastpaths::FastPathContext &ctx) {
                                              return fastpaths::tryCastFastPaths(ctx);
                                          }))
@@ -88,6 +99,7 @@ std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
                                          ti,
                                          mf,
                                          stringLiteralByteLengths,
+                                         knownVarArgNamedArgCounts,
                                          [](fastpaths::FastPathContext &ctx) {
                                              return fastpaths::tryIntArithmeticFastPaths(ctx);
                                          }))
@@ -98,6 +110,7 @@ std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
                                          ti,
                                          mf,
                                          stringLiteralByteLengths,
+                                         knownVarArgNamedArgCounts,
                                          [](fastpaths::FastPathContext &ctx) {
                                              return fastpaths::tryFPArithmeticFastPaths(ctx);
                                          }))
@@ -108,6 +121,7 @@ std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
                                          ti,
                                          mf,
                                          stringLiteralByteLengths,
+                                         knownVarArgNamedArgCounts,
                                          [](fastpaths::FastPathContext &ctx) {
                                              return fastpaths::tryCallFastPaths(ctx);
                                          }))
@@ -118,6 +132,7 @@ std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
                                          ti,
                                          mf,
                                          stringLiteralByteLengths,
+                                         knownVarArgNamedArgCounts,
                                          [](fastpaths::FastPathContext &ctx) {
                                              return fastpaths::tryReturnFastPaths(ctx);
                                          }))

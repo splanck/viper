@@ -133,6 +133,36 @@ TEST(LinkageRoundTrip, ImportLinkageHasNoBody) {
     EXPECT_TRUE(parsed.functions[0].blocks.empty());
 }
 
+TEST(LinkageRoundTrip, VariadicPrototypeRoundTrips) {
+    Module m;
+    Function fn;
+    fn.name = "printfLike";
+    fn.retType = Type(Type::Kind::I64);
+    fn.params.push_back(Param{"fmt", Type(Type::Kind::Str), 0});
+    fn.isVarArg = true;
+    fn.linkage = Linkage::Export;
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::I64);
+    ret.operands.push_back(Value::constInt(0));
+    entry.instructions.push_back(ret);
+    fn.blocks.push_back(std::move(entry));
+    m.functions.push_back(std::move(fn));
+
+    const std::string text = serialize(m);
+    EXPECT_TRUE(text.find("func export @printfLike(str %fmt, ...) -> i64") != std::string::npos);
+
+    Module parsed;
+    ASSERT_TRUE(parseIL(text, parsed));
+    ASSERT_EQ(parsed.functions.size(), 1u);
+    EXPECT_TRUE(parsed.functions[0].isVarArg);
+    ASSERT_EQ(parsed.functions[0].params.size(), 1u);
+    EXPECT_EQ(parsed.functions[0].params[0].name, "fmt");
+}
+
 TEST(LinkageRoundTrip, MixedLinkagesInOneModule) {
     Module m;
 

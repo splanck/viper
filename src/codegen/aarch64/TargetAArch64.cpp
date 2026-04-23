@@ -181,6 +181,8 @@ TargetInfo makeDarwinTarget() {
 static TargetInfo makeLinuxTarget() {
     TargetInfo info = makeDarwinTarget();
     info.abiFormat = ABIFormat::Linux;
+    info.emitBranchTargetIdentification = false;
+    info.emitReturnAddressSigning = false;
     return info;
 }
 
@@ -190,6 +192,8 @@ static TargetInfo makeLinuxTarget() {
 static TargetInfo makeWindowsTarget() {
     TargetInfo info = makeDarwinTarget();
     info.abiFormat = ABIFormat::Windows;
+    info.emitBranchTargetIdentification = false;
+    info.emitReturnAddressSigning = false;
     return info;
 }
 

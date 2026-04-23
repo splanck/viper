@@ -37,6 +37,8 @@
 #include "il/core/Value.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
+#include <stdexcept>
+
 using namespace viper::codegen::aarch64;
 using namespace viper::codegen::aarch64::binenc;
 
@@ -150,6 +152,84 @@ TEST(AArch64Vararg, SmallVarArgCallStillSpillsAnonymousArgsToStack) {
     EXPECT_TRUE(sawStackAlloc);
     EXPECT_TRUE(sawStackStore);
     EXPECT_TRUE(sawStackFree);
+}
+
+TEST(AArch64Vararg, UserDefinedVarArgDirectCallUsesVariadicTailOnStack) {
+    using namespace il::core;
+
+    Function fn;
+    fn.name = "caller";
+    fn.retType = Type(Type::Kind::I64);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+    entry.params = {Param{.name = "fmt", .type = Type(Type::Kind::Ptr), .id = 0}};
+
+    Instr call;
+    call.result = 1;
+    call.op = Opcode::Call;
+    call.callee = "user_printf";
+    call.type = Type(Type::Kind::I64);
+    call.operands = {Value::temp(0), Value::constInt(99)};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(1)};
+
+    entry.instructions = {call, ret};
+    fn.blocks = {entry};
+
+    LowerILToMIR lowering{linuxTarget()};
+    lowering.setKnownVarArgCallees({{"user_printf", 1}});
+    const MFunction mir = lowering.lowerFunction(fn);
+    ASSERT_FALSE(mir.blocks.empty());
+
+    bool sawStackAlloc = false;
+    bool sawStackStore = false;
+    for (const auto &mi : mir.blocks.front().instrs) {
+        if (mi.opc == MOpcode::SubSpImm && !mi.ops.empty() &&
+            mi.ops[0].kind == MOperand::Kind::Imm && mi.ops[0].imm == 16) {
+            sawStackAlloc = true;
+        }
+        if (mi.opc == MOpcode::StrRegSpImm && mi.ops.size() >= 2 &&
+            mi.ops[1].kind == MOperand::Kind::Imm && mi.ops[1].imm == 0) {
+            sawStackStore = true;
+        }
+    }
+
+    EXPECT_TRUE(sawStackAlloc);
+    EXPECT_TRUE(sawStackStore);
+}
+
+TEST(AArch64Vararg, MalformedDirectCallIsDiagnosed) {
+    using namespace il::core;
+
+    Function fn;
+    fn.name = "bad_call";
+    fn.retType = Type(Type::Kind::I64);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+
+    Instr call;
+    call.result = 0;
+    call.op = Opcode::Call;
+    call.type = Type(Type::Kind::I64);
+    call.operands = {Value::constInt(7)};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(0)};
+
+    entry.instructions = {call, ret};
+    fn.blocks = {entry};
+
+    LowerILToMIR lowering{linuxTarget()};
+    EXPECT_THROWS(lowering.lowerFunction(fn), std::runtime_error);
 }
 
 TEST(AArch64Vararg, CallReturnedStringUsesGenericRetainSemantics) {

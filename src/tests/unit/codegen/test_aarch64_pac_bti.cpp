@@ -238,6 +238,31 @@ TEST(AArch64PacBti, TextEmitterLeafKeepsBtiWithoutPac) {
     EXPECT_EQ(asmText.find("autiasp"), std::string::npos);
 }
 
+TEST(AArch64PacBti, LinuxTextEmitterSkipsPacAndBti) {
+    auto fn = makeNonLeafFunc("linux_nonleaf");
+    std::ostringstream os;
+    AsmEmitter emitter(linuxTarget());
+    emitter.emitFunction(os, fn);
+    const std::string asmText = os.str();
+
+    EXPECT_EQ(asmText.find("bti c"), std::string::npos);
+    EXPECT_EQ(asmText.find("paciasp"), std::string::npos);
+    EXPECT_EQ(asmText.find("autiasp"), std::string::npos);
+}
+
+TEST(AArch64PacBti, LinuxBinaryEncoderSkipsPacAndBti) {
+    A64BinaryEncoder encoder;
+    viper::codegen::objfile::CodeSection text;
+    viper::codegen::objfile::CodeSection rodata;
+
+    auto fn = makeNonLeafFunc("linux_no_hardening");
+    encoder.encodeFunction(fn, text, rodata, ABIFormat::Linux);
+
+    EXPECT_FALSE(containsWord(text, kBtiC));
+    EXPECT_FALSE(containsWord(text, kPaciasp));
+    EXPECT_FALSE(containsWord(text, kAutiasp));
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

@@ -25,7 +25,9 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -73,6 +75,7 @@ struct ILBlock {
 struct ILFunction {
     std::string name{};            ///< Function symbol.
     std::vector<ILBlock> blocks{}; ///< Ordered blocks.
+    bool isVarArg{false};          ///< True when the function uses a C-style variadic ABI.
 };
 
 /// \brief IL module placeholder containing multiple functions.
@@ -202,6 +205,12 @@ class LowerILToMIR {
     /// \brief Retrieve the collected call lowering plans emitted during lowering.
     [[nodiscard]] const std::vector<CallLoweringPlan> &callPlans() const noexcept;
 
+    /// @brief Replace the set of direct-call targets that must use vararg call lowering.
+    void setKnownVarArgCallees(std::unordered_set<std::string> callees);
+
+    /// @brief Query whether @p callee is a user-defined variadic function in the current module.
+    [[nodiscard]] bool isKnownVarArgCallee(std::string_view callee) const;
+
     /// @brief Return the next per-function local label id and advance the counter.
     /// @details Used for internal labels (trap sites, conversion branches) that need
     ///          unique names within a function. Resets to 0 at the start of each function
@@ -224,6 +233,7 @@ class LowerILToMIR {
     AsmEmitter::RoDataPool *roDataPool_{nullptr};
     uint32_t nextLocalLabel_{0};
     int nextStackLocalSlot_{0};
+    std::unordered_set<std::string> knownVarArgCallees_{};
 
     /// @brief Reset all per-function lowering state (vreg counter, maps, call plans).
     void resetFunctionState();

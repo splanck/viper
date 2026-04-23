@@ -42,6 +42,14 @@ static std::string readFile(const std::string &path) {
     return ss.str();
 }
 
+static std::string blSym(const std::string &name) {
+#if defined(__APPLE__)
+    return "bl _" + name;
+#else
+    return "bl " + name;
+#endif
+}
+
 TEST(Arm64Casts, Zext1AndTrunc1) {
     const std::string in = outPath("arm64_cast_bool.il");
     const std::string out = outPath("arm64_cast_bool.s");
@@ -66,7 +74,7 @@ TEST(Arm64Casts, SiNarrowChk) {
     const std::string in = outPath("arm64_cast_narrow.il");
     const std::string out = outPath("arm64_cast_narrow.s");
     const std::string il = "il 0.1\n"
-                           "func @f(%a:i64) -> i64 {\n"
+                           "func @f(%a:i64) -> i16 {\n"
                            "entry(%a:i64):\n"
                            "  %t0:i16 = cast.si_narrow.chk %a\n"
                            "  ret %t0\n"
@@ -79,9 +87,9 @@ TEST(Arm64Casts, SiNarrowChk) {
     EXPECT_NE(asmText.find("lsl x0, x0, #48"), std::string::npos);
     EXPECT_NE(asmText.find("asr x0, x0, #48"), std::string::npos);
     EXPECT_NE(asmText.find("cmp x0, x9"), std::string::npos);
-    EXPECT_NE(asmText.find("b.ne .Ltrap_cast"), std::string::npos);
-    EXPECT_NE(asmText.find(".Ltrap_cast:"), std::string::npos);
-    EXPECT_NE(asmText.find("bl rt_trap"), std::string::npos);
+    EXPECT_NE(asmText.find("b.ne L.Ltrap_cast_"), std::string::npos);
+    EXPECT_NE(asmText.find("L.Ltrap_cast_"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_trap")), std::string::npos);
 }
 
 TEST(Arm64Casts, FpToSiRteChk) {
@@ -97,10 +105,31 @@ TEST(Arm64Casts, FpToSiRteChk) {
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    EXPECT_NE(asmText.find("fcvtzs x0, d0"), std::string::npos);
-    EXPECT_NE(asmText.find("scvtf d1, x0"), std::string::npos);
-    EXPECT_NE(asmText.find("fcmp d0, d1"), std::string::npos);
-    EXPECT_NE(asmText.find("b.ne .Ltrap_fpcast"), std::string::npos);
+    EXPECT_NE(asmText.find("frintn"), std::string::npos);
+    EXPECT_NE(asmText.find("fcvtzs"), std::string::npos);
+    EXPECT_NE(asmText.find("fcmp"), std::string::npos);
+    EXPECT_NE(asmText.find("b.vs L.Ltrap_fpcast_"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_trap_raise_error")), std::string::npos);
+}
+
+TEST(Arm64Casts, FpToUiRteChk) {
+    const std::string in = outPath("arm64_cast_fp2ui.il");
+    const std::string out = outPath("arm64_cast_fp2ui.s");
+    const std::string il = "il 0.1\n"
+                           "func @f(%a:f64) -> i64 {\n"
+                           "entry(%a:f64):\n"
+                           "  %t0 = cast.fp_to_ui.rte.chk %a\n"
+                           "  ret %t0\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find("frintn"), std::string::npos);
+    EXPECT_NE(asmText.find("fcvtzu"), std::string::npos);
+    EXPECT_NE(asmText.find("fcmp"), std::string::npos);
+    EXPECT_NE(asmText.find("b.vs L.Ltrap_fpcast_"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_trap_raise_error")), std::string::npos);
 }
 
 // Keep this file minimal and focused on the core cast patterns.

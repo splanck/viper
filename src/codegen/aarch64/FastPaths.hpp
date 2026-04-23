@@ -35,6 +35,8 @@ std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
                                       FrameBuilder &fb,
                                       MFunction &mf,
                                       const std::unordered_map<std::string, std::size_t>
-                                          *stringLiteralByteLengths = nullptr);
+                                          *stringLiteralByteLengths = nullptr,
+                                      const std::unordered_map<std::string, std::size_t>
+                                          *knownVarArgNamedArgCounts = nullptr);
 
 } // namespace viper::codegen::aarch64

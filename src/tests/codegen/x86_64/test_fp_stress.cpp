@@ -569,20 +569,24 @@ TestResult testFpConversions() {
         return r;
     }
 
-    // Verify fptoui: should have ucomisd (NaN check), ud2 (trap), and branch labels
+    // Verify fptoui: should round via the helper, perform a NaN check, and
+    // raise InvalidCast through the structured trap helper.
     const auto fptouiPos = cg.asmText.find("fp_fptoui:");
     const std::string fptouiAsm =
         fptouiPos != std::string::npos ? cg.asmText.substr(fptouiPos) : "";
     const bool hasUcomisd = fptouiAsm.find("ucomisd") != std::string::npos;
-    const bool hasUd2 = fptouiAsm.find("ud2") != std::string::npos;
+    const bool hasRoundEven = fptouiAsm.find("rt_round_even") != std::string::npos;
+    const bool hasRaiseError = fptouiAsm.find("rt_trap_raise_error") != std::string::npos;
     const bool hasTrapLabel = fptouiAsm.find(".Lfptoui_trap_") != std::string::npos;
 
-    if (!hasUcomisd || !hasUd2 || !hasTrapLabel) {
+    if (!hasUcomisd || !hasRoundEven || !hasRaiseError || !hasTrapLabel) {
         r.failReason = "fptoui missing checked conversion:";
         if (!hasUcomisd)
             r.failReason += " ucomisd(NaN-check)";
-        if (!hasUd2)
-            r.failReason += " ud2(trap)";
+        if (!hasRoundEven)
+            r.failReason += " rt_round_even";
+        if (!hasRaiseError)
+            r.failReason += " rt_trap_raise_error";
         if (!hasTrapLabel)
             r.failReason += " trap-label";
         return r;

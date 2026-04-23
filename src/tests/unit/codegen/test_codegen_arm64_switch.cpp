@@ -97,10 +97,10 @@ TEST(Arm64CLI, SwitchMany) {
     const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
     ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Spot-check a few cases
-    EXPECT_NE(asmText.find("cmp"), std::string::npos);
-    EXPECT_NE(asmText.find("#0"), std::string::npos);
-    EXPECT_NE(asmText.find("#7"), std::string::npos);
+    // Large switches should use helper labels for the binary-search decision tree.
+    EXPECT_NE(asmText.find("switch_tree"), std::string::npos);
+    EXPECT_NE(asmText.find("switch_left"), std::string::npos);
+    EXPECT_NE(asmText.find("switch_right"), std::string::npos);
     EXPECT_NE(asmText.find("b LLd"), std::string::npos);
 }
 

@@ -170,6 +170,7 @@ struct ParserState {
 struct Prototype {
     Type retType;              ///< Declared return type of the function.
     std::vector<Param> params; ///< Ordered parameter list with types and names.
+    bool isVarArg{false};      ///< True when the prototype ends with an ellipsis.
 };
 
 /// @brief Result of parsing a function prototype header line.

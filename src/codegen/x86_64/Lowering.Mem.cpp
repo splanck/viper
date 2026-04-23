@@ -63,7 +63,9 @@ CallArg makeCallArg(const ILValue &argVal, MIRBuilder &builder) {
     return arg;
 }
 
-void applyKnownVarArgMetadata(CallLoweringPlan &plan, std::string_view callee) {
+void applyKnownVarArgMetadata(CallLoweringPlan &plan,
+                              std::string_view callee,
+                              const MIRBuilder &builder) {
     if (callee.empty())
         return;
 
@@ -71,8 +73,9 @@ void applyKnownVarArgMetadata(CallLoweringPlan &plan, std::string_view callee) {
     if (const auto mapped = il::runtime::mapCanonicalRuntimeName(callee))
         mappedCallee = *mapped;
 
-    plan.isVarArg =
-        il::runtime::isVarArgCallee(mappedCallee) || il::runtime::isVarArgCallee(callee);
+    plan.isVarArg = il::runtime::isVarArgCallee(mappedCallee) || il::runtime::isVarArgCallee(callee) ||
+                    builder.lower().isKnownVarArgCallee(mappedCallee) ||
+                    builder.lower().isKnownVarArgCallee(callee);
     if (!plan.isVarArg) {
         plan.numNamedArgs = plan.args.size();
         return;
@@ -148,7 +151,7 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder) {
     for (std::size_t idx = 1; idx < instr.ops.size(); ++idx) {
         plan.args.push_back(makeCallArg(instr.ops[idx], builder));
     }
-    applyKnownVarArgMetadata(plan, plan.callee);
+    applyKnownVarArgMetadata(plan, plan.callee, builder);
 
     VReg resultVReg{};
     bool hasResult = (instr.resultId >= 0);
@@ -184,7 +187,7 @@ void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder) {
     for (std::size_t idx = 1; idx < instr.ops.size(); ++idx) {
         plan.args.push_back(makeCallArg(instr.ops[idx], builder));
     }
-    applyKnownVarArgMetadata(plan, plan.callee);
+    applyKnownVarArgMetadata(plan, plan.callee, builder);
 
     VReg resultVReg{};
     bool hasResult = (instr.resultId >= 0);

@@ -106,6 +106,9 @@ struct LoweringContext {
     /// @brief Optional map from IL global string names to their byte lengths.
     const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths = nullptr;
 
+    /// @brief Optional map from direct callee names to their named-argument counts.
+    const std::unordered_map<std::string, std::size_t> *knownVarArgNamedArgCounts = nullptr;
+
     /// @brief Counter used to generate unique trap label names.
     unsigned &trapLabelCounter;
 

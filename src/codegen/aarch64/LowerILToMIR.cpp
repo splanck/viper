@@ -125,6 +125,13 @@ static thread_local unsigned trapLabelCounter;
 
 } // namespace
 
+std::optional<std::size_t> LowerILToMIR::knownVarArgNamedArgs(std::string_view callee) const {
+    const auto it = knownVarArgNamedArgCounts_.find(std::string(callee));
+    if (it == knownVarArgNamedArgCounts_.end())
+        return std::nullopt;
+    return it->second;
+}
+
 MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
     MFunction mf{};
     mf.name = fn.name;
@@ -208,7 +215,8 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
     LivenessInfo liveness = analyzeCrossBlockLiveness(fn, allocaTemps, fb);
 
     // Try fast-paths for simple function patterns
-    if (auto result = tryFastPaths(fn, *ti_, fb, mf, stringLiteralByteLengths_))
+    if (auto result =
+            tryFastPaths(fn, *ti_, fb, mf, stringLiteralByteLengths_, &knownVarArgNamedArgCounts_))
         return *result;
 
     // Generic fallback: lower stack/local loads/stores and a simple return
@@ -291,7 +299,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                     .maxGPRArgs = ti_->intArgOrder.size(),
                     .maxFPRArgs = ti_->f64ArgOrder.size(),
                     .slotModel = viper::codegen::common::CallSlotModel::IndependentRegisterBanks,
-                    .variadicTailOnStack = false,
+                    .variadicTailOnStack = fn.isVarArg,
                     .numNamedArgs = paramClasses.size()});
 
             for (std::size_t pi = 0; pi < bbIn.params.size(); ++pi) {
@@ -444,10 +452,11 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                             phiRegClass,
                             phiSpillOffset,
                             liveness.crossBlockSpillOffset,
-                            liveness.tempDefBlock,
-                            liveness.crossBlockTemps,
-                            stringLiteralByteLengths_,
-                            trapLabelCounter};
+                                      liveness.tempDefBlock,
+                                      liveness.crossBlockTemps,
+                                      stringLiteralByteLengths_,
+                                      &knownVarArgNamedArgCounts_,
+                                      trapLabelCounter};
 
         for (const auto &ins : bbIn.instructions) {
             // Record instruction count so we can stamp source loc on new MInstrs.

@@ -18,7 +18,10 @@
 
 #include <cstddef>
 #include <ostream>
+#include <optional>
+#include <string_view>
 #include <unordered_map>
+#include <utility>
 
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
@@ -42,6 +45,13 @@ class LowerILToMIR {
         const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths = nullptr) noexcept
         : ti_(&ti), stringLiteralByteLengths_(stringLiteralByteLengths) {}
 
+    void setKnownVarArgCallees(
+        std::unordered_map<std::string, std::size_t> knownVarArgNamedArgCounts) {
+        knownVarArgNamedArgCounts_ = std::move(knownVarArgNamedArgCounts);
+    }
+
+    [[nodiscard]] std::optional<std::size_t> knownVarArgNamedArgs(std::string_view callee) const;
+
     /// @brief Lower an IL function to MIR.
     /// @param fn The IL function to lower.
     /// @return The lowered MIR function.
@@ -50,6 +60,7 @@ class LowerILToMIR {
   private:
     const TargetInfo *ti_{};
     const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths_{};
+    std::unordered_map<std::string, std::size_t> knownVarArgNamedArgCounts_{};
 };
 
 } // namespace viper::codegen::aarch64

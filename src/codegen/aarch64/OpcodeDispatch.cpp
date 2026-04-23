@@ -138,6 +138,33 @@ static void captureGprCallResult(const il::core::Instr &ins,
         MOpcode::MovRR, {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
 }
 
+static uint64_t f64Bits(double value) {
+    uint64_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    return bits;
+}
+
+static uint16_t materializeF64Constant(double value, LoweringContext &ctx, MBasicBlock &out) {
+    const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
+    const uint16_t bitsGpr = allocateNextVReg(ctx.nextVRegId);
+    out.instrs.push_back(MInstr{MOpcode::MovRI,
+                                {MOperand::vregOp(RegClass::GPR, bitsGpr),
+                                 MOperand::immOp(static_cast<long long>(f64Bits(value)))}});
+    out.instrs.push_back(MInstr{MOpcode::FMovGR,
+                                {MOperand::vregOp(RegClass::FPR, dst),
+                                 MOperand::vregOp(RegClass::GPR, bitsGpr)}});
+    return dst;
+}
+
+static void emitTrapRaiseErrorBlock(MFunction &mf, std::string label, int code) {
+    mf.blocks.emplace_back();
+    auto &trapBlock = mf.blocks.back();
+    trapBlock.name = std::move(label);
+    trapBlock.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(code)}});
+    trapBlock.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_raise_error")}});
+}
+
 bool lowerInstruction(const il::core::Instr &ins,
                       const il::core::BasicBlock &bbIn,
                       LoweringContext &ctx,
@@ -246,8 +273,6 @@ bool lowerInstruction(const il::core::Instr &ins,
         }
         case Opcode::CastFpToSiRteChk:
         case Opcode::CastFpToUiRteChk: {
-            // Per IL spec: .rte = round-to-even, .chk = trap on overflow only.
-            // First round to nearest even, then convert to integer.
             if (!ins.result || ins.operands.empty())
                 return true;
             uint16_t fv = 0;
@@ -263,16 +288,59 @@ bool lowerInstruction(const il::core::Instr &ins,
                                         fv,
                                         fcls))
                 return true;
+            if (fcls != RegClass::FPR)
+                return false;
 
-            // Round to nearest even first (frintn)
             const uint16_t rounded = allocateNextVReg(ctx.nextVRegId);
             bbOut().instrs.push_back(MInstr{
                 MOpcode::FRintN,
                 {MOperand::vregOp(RegClass::FPR, rounded), MOperand::vregOp(RegClass::FPR, fv)}});
 
-            // Convert rounded value to integer
+            const std::string trapLabel =
+                ".Ltrap_fpcast_" + std::to_string(ctx.trapLabelCounter++);
+
+            // NaN becomes unordered; trap before any range comparisons.
+            bbOut().instrs.push_back(MInstr{
+                MOpcode::FCmpRR,
+                {MOperand::vregOp(RegClass::FPR, rounded), MOperand::vregOp(RegClass::FPR, rounded)}});
+            bbOut().instrs.push_back(
+                MInstr{MOpcode::BCond, {MOperand::condOp("vs"), MOperand::labelOp(trapLabel)}});
+
+            if (ins.op == Opcode::CastFpToSiRteChk) {
+                const uint16_t lowerBound = materializeF64Constant(-9223372036854775808.0, ctx, bbOut());
+                const uint16_t upperBound = materializeF64Constant(9223372036854775808.0, ctx, bbOut());
+                bbOut().instrs.push_back(MInstr{
+                    MOpcode::FCmpRR,
+                    {MOperand::vregOp(RegClass::FPR, rounded),
+                     MOperand::vregOp(RegClass::FPR, lowerBound)}});
+                bbOut().instrs.push_back(
+                    MInstr{MOpcode::BCond, {MOperand::condOp("lt"), MOperand::labelOp(trapLabel)}});
+                bbOut().instrs.push_back(MInstr{
+                    MOpcode::FCmpRR,
+                    {MOperand::vregOp(RegClass::FPR, rounded),
+                     MOperand::vregOp(RegClass::FPR, upperBound)}});
+                bbOut().instrs.push_back(
+                    MInstr{MOpcode::BCond, {MOperand::condOp("ge"), MOperand::labelOp(trapLabel)}});
+            } else {
+                const uint16_t zero = materializeF64Constant(0.0, ctx, bbOut());
+                const uint16_t upperBound = materializeF64Constant(18446744073709551616.0, ctx, bbOut());
+                bbOut().instrs.push_back(MInstr{
+                    MOpcode::FCmpRR,
+                    {MOperand::vregOp(RegClass::FPR, rounded),
+                     MOperand::vregOp(RegClass::FPR, zero)}});
+                bbOut().instrs.push_back(
+                    MInstr{MOpcode::BCond, {MOperand::condOp("lt"), MOperand::labelOp(trapLabel)}});
+                bbOut().instrs.push_back(MInstr{
+                    MOpcode::FCmpRR,
+                    {MOperand::vregOp(RegClass::FPR, rounded),
+                     MOperand::vregOp(RegClass::FPR, upperBound)}});
+                bbOut().instrs.push_back(
+                    MInstr{MOpcode::BCond, {MOperand::condOp("ge"), MOperand::labelOp(trapLabel)}});
+            }
+
             const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
             ctx.tempVReg[*ins.result] = dst;
+            ctx.tempRegClass[*ins.result] = RegClass::GPR;
             if (ins.op == Opcode::CastFpToSiRteChk) {
                 bbOut().instrs.push_back(MInstr{MOpcode::FCvtZS,
                                                 {MOperand::vregOp(RegClass::GPR, dst),
@@ -282,6 +350,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                                 {MOperand::vregOp(RegClass::GPR, dst),
                                                  MOperand::vregOp(RegClass::FPR, rounded)}});
             }
+            emitTrapRaiseErrorBlock(ctx.mf, trapLabel, 5);
             return true;
         }
         case Opcode::CastSiToFp:

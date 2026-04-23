@@ -107,6 +107,119 @@ static void emitNullTrapCall(MBasicBlock &bb) {
     bb.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
 }
 
+struct SwitchCase {
+    long long value{0};
+    std::string branchLabel;
+};
+
+static void emitSwitchCompare(MBasicBlock &bb,
+                              uint16_t scrutineeVReg,
+                              long long imm,
+                              uint16_t &nextVRegId) {
+    if (isUImm12(imm)) {
+        bb.instrs.push_back(MInstr{MOpcode::CmpRI,
+                                   {MOperand::vregOp(RegClass::GPR, scrutineeVReg),
+                                    MOperand::immOp(imm)}});
+        return;
+    }
+
+    const uint16_t caseVReg = allocateNextVReg(nextVRegId);
+    bb.instrs.push_back(MInstr{
+        MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, caseVReg), MOperand::immOp(imm)}});
+    bb.instrs.push_back(MInstr{MOpcode::CmpRR,
+                               {MOperand::vregOp(RegClass::GPR, scrutineeVReg),
+                                MOperand::vregOp(RegClass::GPR, caseVReg)}});
+}
+
+static uint16_t reloadSwitchScrutinee(MBasicBlock &bb, int spillOffset, uint16_t &nextVRegId) {
+    const uint16_t reloaded = allocateNextVReg(nextVRegId);
+    bb.instrs.push_back(MInstr{MOpcode::LdrRegFpImm,
+                               {MOperand::vregOp(RegClass::GPR, reloaded),
+                                MOperand::immOp(spillOffset)}});
+    return reloaded;
+}
+
+static void emitLinearSwitch(MBasicBlock &bb,
+                             uint16_t scrutineeVReg,
+                             const std::vector<SwitchCase> &cases,
+                             std::size_t begin,
+                             std::size_t end,
+                             const std::string &defaultBranchLabel,
+                             uint16_t &nextVRegId) {
+    for (std::size_t idx = begin; idx < end; ++idx) {
+        const auto &switchCase = cases[idx];
+        emitSwitchCompare(bb, scrutineeVReg, switchCase.value, nextVRegId);
+        bb.instrs.push_back(MInstr{
+            MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(switchCase.branchLabel)}});
+    }
+    if (!defaultBranchLabel.empty())
+        bb.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(defaultBranchLabel)}});
+}
+
+static void emitSwitchTree(MFunction &mf,
+                           MBasicBlock &bb,
+                           uint16_t scrutineeVReg,
+                           const std::vector<SwitchCase> &cases,
+                           std::size_t begin,
+                           std::size_t end,
+                           const std::string &defaultBranchLabel,
+                           int spillOffset,
+                           const std::string &labelPrefix,
+                           std::size_t &auxCounter,
+                           uint16_t &nextVRegId) {
+    const std::size_t count = end - begin;
+    if (count <= 3) {
+        emitLinearSwitch(bb, scrutineeVReg, cases, begin, end, defaultBranchLabel, nextVRegId);
+        return;
+    }
+
+    const std::size_t pivotIndex = begin + count / 2;
+    const SwitchCase &pivot = cases[pivotIndex];
+    const std::string leftLabel =
+        labelPrefix + ".Lswitch_left_" + std::to_string(auxCounter++);
+    const std::string rightLabel =
+        labelPrefix + ".Lswitch_right_" + std::to_string(auxCounter++);
+
+    emitSwitchCompare(bb, scrutineeVReg, pivot.value, nextVRegId);
+    bb.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(pivot.branchLabel)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("lt"), MOperand::labelOp(leftLabel)}});
+    bb.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(rightLabel)}});
+
+    mf.blocks.emplace_back();
+    auto &leftBB = mf.blocks.back();
+    leftBB.name = leftLabel;
+    const uint16_t leftScrutinee = reloadSwitchScrutinee(leftBB, spillOffset, nextVRegId);
+    emitSwitchTree(mf,
+                   leftBB,
+                   leftScrutinee,
+                   cases,
+                   begin,
+                   pivotIndex,
+                   defaultBranchLabel,
+                   spillOffset,
+                   leftLabel,
+                   auxCounter,
+                   nextVRegId);
+
+    mf.blocks.emplace_back();
+    auto &rightBB = mf.blocks.back();
+    rightBB.name = rightLabel;
+    const uint16_t rightScrutinee = reloadSwitchScrutinee(rightBB, spillOffset, nextVRegId);
+    emitSwitchTree(mf,
+                   rightBB,
+                   rightScrutinee,
+                   cases,
+                   pivotIndex + 1,
+                   end,
+                   defaultBranchLabel,
+                   spillOffset,
+                   rightLabel,
+                   auxCounter,
+                   nextVRegId);
+}
+
 static void emitPhiEdgeCopies(
     MBasicBlock &edgeBB,
     const std::string &dst,
@@ -182,6 +295,7 @@ void lowerTerminators(const il::core::Function &fn,
                       std::vector<std::unordered_map<unsigned, uint16_t>> &blockTempVRegSnapshot,
                       std::unordered_map<unsigned, RegClass> &tempRegClass,
                       uint16_t &nextVRegId) {
+    std::size_t switchAuxCounter = 0;
     for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
         const auto &inBB = fn.blocks[i];
         if (inBB.instructions.empty())
@@ -505,40 +619,22 @@ void lowerTerminators(const il::core::Function &fn,
                     }
 
                     const std::size_t ncases = il::core::switchCaseCount(term);
+                    std::vector<SwitchCase> cases;
+                    cases.reserve(ncases);
                     for (std::size_t ci = 0; ci < ncases; ++ci) {
                         const auto &caseValue = il::core::switchCaseValue(term, ci);
                         const std::string &caseLabel = il::core::switchCaseLabel(term, ci);
                         long long imm = 0;
                         if (caseValue.kind == il::core::Value::Kind::ConstInt)
                             imm = caseValue.i64;
-                        if (isUImm12(imm)) {
-                            outBB.instrs.push_back(MInstr{
-                                MOpcode::CmpRI,
-                                {MOperand::vregOp(RegClass::GPR, sv), MOperand::immOp(imm)}});
-                        } else {
-                            const uint16_t caseV = allocateNextVReg(nextVRegId);
-                            outBB.instrs.push_back(MInstr{
-                                MOpcode::MovRI,
-                                {MOperand::vregOp(RegClass::GPR, caseV), MOperand::immOp(imm)}});
-                            outBB.instrs.push_back(MInstr{
-                                MOpcode::CmpRR,
-                                {MOperand::vregOp(RegClass::GPR, sv),
-                                 MOperand::vregOp(RegClass::GPR, caseV)}});
-                        }
 
                         const auto &args = il::core::switchCaseArgs(term, ci);
-                        const bool needsEdge = !args.empty();
-                        const std::string edgeLabel =
-                            needsEdge
-                                ? outBB.name + ".Lswitch_case_" + std::to_string(i) + "_" +
-                                      std::to_string(ci)
-                                : caseLabel;
-                        outBB.instrs.push_back(MInstr{
-                            MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(edgeLabel)}});
-
-                        if (needsEdge) {
+                        std::string branchLabel = caseLabel;
+                        if (!args.empty()) {
+                            branchLabel = outBB.name + ".Lswitch_case_" + std::to_string(i) + "_" +
+                                          std::to_string(ci);
                             MBasicBlock edgeBB;
-                            edgeBB.name = edgeLabel;
+                            edgeBB.name = branchLabel;
                             emitPhiEdgeCopies(edgeBB,
                                               caseLabel,
                                               args,
@@ -554,19 +650,18 @@ void lowerTerminators(const il::core::Function &fn,
                                 MInstr{MOpcode::Br, {MOperand::labelOp(caseLabel)}});
                             mf.blocks.push_back(std::move(edgeBB));
                         }
+                        cases.push_back(SwitchCase{imm, std::move(branchLabel)});
                     }
 
                     const std::string &defLbl = il::core::switchDefaultLabel(term);
+                    std::string defaultBranchLabel = defLbl;
                     if (!defLbl.empty()) {
                         const auto &defArgs = il::core::switchDefaultArgs(term);
-                        const bool needsEdge = !defArgs.empty();
-                        const std::string edgeLabel =
-                            needsEdge ? outBB.name + ".Lswitch_default_" + std::to_string(i) : defLbl;
-                        outBB.instrs.push_back(
-                            MInstr{MOpcode::Br, {MOperand::labelOp(edgeLabel)}});
-                        if (needsEdge) {
+                        if (!defArgs.empty()) {
+                            defaultBranchLabel =
+                                outBB.name + ".Lswitch_default_" + std::to_string(i);
                             MBasicBlock edgeBB;
-                            edgeBB.name = edgeLabel;
+                            edgeBB.name = defaultBranchLabel;
                             emitPhiEdgeCopies(edgeBB,
                                               defLbl,
                                               defArgs,
@@ -581,6 +676,34 @@ void lowerTerminators(const il::core::Function &fn,
                             edgeBB.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(defLbl)}});
                             mf.blocks.push_back(std::move(edgeBB));
                         }
+                    }
+
+                    std::sort(cases.begin(),
+                              cases.end(),
+                              [](const SwitchCase &lhs, const SwitchCase &rhs) {
+                                  return lhs.value < rhs.value;
+                              });
+
+                    if (cases.size() <= 3) {
+                        emitLinearSwitch(
+                            outBB, sv, cases, 0, cases.size(), defaultBranchLabel, nextVRegId);
+                    } else {
+                        const uint32_t switchSpillKey = 0xE0000000u + static_cast<uint32_t>(i);
+                        const int switchSpillOffset = fb.ensureSpill(switchSpillKey);
+                        outBB.instrs.push_back(MInstr{MOpcode::StrRegFpImm,
+                                                      {MOperand::vregOp(RegClass::GPR, sv),
+                                                       MOperand::immOp(switchSpillOffset)}});
+                        emitSwitchTree(mf,
+                                       outBB,
+                                       sv,
+                                       cases,
+                                       0,
+                                       cases.size(),
+                                       defaultBranchLabel,
+                                       switchSpillOffset,
+                                       outBB.name + ".Lswitch_tree_" + std::to_string(i),
+                                       switchAuxCounter,
+                                       nextVRegId);
                     }
                 }
                 break;

@@ -120,7 +120,9 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
                        LoweredCall &seq,
                        std::unordered_map<unsigned, uint16_t> &tempVReg,
                        std::unordered_map<unsigned, RegClass> &tempRegClass,
-                       uint16_t &nextVRegId);
+                       uint16_t &nextVRegId,
+                       const std::unordered_map<std::string, std::size_t>
+                           *knownVarArgNamedArgCounts = nullptr);
 
 //===----------------------------------------------------------------------===//
 // Integer Arithmetic

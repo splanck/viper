@@ -280,6 +280,25 @@ TEST(X64FrameLowering, MainGetsStackSafetyInitEvenWithoutFrame) {
     EXPECT_GE(countOpcode(func, MOpcode::MOVrr), 1);
 }
 
+TEST(X64FrameLowering, Win64MainReservesShadowSpaceForStackSafetyInit) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(win64Target(), roData);
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {makeRetZero()};
+
+    ILFunction fn{};
+    fn.name = "main";
+    fn.blocks = {entry};
+
+    MFunction mir = lowering.lower(fn);
+    FrameInfo frame{};
+    assignSpillSlots(mir, win64Target(), frame);
+
+    EXPECT_GE(frame.outgoingArgArea, 32);
+}
+
 TEST(X64FrameLowering, LargeAllocaConsumesMultipleSlots) {
     AsmEmitter::RoDataPool roData;
     LowerILToMIR lowering(sysvTarget(), roData);

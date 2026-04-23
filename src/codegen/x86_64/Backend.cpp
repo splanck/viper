@@ -46,6 +46,7 @@
 #include <filesystem>
 #include <sstream>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace viper::codegen::x64 {
@@ -232,6 +233,14 @@ bool legalizeModuleToMIR(const ILModule &mod,
     errors.clear();
 
     LowerILToMIR lowering{target, roData};
+    std::unordered_set<std::string> knownVarArgCallees;
+    knownVarArgCallees.reserve(mod.funcs.size());
+    for (const auto &fn : mod.funcs) {
+        if (fn.isVarArg) {
+            knownVarArgCallees.insert(fn.name);
+        }
+    }
+    lowering.setKnownVarArgCallees(std::move(knownVarArgCallees));
     mir.reserve(mod.funcs.size());
     frames.reserve(mod.funcs.size());
 

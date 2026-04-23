@@ -67,6 +67,9 @@ struct Function {
     /// @constraint Size and types must match the function type.
     std::vector<Param> params;
 
+    /// True when the function accepts a C-style variadic argument tail.
+    bool isVarArg = false;
+
     /// Basic blocks comprising the function body.
     /// @ownership Function owns all blocks; each block's parent is this function.
     /// @constraint Contains at least one block; labels unique within the function.

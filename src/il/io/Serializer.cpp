@@ -503,6 +503,11 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode) {
                 os << ", ";
             os << f.params[i].type.toString() << " %" << f.params[i].name;
         }
+        if (f.isVarArg) {
+            if (!f.params.empty())
+                os << ", ";
+            os << "...";
+        }
         os << ") -> " << f.retType.toString();
 
         // Import-linkage functions have no body (declaration only)

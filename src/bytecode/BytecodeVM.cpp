@@ -2619,6 +2619,7 @@ struct BytecodeThreadPayload {
     const BytecodeModule *module;
     const BytecodeFunction *entry;
     void *arg;
+    bool ownsArg;
     BytecodeVM::ExecutionEnvironment environment;
 };
 
@@ -2627,9 +2628,17 @@ struct BytecodeAsyncPayload {
     const BytecodeModule *module;
     const BytecodeFunction *entry;
     void *arg;
+    bool ownsArg;
     BytecodeVM::ExecutionEnvironment environment;
     void *promise;
 };
+
+static void releaseWorkerArg(void *arg, bool ownsArg) {
+    if (!ownsArg || !arg)
+        return;
+    if (rt_obj_release_check0(arg))
+        rt_obj_free(arg);
+}
 
 static bool runBytecodeThreadPayload(BytecodeThreadPayload *payload,
                                      char *errorBuf,
@@ -2639,6 +2648,8 @@ static bool runBytecodeThreadPayload(BytecodeThreadPayload *payload,
     if (!payload || !payload->module || !payload->entry) {
         if (errorBuf && errorBufSize > 0)
             std::snprintf(errorBuf, errorBufSize, "%s", "Thread.StartSafe: invalid bytecode entry");
+        if (payload)
+            releaseWorkerArg(payload->arg, payload->ownsArg);
         delete payload;
         return false;
     }
@@ -2664,10 +2675,12 @@ static bool runBytecodeThreadPayload(BytecodeThreadPayload *payload,
                           message.empty() ? "Thread.StartSafe: trapped bytecode worker"
                                           : message.c_str());
         }
+        releaseWorkerArg(payload->arg, payload->ownsArg);
         delete payload;
         return false;
     }
 
+    releaseWorkerArg(payload->arg, payload->ownsArg);
     delete payload;
     return true;
 }
@@ -2724,6 +2737,7 @@ struct VmThreadStartPayload {
     il::vm::ExternRegistry *externRegistry = nullptr;
     const il::core::Function *entry = nullptr;
     void *arg = nullptr;
+    bool ownsArg = false;
 };
 
 struct VmAsyncRunPayload {
@@ -2732,6 +2746,7 @@ struct VmAsyncRunPayload {
     il::vm::ExternRegistry *externRegistry = nullptr;
     const il::core::Function *entry = nullptr;
     void *arg = nullptr;
+    bool ownsArg = false;
     void *promise = nullptr;
 };
 
@@ -2752,8 +2767,10 @@ struct BytecodeHttpHandlerPayload {
 extern "C" void vm_thread_entry_trampoline_bc(void *raw) {
     VmThreadStartPayload *payload = static_cast<VmThreadStartPayload *>(raw);
     if (!payload || !payload->module || !payload->entry) {
-        if (payload)
+        if (payload) {
+            releaseWorkerArg(payload->arg, payload->ownsArg);
             il::vm::releaseExternRegistry(payload->externRegistry);
+        }
         delete payload;
         rt_abort("Thread.Start: invalid entry");
         return;
@@ -2770,10 +2787,14 @@ extern "C" void vm_thread_entry_trampoline_bc(void *raw) {
         }
         il::vm::detail::VMAccess::callFunction(vm, *payload->entry, args);
     } catch (...) {
+        releaseWorkerArg(payload->arg, payload->ownsArg);
         il::vm::releaseExternRegistry(payload->externRegistry);
         payload->externRegistry = nullptr;
+        delete payload;
         rt_abort("Thread.Start: unhandled exception");
+        return;
     }
+    releaseWorkerArg(payload->arg, payload->ownsArg);
     il::vm::releaseExternRegistry(payload->externRegistry);
     delete payload;
 }
@@ -2782,8 +2803,10 @@ extern "C" void vm_thread_entry_trampoline_bc(void *raw) {
 extern "C" void vm_thread_safe_entry_trampoline_bc(void *raw) {
     VmThreadStartPayload *payload = static_cast<VmThreadStartPayload *>(raw);
     if (!payload || !payload->module || !payload->entry) {
-        if (payload)
+        if (payload) {
+            releaseWorkerArg(payload->arg, payload->ownsArg);
             il::vm::releaseExternRegistry(payload->externRegistry);
+        }
         delete payload;
         rt_abort("Thread.StartSafe: invalid entry");
         return;
@@ -2800,12 +2823,14 @@ extern "C" void vm_thread_safe_entry_trampoline_bc(void *raw) {
         }
         il::vm::detail::VMAccess::callFunction(vm, *payload->entry, args);
     } catch (...) {
+        releaseWorkerArg(payload->arg, payload->ownsArg);
         il::vm::releaseExternRegistry(payload->externRegistry);
         payload->externRegistry = nullptr;
         delete payload;
         rt_abort("Thread.StartSafe: unhandled exception in thread entry");
         return;
     }
+    releaseWorkerArg(payload->arg, payload->ownsArg);
     il::vm::releaseExternRegistry(payload->externRegistry);
     delete payload;
 }
@@ -2895,11 +2920,14 @@ static void unified_thread_start_handler(void **args, void *result) {
         validateEntrySignature(*entryFn);
 
         auto *payload = new VmThreadStartPayload{
-            &module, std::move(program), stdVm->externRegistry(), entryFn, arg};
+            &module, std::move(program), stdVm->externRegistry(), entryFn, arg, arg != nullptr};
+        if (payload->ownsArg)
+            rt_obj_retain_maybe(arg);
         il::vm::retainExternRegistry(payload->externRegistry);
         void *thread =
             rt_thread_start(reinterpret_cast<void *>(&vm_thread_entry_trampoline_bc), payload);
         if (!thread) {
+            releaseWorkerArg(payload->arg, payload->ownsArg);
             il::vm::releaseExternRegistry(payload->externRegistry);
             delete payload;
             rt_trap("Thread.Start: failed to create thread");
@@ -2919,9 +2947,17 @@ static void unified_thread_start_handler(void **args, void *result) {
         validateBytecodeThreadEntrySignature(*entryFn);
 
         auto *payload =
-            new BytecodeThreadPayload{bcModule, entryFn, arg, bcVm->captureExecutionEnvironment()};
+            new BytecodeThreadPayload{
+                bcModule, entryFn, arg, arg != nullptr, bcVm->captureExecutionEnvironment()};
+        if (payload->ownsArg)
+            rt_obj_retain_maybe(arg);
         void *thread =
             rt_thread_start(reinterpret_cast<void *>(&bytecode_thread_entry_trampoline), payload);
+        if (!thread) {
+            releaseWorkerArg(payload->arg, payload->ownsArg);
+            delete payload;
+            rt_trap("Thread.Start: failed to create thread");
+        }
         if (result)
             *reinterpret_cast<void **>(result) = thread;
         return;
@@ -2964,11 +3000,14 @@ static void unified_thread_start_safe_handler(void **args, void *result) {
         validateEntrySignature(*entryFn);
 
         auto *payload = new VmThreadStartPayload{
-            &module, std::move(program), stdVm->externRegistry(), entryFn, arg};
+            &module, std::move(program), stdVm->externRegistry(), entryFn, arg, arg != nullptr};
+        if (payload->ownsArg)
+            rt_obj_retain_maybe(arg);
         il::vm::retainExternRegistry(payload->externRegistry);
         void *thread = rt_thread_start_safe(
             reinterpret_cast<void *>(&vm_thread_safe_entry_trampoline_bc), payload);
         if (!thread) {
+            releaseWorkerArg(payload->arg, payload->ownsArg);
             il::vm::releaseExternRegistry(payload->externRegistry);
             delete payload;
             rt_trap("Thread.StartSafe: failed to create thread");
@@ -2988,9 +3027,17 @@ static void unified_thread_start_safe_handler(void **args, void *result) {
         validateBytecodeThreadEntrySignature(*entryFn);
 
         auto *payload =
-            new BytecodeThreadPayload{bcModule, entryFn, arg, bcVm->captureExecutionEnvironment()};
+            new BytecodeThreadPayload{
+                bcModule, entryFn, arg, arg != nullptr, bcVm->captureExecutionEnvironment()};
+        if (payload->ownsArg)
+            rt_obj_retain_maybe(arg);
         void *thread = rt_thread_start_safe(
             reinterpret_cast<void *>(&bytecode_thread_safe_entry_trampoline), payload);
+        if (!thread) {
+            releaseWorkerArg(payload->arg, payload->ownsArg);
+            delete payload;
+            rt_trap("Thread.StartSafe: failed to create thread");
+        }
         if (result)
             *reinterpret_cast<void **>(result) = thread;
         return;
@@ -3009,8 +3056,10 @@ static void unified_thread_start_safe_handler(void **args, void *result) {
 extern "C" void vm_async_run_entry_trampoline_bc(void *raw) {
     VmAsyncRunPayload *payload = static_cast<VmAsyncRunPayload *>(raw);
     if (!payload || !payload->module || !payload->entry || !payload->promise) {
-        if (payload)
+        if (payload) {
+            releaseWorkerArg(payload->arg, payload->ownsArg);
             il::vm::releaseExternRegistry(payload->externRegistry);
+        }
         delete payload;
         rt_abort("Async.Run: invalid entry");
         return;
@@ -3042,6 +3091,7 @@ extern "C" void vm_async_run_entry_trampoline_bc(void *raw) {
         rt_str_release_maybe(error);
     }
 
+    releaseWorkerArg(payload->arg, payload->ownsArg);
     if (rt_obj_release_check0(payload->promise))
         rt_obj_free(payload->promise);
     il::vm::releaseExternRegistry(payload->externRegistry);
@@ -3051,6 +3101,8 @@ extern "C" void vm_async_run_entry_trampoline_bc(void *raw) {
 extern "C" void bytecode_async_entry_trampoline(void *raw) {
     BytecodeAsyncPayload *payload = static_cast<BytecodeAsyncPayload *>(raw);
     if (!payload || !payload->module || !payload->entry || !payload->promise) {
+        if (payload)
+            releaseWorkerArg(payload->arg, payload->ownsArg);
         delete payload;
         rt_abort("Async.Run: invalid bytecode entry");
         return;
@@ -3086,6 +3138,7 @@ extern "C" void bytecode_async_entry_trampoline(void *raw) {
         rt_promise_set_owned(payload->promise, result.ptr);
     }
 
+    releaseWorkerArg(payload->arg, payload->ownsArg);
     if (rt_obj_release_check0(payload->promise))
         rt_obj_free(payload->promise);
     delete payload;
@@ -3311,14 +3364,25 @@ static void unified_async_run_handler(void **args, void *result) {
         void *promise = rt_promise_new();
         void *future = rt_promise_get_future(promise);
         auto *payload = new VmAsyncRunPayload{
-            &module, std::move(program), stdVm->externRegistry(), entryFn, arg, promise};
+            &module,
+            std::move(program),
+            stdVm->externRegistry(),
+            entryFn,
+            arg,
+            arg != nullptr,
+            promise};
+        if (payload->ownsArg)
+            rt_obj_retain_maybe(arg);
         il::vm::retainExternRegistry(payload->externRegistry);
         void *thread =
             rt_thread_start(reinterpret_cast<void *>(&vm_async_run_entry_trampoline_bc), payload);
         if (!thread) {
+            releaseWorkerArg(payload->arg, payload->ownsArg);
             il::vm::releaseExternRegistry(payload->externRegistry);
             delete payload;
             rt_promise_set_error(promise, rt_const_cstr("Async.Run: failed to create thread"));
+            if (rt_obj_release_check0(promise))
+                rt_obj_free(promise);
             if (result)
                 *reinterpret_cast<void **>(result) = future;
             return;
@@ -3343,12 +3407,22 @@ static void unified_async_run_handler(void **args, void *result) {
         void *promise = rt_promise_new();
         void *future = rt_promise_get_future(promise);
         auto *payload = new BytecodeAsyncPayload{
-            bcModule, entryFn, arg, bcVm->captureExecutionEnvironment(), promise};
+            bcModule,
+            entryFn,
+            arg,
+            arg != nullptr,
+            bcVm->captureExecutionEnvironment(),
+            promise};
+        if (payload->ownsArg)
+            rt_obj_retain_maybe(arg);
         void *thread =
             rt_thread_start(reinterpret_cast<void *>(&bytecode_async_entry_trampoline), payload);
         if (!thread) {
+            releaseWorkerArg(payload->arg, payload->ownsArg);
             delete payload;
             rt_promise_set_error(promise, rt_const_cstr("Async.Run: failed to create thread"));
+            if (rt_obj_release_check0(promise))
+                rt_obj_free(promise);
             if (result)
                 *reinterpret_cast<void **>(result) = future;
             return;

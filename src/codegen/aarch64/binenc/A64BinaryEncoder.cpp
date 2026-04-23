@@ -115,7 +115,8 @@ static bool fitsBranchDispWords(int64_t deltaBytes, int immBits) {
 size_t A64BinaryEncoder::measurePreludeSize(const MFunction &fn) {
     objfile::CodeSection text;
     text.reserveBytes(32);
-    emit32(kBtiC, text);
+    if (currentAbi_ == ABIFormat::Darwin)
+        emit32(kBtiC, text);
     if (!skipFrame_)
         encodePrologue(fn, text);
     return text.currentOffset();
@@ -127,6 +128,7 @@ size_t A64BinaryEncoder::measureInstructionSize(const MInstr &mi,
     A64BinaryEncoder measureEncoder;
     measureEncoder.labelOffsets_ = knownLabelOffsets;
     measureEncoder.currentFn_ = currentFn_;
+    measureEncoder.currentAbi_ = currentAbi_;
     measureEncoder.currentRodata_ = currentRodata_;
     measureEncoder.usePlan_ = usePlan_;
     measureEncoder.skipFrame_ = skipFrame_;
@@ -213,6 +215,7 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
     labelOffsets_.clear();
     pendingBranches_.clear();
     currentFn_ = &fn;
+    currentAbi_ = abi;
     currentRodata_ = &rodata;
 
     try {
@@ -244,7 +247,8 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
             fn.name, objfile::SymbolBinding::Global, objfile::SymbolSection::Text);
 
         // Emit BTI landing pad for indirect call targets (safe NOP on pre-ARMv8.5).
-        emit32(kBtiC, text);
+        if (currentAbi_ == ABIFormat::Darwin)
+            emit32(kBtiC, text);
 
         // Emit prologue.
         if (!skipFrame_)
@@ -360,7 +364,8 @@ void A64BinaryEncoder::encodePrologue(const MFunction &fn, objfile::CodeSection 
 
     // Sign LR with SP before saving (Pointer Authentication, ARMv8.3+).
     // Executes as NOP on older hardware.
-    emit32(kPaciasp, cs);
+    if (currentAbi_ == ABIFormat::Darwin)
+        emit32(kPaciasp, cs);
 
     // stp x29, x30, [sp, #-16]!  (pre-indexed, -16/8 = -2)
     emit32(encodePair(kStpGprPre, fp, lr, sp, static_cast<int32_t>(-16 / 8)), cs);
@@ -435,7 +440,8 @@ void A64BinaryEncoder::encodeEpilogue(const MFunction &fn, objfile::CodeSection 
 
     // Verify LR signature before return (Pointer Authentication, ARMv8.3+).
     // Executes as NOP on older hardware.
-    emit32(kAutiasp, cs);
+    if (currentAbi_ == ABIFormat::Darwin)
+        emit32(kAutiasp, cs);
 
     // ret
     emit32(kRet, cs);

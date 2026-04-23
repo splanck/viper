@@ -425,6 +425,12 @@ entry:
 }
 ```
 
+The parameter list may end with `...` to mark a C-style variadic function:
+
+```il
+func export @printfLike(str %fmt, ...) -> i64
+```
+
 ##### Minimal Function
 
 ```text
@@ -719,7 +725,8 @@ entry:
 | `call.indirect` | `call.indirect %fn_ptr(%x, %y)` | return type from pointer |
 
 Direct calls use `@symbol` references. Indirect calls use a function pointer as the first operand, followed by
-arguments. The verifier checks arity and types for both forms.
+arguments. The verifier checks arity and types for both forms. For variadic callees declared with a trailing `...`,
+the verifier enforces the declared prefix and permits additional arguments after it.
 
 ```text
 call @f(%x, %y)
@@ -899,7 +906,7 @@ global      ::= "global" ("const")? type SYMBOL "=" ginit
 ginit       ::= STRING | INT | FLOAT | "null" | SYMBOL
 linkage     ::= "export" | "import"
 func        ::= "func" linkage? SYMBOL "(" func_params? ")" "->" type ( "{" block+ "}" )?
-func_params ::= func_param ("," func_param)*
+func_params ::= func_param ("," func_param)* ("," "...")? | "..."
 func_param  ::= type TEMP | TEMP ":" type   (* canonical: "type %name"; legacy "%name: type" also accepted *)
 type_list   ::= type ("," type)*
 block       ::= LABEL ("(" blk_params? ")")? ":" instr* term

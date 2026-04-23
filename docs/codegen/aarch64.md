@@ -20,9 +20,11 @@ programs, and the development roadmap. It is kept developer-focused with concret
 - **Fastpaths**: Arithmetic and call fastpath optimizations for common patterns
 - **Register allocator hardening**: Protected-use sets prevent source-operand eviction during def allocation; FPR load/store classification; operandRoles fix for immediate-ALU instructions; clean FPR spill slot reuse across calls; dead vreg early release
 - **Cross-target output plumbing**: `--target-darwin`, `--target-linux`, and `--target-windows` now drive the native object format, linker platform, and system-assembler target instead of silently falling back to the host
-- **Trap ABI fixes**: plain `trap` and `idx.chk` now marshal `x0 = NULL`, checked div/rem and overflow traps call `rt_trap_div0` / `rt_trap_ovf`, and `trap.from_err` now marshals its code into `x0` before calling `rt_trap_raise_error`
-- **Control-flow correctness**: `switch.i32` edge arguments now travel through phi spill slots via dedicated edge blocks, so untaken cases no longer clobber taken-edge values
-- **Emitter parity**: text assembly now emits the same BTI / PACIASP / AUTIASP hardening sequence as the binary encoder, and compact unwind records are emitted only for Darwin objects
+- **Trap ABI fixes**: plain `trap` still marshals `x0 = NULL`, `idx.chk` now raises structured bounds errors through `rt_trap_raise_error`, checked div/rem and overflow traps call `rt_trap_div0` / `rt_trap_ovf`, and `trap.from_err` marshals its code into `x0` before calling `rt_trap_raise_error`
+- **Checked FP casts**: `cast.fp_to_si.rte.chk` and `cast.fp_to_ui.rte.chk` now lower as `FRintN` plus explicit NaN/range checks before `FCvtZS` / `FCvtZU`, trapping with `InvalidCast` on failure
+- **Control-flow correctness**: `switch.i32` edge arguments travel through phi spill slots via dedicated edge blocks, and larger switches lower as balanced decision trees instead of pure compare chains
+- **Call ABI hardening**: direct calls to module-defined variadic callees (`...`) now honor the variadic stack-tail ABI, and malformed direct-call IL is diagnosed instead of being silently dropped
+- **Emitter parity**: text assembly and the binary encoder now gate BTI / PACIASP / AUTIASP on target policy; branch-target identification and return-address signing are emitted by default on Darwin and skipped for Linux/Windows objects
 - **Strength reduction**: signed and unsigned division by arbitrary constants now lower through magic-multiply sequences; `UmulhRRR` is part of the MIR and binary encoder surface
 - **117 codegen test files**
 
@@ -206,6 +208,9 @@ Before MIR lowering, `CodegenPipeline` now runs a selective IL optimization stag
 - **Caller-saved GPRs**: X0–X15
 - **Caller-saved FPRs**: V0–V7, V16–V31
 
+For variadic callees, both runtime-declared and module-defined `...` signatures use the declared prefix as the named
+argument set and force the anonymous tail onto the stack per AAPCS64.
+
 ## Debug Dump Flags
 
 ### IL-Level Dumps
@@ -307,6 +312,8 @@ Virtual registers (`%v0:gpr`) appear before RA; physical registers (`@x0:gpr`) a
 | `test_codegen_arm64_spill_fpr.cpp` | FPR spill/reload under register pressure |
 | `test_codegen_arm64_stack_locals.cpp` | Stack local allocation and access |
 | `test_codegen_arm64_switch.cpp` | Switch statement lowering |
+| `test_aarch64_vararg.cpp` | User-defined variadic calls and malformed direct-call diagnostics |
+| `test_aarch64_pac_bti.cpp` | Darwin-only BTI/PAC emission policy in text and binary output |
 | `test_codegen_arm64_unsigned_cmp.cpp` | Unsigned comparison predicates |
 
 All test artifacts are written under `build/test-out/arm64/` (created on demand). CMake wiring is in

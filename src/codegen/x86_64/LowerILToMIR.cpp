@@ -39,6 +39,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 
 namespace viper::codegen::x64 {
@@ -201,6 +202,17 @@ LowerILToMIR::LowerILToMIR(const TargetInfo &target, AsmEmitter::RoDataPool &roD
 /// @return Reference to the vector of plans emitted by call rules.
 const std::vector<CallLoweringPlan> &LowerILToMIR::callPlans() const noexcept {
     return callPlans_;
+}
+
+void LowerILToMIR::setKnownVarArgCallees(std::unordered_set<std::string> callees) {
+    knownVarArgCallees_ = std::move(callees);
+}
+
+bool LowerILToMIR::isKnownVarArgCallee(std::string_view callee) const {
+    if (callee.empty()) {
+        return false;
+    }
+    return knownVarArgCallees_.find(std::string{callee}) != knownVarArgCallees_.end();
 }
 
 uint32_t LowerILToMIR::recordCallPlan(CallLoweringPlan plan) {
@@ -481,6 +493,7 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
 
     MFunction result{};
     result.name = func.name;
+    result.metadata.isVarArg = func.isVarArg;
 
     result.blocks.reserve(func.blocks.size());
 
@@ -536,7 +549,7 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
                                 .slotModel = target_->shadowSpace != 0
                                                  ? CallSlotModel::UnifiedRegisterPositions
                                                  : CallSlotModel::IndependentRegisterBanks,
-                                .variadicTailOnStack = false,
+                                .variadicTailOnStack = func.isVarArg,
                                 .numNamedArgs = paramClasses.size()});
         for (std::size_t p = 0; p < entryParams.paramIds.size(); ++p) {
             const int paramId = entryParams.paramIds[p];
@@ -578,6 +591,7 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
     if (!entryParamToPhysReg.empty() && !result.blocks.empty()) {
         auto &entryBlock = result.blocks[0];
         MInstr px = MInstr::make(MOpcode::PX_COPY, {});
+        std::vector<MInstr> i1Normalizations{};
 
         // Iterate in parameter declaration order (deterministic), not map order.
         const auto &entryParams = func.blocks[0];
@@ -594,10 +608,17 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
             const Operand dest = makeVRegOperand(vreg.cls, vreg.id);
             px.operands.push_back(dest);
             px.operands.push_back(it->second);
+            if (kind == ILValue::Kind::I1) {
+                i1Normalizations.push_back(
+                    MInstr::make(MOpcode::ANDri, {makeVRegOperand(vreg.cls, vreg.id), makeImmOperand(1)}));
+            }
         }
 
         if (!px.operands.empty()) {
             entryBlock.instructions.insert(entryBlock.instructions.begin(), std::move(px));
+            entryBlock.instructions.insert(entryBlock.instructions.begin() + 1,
+                                           i1Normalizations.begin(),
+                                           i1Normalizations.end());
         }
     }
 
@@ -614,6 +635,10 @@ MFunction LowerILToMIR::lower(const ILFunction &func) {
                 entryBlock.instructions.push_back(MInstr::make(MOpcode::MOVSDmr, {dest, src}));
             } else {
                 entryBlock.instructions.push_back(MInstr::make(MOpcode::MOVmr, {dest, src}));
+                if (sp.kind == ILValue::Kind::I1) {
+                    entryBlock.instructions.push_back(
+                        MInstr::make(MOpcode::ANDri, {makeVRegOperand(vreg.cls, vreg.id), makeImmOperand(1)}));
+                }
             }
         }
     }

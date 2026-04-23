@@ -434,19 +434,27 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
 
     // Determine parameter count and validate argument count.
     size_t paramCount = 0;
+    bool isVarArg = false;
     if (externSig)
         paramCount = externSig->params.size();
-    else if (fnSig)
+    else if (fnSig) {
         paramCount = fnSig->params.size();
-    else if (runtimeSig)
+        isVarArg = fnSig->isVarArg;
+    } else if (runtimeSig) {
         paramCount = runtimeSig->paramTypes.size();
+        isVarArg = runtimeSig->isVarArg;
+    }
 
     const size_t providedArgs =
         (ctx.instr.operands.size() >= argStart) ? (ctx.instr.operands.size() - argStart) : 0;
-    if (providedArgs != paramCount) {
+    const bool badArgCount = isVarArg ? (providedArgs < paramCount) : (providedArgs != paramCount);
+    if (badArgCount) {
         std::ostringstream ss;
-        ss << "call arg count mismatch: @" << calleeName << " expects " << paramCount << " argument"
-           << (paramCount == 1 ? "" : "s") << " but got " << providedArgs;
+        ss << "call arg count mismatch: @" << calleeName << " expects ";
+        if (isVarArg)
+            ss << "at least ";
+        ss << paramCount << " argument" << (paramCount == 1 ? "" : "s") << " but got "
+           << providedArgs;
         return fail(ctx, ss.str());
     }
 

@@ -31,6 +31,75 @@
 #include <string>
 
 namespace viper::codegen::x64::lowering {
+namespace {
+
+constexpr int64_t kErrBounds = 7;
+
+MInstr makePlannedCall(Operand target, uint32_t callPlanId) {
+    MInstr call = MInstr::make(MOpcode::CALL, std::vector<Operand>{std::move(target)});
+    call.callPlanId = callPlanId;
+    return call;
+}
+
+void emitBoundsTrap(MIRBuilder &builder) {
+    CallLoweringPlan plan{};
+    plan.callee = "rt_trap_raise_error";
+    plan.numNamedArgs = 1;
+    plan.args.push_back(
+        CallArg{.cls = CallArgClass::GPR, .vreg = 0, .isImm = true, .imm = kErrBounds});
+    const uint32_t callPlanId = builder.recordCallPlan(std::move(plan));
+    builder.append(makePlannedCall(makeLabelOperand(std::string{"rt_trap_raise_error"}), callPlanId));
+    builder.append(MInstr::make(MOpcode::UD2));
+}
+
+struct SwitchCase {
+    int64_t value{0};
+    Operand label{};
+};
+
+void emitSwitchTree(const std::vector<SwitchCase> &cases,
+                    std::size_t begin,
+                    std::size_t end,
+                    const Operand &scrutinee,
+                    const Operand &defaultLabel,
+                    MIRBuilder &builder) {
+    if (begin >= end) {
+        builder.append(MInstr::make(MOpcode::JMP, std::vector<Operand>{defaultLabel}));
+        return;
+    }
+
+    const std::size_t mid = begin + (end - begin) / 2;
+    const SwitchCase &pivot = cases[mid];
+    builder.append(
+        MInstr::make(MOpcode::CMPri, std::vector<Operand>{scrutinee, makeImmOperand(pivot.value)}));
+    builder.append(MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(0), pivot.label}));
+
+    const bool hasLeft = begin < mid;
+    const bool hasRight = mid + 1 < end;
+    const uint32_t labelSeed = builder.lower().nextLocalLabelId();
+    const Operand leftLabel =
+        makeLabelOperand(".Lswitch_left_" + std::to_string(labelSeed));
+    const Operand rightLabel =
+        makeLabelOperand(".Lswitch_right_" + std::to_string(labelSeed));
+
+    if (hasLeft) {
+        builder.append(
+            MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(2), leftLabel}));
+    }
+    builder.append(MInstr::make(
+        MOpcode::JMP, std::vector<Operand>{hasRight ? rightLabel : defaultLabel}));
+
+    if (hasLeft) {
+        builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{leftLabel}));
+        emitSwitchTree(cases, begin, mid, scrutinee, defaultLabel, builder);
+    }
+    if (hasRight) {
+        builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{rightLabel}));
+        emitSwitchTree(cases, mid + 1, end, scrutinee, defaultLabel, builder);
+    }
+}
+
+} // namespace
 
 /// @brief Lower a SELECT IL instruction into Machine IR.
 /// @details Delegates to @ref EmitCommon::emitSelect so the helper can implement
@@ -111,7 +180,7 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder) {
     builder.append(MInstr::make(
         MOpcode::JCC,
         std::vector<Operand>{makeImmOperand(passUpperCond), makeLabelOperand(passUpperLabel)}));
-    builder.append(MInstr::make(MOpcode::UD2));
+    emitBoundsTrap(builder);
     builder.append(
         MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(passUpperLabel)}));
 
@@ -130,7 +199,7 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder) {
         builder.append(MInstr::make(
             MOpcode::JCC,
             std::vector<Operand>{makeImmOperand(5), makeLabelOperand(passLowerLabel)})); // JGE
-        builder.append(MInstr::make(MOpcode::UD2));
+        emitBoundsTrap(builder);
         builder.append(
             MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(passLowerLabel)}));
     }
@@ -168,40 +237,32 @@ void emitSwitchI32(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon emit(builder);
     Operand scrutinee =
         emit.materialiseGpr(builder.makeOperandForValue(instr.ops[0], RegClass::GPR));
-
-    // Process case (value, label) pairs starting at ops[1]
+    std::vector<SwitchCase> cases{};
     std::size_t idx = 1;
-    while (idx + 1 < instr.ops.size()) {
-        // If this operand is a label, it's the default — stop processing cases
-        if (instr.ops[idx].kind == ILValue::Kind::LABEL) {
-            break;
-        }
-
-        // Case value
-        Operand caseVal = builder.makeOperandForValue(instr.ops[idx], RegClass::GPR);
-        // Case label
-        const Operand caseLabel = builder.makeLabelOperand(instr.ops[idx + 1]);
-
-        // CMP scrutinee, case_value
-        if (const auto *imm = std::get_if<OpImm>(&caseVal); imm && fitsImm32(imm->val)) {
-            builder.append(MInstr::make(MOpcode::CMPri, std::vector<Operand>{scrutinee, caseVal}));
-        } else {
-            caseVal = emit.materialiseGpr(std::move(caseVal));
-            builder.append(MInstr::make(MOpcode::CMPrr, std::vector<Operand>{scrutinee, caseVal}));
-        }
-
-        // JCC "e" (equal) = condition code 0
-        builder.append(
-            MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(0), caseLabel}));
-
+    while (idx + 1 < instr.ops.size() && instr.ops[idx].kind != ILValue::Kind::LABEL) {
+        cases.push_back(
+            SwitchCase{instr.ops[idx].i64, builder.makeLabelOperand(instr.ops[idx + 1])});
         idx += 2;
     }
 
-    // Default label (the remaining operand)
-    if (idx < instr.ops.size()) {
-        const Operand defLabel = builder.makeLabelOperand(instr.ops[idx]);
+    Operand defLabel = (idx < instr.ops.size()) ? builder.makeLabelOperand(instr.ops[idx])
+                                                : makeLabelOperand(".Lswitch_default_missing");
+    std::sort(cases.begin(), cases.end(), [](const SwitchCase &lhs, const SwitchCase &rhs) {
+        return lhs.value < rhs.value;
+    });
+
+    if (cases.size() <= 3) {
+        for (const auto &caseEntry : cases) {
+            builder.append(MInstr::make(
+                MOpcode::CMPri, std::vector<Operand>{scrutinee, makeImmOperand(caseEntry.value)}));
+            builder.append(
+                MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(0), caseEntry.label}));
+        }
         builder.append(MInstr::make(MOpcode::JMP, std::vector<Operand>{defLabel}));
+        return;
     }
+
+    emitSwitchTree(cases, 0, cases.size(), scrutinee, defLabel, builder);
 }
 
 } // namespace viper::codegen::x64::lowering

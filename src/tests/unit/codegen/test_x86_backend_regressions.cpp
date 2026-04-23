@@ -16,6 +16,7 @@
 #include "codegen/x86_64/LowerILToMIR.hpp"
 #include "codegen/x86_64/TargetX64.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <iostream>
@@ -246,6 +247,7 @@ TEST(X86BackendRegressions, IdxChkNormalizesNonZeroLowerBound) {
                 result.asmText.find("subq $10") != std::string::npos);
     EXPECT_TRUE(result.asmText.find("jl ") != std::string::npos);
     EXPECT_TRUE(result.asmText.find("jge ") != std::string::npos);
+    EXPECT_NE(result.asmText.find("rt_trap_raise_error"), std::string::npos);
 }
 
 TEST(X86BackendRegressions, IdxChkUsesSignedChecksForNegativeLowerBound) {
@@ -271,6 +273,45 @@ TEST(X86BackendRegressions, IdxChkUsesSignedChecksForNegativeLowerBound) {
     EXPECT_TRUE(result.asmText.find("jge ") != std::string::npos);
     EXPECT_TRUE(result.asmText.find("jb ") == std::string::npos);
     EXPECT_TRUE(result.asmText.find("jae ") == std::string::npos);
+    EXPECT_NE(result.asmText.find("rt_trap_raise_error"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, CheckedFpToSiUsesRoundEvenAndStructuredTrap) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::F64};
+    entry.instrs = {op("fptosi_chk", {val(ILValue::Kind::F64, 0)}, 1, ILValue::Kind::I64),
+                    op("ret", {val(ILValue::Kind::I64, 1)})};
+
+    ILFunction fn{};
+    fn.name = "checked_fptosi";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("rt_round_even"), std::string::npos);
+    EXPECT_NE(result.asmText.find("rt_trap_raise_error"), std::string::npos);
+    EXPECT_NE(result.asmText.find(".Lfptosi_chk_trap_"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, CheckedFpToUiUsesUpperBoundCheckAndStructuredTrap) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::F64};
+    entry.instrs = {op("fptoui", {val(ILValue::Kind::F64, 0)}, 1, ILValue::Kind::I64),
+                    op("ret", {val(ILValue::Kind::I64, 1)})};
+
+    ILFunction fn{};
+    fn.name = "checked_fptoui";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("rt_round_even"), std::string::npos);
+    EXPECT_NE(result.asmText.find("rt_trap_raise_error"), std::string::npos);
+    EXPECT_NE(result.asmText.find(".Lfptoui_trap_"), std::string::npos);
 }
 
 TEST(X86BackendRegressions, CompareBranchUsesFlagsDirectly) {
@@ -434,6 +475,54 @@ TEST(X86BackendRegressions, SwitchBlockArgsUseDedicatedEdgeBlocks) {
     EXPECT_EQ(edgeBlockCount, 3u);
 }
 
+TEST(X86BackendRegressions, LargerSwitchUsesBalancedDecisionLabels) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+    entry.instrs = {op("switch_i32",
+                       {val(ILValue::Kind::I64, 0),
+                        imm(0),
+                        label("c0"),
+                        imm(1),
+                        label("c1"),
+                        imm(2),
+                        label("c2"),
+                        imm(3),
+                        label("c3"),
+                        imm(4),
+                        label("c4"),
+                        imm(5),
+                        label("c5"),
+                        imm(6),
+                        label("c6"),
+                        imm(7),
+                        label("c7"),
+                        label("def")})};
+
+    std::vector<ILBlock> blocks;
+    blocks.push_back(entry);
+    for (int i = 0; i < 8; ++i) {
+        ILBlock caseBlock{};
+        caseBlock.name = "c" + std::to_string(i);
+        caseBlock.instrs = {op("ret", {imm(100 + i)})};
+        blocks.push_back(std::move(caseBlock));
+    }
+    ILBlock def{};
+    def.name = "def";
+    def.instrs = {op("ret", {imm(0)})};
+    blocks.push_back(std::move(def));
+
+    ILFunction fn{};
+    fn.name = "switch_tree";
+    fn.blocks = std::move(blocks);
+
+    const CodegenResult result = compile(fn);
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find(".Lswitch_left_"), std::string::npos);
+    EXPECT_NE(result.asmText.find(".Lswitch_right_"), std::string::npos);
+}
+
 TEST(X86BackendRegressions, CheckedSignedDivisionIncludesOverflowTrap) {
     ILBlock entry{};
     entry.name = "entry";
@@ -563,6 +652,39 @@ TEST(X86BackendRegressions, SuccessfulAssemblyEmissionIsSilentOnStderr) {
     ASSERT_TRUE(result.errors.empty());
     EXPECT_FALSE(result.asmText.empty());
     EXPECT_TRUE(stderrText.empty());
+}
+
+TEST(X86BackendRegressions, TrapPayloadIsForwardedToRuntime) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(sysvTarget(), roData);
+
+    ILValue message{};
+    message.kind = ILValue::Kind::STR;
+    message.id = -1;
+    message.str = "boom";
+    message.strLen = 4;
+
+    ILInstr trap{};
+    trap.opcode = "trap";
+    trap.ops = {message};
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {trap};
+
+    ILFunction fn{};
+    fn.name = "trap_payload";
+    fn.blocks = {entry};
+
+    (void)lowering.lower(fn);
+    const auto trapIt = std::find_if(lowering.callPlans().begin(),
+                                     lowering.callPlans().end(),
+                                     [](const CallLoweringPlan &plan) {
+                                         return plan.callee == "rt_trap";
+                                     });
+    ASSERT_TRUE(trapIt != lowering.callPlans().end());
+    ASSERT_EQ(trapIt->args.size(), 1u);
+    EXPECT_FALSE(trapIt->args[0].isImm);
 }
 
 int main(int argc, char **argv) {

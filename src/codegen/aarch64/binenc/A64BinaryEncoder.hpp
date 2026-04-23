@@ -158,6 +158,9 @@ class A64BinaryEncoder {
     /// Pointer to current function being encoded (for epilogue synthesis on Ret).
     const MFunction *currentFn_{nullptr};
 
+    /// ABI currently being encoded, used to gate platform-specific hardening.
+    ABIFormat currentAbi_{ABIFormat::Darwin};
+
     /// Pointer to the current rodata section for same-object cross-section fixups.
     const objfile::CodeSection *currentRodata_{nullptr};
 

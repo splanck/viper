@@ -223,12 +223,13 @@ void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) c
         os << ".globl " << sym << "\n";
     }
     os << sym << ":\n";
-    // Emit a BTI landing pad to match the binary encoder's function-entry hardening.
-    os << "  bti c\n";
+    if (target_->hasBranchTargetIdentification())
+        os << "  bti c\n";
 }
 
 void AsmEmitter::emitPrologue(std::ostream &os) const {
-    os << "  paciasp\n";
+    if (target_->hasReturnAddressSigning())
+        os << "  paciasp\n";
     // stp x29, x30, [sp, #-16]!; mov x29, sp
     os << "  stp x29, x30, [sp, #-16]!\n";
     os << "  mov x29, sp\n";
@@ -237,7 +238,8 @@ void AsmEmitter::emitPrologue(std::ostream &os) const {
 void AsmEmitter::emitEpilogue(std::ostream &os) const {
     // ldp x29, x30, [sp], #16; ret
     os << "  ldp x29, x30, [sp], #16\n";
-    os << "  autiasp\n";
+    if (target_->hasReturnAddressSigning())
+        os << "  autiasp\n";
     os << "  ret\n";
 }
 
