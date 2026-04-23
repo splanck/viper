@@ -42,8 +42,9 @@ Translation catalog keyed by message ID. Supports placeholder interpolation, fal
 
 ### Notes
 
-- **Fallback chain.** `Get` walks fallbacks depth-first up to 16 bundles before giving up. `Fallback` detects self-cycles and traps.
+- **Fallback chain.** `Get` first checks the raw key, then locale-qualified keys inside the same bundle using `<locale-tag>:<key>` across the locale fallback chain, then walks explicit fallback bundles depth-first up to 16 bundles. `Fallback` detects self-cycles and traps.
 - **Plural.** `Plural(key, n, vars)` evaluates the bound locale's cardinal plural category for `n`, then looks up `<key>.<category>` (falling through to `<key>.other` if missing). `{n}` is added to a temporary copy of `vars`; the caller's map is not mutated.
+- **Value types.** `FromMap`, JSON loaders, `Format(vars)`, and `Plural(vars)` require string values. `FormatWith(values)` requires a list of strings; oversized positional indices are preserved literally.
 - **Missing placeholders.** Placeholders referencing absent keys in `vars` are preserved literally, e.g. `{name}` stays `{name}`.
 - **Escaping.** Use `{{` and `}}` for literal braces.
 - JSON loaders expect a flat `{"key": "value", ...}` object and reject non-string values.
@@ -66,6 +67,17 @@ var msgs = MessageBundle.FromMap(
 Say(msgs.Format("greet", {"name": "Alice"}))   # "Hello, Alice!"
 Say(msgs.Plural("items", 1, {}))               # "1 item"
 Say(msgs.Plural("items", 5, {}))               # "5 items"
+```
+
+Locale-qualified fallback example:
+
+```zia
+var msgs = MessageBundle.FromMap(Locale.Parse("fr-CA"), {
+    "fr:greet": "Bonjour",
+    "root:greet": "Hello"
+})
+
+Say(msgs.Get("greet"))  # "Bonjour"
 ```
 
 ### See Also
@@ -98,6 +110,8 @@ CLDR plural category selection for cardinal and ordinal numeric forms.
   - `f` = visible fraction digits as integer (with trailing zeros)
   - `t` = visible fraction digits without trailing zeros
 - Integer-valued doubles skip the decimal-string pass: `v=f=t=0`.
+- Loaded locale plural rules support CLDR-style range/list predicates: `in`, `not in`, `within`, `not within`, comma-separated lists, and `a..b` ranges. `in` matches integral values only; `within` also matches fractional values.
+- Nonfinite `Cardinal` inputs return `"other"`.
 - **en-US** cardinal: `one` for `i=1 && v=0`; else `other`.
 - **en-US** ordinal: `one` for `n mod 10 = 1 && n mod 100 != 11`; `two` for `n mod 10 = 2 && n mod 100 != 12`; `few` for `n mod 10 = 3 && n mod 100 != 13`; else `other`.
 

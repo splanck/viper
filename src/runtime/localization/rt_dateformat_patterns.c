@@ -44,22 +44,86 @@
 // Small helpers
 //===----------------------------------------------------------------------===//
 
-/// @brief Append @p value as a zero-padded decimal of @p width digits.
-static void emit_padded_int(rt_string_builder *sb, int64_t value, int width) {
-    char buf[32];
-    int n = snprintf(buf, sizeof(buf), "%0*lld", width, (long long)value);
-    if (n < 0)
-        return;
-    (void)rt_sb_append_bytes(sb, buf, (size_t)n);
+typedef struct digit_spans {
+    const char *ptr[10];
+    size_t len[10];
+    int valid;
+} digit_spans_t;
+
+static size_t utf8_cp_len(const char *s) {
+    if (!s || !*s) return 0;
+    unsigned char c = (unsigned char)s[0];
+    if (c < 0x80) return 1;
+    if ((c & 0xE0) == 0xC0 && s[1]) return 2;
+    if ((c & 0xF0) == 0xE0 && s[1] && s[2]) return 3;
+    if ((c & 0xF8) == 0xF0 && s[1] && s[2] && s[3]) return 4;
+    return 1;
 }
 
-/// @brief Append @p value as an unpadded decimal.
-static void emit_int(rt_string_builder *sb, int64_t value) {
+static digit_spans_t digit_spans_from_locale(const rt_locale_data_t *data) {
+    digit_spans_t ds;
+    memset(&ds, 0, sizeof(ds));
+    const char *digits = data && data->numbers.digits ? data->numbers.digits : "0123456789";
+    const char *p = digits;
+    for (int i = 0; i < 10; ++i) {
+        size_t n = utf8_cp_len(p);
+        if (n == 0) {
+            ds.valid = 0;
+            return ds;
+        }
+        ds.ptr[i] = p;
+        ds.len[i] = n;
+        p += n;
+    }
+    ds.valid = *p == '\0';
+    return ds;
+}
+
+static void emit_ascii_digits(rt_string_builder *sb, const rt_locale_data_t *data,
+                              const char *bytes, size_t len) {
+    digit_spans_t ds = digit_spans_from_locale(data);
+    for (size_t i = 0; i < len; ++i) {
+        unsigned char c = (unsigned char)bytes[i];
+        if (ds.valid && c >= '0' && c <= '9') {
+            int d = (int)(c - '0');
+            (void)rt_sb_append_bytes(sb, ds.ptr[d], ds.len[d]);
+        } else {
+            (void)rt_sb_append_bytes(sb, bytes + i, 1);
+        }
+    }
+}
+
+/// @brief Append @p value as a zero-padded decimal of @p width digits.
+static void emit_padded_int(rt_string_builder *sb, const rt_locale_data_t *data,
+                            int64_t value, int width) {
     char buf[32];
     int n = snprintf(buf, sizeof(buf), "%lld", (long long)value);
     if (n < 0)
         return;
-    (void)rt_sb_append_bytes(sb, buf, (size_t)n);
+    if (buf[0] == '-') {
+        (void)rt_sb_append_bytes(sb, "-", 1);
+        memmove(buf, buf + 1, (size_t)n);
+        --n;
+    }
+    if (width > n) {
+        digit_spans_t ds = digit_spans_from_locale(data);
+        for (int i = n; i < width; ++i) {
+            if (ds.valid)
+                (void)rt_sb_append_bytes(sb, ds.ptr[0], ds.len[0]);
+            else
+                (void)rt_sb_append_bytes(sb, "0", 1);
+        }
+    }
+    emit_ascii_digits(sb, data, buf, (size_t)n);
+}
+
+/// @brief Append @p value as an unpadded decimal.
+static void emit_int(rt_string_builder *sb, const rt_locale_data_t *data, int64_t value) {
+    char buf[32];
+    int n = snprintf(buf, sizeof(buf), "%lld", (long long)value);
+    if (n < 0)
+        return;
+    emit_ascii_digits(sb, data, buf, (size_t)n);
 }
 
 /// @brief Append a C string (NULL-tolerant).
@@ -95,13 +159,14 @@ typedef struct {
     int64_t dow;     // 0=Sunday..6=Saturday
 } dt_components_t;
 
-static void emit_year(rt_string_builder *sb, const dt_components_t *c, int count) {
+static void emit_year(rt_string_builder *sb, const dt_components_t *c,
+                      int count, const rt_locale_data_t *data) {
     if (count == 2) {
-        emit_padded_int(sb, c->year % 100, 2);
+        emit_padded_int(sb, data, c->year % 100, 2);
     } else {
         // 1, 3, 4, 5+ all emit the full year (no width clamping).
         int width = count >= 4 ? count : 1;
-        emit_padded_int(sb, c->year, width);
+        emit_padded_int(sb, data, c->year, width);
     }
 }
 
@@ -113,9 +178,9 @@ static void emit_month(rt_string_builder *sb, const dt_components_t *c,
         return;
     }
     if (count == 1) {
-        emit_int(sb, c->month);
+        emit_int(sb, data, c->month);
     } else if (count == 2) {
-        emit_padded_int(sb, c->month, 2);
+        emit_padded_int(sb, data, c->month, 2);
     } else if (count == 3) {
         emit_cstr(sb, data->dates.months_abbr ? data->dates.months_abbr[idx] : NULL);
     } else if (count == 4) {
@@ -127,11 +192,12 @@ static void emit_month(rt_string_builder *sb, const dt_components_t *c,
     }
 }
 
-static void emit_day(rt_string_builder *sb, const dt_components_t *c, int count) {
+static void emit_day(rt_string_builder *sb, const dt_components_t *c,
+                     int count, const rt_locale_data_t *data) {
     if (count >= 2)
-        emit_padded_int(sb, c->day, 2);
+        emit_padded_int(sb, data, c->day, 2);
     else
-        emit_int(sb, c->day);
+        emit_int(sb, data, c->day);
 }
 
 static void emit_dow(rt_string_builder *sb, const dt_components_t *c,
@@ -151,34 +217,38 @@ static void emit_dow(rt_string_builder *sb, const dt_components_t *c,
     }
 }
 
-static void emit_hour24(rt_string_builder *sb, const dt_components_t *c, int count) {
+static void emit_hour24(rt_string_builder *sb, const dt_components_t *c,
+                        int count, const rt_locale_data_t *data) {
     if (count >= 2)
-        emit_padded_int(sb, c->hour, 2);
+        emit_padded_int(sb, data, c->hour, 2);
     else
-        emit_int(sb, c->hour);
+        emit_int(sb, data, c->hour);
 }
 
-static void emit_hour12(rt_string_builder *sb, const dt_components_t *c, int count) {
+static void emit_hour12(rt_string_builder *sb, const dt_components_t *c,
+                        int count, const rt_locale_data_t *data) {
     int64_t h = c->hour % 12;
     if (h == 0) h = 12;
     if (count >= 2)
-        emit_padded_int(sb, h, 2);
+        emit_padded_int(sb, data, h, 2);
     else
-        emit_int(sb, h);
+        emit_int(sb, data, h);
 }
 
-static void emit_minute(rt_string_builder *sb, const dt_components_t *c, int count) {
+static void emit_minute(rt_string_builder *sb, const dt_components_t *c,
+                        int count, const rt_locale_data_t *data) {
     if (count >= 2)
-        emit_padded_int(sb, c->minute, 2);
+        emit_padded_int(sb, data, c->minute, 2);
     else
-        emit_int(sb, c->minute);
+        emit_int(sb, data, c->minute);
 }
 
-static void emit_second(rt_string_builder *sb, const dt_components_t *c, int count) {
+static void emit_second(rt_string_builder *sb, const dt_components_t *c,
+                        int count, const rt_locale_data_t *data) {
     if (count >= 2)
-        emit_padded_int(sb, c->second, 2);
+        emit_padded_int(sb, data, c->second, 2);
     else
-        emit_int(sb, c->second);
+        emit_int(sb, data, c->second);
 }
 
 static void emit_ampm(rt_string_builder *sb, const dt_components_t *c,
@@ -265,14 +335,14 @@ void rt_dateformat_emit_pattern(rt_string_builder *sb,
             int count = (int)(j - i);
             i = j;
             switch (ch) {
-                case 'y': emit_year(sb, &c, count); break;
+                case 'y': emit_year(sb, &c, count, data); break;
                 case 'M': emit_month(sb, &c, count, data); break;
-                case 'd': emit_day(sb, &c, count); break;
+                case 'd': emit_day(sb, &c, count, data); break;
                 case 'E': emit_dow(sb, &c, count, data); break;
-                case 'H': emit_hour24(sb, &c, count); break;
-                case 'h': emit_hour12(sb, &c, count); break;
-                case 'm': emit_minute(sb, &c, count); break;
-                case 's': emit_second(sb, &c, count); break;
+                case 'H': emit_hour24(sb, &c, count, data); break;
+                case 'h': emit_hour12(sb, &c, count, data); break;
+                case 'm': emit_minute(sb, &c, count, data); break;
+                case 's': emit_second(sb, &c, count, data); break;
                 case 'a': emit_ampm(sb, &c, data); break;
                 default:
                     rt_trap("Viper.Localization.DateFormat: unsupported pattern letter");

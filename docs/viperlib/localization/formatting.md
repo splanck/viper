@@ -55,9 +55,11 @@ Locale-aware number formatting **and parsing** with configurable fraction digits
 ### Notes
 
 - Format output uses the locale's `numbers.decimal_sep`, `numbers.group_sep`, `numbers.percent`, `currency.symbol`, and `currency.pattern_*` templates.
+- Grouping supports both `group_size` and `secondary_group_size`; locales such as Hindi can emit `1,23,45,678`.
 - Integer formatting/parsing is exact across the full signed 64-bit range, including `-9223372036854775808`.
 - `numbers.digits` is honored for both formatting and parsing, so non-Latin digit sets round-trip.
 - Decimal and scientific formatting/parsing use C-locale numeric conversion internally, then apply locale separators, so host process locale does not change results.
+- `CurrencyOf` requires a 3-letter uppercase ISO-style code. Non-default valid codes are rendered literally as the symbol placeholder unless the locale has a dedicated symbol table in a future release.
 - Currency parsing accepts the locale's positive and negative patterns, including accounting parentheses such as `"($1,234.56)"`.
 - **Strict mode parses**: strict rejects inputs where a group separator appears at a non-group-size position (e.g. `"1,00"` under en-US where `group_size=3`). Lenient accepts the same input by treating the separator as informational.
 - Rounding: `halfEven` (banker's) is the default; matches IEEE 754 round-to-nearest-even semantics.
@@ -129,6 +131,8 @@ CLDR-pattern-letter date and time formatting.
 ### Notes
 
 - Timestamp inputs are Unix seconds (matches `rt_datetime` convention).
+- Numeric pattern output uses the locale's `numbers.digits`; date styles and custom patterns can emit non-Latin digits.
+- `DateTimeShort` and `DateTimeMedium` use locale `datetime_short` / `datetime_medium` composition patterns when provided, falling back to date + space + time.
 - Unsupported pattern letters (`G`, `Q`, `D`, `w`, `k`, `K`, `z`, `Z`, `v`, `V`) trap with `"unsupported pattern letter"`.
 - Unterminated quoted literals trap instead of silently treating the rest of the pattern as literal text.
 - Pattern length capped at 256 chars.
@@ -175,9 +179,10 @@ Human-readable "N units ago" / "in N units" strings.
 ### Notes
 
 - Unit thresholds: `>= 1y`, `>= 30d`, `>= 7d`, `>= 1d`, `>= 1h`, `>= 1m`, else second.
-- Durations whose absolute value is less than one second format as `"now"`.
+- Durations whose absolute value is less than one second format with the locale's `relative_time.now` string.
 - Plural form selected via the bound locale's `PluralRules` cardinal table.
-- Short/Long templates share data in v1 (baked en-US only); future locales will distinguish.
+- `Style` accepts only `"long"` and `"short"`; unknown values trap. Short style uses `short_past` / `short_future` and `short_units` when available.
+- Relative-time numbers are localized with the locale digit set.
 
 ---
 

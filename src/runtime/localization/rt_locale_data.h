@@ -66,6 +66,10 @@ typedef enum {
     RT_PRN_AND,        ///< logical AND of two children
     RT_PRN_EQ,         ///< equality comparison between two expressions
     RT_PRN_NE,         ///< inequality comparison
+    RT_PRN_IN,         ///< expression is in an integer range/list
+    RT_PRN_NOT_IN,     ///< expression is not in an integer range/list
+    RT_PRN_WITHIN,     ///< expression is within a numeric range/list
+    RT_PRN_NOT_WITHIN, ///< expression is not within a numeric range/list
     RT_PRN_VAR,        ///< variable expression (possibly with a `mod N` tail)
     RT_PRN_INT,        ///< integer literal
 } rt_plural_rule_kind_t;
@@ -80,6 +84,12 @@ typedef enum {
     RT_PVAR_T,     ///< visible fraction digits without trailing zeros (as int)
 } rt_plural_var_t;
 
+/// @brief Inclusive integer range used by CLDR plural-rule list predicates.
+typedef struct rt_plural_rule_range {
+    int64_t start;
+    int64_t end;
+} rt_plural_rule_range_t;
+
 /// @brief Plural rule AST node.
 typedef struct rt_plural_rule_node {
     rt_plural_rule_kind_t kind;
@@ -88,6 +98,11 @@ typedef struct rt_plural_rule_node {
             struct rt_plural_rule_node *l;
             struct rt_plural_rule_node *r;
         } bin;
+        struct {
+            struct rt_plural_rule_node *expr;
+            rt_plural_rule_range_t     *ranges;
+            size_t                      range_count;
+        } range;
         struct {
             rt_plural_var_t var;
             int32_t mod;    ///< 0 means no `mod` operator
@@ -109,7 +124,8 @@ typedef struct rt_plural_rule_entry {
 typedef struct rt_locdata_numbers {
     const char *decimal_sep;  ///< e.g. "." (en-US) or "," (fr-FR)
     const char *group_sep;    ///< e.g. "," (en-US) or U+00A0 (fr-FR)
-    int32_t     group_size;   ///< typically 3; some locales use 3-then-2
+    int32_t     group_size;   ///< rightmost group size, typically 3
+    int32_t     secondary_group_size; ///< repeated group size to the left; 0 => group_size
     const char *minus;
     const char *plus;
     const char *percent;
@@ -136,6 +152,8 @@ typedef struct rt_locdata_dates_patterns {
     const char *full_p;
     const char *time_short;
     const char *time_medium;
+    const char *datetime_short;
+    const char *datetime_medium;
 } rt_locdata_dates_patterns_t;
 
 /// @brief Locale's calendar and date-formatting data.
@@ -166,9 +184,13 @@ typedef struct rt_locdata_reltime_unit {
 ///          6=year. `past` and `future` are the enclosing templates with
 ///          {n} (number) and {unit} (selected unit string) placeholders.
 typedef struct rt_locdata_reltime {
+    const char *now;
     const char *past;
     const char *future;
     rt_locdata_reltime_unit_t units[7];
+    const char *short_past;
+    const char *short_future;
+    rt_locdata_reltime_unit_t short_units[7];
 } rt_locdata_reltime_t;
 
 /// @brief List-joining templates for one style (and/or/unit).

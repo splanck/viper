@@ -16,14 +16,31 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_locale.h"
+#include "rt_locale_manager.h"
 #include "rt_plural_rules.h"
 #include "rt_string.h"
 
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
+#include <setjmp.h>
+#include <string>
+
+#if defined(_WIN32)
+#include <direct.h>
+#include <process.h>
+#define TEST_MKDIR(path) _mkdir(path)
+#define TEST_GETPID() _getpid()
+#else
+#include <sys/stat.h>
+#include <unistd.h>
+#define TEST_MKDIR(path) mkdir(path, 0700)
+#define TEST_GETPID() getpid()
+#endif
 
 static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
@@ -39,6 +56,49 @@ static bool eq(rt_string s, const char *expected) {
     bool ok = cs && strcmp(cs, expected) == 0;
     rt_string_unref(s);
     return ok;
+}
+
+static std::string temp_dir(const char *name) {
+    const char *base = getenv("TMPDIR");
+    if (!base || !*base)
+        base = "/tmp";
+    char buf[512];
+    snprintf(buf, sizeof(buf), "%s/viper_plural_%ld_%s",
+             base, (long)TEST_GETPID(), name);
+    TEST_MKDIR(buf);
+    return std::string(buf);
+}
+
+static void write_text_file(const std::string &path, const char *text) {
+    FILE *f = fopen(path.c_str(), "wb");
+    assert(f && "failed to create temp plural locale JSON");
+    size_t len = strlen(text);
+    assert(fwrite(text, 1, len, f) == len);
+    fclose(f);
+}
+
+static const char *PLURAL_RANGE_JSON = R"json({
+  "tag": "xq-PL",
+  "plural_cardinal": [
+    { "category": "one",   "rule": "n mod 10 = 8" },
+    { "category": "zero",  "rule": "n within 1..2" },
+    { "category": "two",   "rule": "n in 3..5" },
+    { "category": "few",   "rule": "n not within 0..10" },
+    { "category": "other", "rule": "true" }
+  ],
+  "plural_ordinal": [
+    { "category": "many",  "rule": "i = 2,4..6" },
+    { "category": "other", "rule": "true" }
+  ]
+})json";
+
+static void load_plural_range_locale() {
+    std::string dir = temp_dir("xq_PL");
+    std::string file = dir + "/xq-PL.json";
+    write_text_file(file, PLURAL_RANGE_JSON);
+    rt_string path = S(file.c_str());
+    rt_locale_manager_load_from_json(path);
+    rt_string_unref(path);
 }
 
 static void *en_rules() {
@@ -171,6 +231,37 @@ static void test_invariant_fallback() {
                 eq(rt_plural_rules_cardinal_int(pr, 5), "other"));
 }
 
+static void test_loaded_range_rules() {
+    printf("Testing loaded plural range/list rules:\n");
+    load_plural_range_locale();
+    rt_string tag = S("xq-PL");
+    void *loc = rt_locale_parse(tag);
+    rt_string_unref(tag);
+    void *pr = rt_plural_rules_for_locale(loc);
+
+    test_result("within matches fractional n",
+                eq(rt_plural_rules_cardinal(pr, 1.5), "zero"));
+    test_result("in matches integral range",
+                eq(rt_plural_rules_cardinal_int(pr, 4), "two"));
+    test_result("in rejects fractional n",
+                eq(rt_plural_rules_cardinal(pr, 4.5), "other"));
+    test_result("not within catches values outside range",
+                eq(rt_plural_rules_cardinal_int(pr, 11), "few"));
+    test_result("INT64_MIN magnitude modulo is correct",
+                eq(rt_plural_rules_cardinal_int(pr, std::numeric_limits<int64_t>::min()), "one"));
+    test_result("ordinal equality accepts comma/range list",
+                eq(rt_plural_rules_ordinal(pr, 5), "many"));
+}
+
+static void test_nonfinite_cardinal() {
+    printf("Testing PluralRules nonfinite Cardinal inputs:\n");
+    void *pr = en_rules();
+    test_result("Cardinal(NaN) = other",
+                eq(rt_plural_rules_cardinal(pr, std::numeric_limits<double>::quiet_NaN()), "other"));
+    test_result("Cardinal(+Inf) = other",
+                eq(rt_plural_rules_cardinal(pr, std::numeric_limits<double>::infinity()), "other"));
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -182,6 +273,8 @@ int main() {
     test_ordinal_en();
     test_categories();
     test_invariant_fallback();
+    test_loaded_range_rules();
+    test_nonfinite_cardinal();
     printf("\nAll PluralRules tests passed!\n");
     return 0;
 }

@@ -66,6 +66,7 @@ extern void *rt_json_parse_object(rt_string text);
 
 typedef struct rt_message_bundle {
     void *locale;    ///< Locale handle; strong ref through GC
+    const rt_locale_data_t *data; ///< retained locale data for plural lookup
     void *entries;   ///< rt_map<rt_string, rt_string>
     void *fallback;  ///< optional bundle to consult on miss
 } rt_message_bundle_t;
@@ -79,15 +80,29 @@ static void release_object(void *obj) {
         rt_obj_free(obj);
 }
 
+static int is_map_object(void *obj) {
+    return obj && rt_obj_class_id(obj) == RT_MAP_CLASS_ID;
+}
+
+static int is_list_like_object(void *obj) {
+    if (!obj)
+        return 0;
+    if (rt_string_is_handle(obj))
+        return 0;
+    int64_t cid = rt_obj_class_id(obj);
+    return cid == 0;
+}
+
 static void bundle_finalizer(void *obj) {
     rt_message_bundle_t *bundle = (rt_message_bundle_t *)obj;
     if (!bundle)
         return;
-    if (bundle->locale)
-        rt_heap_release(bundle->locale);
+    rt_locale_manager_release_data(bundle->data);
+    release_object(bundle->locale);
     release_object(bundle->entries);
     release_object(bundle->fallback);
     bundle->locale = NULL;
+    bundle->data = NULL;
     bundle->entries = NULL;
     bundle->fallback = NULL;
 }
@@ -110,6 +125,20 @@ static int validate_message_map(void *map) {
     return ok;
 }
 
+static int validate_string_list(void *list) {
+    if (!list)
+        return 1;
+    int64_t n = rt_list_len(list);
+    for (int64_t i = 0; i < n; ++i) {
+        void *value = rt_list_get(list, i);
+        int ok = value && rt_string_is_handle(value);
+        release_object(value);
+        if (!ok)
+            return 0;
+    }
+    return 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Constructors
 //===----------------------------------------------------------------------===//
@@ -124,6 +153,8 @@ static void *bundle_alloc(void *locale, void *map, int take_map) {
     bundle->locale = locale;
     if (bundle->locale)
         rt_heap_retain(bundle->locale);
+    bundle->data = rt_locale_get_data(locale);
+    rt_locale_manager_retain_data(bundle->data);
     bundle->entries = map ? map : rt_map_new();
     if (bundle->entries && !take_map)
         rt_obj_retain_maybe(bundle->entries);
@@ -135,12 +166,15 @@ static void *bundle_alloc(void *locale, void *map, int take_map) {
 void *rt_message_bundle_new(void) {
     void *current = rt_locale_manager_current();
     void *bundle = bundle_alloc(current, NULL, 1);
-    if (current)
-        rt_heap_release(current);
+    release_object(current);
     return bundle;
 }
 
 void *rt_message_bundle_from_map(void *locale, void *map) {
+    if (map && !is_map_object(map)) {
+        rt_trap("Viper.Localization.MessageBundle: FromMap requires Map[String, String]");
+        return NULL;
+    }
     if (map && !validate_message_map(map)) {
         rt_trap("Viper.Localization.MessageBundle: map values must be strings");
         return NULL;
@@ -223,18 +257,72 @@ int64_t rt_message_bundle_get_count(void *self) {
 /// @brief Look up @p key in @p self, walking up fallbacks. Returns NULL when
 ///        no bundle in the chain has a matching key. The returned rt_string
 ///        is retained (caller owns the reference and must unref when done).
+static rt_string bundle_lookup_direct(rt_message_bundle_t *self, rt_string key) {
+    if (!self || !key || !rt_map_has(self->entries, key))
+        return NULL;
+    // rt_map_get_str returns a borrowed reference; retain it so the caller owns
+    // a proper reference.
+    rt_string v = rt_map_get_str(self->entries, key);
+    if (v) rt_string_ref(v);
+    return v;
+}
+
+static rt_string bundle_lookup_locale_qualified(rt_message_bundle_t *self,
+                                                rt_string key) {
+    if (!self || !self->locale || !key)
+        return NULL;
+    const char *key_cs = rt_string_cstr(key);
+    int64_t key_len = rt_str_len(key);
+    if (!key_cs || key_len <= 0)
+        return NULL;
+
+    void *fallbacks = rt_locale_fallbacks(self->locale);
+    if (!fallbacks)
+        return NULL;
+    int64_t n = rt_list_len(fallbacks);
+    for (int64_t i = 0; i < n; ++i) {
+        void *loc = rt_list_get(fallbacks, i);
+        rt_string tag = rt_locale_tag(loc);
+        const char *tag_cs = rt_string_cstr(tag);
+        int64_t tag_len = rt_str_len(tag);
+        rt_string qkey = NULL;
+        if (tag_cs && tag_len > 0) {
+            size_t needed = (size_t)tag_len + 1 + (size_t)key_len;
+            char stack[256];
+            char *buf = needed + 1 <= sizeof(stack) ? stack : (char *)malloc(needed + 1);
+            if (buf) {
+                memcpy(buf, tag_cs, (size_t)tag_len);
+                buf[tag_len] = ':';
+                memcpy(buf + tag_len + 1, key_cs, (size_t)key_len);
+                buf[needed] = '\0';
+                qkey = rt_string_from_bytes(buf, needed);
+                if (buf != stack) free(buf);
+            }
+        }
+        rt_string_unref(tag);
+        release_object(loc);
+        if (qkey) {
+            rt_string v = bundle_lookup_direct(self, qkey);
+            rt_string_unref(qkey);
+            if (v) {
+                release_object(fallbacks);
+                return v;
+            }
+        }
+    }
+    release_object(fallbacks);
+    return NULL;
+}
+
 static rt_string bundle_lookup(rt_message_bundle_t *self, rt_string key, int depth) {
     if (!self || depth >= RT_MSG_BUNDLE_MAX_DEPTH)
         return NULL;
-    if (rt_map_has(self->entries, key)) {
-        // rt_map_get_str returns a borrowed reference; retain it so the
-        // caller owns a proper reference. Without this retain, unrefing the
-        // result elsewhere would underflow the map entry's refcount and
-        // invalidate every subsequent lookup of the same key.
-        rt_string v = rt_map_get_str(self->entries, key);
-        if (v) rt_string_ref(v);
+    rt_string v = bundle_lookup_direct(self, key);
+    if (v)
         return v;
-    }
+    v = bundle_lookup_locale_qualified(self, key);
+    if (v)
+        return v;
     if (self->fallback)
         return bundle_lookup(as_bundle(self->fallback), key, depth + 1);
     return NULL;
@@ -281,6 +369,8 @@ int8_t rt_message_bundle_has(void *self, rt_string key) {
 static int append_value(rt_string_builder *sb, const char *name, size_t name_len,
                         void *vars) {
     if (!vars)
+        return 0;
+    if (!is_map_object(vars))
         return 0;
     rt_string key = rt_string_from_bytes(name, name_len);
     int found = 0;
@@ -369,12 +459,17 @@ static rt_string interp_positional(rt_string tmpl, void *values_list) {
             int64_t j = i + 1;
             int64_t idx = 0;
             int valid = 0;
+            int overflow = 0;
             while (j < len && cs[j] >= '0' && cs[j] <= '9') {
-                idx = idx * 10 + (cs[j] - '0');
+                int digit = cs[j] - '0';
+                if (idx > (INT64_MAX - digit) / 10)
+                    overflow = 1;
+                else
+                    idx = idx * 10 + digit;
                 valid = 1;
                 ++j;
             }
-            if (valid && j < len && cs[j] == '}') {
+            if (valid && !overflow && j < len && cs[j] == '}') {
                 if (values_list && idx >= 0 && idx < list_len) {
                     rt_string v = (rt_string)rt_list_get(values_list, idx);
                     if (v) {
@@ -382,6 +477,7 @@ static rt_string interp_positional(rt_string tmpl, void *values_list) {
                         int64_t vlen = rt_str_len(v);
                         if (vcs && vlen > 0)
                             (void)rt_sb_append_bytes(&sb, vcs, (size_t)vlen);
+                        rt_string_unref(v);
                     }
                 } else {
                     (void)rt_sb_append_bytes(&sb, cs + i, (size_t)(j - i + 1));
@@ -399,6 +495,14 @@ static rt_string interp_positional(rt_string tmpl, void *values_list) {
 }
 
 rt_string rt_message_bundle_format(void *self, rt_string key, void *vars) {
+    if (vars && !is_map_object(vars)) {
+        rt_trap("Viper.Localization.MessageBundle: Format vars must be a Map[String, String]");
+        return rt_string_from_bytes("", 0);
+    }
+    if (vars && !validate_message_map(vars)) {
+        rt_trap("Viper.Localization.MessageBundle: Format vars values must be strings");
+        return rt_string_from_bytes("", 0);
+    }
     rt_string tmpl = rt_message_bundle_get(self, key);
     rt_string r = interp_named(tmpl, vars);
     rt_string_unref(tmpl);
@@ -406,6 +510,14 @@ rt_string rt_message_bundle_format(void *self, rt_string key, void *vars) {
 }
 
 rt_string rt_message_bundle_format_with(void *self, rt_string key, void *values) {
+    if (values && !is_list_like_object(values)) {
+        rt_trap("Viper.Localization.MessageBundle: FormatWith values must be a List[String]");
+        return rt_string_from_bytes("", 0);
+    }
+    if (values && !validate_string_list(values)) {
+        rt_trap("Viper.Localization.MessageBundle: FormatWith values must contain only strings");
+        return rt_string_from_bytes("", 0);
+    }
     rt_string tmpl = rt_message_bundle_get(self, key);
     rt_string r = interp_positional(tmpl, values);
     rt_string_unref(tmpl);
@@ -422,8 +534,15 @@ rt_string rt_message_bundle_plural(void *self, rt_string key, int64_t n, void *v
         return rt_string_from_bytes("", 0);
     }
     rt_message_bundle_t *bundle = as_bundle(self);
-    const rt_locale_data_t *data = rt_locale_get_data(bundle->locale);
-    rt_plural_category_t cat = rt_plural_rules_select_cardinal_int(data, n);
+    if (vars && !is_map_object(vars)) {
+        rt_trap("Viper.Localization.MessageBundle: Plural vars must be a Map[String, String]");
+        return rt_string_from_bytes("", 0);
+    }
+    if (vars && !validate_message_map(vars)) {
+        rt_trap("Viper.Localization.MessageBundle: Plural vars values must be strings");
+        return rt_string_from_bytes("", 0);
+    }
+    rt_plural_category_t cat = rt_plural_rules_select_cardinal_int(bundle->data, n);
     const char *cat_name = rt_plural_rules_category_name(cat);
 
     // Build "<key>.<category>".

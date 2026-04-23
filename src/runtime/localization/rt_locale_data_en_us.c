@@ -159,6 +159,7 @@ static const rt_locale_data_t g_en_us_data = {
         .decimal_sep = ".",
         .group_sep   = ",",
         .group_size  = 3,
+        .secondary_group_size = 3,
         .minus       = "-",
         .plus        = "+",
         .percent     = "%",
@@ -190,10 +191,13 @@ static const rt_locale_data_t g_en_us_data = {
             .full_p      = "EEEE, MMMM d, yyyy",
             .time_short  = "h:mm a",
             .time_medium = "h:mm:ss a",
+            .datetime_short  = "M/d/yy h:mm a",
+            .datetime_medium = "MMM d, yyyy h:mm:ss a",
         },
     },
 
     .reltime = {
+        .now    = "now",
         .past   = "{n} {unit} ago",
         .future = "in {n} {unit}",
         .units = {
@@ -211,6 +215,17 @@ static const rt_locale_data_t g_en_us_data = {
             { .other = "months",  .one = "month"  },
             // 6: year
             { .other = "years",   .one = "year"   },
+        },
+        .short_past   = "{n} {unit} ago",
+        .short_future = "in {n} {unit}",
+        .short_units = {
+            { .other = "sec", .one = "sec" },
+            { .other = "min", .one = "min" },
+            { .other = "hr",  .one = "hr"  },
+            { .other = "d",   .one = "d"   },
+            { .other = "wk",  .one = "wk"  },
+            { .other = "mo",  .one = "mo"  },
+            { .other = "yr",  .one = "yr"  },
         },
     },
 

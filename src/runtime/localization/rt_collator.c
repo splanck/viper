@@ -50,6 +50,7 @@
 // baked invariant, but its tag is still the parsed value).
 
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -71,13 +72,22 @@ typedef struct rt_collator {
 
 static rt_collator_t *as_col(void *obj) { return (rt_collator_t *)obj; }
 
+static void col_warn(const char *message) {
+    if (message)
+        fprintf(stderr, "warning: %s\n", message);
+}
+
+static void col_release_handle(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 static void col_finalizer(void *obj) {
     rt_collator_t *c = (rt_collator_t *)obj;
     if (!c)
         return;
     rt_locale_manager_release_data(c->data);
-    if (c->locale)
-        rt_heap_release(c->locale);
+    col_release_handle(c->locale);
     c->locale = NULL;
     c->data = NULL;
 }
@@ -125,8 +135,7 @@ static void *col_alloc(void *locale) {
 void *rt_collator_new(void) {
     void *current = rt_locale_manager_current();
     void *col = col_alloc(current);
-    if (current)
-        rt_heap_release(current);
+    col_release_handle(current);
     return col;
 }
 void *rt_collator_for_locale(void *locale) { return col_alloc(locale); }
@@ -146,8 +155,7 @@ void rt_collator_set_strength(void *self, int64_t value) {
     if (value > 3) {
         // Strength 4 (quaternary) isn't supported in v1; clamp with a
         // diagnostic so callers see the downgrade.
-        extern void rt_diag_warn(const char *fmt, ...);
-        (void)rt_diag_warn;
+        col_warn("Viper.Localization.Collator: strength 4 unsupported; clamped to 3");
         value = 3;
     }
     as_col(self)->strength = (int)value;

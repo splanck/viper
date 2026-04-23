@@ -34,6 +34,7 @@ Viper ships with **en-US** baked into the runtime. Every other locale is loaded 
     "decimal_sep": ",",
     "group_sep":   "\u00A0",
     "group_size":  3,
+    "secondary_group_size": 3,
     "minus":       "-",
     "plus":        "+",
     "percent":     "%",
@@ -66,11 +67,14 @@ Viper ships with **en-US** baked into the runtime. Every other locale is loaded 
       "long":        "d MMMM yyyy",
       "full":        "EEEE d MMMM yyyy",
       "time_short":  "HH:mm",
-      "time_medium": "HH:mm:ss"
+      "time_medium": "HH:mm:ss",
+      "datetime_short":  "dd/MM/yyyy HH:mm",
+      "datetime_medium": "d MMM yyyy HH:mm:ss"
     }
   },
 
   "relative_time": {
+    "now":    "maintenant",
     "past":   "il y a {n} {unit}",
     "future": "dans {n} {unit}",
     "units": {
@@ -81,6 +85,17 @@ Viper ships with **en-US** baked into the runtime. Every other locale is loaded 
       "week":   { "one": "semaine", "other": "semaines" },
       "month":  { "one": "mois",    "other": "mois"     },
       "year":   { "one": "an",      "other": "ans"      }
+    },
+    "short_past": "{n} {unit}",
+    "short_future": "+{n} {unit}",
+    "short_units": {
+      "second": { "one": "s", "other": "s" },
+      "minute": { "one": "min", "other": "min" },
+      "hour":   { "one": "h", "other": "h" },
+      "day":    { "one": "j", "other": "j" },
+      "week":   { "one": "sem.", "other": "sem." },
+      "month":  { "one": "m.", "other": "m." },
+      "year":   { "one": "a", "other": "a" }
     }
   },
 
@@ -111,6 +126,10 @@ Viper ships with **en-US** baked into the runtime. Every other locale is loaded 
 - **`tag`** — must parse as valid BCP-47. Canonicalized on load.
 - **Missing optional fields** — inherit the baked en-US default for that field.
 - **Months/Days arrays** — exact lengths required: 12 months, 7 days (index 0 = Sunday).
+- **Numbers** — `group_size` is the rightmost group size; `secondary_group_size` is the repeated group size to the left (`0` or missing means same as `group_size`). Both must be in `1..9` when present, except `secondary_group_size=0`.
+- **Digits** — `numbers.digits` must contain exactly 10 UTF-8 codepoints.
+- **Currency** — `default_code` must be a 3-letter uppercase ISO-style code; currency patterns must contain only literal text plus `{n}` and `{s}` and include both placeholders.
+- **Relative time** — `past` and `future` must contain `{n}` and `{unit}`. `now`, `short_past`, `short_future`, and `short_units` are optional and inherit en-US defaults when absent.
 - **String length** — individual string fields capped at 256 bytes.
 - **File size** — total capped at 256 KB.
 - **Unknown keys** — ignored.
@@ -124,9 +143,12 @@ The `plural_cardinal` / `plural_ordinal` entries use a CLDR-subset DSL:
 Rule        = OrExpr | "true"
 OrExpr      = AndExpr ("or" AndExpr)*
 AndExpr     = Comparison ("and" Comparison)*
-Comparison  = Expr ("=" | "!=") Expr
+Comparison  = Expr (("=" | "!=") (Expr | RangeList))
+            | Expr ("in" | "not in" | "within" | "not within") RangeList
 Expr        = Var ("mod" Integer)?
 Var         = "n" | "i" | "v" | "f" | "t"
+RangeList   = Range ("," Range)*
+Range       = Integer | Integer ".." Integer
 Integer     = [0-9]+
 ```
 
@@ -137,7 +159,9 @@ Variables (per CLDR):
 - `f` — visible fraction digits as integer (with trailing zeros)
 - `t` — visible fraction digits without trailing zeros
 
-Rule length capped at 256 chars; AST depth capped at 8.
+Rule length is capped at 256 chars.
+
+`in` requires the evaluated expression to be integral; `within` accepts fractional values. `not in` and `not within` are logical inverses.
 
 ## Currency patterns
 

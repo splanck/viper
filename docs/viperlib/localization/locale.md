@@ -133,8 +133,9 @@ Static process-global registry of loaded locales + current/system-locale state.
 - Thread-safe via a process-global rwlock; hot-path formatters capture the locale's data pointer at construction and never re-lock.
 - `LoadFromJson(path)` and `LoadFromAsset(name)` parse locale JSON and register the canonical tag. `Try*` variants return `false` on missing/malformed input instead of trapping.
 - `Load(tag)` looks for `<canonical-tag>.json` in directories added with `AddSearchPath`.
-- `Unload` returns `false` (does not trap) when the locale is the current or system locale, or when formatter instances still hold its data pointer.
-- `Reset` leaves in-use loaded records registered so existing formatter objects cannot dangle; unload them after those objects are released.
+- `LoadFromJson` / `LoadFromAsset` refuse to replace a loaded locale while any live locale or formatter object still retains that locale data. `Try*` returns `false`; non-try loaders trap after releasing the registry lock.
+- `Unload` returns `false` (does not trap) when the locale is the current or system locale, or when other live handles/formatters still hold its data pointer. Passing the only remaining `Locale` handle for that loaded record unbinds that handle and unloads the record.
+- `Reset` leaves in-use loaded records registered so existing locale/formatter objects cannot dangle; unload them after those objects are released.
 
 ### See Also
 

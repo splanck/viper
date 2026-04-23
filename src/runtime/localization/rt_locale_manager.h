@@ -124,6 +124,10 @@ void rt_locale_manager_reset(void);
 ///          of the registry entry (cleared by Unload/Reset).
 const rt_locale_data_t *rt_locale_manager_lookup_data(const char *tag);
 
+/// @brief Lookup a locale-data record and retain it before releasing the
+///        registry lock. Caller must release with rt_locale_manager_release_data.
+const rt_locale_data_t *rt_locale_manager_lookup_data_retained(const char *tag);
+
 /// @brief Increment the live formatter count on a registered locale data
 ///        record. No-op when @p data is NULL or is the baked invariant.
 void rt_locale_manager_retain_data(const rt_locale_data_t *data);

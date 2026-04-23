@@ -54,6 +54,7 @@
 #include "rt_threads.h"
 #include "rt_trap.h"
 
+#include <ctype.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -87,7 +88,7 @@ typedef struct loc_arena {
 
 static struct {
     void                  *lock;
-    volatile int           initialized;
+    int                    initialized;
     loc_registry_entry_t  *entries;
     size_t                 count;
     size_t                 capacity;
@@ -102,8 +103,16 @@ static struct {
 
 extern int rt_locale_internal_parse_into(const char *input, size_t input_len,
                                          rt_locale_t *out);
+extern void rt_locale_internal_finalizer(void *obj);
 
-static void loc_register_entry_locked(const rt_locale_data_t *data, int is_baked);
+static int loc_register_entry_locked(const rt_locale_data_t *data, int is_baked);
+
+static int64_t loc_data_ref_count(const rt_locale_data_t *data) {
+    if (!data || data->arena == NULL)
+        return 0;
+    const int64_t *counter = (const int64_t *)(const void *)&data->formatter_refs;
+    return __atomic_load_n(counter, __ATOMIC_ACQUIRE);
+}
 
 //===----------------------------------------------------------------------===//
 // Arena + JSON schema helpers
@@ -192,6 +201,11 @@ static int loc_is_seq(void *obj) {
     return obj && rt_obj_class_id(obj) == RT_SEQ_CLASS_ID;
 }
 
+static void loc_release_handle(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 static void *json_get(void *map, const char *key) {
     if (!loc_is_map(map) || !key)
         return NULL;
@@ -210,6 +224,60 @@ static const char *json_string_cstr(void *obj, int *ok) {
         return NULL;
     if (ok) *ok = 1;
     return s;
+}
+
+static size_t loc_utf8_cp_len(const char *s) {
+    if (!s || !*s) return 0;
+    unsigned char c = (unsigned char)s[0];
+    if (c < 0x80) return 1;
+    if ((c & 0xE0) == 0xC0 && s[1]) return 2;
+    if ((c & 0xF0) == 0xE0 && s[1] && s[2]) return 3;
+    if ((c & 0xF8) == 0xF0 && s[1] && s[2] && s[3]) return 4;
+    return 0;
+}
+
+static int loc_digits_are_valid(const char *digits) {
+    if (!digits || !*digits)
+        return 0;
+    const char *p = digits;
+    for (int i = 0; i < 10; ++i) {
+        size_t n = loc_utf8_cp_len(p);
+        if (n == 0)
+            return 0;
+        p += n;
+    }
+    return *p == '\0';
+}
+
+static int loc_currency_code_valid(const char *code) {
+    if (!code || strlen(code) != 3)
+        return 0;
+    return code[0] >= 'A' && code[0] <= 'Z' &&
+           code[1] >= 'A' && code[1] <= 'Z' &&
+           code[2] >= 'A' && code[2] <= 'Z';
+}
+
+static int loc_currency_pattern_valid(const char *pattern) {
+    if (!pattern || !*pattern)
+        return 0;
+    int saw_n = 0;
+    int saw_s = 0;
+    for (const char *p = pattern; *p; ++p) {
+        if (p[0] == '{') {
+            if (p[1] == 'n' && p[2] == '}') {
+                saw_n = 1;
+                p += 2;
+            } else if (p[1] == 's' && p[2] == '}') {
+                saw_s = 1;
+                p += 2;
+            } else {
+                return 0;
+            }
+        } else if (p[0] == '}') {
+            return 0;
+        }
+    }
+    return saw_n && saw_s;
 }
 
 static char *json_dup_string(loc_arena_t *arena, void *map, const char *key,
@@ -277,6 +345,16 @@ static rt_plural_category_t parse_category(const char *s) {
     if (strcmp(s, "few") == 0) return RT_PLURAL_FEW;
     if (strcmp(s, "many") == 0) return RT_PLURAL_MANY;
     return RT_PLURAL_OTHER;
+}
+
+static int valid_category_name(const char *s) {
+    return s &&
+           (strcmp(s, "zero") == 0 ||
+            strcmp(s, "one") == 0 ||
+            strcmp(s, "two") == 0 ||
+            strcmp(s, "few") == 0 ||
+            strcmp(s, "many") == 0 ||
+            strcmp(s, "other") == 0);
 }
 
 typedef struct rule_parser {
@@ -382,13 +460,113 @@ static rt_plural_rule_node_t *rp_expr(rule_parser_t *p) {
     return n;
 }
 
+static int rp_integer(rule_parser_t *p, int64_t *out) {
+    rp_skip(p);
+    int saw = 0;
+    int64_t value = 0;
+    while (p->pos < p->len && p->s[p->pos] >= '0' && p->s[p->pos] <= '9') {
+        saw = 1;
+        int d = p->s[p->pos++] - '0';
+        if (value > (INT64_MAX - d) / 10) {
+            p->failed = 1;
+            return 0;
+        }
+        value = value * 10 + d;
+    }
+    if (!saw)
+        return 0;
+    if (out)
+        *out = value;
+    return 1;
+}
+
+static rt_plural_rule_range_t *rp_range_list(rule_parser_t *p, size_t *out_count) {
+    if (out_count) *out_count = 0;
+    size_t cap = 4;
+    size_t count = 0;
+    rt_plural_rule_range_t *ranges =
+        (rt_plural_rule_range_t *)loc_arena_alloc(p->arena, cap * sizeof(*ranges));
+    if (!ranges) {
+        p->failed = 1;
+        return NULL;
+    }
+
+    while (!p->failed) {
+        int64_t start = 0;
+        if (!rp_integer(p, &start)) {
+            p->failed = 1;
+            return NULL;
+        }
+        int64_t end = start;
+        rp_skip(p);
+        if (p->pos + 1 < p->len && p->s[p->pos] == '.' && p->s[p->pos + 1] == '.') {
+            p->pos += 2;
+            if (!rp_integer(p, &end)) {
+                p->failed = 1;
+                return NULL;
+            }
+            if (end < start) {
+                p->failed = 1;
+                return NULL;
+            }
+        }
+        if (count == cap) {
+            size_t new_cap = cap * 2;
+            if (new_cap > 64) {
+                p->failed = 1;
+                return NULL;
+            }
+            rt_plural_rule_range_t *grown =
+                (rt_plural_rule_range_t *)loc_arena_alloc(p->arena, new_cap * sizeof(*grown));
+            if (!grown) {
+                p->failed = 1;
+                return NULL;
+            }
+            memcpy(grown, ranges, count * sizeof(*grown));
+            ranges = grown;
+            cap = new_cap;
+        }
+        ranges[count].start = start;
+        ranges[count].end = end;
+        ++count;
+
+        rp_skip(p);
+        if (p->pos < p->len && p->s[p->pos] == ',') {
+            ++p->pos;
+            continue;
+        }
+        break;
+    }
+
+    if (out_count) *out_count = count;
+    return ranges;
+}
+
 static rt_plural_rule_node_t *rp_comparison(rule_parser_t *p) {
     if (rp_word(p, "true"))
         return rp_node(p, RT_PRN_TRUE);
     rt_plural_rule_node_t *left = rp_expr(p);
     rp_skip(p);
     rt_plural_rule_kind_t kind;
-    if (p->pos + 1 < p->len && p->s[p->pos] == '!' && p->s[p->pos + 1] == '=') {
+    int range_op = 0;
+    if (rp_word(p, "not")) {
+        if (rp_word(p, "within")) {
+            kind = RT_PRN_NOT_WITHIN;
+            range_op = 1;
+        } else if (rp_word(p, "in")) {
+            kind = RT_PRN_NOT_IN;
+            range_op = 1;
+        } else {
+            p->failed = 1;
+            return NULL;
+        }
+    } else if (rp_word(p, "within")) {
+        kind = RT_PRN_WITHIN;
+        range_op = 1;
+    } else if (rp_word(p, "in")) {
+        kind = RT_PRN_IN;
+        range_op = 1;
+    } else if (p->pos + 1 < p->len && p->s[p->pos] == '!' && p->s[p->pos + 1] == '=') {
         kind = RT_PRN_NE;
         p->pos += 2;
     } else if (p->pos < p->len && p->s[p->pos] == '=') {
@@ -398,6 +576,41 @@ static rt_plural_rule_node_t *rp_comparison(rule_parser_t *p) {
         p->failed = 1;
         return NULL;
     }
+
+    if (range_op) {
+        size_t range_count = 0;
+        rt_plural_rule_range_t *ranges = rp_range_list(p, &range_count);
+        if (!ranges || range_count == 0) {
+            p->failed = 1;
+            return NULL;
+        }
+        rt_plural_rule_node_t *n = rp_node(p, kind);
+        if (n) {
+            n->u.range.expr = left;
+            n->u.range.ranges = ranges;
+            n->u.range.range_count = range_count;
+        }
+        return n;
+    }
+
+    rp_skip(p);
+    if (p->pos < p->len && p->s[p->pos] >= '0' && p->s[p->pos] <= '9') {
+        size_t range_count = 0;
+        rt_plural_rule_range_t *ranges = rp_range_list(p, &range_count);
+        if (!ranges || range_count == 0) {
+            p->failed = 1;
+            return NULL;
+        }
+        rt_plural_rule_node_t *n = rp_node(p, kind == RT_PRN_NE ? RT_PRN_NOT_WITHIN
+                                                               : RT_PRN_WITHIN);
+        if (n) {
+            n->u.range.expr = left;
+            n->u.range.ranges = ranges;
+            n->u.range.range_count = range_count;
+        }
+        return n;
+    }
+
     rt_plural_rule_node_t *right = rp_expr(p);
     rt_plural_rule_node_t *n = rp_node(p, kind);
     if (n) {
@@ -502,6 +715,8 @@ static int load_plural_chain(loc_arena_t *arena, void *root, const char *key,
         char *rule = json_dup_string(arena, entry, "rule", "true", 1, trap_on_error, &ok);
         if (!ok)
             return 0;
+        if (!valid_category_name(cat))
+            return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: invalid plural category");
         rt_plural_rule_node_t *head = parse_rule(arena, rule);
         if (!head)
             return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: invalid plural rule");
@@ -603,8 +818,20 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
     }
     data->first_day_of_week =
         json_get_i32(root, "first_day_of_week", data->first_day_of_week, 0, trap_on_error, &ok);
+    if (data->first_day_of_week < 0 || data->first_day_of_week > 6) {
+        loc_fail(trap_on_error, "Viper.Localization.LocaleManager: first_day_of_week out of range");
+        loc_arena_free(arena);
+        return NULL;
+    }
     char *measurement = json_dup_string(arena, root, "measurement", data->measurement, 0, trap_on_error, &ok);
     if (measurement) {
+        if (strcmp(measurement, "metric") != 0 &&
+            strcmp(measurement, "us") != 0 &&
+            strcmp(measurement, "uk") != 0) {
+            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: measurement must be metric/us/uk");
+            loc_arena_free(arena);
+            return NULL;
+        }
         memset(data->measurement, 0, sizeof(data->measurement));
         strncpy(data->measurement, measurement, sizeof(data->measurement) - 1);
     }
@@ -619,6 +846,9 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
         data->numbers.decimal_sep = json_dup_string(arena, numbers, "decimal_sep", data->numbers.decimal_sep, 0, trap_on_error, &ok);
         data->numbers.group_sep   = json_dup_string(arena, numbers, "group_sep",   data->numbers.group_sep,   0, trap_on_error, &ok);
         data->numbers.group_size  = json_get_i32(numbers, "group_size", data->numbers.group_size, 0, trap_on_error, &ok);
+        data->numbers.secondary_group_size =
+            json_get_i32(numbers, "secondary_group_size",
+                         data->numbers.secondary_group_size, 0, trap_on_error, &ok);
         data->numbers.minus       = json_dup_string(arena, numbers, "minus",       data->numbers.minus,       0, trap_on_error, &ok);
         data->numbers.plus        = json_dup_string(arena, numbers, "plus",        data->numbers.plus,        0, trap_on_error, &ok);
         data->numbers.percent     = json_dup_string(arena, numbers, "percent",     data->numbers.percent,     0, trap_on_error, &ok);
@@ -626,6 +856,17 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
         data->numbers.nan         = json_dup_string(arena, numbers, "nan",         data->numbers.nan,         0, trap_on_error, &ok);
         data->numbers.exponent    = json_dup_string(arena, numbers, "exponent",    data->numbers.exponent,    0, trap_on_error, &ok);
         data->numbers.digits      = json_dup_string(arena, numbers, "digits",      data->numbers.digits,      0, trap_on_error, &ok);
+        if (data->numbers.group_size < 1 || data->numbers.group_size > 9 ||
+            data->numbers.secondary_group_size < 0 ||
+            data->numbers.secondary_group_size > 9 ||
+            !data->numbers.decimal_sep || !*data->numbers.decimal_sep ||
+            !data->numbers.minus || !*data->numbers.minus ||
+            !data->numbers.plus || !*data->numbers.plus ||
+            !loc_digits_are_valid(data->numbers.digits)) {
+            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: invalid numbers schema");
+            loc_arena_free(arena);
+            return NULL;
+        }
     }
 
     void *currency = json_get(root, "currency");
@@ -640,6 +881,15 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
         data->currency.pattern_positive = json_dup_string(arena, currency, "pattern_positive", data->currency.pattern_positive, 0, trap_on_error, &ok);
         data->currency.pattern_negative = json_dup_string(arena, currency, "pattern_negative", data->currency.pattern_negative, 0, trap_on_error, &ok);
         data->currency.fraction_digits  = json_get_i32(currency, "fraction_digits", data->currency.fraction_digits, 0, trap_on_error, &ok);
+        if (!loc_currency_code_valid(data->currency.default_code) ||
+            !loc_currency_pattern_valid(data->currency.pattern_positive) ||
+            !loc_currency_pattern_valid(data->currency.pattern_negative) ||
+            data->currency.fraction_digits < 0 ||
+            data->currency.fraction_digits > 9) {
+            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: invalid currency schema");
+            loc_arena_free(arena);
+            return NULL;
+        }
     }
 
     void *dates = json_get(root, "dates");
@@ -671,6 +921,12 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
             data->dates.patterns.full_p      = json_dup_string(arena, patterns, "full",        data->dates.patterns.full_p,      0, trap_on_error, &ok);
             data->dates.patterns.time_short  = json_dup_string(arena, patterns, "time_short",  data->dates.patterns.time_short,  0, trap_on_error, &ok);
             data->dates.patterns.time_medium = json_dup_string(arena, patterns, "time_medium", data->dates.patterns.time_medium, 0, trap_on_error, &ok);
+            data->dates.patterns.datetime_short =
+                json_dup_string(arena, patterns, "datetime_short",
+                                data->dates.patterns.datetime_short, 0, trap_on_error, &ok);
+            data->dates.patterns.datetime_medium =
+                json_dup_string(arena, patterns, "datetime_medium",
+                                data->dates.patterns.datetime_medium, 0, trap_on_error, &ok);
         }
     }
 
@@ -681,18 +937,23 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
             loc_arena_free(arena);
             return NULL;
         }
+        data->reltime.now = json_dup_string(arena, rt, "now", data->reltime.now, 0, trap_on_error, &ok);
         data->reltime.past = json_dup_string(arena, rt, "past", data->reltime.past, 0, trap_on_error, &ok);
         data->reltime.future = json_dup_string(arena, rt, "future", data->reltime.future, 0, trap_on_error, &ok);
+        data->reltime.short_past =
+            json_dup_string(arena, rt, "short_past", data->reltime.short_past, 0, trap_on_error, &ok);
+        data->reltime.short_future =
+            json_dup_string(arena, rt, "short_future", data->reltime.short_future, 0, trap_on_error, &ok);
         void *units = json_get(rt, "units");
+        static const char *const unit_names[7] = {
+            "second", "minute", "hour", "day", "week", "month", "year"
+        };
         if (units) {
             if (!loc_is_map(units)) {
                 loc_fail(trap_on_error, "Viper.Localization.LocaleManager: relative_time.units must be object");
                 loc_arena_free(arena);
                 return NULL;
             }
-            static const char *const unit_names[7] = {
-                "second", "minute", "hour", "day", "week", "month", "year"
-            };
             for (size_t i = 0; i < 7; ++i) {
                 if (!load_reltime_unit(arena, units, unit_names[i], &data->reltime.units[i],
                                        &data->reltime.units[i], trap_on_error)) {
@@ -700,6 +961,31 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
                     return NULL;
                 }
             }
+        }
+        void *short_units = json_get(rt, "short_units");
+        if (short_units) {
+            if (!loc_is_map(short_units)) {
+                loc_fail(trap_on_error, "Viper.Localization.LocaleManager: relative_time.short_units must be object");
+                loc_arena_free(arena);
+                return NULL;
+            }
+            for (size_t i = 0; i < 7; ++i) {
+                if (!load_reltime_unit(arena, short_units, unit_names[i],
+                                       &data->reltime.short_units[i],
+                                       &data->reltime.short_units[i], trap_on_error)) {
+                    loc_arena_free(arena);
+                    return NULL;
+                }
+            }
+        }
+        if (!data->reltime.now || !*data->reltime.now ||
+            !data->reltime.past || !strstr(data->reltime.past, "{n}") ||
+            !strstr(data->reltime.past, "{unit}") ||
+            !data->reltime.future || !strstr(data->reltime.future, "{n}") ||
+            !strstr(data->reltime.future, "{unit}")) {
+            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: invalid relative_time schema");
+            loc_arena_free(arena);
+            return NULL;
         }
     }
 
@@ -742,6 +1028,11 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
         }
         data->collation.strength =
             json_get_i32(collation, "strength", data->collation.strength, 0, trap_on_error, &ok);
+        if (data->collation.strength < 1 || data->collation.strength > 4) {
+            loc_fail(trap_on_error, "Viper.Localization.LocaleManager: collation.strength out of range");
+            loc_arena_free(arena);
+            return NULL;
+        }
         data->collation.reorder = NULL;
         data->collation.reorder_len = 0;
     }
@@ -785,8 +1076,10 @@ static int loc_register_json_text(rt_string text, int trap_on_error) {
         return 0;
 
     rt_rwlock_write_enter(g_mgr.lock);
-    loc_register_entry_locked(data, /*is_baked=*/0);
+    int registered = loc_register_entry_locked(data, /*is_baked=*/0);
     rt_rwlock_write_exit(g_mgr.lock);
+    if (!registered)
+        return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: cannot replace locale while in use");
     return 1;
 }
 
@@ -811,27 +1104,27 @@ static void loc_registry_grow(void) {
     g_mgr.capacity = new_cap;
 }
 
-static void loc_register_entry_locked(const rt_locale_data_t *data, int is_baked) {
+static int loc_register_entry_locked(const rt_locale_data_t *data, int is_baked) {
     if (!data || !data->tag)
-        return;
+        return 0;
     // Replace existing entry (idempotent load).
     for (size_t i = 0; i < g_mgr.count; ++i) {
         if (strcmp(g_mgr.entries[i].tag, data->tag) == 0) {
             if (g_mgr.entries[i].is_baked && !is_baked) {
                 loc_free_loaded_data(data);
-                return; // baked en-US remains authoritative
+                return 1; // baked en-US remains authoritative
             }
             if (!g_mgr.entries[i].is_baked && g_mgr.entries[i].data != data) {
-                if (g_mgr.entries[i].data && g_mgr.entries[i].data->formatter_refs != 0) {
-                    rt_trap("Viper.Localization.LocaleManager: cannot replace locale while in use");
-                    return;
+                if (loc_data_ref_count(g_mgr.entries[i].data) != 0) {
+                    loc_free_loaded_data(data);
+                    return 0;
                 }
                 loc_free_loaded_data(g_mgr.entries[i].data);
             }
             g_mgr.entries[i].data = data;
             g_mgr.entries[i].is_baked = is_baked;
             g_mgr.entries[i].tag = data->tag;
-            return;
+            return 1;
         }
     }
     if (g_mgr.count == g_mgr.capacity)
@@ -840,6 +1133,7 @@ static void loc_register_entry_locked(const rt_locale_data_t *data, int is_baked
     g_mgr.entries[g_mgr.count].data = data;
     g_mgr.entries[g_mgr.count].is_baked = is_baked;
     g_mgr.count++;
+    return 1;
 }
 
 /// @brief Construct a Locale handle for the given tag, resolving its data
@@ -858,6 +1152,7 @@ static void *loc_make_handle_locked(const char *tag) {
         return NULL;
     }
     memset(l, 0, sizeof(*l));
+    rt_obj_set_finalizer(l, rt_locale_internal_finalizer);
     // Parse directly into the struct — uses the same helper as public parse.
     if (rt_locale_internal_parse_into(tag, strlen(tag), l) != 0) {
         if (rt_obj_release_check0(l))
@@ -869,6 +1164,7 @@ static void *loc_make_handle_locked(const char *tag) {
     for (size_t i = 0; i < g_mgr.count; ++i) {
         if (strcmp(g_mgr.entries[i].tag, tag) == 0) {
             l->data = g_mgr.entries[i].data;
+            rt_locale_manager_retain_data(l->data);
             break;
         }
     }
@@ -877,7 +1173,7 @@ static void *loc_make_handle_locked(const char *tag) {
 
 static void loc_mgr_ensure_init(void) {
     // Fast path: double-checked.
-    if (g_mgr.initialized)
+    if (__atomic_load_n(&g_mgr.initialized, __ATOMIC_ACQUIRE))
         return;
 
     // Slow path: lazy allocate the lock and take the write section.
@@ -904,7 +1200,7 @@ static void loc_mgr_ensure_init(void) {
     }
 
     rt_rwlock_write_enter(g_mgr.lock);
-    if (g_mgr.initialized) {
+    if (__atomic_load_n(&g_mgr.initialized, __ATOMIC_ACQUIRE)) {
         rt_rwlock_write_exit(g_mgr.lock);
         return;
     }
@@ -923,14 +1219,9 @@ static void loc_mgr_ensure_init(void) {
     // public try_parse re-enters the manager, and we are mid-init.
     if (detected && *detected) {
         g_mgr.system = loc_make_handle_locked(detected);
-        if (g_mgr.system) {
-            rt_heap_retain(g_mgr.system);
-        }
     }
     if (!g_mgr.system) {
         g_mgr.system = loc_make_handle_locked("en-US");
-        if (g_mgr.system)
-            rt_heap_retain(g_mgr.system);
     }
 
     // Choose current: detected system when it's loaded, else en-US.
@@ -949,10 +1240,8 @@ static void loc_mgr_ensure_init(void) {
         cur_tag = "en-US";
 
     g_mgr.current = loc_make_handle_locked(cur_tag);
-    if (g_mgr.current)
-        rt_heap_retain(g_mgr.current);
 
-    g_mgr.initialized = 1;
+    __atomic_store_n(&g_mgr.initialized, 1, __ATOMIC_RELEASE);
     rt_rwlock_write_exit(g_mgr.lock);
 }
 
@@ -976,6 +1265,23 @@ const rt_locale_data_t *rt_locale_manager_lookup_data(const char *tag) {
     return data;
 }
 
+const rt_locale_data_t *rt_locale_manager_lookup_data_retained(const char *tag) {
+    if (!tag || !*tag)
+        return NULL;
+    loc_mgr_ensure_init();
+    rt_rwlock_read_enter(g_mgr.lock);
+    const rt_locale_data_t *data = NULL;
+    for (size_t i = 0; i < g_mgr.count; ++i) {
+        if (strcmp(g_mgr.entries[i].tag, tag) == 0) {
+            data = g_mgr.entries[i].data;
+            rt_locale_manager_retain_data(data);
+            break;
+        }
+    }
+    rt_rwlock_read_exit(g_mgr.lock);
+    return data;
+}
+
 void rt_locale_manager_retain_data(const rt_locale_data_t *data) {
     if (!data || data->arena == NULL)
         return; // baked records are immortal; no counter needed
@@ -990,7 +1296,11 @@ void rt_locale_manager_release_data(const rt_locale_data_t *data) {
     if (!data || data->arena == NULL)
         return;
     int64_t *counter = (int64_t *)(uintptr_t)&data->formatter_refs;
-    __atomic_fetch_sub(counter, 1, __ATOMIC_ACQ_REL);
+    int64_t old = __atomic_fetch_sub(counter, 1, __ATOMIC_ACQ_REL);
+    if (old <= 0) {
+        __atomic_fetch_add(counter, 1, __ATOMIC_ACQ_REL);
+        rt_trap("Viper.Localization.LocaleManager: locale data refcount underflow");
+    }
 }
 
 //===----------------------------------------------------------------------===//
@@ -1018,9 +1328,11 @@ void rt_locale_manager_set_current(void *locale) {
 
     rt_rwlock_write_enter(g_mgr.lock);
     int loaded = 0;
+    const rt_locale_data_t *bound_data = NULL;
     for (size_t i = 0; i < g_mgr.count; ++i) {
         if (strcmp(g_mgr.entries[i].tag, tag) == 0) {
             loaded = 1;
+            bound_data = g_mgr.entries[i].data;
             break;
         }
     }
@@ -1029,13 +1341,14 @@ void rt_locale_manager_set_current(void *locale) {
         rt_trap("Viper.Localization.LocaleManager: locale not loaded (call Load* first)");
         return;
     }
+    rt_locale_bind_data(locale, bound_data);
     void *old = g_mgr.current;
     g_mgr.current = locale;
     rt_heap_retain(locale);
     rt_rwlock_write_exit(g_mgr.lock);
 
     if (old)
-        rt_heap_release(old);
+        loc_release_handle(old);
 }
 
 void *rt_locale_manager_system(void) {
@@ -1355,7 +1668,13 @@ int8_t rt_locale_manager_unload(void *locale) {
         return 0; // baked records are never unloaded
     }
     const rt_locale_data_t *data = g_mgr.entries[idx].data;
-    if (data && data->formatter_refs != 0) {
+    int64_t refs = loc_data_ref_count(data);
+    if (refs == 1 && target->data == data) {
+        rt_locale_manager_release_data(target->data);
+        target->data = NULL;
+        refs = 0;
+    }
+    if (refs != 0) {
         rt_rwlock_write_exit(g_mgr.lock);
         return 0;
     }
@@ -1371,33 +1690,34 @@ int8_t rt_locale_manager_unload(void *locale) {
 void rt_locale_manager_reset(void) {
     loc_mgr_ensure_init();
     rt_rwlock_write_enter(g_mgr.lock);
-    // Remove every non-baked entry. Baked entries survive Reset.
+
+    void *old_current = g_mgr.current;
+    void *old_system = g_mgr.system;
+    g_mgr.current = loc_make_handle_locked("en-US");
+    g_mgr.system = loc_make_handle_locked("en-US");
+
+    // Clear extra search paths (keep zero — user must re-add).
+    for (size_t i = 0; i < g_mgr.search_count; ++i)
+        free(g_mgr.search_paths[i]);
+    g_mgr.search_count = 0;
+    rt_rwlock_write_exit(g_mgr.lock);
+
+    loc_release_handle(old_current);
+    loc_release_handle(old_system);
+
+    rt_rwlock_write_enter(g_mgr.lock);
+    // Remove every non-baked entry not still retained by user-visible handles.
+    // Baked entries survive Reset.
     size_t w = 0;
     for (size_t r = 0; r < g_mgr.count; ++r) {
         if (g_mgr.entries[r].is_baked) {
             g_mgr.entries[w++] = g_mgr.entries[r];
-        } else if (g_mgr.entries[r].data && g_mgr.entries[r].data->formatter_refs == 0) {
+        } else if (g_mgr.entries[r].data && loc_data_ref_count(g_mgr.entries[r].data) == 0) {
             loc_free_loaded_data(g_mgr.entries[r].data);
         } else if (g_mgr.entries[r].data) {
             g_mgr.entries[w++] = g_mgr.entries[r];
         }
     }
     g_mgr.count = w;
-
-    // Clear extra search paths (keep zero — user must re-add).
-    for (size_t i = 0; i < g_mgr.search_count; ++i)
-        free(g_mgr.search_paths[i]);
-    g_mgr.search_count = 0;
-
-    // Reset current/system to en-US.
-    void *old_current = g_mgr.current;
-    void *old_system = g_mgr.system;
-    g_mgr.current = loc_make_handle_locked("en-US");
-    g_mgr.system = loc_make_handle_locked("en-US");
-    if (g_mgr.current) rt_heap_retain(g_mgr.current);
-    if (g_mgr.system)  rt_heap_retain(g_mgr.system);
     rt_rwlock_write_exit(g_mgr.lock);
-
-    if (old_current) rt_heap_release(old_current);
-    if (old_system)  rt_heap_release(old_system);
 }

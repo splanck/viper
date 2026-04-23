@@ -61,13 +61,17 @@ typedef struct rt_plural_rules_inst {
     const rt_locale_data_t  *data;    ///< non-owning
 } rt_plural_rules_inst_t;
 
+static void plural_release_handle(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 static void plural_finalizer(void *obj) {
     rt_plural_rules_inst_t *self = (rt_plural_rules_inst_t *)obj;
     if (!self)
         return;
     rt_locale_manager_release_data(self->data);
-    if (self->locale)
-        rt_heap_release(self->locale);
+    plural_release_handle(self->locale);
     self->locale = NULL;
     self->data = NULL;
 }
@@ -108,6 +112,7 @@ static int plural_snprintf_c(char *out, size_t cap, const char *fmt, ...) {
 /// @brief CLDR operands packed for rule evaluation.
 typedef struct {
     double  n;  ///< absolute value
+    double  i_d; ///< integer part as double, preserving INT64_MIN magnitude
     int64_t i;  ///< integer part
     int64_t v;  ///< visible fraction digit count (with trailing zeros)
     int64_t f;  ///< visible fraction digits as integer (with trailing zeros)
@@ -117,9 +122,10 @@ typedef struct {
 /// @brief Compute plural operands from an integer input (all-integer path).
 static plural_operands_t operands_from_int(int64_t n) {
     plural_operands_t op;
-    int64_t abs_i = n < 0 ? (n == INT64_MIN ? INT64_MAX : -n) : n;
-    op.n = n == INT64_MIN ? 9223372036854775808.0 : (double)abs_i;
-    op.i = abs_i;
+    uint64_t mag = n < 0 ? (uint64_t)(-(n + 1)) + 1u : (uint64_t)n;
+    op.n = (double)mag;
+    op.i_d = (double)mag;
+    op.i = mag > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)mag;
     op.v = 0;
     op.f = 0;
     op.t = 0;
@@ -136,9 +142,20 @@ static plural_operands_t operands_from_double(double n) {
     double abs_n = n < 0 ? -n : n;
     plural_operands_t op;
     op.n = abs_n;
+    op.i_d = 0.0;
+
+    if (!isfinite(abs_n)) {
+        op.n = 0.0;
+        op.i = 0;
+        op.v = 0;
+        op.f = 0;
+        op.t = 0;
+        return op;
+    }
 
     // Integer-valued double: skip the string parse entirely.
-    if (!isfinite(abs_n) || abs_n > (double)INT64_MAX || floor(abs_n) == abs_n) {
+    if (abs_n > (double)INT64_MAX || floor(abs_n) == abs_n) {
+        op.i_d = floor(abs_n);
         op.i = abs_n > (double)INT64_MAX ? INT64_MAX : (int64_t)abs_n;
         op.v = 0;
         op.f = 0;
@@ -169,6 +186,7 @@ static plural_operands_t operands_from_double(double n) {
     }
 
     // Integer part before the dot.
+    op.i_d = floor(abs_n);
     op.i = (int64_t)floor(abs_n);
 
     // Fraction string starts after the dot and ends before any 'e'/'E'.
@@ -202,30 +220,51 @@ static plural_operands_t operands_from_double(double n) {
 // AST evaluator
 //===----------------------------------------------------------------------===//
 
-/// @brief Resolve a VAR or INT node to its 64-bit value.
-static int64_t eval_expr(const rt_plural_rule_node_t *node, const plural_operands_t *op) {
+/// @brief Resolve a VAR or INT node to its numeric value.
+static double eval_expr(const rt_plural_rule_node_t *node, const plural_operands_t *op) {
     if (!node)
-        return 0;
+        return 0.0;
     switch (node->kind) {
         case RT_PRN_INT:
-            return node->u.int_val;
+            return (double)node->u.int_val;
         case RT_PRN_VAR: {
-            int64_t v;
+            double v;
             switch (node->u.var.var) {
-                case RT_PVAR_N: v = (int64_t)op->n; break;
-                case RT_PVAR_I: v = op->i;         break;
-                case RT_PVAR_V: v = op->v;         break;
-                case RT_PVAR_F: v = op->f;         break;
-                case RT_PVAR_T: v = op->t;         break;
-                default:        v = 0;              break;
+                case RT_PVAR_N: v = op->n;    break;
+                case RT_PVAR_I: v = op->i_d;  break;
+                case RT_PVAR_V: v = (double)op->v; break;
+                case RT_PVAR_F: v = (double)op->f; break;
+                case RT_PVAR_T: v = (double)op->t; break;
+                default:        v = 0.0;      break;
             }
             if (node->u.var.mod > 0)
-                return v % node->u.var.mod;
+                return fmod(v, (double)node->u.var.mod);
             return v;
         }
         default:
-            return 0;
+            return 0.0;
     }
+}
+
+static int plural_is_integral(double x) {
+    return isfinite(x) && floor(x) == x;
+}
+
+static int eval_range_pred(const rt_plural_rule_node_t *node,
+                           const plural_operands_t *op,
+                           int allow_fraction) {
+    double value = eval_expr(node->u.range.expr, op);
+    if (!isfinite(value))
+        return 0;
+    if (!allow_fraction && !plural_is_integral(value))
+        return 0;
+    for (size_t i = 0; i < node->u.range.range_count; ++i) {
+        double start = (double)node->u.range.ranges[i].start;
+        double end = (double)node->u.range.ranges[i].end;
+        if (value >= start && value <= end)
+            return 1;
+    }
+    return 0;
 }
 
 /// @brief Evaluate a rule AST node as a boolean predicate.
@@ -243,6 +282,14 @@ static int eval_pred(const rt_plural_rule_node_t *node, const plural_operands_t 
             return eval_expr(node->u.bin.l, op) == eval_expr(node->u.bin.r, op);
         case RT_PRN_NE:
             return eval_expr(node->u.bin.l, op) != eval_expr(node->u.bin.r, op);
+        case RT_PRN_IN:
+            return eval_range_pred(node, op, 0);
+        case RT_PRN_NOT_IN:
+            return !eval_range_pred(node, op, 0);
+        case RT_PRN_WITHIN:
+            return eval_range_pred(node, op, 1);
+        case RT_PRN_NOT_WITHIN:
+            return !eval_range_pred(node, op, 1);
         default:
             return 0;
     }
@@ -264,7 +311,7 @@ static rt_plural_category_t walk_chain(const rt_plural_rule_entry_t *entries,
 //===----------------------------------------------------------------------===//
 
 rt_plural_category_t rt_plural_rules_select_cardinal(const rt_locale_data_t *data, double n) {
-    if (!data)
+    if (!data || !isfinite(n))
         return RT_PLURAL_OTHER;
     plural_operands_t op = operands_from_double(n);
     return walk_chain(data->plural_cardinal, data->cardinal_count, &op);

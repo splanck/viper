@@ -159,6 +159,14 @@ static void test_parse_canonicalization() {
         test_result("Parse extension/private-use canonical",
                     tag_eq(loc, "en-US-u-ca-gregory-x-private"));
     }
+    // Multiple distinct extension singleton groups are valid and canonicalized.
+    {
+        rt_string in = S("en-US-a-foo-b-bar-u-ca-gregory");
+        void *loc = rt_locale_parse(in);
+        rt_string_unref(in);
+        test_result("Parse multiple extension groups",
+                    tag_eq(loc, "en-US-a-foo-b-bar-u-ca-gregory"));
+    }
 }
 
 //=============================================================================
@@ -375,6 +383,11 @@ static void test_trap_empty() {
     EXPECT_TRAP(rt_locale_parse(dangling_ext));
     rt_string_unref(dangling_ext);
     test_result("Parse(\"en-US-u\") traps", true);
+
+    rt_string dup_ext = S("en-US-u-ca-gregory-u-nu-latn");
+    EXPECT_TRAP(rt_locale_parse(dup_ext));
+    rt_string_unref(dup_ext);
+    test_result("Parse duplicate extension singleton traps", true);
 }
 
 static void test_try_parse_returns_null() {

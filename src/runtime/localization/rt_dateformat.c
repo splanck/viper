@@ -64,13 +64,17 @@ static rt_dateformat_inst_t *as_fmt(void *obj) {
     return (rt_dateformat_inst_t *)obj;
 }
 
+static void df_release_handle(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 static void df_finalizer(void *obj) {
     rt_dateformat_inst_t *fmt = (rt_dateformat_inst_t *)obj;
     if (!fmt)
         return;
     rt_locale_manager_release_data(fmt->data);
-    if (fmt->locale)
-        rt_heap_release(fmt->locale);
+    df_release_handle(fmt->locale);
     fmt->locale = NULL;
     fmt->data = NULL;
 }
@@ -98,8 +102,7 @@ static void *df_alloc(void *locale) {
 void *rt_dateformat_new(void) {
     void *current = rt_locale_manager_current();
     void *fmt = df_alloc(current);
-    if (current)
-        rt_heap_release(current);
+    df_release_handle(current);
     return fmt;
 }
 
@@ -164,6 +167,9 @@ rt_string rt_dateformat_time_medium(void *self, int64_t ts) {
 rt_string rt_dateformat_datetime_short(void *self, int64_t ts) {
     if (!self) return rt_string_from_bytes("", 0);
     rt_dateformat_inst_t *fmt = as_fmt(self);
+    if (fmt->data->dates.patterns.datetime_short &&
+        *fmt->data->dates.patterns.datetime_short)
+        return render_with_pattern(self, ts, fmt->data->dates.patterns.datetime_short);
     rt_string_builder sb;
     rt_sb_init(&sb);
     rt_dateformat_emit_pattern(&sb, ts,
@@ -183,6 +189,9 @@ rt_string rt_dateformat_datetime_short(void *self, int64_t ts) {
 rt_string rt_dateformat_datetime_medium(void *self, int64_t ts) {
     if (!self) return rt_string_from_bytes("", 0);
     rt_dateformat_inst_t *fmt = as_fmt(self);
+    if (fmt->data->dates.patterns.datetime_medium &&
+        *fmt->data->dates.patterns.datetime_medium)
+        return render_with_pattern(self, ts, fmt->data->dates.patterns.datetime_medium);
     rt_string_builder sb;
     rt_sb_init(&sb);
     rt_dateformat_emit_pattern(&sb, ts,

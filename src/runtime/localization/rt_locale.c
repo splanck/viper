@@ -161,6 +161,7 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
     canonical[0] = '\0';
     int after_extension = 0;
     int saw_private = 0;
+    uint64_t extension_singletons = 0;
 
     for (size_t st = 0; st < sub_count; ++st) {
         char *sub = subtags[st];
@@ -216,6 +217,15 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
             } else if (is_singleton) {
                 if (st + 1 >= sub_count)
                     return -1;
+                char sc = loc_to_lower(sub[0]);
+                int bit = loc_is_digit(sc) ? (sc - '0')
+                                           : (10 + (sc - 'a'));
+                if (bit < 0 || bit >= 64)
+                    return -1;
+                uint64_t mask = UINT64_C(1) << bit;
+                if (extension_singletons & mask)
+                    return -1;
+                extension_singletons |= mask;
                 after_extension = 1;
             } else if (after_extension) {
                 if (sub_len < 2 || sub_len > 8)
@@ -271,6 +281,15 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
 // Constructors
 //===----------------------------------------------------------------------===//
 
+void rt_locale_internal_finalizer(void *obj);
+void rt_locale_internal_finalizer(void *obj) {
+    rt_locale_t *l = (rt_locale_t *)obj;
+    if (!l)
+        return;
+    rt_locale_manager_release_data(l->data);
+    l->data = NULL;
+}
+
 static void *loc_alloc(void) {
     rt_locale_t *loc = (rt_locale_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_locale_t));
     if (!loc) {
@@ -278,7 +297,13 @@ static void *loc_alloc(void) {
         return NULL; // unreachable after trap
     }
     memset(loc, 0, sizeof(*loc));
+    rt_obj_set_finalizer(loc, rt_locale_internal_finalizer);
     return loc;
+}
+
+static void loc_release_handle(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
 }
 
 /// @brief Produce the canonical invariant ("root") locale handle.
@@ -297,7 +322,7 @@ static void *loc_from_canonical_tag(const char *tag) {
         return loc_make_invariant();
     rt_locale_t *loc = (rt_locale_t *)loc_alloc();
     *loc = parsed;
-    loc->data = rt_locale_manager_lookup_data(loc->tag);
+    loc->data = rt_locale_manager_lookup_data_retained(loc->tag);
     return loc;
 }
 
@@ -305,7 +330,7 @@ static void loc_list_push_owned(void *list, void *loc) {
     if (!loc)
         return;
     rt_list_push(list, loc);
-    rt_heap_release(loc);
+    loc_release_handle(loc);
 }
 
 void *rt_locale_new(void) {
@@ -349,7 +374,7 @@ void *rt_locale_parse_internal(rt_string tag, int strict) {
     *loc = parsed;
 
     // Try to resolve registered locale-data.
-    loc->data = rt_locale_manager_lookup_data(loc->tag);
+    loc->data = rt_locale_manager_lookup_data_retained(loc->tag);
     return loc;
 }
 
@@ -415,7 +440,7 @@ void *rt_locale_from_parts(rt_string language, rt_string script, rt_string regio
     }
     rt_locale_t *loc = (rt_locale_t *)loc_alloc();
     *loc = parsed;
-    loc->data = rt_locale_manager_lookup_data(loc->tag);
+    loc->data = rt_locale_manager_lookup_data_retained(loc->tag);
     return loc;
 }
 
@@ -558,7 +583,12 @@ void *rt_locale_fallbacks(void *locale) {
 void rt_locale_bind_data(void *locale, const rt_locale_data_t *data) {
     if (!locale)
         return;
-    ((rt_locale_t *)locale)->data = data;
+    rt_locale_t *l = (rt_locale_t *)locale;
+    if (l->data == data)
+        return;
+    rt_locale_manager_retain_data(data);
+    rt_locale_manager_release_data(l->data);
+    l->data = data;
 }
 
 const rt_locale_data_t *rt_locale_get_data(void *locale) {

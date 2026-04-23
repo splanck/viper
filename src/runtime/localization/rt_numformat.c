@@ -48,6 +48,7 @@
 
 #include <errno.h>
 #include <ctype.h>
+#include <float.h>
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
@@ -142,6 +143,31 @@ static int loc_snprintf_c(char *out, size_t cap, const char *fmt, ...) {
     return n;
 }
 
+static char *loc_sprintf_alloc_c(size_t *out_len, const char *fmt, ...) {
+    if (out_len) *out_len = 0;
+    size_t cap = 128;
+    for (;;) {
+        char *buf = (char *)malloc(cap);
+        if (!buf)
+            return NULL;
+        va_list args;
+        va_start(args, fmt);
+        int n = loc_vsnprintf_c(buf, cap, fmt, args);
+        va_end(args);
+        if (n >= 0 && (size_t)n < cap) {
+            if (out_len) *out_len = (size_t)n;
+            return buf;
+        }
+        free(buf);
+        if (n >= 0)
+            cap = (size_t)n + 1;
+        else
+            cap *= 2;
+        if (cap > 4096)
+            return NULL;
+    }
+}
+
 static double loc_strtod_c(const char *input, char **endptr) {
 #if defined(_WIN32)
     _locale_t c_locale = _create_locale(LC_NUMERIC, "C");
@@ -184,13 +210,17 @@ static rt_numformat_t *as_fmt(void *obj) {
     return (rt_numformat_t *)obj;
 }
 
+static void fmt_release_handle(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 static void fmt_finalizer(void *obj) {
     rt_numformat_t *fmt = (rt_numformat_t *)obj;
     if (!fmt)
         return;
     rt_locale_manager_release_data(fmt->data);
-    if (fmt->locale)
-        rt_heap_release(fmt->locale);
+    fmt_release_handle(fmt->locale);
     fmt->locale = NULL;
     fmt->data = NULL;
 }
@@ -224,8 +254,7 @@ static rt_numformat_t *fmt_alloc(void *locale) {
 void *rt_numformat_new(void) {
     void *current = rt_locale_manager_current();
     void *fmt = fmt_alloc(current);
-    if (current)
-        rt_heap_release(current);
+    fmt_release_handle(current);
     return fmt;
 }
 
@@ -290,6 +319,8 @@ static double apply_rounding(double value, int digits, rounding_mode_t mode) {
     if (!isfinite(value))
         return value;
     double scale = pow(10.0, (double)digits);
+    if (!isfinite(scale) || fabs(value) > DBL_MAX / scale)
+        return value;
     double scaled = value * scale;
     double rounded;
     switch (mode) {
@@ -398,9 +429,31 @@ static void append_grouped_ascii_number(rt_string_builder *sb,
     rt_string_builder tmp;
     rt_sb_init(&tmp);
     if (fmt->grouping && nums->group_sep && nums->group_sep[0] != '\0') {
-        rt_numfmt_group_digits(&tmp, digits, digit_len,
-                               nums->group_sep, strlen(nums->group_sep),
-                               nums->group_size > 0 ? nums->group_size : 3);
+        int primary = nums->group_size > 0 ? nums->group_size : 3;
+        int secondary = nums->secondary_group_size > 0
+                            ? nums->secondary_group_size
+                            : primary;
+        size_t sep_len = strlen(nums->group_sep);
+        if (primary == secondary) {
+            rt_numfmt_group_digits(&tmp, digits, digit_len,
+                                   nums->group_sep, sep_len, primary);
+        } else if (digit_len <= primary || primary <= 0 || secondary <= 0) {
+            (void)rt_sb_append_bytes(&tmp, digits, (size_t)digit_len);
+        } else {
+            int prefix_len = digit_len - primary;
+            int first = prefix_len % secondary;
+            if (first == 0)
+                first = secondary;
+            (void)rt_sb_append_bytes(&tmp, digits, (size_t)first);
+            int pos = first;
+            while (pos < prefix_len) {
+                (void)rt_sb_append_bytes(&tmp, nums->group_sep, sep_len);
+                (void)rt_sb_append_bytes(&tmp, digits + pos, (size_t)secondary);
+                pos += secondary;
+            }
+            (void)rt_sb_append_bytes(&tmp, nums->group_sep, sep_len);
+            (void)rt_sb_append_bytes(&tmp, digits + prefix_len, (size_t)primary);
+        }
     } else {
         (void)rt_sb_append_bytes(&tmp, digits, (size_t)digit_len);
     }
@@ -452,22 +505,16 @@ static void fmt_render_number(rt_string_builder *sb, const rt_numformat_t *fmt,
     int negative = rounded < 0;
     double abs_val = negative ? -rounded : rounded;
 
-    // Render integer + fraction as two buffers with a high-precision snprintf.
-    char whole[64];
-    int int_len = loc_snprintf_c(whole, sizeof(whole), "%.0f", floor(abs_val));
-    if (int_len < 0)
-        int_len = 0;
-    if (int_len == 0) {
-        whole[0] = '0';
-        whole[1] = '\0';
-        int_len = 1;
+    // Render integer + fraction with a growable buffer. DBL_MAX with fixed
+    // decimals needs hundreds of bytes; fixed stack buffers truncated this
+    // path and let later grouping code read past the terminator.
+    size_t full_size = 0;
+    char *full = loc_sprintf_alloc_c(&full_size, "%.*f", digits_used, abs_val);
+    if (!full) {
+        (void)rt_sb_append_cstr(sb, nums->nan ? nums->nan : "NaN");
+        return;
     }
-
-    // Fractional part: snprintf with fixed decimals, then strip the integer part.
-    char full[96];
-    int full_len = loc_snprintf_c(full, sizeof(full), "%.*f", digits_used, abs_val);
-    if (full_len < 0)
-        full_len = 0;
+    int full_len = full_size > (size_t)INT_MAX ? INT_MAX : (int)full_size;
 
     // Locate the decimal point in the "full" string.
     const char *frac_ptr = NULL;
@@ -505,6 +552,7 @@ static void fmt_render_number(rt_string_builder *sb, const rt_numformat_t *fmt,
         (void)rt_sb_append_cstr(sb, dec_sep);
         append_localized_bytes(sb, nums, frac_ptr, (size_t)emit_digits);
     }
+    free(full);
 }
 
 static void fmt_render_integer_exact(rt_string_builder *sb, const rt_numformat_t *fmt,
@@ -648,7 +696,14 @@ rt_string rt_numformat_currency_of(void *self, double value, rt_string code) {
     const char *sym = cur->symbol ? cur->symbol : "$";
     const char *code_cs = code ? rt_string_cstr(code) : NULL;
     int64_t code_len = code ? rt_str_len(code) : 0;
-    if (code_cs && code_len == 3 && fmt->data->currency.default_code
+    if (!code_cs || code_len != 3 ||
+        code_cs[0] < 'A' || code_cs[0] > 'Z' ||
+        code_cs[1] < 'A' || code_cs[1] > 'Z' ||
+        code_cs[2] < 'A' || code_cs[2] > 'Z') {
+        rt_trap("Viper.Localization.NumberFormat: CurrencyOf requires a 3-letter uppercase ISO code");
+        return rt_string_from_bytes("", 0);
+    }
+    if (fmt->data->currency.default_code
         && strncmp(code_cs, fmt->data->currency.default_code, 3) != 0) {
         // Non-default code — use the code itself as the symbol placeholder.
         // Phase 2 ships without the full ISO symbol table; treating it as
@@ -838,6 +893,10 @@ static scan_number_t scan_number_parts(const char *input, size_t input_len,
     int group_run = 0;          // digits since last separator
     int had_group_sep = 0;
     int first_group_len = -1;   // length of leading group when we hit first sep
+    int primary_group = nums->group_size > 0 ? nums->group_size : 3;
+    int secondary_group = nums->secondary_group_size > 0
+                              ? nums->secondary_group_size
+                              : primary_group;
 
     while (i < input_len) {
         size_t consumed = 0;
@@ -855,10 +914,8 @@ static scan_number_t scan_number_parts(const char *input, size_t input_len,
             if (!had_group_sep) {
                 first_group_len = group_run;
                 had_group_sep = 1;
-            } else if (fmt->strict && group_run != (nums->group_size > 0
-                                                     ? nums->group_size
-                                                     : 3)) {
-                return sn; // strict: inner groups must be exactly group_size
+            } else if (fmt->strict && group_run != secondary_group) {
+                return sn; // strict: inner groups must be exactly secondary_group
             }
             group_run = 0;
             i += grp_len;
@@ -868,10 +925,9 @@ static scan_number_t scan_number_parts(const char *input, size_t input_len,
     }
 
     if (fmt->strict && had_group_sep) {
-        int expected = nums->group_size > 0 ? nums->group_size : 3;
-        if (group_run != expected)
+        if (group_run != primary_group)
             return sn;
-        if (first_group_len <= 0 || first_group_len > expected)
+        if (first_group_len <= 0 || first_group_len > secondary_group)
             return sn;
     }
 

@@ -237,6 +237,19 @@ static void test_format_with_positional() {
     rt_string_unref(key);
 }
 
+static void test_format_with_large_index_preserved() {
+    printf("Testing FormatWith positional index overflow guard:\n");
+    const char *pairs[] = {"big", "{999999999999999999999999999999}", nullptr};
+    void *b = rt_message_bundle_from_map(en_locale(), build_map(pairs));
+    void *list = rt_list_new();
+
+    rt_string key = S("big");
+    test_result("Overflowing positional index is preserved",
+                eq(rt_message_bundle_format_with(b, key, list),
+                   "{999999999999999999999999999999}"));
+    rt_string_unref(key);
+}
+
 //=============================================================================
 // Plural
 //=============================================================================
@@ -346,6 +359,24 @@ static void test_fallback_chain() {
     rt_string_unref(k_load);
 }
 
+static void test_locale_qualified_fallback_keys() {
+    printf("Testing locale-qualified MessageBundle fallback keys:\n");
+    rt_string loc_s = S("fr-CA");
+    void *loc = rt_locale_parse(loc_s);
+    rt_string_unref(loc_s);
+    const char *pairs[] = {
+        "fr:greet", "Bonjour",
+        "root:greet", "Hello",
+        nullptr
+    };
+    void *b = rt_message_bundle_from_map(loc, build_map(pairs));
+
+    rt_string key = S("greet");
+    test_result("fr-CA falls back to fr:greet inside bundle",
+                eq(rt_message_bundle_get(b, key), "Bonjour"));
+    rt_string_unref(key);
+}
+
 static void test_fallback_cycle_trap() {
     printf("Testing Fallback cycle detection:\n");
     void *a = rt_message_bundle_from_map(en_locale(), rt_map_new());
@@ -366,6 +397,21 @@ static void test_get_missing_traps() {
     EXPECT_TRAP(rt_message_bundle_get(b, k));
     rt_string_unref(k);
     test_result("Get on empty bundle traps", true);
+}
+
+static void test_format_rejects_bad_vars() {
+    printf("Testing Format vars validation:\n");
+    const char *pairs[] = {"greet", "Hello, {name}!", nullptr};
+    void *b = rt_message_bundle_from_map(en_locale(), build_map(pairs));
+    void *vars = rt_map_new();
+    rt_string name = S("name");
+    rt_map_set_int(vars, name, 42);
+    rt_string_unref(name);
+
+    rt_string key = S("greet");
+    EXPECT_TRAP(rt_message_bundle_format(b, key, vars));
+    rt_string_unref(key);
+    test_result("Format rejects non-string var values", true);
 }
 
 //=============================================================================
@@ -396,13 +442,16 @@ int main() {
     test_format_missing_placeholder();
     test_format_escaped_braces();
     test_format_with_positional();
+    test_format_with_large_index_preserved();
     test_plural_basic();
     test_plural_other_fallback();
     test_plural_does_not_mutate_vars();
     test_load_from_json_schema();
     test_fallback_chain();
+    test_locale_qualified_fallback_keys();
     test_fallback_cycle_trap();
     test_get_missing_traps();
+    test_format_rejects_bad_vars();
     test_keys_and_count();
     printf("\nAll MessageBundle tests passed!\n");
     return 0;

@@ -55,13 +55,17 @@ static rt_list_format_inst_t *as_fmt(void *obj) {
     return (rt_list_format_inst_t *)obj;
 }
 
+static void lf_release_handle(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 static void lf_finalizer(void *obj) {
     rt_list_format_inst_t *f = (rt_list_format_inst_t *)obj;
     if (!f)
         return;
     rt_locale_manager_release_data(f->data);
-    if (f->locale)
-        rt_heap_release(f->locale);
+    lf_release_handle(f->locale);
     f->locale = NULL;
     f->data = NULL;
 }
@@ -89,8 +93,7 @@ static void *lf_alloc(void *locale) {
 void *rt_list_format_new(void) {
     void *current = rt_locale_manager_current();
     void *fmt = lf_alloc(current);
-    if (current)
-        rt_heap_release(current);
+    lf_release_handle(current);
     return fmt;
 }
 

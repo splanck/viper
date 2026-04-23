@@ -17,6 +17,7 @@
 #include "rt_datetime.h"
 #include "rt_dateformat.h"
 #include "rt_locale.h"
+#include "rt_locale_manager.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -25,6 +26,19 @@
 #include <cstdlib>
 #include <cstring>
 #include <setjmp.h>
+#include <string>
+
+#if defined(_WIN32)
+#include <direct.h>
+#include <process.h>
+#define TEST_MKDIR(path) _mkdir(path)
+#define TEST_GETPID() _getpid()
+#else
+#include <sys/stat.h>
+#include <unistd.h>
+#define TEST_MKDIR(path) mkdir(path, 0700)
+#define TEST_GETPID() getpid()
+#endif
 
 static jmp_buf g_trap_env;
 static int g_expect_trap = 0;
@@ -64,8 +78,65 @@ static bool eq(rt_string s, const char *expected) {
     return ok;
 }
 
+static std::string temp_dir(const char *name) {
+    const char *base = getenv("TMPDIR");
+    if (!base || !*base)
+        base = "/tmp";
+    char buf[512];
+    snprintf(buf, sizeof(buf), "%s/viper_datefmt_%ld_%s",
+             base, (long)TEST_GETPID(), name);
+    TEST_MKDIR(buf);
+    return std::string(buf);
+}
+
+static void write_text_file(const std::string &path, const char *text) {
+    FILE *f = fopen(path.c_str(), "wb");
+    assert(f && "failed to create temp date locale JSON");
+    size_t len = strlen(text);
+    assert(fwrite(text, 1, len, f) == len);
+    fclose(f);
+}
+
+static const char *DATE_CUSTOM_JSON = R"json({
+  "tag": "ar-XD",
+  "numbers": {
+    "decimal_sep": ".",
+    "group_sep": ",",
+    "group_size": 3,
+    "minus": "-",
+    "plus": "+",
+    "percent": "%",
+    "infinity": "Infinity",
+    "nan": "NaN",
+    "exponent": "E",
+    "digits": "\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669"
+  },
+  "dates": {
+    "patterns": {
+      "datetime_short": "h:mm a 'on' M/d/yy",
+      "datetime_medium": "h:mm:ss a 'on' MMM d, yyyy"
+    }
+  }
+})json";
+
+static void load_date_locale() {
+    std::string dir = temp_dir("ar_XD");
+    std::string file = dir + "/ar-XD.json";
+    write_text_file(file, DATE_CUSTOM_JSON);
+    rt_string path = S(file.c_str());
+    rt_locale_manager_load_from_json(path);
+    rt_string_unref(path);
+}
+
 static void *en_fmt() {
     rt_string in = S("en-US");
+    void *loc = rt_locale_parse(in);
+    rt_string_unref(in);
+    return rt_dateformat_for_locale(loc);
+}
+
+static void *fmt_for_tag(const char *tag) {
+    rt_string in = S(tag);
     void *loc = rt_locale_parse(in);
     rt_string_unref(in);
     return rt_dateformat_for_locale(loc);
@@ -135,6 +206,29 @@ static void test_time_styles() {
     rt_string_unref(dts);
 }
 
+static void test_loaded_datetime_and_digits() {
+    printf("Testing loaded DateFormat datetime/digit data:\n");
+    load_date_locale();
+    void *fmt = fmt_for_tag("ar-XD");
+    int64_t ts = ref_ts();
+
+    const char *expected_dt =
+        "\xD9\xA2:\xD9\xA3\xD9\xA0 PM on "
+        "\xD9\xA3/\xD9\xA1\xD9\xA5/\xD9\xA2\xD9\xA7";
+    test_result("DateTimeShort uses locale composition pattern and digits",
+                eq(rt_dateformat_datetime_short(fmt, ts), expected_dt));
+
+    rt_string pattern = S("yyyy-MM-dd HH:mm");
+    const char *expected_custom =
+        "\xD9\xA2\xD9\xA0\xD9\xA2\xD9\xA7-"
+        "\xD9\xA0\xD9\xA3-"
+        "\xD9\xA1\xD9\xA5 "
+        "\xD9\xA1\xD9\xA4:\xD9\xA3\xD9\xA0";
+    test_result("Custom pattern uses locale digits",
+                eq(rt_dateformat_custom(fmt, ts, pattern), expected_custom));
+    rt_string_unref(pattern);
+}
+
 //=============================================================================
 // Custom patterns — per-letter coverage
 //=============================================================================
@@ -155,6 +249,14 @@ static void test_year_patterns() {
     rt_string pat4 = S("yyyy");
     test_result("yyyy -> 2027", eq(rt_dateformat_custom(fmt, ts, pat4), "2027"));
     rt_string_unref(pat4);
+
+    std::string long_year(200, 'y');
+    rt_string pat_long = S(long_year.c_str());
+    rt_string rendered = rt_dateformat_custom(fmt, ts, pat_long);
+    test_result("200 y-pattern run does not truncate/OOB",
+                rt_str_len(rendered) == 200);
+    rt_string_unref(rendered);
+    rt_string_unref(pat_long);
 }
 
 static void test_month_patterns() {
@@ -342,6 +444,7 @@ int main() {
     printf("=== RT DateFormat Tests ===\n\n");
     test_canonical_styles();
     test_time_styles();
+    test_loaded_datetime_and_digits();
     test_year_patterns();
     test_month_patterns();
     test_day_and_weekday_patterns();

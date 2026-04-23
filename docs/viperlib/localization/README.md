@@ -47,7 +47,7 @@ Say(fmt.Currency(1234.56))  # "$1,234.56"
 
 ## Fallback chain model
 
-Every `Locale` has a walkable fallback chain. `en-Latn-US` falls back through `en-US → en → root`; `MessageBundle` uses this chain when a translation key is missing.
+Every `Locale` has a walkable fallback chain. `en-Latn-US` falls back through `en-US → en → root`; `MessageBundle` can use the same chain for locale-qualified keys such as `en-US:greet`, `en:greet`, and `root:greet` before walking explicit fallback bundles.
 
 ```zia
 var loc = Locale.Parse("en-Latn-US")

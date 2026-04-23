@@ -67,13 +67,17 @@ static rt_reltimefmt_inst_t *as_fmt(void *obj) {
     return (rt_reltimefmt_inst_t *)obj;
 }
 
+static void rtf_release_handle(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 static void rtf_finalizer(void *obj) {
     rt_reltimefmt_inst_t *fmt = (rt_reltimefmt_inst_t *)obj;
     if (!fmt)
         return;
     rt_locale_manager_release_data(fmt->data);
-    if (fmt->locale)
-        rt_heap_release(fmt->locale);
+    rtf_release_handle(fmt->locale);
     fmt->locale = NULL;
     fmt->data = NULL;
 }
@@ -102,8 +106,7 @@ static void *rtf_alloc(void *locale) {
 void *rt_reltimefmt_new(void) {
     void *current = rt_locale_manager_current();
     void *fmt = rtf_alloc(current);
-    if (current)
-        rt_heap_release(current);
+    rtf_release_handle(current);
     return fmt;
 }
 
@@ -127,8 +130,10 @@ void rt_reltimefmt_set_style(void *self, rt_string style) {
     if (!cs) return;
     if (strcmp(cs, "short") == 0)
         as_fmt(self)->style = RTF_STYLE_SHORT;
-    else
+    else if (strcmp(cs, "long") == 0)
         as_fmt(self)->style = RTF_STYLE_LONG;
+    else
+        rt_trap("Viper.Localization.RelativeTimeFormat: unknown style (expected long/short)");
 }
 
 //===----------------------------------------------------------------------===//
@@ -225,17 +230,69 @@ static const char *unit_plural_form(const rt_locdata_reltime_unit_t *u,
 // Template expansion: "{n} {unit} ago" etc.
 //===----------------------------------------------------------------------===//
 
+typedef struct digit_spans {
+    const char *ptr[10];
+    size_t len[10];
+    int valid;
+} digit_spans_t;
+
+static size_t utf8_cp_len(const char *s) {
+    if (!s || !*s) return 0;
+    unsigned char c = (unsigned char)s[0];
+    if (c < 0x80) return 1;
+    if ((c & 0xE0) == 0xC0 && s[1]) return 2;
+    if ((c & 0xF0) == 0xE0 && s[1] && s[2]) return 3;
+    if ((c & 0xF8) == 0xF0 && s[1] && s[2] && s[3]) return 4;
+    return 1;
+}
+
+static digit_spans_t digit_spans_from_locale(const rt_locale_data_t *data) {
+    digit_spans_t ds;
+    memset(&ds, 0, sizeof(ds));
+    const char *digits = data && data->numbers.digits ? data->numbers.digits : "0123456789";
+    const char *p = digits;
+    for (int i = 0; i < 10; ++i) {
+        size_t n = utf8_cp_len(p);
+        if (n == 0) {
+            ds.valid = 0;
+            return ds;
+        }
+        ds.ptr[i] = p;
+        ds.len[i] = n;
+        p += n;
+    }
+    ds.valid = *p == '\0';
+    return ds;
+}
+
+static void append_localized_int(rt_string_builder *sb,
+                                 const rt_locale_data_t *data,
+                                 int64_t n) {
+    char num[32];
+    int k = snprintf(num, sizeof(num), "%lld", (long long)n);
+    if (k <= 0)
+        return;
+    digit_spans_t ds = digit_spans_from_locale(data);
+    for (int i = 0; i < k; ++i) {
+        unsigned char c = (unsigned char)num[i];
+        if (ds.valid && c >= '0' && c <= '9') {
+            int d = (int)(c - '0');
+            (void)rt_sb_append_bytes(sb, ds.ptr[d], ds.len[d]);
+        } else {
+            (void)rt_sb_append_bytes(sb, num + i, 1);
+        }
+    }
+}
+
 static void expand_template(rt_string_builder *sb, const char *tmpl,
+                            const rt_locale_data_t *data,
                             int64_t n, const char *unit_form) {
     if (!tmpl || !*tmpl)
         return;
     const char *p = tmpl;
     while (*p) {
         if (p[0] == '{' && p[1] == 'n' && p[2] == '}') {
-            char num[32];
-            int k = snprintf(num, sizeof(num), "%lld", (long long)n);
-            if (k > 0)
-                (void)rt_sb_append_bytes(sb, num, (size_t)k);
+            append_localized_int(sb, data, n);
             p += 3;
         } else if (p[0] == '{' && p[1] == 'u' && p[2] == 'n' && p[3] == 'i'
                    && p[4] == 't' && p[5] == '}') {
@@ -252,28 +309,38 @@ static void expand_template(rt_string_builder *sb, const char *tmpl,
 // Core formatter
 //===----------------------------------------------------------------------===//
 
-static rt_string format_core(rt_reltimefmt_inst_t *fmt, int64_t duration) {
+static rt_string format_core(rt_reltimefmt_inst_t *fmt, int64_t duration,
+                             rtf_style_t style) {
     int is_past = duration >= 0;
     int64_t abs_ms = duration < 0
                          ? (duration == INT64_MIN ? INT64_MAX : -duration)
                          : duration;
-    if (abs_ms < 1000)
-        return rt_string_from_bytes("now", 3);
+    if (abs_ms < 1000) {
+        const char *now = fmt->data->reltime.now ? fmt->data->reltime.now : "now";
+        return rt_string_from_bytes(now, strlen(now));
+    }
 
     unit_pick_t pick = pick_unit(abs_ms);
 
     rt_plural_category_t cat =
         rt_plural_rules_select_cardinal_int(fmt->data, pick.count);
-    const rt_locdata_reltime_unit_t *u = &fmt->data->reltime.units[(int)pick.unit];
+    const rt_locdata_reltime_unit_t *units =
+        style == RTF_STYLE_SHORT ? fmt->data->reltime.short_units
+                                 : fmt->data->reltime.units;
+    const rt_locdata_reltime_unit_t *u = &units[(int)pick.unit];
     const char *unit_form = unit_plural_form(u, cat);
 
-    const char *tmpl = is_past ? fmt->data->reltime.past : fmt->data->reltime.future;
+    const char *tmpl = NULL;
+    if (style == RTF_STYLE_SHORT)
+        tmpl = is_past ? fmt->data->reltime.short_past : fmt->data->reltime.short_future;
+    if (!tmpl || !*tmpl)
+        tmpl = is_past ? fmt->data->reltime.past : fmt->data->reltime.future;
     if (!tmpl || !*tmpl)
         tmpl = is_past ? "{n} {unit} ago" : "in {n} {unit}";
 
     rt_string_builder sb;
     rt_sb_init(&sb);
-    expand_template(&sb, tmpl, pick.count, unit_form);
+    expand_template(&sb, tmpl, fmt->data, pick.count, unit_form);
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;
@@ -285,7 +352,8 @@ static rt_string format_core(rt_reltimefmt_inst_t *fmt, int64_t duration) {
 
 rt_string rt_reltimefmt_format(void *self, int64_t duration) {
     if (!self) return rt_string_from_bytes("", 0);
-    return format_core(as_fmt(self), duration);
+    rt_reltimefmt_inst_t *fmt = as_fmt(self);
+    return format_core(fmt, duration, fmt->style);
 }
 
 rt_string rt_reltimefmt_format_from(void *self, int64_t then_ts, int64_t now_ts) {
@@ -305,18 +373,18 @@ rt_string rt_reltimefmt_format_from(void *self, int64_t then_ts, int64_t now_ts)
         return rt_string_from_bytes("", 0);
     }
     delta_ms = delta_sec * 1000;
-    return format_core(as_fmt(self), delta_ms);
+    rt_reltimefmt_inst_t *fmt = as_fmt(self);
+    return format_core(fmt, delta_ms, fmt->style);
 }
 
 rt_string rt_reltimefmt_short(void *self, int64_t duration) {
-    // Phase 3: short and long share the same template set in the baked
-    // en-US record. When JSON-loaded locales provide separate tables in a
-    // future phase, route here via the style flag.
-    return rt_reltimefmt_format(self, duration);
+    if (!self) return rt_string_from_bytes("", 0);
+    return format_core(as_fmt(self), duration, RTF_STYLE_SHORT);
 }
 
 rt_string rt_reltimefmt_long(void *self, int64_t duration) {
-    return rt_reltimefmt_format(self, duration);
+    if (!self) return rt_string_from_bytes("", 0);
+    return format_core(as_fmt(self), duration, RTF_STYLE_LONG);
 }
 
 rt_string rt_reltimefmt_numeric(void *self, int64_t value, rt_string unit) {
@@ -334,22 +402,31 @@ rt_string rt_reltimefmt_numeric(void *self, int64_t value, rt_string unit) {
 
     int is_past = value >= 0;
     int64_t count = value < 0 ? (value == INT64_MIN ? INT64_MAX : -value) : value;
-    if (count == 0)
-        return rt_string_from_bytes("now", 3);
+    if (count == 0) {
+        const char *now = fmt->data->reltime.now ? fmt->data->reltime.now : "now";
+        return rt_string_from_bytes(now, strlen(now));
+    }
 
     rt_plural_category_t cat =
         rt_plural_rules_select_cardinal_int(fmt->data, count);
-    const rt_locdata_reltime_unit_t *ud = &fmt->data->reltime.units[(int)u];
+    const rt_locdata_reltime_unit_t *units =
+        fmt->style == RTF_STYLE_SHORT ? fmt->data->reltime.short_units
+                                      : fmt->data->reltime.units;
+    const rt_locdata_reltime_unit_t *ud = &units[(int)u];
     const char *unit_form = unit_plural_form(ud, cat);
     (void)unit_name; // silence unused-static warning on strict builds
 
-    const char *tmpl = is_past ? fmt->data->reltime.past : fmt->data->reltime.future;
+    const char *tmpl = NULL;
+    if (fmt->style == RTF_STYLE_SHORT)
+        tmpl = is_past ? fmt->data->reltime.short_past : fmt->data->reltime.short_future;
+    if (!tmpl || !*tmpl)
+        tmpl = is_past ? fmt->data->reltime.past : fmt->data->reltime.future;
     if (!tmpl || !*tmpl)
         tmpl = is_past ? "{n} {unit} ago" : "in {n} {unit}";
 
     rt_string_builder sb;
     rt_sb_init(&sb);
-    expand_template(&sb, tmpl, count, unit_form);
+    expand_template(&sb, tmpl, fmt->data, count, unit_form);
     rt_string r = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return r;

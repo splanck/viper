@@ -147,6 +147,23 @@ static const char *ACCOUNTING_JSON = R"json({
   }
 })json";
 
+static const char *INDIC_GROUP_JSON = R"json({
+  "tag": "hi-XI",
+  "numbers": {
+    "decimal_sep": ".",
+    "group_sep": ",",
+    "group_size": 3,
+    "secondary_group_size": 2,
+    "minus": "-",
+    "plus": "+",
+    "percent": "%",
+    "infinity": "Infinity",
+    "nan": "NaN",
+    "exponent": "E",
+    "digits": "0123456789"
+  }
+})json";
+
 static void load_locale_json(const char *name, const char *json) {
     std::string dir = temp_dir(name);
     std::string file = dir + "/" + name + ".json";
@@ -244,6 +261,16 @@ static void test_format_currency() {
     test_result("CurrencyOf(100, EUR) starts with EUR",
                 eq(rt_numformat_currency_of(fmt, 100.0, code), "EUR100.00"));
     rt_string_unref(code);
+
+    rt_string lower = S("usd");
+    EXPECT_TRAP(rt_numformat_currency_of(fmt, 100.0, lower));
+    rt_string_unref(lower);
+    test_result("CurrencyOf rejects lowercase code", true);
+
+    rt_string short_code = S("US");
+    EXPECT_TRAP(rt_numformat_currency_of(fmt, 100.0, short_code));
+    rt_string_unref(short_code);
+    test_result("CurrencyOf rejects non-3-letter code", true);
 }
 
 static void test_format_scientific() {
@@ -474,6 +501,38 @@ static void test_localized_digits() {
     test_result("ParseInteger accepts Arabic-Indic digits", parsed == 123456);
 }
 
+static void test_secondary_grouping() {
+    printf("Testing secondary grouping sizes:\n");
+    load_locale_json("hi-XI", INDIC_GROUP_JSON);
+    void *fmt = fmt_for_tag("hi-XI");
+
+    test_result("Integer uses 3-then-2 grouping",
+                eq(rt_numformat_integer(fmt, 12345678), "1,23,45,678"));
+
+    rt_numformat_set_strict(fmt, 1);
+    rt_string valid = S("1,23,45,678");
+    int64_t parsed = rt_numformat_parse_integer(fmt, valid);
+    rt_string_unref(valid);
+    test_result("Strict parse accepts secondary grouping", parsed == 12345678);
+
+    rt_string western = S("1,234,567");
+    void *bad = rt_numformat_try_parse_integer(fmt, western);
+    rt_string_unref(western);
+    test_result("Strict parse rejects wrong secondary grouping",
+                rt_option_is_none(bad) == 1);
+}
+
+static void test_huge_decimal_buffer() {
+    printf("Testing huge finite decimal rendering:\n");
+    void *fmt = en_fmt();
+    rt_string out = rt_numformat_decimal_n(fmt, std::numeric_limits<double>::max(), 2);
+    const char *cs = rt_string_cstr(out);
+    int64_t len = rt_str_len(out);
+    test_result("DecimalN(DBL_MAX, 2) renders long finite output",
+                cs && len > 300 && strstr(cs, "NaN") == nullptr);
+    rt_string_unref(out);
+}
+
 //=============================================================================
 // Strict vs lenient parse
 //=============================================================================
@@ -523,6 +582,8 @@ int main() {
     test_parse_integer();
     test_parse_currency();
     test_localized_digits();
+    test_secondary_grouping();
+    test_huge_decimal_buffer();
     test_strict_mode_rejects_ambiguous();
     printf("\nAll LocaleNumberFormat tests passed!\n");
     return 0;

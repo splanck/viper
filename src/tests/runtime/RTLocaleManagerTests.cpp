@@ -15,6 +15,7 @@
 #include "rt_locale.h"
 #include "rt_locale_manager.h"
 #include "rt_list.h"
+#include "rt_object.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -74,6 +75,11 @@ static bool tag_eq(void *locale, const char *expected) {
     bool ok = cs && strcmp(cs, expected) == 0;
     rt_string_unref(t);
     return ok;
+}
+
+static void release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
 }
 
 static std::string temp_dir(const char *name) {
@@ -268,6 +274,7 @@ static void test_load_from_json_registers_locale() {
     rt_string_unref(fr_tag);
     test_result("LoadFromJson registers fr-FR",
                 rt_locale_manager_is_loaded(fr) == 1);
+    release_obj(fr);
 
     rt_string path2 = S(file.c_str());
     int8_t ok = rt_locale_manager_try_load_from_json(path2);
@@ -278,6 +285,29 @@ static void test_load_from_json_registers_locale() {
     int8_t missing_ok = rt_locale_manager_try_load_from_json(missing);
     rt_string_unref(missing);
     test_result("TryLoadFromJson missing file returns 0", missing_ok == 0);
+}
+
+static void test_load_from_json_schema_rejects_invalid() {
+    printf("Testing LocaleManager.LoadFromJson schema rejection:\n");
+    rt_locale_manager_reset();
+    std::string dir = temp_dir("bad_schema");
+    std::string file = dir + "/bad.json";
+    write_text_file(file, R"json({
+      "tag": "zz-ZZ",
+      "numbers": {
+        "decimal_sep": ".",
+        "group_sep": ",",
+        "group_size": 0,
+        "digits": "0123456789"
+      }
+    })json");
+
+    rt_string path = S(file.c_str());
+    int8_t ok = rt_locale_manager_try_load_from_json(path);
+    test_result("TryLoadFromJson rejects invalid group_size", ok == 0);
+    EXPECT_TRAP(rt_locale_manager_load_from_json(path));
+    rt_string_unref(path);
+    test_result("LoadFromJson invalid schema traps", true);
 }
 
 static void test_load_from_json_missing_traps() {
@@ -383,6 +413,8 @@ static void test_load_high_level() {
     rt_string_unref(mixed_tag);
     test_result("Load canonicalizes and searches for fr-FR", loaded_fr != nullptr);
     test_result("Loaded searched locale has canonical tag", tag_eq(loaded_fr, "fr-FR"));
+    release_obj(loaded_fr);
+    release_obj(en);
 }
 
 //=============================================================================
@@ -404,6 +436,37 @@ static void test_unload_current_refused() {
     test_result("Unload(baked en-US) returns 0", res2 == 0);
 }
 
+static void test_loaded_locale_handle_blocks_unload_and_replace() {
+    printf("Testing loaded locale data lifetime:\n");
+    rt_locale_manager_reset();
+    std::string dir = temp_dir("lifetime");
+    std::string file = dir + "/fr-FR.json";
+    write_text_file(file, FR_JSON);
+
+    rt_string path = S(file.c_str());
+    rt_locale_manager_load_from_json(path);
+
+    rt_string fr_tag = S("fr-FR");
+    void *fr = rt_locale_parse(fr_tag);
+    rt_string_unref(fr_tag);
+    rt_string fr_tag2 = S("fr-FR");
+    void *fr2 = rt_locale_parse(fr_tag2);
+    rt_string_unref(fr_tag2);
+
+    test_result("Unload(fr-FR) refused while another Locale handle lives",
+                rt_locale_manager_unload(fr) == 0);
+    release_obj(fr2);
+    test_result("TryLoadFromJson returns 0 while replacing live locale",
+                rt_locale_manager_try_load_from_json(path) == 0);
+    EXPECT_TRAP(rt_locale_manager_load_from_json(path));
+    test_result("LoadFromJson replacing live locale traps", true);
+
+    test_result("Unload(fr-FR) succeeds when passed sole retained handle",
+                rt_locale_manager_unload(fr) == 1);
+    release_obj(fr);
+    rt_string_unref(path);
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -419,11 +482,13 @@ int main() {
     test_load_builtin_idempotent();
     test_load_builtin_unknown_traps();
     test_load_from_json_registers_locale();
+    test_load_from_json_schema_rejects_invalid();
     test_load_from_json_missing_traps();
     test_load_from_asset_missing();
     test_search_path_roundtrip();
     test_load_high_level();
     test_unload_current_refused();
+    test_loaded_locale_handle_blocks_unload_and_replace();
     printf("\nAll LocaleManager tests passed!\n");
     return 0;
 }

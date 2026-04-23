@@ -22,9 +22,9 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator b
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 60 | +60 |
+| Commits | — | 64 | +64 |
 | Source files | 2,869 | 2,947 | +78 |
-| Production SLOC | 450K | 505K | +55K |
+| Production SLOC | 450K | 506K | +56K |
 | Test SLOC | 183K | 207K | +24K |
 | Demo SLOC | 177K | 189K | +12K |
 
@@ -130,10 +130,14 @@ Eleven-class `Viper.Localization.*` namespace providing locale-aware formatting,
 - **ListFormat.** 0 / 1 / 2 / 3+ item joining via the locale's `And` / `Or` / `Unit` / `Short` templates with `pair` / `start` / `middle` / `end` recursive combine.
 - **TextDirection.** Strong-RTL classifier covering Hebrew / Arabic / Syriac / Thaana / N'Ko plus presentation forms. `Detect` / `IsRTL` / `IsLTR` / `FirstStrong` / `Bidi` (RLO/PDF wrapping for mixed runs; does not implement the full Unicode BiDi algorithm).
 - **Shared `numfmt_group_digits()` helper.** Extracted from the existing `Viper.Text.NumberFormat.Thousands` into `rt_numfmt_internal.h`; consumed by both the existing `Viper.Text.NumberFormat.*` surface and every new `Viper.Localization.NumberFormat.*` path. Zero public-surface breakage.
+- **Hardening continuation.** `LocaleManager` JSON / VPA asset loading + filesystem search-path registry fleshed out (`LoadFromJson` / `TryLoadFromJson` / `LoadFromAsset` / `TryLoadFromAsset` / `AddSearchPath` / `SearchPath` / `Unload` / `Reset` all live). `rt_numformat` format and parse now route through a C-locale isolated `snprintf` wrapper matching `rt_fmt.c`'s pattern (POSIX `uselocale`, Windows `_create_locale` + `_vsnprintf_l`) — eliminates LC_NUMERIC interference from host-locale state. `rt_collator` picks up a finalizer (`col_finalizer`) that releases the captured locale data and the handle reference so Collators no longer leak. `rt_text_direction`'s UTF-8 decoder was rewritten with explicit first-byte range checks (C2-DF / E0-EF / F0-F4) and overlong-encoding rejection via `min_cp` validation.
 
 ### Core runtime formatting
 
 - **`rt_fmt` locale-aware rewrite.** Float / currency / percent paths now route through an isolated C-locale `snprintf` (LC_NUMERIC swap on POSIX via `uselocale`; `_create_locale` / `_vsnprintf_l` on Windows) so numeric output stays deterministic regardless of process-wide `setlocale` state. Float formatting adds thousands-separator / grouping support and integrates with the updated `rt_string_format` pipeline.
+- **Float formatter set to `%.15g`.** `rt_fmt_num` and `rt_format_f64` both emit `%.15g` — 15 significant digits, trailing zeros stripped — which matches the historical Viper / BASIC golden format across `PRINT`, `STR$`, and the six golden-bearing BASIC tests (`basic_random_repro`, `basic_numerics_val`, `arm64` and `vm` `comprehensive_control_flow_strings`). Not a strict IEEE-754 round-trip (values like `1.0/3.0` lose precision), but stable across host locales and matches every pre-existing golden.
+- **`rt_fmt_bool_yn` lowercase.** `Viper.Fmt.BoolYN(true)` → `"yes"`; `(false)` → `"no"`. BUG-015 regression contract (lowercase tokens match what users type at yes/no prompts).
+- **BASIC `VAL` permissive parse restored.** `rt_val` uses plain `strtod` + leading-whitespace skip + trailing-garbage tolerance, preserving BASIC semantics where `VAL(" -12.5E+1x")` returns `-125.0`. The stricter `INPUT`-style `rt_to_double` / `rt_to_int` retain their all-or-nothing parse contract.
 - **`rt_parse` tightening.** Stricter integer and double parsers; expanded `rt_input_numeric_fail` coverage; RTParseTests now exercises the failure matrix.
 - **`rt_log` / `rt_numeric` / `rt_numeric_conv` / `rt_string_format`** pick up matching string-allocation, log-level-routing, and representability guards tied to the formatting rewrite.
 
@@ -182,8 +186,9 @@ Eleven-class `Viper.Localization.*` namespace providing locale-aware formatting,
 - Linker: C++ Itanium-ABI symbol classification on macOS (with `$DARWIN_EXTSN` handling); `uname` / `gethostname` / `sysctlbyname` routed to the right dylib; `link()` + `strnlen()` added to the dynamic-import allowlist alongside their partners (closed two runtime-import-audit gaps opened by the new POSIX no-clobber atomic-move path in `rt_file_ext` and by the localization BCP-47 parser).
 - Codegen: `RtComponent::Localization` enum entry with `rt_locale_*` symbol prefix classifier and `Viper.Localization.*` namespace classifier; `viper_rt_localization` archive participates in the toolchain install manifest.
 - BASIC frontend: four references in `IoStatementLowerer.cpp` namespace-qualified (`il::frontends::basic::runtime::kConvertToDouble` / `kConvertToInt` / `kParseDouble` / `kParseInt64`) to resolve an rtgen-emitted alias-name collision.
+- IL: `Canvas.CopyRect` / `Screenshot` return `Pixels`; `AudioUpdate` added, `AudioEncode` removed; eleven new `RTCLS_Loc*` `RuntimeTypeId` entries. `Viper.Time.RelativeTime.FormatShort` binding corrected from the two-arg Localization method `rt_reltimefmt_short` back to the one-arg free function `rt_reltime_format_short` (the rename-to-avoid-collision pass had flipped the binding).
+- rtgen audit: 29 unclassified header symbols now classified via `RuntimeSurfacePolicy.inc` — three internal headers (`rt_collator.h`, `rt_numfmt_internal.h`, `rt_locale_platform.h`) plus eleven individual internal symbols (locale bind / get / manager refcount helpers, plural-rule engine internals). `rtgen --audit` passes with zero findings.
 - Tools: frontend `--` separator, collision-safe `native_compiler` temp paths, x64 `--asset-blob` gate.
-- IL: `Canvas.CopyRect` / `Screenshot` return `Pixels`; `AudioUpdate` added, `AudioEncode` removed; eleven new `RTCLS_Loc*` `RuntimeTypeId` entries.
 - Build: VERSION `0.2.4-dev` → `0.2.5-snapshot`; GUI test targets key off `VIPER_BUILD_TESTING`; `scripts/clean.sh` polish.
 
 ### Platform input
@@ -203,6 +208,6 @@ Marquee demo addition is a text-mode human-manager baseball-franchise simulator;
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 60-commit history. Commits pair feature-add and follow-up hardening in the same subsystem (e.g. Production 2D → overflow hardening; threads timeout fixes → handle-magic validation; glTF skin import → sparse accessors + KHR extensions; new POSIX atomic-move path → linker-policy `link()` classification; `Viper.Localization.*` introduction → `numfmt_group_digits()` extraction + rt_fmt C-locale isolation + GUI app-registry refactor in the same wrapping commit).
+See `git log a91d388db..HEAD -- .` for the full 64-commit history. Commits pair feature-add and follow-up hardening in the same subsystem (e.g. Production 2D → overflow hardening; threads timeout fixes → handle-magic validation; glTF skin import → sparse accessors + KHR extensions; new POSIX atomic-move path → linker-policy `link()` classification; `Viper.Localization.*` introduction → `numfmt_group_digits()` extraction + rt_fmt C-locale isolation + GUI app-registry refactor in the same wrapping commit).
 
 <!-- END DRAFT -->

@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_locale.h"
+#include "rt_locale_manager.h"
 #include "rt_reltime_format.h"
 #include "rt_string.h"
 
@@ -23,6 +24,19 @@
 #include <cstdlib>
 #include <cstring>
 #include <setjmp.h>
+#include <string>
+
+#if defined(_WIN32)
+#include <direct.h>
+#include <process.h>
+#define TEST_MKDIR(path) _mkdir(path)
+#define TEST_GETPID() _getpid()
+#else
+#include <sys/stat.h>
+#include <unistd.h>
+#define TEST_MKDIR(path) mkdir(path, 0700)
+#define TEST_GETPID() getpid()
+#endif
 
 static jmp_buf g_trap_env;
 static int g_expect_trap = 0;
@@ -62,8 +76,75 @@ static bool eq(rt_string s, const char *expected) {
     return ok;
 }
 
+static std::string temp_dir(const char *name) {
+    const char *base = getenv("TMPDIR");
+    if (!base || !*base)
+        base = "/tmp";
+    char buf[512];
+    snprintf(buf, sizeof(buf), "%s/viper_reltime_%ld_%s",
+             base, (long)TEST_GETPID(), name);
+    TEST_MKDIR(buf);
+    return std::string(buf);
+}
+
+static void write_text_file(const std::string &path, const char *text) {
+    FILE *f = fopen(path.c_str(), "wb");
+    assert(f && "failed to create temp relative-time locale JSON");
+    size_t len = strlen(text);
+    assert(fwrite(text, 1, len, f) == len);
+    fclose(f);
+}
+
+static const char *REL_CUSTOM_JSON = R"json({
+  "tag": "ar-XR",
+  "numbers": {
+    "decimal_sep": ".",
+    "group_sep": ",",
+    "group_size": 3,
+    "minus": "-",
+    "plus": "+",
+    "percent": "%",
+    "infinity": "Infinity",
+    "nan": "NaN",
+    "exponent": "E",
+    "digits": "\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668\u0669"
+  },
+  "relative_time": {
+    "now": "right now",
+    "past": "{n} {unit} ago",
+    "future": "in {n} {unit}",
+    "short_past": "{n}{unit} ago",
+    "short_future": "in {n}{unit}",
+    "short_units": {
+      "second": { "one": "s", "other": "s" },
+      "minute": { "one": "m", "other": "m" },
+      "hour":   { "one": "h", "other": "h" },
+      "day":    { "one": "d", "other": "d" },
+      "week":   { "one": "w", "other": "w" },
+      "month":  { "one": "mo", "other": "mo" },
+      "year":   { "one": "y", "other": "y" }
+    }
+  }
+})json";
+
+static void load_rel_locale() {
+    std::string dir = temp_dir("ar_XR");
+    std::string file = dir + "/ar-XR.json";
+    write_text_file(file, REL_CUSTOM_JSON);
+    rt_string path = S(file.c_str());
+    rt_locale_manager_load_from_json(path);
+    rt_string_unref(path);
+}
+
 static void *en_rtf() {
     rt_string in = S("en-US");
+    void *loc = rt_locale_parse(in);
+    rt_string_unref(in);
+    return rt_reltimefmt_for_locale(loc);
+}
+
+static void *rtf_for_tag(const char *tag) {
+    rt_string in = S(tag);
     void *loc = rt_locale_parse(in);
     rt_string_unref(in);
     return rt_reltimefmt_for_locale(loc);
@@ -192,6 +273,30 @@ static void test_style() {
     rt_string_unref(short_style);
     test_result("Style set to short",
                 eq(rt_reltimefmt_get_style(f), "short"));
+
+    test_result("Short formatter uses short unit table",
+                eq(rt_reltimefmt_format(f, 2LL * 60 * 60 * 1000), "2 hr ago"));
+
+    rt_string bad = S("narrow");
+    EXPECT_TRAP(rt_reltimefmt_set_style(f, bad));
+    rt_string_unref(bad);
+    test_result("Unknown style traps", true);
+}
+
+static void test_loaded_now_digits_and_short() {
+    printf("Testing loaded RelativeTimeFormat data:\n");
+    load_rel_locale();
+    void *f = rtf_for_tag("ar-XR");
+
+    test_result("Loaded now string is used",
+                eq(rt_reltimefmt_format(f, 0), "right now"));
+
+    rt_string short_style = S("short");
+    rt_reltimefmt_set_style(f, short_style);
+    rt_string_unref(short_style);
+    const char *expected = "\xD9\xA2h ago";
+    test_result("Loaded short style localizes digits",
+                eq(rt_reltimefmt_format(f, 2LL * 60 * 60 * 1000), expected));
 }
 
 //=============================================================================
@@ -205,6 +310,7 @@ int main() {
     test_format_from();
     test_numeric();
     test_style();
+    test_loaded_now_digits_and_short();
     printf("\nAll RelativeTimeFormat tests passed!\n");
     return 0;
 }
