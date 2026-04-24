@@ -81,6 +81,52 @@ static bool getConstFloat(const Value &v, double &out) {
     return false;
 }
 
+static int integerTypeBits(Type::Kind kind) {
+    switch (kind) {
+        case Type::Kind::I16:
+            return 16;
+        case Type::Kind::I32:
+            return 32;
+        case Type::Kind::I64:
+            return 64;
+        default:
+            return 64;
+    }
+}
+
+static double signedLowerBound(int bits) {
+    switch (bits) {
+        case 16:
+            return -32768.0;
+        case 32:
+            return -2147483648.0;
+        default:
+            return -9223372036854775808.0;
+    }
+}
+
+static double signedUpperExclusive(int bits) {
+    switch (bits) {
+        case 16:
+            return 32768.0;
+        case 32:
+            return 2147483648.0;
+        default:
+            return 9223372036854775808.0;
+    }
+}
+
+static double unsignedUpperExclusive(int bits) {
+    switch (bits) {
+        case 16:
+            return 65536.0;
+        case 32:
+            return 4294967296.0;
+        default:
+            return 18446744073709551616.0;
+    }
+}
+
 /// @brief Perform checked addition mirroring the `.ovf` opcode semantics.
 /// @details Uses compiler builtins to detect overflow; when detected the helper
 ///          returns @c std::nullopt so folding can be skipped and runtime traps
@@ -407,14 +453,24 @@ void constFold(Module &m) {
                         if (getConstFloat(in.operands[0], operand) && std::isfinite(operand)) {
                             double rounded = std::nearbyint(operand);
                             if (std::isfinite(rounded)) {
-                                constexpr double kMin =
-                                    static_cast<double>(std::numeric_limits<long long>::min());
-                                constexpr double kMax =
-                                    static_cast<double>(std::numeric_limits<long long>::max());
-                                if (rounded >= kMin && rounded <= kMax) {
+                                const int bits = integerTypeBits(in.type.kind);
+                                if (rounded >= signedLowerBound(bits) &&
+                                    rounded < signedUpperExclusive(bits)) {
                                     repl = Value::constInt(static_cast<long long>(rounded));
                                     folded = true;
                                 }
+                            }
+                        }
+                    } else if (in.op == Opcode::CastFpToUiRteChk) {
+                        double operand;
+                        if (getConstFloat(in.operands[0], operand) && std::isfinite(operand)) {
+                            double rounded = std::nearbyint(operand);
+                            const int bits = integerTypeBits(in.type.kind);
+                            if (std::isfinite(rounded) && rounded >= 0.0 &&
+                                rounded < unsignedUpperExclusive(bits)) {
+                                repl = Value::constInt(static_cast<long long>(
+                                    static_cast<unsigned long long>(rounded)));
+                                folded = true;
                             }
                         }
                     }

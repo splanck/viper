@@ -27,9 +27,52 @@
 
 #include <algorithm>
 #include <cassert>
+#include <initializer_list>
 #include <climits>
+#include <stdexcept>
 
 namespace viper::codegen::aarch64::ra {
+
+namespace {
+
+bool isReservedScratch(PhysReg pr) {
+    return pr == kScratchGPR || pr == kScratchGPR2 || pr == kScratchGPR3 ||
+           pr == kScratchFPR || pr == kScratchFPR2;
+}
+
+bool scratchAlreadyUsed(const std::vector<PhysReg> &scratch, PhysReg pr) {
+    return std::find(scratch.begin(), scratch.end(), pr) != scratch.end();
+}
+
+PhysReg chooseFromScratchSet(std::initializer_list<PhysReg> candidates,
+                             bool canReuseDefScratch,
+                             const std::vector<PhysReg> &scratch) {
+    if (canReuseDefScratch) {
+        for (PhysReg candidate : candidates) {
+            if (scratchAlreadyUsed(scratch, candidate)) {
+                return candidate;
+            }
+        }
+    }
+    for (PhysReg candidate : candidates) {
+        if (!scratchAlreadyUsed(scratch, candidate)) {
+            return candidate;
+        }
+    }
+    throw std::runtime_error("AArch64 register allocator: no reserved emergency scratch register "
+                             "available for spilled operand reload");
+}
+
+PhysReg chooseEmergencyScratch(bool isFPR,
+                               bool canReuseDefScratch,
+                               const std::vector<PhysReg> &scratch) {
+    if (isFPR)
+        return chooseFromScratchSet({kScratchFPR, kScratchFPR2}, canReuseDefScratch, scratch);
+    return chooseFromScratchSet(
+        {kScratchGPR, kScratchGPR2, kScratchGPR3}, canReuseDefScratch, scratch);
+}
+
+} // namespace
 
 // =========================================================================
 // Construction
@@ -346,7 +389,12 @@ void LinearAllocator::handleSpilledOperand(MReg &r,
                                            std::vector<MInstr> &prefix,
                                            std::vector<MInstr> &suffix,
                                            std::vector<PhysReg> &scratch) {
-    PhysReg tmp = isFPR ? pools_.takeFPR() : pools_.takeGPR();
+    PhysReg tmp{};
+    try {
+        tmp = isFPR ? pools_.takeFPR() : pools_.takeGPR();
+    } catch (const std::runtime_error &) {
+        tmp = chooseEmergencyScratch(isFPR, isDef && !isUse, scratch);
+    }
     const int off = fb_.ensureSpill(r.idOrPhys);
 
     if (isUse) {
@@ -642,6 +690,8 @@ void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewr
 
 void LinearAllocator::releaseScratch(std::vector<PhysReg> &scratch) {
     for (auto pr : scratch) {
+        if (isReservedScratch(pr))
+            continue;
         if (isGPR(pr)) {
             if (std::find(ti_.calleeSavedGPR.begin(), ti_.calleeSavedGPR.end(), pr) !=
                 ti_.calleeSavedGPR.end())

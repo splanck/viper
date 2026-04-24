@@ -156,6 +156,58 @@ static uint16_t materializeF64Constant(double value, LoweringContext &ctx, MBasi
     return dst;
 }
 
+static int integerTypeBits(il::core::Type::Kind kind) {
+    switch (kind) {
+        case il::core::Type::Kind::I16:
+            return 16;
+        case il::core::Type::Kind::I32:
+            return 32;
+        case il::core::Type::Kind::I64:
+            return 64;
+        default:
+            throw std::runtime_error("AArch64 lowering: checked fp cast requires integer result");
+    }
+}
+
+static double signedLowerBoundForBits(int bits) {
+    switch (bits) {
+        case 16:
+            return -32768.0;
+        case 32:
+            return -2147483648.0;
+        case 64:
+            return -9223372036854775808.0;
+        default:
+            throw std::runtime_error("AArch64 lowering: unsupported signed fp cast width");
+    }
+}
+
+static double signedUpperExclusiveForBits(int bits) {
+    switch (bits) {
+        case 16:
+            return 32768.0;
+        case 32:
+            return 2147483648.0;
+        case 64:
+            return 9223372036854775808.0;
+        default:
+            throw std::runtime_error("AArch64 lowering: unsupported signed fp cast width");
+    }
+}
+
+static double unsignedUpperExclusiveForBits(int bits) {
+    switch (bits) {
+        case 16:
+            return 65536.0;
+        case 32:
+            return 4294967296.0;
+        case 64:
+            return 18446744073709551616.0;
+        default:
+            throw std::runtime_error("AArch64 lowering: unsupported unsigned fp cast width");
+    }
+}
+
 static void emitTrapRaiseErrorBlock(MFunction &mf, std::string label, int code) {
     mf.blocks.emplace_back();
     auto &trapBlock = mf.blocks.back();
@@ -308,9 +360,12 @@ bool lowerInstruction(const il::core::Instr &ins,
             bbOut().instrs.push_back(
                 MInstr{MOpcode::BCond, {MOperand::condOp("vs"), MOperand::labelOp(trapLabel)}});
 
+            const int resultBits = integerTypeBits(ins.type.kind);
             if (ins.op == Opcode::CastFpToSiRteChk) {
-                const uint16_t lowerBound = materializeF64Constant(-9223372036854775808.0, ctx, bbOut());
-                const uint16_t upperBound = materializeF64Constant(9223372036854775808.0, ctx, bbOut());
+                const uint16_t lowerBound =
+                    materializeF64Constant(signedLowerBoundForBits(resultBits), ctx, bbOut());
+                const uint16_t upperBound =
+                    materializeF64Constant(signedUpperExclusiveForBits(resultBits), ctx, bbOut());
                 bbOut().instrs.push_back(MInstr{
                     MOpcode::FCmpRR,
                     {MOperand::vregOp(RegClass::FPR, rounded),
@@ -325,7 +380,8 @@ bool lowerInstruction(const il::core::Instr &ins,
                     MInstr{MOpcode::BCond, {MOperand::condOp("ge"), MOperand::labelOp(overflowLabel)}});
             } else {
                 const uint16_t zero = materializeF64Constant(0.0, ctx, bbOut());
-                const uint16_t upperBound = materializeF64Constant(18446744073709551616.0, ctx, bbOut());
+                const uint16_t upperBound =
+                    materializeF64Constant(unsignedUpperExclusiveForBits(resultBits), ctx, bbOut());
                 bbOut().instrs.push_back(MInstr{
                     MOpcode::FCmpRR,
                     {MOperand::vregOp(RegClass::FPR, rounded),
@@ -529,7 +585,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                 }
             }
 
-            return true;
+            return false;
         }
         case Opcode::Store:
             return lowerStore(ins, bbIn, ctx, bbOut());

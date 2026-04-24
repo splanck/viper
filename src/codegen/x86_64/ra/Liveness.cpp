@@ -23,7 +23,11 @@
 
 #include "codegen/common/ra/DataflowLiveness.hpp"
 
+#include <algorithm>
 #include <cassert>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace viper::codegen::x64::ra {
 
@@ -34,6 +38,26 @@ const std::string *getLabel(const Operand &op) {
     if (const auto *lbl = std::get_if<OpLabel>(&op))
         return &lbl->name;
     return nullptr;
+}
+
+bool addLabelSuccessor(const std::unordered_map<std::string, std::size_t> &blockIndex,
+                       std::vector<std::size_t> &succs,
+                       const MInstr &instr) {
+    bool added = false;
+    for (const auto &op : instr.operands) {
+        if (const auto *lbl = getLabel(op)) {
+            auto it = blockIndex.find(*lbl);
+            if (it != blockIndex.end()) {
+                succs.push_back(it->second);
+                added = true;
+            }
+        }
+    }
+    return added;
+}
+
+bool isControlTerminator(MOpcode opcode) {
+    return opcode == MOpcode::JMP || opcode == MOpcode::JCC || opcode == MOpcode::RET;
 }
 
 } // namespace
@@ -64,45 +88,40 @@ void LivenessAnalysis::buildBlockIndex(const MFunction &func) {
 void LivenessAnalysis::buildCFG(const MFunction &func) {
     for (std::size_t bi = 0; bi < func.blocks.size(); ++bi) {
         const auto &block = func.blocks[bi];
-        bool hasExplicitSucc = false;
+        auto termIt = std::find_if(block.instructions.rbegin(),
+                                   block.instructions.rend(),
+                                   [](const MInstr &instr) {
+                                       return isControlTerminator(instr.opcode);
+                                   });
+        if (termIt == block.instructions.rend()) {
+            if (bi + 1 < func.blocks.size()) {
+                succs_[bi].push_back(bi + 1);
+            }
+            continue;
+        }
 
-        for (const auto &instr : block.instructions) {
-            if (instr.opcode == MOpcode::JMP) {
-                // JMP label — single successor.
-                for (const auto &op : instr.operands) {
-                    if (const auto *lbl = getLabel(op)) {
-                        auto it = blockIndex_.find(*lbl);
-                        if (it != blockIndex_.end()) {
-                            succs_[bi].push_back(it->second);
-                        }
-                    }
-                }
-                hasExplicitSucc = true;
-            } else if (instr.opcode == MOpcode::JCC) {
-                // JCC condCode, label — conditional successor (fallthrough is
-                // the next block in layout order, added below).
-                for (const auto &op : instr.operands) {
-                    if (const auto *lbl = getLabel(op)) {
-                        auto it = blockIndex_.find(*lbl);
-                        if (it != blockIndex_.end()) {
-                            succs_[bi].push_back(it->second);
-                        }
-                    }
-                }
-                // JCC always has a fallthrough to the next block.
-                if (bi + 1 < func.blocks.size()) {
-                    succs_[bi].push_back(bi + 1);
-                }
-                hasExplicitSucc = true;
-            } else if (instr.opcode == MOpcode::RET) {
-                hasExplicitSucc = true; // No successor — function exit.
+        const auto termIndex =
+            static_cast<std::size_t>(std::distance(termIt, block.instructions.rend()) - 1);
+        const MInstr &term = *termIt;
+        if (term.opcode == MOpcode::RET) {
+            continue;
+        }
+
+        if (term.opcode == MOpcode::JMP) {
+            if (termIndex > 0 && block.instructions[termIndex - 1].opcode == MOpcode::JCC) {
+                addLabelSuccessor(blockIndex_, succs_[bi], block.instructions[termIndex - 1]);
+            }
+            addLabelSuccessor(blockIndex_, succs_[bi], term);
+        } else if (term.opcode == MOpcode::JCC) {
+            addLabelSuccessor(blockIndex_, succs_[bi], term);
+            if (bi + 1 < func.blocks.size()) {
+                succs_[bi].push_back(bi + 1);
             }
         }
 
-        // If no explicit terminator, fall through to the next block.
-        if (!hasExplicitSucc && bi + 1 < func.blocks.size()) {
-            succs_[bi].push_back(bi + 1);
-        }
+        auto &succs = succs_[bi];
+        std::sort(succs.begin(), succs.end());
+        succs.erase(std::unique(succs.begin(), succs.end()), succs.end());
     }
 }
 

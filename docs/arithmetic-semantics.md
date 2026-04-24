@@ -159,6 +159,11 @@ The VM and native backends trap `fptosi` on NaN and overflow (not UB).
 The public verifier currently directs source IL toward `cast.fp_to_si.rte.chk`;
 these `fptosi` rules apply to execution layers that receive the opcode.
 
+Checked FP-to-integer casts use the static result type as the range contract:
+`i16`, `i32`, and `i64` results check against their own signed or unsigned
+exclusive upper bounds. For unsigned casts, NaN and negative inputs are
+`InvalidCast`; finite values outside `[0, 2^N)` are `Overflow`.
+
 `fptosi(1.9)` produces `1` (truncation toward zero).
 `fptosi(-1.9)` produces `-1` (truncation toward zero).
 

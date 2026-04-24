@@ -78,6 +78,19 @@ TEST(Arm64FPCmpAll, AllComparisons) {
         EXPECT_NE(asmText.find("fcmp d"), std::string::npos);
         // Expect cset for the result
         EXPECT_NE(asmText.find("cset x"), std::string::npos);
+        if (std::string(c.op) == "fcmp_eq") {
+            EXPECT_NE(asmText.find(", eq"), std::string::npos);
+            EXPECT_NE(asmText.find(", vc"), std::string::npos);
+            EXPECT_NE(asmText.find("and x"), std::string::npos);
+        } else if (std::string(c.op) == "fcmp_ne") {
+            EXPECT_NE(asmText.find(", ne"), std::string::npos);
+            EXPECT_NE(asmText.find(", vs"), std::string::npos);
+            EXPECT_NE(asmText.find("orr x"), std::string::npos);
+        } else if (std::string(c.op) == "fcmp_le") {
+            EXPECT_NE(asmText.find(", ls"), std::string::npos);
+            EXPECT_NE(asmText.find(", vc"), std::string::npos);
+            EXPECT_NE(asmText.find("and x"), std::string::npos);
+        }
     }
 }
 
@@ -193,6 +206,23 @@ TEST(Arm64FPCmpAll, CmpWithZero) {
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find("fcmp d"), std::string::npos);
+}
+
+TEST(Arm64FPCmpAll, ConstF64MaterializationUsesGprToFprMove) {
+    const std::string in = outPath("arm64_fp_const_fmovgr.il");
+    const std::string out = outPath("arm64_fp_const_fmovgr.s");
+    const std::string il = "il 0.1\n"
+                           "func @ret_const() -> f64 {\n"
+                           "entry:\n"
+                           "  %x = const.f64 42.5\n"
+                           "  ret %x\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find("fmov d"), std::string::npos);
+    EXPECT_NE(asmText.find(", x"), std::string::npos);
 }
 
 // Test: FP compare used both as cbr condition and edge argument

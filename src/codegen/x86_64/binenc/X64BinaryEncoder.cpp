@@ -449,6 +449,10 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
     };
 
     switch (op) {
+        case MOpcode::SELECT_GPR:
+        case MOpcode::SELECT_XMM:
+            throw std::runtime_error("x86-64 binary encoder: select pseudo survived ISel");
+
         // --- Nullary ---
         case MOpcode::RET:
         case MOpcode::CQO:

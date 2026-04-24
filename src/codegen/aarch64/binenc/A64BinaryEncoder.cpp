@@ -1085,12 +1085,11 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
             return;
         case MOpcode::FMovRR: {
             PhysReg src = getReg(mi.ops[1]);
-            if (static_cast<uint32_t>(src) <= static_cast<uint32_t>(PhysReg::SP)) {
-                // Source is a GPR — emit fmov Dd, Xn (GPR→FPR bit transfer) instead.
-                emit32(encode2Reg(kFMovGR, hwFPR(getReg(mi.ops[0])), hwGPR(src)), cs);
-            } else {
-                emit32(encode2Reg(kFMovRR, hwFPR(getReg(mi.ops[0])), hwFPR(src)), cs);
+            if (isGPR(src)) {
+                throw std::runtime_error("AArch64 binary encoder: FMovRR requires an FPR source; "
+                                         "use FMovGR for GPR-to-FPR bit transfers");
             }
+            emit32(encode2Reg(kFMovRR, hwFPR(getReg(mi.ops[0])), hwFPR(src)), cs);
             return;
         }
         case MOpcode::FRintN:

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-23
+last-verified: 2026-04-24
 ---
 
 # AArch64 (arm64) Backend — Status and Plan
@@ -19,9 +19,14 @@ programs, and the development roadmap. It is kept developer-focused with concret
 - **Binary encoder**: Direct object code emission (bypassing assembler text)
 - **Fastpaths**: Arithmetic and call fastpath optimizations for common patterns
 - **Register allocator hardening**: Protected-use sets prevent source-operand eviction during def allocation; FPR load/store classification; operandRoles fix for immediate-ALU instructions; clean FPR spill slot reuse across calls; dead vreg early release
+- **Emergency spill reloads**: Reserved scratch registers cover no-free-register reload cases instead of letting `takeGPR` / `takeFPR` abort mid-instruction.
 - **Cross-target output plumbing**: `--target-darwin`, `--target-linux`, and `--target-windows` now drive the native object format, linker platform, and system-assembler target instead of silently falling back to the host
 - **Trap ABI fixes**: plain `trap` still marshals `x0 = NULL`, `idx.chk` raises structured bounds errors through `rt_trap_raise_error`, checked div/rem and overflow traps call `rt_trap_div0` / `rt_trap_ovf`, and `trap.from_err` marshals its code into `x0` before calling `rt_trap_raise_error`
-- **Checked FP casts**: `cast.fp_to_si.rte.chk` and `cast.fp_to_ui.rte.chk` now lower as `FRintN` plus explicit NaN/range checks before `FCvtZS` / `FCvtZU`, reporting `InvalidCast` for NaN/invalid unsigned inputs and `Overflow` for range failures
+- **Checked FP casts**: `cast.fp_to_si.rte.chk` and `cast.fp_to_ui.rte.chk` now lower as `FRintN` plus explicit NaN/range checks before `FCvtZS` / `FCvtZU`, reporting `InvalidCast` for NaN/invalid unsigned inputs and `Overflow` for range failures. The bounds honor `i16`, `i32`, and `i64` result widths.
+- **FP compare NaN semantics**: `fcmp_eq`, `fcmp_ne`, and `fcmp_le` correct AArch64 unordered flag behavior with ordered/unordered guard materialization so IL IEEE semantics match VM/x86.
+- **Memory addressing**: general `load` / `store` now preserve optional immediate displacements instead of dropping them for base-register addressing.
+- **Type-safe phi edges**: phi-edge copies reject GPR/FPR class mismatches instead of silently inserting numeric conversions.
+- **Strict address lowering**: unsupported `addr_of` operands now fall through as unsupported instead of reporting success without defining the result.
 - **Width-sensitive checks**: annotated sub-width checked arithmetic and `idx.chk` sign-extend operands to the annotated width before checking. Checked narrowing compares the widened result and traps on overflow.
 - **Runtime error access**: `ErrGetMsg` lowers to `rt_throw_msg_get`, matching the VM/native EH contract.
 - **Control-flow correctness**: `switch.i32` edge arguments travel through phi spill slots via dedicated edge blocks, and larger switches lower as balanced decision trees instead of pure compare chains
@@ -449,6 +454,26 @@ echo "Exit code: $?"  # Should print 15
 
 - **Was**: simple arithmetic fast paths could intercept annotated sub-width checked arithmetic before generic width checks.
 - **Fix**: sub-width checked arithmetic falls back to generic lowering; chained checked arithmetic no longer maps to unchecked fast-path ops.
+
+### BUG 22: AArch64 FP compare conditions mishandled unordered inputs (FIXED)
+
+- **Was**: raw `fcmp` condition aliases made `fcmp_eq` / `fcmp_le` true for NaN and `fcmp_ne` false for NaN.
+- **Fix**: lowering combines `eq`/`ls` with `vc` for ordered predicates and ORs `ne` with `vs` for unordered not-equal.
+
+### BUG 23: base-register memory displacements were dropped (FIXED)
+
+- **Was**: non-frame `load` / `store` forms always emitted `[base, #0]`, ignoring optional IL displacement operands.
+- **Fix**: the displacement is preserved for `Ldr*BaseImm` and `Str*BaseImm`, including when frame-local GEPs are resolved.
+
+### BUG 24: phi-edge copies silently converted register classes (FIXED)
+
+- **Was**: a GPR value flowing to an FPR phi, or vice versa, inserted `SCvtF` / `FCvtZS` during edge-copy lowering.
+- **Fix**: the terminator lowering path now rejects class mismatches so type errors are caught instead of changing values.
+
+### BUG 25: FP constants used the wrong MIR bit-cast opcode (FIXED)
+
+- **Was**: constant materialization could emit `FMovRR` with a GPR source; text assembly printed an invalid FPR-to-FPR form while the binary encoder silently corrected it.
+- **Fix**: lowering emits `FMovGR`, and the binary encoder rejects `FMovRR` with a GPR source.
 
 ## Peephole Optimizations Implemented
 

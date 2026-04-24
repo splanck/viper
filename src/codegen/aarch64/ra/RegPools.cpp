@@ -46,11 +46,12 @@ void RegPools::build(const TargetInfo &ti) {
 
     // FPR: also exclude argument registers V0-V7
     for (auto r : ti.callerSavedFPR) {
-        if (!isArgRegister(r, ti))
+        if (!isArgRegister(r, ti) && r != kScratchFPR && r != kScratchFPR2)
             fprFree.push_back(r);
     }
     for (auto r : ti.calleeSavedFPR) {
-        fprFree.push_back(r);
+        if (r != kScratchFPR && r != kScratchFPR2)
+            fprFree.push_back(r);
     }
 }
 

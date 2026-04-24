@@ -180,8 +180,14 @@ inline constexpr PhysReg kScratchGPR = PhysReg::X9;
 /// those helpers never clobber an allocated value.
 inline constexpr PhysReg kScratchGPR2 = PhysReg::X16;
 
+/// @brief Tertiary scratch register for register allocation emergency reloads.
+inline constexpr PhysReg kScratchGPR3 = PhysReg::X17;
+
 /// @brief Scratch FPR register for codegen (not used for allocation).
 inline constexpr PhysReg kScratchFPR = PhysReg::V16;
+
+/// @brief Secondary scratch FPR register for register allocation emergency reloads.
+inline constexpr PhysReg kScratchFPR2 = PhysReg::V17;
 
 // =============================================================================
 // Target Information

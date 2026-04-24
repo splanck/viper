@@ -218,6 +218,9 @@ std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer
 
     int32_t disp = 0;
     if (addrProducer.ops.size() > 1) {
+        if (!fitsImm32(addrProducer.ops[1].i64)) {
+            return std::nullopt;
+        }
         disp = static_cast<int32_t>(addrProducer.ops[1].i64);
     }
 
@@ -418,9 +421,9 @@ void EmitCommon::emitCmp(const ILInstr &instr, RegClass cls, int defaultCond) {
 /// @brief Emit the Machine IR sequence that implements an IL select.
 /// @details Handles both integer and floating-point selects by materialising the
 ///          false branch, conditionally overwriting it with the true branch, and
-///          generating the required TEST/SETcc pair to drive control flow.  For
-///          integer selects immediates are first moved into temporaries so that
-///          conditional moves have register operands.
+///          emitting an explicit select pseudo for ISel to expand. For integer
+///          selects immediates are first moved into temporaries so conditional
+///          moves have register operands.
 /// @param instr IL select instruction containing condition, true, and false operands.
 void EmitCommon::emitSelect(const ILInstr &instr) {
     if (instr.resultId < 0 || instr.ops.size() < 3) {
@@ -444,17 +447,11 @@ void EmitCommon::emitSelect(const ILInstr &instr) {
                 MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(cmovSource), trueVal}));
         }
 
-        const bool falseIsImm = std::holds_alternative<OpImm>(falseVal);
-        std::vector<Operand> movOperands{};
-        movOperands.push_back(clone(dest));
-        movOperands.push_back(clone(falseVal));
-        movOperands.push_back(clone(cmovSource));
-        builder().append(
-            MInstr::make(falseIsImm ? MOpcode::MOVri : MOpcode::MOVrr, std::move(movOperands)));
-
-        builder().append(MInstr::make(MOpcode::TESTrr, std::vector<Operand>{clone(cond), cond}));
-        builder().append(
-            MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(1), clone(dest)}));
+        builder().append(MInstr::make(MOpcode::SELECT_GPR,
+                                      std::vector<Operand>{clone(dest),
+                                                           clone(cond),
+                                                           clone(falseVal),
+                                                           clone(cmovSource)}));
         return;
     }
 
@@ -463,15 +460,11 @@ void EmitCommon::emitSelect(const ILInstr &instr) {
     const Operand matFalse = materialise(clone(falseVal), RegClass::XMM);
     const Operand matTrue = materialise(clone(trueVal), RegClass::XMM);
 
-    std::vector<Operand> movOperands{};
-    movOperands.push_back(clone(dest));
-    movOperands.push_back(clone(matFalse));
-    movOperands.push_back(clone(matTrue));
-    builder().append(MInstr::make(MOpcode::MOVSDrr, std::move(movOperands)));
-
-    builder().append(MInstr::make(MOpcode::TESTrr, std::vector<Operand>{clone(cond), cond}));
-    builder().append(
-        MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(1), clone(dest)}));
+    builder().append(MInstr::make(MOpcode::SELECT_XMM,
+                                  std::vector<Operand>{clone(dest),
+                                                       clone(cond),
+                                                       clone(matFalse),
+                                                       clone(matTrue)}));
 }
 
 /// @brief Emit an unconditional branch to the target label.
@@ -577,13 +570,33 @@ void EmitCommon::emitLoad(const ILInstr &instr, RegClass cls) {
         phaseAUnsupported("load: address base did not materialize to a register");
     }
 
-    const int32_t disp = instr.ops.size() > 1 ? static_cast<int32_t>(instr.ops[1].i64) : 0;
+    int64_t disp64 = instr.ops.size() > 1 ? instr.ops[1].i64 : 0;
+    if (instr.ops.size() > 1 && !builder().isImmediate(instr.ops[1])) {
+        phaseAUnsupported("load: displacement must be an immediate");
+    }
     const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
-    Operand mem = makeMemOperand(*baseReg, disp);
-    if (const auto indexed = tryMakeIndexedMem(instr)) {
-        mem = *indexed;
+    Operand effectiveBase = clone(baseOp);
+    if (!fitsImm32(disp64)) {
+        const VReg offsetReg = builder().makeTempVReg(RegClass::GPR);
+        const Operand offset = makeVRegOperand(offsetReg.cls, offsetReg.id);
+        const VReg addrReg = builder().makeTempVReg(RegClass::GPR);
+        const Operand addr = makeVRegOperand(addrReg.cls, addrReg.id);
+        builder().append(MInstr::make(MOpcode::MOVri,
+                                      std::vector<Operand>{clone(offset), makeImmOperand(disp64)}));
+        builder().append(
+            MInstr::make(MOpcode::MOVrr, std::vector<Operand>{clone(addr), clone(baseOp)}));
+        builder().append(MInstr::make(MOpcode::ADDrr, std::vector<Operand>{clone(addr), offset}));
+        effectiveBase = addr;
+        disp64 = 0;
+    }
+
+    Operand mem = makeMemOperand(std::get<OpReg>(effectiveBase), static_cast<int32_t>(disp64));
+    if (fitsImm32(disp64)) {
+        if (const auto indexed = tryMakeIndexedMem(instr)) {
+            mem = *indexed;
+        }
     }
 
     if (cls == RegClass::GPR) {
@@ -619,10 +632,31 @@ void EmitCommon::emitStore(const ILInstr &instr) {
     if (!baseReg) {
         phaseAUnsupported("store: address base did not materialize to a register");
     }
-    const int32_t disp = instr.ops.size() > 2 ? static_cast<int32_t>(instr.ops[2].i64) : 0;
-    Operand mem = makeMemOperand(*baseReg, disp);
-    if (const auto indexed = tryMakeIndexedMem(instr)) {
-        mem = *indexed;
+    int64_t disp64 = instr.ops.size() > 2 ? instr.ops[2].i64 : 0;
+    if (instr.ops.size() > 2 && !builder().isImmediate(instr.ops[2])) {
+        phaseAUnsupported("store: displacement must be an immediate");
+    }
+
+    Operand effectiveBase = clone(baseOp);
+    if (!fitsImm32(disp64)) {
+        const VReg offsetReg = builder().makeTempVReg(RegClass::GPR);
+        const Operand offset = makeVRegOperand(offsetReg.cls, offsetReg.id);
+        const VReg addrReg = builder().makeTempVReg(RegClass::GPR);
+        const Operand addr = makeVRegOperand(addrReg.cls, addrReg.id);
+        builder().append(MInstr::make(MOpcode::MOVri,
+                                      std::vector<Operand>{clone(offset), makeImmOperand(disp64)}));
+        builder().append(
+            MInstr::make(MOpcode::MOVrr, std::vector<Operand>{clone(addr), clone(baseOp)}));
+        builder().append(MInstr::make(MOpcode::ADDrr, std::vector<Operand>{clone(addr), offset}));
+        effectiveBase = addr;
+        disp64 = 0;
+    }
+
+    Operand mem = makeMemOperand(std::get<OpReg>(effectiveBase), static_cast<int32_t>(disp64));
+    if (fitsImm32(disp64)) {
+        if (const auto indexed = tryMakeIndexedMem(instr)) {
+            mem = *indexed;
+        }
     }
 
     if (std::holds_alternative<OpReg>(value)) {

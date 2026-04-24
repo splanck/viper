@@ -15,6 +15,7 @@ A polish-and-hardening cycle with three notable new capabilities.
 - **Full 3D asset pipeline.** glTF and FBX now import real skeletons + per-vertex skinning + animations (including glTF sparse-accessor morph deltas and KHR texture-transform / emissive-strength / unlit / lights-punctual extensions). HDR RenderTarget3D, deterministic shadow-light selection, and a backend-capability introspection surface (`Canvas3D.BackendCapabilities` / `BackendSupports`) complete the picture.
 - **Network stack became a platform.** TLS-backed `HttpsServer` + `WssServer`, from-scratch HTTP/2 (HPACK + stream reuse), native RSA, in-tree X.509 chain validator (macOS no longer links `Security.framework`), cookie jar, streaming downloads, chunked request bodies, SSE reconnect, connection pooling.
 - **Viper.Localization.* (new).** Eleven-class namespace giving programs locale-aware number / date / relative-time / list formatting, translation catalogs with fallback chains, CLDR plural selection, locale-aware collation, and text-direction utilities. Zero external dependencies (no ICU, no libintl); en-US baked into the runtime, all other locales load from JSON via filesystem or VPA-embedded assets.
+- **Native codegen correctness pass.** AArch64 and x86_64 backends received a multi-round hardening sweep: variadic IL (`...`) supported end-to-end through parser / serializer / verifier / both backends / VM; checked FP casts distinguish `InvalidCast` from `Overflow`; sub-width annotated overflow arithmetic uses the annotated type width for range checks; `fptosi` traps on NaN/overflow on both backends; target-platform flags (`--target-darwin` / `--target-linux` / `--target-windows`) thread through object format, native linker, and assembler target; BTI/PAC emission gated to Darwin; `err.get_*` operand relaxed to optional for native EH; `MOVZXrr8` / `MOVZXrr32` split into correctly-encoded distinct MIR opcodes.
 
 The biggest user-visible new thing is a text-mode baseball-franchise simulator built on the existing baseball engine.
 
@@ -22,7 +23,7 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator b
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 65 | +65 |
+| Commits | — | 72 | +72 |
 | Source files | 2,869 | 2,947 | +78 |
 | Production SLOC | 450K | 507K | +57K |
 | Test SLOC | 183K | 207K | +24K |
@@ -195,6 +196,46 @@ Eleven-class `Viper.Localization.*` namespace providing locale-aware formatting,
 - Tools: frontend `--` separator, collision-safe `native_compiler` temp paths, x64 `--asset-blob` gate.
 - Build: VERSION `0.2.4-dev` → `0.2.5-snapshot`; GUI test targets key off `VIPER_BUILD_TESTING`; `scripts/clean.sh` polish.
 
+### Codegen
+
+AArch64 and x86_64 backends received a focused correctness pass spanning target-platform plumbing, ABI fixes, new IL surface wiring, and peephole correctness.
+
+**AArch64**
+- `--target-darwin`, `--target-linux`, and `--target-windows` now thread through native object-writer selection, native linker platform, and system-assembler target triple; previously all three fell back silently to the host.
+- `switch.i32` edge arguments route through dedicated edge blocks with phi spill-slot stores; untaken cases can no longer clobber the taken successor's values. Larger switch tables lower as balanced binary decision trees instead of flat compare chains.
+- Trap ABI: `idx.chk` raises structured bounds errors via `rt_trap_raise_error`; checked div/rem call `rt_trap_div0` / `rt_trap_ovf`; `trap.from_err` marshals the error code into `x0` before calling `rt_trap_raise_error`.
+- Checked FP casts (`cast.fp_to_si.rte.chk` / `cast.fp_to_ui.rte.chk`) lower as `FRintN` (round-to-even) + explicit NaN and range guards. NaN and invalid-unsigned inputs raise `InvalidCast`; finite out-of-range values raise `Overflow`.
+- Checked FP casts now honor `i16`, `i32`, and `i64` result widths consistently in VM, constant folding, x86_64, and AArch64.
+- FP compare predicates on AArch64 now match IEEE/IL NaN semantics for `fcmp_eq`, `fcmp_ne`, and `fcmp_le`.
+- AArch64 `FMovGR` is used for FP constant bit-casts; binary emission now rejects class-invalid `FMovRR`.
+- AArch64 base-register load/store displacements are preserved; phi-edge copies reject GPR/FPR class mismatches instead of converting.
+- AArch64 register allocation has reserved emergency scratch registers for spilled-operand reloads under extreme pressure.
+- Sub-width annotated checked arithmetic (`iadd.ovf : i32`, `isub.ovf : i32`, `imul.ovf : i32`) routes to width-sensitive generic lowering; the fast-path dispatcher no longer intercepts sub-width forms before the range guard executes.
+- Logical-immediate bitwise: `AndRI`, `OrrRI`, `EorRI` MIR opcodes added; text emitter and binary encoder generate the correct ARM64 logical-immediate encoding for all three.
+- Plain `fptosi` traps on NaN and signed `i64` overflow before `FCvtZS`.
+- BTI / PACIASP / AUTIASP emission gated on target policy — Darwin targets emit the hardening sequence; Linux and Windows targets skip it. Compact-unwind records emitted only for Darwin objects.
+- Unsigned division by arbitrary constants strength-reduces to magic-multiply via `UmulhRRR`.
+- `ErrGetMsg` lowers to `rt_throw_msg_get`.
+
+**x86_64**
+- `MOVZXrr8` (byte `SETcc` zero-extension, encodes as `movzx r64, r8`) and `MOVZXrr32` (32-bit-write zero-extension, encodes as `movl`) are now distinct MIR opcodes with the correct per-form binary encoding; the prior single opcode was a latent encoding-table divergence.
+- `select` now lowers through explicit MIR pseudos, and both text/binary emission fail if a select pseudo survives ISel.
+- Large GEP/load/store displacements are materialized instead of truncated to imm32; invalid `alloca` sizes are rejected.
+- Compare-branch folding now preserves materialized booleans that are still live, and regalloc liveness ignores in-block local branch labels when building CFG edges.
+- Plain `fptosi` performs explicit NaN and signed `i64` range checks before `CVTTSD2SI`; traps on failure, matching VM semantics (no longer UB).
+- Sub-width checked narrowing (`cast.si_narrow.chk`, `cast.ui_narrow.chk`) preserves the annotated result width and traps `Overflow` on range failure.
+- Incoming `i1` parameters normalized at function entry on both register and stack paths — backend code never observes a non-canonical truthy value.
+- Win64: `main` reserves the mandatory 32-byte shadow space for the injected stack-safety init call even when the user function contains no other calls.
+- `sdiv.chk0` traps `INT64_MIN / -1` via `rt_trap_ovf`; `srem.chk0` returns `0` for `INT64_MIN % -1` (VM-contract preservation — the remainder is mathematically defined as zero but the divide would overflow).
+- `ErrGetMsg` lowers to `rt_throw_msg_get`; `idx.chk` and checked-cast failures use `rt_trap_raise_error` instead of raw `ud2`.
+- Unknown MIR opcodes are hard emitter errors; the text emitter no longer comments them out and continues.
+- Target-platform flags drive assembly dialect, native object format, symbol mangling, and native-linker platform together.
+
+**IL and VM**
+- Variadic functions: `Function::isVarArg` field; `...` trailing-param syntax parsed, serialized in the IL round-trip, and enforced by the verifier (`>= paramCount` arity for variadic callees, exact match for fixed). BytecodeVM dispatch updated.
+- `err.get_kind` / `err.get_code` / `err.get_ip` / `err.get_line` / `err.get_msg`: min operand count relaxed from 1 to 0 — native EH lowering can emit the no-operand (context-implicit) form while source IL continues to pass an explicit `%err` operand. VM schema and `SpecTables.cpp` updated to match.
+- `rtgen` audit: `rt_canvas_is_handle`, `rt_pixels_generation`, and `rt_locale_manager_lookup_data_retained` classified as internal in `RuntimeSurfacePolicy.inc`; audit passes with zero findings.
+
 ### Platform input
 
 - macOS: bare arrow keys no longer map to PageUp/Down/Home/End (Fn-flag gate was too loose); mouse-wheel delta preserved across coordinate localization.
@@ -212,6 +253,6 @@ Marquee demo addition is a text-mode human-manager baseball-franchise simulator;
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 65-commit history. Commits pair feature-add and follow-up hardening in the same subsystem (e.g. Production 2D → overflow hardening; threads timeout fixes → handle-magic validation; glTF skin import → sparse accessors + KHR extensions; new POSIX atomic-move path → linker-policy `link()` classification; `Viper.Localization.*` introduction → `numfmt_group_digits()` extraction + rt_fmt C-locale isolation + GUI app-registry refactor in the same wrapping commit).
+See `git log a91d388db..HEAD -- .` for the full 72-commit history. Commits pair feature-add and follow-up hardening in the same subsystem (e.g. Production 2D → overflow hardening; threads timeout fixes → handle-magic validation; glTF skin import → sparse accessors + KHR extensions; new POSIX atomic-move path → linker-policy `link()` classification; `Viper.Localization.*` introduction → `numfmt_group_digits()` extraction + rt_fmt C-locale isolation + GUI app-registry refactor; variadic IL introduction → sub-width checked arithmetic hardening + err-opcode operand relaxation + MOVZXrr8/rr32 split in successive passes).
 
 <!-- END DRAFT -->

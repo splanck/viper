@@ -81,6 +81,8 @@ enum class MOpcode {
     MOVmr,     ///< Move memory to register.
     CMOVNErr,  ///< Conditional move when not equal (register-register).
     MOVri,     ///< Move immediate to register.
+    SELECT_GPR, ///< Select pseudo for integer/pointer values before ISel.
+    SELECT_XMM, ///< Select pseudo for scalar floating-point values before ISel.
     LEA,       ///< Load effective address into register.
     ADDrr,     ///< Add registers.
     ADDri,     ///< Add immediate to register.

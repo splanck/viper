@@ -259,25 +259,16 @@ static void emitPhiEdgeCopies(
         }
         const RegClass dstCls = classes[ai];
         const int offset = spillOffsets[ai];
+        if (scls != dstCls) {
+            throw std::runtime_error("AArch64 terminator lowering: phi-edge argument register class "
+                                     "mismatch for block '" +
+                                     dst + "'");
+        }
         if (dstCls == RegClass::FPR) {
-            if (scls != RegClass::FPR) {
-                const uint16_t cvt = allocateNextVReg(nextVRegId);
-                edgeBB.instrs.push_back(MInstr{MOpcode::SCvtF,
-                                               {MOperand::vregOp(RegClass::FPR, cvt),
-                                                MOperand::vregOp(RegClass::GPR, sv)}});
-                sv = cvt;
-            }
             edgeBB.instrs.push_back(MInstr{MOpcode::PhiStoreFPR,
                                            {MOperand::vregOp(RegClass::FPR, sv),
                                             MOperand::immOp(offset)}});
         } else {
-            if (scls == RegClass::FPR) {
-                const uint16_t cvt = allocateNextVReg(nextVRegId);
-                edgeBB.instrs.push_back(MInstr{MOpcode::FCvtZS,
-                                               {MOperand::vregOp(RegClass::GPR, cvt),
-                                                MOperand::vregOp(RegClass::FPR, sv)}});
-                sv = cvt;
-            }
             edgeBB.instrs.push_back(MInstr{MOpcode::PhiStoreGPR,
                                            {MOperand::vregOp(RegClass::GPR, sv),
                                             MOperand::immOp(offset)}});

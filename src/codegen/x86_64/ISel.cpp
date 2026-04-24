@@ -197,81 +197,52 @@ void canonicaliseBitwise(MInstr &instr) {
     }
 }
 
-/// @brief Attempt to lower a GPR select placeholder into TEST/MOV/CMOV sequence.
+/// @brief Attempt to lower a GPR select pseudo into TEST/MOV/CMOV sequence.
 ///
-/// @details Matches the three-instruction pattern emitted by LowerILToMIR
-///          (MOV false/true metadata, TEST cond, SETcc mask) when the result
-///          resides in the GPR class.  The helper rebuilds the sequence using a
-///          flags-setting TEST followed by MOV (false path) and CMOVNE (true
-///          path).  When the pattern does not match, the function leaves the
-///          block untouched so other passes may handle it.
+/// @details Matches the explicit SELECT_GPR pseudo emitted by LowerILToMIR and
+///          rebuilds it as a flags-setting TEST followed by MOV (false path)
+///          and CMOVNE (true path).
 ///
 /// @param block Machine basic block undergoing transformation.
-/// @param index Index of the candidate MOV instruction within the block.
-/// @return @c true when the placeholder was replaced.
+/// @param index Index of the candidate SELECT_GPR instruction within the block.
+/// @return @c true when the pseudo was replaced.
 bool lowerGprSelect(MBasicBlock &block, std::size_t index) {
-    if (index + 2 >= block.instructions.size()) {
+    auto &selectInstr = block.instructions[index];
+    if (selectInstr.opcode != MOpcode::SELECT_GPR || selectInstr.operands.size() != 4) {
         return false;
     }
 
-    auto &movInstr = block.instructions[index];
-    if (!((movInstr.opcode == MOpcode::MOVrr || movInstr.opcode == MOpcode::MOVri) &&
-          movInstr.operands.size() >= 3)) {
-        return false;
-    }
-
-    const auto *destReg = asReg(movInstr.operands[0]);
+    const auto *destReg = asReg(selectInstr.operands[0]);
     if (!destReg || destReg->cls != RegClass::GPR) {
         return false;
     }
 
-    const Operand &falseVal = movInstr.operands[1];
-    const Operand &trueVal = movInstr.operands[2];
+    const Operand &condVal = selectInstr.operands[1];
+    const Operand &falseVal = selectInstr.operands[2];
+    const Operand &trueVal = selectInstr.operands[3];
     if (std::holds_alternative<OpImm>(trueVal)) {
         return false;
     }
-
-    auto &testInstr = block.instructions[index + 1];
-    if (testInstr.opcode != MOpcode::TESTrr || testInstr.operands.size() < 2) {
-        return false;
-    }
-
-    if (!sameRegister(testInstr.operands[0], testInstr.operands[1])) {
-        return false;
-    }
-
-    auto &setccInstr = block.instructions[index + 2];
-    if (setccInstr.opcode != MOpcode::SETcc) {
-        return false;
-    }
-
-    bool destReferenced = false;
-    for (const auto &operand : setccInstr.operands) {
-        if (sameRegister(operand, movInstr.operands[0])) {
-            destReferenced = true;
-            break;
-        }
-    }
-    if (!destReferenced) {
+    if (!std::holds_alternative<OpReg>(condVal)) {
         return false;
     }
 
     std::vector<MInstr> replacement{};
     replacement.push_back(MInstr::make(MOpcode::TESTrr,
-                                       std::vector<Operand>{cloneOperand(testInstr.operands[0]),
-                                                            cloneOperand(testInstr.operands[1])}));
+                                       std::vector<Operand>{cloneOperand(condVal),
+                                                            cloneOperand(condVal)}));
 
     const bool falseIsImm = std::holds_alternative<OpImm>(falseVal);
     replacement.push_back(MInstr::make(
         falseIsImm ? MOpcode::MOVri : MOpcode::MOVrr,
-        std::vector<Operand>{cloneOperand(movInstr.operands[0]), cloneOperand(falseVal)}));
+        std::vector<Operand>{cloneOperand(selectInstr.operands[0]), cloneOperand(falseVal)}));
 
     replacement.push_back(MInstr::make(
         MOpcode::CMOVNErr,
-        std::vector<Operand>{cloneOperand(movInstr.operands[0]), cloneOperand(trueVal)}));
+        std::vector<Operand>{cloneOperand(selectInstr.operands[0]), cloneOperand(trueVal)}));
 
     auto beginIt = block.instructions.begin() + static_cast<std::ptrdiff_t>(index);
-    block.instructions.erase(beginIt, beginIt + 3);
+    block.instructions.erase(beginIt);
     // Recalculate insert position since erase invalidates iterators
     block.instructions.insert(block.instructions.begin() + static_cast<std::ptrdiff_t>(index),
                               replacement.begin(),
@@ -281,59 +252,33 @@ bool lowerGprSelect(MBasicBlock &block, std::size_t index) {
 
 /// @brief Lower XMM select pseudos into TEST/JCC/MOVSD branch sequences.
 ///
-/// @details Matches the three-instruction pattern emitted by the IL bridge for
-///          floating-point selects (MOV placeholder, TEST cond, SETcc) and
+/// @details Matches the explicit SELECT_XMM pseudo emitted by the IL bridge and
 ///          rewrites it into a small branchy sequence using unique local
 ///          labels. The rewritten sequence uses `movsd` for both true and false
 ///          paths so that register allocators can reason about the value flow.
 ///
 /// @param func Machine function supplying the label allocator.
 /// @param block Machine basic block containing the pattern.
-/// @param index Index of the MOV placeholder inside @p block.
+/// @param index Index of the SELECT_XMM pseudo inside @p block.
 /// @return @c true when a select pattern was rewritten.
 bool lowerXmmSelect(MFunction &func, MBasicBlock &block, std::size_t index) {
-    if (index + 2 >= block.instructions.size()) {
+    auto &selectInstr = block.instructions[index];
+    if (selectInstr.opcode != MOpcode::SELECT_XMM || selectInstr.operands.size() != 4) {
         return false;
     }
 
-    auto &movInstr = block.instructions[index];
-    if (movInstr.opcode != MOpcode::MOVSDrr || movInstr.operands.size() < 3) {
-        return false;
-    }
-
-    const auto *destReg = asReg(movInstr.operands[0]);
+    const auto *destReg = asReg(selectInstr.operands[0]);
     if (!destReg || destReg->cls != RegClass::XMM) {
         return false;
     }
 
-    const Operand &falseVal = movInstr.operands[1];
-    const Operand &trueVal = movInstr.operands[2];
+    const Operand &condVal = selectInstr.operands[1];
+    const Operand &falseVal = selectInstr.operands[2];
+    const Operand &trueVal = selectInstr.operands[3];
     if (!std::holds_alternative<OpReg>(falseVal) || !std::holds_alternative<OpReg>(trueVal)) {
         return false;
     }
-
-    auto &testInstr = block.instructions[index + 1];
-    if (testInstr.opcode != MOpcode::TESTrr || testInstr.operands.size() < 2) {
-        return false;
-    }
-
-    if (!sameRegister(testInstr.operands[0], testInstr.operands[1])) {
-        return false;
-    }
-
-    auto &setccInstr = block.instructions[index + 2];
-    if (setccInstr.opcode != MOpcode::SETcc) {
-        return false;
-    }
-
-    bool destReferenced = false;
-    for (const auto &operand : setccInstr.operands) {
-        if (sameRegister(operand, movInstr.operands[0])) {
-            destReferenced = true;
-            break;
-        }
-    }
-    if (!destReferenced) {
+    if (!std::holds_alternative<OpReg>(condVal)) {
         return false;
     }
 
@@ -342,25 +287,25 @@ bool lowerXmmSelect(MFunction &func, MBasicBlock &block, std::size_t index) {
 
     std::vector<MInstr> replacement{};
     replacement.push_back(MInstr::make(MOpcode::TESTrr,
-                                       std::vector<Operand>{cloneOperand(testInstr.operands[0]),
-                                                            cloneOperand(testInstr.operands[1])}));
+                                       std::vector<Operand>{cloneOperand(condVal),
+                                                            cloneOperand(condVal)}));
     replacement.push_back(MInstr::make(
         MOpcode::JCC, std::vector<Operand>{makeImmOperand(0), makeLabelOperand(falseLabel)}));
     replacement.push_back(MInstr::make(
         MOpcode::MOVSDrr,
-        std::vector<Operand>{cloneOperand(movInstr.operands[0]), cloneOperand(trueVal)}));
+        std::vector<Operand>{cloneOperand(selectInstr.operands[0]), cloneOperand(trueVal)}));
     replacement.push_back(
         MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(endLabel)}));
     replacement.push_back(
         MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(falseLabel)}));
     replacement.push_back(MInstr::make(
         MOpcode::MOVSDrr,
-        std::vector<Operand>{cloneOperand(movInstr.operands[0]), cloneOperand(falseVal)}));
+        std::vector<Operand>{cloneOperand(selectInstr.operands[0]), cloneOperand(falseVal)}));
     replacement.push_back(
         MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(endLabel)}));
 
     auto beginIt = block.instructions.begin() + static_cast<std::ptrdiff_t>(index);
-    block.instructions.erase(beginIt, beginIt + 3);
+    block.instructions.erase(beginIt);
     block.instructions.insert(block.instructions.begin() + static_cast<std::ptrdiff_t>(index),
                               replacement.begin(),
                               replacement.end());
@@ -433,6 +378,25 @@ bool foldCompareBranch(MBasicBlock &block, std::size_t index) {
     const auto *branchCond = asImm(jccInstr.operands[0]);
     if (!branchCond || branchCond->val != 1) {
         return false;
+    }
+    for (std::size_t useIdx = testIndex + 2; useIdx < block.instructions.size(); ++useIdx) {
+        for (const auto &operand : block.instructions[useIdx].operands) {
+            if (sameRegister(operand, setccInstr.operands[1])) {
+                return false;
+            }
+            if (const auto *mem = std::get_if<OpMem>(&operand)) {
+                const Operand base = mem->base;
+                if (sameRegister(base, setccInstr.operands[1])) {
+                    return false;
+                }
+                if (mem->hasIndex) {
+                    const Operand indexOp = mem->index;
+                    if (sameRegister(indexOp, setccInstr.operands[1])) {
+                        return false;
+                    }
+                }
+            }
+        }
     }
 
     jccInstr.operands[0] = makeImmOperand(setCond->val);
@@ -994,19 +958,22 @@ void ISel::foldLeaIntoMem(MFunction &func) const {
     }
 }
 
-/// @brief Verify that no 3-operand select pseudo-instructions survived ISel.
-/// @details The lowering pass emits MOVri/MOVrr/MOVSDrr with 3 operands
-///          (dest, falseVal, trueVal) as SELECT placeholders. lowerSelect()
-///          is supposed to replace each one with a TEST+MOV+CMOV sequence.
-///          If any survive, the assembler silently drops the 3rd operand,
-///          producing always-false SELECT output.
+/// @brief Verify that no select pseudo-instructions survived ISel.
+/// @details Lowering emits explicit SELECT_GPR/SELECT_XMM pseudos. They must be
+///          replaced before allocation and emission.
 void ISel::validateSelectLowering(const MFunction &func) const {
     for (const auto &block : func.blocks) {
         for (const auto &instr : block.instructions) {
+            if (instr.opcode == MOpcode::SELECT_GPR || instr.opcode == MOpcode::SELECT_XMM) {
+                phaseAUnsupported(("select pseudo survived ISel (opcode=" +
+                                   std::to_string(static_cast<int>(instr.opcode)) +
+                                   ", operands=" + std::to_string(instr.operands.size()) + ")")
+                                      .c_str());
+            }
             if ((instr.opcode == MOpcode::MOVri || instr.opcode == MOpcode::MOVrr ||
                  instr.opcode == MOpcode::MOVSDrr) &&
                 instr.operands.size() > 2) {
-                phaseAUnsupported(("select pseudo survived ISel (opcode=" +
+                phaseAUnsupported(("legacy select placeholder survived ISel (opcode=" +
                                    std::to_string(static_cast<int>(instr.opcode)) +
                                    ", operands=" + std::to_string(instr.operands.size()) + ")")
                                       .c_str());

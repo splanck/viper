@@ -57,6 +57,21 @@ extract_json_opcodes() {
         | sort
 }
 
+# --- Helper: extract IL opcode enum names from Opcode.def ---
+extract_il_opcode_names() {
+    local file="$1"
+    grep '^[[:space:]]*IL_OPCODE(' "$file" \
+        | sed -E 's/^[[:space:]]*IL_OPCODE\(([A-Za-z_][A-Za-z0-9_]*),.*/\1/' \
+        | sort
+}
+
+# --- Helper: extract il::core::Opcode references from backend source files ---
+extract_backend_opcode_refs() {
+    grep -Rho 'Opcode::[A-Za-z_][A-Za-z0-9_]*' "$@" \
+        | sed 's/.*Opcode:://' \
+        | sort -u
+}
+
 # --- Helper: compare two sorted lists and report differences ---
 compare_lists() {
     local label_a="$1"
@@ -79,6 +94,22 @@ compare_lists() {
         echo "  WARNING: In ${label_b} but missing from ${label_a}:"
         echo "$missing_from_a" | sed 's/^/    - /'
         ERRORS=$((ERRORS + 1))
+    fi
+}
+
+check_required_subset() {
+    local label="$1"
+    local required_file="$2"
+    local available_file="$3"
+
+    local missing
+    missing=$(comm -23 "$required_file" "$available_file")
+    if [ -n "$missing" ]; then
+        echo "    ERROR: ${label} missing required IL opcode coverage:"
+        echo "$missing" | sed 's/^/      - /'
+        ERRORS=$((ERRORS + 1))
+    else
+        echo "    OK — ${label} covers required IL opcode set"
     fi
 }
 
@@ -141,6 +172,75 @@ fi
 if [ $ERRORS -eq $PREV_ERRORS ]; then
     echo "    OK — JSON entries are a subset of enum"
 fi
+
+echo ""
+
+# ============================================================
+# IL Opcode Coverage Spot Checks
+# ============================================================
+echo "--- IL Opcode Coverage ---"
+
+IL_OPCODE_FILE="src/il/core/Opcode.def"
+X86_LOWERING_FILES=(
+    "src/codegen/x86_64/passes/LoweringPass.cpp"
+    "src/codegen/x86_64/LoweringRuleTable.cpp"
+)
+A64_LOWERING_FILES=(
+    "src/codegen/aarch64/OpcodeDispatch.cpp"
+    "src/codegen/aarch64/InstrLowering.cpp"
+    "src/codegen/aarch64/OpcodeMappings.hpp"
+    "src/codegen/aarch64/LowerILToMIR.cpp"
+    "src/codegen/aarch64/TerminatorLowering.cpp"
+)
+
+if [ ! -f "$IL_OPCODE_FILE" ]; then
+    echo "  ERROR: IL opcode definition file not found. Run from project root." >&2
+    exit 2
+fi
+
+extract_il_opcode_names "$IL_OPCODE_FILE" > "$TMP_DIR/il_all.txt"
+extract_backend_opcode_refs "${X86_LOWERING_FILES[@]}" > "$TMP_DIR/x86_il_refs.txt"
+extract_backend_opcode_refs "${A64_LOWERING_FILES[@]}" > "$TMP_DIR/a64_il_refs.txt"
+
+cat > "$TMP_DIR/required_x86_il.txt" <<'LIST'
+AddrOf
+Alloca
+CastFpToSiRteChk
+CastFpToUiRteChk
+FCmpEQ
+FCmpLE
+FCmpNE
+GEP
+Load
+Store
+LIST
+
+cat > "$TMP_DIR/required_a64_il.txt" <<'LIST'
+AddrOf
+Alloca
+CastFpToSiRteChk
+CastFpToUiRteChk
+FCmpEQ
+FCmpLE
+FCmpNE
+GEP
+Load
+Store
+LIST
+
+echo "  IL opcodes:      $(wc -l < "$TMP_DIR/il_all.txt" | tr -d ' ')"
+echo "  x86 refs:        $(wc -l < "$TMP_DIR/x86_il_refs.txt" | tr -d ' ')"
+echo "  AArch64 refs:    $(wc -l < "$TMP_DIR/a64_il_refs.txt" | tr -d ' ')"
+
+echo ""
+echo "  [1] Required x86 IL opcodes exist in Opcode.def:"
+check_required_subset "Opcode.def" "$TMP_DIR/required_x86_il.txt" "$TMP_DIR/il_all.txt"
+echo "  [2] Required x86 IL opcodes are referenced by lowering:"
+check_required_subset "x86_64 lowering" "$TMP_DIR/required_x86_il.txt" "$TMP_DIR/x86_il_refs.txt"
+echo "  [3] Required AArch64 IL opcodes exist in Opcode.def:"
+check_required_subset "Opcode.def" "$TMP_DIR/required_a64_il.txt" "$TMP_DIR/il_all.txt"
+echo "  [4] Required AArch64 IL opcodes are referenced by lowering:"
+check_required_subset "AArch64 lowering" "$TMP_DIR/required_a64_il.txt" "$TMP_DIR/a64_il_refs.txt"
 
 echo ""
 

@@ -47,6 +47,10 @@ namespace {
             return "MOVmr";
         case MOpcode::CMOVNErr:
             return "CMOVNErr";
+        case MOpcode::SELECT_GPR:
+            return "SELECT_GPR";
+        case MOpcode::SELECT_XMM:
+            return "SELECT_XMM";
         case MOpcode::LEA:
             return "LEA";
         case MOpcode::ADDrr:

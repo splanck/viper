@@ -36,6 +36,45 @@ namespace {
 constexpr int64_t kErrInvalidCast = 5;
 constexpr int64_t kErrOverflow = 4;
 
+uint64_t signedMinF64Bits(std::uint8_t widthBits) {
+    switch (widthBits) {
+        case 16:
+            return 0xC0E0000000000000ULL; // -2^15
+        case 32:
+            return 0xC1E0000000000000ULL; // -2^31
+        case 64:
+            return 0xC3E0000000000000ULL; // -2^63
+        default:
+            phaseAUnsupported("checked fp-to-si cast: unsupported result width");
+    }
+}
+
+uint64_t signedUpperExclusiveF64Bits(std::uint8_t widthBits) {
+    switch (widthBits) {
+        case 16:
+            return 0x40E0000000000000ULL; // 2^15
+        case 32:
+            return 0x41E0000000000000ULL; // 2^31
+        case 64:
+            return 0x43E0000000000000ULL; // 2^63
+        default:
+            phaseAUnsupported("checked fp-to-si cast: unsupported result width");
+    }
+}
+
+uint64_t unsignedUpperExclusiveF64Bits(std::uint8_t widthBits) {
+    switch (widthBits) {
+        case 16:
+            return 0x40F0000000000000ULL; // 2^16
+        case 32:
+            return 0x41F0000000000000ULL; // 2^32
+        case 64:
+            return 0x43F0000000000000ULL; // 2^64
+        default:
+            phaseAUnsupported("checked fp-to-ui cast: unsupported result width");
+    }
+}
+
 MInstr makePlannedCall(Operand target, uint32_t callPlanId) {
     MInstr call = MInstr::make(MOpcode::CALL, std::vector<Operand>{std::move(target)});
     call.callPlanId = callPlanId;
@@ -355,13 +394,14 @@ void emitFPToSI(const ILInstr &instr, MIRBuilder &builder) {
     builder.append(MInstr::make(
         MOpcode::JCC, std::vector<Operand>{makeImmOperand(10), makeLabelOperand(invalidLabel)}));
 
-    const Operand minOp = emitF64BitsConstant(builder, 0xC3E0000000000000ULL);
+    const Operand minOp = emitF64BitsConstant(builder, signedMinF64Bits(instr.resultBits));
     builder.append(
         MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{emit.clone(src), emit.clone(minOp)}));
     builder.append(MInstr::make(
         MOpcode::JCC, std::vector<Operand>{makeImmOperand(8), makeLabelOperand(overflowLabel)}));
 
-    const Operand maxExclusiveOp = emitF64BitsConstant(builder, 0x43E0000000000000ULL);
+    const Operand maxExclusiveOp =
+        emitF64BitsConstant(builder, signedUpperExclusiveF64Bits(instr.resultBits));
     builder.append(MInstr::make(MOpcode::UCOMIS,
                                 std::vector<Operand>{emit.clone(src), emit.clone(maxExclusiveOp)}));
     builder.append(MInstr::make(
@@ -398,13 +438,14 @@ void emitFPToSIChecked(const ILInstr &instr, MIRBuilder &builder) {
     builder.append(MInstr::make(
         MOpcode::JCC, std::vector<Operand>{makeImmOperand(10), makeLabelOperand(invalidLabel)}));
 
-    const Operand minOp = emitF64BitsConstant(builder, 0xC3E0000000000000ULL);
+    const Operand minOp = emitF64BitsConstant(builder, signedMinF64Bits(instr.resultBits));
     builder.append(
         MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{emit.clone(rounded), emit.clone(minOp)}));
     builder.append(MInstr::make(
         MOpcode::JCC, std::vector<Operand>{makeImmOperand(8), makeLabelOperand(overflowLabel)}));
 
-    const Operand maxExclusiveOp = emitF64BitsConstant(builder, 0x43E0000000000000ULL);
+    const Operand maxExclusiveOp =
+        emitF64BitsConstant(builder, signedUpperExclusiveF64Bits(instr.resultBits));
     builder.append(MInstr::make(MOpcode::UCOMIS,
                                 std::vector<Operand>{emit.clone(rounded), emit.clone(maxExclusiveOp)}));
     builder.append(MInstr::make(
@@ -449,7 +490,8 @@ void emitFpToUi(const ILInstr &instr, MIRBuilder &builder) {
     builder.append(MInstr::make(
         MOpcode::JCC, std::vector<Operand>{makeImmOperand(8), makeLabelOperand(invalidLabel)}));
 
-    const Operand upperExclusiveOp = emitF64BitsConstant(builder, 0x43F0000000000000ULL);
+    const Operand upperExclusiveOp =
+        emitF64BitsConstant(builder, unsignedUpperExclusiveF64Bits(instr.resultBits));
     builder.append(
         MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{emit.clone(rounded), emit.clone(upperExclusiveOp)}));
     builder.append(MInstr::make(

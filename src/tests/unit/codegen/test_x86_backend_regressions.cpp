@@ -13,8 +13,10 @@
 #include "tests/TestHarness.hpp"
 
 #include "codegen/x86_64/Backend.hpp"
+#include "codegen/x86_64/ISel.hpp"
 #include "codegen/x86_64/LowerILToMIR.hpp"
 #include "codegen/x86_64/TargetX64.hpp"
+#include "codegen/x86_64/ra/Liveness.hpp"
 
 #include <algorithm>
 #include <array>
@@ -22,6 +24,7 @@
 #include <cstdio>
 #include <iostream>
 #include <regex>
+#include <stdexcept>
 #include <string>
 
 #if defined(_WIN32)
@@ -764,6 +767,135 @@ TEST(X86BackendRegressions, TrapPayloadIsForwardedToRuntime) {
     ASSERT_TRUE(trapIt != lowering.callPlans().end());
     ASSERT_EQ(trapIt->args.size(), 1u);
     EXPECT_FALSE(trapIt->args[0].isImm);
+}
+
+TEST(X86BackendRegressions, LargeGepImmediateIsMaterializedInsteadOfTruncated) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::PTR};
+    entry.instrs = {op("gep", {val(ILValue::Kind::PTR, 0), imm(2147483648LL)}, 1,
+                       ILValue::Kind::PTR),
+                    op("ret", {val(ILValue::Kind::PTR, 1)})};
+
+    ILFunction fn{};
+    fn.name = "large_gep";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("$2147483648"), std::string::npos);
+    EXPECT_NE(result.asmText.find("addq"), std::string::npos);
+    EXPECT_EQ(result.asmText.find("-2147483648("), std::string::npos);
+}
+
+TEST(X86BackendRegressions, LargeLoadDisplacementIsMaterializedInsteadOfTruncated) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::PTR};
+    entry.instrs = {op("load", {val(ILValue::Kind::PTR, 0), imm(2147483648LL)}, 1,
+                       ILValue::Kind::I64),
+                    op("ret", {val(ILValue::Kind::I64, 1)})};
+
+    ILFunction fn{};
+    fn.name = "large_load_disp";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("$2147483648"), std::string::npos);
+    EXPECT_NE(result.asmText.find("addq"), std::string::npos);
+    EXPECT_EQ(result.asmText.find("-2147483648("), std::string::npos);
+}
+
+TEST(X86BackendRegressions, InvalidAllocaSizeIsRejected) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.instrs = {op("alloca", {imm(0)}, 0, ILValue::Kind::PTR),
+                    op("ret", {imm(0)})};
+
+    ILFunction fn{};
+    fn.name = "bad_alloca";
+    fn.blocks = {entry};
+
+    EXPECT_THROWS(compile(fn), std::runtime_error);
+}
+
+TEST(X86BackendRegressions, SelectPseudoIsLoweredBeforeEmission) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I1};
+    entry.instrs = {op("select", {val(ILValue::Kind::I1, 0), imm(7), imm(13)}, 1,
+                       ILValue::Kind::I64),
+                    op("ret", {val(ILValue::Kind::I64, 1)})};
+
+    ILFunction fn{};
+    fn.name = "select_i64";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("cmovne"), std::string::npos);
+    EXPECT_EQ(result.asmText.find("SELECT_GPR"), std::string::npos);
+    EXPECT_EQ(result.asmText.find("select pseudo survived"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, CompareBranchFoldPreservesLiveBooleanResult) {
+    MFunction fn{};
+    fn.name = "cmp_bool_live";
+    MBasicBlock entry{};
+    entry.label = ".L_cmp_bool_live_entry";
+    const Operand a = makeVRegOperand(RegClass::GPR, 0);
+    const Operand b = makeVRegOperand(RegClass::GPR, 1);
+    const Operand flag = makeVRegOperand(RegClass::GPR, 2);
+    const Operand copy = makeVRegOperand(RegClass::GPR, 3);
+    entry.instructions = {
+        MInstr::make(MOpcode::CMPrr, {a, b}),
+        MInstr::make(MOpcode::SETcc, {makeImmOperand(1), flag}),
+        MInstr::make(MOpcode::MOVZXrr8, {flag, flag}),
+        MInstr::make(MOpcode::TESTrr, {flag, flag}),
+        MInstr::make(MOpcode::JCC, {makeImmOperand(1), makeLabelOperand(".L_true")}),
+        MInstr::make(MOpcode::MOVrr, {copy, flag}),
+        MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_done")})};
+    fn.blocks.push_back(std::move(entry));
+
+    ISel isel(sysvTarget());
+    isel.lowerCompareAndBranch(fn);
+
+    const auto &instructions = fn.blocks.front().instructions;
+    EXPECT_TRUE(std::any_of(instructions.begin(), instructions.end(), [](const MInstr &instr) {
+        return instr.opcode == MOpcode::SETcc;
+    }));
+}
+
+TEST(X86BackendRegressions, LivenessCfgIgnoresInternalSelectLabels) {
+    MFunction fn{};
+    fn.name = "local_branch_cfg";
+
+    MBasicBlock entry{};
+    entry.label = ".L_local_branch_cfg_entry";
+    entry.instructions = {
+        MInstr::make(MOpcode::JCC, {makeImmOperand(1), makeLabelOperand(".Llocal_false")}),
+        MInstr::make(MOpcode::LABEL, {makeLabelOperand(".Llocal_false")}),
+        MInstr::make(MOpcode::JMP, {makeLabelOperand(".L_local_branch_cfg_done")})};
+
+    MBasicBlock accidental{};
+    accidental.label = ".L_local_branch_cfg_accidental";
+    accidental.instructions = {MInstr::make(MOpcode::RET)};
+
+    MBasicBlock done{};
+    done.label = ".L_local_branch_cfg_done";
+    done.instructions = {MInstr::make(MOpcode::RET)};
+
+    fn.blocks = {entry, accidental, done};
+
+    ra::LivenessAnalysis liveness;
+    liveness.run(fn);
+    const auto &succs = liveness.successors(0);
+    ASSERT_EQ(succs.size(), 1u);
+    EXPECT_EQ(succs.front(), 2u);
 }
 
 int main(int argc, char **argv) {

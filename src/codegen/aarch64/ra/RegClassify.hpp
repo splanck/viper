@@ -37,6 +37,7 @@ inline bool isAllocatableGPR(PhysReg r) {
         // Reserve the global scratch registers so the allocator never hands them out.
         case PhysReg::X9:
         case PhysReg::X16:
+        case PhysReg::X17:
             return false;
         default:
             return isGPR(r);

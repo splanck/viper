@@ -40,6 +40,52 @@ namespace il::vm::detail::floating {
 namespace {
 constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel for overflow.
 
+[[nodiscard]] int integerTypeBits(Type::Kind kind) {
+    switch (kind) {
+        case Type::Kind::I16:
+            return 16;
+        case Type::Kind::I32:
+            return 32;
+        case Type::Kind::I64:
+            return 64;
+        default:
+            return 64;
+    }
+}
+
+[[nodiscard]] double signedLowerBound(int bits) {
+    switch (bits) {
+        case 16:
+            return -32768.0;
+        case 32:
+            return -2147483648.0;
+        default:
+            return -9223372036854775808.0;
+    }
+}
+
+[[nodiscard]] double signedUpperExclusive(int bits) {
+    switch (bits) {
+        case 16:
+            return 32768.0;
+        case 32:
+            return 2147483648.0;
+        default:
+            return 9223372036854775808.0;
+    }
+}
+
+[[nodiscard]] double unsignedUpperExclusive(int bits) {
+    switch (bits) {
+        case 16:
+            return 65536.0;
+        case 32:
+            return 4294967296.0;
+        default:
+            return kUint64Boundary;
+    }
+}
+
 /// @brief Round @p operand to the nearest unsigned 64-bit integer or raise a trap.
 /// @details Implements the semantics of `cast.fp_to_ui.rte.chk` in four stages:
 ///          1. Validate that the operand is finite and non-negative, trapping
@@ -60,7 +106,8 @@ constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel f
 [[nodiscard]] uint64_t castFpToUiRoundedOrTrap(double operand,
                                                const Instr &in,
                                                Frame &fr,
-                                               const BasicBlock *bb) {
+                                               const BasicBlock *bb,
+                                               int resultBits) {
     constexpr const char *kInvalidOperandMessage = "invalid fp operand in cast.fp_to_ui.rte.chk";
     constexpr const char *kOverflowMessage = "fp overflow in cast.fp_to_ui.rte.chk";
 
@@ -76,7 +123,8 @@ constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel f
         trap(TrapKind::InvalidCast, kInvalidOperandMessage);
     }
 
-    if (operand >= kUint64Boundary) {
+    const double upperExclusive = unsignedUpperExclusive(resultBits);
+    if (operand >= upperExclusive) {
         trap(TrapKind::Overflow, kOverflowMessage);
     }
 
@@ -91,7 +139,7 @@ constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel f
         }
     }
 
-    if (integral >= kUint64Boundary) {
+    if (integral >= upperExclusive) {
         trap(TrapKind::Overflow, kOverflowMessage);
     }
 
@@ -536,9 +584,8 @@ VM::ExecResult handleCastFpToSiRteChk(VM &vm,
                             bb ? bb->label : std::string());
     }
 
-    constexpr double kMin = static_cast<double>(std::numeric_limits<int64_t>::min());
-    constexpr double kMax = static_cast<double>(std::numeric_limits<int64_t>::max());
-    if (rounded < kMin || rounded > kMax) {
+    const int resultBits = integerTypeBits(in.type.kind);
+    if (rounded < signedLowerBound(resultBits) || rounded >= signedUpperExclusive(resultBits)) {
         RuntimeBridge::trap(TrapKind::Overflow,
                             "fp overflow in cast.fp_to_si.rte.chk",
                             in.loc,
@@ -576,7 +623,8 @@ VM::ExecResult handleCastFpToUiRteChk(VM &vm,
     (void)blocks;
     (void)ip;
     const Slot value = VMAccess::eval(vm, fr, in.operands[0]);
-    const uint64_t rounded = castFpToUiRoundedOrTrap(value.f64, in, fr, bb);
+    const uint64_t rounded =
+        castFpToUiRoundedOrTrap(value.f64, in, fr, bb, integerTypeBits(in.type.kind));
 
     Slot out{};
     out.i64 = static_cast<int64_t>(rounded);

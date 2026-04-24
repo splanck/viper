@@ -121,7 +121,7 @@ static bool resolveFrameAddress(const il::core::Value &value,
 
     const int localOffset = fb.localOffset(value.id);
     if (localOffset != 0) {
-        offsetOut = localOffset;
+        offsetOut += localOffset;
         return true;
     }
 
@@ -170,6 +170,54 @@ static const char *fpCondCode(il::core::Opcode op) {
             return "vs"; // vs = overflow set (V flag set if either NaN)
         default:
             return "eq";
+    }
+}
+
+static void emitOrderedFpCompareResult(MBasicBlock &out,
+                                       il::core::Opcode op,
+                                       uint16_t dst,
+                                       uint16_t &nextVRegId) {
+    const auto csetInto = [&](const char *cond) {
+        const uint16_t tmp = allocateNextVReg(nextVRegId);
+        out.instrs.push_back(
+            MInstr{MOpcode::Cset,
+                   {MOperand::vregOp(RegClass::GPR, tmp), MOperand::condOp(cond)}});
+        return tmp;
+    };
+
+    switch (op) {
+        case il::core::Opcode::FCmpEQ: {
+            const uint16_t eq = csetInto("eq");
+            const uint16_t ord = csetInto("vc");
+            out.instrs.push_back(MInstr{MOpcode::AndRRR,
+                                        {MOperand::vregOp(RegClass::GPR, dst),
+                                         MOperand::vregOp(RegClass::GPR, eq),
+                                         MOperand::vregOp(RegClass::GPR, ord)}});
+            return;
+        }
+        case il::core::Opcode::FCmpNE: {
+            const uint16_t ne = csetInto("ne");
+            const uint16_t uno = csetInto("vs");
+            out.instrs.push_back(MInstr{MOpcode::OrrRRR,
+                                        {MOperand::vregOp(RegClass::GPR, dst),
+                                         MOperand::vregOp(RegClass::GPR, ne),
+                                         MOperand::vregOp(RegClass::GPR, uno)}});
+            return;
+        }
+        case il::core::Opcode::FCmpLE: {
+            const uint16_t le = csetInto("ls");
+            const uint16_t ord = csetInto("vc");
+            out.instrs.push_back(MInstr{MOpcode::AndRRR,
+                                        {MOperand::vregOp(RegClass::GPR, dst),
+                                         MOperand::vregOp(RegClass::GPR, le),
+                                         MOperand::vregOp(RegClass::GPR, ord)}});
+            return;
+        }
+        default:
+            out.instrs.push_back(
+                MInstr{MOpcode::Cset,
+                       {MOperand::vregOp(RegClass::GPR, dst), MOperand::condOp(fpCondCode(op))}});
+            return;
     }
 }
 
@@ -426,7 +474,7 @@ bool materializeValueToVReg(const il::core::Value &v,
         outCls = RegClass::FPR;
         // fmov dV, xTmp  (bit-cast)
         out.instrs.push_back(MInstr{
-            MOpcode::FMovRR,
+            MOpcode::FMovGR,
             {MOperand::vregOp(RegClass::FPR, outVReg), MOperand::vregOp(RegClass::GPR, tmpG)}});
         return true;
     }
@@ -1509,13 +1557,12 @@ bool lowerFpCompare(const il::core::Instr &ins,
         MInstr{MOpcode::FCmpRR,
                {MOperand::vregOp(RegClass::FPR, lhs), MOperand::vregOp(RegClass::FPR, rhs)}});
 
-    // Emit cset with appropriate condition
+    // Emit cset with appropriate condition. AArch64 reports unordered FCMP as
+    // Z=1,C=1,V=1, so eq/ne/le need explicit ordered/unordered correction.
     const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
     ctx.tempVReg[*ins.result] = dst;
     ctx.tempRegClass[*ins.result] = RegClass::GPR;
-    out.instrs.push_back(
-        MInstr{MOpcode::Cset,
-               {MOperand::vregOp(RegClass::GPR, dst), MOperand::condOp(fpCondCode(ins.op))}});
+    emitOrderedFpCompareResult(out, ins.op, dst, ctx.nextVRegId);
 
     return true;
 }
@@ -1754,9 +1801,14 @@ bool lowerStore(const il::core::Instr &ins,
                 const il::core::BasicBlock &bb,
                 LoweringContext &ctx,
                 MBasicBlock &out) {
-    if (ins.operands.size() != 2)
+    if (ins.operands.size() < 2 || ins.operands.size() > 3)
         return false;
     long long off = 0;
+    if (ins.operands.size() == 3) {
+        if (ins.operands[2].kind != il::core::Value::Kind::ConstInt)
+            return false;
+        off = ins.operands[2].i64;
+    }
     const bool hasFrameAddr = resolveFrameAddress(ins.operands[0], ctx.fn, ctx.fb, off);
     if (hasFrameAddr) {
         // Store to alloca local via FP offset
@@ -1801,12 +1853,12 @@ bool lowerStore(const il::core::Instr &ins,
             out.instrs.push_back(MInstr{MOpcode::StrFprBaseImm,
                                         {MOperand::vregOp(RegClass::FPR, srcF),
                                          MOperand::vregOp(RegClass::GPR, vbase),
-                                         MOperand::immOp(0)}});
+                                         MOperand::immOp(off)}});
         } else {
             out.instrs.push_back(MInstr{MOpcode::StrRegBaseImm,
                                         {MOperand::vregOp(RegClass::GPR, vval),
                                          MOperand::vregOp(RegClass::GPR, vbase),
-                                         MOperand::immOp(0)}});
+                                         MOperand::immOp(off)}});
         }
     }
     return true;
@@ -1823,6 +1875,13 @@ bool lowerLoad(const il::core::Instr &ins,
     if (!ins.result || ins.operands.empty())
         return false;
     long long off = 0;
+    if (ins.operands.size() > 2)
+        return false;
+    if (ins.operands.size() == 2) {
+        if (ins.operands[1].kind != il::core::Value::Kind::ConstInt)
+            return false;
+        off = ins.operands[1].i64;
+    }
     const bool hasFrameAddr = resolveFrameAddress(ins.operands[0], ctx.fn, ctx.fb, off);
     const bool isFP = (ins.type.kind == il::core::Type::Kind::F64);
     const bool isBool = (ins.type.kind == il::core::Type::Kind::I1);
@@ -1854,13 +1913,13 @@ bool lowerLoad(const il::core::Instr &ins,
             out.instrs.push_back(MInstr{MOpcode::LdrFprBaseImm,
                                         {MOperand::vregOp(RegClass::FPR, dst),
                                          MOperand::vregOp(RegClass::GPR, vbase),
-                                         MOperand::immOp(0)}});
+                                         MOperand::immOp(off)}});
             ctx.tempVReg[*ins.result] = dst;
         } else {
             out.instrs.push_back(MInstr{MOpcode::LdrRegBaseImm,
                                         {MOperand::vregOp(RegClass::GPR, dst),
                                          MOperand::vregOp(RegClass::GPR, vbase),
-                                         MOperand::immOp(0)}});
+                                         MOperand::immOp(off)}});
             if (ins.type.kind == il::core::Type::Kind::Str)
                 retainStringVReg(out, dst);
             ctx.tempRegClass[*ins.result] = RegClass::GPR;
@@ -1886,6 +1945,7 @@ bool lowerGEP(const il::core::Instr &ins,
         return false;
     const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
     ctx.tempVReg[*ins.result] = dst;
+    ctx.tempRegClass[*ins.result] = RegClass::GPR;
     const auto &offVal = ins.operands[1];
     if (offVal.kind == il::core::Value::Kind::ConstInt) {
         const long long imm = offVal.i64;
