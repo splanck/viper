@@ -34,6 +34,31 @@ using il::verify::detail::fitsInIntegerKind;
 using il::verify::detail::kindFromCategory;
 
 namespace il::verify::detail {
+namespace {
+
+/// @brief Permit i64 bitwise operations to consume narrower integer values.
+/// @details BASIC widens i16/i32 values by masking the sign-extended scalar slot
+///          with an i64 bitwise op.  The operation result remains i64; this only
+///          relaxes the operand width for integer temps that already occupy the
+///          VM/native scalar register width.
+bool acceptsWidenedBitwiseOperand(il::core::Opcode op,
+                                  il::core::Type::Kind expectedKind,
+                                  il::core::Type::Kind actualKind) {
+    if (expectedKind != il::core::Type::Kind::I64)
+        return false;
+
+    switch (op) {
+        case il::core::Opcode::And:
+        case il::core::Opcode::Or:
+        case il::core::Opcode::Xor:
+            return actualKind == il::core::Type::Kind::I16 ||
+                   actualKind == il::core::Type::Kind::I32;
+        default:
+            return false;
+    }
+}
+
+} // namespace
 
 /// @brief Construct an operand checker bound to a verification context.
 /// @details Stores references to the current @ref VerifyCtx and opcode metadata
@@ -107,6 +132,9 @@ Expected<void> OperandTypeChecker::run() const {
         }
 
         if (actual.kind != expectedKind) {
+            if (acceptsWidenedBitwiseOperand(ctx_.instr.op, expectedKind, actual.kind))
+                continue;
+
             std::ostringstream ss;
             ss << "operand type mismatch: ";
             if (expectedKind == il::core::Type::Kind::Ptr) {

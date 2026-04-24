@@ -5,8 +5,11 @@ extern @rt_str_chr(i64) -> str
 func @main() -> i64 {
 entry:
   %t0:i16 = imul.ovf 200, 150
-  call @rt_print_i64(%t0)
-  %t1:str = call @rt_str_chr(10)
-  call @rt_print_str(%t1)
+  %t1 = and %t0, 65535
+  %t2 = shl %t1, 48
+  %t3 = ashr %t2, 48
+  call @rt_print_i64(%t3)
+  %t4:str = call @rt_str_chr(10)
+  call @rt_print_str(%t4)
   ret 0
 }

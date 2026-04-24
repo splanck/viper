@@ -194,6 +194,36 @@ int main() {
         Module module;
 
         Function fn;
+        fn.name = "entry_param_alias_redefined";
+        fn.retType = Type(Type::Kind::I64);
+        fn.params.push_back(Param{"x", Type(Type::Kind::I64), 0});
+
+        BasicBlock entry;
+        entry.label = "entry";
+        entry.params.push_back(Param{"x", Type(Type::Kind::I64), 0});
+        Instr redefine;
+        redefine.result = 0;
+        redefine.op = Opcode::IAddOvf;
+        redefine.type = Type(Type::Kind::I64);
+        redefine.operands = {Value::constInt(1), Value::constInt(2)};
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands = {Value::temp(0)};
+        entry.instructions = {redefine, ret};
+        entry.terminated = true;
+
+        fn.blocks.push_back(entry);
+        module.functions.push_back(fn);
+
+        const std::string message = verifyAndCaptureMessage(module);
+        assert(message.find("duplicate temp %0") != std::string::npos);
+    }
+
+    {
+        Module module;
+
+        Function fn;
         fn.name = "duplicate_instruction_result";
         fn.retType = Type(Type::Kind::Void);
 
@@ -216,6 +246,39 @@ int main() {
 
         const std::string message = verifyAndCaptureMessage(module);
         assert(message.find("duplicate temp %0") != std::string::npos);
+    }
+
+    {
+        Module module;
+
+        Function fn;
+        fn.name = "checked_add_ptr_type";
+        fn.retType = Type(Type::Kind::Void);
+
+        BasicBlock entry;
+        entry.label = "entry";
+        Instr allocaPtr;
+        allocaPtr.result = 0;
+        allocaPtr.op = Opcode::Alloca;
+        allocaPtr.type = Type(Type::Kind::Ptr);
+        allocaPtr.operands = {Value::constInt(8)};
+        Instr badAdd;
+        badAdd.result = 1;
+        badAdd.op = Opcode::IAddOvf;
+        badAdd.type = Type(Type::Kind::Ptr);
+        badAdd.operands = {Value::temp(0), Value::temp(0)};
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        entry.instructions = {allocaPtr, badAdd, ret};
+        entry.terminated = true;
+
+        fn.blocks.push_back(entry);
+        module.functions.push_back(fn);
+
+        const std::string message = verifyAndCaptureMessage(module);
+        assert(message.find("integer binary result must be i16, i32, or i64") !=
+               std::string::npos);
     }
 
     {

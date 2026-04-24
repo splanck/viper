@@ -50,6 +50,7 @@ enum class VerifyStrategy : uint8_t {
     CastFpToUiRteChk, ///< Enforce integer width constraints for fp→ui casts.
     CastSiNarrowChk,  ///< Enforce result width for signed narrowing casts.
     CastUiNarrowChk,  ///< Enforce result width for unsigned narrowing casts.
+    IntegerBinary,    ///< Enforce binary integer ops use i16, i32, or i64.
     Shift,            ///< Warn when constant shift amount is out of bounds.
     Reject,           ///< Emit a diagnostic explaining why opcode is forbidden.
     Count             ///< Sentinel enumerating the number of strategies.

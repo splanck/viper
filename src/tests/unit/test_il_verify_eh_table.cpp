@@ -139,14 +139,10 @@ int main() {
         handler.instructions.insert(handler.instructions.begin() + 1, redefine);
 
         const std::string message = verifyAndCaptureMessage(module);
-        if (message.find("operand type mismatch") == std::string::npos &&
-            message.find("operand 0 must be resume_tok") == std::string::npos) {
+        if (message.find("duplicate temp %11") == std::string::npos) {
             std::fprintf(stderr, "%s\n", message.c_str());
         }
-        const bool typeMismatch = message.find("operand type mismatch") != std::string::npos;
-        const bool resumeTokMessage =
-            message.find("operand 0 must be resume_tok") != std::string::npos;
-        assert(typeMismatch || resumeTokMessage);
+        assert(message.find("duplicate temp %11") != std::string::npos);
     }
 
     {

@@ -18,7 +18,9 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/Param.hpp"
 #include "il/core/Type.hpp"
+#include "il/core/Value.hpp"
 #include "il/verify/Verifier.hpp"
 
 #include <cassert>
@@ -26,6 +28,93 @@
 
 int main() {
     using namespace il::core;
+
+    {
+        Module module;
+
+        Function fn;
+        fn.name = "entry_param_alias";
+        fn.retType = Type(Type::Kind::I64);
+        fn.params.push_back(Param{"x", Type(Type::Kind::I64), 0});
+
+        BasicBlock entry;
+        entry.label = "entry";
+        entry.params.push_back(Param{"entry_x", Type(Type::Kind::I64), 0});
+
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands.push_back(Value::temp(0));
+        entry.instructions.push_back(ret);
+        entry.terminated = true;
+
+        fn.blocks.push_back(entry);
+        module.functions.push_back(fn);
+
+        auto aliasResult = il::verify::Verifier::verify(module);
+        assert(aliasResult && "entry block params may alias function params by id");
+    }
+
+    {
+        Module module;
+
+        Function fn;
+        fn.name = "subwidth_checked_add";
+        fn.retType = Type(Type::Kind::I16);
+
+        BasicBlock entry;
+        entry.label = "entry";
+        Instr add;
+        add.result = 0;
+        add.op = Opcode::IAddOvf;
+        add.type = Type(Type::Kind::I16);
+        add.operands = {Value::constInt(100), Value::constInt(200)};
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands = {Value::temp(0)};
+        entry.instructions = {add, ret};
+        entry.terminated = true;
+
+        fn.blocks.push_back(entry);
+        module.functions.push_back(fn);
+
+        auto subwidthResult = il::verify::Verifier::verify(module);
+        assert(subwidthResult && "checked integer ops may use i16/i32 result widths");
+    }
+
+    {
+        Module module;
+
+        Function fn;
+        fn.name = "i64_bitwise_widens_subwidth_operand";
+        fn.retType = Type(Type::Kind::I64);
+
+        BasicBlock entry;
+        entry.label = "entry";
+        Instr narrow;
+        narrow.result = 0;
+        narrow.op = Opcode::IAddOvf;
+        narrow.type = Type(Type::Kind::I16);
+        narrow.operands = {Value::constInt(100), Value::constInt(200)};
+        Instr mask;
+        mask.result = 1;
+        mask.op = Opcode::And;
+        mask.type = Type(Type::Kind::I64);
+        mask.operands = {Value::temp(0), Value::constInt(0xFFFF)};
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands = {Value::temp(1)};
+        entry.instructions = {narrow, mask, ret};
+        entry.terminated = true;
+
+        fn.blocks.push_back(entry);
+        module.functions.push_back(fn);
+
+        auto wideningResult = il::verify::Verifier::verify(module);
+        assert(wideningResult && "i64 bitwise ops may consume subwidth integer temps");
+    }
 
     {
         Module module;

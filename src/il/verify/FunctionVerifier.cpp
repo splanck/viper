@@ -256,11 +256,24 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         return {};
     };
 
+    std::unordered_map<unsigned, const Param *> functionParamsById;
+    functionParamsById.reserve(fn.params.size());
     for (const auto &param : fn.params) {
+        functionParamsById.emplace(param.id, &param);
         if (auto result = defineTemp(param.id, param.type, "function param %" + param.name);
             !result)
             return result;
     }
+
+    auto isEntryFunctionParamAlias = [&](const BasicBlock &bb, const Param &param) {
+        if (&bb != &fn.blocks.front())
+            return false;
+        auto it = functionParamsById.find(param.id);
+        if (it == functionParamsById.end())
+            return false;
+        const Param &functionParam = *it->second;
+        return param.type.kind == functionParam.type.kind;
+    };
 
     // ===== PASS 1: Pre-collect all definitions for type information =====
     // This is necessary because SimplifyCFG and other transforms may reorder blocks
@@ -275,6 +288,8 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     for (const auto &bb : fn.blocks) {
         // Block parameters define temporaries
         for (const auto &param : bb.params) {
+            if (isEntryFunctionParamAlias(bb, param))
+                continue;
             if (auto result = defineTemp(
                     param.id, param.type, "block param %" + param.name + " in ^" + bb.label);
                 !result)

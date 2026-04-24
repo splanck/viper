@@ -42,6 +42,7 @@ int main() {
     Instr add;
     add.result = 3u;
     add.op = Opcode::IAddOvf;
+    add.type = Type(Type::Kind::I64);
     add.operands.push_back(Value::temp(1));
     add.operands.push_back(Value::temp(2));
 

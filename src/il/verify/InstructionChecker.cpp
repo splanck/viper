@@ -259,6 +259,20 @@ Expected<void> applyCastUiNarrowChk(const VerifyCtx &ctx, const InstructionSpec 
     return {};
 }
 
+/// @brief Validate checked integer binary ops whose width comes from the instruction type.
+/// @details Structural checks already enforce operand arity and operand types against
+///          the instruction type; this strategy rejects non-integer annotations
+///          and records the declared integer result width.
+/// @param ctx Verification context for the instruction.
+/// @return Success or diagnostic error.
+Expected<void> applyIntegerBinary(const VerifyCtx &ctx, const InstructionSpec &) {
+    const auto kind = ctx.instr.type.kind;
+    if (!detail::isSupportedIntegerWidth(kind))
+        return fail(ctx, "integer binary result must be i16, i32, or i64");
+    ctx.types.recordResult(ctx.instr, ctx.instr.type);
+    return {};
+}
+
 /// @brief Validate shift instructions and warn on out-of-bounds constant amounts.
 /// @details Records the result type and delegates to @ref checker::checkShift
 ///          which emits a warning when the shift amount is a constant >= 64.
@@ -266,6 +280,9 @@ Expected<void> applyCastUiNarrowChk(const VerifyCtx &ctx, const InstructionSpec 
 /// @param spec Specification entry driving strategy selection.
 /// @return Empty on success (warnings do not block verification).
 Expected<void> applyShift(const VerifyCtx &ctx, const InstructionSpec &spec) {
+    const auto kind = ctx.instr.type.kind;
+    if (!detail::isSupportedIntegerWidth(kind))
+        return fail(ctx, "shift result must be i16, i32, or i64");
     ctx.types.recordResult(ctx.instr, resolveResultType(ctx, spec));
     return checkShift(ctx);
 }
@@ -299,6 +316,7 @@ constexpr std::array<StrategyFn, static_cast<size_t>(VerifyStrategy::Count)> kSt
     &applyCastFpToUiRteChk,
     &applyCastSiNarrowChk,
     &applyCastUiNarrowChk,
+    &applyIntegerBinary,
     &applyShift,
     &applyReject,
 };

@@ -43,10 +43,26 @@ constexpr Table buildTable() {
     Table table{};
     table.fill(std::nullopt);
 
-    table[static_cast<size_t>(Opcode::IAddOvf)] = makeBinary(TypeClass::I64, TypeClass::I64, true);
-    table[static_cast<size_t>(Opcode::ISubOvf)] = makeBinary(TypeClass::I64, TypeClass::I64, true);
-    table[static_cast<size_t>(Opcode::IMulOvf)] = makeBinary(TypeClass::I64, TypeClass::I64, true);
-    table[static_cast<size_t>(Opcode::SDivChk0)] = makeBinary(TypeClass::I64, TypeClass::I64, true);
+    table[static_cast<size_t>(Opcode::IAddOvf)] =
+        makeBinary(TypeClass::InstrType, TypeClass::InstrType, true);
+    table[static_cast<size_t>(Opcode::ISubOvf)] =
+        makeBinary(TypeClass::InstrType, TypeClass::InstrType, true);
+    table[static_cast<size_t>(Opcode::IMulOvf)] =
+        makeBinary(TypeClass::InstrType, TypeClass::InstrType, true);
+    table[static_cast<size_t>(Opcode::SDivChk0)] =
+        makeBinary(TypeClass::InstrType, TypeClass::InstrType, true);
+    table[static_cast<size_t>(Opcode::UDivChk0)] =
+        makeBinary(TypeClass::InstrType, TypeClass::InstrType, true);
+    table[static_cast<size_t>(Opcode::SRemChk0)] =
+        makeBinary(TypeClass::InstrType, TypeClass::InstrType, true);
+    table[static_cast<size_t>(Opcode::URemChk0)] =
+        makeBinary(TypeClass::InstrType, TypeClass::InstrType, true);
+    table[static_cast<size_t>(Opcode::And)] = makeBinary(TypeClass::I64, TypeClass::I64, false);
+    table[static_cast<size_t>(Opcode::Or)] = makeBinary(TypeClass::I64, TypeClass::I64, false);
+    table[static_cast<size_t>(Opcode::Xor)] = makeBinary(TypeClass::I64, TypeClass::I64, false);
+    table[static_cast<size_t>(Opcode::Shl)] = makeBinary(TypeClass::I64, TypeClass::I64, false);
+    table[static_cast<size_t>(Opcode::LShr)] = makeBinary(TypeClass::I64, TypeClass::I64, false);
+    table[static_cast<size_t>(Opcode::AShr)] = makeBinary(TypeClass::I64, TypeClass::I64, false);
     table[static_cast<size_t>(Opcode::FAdd)] = makeBinary(TypeClass::F64, TypeClass::F64, false);
     table[static_cast<size_t>(Opcode::FSub)] = makeBinary(TypeClass::F64, TypeClass::F64, false);
     table[static_cast<size_t>(Opcode::FMul)] = makeBinary(TypeClass::F64, TypeClass::F64, false);

@@ -88,9 +88,13 @@ int main() {
     Instr defaultCall = makeCall("callee");
     assert(aa.modRef(defaultCall) == ModRefResult::Ref);
 
-    Instr pureCall = makeCall("callee");
+    Instr pureCall = makeCall("unknown_pure");
     pureCall.CallAttr.pure = true;
     assert(aa.modRef(pureCall) == ModRefResult::NoModRef);
+
+    Instr contradictoryPureCall = makeCall("callee");
+    contradictoryPureCall.CallAttr.pure = true;
+    assert(aa.modRef(contradictoryPureCall) == ModRefResult::Ref);
 
     Instr readonlyCall = makeCall("callee");
     readonlyCall.CallAttr.readonly = true;
