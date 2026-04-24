@@ -58,11 +58,17 @@ struct RelocSig {
     size_t offset;
     uint32_t type;
     std::string targetName;
+    size_t targetObjIdx = 0;
+    uint32_t targetSectionIndex = 0;
+    size_t targetOffset = 0;
+    bool targetIsLocalDefinition = false;
     int64_t addend;
 
     bool operator==(const RelocSig &o) const {
         return offset == o.offset && type == o.type && targetName == o.targetName &&
-               addend == o.addend;
+               targetObjIdx == o.targetObjIdx && targetSectionIndex == o.targetSectionIndex &&
+               targetOffset == o.targetOffset &&
+               targetIsLocalDefinition == o.targetIsLocalDefinition && addend == o.addend;
     }
 
     bool operator<(const RelocSig &o) const {
@@ -72,6 +78,14 @@ struct RelocSig {
             return type < o.type;
         if (targetName != o.targetName)
             return targetName < o.targetName;
+        if (targetObjIdx != o.targetObjIdx)
+            return targetObjIdx < o.targetObjIdx;
+        if (targetSectionIndex != o.targetSectionIndex)
+            return targetSectionIndex < o.targetSectionIndex;
+        if (targetOffset != o.targetOffset)
+            return targetOffset < o.targetOffset;
+        if (targetIsLocalDefinition != o.targetIsLocalDefinition)
+            return targetIsLocalDefinition < o.targetIsLocalDefinition;
         return addend < o.addend;
     }
 };
@@ -86,7 +100,7 @@ struct Candidate {
 };
 
 /// Build sorted relocation signatures for a section.
-std::vector<RelocSig> buildRelocSigs(const ObjFile &obj, const ObjSection &sec) {
+std::vector<RelocSig> buildRelocSigs(const ObjFile &obj, size_t objIdx, const ObjSection &sec) {
     std::vector<RelocSig> sigs;
     sigs.reserve(sec.relocs.size());
     for (const auto &rel : sec.relocs) {
@@ -95,8 +109,18 @@ std::vector<RelocSig> buildRelocSigs(const ObjFile &obj, const ObjSection &sec) 
         sig.type = rel.type;
         sig.addend = rel.addend;
         // Resolve symbol index to name.
-        if (rel.symIndex < obj.symbols.size())
-            sig.targetName = obj.symbols[rel.symIndex].name;
+        if (rel.symIndex < obj.symbols.size()) {
+            const auto &target = obj.symbols[rel.symIndex];
+            sig.targetName = target.name;
+            if (target.binding == ObjSymbol::Local && target.sectionIndex != 0) {
+                sig.targetIsLocalDefinition = true;
+                sig.targetObjIdx = objIdx;
+                sig.targetSectionIndex = target.sectionIndex;
+                sig.targetOffset = target.offset;
+            }
+        } else {
+            sig.targetName = "$invalid:" + std::to_string(rel.symIndex);
+        }
         sigs.push_back(std::move(sig));
     }
     std::sort(sigs.begin(), sigs.end());
@@ -113,6 +137,10 @@ uint64_t hashCandidate(const ObjSection &sec, const std::vector<RelocSig> &sigs)
             h ^= static_cast<uint8_t>(c);
             h *= 1099511628211ULL;
         }
+        h = fnv1aMix(h, sig.targetObjIdx);
+        h = fnv1aMix(h, sig.targetSectionIndex);
+        h = fnv1aMix(h, sig.targetOffset);
+        h = fnv1aMix(h, sig.targetIsLocalDefinition ? 1 : 0);
         h = fnv1aMix(h, static_cast<uint64_t>(sig.addend));
     }
     return h;
@@ -216,6 +244,17 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
             }
             if (!hasGlobalAtZero)
                 continue;
+            bool hasOtherSectionSymbol = false;
+            for (size_t sym_i = 1; sym_i < obj.symbols.size(); ++sym_i) {
+                const auto &sym = obj.symbols[sym_i];
+                if (sym.sectionIndex == si &&
+                    !(sym.binding == ObjSymbol::Global && sym.offset == 0 && sym.name == funcName)) {
+                    hasOtherSectionSymbol = true;
+                    break;
+                }
+            }
+            if (hasOtherSectionSymbol)
+                continue;
 
             // Skip address-taken functions.
             if (addressTaken.count(funcName))
@@ -226,7 +265,7 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
             cand.objIdx = oi;
             cand.secIdx = si;
             cand.funcSymName = funcName;
-            cand.sigs = buildRelocSigs(obj, sec);
+            cand.sigs = buildRelocSigs(obj, oi, sec);
             cand.hash = hashCandidate(sec, cand.sigs);
             candidates.push_back(std::move(cand));
         }

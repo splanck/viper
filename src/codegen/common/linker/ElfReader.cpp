@@ -18,6 +18,7 @@
 #include "codegen/common/linker/ObjFileReader.hpp"
 
 #include <cstring>
+#include <limits>
 
 namespace viper::codegen::linker {
 
@@ -99,12 +100,24 @@ template <typename T> static const T *readStruct(const uint8_t *data, size_t siz
     return reinterpret_cast<const T *>(data + offset);
 }
 
-static const char *readString(
+static bool checkedRange(size_t off, size_t len, size_t size) {
+    return off <= size && len <= size - off;
+}
+
+static std::string readString(
     const uint8_t *data, size_t size, size_t strTabOff, size_t strTabSize, uint32_t nameOff) {
-    size_t pos = strTabOff + nameOff;
-    if (pos >= size)
+    if (nameOff >= strTabSize)
         return "";
-    return reinterpret_cast<const char *>(data + pos);
+    size_t pos = strTabOff + nameOff;
+    if (!checkedRange(strTabOff, strTabSize, size) || pos < strTabOff || pos >= strTabOff + strTabSize)
+        return "";
+    const uint8_t *begin = data + pos;
+    const uint8_t *end = data + strTabOff + strTabSize;
+    const void *nul = std::memchr(begin, '\0', static_cast<size_t>(end - begin));
+    if (!nul)
+        return "";
+    return std::string(reinterpret_cast<const char *>(begin),
+                       static_cast<const char *>(nul));
 }
 
 bool readElfObj(
@@ -121,6 +134,12 @@ bool readElfObj(
     obj.machine = ehdr->e_machine;
     obj.name = name;
 
+    if (ehdr->e_ident[4] != 2 || ehdr->e_ident[5] != 1 || ehdr->e_ident[6] != 1 ||
+        ehdr->e_type != 1 || ehdr->e_shentsize != sizeof(elf::Elf64_Shdr)) {
+        err << "error: " << name << ": unsupported ELF object format\n";
+        return false;
+    }
+
     const uint16_t shnum = ehdr->e_shnum;
     const uint16_t shstrndx = ehdr->e_shstrndx;
 
@@ -129,6 +148,12 @@ bool readElfObj(
 
     // Read section headers.
     std::vector<const elf::Elf64_Shdr *> shdrs(shnum);
+    if (!checkedRange(static_cast<size_t>(ehdr->e_shoff),
+                      static_cast<size_t>(shnum) * ehdr->e_shentsize,
+                      size)) {
+        err << "error: " << name << ": section header table is out of bounds\n";
+        return false;
+    }
     for (uint16_t i = 0; i < shnum; ++i) {
         shdrs[i] = readStruct<elf::Elf64_Shdr>(data, size, ehdr->e_shoff + i * ehdr->e_shentsize);
         if (!shdrs[i]) {
@@ -177,7 +202,10 @@ bool readElfObj(
         if (sh->sh_type == elf::SHT_NOBITS) {
             sec.zeroFill = true;
             sec.data.resize(static_cast<size_t>(sh->sh_size), 0);
-        } else if (sh->sh_size > 0 && sh->sh_offset + sh->sh_size <= size) {
+        } else if (sh->sh_size > 0 &&
+                   checkedRange(static_cast<size_t>(sh->sh_offset),
+                                static_cast<size_t>(sh->sh_size),
+                                size)) {
             auto off = static_cast<size_t>(sh->sh_offset);
             auto sz = static_cast<size_t>(sh->sh_size);
             sec.data.assign(data + off, data + off + sz);
@@ -206,6 +234,12 @@ bool readElfObj(
     // Read symbols.
     std::vector<uint32_t> symMap; // ELF sym index → ObjFile sym index.
     if (symSh) {
+        if (!checkedRange(static_cast<size_t>(symSh->sh_offset),
+                          static_cast<size_t>(symSh->sh_size),
+                          size)) {
+            err << "error: " << name << ": symbol table is out of bounds\n";
+            return false;
+        }
         const uint32_t symCount = static_cast<uint32_t>(symSh->sh_size / sizeof(elf::Elf64_Sym));
         if (symCount > kMaxObjSymbols) {
             err << "error: " << name << ": symbol count " << symCount << " exceeds limit\n";
@@ -258,6 +292,12 @@ bool readElfObj(
             continue;
 
         auto &targetSec = obj.sections[secMap[targetSecElf]];
+        if (!checkedRange(static_cast<size_t>(shdrs[i]->sh_offset),
+                          static_cast<size_t>(shdrs[i]->sh_size),
+                          size)) {
+            err << "error: " << name << ": relocation table is out of bounds\n";
+            return false;
+        }
         const uint32_t relCount =
             static_cast<uint32_t>(shdrs[i]->sh_size / sizeof(elf::Elf64_Rela));
 
@@ -271,7 +311,12 @@ bool readElfObj(
             rel.offset = static_cast<size_t>(rela->r_offset);
             rel.type = static_cast<uint32_t>(rela->r_info & 0xFFFFFFFF);
             const uint32_t elfSymIdx = static_cast<uint32_t>(rela->r_info >> 32);
-            rel.symIndex = (elfSymIdx < symMap.size()) ? symMap[elfSymIdx] : 0;
+            if (elfSymIdx >= symMap.size()) {
+                err << "error: " << name << ": relocation references invalid symbol index "
+                    << elfSymIdx << "\n";
+                return false;
+            }
+            rel.symIndex = symMap[elfSymIdx];
             rel.addend = rela->r_addend;
 
             targetSec.relocs.push_back(rel);

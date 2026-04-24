@@ -54,6 +54,12 @@ static bool isAlwaysLiveSection(const std::string &name) {
     if (name == ".init" || name == ".fini")
         return true;
 
+    // Unwind and exception metadata are discovered by platform runtimes.
+    if (name == ".eh_frame" || name == ".gcc_except_table" ||
+        name.find("__compact_unwind") != std::string::npos ||
+        name.find("__eh_frame") != std::string::npos)
+        return true;
+
     // COFF CRT init/term tables. Keep every .CRT$* contribution alive so
     // sentinel ranges like __xi_a..__xi_z and __xc_a..__xc_z still bracket
     // the actual initializer callbacks after archive extraction.

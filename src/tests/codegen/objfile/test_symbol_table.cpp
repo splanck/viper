@@ -75,6 +75,17 @@ int main() {
         CHECK(st.count() == 2); // no new entry
     }
 
+    // --- duplicate add keeps first name lookup stable ---
+    {
+        SymbolTable st;
+        uint32_t first = st.add(Symbol{"dup", SymbolBinding::Local, SymbolSection::Text, 4, 0});
+        uint32_t second = st.add(Symbol{"dup", SymbolBinding::Local, SymbolSection::Text, 12, 0});
+        CHECK(first == 1);
+        CHECK(second == 2);
+        CHECK(st.find("dup") == first);
+        CHECK(st.at(second).offset == 12);
+    }
+
     // --- findOrAdd: new (creates External) ---
     {
         SymbolTable st;

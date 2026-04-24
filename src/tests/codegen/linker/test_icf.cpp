@@ -386,6 +386,30 @@ int main() {
         CHECK(globalSyms["funcB"].objIndex == 1);
     }
 
+    // --- Test 9: functions with local section symbols are not folded ---
+    {
+        ObjSymbol localA;
+        localA.name = ".Llocal";
+        localA.binding = ObjSymbol::Local;
+        localA.sectionIndex = 1;
+        localA.offset = 2;
+
+        ObjSymbol localB = localA;
+
+        auto obj1 = makeTextObj("a.o", "funcA", {0xC3, 0x90, 0x90, 0x90}, {}, {localA});
+        auto obj2 = makeTextObj("b.o", "funcB", {0xC3, 0x90, 0x90, 0x90}, {}, {localB});
+
+        std::vector<ObjFile> objs = {obj1, obj2};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        registerGlobal(globalSyms, "funcA", 0, 1);
+        registerGlobal(globalSyms, "funcB", 1, 1);
+
+        size_t folded = foldIdenticalCode(objs, globalSyms);
+        CHECK(folded == 0);
+        CHECK(!objs[0].sections[1].data.empty());
+        CHECK(!objs[1].sections[1].data.empty());
+    }
+
     // --- Result ---
     if (gFail == 0) {
         std::cout << "All ICF tests passed.\n";

@@ -320,6 +320,25 @@ int main() {
         CHECK(!objs[1].sections[3].data.empty());
     }
 
+    // --- EH/unwind metadata sections are always live ---
+    {
+        auto user = makeObj("user.o", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+
+        auto eh = makeObj("eh.o", {".eh_frame", ".gcc_except_table", "__LD,__compact_unwind"});
+        std::vector<ObjFile> objs = {user, eh};
+
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        globalSyms["main"] = {"main", GlobalSymEntry::Global, 0, 1, 0, 0};
+        std::ostringstream err;
+
+        deadStrip(objs, 1, globalSyms, "main", err);
+
+        CHECK(!objs[1].sections[1].data.empty());
+        CHECK(!objs[1].sections[2].data.empty());
+        CHECK(!objs[1].sections[3].data.empty());
+    }
+
     // --- Result ---
     if (gFail == 0) {
         std::cout << "All DeadStripPass tests passed.\n";

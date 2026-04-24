@@ -17,8 +17,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/linker/ObjFileReader.hpp"
+#include "codegen/common/linker/RelocConstants.hpp"
 
 #include <cstring>
+#include <string>
 
 namespace viper::codegen::linker {
 
@@ -115,10 +117,85 @@ static uint16_t readLE16(const uint8_t *p) {
     return static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8);
 }
 
+static uint64_t readLE64(const uint8_t *p) {
+    uint64_t v = 0;
+    for (unsigned i = 0; i < 8; ++i)
+        v |= static_cast<uint64_t>(p[i]) << (i * 8);
+    return v;
+}
+
+static bool checkedRange(size_t off, size_t len, size_t size) {
+    return off <= size && len <= size - off;
+}
+
+static std::string readBoundedString(const uint8_t *data, size_t off, size_t len) {
+    const uint8_t *begin = data + off;
+    const void *nul = std::memchr(begin, '\0', len);
+    if (!nul)
+        return "";
+    return std::string(reinterpret_cast<const char *>(begin),
+                       static_cast<const char *>(nul));
+}
+
+static int64_t signExtend(uint64_t value, unsigned bits) {
+    const uint64_t signBit = uint64_t{1} << (bits - 1);
+    const uint64_t mask = (uint64_t{1} << bits) - 1;
+    value &= mask;
+    return static_cast<int64_t>((value ^ signBit) - signBit);
+}
+
 template <typename T> static const T *coffAt(const uint8_t *data, size_t size, size_t offset) {
     if (offset + sizeof(T) > size)
         return nullptr;
     return reinterpret_cast<const T *>(data + offset);
+}
+
+static int64_t extractCoffAddend(uint16_t machine,
+                                 uint16_t relocType,
+                                 const std::vector<uint8_t> &sectionData,
+                                 size_t offset) {
+    if (machine == coff::IMAGE_FILE_MACHINE_AMD64) {
+        if (relocType == coff_x64::kAddr64 && offset + 8 <= sectionData.size())
+            return static_cast<int64_t>(readLE64(sectionData.data() + offset));
+        if (relocType != coff_x64::kSection && offset + 4 <= sectionData.size()) {
+            int32_t val = 0;
+            std::memcpy(&val, sectionData.data() + offset, 4);
+            return val;
+        }
+        return 0;
+    }
+
+    if (machine != coff::IMAGE_FILE_MACHINE_ARM64 || offset + 4 > sectionData.size())
+        return 0;
+
+    if (relocType == coff_a64::kAddr64) {
+        if (offset + 8 <= sectionData.size())
+            return static_cast<int64_t>(readLE64(sectionData.data() + offset));
+        return 0;
+    }
+
+    const uint32_t insn = readLE32(sectionData.data() + offset);
+    switch (relocType) {
+        case coff_a64::kBranch26:
+            return signExtend(insn & 0x03FFFFFFu, 26) << 2;
+        case coff_a64::kBranch19:
+            return signExtend((insn >> 5) & 0x7FFFFu, 19) << 2;
+        case coff_a64::kPageRel21: {
+            const uint32_t immlo = (insn >> 29) & 0x3u;
+            const uint32_t immhi = (insn >> 5) & 0x7FFFFu;
+            return signExtend((immhi << 2) | immlo, 21) << 12;
+        }
+        case coff_a64::kPageOff12A:
+            return static_cast<int64_t>((insn >> 10) & 0xFFFu);
+        case coff_a64::kPageOff12L: {
+            uint32_t shift = insn >> 30;
+            if ((insn & 0x04800000u) == 0x04800000u)
+                shift = 4;
+            return static_cast<int64_t>(((insn >> 10) & 0xFFFu) << shift);
+        }
+        default:
+            return 0;
+    }
 }
 
 bool readCoffObj(
@@ -137,6 +214,11 @@ bool readCoffObj(
     obj.isLittleEndian = true;
     obj.name = name;
     obj.machine = hdr->Machine;
+    if (hdr->Machine != coff::IMAGE_FILE_MACHINE_AMD64 &&
+        hdr->Machine != coff::IMAGE_FILE_MACHINE_ARM64) {
+        err << "error: " << name << ": unsupported COFF machine\n";
+        return false;
+    }
 
     // Locate string table (immediately after symbol table).
     size_t strTabOff = hdr->PointerToSymbolTable +
@@ -144,13 +226,23 @@ bool readCoffObj(
     uint32_t strTabSize = 0;
     if (strTabOff + 4 <= size)
         strTabSize = readLE32(data + strTabOff);
+    if (hdr->NumberOfSymbols > 0 &&
+        !checkedRange(hdr->PointerToSymbolTable,
+                      static_cast<size_t>(hdr->NumberOfSymbols) * sizeof(coff::CoffSymbol),
+                      size)) {
+        err << "error: " << name << ": COFF symbol table is out of bounds\n";
+        return false;
+    }
 
     auto readSymName = [&](const coff::CoffSymbol *sym) -> std::string {
         if (sym->Name.LongName.Zeros == 0) {
             // Long name: offset into string table.
-            size_t off = strTabOff + sym->Name.LongName.Offset;
-            if (off < size)
-                return std::string(reinterpret_cast<const char *>(data + off));
+            if (sym->Name.LongName.Offset < strTabSize) {
+                size_t off = strTabOff + sym->Name.LongName.Offset;
+                size_t remain = strTabSize - sym->Name.LongName.Offset;
+                if (checkedRange(off, remain, size))
+                    return readBoundedString(data, off, remain);
+            }
             return "";
         }
         // Short name: up to 8 chars, NUL-padded.
@@ -179,9 +271,12 @@ bool readCoffObj(
             size_t off = 0;
             for (int c = 1; c < 8 && sh->Name[c] >= '0' && sh->Name[c] <= '9'; ++c)
                 off = off * 10 + (sh->Name[c] - '0');
-            size_t pos = strTabOff + off;
-            if (pos < size)
-                sec.name = reinterpret_cast<const char *>(data + pos);
+            if (off < strTabSize) {
+                size_t pos = strTabOff + off;
+                size_t remain = strTabSize - off;
+                if (checkedRange(pos, remain, size))
+                    sec.name = readBoundedString(data, pos, remain);
+            }
         } else {
             size_t len = 0;
             while (len < 8 && sh->Name[len] != '\0')
@@ -210,7 +305,8 @@ bool readCoffObj(
             sec.zeroFill = true;
             const uint32_t zeroSize = sh->VirtualSize != 0 ? sh->VirtualSize : sh->SizeOfRawData;
             sec.data.resize(zeroSize, 0);
-        } else if (sh->SizeOfRawData > 0 && sh->PointerToRawData + sh->SizeOfRawData <= size) {
+        } else if (sh->SizeOfRawData > 0 &&
+                   checkedRange(sh->PointerToRawData, sh->SizeOfRawData, size)) {
             sec.data.assign(data + sh->PointerToRawData,
                             data + sh->PointerToRawData + sh->SizeOfRawData);
         }
@@ -225,16 +321,13 @@ bool readCoffObj(
             ObjReloc rel;
             rel.offset = cr->VirtualAddress;
             rel.type = cr->Type;
-            rel.symIndex = cr->SymbolTableIndex + 1; // +1 because ObjFile has null sym at 0.
-
-            // Extract addend from instruction bytes.
-            if (rel.offset + 4 <= sec.data.size()) {
-                int32_t val;
-                std::memcpy(&val, sec.data.data() + rel.offset, 4);
-                rel.addend = val;
-            } else {
-                rel.addend = 0;
+            if (cr->SymbolTableIndex >= hdr->NumberOfSymbols) {
+                err << "error: " << name << ": COFF relocation references invalid symbol index "
+                    << cr->SymbolTableIndex << "\n";
+                return false;
             }
+            rel.symIndex = cr->SymbolTableIndex + 1; // +1 because ObjFile has null sym at 0.
+            rel.addend = extractCoffAddend(hdr->Machine, rel.type, sec.data, rel.offset);
 
             sec.relocs.push_back(rel);
         }

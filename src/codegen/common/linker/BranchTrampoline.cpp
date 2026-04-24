@@ -63,6 +63,23 @@ std::unordered_map<uint64_t, std::pair<size_t, size_t>> buildLocMap(const LinkLa
     return map;
 }
 
+bool resolveLocalSymbol(const ObjSymbol &sym,
+                        size_t objIdx,
+                        const std::unordered_map<uint64_t, std::pair<size_t, size_t>> &locMap,
+                        const LinkLayout &layout,
+                        uint64_t &addr) {
+    if (sym.sectionIndex == 0)
+        return false;
+    auto it = locMap.find(makeKey(objIdx, sym.sectionIndex));
+    if (it == locMap.end())
+        return false;
+    const auto &outSec = layout.sections[it->second.first];
+    if (it->second.second + sym.offset > outSec.data.size())
+        return false;
+    addr = outSec.virtualAddr + it->second.second + sym.offset;
+    return true;
+}
+
 constexpr size_t kTrampolineSize = 12;
 
 bool branch26Reachable(uint64_t from, uint64_t to) {
@@ -172,13 +189,19 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                     continue;
 
                 // Resolve target symbol address.
-                const std::string &symName =
-                    (rel.symIndex < obj.symbols.size()) ? obj.symbols[rel.symIndex].name : "";
+                if (rel.symIndex >= obj.symbols.size()) {
+                    err << "error: " << obj.name << ": branch relocation references invalid symbol index "
+                        << rel.symIndex << "\n";
+                    return false;
+                }
+                const std::string &symName = obj.symbols[rel.symIndex].name;
+                uint64_t S = 0;
                 auto symIt = layout.globalSyms.find(symName);
-                if (symIt == layout.globalSyms.end())
+                if (symIt != layout.globalSyms.end()) {
+                    S = symIt->second.resolvedAddr;
+                } else if (!resolveLocalSymbol(obj.symbols[rel.symIndex], oi, locMap, layout, S)) {
                     continue;
-
-                const uint64_t S = symIt->second.resolvedAddr;
+                }
                 const int64_t A = rel.addend;
                 const uint64_t P = secVA + chunkBase + rel.offset;
                 const int64_t disp = static_cast<int64_t>(S) + A - static_cast<int64_t>(P);
@@ -191,7 +214,10 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                 oob.objIdx = oi;
                 oob.secIdx = si;
                 oob.relocIdx = ri;
-                oob.targetSymName = symName;
+                oob.targetSymName =
+                    symName.empty() ? ("$local@" + std::to_string(oi) + ":" +
+                                       std::to_string(rel.symIndex))
+                                    : symName;
                 oob.targetAddr = static_cast<uint64_t>(static_cast<int64_t>(S) + A);
                 outOfRange.push_back(std::move(oob));
             }
@@ -229,7 +255,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         TrampolineEntry *chosenExisting = nullptr;
         uint64_t bestExistingDistance = 0;
         for (auto &[key, trampoline] : trampolines) {
-            if (trampoline.targetSymName != oob.targetSymName ||
+            if (trampoline.targetAddr != oob.targetAddr ||
                 !branch26Reachable(sourceOffset, trampoline.islandBoundary))
                 continue;
             const uint64_t dist = (sourceOffset > trampoline.islandBoundary)
@@ -254,7 +280,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         oob.islandBoundary = chosenBoundary;
 
         const std::string trampolineKey =
-            oob.targetSymName + "@" + std::to_string(oob.islandBoundary);
+            std::to_string(oob.targetAddr) + "@" + std::to_string(oob.islandBoundary);
         auto [it, inserted] = trampolines.emplace(trampolineKey, TrampolineEntry{});
         if (inserted) {
             it->second.targetSymName = oob.targetSymName;

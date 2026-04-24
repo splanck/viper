@@ -492,6 +492,12 @@ bool MachOWriter::write(const std::string &path,
             }
         }
 
+        if (!haveSymIdx) {
+            err << "MachOWriter: relocation at offset " << rel.offset
+                << " references unknown symbol index " << rel.symbolIndex << "\n";
+            return false;
+        }
+
         uint32_t packed =
             packRelocInfo(symIdx, attrs.pcrel, attrs.length, 1 /*extern*/, attrs.type);
         textRelocs.push_back({static_cast<uint32_t>(rel.offset), packed});
@@ -531,6 +537,11 @@ bool MachOWriter::write(const std::string &path,
             auto it = textSymMap.find(entry.symbolIndex);
             if (it != textSymMap.end())
                 symIdx = it->second;
+            else {
+                err << "MachOWriter: compact unwind entry references unknown symbol index "
+                    << entry.symbolIndex << "\n";
+                return false;
+            }
 
             // packRelocInfo: symbolnum, pcrel=0, length=3 (8 bytes), extern=1, type=0 (UNSIGNED)
             uint32_t packed = packRelocInfo(symIdx, 0, 3, 1, 0);
@@ -742,6 +753,16 @@ bool MachOWriter::write(const std::string &path,
         return false;
     }
     return true;
+}
+
+bool MachOWriter::write(const std::string &path,
+                        const std::vector<CodeSection> &textSections,
+                        const CodeSection &rodata,
+                        std::ostream &err) {
+    CodeSection merged;
+    for (const auto &ts : textSections)
+        merged.appendSection(ts);
+    return write(path, merged, rodata, err);
 }
 
 } // namespace viper::codegen::objfile

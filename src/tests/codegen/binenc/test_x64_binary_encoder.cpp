@@ -765,7 +765,7 @@ int main() {
     }
 
     // ================================================================
-    // 32. Darwin symbol prefix
+    // 32. Darwin symbols stay canonical until Mach-O writing
     // ================================================================
     {
         MFunction fn;
@@ -780,20 +780,20 @@ int main() {
         CodeSection text, rodata;
         enc.encodeFunction(fn, text, rodata, /*isDarwin=*/true);
 
-        // Function symbol should be "_main".
+        // Function symbol should remain unmangled in CodeSection.
         bool foundMain = false;
         for (uint32_t i = 0; i < text.symbols().count(); ++i) {
-            if (text.symbols().at(i).name == "_main") {
+            if (text.symbols().at(i).name == "main") {
                 foundMain = true;
                 break;
             }
         }
         CHECK(foundMain);
 
-        // External call should be to "_rt_init".
+        // External call should remain unmangled in CodeSection.
         bool foundRtInit = false;
         for (uint32_t i = 0; i < text.symbols().count(); ++i) {
-            if (text.symbols().at(i).name == "_rt_init") {
+            if (text.symbols().at(i).name == "rt_init") {
                 foundRtInit = true;
                 break;
             }

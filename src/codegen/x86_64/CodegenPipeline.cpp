@@ -447,10 +447,8 @@ PipelineResult CodegenPipeline::run() {
                 std::vector<uint8_t> assetBlob(static_cast<size_t>(blobSize));
                 af.read(reinterpret_cast<char *>(assetBlob.data()), blobSize);
 
-                const bool isDarwin = targetObjectFormat(targetPlatform) == objfile::ObjFormat::MachO;
-                const char *blobLabel = isDarwin ? "_viper_asset_blob" : "viper_asset_blob";
-                const char *sizeLabel =
-                    isDarwin ? "_viper_asset_blob_size" : "viper_asset_blob_size";
+                const char *blobLabel = "viper_asset_blob";
+                const char *sizeLabel = "viper_asset_blob_size";
                 auto &rodata = *pipelineModule.binaryRodata;
                 rodata.alignTo(16);
                 rodata.defineSymbol(

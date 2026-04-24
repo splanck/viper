@@ -403,7 +403,6 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
     BinaryEmitResult result{};
     std::ostringstream errorStream{};
     const objfile::ObjFormat format = targetObjectFormat(opt.targetPlatform);
-    const bool isDarwin = format == objfile::ObjFormat::MachO;
     const bool emitWin64Unwind = format == objfile::ObjFormat::COFF;
 
     if (const auto warning = syntaxWarning(opt); !warning.empty()) {
@@ -422,8 +421,6 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
 
     for (int i = 0; i < static_cast<int>(roData.stringCount()); ++i) {
         std::string label = roData.stringLabel(i);
-        if (isDarwin)
-            label = "_" + label;
         result.rodata.defineSymbol(
             label, objfile::SymbolBinding::Local, objfile::SymbolSection::Rodata);
         const auto &bytes = roData.stringBytes(i);
@@ -434,8 +431,6 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
         result.rodata.alignTo(8);
     for (int i = 0; i < static_cast<int>(roData.f64Count()); ++i) {
         std::string label = roData.f64Label(i);
-        if (isDarwin)
-            label = "_" + label;
         result.rodata.defineSymbol(
             label, objfile::SymbolBinding::Local, objfile::SymbolSection::Rodata);
         double val = roData.f64Value(i);
@@ -453,7 +448,12 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
         funcEncoder.setDebugLineTable(&funcDebugLines);
         try {
             funcEncoder.encodeFunction(
-                mir[i], funcText, result.rodata, isDarwin, &frames[i], emitWin64Unwind);
+                mir[i],
+                funcText,
+                result.rodata,
+                format == objfile::ObjFormat::MachO,
+                &frames[i],
+                emitWin64Unwind);
         } catch (const std::exception &ex) {
             BinaryEmitResult failure{};
             failure.errors =

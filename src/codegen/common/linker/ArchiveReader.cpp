@@ -31,6 +31,17 @@ static constexpr const char *kArMagic = "!<arch>\n";
 static constexpr size_t kArMagicLen = 8;
 static constexpr size_t kArHeaderLen = 60;
 
+static bool checkedAdd(size_t a, size_t b, size_t &out) {
+    if (a > std::numeric_limits<size_t>::max() - b)
+        return false;
+    out = a + b;
+    return true;
+}
+
+static bool checkedRange(size_t off, size_t len, size_t size) {
+    return off <= size && len <= size - off;
+}
+
 /// Read a big-endian 32-bit integer from raw bytes.
 static uint32_t readBE32(const uint8_t *p) {
     return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
@@ -115,7 +126,11 @@ static void parseGnuSymbolTable(const uint8_t *data,
     if (size < 4)
         return;
     const uint32_t count = readBE32(data);
-    if (size < 4 + count * 4u)
+    size_t offsetsBytes = static_cast<size_t>(count) * 4;
+    if (count != 0 && offsetsBytes / 4 != count)
+        return;
+    size_t namesOff = 0;
+    if (!checkedAdd(4, offsetsBytes, namesOff) || namesOff > size)
         return;
 
     // Offsets array.
@@ -124,12 +139,15 @@ static void parseGnuSymbolTable(const uint8_t *data,
         offsets[i] = readBE32(data + 4 + i * 4);
 
     // Symbol names follow offsets, NUL-terminated.
-    const char *namePtr = reinterpret_cast<const char *>(data + 4 + count * 4);
+    const char *namePtr = reinterpret_cast<const char *>(data + namesOff);
     const char *nameEnd = reinterpret_cast<const char *>(data + size);
     for (uint32_t i = 0; i < count && namePtr < nameEnd; ++i) {
-        std::string symName(namePtr);
+        const char *nul = std::find(namePtr, nameEnd, '\0');
+        if (nul == nameEnd)
+            break;
+        std::string symName(namePtr, nul);
         symbols.emplace_back(std::move(symName), offsets[i]);
-        namePtr += symbols.back().first.size() + 1;
+        namePtr = nul + 1;
     }
 }
 
@@ -148,19 +166,30 @@ static void parseBsdSymbolTable(const uint8_t *data,
     };
 
     const uint32_t ranlibSize = readLE32(data);
+    if ((ranlibSize % 8) != 0)
+        return;
     const uint32_t ranlibCount = ranlibSize / 8;
-    if (size < 4 + ranlibSize + 4)
+    size_t strSizeOff = 0;
+    if (!checkedAdd(4, ranlibSize, strSizeOff) || !checkedRange(strSizeOff, 4, size))
         return;
 
     const uint8_t *ranlibData = data + 4;
-    const uint32_t strSize = readLE32(data + 4 + ranlibSize);
-    const char *strPool = reinterpret_cast<const char *>(data + 4 + ranlibSize + 4);
+    const uint32_t strSize = readLE32(data + strSizeOff);
+    size_t strPoolOff = 0;
+    if (!checkedAdd(strSizeOff, 4, strPoolOff) || !checkedRange(strPoolOff, strSize, size))
+        return;
+    const char *strPool = reinterpret_cast<const char *>(data + strPoolOff);
+    const char *strEnd = strPool + strSize;
 
     for (uint32_t i = 0; i < ranlibCount; ++i) {
         const uint32_t strOff = readLE32(ranlibData + i * 8);
         const uint32_t memberOff = readLE32(ranlibData + i * 8 + 4);
         if (strOff < strSize) {
-            std::string symName(strPool + strOff);
+            const char *symStart = strPool + strOff;
+            const char *nul = std::find(symStart, strEnd, '\0');
+            if (nul == strEnd)
+                continue;
+            std::string symName(symStart, nul);
             symbols.emplace_back(std::move(symName), memberOff);
         }
     }
@@ -181,18 +210,24 @@ static void parseCoffSecondLinkerMember(const uint8_t *data,
 
     const uint32_t memberCount = readLE32(data);
     const size_t offsetsBytes = static_cast<size_t>(memberCount) * 4;
-    if (offsetsBytes > size || 4 + offsetsBytes + 4 > size)
+    if (memberCount != 0 && offsetsBytes / 4 != memberCount)
+        return;
+    size_t symbolCountOff = 0;
+    if (!checkedAdd(4, offsetsBytes, symbolCountOff) || !checkedRange(symbolCountOff, 4, size))
         return;
 
     const uint8_t *offsets = data + 4;
-    const uint8_t *symbolCountPtr = offsets + offsetsBytes;
+    const uint8_t *symbolCountPtr = data + symbolCountOff;
     const uint32_t symbolCount = readLE32(symbolCountPtr);
     const size_t indexBytes = static_cast<size_t>(symbolCount) * 2;
-    if (indexBytes > size || 4 + offsetsBytes + 4 + indexBytes > size)
+    if (symbolCount != 0 && indexBytes / 2 != symbolCount)
+        return;
+    size_t namesOff = 0;
+    if (!checkedAdd(symbolCountOff + 4, indexBytes, namesOff) || namesOff > size)
         return;
 
     const uint8_t *indices = symbolCountPtr + 4;
-    const char *namePtr = reinterpret_cast<const char *>(indices + indexBytes);
+    const char *namePtr = reinterpret_cast<const char *>(data + namesOff);
     const char *nameEnd = reinterpret_cast<const char *>(data + size);
 
     for (uint32_t i = 0; i < symbolCount && namePtr < nameEnd; ++i) {
@@ -388,7 +423,7 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err) {
     for (const auto &[symName, fileOffset] : rawSymbols) {
         auto it = headerOffsetToIdx.find(fileOffset);
         if (it != headerOffsetToIdx.end())
-            ar.symbolIndex[symName] = it->second;
+            ar.symbolIndex.emplace(symName, it->second);
     }
 
     return true;

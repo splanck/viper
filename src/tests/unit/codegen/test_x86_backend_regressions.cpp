@@ -701,8 +701,10 @@ TEST(X86BackendRegressions, BinaryEmissionHonorsTargetPlatformSymbolMangling) {
     darwinOpts.targetPlatform = CodegenOptions::TargetPlatform::Darwin;
     const BinaryEmitResult darwin = compileBinary(fn, darwinOpts);
     ASSERT_TRUE(darwin.errors.empty());
-    EXPECT_NE(darwin.text.symbols().find("_main"), 0U);
-    EXPECT_EQ(darwin.text.symbols().find("main"), 0U);
+    // Binary emission records canonical symbol names. Mach-O ABI underscores
+    // are applied by the object writer, not stored in CodeSection.
+    EXPECT_NE(darwin.text.symbols().find("main"), 0U);
+    EXPECT_EQ(darwin.text.symbols().find("_main"), 0U);
 }
 
 TEST(X86BackendRegressions, UnknownOpcodeFailsAssemblyEmission) {

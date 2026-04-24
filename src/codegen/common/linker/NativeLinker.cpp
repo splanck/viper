@@ -40,6 +40,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <iomanip>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -126,6 +127,61 @@ const char *archName(LinkArch arch) {
     return "unknown";
 }
 
+ObjFileFormat expectedFormat(LinkPlatform platform) {
+    switch (platform) {
+        case LinkPlatform::Linux:
+            return ObjFileFormat::ELF;
+        case LinkPlatform::macOS:
+            return ObjFileFormat::MachO;
+        case LinkPlatform::Windows:
+            return ObjFileFormat::COFF;
+    }
+    return ObjFileFormat::Unknown;
+}
+
+uint16_t expectedMachine(LinkPlatform platform, LinkArch arch) {
+    if (platform == LinkPlatform::Windows)
+        return arch == LinkArch::AArch64 ? 0xAA64 : 0x8664;
+    return arch == LinkArch::AArch64 ? 183 : 62;
+}
+
+const char *formatName(ObjFileFormat format) {
+    switch (format) {
+        case ObjFileFormat::ELF:
+            return "ELF";
+        case ObjFileFormat::MachO:
+            return "Mach-O";
+        case ObjFileFormat::COFF:
+            return "COFF";
+        case ObjFileFormat::Unknown:
+            return "unknown";
+    }
+    return "unknown";
+}
+
+bool validateInputObjects(const std::vector<ObjFile> &objects,
+                          LinkPlatform platform,
+                          LinkArch arch,
+                          std::ostream &err) {
+    const ObjFileFormat wantFormat = expectedFormat(platform);
+    const uint16_t wantMachine = expectedMachine(platform, arch);
+    for (const auto &obj : objects) {
+        if (obj.name.size() > 0 && obj.name[0] == '<')
+            continue;
+        if (obj.format != wantFormat) {
+            err << "error: " << obj.name << ": " << formatName(obj.format)
+                << " object cannot be linked into " << platformName(platform) << ' '
+                << archName(arch) << " output\n";
+            return false;
+        }
+        if (obj.machine != wantMachine) {
+            err << "error: " << obj.name << ": machine 0x" << std::hex << obj.machine
+                << std::dec << " does not match target " << archName(arch) << "\n";
+            return false;
+        }
+    }
+    return true;
+}
 
 void appendArm64Insn(std::vector<uint8_t> &data, uint32_t insn) {
     data.push_back(static_cast<uint8_t>(insn & 0xFF));
@@ -688,8 +744,8 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     for (const auto &extraPath : opts.extraObjPaths) {
         ObjFile extraObj;
         if (!readObjFile(extraPath, extraObj, err)) {
-            err << "warning: failed to read extra object '" << extraPath << "', skipping\n";
-            continue;
+            err << "error: failed to read extra object '" << extraPath << "'\n";
+            return 1;
         }
         extraObjects.push_back(std::move(extraObj));
     }
@@ -699,8 +755,8 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     for (const auto &arPath : opts.archivePaths) {
         Archive ar;
         if (!readArchive(arPath, ar, err)) {
-            err << "warning: failed to read archive '" << arPath << "', skipping\n";
-            continue;
+            err << "error: failed to read archive '" << arPath << "'\n";
+            return 1;
         }
         archives.push_back(std::move(ar));
     }
@@ -723,6 +779,8 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         err << "error: symbol resolution failed\n";
         return 1;
     }
+    if (!validateInputObjects(allObjects, opts.platform, opts.arch, err))
+        return 1;
     // Step 3.5a: Generate ObjC selector stubs (macOS — objc_msgSend$selector symbols).
     // Must come before dynamic stubs since it moves symbols from dynamicSyms and
     // ensures objc_msgSend itself is in the dynamic set.

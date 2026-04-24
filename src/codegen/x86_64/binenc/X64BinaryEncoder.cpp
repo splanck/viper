@@ -370,7 +370,8 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
     for (const auto &[label, offset] : relativeLabelOffsets)
         labelOffsets_[label] = funcStartOffset + offset;
 
-    std::string symName = isDarwin ? ("_" + fn.name) : fn.name;
+    (void)isDarwin;
+    std::string symName = fn.name;
     const uint32_t funcSymIdx =
         text.defineSymbol(symName, objfile::SymbolBinding::Global, objfile::SymbolSection::Text);
 
@@ -1028,7 +1029,8 @@ void X64BinaryEncoder::encodeLEARip(PhysReg dst,
     text.emit8(makeModRM(0b00, hwDst.bits3, 0b101));
 
     // Emit placeholder disp32 and record relocation.
-    std::string symName = isDarwin ? ("_" + rip.name) : rip.name;
+    (void)isDarwin;
+    std::string symName = rip.name;
     const uint32_t rodataSymIdx = rodata.symbols().find(symName);
     const uint32_t symIdx =
         (rodataSymIdx != 0) ? rodataSymIdx : text.findOrDeclareSymbol(symName);
@@ -1058,7 +1060,8 @@ void X64BinaryEncoder::encodeSseRipLoad(PhysReg dst,
     // ModR/M: mod=00, reg=dst, r/m=101 (RIP-relative).
     text.emit8(makeModRM(0b00, hwDst.bits3, 0b101));
     // Emit placeholder disp32 and record relocation.
-    std::string symName = isDarwin ? ("_" + rip.name) : rip.name;
+    (void)isDarwin;
+    std::string symName = rip.name;
     const uint32_t rodataSymIdx = rodata.symbols().find(symName);
     const uint32_t symIdx =
         (rodataSymIdx != 0) ? rodataSymIdx : text.findOrDeclareSymbol(symName);
@@ -1257,7 +1260,8 @@ void X64BinaryEncoder::encodeCallExternal(const std::string &name,
                                           objfile::CodeSection &cs,
                                           bool isDarwin) {
     std::string mapped = mapRuntimeSymbol(name);
-    std::string symName = isDarwin ? ("_" + mapped) : mapped;
+    (void)isDarwin;
+    std::string symName = mapped;
     uint32_t symIdx = cs.findOrDeclareSymbol(symName);
 
     cs.emit8(0xE8); // CALL rel32

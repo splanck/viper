@@ -268,10 +268,8 @@ bool ElfWriter::write(const std::string &path,
 
     // Section symbols for .text and .rodata (local).
     // These are used as targets for cross-section relocations.
-    uint32_t textSecSymIdx = 1; // ELF index of .text section symbol
     writeSym(symtabBytes, 0, (kStbLocal << 4) | kSttSection, kStvDefault, kSecText, 0, 0);
 
-    uint32_t rodataSecSymIdx = 2;
     writeSym(symtabBytes, 0, (kStbLocal << 4) | kSttSection, kStvDefault, kSecRodata, 0, 0);
 
     uint32_t elfLocalCount = 3; // null + 2 section symbols
@@ -413,7 +411,9 @@ bool ElfWriter::write(const std::string &path,
             }
         }
         if (elfSymIdx == 0) {
-            elfSymIdx = textSecSymIdx; // fallback
+            err << "ElfWriter: relocation at offset " << rel.offset
+                << " references unknown symbol index " << rel.symbolIndex << "\n";
+            return false;
         }
 
         uint32_t relocType = elfRelocType(rel.kind, arch_);
@@ -821,7 +821,9 @@ bool ElfWriter::write(const std::string &path,
                 }
             }
             if (elfSymIdx == 0) {
-                elfSymIdx = static_cast<uint32_t>(ti + 1); // section sym
+                err << "ElfWriter: relocation at offset " << rel.offset
+                    << " references unknown symbol index " << rel.symbolIndex << "\n";
+                return false;
             }
             uint32_t relocType = elfRelocType(rel.kind, arch_);
             uint64_t rInfo = (static_cast<uint64_t>(elfSymIdx) << 32) | relocType;

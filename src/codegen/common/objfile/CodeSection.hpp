@@ -28,6 +28,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -149,6 +150,8 @@ class CodeSection {
 
     /// Pad with zeros to reach the given alignment boundary.
     void alignTo(size_t alignment) {
+        if (alignment <= 1)
+            return;
         size_t rem = bytes_.size() % alignment;
         if (rem != 0)
             emitZeros(alignment - rem);
@@ -161,6 +164,8 @@ class CodeSection {
                        uint32_t symbolIndex,
                        int64_t addend = 0,
                        SymbolSection targetSection = SymbolSection::Undefined) {
+        if (symbolIndex >= symbols_.count())
+            throw std::out_of_range("CodeSection relocation symbol index is out of range");
         relocations_.push_back(Relocation{currentOffset(), kind, symbolIndex, addend, targetSection});
     }
 
@@ -170,6 +175,10 @@ class CodeSection {
                          uint32_t symbolIndex,
                          int64_t addend = 0,
                          SymbolSection targetSection = SymbolSection::Undefined) {
+        if (offset > bytes_.size())
+            throw std::out_of_range("CodeSection relocation offset is out of range");
+        if (symbolIndex >= symbols_.count())
+            throw std::out_of_range("CodeSection relocation symbol index is out of range");
         relocations_.push_back(Relocation{offset, kind, symbolIndex, addend, targetSection});
     }
 
@@ -194,6 +203,8 @@ class CodeSection {
 
     /// Overwrite 4 bytes at the given offset (little-endian).
     void patch32LE(size_t offset, uint32_t val) {
+        if (offset + 4 > bytes_.size())
+            throw std::out_of_range("CodeSection patch32LE offset is out of range");
         bytes_[offset] = static_cast<uint8_t>(val);
         bytes_[offset + 1] = static_cast<uint8_t>(val >> 8);
         bytes_[offset + 2] = static_cast<uint8_t>(val >> 16);
@@ -202,6 +213,8 @@ class CodeSection {
 
     /// Overwrite 1 byte at the given offset.
     void patch8(size_t offset, uint8_t val) {
+        if (offset >= bytes_.size())
+            throw std::out_of_range("CodeSection patch8 offset is out of range");
         bytes_[offset] = val;
     }
 
@@ -246,7 +259,8 @@ class CodeSection {
             if (sym.binding == SymbolBinding::External || sym.section == SymbolSection::Undefined) {
                 mappedIndex = findOrDeclareSymbol(sym.name);
             } else {
-                mappedIndex = symbols_.findOrAdd(sym.name);
+                mappedIndex = symbols_.add(
+                    Symbol{sym.name, sym.binding, sym.section, offsetBias + sym.offset, sym.size});
                 Symbol &dst = symbols_.at(mappedIndex);
                 dst.binding = sym.binding;
                 dst.section = sym.section;
@@ -261,6 +275,8 @@ class CodeSection {
             emitBytes(other.bytes().data(), other.bytes().size());
 
         for (const auto &reloc : other.relocations()) {
+            if (reloc.symbolIndex >= symbolRemap.size())
+                throw std::out_of_range("CodeSection append relocation symbol index is out of range");
             addRelocationAt(offsetBias + reloc.offset,
                             reloc.kind,
                             symbolRemap[reloc.symbolIndex],

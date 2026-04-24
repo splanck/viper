@@ -17,8 +17,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "codegen/common/linker/ObjFileReader.hpp"
+#include "codegen/common/linker/RelocConstants.hpp"
 
 #include <cstring>
+#include <string>
+#include <vector>
 
 namespace viper::codegen::linker {
 
@@ -111,11 +114,34 @@ template <typename T> static const T *readAt(const uint8_t *data, size_t size, s
     return reinterpret_cast<const T *>(data + offset);
 }
 
+static bool checkedRange(size_t off, size_t len, size_t size) {
+    return off <= size && len <= size - off;
+}
+
 static std::string trimNul(const char *s, size_t maxLen) {
     size_t len = 0;
     while (len < maxLen && s[len] != '\0')
         ++len;
     return std::string(s, len);
+}
+
+static std::string readString(const uint8_t *data, size_t size, size_t off, size_t len, uint32_t pos) {
+    if (!checkedRange(off, len, size) || pos >= len)
+        return "";
+    const uint8_t *begin = data + off + pos;
+    const uint8_t *end = data + off + len;
+    const void *nul = std::memchr(begin, '\0', static_cast<size_t>(end - begin));
+    if (!nul)
+        return "";
+    return std::string(reinterpret_cast<const char *>(begin),
+                       static_cast<const char *>(nul));
+}
+
+static int64_t signExtend(uint64_t value, unsigned bits) {
+    const uint64_t signBit = uint64_t{1} << (bits - 1);
+    const uint64_t mask = (uint64_t{1} << bits) - 1;
+    value &= mask;
+    return static_cast<int64_t>((value ^ signBit) - signBit);
 }
 
 /// Read little-endian 32-bit from raw bytes.
@@ -129,6 +155,7 @@ static int64_t extractMachOAddend(const uint8_t *sectionData,
                                   size_t sectionSize,
                                   size_t offset,
                                   uint32_t relocType,
+                                  uint32_t relocLength,
                                   bool isArm64) {
     if (isArm64) {
         // ARM64 relocation addends are encoded in instruction fields.
@@ -137,10 +164,25 @@ static int64_t extractMachOAddend(const uint8_t *sectionData,
         // We'll extract what we can; most are 0 for our use case.
         return 0;
     } else {
-        // x86_64: addend is typically in the 4 bytes at the relocation site.
-        if (offset + 4 <= sectionSize) {
-            int32_t val;
-            std::memcpy(&val, sectionData + offset, 4);
+        const size_t fieldSize = size_t{1} << relocLength;
+        if (offset + fieldSize <= sectionSize) {
+            if (fieldSize == 1) {
+                int8_t val = 0;
+                std::memcpy(&val, sectionData + offset, 1);
+                return val;
+            }
+            if (fieldSize == 2) {
+                int16_t val = 0;
+                std::memcpy(&val, sectionData + offset, 2);
+                return val;
+            }
+            if (fieldSize == 4) {
+                int32_t val = 0;
+                std::memcpy(&val, sectionData + offset, 4);
+                return val;
+            }
+            int64_t val = 0;
+            std::memcpy(&val, sectionData + offset, 8);
             return val;
         }
         return 0;
@@ -161,6 +203,11 @@ bool readMachOObj(
     obj.name = name;
 
     const bool isArm64 = (hdr->cputype == macho::CPU_TYPE_ARM64);
+    if (hdr->filetype != macho::MH_OBJECT ||
+        (hdr->cputype != macho::CPU_TYPE_ARM64 && hdr->cputype != macho::CPU_TYPE_X86_64)) {
+        err << "error: " << name << ": unsupported Mach-O object format\n";
+        return false;
+    }
     obj.machine = isArm64 ? 183 : 62; // Map to ELF machine constants for uniformity.
 
     // Parse load commands.
@@ -186,6 +233,10 @@ bool readMachOObj(
         const auto *lc = readAt<macho::load_command>(data, size, tmpOff);
         if (!lc)
             break;
+        if (lc->cmdsize < sizeof(macho::load_command) || !checkedRange(tmpOff, lc->cmdsize, size)) {
+            err << "error: " << name << ": malformed Mach-O load command\n";
+            return false;
+        }
 
         if (lc->cmd == macho::LC_SEGMENT_64) {
             const auto *seg = readAt<macho::segment_command_64>(data, size, tmpOff);
@@ -201,9 +252,8 @@ bool readMachOObj(
                 std::string segName = trimNul(sec->segname, 16);
                 std::string secName = trimNul(sec->sectname, 16);
 
-                // Skip debug and metadata sections that don't belong in the output.
-                if (segName == "__DWARF" || (sec->flags & macho::S_ATTR_DEBUG) != 0 ||
-                    secName == "__compact_unwind" || secName == "__eh_frame") {
+                // Skip debug sections that don't belong in the load image.
+                if (segName == "__DWARF" || (sec->flags & macho::S_ATTR_DEBUG) != 0) {
                     machoSecMap.push_back(0); // Unmapped.
                     ++machoSecIdx;
                     secOff += sizeof(macho::section_64);
@@ -241,9 +291,13 @@ bool readMachOObj(
                     (secType == macho::S_ZEROFILL) || (secType == macho::S_THREAD_LOCAL_ZEROFILL);
                 os.zeroFill = isZerofill;
 
+                if (sec->size > static_cast<uint64_t>(SIZE_MAX)) {
+                    err << "error: " << name << ": Mach-O section is too large\n";
+                    return false;
+                }
                 if (isZerofill && sec->size > 0) {
                     os.data.resize(static_cast<size_t>(sec->size), 0);
-                } else if (sec->size > 0 && sec->offset + sec->size <= size) {
+                } else if (sec->size > 0 && checkedRange(sec->offset, static_cast<size_t>(sec->size), size)) {
                     os.data.assign(data + sec->offset, data + sec->offset + sec->size);
                 } else if (sec->size > 0) {
                     os.data.resize(static_cast<size_t>(sec->size), 0);
@@ -265,19 +319,23 @@ bool readMachOObj(
                         continue;
 
                     const uint32_t info = ri->r_info;
+                    const uint32_t symbolNum = info & 0x00FFFFFF;
+                    const bool isExtern = ((info >> 27) & 1) != 0;
+                    const uint32_t relLength = (info >> 25) & 0x3;
                     const uint32_t relType = (info >> 28) & 0xF;
 
                     // ARM64_RELOC_ADDEND (type 10): stores addend for next relocation.
                     if (isArm64 && relType == 10) {
-                        pendingAddend = static_cast<int64_t>(info & 0x00FFFFFF);
+                        pendingAddend = signExtend(symbolNum, 24);
                         hasPendingAddend = true;
                         continue;
                     }
 
                     ObjReloc rel;
                     rel.offset = static_cast<size_t>(ri->r_address);
-                    rel.symIndex = info & 0x00FFFFFF; // symbolnum (24 bits).
+                    rel.symIndex = symbolNum; // nlist index or section ordinal.
                     rel.type = relType;
+                    rel.sectionRelative = !isExtern;
 
                     if (hasPendingAddend) {
                         rel.addend = pendingAddend;
@@ -285,7 +343,12 @@ bool readMachOObj(
                     } else {
                         // Extract addend from instruction bytes.
                         rel.addend = extractMachOAddend(
-                            os.data.data(), os.data.size(), rel.offset, rel.type, isArm64);
+                            os.data.data(),
+                            os.data.size(),
+                            rel.offset,
+                            rel.type,
+                            relLength,
+                            isArm64);
                     }
 
                     os.relocs.push_back(rel);
@@ -322,6 +385,12 @@ bool readMachOObj(
         const uint32_t stroff = readLE32(data + symtabLcOff + 16);
         const uint32_t strsize = readLE32(data + symtabLcOff + 20);
 
+        if (!checkedRange(symoff, static_cast<size_t>(nsyms) * sizeof(macho::nlist_64), size) ||
+            !checkedRange(stroff, strsize, size)) {
+            err << "error: " << name << ": Mach-O symbol table is out of bounds\n";
+            return false;
+        }
+
         if (nsyms > kMaxObjSymbols) {
             err << "error: " << name << ": symbol count " << nsyms << " exceeds limit\n";
             return false;
@@ -343,12 +412,10 @@ bool readMachOObj(
             ObjSymbol os;
 
             // Read name from string table.
-            if (nl->n_strx < strsize) {
-                os.name = reinterpret_cast<const char *>(data + stroff + nl->n_strx);
-                // Strip leading underscore (Mach-O convention).
-                if (!os.name.empty() && os.name[0] == '_')
-                    os.name.erase(0, 1);
-            }
+            os.name = readString(data, size, stroff, strsize, nl->n_strx);
+            // Strip leading underscore (Mach-O convention).
+            if (!os.name.empty() && os.name[0] == '_')
+                os.name.erase(0, 1);
 
             // Parse binding from n_type.
             const uint8_t nType = nl->n_type & 0x0E; // N_TYPE mask.
@@ -390,10 +457,44 @@ bool readMachOObj(
         }
 
         // Fix up relocation symbol indices from nlist indices to ObjFile indices.
+        std::vector<uint32_t> sectionSymMap(machoSecMap.size(), 0);
+        auto sectionSymbolFor = [&](uint32_t machoSectionOrdinal) -> uint32_t {
+            if (machoSectionOrdinal >= machoSecMap.size())
+                return 0;
+            const uint32_t objSecIdx = machoSecMap[machoSectionOrdinal];
+            if (objSecIdx == 0)
+                return 0;
+            uint32_t &cached = sectionSymMap[machoSectionOrdinal];
+            if (cached != 0)
+                return cached;
+            ObjSymbol sym;
+            sym.name = "$sect." + std::to_string(machoSectionOrdinal);
+            sym.binding = ObjSymbol::Local;
+            sym.sectionIndex = objSecIdx;
+            sym.offset = 0;
+            cached = static_cast<uint32_t>(obj.symbols.size());
+            obj.symbols.push_back(std::move(sym));
+            return cached;
+        };
         for (auto &sec : obj.sections) {
             for (auto &rel : sec.relocs) {
-                if (rel.symIndex < symMap.size())
+                if (rel.sectionRelative) {
+                    const uint32_t mapped = sectionSymbolFor(rel.symIndex);
+                    if (mapped == 0) {
+                        err << "error: " << name
+                            << ": relocation references unmapped Mach-O section "
+                            << rel.symIndex << "\n";
+                        return false;
+                    }
+                    rel.symIndex = mapped;
+                    rel.sectionRelative = false;
+                } else if (rel.symIndex < symMap.size()) {
                     rel.symIndex = symMap[rel.symIndex];
+                } else {
+                    err << "error: " << name << ": relocation references invalid symbol index "
+                        << rel.symIndex << "\n";
+                    return false;
+                }
             }
         }
     }

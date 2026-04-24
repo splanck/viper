@@ -146,6 +146,7 @@ int main() {
         ASSERT(armTextSec != nullptr);
         CHECK(armTextSec->relocs.size() == 1);
         CHECK(armTextSec->relocs[0].type == 3);
+        CHECK(armTextSec->relocs[0].addend == 0);
         CHECK(armObj.symbols[armTextSec->relocs[0].symIndex].name == "callee");
         CHECK(findSection(armObj, ".xdata") == nullptr);
         CHECK(findSection(armObj, ".pdata") == nullptr);

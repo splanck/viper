@@ -127,6 +127,15 @@ int main() {
         CHECK(cs.currentOffset() == 8);
     }
 
+    // --- alignTo(0) is a no-op ---
+    {
+        CodeSection cs;
+        cs.emit8(0xAA);
+        cs.alignTo(0);
+        CHECK(cs.currentOffset() == 1);
+        CHECK(cs.bytes()[0] == 0xAA);
+    }
+
     // --- patch32LE ---
     {
         CodeSection cs;
@@ -242,6 +251,22 @@ int main() {
 
         CHECK(cs.relocations().size() == 1);
         CHECK(cs.relocations()[0].targetSection == SymbolSection::Rodata);
+    }
+
+    // --- appendSection preserves duplicate local symbol entries ---
+    {
+        CodeSection a;
+        a.defineSymbol(".Ltmp", SymbolBinding::Local, SymbolSection::Text);
+        a.emit8(0x90);
+
+        CodeSection b;
+        b.defineSymbol(".Ltmp", SymbolBinding::Local, SymbolSection::Text);
+        b.emit8(0xC3);
+
+        a.appendSection(b);
+        CHECK(a.symbols().count() == 3); // null + both local labels
+        CHECK(a.symbols().at(1).offset == 0);
+        CHECK(a.symbols().at(2).offset == 1);
     }
 
     // --- Result ---

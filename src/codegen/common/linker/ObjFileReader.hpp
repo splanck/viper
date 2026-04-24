@@ -33,10 +33,11 @@ namespace viper::codegen::linker {
 
 /// Relocation in a parsed object file.
 struct ObjReloc {
-    size_t offset;     ///< Byte offset within the section.
-    uint32_t type;     ///< Format-native relocation type (e.g., R_X86_64_PLT32).
-    uint32_t symIndex; ///< Index into ObjFile::symbols.
-    int64_t addend;    ///< Addend (explicit for ELF; extracted for Mach-O/COFF).
+    size_t offset = 0;     ///< Byte offset within the section.
+    uint32_t type = 0;     ///< Format-native relocation type (e.g., R_X86_64_PLT32).
+    uint32_t symIndex = 0; ///< Index into ObjFile::symbols.
+    int64_t addend = 0;    ///< Addend (explicit for ELF; extracted for Mach-O/COFF).
+    bool sectionRelative = false; ///< Reader-internal: raw reloc targeted a section ordinal.
 };
 
 /// Symbol in a parsed object file.

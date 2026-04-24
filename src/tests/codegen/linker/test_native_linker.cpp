@@ -166,6 +166,28 @@ static bool findMachOSectionInfo(const std::vector<uint8_t> &data,
     return false;
 }
 
+static bool findMachOMainEntryOff(const std::vector<uint8_t> &data, uint64_t &entryOff) {
+    static constexpr uint32_t LC_MAIN = 0x80000028;
+    if (data.size() < 32)
+        return false;
+    const uint32_t ncmds = readLE32(data.data() + 16);
+    size_t off = 32;
+    for (uint32_t i = 0; i < ncmds; ++i) {
+        if (off + 16 > data.size())
+            return false;
+        const uint32_t cmd = readLE32(data.data() + off);
+        const uint32_t cmdsize = readLE32(data.data() + off + 4);
+        if (cmd == LC_MAIN && cmdsize >= 24 && off + 24 <= data.size()) {
+            entryOff = readLE64(data.data() + off + 8);
+            return true;
+        }
+        if (cmdsize == 0)
+            return false;
+        off += cmdsize;
+    }
+    return false;
+}
+
 static bool findPeSection(const std::vector<uint8_t> &data,
                           const std::string &sectionName,
                           uint32_t &virtualSize,
@@ -363,6 +385,41 @@ int main() {
     }
 
     {
+        LinkLayout layout;
+        layout.pageSize = 0x4000;
+
+        OutputSection text;
+        text.name = ".text";
+        text.data = {0x1F, 0x20, 0x03, 0xD5, 0xC0, 0x03, 0x5F, 0xD6}; // nop; ret
+        text.virtualAddr = 0x100004000ULL;
+        text.alignment = 4;
+        text.executable = true;
+        layout.sections = {text};
+        layout.entryAddr = text.virtualAddr + 4;
+
+        const std::string exePath = tmpPath("macho_custom_entry");
+        std::ostringstream err;
+        CHECK(writeMachOExe(exePath,
+                            layout,
+                            LinkArch::AArch64,
+                            {{"/usr/lib/libSystem.B.dylib"}},
+                            {},
+                            {},
+                            err));
+        CHECK(err.str().empty());
+
+        const std::vector<uint8_t> exe = readFile(exePath);
+        uint32_t alignLog2 = 0;
+        uint32_t flags = 0;
+        uint32_t fileOffset = 0;
+        uint64_t size = 0;
+        CHECK(findMachOSectionInfo(exe, "__TEXT", "__text", alignLog2, flags, fileOffset, size));
+        uint64_t entryOff = 0;
+        CHECK(findMachOMainEntryOff(exe, entryOff));
+        CHECK(entryOff == fileOffset + 4);
+    }
+
+    {
         NativeLinkerOptions opts;
         opts.platform = LinkPlatform::Windows;
         opts.arch = LinkArch::AArch64;
@@ -376,6 +433,60 @@ int main() {
         CHECK(rc != 0);
         CHECK(err.str().find("not implemented yet") == std::string::npos);
         CHECK(err.str().find("failed to read object file") != std::string::npos);
+    }
+
+    {
+        CodeSection text;
+        CodeSection rodata;
+        text.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
+        text.emit8(0xC3);
+
+        const std::string objPath = tmpPath("format_mismatch.o");
+        std::ostringstream writerErr;
+        ElfWriter writer(ObjArch::X86_64);
+        CHECK(writer.write(objPath, text, rodata, writerErr));
+        CHECK(writerErr.str().empty());
+
+        NativeLinkerOptions opts;
+        opts.platform = LinkPlatform::Windows;
+        opts.arch = LinkArch::X86_64;
+        opts.objPath = objPath;
+        opts.exePath = tmpPath("format_mismatch.exe");
+        opts.entrySymbol = "main";
+
+        std::ostringstream out;
+        std::ostringstream err;
+        const int rc = nativeLink(opts, out, err);
+        CHECK(rc != 0);
+        CHECK(err.str().find("ELF object cannot be linked into Windows x86_64") !=
+              std::string::npos);
+    }
+
+    {
+        CodeSection text;
+        CodeSection rodata;
+        text.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
+        text.emit8(0xC3);
+
+        const std::string objPath = tmpPath("missing_extra_user.o");
+        std::ostringstream writerErr;
+        ElfWriter writer(ObjArch::X86_64);
+        CHECK(writer.write(objPath, text, rodata, writerErr));
+        CHECK(writerErr.str().empty());
+
+        NativeLinkerOptions opts;
+        opts.platform = LinkPlatform::Linux;
+        opts.arch = LinkArch::X86_64;
+        opts.objPath = objPath;
+        opts.exePath = tmpPath("missing_extra_user");
+        opts.entrySymbol = "main";
+        opts.extraObjPaths.push_back(tmpPath("definitely_missing_extra.o"));
+
+        std::ostringstream out;
+        std::ostringstream err;
+        const int rc = nativeLink(opts, out, err);
+        CHECK(rc != 0);
+        CHECK(err.str().find("failed to read extra object") != std::string::npos);
     }
 
     {

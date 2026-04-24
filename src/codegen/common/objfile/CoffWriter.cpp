@@ -510,10 +510,20 @@ bool CoffWriter::write(const std::string &path,
                     resolved = true;
                 }
             }
-            if (!resolved && it != textSymMap.end())
+            if (!resolved && it != textSymMap.end()) {
                 coffSymIdx = it->second;
+                resolved = true;
+            }
         } else {
-            coffSymIdx = (it != textSymMap.end()) ? it->second : 0;
+            if (it != textSymMap.end()) {
+                coffSymIdx = it->second;
+                resolved = true;
+            }
+        }
+        if (!resolved) {
+            err << "CoffWriter: relocation at offset " << rel.offset
+                << " references unknown symbol index " << rel.symbolIndex << "\n";
+            return false;
         }
         writeReloc(
             textRelocBytes, static_cast<uint32_t>(rel.offset), coffSymIdx, coffRelocType(rel.kind));
@@ -530,6 +540,10 @@ bool CoffWriter::write(const std::string &path,
         writeReloc(pdataRelocBytes, rel.offset, it->second, rel.type);
     }
     const uint32_t numPdataRelocs = static_cast<uint32_t>(pdataRelocs.size());
+    if (numTextRelocs > 0xFFFFu || numPdataRelocs > 0xFFFFu) {
+        err << "CoffWriter: standard COFF supports at most 65535 relocations per section\n";
+        return false;
+    }
 
     const uint32_t textSize = static_cast<uint32_t>(text.bytes().size());
     const uint32_t rdataSize = hasRodata ? static_cast<uint32_t>(rodata.bytes().size()) : 0;
@@ -899,15 +913,29 @@ bool CoffWriter::write(const std::string &path,
                         resolved = true;
                     }
                 }
-                if (!resolved && it != textSymMaps[ti].end())
+                if (!resolved && it != textSymMaps[ti].end()) {
                     coffSymIdx = it->second;
+                    resolved = true;
+                }
             } else {
-                coffSymIdx = (it != textSymMaps[ti].end()) ? it->second : 0;
+                if (it != textSymMaps[ti].end()) {
+                    coffSymIdx = it->second;
+                    resolved = true;
+                }
+            }
+            if (!resolved) {
+                err << "CoffWriter: relocation at offset " << rel.offset
+                    << " references unknown symbol index " << rel.symbolIndex << "\n";
+                return false;
             }
             writeReloc(
                 relocBytes, static_cast<uint32_t>(rel.offset), coffSymIdx, coffRelocType(rel.kind));
         }
         numTextRelocs[ti] = static_cast<uint32_t>(text.relocations().size());
+        if (numTextRelocs[ti] > 0xFFFFu) {
+            err << "CoffWriter: standard COFF supports at most 65535 relocations per section\n";
+            return false;
+        }
     }
 
     std::vector<uint8_t> pdataRelocBytes;
@@ -920,6 +948,10 @@ bool CoffWriter::write(const std::string &path,
         writeReloc(pdataRelocBytes, rel.offset, it->second, rel.type);
     }
     const uint32_t numPdataRelocs = static_cast<uint32_t>(pdataRelocs.size());
+    if (numPdataRelocs > 0xFFFFu) {
+        err << "CoffWriter: standard COFF supports at most 65535 relocations per section\n";
+        return false;
+    }
 
     std::vector<uint32_t> textSizes(textCount, 0);
     for (size_t ti = 0; ti < textCount; ++ti)

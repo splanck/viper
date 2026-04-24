@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-16
+last-verified: 2026-04-24
 ---
 
 # Native Linker — Object File Linking & Executable Generation
@@ -133,6 +133,9 @@ Archives contain a symbol index mapping symbol names to member offsets. The link
 members that define needed symbols, rather than linking every member. This is critical for keeping executable sizes
 reasonable — the full runtime is ~3,200 symbols across 11 component archives.
 
+The archive parser validates member ranges, symbol-table sizes, string-pool bounds, and long-name offsets before
+using them. Duplicate archive-index entries keep the first definition, matching normal archive resolution behavior.
+
 ---
 
 ## Object File Readers
@@ -163,11 +166,34 @@ ObjFile
 
 ### Format-Specific Handling
 
-- **ELF**: Explicit addend from `.rela` sections. Symbol binding from `STB_LOCAL/GLOBAL/WEAK`.
-- **Mach-O**: No explicit addend — extracted from instruction bytes at the relocation site. Leading `_` stripped
-  from symbol names (Mach-O convention).
-- **COFF**: No explicit addend — extracted from instruction bytes. Symbol names ≤8 chars inline; longer names
-  via string table.
+- **ELF**: Explicit addend from `.rela` sections. Symbol binding from `STB_LOCAL/GLOBAL/WEAK`. The reader validates
+  ELF class, endianness, type, section-header size, section ranges, symbol-table ranges, relocation ranges, and
+  relocation symbol indexes.
+- **Mach-O**: Addends are extracted from instruction bytes or from ARM64 `ADDEND` relocations. Leading `_` is
+  stripped from external symbol names (Mach-O convention). Non-extern section-relative relocations resolve through
+  synthetic local section symbols, and ARM64 `ADDEND` payloads are sign-extended.
+- **COFF**: Addends are extracted per relocation kind. AMD64/ARM64 `ADDR64` uses an 8-byte addend; ARM64 branch,
+  ADRP page, and page-offset relocations decode their instruction fields so writer-emitted placeholders do not
+  become bogus addends. Symbol names ≤8 chars are inline; longer names use the string table.
+
+### Reader Validation
+
+Readers reject unsupported file types, wrong machines, out-of-bounds section data, unterminated string-table names,
+and invalid relocation symbol indexes. Mach-O debug sections are ignored, but unwind/runtime metadata such as
+`__compact_unwind` and `__eh_frame` is preserved for later passes.
+
+### Input Compatibility
+
+Before generating synthetic dynamic-import stubs, `NativeLinker` checks that every real input object matches the
+requested output target:
+
+| Target | Required Object Format | Required Machine |
+|--------|------------------------|------------------|
+| Linux | ELF | selected architecture |
+| macOS | Mach-O | selected architecture |
+| Windows | COFF | selected architecture |
+
+Missing extra objects, unreadable archives, format mismatches, and machine mismatches are hard link errors.
 
 ---
 
@@ -283,6 +309,22 @@ Where: `S` = symbol address, `A` = addend, `P` = patch site address, `Page(X)` =
 - AArch64 B/BL: ±128MB (`imm26` × 4)
 - AArch64 B.cond/CBZ/CBNZ: ±1MB (`imm19` × 4)
 - x86_64: rel32 can reach ±2GB (sufficient for most programs)
+- Invalid relocation symbol indexes are rejected before address resolution.
+- AArch64 branch targets must be 4-byte aligned.
+- AArch64 page-offset load/store relocations validate scaled alignment for the instruction size.
+- `Abs32` relocations must fit in the unsigned 32-bit range.
+
+### AArch64 Branch Trampolines
+
+The trampoline pass can redirect both global and local branch targets. Local targets are resolved from the merged
+section location map, and trampoline reuse is keyed by target address rather than display name so duplicate local
+labels from different objects cannot collide.
+
+### Dead Strip and ICF
+
+Dead stripping keeps EH/unwind metadata roots alive (`.eh_frame`, `.gcc_except_table`, `__compact_unwind`, and
+`__eh_frame`). Identical Code Folding includes local relocation identity in function signatures and skips candidates
+with extra local symbols in the function section, preventing folds that would strand non-redirectable local labels.
 
 ---
 
@@ -327,7 +369,7 @@ Load Commands:
   LC_SEGMENT_64 "__PAGEZERO" (vmaddr=0, vmsize=4GB, MUST BE FIRST)
   LC_SEGMENT_64 "__TEXT"     (code + rodata, R-X)
   LC_SEGMENT_64 "__DATA"     (data, RW-)
-  LC_MAIN                    (entryoff = offset of main() within __TEXT)
+  LC_MAIN                    (entryoff = entry symbol offset within __TEXT)
   LC_BUILD_VERSION           (platform=macOS, minos=14.0, sdk=15.0)
 __TEXT segment data (page-aligned)
 __DATA segment data (page-aligned)
@@ -335,7 +377,8 @@ __DATA segment data (page-aligned)
 
 **Key details:**
 - `__PAGEZERO` must be the first load command (vmaddr=0, vmsize=0x100000000)
-- `LC_MAIN` specifies offset of `_main` within `__TEXT` file data — dyld handles argc/argv setup
+- `LC_MAIN` specifies the entry offset within `__TEXT` file data. A custom `layout.entryAddr` is honored when set;
+  otherwise the writer falls back to `main` / `_main`.
 - No CRT objects needed on macOS (unlike Linux)
 - Page alignment: 16KB on arm64, 4KB on x86_64
 - `MH_PIE` flag set for ASLR

@@ -67,6 +67,33 @@ static bool writeCheckedRel32(uint8_t *patch,
     return true;
 }
 
+static bool checkAArch64BranchAlignment(int64_t disp,
+                                        const ObjFile &obj,
+                                        const std::string &symName,
+                                        const char *kind,
+                                        std::ostream &err) {
+    if ((disp & 0x3) == 0)
+        return true;
+    err << "error: " << obj.name << ": " << kind << " target is not instruction aligned";
+    if (!symName.empty())
+        err << " for '" << symName << "'";
+    err << "\n";
+    return false;
+}
+
+static bool checkPageOffsetAlignment(uint32_t pageOff,
+                                     uint32_t shift,
+                                     const ObjFile &obj,
+                                     const std::string &symName,
+                                     std::ostream &err) {
+    const uint32_t scale = 1u << shift;
+    if ((pageOff & (scale - 1u)) == 0)
+        return true;
+    err << "error: " << obj.name << ": AArch64 page offset for '" << symName
+        << "' is not aligned to " << scale << " bytes\n";
+    return false;
+}
+
 static bool findSectionByAddr(const LinkLayout &layout, uint64_t addr, size_t &outSecIdx) {
     for (size_t i = 0; i < layout.sections.size(); ++i) {
         const auto &sec = layout.sections[i];
@@ -219,8 +246,13 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     return false;
                 }
 
-                const std::string &symName =
-                    (rel.symIndex < obj.symbols.size()) ? obj.symbols[rel.symIndex].name : "";
+                if (rel.symIndex >= obj.symbols.size()) {
+                    err << "error: " << obj.name << ": relocation references invalid symbol index "
+                        << rel.symIndex << "\n";
+                    return false;
+                }
+
+                const std::string &symName = obj.symbols[rel.symIndex].name;
 
                 uint64_t S = 0;
                 bool symResolved = false;
@@ -404,12 +436,22 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         break;
                     }
                     case RelocAction::Abs32: {
-                        writeLE32(patch, static_cast<uint32_t>(S + A));
+                        const int64_t val = static_cast<int64_t>(S) + A;
+                        if (val < 0 || val > std::numeric_limits<uint32_t>::max()) {
+                            err << "error: " << obj.name << ": 32-bit absolute relocation out of range";
+                            if (!symName.empty())
+                                err << " for '" << symName << "'";
+                            err << "\n";
+                            return false;
+                        }
+                        writeLE32(patch, static_cast<uint32_t>(val));
                         break;
                     }
                     case RelocAction::Branch26: {
                         uint32_t insn = readLE32(patch);
                         int64_t disp = static_cast<int64_t>(S) + A - static_cast<int64_t>(P);
+                        if (!checkAArch64BranchAlignment(disp, obj, symName, "branch", err))
+                            return false;
                         int64_t imm26 = disp >> 2;
                         if (imm26 > 0x1FFFFFF || imm26 < -0x2000000) {
                             err << "error: " << obj.name << ": branch out of range for '" << symName
@@ -457,6 +499,8 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                             // 128-bit SIMD: V=1 (bit 26) and opc[1]=1 (bit 23) → shift=4.
                             if ((insn & 0x04800000) == 0x04800000)
                                 shift = 4;
+                            if (!checkPageOffsetAlignment(pageOff, shift, obj, symName, err))
+                                return false;
                             pageOff >>= shift;
                         }
 
@@ -469,6 +513,8 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         uint32_t pageOff = static_cast<uint32_t>(
                                                static_cast<uint64_t>(static_cast<int64_t>(S) + A)) &
                                            0xFFF;
+                        if (!checkPageOffsetAlignment(pageOff, 3, obj, symName, err))
+                            return false;
                         pageOff >>= 3;
                         insn = (insn & 0xFFC003FF) | (pageOff << 10);
                         writeLE32(patch, insn);
@@ -479,6 +525,8 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         uint32_t pageOff = static_cast<uint32_t>(
                                                static_cast<uint64_t>(static_cast<int64_t>(S) + A)) &
                                            0xFFF;
+                        if (!checkPageOffsetAlignment(pageOff, 2, obj, symName, err))
+                            return false;
                         pageOff >>= 2;
                         insn = (insn & 0xFFC003FF) | (pageOff << 10);
                         writeLE32(patch, insn);
@@ -489,6 +537,8 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         uint32_t pageOff = static_cast<uint32_t>(
                                                static_cast<uint64_t>(static_cast<int64_t>(S) + A)) &
                                            0xFFF;
+                        if (!checkPageOffsetAlignment(pageOff, 4, obj, symName, err))
+                            return false;
                         pageOff >>= 4;
                         insn = (insn & 0xFFC003FF) | (pageOff << 10);
                         writeLE32(patch, insn);
@@ -497,6 +547,9 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     case RelocAction::CondBr19: {
                         uint32_t insn = readLE32(patch);
                         int64_t disp = static_cast<int64_t>(S) + A - static_cast<int64_t>(P);
+                        if (!checkAArch64BranchAlignment(
+                                disp, obj, symName, "conditional branch", err))
+                            return false;
                         int64_t imm19 = disp >> 2;
                         if (imm19 > 0x3FFFF || imm19 < -0x40000) {
                             err << "error: " << obj.name

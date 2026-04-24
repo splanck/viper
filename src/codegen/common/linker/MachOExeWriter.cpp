@@ -372,18 +372,22 @@ bool writeMachOExe(const std::string &path,
     const uint32_t rebaseOff = strtabOff + static_cast<uint32_t>(strtabData.size());
     const uint32_t bindOff = rebaseOff + static_cast<uint32_t>(rebaseData.size());
 
-    // Entry point: LC_MAIN entryoff = file offset of main().
-    // main's file offset = textDataFileOff + (main's VA - first text section VA).
+    // Entry point: LC_MAIN entryoff = file offset of the resolved entry symbol.
+    // The linker stores custom entry symbols in layout.entryAddr; fall back to
+    // main/_main for older callers that did not populate it.
     uint64_t mainEntryOff = 0;
     {
-        auto it = layout.globalSyms.find("main");
-        if (it == layout.globalSyms.end())
-            it = layout.globalSyms.find("_main");
-        if (it != layout.globalSyms.end() && !textSections.empty()) {
-            // Find which text section main is in and compute file offset.
-            uint64_t mainVA = it->second.resolvedAddr;
+        uint64_t entryVA = layout.entryAddr;
+        if (entryVA == 0) {
+            auto it = layout.globalSyms.find("main");
+            if (it == layout.globalSyms.end())
+                it = layout.globalSyms.find("_main");
+            if (it != layout.globalSyms.end())
+                entryVA = it->second.resolvedAddr;
+        }
+        if (entryVA != 0 && !textSections.empty()) {
             uint64_t firstTextSecVA = layout.sections[textSections[0]].virtualAddr;
-            mainEntryOff = textDataFileOff + (mainVA - firstTextSecVA);
+            mainEntryOff = textDataFileOff + (entryVA - firstTextSecVA);
         }
     }
 

@@ -66,7 +66,7 @@ class X64BinaryEncoder {
     /// @param fn        The MIR function to encode.
     /// @param text      CodeSection for .text (machine code output).
     /// @param rodata    CodeSection for .rodata (used for RIP-relative symbol lookup).
-    /// @param isDarwin  If true, symbol names get underscore-prefixed.
+    /// @param isDarwin  If true, use Darwin-specific instruction metadata; names stay unmangled.
     /// @param frame     Optional frame metadata used to emit Win64 unwind info.
     /// @param emitWin64Unwind When true, emit PE/COFF unwind metadata regardless of host.
     void encodeFunction(const MFunction &fn,
@@ -157,7 +157,7 @@ class X64BinaryEncoder {
     /// Encode JMP/CALL with memory target (indirect via memory).
     void encodeBranchMem(MOpcode op, const OpMem &mem, objfile::CodeSection &cs);
 
-    /// Encode CALL with external label (generates relocation).
+    /// Encode CALL with external label (generates relocation; symbol name stays unmangled).
     void encodeCallExternal(const std::string &name, objfile::CodeSection &cs, bool isDarwin);
 
     /// Measure the encoded byte size of an instruction using the provided

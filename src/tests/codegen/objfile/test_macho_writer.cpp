@@ -290,6 +290,7 @@ static void testSymbolMangling() {
     CodeSection text, rodata;
     text.emit8(0xC3);
     text.defineSymbol("my_func", SymbolBinding::Global, SymbolSection::Text);
+    text.defineSymbol("_already_mangled", SymbolBinding::Global, SymbolSection::Text);
     text.findOrDeclareSymbol("external_func");
 
     std::string path = "/tmp/viper_test_macho_mangle.o";
@@ -310,6 +311,7 @@ static void testSymbolMangling() {
 
     // Check each symbol name has underscore prefix
     bool foundMyFunc = false;
+    bool foundAlreadyMangled = false;
     bool foundExternalFunc = false;
     for (uint32_t i = 0; i < nsyms; ++i) {
         size_t nlistOff = symOff + i * 16;
@@ -328,9 +330,13 @@ static void testSymbolMangling() {
             CHECK(data[nlistOff + 4] == 0x01);
             // n_sect should be NO_SECT (0)
             CHECK(data[nlistOff + 5] == 0);
+        } else if (name == "__already_mangled") {
+            foundAlreadyMangled = true;
+            CHECK(data[nlistOff + 4] == 0x0F);
         }
     }
     CHECK(foundMyFunc);
+    CHECK(foundAlreadyMangled);
     CHECK(foundExternalFunc);
 
     std::remove(path.c_str());

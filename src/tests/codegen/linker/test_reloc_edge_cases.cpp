@@ -575,6 +575,94 @@ int main() {
         CHECK(imm12 == 32); // 0x80 / 4 = 32
     }
 
+    // --- Invalid relocation symbol index is a hard error ---
+    {
+        std::vector<uint8_t> code(4, 0);
+        auto obj = makeObj("bad_sym.o", ObjFileFormat::ELF, code, "missing", 10, 0, 0);
+        obj.sections[1].relocs[0].symIndex = 99;
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x100000);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err);
+        CHECK(!ok);
+        CHECK(err.str().find("invalid symbol index") != std::string::npos);
+    }
+
+    // --- AArch64 Branch26 rejects unaligned targets ---
+    {
+        std::vector<uint8_t> code(4, 0);
+        code[3] = 0x14; // B
+        auto obj =
+            makeObj("unaligned_branch.o", ObjFileFormat::ELF, code, "odd", 282, 0, 0);
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x100000);
+
+        GlobalSymEntry entry;
+        entry.name = "odd";
+        entry.binding = GlobalSymEntry::Dynamic;
+        entry.resolvedAddr = 0x100002;
+        layout.globalSyms["odd"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err);
+        CHECK(!ok);
+        CHECK(err.str().find("not instruction aligned") != std::string::npos);
+    }
+
+    // --- AArch64 scaled load/store rejects misaligned page offsets ---
+    {
+        std::vector<uint8_t> code = {0x00, 0x00, 0x40, 0xF9}; // LDR X0, [x0, #0]
+        auto obj = makeObj("misaligned_ldst.o",
+                           ObjFileFormat::ELF,
+                           code,
+                           "qword_data",
+                           /*R_AARCH64_LDST64_ABS_LO12_NC=*/286,
+                           0,
+                           0);
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x100000);
+
+        GlobalSymEntry entry;
+        entry.name = "qword_data";
+        entry.binding = GlobalSymEntry::Dynamic;
+        entry.resolvedAddr = 0x101002; // not 8-byte aligned within the page
+        layout.globalSyms["qword_data"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::AArch64, err);
+        CHECK(!ok);
+        CHECK(err.str().find("not aligned") != std::string::npos);
+    }
+
+    // --- Abs32 rejects overflow instead of truncating ---
+    {
+        std::vector<uint8_t> code(4, 0);
+        auto obj =
+            makeObj("abs32_overflow.o", ObjFileFormat::ELF, code, "too_far", 10, 0, 0);
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x100000);
+
+        GlobalSymEntry entry;
+        entry.name = "too_far";
+        entry.binding = GlobalSymEntry::Dynamic;
+        entry.resolvedAddr = 0x1'0000'0000ULL;
+        layout.globalSyms["too_far"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err);
+        CHECK(!ok);
+        CHECK(err.str().find("32-bit absolute relocation out of range") != std::string::npos);
+    }
+
     // --- Result ---
     if (gFail == 0) {
         std::cout << "All relocation edge-case tests passed.\n";

@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -502,11 +503,15 @@ static void emitAddSubImmSmart(
 }
 
 void A64BinaryEncoder::encodeSubSp(int64_t bytes, objfile::CodeSection &cs) {
+    if (bytes < 0 || bytes > std::numeric_limits<uint32_t>::max())
+        throw std::out_of_range("AArch64 stack adjustment is out of encodable range");
     const uint32_t sp = hwGPR(PhysReg::SP);
     emitAddSubImmSmart(kSubRI, sp, sp, static_cast<uint32_t>(bytes), cs);
 }
 
 void A64BinaryEncoder::encodeAddSp(int64_t bytes, objfile::CodeSection &cs) {
+    if (bytes < 0 || bytes > std::numeric_limits<uint32_t>::max())
+        throw std::out_of_range("AArch64 stack adjustment is out of encodable range");
     const uint32_t sp = hwGPR(PhysReg::SP);
     emitAddSubImmSmart(kAddRI, sp, sp, static_cast<uint32_t>(bytes), cs);
 }

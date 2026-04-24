@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-04-24
 ---
 
 # Native Assembler — Binary Encoding & Object File Generation
@@ -154,6 +154,8 @@ The `PhysReg` enum order differs from hardware encoding. The encoder maps via lo
 - **PC-relative addend**: x86_64 branch and RIP-relative relocations always carry addend = −4 because the CPU
   computes displacement relative to the *end* of the instruction, but the relocation offset points to the *start*
   of the 4-byte displacement field
+- **Symbol names**: Encoders record canonical, unmangled names in `CodeSection`; platform ABI spelling is applied
+  by the object writer. This keeps ELF/COFF/Mach-O inputs comparable until serialization.
 
 ### Opcode Coverage
 
@@ -206,6 +208,8 @@ The AArch64 encoder synthesizes function prologues and epilogues at emit time:
 - **Prologue**: `stp x29, x30, [sp, #-frameSize]!` + `mov x29, sp` + save callee-saved regs
 - **Epilogue**: Restore callee-saved regs + `ldp x29, x30, [sp], #frameSize` + `ret`
 - **Large frames**: SP adjustment chunked in multiples of 4080 (preserving 16-byte alignment between steps)
+- **Frame-size checks**: Large-frame helpers reject negative or wider-than-32-bit byte counts before narrowing into
+  instruction immediates.
 
 ### Branch Resolution
 
@@ -226,6 +230,9 @@ The AArch64 encoder synthesizes function prologues and epilogues at emit time:
 - **Relocation tracking**: Records `Relocation` entries with offset, kind, symbol index, and addend
 - **Symbol management**: Maintains a `SymbolTable` with defined and external symbols
 - **Patching**: `patch32LE()` for backpatching resolved branch offsets
+- **Validation**: Rejects out-of-range relocation symbol indexes and patch offsets at construction time
+- **Merging**: Appending sections preserves duplicate local symbols instead of rewriting the first same-name entry
+- **Alignment**: `alignTo(0)` and `alignTo(1)` are no-ops; larger alignments pad with zero bytes
 
 ### SymbolTable
 
@@ -234,6 +241,8 @@ The AArch64 encoder synthesizes function prologues and epilogues at emit time:
 - Index 0 is reserved for the null entry (ELF requirement)
 - Symbols have name, binding (Local/Global/External), section (Text/Rodata/Undefined), offset, and size
 - Name-to-index lookup via hash map for O(1) `findOrAdd()`
+- Duplicate-name `add()` calls preserve the first lookup result. This allows duplicate local labels while keeping
+  `find()` deterministic.
 
 ### Relocation
 
@@ -279,11 +288,17 @@ LC_BUILD_VERSION → LC_SYMTAB → LC_DYSYMTAB → section data → relocations 
 
 **Key details:**
 - Magic: `0xFEEDFACF` (64-bit little-endian)
-- Symbol names prefixed with `_` (Mach-O convention)
+- Symbol names are stored canonically in `CodeSection`; the writer prefixes non-local Mach-O nlist names with `_`
+  at serialization time. Canonical C symbols that already begin with `_` still receive the ABI prefix, so
+  `__CFConstantStringClassReference` becomes `___CFConstantStringClassReference` in the raw object symbol table.
+- Local labels starting with `L` or `.` are not ABI-prefixed.
 - Relocations stored per-section (not in separate `.rela` sections like ELF)
 - Compact format: `r_address(32) | r_symbolnum(24) | r_pcrel(1) | r_length(2) | r_extern(1) | r_type(4)`
 - LC_BUILD_VERSION mandatory (platform=macOS, minos=14.0)
 - `MH_SUBSECTIONS_VIA_SYMBOLS` flag set
+- Multi-text emission uses an explicit writer override that merges input atoms through `CodeSection::appendSection()`
+  before emitting one `__TEXT,__text` section with subsection-by-symbol semantics.
+- Relocations and compact-unwind entries fail fast if they reference an unknown symbol index.
 
 ### COFF Writer
 
@@ -297,6 +312,8 @@ Produces valid COFF object files for Windows.
 - Relocations are 10 bytes: offset(4) + symbolTableIndex(4) + type(2)
 - No explicit addend — addend is embedded in instruction bytes at relocation site
 - Symbol names ≤8 chars stored inline; longer names reference string table (4-byte size prefix)
+- Relocation symbol indexes must resolve to emitted symbols.
+- Sections with more than 65,535 relocations are rejected instead of producing an invalid classic COFF object.
 
 ---
 
