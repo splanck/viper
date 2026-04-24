@@ -32,14 +32,14 @@ namespace {
 
 /// @brief Return type categories for collection methods.
 enum class MethodReturnKind {
-    ElementType, ///< Returns the collection's element type
-    KeyType,     ///< Returns the map's key type
-    ValueType,   ///< Returns the map's struct type
+    ElementType,       ///< Returns the collection's element type
+    KeyType,           ///< Returns the map's key type
+    ValueType,         ///< Returns the map's struct type
     OptionalValueType, ///< Returns an optional map value type
-    Integer,     ///< Returns Integer
-    Boolean,     ///< Returns Boolean
-    Void,        ///< Returns Void
-    Unknown      ///< Returns Unknown (fallback)
+    Integer,           ///< Returns Integer
+    Boolean,           ///< Returns Boolean
+    Void,              ///< Returns Void
+    Unknown            ///< Returns Unknown (fallback)
 };
 
 /// @brief Descriptor for a collection method's return type.
@@ -60,6 +60,7 @@ const CollectionMethodInfo listMethods[] = {
     {"count", MethodReturnKind::Integer},
     {"size", MethodReturnKind::Integer},
     {"length", MethodReturnKind::Integer},
+    {"find", MethodReturnKind::Integer},
     {"indexOf", MethodReturnKind::Integer},
     // Methods returning Boolean
     {"isEmpty", MethodReturnKind::Boolean},
@@ -187,6 +188,36 @@ static bool extractDottedName(Expr *expr, std::string &out) {
         return true;
     }
     return false;
+}
+
+static bool inspectRangeModifierChain(const Expr *expr, unsigned &stepCount) {
+    if (!expr)
+        return false;
+    if (expr->kind == ExprKind::Range)
+        return true;
+    if (expr->kind != ExprKind::Call)
+        return false;
+
+    const auto *call = static_cast<const CallExpr *>(expr);
+    if (!call->callee || call->callee->kind != ExprKind::Field)
+        return false;
+
+    const auto *field = static_cast<const FieldExpr *>(call->callee.get());
+    if (field->field == "rev" && call->args.empty())
+        return inspectRangeModifierChain(field->base.get(), stepCount);
+    if (field->field == "step" && call->args.size() == 1) {
+        ++stepCount;
+        return inspectRangeModifierChain(field->base.get(), stepCount);
+    }
+    return false;
+}
+
+static bool isRangeModifierChain(const Expr *expr, unsigned *stepCountOut = nullptr) {
+    unsigned stepCount = 0;
+    bool ok = inspectRangeModifierChain(expr, stepCount);
+    if (stepCountOut)
+        *stepCountOut = stepCount;
+    return ok;
 }
 
 static bool exprToTypeName(const Expr *expr, std::string &out) {
@@ -523,16 +554,15 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
         CallArgBinding binding;
         auto specs = makeExternParamSpecs(*sym, skipLeadingParams);
-        if (!bindCallArgs(
-                expr->args, specs, expr->loc, calleeName, binding, nullptr, true, true)) {
+        if (!bindCallArgs(expr->args, specs, expr->loc, calleeName, binding, nullptr, true, true)) {
             return false;
         }
         callArgBindings_[expr] = binding;
         return true;
     };
 
-    auto bindTerminalTextCall = [&](const std::string &calleeName, Symbol *sym, TypeRef &outType)
-        -> bool {
+    auto bindTerminalTextCall =
+        [&](const std::string &calleeName, Symbol *sym, TypeRef &outType) -> bool {
         if (!sym || !sym->isExtern || !sym->type || sym->type->kind != TypeKindSem::Function ||
             !isTerminalTextRuntime(calleeName) || expr->args.size() != 1) {
             return false;
@@ -571,7 +601,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
 
             if (!fallback || fallback->kind == TypeKindSem::Unknown ||
                 (refined && refined->kind != TypeKindSem::Unknown &&
-                 (isTypedSeq(refined) || (isConcreteRuntimeClass(refined) && isOpaquePtr(fallback)) ||
+                 (isTypedSeq(refined) ||
+                  (isConcreteRuntimeClass(refined) && isOpaquePtr(fallback)) ||
                   (!isOpaquePtr(refined) && isOpaquePtr(fallback))))) {
                 fallback = refined;
             }
@@ -1080,8 +1111,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 return true;
             error(expr->loc,
                   methodName + "() expects " + std::to_string(expected) + " argument" +
-                      (expected == 1 ? "" : "s") + ", got " +
-                      std::to_string(expr->args.size()));
+                      (expected == 1 ? "" : "s") + ", got " + std::to_string(expr->args.size()));
             return false;
         };
 
@@ -1104,17 +1134,35 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         if (baseType && baseType->kind == TypeKindSem::List) {
             // Range modifier methods — .rev() and .step(n) return same type
             if (fieldExpr->field == "rev") {
+                if (!isRangeModifierChain(expr)) {
+                    error(expr->loc, "rev() is only supported on range expressions");
+                    return types::unknown();
+                }
                 checkArgCount(0, "rev");
                 return baseType;
             }
             if (fieldExpr->field == "step") {
-                if (checkArgCount(1, "step"))
+                unsigned stepCount = 0;
+                if (!isRangeModifierChain(expr, &stepCount)) {
+                    error(expr->loc, "step() is only supported on range expressions");
+                    return types::unknown();
+                }
+                if (stepCount > 1)
+                    error(expr->loc, "range expressions cannot apply step() more than once");
+                if (checkArgCount(1, "step")) {
                     checkArgType(0, types::integer(), "step() argument");
+                    if (expr->args[0].value && expr->args[0].value->kind == ExprKind::IntLiteral) {
+                        auto *lit = static_cast<IntLiteralExpr *>(expr->args[0].value.get());
+                        if (lit->value <= 0)
+                            error(expr->args[0].value->loc,
+                                  "step() argument must be a positive non-zero integer");
+                    }
+                }
                 return baseType;
             }
             if (auto *method = findMethod(listMethods, fieldExpr->field)) {
-                TypeRef elemType = baseType->elementType() ? baseType->elementType()
-                                                           : types::unknown();
+                TypeRef elemType =
+                    baseType->elementType() ? baseType->elementType() : types::unknown();
                 if (fieldExpr->field == "get") {
                     if (checkArgCount(1, fieldExpr->field))
                         checkArgType(0, types::integer(), "get() index");
@@ -1126,7 +1174,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                            fieldExpr->field == "sort") {
                     checkArgCount(0, fieldExpr->field);
                 } else if (fieldExpr->field == "contains" || fieldExpr->field == "remove" ||
-                           fieldExpr->field == "indexOf") {
+                           fieldExpr->field == "find" || fieldExpr->field == "indexOf") {
                     if (checkArgCount(1, fieldExpr->field)) {
                         TypeRef argType = exprTypes_[expr->args[0].value.get()];
                         if (fieldExpr->field == "remove" && argType &&
@@ -1160,8 +1208,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         // Handle Map methods using lookup table
         if (baseType && baseType->kind == TypeKindSem::Map) {
             if (auto *method = findMethod(mapMethods, fieldExpr->field)) {
-                TypeRef valueType = baseType->valueType() ? baseType->valueType()
-                                                          : types::unknown();
+                TypeRef valueType =
+                    baseType->valueType() ? baseType->valueType() : types::unknown();
                 if (fieldExpr->field == "get") {
                     if (checkArgCount(1, fieldExpr->field))
                         checkArgType(0, types::string(), "Map key");
@@ -1195,8 +1243,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         // Handle Set methods using lookup table
         if (baseType && baseType->kind == TypeKindSem::Set) {
             if (auto *method = findMethod(setMethods, fieldExpr->field)) {
-                TypeRef elemType = baseType->elementType() ? baseType->elementType()
-                                                           : types::unknown();
+                TypeRef elemType =
+                    baseType->elementType() ? baseType->elementType() : types::unknown();
                 if (fieldExpr->field == "contains" || fieldExpr->field == "has" ||
                     fieldExpr->field == "add" || fieldExpr->field == "remove") {
                     if (checkArgCount(1, fieldExpr->field))
@@ -1240,6 +1288,12 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 }
                 return normalizeRuntimeSurfaceType(sym->type);
             }
+            analyzeAllArgs();
+            std::string typeName = baseType->kind == TypeKindSem::List   ? "List"
+                                   : baseType->kind == TypeKindSem::Map  ? "Map"
+                                                                         : "Set";
+            error(expr->loc, typeName + " has no method '" + fieldExpr->field + "'");
+            return types::unknown();
         }
 
         // Handle String methods using lookup table
@@ -1276,6 +1330,10 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 }
                 return normalizeRuntimeSurfaceType(sym->type);
             }
+
+            analyzeArgs();
+            error(expr->loc, "String has no method '" + fieldExpr->field + "'");
+            return types::unknown();
         }
 
         // Emit a diagnostic for method calls on an untyped opaque pointer (plain 'obj').

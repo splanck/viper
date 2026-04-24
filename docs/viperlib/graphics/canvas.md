@@ -143,33 +143,33 @@ DIM canvas AS Viper.Graphics.Canvas
 canvas = NEW Viper.Graphics.Canvas("My Game", 800, 600)
 
 ' Main loop
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     ' Poll events
     canvas.Poll()
 
     ' Clear to black
-    canvas.Clear(&H00000000)
+    canvas.Clear(0)
 
     ' Draw a red filled rectangle
-    canvas.Box(100, 100, 200, 150, &H00FF0000)
+    canvas.Box(100, 100, 200, 150, 16711680)
 
     ' Draw a blue filled circle
-    canvas.Disc(400, 300, 50, &H000000FF)
+    canvas.Disc(400, 300, 50, 255)
 
     ' Draw a green line
-    canvas.Line(0, 0, 800, 600, &H0000FF00)
+    canvas.Line(0, 0, 800, 600, 65280)
 
     ' Draw a white rectangle outline
-    canvas.Frame(50, 50, 100, 100, &H00FFFFFF)
+    canvas.Frame(50, 50, 100, 100, 16777215)
 
     ' Draw a yellow circle outline
-    canvas.Ring(600, 200, 40, &H00FFFF00)
+    canvas.Ring(600, 200, 40, 16776960)
 
     ' Draw text with transparent background
-    canvas.Text(10, 10, "Hello World!", &H00FFFFFF)
+    canvas.Text(10, 10, "Hello World!", 16777215)
 
     ' Draw text with solid background (useful for HUDs)
-    canvas.TextBg(10, 30, "Score: 1000", &H00FFFF00, &H00000080)
+    canvas.TextBg(10, 30, "Score: 1000", 16776960, 128)
 
     ' Present
     canvas.Flip()
@@ -220,22 +220,22 @@ The canvas supports additional drawing primitives for more complex shapes:
 
 ```basic
 ' Draw a thick line (5 pixels wide, rounded caps)
-canvas.ThickLine(10, 10, 200, 150, 5, &H00FF0000)
+canvas.ThickLine(10, 10, 200, 150, 5, 16711680)
 
 ' Draw rounded rectangles
-canvas.RoundBox(50, 50, 150, 80, 15, &H0000FF00)   ' Filled with 15px radius corners
-canvas.RoundFrame(50, 150, 150, 80, 15, &H000000FF) ' Outline only
+canvas.RoundBox(50, 50, 150, 80, 15, 65280)   ' Filled with 15px radius corners
+canvas.RoundFrame(50, 150, 150, 80, 15, 255) ' Outline only
 
 ' Flood fill an area (like paint bucket tool)
-canvas.FloodFill(100, 100, &H00FFFF00)
+canvas.FloodFill(100, 100, 16776960)
 
 ' Draw triangles
-canvas.Triangle(100, 50, 50, 150, 150, 150, &H00FF00FF)      ' Filled triangle
-canvas.TriangleFrame(200, 50, 150, 150, 250, 150, &H0000FFFF) ' Triangle outline
+canvas.Triangle(100, 50, 50, 150, 150, 150, 16711935)      ' Filled triangle
+canvas.TriangleFrame(200, 50, 150, 150, 250, 150, 65535) ' Triangle outline
 
 ' Draw ellipses (horizontal and vertical radii)
-canvas.Ellipse(400, 300, 80, 50, &H00808080)      ' Filled ellipse
-canvas.EllipseFrame(400, 400, 80, 50, &H00FFFFFF) ' Ellipse outline
+canvas.Ellipse(400, 300, 80, 50, 8421504)      ' Filled ellipse
+canvas.EllipseFrame(400, 400, 80, 50, 16777215) ' Ellipse outline
 ```
 
 ### Advanced Curves & Shapes
@@ -244,11 +244,11 @@ The canvas supports arcs, Bezier curves, and general polygons:
 
 ```basic
 ' Draw arcs (pie slices) - angles in degrees, 0 = right, 90 = up
-canvas.Arc(200, 200, 50, 0, 90, &H00FF0000)       ' Filled quarter-circle (top-right)
-canvas.ArcFrame(300, 200, 50, 45, 135, &H0000FF00) ' Arc outline
+canvas.Arc(200, 200, 50, 0, 90, 16711680)       ' Filled quarter-circle (top-right)
+canvas.ArcFrame(300, 200, 50, 45, 135, 65280) ' Arc outline
 
 ' Draw a quadratic Bezier curve (start, control point, end)
-canvas.Bezier(10, 100, 100, 10, 190, 100, &H000000FF)
+canvas.Bezier(10, 100, 100, 10, 190, 100, 255)
 
 ' Polyline and polygon require an array of points [x1, y1, x2, y2, ...]
 ' Note: In BASIC, use an array and pass count of points
@@ -257,8 +257,8 @@ points(0) = 50 : points(1) = 10   ' Point 1
 points(2) = 10 : points(3) = 90   ' Point 2
 points(4) = 90 : points(5) = 90   ' Point 3
 
-canvas.Polygon(points, 3, &H00FF00FF)      ' Filled polygon (3 points = triangle)
-canvas.PolygonFrame(points, 3, &H0000FFFF) ' Polygon outline
+canvas.Polygon(points, 3, 16711935)      ' Filled polygon (3 points = triangle)
+canvas.PolygonFrame(points, 3, 65535) ' Polygon outline
 ```
 
 ### Canvas Utilities
@@ -287,8 +287,8 @@ IF success = 1 THEN
 END IF
 
 ' Draw gradient backgrounds
-canvas.GradientH(0, 0, 800, 600, &H00FF0000, &H000000FF)  ' Red to blue (horizontal)
-canvas.GradientV(0, 0, 800, 600, &H00000000, &H00FFFFFF)  ' Black to white (vertical)
+canvas.GradientH(0, 0, 800, 600, 16711680, 255)  ' Red to blue (horizontal)
+canvas.GradientV(0, 0, 800, 600, 0, 16777215)  ' Black to white (vertical)
 ```
 
 ### Canvas Clipping
@@ -304,16 +304,16 @@ Line, rectangle, circle, ellipse, alpha-shape, pixel-read, and blit paths clip b
 canvas.SetClipRect(100, 100, 200, 150)
 
 ' This circle will only appear within the clip region
-canvas.Disc(150, 150, 100, &H00FF0000)
+canvas.Disc(150, 150, 100, 16711680)
 
 ' Drawing outside the clip region is ignored
-canvas.Box(0, 0, 50, 50, &H0000FF00)  ' Not visible (outside clip)
+canvas.Box(0, 0, 50, 50, 65280)  ' Not visible (outside clip)
 
 ' Restore full canvas drawing
 canvas.ClearClipRect()
 
 ' Now drawing works across the entire canvas again
-canvas.Box(0, 0, 50, 50, &H0000FF00)  ' Visible
+canvas.Box(0, 0, 50, 50, 65280)  ' Visible
 ```
 
 **Use Cases for Clipping:**
@@ -359,7 +359,7 @@ canvas.PreventClose(0)       ' Re-enable close button
 
 ' Toggle fullscreen with F11 key
 DIM isFullscreen AS INTEGER = 0
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     IF Viper.Input.Keyboard.Pressed(300) THEN  ' 300 = F11

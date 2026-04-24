@@ -1235,6 +1235,28 @@ Match shines in menu-driven programs:
 module MenuDemo;
 bind Viper.Terminal;
 
+func newGame() {
+    Say("Starting new game...");
+    Say("Welcome, hero!");
+}
+
+func loadGame() {
+    Say("Loading saved games...");
+    Say("No saved games found.");
+}
+
+func showOptions() {
+    Say("=== OPTIONS ===");
+    Say("Sound: ON");
+    Say("Difficulty: NORMAL");
+}
+
+func showCredits() {
+    Say("=== CREDITS ===");
+    Say("Created with Zia");
+    Say("Thanks for playing!");
+}
+
 func start() {
     Say("=== MAIN MENU ===");
     Say("1. New Game");
@@ -1247,30 +1269,12 @@ func start() {
     var choice = Viper.Core.Convert.ToInt64(InputLine());
 
     match choice {
-        1 => {
-            Say("Starting new game...");
-            Say("Welcome, hero!");
-        },
-        2 => {
-            Say("Loading saved games...");
-            Say("No saved games found.");
-        },
-        3 => {
-            Say("=== OPTIONS ===");
-            Say("Sound: ON");
-            Say("Difficulty: NORMAL");
-        },
-        4 => {
-            Say("=== CREDITS ===");
-            Say("Created with Zia");
-            Say("Thanks for playing!");
-        },
-        5 => {
-            Say("Goodbye!");
-        },
-        _ => {
-            Say("Invalid option. Please enter 1-5.");
-        }
+        1 => newGame(),
+        2 => loadGame(),
+        3 => showOptions(),
+        4 => showCredits(),
+        5 => Say("Goodbye!"),
+        _ => Say("Invalid option. Please enter 1-5.")
     }
 }
 ```

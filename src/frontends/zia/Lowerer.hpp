@@ -683,6 +683,10 @@ class Lowerer {
     /// @return LowerResult with null pointer.
     LowerResult lowerNullLiteral(NullLiteralExpr *expr);
 
+    /// @brief Lower a unit literal.
+    /// @return LowerResult with void/unit placeholder.
+    LowerResult lowerUnitLiteral(UnitLiteralExpr *expr);
+
     /// @brief Lower an identifier expression.
     /// @return LowerResult with the variable's value.
     LowerResult lowerIdent(IdentExpr *expr);
@@ -699,6 +703,21 @@ class Lowerer {
     /// @brief Lower a short-circuit And/Or expression with lazy evaluation.
     /// @return LowerResult with the boolean result.
     LowerResult lowerShortCircuit(BinaryExpr *expr);
+
+    /// @brief Lower a range expression to a list value.
+    LowerResult lowerRange(RangeExpr *expr);
+
+    struct RangeModifierInfo {
+        RangeExpr *range{nullptr};
+        bool reversed{false};
+        Expr *stepArg{nullptr};
+    };
+
+    /// @brief Collect a range expression plus chained .rev()/.step(n) modifiers.
+    bool collectRangeModifierChain(Expr *expr, RangeModifierInfo &out) const;
+
+    /// @brief Lower a range expression plus already-validated modifier state to a list.
+    LowerResult lowerRangeWithModifiers(RangeExpr *expr, bool reversed, Expr *stepArg);
 
     /// @brief Lower a unary expression.
     /// @return LowerResult with the operation result.
@@ -830,6 +849,12 @@ class Lowerer {
     /// @param value The i32 value to widen.
     /// @return The widened i64 value.
     Value widenByteToInteger(Value value);
+
+    /// @brief Widen any supported integral IL value to i64.
+    Value widenIntegralToI64(Value value, Type valueType);
+
+    /// @brief Emit an index bounds check when runtime bounds checks are enabled.
+    Value emitIndexCheck(Value index, Value lowerInclusive, Value upperExclusive);
 
     /// @brief Narrow an Integer (i64) value to Byte (i32) with overflow checking.
     /// @param value The i64 value to narrow.

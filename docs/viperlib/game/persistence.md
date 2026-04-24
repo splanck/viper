@@ -64,7 +64,7 @@ module SaveDemo;
 
 bind Viper.IO;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func start() {
     var save = SaveData.New("my_platformer");

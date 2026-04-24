@@ -947,8 +947,9 @@ void Sema::analyzePropertyDecl(PropertyDecl &decl, TypeRef ownerType) {
         analyzeBody(decl.setterBody.get(), types::voidType(), true);
 }
 
-const PropertyDecl *Sema::findPropertyDecl(const std::string &ownerName,
-                                           const std::string &propertyName) const {
+const PropertyDecl *Sema::propertyDeclForLowering(const std::string &ownerName,
+                                                  const std::string &propertyName,
+                                                  std::string *declaringOwner) const {
     auto scanMembers = [&](const auto *typeDecl) -> const PropertyDecl * {
         if (!typeDecl)
             return nullptr;
@@ -964,18 +965,32 @@ const PropertyDecl *Sema::findPropertyDecl(const std::string &ownerName,
 
     auto classIt = classDecls_.find(ownerName);
     if (classIt != classDecls_.end()) {
-        if (const PropertyDecl *prop = scanMembers(classIt->second))
+        if (const PropertyDecl *prop = scanMembers(classIt->second)) {
+            if (declaringOwner)
+                *declaringOwner = ownerName;
             return prop;
+        }
         if (!classIt->second->baseClass.empty())
-            return findPropertyDecl(classIt->second->baseClass, propertyName);
+            return propertyDeclForLowering(
+                classIt->second->baseClass, propertyName, declaringOwner);
         return nullptr;
     }
 
     auto structIt = structDecls_.find(ownerName);
-    if (structIt != structDecls_.end())
-        return scanMembers(structIt->second);
+    if (structIt != structDecls_.end()) {
+        if (const PropertyDecl *prop = scanMembers(structIt->second)) {
+            if (declaringOwner)
+                *declaringOwner = ownerName;
+            return prop;
+        }
+    }
 
     return nullptr;
+}
+
+const PropertyDecl *Sema::findPropertyDecl(const std::string &ownerName,
+                                           const std::string &propertyName) const {
+    return propertyDeclForLowering(ownerName, propertyName, nullptr);
 }
 
 void Sema::analyzeDestructorDecl(DestructorDecl &decl, TypeRef ownerType) {

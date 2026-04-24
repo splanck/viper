@@ -214,6 +214,9 @@ class Parser {
     /// identifiers in contexts like parameter names.
     bool checkIdentifierLike();
 
+    /// @brief Check whether a token can begin an expression.
+    bool isExpressionStart(TokenKind kind) const;
+
     /// @brief Consume current token if it matches the given kind.
     /// @param kind The token kind to match.
     /// @param out Optional pointer to receive the consumed token.
@@ -331,6 +334,12 @@ class Parser {
     /// - Lambda expressions: `(x: Integer) => x + 1`
     /// - If/match expressions
     ExprPtr parsePrimary();
+
+    /// @brief Parse an expression while permitting `Type { ... }` struct literals.
+    /// @details Used for expression subcontexts that are already unambiguously value
+    /// positions, while statement conditions keep struct literals disabled so
+    /// braces remain block delimiters.
+    ExprPtr parseExpressionAllowingStructLiterals();
 
     /// @brief Parse a match expression.
     /// @param loc The source location of the match keyword.
@@ -464,6 +473,7 @@ class Parser {
     /// - `f(1, 2)` - positional
     /// - `f(x: 1, y: 2)` - named
     /// - `f(1, y: 2)` - mixed
+    bool parseCallArgs(std::vector<CallArg> &args);
     std::vector<CallArg> parseCallArgs();
 
     /// @}
@@ -620,6 +630,7 @@ class Parser {
     /// @return Vector of Param.
     ///
     /// @details Parses parameter list: `(name: Type, name2: Type = default)`
+    bool parseParameters(std::vector<Param> &params);
     std::vector<Param> parseParameters();
 
     /// @brief Parse generic type parameters: [T, U]

@@ -686,7 +686,7 @@ A comprehensive reference of programming terms for beginners. Terms that are spe
 
 **Thread-safe**: Code that works correctly when called from multiple threads simultaneously. Properly synchronizes access to shared data. See [Chapter 24](../part4-applications/24-concurrency.md). See also *Thread*, *Race condition*, *Mutex*.
 
-**Throw**: To raise an exception, signaling an error. Interrupts normal execution. Must be caught by a try/catch block somewhere up the call stack. Example: `throw Error("Something went wrong")`. See [Chapter 10](../part2-building-blocks/10-errors.md). See also *Exception*, *Try*, *Catch*.
+**Throw**: To raise an exception, signaling an error. Interrupts normal execution. Must be caught by a try/catch block somewhere up the call stack. Example: `throw ("Something went wrong")`. See [Chapter 10](../part2-building-blocks/10-errors.md). See also *Exception*, *Try*, *Catch*.
 
 **Timeout**: A limit on how long to wait for an operation. If the operation doesn't complete in time, it fails or is cancelled. Prevents programs from waiting forever. See also *Asynchronous*.
 

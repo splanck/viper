@@ -115,7 +115,7 @@ func start() {
 
     // Blit the finished buffer to a canvas for display
     var c = Canvas.New("Pixels Draw Demo", 320, 240);
-    while c.ShouldClose == 0 {
+    while !c.get_ShouldClose() {
         c.Poll();
         c.Blit(0, 0, buf);
         c.Flip();
@@ -248,7 +248,7 @@ inverted = pixels.Invert()      ' Invert all colors
 DIM gray AS Viper.Graphics.Pixels
 gray = pixels.Grayscale()       ' Convert to grayscale
 DIM tinted AS Viper.Graphics.Pixels
-tinted = pixels.Tint(&H00FF0000) ' Apply red tint
+tinted = pixels.Tint(16711680) ' Apply red tint
 DIM blurred AS Viper.Graphics.Pixels
 blurred = pixels.Blur(3)        ' Box blur with radius 3
 
@@ -383,9 +383,9 @@ IF player <> NULL THEN
     player.SetFrameDelay(100)  ' 100ms between frames
 
     ' Game loop
-    DO WHILE canvas.ShouldClose = 0
+    DO WHILE NOT canvas.ShouldClose
         canvas.Poll()
-        canvas.Clear(&H000000)
+        canvas.Clear(0)
 
         ' Update animation
         player.Update()
@@ -655,9 +655,9 @@ DIM scrollX AS INTEGER = 0
 DIM scrollY AS INTEGER = 0
 
 ' Game loop
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
-    canvas.Clear(&H000000)
+    canvas.Clear(0)
 
     ' Scroll with arrow keys
     IF Viper.Input.Keyboard.Held(262) THEN scrollX = scrollX + 4
@@ -674,7 +674,7 @@ DO WHILE canvas.ShouldClose = 0
     DIM tileX AS INTEGER = map.ToTileX(mx)
     DIM tileY AS INTEGER = map.ToTileY(my)
 
-    canvas.Text(10, 10, "Tile: " + STR$(tileX) + "," + STR$(tileY), &HFFFFFF)
+    canvas.Text(10, 10, "Tile: " + STR$(tileX) + "," + STR$(tileY), 16777215)
 
     canvas.Flip()
 LOOP

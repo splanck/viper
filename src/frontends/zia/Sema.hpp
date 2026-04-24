@@ -301,6 +301,11 @@ class Sema {
         return it != resolvedFieldSetters_.end() ? it->second : "";
     }
 
+    /// @brief Look up a property declaration for lowering property-backed access.
+    const PropertyDecl *propertyDeclForLowering(const std::string &ownerName,
+                                                const std::string &propertyName,
+                                                std::string *declaringOwner = nullptr) const;
+
     /// @brief Get the resolved direct-call target for a user-defined function call.
     std::string resolvedFunctionCallee(const CallExpr *expr) const {
         auto it = resolvedFunctionCallees_.find(expr);
@@ -575,7 +580,8 @@ class Sema {
     void analyzeNamespaceBind(BindDecl &decl);
 
     /// @brief Rebuild exported symbol maps for all bound file modules.
-    void buildBoundFileExports(const std::vector<BindDecl> &binds, const std::vector<DeclPtr> &decls);
+    void buildBoundFileExports(const std::vector<BindDecl> &binds,
+                               const std::vector<DeclPtr> &decls);
 
     /// @brief Collect exported top-level symbols for a specific source file.
     void collectExportedSymbolsForFile(uint32_t fileId,
@@ -1653,8 +1659,7 @@ class Sema {
     std::unordered_map<uint32_t, std::unordered_set<uint32_t>> unqualifiedFileImportAll_;
 
     /// @brief Selective import permissions keyed by importer file id, imported file id, item name.
-    std::unordered_map<uint32_t,
-                       std::unordered_map<uint32_t, std::unordered_set<std::string>>>
+    std::unordered_map<uint32_t, std::unordered_map<uint32_t, std::unordered_set<std::string>>>
         unqualifiedFileImportItems_;
 
     /// @brief Active type parameter substitutions for current generic context.

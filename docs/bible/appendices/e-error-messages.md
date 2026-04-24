@@ -1981,10 +1981,10 @@ When you encounter an error:
 func processOrder(quantity: Integer, price: Number) {
     // Validate at the start
     if quantity <= 0 {
-        throw Error("Quantity must be positive");
+        throw ("Quantity must be positive");
     }
     if price < 0 {
-        throw Error("Price cannot be negative");
+        throw ("Price cannot be negative");
     }
 
     // Now we know inputs are valid
@@ -1997,10 +1997,10 @@ func processOrder(quantity: Integer, price: Number) {
 
 ```rust
 // Unhelpful
-throw Error("Invalid input");
+throw ("Invalid input");
 
 // Helpful
-throw Error("Invalid age: " + age + ". Age must be between 0 and 150.");
+throw ("Invalid age: " + age + ". Age must be between 0 and 150.");
 ```
 
 ### Handle Specific Errors

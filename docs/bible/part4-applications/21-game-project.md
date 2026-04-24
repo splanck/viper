@@ -123,7 +123,7 @@ This is why we use delta time. If your game runs slower on an old computer (say,
 
 Some things in games are states: the frog is alive, the player is pressing right, the game is paused. States are continuously true or false. Other things are events: the player just pressed space, the frog just died, the level just completed. Events happen at a specific moment and then are over.
 
-Treating these differently prevents bugs. If you check `Keyboard.IsDown(KEY_SPACE)` for jumping, the frog will jump every frame the spacebar is held, bouncing constantly. You want `Keyboard.IsPressed(KEY_SPACE)`, which is true only on the frame the key transitioned from up to down. That is an event check, not a state check.
+Treating these differently prevents bugs. If you check `Keyboard.IsDown(KEY_SPACE)` for jumping, the frog will jump every frame the spacebar is held, bouncing constantly. You want `Keyboard.WasPressed(KEY_SPACE)`, which is true only on the frame the key transitioned from up to down. That is an event check, not a state check.
 
 ### The Coordinate Dance
 
@@ -964,27 +964,27 @@ func start() {
         // === INPUT PHASE ===
         if state.gameOver {
             // Only accept restart input when game is over
-            if Keyboard.IsPressed(KEY_ENTER) {
+            if Keyboard.WasPressed(KEY_ENTER) {
                 state = Game.create();  // Fresh game
             }
         } else {
             // Normal gameplay input
-            if Keyboard.IsPressed(KEY_UP) || Keyboard.IsPressed(KEY_W) {
+            if Keyboard.WasPressed(KEY_UP) || Keyboard.WasPressed(KEY_W) {
                 state = Game.moveFrog(state, 0, -1);
             }
-            if Keyboard.IsPressed(KEY_DOWN) || Keyboard.IsPressed(KEY_S) {
+            if Keyboard.WasPressed(KEY_DOWN) || Keyboard.WasPressed(KEY_S) {
                 state = Game.moveFrog(state, 0, 1);
             }
-            if Keyboard.IsPressed(KEY_LEFT) || Keyboard.IsPressed(KEY_A) {
+            if Keyboard.WasPressed(KEY_LEFT) || Keyboard.WasPressed(KEY_A) {
                 state = Game.moveFrog(state, -1, 0);
             }
-            if Keyboard.IsPressed(KEY_RIGHT) || Keyboard.IsPressed(KEY_D) {
+            if Keyboard.WasPressed(KEY_RIGHT) || Keyboard.WasPressed(KEY_D) {
                 state = Game.moveFrog(state, 1, 0);
             }
         }
 
         // Escape always quits
-        if Keyboard.IsPressed(KEY_ESCAPE) {
+        if Keyboard.WasPressed(KEY_ESCAPE) {
             break;
         }
 
@@ -1010,7 +1010,7 @@ This is the complete game loop in action:
 4. **Render** the new state
 5. **Sleep** to maintain frame rate
 
-Notice the use of `Keyboard.IsPressed` rather than `Keyboard.IsDown` for movement. Frogger is a grid-based game where the frog moves one tile per button press. Using `IsDown` would make the frog zip across the screen while a key is held; `IsPressed` requires discrete presses.
+Notice the use of `Keyboard.WasPressed` rather than `Keyboard.IsDown` for movement. Frogger is a grid-based game where the frog moves one tile per button press. Using `IsDown` would make the frog zip across the screen while a key is held; `WasPressed` requires discrete presses.
 
 Also notice the support for both arrow keys and WASD. Many players prefer WASD, especially for left-handed play or if they are used to modern games. Supporting both costs almost nothing and improves accessibility.
 
@@ -1071,12 +1071,12 @@ if Keyboard.IsDown(KEY_SPACE) {
 **Right:**
 ```rust
 // This fires once per key press
-if Keyboard.IsPressed(KEY_SPACE) {
+if Keyboard.WasPressed(KEY_SPACE) {
     fireBullet();
 }
 ```
 
-Use `Keyboard.IsPressed` for discrete actions (jump, fire, menu select) and `Keyboard.IsDown` for continuous actions (moving, aiming).
+Use `Keyboard.WasPressed` for discrete actions (jump, fire, menu select) and `Keyboard.IsDown` for continuous actions (moving, aiming).
 
 ### Mistake 3: Order-Dependent Collision Bugs
 
@@ -1162,7 +1162,7 @@ Add a debug mode that runs at 1/10 speed:
 ```rust
 var debugSlowMotion = false;
 
-if Keyboard.IsPressed(KEY_F1) {
+if Keyboard.WasPressed(KEY_F1) {
     debugSlowMotion = !debugSlowMotion;
 }
 
@@ -1206,11 +1206,11 @@ Add the ability to pause the game and advance one frame at a time:
 var paused = false;
 var stepOneFrame = false;
 
-if Keyboard.IsPressed(KEY_P) {
+if Keyboard.WasPressed(KEY_P) {
     paused = !paused;
 }
 
-if Keyboard.IsPressed(KEY_N) {  // Next frame
+if Keyboard.WasPressed(KEY_N) {  // Next frame
     stepOneFrame = true;
 }
 

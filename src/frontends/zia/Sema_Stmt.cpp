@@ -213,6 +213,12 @@ void Sema::analyzeBlockStmt(BlockStmt *stmt) {
 void Sema::analyzeVarStmt(VarStmt *stmt) {
     TypeRef declaredType = stmt->type ? resolveTypeNode(stmt->type.get()) : nullptr;
     TypeRef initType = stmt->initializer ? analyzeExpr(stmt->initializer.get()) : nullptr;
+    if (initType && initType->kind == TypeKindSem::Unit) {
+        error(stmt->initializer->loc,
+              "Unit literal cannot be stored; use null for optional values or omit the value in a "
+              "void context");
+        initType = types::unknown();
+    }
 
     TypeRef varType;
     if (declaredType && initType) {
@@ -526,6 +532,14 @@ void Sema::analyzeForInStmt(ForInStmt *stmt) {
 void Sema::analyzeReturnStmt(ReturnStmt *stmt) {
     if (stmt->value) {
         TypeRef valueType = analyzeExpr(stmt->value.get());
+        if (valueType && valueType->kind == TypeKindSem::Unit) {
+            if (expectedReturnType_ && expectedReturnType_->kind == TypeKindSem::Void)
+                return;
+            error(stmt->value->loc,
+                  "Unit literal cannot be returned from a non-void function; use null for "
+                  "optional values");
+            valueType = types::unknown();
+        }
         if (expectedReturnType_ && !expectedReturnType_->isAssignableFrom(*valueType)) {
             // Allow implicit Number -> Integer conversion in return statements
             // This enables returning Floor/Ceil/Round/Trunc results from Integer functions

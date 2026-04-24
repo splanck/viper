@@ -1307,7 +1307,7 @@ func start() {
     }
 }
 
-func findItem(items: List[String], name: String): Integer {
+func findItem(items: List[String], name: String) -> Integer {
     for i in 0..items.Length {
         if items[i] == name {
             return i;

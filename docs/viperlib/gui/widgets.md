@@ -28,7 +28,7 @@ Text display widget.
 ```basic
 DIM label AS Viper.GUI.Label
 label = NEW Viper.GUI.Label(root, "Hello!")
-label.SetColor(&HFFFF0000)  ' Red text
+label.SetColor(4294901760)  ' Red text
 ```
 
 ```rust
@@ -409,7 +409,7 @@ PRINT "Total items: "; fileList.Count
 fileList.SelectIndex(0)  ' Select first item
 
 ' Check for selection changes in main loop
-DO WHILE app.ShouldClose = 0
+DO WHILE NOT app.ShouldClose
     app.Poll()
 
     IF fileList.WasSelectionChanged() = 1 THEN

@@ -70,45 +70,34 @@ The FPS number is color-coded:
 ```zia
 module DebugDemo;
 
-bind Viper.Game;
-bind Viper.Graphics;
-bind Viper.Input;
-
-class MyGame extends GameBase {
-    hide DebugOverlay debug;
-    hide Integer score;
-
-    override expose func onInit() {
-        debug = DebugOverlay.New();
-        score = 0;
-
-        // Bind F3 to toggle debug overlay
-        Action.Define("debug_toggle");
-        Action.BindKey("debug_toggle", 292);  // F3
-    }
-
-    override expose func onFrame(dt: Integer) {
-        // Toggle with F3
-        if Action.Pressed("debug_toggle") {
-            debug.Toggle();
-        }
-
-        // Update FPS tracking
-        debug.Update(dt);
-
-        // Add custom watches
-        debug.Watch("Score", score);
-        debug.Watch("Entities", 42);
-
-        // Draw overlay last (renders on top of everything)
-        debug.Draw(self.getCanvas());
-    }
-}
+bind Viper.Game.DebugOverlay as DebugOverlay;
+bind Viper.Graphics.Canvas as Canvas;
+bind Viper.Input.Action as Action;
 
 func start() {
-    var game = new MyGame();
-    game.initGame("Debug Demo", 800, 600);
-    game.run();
+    var canvas = Canvas.New("Debug Demo", 800, 600);
+    var debug = DebugOverlay.New();
+    var score = 0;
+
+    // Bind F3 to toggle debug overlay
+    Action.Define("debug_toggle");
+    Action.BindKey("debug_toggle", 292);  // F3
+
+    debug.Enable();
+
+    canvas.Poll();
+    if Action.Pressed("debug_toggle") {
+        debug.Toggle();
+    }
+
+    // Update FPS tracking and custom watches
+    debug.Update(16);
+    debug.Watch("Score", score);
+    debug.Watch("Entities", 42);
+
+    // Draw overlay last so it renders on top of the frame
+    debug.Draw(canvas);
+    canvas.Flip();
 }
 ```
 

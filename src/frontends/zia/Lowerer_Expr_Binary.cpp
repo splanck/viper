@@ -67,35 +67,308 @@ Value Lowerer::extendOperandForComparison(Value val, Type type) {
 //=============================================================================
 
 LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
-        auto right = lowerExpr(expr->right.get());
-        TypeRef rightType = sema_.typeOf(expr->right.get());
+    auto right = lowerExpr(expr->right.get());
+    TypeRef rightType = sema_.typeOf(expr->right.get());
 
-        // LHS must be an identifier, index, or field expression
-        if (auto *ident = dynamic_cast<IdentExpr *>(expr->left.get())) {
-            TypeRef targetType = nullptr;
-            auto typeIt = localTypes_.find(ident->name);
-            if (typeIt != localTypes_.end())
-                targetType = typeIt->second;
-            else
-                targetType = sema_.typeOf(expr->left.get());
+    // LHS must be an identifier, index, or field expression
+    if (auto *ident = dynamic_cast<IdentExpr *>(expr->left.get())) {
+        TypeRef targetType = nullptr;
+        auto typeIt = localTypes_.find(ident->name);
+        if (typeIt != localTypes_.end())
+            targetType = typeIt->second;
+        else
+            targetType = sema_.typeOf(expr->left.get());
 
-            Value assignValue = wrapValueForOptionalField(right.value, targetType, rightType);
-            Type assignType = (targetType && targetType->kind == TypeKindSem::Optional)
-                                  ? Type(Type::Kind::Ptr)
-                                  : right.type;
+        Value assignValue = wrapValueForOptionalField(right.value, targetType, rightType);
+        Type assignType = (targetType && targetType->kind == TypeKindSem::Optional)
+                              ? Type(Type::Kind::Ptr)
+                              : right.type;
 
-            // Unbox obj (Ptr) to primitive type when assigning a boxed value to a typed slot.
-            // This handles e.g. `intField = list.Get(i)` where List.Get() returns Ptr.
-            if (right.type.kind == Type::Kind::Ptr && targetType) {
-                Type targetILType = mapType(targetType);
-                if (targetILType.kind != Type::Kind::Ptr) {
-                    assignValue = emitUnbox(assignValue, targetILType).value;
-                    assignType = targetILType;
+        // Unbox obj (Ptr) to primitive type when assigning a boxed value to a typed slot.
+        // This handles e.g. `intField = list.Get(i)` where List.Get() returns Ptr.
+        if (right.type.kind == Type::Kind::Ptr && targetType) {
+            Type targetILType = mapType(targetType);
+            if (targetILType.kind != Type::Kind::Ptr) {
+                assignValue = emitUnbox(assignValue, targetILType).value;
+                assignType = targetILType;
+            }
+        }
+
+        // Numeric coercion: emit conversion instructions to avoid raw bit
+        // reinterpretation when assigning between Number and Integer types.
+        if (targetType && rightType) {
+            if (targetType->kind == TypeKindSem::Integer &&
+                rightType->kind == TypeKindSem::Number) {
+                unsigned convId = nextTempId();
+                il::core::Instr conv;
+                conv.result = convId;
+                conv.op = Opcode::CastFpToSiRteChk;
+                conv.type = Type(Type::Kind::I64);
+                conv.operands = {assignValue};
+                conv.loc = curLoc_;
+                blockMgr_.currentBlock()->instructions.push_back(conv);
+                assignValue = Value::temp(convId);
+                assignType = conv.type;
+            } else if (targetType->kind == TypeKindSem::Number &&
+                       rightType->kind == TypeKindSem::Integer) {
+                unsigned convId = nextTempId();
+                il::core::Instr conv;
+                conv.result = convId;
+                conv.op = Opcode::Sitofp;
+                conv.type = Type(Type::Kind::F64);
+                conv.operands = {assignValue};
+                conv.loc = curLoc_;
+                blockMgr_.currentBlock()->instructions.push_back(conv);
+                assignValue = Value::temp(convId);
+                assignType = conv.type;
+            }
+        }
+
+        // Handle struct type copy semantics - deep copy on assignment
+        if (rightType && rightType->kind == TypeKindSem::Struct) {
+            const StructTypeInfo *info = getOrCreateStructTypeInfo(rightType->name);
+            if (info) {
+                assignValue = emitStructTypeCopy(*info, assignValue);
+            }
+        }
+
+        // Check if this is a slot-based variable
+        auto slotIt = slots_.find(ident->name);
+        if (slotIt != slots_.end()) {
+            storeToSlot(ident->name, assignValue, assignType);
+            // The assigned value is consumed by the slot — don't release
+            consumeDeferred(assignValue);
+            return {assignValue, assignType};
+        }
+
+        // Check for implicit field assignment inside a struct type method
+        if (currentStructType_) {
+            const FieldLayout *field = currentStructType_->findField(ident->name);
+            if (field) {
+                Value selfPtr;
+                if (getSelfPtr(selfPtr)) {
+                    Value fieldValue =
+                        wrapValueForOptionalField(right.value, field->type, rightType);
+                    // Unbox obj (Ptr) to the field's primitive IL type.
+                    if (right.type.kind == Type::Kind::Ptr && field->type) {
+                        Type fieldILType = mapType(field->type);
+                        if (fieldILType.kind != Type::Kind::Ptr)
+                            fieldValue = emitUnbox(fieldValue, fieldILType).value;
+                    }
+                    // Numeric coercion for field assignment
+                    if (field->type && rightType) {
+                        if (field->type->kind == TypeKindSem::Integer &&
+                            rightType->kind == TypeKindSem::Number) {
+                            unsigned convId = nextTempId();
+                            il::core::Instr conv;
+                            conv.result = convId;
+                            conv.op = Opcode::CastFpToSiRteChk;
+                            conv.type = Type(Type::Kind::I64);
+                            conv.operands = {fieldValue};
+                            conv.loc = curLoc_;
+                            blockMgr_.currentBlock()->instructions.push_back(conv);
+                            fieldValue = Value::temp(convId);
+                        } else if (field->type->kind == TypeKindSem::Number &&
+                                   rightType->kind == TypeKindSem::Integer) {
+                            unsigned convId = nextTempId();
+                            il::core::Instr conv;
+                            conv.result = convId;
+                            conv.op = Opcode::Sitofp;
+                            conv.type = Type(Type::Kind::F64);
+                            conv.operands = {fieldValue};
+                            conv.loc = curLoc_;
+                            blockMgr_.currentBlock()->instructions.push_back(conv);
+                            fieldValue = Value::temp(convId);
+                        }
+                    }
+                    emitFieldStore(field, selfPtr, fieldValue);
+                    consumeDeferred(fieldValue);
+                    return {fieldValue, mapType(field->type)};
                 }
             }
+        }
 
-            // Numeric coercion: emit conversion instructions to avoid raw bit
-            // reinterpretation when assigning between Number and Integer types.
+        // Check for implicit field assignment inside an class method
+        if (currentClassType_) {
+            const FieldLayout *field = currentClassType_->findField(ident->name);
+            if (field) {
+                Value selfPtr;
+                if (getSelfPtr(selfPtr)) {
+                    Value fieldValue =
+                        wrapValueForOptionalField(right.value, field->type, rightType);
+                    // Unbox obj (Ptr) to the field's primitive IL type.
+                    if (right.type.kind == Type::Kind::Ptr && field->type) {
+                        Type fieldILType = mapType(field->type);
+                        if (fieldILType.kind != Type::Kind::Ptr)
+                            fieldValue = emitUnbox(fieldValue, fieldILType).value;
+                    }
+                    // Numeric coercion for field assignment
+                    if (field->type && rightType) {
+                        if (field->type->kind == TypeKindSem::Integer &&
+                            rightType->kind == TypeKindSem::Number) {
+                            unsigned convId = nextTempId();
+                            il::core::Instr conv;
+                            conv.result = convId;
+                            conv.op = Opcode::CastFpToSiRteChk;
+                            conv.type = Type(Type::Kind::I64);
+                            conv.operands = {fieldValue};
+                            conv.loc = curLoc_;
+                            blockMgr_.currentBlock()->instructions.push_back(conv);
+                            fieldValue = Value::temp(convId);
+                        } else if (field->type->kind == TypeKindSem::Number &&
+                                   rightType->kind == TypeKindSem::Integer) {
+                            unsigned convId = nextTempId();
+                            il::core::Instr conv;
+                            conv.result = convId;
+                            conv.op = Opcode::Sitofp;
+                            conv.type = Type(Type::Kind::F64);
+                            conv.operands = {fieldValue};
+                            conv.loc = curLoc_;
+                            blockMgr_.currentBlock()->instructions.push_back(conv);
+                            fieldValue = Value::temp(convId);
+                        }
+                    }
+                    emitFieldStore(field, selfPtr, fieldValue);
+                    consumeDeferred(fieldValue);
+                    return {fieldValue, mapType(field->type)};
+                }
+            }
+        }
+
+        // Check for global variable assignment
+        auto globalIt = globalVariables_.find(ident->name);
+        if (globalIt != globalVariables_.end()) {
+            TypeRef globalType = globalIt->second;
+            Type ilType = mapType(globalType);
+            Value addr = getGlobalVarAddr(ident->name, globalType);
+            Value storeValue = assignValue;
+            emitStore(addr, storeValue, ilType);
+            consumeDeferred(storeValue);
+            return {storeValue, ilType};
+        }
+
+        // Regular variable assignment.
+        // Safety net: if a local already exists here (SSA-only, no slot),
+        // it's a final variable being reassigned — Sema should have caught
+        // this. Skip the overwrite to avoid silently corrupting the value.
+        if (lookupLocal(ident->name) != nullptr) {
+            return right;
+        }
+        defineLocal(ident->name, assignValue);
+        if (targetType)
+            localTypes_[ident->name] = targetType;
+        return {assignValue, assignType};
+    }
+
+    // Handle index assignment (arr[i] = value, list[i] = value, map[key] = value)
+    if (auto *indexExpr = dynamic_cast<IndexExpr *>(expr->left.get())) {
+        auto base = lowerExpr(indexExpr->base.get());
+        auto index = lowerExpr(indexExpr->index.get());
+        TypeRef baseType = sema_.typeOf(indexExpr->base.get());
+        TypeRef indexRightType = sema_.typeOf(expr->right.get());
+
+        // Fixed-size array: direct GEP + Store (no boxing, no runtime call)
+        if (baseType && baseType->kind == TypeKindSem::FixedArray) {
+            TypeRef elemType = baseType->elementType();
+            Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
+            size_t elemSize = getILTypeSize(ilElemType);
+            Value checkedIndex = emitIndexCheck(
+                widenIntegralToI64(index.value, index.type),
+                Value::constInt(0),
+                Value::constInt(static_cast<int64_t>(baseType->elementCount)));
+
+            // Compute byte offset: index * elemSize
+            unsigned mulId = nextTempId();
+            il::core::Instr mulInstr;
+            mulInstr.result = mulId;
+            mulInstr.op = Opcode::IMulOvf;
+            mulInstr.type = Type(Type::Kind::I64);
+            mulInstr.operands = {checkedIndex, Value::constInt(static_cast<int64_t>(elemSize))};
+            mulInstr.loc = curLoc_;
+            blockMgr_.currentBlock()->instructions.push_back(mulInstr);
+            Value byteOffset = Value::temp(mulId);
+
+            // GEP to element address
+            unsigned gepId = nextTempId();
+            il::core::Instr gepInstr;
+            gepInstr.result = gepId;
+            gepInstr.op = Opcode::GEP;
+            gepInstr.type = Type(Type::Kind::Ptr);
+            gepInstr.operands = {base.value, byteOffset};
+            gepInstr.loc = curLoc_;
+            blockMgr_.currentBlock()->instructions.push_back(gepInstr);
+            Value elemAddr = Value::temp(gepId);
+
+            auto coerced = coerceValueToType(right.value, right.type, indexRightType, elemType);
+
+            // Store the element value
+            il::core::Instr storeInstr;
+            storeInstr.op = Opcode::Store;
+            storeInstr.type = ilElemType;
+            storeInstr.operands = {elemAddr, coerced.value};
+            storeInstr.loc = curLoc_;
+            blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+            consumeDeferred(coerced.value);
+            return {coerced.value, coerced.type};
+        }
+
+        Value boxedValue = emitBoxValue(right.value, right.type, indexRightType);
+        Value indexValue = widenIntegralToI64(index.value, index.type);
+        if (baseType && baseType->kind == TypeKindSem::Map)
+            emitCall(kMapSet, {base.value, index.value, boxedValue});
+        else if (baseType && baseType->kind == TypeKindSem::List)
+            emitCall(kListSet, {base.value, indexValue, boxedValue});
+        return right;
+    }
+
+    // Handle field assignment (obj.field = value)
+    if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get())) {
+        TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
+        TypeRef targetType = sema_.typeOf(fieldExpr);
+
+        if (baseType && baseType->kind == TypeKindSem::Module) {
+            std::string globalName = baseType->name + "." + fieldExpr->field;
+            auto globalIt = globalVariables_.find(globalName);
+            if (globalIt != globalVariables_.end()) {
+                TypeRef globalType = globalIt->second;
+                Type ilType = mapType(globalType);
+                Value addr = getGlobalVarAddr(globalName, globalType);
+                Value storeValue = wrapValueForOptionalField(right.value, globalType, rightType);
+                if (right.type.kind == Type::Kind::Ptr && globalType) {
+                    Type globalILType = mapType(globalType);
+                    if (globalILType.kind != Type::Kind::Ptr)
+                        storeValue = emitUnbox(storeValue, globalILType).value;
+                }
+                if (globalType && rightType && globalType->kind == TypeKindSem::Number &&
+                    rightType->kind == TypeKindSem::Integer) {
+                    unsigned convId = nextTempId();
+                    il::core::Instr conv;
+                    conv.result = convId;
+                    conv.op = Opcode::Sitofp;
+                    conv.type = Type(Type::Kind::F64);
+                    conv.operands = {storeValue};
+                    conv.loc = curLoc_;
+                    blockMgr_.currentBlock()->instructions.push_back(conv);
+                    storeValue = Value::temp(convId);
+                }
+                emitStore(addr, storeValue, ilType);
+                consumeDeferred(storeValue);
+                return {storeValue, ilType};
+            }
+        }
+
+        auto base = lowerExpr(fieldExpr->base.get());
+
+        std::string setterName = sema_.resolvedFieldSetter(fieldExpr);
+        if (!setterName.empty()) {
+            Value setterValue = wrapValueForOptionalField(right.value, targetType, rightType);
+
+            if (right.type.kind == Type::Kind::Ptr && targetType) {
+                Type targetILType = mapType(targetType);
+                if (targetILType.kind != Type::Kind::Ptr)
+                    setterValue = emitUnbox(setterValue, targetILType).value;
+            }
+
             if (targetType && rightType) {
                 if (targetType->kind == TypeKindSem::Integer &&
                     rightType->kind == TypeKindSem::Number) {
@@ -104,11 +377,10 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
                     conv.result = convId;
                     conv.op = Opcode::CastFpToSiRteChk;
                     conv.type = Type(Type::Kind::I64);
-                    conv.operands = {assignValue};
+                    conv.operands = {setterValue};
                     conv.loc = curLoc_;
                     blockMgr_.currentBlock()->instructions.push_back(conv);
-                    assignValue = Value::temp(convId);
-                    assignType = conv.type;
+                    setterValue = Value::temp(convId);
                 } else if (targetType->kind == TypeKindSem::Number &&
                            rightType->kind == TypeKindSem::Integer) {
                     unsigned convId = nextTempId();
@@ -116,337 +388,73 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
                     conv.result = convId;
                     conv.op = Opcode::Sitofp;
                     conv.type = Type(Type::Kind::F64);
-                    conv.operands = {assignValue};
+                    conv.operands = {setterValue};
                     conv.loc = curLoc_;
                     blockMgr_.currentBlock()->instructions.push_back(conv);
-                    assignValue = Value::temp(convId);
-                    assignType = conv.type;
+                    setterValue = Value::temp(convId);
                 }
             }
 
-            // Handle struct type copy semantics - deep copy on assignment
-            if (rightType && rightType->kind == TypeKindSem::Struct) {
-                const StructTypeInfo *info = getOrCreateStructTypeInfo(rightType->name);
-                if (info) {
-                    assignValue = emitStructTypeCopy(*info, assignValue);
-                }
-            }
-
-            // Check if this is a slot-based variable
-            auto slotIt = slots_.find(ident->name);
-            if (slotIt != slots_.end()) {
-                storeToSlot(ident->name, assignValue, assignType);
-                // The assigned value is consumed by the slot — don't release
-                consumeDeferred(assignValue);
-                return right;
-            }
-
-            // Check for implicit field assignment inside a struct type method
-            if (currentStructType_) {
-                const FieldLayout *field = currentStructType_->findField(ident->name);
-                if (field) {
-                    Value selfPtr;
-                    if (getSelfPtr(selfPtr)) {
-                        Value fieldValue =
-                            wrapValueForOptionalField(right.value, field->type, rightType);
-                        // Unbox obj (Ptr) to the field's primitive IL type.
-                        if (right.type.kind == Type::Kind::Ptr && field->type) {
-                            Type fieldILType = mapType(field->type);
-                            if (fieldILType.kind != Type::Kind::Ptr)
-                                fieldValue = emitUnbox(fieldValue, fieldILType).value;
-                        }
-                        // Numeric coercion for field assignment
-                        if (field->type && rightType) {
-                            if (field->type->kind == TypeKindSem::Integer &&
-                                rightType->kind == TypeKindSem::Number) {
-                                unsigned convId = nextTempId();
-                                il::core::Instr conv;
-                                conv.result = convId;
-                                conv.op = Opcode::CastFpToSiRteChk;
-                                conv.type = Type(Type::Kind::I64);
-                                conv.operands = {fieldValue};
-                                conv.loc = curLoc_;
-                                blockMgr_.currentBlock()->instructions.push_back(conv);
-                                fieldValue = Value::temp(convId);
-                            } else if (field->type->kind == TypeKindSem::Number &&
-                                       rightType->kind == TypeKindSem::Integer) {
-                                unsigned convId = nextTempId();
-                                il::core::Instr conv;
-                                conv.result = convId;
-                                conv.op = Opcode::Sitofp;
-                                conv.type = Type(Type::Kind::F64);
-                                conv.operands = {fieldValue};
-                                conv.loc = curLoc_;
-                                blockMgr_.currentBlock()->instructions.push_back(conv);
-                                fieldValue = Value::temp(convId);
-                            }
-                        }
-                        emitFieldStore(field, selfPtr, fieldValue);
-                        consumeDeferred(fieldValue);
-                        return right;
-                    }
-                }
-            }
-
-            // Check for implicit field assignment inside an class method
-            if (currentClassType_) {
-                const FieldLayout *field = currentClassType_->findField(ident->name);
-                if (field) {
-                    Value selfPtr;
-                    if (getSelfPtr(selfPtr)) {
-                        Value fieldValue =
-                            wrapValueForOptionalField(right.value, field->type, rightType);
-                        // Unbox obj (Ptr) to the field's primitive IL type.
-                        if (right.type.kind == Type::Kind::Ptr && field->type) {
-                            Type fieldILType = mapType(field->type);
-                            if (fieldILType.kind != Type::Kind::Ptr)
-                                fieldValue = emitUnbox(fieldValue, fieldILType).value;
-                        }
-                        // Numeric coercion for field assignment
-                        if (field->type && rightType) {
-                            if (field->type->kind == TypeKindSem::Integer &&
-                                rightType->kind == TypeKindSem::Number) {
-                                unsigned convId = nextTempId();
-                                il::core::Instr conv;
-                                conv.result = convId;
-                                conv.op = Opcode::CastFpToSiRteChk;
-                                conv.type = Type(Type::Kind::I64);
-                                conv.operands = {fieldValue};
-                                conv.loc = curLoc_;
-                                blockMgr_.currentBlock()->instructions.push_back(conv);
-                                fieldValue = Value::temp(convId);
-                            } else if (field->type->kind == TypeKindSem::Number &&
-                                       rightType->kind == TypeKindSem::Integer) {
-                                unsigned convId = nextTempId();
-                                il::core::Instr conv;
-                                conv.result = convId;
-                                conv.op = Opcode::Sitofp;
-                                conv.type = Type(Type::Kind::F64);
-                                conv.operands = {fieldValue};
-                                conv.loc = curLoc_;
-                                blockMgr_.currentBlock()->instructions.push_back(conv);
-                                fieldValue = Value::temp(convId);
-                            }
-                        }
-                        emitFieldStore(field, selfPtr, fieldValue);
-                        consumeDeferred(fieldValue);
-                        return right;
-                    }
-                }
-            }
-
-            // Check for global variable assignment
-            auto globalIt = globalVariables_.find(ident->name);
-            if (globalIt != globalVariables_.end()) {
-                TypeRef globalType = globalIt->second;
-                Type ilType = mapType(globalType);
-                Value addr = getGlobalVarAddr(ident->name, globalType);
-                Value storeValue = wrapValueForOptionalField(assignValue, globalType, rightType);
-                emitStore(addr, storeValue, ilType);
-                consumeDeferred(storeValue);
-                return right;
-            }
-
-            // Regular variable assignment.
-            // Safety net: if a local already exists here (SSA-only, no slot),
-            // it's a final variable being reassigned — Sema should have caught
-            // this. Skip the overwrite to avoid silently corrupting the value.
-            if (lookupLocal(ident->name) != nullptr) {
-                return right;
-            }
-            defineLocal(ident->name, assignValue);
-            if (targetType)
-                localTypes_[ident->name] = targetType;
-            return right;
-        }
-
-        // Handle index assignment (arr[i] = value, list[i] = value, map[key] = value)
-        if (auto *indexExpr = dynamic_cast<IndexExpr *>(expr->left.get())) {
-            auto base = lowerExpr(indexExpr->base.get());
-            auto index = lowerExpr(indexExpr->index.get());
-            TypeRef baseType = sema_.typeOf(indexExpr->base.get());
-            TypeRef indexRightType = sema_.typeOf(expr->right.get());
-
-            // Fixed-size array: direct GEP + Store (no boxing, no runtime call)
-            if (baseType && baseType->kind == TypeKindSem::FixedArray) {
-                TypeRef elemType = baseType->elementType();
-                Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
-                size_t elemSize = getILTypeSize(ilElemType);
-
-                // Compute byte offset: index * elemSize
-                unsigned mulId = nextTempId();
-                il::core::Instr mulInstr;
-                mulInstr.result = mulId;
-                mulInstr.op = Opcode::IMulOvf;
-                mulInstr.type = Type(Type::Kind::I64);
-                mulInstr.operands = {index.value, Value::constInt(static_cast<int64_t>(elemSize))};
-                mulInstr.loc = curLoc_;
-                blockMgr_.currentBlock()->instructions.push_back(mulInstr);
-                Value byteOffset = Value::temp(mulId);
-
-                // GEP to element address
-                unsigned gepId = nextTempId();
-                il::core::Instr gepInstr;
-                gepInstr.result = gepId;
-                gepInstr.op = Opcode::GEP;
-                gepInstr.type = Type(Type::Kind::Ptr);
-                gepInstr.operands = {base.value, byteOffset};
-                gepInstr.loc = curLoc_;
-                blockMgr_.currentBlock()->instructions.push_back(gepInstr);
-                Value elemAddr = Value::temp(gepId);
-
-                // Store the element value
-                il::core::Instr storeInstr;
-                storeInstr.op = Opcode::Store;
-                storeInstr.type = ilElemType;
-                storeInstr.operands = {elemAddr, right.value};
-                storeInstr.loc = curLoc_;
-                blockMgr_.currentBlock()->instructions.push_back(storeInstr);
-                return right;
-            }
-
-            Value boxedValue = emitBoxValue(right.value, right.type, indexRightType);
-            if (baseType && baseType->kind == TypeKindSem::Map)
-                emitCall(kMapSet, {base.value, index.value, boxedValue});
+            TypeRef resolvedBaseType = sema_.typeOf(fieldExpr->base.get());
+            if (resolvedBaseType && resolvedBaseType->kind == TypeKindSem::Module)
+                emitCall(setterName, {setterValue});
             else
-                emitCall(kListSet, {base.value, index.value, boxedValue});
-            return right;
+                emitCall(setterName, {base.value, setterValue});
+            consumeDeferred(setterValue);
+            return {setterValue, mapType(targetType)};
         }
 
-        // Handle field assignment (obj.field = value)
-        if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get())) {
-            TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
-            TypeRef targetType = sema_.typeOf(fieldExpr);
+        // Unwrap Optional types for field assignment
+        // This handles variables assigned from optionals after null checks
+        // (e.g., `var row = maybeRow;` where maybeRow is Row?)
+        if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType()) {
+            baseType = baseType->innerType();
+        }
 
-            if (baseType && baseType->kind == TypeKindSem::Module) {
-                std::string globalName = baseType->name + "." + fieldExpr->field;
-                auto globalIt = globalVariables_.find(globalName);
-                if (globalIt != globalVariables_.end()) {
-                    TypeRef globalType = globalIt->second;
-                    Type ilType = mapType(globalType);
-                    Value addr = getGlobalVarAddr(globalName, globalType);
-                    Value storeValue = wrapValueForOptionalField(right.value, globalType, rightType);
-                    if (right.type.kind == Type::Kind::Ptr && globalType) {
-                        Type globalILType = mapType(globalType);
-                        if (globalILType.kind != Type::Kind::Ptr)
-                            storeValue = emitUnbox(storeValue, globalILType).value;
+        if (baseType) {
+            std::string typeName = baseType->name;
+
+            // Check struct types
+            const StructTypeInfo *valueInfo = getOrCreateStructTypeInfo(typeName);
+            if (valueInfo) {
+                const FieldLayout *field = valueInfo->findField(fieldExpr->field);
+                if (field) {
+                    Value fieldValue =
+                        wrapValueForOptionalField(right.value, field->type, rightType);
+                    // Unbox obj (Ptr) to the field's primitive IL type.
+                    if (right.type.kind == Type::Kind::Ptr && field->type) {
+                        Type fieldILType = mapType(field->type);
+                        if (fieldILType.kind != Type::Kind::Ptr)
+                            fieldValue = emitUnbox(fieldValue, fieldILType).value;
                     }
-                    if (globalType && rightType && globalType->kind == TypeKindSem::Number &&
-                        rightType->kind == TypeKindSem::Integer) {
-                        unsigned convId = nextTempId();
-                        il::core::Instr conv;
-                        conv.result = convId;
-                        conv.op = Opcode::Sitofp;
-                        conv.type = Type(Type::Kind::F64);
-                        conv.operands = {storeValue};
-                        conv.loc = curLoc_;
-                        blockMgr_.currentBlock()->instructions.push_back(conv);
-                        storeValue = Value::temp(convId);
-                    }
-                    emitStore(addr, storeValue, ilType);
-                    consumeDeferred(storeValue);
-                    return right;
+                    emitFieldStore(field, base.value, fieldValue);
+                    consumeDeferred(fieldValue);
+                    return {fieldValue, mapType(field->type)};
                 }
             }
 
-            auto base = lowerExpr(fieldExpr->base.get());
-
-            std::string setterName = sema_.resolvedFieldSetter(fieldExpr);
-            if (!setterName.empty()) {
-                Value setterValue = wrapValueForOptionalField(right.value, targetType, rightType);
-
-                if (right.type.kind == Type::Kind::Ptr && targetType) {
-                    Type targetILType = mapType(targetType);
-                    if (targetILType.kind != Type::Kind::Ptr)
-                        setterValue = emitUnbox(setterValue, targetILType).value;
-                }
-
-                if (targetType && rightType) {
-                    if (targetType->kind == TypeKindSem::Integer &&
-                        rightType->kind == TypeKindSem::Number) {
-                        unsigned convId = nextTempId();
-                        il::core::Instr conv;
-                        conv.result = convId;
-                        conv.op = Opcode::CastFpToSiRteChk;
-                        conv.type = Type(Type::Kind::I64);
-                        conv.operands = {setterValue};
-                        conv.loc = curLoc_;
-                        blockMgr_.currentBlock()->instructions.push_back(conv);
-                        setterValue = Value::temp(convId);
-                    } else if (targetType->kind == TypeKindSem::Number &&
-                               rightType->kind == TypeKindSem::Integer) {
-                        unsigned convId = nextTempId();
-                        il::core::Instr conv;
-                        conv.result = convId;
-                        conv.op = Opcode::Sitofp;
-                        conv.type = Type(Type::Kind::F64);
-                        conv.operands = {setterValue};
-                        conv.loc = curLoc_;
-                        blockMgr_.currentBlock()->instructions.push_back(conv);
-                        setterValue = Value::temp(convId);
+            // Check class types
+            const ClassTypeInfo *entityInfoPtr = getOrCreateClassTypeInfo(typeName);
+            if (entityInfoPtr) {
+                const FieldLayout *field = entityInfoPtr->findField(fieldExpr->field);
+                if (field) {
+                    Value fieldValue =
+                        wrapValueForOptionalField(right.value, field->type, rightType);
+                    // Unbox obj (Ptr) to the field's primitive IL type.
+                    if (right.type.kind == Type::Kind::Ptr && field->type) {
+                        Type fieldILType = mapType(field->type);
+                        if (fieldILType.kind != Type::Kind::Ptr)
+                            fieldValue = emitUnbox(fieldValue, fieldILType).value;
                     }
-                }
-
-                TypeRef resolvedBaseType = sema_.typeOf(fieldExpr->base.get());
-                if (resolvedBaseType && resolvedBaseType->kind == TypeKindSem::Module)
-                    emitCall(setterName, {setterValue});
-                else
-                    emitCall(setterName, {base.value, setterValue});
-                consumeDeferred(setterValue);
-                return right;
-            }
-
-            // Unwrap Optional types for field assignment
-            // This handles variables assigned from optionals after null checks
-            // (e.g., `var row = maybeRow;` where maybeRow is Row?)
-            if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType()) {
-                baseType = baseType->innerType();
-            }
-
-            if (baseType) {
-                std::string typeName = baseType->name;
-
-                // Check struct types
-                const StructTypeInfo *valueInfo = getOrCreateStructTypeInfo(typeName);
-                if (valueInfo) {
-                    const FieldLayout *field = valueInfo->findField(fieldExpr->field);
-                    if (field) {
-                        Value fieldValue =
-                            wrapValueForOptionalField(right.value, field->type, rightType);
-                        // Unbox obj (Ptr) to the field's primitive IL type.
-                        if (right.type.kind == Type::Kind::Ptr && field->type) {
-                            Type fieldILType = mapType(field->type);
-                            if (fieldILType.kind != Type::Kind::Ptr)
-                                fieldValue = emitUnbox(fieldValue, fieldILType).value;
-                        }
-                        emitFieldStore(field, base.value, fieldValue);
-                        consumeDeferred(fieldValue);
-                        return right;
-                    }
-                }
-
-                // Check class types
-                const ClassTypeInfo *entityInfoPtr = getOrCreateClassTypeInfo(typeName);
-                if (entityInfoPtr) {
-                    const FieldLayout *field = entityInfoPtr->findField(fieldExpr->field);
-                    if (field) {
-                        Value fieldValue =
-                            wrapValueForOptionalField(right.value, field->type, rightType);
-                        // Unbox obj (Ptr) to the field's primitive IL type.
-                        if (right.type.kind == Type::Kind::Ptr && field->type) {
-                            Type fieldILType = mapType(field->type);
-                            if (fieldILType.kind != Type::Kind::Ptr)
-                                fieldValue = emitUnbox(fieldValue, fieldILType).value;
-                        }
-                        emitFieldStore(field, base.value, fieldValue);
-                        consumeDeferred(fieldValue);
-                        return right;
-                    }
+                    emitFieldStore(field, base.value, fieldValue);
+                    consumeDeferred(fieldValue);
+                    return {fieldValue, mapType(field->type)};
                 }
             }
         }
+    }
 
-        return {Value::constInt(0), Type(Type::Kind::I64)};
+    return {Value::constInt(0), Type(Type::Kind::I64)};
 }
 
 LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {

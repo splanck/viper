@@ -183,7 +183,7 @@ module BloomFilterDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func start() {
     // Create filter for 100 items with 1% false positive rate
@@ -304,7 +304,7 @@ module TrieDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func start() {
     var t = Trie.New();
@@ -446,7 +446,7 @@ module UnionFindDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func start() {
     var uf = UnionFind.New(6);
@@ -578,7 +578,7 @@ module BitSetDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func start() {
     var bs = BitSet.New(8);
@@ -748,10 +748,10 @@ func start() {
 ' Create a 4-byte array and set values
 DIM data AS Viper.Collections.Bytes
 data = NEW Viper.Collections.Bytes(4)
-data.Set(0, &HDE)
-data.Set(1, &HAD)
-data.Set(2, &HBE)
-data.Set(3, &HEF)
+data.Set(0, 222)
+data.Set(1, 173)
+data.Set(2, 190)
+data.Set(3, 239)
 
 PRINT data.ToHex()  ' Output: "deadbeef"
 PRINT data.Length      ' Output: 4
@@ -779,7 +779,7 @@ slice = data.Slice(1, 3)  ' Bytes at indices 1 and 2
 PRINT slice.Length           ' Output: 2
 
 ' Find a byte
-PRINT data.Find(&HBE)     ' Output: 2
+PRINT data.Find(190)     ' Output: 2
 
 ' Fill with a value
 data.Fill(0)

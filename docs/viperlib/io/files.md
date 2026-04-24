@@ -112,10 +112,10 @@ END IF
 ' Create binary data
 DIM data AS Bytes
 data = Viper.Collections.Bytes.New(4)
-data.Set(0, &H48)  ' H
-data.Set(1, &H69)  ' i
-data.Set(2, &H21)  ' !
-data.Set(3, &H00)  ' null byte
+data.Set(0, 72)  ' H
+data.Set(1, 105)  ' i
+data.Set(2, 33)  ' !
+data.Set(3, 0)  ' null byte
 
 ' Write binary file
 Viper.IO.File.WriteAllBytes("test.bin", data)
@@ -270,10 +270,10 @@ func start() {
 DIM bf AS OBJECT = Viper.IO.BinFile.Open("data.bin", "w")
 
 ' Write individual bytes
-bf.WriteByte(&HCA)
-bf.WriteByte(&HFE)
-bf.WriteByte(&HBA)
-bf.WriteByte(&HBE)
+bf.WriteByte(202)
+bf.WriteByte(254)
+bf.WriteByte(186)
+bf.WriteByte(190)
 
 ' Write from a Bytes object
 DIM data AS OBJECT = NEW Viper.Collections.Bytes(4)
@@ -313,7 +313,7 @@ bf = Viper.IO.BinFile.Open("data.bin", "rw")
 
 ' Seek to position 4 and overwrite
 bf.Seek(4, 0)
-bf.WriteByte(&HFF)
+bf.WriteByte(255)
 
 bf.Close()
 ```

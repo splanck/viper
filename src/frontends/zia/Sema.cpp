@@ -133,8 +133,6 @@ int conversionCost(TypeRef paramType, TypeRef argType, bool allowRuntimeObjectCo
         return 2;
     }
     if (paramType->kind == TypeKindSem::Optional) {
-        if (argType->kind == TypeKindSem::Unit)
-            return 1;
         if (argType->kind == TypeKindSem::Optional)
             return paramType->innerType() && argType->innerType() &&
                            paramType->innerType()->equals(*argType->innerType())
@@ -719,8 +717,7 @@ bool Sema::bindCallArgs(const std::vector<CallArg> &args,
         int cost = conversionCost(paramType, argType, allowRuntimeObjectCoercion);
         if (cost >= 1000 && allowRuntimeObjectCoercion && paramType &&
             paramType->kind == TypeKindSem::Ptr && argType &&
-            argType->kind == TypeKindSem::Function &&
-            allowsFunctionPointerParam(params[i].name) &&
+            argType->kind == TypeKindSem::Function && allowsFunctionPointerParam(params[i].name) &&
             isFunctionPointerArg(args[static_cast<size_t>(sourceIndex)])) {
             cost = 2;
         }
@@ -1300,7 +1297,14 @@ bool Sema::defineSymbol(const std::string &name, Symbol symbol, SourceLoc locOve
     SourceLoc defLoc =
         locOverride.isValid() ? locOverride : (symbol.decl ? symbol.decl->loc : SourceLoc{});
     if (Symbol *existing = currentScope_->lookupLocal(name)) {
-        if (existing->decl == nullptr && symbol.decl == nullptr) {
+        if (existing->decl == nullptr && symbol.decl == nullptr && existing->isExtern &&
+            symbol.isExtern) {
+            symbol.loc = defLoc;
+            currentScope_->define(name, std::move(symbol));
+            return true;
+        }
+        if (existing->decl == nullptr && symbol.decl == nullptr &&
+            existing->kind == Symbol::Kind::Variable && symbol.kind == Symbol::Kind::Variable) {
             symbol.loc = defLoc;
             currentScope_->define(name, std::move(symbol));
             return true;

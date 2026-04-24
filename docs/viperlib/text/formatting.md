@@ -82,8 +82,8 @@ PRINT result  ' Output: Hello Zia v1.0!
 ```basic
 ' Create a Map with values
 DIM values AS OBJECT = Map.New()
-values.Set("name", Viper.Box.Str("Alice"))
-values.Set("count", Viper.Box.Str("5"))
+values.Set("name", Viper.Core.Box.Str("Alice"))
+values.Set("count", Viper.Core.Box.Str("5"))
 
 ' Render template
 DIM result AS STRING = Viper.Text.Template.Render("Hello {{name}}, you have {{count}} messages.", values)
@@ -103,9 +103,9 @@ PRINT result  ' Output: "Hello {{unknown}}!"
 ```basic
 ' Create a Seq with positional values
 DIM values AS OBJECT = Seq.New()
-values.Push(Viper.Box.Str("Alice"))
-values.Push(Viper.Box.Str("Bob"))
-values.Push(Viper.Box.Str("Charlie"))
+values.Push(Viper.Core.Box.Str("Alice"))
+values.Push(Viper.Core.Box.Str("Bob"))
+values.Push(Viper.Core.Box.Str("Charlie"))
 
 ' Use numeric indices
 DIM result AS STRING = Viper.Text.Template.RenderSeq("{{0}} and {{1}} meet {{2}}", values)
@@ -120,8 +120,8 @@ PRINT result  ' Output: "Alice and {{99}}"
 
 ```basic
 DIM values AS OBJECT = Map.New()
-values.Set("name", Viper.Box.Str("Alice"))
-values.Set("count", Viper.Box.Str("5"))
+values.Set("name", Viper.Core.Box.Str("Alice"))
+values.Set("count", Viper.Core.Box.Str("5"))
 
 ' Use dollar signs as delimiters
 DIM result AS STRING = Viper.Text.Template.RenderWith("Hello $name$!", values, "$", "$")

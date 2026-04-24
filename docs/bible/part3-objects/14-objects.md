@@ -1138,7 +1138,7 @@ Following the principle of "hide by default":
 
 ```rust
 bind Viper.Terminal;
-bind Viper.Time;
+bind Viper.Time.DateTime as DateTime;
 
 class BankAccount {
     hide accountNumber: String;
@@ -1303,8 +1303,8 @@ class TodoItem {
     expose func init(text: String) {
         self.text = text;
         self.done = false;
-        var _dtc = Time.DateTime.Now();
-        self.createdAt = Time.DateTime.Year(_dtc) + "-" + Time.DateTime.Month(_dtc) + "-" + Time.DateTime.Day(_dtc);
+        var _dtc = DateTime.Now();
+        self.createdAt = DateTime.Year(_dtc) + "-" + DateTime.Month(_dtc) + "-" + DateTime.Day(_dtc);
         self.completedAt = "";
     }
 
@@ -1319,8 +1319,8 @@ class TodoItem {
     expose func markDone() {
         if !self.done {
             self.done = true;
-            var _dtx = Time.DateTime.Now();
-            self.completedAt = Time.DateTime.Year(_dtx) + "-" + Time.DateTime.Month(_dtx) + "-" + Time.DateTime.Day(_dtx);
+            var _dtx = DateTime.Now();
+            self.completedAt = DateTime.Year(_dtx) + "-" + DateTime.Month(_dtx) + "-" + DateTime.Day(_dtx);
         }
     }
 
@@ -1350,7 +1350,7 @@ class TodoList {
     }
 
     expose func add(text: String) {
-        self.items.Push(TodoItem(text));
+        self.items.Push(new TodoItem(text));
     }
 
     expose func markDone(index: Integer) {
@@ -1422,11 +1422,11 @@ class TodoList {
 }
 
 func start() {
-    var todos = TodoList("My Tasks");
+    var todos = new TodoList("My Tasks");
 
-    todos.Add("Learn Zia");
-    todos.Add("Build a project");
-    todos.Add("Read the documentation");
+    todos.add("Learn Zia");
+    todos.add("Build a project");
+    todos.add("Read the documentation");
 
     todos.display();
     // === My Tasks ===

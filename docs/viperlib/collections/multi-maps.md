@@ -58,7 +58,7 @@ module BiMapDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func start() {
     var bm = BiMap.New();
@@ -165,7 +165,7 @@ module MultiMapDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func start() {
     var mm = MultiMap.New();
@@ -183,9 +183,9 @@ func start() {
     // Get all values for a key
     var colors = mm.Get("color");
     SayInt(colors.Length);                          // 3
-    Say(Box.ToStr(colors.Get(0)));               // red
-    Say(Box.ToStr(colors.Get(1)));               // green
-    Say(Box.ToStr(colors.Get(2)));               // blue
+    Say(Box.ToStr(Seq.Get(colors, 0)));          // red
+    Say(Box.ToStr(Seq.Get(colors, 1)));          // green
+    Say(Box.ToStr(Seq.Get(colors, 2)));          // blue
 
     // Get first value for a key
     Say(Box.ToStr(mm.GetFirst("color")));        // red
@@ -306,7 +306,7 @@ module CountMapDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func start() {
     var cm = CountMap.New();
@@ -433,6 +433,7 @@ module IntMapDemo;
 
 bind Viper.Terminal;
 bind Viper.Collections;
+bind Viper.Core;
 bind Viper.Fmt as Fmt;
 
 func start() {
@@ -543,7 +544,7 @@ module DefaultMapDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func start() {
     // Create with string default
@@ -665,7 +666,7 @@ module LruCacheDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func start() {
     var cache = LruCache.New(3);
@@ -892,7 +893,7 @@ module SparseArrayDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func start() {
     var sa = SparseArray.New();

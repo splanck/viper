@@ -109,12 +109,12 @@ if Keyboard.IsDown(KEY_SPACE) {
 }
 
 // This fires exactly once when the key is first pressed
-if Keyboard.IsPressed(KEY_SPACE) {
+if Keyboard.WasPressed(KEY_SPACE) {
     // This code runs once, when space goes from up to down
 }
 ```
 
-For a jump action, you almost always want `IsPressed`. If you use `IsDown`, the character will try to jump every single frame while you hold the button, which is almost never what you want.
+For a jump action, you almost always want `WasPressed`. If you use `IsDown`, the character will try to jump every single frame while you hold the button, which is almost never what you want.
 
 ### Continuous State vs. Discrete Events
 
@@ -125,7 +125,7 @@ Some actions need the key's current state (is it down right now?). Other actions
 - Holding actions: "aim while right-click is held"
 - Any action that should continue as long as the button is held
 
-**Use event checks (`Keyboard.IsPressed`) for:**
+**Use event checks (`Keyboard.WasPressed`) for:**
 - One-time actions: "jump", "shoot", "pause"
 - Menu navigation: "select next item"
 - Any action that should happen once per button press
@@ -157,11 +157,11 @@ Let's trace exactly what happens when a player presses the Space bar to jump. Un
 - Sets the internal state of Space to "down"
 - Sets a flag indicating Space was "just pressed" this frame
 
-Your game loop runs. When it calls `Keyboard.IsPressed(KEY_SPACE)`, the function returns `true` because the "just pressed" flag is set. Your code calls `player.jump()`, and the character begins rising into the air.
+Your game loop runs. When it calls `Keyboard.WasPressed(KEY_SPACE)`, the function returns `true` because the "just pressed" flag is set. Your code calls `player.jump()`, and the character begins rising into the air.
 
 **Frame 2:** No new Space events (the player is still holding the key). At the start of this frame, Viper clears all the "just pressed" flags from the previous frame. The state of Space is still "down", but it's no longer "just pressed."
 
-Your game loop runs. `Keyboard.IsPressed(KEY_SPACE)` now returns `false` because the flag was cleared. But `Keyboard.IsDown(KEY_SPACE)` still returns `true` because the key is still being held. Your physics code continues the jump — the character rises and then falls.
+Your game loop runs. `Keyboard.WasPressed(KEY_SPACE)` now returns `false` because the flag was cleared. But `Keyboard.IsDown(KEY_SPACE)` still returns `true` because the key is still being held. Your physics code continues the jump — the character rises and then falls.
 
 **Frame 10:** The player releases the Space bar. The OS creates a key-up event. Viper reads it and:
 - Sets the internal state of Space to "up"
@@ -169,7 +169,7 @@ Your game loop runs. `Keyboard.IsPressed(KEY_SPACE)` now returns `false` because
 
 **Frame 11:** The "just released" flag is cleared. Space is now fully up with no special flags.
 
-This is why `IsPressed` only returns true for one frame. The "just pressed" state is temporary — it exists only to let you detect the transition from up to down.
+This is why `WasPressed` only returns true for one frame. The "just pressed" state is temporary — it exists only to let you detect the transition from up to down.
 
 ---
 
@@ -211,27 +211,27 @@ Notice we're checking every frame. This is polling in action — we're constantl
 
 ### Detecting Key Presses
 
-For one-time actions, use `Keyboard.IsPressed`:
+For one-time actions, use `Keyboard.WasPressed`:
 
 ```rust
 bind Keyboard = Viper.Input.Keyboard;
 
-if Keyboard.IsPressed(KEY_SPACE) {
+if Keyboard.WasPressed(KEY_SPACE) {
     player.jump();
 }
 
-if Keyboard.IsPressed(KEY_ESCAPE) {
+if Keyboard.WasPressed(KEY_ESCAPE) {
     pauseGame();
 }
 
-if Keyboard.IsPressed(KEY_R) {
+if Keyboard.WasPressed(KEY_R) {
     restartLevel();
 }
 ```
 
-Why use `IsPressed` instead of `IsDown`?
+Why use `WasPressed` instead of `IsDown`?
 
-- `IsPressed` returns `true` only on the frame the key went from up to down. The next frame, it returns `false` (even if the key is still held).
+- `WasPressed` returns `true` only on the frame the key went from up to down. The next frame, it returns `false` (even if the key is still held).
 - `IsDown` returns `true` on every frame while the key is held.
 
 For jumping, you want one jump per button press. If you used `IsDown`, the character would try to jump continuously while you hold the button — usually resulting in a single jump (since you can't jump while in the air), but the code would be wastefully checking every frame.
@@ -243,7 +243,7 @@ Sometimes you need to know when a key is released:
 ```rust
 bind Keyboard = Viper.Input.Keyboard;
 
-if Keyboard.IsReleased(KEY_CTRL) {
+if Keyboard.WasReleased(KEY_CTRL) {
     // Player released the aim button
     releaseArrow();  // Fire the arrow they were aiming
 }
@@ -290,7 +290,7 @@ Modifier keys (Shift, Ctrl, Alt) are often used in combination with other keys:
 ```rust
 bind Keyboard = Viper.Input.Keyboard;
 
-if Keyboard.IsPressed(KEY_S) && Keyboard.IsDown(KEY_CTRL) {
+if Keyboard.WasPressed(KEY_S) && Keyboard.IsDown(KEY_CTRL) {
     saveGame();  // Ctrl+S to save
 }
 
@@ -358,12 +358,12 @@ if Mouse.IsDown(0) {
 }
 
 // Check if button was just clicked
-if Mouse.IsClicked(0) {
+if Mouse.WasClicked(0) {
     // Left button was just clicked
 }
 
 // Check if button was just released
-if Mouse.IsReleased(1) {
+if Mouse.WasReleased(1) {
     // Right button was just released
 }
 ```
@@ -400,7 +400,7 @@ module MouseDraw;
 
 bind Viper.Graphics;
 bind Mouse = Viper.Input.Mouse;
-bind Viper.Time;
+bind Viper.Time.Clock as Clock;
 
 func start() {
     var canvas = Canvas.New("Draw with Mouse", 800, 600);
@@ -419,12 +419,12 @@ func start() {
         }
 
         // Right click clears the canvas
-        if Mouse.IsClicked(1) {
+        if Mouse.WasClicked(1) {
             canvas.Box(0, 0, 800, 600, Color.WHITE);
         }
 
         canvas.Flip();
-        Time.Clock.Sleep(16);
+        Clock.Sleep(16);
     }
 }
 ```
@@ -432,12 +432,12 @@ func start() {
 Let's trace through this code:
 
 1. We create an 800x600 canvas and fill it with white.
-2. In our main loop, we check if the left mouse button is held (`Mouse.IsDown`, not `Mouse.IsClicked`).
+2. In our main loop, we check if the left mouse button is held (`Mouse.IsDown`, not `Mouse.WasClicked`).
 3. While held, we draw a small black circle at the current mouse position. As the user drags, we draw many circles, creating a line.
 4. If the right button is clicked, we clear the canvas back to white.
 5. We flip the buffer and wait 16 milliseconds (~60 FPS).
 
-This demonstrates a key insight: use `Mouse.IsDown` for continuous actions (drawing while dragging) and `Mouse.IsClicked` for discrete actions (clearing on click).
+This demonstrates a key insight: use `Mouse.IsDown` for continuous actions (drawing while dragging) and `Mouse.WasClicked` for discrete actions (clearing on click).
 
 ---
 
@@ -618,14 +618,14 @@ class InputManager {
     }
 
     func isJumpPressed() -> Boolean {
-        return Keyboard.IsPressed(KEY_SPACE) ||
-               Keyboard.IsPressed(KEY_W) ||
+        return Keyboard.WasPressed(KEY_SPACE) ||
+               Keyboard.WasPressed(KEY_W) ||
                Input.wasControllerButtonPressed(0, ControllerButton.A);
     }
 
     func isActionPressed() -> Boolean {
-        return Keyboard.IsPressed(KEY_E) ||
-               Keyboard.IsPressed(KEY_ENTER) ||
+        return Keyboard.WasPressed(KEY_E) ||
+               Keyboard.WasPressed(KEY_ENTER) ||
                Input.wasControllerButtonPressed(0, ControllerButton.X);
     }
 }
@@ -680,7 +680,7 @@ class KeyMap {
 
     func wasActionPressed(action: String) -> Boolean {
         var key = self.bindings.Get(action);
-        return Keyboard.IsPressed(key);
+        return Keyboard.WasPressed(key);
     }
 
     func rebind(action: String, key: Integer) {
@@ -703,7 +703,7 @@ func waitForKeyAndRebind(keyMap: KeyMap, action: String) {
     // Wait for any key press
     while true {
         for keyCode in 0..256 {
-            if Keyboard.IsPressed(keyCode) {
+            if Keyboard.WasPressed(keyCode) {
                 keyMap.rebind(action, keyCode);
                 return;
             }
@@ -731,7 +731,7 @@ class InputBuffer {
         }
 
         // When jump is pressed, start the buffer timer
-        if Keyboard.IsPressed(KEY_SPACE) {
+        if Keyboard.WasPressed(KEY_SPACE) {
             self.jumpBufferTime = self.jumpBufferDuration;
         }
     }
@@ -857,14 +857,23 @@ module CharacterDemo;
 
 bind Viper.Graphics;
 bind Keyboard = Viper.Input.Keyboard;
-bind Viper.Time;
+bind Viper.Time.Clock as Clock;
+bind Convert = Viper.Core.Convert;
 
 struct Player {
-    x: Number;
-    y: Number;
-    vx: Number;
-    vy: Number;
-    onGround: Boolean;
+    expose Number x;
+    expose Number y;
+    expose Number vx;
+    expose Number vy;
+    expose Boolean onGround;
+
+    expose func init(x: Number, y: Number, vx: Number, vy: Number, onGround: Boolean) {
+        self.x = x;
+        self.y = y;
+        self.vx = vx;
+        self.vy = vy;
+        self.onGround = onGround;
+    }
 }
 
 final GRAVITY = 800.0;
@@ -875,36 +884,30 @@ final GROUND_Y = 500.0;
 func start() {
     var canvas = Canvas.New("Character Control", 800, 600);
 
-    var player = Player {
-        x: 400.0,
-        y: GROUND_Y,
-        vx: 0.0,
-        vy: 0.0,
-        onGround: true
-    };
+    var player = new Player(400.0, GROUND_Y, 0.0, 0.0, true);
 
-    var lastTime = Time.Clock.Ticks();
+    var lastTime = Clock.Ticks();
 
     while !canvas.ShouldClose {
         canvas.Poll();
 
         // Calculate delta time
-        var now = Time.Clock.Ticks();
+        var now = Clock.Ticks();
         var dt = (now - lastTime) / 1000.0;
         lastTime = now;
 
         // --- INPUT ---
         // Horizontal movement (continuous - use IsDown)
         player.vx = 0.0;
-        if Keyboard.IsDown(KEY_LEFT) || Keyboard.IsDown(KEY_A) {
+        if Keyboard.IsDown(Keyboard.KEY_LEFT) || Keyboard.IsDown(Keyboard.KEY_A) {
             player.vx = -MOVE_SPEED;
         }
-        if Keyboard.IsDown(KEY_RIGHT) || Keyboard.IsDown(KEY_D) {
+        if Keyboard.IsDown(Keyboard.KEY_RIGHT) || Keyboard.IsDown(Keyboard.KEY_D) {
             player.vx = MOVE_SPEED;
         }
 
-        // Jump (one-time action - use IsPressed)
-        if Keyboard.IsPressed(KEY_SPACE) && player.onGround {
+        // Jump (one-time action - use WasPressed)
+        if Keyboard.WasPressed(Keyboard.KEY_SPACE) && player.onGround {
             player.vy = JUMP_SPEED;
             player.onGround = false;
         }
@@ -927,18 +930,20 @@ func start() {
         }
 
         // Keep player on screen (horizontal bounds)
-        if player.x < 25 { player.x = 25; }
-        if player.x > 775 { player.x = 775; }
+        if player.x < 25.0 { player.x = 25.0; }
+        if player.x > 775.0 { player.x = 775.0; }
 
         // --- RENDERING ---
         // Sky
-        canvas.Box(0, 0, 800, GROUND_Y + 50, Color.RGB(100, 150, 255));
+        canvas.Box(0, 0, 800, 550, Color.RGB(100, 150, 255));
 
         // Ground
-        canvas.Box(0, GROUND_Y + 50, 800, 100, Color.RGB(50, 150, 50));
+        canvas.Box(0, 550, 800, 100, Color.RGB(50, 150, 50));
 
         // Player (centered on position)
-        canvas.Box(player.x - 25, player.y - 50, 50, 50, Color.RED);
+        var drawX = Convert.NumToInt(player.x - 25.0);
+        var drawY = Convert.NumToInt(player.y - 50.0);
+        canvas.Box(drawX, drawY, 50, 50, Color.RED);
 
         // Instructions
         canvas.Text(10, 25, "Arrow keys or A/D to move, Space to jump", Color.WHITE);
@@ -948,7 +953,7 @@ func start() {
         canvas.Text(10, 75, "On ground: " + player.onGround, Color.WHITE);
 
         canvas.Flip();
-        Time.Clock.Sleep(16);
+        Clock.Sleep(16);
     }
 }
 ```
@@ -988,18 +993,18 @@ if Keyboard.IsDown(KEY_SPACE) {
 
 **Right:**
 ```rust
-if Keyboard.IsPressed(KEY_SPACE) {
+if Keyboard.WasPressed(KEY_SPACE) {
     fireBullet();  // Fires once per button press
 }
 ```
 
-When you hold the Space bar, `IsDown` returns `true` every frame. For actions that should happen once per press, use `IsPressed`.
+When you hold the Space bar, `IsDown` returns `true` every frame. For actions that should happen once per press, use `WasPressed`.
 
 ### Mistake 2: Forgetting to Handle Key Release
 
 **Problem:**
 ```rust
-if Keyboard.IsPressed(KEY_SHIFT) {
+if Keyboard.WasPressed(KEY_SHIFT) {
     player.isRunning = true;
 }
 // Player runs forever after pressing shift once!
@@ -1009,10 +1014,10 @@ if Keyboard.IsPressed(KEY_SHIFT) {
 ```rust
 player.isRunning = Keyboard.IsDown(KEY_SHIFT);
 // Or:
-if Keyboard.IsPressed(KEY_SHIFT) {
+if Keyboard.WasPressed(KEY_SHIFT) {
     player.isRunning = true;
 }
-if Keyboard.IsReleased(KEY_SHIFT) {
+if Keyboard.WasReleased(KEY_SHIFT) {
     player.isRunning = false;
 }
 ```
@@ -1025,7 +1030,7 @@ For "hold to activate" mechanics, check the key state continuously, or handle bo
 ```rust
 func checkJump() {
     // This might miss the key press!
-    if Keyboard.IsPressed(KEY_SPACE) {
+    if Keyboard.WasPressed(KEY_SPACE) {
         player.jump();
     }
 }
@@ -1037,14 +1042,14 @@ func checkJump() {
 ```rust
 // In main game loop, called every frame
 while gameRunning {
-    if Keyboard.IsPressed(KEY_SPACE) {
+    if Keyboard.WasPressed(KEY_SPACE) {
         player.jump();
     }
     // ...
 }
 ```
 
-`IsPressed` only returns `true` for one frame. If you don't check it during that frame, you miss the input.
+`WasPressed` only returns `true` for one frame. If you don't check it during that frame, you miss the input.
 
 ### Mistake 4: Not Applying Dead Zones
 
@@ -1074,7 +1079,7 @@ Physical analog sticks almost never rest at exactly (0, 0). Always apply a dead 
 // Scattered throughout your code
 if Keyboard.IsDown(KEY_W) { moveUp(); }
 if Keyboard.IsDown(KEY_A) { moveLeft(); }
-if Keyboard.IsPressed(KEY_SPACE) { jump(); }
+if Keyboard.WasPressed(KEY_SPACE) { jump(); }
 ```
 
 **Better:**
@@ -1122,7 +1127,7 @@ When transitioning between game states (menu to gameplay, for example), leftover
 func startGame() {
     // The player pressed Enter to start, but Enter might still register
     // as a "just pressed" key this frame
-    if Keyboard.IsPressed(KEY_ENTER) {
+    if Keyboard.WasPressed(KEY_ENTER) {
         // This triggers immediately, maybe pausing the game!
         togglePause();
     }
@@ -1152,7 +1157,7 @@ The simplest debugging technique — see what the input system is actually repor
 ```rust
 // Add to your game loop temporarily
 canvas.Text(10, 50, "Space down: " + Keyboard.IsDown(KEY_SPACE), Color.WHITE);
-canvas.Text(10, 70, "Space pressed: " + Keyboard.IsPressed(KEY_SPACE), Color.WHITE);
+canvas.Text(10, 70, "Space pressed: " + Keyboard.WasPressed(KEY_SPACE), Color.WHITE);
 canvas.Text(10, 90, "Mouse: " + Mouse.X() + ", " + Mouse.Y(), Color.WHITE);
 ```
 
@@ -1165,8 +1170,8 @@ Sometimes the order of operations matters:
 ```rust
 // Bug: wasKeyPressed is checked after the action already happened
 player.update();  // This might call Input functions internally
-if Keyboard.IsPressed(KEY_SPACE) {
-    // This never triggers because IsPressed was already
+if Keyboard.WasPressed(KEY_SPACE) {
+    // This never triggers because WasPressed was already
     // consumed (or cleared) during player.update()
 }
 ```
@@ -1199,7 +1204,7 @@ bind Keyboard = Viper.Input.Keyboard;
 bind Viper.Terminal;
 bind Viper.Time;
 
-if Keyboard.IsPressed(KEY_SPACE) {
+if Keyboard.WasPressed(KEY_SPACE) {
     Say("Jump pressed at time: " + Time.Clock.Ticks());
 }
 
@@ -1226,14 +1231,14 @@ bind Mouse = Viper.Input.Mouse;
 if Keyboard.IsDown(KEY_SPACE) {
     player.charging = true;
 }
-if Keyboard.IsPressed(KEY_ESCAPE) {
+if Keyboard.WasPressed(KEY_ESCAPE) {
     pauseGame();
 }
 
 // Mouse
 var mx = Mouse.X();
 var my = Mouse.Y();
-if Mouse.IsClicked(0) {
+if Mouse.WasClicked(0) {
     handleClick(mx, my);
 }
 
@@ -1278,7 +1283,7 @@ END IF
 - **The input pipeline** goes from physical device through OS to your code
 - **Input queues** store events so nothing is lost
 - **Key state** (`Keyboard.IsDown`) checks if a key is currently held
-- **Key events** (`Keyboard.IsPressed`, `Keyboard.IsReleased`) detect transitions
+- **Key events** (`Keyboard.WasPressed`, `Keyboard.WasReleased`) detect transitions
 - Use **state** for continuous actions, **events** for one-time actions
 - **Mouse** provides position and button state
 - **Controllers** have analog sticks (need dead zones) and digital buttons

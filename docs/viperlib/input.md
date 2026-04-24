@@ -216,7 +216,7 @@ DIM playerX AS INTEGER = 400
 DIM playerY AS INTEGER = 300
 DIM speed AS INTEGER = 5
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     ' Poll events and update keyboard state
     canvas.Poll()
 
@@ -246,8 +246,8 @@ DO WHILE canvas.ShouldClose = 0
     END IF
 
     ' Draw
-    canvas.Clear(&H00000000)
-    canvas.Box(playerX - 10, playerY - 10, 20, 20, &H00FF0000)
+    canvas.Clear(0)
+    canvas.Box(playerX - 10, playerY - 10, 20, 20, 16711680)
     canvas.Flip()
 LOOP
 ```
@@ -258,7 +258,7 @@ LOOP
 DIM canvas AS Viper.Graphics.Canvas
 canvas = NEW Viper.Graphics.Canvas("Key Test", 400, 300)
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     ' Get all keys pressed this frame
@@ -266,13 +266,13 @@ DO WHILE canvas.ShouldClose = 0
     pressed = Viper.Input.Keyboard.GetPressed()
 
     DIM i AS INTEGER
-    FOR i = 0 TO pressed.Length() - 1
+    FOR i = 0 TO Viper.Collections.Seq.get_Length(pressed) - 1
         DIM key AS INTEGER
         key = pressed.Get(i)
         PRINT "Pressed: "; Viper.Input.Keyboard.KeyName(key)
     NEXT i
 
-    canvas.Clear(&H00000000)
+    canvas.Clear(0)
     canvas.Flip()
 LOOP
 ```
@@ -288,7 +288,7 @@ DIM inputText AS STRING = ""
 ' Enable text input mode
 Viper.Input.Keyboard.EnableTextInput()
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     ' Get typed text
@@ -309,7 +309,7 @@ DO WHILE canvas.ShouldClose = 0
         inputText = ""
     END IF
 
-    canvas.Clear(&H00000000)
+    canvas.Clear(0)
     ' Draw text field (you'd use a text rendering method)
     canvas.Flip()
 LOOP
@@ -439,7 +439,7 @@ konamiKeys.Push(264)
 detector.DefineCombo("konami", konamiKeys, 30)
 
 ' In game loop
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
     detector.Update()
 
@@ -574,7 +574,7 @@ canvas = NEW Viper.Graphics.Canvas("Draw", 800, 600)
 
 DIM drawing AS INTEGER = 0
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     ' Start drawing when left button pressed
@@ -591,12 +591,12 @@ DO WHILE canvas.ShouldClose = 0
     IF drawing = 1 THEN
         DIM mx AS INTEGER = Viper.Input.Mouse.X()
         DIM my AS INTEGER = Viper.Input.Mouse.Y()
-        canvas.Disc(mx, my, 5, &H00FF0000)
+        canvas.Disc(mx, my, 5, 16711680)
     END IF
 
     ' Clear on right click
     IF Viper.Input.Mouse.WasClicked(Viper.Input.Mouse.BUTTON_RIGHT) THEN
-        canvas.Clear(&H00000000)
+        canvas.Clear(0)
     END IF
 
     canvas.Flip()
@@ -617,7 +617,7 @@ DIM dragging AS INTEGER = 0
 DIM offsetX AS INTEGER = 0
 DIM offsetY AS INTEGER = 0
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     DIM mx AS INTEGER = Viper.Input.Mouse.X()
@@ -652,15 +652,15 @@ DO WHILE canvas.ShouldClose = 0
     END IF
 
     ' Draw
-    canvas.Clear(&H00222222)
+    canvas.Clear(2236962)
 
     ' Draw box (highlight if hovering or dragging)
-    DIM color AS INTEGER = &H00444444
+    DIM color AS INTEGER = 4473924
     IF overBox = 1 OR dragging = 1 THEN
-        color = &H00666666
+        color = 6710886
     END IF
     canvas.Box(boxX, boxY, boxW, boxH, color)
-    canvas.Frame(boxX, boxY, boxW, boxH, &H00FFFFFF)
+    canvas.Frame(boxX, boxY, boxW, boxH, 16777215)
 
     canvas.Flip()
 LOOP
@@ -680,7 +680,7 @@ DIM sensitivity AS INTEGER = 1
 Viper.Input.Mouse.Capture()
 Viper.Input.Mouse.Hide()
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     ' Use mouse delta for camera rotation
@@ -701,7 +701,7 @@ DO WHILE canvas.ShouldClose = 0
         EXIT DO
     END IF
 
-    canvas.Clear(&H00000000)
+    canvas.Clear(0)
     ' Render scene based on cameraYaw and cameraPitch...
     canvas.Flip()
 LOOP
@@ -715,7 +715,7 @@ canvas = NEW Viper.Graphics.Canvas("Zoom", 800, 600)
 
 DIM zoom AS INTEGER = 100  ' percentage
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     ' Scroll wheel to zoom
@@ -726,13 +726,13 @@ DO WHILE canvas.ShouldClose = 0
     IF zoom < 10 THEN zoom = 10
     IF zoom > 500 THEN zoom = 500
 
-    canvas.Clear(&H00000000)
+    canvas.Clear(0)
 
     ' Draw something at zoom level
     DIM size AS INTEGER = zoom / 2
     DIM cx AS INTEGER = 400 - size / 2
     DIM cy AS INTEGER = 300 - size / 2
-    canvas.Box(cx, cy, size, size, &H0000FF00)
+    canvas.Box(cx, cy, size, size, 65280)
 
     canvas.Flip()
 LOOP
@@ -895,7 +895,7 @@ DIM playerX AS DOUBLE = 400.0
 DIM playerY AS DOUBLE = 300.0
 DIM speed AS DOUBLE = 5.0
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     ' Check if controller 0 is connected
@@ -919,8 +919,8 @@ DO WHILE canvas.ShouldClose = 0
         END IF
     END IF
 
-    canvas.Clear(&H00000000)
-    canvas.Disc(INT(playerX), INT(playerY), 20, &H00FF0000)
+    canvas.Clear(0)
+    canvas.Disc(INT(playerX), INT(playerY), 20, 16711680)
     canvas.Flip()
 LOOP
 ```
@@ -931,7 +931,7 @@ LOOP
 DIM canvas AS Viper.Graphics.Canvas
 canvas = NEW Viper.Graphics.Canvas("Rumble Test", 400, 300)
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     IF Viper.Input.Pad.IsConnected(0) THEN
@@ -951,7 +951,7 @@ DO WHILE canvas.ShouldClose = 0
         END IF
     END IF
 
-    canvas.Clear(&H00000000)
+    canvas.Clear(0)
     canvas.Flip()
 LOOP
 ```
@@ -969,7 +969,7 @@ DIM aimAngle AS DOUBLE = 0.0
 ' Adjust deadzone for precision
 Viper.Input.Pad.SetDeadzone(0.15)
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     IF Viper.Input.Pad.IsConnected(0) THEN
@@ -985,15 +985,15 @@ DO WHILE canvas.ShouldClose = 0
         END IF
     END IF
 
-    canvas.Clear(&H00000000)
+    canvas.Clear(0)
 
     ' Draw player
-    canvas.Disc(INT(posX), INT(posY), 15, &H0000FF00)
+    canvas.Disc(INT(posX), INT(posY), 15, 65280)
 
     ' Draw aim direction
     DIM aimX AS INTEGER = INT(posX + COS(aimAngle) * 30)
     DIM aimY AS INTEGER = INT(posY + SIN(aimAngle) * 30)
-    canvas.Line(INT(posX), INT(posY), aimX, aimY, &H00FF0000)
+    canvas.Line(INT(posX), INT(posY), aimX, aimY, 16711680)
 
     canvas.Flip()
 LOOP
@@ -1007,10 +1007,10 @@ canvas = NEW Viper.Graphics.Canvas("Multiplayer", 800, 600)
 
 ' Colors for each player
 DIM colors(3) AS INTEGER
-colors(0) = &H00FF0000  ' Red
-colors(1) = &H000000FF  ' Blue
-colors(2) = &H0000FF00  ' Green
-colors(3) = &H00FFFF00  ' Yellow
+colors(0) = 16711680  ' Red
+colors(1) = 255  ' Blue
+colors(2) = 65280  ' Green
+colors(3) = 16776960  ' Yellow
 
 DIM x(3) AS DOUBLE
 DIM y(3) AS DOUBLE
@@ -1021,7 +1021,7 @@ x(1) = 600 : y(1) = 300
 x(2) = 400 : y(2) = 150
 x(3) = 400 : y(3) = 450
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     DIM i AS INTEGER
@@ -1032,7 +1032,7 @@ DO WHILE canvas.ShouldClose = 0
         END IF
     NEXT i
 
-    canvas.Clear(&H00222222)
+    canvas.Clear(2236962)
 
     ' Draw status text
     PRINT "Controllers: "; Viper.Input.Pad.Count()
@@ -1314,7 +1314,7 @@ DIM playerX AS DOUBLE = 400.0
 DIM playerY AS DOUBLE = 300.0
 DIM speed AS DOUBLE = 5.0
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     ' Movement using axis actions (works with keyboard OR gamepad)
@@ -1331,8 +1331,8 @@ DO WHILE canvas.ShouldClose = 0
         PRINT "Firing..."
     END IF
 
-    canvas.Clear(&H00000000)
-    canvas.Disc(INT(playerX), INT(playerY), 20, &H00FF0000)
+    canvas.Clear(0)
+    canvas.Disc(INT(playerX), INT(playerY), 20, 16711680)
     canvas.Flip()
 LOOP
 ```
@@ -1360,7 +1360,7 @@ DIM pitch AS DOUBLE = 0.0
 
 Viper.Input.Mouse.Capture()
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     yaw = yaw + Viper.Input.Action.Axis("look_x")
@@ -1370,7 +1370,7 @@ DO WHILE canvas.ShouldClose = 0
     IF pitch > 1.57 THEN pitch = 1.57
     IF pitch < -1.57 THEN pitch = -1.57
 
-    canvas.Clear(&H00000000)
+    canvas.Clear(0)
     ' Render scene using yaw/pitch...
     canvas.Flip()
 LOOP
@@ -1565,7 +1565,7 @@ menuItems(1) = "Continue"
 menuItems(2) = "Options"
 menuItems(3) = "Exit"
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
     input.Update()
 
@@ -1596,10 +1596,10 @@ DO WHILE canvas.ShouldClose = 0
     END IF
 
     ' Render menu...
-    canvas.Clear(&H00000000)
+    canvas.Clear(0)
     FOR i = 0 TO 3
-        DIM color AS INTEGER = &H00FFFFFF
-        IF i = selectedItem THEN color = &H00FFFF00
+        DIM color AS INTEGER = 16777215
+        IF i = selectedItem THEN color = 16776960
         ' Draw menu item at y position...
     NEXT i
     canvas.Flip()
@@ -1618,7 +1618,7 @@ DIM playerX AS DOUBLE = 400.0
 DIM playerY AS DOUBLE = 300.0
 DIM speed AS DOUBLE = 5.0
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
     input.Update()
 
@@ -1632,8 +1632,8 @@ DO WHILE canvas.ShouldClose = 0
     IF input.Up() THEN playerY = playerY - speed
     IF input.Down() THEN playerY = playerY + speed
 
-    canvas.Clear(&H00000000)
-    canvas.Disc(INT(playerX), INT(playerY), 20, &H00FF0000)
+    canvas.Clear(0)
+    canvas.Disc(INT(playerX), INT(playerY), 20, 16711680)
     canvas.Flip()
 LOOP
 ```

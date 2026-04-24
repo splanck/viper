@@ -1635,7 +1635,7 @@ func add(numbers: String) -> Integer {
             if i > 0 { message += ", "; }
             message += Fmt.Int(neg);
         }
-        throw Error(message);
+        throw (message);
     }
 
     return sum;
@@ -1672,7 +1672,7 @@ class StringCalculator {
                 if i > 0 { message += ", "; }
                 message += Fmt.Int(neg);
             }
-            throw Error(message);
+            throw (message);
         }
 
         return sum;

@@ -453,13 +453,13 @@ world.Add(ball)
 ball.ApplyImpulse(50.0, 0.0)
 
 ' Game loop
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
     world.Step(1.0 / 60.0)
 
-    canvas.Clear(&H000020)
-    canvas.BoxFilled(floor.X, floor.Y, floor.Width, floor.Height, &H888888)
-    canvas.BoxFilled(ball.X, ball.Y, ball.Width, ball.Height, &HFF0000)
+    canvas.Clear(32)
+    canvas.BoxFilled(floor.X, floor.Y, floor.Width, floor.Height, 8947848)
+    canvas.BoxFilled(ball.X, ball.Y, ball.Width, ball.Height, 16711680)
     canvas.Flip()
 LOOP
 ```

@@ -283,7 +283,7 @@ The simplest networking is fetching web pages and APIs. HTTP (Hypertext Transfer
 
 ```rust
 bind Viper.Network;
-bind Viper.Terminal;
+bind Viper.Terminal as Terminal;
 
 func start() {
     // Simple fetch — returns the body as a string
@@ -369,7 +369,7 @@ Most modern web APIs exchange data in JSON (JavaScript Object Notation) format. 
 ```rust
 bind Viper.Network;
 bind Json = Viper.Text.Json;
-bind Viper.Terminal;
+bind Viper.Terminal as Terminal;
 
 struct Weather {
     temperature: Number;
@@ -608,15 +608,15 @@ module ChatServer;
 
 bind Viper.Network;
 bind Viper.Collections;
-bind Viper.Terminal;
-bind Viper.Time;
+bind Viper.Terminal as Terminal;
+bind Viper.Time.Clock as Clock;
 
-class ChatServer {
+class ServerApp {
     // The server socket that accepts new connections
     hide server: TcpServer;
 
     // List of all connected clients
-    hide clients: List[TcpSocket];
+    hide clients: List[Tcp];
 
     // Flag to control the server loop
     hide running: Boolean;
@@ -630,7 +630,7 @@ class ChatServer {
     }
 
     // Main server loop
-    func run() {
+    expose func run() {
         while self.running {
             // Step 1: Check for new clients trying to connect
             // AcceptFor with a short timeout returns null if no one is waiting
@@ -649,13 +649,13 @@ class ChatServer {
             while i < self.clients.Length {
                 var client = self.clients[i];
 
-                // hasData() checks if the client sent anything without blocking
-                if client.hasData() {
-                    var message = client.ReadLine();
+                // Available checks if the client sent anything without blocking
+                if client.Available > 0 {
+                    var message = client.RecvLine();
 
-                    if message == null || message == "/quit" {
+                    if message == "" || message == "/quit" {
                         // Client disconnected or wants to leave
-                        self.clients.remove(i);
+                        self.clients.RemoveAt(i);
                         self.broadcast("*** A user has left ***");
                         client.Close();
                         Terminal.Say("Client disconnected. Total clients: " + self.clients.Length);
@@ -672,14 +672,14 @@ class ChatServer {
             }
 
             // Small sleep to avoid consuming 100% CPU
-            Time.Clock.Sleep(10);
+            Clock.Sleep(10);
         }
     }
 
     // Send a message to all connected clients
     func broadcast(message: String) {
         for client in self.clients {
-            client.Write(message + "\n");
+            client.SendStr(message + "\n");
         }
     }
 
@@ -689,7 +689,7 @@ class ChatServer {
 
         // Close all client connections
         for client in self.clients {
-            client.Write("*** Server shutting down ***\n");
+            client.SendStr("*** Server shutting down ***\n");
             client.Close();
         }
 
@@ -700,7 +700,7 @@ class ChatServer {
 }
 
 func start() {
-    var server = ChatServer(9000);
+    var server = new ServerApp(9000);
     server.run();
 }
 ```
@@ -746,12 +746,10 @@ Time 0:30 - Alice sends "/quit"
 module ChatClient;
 
 bind Viper.Network;
-bind Thread = Viper.Threads.Thread;
-bind Viper.Terminal;
-bind Viper.Time;
+bind Viper.Terminal as Terminal;
 
-class ChatClient {
-    hide socket: TcpSocket;
+class ClientApp {
+    hide socket: Tcp;
     hide username: String;
     hide running: Boolean;
 
@@ -773,84 +771,66 @@ class ChatClient {
         Terminal.Say("");
     }
 
-    func run() {
+    expose func run() {
         if !self.running {
             return;
         }
 
-        // Start a separate thread to receive messages
-        // This lets us receive while also waiting for user input
-        var receiver = Thread.Start(self.receiveLoop);
-
-        // Main thread handles sending messages
         while self.running {
             // Wait for user to type something
             var input = Terminal.Ask("");
 
             if input == "/quit" {
                 self.running = false;
-                self.socket.Write("/quit\n");
+                self.socket.SendStr("/quit\n");
                 break;
             }
 
             // Send the message (prefixed with username)
-            self.socket.Write(self.username + ": " + input + "\n");
+            self.socket.SendStr(self.username + ": " + input + "\n");
+
+            // Drain any waiting server messages after each send.
+            self.receiveAvailable();
         }
 
-        // Wait for the receiver thread to finish
-        receiver.Join();
         self.socket.Close();
         Terminal.Say("Disconnected from server.");
     }
 
-    // This runs in a separate thread
-    func receiveLoop() {
-        while self.running {
-            // Check if server sent anything
-            if self.socket.hasData() {
-                var message = self.socket.ReadLine();
-
-                if message == null {
-                    // Server closed connection
-                    Terminal.Say("*** Disconnected from server ***");
-                    self.running = false;
-                    break;
-                }
-
-                // Display the message
-                Terminal.Say(message);
+    func receiveAvailable() {
+        while self.socket.Available > 0 {
+            var message = self.socket.RecvLine();
+            if message == "" {
+                Terminal.Say("*** Disconnected from server ***");
+                self.running = false;
+                return;
             }
 
-            // Small sleep to avoid consuming CPU
-            Time.Clock.Sleep(10);
+            Terminal.Say(message);
         }
     }
 }
 
 func start() {
-    var username = Terminal.Ask("Enter your username: ");
-    var client = ChatClient("localhost", 9000, username);
+    var username = Terminal.Ask("Enter your username: ") ?? "guest";
+    var client = new ClientApp("localhost", 9000, username);
     client.run();
 }
 ```
 
-The client uses two threads --- one for sending and one for receiving. This is necessary because:
+This simple client stays single-threaded: it sends a line of input, then drains any messages that are already waiting on the socket. That is enough for a small demo and keeps the example portable across the current Zia front end.
 
-1. **Reading blocks**: `readLine()` waits until data arrives. If we used one thread, we couldn't type while waiting for messages.
-2. **Input blocks**: `Ask()` waits for user input. If we used one thread, we couldn't receive messages while typing.
+For a production chat client, use a background receive loop so incoming messages can appear while the user is still typing.
 
 ```text
-Main Thread                     Receiver Thread
-    |                               |
-    |   Terminal.Ask()              |   socket.hasData()?
-    |   (waiting for input...)      |   socket.ReadLine()
-    |                               |   Terminal.Say()
-    |                               |
-    v                               v
-User types "Hello"              Server sends "Bob: Hi"
-    |                               |
-    |   socket.Write()              |   Terminal.Say("Bob: Hi")
-    |                               |
+Single Thread
+    |
+    |   Terminal.Ask()
+    |   socket.SendStr()
+    |   while socket.Available > 0:
+    |       socket.RecvLine()
+    |       Terminal.Say()
+    |
 ```
 
 ---

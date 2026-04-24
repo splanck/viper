@@ -72,7 +72,7 @@ func start() {
             editor.ClearModified();
             status.SetText("Saved!");
         }
-        if editor.IsModified() == 1 {
+        if editor.IsModified() {
             status.SetText("Modified - " + Fmt.Int(editor.get_LineCount()) + " lines");
         }
 
@@ -129,7 +129,7 @@ DIM status AS Viper.GUI.Label
 status = NEW Viper.GUI.Label(vbox, "Ready")
 
 ' Main loop
-DO WHILE app.ShouldClose = 0
+DO WHILE NOT app.ShouldClose
     app.Poll()
 
     ' Handle buttons

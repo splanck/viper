@@ -68,6 +68,37 @@ bool Parser::checkIdentifierLike() {
     }
 }
 
+bool Parser::isExpressionStart(TokenKind kind) const {
+    switch (kind) {
+        case TokenKind::Identifier:
+        case TokenKind::IntegerLiteral:
+        case TokenKind::NumberLiteral:
+        case TokenKind::StringLiteral:
+        case TokenKind::StringStart:
+        case TokenKind::KwTrue:
+        case TokenKind::KwFalse:
+        case TokenKind::KwNull:
+        case TokenKind::KwSelf:
+        case TokenKind::KwSuper:
+        case TokenKind::KwNew:
+        case TokenKind::KwMatch:
+        case TokenKind::KwStruct:
+        case TokenKind::KwIf:
+        case TokenKind::KwAwait:
+        case TokenKind::LParen:
+        case TokenKind::LBracket:
+        case TokenKind::LBrace:
+        case TokenKind::Minus:
+        case TokenKind::Bang:
+        case TokenKind::Tilde:
+        case TokenKind::Ampersand:
+        case TokenKind::KwNot:
+            return true;
+        default:
+            return false;
+    }
+}
+
 bool Parser::match(TokenKind kind, Token *out) {
     if (check(kind)) {
         Token tok = advance();

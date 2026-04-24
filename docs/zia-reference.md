@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-24
 ---
 
 # Zia — Reference
@@ -110,7 +110,6 @@ identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
 42          // Decimal
 0xFF        // Hexadecimal
 0b1010      // Binary
-()          // Unit literal (void value)
 ```
 
 #### Floating-Point Literals
@@ -163,6 +162,16 @@ false
 null    // Used with optional types
 ```
 
+#### Unit Literal
+
+```viper
+()      // Unit literal; valid only where no value is stored
+```
+
+Use `null` for optional empty values. `()` is accepted as a standalone statement
+or void return value, but it cannot be stored in variables, collections, maps,
+sets, call arguments, or assignments.
+
 ---
 
 ## Types
@@ -189,6 +198,7 @@ var count: Integer? = 42;   // Optional with value
 Optional values support safe access with `?.`, defaults with `??`, try propagation
 with postfix `?`, and force-unwrap with `!`. `??` requires an optional left-hand
 operand and a fallback value assignable to the optional's inner type.
+Use `null`, not `()`, to create an empty optional value.
 
 ### Generic Types
 
@@ -235,6 +245,10 @@ Arrays with a compile-time size:
 ```viper
 var grid: Integer[100];     // Fixed array of 100 integers
 ```
+
+Fixed-size array indexes must be integral. Reads and writes use the configured
+bounds-checking mode, and sub-width indexes such as `Byte` are widened before
+offset arithmetic.
 
 ### Set Types
 
@@ -361,6 +375,9 @@ func start() {
 | `%=` | Modulo and assign |
 
 Compound assignment operators desugar to `a = a op b` at parse time. The left-hand side must be a mutable variable, field, or indexed expression.
+Targets with side effects, such as a function call inside the indexed receiver or
+index expression, are rejected because compound assignment would otherwise need
+to evaluate the target twice.
 
 ### Ternary Operator
 
@@ -394,6 +411,11 @@ value ?? defaultValue   // Returns defaultValue if value is null
 value!                  // Force-unwrap: converts T? to T, traps if null
 ```
 
+Optional chaining uses the same field and property lookup rules as normal member
+access. It supports stored fields, readable computed properties, runtime
+properties, string `Length`, and collection count aliases such as `Count`,
+`Length`, `Len`, `count`, `length`, and `size`.
+
 The force-unwrap operator `!` asserts that an optional value is non-null and extracts
 the inner value. If the value is null at runtime, the program terminates. Use after
 a null guard or when you are certain the value is non-null:
@@ -408,7 +430,12 @@ var page = maybePage!;              // Safe: null was handled above
 ```viper
 list[index]             // Access list element
 map["key"]              // Access map value (keys are String)
+string[index]           // Read one-character String
+fixed[index]            // Access fixed-size array element
 ```
+
+List, map, and fixed-size array indexes are assignable when the container is
+mutable. String indexes are read-only.
 
 ### Block Expressions
 
@@ -492,6 +519,13 @@ struct Point {
 var p = Point { x = 10, y = 20 };
 ```
 
+Struct literals are valid in variable, field, global, return, parameter default,
+call argument, assignment right-hand side, ternary branch, collection element,
+match-arm expression, and single-expression function or method initializer
+contexts. Struct literals are not parsed in statement conditions such as
+`if value { ... }`, because the following braces are reserved for the statement
+body.
+
 ### Tuple Expressions
 
 Tuples group multiple values. Access elements with `.0`, `.1`, etc.:
@@ -517,6 +551,7 @@ var set = {1, 2, 3};               // Set[Integer]
 constructor such as `new Set[Integer]()`.
 Non-empty list, map, and set literals must be homogeneous: all list/set elements
 and all map values must have compatible types.
+List, map, and set literals permit a trailing comma.
 
 ### Generic Collection Operations
 
@@ -543,6 +578,9 @@ var tagCount = tags.count();
 These are language-level generic collections. The object-style runtime classes
 under `Viper.Collections.*` use their own constructor and method surface (for
 example `Map.New()`, `List.New()`, `Set.New()`).
+Collection count aliases such as `.Count`, `.Length`, `.Len`, `.count`,
+`.length`, and `.size` are read-only properties. Unknown collection and string
+fields or methods are compile-time errors.
 
 ### Range Expressions
 
@@ -550,6 +588,25 @@ example `Map.New()`, `List.New()`, `Set.New()`).
 start..end              // Exclusive range [start, end)
 start..=end             // Inclusive range [start, end]
 ```
+
+Ranges can be used directly as list-producing expressions or as `for ... in`
+sources. Range-only modifiers are available before iteration:
+
+```viper
+var values = (0..=10).rev().step(2);  // List[Integer]
+for (i in (0..10).rev()) { ... }
+for (i in (0..10).step(2)) { ... }
+for (i in (0..=10).rev().step(2)) { ... }
+```
+
+`.rev()` and `.step(n)` are only valid on range expressions, not arbitrary
+`List[Integer]` values. `step` must be a positive, non-zero integer; literal
+zero and negative steps are rejected at compile time and dynamic non-positive
+steps trap before the loop or list construction starts. A range chain may contain
+at most one `.step(...)`; use a single step value after any `.rev()` modifier.
+Range updates guard the inclusive endpoint before incrementing or decrementing,
+so boundary values such as `Integer` min/max do not overflow after the final
+element.
 
 ### Type Operations
 
@@ -832,6 +889,7 @@ func start() {
 ```
 
 Default values must be trailing — a parameter with a default cannot be followed by a parameter without one.
+Parameter and argument lists permit a trailing comma.
 
 ### Generic Function Declaration
 

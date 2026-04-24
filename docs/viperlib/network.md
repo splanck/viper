@@ -188,14 +188,14 @@ DIM conn AS OBJECT = Viper.Network.Tcp.Connect("192.168.1.100", 9000)
 
 ' Send binary packet
 DIM packet AS OBJECT = Viper.Collections.Bytes.New(8)
-packet.Set(0, &H01)  ' Message type
-packet.Set(1, &H00)  ' Flags
-packet.Set(2, &H00)  ' Length high
-packet.Set(3, &H04)  ' Length low
-packet.Set(4, &H48)  ' 'H'
-packet.Set(5, &H45)  ' 'E'
-packet.Set(6, &H4C)  ' 'L'
-packet.Set(7, &H4F)  ' 'O'
+packet.Set(0, 1)  ' Message type
+packet.Set(1, 0)  ' Flags
+packet.Set(2, 0)  ' Length high
+packet.Set(3, 4)  ' Length low
+packet.Set(4, 72)  ' 'H'
+packet.Set(5, 69)  ' 'E'
+packet.Set(6, 76)  ' 'L'
+packet.Set(7, 79)  ' 'O'
 
 conn.SendAll(packet)
 

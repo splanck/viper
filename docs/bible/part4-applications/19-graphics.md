@@ -551,17 +551,17 @@ Let's see the game loop in action:
 module BouncingBall;
 
 bind Viper.Graphics;
-bind Viper.Time;
+bind Viper.Time.Clock as Clock;
 
 func start() {
     var canvas = Canvas.New("Bouncing Ball", 800, 600);
 
     // Ball state: position and velocity
-    var x = 400.0;     // Start in center
-    var y = 300.0;
-    var dx = 5.0;      // Moving right 5 pixels per frame
-    var dy = 3.0;      // Moving down 3 pixels per frame
-    var radius = 20.0;
+    var x = 400;       // Start in center
+    var y = 300;
+    var dx = 5;        // Moving right 5 pixels per frame
+    var dy = 3;        // Moving down 3 pixels per frame
+    var radius = 20;
 
     // Game loop
     while !canvas.ShouldClose {
@@ -605,7 +605,7 @@ func start() {
         canvas.Flip();
 
         // === WAIT ===
-        Time.Clock.Sleep(16);  // ~60 FPS (1000ms / 60 = ~16ms)
+        Clock.Sleep(16);  // ~60 FPS (1000ms / 60 = ~16ms)
     }
 }
 ```
@@ -869,34 +869,40 @@ Let's put everything together into a reusable structure:
 module GameFramework;
 
 bind Viper.Graphics;
-bind Viper.Time;
+bind Viper.Time.Clock as Clock;
 
 struct Vec2 {
-    x: Number;
-    y: Number;
+    expose Integer x;
+    expose Integer y;
+
+    expose func init(x: Integer, y: Integer) {
+        self.x = x;
+        self.y = y;
+    }
 }
 
 class GameObject {
     position: Vec2;
     size: Vec2;
-    color: Color;
+    color: Integer;
 
-    expose func init(x: Number, y: Number, w: Number, h: Number, c: Color) {
-        self.position = Vec2 { x: x, y: y };
-        self.size = Vec2 { x: w, y: h };
+    expose func init(x: Integer, y: Integer, w: Integer, h: Integer, c: Integer) {
+        self.position = new Vec2(x, y);
+        self.size = new Vec2(w, h);
         self.color = c;
     }
 
-    func update(dt: Number) {
+    expose func update(dt: Number) {
+        if dt < 0.0 { return; }
         // Override in child entities for custom behavior
     }
 
-    func draw(canvas: Canvas) {
+    expose func draw(canvas: Canvas) {
         canvas.Box(self.position.x, self.position.y,
                    self.size.x, self.size.y, self.color);
     }
 
-    func collidesWith(other: GameObject) -> Boolean {
+    expose func collidesWith(other: GameObject) -> Boolean {
         // Axis-Aligned Bounding Box (AABB) collision
         return self.position.x < other.position.x + other.size.x &&
                self.position.x + self.size.x > other.position.x &&
@@ -915,19 +921,19 @@ class Game {
         self.canvas = Canvas.New(title, width, height);
         self.objects = [];
         self.running = true;
-        self.lastTime = Time.Clock.Ticks();
+        self.lastTime = Clock.Ticks();
     }
 
-    func add(obj: GameObject) {
+    expose func add(obj: GameObject) {
         self.objects.Push(obj);
     }
 
-    func run() {
+    expose func run() {
         while self.running && !self.canvas.ShouldClose {
             self.canvas.Poll();
 
             // Calculate delta time
-            var now = Time.Clock.Ticks();
+            var now = Clock.Ticks();
             var dt = (now - self.lastTime) / 1000.0;
             self.lastTime = now;
 
@@ -936,7 +942,7 @@ class Game {
             self.update(dt);
             self.render();
 
-            Time.Clock.Sleep(16);
+            Clock.Sleep(16);
         }
     }
 
@@ -965,10 +971,10 @@ class Game {
 
 // Example usage
 func start() {
-    var game = Game(800, 600, "My Game");
+    var game = new Game(800, 600, "My Game");
 
-    game.Add(GameObject(100, 100, 50, 50, Color.RED));
-    game.Add(GameObject(300, 200, 30, 30, Color.BLUE));
+    game.add(new GameObject(100, 100, 50, 50, Color.RED));
+    game.add(new GameObject(300, 200, 30, 30, Color.BLUE));
 
     game.run();
 }

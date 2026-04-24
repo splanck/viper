@@ -447,7 +447,7 @@ module IteratorDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func start() {
     var seq = Seq.New();

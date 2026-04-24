@@ -72,7 +72,7 @@ button.SetSize(100, 30)
 button.SetPosition(10, 50)
 
 ' Main loop
-DO WHILE app.ShouldClose = 0
+DO WHILE NOT app.ShouldClose
     app.Poll()
 
     ' Handle events
@@ -155,7 +155,7 @@ font = Viper.GUI.Font.Load("consola.ttf")
 app.SetFont(font, 12)
 
 ' Main loop
-DO WHILE app.ShouldClose = 0
+DO WHILE NOT app.ShouldClose
     app.Poll()
     ' ... handle widget events ...
     app.Render()

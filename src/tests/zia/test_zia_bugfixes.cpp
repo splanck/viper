@@ -43,6 +43,17 @@ bool hasOpcode(const il::core::Function &fn, il::core::Opcode opcode) {
     return false;
 }
 
+size_t countOpcode(const il::core::Function &fn, il::core::Opcode opcode) {
+    size_t count = 0;
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op == opcode)
+                ++count;
+        }
+    }
+    return count;
+}
+
 size_t countCallsTo(const il::core::Function &fn, const std::string &callee) {
     size_t count = 0;
     for (const auto &block : fn.blocks) {
@@ -52,6 +63,14 @@ size_t countCallsTo(const il::core::Function &fn, const std::string &callee) {
         }
     }
     return count;
+}
+
+bool hasErrorContaining(const CompilerResult &result, const std::string &needle) {
+    for (const auto &d : result.diagnostics.diagnostics()) {
+        if (d.severity == Severity::Error && d.message.find(needle) != std::string::npos)
+            return true;
+    }
+    return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1967,6 +1986,562 @@ func start() {    var names: Set[String] = Viper.Collections.Set.New();
     EXPECT_GE(countCallsTo(*mainFn, kSetPut), static_cast<size_t>(1));
     EXPECT_GE(countCallsTo(*mainFn, kSetHas), static_cast<size_t>(1));
     EXPECT_GE(countCallsTo(*mainFn, kSetCount), static_cast<size_t>(1));
+}
+
+TEST(ZiaBugFixes, RejectsInvalidAssignmentTargets) {
+    SourceManager sm;
+    const std::string invalidTarget = R"(
+module Test;
+
+func start() {
+    (1 + 2) = 3;
+}
+)";
+    CompilerInput invalidInput{.source = invalidTarget, .path = "invalid_assign_target.zia"};
+    CompilerOptions opts{};
+    auto invalidResult = compile(invalidInput, opts, sm);
+    EXPECT_FALSE(invalidResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(invalidResult, "Assignment target must be"));
+}
+
+TEST(ZiaBugFixes, RejectsDuplicateParametersAndParserFailureInLists) {
+    CompilerOptions opts{};
+
+    SourceManager sm;
+    const std::string duplicateParam = R"(
+module Test;
+
+func echo(value: Integer, value: Integer) -> Integer {
+    return value;
+}
+)";
+    CompilerInput dupParamInput{.source = duplicateParam, .path = "duplicate_param.zia"};
+    auto dupParamResult = compile(dupParamInput, opts, sm);
+    EXPECT_FALSE(dupParamResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(dupParamResult, "Duplicate definition of 'value'"));
+
+    SourceManager sm2;
+    const std::string missingListElem = R"(
+module Test;
+
+func start() {
+    var values = [1, , 3];
+}
+)";
+    CompilerInput listInput{.source = missingListElem, .path = "list_parse_failure.zia"};
+    auto listResult = compile(listInput, opts, sm2);
+    EXPECT_FALSE(listResult.succeeded());
+}
+
+TEST(ZiaBugFixes, UnitAndRangeExpressionsLowerOutsideForIn) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    ();
+    var values = 0..=3;
+    Viper.Terminal.SayInt(values.Count);
+}
+)";
+    CompilerInput input{.source = source, .path = "unit_range_exprs.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, kListNew), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, kListAdd), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, kListCount), static_cast<size_t>(1));
+}
+
+TEST(ZiaBugFixes, RangeModifiersRejectPlainListsAndNonPositiveLiteralSteps) {
+    CompilerOptions opts{};
+
+    SourceManager sm;
+    const std::string listRev = R"(
+module Test;
+
+func start() {
+    var values = [1, 2, 3];
+    for (value in values.rev()) {
+        Viper.Terminal.SayInt(value);
+    }
+}
+)";
+    CompilerInput revInput{.source = listRev, .path = "list_rev_rejected.zia"};
+    auto revResult = compile(revInput, opts, sm);
+    EXPECT_FALSE(revResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(revResult, "rev() is only supported on range expressions"));
+
+    SourceManager sm2;
+    const std::string stepZero = R"(
+module Test;
+
+func start() {
+    for (value in (0..10).step(0)) {
+        Viper.Terminal.SayInt(value);
+    }
+}
+)";
+    CompilerInput stepInput{.source = stepZero, .path = "range_step_zero.zia"};
+    auto stepResult = compile(stepInput, opts, sm2);
+    EXPECT_FALSE(stepResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(stepResult, "step() argument must be"));
+}
+
+TEST(ZiaBugFixes, CompoundAssignmentSupportsPureIndexExpressionsOnly) {
+    SourceManager sm;
+    const std::string pureIndex = R"(
+module Test;
+
+func start() {
+    var values = [1, 2, 3];
+    var i: Integer = 0;
+    values[i + 1] += 4;
+    Viper.Terminal.SayInt(values[1]);
+}
+)";
+    CompilerInput pureInput{.source = pureIndex, .path = "compound_pure_index.zia"};
+    CompilerOptions opts{};
+    auto pureResult = compile(pureInput, opts, sm);
+    EXPECT_TRUE(pureResult.succeeded());
+
+    SourceManager sm2;
+    const std::string effectfulTarget = R"(
+module Test;
+
+func index() -> Integer {
+    return 0;
+}
+
+func start() {
+    var values = [1, 2, 3];
+    values[index()] += 1;
+}
+)";
+    CompilerInput effectInput{.source = effectfulTarget, .path = "compound_effectful.zia"};
+    auto effectResult = compile(effectInput, opts, sm2);
+    EXPECT_FALSE(effectResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(effectResult, "side-effect-free lvalue"));
+}
+
+TEST(ZiaBugFixes, AssignmentCoercesStoredAndReturnedValues) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Numbers {
+    expose Float[2] values;
+    expose func setFirst(value: Integer) -> Float {
+        return values[0] = value;
+    }
+}
+
+func start() {
+    var n = new Numbers();
+    var x: Float = n.setFirst(7);
+    Viper.Terminal.SayNum(x);
+}
+)";
+    CompilerInput input{.source = source, .path = "assignment_coerces.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaBugFixes, OptionalChainSupportsPropertiesAndBuiltInAliases) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Counter {
+    hide Integer _count;
+
+    expose func init(value: Integer) {
+        _count = value;
+    }
+
+    expose property count: Integer {
+        get {
+            return _count;
+        }
+    }
+}
+
+func start() {
+    var c: Counter? = new Counter(7);
+    var value: Integer? = c?.count;
+    var text: String? = "abc";
+    var len: Integer? = text?.Length;
+    var values: List[Integer]? = [1, 2, 3];
+    var count: Integer? = values?.Count;
+    Viper.Terminal.SayInt(value ?? 0);
+    Viper.Terminal.SayInt(len ?? 0);
+    Viper.Terminal.SayInt(count ?? 0);
+}
+)";
+    CompilerInput input{.source = source, .path = "optional_chain_props.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "Counter.get_count"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, kStringLength), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, kListCount), static_cast<size_t>(1));
+}
+
+TEST(ZiaBugFixes, StructLiteralsTrailingCommasAndMatchLookaheadGaps) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+struct Point {
+    expose Integer x;
+}
+
+func pick(p: Point = Point { x = 5 }) -> Integer = Point { x = p.x }.x;
+
+class Holder {
+    expose Point p = Point { x = 2 };
+}
+
+func sum(a: Integer, b: Integer,) -> Integer {
+    return a + b;
+}
+
+func start() {
+    var p = Point { x = 1 };
+    var values = [1, 2, 3,];
+    var labels = {"a": 1,};
+    var set = {1, 2,};
+    var result = match new Holder() {
+        _ => sum(values.Count, labels.Count,);
+    };
+    Viper.Terminal.SayInt(pick(p) + set.Count + result);
+}
+)";
+    CompilerInput input{.source = source, .path = "parser_gap_fixes.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaBugFixes, StructLiteralsWorkInNestedExpressionContexts) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+struct Point {
+    expose Integer x;
+}
+
+func take(p: Point) -> Integer {
+    return p.x;
+}
+
+func start() {
+    var p = Point { x = 1 };
+    p = Point { x = 2 };
+    var callValue = take(Point { x = 3 });
+    var points: List[Point] = [Point { x = 4 }, Point { x = 5 }];
+    var chosen = true ? Point { x = 6 } : Point { x = 7 };
+    var matched = match callValue {
+        _ => Point { x = 8 };
+    };
+    Viper.Terminal.SayInt(p.x + callValue + points.Count + chosen.x + matched.x);
+}
+)";
+    CompilerInput input{.source = source, .path = "struct_literal_expr_contexts.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaBugFixes, RejectsUnitInStoredValueContexts) {
+    CompilerOptions opts{};
+
+    SourceManager sm;
+    const std::string varUnit = R"(
+module Test;
+
+func start() {
+    var value = ();
+}
+)";
+    CompilerInput varInput{.source = varUnit, .path = "unit_var.zia"};
+    auto varResult = compile(varInput, opts, sm);
+    EXPECT_FALSE(varResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(varResult, "Unit literal cannot be stored"));
+
+    SourceManager sm2;
+    const std::string assignUnit = R"(
+module Test;
+
+func start() {
+    var value: Integer? = null;
+    value = ();
+}
+)";
+    CompilerInput assignInput{.source = assignUnit, .path = "unit_assign.zia"};
+    auto assignResult = compile(assignInput, opts, sm2);
+    EXPECT_FALSE(assignResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(assignResult, "Unit literal cannot be assigned"));
+}
+
+TEST(ZiaBugFixes, RejectsReadOnlyBuiltinPropertyAndStringIndexAssignments) {
+    CompilerOptions opts{};
+
+    SourceManager sm;
+    const std::string countAssign = R"(
+module Test;
+
+func start() {
+    var values = [1, 2, 3];
+    values.Count = 9;
+}
+)";
+    CompilerInput countInput{.source = countAssign, .path = "readonly_count_assign.zia"};
+    auto countResult = compile(countInput, opts, sm);
+    EXPECT_FALSE(countResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(countResult, "Cannot assign to read-only property"));
+
+    SourceManager sm2;
+    const std::string stringIndexAssign = R"(
+module Test;
+
+func start() {
+    var text = "abc";
+    text[0] = "z";
+}
+)";
+    CompilerInput indexInput{.source = stringIndexAssign, .path = "string_index_assign.zia"};
+    auto indexResult = compile(indexInput, opts, sm2);
+    EXPECT_FALSE(indexResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(indexResult, "Cannot assign through a String index"));
+}
+
+TEST(ZiaBugFixes, UnknownCollectionFieldsAndMethodsAreErrors) {
+    CompilerOptions opts{};
+
+    SourceManager sm;
+    const std::string unknownField = R"(
+module Test;
+
+func start() {
+    var values = [1, 2, 3];
+    var bad = values.nope;
+}
+)";
+    CompilerInput fieldInput{.source = unknownField, .path = "unknown_collection_field.zia"};
+    auto fieldResult = compile(fieldInput, opts, sm);
+    EXPECT_FALSE(fieldResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(fieldResult, "Unknown field 'nope' on List"));
+
+    SourceManager sm2;
+    const std::string unknownMethod = R"(
+module Test;
+
+func start() {
+    var text = "abc";
+    text.nope();
+}
+)";
+    CompilerInput methodInput{.source = unknownMethod, .path = "unknown_string_method.zia"};
+    auto methodResult = compile(methodInput, opts, sm2);
+    EXPECT_FALSE(methodResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(methodResult, "String has no method 'nope'"));
+}
+
+TEST(ZiaBugFixes, RangeModifierExpressionsLowerAndDuplicateStepIsRejected) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var values = (0..=5).rev().step(2);
+    Viper.Terminal.SayInt(values.Count);
+}
+)";
+    CompilerInput input{.source = source, .path = "range_modifier_expr.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, kListAdd), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, kListCount), static_cast<size_t>(1));
+    EXPECT_GE(countOpcode(*mainFn, il::core::Opcode::IdxChk), static_cast<size_t>(1));
+
+    SourceManager sm2;
+    const std::string duplicateStep = R"(
+module Test;
+
+func start() {
+    var values = (0..10).step(2).step(3);
+    Viper.Terminal.SayInt(values.Count);
+}
+)";
+    CompilerInput dupInput{.source = duplicateStep, .path = "duplicate_range_step.zia"};
+    auto dupResult = compile(dupInput, opts, sm2);
+    EXPECT_FALSE(dupResult.succeeded());
+    EXPECT_TRUE(hasErrorContaining(dupResult, "cannot apply step() more than once"));
+}
+
+TEST(ZiaBugFixes, OptionalStructChainUnwrapsPayloadBeforeFieldAccess) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+struct Point {
+    expose Integer x;
+}
+
+func start() {
+    var p: Point? = Point { x = 7 };
+    var x: Integer? = p?.x;
+    Viper.Terminal.SayInt(x ?? 0);
+}
+)";
+    CompilerInput input{.source = source, .path = "optional_struct_chain.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, kBoxValueType), static_cast<size_t>(1));
+}
+
+TEST(ZiaBugFixes, FixedArrayIndexReadsAndWritesEmitBoundsChecksForByteIndexes) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Numbers {
+    expose Integer[2] values;
+
+    expose func set(i: Byte, v: Integer) {
+        values[i] = v;
+    }
+
+    expose func get(i: Byte) -> Integer {
+        return values[i];
+    }
+}
+
+func start() {
+    var n = new Numbers();
+    var i: Byte = 1;
+    n.set(i, 9);
+    Viper.Terminal.SayInt(n.get(i));
+}
+)";
+    CompilerInput input{.source = source, .path = "fixed_array_idxchk_byte.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *setFn = findFunction(result.module, "Numbers.set");
+    const auto *getFn = findFunction(result.module, "Numbers.get");
+    ASSERT_TRUE(setFn != nullptr);
+    ASSERT_TRUE(getFn != nullptr);
+    EXPECT_GE(countOpcode(*setFn, il::core::Opcode::IdxChk), static_cast<size_t>(1));
+    EXPECT_GE(countOpcode(*getFn, il::core::Opcode::IdxChk), static_cast<size_t>(1));
+}
+
+TEST(ZiaBugFixes, TernaryLookaheadAllowsExpressionKeywordArms) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var flag = true;
+    var value = flag ? if flag { 1 } else { 2 } : 3;
+    var negated = flag ? not false : false;
+    Viper.Terminal.SayInt(value + (negated ? 1 : 0));
+}
+)";
+    CompilerInput input{.source = source, .path = "ternary_keyword_arms.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaBugFixes, InheritedPropertyAccessUsesDeclaringOwner) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Base {
+    expose property answer: Integer {
+        get {
+            return 42;
+        }
+    }
+}
+
+class Child extends Base {
+}
+
+func start() {
+    var child = new Child();
+    Viper.Terminal.SayInt(child.answer);
+}
+)";
+    CompilerInput input{.source = source, .path = "inherited_property_owner.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_EQ(countCallsTo(*mainFn, "Base.get_answer"), static_cast<size_t>(1));
+    EXPECT_EQ(countCallsTo(*mainFn, "Child.get_answer"), static_cast<size_t>(0));
+}
+
+TEST(ZiaBugFixes, GlobalOptionalStructAssignmentWrapsOnlyOnce) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+struct Point {
+    expose Integer x;
+}
+
+var maybe: Point?;
+
+func start() {
+    maybe = Point { x = 1 };
+}
+)";
+    CompilerInput input{.source = source, .path = "global_optional_struct_assign.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_EQ(countCallsTo(*mainFn, kBoxValueType), static_cast<size_t>(1));
 }
 
 } // namespace

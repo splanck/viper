@@ -15,6 +15,54 @@
 
 namespace il::frontends::zia {
 
+namespace {
+
+bool isAssignableTarget(const Expr *expr) {
+    if (!expr)
+        return false;
+
+    switch (expr->kind) {
+        case ExprKind::Ident:
+        case ExprKind::Field:
+        case ExprKind::Index:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool isReadOnlyBuiltinProperty(TypeRef baseType, const std::string &field) {
+    if (!baseType)
+        return false;
+    if (baseType->kind == TypeKindSem::List || baseType->kind == TypeKindSem::Map ||
+        baseType->kind == TypeKindSem::Set) {
+        return field == "Length" || field == "length" || field == "Len" || field == "Count" ||
+               field == "count" || field == "size";
+    }
+    if (baseType->kind == TypeKindSem::String)
+        return field == "Length" || field == "length";
+    return false;
+}
+
+std::string builtinTypeName(TypeRef type) {
+    if (!type)
+        return "value";
+    switch (type->kind) {
+        case TypeKindSem::List:
+            return "List";
+        case TypeKindSem::Map:
+            return "Map";
+        case TypeKindSem::Set:
+            return "Set";
+        case TypeKindSem::String:
+            return "String";
+        default:
+            return type->toDisplayString();
+    }
+}
+
+} // namespace
+
 /// @brief Analyze a binary expression (e.g., a + b, x == y).
 /// @param expr The binary expression node.
 /// @return The result type of the operation.
@@ -25,12 +73,33 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
     TypeRef rightType = nullptr;
 
     if (expr->op == BinaryOp::Assign) {
+        if (!isAssignableTarget(expr->left.get())) {
+            error(expr->left ? expr->left->loc : expr->loc,
+                  "Assignment target must be a variable, field, or index expression");
+            analyzeExpr(expr->right.get());
+            return types::unknown();
+        }
+
         rightType = analyzeExpr(expr->right.get());
+        if (rightType && rightType->kind == TypeKindSem::Unit) {
+            error(expr->right->loc,
+                  "Unit literal cannot be assigned; use null for optional values or omit the "
+                  "value in a void context");
+            rightType = types::unknown();
+        }
 
         if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get())) {
             TypeRef baseType = analyzeExpr(fieldExpr->base.get());
             if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType())
                 baseType = baseType->innerType();
+
+            if (isReadOnlyBuiltinProperty(baseType, fieldExpr->field)) {
+                error(expr->loc,
+                      "Cannot assign to read-only property '" + fieldExpr->field + "' on " +
+                          builtinTypeName(baseType));
+                leftType = types::integer();
+                exprTypes_[fieldExpr] = leftType;
+            }
 
             auto recordWriteOnlyTargetType = [&](TypeRef targetType) {
                 leftType = targetType ? targetType : types::unknown();
@@ -38,9 +107,10 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
             };
 
             bool handledWriteOnlyProperty = false;
-            if (baseType && (baseType->kind == TypeKindSem::Class ||
-                             baseType->kind == TypeKindSem::Struct)) {
-                if (const PropertyDecl *prop = findPropertyDecl(baseType->name, fieldExpr->field)) {
+            if (!leftType && baseType &&
+                (baseType->kind == TypeKindSem::Class || baseType->kind == TypeKindSem::Struct)) {
+                if (const PropertyDecl *prop =
+                        propertyDeclForLowering(baseType->name, fieldExpr->field, nullptr)) {
                     handledWriteOnlyProperty = !prop->getterBody && prop->setterBody;
                     if (handledWriteOnlyProperty) {
                         recordWriteOnlyTargetType(prop->type ? resolveTypeNode(prop->type.get())
@@ -49,7 +119,8 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
                 }
             }
 
-            if (!handledWriteOnlyProperty && baseType && baseType->kind == TypeKindSem::Ptr &&
+            if (!leftType && !handledWriteOnlyProperty && baseType &&
+                baseType->kind == TypeKindSem::Ptr &&
                 !baseType->name.empty()) {
                 std::string setterName = baseType->name + ".set_" + fieldExpr->field;
                 if (Symbol *setter = lookupSymbol(setterName);
@@ -69,7 +140,7 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
                 }
             }
 
-            if (!handledWriteOnlyProperty)
+            if (!leftType && !handledWriteOnlyProperty)
                 leftType = analyzeExpr(expr->left.get());
         } else {
             leftType = analyzeExpr(expr->left.get());
@@ -84,8 +155,7 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
             if (tryExtractNullCheck(expr->left.get(), nullCheckVar, isNotNull)) {
                 TypeRef varType = lookupVarType(nullCheckVar);
                 if (varType && varType->kind == TypeKindSem::Optional && varType->innerType()) {
-                    bool rhsSeesNonNull =
-                        (expr->op == BinaryOp::And) ? isNotNull : !isNotNull;
+                    bool rhsSeesNonNull = (expr->op == BinaryOp::And) ? isNotNull : !isNotNull;
                     if (rhsSeesNonNull) {
                         pushNarrowingScope();
                         narrowType(nullCheckVar, varType->innerType());
@@ -171,13 +241,11 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
                 }
             }
 
-            if (leftType->kind != TypeKindSem::Unknown &&
-                rightType->kind != TypeKindSem::Unknown &&
+            if (leftType->kind != TypeKindSem::Unknown && rightType->kind != TypeKindSem::Unknown &&
                 leftType->kind != TypeKindSem::Error && rightType->kind != TypeKindSem::Error) {
                 const bool equality = expr->op == BinaryOp::Eq || expr->op == BinaryOp::Ne;
                 if (equality) {
-                    TypeRef compareLeft =
-                        declaredOptionalSurfaceType(expr->left.get(), leftType);
+                    TypeRef compareLeft = declaredOptionalSurfaceType(expr->left.get(), leftType);
                     TypeRef compareRight =
                         declaredOptionalSurfaceType(expr->right.get(), rightType);
                     bool compatible = compareLeft->kind == TypeKindSem::Any ||
@@ -259,15 +327,16 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
 
                     if (baseType && (baseType->kind == TypeKindSem::Class ||
                                      baseType->kind == TypeKindSem::Struct)) {
-                        if (const PropertyDecl *prop =
-                                findPropertyDecl(baseType->name, fieldExpr->field)) {
+                        std::string declaringOwner;
+                        if (const PropertyDecl *prop = propertyDeclForLowering(
+                                baseType->name, fieldExpr->field, &declaringOwner)) {
                             if (!prop->setterBody) {
                                 error(expr->loc,
                                       "Property '" + fieldExpr->field + "' of type '" +
-                                          baseType->name + "' is read-only");
+                                          declaringOwner + "' is read-only");
                             } else {
                                 resolvedFieldSetters_[fieldExpr] =
-                                    baseType->name + ".set_" + prop->name;
+                                    declaringOwner + ".set_" + prop->name;
                             }
                         }
                     }
@@ -311,6 +380,17 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
                     auto resolvedIt = exprTypes_.find(fieldExpr);
                     if (resolvedIt != exprTypes_.end() && resolvedIt->second) {
                         assignTarget = resolvedIt->second;
+                    }
+                } else if (auto *indexExpr = dynamic_cast<IndexExpr *>(expr->left.get())) {
+                    TypeRef baseType = typeOf(indexExpr->base.get());
+                    if (baseType && baseType->kind == TypeKindSem::String) {
+                        error(expr->loc, "Cannot assign through a String index");
+                    } else if (baseType && baseType->kind != TypeKindSem::Unknown &&
+                               baseType->kind != TypeKindSem::List &&
+                               baseType->kind != TypeKindSem::Map &&
+                               baseType->kind != TypeKindSem::FixedArray) {
+                        error(expr->loc,
+                              "Indexed assignment requires a List, Map, or fixed-size array");
                     }
                 }
                 if (assignTarget && rightType && assignTarget->kind != TypeKindSem::Unknown &&

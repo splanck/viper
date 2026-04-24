@@ -44,7 +44,10 @@ class CollectionLowerer final {
                                          const char *addElement);
     Value emitTupleElementAddress(Value tuplePtr, size_t offset);
     Value emitRuntimeOffsetAddress(Value basePtr, Value byteOffset);
-    LowerResult lowerFixedArrayIndex(Value baseValue, Value indexValue, TypeRef baseType);
+    LowerResult lowerFixedArrayIndex(Value baseValue,
+                                     Value indexValue,
+                                     Type indexType,
+                                     TypeRef baseType);
     LowerResult lowerStringIndex(Value baseValue, Value indexValue);
     LowerResult lowerBoxedCollectionIndex(Value baseValue, Value indexValue, IndexExpr *expr);
 };

@@ -953,17 +953,17 @@ func loadConfig() -> Map[String, String] {
     var lines = File.ReadAllLines(CONFIG_FILE);
 
     for line in lines {
-        line = line.Trim();
+        var trimmed = line.Trim();
 
         // Skip empty lines and comments
-        if line.Length == 0 || line.StartsWith("#") {
+        if trimmed.Length == 0 || trimmed.StartsWith("#") {
             continue;
         }
 
-        var separator = line.IndexOf("=");
+        var separator = trimmed.IndexOf("=");
         if separator >= 0 {
-            var key = line.Substring(0, separator).Trim();
-            var value = line.Substring(separator + 1, line.Length - separator - 1).Trim();
+            var key = trimmed.Substring(0, separator).Trim();
+            var value = trimmed.Substring(separator + 1, trimmed.Length - separator - 1).Trim();
             config.set(key, value);
         }
     }
@@ -971,13 +971,13 @@ func loadConfig() -> Map[String, String] {
     return config;
 }
 
-func saveConfig(config: Map[String, String]) {
+func saveConfig(config: Map[String, String], keys: List[String]) {
     var lines: List[String] = [];
     lines.add("# Application settings");
     lines.add("# Edit with care!");
     lines.add("");
 
-    for key in config.keys() {
+    for key in keys {
         lines.add(key + "=" + config.get(key));
     }
 
@@ -998,7 +998,7 @@ func start() {
 
     // Change a setting
     config.set("theme", "dark");
-    saveConfig(config);
+    saveConfig(config, ["theme", "volume", "lastFile"]);
 }
 ```
 
@@ -1019,14 +1019,14 @@ Recording events for debugging and auditing:
 ```rust
 module Logger;
 
-bind Viper.Time;
+bind Viper.Time.DateTime as DateTime;
 bind File = Viper.IO.File;
 
 final LOG_FILE = "application.log";
 
 func log(level: String, message: String) {
-    var ts = Time.DateTime.Now();
-    var timestamp = Time.DateTime.Format(ts, "%Y-%m-%d %H:%M:%S");
+    var ts = DateTime.Now();
+    var timestamp = DateTime.Format(ts, "%Y-%m-%d %H:%M:%S");
     var entry = "[" + timestamp + "] [" + level + "] " + message + "\n";
     File.Append(LOG_FILE, entry);
 }
@@ -1045,13 +1045,13 @@ func error(message: String) {
 
 // Usage
 func processData() {
-    Logger.info("Starting data processing");
+    info("Starting data processing");
 
     try {
         // ... do work ...
-        Logger.info("Processed 1000 records");
-    } catch(e) {
-        Logger.error("Processing failed: " + e.message);
+        info("Processed 1000 records");
+    } catch {
+        error("Processing failed");
     }
 }
 ```
@@ -1083,13 +1083,13 @@ bind Viper.String as Str;
 final SAVE_DIR = "saves";
 
 struct SaveData {
-    playerName: String,
-    level: Integer,
-    score: Integer,
-    health: Integer,
-    inventory: List[String],
-    posX: Number,
-    posY: Number
+    expose String playerName;
+    expose Integer level;
+    expose Integer score;
+    expose Integer health;
+    expose List[String] inventory;
+    expose Number posX;
+    expose Number posY;
 }
 
 func save(data: SaveData, slot: Integer) {
@@ -1121,7 +1121,7 @@ func load(slot: Integer) -> SaveData? {
     }
 
     var lines = File.ReadAllLines(filename);
-    var data = SaveData();
+    var data = new SaveData();
 
     for line in lines {
         var separator = line.IndexOf("=");
@@ -1272,31 +1272,37 @@ func loadNotes() -> List[String] {
         return [];
     }
 
+    var loaded: List[String] = [];
     try {
         var lines = File.ReadAllLines(NOTES_FILE);
         // Filter out empty lines
-        var notes: List[String] = [];
         for line in lines {
             if line.Trim().Length > 0 {
-                notes.add(line);
+                loaded.add(line);
             }
         }
-        return notes;
-    } catch(e) {
-        Say("Warning: Could not load notes: " + e.message);
+    } catch {
+        Say("Warning: Could not load notes");
 
         // Try backup
         if File.Exists(BACKUP_FILE) {
             Say("Attempting to load from backup...");
             try {
-                return File.ReadAllLines(BACKUP_FILE);
-            } catch(e2) {
+                var backupLines = File.ReadAllLines(BACKUP_FILE);
+                var backupNotes: List[String] = [];
+                for backupLine in backupLines {
+                    backupNotes.add(backupLine);
+                }
+                return backupNotes;
+            } catch {
                 Say("Backup also failed.");
             }
         }
 
         return [];
     }
+
+    return loaded;
 }
 
 // Save notes to file (with backup)
@@ -1305,34 +1311,23 @@ func saveNotes(notes: List[String]) -> Boolean {
     if File.Exists(NOTES_FILE) {
         try {
             File.Copy(NOTES_FILE, BACKUP_FILE);
-        } catch(e) {
+        } catch {
             Say("Warning: Could not create backup");
         }
     }
 
     // Write to temporary file first
     var tempFile = NOTES_FILE + ".tmp";
-    try {
-        var content = Str.Join("\n", notes);
-        File.WriteAllText(tempFile, content);
+    var content = Str.Join("\n", notes);
+    File.WriteAllText(tempFile, content);
 
-        // Delete old file and rename temp to real
-        if File.Exists(NOTES_FILE) {
-            File.Delete(NOTES_FILE);
-        }
-        File.Move(tempFile, NOTES_FILE);
-
-        return true;
-    } catch(e) {
-        Say("Error saving notes: " + e.message);
-
-        // Clean up temp file if it exists
-        if File.Exists(tempFile) {
-            File.Delete(tempFile);
-        }
-
-        return false;
+    // Delete old file and rename temp to real
+    if File.Exists(NOTES_FILE) {
+        File.Delete(NOTES_FILE);
     }
+    File.Move(tempFile, NOTES_FILE);
+
+    return true;
 }
 
 // Display all notes
@@ -1426,7 +1421,7 @@ func start() {
                     } else {
                         Say("Invalid number. Enter 1-" + notes.count());
                     }
-                } catch(e) {
+                } catch {
                     Say("Please enter a number.");
                 }
             }
@@ -1459,7 +1454,7 @@ func start() {
                     } else {
                         Say("Invalid number. Enter 1-" + notes.count());
                     }
-                } catch(e) {
+                } catch {
                     Say("Please enter a number.");
                 }
             }

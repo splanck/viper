@@ -528,15 +528,15 @@ class Rectangle extends Shape {
         self.height = height;
     }
 
-    override func area() -> Number {
+    expose override func area() -> Number {
         return self.width * self.height;
     }
 
-    override func perimeter() -> Number {
+    expose override func perimeter() -> Number {
         return 2.0 * (self.width + self.height);
     }
 
-    override func describe() {
+    expose override func describe() {
         super.describe();
         Say("  Type: Rectangle");
         Say("  Dimensions: " + self.width + " x " + self.height);
@@ -553,15 +553,15 @@ class Circle extends Shape {
         self.radius = radius;
     }
 
-    override func area() -> Number {
-        return PI * self.radius * self.radius;
+    expose override func area() -> Number {
+        return Viper.Math.Pi() * self.radius * self.radius;
     }
 
-    override func perimeter() -> Number {
-        return 2.0 * PI * self.radius;
+    expose override func perimeter() -> Number {
+        return 2.0 * Viper.Math.Pi() * self.radius;
     }
 
-    override func describe() {
+    expose override func describe() {
         super.describe();
         Say("  Type: Circle");
         Say("  Radius: " + self.radius);
@@ -579,7 +579,7 @@ class Square extends Rectangle {
         super(x, y, size, size);
     }
 
-    override func describe() {
+    expose override func describe() {
         Say("Shape at (" + self.x + ", " + self.y + ")");
         Say("  Type: Square");
         Say("  Size: " + self.width);
@@ -589,9 +589,9 @@ class Square extends Rectangle {
 }
 
 func start() {
-    var rect = Rectangle(0.0, 0.0, 10.0, 5.0);
-    var circle = Circle(20.0, 20.0, 7.0);
-    var square = Square(10.0, 10.0, 4.0);
+    var rect = new Rectangle(0.0, 0.0, 10.0, 5.0);
+    var circle = new Circle(20.0, 20.0, 7.0);
+    var square = new Square(10.0, 10.0, 4.0);
 
     rect.describe();
     Say("");

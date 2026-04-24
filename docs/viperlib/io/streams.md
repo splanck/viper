@@ -313,8 +313,8 @@ PRINT strVal     ' Output: Hello
 DIM packet AS OBJECT = Viper.IO.MemStream.New()
 
 ' Write packet header
-packet.WriteU8(&HCA)     ' Magic byte 1
-packet.WriteU8(&HFE)     ' Magic byte 2
+packet.WriteU8(202)     ' Magic byte 1
+packet.WriteU8(254)     ' Magic byte 2
 packet.WriteU16(1)       ' Version
 packet.WriteU32(0)       ' Payload length (placeholder)
 
@@ -735,7 +735,7 @@ func start() {
 DIM buf AS OBJECT = Viper.IO.BinaryBuffer.New()
 
 ' Write various data types
-buf.WriteByte(&HCA)
+buf.WriteByte(202)
 buf.WriteI16LE(1000)
 buf.WriteI32BE(123456)
 buf.WriteI64LE(9876543210)
@@ -767,7 +767,7 @@ PRINT "After reset:"; buf.Length       ' Output: 0
 DIM buf AS OBJECT = Viper.IO.BinaryBuffer.NewCap(256)
 
 ' Build a binary protocol packet
-buf.WriteI16BE(&HCAFE)         ' Magic number
+buf.WriteI16BE(51966)         ' Magic number
 buf.WriteI32BE(1)              ' Version
 buf.WriteStr("payload data")
 

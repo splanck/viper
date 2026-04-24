@@ -91,7 +91,9 @@ ExprPtr Parser::parsePrimary() {
         if (!expect(TokenKind::LParen, "("))
             return nullptr;
 
-        std::vector<CallArg> args = parseCallArgs();
+        std::vector<CallArg> args;
+        if (!parseCallArgs(args))
+            return nullptr;
 
         if (!expect(TokenKind::RParen, ")"))
             return nullptr;
@@ -109,7 +111,7 @@ ExprPtr Parser::parsePrimary() {
 
         if (!expect(TokenKind::LBrace, "{"))
             return nullptr;
-        ExprPtr thenExpr = parseExpression();
+        ExprPtr thenExpr = parseExpressionAllowingStructLiterals();
         if (!thenExpr)
             return nullptr;
         if (!expect(TokenKind::RBrace, "}"))
@@ -119,7 +121,7 @@ ExprPtr Parser::parsePrimary() {
             return nullptr;
         if (!expect(TokenKind::LBrace, "{"))
             return nullptr;
-        ExprPtr elseExpr = parseExpression();
+        ExprPtr elseExpr = parseExpressionAllowingStructLiterals();
         if (!elseExpr)
             return nullptr;
         if (!expect(TokenKind::RBrace, "}"))
@@ -132,15 +134,9 @@ ExprPtr Parser::parsePrimary() {
     // Match expression or 'match' used as identifier
     if (check(TokenKind::KwMatch)) {
         // Look ahead: 'match' is a keyword (match expression) only when followed by
-        // something that starts a scrutinee expression (identifier, literal, parenthesis).
+        // something that starts a scrutinee expression.
         // When followed by ';', ')', ',', '.', operators, etc., treat it as a variable name.
-        auto nextKind = peek(1).kind;
-        bool isMatchExpr =
-            (nextKind == TokenKind::Identifier || nextKind == TokenKind::IntegerLiteral ||
-             nextKind == TokenKind::NumberLiteral || nextKind == TokenKind::StringLiteral ||
-             nextKind == TokenKind::LParen || nextKind == TokenKind::KwTrue ||
-             nextKind == TokenKind::KwFalse || nextKind == TokenKind::KwNull ||
-             nextKind == TokenKind::KwSelf);
+        bool isMatchExpr = isExpressionStart(peek(1).kind);
         if (isMatchExpr) {
             advance(); // consume 'match'
             return parseMatchExpression(loc);
@@ -161,7 +157,7 @@ ExprPtr Parser::parsePrimary() {
         std::vector<ExprPtr> elements;
         if (!check(TokenKind::RBrace)) {
             while (true) {
-                ExprPtr elem = parseExpression();
+                ExprPtr elem = parseExpressionAllowingStructLiterals();
                 if (!elem)
                     return nullptr;
                 if (check(TokenKind::Colon)) {
@@ -189,12 +185,12 @@ ExprPtr Parser::parsePrimary() {
         std::vector<MapEntry> entries;
         if (!check(TokenKind::RBrace)) {
             while (true) {
-                ExprPtr key = parseExpression();
+                ExprPtr key = parseExpressionAllowingStructLiterals();
                 if (!key)
                     return nullptr;
                 if (!expect(TokenKind::Colon, ":"))
                     return nullptr;
-                ExprPtr value = parseExpression();
+                ExprPtr value = parseExpressionAllowingStructLiterals();
                 if (!value)
                     return nullptr;
                 entries.push_back({std::move(key), std::move(value)});
@@ -445,16 +441,17 @@ ExprPtr Parser::parseMatchExpression(SourceLoc loc) {
 
             arm.body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
         } else {
-            arm.body = parseExpression();
+            arm.body = parseExpressionAllowingStructLiterals();
             if (!arm.body)
                 return nullptr;
         }
 
         arms.push_back(std::move(arm));
 
-        // Optional comma or closing brace
+        // Optional semicolon/comma or closing brace
         if (!check(TokenKind::RBrace)) {
-            match(TokenKind::Comma);
+            if (!match(TokenKind::Semicolon))
+                match(TokenKind::Comma);
         }
     }
 
@@ -473,12 +470,16 @@ ExprPtr Parser::parseListLiteral() {
     std::vector<ExprPtr> elements;
 
     if (!check(TokenKind::RBracket)) {
-        do {
-            ExprPtr elem = parseExpression();
+        while (true) {
+            ExprPtr elem = parseExpressionAllowingStructLiterals();
             if (!elem)
                 return nullptr;
             elements.push_back(std::move(elem));
-        } while (match(TokenKind::Comma));
+            if (!match(TokenKind::Comma))
+                break;
+            if (check(TokenKind::RBracket))
+                break;
+        }
     }
 
     if (!expect(TokenKind::RBracket, "]"))
@@ -509,7 +510,7 @@ ExprPtr Parser::parseLambdaBody(SourceLoc loc, std::vector<LambdaParam> params) 
 
         body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
     } else {
-        body = parseExpression();
+        body = parseExpressionAllowingStructLiterals();
     }
     if (!body)
         return nullptr;
@@ -532,7 +533,7 @@ ExprPtr Parser::parseInterpolatedString() {
     ExprPtr result = std::make_unique<StringLiteralExpr>(loc, std::move(firstPart));
 
     // Parse the first interpolated expression
-    ExprPtr expr = parseExpression();
+    ExprPtr expr = parseExpressionAllowingStructLiterals();
     if (!expr) {
         error("expected expression in string interpolation");
         return nullptr;
@@ -558,7 +559,7 @@ ExprPtr Parser::parseInterpolatedString() {
         }
 
         // Parse the next interpolated expression
-        expr = parseExpression();
+        expr = parseExpressionAllowingStructLiterals();
         if (!expr) {
             error("expected expression in string interpolation");
             return nullptr;
@@ -606,7 +607,7 @@ ExprPtr Parser::parseMapOrSetLiteral() {
     }
 
     // Check if first element has colon (map) or not (set)
-    ExprPtr first = parseExpression();
+    ExprPtr first = parseExpressionAllowingStructLiterals();
     if (!first)
         return nullptr;
 
@@ -614,21 +615,24 @@ ExprPtr Parser::parseMapOrSetLiteral() {
         // It's a map
         std::vector<MapEntry> entries;
 
-        ExprPtr firstValue = parseExpression();
+        ExprPtr firstValue = parseExpressionAllowingStructLiterals();
         if (!firstValue)
             return nullptr;
 
         entries.push_back({std::move(first), std::move(firstValue)});
 
         while (match(TokenKind::Comma)) {
-            ExprPtr key = parseExpression();
+            if (check(TokenKind::RBrace))
+                break;
+
+            ExprPtr key = parseExpressionAllowingStructLiterals();
             if (!key)
                 return nullptr;
 
             if (!expect(TokenKind::Colon, ":"))
                 return nullptr;
 
-            ExprPtr value = parseExpression();
+            ExprPtr value = parseExpressionAllowingStructLiterals();
             if (!value)
                 return nullptr;
 
@@ -645,7 +649,10 @@ ExprPtr Parser::parseMapOrSetLiteral() {
         elements.push_back(std::move(first));
 
         while (match(TokenKind::Comma)) {
-            ExprPtr elem = parseExpression();
+            if (check(TokenKind::RBrace))
+                break;
+
+            ExprPtr elem = parseExpressionAllowingStructLiterals();
             if (!elem)
                 return nullptr;
             elements.push_back(std::move(elem));
@@ -658,14 +665,12 @@ ExprPtr Parser::parseMapOrSetLiteral() {
     }
 }
 
-std::vector<CallArg> Parser::parseCallArgs() {
-    std::vector<CallArg> args;
-
+bool Parser::parseCallArgs(std::vector<CallArg> &args) {
     if (check(TokenKind::RParen)) {
-        return args;
+        return true;
     }
 
-    do {
+    while (true) {
         CallArg arg;
 
         // Check for named argument: name: value
@@ -673,16 +678,27 @@ std::vector<CallArg> Parser::parseCallArgs() {
             Token nameTok = advance();
             advance(); // consume :
             arg.name = nameTok.text;
-            arg.value = parseExpression();
+            arg.value = parseExpressionAllowingStructLiterals();
         } else {
-            arg.value = parseExpression();
+            arg.value = parseExpressionAllowingStructLiterals();
         }
 
         if (!arg.value)
-            return {};
+            return false;
         args.push_back(std::move(arg));
-    } while (match(TokenKind::Comma));
+        if (!match(TokenKind::Comma))
+            break;
+        if (check(TokenKind::RParen))
+            break;
+    }
 
+    return true;
+}
+
+std::vector<CallArg> Parser::parseCallArgs() {
+    std::vector<CallArg> args;
+    if (!parseCallArgs(args))
+        return {};
     return args;
 }
 

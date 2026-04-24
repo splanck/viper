@@ -1016,7 +1016,7 @@ Interfaces are perfect for plugin systems where you don't know what implementati
 module PluginSystem;
 
 bind Viper.Terminal;
-bind Viper.Text;
+bind Viper.String as Str;
 
 // Interface that all plugins must implement
 interface Plugin {
@@ -1031,7 +1031,7 @@ class UppercasePlugin implements Plugin {
     }
 
     expose func execute(input: String) -> String {
-        return input.ToUpper();
+        return Str.ToUpper(input);
     }
 }
 
@@ -1041,7 +1041,7 @@ class ReversePlugin implements Plugin {
     }
 
     expose func execute(input: String) -> String {
-        return reverse(input);
+        return Str.Flip(input);
     }
 }
 
@@ -1057,7 +1057,7 @@ class RepeatPlugin implements Plugin {
     }
 
     expose func execute(input: String) -> String {
-        return repeat(input, self.times);
+        return Str.Repeat(input, self.times);
     }
 }
 
@@ -1091,12 +1091,12 @@ class PluginManager {
 }
 
 func start() {
-    var manager = PluginManager();
+    var manager = new PluginManager();
 
     // Register some plugins
-    manager.register(UppercasePlugin());
-    manager.register(ReversePlugin());
-    manager.register(RepeatPlugin(2));
+    manager.register(new UppercasePlugin());
+    manager.register(new ReversePlugin());
+    manager.register(new RepeatPlugin(2));
 
     manager.listPlugins();
 

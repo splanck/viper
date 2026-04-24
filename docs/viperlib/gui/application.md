@@ -570,6 +570,7 @@ bind Viper.Terminal;
 bind Viper.GUI.App as App;
 bind Viper.GUI.VBox as VBox;
 bind Viper.GUI.Container as Container;
+bind Viper.GUI.Widget as Widget;
 
 func start() {
     var app = App.New("Container Demo", 400, 300);
@@ -579,7 +580,7 @@ func start() {
     var vbox = VBox.New();
     Container.SetSpacing(vbox, 12.0);
     Container.SetPadding(vbox, 16.0);
-    root.AddChild(vbox);
+    Widget.AddChild(root, vbox);
 }
 ```
 

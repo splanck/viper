@@ -1277,7 +1277,7 @@ class Container {
     func resolve[T](name: String) -> T {
         var factory = self.registrations.Get(name);
         if factory == null {
-            throw Error("No registration for: " + name);
+            throw ("No registration for: " + name);
         }
         return factory() as T;
     }

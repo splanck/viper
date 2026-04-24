@@ -79,8 +79,8 @@ PRINT valueType        ' Output: "bool"
 
 ' Format with pretty printing
 DIM config AS OBJECT = Viper.Collections.Map.New()
-config.Set("debug", Viper.Box.I1(1))
-config.Set("port", Viper.Box.I64(8080))
+config.Set("debug", Viper.Core.Box.I1(1))
+config.Set("port", Viper.Core.Box.I64(8080))
 
 DIM output AS STRING = Viper.Text.Json.FormatPretty(config, 2)
 PRINT output
@@ -185,7 +185,7 @@ ELSE
 END IF
 
 ' Default values
-DIM email AS OBJECT = Viper.Text.JsonPath.GetOr(data, "user.email", Viper.Box.Str("unknown"))
+DIM email AS OBJECT = Viper.Text.JsonPath.GetOr(data, "user.email", Viper.Core.Box.Str("unknown"))
 PRINT Viper.Unbox.Str(email)  ' Output: "unknown"
 
 ' Wildcard queries
@@ -381,6 +381,7 @@ module CsvDemo;
 bind Viper.Terminal;
 bind Viper.Text.Csv as Csv;
 bind Viper.Fmt as Fmt;
+bind Viper.Collections.Seq as Seq;
 
 func start() {
     // Parse a CSV line into fields
@@ -388,9 +389,9 @@ func start() {
     Say("Field count: " + Fmt.Int(fields.Length));
 
     // Format a CSV line with quoting
-    var data = new Viper.Collections.Seq();
-    data.Push(Viper.Box.Str("Hello, World"));
-    data.Push(Viper.Box.Str("Simple"));
+    var data = Seq.New();
+    Seq.Push(data, "Hello, World");
+    Seq.Push(data, "Simple");
     var line = Csv.FormatLine(data);
     Say("Formatted: " + line);
 }

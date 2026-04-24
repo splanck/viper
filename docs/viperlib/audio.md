@@ -189,7 +189,7 @@ func start() {
 
     var mus = Music.Load("background.ogg");
     if mus != null {
-        mus.set_Volume(70);
+        mus.Volume = 70;
         mus.Play(1);  // Looped
 
         Say("Duration: " + Fmt.Int(mus.get_Duration()) + " ms");
@@ -225,7 +225,7 @@ IF bgMusic <> NULL THEN
     PRINT "Duration: "; bgMusic.Duration; " ms"
 
     ' Game loop
-    DO WHILE canvas.ShouldClose = 0
+    DO WHILE NOT canvas.ShouldClose
         canvas.Poll()
 
         ' Display current position

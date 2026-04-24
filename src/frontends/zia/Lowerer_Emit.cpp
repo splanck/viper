@@ -92,6 +92,34 @@ Lowerer::Value Lowerer::widenByteToInteger(Value value) {
     return emitBinary(Opcode::And, Type(Type::Kind::I64), loaded, Value::constInt(0xFFFFFFFFLL));
 }
 
+Lowerer::Value Lowerer::widenIntegralToI64(Value value, Type valueType) {
+    switch (valueType.kind) {
+        case Type::Kind::I64:
+            return value;
+        case Type::Kind::I32:
+            return widenByteToInteger(value);
+        case Type::Kind::I1:
+            return emitUnary(Opcode::Zext1, Type(Type::Kind::I64), value);
+        default:
+            return value;
+    }
+}
+
+Lowerer::Value Lowerer::emitIndexCheck(Value index, Value lowerInclusive, Value upperExclusive) {
+    if (!options_.boundsChecks)
+        return index;
+
+    unsigned id = nextTempId();
+    il::core::Instr instr;
+    instr.result = id;
+    instr.op = Opcode::IdxChk;
+    instr.type = Type(Type::Kind::I64);
+    instr.operands = {index, lowerInclusive, upperExclusive};
+    instr.loc = curLoc_;
+    blockMgr_.currentBlock()->instructions.push_back(instr);
+    return Value::temp(id);
+}
+
 Lowerer::Value Lowerer::narrowIntegerToByte(Value value) {
     return emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), value);
 }
@@ -127,9 +155,6 @@ LowerResult Lowerer::coerceValueToType(Value value,
         };
         if (effectiveSource && effectiveSource->kind == TypeKindSem::Optional)
             return {value, optionalStoreType()};
-        if (effectiveSource && effectiveSource->kind == TypeKindSem::Unit) {
-            return {Value::null(), optionalStoreType()};
-        }
         if (innerType) {
             auto coercedInner = coerceValueToType(value, valueIlType, effectiveSource, innerType);
             return {emitOptionalWrap(coercedInner.value, innerType), mapType(targetType)};

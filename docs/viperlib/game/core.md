@@ -112,7 +112,7 @@ DIM canvas AS OBJECT = Viper.Graphics.Canvas.New("Animation", 800, 600)
 DIM anim AS OBJECT = Viper.Game.Timer.New()
 anim.Start(60)
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     ' Update timer each frame
@@ -124,8 +124,8 @@ DO WHILE canvas.ShouldClose = 0
     DIM progress AS INTEGER = anim.Progress
     DIM x AS INTEGER = progress * 7  ' Move from 0 to 700
 
-    canvas.Clear(&H00000000)
-    canvas.Box(x, 280, 40, 40, &HFF0000)
+    canvas.Clear(0)
+    canvas.Box(x, 280, 40, 40, 16711680)
     canvas.Flip()
 LOOP
 ```

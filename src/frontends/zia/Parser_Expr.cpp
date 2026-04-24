@@ -31,9 +31,18 @@ ExprPtr Parser::parseExpression() {
     return parseAssignment();
 }
 
-/// @brief Clone an lvalue expression for compound assignment desugaring.
-/// @details Only handles lvalue forms: IdentExpr, FieldExpr, IndexExpr, SelfExpr.
-static ExprPtr cloneLvalueExpr(Expr *expr) {
+ExprPtr Parser::parseExpressionAllowingStructLiterals() {
+    bool savedAllowStructLiterals = allowStructLiterals_;
+    allowStructLiterals_ = true;
+    ExprPtr expr = parseExpression();
+    allowStructLiterals_ = savedAllowStructLiterals;
+    return expr;
+}
+
+/// @brief Clone an expression that is safe to duplicate in compound assignment.
+/// @details Calls, allocation, await/try, and other potentially effectful forms
+/// are intentionally rejected so `target += value` does not re-run target effects.
+static ExprPtr clonePureExpr(Expr *expr) {
     if (!expr)
         return nullptr;
 
@@ -44,27 +53,89 @@ static ExprPtr cloneLvalueExpr(Expr *expr) {
         }
         case ExprKind::SelfExpr:
             return std::make_unique<SelfExpr>(expr->loc);
+        case ExprKind::SuperExpr:
+            return std::make_unique<SuperExprNode>(expr->loc);
+        case ExprKind::IntLiteral: {
+            auto *lit = static_cast<IntLiteralExpr *>(expr);
+            return std::make_unique<IntLiteralExpr>(lit->loc, lit->value);
+        }
+        case ExprKind::NumberLiteral: {
+            auto *lit = static_cast<NumberLiteralExpr *>(expr);
+            return std::make_unique<NumberLiteralExpr>(lit->loc, lit->value);
+        }
+        case ExprKind::StringLiteral: {
+            auto *lit = static_cast<StringLiteralExpr *>(expr);
+            return std::make_unique<StringLiteralExpr>(lit->loc, lit->value);
+        }
+        case ExprKind::BoolLiteral: {
+            auto *lit = static_cast<BoolLiteralExpr *>(expr);
+            return std::make_unique<BoolLiteralExpr>(lit->loc, lit->value);
+        }
+        case ExprKind::NullLiteral:
+            return std::make_unique<NullLiteralExpr>(expr->loc);
+        case ExprKind::UnitLiteral:
+            return std::make_unique<UnitLiteralExpr>(expr->loc);
         case ExprKind::Field: {
             auto *field = static_cast<FieldExpr *>(expr);
-            return std::make_unique<FieldExpr>(
-                field->loc, cloneLvalueExpr(field->base.get()), field->field);
+            ExprPtr base = clonePureExpr(field->base.get());
+            if (!base)
+                return nullptr;
+            return std::make_unique<FieldExpr>(field->loc, std::move(base), field->field);
         }
         case ExprKind::Index: {
             auto *idx = static_cast<IndexExpr *>(expr);
-            return std::make_unique<IndexExpr>(
-                idx->loc, cloneLvalueExpr(idx->base.get()), cloneLvalueExpr(idx->index.get()));
+            ExprPtr base = clonePureExpr(idx->base.get());
+            ExprPtr index = clonePureExpr(idx->index.get());
+            if (!base || !index)
+                return nullptr;
+            return std::make_unique<IndexExpr>(idx->loc, std::move(base), std::move(index));
+        }
+        case ExprKind::Unary: {
+            auto *unary = static_cast<UnaryExpr *>(expr);
+            ExprPtr operand = clonePureExpr(unary->operand.get());
+            if (!operand)
+                return nullptr;
+            return std::make_unique<UnaryExpr>(unary->loc, unary->op, std::move(operand));
+        }
+        case ExprKind::Binary: {
+            auto *binary = static_cast<BinaryExpr *>(expr);
+            if (binary->op == BinaryOp::Assign)
+                return nullptr;
+            ExprPtr left = clonePureExpr(binary->left.get());
+            ExprPtr right = clonePureExpr(binary->right.get());
+            if (!left || !right)
+                return nullptr;
+            return std::make_unique<BinaryExpr>(
+                binary->loc, binary->op, std::move(left), std::move(right));
+        }
+        case ExprKind::Ternary: {
+            auto *ternary = static_cast<TernaryExpr *>(expr);
+            ExprPtr condition = clonePureExpr(ternary->condition.get());
+            ExprPtr thenExpr = clonePureExpr(ternary->thenExpr.get());
+            ExprPtr elseExpr = clonePureExpr(ternary->elseExpr.get());
+            if (!condition || !thenExpr || !elseExpr)
+                return nullptr;
+            return std::make_unique<TernaryExpr>(
+                ternary->loc, std::move(condition), std::move(thenExpr), std::move(elseExpr));
+        }
+        case ExprKind::Coalesce: {
+            auto *coalesce = static_cast<CoalesceExpr *>(expr);
+            ExprPtr left = clonePureExpr(coalesce->left.get());
+            ExprPtr right = clonePureExpr(coalesce->right.get());
+            if (!left || !right)
+                return nullptr;
+            return std::make_unique<CoalesceExpr>(coalesce->loc, std::move(left), std::move(right));
+        }
+        case ExprKind::Range: {
+            auto *range = static_cast<RangeExpr *>(expr);
+            ExprPtr start = clonePureExpr(range->start.get());
+            ExprPtr end = clonePureExpr(range->end.get());
+            if (!start || !end)
+                return nullptr;
+            return std::make_unique<RangeExpr>(
+                range->loc, std::move(start), std::move(end), range->inclusive);
         }
         default:
-            // For other expression types (e.g., int literals used as index),
-            // reconstruct as literal if possible
-            if (expr->kind == ExprKind::IntLiteral) {
-                auto *lit = static_cast<IntLiteralExpr *>(expr);
-                return std::make_unique<IntLiteralExpr>(lit->loc, lit->value);
-            }
-            if (expr->kind == ExprKind::StringLiteral) {
-                auto *lit = static_cast<StringLiteralExpr *>(expr);
-                return std::make_unique<StringLiteralExpr>(lit->loc, lit->value);
-            }
             return nullptr;
     }
 }
@@ -77,7 +148,7 @@ ExprPtr Parser::parseAssignment() {
     Token eqTok;
     if (match(TokenKind::Equal, &eqTok)) {
         SourceLoc loc = eqTok.loc;
-        ExprPtr value = parseAssignment(); // right-associative
+        ExprPtr value = parseExpressionAllowingStructLiterals(); // right-associative
         if (!value)
             return nullptr;
         return std::make_unique<BinaryExpr>(
@@ -122,14 +193,15 @@ ExprPtr Parser::parseAssignment() {
         SourceLoc loc = compTok.loc;
         BinaryOp op = compoundOp(compTok.kind);
 
-        // Clone the LHS for the read side of the compound operation
-        ExprPtr lhsClone = cloneLvalueExpr(expr.get());
+        // Clone the LHS for the read side of the compound operation. Reject
+        // effectful targets instead of lowering them with duplicated effects.
+        ExprPtr lhsClone = clonePureExpr(expr.get());
         if (!lhsClone) {
-            error("compound assignment target must be an lvalue");
+            error("compound assignment target must be a side-effect-free lvalue");
             return nullptr;
         }
 
-        ExprPtr rhs = parseAssignment(); // right-associative
+        ExprPtr rhs = parseExpressionAllowingStructLiterals(); // right-associative
         if (!rhs)
             return nullptr;
 
@@ -150,14 +222,14 @@ ExprPtr Parser::parseTernary() {
     Token qTok;
     if (match(TokenKind::Question, &qTok)) {
         SourceLoc loc = qTok.loc;
-        ExprPtr thenExpr = parseExpression();
+        ExprPtr thenExpr = parseExpressionAllowingStructLiterals();
         if (!thenExpr)
             return nullptr;
 
         if (!expect(TokenKind::Colon, ":"))
             return nullptr;
 
-        ExprPtr elseExpr = parseTernary();
+        ExprPtr elseExpr = parseExpressionAllowingStructLiterals();
         if (!elseExpr)
             return nullptr;
 
@@ -638,7 +710,9 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr) {
         if (match(TokenKind::LParen, &opTok)) {
             // Function call
             SourceLoc loc = opTok.loc;
-            std::vector<CallArg> args = parseCallArgs();
+            std::vector<CallArg> args;
+            if (!parseCallArgs(args))
+                return nullptr;
             if (!expect(TokenKind::RParen, ")"))
                 return nullptr;
 
@@ -716,35 +790,7 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr) {
         } else if (check(TokenKind::Question)) {
             // Try expression: expr? - propagate null/error
             // Note: This is different from optional type T? or ternary a ? b : c
-            const Token &next = peek(1);
-            bool nextStartsExpr = false;
-            switch (next.kind) {
-                case TokenKind::Identifier:
-                case TokenKind::IntegerLiteral:
-                case TokenKind::NumberLiteral:
-                case TokenKind::StringLiteral:
-                case TokenKind::StringStart:
-                case TokenKind::KwTrue:
-                case TokenKind::KwFalse:
-                case TokenKind::KwNull:
-                case TokenKind::KwSelf:
-                case TokenKind::KwSuper:
-                case TokenKind::KwNew:
-                case TokenKind::KwMatch:
-                case TokenKind::LParen:
-                case TokenKind::LBracket:
-                case TokenKind::LBrace:
-                case TokenKind::Minus:
-                case TokenKind::Bang:
-                case TokenKind::Tilde:
-                case TokenKind::KwStruct:
-                    nextStartsExpr = true;
-                    break;
-                default:
-                    break;
-            }
-
-            if (nextStartsExpr)
+            if (isExpressionStart(peek(1).kind))
                 break;
 
             Token qTok = advance();

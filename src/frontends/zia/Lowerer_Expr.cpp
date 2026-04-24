@@ -69,6 +69,8 @@ LowerResult Lowerer::lowerExpr(Expr *expr) {
             return lowerBoolLiteral(static_cast<BoolLiteralExpr *>(expr));
         case ExprKind::NullLiteral:
             return lowerNullLiteral(static_cast<NullLiteralExpr *>(expr));
+        case ExprKind::UnitLiteral:
+            return lowerUnitLiteral(static_cast<UnitLiteralExpr *>(expr));
         case ExprKind::Ident:
             return lowerIdent(static_cast<IdentExpr *>(expr));
         case ExprKind::SelfExpr: {
@@ -132,6 +134,8 @@ LowerResult Lowerer::lowerExpr(Expr *expr) {
             return lowerAs(static_cast<AsExpr *>(expr));
         case ExprKind::Is:
             return lowerIsExpr(static_cast<IsExpr *>(expr));
+        case ExprKind::Range:
+            return lowerRange(static_cast<RangeExpr *>(expr));
         case ExprKind::SetLiteral:
             return lowerSetLiteral(static_cast<SetLiteralExpr *>(expr));
         default:

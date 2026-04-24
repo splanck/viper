@@ -101,7 +101,7 @@ LowerResult CollectionLowerer::lowerIndex(IndexExpr *expr) {
     TypeRef baseType = lowerer_.sema_.typeOf(expr->base.get());
 
     if (baseType && baseType->kind == TypeKindSem::FixedArray)
-        return lowerFixedArrayIndex(base.value, index.value, baseType);
+        return lowerFixedArrayIndex(base.value, index.value, index.type, baseType);
 
     if (baseType && baseType->kind == TypeKindSem::String)
         return lowerStringIndex(base.value, index.value);
@@ -130,17 +130,22 @@ CollectionLowerer::Value CollectionLowerer::emitRuntimeOffsetAddress(Value baseP
 
 LowerResult CollectionLowerer::lowerFixedArrayIndex(Value baseValue,
                                                     Value indexValue,
+                                                    Type indexType,
                                                     TypeRef baseType) {
     TypeRef elemType = baseType->elementType();
     Type ilElemType = elemType ? lowerer_.mapType(elemType) : Type(Type::Kind::I64);
     size_t elemSize = lowerer_.getILTypeSize(ilElemType);
+    Value checkedIndex = lowerer_.emitIndexCheck(
+        lowerer_.widenIntegralToI64(indexValue, indexType),
+        Value::constInt(0),
+        Value::constInt(static_cast<int64_t>(baseType->elementCount)));
 
     unsigned mulId = lowerer_.nextTempId();
     il::core::Instr mulInstr;
     mulInstr.result = mulId;
     mulInstr.op = Opcode::IMulOvf;
     mulInstr.type = Type(Type::Kind::I64);
-    mulInstr.operands = {indexValue, Value::constInt(static_cast<int64_t>(elemSize))};
+    mulInstr.operands = {checkedIndex, Value::constInt(static_cast<int64_t>(elemSize))};
     mulInstr.loc = lowerer_.curLoc_;
     lowerer_.blockMgr_.currentBlock()->instructions.push_back(std::move(mulInstr));
     Value byteOffset = Value::temp(mulId);

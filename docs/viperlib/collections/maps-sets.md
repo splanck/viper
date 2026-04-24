@@ -329,7 +329,7 @@ module OrderedMapDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func start() {
     var om = OrderedMap.New();
@@ -355,9 +355,9 @@ func start() {
 
     // Keys and values in insertion order
     var keys = om.Keys();
-    Say(Box.ToStr(keys.Get(0)));                // first
-    Say(Box.ToStr(keys.Get(1)));                // second
-    Say(Box.ToStr(keys.Get(2)));                // third
+    Say(Box.ToStr(Seq.Get(keys, 0)));           // first
+    Say(Box.ToStr(Seq.Get(keys, 1)));           // second
+    Say(Box.ToStr(Seq.Get(keys, 2)));           // third
 }
 ```
 
@@ -624,7 +624,7 @@ module FrozenMapDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func start() {
     // Build from parallel sequences
@@ -768,7 +768,7 @@ module FrozenSetDemo;
 bind Viper.Collections;
 bind Viper.Core;
 bind Viper.Terminal;
-bind Viper.Fmt;
+bind Viper.Fmt as Fmt;
 
 func start() {
     // Build from a Seq (duplicates removed)

@@ -1024,7 +1024,8 @@ module StdlibDemo;
 
 bind Viper.Terminal;
 bind Env = Viper.Environment;
-bind Viper.Time;
+bind Viper.Time.DateTime as DateTime;
+bind Viper.Time.Clock as Clock;
 bind Viper.Math as Math;
 bind Viper.Fmt as Fmt;
 bind Viper.Math.Random as Random;
@@ -1041,10 +1042,10 @@ func start() {
     Say("");
 
     // Time
-    var dt = Time.DateTime.Now();
+    var dt = DateTime.Now();
     Say("Current Time:");
-    Say("  Year: " + Fmt.Int(Time.DateTime.Year(dt)));
-    Say("  Month: " + Fmt.Int(Time.DateTime.Month(dt)));
+    Say("  Year: " + Fmt.Int(DateTime.Year(dt)));
+    Say("  Month: " + Fmt.Int(DateTime.Month(dt)));
     Say("");
 
     // Math
@@ -1071,13 +1072,9 @@ func start() {
     scores.set("Charlie", 1200);
 
     Say("Leaderboard:");
-    var keys = scores.keys();
-    var j = 0;
-    while j < keys.count() {
-        var name = keys.get(j);
-        Say("  " + name + ": " + Fmt.Int(scores.get(name)) + " points");
-        j = j + 1;
-    }
+    Say("  Alice: " + Fmt.Int(scores.get("Alice") ?? 0) + " points");
+    Say("  Bob: " + Fmt.Int(scores.get("Bob") ?? 0) + " points");
+    Say("  Charlie: " + Fmt.Int(scores.get("Charlie") ?? 0) + " points");
     Say("");
 
     // Crypto
@@ -1089,7 +1086,7 @@ func start() {
 
     // Performance measurement
     Say("Performance Test:");
-    var startMs = Time.Clock.Ticks();
+    var startMs = Clock.Ticks();
 
     var sum = 0.0;
     var k = 0;
@@ -1098,7 +1095,7 @@ func start() {
         k = k + 1;
     }
 
-    var elapsed = Time.Clock.Ticks() - startMs;
+    var elapsed = Clock.Ticks() - startMs;
     Say("  100,000 square roots in " + Fmt.Int(elapsed) + " ms");
 
     Say("");

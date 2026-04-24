@@ -266,6 +266,10 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         return {rawResult, ilSurfaceType};
     };
 
+    RangeModifierInfo rangeInfo;
+    if (collectRangeModifierChain(expr, rangeInfo) && rangeInfo.range)
+        return lowerRangeWithModifiers(rangeInfo.range, rangeInfo.reversed, rangeInfo.stepArg);
+
     // Check for generic function call: identity[Integer](42)
     std::string genericCallee = sema_.genericFunctionCallee(expr);
     if (!genericCallee.empty()) {

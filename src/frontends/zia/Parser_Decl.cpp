@@ -289,7 +289,8 @@ DeclPtr Parser::parseFunctionDecl(bool isForeign) {
     if (!expect(TokenKind::LParen, "("))
         return nullptr;
 
-    func->params = parseParameters();
+    if (!parseParameters(func->params))
+        return nullptr;
 
     if (!expect(TokenKind::RParen, ")"))
         return nullptr;
@@ -314,7 +315,7 @@ DeclPtr Parser::parseFunctionDecl(bool isForeign) {
     } else if (match(TokenKind::Equal)) {
         // Single-expression function: func f(x: T) -> R = expr;
         SourceLoc exprLoc = peek().loc;
-        ExprPtr bodyExpr = parseExpression();
+        ExprPtr bodyExpr = parseExpressionAllowingStructLiterals();
         if (!bodyExpr)
             return nullptr;
         if (!expect(TokenKind::Semicolon, "';'"))
@@ -334,20 +335,18 @@ DeclPtr Parser::parseFunctionDecl(bool isForeign) {
 /// @brief Parse a comma-separated list of function or method parameters.
 /// @details Supports `name: Type` parameters, including optional types (`Type?`),
 ///          generics (`List[T]`), variadics, and default values.
-/// @return The parsed parameter list, or empty vector on error.
-std::vector<Param> Parser::parseParameters() {
-    std::vector<Param> params;
-
+/// @return True on success, false on parse error.
+bool Parser::parseParameters(std::vector<Param> &params) {
     if (check(TokenKind::RParen)) {
-        return params;
+        return true;
     }
 
-    do {
+    while (true) {
         Param param;
 
         if (!checkIdentifierLike()) {
             error("expected parameter");
-            return {};
+            return false;
         }
 
         // Read first identifier (may be a contextual keyword like 'value')
@@ -364,17 +363,21 @@ std::vector<Param> Parser::parseParameters() {
         param.isVariadic = match(TokenKind::Ellipsis);
         param.type = parseType();
         if (!param.type)
-            return {};
+            return false;
 
         // Default value
         if (match(TokenKind::Equal)) {
-            param.defaultValue = parseExpression();
+            param.defaultValue = parseExpressionAllowingStructLiterals();
             if (!param.defaultValue)
-                return {};
+                return false;
         }
 
         params.push_back(std::move(param));
-    } while (match(TokenKind::Comma));
+        if (!match(TokenKind::Comma))
+            break;
+        if (check(TokenKind::RParen))
+            break;
+    }
 
     // Validate: only the last parameter can be variadic
     for (size_t i = 0; i + 1 < params.size(); ++i) {
@@ -383,6 +386,14 @@ std::vector<Param> Parser::parseParameters() {
         }
     }
 
+    return true;
+}
+
+/// @return The parsed parameter list, or empty vector on error.
+std::vector<Param> Parser::parseParameters() {
+    std::vector<Param> params;
+    if (!parseParameters(params))
+        return {};
     return params;
 }
 
@@ -784,7 +795,7 @@ DeclPtr Parser::parseGlobalVarDecl() {
 
     // Optional initializer: var x = 42
     if (match(TokenKind::Equal)) {
-        decl->initializer = parseExpression();
+        decl->initializer = parseExpressionAllowingStructLiterals();
         if (!decl->initializer)
             return nullptr;
     }
@@ -831,7 +842,9 @@ DeclPtr Parser::parseFieldDecl() {
 
     // Optional initializer: = expr
     if (match(TokenKind::Equal)) {
-        field->initializer = parseExpression();
+        field->initializer = parseExpressionAllowingStructLiterals();
+        if (!field->initializer)
+            return nullptr;
     }
 
     // Expect semicolon
@@ -863,7 +876,8 @@ DeclPtr Parser::parseMethodDecl() {
     // Parameters
     if (!expect(TokenKind::LParen, "("))
         return nullptr;
-    method->params = parseParameters();
+    if (!parseParameters(method->params))
+        return nullptr;
     if (!expect(TokenKind::RParen, ")"))
         return nullptr;
 
@@ -879,7 +893,7 @@ DeclPtr Parser::parseMethodDecl() {
         // Single-expression method: func f(x: T) -> R = expr;
         advance();
         SourceLoc exprLoc = peek().loc;
-        ExprPtr bodyExpr = parseExpression();
+        ExprPtr bodyExpr = parseExpressionAllowingStructLiterals();
         if (!bodyExpr)
             return nullptr;
         if (!expect(TokenKind::Semicolon, "';'"))

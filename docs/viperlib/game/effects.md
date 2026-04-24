@@ -102,7 +102,7 @@ explosion.SetPosition(400.0, 300.0)
 explosion.SetLifetime(20, 40)
 explosion.SetVelocity(2.0, 8.0, 0.0, 360.0)  ' All directions
 explosion.SetGravity(0.0, 0.1)
-explosion.Color = &HFFFF6600  ' Orange
+explosion.Color = 4294927872  ' Orange
 explosion.SetSize(3.0, 6.0)
 explosion.FadeOut = 1
 explosion.Shrink = 1
@@ -232,12 +232,12 @@ DIM fx AS OBJECT = Viper.Game.ScreenFX.New()
 ' On player damage
 SUB OnDamage()
     fx.Shake(5000, 300, 500)        ' Shake for 300ms
-    fx.Flash(&HFF0000FF, 200)       ' Red flash for 200ms (0xRRGGBBAA: opaque red)
+    fx.Flash(4278190335, 200)       ' Red flash for 200ms (0xRRGGBBAA: opaque red)
 END SUB
 
 ' On level transition
 SUB TransitionToLevel()
-    fx.FadeOut(&H000000FF, 500)     ' Fade to black over 500ms (0xRRGGBBAA: opaque black)
+    fx.FadeOut(255, 500)     ' Fade to black over 500ms (0xRRGGBBAA: opaque black)
 END SUB
 
 ' In game loop
@@ -259,33 +259,45 @@ END IF
 module TransitionDemo;
 
 bind Viper.Game.ScreenFX as FX;
+bind Viper.Graphics.Canvas as Canvas;
+bind Viper.Terminal;
+bind Viper.Fmt as Fmt;
 
-// In scene manager:
-var fx = FX.New();
+func start() {
+    var screenW = 800;
+    var screenH = 600;
+    var playerX = screenW / 2;
+    var playerY = screenH / 2;
+    var dt = 16;
 
-// RPG-style iris transition
-fx.CircleIn(playerX, playerY, 0x000000, 800);
+    var canvas = Canvas.New("Transition Demo", screenW, screenH);
+    var fx = FX.New();
 
-// Platformer wipe
-fx.Wipe(1, 0x000000, 500); // Right-to-left wipe
+    // RPG-style iris transition
+    fx.CircleIn(playerX, playerY, 0x000000FF, 800);
 
-// Horror dissolve
-fx.Dissolve(0x000000, 1200);
+    // Platformer wipe
+    fx.Wipe(1, 0x000000FF, 500); // Right-to-left wipe
 
-// Retro pixelate
-fx.Pixelate(16, 600); // Block size up to 16px
+    // Horror dissolve
+    fx.Dissolve(0x000000FF, 1200);
 
-// In game loop:
-fx.Update(dt);
-fx.Draw(canvas, SCREEN_W, SCREEN_H);
+    // Retro pixelate
+    fx.Pixelate(16, 600); // Block size up to 16px
 
-// Check completion for scene switch:
-if fx.IsFinished {
-    switchToNextScene();
+    // One frame from the game loop
+    canvas.Poll();
+    fx.Update(dt);
+    fx.Draw(canvas, screenW, screenH);
+    canvas.Flip();
+
+    if fx.IsFinished {
+        Say("Ready for next scene");
+    }
+
+    var progress = fx.TransitionProgress; // 0-1000
+    Say("Transition progress: " + Fmt.Int(progress));
 }
-
-// Use TransitionProgress for mid-transition logic:
-var progress = fx.TransitionProgress; // 0-1000
 ```
 
 ---

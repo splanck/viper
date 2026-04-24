@@ -71,7 +71,7 @@ func start() {
     var data = Bytes.FromStr("Secret data");
     var enc = Aes.Encrypt(data, key, iv);
     var dec = Aes.Decrypt(enc, key, iv);
-    Say("Round-trip: " + dec.ToStr());
+    Say("Round-trip: " + Bytes.ToStr(dec));
 }
 ```
 
@@ -89,7 +89,7 @@ DIM iv AS OBJECT = Viper.Crypto.Rand.Bytes(16)    ' 128-bit IV
 DIM data AS OBJECT = Viper.Collections.Bytes.FromStr("Secret data")
 DIM enc AS OBJECT = Viper.Crypto.Aes.Encrypt(data, key, iv)
 DIM dec AS OBJECT = Viper.Crypto.Aes.Decrypt(enc, key, iv)
-PRINT "Round-trip: "; dec.ToStr()
+PRINT "Round-trip: "; Viper.Collections.Bytes.ToStr(dec)
 ```
 
 ---

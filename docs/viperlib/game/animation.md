@@ -118,9 +118,9 @@ DIM moveTween AS OBJECT = Viper.Game.Tween.New()
 ' Move from x=100 to x=600 over 60 frames with ease-out
 moveTween.Start(100.0, 600.0, 60, 2)  ' EASE_OUT_QUAD = 2
 
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
-    canvas.Clear(&H000020)
+    canvas.Clear(32)
 
     ' Update tween
     IF moveTween.Update() THEN
@@ -129,10 +129,10 @@ DO WHILE canvas.ShouldClose = 0
 
     ' Draw at tweened position
     DIM x AS INTEGER = moveTween.ValueI64
-    canvas.Box(x, 280, 40, 40, &HFF0000)
+    canvas.Box(x, 280, 40, 40, 16711680)
 
     ' Show progress
-    canvas.Text(10, 10, "Progress: " & moveTween.Progress & "%", &HFFFFFF)
+    canvas.Text(10, 10, "Progress: " & moveTween.Progress & "%", 16777215)
 
     canvas.Flip()
 LOOP
@@ -150,8 +150,8 @@ DO WHILE fadeTween.IsRunning
     fadeTween.Update()
 
     DIM alpha AS INTEGER = fadeTween.ValueI64
-    DIM color AS INTEGER = &HFF0000 OR (alpha << 24)
-    canvas.Clear(&H000000)
+    DIM color AS INTEGER = 16711680 OR (alpha << 24)
+    canvas.Clear(0)
     canvas.BoxFilled(100, 100, 200, 150, color)
     canvas.Flip()
 LOOP
@@ -339,6 +339,7 @@ func start() {
     var frame = anim.CurrentFrame;  // Use to set sprite frame
 
     // Transition based on input
+    var speed = 1;
     if speed > 0 {
         anim.Transition(WALK);
     } else {
@@ -411,6 +412,7 @@ module SpriteSheetDemo;
 bind Viper.Graphics;
 bind Viper.Terminal;
 bind Viper.Collections;
+bind Viper.Fmt as Fmt;
 
 func start() {
     var atlas = Pixels.New(128, 128);

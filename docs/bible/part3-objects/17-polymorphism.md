@@ -965,6 +965,13 @@ struct Rect {
     expose Number width;
     expose Number height;
 
+    expose func init(x: Number, y: Number, width: Number, height: Number) {
+        self.x = x;
+        self.y = y;
+        self.width = width;
+        self.height = height;
+    }
+
     expose func contains(px: Number, py: Number) -> Boolean {
         return px >= self.x && px <= self.x + self.width &&
                py >= self.y && py <= self.y + self.height;
@@ -990,12 +997,8 @@ class Circle implements Drawable {
     }
 
     expose func getBounds() -> Rect {
-        return Rect {
-            x: self.x - self.radius,
-            y: self.y - self.radius,
-            width: self.radius * 2,
-            height: self.radius * 2
-        };
+        return new Rect(self.x - self.radius, self.y - self.radius,
+                        self.radius * 2, self.radius * 2);
     }
 }
 
@@ -1020,7 +1023,7 @@ class Rectangle implements Drawable {
     }
 
     expose func getBounds() -> Rect {
-        return Rect { x: self.x, y: self.y, width: self.width, height: self.height };
+        return new Rect(self.x, self.y, self.width, self.height);
     }
 }
 
@@ -1044,7 +1047,7 @@ class Text implements Drawable {
 
     expose func getBounds() -> Rect {
         var width = self.content.Length * self.fontSize * 0.6;  // Approximate
-        return Rect { x: self.x, y: self.y, width: width, height: self.fontSize };
+        return new Rect(self.x, self.y, width, self.fontSize);
     }
 }
 
@@ -1072,7 +1075,7 @@ class Group implements Drawable {
 
     expose func getBounds() -> Rect {
         if self.children.Length == 0 {
-            return Rect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 };
+            return new Rect(0.0, 0.0, 0.0, 0.0);
         }
 
         var first = self.children[0].getBounds();
@@ -1089,14 +1092,14 @@ class Group implements Drawable {
             if b.y + b.height > maxY { maxY = b.y + b.height; }
         }
 
-        return Rect { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+        return new Rect(minX, minY, maxX - minX, maxY - minY);
     }
 }
 
 // Function that works with any Drawable - demonstrates polymorphism
 func findItemAt(items: List[Drawable], x: Number, y: Number) -> Drawable? {
     for item in items {
-        if item.getBounds().Contains(x, y) {
+        if item.getBounds().contains(x, y) {
             return item;
         }
     }
@@ -1105,22 +1108,22 @@ func findItemAt(items: List[Drawable], x: Number, y: Number) -> Drawable? {
 
 func start() {
     // Create individual shapes
-    var rect = Rectangle(10.0, 10.0, 100.0, 50.0, "blue");
-    var circle = Circle(80.0, 35.0, 20.0, "red");
-    var label = Text(120.0, 30.0, "Hello!");
+    var rect = new Rectangle(10.0, 10.0, 100.0, 50.0, "blue");
+    var circle = new Circle(80.0, 35.0, 20.0, "red");
+    var label = new Text(120.0, 30.0, "Hello!");
 
     // Create a group (polymorphism: Group is also Drawable)
-    var icons = Group("Icons");
-    icons.Add(Circle(200.0, 100.0, 10.0, "green"));
-    icons.Add(Circle(220.0, 100.0, 10.0, "yellow"));
-    icons.Add(Rectangle(240.0, 95.0, 20.0, 10.0, "orange"));
+    var icons = new Group("Icons");
+    icons.add(new Circle(200.0, 100.0, 10.0, "green"));
+    icons.add(new Circle(220.0, 100.0, 10.0, "yellow"));
+    icons.add(new Rectangle(240.0, 95.0, 20.0, 10.0, "orange"));
 
     // Create main scene - mixing individual items and groups
-    var scene = Group("Main Scene");
-    scene.Add(rect);
-    scene.Add(circle);
-    scene.Add(label);
-    scene.Add(icons);  // Group inside group!
+    var scene = new Group("Main Scene");
+    scene.add(rect);
+    scene.add(circle);
+    scene.add(label);
+    scene.add(icons);  // Group inside group!
 
     // Draw everything with one call
     Say("=== Drawing Scene ===");
@@ -1132,7 +1135,10 @@ func start() {
     Say("Scene bounds: " + bounds.width + "x" + bounds.height);
 
     // Find item at click position - works with any Drawable
-    var allItems: List[Drawable] = [rect, circle, label];
+    var allItems: List[Drawable] = [];
+    allItems.Push(rect);
+    allItems.Push(circle);
+    allItems.Push(label);
     var clicked = findItemAt(allItems, 50.0, 30.0);
     if clicked != null {
         Say("Clicked on something!");

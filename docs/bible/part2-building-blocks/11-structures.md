@@ -1292,16 +1292,21 @@ struct Vec2 {
     expose Number x;
     expose Number y;
 
+    expose func init(x: Number, y: Number) {
+        self.x = x;
+        self.y = y;
+    }
+
     func add(other: Vec2) -> Vec2 {
-        return Vec2 { x: self.x + other.x, y: self.y + other.y };
+        return new Vec2(self.x + other.x, self.y + other.y);
     }
 
     func subtract(other: Vec2) -> Vec2 {
-        return Vec2 { x: self.x - other.x, y: self.y - other.y };
+        return new Vec2(self.x - other.x, self.y - other.y);
     }
 
     func scale(factor: Number) -> Vec2 {
-        return Vec2 { x: self.x * factor, y: self.y * factor };
+        return new Vec2(self.x * factor, self.y * factor);
     }
 
     func length() -> Number {
@@ -1309,7 +1314,7 @@ struct Vec2 {
     }
 
     func distance(other: Vec2) -> Number {
-        return self.subtract(other).Length();
+        return self.subtract(other).length();
     }
 
     func toString() -> String {
@@ -1322,6 +1327,13 @@ struct Stats {
     expose Integer maxHealth;
     expose Integer attack;
     expose Integer defense;
+
+    expose func init(health: Integer, maxHealth: Integer, attack: Integer, defense: Integer) {
+        self.health = health;
+        self.maxHealth = maxHealth;
+        self.attack = attack;
+        self.defense = defense;
+    }
 
     func healthPercent() -> Integer {
         return (self.health * 100) / self.maxHealth;
@@ -1358,8 +1370,16 @@ struct Player {
     expose Integer score;
     expose Integer level;
 
+    expose func init(name: String, position: Vec2, stats: Stats, score: Integer, level: Integer) {
+        self.name = name;
+        self.position = position;
+        self.stats = stats;
+        self.score = score;
+        self.level = level;
+    }
+
     func move(direction: Vec2) {
-        self.position = self.position.Add(direction);
+        self.position = self.position.add(direction);
     }
 
     func attack(target: Enemy) -> Integer {
@@ -1389,6 +1409,13 @@ struct Enemy {
     stats: Stats;
     expose Integer pointValue;
 
+    expose func init(name: String, position: Vec2, stats: Stats, pointValue: Integer) {
+        self.name = name;
+        self.position = position;
+        self.stats = stats;
+        self.pointValue = pointValue;
+    }
+
     func distanceTo(player: Player) -> Number {
         return self.position.distance(player.position);
     }
@@ -1403,46 +1430,15 @@ struct Enemy {
 }
 
 func createPlayer(name: String) -> Player {
-    return Player {
-        name: name,
-        position: Vec2 { x: 0.0, y: 0.0 },
-        stats: Stats {
-            health: 100,
-            maxHealth: 100,
-            attack: 15,
-            defense: 5
-        },
-        score: 0,
-        level: 1
-    };
+    return new Player(name, new Vec2(0.0, 0.0), new Stats(100, 100, 15, 5), 0, 1);
 }
 
 func createGoblin(x: Number, y: Number) -> Enemy {
-    return Enemy {
-        name: "Goblin",
-        position: Vec2 { x: x, y: y },
-        stats: Stats {
-            health: 30,
-            maxHealth: 30,
-            attack: 8,
-            defense: 2
-        },
-        pointValue: 10
-    };
+    return new Enemy("Goblin", new Vec2(x, y), new Stats(30, 30, 8, 2), 10);
 }
 
 func createOrc(x: Number, y: Number) -> Enemy {
-    return Enemy {
-        name: "Orc",
-        position: Vec2 { x: x, y: y },
-        stats: Stats {
-            health: 50,
-            maxHealth: 50,
-            attack: 12,
-            defense: 5
-        },
-        pointValue: 25
-    };
+    return new Enemy("Orc", new Vec2(x, y), new Stats(50, 50, 12, 5), 25);
 }
 
 func start() {
@@ -1459,7 +1455,7 @@ func start() {
     Say("A goblin appears!");
 
     // Move toward goblin
-    hero.move(Vec2 { x: 2.0, y: 0.0 });
+    hero.move(new Vec2(2.0, 0.0));
     Say("Hero moves to " + hero.position.toString());
     Say("Distance to goblin: " + goblin.distanceTo(hero));
 

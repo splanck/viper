@@ -405,7 +405,7 @@ class EnemyFactory {
         } else if type == "dragon" {
             return Dragon(x, y);
         } else {
-            throw Error("Unknown enemy type: " + type);
+            throw ("Unknown enemy type: " + type);
         }
     }
 
@@ -2521,7 +2521,7 @@ class EntityFactory {
         if type == "goblin" { return EntityFactory.createGoblin(x, y); }
         if type == "orc" { return EntityFactory.createOrc(x, y); }
         if type == "slime" { return EntityFactory.createSlime(x, y); }
-        throw Error("Unknown class type: " + type);
+        throw ("Unknown class type: " + type);
     }
 }
 

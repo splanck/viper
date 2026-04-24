@@ -108,11 +108,11 @@ func start() {
 
 ```basic
 ' Basic bitwise operations
-DIM a AS INTEGER = &HFF
-DIM b AS INTEGER = &H0F
-PRINT Viper.Math.Bits.And(a, b)  ' 15 (&H0F)
-PRINT Viper.Math.Bits.Or(a, b)   ' 255 (&HFF)
-PRINT Viper.Math.Bits.Xor(a, b)  ' 240 (&HF0)
+DIM a AS INTEGER = 255
+DIM b AS INTEGER = 15
+PRINT Viper.Math.Bits.And(a, b)  ' 15 (15)
+PRINT Viper.Math.Bits.Or(a, b)   ' 255 (255)
+PRINT Viper.Math.Bits.Xor(a, b)  ' 240 (240)
 
 ' Shift operations
 DIM val AS INTEGER = 1
@@ -120,7 +120,7 @@ PRINT Viper.Math.Bits.Shl(val, 4)   ' 16
 PRINT Viper.Math.Bits.Shr(16, 2)    ' 4
 
 ' Count set bits
-DIM mask AS INTEGER = &HFF
+DIM mask AS INTEGER = 255
 PRINT Viper.Math.Bits.Count(mask)   ' 8
 
 ' Work with individual bits
@@ -133,9 +133,9 @@ flags = Viper.Math.Bits.Toggle(flags, 3) ' Toggle bit 3 off
 PRINT flags                          ' 1
 
 ' Endian conversion
-DIM big AS INTEGER = &H0102030405060708
+DIM big AS INTEGER = 72623859790382856
 DIM little AS INTEGER = Viper.Math.Bits.Swap(big)
-' little = &H0807060504030201
+' little = 578437695752307201
 ```
 
 ---
@@ -458,14 +458,14 @@ bind Viper.Fmt as Fmt;
 
 func start() {
     var a = V2.New(3.0, 4.0);
-    Say("Length: " + Fmt.NumFixed(V2.Length(a), 2));            // 5.00
+    Say("Length: " + Fmt.NumFixed(V2.Len(a), 2));               // 5.00
 
     var b = V2.New(1.0, 0.0);
     var c = V2.Add(a, b);
-    Say("Add length: " + Fmt.NumFixed(V2.Length(c), 4));        // 5.6569
+    Say("Add length: " + Fmt.NumFixed(V2.Len(c), 4));           // 5.6569
 
     var n = V2.Norm(a);
-    Say("Normalized: " + Fmt.NumFixed(V2.Length(n), 2));         // 1.00
+    Say("Normalized: " + Fmt.NumFixed(V2.Len(n), 2));            // 1.00
 }
 ```
 
@@ -488,7 +488,7 @@ PRINT "Distance to target: "; dist
 ' Normalize to get direction
 DIM dir AS OBJECT = vel.Norm()
 PRINT "Direction: ("; dir.X; ", "; dir.Y; ")"
-PRINT "Direction length: "; dir.Length()  ' Should be 1.0
+PRINT "Direction length: "; Viper.Math.Vec2.Len(dir)  ' Should be 1.0
 
 ' Rotate a vector 90 degrees
 DIM right AS OBJECT = Viper.Math.Vec2.New(1.0, 0.0)
@@ -570,15 +570,15 @@ bind Viper.Fmt as Fmt;
 
 func start() {
     var v = V3.New(1.0, 2.0, 3.0);
-    Say("Length: " + Fmt.NumFixed(V3.Length(v), 4));             // 3.7417
+    Say("Length: " + Fmt.NumFixed(V3.Len(v), 4));                // 3.7417
 
     var n = V3.Norm(v);
-    Say("Normalized: " + Fmt.NumFixed(V3.Length(n), 2));         // 1.00
+    Say("Normalized: " + Fmt.NumFixed(V3.Len(n), 2));            // 1.00
 
     var a = V3.New(1.0, 0.0, 0.0);
     var b = V3.New(0.0, 1.0, 0.0);
     var cross = V3.Cross(a, b);
-    Say("Cross len: " + Fmt.NumFixed(V3.Length(cross), 2));      // 1.00
+    Say("Cross len: " + Fmt.NumFixed(V3.Len(cross), 2));         // 1.00
 }
 ```
 
@@ -600,7 +600,7 @@ PRINT "Distance to target: "; dist
 
 ' Normalize to get direction
 DIM dir AS OBJECT = vel.Norm()
-PRINT "Direction length: "; dir.Length()  ' Should be 1.0
+PRINT "Direction length: "; Viper.Math.Vec3.Len(dir)  ' Should be 1.0
 
 ' Cross product for surface normals
 DIM edge1 AS OBJECT = Viper.Math.Vec3.New(1.0, 0.0, 0.0)
@@ -702,7 +702,7 @@ func start() {
 
     // Interpolate (slerp)
     var halfway = id.Slerp(q90, 0.5);
-    SayNum(halfway.Length());  // 1.0
+    SayNum(halfway.Len());     // 1.0
 
     // Inverse (q * q^-1 = identity)
     var inv = q90.Inverse();
@@ -1485,4 +1485,3 @@ DIM rotAxis AS OBJECT = Viper.Math.Mat4.RotateAxis(axis, Viper.Math.Rad(45.0))
 
 - [Graphics](graphics/README.md) - Use `Vec2`, `Vec3`, `Mat3`, `Mat4`, and `Quaternion` with `Canvas` and `Pixels` for 2D/3D graphics
 - [Cryptography](crypto.md) - `Rand` for cryptographically secure randomness
-

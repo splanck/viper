@@ -11,8 +11,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Lowerer.hpp"
+#include "frontends/zia/RuntimeNames.hpp"
+#include <limits>
 
 namespace il::frontends::zia {
+
+using namespace runtime;
 
 //=============================================================================
 // Literal Expression Lowering
@@ -38,6 +42,154 @@ LowerResult Lowerer::lowerBoolLiteral(BoolLiteralExpr *expr) {
 
 LowerResult Lowerer::lowerNullLiteral(NullLiteralExpr * /*expr*/) {
     return {Value::null(), Type(Type::Kind::Ptr)};
+}
+
+LowerResult Lowerer::lowerUnitLiteral(UnitLiteralExpr * /*expr*/) {
+    return {Value::constInt(0), Type(Type::Kind::Void)};
+}
+
+bool Lowerer::collectRangeModifierChain(Expr *expr, RangeModifierInfo &out) const {
+    if (!expr)
+        return false;
+    if (expr->kind == ExprKind::Range) {
+        out.range = static_cast<RangeExpr *>(expr);
+        return true;
+    }
+    if (expr->kind != ExprKind::Call)
+        return false;
+
+    auto *call = static_cast<CallExpr *>(expr);
+    if (!call->callee || call->callee->kind != ExprKind::Field)
+        return false;
+
+    auto *field = static_cast<FieldExpr *>(call->callee.get());
+    if (field->field == "rev" && call->args.empty()) {
+        if (!collectRangeModifierChain(field->base.get(), out))
+            return false;
+        out.reversed = !out.reversed;
+        return true;
+    }
+    if (field->field == "step" && call->args.size() == 1) {
+        if (!collectRangeModifierChain(field->base.get(), out))
+            return false;
+        out.stepArg = call->args[0].value.get();
+        return true;
+    }
+    return false;
+}
+
+LowerResult Lowerer::lowerRange(RangeExpr *expr) {
+    return lowerRangeWithModifiers(expr, false, nullptr);
+}
+
+LowerResult Lowerer::lowerRangeWithModifiers(RangeExpr *expr, bool reversed, Expr *stepArg) {
+    Value list = emitCallRet(Type(Type::Kind::Ptr), kListNew, {});
+
+    auto start = lowerExpr(expr->start.get());
+    auto end = lowerExpr(expr->end.get());
+    Value startValue = widenIntegralToI64(start.value, start.type);
+    Value endValue = widenIntegralToI64(end.value, end.type);
+
+    Value stepValue = Value::constInt(1);
+    if (stepArg) {
+        auto step = lowerExpr(stepArg);
+        stepValue = widenIntegralToI64(step.value, step.type);
+
+        unsigned checkedStepId = nextTempId();
+        il::core::Instr checkedStep;
+        checkedStep.result = checkedStepId;
+        checkedStep.op = Opcode::IdxChk;
+        checkedStep.type = Type(Type::Kind::I64);
+        checkedStep.operands = {
+            stepValue,
+            Value::constInt(1),
+            Value::constInt(std::numeric_limits<int64_t>::max())};
+        checkedStep.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(checkedStep);
+        stepValue = Value::temp(checkedStepId);
+    }
+
+    std::string curVar = "__range_cur_" + std::to_string(nextTempId());
+    std::string endVar = "__range_end_" + std::to_string(nextTempId());
+    std::string stepVar = "__range_step_" + std::to_string(nextTempId());
+    createSlot(curVar, Type(Type::Kind::I64));
+    createSlot(endVar, Type(Type::Kind::I64));
+    createSlot(stepVar, Type(Type::Kind::I64));
+    storeToSlot(curVar, reversed ? endValue : startValue, Type(Type::Kind::I64));
+    storeToSlot(endVar, reversed ? startValue : endValue, Type(Type::Kind::I64));
+    storeToSlot(stepVar, stepValue, Type(Type::Kind::I64));
+
+    size_t condIdx = createBlock("range_cond");
+    size_t bodyIdx = createBlock("range_body");
+    size_t updateIdx = createBlock("range_update");
+    size_t updateDoIdx = createBlock("range_update_do");
+    size_t endIdx = createBlock("range_end");
+
+    emitBr(condIdx);
+
+    setBlock(condIdx);
+    Value cur = loadFromSlot(curVar, Type(Type::Kind::I64));
+    Value bound = loadFromSlot(endVar, Type(Type::Kind::I64));
+    Opcode condOp;
+    if (reversed)
+        condOp = expr->inclusive ? Opcode::SCmpGE : Opcode::SCmpGT;
+    else
+        condOp = expr->inclusive ? Opcode::SCmpLE : Opcode::SCmpLT;
+    Value cond = emitBinary(condOp, Type(Type::Kind::I1), cur, bound);
+    emitCBr(cond, bodyIdx, endIdx);
+
+    setBlock(bodyIdx);
+    Value elem = loadFromSlot(curVar, Type(Type::Kind::I64));
+    if (reversed && !expr->inclusive)
+        elem = emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), elem, Value::constInt(1));
+    Value boxed = emitBox(elem, Type(Type::Kind::I64));
+    emitCall(kListAdd, {list, boxed});
+    emitBr(updateIdx);
+
+    setBlock(updateIdx);
+    Value updateCur = loadFromSlot(curVar, Type(Type::Kind::I64));
+    Value updateBound = loadFromSlot(endVar, Type(Type::Kind::I64));
+    Value updateStep = loadFromSlot(stepVar, Type(Type::Kind::I64));
+    Value terminal = expr->inclusive
+                         ? emitBinary(
+                               Opcode::ICmpEq, Type(Type::Kind::I1), updateCur, updateBound)
+                         : Value::constBool(false);
+    Value overflowRisk;
+    if (reversed) {
+        Value minPlusStep = emitBinary(Opcode::IAddOvf,
+                                       Type(Type::Kind::I64),
+                                       Value::constInt(std::numeric_limits<int64_t>::min()),
+                                       updateStep);
+        overflowRisk =
+            emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), updateCur, minPlusStep);
+    } else {
+        Value maxMinusStep = emitBinary(Opcode::ISubOvf,
+                                        Type(Type::Kind::I64),
+                                        Value::constInt(std::numeric_limits<int64_t>::max()),
+                                        updateStep);
+        overflowRisk =
+            emitBinary(Opcode::SCmpGT, Type(Type::Kind::I1), updateCur, maxMinusStep);
+    }
+    Value terminalWide = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), terminal);
+    Value overflowWide = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), overflowRisk);
+    Value exitWide = emitBinary(Opcode::Or, Type(Type::Kind::I64), terminalWide, overflowWide);
+    Value exitNow = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), exitWide);
+    emitCBr(exitNow, endIdx, updateDoIdx);
+
+    setBlock(updateDoIdx);
+    Value nextCur = loadFromSlot(curVar, Type(Type::Kind::I64));
+    Value nextStep = loadFromSlot(stepVar, Type(Type::Kind::I64));
+    Value next = reversed
+                     ? emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), nextCur, nextStep)
+                     : emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), nextCur, nextStep);
+    storeToSlot(curVar, next, Type(Type::Kind::I64));
+    emitBr(condIdx);
+
+    setBlock(endIdx);
+    removeSlot(curVar);
+    removeSlot(endVar);
+    removeSlot(stepVar);
+    return {list, Type(Type::Kind::Ptr)};
 }
 
 } // namespace il::frontends::zia

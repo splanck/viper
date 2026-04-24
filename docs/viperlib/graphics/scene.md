@@ -91,9 +91,9 @@ DIM playerY AS INTEGER = 300
 camera.SetBounds(0, 0, 2000, 1500)  ' World is 2000x1500
 
 ' Game loop
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
-    canvas.Clear(&H000000)
+    canvas.Clear(0)
 
     ' Move player
     IF Viper.Input.Keyboard.Held(262) THEN playerX = playerX + 5
@@ -110,7 +110,7 @@ DO WHILE canvas.ShouldClose = 0
     ' Draw player at screen position
     DIM screenX AS INTEGER = camera.ToScreenX(playerX)
     DIM screenY AS INTEGER = camera.ToScreenY(playerY)
-    canvas.Box(screenX - 16, screenY - 16, 32, 32, &H00FF00)
+    canvas.Box(screenX - 16, screenY - 16, 32, 32, 65280)
 
     ' Convert mouse to world coordinates for clicking
     DIM mx AS INTEGER = Viper.Input.Mouse.X
@@ -118,7 +118,7 @@ DO WHILE canvas.ShouldClose = 0
     DIM worldX AS INTEGER = camera.ToWorldX(mx)
     DIM worldY AS INTEGER = camera.ToWorldY(my)
 
-    canvas.Text(10, 10, "World: " + STR$(worldX) + "," + STR$(worldY), &HFFFFFF)
+    canvas.Text(10, 10, "World: " + STR$(worldX) + "," + STR$(worldY), 16777215)
 
     ' Zoom with +/-
     IF Viper.Input.Keyboard.Pressed(61) THEN camera.Zoom = camera.Zoom + 10
@@ -141,7 +141,7 @@ DIM player AS Viper.Graphics.Sprite
 ' Render in correct order
 SUB Render()
     ' 1. Clear screen
-    canvas.Clear(&H000000)
+    canvas.Clear(0)
 
     ' 2. Draw tilemap with camera offset
     map.Draw(canvas, -camera.X + 400, -camera.Y + 300)
@@ -152,7 +152,7 @@ SUB Render()
     player.Draw(canvas)
 
     ' 4. Draw UI (not affected by camera)
-    canvas.Text(10, 10, "Score: " + STR$(score), &HFFFFFF)
+    canvas.Text(10, 10, "Score: " + STR$(score), 16777215)
 
     canvas.Flip()
 END SUB
@@ -399,9 +399,9 @@ scene.Add(player)
 scene.Add(foreground)
 
 ' Game loop
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
-    canvas.Clear(&H000000)
+    canvas.Clear(0)
 
     ' Update player position
     player.X = playerX
@@ -544,9 +544,9 @@ DIM bulletsX(50) AS INTEGER
 DIM bulletsY(50) AS INTEGER
 
 ' Game loop
-DO WHILE canvas.ShouldClose = 0
+DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
-    canvas.Clear(&H000000)
+    canvas.Clear(0)
 
     ' Begin batched rendering
     batch.Begin()
@@ -611,11 +611,11 @@ batch.Begin()
 batch.Draw(sprite, 100, 100)
 
 ' Draw with red tint (damaged enemy)
-batch.SetTint(&HFFFF0000)
+batch.SetTint(4294901760)
 batch.Draw(sprite, 200, 100)
 
 ' Draw with blue tint
-batch.SetTint(&HFF0000FF)
+batch.SetTint(4278190335)
 batch.Draw(sprite, 300, 100)
 
 ' Reset all settings to defaults

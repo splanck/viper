@@ -2463,7 +2463,7 @@ widget.AddChild(child: Widget) -> void
 
 // State queries (polling-based events)
 widget.IsHovered() -> Integer
-widget.IsPressed() -> Integer
+widget.WasPressed() -> Integer
 widget.IsFocused() -> Integer
 widget.WasClicked() -> Integer    // 1 if clicked this frame
 ```
@@ -2502,7 +2502,7 @@ button.SetFont(font: Font, size: Number) -> void
 button.SetStyle(style: Integer) -> void  // 0=default, 1=primary, 2=secondary, 3=danger, 4=text
 button.WasClicked() -> Integer
 button.IsHovered() -> Integer
-button.IsPressed() -> Integer
+button.WasPressed() -> Integer
 ```
 
 **Example:**
@@ -2927,8 +2927,8 @@ Input handling for interactive and game applications.
 bind Keyboard = Viper.Input.Keyboard;
 
 Keyboard.IsDown(key: Integer) -> Boolean       // Currently held
-Keyboard.IsPressed(key: Integer) -> Boolean    // Just pressed this frame
-Keyboard.IsReleased(key: Integer) -> Boolean   // Just released this frame
+Keyboard.WasPressed(key: Integer) -> Boolean    // Just pressed this frame
+Keyboard.WasReleased(key: Integer) -> Boolean   // Just released this frame
 ```
 
 **Key constants:**
@@ -2957,13 +2957,13 @@ while !canvas.ShouldClose {
     }
 
     // Jump (only on initial press)
-    if Keyboard.IsPressed(KEY_SPACE) and onGround {
+    if Keyboard.WasPressed(KEY_SPACE) and onGround {
         playerVelocityY = -15;
         onGround = false;
     }
 
     // Pause toggle
-    if Keyboard.IsPressed(KEY_ESCAPE) {
+    if Keyboard.WasPressed(KEY_ESCAPE) {
         isPaused = !isPaused;
     }
 
@@ -2981,8 +2981,8 @@ bind Mouse = Viper.Input.Mouse;
 Mouse.X() -> Number
 Mouse.Y() -> Number
 Mouse.IsDown(button: Integer) -> Boolean       // 0=left, 1=right, 2=middle
-Mouse.IsClicked(button: Integer) -> Boolean    // Just clicked this frame
-Mouse.IsReleased(button: Integer) -> Boolean   // Just released this frame
+Mouse.WasClicked(button: Integer) -> Boolean    // Just clicked this frame
+Mouse.WasReleased(button: Integer) -> Boolean   // Just released this frame
 Mouse.Scroll() -> Number                       // Wheel delta
 ```
 

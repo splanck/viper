@@ -288,7 +288,7 @@ try {
 
 When you need different handling for different failure modes, Zia also supports
 typed catches for runtime error kinds such as `DivideByZero`, `Bounds`,
-`RuntimeError`, and the catch-all alias `Error`:
+string error messages:
 
 ```rust
 bind File = Viper.IO.File;
@@ -474,10 +474,10 @@ You can signal errors from your own code using `throw`:
 ```rust
 func setAge(age: Integer) {
     if age < 0 {
-        throw Error("Age cannot be negative: " + age);
+        throw ("Age cannot be negative: " + age);
     }
     if age > 150 {
-        throw Error("Age is unrealistically high: " + age);
+        throw ("Age is unrealistically high: " + age);
     }
     this.age = age;
 }
@@ -493,9 +493,9 @@ When your code encounters a situation it can't handle, throw an error. This:
 Since Zia uses a single `Error` type, write clear, descriptive messages that explain what went wrong:
 
 ```rust
-throw Error("File not found: config.txt");
-throw Error("Expected number, got: " + input);
-throw Error("Email address is invalid");
+throw ("File not found: config.txt");
+throw ("Expected number, got: " + input);
+throw ("Email address is invalid");
 ```
 
 Include relevant context in the message so the caller knows what happened:
@@ -526,13 +526,13 @@ Check that inputs are valid before using them:
 func processOrder(quantity: Integer, price: Number) {
     // Validate at the start
     if quantity <= 0 {
-        throw Error("Quantity must be positive");
+        throw ("Quantity must be positive");
     }
     if price < 0 {
-        throw Error("Price cannot be negative");
+        throw ("Price cannot be negative");
     }
     if price > 1000000 {
-        throw Error("Price exceeds maximum allowed");
+        throw ("Price exceeds maximum allowed");
     }
 
     // Now we know the inputs are valid
@@ -595,15 +595,15 @@ func processFile(filename: String) {
     bind File = Viper.IO.File;
     // Guard clauses handle all the edge cases
     if filename.Length == 0 {
-        throw Error("Filename cannot be empty");
+        throw "Filename cannot be empty";
     }
 
     if !File.Exists(filename) {
-        throw Error("File does not exist: " + filename);
+        throw ("File does not exist: " + filename);
     }
 
     if !filename.EndsWith(".txt") {
-        throw Error("Only .txt files are supported");
+        throw ("Only .txt files are supported");
     }
 
     // Main logic — we know the file is valid
@@ -648,7 +648,7 @@ func getUser(id: Integer) -> User {
     try {
         return database.query("SELECT * FROM users WHERE id = " + id);
     } catch {
-        throw Error("Unable to load user " + id + ": " + "an error occurred");
+        throw ("Unable to load user " + id + ": " + "an error occurred");
     }
 }
 
@@ -846,7 +846,7 @@ func fetchUserData(userId: Integer) -> UserData {
                 Time.Clock.Sleep(retryDelay);
                 retryDelay *= 2;  // Exponential backoff
             } else {
-                throw Error("Failed to fetch user after " + maxRetries + " attempts");
+                throw ("Failed to fetch user after " + maxRetries + " attempts");
             }
         }
     }
@@ -980,13 +980,13 @@ module DataProcessor;
 
 bind File = Viper.IO.File;
 bind Viper.Terminal;
-bind Viper.Time;
+bind Viper.Time.DateTime as DateTime;
 bind Convert = Viper.Core.Convert;
 
 final LOG_FILE = "processor.log";
 
 func log(message: String) {
-    var ts = Time.DateTime.Now();
+    var ts = DateTime.Now();
     var timestamp = Convert.ToString_Int(ts);
     var entry = "[" + timestamp + "] " + message + "\n";
 
@@ -1000,11 +1000,11 @@ func log(message: String) {
 
 func readDataFile(filename: String) -> List[Integer] {
     if filename.Length == 0 {
-        throw Error("Filename cannot be empty");
+        throw "Filename cannot be empty";
     }
 
     if !File.Exists(filename) {
-        throw Error("Data file not found: " + filename);
+        throw "Data file not found: " + filename;
     }
 
     var lines = File.ReadAllLines(filename);
@@ -1029,15 +1029,23 @@ func readDataFile(filename: String) -> List[Integer] {
     }
 
     if numbers.count() == 0 {
-        throw Error("No valid numbers found in " + filename);
+        throw "No valid numbers found in " + filename;
     }
 
     return numbers;
 }
 
+struct Stats {
+    expose Integer count;
+    expose Integer sum;
+    expose Integer min;
+    expose Integer max;
+    expose Integer average;
+}
+
 func calculateStats(numbers: List[Integer]) -> Stats {
     if numbers.count() == 0 {
-        throw Error("Cannot calculate stats on an empty list");
+        throw "Cannot calculate stats on an empty list";
     }
 
     var sum: Integer = 0;
@@ -1052,7 +1060,7 @@ func calculateStats(numbers: List[Integer]) -> Stats {
 
     var average = sum / numbers.count();
 
-    return Stats.new(
+    return new Stats(
         count: numbers.count(),
         sum: sum,
         min: min,
@@ -1130,7 +1138,7 @@ try {
     cleanup();
 }
 
-throw Error("Something went wrong");
+throw ("Something went wrong");
 ```
 
 ### BASIC
@@ -1226,10 +1234,10 @@ Exceptions should be exceptional — not a normal part of logic:
 func findUser(name: String) -> User {
     for user in users {
         if user.name == name {
-            throw Error("found");  // Abuse!
+            throw ("found");  // Abuse!
         }
     }
-    throw Error("not found");
+    throw ("not found");
 }
 
 // GOOD: Normal control flow
@@ -1254,14 +1262,14 @@ When catching and re-throwing, preserve the original error:
 try {
     loadData();
 } catch {
-    throw Error("Data loading failed");
+    throw ("Data loading failed");
 }
 
 // GOOD: Chain the original error
 try {
     loadData();
 } catch {
-    throw Error("Data loading failed: " + "an error occurred");
+    throw ("Data loading failed: " + "an error occurred");
 }
 ```
 

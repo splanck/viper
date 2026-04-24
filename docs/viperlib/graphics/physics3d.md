@@ -279,7 +279,7 @@ sleeping, and optional CCD.
 module Physics3DBodyDemo;
 
 bind Viper.Graphics3D;
-bind Viper.Math.Quat;
+bind Viper.Math.Quat as Quat;
 bind Viper.Terminal;
 
 func start() {

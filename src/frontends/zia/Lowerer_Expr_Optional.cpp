@@ -20,10 +20,20 @@
 
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 namespace il::frontends::zia {
 
 using namespace runtime;
+
+namespace {
+
+bool isCountLikeProperty(const std::string &name) {
+    return name == "Length" || name == "length" || name == "Len" || name == "Count" ||
+           name == "count" || name == "size";
+}
+
+} // namespace
 
 //=============================================================================
 // Coalesce Expression Lowering
@@ -213,8 +223,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
     setBlock(isNullIdx);
     il::core::Instr storeNull;
     storeNull.op = Opcode::Store;
-    storeNull.type =
-        resultIlType.kind == Type::Kind::Str ? Type(Type::Kind::Ptr) : resultIlType;
+    storeNull.type = resultIlType.kind == Type::Kind::Str ? Type(Type::Kind::Ptr) : resultIlType;
     storeNull.operands = {resultSlot, Value::null()};
     storeNull.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(storeNull);
@@ -225,15 +234,21 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
     Value fieldValue = Value::null();
     if (innerType) {
         if (innerType->kind == TypeKindSem::Struct || innerType->kind == TypeKindSem::Class) {
+            Value receiver = base.value;
+            if (innerType->kind == TypeKindSem::Struct)
+                receiver = emitOptionalUnwrap(base.value, innerType).value;
+
             const std::unordered_map<std::string, StructTypeInfo> &valueTypes = structTypes_;
             const std::unordered_map<std::string, ClassTypeInfo> &entityTypes = classTypes_;
+            bool loadedField = false;
             if (innerType->kind == TypeKindSem::Struct) {
                 auto it = valueTypes.find(innerType->name);
                 if (it != valueTypes.end()) {
                     const FieldLayout *field = it->second.findField(expr->field);
                     if (field) {
                         fieldType = field->type;
-                        fieldValue = emitFieldLoad(field, base.value);
+                        fieldValue = emitFieldLoad(field, receiver);
+                        loadedField = true;
                     }
                 }
             } else {
@@ -242,24 +257,58 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
                     const FieldLayout *field = it->second.findField(expr->field);
                     if (field) {
                         fieldType = field->type;
-                        fieldValue = emitFieldLoad(field, base.value);
+                        fieldValue = emitFieldLoad(field, receiver);
+                        loadedField = true;
                     }
                 }
             }
+
+            if (!loadedField) {
+                std::string declaringOwner;
+                if (const PropertyDecl *prop = sema_.propertyDeclForLowering(
+                        innerType->name, expr->field, &declaringOwner);
+                    prop && prop->getterBody) {
+                    fieldType = prop->type ? sema_.resolveType(prop->type.get()) : types::unknown();
+                    Type ilFieldType = mapType(fieldType);
+                    std::string getterName = declaringOwner + ".get_" + prop->name;
+                    fieldValue = emitCallRet(ilFieldType, getterName, {receiver});
+                }
+            }
         } else if (innerType->kind == TypeKindSem::List) {
-            if (expr->field == "count" || expr->field == "size" || expr->field == "length") {
+            if (isCountLikeProperty(expr->field)) {
                 fieldType = types::integer();
                 fieldValue = emitCallRet(Type(Type::Kind::I64), kListCount, {base.value});
             }
         } else if (innerType->kind == TypeKindSem::Map) {
-            if (expr->field == "count" || expr->field == "size" || expr->field == "length") {
+            if (isCountLikeProperty(expr->field)) {
                 fieldType = types::integer();
                 fieldValue = emitCallRet(Type(Type::Kind::I64), kMapCount, {base.value});
             }
         } else if (innerType->kind == TypeKindSem::Set) {
-            if (expr->field == "count" || expr->field == "size" || expr->field == "length") {
+            if (isCountLikeProperty(expr->field)) {
                 fieldType = types::integer();
                 fieldValue = emitCallRet(Type(Type::Kind::I64), kSetCount, {base.value});
+            }
+        } else if (innerType->kind == TypeKindSem::String) {
+            if (expr->field == "Length" || expr->field == "length") {
+                fieldType = types::integer();
+                fieldValue = emitCallRet(Type(Type::Kind::I64), kStringLength, {base.value});
+            }
+        } else if (innerType->kind == TypeKindSem::Ptr && !innerType->name.empty()) {
+            std::string getterName = innerType->name + ".get_" + expr->field;
+            const auto &registry = il::runtime::RuntimeRegistry::instance();
+            if (auto prop = registry.findProperty(innerType->name, expr->field);
+                prop && prop->getter && *prop->getter) {
+                getterName = prop->getter;
+            }
+
+            if (Symbol *getterSym = sema_.findExternFunction(getterName);
+                getterSym && getterSym->type) {
+                fieldType = getterSym->type;
+                if (fieldType->kind == TypeKindSem::Function && fieldType->returnType())
+                    fieldType = fieldType->returnType();
+                Type ilFieldType = mapType(fieldType);
+                fieldValue = emitCallRet(ilFieldType, getterName, {base.value});
             }
         }
     }

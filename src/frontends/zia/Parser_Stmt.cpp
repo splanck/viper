@@ -83,13 +83,7 @@ StmtPtr Parser::parseStatement() {
 
     // Match statement (only when followed by a scrutinee, not when used as identifier)
     if (check(TokenKind::KwMatch)) {
-        auto nextKind = peek(1).kind;
-        bool isMatchStmt =
-            (nextKind == TokenKind::Identifier || nextKind == TokenKind::IntegerLiteral ||
-             nextKind == TokenKind::NumberLiteral || nextKind == TokenKind::StringLiteral ||
-             nextKind == TokenKind::LParen || nextKind == TokenKind::KwTrue ||
-             nextKind == TokenKind::KwFalse || nextKind == TokenKind::KwNull ||
-             nextKind == TokenKind::KwSelf);
+        bool isMatchStmt = isExpressionStart(peek(1).kind);
         if (isMatchStmt) {
             result = parseMatchStmt();
             --stmtDepth_;
@@ -212,9 +206,7 @@ StmtPtr Parser::parseVarDecl() {
     // Optional initializer — allow struct literals in this position
     ExprPtr init;
     if (match(TokenKind::Equal)) {
-        allowStructLiterals_ = true;
-        init = parseExpression();
-        allowStructLiterals_ = false;
+        init = parseExpressionAllowingStructLiterals();
         if (!init)
             return nullptr;
     }
@@ -444,9 +436,7 @@ StmtPtr Parser::parseReturnStmt() {
 
     ExprPtr value;
     if (!check(TokenKind::Semicolon)) {
-        allowStructLiterals_ = true;
-        value = parseExpression();
-        allowStructLiterals_ = false;
+        value = parseExpressionAllowingStructLiterals();
         if (!value)
             return nullptr;
     }
@@ -539,7 +529,7 @@ StmtPtr Parser::parseMatchStmt() {
             arm.body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
         } else {
             // Expression body
-            arm.body = parseExpression();
+            arm.body = parseExpressionAllowingStructLiterals();
             if (!arm.body)
                 return nullptr;
 
@@ -621,7 +611,7 @@ StmtPtr Parser::parseThrowStmt() {
     Token throwTok = advance(); // consume 'throw'
     SourceLoc loc = throwTok.loc;
 
-    ExprPtr value = parseExpression();
+    ExprPtr value = parseExpressionAllowingStructLiterals();
     if (!value)
         return nullptr;
 

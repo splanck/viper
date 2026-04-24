@@ -255,10 +255,8 @@ bool ViperType::isAssignableFrom(const ViperType &source) const {
         source.typeArgs[0]->kind == TypeKindSem::Unknown)
         return true;
 
-    // Optional accepts its inner type and null
+    // Optional accepts its inner type and null.
     if (kind == TypeKindSem::Optional) {
-        if (source.kind == TypeKindSem::Unit) // null
-            return true;
         if (typeArgs.empty())
             return false;
         if (source.kind == TypeKindSem::Optional) {

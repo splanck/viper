@@ -23,10 +23,10 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator b
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 73 | +73 |
-| Source files | 2,869 | 2,947 | +78 |
-| Production SLOC | 450K | 512K | +62K |
-| Test SLOC | 183K | 211K | +28K |
+| Commits | — | 77 | +77 |
+| Source files | 2,869 | 2,948 | +79 |
+| Production SLOC | 450K | 514K | +64K |
+| Test SLOC | 183K | 212K | +29K |
 | Demo SLOC | 177K | 189K | +12K |
 
 Counts via `scripts/count_sloc.sh`.
@@ -186,6 +186,27 @@ Eleven-class `Viper.Localization.*` namespace providing locale-aware formatting,
 - Lowerer decomposed into helper classes; one recursive `appendTypeString` covers every type display.
 - Tighter sema diagnostics: targeted errors for bare `var x = null;` and for Optional access without `?.` / `!.`.
 
+**Sema and lowerer correctness pass** (see `fix(zia,vm,il)` commit):
+
+- `Map.get(key)` now returns `Optional<V>` instead of `V` in sema, matching the runtime's key-absent semantics; callers must unwrap with `??` or `!.`.
+- `list.first` / `list.last` / `list.isEmpty` wired into the collection method dispatch table and lowered to `Viper.Collections.List.First` / `.Last` / `rt_list_is_empty`.
+- `list.lastIndexOf` removed from `listMethods[]` (not implemented in the runtime).
+- Postfix-try (`?`) expression sema (`analyzeTry`): validates operand is Optional, enclosing function returns Optional, and inner types are compatible. Registered in `analyzeExpr` under `ExprKind::Try`. Lowered `None` early-return now emits `Value::null()` instead of `Value::constInt(0)`.
+- `analyzeCoalesce` now diagnoses a non-Optional left operand and checks that the right type is assignable to the unwrapped inner type.
+- Collection literal type checking: incompatible element types in list / map / set literals produce specific errors ("List literal contains incompatible element type …"); element type set to `types::error()` so downstream mismatches propagate cleanly.
+- Static fields: `staticFields_` set tracks field keys of the form `"TypeName.fieldName"`; inherited field propagation skips static entries; visibility is propagated from parent key into child key; `resolveStaticField()` helper resolves qualified static field access on module-typed bases with private-visibility checking. Generic instantiation arms also mark static fields.
+- Generic type inference extended: `inferTypeParamsFromPattern` does full structural inference (Named, Generic, Optional, Tuple, Function, FixedArray parameter shapes); replaces the prior name-only check. Multi-type-argument generics (`func[A, B](…)`) parsed by extending the postfix-index parser to collect comma-separated type args into a `TupleExpr`.
+- `genericTypeSubstitutions_` / `genericFunctionSubstitutions_` store the substitution map per mangled name so `pushSubstitutionContext` can restore it during body lowering in a separate pass.
+- `mangleGenericName` uses a `mangleTypeArg` helper that recurses through `typeArgs` and replaces non-alphanumeric characters with underscores, making mangled names safe as IL identifiers for complex type arguments.
+- All integer arithmetic in the lowerer (`+`, `-`, `*`, `/`, `%`, unary negation, fixed-array stride multiply) unconditionally emits overflow-checking opcodes (`IAddOvf`, `ISubOvf`, `IMulOvf`, `SDivChk0`, `SRemChk0`). The `overflowChecks` compile option no longer gates these paths.
+- Static field stores (assignment to `module.field`) resolve the target through `globalVariables_` by qualified name before falling through to setter / instance-field lowering.
+- Static getter calls skip the `self` argument push when the runtime descriptor has zero parameters.
+- `stmtAlwaysExits` returns `true` for `StmtKind::Throw` so control-flow analysis terminates the block and post-throw code is not reachable.
+- EH typed-catch rethrow block rewritten: was `trap.from_err(kind_i32)` which discarded the original exception and synthesised a new trap; now `eh.entry` + `resume.same(tok)` re-raises the original error token preserving all exception context.
+- Post-lowering IL verification added to `Compiler.cpp` after phase 4; compilation returns early with a diagnostic if emitted IL fails structural checks.
+- `Sema` constructor calls `types::clearClassInheritance()` for clean test isolation.
+- **BytecodeVM string cache** (async race fix): `initStringCache()` pre-allocates null slots rather than eagerly calling `rt_const_cstr` for every string. `getStringLiteral(idx)` materializes the `rt_string` handle on first access; both LOAD_STR handlers call it. The eager initialization path had a concurrent-init window when async worker VMs shared the same module object, producing intermittent `invalid runtime string handle` traps (exposed by the 25× async repeat regression loop).
+
 ### Linker, codegen, tools, IL, build
 
 - Linker: C++ Itanium-ABI symbol classification on macOS (with `$DARWIN_EXTSN` handling); `uname` / `gethostname` / `sysctlbyname` routed to the right dylib; `link()` + `strnlen()` added to the dynamic-import allowlist alongside their partners (closed two runtime-import-audit gaps opened by the new POSIX no-clobber atomic-move path in `rt_file_ext` and by the localization BCP-47 parser).
@@ -213,6 +234,17 @@ All four object-file readers (ELF, Mach-O, COFF, Archive) and all three writers 
 - **CodeSection.** `appendSection()` merges atoms, relocations, and symbols in order without renaming local symbols. `alignTo(0)` and `alignTo(1)` are no-ops; larger alignments pad with zero bytes.
 - **SymbolTable.** `add()` refreshes name lookup on duplicate names while existing relocation entries keep their captured symbol indexes.
 - **Binary encoders.** Encoders record canonical, unmangled names in `CodeSection`; platform ABI spelling is applied by the object writer at serialization. A64BinaryEncoder rejects negative or wider-than-32-bit frame sizes before narrowing into instruction immediates.
+
+**Second linker hardening pass** (see `fix(linker,il): native linker + IL module linker hardening pass`):
+
+- **IL ModuleLinker.** Single-module fast path removed — all inputs now run through the full validation pipeline. `buildExportIndex` uses a new `FunctionRef {moduleIndex, functionIndex}` struct and returns an error on duplicate export names. `rewriteFunctionRefs` replaces the old `rewriteCalls` and rewrites both callee-name operands and GlobalAddr / brArgs references across module boundaries. Global-name collision rewriting is scoped per owning module so identically-named private globals in separate modules don't interfere. `booleanInteropCompatible`, `sameSignature`, and `makeUniqueName` helpers complete the merge logic.
+- **InteropThunks.** `generateBooleanThunks` skips mismatched-arity function pairs rather than emitting a malformed thunk; non-i1↔i64 type pairs set an `incompatible` flag to abort. Thunk values with empty names receive auto-generated `"t{i}"` names.
+- **ELF reader.** Extended section counts read from SH0 `sh_size` when `e_shnum == 0` (ELF spec §4.6). COMMON symbols materialized as zero-filled BSS. Absolute symbols (SHN_ABS) keep their absolute values. Implicit-addend (`.rel`) relocation sections now supported alongside `.rela`. Truncated relocation tables and mismatched `sh_entsize` are hard errors.
+- **Mach-O reader.** `__DWARF` and debug sections preserved as non-alloc. ARM64 ADDEND records validated; dangling ADDEND records (not immediately followed by a paired relocation) detected and reported.
+- **COFF reader.** Weak external (`IMAGE_SYM_CLASS_WEAK_EXTERNAL`) fallback records parsed. Associative COMDAT section relationships decoded. Relocation overflow records handled. BigObj format rejected with a specific diagnostic instead of being silently misread.
+- **All three writers.** COFF: section attribute flags derived precisely from section kind; storage-class assignments corrected for static/external/COMDAT linkage; ARM64 relocation types use `extractCoffAddend` instruction-field decode. ELF: `sh_flags` set correctly for writable/executable/alloc; symbol `st_bind`/`st_visibility` derived from linkage model. Mach-O: `appendSection` used for multi-text outputs; anonymous symbols receive synthesised names before writing.
+- **x86-64 binary encoder.** RIP-relative `.text`→`.rodata` references now record a symbolic relocation with the `.text` symbol as entry and `.rodata` target as hint; object writers resolve by name so indexes are never interchanged.
+- **Infrastructure.** RelocApplier: bounds-check before each application, PC-relative branch overflow detection. BranchTrampoline: local-target resolution against merged section base. DeadStripPass: EH personality and LSDA added as implicit roots. ICF: off-by-one fix in content-hash comparison with padding. SectionMerger: alignment padding accounts for accumulated offset. SymbolResolver: strong definition wins over weak when both present in one link step. NativeLinker: SectionMerger ordering fix when ICF disabled. ElfExeWriter: `PT_LOAD` alignment written as `0x1000` instead of `0x200000`.
 
 ### Codegen
 
@@ -254,6 +286,29 @@ AArch64 and x86_64 backends received a focused correctness pass spanning target-
 - `err.get_kind` / `err.get_code` / `err.get_ip` / `err.get_line` / `err.get_msg`: min operand count relaxed from 1 to 0 — native EH lowering can emit the no-operand (context-implicit) form while source IL continues to pass an explicit `%err` operand. VM schema and `SpecTables.cpp` updated to match.
 - `rtgen` audit: `rt_canvas_is_handle`, `rt_pixels_generation`, and `rt_locale_manager_lookup_data_retained` classified as internal in `RuntimeSurfacePolicy.inc`; audit passes with zero findings.
 
+**IL verifier hardening** (see `fix(il,verify)` and `fix(il)` passes):
+
+- Duplicate SSA ID detection: function params, block params, and instruction results each call `defineTemp()` through a single registry that rejects duplicate IDs with precise messages identifying both definition sites.
+- Dominance violations and uses of values defined in unreachable blocks are now hard errors (`Expected<void>`) rather than `sink.report()` warnings — the old path was silently discarded in release builds.
+- Branch argument checking: unknown temps in branch args produce "unknown branch arg" errors; void-typed args produce "void branch arg" errors; the previous code accepted void as wildcard-compatible.
+- Stack-escape analysis propagates stack-derived-ness through GEP chains and block-parameter edges via a fixpoint loop, catching `ret gep(alloca, offset)` patterns forwarded through back-edge block params.
+- `ResultTypeChecker` now enforces fixed-result-type schema values instead of computing then discarding them; cast opcodes with strategy-validated widths are exempted.
+- `InstructionChecker_Runtime`: `call.indirect` callee must be `Ptr`; instruction-level `pure`/`readonly`/`nothrow` attrs validated against known callee metadata and rejected when contradictory.
+- Block param duplicate-name check extended to also reject duplicate numeric IDs; extern/function signature mismatch and name collision detected before body verification.
+- `VerifyStrategy::IntegerBinary` added for `IAddOvf` / `ISubOvf` / `IMulOvf` / `SDivChk0` / `UDivChk0` / `SRemChk0` / `URemChk0`: operand and result type class changed from the hardcoded `I64` to `InstrType`, enabling i16/i32 sub-word overflow arithmetic. `And`/`Or`/`Xor`/`Shl`/`LShr`/`AShr` added to the verifier table with enforced operand types.
+- `OperandTypeChecker` permits i16/i32 temporaries to satisfy an expected i64 operand for `And`/`Or`/`Xor` (the BASIC widening-mask idiom).
+- `FunctionVerifier` exempts entry-block params that alias a function param by numeric ID and type — the canonical ABI lowering pattern.
+
+**IL optimizer correctness** (see `fix(il): optimizer correctness + verifier hardening pass`):
+
+- `CallEffects` priority inverted: runtime registry and function-declaration attributes are authoritative; instruction-level `CallAttr` is used only when the callee is unknown to all registries. `canEliminateIfUnused()` now requires both `pure` and `nothrow` — a throwing call cannot be deleted even when its result is dead.
+- `BasicAA::CallEffect` gains a `known` flag; `modRef()` prefers registry metadata over `CallAttr` when the flag is set.
+- `LoadSafety.hpp` (new shared header): `isLoadKnownNonTrapping(fn, load)` walks pointer provenance through alloca and GEP def chains. DCE dead-load elimination, GVN redundant-load elimination, and LICM loop-invariant load hoisting all gate on this predicate — loads from unknown or external pointers are kept because the trap is their observable effect.
+- `Mem2Reg` SROA offset arithmetic uses overflow-safe subtraction before the bounds check; field iteration is sorted by offset before inserting alloca instructions (previously non-deterministic across runs). `addIncoming()` bounds-checks the target index against `labels.size()`.
+- `Peephole` use-count map now counts uses in `brArgs` bundles so branch-argument-only temps are no longer incorrectly marked dead. Operand-forwarding peepholes call `allUsesLocalAfter()` before rewriting and skip if any use is in a different block; `replaceLocalUsesAfter()` handles the safe intra-block case.
+- `Peephole` rule table: FAdd +0.0 rules removed (IEEE signed-zero: `(-0.0) + 0.0 == +0.0 ≠ -0.0`); `0/x` and `0%x` rules for checked division removed (must execute to trap when denominator is zero).
+- `PassManager::verifyBetweenPasses_` is always `true`; the `#ifndef NDEBUG` gate was suppressing exactly the class of IR corruption these fixes address.
+
 ### Platform input
 
 - macOS: bare arrow keys no longer map to PageUp/Down/Home/End (Fn-flag gate was too loose); mouse-wheel delta preserved across coordinate localization.
@@ -271,6 +326,6 @@ Marquee demo addition is a text-mode human-manager baseball-franchise simulator;
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 73-commit history. Commits pair feature-add and follow-up hardening in the same subsystem (e.g. Production 2D → overflow hardening; threads timeout fixes → handle-magic validation; glTF skin import → sparse accessors + KHR extensions; new POSIX atomic-move path → linker-policy `link()` classification; `Viper.Localization.*` introduction → `numfmt_group_digits()` extraction + rt_fmt C-locale isolation + GUI app-registry refactor; variadic IL introduction → sub-width checked arithmetic hardening + err-opcode operand relaxation + MOVZXrr8/rr32 split; linker feature work → reader validation + COFF addend decode + reloc bounds + ICF/dead-strip correctness in successive passes).
+See `git log a91d388db..HEAD -- .` for the full 77-commit history. Commits pair feature-add and follow-up hardening in the same subsystem (e.g. Production 2D → overflow hardening; threads timeout fixes → handle-magic validation; glTF skin import → sparse accessors + KHR extensions; new POSIX atomic-move path → linker-policy `link()` classification; `Viper.Localization.*` introduction → `numfmt_group_digits()` extraction + rt_fmt C-locale isolation + GUI app-registry refactor; variadic IL introduction → sub-width checked arithmetic hardening + err-opcode operand relaxation + MOVZXrr8/rr32 split; linker feature work → reader validation + COFF addend decode + reloc bounds + ICF/dead-strip correctness + IL module linker validation + reader/writer second pass; IL optimizer/verifier work → CallEffects priority inversion + LoadSafety + Mem2Reg SROA + Peephole scoped rewrites + always-on pass verification + sub-width verifier table + structural type inference; Zia sema/lowerer → Map.get Optional return + static fields + EH rethrow + overflow-always arithmetic + VM string cache async race fix).
 
 <!-- END DRAFT -->

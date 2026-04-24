@@ -23,6 +23,7 @@ The Viper Bible is organized as a journey, not a dictionary. Each chapter builds
 
 | Chapter | You Will Learn |
 |---------|----------------|
+| [0. Getting Started](part1-foundations/00-getting-started.md) | Installing Viper and running your first examples |
 | [1. The Machine](part1-foundations/01-the-machine.md) | What computers actually do, how programs work |
 | [2. Your First Program](part1-foundations/02-first-program.md) | Writing, running, and understanding "Hello, World" |
 | [3. Values and Names](part1-foundations/03-values-and-names.md) | Numbers, text, variables — the atoms of programs |
