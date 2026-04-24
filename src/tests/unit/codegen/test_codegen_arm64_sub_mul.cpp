@@ -155,13 +155,13 @@ TEST(Arm64SubMul, SubChained) {
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Count checked-sub instructions
+    // Count checked-sub instructions. Match "subs x" so the stack prologue's
+    // "sub sp" and unchecked subtractions do not satisfy the test.
     std::size_t subCount = 0;
     std::size_t pos = 0;
-    while ((pos = asmText.find("sub x", pos)) != std::string::npos ||
-           (pos = asmText.find("subs x", pos)) != std::string::npos) {
+    while ((pos = asmText.find("subs x", pos)) != std::string::npos) {
         ++subCount;
-        pos += 5;
+        pos += 6;
     }
     EXPECT_TRUE(subCount >= 2U);
 }

@@ -34,6 +34,7 @@ namespace viper::codegen::x64::lowering {
 namespace {
 
 constexpr int64_t kErrInvalidCast = 5;
+constexpr int64_t kErrOverflow = 4;
 
 MInstr makePlannedCall(Operand target, uint32_t callPlanId) {
     MInstr call = MInstr::make(MOpcode::CALL, std::vector<Operand>{std::move(target)});
@@ -50,6 +51,64 @@ void emitTrapRaiseError(MIRBuilder &builder, int64_t errCode) {
     const uint32_t callPlanId = builder.recordCallPlan(std::move(plan));
     builder.append(makePlannedCall(makeLabelOperand(std::string{"rt_trap_raise_error"}), callPlanId));
     builder.append(MInstr::make(MOpcode::UD2));
+}
+
+Operand emitSignExtendedToWidth(MIRBuilder &builder,
+                                EmitCommon &emit,
+                                Operand src,
+                                std::uint8_t widthBits) {
+    Operand value = emit.materialiseGpr(std::move(src));
+    if (widthBits >= 64) {
+        return value;
+    }
+
+    const int shift = 64 - static_cast<int>(widthBits);
+    const VReg narrowedReg = builder.makeTempVReg(RegClass::GPR);
+    const Operand narrowed = makeVRegOperand(narrowedReg.cls, narrowedReg.id);
+    builder.append(MInstr::make(MOpcode::MOVrr, {emit.clone(narrowed), emit.clone(value)}));
+    builder.append(MInstr::make(MOpcode::SHLri, {emit.clone(narrowed), makeImmOperand(shift)}));
+    builder.append(MInstr::make(MOpcode::SARri, {emit.clone(narrowed), makeImmOperand(shift)}));
+    return narrowed;
+}
+
+Operand emitZeroExtendedToWidth(MIRBuilder &builder,
+                                EmitCommon &emit,
+                                Operand src,
+                                std::uint8_t widthBits) {
+    Operand value = emit.materialiseGpr(std::move(src));
+    if (widthBits >= 64) {
+        return value;
+    }
+
+    const int shift = 64 - static_cast<int>(widthBits);
+    const VReg narrowedReg = builder.makeTempVReg(RegClass::GPR);
+    const Operand narrowed = makeVRegOperand(narrowedReg.cls, narrowedReg.id);
+    builder.append(MInstr::make(MOpcode::MOVrr, {emit.clone(narrowed), emit.clone(value)}));
+    builder.append(MInstr::make(MOpcode::SHLri, {emit.clone(narrowed), makeImmOperand(shift)}));
+    builder.append(MInstr::make(MOpcode::SHRri, {emit.clone(narrowed), makeImmOperand(shift)}));
+    return narrowed;
+}
+
+void emitSubWidthOverflowCheck(MIRBuilder &builder,
+                               EmitCommon &emit,
+                               const Operand &value,
+                               std::uint8_t widthBits,
+                               const std::string &prefix) {
+    if (widthBits >= 64) {
+        return;
+    }
+
+    const uint32_t labelId = builder.lower().nextLocalLabelId();
+    const std::string trapLabel = prefix + "_trap_" + std::to_string(labelId);
+    const std::string doneLabel = prefix + "_done_" + std::to_string(labelId);
+    Operand narrowed = emitSignExtendedToWidth(builder, emit, emit.clone(value), widthBits);
+    builder.append(MInstr::make(MOpcode::CMPrr, {emit.clone(narrowed), emit.clone(value)}));
+    builder.append(
+        MInstr::make(MOpcode::JCC, {makeImmOperand(1), makeLabelOperand(trapLabel)}));
+    builder.append(MInstr::make(MOpcode::JMP, {makeLabelOperand(doneLabel)}));
+    builder.append(MInstr::make(MOpcode::LABEL, {makeLabelOperand(trapLabel)}));
+    emitTrapRaiseError(builder, kErrOverflow);
+    builder.append(MInstr::make(MOpcode::LABEL, {makeLabelOperand(doneLabel)}));
 }
 
 Operand emitF64BitsConstant(MIRBuilder &builder, uint64_t bits) {
@@ -196,6 +255,21 @@ void emitCmpExplicit(const ILInstr &instr, MIRBuilder &builder) {
 ///          expand into ADD + JO (trap on overflow).
 void emitAddOvf(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon emit(builder);
+    if (instr.resultBits < 64) {
+        if (instr.resultId < 0 || instr.ops.size() < 2) {
+            phaseAUnsupported("iadd.ovf: missing operands");
+        }
+        const Operand lhs = emitSignExtendedToWidth(
+            builder, emit, builder.makeOperandForValue(instr.ops[0], RegClass::GPR), instr.resultBits);
+        const Operand rhs = emitSignExtendedToWidth(
+            builder, emit, builder.makeOperandForValue(instr.ops[1], RegClass::GPR), instr.resultBits);
+        const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+        const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+        builder.append(MInstr::make(MOpcode::MOVrr, {emit.clone(dest), emit.clone(lhs)}));
+        builder.append(MInstr::make(MOpcode::ADDrr, {emit.clone(dest), emit.clone(rhs)}));
+        emitSubWidthOverflowCheck(builder, emit, dest, instr.resultBits, ".Liadd_ovf");
+        return;
+    }
     emit.emitBinary(instr, MOpcode::ADDOvfrr, MOpcode::ADDOvfrr, RegClass::GPR, false);
 }
 
@@ -203,6 +277,21 @@ void emitAddOvf(const ILInstr &instr, MIRBuilder &builder) {
 /// @details Emits the SUBOvfrr pseudo-op.
 void emitSubOvf(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon emit(builder);
+    if (instr.resultBits < 64) {
+        if (instr.resultId < 0 || instr.ops.size() < 2) {
+            phaseAUnsupported("isub.ovf: missing operands");
+        }
+        const Operand lhs = emitSignExtendedToWidth(
+            builder, emit, builder.makeOperandForValue(instr.ops[0], RegClass::GPR), instr.resultBits);
+        const Operand rhs = emitSignExtendedToWidth(
+            builder, emit, builder.makeOperandForValue(instr.ops[1], RegClass::GPR), instr.resultBits);
+        const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+        const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+        builder.append(MInstr::make(MOpcode::MOVrr, {emit.clone(dest), emit.clone(lhs)}));
+        builder.append(MInstr::make(MOpcode::SUBrr, {emit.clone(dest), emit.clone(rhs)}));
+        emitSubWidthOverflowCheck(builder, emit, dest, instr.resultBits, ".Lisub_ovf");
+        return;
+    }
     emit.emitBinary(instr, MOpcode::SUBOvfrr, MOpcode::SUBOvfrr, RegClass::GPR, false);
 }
 
@@ -210,6 +299,21 @@ void emitSubOvf(const ILInstr &instr, MIRBuilder &builder) {
 /// @details Emits the IMULOvfrr pseudo-op.
 void emitMulOvf(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon emit(builder);
+    if (instr.resultBits < 64) {
+        if (instr.resultId < 0 || instr.ops.size() < 2) {
+            phaseAUnsupported("imul.ovf: missing operands");
+        }
+        const Operand lhs = emitSignExtendedToWidth(
+            builder, emit, builder.makeOperandForValue(instr.ops[0], RegClass::GPR), instr.resultBits);
+        const Operand rhs = emitSignExtendedToWidth(
+            builder, emit, builder.makeOperandForValue(instr.ops[1], RegClass::GPR), instr.resultBits);
+        const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+        const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+        builder.append(MInstr::make(MOpcode::MOVrr, {emit.clone(dest), emit.clone(lhs)}));
+        builder.append(MInstr::make(MOpcode::IMULrr, {emit.clone(dest), emit.clone(rhs)}));
+        emitSubWidthOverflowCheck(builder, emit, dest, instr.resultBits, ".Limul_ovf");
+        return;
+    }
     emit.emitBinary(instr, MOpcode::IMULOvfrr, MOpcode::IMULOvfrr, RegClass::GPR, false);
 }
 
@@ -231,7 +335,46 @@ void emitSIToFP(const ILInstr &instr, MIRBuilder &builder) {
 }
 
 void emitFPToSI(const ILInstr &instr, MIRBuilder &builder) {
-    EmitCommon(builder).emitCast(instr, MOpcode::CVTTSD2SI, RegClass::GPR, RegClass::XMM);
+    if (instr.resultId < 0 || instr.ops.empty()) {
+        return;
+    }
+
+    EmitCommon emit(builder);
+    const Operand src =
+        emit.materialise(builder.makeOperandForValue(instr.ops[0], RegClass::XMM), RegClass::XMM);
+    const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+
+    const uint32_t labelId = builder.lower().nextLocalLabelId();
+    const std::string invalidLabel = ".Lfptosi_invalid_" + std::to_string(labelId);
+    const std::string overflowLabel = ".Lfptosi_ovf_" + std::to_string(labelId);
+    const std::string doneLabel = ".Lfptosi_done_" + std::to_string(labelId);
+
+    builder.append(
+        MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{emit.clone(src), emit.clone(src)}));
+    builder.append(MInstr::make(
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(10), makeLabelOperand(invalidLabel)}));
+
+    const Operand minOp = emitF64BitsConstant(builder, 0xC3E0000000000000ULL);
+    builder.append(
+        MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{emit.clone(src), emit.clone(minOp)}));
+    builder.append(MInstr::make(
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(8), makeLabelOperand(overflowLabel)}));
+
+    const Operand maxExclusiveOp = emitF64BitsConstant(builder, 0x43E0000000000000ULL);
+    builder.append(MInstr::make(MOpcode::UCOMIS,
+                                std::vector<Operand>{emit.clone(src), emit.clone(maxExclusiveOp)}));
+    builder.append(MInstr::make(
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(7), makeLabelOperand(overflowLabel)}));
+
+    builder.append(
+        MInstr::make(MOpcode::CVTTSD2SI, std::vector<Operand>{emit.clone(dest), emit.clone(src)}));
+    builder.append(MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(doneLabel)}));
+    builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(invalidLabel)}));
+    emitTrapRaiseError(builder, kErrInvalidCast);
+    builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(overflowLabel)}));
+    emitTrapRaiseError(builder, kErrOverflow);
+    builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(doneLabel)}));
 }
 
 void emitFPToSIChecked(const ILInstr &instr, MIRBuilder &builder) {
@@ -246,31 +389,34 @@ void emitFPToSIChecked(const ILInstr &instr, MIRBuilder &builder) {
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
     const uint32_t labelId = builder.lower().nextLocalLabelId();
-    const std::string trapLabel = ".Lfptosi_chk_trap_" + std::to_string(labelId);
+    const std::string invalidLabel = ".Lfptosi_chk_invalid_" + std::to_string(labelId);
+    const std::string overflowLabel = ".Lfptosi_chk_ovf_" + std::to_string(labelId);
     const std::string doneLabel = ".Lfptosi_chk_done_" + std::to_string(labelId);
 
     builder.append(
         MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{emit.clone(rounded), emit.clone(rounded)}));
     builder.append(MInstr::make(
-        MOpcode::JCC, std::vector<Operand>{makeImmOperand(10), makeLabelOperand(trapLabel)}));
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(10), makeLabelOperand(invalidLabel)}));
 
     const Operand minOp = emitF64BitsConstant(builder, 0xC3E0000000000000ULL);
     builder.append(
         MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{emit.clone(rounded), emit.clone(minOp)}));
     builder.append(MInstr::make(
-        MOpcode::JCC, std::vector<Operand>{makeImmOperand(8), makeLabelOperand(trapLabel)}));
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(8), makeLabelOperand(overflowLabel)}));
 
     const Operand maxExclusiveOp = emitF64BitsConstant(builder, 0x43E0000000000000ULL);
     builder.append(MInstr::make(MOpcode::UCOMIS,
                                 std::vector<Operand>{emit.clone(rounded), emit.clone(maxExclusiveOp)}));
     builder.append(MInstr::make(
-        MOpcode::JCC, std::vector<Operand>{makeImmOperand(7), makeLabelOperand(trapLabel)}));
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(7), makeLabelOperand(overflowLabel)}));
 
     builder.append(
         MInstr::make(MOpcode::CVTTSD2SI, std::vector<Operand>{emit.clone(dest), emit.clone(rounded)}));
     builder.append(MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(doneLabel)}));
-    builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(trapLabel)}));
+    builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(invalidLabel)}));
     emitTrapRaiseError(builder, kErrInvalidCast);
+    builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(overflowLabel)}));
+    emitTrapRaiseError(builder, kErrOverflow);
     builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(doneLabel)}));
 }
 
@@ -287,26 +433,27 @@ void emitFpToUi(const ILInstr &instr, MIRBuilder &builder) {
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
     const uint32_t labelId = builder.lower().nextLocalLabelId();
-    const std::string trapLabel = ".Lfptoui_trap_" + std::to_string(labelId);
+    const std::string invalidLabel = ".Lfptoui_invalid_" + std::to_string(labelId);
+    const std::string overflowLabel = ".Lfptoui_ovf_" + std::to_string(labelId);
     const std::string smallLabel = ".Lfptoui_sm_" + std::to_string(labelId);
     const std::string doneLabel = ".Lfptoui_done_" + std::to_string(labelId);
 
     builder.append(
         MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{emit.clone(rounded), emit.clone(rounded)}));
     builder.append(MInstr::make(
-        MOpcode::JCC, std::vector<Operand>{makeImmOperand(10), makeLabelOperand(trapLabel)}));
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(10), makeLabelOperand(invalidLabel)}));
 
     const Operand zeroOp = emitF64BitsConstant(builder, 0x0000000000000000ULL);
     builder.append(MInstr::make(MOpcode::UCOMIS,
                                 std::vector<Operand>{emit.clone(rounded), emit.clone(zeroOp)}));
     builder.append(MInstr::make(
-        MOpcode::JCC, std::vector<Operand>{makeImmOperand(8), makeLabelOperand(trapLabel)}));
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(8), makeLabelOperand(invalidLabel)}));
 
     const Operand upperExclusiveOp = emitF64BitsConstant(builder, 0x43F0000000000000ULL);
     builder.append(
         MInstr::make(MOpcode::UCOMIS, std::vector<Operand>{emit.clone(rounded), emit.clone(upperExclusiveOp)}));
     builder.append(MInstr::make(
-        MOpcode::JCC, std::vector<Operand>{makeImmOperand(7), makeLabelOperand(trapLabel)}));
+        MOpcode::JCC, std::vector<Operand>{makeImmOperand(7), makeLabelOperand(overflowLabel)}));
 
     const Operand limitOp = emitF64BitsConstant(builder, 0x43E0000000000000ULL);
     builder.append(MInstr::make(
@@ -330,8 +477,10 @@ void emitFpToUi(const ILInstr &instr, MIRBuilder &builder) {
     builder.append(MInstr::make(MOpcode::ORrr, std::vector<Operand>{dest, highBitOp}));
     builder.append(MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(doneLabel)}));
 
-    builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(trapLabel)}));
+    builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(invalidLabel)}));
     emitTrapRaiseError(builder, kErrInvalidCast);
+    builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(overflowLabel)}));
+    emitTrapRaiseError(builder, kErrOverflow);
 
     builder.append(
         MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(smallLabel)}));
@@ -339,6 +488,41 @@ void emitFpToUi(const ILInstr &instr, MIRBuilder &builder) {
         MInstr::make(MOpcode::CVTTSD2SI, std::vector<Operand>{dest, emit.clone(rounded)}));
 
     builder.append(MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(doneLabel)}));
+}
+
+void emitNarrowCastChecked(const ILInstr &instr, MIRBuilder &builder, bool isSigned) {
+    if (instr.resultId < 0 || instr.ops.empty()) {
+        return;
+    }
+
+    EmitCommon emit(builder);
+    const Operand src =
+        emit.materialiseGpr(builder.makeOperandForValue(instr.ops[0], RegClass::GPR));
+    const Operand narrowed = isSigned
+                                 ? emitSignExtendedToWidth(builder, emit, emit.clone(src), instr.resultBits)
+                                 : emitZeroExtendedToWidth(builder, emit, emit.clone(src), instr.resultBits);
+    const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
+    const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
+
+    const uint32_t labelId = builder.lower().nextLocalLabelId();
+    const std::string trapLabel = ".Lnarrow_chk_trap_" + std::to_string(labelId);
+    const std::string doneLabel = ".Lnarrow_chk_done_" + std::to_string(labelId);
+
+    builder.append(MInstr::make(MOpcode::CMPrr, {emit.clone(narrowed), emit.clone(src)}));
+    builder.append(MInstr::make(MOpcode::JCC, {makeImmOperand(1), makeLabelOperand(trapLabel)}));
+    builder.append(MInstr::make(MOpcode::MOVrr, {emit.clone(dest), emit.clone(narrowed)}));
+    builder.append(MInstr::make(MOpcode::JMP, {makeLabelOperand(doneLabel)}));
+    builder.append(MInstr::make(MOpcode::LABEL, {makeLabelOperand(trapLabel)}));
+    emitTrapRaiseError(builder, kErrOverflow);
+    builder.append(MInstr::make(MOpcode::LABEL, {makeLabelOperand(doneLabel)}));
+}
+
+void emitSiNarrowChecked(const ILInstr &instr, MIRBuilder &builder) {
+    emitNarrowCastChecked(instr, builder, true);
+}
+
+void emitUiNarrowChecked(const ILInstr &instr, MIRBuilder &builder) {
+    emitNarrowCastChecked(instr, builder, false);
 }
 
 /// @brief Lower an IL `uitofp` instruction (unsigned int to floating-point).

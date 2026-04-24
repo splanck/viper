@@ -172,6 +172,5 @@ switch (mi.opc)
            << mangleSymbol(mi.ops[2].label) << "@PAGEOFF\n";
         break;
     default:
-        os << "  # <unknown opcode>\n";
-        break;
+        throw std::runtime_error(std::string("AArch64 text emitter: unknown opcode ") + opcodeName(mi.opc));
 }

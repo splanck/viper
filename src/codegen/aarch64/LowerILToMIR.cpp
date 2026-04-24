@@ -69,6 +69,87 @@ static const char *condForOpcode(Opcode op) {
     return lookupAnyCondition(op);
 }
 
+static int integerTypeBits(il::core::Type::Kind kind) {
+    switch (kind) {
+        case il::core::Type::Kind::I1:
+            return 1;
+        case il::core::Type::Kind::I16:
+            return 16;
+        case il::core::Type::Kind::I32:
+            return 32;
+        default:
+            return 64;
+    }
+}
+
+static uint16_t signExtendVRegToWidth(MBasicBlock &out,
+                                      uint16_t src,
+                                      int bits,
+                                      uint16_t &nextVRegId) {
+    if (bits >= 64)
+        return src;
+    const int shift = 64 - bits;
+    const uint16_t dst = allocateNextVReg(nextVRegId);
+    out.instrs.push_back(MInstr{MOpcode::LslRI,
+                                {MOperand::vregOp(RegClass::GPR, dst),
+                                 MOperand::vregOp(RegClass::GPR, src),
+                                 MOperand::immOp(shift)}});
+    out.instrs.push_back(MInstr{MOpcode::AsrRI,
+                                {MOperand::vregOp(RegClass::GPR, dst),
+                                 MOperand::vregOp(RegClass::GPR, dst),
+                                 MOperand::immOp(shift)}});
+    return dst;
+}
+
+static bool emitSubWidthCheckedBinary(MFunction &mf,
+                                      MBasicBlock &out,
+                                      const il::core::Instr &ins,
+                                      uint16_t dst,
+                                      uint16_t lhs,
+                                      uint16_t rhs,
+                                      uint16_t &nextVRegId) {
+    const int bits = integerTypeBits(ins.type.kind);
+    if (bits >= 64)
+        return false;
+
+    MOpcode op = MOpcode::AddRRR;
+    switch (ins.op) {
+        case Opcode::IAddOvf:
+            op = MOpcode::AddRRR;
+            break;
+        case Opcode::ISubOvf:
+            op = MOpcode::SubRRR;
+            break;
+        case Opcode::IMulOvf:
+            op = MOpcode::MulRRR;
+            break;
+        default:
+            return false;
+    }
+
+    lhs = signExtendVRegToWidth(out, lhs, bits, nextVRegId);
+    rhs = signExtendVRegToWidth(out, rhs, bits, nextVRegId);
+    out.instrs.push_back(MInstr{op,
+                                {MOperand::vregOp(RegClass::GPR, dst),
+                                 MOperand::vregOp(RegClass::GPR, lhs),
+                                 MOperand::vregOp(RegClass::GPR, rhs)}});
+
+    const uint16_t narrowed = signExtendVRegToWidth(out, dst, bits, nextVRegId);
+    const std::string trapLabel = ".Ltrap_subwidth_ovf_" + mf.name + "_" +
+                                  std::to_string(mf.blocks.size()) + "_" +
+                                  std::to_string(out.instrs.size());
+    out.instrs.push_back(MInstr{
+        MOpcode::CmpRR,
+        {MOperand::vregOp(RegClass::GPR, narrowed), MOperand::vregOp(RegClass::GPR, dst)}});
+    out.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel)}});
+
+    mf.blocks.emplace_back();
+    mf.blocks.back().name = trapLabel;
+    mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_ovf")}});
+    return true;
+}
+
 static std::vector<std::size_t> countTempUses(const il::core::Function &fn) {
     using il::core::Value;
 
@@ -544,6 +625,10 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                                 tempVReg[*ins.result] = dst;
                                 tempRegClass[*ins.result] = rc;
                                 if (binOp) {
+                                    if (emitSubWidthCheckedBinary(
+                                            mf, bbOutFn(), ins, dst, lhs, rhs, nextVRegId)) {
+                                        // Width-aware checked arithmetic emitted above.
+                                    } else {
                                     // Check if we can use immediate form for this operation
                                     const bool hasConstRHS =
                                         ins.operands[1].kind == il::core::Value::Kind::ConstInt;
@@ -590,6 +675,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                                                    {MOperand::vregOp(rc, dst),
                                                     MOperand::vregOp(rc, lhs),
                                                     MOperand::vregOp(rc, rhs)}});
+                                    }
                                     }
                                 } else {
                                     // Emit comparison (cmp + cset)

@@ -160,9 +160,12 @@ TEST(Arm64MIRDump, ShowsExpectedOpcodes) {
         stderrOutput = cap.str();
     }
 
-    // Should contain expected MIR opcodes
-    EXPECT_NE(stderrOutput.find("AddRRR"), std::string::npos);
+    // The after-RA dump is after overflow pseudo-op expansion, so checked add is
+    // a flag-setting add plus branch and checked multiply compares the high half.
+    EXPECT_NE(stderrOutput.find("AddsRRR"), std::string::npos);
+    EXPECT_NE(stderrOutput.find("BCond vs"), std::string::npos);
     EXPECT_NE(stderrOutput.find("MulRRR"), std::string::npos);
+    EXPECT_NE(stderrOutput.find("SmulhRRR"), std::string::npos);
     EXPECT_NE(stderrOutput.find("Ret"), std::string::npos);
 }
 

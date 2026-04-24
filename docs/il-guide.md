@@ -674,7 +674,7 @@ Shift counts are masked modulo 64, matching the behaviour of x86-64 shifts.
 | `cast.si_to_fp`         | `cast.si_to_fp x`          | `f64`  | signed int to float                                             |
 | `cast.ui_narrow.chk`    | `cast.ui_narrow.chk x`    | `i32` or `i16` | narrow unsigned int (i64→i32 or i64→i16); result type declared on register; trap on overflow |
 | `cast.ui_to_fp`         | `cast.ui_to_fp x`          | `f64`  | unsigned int to float                                           |
-| `fptosi`                | `fptosi x`                 | `i64`  | float to signed int (no check; undefined on NaN or overflow)    |
+| `fptosi`                | `fptosi x`                 | `i64`  | internal/legacy truncating FP-to-int; verifier prefers checked RTE casts |
 | `sitofp`                | `sitofp x`                 | `f64`  | signed int to float                                             |
 | `trunc1`                | `trunc1 x`                 | `i1`   | truncate i64 to i1                                              |
 | `zext1`                 | `zext1 x`                  | `i64`  | zero-extend i1 to i64                                           |
@@ -924,7 +924,7 @@ op          ::= "add" value "," value | "and" value "," value | "ashr" value ","
                 "const.f64" FLOAT | "const_null" | "const_str" SYMBOL |
                 "eh.entry" | "eh.pop" | "eh.push" label_ref |
                 "err.get_code" value | "err.get_ip" value |
-                "err.get_kind" value | "err.get_line" value |
+                "err.get_kind" value | "err.get_line" value | "err.get_msg" value |
                 "fadd" value "," value | "fdiv" value "," value |
                 "fcmp_eq" value "," value | "fcmp_ge" value "," value |
                 "fcmp_gt" value "," value | "fcmp_le" value "," value |

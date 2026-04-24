@@ -21,7 +21,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-static constexpr std::array<EncodingRow, 50> kEncodingTable = {{
+static constexpr std::array<EncodingRow, 51> kEncodingTable = {{
     {MOpcode::MOVrr,
      "movq",
      EncodingForm::RegReg,
@@ -196,12 +196,18 @@ static constexpr std::array<EncodingRow, 50> kEncodingTable = {{
      OperandOrder::SETCC,
      makePattern(OperandKind::Imm, OperandKind::RegOrMem, OperandKind::None),
      EncodingFlag::RequiresModRM | EncodingFlag::UsesCondition},
-    {MOpcode::MOVZXrr32,
+    {MOpcode::MOVZXrr8,
      "movzbq",
      EncodingForm::RegReg,
      OperandOrder::MOVZX_RR8,
      makePattern(OperandKind::Reg, OperandKind::Reg, OperandKind::None),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::MOVZXrr32,
+     "movl",
+     EncodingForm::RegReg,
+     OperandOrder::R_R32,
+     makePattern(OperandKind::Reg, OperandKind::Reg, OperandKind::None),
+     EncodingFlag::RequiresModRM},
     {MOpcode::TESTrr,
      "testq",
      EncodingForm::RegReg,

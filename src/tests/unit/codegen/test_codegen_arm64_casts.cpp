@@ -108,7 +108,9 @@ TEST(Arm64Casts, FpToSiRteChk) {
     EXPECT_NE(asmText.find("frintn"), std::string::npos);
     EXPECT_NE(asmText.find("fcvtzs"), std::string::npos);
     EXPECT_NE(asmText.find("fcmp"), std::string::npos);
-    EXPECT_NE(asmText.find("b.vs L.Ltrap_fpcast_"), std::string::npos);
+    EXPECT_NE(asmText.find("b.vs L.Ltrap_fpcast_invalid_"), std::string::npos);
+    EXPECT_NE(asmText.find("L.Ltrap_fpcast_ovf_"), std::string::npos);
+    EXPECT_NE(asmText.find("#4"), std::string::npos);
     EXPECT_NE(asmText.find(blSym("rt_trap_raise_error")), std::string::npos);
 }
 
@@ -128,7 +130,9 @@ TEST(Arm64Casts, FpToUiRteChk) {
     EXPECT_NE(asmText.find("frintn"), std::string::npos);
     EXPECT_NE(asmText.find("fcvtzu"), std::string::npos);
     EXPECT_NE(asmText.find("fcmp"), std::string::npos);
-    EXPECT_NE(asmText.find("b.vs L.Ltrap_fpcast_"), std::string::npos);
+    EXPECT_NE(asmText.find("b.vs L.Ltrap_fpcast_invalid_"), std::string::npos);
+    EXPECT_NE(asmText.find("L.Ltrap_fpcast_ovf_"), std::string::npos);
+    EXPECT_NE(asmText.find("#4"), std::string::npos);
     EXPECT_NE(asmText.find(blSym("rt_trap_raise_error")), std::string::npos);
 }
 

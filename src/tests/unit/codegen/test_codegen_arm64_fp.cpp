@@ -12,12 +12,24 @@
 #include "tests/TestHarness.hpp"
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <string>
 
+#include "codegen/aarch64/TargetAArch64.hpp"
+#include "codegen/aarch64/passes/EmitPass.hpp"
+#include "codegen/aarch64/passes/LoweringPass.hpp"
+#include "codegen/aarch64/passes/PassManager.hpp"
+#include "codegen/aarch64/passes/RegAllocPass.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
+#include "il/core/Type.hpp"
+#include "il/core/Value.hpp"
 #include "tools/viper/cmd_codegen_arm64.hpp"
 
 using namespace viper::tools::ilc;
+using namespace viper::codegen::aarch64;
 
 static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
@@ -157,6 +169,52 @@ TEST(Arm64FP, FptosiConversion) {
     ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect fcvtzs xN, dM
+    EXPECT_NE(asmText.find("fcvtzs x"), std::string::npos);
+}
+
+TEST(Arm64FP, PlainFptosiChecksNaNAndRange) {
+    il::core::Function fn;
+    fn.name = "ftoi_plain";
+    fn.retType = il::core::Type(il::core::Type::Kind::I64);
+
+    il::core::BasicBlock entry;
+    entry.label = "entry";
+    entry.params.push_back({"x", il::core::Type(il::core::Type::Kind::F64), 0});
+
+    il::core::Instr cast;
+    cast.result = 1;
+    cast.op = il::core::Opcode::Fptosi;
+    cast.type = il::core::Type(il::core::Type::Kind::I64);
+    cast.operands.push_back(il::core::Value::temp(0));
+    entry.instructions.push_back(cast);
+
+    il::core::Instr ret;
+    ret.op = il::core::Opcode::Ret;
+    ret.type = il::core::Type(il::core::Type::Kind::Void);
+    ret.operands.push_back(il::core::Value::temp(1));
+    entry.instructions.push_back(ret);
+    entry.terminated = true;
+
+    fn.blocks.push_back(entry);
+    il::core::Module mod;
+    mod.functions.push_back(fn);
+
+    passes::AArch64Module module;
+    module.ilMod = &mod;
+    module.ti = &darwinTarget();
+
+    passes::PassManager pm;
+    pm.addPass(std::make_unique<passes::LoweringPass>());
+    pm.addPass(std::make_unique<passes::RegAllocPass>());
+    pm.addPass(std::make_unique<passes::EmitPass>());
+
+    passes::Diagnostics diags;
+    ASSERT_TRUE(pm.run(module, diags));
+    const std::string &asmText = module.assembly;
+
+    EXPECT_NE(asmText.find("fcmp d"), std::string::npos);
+    EXPECT_NE(asmText.find("b.vs L.Ltrap_fptosi_invalid_"), std::string::npos);
+    EXPECT_NE(asmText.find("L.Ltrap_fptosi_ovf_"), std::string::npos);
     EXPECT_NE(asmText.find("fcvtzs x"), std::string::npos);
 }
 

@@ -229,6 +229,27 @@ TEST(Arm64EH, NestedHandlers) {
     EXPECT_FALSE(asmText.empty());
 }
 
+TEST(Arm64EH, ErrGetMsgCallsThrowMessageRuntime) {
+    const std::string in = outPath("arm64_eh_err_get_msg.il");
+    const std::string out = outPath("arm64_eh_err_get_msg.s");
+    const std::string il = "il 0.1\n"
+                           "func @f() -> str {\n"
+                           "entry:\n"
+                           "  eh.push ^catch\n"
+                           "  trap\n"
+                           "handler ^catch(%err:Error, %tok:ResumeTok):\n"
+                           "  eh.entry\n"
+                           "  %msg = err.get_msg %err\n"
+                           "  eh.pop\n"
+                           "  ret %msg\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find(blSym("rt_throw_msg_get")), std::string::npos);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

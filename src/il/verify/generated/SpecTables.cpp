@@ -910,7 +910,7 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
     {
         il::core::ResultArity::One,
         il::core::TypeCategory::I32,
-        static_cast<uint8_t>(1),
+        static_cast<uint8_t>(0),
         static_cast<uint8_t>(1),
         {il::core::TypeCategory::Error, il::core::TypeCategory::None, il::core::TypeCategory::None},
         false,
@@ -922,7 +922,7 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
     {
         il::core::ResultArity::One,
         il::core::TypeCategory::I32,
-        static_cast<uint8_t>(1),
+        static_cast<uint8_t>(0),
         static_cast<uint8_t>(1),
         {il::core::TypeCategory::Error, il::core::TypeCategory::None, il::core::TypeCategory::None},
         false,
@@ -934,7 +934,7 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
     {
         il::core::ResultArity::One,
         il::core::TypeCategory::I64,
-        static_cast<uint8_t>(1),
+        static_cast<uint8_t>(0),
         static_cast<uint8_t>(1),
         {il::core::TypeCategory::Error, il::core::TypeCategory::None, il::core::TypeCategory::None},
         false,
@@ -946,7 +946,7 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
     {
         il::core::ResultArity::One,
         il::core::TypeCategory::I32,
-        static_cast<uint8_t>(1),
+        static_cast<uint8_t>(0),
         static_cast<uint8_t>(1),
         {il::core::TypeCategory::Error, il::core::TypeCategory::None, il::core::TypeCategory::None},
         false,
@@ -959,7 +959,7 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
         // ErrGetMsg — returns Str, takes Error, 0 successors
         il::core::ResultArity::One,
         il::core::TypeCategory::Str,
-        static_cast<uint8_t>(1),
+        static_cast<uint8_t>(0),
         static_cast<uint8_t>(1),
         {il::core::TypeCategory::Error, il::core::TypeCategory::None, il::core::TypeCategory::None},
         false,

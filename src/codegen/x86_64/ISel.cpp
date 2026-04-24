@@ -72,7 +72,7 @@ void ensureMovzxAfterSetcc(MBasicBlock &block, std::size_t index) {
 
     if (index + 1 < block.instructions.size()) {
         auto &next = block.instructions[index + 1];
-        if (next.opcode == MOpcode::MOVZXrr32 && next.operands.size() >= 2 &&
+        if (next.opcode == MOpcode::MOVZXrr8 && next.operands.size() >= 2 &&
             sameRegister(next.operands[0], *destOperand) &&
             sameRegister(next.operands[1], *destOperand)) {
             return;
@@ -80,7 +80,7 @@ void ensureMovzxAfterSetcc(MBasicBlock &block, std::size_t index) {
     }
 
     MInstr movzx =
-        MInstr::make(MOpcode::MOVZXrr32,
+        MInstr::make(MOpcode::MOVZXrr8,
                      std::vector<Operand>{cloneOperand(*destOperand), cloneOperand(*destOperand)});
     block.instructions.insert(block.instructions.begin() + static_cast<std::ptrdiff_t>(index + 1),
                               std::move(movzx));
@@ -403,7 +403,7 @@ bool foldCompareBranch(MBasicBlock &block, std::size_t index) {
     }
 
     std::size_t testIndex = index + 2;
-    if (block.instructions[testIndex].opcode == MOpcode::MOVZXrr32) {
+    if (block.instructions[testIndex].opcode == MOpcode::MOVZXrr8) {
         const auto &movzxInstr = block.instructions[testIndex];
         if (movzxInstr.operands.size() < 2 ||
             !sameRegister(movzxInstr.operands[0], setccInstr.operands[1]) ||

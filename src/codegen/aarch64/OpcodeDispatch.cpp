@@ -297,7 +297,9 @@ bool lowerInstruction(const il::core::Instr &ins,
                 {MOperand::vregOp(RegClass::FPR, rounded), MOperand::vregOp(RegClass::FPR, fv)}});
 
             const std::string trapLabel =
-                ".Ltrap_fpcast_" + std::to_string(ctx.trapLabelCounter++);
+                ".Ltrap_fpcast_invalid_" + std::to_string(ctx.trapLabelCounter++);
+            const std::string overflowLabel =
+                ".Ltrap_fpcast_ovf_" + std::to_string(ctx.trapLabelCounter++);
 
             // NaN becomes unordered; trap before any range comparisons.
             bbOut().instrs.push_back(MInstr{
@@ -314,13 +316,13 @@ bool lowerInstruction(const il::core::Instr &ins,
                     {MOperand::vregOp(RegClass::FPR, rounded),
                      MOperand::vregOp(RegClass::FPR, lowerBound)}});
                 bbOut().instrs.push_back(
-                    MInstr{MOpcode::BCond, {MOperand::condOp("lt"), MOperand::labelOp(trapLabel)}});
+                    MInstr{MOpcode::BCond, {MOperand::condOp("lt"), MOperand::labelOp(overflowLabel)}});
                 bbOut().instrs.push_back(MInstr{
                     MOpcode::FCmpRR,
                     {MOperand::vregOp(RegClass::FPR, rounded),
                      MOperand::vregOp(RegClass::FPR, upperBound)}});
                 bbOut().instrs.push_back(
-                    MInstr{MOpcode::BCond, {MOperand::condOp("ge"), MOperand::labelOp(trapLabel)}});
+                    MInstr{MOpcode::BCond, {MOperand::condOp("ge"), MOperand::labelOp(overflowLabel)}});
             } else {
                 const uint16_t zero = materializeF64Constant(0.0, ctx, bbOut());
                 const uint16_t upperBound = materializeF64Constant(18446744073709551616.0, ctx, bbOut());
@@ -335,7 +337,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                     {MOperand::vregOp(RegClass::FPR, rounded),
                      MOperand::vregOp(RegClass::FPR, upperBound)}});
                 bbOut().instrs.push_back(
-                    MInstr{MOpcode::BCond, {MOperand::condOp("ge"), MOperand::labelOp(trapLabel)}});
+                    MInstr{MOpcode::BCond, {MOperand::condOp("ge"), MOperand::labelOp(overflowLabel)}});
             }
 
             const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
@@ -351,6 +353,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                                  MOperand::vregOp(RegClass::FPR, rounded)}});
             }
             emitTrapRaiseErrorBlock(ctx.mf, trapLabel, 5);
+            emitTrapRaiseErrorBlock(ctx.mf, overflowLabel, 4);
             return true;
         }
         case Opcode::CastSiToFp:
@@ -615,6 +618,11 @@ bool lowerInstruction(const il::core::Instr &ins,
         }
         case Opcode::ErrGetIp: {
             bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_get_ip")}});
+            captureGprCallResult(ins, ctx, bbOut());
+            return true;
+        }
+        case Opcode::ErrGetMsg: {
+            bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_throw_msg_get")}});
             captureGprCallResult(ins, ctx, bbOut());
             return true;
         }

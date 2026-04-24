@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <cstdio>
 #include <iostream>
 #include <regex>
@@ -73,6 +74,16 @@ ILInstr op(const char *opcode,
     instr.ops = std::move(ops);
     instr.resultId = resultId;
     instr.resultKind = resultKind;
+    return instr;
+}
+
+ILInstr opBits(const char *opcode,
+               std::vector<ILValue> ops,
+               int resultId,
+               ILValue::Kind resultKind,
+               std::uint8_t resultBits) {
+    ILInstr instr = op(opcode, std::move(ops), resultId, resultKind);
+    instr.resultBits = resultBits;
     return instr;
 }
 
@@ -292,7 +303,8 @@ TEST(X86BackendRegressions, CheckedFpToSiUsesRoundEvenAndStructuredTrap) {
     ASSERT_TRUE(result.errors.empty());
     EXPECT_NE(result.asmText.find("rt_round_even"), std::string::npos);
     EXPECT_NE(result.asmText.find("rt_trap_raise_error"), std::string::npos);
-    EXPECT_NE(result.asmText.find(".Lfptosi_chk_trap_"), std::string::npos);
+    EXPECT_NE(result.asmText.find(".Lfptosi_chk_invalid_"), std::string::npos);
+    EXPECT_NE(result.asmText.find(".Lfptosi_chk_ovf_"), std::string::npos);
 }
 
 TEST(X86BackendRegressions, CheckedFpToUiUsesUpperBoundCheckAndStructuredTrap) {
@@ -311,7 +323,74 @@ TEST(X86BackendRegressions, CheckedFpToUiUsesUpperBoundCheckAndStructuredTrap) {
     ASSERT_TRUE(result.errors.empty());
     EXPECT_NE(result.asmText.find("rt_round_even"), std::string::npos);
     EXPECT_NE(result.asmText.find("rt_trap_raise_error"), std::string::npos);
-    EXPECT_NE(result.asmText.find(".Lfptoui_trap_"), std::string::npos);
+    EXPECT_NE(result.asmText.find(".Lfptoui_invalid_"), std::string::npos);
+    EXPECT_NE(result.asmText.find(".Lfptoui_ovf_"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, FptosiTruncatingConversionChecksNaNAndRange) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::F64};
+    entry.instrs = {op("fptosi", {val(ILValue::Kind::F64, 0)}, 1, ILValue::Kind::I64),
+                    op("ret", {val(ILValue::Kind::I64, 1)})};
+
+    ILFunction fn{};
+    fn.name = "fptosi_checked";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find(".Lfptosi_invalid_"), std::string::npos);
+    EXPECT_NE(result.asmText.find(".Lfptosi_ovf_"), std::string::npos);
+    EXPECT_NE(result.asmText.find("rt_trap_raise_error"), std::string::npos);
+    EXPECT_NE(result.asmText.find("cvttsd2siq"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, CheckedSignedNarrowEmitsWidthCheck) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+    entry.instrs = {opBits("si_narrow_chk", {val(ILValue::Kind::I64, 0)}, 1, ILValue::Kind::I64, 16),
+                    op("ret", {val(ILValue::Kind::I64, 1)})};
+
+    ILFunction fn{};
+    fn.name = "narrow_i16";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("shlq $48"), std::string::npos);
+    EXPECT_NE(result.asmText.find("sarq $48"), std::string::npos);
+    EXPECT_NE(result.asmText.find(".Lnarrow_chk_trap_"), std::string::npos);
+    EXPECT_NE(result.asmText.find("rt_trap_raise_error"), std::string::npos);
+}
+
+TEST(X86BackendRegressions, SubWidthCheckedAddEmitsRangeCheck) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0, 1};
+    entry.paramKinds = {ILValue::Kind::I64, ILValue::Kind::I64};
+    entry.instrs = {
+        opBits("iadd.ovf",
+               {val(ILValue::Kind::I64, 0), val(ILValue::Kind::I64, 1)},
+               2,
+               ILValue::Kind::I64,
+               16),
+        op("ret", {val(ILValue::Kind::I64, 2)})};
+
+    ILFunction fn{};
+    fn.name = "iadd_i16";
+    fn.blocks = {entry};
+
+    const CodegenResult result = compile(fn);
+    ASSERT_TRUE(result.errors.empty());
+    EXPECT_NE(result.asmText.find("addq"), std::string::npos);
+    EXPECT_NE(result.asmText.find("shlq $48"), std::string::npos);
+    EXPECT_NE(result.asmText.find("sarq $48"), std::string::npos);
+    EXPECT_NE(result.asmText.find(".Liadd_ovf_trap_"), std::string::npos);
+    EXPECT_NE(result.asmText.find("rt_trap_raise_error"), std::string::npos);
 }
 
 TEST(X86BackendRegressions, CompareBranchUsesFlagsDirectly) {

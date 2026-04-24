@@ -196,6 +196,8 @@ inline constexpr RegRegOp regRegOpcode(MOpcode op) {
             return {0x0F, 0x45, true}; // reg=dst, r/m=src
         case MOpcode::XORrr32:
             return {0x31, 0, false};
+        case MOpcode::MOVZXrr32:
+            return {0x89, 0, false};
         default:
             assert(false && "not a reg-reg GPR opcode");
             return {0, 0, false};

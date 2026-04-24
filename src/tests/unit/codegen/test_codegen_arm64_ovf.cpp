@@ -15,11 +15,19 @@
 #include "tests/TestHarness.hpp"
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <string>
 
+#include "codegen/aarch64/TargetAArch64.hpp"
+#include "codegen/aarch64/passes/EmitPass.hpp"
+#include "codegen/aarch64/passes/LoweringPass.hpp"
+#include "codegen/aarch64/passes/PassManager.hpp"
+#include "codegen/aarch64/passes/RegAllocPass.hpp"
+#include "il/core/Module.hpp"
 #include "tools/viper/cmd_codegen_arm64.hpp"
 
+using namespace viper::codegen::aarch64;
 using namespace viper::tools::ilc;
 
 static std::string outPath(const std::string &name) {
@@ -96,6 +104,55 @@ TEST(Arm64CLI, OverflowVariantsRR) {
             EXPECT_TRUE(hasExactCall(asmText, "rt_trap_ovf"));
         }
     }
+}
+
+TEST(Arm64CLI, SubWidthOverflowUsesAnnotatedWidth) {
+    il::core::Function fn;
+    fn.name = "subwidth_ovf";
+    fn.retType = il::core::Type(il::core::Type::Kind::I64);
+
+    il::core::BasicBlock entry;
+    entry.label = "entry";
+    entry.params.push_back({"a", il::core::Type(il::core::Type::Kind::I64), 0});
+    entry.params.push_back({"b", il::core::Type(il::core::Type::Kind::I64), 1});
+
+    il::core::Instr add;
+    add.result = 2;
+    add.op = il::core::Opcode::IAddOvf;
+    add.type = il::core::Type(il::core::Type::Kind::I16);
+    add.operands.push_back(il::core::Value::temp(0));
+    add.operands.push_back(il::core::Value::temp(1));
+    entry.instructions.push_back(add);
+
+    il::core::Instr ret;
+    ret.op = il::core::Opcode::Ret;
+    ret.type = il::core::Type(il::core::Type::Kind::Void);
+    ret.operands.push_back(il::core::Value::temp(2));
+    entry.instructions.push_back(ret);
+    entry.terminated = true;
+
+    fn.blocks.push_back(entry);
+    il::core::Module mod;
+    mod.functions.push_back(fn);
+
+    passes::AArch64Module module;
+    module.ilMod = &mod;
+    module.ti = &darwinTarget();
+
+    passes::PassManager pm;
+    pm.addPass(std::make_unique<passes::LoweringPass>());
+    pm.addPass(std::make_unique<passes::RegAllocPass>());
+    pm.addPass(std::make_unique<passes::EmitPass>());
+
+    passes::Diagnostics diags;
+    ASSERT_TRUE(pm.run(module, diags));
+    const std::string &asmText = module.assembly;
+
+    EXPECT_NE(asmText.find("add x"), std::string::npos);
+    EXPECT_NE(asmText.find("#48"), std::string::npos);
+    EXPECT_NE(asmText.find("cmp x"), std::string::npos);
+    EXPECT_NE(asmText.find("b.ne L.Ltrap_subwidth_ovf_"), std::string::npos);
+    EXPECT_TRUE(hasExactCall(asmText, "rt_trap_ovf"));
 }
 
 int main(int argc, char **argv) {

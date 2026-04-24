@@ -122,6 +122,65 @@ il::core::Module makeStoreF64ImmediateModule() {
     return module;
 }
 
+il::core::Module makeErrGetMsgModule() {
+    il::core::Module module{};
+
+    il::core::Function fn;
+    fn.name = "main";
+    fn.retType = il::core::Type(il::core::Type::Kind::Str);
+
+    il::core::BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+
+    il::core::Instr getMsg;
+    getMsg.op = il::core::Opcode::ErrGetMsg;
+    getMsg.type = il::core::Type(il::core::Type::Kind::Str);
+    getMsg.result = 1;
+    entry.instructions.push_back(getMsg);
+
+    il::core::Instr ret;
+    ret.op = il::core::Opcode::Ret;
+    ret.type = il::core::Type(il::core::Type::Kind::Void);
+    ret.operands.push_back(il::core::Value::temp(1));
+    entry.instructions.push_back(ret);
+
+    fn.blocks.push_back(entry);
+    module.functions.push_back(fn);
+    return module;
+}
+
+il::core::Module makeNarrowI16Module() {
+    il::core::Module module{};
+
+    il::core::Function fn;
+    fn.name = "main";
+    fn.retType = il::core::Type(il::core::Type::Kind::I16);
+    fn.params.push_back({"x", il::core::Type(il::core::Type::Kind::I64), 0});
+
+    il::core::BasicBlock entry;
+    entry.label = "entry";
+    entry.terminated = true;
+    entry.params.push_back({"x", il::core::Type(il::core::Type::Kind::I64), 0});
+
+    il::core::Instr narrow;
+    narrow.op = il::core::Opcode::CastSiNarrowChk;
+    narrow.type = il::core::Type(il::core::Type::Kind::I16);
+    narrow.result = 1;
+    narrow.operands.push_back(il::core::Value::temp(0));
+    entry.instructions.push_back(narrow);
+
+    il::core::Instr ret;
+    ret.op = il::core::Opcode::Ret;
+    ret.type = il::core::Type(il::core::Type::Kind::Void);
+    ret.operands.push_back(il::core::Value::temp(1));
+    entry.instructions.push_back(ret);
+
+    fn.blocks.push_back(entry);
+    module.functions.push_back(fn);
+    return module;
+}
+
 std::size_t binarySizeForOptLevel(int optimizeLevel) {
     Module module{};
     module.il = makeRetConstModule(0);
@@ -194,6 +253,43 @@ TEST(LoweringPass, PreservesF64ImmediateStoreOperandKind) {
     EXPECT_EQ(it->ops[1].kind, viper::codegen::x64::ILValue::Kind::F64);
     EXPECT_EQ(it->ops[1].id, -1);
     EXPECT_NEAR(it->ops[1].f64, 50.0, 1e-12);
+}
+
+TEST(LoweringPass, LowersErrGetMsgToRuntimeStringCall) {
+    Module module{};
+    module.il = makeErrGetMsgModule();
+
+    Diagnostics diags{};
+    LoweringPass pass{};
+    ASSERT_TRUE(pass.run(module, diags));
+    ASSERT_FALSE(diags.hasErrors());
+    ASSERT_TRUE(module.lowered.has_value());
+
+    const auto &instrs = module.lowered->funcs[0].blocks[0].instrs;
+    const auto it = std::find_if(instrs.begin(), instrs.end(), [](const auto &instr) {
+        return instr.opcode == "call" && !instr.ops.empty() &&
+               instr.ops[0].kind == viper::codegen::x64::ILValue::Kind::LABEL &&
+               instr.ops[0].label == "rt_throw_msg_get";
+    });
+    ASSERT_TRUE(it != instrs.end());
+    EXPECT_EQ(it->resultKind, viper::codegen::x64::ILValue::Kind::STR);
+}
+
+TEST(LoweringPass, PreservesCheckedNarrowResultWidth) {
+    Module module{};
+    module.il = makeNarrowI16Module();
+
+    Diagnostics diags{};
+    LoweringPass pass{};
+    ASSERT_TRUE(pass.run(module, diags));
+    ASSERT_FALSE(diags.hasErrors());
+
+    const auto &instrs = module.lowered->funcs[0].blocks[0].instrs;
+    const auto it = std::find_if(instrs.begin(), instrs.end(), [](const auto &instr) {
+        return instr.opcode == "si_narrow_chk";
+    });
+    ASSERT_TRUE(it != instrs.end());
+    EXPECT_EQ(it->resultBits, 16);
 }
 
 TEST(LegalizePass, FailsWhenLoweringMissing) {

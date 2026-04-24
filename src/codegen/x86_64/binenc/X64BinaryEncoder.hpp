@@ -142,7 +142,7 @@ class X64BinaryEncoder {
     /// Encode SETcc instruction.
     void encodeSETcc(int condCode, PhysReg dst, objfile::CodeSection &cs);
 
-    /// Encode MOVZXrr32 (movzbq).
+    /// Encode MOVZXrr8 (movzbq).
     void encodeMOVZX(PhysReg dst, PhysReg src, objfile::CodeSection &cs);
 
     /// Encode JMP/JCC/CALL with label target (direct branch/call).

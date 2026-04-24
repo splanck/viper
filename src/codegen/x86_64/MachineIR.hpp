@@ -111,7 +111,8 @@ enum class MOpcode {
     CMPrr,     ///< Compare registers.
     CMPri,     ///< Compare register with immediate.
     SETcc,     ///< Set byte on condition code.
-    MOVZXrr32, ///< Zero-extend 32-bit register to 64-bit.
+    MOVZXrr8,  ///< Zero-extend an 8-bit low-byte register to 64-bit.
+    MOVZXrr32, ///< Zero-extend a 32-bit register to 64-bit using a 32-bit write.
     TESTrr,    ///< Bitwise test between registers.
     JMP,       ///< Unconditional jump.
     JCC,       ///< Conditional jump.

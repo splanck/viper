@@ -158,6 +158,7 @@ inline void emit3D(std::ostream &os, const char *mnem, PhysReg d, PhysReg a, Phy
 
 #include <cstring>
 #include <iomanip>
+#include <stdexcept>
 
 namespace viper::codegen::aarch64 {
 
@@ -1044,6 +1045,12 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
             return;
         case MOpcode::AndRI:
             emitAndRI(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getImm(mi.ops[2]));
+            return;
+        case MOpcode::OrrRI:
+            emitOrrRI(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getImm(mi.ops[2]));
+            return;
+        case MOpcode::EorRI:
+            emitEorRI(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getImm(mi.ops[2]));
             return;
         case MOpcode::Csel:
             os << "  csel " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", "

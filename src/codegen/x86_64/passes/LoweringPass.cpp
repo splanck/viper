@@ -67,6 +67,9 @@ class ModuleAdapter {
     /// @brief Map from SSA ids to their value kinds.
     std::unordered_map<unsigned, ILValue::Kind> valueKinds_{};
 
+    /// @brief Map from SSA ids to their source IL integer widths.
+    std::unordered_map<unsigned, std::uint8_t> valueBits_{};
+
     /// @brief Current function being adapted (for return type access).
     const il::core::Function *currentFunc_{nullptr};
 
@@ -106,6 +109,30 @@ class ModuleAdapter {
                 return ILValue::Kind::STR;
             case Type::Kind::Error:
                 return ILValue::Kind::PTR;
+            case Type::Kind::Void:
+                reportUnsupported("void-typed value requested by backend adapter");
+            case Type::Kind::ResumeTok:
+                reportUnsupported("non-scalar IL type encountered during Phase A lowering");
+        }
+        reportUnsupported("unknown IL type kind encountered during Phase A lowering");
+    }
+
+    static std::uint8_t typeBitWidth(const il::core::Type &type) {
+        using il::core::Type;
+        switch (type.kind) {
+            case Type::Kind::I1:
+                return 1;
+            case Type::Kind::I16:
+                return 16;
+            case Type::Kind::I32:
+                return 32;
+            case Type::Kind::I64:
+            case Type::Kind::Ptr:
+            case Type::Kind::Str:
+            case Type::Kind::Error:
+                return 64;
+            case Type::Kind::F64:
+                return 64;
             case Type::Kind::Void:
                 reportUnsupported("void-typed value requested by backend adapter");
             case Type::Kind::ResumeTok:
@@ -197,11 +224,15 @@ class ModuleAdapter {
                 }
                 converted.kind = it->second;
                 converted.id = static_cast<int>(value.id);
+                if (const auto bitsIt = valueBits_.find(value.id); bitsIt != valueBits_.end()) {
+                    converted.bits = bitsIt->second;
+                }
                 break;
             }
             case il::core::Value::Kind::ConstInt: {
                 converted.kind =
                     hint.value_or(value.isBool ? ILValue::Kind::I1 : ILValue::Kind::I64);
+                converted.bits = value.isBool ? 1 : 64;
                 converted.i64 = value.i64;
                 break;
             }
@@ -226,6 +257,7 @@ class ModuleAdapter {
 
         if (hint && value.kind != il::core::Value::Kind::Temp) {
             converted.kind = *hint;
+            converted.bits = *hint == ILValue::Kind::I1 ? 1 : 64;
         }
 
         return converted;
@@ -254,12 +286,16 @@ class ModuleAdapter {
                                 const il::core::Instr &instr,
                                 const il::core::Type &type) {
         const ILValue::Kind kind = typeToKind(type);
+        const std::uint8_t bits = typeBitWidth(type);
         if (instr.result) {
             out.resultId = static_cast<int>(*instr.result);
             out.resultKind = kind;
+            out.resultBits = bits;
             valueKinds_[*instr.result] = kind;
+            valueBits_[*instr.result] = bits;
         } else {
             out.resultKind = kind;
+            out.resultBits = bits;
         }
         return kind;
     }
@@ -269,9 +305,12 @@ class ModuleAdapter {
         if (instr.result) {
             out.resultId = static_cast<int>(*instr.result);
             out.resultKind = kind;
+            out.resultBits = kind == ILValue::Kind::I1 ? 1 : 64;
             valueKinds_[*instr.result] = kind;
+            valueBits_[*instr.result] = out.resultBits;
         } else {
             out.resultKind = kind;
+            out.resultBits = kind == ILValue::Kind::I1 ? 1 : 64;
         }
     }
 
@@ -284,6 +323,8 @@ class ModuleAdapter {
         currentFunc_ = &func;
         valueKinds_.clear();
         valueKinds_.reserve(func.valueNames.size() + func.params.size());
+        valueBits_.clear();
+        valueBits_.reserve(func.valueNames.size() + func.params.size());
 
         ILFunction adapted{};
         adapted.name = func.name;
@@ -292,6 +333,7 @@ class ModuleAdapter {
         // Register parameter kinds
         for (const auto &param : func.params) {
             valueKinds_.emplace(param.id, typeToKind(param.type));
+            valueBits_.emplace(param.id, typeBitWidth(param.type));
         }
 
         // Adapt each block
@@ -316,6 +358,7 @@ class ModuleAdapter {
             adapted.paramIds.push_back(static_cast<int>(param.id));
             adapted.paramKinds.push_back(kind);
             valueKinds_[param.id] = kind;
+            valueBits_[param.id] = typeBitWidth(param.type);
         }
 
         // Adapt each instruction
@@ -582,6 +625,9 @@ class ModuleAdapter {
             case il::core::Opcode::ErrGetLine:
                 adaptRuntimeCall(instr, out, "rt_trap_get_line");
                 break;
+            case il::core::Opcode::ErrGetMsg:
+                adaptRuntimeCall(instr, out, "rt_throw_msg_get");
+                break;
             case il::core::Opcode::ResumeSame:
             case il::core::Opcode::ResumeNext:
                 reportUnsupported(std::string{"x86-64 lowering received raw "} +
@@ -797,6 +843,7 @@ class ModuleAdapter {
 
     void adaptStore(const il::core::Instr &instr, ILInstr &out) {
         out.opcode = "store";
+        out.resultBits = typeBitWidth(instr.type);
         convertOperands(
             instr, {ILValue::Kind::PTR, typeToKind(instr.type), ILValue::Kind::I64}, out);
         if (out.ops.size() > 3) {
@@ -868,11 +915,9 @@ class ModuleAdapter {
 
     /// @brief Adapt narrowing cast (i64 -> i32 etc).
     void adaptNarrowCast(const il::core::Instr &instr, ILInstr &out) {
-        // For now, treat narrow cast as just passing through the lower bits
-        // (same as trunc behavior). The checked variant would need to verify
-        // the value fits in the smaller type.
         setResultKind(out, instr, instr.type);
-        out.opcode = "trunc";
+        out.opcode = instr.op == il::core::Opcode::CastSiNarrowChk ? "si_narrow_chk"
+                                                                    : "ui_narrow_chk";
         convertOperands(instr, {ILValue::Kind::I64}, out);
     }
 

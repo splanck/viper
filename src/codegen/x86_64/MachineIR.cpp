@@ -107,6 +107,8 @@ namespace {
             return "CMPri";
         case MOpcode::SETcc:
             return "SETcc";
+        case MOpcode::MOVZXrr8:
+            return "MOVZXrr8";
         case MOpcode::MOVZXrr32:
             return "MOVZXrr32";
         case MOpcode::TESTrr:

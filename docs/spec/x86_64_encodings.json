@@ -406,7 +406,7 @@
       ]
     },
     {
-      "opcode": "MOVZXrr32",
+      "opcode": "MOVZXrr8",
       "mnemonic": "movzbq",
       "form": "RegReg",
       "order": "MOVZX_RR8",
@@ -417,6 +417,19 @@
       "flags": [
         "RequiresModRM",
         "REXW"
+      ]
+    },
+    {
+      "opcode": "MOVZXrr32",
+      "mnemonic": "movl",
+      "form": "RegReg",
+      "order": "R_R32",
+      "pattern": [
+        "Reg",
+        "Reg"
+      ],
+      "flags": [
+        "RequiresModRM"
       ]
     },
     {

@@ -20,8 +20,10 @@ programs, and the development roadmap. It is kept developer-focused with concret
 - **Fastpaths**: Arithmetic and call fastpath optimizations for common patterns
 - **Register allocator hardening**: Protected-use sets prevent source-operand eviction during def allocation; FPR load/store classification; operandRoles fix for immediate-ALU instructions; clean FPR spill slot reuse across calls; dead vreg early release
 - **Cross-target output plumbing**: `--target-darwin`, `--target-linux`, and `--target-windows` now drive the native object format, linker platform, and system-assembler target instead of silently falling back to the host
-- **Trap ABI fixes**: plain `trap` still marshals `x0 = NULL`, `idx.chk` now raises structured bounds errors through `rt_trap_raise_error`, checked div/rem and overflow traps call `rt_trap_div0` / `rt_trap_ovf`, and `trap.from_err` marshals its code into `x0` before calling `rt_trap_raise_error`
-- **Checked FP casts**: `cast.fp_to_si.rte.chk` and `cast.fp_to_ui.rte.chk` now lower as `FRintN` plus explicit NaN/range checks before `FCvtZS` / `FCvtZU`, trapping with `InvalidCast` on failure
+- **Trap ABI fixes**: plain `trap` still marshals `x0 = NULL`, `idx.chk` raises structured bounds errors through `rt_trap_raise_error`, checked div/rem and overflow traps call `rt_trap_div0` / `rt_trap_ovf`, and `trap.from_err` marshals its code into `x0` before calling `rt_trap_raise_error`
+- **Checked FP casts**: `cast.fp_to_si.rte.chk` and `cast.fp_to_ui.rte.chk` now lower as `FRintN` plus explicit NaN/range checks before `FCvtZS` / `FCvtZU`, reporting `InvalidCast` for NaN/invalid unsigned inputs and `Overflow` for range failures
+- **Width-sensitive checks**: annotated sub-width checked arithmetic and `idx.chk` sign-extend operands to the annotated width before checking. Checked narrowing compares the widened result and traps on overflow.
+- **Runtime error access**: `ErrGetMsg` lowers to `rt_throw_msg_get`, matching the VM/native EH contract.
 - **Control-flow correctness**: `switch.i32` edge arguments travel through phi spill slots via dedicated edge blocks, and larger switches lower as balanced decision trees instead of pure compare chains
 - **Call ABI hardening**: direct calls to module-defined variadic callees (`...`) now honor the variadic stack-tail ABI, and malformed direct-call IL is diagnosed instead of being silently dropped
 - **Emitter parity**: text assembly and the binary encoder now gate BTI / PACIASP / AUTIASP on target policy; branch-target identification and return-address signing are emitted by default on Darwin and skipped for Linux/Windows objects
@@ -55,7 +57,8 @@ programs, and the development roadmap. It is kept developer-focused with concret
 MIR opcode categories:
 
 - Integer arithmetic: `AddRRR`, `AddRI`, `SubRRR`, `SubRI`, `MulRRR`, `SDivRRR`, `UDivRRR`, `MSubRRRR`, `MAddRRRR`
-- Integer bitwise: `AndRRR`, `EorRRR`, `OrrRRR`, `TstRR`
+- Checked arithmetic: `AddOvfRRR`, `AddOvfRI`, `SubOvfRRR`, `SubOvfRI`, `MulOvfRRR`
+- Integer bitwise: `AndRRR`, `AndRI`, `EorRRR`, `EorRI`, `OrrRRR`, `OrrRI`, `TstRR`
 - Integer shift: `AsrRI`, `AsrvRRR`, `LslRI`, `LslvRRR`, `LsrRI`, `LsrvRRR`
 - Integer compare/select: `CmpRI`, `CmpRR`, `Csel`, `Cset`
 - Moves: `MovRI`, `MovRR`
@@ -84,9 +87,11 @@ MIR opcode categories:
 - `emitPrologue(os)` / `emitEpilogue(os)` — default `stp x29, x30, [sp, #-16]!; mov x29, sp` / `ldp x29, x30, [sp], #16; ret`
 - `emitPrologue(os, plan)` / `emitEpilogue(os, plan)` — callee-saved GPR save/restore via `FramePlan`
 - Integer ops: `emitMovRR`, `emitMovRI`, `emitAddRRR`, `emitSubRRR`, `emitMulRRR`, `emitAddRI`, `emitSubRI`,
-  `emitAndRRR`, `emitOrrRRR`, `emitEorRRR`, `emitLslRI`, `emitLsrRI`, `emitAsrRI`
+  `emitAndRRR`, `emitAndRI`, `emitOrrRRR`, `emitOrrRI`, `emitEorRRR`, `emitEorRI`, `emitLslRI`, `emitLsrRI`,
+  `emitAsrRI`
 - Chunk-safe SP adjustment: `emitSubSp` / `emitAddSp` use 4080-byte chunks (largest 16-byte-aligned 12-bit value)
 - Internal `mangleSymbol()` static function in `AsmEmitter.cpp` provides platform-correct symbol mangling (`_` prefix on Darwin)
+- Unknown MIR opcodes are hard emitter errors instead of comments in emitted assembly.
 
 ### IL to MIR lowering
 
@@ -104,7 +109,7 @@ MIR opcode categories:
 | File | Purpose |
 |------|---------|
 | `src/codegen/aarch64/FastPaths.hpp`/`.cpp` | Fast-path dispatcher for common single-block patterns |
-| `src/codegen/aarch64/fastpaths/FastPaths_Arithmetic.cpp` | Arithmetic fast paths (register-register and register-immediate; shifts excluded from commutative swap) |
+| `src/codegen/aarch64/fastpaths/FastPaths_Arithmetic.cpp` | Arithmetic fast paths (register-register and register-immediate; shifts excluded from commutative swap; sub-width checked arithmetic and checked chains fall back to generic lowering) |
 | `src/codegen/aarch64/fastpaths/FastPaths_Call.cpp` | Call fast paths (argument marshalling, stack args); transactional fallback and multi-stack-arg calls route through the generalized lowering path |
 | `src/codegen/aarch64/fastpaths/FastPaths_Cast.cpp` | Cast fast paths (narrowing overflow checks) |
 | `src/codegen/aarch64/fastpaths/FastPaths_Memory.cpp` | Memory operation fast paths |
@@ -276,8 +281,7 @@ Virtual registers (`%v0:gpr`) appear before RA; physical registers (`@x0:gpr`) a
 | `test_codegen_arm64_cli.cpp` | `ret 0` → `mov x0, #0` |
 | `test_codegen_arm64_add_params.cpp` | Add two params → `add x0, x0, x1` |
 | `test_codegen_arm64_add_imm.cpp` | Add/sub immediate forms |
-| `test_codegen_arm64_bitwise.cpp` | AND/OR/XOR register-register |
-| `test_codegen_arm64_bitwise.cpp` | AND/OR/XOR register-register |
+| `test_codegen_arm64_bitwise.cpp` | AND/OR/XOR register-register and logical-immediate lowering |
 | `test_codegen_arm64_call.cpp` | Simple extern call → `bl h` |
 | `test_codegen_arm64_call_args.cpp` | Argument marshalling with permutations and cycles |
 | `test_codegen_arm64_call_temp_args.cpp` | Non-param temporaries as call args |
@@ -290,7 +294,7 @@ Virtual registers (`%v0:gpr`) appear before RA; physical registers (`@x0:gpr`) a
 | `test_codegen_arm64_cf_loop_phi.cpp` | Loop with phi nodes |
 | `test_codegen_arm64_division.cpp` | Signed/unsigned div/rem with zero-check traps |
 | `test_codegen_arm64_exception_handling.cpp` | Exception handling paths |
-| `test_codegen_arm64_fp.cpp` | Floating-point arithmetic |
+| `test_codegen_arm64_fp.cpp` | Floating-point arithmetic and plain `fptosi` NaN/range checks |
 | `test_codegen_arm64_fp_basic.cpp` | Basic FP operations (add/sub/mul/div) |
 | `test_codegen_arm64_fp_cmp_all.cpp` | All FP comparison predicates including NaN |
 | `test_codegen_arm64_gep_load_store.cpp` | GEP, load, store lowering |
@@ -298,7 +302,7 @@ Virtual registers (`%v0:gpr`) appear before RA; physical registers (`@x0:gpr`) a
 | `test_codegen_arm64_icmp_imm.cpp` | Integer compare with immediates |
 | `test_codegen_arm64_indirect_call.cpp` | Indirect call via register (`blr`) |
 | `test_codegen_arm64_large_imm.cpp` | Large immediate materialization (`movz/movk`) |
-| `test_codegen_arm64_ovf.cpp` | Overflow-checked arithmetic |
+| `test_codegen_arm64_ovf.cpp` | Overflow-checked arithmetic, including annotated sub-width checks |
 | `test_codegen_arm64_params_wide.cpp` | Params beyond x1 (x2/x3 normalization) |
 | `test_codegen_arm64_peephole.cpp` | Peephole optimization correctness |
 | `test_codegen_arm64_peephole_comprehensive.cpp` | All five peephole patterns |
@@ -431,6 +435,21 @@ echo "Exit code: $?"  # Should print 15
 - **Was**: only a subset of signed constant-division rewrites existed, and unsigned non-power-of-two division still fell back to `udiv`
 - **Fix**: the peephole pass now emits magic-multiply sequences using `UmulhRRR`, with focused unit coverage for signed and unsigned cases
 
+### BUG 19: logical-immediate ORR/EOR text emission fell through (FIXED)
+
+- **Was**: `OrrRI` and `EorRI` could appear as unknown text-emitter opcodes.
+- **Fix**: `AsmEmitter` now emits `orr/eor xD, xN, #imm`, and unknown opcodes throw instead of producing commented assembly.
+
+### BUG 20: checked casts collapsed invalid and overflow trap codes (FIXED)
+
+- **Was**: checked FP casts used one runtime error code for all failure modes.
+- **Fix**: NaN/invalid unsigned inputs raise `InvalidCast`; finite out-of-range values raise `Overflow`.
+
+### BUG 21: fast paths bypassed width-sensitive checked arithmetic (FIXED)
+
+- **Was**: simple arithmetic fast paths could intercept annotated sub-width checked arithmetic before generic width checks.
+- **Fix**: sub-width checked arithmetic falls back to generic lowering; chained checked arithmetic no longer maps to unchecked fast-path ops.
+
 ## Peephole Optimizations Implemented
 
 | Pattern | Description |
@@ -449,7 +468,7 @@ New MIR opcodes added to support these patterns: `Cbnz`, `MAddRRRR`, `Csel`, `Ld
 ### Unimplemented Peephole Patterns
 
 - **Address mode folding**: Base+offset computations could fold into addressing modes
-- **AND-immediate optimization**: AND with bitmask constants could use logical immediate encoding
+- **Additional logical-immediate peepholes**: direct lowering handles logical immediates; post-RA folding from materialized constants into bitmask immediates remains future work
 - **Conditional select (CSEL) pattern matching**: `Csel` opcode exists; pattern matching not yet wired
 - **Compare elimination**: Comparisons whose flags are set by a preceding arithmetic instruction
 - **Shift-add fusion**: Shift followed by add → shifted-register form of ADD

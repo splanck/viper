@@ -519,7 +519,8 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         case MOpcode::TESTrr:
         case MOpcode::IMULrr:
         case MOpcode::CMOVNErr:
-        case MOpcode::XORrr32: {
+        case MOpcode::XORrr32:
+        case MOpcode::MOVZXrr32: {
             requireOps(2);
             PhysReg dst = regFromOperand(ops[0]);
             PhysReg src = regFromOperand(ops[1]);
@@ -620,8 +621,8 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
             return;
         }
 
-        // --- MOVZXrr32 (movzbq) ---
-        case MOpcode::MOVZXrr32: {
+        // --- MOVZXrr8 (movzbq) ---
+        case MOpcode::MOVZXrr8: {
             PhysReg dst = regFromOperand(ops[0]);
             PhysReg src = regFromOperand(ops[1]);
             encodeMOVZX(dst, src, text);
@@ -771,8 +772,8 @@ void X64BinaryEncoder::encodeRegReg(MOpcode op,
     const auto &regField = info.regIsDst ? hwDst : hwSrc;
     const auto &rmField = info.regIsDst ? hwSrc : hwDst;
 
-    // REX.W for 64-bit; XORrr32 is the only 32-bit reg-reg opcode.
-    bool rexW = (op != MOpcode::XORrr32);
+    // REX.W for 64-bit; selected opcodes intentionally write 32-bit destinations.
+    bool rexW = (op != MOpcode::XORrr32 && op != MOpcode::MOVZXrr32);
 
     if (needsRex(rexW, regField.rexBit != 0, false, rmField.rexBit != 0)) {
         cs.emit8(computeRex(rexW, regField.rexBit != 0, false, rmField.rexBit != 0));
@@ -1131,7 +1132,7 @@ void X64BinaryEncoder::encodeSETcc(int condCode, PhysReg dst, objfile::CodeSecti
     cs.emit8(makeModRM(0b11, 0, hw.bits3));
 }
 
-// === MOVZXrr32 (movzbq) ===
+// === MOVZXrr8 (movzbq) ===
 
 void X64BinaryEncoder::encodeMOVZX(PhysReg dst, PhysReg src, objfile::CodeSection &cs) {
     const auto hwDst = hwEncode(dst);

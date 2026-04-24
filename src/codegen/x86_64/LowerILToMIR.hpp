@@ -39,6 +39,7 @@ struct ILValue {
 
     Kind kind{Kind::I64};    ///< Static type of the value.
     int id{-1};              ///< SSA identifier (>= 0) or -1 for immediates.
+    std::uint8_t bits{64};    ///< Integer scalar width when kind is I1/I64.
     double f64{0.0};         ///< Payload for floating constants.
     int64_t i64{0};          ///< Payload for integer constants.
     std::string label{};     ///< Payload for label references.
@@ -52,6 +53,7 @@ struct ILInstr {
     std::vector<ILValue> ops{};                   ///< Ordered operands.
     int resultId{-1};                             ///< SSA identifier assigned to the result.
     ILValue::Kind resultKind{ILValue::Kind::I64}; ///< Static type of the result.
+    std::uint8_t resultBits{64};                  ///< Integer scalar width from the source IL type.
     il::support::SourceLoc loc{};                 ///< Source location (for debug info).
 };
 

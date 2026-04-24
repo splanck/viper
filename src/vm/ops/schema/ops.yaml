@@ -1724,7 +1724,7 @@
         "type": "I32"
       },
       "operands": {
-        "min": 1,
+        "min": 0,
         "max": 1,
         "types": [
           "Error",
@@ -1750,7 +1750,7 @@
         "type": "I32"
       },
       "operands": {
-        "min": 1,
+        "min": 0,
         "max": 1,
         "types": [
           "Error",
@@ -1776,7 +1776,7 @@
         "type": "I64"
       },
       "operands": {
-        "min": 1,
+        "min": 0,
         "max": 1,
         "types": [
           "Error",
@@ -1802,7 +1802,7 @@
         "type": "I32"
       },
       "operands": {
-        "min": 1,
+        "min": 0,
         "max": 1,
         "types": [
           "Error",
@@ -1828,7 +1828,7 @@
         "type": "Str"
       },
       "operands": {
-        "min": 1,
+        "min": 0,
         "max": 1,
         "types": [
           "Error",

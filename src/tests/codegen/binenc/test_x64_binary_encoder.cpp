@@ -488,14 +488,21 @@ int main() {
     }
 
     // ================================================================
-    // 20. MOVZXrr32 (movzbq)
+    // 20. MOVZXrr8 (movzbq) and MOVZXrr32 (movl)
     // ================================================================
 
     // movzbq %al, %rax -> 48 0F B6 C0
     {
-        auto bytes = encodeOne(MOpcode::MOVZXrr32, {gpr(PhysReg::RAX), gpr(PhysReg::RAX)});
+        auto bytes = encodeOne(MOpcode::MOVZXrr8, {gpr(PhysReg::RAX), gpr(PhysReg::RAX)});
         CHECK(bytes.size() == 4);
         CHECK(bytesMatch(bytes, {0x48, 0x0F, 0xB6, 0xC0}));
+    }
+
+    // movl %ecx, %eax -> 89 C8
+    {
+        auto bytes = encodeOne(MOpcode::MOVZXrr32, {gpr(PhysReg::RAX), gpr(PhysReg::RCX)});
+        CHECK(bytes.size() == 2);
+        CHECK(bytesMatch(bytes, {0x89, 0xC8}));
     }
 
     // ================================================================

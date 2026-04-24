@@ -335,6 +335,12 @@ void emitFpToUi(const ILInstr &instr, MIRBuilder &builder);
 /// @param builder The MIR builder to append instructions to.
 void emitUiToFp(const ILInstr &instr, MIRBuilder &builder);
 
+/// @brief Emits x86-64 MIR for checked signed integer narrowing.
+void emitSiNarrowChecked(const ILInstr &instr, MIRBuilder &builder);
+
+/// @brief Emits x86-64 MIR for checked unsigned integer narrowing.
+void emitUiNarrowChecked(const ILInstr &instr, MIRBuilder &builder);
+
 /// @brief Emits x86-64 MIR for IL `const_null` instruction (null pointer constant).
 /// @param instr The IL const_null instruction (no operands).
 /// @param builder The MIR builder to append instructions to.
@@ -635,7 +641,7 @@ struct RuleSpec {
 ///
 /// @see lookupRuleSpec() to find a rule for an instruction
 /// @see matchesRuleSpec() for the rule matching implementation
-extern const std::array<RuleSpec, 53> kLoweringRuleTable;
+extern const std::array<RuleSpec, 55> kLoweringRuleTable;
 
 } // namespace lowering
 

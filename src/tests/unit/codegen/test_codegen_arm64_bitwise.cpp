@@ -70,6 +70,36 @@ TEST(Arm64CLI, BitwiseRR) {
     }
 }
 
+TEST(Arm64CLI, BitwiseLogicalImmediate) {
+    struct Case {
+        const char *op;
+        const char *expectOpcode;
+    } cases[] = {
+        {"and", "and x"},
+        {"or", "orr x"},
+        {"xor", "eor x"},
+    };
+
+    for (const auto &c : cases) {
+        std::string in = std::string("arm64_bit_imm_") + c.op + ".il";
+        std::string out = std::string("arm64_bit_imm_") + c.op + ".s";
+        std::string il = std::string("il 0.1\n"
+                                     "func @f(%a:i64) -> i64 {\n"
+                                     "entry(%a:i64):\n"
+                                     "  %t0 = ") +
+                         c.op + " %a, 255\n  ret %t0\n}\n";
+        const std::string inP = outPath(in);
+        const std::string outP = outPath(out);
+        writeFile(inP, il);
+        const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
+        ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+        const std::string asmText = readFile(outP);
+        EXPECT_NE(asmText.find(c.expectOpcode), std::string::npos);
+        EXPECT_NE(asmText.find("#255"), std::string::npos);
+        EXPECT_EQ(asmText.find("# <unknown opcode>"), std::string::npos);
+    }
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

@@ -180,7 +180,7 @@ TEST(X64CallABI, IndirectBoolCallUsesMovzxAndCarriesPlanId) {
     EXPECT_NE(callInstr.callPlanId, MInstr::kNoCallPlanId);
     ASSERT_LT(callInstr.callPlanId, lowering.callPlans().size());
     EXPECT_EQ(lowering.callPlans()[callInstr.callPlanId].args.size(), 0u);
-    EXPECT_EQ(block.instructions[*callIndex + 1].opcode, MOpcode::MOVZXrr32);
+    EXPECT_EQ(block.instructions[*callIndex + 1].opcode, MOpcode::MOVZXrr8);
 }
 
 TEST(X64CallABI, IndirectLabelCallsPreserveKnownVarArgMetadata) {

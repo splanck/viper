@@ -1124,6 +1124,38 @@ bool lowerURemChk0(const il::core::Instr &ins,
 // Index Bounds Check (idx.chk)
 //===----------------------------------------------------------------------===//
 
+static int integerTypeBits(il::core::Type::Kind kind) {
+    switch (kind) {
+        case il::core::Type::Kind::I1:
+            return 1;
+        case il::core::Type::Kind::I16:
+            return 16;
+        case il::core::Type::Kind::I32:
+            return 32;
+        default:
+            return 64;
+    }
+}
+
+static uint16_t signExtendVRegToWidth(uint16_t src,
+                                      int bits,
+                                      LoweringContext &ctx,
+                                      MBasicBlock &out) {
+    if (bits >= 64)
+        return src;
+    const int shift = 64 - bits;
+    const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
+    out.instrs.push_back(MInstr{MOpcode::LslRI,
+                                {MOperand::vregOp(RegClass::GPR, dst),
+                                 MOperand::vregOp(RegClass::GPR, src),
+                                 MOperand::immOp(shift)}});
+    out.instrs.push_back(MInstr{MOpcode::AsrRI,
+                                {MOperand::vregOp(RegClass::GPR, dst),
+                                 MOperand::vregOp(RegClass::GPR, dst),
+                                 MOperand::immOp(shift)}});
+    return dst;
+}
+
 bool lowerIdxChk(const il::core::Instr &ins,
                  const il::core::BasicBlock &bb,
                  LoweringContext &ctx,
@@ -1177,6 +1209,12 @@ bool lowerIdxChk(const il::core::Instr &ins,
                                 hiV,
                                 hiCls))
         return false;
+
+    const int widthBits = integerTypeBits(ins.type.kind);
+    idxV = signExtendVRegToWidth(idxV, widthBits, ctx, out);
+    if (!loIsZero)
+        loV = signExtendVRegToWidth(loV, widthBits, ctx, out);
+    hiV = signExtendVRegToWidth(hiV, widthBits, ctx, out);
 
     const std::string trapLabel = ".Ltrap_bounds_" + std::to_string(ctx.trapLabelCounter++);
 
@@ -1541,14 +1579,51 @@ bool lowerFptosi(const il::core::Instr &ins,
                                 fv,
                                 fcls))
         return false;
+    if (fcls != RegClass::FPR)
+        return false;
 
     const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
     ctx.tempVReg[*ins.result] = dst;
     ctx.tempRegClass[*ins.result] = RegClass::GPR;
 
+    const std::string invalidLabel =
+        ".Ltrap_fptosi_invalid_" + std::to_string(ctx.trapLabelCounter++);
+    const std::string overflowLabel =
+        ".Ltrap_fptosi_ovf_" + std::to_string(ctx.trapLabelCounter++);
+
+    out.instrs.push_back(MInstr{
+        MOpcode::FCmpRR,
+        {MOperand::vregOp(RegClass::FPR, fv), MOperand::vregOp(RegClass::FPR, fv)}});
+    out.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("vs"), MOperand::labelOp(invalidLabel)}});
+
+    const uint16_t lowerBound = allocateNextVReg(ctx.nextVRegId);
+    emitF64BitsToVReg(out, lowerBound, 0xC3E0000000000000ULL, ctx.nextVRegId);
+    const uint16_t upperBound = allocateNextVReg(ctx.nextVRegId);
+    emitF64BitsToVReg(out, upperBound, 0x43E0000000000000ULL, ctx.nextVRegId);
+
+    out.instrs.push_back(MInstr{
+        MOpcode::FCmpRR,
+        {MOperand::vregOp(RegClass::FPR, fv), MOperand::vregOp(RegClass::FPR, lowerBound)}});
+    out.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("lt"), MOperand::labelOp(overflowLabel)}});
+    out.instrs.push_back(MInstr{
+        MOpcode::FCmpRR,
+        {MOperand::vregOp(RegClass::FPR, fv), MOperand::vregOp(RegClass::FPR, upperBound)}});
+    out.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("ge"), MOperand::labelOp(overflowLabel)}});
+
     out.instrs.push_back(
         MInstr{MOpcode::FCvtZS,
                {MOperand::vregOp(RegClass::GPR, dst), MOperand::vregOp(RegClass::FPR, fv)}});
+
+    ctx.mf.blocks.emplace_back();
+    ctx.mf.blocks.back().name = invalidLabel;
+    emitTrapRaiseError(ctx.mf.blocks.back(), 5);
+
+    ctx.mf.blocks.emplace_back();
+    ctx.mf.blocks.back().name = overflowLabel;
+    emitTrapRaiseError(ctx.mf.blocks.back(), 4);
     return true;
 }
 
@@ -1658,6 +1733,16 @@ bool lowerNarrowingCast(const il::core::Instr &ins,
             MInstr{MOpcode::MovRR,
                    {MOperand::vregOp(RegClass::GPR, vt), MOperand::vregOp(RegClass::GPR, sv)}});
     }
+    out.instrs.push_back(
+        MInstr{MOpcode::CmpRR,
+               {MOperand::vregOp(RegClass::GPR, vt), MOperand::vregOp(RegClass::GPR, sv)}});
+    const std::string trapLabel = ".Ltrap_cast_" + std::to_string(ctx.trapLabelCounter++);
+    out.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel)}});
+    ctx.tempRegClass[*ins.result] = RegClass::GPR;
+    ctx.mf.blocks.emplace_back();
+    ctx.mf.blocks.back().name = trapLabel;
+    ctx.mf.blocks.back().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_ovf")}});
     return true;
 }
 

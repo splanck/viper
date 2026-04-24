@@ -52,6 +52,24 @@ void emitBoundsTrap(MIRBuilder &builder) {
     builder.append(MInstr::make(MOpcode::UD2));
 }
 
+Operand emitSignExtendedToWidth(MIRBuilder &builder,
+                                EmitCommon &emit,
+                                Operand src,
+                                std::uint8_t widthBits) {
+    Operand value = emit.materialiseGpr(std::move(src));
+    if (widthBits >= 64) {
+        return value;
+    }
+
+    const int shift = 64 - static_cast<int>(widthBits);
+    const VReg narrowedReg = builder.makeTempVReg(RegClass::GPR);
+    const Operand narrowed = makeVRegOperand(narrowedReg.cls, narrowedReg.id);
+    builder.append(MInstr::make(MOpcode::MOVrr, {emit.clone(narrowed), emit.clone(value)}));
+    builder.append(MInstr::make(MOpcode::SHLri, {emit.clone(narrowed), makeImmOperand(shift)}));
+    builder.append(MInstr::make(MOpcode::SARri, {emit.clone(narrowed), makeImmOperand(shift)}));
+    return narrowed;
+}
+
 struct SwitchCase {
     int64_t value{0};
     Operand label{};
@@ -154,8 +172,9 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder) {
     const VReg destReg = builder.ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
 
-    // Materialise the index into a GPR
-    Operand index = emit.materialiseGpr(builder.makeOperandForValue(instr.ops[0], RegClass::GPR));
+    // Materialise the index into a GPR, truncating to the IL result width before comparing.
+    Operand index = emitSignExtendedToWidth(
+        builder, emit, builder.makeOperandForValue(instr.ops[0], RegClass::GPR), instr.resultBits);
 
     // Generate unique labels for the skip points
     const uint32_t labelId = builder.lower().nextLocalLabelId();
@@ -167,6 +186,9 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder) {
 
     // Check upper bound.
     Operand upper = builder.makeOperandForValue(instr.ops[2], RegClass::GPR);
+    if (instr.resultBits < 64) {
+        upper = emitSignExtendedToWidth(builder, emit, std::move(upper), instr.resultBits);
+    }
     if (const auto *imm = std::get_if<OpImm>(&upper); imm && fitsImm32(imm->val)) {
         builder.append(MInstr::make(MOpcode::CMPri, std::vector<Operand>{index, upper}));
     } else {
@@ -187,6 +209,9 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder) {
     Operand lower{};
     if (!loIsZero) {
         lower = builder.makeOperandForValue(instr.ops[1], RegClass::GPR);
+        if (instr.resultBits < 64) {
+            lower = emitSignExtendedToWidth(builder, emit, std::move(lower), instr.resultBits);
+        }
         if (const auto *imm = std::get_if<OpImm>(&lower); imm && fitsImm32(imm->val)) {
             builder.append(MInstr::make(MOpcode::CMPri, std::vector<Operand>{index, lower}));
         } else {

@@ -177,6 +177,24 @@ TEST(Arm64IdxChk, NegativeLowerBoundNormalizesResult) {
     ASSERT_EQ(runArm64({in.c_str(), "-run-native", "-O0"}), 5);
 }
 
+TEST(Arm64IdxChk, SubWidthOperandsAreSignExtendedBeforeCheck) {
+    const std::string in = outPath("arm64_idxchk_i16.il");
+    const std::string out = outPath("arm64_idxchk_i16.s");
+    const std::string il = "il 0.1\n"
+                           "func @f(%idx:i16) -> i16 {\n"
+                           "entry(%idx:i16):\n"
+                           "  %checked:i16 = idx.chk %idx, -5, 5\n"
+                           "  ret %checked\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O0"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_NE(asmText.find("#48"), std::string::npos);
+    EXPECT_NE(asmText.find("b.lt L.Ltrap_bounds_"), std::string::npos);
+    EXPECT_NE(asmText.find("b.ge L.Ltrap_bounds_"), std::string::npos);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

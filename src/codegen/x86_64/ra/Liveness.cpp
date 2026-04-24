@@ -122,6 +122,7 @@ void LivenessAnalysis::collectVregs(const MInstr &instr,
             case MOpcode::MOVri:
             case MOpcode::MOVmr:
             case MOpcode::LEA:
+            case MOpcode::MOVZXrr8:
             case MOpcode::MOVZXrr32:
             case MOpcode::CVTSI2SD:
             case MOpcode::CVTTSD2SI:

@@ -26,7 +26,7 @@ namespace viper::codegen::x64 {
 
 namespace lowering {
 
-const std::array<RuleSpec, 53> kLoweringRuleTable = {
+const std::array<RuleSpec, 55> kLoweringRuleTable = {
     // === Arithmetic Operations ===
     RuleSpec{"add",
              OperandShape{2U,
@@ -456,6 +456,28 @@ const std::array<RuleSpec, 53> kLoweringRuleTable = {
              RuleFlags::None,
              &emitFPToSIChecked,
              "fptosi_chk"},
+    RuleSpec{"si_narrow_chk",
+             OperandShape{1U,
+                          1U,
+                          1U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitSiNarrowChecked,
+             "si_narrow_chk"},
+    RuleSpec{"ui_narrow_chk",
+             OperandShape{1U,
+                          1U,
+                          1U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitUiNarrowChecked,
+             "ui_narrow_chk"},
     // === Exception Handling ===
     RuleSpec{"eh.push",
              OperandShape{1U,

@@ -420,13 +420,17 @@ static void testCmpTestSet(TestContext &ctx) {
               MInstr::make(MOpcode::TESTrr, {gpr(PhysReg::RAX), gpr(PhysReg::RAX)}),
               "testq %rax, %rax");
 
-    ctx.check("MOVZXrr32_lo",
-              MInstr::make(MOpcode::MOVZXrr32, {gpr(PhysReg::RAX), gpr(PhysReg::RCX)}),
+    ctx.check("MOVZXrr8_lo",
+              MInstr::make(MOpcode::MOVZXrr8, {gpr(PhysReg::RAX), gpr(PhysReg::RCX)}),
               "movzbq %cl, %rax");
 
-    ctx.check("MOVZXrr32_hi",
-              MInstr::make(MOpcode::MOVZXrr32, {gpr(PhysReg::R8), gpr(PhysReg::R9)}),
+    ctx.check("MOVZXrr8_hi",
+              MInstr::make(MOpcode::MOVZXrr8, {gpr(PhysReg::R8), gpr(PhysReg::R9)}),
               "movzbq %r9b, %r8");
+
+    ctx.check("MOVZXrr32",
+              MInstr::make(MOpcode::MOVZXrr32, {gpr(PhysReg::RAX), gpr(PhysReg::RCX)}),
+              "movl %ecx, %eax");
 
     // SETcc — all 14 condition codes
     // SETcc takes {imm(condCode), gpr(dest)} — operand order is imm first, reg second

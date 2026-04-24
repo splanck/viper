@@ -116,7 +116,7 @@ void emitCapturedCallResult(const ILInstr &instr, const VReg &resultVReg, MIRBui
     } else if (instr.resultKind == ILValue::Kind::I1) {
         const Operand retReg =
             makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
-        builder.append(MInstr::make(MOpcode::MOVZXrr32, std::vector<Operand>{resultOp, retReg}));
+        builder.append(MInstr::make(MOpcode::MOVZXrr8, std::vector<Operand>{resultOp, retReg}));
     } else {
         const Operand retReg =
             makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));

@@ -447,6 +447,7 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
         std::vector<MInstr> prefix{};
         if ((instr.opcode == MOpcode::MOVrr || instr.opcode == MOpcode::MOVri ||
              instr.opcode == MOpcode::LEA || instr.opcode == MOpcode::MOVSDrr ||
+             instr.opcode == MOpcode::MOVZXrr8 ||
              instr.opcode == MOpcode::MOVZXrr32 || instr.opcode == MOpcode::MOVQrx ||
              instr.opcode == MOpcode::MOVQxr) &&
             !instr.operands.empty()) {
@@ -885,6 +886,7 @@ std::vector<LinearScanAllocator::OperandRole> LinearScanAllocator::classifyOpera
                 roles[1] = OperandRole{false, true}; // destination is write
             }
             break;
+        case MOpcode::MOVZXrr8:
         case MOpcode::MOVZXrr32:
         case MOpcode::CVTSI2SD:
         case MOpcode::CVTTSD2SI:

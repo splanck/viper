@@ -29,6 +29,14 @@ namespace viper::codegen::aarch64::fastpaths {
 
 using il::core::Opcode;
 
+static bool isCheckedOverflowOp(Opcode op) {
+    return op == Opcode::IAddOvf || op == Opcode::ISubOvf || op == Opcode::IMulOvf;
+}
+
+static bool isSubWidthCheckedOverflow(const il::core::Instr &instr) {
+    return isCheckedOverflowOp(instr.op) && instr.type.kind != il::core::Type::Kind::I64;
+}
+
 std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx) {
     if (ctx.fn.blocks.empty())
         return std::nullopt;
@@ -44,7 +52,8 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx) {
     if (ctx.fn.blocks.size() == 1 && bb.instructions.size() >= 2 && bb.params.size() >= 2) {
         const auto &opI = bb.instructions[bb.instructions.size() - 2];
         const auto &retI = bb.instructions.back();
-        if ((opI.op == Opcode::Add || opI.op == Opcode::IAddOvf || opI.op == Opcode::Sub ||
+        if (!isSubWidthCheckedOverflow(opI) &&
+            (opI.op == Opcode::Add || opI.op == Opcode::IAddOvf || opI.op == Opcode::Sub ||
              opI.op == Opcode::ISubOvf || opI.op == Opcode::Mul || opI.op == Opcode::IMulOvf ||
              opI.op == Opcode::And || opI.op == Opcode::Or || opI.op == Opcode::Xor ||
              opI.op == Opcode::ICmpEq || opI.op == Opcode::ICmpNe || opI.op == Opcode::SCmpLT ||
@@ -171,7 +180,8 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx) {
         const bool isAShr = (binI.op == Opcode::AShr);
         const bool isICmpImm = (lookupCondition(binI.op) != nullptr);
 
-        if ((isAdd || isAddOvf || isSub || isSubOvf || isShl || isLShr || isAShr) &&
+        if (!isSubWidthCheckedOverflow(binI) &&
+            (isAdd || isAddOvf || isSub || isSubOvf || isShl || isLShr || isAShr) &&
             retI.op == Opcode::Ret && binI.result && !retI.operands.empty() &&
             binI.operands.size() == 2) {
             const auto &retV = retI.operands[0];
@@ -406,8 +416,10 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx) {
                             }
                         };
 
-                        auto mop1 = mapOp(op1I.op);
-                        auto mop2 = mapOp(op2I.op);
+                        auto mop1 =
+                            isCheckedOverflowOp(op1I.op) ? std::nullopt : mapOp(op1I.op);
+                        auto mop2 =
+                            isCheckedOverflowOp(op2I.op) ? std::nullopt : mapOp(op2I.op);
                         if (mop1 && mop2) {
                             const PhysReg r0 = ctx.argOrder[static_cast<std::size_t>(p0)];
                             const PhysReg r1 = ctx.argOrder[static_cast<std::size_t>(p1)];

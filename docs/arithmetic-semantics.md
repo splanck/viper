@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-23
 ---
 
 # Viper Arithmetic Semantics Reference
@@ -28,6 +28,8 @@ opcodes.
 These support sub-width type annotations (I32, I16). The overflow check uses
 the type's range: `iadd.ovf : i32` traps when the result exceeds `INT32_MAX` or
 falls below `INT32_MIN`.
+Native x86-64 and AArch64 lowering preserve those annotations by sign-extending
+operands to the annotated width before checking the computed result.
 
 > **Plain `add`/`sub`/`mul` are verifier-rejected.** The opcodes still exist
 > in `Opcode.def` for legacy lowering, but the IL verifier (see
@@ -153,8 +155,9 @@ All ordered comparisons return `false` when either operand is NaN.
 | `cast.fp_to_si.rte.chk` | Round-to-even, then convert | **Trap** | **Trap** |
 | `cast.fp_to_ui.rte.chk` | Round-to-even, then convert (unsigned) | **Trap** | **Trap** |
 
-In the VM, `fptosi` traps on NaN and overflow (not UB). Native backends must
-preserve this behavior.
+The VM and native backends trap `fptosi` on NaN and overflow (not UB).
+The public verifier currently directs source IL toward `cast.fp_to_si.rte.chk`;
+these `fptosi` rules apply to execution layers that receive the opcode.
 
 `fptosi(1.9)` produces `1` (truncation toward zero).
 `fptosi(-1.9)` produces `-1` (truncation toward zero).

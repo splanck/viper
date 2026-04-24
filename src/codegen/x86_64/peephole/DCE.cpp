@@ -117,6 +117,7 @@ namespace {
         case MOpcode::REMS64Chk0rr:
         case MOpcode::DIVU64rr:
         case MOpcode::REMU64rr:
+        case MOpcode::MOVZXrr8:
         case MOpcode::MOVZXrr32:
         case MOpcode::MOVSDrr:
         case MOpcode::MOVSDmr:

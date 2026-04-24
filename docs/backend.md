@@ -446,13 +446,15 @@ JCC label
 
 **3. Boolean Materialization**
 
-IL `i1` values are materialized using `SETcc` + `MOVZXrr32`:
+IL `i1` values are materialized using `SETcc` + `MOVZXrr8`:
 
 ```text
 CMPrr %a, %b
 SETcc %result8      # Set byte based on condition
-MOVZXrr32 %result, %result8  # Zero-extend to 64-bit
+MOVZXrr8 %result, %result8   # Zero-extend byte result to 64-bit
 ```
+
+`MOVZXrr32` is the separate 32-bit-write zero-extension case and encodes as `movl`.
 
 **4. Conditional Moves**
 

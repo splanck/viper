@@ -176,11 +176,9 @@ foreach(_i RANGE 0 ${_LAST})
 endforeach()
 
 _append(_out "    default:")
-_append(_out "        os << \"  # <unknown opcode>\\n\";")
-_append(_out "        break;")
+_append(_out "        throw std::runtime_error(std::string(\"AArch64 text emitter: unknown opcode \") + opcodeName(mi.opc));")
 _append(_out "}")
 
 get_filename_component(_OUT_DIR "${OUTPUT_FILE}" DIRECTORY)
 file(MAKE_DIRECTORY "${_OUT_DIR}")
 file(WRITE "${OUTPUT_FILE}" "${_out}")
-

@@ -508,10 +508,10 @@ trap.from_err i32 6
 %line = err.get_line %err
 ```
 
-**`err.get_msg`** — Extract error message string from the current trap context; returns `str`. Used by `catch(e)` to retrieve the `throw` message.
+**`err.get_msg`** — Extract error message string from the current trap context; returns `str`. Used by `catch(e)` to retrieve the `throw` message. Source IL uses the error operand; native EH lowering may canonicalize the backend-internal form to no operand.
 
 ```llvm
-%msg = err.get_msg
+%msg = err.get_msg %err
 ```
 
 **`extern`** — Declare external function signature (from runtime or other modules).
@@ -526,7 +526,7 @@ Compatibility:
 - When built with `-DVIPER_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Viper.*`.
 - New code should emit `@Viper.*`.
 
-**`fptosi`** — Convert floating-point to signed integer (no check; undefined on NaN or overflow; use `cast.fp_to_si.rte.chk` for checked conversion).
+**`fptosi`** — Convert floating-point to signed integer by truncating toward zero; traps on NaN or signed `i64` overflow. Current verified source IL should use `cast.fp_to_si.rte.chk`; VM/native backends preserve these semantics if they receive `fptosi`.
 
 ```llvm
 %i = fptosi %f
