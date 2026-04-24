@@ -1032,8 +1032,7 @@ void X64BinaryEncoder::encodeLEARip(PhysReg dst,
     (void)isDarwin;
     std::string symName = rip.name;
     const uint32_t rodataSymIdx = rodata.symbols().find(symName);
-    const uint32_t symIdx =
-        (rodataSymIdx != 0) ? rodataSymIdx : text.findOrDeclareSymbol(symName);
+    const uint32_t symIdx = text.findOrDeclareSymbol(symName);
     const auto targetSection = (rodataSymIdx != 0) ? objfile::SymbolSection::Rodata
                                                    : objfile::SymbolSection::Undefined;
     size_t dispOffset = text.currentOffset();
@@ -1063,8 +1062,7 @@ void X64BinaryEncoder::encodeSseRipLoad(PhysReg dst,
     (void)isDarwin;
     std::string symName = rip.name;
     const uint32_t rodataSymIdx = rodata.symbols().find(symName);
-    const uint32_t symIdx =
-        (rodataSymIdx != 0) ? rodataSymIdx : text.findOrDeclareSymbol(symName);
+    const uint32_t symIdx = text.findOrDeclareSymbol(symName);
     const auto targetSection = (rodataSymIdx != 0) ? objfile::SymbolSection::Rodata
                                                    : objfile::SymbolSection::Undefined;
     size_t dispOffset = text.currentOffset();

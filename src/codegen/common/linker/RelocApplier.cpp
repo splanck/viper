@@ -185,6 +185,10 @@ static bool resolveLocalSymAddr(const ObjSymbol &sym,
                                 const LocationMap &locMap,
                                 const LinkLayout &layout,
                                 uint64_t &addr) {
+    if (sym.absolute) {
+        addr = static_cast<uint64_t>(sym.offset);
+        return true;
+    }
     if (sym.sectionIndex == 0)
         return false;
     size_t outSecIdx = 0;
@@ -214,6 +218,10 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
     for (auto &[name, entry] : layout.globalSyms) {
         if (entry.binding == GlobalSymEntry::Undefined || entry.binding == GlobalSymEntry::Dynamic)
             continue;
+        if (entry.absolute) {
+            entry.resolvedAddr = static_cast<uint64_t>(entry.offset);
+            continue;
+        }
 
         size_t outSecIdx = 0;
         size_t chunkOffset = 0;
@@ -262,6 +270,15 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     if (!symResolved && rel.symIndex < obj.symbols.size())
                         symResolved =
                             resolveLocalSymAddr(obj.symbols[rel.symIndex], oi, locMap, layout, S);
+                }
+                if (!symResolved && !symName.empty() && obj.symbols[rel.symIndex].weakExternal) {
+                    const std::string &fallback = obj.symbols[rel.symIndex].weakDefaultName;
+                    if (!fallback.empty())
+                        symResolved = resolveSymAddr(fallback, layout.globalSyms, S);
+                    if (!symResolved) {
+                        S = 0;
+                        symResolved = true;
+                    }
                 }
                 if (!symResolved && !symName.empty()) {
                     if (platform == LinkPlatform::Windows && symName == "__ImageBase") {
@@ -623,7 +640,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
         }
     }
 
-    if (platform == LinkPlatform::Windows && arch == LinkArch::X86_64)
+    if (platform == LinkPlatform::Windows)
         sortWindowsPdata(layout);
 
     return true;

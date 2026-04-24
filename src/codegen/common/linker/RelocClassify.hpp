@@ -153,7 +153,7 @@ inline RelocAction coffA64Action(uint32_t type) {
         case coff_a64::kPageOff12A:
             return RelocAction::PageOff12;
         case coff_a64::kPageOff12L:
-            return RelocAction::LdSt64Off;
+            return RelocAction::PageOff12;
         case coff_a64::kBranch19:
             return RelocAction::CondBr19;
         default:

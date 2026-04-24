@@ -68,6 +68,10 @@ bool resolveLocalSymbol(const ObjSymbol &sym,
                         const std::unordered_map<uint64_t, std::pair<size_t, size_t>> &locMap,
                         const LinkLayout &layout,
                         uint64_t &addr) {
+    if (sym.absolute) {
+        addr = static_cast<uint64_t>(sym.offset);
+        return true;
+    }
     if (sym.sectionIndex == 0)
         return false;
     auto it = locMap.find(makeKey(objIdx, sym.sectionIndex));
@@ -84,6 +88,8 @@ constexpr size_t kTrampolineSize = 12;
 
 bool branch26Reachable(uint64_t from, uint64_t to) {
     const int64_t disp = static_cast<int64_t>(to) - static_cast<int64_t>(from);
+    if ((disp & 0x3) != 0)
+        return false;
     const int64_t imm26 = disp >> 2;
     return imm26 <= 0x1FFFFFF && imm26 >= -0x2000000;
 }
@@ -157,6 +163,10 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     for (auto &[name, entry] : layout.globalSyms) {
         if (entry.binding == GlobalSymEntry::Undefined || entry.binding == GlobalSymEntry::Dynamic)
             continue;
+        if (entry.absolute) {
+            entry.resolvedAddr = static_cast<uint64_t>(entry.offset);
+            continue;
+        }
         auto it = locMap.find(makeKey(entry.objIndex, entry.secIndex));
         if (it != locMap.end()) {
             entry.resolvedAddr =
@@ -205,9 +215,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                 const int64_t A = rel.addend;
                 const uint64_t P = secVA + chunkBase + rel.offset;
                 const int64_t disp = static_cast<int64_t>(S) + A - static_cast<int64_t>(P);
-                const int64_t imm26 = disp >> 2;
-
-                if (imm26 <= 0x1FFFFFF && imm26 >= -0x2000000)
+                if (branch26Reachable(P, static_cast<uint64_t>(static_cast<int64_t>(S) + A)))
                     continue; // In range — no trampoline needed.
 
                 OutOfRangeBranch oob;
@@ -347,6 +355,10 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     for (auto &[name, entry] : layout.globalSyms) {
         if (entry.binding == GlobalSymEntry::Undefined || entry.binding == GlobalSymEntry::Dynamic)
             continue;
+        if (entry.absolute) {
+            entry.resolvedAddr = static_cast<uint64_t>(entry.offset);
+            continue;
+        }
         auto it = locMap.find(makeKey(entry.objIndex, entry.secIndex));
         if (it != locMap.end()) {
             entry.resolvedAddr =
@@ -356,8 +368,11 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
 
     for (auto &[key, trampoline] : trampolines) {
         const uint64_t tramVA = textSec.virtualAddr + trampoline.actualOffset;
-        layout.globalSyms[trampoline.symbolName] =
-            GlobalSymEntry{trampoline.symbolName, GlobalSymEntry::Global, 0, 0, 0, tramVA};
+        GlobalSymEntry entry;
+        entry.name = trampoline.symbolName;
+        entry.binding = GlobalSymEntry::Global;
+        entry.resolvedAddr = tramVA;
+        layout.globalSyms[trampoline.symbolName] = std::move(entry);
 
         uint8_t *tramp = textSec.data.data() + trampoline.actualOffset;
         writeLE32At(tramp + 0, 0x90000010); // ADRP x16
@@ -410,6 +425,12 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         const uint64_t tramVA = textSec.virtualAddr + tramOff;
         const uint64_t P = outSec.virtualAddr + patchOff;
         const int64_t disp = static_cast<int64_t>(tramVA) - static_cast<int64_t>(P);
+        if ((disp & 0x3) != 0) {
+            err << "error: trampoline at offset " << tramOff
+                << " is not instruction-aligned for branch at VA 0x" << std::hex << P << std::dec
+                << "\n";
+            return false;
+        }
         const int64_t imm26 = disp >> 2;
 
         if (imm26 > 0x1FFFFFF || imm26 < -0x2000000) {

@@ -190,6 +190,10 @@ Function generateThunk(const Function &importDecl,
     thunk.valueNames.resize(nextTemp);
     for (const auto &p : thunk.params)
         thunk.valueNames[p.id] = p.name;
+    for (unsigned i = 0; i < nextTemp; ++i) {
+        if (thunk.valueNames[i].empty())
+            thunk.valueNames[i] = "t" + std::to_string(i);
+    }
 
     thunk.blocks.push_back(std::move(entry));
     return thunk;
@@ -208,19 +212,28 @@ std::vector<ThunkInfo> generateBooleanThunks(const Module &importModule,
         const Function *exportFn = findExport(exportModule, fn.name);
         if (!exportFn)
             continue;
+        if (fn.params.size() != exportFn->params.size())
+            continue;
 
-        // Check for boolean mismatches in return type or parameters.
+        // Check for boolean mismatches in return type or parameters. Any
+        // non-boolean signature difference is not thunkable here.
+        bool incompatible = false;
         bool hasMismatch = isBooleanMismatch(fn.retType.kind, exportFn->retType.kind);
-        if (!hasMismatch && fn.params.size() == exportFn->params.size()) {
-            for (size_t i = 0; i < fn.params.size(); ++i) {
-                if (isBooleanMismatch(fn.params[i].type.kind, exportFn->params[i].type.kind)) {
-                    hasMismatch = true;
-                    break;
-                }
+        if (fn.retType.kind != exportFn->retType.kind && !hasMismatch)
+            incompatible = true;
+        for (size_t i = 0; i < fn.params.size(); ++i) {
+            const auto importKind = fn.params[i].type.kind;
+            const auto exportKind = exportFn->params[i].type.kind;
+            if (importKind != exportKind && !isBooleanMismatch(importKind, exportKind)) {
+                incompatible = true;
+                break;
+            }
+            if (isBooleanMismatch(importKind, exportKind)) {
+                hasMismatch = true;
             }
         }
 
-        if (!hasMismatch)
+        if (incompatible || !hasMismatch)
             continue;
 
         std::string thunkName = fn.name + "$bool_thunk";

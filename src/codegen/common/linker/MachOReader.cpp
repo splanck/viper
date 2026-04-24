@@ -158,10 +158,34 @@ static int64_t extractMachOAddend(const uint8_t *sectionData,
                                   uint32_t relocLength,
                                   bool isArm64) {
     if (isArm64) {
-        // ARM64 relocation addends are encoded in instruction fields.
-        // For BRANCH26: extract imm26 field (bits [25:0]) × 4.
-        // For PAGE21/PAGEOFF12: typically 0 for compiler-generated code.
-        // We'll extract what we can; most are 0 for our use case.
+        if (offset + 4 > sectionSize)
+            return 0;
+        const uint32_t insn = readLE32(sectionData + offset);
+        switch (relocType) {
+            case macho_a64::kBranch26:
+                return signExtend(insn & 0x03FFFFFFu, 26) << 2;
+            case macho_a64::kPage21:
+            case macho_a64::kGotLoadPage21:
+            case macho_a64::kTlvpLoadPage21: {
+                const uint32_t immlo = (insn >> 29) & 0x3u;
+                const uint32_t immhi = (insn >> 5) & 0x7FFFFu;
+                return signExtend((immhi << 2) | immlo, 21) << 12;
+            }
+            case macho_a64::kPageOff12:
+            case macho_a64::kGotLoadPageOff12:
+            case macho_a64::kTlvpLoadPageOff12: {
+                uint32_t pageOff = (insn >> 10) & 0xFFFu;
+                if ((insn & 0x3B000000) == 0x39000000) {
+                    uint32_t shift = insn >> 30;
+                    if ((insn & 0x04800000) == 0x04800000)
+                        shift = 4;
+                    pageOff <<= shift;
+                }
+                return static_cast<int64_t>(pageOff);
+            }
+            default:
+                break;
+        }
         return 0;
     } else {
         const size_t fieldSize = size_t{1} << relocLength;
@@ -210,6 +234,11 @@ bool readMachOObj(
     }
     obj.machine = isArm64 ? 183 : 62; // Map to ELF machine constants for uniformity.
 
+    if (!checkedRange(sizeof(macho::mach_header_64), hdr->sizeofcmds, size)) {
+        err << "error: " << name << ": Mach-O load commands are out of bounds\n";
+        return false;
+    }
+
     // Parse load commands.
     size_t lcOff = sizeof(macho::mach_header_64);
     const macho::load_command *symtabLc = nullptr;
@@ -231,8 +260,10 @@ bool readMachOObj(
     size_t tmpOff = lcOff;
     for (uint32_t c = 0; c < hdr->ncmds; ++c) {
         const auto *lc = readAt<macho::load_command>(data, size, tmpOff);
-        if (!lc)
-            break;
+        if (!lc) {
+            err << "error: " << name << ": truncated Mach-O load command\n";
+            return false;
+        }
         if (lc->cmdsize < sizeof(macho::load_command) || !checkedRange(tmpOff, lc->cmdsize, size)) {
             err << "error: " << name << ": malformed Mach-O load command\n";
             return false;
@@ -240,41 +271,49 @@ bool readMachOObj(
 
         if (lc->cmd == macho::LC_SEGMENT_64) {
             const auto *seg = readAt<macho::segment_command_64>(data, size, tmpOff);
-            if (!seg)
-                break;
+            if (!seg) {
+                err << "error: " << name << ": truncated Mach-O segment command\n";
+                return false;
+            }
+            const size_t secTableOff = tmpOff + sizeof(macho::segment_command_64);
+            const size_t secTableSize =
+                static_cast<size_t>(seg->nsects) * sizeof(macho::section_64);
+            if (!checkedRange(secTableOff, secTableSize, size) ||
+                secTableOff + secTableSize > tmpOff + lc->cmdsize) {
+                err << "error: " << name << ": Mach-O section table is out of bounds\n";
+                return false;
+            }
 
-            size_t secOff = tmpOff + sizeof(macho::segment_command_64);
+            size_t secOff = secTableOff;
             for (uint32_t s = 0; s < seg->nsects; ++s) {
                 const auto *sec = readAt<macho::section_64>(data, size, secOff);
-                if (!sec)
-                    break;
+                if (!sec) {
+                    err << "error: " << name << ": truncated Mach-O section header\n";
+                    return false;
+                }
 
                 std::string segName = trimNul(sec->segname, 16);
                 std::string secName = trimNul(sec->sectname, 16);
-
-                // Skip debug sections that don't belong in the load image.
-                if (segName == "__DWARF" || (sec->flags & macho::S_ATTR_DEBUG) != 0) {
-                    machoSecMap.push_back(0); // Unmapped.
-                    ++machoSecIdx;
-                    secOff += sizeof(macho::section_64);
-                    continue;
-                }
+                const bool isDebugSection =
+                    (segName == "__DWARF" || (sec->flags & macho::S_ATTR_DEBUG) != 0);
 
                 ObjSection os;
                 os.name = segName + "," + secName;
                 os.alignment = (sec->align < 30) ? (1u << sec->align) : 1;
                 os.executable = (sec->flags & macho::S_ATTR_PURE_INSTRUCTIONS) != 0;
+                os.alloc = !isDebugSection;
 
                 // Infer writability from Mach-O segment name and section type.
                 // .o files don't have segment permission bits, but each section header
                 // carries the intended segment name (__TEXT vs __DATA).
                 const uint32_t secType = sec->flags & 0xFF;
-                os.writable = (segName == "__DATA") || (secType == macho::S_ZEROFILL) ||
-                              (secType == macho::S_THREAD_LOCAL_REGULAR) ||
-                              (secType == macho::S_THREAD_LOCAL_ZEROFILL) ||
-                              (secType == macho::S_THREAD_LOCAL_VARIABLES) ||
-                              (secType == macho::S_NON_LAZY_SYMBOL_POINTERS) ||
-                              (secType == macho::S_LAZY_SYMBOL_POINTERS);
+                os.writable = !isDebugSection &&
+                              ((segName == "__DATA") || (secType == macho::S_ZEROFILL) ||
+                               (secType == macho::S_THREAD_LOCAL_REGULAR) ||
+                               (secType == macho::S_THREAD_LOCAL_ZEROFILL) ||
+                               (secType == macho::S_THREAD_LOCAL_VARIABLES) ||
+                               (secType == macho::S_NON_LAZY_SYMBOL_POINTERS) ||
+                               (secType == macho::S_LAZY_SYMBOL_POINTERS));
 
                 os.tls = (secType == macho::S_THREAD_LOCAL_REGULAR ||
                           secType == macho::S_THREAD_LOCAL_ZEROFILL ||
@@ -308,11 +347,17 @@ bool readMachOObj(
                 // its r_symbolnum carries the addend for the NEXT relocation.
                 int64_t pendingAddend = 0;
                 bool hasPendingAddend = false;
+                if (sec->nreloc > 0 &&
+                    !checkedRange(sec->reloff,
+                                  static_cast<size_t>(sec->nreloc) *
+                                      sizeof(macho::relocation_info),
+                                  size)) {
+                    err << "error: " << name << ": Mach-O relocation table is out of bounds\n";
+                    return false;
+                }
                 for (uint32_t r = 0; r < sec->nreloc; ++r) {
                     const auto *ri = readAt<macho::relocation_info>(
                         data, size, sec->reloff + r * sizeof(macho::relocation_info));
-                    if (!ri)
-                        break;
 
                     // Skip scattered relocations (r_address bit 31 set).
                     if (ri->r_address & 0x80000000)
@@ -352,6 +397,11 @@ bool readMachOObj(
                     }
 
                     os.relocs.push_back(rel);
+                }
+                if (hasPendingAddend) {
+                    err << "error: " << name << ": dangling ARM64_RELOC_ADDEND in Mach-O section "
+                        << os.name << "\n";
+                    return false;
                 }
 
                 machoSecMap.push_back(static_cast<uint32_t>(obj.sections.size()));
@@ -426,7 +476,11 @@ bool readMachOObj(
                 os.binding = ObjSymbol::Undefined;
                 // Check for weak imports.
                 if (nl->n_desc & 0x0040) // N_WEAK_REF
-                    os.binding = ObjSymbol::Weak;
+                    os.weakExternal = true;
+            } else if (nType == 0x02) // N_ABS
+            {
+                os.binding = isExtern ? ObjSymbol::Global : ObjSymbol::Local;
+                os.absolute = true;
             } else if (nType == 0x0E) // N_SECT
             {
                 if (isExtern) {

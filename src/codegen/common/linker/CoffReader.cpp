@@ -39,12 +39,14 @@ static constexpr uint32_t IMAGE_SCN_CNT_CODE = 0x00000020;
 static constexpr uint32_t IMAGE_SCN_CNT_INITIALIZED_DATA = 0x00000040;
 static constexpr uint32_t IMAGE_SCN_CNT_UNINITIALIZED_DATA = 0x00000080;
 static constexpr uint32_t IMAGE_SCN_LNK_COMDAT = 0x00001000;
+static constexpr uint32_t IMAGE_SCN_LNK_NRELOC_OVFL = 0x01000000;
 static constexpr uint32_t IMAGE_SCN_MEM_EXECUTE = 0x20000000;
 static constexpr uint32_t IMAGE_SCN_MEM_READ = 0x40000000;
 static constexpr uint32_t IMAGE_SCN_MEM_WRITE = 0x80000000;
 
 static constexpr uint8_t IMAGE_COMDAT_SELECT_NODUPLICATES = 1;
 static constexpr uint8_t IMAGE_COMDAT_SELECT_ANY = 2;
+static constexpr uint8_t IMAGE_COMDAT_SELECT_ASSOCIATIVE = 5;
 
 #pragma pack(push, 1)
 
@@ -103,6 +105,12 @@ struct CoffAuxSectionDefinition {
     uint8_t Selection;
     uint8_t Reserved;
     int16_t HighNumber;
+};
+
+struct CoffAuxWeakExternal {
+    uint32_t TagIndex;
+    uint32_t Characteristics;
+    uint8_t Unused[10];
 };
 
 #pragma pack(pop)
@@ -209,6 +217,11 @@ bool readCoffObj(
     if (!hdr)
         return false;
 
+    if (hdr->Machine == 0 && hdr->NumberOfSections == 0xFFFF) {
+        err << "error: " << name << ": COFF BigObj is not supported by the native linker\n";
+        return false;
+    }
+
     obj.format = ObjFileFormat::COFF;
     obj.is64bit = true;
     obj.isLittleEndian = true;
@@ -311,12 +324,31 @@ bool readCoffObj(
                             data + sh->PointerToRawData + sh->SizeOfRawData);
         }
 
+        uint32_t relocCount = sh->NumberOfRelocations;
+        uint32_t firstReloc = 0;
+        if ((sh->Characteristics & coff::IMAGE_SCN_LNK_NRELOC_OVFL) != 0 &&
+            sh->NumberOfRelocations == 0xFFFF) {
+            const auto *overflow = coffAt<coff::CoffReloc>(data, size, sh->PointerToRelocations);
+            if (!overflow) {
+                err << "error: " << name << ": COFF relocation overflow record is out of bounds\n";
+                return false;
+            }
+            relocCount = overflow->VirtualAddress;
+            firstReloc = 1;
+        }
+        if (relocCount > 0 &&
+            !checkedRange(sh->PointerToRelocations,
+                          static_cast<size_t>(relocCount + firstReloc) *
+                              sizeof(coff::CoffReloc),
+                          size)) {
+            err << "error: " << name << ": COFF relocation table is out of bounds\n";
+            return false;
+        }
+
         // Read relocations.
-        for (uint16_t r = 0; r < sh->NumberOfRelocations; ++r) {
+        for (uint32_t r = firstReloc; r < relocCount + firstReloc; ++r) {
             const auto *cr = coffAt<coff::CoffReloc>(
                 data, size, sh->PointerToRelocations + r * sizeof(coff::CoffReloc));
-            if (!cr)
-                break;
 
             ObjReloc rel;
             rel.offset = cr->VirtualAddress;
@@ -342,6 +374,7 @@ bool readCoffObj(
     }
 
     std::vector<uint8_t> comdatSelectionBySection(hdr->NumberOfSections + 1, 0);
+    std::vector<uint32_t> associativeSectionBySection(hdr->NumberOfSections + 1, 0);
     for (uint32_t i = 0; i < hdr->NumberOfSymbols;) {
         const auto *sym = coffAt<coff::CoffSymbol>(
             data, size, hdr->PointerToSymbolTable + i * sizeof(coff::CoffSymbol));
@@ -362,12 +395,22 @@ bool readCoffObj(
                     data,
                     size,
                     hdr->PointerToSymbolTable + (i + 1) * sizeof(coff::CoffSymbol));
-                if (aux)
+                if (aux) {
                     comdatSelectionBySection[sectionNumber] = aux->Selection;
+                    if (aux->Selection == coff::IMAGE_COMDAT_SELECT_ASSOCIATIVE &&
+                        aux->Number > 0 &&
+                        static_cast<uint16_t>(aux->Number) <= hdr->NumberOfSections)
+                        associativeSectionBySection[sectionNumber] =
+                            static_cast<uint32_t>(aux->Number);
+                }
             }
         }
 
         i += 1 + sym->NumberOfAuxSymbols;
+    }
+    for (uint32_t secNo = 1; secNo < associativeSectionBySection.size(); ++secNo) {
+        if (secNo < obj.sections.size())
+            obj.sections[secNo].associativeSection = associativeSectionBySection[secNo];
     }
 
     obj.symbols.resize(1); // Null symbol at index 0.
@@ -384,11 +427,28 @@ bool readCoffObj(
 
         if (sym->SectionNumber == coff::IMAGE_SYM_UNDEFINED) {
             os.binding = ObjSymbol::Undefined;
-            if (sym->StorageClass == coff::IMAGE_SYM_CLASS_WEAK_EXTERNAL)
-                os.binding = ObjSymbol::Weak;
+            if (sym->StorageClass == coff::IMAGE_SYM_CLASS_WEAK_EXTERNAL) {
+                os.weakExternal = true;
+                if (sym->NumberOfAuxSymbols > 0) {
+                    const auto *aux = coffAt<coff::CoffAuxWeakExternal>(
+                        data,
+                        size,
+                        hdr->PointerToSymbolTable + (i + 1) * sizeof(coff::CoffSymbol));
+                    if (aux && aux->TagIndex < hdr->NumberOfSymbols) {
+                        const auto *fallback = coffAt<coff::CoffSymbol>(
+                            data,
+                            size,
+                            hdr->PointerToSymbolTable +
+                                aux->TagIndex * sizeof(coff::CoffSymbol));
+                        if (fallback)
+                            os.weakDefaultName = readSymName(fallback);
+                    }
+                }
+            }
         } else if (sym->SectionNumber == coff::IMAGE_SYM_ABSOLUTE ||
                    sym->SectionNumber == coff::IMAGE_SYM_DEBUG) {
             os.binding = ObjSymbol::Local;
+            os.absolute = (sym->SectionNumber == coff::IMAGE_SYM_ABSOLUTE);
         } else if (sym->StorageClass == coff::IMAGE_SYM_CLASS_EXTERNAL) {
             os.binding = ObjSymbol::Global;
         } else if (sym->StorageClass == coff::IMAGE_SYM_CLASS_WEAK_EXTERNAL) {

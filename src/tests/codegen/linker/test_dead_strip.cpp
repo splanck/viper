@@ -339,6 +339,48 @@ int main() {
         CHECK(!objs[1].sections[3].data.empty());
     }
 
+    // --- COFF associative COMDAT sections follow their parent section ---
+    {
+        auto user = makeObj("user.o", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+        addSymbol(user, "func", 0, ObjSymbol::Undefined);
+        addReloc(user, 1, 2);
+
+        ObjFile comdat;
+        comdat.name = "comdat.obj";
+        comdat.format = ObjFileFormat::COFF;
+        comdat.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text$func";
+        text.data.resize(8, 0x90);
+        text.executable = true;
+        text.alloc = true;
+        comdat.sections.push_back(text);
+
+        ObjSection assoc;
+        assoc.name = ".xdata$func";
+        assoc.data.resize(8, 0xAA);
+        assoc.alloc = true;
+        assoc.associativeSection = 1;
+        comdat.sections.push_back(assoc);
+
+        comdat.symbols.push_back({});
+        addSymbol(comdat, "func", 1, ObjSymbol::Global);
+
+        std::vector<ObjFile> objs = {user, comdat};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        globalSyms["main"] = {"main", GlobalSymEntry::Global, 0, 1, 0, 0};
+        globalSyms["func"] = {"func", GlobalSymEntry::Global, 1, 1, 0, 0};
+
+        std::ostringstream err;
+        deadStrip(objs, 1, globalSyms, "main", err);
+
+        CHECK(!objs[1].sections[1].data.empty());
+        CHECK(!objs[1].sections[2].data.empty());
+        CHECK(!objs[1].sections[2].stripped);
+    }
+
     // --- Result ---
     if (gFail == 0) {
         std::cout << "All DeadStripPass tests passed.\n";

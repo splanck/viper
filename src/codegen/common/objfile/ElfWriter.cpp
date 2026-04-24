@@ -348,21 +348,58 @@ bool ElfWriter::write(const std::string &path,
     // sh_info = first non-local symbol index.
     uint32_t firstGlobalIdx = elfLocalCount;
 
-    // Write global/external symbols.
-    uint32_t elfGlobalIdx = elfLocalCount;
+    std::vector<PendingSym> pendingDefinedGlobals;
+    std::vector<PendingSym> pendingExternals;
     for (const auto &ps : pendingGlobals) {
+        if (ps.sym->binding == SymbolBinding::External)
+            pendingExternals.push_back(ps);
+        else
+            pendingDefinedGlobals.push_back(ps);
+    }
+
+    // Write defined globals before undefined references so definitions win.
+    std::unordered_map<std::string, uint32_t> globalNameMap;
+    uint32_t elfGlobalIdx = elfLocalCount;
+    for (const auto &ps : pendingDefinedGlobals) {
+        if (globalNameMap.count(ps.sym->name)) {
+            err << "ElfWriter: duplicate global symbol '" << ps.sym->name << "'\n";
+            return false;
+        }
         uint32_t nameOff = strtab.add(ps.sym->name);
-        uint8_t type =
-            (ps.sym->binding == SymbolBinding::External) ? kSttNotype : elfSymbolType(*ps.sym);
-        uint16_t shndx = (ps.sym->binding == SymbolBinding::External) ? kShnUndef : ps.shndx;
-        uint64_t value = (ps.sym->binding == SymbolBinding::External)
-                             ? 0
-                             : static_cast<uint64_t>(ps.sym->offset);
+        uint8_t type = elfSymbolType(*ps.sym);
+        uint16_t shndx = ps.shndx;
+        uint64_t value = static_cast<uint64_t>(ps.sym->offset);
         writeSym(symtabBytes, nameOff, (kStbGlobal << 4) | type, kStvDefault, shndx, value, 0);
         if (ps.fromText)
             textSymMap[ps.origIdx] = elfGlobalIdx;
         else
             rodataSymMap[ps.origIdx] = elfGlobalIdx;
+        globalNameMap[ps.sym->name] = elfGlobalIdx;
+        ++elfGlobalIdx;
+    }
+
+    for (const auto &ps : pendingExternals) {
+        auto existing = globalNameMap.find(ps.sym->name);
+        if (existing != globalNameMap.end()) {
+            if (ps.fromText)
+                textSymMap[ps.origIdx] = existing->second;
+            else
+                rodataSymMap[ps.origIdx] = existing->second;
+            continue;
+        }
+        uint32_t nameOff = strtab.add(ps.sym->name);
+        writeSym(symtabBytes,
+                 nameOff,
+                 (kStbGlobal << 4) | kSttNotype,
+                 kStvDefault,
+                 kShnUndef,
+                 0,
+                 0);
+        if (ps.fromText)
+            textSymMap[ps.origIdx] = elfGlobalIdx;
+        else
+            rodataSymMap[ps.origIdx] = elfGlobalIdx;
+        globalNameMap[ps.sym->name] = elfGlobalIdx;
         ++elfGlobalIdx;
     }
 
@@ -587,6 +624,11 @@ bool ElfWriter::write(const std::string &path,
 
     const bool hasDebugLine = !debugLineData_.empty();
     const size_t N = textSections.size();
+    const size_t sectionCount = 2 * N + 6 + (hasDebugLine ? 1 : 0);
+    if (sectionCount > UINT16_MAX) {
+        err << "ElfWriter: too many sections for ELF writer (" << sectionCount << ")\n";
+        return false;
+    }
 
     // --- 1. Extract function names from each text section ---
     std::vector<std::string> funcNames(N);
@@ -617,7 +659,7 @@ bool ElfWriter::write(const std::string &path,
     const uint16_t secStrtab = static_cast<uint16_t>(2 * N + 3);
     const uint16_t secShstrtab = static_cast<uint16_t>(2 * N + 4);
     const uint16_t secNoteGnuStack = static_cast<uint16_t>(2 * N + 5);
-    const uint16_t numSections = static_cast<uint16_t>(2 * N + 6 + (hasDebugLine ? 1 : 0));
+    const uint16_t numSections = static_cast<uint16_t>(sectionCount);
 
     // --- 3. Build .shstrtab ---
     StringTable shstrtab;
@@ -735,11 +777,8 @@ bool ElfWriter::write(const std::string &path,
     for (const auto &ps : pendingDefinedGlobals) {
         auto it = globalNameMap.find(ps.sym->name);
         if (it != globalNameMap.end()) {
-            if (ps.textIdx != SIZE_MAX)
-                textSymMaps[ps.textIdx][ps.origIdx] = it->second;
-            else
-                rodataSymMap[ps.origIdx] = it->second;
-            continue;
+            err << "ElfWriter: duplicate global symbol '" << ps.sym->name << "'\n";
+            return false;
         }
         uint32_t nameOff = strtab.add(ps.sym->name);
         writeSym(symtabBytes,

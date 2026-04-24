@@ -585,6 +585,63 @@ int main() {
         CHECK(patched == 0x140001008ULL);
     }
 
+    // --- COFF AArch64 PAGEOFFSET_12L inspects load/store access size ---
+    {
+        std::vector<uint8_t> code(4, 0);
+        // ldr w0, [x0, #0] = 32-bit load, PAGEOFFSET_12L must scale by 4.
+        code[0] = 0x00;
+        code[1] = 0x00;
+        code[2] = 0x40;
+        code[3] = 0xB9;
+        auto caller = makeObj("test_pageoff12l_w.obj",
+                              ObjFileFormat::COFF,
+                              code,
+                              "target_data",
+                              /*IMAGE_REL_ARM64_PAGEOFFSET_12L=*/7,
+                              /*relocOff=*/0,
+                              /*addend=*/0);
+
+        ObjFile target;
+        target.name = "target_data.obj";
+        target.format = ObjFileFormat::COFF;
+        target.sections.push_back({});
+        ObjSection targetData;
+        targetData.name = ".data";
+        targetData.data.resize(4, 0xAB);
+        targetData.writable = true;
+        targetData.alloc = true;
+        targetData.alignment = 4;
+        target.sections.push_back(targetData);
+        target.symbols.push_back({});
+        ObjSymbol targetSym;
+        targetSym.name = "target_data";
+        targetSym.binding = ObjSymbol::Global;
+        targetSym.sectionIndex = 1;
+        targetSym.offset = 0;
+        target.symbols.push_back(targetSym);
+
+        std::vector<ObjFile> objs = {caller, target};
+        auto layout = makeLayout(objs, 0x140001000ULL);
+
+        GlobalSymEntry entry;
+        entry.name = "target_data";
+        entry.binding = GlobalSymEntry::Global;
+        entry.objIndex = 1;
+        entry.secIndex = 1;
+        entry.offset = 0;
+        entry.resolvedAddr = 0;
+        layout.globalSyms["target_data"] = entry;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::AArch64, err);
+        CHECK(ok);
+
+        uint32_t patched = readLE32(layout.sections[0].data.data());
+        CHECK(((patched >> 10) & 0xFFFu) == 1u);
+    }
+
     // --- Unknown reloc type produces error ---
     {
         std::vector<uint8_t> code(8, 0);

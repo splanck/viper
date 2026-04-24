@@ -326,6 +326,7 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
                 auto &foldSec = allObjects[foldCand.objIdx].sections[foldCand.secIdx];
                 foldSec.data.clear();
                 foldSec.relocs.clear();
+                foldSec.stripped = true;
 
                 ++folded;
             }

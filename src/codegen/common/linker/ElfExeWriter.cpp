@@ -75,8 +75,11 @@ static constexpr int64_t DT_TEXTREL = 22;
 // Dynamic relocation types.
 static constexpr uint32_t R_X86_64_64 = 1;
 static constexpr uint32_t R_X86_64_GLOB_DAT = 6;
+static constexpr uint32_t R_AARCH64_ABS64 = 257;
+static constexpr uint32_t R_AARCH64_GLOB_DAT = 1025;
 
 static constexpr const char *kLinuxX8664Interpreter = "/lib64/ld-linux-x86-64.so.2";
+static constexpr const char *kLinuxAArch64Interpreter = "/lib/ld-linux-aarch64.so.1";
 
 struct Elf64_Ehdr {
     uint8_t e_ident[16] = {};
@@ -324,8 +327,8 @@ bool buildDynamicInfo(const LinkLayout &layout,
     if (dynSyms.empty())
         return true;
 
-    if (arch != LinkArch::X86_64) {
-        err << "error: ELF dynamic imports are only implemented for Linux x86_64\n";
+    if (arch != LinkArch::X86_64 && arch != LinkArch::AArch64) {
+        err << "error: ELF dynamic imports are only implemented for Linux x86_64/AArch64\n";
         return false;
     }
     if (neededLibs.empty()) {
@@ -338,8 +341,9 @@ bool buildDynamicInfo(const LinkLayout &layout,
     info.dynSymbols.assign(dynSyms.begin(), dynSyms.end());
     std::sort(info.dynSymbols.begin(), info.dynSymbols.end());
 
-    info.interp.assign(kLinuxX8664Interpreter,
-                       kLinuxX8664Interpreter + std::strlen(kLinuxX8664Interpreter) + 1);
+    const char *interp =
+        (arch == LinkArch::AArch64) ? kLinuxAArch64Interpreter : kLinuxX8664Interpreter;
+    info.interp.assign(interp, interp + std::strlen(interp) + 1);
 
     info.dynstr.push_back(0);
     for (const auto &lib : info.neededLibs)
@@ -392,7 +396,9 @@ bool buildDynamicInfo(const LinkLayout &layout,
             err << "error: missing .dynsym entry for GOT symbol '" << got.symbolName << "'\n";
             return false;
         }
-        emitRela(got.gotAddr, it->second, R_X86_64_GLOB_DAT);
+        emitRela(got.gotAddr,
+                 it->second,
+                 arch == LinkArch::AArch64 ? R_AARCH64_GLOB_DAT : R_X86_64_GLOB_DAT);
     }
 
     std::vector<BindEntry> bindEntries = layout.bindEntries;
@@ -418,7 +424,9 @@ bool buildDynamicInfo(const LinkLayout &layout,
         const auto &sec = layout.sections[bind.sectionIndex];
         if (!sec.writable)
             info.hasTextRel = true;
-        emitRela(sec.virtualAddr + bind.offset, it->second, R_X86_64_64);
+        emitRela(sec.virtualAddr + bind.offset,
+                 it->second,
+                 arch == LinkArch::AArch64 ? R_AARCH64_ABS64 : R_X86_64_64);
     }
 
     appendBytes(info.roBlob, info.interp, info.interpOff, 1);

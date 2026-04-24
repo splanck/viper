@@ -23,6 +23,8 @@
 #include "il/core/Global.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Linkage.hpp"
+#include "il/core/Value.hpp"
+#include "il/link/InteropThunks.hpp"
 
 #include <algorithm>
 #include <string>
@@ -37,6 +39,7 @@ using il::core::Function;
 using il::core::Global;
 using il::core::Linkage;
 using il::core::Module;
+using il::core::Type;
 
 namespace {
 
@@ -61,13 +64,24 @@ int findEntryModule(const std::vector<Module> &modules, std::vector<std::string>
     return entryIdx;
 }
 
-/// @brief Build an index of all exported function names → module index.
-std::unordered_map<std::string, size_t> buildExportIndex(const std::vector<Module> &modules) {
-    std::unordered_map<std::string, size_t> index;
+struct FunctionRef {
+    size_t moduleIndex = 0;
+    size_t functionIndex = 0;
+};
+
+/// @brief Build an index of all exported function names → function location.
+std::unordered_map<std::string, FunctionRef> buildExportIndex(const std::vector<Module> &modules,
+                                                              std::vector<std::string> &errors) {
+    std::unordered_map<std::string, FunctionRef> index;
     for (size_t i = 0; i < modules.size(); ++i) {
-        for (const auto &fn : modules[i].functions) {
-            if (fn.linkage == Linkage::Export)
-                index[fn.name] = i;
+        for (size_t f = 0; f < modules[i].functions.size(); ++f) {
+            const auto &fn = modules[i].functions[f];
+            if (fn.linkage != Linkage::Export)
+                continue;
+            auto [it, inserted] = index.emplace(fn.name, FunctionRef{i, f});
+            if (!inserted) {
+                errors.push_back("duplicate export: @" + fn.name);
+            }
         }
     }
     return index;
@@ -92,14 +106,71 @@ bool isInitFunction(const std::string &name) {
     return false;
 }
 
-/// @brief Rewrite all call instructions in a function to use renamed targets.
-void rewriteCalls(Function &fn, const std::unordered_map<std::string, std::string> &renameMap) {
+bool sameSignature(const Function &a, const Function &b) {
+    if (a.retType.kind != b.retType.kind || a.params.size() != b.params.size())
+        return false;
+    for (size_t i = 0; i < a.params.size(); ++i) {
+        if (a.params[i].type.kind != b.params[i].type.kind)
+            return false;
+    }
+    return true;
+}
+
+bool isBooleanMismatch(Type::Kind a, Type::Kind b) {
+    return (a == Type::Kind::I1 && b == Type::Kind::I64) ||
+           (a == Type::Kind::I64 && b == Type::Kind::I1);
+}
+
+bool booleanInteropCompatible(const Function &importDecl, const Function &definition) {
+    if (importDecl.params.size() != definition.params.size())
+        return false;
+    if (importDecl.retType.kind != definition.retType.kind &&
+        !isBooleanMismatch(importDecl.retType.kind, definition.retType.kind))
+        return false;
+    for (size_t i = 0; i < importDecl.params.size(); ++i) {
+        const auto importKind = importDecl.params[i].type.kind;
+        const auto defKind = definition.params[i].type.kind;
+        if (importKind != defKind && !isBooleanMismatch(importKind, defKind))
+            return false;
+    }
+    return true;
+}
+
+std::string makeUniqueName(const std::string &base, std::unordered_set<std::string> &usedNames) {
+    if (usedNames.insert(base).second)
+        return base;
+    for (size_t i = 1;; ++i) {
+        std::string candidate = base + "$" + std::to_string(i);
+        if (usedNames.insert(candidate).second)
+            return candidate;
+    }
+}
+
+void rewriteValue(il::core::Value &value,
+                  const std::unordered_map<std::string, std::string> &globalRenameMap) {
+    if (value.kind != il::core::Value::Kind::GlobalAddr)
+        return;
+    auto it = globalRenameMap.find(value.str);
+    if (it != globalRenameMap.end())
+        value.str = it->second;
+}
+
+/// @brief Rewrite function and global references inside one function.
+void rewriteFunctionRefs(Function &fn,
+                         const std::unordered_map<std::string, std::string> &functionRenameMap,
+                         const std::unordered_map<std::string, std::string> &globalRenameMap) {
     for (auto &bb : fn.blocks) {
         for (auto &instr : bb.instructions) {
             if (!instr.callee.empty()) {
-                auto it = renameMap.find(instr.callee);
-                if (it != renameMap.end())
+                auto it = functionRenameMap.find(instr.callee);
+                if (it != functionRenameMap.end())
                     instr.callee = it->second;
+            }
+            for (auto &operand : instr.operands)
+                rewriteValue(operand, globalRenameMap);
+            for (auto &args : instr.brArgs) {
+                for (auto &arg : args)
+                    rewriteValue(arg, globalRenameMap);
             }
         }
     }
@@ -114,10 +185,6 @@ LinkResult linkModules(std::vector<Module> modules) {
         result.errors.push_back("no modules to link");
         return result;
     }
-    if (modules.size() == 1) {
-        result.module = std::move(modules[0]);
-        return result;
-    }
 
     // Step 1: Find the entry module.
     int entryIdx = findEntryModule(modules, result.errors);
@@ -125,12 +192,16 @@ LinkResult linkModules(std::vector<Module> modules) {
         return result;
 
     // Step 2: Build export index for import resolution.
-    auto exportIndex = buildExportIndex(modules);
+    auto exportIndex = buildExportIndex(modules, result.errors);
+    if (!result.errors.empty())
+        return result;
 
     // Step 3: Resolve imports.
     // For each Import function in any module, find the defining Export.
     // Also track which functions need renaming to avoid collisions.
-    std::unordered_map<std::string, std::string> renameMap; // old name → new name
+    std::vector<std::unordered_map<std::string, std::string>> functionRenameMaps(modules.size());
+    std::vector<std::unordered_map<std::string, std::string>> globalRenameMaps(modules.size());
+    std::vector<Function> generatedThunks;
     std::unordered_set<std::string> usedNames;
 
     // First pass: collect all Export and entry-module function names.
@@ -152,7 +223,7 @@ LinkResult linkModules(std::vector<Module> modules) {
                 if (usedNames.count(fn.name)) {
                     // Collision with an existing name — prefix it.
                     std::string newName = prefix + fn.name;
-                    renameMap[fn.name] = newName;
+                    functionRenameMaps[i][fn.name] = newName;
                     fn.name = newName;
                 }
                 usedNames.insert(fn.name);
@@ -166,21 +237,50 @@ LinkResult linkModules(std::vector<Module> modules) {
             if (fn.linkage != Linkage::Import)
                 continue;
 
-            // Check export index.
+            const Function *definition = nullptr;
+
             auto expIt = exportIndex.find(fn.name);
-            if (expIt == exportIndex.end()) {
-                // Also allow resolving against Internal functions from the entry module.
-                bool foundInternal = false;
+            if (expIt != exportIndex.end()) {
+                definition =
+                    &modules[expIt->second.moduleIndex].functions[expIt->second.functionIndex];
+            } else {
                 for (const auto &entryFn : modules[static_cast<size_t>(entryIdx)].functions) {
                     if (entryFn.name == fn.name && entryFn.linkage != Linkage::Import) {
-                        foundInternal = true;
+                        definition = &entryFn;
                         break;
                     }
                 }
-                if (!foundInternal) {
-                    result.errors.push_back("unresolved import: @" + fn.name);
-                }
             }
+
+            if (!definition) {
+                result.errors.push_back("unresolved import: @" + fn.name);
+                continue;
+            }
+
+            if (sameSignature(fn, *definition))
+                continue;
+
+            if (booleanInteropCompatible(fn, *definition)) {
+                Module importMod;
+                importMod.functions.push_back(fn);
+                Module exportMod;
+                Function exported = *definition;
+                exported.linkage = Linkage::Export;
+                exportMod.functions.push_back(std::move(exported));
+
+                auto thunks = generateBooleanThunks(importMod, exportMod);
+                if (thunks.empty()) {
+                    result.errors.push_back("function signature mismatch for @" + fn.name);
+                    continue;
+                }
+                std::string thunkName = makeUniqueName(thunks.front().thunkName, usedNames);
+                thunks.front().thunk.name = thunkName;
+                functionRenameMaps[i][fn.name] = thunkName;
+                generatedThunks.push_back(std::move(thunks.front().thunk));
+                continue;
+            }
+
+            result.errors.push_back("function signature mismatch for @" + fn.name);
         }
     }
 
@@ -224,14 +324,24 @@ LinkResult linkModules(std::vector<Module> modules) {
         std::string prefix = (static_cast<int>(i) == entryIdx) ? "" : modulePrefix(i);
         for (auto &g : modules[i].globals) {
             std::string name = g.name;
-            if (!prefix.empty() && mergedGlobals.count(name)) {
+            if (mergedGlobals.count(name)) {
+                if (prefix.empty()) {
+                    result.errors.push_back("duplicate global: @" + name);
+                    continue;
+                }
                 // Collision — prefix the non-entry module's global.
                 name = prefix + g.name;
+                while (mergedGlobals.count(name))
+                    name = prefix + name;
+                globalRenameMaps[i][g.name] = name;
                 g.name = name;
             }
             mergedGlobals.emplace(name, std::move(g));
         }
     }
+
+    if (!result.errors.empty())
+        return result;
 
     // Step 6: Collect init functions from non-entry modules.
     std::vector<std::string> initFunctions;
@@ -262,11 +372,24 @@ LinkResult linkModules(std::vector<Module> modules) {
             if (fn.linkage == Linkage::Import)
                 continue; // Skip import stubs.
 
-            // Rewrite calls to renamed functions.
-            if (!renameMap.empty())
-                rewriteCalls(fn, renameMap);
+            rewriteFunctionRefs(fn, functionRenameMaps[i], globalRenameMaps[i]);
 
             merged.functions.push_back(std::move(fn));
+        }
+    }
+
+    for (auto &thunk : generatedThunks)
+        merged.functions.push_back(std::move(thunk));
+
+    {
+        std::unordered_set<std::string> finalNames;
+        for (const auto &fn : merged.functions) {
+            if (!finalNames.insert(fn.name).second)
+                result.errors.push_back("duplicate function after linking: @" + fn.name);
+        }
+        if (!result.errors.empty()) {
+            result.module = Module{};
+            return result;
         }
     }
 

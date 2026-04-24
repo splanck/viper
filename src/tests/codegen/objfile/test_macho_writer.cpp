@@ -631,6 +631,69 @@ static void testUnsupportedRelocationFails() {
     std::remove("/tmp/viper_test_macho_bad_reloc.o");
 }
 
+static void testDuplicateLocalSymbolsStayDistinct() {
+    CodeSection text, rodata;
+    text.defineSymbol(".Ltmp", SymbolBinding::Local, SymbolSection::Text);
+    text.emit8(0xC3);
+
+    rodata.defineSymbol(".Ltmp", SymbolBinding::Local, SymbolSection::Rodata);
+    rodata.emit64LE(0x1234);
+
+    std::ostringstream errStream;
+    MachOWriter writer(ObjArch::X86_64);
+    const std::string path = "/tmp/viper_test_macho_duplicate_locals.o";
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    ObjFile obj;
+    CHECK(readObjFile(path, obj, errStream));
+    size_t count = 0;
+    for (const auto &sym : obj.symbols) {
+        if (sym.name == ".Ltmp")
+            ++count;
+    }
+    CHECK(count == 2);
+
+    std::remove(path.c_str());
+}
+
+static void testUndefinedRodataLocalReferenceUsesLocalDefinition() {
+    CodeSection text, rodata;
+    text.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
+
+    rodata.defineSymbol("L.str.0", SymbolBinding::Local, SymbolSection::Rodata);
+    const char *str = "HELLO";
+    rodata.emitBytes(str, std::strlen(str) + 1);
+
+    const uint32_t symIdx = text.findOrDeclareSymbol("L.str.0");
+    text.addRelocation(RelocKind::A64AdrpPage21, symIdx, 0, SymbolSection::Rodata);
+    text.emit32LE(0x90000000); // adrp placeholder
+    text.addRelocation(RelocKind::A64AddPageOff12, symIdx, 0, SymbolSection::Rodata);
+    text.emit32LE(0x91000000); // add placeholder
+    text.emit32LE(0xD65F03C0); // ret
+
+    std::ostringstream errStream;
+    MachOWriter writer(ObjArch::AArch64);
+    const std::string path = "/tmp/viper_test_macho_rodata_local_ref.o";
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    ObjFile obj;
+    CHECK(readObjFile(path, obj, errStream));
+    size_t definedCount = 0;
+    size_t undefinedCount = 0;
+    for (const auto &sym : obj.symbols) {
+        if (sym.name != "L.str.0")
+            continue;
+        if (sym.binding == ObjSymbol::Undefined)
+            ++undefinedCount;
+        else if (sym.binding == ObjSymbol::Local && sym.sectionIndex != 0)
+            ++definedCount;
+    }
+    CHECK(definedCount == 1);
+    CHECK(undefinedCount == 0);
+
+    std::remove(path.c_str());
+}
+
 // =============================================================================
 // Main
 // =============================================================================
@@ -649,6 +712,8 @@ int main() {
     testDysymtabRanges();
     testMultiSectionMergeRebasesSymbolOffsets();
     testUnsupportedRelocationFails();
+    testDuplicateLocalSymbolsStayDistinct();
+    testUndefinedRodataLocalReferenceUsesLocalDefinition();
 
     if (gFail == 0)
         std::cout << "All Mach-O writer tests passed.\n";

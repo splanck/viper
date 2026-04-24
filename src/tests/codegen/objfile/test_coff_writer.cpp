@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <iostream>
 #include <sstream>
+#include <vector>
 
 using namespace viper::codegen::linker;
 using namespace viper::codegen::objfile;
@@ -190,6 +191,41 @@ int main() {
         ASSERT(readObjFile(multiPath, multiObj, multiErr));
         CHECK(findSection(multiObj, ".text.func_a") != nullptr);
         CHECK(findSection(multiObj, ".text.func_b") != nullptr);
+    }
+
+    {
+        std::vector<uint8_t> bigObjHeader(20, 0);
+        bigObjHeader[2] = 0xFF;
+        bigObjHeader[3] = 0xFF;
+
+        ObjFile bigObj;
+        std::ostringstream bigErr;
+        CHECK(!readObjFile(bigObjHeader.data(), bigObjHeader.size(), "bigobj.obj", bigObj, bigErr));
+        CHECK(bigErr.str().find("BigObj") != std::string::npos);
+    }
+
+    {
+        CodeSection manyRelocs;
+        CodeSection emptyRodata;
+        manyRelocs.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
+        const uint32_t ext = manyRelocs.findOrDeclareSymbol("target");
+        constexpr size_t kRelocCount = 65536;
+        for (size_t i = 0; i < kRelocCount; ++i) {
+            const size_t off = manyRelocs.currentOffset();
+            manyRelocs.emit32LE(0);
+            manyRelocs.addRelocationAt(off, RelocKind::PCRel32, ext, -4);
+        }
+
+        std::ostringstream overflowErr;
+        CoffWriter overflowWriter(ObjArch::X86_64);
+        const std::string overflowPath = "build/test-out/coff_reloc_overflow.obj";
+        ASSERT(overflowWriter.write(overflowPath, manyRelocs, emptyRodata, overflowErr));
+
+        ObjFile overflowObj;
+        ASSERT(readObjFile(overflowPath, overflowObj, overflowErr));
+        const ObjSection *overflowText = findSection(overflowObj, ".text");
+        ASSERT(overflowText != nullptr);
+        CHECK(overflowText->relocs.size() == kRelocCount);
     }
 
     if (gFail == 0) {

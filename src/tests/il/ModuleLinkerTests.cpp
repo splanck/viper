@@ -90,6 +90,48 @@ static Function makeI64FuncWithParams(const std::string &name,
     return fn;
 }
 
+static Function makeI1Func(const std::string &name, Linkage linkage, bool retVal = true) {
+    Function fn;
+    fn.name = name;
+    fn.retType = Type(Type::Kind::I1);
+    fn.linkage = linkage;
+
+    if (linkage != Linkage::Import) {
+        BasicBlock entry;
+        entry.label = "entry";
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::I1);
+        ret.operands.push_back(Value::constBool(retVal));
+        entry.instructions.push_back(ret);
+        fn.blocks.push_back(std::move(entry));
+    }
+
+    return fn;
+}
+
+static Function makeCaller(const std::string &name,
+                           const std::string &callee,
+                           Linkage linkage = Linkage::Internal) {
+    Function fn;
+    fn.name = name;
+    fn.retType = Type(Type::Kind::Void);
+    fn.linkage = linkage;
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr call;
+    call.op = Opcode::Call;
+    call.type = Type(Type::Kind::Void);
+    call.callee = callee;
+    entry.instructions.push_back(std::move(call));
+    Instr ret;
+    ret.op = Opcode::Ret;
+    entry.instructions.push_back(std::move(ret));
+    fn.blocks.push_back(std::move(entry));
+    return fn;
+}
+
 /// Check if a function with the given name exists in the module.
 static bool hasFunction(const Module &m, const std::string &name) {
     return std::any_of(
@@ -273,6 +315,108 @@ TEST(ModuleLinker, NoMainFails) {
     auto result = il::link::linkModules(std::move(modules));
     EXPECT_FALSE(result.succeeded());
     EXPECT_TRUE(result.errors[0].find("no module defines 'main'") != std::string::npos);
+}
+
+TEST(ModuleLinker, SingleModuleUnresolvedImportFails) {
+    Module a;
+    a.functions.push_back(makeI64Func("main", Linkage::Internal));
+    a.functions.push_back(makeI64Func("missing", Linkage::Import));
+
+    std::vector<Module> modules;
+    modules.push_back(std::move(a));
+
+    auto result = il::link::linkModules(std::move(modules));
+    EXPECT_FALSE(result.succeeded());
+    ASSERT_FALSE(result.errors.empty());
+    EXPECT_TRUE(result.errors[0].find("missing") != std::string::npos);
+}
+
+TEST(ModuleLinker, DuplicateExportFails) {
+    Module a;
+    a.functions.push_back(makeI64Func("main", Linkage::Internal));
+    a.functions.push_back(makeI64Func("helper", Linkage::Export));
+
+    Module b;
+    b.functions.push_back(makeI64Func("helper", Linkage::Export));
+
+    std::vector<Module> modules;
+    modules.push_back(std::move(a));
+    modules.push_back(std::move(b));
+
+    auto result = il::link::linkModules(std::move(modules));
+    EXPECT_FALSE(result.succeeded());
+    ASSERT_FALSE(result.errors.empty());
+    EXPECT_TRUE(result.errors[0].find("duplicate export") != std::string::npos);
+}
+
+TEST(ModuleLinker, ImportSignatureMismatchFails) {
+    Module a;
+    a.functions.push_back(makeI64Func("main", Linkage::Internal));
+    a.functions.push_back(makeI64Func("helper", Linkage::Import));
+
+    Module b;
+    b.functions.push_back(makeVoidFunc("helper", Linkage::Export));
+
+    std::vector<Module> modules;
+    modules.push_back(std::move(a));
+    modules.push_back(std::move(b));
+
+    auto result = il::link::linkModules(std::move(modules));
+    EXPECT_FALSE(result.succeeded());
+    ASSERT_FALSE(result.errors.empty());
+    EXPECT_TRUE(result.errors[0].find("signature mismatch") != std::string::npos);
+}
+
+TEST(ModuleLinker, BooleanThunkIntegratedForImportCalls) {
+    Module a;
+    a.functions.push_back(makeCaller("main", "isReady"));
+    a.functions.push_back(makeI64Func("isReady", Linkage::Import));
+
+    Module b;
+    b.functions.push_back(makeI1Func("isReady", Linkage::Export));
+
+    std::vector<Module> modules;
+    modules.push_back(std::move(a));
+    modules.push_back(std::move(b));
+
+    auto result = il::link::linkModules(std::move(modules));
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_TRUE(hasFunction(result.module, "isReady$bool_thunk"));
+
+    auto mainIt = std::find_if(result.module.functions.begin(),
+                               result.module.functions.end(),
+                               [](const Function &fn) { return fn.name == "main"; });
+    ASSERT_TRUE(mainIt != result.module.functions.end());
+    ASSERT_FALSE(mainIt->blocks.empty());
+    ASSERT_FALSE(mainIt->blocks.front().instructions.empty());
+    EXPECT_EQ(mainIt->blocks.front().instructions.front().callee, "isReady$bool_thunk");
+}
+
+TEST(ModuleLinker, InternalRenameIsModuleLocal) {
+    Module a;
+    a.functions.push_back(makeVoidFunc("main", Linkage::Internal));
+    a.functions.push_back(makeVoidFunc("helper", Linkage::Internal));
+
+    Module b;
+    b.functions.push_back(makeCaller("lib", "helper", Linkage::Export));
+    b.functions.push_back(makeVoidFunc("helper", Linkage::Internal));
+
+    std::vector<Module> modules;
+    modules.push_back(std::move(a));
+    modules.push_back(std::move(b));
+
+    auto result = il::link::linkModules(std::move(modules));
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_TRUE(hasFunction(result.module, "helper"));
+    EXPECT_TRUE(hasFunction(result.module, "m1$helper"));
+
+    auto libIt = std::find_if(result.module.functions.begin(),
+                              result.module.functions.end(),
+                              [](const Function &fn) { return fn.name == "lib"; });
+    ASSERT_TRUE(libIt != result.module.functions.end());
+    ASSERT_FALSE(libIt->blocks.empty());
+    ASSERT_FALSE(libIt->blocks.front().instructions.empty());
+    EXPECT_EQ(libIt->blocks.front().instructions.front().callee, "m1$helper");
 }
 
 int main() {

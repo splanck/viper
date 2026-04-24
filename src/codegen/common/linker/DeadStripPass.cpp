@@ -136,6 +136,13 @@ void deadStrip(std::vector<ObjFile> &allObjects,
             continue;
         const auto &sec = obj.sections[si];
 
+        if (sec.associativeSection > 0 && sec.associativeSection < obj.sections.size())
+            markLive(oi, sec.associativeSection);
+        for (size_t otherSi = 1; otherSi < obj.sections.size(); ++otherSi) {
+            if (obj.sections[otherSi].associativeSection == si)
+                markLive(oi, otherSi);
+        }
+
         // Windows x64 unwind tables are reverse-referenced: .pdata points at
         // code labels, and .xdata is then pulled in from .pdata. When a live
         // code section is visited, mark sibling unwind sections whose
@@ -203,11 +210,12 @@ void deadStrip(std::vector<ObjFile> &allObjects,
                 continue;
 
             auto &sec = obj.sections[si];
-            if (sec.data.empty())
+            if (sec.data.empty() && sec.relocs.empty())
                 continue;
 
             strippedBytes += sec.data.size();
             ++strippedSections;
+            sec.stripped = true;
             sec.data.clear();
             sec.relocs.clear();
         }

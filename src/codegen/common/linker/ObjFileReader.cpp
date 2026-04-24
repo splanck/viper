@@ -35,6 +35,10 @@ ObjFileFormat detectFormat(const uint8_t *data, size_t size) {
     if (size >= 20) {
         const uint16_t machine =
             static_cast<uint16_t>(data[0]) | (static_cast<uint16_t>(data[1]) << 8);
+        const uint16_t sectionCount =
+            static_cast<uint16_t>(data[2]) | (static_cast<uint16_t>(data[3]) << 8);
+        if (machine == 0 && sectionCount == 0xFFFF)
+            return ObjFileFormat::COFF;
         if (machine == 0x8664 || machine == 0xAA64)
             return ObjFileFormat::COFF;
     }

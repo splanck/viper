@@ -28,7 +28,7 @@ SymbolTable::SymbolTable() {
 uint32_t SymbolTable::add(Symbol sym) {
     auto index = static_cast<uint32_t>(symbols_.size());
     if (!sym.name.empty())
-        nameIndex_.emplace(sym.name, index);
+        nameIndex_[sym.name] = index;
     symbols_.push_back(std::move(sym));
     return index;
 }

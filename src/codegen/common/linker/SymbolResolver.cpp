@@ -46,6 +46,9 @@ static bool addObjSymbols(const ObjFile &obj,
             continue;
 
         if (sym.binding == ObjSymbol::Undefined) {
+            if (sym.weakExternal)
+                continue;
+
             // Only add to undefined set if not already defined.
             auto it = findWithMachoFallback(globalSyms, sym.name);
             if (it == globalSyms.end() || it->second.binding == GlobalSymEntry::Undefined)
@@ -72,6 +75,9 @@ static bool addObjSymbols(const ObjFile &obj,
             e.objIndex = objIdx;
             e.secIndex = sym.sectionIndex;
             e.offset = sym.offset;
+            e.absolute = sym.absolute;
+            if (sym.absolute)
+                e.resolvedAddr = static_cast<uint64_t>(sym.offset);
             globalSyms[sym.name] = std::move(e);
             undefined.erase(sym.name);
         } else {
@@ -82,6 +88,9 @@ static bool addObjSymbols(const ObjFile &obj,
                 existing.objIndex = objIdx;
                 existing.secIndex = sym.sectionIndex;
                 existing.offset = sym.offset;
+                existing.absolute = sym.absolute;
+                if (sym.absolute)
+                    existing.resolvedAddr = static_cast<uint64_t>(sym.offset);
                 undefined.erase(sym.name);
             } else if (existing.binding == GlobalSymEntry::Weak && !isWeak) {
                 // Strong overrides weak.
@@ -89,6 +98,9 @@ static bool addObjSymbols(const ObjFile &obj,
                 existing.objIndex = objIdx;
                 existing.secIndex = sym.sectionIndex;
                 existing.offset = sym.offset;
+                existing.absolute = sym.absolute;
+                if (sym.absolute)
+                    existing.resolvedAddr = static_cast<uint64_t>(sym.offset);
             } else if (existing.binding == GlobalSymEntry::Global && !isWeak) {
                 if (preferArchiveDefinition(sym.name, platform))
                     continue;

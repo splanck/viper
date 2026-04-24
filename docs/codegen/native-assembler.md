@@ -150,7 +150,9 @@ The `PhysReg` enum order differs from hardware encoding. The encoder maps via lo
 - **RSP/R12 as base**: Always requires a SIB byte (hardware rule)
 - **RBP/R13 with mod=00**: Encodes as RIP-relative, not base+0 — encoder uses mod=01 with disp8=0 instead
 - **RIP-relative addressing**: `OpRipLabel` generates ModR/M with mod=00, r/m=101, followed by a rel32 displacement
-  that becomes a `PCRel32` relocation
+  that becomes a `PCRel32` relocation. Cross-section references to `.rodata` are recorded with a `.text` symbol
+  entry plus a `.rodata` target hint; object writers then resolve the final symbol by name so `.text` and `.rodata`
+  symbol-table indexes are never mixed.
 - **PC-relative addend**: x86_64 branch and RIP-relative relocations always carry addend = −4 because the CPU
   computes displacement relative to the *end* of the instruction, but the relocation offset points to the *start*
   of the 4-byte displacement field

@@ -164,6 +164,18 @@ TEST(InteropThunks, NoThunkForNonImportFunctions) {
     EXPECT_TRUE(thunks.empty());
 }
 
+TEST(InteropThunks, NoThunkWhenArityDiffers) {
+    Module exportMod;
+    exportMod.functions.push_back(makeExportFunc(
+        "isReady", Type(Type::Kind::I1), {Param{"flag", Type(Type::Kind::I1), 0}}));
+
+    Module importMod;
+    importMod.functions.push_back(makeImportFunc("isReady", Type(Type::Kind::I64)));
+
+    auto thunks = il::link::generateBooleanThunks(importMod, exportMod);
+    EXPECT_TRUE(thunks.empty());
+}
+
 int main() {
     return viper_test::run_all_tests();
 }

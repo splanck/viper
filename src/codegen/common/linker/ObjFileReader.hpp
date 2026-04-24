@@ -49,6 +49,9 @@ struct ObjSymbol {
     uint32_t sectionIndex = 0; ///< Index into ObjFile::sections (0 = undefined).
     size_t offset = 0;         ///< Byte offset within section.
     size_t size = 0;
+    bool absolute = false;          ///< Symbol value is absolute, not section-relative.
+    bool weakExternal = false;      ///< Undefined weak external that may resolve to zero/default.
+    std::string weakDefaultName;    ///< Optional COFF weak-external fallback symbol.
 };
 
 /// Section in a parsed object file.
@@ -63,6 +66,8 @@ struct ObjSection {
     bool tls = false;              ///< Thread-local storage section.
     bool zeroFill = false;         ///< Section occupies memory but has no file bytes.
     bool isCStringSection = false; ///< Section contains NUL-terminated C strings only.
+    uint32_t associativeSection = 0; ///< COFF associative COMDAT parent section, if any.
+    bool stripped = false;         ///< Dead-strip removed this section explicitly.
 };
 
 /// Detected object file format.

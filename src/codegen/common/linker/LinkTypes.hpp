@@ -177,6 +177,7 @@ struct GlobalSymEntry {
     uint32_t secIndex = 0;     ///< Section within that ObjFile.
     size_t offset = 0;         ///< Offset within the section.
     uint64_t resolvedAddr = 0; ///< Final virtual address after layout.
+    bool absolute = false;     ///< Symbol resolves to offset/resolvedAddr directly.
 };
 
 /// A GOT entry for dynamic symbol binding.

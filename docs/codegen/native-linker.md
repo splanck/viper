@@ -54,7 +54,7 @@ runnable executable. It performs the classic linker pipeline:
 | Format | Platform | Architecture | Page Size | Dynamic Imports |
 |--------|----------|-------------|-----------|-----------------|
 | ELF | Linux | x86_64 | 4KB | Supported |
-| ELF | Linux | AArch64 | 4KB | Static/archive-only links supported; shared-library imports not yet supported |
+| ELF | Linux | AArch64 | 4KB | Supported |
 | Mach-O | macOS | x86_64 | 4KB | Not yet supported by the native linker |
 | Mach-O | macOS | AArch64 (Apple Silicon) | **16KB** | Supported |
 | PE | Windows | x86_64, AArch64 | 4KB | Supported |
@@ -166,21 +166,24 @@ ObjFile
 
 ### Format-Specific Handling
 
-- **ELF**: Explicit addend from `.rela` sections. Symbol binding from `STB_LOCAL/GLOBAL/WEAK`. The reader validates
-  ELF class, endianness, type, section-header size, section ranges, symbol-table ranges, relocation ranges, and
-  relocation symbol indexes.
+- **ELF**: Explicit addends from `.rela` sections and implicit addends from `.rel` sections are supported. Extended
+  section counts are decoded from section header 0. `COMMON` symbols are materialized as zero-filled storage, and
+  absolute symbols keep their absolute values.
 - **Mach-O**: Addends are extracted from instruction bytes or from ARM64 `ADDEND` relocations. Leading `_` is
   stripped from external symbol names (Mach-O convention). Non-extern section-relative relocations resolve through
-  synthetic local section symbols, and ARM64 `ADDEND` payloads are sign-extended.
+  synthetic local section symbols, ARM64 `ADDEND` payloads are sign-extended, and `__DWARF`/debug sections are
+  preserved as non-alloc sections.
 - **COFF**: Addends are extracted per relocation kind. AMD64/ARM64 `ADDR64` uses an 8-byte addend; ARM64 branch,
   ADRP page, and page-offset relocations decode their instruction fields so writer-emitted placeholders do not
-  become bogus addends. Symbol names ≤8 chars are inline; longer names use the string table.
+  become bogus addends. Weak extern fallback records, associative COMDAT section relationships, and COFF relocation
+  overflow records are parsed; unsupported BigObj inputs fail with a specific diagnostic.
 
 ### Reader Validation
 
 Readers reject unsupported file types, wrong machines, out-of-bounds section data, unterminated string-table names,
-and invalid relocation symbol indexes. Mach-O debug sections are ignored, but unwind/runtime metadata such as
-`__compact_unwind` and `__eh_frame` is preserved for later passes.
+truncated relocation tables, dangling Mach-O ARM64 addend records, and invalid relocation symbol indexes. Debug and
+unwind metadata such as `__compact_unwind`, `__eh_frame`, `.debug_line`, and `__DWARF` sections is preserved for
+later passes or executable debug-section emission.
 
 ### Input Compatibility
 

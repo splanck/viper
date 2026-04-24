@@ -859,12 +859,12 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
 
     const bool supportsDynamicStubs =
         (opts.platform == LinkPlatform::macOS && opts.arch == LinkArch::AArch64) ||
-        (opts.platform == LinkPlatform::Linux && opts.arch == LinkArch::X86_64);
+        (opts.platform == LinkPlatform::Linux &&
+         (opts.arch == LinkArch::X86_64 || opts.arch == LinkArch::AArch64));
     if (!dynamicSyms.empty() && supportsDynamicStubs) {
-        ObjFile stubObj =
-            (opts.platform == LinkPlatform::Linux && opts.arch == LinkArch::X86_64)
-                ? generateDynStubsX8664(dynamicSyms)
-                : generateDynStubsAArch64(dynamicSyms);
+        ObjFile stubObj = (opts.platform == LinkPlatform::Linux && opts.arch == LinkArch::X86_64)
+                              ? generateDynStubsX8664(dynamicSyms)
+                              : generateDynStubsAArch64(dynamicSyms);
         const size_t stubObjIdx = allObjects.size();
         allObjects.push_back(std::move(stubObj));
 
@@ -898,7 +898,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         err << "error: native linker does not support dynamic imports on "
             << platformName(opts.platform) << ' ' << archName(opts.arch) << "\n";
         err << "error: supported dynamic-import targets are Windows x86_64, Windows AArch64, "
-               "macOS AArch64, and Linux x86_64\n";
+               "macOS AArch64, Linux x86_64, and Linux AArch64\n";
         err << "error: unresolved dynamic symbols:";
         for (const auto &sym : unsupported)
             err << ' ' << sym;
@@ -916,9 +916,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     // Step 3.5d2: Fold identical .text sections (Identical Code Folding).
     foldIdenticalCode(allObjects, globalSyms);
 
-    // Step 3.5e: Remove global symbols that reference stripped (empty) sections.
-    // After dead stripping, sections with cleared data are skipped by the merger,
-    // so symbols pointing to them would resolve to invalid addresses.
+    // Step 3.5e: Remove global symbols that reference explicitly stripped sections.
     {
         std::vector<std::string> deadSyms;
         for (const auto &[name, entry] : globalSyms) {
@@ -926,7 +924,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                 continue; // Dynamic symbols have no section reference.
             if (entry.objIndex < allObjects.size() &&
                 entry.secIndex < allObjects[entry.objIndex].sections.size() &&
-                allObjects[entry.objIndex].sections[entry.secIndex].data.empty()) {
+                allObjects[entry.objIndex].sections[entry.secIndex].stripped) {
                 deadSyms.push_back(name);
             }
         }

@@ -51,6 +51,7 @@ static constexpr uint32_t kImageScnCntInitData = 0x00000040;
 static constexpr uint32_t kImageScnAlignText = 0x00600000;
 static constexpr uint32_t kImageScnAlign4 = 0x00300000;
 static constexpr uint32_t kImageScnAlign8 = 0x00400000;
+static constexpr uint32_t kImageScnLnkNrelocOvfl = 0x01000000;
 static constexpr uint32_t kImageScnMemExecute = 0x20000000;
 static constexpr uint32_t kImageScnMemDiscardable = 0x02000000;
 static constexpr uint32_t kImageScnMemRead = 0x40000000;
@@ -62,6 +63,7 @@ static constexpr uint8_t kImageSymClassStatic = 3;
 static constexpr int16_t kImageSymUndefined = 0;
 
 static constexpr uint32_t kCoffRelocSize = 10;
+static constexpr uint32_t kCoffMaxStandardRelocs = 0xFFFFu;
 
 static constexpr uint16_t kImageRelAMD64_Addr64 = 1;
 static constexpr uint16_t kImageRelAMD64_Addr32Nb = 3;
@@ -210,6 +212,56 @@ static void writeReloc(std::vector<uint8_t> &out,
     appendLE32(out, virtualAddr);
     appendLE32(out, symbolTableIndex);
     appendLE16(out, type);
+}
+
+static bool checkedU32(size_t value, const char *what, std::ostream &err, uint32_t &out) {
+    if (value > UINT32_MAX) {
+        err << "CoffWriter: " << what << " exceeds 32-bit COFF limit\n";
+        return false;
+    }
+    out = static_cast<uint32_t>(value);
+    return true;
+}
+
+static bool addU32Checked(uint32_t a, uint32_t b, const char *what, std::ostream &err, uint32_t &out) {
+    if (a > UINT32_MAX - b) {
+        err << "CoffWriter: " << what << " exceeds 32-bit COFF limit\n";
+        return false;
+    }
+    out = a + b;
+    return true;
+}
+
+static void addRelocationOverflowRecord(std::vector<uint8_t> &relocBytes, uint32_t relocCount) {
+    if (relocCount <= kCoffMaxStandardRelocs)
+        return;
+    std::vector<uint8_t> withOverflow;
+    withOverflow.reserve(relocBytes.size() + kCoffRelocSize);
+    writeReloc(withOverflow, relocCount, 0, 0);
+    withOverflow.insert(withOverflow.end(), relocBytes.begin(), relocBytes.end());
+    relocBytes.swap(withOverflow);
+}
+
+static uint32_t coffHeaderRelocCount(uint32_t relocCount) {
+    return relocCount > kCoffMaxStandardRelocs ? kCoffMaxStandardRelocs : relocCount;
+}
+
+static uint32_t coffRelocRecordCount(uint32_t relocCount) {
+    return relocCount + (relocCount > kCoffMaxStandardRelocs ? 1u : 0u);
+}
+
+static bool coffRelocTableSize(uint32_t relocCount,
+                               const char *what,
+                               std::ostream &err,
+                               uint32_t &out) {
+    const uint64_t bytes =
+        static_cast<uint64_t>(coffRelocRecordCount(relocCount)) * kCoffRelocSize;
+    if (bytes > UINT32_MAX) {
+        err << "CoffWriter: " << what << " relocation table exceeds 32-bit COFF limit\n";
+        return false;
+    }
+    out = static_cast<uint32_t>(bytes);
+    return true;
 }
 
 struct PendingCoffSymbol {
@@ -481,7 +533,9 @@ bool CoffWriter::write(const std::string &path,
     if (hasDebugLine)
         debugLineStrOff = addToStrTab(".debug_line");
 
-    const uint32_t strtabSize = static_cast<uint32_t>(strtabBytes.size());
+    uint32_t strtabSize = 0;
+    if (!checkedU32(strtabBytes.size(), "string table size", err, strtabSize))
+        return false;
     strtabBytes[0] = static_cast<uint8_t>(strtabSize);
     strtabBytes[1] = static_cast<uint8_t>(strtabSize >> 8);
     strtabBytes[2] = static_cast<uint8_t>(strtabSize >> 16);
@@ -525,10 +579,15 @@ bool CoffWriter::write(const std::string &path,
                 << " references unknown symbol index " << rel.symbolIndex << "\n";
             return false;
         }
-        writeReloc(
-            textRelocBytes, static_cast<uint32_t>(rel.offset), coffSymIdx, coffRelocType(rel.kind));
+        uint32_t relocOff = 0;
+        if (!checkedU32(rel.offset, "relocation offset", err, relocOff))
+            return false;
+        writeReloc(textRelocBytes, relocOff, coffSymIdx, coffRelocType(rel.kind));
     }
-    const uint32_t numTextRelocs = static_cast<uint32_t>(text.relocations().size());
+    uint32_t numTextRelocs = 0;
+    if (!checkedU32(text.relocations().size(), "text relocation count", err, numTextRelocs))
+        return false;
+    addRelocationOverflowRecord(textRelocBytes, numTextRelocs);
 
     std::vector<uint8_t> pdataRelocBytes;
     for (const auto &rel : pdataRelocs) {
@@ -539,46 +598,75 @@ bool CoffWriter::write(const std::string &path,
         }
         writeReloc(pdataRelocBytes, rel.offset, it->second, rel.type);
     }
-    const uint32_t numPdataRelocs = static_cast<uint32_t>(pdataRelocs.size());
-    if (numTextRelocs > 0xFFFFu || numPdataRelocs > 0xFFFFu) {
-        err << "CoffWriter: standard COFF supports at most 65535 relocations per section\n";
+    uint32_t numPdataRelocs = 0;
+    if (!checkedU32(pdataRelocs.size(), ".pdata relocation count", err, numPdataRelocs))
         return false;
-    }
+    addRelocationOverflowRecord(pdataRelocBytes, numPdataRelocs);
 
-    const uint32_t textSize = static_cast<uint32_t>(text.bytes().size());
-    const uint32_t rdataSize = hasRodata ? static_cast<uint32_t>(rodata.bytes().size()) : 0;
-    const uint32_t xdataSize = hasXdata ? static_cast<uint32_t>(xdataBytes.size()) : 0;
-    const uint32_t pdataSize = hasPdata ? static_cast<uint32_t>(pdataBytes.size()) : 0;
-    const uint32_t debugLineDataSize =
-        hasDebugLine ? static_cast<uint32_t>(debugLineData_.size()) : 0;
+    uint32_t textSize = 0;
+    uint32_t rdataSize = 0;
+    uint32_t xdataSize = 0;
+    uint32_t pdataSize = 0;
+    uint32_t debugLineDataSize = 0;
+    if (!checkedU32(text.bytes().size(), ".text size", err, textSize) ||
+        !checkedU32(hasRodata ? rodata.bytes().size() : 0, ".rdata size", err, rdataSize) ||
+        !checkedU32(hasXdata ? xdataBytes.size() : 0, ".xdata size", err, xdataSize) ||
+        !checkedU32(hasPdata ? pdataBytes.size() : 0, ".pdata size", err, pdataSize) ||
+        !checkedU32(
+            hasDebugLine ? debugLineData_.size() : 0, ".debug_line size", err, debugLineDataSize))
+        return false;
 
     const uint32_t headerAreaSize = kCoffHeaderSize + numSections * kSectionHeaderSize;
     const uint32_t textDataOff = static_cast<uint32_t>(alignUp(headerAreaSize, 4));
-    const uint32_t textRelocOff = textDataOff + textSize;
-    const uint32_t textRelocTotalSize = numTextRelocs * kCoffRelocSize;
-    uint32_t cursor = static_cast<uint32_t>(alignUp(textRelocOff + textRelocTotalSize, 4));
+    uint32_t textRelocOff = 0;
+    if (!addU32Checked(textDataOff, textSize, ".text relocation offset", err, textRelocOff))
+        return false;
+    uint32_t textRelocTotalSize = 0;
+    if (!coffRelocTableSize(numTextRelocs, ".text", err, textRelocTotalSize))
+        return false;
+    uint32_t textRelocEnd = 0;
+    if (!addU32Checked(textRelocOff, textRelocTotalSize, ".text relocation table", err, textRelocEnd))
+        return false;
+    uint32_t cursor = static_cast<uint32_t>(alignUp(textRelocEnd, 4));
 
     uint32_t rdataDataOff = 0;
     if (hasRodata) {
         rdataDataOff = cursor;
-        cursor = static_cast<uint32_t>(alignUp(rdataDataOff + rdataSize, 4));
+        uint32_t end = 0;
+        if (!addU32Checked(rdataDataOff, rdataSize, ".rdata data", err, end))
+            return false;
+        cursor = static_cast<uint32_t>(alignUp(end, 4));
     }
     uint32_t xdataDataOff = 0;
     if (hasXdata) {
         xdataDataOff = cursor;
-        cursor = static_cast<uint32_t>(alignUp(xdataDataOff + xdataSize, 4));
+        uint32_t end = 0;
+        if (!addU32Checked(xdataDataOff, xdataSize, ".xdata data", err, end))
+            return false;
+        cursor = static_cast<uint32_t>(alignUp(end, 4));
     }
     uint32_t pdataDataOff = 0;
     uint32_t pdataRelocOff = 0;
     if (hasPdata) {
         pdataDataOff = cursor;
-        pdataRelocOff = pdataDataOff + pdataSize;
-        cursor = static_cast<uint32_t>(alignUp(pdataRelocOff + numPdataRelocs * kCoffRelocSize, 4));
+        if (!addU32Checked(pdataDataOff, pdataSize, ".pdata relocation offset", err, pdataRelocOff))
+            return false;
+        uint32_t pdataRelocEnd = 0;
+        uint32_t pdataRelocSize = 0;
+        if (!coffRelocTableSize(numPdataRelocs, ".pdata", err, pdataRelocSize))
+            return false;
+        if (!addU32Checked(
+                pdataRelocOff, pdataRelocSize, ".pdata relocation table", err, pdataRelocEnd))
+            return false;
+        cursor = static_cast<uint32_t>(alignUp(pdataRelocEnd, 4));
     }
     uint32_t debugLineDataOff = 0;
     if (hasDebugLine) {
         debugLineDataOff = cursor;
-        cursor = static_cast<uint32_t>(alignUp(debugLineDataOff + debugLineDataSize, 4));
+        uint32_t end = 0;
+        if (!addU32Checked(debugLineDataOff, debugLineDataSize, ".debug_line data", err, end))
+            return false;
+        cursor = static_cast<uint32_t>(alignUp(end, 4));
     }
     const uint32_t symtabOff = cursor;
 
@@ -596,6 +684,8 @@ bool CoffWriter::write(const std::string &path,
 
     uint32_t textChars = kImageScnCntCode | kImageScnMemExecute | kImageScnMemRead;
     textChars |= (arch_ == ObjArch::X86_64) ? kImageScnAlignText : kImageScnAlign4;
+    if (numTextRelocs > kCoffMaxStandardRelocs)
+        textChars |= kImageScnLnkNrelocOvfl;
     writeSectionHeader(file,
                        ".text",
                        0,
@@ -603,7 +693,7 @@ bool CoffWriter::write(const std::string &path,
                        textSize,
                        textDataOff,
                        (numTextRelocs > 0) ? textRelocOff : 0,
-                       numTextRelocs,
+                       coffHeaderRelocCount(numTextRelocs),
                        textChars);
 
     if (hasRodata) {
@@ -616,6 +706,9 @@ bool CoffWriter::write(const std::string &path,
     }
     if (hasPdata) {
         const uint32_t pdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign4;
+        uint32_t pdataHeaderChars = pdataChars;
+        if (numPdataRelocs > kCoffMaxStandardRelocs)
+            pdataHeaderChars |= kImageScnLnkNrelocOvfl;
         writeSectionHeader(file,
                            ".pdata",
                            0,
@@ -623,8 +716,8 @@ bool CoffWriter::write(const std::string &path,
                            pdataSize,
                            pdataDataOff,
                            (numPdataRelocs > 0) ? pdataRelocOff : 0,
-                           numPdataRelocs,
-                           pdataChars);
+                           coffHeaderRelocCount(numPdataRelocs),
+                           pdataHeaderChars);
     }
     if (hasDebugLine) {
         const std::string debugSecName = "/" + std::to_string(debugLineStrOff);
@@ -880,7 +973,9 @@ bool CoffWriter::write(const std::string &path,
             rodataSymMap[ext.origIdx] = extIt->second;
     }
 
-    const uint32_t strtabSize = static_cast<uint32_t>(strtabBytes.size());
+    uint32_t strtabSize = 0;
+    if (!checkedU32(strtabBytes.size(), "string table size", err, strtabSize))
+        return false;
     strtabBytes[0] = static_cast<uint8_t>(strtabSize);
     strtabBytes[1] = static_cast<uint8_t>(strtabSize >> 8);
     strtabBytes[2] = static_cast<uint8_t>(strtabSize >> 16);
@@ -928,14 +1023,15 @@ bool CoffWriter::write(const std::string &path,
                     << " references unknown symbol index " << rel.symbolIndex << "\n";
                 return false;
             }
-            writeReloc(
-                relocBytes, static_cast<uint32_t>(rel.offset), coffSymIdx, coffRelocType(rel.kind));
+            uint32_t relocOff = 0;
+            if (!checkedU32(rel.offset, "relocation offset", err, relocOff))
+                return false;
+            writeReloc(relocBytes, relocOff, coffSymIdx, coffRelocType(rel.kind));
         }
-        numTextRelocs[ti] = static_cast<uint32_t>(text.relocations().size());
-        if (numTextRelocs[ti] > 0xFFFFu) {
-            err << "CoffWriter: standard COFF supports at most 65535 relocations per section\n";
+        if (!checkedU32(
+                text.relocations().size(), "text relocation count", err, numTextRelocs[ti]))
             return false;
-        }
+        addRelocationOverflowRecord(relocBytes, numTextRelocs[ti]);
     }
 
     std::vector<uint8_t> pdataRelocBytes;
@@ -947,20 +1043,26 @@ bool CoffWriter::write(const std::string &path,
         }
         writeReloc(pdataRelocBytes, rel.offset, it->second, rel.type);
     }
-    const uint32_t numPdataRelocs = static_cast<uint32_t>(pdataRelocs.size());
-    if (numPdataRelocs > 0xFFFFu) {
-        err << "CoffWriter: standard COFF supports at most 65535 relocations per section\n";
+    uint32_t numPdataRelocs = 0;
+    if (!checkedU32(pdataRelocs.size(), ".pdata relocation count", err, numPdataRelocs))
         return false;
-    }
+    addRelocationOverflowRecord(pdataRelocBytes, numPdataRelocs);
 
     std::vector<uint32_t> textSizes(textCount, 0);
-    for (size_t ti = 0; ti < textCount; ++ti)
-        textSizes[ti] = static_cast<uint32_t>(textSections[ti].bytes().size());
-    const uint32_t rdataSize = hasRodata ? static_cast<uint32_t>(rodata.bytes().size()) : 0;
-    const uint32_t xdataSize = hasXdata ? static_cast<uint32_t>(xdataBytes.size()) : 0;
-    const uint32_t pdataSize = hasPdata ? static_cast<uint32_t>(pdataBytes.size()) : 0;
-    const uint32_t debugLineDataSize =
-        hasDebugLine ? static_cast<uint32_t>(debugLineData_.size()) : 0;
+    for (size_t ti = 0; ti < textCount; ++ti) {
+        if (!checkedU32(textSections[ti].bytes().size(), ".text size", err, textSizes[ti]))
+            return false;
+    }
+    uint32_t rdataSize = 0;
+    uint32_t xdataSize = 0;
+    uint32_t pdataSize = 0;
+    uint32_t debugLineDataSize = 0;
+    if (!checkedU32(hasRodata ? rodata.bytes().size() : 0, ".rdata size", err, rdataSize) ||
+        !checkedU32(hasXdata ? xdataBytes.size() : 0, ".xdata size", err, xdataSize) ||
+        !checkedU32(hasPdata ? pdataBytes.size() : 0, ".pdata size", err, pdataSize) ||
+        !checkedU32(
+            hasDebugLine ? debugLineData_.size() : 0, ".debug_line size", err, debugLineDataSize))
+        return false;
 
     const uint32_t headerAreaSize = kCoffHeaderSize + numSections * kSectionHeaderSize;
     uint32_t cursor = static_cast<uint32_t>(alignUp(headerAreaSize, 4));
@@ -969,10 +1071,19 @@ bool CoffWriter::write(const std::string &path,
     std::vector<uint32_t> textRelocOff(textCount, 0);
     for (size_t ti = 0; ti < textCount; ++ti) {
         textDataOff[ti] = cursor;
-        cursor += textSizes[ti];
+        if (!addU32Checked(cursor, textSizes[ti], ".text data", err, cursor))
+            return false;
         if (numTextRelocs[ti] > 0) {
             textRelocOff[ti] = cursor;
-            cursor += numTextRelocs[ti] * kCoffRelocSize;
+            uint32_t textRelocSize = 0;
+            if (!coffRelocTableSize(numTextRelocs[ti], ".text", err, textRelocSize))
+                return false;
+            if (!addU32Checked(cursor,
+                               textRelocSize,
+                               ".text relocation table",
+                               err,
+                               cursor))
+                return false;
         }
         cursor = static_cast<uint32_t>(alignUp(cursor, 4));
     }
@@ -980,24 +1091,41 @@ bool CoffWriter::write(const std::string &path,
     uint32_t rdataDataOff = 0;
     if (hasRodata) {
         rdataDataOff = cursor;
-        cursor = static_cast<uint32_t>(alignUp(rdataDataOff + rdataSize, 4));
+        uint32_t end = 0;
+        if (!addU32Checked(rdataDataOff, rdataSize, ".rdata data", err, end))
+            return false;
+        cursor = static_cast<uint32_t>(alignUp(end, 4));
     }
     uint32_t xdataDataOff = 0;
     if (hasXdata) {
         xdataDataOff = cursor;
-        cursor = static_cast<uint32_t>(alignUp(xdataDataOff + xdataSize, 4));
+        uint32_t end = 0;
+        if (!addU32Checked(xdataDataOff, xdataSize, ".xdata data", err, end))
+            return false;
+        cursor = static_cast<uint32_t>(alignUp(end, 4));
     }
     uint32_t pdataDataOff = 0;
     uint32_t pdataRelocOff = 0;
     if (hasPdata) {
         pdataDataOff = cursor;
-        pdataRelocOff = pdataDataOff + pdataSize;
-        cursor = static_cast<uint32_t>(alignUp(pdataRelocOff + numPdataRelocs * kCoffRelocSize, 4));
+        if (!addU32Checked(pdataDataOff, pdataSize, ".pdata relocation offset", err, pdataRelocOff))
+            return false;
+        uint32_t pdataRelocEnd = 0;
+        uint32_t pdataRelocSize = 0;
+        if (!coffRelocTableSize(numPdataRelocs, ".pdata", err, pdataRelocSize))
+            return false;
+        if (!addU32Checked(
+                pdataRelocOff, pdataRelocSize, ".pdata relocation table", err, pdataRelocEnd))
+            return false;
+        cursor = static_cast<uint32_t>(alignUp(pdataRelocEnd, 4));
     }
     uint32_t debugLineDataOff = 0;
     if (hasDebugLine) {
         debugLineDataOff = cursor;
-        cursor = static_cast<uint32_t>(alignUp(debugLineDataOff + debugLineDataSize, 4));
+        uint32_t end = 0;
+        if (!addU32Checked(debugLineDataOff, debugLineDataSize, ".debug_line data", err, end))
+            return false;
+        cursor = static_cast<uint32_t>(alignUp(end, 4));
     }
     const uint32_t symtabOff = cursor;
 
@@ -1016,6 +1144,8 @@ bool CoffWriter::write(const std::string &path,
     for (size_t ti = 0; ti < textCount; ++ti) {
         uint32_t textChars = kImageScnCntCode | kImageScnMemExecute | kImageScnMemRead;
         textChars |= (arch_ == ObjArch::X86_64) ? kImageScnAlignText : kImageScnAlign4;
+        if (numTextRelocs[ti] > kCoffMaxStandardRelocs)
+            textChars |= kImageScnLnkNrelocOvfl;
         writeSectionHeader(file,
                            textHeaderNames[ti].c_str(),
                            0,
@@ -1023,7 +1153,7 @@ bool CoffWriter::write(const std::string &path,
                            textSizes[ti],
                            textDataOff[ti],
                            (numTextRelocs[ti] > 0) ? textRelocOff[ti] : 0,
-                           numTextRelocs[ti],
+                           coffHeaderRelocCount(numTextRelocs[ti]),
                            textChars);
     }
 
@@ -1037,6 +1167,9 @@ bool CoffWriter::write(const std::string &path,
     }
     if (hasPdata) {
         const uint32_t pdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign4;
+        uint32_t pdataHeaderChars = pdataChars;
+        if (numPdataRelocs > kCoffMaxStandardRelocs)
+            pdataHeaderChars |= kImageScnLnkNrelocOvfl;
         writeSectionHeader(file,
                            ".pdata",
                            0,
@@ -1044,8 +1177,8 @@ bool CoffWriter::write(const std::string &path,
                            pdataSize,
                            pdataDataOff,
                            (numPdataRelocs > 0) ? pdataRelocOff : 0,
-                           numPdataRelocs,
-                           pdataChars);
+                           coffHeaderRelocCount(numPdataRelocs),
+                           pdataHeaderChars);
     }
     if (hasDebugLine) {
         const uint32_t debugChars =

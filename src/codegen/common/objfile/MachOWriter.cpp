@@ -324,8 +324,13 @@ bool MachOWriter::write(const std::string &path,
 
     std::vector<PendingSym> pendingLocals, pendingExtDef, pendingUndef;
 
-    // Track names to avoid duplicate symbols in the Mach-O table.
-    std::unordered_map<std::string, uint32_t> nameToMachoIdx;
+    // Track coalescible non-local names. Local symbols must remain distinct
+    // because Mach-O relocations can target same-spelled local labels in
+    // different sections or appended functions.
+    std::unordered_map<std::string, uint32_t> definedGlobalNameToMachoIdx;
+    std::unordered_map<std::string, uint32_t> undefinedNameToMachoIdx;
+    std::unordered_map<std::string, uint32_t> uniqueLocalNameToMachoIdx;
+    std::unordered_map<std::string, uint32_t> localNameCounts;
 
     // Map from (CodeSection symbol index) → Mach-O symbol table index.
     std::unordered_map<uint32_t, uint32_t> textSymMap;
@@ -370,35 +375,79 @@ bool MachOWriter::write(const std::string &path,
     // Order: locals → external defined → undefined.
     uint32_t machoIdx = 0;
 
-    auto assignIndices = [&](std::vector<PendingSym> &syms) {
+    auto assignFreshIndex = [&](const PendingSym &ps) {
+        if (ps.fromText)
+            textSymMap[ps.encoderIdx] = machoIdx;
+        else
+            rodataSymMap[ps.encoderIdx] = machoIdx;
+        ++machoIdx;
+    };
+
+    auto assignLocals = [&](std::vector<PendingSym> &syms) {
         for (auto &ps : syms) {
-            auto it = nameToMachoIdx.find(ps.mangledName);
-            if (it != nameToMachoIdx.end()) {
-                // Duplicate name — reuse existing Mach-O index.
-                if (ps.fromText)
-                    textSymMap[ps.encoderIdx] = it->second;
-                else
-                    rodataSymMap[ps.encoderIdx] = it->second;
-                continue;
-            }
-            nameToMachoIdx[ps.mangledName] = machoIdx;
-            if (ps.fromText)
-                textSymMap[ps.encoderIdx] = machoIdx;
+            auto &count = localNameCounts[ps.mangledName];
+            ++count;
+            if (count == 1)
+                uniqueLocalNameToMachoIdx[ps.mangledName] = machoIdx;
             else
-                rodataSymMap[ps.encoderIdx] = machoIdx;
-            ++machoIdx;
+                uniqueLocalNameToMachoIdx.erase(ps.mangledName);
+            assignFreshIndex(ps);
         }
     };
 
-    assignIndices(pendingLocals);
+    auto assignDefinedGlobals = [&](std::vector<PendingSym> &syms) {
+        for (auto &ps : syms) {
+            if (definedGlobalNameToMachoIdx.count(ps.mangledName)) {
+                err << "MachOWriter: duplicate global symbol '" << ps.mangledName << "'\n";
+                return false;
+            }
+            definedGlobalNameToMachoIdx[ps.mangledName] = machoIdx;
+            assignFreshIndex(ps);
+        }
+        return true;
+    };
+
+    auto assignUndefineds = [&](std::vector<PendingSym> &syms) {
+        for (auto &ps : syms) {
+            auto defIt = definedGlobalNameToMachoIdx.find(ps.mangledName);
+            if (defIt != definedGlobalNameToMachoIdx.end()) {
+                if (ps.fromText)
+                    textSymMap[ps.encoderIdx] = defIt->second;
+                else
+                    rodataSymMap[ps.encoderIdx] = defIt->second;
+                continue;
+            }
+            auto localIt = uniqueLocalNameToMachoIdx.find(ps.mangledName);
+            if (localIt != uniqueLocalNameToMachoIdx.end()) {
+                if (ps.fromText)
+                    textSymMap[ps.encoderIdx] = localIt->second;
+                else
+                    rodataSymMap[ps.encoderIdx] = localIt->second;
+                continue;
+            }
+            auto undefIt = undefinedNameToMachoIdx.find(ps.mangledName);
+            if (undefIt != undefinedNameToMachoIdx.end()) {
+                if (ps.fromText)
+                    textSymMap[ps.encoderIdx] = undefIt->second;
+                else
+                    rodataSymMap[ps.encoderIdx] = undefIt->second;
+                continue;
+            }
+            undefinedNameToMachoIdx[ps.mangledName] = machoIdx;
+            assignFreshIndex(ps);
+        }
+    };
+
+    assignLocals(pendingLocals);
     uint32_t ilocal = 0;
     uint32_t nlocal = machoIdx;
 
-    assignIndices(pendingExtDef);
+    if (!assignDefinedGlobals(pendingExtDef))
+        return false;
     uint32_t iextdef = nlocal;
     uint32_t nextdef = machoIdx - nlocal;
 
-    assignIndices(pendingUndef);
+    assignUndefineds(pendingUndef);
     uint32_t iundef = iextdef + nextdef;
     uint32_t nundef = machoIdx - iundef;
 

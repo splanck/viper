@@ -23,10 +23,10 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator b
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 72 | +72 |
+| Commits | — | 73 | +73 |
 | Source files | 2,869 | 2,947 | +78 |
-| Production SLOC | 450K | 507K | +57K |
-| Test SLOC | 183K | 207K | +24K |
+| Production SLOC | 450K | 512K | +62K |
+| Test SLOC | 183K | 211K | +28K |
 | Demo SLOC | 177K | 189K | +12K |
 
 Counts via `scripts/count_sloc.sh`.
@@ -196,6 +196,24 @@ Eleven-class `Viper.Localization.*` namespace providing locale-aware formatting,
 - Tools: frontend `--` separator, collision-safe `native_compiler` temp paths, x64 `--asset-blob` gate.
 - Build: VERSION `0.2.4-dev` → `0.2.5-snapshot`; GUI test targets key off `VIPER_BUILD_TESTING`; `scripts/clean.sh` polish.
 
+### Linker hardening
+
+All four object-file readers (ELF, Mach-O, COFF, Archive) and all three writers (ELF, Mach-O, COFF) received a comprehensive correctness and bounds-checking pass.
+
+- **Reader validation.** Every reader now calls `checkedRange(off, len, size)` before any buffer dereference and uses `readBoundedString` in place of unbounded `reinterpret_cast<const char*>` reads. ELF validates class, endianness, type, section-header size, section data ranges, symbol-table ranges, and relocation ranges. Mach-O preserves `__compact_unwind` / `__eh_frame` as unwind roots and skips debug sections. COFF validates the symbol-table range and string-pool bounds on every long-name lookup; an unsupported machine type is a hard reader error.
+- **COFF addend decoding.** `extractCoffAddend` decodes the *instruction bit-fields* for ARM64 COFF relocations (`Branch26`, `Branch19`, `PageRel21`, `PageOff12A`, `PageOff12L`, `ADDR64`) instead of doing a blind 4-byte read, so writer-emitted placeholder instructions do not produce bogus addends. AMD64 correctly handles 8-byte `ADDR64` addends and 4-byte signed addends for all other reloc kinds. Relocation symbol indexes are validated against `NumberOfSymbols` before use.
+- **Mach-O reader.** ARM64 `ADDEND` relocation payloads are sign-extended. Non-extern section-relative relocations resolve through synthetic local section symbols, and `__DWARF` debug sections are preserved as non-alloc sections.
+- **Archive reader.** Member ranges, symbol-table sizes, string-pool bounds, and long-name offsets all validated. Duplicate archive-index entries keep the first definition, matching standard archive resolution behavior.
+- **NativeLinker input compatibility.** Before generating dynamic-import stubs, every real input object is checked against the requested output target — ELF for Linux, Mach-O for macOS, COFF for Windows, with machine-code match enforced. Format and machine mismatches are hard link errors.
+- **RelocApplier.** Invalid relocation symbol indexes rejected before address resolution. AArch64 branch targets validated to be 4-byte aligned. Page-offset load/store relocations validate scaled alignment for the instruction size. `Abs32` range checked.
+- **BranchTrampoline.** Local targets resolved from the merged section location map by address; trampoline reuse keyed by target address, not display name, so duplicate local labels from different objects cannot alias.
+- **Dead strip + ICF.** Dead stripping keeps `.eh_frame`, `.gcc_except_table`, `__compact_unwind`, and `__eh_frame` sections alive as implicit roots. ICF includes local relocation identity in function signatures and skips candidates with extra local symbols in the function section, preventing folds that would strand non-redirectable local labels.
+- **MachO writer.** Multi-text emission merges atoms through `CodeSection::appendSection()` before emitting one `__TEXT,__text` section with subsection-by-symbol semantics. Symbol naming: non-local, non-`L`/`.`-prefixed names receive the `_` ABI prefix at serialization; canonical `_`-prefixed C names correctly gain the second underscore. `LC_MAIN` honors a custom `layout.entryAddr` before falling back to `main` / `_main`. Relocations and compact-unwind entries fail fast on an unknown symbol index.
+- **COFF writer.** Sections with more than 65,535 relocations use the COFF relocation-overflow record instead of failing or truncating the count.
+- **CodeSection.** `appendSection()` merges atoms, relocations, and symbols in order without renaming local symbols. `alignTo(0)` and `alignTo(1)` are no-ops; larger alignments pad with zero bytes.
+- **SymbolTable.** `add()` refreshes name lookup on duplicate names while existing relocation entries keep their captured symbol indexes.
+- **Binary encoders.** Encoders record canonical, unmangled names in `CodeSection`; platform ABI spelling is applied by the object writer at serialization. A64BinaryEncoder rejects negative or wider-than-32-bit frame sizes before narrowing into instruction immediates.
+
 ### Codegen
 
 AArch64 and x86_64 backends received a focused correctness pass spanning target-platform plumbing, ABI fixes, new IL surface wiring, and peephole correctness.
@@ -253,6 +271,6 @@ Marquee demo addition is a text-mode human-manager baseball-franchise simulator;
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 72-commit history. Commits pair feature-add and follow-up hardening in the same subsystem (e.g. Production 2D → overflow hardening; threads timeout fixes → handle-magic validation; glTF skin import → sparse accessors + KHR extensions; new POSIX atomic-move path → linker-policy `link()` classification; `Viper.Localization.*` introduction → `numfmt_group_digits()` extraction + rt_fmt C-locale isolation + GUI app-registry refactor; variadic IL introduction → sub-width checked arithmetic hardening + err-opcode operand relaxation + MOVZXrr8/rr32 split in successive passes).
+See `git log a91d388db..HEAD -- .` for the full 73-commit history. Commits pair feature-add and follow-up hardening in the same subsystem (e.g. Production 2D → overflow hardening; threads timeout fixes → handle-magic validation; glTF skin import → sparse accessors + KHR extensions; new POSIX atomic-move path → linker-policy `link()` classification; `Viper.Localization.*` introduction → `numfmt_group_digits()` extraction + rt_fmt C-locale isolation + GUI app-registry refactor; variadic IL introduction → sub-width checked arithmetic hardening + err-opcode operand relaxation + MOVZXrr8/rr32 split; linker feature work → reader validation + COFF addend decode + reloc bounds + ICF/dead-strip correctness in successive passes).
 
 <!-- END DRAFT -->

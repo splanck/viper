@@ -53,6 +53,14 @@ A new `il::link` subsystem merges multiple IL modules into one:
 - Init functions from all modules are called before user entry code
 - Boolean type mismatches (i1 vs i64) are bridged via auto-generated thunks
 
+The linker runs the same validation path for single-module and multi-module
+links. Duplicate exports are rejected, unresolved imports are errors even in a
+single input module, and import/export signatures must match exactly unless the
+only differences are supported boolean representation conversions. Rename maps
+are scoped to the module that owns the reference, so same-named internal helpers
+in different modules do not rewrite each other's calls. Global-name collisions
+are likewise rewritten inside the owning module before merge.
+
 ### 4. Verifier changes
 
 Import-linkage functions are valid call targets (like externs but with

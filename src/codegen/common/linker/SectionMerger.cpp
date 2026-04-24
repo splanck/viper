@@ -110,6 +110,8 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         const auto &obj = objects[oi];
         for (size_t si = 1; si < obj.sections.size(); ++si) {
             const auto &sec = obj.sections[si];
+            if (sec.stripped)
+                continue;
             if (!sec.alloc)
                 continue;
             if (sec.data.empty() && sec.relocs.empty())
@@ -387,6 +389,8 @@ bool mergeSections(const std::vector<ObjFile> &objects,
             const auto &obj = objects[oi];
             for (size_t si = 1; si < obj.sections.size(); ++si) {
                 const auto &sec = obj.sections[si];
+                if (sec.stripped)
+                    continue;
                 if (sec.alloc)
                     continue;
                 if (sec.data.empty())
