@@ -467,6 +467,74 @@ func start() {    var doubled: Integer = double(5);
     EXPECT_TRUE(result.succeeded());
 }
 
+TEST(ZiaFunctions, GenericInferenceFromListParameter) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func sameList[T](items: List[T]) -> List[T] {
+    return items;
+}
+
+func start() {
+    var numbers: List[Integer] = [1, 2, 3];
+    var copy: List[Integer] = sameList(numbers);
+    Viper.Terminal.SayInt(copy.count());
+}
+)";
+    CompilerInput input{.source = source, .path = "generic_infer_list.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaFunctions, ExplicitGenericMultipleTypeArguments) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func second[A, B](a: A, b: B) -> B {
+    return b;
+}
+
+func start() {
+    var value: String = second[Integer, String](1, "ok");
+    Viper.Terminal.Say(value);
+}
+)";
+    CompilerInput input{.source = source, .path = "generic_explicit_multi.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaFunctions, ExplicitGenericNestedTypeArgument) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func identity[T](x: T) -> T {
+    return x;
+}
+
+func start() {
+    var numbers: List[Integer] = [1, 2, 3];
+    var copy: List[Integer] = identity[List[Integer]](numbers);
+    Viper.Terminal.SayInt(copy.count());
+}
+)";
+    CompilerInput input{.source = source, .path = "generic_explicit_nested.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
 } // namespace
 
 int main() {

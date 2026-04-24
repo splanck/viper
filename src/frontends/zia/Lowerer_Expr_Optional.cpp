@@ -351,7 +351,7 @@ LowerResult Lowerer::lowerTry(TryExpr *expr) {
         emitRetVoid();
     } else {
         // Return null for optional/pointer return types
-        emitRet(Value::constInt(0));
+        emitRet(Value::null());
     }
 
     // Has value block - continue with the unwrapped value

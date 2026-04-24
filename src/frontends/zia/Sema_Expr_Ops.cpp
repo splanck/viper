@@ -171,7 +171,35 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
                 }
             }
 
-            // Comparison operations
+            if (leftType->kind != TypeKindSem::Unknown &&
+                rightType->kind != TypeKindSem::Unknown &&
+                leftType->kind != TypeKindSem::Error && rightType->kind != TypeKindSem::Error) {
+                const bool equality = expr->op == BinaryOp::Eq || expr->op == BinaryOp::Ne;
+                if (equality) {
+                    TypeRef compareLeft =
+                        declaredOptionalSurfaceType(expr->left.get(), leftType);
+                    TypeRef compareRight =
+                        declaredOptionalSurfaceType(expr->right.get(), rightType);
+                    bool compatible = compareLeft->kind == TypeKindSem::Any ||
+                                      compareRight->kind == TypeKindSem::Any ||
+                                      compareLeft->isAssignableFrom(*compareRight) ||
+                                      compareRight->isAssignableFrom(*compareLeft);
+                    if (!compatible) {
+                        error(expr->loc,
+                              "Cannot compare " + compareLeft->toDisplayString() + " with " +
+                                  compareRight->toDisplayString());
+                    }
+                } else {
+                    bool compatible = (leftType->isNumeric() && rightType->isNumeric()) ||
+                                      (leftType->kind == TypeKindSem::String &&
+                                       rightType->kind == TypeKindSem::String);
+                    if (!compatible) {
+                        error(expr->loc,
+                              "Relational comparison requires numeric operands or two Strings");
+                    }
+                }
+            }
+
             return types::boolean();
 
         case BinaryOp::And:
@@ -287,7 +315,9 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
                 }
                 if (assignTarget && rightType && assignTarget->kind != TypeKindSem::Unknown &&
                     rightType->kind != TypeKindSem::Unknown &&
-                    !rightType->isConvertibleTo(*assignTarget)) {
+                    assignTarget->kind != TypeKindSem::Error &&
+                    rightType->kind != TypeKindSem::Error &&
+                    !assignTarget->isAssignableFrom(*rightType)) {
                     errorTypeMismatch(expr->loc, assignTarget, rightType);
                 }
             }

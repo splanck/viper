@@ -696,6 +696,116 @@ func start() {    var x: List[Integer] = [];
     EXPECT_TRUE(result.succeeded());
 }
 
+//=============================================================================
+// Frontend Correctness Regression Tests
+//=============================================================================
+
+TEST(ZiaTypeSoundness, ReassignmentDoesNotAllowExplicitStringConversion) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var x: Integer = 0;
+    x = "42";
+}
+)",
+                                sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Type mismatch"));
+}
+
+TEST(ZiaTypeSoundness, EqualityRejectsUnrelatedTypes) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var same: Boolean = 1 == "1";
+}
+)",
+                                sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Cannot compare"));
+}
+
+TEST(ZiaTypeSoundness, RelationalComparisonRejectsMixedTypes) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var before: Boolean = 1 < "2";
+}
+)",
+                                sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Relational comparison"));
+}
+
+TEST(ZiaTypeSoundness, CoalesceRequiresOptionalLeftOperand) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var x: Integer = 1 ?? 2;
+}
+)",
+                                sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Null-coalescing"));
+}
+
+TEST(ZiaTypeSoundness, CoalesceFallbackMustMatchInnerType) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var maybe: Integer? = 1;
+    var x: Integer = maybe ?? "fallback";
+}
+)",
+                                sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Type mismatch"));
+}
+
+TEST(ZiaTypeSoundness, MixedListLiteralIsRejected) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var xs: List[Integer] = [1, "bad"];
+}
+)",
+                                sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "List literal contains incompatible"));
+}
+
+TEST(ZiaTypeSoundness, MixedMapLiteralValuesAreRejected) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var m: Map[String, Integer] = {"a": 1, "b": "bad"};
+}
+)",
+                                sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Map literal contains incompatible"));
+}
+
+TEST(ZiaTypeSoundness, MixedSetLiteralIsRejected) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var s: Set[Integer] = {1, "bad"};
+}
+)",
+                                sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Set literal contains incompatible"));
+}
+
 } // namespace
 
 int main() {

@@ -57,8 +57,8 @@ func testMapAsCollection() {
     assertEqInt(data.count(), 3, "map count");
 
     // Access
-    assertEqInt(data.get("a"), 1, "get a");
-    assertEqInt(data.get("b"), 2, "get b");
+    assertEqInt(data.get("a") ?? -1, 1, "get a");
+    assertEqInt(data.get("b") ?? -1, 2, "get b");
 
     // Check existence
     assertTrue(data.has("a"), "has a");
@@ -90,8 +90,8 @@ func testNestedMapList() {
 
     // Map with list values
     var groups = {"evens": [2, 4, 6], "odds": [1, 3, 5]};
-    assertEqInt(groups.get("evens")[0], 2, "evens first");
-    assertEqInt(groups.get("odds")[2], 5, "odds third");
+    assertEqInt((groups.get("evens") ?? [])[0], 2, "evens first");
+    assertEqInt((groups.get("odds") ?? [])[2], 5, "odds third");
 }
 
 func start() {

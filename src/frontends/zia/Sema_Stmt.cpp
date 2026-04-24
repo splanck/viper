@@ -633,6 +633,7 @@ bool Sema::stmtAlwaysExits(Stmt *stmt) {
         case StmtKind::Return:
         case StmtKind::Break:
         case StmtKind::Continue:
+        case StmtKind::Throw:
             return true;
 
         case StmtKind::Block: {

@@ -149,7 +149,7 @@ class ProjectManager {
             var selected = treeView.GetSelected();
             if selected != null {
                 var path = GUI.TreeView.Node.GetData(selected);
-                if IO.File.Exists(path) != 0 {
+                if IO.File.Exists(path) != false {
                     selectedFilePath = path;
                     fileWasSelected = true;
                     return path;

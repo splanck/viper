@@ -61,7 +61,7 @@ func start() {
     // Status bar
     var status = Label.New(root, "Ready");
 
-    while app.get_ShouldClose() == 0 {
+    while !app.get_ShouldClose() {
         app.Poll();
 
         if newBtn.WasClicked() == 1 {

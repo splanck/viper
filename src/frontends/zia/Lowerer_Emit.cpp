@@ -119,10 +119,17 @@ LowerResult Lowerer::coerceValueToType(Value value,
 
     if (targetType->kind == TypeKindSem::Optional) {
         TypeRef innerType = targetType->innerType();
+        auto optionalStoreType = [&]() {
+            Type optionalIlType = mapType(targetType);
+            return value.kind == Value::Kind::NullPtr && optionalIlType.kind == Type::Kind::Str
+                       ? Type(Type::Kind::Ptr)
+                       : optionalIlType;
+        };
         if (effectiveSource && effectiveSource->kind == TypeKindSem::Optional)
-            return {value, mapType(targetType)};
-        if (effectiveSource && effectiveSource->kind == TypeKindSem::Unit)
-            return {Value::null(), mapType(targetType)};
+            return {value, optionalStoreType()};
+        if (effectiveSource && effectiveSource->kind == TypeKindSem::Unit) {
+            return {Value::null(), optionalStoreType()};
+        }
         if (innerType) {
             auto coercedInner = coerceValueToType(value, valueIlType, effectiveSource, innerType);
             return {emitOptionalWrap(coercedInner.value, innerType), mapType(targetType)};

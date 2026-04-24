@@ -56,6 +56,14 @@ static size_t blockCount(const il::core::Module &mod, const std::string &fnName)
     return 0;
 }
 
+static bool hasErrorContaining(const CompilerResult &result, const std::string &needle) {
+    for (const auto &d : result.diagnostics.diagnostics()) {
+        if (d.severity == Severity::Error && d.message.find(needle) != std::string::npos)
+            return true;
+    }
+    return false;
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -239,6 +247,97 @@ func start() {
     EXPECT_TRUE(hasOpcode(result.module, "main", il::core::Opcode::EhPush));
     EXPECT_TRUE(hasOpcode(result.module, "main", il::core::Opcode::EhEntry));
     EXPECT_TRUE(hasOpcode(result.module, "main", il::core::Opcode::ResumeLabel));
+}
+
+TEST(ZiaTryCatch, GuardElseThrowSatisfiesExitRequirement) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var ok: Boolean = false;
+    guard ok else {
+        throw "not ok";
+    }
+}
+)";
+
+    CompilerInput input{.source = source, .path = "test_guard_throw.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaTryCatch, TryExpressionPropagatesOptionalNull) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func maybeValue(flag: Boolean) -> Integer? {
+    if flag {
+        return 7;
+    }
+    return null;
+}
+
+func pass(flag: Boolean) -> Integer? {
+    var value: Integer = maybeValue(flag)?;
+    return value;
+}
+
+func start() {
+    var result: Integer? = pass(true);
+}
+)";
+
+    CompilerInput input{.source = source, .path = "test_try_expr_optional.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaTryCatch, TryExpressionRequiresOptionalOperand) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var x: Integer = 1;
+    var y: Integer = x?;
+}
+)";
+
+    CompilerInput input{.source = source, .path = "test_try_expr_non_optional.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "requires an optional operand"));
+}
+
+TEST(ZiaTryCatch, TryExpressionRequiresOptionalReturn) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func bad() -> Integer {
+    var x: Integer? = 1;
+    return x?;
+}
+
+func start() {
+    Viper.Terminal.SayInt(bad());
+}
+)";
+
+    CompilerInput input{.source = source, .path = "test_try_expr_bad_return.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "function returning an optional type"));
 }
 
 } // anonymous namespace

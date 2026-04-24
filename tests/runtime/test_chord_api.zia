@@ -8,7 +8,7 @@ func start() {
 
     // === Test 1: Define action and bind a chord ===
     var ok = Viper.Input.Action.Define("save");
-    if (ok != 1) {
+    if (ok != true) {
         Say("FAIL: Define save should succeed");
         return;
     }
@@ -19,7 +19,7 @@ func start() {
     Viper.Collections.Seq.Push(chord, 83);   // S key
 
     var bindOk = Viper.Input.Action.BindChord("save", chord);
-    if (bindOk != 1) {
+    if (bindOk != true) {
         Say("FAIL: BindChord should succeed");
         return;
     }
@@ -45,7 +45,7 @@ func start() {
     Viper.Collections.Seq.Push(chord2, 83);   // S key
 
     bindOk = Viper.Input.Action.BindChord("save", chord2);
-    if (bindOk != 1) {
+    if (bindOk != true) {
         Say("FAIL: BindChord second chord should succeed");
         return;
     }
@@ -68,7 +68,7 @@ func start() {
     Viper.Collections.Seq.Push(chord3, 65);
     Viper.Collections.Seq.Push(chord3, 68);
     var axisBind = Viper.Input.Action.BindChord("move_x", chord3);
-    if (axisBind != 0) {
+    if (axisBind != false) {
         Say("FAIL: BindChord should reject axis actions");
         return;
     }
@@ -77,14 +77,14 @@ func start() {
     var chord4 = Viper.Collections.Seq.New();
     Viper.Collections.Seq.Push(chord4, 65);
     var singleBind = Viper.Input.Action.BindChord("save", chord4);
-    if (singleBind != 0) {
+    if (singleBind != false) {
         Say("FAIL: BindChord should reject single-key chord");
         return;
     }
 
     // === Test 7: UnbindChord ===
     var unbound = Viper.Input.Action.UnbindChord("save", chord);
-    if (unbound != 1) {
+    if (unbound != true) {
         Say("FAIL: UnbindChord should succeed");
         return;
     }
@@ -97,7 +97,7 @@ func start() {
 
     // === Test 8: UnbindChord non-existent returns 0 ===
     var unbound2 = Viper.Input.Action.UnbindChord("save", chord);
-    if (unbound2 != 0) {
+    if (unbound2 != false) {
         Say("FAIL: UnbindChord non-existent should return 0");
         return;
     }
@@ -107,19 +107,19 @@ func start() {
 
     Viper.Input.Action.Clear();
     var afterClear = Viper.Input.Action.Exists("save");
-    if (afterClear != 0) {
+    if (afterClear != false) {
         Say("FAIL: save should not exist after clear");
         return;
     }
 
     var loadOk = Viper.Input.Action.Load(saved);
-    if (loadOk != 1) {
+    if (loadOk != true) {
         Say("FAIL: Load should succeed");
         return;
     }
 
     var restored = Viper.Input.Action.Exists("save");
-    if (restored != 1) {
+    if (restored != true) {
         Say("FAIL: save should exist after Load");
         return;
     }

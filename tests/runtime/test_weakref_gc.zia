@@ -24,10 +24,10 @@ func start() {
 
     // === Test 3: WeakMap creation ===
     var wmap = Viper.Collections.WeakMap.New();
-    if (wmap == 0) { Say("FAIL: WeakMap.New should return non-null"); return; }
+    if (wmap == null) { Say("FAIL: WeakMap.New should return non-null"); return; }
 
     var isEmpty = Viper.Collections.WeakMap.get_IsEmpty(wmap);
-    if (isEmpty != 1) { Say("FAIL: new WeakMap should be empty"); return; }
+    if (isEmpty != true) { Say("FAIL: new WeakMap should be empty"); return; }
 
     // === Test 4: Set and Get ===
     var val = Viper.Collections.Seq.New();
@@ -38,13 +38,13 @@ func start() {
     if (wmLen != 1) { Say("FAIL: WeakMap Len should be 1"); return; }
 
     var has = Viper.Collections.WeakMap.Has(wmap, "test_key");
-    if (has != 1) { Say("FAIL: WeakMap should have test_key"); return; }
+    if (has != true) { Say("FAIL: WeakMap should have test_key"); return; }
 
     var hasNot = Viper.Collections.WeakMap.Has(wmap, "no_key");
-    if (hasNot != 0) { Say("FAIL: WeakMap should not have no_key"); return; }
+    if (hasNot != false) { Say("FAIL: WeakMap should not have no_key"); return; }
 
     var gotVal = Viper.Collections.WeakMap.Get(wmap, "test_key");
-    if (gotVal == 0) { Say("FAIL: WeakMap.Get should return value"); return; }
+    if (gotVal == null) { Say("FAIL: WeakMap.Get should return value"); return; }
 
     // === Test 5: WeakMap keys ===
     var keys = Viper.Collections.WeakMap.Keys(wmap);
@@ -59,14 +59,14 @@ func start() {
 
     // === Test 7: Remove ===
     var removed = Viper.Collections.WeakMap.Remove(wmap, "test_key");
-    if (removed != 1) { Say("FAIL: WeakMap Remove should return 1"); return; }
+    if (removed != true) { Say("FAIL: WeakMap Remove should return true"); return; }
 
     wmLen = Viper.Collections.WeakMap.get_Length(wmap);
     if (wmLen != 2) { Say("FAIL: WeakMap Len should be 2 after remove"); return; }
 
     // Remove non-existent
     var removedNone = Viper.Collections.WeakMap.Remove(wmap, "nonexistent");
-    if (removedNone != 0) { Say("FAIL: Remove nonexistent should return 0"); return; }
+    if (removedNone != false) { Say("FAIL: Remove nonexistent should return false"); return; }
 
     // === Test 8: Compact ===
     var compacted = Viper.Collections.WeakMap.Compact(wmap);
@@ -78,7 +78,7 @@ func start() {
     if (wmLen != 0) { Say("FAIL: WeakMap should be empty after Clear"); return; }
 
     isEmpty = Viper.Collections.WeakMap.get_IsEmpty(wmap);
-    if (isEmpty != 1) { Say("FAIL: WeakMap should be empty after Clear"); return; }
+    if (isEmpty != true) { Say("FAIL: WeakMap should be empty after Clear"); return; }
 
     // === Test 10: GC after creating objects ===
     // Create some objects and collect

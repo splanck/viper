@@ -7,8 +7,9 @@
 //
 // File: tests/conformance/ZiaArithConformanceTests.cpp
 // Purpose: Verify Zia frontend emits the correct IL opcodes for arithmetic
-//          operations. Tests both checked (default, overflowChecks=true) and
-//          unchecked modes, as well as mixed-type promotion.
+//          operations. Plain signed integer arithmetic opcodes are
+//          verifier-rejected, so the --no-overflow-checks option must still
+//          emit verifier-legal checked arithmetic today.
 //
 // Reference: docs/arithmetic-semantics.md (Frontend Promotion Rules → Zia)
 //
@@ -120,11 +121,11 @@ func start() {
 }
 
 //=============================================================================
-// Unchecked mode (overflowChecks=false)
+// Reserved unchecked flag (overflowChecks=false)
 //=============================================================================
 
-/// @brief Integer addition uses plain Add in unchecked mode.
-TEST(ZiaArithConformance, IntAddUnchecked) {
+/// @brief Integer addition still uses IAddOvf while unchecked mode is reserved.
+TEST(ZiaArithConformance, IntAddUncheckedStillVerified) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -139,12 +140,12 @@ func start() {
 
     auto result = compile(input, opts, sm);
     EXPECT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasOpcode(result.module, il::core::Opcode::Add));
-    // Should NOT have IAddOvf (except potentially in for-loop increments)
+    EXPECT_TRUE(hasOpcode(result.module, il::core::Opcode::IAddOvf));
+    EXPECT_FALSE(hasOpcode(result.module, il::core::Opcode::Add));
 }
 
-/// @brief Integer division uses SDiv in unchecked mode.
-TEST(ZiaArithConformance, IntDivUnchecked) {
+/// @brief Integer division still uses SDivChk0 while unchecked mode is reserved.
+TEST(ZiaArithConformance, IntDivUncheckedStillVerified) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -159,11 +160,12 @@ func start() {
 
     auto result = compile(input, opts, sm);
     EXPECT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasOpcode(result.module, il::core::Opcode::SDiv));
+    EXPECT_TRUE(hasOpcode(result.module, il::core::Opcode::SDivChk0));
+    EXPECT_FALSE(hasOpcode(result.module, il::core::Opcode::SDiv));
 }
 
-/// @brief Integer modulo uses SRem in unchecked mode.
-TEST(ZiaArithConformance, IntModUnchecked) {
+/// @brief Integer modulo still uses SRemChk0 while unchecked mode is reserved.
+TEST(ZiaArithConformance, IntModUncheckedStillVerified) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -178,7 +180,8 @@ func start() {
 
     auto result = compile(input, opts, sm);
     EXPECT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasOpcode(result.module, il::core::Opcode::SRem));
+    EXPECT_TRUE(hasOpcode(result.module, il::core::Opcode::SRemChk0));
+    EXPECT_FALSE(hasOpcode(result.module, il::core::Opcode::SRem));
 }
 
 //=============================================================================

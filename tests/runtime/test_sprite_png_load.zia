@@ -27,14 +27,14 @@ func start() {
 
     // Load sprite from PNG
     var spritePng = Viper.Graphics.Sprite.FromFile("test_sprite_load.png");
-    if (spritePng == 0) {
+    if (spritePng == null) {
         Say("FAIL: Sprite.FromFile failed for PNG");
         return;
     }
 
     // Load sprite from BMP
     var spriteBmp = Viper.Graphics.Sprite.FromFile("test_sprite_load.bmp");
-    if (spriteBmp == 0) {
+    if (spriteBmp == null) {
         Say("FAIL: Sprite.FromFile failed for BMP");
         return;
     }

@@ -302,7 +302,7 @@ class ChessGame {
     expose func run() {
         lastTickMs = Viper.Time.GetTickCount();
 
-        while canvas.get_ShouldClose() == 0 {
+        while !canvas.get_ShouldClose() {
             canvas.Poll();
 
             handleInput();
@@ -1019,7 +1019,7 @@ class ChessGame {
     hide func render() {
         var mx = Viper.Input.Mouse.X();
         var my = Viper.Input.Mouse.Y();
-        var mouseDown = Viper.Input.Mouse.Left() != 0;
+        var mouseDown = Viper.Input.Mouse.Left();
         var animProgress = animationProgressPermille();
         var hoverSq = renderer.squareAt(mx, my);
         if dragFrom >= 0 || animProgress >= 0 {

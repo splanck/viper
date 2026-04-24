@@ -198,6 +198,7 @@ Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag) {
     scopeSnapshots_[nextScopeId_] = ScopeSnapshot{nextScopeId_, 0, 0, {}, {}};
     nextScopeId_++;
     types::clearInterfaceImplementations();
+    types::clearClassInheritance();
     registerBuiltins();
 }
 

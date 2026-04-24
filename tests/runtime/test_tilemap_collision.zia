@@ -33,14 +33,14 @@ func start() {
 
     // Test IsSolidAt: pixel position in floor row (y=9*16=144)
     var solid = Viper.Graphics.Tilemap.IsSolidAt(tm, 32, 144);
-    if (solid != 1) {
+    if (solid != true) {
         Say("FAIL: floor should be solid at (32, 144)");
         return;
     }
 
     // Test IsSolidAt: above floor (y=128 = row 8, empty)
     var notSolid = Viper.Graphics.Tilemap.IsSolidAt(tm, 32, 128);
-    if (notSolid != 0) {
+    if (notSolid != false) {
         Say("FAIL: air above floor should not be solid");
         return;
     }
@@ -49,7 +49,7 @@ func start() {
     var body = Viper.Game.Physics2D.Body.New(32.0, 130.0, 16.0, 16.0, 1.0);
     // Body at y=130 with height 16 -> bottom at y=146, overlaps floor at y=144
     var hit = Viper.Graphics.Tilemap.CollideBody(tm, body);
-    if (hit != 1) {
+    if (hit != true) {
         Say("FAIL: body should collide with floor");
         return;
     }
@@ -64,7 +64,7 @@ func start() {
     // Test no collision when body is fully above floor
     var body2 = Viper.Game.Physics2D.Body.New(32.0, 100.0, 16.0, 16.0, 1.0);
     var hit2 = Viper.Graphics.Tilemap.CollideBody(tm, body2);
-    if (hit2 != 0) {
+    if (hit2 != false) {
         Say("FAIL: body above floor should not collide");
         return;
     }

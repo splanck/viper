@@ -765,7 +765,7 @@ func start() {
     walk.set_Loop(true);
     walk.Play();
 
-    while canvas.get_ShouldClose() == 0 {
+    while !canvas.get_ShouldClose() {
         canvas.Poll();
         canvas.Clear(0x000000);
 

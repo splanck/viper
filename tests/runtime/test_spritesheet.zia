@@ -43,20 +43,20 @@ func start() {
 
     // HasRegion
     var has = Viper.Graphics.SpriteSheet.HasRegion(sheet, "top_left");
-    if (has != 1) {
+    if (has != true) {
         Say("FAIL: should have top_left");
         return;
     }
 
     var hasNot = Viper.Graphics.SpriteSheet.HasRegion(sheet, "center");
-    if (hasNot != 0) {
+    if (hasNot != false) {
         Say("FAIL: should not have center");
         return;
     }
 
     // GetRegion — returns a Pixels buffer
     var region = Viper.Graphics.SpriteSheet.GetRegion(sheet, "top_left");
-    if (region == 0) {
+    if (region == null) {
         Say("FAIL: GetRegion should return non-null");
         return;
     }
@@ -71,7 +71,7 @@ func start() {
 
     // RemoveRegion
     var removed = Viper.Graphics.SpriteSheet.RemoveRegion(sheet, "bottom_right");
-    if (removed != 1) {
+    if (removed != true) {
         Say("FAIL: RemoveRegion should return 1");
         return;
     }
@@ -93,13 +93,13 @@ func start() {
 
     // Grid regions are named "0", "1", etc.
     var hasFirst = Viper.Graphics.SpriteSheet.HasRegion(gridSheet, "0");
-    if (hasFirst != 1) {
+    if (hasFirst != true) {
         Say("FAIL: grid should have region '0'");
         return;
     }
 
     var hasLast = Viper.Graphics.SpriteSheet.HasRegion(gridSheet, "15");
-    if (hasLast != 1) {
+    if (hasLast != true) {
         Say("FAIL: grid should have region '15'");
         return;
     }

@@ -117,12 +117,11 @@ BytecodeVM::~BytecodeVM() {
     stringCache_.clear();
 }
 
-/// @brief Initialize the string cache with runtime string objects.
+/// @brief Reset the string cache slots for the loaded module.
 ///
-/// Pre-creates rt_string objects for all strings in the module's string pool.
-/// This is necessary because the runtime expects managed string pointers,
-/// not raw C strings. The cache is reference-counted and released on
-/// destruction or when a new module is loaded.
+/// The runtime expects managed rt_string handles, not raw C strings. Handles
+/// are materialized lazily by @ref getStringLiteral so worker VMs only create
+/// literals they actually execute.
 void BytecodeVM::initStringCache() {
     // Release any existing cache
     for (rt_string s : stringCache_) {
@@ -135,15 +134,19 @@ void BytecodeVM::initStringCache() {
     if (!module_)
         return;
 
-    // Pre-create rt_string objects for all strings in the pool
-    // The runtime expects rt_string (pointer to rt_string_impl), not raw C strings
-    stringCache_.reserve(module_->stringPool.size());
-    for (const auto &str : module_->stringPool) {
-        // Use rt_const_cstr to create a proper runtime string object
-        // This matches what the standard VM does in VMInit.cpp
-        rt_string rtStr = rt_const_cstr(str.c_str());
-        stringCache_.push_back(rtStr);
-    }
+    stringCache_.assign(module_->stringPool.size(), nullptr);
+}
+
+rt_string BytecodeVM::getStringLiteral(uint16_t idx) {
+    if (!module_ || idx >= module_->stringPool.size())
+        return nullptr;
+    if (idx >= stringCache_.size())
+        stringCache_.resize(module_->stringPool.size(), nullptr);
+
+    rt_string &cached = stringCache_[idx];
+    if (!cached)
+        cached = rt_const_cstr(module_->stringPool[idx].c_str());
+    return cached;
 }
 
 bool BytecodeVM::runtimeCallConsumesClonedStringArgs(std::string_view name) {
@@ -1977,9 +1980,7 @@ void BytecodeVM::run() {
             //==================================================================
             case BCOpcode::LOAD_STR: {
                 uint16_t idx = decodeArg16(instr);
-                // Use the cached rt_string object (not raw C string!)
-                // The runtime expects rt_string (pointer to rt_string_impl struct)
-                sp_->ptr = (idx < stringCache_.size()) ? stringCache_[idx] : nullptr;
+                sp_->ptr = getStringLiteral(idx);
                 if (sp_->ptr) {
                     if (!validateStringHandle(sp_->ptr, "BytecodeVM::LOAD_STR"))
                         break;

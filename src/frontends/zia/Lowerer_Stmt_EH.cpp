@@ -42,10 +42,11 @@
 ///   %kind_i32 = err.get_kind %err        // I32 (must be in handler block)
 ///   %expected = const.i64 <kind_value>
 ///   %match = icmp.eq %kind_i64, %expected
-///   cbr %match, ^catch_body(%err, %tok), ^rethrow(%kind_i32)
+///   cbr %match, ^catch_body(%err, %tok), ^rethrow(%tok)
 ///
-/// ^rethrow(%rk: I32):
-///   trap.from_err %rk                    // re-raises with original kind
+/// ^rethrow(%err: error, %tok: resumetok):
+///   eh.entry
+///   resume.same %tok                     // re-raises the original error
 ///
 /// ^catch_body(%err: error, %tok: resumetok):
 ///   eh.entry                             // required: makes block a handler
@@ -126,7 +127,8 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
 
     // For typed catch: create extra blocks for the kind check.
     // catch_body must be a handler block (eh.entry + Error/ResumeTok params) so it
-    // can use resume.label. rethrow receives the I32 kind as a branch argument.
+    // can use resume.label. rethrow keeps the handler signature so the verifier
+    // permits resume.same.
     size_t catchBodyIdx = 0;
     size_t rethrowIdx = 0;
     if (isTypedCatch) {
@@ -140,9 +142,10 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
                               catchBodyParams);
         catchBodyIdx = currentFunc_->blocks.size() - 1;
 
-        // rethrow: receives I32 kind value as branch argument
+        // rethrow: handler-style block with Error + ResumeTok params
         std::vector<il::core::Param> rethrowParams;
-        rethrowParams.push_back({"rk", Type(Type::Kind::I32)});
+        rethrowParams.push_back({"err", Type(Type::Kind::Error)});
+        rethrowParams.push_back({"tok", Type(Type::Kind::ResumeTok)});
         builder_->createBlock(
             *currentFunc_, "rethrow_" + std::to_string(blockMgr_.nextBlockId()), rethrowParams);
         rethrowIdx = currentFunc_->blocks.size() - 1;
@@ -207,18 +210,6 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
             blockMgr_.currentBlock()->instructions.push_back(std::move(trapKindInstr));
         }
 
-        // %kind_i32 = err.get_kind %err  (I32 — needed for rethrow, must be in handler)
-        unsigned kindI32Id = nextTempId();
-        {
-            il::core::Instr getKindInstr;
-            getKindInstr.op = Opcode::ErrGetKind;
-            getKindInstr.type = Type(Type::Kind::I32);
-            getKindInstr.result = kindI32Id;
-            getKindInstr.operands = {errVal};
-            getKindInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(std::move(getKindInstr));
-        }
-
         // %match = icmp.eq %kind_i64, <expected>  (I1)
         Value kindI64Val = Value::temp(kindI64Id);
         Value expectedVal = Value::constInt(static_cast<int64_t>(expectedKind));
@@ -228,7 +219,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
         // auto-pop the handler from the EH stack when dispatching. The handler
         // block always starts with a clean stack.
 
-        // cbr %match, ^catch_body(%err, %tok), ^rethrow(%kind_i32)
+        // cbr %match, ^catch_body(%err, %tok), ^rethrow(%err, %tok)
         // Manual CBr construction to pass branch arguments
         {
             il::core::Instr cbrInstr;
@@ -239,24 +230,30 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
             cbrInstr.labels.push_back(currentFunc_->blocks[rethrowIdx].label);
             // Branch args for catch_body: forward %err, %tok
             cbrInstr.brArgs.push_back({errVal, tokVal});
-            // Branch args for rethrow: forward %kind_i32
-            cbrInstr.brArgs.push_back({Value::temp(kindI32Id)});
+            // Branch args for rethrow: forward %err, %tok
+            cbrInstr.brArgs.push_back({errVal, tokVal});
             cbrInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(std::move(cbrInstr));
             blockMgr_.currentBlock()->terminated = true;
         }
 
-        // --- Rethrow block: re-raise with original error kind ---
+        // --- Rethrow block: re-raise the original error ---
         setBlock(rethrowIdx);
         {
-            // %rk is the block's first (and only) param — the I32 kind value
+            il::core::Instr ehEntryInstr;
+            ehEntryInstr.op = Opcode::EhEntry;
+            ehEntryInstr.type = Type(Type::Kind::Void);
+            ehEntryInstr.loc = curLoc_;
+            blockMgr_.currentBlock()->instructions.push_back(std::move(ehEntryInstr));
+
+            // %tok is the block's second param — the original resume token.
             const auto &rethrowBp = currentFunc_->blocks[rethrowIdx].params;
-            Value rkVal = Value::temp(rethrowBp[0].id);
+            Value rethrowTok = Value::temp(rethrowBp[1].id);
 
             il::core::Instr rethrowInstr;
-            rethrowInstr.op = Opcode::TrapFromErr;
-            rethrowInstr.type = Type(Type::Kind::I32); // verifier requires i32 result type
-            rethrowInstr.operands = {rkVal};
+            rethrowInstr.op = Opcode::ResumeSame;
+            rethrowInstr.type = Type(Type::Kind::Void);
+            rethrowInstr.operands = {rethrowTok};
             rethrowInstr.loc = curLoc_;
             blockMgr_.currentBlock()->instructions.push_back(std::move(rethrowInstr));
             blockMgr_.currentBlock()->terminated = true;

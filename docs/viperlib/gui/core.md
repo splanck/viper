@@ -34,7 +34,7 @@ func start() {
     btn.SetSize(100, 30);
     btn.SetPosition(10, 50);
 
-    while app.get_ShouldClose() == 0 {
+    while !app.get_ShouldClose() {
         app.Poll();
 
         if btn.WasClicked() == 1 {
@@ -167,7 +167,7 @@ LOOP
 var app = App.New("Calculator", 300, 400);
 var root = app.get_Root();
 
-while app.get_ShouldClose() == 0 {
+while !app.get_ShouldClose() {
     app.Poll();
     // ... handle widget events ...
     app.Render();

@@ -341,7 +341,7 @@ class AppShell {
 
     /// @brief True if the user requested window close (clicked the X).
     expose func ShouldClose() -> Boolean {
-        return app.ShouldClose != 0;
+        return app.ShouldClose;
     }
 
     /// @brief Pump the event queue. Call once per frame before reading

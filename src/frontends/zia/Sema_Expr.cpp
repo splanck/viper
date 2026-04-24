@@ -90,6 +90,9 @@ TypeRef Sema::analyzeExpr(Expr *expr) {
         case ExprKind::Coalesce:
             result = analyzeCoalesce(static_cast<CoalesceExpr *>(expr));
             break;
+        case ExprKind::Try:
+            result = analyzeTry(static_cast<TryExpr *>(expr));
+            break;
         case ExprKind::Is:
             result = analyzeIs(static_cast<IsExpr *>(expr));
             break;

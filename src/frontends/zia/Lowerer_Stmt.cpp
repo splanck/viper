@@ -97,9 +97,17 @@ void Lowerer::lowerStmt(Stmt *stmt) {
 }
 
 void Lowerer::lowerBlockStmt(BlockStmt *stmt) {
+    auto localsBackup = locals_;
+    auto slotsBackup = slots_;
+    auto localTypesBackup = localTypes_;
+
     for (auto &s : stmt->statements) {
         lowerStmt(s.get());
     }
+
+    locals_ = std::move(localsBackup);
+    slots_ = std::move(slotsBackup);
+    localTypes_ = std::move(localTypesBackup);
 }
 
 void Lowerer::lowerExprStmt(ExprStmt *stmt) {
@@ -373,9 +381,8 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt) {
             // For inclusive (0..=10).rev(): init i = end, bound = start, cond i >= bound
             Value initVal = endResult.value;
             if (!rangeExpr->inclusive) {
-                Opcode subOp = options_.overflowChecks ? Opcode::ISubOvf : Opcode::Sub;
-                initVal =
-                    emitBinary(subOp, Type(Type::Kind::I64), endResult.value, Value::constInt(1));
+                initVal = emitBinary(
+                    Opcode::ISubOvf, Type(Type::Kind::I64), endResult.value, Value::constInt(1));
             }
             storeToSlot(stmt->variable, initVal, Type(Type::Kind::I64));
             storeToSlot(endVar, startResult.value, Type(Type::Kind::I64));
@@ -414,11 +421,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt) {
         setBlock(updateIdx);
         Value currentVal = loadFromSlot(stmt->variable, Type(Type::Kind::I64));
         Value currentStep = loadFromSlot(stepVar, Type(Type::Kind::I64));
-        Opcode updateOp;
-        if (reversed)
-            updateOp = options_.overflowChecks ? Opcode::ISubOvf : Opcode::Sub;
-        else
-            updateOp = options_.overflowChecks ? Opcode::IAddOvf : Opcode::Add;
+        Opcode updateOp = reversed ? Opcode::ISubOvf : Opcode::IAddOvf;
         Value nextVal = emitBinary(updateOp, Type(Type::Kind::I64), currentVal, currentStep);
         storeToSlot(stmt->variable, nextVal, Type(Type::Kind::I64));
         emitBr(condIdx);
@@ -568,8 +571,8 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt) {
 
         setBlock(updateIdx);
         Value idxCurrent = loadFromSlot(indexVar, Type(Type::Kind::I64));
-        Opcode addOp = options_.overflowChecks ? Opcode::IAddOvf : Opcode::Add;
-        Value idxNext = emitBinary(addOp, Type(Type::Kind::I64), idxCurrent, Value::constInt(1));
+        Value idxNext =
+            emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), idxCurrent, Value::constInt(1));
         storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
         emitBr(condIdx);
 
@@ -666,8 +669,8 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt) {
 
         setBlock(updateIdx);
         Value idxCurrent = loadFromSlot(indexVar, Type(Type::Kind::I64));
-        Opcode addOp = options_.overflowChecks ? Opcode::IAddOvf : Opcode::Add;
-        Value idxNext = emitBinary(addOp, Type(Type::Kind::I64), idxCurrent, Value::constInt(1));
+        Value idxNext =
+            emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), idxCurrent, Value::constInt(1));
         storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
         emitBr(condIdx);
 
@@ -752,8 +755,8 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt) {
 
         setBlock(updateIdx);
         Value idxCurrent = loadFromSlot(indexVar, Type(Type::Kind::I64));
-        Opcode addOp = options_.overflowChecks ? Opcode::IAddOvf : Opcode::Add;
-        Value idxNext = emitBinary(addOp, Type(Type::Kind::I64), idxCurrent, Value::constInt(1));
+        Value idxNext =
+            emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), idxCurrent, Value::constInt(1));
         storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
         emitBr(condIdx);
 

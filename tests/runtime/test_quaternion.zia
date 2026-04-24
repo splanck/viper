@@ -110,7 +110,7 @@ func start() {
 
     // === Test 14: ToMat4 returns non-null ===
     var mat = Viper.Math.Quat.ToMat4(id);
-    if (mat == 0) { Say("FAIL: ToMat4 should return non-null"); return; }
+    if (mat == null) { Say("FAIL: ToMat4 should return non-null"); return; }
 
     Say("RESULT: ok");
 }

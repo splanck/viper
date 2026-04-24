@@ -466,9 +466,7 @@ L_LOAD_F64:
 
 L_LOAD_STR: {
     uint16_t idx = decodeArg16(instr);
-    // Use the cached rt_string object (not raw C string!)
-    // The runtime expects rt_string (pointer to rt_string_impl struct)
-    sp->ptr = (idx < stringCache_.size()) ? stringCache_[idx] : nullptr;
+    sp->ptr = getStringLiteral(idx);
     if (sp->ptr) {
         if (!validateStringHandle(sp->ptr, "BytecodeVM::LOAD_STR(threaded)")) {
             SYNC_STATE();

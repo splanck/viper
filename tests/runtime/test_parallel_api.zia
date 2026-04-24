@@ -13,7 +13,7 @@ func start() {
 
     // DefaultPool should return non-null
     var pool = Viper.Threads.Parallel.DefaultPool();
-    if (pool == 0) {
+    if (pool == null) {
         Say("FAIL: DefaultPool should return non-null");
         return;
     }

@@ -24,8 +24,8 @@ func testGet() {
 
     var map = {"number": 42, "other": 99};
 
-    assertEqInt(map.get("number"), 42, "get number");
-    assertEqInt(map.get("other"), 99, "get other");
+    assertEqInt(map.get("number") ?? -1, 42, "get number");
+    assertEqInt(map.get("other") ?? -1, 99, "get other");
 }
 
 func testGetOr() {
@@ -84,11 +84,11 @@ func testOverwrite() {
     setTest("Overwrite");
 
     var map = {"key": 100};
-    assertEqInt(map.get("key"), 100, "initial value");
+    assertEqInt(map.get("key") ?? -1, 100, "initial value");
 
     // Overwrite with new value
     map.set("key", 200);
-    assertEqInt(map.get("key"), 200, "overwritten value");
+    assertEqInt(map.get("key") ?? -1, 200, "overwritten value");
     assertEqInt(map.count(), 1, "count unchanged after overwrite");
 }
 
@@ -100,11 +100,11 @@ func testSetIfMissing() {
 
     // First time - key missing, should set
     map.setIfMissing("key", 100);
-    assertEqInt(map.get("key"), 100, "value set");
+    assertEqInt(map.get("key") ?? -1, 100, "value set");
 
     // Second time - key exists, should not overwrite
     map.setIfMissing("key", 999);
-    assertEqInt(map.get("key"), 100, "value unchanged");
+    assertEqInt(map.get("key") ?? -1, 100, "value unchanged");
 }
 
 func testKeysValues() {
@@ -128,8 +128,8 @@ func testLiteralInit() {
     // Map with string keys and int values
     var ages = {"alice": 30, "bob": 25};
     assertEqInt(ages.count(), 2, "literal map count");
-    assertEqInt(ages.get("alice"), 30, "literal alice");
-    assertEqInt(ages.get("bob"), 25, "literal bob");
+    assertEqInt(ages.get("alice") ?? -1, 30, "literal alice");
+    assertEqInt(ages.get("bob") ?? -1, 25, "literal bob");
 }
 
 func start() {

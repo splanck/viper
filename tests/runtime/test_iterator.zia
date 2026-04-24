@@ -28,7 +28,7 @@ func start() {
 
     // HasNext should be true
     var hn = Viper.Collections.Iterator.HasNext(it);
-    if (hn != 1) {
+    if (hn != true) {
         Say("FAIL: Seq iterator HasNext should be 1");
         return;
     }
@@ -66,7 +66,7 @@ func start() {
 
     // HasNext should now be false (all 3 consumed)
     var hn2 = Viper.Collections.Iterator.HasNext(it);
-    if (hn2 != 0) {
+    if (hn2 != false) {
         Say("FAIL: Seq iterator HasNext should be 0 after exhaustion");
         return;
     }
@@ -101,7 +101,7 @@ func start() {
     Viper.Collections.Iterator.Next(lit);
     Viper.Collections.Iterator.Next(lit);
     var lhn = Viper.Collections.Iterator.HasNext(lit);
-    if (lhn != 0) {
+    if (lhn != false) {
         Say("FAIL: List iterator should be exhausted");
         return;
     }
@@ -159,7 +159,7 @@ func start() {
     Viper.Collections.Iterator.Next(rit);
     Viper.Collections.Iterator.Next(rit);
     var rhn = Viper.Collections.Iterator.HasNext(rit);
-    if (rhn != 0) {
+    if (rhn != false) {
         Say("FAIL: Ring iterator should be exhausted");
         return;
     }

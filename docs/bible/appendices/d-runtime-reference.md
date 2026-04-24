@@ -1528,7 +1528,7 @@ var scores: Map[String, Integer] = {};
 
 ```rust
 scores.set(key, value)          // Add or update a key-value pair
-scores.get(key)                 // -> value
+scores.get(key)                 // -> V? (null if missing)
 scores.getOr(key, defaultValue) // -> value or default without inserting
 scores.has(key)                 // -> Boolean
 scores.setIfMissing(key, value) // -> Boolean (true if inserted)
@@ -1552,7 +1552,7 @@ func countWords(text: String) -> Map[String, Integer] {
         var cleaned = word.Trim();
         if cleaned.Length > 0 {
             if counts.has(cleaned) {
-                counts.set(cleaned, counts.get(cleaned) + 1);
+                counts.set(cleaned, (counts.get(cleaned) ?? 0) + 1);
             } else {
                 counts.set(cleaned, 1);
             }
@@ -2420,7 +2420,7 @@ var button = new Button(app.Root, "Click Me")
 
 while !app.ShouldClose {
     app.Poll()
-    if button.WasClicked() {
+    if button.WasClicked() != 0 {
         // Handle click
     }
     app.Render()
@@ -2462,10 +2462,10 @@ widget.SetPosition(x: Integer, y: Integer) -> void
 widget.AddChild(child: Widget) -> void
 
 // State queries (polling-based events)
-widget.IsHovered() -> Boolean
-widget.IsPressed() -> Boolean
-widget.IsFocused() -> Boolean
-widget.WasClicked() -> Boolean    // True if clicked this frame
+widget.IsHovered() -> Integer
+widget.IsPressed() -> Integer
+widget.IsFocused() -> Integer
+widget.WasClicked() -> Integer    // 1 if clicked this frame
 ```
 
 ---
@@ -2500,9 +2500,9 @@ var button = new Button(parent: Widget, text: String) -> Button
 button.SetText(text: String) -> void
 button.SetFont(font: Font, size: Number) -> void
 button.SetStyle(style: Integer) -> void  // 0=default, 1=primary, 2=secondary, 3=danger, 4=text
-button.WasClicked() -> Boolean
-button.IsHovered() -> Boolean
-button.IsPressed() -> Boolean
+button.WasClicked() -> Integer
+button.IsHovered() -> Integer
+button.IsPressed() -> Integer
 ```
 
 **Example:**
@@ -2511,7 +2511,7 @@ var btn = new Button(app.Root, "Submit")
 btn.SetSize(120, 32)
 btn.SetStyle(1)  // Primary style
 
-if btn.WasClicked() {
+if btn.WasClicked() != 0 {
     // Handle submission
 }
 ```

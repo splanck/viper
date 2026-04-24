@@ -64,7 +64,7 @@ func start() {
     }
 
     var empty = Viper.Threads.Channel.get_IsEmpty(ch);
-    if (empty != 1) {
+    if (empty != true) {
         Say("FAIL: channel should be empty initially");
         return;
     }
@@ -86,7 +86,7 @@ func start() {
     }
 
     var full = Viper.Threads.Channel.get_IsFull(ch);
-    if (full != 0) {
+    if (full != false) {
         Say("FAIL: channel should not be full (2/5)");
         return;
     }
@@ -109,7 +109,7 @@ func start() {
     // Close
     Viper.Threads.Channel.Close(ch);
     var closed = Viper.Threads.Channel.get_IsClosed(ch);
-    if (closed != 1) {
+    if (closed != true) {
         Say("FAIL: channel should be closed");
         return;
     }
@@ -126,18 +126,18 @@ func start() {
     var g1 = Viper.Threads.Gate.TryEnter(gate);
     var g2 = Viper.Threads.Gate.TryEnter(gate);
     var g3 = Viper.Threads.Gate.TryEnter(gate);
-    if (g1 != 1) {
+    if (g1 != true) {
         Say("FAIL: first gate enter should succeed");
         return;
     }
-    if (g3 != 1) {
+    if (g3 != true) {
         Say("FAIL: third gate enter should succeed");
         return;
     }
 
     // Fourth should fail
     var g4 = Viper.Threads.Gate.TryEnter(gate);
-    if (g4 != 0) {
+    if (g4 != false) {
         Say("FAIL: fourth gate enter should fail");
         return;
     }
@@ -161,21 +161,21 @@ func start() {
     // === Test 4: CancelToken ===
     var token = Viper.Threads.CancelToken.New();
     var isCancelled = Viper.Threads.CancelToken.get_IsCancelled(token);
-    if (isCancelled != 0) {
+    if (isCancelled != false) {
         Say("FAIL: token should not be cancelled initially");
         return;
     }
 
     Viper.Threads.CancelToken.Cancel(token);
     isCancelled = Viper.Threads.CancelToken.get_IsCancelled(token);
-    if (isCancelled != 1) {
+    if (isCancelled != true) {
         Say("FAIL: token should be cancelled after Cancel");
         return;
     }
 
     Viper.Threads.CancelToken.Reset(token);
     isCancelled = Viper.Threads.CancelToken.get_IsCancelled(token);
-    if (isCancelled != 0) {
+    if (isCancelled != false) {
         Say("FAIL: token should not be cancelled after Reset");
         return;
     }
@@ -206,7 +206,7 @@ func start() {
     // Write lock
     Viper.Threads.RwLock.WriteEnter(lock);
     var isWriteLocked = Viper.Threads.RwLock.get_IsWriteLocked(lock);
-    if (isWriteLocked != 1) {
+    if (isWriteLocked != true) {
         Say("FAIL: should be write locked");
         return;
     }

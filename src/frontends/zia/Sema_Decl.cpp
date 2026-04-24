@@ -517,6 +517,8 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
                     field->type ? resolveTypeNode(field->type.get()) : types::unknown();
                 std::string fieldKey = decl.name + "." + field->name;
                 fieldTypes_[fieldKey] = fieldType;
+                if (field->isStatic)
+                    staticFields_.insert(fieldKey);
                 memberVisibility_[fieldKey] = field->visibility;
             } else if (member->kind == DeclKind::Property) {
                 auto *prop = static_cast<PropertyDecl *>(member.get());
@@ -639,6 +641,8 @@ void Sema::analyzeClassDecl(ClassDecl &decl) {
             std::vector<std::pair<std::string, TypeRef>> inheritedFields;
             for (const auto &entry : fieldTypes_) {
                 if (entry.first.rfind(parentPrefix, 0) == 0) {
+                    if (staticFields_.contains(entry.first))
+                        continue;
                     std::string fieldName = entry.first.substr(parentPrefix.size());
                     if (!declaredFieldNames.contains(fieldName) &&
                         !currentScope_->lookupLocal(fieldName)) {
@@ -652,7 +656,11 @@ void Sema::analyzeClassDecl(ClassDecl &decl) {
                 sym.name = fieldName;
                 sym.type = fieldType;
                 defineSymbol(fieldName, sym);
-                fieldTypes_[decl.name + "." + fieldName] = fieldType;
+                std::string childKey = decl.name + "." + fieldName;
+                fieldTypes_[childKey] = fieldType;
+                auto visIt = memberVisibility_.find(decl.baseClass + "." + fieldName);
+                if (visIt != memberVisibility_.end())
+                    memberVisibility_[childKey] = visIt->second;
             }
         }
     }

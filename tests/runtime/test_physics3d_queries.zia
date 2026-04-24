@@ -72,7 +72,7 @@ func start() {
         delta,
         1
     );
-    if (PhysicsHit3D.get_StartedPenetrating(sweepHit) == 0) {
+    if (PhysicsHit3D.get_StartedPenetrating(sweepHit) == false) {
         Say("FAIL: SweepSphere should report initial penetration");
         return;
     }

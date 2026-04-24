@@ -255,7 +255,7 @@ func start() {    var xs = List.New();
     Viper.Terminal.SetPosition(row: 1, col: 2);
     Viper.Terminal.SetColor(fg: 7, bg: 0);
     Viper.Terminal.Say(part);
-    Viper.Terminal.SayInt(first);
+    Viper.Terminal.SayInt(Viper.Core.Box.ToI64(first));
 }
 )";
     CompilerInput input{.source = source, .path = "runtime_named_args.zia"};

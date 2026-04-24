@@ -308,7 +308,7 @@ func main() {
                 var ctxNode = shell.sidebarTree.GetSelected();
                 if ctxNode != null {
                     var nodePath = GUI.TreeView.Node.GetData(ctxNode);
-                    if IO.Dir.Exists(nodePath) != 0 {
+                    if IO.Dir.Exists(nodePath) != false {
                         ctxDir = nodePath;
                     } else {
                         ctxDir = Path.Dir(nodePath);
@@ -321,7 +321,7 @@ func main() {
             var ctxNode = shell.sidebarTree.GetSelected();
             if ctxNode != null {
                 var ctxPath = GUI.TreeView.Node.GetData(ctxNode);
-                if IO.File.Exists(ctxPath) != 0 {
+                if IO.File.Exists(ctxPath) != false {
                     file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, ctxPath);
                     pendingReload = false;
                 }
@@ -396,10 +396,10 @@ func main() {
         // Edit commands
         if shell.miUndo.WasClicked() != 0 or cpSelected == "undo"      { edit_commands.handleUndo(engine); }
         if shell.miRedo.WasClicked() != 0 or cpSelected == "redo"      { edit_commands.handleRedo(engine); }
-        if shell.miCut.WasClicked() != 0                                { edit_commands.handleCut(engine); }
-        if shell.miCopy.WasClicked() != 0                               { edit_commands.handleCopy(engine); }
-        if shell.miPaste.WasClicked() != 0                              { edit_commands.handlePaste(engine); }
-        if shell.miSelectAll.WasClicked() != 0                          { edit_commands.handleSelectAll(engine); }
+        if shell.miCut.WasClicked() != 0                               { edit_commands.handleCut(engine); }
+        if shell.miCopy.WasClicked() != 0                              { edit_commands.handleCopy(engine); }
+        if shell.miPaste.WasClicked() != 0                             { edit_commands.handlePaste(engine); }
+        if shell.miSelectAll.WasClicked() != 0                         { edit_commands.handleSelectAll(engine); }
         if triggered("find", shell.miFind, null, cpSelected)            { edit_commands.handleFind(shell); }
         if triggeredNoMenu("goto", cpSelected)                          { edit_commands.handleGoToLine(shell, engine); }
         if triggeredNoMenu("gotodef", cpSelected)                       { edit_commands.handleGoToDefinition(shell, engine); }

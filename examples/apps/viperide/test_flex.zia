@@ -78,7 +78,7 @@ func main() {
     var shell = new TestShell();
     shell.Build();
 
-    while shell.app.ShouldClose == 0 {
+    while shell.app.ShouldClose == false {
         shell.app.Poll();
         shell.app.Render();
     }

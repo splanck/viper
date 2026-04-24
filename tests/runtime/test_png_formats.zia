@@ -18,7 +18,7 @@ func start() {
     }
 
     var loaded = Viper.Graphics.Pixels.LoadPng("test_fmt_rgba.png");
-    if (loaded == 0) {
+    if (loaded == null) {
         Say("FAIL: LoadPng RGBA returned null");
         return;
     }

@@ -34,13 +34,13 @@ func start() {    var nums = [1, 2, 3];
 
     var m = {"a": 1, "b": 2};
     m.set("c", 3);
-    assertEqInt(m.get("b"), 2, "get");
+    assertEqInt(m.get("b") ?? -1, 2, "get");
     assertEqInt(m.getOr("z", 9), 9, "getOr");
     assertTrue(m.has("a"), "has");
     assertTrue(m.remove("b"), "remove");
     assertEqInt(m.count(), 2, "count2");
     m.setIfMissing("a", 7);
-    assertEqInt(m.get("a"), 1, "setIfMissing");
+    assertEqInt(m.get("a") ?? -1, 1, "setIfMissing");
     m.keys();
     m.values();
     m.clear();

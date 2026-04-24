@@ -62,7 +62,7 @@ LowerResult BinaryOperatorLowerer::lowerBinary(BinaryExpr *expr) {
         right.type = Type(Type::Kind::F64);
     }
 
-    Opcode op = Opcode::Add;
+    Opcode op = Opcode::IAddOvf;
     Type resultType = isFloat ? Type(Type::Kind::F64) : left.type;
 
     switch (expr->op) {
@@ -101,27 +101,23 @@ LowerResult BinaryOperatorLowerer::lowerBinary(BinaryExpr *expr) {
                 lowerer_.consumeDeferred(right.value);
                 return {result, Type(Type::Kind::Str)};
             }
-            op = isFloat ? Opcode::FAdd
-                         : (lowerer_.options_.overflowChecks ? Opcode::IAddOvf : Opcode::Add);
+            op = isFloat ? Opcode::FAdd : Opcode::IAddOvf;
             break;
 
         case BinaryOp::Sub:
-            op = isFloat ? Opcode::FSub
-                         : (lowerer_.options_.overflowChecks ? Opcode::ISubOvf : Opcode::Sub);
+            op = isFloat ? Opcode::FSub : Opcode::ISubOvf;
             break;
 
         case BinaryOp::Mul:
-            op = isFloat ? Opcode::FMul
-                         : (lowerer_.options_.overflowChecks ? Opcode::IMulOvf : Opcode::Mul);
+            op = isFloat ? Opcode::FMul : Opcode::IMulOvf;
             break;
 
         case BinaryOp::Div:
-            op = isFloat ? Opcode::FDiv
-                         : (lowerer_.options_.overflowChecks ? Opcode::SDivChk0 : Opcode::SDiv);
+            op = isFloat ? Opcode::FDiv : Opcode::SDivChk0;
             break;
 
         case BinaryOp::Mod:
-            op = lowerer_.options_.overflowChecks ? Opcode::SRemChk0 : Opcode::SRem;
+            op = Opcode::SRemChk0;
             break;
 
         case BinaryOp::Eq:

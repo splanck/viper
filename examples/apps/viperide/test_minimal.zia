@@ -54,7 +54,7 @@ func main() {
     var s = new Shell();
     s.Build();
 
-    while s.app.ShouldClose == 0 {
+    while s.app.ShouldClose == false {
         s.app.Poll();
         s.app.Render();
     }

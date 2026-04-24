@@ -35,6 +35,7 @@ enum class MethodReturnKind {
     ElementType, ///< Returns the collection's element type
     KeyType,     ///< Returns the map's key type
     ValueType,   ///< Returns the map's struct type
+    OptionalValueType, ///< Returns an optional map value type
     Integer,     ///< Returns Integer
     Boolean,     ///< Returns Boolean
     Void,        ///< Returns Void
@@ -60,7 +61,6 @@ const CollectionMethodInfo listMethods[] = {
     {"size", MethodReturnKind::Integer},
     {"length", MethodReturnKind::Integer},
     {"indexOf", MethodReturnKind::Integer},
-    {"lastIndexOf", MethodReturnKind::Integer},
     // Methods returning Boolean
     {"isEmpty", MethodReturnKind::Boolean},
     {"contains", MethodReturnKind::Boolean},
@@ -79,7 +79,7 @@ const CollectionMethodInfo listMethods[] = {
 /// @brief Map methods and their return types.
 const CollectionMethodInfo mapMethods[] = {
     // Methods returning struct type
-    {"get", MethodReturnKind::ValueType},
+    {"get", MethodReturnKind::OptionalValueType},
     {"getOr", MethodReturnKind::ValueType},
     // Methods returning Void
     {"set", MethodReturnKind::Void},
@@ -151,6 +151,9 @@ TypeRef resolveMethodReturnType(MethodReturnKind kind, TypeRef baseType) {
             return baseType->keyType() ? baseType->keyType() : types::unknown();
         case MethodReturnKind::ValueType:
             return baseType->valueType() ? baseType->valueType() : types::unknown();
+        case MethodReturnKind::OptionalValueType:
+            return baseType->valueType() ? types::optional(baseType->valueType())
+                                         : types::optional(types::unknown());
         case MethodReturnKind::Integer:
             return types::integer();
         case MethodReturnKind::Boolean:
@@ -184,6 +187,184 @@ static bool extractDottedName(Expr *expr, std::string &out) {
         return true;
     }
     return false;
+}
+
+static bool exprToTypeName(const Expr *expr, std::string &out) {
+    if (!expr)
+        return false;
+    if (expr->kind == ExprKind::Ident) {
+        out = static_cast<const IdentExpr *>(expr)->name;
+        return true;
+    }
+    if (expr->kind == ExprKind::Field) {
+        const auto *fieldExpr = static_cast<const FieldExpr *>(expr);
+        if (!exprToTypeName(fieldExpr->base.get(), out))
+            return false;
+        out += ".";
+        out += fieldExpr->field;
+        return true;
+    }
+    return false;
+}
+
+static TypePtr exprToTypeNode(const Expr *expr);
+
+static void collectTypeArgNodes(const Expr *expr, std::vector<TypePtr> &out) {
+    if (!expr)
+        return;
+    if (expr->kind == ExprKind::Tuple) {
+        const auto *tuple = static_cast<const TupleExpr *>(expr);
+        for (const auto &elem : tuple->elements) {
+            if (TypePtr typeNode = exprToTypeNode(elem.get()))
+                out.push_back(std::move(typeNode));
+        }
+        return;
+    }
+
+    if (TypePtr typeNode = exprToTypeNode(expr))
+        out.push_back(std::move(typeNode));
+}
+
+static TypePtr exprToTypeNode(const Expr *expr) {
+    if (!expr)
+        return nullptr;
+
+    if (expr->kind == ExprKind::Index) {
+        const auto *indexExpr = static_cast<const IndexExpr *>(expr);
+        std::string name;
+        if (!exprToTypeName(indexExpr->base.get(), name))
+            return nullptr;
+
+        std::vector<TypePtr> args;
+        collectTypeArgNodes(indexExpr->index.get(), args);
+        if (args.empty())
+            return nullptr;
+        return std::make_unique<GenericType>(expr->loc, name, std::move(args));
+    }
+
+    std::string name;
+    if (exprToTypeName(expr, name))
+        return std::make_unique<NamedType>(expr->loc, name);
+
+    return nullptr;
+}
+
+static bool bindInferredType(const std::string &typeParamName,
+                             TypeRef argType,
+                             std::map<std::string, TypeRef> &inferredTypes) {
+    if (!argType || argType->kind == TypeKindSem::Unknown)
+        return true;
+
+    auto it = inferredTypes.find(typeParamName);
+    if (it == inferredTypes.end()) {
+        inferredTypes[typeParamName] = argType;
+        return true;
+    }
+
+    return it->second && it->second->equals(*argType);
+}
+
+static bool inferTypeParamsFromPattern(const TypeNode *paramNode,
+                                       TypeRef argType,
+                                       const std::set<std::string> &typeParamNames,
+                                       std::map<std::string, TypeRef> &inferredTypes) {
+    if (!paramNode || !argType || argType->kind == TypeKindSem::Unknown)
+        return true;
+
+    switch (paramNode->kind) {
+        case TypeKind::Named: {
+            const auto *named = static_cast<const NamedType *>(paramNode);
+            if (typeParamNames.count(named->name) == 0)
+                return true;
+            return bindInferredType(named->name, argType, inferredTypes);
+        }
+
+        case TypeKind::Generic: {
+            const auto *generic = static_cast<const GenericType *>(paramNode);
+            std::vector<TypeRef> argTypeArgs;
+            if (generic->name == "List") {
+                if (argType->kind != TypeKindSem::List || !argType->elementType())
+                    return false;
+                argTypeArgs.push_back(argType->elementType());
+            } else if (generic->name == "Set") {
+                if (argType->kind != TypeKindSem::Set || !argType->elementType())
+                    return false;
+                argTypeArgs.push_back(argType->elementType());
+            } else if (generic->name == "Map") {
+                if (argType->kind != TypeKindSem::Map || !argType->keyType() ||
+                    !argType->valueType())
+                    return false;
+                argTypeArgs.push_back(argType->keyType());
+                argTypeArgs.push_back(argType->valueType());
+            } else if (generic->name == "Result") {
+                if (argType->kind != TypeKindSem::Result || argType->typeArgs.empty())
+                    return false;
+                argTypeArgs.push_back(argType->typeArgs[0]);
+            } else {
+                if (argType->typeArgs.size() != generic->args.size())
+                    return false;
+                argTypeArgs = argType->typeArgs;
+            }
+
+            if (generic->args.size() != argTypeArgs.size())
+                return false;
+
+            for (size_t i = 0; i < generic->args.size(); ++i) {
+                if (!inferTypeParamsFromPattern(
+                        generic->args[i].get(), argTypeArgs[i], typeParamNames, inferredTypes))
+                    return false;
+            }
+            return true;
+        }
+
+        case TypeKind::Optional: {
+            const auto *opt = static_cast<const OptionalType *>(paramNode);
+            if (argType->kind != TypeKindSem::Optional || !argType->innerType())
+                return false;
+            return inferTypeParamsFromPattern(
+                opt->inner.get(), argType->innerType(), typeParamNames, inferredTypes);
+        }
+
+        case TypeKind::Tuple: {
+            const auto *tuple = static_cast<const TupleType *>(paramNode);
+            if (argType->kind != TypeKindSem::Tuple ||
+                tuple->elements.size() != argType->typeArgs.size())
+                return false;
+            for (size_t i = 0; i < tuple->elements.size(); ++i) {
+                if (!inferTypeParamsFromPattern(tuple->elements[i].get(),
+                                                argType->typeArgs[i],
+                                                typeParamNames,
+                                                inferredTypes))
+                    return false;
+            }
+            return true;
+        }
+
+        case TypeKind::Function: {
+            const auto *func = static_cast<const FunctionType *>(paramNode);
+            auto argParams = argType->paramTypes();
+            if (argType->kind != TypeKindSem::Function || func->params.size() != argParams.size())
+                return false;
+            for (size_t i = 0; i < func->params.size(); ++i) {
+                if (!inferTypeParamsFromPattern(
+                        func->params[i].get(), argParams[i], typeParamNames, inferredTypes))
+                    return false;
+            }
+            return inferTypeParamsFromPattern(
+                func->returnType.get(), argType->returnType(), typeParamNames, inferredTypes);
+        }
+
+        case TypeKind::FixedArray: {
+            const auto *arr = static_cast<const FixedArrayType *>(paramNode);
+            if (argType->kind != TypeKindSem::FixedArray || argType->elementCount != arr->count ||
+                !argType->elementType())
+                return false;
+            return inferTypeParamsFromPattern(
+                arr->elementType.get(), argType->elementType(), typeParamNames, inferredTypes);
+        }
+    }
+
+    return true;
 }
 
 bool isTerminalTextRuntime(std::string_view calleeName) {
@@ -476,25 +657,24 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             auto *identExpr = static_cast<IdentExpr *>(indexExpr->base.get());
             if (isGenericFunction(identExpr->name)) {
                 // This is a generic function call!
-                // The "index" should be a type name
                 std::vector<TypeRef> typeArgs;
 
-                // Try to interpret the index expression as a type
-                if (indexExpr->index->kind == ExprKind::Ident) {
-                    auto *typeIdent = static_cast<IdentExpr *>(indexExpr->index.get());
-                    // Create a NamedType node and resolve it
-                    auto typeNode = std::make_unique<NamedType>(typeIdent->loc, typeIdent->name);
+                std::vector<TypePtr> typeArgNodes;
+                collectTypeArgNodes(indexExpr->index.get(), typeArgNodes);
+                if (typeArgNodes.empty()) {
+                    error(indexExpr->index->loc,
+                          "Expected type argument for generic function call");
+                    return types::unknown();
+                }
+
+                for (auto &typeNode : typeArgNodes) {
                     TypeRef typeArg = resolveTypeNode(typeNode.get());
                     if (typeArg && typeArg->kind != TypeKindSem::Unknown) {
                         typeArgs.push_back(typeArg);
                     } else {
-                        error(typeIdent->loc, "Unknown type: " + typeIdent->name);
+                        error(typeNode->loc, "Unknown type argument for generic function call");
                         return types::unknown();
                     }
-                } else {
-                    error(indexExpr->index->loc,
-                          "Expected type argument for generic function call");
-                    return types::unknown();
                 }
 
                 // Instantiate the generic function with the type arguments
@@ -556,31 +736,14 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                 // Infer type parameters from argument types
                 std::map<std::string, TypeRef> inferredTypes;
                 for (size_t i = 0; i < genericDecl->params.size() && i < argTypes.size(); ++i) {
-                    // Check if the parameter type is a type parameter (e.g., T)
                     TypeNode *paramTypeNode = genericDecl->params[i].type.get();
-                    if (paramTypeNode && paramTypeNode->kind == TypeKind::Named) {
-                        auto *namedType = static_cast<NamedType *>(paramTypeNode);
-                        // Check if this name is a type parameter
-                        if (typeParamNames.count(namedType->name) > 0) {
-                            // This parameter has type T, infer T from the argument
-                            const std::string &typeParamName = namedType->name;
-                            TypeRef argType = argTypes[i];
-                            if (argType && argType->kind != TypeKindSem::Unknown) {
-                                // Check for consistency if already inferred
-                                auto it = inferredTypes.find(typeParamName);
-                                if (it != inferredTypes.end()) {
-                                    if (it->second != argType) {
-                                        error(expr->args[i].value->loc,
-                                              "Type mismatch in generic function call: "
-                                              "cannot infer consistent type for " +
-                                                  typeParamName);
-                                        return types::unknown();
-                                    }
-                                } else {
-                                    inferredTypes[typeParamName] = argType;
-                                }
-                            }
-                        }
+                    if (!inferTypeParamsFromPattern(
+                            paramTypeNode, argTypes[i], typeParamNames, inferredTypes)) {
+                        error(expr->args[i].value->loc,
+                              "Type mismatch in generic function call: cannot infer type "
+                              "arguments from parameter '" +
+                                  genericDecl->params[i].name + "'");
+                        return types::unknown();
                     }
                 }
 
@@ -906,35 +1069,89 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
             }
         }
 
+        auto analyzeAllArgs = [&]() {
+            for (auto &arg : expr->args)
+                analyzeExpr(arg.value.get());
+        };
+
+        auto checkArgCount = [&](size_t expected, const std::string &methodName) -> bool {
+            analyzeAllArgs();
+            if (expr->args.size() == expected)
+                return true;
+            error(expr->loc,
+                  methodName + "() expects " + std::to_string(expected) + " argument" +
+                      (expected == 1 ? "" : "s") + ", got " +
+                      std::to_string(expr->args.size()));
+            return false;
+        };
+
+        auto checkArgType = [&](size_t index, TypeRef expected, const std::string &label) {
+            if (index >= expr->args.size() || !expected)
+                return;
+            TypeRef actual = exprTypes_.count(expr->args[index].value.get())
+                                 ? exprTypes_[expr->args[index].value.get()]
+                                 : analyzeExpr(expr->args[index].value.get());
+            if (actual && actual->kind != TypeKindSem::Unknown &&
+                actual->kind != TypeKindSem::Error && expected->kind != TypeKindSem::Unknown &&
+                expected->kind != TypeKindSem::Error && !expected->isAssignableFrom(*actual)) {
+                error(expr->args[index].value->loc,
+                      label + " expects " + expected->toDisplayString() + ", got " +
+                          actual->toDisplayString());
+            }
+        };
+
         // Handle List methods using lookup table
         if (baseType && baseType->kind == TypeKindSem::List) {
             // Range modifier methods — .rev() and .step(n) return same type
-            if (fieldExpr->field == "rev" && expr->args.empty()) {
+            if (fieldExpr->field == "rev") {
+                checkArgCount(0, "rev");
                 return baseType;
             }
-            if (fieldExpr->field == "step" && expr->args.size() == 1) {
-                TypeRef argType = analyzeExpr(expr->args[0].value.get());
-                if (argType && !argType->isIntegral())
-                    error(expr->args[0].value->loc, "step() argument must be an integer");
+            if (fieldExpr->field == "step") {
+                if (checkArgCount(1, "step"))
+                    checkArgType(0, types::integer(), "step() argument");
                 return baseType;
             }
             if (auto *method = findMethod(listMethods, fieldExpr->field)) {
-                // Special handling for remove/contains type checking
-                if (fieldExpr->field == "remove" || fieldExpr->field == "contains") {
-                    TypeRef elemType = baseType->elementType();
-                    for (auto &arg : expr->args) {
-                        TypeRef argType = analyzeExpr(arg.value.get());
-                        if (elemType && argType && !expr->args.empty() &&
+                TypeRef elemType = baseType->elementType() ? baseType->elementType()
+                                                           : types::unknown();
+                if (fieldExpr->field == "get") {
+                    if (checkArgCount(1, fieldExpr->field))
+                        checkArgType(0, types::integer(), "get() index");
+                } else if (fieldExpr->field == "first" || fieldExpr->field == "last" ||
+                           fieldExpr->field == "pop" || fieldExpr->field == "len" ||
+                           fieldExpr->field == "count" || fieldExpr->field == "size" ||
+                           fieldExpr->field == "length" || fieldExpr->field == "isEmpty" ||
+                           fieldExpr->field == "clear" || fieldExpr->field == "reverse" ||
+                           fieldExpr->field == "sort") {
+                    checkArgCount(0, fieldExpr->field);
+                } else if (fieldExpr->field == "contains" || fieldExpr->field == "remove" ||
+                           fieldExpr->field == "indexOf") {
+                    if (checkArgCount(1, fieldExpr->field)) {
+                        TypeRef argType = exprTypes_[expr->args[0].value.get()];
+                        if (fieldExpr->field == "remove" && argType &&
                             argType->kind == TypeKindSem::Integer &&
                             elemType->kind != TypeKindSem::Integer) {
                             error(expr->args[0].value->loc,
-                                  "Type mismatch: " + fieldExpr->field +
-                                      "() expects element type, got Integer. "
-                                      "Did you mean removeAt() to remove by index?");
+                                  "remove() expects element type; use removeAt() to remove by "
+                                  "index");
+                        } else {
+                            checkArgType(0, elemType, fieldExpr->field + "() value");
                         }
                     }
+                } else if (fieldExpr->field == "push" || fieldExpr->field == "add") {
+                    if (checkArgCount(1, fieldExpr->field))
+                        checkArgType(0, elemType, fieldExpr->field + "() value");
+                } else if (fieldExpr->field == "insert" || fieldExpr->field == "set") {
+                    if (checkArgCount(2, fieldExpr->field)) {
+                        checkArgType(0, types::integer(), fieldExpr->field + "() index");
+                        checkArgType(1, elemType, fieldExpr->field + "() value");
+                    }
+                } else if (fieldExpr->field == "removeAt") {
+                    if (checkArgCount(1, fieldExpr->field))
+                        checkArgType(0, types::integer(), "removeAt() index");
                 } else {
-                    analyzeArgs();
+                    analyzeAllArgs();
                 }
                 return resolveMethodReturnType(method->returnKind, baseType);
             }
@@ -943,18 +1160,33 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         // Handle Map methods using lookup table
         if (baseType && baseType->kind == TypeKindSem::Map) {
             if (auto *method = findMethod(mapMethods, fieldExpr->field)) {
-                analyzeArgs();
-                // Validate string keys for methods that require them
-                if (method->returnKind == MethodReturnKind::ValueType ||
-                    method->returnKind == MethodReturnKind::Boolean || fieldExpr->field == "set" ||
-                    fieldExpr->field == "put") {
-                    if (!expr->args.empty()) {
-                        TypeRef keyType = exprTypes_[expr->args[0].value.get()];
-                        if (keyType && keyType->kind != TypeKindSem::String &&
-                            keyType->kind != TypeKindSem::Unknown) {
-                            error(expr->args[0].value->loc, "Map keys must be String");
-                        }
+                TypeRef valueType = baseType->valueType() ? baseType->valueType()
+                                                          : types::unknown();
+                if (fieldExpr->field == "get") {
+                    if (checkArgCount(1, fieldExpr->field))
+                        checkArgType(0, types::string(), "Map key");
+                } else if (fieldExpr->field == "getOr") {
+                    if (checkArgCount(2, fieldExpr->field)) {
+                        checkArgType(0, types::string(), "Map key");
+                        checkArgType(1, valueType, "getOr() fallback");
                     }
+                } else if (fieldExpr->field == "set" || fieldExpr->field == "put" ||
+                           fieldExpr->field == "setIfMissing") {
+                    if (checkArgCount(2, fieldExpr->field)) {
+                        checkArgType(0, types::string(), "Map key");
+                        checkArgType(1, valueType, fieldExpr->field + "() value");
+                    }
+                } else if (fieldExpr->field == "containsKey" || fieldExpr->field == "hasKey" ||
+                           fieldExpr->field == "has" || fieldExpr->field == "remove") {
+                    if (checkArgCount(1, fieldExpr->field))
+                        checkArgType(0, types::string(), "Map key");
+                } else if (fieldExpr->field == "len" || fieldExpr->field == "size" ||
+                           fieldExpr->field == "count" || fieldExpr->field == "length" ||
+                           fieldExpr->field == "clear" || fieldExpr->field == "keys" ||
+                           fieldExpr->field == "values") {
+                    checkArgCount(0, fieldExpr->field);
+                } else {
+                    analyzeAllArgs();
                 }
                 return resolveMethodReturnType(method->returnKind, baseType);
             }
@@ -963,7 +1195,19 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         // Handle Set methods using lookup table
         if (baseType && baseType->kind == TypeKindSem::Set) {
             if (auto *method = findMethod(setMethods, fieldExpr->field)) {
-                analyzeArgs();
+                TypeRef elemType = baseType->elementType() ? baseType->elementType()
+                                                           : types::unknown();
+                if (fieldExpr->field == "contains" || fieldExpr->field == "has" ||
+                    fieldExpr->field == "add" || fieldExpr->field == "remove") {
+                    if (checkArgCount(1, fieldExpr->field))
+                        checkArgType(0, elemType, fieldExpr->field + "() value");
+                } else if (fieldExpr->field == "len" || fieldExpr->field == "size" ||
+                           fieldExpr->field == "count" || fieldExpr->field == "length" ||
+                           fieldExpr->field == "clear") {
+                    checkArgCount(0, fieldExpr->field);
+                } else {
+                    analyzeAllArgs();
+                }
                 return resolveMethodReturnType(method->returnKind, baseType);
             }
         }

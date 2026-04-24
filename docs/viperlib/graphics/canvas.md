@@ -118,7 +118,7 @@ func start() {
     var c = Canvas.New("My Game", 800, 600);
 
     // Main loop
-    while c.get_ShouldClose() == 0 {
+    while !c.get_ShouldClose() {
         c.Poll();
         c.Clear(Color.RGB(0, 0, 0));
 
@@ -601,7 +601,7 @@ func start() {
     cam.AddParallax(mountains, 40, 0);  // Mountains: slow scroll
     cam.AddParallax(trees, 80, 0);      // Trees: nearly camera speed
 
-    while c.get_ShouldClose() == 0 {
+    while !c.get_ShouldClose() {
         c.Poll();
         c.Clear(0);
 

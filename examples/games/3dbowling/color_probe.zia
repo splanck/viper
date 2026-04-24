@@ -20,7 +20,7 @@ bind Viper.Terminal as Terminal;
 func main() {
     var canvas = Canvas3D.New("Color Probe", 800, 600);
 
-    while (Canvas3D.get_ShouldClose(canvas) == 0) {
+    while (Canvas3D.get_ShouldClose(canvas) == false) {
         Canvas3D.Poll(canvas);
         Canvas3D.Clear(canvas, 0.0, 0.0, 0.0);
         Canvas3D.Begin2D(canvas);

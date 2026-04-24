@@ -401,12 +401,15 @@ class BytecodeVM {
     std::vector<uint8_t> globalsStringOwned_;
 
     /// @brief String literal cache storing proper rt_string objects for string constants.
-    /// @details Indexed by string pool index. Ensures the runtime receives rt_string
-    ///          pointers rather than raw C strings.
+    /// @details Indexed by string pool index and materialized lazily. Ensures the
+    ///          runtime receives rt_string pointers rather than raw C strings.
     std::vector<rt_string> stringCache_;
 
-    /// @brief Initialize the string cache with rt_string objects for all strings in the pool.
+    /// @brief Reset the string cache slots for the loaded module.
     void initStringCache();
+
+    /// @brief Return a cached runtime string for a string-pool entry.
+    [[nodiscard]] rt_string getStringLiteral(uint16_t idx);
 
     /// @brief Compute the backing-array index for a stack/local slot.
     [[nodiscard]] size_t slotIndex(const BCSlot *slot) const;

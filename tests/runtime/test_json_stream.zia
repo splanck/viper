@@ -69,7 +69,7 @@ func start() {
         return;
     }
     var bval = Viper.Text.JsonStream.BoolValue(parser);
-    if (bval != 1) {
+    if (bval != true) {
         Say("FAIL: BoolValue should be 1 (true)");
         return;
     }
@@ -108,7 +108,7 @@ func start() {
 
     // HasNext should be false (or END token)
     var hn = Viper.Text.JsonStream.HasNext(parser);
-    if (hn != 0) {
+    if (hn != false) {
         Say("FAIL: no more tokens after object end");
         return;
     }

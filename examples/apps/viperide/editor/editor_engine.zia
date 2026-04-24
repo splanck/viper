@@ -102,7 +102,7 @@ class EditorEngine {
         if editor == null {
             return false;
         }
-        return editor.IsModified() != 0;
+        return editor.IsModified();
     }
 
     /// @brief Clear the editor's modified flag (call after save).

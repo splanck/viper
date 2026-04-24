@@ -14,7 +14,7 @@ func start() {
     Viper.Collections.Seq.Push(points, p2);
 
     var linear = Viper.Math.Spline.Linear(points);
-    if (linear == 0) { Say("FAIL: Linear should return non-null"); return; }
+    if (linear == null) { Say("FAIL: Linear should return non-null"); return; }
 
     // PointCount
     var pc = Viper.Math.Spline.get_PointCount(linear);
@@ -22,7 +22,7 @@ func start() {
 
     // PointAt
     var pt0 = Viper.Math.Spline.PointAt(linear, 0);
-    if (pt0 == 0) { Say("FAIL: PointAt(0) should be non-null"); return; }
+    if (pt0 == null) { Say("FAIL: PointAt(0) should be non-null"); return; }
     var pt0x = Viper.Math.Vec2.get_X(pt0);
     if (pt0x != 0.0) { Say("FAIL: PointAt(0) X should be 0"); return; }
 
@@ -52,7 +52,7 @@ func start() {
     var c2 = Viper.Math.Vec2.New(15.0, 20.0);
     var c3 = Viper.Math.Vec2.New(20.0, 0.0);
     var bezier = Viper.Math.Spline.Bezier(c0, c1, c2, c3);
-    if (bezier == 0) { Say("FAIL: Bezier should return non-null"); return; }
+    if (bezier == null) { Say("FAIL: Bezier should return non-null"); return; }
 
     // Bezier has 4 control points
     var bpc = Viper.Math.Spline.get_PointCount(bezier);
@@ -78,7 +78,7 @@ func start() {
 
     // === Test 3: Tangent ===
     var tang = Viper.Math.Spline.Tangent(bezier, 0.5);
-    if (tang == 0) { Say("FAIL: Tangent should return non-null"); return; }
+    if (tang == null) { Say("FAIL: Tangent should return non-null"); return; }
     // At midpoint of symmetric bezier, tangent Y should be ~0 (peak)
     var tanX = Viper.Math.Vec2.get_X(tang);
     // X component should be positive (moving right)
@@ -103,17 +103,17 @@ func start() {
     Viper.Collections.Seq.Push(crPoints, Viper.Math.Vec2.New(15.0, 0.0));
 
     var cr = Viper.Math.Spline.CatmullRom(crPoints);
-    if (cr == 0) { Say("FAIL: CatmullRom should return non-null"); return; }
+    if (cr == null) { Say("FAIL: CatmullRom should return non-null"); return; }
 
     var crpc = Viper.Math.Spline.get_PointCount(cr);
     if (crpc != 4) { Say("FAIL: CatmullRom PointCount should be 4"); return; }
 
     // Eval at endpoints
     var crEv0 = Viper.Math.Spline.Eval(cr, 0.0);
-    if (crEv0 == 0) { Say("FAIL: CatmullRom Eval(0) should be non-null"); return; }
+    if (crEv0 == null) { Say("FAIL: CatmullRom Eval(0) should be non-null"); return; }
 
     var crEv1 = Viper.Math.Spline.Eval(cr, 1.0);
-    if (crEv1 == 0) { Say("FAIL: CatmullRom Eval(1) should be non-null"); return; }
+    if (crEv1 == null) { Say("FAIL: CatmullRom Eval(1) should be non-null"); return; }
 
     Say("RESULT: ok");
 }

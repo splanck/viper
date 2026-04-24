@@ -184,7 +184,7 @@ func start() {
     var px = 400;
     var py = 300;
 
-    while c.get_ShouldClose() == 0 {
+    while !c.get_ShouldClose() {
         c.Poll();
 
         // Movement using polling (smooth, held keys)
@@ -548,7 +548,7 @@ func start() {
     var c = Canvas.New("Draw", 800, 600);
     c.Clear(Color.RGB(0, 0, 0));
 
-    while c.get_ShouldClose() == 0 {
+    while !c.get_ShouldClose() {
         c.Poll();
 
         // Draw while left button held
@@ -865,7 +865,7 @@ func start() {
     var px = 400.0;
     var py = 300.0;
 
-    while c.get_ShouldClose() == 0 {
+    while !c.get_ShouldClose() {
         c.Poll();
 
         if Pad.IsConnected(0) {
@@ -1266,7 +1266,7 @@ func start() {
     var px = 400.0;
     var py = 300.0;
 
-    while c.get_ShouldClose() == 0 {
+    while !c.get_ShouldClose() {
         c.Poll();
 
         // Device-agnostic movement
@@ -1528,7 +1528,7 @@ func start() {
 
     var selected = 0;
 
-    while c.get_ShouldClose() == 0 {
+    while !c.get_ShouldClose() {
         c.Poll();
         input.Update();
 

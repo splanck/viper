@@ -213,7 +213,7 @@ class ParticleManager {
         var i = 0;
         while (i < decals.count()) {
             Decal3D.Update(decals.get(i), dt);
-            if (Decal3D.get_Expired(decals.get(i)) != 0) {
+            if (Decal3D.get_Expired(decals.get(i)) != false) {
                 decals.removeAt(i);
             } else {
                 i = i + 1;

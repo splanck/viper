@@ -169,15 +169,15 @@ class IdeOverlays {
     }
 
     expose func ReadMinimapVisible() -> Boolean {
-        return minimapCheck.IsChecked() != 0;
+        return minimapCheck.IsChecked();
     }
 
     expose func ReadAutoCheck() -> Boolean {
-        return autoCheckCheck.IsChecked() != 0;
+        return autoCheckCheck.IsChecked();
     }
 
     expose func ReadCodeFolding() -> Boolean {
-        return codeFoldingCheck.IsChecked() != 0;
+        return codeFoldingCheck.IsChecked();
     }
 
     expose func UseSystemFont() {

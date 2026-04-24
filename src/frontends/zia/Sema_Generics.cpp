@@ -16,8 +16,42 @@
 
 #include "frontends/zia/Sema.hpp"
 #include <cassert>
+#include <cctype>
 
 namespace il::frontends::zia {
+
+namespace {
+
+std::string sanitizeMangledPart(std::string text) {
+    for (char &ch : text) {
+        unsigned char c = static_cast<unsigned char>(ch);
+        if (!std::isalnum(c) && ch != '.')
+            ch = '_';
+    }
+    return text;
+}
+
+std::string mangleTypeArg(TypeRef type) {
+    if (!type)
+        return "unknown";
+
+    std::string result = !type->name.empty() ? type->name : kindToString(type->kind);
+    result = sanitizeMangledPart(result);
+
+    for (const auto &arg : type->typeArgs) {
+        result += "_";
+        result += mangleTypeArg(arg);
+    }
+
+    if (type->kind == TypeKindSem::FixedArray) {
+        result += "_";
+        result += std::to_string(type->elementCount);
+    }
+
+    return result.empty() ? "unknown" : result;
+}
+
+} // namespace
 
 //=============================================================================
 // Type Parameter Substitution Implementation
@@ -100,12 +134,7 @@ std::string Sema::mangleGenericName(const std::string &base, const std::vector<T
     std::string result = base;
     for (const auto &arg : args) {
         result += "$";
-        if (arg && !arg->name.empty())
-            result += arg->name;
-        else if (arg)
-            result += kindToString(arg->kind);
-        else
-            result += "unknown";
+        result += mangleTypeArg(arg);
     }
     return result;
 }
@@ -148,6 +177,8 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
                     TypeRef fieldType = resolveTypeNode(field->type.get());
                     std::string key = mangledName + "." + field->name;
                     fieldTypes_[key] = fieldType;
+                    if (field->isStatic)
+                        staticFields_.insert(key);
                     memberVisibility_[key] = field->visibility;
                 } else if (member->kind == DeclKind::Method) {
                     auto *method = static_cast<MethodDecl *>(member.get());
@@ -187,6 +218,8 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
                     TypeRef fieldType = resolveTypeNode(field->type.get());
                     std::string key = mangledName + "." + field->name;
                     fieldTypes_[key] = fieldType;
+                    if (field->isStatic)
+                        staticFields_.insert(key);
                     memberVisibility_[key] = field->visibility;
                 } else if (member->kind == DeclKind::Method) {
                     auto *method = static_cast<MethodDecl *>(member.get());
@@ -246,6 +279,7 @@ TypeRef Sema::instantiateGenericType(const std::string &name,
     for (size_t i = 0; i < genericParams.size(); ++i) {
         substitutions[genericParams[i]] = args[i];
     }
+    genericTypeSubstitutions_[mangledName] = substitutions;
 
     // Push substitution context and analyze type body
     pushTypeParams(substitutions);
@@ -360,6 +394,7 @@ TypeRef Sema::instantiateGenericFunction(const std::string &name,
     for (size_t i = 0; i < funcDecl->genericParams.size(); ++i) {
         substitutions[funcDecl->genericParams[i]] = args[i];
     }
+    genericFunctionSubstitutions_[mangledName] = substitutions;
 
     // Push substitution context and analyze function signature
     pushTypeParams(substitutions);
@@ -396,6 +431,18 @@ TypeRef Sema::instantiateGenericFunction(const std::string &name,
 }
 
 bool Sema::pushSubstitutionContext(const std::string &mangledName) {
+    auto fnSubst = genericFunctionSubstitutions_.find(mangledName);
+    if (fnSubst != genericFunctionSubstitutions_.end()) {
+        pushTypeParams(fnSubst->second);
+        return true;
+    }
+
+    auto typeSubst = genericTypeSubstitutions_.find(mangledName);
+    if (typeSubst != genericTypeSubstitutions_.end()) {
+        pushTypeParams(typeSubst->second);
+        return true;
+    }
+
     // Check if this is an instantiated generic (contains $)
     size_t dollarPos = mangledName.find('$');
     if (dollarPos == std::string::npos)

@@ -186,7 +186,9 @@ var name: String? = null;   // Optional string
 var count: Integer? = 42;   // Optional with value
 ```
 
-Optional values support safe access with `?.`, defaults with `??`, and force-unwrap with `!`.
+Optional values support safe access with `?.`, defaults with `??`, try propagation
+with postfix `?`, and force-unwrap with `!`. `??` requires an optional left-hand
+operand and a fallback value assignable to the optional's inner type.
 
 ### Generic Types
 
@@ -432,7 +434,10 @@ Both branches must be present and produce the same type.
 
 ### Try Expression
 
-The postfix `?` operator propagates null or error values from an expression. If the operand is null (or an error), the enclosing function returns immediately with that null/error. Otherwise, the inner value is unwrapped:
+The postfix `?` operator propagates a null optional from an expression. If the
+operand is null, the enclosing function returns `null` immediately; otherwise,
+the inner value is unwrapped. The enclosing function must return an optional type,
+and the unwrapped operand value must be assignable to that optional's inner type.
 
 ```viper
 func findUser(id: Integer) -> User? {
@@ -441,7 +446,7 @@ func findUser(id: Integer) -> User? {
 }
 ```
 
-> **Note:** The postfix `?` (try expression, propagates null/error out of the function) is distinct from `?.` (optional chaining, returns null if the receiver is null without unwinding). They can be combined: `obj?.field?` chains optional access with error propagation.
+> **Note:** The postfix `?` (try expression, propagates null out of the function) is distinct from `?.` (optional chaining, returns null if the receiver is null without unwinding). They can be combined: `obj?.field?` chains optional access with null propagation.
 
 ### Function/Method Calls
 
@@ -510,6 +515,8 @@ var set = {1, 2, 3};               // Set[Integer]
 
 `{}` is the empty map literal. To create an empty set, use an explicit type or
 constructor such as `new Set[Integer]()`.
+Non-empty list, map, and set literals must be homogeneous: all list/set elements
+and all map values must have compatible types.
 
 ### Generic Collection Operations
 
@@ -522,7 +529,8 @@ var n = nums.count();
 
 var ages: Map[String, Integer] = new Map[String, Integer]();
 ages.set("Alice", 30);
-var aliceAge = ages.get("Alice");
+var maybeAliceAge: Integer? = ages.get("Alice");
+var aliceAge = ages.get("Alice") ?? 0;
 var hasAlice = ages.has("Alice");
 var ageCount = ages.count();
 
@@ -841,6 +849,9 @@ func findMax[T: Comparable](a: T, b: T) -> T {
 ```
 
 Type parameters are declared in `[...]` after the function name. Constraints (like `T: Comparable`) restrict the type parameter to types implementing the named interface.
+Type inference works through generic container parameters such as `List[T]` and
+`Map[String, T]`. Explicit type arguments may be comma-separated and nested:
+`pair[Integer, String](1, "one")` and `identity[List[Integer]]([1])`.
 
 ### Async Functions
 
@@ -1050,7 +1061,7 @@ Fields and methods marked `static` belong to the class type, not to instances:
 
 ```viper
 class Counter {
-    static Integer instanceCount;
+    expose static Integer instanceCount;
 
     static func getCount() -> Integer {
         return instanceCount;
@@ -1062,9 +1073,11 @@ class Counter {
 }
 ```
 
-- Static fields are stored as module-level globals (not per-instance).
+- Static fields are stored in module-level runtime storage (not per-instance).
 - Static methods have no `self` parameter.
 - Access via the class name: `Counter.getCount()`, `Counter.instanceCount`.
+- Use `expose static` when code outside the declaring type should access the
+  field.
 
 ### Destructors
 
@@ -1558,8 +1571,8 @@ list.insert(index, value);          // Insert at position
 
 var map: Map[String, Integer] = new Map[String, Integer]();
 map.set("key", value);              // Set or replace value
-map.get("key");                     // Get value (null if missing)
-map.getOr("key", fallback);         // Get or default
+map.get("key");                     // Get Value? (null if missing)
+map.getOr("key", fallback);         // Get Value or default
 map.setIfMissing("key", value);     // Set only if missing
 map.has("key");                     // Key exists?
 map.containsKey("key");             // Alias for has

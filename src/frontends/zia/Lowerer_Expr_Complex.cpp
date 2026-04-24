@@ -91,7 +91,10 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
         Type ilType = mapType(resultType);
         TypeRef baseType = sema_.typeOf(expr->base.get());
         std::vector<Value> args;
-        if (!baseType || baseType->kind != TypeKindSem::Module) {
+        const auto *getterDesc = il::runtime::findRuntimeDescriptor(getterName);
+        bool staticRuntimeGetter =
+            getterDesc && getterDesc->signature.paramTypes.empty();
+        if (!staticRuntimeGetter && (!baseType || baseType->kind != TypeKindSem::Module)) {
             auto base = lowerExpr(expr->base.get());
             args.push_back(base.value);
         }
@@ -136,11 +139,15 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
     // Handle module-qualified identifier access (e.g., colors.BLACK)
     // The module is just a namespace - we load the symbol directly
     if (baseType->kind == TypeKindSem::Module) {
-        // Look up the symbol as a global variable or function
+        // Look up the symbol as a global variable or function. Static fields
+        // are stored under their fully qualified Type.field names.
+        std::string qualifiedSymbolName = baseType->name + "." + expr->field;
         std::string symbolName = expr->field;
 
         // Check for global constants first (compile-time constants)
-        auto constIt = globalConstants_.find(symbolName);
+        auto constIt = globalConstants_.find(qualifiedSymbolName);
+        if (constIt == globalConstants_.end())
+            constIt = globalConstants_.find(symbolName);
         if (constIt != globalConstants_.end()) {
             const Value &val = constIt->second;
             Type ilType;
@@ -163,11 +170,15 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
         }
 
         // Check for global mutable variables
-        auto globalIt = globalVariables_.find(symbolName);
+        auto globalIt = globalVariables_.find(qualifiedSymbolName);
+        if (globalIt == globalVariables_.end())
+            globalIt = globalVariables_.find(symbolName);
         if (globalIt != globalVariables_.end()) {
+            const std::string &resolvedSymbolName =
+                globalIt->first == qualifiedSymbolName ? qualifiedSymbolName : symbolName;
             TypeRef varType = globalIt->second;
             Type ilType = mapType(varType);
-            Value addr = getGlobalVarAddr(symbolName, varType);
+            Value addr = getGlobalVarAddr(resolvedSymbolName, varType);
             Value loaded = emitLoad(addr, ilType);
             return {loaded, ilType};
         }

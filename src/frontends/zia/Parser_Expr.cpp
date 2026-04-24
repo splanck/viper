@@ -646,13 +646,27 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr) {
         } else if (match(TokenKind::LBracket, &opTok)) {
             // Index
             SourceLoc loc = opTok.loc;
+            std::vector<ExprPtr> indexes;
             ExprPtr index = parseExpression();
             if (!index)
                 return nullptr;
+            indexes.push_back(std::move(index));
+
+            while (match(TokenKind::Comma)) {
+                ExprPtr nextIndex = parseExpression();
+                if (!nextIndex)
+                    return nullptr;
+                indexes.push_back(std::move(nextIndex));
+            }
 
             if (!expect(TokenKind::RBracket, "]"))
                 return nullptr;
 
+            if (indexes.size() == 1) {
+                index = std::move(indexes.front());
+            } else {
+                index = std::make_unique<TupleExpr>(loc, std::move(indexes));
+            }
             expr = std::make_unique<IndexExpr>(loc, std::move(expr), std::move(index));
         } else if (match(TokenKind::Dot, &opTok)) {
             // Field access or tuple index

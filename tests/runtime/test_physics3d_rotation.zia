@@ -43,12 +43,12 @@ func start() {
     }
 
     Physics3DBody.Sleep(body);
-    if (Physics3DBody.get_Sleeping(body) == 0) {
+    if (Physics3DBody.get_Sleeping(body) == false) {
         Say("FAIL: Sleep should mark the body sleeping");
         return;
     }
     Physics3DBody.Wake(body);
-    if (Physics3DBody.get_Sleeping(body) != 0) {
+    if (Physics3DBody.get_Sleeping(body) != false) {
         Say("FAIL: Wake should clear the sleeping flag");
         return;
     }
@@ -65,7 +65,7 @@ func start() {
     }
 
     Physics3DBody.set_UseCCD(body, true);
-    if (Physics3DBody.get_UseCCD(body) == 0) {
+    if (Physics3DBody.get_UseCCD(body) == false) {
         Say("FAIL: CCD flag should round-trip");
         return;
     }

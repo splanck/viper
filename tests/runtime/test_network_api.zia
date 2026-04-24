@@ -34,25 +34,25 @@ func start() {
 
     // === Test 3: DNS utilities (no network needed) ===
     var isIp = Viper.Network.Dns.IsIPv4("192.168.1.1");
-    if (isIp != 1) {
+    if (isIp != true) {
         Say("FAIL: 192.168.1.1 should be valid IPv4");
         return;
     }
 
     var notIp = Viper.Network.Dns.IsIPv4("not-an-ip");
-    if (notIp != 0) {
+    if (notIp != false) {
         Say("FAIL: 'not-an-ip' should not be IPv4");
         return;
     }
 
     var isIp6 = Viper.Network.Dns.IsIPv6("::1");
-    if (isIp6 != 1) {
+    if (isIp6 != true) {
         Say("FAIL: ::1 should be valid IPv6");
         return;
     }
 
     var isIP = Viper.Network.Dns.IsIP("10.0.0.1");
-    if (isIP != 1) {
+    if (isIP != true) {
         Say("FAIL: 10.0.0.1 should be a valid IP");
         return;
     }
@@ -66,7 +66,7 @@ func start() {
     }
 
     var canRetry = Viper.Network.RetryPolicy.get_CanRetry(retry);
-    if (canRetry != 1) {
+    if (canRetry != true) {
         Say("FAIL: should be able to retry initially");
         return;
     }
@@ -83,7 +83,7 @@ func start() {
     Viper.Network.RetryPolicy.NextDelay(retry);
 
     var exhausted = Viper.Network.RetryPolicy.get_IsExhausted(retry);
-    if (exhausted != 1) {
+    if (exhausted != true) {
         Say("FAIL: should be exhausted after 3 retries");
         return;
     }
@@ -91,7 +91,7 @@ func start() {
     // Reset
     Viper.Network.RetryPolicy.Reset(retry);
     var canRetryAfterReset = Viper.Network.RetryPolicy.get_CanRetry(retry);
-    if (canRetryAfterReset != 1) {
+    if (canRetryAfterReset != true) {
         Say("FAIL: should be able to retry after reset");
         return;
     }
@@ -107,18 +107,18 @@ func start() {
     // Acquire twice
     var a1 = Viper.Network.RateLimiter.TryAcquire(limiter);
     var a2 = Viper.Network.RateLimiter.TryAcquire(limiter);
-    if (a1 != 1) {
+    if (a1 != true) {
         Say("FAIL: first acquire should succeed");
         return;
     }
-    if (a2 != 1) {
+    if (a2 != true) {
         Say("FAIL: second acquire should succeed");
         return;
     }
 
     // Third should fail (exhausted)
     var a3 = Viper.Network.RateLimiter.TryAcquire(limiter);
-    if (a3 != 0) {
+    if (a3 != false) {
         Say("FAIL: third acquire should fail");
         return;
     }

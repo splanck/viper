@@ -23,7 +23,7 @@ func start() {
 
     // Load back
     var loaded = Viper.Graphics.Pixels.LoadPng("test_round_trip.png");
-    if (loaded == 0) {
+    if (loaded == null) {
         Say("FAIL: LoadPng returned null");
         return;
     }

@@ -52,6 +52,7 @@
 #include "frontends/zia/ZiaAnalysis.hpp"
 #include "frontends/zia/ZiaAstPrinter.hpp"
 #include "il/transform/PassManager.hpp"
+#include "il/verify/Verifier.hpp"
 #include "viper/il/IO.hpp"
 #include <chrono>
 #include <fstream>
@@ -168,6 +169,10 @@ CompilerResult compile(const CompilerInput &input,
     // Phase 4: IL Lowering
     Lowerer lowerer(sema, result.diagnostics, options);
     result.module = lowerer.lower(*module);
+    if (auto verified = il::verify::Verifier::verify(result.module); !verified.hasValue()) {
+        result.diagnostics.report(verified.error());
+        return result;
+    }
     debugTime("Phase 4: Done");
 
     // Dump IL after lowering, before optimization.

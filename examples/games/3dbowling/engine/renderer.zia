@@ -173,7 +173,7 @@ class Renderer {
 
     /// @brief True if the user closed the window.
     expose func shouldClose() -> Boolean {
-        return Canvas3D.get_ShouldClose(canvas) != 0;
+        return Canvas3D.get_ShouldClose(canvas);
     }
 
     /// @brief Frame delta in seconds, clamped to DT_CLAMP to prevent

@@ -20,6 +20,20 @@ using namespace il::support;
 
 namespace {
 
+static CompilerResult compileSource(const std::string &source, SourceManager &sm) {
+    CompilerInput input{.source = source, .path = "collections.zia"};
+    CompilerOptions opts{};
+    return compile(input, opts, sm);
+}
+
+static bool hasErrorContaining(const CompilerResult &result, const std::string &needle) {
+    for (const auto &d : result.diagnostics.diagnostics()) {
+        if (d.severity == Severity::Error && d.message.find(needle) != std::string::npos)
+            return true;
+    }
+    return false;
+}
+
 /// @brief Test that Map collections compile correctly.
 TEST(ZiaCollections, MapCollection) {
     SourceManager sm;
@@ -29,7 +43,8 @@ module Test;
 func start() {    var ages: Map[String, Integer] = new Map[String, Integer]();
     ages.set("Alice", 30);
     ages.set("Bob", 25);
-    var aliceAge: Integer = ages.get("Alice");
+    var maybeAliceAge: Integer? = ages.get("Alice");
+    var aliceAge: Integer = maybeAliceAge ?? 0;
     var count: Integer = ages.count();
     Viper.Terminal.SayInt(aliceAge);
     Viper.Terminal.SayInt(count);
@@ -276,6 +291,106 @@ func start() {    var frogs: List[Frog] = [];
         }
     }
     EXPECT_TRUE(foundRtObjNew);
+}
+
+TEST(ZiaCollections, MapGetReturnsOptionalValue) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var ages: Map[String, Integer] = new Map[String, Integer]();
+    ages.set("Alice", 30);
+    var maybeAge: Integer? = ages.get("Alice");
+    var age: Integer = maybeAge ?? 0;
+    Viper.Terminal.SayInt(age);
+}
+)",
+                                sm);
+    EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaCollections, MapGetCannotAssignDirectlyToValueType) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var ages: Map[String, Integer] = new Map[String, Integer]();
+    var age: Integer = ages.get("Alice");
+}
+)",
+                                sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Type mismatch"));
+}
+
+TEST(ZiaCollections, ListMethodArgumentsAreChecked) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var numbers: List[Integer] = [1, 2, 3];
+    var first: Integer = numbers.get("zero");
+}
+)",
+                                sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "get() index"));
+}
+
+TEST(ZiaCollections, ListElementMethodTypesAreChecked) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var numbers: List[Integer] = [1, 2, 3];
+    numbers.add("four");
+}
+)",
+                                sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "add() value"));
+}
+
+TEST(ZiaCollections, MapMethodArityAndKeyTypesAreChecked) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var ages: Map[String, Integer] = new Map[String, Integer]();
+    ages.set(1, 30);
+}
+)",
+                                sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Map key"));
+}
+
+TEST(ZiaCollections, MapMethodArityIsChecked) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var ages: Map[String, Integer] = new Map[String, Integer]();
+    var age = ages.get();
+}
+)",
+                                sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "get() expects 1 argument"));
+}
+
+TEST(ZiaCollections, SetMethodElementTypesAreChecked) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var numbers: Set[Integer] = {1, 2, 3};
+    numbers.add("four");
+}
+)",
+                                sm);
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "add() value"));
 }
 
 } // namespace

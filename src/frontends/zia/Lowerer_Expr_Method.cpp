@@ -34,6 +34,8 @@ enum class CollectionMethod {
     Unknown = 0,
     // List methods
     Get,
+    First,
+    Last,
     Set,
     Add,
     Push,
@@ -44,6 +46,7 @@ enum class CollectionMethod {
     IndexOf,
     Has,
     Contains,
+    IsEmpty,
     Size,
     Count,
     Length,
@@ -115,6 +118,8 @@ const std::unordered_map<std::string, CollectionMethod> &getMethodDispatchTable(
     static const std::unordered_map<std::string, CollectionMethod> table = {
         // List/common methods
         {"get", CollectionMethod::Get},
+        {"first", CollectionMethod::First},
+        {"last", CollectionMethod::Last},
         {"set", CollectionMethod::Set},
         {"add", CollectionMethod::Add},
         {"push", CollectionMethod::Push},
@@ -126,6 +131,7 @@ const std::unordered_map<std::string, CollectionMethod> &getMethodDispatchTable(
         {"indexof", CollectionMethod::IndexOf},
         {"has", CollectionMethod::Has},
         {"contains", CollectionMethod::Contains},
+        {"isempty", CollectionMethod::IsEmpty},
         {"size", CollectionMethod::Size},
         {"count", CollectionMethod::Count},
         {"length", CollectionMethod::Length},
@@ -185,6 +191,19 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             }
             break;
 
+        case CollectionMethod::First:
+        case CollectionMethod::Last: {
+            const char *callee = method == CollectionMethod::First
+                                     ? "Viper.Collections.List.First"
+                                     : "Viper.Collections.List.Last";
+            Value boxed = emitCallRet(Type(Type::Kind::Ptr), callee, {baseValue});
+            TypeRef elemType = baseType ? baseType->elementType() : nullptr;
+            if (!elemType)
+                elemType = sema_.typeOf(expr);
+            Type ilElemType = mapType(elemType);
+            return emitUnboxValue(boxed, ilElemType, elemType);
+        }
+
         case CollectionMethod::RemoveAt:
             if (expr->args.size() >= 1) {
                 auto indexResult = lowerExpr(expr->args[0].value.get());
@@ -238,6 +257,12 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
                 return LowerResult{result, Type(Type::Kind::I1)};
             }
             break;
+
+        case CollectionMethod::IsEmpty: {
+            Value result = emitCallRet(
+                Type(Type::Kind::I1), "Viper.Collections.List.get_IsEmpty", {baseValue});
+            return LowerResult{result, Type(Type::Kind::I1)};
+        }
 
         case CollectionMethod::Set:
             if (expr->args.size() >= 2) {
@@ -343,12 +368,24 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
         case CollectionMethod::Get:
             if (expr->args.size() >= 1) {
                 auto keyResult = lowerExpr(expr->args[0].value.get());
+                TypeRef resultType = sema_.typeOf(expr);
+                Type resultIlType = resultType ? mapType(resultType) : Type(Type::Kind::Ptr);
+                if (resultType && resultType->kind == TypeKindSem::Optional) {
+                    if (valType && valType->kind == TypeKindSem::String) {
+                        Value str = emitCallRet(
+                            Type(Type::Kind::Str), "Viper.Collections.Map.GetStr", {baseValue, keyResult.value});
+                        return LowerResult{str, Type(Type::Kind::Str)};
+                    }
+
+                    Value boxed =
+                        emitCallRet(Type(Type::Kind::Ptr), kMapGet, {baseValue, keyResult.value});
+                    return LowerResult{boxed, resultIlType};
+                }
+
                 Value boxed =
                     emitCallRet(Type(Type::Kind::Ptr), kMapGet, {baseValue, keyResult.value});
-                if (valType) {
-                    Type ilValueType = mapType(valType);
-                    return emitUnboxValue(boxed, ilValueType, valType);
-                }
+                if (valType)
+                    return emitUnboxValue(boxed, mapType(valType), valType);
                 return LowerResult{boxed, Type(Type::Kind::Ptr)};
             }
             break;
@@ -459,8 +496,8 @@ std::optional<LowerResult> Lowerer::lowerSetMethodCall(Value baseValue,
                 auto valueResult = lowerExpr(expr->args[0].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[0].value.get());
                 Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
-                emitCall(kSetPut, {baseValue, boxedValue});
-                return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
+                Value result = emitCallRet(Type(Type::Kind::I1), kSetPut, {baseValue, boxedValue});
+                return LowerResult{result, Type(Type::Kind::I1)};
             }
             break;
 

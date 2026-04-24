@@ -536,7 +536,7 @@ func start() {
     var m: Map[String, Integer] = new Map[String, Integer]();
     m.set("a", 1);
     m.set("b", 2);
-    var val: Integer = m.get("a");
+    var val: Integer = m.get("a") ?? 0;
     Viper.Terminal.SayInt(val);
 }
 )");

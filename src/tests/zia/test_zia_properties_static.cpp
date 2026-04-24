@@ -48,6 +48,23 @@ static bool hasCallee(const il::core::Module &mod,
     return false;
 }
 
+static size_t countCallsTo(const il::core::Module &mod,
+                           const std::string &fnName,
+                           const std::string &callee) {
+    size_t count = 0;
+    for (const auto &fn : mod.functions) {
+        if (fn.name != fnName)
+            continue;
+        for (const auto &block : fn.blocks) {
+            for (const auto &instr : block.instructions) {
+                if (instr.op == il::core::Opcode::Call && instr.callee == callee)
+                    ++count;
+            }
+        }
+    }
+    return count;
+}
+
 /// @brief Check if a function has a "self" parameter.
 static bool hasSelfParam(const il::core::Module &mod, const std::string &fnName) {
     for (const auto &fn : mod.functions) {
@@ -62,10 +79,18 @@ static bool hasSelfParam(const il::core::Module &mod, const std::string &fnName)
     return false;
 }
 
-/// @brief Check if a global variable exists in the module.
-static bool hasGlobal(const il::core::Module &mod, const std::string &globalName) {
+/// @brief Check if a string global carries the requested module-storage key.
+static bool hasStringGlobalValue(const il::core::Module &mod, const std::string &value) {
     for (const auto &g : mod.globals) {
-        if (g.name == globalName)
+        if (g.init == value)
+            return true;
+    }
+    return false;
+}
+
+static bool hasErrorContaining(const CompilerResult &result, const std::string &needle) {
+    for (const auto &d : result.diagnostics.diagnostics()) {
+        if (d.severity == Severity::Error && d.message.find(needle) != std::string::npos)
             return true;
     }
     return false;
@@ -342,6 +367,64 @@ func start() {    var c = new Config();
     }
 
     ASSERT_TRUE(result.succeeded());
+}
+
+TEST(ZiaStatic, StaticFieldReadWriteThroughType) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Config {
+    expose static Integer count = 0;
+}
+
+func start() {
+    Config.count = Config.count + 1;
+    Viper.Terminal.SayInt(Config.count);
+}
+)";
+
+    CompilerInput input{.source = source, .path = "test_static_field_access.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_GE(countCallsTo(result.module, "main", "rt_modvar_addr_i64"), static_cast<size_t>(3));
+    EXPECT_TRUE(hasCallee(result.module, "main", "Viper.Terminal.SayInt"));
+    EXPECT_TRUE(hasStringGlobalValue(result.module, "Config.count"));
+}
+
+TEST(ZiaStatic, InheritedPrivateFieldStaysPrivate) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Base {
+    hide Integer secret;
+}
+
+class Child extends Base {
+}
+
+func start() {
+    var child = new Child();
+    var leaked: Integer = child.secret;
+}
+)";
+
+    CompilerInput input{.source = source, .path = "test_inherited_private_field.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Cannot access private member"));
 }
 
 /// @brief Test that non-static methods still have self.

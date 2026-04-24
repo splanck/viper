@@ -93,6 +93,29 @@ TypeRef Sema::analyzeIndex(IndexExpr *expr) {
 ///          - Entity/Value field and method access with visibility checking
 ///          - Built-in collection properties (e.g., list.count)
 TypeRef Sema::analyzeField(FieldExpr *expr) {
+    auto resolveStaticField = [&](const std::string &ownerName) -> TypeRef {
+        std::string fieldKey = ownerName + "." + expr->field;
+        if (!staticFields_.contains(fieldKey))
+            return nullptr;
+
+        auto fieldIt = fieldTypes_.find(fieldKey);
+        if (fieldIt == fieldTypes_.end())
+            return nullptr;
+
+        bool isInsideType = currentSelfType_ && currentSelfType_->name == ownerName;
+        auto visIt = memberVisibility_.find(fieldKey);
+        if (visIt != memberVisibility_.end() && visIt->second == Visibility::Private &&
+            !isInsideType) {
+            error(expr->loc,
+                  "Cannot access private member '" + expr->field + "' of type '" + ownerName +
+                      "'");
+            return types::unknown();
+        }
+
+        exprTypes_[expr->base.get()] = types::module(ownerName);
+        return fieldIt->second;
+    };
+
     // BUG-012 fix: Handle runtime class namespace property access (e.g., Viper.Math.Pi)
     // For property access like Viper.Math.Pi, we need to resolve it as a getter call
     // before trying to analyze the base, because "Viper" is not a symbol.
@@ -101,6 +124,9 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
         // Check if the dotted base is a runtime class (registered in typeRegistry_)
         auto typeIt = typeRegistry_.find(dottedBase);
         if (typeIt != typeRegistry_.end()) {
+            if (TypeRef staticFieldType = resolveStaticField(dottedBase))
+                return staticFieldType;
+
             // Try to find a getter function: {ClassName}.get_{PropertyName}
             std::string getterName = dottedBase + ".get_" + expr->field;
             Symbol *sym = lookupAccessibleSymbol(getterName, expr->loc, true);
@@ -119,6 +145,11 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
             std::string funcName = dottedBase + "." + expr->field;
             sym = lookupAccessibleSymbol(funcName, expr->loc, true);
             if (sym && sym->kind == Symbol::Kind::Function) {
+                if (sym->isExtern && sym->type && sym->type->kind == TypeKindSem::Function &&
+                    sym->type->paramTypes().empty()) {
+                    resolvedFieldGetters_[expr] = funcName;
+                    return normalizeRuntimeSurfaceType(sym->type->returnType());
+                }
                 return sym->type;
             }
 
@@ -160,6 +191,9 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
 
     // Handle module-qualified access (e.g., colors.initColors or Canvas.New)
     if (baseType && baseType->kind == TypeKindSem::Module) {
+        if (TypeRef staticFieldType = resolveStaticField(baseType->name))
+            return staticFieldType;
+
         if (auto moduleIt = moduleExports_.find(baseType->name); moduleIt != moduleExports_.end()) {
             auto exportIt = moduleIt->second.find(expr->field);
             if (exportIt != moduleIt->second.end()) {
@@ -483,17 +517,71 @@ TypeRef Sema::analyzeOptionalChain(OptionalChainExpr *expr) {
 /// @details Returns right value if left is null/None.
 TypeRef Sema::analyzeCoalesce(CoalesceExpr *expr) {
     TypeRef leftType = analyzeExpr(expr->left.get());
+    leftType = declaredOptionalSurfaceType(expr->left.get(), leftType);
+    exprTypes_[expr->left.get()] = leftType;
+
     TypeRef rightType = analyzeExpr(expr->right.get());
 
-    // If left is non-optional (e.g. after flow-sensitive narrowing),
-    // ?? is a no-op — just return the left type.
+    if (!leftType || leftType->kind == TypeKindSem::Unknown)
+        return rightType ? rightType : types::unknown();
+
     if (leftType->kind != TypeKindSem::Optional) {
+        error(expr->loc,
+              "Null-coalescing operator requires an optional left operand, got " +
+                  leftType->toDisplayString());
         return leftType;
     }
 
-    // Result is the unwrapped type
     TypeRef innerType = leftType->innerType();
-    return innerType ? innerType : rightType;
+    if (!innerType)
+        return rightType ? rightType : types::unknown();
+
+    if (rightType && rightType->kind != TypeKindSem::Unknown &&
+        !innerType->isAssignableFrom(*rightType)) {
+        errorTypeMismatch(expr->right->loc, innerType, rightType);
+    }
+
+    return innerType;
+}
+
+TypeRef Sema::analyzeTry(TryExpr *expr) {
+    TypeRef operandType = analyzeExpr(expr->operand.get());
+    operandType = declaredOptionalSurfaceType(expr->operand.get(), operandType);
+    exprTypes_[expr->operand.get()] = operandType;
+
+    if (!operandType || operandType->kind == TypeKindSem::Unknown)
+        return types::unknown();
+
+    if (operandType->kind != TypeKindSem::Optional) {
+        error(expr->loc,
+              "Try expression '?' requires an optional operand, got " +
+                  operandType->toDisplayString());
+        return operandType;
+    }
+
+    TypeRef innerType = operandType->innerType() ? operandType->innerType() : types::unknown();
+
+    if (!expectedReturnType_) {
+        error(expr->loc, "Try expression '?' can only be used inside a function");
+        return innerType;
+    }
+
+    if (expectedReturnType_->kind != TypeKindSem::Optional) {
+        error(expr->loc,
+              "Try expression '?' can only propagate from a function returning an optional type");
+        return innerType;
+    }
+
+    TypeRef returnInner = expectedReturnType_->innerType();
+    if (returnInner && innerType && innerType->kind != TypeKindSem::Unknown &&
+        !returnInner->isAssignableFrom(*innerType)) {
+        error(expr->loc,
+              "Try expression '?' unwraps " + innerType->toDisplayString() +
+                  " but the enclosing function returns " +
+                  expectedReturnType_->toDisplayString());
+    }
+
+    return innerType;
 }
 
 /// @brief Analyze a type check expression (value is Type).
@@ -1033,18 +1121,31 @@ TypeRef Sema::analyzeLambda(LambdaExpr *expr) {
 
 TypeRef Sema::analyzeListLiteral(ListLiteralExpr *expr) {
     TypeRef elementType = types::unknown();
+    bool incompatible = false;
 
     for (auto &elem : expr->elements) {
         TypeRef elemType = analyzeExpr(elem.get());
-        elementType = commonType(elementType, elemType);
+        TypeRef combined = commonType(elementType, elemType);
+        if (elementType && elemType && elementType->kind != TypeKindSem::Unknown &&
+            elemType->kind != TypeKindSem::Unknown && combined->kind == TypeKindSem::Unknown) {
+            error(elem->loc,
+                  "List literal contains incompatible element type " +
+                      elemType->toDisplayString() + " with prior element type " +
+                      elementType->toDisplayString());
+            incompatible = true;
+        }
+        elementType = combined;
     }
 
+    if (incompatible)
+        elementType = types::error();
     return types::list(elementType);
 }
 
 TypeRef Sema::analyzeMapLiteral(MapLiteralExpr *expr) {
     TypeRef keyType = types::string();
     TypeRef valueType = types::unknown();
+    bool incompatible = false;
 
     for (auto &entry : expr->entries) {
         TypeRef kType = analyzeExpr(entry.key.get());
@@ -1054,22 +1155,43 @@ TypeRef Sema::analyzeMapLiteral(MapLiteralExpr *expr) {
             error(entry.key->loc, "Map keys must be String");
         }
 
-        valueType = commonType(valueType, vType);
+        TypeRef combined = commonType(valueType, vType);
+        if (valueType && vType && valueType->kind != TypeKindSem::Unknown &&
+            vType->kind != TypeKindSem::Unknown && combined->kind == TypeKindSem::Unknown) {
+            error(entry.value->loc,
+                  "Map literal contains incompatible value type " +
+                      vType->toDisplayString() + " with prior value type " +
+                      valueType->toDisplayString());
+            incompatible = true;
+        }
+        valueType = combined;
     }
 
+    if (incompatible)
+        valueType = types::error();
     return types::map(keyType, valueType);
 }
 
 TypeRef Sema::analyzeSetLiteral(SetLiteralExpr *expr) {
     TypeRef elementType = types::unknown();
+    bool incompatible = false;
 
     for (auto &elem : expr->elements) {
         TypeRef elemType = analyzeExpr(elem.get());
-        if (elementType->kind == TypeKindSem::Unknown) {
-            elementType = elemType;
+        TypeRef combined = commonType(elementType, elemType);
+        if (elementType && elemType && elementType->kind != TypeKindSem::Unknown &&
+            elemType->kind != TypeKindSem::Unknown && combined->kind == TypeKindSem::Unknown) {
+            error(elem->loc,
+                  "Set literal contains incompatible element type " +
+                      elemType->toDisplayString() + " with prior element type " +
+                      elementType->toDisplayString());
+            incompatible = true;
         }
+        elementType = combined;
     }
 
+    if (incompatible)
+        elementType = types::error();
     return types::set(elementType);
 }
 

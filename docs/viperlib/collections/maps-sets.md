@@ -80,11 +80,11 @@ func start() {
 
     // Check and retrieve
     Say("Has Alice: " + Fmt.Bool(scores.has("Alice")));  // true
-    Say("Alice: " + Fmt.Int(scores.get("Alice")));       // 95
+    Say("Alice: " + Fmt.Int(scores.get("Alice") ?? 0));  // 95
 
     // Update
     scores.set("Bob", 91);
-    Say("Bob updated: " + Fmt.Int(scores.get("Bob")));   // 91
+    Say("Bob updated: " + Fmt.Int(scores.get("Bob") ?? 0)); // 91
 
     // Remove
     scores.remove("Carol");

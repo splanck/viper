@@ -277,7 +277,7 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
                 unsigned mulId = nextTempId();
                 il::core::Instr mulInstr;
                 mulInstr.result = mulId;
-                mulInstr.op = Opcode::Mul;
+                mulInstr.op = Opcode::IMulOvf;
                 mulInstr.type = Type(Type::Kind::I64);
                 mulInstr.operands = {index.value, Value::constInt(static_cast<int64_t>(elemSize))};
                 mulInstr.loc = curLoc_;
@@ -315,9 +315,41 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
 
         // Handle field assignment (obj.field = value)
         if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get())) {
-            auto base = lowerExpr(fieldExpr->base.get());
             TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
             TypeRef targetType = sema_.typeOf(fieldExpr);
+
+            if (baseType && baseType->kind == TypeKindSem::Module) {
+                std::string globalName = baseType->name + "." + fieldExpr->field;
+                auto globalIt = globalVariables_.find(globalName);
+                if (globalIt != globalVariables_.end()) {
+                    TypeRef globalType = globalIt->second;
+                    Type ilType = mapType(globalType);
+                    Value addr = getGlobalVarAddr(globalName, globalType);
+                    Value storeValue = wrapValueForOptionalField(right.value, globalType, rightType);
+                    if (right.type.kind == Type::Kind::Ptr && globalType) {
+                        Type globalILType = mapType(globalType);
+                        if (globalILType.kind != Type::Kind::Ptr)
+                            storeValue = emitUnbox(storeValue, globalILType).value;
+                    }
+                    if (globalType && rightType && globalType->kind == TypeKindSem::Number &&
+                        rightType->kind == TypeKindSem::Integer) {
+                        unsigned convId = nextTempId();
+                        il::core::Instr conv;
+                        conv.result = convId;
+                        conv.op = Opcode::Sitofp;
+                        conv.type = Type(Type::Kind::F64);
+                        conv.operands = {storeValue};
+                        conv.loc = curLoc_;
+                        blockMgr_.currentBlock()->instructions.push_back(conv);
+                        storeValue = Value::temp(convId);
+                    }
+                    emitStore(addr, storeValue, ilType);
+                    consumeDeferred(storeValue);
+                    return right;
+                }
+            }
+
+            auto base = lowerExpr(fieldExpr->base.get());
 
             std::string setterName = sema_.resolvedFieldSetter(fieldExpr);
             if (!setterName.empty()) {
@@ -437,8 +469,8 @@ LowerResult Lowerer::lowerUnary(UnaryExpr *expr) {
                     emitBinary(Opcode::FSub, operand.type, Value::constFloat(0.0), operand.value);
                 return {result, operand.type};
             } else {
-                Opcode subOp = options_.overflowChecks ? Opcode::ISubOvf : Opcode::Sub;
-                Value result = emitBinary(subOp, operand.type, Value::constInt(0), operand.value);
+                Value result =
+                    emitBinary(Opcode::ISubOvf, operand.type, Value::constInt(0), operand.value);
                 return {result, operand.type};
             }
         }

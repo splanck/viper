@@ -997,6 +997,10 @@ class Sema {
     /// @return The non-optional type of the result.
     TypeRef analyzeCoalesce(CoalesceExpr *expr);
 
+    /// @brief Analyze a postfix try/propagate expression.
+    /// @return The inner type of the optional operand.
+    TypeRef analyzeTry(TryExpr *expr);
+
     /// @brief Analyze an is-expression (type check).
     /// @return types::boolean()
     TypeRef analyzeIs(IsExpr *expr);
@@ -1557,6 +1561,10 @@ class Sema {
     /// @details Key format: "TypeName.fieldName"
     std::unordered_map<std::string, TypeRef> fieldTypes_;
 
+    /// @brief Field signatures that are declared static.
+    /// @details Key format: "TypeName.fieldName"
+    std::unordered_set<std::string> staticFields_;
+
     /// @brief Map from member signatures to visibility.
     /// @details Key format: "TypeName.memberName"
     std::unordered_map<std::string, Visibility> memberVisibility_;
@@ -1671,6 +1679,9 @@ class Sema {
     /// Prevents re-instantiation of the same generic type arguments.
     std::map<std::string, TypeRef> genericInstances_;
 
+    /// @brief Type parameter substitutions keyed by instantiated generic type name.
+    std::map<std::string, std::map<std::string, TypeRef>> genericTypeSubstitutions_;
+
     /// @brief Original generic type declarations (uninstantiated).
     /// @details Key: Type name, Value: AST declaration pointer.
     /// Used to find the original type when instantiating.
@@ -1685,6 +1696,9 @@ class Sema {
     /// @details Key: "FuncName$Arg1$Arg2", Value: Instantiated function TypeRef.
     /// Prevents re-instantiation of the same generic function arguments.
     std::map<std::string, TypeRef> genericFunctionInstances_;
+
+    /// @brief Type parameter substitutions keyed by instantiated generic function name.
+    std::map<std::string, std::map<std::string, TypeRef>> genericFunctionSubstitutions_;
 
     /// @brief User-defined function declarations for default parameter lookup.
     /// @details Key: Function name, Value: AST declaration pointer.

@@ -377,12 +377,14 @@ scores.set("Alice", 95);
 scores.set("Bob", 87);
 
 if scores.has("Alice") {
-    SayInt(scores.get("Alice"));
+    SayInt(scores.get("Alice") ?? 0);
 }
 ```
 
-> Map keys must be `String` (the Sema layer rejects other key types). Use the literal form `{}`
-> for an empty map; there is no `new Map[K, V]()` constructor in the language-level generics.
+> `Map.get` returns `V?`; use `??`, `getOr`, or an explicit null check before
+> passing the value to non-optional code. Map keys must be `String` (the Sema
+> layer rejects other key types). Use the literal form `{}` for an empty map;
+> there is no `new Map[K, V]()` constructor in the language-level generics.
 
 ### Class Instance Lists
 

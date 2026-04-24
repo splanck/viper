@@ -138,7 +138,7 @@ LowerResult CollectionLowerer::lowerFixedArrayIndex(Value baseValue,
     unsigned mulId = lowerer_.nextTempId();
     il::core::Instr mulInstr;
     mulInstr.result = mulId;
-    mulInstr.op = Opcode::Mul;
+    mulInstr.op = Opcode::IMulOvf;
     mulInstr.type = Type(Type::Kind::I64);
     mulInstr.operands = {indexValue, Value::constInt(static_cast<int64_t>(elemSize))};
     mulInstr.loc = lowerer_.curLoc_;

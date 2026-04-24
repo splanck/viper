@@ -194,7 +194,7 @@ func start() {
 
         Say("Duration: " + Fmt.Int(mus.get_Duration()) + " ms");
 
-        while c.get_ShouldClose() == 0 {
+        while !c.get_ShouldClose() {
             c.Poll();
             Say("Pos: " + Fmt.Int(mus.get_Position()));
             c.Flip();

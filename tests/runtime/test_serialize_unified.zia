@@ -33,7 +33,7 @@ func start() {
     // === Test 4: Parse JSON ===
     var json = "{\"name\":\"Alice\",\"age\":30}";
     var parsed = Viper.Data.Serialize.Parse(json, 0);
-    if (parsed == 0) { Say("FAIL: JSON parse should return non-null"); return; }
+    if (parsed == null) { Say("FAIL: JSON parse should return non-null"); return; }
 
     // === Test 5: Format back to JSON ===
     var formatted = Viper.Data.Serialize.Format(parsed, 0);
@@ -45,7 +45,7 @@ func start() {
 
     // === Test 7: IsValid ===
     var isValidJson = Viper.Data.Serialize.IsValid(json, 0);
-    if (isValidJson != 1) { Say("FAIL: valid JSON should return 1"); return; }
+    if (isValidJson != true) { Say("FAIL: valid JSON should return true"); return; }
 
     // IsValid for clearly non-JSON text
     var invalidJson = "hello world";
@@ -63,7 +63,7 @@ func start() {
 
     // === Test 9: AutoParse ===
     var autoParsed = Viper.Data.Serialize.AutoParse(json);
-    if (autoParsed == 0) { Say("FAIL: AutoParse should return non-null"); return; }
+    if (autoParsed == null) { Say("FAIL: AutoParse should return non-null"); return; }
 
     // === Test 10: Convert JSON → YAML ===
     var simpleJson = "{\"key\":\"value\"}";

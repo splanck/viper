@@ -58,7 +58,7 @@ func start() {
     Physics3DWorld.Step(triggerWorld, 0.016);
 
     var evt = Physics3DWorld.GetCollisionEvent(triggerWorld, 0);
-    if (CollisionEvent3D.get_IsTrigger(evt) == 0) {
+    if (CollisionEvent3D.get_IsTrigger(evt) == false) {
         Say("FAIL: trigger overlap should set IsTrigger");
         return;
     }

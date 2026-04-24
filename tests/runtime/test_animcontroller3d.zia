@@ -49,12 +49,12 @@ func start() {
     AnimController3D.SetStateSpeed(controller, "walk", 1.0);
     AnimController3D.SetStateLooping(controller, "wave", true);
     AnimController3D.AddEvent(controller, "walk", 0.5, "step");
-    if (AnimController3D.AddTransition(controller, "idle", "walk", 0.25) == 0) {
+    if (AnimController3D.AddTransition(controller, "idle", "walk", 0.25) == false) {
         Say("FAIL: AddTransition idle->walk should succeed");
         return;
     }
 
-    if (AnimController3D.Play(controller, "idle") == 0) {
+    if (AnimController3D.Play(controller, "idle") == false) {
         Say("FAIL: Play idle should succeed");
         return;
     }
@@ -63,11 +63,11 @@ func start() {
         return;
     }
 
-    if (AnimController3D.Play(controller, "walk") == 0) {
+    if (AnimController3D.Play(controller, "walk") == false) {
         Say("FAIL: Play walk should succeed");
         return;
     }
-    if (AnimController3D.get_IsTransitioning(controller) == 0) {
+    if (AnimController3D.get_IsTransitioning(controller) == false) {
         Say("FAIL: Play walk should use the configured transition");
         return;
     }
@@ -110,7 +110,7 @@ func start() {
     AnimController3D.Play(layered, "walk");
     AnimController3D.SetLayerMask(layered, 1, armBone);
     AnimController3D.SetLayerWeight(layered, 1, 1.0);
-    if (AnimController3D.PlayLayer(layered, 1, "wave") == 0) {
+    if (AnimController3D.PlayLayer(layered, 1, "wave") == false) {
         Say("FAIL: PlayLayer should succeed");
         return;
     }
@@ -132,7 +132,7 @@ func start() {
     }
 
     AnimController3D.StopLayer(layered, 1);
-    if (AnimController3D.CrossfadeLayer(layered, 1, "wave", 0.2) == 0) {
+    if (AnimController3D.CrossfadeLayer(layered, 1, "wave", 0.2) == false) {
         Say("FAIL: CrossfadeLayer should succeed");
         return;
     }
