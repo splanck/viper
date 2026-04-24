@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-04-23
 ---
 
 # IL Optimization Passes
@@ -45,9 +45,9 @@ last-verified: 2026-04-09
 - `typeSizeBytes` exposes conservative byte widths (i1/i16/i32/i64/f64/ptr/str) for passes to thread sizes into
   `alias(...)`.
 - ModRef uses a priority cascade for call effect classification:
-  1. Instruction-level `CallAttr` flags (pure, readonly) are checked first
-  2. Module-level function attributes are authoritative when the callee is defined locally
-  3. Runtime signature table is consulted only for external (non-module) functions
+  1. Module-level function attributes are authoritative when the callee is defined locally
+  2. Runtime signature table is authoritative for known external helpers
+  3. Instruction-level `CallAttr` flags are trusted only for unknown callees
   `pure` -> `NoModRef`, `readonly` -> `Ref`, everything else -> `ModRef`.
 - Runtime signature lookup uses a cached hash map for O(1) amortized lookups, rebuilt automatically when new signatures
   are registered.
@@ -141,12 +141,15 @@ Promotes alloca/store/load patterns to pure SSA values:
 
 ## Peephole
 
-The peephole pass applies 57 pattern-based algebraic simplifications:
+The peephole pass applies 45 pattern-based algebraic simplifications:
 
 - **Bitwise identities**: `x & -1 = x`, `x | 0 = x`, `x ^ 0 = x`, `x & 0 = 0`, `x ^ x = 0`, `x | x = x`
 - **Division identities** (on div-by-zero–checked variants `SDivChk0`, `UDivChk0`, `SRemChk0`, `URemChk0`):
-  `x / 1 = x`, `x % 1 = 0`, `0 / x = 0`, `0 % x = 0`
-- **Float arithmetic identities**: `x * 1.0 = x`, `x / 1.0 = x`, `x + 0.0 = x`, `x - 0.0 = x`
+  `x / 1 = x`, `x % 1 = 0`
+- **Intentionally skipped**: `0 / x` and `0 % x` for checked division/remainder, because the divisor must
+  still be evaluated for divide-by-zero traps; `x + 0.0`, because IEEE signed-zero semantics can make the
+  replacement observable.
+- **Float arithmetic identities**: `x * 1.0 = x`, `x / 1.0 = x`, `x - 0.0 = x`
 - **Integer arithmetic identities** (on overflow-checked variants `IAddOvf`, `ISubOvf`, `IMulOvf`): `x + 0 = x`,
   `x * 1 = x`, `x - 0 = x`, `x * 0 = 0`, `x - x = 0`
 - **Reflexive comparisons**: `x == x = true`, `x < x = false`, etc. for signed, unsigned, and float comparisons
@@ -276,9 +279,10 @@ Expression identity keys used by EarlyCSE and GVN:
 
 Unified API for querying call instruction side effects:
 
-- Combines instruction-level `CallAttr` flags, `HelperEffects` constexpr table, and runtime signature registry
-- Short-circuits: when all flags (pure, readonly, nothrow) are already classified, skips the O(n) registry scan
-- `canEliminateIfUnused()` gates DCE; `canReorderWithMemory()` gates LICM and code motion
+- Runtime helper metadata overrides call-site hints for known helpers; the verifier rejects contradictory call
+  attributes on known callees.
+- Instruction-level `CallAttr` flags are used only when helper/function metadata is unavailable.
+- `canEliminateIfUnused()` requires both `pure` and `nothrow`; `canReorderWithMemory()` gates LICM and code motion.
 
 ## IndVarSimplify
 
@@ -311,7 +315,9 @@ Direct-call graph with strongly connected component analysis:
 ## GVN (Global Value Numbering)
 
 - Assigns value numbers to expressions using dominator-tree-scoped hash tables.
-- Eliminates redundant computations including loads (load elimination) when no intervening store exists.
+- Eliminates redundant computations including loads when no intervening store exists and the load is known
+  non-trapping. Loads from unknown pointer values are not removed or reused because IL load semantics include
+  null and misalignment traps.
 - Uses `ValueKey` canonical forms for commutative normalization.
 - Available values stored as `vector<AvailableValue>` (searched most-recent-first) per expression key,
   enabling multiple definitions of the same expression across different dominator-tree paths.
@@ -367,6 +373,10 @@ canonical O1/O2 presets. They are still available as explicit passes and via
 rehab pipelines, but they are not production defaults because real workloads
 have exposed correctness issues that are still being validated.
 
+The pass manager verifies IR after each pass by default, including release
+builds. Callers may disable this for specialised measurement, but rehab and CI
+pipelines should keep per-pass verification enabled.
+
 The BASIC frontend (`src/tools/viper/cmd_run.cpp`) only ran `SimplifyCFG` on verification failure; it now
 applies the canonical O0/O1/O2 pipeline unconditionally.
 
@@ -397,10 +407,10 @@ Regression tests covering fixes from the comprehensive IL optimization review
 | Test File | Tests | Coverage |
 |-----------|-------|---------|
 | `test_opt_review_basicaa.cpp` | 7 | Priority cascade, ModRef classification, alias queries |
-| `test_opt_review_calleffects.cpp` | 5 | Pure/readonly/conservative classification, by-name lookup |
+| `test_opt_review_calleffects.cpp` | 6 | Pure/readonly/conservative classification, pure+nothrow deletion gating |
 | `test_opt_review_dse.cpp` | 4 | Dead store elimination, load-intervened stores, different allocas |
 | `test_opt_review_loopinfo.cpp` | 4 | Self-loop dedup, normal loop membership, block counts |
-| `test_opt_review_peephole.cpp` | 20 | UCmp/FCmp constant folding in CBr, reflexive comparisons |
+| `test_opt_review_peephole.cpp` | 23 | UCmp/FCmp constant folding in CBr, reflexive comparisons, trap-preserving skipped folds |
 | `test_opt_review_sccp.cpp` | 4 | FDiv by zero → infinity/NaN, normal FDiv folding |
 | `test_opt_review_valuekey.cpp` | 8 | Commutative normalization, safe opcode classification |
 

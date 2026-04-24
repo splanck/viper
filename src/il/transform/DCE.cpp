@@ -32,6 +32,7 @@
 #include "il/core/Module.hpp"
 #include "il/core/Value.hpp"
 #include "il/transform/CallEffects.hpp"
+#include "il/transform/LoadSafety.hpp"
 #include "il/transform/OverflowArithmetic.hpp"
 #include <cstdlib>
 #include <iostream>
@@ -281,7 +282,8 @@ void dce(Module &M) {
         for (auto &B : F.blocks) {
             for (std::size_t i = 0; i < B.instructions.size();) {
                 Instr &I = B.instructions[i];
-                if (I.op == Opcode::Load && I.result && uses[*I.result] == 0) {
+                if (I.op == Opcode::Load && I.result && uses[*I.result] == 0 &&
+                    isLoadKnownNonTrapping(F, I)) {
                     if (traceEnabled())
                         std::cerr << "[dce] removing dead load %" << *I.result << " in " << F.name
                                   << ":" << B.label << "\n";

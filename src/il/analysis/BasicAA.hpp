@@ -106,6 +106,7 @@ class BasicAA {
     struct CallEffect {
         bool pure = false;
         bool readonly = false;
+        bool known = false;
     };
 
     /// @brief Populate the internal alloca, parameter, and no-alias sets from @p function.
@@ -270,6 +271,7 @@ inline BasicAA::CallEffect BasicAA::queryFunctionEffect(const il::core::Function
     CallEffect effect;
     effect.pure = fn.attrs().pure;
     effect.readonly = fn.attrs().readonly;
+    effect.known = true;
     return effect;
 }
 
@@ -283,7 +285,7 @@ inline BasicAA::CallEffect BasicAA::queryRuntimeEffect(std::string_view name) co
     if (sigs.size() != lastSize) {
         table.clear();
         for (const auto &sig : sigs)
-            table.emplace(sig.name, CallEffect{sig.pure, sig.readonly});
+            table.emplace(sig.name, CallEffect{sig.pure, sig.readonly, true});
         lastSize = sigs.size();
     }
 
@@ -474,12 +476,9 @@ inline ModRefResult BasicAA::modRef(const il::core::Instr &instr) const {
     if (instr.op != il::core::Opcode::Call)
         return ModRefResult::ModRef;
 
-    bool pure = instr.CallAttr.pure;
-    bool readonly = instr.CallAttr.readonly;
-
     const CallEffect callee = computeCalleeEffect(instr.callee);
-    pure = pure || callee.pure;
-    readonly = readonly || callee.readonly;
+    const bool pure = callee.known ? callee.pure : instr.CallAttr.pure;
+    const bool readonly = callee.known ? callee.readonly : instr.CallAttr.readonly;
 
     if (pure)
         return ModRefResult::NoModRef;

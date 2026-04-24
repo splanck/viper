@@ -30,8 +30,8 @@ namespace il::transform {
 
 /// @brief Describe the side-effect classification of a call instruction.
 /// @details Used by optimization passes to determine what transformations
-///          are safe. The flags are conservative: if any source indicates
-///          an effect is absent, that information is used.
+///          are safe. Known callee metadata is authoritative; instruction
+///          attributes are used only when no registry metadata exists.
 struct CallEffects {
     bool pure = false;     ///< Call has no observable side effects (can eliminate if unused).
     bool readonly = false; ///< Call may read memory but performs no writes (can reorder).
@@ -39,7 +39,7 @@ struct CallEffects {
 
     /// @brief Returns true if the call can be safely eliminated when its result is unused.
     [[nodiscard]] constexpr bool canEliminateIfUnused() const noexcept {
-        return pure;
+        return pure && nothrow;
     }
 
     /// @brief Returns true if the call can be safely reordered with memory operations.
@@ -49,13 +49,10 @@ struct CallEffects {
 };
 
 /// @brief Query side-effect metadata for a call instruction.
-/// @details Combines information from:
-///   1. Instruction-level CallAttr flags (pure, readonly)
-///   2. Runtime signature registry (if callee is a known runtime helper)
-///   3. HelperEffects constexpr table (for fast lookup of common helpers)
-///
-/// The function returns a conservative classification: a call is only marked
-/// pure/readonly/nothrow if at least one source indicates so.
+/// @details Runtime metadata is authoritative when available. Instruction
+///          attributes are only trusted for callees that are not present in the
+///          runtime helper tables; the verifier rejects contradictory attrs for
+///          known callees.
 ///
 /// @param instr The call instruction to classify.
 /// @return Effect classification for the call.
@@ -65,28 +62,26 @@ inline CallEffects classifyCallEffects(const il::core::Instr &instr) {
     if (instr.op != il::core::Opcode::Call)
         return effects; // Conservative: unknown effect for non-call instructions
 
-    // 1. Check instruction-level attributes first (fastest)
-    effects.pure = instr.CallAttr.pure;
-    effects.readonly = instr.CallAttr.readonly;
-
-    // 2. Check HelperEffects constexpr table (fast, covers common helpers)
     const auto helperEffects = il::runtime::classifyHelperEffects(instr.callee);
-    effects.pure = effects.pure || helperEffects.pure;
-    effects.readonly = effects.readonly || helperEffects.readonly;
-    effects.nothrow = effects.nothrow || helperEffects.nothrow;
+    bool known = helperEffects.pure || helperEffects.readonly || helperEffects.nothrow;
+    effects.pure = helperEffects.pure;
+    effects.readonly = helperEffects.readonly;
+    effects.nothrow = helperEffects.nothrow;
 
-    // Skip slower registry scan when already fully classified.
-    if (effects.pure && effects.readonly && effects.nothrow)
-        return effects;
-
-    // 3. Check runtime signature registry (comprehensive, slightly slower)
     for (const auto &sig : il::runtime::signatures::all_signatures()) {
         if (sig.name == instr.callee) {
-            effects.pure = effects.pure || sig.pure;
-            effects.readonly = effects.readonly || sig.readonly;
-            effects.nothrow = effects.nothrow || sig.nothrow;
+            known = true;
+            effects.pure = sig.pure;
+            effects.readonly = sig.readonly;
+            effects.nothrow = sig.nothrow;
             break;
         }
+    }
+
+    if (!known) {
+        effects.pure = instr.CallAttr.pure;
+        effects.readonly = instr.CallAttr.readonly;
+        effects.nothrow = instr.CallAttr.nothrow;
     }
 
     return effects;

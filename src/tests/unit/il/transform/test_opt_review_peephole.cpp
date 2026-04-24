@@ -158,6 +158,72 @@ bool reflexiveCmpSurvived(const Module &module) {
     return false;
 }
 
+size_t countOpcode(const Module &module, Opcode opcode) {
+    size_t count = 0;
+    for (const auto &fn : module.functions)
+        for (const auto &block : fn.blocks)
+            for (const auto &instr : block.instructions)
+                if (instr.op == opcode)
+                    ++count;
+    return count;
+}
+
+Module buildCheckedZeroNumeratorModule(Opcode opcode) {
+    Module module;
+    Function fn;
+    fn.name = "checked_zero_numerator";
+    fn.retType = Type(Type::Kind::I64);
+    fn.params.push_back(Param{"x", Type(Type::Kind::I64), 0});
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr div;
+    div.result = 1;
+    div.op = opcode;
+    div.type = Type(Type::Kind::I64);
+    div.operands = {Value::constInt(0), Value::temp(0)};
+    entry.instructions.push_back(std::move(div));
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(1)};
+    entry.instructions.push_back(std::move(ret));
+    entry.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    module.functions.push_back(std::move(fn));
+    return module;
+}
+
+Module buildFAddZeroModule() {
+    Module module;
+    Function fn;
+    fn.name = "fadd_zero";
+    fn.retType = Type(Type::Kind::F64);
+    fn.params.push_back(Param{"x", Type(Type::Kind::F64), 0});
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr add;
+    add.result = 1;
+    add.op = Opcode::FAdd;
+    add.type = Type(Type::Kind::F64);
+    add.operands = {Value::temp(0), Value::constFloat(0.0)};
+    entry.instructions.push_back(std::move(add));
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(1)};
+    entry.instructions.push_back(std::move(ret));
+    entry.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    module.functions.push_back(std::move(fn));
+    return module;
+}
+
 } // namespace
 
 // --- Unsigned comparison folding in CBr ---
@@ -318,6 +384,24 @@ TEST(Peephole, FCmpGE_ReflexiveNotFolded) {
     Module m = buildReflexiveCmpModule(Opcode::FCmpGE);
     il::transform::peephole(m);
     EXPECT_TRUE(reflexiveCmpSurvived(m));
+}
+
+TEST(Peephole, CheckedDivZeroNumeratorStillTraps) {
+    Module m = buildCheckedZeroNumeratorModule(Opcode::SDivChk0);
+    il::transform::peephole(m);
+    EXPECT_EQ(countOpcode(m, Opcode::SDivChk0), 1U);
+}
+
+TEST(Peephole, CheckedRemZeroNumeratorStillTraps) {
+    Module m = buildCheckedZeroNumeratorModule(Opcode::SRemChk0);
+    il::transform::peephole(m);
+    EXPECT_EQ(countOpcode(m, Opcode::SRemChk0), 1U);
+}
+
+TEST(Peephole, FAddZeroPreservesSignedZeroSemantics) {
+    Module m = buildFAddZeroModule();
+    il::transform::peephole(m);
+    EXPECT_EQ(countOpcode(m, Opcode::FAdd), 1U);
 }
 
 /// @brief Main.

@@ -1,12 +1,19 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-04-23
 ---
 
 # CODEMAP: IL Verification
 
 IL verifier (`src/il/verify/`) enforcing spec compliance.
+
+The verifier treats SSA correctness issues as hard errors: duplicate temp
+definitions, invalid function/block parameters, non-dominating uses, undefined
+branch arguments, fixed-opcode result type mismatches, ambiguous
+function/extern/global symbols, invalid indirect-call callees, contradictory
+call attributes for known callees, and returning alloca-derived pointers all
+fail verification.
 
 ## Overview
 

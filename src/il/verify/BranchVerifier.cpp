@@ -70,14 +70,20 @@ Expected<void> verifyBranchArgs(const Function &fn,
                 fn, bb, instr, "branch arg count mismatch for label " + std::string(label)))};
 
     for (size_t i = 0; i < argCount; ++i) {
-        auto argType = types.valueType((*args)[i]);
-        // After DCE, branch arguments may reference temps whose definitions
-        // were removed. TypeInference returns Void for such undefined temps.
-        // Allow Void as compatible with any type since the register allocator
-        // tracks liveness independently of IL types.
-        bool compatible =
-            (argType.kind == target.params[i].type.kind) || (argType.kind == Type::Kind::Void);
-        if (!compatible) {
+        bool missing = false;
+        auto argType = types.valueType((*args)[i], &missing);
+        if (missing) {
+            return Expected<void>{makeError(
+                instr.loc,
+                formatInstrDiag(
+                    fn, bb, instr, "unknown branch arg for label " + std::string(label)))};
+        }
+        if (argType.kind == Type::Kind::Void) {
+            return Expected<void>{makeError(
+                instr.loc,
+                formatInstrDiag(fn, bb, instr, "void branch arg for label " + std::string(label)))};
+        }
+        if (argType.kind != target.params[i].type.kind) {
             return Expected<void>{
                 makeError(instr.loc,
                           formatInstrDiag(

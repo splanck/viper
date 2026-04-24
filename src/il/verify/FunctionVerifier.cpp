@@ -95,6 +95,35 @@ bool isRuntimeArrayRelease(const Instr &instr) {
     return instr.op == Opcode::Call && instr.callee == "rt_arr_i32_release";
 }
 
+Expected<void> validateFunctionParams(const Function &fn) {
+    std::unordered_set<std::string> paramNames;
+    std::unordered_set<unsigned> paramIds;
+    for (const auto &param : fn.params) {
+        if (!paramNames.insert(param.name).second)
+            return Expected<void>{makeError({}, fn.name + ": duplicate param %" + param.name)};
+
+        if (!paramIds.insert(param.id).second) {
+            std::ostringstream message;
+            message << fn.name << ": duplicate param id %" << param.id;
+            return Expected<void>{makeError({}, message.str())};
+        }
+
+        if (param.type.kind == Type::Kind::Void)
+            return Expected<void>{
+                makeError({}, fn.name + ": param %" + param.name + " has void type")};
+    }
+    return {};
+}
+
+bool signaturesMatch(const Extern &ext, const Function &fn) {
+    if (ext.retType.kind != fn.retType.kind || ext.params.size() != fn.params.size())
+        return false;
+    for (size_t i = 0; i < ext.params.size(); ++i)
+        if (ext.params[i].kind != fn.params[i].type.kind)
+            return false;
+    return true;
+}
+
 } // namespace
 
 Expected<void> validateBlockParams_E(const Function &fn,
@@ -139,6 +168,20 @@ Expected<void> FunctionVerifier::run(const Module &module, DiagSink &sink) {
             return Expected<void>{makeError({}, "duplicate function @" + fn.name)};
     }
 
+    std::unordered_set<std::string> globalNames;
+    for (const auto &global : module.globals) {
+        globalNames.insert(global.name);
+        if (externs_.contains(global.name))
+            return Expected<void>{
+                makeError({}, "global @" + global.name + " collides with extern @" + global.name)};
+    }
+
+    for (const auto &fn : module.functions) {
+        if (globalNames.contains(fn.name))
+            return Expected<void>{
+                makeError({}, "function @" + fn.name + " collides with global @" + fn.name)};
+    }
+
     for (const auto &fn : module.functions)
         if (auto result = verifyFunction(fn, sink); !result)
             return result;
@@ -157,6 +200,19 @@ Expected<void> FunctionVerifier::run(const Module &module, DiagSink &sink) {
 /// @param sink Diagnostic sink for detailed messages.
 /// @return Success or a diagnostic describing the first failure.
 Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &sink) {
+    if (auto result = validateFunctionParams(fn); !result)
+        return result;
+
+    if (auto it = externs_.find(fn.name); it != externs_.end()) {
+        const Extern *ext = it->second;
+        if (!signaturesMatch(*ext, fn))
+            return Expected<void>{
+                makeError({}, "function @" + fn.name + " signature mismatch with extern")};
+        if (fn.linkage != Linkage::Import)
+            return Expected<void>{
+                makeError({}, "function @" + fn.name + " collides with extern @" + fn.name)};
+    }
+
     // Import-linkage functions are declarations with no body; skip body verification.
     if (fn.linkage == Linkage::Import) {
         if (!fn.blocks.empty())
@@ -173,20 +229,6 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     if (!isEntry)
         return Expected<void>{makeError({}, formatFunctionDiag(fn, "first block must be entry"))};
 
-    if (auto it = externs_.find(fn.name); it != externs_.end()) {
-        const Extern *ext = it->second;
-        bool sigOk = ext->retType.kind == fn.retType.kind && ext->params.size() == fn.params.size();
-        if (sigOk) {
-            for (size_t i = 0; i < ext->params.size(); ++i)
-                if (ext->params[i].kind != fn.params[i].type.kind)
-                    sigOk = false;
-        }
-        if (!sigOk)
-            return Expected<void>{
-                /// @brief Handles error condition.
-                makeError({}, "function @" + fn.name + " signature mismatch with extern")};
-    }
-
     std::unordered_set<std::string> labels;
     BlockMap blockMap;
     blockMap.reserve(fn.blocks.size());
@@ -202,8 +244,22 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     handlerInfo_.clear();
 
     std::unordered_map<unsigned, Type> temps;
+    std::unordered_map<unsigned, std::string> tempDefinitions;
+    auto defineTemp = [&](unsigned id, Type type, std::string description) -> Expected<void> {
+        auto [it, inserted] = tempDefinitions.emplace(id, std::move(description));
+        if (!inserted) {
+            std::ostringstream message;
+            message << "duplicate temp %" << id << " defined by " << it->second;
+            return Expected<void>{makeError({}, formatFunctionDiag(fn, message.str()))};
+        }
+        temps[id] = type;
+        return {};
+    };
+
     for (const auto &param : fn.params) {
-        temps[param.id] = param.type;
+        if (auto result = defineTemp(param.id, param.type, "function param %" + param.name);
+            !result)
+            return result;
     }
 
     // ===== PASS 1: Pre-collect all definitions for type information =====
@@ -219,19 +275,21 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     for (const auto &bb : fn.blocks) {
         // Block parameters define temporaries
         for (const auto &param : bb.params) {
-            if (temps.find(param.id) == temps.end()) {
-                temps[param.id] = param.type;
-                definingBlock[param.id] = &bb;
-            }
+            if (auto result = defineTemp(
+                    param.id, param.type, "block param %" + param.name + " in ^" + bb.label);
+                !result)
+                return result;
+            definingBlock[param.id] = &bb;
         }
 
         // Instructions with results define temporaries
         for (const auto &instr : bb.instructions) {
             if (instr.result.has_value()) {
-                if (temps.find(*instr.result) == temps.end()) {
-                    temps[*instr.result] = instr.type;
-                    definingBlock[*instr.result] = &bb;
-                }
+                std::ostringstream description;
+                description << "instruction result in ^" << bb.label;
+                if (auto result = defineTemp(*instr.result, instr.type, description.str()); !result)
+                    return result;
+                definingBlock[*instr.result] = &bb;
             }
         }
     }
@@ -414,64 +472,100 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
             if (!reachable.contains(&blk))
                 continue;
             for (const auto &instr : blk.instructions) {
-                auto checkValue = [&](const Value &op) {
+                auto checkValue = [&](const Value &op) -> Expected<void> {
                     if (op.kind != Value::Kind::Temp)
-                        return;
+                        return {};
                     auto defIt = definingBlock.find(op.id);
                     if (defIt == definingBlock.end())
-                        return;
+                        return {};
 
                     if (!reachable.contains(defIt->second)) {
                         std::ostringstream msg;
                         msg << "use of %" << op.id << " defined in unreachable block ^"
                             << defIt->second->label;
-                        sink.report(il::support::Diag{
-                            il::support::Severity::Warning, msg.str(), instr.loc, {}});
-                        return;
+                        return Expected<void>{
+                            makeError(instr.loc, formatInstrDiag(fn, blk, instr, msg.str()))};
                     }
 
                     if (defIt->second != &blk && !dominates(defIt->second, &blk)) {
                         std::ostringstream msg;
                         msg << "use of %" << op.id << " in ^" << blk.label
                             << " not dominated by definition in ^" << defIt->second->label;
-                        sink.report(il::support::Diag{
-                            il::support::Severity::Warning, msg.str(), instr.loc, {}});
+                        return Expected<void>{
+                            makeError(instr.loc, formatInstrDiag(fn, blk, instr, msg.str()))};
                     }
+                    return {};
                 };
 
                 for (const auto &op : instr.operands)
-                    checkValue(op);
+                    if (auto result = checkValue(op); !result)
+                        return result;
                 for (const auto &bundle : instr.brArgs)
                     for (const auto &arg : bundle)
-                        checkValue(arg);
+                        if (auto result = checkValue(arg); !result)
+                            return result;
             }
         }
     }
 
     // ===== PASS 4: Alloca escape verification =====
-    // Detect return instructions that directly return alloca-derived pointers.
+    // Detect return instructions that return alloca-derived pointers.
     // Returning a stack address is undefined behaviour because the frame is
     // deallocated when the function returns.
     {
-        std::unordered_set<unsigned> allocaIds;
+        std::unordered_set<unsigned> stackDerived;
         for (const auto &blk : fn.blocks) {
             for (const auto &instr : blk.instructions) {
                 if (instr.op == Opcode::Alloca && instr.result)
-                    allocaIds.insert(*instr.result);
+                    stackDerived.insert(*instr.result);
             }
         }
 
-        if (!allocaIds.empty()) {
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            for (const auto &blk : fn.blocks) {
+                for (const auto &instr : blk.instructions) {
+                    if (instr.op == Opcode::GEP && instr.result && !instr.operands.empty() &&
+                        instr.operands[0].kind == Value::Kind::Temp &&
+                        stackDerived.contains(instr.operands[0].id)) {
+                        changed |= stackDerived.insert(*instr.result).second;
+                    }
+
+                    if (isTerminator(instr.op)) {
+                        for (size_t edge = 0;
+                             edge < instr.labels.size() && edge < instr.brArgs.size();
+                             ++edge) {
+                            auto targetIt = blockMap.find(instr.labels[edge]);
+                            if (targetIt == blockMap.end())
+                                continue;
+                            const BasicBlock *target = targetIt->second;
+                            const auto &args = instr.brArgs[edge];
+                            const size_t count = std::min(args.size(), target->params.size());
+                            for (size_t idx = 0; idx < count; ++idx) {
+                                const Value &arg = args[idx];
+                                if (arg.kind == Value::Kind::Temp &&
+                                    stackDerived.contains(arg.id)) {
+                                    changed |= stackDerived.insert(target->params[idx].id).second;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!stackDerived.empty()) {
             for (const auto &blk : fn.blocks) {
                 for (const auto &instr : blk.instructions) {
                     if (instr.op != Opcode::Ret)
                         continue;
                     for (const auto &op : instr.operands) {
-                        if (op.kind == Value::Kind::Temp && allocaIds.contains(op.id)) {
+                        if (op.kind == Value::Kind::Temp && stackDerived.contains(op.id)) {
                             std::ostringstream msg;
                             msg << "returning alloca-derived pointer %" << op.id;
-                            sink.report(il::support::Diag{
-                                il::support::Severity::Warning, msg.str(), instr.loc, {}});
+                            return Expected<void>{
+                                makeError(instr.loc, formatInstrDiag(fn, blk, instr, msg.str()))};
                         }
                     }
                 }

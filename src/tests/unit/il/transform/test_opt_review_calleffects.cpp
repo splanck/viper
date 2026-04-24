@@ -39,6 +39,17 @@ TEST(CallEffects, InstrPureAttribute) {
 
     auto effects = il::transform::classifyCallEffects(call);
     EXPECT_TRUE(effects.pure);
+    EXPECT_FALSE(effects.canEliminateIfUnused());
+}
+
+TEST(CallEffects, InstrPureNothrowCanEliminate) {
+    Instr call = makeCall("unknown_fn");
+    call.CallAttr.pure = true;
+    call.CallAttr.nothrow = true;
+
+    auto effects = il::transform::classifyCallEffects(call);
+    EXPECT_TRUE(effects.pure);
+    EXPECT_TRUE(effects.nothrow);
     EXPECT_TRUE(effects.canEliminateIfUnused());
 }
 
@@ -73,7 +84,7 @@ TEST(CallEffects, PureImpliesCanReorder) {
 
     auto effects = il::transform::classifyCallEffects(call);
     EXPECT_TRUE(effects.canReorderWithMemory());
-    EXPECT_TRUE(effects.canEliminateIfUnused());
+    EXPECT_FALSE(effects.canEliminateIfUnused());
 }
 
 // Test classifyCalleeEffects by name (string-based lookup)

@@ -186,6 +186,7 @@ TEST(GVNCSE, GVN_LoadsRespectBasicAA_NoClobber) {
     alloca.result = id++;
     alloca.op = Opcode::Alloca;
     alloca.type = Type(Type::Kind::Ptr);
+    alloca.operands = {Value::constInt(8)};
     entry.instructions.push_back(std::move(alloca));
 
     Instr store;
@@ -244,6 +245,7 @@ TEST(GVNCSE, GVN_LoadsClobberedByStore) {
     alloca.result = id++;
     alloca.op = Opcode::Alloca;
     alloca.type = Type(Type::Kind::Ptr);
+    alloca.operands = {Value::constInt(8)};
     entry.instructions.push_back(std::move(alloca));
 
     Instr store1;
@@ -291,6 +293,51 @@ TEST(GVNCSE, GVN_LoadsClobberedByStore) {
     const Instr &retInstr = B.instructions.back();
     ASSERT_FALSE(retInstr.operands.empty());
     EXPECT_EQ(retInstr.operands[0].id, *B.instructions[4].result);
+}
+
+TEST(GVNCSE, GVN_DoesNotEliminatePotentiallyTrappingLoads) {
+    Module M;
+    Function F;
+    F.name = "gvn_param_loads";
+    F.retType = Type(Type::Kind::I64);
+    F.params.push_back(Param{"p", Type(Type::Kind::Ptr), 0});
+
+    BasicBlock entry;
+    entry.label = "entry";
+
+    Instr load1;
+    load1.result = 1;
+    load1.op = Opcode::Load;
+    load1.type = Type(Type::Kind::I64);
+    load1.operands = {Value::temp(0)};
+    entry.instructions.push_back(std::move(load1));
+
+    Instr load2;
+    load2.result = 2;
+    load2.op = Opcode::Load;
+    load2.type = Type(Type::Kind::I64);
+    load2.operands = {Value::temp(0)};
+    entry.instructions.push_back(std::move(load2));
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(2)};
+    entry.instructions.push_back(std::move(ret));
+    entry.terminated = true;
+
+    F.blocks.push_back(std::move(entry));
+    M.functions.push_back(std::move(F));
+
+    runGVN(M, M.functions.front());
+
+    const BasicBlock &B = M.functions.front().blocks.front();
+    size_t loadCount = 0;
+    for (const Instr &instr : B.instructions)
+        if (instr.op == Opcode::Load)
+            ++loadCount;
+    EXPECT_EQ(loadCount, 2U);
+    EXPECT_EQ(B.instructions.back().operands[0].id, 2U);
 }
 
 int main(int argc, char **argv) {

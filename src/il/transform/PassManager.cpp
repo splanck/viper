@@ -53,16 +53,12 @@ using namespace il::core;
 namespace il::transform {
 
 /// @brief Initialise the pass manager with default analyses and settings.
-/// @details Enables verification between passes in debug builds and registers
+/// @details Enables verification between passes by default and registers
 ///          core analyses (CFG, dominator tree, and liveness) used by canonical
 ///          pipelines.  The registrations install factory callbacks that lazily
 ///          compute results when passes request them.
 PassManager::PassManager() {
-#ifndef NDEBUG
     verifyBetweenPasses_ = true;
-#else
-    verifyBetweenPasses_ = false;
-#endif
     instrumentationStream_ = &std::cerr;
 
     analysisRegistry_.registerFunctionAnalysis<CFGInfo>(

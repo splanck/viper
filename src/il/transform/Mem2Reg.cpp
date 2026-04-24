@@ -24,6 +24,7 @@
 #include "il/analysis/Dominators.hpp"
 #include "il/utils/Utils.hpp"
 #include <algorithm>
+#include <cassert>
 #include <climits>
 #include <functional>
 #include <iostream>
@@ -114,6 +115,8 @@ struct AllocaInfo {
 
 struct VarState {
     Type type{};
+    BasicBlock *allocaBlock = nullptr;
+    Value initialValue{};
     std::unordered_map<BasicBlock *, Value> defs;
 };
 
@@ -130,6 +133,10 @@ using VarMap = std::unordered_map<unsigned, VarState>;
 using BlockMap = std::unordered_map<BasicBlock *, BlockState>;
 using LabelIndexCache =
     std::unordered_map<const Instr *, std::unordered_map<std::string, std::size_t>>;
+
+static Value zeroValueForType(const Type &type) {
+    return type.kind == Type::Kind::F64 ? Value::constFloat(0.0) : Value::constInt(0);
+}
 
 /// @brief Gather information about @c alloca instructions within a function.
 ///
@@ -263,6 +270,10 @@ static void addIncoming(BasicBlock *B,
     }
     if (term.brArgs.size() < term.labels.size())
         term.brArgs.resize(term.labels.size());
+    if (target >= term.labels.size()) {
+        assert(false && "mem2reg predecessor terminator does not target block");
+        return;
+    }
     auto &args = term.brArgs[target];
     if (args.size() <= pIdx)
         args.resize(pIdx + 1);
@@ -303,8 +314,7 @@ static Value readFromPreds(Function &F,
                            LabelIndexCache *idxCache) {
     auto preds = analysis::predecessors(ctx, *B);
     if (preds.empty()) {
-        const Type &ty = vars[varId].type;
-        return ty.kind == Type::Kind::F64 ? Value::constFloat(0.0) : Value::constInt(0);
+        return vars[varId].initialValue;
     }
     unsigned pIdx = ensureParam(B, varId, vars, blocks, nextId);
     Value paramVal = Value::temp(B->params[pIdx].id);
@@ -350,8 +360,7 @@ static Value renameUses(Function &F,
     }
     auto preds = analysis::predecessors(ctx, *B);
     if (preds.empty()) {
-        const Type &ty = VS.type;
-        Value v = ty.kind == Type::Kind::F64 ? Value::constFloat(0.0) : Value::constInt(0);
+        Value v = VS.initialValue;
         VS.defs[B] = v;
         return v;
     }
@@ -427,7 +436,12 @@ static void promoteVariables(Function &F,
             continue;
         if (!isPromotableScalarType(AI.type))
             continue;
-        vars[id] = VarState{AI.type, {}};
+        VarState state;
+        state.type = AI.type;
+        state.allocaBlock = AI.block;
+        state.initialValue = zeroValueForType(AI.type);
+        state.defs[AI.block] = state.initialValue;
+        vars[id] = std::move(state);
     }
 
     if (stats)
@@ -563,10 +577,11 @@ static bool runSROA(Function &F) {
                             auto baseOffIt = cand->offsets.find(I.operands[0].id);
                             unsigned baseOffset =
                                 (baseOffIt != cand->offsets.end()) ? baseOffIt->second : 0;
-                            unsigned totalOffset = baseOffset + *offOpt;
-                            if (totalOffset > cand->allocSize) {
+                            if (baseOffset >= cand->allocSize ||
+                                *offOpt >= cand->allocSize - baseOffset) {
                                 cand->ok = false;
                             } else {
+                                unsigned totalOffset = baseOffset + *offOpt;
                                 owner[*I.result] = cand;
                                 cand->offsets[*I.result] = totalOffset;
                             }
@@ -679,15 +694,23 @@ static bool runSROA(Function &F) {
         std::unordered_map<unsigned, unsigned> offsetToAlloca;
         offsetToAlloca.reserve(cand.fields.size());
 
+        std::vector<std::pair<unsigned, SROAField *>> ordered;
+        ordered.reserve(cand.fields.size());
+        for (auto &[off, field] : cand.fields)
+            ordered.emplace_back(off, &field);
+        std::sort(ordered.begin(), ordered.end(), [](const auto &a, const auto &b) {
+            return a.first < b.first;
+        });
+
         std::size_t fieldIdx = 0;
-        for (auto &entry : cand.fields) {
+        for (auto &[offset, field] : ordered) {
             Instr alloc;
             alloc.op = Opcode::Alloca;
             alloc.type = Type(Type::Kind::Ptr);
             alloc.result = nextId;
-            alloc.operands.push_back(Value::constInt(entry.second.size));
-            offsetToAlloca[entry.first] = nextId;
-            entry.second.allocaId = nextId;
+            alloc.operands.push_back(Value::constInt(field->size));
+            offsetToAlloca[offset] = nextId;
+            field->allocaId = nextId;
 
             std::string baseName;
             if (cand.baseId < F.valueNames.size())

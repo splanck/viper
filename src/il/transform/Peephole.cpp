@@ -149,11 +149,17 @@ using UseCountMap = std::unordered_map<unsigned, size_t>;
 /// @returns Map from temporary id to use count.
 static UseCountMap buildUseCountMap(const Function &f) {
     UseCountMap counts;
-    for (const auto &b : f.blocks)
-        for (const auto &in : b.instructions)
+    for (const auto &b : f.blocks) {
+        for (const auto &in : b.instructions) {
             for (const auto &op : in.operands)
                 if (op.kind == Value::Kind::Temp)
                     ++counts[op.id];
+            for (const auto &argVec : in.brArgs)
+                for (const auto &arg : argVec)
+                    if (arg.kind == Value::Kind::Temp)
+                        ++counts[arg.id];
+        }
+    }
     return counts;
 }
 
@@ -192,6 +198,55 @@ static void replaceAll(Function &f, unsigned id, const Value &v) {
                     if (arg.kind == Value::Kind::Temp && arg.id == id)
                         arg = v;
         }
+}
+
+static bool valueUsesTemp(const Value &value, unsigned id) {
+    return value.kind == Value::Kind::Temp && value.id == id;
+}
+
+static bool instructionUsesTemp(const Instr &instr, unsigned id) {
+    for (const auto &op : instr.operands)
+        if (valueUsesTemp(op, id))
+            return true;
+    for (const auto &argVec : instr.brArgs)
+        for (const auto &arg : argVec)
+            if (valueUsesTemp(arg, id))
+                return true;
+    return false;
+}
+
+/// @brief Check whether every use of @p id is after @p defIdx in @p block.
+///
+/// @details Operand-forwarding peepholes replace a result with one of the
+///          defining instruction's operands. Keeping these rewrites local avoids
+///          introducing cross-edge branch arguments whose replacement value is
+///          not available on that predecessor edge.
+static bool allUsesLocalAfter(const Function &f,
+                              const BasicBlock &block,
+                              size_t defIdx,
+                              unsigned id) {
+    for (const auto &candidate : f.blocks) {
+        for (size_t idx = 0; idx < candidate.instructions.size(); ++idx) {
+            if (!instructionUsesTemp(candidate.instructions[idx], id))
+                continue;
+            if (&candidate != &block || idx <= defIdx)
+                return false;
+        }
+    }
+    return true;
+}
+
+static void replaceLocalUsesAfter(BasicBlock &block, size_t defIdx, unsigned id, const Value &v) {
+    for (size_t idx = defIdx + 1; idx < block.instructions.size(); ++idx) {
+        Instr &instr = block.instructions[idx];
+        for (auto &op : instr.operands)
+            if (valueUsesTemp(op, id))
+                op = v;
+        for (auto &argVec : instr.brArgs)
+            for (auto &arg : argVec)
+                if (valueUsesTemp(arg, id))
+                    arg = v;
+    }
 }
 
 //===----------------------------------------------------------------------===//
@@ -481,7 +536,13 @@ void peephole(Module &m) {
                 }
 
                 if (match) {
-                    replaceAll(f, *in.result, repl);
+                    if (repl.kind == Value::Kind::Temp) {
+                        if (!allUsesLocalAfter(f, b, i, *in.result))
+                            continue;
+                        replaceLocalUsesAfter(b, i, *in.result, repl);
+                    } else {
+                        replaceAll(f, *in.result, repl);
+                    }
                     b.instructions.erase(b.instructions.begin() + i);
                     --i;
                 }

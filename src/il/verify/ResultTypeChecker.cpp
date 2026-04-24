@@ -35,6 +35,21 @@ using il::support::makeError;
 using il::verify::detail::kindFromCategory;
 
 namespace il::verify::detail {
+namespace {
+
+bool opcodeHasStrategyValidatedResultType(il::core::Opcode op) {
+    switch (op) {
+        case il::core::Opcode::CastFpToSiRteChk:
+        case il::core::Opcode::CastFpToUiRteChk:
+        case il::core::Opcode::CastSiNarrowChk:
+        case il::core::Opcode::CastUiNarrowChk:
+            return true;
+        default:
+            return false;
+    }
+}
+
+} // namespace
 
 /// @brief Construct a checker bound to a verification context and opcode metadata.
 ///
@@ -87,9 +102,14 @@ Expected<void> ResultTypeChecker::run() const {
             return report("instruction type must be non-void");
         }
     } else if (auto expectedKind = kindFromCategory(spec_.resultType)) {
-        (void)expectedKind;
-        // Result annotations on fixed-type instructions are advisory; the verifier
-        // records the schema-defined type regardless of the IL's explicit hint.
+        if (opcodeHasStrategyValidatedResultType(instr.op))
+            return {};
+        if (instr.type.kind != *expectedKind) {
+            std::ostringstream message;
+            message << "result type mismatch: expected " << il::core::kindToString(*expectedKind)
+                    << " but instruction declares " << il::core::kindToString(instr.type.kind);
+            return report(message.str());
+        }
     }
 
     return {};

@@ -67,10 +67,17 @@ Expected<void> validateBlockParams_impl(const Function &fn,
                                         TypeInference &types,
                                         std::vector<unsigned> &paramIds) {
     std::unordered_set<std::string> paramNames;
+    std::unordered_set<unsigned> seenParamIds;
     for (const auto &param : bb.params) {
         if (!paramNames.insert(param.name).second)
             return Expected<void>{
                 makeError({}, formatBlockDiag(fn, bb, "duplicate param %" + param.name))};
+
+        if (!seenParamIds.insert(param.id).second) {
+            std::ostringstream message;
+            message << "duplicate param id %" << param.id;
+            return Expected<void>{makeError({}, formatBlockDiag(fn, bb, message.str()))};
+        }
 
         if (param.type.kind == Type::Kind::Void)
             return Expected<void>{

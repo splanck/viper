@@ -26,6 +26,7 @@
 
 #include "il/transform/AnalysisIDs.hpp"
 #include "il/transform/AnalysisManager.hpp"
+#include "il/transform/LoadSafety.hpp"
 #include "il/transform/ValueKey.hpp"
 
 #include "il/analysis/BasicAA.hpp"
@@ -151,7 +152,8 @@ void visitBlock(Function &F,
         Instr &I = B->instructions[idx];
 
         // Redundant Load Elimination
-        if (I.op == Opcode::Load && I.result && !I.operands.empty()) {
+        if (I.op == Opcode::Load && I.result && !I.operands.empty() &&
+            isLoadKnownNonTrapping(F, I)) {
             const Value &ptr = I.operands[0];
             auto loadSize = viper::analysis::BasicAA::typeSizeBytes(I.type);
             LoadKey key{ptr, I.type.kind, loadSize};

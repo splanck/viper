@@ -397,6 +397,12 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
             calleeName = calleeVal.str;
             argStart = 1;
         } else {
+            const auto calleeType = ctx.types.valueType(calleeVal).kind;
+            if (calleeType != il::core::Type::Kind::Ptr) {
+                return fail(ctx,
+                            std::string("call.indirect callee must be ptr but got ") +
+                                kindToString(calleeType));
+            }
             // Pointer-based indirect call (e.g., interface dispatch). Skip static signature checks
             // but still record the result type if the instruction has a result.
             if (ctx.instr.result && ctx.instr.type.kind != il::core::Type::Kind::Void) {
@@ -417,11 +423,10 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
     else if (auto itFn = ctx.functions.find(calleeName); itFn != ctx.functions.end())
         fnSig = itFn->second;
 
-    // If no extern or function declaration, check if it's a known runtime helper.
-    // This catches calls to runtime helpers that weren't declared as externs.
-    const il::runtime::RuntimeSignature *runtimeSig = nullptr;
+    // Runtime helper metadata is authoritative for helper attributes and is
+    // used for signatures when no explicit extern/function declaration exists.
+    const il::runtime::RuntimeSignature *runtimeSig = il::runtime::findRuntimeSignature(calleeName);
     if (!externSig && !fnSig) {
-        runtimeSig = il::runtime::findRuntimeSignature(calleeName);
         if (!runtimeSig) {
             // For vararg helpers that may not be in the main registry, allow them
             // if they follow the rt_ naming convention (they're handled specially).
@@ -429,6 +434,34 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
                 return fail(ctx, std::string("unknown callee @") + calleeName);
             // Vararg helpers bypass static signature validation.
             return {};
+        }
+    }
+
+    if (ctx.instr.op == il::core::Opcode::Call) {
+        bool knownEffects = false;
+        bool calleePure = false;
+        bool calleeReadonly = false;
+        bool calleeNothrow = false;
+
+        if (runtimeSig) {
+            knownEffects = true;
+            calleePure = runtimeSig->pure;
+            calleeReadonly = runtimeSig->readonly;
+            calleeNothrow = runtimeSig->nothrow;
+        } else if (fnSig) {
+            knownEffects = true;
+            calleePure = fnSig->attrs().pure;
+            calleeReadonly = fnSig->attrs().readonly;
+            calleeNothrow = fnSig->attrs().nothrow;
+        }
+
+        if (knownEffects) {
+            if (ctx.instr.CallAttr.pure && !calleePure)
+                return fail(ctx, "call pure attribute contradicts callee metadata");
+            if (ctx.instr.CallAttr.readonly && !(calleeReadonly || calleePure))
+                return fail(ctx, "call readonly attribute contradicts callee metadata");
+            if (ctx.instr.CallAttr.nothrow && !calleeNothrow)
+                return fail(ctx, "call nothrow attribute contradicts callee metadata");
         }
     }
 

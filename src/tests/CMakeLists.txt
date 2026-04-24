@@ -271,8 +271,8 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
     endforeach ()
 
     _aarch64_add_test(test_codegen_arm64_casts
-        ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_casts.cpp
-        "il_codegen_aarch64;viper_cmd_arm64")
+            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_casts.cpp
+            "il_codegen_aarch64;viper_cmd_arm64")
 
     # CLI run-native should return user exit code
     # Note: run-native exit code coverage exists in other tests; keep CI stable.

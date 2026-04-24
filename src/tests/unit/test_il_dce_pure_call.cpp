@@ -80,6 +80,16 @@ Module buildTestModule(const std::string &callee, bool useResult) {
     return m;
 }
 
+/// @brief Find the first call instruction in the test function.
+Instr *findFirstCall(Module &m) {
+    for (auto &f : m.functions)
+        for (auto &b : f.blocks)
+            for (auto &i : b.instructions)
+                if (i.op == Opcode::Call)
+                    return &i;
+    return nullptr;
+}
+
 /// @brief Check if a module contains a call to the specified callee.
 bool hasCallTo(const Module &m, const std::string &callee) {
     for (const auto &f : m.functions)
@@ -147,6 +157,33 @@ void testReadonlyCallPreserved() {
     assert(hasCallTo(m, "rt_str_len") && "Readonly call should be preserved (not pure)");
 }
 
+/// @brief Test: Instruction pure hints alone are not enough to delete a call.
+void testPureButMayThrowCallPreserved() {
+    Module m = buildTestModule("unknown_function", false);
+    Instr *call = findFirstCall(m);
+    assert(call && "Precondition: call should exist before DCE");
+    call->CallAttr.pure = true;
+
+    il::transform::dce(m);
+
+    assert(hasCallTo(m, "unknown_function") &&
+           "Pure call without nothrow must be preserved because it may trap");
+}
+
+/// @brief Test: Unknown call attrs are trusted only when both pure and nothrow.
+void testPureNothrowUnknownCallEliminated() {
+    Module m = buildTestModule("unknown_function", false);
+    Instr *call = findFirstCall(m);
+    assert(call && "Precondition: call should exist before DCE");
+    call->CallAttr.pure = true;
+    call->CallAttr.nothrow = true;
+
+    il::transform::dce(m);
+
+    assert(!hasCallTo(m, "unknown_function") &&
+           "Pure+nothrow unknown call with unused result should be eliminated");
+}
+
 /// @brief Test: Multiple pure math functions are eliminated.
 void testMultiplePureMathEliminated() {
     const std::vector<std::string> pureHelpers = {
@@ -168,6 +205,8 @@ int main() {
     testImpureCallPreserved();
     testUnknownCalleePreserved();
     testReadonlyCallPreserved();
+    testPureButMayThrowCallPreserved();
+    testPureNothrowUnknownCallEliminated();
     testMultiplePureMathEliminated();
 
     return 0;

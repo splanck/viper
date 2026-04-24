@@ -25,6 +25,8 @@
 
 #include "il/transform/AnalysisIDs.hpp"
 #include "il/transform/AnalysisManager.hpp"
+#include "il/transform/CallEffects.hpp"
+#include "il/transform/LoadSafety.hpp"
 #include "il/transform/analysis/Liveness.hpp"
 #include "il/transform/analysis/LoopInfo.hpp"
 
@@ -57,10 +59,9 @@ struct StoreSite {
 };
 
 /// @brief Classify how a call instruction interacts with memory for hoisting.
-/// @details Checks CallAttr flags (pure, readonly) which are set by frontends
-///          or inferred by alias analysis.  Pure calls have no memory effects;
-///          readonly calls only read memory (safe to hoist if no aliasing
-///          stores exist in the loop, same logic as Load hoisting).
+/// @details Uses the shared call-effects classifier so runtime metadata and
+///          verified call attributes are interpreted consistently across
+///          optimizers.
 enum class CallHoistKind {
     NotHoistable, ///< Call may write memory or has other side effects.
     Pure,         ///< Call has no memory effects (pure math, etc.).
@@ -71,14 +72,13 @@ CallHoistKind classifyCallForHoist(const Instr &instr) {
     if (instr.op != Opcode::Call)
         return CallHoistKind::NotHoistable;
 
-    // nothrow is required — a call that may throw has observable side effects
-    // (exception dispatch) that must execute at the original program point.
-    if (!instr.CallAttr.nothrow)
+    const CallEffects effects = classifyCallEffects(instr);
+    if (!effects.nothrow)
         return CallHoistKind::NotHoistable;
 
-    if (instr.CallAttr.pure)
+    if (effects.pure)
         return CallHoistKind::Pure;
-    if (instr.CallAttr.readonly)
+    if (effects.readonly)
         return CallHoistKind::ReadOnly;
 
     return CallHoistKind::NotHoistable;
@@ -96,7 +96,10 @@ CallHoistKind classifyCallForHoist(const Instr &instr) {
 /// @param callHoist Output: set to the call hoisting classification when the
 ///                  instruction is a call.
 /// @return True if the instruction is safe to move to the preheader.
-bool isSafeToHoist(const Instr &instr, bool allowLoadHoist, CallHoistKind &callHoist) {
+bool isSafeToHoist(const Function &function,
+                   const Instr &instr,
+                   bool allowLoadHoist,
+                   CallHoistKind &callHoist) {
     callHoist = CallHoistKind::NotHoistable;
 
     const auto &info = getOpcodeInfo(instr.op);
@@ -129,7 +132,8 @@ bool isSafeToHoist(const Instr &instr, bool allowLoadHoist, CallHoistKind &callH
     if (effects == MemoryEffects::None)
         return true;
 
-    if (allowLoadHoist && effects == MemoryEffects::Read && instr.op == Opcode::Load)
+    if (allowLoadHoist && effects == MemoryEffects::Read && instr.op == Opcode::Load &&
+        isLoadKnownNonTrapping(function, instr))
         return true;
 
     return false;
@@ -363,7 +367,7 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis) {
                 }
 
                 CallHoistKind callHoist = CallHoistKind::NotHoistable;
-                if (!isSafeToHoist(instr, allowLoads, callHoist) ||
+                if (!isSafeToHoist(function, instr, allowLoads, callHoist) ||
                     !operandsInvariant(instr, invariants)) {
                     ++idx;
                     continue;

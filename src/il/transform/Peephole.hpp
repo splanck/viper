@@ -219,13 +219,8 @@ inline constexpr std::array<Rule, 57> kRules{{
      {Replace::Kind::Operand, 0},
      "fdiv/x1"},
 
-    // Float arithmetic identities: x + 0.0 = x
-    {{core::Opcode::FAdd, Match::Kind::ConstFloatOperand, 0, 0, 0.0},
-     {Replace::Kind::Operand, 1},
-     "fadd+0x"},
-    {{core::Opcode::FAdd, Match::Kind::ConstFloatOperand, 1, 0, 0.0},
-     {Replace::Kind::Operand, 0},
-     "fadd+x0"},
+    // Float x + 0.0 is intentionally not folded: IEEE signed-zero semantics
+    // can make the replacement observably different.
 
     // Float arithmetic identities: x - 0.0 = x
     {{core::Opcode::FSub, Match::Kind::ConstFloatOperand, 1, 0, 0.0},
@@ -254,21 +249,8 @@ inline constexpr std::array<Rule, 57> kRules{{
      {Replace::Kind::Const, 0, 0},
      "urem%x1"},
 
-    // Integer division identities: 0 / x = 0 (x != 0 checked by Chk0)
-    {{core::Opcode::SDivChk0, Match::Kind::ConstOperand, 0, 0},
-     {Replace::Kind::Const, 0, 0},
-     "sdiv/0x"},
-    {{core::Opcode::UDivChk0, Match::Kind::ConstOperand, 0, 0},
-     {Replace::Kind::Const, 0, 0},
-     "udiv/0x"},
-
-    // Integer remainder identities: 0 % x = 0 (x != 0 checked by Chk0)
-    {{core::Opcode::SRemChk0, Match::Kind::ConstOperand, 0, 0},
-     {Replace::Kind::Const, 0, 0},
-     "srem%0x"},
-    {{core::Opcode::URemChk0, Match::Kind::ConstOperand, 0, 0},
-     {Replace::Kind::Const, 0, 0},
-     "urem%0x"},
+    // 0 / x and 0 % x are intentionally not folded for checked division:
+    // the operation must still trap when x is zero.
 }};
 
 /// \brief Run peephole simplifications over @p m using registered rules.

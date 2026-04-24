@@ -867,12 +867,18 @@ wired directly to runtime contracts. Passes can also observe the
 
 * First block is `entry` and every block ends with exactly one terminator.
 * All referenced labels exist in the same function.
-* Operand and result types match instruction signatures.
+* Operand and result types match instruction signatures; fixed-result opcodes
+  must use the schema result type unless a specialised cast/check strategy
+  validates an instruction-declared result type.
 * Calls match callee arity and types.
+* Direct call attributes cannot contradict known runtime helper or local function metadata.
+* `call.indirect` requires a pointer-typed callee operand unless it names a known `globaladdr` callee.
 * `load`/`store` use `ptr` operands and non-void element types.
 * `alloca` sizes are `i64`; constant operands must be non-negative.
-* Temporaries are defined before use within a block (cross-block dominance checks may be deferred).
-* Block parameters have unique names, non-void types, and each predecessor passes matching arguments.
+* Temporaries are defined exactly once and every reachable cross-block use is dominated by its definition.
+* Function and block parameters have unique names/ids, non-void types, and each predecessor passes matching arguments.
+* Branch arguments must reference defined, non-void values.
+* Returning an `alloca`-derived pointer, including through `gep` or block parameters, is invalid.
 * `cbr` takes an `i1` condition.
 
 Example diagnostics:
@@ -1280,6 +1286,9 @@ block parameters and passing values along edges.
 
 * Handles integer (`i64`), float (`f64`), and boolean (`i1`) slots.
 * The address of the alloca must not escape (only used by `load`/`store`).
+* Alloca zero-initialization is modeled as the initial reaching value for the
+  promoted slot, so load-before-store cases become explicit zero constants
+  rather than ad hoc missing-definition fallbacks.
 
 #### Algorithm (seal & rename)
 

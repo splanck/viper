@@ -140,6 +140,7 @@ void test_dce_dead_load_elimination() {
     alloca.result = nextId++;
     alloca.op = Opcode::Alloca;
     alloca.type = Type(Type::Kind::Ptr);
+    alloca.operands.push_back(Value::constInt(8));
     unsigned allocaId = *alloca.result;
 
     Instr deadLoad;
@@ -180,7 +181,41 @@ void test_dce_dead_load_elimination() {
     assert(countOpcode(function, Opcode::Alloca) == 1);
 }
 
-/// Test 3: Empty forwarding block elimination
+/// Test 3: DCE preserves dead loads that may trap.
+void test_dce_preserves_potentially_trapping_dead_load() {
+    Module module;
+    Function fn;
+    fn.name = "test_dead_param_load";
+    fn.retType = Type(Type::Kind::Void);
+    fn.params.push_back(Param{"p", Type(Type::Kind::Ptr), 0});
+
+    BasicBlock entry;
+    entry.label = "entry";
+
+    Instr deadLoad;
+    deadLoad.result = 1;
+    deadLoad.op = Opcode::Load;
+    deadLoad.type = Type(Type::Kind::I64);
+    deadLoad.operands.push_back(Value::temp(0));
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+
+    entry.instructions.push_back(std::move(deadLoad));
+    entry.instructions.push_back(std::move(ret));
+    entry.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    module.functions.push_back(std::move(fn));
+    Function &function = module.functions.back();
+
+    il::transform::dce(module);
+
+    assert(countOpcode(function, Opcode::Load) == 1);
+}
+
+/// Test 4: Empty forwarding block elimination
 /// A function with an empty block that just forwards to another.
 void test_simplifycfg_empty_forwarding_block() {
     Module module;
@@ -321,6 +356,7 @@ void test_late_cleanup_integration() {
 int main() {
     test_simplifycfg_unreachable_block_removal();
     test_dce_dead_load_elimination();
+    test_dce_preserves_potentially_trapping_dead_load();
     test_simplifycfg_empty_forwarding_block();
     test_late_cleanup_integration();
     return 0;

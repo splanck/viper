@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-04-23
 ---
 
 # CODEMAP: IL Transform
@@ -10,7 +10,7 @@ Optimization passes (`src/il/transform/`) for IL programs.
 
 ## Overview
 
-- **Total source files**: 72 (.hpp/.cpp)
+- **Total source files**: 73 (.hpp/.cpp)
 - **Subdirectories**: SimplifyCFG/, analysis/
 
 ## Pass Infrastructure
@@ -39,7 +39,7 @@ Optimization passes (`src/il/transform/`) for IL programs.
 | `Mem2Reg.cpp`    | Stack slot promotion implementation (promotes allocas from any block, not just entry) |
 | `Mem2Reg.hpp`    | Stack slot promotion to SSA with SROA; non-entry allocas promoted when domination holds |
 | `Peephole.cpp`   | Local algebraic simplifications implementation                 |
-| `Peephole.hpp`   | Local algebraic simplifications (57 rules: int/float/unsigned)  |
+| `Peephole.hpp`   | Local algebraic simplifications (45 rules: int/float/unsigned)  |
 | `EarlyCSE.cpp`   | Dominator-tree-scoped CSE implementation (pre-order DFS with scope-stack) |
 | `EarlyCSE.hpp`   | CSE over dominator tree; `runEarlyCSE(Module&, Function&)`     |
 | `GVN.cpp`        | Global value numbering implementation                          |
@@ -61,7 +61,8 @@ Optimization passes (`src/il/transform/`) for IL programs.
 | `CheckOpt.hpp`    | Optimization verification and checking       |
 | `LateCleanup.cpp` | Late-stage cleanup implementation            |
 | `LateCleanup.hpp` | Late-stage cleanup transformations           |
-| `CallEffects.hpp` | Call effect analysis with early-exit optimization |
+| `CallEffects.hpp` | Conservative call effect classification for DCE/LICM |
+| `LoadSafety.hpp` | Non-trapping load proof helper shared by DCE/GVN/LICM |
 | `ValueKey.cpp`    | Value keying with cached commutative normalization |
 | `ValueKey.hpp`    | Value keying for CSE and GVN                      |
 | `AnalysisIDs.hpp` | String identifiers for analysis registration      |
