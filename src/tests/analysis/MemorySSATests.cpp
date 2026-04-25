@@ -383,6 +383,73 @@ TEST(MemorySSA, PreservesStoreToEscapingAlloca) {
     EXPECT_EQ(countStores(fn), 1U);
 }
 
+TEST(MemorySSA, PreservesStoreWhenDerivedAllocaPointerEscapes) {
+    Module module;
+    il::build::IRBuilder builder(module);
+
+    Function &fn = builder.startFunction("derived_escape", Type(Type::Kind::Void), {});
+    builder.createBlock(fn, "entry");
+    builder.createBlock(fn, "exit");
+    BasicBlock &entry = fn.blocks[0];
+    BasicBlock &exit = fn.blocks[1];
+
+    unsigned ptrId = builder.reserveTempId();
+    {
+        Instr alloca;
+        alloca.result = ptrId;
+        alloca.op = Opcode::Alloca;
+        alloca.type = Type(Type::Kind::Ptr);
+        alloca.operands.push_back(Value::constInt(8));
+        entry.instructions.push_back(std::move(alloca));
+    }
+
+    unsigned gepId = builder.reserveTempId();
+    {
+        Instr gep;
+        gep.result = gepId;
+        gep.op = Opcode::GEP;
+        gep.type = Type(Type::Kind::Ptr);
+        gep.operands = {Value::temp(ptrId), Value::constInt(0)};
+        entry.instructions.push_back(std::move(gep));
+    }
+
+    addStore(entry, ptrId, 1);
+
+    {
+        Extern ext;
+        ext.name = "sink";
+        ext.retType = Type(Type::Kind::Void);
+        ext.params.push_back(Type(Type::Kind::Ptr));
+        module.externs.push_back(std::move(ext));
+    }
+
+    {
+        Instr call;
+        call.op = Opcode::Call;
+        call.type = Type(Type::Kind::Void);
+        call.callee = "sink";
+        call.operands.push_back(Value::temp(gepId));
+        entry.instructions.push_back(std::move(call));
+    }
+
+    builder.setInsertPoint(entry);
+    builder.br(exit, {});
+
+    addStore(exit, ptrId, 2);
+    builder.setInsertPoint(exit);
+    builder.emitRet(std::nullopt, {});
+
+    verifyOrDie(module);
+    ASSERT_EQ(countStores(fn), 2U);
+
+    auto registry = makeRegistry();
+    il::transform::AnalysisManager am(module, registry);
+
+    EXPECT_FALSE(il::transform::runMemorySSADSE(fn, am));
+    verifyOrDie(module);
+    EXPECT_EQ(countStores(fn), 2U);
+}
+
 // -------------------------------------------------------------------------
 // Test 5: MemorySSA accessFor() query — verify def-use nodes are built.
 //

@@ -42,6 +42,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Value.hpp"
+#include "il/utils/Utils.hpp"
 
 #include <string>
 #include <vector>
@@ -216,7 +217,7 @@ std::optional<SiblingPattern> matchPattern(const Function &fn) {
             if (ei == bi)
                 continue;
             const auto &entryBB = fn.blocks[ei];
-            if (!entryBB.terminated)
+            if (!viper::il::isTerminated(entryBB))
                 continue;
 
             const auto &term = entryBB.instructions.back();

@@ -27,11 +27,13 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/OpcodeInfo.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 #include "il/utils/Utils.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -42,6 +44,44 @@ using namespace il::core;
 namespace il::transform {
 
 namespace {
+std::optional<long long> checkedAdd(long long lhs, long long rhs) {
+    if ((rhs > 0 && lhs > std::numeric_limits<long long>::max() - rhs) ||
+        (rhs < 0 && lhs < std::numeric_limits<long long>::min() - rhs)) {
+        return std::nullopt;
+    }
+    return lhs + rhs;
+}
+
+bool isSafeToCloneForFullUnroll(const Instr &instr) {
+    if (viper::il::isTerminator(instr))
+        return false;
+    const bool allowedCheckedArithmetic =
+        instr.op == Opcode::IAddOvf || instr.op == Opcode::ISubOvf || instr.op == Opcode::IMulOvf;
+    const auto &info = getOpcodeInfo(instr.op);
+    if (info.hasSideEffects && !allowedCheckedArithmetic)
+        return false;
+    if (hasMemoryRead(instr.op) || hasMemoryWrite(instr.op))
+        return false;
+    if (instr.op == Opcode::Alloca || instr.op == Opcode::Call || instr.op == Opcode::CallIndirect)
+        return false;
+    if (!instr.labels.empty() || !instr.brArgs.empty())
+        return false;
+    return true;
+}
+
+bool tempDefinedInLoop(const Function &function, const Loop &loop, unsigned tempId) {
+    for (const auto &block : function.blocks) {
+        if (!loop.contains(block.label))
+            continue;
+        for (const auto &param : block.params)
+            if (param.id == tempId)
+                return true;
+        for (const auto &instr : block.instructions)
+            if (instr.result && *instr.result == tempId)
+                return true;
+    }
+    return false;
+}
 
 /// @brief Information about a simple counted loop.
 struct CountedLoop {
@@ -347,7 +387,10 @@ std::optional<CountedLoop> analyzeCountedLoop(
             break;
         }
 
-        iv += step;
+        auto nextIv = checkedAdd(iv, step);
+        if (!nextIv)
+            return std::nullopt;
+        iv = *nextIv;
 
         if (iter == maxIterations - 1)
             return std::nullopt; // Too many iterations
@@ -418,13 +461,19 @@ bool fullyUnrollLoop(Function &function,
 
     // Get the body instructions (everything except terminator)
     std::vector<Instr> bodyInstrs;
-    for (size_t i = 0; i < header.instructions.size() - 1; ++i)
+    for (size_t i = 0; i < header.instructions.size() - 1; ++i) {
+        if (!isSafeToCloneForFullUnroll(header.instructions[i]))
+            return false;
         bodyInstrs.push_back(header.instructions[i]);
+    }
 
     // Include latch body if different from header
     if (latch.label != header.label) {
-        for (size_t i = 0; i < latch.instructions.size() - 1; ++i)
+        for (size_t i = 0; i < latch.instructions.size() - 1; ++i) {
+            if (!isSafeToCloneForFullUnroll(latch.instructions[i]))
+                return false;
             bodyInstrs.push_back(latch.instructions[i]);
+        }
     }
 
     // Current values for header params (start with initial values from preheader)
@@ -514,12 +563,19 @@ bool fullyUnrollLoop(Function &function,
         }
     }
 
-    // Map final exit args
+    // Map final exit args from the post-unroll header parameter values.
+    // The previous iteration-local map is stale after currentValues advances.
+    valueMap.clear();
+    for (size_t i = 0; i < header.params.size(); ++i)
+        valueMap[header.params[i].id] = currentValues[i];
+
     for (Value &arg : exitArgs) {
         if (arg.kind == Value::Kind::Temp) {
             auto it = valueMap.find(arg.id);
             if (it != valueMap.end())
                 arg = it->second;
+            else if (tempDefinedInLoop(function, loop, arg.id))
+                return false;
         }
     }
 

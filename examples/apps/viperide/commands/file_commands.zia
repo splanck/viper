@@ -165,13 +165,16 @@ func handleReload(shell: app_shell.AppShell,
                   engine: editor_engine.EditorEngine,
                   tabs: editor_tabs.EditorTabs) {
     var reloadDoc = docMgr.GetActive();
-    if reloadDoc != null and reloadDoc.isNew == false {
-        reloadDoc.content = IO.File.ReadAllText(reloadDoc.filePath);
-        engine.LoadDocument(reloadDoc!);
-        engine.ClearModified();
-        tabs.SetModified(docMgr.activeIndex, false);
-        shell.SetStatusLeft("Reloaded: " + reloadDoc.fileName);
-        GUI.Toast.Success("File reloaded from disk");
+    if reloadDoc != null {
+        var doc = reloadDoc!;
+        if doc.isNew == false {
+            doc.content = IO.File.ReadAllText(doc.filePath);
+            engine.LoadDocument(doc);
+            engine.ClearModified();
+            tabs.SetModified(docMgr.activeIndex, false);
+            shell.SetStatusLeft("Reloaded: " + doc.fileName);
+            GUI.Toast.Success("File reloaded from disk");
+        }
     }
 }
 

@@ -29,7 +29,7 @@ extern @foo() -> str
 
 func @main() -> void {
 entry:
-  %s: str = call @foo()
+  %s = call @foo()
   ret
 }
 )";

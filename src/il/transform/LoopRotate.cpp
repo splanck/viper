@@ -136,11 +136,11 @@ bool isRotatableHeader(const BasicBlock &header, const Loop &loop) {
 
 /// @brief Clone an instruction, remapping temporary IDs according to a mapping.
 /// @param src Source instruction to clone.
-/// @param remap Map from old temp IDs to new temp IDs.
+/// @param remap Map from old temp IDs to replacement values.
 /// @param nextId Counter for allocating new IDs.
 /// @return Cloned instruction with remapped operands and result.
 Instr cloneInstr(const Instr &src,
-                 const std::unordered_map<unsigned, unsigned> &remap,
+                 const std::unordered_map<unsigned, Value> &remap,
                  unsigned &nextId) {
     Instr clone = src;
 
@@ -155,11 +155,27 @@ Instr cloneInstr(const Instr &src,
         if (op.kind == Value::Kind::Temp) {
             auto it = remap.find(op.id);
             if (it != remap.end())
-                op.id = it->second;
+                op = it->second;
+        }
+    }
+
+    for (auto &bundle : clone.brArgs) {
+        for (auto &arg : bundle) {
+            if (arg.kind == Value::Kind::Temp) {
+                auto it = remap.find(arg.id);
+                if (it != remap.end())
+                    arg = it->second;
+            }
         }
     }
 
     return clone;
+}
+
+void setValueName(Function &function, unsigned id, const std::string &name) {
+    if (function.valueNames.size() <= id)
+        function.valueNames.resize(id + 1);
+    function.valueNames[id] = name;
 }
 
 /// @brief Attempt to rotate a single loop.
@@ -226,6 +242,8 @@ bool rotateLoop(Function &function, const Loop &loop) {
     std::vector<Value> latchArgs;
     if (!latchTerm.brArgs.empty())
         latchArgs = latchTerm.brArgs[0];
+    if (latchArgs.size() != headerParams.size())
+        return false;
 
     // Collect outside-loop predecessors of the header (entry edges)
     struct EntryEdge {
@@ -274,14 +292,12 @@ bool rotateLoop(Function &function, const Loop &loop) {
     guard.params = headerParams; // Same params as original header
 
     // Re-ID the guard's params
-    std::unordered_map<unsigned, unsigned> guardRemap;
+    std::unordered_map<unsigned, Value> guardRemap;
     for (auto &param : guard.params) {
         unsigned newId = nextId++;
-        guardRemap[param.id] = newId;
+        guardRemap[param.id] = Value::temp(newId);
         param.id = newId;
-        if (function.valueNames.size() <= param.id)
-            function.valueNames.resize(param.id + 1);
-        function.valueNames[param.id] = param.name;
+        setValueName(function, param.id, param.name);
     }
 
     // Clone header instructions into guard, remapping temp references
@@ -289,21 +305,10 @@ bool rotateLoop(Function &function, const Loop &loop) {
         Instr clone = cloneInstr(instr, guardRemap, nextId);
 
         // Update remap with new result ID
-        if (instr.result.has_value() && clone.result.has_value())
-            guardRemap[*instr.result] = *clone.result;
-
-        // For the cbr terminator, remap its body-successor branch args
-        if (clone.op == Opcode::CBr) {
-            // Remap branch args to use guard's remapped values
-            for (auto &bundle : clone.brArgs) {
-                for (auto &arg : bundle) {
-                    if (arg.kind == Value::Kind::Temp) {
-                        auto it = guardRemap.find(arg.id);
-                        if (it != guardRemap.end())
-                            arg.id = it->second;
-                    }
-                }
-            }
+        if (instr.result.has_value() && clone.result.has_value()) {
+            guardRemap[*instr.result] = Value::temp(*clone.result);
+            if (*instr.result < function.valueNames.size())
+                setValueName(function, *clone.result, function.valueNames[*instr.result]);
         }
 
         guard.instructions.push_back(std::move(clone));
@@ -316,11 +321,9 @@ bool rotateLoop(Function &function, const Loop &loop) {
     //   cbr %cond, ^bodySucc(next_args), ^exit(exit_args)
 
     // Build remap from header params to latch args
-    std::unordered_map<unsigned, unsigned> latchRemap;
-    for (size_t pi = 0; pi < headerParams.size() && pi < latchArgs.size(); ++pi) {
-        if (latchArgs[pi].kind == Value::Kind::Temp)
-            latchRemap[headerParams[pi].id] = latchArgs[pi].id;
-    }
+    std::unordered_map<unsigned, Value> latchRemap;
+    for (size_t pi = 0; pi < headerParams.size(); ++pi)
+        latchRemap[headerParams[pi].id] = latchArgs[pi];
 
     // Remove the old latch terminator
     auto &latchInstrs = function.blocks[latchIdx].instructions;
@@ -331,47 +334,10 @@ bool rotateLoop(Function &function, const Loop &loop) {
     for (const auto &instr : headerInstrs) {
         Instr clone = cloneInstr(instr, latchRemap, nextId);
 
-        if (instr.result.has_value() && clone.result.has_value())
-            latchRemap[*instr.result] = *clone.result;
-
-        if (clone.op == Opcode::CBr) {
-            // Remap cbr operands
-            for (auto &op : clone.operands) {
-                if (op.kind == Value::Kind::Temp) {
-                    auto it = latchRemap.find(op.id);
-                    if (it != latchRemap.end())
-                        op.id = it->second;
-                }
-            }
-
-            // Redirect: body successor → bodySuccLabel, exit → exitLabel
-            // The cbr's body-side should branch to the body successor with latch args
-            // The exit-side keeps its target
-            for (size_t li = 0; li < clone.labels.size(); ++li) {
-                if (clone.labels[li] == bodySuccLabel) {
-                    // Remap body branch args
-                    if (li < clone.brArgs.size()) {
-                        for (auto &arg : clone.brArgs[li]) {
-                            if (arg.kind == Value::Kind::Temp) {
-                                auto it = latchRemap.find(arg.id);
-                                if (it != latchRemap.end())
-                                    arg.id = it->second;
-                            }
-                        }
-                    }
-                } else {
-                    // Exit branch args
-                    if (li < clone.brArgs.size()) {
-                        for (auto &arg : clone.brArgs[li]) {
-                            if (arg.kind == Value::Kind::Temp) {
-                                auto it = latchRemap.find(arg.id);
-                                if (it != latchRemap.end())
-                                    arg.id = it->second;
-                            }
-                        }
-                    }
-                }
-            }
+        if (instr.result.has_value() && clone.result.has_value()) {
+            latchRemap[*instr.result] = Value::temp(*clone.result);
+            if (*instr.result < function.valueNames.size())
+                setValueName(function, *clone.result, function.valueNames[*instr.result]);
         }
 
         latchInstrs.push_back(std::move(clone));

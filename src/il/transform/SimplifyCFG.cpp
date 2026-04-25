@@ -8,9 +8,10 @@
 // File: src/il/transform/SimplifyCFG.cpp
 // Purpose: Provide the driver implementation for the SimplifyCFG optimisation
 //          pass that orchestrates multiple transformation subroutines.
-// Key invariants: Verification hooks ensure IR validity before, during, and
-//                 after transformations in debug builds, while the analysis
-//                 manager is notified whenever the CFG mutates.
+// Key invariants: The pass keeps transformations locally shape-checked and
+//                 notifies the analysis manager whenever the CFG mutates.
+//                 Whole-module verification is provided by PassManager
+//                 verify-each instead of per-iteration hooks.
 // Ownership/Lifetime: The pass operates on caller-owned modules and functions
 //                     without taking ownership; analysis caches are invalidated
 //                     via the supplied AnalysisManager.

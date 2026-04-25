@@ -30,11 +30,13 @@
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
 #include "il/internal/io/ParserUtil.hpp"
+#include "il/runtime/signatures/Registry.hpp"
 
 #include "support/diag_expected.hpp"
 #include "viper/il/io/OperandParse.hpp"
 #include "viper/parse/Cursor.h"
 
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -51,6 +53,27 @@ namespace {
 using il::io::formatLineDiag;
 
 using Operand = Value;
+
+std::optional<Type> typeFromRuntimeSig(il::runtime::signatures::SigParam::Kind kind) {
+    using Kind = il::runtime::signatures::SigParam::Kind;
+    switch (kind) {
+        case Kind::I1:
+            return Type(Type::Kind::I1);
+        case Kind::I32:
+            return Type(Type::Kind::I32);
+        case Kind::I64:
+            return Type(Type::Kind::I64);
+        case Kind::F64:
+            return Type(Type::Kind::F64);
+        case Kind::Ptr:
+            return Type(Type::Kind::Ptr);
+        case Kind::Str:
+            return Type(Type::Kind::Str);
+        case Kind::F32:
+            return std::nullopt;
+    }
+    return std::nullopt;
+}
 
 /// @brief Tracks string literal parsing state for scanners that respect quoted regions.
 /// @details When scanning IL text that may contain string literals, delimiters and
@@ -320,14 +343,13 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text) {
         }
         instr_.operands.push_back(std::move(val));
     }
-    // Calls carry a dynamic result type. Canonically keep type void for textual IL,
-    // but record f64 when the callee returns a floating result so backends can
-    // select the correct return register (v0 vs x0) without a module lookup.
+    // Calls carry a dynamic result type. Resolve any known direct callee now so
+    // verifier precollection sees the same type that call checking will enforce.
     instr_.type = il::core::Type(il::core::Type::Kind::Void);
     if (instr_.result) {
         // Look up externs first
         for (const auto &ext : state_.m.externs) {
-            if (ext.name == instr_.callee && ext.retType.kind == il::core::Type::Kind::F64) {
+            if (ext.name == instr_.callee) {
                 instr_.type = ext.retType;
                 break;
             }
@@ -335,10 +357,19 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text) {
         // Also check internal functions
         if (instr_.type.kind == il::core::Type::Kind::Void) {
             for (const auto &fn : state_.m.functions) {
-                if (fn.name == instr_.callee && fn.retType.kind == il::core::Type::Kind::F64) {
+                if (fn.name == instr_.callee) {
                     instr_.type = fn.retType;
                     break;
                 }
+            }
+        }
+        if (instr_.type.kind == il::core::Type::Kind::Void) {
+            for (const auto &sig : il::runtime::signatures::all_signatures()) {
+                if (sig.name != instr_.callee || sig.rets.size() != 1)
+                    continue;
+                if (auto retType = typeFromRuntimeSig(sig.rets.front().kind))
+                    instr_.type = *retType;
+                break;
             }
         }
     }

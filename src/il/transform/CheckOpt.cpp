@@ -253,7 +253,7 @@ BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &head
     for (auto &block : function.blocks) {
         if (loop.contains(block.label))
             continue;
-        if (!block.terminated || block.instructions.empty())
+        if (!viper::il::isTerminated(block))
             continue;
         const Instr &term = block.instructions.back();
         bool targetsHeader = false;
@@ -644,7 +644,7 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
 
                 // Insert before the terminator in the preheader
                 size_t insertIdx = preheader->instructions.size();
-                if (preheader->terminated && insertIdx > 0)
+                if (viper::il::isTerminated(*preheader) && insertIdx > 0)
                     --insertIdx;
                 auto inserted = preheader->instructions.insert(
                     preheader->instructions.begin() + static_cast<std::ptrdiff_t>(insertIdx),

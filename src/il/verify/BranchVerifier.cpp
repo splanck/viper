@@ -147,8 +147,16 @@ Expected<void> verifyCBr_E(const Function &fn,
                            const Instr &instr,
                            const BlockMap &blockMap,
                            TypeInference &types) {
-    bool condOk = instr.operands.size() == 1 && instr.labels.size() == 2 &&
-                  types.valueType(instr.operands[0]).kind == Type::Kind::I1;
+    bool missingCond = false;
+    const Type condType =
+        instr.operands.size() == 1 ? types.valueType(instr.operands[0], &missingCond)
+                                   : Type(Type::Kind::Void);
+    if (missingCond) {
+        return Expected<void>{
+            makeError(instr.loc, formatInstrDiag(fn, bb, instr, "unknown branch condition"))};
+    }
+    bool condOk =
+        instr.operands.size() == 1 && instr.labels.size() == 2 && condType.kind == Type::Kind::I1;
     if (condOk) {
         for (size_t t = 0; t < 2; ++t) {
             auto it = blockMap.find(instr.labels[t]);
@@ -192,7 +200,12 @@ Expected<void> verifySwitchI32_E(const Function &fn,
             makeError(instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 missing scrutinee"))};
     }
 
-    if (types.valueType(switchScrutinee(instr)).kind != Type::Kind::I32) {
+    bool missingScrutinee = false;
+    if (types.valueType(switchScrutinee(instr), &missingScrutinee).kind != Type::Kind::I32) {
+        if (missingScrutinee) {
+            return Expected<void>{makeError(
+                instr.loc, formatInstrDiag(fn, bb, instr, "unknown switch.i32 scrutinee"))};
+        }
         return Expected<void>{makeError(
             instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 scrutinee must be i32"))};
     }

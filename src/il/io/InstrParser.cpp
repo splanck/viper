@@ -370,6 +370,11 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st) {
             auto parsedType = viper::il::io::parseTypeOperand(annotCursor, annotCtx);
             if (!parsedType.ok())
                 return Expected<void>{parsedType.status.error()};
+            annotCursor.skipWs();
+            if (!annotCursor.atEnd()) {
+                return Expected<void>{il::io::makeLineErrorDiag(
+                    in.loc, st.lineNo, "trailing characters after result type annotation")};
+            }
             if (in.type.kind == Type::Kind::Void) {
                 return Expected<void>{
                     il::io::makeLineErrorDiag(in.loc, st.lineNo, "result type cannot be void")};

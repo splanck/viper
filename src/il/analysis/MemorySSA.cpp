@@ -118,18 +118,58 @@ inline bool isUse(const Instr &I, viper::analysis::BasicAA &AA) {
 }
 
 /// True if this alloca's address is passed to a call or stored elsewhere.
-bool allocaEscapes(const Function &F, unsigned allocaId) {
+struct DefInfo {
+    Opcode op;
+    std::vector<Value> operands;
+};
+
+std::unordered_map<unsigned, DefInfo> collectDefs(const Function &F) {
+    std::unordered_map<unsigned, DefInfo> defs;
+    for (const auto &B : F.blocks) {
+        for (const auto &I : B.instructions) {
+            if (I.result)
+                defs.emplace(*I.result, DefInfo{I.op, I.operands});
+        }
+    }
+    return defs;
+}
+
+std::optional<unsigned> allocaRoot(const Value &ptr,
+                                   const std::unordered_map<unsigned, DefInfo> &defs,
+                                   unsigned depth = 0) {
+    if (ptr.kind != Value::Kind::Temp || depth > 8)
+        return std::nullopt;
+
+    auto it = defs.find(ptr.id);
+    if (it == defs.end())
+        return std::nullopt;
+
+    if (it->second.op == Opcode::Alloca)
+        return ptr.id;
+
+    if (it->second.op == Opcode::GEP && !it->second.operands.empty())
+        return allocaRoot(it->second.operands[0], defs, depth + 1);
+
+    return std::nullopt;
+}
+
+/// True if this alloca's address is passed to a call or stored elsewhere.
+bool allocaEscapes(const Function &F,
+                   unsigned allocaId,
+                   const std::unordered_map<unsigned, DefInfo> &defs) {
     for (const auto &B : F.blocks) {
         for (const auto &I : B.instructions) {
             if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
                 for (const auto &op : I.operands) {
-                    if (op.kind == Value::Kind::Temp && op.id == allocaId)
+                    auto root = allocaRoot(op, defs);
+                    if (root && *root == allocaId)
                         return true;
                 }
             }
             if (I.op == Opcode::Store && I.operands.size() >= 2) {
                 const auto &val = I.operands[1];
-                if (val.kind == Value::Kind::Temp && val.id == allocaId)
+                auto root = allocaRoot(val, defs);
+                if (root && *root == allocaId)
                     return true;
             }
         }
@@ -138,12 +178,14 @@ bool allocaEscapes(const Function &F, unsigned allocaId) {
 }
 
 /// Compute the set of non-escaping alloca ids in @p F.
-std::unordered_set<unsigned> nonEscapingAllocas(const Function &F) {
+std::unordered_set<unsigned> nonEscapingAllocas(
+    const Function &F,
+    const std::unordered_map<unsigned, DefInfo> &defs) {
     std::unordered_set<unsigned> result;
     for (const auto &B : F.blocks) {
         for (const auto &I : B.instructions) {
             if (I.op == Opcode::Alloca && I.result) {
-                if (!allocaEscapes(F, *I.result))
+                if (!allocaEscapes(F, *I.result, defs))
                     result.insert(*I.result);
             }
         }
@@ -151,9 +193,24 @@ std::unordered_set<unsigned> nonEscapingAllocas(const Function &F) {
     return result;
 }
 
-/// True if @p ptr refers directly to a non-escaping alloca.
-inline bool isNonEscapingAlloca(const Value &ptr, const std::unordered_set<unsigned> &nonEsc) {
-    return ptr.kind == Value::Kind::Temp && nonEsc.count(ptr.id) != 0;
+/// True if @p ptr refers to a non-escaping alloca, directly or via GEP.
+inline bool isNonEscapingAlloca(const Value &ptr,
+                                const std::unordered_set<unsigned> &nonEsc,
+                                const std::unordered_map<unsigned, DefInfo> &defs) {
+    auto root = allocaRoot(ptr, defs);
+    return root && nonEsc.count(*root) != 0;
+}
+
+bool fullyOverwrites(const Value &laterPtr,
+                     std::optional<unsigned> laterSize,
+                     const Value &earlierPtr,
+                     std::optional<unsigned> earlierSize,
+                     BasicAA &AA) {
+    if (!laterSize || !earlierSize)
+        return false;
+    if (*laterSize < *earlierSize)
+        return false;
+    return AA.alias(laterPtr, earlierPtr, laterSize, earlierSize) == AliasResult::MustAlias;
 }
 
 } // namespace
@@ -177,8 +234,10 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
         return id;
     };
 
+    const auto defs = collectDefs(F);
+
     // Collect non-escaping allocas — calls are transparent for these.
-    const std::unordered_set<unsigned> nonEsc = nonEscapingAllocas(F);
+    const std::unordered_set<unsigned> nonEsc = nonEscapingAllocas(F, defs);
 
     // -----------------------------------------------------------------------
     // Phase 1: Compute RPO order for forward dataflow.
@@ -329,7 +388,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
 
                 if (I.op == Opcode::Store) {
                     const Value &ptr = I.operands.empty() ? Value{} : I.operands[0];
-                    bool nonEscaping = isNonEscapingAlloca(ptr, nonEsc);
+                    bool nonEscaping = isNonEscapingAlloca(ptr, nonEsc, defs);
 
                     // Create or update MemoryDef.
                     if (existingId == 0) {
@@ -350,7 +409,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                     }
                 } else if (I.op == Opcode::Load) {
                     const Value &ptr = I.operands.empty() ? Value{} : I.operands[0];
-                    bool nonEscaping = isNonEscapingAlloca(ptr, nonEsc);
+                    bool nonEscaping = isNonEscapingAlloca(ptr, nonEsc, defs);
                     (void)nonEscaping;
 
                     // Create or update MemoryUse.
@@ -439,7 +498,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                 continue;
 
             const Value &ptr = I.operands[0];
-            if (!isNonEscapingAlloca(ptr, nonEsc))
+            if (!isNonEscapingAlloca(ptr, nonEsc, defs))
                 continue;
 
             auto storeSize = BasicAA::typeSizeBytes(I.type);
@@ -463,11 +522,8 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                 }
                 if (next.op == Opcode::Store && !next.operands.empty()) {
                     auto nextSize = BasicAA::typeSizeBytes(next.type);
-                    if (AA.alias(next.operands[0], ptr, nextSize, storeSize) ==
-                        AliasResult::MustAlias) {
-                        // Killed by a later store in same block — not dead from here
-                        // (the intra-block DSE would have already removed the earlier one).
-                        isDead = false;
+                    if (fullyOverwrites(next.operands[0], nextSize, ptr, storeSize, AA)) {
+                        // Fully overwritten before any read in this block.
                         break;
                     }
                 }
@@ -518,8 +574,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                     }
                     if (next.op == Opcode::Store && !next.operands.empty()) {
                         auto nextSize = BasicAA::typeSizeBytes(next.type);
-                        if (AA.alias(next.operands[0], ptr, nextSize, storeSize) ==
-                            AliasResult::MustAlias) {
+                        if (fullyOverwrites(next.operands[0], nextSize, ptr, storeSize, AA)) {
                             // A later store kills this path — don't explore further.
                             pathKilled = true;
                             break;

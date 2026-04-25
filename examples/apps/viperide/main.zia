@@ -329,8 +329,11 @@ func main() {
         }
         if shell.ctxReveal.WasClicked() != 0 {
             var revealDoc = docMgr.GetActive();
-            if revealDoc != null and revealDoc.isNew == false {
-                Exec.Shell("open -R \"" + revealDoc.filePath + "\"");
+            if revealDoc != null {
+                var doc = revealDoc!;
+                if doc.isNew == false {
+                    Exec.Shell("open -R \"" + doc.filePath + "\"");
+                }
             }
         }
         if shell.ctxNewFile.WasClicked() != 0 {
@@ -547,9 +550,12 @@ func main() {
         if engine != null and docMgr != null and docMgr.GetCount() > 0 {
             if engine.IsModified() {
                 var curDoc = docMgr.GetActive();
-                if curDoc != null and curDoc.isModified == false {
-                    curDoc.isModified = true;
-                    tabs.SetModified(docMgr.activeIndex, true);
+                if curDoc != null {
+                    var doc = curDoc!;
+                    if doc.isModified == false {
+                        doc.isModified = true;
+                        tabs.SetModified(docMgr.activeIndex, true);
+                    }
                 }
             }
         }
@@ -558,24 +564,34 @@ func main() {
         // File change detection
         // ====================================================================
         var activeDoc = docMgr.GetActive();
-        if activeDoc != null and activeDoc.isNew == false {
-            if activeDoc.filePath != watchedPath {
-                if hasWatcher { fileWatcher.Stop(); }
-                watchedPath = activeDoc.filePath;
-                fileWatcher = IO.Watcher.New(watchedPath);
-                fileWatcher.Start();
-                hasWatcher = true;
-                pendingReload = false;
-            }
-            if hasWatcher {
-                var watchEvent = fileWatcher.Poll();
-                if watchEvent == fileWatcher.EVENT_MODIFIED {
-                    if pendingReload == false {
-                        pendingReload = true;
-                        GUI.Toast.Warning("File changed on disk. Use File > Reload File to update.");
-                        shell.SetStatusLeft("Warning: external change — " + activeDoc.fileName);
+        if activeDoc != null {
+            var doc = activeDoc!;
+            if doc.isNew == false {
+                if doc.filePath != watchedPath {
+                    if hasWatcher { fileWatcher.Stop(); }
+                    watchedPath = doc.filePath;
+                    fileWatcher = IO.Watcher.New(watchedPath);
+                    fileWatcher.Start();
+                    hasWatcher = true;
+                    pendingReload = false;
+                }
+                if hasWatcher {
+                    var watchEvent = fileWatcher.Poll();
+                    if watchEvent == fileWatcher.EVENT_MODIFIED {
+                        if pendingReload == false {
+                            pendingReload = true;
+                            GUI.Toast.Warning("File changed on disk. Use File > Reload File to update.");
+                            shell.SetStatusLeft("Warning: external change - " + doc.fileName);
+                        }
                     }
                 }
+            } else {
+                if hasWatcher {
+                    fileWatcher.Stop();
+                    hasWatcher = false;
+                    pendingReload = false;
+                }
+                watchedPath = "";
             }
         } else {
             if hasWatcher {

@@ -45,6 +45,7 @@
 #include "il/utils/UseDefInfo.hpp"
 #include "il/utils/Utils.hpp"
 
+#include <limits>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -55,6 +56,10 @@ using namespace il::core;
 namespace il::transform {
 
 namespace {
+bool hasTerminator(const BasicBlock &block) {
+    return !block.instructions.empty() && viper::il::isTerminator(block.instructions.back());
+}
+
 /// @brief Find a basic block by label within a function.
 /// @details Delegates to the shared IL utility and returns nullptr when the
 ///          label is not present.
@@ -78,7 +83,7 @@ BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &head
     for (auto &block : function.blocks) {
         if (loop.contains(block.label))
             continue;
-        if (!block.terminated || block.instructions.empty())
+        if (!hasTerminator(block))
             continue;
         const Instr &term = block.instructions.back();
         bool targetsHeader = false;
@@ -155,7 +160,7 @@ std::optional<size_t> labelIndex(const Instr &term, const std::string &target) {
 ///          the backedge update.
 struct IndVar {
     size_t headerParamIndex{}; ///< Index into header.params for the IV.
-    int step{};                ///< Step per iteration (+C or -C).
+    long long step{};          ///< Step per iteration (+C or -C).
     unsigned latchParamId{};   ///< Temp id of the corresponding latch param.
 };
 
@@ -170,7 +175,7 @@ struct IndVar {
 /// @param L Loop latch block.
 /// @return IndVar description on success; std::nullopt if no match.
 std::optional<IndVar> detectIndVar(Function &F, BasicBlock &H, BasicBlock &L) {
-    if (!L.terminated || L.instructions.empty())
+    if (!hasTerminator(L))
         return std::nullopt;
     const Instr &LTerm = L.instructions.back();
     auto toHIndex = labelIndex(LTerm, H.label);
@@ -220,7 +225,7 @@ std::optional<IndVar> detectIndVar(Function &F, BasicBlock &H, BasicBlock &L) {
         if (!matchedLatchParam)
             continue; // only handle direct use of latch param
         // Determine the corresponding header param index by looking at header->latch args
-        if (H.instructions.empty() || !H.terminated)
+        if (!hasTerminator(H))
             return std::nullopt;
         const Instr &HTerm = H.instructions.back();
         auto toLIndex = labelIndex(HTerm, L.label);
@@ -249,9 +254,12 @@ std::optional<IndVar> detectIndVar(Function &F, BasicBlock &H, BasicBlock &L) {
         if (headerParamIdx < 0)
             continue;
 
-        int step = static_cast<int>(cst->i64);
-        if (upd->op == Opcode::Sub)
+        long long step = cst->i64;
+        if (upd->op == Opcode::Sub) {
+            if (step == std::numeric_limits<long long>::min())
+                return std::nullopt;
             step = -step;
+        }
         IndVar iv{static_cast<size_t>(headerParamIdx), step, latchParamId};
         return iv;
     }
@@ -345,6 +353,79 @@ std::optional<AddrExpr> findAddrExpr(Function &F, BasicBlock &H, unsigned indVar
     return std::nullopt;
 }
 
+std::optional<size_t> blockParamIndex(const BasicBlock &block, unsigned tempId) {
+    for (size_t i = 0; i < block.params.size(); ++i) {
+        if (block.params[i].id == tempId)
+            return i;
+    }
+    return std::nullopt;
+}
+
+bool tempDefinedInLoop(const Function &function, const Loop &loop, unsigned tempId) {
+    for (const auto &block : function.blocks) {
+        if (!loop.contains(block.label))
+            continue;
+        for (const auto &param : block.params)
+            if (param.id == tempId)
+                return true;
+        for (const auto &instr : block.instructions)
+            if (instr.result && *instr.result == tempId)
+                return true;
+    }
+    return false;
+}
+
+std::optional<Value> valueForPreheader(const Function &function,
+                                       const Loop &loop,
+                                       const BasicBlock &header,
+                                       const std::vector<Value> &preheaderArgs,
+                                       const Value &value) {
+    if (value.kind != Value::Kind::Temp)
+        return value;
+
+    if (auto idx = blockParamIndex(header, value.id)) {
+        if (*idx >= preheaderArgs.size())
+            return std::nullopt;
+        return preheaderArgs[*idx];
+    }
+
+    if (tempDefinedInLoop(function, loop, value.id))
+        return std::nullopt;
+
+    return value;
+}
+
+std::optional<long long> checkedMul(long long lhs, long long rhs) {
+    if (lhs == 0 || rhs == 0)
+        return 0;
+    constexpr long long max = std::numeric_limits<long long>::max();
+    constexpr long long min = std::numeric_limits<long long>::min();
+    if (lhs > 0) {
+        if (rhs > 0) {
+            if (lhs > max / rhs)
+                return std::nullopt;
+        } else if (rhs < min / lhs) {
+            return std::nullopt;
+        }
+    } else {
+        if (rhs > 0) {
+            if (lhs < min / rhs)
+                return std::nullopt;
+        } else if (lhs != 0 && rhs < max / lhs) {
+            return std::nullopt;
+        }
+    }
+    if ((lhs == -1 && rhs == min) || (rhs == -1 && lhs == min))
+        return std::nullopt;
+    return lhs * rhs;
+}
+
+void setValueName(Function &function, unsigned id, const std::string &name) {
+    if (function.valueNames.size() <= id)
+        function.valueNames.resize(id + 1);
+    function.valueNames[id] = name;
+}
+
 } // namespace
 
 /// @brief Return the unique identifier for the IndVarSimplify pass.
@@ -406,28 +487,56 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
         if (!addrExpr)
             continue;
 
-        // Build loop-carried addr param on header
-        unsigned nextId = viper::il::nextTempId(function);
-        Param addrParam{"addr", header->instructions.front().type, nextId++};
-        // Note: Use the add instruction's type for the carried value
         const auto *addrInstr = findInstrByResult(*header, addrExpr->addrId);
         if (!addrInstr)
             continue;
-        addrParam.type = addrInstr->type;
-        header->params.push_back(addrParam);
-        const unsigned addrParamId = addrParam.id;
+        const auto *mulInstr = findInstrByResult(*header, addrExpr->mulId);
+        if (!mulInstr)
+            continue;
 
         // Compute addr0 in preheader: base + (init_i * stride)
         // Get initial i from preheader->header branch
-        if (!preheader->terminated || preheader->instructions.empty())
+        if (!hasTerminator(*preheader))
             continue;
         Instr &PHTerm = preheader->instructions.back();
         auto toH = labelIndex(PHTerm, header->label);
         if (!toH || *toH >= PHTerm.brArgs.size())
             continue;
         auto &phArgs = PHTerm.brArgs[*toH];
-        if (phArgs.size() != header->params.size() - 1) // before adding addr param
+        if (phArgs.size() != header->params.size())
             continue;
+
+        auto preheaderBase = valueForPreheader(function, loop, *header, phArgs, addrExpr->base);
+        if (!preheaderBase)
+            continue;
+
+        if (!hasTerminator(*header))
+            continue;
+        Instr &HTerm = header->instructions.back();
+        auto toL = labelIndex(HTerm, latch->label);
+        if (!toL || *toL >= HTerm.brArgs.size())
+            continue;
+        if (HTerm.brArgs[*toL].size() != latch->params.size())
+            continue;
+
+        if (!hasTerminator(*latch))
+            continue;
+        Instr &LTerm = latch->instructions.back();
+        auto li = labelIndex(LTerm, header->label);
+        if (!li || *li >= LTerm.brArgs.size())
+            continue;
+        if (LTerm.brArgs[*li].size() != header->params.size())
+            continue;
+
+        auto inc = checkedMul(addrExpr->stride, iv->step);
+        if (!inc)
+            continue;
+
+        unsigned nextId = viper::il::nextTempId(function);
+        Param addrParam{"addr", addrInstr->type, nextId++};
+        const unsigned addrParamId = addrParam.id;
+        setValueName(function, addrParamId, addrParam.name);
+
         // init_i
         Value initI = phArgs[iv->headerParamIndex];
         // Insert mul + add before terminator
@@ -435,63 +544,60 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
         Instr mul0;
         mul0.result = nextId++;
         mul0.op = Opcode::Mul;
-        mul0.type = findInstrByResult(*header, addrExpr->mulId)->type; // integer type
+        mul0.type = mulInstr->type; // integer type
         mul0.operands.push_back(initI);
         mul0.operands.push_back(Value::constInt(addrExpr->stride));
+        setValueName(function, *mul0.result, "addr.init.mul");
         // add
         Instr add0;
         add0.result = nextId++;
         add0.op = Opcode::Add;
-        add0.type = findInstrByResult(*header, addrExpr->addrId)->type;
-        add0.operands.push_back(addrExpr->base);
+        add0.type = addrInstr->type;
+        add0.operands.push_back(*preheaderBase);
         add0.operands.push_back(Value::temp(*mul0.result));
+        setValueName(function, *add0.result, "addr.init");
 
         size_t insertIdx = preheader->instructions.size();
-        if (preheader->terminated && insertIdx > 0)
+        if (hasTerminator(*preheader) && insertIdx > 0)
             --insertIdx;
+
+        header->params.push_back(addrParam);
+
+        // Extend branch args from preheader to header before inserting into the
+        // instruction vector because insertion can invalidate PHTerm/phArgs.
+        Value addr0 = Value::temp(nextId - 1);
+        phArgs.push_back(addr0);
+
         preheader->instructions.insert(preheader->instructions.begin() + insertIdx,
                                        std::move(mul0));
         preheader->instructions.insert(preheader->instructions.begin() + insertIdx + 1,
                                        std::move(add0));
 
-        // Extend branch args from preheader to header by appended addr0
-        Value addr0 = Value::temp(nextId - 1);
-        phArgs.push_back(addr0);
-
         // Extend latch with a new param to carry addr
         Param latchAddr{"addr.l", header->params.back().type, nextId++};
+        setValueName(function, latchAddr.id, latchAddr.name);
         latch->params.push_back(latchAddr);
 
         // Update header -> latch branch args: append current addr param
-        if (!header->terminated || header->instructions.empty())
-            continue;
-        Instr &HTerm = header->instructions.back();
-        auto toL = labelIndex(HTerm, latch->label);
-        if (!toL || *toL >= HTerm.brArgs.size())
-            continue;
         HTerm.brArgs[*toL].push_back(Value::temp(addrParamId));
 
         // In latch, compute addr_next = latchAddr + (stride * step)
-        long long inc = static_cast<long long>(addrExpr->stride) * static_cast<long long>(iv->step);
         Instr addInc;
         addInc.result = nextId++;
+        const unsigned addIncId = *addInc.result;
         addInc.op = Opcode::Add;
         addInc.type = header->params.back().type;
         addInc.operands.push_back(Value::temp(latchAddr.id));
-        addInc.operands.push_back(Value::constInt(inc));
+        addInc.operands.push_back(Value::constInt(*inc));
+        setValueName(function, *addInc.result, "addr.next");
+
+        // Update latch -> header branch args before inserting into the vector
+        // because insertion can invalidate the terminator reference.
+        LTerm.brArgs[*li].push_back(Value::temp(addIncId));
 
         // Insert before latch terminator
-        if (!latch->terminated || latch->instructions.empty())
-            continue;
         size_t latchInsert = latch->instructions.size() - 1;
         latch->instructions.insert(latch->instructions.begin() + latchInsert, std::move(addInc));
-
-        // Update latch -> header branch args: append addr_next
-        Instr &LTerm = latch->instructions.back();
-        auto li = labelIndex(LTerm, header->label);
-        if (!li || *li >= LTerm.brArgs.size())
-            continue;
-        LTerm.brArgs[*li].push_back(Value::temp(nextId - 1));
 
         // Inside header, replace uses of computed addr with header param and erase the instructions
         useInfo.replaceAllUses(addrExpr->addrId, Value::temp(addrParamId));

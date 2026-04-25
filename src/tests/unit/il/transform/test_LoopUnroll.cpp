@@ -32,8 +32,10 @@
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
 #include "il/verify/Verifier.hpp"
+#include "support/diag_expected.hpp"
 
 #include <cassert>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -333,10 +335,123 @@ void testTripCountThreshold() {
     assert(loopBlock != nullptr && "Loop should not be unrolled for large trip counts");
 }
 
+void testFinalExitArgsUsePostUnrollValues() {
+    Module module;
+    Function fn;
+    fn.name = "test_final_exit_value";
+    fn.retType = Type(Type::Kind::I64);
+
+    unsigned nextId = 0;
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr entryBr;
+    entryBr.op = Opcode::Br;
+    entryBr.type = Type(Type::Kind::Void);
+    entryBr.labels.push_back("loop");
+    entryBr.brArgs.emplace_back(std::vector<Value>{Value::constInt(0)});
+    entry.instructions.push_back(std::move(entryBr));
+    entry.terminated = true;
+
+    BasicBlock loop;
+    loop.label = "loop";
+    Param iParam{"i", Type(Type::Kind::I64), nextId++};
+    loop.params.push_back(iParam);
+
+    Instr cmp;
+    cmp.result = nextId++;
+    cmp.op = Opcode::SCmpLT;
+    cmp.type = Type(Type::Kind::I1);
+    cmp.operands = {Value::temp(iParam.id), Value::constInt(3)};
+    const unsigned cmpId = *cmp.result;
+
+    Instr add;
+    add.result = nextId++;
+    add.op = Opcode::IAddOvf;
+    add.type = Type(Type::Kind::I64);
+    add.operands = {Value::temp(iParam.id), Value::constInt(1)};
+    const unsigned nextIId = *add.result;
+
+    Instr cbr;
+    cbr.op = Opcode::CBr;
+    cbr.type = Type(Type::Kind::Void);
+    cbr.operands.push_back(Value::temp(cmpId));
+    cbr.labels = {"loop", "exit"};
+    cbr.brArgs.push_back({Value::temp(nextIId)});
+    cbr.brArgs.push_back({Value::temp(iParam.id)});
+
+    loop.instructions.push_back(std::move(cmp));
+    loop.instructions.push_back(std::move(add));
+    loop.instructions.push_back(std::move(cbr));
+    loop.terminated = true;
+
+    BasicBlock exit;
+    exit.label = "exit";
+    Param result{"result", Type(Type::Kind::I64), nextId++};
+    exit.params.push_back(result);
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(result.id));
+    exit.instructions.push_back(std::move(ret));
+    exit.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.blocks.push_back(std::move(loop));
+    fn.blocks.push_back(std::move(exit));
+    module.functions.push_back(std::move(fn));
+    Function &function = module.functions.back();
+
+    il::transform::AnalysisRegistry registry;
+    setupAnalysisRegistry(registry);
+    il::transform::AnalysisManager analysisManager(module, registry);
+
+    il::transform::LoopSimplify simplify;
+    auto simplifyPreserved = simplify.run(function, analysisManager);
+    analysisManager.invalidateAfterFunctionPass(simplifyPreserved, function);
+
+    il::transform::LoopUnroll unroll;
+    auto unrollPreserved = unroll.run(function, analysisManager);
+    (void)unrollPreserved;
+
+    auto verifyResult = il::verify::Verifier::verify(module);
+    if (!verifyResult)
+        il::support::printDiag(verifyResult.error(), std::cerr);
+    assert(verifyResult && "Module should verify after unrolling");
+
+    BasicBlock *exitBlock = findBlock(function, "exit");
+    assert(exitBlock && "exit remains");
+
+    BasicBlock *preheader = nullptr;
+    for (auto &block : function.blocks) {
+        if (!block.instructions.empty() && block.instructions.back().op == Opcode::Br &&
+            !block.instructions.back().labels.empty() &&
+            block.instructions.back().labels.front() == "exit") {
+            preheader = &block;
+            break;
+        }
+    }
+    assert(preheader && "unrolled preheader should branch directly to exit");
+
+    unsigned lastAdd = 0;
+    for (const Instr &instr : preheader->instructions) {
+        if (instr.op == Opcode::IAddOvf && instr.result)
+            lastAdd = *instr.result;
+    }
+    assert(lastAdd != 0 && "unrolled body should contain cloned adds");
+
+    const Instr &term = preheader->instructions.back();
+    assert(!term.brArgs.empty() && !term.brArgs.front().empty());
+    assert(term.brArgs.front()[0].kind == Value::Kind::Temp);
+    assert(term.brArgs.front()[0].id == lastAdd &&
+           "exit arg should use the post-unroll IV, not the previous iteration");
+}
+
 } // namespace
 
 int main() {
     testSimpleCountedLoop();
     testTripCountThreshold();
+    testFinalExitArgsUsePostUnrollValues();
     return 0;
 }

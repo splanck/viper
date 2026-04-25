@@ -32,6 +32,7 @@
 #include "il/transform/LoopSimplify.hpp"
 #include "il/transform/analysis/Liveness.hpp"
 #include "il/transform/analysis/LoopInfo.hpp"
+#include "il/verify/Verifier.hpp"
 #include "tests/TestHarness.hpp"
 
 using namespace il::core;
@@ -211,6 +212,118 @@ TEST(LoopRotate, NoChangeWithoutLoop) {
     auto result = rotate.run(function, am);
 
     EXPECT_EQ(function.blocks.size(), blocksBefore);
+}
+
+TEST(LoopRotate, RemapsConstantBackedgeArgs) {
+    Module module;
+    Function fn;
+    fn.name = "constant_backedge";
+    fn.retType = Type(Type::Kind::I64);
+
+    unsigned nextId = 0;
+    Param limitParam = makeParam("limit", Type(Type::Kind::I64), nextId);
+    fn.params.push_back(limitParam);
+    fn.valueNames.resize(nextId);
+    fn.valueNames[limitParam.id] = limitParam.name;
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr entryBr;
+    entryBr.op = Opcode::Br;
+    entryBr.labels.push_back("header");
+    entryBr.brArgs.push_back({Value::constInt(0)});
+    entry.instructions.push_back(std::move(entryBr));
+    entry.terminated = true;
+
+    BasicBlock header;
+    header.label = "header";
+    Param iParam = makeParam("i", Type(Type::Kind::I64), nextId);
+    header.params.push_back(iParam);
+    fn.valueNames.resize(nextId);
+    fn.valueNames[iParam.id] = iParam.name;
+
+    Instr cmp;
+    cmp.op = Opcode::SCmpLT;
+    cmp.result = nextId++;
+    cmp.type = Type(Type::Kind::I1);
+    cmp.operands = {Value::temp(iParam.id), Value::temp(limitParam.id)};
+    const unsigned cmpId = *cmp.result;
+    header.instructions.push_back(std::move(cmp));
+
+    Instr cbr;
+    cbr.op = Opcode::CBr;
+    cbr.operands.push_back(Value::temp(cmpId));
+    cbr.labels = {"body", "exit"};
+    cbr.brArgs.push_back({Value::temp(iParam.id)});
+    cbr.brArgs.push_back({Value::temp(iParam.id)});
+    header.instructions.push_back(std::move(cbr));
+    header.terminated = true;
+
+    BasicBlock body;
+    body.label = "body";
+    Param bodyI = makeParam("j", Type(Type::Kind::I64), nextId);
+    body.params.push_back(bodyI);
+    fn.valueNames.resize(nextId);
+    fn.valueNames[bodyI.id] = bodyI.name;
+
+    Instr back;
+    back.op = Opcode::Br;
+    back.labels.push_back("header");
+    back.brArgs.push_back({Value::constInt(0)});
+    body.instructions.push_back(std::move(back));
+    body.terminated = true;
+
+    BasicBlock exit;
+    exit.label = "exit";
+    Param resultParam = makeParam("result", Type(Type::Kind::I64), nextId);
+    exit.params.push_back(resultParam);
+    fn.valueNames.resize(nextId);
+    fn.valueNames[resultParam.id] = resultParam.name;
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.operands.push_back(Value::temp(resultParam.id));
+    exit.instructions.push_back(std::move(ret));
+    exit.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.blocks.push_back(std::move(header));
+    fn.blocks.push_back(std::move(body));
+    fn.blocks.push_back(std::move(exit));
+    module.functions.push_back(std::move(fn));
+    Function &function = module.functions.back();
+
+    il::transform::AnalysisRegistry registry;
+    setupAnalysisRegistry(registry);
+    il::transform::AnalysisManager am(module, registry);
+
+    il::transform::LoopSimplify simplify;
+    auto simplifyResult = simplify.run(function, am);
+    am.invalidateAfterFunctionPass(simplifyResult, function);
+
+    il::transform::LoopRotate rotate;
+    auto result = rotate.run(function, am);
+    (void)result;
+
+    auto verify = il::verify::Verifier::verify(module);
+    EXPECT_TRUE(static_cast<bool>(verify));
+
+    BasicBlock *rotatedBody = nullptr;
+    for (auto &block : function.blocks) {
+        if (block.label == "body") {
+            rotatedBody = &block;
+            break;
+        }
+    }
+    ASSERT_TRUE(rotatedBody != nullptr);
+
+    bool sawConstRemappedCompare = false;
+    for (const Instr &instr : rotatedBody->instructions) {
+        if (instr.op == Opcode::SCmpLT && instr.operands.size() == 2 &&
+            instr.operands[0].kind == Value::Kind::ConstInt && instr.operands[0].i64 == 0) {
+            sawConstRemappedCompare = true;
+        }
+    }
+    EXPECT_TRUE(sawConstRemappedCompare);
 }
 
 int main(int argc, char **argv) {

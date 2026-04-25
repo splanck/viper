@@ -297,7 +297,7 @@ InlineCost evaluateInlineCost(const Function &fn, const viper::analysis::CallGra
     // when jumping to the cloned entry block (see inlineCallSite).
 
     for (const auto &B : fn.blocks) {
-        if (!B.terminated || B.instructions.empty()) {
+        if (!viper::il::isTerminated(B)) {
             cost.unsupportedCFG = true;
             continue;
         }
@@ -492,7 +492,7 @@ bool inlineCallSite(Function &caller,
     continuation.instructions.assign(callBlock.instructions.begin() +
                                          static_cast<long>(callIndex + 1),
                                      callBlock.instructions.end());
-    continuation.terminated = callBlock.terminated;
+    continuation.terminated = viper::il::isTerminated(continuation);
 
     // Compute return param info (but don't add to continuation yet).
     std::unordered_set<std::string> usedValueNames = collectUsedValueNames(caller);
@@ -770,10 +770,8 @@ bool inlineCallSite(Function &caller,
             clone.instructions.push_back(std::move(cloned));
         }
 
-        if (!clone.terminated && !clone.instructions.empty())
-            clone.terminated = clone.instructions.back().op == Opcode::Br ||
-                               clone.instructions.back().op == Opcode::CBr ||
-                               clone.instructions.back().op == Opcode::SwitchI32;
+        if (!clone.terminated)
+            clone.terminated = viper::il::isTerminated(clone);
 
         clonedBlocks.push_back(std::move(clone));
     }

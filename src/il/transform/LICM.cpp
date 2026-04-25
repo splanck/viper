@@ -84,6 +84,34 @@ CallHoistKind classifyCallForHoist(const Instr &instr) {
     return CallHoistKind::NotHoistable;
 }
 
+const Instr *findDef(const Function &function, unsigned tempId) {
+    for (const auto &block : function.blocks)
+        for (const auto &instr : block.instructions)
+            if (instr.result && *instr.result == tempId)
+                return &instr;
+    return nullptr;
+}
+
+bool isDerivedFromNonEscapingAlloca(const Function &function,
+                                    const viper::analysis::BasicAA &aa,
+                                    const Value &ptr,
+                                    unsigned depth = 0) {
+    if (ptr.kind != Value::Kind::Temp || depth > 8)
+        return false;
+
+    const Instr *def = findDef(function, ptr.id);
+    if (!def)
+        return false;
+
+    if (def->op == Opcode::Alloca)
+        return aa.isNonEscapingAlloca(ptr.id);
+
+    if (def->op == Opcode::GEP && !def->operands.empty())
+        return isDerivedFromNonEscapingAlloca(function, aa, def->operands[0], depth + 1);
+
+    return false;
+}
+
 /// @brief Determine whether an instruction can be hoisted out of the loop.
 /// @details Rejects terminators, side-effecting instructions, and any opcode
 ///          marked as trapping by the verifier. Memory operations are only
@@ -102,10 +130,22 @@ bool isSafeToHoist(const Function &function,
                    CallHoistKind &callHoist) {
     callHoist = CallHoistKind::NotHoistable;
 
+    if (!instr.labels.empty() || !instr.brArgs.empty())
+        return false;
+
+    // Calls are marked side-effecting in opcode metadata by default, so classify
+    // them before the generic side-effect rejection.
+    if (instr.op == Opcode::Call) {
+        callHoist = classifyCallForHoist(instr);
+        if (callHoist == CallHoistKind::Pure)
+            return true;
+        if (callHoist == CallHoistKind::ReadOnly && allowLoadHoist)
+            return true;
+        return false;
+    }
+
     const auto &info = getOpcodeInfo(instr.op);
     if (info.isTerminator || info.hasSideEffects)
-        return false;
-    if (!instr.labels.empty() || !instr.brArgs.empty())
         return false;
 
     if (auto spec = verify::lookupSpec(instr.op)) {
@@ -116,16 +156,6 @@ bool isSafeToHoist(const Function &function,
     if (auto props = verify::lookup(instr.op)) {
         if (props->canTrap)
             return false;
-    }
-
-    // Check for hoistable calls (pure or readonly).
-    if (instr.op == Opcode::Call) {
-        callHoist = classifyCallForHoist(instr);
-        if (callHoist == CallHoistKind::Pure)
-            return true;
-        if (callHoist == CallHoistKind::ReadOnly && allowLoadHoist)
-            return true;
-        return false;
     }
 
     const auto effects = memoryEffects(instr.op);
@@ -351,8 +381,8 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis) {
                     // the function.
                     if (loopHasMod) {
                         allowLoads = !instr.operands.empty() &&
-                                     instr.operands[0].kind == Value::Kind::Temp &&
-                                     aa.isNonEscapingAlloca(instr.operands[0].id);
+                                     isDerivedFromNonEscapingAlloca(
+                                         function, aa, instr.operands[0]);
                     }
                     if (allowLoads && !instr.operands.empty()) {
                         auto loadSize = viper::analysis::BasicAA::typeSizeBytes(instr.type);
@@ -389,7 +419,7 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis) {
                 block->instructions.erase(block->instructions.begin() + idx);
 
                 std::size_t insertIndex = preheader->instructions.size();
-                if (preheader->terminated && insertIndex > 0)
+                if (viper::il::isTerminated(*preheader) && insertIndex > 0)
                     --insertIndex;
                 auto inserted = preheader->instructions.insert(
                     preheader->instructions.begin() + insertIndex, std::move(hoisted));

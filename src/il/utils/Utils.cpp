@@ -90,6 +90,10 @@ bool isTerminator(const Instruction &I) {
     }
 }
 
+bool isTerminated(const Block &B) {
+    return !B.instructions.empty() && isTerminator(B.instructions.back());
+}
+
 /// @brief Replace all uses of temporary @p tempId with @p replacement in @p F.
 /// @details Iterates every instruction and branch argument list, swapping
 ///          occurrences of temporary @p tempId with the replacement value.

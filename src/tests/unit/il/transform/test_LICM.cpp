@@ -90,6 +90,14 @@ int main() {
     invariant.operands.push_back(Value::constFloat(5.0));
     unsigned invariantId = *invariant.result;
 
+    Instr pureCall;
+    pureCall.result = nextId++;
+    pureCall.op = Opcode::Call;
+    pureCall.type = Type(Type::Kind::F64);
+    pureCall.callee = "rt_abs_f64";
+    pureCall.operands.push_back(Value::constFloat(-3.0));
+    unsigned pureCallId = *pureCall.result;
+
     Instr combine;
     combine.result = nextId++;
     combine.op = Opcode::FAdd;
@@ -104,6 +112,7 @@ int main() {
     headerBranch.brArgs.emplace_back(std::vector<Value>{Value::temp(*combine.result)});
 
     loopHeader.instructions.push_back(std::move(invariant));
+    loopHeader.instructions.push_back(std::move(pureCall));
     loopHeader.instructions.push_back(std::move(combine));
     loopHeader.instructions.push_back(std::move(headerBranch));
     loopHeader.terminated = true;
@@ -189,12 +198,24 @@ int main() {
     assert(hoistedInstr->operands[0].kind == Value::Kind::ConstFloat);
     assert(hoistedInstr->operands[1].kind == Value::Kind::ConstFloat);
 
+    const Instr *hoistedCall = nullptr;
+    for (const Instr &candidate : preheader->instructions) {
+        if (candidate.result && *candidate.result == pureCallId) {
+            hoistedCall = &candidate;
+            break;
+        }
+    }
+    assert(hoistedCall && "Pure nothrow calls should be hoisted");
+    assert(hoistedCall->op == Opcode::Call);
+    assert(hoistedCall->callee == "rt_abs_f64");
+
     BasicBlock *loopBlock = findBlock(function, "loop");
     assert(loopBlock);
     for (const Instr &I : loopBlock->instructions) {
         if (!I.result)
             continue;
         assert(*I.result != invariantId && "Hoisted instruction must leave the loop body");
+        assert(*I.result != pureCallId && "Hoisted pure call must leave the loop body");
     }
 
     BasicBlock *latchBlock = findBlock(function, "latch");

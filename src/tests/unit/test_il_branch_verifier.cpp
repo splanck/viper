@@ -79,6 +79,16 @@ int main() {
     assert(!cbrResult);
     assert(cbrResult.error().message.find("conditional branch mismatch") != std::string::npos);
 
+    Instr unknownCbr;
+    unknownCbr.op = Opcode::CBr;
+    unknownCbr.operands.push_back(Value::temp(99));
+    unknownCbr.labels = {target.label, target.label};
+    TypeInference unknownCbrTypes(temps, defined);
+    auto unknownCbrResult = verifyCBr_E(fn, source, unknownCbr, blockMap, unknownCbrTypes);
+    assert(!unknownCbrResult);
+    assert(unknownCbrResult.error().message.find("unknown branch condition") !=
+           std::string::npos);
+
     Function retFn;
     retFn.name = "r";
     retFn.retType = Type(Type::Kind::I64);

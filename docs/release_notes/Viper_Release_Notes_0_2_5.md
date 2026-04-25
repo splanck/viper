@@ -23,7 +23,7 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator b
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 77 | +77 |
+| Commits | — | 80 | +80 |
 | Source files | 2,869 | 2,948 | +79 |
 | Production SLOC | 450K | 514K | +64K |
 | Test SLOC | 183K | 212K | +29K |
@@ -180,6 +180,33 @@ Eleven-class `Viper.Localization.*` namespace providing locale-aware formatting,
 - **Crypto.** PBKDF2 iterations raised 100K → 300K (and `Password.Hash` floor 10K → 100K); input validation tightened; existing ciphertexts round-trip.
 - **Other.** WebSocket subprotocol negotiation, multipart quoted-parameter escaping, SSE auto-reconnect with `Last-Event-ID`, dual-stack IPv6 UDP, SMTP pipeline follow-ups.
 
+### BASIC frontend
+
+**Type system:**
+- `SemanticAnalyzer::Type::ArrayObject` is a new distinct type for `DIM arr(N) AS ClassName`; was collapsed into `ArrayInt`, silently permitting primitive element assignment. Completion, hover, symbol-server, LBOUND, UBOUND, array-assignment, and FOR EACH all handle the new kind.
+- `MethodCallExpr` visitor rewritten: validates runtime class methods via typed argument lookup, falls back to user-class overload resolution, then `Viper.Core.Object` fallback; array-field index arguments validated with B2001 / B2002 diagnostics.
+- `isPrimitive` predicates extended to include `ArrayString` / `ArrayObject` so member dispatch works on all array kinds.
+- `mustReturn` rewritten as a proper data-flow analysis: `ReturnFlow {alwaysReturns, assignedAfter}` propagated through every control construct (IF / ELSEIF / ELSE, SELECT CASE, TRY / CATCH / FINALLY, EXIT FUNCTION, loops). Partial branches are no longer accepted as exhaustive; function-name implicit return must cover all paths.
+- `mainHasGosub_` flag: DFS through main body at analyze time. Top-level `RETURN` without a GOSUB emits B1008; RETURN with a value remains procedure-only.
+- `Check_Loops`: EXIT SUB / EXIT FUNCTION validated against active procedure kind; FOR counter, start, end, and step type-checked as numeric; FOR EACH array element type inferred from the array kind and checked against the loop variable.
+- FINALLY bodies now analyzed under the surrounding scope (was silently skipped); empty TRY/CATCH/FINALLY warning requires all three bodies empty.
+- USING initializer type-checked: scalar initializers produce B3204 "USING initializer must produce an object/resource".
+- `TryCatchStmt` added to `ASTUtils.hpp` `STMT_KIND_TRAIT` for `as<>` / `is<>` queries in flow-analysis helpers.
+
+**Lowering:**
+- `RuntimeMethodIndex::find(classQName, method, argTypes)`: typed overload scores candidates via `scoreArgMatch` (exact=0, widening=1, unknown=2, incompatible=nullopt) and returns the best non-ambiguous match. All sema and lowering call sites upgraded from arity-only lookup.
+- `OopIndex.findMethod` / `findMethodInHierarchy`: case-insensitive fallback scan when exact key lookup fails — fixes BASIC case-insensitive method dispatch for mixed-case class registrations.
+- ME and NEW expressions produce `ExprType::Obj` in the scan phase; `MethodCallExpr` return types inferred via typed RuntimeMethodIndex lookup rather than returning `I64` unconditionally.
+- `makeRuntimeArgTypes()` / `makeAstArgTypes()` lambdas replace duplicated type-mapping chains in static and instance dispatch.
+- Hardcoded `"Viper.Object.ToString"` / `"Viper.Object.Equals"` call sites replaced with `il::runtime::RTCLASS_OBJECT` constant (`"Viper.Core.Object"`).
+- Self-method calls perform overload resolution before lowering and coerce arguments per declared parameter types.
+
+**Runtime:**
+- `rt_map_get_str`: unsafe direct cast fixed — validates string handle or box type before returning, traps on type mismatch.
+- `rt_map_get_opt_str` (new): returns `NULL` for missing keys; used by the `Map.get()` optional-String path so absent keys yield `null` rather than an empty string.
+
+---
+
 ### Zia frontend
 
 - Path-aware completion: `CompleteForFile`, `CheckForFile`, `HoverForFile`, `SymbolsForFile`. Relative `bind` paths resolve against the active file.
@@ -206,6 +233,52 @@ Eleven-class `Viper.Localization.*` namespace providing locale-aware formatting,
 - Post-lowering IL verification added to `Compiler.cpp` after phase 4; compilation returns early with a diagnostic if emitted IL fails structural checks.
 - `Sema` constructor calls `types::clearClassInheritance()` for clean test isolation.
 - **BytecodeVM string cache** (async race fix): `initStringCache()` pre-allocates null slots rather than eagerly calling `rt_const_cstr` for every string. `getStringLiteral(idx)` materializes the `rt_string` handle on first access; both LOAD_STR handlers call it. The eager initialization path had a concurrent-init window when async worker VMs shared the same module object, producing intermittent `invalid runtime string handle` traps (exposed by the 25× async repeat regression loop).
+
+**Parser correctness pass:**
+- `isExpressionStart()` predicate covers all literal types, unary operators, and keyword expressions (`if`, `match`, `await`, `new`, `not`); replaces ad-hoc `nextKind` checks for match-arm disambiguation.
+- `parseExpressionAllowingStructLiterals()` wrapper enables struct literals in single-expression function/method bodies, variable initializers, field initializers, return/throw statements, and interpolated string expressions — fixes struct-literal parse failures that silently produced malformed ASTs.
+- `parseCallArgs(bool&)` / `parseParameters(bool&)` error-propagating overloads abort cleanly on malformed call sites.
+- `clonePureExpr()` replaces `cloneLvalueExpr()`: full coverage for SuperExpr, all literal kinds, Field, Index, Unary, Binary (non-Assign), Ternary, Coalesce, Range. Prevents nullptr dereferences in ternary/coalesce lowering from incomplete clone paths.
+- Trailing-comma support in parameter lists and list literals; match arm body accepts semicolons as well as commas.
+
+**Sema correctness pass (parser / sema):**
+- `propertyDeclForLowering(className, field, &declaringOwner)` walks the inheritance chain and records the defining class; inherited property getters/setters now emit the correct symbol (e.g. `Base.get_answer`, not `Child.get_answer`).
+- Struct literal sema: duplicate field names produce "Duplicate field X" errors; field-value type mismatches produce `errorTypeMismatch` diagnostics (was `(void)` no-op).
+- `isAssignableTarget()` / `isReadOnlyBuiltinProperty()` guard assignment: non-lvalue targets and count-like properties on collections emit diagnostics.
+- Assignment of Unit literal in variable initializer or return statement produces a targeted diagnostic instead of propagating through lowering.
+- Unknown field on `List` / `Map` / `Set` / `String` is a hard error with collection type name in the message.
+- Optional chain property resolution walks property declarations via `propertyDeclForLowering` and emits getter calls with the correct declaring owner; struct receiver is unwrapped before field load.
+- `conversionCost` removes the Unit→Optional shortcut (was cost=1, masking invalid coercions). `defineSymbol` distinguishes externs from variable duplicates.
+- `Map.keys()` / `Map.values()` return typed `Seq<K>` / `Seq<V>` (`KeySeqType` / `ValueSeqType` return-kind variants added).
+- `Set.remove()` lowering returns `Boolean` (was `Void`), matching the runtime signature.
+- String zero-arg methods enforce arity via `checkArgCount(0, …)`; `sortDesc` / `shuffle` added to the zero-arg check.
+- `finalFields_` set tracks `"TypeName.fieldName"` for `final` fields across class declarations, inheritance, and generic instantiations. `currentMethod_` pointer distinguishes `init()` context so fields may be written during construction only.
+- Optional member assignment (field-expr where base is `Optional`) emits "Cannot assign member on Optional type" rather than silently unwrapping.
+- `analyzeField`: direct member access on an `Optional` type is now a hard error — callers must use optional chaining, force unwrap, or a null-check guard.
+- `stmtAlwaysExits` (block case) checks only the last statement, not the first exiting one. Unreachable-code warning continues analyzing subsequent statements but suppresses duplicate W002s.
+- `analyzeReturnStmt` guards against `expectedReturnType_ == nullptr` (return outside a function/method context).
+- Tuple `for a, b in x` validated to require exactly 2-element binding; 3+ emits "Tuple binding requires a 2-element Tuple, got N elements".
+
+**Sema — flow-narrowing extension:**
+- `narrowingKeyForExpr(expr)` builds stable dotted keys for field-path narrowing (`"self.child"`, `"obj.field"`).
+- `tryExtractNullCheck` generalised: accepts field-expr and ident operands, populates a `TypeRef *checkedType` out parameter so callers don't need a second `lookupVarType` call. All null-check narrowing sites in `analyzeIfStmt`, `analyzeBlockStmt`, and `analyzeBinary` use it.
+- `lookupNarrowedType(key)` extracted from `lookupVarType`; called from `analyzeField` to resolve narrowed field types before member access, enabling patterns like `if self.child != null { self.child.name }`.
+
+**Sema — async Future[T] payload type:**
+- `types::futureOf(payload)` creates a `Ptr` typed `Future[T]` carrying `payload` as `typeArgs[0]`.
+- `functionTypeForDecl` uses `futureOf(declaredReturn)` for async functions; was `runtimeClass("Viper.Threads.Future")` which lost the payload type.
+- `analyzeExpr` for `AwaitExpr` reads `typeArgs[0]` directly when the awaited expression is a typed `Future[T]` variable, returning `T` without requiring re-inspection of the original call.
+
+**Lowerer correctness pass:**
+- `lowerUnitLiteral()` emits `ConstInt(0)` with Void type.
+- `collectRangeModifierChain()` / `lowerRange()` / `lowerRangeWithModifiers()`: range expressions used as rvalues materialize into a counted loop; `.rev()` and `.step(n)` modifier chains supported; step validated ≥ 1 via `emitPositiveStepCheck()` (replaces the prior `IdxChk` that rejected `INT64_MAX`).
+- `widenIntegralToI64()` applied to all list `get` / `set` / `insert` / `removeAt` index paths, string index, fixed-array index, and boxed collection index — `Byte`-typed indexes now correctly widen before dispatch.
+- `emitIndexCheck()` applied to every fixed-array element access regardless of index integer width.
+- `Map.get` optional-String path uses `kMapGetOptStr` — missing keys return `null`, not an empty string.
+- `lowerStructLiteral` overhaul: typed defaults per field kind (bool=`false`, float=`0.0`, str=empty-string, ptr=`null`); field initializer expressions lowered for omitted fields; provided fields coerced to declared type via `coerceValueToType`.
+- `lowerUnary(AddressOf)`: moved to an early-return path before operand lowering; uses `getFunctionDecl` + `loweredFunctionName` to emit the correct mangled symbol for forward-declared callbacks (`&worker` declared after its use now compiles).
+- Unknown identifier and unsupported assignment target emit V3000 diagnostics instead of silently returning `constInt(0)`.
+- Map subscript `m[key]` emits a `containsKey` check + conditional `Trap` before `MapGet`; absent keys trap deterministically at the access site.
 
 ### Linker, codegen, tools, IL, build
 
@@ -326,6 +399,6 @@ Marquee demo addition is a text-mode human-manager baseball-franchise simulator;
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 77-commit history. Commits pair feature-add and follow-up hardening in the same subsystem (e.g. Production 2D → overflow hardening; threads timeout fixes → handle-magic validation; glTF skin import → sparse accessors + KHR extensions; new POSIX atomic-move path → linker-policy `link()` classification; `Viper.Localization.*` introduction → `numfmt_group_digits()` extraction + rt_fmt C-locale isolation + GUI app-registry refactor; variadic IL introduction → sub-width checked arithmetic hardening + err-opcode operand relaxation + MOVZXrr8/rr32 split; linker feature work → reader validation + COFF addend decode + reloc bounds + ICF/dead-strip correctness + IL module linker validation + reader/writer second pass; IL optimizer/verifier work → CallEffects priority inversion + LoadSafety + Mem2Reg SROA + Peephole scoped rewrites + always-on pass verification + sub-width verifier table + structural type inference; Zia sema/lowerer → Map.get Optional return + static fields + EH rethrow + overflow-always arithmetic + VM string cache async race fix).
+See `git log a91d388db..HEAD -- .` for the full 80-commit history. Commits pair feature-add and follow-up hardening in the same subsystem (e.g. Production 2D → overflow hardening; threads timeout fixes → handle-magic validation; glTF skin import → sparse accessors + KHR extensions; new POSIX atomic-move path → linker-policy `link()` classification; `Viper.Localization.*` introduction → `numfmt_group_digits()` extraction + rt_fmt C-locale isolation + GUI app-registry refactor; variadic IL introduction → sub-width checked arithmetic hardening + err-opcode operand relaxation + MOVZXrr8/rr32 split; linker feature work → reader validation + COFF addend decode + reloc bounds + ICF/dead-strip correctness + IL module linker validation + reader/writer second pass; IL optimizer/verifier work → CallEffects priority inversion + LoadSafety + Mem2Reg SROA + Peephole scoped rewrites + always-on pass verification + sub-width verifier table + structural type inference; Zia sema/lowerer → Map.get Optional return + static fields + EH rethrow + overflow-always arithmetic + VM string cache async race fix; Zia parser/sema/lowerer correctness → isExpressionStart + struct-literal contexts + clonePureExpr + propertyDeclForLowering + read-only property guards + Unit literal diagnostics + range/optional lowering; BASIC + Zia OOP/type hardening → ArrayObject type + typed RuntimeMethodIndex overload + OopIndex case-insensitive fallback + rt_map_get_opt_str + lowerStructLiteral typed defaults + address-of forward refs + emitPositiveStepCheck; flow-narrowing + BASIC control-flow → field-path narrowing keys + tryExtractNullCheck generalisation + direct-optional hard error + finalFields_ enforcement + Future[T] payload type + mustReturn data-flow rewrite + RETURN/GOSUB validation + FOR/FOR EACH type checking + FINALLY analysis + USING type check).
 
 <!-- END DRAFT -->

@@ -45,6 +45,11 @@ Instruction *terminator(Block &B);
 /// @return True if @p I is br, cbr, ret, or trap.
 bool isTerminator(const Instruction &I);
 
+/// @brief Determine whether block @p B currently ends in a terminator.
+/// @details This derives the answer from the instruction list so callers do not
+///          depend on a stale BasicBlock::terminated flag after vector edits.
+bool isTerminated(const Block &B);
+
 /// @brief Replace all uses of a temporary identifier with a new value.
 /// @details Scans all instructions and branch arguments in the function,
 ///          replacing occurrences of temporary @p tempId with @p replacement.

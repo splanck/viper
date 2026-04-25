@@ -90,8 +90,6 @@ bool isCommutativeCSE(Opcode op) noexcept {
         case Opcode::Xor:
         case Opcode::ICmpEq:
         case Opcode::ICmpNe:
-        case Opcode::FAdd:
-        case Opcode::FMul:
         case Opcode::FCmpEQ:
         case Opcode::FCmpNE:
             return true;

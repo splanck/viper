@@ -63,7 +63,7 @@ inline CallEffects classifyCallEffects(const il::core::Instr &instr) {
         return effects; // Conservative: unknown effect for non-call instructions
 
     const auto helperEffects = il::runtime::classifyHelperEffects(instr.callee);
-    bool known = helperEffects.pure || helperEffects.readonly || helperEffects.nothrow;
+    bool known = helperEffects.known;
     effects.pure = helperEffects.pure;
     effects.readonly = helperEffects.readonly;
     effects.nothrow = helperEffects.nothrow;

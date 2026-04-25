@@ -19,18 +19,42 @@
 #include <sstream>
 
 int main() {
-    const char *src = R"(il 0.2.0
+    {
+        const char *src = R"(il 0.2.0
 extern @foo(i128) -> i64
 )";
-    std::istringstream in(src);
-    il::core::Module m;
-    std::ostringstream diag;
-    auto pe = il::api::v2::parse_text_expected(in, m);
-    if (!pe) {
-        il::support::printDiag(pe.error(), diag);
+        std::istringstream in(src);
+        il::core::Module m;
+        std::ostringstream diag;
+        auto pe = il::api::v2::parse_text_expected(in, m);
+        if (!pe) {
+            il::support::printDiag(pe.error(), diag);
+        }
+        assert(!pe);
+        std::string msg = diag.str();
+        assert(msg.find("unknown type") != std::string::npos);
     }
-    assert(!pe);
-    std::string msg = diag.str();
-    assert(msg.find("unknown type") != std::string::npos);
+
+    {
+        const char *src = R"(il 0.2.0
+
+func @main() -> void {
+entry:
+  %x: i64 trailing = add 1, 2
+  ret
+}
+)";
+        std::istringstream in(src);
+        il::core::Module m;
+        std::ostringstream diag;
+        auto pe = il::api::v2::parse_text_expected(in, m);
+        if (!pe) {
+            il::support::printDiag(pe.error(), diag);
+        }
+        assert(!pe);
+        std::string msg = diag.str();
+        assert(msg.find("trailing characters after result type annotation") != std::string::npos);
+    }
+
     return 0;
 }

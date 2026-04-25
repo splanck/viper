@@ -184,6 +184,82 @@ TEST(IL, testStoreReadBeforeOverwrite) {
     ASSERT_EQ(storesAfter, 2);
 }
 
+TEST(IL, testDSEPreservesMayAliasStores) {
+    Module module;
+    il::build::IRBuilder builder(module);
+
+    std::vector<Param> params{{"p", Type(Type::Kind::Ptr), 0},
+                              {"q", Type(Type::Kind::Ptr), 0}};
+    Function &fn = builder.startFunction("test_may_alias", Type(Type::Kind::Void), params);
+    builder.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks[0];
+    builder.setInsertPoint(entry);
+
+    Instr store1;
+    store1.op = Opcode::Store;
+    store1.type = Type(Type::Kind::I64);
+    store1.operands = {Value::temp(fn.params[0].id), Value::constInt(1)};
+    entry.instructions.push_back(std::move(store1));
+
+    Instr store2;
+    store2.op = Opcode::Store;
+    store2.type = Type(Type::Kind::I64);
+    store2.operands = {Value::temp(fn.params[1].id), Value::constInt(2)};
+    entry.instructions.push_back(std::move(store2));
+
+    builder.emitRet(std::nullopt, {});
+    verifyOrDie(module);
+
+    il::transform::AnalysisRegistry registry;
+    setupAnalysisRegistry(registry);
+    il::transform::AnalysisManager analysisManager(module, registry);
+
+    EXPECT_FALSE(il::transform::runDSE(fn, analysisManager));
+    verifyOrDie(module);
+    EXPECT_EQ(countStores(fn), 2U);
+}
+
+TEST(IL, testDSEPreservesWideStoreBeforeNarrowOverwrite) {
+    Module module;
+    il::build::IRBuilder builder(module);
+
+    Function &fn = builder.startFunction("test_narrow_overwrite", Type(Type::Kind::Void), {});
+    builder.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks[0];
+    builder.setInsertPoint(entry);
+
+    unsigned ptrId = builder.reserveTempId();
+    Instr alloca;
+    alloca.result = ptrId;
+    alloca.op = Opcode::Alloca;
+    alloca.type = Type(Type::Kind::Ptr);
+    alloca.operands.push_back(Value::constInt(8));
+    entry.instructions.push_back(std::move(alloca));
+
+    Instr storeWide;
+    storeWide.op = Opcode::Store;
+    storeWide.type = Type(Type::Kind::I64);
+    storeWide.operands = {Value::temp(ptrId), Value::constInt(0x1122334455667788LL)};
+    entry.instructions.push_back(std::move(storeWide));
+
+    Instr storeNarrow;
+    storeNarrow.op = Opcode::Store;
+    storeNarrow.type = Type(Type::Kind::I32);
+    storeNarrow.operands = {Value::temp(ptrId), Value::constInt(7)};
+    entry.instructions.push_back(std::move(storeNarrow));
+
+    builder.emitRet(std::nullopt, {});
+    verifyOrDie(module);
+
+    il::transform::AnalysisRegistry registry;
+    setupAnalysisRegistry(registry);
+    il::transform::AnalysisManager analysisManager(module, registry);
+
+    EXPECT_FALSE(il::transform::runDSE(fn, analysisManager));
+    verifyOrDie(module);
+    EXPECT_EQ(countStores(fn), 2U);
+}
+
 TEST(IL, testDifferentLocations) {
     Module module;
     il::build::IRBuilder builder(module);

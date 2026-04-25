@@ -24,9 +24,19 @@ namespace il::runtime {
 
 /// @brief Describe behavioural flags associated with a runtime helper.
 struct HelperEffects {
+    constexpr HelperEffects(bool nothrowIn = false,
+                            bool readonlyIn = false,
+                            bool pureIn = false,
+                            bool knownIn = false)
+        : nothrow(nothrowIn),
+          readonly(readonlyIn),
+          pure(pureIn),
+          known(knownIn || nothrowIn || readonlyIn || pureIn) {}
+
     bool nothrow = false;  ///< Helper cannot throw or trap under defined behaviour.
     bool readonly = false; ///< Helper may read memory but performs no writes.
     bool pure = false;     ///< Helper has no observable side effects.
+    bool known = false;    ///< Helper was found in the table, even if all effects are false.
 };
 
 /// @brief Lookup helper side-effect metadata by symbol name.

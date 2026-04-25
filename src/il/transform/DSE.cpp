@@ -62,6 +62,8 @@ struct AddrHash {
                 h ^= 0x1234567ULL;
                 break;
         }
+        if (a.size)
+            h ^= static_cast<size_t>(*a.size) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
         return h;
     }
 };
@@ -70,6 +72,8 @@ struct AddrEq {
     bool operator()(const Addr &a, const Addr &b) const noexcept {
         // Exact match only; potential aliasing is handled via AA when needed.
         if (a.v.kind != b.v.kind)
+            return false;
+        if (a.size != b.size)
             return false;
         using K = Value::Kind;
         switch (a.v.kind) {
@@ -96,6 +100,19 @@ inline bool isLoadFromTempPtr(const Instr &I) {
 
 inline std::optional<unsigned> accessSize(const Instr &I) {
     return viper::analysis::BasicAA::typeSizeBytes(I.type);
+}
+
+bool fullyOverwrites(const Value &laterPtr,
+                     std::optional<unsigned> laterSize,
+                     const Value &earlierPtr,
+                     std::optional<unsigned> earlierSize,
+                     viper::analysis::BasicAA &AA) {
+    if (!laterSize || !earlierSize)
+        return false;
+    if (*laterSize < *earlierSize)
+        return false;
+    return AA.alias(laterPtr, earlierPtr, laterSize, earlierSize) ==
+           viper::analysis::AliasResult::MustAlias;
 }
 
 } // namespace
@@ -141,18 +158,13 @@ bool runDSE(Function &F, AnalysisManager &AM) {
                 Addr a{I.operands[0], accessSize(I)};
                 bool dead = false;
 
-                // Quick-path exact match
-                if (killed.find(a) != killed.end()) {
-                    dead = true;
-                } else {
-                    // Check aliasing against the killed set using BasicAA
-                    for (const auto &k : killed) {
-                        if (AA.alias(a.v, k.v, a.size, k.size) !=
-                            viper::analysis::AliasResult::NoAlias) {
-                            // An aliasing later store exists; current is dead
-                            dead = true;
-                            break;
-                        }
+                // A later store kills this one only if it is proven to start at
+                // the same address and fully cover the earlier write. MayAlias
+                // is not enough: it may be a distinct pointer.
+                for (const auto &k : killed) {
+                    if (fullyOverwrites(k.v, k.size, a.v, a.size, AA)) {
+                        dead = true;
+                        break;
                     }
                 }
 
@@ -195,14 +207,53 @@ struct PendingStore {
     std::optional<unsigned> size;
 };
 
-/// Check if an alloca escapes (is passed to a call or has its address taken)
-bool allocaEscapes(const Function &F, unsigned allocaId) {
+struct DefInfo {
+    Opcode op;
+    std::vector<Value> operands;
+};
+
+std::unordered_map<unsigned, DefInfo> collectDefs(const Function &F) {
+    std::unordered_map<unsigned, DefInfo> defs;
+    for (const auto &B : F.blocks) {
+        for (const auto &I : B.instructions) {
+            if (I.result)
+                defs.emplace(*I.result, DefInfo{I.op, I.operands});
+        }
+    }
+    return defs;
+}
+
+/// Find the root alloca ID if this pointer is an alloca or a GEP derived from one.
+std::optional<unsigned> getAllocaId(const Value &ptr,
+                                    const std::unordered_map<unsigned, DefInfo> &defs,
+                                    unsigned depth = 0) {
+    if (ptr.kind != Value::Kind::Temp || depth > 8)
+        return std::nullopt;
+
+    auto it = defs.find(ptr.id);
+    if (it == defs.end())
+        return std::nullopt;
+
+    if (it->second.op == Opcode::Alloca)
+        return ptr.id;
+
+    if (it->second.op == Opcode::GEP && !it->second.operands.empty())
+        return getAllocaId(it->second.operands[0], defs, depth + 1);
+
+    return std::nullopt;
+}
+
+/// Check if an alloca escapes, including through GEP-derived pointer values.
+bool allocaEscapes(const Function &F,
+                   unsigned allocaId,
+                   const std::unordered_map<unsigned, DefInfo> &defs) {
     for (const auto &B : F.blocks) {
         for (const auto &I : B.instructions) {
             // Check if alloca is used in a call
             if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
                 for (const auto &op : I.operands) {
-                    if (op.kind == Value::Kind::Temp && op.id == allocaId)
+                    auto root = getAllocaId(op, defs);
+                    if (root && *root == allocaId)
                         return true;
                 }
             }
@@ -210,28 +261,13 @@ bool allocaEscapes(const Function &F, unsigned allocaId) {
             if (I.op == Opcode::Store && I.operands.size() >= 2) {
                 // operands[0] is dst ptr, operands[1] is value
                 const auto &val = I.operands[1];
-                if (val.kind == Value::Kind::Temp && val.id == allocaId)
+                auto root = getAllocaId(val, defs);
+                if (root && *root == allocaId)
                     return true;
             }
         }
     }
     return false;
-}
-
-/// Find the alloca ID if this is a direct pointer to a stack allocation
-std::optional<unsigned> getAllocaId(const Value &ptr, const Function &F) {
-    if (ptr.kind != Value::Kind::Temp)
-        return std::nullopt;
-
-    // Search for the alloca instruction
-    for (const auto &B : F.blocks) {
-        for (const auto &I : B.instructions) {
-            if (I.op == Opcode::Alloca && I.result && *I.result == ptr.id) {
-                return ptr.id;
-            }
-        }
-    }
-    return std::nullopt;
 }
 
 /// Check if a block reads from the given address
@@ -267,8 +303,7 @@ bool blockKillsStore(const BasicBlock &B,
     for (const auto &I : B.instructions) {
         if (I.op == Opcode::Store && !I.operands.empty()) {
             auto storeSize = viper::analysis::BasicAA::typeSizeBytes(I.type);
-            if (AA.alias(I.operands[0], ptr, storeSize, size) ==
-                viper::analysis::AliasResult::MustAlias) {
+            if (fullyOverwrites(I.operands[0], storeSize, ptr, size, AA)) {
                 return true;
             }
         }
@@ -313,6 +348,7 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
 
     bool changed = false;
     std::vector<std::pair<BasicBlock *, size_t>> toRemove;
+    const auto defs = collectDefs(F);
 
     // For each block, look for stores to non-escaping allocas
     for (auto &B : F.blocks) {
@@ -324,12 +360,12 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
             const Value &ptr = I.operands[0];
 
             // Only consider stores to allocas (stack allocations)
-            auto allocaId = getAllocaId(ptr, F);
+            auto allocaId = getAllocaId(ptr, defs);
             if (!allocaId)
                 continue;
 
             // Skip if the alloca escapes
-            if (allocaEscapes(F, *allocaId))
+            if (allocaEscapes(F, *allocaId, defs))
                 continue;
 
             auto storeSize = viper::analysis::BasicAA::typeSizeBytes(I.type);
@@ -353,8 +389,7 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
                 }
                 if (next.op == Opcode::Store && !next.operands.empty()) {
                     auto nextSize = viper::analysis::BasicAA::typeSizeBytes(next.type);
-                    if (AA.alias(next.operands[0], ptr, nextSize, storeSize) ==
-                        viper::analysis::AliasResult::MustAlias) {
+                    if (fullyOverwrites(next.operands[0], nextSize, ptr, storeSize, AA)) {
                         // Killed by later store in same block - already handled
                         // by intra-block DSE
                         isDeadStore = false;

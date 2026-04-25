@@ -1218,6 +1218,27 @@ or_join_0:
 
 The optimisation passes below operate on IL after front-end lowering.
 
+#### Optimizer Correctness Contract
+
+IL optimizer passes must preserve verifier-valid SSA and avoid deleting or moving
+operations unless the proof covers the observable behavior:
+
+* DSE treats `MayAlias` as a barrier. A later store kills an earlier store only
+  when alias analysis proves the same starting location and the later byte range
+  fully covers the earlier write.
+* Non-escaping alloca analysis follows `gep`-derived pointers. Passing or storing
+  either an alloca or a derived pointer makes the stack slot escaping.
+* LICM may hoist loads only when they are non-trapping and cannot observe loop
+  writes. Pure/nothrow calls may be hoisted; readonly calls are hoisted only when
+  loop memory is stable.
+* Loop rotation, induction-variable simplification, and full unrolling are
+  intentionally conservative. They skip cases with incomplete branch arguments,
+  loop-local preheader operands, arithmetic overflow in analysis-time rewrites,
+  or side-effecting loop bodies.
+* Value-based CSE does not commute floating-point arithmetic. Integer arithmetic
+  and equality comparisons may be normalized where IL semantics make operand
+  order unobservable.
+
 <a id="constfold"></a>
 
 ### constfold (v1)

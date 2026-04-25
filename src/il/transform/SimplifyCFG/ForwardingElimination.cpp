@@ -29,7 +29,6 @@
 #include "il/core/Opcode.hpp"
 
 #include <algorithm>
-#include <cassert>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -160,12 +159,13 @@ void redirectPredecessor(il::core::BasicBlock &pred,
         return;
 
     il::core::Instr *deadTerm = findTerminator(dead);
-    assert(deadTerm && deadTerm->op == il::core::Opcode::Br);
-    assert(deadTerm->labels.size() == 1);
+    if (!deadTerm || deadTerm->op != il::core::Opcode::Br || deadTerm->labels.size() != 1)
+        return;
 
     const std::vector<il::core::Value> *deadArgs = nullptr;
     if (!deadTerm->brArgs.empty()) {
-        assert(deadTerm->brArgs.size() == 1);
+        if (deadTerm->brArgs.size() != 1)
+            return;
         deadArgs = &deadTerm->brArgs.front();
     }
 
@@ -180,7 +180,8 @@ void redirectPredecessor(il::core::BasicBlock &pred,
         if (idx < predTerm->brArgs.size())
             incomingArgs = predTerm->brArgs[idx];
 
-        assert(incomingArgs.size() == dead.params.size());
+        if (incomingArgs.size() != dead.params.size())
+            continue;
 
         substitution.clear();
         for (size_t paramIdx = 0; paramIdx < dead.params.size(); ++paramIdx)

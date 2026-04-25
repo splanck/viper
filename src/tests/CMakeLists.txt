@@ -808,6 +808,12 @@ set_tests_properties(zia_smoke_viperide PROPERTIES
         LABELS "zia;smoke;requires_display"
         TIMEOUT 30)
 
+add_test(NAME zia_smoke_viperide_project_compile
+        COMMAND $<TARGET_FILE:viper> build "${CMAKE_SOURCE_DIR}/examples/apps/viperide" -o "${CMAKE_BINARY_DIR}/viperide_smoke.il")
+set_tests_properties(zia_smoke_viperide_project_compile PROPERTIES
+        LABELS "zia;smoke"
+        TIMEOUT 60)
+
 add_test(NAME zia_smoke_vipersql
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/apps/vipersql/smoke_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/apps/vipersql")

@@ -240,7 +240,7 @@ exit(%v:i64):
     assert(callInstr.callee == "foo");
     assert(callInstr.operands.size() == 1);
     assert(callInstr.operands[0].kind == il::core::Value::Kind::Temp);
-    assert(callInstr.type.kind == il::core::Type::Kind::Void);
+    assert(callInstr.type.kind == il::core::Type::Kind::I64);
     const auto &trapInstr = falseBB.instructions[1];
     assert(trapInstr.op == il::core::Opcode::Trap);
     assert(trapInstr.operands.empty());

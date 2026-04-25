@@ -93,8 +93,9 @@ TEST(ValueKey, NonCommutativeSubNotNormalized) {
     EXPECT_FALSE(*keyA == *keyB);
 }
 
-// Test that float commutative ops normalize correctly
-TEST(ValueKey, CommutativeFAddNormalization) {
+// Floating arithmetic is deliberately not normalized: NaN payload/signaling
+// behavior can make operand order observable at the bit level.
+TEST(ValueKey, FAddNotCommutedForCSE) {
     Instr a = makeFloatArith(Opcode::FAdd, Value::constFloat(1.5), Value::temp(3));
     Instr b = makeFloatArith(Opcode::FAdd, Value::temp(3), Value::constFloat(1.5));
 
@@ -103,7 +104,7 @@ TEST(ValueKey, CommutativeFAddNormalization) {
 
     ASSERT_TRUE(keyA.has_value());
     ASSERT_TRUE(keyB.has_value());
-    EXPECT_TRUE(*keyA == *keyB);
+    EXPECT_FALSE(*keyA == *keyB);
 }
 
 // Test isCommutativeCSE classifications
@@ -115,8 +116,8 @@ TEST(ValueKey, CommutativeClassifications) {
     EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::Xor));
     EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::ICmpEq));
     EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::ICmpNe));
-    EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::FAdd));
-    EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::FMul));
+    EXPECT_FALSE(il::transform::isCommutativeCSE(Opcode::FAdd));
+    EXPECT_FALSE(il::transform::isCommutativeCSE(Opcode::FMul));
     EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::FCmpEQ));
     EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::FCmpNE));
 
