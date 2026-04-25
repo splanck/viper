@@ -21,6 +21,7 @@ Thumbs.db
 /build*/
 /build-*/
 /build_*/
+/out/
 cmake-build*/
 cmake-build-*/
 CMakeFiles/
@@ -47,6 +48,7 @@ CPackSourceConfig.cmake
 # --- Compilers / Linkers ---
 *.o
 *.obj
+!tests/runtime/**/*.obj
 *.lo
 *.slo
 *.la
@@ -60,6 +62,7 @@ CPackSourceConfig.cmake
 !src/tests/**/*.bas.out
 *.app
 *.il
+!examples/il/**/*.il
 !src/tests/**/*.il
 *.gch
 *.pch
@@ -101,7 +104,6 @@ lcov.info
 **/tests/**/output/
 **/tests/**/out/
 **/build/test-out/
-*.il
 *.s
 # Baseball franchise shell save root (created on first interactive run).
 baseball_saves/
@@ -145,6 +147,7 @@ examples/bin/
 # --- Large binary assets ---
 *.blend
 *.fbx
+!tests/runtime/**/*.fbx
 *.zip
 
 # --- Scratch / exploratory ---
