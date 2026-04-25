@@ -69,6 +69,21 @@ LET A(1) = 100
 PRINT A(0)            ' 42
 ```
 
+Arrays can store integers, strings, or object references. Object arrays are
+declared with a class type and accept object values; `LBOUND` and `UBOUND` work
+the same way as they do for numeric and string arrays.
+
+```basic
+CLASS Sprite
+END CLASS
+
+DIM Sprites(4) AS Sprite
+DIM S AS Sprite
+LET S = NEW Sprite()
+LET Sprites(0) = S
+PRINT UBOUND(Sprites)
+```
+
 ### Type Suffixes
 
 | Suffix | Type    |

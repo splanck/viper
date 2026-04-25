@@ -21,8 +21,10 @@
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/SemanticAnalyzer_Internal.hpp"
 #include "frontends/basic/StringUtils.hpp"
+#include "frontends/basic/sem/OverloadResolution.hpp"
 #include "frontends/basic/sem/RuntimeMethodIndex.hpp"
 #include "frontends/basic/sem/TypeRegistry.hpp"
+#include "il/runtime/RuntimeClassNames.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <algorithm>
@@ -119,6 +121,108 @@ static std::optional<SemanticAnalyzer::Type> semanticTypeFromRuntimeType(std::st
     return std::nullopt;
 }
 
+static SemanticAnalyzer::Type semanticTypeFromBasicType(BasicType ty) {
+    switch (ty) {
+        case BasicType::Int:
+            return SemanticAnalyzer::Type::Int;
+        case BasicType::Float:
+            return SemanticAnalyzer::Type::Float;
+        case BasicType::String:
+            return SemanticAnalyzer::Type::String;
+        case BasicType::Bool:
+            return SemanticAnalyzer::Type::Bool;
+        case BasicType::Object:
+            return SemanticAnalyzer::Type::Object;
+        case BasicType::Void:
+        case BasicType::Unknown:
+        default:
+            return SemanticAnalyzer::Type::Unknown;
+    }
+}
+
+static BasicType basicTypeFromSemanticType(SemanticAnalyzer::Type ty) {
+    switch (ty) {
+        case SemanticAnalyzer::Type::Int:
+            return BasicType::Int;
+        case SemanticAnalyzer::Type::Float:
+            return BasicType::Float;
+        case SemanticAnalyzer::Type::String:
+            return BasicType::String;
+        case SemanticAnalyzer::Type::Bool:
+            return BasicType::Bool;
+        case SemanticAnalyzer::Type::Object:
+            return BasicType::Object;
+        case SemanticAnalyzer::Type::ArrayInt:
+        case SemanticAnalyzer::Type::ArrayString:
+        case SemanticAnalyzer::Type::ArrayObject:
+        case SemanticAnalyzer::Type::Unknown:
+        default:
+            return BasicType::Unknown;
+    }
+}
+
+static std::optional<::il::frontends::basic::Type> astTypeFromSemanticType(
+    SemanticAnalyzer::Type ty) {
+    switch (ty) {
+        case SemanticAnalyzer::Type::Int:
+            return ::il::frontends::basic::Type::I64;
+        case SemanticAnalyzer::Type::Float:
+            return ::il::frontends::basic::Type::F64;
+        case SemanticAnalyzer::Type::String:
+            return ::il::frontends::basic::Type::Str;
+        case SemanticAnalyzer::Type::Bool:
+            return ::il::frontends::basic::Type::Bool;
+        default:
+            return std::nullopt;
+    }
+}
+
+static SemanticAnalyzer::Type semanticTypeFromOopField(const ClassInfo::FieldInfo &field) {
+    if (!field.objectClassName.empty())
+        return SemanticAnalyzer::Type::Object;
+
+    switch (field.type) {
+        case ::il::frontends::basic::Type::I64:
+            return SemanticAnalyzer::Type::Int;
+        case ::il::frontends::basic::Type::F64:
+            return SemanticAnalyzer::Type::Float;
+        case ::il::frontends::basic::Type::Str:
+            return SemanticAnalyzer::Type::String;
+        case ::il::frontends::basic::Type::Bool:
+            return SemanticAnalyzer::Type::Bool;
+    }
+    return SemanticAnalyzer::Type::Unknown;
+}
+
+static std::optional<std::string> resolveUserClassQNameFromExpr(SemanticAnalyzer &analyzer,
+                                                                const Expr &expr) {
+    std::vector<std::string> parts;
+    if (collectQualifiedChain(expr, parts)) {
+        std::string dotted = JoinDots(parts);
+        if (analyzer.oopIndex().findClass(dotted))
+            return dotted;
+    }
+
+    if (auto inferred = inferObjectClassQName(analyzer, expr)) {
+        if (analyzer.oopIndex().findClass(*inferred))
+            return inferred;
+    }
+
+    return std::nullopt;
+}
+
+static void emitNoSuchMethod(SemanticDiagnostics &diagnostics,
+                             const std::string &className,
+                             const std::string &method,
+                             il::support::SourceLoc loc) {
+    std::string msg = "no such method '" + method + "' on '" + className + "'";
+    diagnostics.emit(il::support::Severity::Error,
+                     "E_NO_SUCH_METHOD",
+                     loc,
+                     static_cast<uint32_t>(method.size()),
+                     std::move(msg));
+}
+
 static std::optional<std::string> resolveRuntimeFunctionReturnClassQName(
     SemanticAnalyzer &analyzer, std::string_view calleeName) {
     const auto &registry = il::runtime::RuntimeRegistry::instance();
@@ -199,7 +303,9 @@ std::optional<std::string> inferObjectClassQName(SemanticAnalyzer &analyzer, con
         if (baseClass.empty())
             return std::nullopt;
 
-        if (auto entry = runtimeMethodIndex().find(baseClass, call->method, call->args.size());
+        std::vector<BasicType> argTypes(call->args.size(), BasicType::Unknown);
+
+        if (auto entry = runtimeMethodIndex().find(baseClass, call->method, argTypes);
             entry && !entry->returnClassQName.empty()) {
             return entry->returnClassQName;
         }
@@ -208,6 +314,12 @@ std::optional<std::string> inferObjectClassQName(SemanticAnalyzer &analyzer, con
             auto it = klass->methods.find(std::string(call->method));
             if (it != klass->methods.end() && !it->second.sig.returnClassName.empty())
                 return it->second.sig.returnClassName;
+
+            if (const auto *field =
+                    analyzer.oopIndex().findFieldInHierarchy(baseClass, call->method);
+                field && field->isArray && !field->objectClassName.empty()) {
+                return field->objectClassName;
+            }
         }
 
         return std::nullopt;
@@ -272,9 +384,14 @@ static std::optional<SemanticAnalyzer::Type> resolveRuntimePropertyType(
 namespace il::frontends::basic {
 
 using semantic_analyzer_detail::astToSemanticType;
+using semantic_analyzer_detail::astTypeFromSemanticType;
+using semantic_analyzer_detail::emitNoSuchMethod;
+using semantic_analyzer_detail::inferObjectClassQName;
 using semantic_analyzer_detail::isRuntimeNamespaceChain;
 using semantic_analyzer_detail::levenshtein;
 using semantic_analyzer_detail::resolveRuntimePropertyType;
+using semantic_analyzer_detail::resolveUserClassQNameFromExpr;
+using semantic_analyzer_detail::runtimeClassQNameFromExpr;
 using semantic_analyzer_detail::semanticTypeName;
 using semantic_analyzer_detail::toLowerQualified;
 
@@ -374,19 +491,125 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
         result_ = SemanticAnalyzer::Type::Unknown;
     }
 
-    /// @brief Method calls are treated as Unknown until OOP semantics are added.
-    /// However, we validate the base expression to catch undefined variables.
+    /// @brief Method calls validate runtime/OOP methods and return known result types.
     void visit(MethodCallExpr &expr) override {
-        // Validate base expression (catches undefined variables in nested calls)
-        if (expr.base) {
-            analyzer_.visitExpr(*expr.base);
-        }
-        // Validate arguments
+        SemanticAnalyzer::Type baseType = SemanticAnalyzer::Type::Unknown;
+        const bool runtimeNamespaceBase = expr.base && isRuntimeNamespaceChain(*expr.base);
+        if (expr.base && !runtimeNamespaceBase)
+            baseType = analyzer_.visitExpr(*expr.base);
+
+        std::vector<SemanticAnalyzer::Type> argTypes;
+        argTypes.reserve(expr.args.size());
         for (auto &arg : expr.args) {
-            if (arg) {
-                analyzer_.visitExpr(*arg);
+            argTypes.push_back(arg ? analyzer_.visitExpr(*arg) : SemanticAnalyzer::Type::Unknown);
+        }
+
+        std::vector<BasicType> runtimeArgTypes;
+        runtimeArgTypes.reserve(argTypes.size());
+        for (auto ty : argTypes)
+            runtimeArgTypes.push_back(semantic_analyzer_detail::basicTypeFromSemanticType(ty));
+
+        std::string runtimeClass;
+        if (expr.base) {
+            if (auto qname = runtimeClassQNameFromExpr(*expr.base)) {
+                if (il::runtime::findRuntimeClassByQName(*qname))
+                    runtimeClass = *qname;
+            }
+            if (runtimeClass.empty()) {
+                if (auto inferred = inferObjectClassQName(analyzer_, *expr.base)) {
+                    if (il::runtime::findRuntimeClassByQName(*inferred))
+                        runtimeClass = *inferred;
+                }
+            }
+            if (runtimeClass.empty() && baseType == SemanticAnalyzer::Type::String)
+                runtimeClass = il::runtime::RTCLASS_STRING;
+        }
+
+        if (!runtimeClass.empty()) {
+            auto info = runtimeMethodIndex().find(runtimeClass, expr.method, runtimeArgTypes);
+            if (!info) {
+                emitNoSuchMethod(analyzer_.de, runtimeClass, expr.method, expr.loc);
+                result_ = SemanticAnalyzer::Type::Unknown;
+                return;
+            }
+            result_ = semantic_analyzer_detail::semanticTypeFromBasicType(info->ret);
+            return;
+        }
+
+        if (expr.base) {
+            if (auto className = resolveUserClassQNameFromExpr(analyzer_, *expr.base)) {
+                std::vector<::il::frontends::basic::Type> astArgTypes;
+                astArgTypes.reserve(argTypes.size());
+                for (auto ty : argTypes) {
+                    if (auto astTy = astTypeFromSemanticType(ty)) {
+                        astArgTypes.push_back(*astTy);
+                    } else {
+                        astArgTypes.push_back(::il::frontends::basic::Type::I64);
+                    }
+                }
+
+                auto resolved = sem::resolveMethodOverload(analyzer_.oopIndex(),
+                                                           *className,
+                                                           expr.method,
+                                                           /*isStatic*/ false,
+                                                           astArgTypes,
+                                                           "",
+                                                           nullptr,
+                                                           expr.loc);
+                if (!resolved) {
+                    resolved = sem::resolveMethodOverload(analyzer_.oopIndex(),
+                                                          *className,
+                                                          expr.method,
+                                                          /*isStatic*/ true,
+                                                          astArgTypes,
+                                                          "",
+                                                          nullptr,
+                                                          expr.loc);
+                }
+
+                if (!resolved) {
+                    if (const auto *field =
+                            analyzer_.oopIndex().findFieldInHierarchy(*className, expr.method);
+                        field && field->isArray) {
+                        validateArrayFieldIndexArgs(expr, argTypes);
+                        result_ = semantic_analyzer_detail::semanticTypeFromOopField(*field);
+                        return;
+                    }
+
+                    auto objectInfo = runtimeMethodIndex().find(
+                        std::string(il::runtime::RTCLASS_OBJECT), expr.method, runtimeArgTypes);
+                    if (objectInfo) {
+                        result_ =
+                            semantic_analyzer_detail::semanticTypeFromBasicType(objectInfo->ret);
+                    } else {
+                        emitNoSuchMethod(analyzer_.de, *className, expr.method, expr.loc);
+                        result_ = SemanticAnalyzer::Type::Unknown;
+                    }
+                    return;
+                }
+
+                if (!resolved->method->sig.returnClassName.empty()) {
+                    result_ = SemanticAnalyzer::Type::Object;
+                    return;
+                }
+                if (resolved->method->sig.returnType) {
+                    result_ = astToSemanticType(*resolved->method->sig.returnType);
+                    return;
+                }
+                result_ = SemanticAnalyzer::Type::Unknown;
+                return;
             }
         }
+
+        if (baseType == SemanticAnalyzer::Type::Object) {
+            auto info = runtimeMethodIndex().find(
+                std::string(il::runtime::RTCLASS_OBJECT), expr.method, runtimeArgTypes);
+            if (info) {
+                result_ = semantic_analyzer_detail::semanticTypeFromBasicType(info->ret);
+                return;
+            }
+        }
+
         result_ = SemanticAnalyzer::Type::Unknown;
     }
 
@@ -397,7 +620,7 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
         auto isPrimitive = [&](SemanticAnalyzer::Type t) {
             using T = SemanticAnalyzer::Type;
             return t == T::Int || t == T::Float || t == T::Bool || t == T::String ||
-                   t == T::ArrayInt;
+                   t == T::ArrayInt || t == T::ArrayString || t == T::ArrayObject;
         };
 
         // Resolve right-hand dotted type to class or interface.
@@ -480,7 +703,7 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
         auto isPrimitive = [&](SemanticAnalyzer::Type t) {
             using T = SemanticAnalyzer::Type;
             return t == T::Int || t == T::Float || t == T::Bool || t == T::String ||
-                   t == T::ArrayInt;
+                   t == T::ArrayInt || t == T::ArrayString || t == T::ArrayObject;
         };
 
         std::string dotted;
@@ -587,6 +810,36 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
     }
 
   private:
+    void validateArrayFieldIndexArgs(
+        MethodCallExpr &expr,
+        const std::vector<SemanticAnalyzer::Type> &argTypes) {
+        for (std::size_t i = 0; i < expr.args.size(); ++i) {
+            auto &arg = expr.args[i];
+            if (!arg)
+                continue;
+
+            SemanticAnalyzer::Type ty =
+                i < argTypes.size() ? argTypes[i] : SemanticAnalyzer::Type::Unknown;
+            if (ty == SemanticAnalyzer::Type::Float) {
+                if (as<FloatExpr>(*arg)) {
+                    analyzer_.insertImplicitCast(*arg, SemanticAnalyzer::Type::Int);
+                    std::string msg = "narrowing conversion from FLOAT to INT in array index";
+                    analyzer_.de.emit(
+                        il::support::Severity::Warning, "B2002", expr.loc, 1, std::move(msg));
+                } else {
+                    std::string msg = "index type mismatch";
+                    analyzer_.de.emit(
+                        il::support::Severity::Error, "B2001", expr.loc, 1, std::move(msg));
+                }
+            } else if (ty != SemanticAnalyzer::Type::Unknown &&
+                       ty != SemanticAnalyzer::Type::Int) {
+                std::string msg = "index type mismatch";
+                analyzer_.de.emit(
+                    il::support::Severity::Error, "B2001", expr.loc, 1, std::move(msg));
+            }
+        }
+    }
+
     SemanticAnalyzer &analyzer_;
     SemanticAnalyzer::Type result_{SemanticAnalyzer::Type::Unknown};
 };

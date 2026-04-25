@@ -10,7 +10,7 @@
 //
 // What this handles:
 //   - Static method calls on user-defined classes
-//   - Static method calls on runtime classes (Viper.String, Viper.Object, etc.)
+//   - Static method calls on runtime classes (Viper.String, Viper.Core.Object, etc.)
 //   - Instance method calls with virtual dispatch
 //   - Interface dispatch (IFace.Method pattern)
 //   - Runtime method catalog lookups
@@ -171,7 +171,7 @@ class MethodDispatchResolver {
                                     std::size_t argCount);
 
     /// @brief Check if a method call on a runtime class can be handled by catalog.
-    /// @details Looks up Viper.String, Viper.Object, etc. in the runtime method index.
+    /// @details Looks up Viper.String, Viper.Core.Object, etc. in the runtime method index.
     /// @param classQName Runtime class qualified name.
     /// @param methodName Method to look up.
     /// @param argCount Number of user arguments (excluding receiver).

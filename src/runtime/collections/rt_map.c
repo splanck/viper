@@ -877,7 +877,24 @@ rt_string rt_map_get_str(void *obj, rt_string key) {
     void *val = rt_map_get(obj, key);
     if (!val)
         return rt_string_from_bytes("", 0);
-    return (rt_string)val;
+    if (rt_string_is_handle(val))
+        return rt_string_ref((rt_string)val);
+    if (rt_box_type(val) == RT_BOX_STR)
+        return rt_unbox_str(val);
+    rt_trap("Map.GetStr: value is not a string");
+    return NULL;
+}
+
+rt_string rt_map_get_opt_str(void *obj, rt_string key) {
+    void *val = rt_map_get(obj, key);
+    if (!val)
+        return NULL;
+    if (rt_string_is_handle(val))
+        return rt_string_ref((rt_string)val);
+    if (rt_box_type(val) == RT_BOX_STR)
+        return rt_unbox_str(val);
+    rt_trap("Map.GetOptStr: value is not a string");
+    return NULL;
 }
 
 /// @brief Create a shallow copy of the map.

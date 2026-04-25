@@ -28,9 +28,9 @@
 ///
 /// | Method         | Arity | Expected Target                 | Return |
 /// |----------------|-------|---------------------------------|--------|
-/// | Equals(obj)    | 1     | Viper.Object.Equals             | Bool   |
-/// | HashCode()     | 0     | Viper.Object.HashCode           | Int    |
-/// | ToString()     | 0     | Viper.Object.ToString           | String |
+/// | Equals(obj)    | 1     | Viper.Core.Object.Equals        | Bool   |
+/// | HashCode()     | 0     | Viper.Core.Object.HashCode      | Int    |
+/// | ToString()     | 0     | Viper.Core.Object.ToString      | String |
 /// | ReferenceEquals| 2     | NOT FOUND (static function)     | N/A    |
 ///
 /// ## RuntimeMethodIndex Architecture
@@ -209,6 +209,50 @@ TEST(RuntimeMethodIndexBasic, JsonStreamInstanceMethodsDoNotRequireExplicitRecei
 
     auto wrongArity = runtimeMethodIndex().find("Viper.Text.JsonStream", "Next", 1);
     EXPECT_FALSE(wrongArity.has_value());
+}
+
+TEST(RuntimeMethodIndexBasic, TypedLookupMatchesArgumentTypes) {
+    runtimeMethodIndex().seed();
+
+    auto substring = runtimeMethodIndex().find(
+        "Viper.String", "Substring", std::vector<BasicType>{BasicType::Int, BasicType::Int});
+    ASSERT_TRUE(substring.has_value());
+    EXPECT_EQ(substring->target, std::string("Viper.String.Substring"));
+    EXPECT_EQ(substring->ret, BasicType::String);
+
+    auto badSubstring = runtimeMethodIndex().find(
+        "Viper.String", "Substring", std::vector<BasicType>{BasicType::String, BasicType::Int});
+    EXPECT_FALSE(badSubstring.has_value());
+}
+
+TEST(RuntimeMethodIndexBasic, TypedLookupAcceptsObjectCompatibleArguments) {
+    runtimeMethodIndex().seed();
+
+    auto mapSet = runtimeMethodIndex().find(
+        "Viper.Collections.Map", "Set", std::vector<BasicType>{BasicType::String,
+                                                               BasicType::String});
+    ASSERT_TRUE(mapSet.has_value());
+    EXPECT_EQ(mapSet->target, std::string("Viper.Collections.Map.Set"));
+
+    auto listPush = runtimeMethodIndex().find(
+        "Viper.Collections.List", "Push", std::vector<BasicType>{BasicType::String});
+    ASSERT_TRUE(listPush.has_value());
+    EXPECT_EQ(listPush->target, std::string("Viper.Collections.List.Push"));
+
+    auto badPush = runtimeMethodIndex().find(
+        "Viper.Collections.List", "Push", std::vector<BasicType>{BasicType::Void});
+    EXPECT_FALSE(badPush.has_value());
+}
+
+TEST(RuntimeMethodIndexBasic, TypedLookupAcceptsIntegerBooleanArguments) {
+    runtimeMethodIndex().seed();
+
+    auto looping = runtimeMethodIndex().find(
+        "Viper.Graphics3D.AnimController3D",
+        "SetStateLooping",
+        std::vector<BasicType>{BasicType::String, BasicType::Int});
+    ASSERT_TRUE(looping.has_value());
+    EXPECT_EQ(looping->target, std::string("Viper.Graphics3D.AnimController3D.SetStateLooping"));
 }
 
 TEST(RuntimeMethodIndexBasic, IoConstructorAliasesResolveToCtorTargets) {

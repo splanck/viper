@@ -406,6 +406,9 @@ Lowerer::RVal &BuiltinLowerContext::ensureArgument(const BuiltinLoweringRule::Ar
             case Lowerer::ExprType::Bool:
                 value = {lowerer_->emitBoolConst(def.i64 != 0), lowerer_->ilBoolTy()};
                 break;
+            case Lowerer::ExprType::Obj:
+                value = {Value::null(), IlType(IlKind::Ptr)};
+                break;
             case Lowerer::ExprType::I64:
             default:
                 value = {Value::constInt(def.i64), IlType(IlKind::I64)};
@@ -495,6 +498,8 @@ IlType BuiltinLowerContext::typeFromExpr(Lowerer &lowerer, Lowerer::ExprType typ
             return IlType(IlKind::Str);
         case Lowerer::ExprType::Bool:
             return lowerer.ilBoolTy();
+        case Lowerer::ExprType::Obj:
+            return IlType(IlKind::Ptr);
         case Lowerer::ExprType::I64:
         default:
             return IlType(IlKind::I64);

@@ -93,7 +93,8 @@ SemanticAnalyzer::Type analyzeArrayExpr(SemanticAnalyzer &analyzer, ArrayExpr &e
     }
 
     auto varTy = context.varType(expr.name);
-    if (varTy && *varTy != Type::ArrayInt && *varTy != Type::ArrayString) {
+    if (varTy && *varTy != Type::ArrayInt && *varTy != Type::ArrayString &&
+        *varTy != Type::ArrayObject) {
         context.diagnostics().emit(
             diag::BasicDiag::NotAnArray,
             expr.loc,
@@ -201,6 +202,8 @@ SemanticAnalyzer::Type analyzeArrayExpr(SemanticAnalyzer &analyzer, ArrayExpr &e
     // Return element type based on array type
     if (varTy && *varTy == Type::ArrayString)
         return Type::String;
+    if (varTy && *varTy == Type::ArrayObject)
+        return Type::Object;
 
     return Type::Int;
 }
@@ -226,7 +229,8 @@ SemanticAnalyzer::Type analyzeLBoundExpr(SemanticAnalyzer &analyzer, LBoundExpr 
     }
 
     auto varTy = context.varType(expr.name);
-    if (varTy && *varTy != Type::ArrayInt) {
+    if (varTy && *varTy != Type::ArrayInt && *varTy != Type::ArrayString &&
+        *varTy != Type::ArrayObject) {
         context.diagnostics().emit(
             diag::BasicDiag::NotAnArray,
             expr.loc,
@@ -259,7 +263,8 @@ SemanticAnalyzer::Type analyzeUBoundExpr(SemanticAnalyzer &analyzer, UBoundExpr 
     }
 
     auto varTy = context.varType(expr.name);
-    if (varTy && *varTy != Type::ArrayInt) {
+    if (varTy && *varTy != Type::ArrayInt && *varTy != Type::ArrayString &&
+        *varTy != Type::ArrayObject) {
         context.diagnostics().emit(
             diag::BasicDiag::NotAnArray,
             expr.loc,

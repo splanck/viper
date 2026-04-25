@@ -276,7 +276,10 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr) {
         return {Value::global(expr->name), Type(Type::Kind::Ptr)};
     }
 
-    // Unknown identifier
+    diag_.report({il::support::Severity::Error,
+                  "Unknown identifier '" + expr->name + "' reached lowering",
+                  expr->loc,
+                  "V3000"});
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }
 

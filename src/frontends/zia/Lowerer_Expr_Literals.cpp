@@ -94,19 +94,7 @@ LowerResult Lowerer::lowerRangeWithModifiers(RangeExpr *expr, bool reversed, Exp
     if (stepArg) {
         auto step = lowerExpr(stepArg);
         stepValue = widenIntegralToI64(step.value, step.type);
-
-        unsigned checkedStepId = nextTempId();
-        il::core::Instr checkedStep;
-        checkedStep.result = checkedStepId;
-        checkedStep.op = Opcode::IdxChk;
-        checkedStep.type = Type(Type::Kind::I64);
-        checkedStep.operands = {
-            stepValue,
-            Value::constInt(1),
-            Value::constInt(std::numeric_limits<int64_t>::max())};
-        checkedStep.loc = curLoc_;
-        blockMgr_.currentBlock()->instructions.push_back(checkedStep);
-        stepValue = Value::temp(checkedStepId);
+        stepValue = emitPositiveStepCheck(stepValue);
     }
 
     std::string curVar = "__range_cur_" + std::to_string(nextTempId());

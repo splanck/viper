@@ -193,6 +193,8 @@ inline constexpr const char *kMapNew = kCollectionsMapNew;
 inline constexpr const char *kMapSet = kCollectionsMapSet;
 /// @brief Get the value for a given key. Traps if key is absent.
 inline constexpr const char *kMapGet = kCollectionsMapGet;
+/// @brief Get an optional string value for a given key; missing keys return null.
+inline constexpr const char *kMapGetOptStr = "Viper.Collections.Map.GetOptStr";
 /// @brief Get the value for a given key, or a default if absent.
 inline constexpr const char *kMapGetOr = kCollectionsMapGetOr;
 /// @brief Check if the map contains a given key. O(1) average.

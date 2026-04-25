@@ -346,19 +346,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt) {
         if (rangeInfo.stepArg) {
             auto stepResult = lowerExpr(rangeInfo.stepArg);
             stepVal = widenIntegralToI64(stepResult.value, stepResult.type);
-
-            unsigned checkedStepId = nextTempId();
-            il::core::Instr checkedStep;
-            checkedStep.result = checkedStepId;
-            checkedStep.op = Opcode::IdxChk;
-            checkedStep.type = Type(Type::Kind::I64);
-            checkedStep.operands = {
-                stepVal,
-                Value::constInt(1),
-                Value::constInt(std::numeric_limits<int64_t>::max())};
-            checkedStep.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(checkedStep);
-            stepVal = Value::temp(checkedStepId);
+            stepVal = emitPositiveStepCheck(stepVal);
         }
 
         // Create slot-based loop variable (alloca + initial store)

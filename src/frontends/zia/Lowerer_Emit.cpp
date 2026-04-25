@@ -120,6 +120,27 @@ Lowerer::Value Lowerer::emitIndexCheck(Value index, Value lowerInclusive, Value 
     return Value::temp(id);
 }
 
+Lowerer::Value Lowerer::emitPositiveStepCheck(Value stepValue) {
+    if (!options_.boundsChecks)
+        return stepValue;
+
+    Value invalid = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), stepValue, Value::constInt(1));
+    size_t trapIdx = createBlock("range_step_trap");
+    size_t okIdx = createBlock("range_step_ok");
+    emitCBr(invalid, trapIdx, okIdx);
+
+    setBlock(trapIdx);
+    il::core::Instr trap;
+    trap.op = Opcode::Trap;
+    trap.type = Type(Type::Kind::Void);
+    trap.loc = curLoc_;
+    blockMgr_.currentBlock()->instructions.push_back(std::move(trap));
+    blockMgr_.currentBlock()->terminated = true;
+
+    setBlock(okIdx);
+    return stepValue;
+}
+
 Lowerer::Value Lowerer::narrowIntegerToByte(Value value) {
     return emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), value);
 }

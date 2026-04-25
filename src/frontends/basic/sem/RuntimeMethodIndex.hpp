@@ -257,6 +257,22 @@ class RuntimeMethodIndex {
                                                         std::string_view method,
                                                         std::size_t arity) const;
 
+    /// @brief Finds a runtime method by class, name, and argument types.
+    ///
+    /// @details Uses arity plus BASIC argument types to select among overloads
+    /// with the same parameter count. Exact matches win; integer-to-float
+    /// widening is accepted. Unknown arguments participate as weak matches for
+    /// error recovery.
+    ///
+    /// @param classQName The fully-qualified runtime class name.
+    /// @param method The method name.
+    /// @param argTypes Explicit argument types, excluding receiver.
+    /// @return RuntimeMethodInfo for the best overload, or std::nullopt.
+    [[nodiscard]] std::optional<RuntimeMethodInfo> find(
+        std::string_view classQName,
+        std::string_view method,
+        const std::vector<BasicType> &argTypes) const;
+
     /// @brief Lists available method overloads for diagnostic messages.
     ///
     /// @details When a method call has the wrong number of arguments, this

@@ -65,6 +65,7 @@ const CollectionMethodInfo listMethods[] = {
     // Methods returning Boolean
     {"isEmpty", MethodReturnKind::Boolean},
     {"contains", MethodReturnKind::Boolean},
+    {"has", MethodReturnKind::Boolean},
     {"remove", MethodReturnKind::Boolean},
     // Methods returning Void
     {"push", MethodReturnKind::Void},
@@ -74,6 +75,8 @@ const CollectionMethodInfo listMethods[] = {
     {"clear", MethodReturnKind::Void},
     {"reverse", MethodReturnKind::Void},
     {"sort", MethodReturnKind::Void},
+    {"sortDesc", MethodReturnKind::Void},
+    {"shuffle", MethodReturnKind::Void},
     {"removeAt", MethodReturnKind::Void},
 };
 

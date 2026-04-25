@@ -15,6 +15,8 @@
 #include "frontends/zia/Sema.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
+#include <unordered_set>
+
 namespace il::frontends::zia {
 
 namespace {
@@ -1351,15 +1353,28 @@ TypeRef Sema::analyzeStructLiteral(StructLiteralExpr *expr) {
         return types::unknown();
     }
 
-    // For each named field, verify the field exists and type-check the value.
+    // For each named field, verify the field exists once and type-check the value.
+    std::unordered_set<std::string> seenFields;
     for (auto &field : expr->fields) {
+        if (!seenFields.insert(field.name).second) {
+            error(field.loc,
+                  "Duplicate field '" + field.name + "' in struct literal for '" +
+                      expr->typeName + "'");
+            continue;
+        }
+
         TypeRef fieldType = getFieldType(expr->typeName, field.name);
         if (!fieldType) {
             error(field.loc, "'" + expr->typeName + "' has no field '" + field.name + "'");
             continue;
         }
         TypeRef valType = analyzeExpr(field.value.get());
-        (void)valType; // type compatibility checked by assignment sema
+        if (!valType || valType->kind == TypeKindSem::Unknown ||
+            valType->kind == TypeKindSem::Error || fieldType->kind == TypeKindSem::Unknown ||
+            fieldType->kind == TypeKindSem::Error)
+            continue;
+        if (!fieldType->isAssignableFrom(*valType))
+            errorTypeMismatch(field.loc, fieldType, valType);
     }
 
     return valueType;

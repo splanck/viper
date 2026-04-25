@@ -525,6 +525,9 @@ match-arm expression, and single-expression function or method initializer
 contexts. Struct literals are not parsed in statement conditions such as
 `if value { ... }`, because the following braces are reserved for the statement
 body.
+Each field may be assigned at most once, and literal values must be assignable to
+the declared field type. Omitted fields use their declared initializer when one
+is present; otherwise they use the typed default for the field type.
 
 ### Tuple Expressions
 
@@ -560,6 +563,11 @@ var nums: List[Integer] = [];
 nums.add(10);
 nums.set(0, 20);
 var first = nums.get(0);
+var hasTen = nums.has(10);
+nums.insert(0, 5);
+nums.removeAt(1);
+nums.sortDesc();
+nums.shuffle();
 var n = nums.count();
 
 var ages: Map[String, Integer] = new Map[String, Integer]();
@@ -581,6 +589,10 @@ example `Map.New()`, `List.New()`, `Set.New()`).
 Collection count aliases such as `.Count`, `.Length`, `.Len`, `.count`,
 `.length`, and `.size` are read-only properties. Unknown collection and string
 fields or methods are compile-time errors.
+List index arguments are widened to the runtime index width before dispatch, so
+sub-width integral values such as `Byte` are accepted for `get`, `set`,
+`insert`, and `removeAt`. `Map.get` returns an optional value; for
+`Map[String, String]`, a missing key returns `null`, not an empty string.
 
 ### Range Expressions
 

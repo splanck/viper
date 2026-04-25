@@ -19,7 +19,7 @@ Complete language reference for Viper BASIC. This document describes **statement
   SUB calls, parentheses are required when passing arguments; the legacy paren-less form for zero-arg
   SUBs is accepted in statement position.
 - **Built-ins**: Must be called with parentheses, even with zero arguments (`RND()`, `INKEY$()`)
-- **Arrays**: One-dimensional, zero-based; require `DIM` or `REDIM`
+- **Arrays**: One-dimensional, zero-based; require `DIM` or `REDIM`; elements may be integer, string, or object refs
 - **Short-circuit operators**: `ANDALSO` and `ORELSE` (vs. `AND` and `OR`)
 - **Functions**: Return values with `RETURN`; subroutines use `SUB`
 - **Objects**: `CLASS`, methods, fields, `ME`, `NEW`, `DELETE`, optional `DESTRUCTOR`
@@ -165,6 +165,22 @@ Declares a variable or array. Required for arrays; optional for scalars (to pin 
 ```basic
 DIM A(5)           ' array 0..4
 DIM Flag AS BOOLEAN
+```
+
+Object arrays use a class type in the `AS` clause. Element assignments must be
+object values, and `LBOUND`/`UBOUND` accept object arrays just like numeric and
+string arrays.
+
+```basic
+CLASS Sprite
+END CLASS
+
+DIM Sprites(4) AS Sprite
+DIM S AS Sprite
+LET S = NEW Sprite()
+LET Sprites(0) = S
+PRINT LBOUND(Sprites)
+PRINT UBOUND(Sprites)
 ```
 
 ### DO ... LOOP
@@ -862,7 +878,7 @@ declarations and construction. Their method surfaces are being exposed progressi
 
 Core types:
 
-- `Viper.Object` — Base class for all objects
+- `Viper.Core.Object` — Base class for all objects
 - `Viper.String` — Managed string type
 
 #### Viper.Text
@@ -1182,7 +1198,9 @@ functions provided by the runtime. Two families are currently available:
 - Viper.Text.StringBuilder
 
 These object members are functional equivalents of the procedural helpers under Viper.String.* and Viper.Text.*. The
-compiler lowers property and method calls to the corresponding extern with the receiver as argument 0.
+compiler lowers property and method calls to the corresponding extern with the receiver as argument 0. BASIC class
+instances can call Object base methods such as `ToString`, `Equals`, and `HashCode`; those calls lower through the
+canonical `Viper.Core.Object` runtime class.
 
 Examples:
 
@@ -1208,6 +1226,7 @@ Conventions and semantics:
       s.Substring(i,n) → call @Viper.String.Substring(s,i,n);
       s.Mid(i) → call @Viper.String.Mid(s,i);
       sb.ToString() → call @Viper.Text.StringBuilder.ToString(sb)
+- Object base method calls use `Viper.Core.Object.*`; the legacy `Viper.Object.*` spelling is not emitted.
 - STRING alias: The BASIC type STRING is the same nominal runtime class as Viper.String.
 - Index base: Substring uses the same convention as MID$ — start is 0-based; length is a count.
 - Null receivers trap: Accessing a property or method on a null object raises a runtime trap that can be caught with

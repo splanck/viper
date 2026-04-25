@@ -181,7 +181,14 @@ for i in 0..10 {
 for i in 0..=10 {
     PrintInt(i);
 }
+
+for i in (0..10).step(2) {
+    PrintInt(i);
+}
 ```
+
+Range steps must be positive. Literal zero or negative steps are rejected at
+compile time; dynamic non-positive steps trap before iteration starts.
 
 ---
 
@@ -357,6 +364,9 @@ numbers.add(30);
 
 // Access elements
 var first = numbers.get(0);  // 10
+var hasTwenty = numbers.has(20);
+numbers.sortDesc();
+numbers.shuffle();
 
 // Iterate
 var i = 0;
@@ -383,8 +393,9 @@ if scores.has("Alice") {
 
 > `Map.get` returns `V?`; use `??`, `getOr`, or an explicit null check before
 > passing the value to non-optional code. Map keys must be `String` (the Sema
-> layer rejects other key types). Use the literal form `{}` for an empty map;
-> there is no `new Map[K, V]()` constructor in the language-level generics.
+> layer rejects other key types). For `Map[String, String]`, a missing key is
+> `null`, not an empty string. Use the literal form `{}` for an empty map; there
+> is no `new Map[K, V]()` constructor in the language-level generics.
 
 ### Class Instance Lists
 

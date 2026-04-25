@@ -609,6 +609,7 @@ RT_FUNC(MapGetFloat,   rt_map_get_float,    "Viper.Collections.Map.GetFloat",   
 RT_FUNC(MapGetFloatOr, rt_map_get_float_or, "Viper.Collections.Map.GetFloatOr",  "f64(obj,str,f64)")
 RT_FUNC(MapSetStr,     rt_map_set_str,      "Viper.Collections.Map.SetStr",      "void(obj,str,str)")
 RT_FUNC(MapGetStr,     rt_map_get_str,      "Viper.Collections.Map.GetStr",      "str(obj,str)")
+RT_FUNC(MapGetOptStr,  rt_map_get_opt_str,  "Viper.Collections.Map.GetOptStr",   "str(obj,str)")
 
 //=============================================================================
 // COLLECTIONS - INTMAP
@@ -9512,7 +9513,7 @@ RT_CLASS_BEGIN("Viper.Math.Easing", Easing, "obj", none)
     RT_METHOD("InOutBounce", "f64(f64)", EaseInOutBounce)
 RT_CLASS_END()
 
-// Viper.Object - base class for all objects
+// Viper.Core.Object - base class for all objects
 RT_CLASS_BEGIN("Viper.Core.Object", Object, "obj", none)
     RT_METHOD("Equals", "i1(obj)", ObjEquals)
     RT_METHOD("HashCode", "i64()", ObjHashCode)

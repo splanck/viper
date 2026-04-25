@@ -135,6 +135,9 @@ std::string BasicCompilerBridge::hover(const std::string &source,
             case SemanticAnalyzer::Type::ArrayString:
                 typeStr = "STRING()";
                 break;
+            case SemanticAnalyzer::Type::ArrayObject:
+                typeStr = "OBJECT()";
+                break;
             case SemanticAnalyzer::Type::Object: {
                 auto cls = sema.lookupObjectClassQName(ident);
                 typeStr = cls.value_or("Object");
@@ -260,6 +263,9 @@ std::vector<SymbolInfo> BasicCompilerBridge::symbols(const std::string &source,
                     break;
                 case SemanticAnalyzer::Type::ArrayString:
                     typeStr = "STRING()";
+                    break;
+                case SemanticAnalyzer::Type::ArrayObject:
+                    typeStr = "OBJECT()";
                     break;
                 case SemanticAnalyzer::Type::Object: {
                     auto cls = sema.lookupObjectClassQName(sym);

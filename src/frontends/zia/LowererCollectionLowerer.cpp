@@ -104,9 +104,9 @@ LowerResult CollectionLowerer::lowerIndex(IndexExpr *expr) {
         return lowerFixedArrayIndex(base.value, index.value, index.type, baseType);
 
     if (baseType && baseType->kind == TypeKindSem::String)
-        return lowerStringIndex(base.value, index.value);
+        return lowerStringIndex(base.value, index.value, index.type);
 
-    return lowerBoxedCollectionIndex(base.value, index.value, expr);
+    return lowerBoxedCollectionIndex(base.value, index.value, index.type, expr);
 }
 
 CollectionLowerer::Value CollectionLowerer::emitTupleElementAddress(Value tuplePtr, size_t offset) {
@@ -155,22 +155,25 @@ LowerResult CollectionLowerer::lowerFixedArrayIndex(Value baseValue,
     return {elemVal, ilElemType};
 }
 
-LowerResult CollectionLowerer::lowerStringIndex(Value baseValue, Value indexValue) {
+LowerResult CollectionLowerer::lowerStringIndex(Value baseValue, Value indexValue, Type indexType) {
     Value one = Value::constInt(1);
+    Value i64Index = lowerer_.widenIntegralToI64(indexValue, indexType);
     Value result =
-        lowerer_.emitCallRet(Type(Type::Kind::Str), kStringSubstring, {baseValue, indexValue, one});
+        lowerer_.emitCallRet(Type(Type::Kind::Str), kStringSubstring, {baseValue, i64Index, one});
     return {result, Type(Type::Kind::Str)};
 }
 
 LowerResult CollectionLowerer::lowerBoxedCollectionIndex(Value baseValue,
                                                          Value indexValue,
+                                                         Type indexType,
                                                          IndexExpr *expr) {
     TypeRef baseType = lowerer_.sema_.typeOf(expr->base.get());
     Value boxed;
     if (baseType && baseType->kind == TypeKindSem::Map) {
         boxed = lowerer_.emitCallRet(Type(Type::Kind::Ptr), kMapGet, {baseValue, indexValue});
     } else {
-        boxed = lowerer_.emitCallRet(Type(Type::Kind::Ptr), kListGet, {baseValue, indexValue});
+        Value i64Index = lowerer_.widenIntegralToI64(indexValue, indexType);
+        boxed = lowerer_.emitCallRet(Type(Type::Kind::Ptr), kListGet, {baseValue, i64Index});
     }
 
     TypeRef elemType = lowerer_.sema_.typeOf(expr);

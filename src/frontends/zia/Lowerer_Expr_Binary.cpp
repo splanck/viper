@@ -454,6 +454,10 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
         }
     }
 
+    diag_.report({il::support::Severity::Error,
+                  "Unsupported assignment target reached lowering",
+                  expr->loc,
+                  "V3000"});
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }
 
@@ -466,6 +470,26 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
 //=============================================================================
 
 LowerResult Lowerer::lowerUnary(UnaryExpr *expr) {
+    if (expr->op == UnaryOp::AddressOf) {
+        // Address-of is a symbol reference, not a value load.  Do not lower the
+        // operand first: callbacks may legally refer to functions declared later.
+        auto *ident = dynamic_cast<IdentExpr *>(expr->operand.get());
+        if (!ident) {
+            diag_.report({il::support::Severity::Error,
+                          "Unsupported address-of operand reached lowering",
+                          expr->loc,
+                          "V3000"});
+            return {Value::constInt(0), Type(Type::Kind::Ptr)};
+        }
+
+        std::string mangledName;
+        if (FunctionDecl *decl = sema_.getFunctionDecl(ident->name))
+            mangledName = sema_.loweredFunctionName(decl);
+        if (mangledName.empty())
+            mangledName = mangleFunctionName(ident->name);
+        return {Value::global(mangledName), Type(Type::Kind::Ptr)};
+    }
+
     auto operand = lowerExpr(expr->operand.get());
     TypeRef operandType = sema_.typeOf(expr->operand.get());
     bool isFloat = operandType && operandType->kind == TypeKindSem::Number;
@@ -498,18 +522,8 @@ LowerResult Lowerer::lowerUnary(UnaryExpr *expr) {
             return {result, operand.type};
         }
 
-        case UnaryOp::AddressOf: {
-            // Address-of operator for function references: &funcName
-            // Returns a pointer to the function
-            auto *ident = dynamic_cast<IdentExpr *>(expr->operand.get());
-            if (!ident) {
-                // Should have been caught in semantic analysis
-                return {Value::constInt(0), Type(Type::Kind::Ptr)};
-            }
-
-            std::string mangledName = mangleFunctionName(ident->name);
-            return {Value::global(mangledName), Type(Type::Kind::Ptr)};
-        }
+        case UnaryOp::AddressOf:
+            break;
     }
 
     return operand;

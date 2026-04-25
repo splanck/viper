@@ -21,6 +21,7 @@ enum class ExprType {
     F64,
     Str,
     Bool,
+    Obj,
 };
 
 private:

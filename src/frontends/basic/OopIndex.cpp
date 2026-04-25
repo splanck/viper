@@ -137,6 +137,11 @@ const ClassInfo::MethodInfo *OopIndex::findMethod(const std::string &className,
     if (it != info->methods.end())
         return &it->second;
 
+    for (const auto &entry : info->methods) {
+        if (iequals(entry.first, methodName))
+            return &entry.second;
+    }
+
     return nullptr;
 }
 
@@ -148,6 +153,11 @@ const ClassInfo::MethodInfo *OopIndex::findMethodInHierarchy(const std::string &
         auto it = cur->methods.find(methodName);
         if (it != cur->methods.end())
             return &it->second;
+
+        for (const auto &entry : cur->methods) {
+            if (iequals(entry.first, methodName))
+                return &entry.second;
+        }
 
         // Move to base class
         if (cur->baseQualified.empty())

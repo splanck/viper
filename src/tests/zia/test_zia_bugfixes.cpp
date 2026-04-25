@@ -259,6 +259,80 @@ func start() {    var argc = Viper.Environment.GetArgumentCount();
     EXPECT_GE(countCallsTo(*mainFn, "Viper.Environment.GetArgumentCount"), static_cast<size_t>(1));
 }
 
+/// @brief Range step validation checks positivity without rejecting INT64_MAX.
+TEST(ZiaBugFixes, RangeStepAllowsInt64MaxAndDoesNotUseExclusiveIdxChk) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func main() {
+    var values = (0..10).step(9223372036854775807);
+}
+)";
+    CompilerInput input{.source = source, .path = "range_step_max.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_EQ(countOpcode(*mainFn, il::core::Opcode::IdxChk), static_cast<size_t>(0));
+    EXPECT_GE(countOpcode(*mainFn, il::core::Opcode::SCmpLT), static_cast<size_t>(1));
+}
+
+/// @brief Struct literals validate field assignability and duplicate names.
+TEST(ZiaBugFixes, StructLiteralRejectsWrongTypeAndDuplicateFields) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+struct Point {
+    expose Integer x;
+    expose Integer y;
+}
+
+func main() {
+    var p: Point = Point { x = "bad", x = 2 };
+}
+)";
+    CompilerInput input{.source = source, .path = "struct_literal_bad.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Duplicate field 'x'"));
+    EXPECT_TRUE(hasErrorContaining(result, "Type mismatch"));
+}
+
+/// @brief Missing struct-literal fields use typed defaults and field initializers.
+TEST(ZiaBugFixes, StructLiteralUsesTypedDefaultsAndInitializers) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+struct Config {
+    expose String name = "demo";
+    expose Boolean enabled = true;
+    expose Integer retries;
+}
+
+func main() {
+    var cfg: Config = Config { retries = 3 };
+    Viper.Terminal.Say(cfg.name);
+    Viper.Terminal.SayBool(cfg.enabled);
+    Viper.Terminal.SayInt(cfg.retries);
+}
+)";
+    CompilerInput input{.source = source, .path = "struct_literal_defaults.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+}
+
 /// @brief Runtime APIs should accept named arguments using their surfaced parameter names.
 TEST(ZiaBugFixes, RuntimeNamedArgumentsUseSurfaceParameterNames) {
     SourceManager sm;
@@ -2384,7 +2458,8 @@ func start() {
     ASSERT_TRUE(mainFn != nullptr);
     EXPECT_GE(countCallsTo(*mainFn, kListAdd), static_cast<size_t>(1));
     EXPECT_GE(countCallsTo(*mainFn, kListCount), static_cast<size_t>(1));
-    EXPECT_GE(countOpcode(*mainFn, il::core::Opcode::IdxChk), static_cast<size_t>(1));
+    EXPECT_EQ(countOpcode(*mainFn, il::core::Opcode::IdxChk), static_cast<size_t>(0));
+    EXPECT_GE(countOpcode(*mainFn, il::core::Opcode::SCmpLT), static_cast<size_t>(1));
 
     SourceManager sm2;
     const std::string duplicateStep = R"(

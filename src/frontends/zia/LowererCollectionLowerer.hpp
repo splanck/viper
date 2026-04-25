@@ -48,8 +48,11 @@ class CollectionLowerer final {
                                      Value indexValue,
                                      Type indexType,
                                      TypeRef baseType);
-    LowerResult lowerStringIndex(Value baseValue, Value indexValue);
-    LowerResult lowerBoxedCollectionIndex(Value baseValue, Value indexValue, IndexExpr *expr);
+    LowerResult lowerStringIndex(Value baseValue, Value indexValue, Type indexType);
+    LowerResult lowerBoxedCollectionIndex(Value baseValue,
+                                          Value indexValue,
+                                          Type indexType,
+                                          IndexExpr *expr);
 };
 
 } // namespace il::frontends::zia

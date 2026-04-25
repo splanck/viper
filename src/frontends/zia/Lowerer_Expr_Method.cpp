@@ -181,8 +181,9 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
         case CollectionMethod::Get:
             if (expr->args.size() >= 1) {
                 auto indexResult = lowerExpr(expr->args[0].value.get());
+                Value indexValue = widenIntegralToI64(indexResult.value, indexResult.type);
                 Value boxed =
-                    emitCallRet(Type(Type::Kind::Ptr), kListGet, {baseValue, indexResult.value});
+                    emitCallRet(Type(Type::Kind::Ptr), kListGet, {baseValue, indexValue});
                 TypeRef elemType = baseType ? baseType->elementType() : nullptr;
                 if (!elemType)
                     elemType = sema_.typeOf(expr);
@@ -207,7 +208,8 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
         case CollectionMethod::RemoveAt:
             if (expr->args.size() >= 1) {
                 auto indexResult = lowerExpr(expr->args[0].value.get());
-                emitCall(kListRemoveAt, {baseValue, indexResult.value});
+                Value indexValue = widenIntegralToI64(indexResult.value, indexResult.type);
+                emitCall(kListRemoveAt, {baseValue, indexValue});
                 return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
             }
             break;
@@ -226,10 +228,11 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
         case CollectionMethod::Insert:
             if (expr->args.size() >= 2) {
                 auto indexResult = lowerExpr(expr->args[0].value.get());
+                Value indexValue = widenIntegralToI64(indexResult.value, indexResult.type);
                 auto valueResult = lowerExpr(expr->args[1].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[1].value.get());
                 Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
-                emitCall(kListInsert, {baseValue, indexResult.value, boxedValue});
+                emitCall(kListInsert, {baseValue, indexValue, boxedValue});
                 return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
             }
             break;
@@ -267,10 +270,11 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
         case CollectionMethod::Set:
             if (expr->args.size() >= 2) {
                 auto indexResult = lowerExpr(expr->args[0].value.get());
+                Value indexValue = widenIntegralToI64(indexResult.value, indexResult.type);
                 auto valueResult = lowerExpr(expr->args[1].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[1].value.get());
                 Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
-                emitCall(kListSet, {baseValue, indexResult.value, boxedValue});
+                emitCall(kListSet, {baseValue, indexValue, boxedValue});
                 return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
             }
             break;
@@ -373,7 +377,7 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
                 if (resultType && resultType->kind == TypeKindSem::Optional) {
                     if (valType && valType->kind == TypeKindSem::String) {
                         Value str = emitCallRet(
-                            Type(Type::Kind::Str), "Viper.Collections.Map.GetStr", {baseValue, keyResult.value});
+                            Type(Type::Kind::Str), kMapGetOptStr, {baseValue, keyResult.value});
                         return LowerResult{str, Type(Type::Kind::Str)};
                     }
 
@@ -809,23 +813,60 @@ LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr) {
     }
     const StructTypeInfo &info = *infoPtr;
 
-    // Build a map from field name → lowered value for quick lookup.
-    std::unordered_map<std::string, Value> fieldValues;
+    struct LoweredLiteralField {
+        Value value;
+        Type ilType{Type::Kind::Void};
+        TypeRef semanticType;
+    };
+
+    // Build a map from field name to lowered value for quick lookup.
+    std::unordered_map<std::string, LoweredLiteralField> fieldValues;
     for (auto &f : expr->fields) {
         auto result = lowerExpr(f.value.get());
-        fieldValues[f.name] = result.value;
+        fieldValues[f.name] = {result.value, result.type, sema_.typeOf(f.value.get())};
     }
 
-    // Build arg list in field declaration order (matches init parameter order).
+    std::vector<const FieldDecl *> fieldDecls = collectStructFieldDecls(sema_, typeName);
+
+    auto typedDefaultFor = [&](Type ilType) -> Value {
+        switch (ilType.kind) {
+            case Type::Kind::I1:
+                return Value::constBool(false);
+            case Type::Kind::I64:
+            case Type::Kind::I16:
+            case Type::Kind::I32:
+                return Value::constInt(0);
+            case Type::Kind::F64:
+                return Value::constFloat(0.0);
+            case Type::Kind::Str:
+                return emitEmptyString();
+            case Type::Kind::Ptr:
+                return Value::null();
+            default:
+                return Value::constInt(0);
+        }
+    };
+
+    // Build arg list in field declaration order (matches init parameter order),
+    // coercing named literal values and honoring field initializers/defaults.
     std::vector<Value> argValues;
     argValues.reserve(info.fields.size());
-    for (const auto &field : info.fields) {
+    for (size_t i = 0; i < info.fields.size(); ++i) {
+        const auto &field = info.fields[i];
+        Type ilFieldType = mapType(field.type);
         auto it = fieldValues.find(field.name);
         if (it != fieldValues.end()) {
-            argValues.push_back(it->second);
+            auto coerced = coerceValueToType(
+                it->second.value, it->second.ilType, it->second.semanticType, field.type);
+            argValues.push_back(coerced.value);
+        } else if (i < fieldDecls.size() && fieldDecls[i]->initializer) {
+            auto initValue = lowerExpr(fieldDecls[i]->initializer.get());
+            TypeRef initType = sema_.typeOf(fieldDecls[i]->initializer.get());
+            auto coerced =
+                coerceValueToType(initValue.value, initValue.type, initType, field.type);
+            argValues.push_back(coerced.value);
         } else {
-            // Missing field → zero-initialise
-            argValues.push_back(Value::constInt(0));
+            argValues.push_back(typedDefaultFor(ilFieldType));
         }
     }
 
@@ -855,22 +896,8 @@ LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr) {
         // No init method — store args directly into fields by declaration order.
         for (size_t i = 0; i < argValues.size() && i < info.fields.size(); ++i) {
             const FieldLayout &field = info.fields[i];
-            unsigned gepId = nextTempId();
-            il::core::Instr gepInstr;
-            gepInstr.result = gepId;
-            gepInstr.op = Opcode::GEP;
-            gepInstr.type = Type(Type::Kind::Ptr);
-            gepInstr.operands = {ptr, Value::constInt(static_cast<int64_t>(field.offset))};
-            gepInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(gepInstr);
-            Value fieldAddr = Value::temp(gepId);
-
-            il::core::Instr storeInstr;
-            storeInstr.op = Opcode::Store;
-            storeInstr.type = mapType(field.type);
-            storeInstr.operands = {fieldAddr, argValues[i]};
-            storeInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+            Value fieldAddr = emitGEP(ptr, static_cast<int64_t>(field.offset));
+            emitStore(fieldAddr, argValues[i], mapType(field.type));
         }
     }
 

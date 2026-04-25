@@ -17,6 +17,9 @@
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
+#include "frontends/basic/sem/RuntimeMethodIndex.hpp"
+#include "il/runtime/RuntimeClassNames.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 #include "viper/il/Module.hpp"
 #include <cassert>
 #include <optional>
@@ -45,6 +48,40 @@ Lowerer::ExprType exprTypeFromAstType(Type ty) {
         case Type::Bool:
             return Lowerer::ExprType::Bool;
         case Type::I64:
+        default:
+            return Lowerer::ExprType::I64;
+    }
+}
+
+BasicType basicTypeFromExprType(Lowerer::ExprType ty) {
+    switch (ty) {
+        case Lowerer::ExprType::F64:
+            return BasicType::Float;
+        case Lowerer::ExprType::Str:
+            return BasicType::String;
+        case Lowerer::ExprType::Bool:
+            return BasicType::Bool;
+        case Lowerer::ExprType::Obj:
+            return BasicType::Object;
+        case Lowerer::ExprType::I64:
+        default:
+            return BasicType::Int;
+    }
+}
+
+Lowerer::ExprType exprTypeFromBasicType(BasicType ty) {
+    switch (ty) {
+        case BasicType::Float:
+            return Lowerer::ExprType::F64;
+        case BasicType::String:
+            return Lowerer::ExprType::Str;
+        case BasicType::Bool:
+            return Lowerer::ExprType::Bool;
+        case BasicType::Object:
+            return Lowerer::ExprType::Obj;
+        case BasicType::Int:
+        case BasicType::Void:
+        case BasicType::Unknown:
         default:
             return Lowerer::ExprType::I64;
     }
@@ -252,12 +289,12 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner> {
                 continue;
             consumeExpr(*arg);
         }
-        push(ExprType::I64);
+        push(ExprType::Obj);
     }
 
-    /// @brief Treat ME references as integer handles to the current object.
+    /// @brief Treat ME references as object handles to the current object.
     void after(const MeExpr &) {
-        push(ExprType::I64);
+        push(ExprType::Obj);
     }
 
     /// @brief Resolve member access result types from cached class layouts.
@@ -282,18 +319,40 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner> {
     ///
     /// @param expr Method call expression encountered during scanning.
     void after(const MethodCallExpr &expr) {
+        ExprType baseType = ExprType::I64;
         if (expr.base)
-            consumeExpr(*expr.base);
+            baseType = consumeExpr(*expr.base);
+
+        std::vector<BasicType> runtimeArgTypes;
+        runtimeArgTypes.reserve(expr.args.size());
         for (const auto &arg : expr.args) {
-            if (!arg)
+            if (!arg) {
+                runtimeArgTypes.push_back(BasicType::Unknown);
                 continue;
-            consumeExpr(*arg);
+            }
+            runtimeArgTypes.push_back(basicTypeFromExprType(consumeExpr(*arg)));
         }
+
         ExprType result = ExprType::I64;
         if (expr.base) {
             std::string className = lowerer_.resolveObjectClass(*expr.base);
-            if (auto retTy = lowerer_.findMethodReturnType(className, expr.method))
-                result = exprTypeFromAstType(*retTy);
+            std::string runtimeClass = className.empty() ? std::string{} : lowerer_.qualify(className);
+            if (runtimeClass.empty() && baseType == ExprType::Str)
+                runtimeClass = std::string(il::runtime::RTCLASS_STRING);
+
+            if (!runtimeClass.empty() && il::runtime::findRuntimeClassByQName(runtimeClass)) {
+                if (auto info = runtimeMethodIndex().find(runtimeClass, expr.method, runtimeArgTypes))
+                    result = exprTypeFromBasicType(info->ret);
+            }
+
+            if (result == ExprType::I64) {
+                if (!lowerer_.findMethodReturnClassName(className, expr.method, expr.args.size())
+                         .empty()) {
+                    result = ExprType::Obj;
+                } else if (auto retTy = lowerer_.findMethodReturnType(className, expr.method)) {
+                    result = exprTypeFromAstType(*retTy);
+                }
+            }
         }
         push(result);
     }

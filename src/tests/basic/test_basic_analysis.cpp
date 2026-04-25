@@ -137,6 +137,117 @@ TEST(BasicAnalysis, DoesNotMutateFrontendOptions) {
     FrontendOptions::setEnableRuntimeNamespaces(prior);
 }
 
+TEST(BasicAnalysis, ObjectArraysTrackElementCategoryAndBoundsBuiltins) {
+    il::support::SourceManager sm;
+    const std::string source = R"(
+CLASS Foo
+END CLASS
+
+DIM ITEMS(2) AS Foo
+DIM F AS Foo
+LET F = NEW Foo()
+LET ITEMS(0) = F
+PRINT LBOUND(ITEMS)
+PRINT UBOUND(ITEMS)
+END
+)";
+    BasicCompilerInput input{.source = source, .path = "object_array_valid.bas"};
+    auto result = parseAndAnalyzeBasic(input, sm);
+
+    ASSERT_TRUE(result != nullptr);
+    ASSERT_TRUE(result->sema != nullptr);
+    EXPECT_FALSE(result->hasErrors());
+
+    auto itemsTy = result->sema->lookupVarType("ITEMS");
+    ASSERT_TRUE(itemsTy.has_value());
+    EXPECT_EQ(*itemsTy, SemanticAnalyzer::Type::ArrayObject);
+}
+
+TEST(BasicAnalysis, ObjectArraysRejectPrimitiveElementAssignment) {
+    il::support::SourceManager sm;
+    const std::string source = R"(
+CLASS Foo
+END CLASS
+
+DIM ITEMS(2) AS Foo
+DIM X AS INTEGER
+LET X = 7
+LET ITEMS(0) = X
+END
+)";
+    BasicCompilerInput input{.source = source, .path = "object_array_bad_assign.bas"};
+    auto result = parseAndAnalyzeBasic(input, sm);
+
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_TRUE(result->hasErrors());
+}
+
+TEST(BasicAnalysis, ObjectArrayFieldReadsAreNotTreatedAsMissingMethods) {
+    il::support::SourceManager sm;
+    const std::string source = R"(
+CLASS Board
+  DIM Cells(2) AS INTEGER
+END CLASS
+
+DIM B AS Board
+LET B = NEW Board()
+LET B.Cells(0) = 7
+PRINT B.Cells(0)
+END
+)";
+    BasicCompilerInput input{.source = source, .path = "object_array_field_read.bas"};
+    auto result = parseAndAnalyzeBasic(input, sm);
+
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_FALSE(result->hasErrors());
+}
+
+TEST(BasicAnalysis, RuntimeObjectParametersAcceptStringArguments) {
+    il::support::SourceManager sm;
+    const std::string source = R"(
+DIM M AS Viper.Collections.Map
+M = NEW Viper.Collections.Map()
+M.Set("key", "value")
+END
+)";
+    BasicCompilerInput input{.source = source, .path = "runtime_obj_arg_string.bas"};
+    auto result = parseAndAnalyzeBasic(input, sm);
+
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_FALSE(result->hasErrors());
+}
+
+TEST(BasicAnalysis, RuntimeMethodCallArgumentTypesAreValidated) {
+    il::support::SourceManager sm;
+    const std::string source = R"(
+DIM S AS STRING
+DIM PART AS STRING
+LET S = "abcdef"
+LET PART = S.Substring("bad", 2)
+END
+)";
+    BasicCompilerInput input{.source = source, .path = "runtime_method_bad_arg.bas"};
+    auto result = parseAndAnalyzeBasic(input, sm);
+
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_TRUE(result->hasErrors());
+}
+
+TEST(BasicAnalysis, UnknownRuntimeMethodReportsSemanticError) {
+    il::support::SourceManager sm;
+    const std::string source = R"(
+DIM S AS STRING
+LET S = "abc"
+PRINT S.NoSuchMethod()
+END
+)";
+    BasicCompilerInput input{.source = source, .path = "runtime_method_unknown.bas"};
+    auto result = parseAndAnalyzeBasic(input, sm);
+
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_TRUE(result->hasErrors());
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

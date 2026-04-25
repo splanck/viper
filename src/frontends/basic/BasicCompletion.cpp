@@ -289,6 +289,9 @@ std::vector<CompletionItem> BasicCompletionEngine::provideScopeSymbols(
                     case SemanticAnalyzer::Type::ArrayString:
                         detail = "STRING()";
                         break;
+                    case SemanticAnalyzer::Type::ArrayObject:
+                        detail = "OBJECT()";
+                        break;
                     case SemanticAnalyzer::Type::Object: {
                         auto cls = sema.lookupObjectClassQName(sym);
                         detail = cls.value_or("Object");

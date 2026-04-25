@@ -300,7 +300,17 @@ class SemanticAnalyzer {
 
   public:
     /// @brief Inferred BASIC value type.
-    enum class Type { Int, Float, String, Bool, ArrayInt, ArrayString, Object, Unknown };
+    enum class Type {
+        Int,
+        Float,
+        String,
+        Bool,
+        ArrayInt,
+        ArrayString,
+        ArrayObject,
+        Object,
+        Unknown
+    };
 
     /// @brief Look up the tracked type for @p name when available.
     /// @param name Symbol whose type should be queried.

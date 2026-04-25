@@ -856,6 +856,9 @@ class Lowerer {
     /// @brief Emit an index bounds check when runtime bounds checks are enabled.
     Value emitIndexCheck(Value index, Value lowerInclusive, Value upperExclusive);
 
+    /// @brief Emit a trap-backed check that a range step is strictly positive.
+    Value emitPositiveStepCheck(Value stepValue);
+
     /// @brief Narrow an Integer (i64) value to Byte (i32) with overflow checking.
     /// @param value The i64 value to narrow.
     /// @return The narrowed i32 value.

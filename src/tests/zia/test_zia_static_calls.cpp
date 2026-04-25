@@ -217,6 +217,20 @@ func start() {
 )"));
 }
 
+TEST(ZiaStaticCalls, AddressOfAllowsForwardDeclaredCallbacks) {
+    ASSERT_TRUE(compileOk(R"(
+module Test;
+bind Viper.Threads;
+
+/// @brief Start.
+func start() {
+    var thread = Viper.Threads.Thread.StartSafe(&worker, 0);
+}
+
+func worker(arg: Ptr) {}
+)"));
+}
+
 TEST(ZiaStaticCalls, ZeroArgRuntimeStaticMembersAsFields) {
     ASSERT_TRUE(compileOk(R"(
 module Test;

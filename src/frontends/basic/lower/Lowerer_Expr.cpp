@@ -25,6 +25,7 @@
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/AstVisitor.hpp"
 #include "frontends/basic/lower/MemberArrayResolver.hpp"
+#include "frontends/basic/sem/OverloadResolution.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include "viper/il/Module.hpp"
@@ -273,22 +274,75 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor {
                 IlValue selfArg =
                     lowerer_.emitLoad(IlType(IlType::Kind::Ptr), IlValue::temp(*meSym->slotId));
 
+                auto exprTypeToAst = [&](Lowerer::ExprType ty) {
+                    switch (ty) {
+                        case Lowerer::ExprType::F64:
+                            return ::il::frontends::basic::Type::F64;
+                        case Lowerer::ExprType::Str:
+                            return ::il::frontends::basic::Type::Str;
+                        case Lowerer::ExprType::Bool:
+                            return ::il::frontends::basic::Type::Bool;
+                        case Lowerer::ExprType::Obj:
+                        case Lowerer::ExprType::I64:
+                        default:
+                            return ::il::frontends::basic::Type::I64;
+                    }
+                };
+
+                std::vector<::il::frontends::basic::Type> argAstTypes;
+                argAstTypes.reserve(expr.args.size());
+                for (const auto &arg : expr.args)
+                    argAstTypes.push_back(arg ? exprTypeToAst(lowerer_.scanExpr(*arg))
+                                              : ::il::frontends::basic::Type::I64);
+
+                std::string selectedName = expr.callee;
+                std::string declaringClass = lowerer_.currentClass();
+                const ClassInfo::MethodInfo *selectedMethod = methodInfo;
+                if (auto resolved = sem::resolveMethodOverload(lowerer_.oopIndex_,
+                                                               lowerer_.currentClass(),
+                                                               expr.callee,
+                                                               false,
+                                                               argAstTypes,
+                                                               lowerer_.currentClass(),
+                                                               lowerer_.diagnosticEmitter(),
+                                                               expr.loc)) {
+                    selectedName = resolved->methodName;
+                    declaringClass = resolved->qualifiedClass;
+                    selectedMethod = resolved->method;
+                } else if (lowerer_.diagnosticEmitter()) {
+                    result_ =
+                        Lowerer::RVal{IlValue::constInt(0), IlType(IlType::Kind::I64)};
+                    return;
+                }
+
                 // Lower arguments and prepend receiver
                 std::vector<IlValue> args;
                 args.reserve(expr.args.size() + 1);
                 args.push_back(selfArg);
-                for (const auto &a : expr.args) {
+                const auto &expectParamAst = selectedMethod->sig.paramTypes;
+                for (std::size_t i = 0; i < expr.args.size(); ++i) {
+                    const auto &a = expr.args[i];
                     if (!a)
                         continue;
                     Lowerer::RVal v = lowerer_.lowerExpr(*a);
+                    if (i < expectParamAst.size()) {
+                        auto astTy = expectParamAst[i];
+                        if (astTy == ::il::frontends::basic::Type::Bool)
+                            v = lowerer_.coerceToBool(std::move(v), expr.loc);
+                        else if (astTy == ::il::frontends::basic::Type::F64)
+                            v = lowerer_.coerceToF64(std::move(v), expr.loc);
+                        else if (astTy == ::il::frontends::basic::Type::I64)
+                            v = lowerer_.coerceToI64(std::move(v), expr.loc);
+                    }
                     args.push_back(v.value);
                 }
 
                 // Determine return IL type when available; otherwise emit void call
                 IlType retIl = IlType(IlType::Kind::Void);
-                if (auto retAst =
-                        lowerer_.findMethodReturnType(lowerer_.currentClass(), expr.callee)) {
-                    switch (*retAst) {
+                if (!selectedMethod->sig.returnClassName.empty())
+                    retIl = IlType(IlType::Kind::Ptr);
+                else if (selectedMethod->sig.returnType) {
+                    switch (*selectedMethod->sig.returnType) {
                         case ::il::frontends::basic::Type::I64:
                             retIl = IlType(IlType::Kind::I64);
                             break;
@@ -305,10 +359,14 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor {
                 }
 
                 // Mangle and emit call
-                const std::string callee = mangleMethod(lowerer_.currentClass(), expr.callee);
+                const std::string callee = mangleMethod(declaringClass, selectedName);
                 lowerer_.curLoc = expr.loc;
                 if (retIl.kind != IlType::Kind::Void) {
                     IlValue res = lowerer_.emitCallRet(retIl, callee, args);
+                    if (retIl.kind == IlType::Kind::Str)
+                        lowerer_.deferReleaseStr(res);
+                    else if (retIl.kind == IlType::Kind::Ptr)
+                        lowerer_.deferReleaseObj(res, selectedMethod->sig.returnClassName);
                     result_ = Lowerer::RVal{res, retIl};
                 } else {
                     lowerer_.emitCall(callee, args);

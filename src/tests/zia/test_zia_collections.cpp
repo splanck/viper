@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Compiler.hpp"
+#include "il/core/Function.hpp"
 #include "il/core/Opcode.hpp"
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
@@ -32,6 +33,25 @@ static bool hasErrorContaining(const CompilerResult &result, const std::string &
             return true;
     }
     return false;
+}
+
+const il::core::Function *findFunction(const il::core::Module &module, const std::string &name) {
+    for (const auto &fn : module.functions) {
+        if (fn.name == name)
+            return &fn;
+    }
+    return nullptr;
+}
+
+size_t countCallsTo(const il::core::Function &fn, const std::string &callee) {
+    size_t count = 0;
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op == il::core::Opcode::Call && instr.callee == callee)
+                ++count;
+        }
+    }
+    return count;
 }
 
 /// @brief Test that Map collections compile correctly.
@@ -135,6 +155,29 @@ func start() {    var names: Map[String, String] = new Map[String, String]();
     }
     EXPECT_TRUE(foundMapSet);
     EXPECT_TRUE(foundMapGet);
+}
+
+/// @brief Optional String map lookups return NULL for missing keys, not empty strings.
+TEST(ZiaCollections, MapOptionalStringGetUsesOptionalStringRuntime) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {    var names: Map[String, String] = new Map[String, String]();
+    names.set("one", "One");
+    var maybeName: String? = names.get("missing");
+}
+)";
+    CompilerInput input{.source = source, .path = "map_optional_string.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Map.GetOptStr"), static_cast<size_t>(1));
+    EXPECT_EQ(countCallsTo(*mainFn, "Viper.Collections.Map.GetStr"), static_cast<size_t>(0));
 }
 
 /// @brief Test that Map helpers like getOr and setIfMissing lower correctly.

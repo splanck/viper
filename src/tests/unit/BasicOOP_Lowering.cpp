@@ -655,6 +655,42 @@ TEST(BasicOOPLoweringTest, MethodFunctionSuffixReturnTypes) {
     EXPECT_TRUE(sawCountCall);
 }
 
+TEST(BasicOOPLoweringTest, ObjectFallbackMethodsUseCanonicalCoreObjectRuntimeClass) {
+    const std::string src = "10 CLASS Foo\n"
+                            "20 END CLASS\n"
+                            "30 DIM f AS Foo\n"
+                            "40 LET f = NEW Foo()\n"
+                            "50 PRINT f.ToString()\n"
+                            "60 END\n";
+
+    SourceManager sm;
+    BasicCompilerInput input{src, "object_fallback_core.bas"};
+    BasicCompilerOptions options{};
+
+    auto result = compileBasic(input, options, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    const il::core::Module &module = result.module;
+    const il::core::Function *mainFn = findFunctionCaseInsensitive(module, "main");
+    ASSERT_NE(mainFn, nullptr);
+
+    bool sawCanonicalObjectCall = false;
+    bool sawLegacyObjectCall = false;
+    for (const auto &block : mainFn->blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op != il::core::Opcode::Call)
+                continue;
+            if (equalsIgnoreCase(instr.callee, "Viper.Core.Object.ToString"))
+                sawCanonicalObjectCall = true;
+            if (equalsIgnoreCase(instr.callee, "Viper.Object.ToString"))
+                sawLegacyObjectCall = true;
+        }
+    }
+
+    EXPECT_TRUE(sawCanonicalObjectCall);
+    EXPECT_FALSE(sawLegacyObjectCall);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

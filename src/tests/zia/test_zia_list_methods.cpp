@@ -17,6 +17,7 @@
 #include "frontends/zia/Compiler.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
+#include "il/core/Opcode.hpp"
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
 
@@ -26,6 +27,18 @@ using namespace il::frontends::zia;
 using namespace il::support;
 
 namespace {
+
+bool moduleHasCall(const il::core::Module &module, const std::string &callee) {
+    for (const auto &fn : module.functions) {
+        for (const auto &bb : fn.blocks) {
+            for (const auto &in : bb.instructions) {
+                if (in.op == il::core::Opcode::Call && in.callee == callee)
+                    return true;
+            }
+        }
+    }
+    return false;
+}
 
 /// @brief Test that List.remove() compiles successfully.
 TEST(ZiaListMethods, RemoveMethod) {
@@ -181,6 +194,39 @@ func start() {    var items: List[Integer] = new List[Integer]();
     }
 
     EXPECT_TRUE(result.succeeded());
+}
+
+/// @brief Test list aliases and mutators supported by lowering are accepted by sema.
+TEST(ZiaListMethods, HasSortDescAndShuffleMethods) {
+    const std::string src = R"(
+module Test;
+
+func start() {    var items: List[Integer] = new List[Integer]();
+    items.add(2);
+    items.add(1);
+    var present: Boolean = items.has(2);
+    items.sortDesc();
+    items.shuffle();
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = src, .path = "list_aliases.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for HasSortDescAndShuffleMethods:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_TRUE(moduleHasCall(result.module, "Viper.Collections.List.Has"));
+    EXPECT_TRUE(moduleHasCall(result.module, "Viper.Collections.List.SortDesc"));
+    EXPECT_TRUE(moduleHasCall(result.module, "Viper.Collections.List.Shuffle"));
 }
 
 /// @brief Test that accessing class field through List.get() compiles.

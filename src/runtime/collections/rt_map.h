@@ -134,6 +134,9 @@ void rt_map_set_str(void *obj, rt_string key, rt_string value);
 /// @brief Get a string value (returns empty string if missing).
 rt_string rt_map_get_str(void *obj, rt_string key);
 
+/// @brief Get an optional string value (returns NULL if missing).
+rt_string rt_map_get_opt_str(void *obj, rt_string key);
+
 /// @brief Create a shallow copy of the map.
 /// @param obj Source Map pointer.
 /// @return New map with same key-value pairs.
