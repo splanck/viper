@@ -20,6 +20,14 @@ using namespace il::support;
 
 namespace {
 
+bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle) {
+    for (const auto &d : diag.diagnostics()) {
+        if (d.message.find(needle) != std::string::npos)
+            return true;
+    }
+    return false;
+}
+
 /// @brief Test that optional types and coalesce operator work correctly.
 TEST(ZiaOptional, OptionalAndCoalesce) {
     SourceManager sm;
@@ -137,6 +145,35 @@ func start() {    var p: Person? = maybePerson(true);
         }
     }
     EXPECT_TRUE(foundBox);
+}
+
+TEST(ZiaOptional, DirectOptionalMemberAccessRequiresNarrowingOrOptionalChain) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Person {
+    expose String name;
+
+    expose func init(n: String) {        name = n;
+    }
+}
+
+func maybePerson() -> Person? {    return null;
+}
+
+func start() {
+    var p: Person? = maybePerson();
+    var name: String = p.name;
+}
+)";
+    CompilerInput input{.source = source, .path = "optional_direct_access.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "Cannot access member"));
 }
 
 } // namespace

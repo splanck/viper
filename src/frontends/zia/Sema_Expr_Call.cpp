@@ -36,6 +36,8 @@ enum class MethodReturnKind {
     KeyType,           ///< Returns the map's key type
     ValueType,         ///< Returns the map's struct type
     OptionalValueType, ///< Returns an optional map value type
+    KeySeqType,        ///< Returns a typed sequence of map keys
+    ValueSeqType,      ///< Returns a typed sequence of map values
     Integer,           ///< Returns Integer
     Boolean,           ///< Returns Boolean
     Void,              ///< Returns Void
@@ -100,9 +102,9 @@ const CollectionMethodInfo mapMethods[] = {
     {"size", MethodReturnKind::Integer},
     {"count", MethodReturnKind::Integer},
     {"length", MethodReturnKind::Integer},
-    // Methods returning Unknown (iterators)
-    {"keys", MethodReturnKind::Unknown},
-    {"values", MethodReturnKind::Unknown},
+    // Methods returning typed sequences
+    {"keys", MethodReturnKind::KeySeqType},
+    {"values", MethodReturnKind::ValueSeqType},
 };
 
 /// @brief Set methods and their return types.
@@ -158,6 +160,10 @@ TypeRef resolveMethodReturnType(MethodReturnKind kind, TypeRef baseType) {
         case MethodReturnKind::OptionalValueType:
             return baseType->valueType() ? types::optional(baseType->valueType())
                                          : types::optional(types::unknown());
+        case MethodReturnKind::KeySeqType:
+            return types::seqOf(baseType->keyType() ? baseType->keyType() : types::string());
+        case MethodReturnKind::ValueSeqType:
+            return types::seqOf(baseType->valueType() ? baseType->valueType() : types::unknown());
         case MethodReturnKind::Integer:
             return types::integer();
         case MethodReturnKind::Boolean:
@@ -1174,7 +1180,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
                            fieldExpr->field == "count" || fieldExpr->field == "size" ||
                            fieldExpr->field == "length" || fieldExpr->field == "isEmpty" ||
                            fieldExpr->field == "clear" || fieldExpr->field == "reverse" ||
-                           fieldExpr->field == "sort") {
+                           fieldExpr->field == "sort" || fieldExpr->field == "sortDesc" ||
+                           fieldExpr->field == "shuffle") {
                     checkArgCount(0, fieldExpr->field);
                 } else if (fieldExpr->field == "contains" || fieldExpr->field == "remove" ||
                            fieldExpr->field == "find" || fieldExpr->field == "indexOf") {
@@ -1302,7 +1309,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr) {
         // Handle String methods using lookup table
         if (baseType && baseType->kind == TypeKindSem::String) {
             if (auto *method = findMethod(stringMethods, fieldExpr->field)) {
-                analyzeArgs();
+                checkArgCount(0, fieldExpr->field);
                 return resolveMethodReturnType(method->returnKind, baseType);
             }
 

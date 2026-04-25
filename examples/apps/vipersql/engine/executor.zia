@@ -535,7 +535,7 @@ class Executor {
     // This ensures temp tables shadow regular tables with the same name.
     expose func findTable(tableName: String) -> Table? {
         if tempDb != null {
-            var tdb = tempDb;
+            var tdb = tempDb!;
             var tempTable = tdb.findTable(tableName);
             if tempTable != null {
                 return tempTable;
@@ -547,7 +547,7 @@ class Executor {
     // Check if a table is a temp table
     expose func isTempTable(tableName: String) -> Boolean {
         if tempDb != null {
-            var tdb = tempDb;
+            var tdb = tempDb!;
             return tdb.findTable(tableName) != null;
         }
         return false;
@@ -622,7 +622,7 @@ class Executor {
         var r = row;
         // Remove any existing temp table with this name
         if tempDb != null {
-            var tdb = tempDb;
+            var tdb = tempDb!;
             tdb.dropTable(name);
             // Create temp table with same schema as the source table
             var tempTable = new Table();
@@ -640,7 +640,7 @@ class Executor {
     // Remove a trigger temp table.
     hide func cleanupTriggerRow(name: String) {
         if tempDb != null {
-            var tdb = tempDb;
+            var tdb = tempDb!;
             tdb.dropTable(name);
         }
     }
@@ -1156,8 +1156,8 @@ class Executor {
         if expr.tableName != "" && outerTableAlias != "" {
             if expr.tableName == outerTableAlias {
                 if outerTable != null && outerRow != null {
-                    var ot = outerTable;
-                    var orow = outerRow;
+                    var ot = outerTable!;
+                    var orow = outerRow!;
                     var outerColIdx = ot.findColumnIndex(expr.columnName);
                     if outerColIdx >= 0 {
                         return orow.getValue(outerColIdx);
@@ -1171,8 +1171,8 @@ class Executor {
         if colIdx < 0 {
             // Try outer context
             if expr.tableName == "" && outerTable != null && outerRow != null {
-                var ot = outerTable;
-                var orow = outerRow;
+                var ot = outerTable!;
+                var orow = outerRow!;
                 var outerColIdx = ot.findColumnIndex(expr.columnName);
                 if outerColIdx >= 0 {
                     return orow.getValue(outerColIdx);
@@ -1967,12 +1967,12 @@ class Executor {
 
         // Extract column names
         var leftCol = "";
-        if left.getLeft().kind == EXPR_COLUMN {
-            leftCol = left.getLeft().columnName;
+        if left.getLeft()!.kind == EXPR_COLUMN {
+            leftCol = left.getLeft()!.columnName;
         }
         var rightCol = "";
-        if right.getLeft().kind == EXPR_COLUMN {
-            rightCol = right.getLeft().columnName;
+        if right.getLeft()!.kind == EXPR_COLUMN {
+            rightCol = right.getLeft()!.columnName;
         }
 
         if leftCol == "" || leftCol != rightCol {
@@ -2037,14 +2037,14 @@ class Executor {
         var lowerVal = sqlNull();
         var upperVal = sqlNull();
 
-        if leftExpr.getLeft().kind == EXPR_COLUMN {
-            colName = leftExpr.getLeft().columnName;
+        if leftExpr.getLeft()!.kind == EXPR_COLUMN {
+            colName = leftExpr.getLeft()!.columnName;
         }
-        if leftExpr.getRight().kind == EXPR_LITERAL {
-            lowerVal = leftExpr.getRight().literalValue;
+        if leftExpr.getRight()!.kind == EXPR_LITERAL {
+            lowerVal = leftExpr.getRight()!.literalValue;
         }
-        if rightExpr.getRight().kind == EXPR_LITERAL {
-            upperVal = rightExpr.getRight().literalValue;
+        if rightExpr.getRight()!.kind == EXPR_LITERAL {
+            upperVal = rightExpr.getRight()!.literalValue;
         }
 
         if colName == "" {
@@ -2250,7 +2250,7 @@ class Executor {
         if storageEngine == null {
             return;
         }
-        var se = storageEngine;
+        var se = storageEngine!;
 
         var i = 0;
         while i < btreeIndexNames.count() {
@@ -4499,25 +4499,25 @@ class Executor {
     // Acquire a shared (read) lock on a table. No-op in standalone mode.
     expose func acquireSharedLock(tableName: String) -> Boolean {
         if tableLockMgr == null { return true; }
-        var lm = tableLockMgr;
+        var lm = tableLockMgr!;
         return lm.acquireTableLock(sessionId, tableName, LOCK_SHARED);
     }
 
     // Acquire an exclusive (write) lock on a table. No-op in standalone mode.
     expose func acquireExclusiveLock(tableName: String) -> Boolean {
         if tableLockMgr == null { return true; }
-        var lm = tableLockMgr;
+        var lm = tableLockMgr!;
         return lm.acquireTableLock(sessionId, tableName, LOCK_EXCLUSIVE);
     }
 
     // Release all locks held by this session. No-op in standalone mode.
     expose func releaseSessionLocks() {
         if tableLockMgr != null {
-            var lm = tableLockMgr;
+            var lm = tableLockMgr!;
             lm.releaseAllLocks(sessionId);
         }
         if rowLockMgr != null {
-            var rlm = rowLockMgr;
+            var rlm = rowLockMgr!;
             rlm.releaseAllRowLocks(sessionId);
         }
     }
@@ -4534,7 +4534,7 @@ class Executor {
     // Returns: 0 = acquired, 1 = conflict (skip), 2 = conflict (error for NOWAIT)
     expose func acquireRowLockForSelect(tableName: String, rowIndex: Integer, mode: Integer, nowait: Boolean) -> Integer {
         if rowLockMgr == null { return 0; }
-        var rlm = rowLockMgr;
+        var rlm = rowLockMgr!;
         if nowait {
             // Non-blocking: return error immediately on conflict
             if rlm.tryAcquireRowLock(sessionId, tableName, rowIndex, mode) {
@@ -4906,7 +4906,7 @@ class Executor {
 
         // Flush storage engine
         if storageEngine != null {
-            var se = storageEngine;
+            var se = storageEngine!;
             se.flush();
         }
 

@@ -54,6 +54,16 @@ size_t countCallsTo(const il::core::Function &fn, const std::string &callee) {
     return count;
 }
 
+bool hasOpcode(const il::core::Function &fn, il::core::Opcode opcode) {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op == opcode)
+                return true;
+        }
+    }
+    return false;
+}
+
 /// @brief Test that Map collections compile correctly.
 TEST(ZiaCollections, MapCollection) {
     SourceManager sm;
@@ -139,6 +149,7 @@ func start() {    var names: Map[String, String] = new Map[String, String]();
 
     bool foundMapSet = false;
     bool foundMapGet = false;
+    bool foundMapHas = false;
     for (const auto &fn : result.module.functions) {
         if (fn.name == "main") {
             for (const auto &block : fn.blocks) {
@@ -148,6 +159,8 @@ func start() {    var names: Map[String, String] = new Map[String, String]();
                             foundMapSet = true;
                         if (instr.callee == "Viper.Collections.Map.Get")
                             foundMapGet = true;
+                        if (instr.callee == "Viper.Collections.Map.Has")
+                            foundMapHas = true;
                     }
                 }
             }
@@ -155,6 +168,11 @@ func start() {    var names: Map[String, String] = new Map[String, String]();
     }
     EXPECT_TRUE(foundMapSet);
     EXPECT_TRUE(foundMapGet);
+    EXPECT_TRUE(foundMapHas);
+
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_TRUE(hasOpcode(*mainFn, il::core::Opcode::Trap));
 }
 
 /// @brief Optional String map lookups return NULL for missing keys, not empty strings.
@@ -434,6 +452,64 @@ func start() {
                                 sm);
     EXPECT_FALSE(result.succeeded());
     EXPECT_TRUE(hasErrorContaining(result, "add() value"));
+}
+
+TEST(ZiaCollections, MapKeysAndValuesAreTypedSequences) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var ages: Map[String, Integer] = new Map[String, Integer]();
+    ages.set("Ada", 36);
+    for key in ages.keys() {
+        var name: String = key;
+        Viper.Terminal.Say(name);
+    }
+    for value in ages.values() {
+        var age: Integer = value;
+        Viper.Terminal.SayInt(age);
+    }
+}
+)",
+                                sm);
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for MapKeysAndValuesAreTypedSequences:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Map.Keys"), static_cast<size_t>(1));
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Map.Values"), static_cast<size_t>(1));
+}
+
+TEST(ZiaCollections, SetRemoveReturnsBoolean) {
+    SourceManager sm;
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var numbers: Set[Integer] = {1, 2, 3};
+    var removed: Boolean = numbers.remove(2);
+    Viper.Terminal.SayBool(removed);
+}
+)",
+                                sm);
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for SetRemoveReturnsBoolean:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "Viper.Collections.Set.Remove"), static_cast<size_t>(1));
 }
 
 } // namespace

@@ -493,6 +493,53 @@ func start() {    var maybeNode: Node? = new Node("hello");
     EXPECT_TRUE(result.succeeded());
 }
 
+TEST(ZiaOptionalNarrowing, FieldNullCheckNarrowsFieldAccess) {
+    const std::string src = R"(
+module Test;
+
+class Person {
+    expose String name;
+
+    expose func init(n: String) {        name = n;
+    }
+}
+
+class Holder {
+    expose Person? child;
+
+    expose func init() {        child = new Person("Ada");
+    }
+
+    expose func printChild() {
+        if self.child != null {
+            var childName: String = self.child.name;
+            Viper.Terminal.Say(childName);
+        }
+    }
+}
+
+func start() {
+    var holder: Holder = new Holder();
+    holder.printChild();
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = src, .path = "field_null_narrow.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for FieldNullCheckNarrowsFieldAccess:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    EXPECT_TRUE(result.succeeded());
+}
+
 } // namespace
 
 int main(int argc, char **argv) {

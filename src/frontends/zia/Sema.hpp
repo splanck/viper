@@ -465,6 +465,11 @@ class Sema {
     /// @return The variable's type, or nullptr if not found.
     TypeRef lookupVarType(const std::string &name);
 
+    /// @brief Look up a flow-sensitive narrowed type by narrowing key.
+    /// @param key Identifier or dotted member path used by null-check analysis.
+    /// @return The narrowed type, or nullptr when no active narrowing exists.
+    TypeRef lookupNarrowedType(const std::string &key) const;
+
     /// @brief Get the type of a field for a given type.
     /// @param typeName The fully qualified type name (may be mangled for generics).
     /// @param fieldName The field name.
@@ -1153,7 +1158,15 @@ class Sema {
     /// @param varName Output: the variable being null-checked.
     /// @param isNotNull Output: true if checking != null, false if == null.
     /// @return True if the condition is a null check pattern.
-    bool tryExtractNullCheck(Expr *cond, std::string &varName, bool &isNotNull);
+    bool tryExtractNullCheck(Expr *cond,
+                             std::string &varName,
+                             bool &isNotNull,
+                             TypeRef *checkedType = nullptr);
+
+    /// @brief Build a stable key for expressions supported by flow narrowing.
+    /// @param expr Expression to key, such as `x`, `self.field`, or `obj.field`.
+    /// @return Empty string when the expression is not safe to narrow.
+    std::string narrowingKeyForExpr(Expr *expr) const;
 
     /// @}
 
@@ -1454,6 +1467,9 @@ class Sema {
     /// @brief Current function being analyzed (for return validation).
     FunctionDecl *currentFunction_{nullptr};
 
+    /// @brief Current method being analyzed, if any.
+    MethodDecl *currentMethod_{nullptr};
+
     /// @brief Type of `self` in current method context.
     /// @details Set when analyzing methods, cleared afterward.
     TypeRef currentSelfType_{nullptr};
@@ -1570,6 +1586,10 @@ class Sema {
     /// @brief Field signatures that are declared static.
     /// @details Key format: "TypeName.fieldName"
     std::unordered_set<std::string> staticFields_;
+
+    /// @brief Field signatures that are declared final.
+    /// @details Key format: "TypeName.fieldName"
+    std::unordered_set<std::string> finalFields_;
 
     /// @brief Map from member signatures to visibility.
     /// @details Key format: "TypeName.memberName"

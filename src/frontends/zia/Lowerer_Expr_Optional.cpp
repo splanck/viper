@@ -52,9 +52,8 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr) {
     bool leftIsOptional = leftType && leftType->kind == TypeKindSem::Optional;
     TypeRef innerType = leftIsOptional ? leftType->innerType() : nullptr;
 
-    // For reference types (entities, etc.), check if the pointer is null
-    // For value-type optionals, we would need to check the flag field
-    // Currently implementing reference-type coalesce
+    // Optionals use a nullable pointer representation. Primitive and struct
+    // payloads are boxed before wrapping, so the null check is uniform.
 
     // Allocate a stack slot for the result BEFORE branching
     unsigned allocaId = nextTempId();

@@ -387,7 +387,7 @@ class DmlHandler {
 
             // Persist row to storage engine and track location
             if exec.storageEngine != null {
-                var se = exec.storageEngine;
+                var se = exec.storageEngine!;
                 var insertOk = se.insertRowStorage(stmt.tableName, row);
                 if insertOk {
                     se.trackRowLocation(stmt.tableName, se.lastInsertPageId, se.lastInsertSlotIdx);
@@ -404,7 +404,7 @@ class DmlHandler {
 
         // Flush after all rows inserted
         if exec.storageEngine != null && rowsInserted > 0 {
-            var se = exec.storageEngine;
+            var se = exec.storageEngine!;
             se.flush();
         }
 
@@ -636,7 +636,7 @@ class DmlHandler {
 
         // Persist row to storage engine
         if exec.storageEngine != null {
-            var se = exec.storageEngine;
+            var se = exec.storageEngine!;
             var insertOk = se.insertRowStorage(stmt.tableName, row);
             if insertOk {
                 se.trackRowLocation(stmt.tableName, se.lastInsertPageId, se.lastInsertSlotIdx);
@@ -674,7 +674,7 @@ class DmlHandler {
         var rowsInserted = 0;
         var ri = 0;
         while ri < selectResult.rowCount() {
-            var srcRow = selectResult.getRow(ri);
+            var srcRow = selectResult.getRow(ri)!;
             var newRow = new Row();
             newRow.initWithCount(t.columnCount());
 
@@ -744,7 +744,7 @@ class DmlHandler {
             updateIndexesAfterInsert(stmt.tableName, newRow, newRowIdx, t);
 
             if exec.storageEngine != null {
-                var se = exec.storageEngine;
+                var se = exec.storageEngine!;
                 var insertOk = se.insertRowStorage(stmt.tableName, newRow);
                 if insertOk {
                     se.trackRowLocation(stmt.tableName, se.lastInsertPageId, se.lastInsertSlotIdx);
@@ -757,7 +757,7 @@ class DmlHandler {
         }
 
         if exec.storageEngine != null && rowsInserted > 0 {
-            var se = exec.storageEngine;
+            var se = exec.storageEngine!;
             se.flush();
         }
 
@@ -1006,7 +1006,7 @@ class DmlHandler {
                     var btree = exec.findBTreeForIndex(idx.name);
                     if btree != null {
                         var bt = btree;
-                        var se = exec.storageEngine;
+                        var se = exec.storageEngine!;
                         var colIdx = table.findColumnIndex(idx.getColumnName(0));
                         if colIdx >= 0 {
                             var keyVal = row.getValue(colIdx);
@@ -1545,7 +1545,7 @@ class DmlHandler {
 
         // Persist updated rows — try incremental in-place updates first
         if exec.storageEngine != null && rowsUpdated > 0 {
-            var se = exec.storageEngine;
+            var se = exec.storageEngine!;
             var needsRewrite = false;
             var ui = 0;
             while ui < updatedIndices.count() {
@@ -1718,7 +1718,7 @@ class DmlHandler {
 
             // Persist via full table rewrite (rewriteTableRows clears + rebuilds tracking)
             if exec.storageEngine != null {
-                var se = exec.storageEngine;
+                var se = exec.storageEngine!;
                 se.rewriteTableRows(stmt.tableName, t.rows);
                 se.flush();
             }
@@ -1955,7 +1955,7 @@ class DmlHandler {
             row.initWithCount(ct.columnCount());
             var c = 0;
             while c < ct.columnCount() {
-                var col = ct.getColumn(c);
+                var col = ct.getColumn(c)!;
                 var valIdx = c;
                 if stmt.columnNames.count() > 0 {
                     valIdx = -1;

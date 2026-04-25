@@ -179,6 +179,8 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
                     fieldTypes_[key] = fieldType;
                     if (field->isStatic)
                         staticFields_.insert(key);
+                    if (field->isFinal)
+                        finalFields_.insert(key);
                     memberVisibility_[key] = field->visibility;
                 } else if (member->kind == DeclKind::Method) {
                     auto *method = static_cast<MethodDecl *>(member.get());
@@ -220,6 +222,8 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
                     fieldTypes_[key] = fieldType;
                     if (field->isStatic)
                         staticFields_.insert(key);
+                    if (field->isFinal)
+                        finalFields_.insert(key);
                     memberVisibility_[key] = field->visibility;
                 } else if (member->kind == DeclKind::Method) {
                     auto *method = static_cast<MethodDecl *>(member.get());

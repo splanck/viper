@@ -1404,8 +1404,8 @@ class JoinEngine {
             var includeRow = true;
 
             if stmt.whereClause != null {
-                var wc = stmt.whereClause;
-                var whereResult = evalJoinExpr(wc!, tables, aliases, row, colOffsets);
+                var wc = stmt.whereClause!;
+                var whereResult = evalJoinExpr(wc, tables, aliases, row, colOffsets);
                 // Check for ambiguous column errors in WHERE
                 if exec.hasEvalError == 1 {
                     result.setError(exec.evalError);

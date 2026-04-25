@@ -248,6 +248,159 @@ END
     EXPECT_TRUE(result->hasErrors());
 }
 
+TEST(BasicAnalysis, ReturnWithoutGosubIsRejected) {
+    il::support::SourceManager sm;
+    BasicCompilerInput input{.source = "RETURN\nEND\n", .path = "return_without_gosub.bas"};
+    auto result = parseAndAnalyzeBasic(input, sm);
+
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_TRUE(result->hasErrors());
+}
+
+TEST(BasicAnalysis, TopLevelGosubReturnIsAllowed) {
+    il::support::SourceManager sm;
+    const std::string source = R"(
+GOSUB Handler
+END
+Handler: RETURN
+)";
+    BasicCompilerInput input{.source = source, .path = "return_with_gosub.bas"};
+    auto result = parseAndAnalyzeBasic(input, sm);
+
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_FALSE(result->hasErrors());
+}
+
+TEST(BasicAnalysis, ExitSubFunctionContextsAreChecked) {
+    il::support::SourceManager sm;
+    {
+        BasicCompilerInput input{.source = "EXIT SUB\nEND\n", .path = "exit_sub_top.bas"};
+        auto result = parseAndAnalyzeBasic(input, sm);
+        ASSERT_TRUE(result != nullptr);
+        EXPECT_TRUE(result->hasErrors());
+    }
+    {
+        const std::string source = R"(
+SUB S()
+  EXIT FUNCTION
+END SUB
+END
+)";
+        BasicCompilerInput input{.source = source, .path = "exit_function_in_sub.bas"};
+        auto result = parseAndAnalyzeBasic(input, sm);
+        ASSERT_TRUE(result != nullptr);
+        EXPECT_TRUE(result->hasErrors());
+    }
+}
+
+TEST(BasicAnalysis, FinallyBodyIsSemanticallyAnalyzed) {
+    il::support::SourceManager sm;
+    const std::string source = R"(
+TRY
+FINALLY
+  PRINT MISSING_NAME
+END TRY
+END
+)";
+    BasicCompilerInput input{.source = source, .path = "finally_bad_name.bas"};
+    auto result = parseAndAnalyzeBasic(input, sm);
+
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_TRUE(result->hasErrors());
+}
+
+TEST(BasicAnalysis, FunctionNameImplicitReturnMustCoverAllPaths) {
+    il::support::SourceManager sm;
+    const std::string source = R"(
+FUNCTION F() AS INTEGER
+  IF 1 = 1 THEN
+    F = 1
+  END IF
+END FUNCTION
+END
+)";
+    BasicCompilerInput input{.source = source, .path = "implicit_return_partial.bas"};
+    auto result = parseAndAnalyzeBasic(input, sm);
+
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_TRUE(result->hasErrors());
+}
+
+TEST(BasicAnalysis, FunctionNameImplicitReturnAllowsExhaustiveBranches) {
+    il::support::SourceManager sm;
+    const std::string source = R"(
+FUNCTION F() AS INTEGER
+  IF 1 = 1 THEN
+    F = 1
+  ELSE
+    F = 2
+  END IF
+END FUNCTION
+PRINT F()
+END
+)";
+    BasicCompilerInput input{.source = source, .path = "implicit_return_exhaustive.bas"};
+    auto result = parseAndAnalyzeBasic(input, sm);
+
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_FALSE(result->hasErrors());
+}
+
+TEST(BasicAnalysis, ForLoopTypesAreChecked) {
+    il::support::SourceManager sm;
+    {
+        const std::string source = R"(
+FOR S$ = 1 TO 3
+NEXT S$
+END
+)";
+        BasicCompilerInput input{.source = source, .path = "for_string_counter.bas"};
+        auto result = parseAndAnalyzeBasic(input, sm);
+        ASSERT_TRUE(result != nullptr);
+        EXPECT_TRUE(result->hasErrors());
+    }
+    {
+        const std::string source = R"(
+FOR I = "a" TO 3
+NEXT I
+END
+)";
+        BasicCompilerInput input{.source = source, .path = "for_string_start.bas"};
+        auto result = parseAndAnalyzeBasic(input, sm);
+        ASSERT_TRUE(result != nullptr);
+        EXPECT_TRUE(result->hasErrors());
+    }
+}
+
+TEST(BasicAnalysis, ForEachElementTypeIsChecked) {
+    il::support::SourceManager sm;
+    const std::string source = R"(
+DIM A$(2)
+FOR EACH I% IN A$
+NEXT I%
+END
+)";
+    BasicCompilerInput input{.source = source, .path = "foreach_bad_element.bas"};
+    auto result = parseAndAnalyzeBasic(input, sm);
+
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_TRUE(result->hasErrors());
+}
+
+TEST(BasicAnalysis, UsingInitializerMustBeObject) {
+    il::support::SourceManager sm;
+    const std::string source = R"(
+USING R AS Resource = 42
+END USING
+END
+)";
+    BasicCompilerInput input{.source = source, .path = "using_scalar.bas"};
+    auto result = parseAndAnalyzeBasic(input, sm);
+
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_TRUE(result->hasErrors());
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

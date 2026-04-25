@@ -150,15 +150,17 @@ static bool stmtTerminates(const Stmt *s) {
 void Sema::analyzeBlockStmt(BlockStmt *stmt) {
     pushScope(stmt->loc);
     bool afterTerminator = false;
+    bool warnedUnreachable = false;
     int guardNarrowings = 0;
     auto persistOptionalNullCheckNarrowing = [&](Expr *condition,
                                                  bool conditionHoldsAfterStmt) {
         std::string nullCheckVar;
         bool isNotNull = false;
-        if (!tryExtractNullCheck(condition, nullCheckVar, isNotNull))
+        TypeRef checkedType = nullptr;
+        if (!tryExtractNullCheck(condition, nullCheckVar, isNotNull, &checkedType))
             return;
 
-        TypeRef varType = lookupVarType(nullCheckVar);
+        TypeRef varType = checkedType ? checkedType : lookupVarType(nullCheckVar);
         if (!varType || varType->kind != TypeKindSem::Optional)
             return;
 
@@ -177,10 +179,12 @@ void Sema::analyzeBlockStmt(BlockStmt *stmt) {
     for (auto &s : stmt->statements) {
         // W002: Unreachable code after return/break/continue
         if (afterTerminator) {
-            warn(WarningCode::W002_UnreachableCode,
-                 s->loc,
-                 "Unreachable code after return/break/continue");
-            break; // Only warn once per block
+            if (!warnedUnreachable) {
+                warn(WarningCode::W002_UnreachableCode,
+                     s->loc,
+                     "Unreachable code after return/break/continue");
+                warnedUnreachable = true;
+            }
         }
 
         analyzeStmt(s.get());
@@ -337,12 +341,14 @@ void Sema::analyzeIfStmt(IfStmt *stmt) {
     // Check for null check pattern for type narrowing
     std::string nullCheckVar;
     bool isNotNull = false;
-    bool hasNullCheck = tryExtractNullCheck(stmt->condition.get(), nullCheckVar, isNotNull);
+    TypeRef checkedNullType = nullptr;
+    bool hasNullCheck =
+        tryExtractNullCheck(stmt->condition.get(), nullCheckVar, isNotNull, &checkedNullType);
 
     TypeRef narrowedType = nullptr;
     if (hasNullCheck) {
         // Look up the variable's current type
-        TypeRef varType = lookupVarType(nullCheckVar);
+        TypeRef varType = checkedNullType ? checkedNullType : lookupVarType(nullCheckVar);
         if (varType && varType->kind == TypeKindSem::Optional) {
             // Get the inner (non-optional) type
             narrowedType = varType->innerType();
@@ -483,6 +489,10 @@ void Sema::analyzeForInStmt(ForInStmt *stmt) {
             if (elements.size() == 2) {
                 elementType = elements[0];
                 secondType = elements[1];
+            } else {
+                error(stmt->loc,
+                      "Tuple binding requires an iterable pair or a 2-element Tuple, got " +
+                          std::to_string(elements.size()) + " elements");
             }
         } else {
             error(stmt->loc, "Tuple binding requires Map, List, Set, or Tuple elements");
@@ -530,6 +540,13 @@ void Sema::analyzeForInStmt(ForInStmt *stmt) {
 }
 
 void Sema::analyzeReturnStmt(ReturnStmt *stmt) {
+    if (!expectedReturnType_) {
+        if (stmt->value)
+            analyzeExpr(stmt->value.get());
+        error(stmt->loc, "Return statement can only be used inside a function or method");
+        return;
+    }
+
     if (stmt->value) {
         TypeRef valueType = analyzeExpr(stmt->value.get());
         if (valueType && valueType->kind == TypeKindSem::Unit) {
@@ -652,11 +669,9 @@ bool Sema::stmtAlwaysExits(Stmt *stmt) {
 
         case StmtKind::Block: {
             auto *block = static_cast<BlockStmt *>(stmt);
-            for (auto &inner : block->statements) {
-                if (stmtAlwaysExits(inner.get()))
-                    return true;
-            }
-            return false;
+            if (block->statements.empty())
+                return false;
+            return stmtAlwaysExits(block->statements.back().get());
         }
 
         case StmtKind::If: {

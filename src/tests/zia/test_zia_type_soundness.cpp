@@ -530,10 +530,10 @@ func start() {    var d: Dog? = null;
 }
 )",
                                 sm);
-    // FIXED GAP-4: Optional auto-unwrap now emits a null-safety warning.
-    // Code still compiles (no flow-sensitive analysis yet) but warns.
-    EXPECT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasWarningContaining(result, "Optional"));
+    // Direct member access on an optional value must use a guard, optional
+    // chain, or explicit force unwrap.
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Optional"));
 }
 
 TEST(ZiaTypeSoundness, GAP_NullOptionalMethodCall) {
@@ -549,9 +549,10 @@ func start() {    var d: Dog? = null;
 }
 )",
                                 sm);
-    // FIXED GAP-5: Optional auto-unwrap now warns on method calls too.
-    EXPECT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasWarningContaining(result, "Optional"));
+    // Direct method calls on an optional value must use a guard, optional
+    // chain, or explicit force unwrap.
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasErrorContaining(result, "Optional"));
 }
 
 TEST(ZiaTypeSoundness, ReturnNullFromNonOptionalFunc) {

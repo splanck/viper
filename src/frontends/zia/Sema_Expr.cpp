@@ -145,6 +145,12 @@ TypeRef Sema::analyzeExpr(Expr *expr) {
             }
 
             result = types::any();
+            if (awaitedType && awaitedType->kind == TypeKindSem::Ptr &&
+                awaitedType->name == "Viper.Threads.Future" && !awaitedType->typeArgs.empty() &&
+                awaitedType->typeArgs[0]) {
+                result = awaitedType->typeArgs[0];
+                break;
+            }
             if (auto *call = dynamic_cast<CallExpr *>(awaitExpr->operand.get())) {
                 if (FunctionDecl *asyncDecl = resolvedFunctionDecl(call);
                     asyncDecl && asyncDecl->isAsync) {

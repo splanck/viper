@@ -145,6 +145,33 @@ func start() {    var future = addOne(41);
     EXPECT_FALSE(hasIndirectCall(result.module, "addOne__async_worker"));
 }
 
+TEST(ZiaAsync, AwaitPreservesPayloadTypeThroughFutureVariable) {
+    const std::string src = R"(module Test;
+
+/// @brief Add one.
+async func addOne(value: Integer) -> Integer {    return value + 1;
+}
+
+/// @brief Start.
+func start() {    var future = addOne(41);
+    var value: Integer = await future;
+    Viper.Terminal.SayInt(value);
+}
+)";
+
+    auto result = compileSource(src, "async_future_payload.zia");
+    if (!result.succeeded()) {
+        std::cerr << "Diagnostics for AwaitPreservesPayloadTypeThroughFutureVariable:\n";
+        for (const auto &d : result.diagnostics.diagnostics()) {
+            std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
+                      << d.message << "\n";
+        }
+    }
+
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_TRUE(hasDirectCall(result.module, "main", "Viper.Threads.Future.Get"));
+}
+
 } // namespace
 
 int main(int argc, char **argv) {

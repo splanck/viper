@@ -210,6 +210,7 @@ struct ReDimStmt;
 struct RandomizeStmt;
 struct IfStmt;
 struct SelectCaseStmt;
+struct TryCatchStmt;
 struct WhileStmt;
 struct DoStmt;
 struct ForStmt;
@@ -258,6 +259,7 @@ STMT_KIND_TRAIT(ReDimStmt, ReDim)
 STMT_KIND_TRAIT(RandomizeStmt, Randomize)
 STMT_KIND_TRAIT(IfStmt, If)
 STMT_KIND_TRAIT(SelectCaseStmt, SelectCase)
+STMT_KIND_TRAIT(TryCatchStmt, TryCatch)
 STMT_KIND_TRAIT(WhileStmt, While)
 STMT_KIND_TRAIT(DoStmt, Do)
 STMT_KIND_TRAIT(ForStmt, For)

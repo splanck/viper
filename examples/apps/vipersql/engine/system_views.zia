@@ -243,7 +243,7 @@ func viewInformationSchemaColumns(server: DatabaseServer, currentDbName: String)
                 var table = maybeTable;
                 var ci = 0;
                 while ci < table.columnCount() {
-                    var col = table.getColumn(ci);
+                    var col = table.getColumn(ci)!;
                     var row = new Row();
                     row.init();
                     row.addValue(sqlText(dbName));
@@ -398,7 +398,7 @@ func viewSysColumns(server: DatabaseServer, currentDbName: String) -> QueryResul
                 var table = maybeTable;
                 var ci = 0;
                 while ci < table.columnCount() {
-                    var col = table.getColumn(ci);
+                    var col = table.getColumn(ci)!;
                     var row = new Row();
                     row.init();
                     row.addValue(sqlText(table.name));
@@ -761,7 +761,7 @@ func viewPgAttribute(server: DatabaseServer, currentDbName: String) -> QueryResu
                 var relOid = generateOid(dbName + "." + table.name);
                 var ci = 0;
                 while ci < table.columnCount() {
-                    var col = table.getColumn(ci);
+                    var col = table.getColumn(ci)!;
                     var row = new Row();
                     row.init();
                     row.addValue(sqlInteger(relOid));

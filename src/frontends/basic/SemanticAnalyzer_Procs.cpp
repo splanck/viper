@@ -314,18 +314,187 @@ void SemanticAnalyzer::analyzeProc(const SubDecl &s) {
     nsStack_ = std::move(savedNs);
 }
 
+namespace {
+
+struct ReturnFlow {
+    bool alwaysReturns{false};
+    bool assignedAfter{false};
+};
+
+bool assignsActiveFunctionName(const Stmt &stmt, const FunctionDecl *activeFunction) {
+    if (!activeFunction)
+        return false;
+    const auto *let = as<const LetStmt>(stmt);
+    if (!let || !let->target)
+        return false;
+    const auto *target = as<const VarExpr>(*let->target);
+    return target && string_utils::iequals(target->name, activeFunction->name);
+}
+
+ReturnFlow flowForStmt(const Stmt &stmt, const FunctionDecl *activeFunction, bool assignedBefore);
+
+ReturnFlow flowForStmtList(const std::vector<StmtPtr> &stmts,
+                           const FunctionDecl *activeFunction,
+                           bool assignedBefore) {
+    bool assigned = assignedBefore;
+    for (const auto &stmt : stmts) {
+        if (!stmt)
+            continue;
+        ReturnFlow flow = flowForStmt(*stmt, activeFunction, assigned);
+        if (flow.alwaysReturns)
+            return flow;
+        assigned = flow.assignedAfter;
+    }
+    return {false, assigned};
+}
+
+ReturnFlow flowForBranchStmt(const StmtPtr &stmt,
+                             const FunctionDecl *activeFunction,
+                             bool assignedBefore) {
+    if (!stmt)
+        return {false, assignedBefore};
+    return flowForStmt(*stmt, activeFunction, assignedBefore);
+}
+
+ReturnFlow flowForIf(const IfStmt &stmt, const FunctionDecl *activeFunction, bool assignedBefore) {
+    std::vector<ReturnFlow> branches;
+    branches.push_back(flowForBranchStmt(stmt.then_branch, activeFunction, assignedBefore));
+    for (const auto &elseif : stmt.elseifs)
+        branches.push_back(flowForBranchStmt(elseif.then_branch, activeFunction, assignedBefore));
+
+    const bool hasElse = stmt.else_branch != nullptr;
+    if (hasElse)
+        branches.push_back(flowForBranchStmt(stmt.else_branch, activeFunction, assignedBefore));
+
+    bool allReturn = hasElse;
+    bool assignedAfter = hasElse ? true : assignedBefore;
+    for (const ReturnFlow &branch : branches) {
+        allReturn = allReturn && branch.alwaysReturns;
+        assignedAfter = assignedAfter && (branch.alwaysReturns || branch.assignedAfter);
+    }
+    return {allReturn, assignedAfter};
+}
+
+ReturnFlow flowForSelect(const SelectCaseStmt &stmt,
+                         const FunctionDecl *activeFunction,
+                         bool assignedBefore) {
+    bool allReturn = !stmt.elseBody.empty();
+    bool assignedAfter = stmt.elseBody.empty() ? assignedBefore : true;
+
+    for (const auto &arm : stmt.arms) {
+        ReturnFlow armFlow = flowForStmtList(arm.body, activeFunction, assignedBefore);
+        allReturn = allReturn && armFlow.alwaysReturns;
+        assignedAfter = assignedAfter && (armFlow.alwaysReturns || armFlow.assignedAfter);
+    }
+
+    if (!stmt.elseBody.empty()) {
+        ReturnFlow elseFlow = flowForStmtList(stmt.elseBody, activeFunction, assignedBefore);
+        allReturn = allReturn && elseFlow.alwaysReturns;
+        assignedAfter = assignedAfter && (elseFlow.alwaysReturns || elseFlow.assignedAfter);
+    }
+
+    return {allReturn, assignedAfter};
+}
+
+ReturnFlow flowForTry(const TryCatchStmt &stmt,
+                      const FunctionDecl *activeFunction,
+                      bool assignedBefore) {
+    ReturnFlow tryFlow = flowForStmtList(stmt.tryBody, activeFunction, assignedBefore);
+    ReturnFlow catchFlow = stmt.catchBody.empty()
+                               ? ReturnFlow{false, assignedBefore}
+                               : flowForStmtList(stmt.catchBody, activeFunction, assignedBefore);
+
+    bool normalReturn = tryFlow.alwaysReturns;
+    if (!stmt.catchBody.empty())
+        normalReturn = normalReturn && catchFlow.alwaysReturns;
+
+    bool assignedBeforeFinally =
+        (tryFlow.alwaysReturns || tryFlow.assignedAfter) &&
+        (stmt.catchBody.empty() || catchFlow.alwaysReturns || catchFlow.assignedAfter);
+    ReturnFlow finallyFlow =
+        flowForStmtList(stmt.finallyBody, activeFunction, assignedBeforeFinally);
+    if (finallyFlow.alwaysReturns)
+        return finallyFlow;
+    return {normalReturn, finallyFlow.assignedAfter};
+}
+
+ReturnFlow flowForStmt(const Stmt &stmt, const FunctionDecl *activeFunction, bool assignedBefore) {
+    if (const auto *lst = as<const StmtList>(stmt))
+        return flowForStmtList(lst->stmts, activeFunction, assignedBefore);
+    if (const auto *ret = as<const ReturnStmt>(stmt))
+        return {ret->value != nullptr || assignedBefore, assignedBefore};
+    if (const auto *exitStmt = as<const ExitStmt>(stmt)) {
+        if (exitStmt->kind == ExitStmt::LoopKind::Function)
+            return {assignedBefore, assignedBefore};
+        return {false, assignedBefore};
+    }
+    if (assignsActiveFunctionName(stmt, activeFunction))
+        return {false, true};
+    if (const auto *ifs = as<const IfStmt>(stmt))
+        return flowForIf(*ifs, activeFunction, assignedBefore);
+    if (const auto *select = as<const SelectCaseStmt>(stmt))
+        return flowForSelect(*select, activeFunction, assignedBefore);
+    if (const auto *tryCatch = as<const TryCatchStmt>(stmt))
+        return flowForTry(*tryCatch, activeFunction, assignedBefore);
+    if (is<WhileStmt>(stmt) || is<ForStmt>(stmt) || is<DoStmt>(stmt) || is<ForEachStmt>(stmt))
+        return {false, assignedBefore};
+    return {false, assignedBefore};
+}
+
+bool containsGosub(const Stmt &stmt);
+
+bool containsGosubList(const std::vector<StmtPtr> &stmts) {
+    for (const auto &stmt : stmts)
+        if (stmt && containsGosub(*stmt))
+            return true;
+    return false;
+}
+
+bool containsGosub(const Stmt &stmt) {
+    if (is<GosubStmt>(stmt))
+        return true;
+    if (const auto *lst = as<const StmtList>(stmt))
+        return containsGosubList(lst->stmts);
+    if (const auto *ifs = as<const IfStmt>(stmt)) {
+        if (ifs->then_branch && containsGosub(*ifs->then_branch))
+            return true;
+        for (const auto &elseif : ifs->elseifs)
+            if (elseif.then_branch && containsGosub(*elseif.then_branch))
+                return true;
+        return ifs->else_branch && containsGosub(*ifs->else_branch);
+    }
+    if (const auto *select = as<const SelectCaseStmt>(stmt)) {
+        for (const auto &arm : select->arms)
+            if (containsGosubList(arm.body))
+                return true;
+        return containsGosubList(select->elseBody);
+    }
+    if (const auto *tryCatch = as<const TryCatchStmt>(stmt)) {
+        return containsGosubList(tryCatch->tryBody) || containsGosubList(tryCatch->catchBody) ||
+               containsGosubList(tryCatch->finallyBody);
+    }
+    if (const auto *whileStmt = as<const WhileStmt>(stmt))
+        return containsGosubList(whileStmt->body);
+    if (const auto *doStmt = as<const DoStmt>(stmt))
+        return containsGosubList(doStmt->body);
+    if (const auto *forStmt = as<const ForStmt>(stmt))
+        return containsGosubList(forStmt->body);
+    if (const auto *forEach = as<const ForEachStmt>(stmt))
+        return containsGosubList(forEach->body);
+    if (const auto *ns = as<const NamespaceDecl>(stmt))
+        return containsGosubList(ns->body);
+    return false;
+}
+
+} // namespace
+
 /// @brief Determine whether a block of statements guarantees a return value.
 ///
 /// @param stmts Statement list to evaluate.
-/// @return True when the final statement must return.
+/// @return True when every control path produces a function value.
 bool SemanticAnalyzer::mustReturn(const std::vector<StmtPtr> &stmts) const {
-    // BUG-003: Check if function name was assigned (VB-style implicit return)
-    if (activeFunctionNameAssigned_)
-        return true;
-
-    if (stmts.empty())
-        return false;
-    return mustReturn(*stmts.back());
+    ReturnFlow flow = flowForStmtList(stmts, activeFunction_, false);
+    return flow.alwaysReturns || flow.assignedAfter;
 }
 
 /// @brief Inspect an individual statement to see if it mandates a return value.
@@ -333,23 +502,12 @@ bool SemanticAnalyzer::mustReturn(const std::vector<StmtPtr> &stmts) const {
 /// @param s Statement to inspect.
 /// @return True when execution of @p s guarantees a return.
 bool SemanticAnalyzer::mustReturn(const Stmt &s) const {
-    if (const auto *lst = as<const StmtList>(s))
-        return !lst->stmts.empty() && mustReturn(*lst->stmts.back());
-    if (const auto *ret = as<const ReturnStmt>(s))
-        return ret->value != nullptr;
-    if (const auto *ifs = as<const IfStmt>(s)) {
-        if (!ifs->then_branch || !mustReturn(*ifs->then_branch))
-            return false;
-        for (const auto &e : ifs->elseifs)
-            if (!e.then_branch || !mustReturn(*e.then_branch))
-                return false;
-        if (!ifs->else_branch)
-            return false;
-        return mustReturn(*ifs->else_branch);
-    }
-    if (is<WhileStmt>(s) || is<ForStmt>(s))
-        return false;
-    return false;
+    ReturnFlow flow = flowForStmt(s, activeFunction_, false);
+    return flow.alwaysReturns || flow.assignedAfter;
+}
+
+bool SemanticAnalyzer::mainHasGosub() const noexcept {
+    return mainHasGosub_;
 }
 
 /// @brief Run semantic analysis for the entire BASIC program.
@@ -367,6 +525,7 @@ void SemanticAnalyzer::analyze(const Program &prog) {
     openChannels_.clear();
     errorHandlerActive_ = false;
     errorHandlerTarget_.reset();
+    mainHasGosub_ = false;
     procReg_.clear();
     scopes_.reset();
     sawDecl_ = false;
@@ -436,6 +595,7 @@ void SemanticAnalyzer::analyze(const Program &prog) {
     for (const auto &stmt : prog.main)
         if (stmt)
             labels_.insert(stmt->line);
+    mainHasGosub_ = containsGosubList(prog.main);
 
     // Analyze main module body so module-level variables are registered
     // in symbols_ before procedures are analyzed. This allows procedures to

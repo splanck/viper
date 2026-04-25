@@ -238,7 +238,7 @@ class DdlHandler {
 
         if stmt.isTemporary && exec.tempDb != null {
             // Temp tables go in per-session tempDb (not persisted)
-            var tdb = exec.tempDb;
+            var tdb = exec.tempDb!;
             tdb.addTable(table);
             result.message = "Temporary table '" + stmt.tableName + "' created";
         } else {
@@ -247,7 +247,7 @@ class DdlHandler {
             exec.server.setTableOwner(stmt.tableName, exec.currentUser);
             // Persist to storage engine if active
             if exec.storageEngine != null {
-                var se = exec.storageEngine;
+                var se = exec.storageEngine!;
                 se.persistTable(table);
                 se.flush();
             }
@@ -316,7 +316,7 @@ class DdlHandler {
 
         // Persist if storage active
         if exec.storageEngine != null {
-            var se = exec.storageEngine;
+            var se = exec.storageEngine!;
             se.persistTable(child);
             se.flush();
         }
@@ -339,7 +339,7 @@ class DdlHandler {
         }
         // Try dropping from temp tables first, then regular tables
         if exec.isTempTable(tableName) && exec.tempDb != null {
-            var tdb = exec.tempDb;
+            var tdb = exec.tempDb!;
             tdb.dropTable(tableName);
             var result = new QueryResult();
             result.init();
@@ -348,7 +348,7 @@ class DdlHandler {
         } else if exec.db.dropTable(tableName) {
             // Persist table drop to storage engine
             if exec.storageEngine != null {
-                var se = exec.storageEngine;
+                var se = exec.storageEngine!;
                 se.dropTableStorage(tableName);
                 se.flush();
             }
@@ -753,7 +753,7 @@ class DdlHandler {
 
         // Phase 10: Create B-tree and persist index metadata for persistent databases
         if exec.storageEngine != null {
-            var se = exec.storageEngine;
+            var se = exec.storageEngine!;
             var colName = stmt.columnNames.get(0);
             var btree = se.createBTree(stmt.indexName, 0, colName, stmt.isUnique);
 
@@ -799,7 +799,7 @@ class DdlHandler {
         if exec.indexMgr.dropIndex(stmt.indexName) {
             // Phase 10: Remove from persistent storage and B-tree tracking
             if exec.storageEngine != null {
-                var se = exec.storageEngine;
+                var se = exec.storageEngine!;
                 se.dropIndexStorage(stmt.indexName);
             }
             exec.removeBTree(stmt.indexName);
@@ -996,7 +996,7 @@ class DdlHandler {
 
         // Flush storage engine if persistent
         if exec.storageEngine != null {
-            var se = exec.storageEngine;
+            var se = exec.storageEngine!;
             se.flush();
         }
 
@@ -1379,7 +1379,7 @@ class DdlHandler {
         result.addColumnName("table_name");
         // Show temp tables first
         if exec.tempDb != null {
-            var tdb = exec.tempDb;
+            var tdb = exec.tempDb!;
             var ti = 0;
             while ti < tdb.tableCount() {
                 var tt = tdb.getTable(ti);
@@ -1733,7 +1733,7 @@ class DdlHandler {
 
         // Store in appropriate database
         if isTemp && exec.tempDb != null {
-            var tdb = exec.tempDb;
+            var tdb = exec.tempDb!;
             tdb.addTable(table);
         } else {
             exec.db.addTable(table);
@@ -1931,9 +1931,9 @@ class DdlHandler {
 
         // Check if an index would be used
         if stmt.whereClause != null && exec.canUseIndex(stmt.whereClause, stmt.tableName) {
-            var wc = stmt.whereClause;
+            var wc = stmt.whereClause!;
             // Try composite index first
-            var eqCols = exec.extractEqualityColumns(wc!);
+            var eqCols = exec.extractEqualityColumns(wc);
             var foundIdx: SqlIndex? = null;
             var idxColName = "";
             if eqCols.count() >= 2 {
@@ -1950,10 +1950,10 @@ class DdlHandler {
             }
             // Fall back to single-column index
             if foundIdx == null {
-                if wc.getLeft().kind == EXPR_COLUMN {
-                    idxColName = wc.getLeft().columnName;
-                } else if wc.getRight().kind == EXPR_COLUMN {
-                    idxColName = wc.getRight().columnName;
+                if wc.getLeft()!.kind == EXPR_COLUMN {
+                    idxColName = wc.getLeft()!.columnName;
+                } else if wc.getRight()!.kind == EXPR_COLUMN {
+                    idxColName = wc.getRight()!.columnName;
                 }
                 foundIdx = exec.indexMgr.findIndexForColumn(stmt.tableName, idxColName);
             }
@@ -1976,12 +1976,12 @@ class DdlHandler {
             }
         } else if stmt.whereClause != null && exec.canUseIndexRange(stmt.whereClause, stmt.tableName) {
             // Range predicate with index
-            var wc = stmt.whereClause;
+            var wc = stmt.whereClause!;
             var rangeColName = "";
-            if wc.getLeft().kind == EXPR_COLUMN {
-                rangeColName = wc.getLeft().columnName;
-            } else if wc.op == OP_AND && wc.getLeft().getLeft().kind == EXPR_COLUMN {
-                rangeColName = wc.getLeft().getLeft().columnName;
+            if wc.getLeft()!.kind == EXPR_COLUMN {
+                rangeColName = wc.getLeft()!.columnName;
+            } else if wc.op == OP_AND && wc.getLeft()!.getLeft()!.kind == EXPR_COLUMN {
+                rangeColName = wc.getLeft()!.getLeft()!.columnName;
             }
             var maybeIdx = exec.indexMgr.findIndexForColumn(stmt.tableName, rangeColName);
             if maybeIdx != null {

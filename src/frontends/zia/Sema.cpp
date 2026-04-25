@@ -201,9 +201,9 @@ Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag) {
 }
 
 TypeRef Sema::functionTypeForDecl(const FunctionDecl &decl) const {
-    TypeRef returnType =
-        decl.isAsync ? types::runtimeClass("Viper.Threads.Future")
-                     : (decl.returnType ? resolveType(decl.returnType.get()) : types::voidType());
+    TypeRef declaredReturn = decl.returnType ? resolveType(decl.returnType.get())
+                                             : types::voidType();
+    TypeRef returnType = decl.isAsync ? types::futureOf(declaredReturn) : declaredReturn;
     std::vector<TypeRef> paramTypes;
     paramTypes.reserve(decl.params.size());
     for (const auto &param : decl.params) {
@@ -1469,18 +1469,26 @@ Symbol *Sema::lookupAccessibleSymbol(const std::string &name,
 /// @param name The variable name to look up.
 /// @return The narrowed or declared type, or nullptr if not found.
 TypeRef Sema::lookupVarType(const std::string &name) {
-    // Check narrowed types first (for flow-sensitive type analysis)
-    for (auto it = narrowedTypes_.rbegin(); it != narrowedTypes_.rend(); ++it) {
-        auto found = it->find(name);
-        if (found != it->end()) {
-            return found->second;
-        }
-    }
+    if (TypeRef narrowed = lookupNarrowedType(name))
+        return narrowed;
 
     // Fall back to declared type
     Symbol *sym = currentScope_->lookup(name);
-    if (sym && (sym->kind == Symbol::Kind::Variable || sym->kind == Symbol::Kind::Parameter)) {
+    if (sym && (sym->kind == Symbol::Kind::Variable || sym->kind == Symbol::Kind::Parameter ||
+                sym->kind == Symbol::Kind::Field)) {
         return sym->type;
+    }
+    return nullptr;
+}
+
+TypeRef Sema::lookupNarrowedType(const std::string &key) const {
+    if (key.empty())
+        return nullptr;
+
+    for (auto it = narrowedTypes_.rbegin(); it != narrowedTypes_.rend(); ++it) {
+        auto found = it->find(key);
+        if (found != it->end())
+            return found->second;
     }
     return nullptr;
 }
@@ -1543,7 +1551,10 @@ void Sema::intersectInitState(const std::unordered_set<std::string> &branchA,
 /// @param[out] varName The variable name being null-checked.
 /// @param[out] isNotNull True if the pattern is != null, false if == null.
 /// @return True if a null-check pattern was recognized.
-bool Sema::tryExtractNullCheck(Expr *cond, std::string &varName, bool &isNotNull) {
+bool Sema::tryExtractNullCheck(Expr *cond,
+                               std::string &varName,
+                               bool &isNotNull,
+                               TypeRef *checkedType) {
     // Pattern: x != null or x == null
     if (cond->kind != ExprKind::Binary)
         return false;
@@ -1554,19 +1565,59 @@ bool Sema::tryExtractNullCheck(Expr *cond, std::string &varName, bool &isNotNull
 
     isNotNull = (binary->op == BinaryOp::Ne);
 
-    // Check for "x != null" pattern
-    if (binary->left->kind == ExprKind::Ident && binary->right->kind == ExprKind::NullLiteral) {
-        varName = static_cast<IdentExpr *>(binary->left.get())->name;
+    auto captureOperand = [&](Expr *operand) {
+        varName = narrowingKeyForExpr(operand);
+        if (varName.empty())
+            return false;
+        if (checkedType) {
+            TypeRef ty = typeOf(operand);
+            *checkedType = declaredOptionalSurfaceType(operand, ty);
+        }
         return true;
+    };
+
+    // Check for "x != null" or "obj.field != null" pattern
+    if (binary->right->kind == ExprKind::NullLiteral) {
+        return captureOperand(binary->left.get());
     }
 
-    // Check for "null != x" pattern
-    if (binary->left->kind == ExprKind::NullLiteral && binary->right->kind == ExprKind::Ident) {
-        varName = static_cast<IdentExpr *>(binary->right.get())->name;
-        return true;
+    // Check for "null != x" or "null != obj.field" pattern
+    if (binary->left->kind == ExprKind::NullLiteral) {
+        return captureOperand(binary->right.get());
     }
 
     return false;
+}
+
+std::string Sema::narrowingKeyForExpr(Expr *expr) const {
+    if (!expr)
+        return {};
+
+    if (auto *ident = dynamic_cast<IdentExpr *>(expr))
+        return ident->name;
+
+    if (dynamic_cast<SelfExpr *>(expr))
+        return "self";
+
+    if (auto *field = dynamic_cast<FieldExpr *>(expr)) {
+        std::string base = narrowingKeyForExpr(field->base.get());
+        if (base.empty())
+            return {};
+        return base + "." + field->field;
+    }
+
+    if (auto *index = dynamic_cast<IndexExpr *>(expr)) {
+        std::string base = narrowingKeyForExpr(index->base.get());
+        if (base.empty())
+            return {};
+        if (auto *intLit = dynamic_cast<IntLiteralExpr *>(index->index.get()))
+            return base + "[" + std::to_string(intLit->value) + "]";
+        if (auto *strLit = dynamic_cast<StringLiteralExpr *>(index->index.get()))
+            return base + "[\"" + strLit->value + "\"]";
+        return {};
+    }
+
+    return {};
 }
 
 //=============================================================================

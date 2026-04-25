@@ -144,8 +144,12 @@ void analyzeReturn(SemanticAnalyzer &analyzer, ReturnStmt &stmt) {
             std::string msg = "RETURN with value not allowed at top level";
             context.diagnostics().emit(
                 il::support::Severity::Error, "B1008", stmt.loc, 6, std::move(msg));
-        } else {
+        } else if (context.mainHasGosub()) {
             stmt.isGosubReturn = true;
+        } else {
+            std::string msg = "RETURN without GOSUB";
+            context.diagnostics().emit(
+                il::support::Severity::Error, "B1008", stmt.loc, 6, std::move(msg));
         }
     }
 

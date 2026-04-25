@@ -170,6 +170,21 @@ LowerResult CollectionLowerer::lowerBoxedCollectionIndex(Value baseValue,
     TypeRef baseType = lowerer_.sema_.typeOf(expr->base.get());
     Value boxed;
     if (baseType && baseType->kind == TypeKindSem::Map) {
+        Value hasKey =
+            lowerer_.emitCallRet(Type(Type::Kind::I1), kMapContainsKey, {baseValue, indexValue});
+        size_t okIdx = lowerer_.createBlock("map_index_ok");
+        size_t failIdx = lowerer_.createBlock("map_index_missing");
+        lowerer_.emitCBr(hasKey, okIdx, failIdx);
+
+        lowerer_.setBlock(failIdx);
+        il::core::Instr trapInstr;
+        trapInstr.op = Opcode::Trap;
+        trapInstr.type = Type(Type::Kind::Void);
+        trapInstr.loc = lowerer_.curLoc_;
+        lowerer_.blockMgr_.currentBlock()->instructions.push_back(std::move(trapInstr));
+        lowerer_.blockMgr_.currentBlock()->terminated = true;
+
+        lowerer_.setBlock(okIdx);
         boxed = lowerer_.emitCallRet(Type(Type::Kind::Ptr), kMapGet, {baseValue, indexValue});
     } else {
         Value i64Index = lowerer_.widenIntegralToI64(indexValue, indexType);

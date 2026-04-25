@@ -90,8 +90,13 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
 
         if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get())) {
             TypeRef baseType = analyzeExpr(fieldExpr->base.get());
-            if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType())
+            if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType()) {
+                error(fieldExpr->loc,
+                      "Cannot assign member '" + fieldExpr->field + "' on Optional type '" +
+                          baseType->toDisplayString() +
+                          "' without null check; use force unwrap before assignment");
                 baseType = baseType->innerType();
+            }
 
             if (isReadOnlyBuiltinProperty(baseType, fieldExpr->field)) {
                 error(expr->loc,
@@ -150,10 +155,11 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
         if (expr->op == BinaryOp::And || expr->op == BinaryOp::Or) {
             std::string nullCheckVar;
             bool isNotNull = false;
+            TypeRef checkedNullType = nullptr;
             bool appliedNarrowing = false;
 
-            if (tryExtractNullCheck(expr->left.get(), nullCheckVar, isNotNull)) {
-                TypeRef varType = lookupVarType(nullCheckVar);
+            if (tryExtractNullCheck(expr->left.get(), nullCheckVar, isNotNull, &checkedNullType)) {
+                TypeRef varType = checkedNullType ? checkedNullType : lookupVarType(nullCheckVar);
                 if (varType && varType->kind == TypeKindSem::Optional && varType->innerType()) {
                     bool rhsSeesNonNull = (expr->op == BinaryOp::And) ? isNotNull : !isNotNull;
                     if (rhsSeesNonNull) {
@@ -326,6 +332,19 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
                         baseType = baseType->innerType();
 
                     if (baseType && (baseType->kind == TypeKindSem::Class ||
+                                     baseType->kind == TypeKindSem::Struct ||
+                                     baseType->kind == TypeKindSem::Module)) {
+                        std::string memberKey = baseType->name + "." + fieldExpr->field;
+                        bool assigningDuringInit =
+                            currentSelfType_ && currentSelfType_->name == baseType->name &&
+                            currentMethod_ && currentMethod_->name == "init";
+                        if (finalFields_.contains(memberKey) && !assigningDuringInit) {
+                            error(expr->loc,
+                                  "Cannot assign to final field '" + fieldExpr->field + "'");
+                        }
+                    }
+
+                    if (baseType && (baseType->kind == TypeKindSem::Class ||
                                      baseType->kind == TypeKindSem::Struct)) {
                         std::string declaringOwner;
                         if (const PropertyDecl *prop = propertyDeclForLowering(
@@ -371,8 +390,17 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
                 if (expr->left->kind == ExprKind::Ident) {
                     auto *lhsIdent = static_cast<IdentExpr *>(expr->left.get());
                     Symbol *sym = currentScope_->lookup(lhsIdent->name);
-                    if (sym && sym->isFinal) {
-                        error(expr->loc, "Cannot reassign final variable '" + lhsIdent->name + "'");
+                    bool assigningFinalFieldDuringInit =
+                        sym && sym->kind == Symbol::Kind::Field && currentSelfType_ &&
+                        currentMethod_ && currentMethod_->name == "init";
+                    if (sym && sym->isFinal && !assigningFinalFieldDuringInit) {
+                        if (sym->kind == Symbol::Kind::Field) {
+                            error(expr->loc,
+                                  "Cannot assign to final field '" + lhsIdent->name + "'");
+                        } else {
+                            error(expr->loc,
+                                  "Cannot reassign final variable '" + lhsIdent->name + "'");
+                        }
                     }
                     if (sym && sym->type)
                         assignTarget = sym->type;

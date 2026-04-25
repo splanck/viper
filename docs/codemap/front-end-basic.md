@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-04-25
 ---
 
 # CODEMAP: BASIC Frontend
@@ -145,6 +145,13 @@ The BASIC frontend (`src/frontends/basic/`) compiles Viper BASIC source to IL.
 | `sem/TypeResolver.hpp`                 | Type resolution                      |
 | `sem/UsingContext.cpp`                 | USING directive implementation       |
 | `sem/UsingContext.hpp`                 | USING directive handling             |
+
+Recent correctness notes:
+
+- `sem/Check_Jumps.cpp` rejects top-level `RETURN` unless the main body contains a `GOSUB`; `RETURN` with a value remains procedure-only.
+- `sem/Check_Loops.cpp` validates `EXIT SUB`/`EXIT FUNCTION` against the active procedure kind, checks numeric `FOR` counters/start/end/step expressions, and checks `FOR EACH` element variables against array element types.
+- `SemanticAnalyzer_Stmts_Control.cpp` semantically analyzes `FINALLY` bodies and requires `USING` initializers to produce object/resource values.
+- `SemanticAnalyzer_Procs.cpp` proves function-name implicit returns per control path instead of accepting a single assignment anywhere in the function.
 
 ## OOP Support
 

@@ -542,6 +542,9 @@ class SemanticAnalyzer {
     /// @brief Check if a specific loop kind exists anywhere in the loop stack.
     bool hasLoopOfKind(LoopKind kind) const noexcept;
 
+    /// @brief Whether the main module body contains a GOSUB target/return protocol.
+    bool mainHasGosub() const noexcept;
+
     /// @brief Shared setup/teardown for analyzing procedures.
     template <typename Proc, typename BodyCallback>
     void analyzeProcedureCommon(const Proc &proc,
@@ -590,6 +593,7 @@ class SemanticAnalyzer {
     ProcedureScope *activeProcScope_{nullptr};
     bool errorHandlerActive_{false};
     std::optional<int> errorHandlerTarget_;
+    bool mainHasGosub_{false};
     const FunctionDecl *activeFunction_{nullptr};
     BasicType activeFunctionExplicitRet_{BasicType::Unknown};
     bool activeFunctionNameAssigned_{

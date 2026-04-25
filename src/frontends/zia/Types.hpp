@@ -747,6 +747,11 @@ TypeRef list(TypeRef element);
 /// since rt_seq and rt_list have incompatible internal structures.
 TypeRef seqOf(TypeRef element);
 
+/// @brief Create a typed Future[T] runtime type.
+/// @param payload The value produced by awaiting the future.
+/// @return A Ptr type carrying the payload type, representing Viper.Threads.Future.
+TypeRef futureOf(TypeRef payload);
+
 /// @brief Create a Set[T] type.
 /// @param element The element type T.
 /// @return A new Set type.
@@ -879,10 +884,10 @@ TypeRef fixedArray(TypeRef elemType, size_t count);
 /// - Class → ptr (pointer to object)
 /// - List/Map/Set → ptr (pointer to collection)
 /// - Optional of reference → ptr (null for none)
-/// - Optional of value → requires flag + value
+/// - Optional of value → ptr (nullable boxed payload)
 ///
 /// @note Reference types (Class, collections) map to Ptr.
-/// @note Optionals of struct types require special handling (flag + value).
+/// @note Optionals of primitive and struct types carry nullable boxed payloads.
 il::core::Type::Kind toILType(const ViperType &type);
 
 /// @brief Get the size in bytes for a type in memory.

@@ -34,6 +34,39 @@
 
 namespace il::frontends::basic::sem {
 
+namespace {
+
+bool isNumericLoopType(SemanticAnalyzer::Type type) noexcept {
+    return semantic_analyzer_detail::isNumericSemanticType(type);
+}
+
+void emitLoopTypeError(ControlCheckContext &context,
+                       il::support::SourceLoc loc,
+                       uint32_t width,
+                       const std::string &what,
+                       SemanticAnalyzer::Type type) {
+    std::string msg = what;
+    msg += " must be numeric, got ";
+    msg += semantic_analyzer_detail::semanticTypeName(type);
+    context.diagnostics().emit(il::support::Severity::Error, "B2001", loc, width, std::move(msg));
+}
+
+std::optional<SemanticAnalyzer::Type> arrayElementType(SemanticAnalyzer::Type arrayType) {
+    using Type = SemanticAnalyzer::Type;
+    switch (arrayType) {
+        case Type::ArrayInt:
+            return Type::Int;
+        case Type::ArrayString:
+            return Type::String;
+        case Type::ArrayObject:
+            return Type::Object;
+        default:
+            return std::nullopt;
+    }
+}
+
+} // namespace
+
 /// @brief Validate a WHILE loop and analyse its body.
 ///
 /// The helper ensures the loop condition is type-checked (if present) and then
@@ -105,6 +138,7 @@ void analyzeFor(SemanticAnalyzer &analyzer, ForStmt &stmt) {
     // BUG-081 fix: Handle expression-based loop variables
     // Extract variable name for tracking, validate the lvalue expression
     std::string varName;
+    SemanticAnalyzer::Type loopVarType = SemanticAnalyzer::Type::Unknown;
     if (stmt.varExpr) {
         if (auto *varExpr = as<VarExpr>(*stmt.varExpr)) {
             // Simple variable: FOR i = 1 TO 10
@@ -112,30 +146,53 @@ void analyzeFor(SemanticAnalyzer &analyzer, ForStmt &stmt) {
             context.resolveLoopVariable(varName);
             // Update the VarExpr with the scoped name (e.g., "I" -> "I_2")
             varExpr->name = varName;
-        } else if (auto *memberAccess = as<MemberAccessExpr>(*stmt.varExpr)) {
+            if (auto ty = context.varType(varName))
+                loopVarType = *ty;
+        } else if (as<MemberAccessExpr>(*stmt.varExpr)) {
             // Member access: FOR obj.field = 1 TO 10
             // Validate the base expression exists
-            context.evaluateExpr(*stmt.varExpr);
+            loopVarType = context.evaluateExpr(*stmt.varExpr);
             // For tracking purposes, use a placeholder name (NEXT matching with complex
             // expressions is optional)
             varName = "<complex>";
-        } else if (auto *arrayExpr = as<ArrayExpr>(*stmt.varExpr)) {
+        } else if (as<ArrayExpr>(*stmt.varExpr)) {
             // Array element: FOR arr(i) = 1 TO 10
-            context.evaluateExpr(*stmt.varExpr);
+            loopVarType = context.evaluateExpr(*stmt.varExpr);
             varName = "<complex>";
         } else {
-            // Other expression - validate it
+            // Other expressions are not assignable loop counters.
             context.evaluateExpr(*stmt.varExpr);
             varName = "<complex>";
+            context.diagnostics().emit(il::support::Severity::Error,
+                                       "B2001",
+                                       stmt.varExpr->loc,
+                                       1,
+                                       "FOR loop variable must be assignable");
         }
     }
 
-    if (stmt.start)
-        context.evaluateExpr(*stmt.start);
-    if (stmt.end)
-        context.evaluateExpr(*stmt.end);
-    if (stmt.step)
-        context.evaluateExpr(*stmt.step);
+    if (loopVarType != SemanticAnalyzer::Type::Unknown && !isNumericLoopType(loopVarType))
+        emitLoopTypeError(context,
+                          stmt.varExpr ? stmt.varExpr->loc : stmt.loc,
+                          1,
+                          "FOR variable",
+                          loopVarType);
+
+    if (stmt.start) {
+        auto type = context.evaluateExpr(*stmt.start);
+        if (type != SemanticAnalyzer::Type::Unknown && !isNumericLoopType(type))
+            emitLoopTypeError(context, stmt.start->loc, 1, "FOR start expression", type);
+    }
+    if (stmt.end) {
+        auto type = context.evaluateExpr(*stmt.end);
+        if (type != SemanticAnalyzer::Type::Unknown && !isNumericLoopType(type))
+            emitLoopTypeError(context, stmt.end->loc, 1, "FOR end expression", type);
+    }
+    if (stmt.step) {
+        auto type = context.evaluateExpr(*stmt.step);
+        if (type != SemanticAnalyzer::Type::Unknown && !isNumericLoopType(type))
+            emitLoopTypeError(context, stmt.step->loc, 1, "FOR STEP expression", type);
+    }
 
     [[maybe_unused]] auto forGuard = context.trackForVariable(varName);
     [[maybe_unused]] auto loopGuard = context.forLoopGuard();
@@ -157,6 +214,10 @@ void analyzeFor(SemanticAnalyzer &analyzer, ForStmt &stmt) {
 void analyzeForEach(SemanticAnalyzer &analyzer, ForEachStmt &stmt) {
     ControlCheckContext context(analyzer);
 
+    std::string arrayName = stmt.arrayName;
+    context.resolveSymbolRef(arrayName);
+    stmt.arrayName = arrayName;
+
     // Verify the array exists
     if (!context.analyzer().lookupArrayMetadata(stmt.arrayName)) {
         context.diagnostics().emit(il::support::Severity::Error,
@@ -167,10 +228,37 @@ void analyzeForEach(SemanticAnalyzer &analyzer, ForEachStmt &stmt) {
         return;
     }
 
+    SemanticAnalyzer::Type arrayType =
+        context.varType(stmt.arrayName).value_or(SemanticAnalyzer::Type::Unknown);
+    auto elemType = arrayElementType(arrayType);
+    if (!elemType) {
+        std::string msg = "FOR EACH source must be an array";
+        if (arrayType != SemanticAnalyzer::Type::Unknown) {
+            msg += ", got ";
+            msg += semantic_analyzer_detail::semanticTypeName(arrayType);
+        }
+        context.diagnostics().emit(
+            il::support::Severity::Error, "B2001", stmt.loc, 1, std::move(msg));
+    }
+
     // Resolve the element variable - this will create it if it doesn't exist
     std::string elemVar = stmt.elementVar;
     context.resolveLoopVariable(elemVar);
     stmt.elementVar = elemVar; // Update with scoped name if changed
+
+    if (elemType) {
+        auto currentElemType = context.varType(stmt.elementVar);
+        if (!currentElemType || *currentElemType == SemanticAnalyzer::Type::Unknown) {
+            context.setVarType(stmt.elementVar, *elemType);
+        } else if (*currentElemType != *elemType) {
+            std::string msg = "FOR EACH element variable type ";
+            msg += semantic_analyzer_detail::semanticTypeName(*currentElemType);
+            msg += " does not match array element type ";
+            msg += semantic_analyzer_detail::semanticTypeName(*elemType);
+            context.diagnostics().emit(
+                il::support::Severity::Error, "B2001", stmt.loc, 1, std::move(msg));
+        }
+    }
 
     // Track as a FOR loop for EXIT FOR support
     [[maybe_unused]] auto forGuard = context.trackForVariable(stmt.elementVar);
@@ -226,11 +314,28 @@ void analyzeNext(SemanticAnalyzer &analyzer, const NextStmt &stmt) {
 /// @param stmt AST node representing the EXIT statement.
 void analyzeExit(SemanticAnalyzer &analyzer, const ExitStmt &stmt) {
     ControlCheckContext context(analyzer);
-    // Permit EXIT SUB/FUNCTION anywhere within a procedure body. These exits
-    // are not tied to loop constructs and should not be validated against the
-    // loop stack. Lowering already routes them to the procedure's exit block.
-    if (stmt.kind == ExitStmt::LoopKind::Sub || stmt.kind == ExitStmt::LoopKind::Function)
+    if (stmt.kind == ExitStmt::LoopKind::Sub || stmt.kind == ExitStmt::LoopKind::Function) {
+        const bool wantsFunction = stmt.kind == ExitStmt::LoopKind::Function;
+        const char *targetName = wantsFunction ? "FUNCTION" : "SUB";
+        if (!context.hasActiveProcScope()) {
+            std::string msg = "EXIT ";
+            msg += targetName;
+            msg += " used outside of a procedure";
+            context.diagnostics().emit(
+                il::support::Severity::Error, "B1011", stmt.loc, 4, std::move(msg));
+            return;
+        }
+
+        if (wantsFunction != context.isActiveFunction()) {
+            std::string msg = "EXIT ";
+            msg += targetName;
+            msg += wantsFunction ? " used outside of a FUNCTION" : " used inside a FUNCTION";
+            context.diagnostics().emit(
+                il::support::Severity::Error, "B1011", stmt.loc, 4, std::move(msg));
+            return;
+        }
         return;
+    }
 
     const auto targetLoop = context.toLoopKind(stmt.kind);
     const char *targetName = context.loopKindName(targetLoop);

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-04-25
 ---
 
 # CODEMAP: Zia Frontend
@@ -10,7 +10,7 @@ The Zia frontend (`src/frontends/zia/`) compiles Zia source to IL.
 
 Zia is Viper's native language with classes, structs, generics, lambdas, and imports.
 
-Last updated: 2026-02-17
+Last updated: 2026-04-25
 
 ## Overview
 
@@ -75,6 +75,14 @@ Last updated: 2026-02-17
 | `Sema_Stmt.cpp`          | Statement analysis                                                |
 | `Sema_TypeResolution.cpp`| Type resolution and closure capture collection                    |
 
+Recent correctness notes:
+
+- `Sema_Stmt.cpp` analyzes unreachable statements after reporting the first unreachable warning, so later semantic errors are still surfaced.
+- `Sema_Stmt.cpp` requires guard `else` blocks to exit on every path and validates tuple `for a, b in ...` bindings against iterable pairs or 2-element tuples.
+- `Sema_Expr_Advanced.cpp` rejects direct member access on `Optional[T]` unless flow narrowing, force unwrap, or `?.` is used. Null-check narrowing now supports dotted field paths such as `self.child`.
+- `Sema_Expr_Call.cpp` enforces arity and element/key/value typing for List, Set, Map, and built-in String methods. `Map.keys()` and `Map.values()` return typed `Seq` values.
+- Async functions are typed as `Viper.Threads.Future[T]`, allowing `await` to recover payload type through future variables.
+
 ## Import Resolution
 
 | File                 | Purpose                           |
@@ -117,6 +125,12 @@ Last updated: 2026-02-17
 | `Lowerer_Stmt_EH.cpp`        | Exception handling statement lowering                            |
 | `Lowerer_Stmt.cpp`            | Statement lowering                                               |
 | `LowererSymbolTable.hpp`     | Symbol table for the lowerer                                     |
+
+Recent correctness notes:
+
+- Primitive and struct `Optional[T]` payloads use nullable boxed pointers; optional lowering performs uniform null checks instead of a separate flag/value representation.
+- Map index lowering emits a `Map.Has` guard and traps on missing keys before unboxing a `Map.Get` result.
+- `Set.remove()` lowers to the runtime Boolean result, matching semantic return typing.
 
 ## Warnings
 

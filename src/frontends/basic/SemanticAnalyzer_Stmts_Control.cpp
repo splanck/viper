@@ -132,13 +132,13 @@ void SemanticAnalyzer::visit(const TryCatchStmt &stmt) {
         if (st)
             visitStmt(*st);
 
-    // Warn on no-op TRY/CATCH if both bodies are empty (policy: allow with warning).
-    if (stmt.tryBody.empty() && stmt.catchBody.empty()) {
+    // Warn on a completely empty TRY statement (policy: allow with warning).
+    if (stmt.tryBody.empty() && stmt.catchBody.empty() && stmt.finallyBody.empty()) {
         de.emit(il::support::Severity::Warning,
                 "B3203",
                 stmt.header.begin,
                 1,
-                std::string{"empty TRY and CATCH bodies"});
+                std::string{"empty TRY, CATCH, and FINALLY bodies"});
     }
 
     // Begin a new scope for the CATCH body; the optional catch variable is local to it.
@@ -177,6 +177,12 @@ void SemanticAnalyzer::visit(const TryCatchStmt &stmt) {
 
     // Analyze CATCH body within the new scope.
     for (const auto &st : stmt.catchBody)
+        if (st)
+            visitStmt(*st);
+
+    // Analyze FINALLY body under the surrounding scope. It runs regardless of
+    // whether the TRY or CATCH path completed normally.
+    for (const auto &st : stmt.finallyBody)
         if (st)
             visitStmt(*st);
 }
@@ -227,9 +233,19 @@ void SemanticAnalyzer::visit(const UsingStmt &stmt) {
         }
     }
 
-    // Analyze the initializer expression if present.
-    if (stmt.initExpr)
-        visitExpr(*stmt.initExpr);
+    // Analyze the initializer expression if present. USING manages disposable
+    // resources, so scalar initializers are rejected instead of lowered as
+    // object cleanup.
+    if (stmt.initExpr) {
+        Type initType = visitExpr(*stmt.initExpr);
+        if (initType != Type::Unknown && initType != Type::Object) {
+            de.emit(il::support::Severity::Error,
+                    "B3204",
+                    stmt.initExpr->loc,
+                    1,
+                    std::string{"USING initializer must produce an object/resource"});
+        }
+    }
 
     // Analyze the USING body within the new scope.
     for (const auto &st : stmt.body)

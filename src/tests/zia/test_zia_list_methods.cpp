@@ -40,6 +40,14 @@ bool moduleHasCall(const il::core::Module &module, const std::string &callee) {
     return false;
 }
 
+bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle) {
+    for (const auto &d : diag.diagnostics()) {
+        if (d.message.find(needle) != std::string::npos)
+            return true;
+    }
+    return false;
+}
+
 /// @brief Test that List.remove() compiles successfully.
 TEST(ZiaListMethods, RemoveMethod) {
     const std::string src = R"(
@@ -227,6 +235,28 @@ func start() {    var items: List[Integer] = new List[Integer]();
     EXPECT_TRUE(moduleHasCall(result.module, "Viper.Collections.List.Has"));
     EXPECT_TRUE(moduleHasCall(result.module, "Viper.Collections.List.SortDesc"));
     EXPECT_TRUE(moduleHasCall(result.module, "Viper.Collections.List.Shuffle"));
+}
+
+TEST(ZiaListMethods, ZeroArgListAndStringMethodsRejectExtraArguments) {
+    const std::string src = R"(
+module Test;
+
+func start() {    var items: List[Integer] = new List[Integer]();
+    items.sortDesc(1);
+    items.shuffle(1);
+    var n = "hello".length(1);
+}
+)";
+
+    SourceManager sm;
+    CompilerInput input{.source = src, .path = "list_string_bad_arity.zia"};
+    CompilerOptions opts{};
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "sortDesc() expects 0 arguments"));
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "shuffle() expects 0 arguments"));
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "length() expects 0 arguments"));
 }
 
 /// @brief Test that accessing class field through List.get() compiles.

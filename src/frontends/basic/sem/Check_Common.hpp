@@ -247,6 +247,17 @@ class ControlCheckContext {
         return analyzer_->activeProcScope_ != nullptr;
     }
 
+    /// @brief Check whether the active procedure scope is a FUNCTION body.
+    /// @return True if semantic analysis is currently inside a FUNCTION.
+    [[nodiscard]] bool isActiveFunction() const noexcept {
+        return analyzer_->activeFunction_ != nullptr;
+    }
+
+    /// @brief Check whether the main module contains at least one GOSUB.
+    [[nodiscard]] bool mainHasGosub() const noexcept {
+        return analyzer_->mainHasGosub();
+    }
+
     /// @brief Check whether a loop of the specified kind exists on the loop stack.
     /// @param kind The loop kind to search for (For, While, Do, Sub, Function).
     /// @return True if the loop stack contains an entry matching kind.
@@ -264,6 +275,29 @@ class ControlCheckContext {
     /// @param name The variable name to resolve (may be case-folded in place).
     void resolveLoopVariable(std::string &name) {
         analyzer_->resolveAndTrackSymbol(name, SemanticAnalyzer::SymbolKind::Definition);
+    }
+
+    /// @brief Resolve a symbol name as a read/reference.
+    /// @param name The variable name to resolve (may be scope-mapped in place).
+    void resolveSymbolRef(std::string &name) {
+        analyzer_->resolveAndTrackSymbol(name, SemanticAnalyzer::SymbolKind::Reference);
+    }
+
+    /// @brief Look up the tracked semantic type of a variable.
+    [[nodiscard]] std::optional<SemanticAnalyzer::Type> varType(const std::string &name) const {
+        return analyzer_->lookupVarType(name);
+    }
+
+    /// @brief Set or refine a variable type while preserving procedure-scope rollback.
+    void setVarType(const std::string &name, SemanticAnalyzer::Type type) {
+        auto itType = analyzer_->varTypes_.find(name);
+        if (analyzer_->activeProcScope_) {
+            std::optional<SemanticAnalyzer::Type> previous;
+            if (itType != analyzer_->varTypes_.end())
+                previous = itType->second;
+            analyzer_->activeProcScope_->noteVarTypeMutation(name, previous);
+        }
+        analyzer_->varTypes_[name] = type;
     }
 
     /// @brief Evaluate an expression and return its inferred type.

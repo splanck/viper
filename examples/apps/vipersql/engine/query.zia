@@ -926,12 +926,12 @@ class QueryHandler {
             // Compare optimizer costs: index seek vs table scan
             var scanPath = exec.optimizer.createTableScan(stmt.tableName);
             var selectivityPct = exec.optimizer.estimateSelectivityPct(true);
-            var wc = stmt.whereClause;
+            var wc = stmt.whereClause!;
             var idxColName = "";
-            if wc.getLeft().kind == EXPR_COLUMN {
-                idxColName = wc.getLeft().columnName;
-            } else if wc.getRight().kind == EXPR_COLUMN {
-                idxColName = wc.getRight().columnName;
+            if wc.getLeft()!.kind == EXPR_COLUMN {
+                idxColName = wc.getLeft()!.columnName;
+            } else if wc.getRight()!.kind == EXPR_COLUMN {
+                idxColName = wc.getRight()!.columnName;
             }
             var idxName = "";
             var maybeIdx = exec.indexMgr.findIndexForColumn(stmt.tableName, idxColName);
@@ -943,7 +943,7 @@ class QueryHandler {
 
             // Use index if it has lower cost
             if seekPath.estimatedCost < scanPath.estimatedCost {
-                matchingRows = exec.indexLookup(wc!, stmt.tableName, t!);
+                matchingRows = exec.indexLookup(wc, stmt.tableName, t!);
                 usedIndex = true;
                 accessPathUsed = "INDEX_SEEK";
                 exec.recordIdxScan(stmt.tableName, matchingRows.count());
@@ -970,14 +970,14 @@ class QueryHandler {
 
         // Try range index if equality index was not used
         if usedIndex == false && stmt.whereClause != null && exec.canUseIndexRange(stmt.whereClause, stmt.tableName) {
-            var wc = stmt.whereClause;
+            var wc = stmt.whereClause!;
             var scanPath = exec.optimizer.createTableScan(stmt.tableName);
             var rangeSel = RANGE_SELECTIVITY;
             var rangeColName = "";
-            if wc.getLeft().kind == EXPR_COLUMN {
-                rangeColName = wc.getLeft().columnName;
-            } else if wc.op == OP_AND && wc.getLeft().getLeft().kind == EXPR_COLUMN {
-                rangeColName = wc.getLeft().getLeft().columnName;
+            if wc.getLeft()!.kind == EXPR_COLUMN {
+                rangeColName = wc.getLeft()!.columnName;
+            } else if wc.op == OP_AND && wc.getLeft()!.getLeft()!.kind == EXPR_COLUMN {
+                rangeColName = wc.getLeft()!.getLeft()!.columnName;
             }
             var rangeIdxName = "";
             var maybeRangeIdx = exec.indexMgr.findIndexForColumn(stmt.tableName, rangeColName);
@@ -989,7 +989,7 @@ class QueryHandler {
 
             // Use range index scan if cost-effective
             if rangePath.estimatedCost < scanPath.estimatedCost {
-                matchingRows = exec.indexRangeLookup(wc!, stmt.tableName, t!);
+                matchingRows = exec.indexRangeLookup(wc, stmt.tableName, t!);
                 usedIndex = true;
                 accessPathUsed = "INDEX_RANGE_SCAN";
                 exec.recordIdxScan(stmt.tableName, matchingRows.count());
@@ -2332,7 +2332,7 @@ class QueryHandler {
         if cteColNames.count() > 0 {
             var ri = 0;
             while ri < cteColNames.count() && ri < workingTable.columnCount() {
-                workingTable.getColumn(ri).name = cteColNames.get(ri);
+                workingTable.getColumn(ri)!.name = cteColNames.get(ri);
                 ri = ri + 1;
             }
         }
@@ -2390,7 +2390,7 @@ class QueryHandler {
                     if cteColNames.count() > 0 {
                         var ri = 0;
                         while ri < cteColNames.count() && ri < newWorking.columnCount() {
-                            newWorking.getColumn(ri).name = cteColNames.get(ri);
+                            newWorking.getColumn(ri)!.name = cteColNames.get(ri);
                             ri = ri + 1;
                         }
                     }
@@ -2406,7 +2406,7 @@ class QueryHandler {
         if cteColNames.count() > 0 {
             var ri = 0;
             while ri < cteColNames.count() && ri < finalTable.columnCount() {
-                finalTable.getColumn(ri).name = cteColNames.get(ri);
+                finalTable.getColumn(ri)!.name = cteColNames.get(ri);
                 ri = ri + 1;
             }
         }
@@ -2540,7 +2540,7 @@ class QueryHandler {
                 if cteColNames.count() > 0 {
                     var ri = 0;
                     while ri < cteColNames.count() && ri < tempTable.columnCount() {
-                        tempTable.getColumn(ri).name = cteColNames.get(ri);
+                        tempTable.getColumn(ri)!.name = cteColNames.get(ri);
                         ri = ri + 1;
                     }
                 }

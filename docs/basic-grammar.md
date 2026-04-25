@@ -191,8 +191,20 @@ END TRY
 ```
 
 - `CATCH` without a variable is valid; use `ERR()` inside the block to retrieve the code.
-- `FINALLY` is supported: the finally block always executes after try/catch regardless of whether an exception occurred. At least one of CATCH or FINALLY must be present.
+- `FINALLY` is supported: the finally block always executes after try/catch regardless of whether an exception occurred. The semantic analyzer visits FINALLY statements, so unresolved names and type errors there are reported. At least one of CATCH or FINALLY must be present.
 - TRY/CATCH composes with `ON ERROR GOTO`: a TRY installs a handler on top of any active `ON ERROR` handler and pops it at `END TRY`.
+
+### USING ... END USING
+
+`USING` resource blocks require an object/resource initializer:
+
+```basic
+USING r AS Resource = NEW Resource()
+  ' body
+END USING
+```
+
+Scalar initializers such as `USING r AS Resource = 42` are rejected during semantic analysis.
 
 ## Interfaces and conformance
 

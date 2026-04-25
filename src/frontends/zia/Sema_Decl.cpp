@@ -519,6 +519,8 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
                 fieldTypes_[fieldKey] = fieldType;
                 if (field->isStatic)
                     staticFields_.insert(fieldKey);
+                if (field->isFinal)
+                    finalFields_.insert(fieldKey);
                 memberVisibility_[fieldKey] = field->visibility;
             } else if (member->kind == DeclKind::Property) {
                 auto *prop = static_cast<PropertyDecl *>(member.get());
@@ -658,6 +660,8 @@ void Sema::analyzeClassDecl(ClassDecl &decl) {
                 defineSymbol(fieldName, sym);
                 std::string childKey = decl.name + "." + fieldName;
                 fieldTypes_[childKey] = fieldType;
+                if (finalFields_.contains(decl.baseClass + "." + fieldName))
+                    finalFields_.insert(childKey);
                 auto visIt = memberVisibility_.find(decl.baseClass + "." + fieldName);
                 if (visIt != memberVisibility_.end())
                     memberVisibility_[childKey] = visIt->second;
@@ -883,6 +887,8 @@ void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType) {
             fieldTypes_[fieldKey] = fieldType;
             memberVisibility_[fieldKey] = decl.visibility;
         }
+        if (decl.isFinal)
+            finalFields_.insert(fieldKey);
     }
 
     Symbol sym;
@@ -1028,6 +1034,8 @@ void Sema::analyzeDestructorDecl(DestructorDecl &decl, TypeRef ownerType) {
 /// @param decl The method declaration to analyze.
 /// @param ownerType The type that owns this method, used as the type of 'self'.
 void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType) {
+    MethodDecl *savedMethod = currentMethod_;
+    currentMethod_ = &decl;
     currentSelfType_ = ownerType;
     TypeRef methodType =
         methodDeclTypes_.count(&decl) ? methodDeclTypes_[&decl] : methodTypeForDecl(decl);
@@ -1092,6 +1100,7 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType) {
     popScope(decl.body ? scopeEndForStmt(decl.body.get()) : decl.loc);
 
     expectedReturnType_ = nullptr;
+    currentMethod_ = savedMethod;
 }
 
 

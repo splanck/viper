@@ -513,6 +513,12 @@ TypeRef seqOf(TypeRef element) {
                                        std::vector<TypeRef>{std::move(element)});
 }
 
+TypeRef futureOf(TypeRef payload) {
+    return std::make_shared<ViperType>(TypeKindSem::Ptr,
+                                       std::string("Viper.Threads.Future"),
+                                       std::vector<TypeRef>{std::move(payload)});
+}
+
 TypeRef set(TypeRef element) {
     return std::make_shared<ViperType>(TypeKindSem::Set, std::vector<TypeRef>{element});
 }
@@ -612,7 +618,7 @@ il::core::Type::Kind toILType(const ViperType &type) {
 
         // Optional reference types (String?, Entity?) use the inner type directly
         // at the IL level since they are already nullable pointers (null = none).
-        // Optional struct types (Integer?) need a flag+value wrapper → Ptr.
+        // Primitive and struct payloads are boxed so Optional[T] still lowers to Ptr.
         case TypeKindSem::Optional: {
             if (!type.typeArgs.empty()) {
                 auto innerKind = toILType(*type.typeArgs[0]);

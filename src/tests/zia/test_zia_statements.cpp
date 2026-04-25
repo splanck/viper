@@ -20,6 +20,14 @@ using namespace il::support;
 
 namespace {
 
+bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle) {
+    for (const auto &d : diag.diagnostics()) {
+        if (d.message.find(needle) != std::string::npos)
+            return true;
+    }
+    return false;
+}
+
 //===----------------------------------------------------------------------===//
 // Variable Declarations
 //===----------------------------------------------------------------------===//
@@ -385,6 +393,70 @@ func start() {    var values = [1, 2, 0, 4, 0, 6];
     auto result = compile(input, opts, sm);
 
     EXPECT_TRUE(result.succeeded());
+}
+
+TEST(ZiaStatements, GuardElseBlockMustAlwaysExit) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var ok = false;
+    guard ok else {
+        if ok {
+            return;
+        }
+    }
+}
+)";
+    CompilerInput input{.source = source, .path = "guard_must_exit.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "Guard else block must exit"));
+}
+
+TEST(ZiaStatements, UnreachableCodeIsStillAnalyzed) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    return;
+    var y: Integer = missing + 1;
+}
+)";
+    CompilerInput input{.source = source, .path = "unreachable_analyzed.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "undefined") ||
+                hasDiagContaining(result.diagnostics, "Undefined"));
+}
+
+TEST(ZiaStatements, TupleForInBindingRequiresPairTuple) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var triple = (1, 2, 3);
+    for a, b in triple {
+        Viper.Terminal.SayInt(a);
+    }
+}
+)";
+    CompilerInput input{.source = source, .path = "tuple_forin_arity.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagContaining(result.diagnostics, "2-element Tuple"));
 }
 
 //===----------------------------------------------------------------------===//

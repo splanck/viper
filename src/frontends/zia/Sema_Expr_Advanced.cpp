@@ -184,15 +184,17 @@ TypeRef Sema::analyzeField(FieldExpr *expr) {
 
     TypeRef baseType = analyzeExpr(expr->base.get());
 
-    // Unwrap Optional types for field/method access with null-safety warning.
-    // Without flow-sensitive null analysis, we cannot verify a null check
-    // precedes this access, so emit a warning for potential null dereference.
+    if (TypeRef narrowed = lookupNarrowedType(narrowingKeyForExpr(expr))) {
+        return narrowed;
+    }
+
+    // Optional member access must use flow narrowing, force unwrap, or `?.`.
     if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType()) {
-        warn(WarningCode::W016_OptionalWithoutCheck,
-             expr->loc,
-             "Accessing member '" + expr->field + "' on Optional type '" +
-                 baseType->toDisplayString() + "' without null check");
-        baseType = baseType->innerType();
+        error(expr->loc,
+              "Cannot access member '" + expr->field + "' on Optional type '" +
+                  baseType->toDisplayString() +
+                  "' without null check; use optional chaining or force unwrap");
+        return types::unknown();
     }
 
     // Handle module-qualified access (e.g., colors.initColors or Canvas.New)
