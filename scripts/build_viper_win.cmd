@@ -18,6 +18,7 @@ echo Using %JOBS% parallel jobs
 if "%VIPER_BUILD_DIR%"=="" set "VIPER_BUILD_DIR=build"
 if "%VIPER_BUILD_TYPE%"=="" set "VIPER_BUILD_TYPE=Debug"
 if "%VIPER_SKIP_INSTALL%"=="" set "VIPER_SKIP_INSTALL=0"
+if "%VIPER_SKIP_TESTS%"=="" set "VIPER_SKIP_TESTS=0"
 if "%VIPER_SKIP_LINT%"=="" set "VIPER_SKIP_LINT=0"
 if "%VIPER_SKIP_AUDIT%"=="" set "VIPER_SKIP_AUDIT=0"
 if "%VIPER_LINT_CHANGED_ONLY%"=="" set "VIPER_LINT_CHANGED_ONLY=1"
@@ -29,6 +30,13 @@ if not "%VIPER_CMAKE_GENERATOR%"=="" (
 )
 if not "%VIPER_EXTRA_CMAKE_ARGS%"=="" (
     set "CONFIG_ARGS=%CONFIG_ARGS% %VIPER_EXTRA_CMAKE_ARGS%"
+)
+if "%VIPER_WARN_AS_ERROR%"=="" (
+    if /I "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
+        set "CONFIG_ARGS=%CONFIG_ARGS% -DIL_WARN_AS_ERROR=OFF"
+    )
+) else (
+    set "CONFIG_ARGS=%CONFIG_ARGS% -DIL_WARN_AS_ERROR=%VIPER_WARN_AS_ERROR%"
 )
 
 REM --- Compiler selection -----------------------------------------------------
@@ -79,6 +87,11 @@ REM --- Clear test cache -------------------------------------------------------
 if exist "%VIPER_BUILD_DIR%\Testing" rmdir /s /q "%VIPER_BUILD_DIR%\Testing"
 
 REM --- Run tests --------------------------------------------------------------
+if "%VIPER_SKIP_TESTS%"=="1" (
+    echo Skipping tests ^(VIPER_SKIP_TESTS=1^)
+    goto :after_tests
+)
+
 echo Running tests...
 ctest --test-dir "%VIPER_BUILD_DIR%" -C %VIPER_BUILD_TYPE% --output-on-failure -j %JOBS%
 if errorlevel 1 (
@@ -89,6 +102,8 @@ if errorlevel 1 (
     echo.
     echo All tests passed.
 )
+
+:after_tests
 
 if "%VIPER_SKIP_LINT%"=="0" (
     where bash >nul 2>&1
@@ -149,3 +164,4 @@ echo Build complete
 echo ==========================================
 
 if %TESTS_FAILED% neq 0 exit /b 1
+exit /b 0

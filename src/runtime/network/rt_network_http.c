@@ -34,6 +34,8 @@
 #include <time.h>
 
 #ifdef _WIN32
+#define strcasecmp _stricmp
+#define strncasecmp _strnicmp
 typedef CRITICAL_SECTION http_pool_mutex_t;
 #define HTTP_POOL_MUTEX_INIT(m) InitializeCriticalSection(m)
 #define HTTP_POOL_MUTEX_LOCK(m) EnterCriticalSection(m)

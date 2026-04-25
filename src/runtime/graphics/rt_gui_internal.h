@@ -44,6 +44,7 @@
 #include <float.h>
 #include <limits.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -187,10 +188,16 @@ static inline vg_widget_t *rt_gui_widget_parent_from_handle(void *handle) {
 #define RT_GUI_MAX_LAYOUT_VALUE 1000000.0
 #define RT_GUI_STRING_DATA_MAGIC UINT64_C(0x5254475544535452)
 
+#ifdef _MSC_VER
+#define RT_GUI_FLEX_ARRAY_SIZE 1
+#else
+#define RT_GUI_FLEX_ARRAY_SIZE
+#endif
+
 typedef struct {
     uint64_t magic;
     size_t len;
-    char bytes[];
+    char bytes[RT_GUI_FLEX_ARRAY_SIZE];
 } rt_gui_string_data_t;
 
 static inline int rt_gui_double_is_finite(double value) {
@@ -236,13 +243,14 @@ static inline rt_gui_string_data_t *rt_gui_string_data_new(rt_string value) {
     if (len64 < 0)
         return NULL;
     size_t len = (size_t)len64;
-    if (len > SIZE_MAX - sizeof(rt_gui_string_data_t) - 1)
+    const size_t header_size = offsetof(rt_gui_string_data_t, bytes);
+    if (len > SIZE_MAX - header_size - 1)
         return NULL;
     const char *bytes = len ? rt_string_cstr(value) : "";
     if (len && !bytes)
         return NULL;
     rt_gui_string_data_t *data =
-        (rt_gui_string_data_t *)malloc(sizeof(rt_gui_string_data_t) + len + 1);
+        (rt_gui_string_data_t *)malloc(header_size + len + 1);
     if (!data)
         return NULL;
     data->magic = RT_GUI_STRING_DATA_MAGIC;

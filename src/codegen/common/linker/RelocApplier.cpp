@@ -362,6 +362,74 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     }
                 }
 
+                if (obj.format == ObjFileFormat::COFF && arch == LinkArch::AArch64) {
+                    if (rel.type == coff_a64::kSecRel) {
+                        size_t symSecIdx = 0;
+                        if (!findSectionByAddr(layout, S, symSecIdx)) {
+                            err << "error: " << obj.name << ": SECREL target '" << symName
+                                << "' has no output section\n";
+                            return false;
+                        }
+                        const uint32_t val = static_cast<uint32_t>(
+                            static_cast<int64_t>(S) -
+                            static_cast<int64_t>(layout.sections[symSecIdx].virtualAddr) + A);
+                        writeLE32(patch, val);
+                        continue;
+                    }
+                    if (rel.type == coff_a64::kSection) {
+                        size_t symSecIdx = 0;
+                        if (!findSectionByAddr(layout, S, symSecIdx)) {
+                            err << "error: " << obj.name << ": SECTION target '" << symName
+                                << "' has no output section\n";
+                            return false;
+                        }
+                        if (patchOff + 2 > outSec.data.size()) {
+                            err << "error: section relocation at offset " << patchOff
+                                << " out of bounds in '" << outSec.name << "'\n";
+                            return false;
+                        }
+                        writeLE16(patch, static_cast<uint16_t>(symSecIdx + 1));
+                        continue;
+                    }
+                    if (rel.type == coff_a64::kAddr32Nb) {
+                        const uint64_t imageBase = 0x140000000ULL;
+                        const uint32_t val = static_cast<uint32_t>(static_cast<int64_t>(S) + A -
+                                                                   static_cast<int64_t>(imageBase));
+                        writeLE32(patch, val);
+                        continue;
+                    }
+                    if (rel.type == coff_a64::kSecRelLow12A ||
+                        rel.type == coff_a64::kSecRelHigh12A ||
+                        rel.type == coff_a64::kSecRelLow12L) {
+                        size_t symSecIdx = 0;
+                        if (!findSectionByAddr(layout, S, symSecIdx)) {
+                            err << "error: " << obj.name << ": SECREL target '" << symName
+                                << "' has no output section\n";
+                            return false;
+                        }
+                        uint32_t value = static_cast<uint32_t>(
+                            static_cast<int64_t>(S) -
+                            static_cast<int64_t>(layout.sections[symSecIdx].virtualAddr) + A);
+                        if (rel.type == coff_a64::kSecRelHigh12A)
+                            value >>= 12;
+                        else
+                            value &= 0xFFF;
+
+                        uint32_t insn = readLE32(patch);
+                        if (rel.type == coff_a64::kSecRelLow12L) {
+                            uint32_t shift = insn >> 30;
+                            if ((insn & 0x04800000) == 0x04800000)
+                                shift = 4;
+                            if (!checkPageOffsetAlignment(value, shift, obj, symName, err))
+                                return false;
+                            value >>= shift;
+                        }
+                        insn = (insn & 0xFFC003FF) | ((value & 0xFFF) << 10);
+                        writeLE32(patch, insn);
+                        continue;
+                    }
+                }
+
                 const RelocAction action = classifyReloc(obj.format, arch, rel.type);
 
                 switch (action) {

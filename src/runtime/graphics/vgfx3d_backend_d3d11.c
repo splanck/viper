@@ -226,12 +226,14 @@ static const char *d3d11_shader_source =
     "};\n"
     "\n"
     "float readPackedScalar8(float4 packed[8], int idx) {\n"
+    "    idx = clamp(idx, 0, 31);\n"
     "    int vecIdx = idx >> 2;\n"
     "    int lane = idx & 3;\n"
     "    float4 v = packed[vecIdx];\n"
     "    return lane == 0 ? v.x : (lane == 1 ? v.y : (lane == 2 ? v.z : v.w));\n"
     "}\n"
     "float readPackedScalar2(float4 packed[2], int idx) {\n"
+    "    idx = clamp(idx, 0, 7);\n"
     "    int vecIdx = idx >> 2;\n"
     "    int lane = idx & 3;\n"
     "    float4 v = packed[vecIdx];\n"
@@ -244,13 +246,23 @@ static const char *d3d11_shader_source =
     "float customParamAt(int idx) {\n"
     "    return readPackedScalar2(customParamsPacked, idx);\n"
     "}\n"
+    "int readInt4Lane(int4 v, int lane) {\n"
+    "    lane = clamp(lane, 0, 3);\n"
+    "    return lane == 0 ? v.x : (lane == 1 ? v.y : (lane == 2 ? v.z : v.w));\n"
+    "}\n"
+    "int textureSlotIndex(int slot) {\n"
+    "    return min(max(slot, 0), " VGFX3D_STR(RT_MATERIAL3D_TEXTURE_SLOT_COUNT) " - 1);\n"
+    "}\n"
     "int textureUvSetAt(int slot) {\n"
-    "    return slot < 4 ? textureUvSets0[slot] : textureUvSets1[slot - 4];\n"
+    "    int safeSlot = textureSlotIndex(slot);\n"
+    "    return safeSlot < 4 ? readInt4Lane(textureUvSets0, safeSlot)\n"
+    "                        : readInt4Lane(textureUvSets1, safeSlot - 4);\n"
     "}\n"
     "float2 materialUv(PS_INPUT input, int slot) {\n"
-    "    float2 uv = textureUvSetAt(slot) != 0 ? input.uv1 : input.uv;\n"
-    "    float4 m = textureUvTransform0[slot];\n"
-    "    float4 t = textureUvTransform1[slot];\n"
+    "    int safeSlot = textureSlotIndex(slot);\n"
+    "    float2 uv = textureUvSetAt(safeSlot) != 0 ? input.uv1 : input.uv;\n"
+    "    float4 m = textureUvTransform0[safeSlot];\n"
+    "    float4 t = textureUvTransform1[safeSlot];\n"
     "    return float2(uv.x * m.x + uv.y * m.y + t.x,\n"
     "                  uv.x * m.z + uv.y * m.w + t.y);\n"
     "}\n"
@@ -438,9 +450,10 @@ static const char *d3d11_shader_source =
     "    float depth = ndc.z * 0.5 + 0.5;\n"
     "    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || depth > 1.0)\n"
     "        return 1.0;\n"
-    "    return shadowIndex == 0\n"
+    "    float shadow = shadowIndex == 0\n"
     "        ? shadowTex0.SampleCmpLevelZero(shadowSampler, uv, depth - shadowBias)\n"
     "        : shadowTex1.SampleCmpLevelZero(shadowSampler, uv, depth - shadowBias);\n"
+    "    return shadow == shadow ? saturate(shadow) : 1.0;\n"
     "}\n"
     "\n"
     "float distributionGGX(float NdotH, float roughness) {\n"
@@ -660,6 +673,8 @@ static const char *d3d11_shader_source =
     "        float strength = max(customParamAt(0), 1.0);\n"
     "        result += emissive * (strength - 1.0);\n"
     "    }\n"
+    "    if (any(isnan(result)) || any(isinf(result)))\n"
+    "        result = ambientColor.rgb * baseColor + emissive;\n"
     "    if (fogColor.a > 0.5) {\n"
     "        float fogFactor = saturate((viewDistance - fogNear) / max(fogFar - fogNear, 0.001));\n"
     "        result = lerp(result, fogColor.rgb, fogFactor);\n"
@@ -852,6 +867,8 @@ static const char *d3d11_postfx_shader_source =
     "    return color + bloom * (bloomIntensity / 5.0);\n"
     "}\n"
     "float3 tonemap(float3 color) {\n"
+    "    if (tonemapMode != 1 && tonemapMode != 2)\n"
+    "        return color;\n"
     "    color *= tonemapExposure;\n"
     "    if (tonemapMode == 1)\n"
     "        return color / (1.0 + color);\n"
@@ -3225,12 +3242,11 @@ static void d3d11_bind_main_pipeline(d3d11_context_t *ctx,
 /// D3D11 forbids a texture being bound as both SRV and RTV simultaneously.
 static void d3d11_unbind_draw_resources(d3d11_context_t *ctx) {
     ID3D11ShaderResourceView *null_vs[2] = {NULL, NULL};
-    ID3D11ShaderResourceView *null_ps[13] = {
-        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+    ID3D11ShaderResourceView *null_ps[16] = {NULL};
     if (!ctx)
         return;
     ID3D11DeviceContext_VSSetShaderResources(ctx->ctx, 0, 2, null_vs);
-    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 13, null_ps);
+    ID3D11DeviceContext_PSSetShaderResources(ctx->ctx, 0, 16, null_ps);
 }
 
 /// @brief Pack inverse-projection + inverse-view-rotation data for the skybox shader.
@@ -4481,6 +4497,8 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
     }
 
     memset(dst_rgba, 0, (size_t)stride * (size_t)h);
+    d3d11_unbind_draw_resources(ctx);
+    ID3D11DeviceContext_OMSetRenderTargets(ctx->ctx, 0, NULL, NULL);
     ID3D11DeviceContext_CopyResource(
         ctx->ctx, (ID3D11Resource *)staging, (ID3D11Resource *)source_tex);
     hr =

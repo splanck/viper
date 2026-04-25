@@ -1,8 +1,8 @@
 @echo off
 setlocal enabledelayedexpansion
 
-REM Build native x86_64 binaries for all demos using viper project format
-REM Usage: scripts\build_demos.cmd [--clean]
+REM Build native binaries for all demos using viper project format
+REM Usage: scripts\build_demos.cmd [--clean] [--arch arm64|x64]
 
 set "SCRIPT_DIR=%~dp0"
 set "ROOT_DIR=%SCRIPT_DIR%.."
@@ -16,6 +16,7 @@ set "VIPER=%BUILD_DIR%\src\tools\viper\Debug\viper.exe"
 set CLEAN=0
 set FAILED=0
 set SUCCEEDED=0
+set "DEMO_ARCH=%VIPER_DEMO_ARCH%"
 
 REM Parse arguments
 :parse_args
@@ -25,19 +26,47 @@ if "%~1"=="--clean" (
     shift
     goto :parse_args
 )
+if "%~1"=="--arch" (
+    if "%~2"=="" (
+        echo ERROR: --arch requires arm64 or x64
+        exit /b 1
+    )
+    set "DEMO_ARCH=%~2"
+    shift
+    shift
+    goto :parse_args
+)
 if "%~1"=="-h" goto :usage
 if "%~1"=="--help" goto :usage
 echo Unknown argument: %~1
 goto :usage
 
 :usage
-echo Usage: %~nx0 [--clean]
+echo Usage: %~nx0 [--clean] [--arch arm64^|x64]
 echo   --clean    Remove existing binaries before building
+echo   --arch     Target architecture ^(default: host, or VIPER_DEMO_ARCH^)
 exit /b 1
 
 :done_args
 
-echo Building Viper demos as native x86_64 binaries
+if "%DEMO_ARCH%"=="" (
+    if /I "%PROCESSOR_ARCHITECTURE%"=="ARM64" (
+        set "DEMO_ARCH=arm64"
+    ) else (
+        set "DEMO_ARCH=x64"
+    )
+)
+
+if /I "%DEMO_ARCH%"=="aarch64" set "DEMO_ARCH=arm64"
+if /I "%DEMO_ARCH%"=="amd64" set "DEMO_ARCH=x64"
+if /I "%DEMO_ARCH%"=="x86_64" set "DEMO_ARCH=x64"
+if /I "%DEMO_ARCH%"=="arm64" goto :arch_ok
+if /I "%DEMO_ARCH%"=="x64" goto :arch_ok
+echo ERROR: invalid demo architecture "%DEMO_ARCH%"; expected arm64 or x64
+exit /b 1
+
+:arch_ok
+echo Building Viper demos as native %DEMO_ARCH% binaries
 echo ==============================================
 echo.
 echo Note: larger demos can stay quiet for several minutes while codegen runs.
@@ -116,7 +145,7 @@ if not exist "%PROJECT_DIR%\viper.project" (
 set "EXE_FILE=%BIN_DIR%\%NAME%.exe"
 
 echo   Compiling...
-"%VIPER%" build "%PROJECT_DIR%" --arch x64 -o "%EXE_FILE%" 2>nul
+"%VIPER%" build "%PROJECT_DIR%" --arch %DEMO_ARCH% -o "%EXE_FILE%" 2>nul
 if errorlevel 1 goto :build_demo_failed
 echo   OK
 echo   Built: %EXE_FILE%
@@ -127,7 +156,7 @@ goto :eof
 
 :build_demo_failed
 echo   FAILED
-"%VIPER%" build "%PROJECT_DIR%" --arch x64 -o "%EXE_FILE%" 2>&1
+"%VIPER%" build "%PROJECT_DIR%" --arch %DEMO_ARCH% -o "%EXE_FILE%" 2>&1
 echo   Finished: %DATE% %TIME%
 set /a FAILED+=1
 echo.

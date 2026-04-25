@@ -199,12 +199,15 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "CertAddEncodedCertificateToStore",
         "CertCloseStore",
         "CertCreateCertificateContext",
+        "CertCreateCertificateChainEngine",
         "CertFreeCertificateChain",
+        "CertFreeCertificateChainEngine",
         "CertFreeCertificateContext",
         "CertGetCertificateChain",
         "CertOpenStore",
         "CertVerifyCertificateChainPolicy",
         "CryptAcquireCertificatePrivateKey",
+        "CryptStringToBinaryA",
         "pthread_create",
         "pthread_join",
         "pthread_detach",
@@ -441,6 +444,8 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "VirtualFree",
         "GetLastError",
         "BCryptGenRandom",
+        "BCryptDestroyKey",
+        "BCryptVerifySignature",
         "XInputGetState",
         "XInputSetState",
         "__acrt_iob_func",
@@ -455,10 +460,30 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "__C_specific_handler_noexcept",
         "__current_exception",
         "__current_exception_context",
+        "_CxxThrowException",
+        "__CxxFrameHandler3",
+        "__std_exception_copy",
+        "__std_exception_destroy",
         "__security_check_cookie",
         "__security_init_cookie",
+        "__security_pop_cookie",
+        "__security_push_cookie",
         "__GSHandlerCheck",
         "__chkstk",
+        "__RTC_memset",
+        "_setjmpex",
+        "_byteswap_uint64",
+        "_InterlockedCompareExchange",
+        "_InterlockedCompareExchange64",
+        "_InterlockedCompareExchangePointer",
+        "_InterlockedDecrement",
+        "_InterlockedExchange",
+        "_InterlockedExchange64",
+        "_InterlockedExchange8",
+        "_InterlockedExchangeAdd",
+        "_InterlockedExchangeAdd64",
+        "_InterlockedIncrement64",
+        "_InterlockedOr",
         "_cexit",
         "_configure_narrow_argv",
         "_crt_at_quick_exit",
@@ -529,6 +554,10 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
     static const char *const kWindowsDynPrefixes[] = {
         "__imp_",
         "__vcrt_",
+        "_Cnd_",
+        "_Mtx_",
+        "_Query_perf_",
+        "_Thrd_",
     };
 
     for (const char *prefix : kCommonDynPrefixes) {
@@ -573,6 +602,14 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
 
     if (platform == LinkPlatform::macOS && isKnownMacLibcxxDynamicSymbol(name))
         return true;
+
+    if (platform == LinkPlatform::Windows) {
+        if (name.find("@std@@") != std::string::npos ||
+            stripped.find("@std@@") != std::string::npos ||
+            name.rfind("??", 0) == 0 || stripped.rfind("??", 0) == 0 ||
+            name.rfind("?_", 0) == 0 || stripped.rfind("?_", 0) == 0)
+            return true;
+    }
 
     return false;
 }

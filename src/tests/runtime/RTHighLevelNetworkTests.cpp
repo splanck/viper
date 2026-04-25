@@ -1572,6 +1572,11 @@ static void test_https_server_roundtrip() {
         rt_tls_close(bad_sni_tls);
 
     rt_tls_session_t *tls = connect_local_tls_server(port);
+    if (!tls) {
+        fprintf(stderr,
+                "Raw TLS connect failed after bad SNI test: %s\n",
+                rt_tls_last_error() ? rt_tls_last_error() : "(null)");
+    }
     test_result("Raw TLS client connects to HttpsServer", tls != nullptr);
     if (!tls) {
         rt_https_server_stop(server);
@@ -1711,6 +1716,11 @@ static void test_https_server_rsa_roundtrip_with_verification() {
 
     rt_tls_session_t *tls =
         connect_local_tls_server_verified(port, "127.0.0.1", "localhost", tls_files.ca_path.c_str());
+    if (!tls) {
+        fprintf(stderr,
+                "RSA verified TLS connect failed: %s\n",
+                rt_tls_last_error() ? rt_tls_last_error() : "(null)");
+    }
     test_result("RSA HttpsServer verifies against the custom trust bundle", tls != nullptr);
     if (!tls) {
         rt_https_server_stop(server);
@@ -1762,6 +1772,11 @@ static void test_wss_server_broadcast() {
     test_result("WssServer reports running", rt_wss_server_is_running(server) == 1);
 
     rt_tls_session_t *tls = connect_local_tls_server(port);
+    if (!tls) {
+        fprintf(stderr,
+                "Raw TLS connect to WssServer failed: %s\n",
+                rt_tls_last_error() ? rt_tls_last_error() : "(null)");
+    }
     test_result("Raw TLS client connects to WssServer", tls != nullptr);
     if (!tls) {
         rt_wss_server_stop(server);

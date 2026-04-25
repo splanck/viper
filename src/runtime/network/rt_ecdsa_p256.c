@@ -25,10 +25,6 @@
 #include "rt_crypto.h"
 #include <string.h>
 
-#ifdef _MSC_VER
-#include <intrin.h>
-#endif
-
 #if defined(__GNUC__) || defined(__clang__)
 #define ECDSA_P256_MAYBE_UNUSED __attribute__((unused))
 #else
@@ -43,6 +39,29 @@ typedef uint64_t u256[4];
 
 // 512-bit for multiplication intermediate
 typedef uint64_t u512[8];
+
+static uint64_t u64_add_with_carry(uint64_t a, uint64_t b, uint64_t carry, uint64_t *out) {
+    uint64_t sum = a + b;
+    uint64_t carry1 = (sum < a);
+    uint64_t sum2 = sum + carry;
+    uint64_t carry2 = (sum2 < sum);
+    *out = sum2;
+    return carry1 | carry2;
+}
+
+static uint64_t u64_sub_with_borrow(uint64_t a, uint64_t b, uint64_t borrow, uint64_t *out) {
+    uint64_t subtrahend = b + borrow;
+    uint64_t borrow1 = (subtrahend < b);
+    uint64_t borrow2 = (a < subtrahend);
+    *out = a - subtrahend;
+    return borrow1 | borrow2;
+}
+
+static void u256_sub_small_inplace(u256 value, uint64_t small) {
+    uint64_t borrow = u64_sub_with_borrow(value[3], small, 0, &value[3]);
+    for (int i = 2; i >= 0 && borrow; i--)
+        borrow = u64_sub_with_borrow(value[i], 0, borrow, &value[i]);
+}
 
 //=============================================================================
 // P-256 curve constants (NIST FIPS 186-4 / SEC 2)
@@ -144,58 +163,25 @@ static void u256_to_bytes(uint8_t out[32], const u256 a) {
 }
 
 /// @brief Add two 256-bit integers with carry: `r = a + b`, returns the carry-out (0 or 1).
-/// @details Two implementations, picked at compile time:
-///          - **MSVC** uses `_addcarry_u64`, which compiles to the
-///            `adc` family of x86_64 instructions directly.
-///          - **GCC/Clang** uses `__uint128_t` arithmetic, which the
-///            optimizer also lowers to `adc` chains on x86_64 / `adds`
-///            + `adcs` on AArch64.
-///          Either way the loop is unrolled at -O2 into a tight
-///          carry-chain. Used by the field-element addition path.
-#ifdef _MSC_VER
-static uint64_t u256_add(u256 r, const u256 a, const u256 b) {
-    unsigned char carry = 0;
-    for (int i = 3; i >= 0; i--)
-        carry = _addcarry_u64(carry, a[i], b[i], &r[i]);
-    return carry;
-}
-#else
+/// @details Uses plain unsigned wraparound so this works on compilers and
+///          architectures without 128-bit integers or x86 carry intrinsics,
+///          including MSVC ARM64.
 static uint64_t u256_add(u256 r, const u256 a, const u256 b) {
     uint64_t carry = 0;
-    for (int i = 3; i >= 0; i--) {
-        __uint128_t sum = (__uint128_t)a[i] + b[i] + carry;
-        r[i] = (uint64_t)sum;
-        carry = (uint64_t)(sum >> 64);
-    }
+    for (int i = 3; i >= 0; i--)
+        carry = u64_add_with_carry(a[i], b[i], carry, &r[i]);
     return carry;
 }
-#endif
 
 /// @brief Subtract two 256-bit integers with borrow: `r = a - b`, returns the borrow-out (0 or 1).
-/// @details Mirror of `u256_add`. The borrow is captured by inspecting
-///          bit 127 of the `__int128` difference (which is set when
-///          the unsigned subtraction wrapped), or by `_subborrow_u64`
-///          on MSVC. The borrow return value is what callers like
-///          `fp_reduce_once` use to decide whether to add the
-///          modulus back.
-#ifdef _MSC_VER
-static uint64_t u256_sub(u256 r, const u256 a, const u256 b) {
-    unsigned char borrow = 0;
-    for (int i = 3; i >= 0; i--)
-        borrow = _subborrow_u64(borrow, a[i], b[i], &r[i]);
-    return borrow;
-}
-#else
+/// @details Mirror of `u256_add`, implemented with portable unsigned
+///          wraparound instead of compiler-specific borrow intrinsics.
 static uint64_t u256_sub(u256 r, const u256 a, const u256 b) {
     uint64_t borrow = 0;
-    for (int i = 3; i >= 0; i--) {
-        __uint128_t diff = (__uint128_t)a[i] - b[i] - borrow;
-        r[i] = (uint64_t)diff;
-        borrow = (diff >> 127) & 1; // top bit indicates borrow
-    }
+    for (int i = 3; i >= 0; i--)
+        borrow = u64_sub_with_borrow(a[i], b[i], borrow, &r[i]);
     return borrow;
 }
-#endif
 
 /// @brief 256×256 → 512 schoolbook multiplication of two big-endian-limb integers.
 /// @details The field / scalar code stores 256-bit integers as four
@@ -281,13 +267,7 @@ static ECDSA_P256_MAYBE_UNUSED void u512_sub_shifted_u256_le(uint64_t value_le[8
     uint64_t borrow = 0;
     for (int i = 0; i < 8; i++) {
         const uint64_t shifted = u256_shifted_limb_le(mod_le, shift, i);
-#ifdef _MSC_VER
-        borrow = _subborrow_u64((unsigned char)borrow, value_le[i], shifted, &value_le[i]);
-#else
-        __uint128_t diff = (__uint128_t)value_le[i] - shifted - borrow;
-        value_le[i] = (uint64_t)diff;
-        borrow = (uint64_t)((diff >> 127) & 1);
-#endif
+        borrow = u64_sub_with_borrow(value_le[i], shifted, borrow, &value_le[i]);
     }
 }
 
@@ -608,21 +588,7 @@ static void fp_inv(u256 r, const u256 a) {
     u256 exp;
     u256_copy(exp, P256_P);
     // p - 2
-#ifdef _MSC_VER
-    unsigned char borrow_c = _subborrow_u64(0, exp[3], 2, &exp[3]);
-    for (int i = 2; i >= 0 && borrow_c; i--)
-        borrow_c = _subborrow_u64(borrow_c, exp[i], 0, &exp[i]);
-#else
-    uint64_t borrow = 0;
-    __uint128_t diff = (__uint128_t)exp[3] - 2 - borrow;
-    exp[3] = (uint64_t)diff;
-    borrow = (diff >> 127) & 1;
-    for (int i = 2; i >= 0 && borrow; i--) {
-        diff = (__uint128_t)exp[i] - borrow;
-        exp[i] = (uint64_t)diff;
-        borrow = (diff >> 127) & 1;
-    }
-#endif
+    u256_sub_small_inplace(exp, 2);
 
     fp_pow(r, a, exp);
 }
@@ -658,21 +624,7 @@ static void sn_inv(u256 r, const u256 a) {
     u256 exp;
     u256_copy(exp, P256_N);
     // n - 2
-#ifdef _MSC_VER
-    unsigned char borrow_c = _subborrow_u64(0, exp[3], 2, &exp[3]);
-    for (int i = 2; i >= 0 && borrow_c; i--)
-        borrow_c = _subborrow_u64(borrow_c, exp[i], 0, &exp[i]);
-#else
-    uint64_t borrow = 0;
-    __uint128_t diff = (__uint128_t)exp[3] - 2 - borrow;
-    exp[3] = (uint64_t)diff;
-    borrow = (diff >> 127) & 1;
-    for (int i = 2; i >= 0 && borrow; i--) {
-        diff = (__uint128_t)exp[i] - borrow;
-        exp[i] = (uint64_t)diff;
-        borrow = (diff >> 127) & 1;
-    }
-#endif
+    u256_sub_small_inplace(exp, 2);
 
     // Square-and-multiply: a^exp mod n
     u256 base, result;

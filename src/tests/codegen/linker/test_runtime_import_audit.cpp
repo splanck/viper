@@ -195,11 +195,14 @@ TEST(LinkerRuntimeImportAudit, HostRuntimeArchivesUseKnownDynamicImports) {
         }
         case LinkPlatform::Windows: {
             WindowsImportPlan plan;
-            ASSERT_TRUE(generateWindowsImports(detectLinkArch(),
-                                               dynamicSyms,
-                                               usesDebugWindowsRuntimeArchives(archives),
-                                               plan,
-                                               planErr));
+            const bool planned = generateWindowsImports(detectLinkArch(),
+                                                        dynamicSyms,
+                                                        usesDebugWindowsRuntimeArchives(archives),
+                                                        plan,
+                                                        planErr);
+            if (!planned)
+                std::cerr << planErr.str();
+            ASSERT_TRUE(planned);
             break;
         }
     }

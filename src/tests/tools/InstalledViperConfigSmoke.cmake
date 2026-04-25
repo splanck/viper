@@ -165,6 +165,11 @@ else ()
     set(_installed_codegen_arch x64)
 endif ()
 
+if (DEFINED VIPER_RUN_NATIVE_CODEGEN AND NOT VIPER_RUN_NATIVE_CODEGEN)
+    message(STATUS "Skipping installed native codegen smoke; native link is disabled for ${_installed_codegen_arch}")
+    return()
+endif ()
+
 set(_installed_il "${_tmp_root}/installed_runtime_smoke.il")
 set(_installed_exe "${_tmp_root}/installed_runtime_smoke${_exe_suffix}")
 

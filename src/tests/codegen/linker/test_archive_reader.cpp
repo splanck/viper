@@ -246,6 +246,7 @@ int main() {
     };
 
     Archive collections = loadArchive(RtComponent::Collections);
+    Archive arrays = loadArchive(RtComponent::Arrays);
     Archive game = loadArchive(RtComponent::Game);
     Archive oop = loadArchive(RtComponent::Oop);
     Archive text = loadArchive(RtComponent::Text);
@@ -271,7 +272,7 @@ int main() {
     }
 
     // --- Basic resolve: all runtime components needed for full resolution ---
-    std::vector<Archive> archives = {ar, collections, oop, text, iofs, threads};
+    std::vector<Archive> archives = {ar, collections, arrays, oop, text, iofs, threads};
     std::vector<ObjFile> initialObjects = {makeUndefinedCaller()};
     std::unordered_map<std::string, GlobalSymEntry> globalSyms;
     std::vector<ObjFile> allObjects;
@@ -291,7 +292,7 @@ int main() {
     CHECK(globalSyms["rt_init_stack_safety"].binding == GlobalSymEntry::Global);
 
     // --- Transitive resolve: all component archives ---
-    archives = {ar, collections, oop, text, iofs, threads};
+    archives = {ar, collections, arrays, oop, text, iofs, threads};
     initialObjects = {makeUndefinedCaller()};
     globalSyms.clear();
     allObjects.clear();

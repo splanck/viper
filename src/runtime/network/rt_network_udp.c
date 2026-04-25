@@ -83,6 +83,14 @@ static void udp_make_v4_mapped(const struct sockaddr_in *src,
         *dst_len = (socklen_t)sizeof(*dst);
 }
 
+static int udp_is_v4_mapped_addr(const struct in6_addr *addr) {
+    const unsigned char *bytes = (const unsigned char *)addr->s6_addr;
+    static const unsigned char prefix[12] = {
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF
+    };
+    return memcmp(bytes, prefix, sizeof(prefix)) == 0;
+}
+
 static void udp_store_sender_info(rt_udp_t *udp, const struct sockaddr *addr, socklen_t addr_len) {
     (void)addr_len;
     if (!udp || !addr) {
@@ -101,14 +109,11 @@ static void udp_store_sender_info(rt_udp_t *udp, const struct sockaddr *addr, so
 
     if (addr->sa_family == AF_INET6) {
         const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)addr;
-#ifdef IN6_IS_ADDR_V4MAPPED
-        if (IN6_IS_ADDR_V4MAPPED(&in6->sin6_addr)) {
+        if (udp_is_v4_mapped_addr(&in6->sin6_addr)) {
             struct in_addr mapped_v4;
             memcpy(&mapped_v4, &in6->sin6_addr.s6_addr[12], sizeof(mapped_v4));
             inet_ntop(AF_INET, &mapped_v4, udp->sender_host, sizeof(udp->sender_host));
-        } else
-#endif
-        {
+        } else {
             inet_ntop(AF_INET6, &in6->sin6_addr, udp->sender_host, sizeof(udp->sender_host));
         }
         udp->sender_port = ntohs(in6->sin6_port);

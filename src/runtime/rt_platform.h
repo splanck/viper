@@ -103,8 +103,10 @@
 //===----------------------------------------------------------------------===//
 
 #if RT_COMPILER_MSVC
-#include <immintrin.h>
 #include <intrin.h>
+#if defined(_M_IX86) || defined(_M_X64)
+#include <immintrin.h>
+#endif
 
 // Memory ordering constants (matching GCC values for compatibility)
 #define __ATOMIC_RELAXED 0
@@ -345,10 +347,19 @@ static inline int rt_atomic_compare_exchange_ptr(
         size_t *: rt_atomic_store_size)((ptr), (val), (order))
 
 #define __atomic_exchange_n(ptr, val, order)                                                       \
-    rt_atomic_exchange_i32((volatile int *)(ptr), (val), (order))
+    _Generic((ptr),                                                                                \
+        volatile int *: rt_atomic_exchange_i32,                                                    \
+        int *: rt_atomic_exchange_i32,                                                             \
+        void *volatile *: rt_atomic_exchange_ptr,                                                  \
+        void **: rt_atomic_exchange_ptr)((ptr), (val), (order))
 
 #define __atomic_compare_exchange_n(ptr, expected, desired, weak, success, fail)                   \
-    rt_atomic_compare_exchange_i32((volatile int *)(ptr), (expected), (desired), (success), (fail))
+    _Generic((ptr),                                                                                \
+        volatile int *: rt_atomic_compare_exchange_i32,                                            \
+        int *: rt_atomic_compare_exchange_i32,                                                     \
+        void *volatile *: rt_atomic_compare_exchange_ptr,                                          \
+        void **: rt_atomic_compare_exchange_ptr)(                                                  \
+            (ptr), (expected), (desired), (success), (fail))
 
 #define __atomic_fetch_add(ptr, val, order)                                                        \
     _Generic((ptr),                                                                                \

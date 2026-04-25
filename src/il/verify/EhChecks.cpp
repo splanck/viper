@@ -817,17 +817,17 @@ PostDomInfo computePostDominators(const EhModel &model) {
     }
 
     const size_t n = info.nodes.size();
-    info.matrix.assign(n, std::vector<uint8_t>(n, 1));
+    info.matrix.assign(n, std::vector<uint8_t>(n, uint8_t{1}));
     std::vector<std::vector<size_t>> successors(n);
-    std::vector<uint8_t> isExit(n, 0);
+    std::vector<uint8_t> isExit(n, uint8_t{0});
 
     for (size_t idx = 0; idx < n; ++idx) {
         const BasicBlock *bb = info.nodes[idx];
         const Instr *terminator = model.findTerminator(*bb);
         if (!terminator) {
-            std::fill(info.matrix[idx].begin(), info.matrix[idx].end(), 0);
-            info.matrix[idx][idx] = 1;
-            isExit[idx] = 1;
+            std::fill(info.matrix[idx].begin(), info.matrix[idx].end(), uint8_t{0});
+            info.matrix[idx][idx] = uint8_t{1};
+            isExit[idx] = uint8_t{1};
             continue;
         }
 
@@ -839,9 +839,9 @@ PostDomInfo computePostDominators(const EhModel &model) {
         }
 
         if (successors[idx].empty()) {
-            std::fill(info.matrix[idx].begin(), info.matrix[idx].end(), 0);
-            info.matrix[idx][idx] = 1;
-            isExit[idx] = 1;
+            std::fill(info.matrix[idx].begin(), info.matrix[idx].end(), uint8_t{0});
+            info.matrix[idx][idx] = uint8_t{1};
+            isExit[idx] = uint8_t{1};
         }
     }
 
@@ -852,7 +852,7 @@ PostDomInfo computePostDominators(const EhModel &model) {
             if (isExit[idx])
                 continue;
 
-            std::vector<uint8_t> newSet(n, 1);
+            std::vector<uint8_t> newSet(n, uint8_t{1});
             if (!successors[idx].empty()) {
                 newSet = info.matrix[successors[idx].front()];
                 for (size_t succPos = 1; succPos < successors[idx].size(); ++succPos) {
@@ -861,10 +861,10 @@ PostDomInfo computePostDominators(const EhModel &model) {
                         newSet[bit] = static_cast<uint8_t>(newSet[bit] & info.matrix[succIdx][bit]);
                 }
             } else {
-                std::fill(newSet.begin(), newSet.end(), 0);
+                std::fill(newSet.begin(), newSet.end(), uint8_t{0});
             }
 
-            newSet[idx] = 1;
+            newSet[idx] = uint8_t{1};
             if (newSet != info.matrix[idx]) {
                 info.matrix[idx] = std::move(newSet);
                 changed = true;

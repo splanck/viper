@@ -2641,6 +2641,36 @@ static void releaseWorkerArg(void *arg, bool ownsArg) {
         rt_obj_free(arg);
 }
 
+static void completeAsyncPromiseWithResult(void *promise,
+                                           void *result,
+                                           void **ownedArg,
+                                           bool *ownsArg) {
+    if (ownedArg && ownsArg && *ownsArg) {
+        if (result == *ownedArg) {
+            *ownedArg = nullptr;
+            *ownsArg = false;
+            rt_promise_set_transferred(promise, result);
+            return;
+        }
+        releaseWorkerArg(*ownedArg, true);
+        *ownedArg = nullptr;
+        *ownsArg = false;
+    }
+    rt_promise_set_owned(promise, result);
+}
+
+static void completeAsyncPromiseWithError(void *promise,
+                                          rt_string error,
+                                          void **ownedArg,
+                                          bool *ownsArg) {
+    if (ownedArg && ownsArg && *ownsArg) {
+        releaseWorkerArg(*ownedArg, true);
+        *ownedArg = nullptr;
+        *ownsArg = false;
+    }
+    rt_promise_set_error(promise, error);
+}
+
 static bool runBytecodeThreadPayload(BytecodeThreadPayload *payload,
                                      char *errorBuf,
                                      size_t errorBufSize) {
@@ -3086,13 +3116,13 @@ extern "C" void vm_async_run_entry_trampoline_bc(void *raw) {
     }
 
     if (completed) {
-        rt_promise_set_owned(payload->promise, result.ptr);
+        completeAsyncPromiseWithResult(
+            payload->promise, result.ptr, &payload->arg, &payload->ownsArg);
     } else {
-        rt_promise_set_error(payload->promise, error);
+        completeAsyncPromiseWithError(payload->promise, error, &payload->arg, &payload->ownsArg);
         rt_str_release_maybe(error);
     }
 
-    releaseWorkerArg(payload->arg, payload->ownsArg);
     if (rt_obj_release_check0(payload->promise))
         rt_obj_free(payload->promise);
     il::vm::releaseExternRegistry(payload->externRegistry);
@@ -3133,13 +3163,13 @@ extern "C" void bytecode_async_entry_trampoline(void *raw) {
         rt_string error = trapMessage.empty()
                               ? rt_const_cstr("Async.Run: trapped")
                               : rt_string_from_bytes(trapMessage.data(), trapMessage.size());
-        rt_promise_set_error(payload->promise, error);
+        completeAsyncPromiseWithError(payload->promise, error, &payload->arg, &payload->ownsArg);
         rt_str_release_maybe(error);
     } else {
-        rt_promise_set_owned(payload->promise, result.ptr);
+        completeAsyncPromiseWithResult(
+            payload->promise, result.ptr, &payload->arg, &payload->ownsArg);
     }
 
-    releaseWorkerArg(payload->arg, payload->ownsArg);
     if (rt_obj_release_check0(payload->promise))
         rt_obj_free(payload->promise);
     delete payload;

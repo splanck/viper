@@ -212,6 +212,14 @@ static bool socket_recv_timed_out(void) {
 #endif
 }
 
+static bool socket_accept_interrupted_by_close(int err) {
+#ifdef _WIN32
+    return err == WSAENOTSOCK || err == WSAEINVAL || err == WSAEINTR || err == WSAECONNABORTED;
+#else
+    return err == EBADF || err == EINVAL || err == EINTR || err == ECONNABORTED;
+#endif
+}
+
 /// @brief Connect to `addr`, optionally with a timeout in `timeout_ms` (0 = blocking).
 ///
 /// Implementation: when timed, switches the socket to non-blocking,
@@ -988,7 +996,8 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
             return NULL;
         }
         if (ready < 0) {
-            if (!server->is_listening)
+            int err = GET_LAST_ERROR();
+            if (!server->is_listening || socket_accept_interrupted_by_close(err))
                 return NULL;
             rt_trap_net("Network: accept failed", Err_NetworkError);
         }
@@ -1000,8 +1009,9 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
 
     socket_t client_sock = accept(server->sock, (struct sockaddr *)&client_addr, &client_len);
     if (client_sock == INVALID_SOCK) {
+        int err = GET_LAST_ERROR();
         // Check if server was closed
-        if (!server->is_listening)
+        if (!server->is_listening || socket_accept_interrupted_by_close(err))
             return NULL;
         rt_trap_net("Network: accept failed", Err_NetworkError);
     }

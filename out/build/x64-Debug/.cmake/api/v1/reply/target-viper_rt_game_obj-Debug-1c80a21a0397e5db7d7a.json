@@ -1,0 +1,541 @@
+{
+	"artifacts" : 
+	[
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_grid2d.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_timer.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_statemachine.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_animstate.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_tween.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_buttongroup.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_smoothvalue.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_particle.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_spriteanim.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_collision.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_objpool.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_screenfx.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_pathfollow.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_quadtree.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_debugoverlay.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_gameui.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_pathfinder.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_dialogue.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_lighting2d.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_platformer_ctrl.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_achievement.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_typewriter.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_entity.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_behavior.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_leveldata.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_raycast2d.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_scenemanager.c.obj"
+		},
+		{
+			"path" : "src/runtime/CMakeFiles/viper_rt_game_obj.dir/./game/rt_config.c.obj"
+		}
+	],
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library",
+			"add_compile_options",
+			"target_compile_options",
+			"add_compile_definitions",
+			"target_include_directories"
+		],
+		"files" : 
+		[
+			"src/runtime/CMakeLists.txt",
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 531,
+				"parent" : 0
+			},
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 119,
+				"parent" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 632,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 233,
+				"parent" : 2
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 163,
+				"parent" : 2
+			},
+			{
+				"command" : 4,
+				"file" : 0,
+				"line" : 624,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 9
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "/DWIN32 /D_WINDOWS /Zi /Ob0 /Od /RTC1 -std:c11 -MDd"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "/FS"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "/utf-8"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/Gy"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/W4"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4100"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4201"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 5,
+					"define" : "VIPER_ENABLE_OOP=1"
+				},
+				{
+					"backtrace" : 5,
+					"define" : "VIPER_RUNTIME_NS_DUAL=1"
+				},
+				{
+					"backtrace" : 5,
+					"define" : "VIPER_VM_OPCOUNTS=1"
+				},
+				{
+					"backtrace" : 5,
+					"define" : "VIPER_VM_TAILCALL=1"
+				},
+				{
+					"backtrace" : 6,
+					"define" : "_CRT_NONSTDC_NO_WARNINGS"
+				},
+				{
+					"backtrace" : 6,
+					"define" : "_CRT_SECURE_NO_WARNINGS"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/src/runtime"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/src/runtime/core"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/src/runtime/arrays"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/src/runtime/oop"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/src/runtime/collections"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/src/runtime/game"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/src/runtime/text"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/src/runtime/io"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/src/runtime/system"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/src/runtime/graphics"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/src/runtime/audio"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/src/runtime/threads"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/src/runtime/network"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/src/runtime/localization"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/src"
+				}
+			],
+			"language" : "C",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					1
+				],
+				"standard" : "11"
+			},
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5,
+				6,
+				7,
+				8,
+				9,
+				10,
+				11,
+				12,
+				13,
+				14,
+				15,
+				16,
+				17,
+				18,
+				19,
+				20,
+				21,
+				22,
+				23,
+				24,
+				25,
+				26,
+				27
+			]
+		}
+	],
+	"id" : "viper_rt_game_obj::@6e5025570506519f0aff",
+	"name" : "viper_rt_game_obj",
+	"paths" : 
+	{
+		"build" : "src/runtime",
+		"source" : "src/runtime"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5,
+				6,
+				7,
+				8,
+				9,
+				10,
+				11,
+				12,
+				13,
+				14,
+				15,
+				16,
+				17,
+				18,
+				19,
+				20,
+				21,
+				22,
+				23,
+				24,
+				25,
+				26,
+				27
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_grid2d.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_timer.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_statemachine.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_animstate.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_tween.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_buttongroup.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_smoothvalue.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_particle.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_spriteanim.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_collision.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_objpool.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_screenfx.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_pathfollow.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_quadtree.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_debugoverlay.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_gameui.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_pathfinder.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_dialogue.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_lighting2d.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_platformer_ctrl.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_achievement.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_typewriter.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_entity.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_behavior.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_leveldata.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_raycast2d.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_scenemanager.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/runtime/game/rt_config.c",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "OBJECT_LIBRARY"
+}

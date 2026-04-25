@@ -42,6 +42,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
+#include <windowsx.h>
 
 #ifndef WM_DPICHANGED
 #define WM_DPICHANGED 0x02E0

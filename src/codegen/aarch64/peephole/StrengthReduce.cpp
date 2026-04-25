@@ -36,6 +36,9 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
+#if defined(_MSC_VER) && !defined(__clang__) && (defined(_M_X64) || defined(_M_AMD64))
+#include <intrin.h>
+#endif
 
 namespace viper::codegen::aarch64::peephole {
 namespace {
@@ -82,10 +85,25 @@ struct UnsignedMagicNumber {
 }
 
 [[nodiscard]] uint64_t divU128ByU64(uint64_t hi, uint64_t lo, uint64_t divisor, uint64_t &rem) noexcept {
-#if defined(_MSC_VER) && !defined(__clang__)
+#if defined(_MSC_VER) && !defined(__clang__) && (defined(_M_X64) || defined(_M_AMD64))
     unsigned __int64 remainder = 0;
     const unsigned __int64 quotient = _udiv128(hi, lo, divisor, &remainder);
     rem = remainder;
+    return quotient;
+#elif defined(_MSC_VER) && !defined(__clang__)
+    uint64_t quotient = 0;
+    rem = 0;
+    for (int bit = 127; bit >= 0; --bit) {
+        const uint64_t nextBit =
+            (bit >= 64) ? ((hi >> (bit - 64)) & 1u) : ((lo >> bit) & 1u);
+        const uint64_t carry = rem >> 63;
+        rem = (rem << 1) | nextBit;
+        if (carry || rem >= divisor) {
+            rem -= divisor;
+            if (bit < 64)
+                quotient |= uint64_t{1} << bit;
+        }
+    }
     return quotient;
 #else
     const unsigned __int128 numerator =

@@ -470,6 +470,9 @@ if (WIN32)
 endif ()
 set_target_properties(viper PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/viper)
 target_link_libraries(viper PRIVATE ${VIPER_CLI_LINK_LIBS})
+if (MSVC)
+    target_link_options(viper PRIVATE /STACK:8388608)
+endif ()
 add_dependencies(viper viper_runtime_components)
 get_target_property(VIPER_LINK_LIBS viper LINK_LIBRARIES)
 message(STATUS "viper LINK_LIBRARIES: ${VIPER_LINK_LIBS}")
@@ -528,6 +531,9 @@ target_link_libraries(zia
         viper_cmd_arm64
         viper_common
         viper_bytecode)
+if (MSVC)
+    target_link_options(zia PRIVATE /STACK:8388608)
+endif ()
 install(TARGETS zia RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 #===----------------------------------------------------------------------===//

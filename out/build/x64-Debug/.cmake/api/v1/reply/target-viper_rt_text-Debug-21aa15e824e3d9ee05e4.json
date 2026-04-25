@@ -1,0 +1,412 @@
+{
+	"archive" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "/machine:x64",
+				"role" : "flags"
+			}
+		]
+	},
+	"artifacts" : 
+	[
+		{
+			"path" : "src/runtime/viper_rt_text.lib"
+		}
+	],
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library",
+			"install",
+			"target_link_libraries",
+			"add_compile_options",
+			"add_compile_definitions",
+			"target_include_directories"
+		],
+		"files" : 
+		[
+			"src/runtime/CMakeLists.txt",
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 546,
+				"parent" : 0
+			},
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 755,
+				"parent" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 681,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 119,
+				"parent" : 2
+			},
+			{
+				"command" : 4,
+				"file" : 1,
+				"line" : 233,
+				"parent" : 2
+			},
+			{
+				"command" : 4,
+				"file" : 1,
+				"line" : 163,
+				"parent" : 2
+			},
+			{
+				"command" : 5,
+				"file" : 0,
+				"line" : 655,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 9
+	},
+	"compileDependencies" : 
+	[
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_collections::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_base::@6e5025570506519f0aff"
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"id" : "viper_rt_text_obj::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_oop::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_collections::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_base::@6e5025570506519f0aff"
+		}
+	],
+	"id" : "viper_rt_text::@6e5025570506519f0aff",
+	"install" : 
+	{
+		"destinations" : 
+		[
+			{
+				"backtrace" : 3,
+				"path" : "lib"
+			}
+		],
+		"prefix" : 
+		{
+			"path" : "C:/git/viper/out/install/x64-Debug"
+		}
+	},
+	"interfaceCompileDependencies" : 
+	[
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_collections::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_base::@6e5025570506519f0aff"
+		}
+	],
+	"interfaceLinkLibraries" : 
+	[
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_collections::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_base::@6e5025570506519f0aff"
+		}
+	],
+	"linkLibraries" : 
+	[
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_collections::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_base::@6e5025570506519f0aff"
+		}
+	],
+	"name" : "viper_rt_text",
+	"nameOnDisk" : "viper_rt_text.lib",
+	"objectDependencies" : 
+	[
+		{
+			"backtrace" : 1,
+			"id" : "viper_rt_text_obj::@6e5025570506519f0aff"
+		}
+	],
+	"orderDependencies" : 
+	[
+		{
+			"id" : "viper_rt_text_obj::@6e5025570506519f0aff"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "src/runtime",
+		"source" : "src/runtime"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Object Libraries",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5,
+				6,
+				7,
+				8,
+				9,
+				10,
+				11,
+				12,
+				13,
+				14,
+				15,
+				16,
+				17,
+				18,
+				19,
+				20,
+				21,
+				22,
+				23,
+				24,
+				25,
+				26,
+				27,
+				28,
+				29
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_codec.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_csv.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_ini.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_guid.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_hash.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_hash_util.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_json.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_json_stream.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_xml.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_yaml.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_keyderive.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_aes.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_cipher.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_password.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_rand.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_regex.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_compiled_pattern.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_scanner.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_template.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_textwrap.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_diff.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_numfmt.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_parse.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_pluralize.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_version.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_toml.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_markdown.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_jsonpath.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_html.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_text_obj.dir/text/rt_serialize.c.obj",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "STATIC_LIBRARY"
+}

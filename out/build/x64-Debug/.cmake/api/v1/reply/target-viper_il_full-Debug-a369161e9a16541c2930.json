@@ -1,0 +1,86 @@
+{
+	"abstract" : true,
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library",
+			"target_link_libraries"
+		],
+		"files" : 
+		[
+			"src/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 156,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 157,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 9
+	},
+	"id" : "viper_il_full::@145eef247bfb46b6828c",
+	"interfaceCompileDependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "viper_il_core::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_il_verify::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_il_io::@2b41ca981030de828d24"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_support::@53d799ac11731c328ce5"
+		}
+	],
+	"interfaceLinkLibraries" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "viper_il_core::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_il_verify::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_il_io::@2b41ca981030de828d24"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_support::@53d799ac11731c328ce5"
+		}
+	],
+	"name" : "viper_il_full",
+	"paths" : 
+	{
+		"build" : "src",
+		"source" : "src"
+	},
+	"sources" : [],
+	"type" : "INTERFACE_LIBRARY"
+}

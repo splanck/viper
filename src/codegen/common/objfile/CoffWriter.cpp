@@ -418,7 +418,8 @@ bool CoffWriter::write(const std::string &path,
     const uint16_t secIdxText = nextSecIndex++;
     const uint16_t secIdxRdata = hasRodata ? nextSecIndex++ : 0;
     const uint16_t secIdxXdata = hasXdata ? nextSecIndex++ : 0;
-    const uint16_t secIdxPdata = hasPdata ? nextSecIndex++ : 0;
+    if (hasPdata)
+        ++nextSecIndex;
     const uint16_t numSections = static_cast<uint16_t>((nextSecIndex - 1) + (hasDebugLine ? 1 : 0));
 
     std::vector<uint8_t> symtabBytes;
@@ -831,7 +832,8 @@ bool CoffWriter::write(const std::string &path,
         secIdxText[i] = nextSecIndex++;
     const uint16_t secIdxRdata = hasRodata ? nextSecIndex++ : 0;
     const uint16_t secIdxXdata = hasXdata ? nextSecIndex++ : 0;
-    const uint16_t secIdxPdata = hasPdata ? nextSecIndex++ : 0;
+    if (hasPdata)
+        ++nextSecIndex;
     const uint16_t numSections = static_cast<uint16_t>((nextSecIndex - 1) + (hasDebugLine ? 1 : 0));
 
     std::vector<uint8_t> symtabBytes;

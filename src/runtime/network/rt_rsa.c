@@ -17,12 +17,44 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if !defined(__SIZEOF_INT128__)
-#error "Viper RSA requires unsigned __int128 on macOS and Linux"
-#endif
-
 #define RT_RSA_MAX_MOD_BYTES 512
 #define RT_RSA_MAX_WORDS (RT_RSA_MAX_MOD_BYTES / sizeof(uint64_t))
+
+static void rsa_mul_add_u64(uint64_t a,
+                            uint64_t b,
+                            uint64_t addend,
+                            uint64_t carry_in,
+                            uint64_t *low_out,
+                            uint64_t *high_out) {
+#if defined(__SIZEOF_INT128__)
+    unsigned __int128 acc = (unsigned __int128)a * (unsigned __int128)b + addend + carry_in;
+    *low_out = (uint64_t)acc;
+    *high_out = (uint64_t)(acc >> 64);
+#else
+    uint64_t p0 = (uint64_t)(uint32_t)a * (uint64_t)(uint32_t)b;
+    uint64_t p1 = (uint64_t)(uint32_t)a * (b >> 32);
+    uint64_t p2 = (a >> 32) * (uint64_t)(uint32_t)b;
+    uint64_t p3 = (a >> 32) * (b >> 32);
+
+    uint64_t acc0 = (p0 & 0xFFFFFFFFu) + (addend & 0xFFFFFFFFu) + (carry_in & 0xFFFFFFFFu);
+    uint64_t word0 = acc0 & 0xFFFFFFFFu;
+    uint64_t carry0 = acc0 >> 32;
+
+    uint64_t acc1 = (p0 >> 32) + (p1 & 0xFFFFFFFFu) + (p2 & 0xFFFFFFFFu) +
+                    (addend >> 32) + (carry_in >> 32) + carry0;
+    uint64_t word1 = acc1 & 0xFFFFFFFFu;
+    uint64_t carry1 = acc1 >> 32;
+
+    uint64_t acc2 = (p1 >> 32) + (p2 >> 32) + (p3 & 0xFFFFFFFFu) + carry1;
+    uint64_t word2 = acc2 & 0xFFFFFFFFu;
+    uint64_t carry2 = acc2 >> 32;
+
+    uint64_t acc3 = (p3 >> 32) + carry2;
+
+    *low_out = word0 | (word1 << 32);
+    *high_out = word2 | (acc3 << 32);
+#endif
+}
 
 /// @brief Decode one DER tag-length-value header from the start of `buf`.
 /// @details DER (Distinguished Encoding Rules) is the wire format
@@ -264,12 +296,12 @@ static int rsa_words_cmp(const uint64_t *a, const uint64_t *b, size_t count) {
 ///          this is used only in the modular-reduction step where
 ///          underflow can't happen by construction).
 static void rsa_words_sub_inplace(uint64_t *a, const uint64_t *b, size_t count) {
-    unsigned __int128 borrow = 0;
+    uint64_t borrow = 0;
     for (size_t i = 0; i < count; i++) {
-        unsigned __int128 lhs = a[i];
-        unsigned __int128 rhs = (unsigned __int128)b[i] + borrow;
-        a[i] = (uint64_t)(lhs - rhs);
-        borrow = lhs < rhs;
+        uint64_t rhs = b[i] + borrow;
+        uint64_t next_borrow = (rhs < b[i]) || (a[i] < rhs);
+        a[i] -= rhs;
+        borrow = next_borrow;
     }
 }
 
@@ -298,9 +330,9 @@ static void rsa_words_cswap(uint64_t *a, uint64_t *b, size_t count, uint64_t mas
 ///          fast even for large modulus sizes.
 static void rsa_words_accumulate(uint64_t *words, size_t word_count, size_t index, uint64_t value) {
     while (value != 0 && index < word_count) {
-        unsigned __int128 acc = (unsigned __int128)words[index] + value;
-        words[index] = (uint64_t)acc;
-        value = (uint64_t)(acc >> 64);
+        uint64_t sum = words[index] + value;
+        value = sum < words[index] ? 1 : 0;
+        words[index] = sum;
         index++;
     }
 }
@@ -388,22 +420,26 @@ static void rsa_mont_mul(uint64_t *out,
 
     rsa_words_zero(t, RT_RSA_MAX_WORDS + 3);
     for (size_t i = 0; i < word_count; i++) {
-        unsigned __int128 carry = 0;
+        uint64_t carry = 0;
         uint64_t m;
 
         for (size_t j = 0; j < word_count; j++) {
-            unsigned __int128 acc = (unsigned __int128)a[j] * b[i] + t[j] + carry;
-            t[j] = (uint64_t)acc;
-            carry = acc >> 64;
+            uint64_t low = 0;
+            uint64_t high = 0;
+            rsa_mul_add_u64(a[j], b[i], t[j], carry, &low, &high);
+            t[j] = low;
+            carry = high;
         }
         rsa_words_accumulate(t, word_count + 3, word_count, (uint64_t)carry);
 
         m = t[0] * n0_inv;
         carry = 0;
         for (size_t j = 0; j < word_count; j++) {
-            unsigned __int128 acc = (unsigned __int128)m * modulus[j] + t[j] + carry;
-            t[j] = (uint64_t)acc;
-            carry = acc >> 64;
+            uint64_t low = 0;
+            uint64_t high = 0;
+            rsa_mul_add_u64(m, modulus[j], t[j], carry, &low, &high);
+            t[j] = low;
+            carry = high;
         }
         rsa_words_accumulate(t, word_count + 3, word_count, (uint64_t)carry);
 

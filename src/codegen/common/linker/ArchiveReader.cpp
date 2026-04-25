@@ -81,7 +81,7 @@ static size_t parseSize(const uint8_t *header) {
 
 /// Parse the name field from an archive member header (16 chars at offset 0).
 /// Returns the trimmed name and whether this is a special member.
-static std::string parseName(const uint8_t *header, const std::string &longNames) {
+[[maybe_unused]] static std::string parseName(const uint8_t *header, const std::string &longNames) {
     char raw[17] = {};
     std::memcpy(raw, header, 16);
     std::string name(raw, 16);

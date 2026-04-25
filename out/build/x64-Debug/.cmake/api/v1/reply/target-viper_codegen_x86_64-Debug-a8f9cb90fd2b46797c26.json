@@ -1,0 +1,720 @@
+{
+	"archive" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "/machine:x64",
+				"role" : "flags"
+			}
+		]
+	},
+	"artifacts" : 
+	[
+		{
+			"path" : "src/codegen/x86_64/viper_codegen_x86_64.lib"
+		}
+	],
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library",
+			"target_link_libraries",
+			"add_dependencies",
+			"add_compile_options",
+			"add_compile_definitions",
+			"target_include_directories"
+		],
+		"files" : 
+		[
+			"src/codegen/x86_64/CMakeLists.txt",
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 1,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 48,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 72,
+				"parent" : 0
+			},
+			{
+				"file" : 1
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 119,
+				"parent" : 4
+			},
+			{
+				"command" : 4,
+				"file" : 1,
+				"line" : 233,
+				"parent" : 4
+			},
+			{
+				"command" : 4,
+				"file" : 1,
+				"line" : 163,
+				"parent" : 4
+			},
+			{
+				"command" : 5,
+				"file" : 0,
+				"line" : 43,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 9
+	},
+	"compileDependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "viper_common::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_codegen_common::@bc8b4efe7d3ae665ed38"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "il_transform::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_common_opts::@6890427a1f51a3e7e1df"
+		}
+	],
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -std:c++20 -MDd"
+				},
+				{
+					"backtrace" : 5,
+					"fragment" : "/FS"
+				},
+				{
+					"backtrace" : 5,
+					"fragment" : "/utf-8"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/W4"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/permissive-"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4100"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4127"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4201"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4458"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/WX"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4189"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4505"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4702"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4245"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4389"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4456"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4267"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4611"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4244"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 6,
+					"define" : "VIPER_ENABLE_OOP=1"
+				},
+				{
+					"backtrace" : 6,
+					"define" : "VIPER_RUNTIME_NS_DUAL=1"
+				},
+				{
+					"backtrace" : 6,
+					"define" : "VIPER_VM_OPCOUNTS=1"
+				},
+				{
+					"backtrace" : 6,
+					"define" : "VIPER_VM_TAILCALL=1"
+				},
+				{
+					"backtrace" : 7,
+					"define" : "_CRT_NONSTDC_NO_WARNINGS"
+				},
+				{
+					"backtrace" : 7,
+					"define" : "_CRT_SECURE_NO_WARNINGS"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 8,
+					"path" : "C:/git/viper/src/codegen/x86_64"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "C:/git/viper/out/build/x64-Debug/generated"
+				},
+				{
+					"backtrace" : 2,
+					"path" : "C:/git/viper/src"
+				},
+				{
+					"backtrace" : 2,
+					"path" : "C:/git/viper/src/codegen/common/../.."
+				},
+				{
+					"backtrace" : 2,
+					"path" : "C:/git/viper/include"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					2
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5,
+				6,
+				7,
+				8,
+				9,
+				10,
+				11,
+				12,
+				13,
+				14,
+				15,
+				16,
+				17,
+				18,
+				19,
+				20,
+				21,
+				22,
+				23,
+				24,
+				25,
+				26,
+				27,
+				28,
+				29,
+				30,
+				31,
+				32,
+				33,
+				34,
+				35,
+				36,
+				37,
+				38
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "vipergfx::@13b683c5833c12af2e2a"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "vipergui::@1118225edd596f998409"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viperaud::@d714e886e0c44b145a29"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_runtime::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_common::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "generate_runtime_registry::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_pass::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "il_runtime::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_il_core::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_il_verify::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "il_transform::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "il_utils::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "il_analysis::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_support::@53d799ac11731c328ce5"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_codegen_common::@bc8b4efe7d3ae665ed38"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "gen_x86_64_encodings::@6607e724c5ddbec05f40"
+		}
+	],
+	"id" : "viper_codegen_x86_64::@6607e724c5ddbec05f40",
+	"interfaceCompileDependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "viper_common::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_codegen_common::@bc8b4efe7d3ae665ed38"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "il_transform::@145eef247bfb46b6828c"
+		}
+	],
+	"interfaceLinkLibraries" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "viper_common::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_codegen_common::@bc8b4efe7d3ae665ed38"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "il_transform::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_common_opts::@6890427a1f51a3e7e1df"
+		}
+	],
+	"linkLibraries" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "viper_common::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_codegen_common::@bc8b4efe7d3ae665ed38"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "il_transform::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "viper_common_opts::@6890427a1f51a3e7e1df"
+		}
+	],
+	"name" : "viper_codegen_x86_64",
+	"nameOnDisk" : "viper_codegen_x86_64.lib",
+	"orderDependencies" : 
+	[
+		{
+			"backtrace" : 3,
+			"id" : "generate_runtime_registry::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "gen_x86_64_encodings::@6607e724c5ddbec05f40"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "src/codegen/x86_64",
+		"source" : "src/codegen/x86_64"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5,
+				6,
+				7,
+				8,
+				9,
+				10,
+				11,
+				12,
+				13,
+				14,
+				15,
+				16,
+				17,
+				18,
+				19,
+				20,
+				21,
+				22,
+				23,
+				24,
+				25,
+				26,
+				27,
+				28,
+				29,
+				30,
+				31,
+				32,
+				33,
+				34,
+				35,
+				36,
+				37,
+				38
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/TargetX64.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/MachineIR.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/AsmEmitter.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/common/Mangle.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/asmfmt/Format.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/RegAllocLinear.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/ra/Allocator.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/ra/Coalescer.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/ra/LiveIntervals.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/ra/Spiller.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/ra/Liveness.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/FrameLowering.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/CallLowering.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/ISel.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/LowerDiv.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/LowerOvf.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/LowerILToMIR.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/LoweringRuleTable.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/Lowering.EmitCommon.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/Lowering.Arith.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/Lowering.Bitwise.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/Lowering.Mem.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/Lowering.EH.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/Lowering.CF.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/LoweringRules.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/Peephole.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/peephole/ArithSimplify.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/peephole/MovFolding.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/peephole/DCE.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/peephole/BranchOpt.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/Backend.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/CodegenPipeline.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/binenc/X64BinaryEncoder.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/passes/LoweringPass.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/passes/LegalizePass.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/passes/RegAllocPass.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/passes/PeepholePass.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/passes/EmitPass.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/codegen/x86_64/passes/BinaryEmitPass.cpp",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "STATIC_LIBRARY"
+}

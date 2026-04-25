@@ -40,6 +40,7 @@ struct InstallPackageArgs {
     std::string archOverride;
     fs::path stageDir;
     fs::path buildDir;
+    std::string buildConfig;
     fs::path outputPath;
     fs::path verifyOnlyPath;
     bool noVerify{false};
@@ -59,6 +60,7 @@ void installPackageUsage() {
         << "  --arch <arch>         x64 | arm64 (default: manifest/host)\n"
         << "  --stage-dir <dir>     Existing staged install tree\n"
         << "  --build-dir <dir>     Build tree; runs cmake --install into a staging dir\n"
+        << "  --config <cfg>        Build configuration for cmake --install from a build tree\n"
         << "  --verify-only <path>  Verify an existing artifact and exit\n"
         << "  --stage-only          Validate/gather the staged install tree and stop\n"
         << "  --keep-stage-dir      Preserve auto-generated stage directories\n"
@@ -126,6 +128,8 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
             args.stageDir = argv[++i];
         } else if (arg == "--build-dir" && i + 1 < argc) {
             args.buildDir = argv[++i];
+        } else if (arg == "--config" && i + 1 < argc) {
+            args.buildConfig = argv[++i];
         } else if (arg == "--verify-only" && i + 1 < argc) {
             args.verifyOnlyPath = argv[++i];
         } else if (arg == "-o" && i + 1 < argc) {
@@ -227,8 +231,14 @@ fs::path ensureStageDir(const InstallPackageArgs &args) {
     fs::remove_all(stageDir);
     fs::create_directories(stageDir);
 
-    const RunResult rr =
-        run_process({"cmake", "--install", args.buildDir.string(), "--prefix", stageDir.string()});
+    std::vector<std::string> installCmd = {
+        "cmake", "--install", args.buildDir.string(), "--prefix", stageDir.string()};
+    if (!args.buildConfig.empty()) {
+        installCmd.push_back("--config");
+        installCmd.push_back(args.buildConfig);
+    }
+
+    const RunResult rr = run_process(installCmd);
     if (rr.exit_code != 0) {
         throw std::runtime_error("cmake --install failed while staging toolchain:\n" + rr.out +
                                  rr.err);

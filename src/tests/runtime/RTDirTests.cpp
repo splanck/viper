@@ -396,6 +396,7 @@ static void test_files() {
 }
 
 /// @brief Test rt_dir_files excludes symlinks to files on POSIX.
+#ifndef _WIN32
 static void test_files_excludes_file_symlink() {
     printf("Testing rt_dir_files symlink filtering:\n");
 
@@ -455,6 +456,7 @@ static void test_remove_all_symlink_does_not_delete_target() {
     rmdir_p(target_dir);
     printf("\n");
 }
+#endif
 
 /// @brief Test rt_dir_dirs.
 static void test_dirs() {
@@ -713,8 +715,10 @@ int main() {
     test_list();
     test_entries();
     test_files();
+#ifndef _WIN32
     test_files_excludes_file_symlink();
     test_remove_all_symlink_does_not_delete_target();
+#endif
     test_dirs();
     test_list_seq_wrappers();
     test_current();

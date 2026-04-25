@@ -214,7 +214,6 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                 }
                 const int64_t A = rel.addend;
                 const uint64_t P = secVA + chunkBase + rel.offset;
-                const int64_t disp = static_cast<int64_t>(S) + A - static_cast<int64_t>(P);
                 if (branch26Reachable(P, static_cast<uint64_t>(static_cast<int64_t>(S) + A)))
                     continue; // In range — no trampoline needed.
 

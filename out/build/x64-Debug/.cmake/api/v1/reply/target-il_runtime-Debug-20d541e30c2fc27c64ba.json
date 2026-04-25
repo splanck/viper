@@ -1,0 +1,717 @@
+{
+	"archive" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "/machine:x64",
+				"role" : "flags"
+			}
+		]
+	},
+	"artifacts" : 
+	[
+		{
+			"path" : "src/il_runtime.lib"
+		}
+	],
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library",
+			"install",
+			"target_link_libraries",
+			"add_dependencies",
+			"add_compile_options",
+			"add_compile_definitions",
+			"target_compile_definitions",
+			"target_include_directories"
+		],
+		"files" : 
+		[
+			"src/CMakeLists.txt",
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 75,
+				"parent" : 0
+			},
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 755,
+				"parent" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 87,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 0,
+				"line" : 86,
+				"parent" : 0
+			},
+			{
+				"command" : 4,
+				"file" : 1,
+				"line" : 119,
+				"parent" : 2
+			},
+			{
+				"command" : 5,
+				"file" : 1,
+				"line" : 233,
+				"parent" : 2
+			},
+			{
+				"command" : 6,
+				"file" : 0,
+				"line" : 88,
+				"parent" : 0
+			},
+			{
+				"command" : 5,
+				"file" : 1,
+				"line" : 163,
+				"parent" : 2
+			},
+			{
+				"command" : 7,
+				"file" : 0,
+				"line" : 89,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 9
+	},
+	"compileDependencies" : 
+	[
+		{
+			"backtrace" : 4,
+			"id" : "viper_il_core::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_runtime::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_common_opts::@6890427a1f51a3e7e1df"
+		}
+	],
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -std:c++20 -MDd"
+				},
+				{
+					"backtrace" : 6,
+					"fragment" : "/FS"
+				},
+				{
+					"backtrace" : 6,
+					"fragment" : "/utf-8"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/W4"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/permissive-"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4100"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4127"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4201"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4458"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/WX"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4189"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4505"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4702"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4245"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4389"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4456"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4267"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4611"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4244"
+				},
+				{
+					"fragment" : "/constexpr:steps100000000"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 7,
+					"define" : "VIPER_ENABLE_OOP=1"
+				},
+				{
+					"backtrace" : 8,
+					"define" : "VIPER_RUNTIME_NS_DUAL=1"
+				},
+				{
+					"backtrace" : 7,
+					"define" : "VIPER_VM_OPCOUNTS=1"
+				},
+				{
+					"backtrace" : 7,
+					"define" : "VIPER_VM_TAILCALL=1"
+				},
+				{
+					"backtrace" : 9,
+					"define" : "_CRT_NONSTDC_NO_WARNINGS"
+				},
+				{
+					"backtrace" : 9,
+					"define" : "_CRT_SECURE_NO_WARNINGS"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 10,
+					"path" : "C:/git/viper/out/build/x64-Debug/generated"
+				},
+				{
+					"backtrace" : 10,
+					"path" : "C:/git/viper/src"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/core"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/arrays"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/oop"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/collections"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/game"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/text"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/io"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/system"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/graphics"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/audio"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/threads"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/network"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/localization"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/include"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/lib/graphics/include"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/lib/audio/include"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					4
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				0
+			]
+		},
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -std:c++20 -MDd"
+				},
+				{
+					"backtrace" : 6,
+					"fragment" : "/FS"
+				},
+				{
+					"backtrace" : 6,
+					"fragment" : "/utf-8"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/W4"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/permissive-"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4100"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4127"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4201"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4458"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/WX"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4189"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4505"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4702"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4245"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4389"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4456"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4267"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4611"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/wd4244"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 7,
+					"define" : "VIPER_ENABLE_OOP=1"
+				},
+				{
+					"backtrace" : 8,
+					"define" : "VIPER_RUNTIME_NS_DUAL=1"
+				},
+				{
+					"backtrace" : 7,
+					"define" : "VIPER_VM_OPCOUNTS=1"
+				},
+				{
+					"backtrace" : 7,
+					"define" : "VIPER_VM_TAILCALL=1"
+				},
+				{
+					"backtrace" : 9,
+					"define" : "_CRT_NONSTDC_NO_WARNINGS"
+				},
+				{
+					"backtrace" : 9,
+					"define" : "_CRT_SECURE_NO_WARNINGS"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 10,
+					"path" : "C:/git/viper/out/build/x64-Debug/generated"
+				},
+				{
+					"backtrace" : 10,
+					"path" : "C:/git/viper/src"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/core"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/arrays"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/oop"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/collections"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/game"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/text"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/io"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/system"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/graphics"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/audio"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/threads"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/network"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/runtime/localization"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/include"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/lib/graphics/include"
+				},
+				{
+					"backtrace" : 4,
+					"path" : "C:/git/viper/src/lib/audio/include"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					4
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				1,
+				2,
+				3,
+				4,
+				5,
+				6,
+				7,
+				8,
+				9
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 4,
+			"id" : "vipergfx::@13b683c5833c12af2e2a"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "vipergui::@1118225edd596f998409"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viperaud::@d714e886e0c44b145a29"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_runtime::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 5,
+			"id" : "generate_runtime_registry::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_il_core::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_support::@53d799ac11731c328ce5"
+		}
+	],
+	"id" : "il_runtime::@145eef247bfb46b6828c",
+	"install" : 
+	{
+		"destinations" : 
+		[
+			{
+				"backtrace" : 3,
+				"path" : "lib"
+			}
+		],
+		"prefix" : 
+		{
+			"path" : "C:/git/viper/out/install/x64-Debug"
+		}
+	},
+	"interfaceCompileDependencies" : 
+	[
+		{
+			"backtrace" : 4,
+			"id" : "viper_il_core::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_runtime::@6e5025570506519f0aff"
+		}
+	],
+	"interfaceLinkLibraries" : 
+	[
+		{
+			"backtrace" : 4,
+			"id" : "viper_il_core::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_runtime::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_common_opts::@6890427a1f51a3e7e1df"
+		}
+	],
+	"linkLibraries" : 
+	[
+		{
+			"backtrace" : 4,
+			"id" : "viper_il_core::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_runtime::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_common_opts::@6890427a1f51a3e7e1df"
+		}
+	],
+	"name" : "il_runtime",
+	"nameOnDisk" : "il_runtime.lib",
+	"orderDependencies" : 
+	[
+		{
+			"backtrace" : 5,
+			"id" : "generate_runtime_registry::@145eef247bfb46b6828c"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "src",
+		"source" : "src"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5,
+				6,
+				7,
+				8,
+				9
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/il/runtime/RuntimeSignatures.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 1,
+			"path" : "src/il/runtime/RuntimeSignatures_Handlers.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 1,
+			"path" : "src/il/runtime/RuntimeSignatureParser.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 1,
+			"path" : "src/il/runtime/signatures/Registry.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 1,
+			"path" : "src/il/runtime/signatures/Signatures_FileIO.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 1,
+			"path" : "src/il/runtime/signatures/Signatures_Strings.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 1,
+			"path" : "src/il/runtime/signatures/Signatures_Math.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 1,
+			"path" : "src/il/runtime/signatures/Signatures_Arrays.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 1,
+			"path" : "src/il/runtime/signatures/Signatures_OOP.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 1,
+			"path" : "src/il/runtime/classes/RuntimeClasses.cpp",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "STATIC_LIBRARY"
+}

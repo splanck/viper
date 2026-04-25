@@ -1,0 +1,234 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install"
+		],
+		"files" : 
+		[
+			"src/runtime/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 729,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 733,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 737,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 9
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "Unspecified",
+			"destination" : "include/viper_runtime",
+			"paths" : 
+			[
+				"src/runtime/graphics/rt_action.h",
+				"src/runtime/core/rt_context.h",
+				"src/runtime/core/rt_error.h",
+				"src/runtime/core/rt_trap.h",
+				"src/runtime/core/rt_stack_safety.h",
+				"src/runtime/rt.hpp",
+				"src/runtime/core/rt_fp.h",
+				"src/runtime/core/rt_math.h",
+				"src/runtime/core/rt_numeric.h",
+				"src/runtime/core/rt_random.h",
+				"src/runtime/core/rt_string.h",
+				"src/runtime/arrays/rt_array.h",
+				"src/runtime/arrays/rt_array_i64.h",
+				"src/runtime/arrays/rt_array_f64.h",
+				"src/runtime/arrays/rt_array_str.h",
+				"src/runtime/arrays/rt_array_obj.h",
+				"src/runtime/core/rt_heap.h",
+				"src/runtime/collections/rt_list.h",
+				"src/runtime/oop/rt_box.h",
+				"src/runtime/oop/rt_object.h",
+				"src/runtime/oop/rt_oop.h",
+				"src/runtime/core/rt_debug.h",
+				"src/runtime/io/rt_file.h",
+				"src/runtime/core/rt_fmt.h",
+				"src/runtime/core/rt_format.h",
+				"src/runtime/core/rt_int_format.h",
+				"src/runtime/core/rt_log.h",
+				"src/runtime/core/rt_printf_compat.h",
+				"src/runtime/core/rt_string_builder.h",
+				"src/runtime/core/rt_output.h",
+				"src/runtime/core/rt_modvar.h",
+				"src/runtime/core/rt_args.h",
+				"src/runtime/oop/rt_sb_bridge.h",
+				"src/runtime/graphics/rt_font.h",
+				"src/runtime/graphics/rt_graphics.h",
+				"src/runtime/graphics/rt_gui.h",
+				"src/runtime/graphics/rt_input.h",
+				"src/runtime/graphics/rt_inputmgr.h",
+				"src/runtime/game/rt_grid2d.h",
+				"src/runtime/game/rt_timer.h",
+				"src/runtime/game/rt_statemachine.h",
+				"src/runtime/game/rt_animstate.h",
+				"src/runtime/game/rt_tween.h",
+				"src/runtime/game/rt_buttongroup.h",
+				"src/runtime/game/rt_smoothvalue.h",
+				"src/runtime/game/rt_particle.h",
+				"src/runtime/game/rt_spriteanim.h",
+				"src/runtime/game/rt_collision.h",
+				"src/runtime/game/rt_objpool.h",
+				"src/runtime/game/rt_screenfx.h",
+				"src/runtime/game/rt_pathfollow.h",
+				"src/runtime/game/rt_quadtree.h",
+				"src/runtime/game/rt_debugoverlay.h",
+				"src/runtime/game/rt_gameui.h",
+				"src/runtime/game/rt_pathfinder.h",
+				"src/runtime/game/rt_dialogue.h",
+				"src/runtime/game/rt_lighting2d.h",
+				"src/runtime/game/rt_platformer_ctrl.h",
+				"src/runtime/game/rt_achievement.h",
+				"src/runtime/game/rt_typewriter.h",
+				"src/runtime/core/rt_datetime.h",
+				"src/runtime/collections/rt_map.h",
+				"src/runtime/collections/rt_binbuf.h",
+				"src/runtime/text/rt_parse.h",
+				"src/runtime/io/rt_path.h",
+				"src/runtime/io/rt_dir.h",
+				"src/runtime/graphics/rt_pixels.h",
+				"src/runtime/graphics/rt_sprite.h",
+				"src/runtime/graphics/rt_camera.h",
+				"src/runtime/graphics/rt_tilemap.h",
+				"src/runtime/graphics/rt_scene.h",
+				"src/runtime/graphics/rt_spritebatch.h",
+				"src/runtime/graphics/rt_texatlas.h",
+				"src/runtime/audio/rt_audio.h",
+				"src/runtime/audio/rt_soundbank.h",
+				"src/runtime/audio/rt_synth.h",
+				"src/runtime/threads/rt_threads.h",
+				"src/runtime/network/rt_network.h"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 2,
+			"component" : "Unspecified",
+			"destination" : "include/viper/runtime",
+			"paths" : 
+			[
+				"src/runtime/graphics/rt_action.h",
+				"src/runtime/core/rt_context.h",
+				"src/runtime/core/rt_error.h",
+				"src/runtime/core/rt_trap.h",
+				"src/runtime/core/rt_stack_safety.h",
+				"src/runtime/rt.hpp",
+				"src/runtime/core/rt_fp.h",
+				"src/runtime/core/rt_math.h",
+				"src/runtime/core/rt_numeric.h",
+				"src/runtime/core/rt_random.h",
+				"src/runtime/core/rt_string.h",
+				"src/runtime/arrays/rt_array.h",
+				"src/runtime/arrays/rt_array_i64.h",
+				"src/runtime/arrays/rt_array_f64.h",
+				"src/runtime/arrays/rt_array_str.h",
+				"src/runtime/arrays/rt_array_obj.h",
+				"src/runtime/core/rt_heap.h",
+				"src/runtime/collections/rt_list.h",
+				"src/runtime/oop/rt_box.h",
+				"src/runtime/oop/rt_object.h",
+				"src/runtime/oop/rt_oop.h",
+				"src/runtime/core/rt_debug.h",
+				"src/runtime/io/rt_file.h",
+				"src/runtime/core/rt_fmt.h",
+				"src/runtime/core/rt_format.h",
+				"src/runtime/core/rt_int_format.h",
+				"src/runtime/core/rt_log.h",
+				"src/runtime/core/rt_printf_compat.h",
+				"src/runtime/core/rt_string_builder.h",
+				"src/runtime/core/rt_output.h",
+				"src/runtime/core/rt_modvar.h",
+				"src/runtime/core/rt_args.h",
+				"src/runtime/oop/rt_sb_bridge.h",
+				"src/runtime/graphics/rt_font.h",
+				"src/runtime/graphics/rt_graphics.h",
+				"src/runtime/graphics/rt_gui.h",
+				"src/runtime/graphics/rt_input.h",
+				"src/runtime/graphics/rt_inputmgr.h",
+				"src/runtime/game/rt_grid2d.h",
+				"src/runtime/game/rt_timer.h",
+				"src/runtime/game/rt_statemachine.h",
+				"src/runtime/game/rt_animstate.h",
+				"src/runtime/game/rt_tween.h",
+				"src/runtime/game/rt_buttongroup.h",
+				"src/runtime/game/rt_smoothvalue.h",
+				"src/runtime/game/rt_particle.h",
+				"src/runtime/game/rt_spriteanim.h",
+				"src/runtime/game/rt_collision.h",
+				"src/runtime/game/rt_objpool.h",
+				"src/runtime/game/rt_screenfx.h",
+				"src/runtime/game/rt_pathfollow.h",
+				"src/runtime/game/rt_quadtree.h",
+				"src/runtime/game/rt_debugoverlay.h",
+				"src/runtime/game/rt_gameui.h",
+				"src/runtime/game/rt_pathfinder.h",
+				"src/runtime/game/rt_dialogue.h",
+				"src/runtime/game/rt_lighting2d.h",
+				"src/runtime/game/rt_platformer_ctrl.h",
+				"src/runtime/game/rt_achievement.h",
+				"src/runtime/game/rt_typewriter.h",
+				"src/runtime/core/rt_datetime.h",
+				"src/runtime/collections/rt_map.h",
+				"src/runtime/collections/rt_binbuf.h",
+				"src/runtime/text/rt_parse.h",
+				"src/runtime/io/rt_path.h",
+				"src/runtime/io/rt_dir.h",
+				"src/runtime/graphics/rt_pixels.h",
+				"src/runtime/graphics/rt_sprite.h",
+				"src/runtime/graphics/rt_camera.h",
+				"src/runtime/graphics/rt_tilemap.h",
+				"src/runtime/graphics/rt_scene.h",
+				"src/runtime/graphics/rt_spritebatch.h",
+				"src/runtime/graphics/rt_texatlas.h",
+				"src/runtime/audio/rt_audio.h",
+				"src/runtime/audio/rt_soundbank.h",
+				"src/runtime/audio/rt_synth.h",
+				"src/runtime/threads/rt_threads.h",
+				"src/runtime/network/rt_network.h"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 3,
+			"component" : "Unspecified",
+			"destination" : "include/viper/runtime",
+			"paths" : 
+			[
+				"include/viper/runtime/rt.h"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "src/runtime",
+		"source" : "src/runtime"
+	}
+}

@@ -384,7 +384,6 @@ class JsonParser {
                     return parseNumber();
                 error("unexpected character");
         }
-        return JsonValue(); // unreachable
     }
 
     std::string parseString() {

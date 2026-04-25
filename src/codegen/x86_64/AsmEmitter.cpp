@@ -995,8 +995,7 @@ std::string_view AsmEmitter::conditionSuffix(std::int64_t code) noexcept {
             return "no";
         default:
             assert(false && "unknown condition code in conditionSuffix");
-            std::abort();
-            return "e"; // unreachable; suppresses compiler warning
+            return "e";
     }
 }
 

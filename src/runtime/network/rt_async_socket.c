@@ -136,6 +136,7 @@ static void async_promise_error_from_trap(void *promise, const char *fallback) {
 typedef struct {
     char *host;
     int64_t port;
+    int64_t timeout_ms;
     void *promise;
 } connect_args_t;
 
@@ -150,7 +151,7 @@ static void async_connect_worker(void *arg) {
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) == 0) {
         host = rt_string_from_bytes(a->host, strlen(a->host));
-        void *tcp = rt_tcp_connect(host, a->port);
+        void *tcp = rt_tcp_connect_for(host, a->port, a->timeout_ms);
         rt_string_unref(host);
         host = NULL;
         rt_promise_set(a->promise, tcp);
@@ -166,15 +167,15 @@ static void async_connect_worker(void *arg) {
     free(a);
 }
 
-/// @brief Initiate a non-blocking TCP connect, returning a future that resolves to the TCP handle.
-/// @details Submits the blocking `rt_tcp_connect(host, port)` to the
+/// @brief Initiate a non-blocking TCP connect with an explicit timeout.
+/// @details Submits the blocking `rt_tcp_connect_for(host, port, timeout_ms)` to the
 ///          shared 4-thread pool and returns immediately with a future
 ///          the caller can `Await` or chain on. Heap-copies the host
 ///          string so the worker can use it safely after the calling
 ///          frame returns. On thread-pool refusal (pool shut down),
 ///          resolves the promise as Err synchronously rather than
 ///          leaking the request.
-void *rt_async_connect(rt_string host, int64_t port) {
+void *rt_async_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
     const char *h = rt_string_cstr(host);
     if (!h)
         rt_trap("AsyncSocket: NULL host");
@@ -187,6 +188,7 @@ void *rt_async_connect(rt_string host, int64_t port) {
         rt_trap("AsyncSocket: OOM");
     args->host = strdup(h);
     args->port = port;
+    args->timeout_ms = timeout_ms;
     args->promise = promise;
     if (!args->host) {
         free(args);
@@ -200,6 +202,11 @@ void *rt_async_connect(rt_string host, int64_t port) {
         async_fail_submit(promise, "AsyncSocket: thread pool is shut down");
     }
     return future;
+}
+
+/// @brief Initiate a non-blocking TCP connect using the default TCP connect timeout.
+void *rt_async_connect(rt_string host, int64_t port) {
+    return rt_async_connect_for(host, port, 30000);
 }
 
 //=============================================================================

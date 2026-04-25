@@ -28,6 +28,9 @@ extern "C" {
 /// @brief Asynchronously connect to host:port. Returns a Future that resolves to a Tcp object.
 void *rt_async_connect(rt_string host, int64_t port);
 
+/// @brief Asynchronously connect to host:port with an explicit timeout.
+void *rt_async_connect_for(rt_string host, int64_t port, int64_t timeout_ms);
+
 /// @brief Asynchronously send data over a TCP connection. Returns a Future[Integer].
 void *rt_async_send(void *tcp, void *data);
 

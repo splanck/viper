@@ -456,7 +456,7 @@ static int rt_fileext_same_existing_file(const char *src_path, const char *dst_p
 #endif
 }
 
-static int rt_fileext_is_regular_mode(mode_t mode) {
+static int rt_fileext_is_regular_mode(int mode) {
 #if RT_PLATFORM_WINDOWS
     return (mode & _S_IFREG) != 0;
 #else

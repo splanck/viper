@@ -65,7 +65,10 @@ func main() {
 
     var snap = render.getCanvas().Screenshot();
     var center = Pixels.Get(snap, render.getWidth() / 2, render.getHeight() / 2);
-    if (center == 0xFF00FFFF) {
+    var r = (center >> 24) & 0xFF;
+    var g = (center >> 16) & 0xFF;
+    var b = (center >> 8) & 0xFF;
+    if (r > 220 && g < 80 && b > 220) {
         Terminal.Say("RESULT: fail stale overlay");
         return;
     }

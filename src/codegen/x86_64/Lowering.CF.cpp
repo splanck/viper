@@ -27,6 +27,7 @@
 #include "MachineIR.hpp"
 #include "Unsupported.hpp"
 
+#include <algorithm>
 #include <limits>
 #include <string>
 

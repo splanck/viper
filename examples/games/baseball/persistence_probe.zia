@@ -20,7 +20,7 @@ bind "./src/season/demo/default_franchise";
 bind "./src/season/season_engine";
 bind "./src/season/persistence";
 
-// Run the persistence round-trip: simulate 12 days, save, load, compare
+// Run the persistence round-trip: simulate a few days, save, load, compare
 // every field including the RNG stream cursors, exit.
 func start() {
     var franchise = default_franchise.buildDefaultFranchise(9090);

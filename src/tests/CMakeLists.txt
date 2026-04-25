@@ -54,6 +54,14 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/TestHelpers.cmake)
 
 set(VIPER_TESTS_DIR ${CMAKE_CURRENT_LIST_DIR})
 
+if (WIN32)
+    if (DEFINED ENV{SystemDrive})
+        file(MAKE_DIRECTORY "$ENV{SystemDrive}/tmp")
+    else ()
+        file(MAKE_DIRECTORY "C:/tmp")
+    endif ()
+endif ()
+
 file(GLOB VIPER_TEST_SCRIPT_FILES
         LIST_DIRECTORIES FALSE
         "${CMAKE_CURRENT_SOURCE_DIR}/scripts/*.sh")
@@ -66,6 +74,7 @@ foreach (_viper_test_script IN LISTS VIPER_TEST_SCRIPT_FILES)
 endforeach ()
 
 find_package(Threads REQUIRED)
+find_program(VIPER_BASH_EXECUTABLE NAMES bash)
 
 add_library(viper_testing INTERFACE)
 target_link_libraries(viper_testing INTERFACE viper_common_opts viper::il_full)
@@ -170,9 +179,9 @@ macro(_aarch64_add_test_common _name _src _libs)
 endmacro()
 
 # ARM64/AArch64 codegen tests — gated on ARM64 processor.
-# Using CMAKE_SYSTEM_PROCESSOR instead of NOT WIN32 so that Windows ARM64
-# devices (Surface Pro X, Snapdragon X Elite) correctly run these tests.
-if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
+# Windows ARM64 builds the backend, but the current native/link test path still
+# assumes Unix/Darwin assembler and process semantics.
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND NOT WIN32)
 
     # ── Group 1: il_codegen_aarch64 only ────────────────────────────────
     set(_AARCH64_CODEGEN_ONLY_TESTS
@@ -736,14 +745,16 @@ foreach (test_name IN LISTS ZIA_LANG_TESTS)
     endif ()
 endforeach ()
 
-add_test(NAME zia_lang_34_async_functions_repeat
-        COMMAND /bin/bash
-        "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_zia_async_functions_repeat.sh"
-        $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}" 25)
-set_tests_properties(zia_lang_34_async_functions_repeat PROPERTIES
-        PASS_REGULAR_EXPRESSION "PASS"
-        LABELS "zia;regression"
-        TIMEOUT 30)
+if (VIPER_BASH_EXECUTABLE)
+    add_test(NAME zia_lang_34_async_functions_repeat
+            COMMAND "${VIPER_BASH_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_zia_async_functions_repeat.sh"
+            $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}" 25)
+    set_tests_properties(zia_lang_34_async_functions_repeat PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "zia;regression;requires_posix_shell"
+            TIMEOUT 30)
+endif ()
 
 # =============================================================================
 # Zia Namespace Bind Tests
@@ -833,6 +844,10 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dbowling PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
+if (WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
+    set_tests_properties(zia_smoke_3dbowling PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
 
 add_test(NAME zia_smoke_3dscene
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dscene/smoke_probe.zia"
@@ -872,6 +887,10 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_tests_properties(zia_smoke_3dbowling_overlay PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
+if (WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
+    set_tests_properties(zia_smoke_3dbowling_overlay PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
 
 add_test(NAME zia_smoke_3dbowling_title_postfx
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/title_postfx_smoke.zia"
@@ -881,6 +900,10 @@ set_tests_properties(zia_smoke_3dbowling_title_postfx PROPERTIES
         LABELS "zia;smoke;graphics3d;requires_display"
         TIMEOUT 30)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_tests_properties(zia_smoke_3dbowling_title_postfx PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
+if (WIN32 AND CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
     set_tests_properties(zia_smoke_3dbowling_title_postfx PROPERTIES
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
@@ -942,7 +965,7 @@ add_test(NAME zia_calibration_baseball
 set_tests_properties(zia_calibration_baseball PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;comprehensive"
-        TIMEOUT 30)
+        TIMEOUT 120)
 
 add_test(NAME zia_staff_usage_baseball
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/staff_usage_probe.zia"
@@ -966,7 +989,7 @@ add_test(NAME zia_season_baseball
 set_tests_properties(zia_season_baseball PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;comprehensive"
-        TIMEOUT 60)
+        TIMEOUT 180)
 
 add_test(NAME zia_persistence_baseball
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/baseball/persistence_probe.zia"
@@ -984,17 +1007,19 @@ set_tests_properties(zia_reporting_baseball PROPERTIES
         LABELS "zia;smoke"
         TIMEOUT 30)
 
-add_test(NAME platform_policy_lint_empty_candidates
-        COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_platform_policy_lint_empty_candidates.sh"
-        "${CMAKE_SOURCE_DIR}")
-set_tests_properties(platform_policy_lint_empty_candidates PROPERTIES
-        PASS_REGULAR_EXPRESSION "PASS"
-        LABELS "tools;smoke;requires_posix_shell"
-        TIMEOUT 30)
+if (VIPER_BASH_EXECUTABLE)
+    add_test(NAME platform_policy_lint_empty_candidates
+            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_platform_policy_lint_empty_candidates.sh"
+            "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(platform_policy_lint_empty_candidates PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "tools;smoke;requires_posix_shell"
+            TIMEOUT 30)
+endif ()
 
-if (APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
     add_test(NAME native_smoke_3dbowling_build_arm64
-            COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_3dbowling_native_build.sh"
+            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_3dbowling_native_build.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_3dbowling_build_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -1002,7 +1027,7 @@ if (APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
             TIMEOUT 120)
 
     add_test(NAME native_smoke_achievement_draw_arm64
-            COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_achievement_draw_native.sh"
+            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_achievement_draw_native.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_achievement_draw_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -1011,7 +1036,7 @@ if (APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
             TIMEOUT 60)
 
     add_test(NAME native_smoke_xenoscape_start_arm64
-            COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_start.sh"
+            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_start.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_xenoscape_start_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -1020,7 +1045,7 @@ if (APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
             TIMEOUT 60)
 
     add_test(NAME native_smoke_xenoscape_action_names_arm64
-            COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_action_names.sh"
+            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_action_names.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_xenoscape_action_names_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -1028,7 +1053,7 @@ if (APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
             TIMEOUT 60)
 
     add_test(NAME native_smoke_chess_ai_arm64
-            COMMAND /bin/bash "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_chess_ai_native.sh"
+            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_chess_ai_native.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_chess_ai_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"

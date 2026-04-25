@@ -1,0 +1,70 @@
+{
+	"abstract" : true,
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library",
+			"target_link_libraries"
+		],
+		"files" : 
+		[
+			"src/frontends/common/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 14,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 23,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 9
+	},
+	"id" : "fe_common::@71917fa5d493ad3be2a9",
+	"interfaceCompileDependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "viper_il_core::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "il_build::@145eef247bfb46b6828c"
+		}
+	],
+	"interfaceLinkLibraries" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "viper_il_core::@145eef247bfb46b6828c"
+		},
+		{
+			"backtrace" : 2,
+			"id" : "il_build::@145eef247bfb46b6828c"
+		}
+	],
+	"name" : "fe_common",
+	"paths" : 
+	{
+		"build" : "src/frontends/common",
+		"source" : "src/frontends/common"
+	},
+	"sources" : [],
+	"type" : "INTERFACE_LIBRARY"
+}

@@ -95,8 +95,14 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Default to strict builds: treat warnings as errors unless opted out.
-option(IL_WARN_AS_ERROR "Treat warnings as errors" ON)
+# Default to strict builds: treat warnings as errors unless opted out. MSVC ARM64
+# emits a wider warning surface for existing cross-platform code, so keep that
+# host buildable by default while still allowing explicit opt-in.
+set(_IL_WARN_AS_ERROR_DEFAULT ON)
+if(MSVC AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM64|AARCH64|arm64|aarch64)$")
+  set(_IL_WARN_AS_ERROR_DEFAULT OFF)
+endif()
+option(IL_WARN_AS_ERROR "Treat warnings as errors" ${_IL_WARN_AS_ERROR_DEFAULT})
 option(IL_USE_LLD "Use lld linker if available (GCC/Clang only)" ON)
 option(IL_USE_LIBCXX "Use libc++ on Clang (Linux)" OFF)
 option(IL_SANITIZE_ADDRESS "Enable address sanitizer" OFF)
@@ -360,11 +366,8 @@ option(IL_ENABLE_X64_ASM_SYNTAX_CHECK "Check generated x86_64 asm syntax" ON)
 option(IL_ENABLE_X64_ASM_ASSEMBLE_LINK "Assemble+link x86_64 asm" ON)
 option(IL_ENABLE_X64_NATIVE_RUN "Run x86_64 binaries" ON)
 
-if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
+if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
   set(IL_ENABLE_X64_NATIVE_RUN OFF CACHE BOOL "" FORCE)
-endif()
-
-if(APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")
   set(IL_ENABLE_X64_ASM_ASSEMBLE_LINK OFF CACHE BOOL "" FORCE)
 endif()
 

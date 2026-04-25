@@ -435,7 +435,7 @@ static void test_http_invalid_content_length() {
 
 // ── Scenario 12: Async connect failure resolves as Future error ───────────
 static void test_async_connect_failure_surfaces_as_future_error() {
-    void *future = rt_async_connect(rt_const_cstr("127.0.0.1"), 1);
+    void *future = rt_async_connect_for(rt_const_cstr("127.0.0.1"), 1, 2000);
     assert(future != nullptr);
 
     assert(rt_future_wait_for(future, 5000) == 1);

@@ -1088,7 +1088,6 @@ bool VM::prepareTrap(VmError &error) {
 
             vm_clear_trap_token();
             throwForTrap(st);
-            return true; // Unreachable but silences control-path warnings.
         }
 
         faultBlock = st->callSiteBlock;

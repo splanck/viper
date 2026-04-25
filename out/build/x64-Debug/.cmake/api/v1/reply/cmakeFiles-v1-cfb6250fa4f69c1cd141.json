@@ -1,0 +1,783 @@
+{
+	"globsDependent" : 
+	[
+		{
+			"expression" : "C:/git/viper/src/il/runtime/RuntimeSurfacePolicy.inc",
+			"paths" : 
+			[
+				"C:/git/viper/src/il/runtime/RuntimeSurfacePolicy.inc"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/git/viper/src/runtime/*.h",
+			"paths" : 
+			[
+				"C:/git/viper/src/runtime/arrays/rt_array.h",
+				"C:/git/viper/src/runtime/arrays/rt_array_f64.h",
+				"C:/git/viper/src/runtime/arrays/rt_array_i64.h",
+				"C:/git/viper/src/runtime/arrays/rt_array_obj.h",
+				"C:/git/viper/src/runtime/arrays/rt_array_str.h",
+				"C:/git/viper/src/runtime/arrays/rt_list_i64.h",
+				"C:/git/viper/src/runtime/audio/rt_audio.h",
+				"C:/git/viper/src/runtime/audio/rt_mixgroup.h",
+				"C:/git/viper/src/runtime/audio/rt_mp3.h",
+				"C:/git/viper/src/runtime/audio/rt_mp3_tables.h",
+				"C:/git/viper/src/runtime/audio/rt_musicgen.h",
+				"C:/git/viper/src/runtime/audio/rt_ogg.h",
+				"C:/git/viper/src/runtime/audio/rt_playlist.h",
+				"C:/git/viper/src/runtime/audio/rt_soundbank.h",
+				"C:/git/viper/src/runtime/audio/rt_synth.h",
+				"C:/git/viper/src/runtime/audio/rt_vorbis.h",
+				"C:/git/viper/src/runtime/collections/rt_bag.h",
+				"C:/git/viper/src/runtime/collections/rt_bimap.h",
+				"C:/git/viper/src/runtime/collections/rt_binbuf.h",
+				"C:/git/viper/src/runtime/collections/rt_bitset.h",
+				"C:/git/viper/src/runtime/collections/rt_bloomfilter.h",
+				"C:/git/viper/src/runtime/collections/rt_bytes.h",
+				"C:/git/viper/src/runtime/collections/rt_convert_coll.h",
+				"C:/git/viper/src/runtime/collections/rt_countmap.h",
+				"C:/git/viper/src/runtime/collections/rt_defaultmap.h",
+				"C:/git/viper/src/runtime/collections/rt_deque.h",
+				"C:/git/viper/src/runtime/collections/rt_frozenmap.h",
+				"C:/git/viper/src/runtime/collections/rt_frozenset.h",
+				"C:/git/viper/src/runtime/collections/rt_intmap.h",
+				"C:/git/viper/src/runtime/collections/rt_iter.h",
+				"C:/git/viper/src/runtime/collections/rt_list.h",
+				"C:/git/viper/src/runtime/collections/rt_lrucache.h",
+				"C:/git/viper/src/runtime/collections/rt_map.h",
+				"C:/git/viper/src/runtime/collections/rt_multimap.h",
+				"C:/git/viper/src/runtime/collections/rt_orderedmap.h",
+				"C:/git/viper/src/runtime/collections/rt_pqueue.h",
+				"C:/git/viper/src/runtime/collections/rt_queue.h",
+				"C:/git/viper/src/runtime/collections/rt_ring.h",
+				"C:/git/viper/src/runtime/collections/rt_seq.h",
+				"C:/git/viper/src/runtime/collections/rt_seq_functional.h",
+				"C:/git/viper/src/runtime/collections/rt_seq_internal.h",
+				"C:/git/viper/src/runtime/collections/rt_set.h",
+				"C:/git/viper/src/runtime/collections/rt_sortedset.h",
+				"C:/git/viper/src/runtime/collections/rt_sparsearray.h",
+				"C:/git/viper/src/runtime/collections/rt_stack.h",
+				"C:/git/viper/src/runtime/collections/rt_treemap.h",
+				"C:/git/viper/src/runtime/collections/rt_trie.h",
+				"C:/git/viper/src/runtime/collections/rt_unionfind.h",
+				"C:/git/viper/src/runtime/collections/rt_weakmap.h",
+				"C:/git/viper/src/runtime/core/rt_args.h",
+				"C:/git/viper/src/runtime/core/rt_atomic_compat.h",
+				"C:/git/viper/src/runtime/core/rt_bigint.h",
+				"C:/git/viper/src/runtime/core/rt_bits.h",
+				"C:/git/viper/src/runtime/core/rt_context.h",
+				"C:/git/viper/src/runtime/core/rt_countdown.h",
+				"C:/git/viper/src/runtime/core/rt_crc32.h",
+				"C:/git/viper/src/runtime/core/rt_dateonly.h",
+				"C:/git/viper/src/runtime/core/rt_daterange.h",
+				"C:/git/viper/src/runtime/core/rt_datetime.h",
+				"C:/git/viper/src/runtime/core/rt_debug.h",
+				"C:/git/viper/src/runtime/core/rt_duration.h",
+				"C:/git/viper/src/runtime/core/rt_easing.h",
+				"C:/git/viper/src/runtime/core/rt_error.h",
+				"C:/git/viper/src/runtime/core/rt_fmt.h",
+				"C:/git/viper/src/runtime/core/rt_format.h",
+				"C:/git/viper/src/runtime/core/rt_fp.h",
+				"C:/git/viper/src/runtime/core/rt_gc.h",
+				"C:/git/viper/src/runtime/core/rt_heap.h",
+				"C:/git/viper/src/runtime/core/rt_int_format.h",
+				"C:/git/viper/src/runtime/core/rt_log.h",
+				"C:/git/viper/src/runtime/core/rt_math.h",
+				"C:/git/viper/src/runtime/core/rt_modvar.h",
+				"C:/git/viper/src/runtime/core/rt_msgbus.h",
+				"C:/git/viper/src/runtime/core/rt_numeric.h",
+				"C:/git/viper/src/runtime/core/rt_output.h",
+				"C:/git/viper/src/runtime/core/rt_perlin.h",
+				"C:/git/viper/src/runtime/core/rt_pool.h",
+				"C:/git/viper/src/runtime/core/rt_printf_compat.h",
+				"C:/git/viper/src/runtime/core/rt_random.h",
+				"C:/git/viper/src/runtime/core/rt_reltime.h",
+				"C:/git/viper/src/runtime/core/rt_stack_safety.h",
+				"C:/git/viper/src/runtime/core/rt_stopwatch.h",
+				"C:/git/viper/src/runtime/core/rt_string.h",
+				"C:/git/viper/src/runtime/core/rt_string_builder.h",
+				"C:/git/viper/src/runtime/core/rt_string_intern.h",
+				"C:/git/viper/src/runtime/core/rt_string_internal.h",
+				"C:/git/viper/src/runtime/core/rt_time.h",
+				"C:/git/viper/src/runtime/core/rt_trap.h",
+				"C:/git/viper/src/runtime/game/rt_achievement.h",
+				"C:/git/viper/src/runtime/game/rt_animstate.h",
+				"C:/git/viper/src/runtime/game/rt_behavior.h",
+				"C:/git/viper/src/runtime/game/rt_buttongroup.h",
+				"C:/git/viper/src/runtime/game/rt_collision.h",
+				"C:/git/viper/src/runtime/game/rt_config.h",
+				"C:/git/viper/src/runtime/game/rt_debugoverlay.h",
+				"C:/git/viper/src/runtime/game/rt_dialogue.h",
+				"C:/git/viper/src/runtime/game/rt_entity.h",
+				"C:/git/viper/src/runtime/game/rt_gameui.h",
+				"C:/git/viper/src/runtime/game/rt_grid2d.h",
+				"C:/git/viper/src/runtime/game/rt_leveldata.h",
+				"C:/git/viper/src/runtime/game/rt_lighting2d.h",
+				"C:/git/viper/src/runtime/game/rt_objpool.h",
+				"C:/git/viper/src/runtime/game/rt_particle.h",
+				"C:/git/viper/src/runtime/game/rt_pathfinder.h",
+				"C:/git/viper/src/runtime/game/rt_pathfollow.h",
+				"C:/git/viper/src/runtime/game/rt_platformer_ctrl.h",
+				"C:/git/viper/src/runtime/game/rt_quadtree.h",
+				"C:/git/viper/src/runtime/game/rt_raycast2d.h",
+				"C:/git/viper/src/runtime/game/rt_scenemanager.h",
+				"C:/git/viper/src/runtime/game/rt_screenfx.h",
+				"C:/git/viper/src/runtime/game/rt_smoothvalue.h",
+				"C:/git/viper/src/runtime/game/rt_spriteanim.h",
+				"C:/git/viper/src/runtime/game/rt_statemachine.h",
+				"C:/git/viper/src/runtime/game/rt_timer.h",
+				"C:/git/viper/src/runtime/game/rt_tween.h",
+				"C:/git/viper/src/runtime/game/rt_typewriter.h",
+				"C:/git/viper/src/runtime/graphics/fonts/embedded_font.h",
+				"C:/git/viper/src/runtime/graphics/rt_action.h",
+				"C:/git/viper/src/runtime/graphics/rt_animcontroller3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_audio3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_audiolistener3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_audiosource3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_avi.h",
+				"C:/git/viper/src/runtime/graphics/rt_bitmapfont.h",
+				"C:/git/viper/src/runtime/graphics/rt_camera.h",
+				"C:/git/viper/src/runtime/graphics/rt_canvas3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_canvas3d_internal.h",
+				"C:/git/viper/src/runtime/graphics/rt_collider3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_decal3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_fbx_loader.h",
+				"C:/git/viper/src/runtime/graphics/rt_font.h",
+				"C:/git/viper/src/runtime/graphics/rt_gif.h",
+				"C:/git/viper/src/runtime/graphics/rt_gltf.h",
+				"C:/git/viper/src/runtime/graphics/rt_graphics.h",
+				"C:/git/viper/src/runtime/graphics/rt_graphics2d.h",
+				"C:/git/viper/src/runtime/graphics/rt_graphics_internal.h",
+				"C:/git/viper/src/runtime/graphics/rt_gui.h",
+				"C:/git/viper/src/runtime/graphics/rt_gui_internal.h",
+				"C:/git/viper/src/runtime/graphics/rt_input.h",
+				"C:/git/viper/src/runtime/graphics/rt_inputmgr.h",
+				"C:/git/viper/src/runtime/graphics/rt_instbatch3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_joints3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_keychord.h",
+				"C:/git/viper/src/runtime/graphics/rt_mat3.h",
+				"C:/git/viper/src/runtime/graphics/rt_mat4.h",
+				"C:/git/viper/src/runtime/graphics/rt_model3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_morphtarget3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_navagent3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_navmesh3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_particles3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_path3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_physics2d.h",
+				"C:/git/viper/src/runtime/graphics/rt_physics2d_internal.h",
+				"C:/git/viper/src/runtime/graphics/rt_physics2d_joint.h",
+				"C:/git/viper/src/runtime/graphics/rt_physics3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_pixels.h",
+				"C:/git/viper/src/runtime/graphics/rt_pixels_internal.h",
+				"C:/git/viper/src/runtime/graphics/rt_postfx3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_quat.h",
+				"C:/git/viper/src/runtime/graphics/rt_raycast3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_scene.h",
+				"C:/git/viper/src/runtime/graphics/rt_scene3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_scene3d_internal.h",
+				"C:/git/viper/src/runtime/graphics/rt_skeleton3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_skeleton3d_internal.h",
+				"C:/git/viper/src/runtime/graphics/rt_spline.h",
+				"C:/git/viper/src/runtime/graphics/rt_sprite.h",
+				"C:/git/viper/src/runtime/graphics/rt_sprite3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_spritebatch.h",
+				"C:/git/viper/src/runtime/graphics/rt_spritesheet.h",
+				"C:/git/viper/src/runtime/graphics/rt_terrain3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_texatlas.h",
+				"C:/git/viper/src/runtime/graphics/rt_texatlas3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_theora.h",
+				"C:/git/viper/src/runtime/graphics/rt_tilemap.h",
+				"C:/git/viper/src/runtime/graphics/rt_tilemap_internal.h",
+				"C:/git/viper/src/runtime/graphics/rt_transform3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_vec2.h",
+				"C:/git/viper/src/runtime/graphics/rt_vec3.h",
+				"C:/git/viper/src/runtime/graphics/rt_vegetation3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_videoplayer.h",
+				"C:/git/viper/src/runtime/graphics/rt_videowidget.h",
+				"C:/git/viper/src/runtime/graphics/rt_water3d.h",
+				"C:/git/viper/src/runtime/graphics/rt_ycbcr.h",
+				"C:/git/viper/src/runtime/graphics/rt_zia_completion.h",
+				"C:/git/viper/src/runtime/graphics/vgfx3d_backend.h",
+				"C:/git/viper/src/runtime/graphics/vgfx3d_backend_d3d11_shared.h",
+				"C:/git/viper/src/runtime/graphics/vgfx3d_backend_metal_shared.h",
+				"C:/git/viper/src/runtime/graphics/vgfx3d_backend_opengl_shared.h",
+				"C:/git/viper/src/runtime/graphics/vgfx3d_backend_utils.h",
+				"C:/git/viper/src/runtime/graphics/vgfx3d_frustum.h",
+				"C:/git/viper/src/runtime/graphics/vgfx3d_skinning.h",
+				"C:/git/viper/src/runtime/io/rt_archive.h",
+				"C:/git/viper/src/runtime/io/rt_asset.h",
+				"C:/git/viper/src/runtime/io/rt_binfile.h",
+				"C:/git/viper/src/runtime/io/rt_compress.h",
+				"C:/git/viper/src/runtime/io/rt_dir.h",
+				"C:/git/viper/src/runtime/io/rt_file.h",
+				"C:/git/viper/src/runtime/io/rt_file_ext.h",
+				"C:/git/viper/src/runtime/io/rt_file_path.h",
+				"C:/git/viper/src/runtime/io/rt_glob.h",
+				"C:/git/viper/src/runtime/io/rt_linereader.h",
+				"C:/git/viper/src/runtime/io/rt_linewriter.h",
+				"C:/git/viper/src/runtime/io/rt_memstream.h",
+				"C:/git/viper/src/runtime/io/rt_path.h",
+				"C:/git/viper/src/runtime/io/rt_savedata.h",
+				"C:/git/viper/src/runtime/io/rt_stream.h",
+				"C:/git/viper/src/runtime/io/rt_tempfile.h",
+				"C:/git/viper/src/runtime/io/rt_vpa_reader.h",
+				"C:/git/viper/src/runtime/io/rt_watcher.h",
+				"C:/git/viper/src/runtime/localization/rt_collator.h",
+				"C:/git/viper/src/runtime/localization/rt_dateformat.h",
+				"C:/git/viper/src/runtime/localization/rt_list_format.h",
+				"C:/git/viper/src/runtime/localization/rt_locale.h",
+				"C:/git/viper/src/runtime/localization/rt_locale_data.h",
+				"C:/git/viper/src/runtime/localization/rt_locale_info.h",
+				"C:/git/viper/src/runtime/localization/rt_locale_manager.h",
+				"C:/git/viper/src/runtime/localization/rt_locale_platform.h",
+				"C:/git/viper/src/runtime/localization/rt_message_bundle.h",
+				"C:/git/viper/src/runtime/localization/rt_numformat.h",
+				"C:/git/viper/src/runtime/localization/rt_plural_rules.h",
+				"C:/git/viper/src/runtime/localization/rt_reltime_format.h",
+				"C:/git/viper/src/runtime/localization/rt_text_direction.h",
+				"C:/git/viper/src/runtime/network/rt_async_socket.h",
+				"C:/git/viper/src/runtime/network/rt_connpool.h",
+				"C:/git/viper/src/runtime/network/rt_crypto.h",
+				"C:/git/viper/src/runtime/network/rt_ecdsa_p256.h",
+				"C:/git/viper/src/runtime/network/rt_http2.h",
+				"C:/git/viper/src/runtime/network/rt_http_client.h",
+				"C:/git/viper/src/runtime/network/rt_http_router.h",
+				"C:/git/viper/src/runtime/network/rt_http_server.h",
+				"C:/git/viper/src/runtime/network/rt_https_server.h",
+				"C:/git/viper/src/runtime/network/rt_multipart.h",
+				"C:/git/viper/src/runtime/network/rt_netutils.h",
+				"C:/git/viper/src/runtime/network/rt_network.h",
+				"C:/git/viper/src/runtime/network/rt_network_http_internal.h",
+				"C:/git/viper/src/runtime/network/rt_network_internal.h",
+				"C:/git/viper/src/runtime/network/rt_ratelimit.h",
+				"C:/git/viper/src/runtime/network/rt_restclient.h",
+				"C:/git/viper/src/runtime/network/rt_retry.h",
+				"C:/git/viper/src/runtime/network/rt_rsa.h",
+				"C:/git/viper/src/runtime/network/rt_smtp.h",
+				"C:/git/viper/src/runtime/network/rt_sse.h",
+				"C:/git/viper/src/runtime/network/rt_tls.h",
+				"C:/git/viper/src/runtime/network/rt_tls_internal.h",
+				"C:/git/viper/src/runtime/network/rt_tls_server_internal.h",
+				"C:/git/viper/src/runtime/network/rt_websocket.h",
+				"C:/git/viper/src/runtime/network/rt_ws_server.h",
+				"C:/git/viper/src/runtime/network/rt_wss_server.h",
+				"C:/git/viper/src/runtime/oop/rt_box.h",
+				"C:/git/viper/src/runtime/oop/rt_exc.h",
+				"C:/git/viper/src/runtime/oop/rt_lazy.h",
+				"C:/git/viper/src/runtime/oop/rt_lazyseq.h",
+				"C:/git/viper/src/runtime/oop/rt_object.h",
+				"C:/git/viper/src/runtime/oop/rt_oop.h",
+				"C:/git/viper/src/runtime/oop/rt_option.h",
+				"C:/git/viper/src/runtime/oop/rt_result.h",
+				"C:/git/viper/src/runtime/oop/rt_sb_bridge.h",
+				"C:/git/viper/src/runtime/rt_internal.h",
+				"C:/git/viper/src/runtime/rt_platform.h",
+				"C:/git/viper/src/runtime/system/rt_exec.h",
+				"C:/git/viper/src/runtime/system/rt_machine.h",
+				"C:/git/viper/src/runtime/text/rt_aes.h",
+				"C:/git/viper/src/runtime/text/rt_cipher.h",
+				"C:/git/viper/src/runtime/text/rt_codec.h",
+				"C:/git/viper/src/runtime/text/rt_compiled_pattern.h",
+				"C:/git/viper/src/runtime/text/rt_csv.h",
+				"C:/git/viper/src/runtime/text/rt_diff.h",
+				"C:/git/viper/src/runtime/text/rt_guid.h",
+				"C:/git/viper/src/runtime/text/rt_hash.h",
+				"C:/git/viper/src/runtime/text/rt_hash_util.h",
+				"C:/git/viper/src/runtime/text/rt_html.h",
+				"C:/git/viper/src/runtime/text/rt_ini.h",
+				"C:/git/viper/src/runtime/text/rt_json.h",
+				"C:/git/viper/src/runtime/text/rt_json_stream.h",
+				"C:/git/viper/src/runtime/text/rt_jsonpath.h",
+				"C:/git/viper/src/runtime/text/rt_keyderive.h",
+				"C:/git/viper/src/runtime/text/rt_keyderive_internal.h",
+				"C:/git/viper/src/runtime/text/rt_markdown.h",
+				"C:/git/viper/src/runtime/text/rt_numfmt.h",
+				"C:/git/viper/src/runtime/text/rt_numfmt_internal.h",
+				"C:/git/viper/src/runtime/text/rt_parse.h",
+				"C:/git/viper/src/runtime/text/rt_password.h",
+				"C:/git/viper/src/runtime/text/rt_pluralize.h",
+				"C:/git/viper/src/runtime/text/rt_rand.h",
+				"C:/git/viper/src/runtime/text/rt_regex.h",
+				"C:/git/viper/src/runtime/text/rt_regex_internal.h",
+				"C:/git/viper/src/runtime/text/rt_scanner.h",
+				"C:/git/viper/src/runtime/text/rt_serialize.h",
+				"C:/git/viper/src/runtime/text/rt_template.h",
+				"C:/git/viper/src/runtime/text/rt_textwrap.h",
+				"C:/git/viper/src/runtime/text/rt_toml.h",
+				"C:/git/viper/src/runtime/text/rt_version.h",
+				"C:/git/viper/src/runtime/text/rt_xml.h",
+				"C:/git/viper/src/runtime/text/rt_yaml.h",
+				"C:/git/viper/src/runtime/threads/rt_async.h",
+				"C:/git/viper/src/runtime/threads/rt_cancellation.h",
+				"C:/git/viper/src/runtime/threads/rt_channel.h",
+				"C:/git/viper/src/runtime/threads/rt_concmap.h",
+				"C:/git/viper/src/runtime/threads/rt_concqueue.h",
+				"C:/git/viper/src/runtime/threads/rt_debounce.h",
+				"C:/git/viper/src/runtime/threads/rt_future.h",
+				"C:/git/viper/src/runtime/threads/rt_parallel.h",
+				"C:/git/viper/src/runtime/threads/rt_scheduler.h",
+				"C:/git/viper/src/runtime/threads/rt_threadpool.h",
+				"C:/git/viper/src/runtime/threads/rt_threads.h"
+			],
+			"recurse" : true
+		}
+	],
+	"inputs" : 
+	[
+		{
+			"path" : "CMakeLists.txt"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/FindGit.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/FindPackageHandleStandardArgs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/FindPackageMessage.cmake"
+		},
+		{
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/CMakeFiles/4.2.3-msvc3/CMakeSystem.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CMakeSystemSpecificInitialize.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Platform/Windows-Initialize.cmake"
+		},
+		{
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/CMakeFiles/4.2.3-msvc3/CMakeCXXCompiler.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CMakeSystemSpecificInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CMakeGenericSystem.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CMakeInitializeConfigs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Platform/Windows.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Platform/WindowsPaths.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CMakeCXXInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CMakeLanguageInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Compiler/MSVC-CXX.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Compiler/MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Compiler/CMakeCommonCompilerMacros.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Platform/Windows-MSVC-CXX.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Platform/Windows-MSVC.cmake"
+		},
+		{
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/CMakeFiles/4.2.3-msvc3/CMakeRCCompiler.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CMakeRCInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CMakeCommonLanguageInclude.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Internal/CMakeCXXLinkerInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Internal/CMakeCommonLinkerInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Linker/MSVC-CXX.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Linker/MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Platform/Linker/Windows-MSVC-CXX.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Platform/Linker/Windows-MSVC.cmake"
+		},
+		{
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/CMakeFiles/4.2.3-msvc3/CMakeCCompiler.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CMakeCInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CMakeLanguageInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Compiler/MSVC-C.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Compiler/MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Compiler/CMakeCommonCompilerMacros.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Platform/Windows-MSVC-C.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Platform/Windows-MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CMakeCommonLanguageInclude.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Internal/CMakeCLinkerInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Internal/CMakeCommonLinkerInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Linker/MSVC-C.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Linker/MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Platform/Linker/Windows-MSVC-C.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Platform/Linker/Windows-MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/GNUInstallDirs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CMakePackageConfigHelpers.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/WriteBasicConfigVersionFile.cmake"
+		},
+		{
+			"path" : "include/viper/version.hpp.in"
+		},
+		{
+			"path" : "CTestCustom.cmake.in"
+		},
+		{
+			"path" : "include/viper/platform/Capabilities.hpp.in"
+		},
+		{
+			"path" : "include/viper/runtime/RuntimeComponentManifest.hpp.in"
+		},
+		{
+			"path" : "cmake/cmake_uninstall.cmake.in"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CPack.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CPackComponent.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Templates/CPackConfig.cmake.in"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Templates/CPackConfig.cmake.in"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/BasicConfigVersion-SameMajorVersion.cmake.in"
+		},
+		{
+			"path" : "cmake/ViperConfig.cmake.in"
+		},
+		{
+			"path" : "src/lib/graphics/CMakeLists.txt"
+		},
+		{
+			"path" : "src/lib/graphics/tests/CMakeLists.txt"
+		},
+		{
+			"path" : "src/lib/graphics/examples/CMakeLists.txt"
+		},
+		{
+			"path" : "src/lib/gui/CMakeLists.txt"
+		},
+		{
+			"path" : "src/lib/audio/CMakeLists.txt"
+		},
+		{
+			"path" : "src/lib/audio/tests/CMakeLists.txt"
+		},
+		{
+			"path" : "src/runtime/CMakeLists.txt"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/FindThreads.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CheckLibraryExists.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CheckIncludeFile.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/Internal/CheckSourceCompiles.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/FindPackageHandleStandardArgs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/FindPackageMessage.cmake"
+		},
+		{
+			"path" : "src/CMakeLists.txt"
+		},
+		{
+			"path" : "src/support/CMakeLists.txt"
+		},
+		{
+			"path" : "src/codegen/common/CMakeLists.txt"
+		},
+		{
+			"path" : "src/codegen/x86_64/CMakeLists.txt"
+		},
+		{
+			"path" : "src/codegen/aarch64/CMakeLists.txt"
+		},
+		{
+			"path" : "src/il/io/CMakeLists.txt"
+		},
+		{
+			"path" : "src/frontends/common/CMakeLists.txt"
+		},
+		{
+			"path" : "src/frontends/basic/CMakeLists.txt"
+		},
+		{
+			"path" : "src/frontends/zia/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tui/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tui/apps/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tui/tests/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tests/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tests/cmake/TestHelpers.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/FindThreads.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CheckLibraryExists.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CheckIncludeFile.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/FindPackageHandleStandardArgs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.2/Modules/FindPackageMessage.cmake"
+		},
+		{
+			"path" : "src/tests/unit/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tests/il/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tests/vm/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tests/perf/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tests/tools/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tests/basic/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tests/zia/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tests/golden/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tests/e2e/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tests/codegen/x86_64/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tests/codegen/objfile/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tests/codegen/binenc/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tests/codegen/linker/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tests/codegen/common/CMakeLists.txt"
+		},
+		{
+			"path" : "src/tests/conformance/CMakeLists.txt"
+		}
+	],
+	"kind" : "cmakeFiles",
+	"paths" : 
+	{
+		"build" : "C:/git/viper/out/build/x64-Debug",
+		"source" : "C:/git/viper"
+	},
+	"version" : 
+	{
+		"major" : 1,
+		"minor" : 1
+	}
+}

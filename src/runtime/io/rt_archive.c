@@ -173,7 +173,7 @@ static void archive_read_exact_win(HANDLE h, uint8_t *dst, size_t total, const c
     while (read_total < total) {
         DWORD chunk = 0;
         size_t remaining = total - read_total;
-        DWORD want = remaining > (size_t)DWORD_MAX ? DWORD_MAX : (DWORD)remaining;
+        DWORD want = remaining > (size_t)UINT32_MAX ? (DWORD)UINT32_MAX : (DWORD)remaining;
         if (!ReadFile(h, dst + read_total, want, &chunk, NULL) || chunk == 0)
             rt_trap(trap_msg);
         read_total += (size_t)chunk;
@@ -190,7 +190,7 @@ static void archive_write_exact_win(HANDLE h, const uint8_t *src, size_t total, 
     while (written_total < total) {
         DWORD chunk = 0;
         size_t remaining = total - written_total;
-        DWORD want = remaining > (size_t)DWORD_MAX ? DWORD_MAX : (DWORD)remaining;
+        DWORD want = remaining > (size_t)UINT32_MAX ? (DWORD)UINT32_MAX : (DWORD)remaining;
         if (!WriteFile(h, src + written_total, want, &chunk, NULL) || chunk == 0)
             rt_trap(trap_msg);
         written_total += (size_t)chunk;

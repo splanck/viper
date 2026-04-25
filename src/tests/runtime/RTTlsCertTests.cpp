@@ -591,7 +591,14 @@ static void test_chain_verification_custom_bundle_rsa(void) {
     session.server_cert_der_len = leaf_der.size();
     strncpy(session.ca_file, ca_file.path.c_str(), sizeof(session.ca_file) - 1);
 
-    assert(tls_verify_chain(&session) == RT_TLS_OK);
+    int verify_rc = tls_verify_chain(&session);
+    if (verify_rc != RT_TLS_OK) {
+        fprintf(stderr,
+                "tls_verify_chain failed: rc=%d error=%s\n",
+                verify_rc,
+                session.error ? session.error : "(null)");
+    }
+    assert(verify_rc == RT_TLS_OK);
     printf("  PASS: test_chain_verification_custom_bundle_rsa\n");
 }
 

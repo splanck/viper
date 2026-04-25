@@ -9,11 +9,20 @@ endforeach ()
 set(_tmp_root "${VIPER_BUILD_DIR}/tests/install-package-tarball-smoke")
 set(_artifact "${_tmp_root}/viper-toolchain.tar.gz")
 
+set(_install_package_cmd
+        "${VIPER_BIN}" install-package
+        --build-dir "${VIPER_BUILD_DIR}"
+        --target tarball
+        -o "${_artifact}")
+if (DEFINED VIPER_CONFIG AND NOT "${VIPER_CONFIG}" STREQUAL "")
+    list(APPEND _install_package_cmd --config "${VIPER_CONFIG}")
+endif ()
+
 file(REMOVE_RECURSE "${_tmp_root}")
 file(MAKE_DIRECTORY "${_tmp_root}")
 
 execute_process(
-        COMMAND "${VIPER_BIN}" install-package --build-dir "${VIPER_BUILD_DIR}" --target tarball -o "${_artifact}"
+        COMMAND ${_install_package_cmd}
         RESULT_VARIABLE _build_rv
         OUTPUT_VARIABLE _build_out
         ERROR_VARIABLE _build_err

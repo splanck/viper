@@ -854,18 +854,16 @@ static void scan_number_free(scan_number_t *sn) {
     rt_sb_free(&sn->frac);
 }
 
-static scan_number_t scan_number_parts(const char *input, size_t input_len,
-                                       const rt_numformat_t *fmt,
-                                       int allow_fraction) {
-    scan_number_t sn;
-    memset(&sn, 0, sizeof(sn));
-    rt_sb_init(&sn.digits);
-    rt_sb_init(&sn.frac);
+static void scan_number_parts(scan_number_t *sn, const char *input, size_t input_len,
+                              const rt_numformat_t *fmt, int allow_fraction) {
+    memset(sn, 0, sizeof(*sn));
+    rt_sb_init(&sn->digits);
+    rt_sb_init(&sn->frac);
 
     size_t i = 0;
     while (i < input_len && isspace((unsigned char)input[i])) ++i;
     if (i >= input_len)
-        return sn;
+        return;
 
     const rt_locdata_numbers_t *nums = &fmt->data->numbers;
     const char *minus = nums->minus ? nums->minus : "-";
@@ -878,13 +876,13 @@ static scan_number_t scan_number_parts(const char *input, size_t input_len,
     // Sign.
     size_t adv = match_prefix(input + i, input_len - i, minus);
     if (adv) {
-        sn.had_sign = 1;
-        sn.negative = 1;
+        sn->had_sign = 1;
+        sn->negative = 1;
         i += adv;
     } else {
         adv = match_prefix(input + i, input_len - i, plus);
         if (adv) {
-            sn.had_sign = 1;
+            sn->had_sign = 1;
             i += adv;
         }
     }
@@ -903,19 +901,19 @@ static scan_number_t scan_number_parts(const char *input, size_t input_len,
         int digit = match_locale_digit(input + i, input_len - i, nums, &consumed);
         if (digit >= 0) {
             char c = (char)('0' + digit);
-            (void)rt_sb_append_bytes(&sn.digits, &c, 1);
+            (void)rt_sb_append_bytes(&sn->digits, &c, 1);
             digit_count++;
             i += consumed;
             ++group_run;
         } else if (grp_len && i + grp_len <= input_len
                    && memcmp(input + i, grp_sep, grp_len) == 0) {
             if (digit_count == 0)
-                return sn; // leading group sep
+                return; // leading group sep
             if (!had_group_sep) {
                 first_group_len = group_run;
                 had_group_sep = 1;
             } else if (fmt->strict && group_run != secondary_group) {
-                return sn; // strict: inner groups must be exactly secondary_group
+                return; // strict: inner groups must be exactly secondary_group
             }
             group_run = 0;
             i += grp_len;
@@ -926,9 +924,9 @@ static scan_number_t scan_number_parts(const char *input, size_t input_len,
 
     if (fmt->strict && had_group_sep) {
         if (group_run != primary_group)
-            return sn;
+            return;
         if (first_group_len <= 0 || first_group_len > secondary_group)
-            return sn;
+            return;
     }
 
     // Fractional part.
@@ -936,13 +934,13 @@ static scan_number_t scan_number_parts(const char *input, size_t input_len,
     if (allow_fraction && i + dec_len <= input_len
         && memcmp(input + i, dec_sep, dec_len) == 0) {
         i += dec_len;
-        sn.had_frac = 1;
+        sn->had_frac = 1;
         while (i < input_len) {
             size_t consumed = 0;
             int digit = match_locale_digit(input + i, input_len - i, nums, &consumed);
             if (digit >= 0) {
                 char c = (char)('0' + digit);
-                (void)rt_sb_append_bytes(&sn.frac, &c, 1);
+                (void)rt_sb_append_bytes(&sn->frac, &c, 1);
                 frac_count++;
                 i += consumed;
             } else {
@@ -950,19 +948,18 @@ static scan_number_t scan_number_parts(const char *input, size_t input_len,
             }
         }
         if (frac_count == 0)
-            return sn; // bare separator with no digits
+            return; // bare separator with no digits
     }
 
     // Trailing whitespace tolerated; anything else is a failure.
     while (i < input_len && isspace((unsigned char)input[i])) ++i;
     if (i != input_len)
-        return sn;
+        return;
 
     if (digit_count == 0 && frac_count == 0)
-        return sn;
+        return;
 
-    sn.success = 1;
-    return sn;
+    sn->success = 1;
 }
 
 /// @brief Parse a locale-formatted decimal number from @p input.
@@ -970,7 +967,8 @@ static parse_result_t parse_decimal(const char *input, size_t input_len,
                                     const rt_numformat_t *fmt,
                                     int allow_fraction) {
     parse_result_t pr = {0};
-    scan_number_t sn = scan_number_parts(input, input_len, fmt, allow_fraction);
+    scan_number_t sn;
+    scan_number_parts(&sn, input, input_len, fmt, allow_fraction);
     if (!sn.success) {
         scan_number_free(&sn);
         return pr;
@@ -1012,7 +1010,8 @@ static parse_result_t parse_decimal(const char *input, size_t input_len,
 static parse_result_t parse_integer_exact(const char *input, size_t input_len,
                                           const rt_numformat_t *fmt) {
     parse_result_t pr = {0};
-    scan_number_t sn = scan_number_parts(input, input_len, fmt, /*allow_fraction=*/0);
+    scan_number_t sn;
+    scan_number_parts(&sn, input, input_len, fmt, /*allow_fraction=*/0);
     if (!sn.success || sn.digits.len == 0) {
         scan_number_free(&sn);
         return pr;

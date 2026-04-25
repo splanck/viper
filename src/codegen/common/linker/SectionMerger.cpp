@@ -178,7 +178,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
 
             const auto &sec = objects[pc.objIdx].sections[pc.secIdx];
             // Align within output.
-            size_t align = std::max(pc.alignment, 1u);
+            uint32_t align = std::max(pc.alignment, 1u);
             if (align > out.alignment)
                 out.alignment = align;
 
@@ -277,7 +277,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                 if (sec.name.find("thread_vars") == std::string::npos)
                     continue;
 
-                size_t align = std::max(pc.alignment, 1u);
+                uint32_t align = std::max(pc.alignment, 1u);
                 if (align > tdata.alignment)
                     tdata.alignment = align;
                 size_t padded = alignUp(tdata.data.size(), align);
@@ -307,7 +307,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                 if (sec.name.find("thread_vars") != std::string::npos)
                     continue;
 
-                size_t align = std::max(pc.alignment, 1u);
+                uint32_t align = std::max(pc.alignment, 1u);
                 if (align > tmpl.alignment)
                     tmpl.alignment = align;
                 size_t padded = alignUp(tmpl.data.size(), align);
@@ -362,7 +362,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
             for (size_t pi : indices) {
                 const auto &pc = pending[pi];
                 const auto &sec = objects[pc.objIdx].sections[pc.secIdx];
-                size_t align = std::max(pc.alignment, 1u);
+                uint32_t align = std::max(pc.alignment, 1u);
                 if (align > out.alignment)
                     out.alignment = align;
                 size_t padded = alignUp(out.data.size(), align);
@@ -406,7 +406,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
 
             for (auto [oi, si] : pairs) {
                 const auto &sec = objects[oi].sections[si];
-                size_t align = std::max(sec.alignment, 1u);
+                uint32_t align = std::max(sec.alignment, 1u);
                 if (align > out.alignment)
                     out.alignment = align;
                 size_t padded = alignUp(out.data.size(), align);

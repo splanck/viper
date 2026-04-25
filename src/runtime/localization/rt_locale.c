@@ -107,7 +107,7 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
     if (loc_is_separator(input[0]) || loc_is_separator(input[input_len - 1]))
         return -1;
 
-    const size_t MAX_SUBTAGS = 32;
+    enum { MAX_SUBTAGS = 32 };
     char subtags[MAX_SUBTAGS][9];
     size_t sub_lens[MAX_SUBTAGS];
     size_t sub_count = 0;

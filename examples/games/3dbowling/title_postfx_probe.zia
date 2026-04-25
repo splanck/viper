@@ -43,7 +43,6 @@ func main() {
     ballObj.applyEnvironment(env);
 
     var menuObj = new BowlingMenu();
-    menuObj.init();
 
     while (render.shouldClose() == false) {
         render.poll();

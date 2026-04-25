@@ -39,6 +39,7 @@
 #include "codegen/common/linker/SymbolResolver.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <iomanip>
 #include <unordered_map>
@@ -70,6 +71,31 @@ void registerSyntheticSymbols(const ObjFile &obj,
 
 void removeDynamicSymbol(const char *name, std::unordered_set<std::string> &dynamicSyms) {
     dynamicSyms.erase(name);
+}
+
+bool equalsIgnoreAsciiCase(const std::string &lhs, const std::string &rhs) {
+    return lhs.size() == rhs.size() &&
+           std::equal(lhs.begin(), lhs.end(), rhs.begin(), [](unsigned char a, unsigned char b) {
+               return std::tolower(a) == std::tolower(b);
+           });
+}
+
+void ensurePeImportFunction(std::vector<DllImport> &imports,
+                            const std::string &dllName,
+                            const std::string &functionName) {
+    for (DllImport &imp : imports) {
+        if (!equalsIgnoreAsciiCase(imp.dllName, dllName))
+            continue;
+
+        if (std::find(imp.functions.begin(), imp.functions.end(), functionName) ==
+            imp.functions.end()) {
+            imp.functions.push_back(functionName);
+            std::sort(imp.functions.begin(), imp.functions.end());
+        }
+        return;
+    }
+
+    imports.push_back({dllName, {functionName}, {}});
 }
 
 ObjFile makeUndefinedRootObject(const ObjFile &userObj, const std::string &symbolName) {
@@ -628,6 +654,92 @@ ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynam
         const uint32_t idx = addRetFn("__chkstk");
         addImportAlias("__chkstk", idx);
     }
+    if (needsHelper("_InterlockedCompareExchange")) {
+        const uint32_t idx = addTextFn("_InterlockedCompareExchange",
+                                       {0x885FFC03U, 0x6B02007FU, 0x54000061U, 0x8804FC01U,
+                                        0x35FFFF84U, 0x2A0303E0U, 0xD65F03C0U});
+        addImportAlias("_InterlockedCompareExchange", idx);
+    }
+    if (needsHelper("_InterlockedCompareExchange64")) {
+        const uint32_t idx = addTextFn("_InterlockedCompareExchange64",
+                                       {0xC85FFC03U, 0xEB02007FU, 0x54000061U, 0xC804FC01U,
+                                        0x35FFFF84U, 0xAA0303E0U, 0xD65F03C0U});
+        addImportAlias("_InterlockedCompareExchange64", idx);
+    }
+    if (needsHelper("_InterlockedCompareExchangePointer")) {
+        const uint32_t idx = addTextFn("_InterlockedCompareExchangePointer",
+                                       {0xC85FFC03U, 0xEB02007FU, 0x54000061U, 0xC804FC01U,
+                                        0x35FFFF84U, 0xAA0303E0U, 0xD65F03C0U});
+        addImportAlias("_InterlockedCompareExchangePointer", idx);
+    }
+    if (needsHelper("_InterlockedExchange")) {
+        const uint32_t idx = addTextFn("_InterlockedExchange",
+                                       {0x885FFC02U, 0x8803FC01U, 0x35FFFFC3U, 0x2A0203E0U,
+                                        0xD65F03C0U});
+        addImportAlias("_InterlockedExchange", idx);
+    }
+    if (needsHelper("_InterlockedExchange64")) {
+        const uint32_t idx = addTextFn("_InterlockedExchange64",
+                                       {0xC85FFC02U, 0xC803FC01U, 0x35FFFFC3U, 0xAA0203E0U,
+                                        0xD65F03C0U});
+        addImportAlias("_InterlockedExchange64", idx);
+    }
+    if (needsHelper("_InterlockedExchangePointer")) {
+        const uint32_t idx = addTextFn("_InterlockedExchangePointer",
+                                       {0xC85FFC02U, 0xC803FC01U, 0x35FFFFC3U, 0xAA0203E0U,
+                                        0xD65F03C0U});
+        addImportAlias("_InterlockedExchangePointer", idx);
+    }
+    if (needsHelper("_InterlockedExchange8")) {
+        const uint32_t idx = addTextFn("_InterlockedExchange8",
+                                       {0x085FFC02U, 0x0803FC01U, 0x35FFFFC3U, 0x2A0203E0U,
+                                        0xD65F03C0U});
+        addImportAlias("_InterlockedExchange8", idx);
+    }
+    if (needsHelper("_InterlockedExchangeAdd")) {
+        const uint32_t idx = addTextFn("_InterlockedExchangeAdd",
+                                       {0x885FFC02U, 0x0B010044U, 0x8803FC04U, 0x35FFFFA3U,
+                                        0x2A0203E0U, 0xD65F03C0U});
+        addImportAlias("_InterlockedExchangeAdd", idx);
+    }
+    if (needsHelper("_InterlockedExchangeAdd64")) {
+        const uint32_t idx = addTextFn("_InterlockedExchangeAdd64",
+                                       {0xC85FFC02U, 0x8B010044U, 0xC803FC04U, 0x35FFFFA3U,
+                                        0xAA0203E0U, 0xD65F03C0U});
+        addImportAlias("_InterlockedExchangeAdd64", idx);
+    }
+    if (needsHelper("_InterlockedIncrement64")) {
+        const uint32_t idx = addTextFn("_InterlockedIncrement64",
+                                       {0xC85FFC01U, 0x91000421U, 0xC802FC01U, 0x35FFFFA2U,
+                                        0xAA0103E0U, 0xD65F03C0U});
+        addImportAlias("_InterlockedIncrement64", idx);
+    }
+    if (needsHelper("_InterlockedDecrement")) {
+        const uint32_t idx = addTextFn("_InterlockedDecrement",
+                                       {0x885FFC02U, 0x51000441U, 0x8803FC01U, 0x35FFFFA3U,
+                                        0x2A0103E0U, 0xD65F03C0U});
+        addImportAlias("_InterlockedDecrement", idx);
+    }
+    if (needsHelper("_InterlockedOr")) {
+        const uint32_t idx = addTextFn("_InterlockedOr",
+                                       {0x885FFC02U, 0x2A010044U, 0x8803FC04U, 0x35FFFFA3U,
+                                        0x2A0203E0U, 0xD65F03C0U});
+        addImportAlias("_InterlockedOr", idx);
+    }
+    if (needsHelper("__RTC_memset")) {
+        const uint32_t idx = addTextFn("__RTC_memset",
+                                       {0xAA0003E3U, 0xB4000082U, 0x38001461U, 0xF1000442U,
+                                        0x54FFFFC1U, 0xD65F03C0U});
+        addImportAlias("__RTC_memset", idx);
+    }
+    if (needsHelper("__security_push_cookie")) {
+        const uint32_t idx = addRetFn("__security_push_cookie");
+        addImportAlias("__security_push_cookie", idx);
+    }
+    if (needsHelper("__security_pop_cookie")) {
+        const uint32_t idx = addRetFn("__security_pop_cookie");
+        addImportAlias("__security_pop_cookie", idx);
+    }
     if (needsHelper("rt_audio_shutdown")) {
         const uint32_t idx = addRetFn("rt_audio_shutdown");
         addImportAlias("rt_audio_shutdown", idx);
@@ -838,6 +950,9 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             }
         }
 
+        if (opts.entrySymbol == "main")
+            dynamicSyms.insert("ExitProcess");
+
         WindowsImportPlan importPlan;
         if (!generateWindowsImports(
                 opts.arch, dynamicSyms, debugWindowsRuntime, importPlan, err)) {
@@ -1005,8 +1120,9 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             break;
         }
         case LinkPlatform::Windows: {
-            if (peImports.empty())
-                peImports.push_back({"kernel32.dll", {"ExitProcess"}, {}});
+            const bool emitStartupStub = opts.entrySymbol == "main";
+            if (emitStartupStub)
+                ensurePeImportFunction(peImports, "kernel32.dll", "ExitProcess");
             for (const auto &imp : peImports) {
                 for (const auto &fn : imp.functions) {
                     auto it = layout.globalSyms.find("__imp_" + fn);
@@ -1015,7 +1131,6 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                             static_cast<uint32_t>(it->second.resolvedAddr - 0x140000000ULL);
                 }
             }
-            const bool emitStartupStub = opts.entrySymbol == "main";
             writeOk = writePeExe(opts.exePath,
                                  layout,
                                  opts.arch,

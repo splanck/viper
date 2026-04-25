@@ -98,11 +98,11 @@ struct SwitchTable {
 ///          exception handler ranges, switch tables, and optional debug metadata.
 struct BytecodeFunction {
     std::string name;    ///< Fully qualified function name.
-    uint32_t numParams;  ///< Number of parameters (mapped to first N locals).
-    uint32_t numLocals;  ///< Total local slots (parameters + temporaries).
-    uint32_t maxStack;   ///< Maximum operand stack depth required during execution.
-    uint32_t allocaSize; ///< Maximum alloca bytes needed by the function.
-    bool hasReturn;      ///< True if the function returns a value; false for void.
+    uint32_t numParams = 0;  ///< Number of parameters (mapped to first N locals).
+    uint32_t numLocals = 0;  ///< Total local slots (parameters + temporaries).
+    uint32_t maxStack = 0;   ///< Maximum operand stack depth required during execution.
+    uint32_t allocaSize = 0; ///< Maximum alloca bytes needed by the function.
+    bool hasReturn = false;  ///< True if the function returns a value; false for void.
 
     std::vector<uint32_t> code;         ///< Bytecode instruction stream (32-bit words).
     std::vector<uint8_t> localIsString; ///< 1 when the corresponding local slot stores Str.
@@ -115,7 +115,7 @@ struct BytecodeFunction {
 
     // Debug info (optional)
     std::vector<LocalVarInfo> localVars; ///< Local variable debug information.
-    uint32_t sourceFileIdx;              ///< Index into the module's source file list.
+    uint32_t sourceFileIdx = 0;          ///< Index into the module's source file list.
     std::vector<uint32_t> lineTable;     ///< PC-to-source-line mapping (indexed by PC).
 };
 
@@ -124,8 +124,8 @@ struct BytecodeFunction {
 ///          invoke a native function through the RuntimeBridge or registered handlers.
 struct NativeFuncRef {
     std::string name;    ///< Function name (e.g., "Viper.Terminal.Say").
-    uint32_t paramCount; ///< Number of parameters the function expects.
-    bool hasReturn;      ///< True if the function returns a value.
+    uint32_t paramCount = 0; ///< Number of parameters the function expects.
+    bool hasReturn = false;  ///< True if the function returns a value.
 };
 
 /// @brief Information about a global variable in the bytecode module.

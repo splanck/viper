@@ -162,7 +162,6 @@ class BowlingGame {
     /// @brief Construct every subsystem in dependency order; show title.
     hide func initSubsystems() {
         menuObj = new BowlingMenu();
-        menuObj.init();
         oilPattern = menuObj.getOilPattern();
         qualityMode = menuObj.getQualityMode();
         currentMode = menuObj.getPreferredMode();

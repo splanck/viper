@@ -90,18 +90,18 @@ struct RtGate {
 /// @return Valid typed pointer, or nullptr if validation fails.
 template <typename T> static T *requireObject(void *obj, const char *typeName, const char *what) {
     if (!obj) {
-        char msg[128];
         if (what) {
-            std::snprintf(msg, sizeof(msg), "%s", what);
+            rt_trap(what);
         } else {
+            static thread_local char msg[128];
             std::snprintf(msg, sizeof(msg), "%s: null object", typeName ? typeName : "Object");
+            rt_trap(msg);
         }
-        rt_trap(msg);
         return nullptr;
     }
     auto *typed = static_cast<T *>(obj);
     if (!typed->state) {
-        char msg[128];
+        static thread_local char msg[128];
         std::snprintf(msg, sizeof(msg), "%s: invalid object", typeName ? typeName : "Object");
         rt_trap(msg);
         return nullptr;

@@ -1,0 +1,161 @@
+{
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_custom_target"
+		],
+		"files" : 
+		[
+			"src/runtime/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 604,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 9
+	},
+	"dependencies" : 
+	[
+		{
+			"id" : "viper_rt_oop::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_threads::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_arrays::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_collections::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_text::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_base::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_game::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_io_fs::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_exec::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_graphics::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_audio::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_runtime::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_localization::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_network::@6e5025570506519f0aff"
+		}
+	],
+	"id" : "viper_runtime_components::@6e5025570506519f0aff",
+	"name" : "viper_runtime_components",
+	"orderDependencies" : 
+	[
+		{
+			"id" : "viper_rt_oop::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_threads::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_arrays::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_collections::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_text::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_base::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_game::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_io_fs::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_exec::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_graphics::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_audio::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_runtime::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_localization::@6e5025570506519f0aff"
+		},
+		{
+			"id" : "viper_rt_network::@6e5025570506519f0aff"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "src/runtime",
+		"source" : "src/runtime"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "",
+			"sourceIndexes" : 
+			[
+				0
+			]
+		},
+		{
+			"name" : "CMake Rules",
+			"sourceIndexes" : 
+			[
+				1
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_runtime_components",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 0,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_runtime_components.rule",
+			"sourceGroupIndex" : 1
+		}
+	],
+	"type" : "UTILITY"
+}

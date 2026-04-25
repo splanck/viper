@@ -108,16 +108,18 @@ static void test_fmt_int_pad() {
     assert(wide_text[299] == '7');
     rt_string_unref(wide);
 
-    const char e_acute[] = {(char)0xC3, (char)0xA9};
-    const char e_expected[] = {(char)0xC3, (char)0xA9, (char)0xC3, (char)0xA9, '4', '2'};
-    rt_string utf8_pad = rt_string_from_bytes(e_acute, sizeof(e_acute));
+    const unsigned char e_acute[] = {0xC3u, 0xA9u};
+    const unsigned char e_expected[] = {0xC3u, 0xA9u, 0xC3u, 0xA9u, '4', '2'};
+    rt_string utf8_pad =
+        rt_string_from_bytes(reinterpret_cast<const char *>(e_acute), sizeof(e_acute));
     rt_string utf8_result = rt_fmt_int_pad(42, 4, utf8_pad);
-    assert(bytes_eq(utf8_result, e_expected, sizeof(e_expected)));
+    assert(bytes_eq(utf8_result, reinterpret_cast<const char *>(e_expected), sizeof(e_expected)));
     rt_string_unref(utf8_result);
     rt_string_unref(utf8_pad);
 
-    const char invalid_utf8[] = {(char)0xC0, (char)0xAF};
-    rt_string invalid_pad = rt_string_from_bytes(invalid_utf8, sizeof(invalid_utf8));
+    const unsigned char invalid_utf8[] = {0xC0u, 0xAFu};
+    rt_string invalid_pad =
+        rt_string_from_bytes(reinterpret_cast<const char *>(invalid_utf8), sizeof(invalid_utf8));
     rt_string invalid_result = rt_fmt_int_pad(42, 4, invalid_pad);
     assert(str_eq(invalid_result, "  42"));
     rt_string_unref(invalid_result);

@@ -590,6 +590,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
 
                 // NOTE: Br, CBr, Call, Store, GEP, Load, Ret, Alloca, FP ops,
                 // and conversions are all handled by lowerInstruction() in OpcodeDispatch.cpp
+                case il::core::Opcode::Count:
                 default:
                     // Handle binary ops and comparisons that may be referenced cross-block.
                     // This ensures values are materialized and cached in tempVReg for later use.

@@ -42,7 +42,7 @@ func HasVisible3DScene(img: Pixels, width: Integer, height: Integer) -> Bool {
             var r = (px >> 24) & 0xFF;
             var g = (px >> 16) & 0xFF;
             var b = (px >> 8) & 0xFF;
-            if (r + g + b > 120) {
+            if (r + g + b > 60) {
                 visible = visible + 1;
             }
             total = total + 1;

@@ -658,7 +658,6 @@ bool ElfWriter::write(const std::string &path,
     const uint16_t secSymtab = static_cast<uint16_t>(2 * N + 2);
     const uint16_t secStrtab = static_cast<uint16_t>(2 * N + 3);
     const uint16_t secShstrtab = static_cast<uint16_t>(2 * N + 4);
-    const uint16_t secNoteGnuStack = static_cast<uint16_t>(2 * N + 5);
     const uint16_t numSections = static_cast<uint16_t>(sectionCount);
 
     // --- 3. Build .shstrtab ---

@@ -1,0 +1,429 @@
+{
+	"archive" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "/machine:x64",
+				"role" : "flags"
+			}
+		]
+	},
+	"artifacts" : 
+	[
+		{
+			"path" : "src/runtime/viper_rt_collections.lib"
+		}
+	],
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_library",
+			"install",
+			"target_link_libraries",
+			"add_compile_options",
+			"add_compile_definitions",
+			"target_include_directories"
+		],
+		"files" : 
+		[
+			"src/runtime/CMakeLists.txt",
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 544,
+				"parent" : 0
+			},
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 755,
+				"parent" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 679,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 119,
+				"parent" : 2
+			},
+			{
+				"command" : 4,
+				"file" : 1,
+				"line" : 233,
+				"parent" : 2
+			},
+			{
+				"command" : 4,
+				"file" : 1,
+				"line" : 163,
+				"parent" : 2
+			},
+			{
+				"command" : 5,
+				"file" : 0,
+				"line" : 655,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 9
+	},
+	"compileDependencies" : 
+	[
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_oop::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_base::@6e5025570506519f0aff"
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"id" : "viper_rt_collections_obj::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_oop::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_base::@6e5025570506519f0aff"
+		}
+	],
+	"id" : "viper_rt_collections::@6e5025570506519f0aff",
+	"install" : 
+	{
+		"destinations" : 
+		[
+			{
+				"backtrace" : 3,
+				"path" : "lib"
+			}
+		],
+		"prefix" : 
+		{
+			"path" : "C:/git/viper/out/install/x64-Debug"
+		}
+	},
+	"interfaceCompileDependencies" : 
+	[
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_oop::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_base::@6e5025570506519f0aff"
+		}
+	],
+	"interfaceLinkLibraries" : 
+	[
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_oop::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_base::@6e5025570506519f0aff"
+		}
+	],
+	"linkLibraries" : 
+	[
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_oop::@6e5025570506519f0aff"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "viper_rt_base::@6e5025570506519f0aff"
+		}
+	],
+	"name" : "viper_rt_collections",
+	"nameOnDisk" : "viper_rt_collections.lib",
+	"objectDependencies" : 
+	[
+		{
+			"backtrace" : 1,
+			"id" : "viper_rt_collections_obj::@6e5025570506519f0aff"
+		}
+	],
+	"orderDependencies" : 
+	[
+		{
+			"id" : "viper_rt_collections_obj::@6e5025570506519f0aff"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "src/runtime",
+		"source" : "src/runtime"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Object Libraries",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5,
+				6,
+				7,
+				8,
+				9,
+				10,
+				11,
+				12,
+				13,
+				14,
+				15,
+				16,
+				17,
+				18,
+				19,
+				20,
+				21,
+				22,
+				23,
+				24,
+				25,
+				26,
+				27,
+				28,
+				29,
+				30,
+				31,
+				32
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_bag.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_convert_coll.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_iter.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_bitset.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_deque.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_list.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_pqueue.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_seq.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_seq_ops.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_seq_functional.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_set.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_sortedset.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_stack.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_queue.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_ring.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_lrucache.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_bloomfilter.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_unionfind.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_orderedmap.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_defaultmap.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_frozenset.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_frozenmap.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_sparsearray.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_weakmap.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_map.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_intmap.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_bimap.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_countmap.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_multimap.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_treemap.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_trie.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_bytes.c.obj",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "out/build/x64-Debug/src/runtime/CMakeFiles/viper_rt_collections_obj.dir/collections/rt_binbuf.c.obj",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "STATIC_LIBRARY"
+}

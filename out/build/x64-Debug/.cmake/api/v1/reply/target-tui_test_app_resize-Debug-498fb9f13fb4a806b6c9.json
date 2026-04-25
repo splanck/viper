@@ -1,0 +1,293 @@
+{
+	"artifacts" : 
+	[
+		{
+			"path" : "src/tui/tests/tui_test_app_resize.exe"
+		},
+		{
+			"path" : "src/tui/tests/tui_test_app_resize.pdb"
+		}
+	],
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_executable",
+			"target_link_libraries",
+			"add_compile_options",
+			"add_compile_definitions",
+			"include_directories"
+		],
+		"files" : 
+		[
+			"src/tui/tests/CMakeLists.txt",
+			"CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 52,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 53,
+				"parent" : 0
+			},
+			{
+				"file" : 1
+			},
+			{
+				"command" : 2,
+				"file" : 1,
+				"line" : 119,
+				"parent" : 3
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 233,
+				"parent" : 3
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 163,
+				"parent" : 3
+			},
+			{
+				"command" : 4,
+				"file" : 0,
+				"line" : 4,
+				"parent" : 0
+			}
+		]
+	},
+	"codemodelVersion" : 
+	{
+		"major" : 2,
+		"minor" : 9
+	},
+	"compileDependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "tui::@d04d296b8defeac982b7"
+		}
+	],
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -std:c++20 -MDd"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/FS"
+				},
+				{
+					"backtrace" : 4,
+					"fragment" : "/utf-8"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/W4"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/permissive-"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4100"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4127"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4201"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4458"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/WX"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4189"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4505"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4702"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4245"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4389"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4456"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4267"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4611"
+				},
+				{
+					"backtrace" : 2,
+					"fragment" : "/wd4244"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 5,
+					"define" : "VIPER_ENABLE_OOP=1"
+				},
+				{
+					"backtrace" : 5,
+					"define" : "VIPER_RUNTIME_NS_DUAL=1"
+				},
+				{
+					"backtrace" : 5,
+					"define" : "VIPER_VM_OPCOUNTS=1"
+				},
+				{
+					"backtrace" : 5,
+					"define" : "VIPER_VM_TAILCALL=1"
+				},
+				{
+					"backtrace" : 6,
+					"define" : "_CRT_NONSTDC_NO_WARNINGS"
+				},
+				{
+					"backtrace" : 6,
+					"define" : "_CRT_SECURE_NO_WARNINGS"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 7,
+					"path" : "C:/git/viper/src"
+				},
+				{
+					"backtrace" : 2,
+					"path" : "C:/git/viper/src/tui/include"
+				},
+				{
+					"backtrace" : 2,
+					"path" : "C:/git/viper/out/build/x64-Debug/generated"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					2
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				0
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "tui::@d04d296b8defeac982b7"
+		}
+	],
+	"id" : "tui_test_app_resize::@6714aef3e668dbd915ef",
+	"link" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -MDd",
+				"role" : "flags"
+			},
+			{
+				"fragment" : "/machine:x64 /debug /INCREMENTAL",
+				"role" : "flags"
+			},
+			{
+				"fragment" : "/subsystem:console",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 2,
+				"fragment" : "src\\tui\\tui.lib",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib",
+				"role" : "libraries"
+			}
+		],
+		"language" : "CXX"
+	},
+	"linkLibraries" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "tui::@d04d296b8defeac982b7"
+		}
+	],
+	"name" : "tui_test_app_resize",
+	"nameOnDisk" : "tui_test_app_resize.exe",
+	"paths" : 
+	{
+		"build" : "src/tui/tests",
+		"source" : "src/tui/tests"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "src/tui/tests/test_app_resize.cpp",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "EXECUTABLE"
+}

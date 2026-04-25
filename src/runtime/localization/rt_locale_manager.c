@@ -1190,10 +1190,11 @@ static void loc_mgr_ensure_init(void) {
         // benign because rt_rwlock_new objects can be leaked without side
         // effects until shutdown; under concurrent load the odds of more
         // than 2-3 allocations are low in practice.
-        if (!__atomic_compare_exchange_n(&g_mgr.lock, &lock, fresh,
-                                         /*weak=*/0,
-                                         __ATOMIC_ACQ_REL,
-                                         __ATOMIC_ACQUIRE)) {
+        if (!rt_atomic_compare_exchange_ptr((void *volatile *)&g_mgr.lock,
+                                            &lock,
+                                            fresh,
+                                            __ATOMIC_ACQ_REL,
+                                            __ATOMIC_ACQUIRE)) {
             if (rt_obj_release_check0(fresh))
                 rt_obj_free(fresh);
         }

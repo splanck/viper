@@ -126,7 +126,15 @@ static VmResult executeDescriptor(const RuntimeDescriptor &desc,
     void *resultPtr = il::vm::resultBufferFor(desc.signature.retType.kind, buffers);
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
-    if (setjmp(recovery) == 0) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4611)
+#endif
+    const int recoveryState = setjmp(recovery);
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+    if (recoveryState == 0) {
         desc.handler(marshalledArgs.empty() ? nullptr : marshalledArgs.data(), resultPtr);
         rt_trap_clear_recovery();
     } else {

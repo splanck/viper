@@ -45,7 +45,6 @@ func main() {
     ballObj.applyEnvironment(env);
 
     var menuObj = new BowlingMenu();
-    menuObj.init();
 
     render.poll();
     render.beginFrame();

@@ -359,7 +359,8 @@ bool readCoffObj(
                 return false;
             }
             rel.symIndex = cr->SymbolTableIndex + 1; // +1 because ObjFile has null sym at 0.
-            rel.addend = extractCoffAddend(hdr->Machine, rel.type, sec.data, rel.offset);
+            rel.addend =
+                extractCoffAddend(hdr->Machine, static_cast<uint16_t>(rel.type), sec.data, rel.offset);
 
             sec.relocs.push_back(rel);
         }

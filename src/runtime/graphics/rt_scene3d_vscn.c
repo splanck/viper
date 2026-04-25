@@ -391,40 +391,49 @@ static int vscn_append_raw(char **buf, size_t *len, size_t *cap, const char *src
 }
 
 /// @brief Append a formatted string to a growable byte buffer.
-/// @details Serialization hot path: the VSCN writer calls this once per JSON
-///   key/value pair. Uses the classic two-pass `vsnprintf` trick — first
-///   call with a null dest to learn the exact needed length, grow the
-///   buffer by doubling (starting at 4096) until it fits, then format a
-///   second time into the reserved slot. The `format(printf, 4, 5)`
-///   attribute enables -Wformat checks on callers so wrong `%d` vs `%ld`
-///   pairings fail at compile time, not silently at runtime.
-/// @return 1 on success, 0 if `vsnprintf` fails or realloc is denied. On
-///   failure the existing buffer is left intact so the caller can still
-///   emit a partial-but-valid prefix if desired.
+/// @details Formats directly into the buffer and retries after growing it if
+///   the current capacity is too small. Avoids `vsnprintf(NULL, 0)` because
+///   that path corrupts floating-point varargs on MSVC ARM64.
+/// @return 1 on success, 0 if `vsnprintf` fails or realloc is denied.
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((format(printf, 4, 5)))
 #endif
 static int vscn_append(
     char **buf, size_t *len, size_t *cap, const char *fmt, ...) {
-    va_list ap;
-    char *nb;
-    va_start(ap, fmt);
-    int needed = vsnprintf(NULL, 0, fmt, ap);
-    va_end(ap);
-    if (needed < 0)
+    if (!buf || !len || !cap || !fmt)
         return 0;
-    while (*len + (size_t)needed + 1 > *cap) {
-        *cap = (*cap == 0) ? 4096 : *cap * 2;
+    for (;;) {
+        va_list ap;
+        char *nb;
+        int written;
+        size_t available;
+
+        if (*len + 1 > *cap) {
+            *cap = (*cap == 0) ? 4096 : *cap * 2;
+            nb = (char *)realloc(*buf, *cap);
+            if (!nb)
+                return 0;
+            *buf = nb;
+        }
+
+        available = *cap - *len;
+        va_start(ap, fmt);
+        written = vsnprintf(*buf + *len, available, fmt, ap);
+        va_end(ap);
+        if (written < 0)
+            return 0;
+        if ((size_t)written < available) {
+            *len += (size_t)written;
+            return 1;
+        }
+
+        while (*len + (size_t)written + 1 > *cap)
+            *cap *= 2;
         nb = (char *)realloc(*buf, *cap);
         if (!nb)
             return 0;
         *buf = nb;
     }
-    va_start(ap, fmt);
-    vsnprintf(*buf + *len, *cap - *len, fmt, ap);
-    va_end(ap);
-    *len += (size_t)needed;
-    return 1;
 }
 
 /// @brief Append `text` to the buffer wrapped in JSON quotes with proper escapes.
@@ -612,66 +621,77 @@ static int vscn_serialize_material(rt_material3d *material,
         return 0;
     vscn_make_indent(indent, sizeof(indent), depth);
 
+    const int texture_index = vscn_ptr_table_index_or_add(&ctx->textures, material->texture);
+    const int normal_index = vscn_ptr_table_index_or_add(&ctx->textures, material->normal_map);
+    const int specular_index = vscn_ptr_table_index_or_add(&ctx->textures, material->specular_map);
+    const int emissive_index = vscn_ptr_table_index_or_add(&ctx->textures, material->emissive_map);
+    const int metallic_roughness_index =
+        vscn_ptr_table_index_or_add(&ctx->textures, material->metallic_roughness_map);
+    const int ao_index = vscn_ptr_table_index_or_add(&ctx->textures, material->ao_map);
+    const int env_index = vscn_ptr_table_index_or_add(&ctx->cubemaps, material->env_map);
+
     if (!vscn_append(buf,
                      len,
                      cap,
-                     "%s{\"diffuse\": [%.17g, %.17g, %.17g, %.17g], "
-                     "\"specular\": [%.17g, %.17g, %.17g], "
-                     "\"shininess\": %.17g, "
-                     "\"workflow\": %d, "
-                     "\"emissive\": [%.17g, %.17g, %.17g], "
-                     "\"metallic\": %.17g, "
-                     "\"roughness\": %.17g, "
-                     "\"ao\": %.17g, "
-                     "\"emissiveIntensity\": %.17g, "
-                     "\"normalScale\": %.17g, "
-                     "\"alpha\": %.17g, "
-                     "\"alphaMode\": %d, "
-                     "\"alphaCutoff\": %.17g, "
-                     "\"doubleSided\": %s, "
-                     "\"reflectivity\": %.17g, "
-                     "\"unlit\": %s, "
-                     "\"shadingModel\": %d, "
-                     "\"texture\": %d, "
-                     "\"normalMap\": %d, "
-                     "\"specularMap\": %d, "
-                     "\"emissiveMap\": %d, "
-                     "\"metallicRoughnessMap\": %d, "
-                     "\"aoMap\": %d, "
-                     "\"envMap\": %d, "
-                     "\"customParams\": [",
+                     "%s{\"diffuse\": [%.17g, %.17g, %.17g, %.17g], ",
                      indent,
                      material->diffuse[0],
                      material->diffuse[1],
                      material->diffuse[2],
-                     material->diffuse[3],
+                     material->diffuse[3]) ||
+        !vscn_append(buf,
+                     len,
+                     cap,
+                     "\"specular\": [%.17g, %.17g, %.17g], \"shininess\": %.17g, "
+                     "\"workflow\": %d, ",
                      material->specular[0],
                      material->specular[1],
                      material->specular[2],
                      material->shininess,
-                     material->workflow,
+                     material->workflow) ||
+        !vscn_append(buf,
+                     len,
+                     cap,
+                     "\"emissive\": [%.17g, %.17g, %.17g], \"metallic\": %.17g, "
+                     "\"roughness\": %.17g, \"ao\": %.17g, ",
                      material->emissive[0],
                      material->emissive[1],
                      material->emissive[2],
                      material->metallic,
                      material->roughness,
-                     material->ao,
+                     material->ao) ||
+        !vscn_append(buf,
+                     len,
+                     cap,
+                     "\"emissiveIntensity\": %.17g, \"normalScale\": %.17g, "
+                     "\"alpha\": %.17g, \"alphaMode\": %d, \"alphaCutoff\": %.17g, ",
                      material->emissive_intensity,
                      material->normal_scale,
                      material->alpha,
                      material->alpha_mode,
-                     material->alpha_cutoff,
+                     material->alpha_cutoff) ||
+        !vscn_append(buf,
+                     len,
+                     cap,
+                     "\"doubleSided\": %s, \"reflectivity\": %.17g, \"unlit\": %s, "
+                     "\"shadingModel\": %d, ",
                      material->double_sided ? "true" : "false",
                      material->reflectivity,
                      material->unlit ? "true" : "false",
-                     material->shading_model,
-                     vscn_ptr_table_index_or_add(&ctx->textures, material->texture),
-                     vscn_ptr_table_index_or_add(&ctx->textures, material->normal_map),
-                     vscn_ptr_table_index_or_add(&ctx->textures, material->specular_map),
-                     vscn_ptr_table_index_or_add(&ctx->textures, material->emissive_map),
-                     vscn_ptr_table_index_or_add(&ctx->textures, material->metallic_roughness_map),
-                     vscn_ptr_table_index_or_add(&ctx->textures, material->ao_map),
-                     vscn_ptr_table_index_or_add(&ctx->cubemaps, material->env_map))) {
+                     material->shading_model) ||
+        !vscn_append(buf,
+                     len,
+                     cap,
+                     "\"texture\": %d, \"normalMap\": %d, \"specularMap\": %d, "
+                     "\"emissiveMap\": %d, \"metallicRoughnessMap\": %d, \"aoMap\": %d, "
+                     "\"envMap\": %d, \"customParams\": [",
+                     texture_index,
+                     normal_index,
+                     specular_index,
+                     emissive_index,
+                     metallic_roughness_index,
+                     ao_index,
+                     env_index)) {
         return 0;
     }
 

@@ -195,8 +195,16 @@ function(viper_add_tools_tests)
             ${CMAKE_COMMAND}
             -DVIPER_BIN=$<TARGET_FILE:viper>
             -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
+            -DVIPER_CONFIG=$<CONFIG>
             -P ${_VIPER_TOOLS_DIR}/InstallPackageTarballSmoke.cmake)
     viper_add_test_labels(installer_tarball_smoke installer tools slow)
+
+    set(_VIPER_INSTALLED_NATIVE_SMOKE 0)
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64" AND VIPER_BUILD_NATIVE_LINK_X86_64)
+        set(_VIPER_INSTALLED_NATIVE_SMOKE 1)
+    elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND VIPER_BUILD_NATIVE_LINK_AARCH64)
+        set(_VIPER_INSTALLED_NATIVE_SMOKE 1)
+    endif ()
 
     viper_add_ctest(installer_installed_config_smoke
             ${CMAKE_COMMAND}
@@ -204,6 +212,7 @@ function(viper_add_tools_tests)
             -DVIPER_BIN=$<TARGET_FILE:viper>
             -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
             -DVIPER_CONFIG=$<CONFIG>
+            -DVIPER_RUN_NATIVE_CODEGEN=${_VIPER_INSTALLED_NATIVE_SMOKE}
             -P ${_VIPER_TOOLS_DIR}/InstalledViperConfigSmoke.cmake)
     viper_add_test_labels(installer_installed_config_smoke installer tools slow)
 endfunction()
