@@ -40,10 +40,14 @@
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cstddef>
+#include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <filesystem>
+#include <iostream>
+#include <optional>
 #include <sstream>
 #include <string_view>
 #include <unordered_set>
@@ -74,6 +78,76 @@ namespace {
             return objfile::detectHostFormat();
     }
     return objfile::detectHostFormat();
+}
+
+[[nodiscard]] bool traceX64BinaryEmit() {
+    static const bool enabled = std::getenv("VIPER_X64_BINARY_TRACE") != nullptr;
+    return enabled;
+}
+
+std::size_t mirInstructionCount(const MFunction &fn) {
+    std::size_t count = 0;
+    for (const auto &block : fn.blocks)
+        count += block.instructions.size();
+    return count;
+}
+
+[[nodiscard]] std::optional<std::string> labelDefinedBy(const MInstr &instr) {
+    if (instr.opcode != MOpcode::LABEL || instr.operands.empty()) {
+        return std::nullopt;
+    }
+    if (const auto *label = std::get_if<OpLabel>(&instr.operands.front())) {
+        return label->name;
+    }
+    return std::nullopt;
+}
+
+/// @brief Promote in-block labels to real MachineIR basic blocks.
+///
+/// @details Several lowering rules emit local labels for cold trap paths before
+///          register allocation.  The allocator and liveness analysis are
+///          block-CFG based; leaving those labels inside one block lets
+///          trap-only moves and calls pollute the normal path's register cache.
+///          Splitting here preserves layout while making those edges visible.
+void splitInternalLabelBlocks(MFunction &fn) {
+    bool hasInternalLabels = false;
+    std::size_t labelCount = 0;
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (labelDefinedBy(instr)) {
+                hasInternalLabels = true;
+                ++labelCount;
+            }
+        }
+    }
+    if (!hasInternalLabels) {
+        return;
+    }
+
+    std::vector<MBasicBlock> splitBlocks;
+    splitBlocks.reserve(fn.blocks.size() + labelCount);
+
+    for (auto &block : fn.blocks) {
+        MBasicBlock current{};
+        current.label = std::move(block.label);
+
+        for (auto &instr : block.instructions) {
+            if (auto label = labelDefinedBy(instr)) {
+                if (current.instructions.empty() && current.label == *label) {
+                    continue;
+                }
+                splitBlocks.push_back(std::move(current));
+                current = MBasicBlock{};
+                current.label = std::move(*label);
+                continue;
+            }
+            current.instructions.push_back(std::move(instr));
+        }
+
+        splitBlocks.push_back(std::move(current));
+    }
+
+    fn.blocks = std::move(splitBlocks);
 }
 
 /// @brief Emit a warning message when unsupported syntax options are requested.
@@ -166,6 +240,7 @@ static void legalizeFunctionPipeline(const ILFunction &ilFunc,
 
     lowerSignedDivRem(machineFunc);
     lowerOverflowOps(machineFunc);
+    splitInternalLabelBlocks(machineFunc);
 }
 
 /// @brief Run register allocation and frame lowering on legalized MIR.
@@ -404,13 +479,15 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
     std::ostringstream errorStream{};
     const objfile::ObjFormat format = targetObjectFormat(opt.targetPlatform);
     const bool emitWin64Unwind = format == objfile::ObjFormat::COFF;
+    const bool emitDebugLines = format != objfile::ObjFormat::COFF;
 
     if (const auto warning = syntaxWarning(opt); !warning.empty()) {
         // Syntax warnings don't apply to binary emission, but keep parity.
     }
 
     DebugLineTable debugLines;
-    seedDebugFiles(debugLines, mir, opt.debugSourcePath);
+    if (emitDebugLines)
+        seedDebugFiles(debugLines, mir, opt.debugSourcePath);
 
     if (mir.size() != frames.size()) {
         result.errors = "frame/MIR count mismatch prior to binary emission";
@@ -442,10 +519,18 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
     for (std::size_t i = 0; i < mir.size(); ++i) {
         objfile::CodeSection funcText;
         DebugLineTable funcDebugLines;
-        seedDebugFiles(funcDebugLines, std::vector<MFunction>{mir[i]}, opt.debugSourcePath);
+        if (emitDebugLines)
+            seedDebugFiles(funcDebugLines, std::vector<MFunction>{mir[i]}, opt.debugSourcePath);
 
         binenc::X64BinaryEncoder funcEncoder;
-        funcEncoder.setDebugLineTable(&funcDebugLines);
+        if (emitDebugLines)
+            funcEncoder.setDebugLineTable(&funcDebugLines);
+        const auto traceStart = std::chrono::steady_clock::now();
+        if (traceX64BinaryEmit()) {
+            std::cerr << "[x64-binary] encode " << (i + 1) << "/" << mir.size() << " "
+                      << mir[i].name << " blocks=" << mir[i].blocks.size()
+                      << " instrs=" << mirInstructionCount(mir[i]) << "\n";
+        }
         try {
             funcEncoder.encodeFunction(
                 mir[i],
@@ -460,14 +545,23 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
                 "x86-64 binary emission failed for function '" + mir[i].name + "': " + ex.what();
             return failure;
         }
+        if (traceX64BinaryEmit()) {
+            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - traceStart);
+            std::cerr << "[x64-binary] done " << mir[i].name
+                      << " ms=" << elapsed.count()
+                      << " bytes=" << funcText.bytes().size()
+                      << " relocs=" << funcText.relocations().size() << "\n";
+        }
 
         const uint64_t debugBias = static_cast<uint64_t>(result.text.currentOffset());
-        debugLines.append(funcDebugLines, debugBias);
+        if (emitDebugLines)
+            debugLines.append(funcDebugLines, debugBias);
         result.text.appendSection(funcText);
         result.textSections.push_back(std::move(funcText));
     }
 
-    if (!debugLines.empty())
+    if (emitDebugLines && !debugLines.empty())
         result.debugLineData = debugLines.encodeDwarf5(8);
 
     result.errors = errorStream.str();

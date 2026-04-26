@@ -91,6 +91,16 @@ int compileToNative(const std::string &ilPath,
     opts.output_obj_path = outputPath;
     opts.optimize = 0;
     opts.asset_blob_path = assetBlobPath;
+#if defined(_WIN32)
+    opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::Win64;
+    opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Windows;
+#elif defined(__APPLE__)
+    opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::SysV;
+    opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Darwin;
+#else
+    opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::SysV;
+    opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Linux;
+#endif
     if (!assetObjPath.empty())
         opts.extra_objects.push_back(assetObjPath);
 

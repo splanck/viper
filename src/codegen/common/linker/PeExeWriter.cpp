@@ -42,9 +42,14 @@ namespace {
 static constexpr uint16_t IMAGE_FILE_MACHINE_AMD64 = 0x8664;
 static constexpr uint16_t IMAGE_FILE_MACHINE_ARM64 = 0xAA64;
 
+static constexpr uint16_t kDllCharHighEntropyVA = 0x0020;
+static constexpr uint16_t kDllCharDynamicBase = 0x0040;
 static constexpr uint16_t kDllCharNXCompat = 0x0100;
 static constexpr uint16_t kDllCharTermServerAware = 0x8000;
-static constexpr uint16_t kDllCharacteristics = kDllCharNXCompat | kDllCharTermServerAware;
+
+static constexpr uint16_t kImageRelBasedAbsolute = 0;
+static constexpr uint16_t kImageRelBasedDir64 = 10;
+static constexpr uint32_t kRelocSectionChars = 0x42000040; // INIT_DATA | DISCARDABLE | READ
 
 struct ImportLayout {
     std::vector<uint8_t> data;
@@ -63,6 +68,12 @@ struct TlsLayout {
 };
 
 struct ExceptionLayout {
+    uint32_t directoryRva = 0;
+    uint32_t directorySize = 0;
+};
+
+struct BaseRelocLayout {
+    std::vector<uint8_t> data;
     uint32_t directoryRva = 0;
     uint32_t directorySize = 0;
 };
@@ -96,6 +107,18 @@ void putLE32(std::vector<uint8_t> &buf, size_t offset, uint32_t val) {
 void putLE64(std::vector<uint8_t> &buf, size_t offset, uint64_t val) {
     putLE32(buf, offset, static_cast<uint32_t>(val & 0xFFFFFFFFULL));
     putLE32(buf, offset + 4, static_cast<uint32_t>(val >> 32));
+}
+
+void appendLE16(std::vector<uint8_t> &buf, uint16_t val) {
+    buf.push_back(static_cast<uint8_t>(val & 0xFF));
+    buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
+}
+
+void appendLE32(std::vector<uint8_t> &buf, uint32_t val) {
+    buf.push_back(static_cast<uint8_t>(val & 0xFF));
+    buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
+    buf.push_back(static_cast<uint8_t>((val >> 16) & 0xFF));
+    buf.push_back(static_cast<uint8_t>((val >> 24) & 0xFF));
 }
 
 uint32_t sectionChars(bool executable, bool writable, bool alloc, bool zeroFill = false) {
@@ -369,8 +392,6 @@ std::vector<uint8_t> buildAArch64StartupStub(uint64_t imageBase,
 }
 
 std::string sectionNameFor(const OutputSection &sec) {
-    if (!sec.alloc)
-        return ".debug";
     if (sec.tls)
         return ".tls";
     if (sec.zeroFill)
@@ -437,6 +458,39 @@ ExceptionLayout findExceptionDirectory(const std::vector<PeSection> &sections) {
     return result;
 }
 
+std::vector<uint8_t> buildBaseRelocationBlocks(std::vector<uint32_t> rvas, bool forceNonEmpty) {
+    std::sort(rvas.begin(), rvas.end());
+    rvas.erase(std::unique(rvas.begin(), rvas.end()), rvas.end());
+
+    std::vector<uint8_t> data;
+    if (rvas.empty()) {
+        if (forceNonEmpty) {
+            appendLE32(data, 0);
+            appendLE32(data, 8);
+        }
+        return data;
+    }
+
+    size_t i = 0;
+    while (i < rvas.size()) {
+        const uint32_t pageRva = rvas[i] & ~0xFFFu;
+        std::vector<uint16_t> entries;
+        while (i < rvas.size() && (rvas[i] & ~0xFFFu) == pageRva) {
+            entries.push_back(static_cast<uint16_t>((kImageRelBasedDir64 << 12) |
+                                                    (rvas[i] & 0x0FFFu)));
+            ++i;
+        }
+        if ((entries.size() & 1u) != 0)
+            entries.push_back(static_cast<uint16_t>(kImageRelBasedAbsolute << 12));
+
+        appendLE32(data, pageRva);
+        appendLE32(data, static_cast<uint32_t>(8 + entries.size() * sizeof(uint16_t)));
+        for (uint16_t entry : entries)
+            appendLE16(data, entry);
+    }
+    return data;
+}
+
 } // namespace
 
 bool writePeExe(const std::string &path,
@@ -470,6 +524,10 @@ bool writePeExe(const std::string &path,
 
     uint32_t nextGeneratedRva = sectionAlignment;
     for (const auto &sec : layout.sections) {
+        // PE images cannot carry ELF/Mach-O style non-alloc debug sections.
+        // Emitting them with RVA 0 makes Windows reject the executable.
+        if (!sec.alloc)
+            continue;
         if (sec.data.empty())
             continue;
 
@@ -496,8 +554,10 @@ bool writePeExe(const std::string &path,
     std::vector<uint8_t> generatedImportData;
     std::vector<uint8_t> generatedStubData;
     std::vector<uint8_t> generatedTlsData;
+    std::vector<uint8_t> generatedBaseRelocData;
     ImportLayout importLayout{};
     TlsLayout tlsLayout{};
+    BaseRelocLayout baseRelocLayout{};
 
     if (!imports.empty()) {
         const uint32_t importRva =
@@ -588,6 +648,47 @@ bool writePeExe(const std::string &path,
         stubSec.characteristics = sectionChars(true, false, true);
         sections.push_back(stubSec);
         entryRva = stubRva;
+        nextGeneratedRva =
+            stubRva + static_cast<uint32_t>(alignUp(generatedStubData.size(), sectionAlignment));
+    }
+
+    std::vector<uint32_t> baseRelocRvas;
+    for (const auto &entry : layout.rebaseEntries) {
+        if (entry.sectionIndex >= layout.sections.size())
+            continue;
+        const auto &sec = layout.sections[entry.sectionIndex];
+        if (!sec.alloc || entry.offset + 8 > sec.data.size())
+            continue;
+        const uint64_t rva64 = (sec.virtualAddr - imageBase) + entry.offset;
+        if (rva64 <= UINT32_MAX)
+            baseRelocRvas.push_back(static_cast<uint32_t>(rva64));
+    }
+    if (tlsLayout.directorySize != 0) {
+        baseRelocRvas.push_back(tlsLayout.directoryRva + 0);
+        baseRelocRvas.push_back(tlsLayout.directoryRva + 8);
+        baseRelocRvas.push_back(tlsLayout.directoryRva + 16);
+        baseRelocRvas.push_back(tlsLayout.directoryRva + 24);
+    }
+
+    generatedBaseRelocData =
+        buildBaseRelocationBlocks(std::move(baseRelocRvas), arch == LinkArch::AArch64);
+    if (!generatedBaseRelocData.empty()) {
+        const uint32_t relocRva = static_cast<uint32_t>(alignUp(nextGeneratedRva, sectionAlignment));
+
+        PeSection relocSec;
+        relocSec.name = ".reloc";
+        relocSec.data = &generatedBaseRelocData;
+        relocSec.virtualAddress = relocRva;
+        relocSec.virtualSize = static_cast<uint32_t>(generatedBaseRelocData.size());
+        relocSec.characteristics = kRelocSectionChars;
+        sections.push_back(relocSec);
+
+        baseRelocLayout.data = generatedBaseRelocData;
+        baseRelocLayout.directoryRva = relocRva;
+        baseRelocLayout.directorySize = static_cast<uint32_t>(generatedBaseRelocData.size());
+        nextGeneratedRva =
+            relocRva +
+            static_cast<uint32_t>(alignUp(generatedBaseRelocData.size(), sectionAlignment));
     }
 
     std::stable_sort(sections.begin(), sections.end(), [](const PeSection &a, const PeSection &b) {
@@ -642,6 +743,10 @@ bool writePeExe(const std::string &path,
     file[1] = 'Z';
     putLE32(file, 0x3C, 64);
 
+    uint16_t dllCharacteristics = kDllCharNXCompat | kDllCharTermServerAware;
+    if (baseRelocLayout.directoryRva != 0)
+        dllCharacteristics |= kDllCharDynamicBase | kDllCharHighEntropyVA;
+
     writeLE32(file, 0x00004550); // "PE\0\0"
 
     writeLE16(file, machine);
@@ -674,7 +779,7 @@ bool writePeExe(const std::string &path,
     writeLE32(file, sizeOfHeaders);
     writeLE32(file, 0);
     writeLE16(file, 3); // IMAGE_SUBSYSTEM_WINDOWS_CUI
-    writeLE16(file, kDllCharacteristics);
+    writeLE16(file, dllCharacteristics);
     writeLE64(file, stackReserve);
     writeLE64(file, stackCommit);
     writeLE64(file, 0x100000);
@@ -696,6 +801,10 @@ bool writePeExe(const std::string &path,
     if (exceptionLayout.directoryRva != 0) {
         putLE32(file, optHeaderStart + 112 + 3 * 8 + 0, exceptionLayout.directoryRva);
         putLE32(file, optHeaderStart + 112 + 3 * 8 + 4, exceptionLayout.directorySize);
+    }
+    if (baseRelocLayout.directoryRva != 0) {
+        putLE32(file, optHeaderStart + 112 + 5 * 8 + 0, baseRelocLayout.directoryRva);
+        putLE32(file, optHeaderStart + 112 + 5 * 8 + 4, baseRelocLayout.directorySize);
     }
     if (tlsLayout.directoryRva != 0) {
         putLE32(file, optHeaderStart + 112 + 9 * 8 + 0, tlsLayout.directoryRva);

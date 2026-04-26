@@ -213,6 +213,9 @@ class X64BinaryEncoder {
     /// Forward references needing patching.
     std::vector<PendingBranch> pendingBranches_;
 
+    /// Whether JMP/JCC may use rel8 short forms during this function.
+    bool shortBranchRelaxationEnabled_ = true;
+
     /// Optional debug line table for recording address→line mappings.
     DebugLineTable *debugLines_{nullptr};
 };

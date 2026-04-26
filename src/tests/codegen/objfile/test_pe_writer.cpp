@@ -316,6 +316,39 @@ TEST(PeWriter, EmptyImportsSucceeds) {
     EXPECT_TRUE(err.str().empty());
 }
 
+TEST(PeWriter, SkipsNonAllocDebugSections) {
+    auto layout = makeMinimalLayout();
+
+    OutputSection debug;
+    debug.name = ".debug_line";
+    debug.alloc = false;
+    debug.data = {0xDB, 0x01, 0x02, 0x03};
+    layout.sections.push_back(std::move(debug));
+
+    std::ostringstream err;
+    std::string path = "build/test-out/pe_test_skip_debug.exe";
+    std::filesystem::create_directories("build/test-out");
+
+    bool ok = writePeExe(path, layout, LinkArch::X86_64, {}, err);
+    ASSERT_TRUE(ok);
+
+    auto data = readBinaryFile(path);
+    uint32_t peOffset = readU32(data, 0x3C);
+    uint16_t numSections = readU16(data, peOffset + 6);
+    uint16_t optSize = readU16(data, peOffset + 20);
+    size_t secOff = peOffset + 24 + optSize;
+
+    EXPECT_EQ(numSections, 1U);
+    for (uint16_t i = 0; i < numSections; ++i) {
+        size_t sh = secOff + static_cast<size_t>(i) * 40;
+        ASSERT_LT(sh + 8, data.size());
+        std::string name(reinterpret_cast<const char *>(data.data() + sh), 8);
+        name.resize(std::strlen(name.c_str()));
+        EXPECT_NE(name, ".debug");
+        EXPECT_NE(name, ".debug_line");
+    }
+}
+
 TEST(PeWriter, ImportDirectoryIsWritten) {
     auto layout = makeMinimalLayout();
     std::ostringstream err;

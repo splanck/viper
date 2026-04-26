@@ -191,7 +191,9 @@ static int64_t extractCoffAddend(uint16_t machine,
         case coff_a64::kPageRel21: {
             const uint32_t immlo = (insn >> 29) & 0x3u;
             const uint32_t immhi = (insn >> 5) & 0x7FFFFu;
-            return signExtend((immhi << 2) | immlo, 21) << 12;
+            // COFF stores the byte addend in ADRP's immediate field. The linker
+            // later applies page rounding when it computes PAGE(S + A) - PAGE(P).
+            return signExtend((immhi << 2) | immlo, 21);
         }
         case coff_a64::kPageOff12A:
             return static_cast<int64_t>((insn >> 10) & 0xFFFu);

@@ -2693,6 +2693,12 @@ const vgfx3d_backend_t *vgfx3d_select_backend(void) {
      * backend by default there until the GL path is stable across frames. */
 #if defined(__APPLE__)
     return &vgfx3d_metal_backend;
+#elif defined(_WIN32) && (defined(_M_ARM64) || defined(__aarch64__))
+    /* Several Windows-on-ARM GPU stacks expose D3D11 but crash inside the
+     * display driver during Present. Keep x64 on D3D11, but default ARM64 to
+     * the portable backend so Canvas3D demos launch reliably. Users can still
+     * opt into D3D11 with VIPER_3D_BACKEND=d3d11. */
+    return &vgfx3d_software_backend;
 #elif defined(_WIN32)
     return &vgfx3d_d3d11_backend;
 #elif defined(__linux__)

@@ -106,7 +106,7 @@ struct DivTrapSequence {
     bool hasTrapBranch{false};
     bool hasCqto{false};
     bool hasIdiv{false};
-    bool hasIdivRcx{false};
+    bool hasIdivScratch{false};
     bool hasScratchDivisorMove{false};
     bool hasTrapCall{false};
 };
@@ -129,11 +129,11 @@ struct DivTrapSequence {
         if (!sequence.hasIdiv && line.find("idivq") != std::string::npos) {
             sequence.hasIdiv = true;
         }
-        if (!sequence.hasIdivRcx && line.find("idivq %rcx") != std::string::npos) {
-            sequence.hasIdivRcx = true;
+        if (!sequence.hasIdivScratch && line.find("idivq %r10") != std::string::npos) {
+            sequence.hasIdivScratch = true;
         }
         if (!sequence.hasScratchDivisorMove && line.find("movq") != std::string::npos &&
-            line.find("%rcx") != std::string::npos) {
+            line.find("%r10") != std::string::npos) {
             sequence.hasScratchDivisorMove = true;
         }
         if (!sequence.hasTrapCall && line.find("callq") != std::string::npos &&
@@ -231,7 +231,9 @@ struct NativeRunResult {
     std::string message{};
 };
 
-[[nodiscard]] NativeRunResult runDivTrapNative() {
+[[nodiscard]] NativeRunResult runNativeIl(std::string_view tempPrefix,
+                                          std::string_view ilFileName,
+                                          std::string_view programText) {
     NativeRunResult result{};
 
     if (auto reason = nativeExecDisabledReason()) {
@@ -249,7 +251,7 @@ struct NativeRunResult {
     }
 
     const auto suffix = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
-    const std::filesystem::path tempDir = baseTemp / (std::string("viper_div_trap_") + suffix);
+    const std::filesystem::path tempDir = baseTemp / (std::string(tempPrefix) + suffix);
 
     std::error_code createEc;
     std::filesystem::create_directories(tempDir, createEc);
@@ -262,17 +264,8 @@ struct NativeRunResult {
 
     TempDirGuard guard(tempDir);
 
-    constexpr std::string_view kDivTrapProgram = R"(il 0.2.0
-
-func @main() -> i64 {
-entry:
-  %q:i64 = sdiv.chk0 1, 0
-  ret %q
-}
-)";
-
-    const std::filesystem::path ilPath = tempDir / "div_trap.il";
-    if (!writeTextFile(ilPath, kDivTrapProgram)) {
+    const std::filesystem::path ilPath = tempDir / std::string(ilFileName);
+    if (!writeTextFile(ilPath, programText)) {
         result.launchFailed = true;
         result.message = std::string("Failed to write IL program to '") + ilPath.string() + "'";
         return result;
@@ -295,6 +288,37 @@ entry:
     return result;
 }
 
+[[nodiscard]] NativeRunResult runDivTrapNative() {
+    constexpr std::string_view kDivTrapProgram = R"(il 0.2.0
+
+func @main() -> i64 {
+entry:
+  %q:i64 = sdiv.chk0 1, 0
+  ret %q
+}
+)";
+
+    return runNativeIl("viper_div_trap_", "div_trap.il", kDivTrapProgram);
+}
+
+[[nodiscard]] NativeRunResult runCheckedRemainderNative() {
+    constexpr std::string_view kRemainderProgram = R"(il 0.2.0
+
+func @main() -> i64 {
+entry:
+  %seed:i64 = iadd.ovf 400, 7
+  %px:i64 = isub.ovf %seed, 388
+  %py:i64 = isub.ovf %seed, 396
+  %a:i64 = srem.chk0 %px, 8
+  %b:i64 = srem.chk0 %py, 8
+  %c:i64 = iadd.ovf %a, %b
+  ret %c
+}
+)";
+
+    return runNativeIl("viper_checked_rem_", "checked_rem.il", kRemainderProgram);
+}
+
 } // namespace
 } // namespace viper::codegen::x64
 
@@ -311,7 +335,7 @@ int main() {
 
     const DivTrapSequence sequence = analyseDivTrapSequence(result.asmText);
     if (!sequence.hasSelfTest || !sequence.hasTrapBranch || !sequence.hasCqto ||
-        !sequence.hasIdiv || !sequence.hasIdivRcx || !sequence.hasScratchDivisorMove ||
+        !sequence.hasIdiv || !sequence.hasIdivScratch || !sequence.hasScratchDivisorMove ||
         !sequence.hasTrapCall) {
         std::cerr << "Missing guarded division pattern in assembly:\n" << result.asmText;
         return EXIT_FAILURE;
@@ -327,6 +351,19 @@ int main() {
             std::cerr
                 << "Expected ilc run-native to exit with a non-zero status when dividing by zero.\n"
                 << native.message << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+
+    const NativeRunResult remainderNative = runCheckedRemainderNative();
+    if (!remainderNative.skipped) {
+        if (remainderNative.launchFailed) {
+            std::cerr << remainderNative.message << '\n';
+            return EXIT_FAILURE;
+        }
+        if (remainderNative.exitCode != 6) {
+            std::cerr << "Expected checked signed remainder native run to exit with 6.\n"
+                      << remainderNative.message << '\n';
             return EXIT_FAILURE;
         }
     }

@@ -68,7 +68,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
     static const std::unordered_set<std::string> kernel32 = {
         "ExitProcess","FreeLibrary","GetCurrentProcessId","GetCurrentThreadId","GetEnvironmentVariableA",
         "GetEnvironmentVariableW",
-        "GetLastError","GetComputerNameA","GetComputerNameW","GetCurrentDirectoryW","GetModuleHandleW",
+        "GetLastError","GetCommandLineW","GetComputerNameA","GetComputerNameW","GetCurrentDirectoryW","GetModuleHandleW",
         "GetModuleFileNameA","GetProcAddress","GetProcessHeap","GetStartupInfoW","GetStdHandle",
         "GetSystemInfo","GetSystemTimeAsFileTime","GetTempPathA","HeapAlloc","HeapFree",
         "IsDebuggerPresent","InitOnceExecuteOnce","InitializeCriticalSection","InitializeSListHead",
@@ -85,7 +85,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "GetFileAttributesW","GetFileAttributesExW","GetFileSizeEx","GetConsoleMode",
         "GetExitCodeProcess","GetFileInformationByHandle","GetFullPathNameW",
         "GetOverlappedResult","GetUserDefaultLocaleName","GetVersionExA","GetVersionExW",
-        "GlobalMemoryStatusEx","FlushFileBuffers",
+        "GlobalMemoryStatusEx","FlushFileBuffers","LocalFree",
         "InitializeConditionVariable","QueryPerformanceFrequency","ReadDirectoryChangesW","ReadFile",
         "MoveFileExA","MoveFileExW","RemoveDirectoryW","SetConsoleCP","SetConsoleMode",
         "SetConsoleOutputCP","ResetEvent","SetEvent","SetHandleInformation","Sleep",
@@ -106,7 +106,8 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "CreateCompatibleDC","CreateDIBSection","DeleteDC","DeleteObject","GetDeviceCaps",
         "GetStockObject","SelectObject","StretchBlt",
     };
-    static const std::unordered_set<std::string> shell32 = {"DragAcceptFiles","DragFinish","DragQueryFileA"};
+    static const std::unordered_set<std::string> shell32 = {
+        "CommandLineToArgvW","DragAcceptFiles","DragFinish","DragQueryFileA"};
     static const std::unordered_set<std::string> ole32 = {"CoCreateInstance","CoInitializeEx","CoUninitialize"};
     static const std::unordered_set<std::string> xinput = {"XInputGetState","XInputSetState"};
     static const std::unordered_set<std::string> advapi32 = {

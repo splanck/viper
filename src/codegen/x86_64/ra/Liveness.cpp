@@ -57,7 +57,8 @@ bool addLabelSuccessor(const std::unordered_map<std::string, std::size_t> &block
 }
 
 bool isControlTerminator(MOpcode opcode) {
-    return opcode == MOpcode::JMP || opcode == MOpcode::JCC || opcode == MOpcode::RET;
+    return opcode == MOpcode::JMP || opcode == MOpcode::JCC || opcode == MOpcode::RET ||
+           opcode == MOpcode::UD2;
 }
 
 } // namespace

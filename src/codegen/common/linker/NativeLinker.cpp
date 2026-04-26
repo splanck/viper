@@ -727,17 +727,25 @@ ObjFile generateWindowsArm64Helpers(const std::unordered_set<std::string> &dynam
         addImportAlias("_InterlockedOr", idx);
     }
     if (needsHelper("__RTC_memset")) {
+        // MSVC's ARM64 runtime-check instrumentation may call __RTC_memset before
+        // spilling incoming argument registers or the hidden aggregate-return
+        // pointer in x8. Keep x3-x8 intact.
         const uint32_t idx = addTextFn("__RTC_memset",
-                                       {0xAA0003E3U, 0xB4000082U, 0x38001461U, 0xF1000442U,
+                                       {0xAA0003E9U, 0xB4000082U, 0x38001521U, 0xF1000442U,
                                         0x54FFFFC1U, 0xD65F03C0U});
         addImportAlias("__RTC_memset", idx);
     }
     if (needsHelper("__security_push_cookie")) {
-        const uint32_t idx = addRetFn("__security_push_cookie");
+        // MSVC ARM64 /GS helpers reserve a stack cookie slot between saved
+        // FP/LR and the function's local frame. The linker stubs validation,
+        // but it still has to preserve that stack contract.
+        const uint32_t idx = addTextFn("__security_push_cookie",
+                                       {0xD10043FFU, 0xD65F03C0U}); // sub sp, sp, #0x10; ret
         addImportAlias("__security_push_cookie", idx);
     }
     if (needsHelper("__security_pop_cookie")) {
-        const uint32_t idx = addRetFn("__security_pop_cookie");
+        const uint32_t idx = addTextFn("__security_pop_cookie",
+                                       {0x910043FFU, 0xD65F03C0U}); // add sp, sp, #0x10; ret
         addImportAlias("__security_pop_cookie", idx);
     }
     if (needsHelper("rt_audio_shutdown")) {

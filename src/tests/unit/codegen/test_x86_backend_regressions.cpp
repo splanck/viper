@@ -370,6 +370,53 @@ TEST(X86BackendRegressions, CheckedSignedNarrowEmitsWidthCheck) {
     EXPECT_NE(result.asmText.find("rt_trap_raise_error"), std::string::npos);
 }
 
+TEST(X86BackendRegressions, CheckedNarrowLabelsAreSplitBeforeRegisterAllocation) {
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::I64};
+    entry.instrs = {opBits("si_narrow_chk", {val(ILValue::Kind::I64, 0)}, 1,
+                           ILValue::Kind::I64, 16),
+                    op("ret", {val(ILValue::Kind::I64, 1)})};
+
+    ILFunction fn{};
+    fn.name = "narrow_cfg";
+    fn.blocks = {entry};
+
+    ILModule module{};
+    module.funcs = {fn};
+
+    AsmEmitter::RoDataPool roData;
+    std::vector<MFunction> mir;
+    std::vector<FrameInfo> frames;
+    std::string errors;
+    CodegenOptions options;
+    ASSERT_TRUE(legalizeModuleToMIR(module, win64Target(), options, roData, mir, frames, errors));
+    if (!errors.empty()) {
+        std::cerr << errors << '\n';
+    }
+    ASSERT_TRUE(errors.empty());
+    ASSERT_EQ(mir.size(), 1u);
+
+    bool foundInlineLabel = false;
+    bool foundTrapBlock = false;
+    bool foundDoneBlock = false;
+    bool trapEndsInUd2 = false;
+    for (const auto &block : mir.front().blocks) {
+        foundTrapBlock = foundTrapBlock || block.label.find(".Lnarrow_chk_trap_") != std::string::npos;
+        foundDoneBlock = foundDoneBlock || block.label.find(".Lnarrow_chk_done_") != std::string::npos;
+        foundInlineLabel = foundInlineLabel || blockContainsOpcode(block, MOpcode::LABEL);
+        if (block.label.find(".Lnarrow_chk_trap_") != std::string::npos && !block.instructions.empty()) {
+            trapEndsInUd2 = block.instructions.back().opcode == MOpcode::UD2;
+        }
+    }
+
+    EXPECT_TRUE(foundTrapBlock);
+    EXPECT_TRUE(foundDoneBlock);
+    EXPECT_TRUE(trapEndsInUd2);
+    EXPECT_FALSE(foundInlineLabel);
+}
+
 TEST(X86BackendRegressions, SubWidthCheckedAddEmitsRangeCheck) {
     ILBlock entry{};
     entry.name = "entry";
@@ -643,7 +690,8 @@ TEST(X86BackendRegressions, CheckedSignedRemainderZerosMinOverflowPath) {
     ASSERT_TRUE(result.errors.empty());
     EXPECT_EQ(result.asmText.find("rt_trap_ovf"), std::string::npos);
     EXPECT_TRUE(result.asmText.find("movq $0") != std::string::npos ||
-                containsRegex(result.asmText, R"(xor[lq]\s+%r[a-z0-9]+,\s*%r[a-z0-9]+)"));
+                containsRegex(result.asmText,
+                              R"(xor[lq]\s+%(?:e[a-z]+|r[a-z0-9]+d?),\s*%(?:e[a-z]+|r[a-z0-9]+d?))"));
 }
 
 TEST(X86BackendRegressions, AssemblyHonorsTargetPlatformSections) {

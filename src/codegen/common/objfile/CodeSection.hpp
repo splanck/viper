@@ -88,6 +88,17 @@ class CodeSection {
         reserveBytes(bytes_.size() + additionalBytes);
     }
 
+    /// Set a logical offset bias for dry-run encoding.
+    ///
+    /// This lets instruction-size estimators measure code at a non-zero logical
+    /// offset without materializing padding bytes. Real object emission should
+    /// leave the bias at zero.
+    void setLogicalOffsetBias(size_t offsetBias) {
+        if (!bytes_.empty() || !relocations_.empty() || symbols_.count() > 1)
+            throw std::logic_error("CodeSection logical offset bias must be set before emission");
+        offsetBias_ = offsetBias;
+    }
+
     /// Reserve total relocation capacity ahead of time.
     void reserveRelocations(size_t totalRelocs) {
         if (relocations_.capacity() < totalRelocs)
@@ -101,7 +112,7 @@ class CodeSection {
 
     /// Current write position (byte offset from start of section).
     size_t currentOffset() const {
-        return bytes_.size();
+        return offsetBias_ + bytes_.size();
     }
 
     /// Append a single byte.
@@ -152,7 +163,7 @@ class CodeSection {
     void alignTo(size_t alignment) {
         if (alignment <= 1)
             return;
-        size_t rem = bytes_.size() % alignment;
+        size_t rem = currentOffset() % alignment;
         if (rem != 0)
             emitZeros(alignment - rem);
     }
@@ -175,7 +186,7 @@ class CodeSection {
                          uint32_t symbolIndex,
                          int64_t addend = 0,
                          SymbolSection targetSection = SymbolSection::Undefined) {
-        if (offset > bytes_.size())
+        if (offset < offsetBias_ || offset - offsetBias_ > bytes_.size())
             throw std::out_of_range("CodeSection relocation offset is out of range");
         if (symbolIndex >= symbols_.count())
             throw std::out_of_range("CodeSection relocation symbol index is out of range");
@@ -203,19 +214,20 @@ class CodeSection {
 
     /// Overwrite 4 bytes at the given offset (little-endian).
     void patch32LE(size_t offset, uint32_t val) {
-        if (offset + 4 > bytes_.size())
+        if (offset < offsetBias_ || offset - offsetBias_ + 4 > bytes_.size())
             throw std::out_of_range("CodeSection patch32LE offset is out of range");
-        bytes_[offset] = static_cast<uint8_t>(val);
-        bytes_[offset + 1] = static_cast<uint8_t>(val >> 8);
-        bytes_[offset + 2] = static_cast<uint8_t>(val >> 16);
-        bytes_[offset + 3] = static_cast<uint8_t>(val >> 24);
+        const size_t physicalOffset = offset - offsetBias_;
+        bytes_[physicalOffset] = static_cast<uint8_t>(val);
+        bytes_[physicalOffset + 1] = static_cast<uint8_t>(val >> 8);
+        bytes_[physicalOffset + 2] = static_cast<uint8_t>(val >> 16);
+        bytes_[physicalOffset + 3] = static_cast<uint8_t>(val >> 24);
     }
 
     /// Overwrite 1 byte at the given offset.
     void patch8(size_t offset, uint8_t val) {
-        if (offset >= bytes_.size())
+        if (offset < offsetBias_ || offset - offsetBias_ >= bytes_.size())
             throw std::out_of_range("CodeSection patch8 offset is out of range");
-        bytes_[offset] = val;
+        bytes_[offset - offsetBias_] = val;
     }
 
     // === Accessors ===
@@ -332,6 +344,7 @@ class CodeSection {
     SymbolTable symbols_;
     std::vector<CompactUnwindEntry> unwindEntries_;
     std::vector<Win64UnwindEntry> win64UnwindEntries_;
+    size_t offsetBias_ = 0;
 };
 
 } // namespace viper::codegen::objfile

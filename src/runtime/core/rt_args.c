@@ -45,16 +45,262 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <shellapi.h>
+#elif defined(__APPLE__)
+#include <crt_externs.h>
+#endif
+
+static int g_legacy_args_host_init_state = 0; // 0 = no, 1 = initializing, 2 = done/suppressed
+static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size);
+
+#ifdef _WIN32
+static rt_string rt_env_wide_to_string_or_trap(
+    const wchar_t *wide, int wide_len, const char *context);
 #endif
 
 /// @brief Get the argument store from the active context (or legacy fallback).
-static RtArgsState *rt_args_state(void) {
+static RtArgsState *rt_args_state_with_kind(int *is_legacy) {
     RtContext *ctx = rt_get_current_context();
-    if (!ctx)
-        ctx = rt_legacy_context();
-    return ctx ? &ctx->args_state : NULL;
+    RtContext *legacy = rt_legacy_context();
+    if (ctx) {
+        if (is_legacy)
+            *is_legacy = (ctx == legacy);
+        return &ctx->args_state;
+    }
+
+    if (is_legacy)
+        *is_legacy = 1;
+    return legacy ? &legacy->args_state : NULL;
 }
 
+static RtArgsState *rt_args_state(void) {
+    return rt_args_state_with_kind(NULL);
+}
+
+static void rt_args_mark_legacy_host_initialized(void) {
+    if (g_legacy_args_host_init_state != 1)
+        g_legacy_args_host_init_state = 2;
+}
+
+static void rt_args_note_manual_mutation(int is_legacy) {
+    if (is_legacy)
+        rt_args_mark_legacy_host_initialized();
+}
+
+static void rt_args_append(RtArgsState *state, rt_string s) {
+    if (!state)
+        return;
+    if (!rt_args_grow_if_needed(state, state->size + 1))
+        return;
+    if (!s)
+        s = rt_str_empty();
+    else
+        rt_string_ref(s);
+    state->items[state->size++] = s;
+}
+
+static void rt_args_append_bytes(RtArgsState *state, const char *bytes, size_t len) {
+    rt_string tmp = rt_string_from_bytes(bytes ? bytes : "", bytes ? len : 0);
+    rt_args_append(state, tmp);
+    rt_string_unref(tmp);
+}
+
+#if defined(_WIN32)
+static void rt_args_populate_host(RtArgsState *state) {
+    int argc = 0;
+    LPWSTR *argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!argv)
+        return;
+
+    for (int i = 0; i < argc; ++i) {
+        int len = 0;
+        while (argv[i] && argv[i][len] != L'\0')
+            ++len;
+        rt_string tmp = rt_env_wide_to_string_or_trap(
+            argv[i], len, "Environment: command-line UTF-16 to UTF-8 conversion failed");
+        rt_args_append(state, tmp);
+        rt_string_unref(tmp);
+    }
+
+    LocalFree(argv);
+}
+#elif defined(__APPLE__)
+static void rt_args_populate_host(RtArgsState *state) {
+    int *argc_ptr = _NSGetArgc();
+    char ***argv_ptr = _NSGetArgv();
+    if (!argc_ptr || !argv_ptr || !*argv_ptr)
+        return;
+    for (int i = 0; i < *argc_ptr; ++i) {
+        const char *arg = (*argv_ptr)[i];
+        rt_args_append_bytes(state, arg, arg ? strlen(arg) : 0);
+    }
+}
+#elif defined(__linux__)
+static void rt_args_populate_host(RtArgsState *state) {
+    FILE *file = fopen("/proc/self/cmdline", "rb");
+    if (!file)
+        return;
+
+    char *data = NULL;
+    size_t size = 0;
+    size_t cap = 0;
+    char chunk[512];
+    while (1) {
+        size_t n = fread(chunk, 1, sizeof(chunk), file);
+        if (n > 0) {
+            if (size + n > cap) {
+                size_t next_cap = cap ? cap * 2 : 1024;
+                while (next_cap < size + n)
+                    next_cap *= 2;
+                char *next = (char *)realloc(data, next_cap);
+                if (!next) {
+                    free(data);
+                    fclose(file);
+                    rt_trap("Environment: command-line allocation failed");
+                    return;
+                }
+                data = next;
+                cap = next_cap;
+            }
+            memcpy(data + size, chunk, n);
+            size += n;
+        }
+        if (n < sizeof(chunk)) {
+            if (feof(file))
+                break;
+            if (ferror(file)) {
+                free(data);
+                fclose(file);
+                return;
+            }
+        }
+    }
+    fclose(file);
+
+    size_t start = 0;
+    for (size_t i = 0; i <= size; ++i) {
+        if (i == size || data[i] == '\0') {
+            if (i > start || i < size)
+                rt_args_append_bytes(state, data + start, i - start);
+            start = i + 1;
+        }
+    }
+    free(data);
+}
+#else
+static void rt_args_populate_host(RtArgsState *state) {
+    (void)state;
+}
+#endif
+
+static void rt_args_ensure_legacy_host_initialized(RtArgsState *state) {
+    if (!state)
+        return;
+    if (g_legacy_args_host_init_state == 2)
+        return;
+    if (g_legacy_args_host_init_state == 0) {
+        g_legacy_args_host_init_state = 1;
+        if (state->size == 0)
+            rt_args_populate_host(state);
+        g_legacy_args_host_init_state = 2;
+        return;
+    }
+
+    while (g_legacy_args_host_init_state == 1) {
+#ifdef _WIN32
+        SwitchToThread();
+#endif
+    }
+}
+
+static RtArgsState *rt_args_query_state(void) {
+    int is_legacy = 0;
+    RtArgsState *state = rt_args_state_with_kind(&is_legacy);
+    if (is_legacy)
+        rt_args_ensure_legacy_host_initialized(state);
+    return state;
+}
+
+#ifdef _WIN32
+/// @brief Convert a NUL-terminated UTF-8 string to a heap-allocated wide string (Windows).
+/// @details Uses `MultiByteToWideChar` with `MB_ERR_INVALID_CHARS` so
+///          malformed UTF-8 traps cleanly instead of producing a
+///          silently-mangled wide string. Used by environment-API
+///          calls that need to hit the W (wide) Win32 entry points.
+///          Caller owns the returned buffer (must `free`). Traps on
+///          conversion failure or allocation failure â€” there's no
+///          recoverable path for an invalid env-var name on Windows.
+static wchar_t *rt_env_utf8_to_wide_or_trap(const char *utf8, const char *context) {
+    if (!utf8)
+        return NULL;
+    int needed = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, NULL, 0);
+    if (needed <= 0)
+        rt_trap(context ? context : "Environment: UTF-8 to UTF-16 conversion failed");
+    wchar_t *wide = (wchar_t *)malloc((size_t)needed * sizeof(wchar_t));
+    if (!wide)
+        rt_trap("Environment: allocation failed");
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wide, needed) <= 0) {
+        free(wide);
+        rt_trap(context ? context : "Environment: UTF-8 to UTF-16 conversion failed");
+    }
+    return wide;
+}
+
+/// @brief Convert a wide string of known length to an `rt_string` (UTF-8) on Windows.
+/// @details Inverse of `rt_env_utf8_to_wide_or_trap`. Two-call
+///          `WideCharToMultiByte` pattern: first call sizes the
+///          output, second fills it. Traps on conversion failure
+///          rather than returning empty so callers don't silently
+///          lose data on weird input from the OS.
+static rt_string rt_env_wide_to_string_or_trap(
+    const wchar_t *wide, int wide_len, const char *context) {
+    if (!wide || wide_len <= 0)
+        return rt_str_empty();
+    int needed = WideCharToMultiByte(CP_UTF8, 0, wide, wide_len, NULL, 0, NULL, NULL);
+    if (needed <= 0)
+        rt_trap(context ? context : "Environment: UTF-16 to UTF-8 conversion failed");
+    char *buffer = (char *)malloc((size_t)needed);
+    if (!buffer)
+        rt_trap("Environment: allocation failed");
+    if (WideCharToMultiByte(CP_UTF8, 0, wide, wide_len, buffer, needed, NULL, NULL) <= 0) {
+        free(buffer);
+        rt_trap(context ? context : "Environment: UTF-16 to UTF-8 conversion failed");
+    }
+    rt_string out = rt_string_from_bytes(buffer, (size_t)needed);
+    free(buffer);
+    return out;
+}
+#endif
+
+/// @brief Ensure the args array has capacity for at least @p new_size entries.
+/// @details Doubles capacity until sufficient; traps on overflow or alloc failure.
+static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size) {
+    if (!state)
+        return 0;
+    if (new_size <= state->cap)
+        return 1;
+    size_t new_cap = state->cap ? state->cap * 2 : 8;
+    while (new_cap < new_size) {
+        if (new_cap > SIZE_MAX / 2) {
+            rt_trap("rt_args: capacity overflow");
+            return 0;
+        }
+        new_cap *= 2;
+    }
+    if (new_cap > SIZE_MAX / sizeof(rt_string)) {
+        rt_trap("rt_args: size overflow");
+        return 0;
+    }
+    rt_string *next = (rt_string *)realloc(state->items, new_cap * sizeof(rt_string));
+    if (!next) {
+        rt_trap("rt_args: allocation failed");
+        return 0;
+    }
+    state->items = next;
+    state->cap = new_cap;
+    return 1;
+}
+#if 0
 #ifdef _WIN32
 /// @brief Convert a NUL-terminated UTF-8 string to a heap-allocated wide string (Windows).
 /// @details Uses `MultiByteToWideChar` with `MB_ERR_INVALID_CHARS` so
@@ -135,6 +381,8 @@ static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size) {
     return 1;
 }
 
+#endif
+
 /// @brief Clear all stored command-line arguments.
 ///
 /// Releases all stored argument strings and resets the argument count to zero.
@@ -144,7 +392,8 @@ static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size) {
 /// @note Internal use - typically not called directly from Viper code.
 /// @note Releases references to all stored strings.
 void rt_args_clear(void) {
-    RtArgsState *state = rt_args_state();
+    int is_legacy = 0;
+    RtArgsState *state = rt_args_state_with_kind(&is_legacy);
     if (!state)
         return;
     for (size_t i = 0; i < state->size; ++i) {
@@ -153,6 +402,7 @@ void rt_args_clear(void) {
         state->items[i] = NULL;
     }
     state->size = 0;
+    rt_args_note_manual_mutation(is_legacy);
 }
 
 /// @brief Add a command-line argument to the argument store.
@@ -166,17 +416,12 @@ void rt_args_clear(void) {
 /// @note The string is retained (reference count incremented).
 /// @note Traps on allocation failure.
 void rt_args_push(rt_string s) {
-    RtArgsState *state = rt_args_state();
+    int is_legacy = 0;
+    RtArgsState *state = rt_args_state_with_kind(&is_legacy);
     if (!state)
         return;
-    if (!rt_args_grow_if_needed(state, state->size + 1))
-        return;
-    // Retain; store NULL as empty string for predictability
-    if (!s)
-        s = rt_str_empty();
-    else
-        rt_string_ref(s);
-    state->items[state->size++] = s;
+    rt_args_append(state, s);
+    rt_args_note_manual_mutation(is_legacy);
 }
 
 /// @brief Get the number of command-line arguments.
@@ -200,7 +445,7 @@ void rt_args_push(rt_string s) {
 ///
 /// @see rt_args_get For retrieving individual arguments
 int64_t rt_args_count(void) {
-    RtArgsState *state = rt_args_state();
+    RtArgsState *state = rt_args_query_state();
     return state ? (int64_t)state->size : 0;
 }
 
@@ -230,7 +475,7 @@ int64_t rt_args_count(void) {
 ///
 /// @see rt_args_count For getting the argument count
 rt_string rt_args_get(int64_t index) {
-    RtArgsState *state = rt_args_state();
+    RtArgsState *state = rt_args_query_state();
     if (!state)
         return NULL;
     if (index < 0 || (size_t)index >= state->size) {
@@ -262,7 +507,7 @@ rt_string rt_args_get(int64_t index) {
 /// @see rt_args_get For individual argument access
 /// @see rt_args_count For argument count
 rt_string rt_cmdline(void) {
-    RtArgsState *state = rt_args_state();
+    RtArgsState *state = rt_args_query_state();
     if (!state || state->size == 0)
         return rt_str_empty();
     rt_string_builder sb;

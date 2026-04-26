@@ -71,6 +71,14 @@ void lowerOverflowOps(MFunction &fn) {
 
         if (auto existing = findBlock(fn, trapLabel)) {
             trapIndex = *existing;
+            auto &trapBlock = fn.blocks[*trapIndex];
+            const bool hasTerminator = std::any_of(
+                trapBlock.instructions.begin(),
+                trapBlock.instructions.end(),
+                [](const MInstr &instr) { return instr.opcode == MOpcode::UD2; });
+            if (!hasTerminator) {
+                trapBlock.append(MInstr::make(MOpcode::UD2));
+            }
             return *trapIndex;
         }
 
@@ -78,6 +86,7 @@ void lowerOverflowOps(MFunction &fn) {
         trapBlock.label = trapLabel;
         trapBlock.append(
             MInstr::make(MOpcode::CALL, std::vector<Operand>{makeLabelOperand("rt_trap_ovf")}));
+        trapBlock.append(MInstr::make(MOpcode::UD2));
         fn.blocks.push_back(std::move(trapBlock));
         trapIndex = fn.blocks.size() - 1U;
         return *trapIndex;
@@ -101,8 +110,13 @@ void lowerOverflowOps(MFunction &fn) {
 
 rewrite:
     // The trap block index is now stable — fn.blocks will not reallocate.
-    const std::size_t blockCount = fn.blocks.size() - 1U; // exclude the trap block
-    for (std::size_t blockIdx = 0; blockIdx < blockCount; ++blockIdx) {
+    // Do not assume the trap block is last: division lowering can create the
+    // same overflow trap before appending continuation blocks.
+    const std::size_t trapBlockIndex = *trapIndex;
+    for (std::size_t blockIdx = 0; blockIdx < fn.blocks.size(); ++blockIdx) {
+        if (blockIdx == trapBlockIndex) {
+            continue;
+        }
         auto &block = fn.blocks[blockIdx];
         for (std::size_t i = 0; i < block.instructions.size(); ++i) {
             const MInstr &instr = block.instructions[i];

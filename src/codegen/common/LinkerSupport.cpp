@@ -20,6 +20,7 @@
 #include "common/RunProcess.hpp"
 
 #include <cctype>
+#include <cstdlib>
 #include <fstream>
 #include <set>
 #include <initializer_list>
@@ -293,6 +294,12 @@ bool writeTextFile(const std::filesystem::path &path, std::string_view text, std
 }
 
 std::optional<std::filesystem::path> findBuildDir() {
+    if (const char *env = std::getenv("VIPER_BUILD_DIR")) {
+        std::filesystem::path candidate(env);
+        if (fileExists(candidate / "CMakeCache.txt"))
+            return candidate;
+    }
+
     std::error_code ec;
     std::filesystem::path cur = std::filesystem::current_path(ec);
     if (!ec) {

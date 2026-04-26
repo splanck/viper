@@ -107,22 +107,24 @@ static bool findSectionByAddr(const LinkLayout &layout, uint64_t addr, size_t &o
     return false;
 }
 
-static void sortWindowsPdata(LinkLayout &layout) {
+static void sortWindowsPdata(LinkLayout &layout, LinkArch arch) {
+    const size_t recordSize = (arch == LinkArch::AArch64) ? 8 : 12;
+
     for (auto &sec : layout.sections) {
-        if (sec.name != ".pdata" || sec.data.size() < 12)
+        if (sec.name != ".pdata" || sec.data.size() < recordSize)
             continue;
 
-        const size_t recordCount = sec.data.size() / 12;
-        std::vector<std::array<uint8_t, 12>> records(recordCount);
+        const size_t recordCount = sec.data.size() / recordSize;
+        std::vector<std::vector<uint8_t>> records(recordCount, std::vector<uint8_t>(recordSize));
         for (size_t i = 0; i < recordCount; ++i)
-            std::memcpy(records[i].data(), sec.data.data() + i * 12, 12);
+            std::memcpy(records[i].data(), sec.data.data() + i * recordSize, recordSize);
 
         std::stable_sort(records.begin(), records.end(), [](const auto &a, const auto &b) {
             return readLE32(a.data()) < readLE32(b.data());
         });
 
         for (size_t i = 0; i < recordCount; ++i)
-            std::memcpy(sec.data.data() + i * 12, records[i].data(), 12);
+            std::memcpy(sec.data.data() + i * recordSize, records[i].data(), recordSize);
     }
 }
 
@@ -511,11 +513,15 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
 
                         writeLE64(patch, val);
 
-                        // Record rebase entry for ASLR fixup (Mach-O MH_PIE).
-                        // Abs64 pointers in writable sections need dyld to adjust
-                        // by the ASLR slide at load time. TLS sections use separate
-                        // mechanisms (bind opcodes for thunks, relative offsets).
-                        if (outSec.writable && !outSec.tls && val != 0)
+                        // Record image-base rebase entries for executable writers.
+                        // Windows ARM64 requires a base relocation directory instead of
+                        // fixed images; PE x64 can consume the same DIR64 fixups. Mach-O
+                        // keeps its narrower writable-data rule because TLS and bind
+                        // entries use separate dyld mechanisms there.
+                        if (platform == LinkPlatform::Windows && outSec.alloc && val != 0)
+                            layout.rebaseEntries.push_back({outSecIdx, patchOff});
+                        else if (platform == LinkPlatform::macOS && outSec.writable &&
+                                 !outSec.tls && val != 0)
                             layout.rebaseEntries.push_back({outSecIdx, patchOff});
 
                         break;
@@ -709,7 +715,7 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
     }
 
     if (platform == LinkPlatform::Windows)
-        sortWindowsPdata(layout);
+        sortWindowsPdata(layout, arch);
 
     return true;
 }

@@ -140,6 +140,28 @@ TEST(LinkerSupport, InstalledLayoutPreferredOverBuildTree) {
     fs::remove_all(tmpRoot);
 }
 
+TEST(LinkerSupport, BuildDirViaEnvVar) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_linker_support_build_dir";
+
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+    {
+        std::ofstream out(tmpRoot / "CMakeCache.txt", std::ios::binary);
+        out << "# test cache\n";
+    }
+
+    const char *var = "VIPER_BUILD_DIR";
+    ScopedEnvVar scopedEnv(var);
+    setEnvVar(var, tmpRoot.string());
+
+    const auto found = findBuildDir();
+    ASSERT_TRUE(found.has_value());
+    EXPECT_EQ(found->lexically_normal(), tmpRoot.lexically_normal());
+
+    fs::remove_all(tmpRoot);
+}
+
 TEST(LinkerSupport, ArchiveClosureAddsTextForBaseStringIntern) {
     LinkContext ctx;
     std::ostringstream out;

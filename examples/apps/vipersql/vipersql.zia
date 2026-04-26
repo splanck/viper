@@ -83,6 +83,7 @@ class ServerConfig {
     expose Integer maxConnections;
     expose Boolean logQueries;
     expose Boolean replMode;
+    expose Boolean helpMode;
     expose String dataDir;
     expose Integer poolSize;
 
@@ -93,6 +94,7 @@ class ServerConfig {
         maxConnections = DEFAULT_MAX_CONNECTIONS;
         logQueries = false;
         replMode = false;
+        helpMode = false;
         dataDir = "./data";
         poolSize = 10;
     }
@@ -152,6 +154,7 @@ func parseArgs() -> ServerConfig {
 
         if arg == "--help" || arg == "-h" {
             printUsage();
+            config.helpMode = true;
             return config;
         }
 
@@ -383,6 +386,10 @@ func processReplCommand(cmd: String, exec: Executor) {
 ///        server mode based on `--repl`.
 func start() {
     var config = parseArgs();
+
+    if config.helpMode {
+        return;
+    }
 
     if config.replMode {
         runRepl();

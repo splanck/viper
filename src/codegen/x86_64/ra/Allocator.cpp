@@ -696,7 +696,8 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block, std::size_t 
 
     // Helper to check if an instruction is a terminator
     auto isTerminator = [](MOpcode opc) {
-        return opc == MOpcode::JMP || opc == MOpcode::JCC || opc == MOpcode::RET;
+        return opc == MOpcode::JMP || opc == MOpcode::JCC || opc == MOpcode::RET ||
+               opc == MOpcode::UD2;
     };
 
     // Find insertion point — before the terminator if present.

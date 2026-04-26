@@ -77,6 +77,12 @@ static bool containsAscii(const std::vector<uint8_t> &data, const std::string &n
     return std::search(data.begin(), data.end(), needle.begin(), needle.end()) != data.end();
 }
 
+static bool containsBytes(const std::vector<uint8_t> &data, const std::vector<uint8_t> &needle) {
+    if (needle.empty() || data.size() < needle.size())
+        return false;
+    return std::search(data.begin(), data.end(), needle.begin(), needle.end()) != data.end();
+}
+
 static std::string readMachOName(const uint8_t *p, size_t maxLen) {
     size_t len = 0;
     while (len < maxLen && p[len] != 0)
@@ -541,6 +547,112 @@ int main() {
                     CHECK(readLE64(exe.data() + optHeaderOff + 72) == 0x200000ULL);
             }
         }
+    }
+
+    {
+        CodeSection text;
+        CodeSection rodata;
+        text.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
+        const uint32_t memsetIdx = text.findOrDeclareSymbol("__RTC_memset");
+        text.addRelocation(RelocKind::A64Call26, memsetIdx, 0);
+        text.emit32LE(0x94000000U); // bl __RTC_memset
+        text.emit32LE(0xD2800000U); // mov x0, #0
+        text.emit32LE(0xD65F03C0U); // ret
+
+        const std::string objPath = tmpPath("arm64_rtc_memset.obj");
+        const std::string exePath = tmpPath("arm64_rtc_memset.exe");
+
+        std::ostringstream writerErr;
+        CoffWriter writer(ObjArch::AArch64);
+        CHECK(writer.write(objPath, text, rodata, writerErr));
+        CHECK(writerErr.str().empty());
+
+        NativeLinkerOptions opts;
+        opts.platform = LinkPlatform::Windows;
+        opts.arch = LinkArch::AArch64;
+        opts.objPath = objPath;
+        opts.exePath = exePath;
+        opts.entrySymbol = "main";
+
+        std::ostringstream out;
+        std::ostringstream err;
+        const int rc = nativeLink(opts, out, err);
+        CHECK(rc == 0);
+        CHECK(err.str().find("error:") == std::string::npos);
+        CHECK(std::filesystem::exists(exePath));
+
+        const std::vector<uint8_t> exe = readFile(exePath);
+        CHECK(containsBytes(
+            exe,
+            {
+                0xE9, 0x03, 0x00, 0xAA, // mov x9, x0
+                0x82, 0x00, 0x00, 0xB4, // cbz x2, done
+                0x21, 0x15, 0x00, 0x38, // strb w1, [x9], #1
+            }));
+        CHECK(!containsBytes(
+            exe,
+            {
+                0xE8, 0x03, 0x00, 0xAA, // mov x8, x0
+                0x82, 0x00, 0x00, 0xB4,
+                0x01, 0x15, 0x00, 0x38, // strb w1, [x8], #1
+            }));
+        CHECK(!containsBytes(
+            exe,
+            {
+                0xE3, 0x03, 0x00, 0xAA, // mov x3, x0
+                0x82, 0x00, 0x00, 0xB4,
+                0x61, 0x14, 0x00, 0x38, // strb w1, [x3], #1
+            }));
+    }
+
+    {
+        CodeSection text;
+        CodeSection rodata;
+        text.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
+        const uint32_t pushIdx = text.findOrDeclareSymbol("__security_push_cookie");
+        text.addRelocation(RelocKind::A64Call26, pushIdx, 0);
+        text.emit32LE(0x94000000U); // bl __security_push_cookie
+        const uint32_t popIdx = text.findOrDeclareSymbol("__security_pop_cookie");
+        text.addRelocation(RelocKind::A64Call26, popIdx, 0);
+        text.emit32LE(0x94000000U); // bl __security_pop_cookie
+        text.emit32LE(0xD2800000U); // mov x0, #0
+        text.emit32LE(0xD65F03C0U); // ret
+
+        const std::string objPath = tmpPath("arm64_security_cookie_helpers.obj");
+        const std::string exePath = tmpPath("arm64_security_cookie_helpers.exe");
+
+        std::ostringstream writerErr;
+        CoffWriter writer(ObjArch::AArch64);
+        CHECK(writer.write(objPath, text, rodata, writerErr));
+        CHECK(writerErr.str().empty());
+
+        NativeLinkerOptions opts;
+        opts.platform = LinkPlatform::Windows;
+        opts.arch = LinkArch::AArch64;
+        opts.objPath = objPath;
+        opts.exePath = exePath;
+        opts.entrySymbol = "main";
+
+        std::ostringstream out;
+        std::ostringstream err;
+        const int rc = nativeLink(opts, out, err);
+        CHECK(rc == 0);
+        CHECK(err.str().find("error:") == std::string::npos);
+        CHECK(std::filesystem::exists(exePath));
+
+        const std::vector<uint8_t> exe = readFile(exePath);
+        CHECK(containsBytes(
+            exe,
+            {
+                0xFF, 0x43, 0x00, 0xD1, // sub sp, sp, #0x10
+                0xC0, 0x03, 0x5F, 0xD6, // ret
+            }));
+        CHECK(containsBytes(
+            exe,
+            {
+                0xFF, 0x43, 0x00, 0x91, // add sp, sp, #0x10
+                0xC0, 0x03, 0x5F, 0xD6, // ret
+            }));
     }
 
     {

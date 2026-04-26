@@ -258,10 +258,11 @@ size_t X64BinaryEncoder::measureInstructionSize(const MInstr &instr,
                                                 bool isDarwin) {
     X64BinaryEncoder measureEncoder;
     measureEncoder.labelOffsets_ = knownLabelOffsets;
+    measureEncoder.shortBranchRelaxationEnabled_ = shortBranchRelaxationEnabled_;
 
     objfile::CodeSection text, rodata;
-    text.reserveBytes(currentOffset + 16);
-    text.emitZeros(currentOffset);
+    text.setLogicalOffsetBias(currentOffset);
+    text.reserveBytes(16);
     try {
         measureEncoder.encodeInstructionImpl(instr, text, rodata, isDarwin);
     } catch (const std::bad_variant_access &) {
@@ -278,6 +279,21 @@ size_t X64BinaryEncoder::measureInstructionSize(const MInstr &instr,
 X64BinaryEncoder::LabelOffsetMap X64BinaryEncoder::computeFunctionLabelOffsets(const MFunction &fn,
                                                                                bool isDarwin) {
     LabelOffsetMap estimated;
+
+    if (!shortBranchRelaxationEnabled_) {
+        size_t offset = 0;
+        for (const auto &block : fn.blocks) {
+            estimated[block.label] = offset;
+            for (const auto &instr : block.instructions) {
+                if (instr.opcode == MOpcode::LABEL) {
+                    estimated[labelFromOperand(instr.operands[0]).name] = offset;
+                    continue;
+                }
+                offset += measureInstructionSize(instr, offset, estimated, isDarwin);
+            }
+        }
+        return estimated;
+    }
 
     size_t relaxCandidates = 0;
     for (const auto &block : fn.blocks) {
@@ -360,6 +376,10 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
                                       bool emitWin64Unwind) {
     // Reset per-function state.
     pendingBranches_.clear();
+    // Win64/COFF images do not benefit enough from branch compaction to justify
+    // repeated size-relaxation passes on large demo modules. Use near branches
+    // there; keep rel8 relaxation for smaller non-COFF objects.
+    shortBranchRelaxationEnabled_ = !emitWin64Unwind;
 
     // Define the function symbol at the current text offset.
     const size_t funcStartOffset = text.currentOffset();
@@ -1164,7 +1184,7 @@ void X64BinaryEncoder::encodeBranchLabel(MOpcode op,
     // Short JCC  = 0x7x + rel8 (2 bytes, saves 4 over near form)
     // When the target offset is already known, use rel8 if the displacement
     // fits in a signed byte [-128, 127].
-    if (op == MOpcode::JMP || op == MOpcode::JCC) {
+    if (shortBranchRelaxationEnabled_ && (op == MOpcode::JMP || op == MOpcode::JCC)) {
         auto it = labelOffsets_.find(label);
         if (it != labelOffsets_.end()) {
             // Short-form instruction is 2 bytes total: opcode + rel8.

@@ -101,7 +101,8 @@ constexpr std::string_view kTrapLabel{".Ltrap_div0"};
 
 /// @brief Create an operand referencing a physical general-purpose register.
 ///
-/// @details The lowered IDIV sequence uses the SysV ABI registers RAX and RDX.
+/// @details Lowered IDIV sequences use x86-64's implicit RAX/RDX pair and a
+///          scratch register for the explicit divisor.
 ///          This helper ensures the correct register class is used whenever the
 ///          sequence materialises operands for those registers.
 ///
@@ -200,12 +201,20 @@ void lowerSignedDivRem(MFunction &fn) {
                 trapBlock.append(MInstr::make(
                     MOpcode::CALL, std::vector<Operand>{makeLabelOperand(callee)}));
             }
+            const bool hasTerminator = std::any_of(
+                trapBlock.instructions.begin(),
+                trapBlock.instructions.end(),
+                [](const MInstr &instr) { return instr.opcode == MOpcode::UD2; });
+            if (!hasTerminator) {
+                trapBlock.append(MInstr::make(MOpcode::UD2));
+            }
             return *trapIndex;
         }
 
         MBasicBlock trapBlock{};
         trapBlock.label = label;
         trapBlock.append(MInstr::make(MOpcode::CALL, std::vector<Operand>{makeLabelOperand(callee)}));
+        trapBlock.append(MInstr::make(MOpcode::UD2));
         fn.blocks.push_back(std::move(trapBlock));
         trapIndex = fn.blocks.size() - 1U;
         return *trapIndex;
@@ -326,12 +335,34 @@ void lowerSignedDivRem(MFunction &fn) {
             const Operand dividendClone = cloneOperand(dividendOp);
             const Operand divisorClone = cloneOperand(divisorOp);
 
+            const Operand raxOp = makePhysRegOperand(PhysReg::RAX);
+            const Operand rdxOp = makePhysRegOperand(PhysReg::RDX);
+            const Operand divisorRegOp = makePhysRegOperand(PhysReg::R10);
+            const Operand scratchRegOp = makePhysRegOperand(PhysReg::R11);
+
+            // Materialise operands before any local branches.  The register
+            // allocator tracks cached virtual-register locations linearly within
+            // a MachineIR block; using vregs after the overflow-check labels can
+            // otherwise reuse a register loaded only on one branch path.
+            currentBlock.append(MInstr::make(
+                MOpcode::MOVrr,
+                std::vector<Operand>{cloneOperand(divisorRegOp), cloneOperand(divisorClone)}));
             currentBlock.append(MInstr::make(
                 MOpcode::TESTrr,
-                std::vector<Operand>{cloneOperand(divisorClone), cloneOperand(divisorClone)}));
+                std::vector<Operand>{cloneOperand(divisorRegOp), cloneOperand(divisorRegOp)}));
             currentBlock.append(
                 MInstr::make(MOpcode::JCC,
                              std::vector<Operand>{makeImmOperand(0), makeLabelOperand(trapLabel)}));
+
+            if (std::holds_alternative<OpImm>(dividendClone)) {
+                currentBlock.append(MInstr::make(
+                    MOpcode::MOVri,
+                    std::vector<Operand>{cloneOperand(raxOp), cloneOperand(dividendClone)}));
+            } else {
+                currentBlock.append(MInstr::make(
+                    MOpcode::MOVrr,
+                    std::vector<Operand>{cloneOperand(raxOp), cloneOperand(dividendClone)}));
+            }
 
             if (isCheckedSigned) {
                 const std::string skipOverflowLabel =
@@ -342,14 +373,13 @@ void lowerSignedDivRem(MFunction &fn) {
                                               std::numeric_limits<int64_t>::min();
 
                 if (!dividendIsImmediate) {
-                    const Operand r11Op = makePhysRegOperand(PhysReg::R11);
                     currentBlock.append(MInstr::make(
                         MOpcode::MOVri,
-                        std::vector<Operand>{cloneOperand(r11Op),
+                        std::vector<Operand>{cloneOperand(scratchRegOp),
                                              makeImmOperand(std::numeric_limits<int64_t>::min())}));
                     currentBlock.append(MInstr::make(
                         MOpcode::CMPrr,
-                        std::vector<Operand>{cloneOperand(dividendClone), cloneOperand(r11Op)}));
+                        std::vector<Operand>{cloneOperand(raxOp), cloneOperand(scratchRegOp)}));
                     currentBlock.append(MInstr::make(
                         MOpcode::JCC,
                         std::vector<Operand>{makeImmOperand(1), makeLabelOperand(skipOverflowLabel)}));
@@ -360,7 +390,7 @@ void lowerSignedDivRem(MFunction &fn) {
 
                 currentBlock.append(MInstr::make(
                     MOpcode::CMPri,
-                    std::vector<Operand>{cloneOperand(divisorClone), makeImmOperand(-1)}));
+                    std::vector<Operand>{cloneOperand(divisorRegOp), makeImmOperand(-1)}));
                 currentBlock.append(MInstr::make(
                     MOpcode::JCC,
                     std::vector<Operand>{makeImmOperand(1), makeLabelOperand(skipOverflowLabel)}));
@@ -380,37 +410,20 @@ void lowerSignedDivRem(MFunction &fn) {
                     std::vector<Operand>{makeLabelOperand(skipOverflowLabel)}));
             }
 
-            const Operand raxOp = makePhysRegOperand(PhysReg::RAX);
-            const Operand rdxOp = makePhysRegOperand(PhysReg::RDX);
-            const Operand rcxOp = makePhysRegOperand(PhysReg::RCX);
-
-            if (std::holds_alternative<OpImm>(dividendClone)) {
-                currentBlock.append(MInstr::make(
-                    MOpcode::MOVri,
-                    std::vector<Operand>{cloneOperand(raxOp), cloneOperand(dividendClone)}));
-            } else {
-                currentBlock.append(MInstr::make(
-                    MOpcode::MOVrr,
-                    std::vector<Operand>{cloneOperand(raxOp), cloneOperand(dividendClone)}));
-            }
-
             // IDIV/DIV implicitly consume RDX:RAX, so the explicit divisor operand
-            // must not be allocated to either register. Materialise it into RCX
-            // first so register allocation cannot place the divisor in RAX/RDX.
-            currentBlock.append(MInstr::make(
-                MOpcode::MOVrr,
-                std::vector<Operand>{cloneOperand(rcxOp), cloneOperand(divisorClone)}));
+            // must not be allocated to either register.  Keep it in R10 so the
+            // post-check division reads a value available on every non-trap path.
 
             if (isSigned) {
                 currentBlock.append(MInstr::make(MOpcode::CQO, {}));
                 currentBlock.append(
-                    MInstr::make(MOpcode::IDIVrm, std::vector<Operand>{cloneOperand(rcxOp)}));
+                    MInstr::make(MOpcode::IDIVrm, std::vector<Operand>{cloneOperand(divisorRegOp)}));
             } else {
                 currentBlock.append(
                     MInstr::make(MOpcode::XORrr32,
                                  std::vector<Operand>{cloneOperand(rdxOp), cloneOperand(rdxOp)}));
                 currentBlock.append(
-                    MInstr::make(MOpcode::DIVrm, std::vector<Operand>{cloneOperand(rcxOp)}));
+                    MInstr::make(MOpcode::DIVrm, std::vector<Operand>{cloneOperand(divisorRegOp)}));
             }
 
             const Operand resultPhys = isDiv ? raxOp : rdxOp;
