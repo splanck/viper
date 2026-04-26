@@ -721,15 +721,20 @@ entry:
 
 | Instr           | Form                            | Result                   |
 |-----------------|---------------------------------|--------------------------|
-| `call`          | `call @f(%x, %y)`               | return type of `@f`      |
+| `call`          | `call @f(%x, %y) [attrs?]`      | return type of `@f`      |
 | `call.indirect` | `call.indirect %fn_ptr(%x, %y)` | return type from pointer |
 
 Direct calls use `@symbol` references. Indirect calls use a function pointer as the first operand, followed by
 arguments. The verifier checks arity and types for both forms. For variadic callees declared with a trailing `...`,
 the verifier enforces the declared prefix and permits additional arguments after it.
 
+Direct calls may carry bracketed semantic hints after the argument list:
+`[nothrow]`, `[readonly]`, `[pure]`, or a comma-separated combination. Known
+runtime helpers and local functions remain authoritative; contradictory
+call-site attributes are rejected by the verifier.
+
 ```text
-call @f(%x, %y)
+call @f(%x, %y) [nothrow, readonly]
 %result = call.indirect %fn_ptr(%arg)
 ```
 
@@ -877,8 +882,9 @@ wired directly to runtime contracts. Passes can also observe the
 * `alloca` sizes are `i64`; constant operands must be non-negative.
 * Temporaries are defined exactly once and every reachable cross-block use is dominated by its definition.
 * Function and block parameters have unique names/ids, non-void types, and each predecessor passes matching arguments.
-* Branch arguments must reference defined, non-void values.
-* Returning an `alloca`-derived pointer, including through `gep` or block parameters, is invalid.
+* Branch arguments must match each destination block's parameters and must reference defined, non-void values. Trailing empty successor bundles may be omitted.
+* Returning an `alloca`-derived pointer, including through `gep` or block parameters, is invalid. Calls and stores may borrow or stage stack addresses for frontend ABIs; alias analyses still treat those uses as escapes unless proven otherwise.
+* Runtime array release helpers (`rt_arr_i32_release`, `rt_arr_str_release`, `rt_arr_obj_release`) reject double release and dominated use-after-release.
 * `cbr` takes an `i1` condition.
 
 Example diagnostics:
@@ -921,9 +927,10 @@ blk_param   ::= TEMP ":" type               (* block params always use "%name: t
 instr       ::= (TEMP (":" type)? "=")? op   (* type annotation on result: %name:i32 = op *)
 term        ::= "ret" value? | "br" label_ref | "cbr" value "," label_ref "," label_ref | "trap" | "trap.from_err" type value | "switch.i32" value "," label_ref ("," INT "->" label_ref)* | "resume.same" value | "resume.next" value | "resume.label" value "," label_ref
 label_ref   ::= ("^")? LABEL ("(" value_list? ")")?   (* "^" caret is optional; args passed to block params *)
+call_attrs  ::= "[" ("nothrow" | "readonly" | "pure") ("," ("nothrow" | "readonly" | "pure"))* "]"
 op          ::= "add" value "," value | "and" value "," value | "ashr" value "," value |
                 "alloca" value | "addr_of" SYMBOL |
-                "call" SYMBOL "(" args? ")" | "call.indirect" value "(" args? ")" |
+                "call" SYMBOL "(" args? ")" call_attrs? | "call.indirect" value "(" args? ")" |
                 "cast.fp_to_si.rte.chk" value | "cast.fp_to_ui.rte.chk" value |
                 "cast.si_narrow.chk" value | "cast.si_to_fp" value |
                 "cast.ui_narrow.chk" value | "cast.ui_to_fp" value |
@@ -1306,7 +1313,8 @@ block parameters and passing values along edges.
 #### Scope
 
 * Handles integer (`i64`), float (`f64`), and boolean (`i1`) slots.
-* The address of the alloca must not escape (only used by `load`/`store`).
+* The address of the alloca must not escape (only used by `load`/`store`; direct
+  branch-argument forwarding of the address is treated as address-taken).
 * Alloca zero-initialization is modeled as the initial reaching value for the
   promoted slot, so load-before-store cases become explicit zero constants
   rather than ad hoc missing-definition fallbacks.

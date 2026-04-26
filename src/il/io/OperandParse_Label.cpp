@@ -21,6 +21,8 @@
 
 #include "viper/il/io/OperandParse.hpp"
 
+#include "il/internal/io/ParserUtil.hpp"
+
 #include <string>
 #include <utility>
 
@@ -51,6 +53,8 @@ ParseResult parseLabelOperand(Cursor &cur, Context &ctx) {
     text = ::il::io::trim(text);
     if (text.empty())
         return syntaxError(ctx, "malformed branch target: missing label");
+    if (!::il::io::isValidILIdentifier(text))
+        return syntaxError(ctx, "malformed branch target: bad label");
 
     cur.consumeRest();
     ParseResult result;

@@ -238,6 +238,45 @@ template <typename T> Expected<T> makeSyntaxError(ParserState &state, std::strin
     return Expected<T>{il::io::makeLineErrorDiag(state.curLoc, state.lineNo, std::move(message))};
 }
 
+Expected<void> parseCallAttrs(ParserState &state, Instr &instr, const std::string &text) {
+    const std::string attrsText = trim(text);
+    if (attrsText.empty())
+        return {};
+
+    if (attrsText.front() != '[' || attrsText.back() != ']') {
+        return Expected<void>{
+            il::io::makeLineErrorDiag(instr.loc, state.lineNo, "malformed call attributes")};
+    }
+
+    std::string body = trim(attrsText.substr(1, attrsText.size() - 2));
+    if (body.empty()) {
+        return Expected<void>{
+            il::io::makeLineErrorDiag(instr.loc, state.lineNo, "empty call attribute list")};
+    }
+
+    for (char &ch : body)
+        if (ch == ',')
+            ch = ' ';
+
+    std::istringstream ss(body);
+    std::string attr;
+    while (ss >> attr) {
+        if (attr == "nothrow") {
+            instr.CallAttr.nothrow = true;
+        } else if (attr == "readonly") {
+            instr.CallAttr.readonly = true;
+        } else if (attr == "pure") {
+            instr.CallAttr.pure = true;
+        } else {
+            std::ostringstream oss;
+            oss << "unknown call attribute '" << attr << "'";
+            return Expected<void>{il::io::makeLineErrorDiag(instr.loc, state.lineNo, oss.str())};
+        }
+    }
+
+    return {};
+}
+
 } // namespace
 
 /// @brief Create an operand parser bound to the current parser state and instruction.
@@ -299,12 +338,15 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text) {
     const size_t lp = parens.value().first;
     const size_t rp = parens.value().second;
 
-    if (!trim(text.substr(rp + 1)).empty()) {
-        return Expected<void>{
-            il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "malformed call")};
-    }
-
     instr_.callee = trim(text.substr(at + 1, lp - at - 1));
+    if (!isValidILIdentifier(instr_.callee)) {
+        return Expected<void>{
+            il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "malformed call name")};
+    }
+    auto attrs = parseCallAttrs(state_, instr_, text.substr(rp + 1));
+    if (!attrs)
+        return attrs;
+
     std::string args = text.substr(lp + 1, rp - lp - 1);
     auto tokens = splitCommaSeparated(args, "call");
     if (!tokens)
@@ -379,11 +421,13 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text) {
 /// @brief Parse call.indirect operands: %fnPtr(%arg1, %arg2, ...).
 /// @details First operand is function pointer, remaining are arguments in parens.
 Expected<void> OperandParser::parseCallIndirectOperands(const std::string &text) {
-    // Find the opening paren separating fnPtr from args
-    const size_t lp = text.find('(');
-    if (lp == std::string::npos) {
+    if (text.find('(') == std::string::npos) {
         // No parens — just a function pointer with no args
         std::string fnTok = trim(text);
+        if (fnTok.find(')') != std::string::npos) {
+            return Expected<void>{
+                il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "malformed call.indirect")};
+        }
         if (!fnTok.empty()) {
             auto fnVal = parseValueToken(fnTok);
             if (!fnVal)
@@ -391,6 +435,15 @@ Expected<void> OperandParser::parseCallIndirectOperands(const std::string &text)
             instr_.operands.push_back(std::move(fnVal.value()));
         }
         return {};
+    }
+    auto parens = findTopLevelParenRange(state_, instr_, text, 0, "call.indirect");
+    if (!parens)
+        return Expected<void>{parens.error()};
+    const size_t lp = parens.value().first;
+    const size_t rp = parens.value().second;
+    if (!trim(text.substr(rp + 1)).empty()) {
+        return Expected<void>{
+            il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "malformed call.indirect")};
     }
 
     // Parse function pointer before the paren
@@ -400,13 +453,6 @@ Expected<void> OperandParser::parseCallIndirectOperands(const std::string &text)
         if (!fnVal)
             return Expected<void>{fnVal.error()};
         instr_.operands.push_back(std::move(fnVal.value()));
-    }
-
-    // Find matching closing paren
-    const size_t rp = text.rfind(')');
-    if (rp == std::string::npos || rp <= lp) {
-        return Expected<void>{
-            makeError(instr_.loc, formatLineDiag(state_.lineNo, "malformed call.indirect"))};
     }
 
     // Parse comma-separated args inside parens

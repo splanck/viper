@@ -456,10 +456,6 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
                 message += 's';
             return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, message)));
         }
-        // Be tolerant of partially present branch-argument bundles: treat as none.
-        // Downstream passes may canonicalize or drop inconsistent bundles.
-        (void)fn;
-        (void)bb;
     }
 
     return {};

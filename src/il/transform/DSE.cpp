@@ -212,6 +212,8 @@ struct DefInfo {
     std::vector<Value> operands;
 };
 
+using RootMap = std::unordered_map<unsigned, std::unordered_set<unsigned>>;
+
 std::unordered_map<unsigned, DefInfo> collectDefs(const Function &F) {
     std::unordered_map<unsigned, DefInfo> defs;
     for (const auto &B : F.blocks) {
@@ -221,6 +223,57 @@ std::unordered_map<unsigned, DefInfo> collectDefs(const Function &F) {
         }
     }
     return defs;
+}
+
+RootMap computeAllocaRoots(const Function &F, const std::unordered_map<unsigned, DefInfo> &defs) {
+    RootMap roots;
+    roots.reserve(defs.size());
+    for (const auto &[id, def] : defs)
+        if (def.op == Opcode::Alloca)
+            roots[id].insert(id);
+
+    std::unordered_map<std::string, const BasicBlock *> blocksByLabel;
+    blocksByLabel.reserve(F.blocks.size());
+    for (const auto &B : F.blocks)
+        blocksByLabel.emplace(B.label, &B);
+
+    auto mergeRoots = [&](unsigned dst, const Value &src) {
+        if (src.kind != Value::Kind::Temp)
+            return false;
+        auto srcIt = roots.find(src.id);
+        if (srcIt == roots.end())
+            return false;
+        auto &dstRoots = roots[dst];
+        bool changed = false;
+        for (unsigned root : srcIt->second)
+            changed |= dstRoots.insert(root).second;
+        return changed;
+    };
+
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const auto &[id, def] : defs)
+            if (def.op == Opcode::GEP && !def.operands.empty())
+                changed |= mergeRoots(id, def.operands[0]);
+
+        for (const auto &B : F.blocks) {
+            for (const auto &I : B.instructions) {
+                for (size_t edge = 0; edge < I.labels.size() && edge < I.brArgs.size(); ++edge) {
+                    auto targetIt = blocksByLabel.find(I.labels[edge]);
+                    if (targetIt == blocksByLabel.end())
+                        continue;
+                    const auto *target = targetIt->second;
+                    const auto &args = I.brArgs[edge];
+                    const size_t count = std::min(args.size(), target->params.size());
+                    for (size_t idx = 0; idx < count; ++idx)
+                        changed |= mergeRoots(target->params[idx].id, args[idx]);
+                }
+            }
+        }
+    }
+
+    return roots;
 }
 
 /// Find the root alloca ID if this pointer is an alloca or a GEP derived from one.
@@ -246,24 +299,33 @@ std::optional<unsigned> getAllocaId(const Value &ptr,
 /// Check if an alloca escapes, including through GEP-derived pointer values.
 bool allocaEscapes(const Function &F,
                    unsigned allocaId,
-                   const std::unordered_map<unsigned, DefInfo> &defs) {
+                   const RootMap &roots) {
+    auto containsAlloca = [&](const Value &value) {
+        if (value.kind != Value::Kind::Temp)
+            return false;
+        auto rootIt = roots.find(value.id);
+        return rootIt != roots.end() && rootIt->second.count(allocaId) != 0;
+    };
+
     for (const auto &B : F.blocks) {
         for (const auto &I : B.instructions) {
             // Check if alloca is used in a call
             if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
-                for (const auto &op : I.operands) {
-                    auto root = getAllocaId(op, defs);
-                    if (root && *root == allocaId)
+                for (const auto &op : I.operands)
+                    if (containsAlloca(op))
                         return true;
-                }
             }
             // Check if address is stored somewhere
             if (I.op == Opcode::Store && I.operands.size() >= 2) {
                 // operands[0] is dst ptr, operands[1] is value
                 const auto &val = I.operands[1];
-                auto root = getAllocaId(val, defs);
-                if (root && *root == allocaId)
+                if (containsAlloca(val))
                     return true;
+            }
+            if (I.op == Opcode::Ret) {
+                for (const auto &op : I.operands)
+                    if (containsAlloca(op))
+                        return true;
             }
         }
     }
@@ -349,6 +411,7 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
     bool changed = false;
     std::vector<std::pair<BasicBlock *, size_t>> toRemove;
     const auto defs = collectDefs(F);
+    const auto roots = computeAllocaRoots(F, defs);
 
     // For each block, look for stores to non-escaping allocas
     for (auto &B : F.blocks) {
@@ -365,7 +428,7 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
                 continue;
 
             // Skip if the alloca escapes
-            if (allocaEscapes(F, *allocaId, defs))
+            if (allocaEscapes(F, *allocaId, roots))
                 continue;
 
             auto storeSize = viper::analysis::BasicAA::typeSizeBytes(I.type);

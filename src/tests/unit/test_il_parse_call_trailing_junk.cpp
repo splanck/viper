@@ -17,10 +17,12 @@
 #include "il/core/Module.hpp"
 
 #include <cassert>
+#include <iostream>
 #include <sstream>
 
 int main() {
-    constexpr const char *kProgram = R"(il 0.2.0
+    {
+        constexpr const char *kProgram = R"(il 0.2.0
 extern @foo() -> void
 func @main() -> void {
 entry:
@@ -29,17 +31,64 @@ entry:
 }
 )";
 
-    std::istringstream input(kProgram);
-    il::core::Module module;
-    std::ostringstream diag;
+        std::istringstream input(kProgram);
+        il::core::Module module;
+        std::ostringstream diag;
 
-    auto parsed = il::api::v2::parse_text_expected(input, module);
-    if (!parsed)
-        il::support::printDiag(parsed.error(), diag);
+        auto parsed = il::api::v2::parse_text_expected(input, module);
+        if (!parsed)
+            il::support::printDiag(parsed.error(), diag);
 
-    assert(!parsed);
-    const std::string message = diag.str();
-    assert(message.find("malformed call") != std::string::npos);
+        assert(!parsed);
+        const std::string message = diag.str();
+        assert(message.find("malformed call") != std::string::npos);
+    }
+
+    {
+        constexpr const char *kProgram = R"(il 0.2.0
+func @main() -> void {
+entry:
+  call.indirect @foo() junk
+  ret
+}
+)";
+
+        std::istringstream input(kProgram);
+        il::core::Module module;
+        std::ostringstream diag;
+
+        auto parsed = il::api::v2::parse_text_expected(input, module);
+        if (!parsed)
+            il::support::printDiag(parsed.error(), diag);
+
+        assert(!parsed);
+        assert(diag.str().find("malformed call.indirect") != std::string::npos);
+    }
+
+    {
+        constexpr const char *kProgram = R"(il 0.2.0
+extern @foo(i64) -> i64
+func @main() -> void {
+entry:
+  %x = call @foo(1) [nothrow, readonly, pure]
+  %e = trap.err 1, "hello world"
+  ret
+}
+)";
+
+        std::istringstream input(kProgram);
+        il::core::Module module;
+        auto parsed = il::api::v2::parse_text_expected(input, module);
+        if (!parsed)
+            il::support::printDiag(parsed.error(), std::cerr);
+        assert(parsed);
+        const auto &instructions = module.functions.front().blocks.front().instructions;
+        assert(instructions.front().CallAttr.nothrow);
+        assert(instructions.front().CallAttr.readonly);
+        assert(instructions.front().CallAttr.pure);
+        assert(instructions[1].operands[1].kind == il::core::Value::Kind::ConstStr);
+        assert(instructions[1].operands[1].str == "hello world");
+    }
 
     return 0;
 }

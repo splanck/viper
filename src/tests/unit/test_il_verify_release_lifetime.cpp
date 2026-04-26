@@ -25,6 +25,7 @@
 #include "support/source_location.hpp"
 
 #include <cassert>
+#include <iostream>
 #include <string>
 
 namespace {
@@ -38,6 +39,13 @@ void appendRuntimeArrayExterns(il::core::Module &module) {
     release.retType = Type(Type::Kind::Void);
     release.params.push_back(Type(Type::Kind::Ptr));
     module.externs.push_back(release);
+
+    Extern strRelease;
+    strRelease.name = "rt_arr_str_release";
+    strRelease.retType = Type(Type::Kind::Void);
+    strRelease.params.push_back(Type(Type::Kind::Ptr));
+    strRelease.params.push_back(Type(Type::Kind::I64));
+    module.externs.push_back(strRelease);
 
     Extern len;
     len.name = "rt_arr_i32_len";
@@ -99,6 +107,8 @@ int main() {
 
         auto result = il::verify::Verifier::verify(module);
         assert(!result && "use after release must fail verification");
+        if (result.error().message.find("use after release") == std::string::npos)
+            std::cerr << "unexpected verifier message: " << result.error().message << '\n';
         assert(result.error().message.find("use after release") != std::string::npos);
     }
 
@@ -149,6 +159,101 @@ int main() {
 
         auto result = il::verify::Verifier::verify(module);
         assert(!result && "double release must fail verification");
+        assert(result.error().message.find("double release") != std::string::npos);
+    }
+
+    {
+        Module module;
+        appendRuntimeArrayExterns(module);
+
+        Function fn;
+        fn.name = "cross_block_use_after";
+        fn.retType = Type(Type::Kind::Void);
+
+        BasicBlock entry;
+        entry.label = "entry";
+
+        Instr makeNull;
+        makeNull.result = 0;
+        makeNull.op = Opcode::ConstNull;
+        makeNull.type = Type(Type::Kind::Ptr);
+
+        Instr releaseHandle;
+        releaseHandle.op = Opcode::Call;
+        releaseHandle.type = Type(Type::Kind::Void);
+        releaseHandle.callee = "rt_arr_i32_release";
+        releaseHandle.operands.push_back(Value::temp(0));
+
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels.push_back("use");
+        br.brArgs.emplace_back();
+
+        entry.instructions = {makeNull, releaseHandle, br};
+        entry.terminated = true;
+
+        BasicBlock use;
+        use.label = "use";
+        Instr lenCall;
+        lenCall.result = 1;
+        lenCall.op = Opcode::Call;
+        lenCall.type = Type(Type::Kind::I64);
+        lenCall.callee = "rt_arr_i32_len";
+        lenCall.operands.push_back(Value::temp(0));
+
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        use.instructions = {lenCall, ret};
+        use.terminated = true;
+
+        fn.blocks.push_back(entry);
+        fn.blocks.push_back(use);
+        module.functions.push_back(fn);
+
+        auto result = il::verify::Verifier::verify(module);
+        assert(!result && "cross-block use after release must fail verification");
+        assert(result.error().message.find("use after release") != std::string::npos);
+    }
+
+    {
+        Module module;
+        appendRuntimeArrayExterns(module);
+
+        Function fn;
+        fn.name = "string_double_release";
+        fn.retType = Type(Type::Kind::Void);
+
+        BasicBlock entry;
+        entry.label = "entry";
+
+        Instr makeNull;
+        makeNull.result = 0;
+        makeNull.op = Opcode::ConstNull;
+        makeNull.type = Type(Type::Kind::Ptr);
+
+        Instr firstRelease;
+        firstRelease.op = Opcode::Call;
+        firstRelease.type = Type(Type::Kind::Void);
+        firstRelease.callee = "rt_arr_str_release";
+        firstRelease.operands.push_back(Value::temp(0));
+        firstRelease.operands.push_back(Value::constInt(0));
+
+        Instr secondRelease = firstRelease;
+
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+
+        entry.instructions = {makeNull, firstRelease, secondRelease, ret};
+        entry.terminated = true;
+
+        fn.blocks.push_back(entry);
+        module.functions.push_back(fn);
+
+        auto result = il::verify::Verifier::verify(module);
+        assert(!result && "string array double release must fail verification");
         assert(result.error().message.find("double release") != std::string::npos);
     }
 

@@ -33,7 +33,9 @@
 #include "il/analysis/Dominators.hpp"
 
 #include <cassert>
+#include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace il::core;
@@ -56,6 +58,15 @@ size_t countIdxChk(const Function &function) {
                 ++count;
         }
     }
+    return count;
+}
+
+size_t countOpcode(const Function &function, Opcode op) {
+    size_t count = 0;
+    for (const auto &block : function.blocks)
+        for (const auto &instr : block.instructions)
+            if (instr.op == op)
+                ++count;
     return count;
 }
 
@@ -382,11 +393,84 @@ void test_loop_invariant_hoisting() {
     }
 }
 
+void test_guard_demote_rejects_unproven_subtractions() {
+    for (const auto [threshold, rhs] :
+         {std::pair<long long, long long>{std::numeric_limits<long long>::max(), 1},
+          std::pair<long long, long long>{0, -1}}) {
+        Module module;
+        Function fn;
+        fn.name = "test_guard_sub";
+        fn.retType = Type(Type::Kind::I64);
+
+        unsigned nextId = 0;
+        Param x{"x", Type(Type::Kind::I64), nextId++};
+        fn.params.push_back(x);
+        fn.valueNames.resize(nextId);
+        fn.valueNames[x.id] = x.name;
+
+        BasicBlock entry;
+        entry.label = "entry";
+        Instr cmp;
+        cmp.result = nextId++;
+        cmp.op = Opcode::SCmpLE;
+        cmp.type = Type(Type::Kind::I1);
+        cmp.operands = {Value::temp(x.id), Value::constInt(threshold)};
+        const unsigned cmpId = *cmp.result;
+        Instr cbr;
+        cbr.op = Opcode::CBr;
+        cbr.type = Type(Type::Kind::Void);
+        cbr.operands = {Value::temp(cmpId)};
+        cbr.labels = {"done", "work"};
+        cbr.brArgs = {{}, {}};
+        entry.instructions = {cmp, cbr};
+        entry.terminated = true;
+
+        BasicBlock done;
+        done.label = "done";
+        Instr doneRet;
+        doneRet.op = Opcode::Ret;
+        doneRet.type = Type(Type::Kind::Void);
+        doneRet.operands = {Value::constInt(0)};
+        done.instructions = {doneRet};
+        done.terminated = true;
+
+        BasicBlock work;
+        work.label = "work";
+        Instr sub;
+        sub.result = nextId++;
+        sub.op = Opcode::ISubOvf;
+        sub.type = Type(Type::Kind::I64);
+        sub.operands = {Value::temp(x.id), Value::constInt(rhs)};
+        const unsigned subId = *sub.result;
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands = {Value::temp(subId)};
+        work.instructions = {sub, ret};
+        work.terminated = true;
+
+        fn.blocks = {entry, done, work};
+        fn.valueNames.resize(nextId);
+        module.functions.push_back(std::move(fn));
+        Function &function = module.functions.back();
+
+        auto registry = createRegistry();
+        il::transform::AnalysisManager analysisManager(module, registry);
+        il::transform::CheckOpt checkOpt;
+        auto preserved = checkOpt.run(function, analysisManager);
+        (void)preserved;
+
+        assert(countOpcode(function, Opcode::ISubOvf) == 1);
+        assert(countOpcode(function, Opcode::Sub) == 0);
+    }
+}
+
 } // namespace
 
 int main() {
     test_redundant_check_elimination();
     test_different_checks_not_eliminated();
     test_loop_invariant_hoisting();
+    test_guard_demote_rejects_unproven_subtractions();
     return 0;
 }

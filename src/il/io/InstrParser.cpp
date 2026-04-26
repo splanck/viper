@@ -337,6 +337,14 @@ Expected<void> parseWithMetadata(Opcode opcode,
         }
     }
 
+    std::string trailing;
+    std::getline(ss, trailing);
+    if (!trim(trailing).empty()) {
+        std::ostringstream oss;
+        oss << "unexpected trailing operands for " << info.name;
+        return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
+    }
+
     return {};
 }
 
@@ -365,6 +373,10 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st) {
                 return Expected<void>{il::io::makeLineErrorDiag(
                     in.loc, st.lineNo, "missing temp name before type annotation")};
             }
+            if (!isValidILIdentifier(res)) {
+                return Expected<void>{
+                    il::io::makeLineErrorDiag(in.loc, st.lineNo, "malformed result name")};
+            }
             viper::parse::Cursor annotCursor{tyTok, viper::parse::SourcePos{st.lineNo, 0}};
             viper::il::io::Context annotCtx{st, in};
             auto parsedType = viper::il::io::parseTypeOperand(annotCursor, annotCtx);
@@ -380,6 +392,10 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st) {
                     il::io::makeLineErrorDiag(in.loc, st.lineNo, "result type cannot be void")};
             }
             annotatedType = in.type;
+        }
+        if (!isValidILIdentifier(res)) {
+            return Expected<void>{
+                il::io::makeLineErrorDiag(in.loc, st.lineNo, "malformed result name")};
         }
         auto [it, inserted] = st.tempIds.emplace(res, st.nextTemp);
         if (!inserted) {

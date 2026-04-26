@@ -123,6 +123,8 @@ struct DefInfo {
     std::vector<Value> operands;
 };
 
+using RootMap = std::unordered_map<unsigned, std::unordered_set<unsigned>>;
+
 std::unordered_map<unsigned, DefInfo> collectDefs(const Function &F) {
     std::unordered_map<unsigned, DefInfo> defs;
     for (const auto &B : F.blocks) {
@@ -134,43 +136,84 @@ std::unordered_map<unsigned, DefInfo> collectDefs(const Function &F) {
     return defs;
 }
 
-std::optional<unsigned> allocaRoot(const Value &ptr,
-                                   const std::unordered_map<unsigned, DefInfo> &defs,
-                                   unsigned depth = 0) {
-    if (ptr.kind != Value::Kind::Temp || depth > 8)
-        return std::nullopt;
+RootMap computeAllocaRoots(const Function &F, const std::unordered_map<unsigned, DefInfo> &defs) {
+    RootMap roots;
+    roots.reserve(defs.size());
+    for (const auto &[id, def] : defs)
+        if (def.op == Opcode::Alloca)
+            roots[id].insert(id);
 
-    auto it = defs.find(ptr.id);
-    if (it == defs.end())
-        return std::nullopt;
+    std::unordered_map<std::string, const BasicBlock *> blocksByLabel;
+    blocksByLabel.reserve(F.blocks.size());
+    for (const auto &B : F.blocks)
+        blocksByLabel.emplace(B.label, &B);
 
-    if (it->second.op == Opcode::Alloca)
-        return ptr.id;
+    auto mergeRoots = [&](unsigned dst, const Value &src) {
+        if (src.kind != Value::Kind::Temp)
+            return false;
+        auto srcIt = roots.find(src.id);
+        if (srcIt == roots.end())
+            return false;
+        auto &dstRoots = roots[dst];
+        bool changed = false;
+        for (unsigned root : srcIt->second)
+            changed |= dstRoots.insert(root).second;
+        return changed;
+    };
 
-    if (it->second.op == Opcode::GEP && !it->second.operands.empty())
-        return allocaRoot(it->second.operands[0], defs, depth + 1);
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const auto &[id, def] : defs)
+            if (def.op == Opcode::GEP && !def.operands.empty())
+                changed |= mergeRoots(id, def.operands[0]);
 
-    return std::nullopt;
+        for (const auto &B : F.blocks) {
+            for (const auto &I : B.instructions) {
+                for (size_t edge = 0; edge < I.labels.size() && edge < I.brArgs.size(); ++edge) {
+                    auto targetIt = blocksByLabel.find(I.labels[edge]);
+                    if (targetIt == blocksByLabel.end())
+                        continue;
+                    const auto *target = targetIt->second;
+                    const auto &args = I.brArgs[edge];
+                    const size_t count = std::min(args.size(), target->params.size());
+                    for (size_t idx = 0; idx < count; ++idx)
+                        changed |= mergeRoots(target->params[idx].id, args[idx]);
+                }
+            }
+        }
+    }
+
+    return roots;
 }
 
 /// True if this alloca's address is passed to a call or stored elsewhere.
 bool allocaEscapes(const Function &F,
                    unsigned allocaId,
-                   const std::unordered_map<unsigned, DefInfo> &defs) {
+                   const RootMap &roots) {
+    auto containsAlloca = [&](const Value &value) {
+        if (value.kind != Value::Kind::Temp)
+            return false;
+        auto rootIt = roots.find(value.id);
+        return rootIt != roots.end() && rootIt->second.count(allocaId) != 0;
+    };
+
     for (const auto &B : F.blocks) {
         for (const auto &I : B.instructions) {
             if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
-                for (const auto &op : I.operands) {
-                    auto root = allocaRoot(op, defs);
-                    if (root && *root == allocaId)
+                for (const auto &op : I.operands)
+                    if (containsAlloca(op))
                         return true;
-                }
             }
             if (I.op == Opcode::Store && I.operands.size() >= 2) {
                 const auto &val = I.operands[1];
-                auto root = allocaRoot(val, defs);
-                if (root && *root == allocaId)
+                if (containsAlloca(val))
                     return true;
+            }
+            if (I.op == Opcode::Ret) {
+                for (const auto &op : I.operands)
+                    if (containsAlloca(op))
+                        return true;
             }
         }
     }
@@ -180,12 +223,13 @@ bool allocaEscapes(const Function &F,
 /// Compute the set of non-escaping alloca ids in @p F.
 std::unordered_set<unsigned> nonEscapingAllocas(
     const Function &F,
-    const std::unordered_map<unsigned, DefInfo> &defs) {
+    const std::unordered_map<unsigned, DefInfo> &defs,
+    const RootMap &roots) {
     std::unordered_set<unsigned> result;
     for (const auto &B : F.blocks) {
         for (const auto &I : B.instructions) {
             if (I.op == Opcode::Alloca && I.result) {
-                if (!allocaEscapes(F, *I.result, defs))
+                if (!allocaEscapes(F, *I.result, roots))
                     result.insert(*I.result);
             }
         }
@@ -196,9 +240,13 @@ std::unordered_set<unsigned> nonEscapingAllocas(
 /// True if @p ptr refers to a non-escaping alloca, directly or via GEP.
 inline bool isNonEscapingAlloca(const Value &ptr,
                                 const std::unordered_set<unsigned> &nonEsc,
-                                const std::unordered_map<unsigned, DefInfo> &defs) {
-    auto root = allocaRoot(ptr, defs);
-    return root && nonEsc.count(*root) != 0;
+                                const RootMap &roots) {
+    if (ptr.kind != Value::Kind::Temp)
+        return false;
+    auto rootIt = roots.find(ptr.id);
+    if (rootIt == roots.end() || rootIt->second.size() != 1)
+        return false;
+    return nonEsc.count(*rootIt->second.begin()) != 0;
 }
 
 bool fullyOverwrites(const Value &laterPtr,
@@ -235,9 +283,10 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
     };
 
     const auto defs = collectDefs(F);
+    const auto roots = computeAllocaRoots(F, defs);
 
     // Collect non-escaping allocas — calls are transparent for these.
-    const std::unordered_set<unsigned> nonEsc = nonEscapingAllocas(F, defs);
+    const std::unordered_set<unsigned> nonEsc = nonEscapingAllocas(F, defs, roots);
 
     // -----------------------------------------------------------------------
     // Phase 1: Compute RPO order for forward dataflow.
@@ -388,7 +437,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
 
                 if (I.op == Opcode::Store) {
                     const Value &ptr = I.operands.empty() ? Value{} : I.operands[0];
-                    bool nonEscaping = isNonEscapingAlloca(ptr, nonEsc, defs);
+                    bool nonEscaping = isNonEscapingAlloca(ptr, nonEsc, roots);
 
                     // Create or update MemoryDef.
                     if (existingId == 0) {
@@ -409,7 +458,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                     }
                 } else if (I.op == Opcode::Load) {
                     const Value &ptr = I.operands.empty() ? Value{} : I.operands[0];
-                    bool nonEscaping = isNonEscapingAlloca(ptr, nonEsc, defs);
+                    bool nonEscaping = isNonEscapingAlloca(ptr, nonEsc, roots);
                     (void)nonEscaping;
 
                     // Create or update MemoryUse.
@@ -498,7 +547,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                 continue;
 
             const Value &ptr = I.operands[0];
-            if (!isNonEscapingAlloca(ptr, nonEsc, defs))
+            if (!isNonEscapingAlloca(ptr, nonEsc, roots))
                 continue;
 
             auto storeSize = BasicAA::typeSizeBytes(I.type);

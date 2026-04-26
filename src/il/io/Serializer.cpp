@@ -156,6 +156,24 @@ void printCallOperands(const Instr &instr, std::ostream &os, const SerializeCont
     os << " @" << instr.callee << "(";
     printValueList(os, instr.operands, ctx);
     os << ')';
+    const bool hasAttrs = instr.CallAttr.nothrow || instr.CallAttr.readonly || instr.CallAttr.pure;
+    if (!hasAttrs)
+        return;
+    os << " [";
+    bool first = true;
+    auto printAttr = [&](std::string_view name) {
+        if (!first)
+            os << ", ";
+        first = false;
+        os << name;
+    };
+    if (instr.CallAttr.nothrow)
+        printAttr("nothrow");
+    if (instr.CallAttr.readonly)
+        printAttr("readonly");
+    if (instr.CallAttr.pure)
+        printAttr("pure");
+    os << ']';
 }
 
 /// @brief Emit operand list for call.indirect instructions.

@@ -73,6 +73,16 @@ int main() {
     assert(ok);
     assert(errOk.str().empty());
 
+    Instr branchUseUnknown;
+    branchUseUnknown.op = Opcode::Br;
+    branchUseUnknown.labels.push_back("dest");
+    branchUseUnknown.brArgs.push_back({Value::temp(3)});
+    std::ostringstream errBranch;
+    ok = types.ensureOperandsDefined(fn, bb, branchUseUnknown, errBranch);
+    assert(!ok);
+    assert(errBranch.str().find("use before def") != std::string::npos ||
+           errBranch.str().find("unknown temp") != std::string::npos);
+
     types.removeTemp(2);
     assert(temps.find(2) == temps.end());
     assert(!types.isDefined(2));

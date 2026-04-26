@@ -25,6 +25,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/verify/VerifierTable.hpp"
 
 #include <algorithm>
 #include <vector>
@@ -40,15 +41,18 @@ namespace {
 ///          is considered potentially throwing. All other instructions are
 ///          considered safe.
 bool canThrow(Opcode op) {
+    if (const auto props = il::verify::lookup(op); props && props->canTrap)
+        return true;
+
     switch (op) {
         case Opcode::Call:
         case Opcode::CallIndirect:
         case Opcode::Trap:
-        case Opcode::TrapKind:
         case Opcode::TrapFromErr:
-        case Opcode::TrapErr:
-        case Opcode::SDivChk0:
-        case Opcode::UDivChk0:
+        case Opcode::IdxChk:
+        case Opcode::CastFpToSiRteChk:
+        case Opcode::CastFpToUiRteChk:
+        case Opcode::CastSiNarrowChk:
         case Opcode::CastUiNarrowChk:
             return true;
         default:

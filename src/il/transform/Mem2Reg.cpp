@@ -190,6 +190,25 @@ static AllocaMap collectAllocas(Function &F) {
                     AI.addressTaken = true;
                 }
             }
+    for (auto &B : F.blocks) {
+        for (auto &I : B.instructions) {
+            for (const auto &bundle : I.brArgs) {
+                for (const auto &arg : bundle) {
+                    if (arg.kind != Value::Kind::Temp)
+                        continue;
+                    auto it = infos.find(arg.id);
+                    if (it == infos.end())
+                        continue;
+                    AllocaInfo &AI = it->second;
+                    AI.addressTaken = true;
+                    if (&B != AI.block) {
+                        AI.singleBlock = false;
+                        AI.useBlocks.push_back(&B);
+                    }
+                }
+            }
+        }
+    }
     return infos;
 }
 

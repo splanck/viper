@@ -158,16 +158,16 @@ void TypeInference::recordResult(const Instr &instr, Type type) {
 il::support::Expected<void> TypeInference::ensureOperandsDefined_E(const Function &fn,
                                                                    const BasicBlock &bb,
                                                                    const Instr &instr) const {
-    for (const auto &op : instr.operands) {
+    auto checkValue = [&](const Value &op) -> il::support::Expected<void> {
         if (op.kind != Value::Kind::Temp)
-            continue;
+            return {};
 
         bool missing = false;
         valueType(op, &missing);
         const bool undefined = !isDefined(op.id);
 
         if (!missing && !undefined)
-            continue;
+            return {};
 
         std::string id = std::to_string(op.id);
         if (missing && undefined) {
@@ -181,6 +181,17 @@ il::support::Expected<void> TypeInference::ensureOperandsDefined_E(const Functio
                 instr.loc, formatInstrDiag(fn, bb, instr, "unknown temp %" + id))};
         return il::support::Expected<void>{il::support::makeError(
             instr.loc, formatInstrDiag(fn, bb, instr, "use before def of %" + id))};
+    };
+
+    for (const auto &op : instr.operands) {
+        if (auto result = checkValue(op); !result)
+            return result;
+    }
+    for (const auto &bundle : instr.brArgs) {
+        for (const auto &arg : bundle) {
+            if (auto result = checkValue(arg); !result)
+                return result;
+        }
     }
     return {};
 }

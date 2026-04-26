@@ -39,6 +39,7 @@
 #include <cctype>
 #include <iomanip>
 #include <sstream>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -51,6 +52,18 @@ using il::support::Expected;
 using il::support::makeError;
 using viper::parse::Cursor;
 using viper::parse::SourcePos;
+
+bool isIgnorableDirectiveTrailing(std::string_view text) {
+    std::string trimmed = trim(std::string{text});
+    return trimmed.empty() || trimmed.rfind("//", 0) == 0 || trimmed.front() == ';';
+}
+
+std::string directiveKeyword(const std::string &line) {
+    std::istringstream ls(line);
+    std::string kw;
+    ls >> kw;
+    return kw;
+}
 
 /// @brief Parse an extern declaration in the form `extern @name(param, ...) -> type`.
 ///
@@ -79,6 +92,9 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st) {
     std::string name = trim(line.substr(at + 1, lp - at - 1));
     if (name.empty()) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing extern name")};
+    }
+    if (!isValidILIdentifier(name)) {
+        return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "malformed extern name")};
     }
     std::string paramsStr = line.substr(lp + 1, rp - lp - 1);
     std::vector<Type> params;
@@ -109,6 +125,10 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st) {
         }
     }
     std::string retStr = trim(line.substr(arr + 2));
+    if (const size_t comment = retStr.find("//"); comment != std::string::npos)
+        retStr = trim(retStr.substr(0, comment));
+    if (const size_t semicolon = retStr.find(';'); semicolon != std::string::npos)
+        retStr = trim(retStr.substr(0, semicolon));
     bool retOk = true;
     Type retTy = parseType(retStr, &retOk);
     if (!retOk) {
@@ -199,6 +219,9 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st) {
     if (name.empty()) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing global name")};
     }
+    if (!isValidILIdentifier(name)) {
+        return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "malformed global name")};
+    }
     std::string init = line.substr(q1 + 1, q2 - q1 - 1);
     auto trailingBegin = line.begin() + static_cast<std::ptrdiff_t>(q2 + 1);
     auto trailingEnd = line.end();
@@ -232,7 +255,9 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st) {
 ///          containing the current line number is returned so the caller can
 ///          surface precise feedback to the user.
 Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserState &st) {
-    if (line.rfind("il", 0) == 0) {
+    const std::string kw0 = directiveKeyword(line);
+
+    if (kw0 == "il") {
         if (st.sawVersion) {
             return Expected<void>{
                 il::io::makeLineErrorDiag({}, st.lineNo, "duplicate 'il' version directive")};
@@ -247,6 +272,12 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
             return Expected<void>{
                 il::io::makeLineErrorDiag({}, st.lineNo, "missing version after 'il' directive")};
         }
+        std::string trailing;
+        std::getline(ls, trailing);
+        if (!isIgnorableDirectiveTrailing(trailing)) {
+            return Expected<void>{
+                il::io::makeLineErrorDiag({}, st.lineNo, "unexpected characters after version")};
+        }
         st.sawVersion = true;
         return {};
     }
@@ -254,7 +285,11 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
         return Expected<void>{
             il::io::makeLineErrorDiag({}, st.lineNo, "missing 'il' version directive")};
     }
-    if (line.rfind("target", 0) == 0) {
+    if (kw0 == "target") {
+        if (st.m.target.has_value()) {
+            return Expected<void>{
+                il::io::makeLineErrorDiag({}, st.lineNo, "duplicate target directive")};
+        }
         std::istringstream ls(line);
         std::string kw;
         ls >> kw;
@@ -266,6 +301,12 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
 
         std::string triple;
         if (ls >> std::quoted(triple)) {
+            std::string trailing;
+            std::getline(ls, trailing);
+            if (!isIgnorableDirectiveTrailing(trailing)) {
+                return Expected<void>{il::io::makeLineErrorDiag(
+                    {}, st.lineNo, "unexpected characters after target triple")};
+            }
             st.m.target = triple;
             return {};
         }
@@ -273,21 +314,11 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
         return Expected<void>{
             il::io::makeLineErrorDiag({}, st.lineNo, "missing quoted target triple")};
     }
-    if (line.rfind("extern", 0) == 0) {
-        constexpr size_t kExternKeywordLen = 6;
-        if (line.size() == kExternKeywordLen)
-            return parseExtern_E(line, st);
-        const unsigned char next = static_cast<unsigned char>(line[kExternKeywordLen]);
-        if (!std::isalnum(next) && next != '_')
-            return parseExtern_E(line, st);
-    }
-    if (line.rfind("global", 0) == 0) {
-        const bool atEnd = line.size() == 6;
-        const bool hasWhitespace = !atEnd && std::isspace(static_cast<unsigned char>(line[6]));
-        if (atEnd || hasWhitespace)
-            return parseGlobal_E(line, st);
-    }
-    if (line.rfind("func", 0) == 0) {
+    if (kw0 == "extern")
+        return parseExtern_E(line, st);
+    if (kw0 == "global")
+        return parseGlobal_E(line, st);
+    if (kw0 == "func") {
         Cursor cursor{line, SourcePos{st.lineNo, 0}};
         if (cursor.consumeKeyword("func"))
             return parseFunction(is, line, st);

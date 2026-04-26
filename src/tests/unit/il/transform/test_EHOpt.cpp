@@ -203,6 +203,52 @@ TEST(EHOpt, PreservesPairWithCheckedDiv) {
     EXPECT_FALSE(changed);
 }
 
+TEST(EHOpt, PreservesPairWithOtherCheckedOps) {
+    for (Opcode op : {Opcode::IAddOvf, Opcode::SRemChk0, Opcode::IdxChk, Opcode::CastSiNarrowChk}) {
+        Module mod;
+        Function fn;
+        fn.name = "test";
+        fn.retType = Type(Type::Kind::I64);
+
+        BasicBlock entry;
+        entry.label = "entry";
+        Param p;
+        p.name = "x";
+        p.type = Type(Type::Kind::I64);
+        p.id = 0;
+        entry.params.push_back(std::move(p));
+
+        Instr checked;
+        checked.op = op;
+        checked.result = 1;
+        if (op == Opcode::IdxChk) {
+            checked.operands = {Value::temp(0), Value::constInt(0), Value::constInt(10)};
+        } else if (op == Opcode::CastSiNarrowChk) {
+            checked.operands = {Value::temp(0)};
+        } else {
+            checked.operands = {Value::temp(0), Value::constInt(1)};
+        }
+
+        entry.instructions.push_back(makeEhPush("handler"));
+        entry.instructions.push_back(std::move(checked));
+        entry.instructions.push_back(makeEhPop());
+        entry.instructions.push_back(makeRet(1));
+        entry.terminated = true;
+
+        BasicBlock handler;
+        handler.label = "handler";
+        handler.instructions.push_back(makeRet(0));
+        handler.terminated = true;
+
+        fn.blocks.push_back(std::move(entry));
+        fn.blocks.push_back(std::move(handler));
+        mod.functions.push_back(std::move(fn));
+
+        bool changed = il::transform::ehOpt(mod);
+        EXPECT_FALSE(changed);
+    }
+}
+
 TEST(EHOpt, NoChangeWhenNoPairs) {
     Module mod;
     Function fn;

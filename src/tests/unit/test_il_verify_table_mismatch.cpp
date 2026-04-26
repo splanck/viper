@@ -338,7 +338,8 @@ int main() {
         module.functions.push_back(fn);
 
         const std::string message = verifyAndCaptureMessage(module);
-        assert(message.find("unknown branch arg") != std::string::npos);
+        assert(message.find("unknown temp %99") != std::string::npos ||
+               message.find("unknown branch arg") != std::string::npos);
     }
 
     {
@@ -546,6 +547,81 @@ int main() {
 
         const std::string message = verifyAndCaptureMessage(module);
         assert(message.find("operand 1 must be i64") != std::string::npos);
+    }
+
+    {
+        Module module;
+
+        Function fn;
+        fn.name = "partial_branch_args";
+        fn.retType = Type(Type::Kind::Void);
+
+        BasicBlock entry;
+        entry.label = "entry";
+        Instr cond;
+        cond.result = 0;
+        cond.op = Opcode::ICmpEq;
+        cond.type = Type(Type::Kind::I1);
+        cond.operands = {Value::constInt(0), Value::constInt(0)};
+        Instr cbr;
+        cbr.op = Opcode::CBr;
+        cbr.type = Type(Type::Kind::Void);
+        cbr.operands = {Value::temp(0)};
+        cbr.labels = {"left", "right"};
+        cbr.brArgs = {{}};
+        entry.instructions = {cond, cbr};
+        entry.terminated = true;
+
+        BasicBlock left;
+        left.label = "left";
+        Instr leftRet;
+        leftRet.op = Opcode::Ret;
+        leftRet.type = Type(Type::Kind::Void);
+        left.instructions = {leftRet};
+        left.terminated = true;
+
+        BasicBlock right = left;
+        right.label = "right";
+        right.params.push_back(Param{"x", Type(Type::Kind::I64), 1});
+
+        fn.blocks = {entry, left, right};
+        module.functions.push_back(fn);
+
+        const std::string message = verifyAndCaptureMessage(module);
+        assert(message.find("branch arg count mismatch") != std::string::npos);
+    }
+
+    {
+        Module module;
+        module.externs.push_back({"sink", Type(Type::Kind::Void), {Type(Type::Kind::Ptr)}});
+
+        Function fn;
+        fn.name = "alloca_call_escape";
+        fn.retType = Type(Type::Kind::Void);
+
+        BasicBlock entry;
+        entry.label = "entry";
+        Instr allocPtr;
+        allocPtr.result = 0;
+        allocPtr.op = Opcode::Alloca;
+        allocPtr.type = Type(Type::Kind::Ptr);
+        allocPtr.operands.push_back(Value::constInt(8));
+        Instr call;
+        call.op = Opcode::Call;
+        call.type = Type(Type::Kind::Void);
+        call.callee = "sink";
+        call.operands = {Value::temp(0)};
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        entry.instructions = {allocPtr, call, ret};
+        entry.terminated = true;
+
+        fn.blocks.push_back(entry);
+        module.functions.push_back(fn);
+
+        auto result = il::verify::Verifier::verify(module);
+        assert(result && "byref/out calls may borrow alloca-derived pointers");
     }
 
     return 0;

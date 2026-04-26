@@ -138,8 +138,8 @@ void testSimpleCountedLoop() {
     loopHeader.terminated = true;
 
     // body(acc, i):
-    //   %newAcc = iadd.ovf acc, i
-    //   %newI = iadd.ovf i, 1
+    //   %newAcc = add acc, i
+    //   %newI = add i, 1
     //   br loop(%newAcc, %newI)
     BasicBlock body;
     body.label = "body";
@@ -219,6 +219,8 @@ void testSimpleCountedLoop() {
 
     // Verify the module is still valid after the pass
     auto verifyResult = il::verify::Verifier::verify(module);
+    if (!verifyResult)
+        il::support::printDiag(verifyResult.error(), std::cerr);
     assert(verifyResult && "Module should still be valid after LoopUnroll");
 }
 
@@ -335,7 +337,7 @@ void testTripCountThreshold() {
     assert(loopBlock != nullptr && "Loop should not be unrolled for large trip counts");
 }
 
-void testFinalExitArgsUsePostUnrollValues() {
+void testFinalExitArgsRemainValidWhenUnrollDeclined() {
     Module module;
     Function fn;
     fn.name = "test_final_exit_value";
@@ -417,34 +419,89 @@ void testFinalExitArgsUsePostUnrollValues() {
     auto verifyResult = il::verify::Verifier::verify(module);
     if (!verifyResult)
         il::support::printDiag(verifyResult.error(), std::cerr);
-    assert(verifyResult && "Module should verify after unrolling");
+    assert(verifyResult && "Module should remain valid after declined unroll");
+    assert(findBlock(function, "loop") &&
+           "checked IV update should keep final-exit-arg loop in canonical form");
+}
 
-    BasicBlock *exitBlock = findBlock(function, "exit");
-    assert(exitBlock && "exit remains");
+void testCheckedArithmeticPreventsFullUnroll() {
+    Module module;
+    Function fn;
+    fn.name = "test_checked_body_not_unrolled";
+    fn.retType = Type(Type::Kind::I64);
 
-    BasicBlock *preheader = nullptr;
-    for (auto &block : function.blocks) {
-        if (!block.instructions.empty() && block.instructions.back().op == Opcode::Br &&
-            !block.instructions.back().labels.empty() &&
-            block.instructions.back().labels.front() == "exit") {
-            preheader = &block;
-            break;
-        }
-    }
-    assert(preheader && "unrolled preheader should branch directly to exit");
+    unsigned nextId = 0;
 
-    unsigned lastAdd = 0;
-    for (const Instr &instr : preheader->instructions) {
-        if (instr.op == Opcode::IAddOvf && instr.result)
-            lastAdd = *instr.result;
-    }
-    assert(lastAdd != 0 && "unrolled body should contain cloned adds");
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr entryBr;
+    entryBr.op = Opcode::Br;
+    entryBr.type = Type(Type::Kind::Void);
+    entryBr.labels.push_back("loop");
+    entryBr.brArgs.push_back({Value::constInt(0)});
+    entry.instructions.push_back(std::move(entryBr));
+    entry.terminated = true;
 
-    const Instr &term = preheader->instructions.back();
-    assert(!term.brArgs.empty() && !term.brArgs.front().empty());
-    assert(term.brArgs.front()[0].kind == Value::Kind::Temp);
-    assert(term.brArgs.front()[0].id == lastAdd &&
-           "exit arg should use the post-unroll IV, not the previous iteration");
+    BasicBlock loop;
+    loop.label = "loop";
+    Param iParam{"i", Type(Type::Kind::I64), nextId++};
+    loop.params.push_back(iParam);
+
+    Instr cmp;
+    cmp.result = nextId++;
+    cmp.op = Opcode::SCmpLT;
+    cmp.type = Type(Type::Kind::I1);
+    cmp.operands = {Value::temp(iParam.id), Value::constInt(3)};
+    const unsigned cmpId = *cmp.result;
+
+    Instr add;
+    add.result = nextId++;
+    add.op = Opcode::IAddOvf;
+    add.type = Type(Type::Kind::I64);
+    add.operands = {Value::temp(iParam.id), Value::constInt(1)};
+    const unsigned nextIId = *add.result;
+
+    Instr cbr;
+    cbr.op = Opcode::CBr;
+    cbr.type = Type(Type::Kind::Void);
+    cbr.operands.push_back(Value::temp(cmpId));
+    cbr.labels = {"loop", "exit"};
+    cbr.brArgs.push_back({Value::temp(nextIId)});
+    cbr.brArgs.push_back({Value::temp(iParam.id)});
+
+    loop.instructions = {cmp, add, cbr};
+    loop.terminated = true;
+
+    BasicBlock exit;
+    exit.label = "exit";
+    Param result{"result", Type(Type::Kind::I64), nextId++};
+    exit.params.push_back(result);
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(result.id));
+    exit.instructions.push_back(std::move(ret));
+    exit.terminated = true;
+
+    fn.blocks = {entry, loop, exit};
+    module.functions.push_back(std::move(fn));
+    Function &function = module.functions.back();
+
+    il::transform::AnalysisRegistry registry;
+    setupAnalysisRegistry(registry);
+    il::transform::AnalysisManager analysisManager(module, registry);
+
+    il::transform::LoopSimplify simplify;
+    auto simplifyPreserved = simplify.run(function, analysisManager);
+    analysisManager.invalidateAfterFunctionPass(simplifyPreserved, function);
+
+    il::transform::LoopUnroll unroll;
+    auto unrollPreserved = unroll.run(function, analysisManager);
+    (void)unrollPreserved;
+
+    assert(findBlock(function, "loop") && "checked arithmetic body must not be full-unrolled");
+    auto verifyResult = il::verify::Verifier::verify(module);
+    assert(verifyResult && "Module should remain valid after declined unroll");
 }
 
 } // namespace
@@ -452,6 +509,7 @@ void testFinalExitArgsUsePostUnrollValues() {
 int main() {
     testSimpleCountedLoop();
     testTripCountThreshold();
-    testFinalExitArgsUsePostUnrollValues();
+    testFinalExitArgsRemainValidWhenUnrollDeclined();
+    testCheckedArithmeticPreventsFullUnroll();
     return 0;
 }

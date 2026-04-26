@@ -31,6 +31,7 @@
 #include "il/core/Module.hpp"
 #include "il/runtime/signatures/Registry.hpp"
 
+#include <algorithm>
 #include <optional>
 #include <queue>
 #include <string_view>
@@ -159,53 +160,79 @@ inline void BasicAA::collectFunctionInfo(const il::core::Function &function) {
                 allocas_.insert(*instr.result);
         }
 
-    // Escape analysis: build the reverse GEP graph once, then propagate
-    // escaping uses back to their alloca roots.
-    std::unordered_map<unsigned, std::vector<unsigned>> parents;
-    parents.reserve(defs_.size());
-    for (const auto &[id, def] : defs_) {
-        if (def.op != il::core::Opcode::GEP || def.operands.empty() ||
-            def.operands[0].kind != il::core::Value::Kind::Temp) {
-            continue;
-        }
-        parents[id].push_back(def.operands[0].id);
-    }
+    std::unordered_map<std::string_view, const il::core::BasicBlock *> blocksByLabel;
+    blocksByLabel.reserve(function.blocks.size());
+    for (const auto &block : function.blocks)
+        blocksByLabel.emplace(std::string_view{block.label}, &block);
 
-    std::queue<unsigned> work;
-    std::unordered_set<unsigned> seenEscapingTemps;
-    auto seedEscape = [&](unsigned tempId) {
-        if (seenEscapingTemps.insert(tempId).second)
-            work.push(tempId);
+    std::unordered_map<unsigned, std::unordered_set<unsigned>> allocaRoots;
+    allocaRoots.reserve(defs_.size() + function.params.size());
+    for (unsigned allocaId : allocas_)
+        allocaRoots[allocaId].insert(allocaId);
+
+    auto mergeRoots = [&](unsigned dst, const il::core::Value &src) {
+        if (src.kind != il::core::Value::Kind::Temp)
+            return false;
+        auto srcIt = allocaRoots.find(src.id);
+        if (srcIt == allocaRoots.end())
+            return false;
+        auto &dstRoots = allocaRoots[dst];
+        bool changed = false;
+        for (unsigned root : srcIt->second)
+            changed |= dstRoots.insert(root).second;
+        return changed;
     };
 
-    for (const auto &block : function.blocks) {
-        for (const auto &instr : block.instructions) {
-            if (instr.op == il::core::Opcode::Call || instr.op == il::core::Opcode::CallIndirect) {
-                for (const auto &op : instr.operands) {
-                    if (op.kind == il::core::Value::Kind::Temp)
-                        seedEscape(op.id);
+    bool rootsChanged = true;
+    while (rootsChanged) {
+        rootsChanged = false;
+        for (const auto &[id, def] : defs_) {
+            if (def.op == il::core::Opcode::GEP && !def.operands.empty())
+                rootsChanged |= mergeRoots(id, def.operands[0]);
+        }
+        for (const auto &block : function.blocks) {
+            for (const auto &instr : block.instructions) {
+                for (size_t edge = 0; edge < instr.labels.size() && edge < instr.brArgs.size();
+                     ++edge) {
+                    auto targetIt = blocksByLabel.find(instr.labels[edge]);
+                    if (targetIt == blocksByLabel.end())
+                        continue;
+                    const auto *target = targetIt->second;
+                    const auto &args = instr.brArgs[edge];
+                    const size_t count = std::min(args.size(), target->params.size());
+                    for (size_t idx = 0; idx < count; ++idx)
+                        rootsChanged |= mergeRoots(target->params[idx].id, args[idx]);
                 }
-                continue;
-            }
-            if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 2 &&
-                instr.operands[1].kind == il::core::Value::Kind::Temp) {
-                // operand[1] is the stored value; storing the address itself makes it escape.
-                seedEscape(instr.operands[1].id);
             }
         }
     }
 
     std::unordered_set<unsigned> escapedAllocas;
-    while (!work.empty()) {
-        unsigned id = work.front();
-        work.pop();
-        if (allocas_.count(id))
-            escapedAllocas.insert(id);
-        auto pit = parents.find(id);
-        if (pit == parents.end())
-            continue;
-        for (unsigned parent : pit->second)
-            seedEscape(parent);
+    auto seedEscape = [&](const il::core::Value &value) {
+        if (value.kind != il::core::Value::Kind::Temp)
+            return;
+        auto rootIt = allocaRoots.find(value.id);
+        if (rootIt == allocaRoots.end())
+            return;
+        escapedAllocas.insert(rootIt->second.begin(), rootIt->second.end());
+    };
+
+    for (const auto &block : function.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op == il::core::Opcode::Call || instr.op == il::core::Opcode::CallIndirect) {
+                for (const auto &op : instr.operands)
+                    seedEscape(op);
+                continue;
+            }
+            if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 2 &&
+                instr.operands[1].kind == il::core::Value::Kind::Temp) {
+                // operand[1] is the stored value; storing the address itself makes it escape.
+                seedEscape(instr.operands[1]);
+            }
+            if (instr.op == il::core::Opcode::Ret)
+                for (const auto &op : instr.operands)
+                    seedEscape(op);
+        }
     }
 
     for (unsigned allocaId : allocas_)
@@ -425,9 +452,11 @@ inline AliasResult BasicAA::alias(const il::core::Value &lhs,
     if (l.kind == BaseKind::Null || r.kind == BaseKind::Null)
         return basesEqual(l, r) ? AliasResult::MustAlias : AliasResult::NoAlias;
 
-    if (l.kind == BaseKind::NoAliasParam && !basesEqual(l, r))
+    auto isParamLike = [](BaseKind k) { return k == BaseKind::Param || k == BaseKind::NoAliasParam; };
+
+    if (l.kind == BaseKind::NoAliasParam && isParamLike(r.kind) && !basesEqual(l, r))
         return AliasResult::NoAlias;
-    if (r.kind == BaseKind::NoAliasParam && !basesEqual(l, r))
+    if (r.kind == BaseKind::NoAliasParam && isParamLike(l.kind) && !basesEqual(l, r))
         return AliasResult::NoAlias;
 
     auto isGlobalLike = [](BaseKind k) { return k == BaseKind::Global || k == BaseKind::ConstStr; };

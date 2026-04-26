@@ -64,6 +64,8 @@ Expected<Param> parseParameterToken(const std::string &rawParam, unsigned lineNo
         return lineError<Param>(lineNo, "parameter name must start with '%'");
     if (nm.size() == 1)
         return lineError<Param>(lineNo, "missing parameter name");
+    if (!isValidILIdentifier(std::string_view(nm).substr(1)))
+        return lineError<Param>(lineNo, "malformed parameter name");
 
     bool ok = true;
     Type parsedTy = parseType(ty, &ok);
@@ -93,6 +95,9 @@ Expected<std::string> parseSymbolName(Cursor &cur) {
     if (name.empty())
         return Expected<std::string>{
             makeSyntaxError(cursorPos(cur), "malformed function header", {})};
+    if (!isValidILIdentifier(name))
+        return Expected<std::string>{
+            makeSyntaxError(cursorPos(cur), "malformed function name", {})};
     cur.seek(lp);
     return name;
 }
@@ -170,6 +175,7 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false
         if (!retOk)
             return Expected<PrototypeParseResult>{
                 makeSyntaxError(cursorPos(cur), "unknown return type", {})};
+        cur.seek(cur.view().size());
         return PrototypeParseResult{Prototype{retTy, std::move(params), isVarArg}, ccSegment};
     }
 
@@ -229,6 +235,11 @@ Expected<il::support::SourceLoc> parseOptionalLoc(Cursor &cur) {
     return il::support::SourceLoc{};
 }
 
+bool isIgnorableTrailing(std::string_view text) {
+    text = trimView(text);
+    return text.empty() || text.rfind("//", 0) == 0 || text.front() == ';';
+}
+
 } // namespace
 
 // ============================================================================
@@ -249,10 +260,17 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st) {
         if (atPos != std::string::npos && atPos >= 5) {
             // Extract text between "func " and "@"
             std::string_view between = trimView(std::string_view(header).substr(4, atPos - 4));
-            if (between == "export")
+            if (between.empty()) {
+                linkage = il::core::Linkage::Internal;
+            } else if (between == "export") {
                 linkage = il::core::Linkage::Export;
-            else if (between == "import")
+            } else if (between == "import") {
                 linkage = il::core::Linkage::Import;
+            } else {
+                std::ostringstream oss;
+                oss << "unknown function linkage '" << between << "'";
+                return lineError<void>(st.lineNo, oss.str());
+            }
         }
     }
 
@@ -288,6 +306,8 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st) {
             return Expected<void>{loc.error()};
         fh.loc = loc.value();
     }
+    if (!isIgnorableTrailing(cursor.remaining()))
+        return lineError<void>(st.lineNo, "unexpected characters after function header");
 
     for (const auto &fn : st.m.functions) {
         if (fn.name == fh.name) {

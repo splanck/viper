@@ -35,6 +35,11 @@ std::string trim(const std::string &text);
 /// @return Token without any trailing comma delimiter.
 std::string readToken(std::istringstream &stream);
 
+/// @brief Validate an IL symbol/label fragment after removing sigils.
+/// @param text Candidate identifier text without leading @, %, or ^.
+/// @return True when @p text is non-empty and contains no IL delimiters.
+bool isValidILIdentifier(std::string_view text);
+
 /// @brief Format a diagnostic string including the line number prefix used by the parser.
 /// @param lineNo Line number associated with the diagnostic message.
 /// @param message Human-readable diagnostic message body.

@@ -449,15 +449,15 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
         const int64_t threshold = cmpRHS.i64;
         const unsigned guardedVar = cmpLHS.id;
 
+        // Avoid overflow in threshold + 1.
+        if (threshold == std::numeric_limits<int64_t>::max())
+            continue;
+
         // CBr: labels[0] = true branch (cmp is true → x <= C)
         //      labels[1] = false branch (cmp is false → x > C → x >= C+1)
         // On the FALSE branch, we know: guardedVar >= threshold + 1
         const std::string &falseBranch = term.labels[1];
         const int64_t lowerBound = threshold + 1; // x >= lowerBound on false branch
-
-        // Avoid overflow in threshold + 1
-        if (threshold == std::numeric_limits<int64_t>::max())
-            continue;
 
         // Find the false-branch target block and demote safe overflow ops.
         auto tgtIt = blockMap.find(falseBranch);
@@ -487,10 +487,6 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
             // this is almost always safe.
             if (K >= 0 && lowerBound >= std::numeric_limits<int64_t>::min() + K) {
                 // x >= lowerBound, K >= 0 → x - K >= lowerBound - K >= INT64_MIN → safe
-                instr.op = Opcode::Sub;
-                changed = true;
-            } else if (K < 0 && lowerBound <= std::numeric_limits<int64_t>::max() + K) {
-                // x >= lowerBound, K < 0 → x - K = x + |K| → check x + |K| <= INT64_MAX
                 instr.op = Opcode::Sub;
                 changed = true;
             }

@@ -40,14 +40,16 @@ last-verified: 2026-04-23
   opcodes), const strings, and null.
 - Follows constant-offset `gep` chains to build base+offset summaries; compares offsets with access sizes to prove
   disjoint struct/array fields when both sides have known widths.
-- Distinguishes address spaces: stack vs global vs noalias param are `NoAlias`; different globals are `NoAlias`; null
-  aliases only null.
+- Distinguishes address spaces: stack vs global are `NoAlias`; different globals are `NoAlias`; null aliases only
+  null. `noalias` parameters are disambiguated from other pointer parameters, but not from arbitrary globals or stack
+  slots.
 - `typeSizeBytes` exposes conservative byte widths (i1/i16/i32/i64/f64/ptr/str) for passes to thread sizes into
   `alias(...)`.
 - ModRef uses a priority cascade for call effect classification:
   1. Module-level function attributes are authoritative when the callee is defined locally
   2. Runtime signature table is authoritative for known external helpers
-  3. Instruction-level `CallAttr` flags are trusted only for unknown callees
+  3. Instruction-level `CallAttr` flags, parsed as `[nothrow]`, `[readonly]`, and `[pure]` after direct-call operands,
+     are trusted only for unknown callees
   `pure` -> `NoModRef`, `readonly` -> `Ref`, everything else -> `ModRef`.
 - Runtime signature lookup uses a cached hash map for O(1) amortized lookups, rebuilt automatically when new signatures
   are registered.
@@ -79,6 +81,8 @@ Promotes alloca/store/load patterns to pure SSA values:
 - **Non-entry alloca promotion** (since 2026-02-17): No longer restricted to entry-block allocas. Any alloca whose
   defining block dominates all of its load/store uses is eligible for promotion. This eliminates the common pattern
   of loop variables allocated in non-entry blocks staying as load/store overhead.
+- **Address-taken conservatism**: Allocas forwarded directly as branch arguments are treated as address-taken so
+  promotion does not erase pointer escape information.
 - **SROA (Scalar Replacement of Aggregates)**: Splits struct/record allocas into per-field allocas before promotion,
   allowing fields accessed independently to be promoted individually.
 - **Sealed SSA construction**: Builds complete SSA form in a single pass via iterated dominance frontier computation.
@@ -195,11 +199,13 @@ Three-level dead store elimination:
 2. **Cross-block DSE** (`runCrossBlockDSE`): Forward BFS analysis identifies stores to non-escaping allocas that are
    provably dead because they are overwritten on all paths before being read. Uses escape analysis for safety.
    **Limitation**: Conservatively treats any `ModRef` call as a read barrier, even for non-escaping allocas.
+   Escape analysis follows `gep` and block-parameter forwarding so branch arguments cannot hide captured stack slots.
 
 3. **MemorySSA-based DSE** (`runMemorySSADSE`): Uses the `MemorySSA` analysis (see below) to find additional dead
    stores that the BFS misses. Key precision improvement: calls are **not** treated as read barriers for non-escaping
    allocas because non-escaping stack memory is inaccessible to external calls. This eliminates stores in functions
    that call runtime helpers between writes — the dominant pattern in Zia-lowered loops.
+   The non-escaping set follows `gep` chains and branch-argument propagation before treating calls as transparent.
    - Registered as `"memory-ssa"` function analysis in `PassManager`
    - Runs after `runDSE` within the `"dse"` pipeline pass
    - Tests: `src/tests/analysis/MemorySSATests.cpp` — call-barrier precision, live-store preservation,
@@ -212,7 +218,7 @@ Fully unrolls small constant-bound loops to reduce iteration overhead:
 - Identifies counted loops with known trip counts from comparison patterns
 - Configurable thresholds: max trip count (default 8), max loop size (50 instructions)
 - Handles single-latch, single-exit loops with proper SSA value threading
-- Clones loop body with value renaming through unrolled iterations
+- Clones only non-trapping, side-effect-free loop bodies with value renaming through unrolled iterations
 - Removes original loop blocks after unrolling
 
 ## JumpThreading (in SimplifyCFG)
@@ -237,6 +243,8 @@ Threads jumps through blocks with predictable branch conditions:
   - **Type safety**: ConstInt values type as I64 in the verifier. When the check result type is narrower (e.g. I32 for
     IdxChk) and the result has live uses, constant elimination is skipped and the dominance-based check still applies.
     This prevents type-mismatch verifier errors when the check result is used as a narrower-typed discriminant.
+- Guard-based `isub.ovf x, K` demotion requires a proof that covers the relevant overflow side. A lower-bound guard can
+  demote non-negative `K`; negative constants require an upper-bound proof and remain checked.
 - Hoists loop-invariant checks from loop headers to preheaders when the loop is EH-insensitive and operands are
   invariant, preserving trap behaviour.
 - Safety rules: a check is eliminated only if the dominating check block dominates the use-site block; hoisting is

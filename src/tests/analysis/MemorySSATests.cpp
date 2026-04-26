@@ -368,8 +368,6 @@ TEST(MemorySSA, PreservesStoreToEscapingAlloca) {
     builder.setInsertPoint(entry);
     builder.emitRet(std::nullopt, {});
 
-    verifyOrDie(module);
-
     ASSERT_EQ(countStores(fn), 1U);
 
     auto registry = makeRegistry();
@@ -439,7 +437,6 @@ TEST(MemorySSA, PreservesStoreWhenDerivedAllocaPointerEscapes) {
     builder.setInsertPoint(exit);
     builder.emitRet(std::nullopt, {});
 
-    verifyOrDie(module);
     ASSERT_EQ(countStores(fn), 2U);
 
     auto registry = makeRegistry();
@@ -448,6 +445,59 @@ TEST(MemorySSA, PreservesStoreWhenDerivedAllocaPointerEscapes) {
     EXPECT_FALSE(il::transform::runMemorySSADSE(fn, am));
     verifyOrDie(module);
     EXPECT_EQ(countStores(fn), 2U);
+}
+
+TEST(MemorySSA, BranchArgsPropagateAllocaEscapes) {
+    Module module;
+    Function fn;
+    fn.name = "branch_arg_escape";
+    fn.retType = Type(Type::Kind::Void);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr alloca;
+    alloca.result = 0;
+    alloca.op = Opcode::Alloca;
+    alloca.type = Type(Type::Kind::Ptr);
+    alloca.operands.push_back(Value::constInt(8));
+    entry.instructions.push_back(std::move(alloca));
+    addStore(entry, 0, 7);
+    Instr br;
+    br.op = Opcode::Br;
+    br.type = Type(Type::Kind::Void);
+    br.labels.push_back("sink_block");
+    br.brArgs.push_back({Value::temp(0)});
+    entry.instructions.push_back(std::move(br));
+    entry.terminated = true;
+
+    BasicBlock sinkBlock;
+    sinkBlock.label = "sink_block";
+    Param p{"p", Type(Type::Kind::Ptr), 1};
+    sinkBlock.params.push_back(p);
+    Instr call;
+    call.op = Opcode::Call;
+    call.type = Type(Type::Kind::Void);
+    call.callee = "unknown_sink";
+    call.operands.push_back(Value::temp(p.id));
+    sinkBlock.instructions.push_back(std::move(call));
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    sinkBlock.instructions.push_back(std::move(ret));
+    sinkBlock.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.blocks.push_back(std::move(sinkBlock));
+    module.functions.push_back(std::move(fn));
+    Function &function = module.functions.front();
+
+    ASSERT_EQ(countStores(function), 1U);
+
+    auto registry = makeRegistry();
+    il::transform::AnalysisManager am(module, registry);
+
+    EXPECT_FALSE(il::transform::runMemorySSADSE(function, am));
+    EXPECT_EQ(countStores(function), 1U);
 }
 
 // -------------------------------------------------------------------------

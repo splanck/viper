@@ -31,6 +31,7 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 #include "il/utils/Utils.hpp"
+#include "il/verify/VerifierTable.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -55,10 +56,10 @@ std::optional<long long> checkedAdd(long long lhs, long long rhs) {
 bool isSafeToCloneForFullUnroll(const Instr &instr) {
     if (viper::il::isTerminator(instr))
         return false;
-    const bool allowedCheckedArithmetic =
-        instr.op == Opcode::IAddOvf || instr.op == Opcode::ISubOvf || instr.op == Opcode::IMulOvf;
+    if (const auto props = il::verify::lookup(instr.op); props && props->canTrap)
+        return false;
     const auto &info = getOpcodeInfo(instr.op);
-    if (info.hasSideEffects && !allowedCheckedArithmetic)
+    if (info.hasSideEffects)
         return false;
     if (hasMemoryRead(instr.op) || hasMemoryWrite(instr.op))
         return false;
@@ -331,6 +332,8 @@ std::optional<CountedLoop> analyzeCountedLoop(
         }
 
         if (a.kind == Value::Kind::Temp && a.id == ivId && b.kind == Value::Kind::ConstInt) {
+            if (b.i64 == std::numeric_limits<long long>::min())
+                return std::nullopt;
             step = -b.i64;
         } else {
             return std::nullopt;

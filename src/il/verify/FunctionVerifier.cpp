@@ -92,7 +92,9 @@ bool isErrAccessOpcode(Opcode op) {
 /// @param instr Instruction being analysed.
 /// @return @c true when the instruction is the runtime array release helper.
 bool isRuntimeArrayRelease(const Instr &instr) {
-    return instr.op == Opcode::Call && instr.callee == "rt_arr_i32_release";
+    return instr.op == Opcode::Call &&
+           (instr.callee == "rt_arr_i32_release" || instr.callee == "rt_arr_str_release" ||
+            instr.callee == "rt_arr_obj_release");
 }
 
 Expected<void> validateFunctionParams(const Function &fn) {
@@ -521,6 +523,84 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                             return result;
             }
         }
+
+        struct ReleaseSite {
+            const BasicBlock *block;
+            const Instr *instr;
+            size_t index;
+            unsigned id;
+        };
+        struct ReleasedUse {
+            const BasicBlock *block;
+            const Instr *instr;
+            size_t index;
+            unsigned id;
+        };
+
+        std::vector<ReleaseSite> releaseSites;
+        std::vector<ReleasedUse> releasedUses;
+        for (const auto &blk : fn.blocks) {
+            if (!reachable.contains(&blk))
+                continue;
+            for (size_t index = 0; index < blk.instructions.size(); ++index) {
+                const Instr &instr = blk.instructions[index];
+                if (isRuntimeArrayRelease(instr)) {
+                    if (!instr.operands.empty() && instr.operands[0].kind == Value::Kind::Temp)
+                        releaseSites.push_back({&blk, &instr, index, instr.operands[0].id});
+                    continue;
+                }
+
+                auto recordUse = [&](const Value &value) {
+                    if (value.kind == Value::Kind::Temp)
+                        releasedUses.push_back({&blk, &instr, index, value.id});
+                };
+                for (const auto &operand : instr.operands)
+                    recordUse(operand);
+                for (const auto &bundle : instr.brArgs)
+                    for (const auto &argument : bundle)
+                        recordUse(argument);
+            }
+        }
+
+        auto siteDominates = [&](const BasicBlock *releaseBlock,
+                                 size_t releaseIndex,
+                                 const BasicBlock *useBlock,
+                                 size_t useIndex) {
+            if (releaseBlock == useBlock)
+                return releaseIndex < useIndex;
+            return dominates(releaseBlock, useBlock);
+        };
+
+        for (size_t i = 0; i < releaseSites.size(); ++i) {
+            const ReleaseSite &first = releaseSites[i];
+            for (size_t j = 0; j < releaseSites.size(); ++j) {
+                if (i == j)
+                    continue;
+                const ReleaseSite &second = releaseSites[j];
+                if (first.id != second.id)
+                    continue;
+                if (!siteDominates(first.block, first.index, second.block, second.index))
+                    continue;
+
+                std::ostringstream message;
+                message << "double release of %" << second.id;
+                return Expected<void>{makeError(
+                    second.instr->loc,
+                    formatInstrDiag(fn, *second.block, *second.instr, message.str()))};
+            }
+
+            for (const ReleasedUse &use : releasedUses) {
+                if (first.id != use.id)
+                    continue;
+                if (!siteDominates(first.block, first.index, use.block, use.index))
+                    continue;
+
+                std::ostringstream message;
+                message << "use after release of %" << use.id;
+                return Expected<void>{makeError(
+                    use.instr->loc, formatInstrDiag(fn, *use.block, *use.instr, message.str()))};
+            }
+        }
     }
 
     // ===== PASS 4: Alloca escape verification =====
@@ -573,16 +653,17 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         if (!stackDerived.empty()) {
             for (const auto &blk : fn.blocks) {
                 for (const auto &instr : blk.instructions) {
-                    if (instr.op != Opcode::Ret)
-                        continue;
-                    for (const auto &op : instr.operands) {
-                        if (op.kind == Value::Kind::Temp && stackDerived.contains(op.id)) {
-                            std::ostringstream msg;
-                            msg << "returning alloca-derived pointer %" << op.id;
-                            return Expected<void>{
-                                makeError(instr.loc, formatInstrDiag(fn, blk, instr, msg.str()))};
+                    if (instr.op == Opcode::Ret) {
+                        for (const auto &op : instr.operands) {
+                            if (op.kind == Value::Kind::Temp && stackDerived.contains(op.id)) {
+                                std::ostringstream msg;
+                                msg << "returning alloca-derived pointer %" << op.id;
+                                return Expected<void>{makeError(
+                                    instr.loc, formatInstrDiag(fn, blk, instr, msg.str()))};
+                            }
                         }
                     }
+
                 }
             }
         }

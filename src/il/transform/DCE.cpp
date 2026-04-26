@@ -356,7 +356,8 @@ void dce(Module &M) {
         }
         for (auto &PB : F.blocks) {
             for (auto &I : PB.instructions) {
-                if (I.op != Opcode::Br && I.op != Opcode::CBr && I.op != Opcode::SwitchI32)
+                if (I.op != Opcode::Br && I.op != Opcode::CBr && I.op != Opcode::SwitchI32 &&
+                    I.op != Opcode::ResumeLabel)
                     continue;
                 for (size_t l = 0; l < I.labels.size(); ++l) {
                     predEdges[I.labels[l]].emplace_back(&I, l);

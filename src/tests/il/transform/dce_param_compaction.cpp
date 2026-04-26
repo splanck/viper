@@ -379,6 +379,48 @@ TEST(IL, testAllParamsUnused) {
     ASSERT_TRUE(verifyResult && "Module should verify after DCE");
 }
 
+TEST(IL, testResumeLabelCompactsBranchArgs) {
+    Module module;
+    Function fn;
+    fn.name = "test_resume_label";
+    fn.retType = Type(Type::Kind::I64);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr resume;
+    resume.op = Opcode::ResumeLabel;
+    resume.type = Type(Type::Kind::Void);
+    resume.operands.push_back(Value::temp(0));
+    resume.labels.push_back("target");
+    resume.brArgs.push_back({Value::constInt(10), Value::constInt(20)});
+    entry.instructions.push_back(std::move(resume));
+    entry.terminated = true;
+
+    BasicBlock target;
+    target.label = "target";
+    target.params = {Param{"used", Type(Type::Kind::I64), 1},
+                     Param{"unused", Type(Type::Kind::I64), 2}};
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(target.params[0].id));
+    target.instructions.push_back(std::move(ret));
+    target.terminated = true;
+
+    fn.blocks = {entry, target};
+    module.functions.push_back(std::move(fn));
+
+    il::transform::dce(module);
+
+    const Function &outFn = module.functions.front();
+    const BasicBlock &outEntry = outFn.blocks.front();
+    const BasicBlock &outTarget = outFn.blocks.back();
+    ASSERT_EQ(outTarget.params.size(), 1);
+    ASSERT_EQ(outEntry.instructions.back().brArgs.size(), 1);
+    ASSERT_EQ(outEntry.instructions.back().brArgs.front().size(), 1);
+    ASSERT_EQ(outEntry.instructions.back().brArgs.front().front().i64, 10);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

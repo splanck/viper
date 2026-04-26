@@ -256,6 +256,69 @@ TEST(BasicAA, AllocaVsGlobalNoAlias) {
     EXPECT_EQ(aa.alias(Value::temp(idA), Value::global("some_global")), AliasResult::NoAlias);
 }
 
+TEST(BasicAA, NoAliasParamDoesNotDisambiguateGlobals) {
+    Module module;
+    Function fn;
+    fn.name = "test_fn";
+    fn.retType = Type(Type::Kind::Void);
+    Param ptr{"p", Type(Type::Kind::Ptr), 0};
+    ptr.setNoAlias(true);
+    fn.params.push_back(ptr);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    entry.instructions.push_back(std::move(ret));
+    entry.terminated = true;
+    fn.blocks.push_back(std::move(entry));
+    module.functions.push_back(std::move(fn));
+
+    BasicAA aa(module, module.functions.front());
+    EXPECT_EQ(aa.alias(Value::temp(ptr.id), Value::global("g")), AliasResult::MayAlias);
+}
+
+TEST(BasicAA, BranchArgsPropagateAllocaEscapes) {
+    Module module;
+    Function fn;
+    fn.name = "branch_escape";
+    fn.retType = Type(Type::Kind::Void);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr alloca;
+    alloca.result = 0;
+    alloca.op = Opcode::Alloca;
+    alloca.type = Type(Type::Kind::Ptr);
+    alloca.operands.push_back(Value::constInt(8));
+    Instr br;
+    br.op = Opcode::Br;
+    br.type = Type(Type::Kind::Void);
+    br.labels = {"sink_block"};
+    br.brArgs = {{Value::temp(0)}};
+    entry.instructions = {alloca, br};
+    entry.terminated = true;
+
+    BasicBlock sinkBlock;
+    sinkBlock.label = "sink_block";
+    Param p{"p", Type(Type::Kind::Ptr), 1};
+    sinkBlock.params.push_back(p);
+    Instr call = makeCall("unknown_sink");
+    call.operands.push_back(Value::temp(p.id));
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    sinkBlock.instructions = {call, ret};
+    sinkBlock.terminated = true;
+
+    fn.blocks = {entry, sinkBlock};
+    module.functions.push_back(std::move(fn));
+
+    BasicAA aa(module, module.functions.front());
+    EXPECT_FALSE(aa.isNonEscapingAlloca(0));
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

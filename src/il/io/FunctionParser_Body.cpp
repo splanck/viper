@@ -246,6 +246,8 @@ Expected<Param> parseBlockParam(const std::string &paramText,
         nm = nm.substr(1);
     if (nm.empty())
         return lineError<Param>(st.lineNo, "missing parameter name");
+    if (!isValidILIdentifier(nm))
+        return lineError<Param>(st.lineNo, "malformed parameter name");
 
     std::string tyStr = trim(q.substr(col + 1));
     bool ok = true;
@@ -288,6 +290,8 @@ Expected<void> parseBlockParamList(const std::string &work,
     size_t rp = work.find(')', lp);
     if (rp == std::string::npos)
         return lineError<void>(st.lineNo, "mismatched ')'");
+    if (!trim(work.substr(rp + 1)).empty())
+        return lineError<void>(st.lineNo, "unexpected characters after block parameter list");
 
     std::string paramsStr = work.substr(lp + 1, rp - lp - 1);
     std::stringstream pss(paramsStr);
@@ -335,6 +339,8 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st) {
 
     if (label.empty())
         return lineError<void>(st.lineNo, "missing block label");
+    if (!isValidILIdentifier(label))
+        return lineError<void>(st.lineNo, "malformed block label");
 
     if (st.blockParamCount.find(label) != st.blockParamCount.end()) {
         std::ostringstream oss;

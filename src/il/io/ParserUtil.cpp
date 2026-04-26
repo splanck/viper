@@ -67,19 +67,88 @@ std::string trim(const std::string &text) {
 
 /// @brief Read the next token from a comma-delimited instruction tail segment.
 ///
-/// Extraction relies on operator>> to skip leading whitespace and gather
-/// characters until the next whitespace boundary. A trailing comma—common in
-/// operand lists—is removed so the returned token can be matched without
-/// additional sanitisation.
+/// Extraction skips leading whitespace and gathers either a quoted string
+/// literal (including embedded spaces) or a whitespace-delimited token. A
+/// trailing comma is removed so the returned token can be parsed directly.
 ///
 /// @param stream Backing stream positioned at the next token to extract.
 /// @return Token read from @p stream with any trailing comma stripped.
 std::string readToken(std::istringstream &stream) {
+    stream >> std::ws;
+    if (!stream.good()) {
+        stream.setstate(std::ios::failbit);
+        return {};
+    }
+
     std::string token;
+    if (stream.peek() == '"') {
+        char c = '\0';
+        stream.get(c);
+        token.push_back(c);
+
+        bool escape = false;
+        while (stream.get(c)) {
+            token.push_back(c);
+            if (escape) {
+                escape = false;
+                continue;
+            }
+            if (c == '\\') {
+                escape = true;
+                continue;
+            }
+            if (c == '"')
+                break;
+        }
+
+        stream >> std::ws;
+        if (stream.peek() == ',')
+            stream.get();
+        return token;
+    }
+
     stream >> token;
     if (!token.empty() && token.back() == ',')
         token.pop_back();
     return token;
+}
+
+/// @brief Validate an IL identifier fragment after sigils are stripped.
+///
+/// The grammar remains intentionally permissive for existing generated names
+/// (`.`, `$`, and digits are allowed), but rejects whitespace and characters
+/// that would collide with IL delimiters or sigils.
+bool isValidILIdentifier(std::string_view text) {
+    if (text.empty())
+        return false;
+
+    for (size_t index = 0; index < text.size(); ++index) {
+        unsigned char ch = static_cast<unsigned char>(text[index]);
+        if (std::isspace(ch))
+            return false;
+        switch (static_cast<char>(ch)) {
+            case '@':
+            case '^':
+            case '(':
+            case ')':
+            case '{':
+            case '}':
+            case '[':
+            case ']':
+            case ',':
+            case ':':
+            case ';':
+            case '"':
+            case '\\':
+                return false;
+            default:
+                break;
+        }
+        if (index == 0 && (ch == '%' || ch == '#'))
+            return false;
+    }
+
+    return true;
 }
 
 /// @brief Format a diagnostic string that mirrors the "Line N:" prefix style.
