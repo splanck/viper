@@ -997,6 +997,27 @@ function(viper_add_il_invalid_tests)
             -DEXPECT=unknown\ temp
             -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
 
+    viper_add_ctest(il_verify_invalid_err_get_msg_outside_handler
+            ${CMAKE_COMMAND}
+            -DIL_VERIFY=${IL_VERIFY}
+            -DFILE=${_VIPER_INVALID_DIR}/err_get_msg_outside_handler.il
+            -DEXPECT=err.get_\\*\ only\ allowed\ in\ handler\ block
+            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+
+    viper_add_ctest(il_verify_invalid_alloca_return_escape
+            ${CMAKE_COMMAND}
+            -DIL_VERIFY=${IL_VERIFY}
+            -DFILE=${_VIPER_INVALID_DIR}/alloca_return_escape.il
+            -DEXPECT=returning\ alloca-derived\ pointer
+            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+
+    viper_add_ctest(il_verify_invalid_shift_i32_result
+            ${CMAKE_COMMAND}
+            -DIL_VERIFY=${IL_VERIFY}
+            -DFILE=${_VIPER_INVALID_DIR}/shift_i32_result.il
+            -DEXPECT=result\ type\ mismatch
+            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+
     set(_VIPER_NEGATIVE_DIR ${CMAKE_SOURCE_DIR}/src/tests/il/negatives)
 
     viper_add_ctest(il_verify_negative_use_after_release

@@ -44,27 +44,20 @@ inline bool overflow_sub(long long a, long long b, long long *result) {
 }
 
 inline bool overflow_mul(long long a, long long b, long long *result) {
+    const auto ua = static_cast<unsigned long long>(a);
+    const auto ub = static_cast<unsigned long long>(b);
+    *result = static_cast<long long>(ua * ub);
+
     if (a == 0 || b == 0) {
-        *result = 0;
         return false;
     }
-    if (a == (std::numeric_limits<long long>::min)() && b == -1) {
-        *result = (std::numeric_limits<long long>::min)();
-        return true;
-    }
-    if (b == (std::numeric_limits<long long>::min)() && a == -1) {
-        *result = (std::numeric_limits<long long>::min)();
-        return true;
-    }
-    long long abs_a = a < 0 ? -a : a;
-    long long abs_b = b < 0 ? -b : b;
-    if (abs_a > (std::numeric_limits<long long>::max)() / abs_b) {
-        *result = static_cast<long long>(static_cast<unsigned long long>(a) *
-                                         static_cast<unsigned long long>(b));
-        return true;
-    }
-    *result = a * b;
-    return false;
+
+    const long long max = (std::numeric_limits<long long>::max)();
+    const long long min = (std::numeric_limits<long long>::min)();
+
+    if (a > 0)
+        return b > 0 ? a > max / b : b < min / a;
+    return b > 0 ? a < min / b : b < max / a;
 }
 
 } // namespace il::transform::detail

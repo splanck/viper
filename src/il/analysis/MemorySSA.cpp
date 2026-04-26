@@ -650,7 +650,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
             nextSuccessor:;
             }
 
-            if (allPathsKillOrExit && !visited.empty()) {
+            if (allPathsKillOrExit) {
                 // Look up the MemoryAccess id for this store.
                 auto bit = mssa.instrToAccess_.find(&B);
                 if (bit != mssa.instrToAccess_.end()) {

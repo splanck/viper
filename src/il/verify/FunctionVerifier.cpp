@@ -66,8 +66,9 @@ bool isResumeOpcode(Opcode op) {
 
 /// @brief Detect opcodes that read fields from an error value.
 ///
-/// @details Used to prevent `err.get_*` opcodes from appearing outside handler
-///          blocks where the `%tok` parameter is available.
+/// @details Used to prevent explicit-error-operand `err.get_*` opcodes from
+///          appearing outside handler blocks. Native EH lowering can leave the
+///          operandless form, which reads the platform's current exception.
 ///
 /// @param op Opcode under inspection.
 /// @return @c true when @p op accesses error metadata.
@@ -77,6 +78,7 @@ bool isErrAccessOpcode(Opcode op) {
         case Opcode::ErrGetCode:
         case Opcode::ErrGetIp:
         case Opcode::ErrGetLine:
+        case Opcode::ErrGetMsg:
             return true;
         default:
             return false;
@@ -604,9 +606,8 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     }
 
     // ===== PASS 4: Alloca escape verification =====
-    // Detect return instructions that return alloca-derived pointers.
-    // Returning a stack address is undefined behaviour because the frame is
-    // deallocated when the function returns.
+    // Detect obvious alloca-derived pointer escapes. Returning a stack address
+    // can leave dangling addresses after the function returns.
     {
         std::unordered_set<unsigned> stackDerived;
         for (const auto &blk : fn.blocks) {
@@ -653,15 +654,20 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         if (!stackDerived.empty()) {
             for (const auto &blk : fn.blocks) {
                 for (const auto &instr : blk.instructions) {
+                    auto failEscape = [&](const Value &op, std::string_view action)
+                        -> Expected<void> {
+                        if (op.kind != Value::Kind::Temp || !stackDerived.contains(op.id))
+                            return {};
+                        std::ostringstream msg;
+                        msg << action << " alloca-derived pointer %" << op.id;
+                        return Expected<void>{
+                            makeError(instr.loc, formatInstrDiag(fn, blk, instr, msg.str()))};
+                    };
+
                     if (instr.op == Opcode::Ret) {
-                        for (const auto &op : instr.operands) {
-                            if (op.kind == Value::Kind::Temp && stackDerived.contains(op.id)) {
-                                std::ostringstream msg;
-                                msg << "returning alloca-derived pointer %" << op.id;
-                                return Expected<void>{makeError(
-                                    instr.loc, formatInstrDiag(fn, blk, instr, msg.str()))};
-                            }
-                        }
+                        for (const auto &op : instr.operands)
+                            if (auto result = failEscape(op, "returning"); !result)
+                                return result;
                     }
 
                 }
@@ -748,7 +754,7 @@ Expected<void> FunctionVerifier::verifyBlock(
             }
         }
 
-        if (isErrAccessOpcode(instr.op)) {
+        if (isErrAccessOpcode(instr.op) && !instr.operands.empty()) {
             if (!handlerSignature) {
                 return Expected<void>{makeError(
                     instr.loc,

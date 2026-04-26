@@ -188,22 +188,7 @@ struct FoldResult {
 
 /// @brief Compare two IL values for equality.
 bool valuesEqual(const Value &lhs, const Value &rhs) {
-    if (lhs.kind != rhs.kind)
-        return false;
-    switch (lhs.kind) {
-        case Value::Kind::ConstInt:
-            return lhs.i64 == rhs.i64 && lhs.isBool == rhs.isBool;
-        case Value::Kind::ConstFloat:
-            return lhs.f64 == rhs.f64;
-        case Value::Kind::ConstStr:
-        case Value::Kind::GlobalAddr:
-            return lhs.str == rhs.str;
-        case Value::Kind::Temp:
-            return lhs.id == rhs.id;
-        case Value::Kind::NullPtr:
-            return true;
-    }
-    return false;
+    return valueEquals(lhs, rhs);
 }
 
 /// @brief Produce a human-readable description of an IL value for debug output.
@@ -318,6 +303,35 @@ std::optional<long long> checkedMul(long long lhs, long long rhs) {
     return result;
 }
 
+long long wrappingAdd(long long lhs, long long rhs) {
+    long long result{};
+    (void)__builtin_add_overflow(lhs, rhs, &result);
+    return result;
+}
+
+long long wrappingSub(long long lhs, long long rhs) {
+    long long result{};
+    (void)__builtin_sub_overflow(lhs, rhs, &result);
+    return result;
+}
+
+long long wrappingMul(long long lhs, long long rhs) {
+    long long result{};
+    (void)__builtin_mul_overflow(lhs, rhs, &result);
+    return result;
+}
+
+long long arithmeticShiftRight(long long value, unsigned shift) {
+    if (shift == 0)
+        return value;
+
+    const auto bits = static_cast<unsigned long long>(value);
+    auto shifted = bits >> shift;
+    if ((bits & (1ULL << 63U)) != 0)
+        shifted |= (~0ULL) << (64U - shift);
+    return static_cast<long long>(shifted);
+}
+
 //===----------------------------------------------------------------------===//
 // Section 2: Constant Folding by Opcode Family
 //===----------------------------------------------------------------------===//
@@ -379,11 +393,11 @@ static FoldResult foldIntegerArithmetic(Opcode op, const FoldContext &ctx) {
 
     switch (op) {
         case Opcode::Add:
-            return FoldResult::constant(Value::constInt(lhs + rhs));
+            return FoldResult::constant(Value::constInt(wrappingAdd(lhs, rhs)));
         case Opcode::Sub:
-            return FoldResult::constant(Value::constInt(lhs - rhs));
+            return FoldResult::constant(Value::constInt(wrappingSub(lhs, rhs)));
         case Opcode::Mul:
-            return FoldResult::constant(Value::constInt(lhs * rhs));
+            return FoldResult::constant(Value::constInt(wrappingMul(lhs, rhs)));
         case Opcode::And:
             return FoldResult::constant(Value::constInt(lhs & rhs));
         case Opcode::Or:
@@ -415,7 +429,8 @@ static FoldResult foldIntegerArithmetic(Opcode op, const FoldContext &ctx) {
         case Opcode::Shl:
             if (rhs < 0 || rhs >= 64)
                 return FoldResult::unknown();
-            return FoldResult::constant(Value::constInt(lhs << rhs));
+            return FoldResult::constant(Value::constInt(static_cast<long long>(
+                static_cast<unsigned long long>(lhs) << rhs)));
         case Opcode::LShr:
             if (rhs < 0 || rhs >= 64)
                 return FoldResult::unknown();
@@ -424,7 +439,8 @@ static FoldResult foldIntegerArithmetic(Opcode op, const FoldContext &ctx) {
         case Opcode::AShr:
             if (rhs < 0 || rhs >= 64)
                 return FoldResult::unknown();
-            return FoldResult::constant(Value::constInt(lhs >> rhs));
+            return FoldResult::constant(
+                Value::constInt(arithmeticShiftRight(lhs, static_cast<unsigned>(rhs))));
         default:
             return FoldResult::unknown();
     }

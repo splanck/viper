@@ -221,14 +221,10 @@ size_t valueHash(const Value &v) noexcept {
             h ^= static_cast<size_t>(v.i64) ^ (v.isBool ? kHashBoolFlag : 0);
             break;
         case Value::Kind::ConstFloat: {
-            // Use type-punning via union to get raw bit representation
-            union {
-                double d;
-                unsigned long long u;
-            } bits{};
-
-            bits.d = v.f64;
-            h ^= static_cast<size_t>(bits.u);
+            static_assert(sizeof(double) == sizeof(unsigned long long));
+            unsigned long long bits{};
+            std::memcpy(&bits, &v.f64, sizeof(double));
+            h ^= static_cast<size_t>(bits);
             break;
         }
         case Value::Kind::ConstStr:

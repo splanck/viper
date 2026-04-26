@@ -260,11 +260,23 @@ TEST(ConstFoldEdge, Shl_Normal) {
     ASSERT_TRUE(retFoldedToInt(module, 8));
 }
 
+TEST(ConstFoldEdge, Shl_NegativeOperandWraps) {
+    auto module = buildConstFoldTest(Opcode::Shl, Value::constInt(-1), Value::constInt(1));
+    il::transform::constFold(module);
+    ASSERT_TRUE(retFoldedToInt(module, -2));
+}
+
 TEST(ConstFoldEdge, LShr_Normal) {
     // lshr 16, 2 => 4
     auto module = buildConstFoldTest(Opcode::LShr, Value::constInt(16), Value::constInt(2));
     il::transform::constFold(module);
     ASSERT_TRUE(retFoldedToInt(module, 4));
+}
+
+TEST(ConstFoldEdge, AShr_NegativeOperandSignExtends) {
+    auto module = buildConstFoldTest(Opcode::AShr, Value::constInt(-8), Value::constInt(1));
+    il::transform::constFold(module);
+    ASSERT_TRUE(retFoldedToInt(module, -4));
 }
 
 // ---------------------------------------------------------------------------

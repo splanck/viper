@@ -32,6 +32,7 @@
 #include "il/runtime/signatures/Registry.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <optional>
 #include <queue>
 #include <string_view>
@@ -40,6 +41,19 @@
 #include <vector>
 
 namespace viper::analysis {
+
+namespace detail {
+
+inline bool checkedAdd(long long lhs, long long rhs, long long &out) {
+    if ((rhs > 0 && lhs > (std::numeric_limits<long long>::max)() - rhs) ||
+        (rhs < 0 && lhs < (std::numeric_limits<long long>::min)() - rhs)) {
+        return false;
+    }
+    out = lhs + rhs;
+    return true;
+}
+
+} // namespace detail
 
 /// @brief Describe the relationship between two pointer-like values.
 enum class AliasResult { NoAlias, MayAlias, MustAlias };
@@ -376,7 +390,11 @@ inline BasicAA::Location BasicAA::describe(const il::core::Value &value, unsigne
 
                 long long off = 0;
                 if (constOffset(def.operands[1], off) && base.hasOffset) {
-                    base.offset += off;
+                    long long adjusted = 0;
+                    if (detail::checkedAdd(base.offset, off, adjusted))
+                        base.offset = adjusted;
+                    else
+                        base.hasOffset = false;
                 } else {
                     base.hasOffset = false;
                 }
@@ -489,8 +507,11 @@ inline AliasResult BasicAA::alias(const il::core::Value &lhs,
                 return AliasResult::MustAlias;
 
             if (lhsSize && rhsSize) {
-                const long long lEnd = l.offset + static_cast<long long>(*lhsSize);
-                const long long rEnd = r.offset + static_cast<long long>(*rhsSize);
+                long long lEnd = 0;
+                long long rEnd = 0;
+                if (!detail::checkedAdd(l.offset, static_cast<long long>(*lhsSize), lEnd) ||
+                    !detail::checkedAdd(r.offset, static_cast<long long>(*rhsSize), rEnd))
+                    return AliasResult::MayAlias;
                 if (lEnd <= r.offset || rEnd <= l.offset)
                     return AliasResult::NoAlias;
             }

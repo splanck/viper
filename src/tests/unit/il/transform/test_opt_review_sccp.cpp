@@ -29,6 +29,7 @@
 #include "tests/TestHarness.hpp"
 
 #include <cmath>
+#include <limits>
 
 using namespace il::core;
 
@@ -77,6 +78,41 @@ bool hasFDivInstr(const BasicBlock &bb) {
 }
 
 } // namespace
+
+TEST(SCCP, PlainIntegerAddWrapsWithoutSignedOverflowUB) {
+    Module module;
+    Function fn;
+    fn.name = "wrap_add_test";
+    fn.retType = Type(Type::Kind::I64);
+
+    BasicBlock entry;
+    entry.label = "entry";
+
+    Instr add;
+    add.result = 0;
+    add.op = Opcode::Add;
+    add.type = Type(Type::Kind::I64);
+    add.operands.push_back(Value::constInt((std::numeric_limits<long long>::max)()));
+    add.operands.push_back(Value::constInt(1));
+    entry.instructions.push_back(std::move(add));
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(0));
+    entry.instructions.push_back(std::move(ret));
+    entry.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.valueNames.resize(1);
+    module.functions.push_back(std::move(fn));
+
+    il::transform::sccp(module);
+
+    const Value &retVal = module.functions.front().blocks.front().instructions.back().operands[0];
+    ASSERT_EQ(retVal.kind, Value::Kind::ConstInt);
+    EXPECT_EQ(retVal.i64, (std::numeric_limits<long long>::min)());
+}
 
 // FDiv by zero must NOT be folded — non-finite results are unsafe to propagate
 TEST(SCCP, FDivByZeroNotFolded) {

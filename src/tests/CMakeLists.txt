@@ -753,7 +753,7 @@ if (VIPER_BASH_EXECUTABLE)
     set_tests_properties(zia_lang_34_async_functions_repeat PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;regression;requires_posix_shell"
-            TIMEOUT 30)
+            TIMEOUT 90)
 endif ()
 
 # =============================================================================

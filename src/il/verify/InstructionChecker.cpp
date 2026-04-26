@@ -281,8 +281,8 @@ Expected<void> applyIntegerBinary(const VerifyCtx &ctx, const InstructionSpec &)
 /// @return Empty on success (warnings do not block verification).
 Expected<void> applyShift(const VerifyCtx &ctx, const InstructionSpec &spec) {
     const auto kind = ctx.instr.type.kind;
-    if (!detail::isSupportedIntegerWidth(kind))
-        return fail(ctx, "shift result must be i16, i32, or i64");
+    if (kind != Type::Kind::I64)
+        return fail(ctx, "shift result must be i64");
     ctx.types.recordResult(ctx.instr, resolveResultType(ctx, spec));
     return checkShift(ctx);
 }

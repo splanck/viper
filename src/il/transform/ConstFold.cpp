@@ -163,6 +163,17 @@ static std::optional<long long> checkedMul(long long a, long long b) {
     return result;
 }
 
+static long long arithmeticShiftRight(long long value, unsigned shift) {
+    if (shift == 0)
+        return value;
+
+    const auto bits = static_cast<unsigned long long>(value);
+    auto shifted = bits >> shift;
+    if ((bits & (1ULL << 63U)) != 0)
+        shifted |= (~0ULL) << (64U - shift);
+    return static_cast<long long>(shifted);
+}
+
 /// @brief Fold recognised math runtime calls into constants.
 /// @details Handles a curated set of runtime helpers (absolute value, rounding,
 ///          power, square root, trigonometry, etc.) when all operands are
@@ -528,7 +539,8 @@ void constFold(Module &m) {
                             // Shift operations
                             case Opcode::Shl:
                                 if (rhs >= 0 && rhs < 64)
-                                    res = lhs << rhs;
+                                    res = static_cast<long long>(
+                                        static_cast<unsigned long long>(lhs) << rhs);
                                 else
                                     folded = false;
                                 break;
@@ -541,7 +553,7 @@ void constFold(Module &m) {
                                 break;
                             case Opcode::AShr:
                                 if (rhs >= 0 && rhs < 64)
-                                    res = lhs >> rhs;
+                                    res = arithmeticShiftRight(lhs, static_cast<unsigned>(rhs));
                                 else
                                     folded = false;
                                 break;

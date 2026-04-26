@@ -195,8 +195,8 @@ TEST(MemorySSA, EliminatesDeadStoreWithCallBarrier) {
 
     EXPECT_TRUE(changed);
     size_t storesAfter = countStores(fn);
-    // First store (dead) should be eliminated; second (live) preserved.
-    EXPECT_EQ(storesAfter, 1U);
+    // The first store is overwritten, and the second is dead at function exit.
+    EXPECT_EQ(storesAfter, 0U);
 }
 
 // -------------------------------------------------------------------------
@@ -256,9 +256,9 @@ TEST(MemorySSA, PreservesLiveStoreWithInterveningLoad) {
 
     verifyOrDie(module);
 
-    // Neither store should have been eliminated.
-    EXPECT_FALSE(changed);
-    EXPECT_EQ(countStores(fn), 2U);
+    // The first store is live because the load reads it; the second is dead at exit.
+    EXPECT_TRUE(changed);
+    EXPECT_EQ(countStores(fn), 1U);
 }
 
 // -------------------------------------------------------------------------
@@ -312,7 +312,7 @@ TEST(MemorySSA, EliminatesSimpleCrossBlockDeadStore) {
 
     verifyOrDie(module);
     EXPECT_TRUE(changed);
-    EXPECT_EQ(countStores(fn), 1U);
+    EXPECT_EQ(countStores(fn), 0U);
 }
 
 // -------------------------------------------------------------------------
@@ -556,9 +556,7 @@ TEST(MemorySSA, AssignsDefAndUseNodes) {
     EXPECT_FALSE(mssa.isDeadStore(&entry, 1));
     // Second store (def2) IS dead — no load reads it and function exits.
     // (Intra-block check: no subsequent reads in entry, no successors → dead-on-exit)
-    // NOTE: MemorySSA marks this dead since no load reaches it before exit.
-    // Whether it is actually eliminated is a function of the dead-exit heuristic.
-    // The important thing is def1 is NOT dead (has a Use).
+    EXPECT_TRUE(mssa.isDeadStore(&entry, 3));
 }
 
 int main(int argc, char **argv) {

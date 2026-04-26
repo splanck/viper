@@ -52,6 +52,11 @@ else()
 endif()
 
 # Emit the generated version header
+file(MAKE_DIRECTORY
+  "${CMAKE_BINARY_DIR}/generated/viper"
+  "${CMAKE_BINARY_DIR}/generated/viper/platform"
+  "${CMAKE_BINARY_DIR}/generated/viper/runtime"
+)
 configure_file(
   "${CMAKE_SOURCE_DIR}/include/viper/version.hpp.in"
   "${CMAKE_BINARY_DIR}/generated/viper/version.hpp"

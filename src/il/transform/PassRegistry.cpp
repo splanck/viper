@@ -423,6 +423,8 @@ void registerMem2RegPass(PassRegistry &registry) {
 void registerDSEPass(PassRegistry &registry) {
     registry.registerFunctionPass("dse", [](core::Function &fn, AnalysisManager &am) {
         bool changed = runDSE(fn, am);
+        if (changed)
+            am.invalidateAfterFunctionPass(PreservedAnalyses::none(), fn);
         // MemorySSA-based cross-block DSE: catches stores that
         // runDSE's conservative call-barrier logic would miss for
         // non-escaping allocas.
