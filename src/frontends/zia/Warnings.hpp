@@ -86,6 +86,9 @@ struct WarningPolicy {
     /// @brief Treat warnings as errors (corresponds to `-Werror`).
     bool warningsAsErrors{false};
 
+    /// @brief Treat safety-critical warnings as errors.
+    bool strictSafetyWarnings{false};
+
     /// @brief Set of explicitly disabled warning codes (from `-Wno-XXX`).
     std::unordered_set<WarningCode> disabled;
 

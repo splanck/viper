@@ -20,6 +20,10 @@
 #include <string>
 #include <vector>
 
+namespace il::support {
+class SourceManager;
+}
+
 namespace il::tools::common {
 
 /// @brief Configuration for bytecode VM execution.
@@ -32,6 +36,9 @@ struct VMExecutorConfig {
 
     /// @brief Whether to flush stdout after execution.
     bool flushStdout{false};
+
+    /// @brief Optional source manager for bytecode compile diagnostics and trap locations.
+    const il::support::SourceManager *sourceManager{nullptr};
 };
 
 /// @brief Result of bytecode VM execution.
@@ -44,6 +51,9 @@ struct VMExecutorResult {
 
     /// @brief Trap message if trapped is true.
     std::string trapMessage;
+
+    /// @brief True when bytecode compilation failed before execution.
+    bool compileFailed{false};
 };
 
 /// @brief Execute an IL module using the bytecode VM.

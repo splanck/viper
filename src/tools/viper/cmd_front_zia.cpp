@@ -132,6 +132,7 @@ int runFrontZia(const FrontZiaConfig &config,
     // Warning policy from CLI flags
     compilerOpts.warningPolicy.enableAll = config.shared.wall;
     compilerOpts.warningPolicy.warningsAsErrors = config.shared.werror;
+    compilerOpts.warningPolicy.strictSafetyWarnings = config.shared.strictDiagnostics;
     for (const auto &w : config.shared.disabledWarnings) {
         if (auto code = parseWarningCode(w))
             compilerOpts.warningPolicy.disabled.insert(*code);
@@ -139,8 +140,13 @@ int runFrontZia(const FrontZiaConfig &config,
 
     auto result = compile(compilerInput, compilerOpts, sm);
 
+    if (!result.succeeded() ||
+        (config.shared.showWarnings && result.diagnostics.warningCount() != 0)) {
+        ilc::printDiagnosticEngine(
+            result.diagnostics, std::cerr, &sm, config.shared.diagnosticFormat);
+    }
+
     if (!result.succeeded()) {
-        result.diagnostics.printAll(std::cerr, &sm);
         return 1;
     }
 
@@ -153,7 +159,8 @@ int runFrontZia(const FrontZiaConfig &config,
 
     auto verification = il::verify::Verifier::verify(module);
     if (!verification) {
-        il::support::printDiag(verification.error(), std::cerr, &sm);
+        ilc::printDiagnostic(
+            verification.error(), std::cerr, &sm, config.shared.diagnosticFormat);
         return 1;
     }
 
@@ -197,6 +204,7 @@ int runFrontZia(const FrontZiaConfig &config,
     vmConfig.programArgs = config.programArgs;
     vmConfig.outputTrapMessage = true;
     vmConfig.flushStdout = true;
+    vmConfig.sourceManager = &sm;
 
     auto vmResult = il::tools::common::executeBytecodeVM(module, vmConfig);
     return vmResult.exitCode;
@@ -226,7 +234,7 @@ int cmdFrontZia(int argc, char **argv) {
     auto source = il::tools::common::loadSourceBuffer(config.sourcePath, sm);
     if (!source) {
         const auto &diag = source.error();
-        il::support::printDiag(diag, std::cerr, &sm);
+        ilc::printDiagnostic(diag, std::cerr, &sm, config.shared.diagnosticFormat);
         return 1;
     }
 

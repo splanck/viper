@@ -102,7 +102,8 @@ std::optional<std::uint32_t> loadBasicSource(const char *path,
 
     std::uint32_t fileId = sm.addFile(path);
     if (fileId == 0) {
-        std::cerr << "cannot register " << path << "\n";
+        std::cerr << "error[V-SRC-FILE-ID]: "
+                  << il::support::kSourceManagerFileIdOverflowMessage << "\n";
         return std::nullopt;
     }
 

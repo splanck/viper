@@ -77,18 +77,17 @@ int main() {
     const std::string errText = errStream.str();
     const std::string cerrText = capturedCerr.str();
     const std::string overflowMessage = "source manager exhausted file identifier space";
-    const std::size_t firstPos = cerrText.find(overflowMessage);
-    const bool reportedOverflow =
-        firstPos != std::string::npos || errText.find(overflowMessage) != std::string::npos;
+    const std::size_t firstPos = errText.find(overflowMessage);
+    const bool reportedOverflow = firstPos != std::string::npos;
     const bool printedTwice =
         firstPos != std::string::npos &&
-        cerrText.find(overflowMessage, firstPos + overflowMessage.size()) != std::string::npos;
+        errText.find(overflowMessage, firstPos + overflowMessage.size()) != std::string::npos;
 
     assert(rc != 0);
     assert(reportedOverflow);
     assert(!printedTwice);
-    assert(errText.empty());
-    assert(errText.find(overflowMessage) == std::string::npos);
+    assert(errText.find("error[V-SRC-FILE-ID]") != std::string::npos);
+    assert(cerrText.empty());
     assert(outStream.str().find("OK") == std::string::npos);
 
     return 0;

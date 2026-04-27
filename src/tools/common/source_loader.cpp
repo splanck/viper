@@ -60,8 +60,10 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
 
     const uint32_t fileId = sm.addFile(path);
     if (fileId == 0) {
-        return il::support::Expected<LoadedSource>(il::support::makeError(
-            {}, std::string{il::support::kSourceManagerFileIdOverflowMessage}));
+        return il::support::Expected<LoadedSource>(il::support::makeErrorWithCode(
+            {},
+            "V-SRC-FILE-ID",
+            std::string{il::support::kSourceManagerFileIdOverflowMessage}));
     }
 
     LoadedSource source{};

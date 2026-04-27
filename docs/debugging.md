@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-27
 ---
 
 # Viper Debugging Guide
@@ -29,6 +29,9 @@ This guide covers all debugging features available in the Viper platform, includ
 | Dump IL after lowering | `--dump-il` |
 | Dump IL after optimization | `--dump-il-opt` |
 | Dump IL per-pass | `--dump-il-passes` |
+| Keep safety warnings as warnings | `--no-strict-diagnostics` |
+| Suppress successful warning output | `--quiet-warnings` |
+| Emit diagnostics as JSON | `--diagnostic-format=json` |
 
 ---
 
@@ -248,23 +251,41 @@ Severity levels: `note`, `warning`, `error`.
 Diagnostic codes are prefixed by subsystem:
 - `V3xxx` — Zia frontend (semantic analysis)
 - `B1xxx` — BASIC frontend
-- `IL0xx` — IL verification
+- `V-IL-*` — IL verification
+- `V-BC-*` — bytecode compiler
+- `V-SRC-*` — shared source loading/registration
+
+Use `--diagnostic-format=json` on `viper` subcommands for machine-readable output. The JSON form writes a compact object with a `diagnostics` array and includes severity, code, message, location, range, and notes.
 
 ### Source Snippets
 
-When a source manager is available and the source file can be loaded, diagnostics include the offending source line with a caret (`^`) pointing to the error column. Tab characters in the source are preserved for correct alignment.
+When a source manager is available, diagnostics include the offending source line with a caret (`^`) pointing to the error column. Frontends cache in-memory source text, so diagnostics still render snippets when the source came from the CLI, REPL, import resolver, or another non-file buffer. Same-line ranges are underlined with `^~~~`, and related locations can appear as `note:` entries below the primary error.
+
+### Compile-Time Gates
+
+Several checks now run before a binary or VM run can start:
+
+- Zia and BASIC verify IL immediately after lowering and again after optimization.
+- BASIC assignment and operator type mismatches, such as assigning a string-valued expression to an integer variable or using `MOD` with a float operand, are reported during semantic analysis with `B2001` before IL is emitted.
+- Optimization pipeline failures are surfaced as diagnostics instead of continuing with potentially invalid IL.
+- Bytecode compilation uses checked diagnostics for unsupported or malformed IL, so the VM reports compile failure instead of crashing during execution.
+- Native compilation preflights IL parsing and verification before dispatching to the x64 or ARM64 backend.
+
+Use `--strict-diagnostics` with `viper run` or `viper front zia` to promote safety-critical Zia warnings to errors before execution or emission. This currently includes missing returns, division by zero, uninitialized variables, optional access without a check, and non-exhaustive matches. By default those findings are warnings so existing programs keep running while still surfacing the issue.
+
+Warnings are printed even when compilation succeeds. Use `--quiet-warnings` or `--no-warnings` to suppress successful warning output.
 
 ### Trap Format
 
 Runtime traps (VM errors) use this format:
 
 ```text
-Trap @function:block#ip line N: Kind (code=C)
+Trap @function:block#ip (path:line): Kind (code=C): message
 ```
 
 For example:
 ```text
-Trap @processRow:L3#2 line 145: Bounds (code=0)
+Trap @processRow:L3#2 (src/main.zia:145): Bounds (code=9): index out of bounds
 ```
 
 ### Trap Kinds
@@ -542,7 +563,7 @@ The IL verifier (`Verifier::verify()`) checks:
 - External function declaration correctness
 - Global variable definitions
 
-Verification runs automatically during compilation. Invalid IL is reported as diagnostics.
+Verification runs automatically during compilation. Invalid IL is reported as diagnostics. `Verifier::verify()` returns a primary diagnostic and attaches additional verifier failures as notes; `Verifier::verifyAll()` is available for tooling that needs the full diagnostic list. Independent function-body failures are collected in one run instead of stopping after the first broken function.
 
 ---
 

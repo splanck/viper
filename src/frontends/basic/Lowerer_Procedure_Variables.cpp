@@ -29,6 +29,7 @@
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
+#include "il/runtime/RuntimeClassNames.hpp"
 
 using namespace il::core;
 
@@ -259,8 +260,22 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const {
     auto isGenericObject = [](std::string_view cls) {
         return string_utils::iequals(cls, "object");
     };
+    auto isRuntimeStringObject = [](std::string_view cls) {
+        return string_utils::iequals(cls, il::runtime::RTCLASS_STRING) ||
+               string_utils::iequals(cls, "Viper.System.String");
+    };
 
     const auto *sym = findSymbol(name);
+
+    if (sym && sym->isObject && !sym->objectClass.empty() &&
+        isRuntimeStringObject(sym->objectClass)) {
+        info.type = Type(Type::Kind::Str);
+        info.isArray = false;
+        info.isBoolean = false;
+        info.isObject = false;
+        info.objectClass = sym->objectClass;
+        return info;
+    }
 
     if (sym && sym->isObject && !sym->objectClass.empty() && !isGenericObject(sym->objectClass)) {
         info.type = Type(Type::Kind::Ptr);
@@ -278,6 +293,14 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const {
         auto modObjIt = moduleObjectClass_.find(name);
         if (modObjIt != moduleObjectClass_.end() && !modObjIt->second.empty() &&
             !isGenericObject(modObjIt->second)) {
+            if (isRuntimeStringObject(modObjIt->second)) {
+                info.type = Type(Type::Kind::Str);
+                info.isArray = false;
+                info.isBoolean = false;
+                info.isObject = false;
+                info.objectClass = modObjIt->second;
+                return info;
+            }
             info.type = Type(Type::Kind::Ptr);
             info.isArray = false;
             info.isBoolean = false;
@@ -291,6 +314,14 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const {
         // BUG-BAS-002 fix: Only treat as object if it has a valid object class.
         // This prevents module-level object variables from polluting constructor parameters.
         if (sym->isObject && !sym->objectClass.empty()) {
+            if (isRuntimeStringObject(sym->objectClass)) {
+                info.type = Type(Type::Kind::Str);
+                info.isArray = false;
+                info.isBoolean = false;
+                info.isObject = false;
+                info.objectClass = sym->objectClass;
+                return info;
+            }
             info.type = Type(Type::Kind::Ptr);
             info.isArray = false;
             info.isBoolean = false;

@@ -31,7 +31,11 @@ inline void printSharedOptions(std::ostream &os) {
        << "  --dump-trap                    Show detailed trap diagnostics\n"
        << "  -Wall                          Enable all warnings\n"
        << "  -Werror                        Treat warnings as errors\n"
-       << "  -Wno-XXXX                     Disable warning (code or name)\n"
+       << "  --strict-diagnostics           Error on safety-critical warnings\n"
+       << "  --no-strict-diagnostics        Leave safety-critical warnings non-fatal\n"
+       << "  --quiet-warnings               Suppress warning output on successful compiles\n"
+       << "  --diagnostic-format text|json   Select diagnostic output format\n"
+       << "  -Wno-XXXX                      Disable warning (code or name)\n"
        << "  -h, --help                     Show this help message\n"
        << "  --version                      Show version information\n";
 }

@@ -17,14 +17,20 @@
 
 #include "viper/vm/debug/Debug.hpp"
 #include <cstdint>
+#include <iosfwd>
 #include <string>
 #include <vector>
 
 namespace il::support {
+struct Diagnostic;
+class DiagnosticEngine;
 class SourceManager;
 }
 
 namespace ilc {
+
+/// @brief User-facing diagnostic output encoding.
+enum class DiagnosticFormat { Text, Json };
 
 /// @brief Shared configuration for viper subcommands that execute IL.
 struct SharedCliOptions {
@@ -67,6 +73,15 @@ struct SharedCliOptions {
     /// @brief Treat warnings as errors (corresponds to `-Werror`).
     bool werror = false;
 
+    /// @brief Promote warnings that can indicate runtime traps or unsafe binaries.
+    bool strictDiagnostics = false;
+
+    /// @brief Print warnings even when compilation otherwise succeeds.
+    bool showWarnings = true;
+
+    /// @brief Requested diagnostic output format.
+    DiagnosticFormat diagnosticFormat = DiagnosticFormat::Text;
+
     /// @brief Warning codes/names disabled via `-Wno-XXX`.
     std::vector<std::string> disabledWarnings;
 
@@ -92,6 +107,24 @@ SharedOptionParseResult parseSharedOption(int &index,
                                           int argc,
                                           char **argv,
                                           SharedCliOptions &opts);
+
+/// @brief Print one diagnostic according to the requested format.
+void printDiagnostic(const il::support::Diagnostic &diag,
+                     std::ostream &os,
+                     const il::support::SourceManager *sm,
+                     DiagnosticFormat format);
+
+/// @brief Print a list of diagnostics according to the requested format.
+void printDiagnostics(const std::vector<il::support::Diagnostic> &diagnostics,
+                      std::ostream &os,
+                      const il::support::SourceManager *sm,
+                      DiagnosticFormat format);
+
+/// @brief Print diagnostics collected by an engine according to the requested format.
+void printDiagnosticEngine(const il::support::DiagnosticEngine &engine,
+                           std::ostream &os,
+                           const il::support::SourceManager *sm,
+                           DiagnosticFormat format);
 
 } // namespace ilc
 

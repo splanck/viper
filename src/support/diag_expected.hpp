@@ -23,6 +23,7 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace il::support {
 using Diag = Diagnostic;
@@ -144,4 +145,18 @@ Diag makeErrorWithCode(SourceLoc loc, std::string code, std::string msg);
 /// @param sm Optional source manager to resolve file paths.
 /// @note Follows DiagnosticEngine::printAll formatting for consistency.
 void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm = nullptr);
+
+/// @brief Print diagnostics as a compact JSON object.
+/// @param diagnostics Diagnostics to encode under the "diagnostics" key.
+/// @param os Output stream receiving JSON.
+/// @param sm Optional source manager used to resolve file paths.
+void printDiagnosticsJson(const std::vector<Diag> &diagnostics,
+                          std::ostream &os,
+                          const SourceManager *sm = nullptr);
+
+/// @brief Print one diagnostic as a JSON diagnostics object.
+/// @param diag Diagnostic to encode.
+/// @param os Output stream receiving JSON.
+/// @param sm Optional source manager used to resolve file paths.
+void printDiagJson(const Diag &diag, std::ostream &os, const SourceManager *sm = nullptr);
 } // namespace il::support

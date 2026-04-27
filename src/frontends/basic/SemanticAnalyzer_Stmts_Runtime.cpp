@@ -231,6 +231,9 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l) {
             std::string msg = "narrowing conversion from FLOAT to INT in assignment";
             de.emit(il::support::Severity::Warning, "B2002", l.loc, 1, std::move(msg));
         }
+    } else if (varTy == Type::Int && (exprTy == Type::String || exprTy == Type::Object)) {
+        std::string msg = "operand type mismatch";
+        de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
     } else if (varTy == Type::String && exprTy != Type::Unknown && exprTy != Type::String) {
         std::string msg = "operand type mismatch";
         de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));

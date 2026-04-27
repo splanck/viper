@@ -35,6 +35,7 @@
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/passes/CollectProcs.hpp"
+#include "il/verify/Verifier.hpp"
 #include "viper/il/IO.hpp"
 #include <iostream>
 
@@ -55,6 +56,16 @@ void dumpTokenStream(std::string_view source, uint32_t fileId) {
             break;
     }
     std::cerr << "=== End Token Stream ===\n";
+}
+
+/// @brief Forward an IL verifier failure through the BASIC diagnostic emitter.
+void emitVerifierFailure(BasicCompilerResult &result, const il::support::Diag &diag) {
+    const std::string code = diag.code.empty() ? "B9001" : diag.code;
+    result.emitter->emit(diag.severity,
+                         code,
+                         diag.loc,
+                         1,
+                         "invalid IL after BASIC lowering: " + diag.message);
 }
 } // namespace
 
@@ -119,6 +130,7 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     }
 
     result.emitter->addSource(fileId, std::string{input.source});
+    sm.setSource(fileId, std::string{input.source});
 
     // Dump token stream before parsing if requested.
     if (options.dumpTokens) {
@@ -166,6 +178,14 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     lower.setDiagnosticEmitter(result.emitter.get());
     lower.setSemanticAnalyzer(&sema);
     result.module = lower.lower(*program);
+    if (!result.succeeded()) {
+        return result;
+    }
+
+    if (auto verified = il::verify::Verifier::verify(result.module); !verified.hasValue()) {
+        emitVerifierFailure(result, verified.error());
+        return result;
+    }
 
     // Dump IL after lowering, before optimization.
     if (options.dumpIL) {

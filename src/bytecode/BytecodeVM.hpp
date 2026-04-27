@@ -334,6 +334,7 @@ class BytecodeVM {
     VMState state_;            ///< Current VM execution state.
     TrapKind trapKind_;        ///< Kind of the most recent trap.
     int32_t currentErrorCode_; ///< Error code for the current exception handler.
+    bool pendingTrapErrorCode_ = false; ///< True after dispatchTrap sets a code for trap().
     std::string trapMessage_;  ///< Human-readable message for the most recent trap.
 
     /// @brief Snapshot of the most recent resumable trap state.
@@ -550,6 +551,22 @@ class BytecodeVM {
     /// @param kind    The trap classification.
     /// @param message A human-readable description of the error.
     void trap(TrapKind kind, const char *message);
+
+    /// @brief Format the current execution location and trap payload for users.
+    [[nodiscard]] std::string formatTrapMessage(TrapKind kind,
+                                                int32_t errorCode,
+                                                const char *message) const;
+
+    /// @brief Return the instruction PC responsible for the current trap.
+    [[nodiscard]] uint32_t currentFaultPc() const;
+
+    /// @brief Resolve the basic block label associated with a function PC.
+    [[nodiscard]] std::string currentBlockLabelForPc(const BytecodeFunction *func,
+                                                     uint32_t pc) const;
+
+    /// @brief Resolve the source file path associated with a function PC.
+    [[nodiscard]] std::string currentSourcePathForPc(const BytecodeFunction *func,
+                                                     uint32_t pc) const;
 
     /// @brief Check for signed addition overflow.
     /// @param a      Left operand.

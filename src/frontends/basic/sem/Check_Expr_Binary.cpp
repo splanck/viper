@@ -191,11 +191,12 @@ void validateDivisionOperands(sem::ExprCheckContext &context,
         sem::emitDivideByZero(context.diagnostics(), expr);
 }
 
-/// @brief Validate operands for integer-only arithmetic (IDIV/MOD).
+/// @brief Validate operands for integer-result arithmetic (IDIV/MOD).
 ///
-/// Confirms both operands are integers and reports divide-by-zero when the RHS
-/// literal is zero.  Unknown operands trigger diagnostics via the helper so the
-/// analyzer records precise error locations.
+/// Confirms both operands are numeric and reports divide-by-zero when the RHS
+/// literal is zero. Floating-point operands are accepted here because lowering
+/// converts them with a checked round-to-even cast before emitting the integer
+/// operation.
 ///
 /// @param context Expression checking context providing diagnostics.
 /// @param expr Binary expression being validated.
@@ -207,7 +208,7 @@ void validateIntegerOperands(sem::ExprCheckContext &context,
                              Type lhs,
                              Type rhs,
                              std::string_view diagId) {
-    if (!isIntegerType(lhs) || !isIntegerType(rhs))
+    if (!isNumericType(lhs) || !isNumericType(rhs))
         sem::emitOperandTypeMismatch(context.diagnostics(), expr, diagId);
     if (rhsIsLiteralZero(expr))
         sem::emitDivideByZero(context.diagnostics(), expr);
@@ -428,24 +429,6 @@ SemanticAnalyzer::Type analyzeBinaryExpr(SemanticAnalyzer &analyzer, const Binar
                 if (expr.rhs && rhs != Type::Float && rhs != Type::Unknown)
                     context.markImplicitConversion(*expr.rhs, target);
             }
-        }
-    }
-
-    // BUG-BASIC-002 fix: Implicit INT() conversion for MOD and IDiv operators.
-    // These operators require integer operands, so we truncate floats to integers.
-    if (expr.op == BinaryExpr::Op::Mod || expr.op == BinaryExpr::Op::IDiv) {
-        if (semantic_analyzer_detail::isNumericType(lhs) &&
-            semantic_analyzer_detail::isNumericType(rhs)) {
-            // Convert Float operands to Int via implicit truncation
-            if (expr.lhs && lhs == Type::Float)
-                context.markImplicitConversion(*expr.lhs, Type::Int);
-            if (expr.rhs && rhs == Type::Float)
-                context.markImplicitConversion(*expr.rhs, Type::Int);
-            // Update the types so the validator sees integers
-            if (lhs == Type::Float)
-                lhs = Type::Int;
-            if (rhs == Type::Float)
-                rhs = Type::Int;
         }
     }
 

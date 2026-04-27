@@ -20,7 +20,9 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
+#include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/lower/MemberArrayResolver.hpp"
+#include "il/runtime/RuntimeClassNames.hpp"
 
 #include <cassert>
 
@@ -48,6 +50,12 @@ void RuntimeStatementLowerer::assignScalarSlot(const Lowerer::SlotType &slotInfo
                                                il::support::SourceLoc loc) {
     LocationScope location(lowerer_, loc);
     il::core::Type targetTy = slotInfo.type;
+    const bool isRuntimeStringObject =
+        slotInfo.isObject &&
+        (string_utils::iequals(slotInfo.objectClass, il::runtime::RTCLASS_STRING) ||
+         string_utils::iequals(slotInfo.objectClass, "Viper.System.String"));
+    if (isRuntimeStringObject)
+        targetTy = il::core::Type(il::core::Type::Kind::Str);
     bool isStr = targetTy.kind == il::core::Type::Kind::Str;
     bool isF64 = targetTy.kind == il::core::Type::Kind::F64;
     bool isBool = slotInfo.isBoolean;

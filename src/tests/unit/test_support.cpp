@@ -105,6 +105,27 @@ int main() {
     assert(partialText.find("test:2: error: partial coordinates") != std::string::npos);
     assert(partialText.find("test:2:0") == std::string::npos);
 
+    const uint32_t memoryFile = sm.addFile("<memory>.zia");
+    sm.setSource(memoryFile, "module Test;\nfunc start() { badCall(); }\n");
+    il::support::Diag rangedDiag{
+        il::support::Severity::Error,
+        "bad call",
+        il::support::SourceLoc{memoryFile, 2, 16},
+        "T001",
+    };
+    rangedDiag.range = il::support::SourceRange{
+        il::support::SourceLoc{memoryFile, 2, 16},
+        il::support::SourceLoc{memoryFile, 2, 23},
+    };
+    rangedDiag.notes.push_back({il::support::SourceLoc{memoryFile, 1, 8}, "module declared here"});
+    std::ostringstream rangedStream;
+    il::support::printDiag(rangedDiag, rangedStream, &sm);
+    const std::string rangedText = rangedStream.str();
+    assert(rangedText.find("<memory>.zia:2:16: error[T001]: bad call") != std::string::npos);
+    assert(rangedText.find("2 | func start() { badCall(); }") != std::string::npos);
+    assert(rangedText.find("^~~~~~~") != std::string::npos);
+    assert(rangedText.find("<memory>.zia:1:8: note: module declared here") != std::string::npos);
+
     // Captured string views must remain valid after subsequent insertions.
     il::support::SourceManager viewSm;
     const uint32_t first_id = viewSm.addFile("first");
@@ -278,9 +299,7 @@ int main() {
         std::cerr.rdbuf(old);
         assert(overflowId == 0);
         auto diagText = captured.str();
-        assert(diagText.find("error:") != std::string::npos);
-        assert(diagText.find("source manager exhausted file identifier space") !=
-               std::string::npos);
+        assert(diagText.empty());
     }
 
     return 0;

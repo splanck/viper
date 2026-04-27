@@ -25,6 +25,7 @@
 #include "cli.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
+#include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
 #include "viper/vm/VM.hpp"
@@ -345,6 +346,13 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
 
     const uint32_t fileId = sm.addFile(config.ilFile);
     if (fileId == 0) {
+        ilc::printDiagnostic(
+            il::support::makeErrorWithCode({},
+                                           "V-SRC-FILE-ID",
+                                           std::string{il::support::kSourceManagerFileIdOverflowMessage}),
+            std::cerr,
+            &sm,
+            config.sharedOpts.diagnosticFormat);
         return 1;
     }
 
@@ -385,7 +393,13 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
     if (config.useBytecode) {
         // Compile IL to bytecode
         viper::bytecode::BytecodeCompiler compiler;
-        viper::bytecode::BytecodeModule bcModule = compiler.compile(m);
+        auto compiled = compiler.compileChecked(m, &sm);
+        if (!compiled) {
+            ilc::printDiagnostic(
+                compiled.error(), std::cerr, &sm, config.sharedOpts.diagnosticFormat);
+            return 1;
+        }
+        viper::bytecode::BytecodeModule bcModule = std::move(compiled.value());
 
         // Create and configure VM
         viper::bytecode::BytecodeVM vm;

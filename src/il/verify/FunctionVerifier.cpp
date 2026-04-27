@@ -280,9 +280,9 @@ FunctionVerifier::FunctionVerifier(const ExternMap &externs)
 /// @brief Verify every function in a module for structural correctness.
 ///
 /// @details Builds a name-to-function map to detect duplicates before invoking
-///          @ref verifyFunction on each function.  Verification stops at the
-///          first failure so the most relevant diagnostic can be reported to
-///          users immediately.
+///          @ref verifyFunction on each function. Function-body verification
+///          keeps scanning independent functions so tooling can report several
+///          actionable failures from one verifier run.
 ///
 /// @param module Module containing functions to verify.
 /// @param sink Diagnostic sink receiving instruction-level messages.
@@ -309,9 +309,20 @@ Expected<void> FunctionVerifier::run(const Module &module, DiagSink &sink) {
                 makeError({}, "function @" + fn.name + " collides with global @" + fn.name)};
     }
 
-    for (const auto &fn : module.functions)
-        if (auto result = verifyFunction(fn, sink); !result)
-            return result;
+    std::optional<Diag> firstFailure;
+    for (const auto &fn : module.functions) {
+        auto result = verifyFunction(fn, sink);
+        if (result)
+            continue;
+
+        Diag diag = result.error();
+        if (!firstFailure)
+            firstFailure = diag;
+        sink.report(std::move(diag));
+    }
+
+    if (firstFailure)
+        return Expected<void>{std::move(*firstFailure)};
 
     return {};
 }

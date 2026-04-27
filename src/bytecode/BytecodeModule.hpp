@@ -115,8 +115,11 @@ struct BytecodeFunction {
 
     // Debug info (optional)
     std::vector<LocalVarInfo> localVars; ///< Local variable debug information.
-    uint32_t sourceFileIdx = 0;          ///< Index into the module's source file list.
-    std::vector<uint32_t> lineTable;     ///< PC-to-source-line mapping (indexed by PC).
+    uint32_t sourceFileIdx = 0;      ///< Default index into the module's source file list.
+    std::vector<uint32_t> lineTable; ///< PC-to-source-line mapping (indexed by PC).
+    std::vector<uint32_t>
+        sourceFileTable; ///< PC-to-source-file mapping (1-based index, 0 when unknown).
+    std::vector<std::string> blockLabelTable; ///< PC-to-basic-block label mapping.
 };
 
 /// @brief Reference to a native/runtime function callable from bytecode.

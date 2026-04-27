@@ -37,6 +37,9 @@
 
 #include "support/diag_expected.hpp"
 
+#include <cstddef>
+#include <vector>
+
 namespace il::core {
 struct Module;
 }
@@ -50,6 +53,13 @@ class Verifier {
     /// @param m Module to verify.
     /// @return Expected success or diagnostic on failure.
     [[nodiscard]] static il::support::Expected<void> verify(const il::core::Module &m);
+
+    /// @brief Collect verifier diagnostics from each verifier stage.
+    /// @param m Module to verify.
+    /// @param maxDiagnostics Maximum diagnostics to return.
+    /// @return Empty vector when valid; otherwise one or more diagnostics.
+    [[nodiscard]] static std::vector<il::support::Diag> verifyAll(const il::core::Module &m,
+                                                                  size_t maxDiagnostics = 50);
 };
 
 } // namespace il::verify

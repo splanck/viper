@@ -48,9 +48,8 @@ int main() {
     assert(buffer == "sentinel");
 
     const std::string diagnostics = captured.str();
-    assert(diagnostics.find("error:") != std::string::npos);
+    assert(diagnostics.find("error[V-SRC-FILE-ID]") != std::string::npos);
     assert(diagnostics.find("source manager exhausted file identifier space") != std::string::npos);
-    assert(diagnostics.find("cannot register") != std::string::npos);
 
     return 0;
 }

@@ -28,7 +28,8 @@
 #include "il/verify/GlobalVerifier.hpp"
 #include "support/diag_expected.hpp"
 
-#include <sstream>
+#include <algorithm>
+#include <string>
 #include <utility>
 
 using namespace il::core;
@@ -38,29 +39,17 @@ namespace {
 using il::support::Diag;
 using il::support::Expected;
 
-/// @brief Combine a failing verification result with accumulated warnings.
-///
-/// @details When verification fails, diagnostics may already have been emitted
-/// as warnings.  This helper prints each stored warning into a single message,
-/// appends the original error diagnostic, and returns a new @c Expected<void>
-/// that carries the aggregated text so callers can surface a consolidated
-/// report.
-///
-/// @param failure Verification result that already represents an error.
-/// @param sink Diagnostic sink containing any emitted warnings.
-/// @return Updated failure result with warnings appended to the error message.
-Expected<void> appendWarnings(Expected<void> failure, const CollectingDiagSink &sink) {
-    if (sink.diagnostics().empty())
-        return failure;
+Diag normalizeVerifierDiag(Diag diag) {
+    if (diag.code.empty()) {
+        diag.code = diag.severity == il::support::Severity::Warning ? "V-IL-WARN" : "V-IL-VERIFY";
+    }
+    return diag;
+}
 
-    std::ostringstream oss;
-    for (const auto &warning : sink.diagnostics())
-        il::support::printDiag(warning, oss);
-    il::support::printDiag(failure.error(), oss);
-
-    Diag combined = failure.error();
-    combined.message = oss.str();
-    return Expected<void>{std::move(combined)};
+bool sameDiagnostic(const Diag &lhs, const Diag &rhs) {
+    return lhs.severity == rhs.severity && lhs.code == rhs.code && lhs.message == rhs.message &&
+           lhs.loc.file_id == rhs.loc.file_id && lhs.loc.line == rhs.loc.line &&
+           lhs.loc.column == rhs.loc.column;
 }
 
 } // namespace
@@ -75,25 +64,70 @@ Expected<void> appendWarnings(Expected<void> failure, const CollectingDiagSink &
 /// @param m Module to verify.
 /// @return @c Expected success on clean modules; otherwise an aggregated error diagnostic.
 Expected<void> Verifier::verify(const Module &m) {
+    auto diagnostics = verifyAll(m, 50);
+    if (diagnostics.empty())
+        return {};
+
+    Diag primary = diagnostics.front();
+    if (diagnostics.size() > 1) {
+        primary.message += "\n";
+        primary.message += std::to_string(diagnostics.size() - 1);
+        primary.message += " additional verifier diagnostic";
+        if (diagnostics.size() != 2)
+            primary.message += "s";
+        primary.message += ":";
+        for (size_t index = 1; index < diagnostics.size(); ++index) {
+            primary.notes.push_back({diagnostics[index].loc, diagnostics[index].message});
+        }
+    }
+    return Expected<void>{std::move(primary)};
+}
+
+std::vector<Diag> Verifier::verifyAll(const Module &m, size_t maxDiagnostics) {
     CollectingDiagSink sink;
+    std::vector<Diag> diagnostics;
+
+    auto appendFailure = [&](const Expected<void> &result) {
+        if (result) {
+            sink.clear();
+            return;
+        }
+        for (const auto &diag : sink.diagnostics()) {
+            if (diagnostics.size() >= maxDiagnostics)
+                return;
+            diagnostics.push_back(normalizeVerifierDiag(diag));
+        }
+        sink.clear();
+        if (!result && diagnostics.size() < maxDiagnostics) {
+            Diag resultDiag = normalizeVerifierDiag(result.error());
+            const bool duplicate =
+                std::any_of(diagnostics.begin(), diagnostics.end(), [&](const Diag &existing) {
+                    return sameDiagnostic(existing, resultDiag);
+                });
+            if (!duplicate)
+                diagnostics.push_back(std::move(resultDiag));
+        }
+    };
 
     ExternVerifier externVerifier;
-    if (auto result = externVerifier.run(m, sink); !result)
-        return appendWarnings(result, sink);
+    appendFailure(externVerifier.run(m, sink));
+    if (diagnostics.size() >= maxDiagnostics)
+        return diagnostics;
 
     GlobalVerifier globalVerifier;
-    if (auto result = globalVerifier.run(m, sink); !result)
-        return appendWarnings(result, sink);
+    appendFailure(globalVerifier.run(m, sink));
+    if (diagnostics.size() >= maxDiagnostics)
+        return diagnostics;
 
     FunctionVerifier functionVerifier(externVerifier.externs());
-    if (auto result = functionVerifier.run(m, sink); !result)
-        return appendWarnings(result, sink);
+    appendFailure(functionVerifier.run(m, sink));
+    if (diagnostics.size() >= maxDiagnostics)
+        return diagnostics;
 
     EhVerifier ehVerifier;
-    if (auto result = ehVerifier.run(m, sink); !result)
-        return appendWarnings(result, sink);
+    appendFailure(ehVerifier.run(m, sink));
 
-    return {};
+    return diagnostics;
 }
 
 } // namespace il::verify

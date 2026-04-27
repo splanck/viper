@@ -28,7 +28,194 @@
 
 #include "diag_expected.hpp"
 
+#include <algorithm>
+#include <string_view>
+
 namespace il::support {
+namespace {
+/// @brief Calculate a same-line diagnostic underline length.
+uint32_t sameLineRangeLength(const Diag &diag) {
+    if (!diag.range.isValid() || diag.range.begin.file_id != diag.loc.file_id ||
+        diag.range.begin.line != diag.loc.line || diag.range.end.line != diag.loc.line ||
+        diag.range.begin.column == 0 || diag.range.end.column <= diag.range.begin.column) {
+        return 1;
+    }
+    return diag.range.end.column - diag.range.begin.column;
+}
+
+/// @brief Print the source line and caret marker for a diagnostic-like location.
+void printSourceSnippet(SourceLoc loc,
+                        uint32_t underlineLength,
+                        std::ostream &os,
+                        const SourceManager *sm) {
+    if (!sm || loc.file_id == 0 || loc.line == 0)
+        return;
+
+    auto srcLine = sm->getLine(loc.file_id, loc.line);
+    if (srcLine.empty())
+        return;
+
+    std::string lineNumStr = std::to_string(loc.line);
+    std::string gutter(lineNumStr.size(), ' ');
+
+    os << ' ' << lineNumStr << " | " << srcLine << '\n';
+
+    if (loc.column == 0 || loc.column > srcLine.size() + 1)
+        return;
+
+    os << ' ' << gutter << " | ";
+    for (uint32_t i = 1; i < loc.column; ++i) {
+        if (i <= srcLine.size() && srcLine[i - 1] == '\t')
+            os << '\t';
+        else
+            os << ' ';
+    }
+    const uint32_t maxLength =
+        static_cast<uint32_t>(srcLine.size() + 1 >= loc.column ? srcLine.size() + 1 - loc.column
+                                                               : 1);
+    const uint32_t caretCount = std::max<uint32_t>(1, std::min(underlineLength, maxLength));
+    os << '^';
+    for (uint32_t i = 1; i < caretCount; ++i)
+        os << '~';
+    os << '\n';
+}
+
+	/// @brief Print a diagnostic header without attached notes.
+	void printDiagHeader(const Diag &diag, std::ostream &os, const SourceManager *sm) {
+    if (sm && diag.loc.file_id != 0) {
+        auto path = sm->getPath(diag.loc.file_id);
+        if (!path.empty()) {
+            os << path;
+            if (diag.loc.line != 0) {
+                os << ':' << diag.loc.line;
+                if (diag.loc.column != 0) {
+                    os << ':' << diag.loc.column;
+                }
+            }
+            os << ": ";
+        }
+    }
+    os << detail::diagSeverityToString(diag.severity);
+    if (!diag.code.empty()) {
+        os << '[' << diag.code << ']';
+    }
+	    os << ": " << diag.message << '\n';
+	}
+
+	void printJsonEscaped(std::ostream &os, std::string_view text) {
+	    os << '"';
+	    for (unsigned char ch : text) {
+	        switch (ch) {
+	            case '"':
+	                os << "\\\"";
+	                break;
+	            case '\\':
+	                os << "\\\\";
+	                break;
+	            case '\b':
+	                os << "\\b";
+	                break;
+	            case '\f':
+	                os << "\\f";
+	                break;
+	            case '\n':
+	                os << "\\n";
+	                break;
+	            case '\r':
+	                os << "\\r";
+	                break;
+	            case '\t':
+	                os << "\\t";
+	                break;
+	            default:
+	                if (ch < 0x20) {
+	                    constexpr char hex[] = "0123456789abcdef";
+	                    os << "\\u00" << hex[(ch >> 4) & 0x0f] << hex[ch & 0x0f];
+	                } else {
+	                    os << static_cast<char>(ch);
+	                }
+	                break;
+	        }
+	    }
+	    os << '"';
+	}
+
+	void printJsonLoc(std::ostream &os, SourceLoc loc, const SourceManager *sm) {
+	    os << "\"location\":{";
+	    os << "\"file_id\":" << loc.file_id << ',';
+	    os << "\"line\":" << loc.line << ',';
+	    os << "\"column\":" << loc.column << ',';
+	    os << "\"file\":";
+	    if (sm && loc.file_id != 0) {
+	        printJsonEscaped(os, sm->getPath(loc.file_id));
+	    } else {
+	        os << "null";
+	    }
+	    os << '}';
+	}
+
+	void printJsonRange(std::ostream &os, const SourceRange &range, const SourceManager *sm) {
+	    os << "\"range\":";
+	    if (!range.isValid()) {
+	        os << "null";
+	        return;
+	    }
+	    os << '{';
+	    os << "\"begin\":{";
+	    os << "\"file_id\":" << range.begin.file_id << ',';
+	    os << "\"line\":" << range.begin.line << ',';
+	    os << "\"column\":" << range.begin.column << ',';
+	    os << "\"file\":";
+	    if (sm && range.begin.file_id != 0) {
+	        printJsonEscaped(os, sm->getPath(range.begin.file_id));
+	    } else {
+	        os << "null";
+	    }
+	    os << "},\"end\":{";
+	    os << "\"file_id\":" << range.end.file_id << ',';
+	    os << "\"line\":" << range.end.line << ',';
+	    os << "\"column\":" << range.end.column << ',';
+	    os << "\"file\":";
+	    if (sm && range.end.file_id != 0) {
+	        printJsonEscaped(os, sm->getPath(range.end.file_id));
+	    } else {
+	        os << "null";
+	    }
+	    os << "}}";
+	}
+
+	void printJsonDiagObject(const Diag &diag, std::ostream &os, const SourceManager *sm) {
+	    os << '{';
+	    os << "\"severity\":";
+	    printJsonEscaped(os, detail::diagSeverityToString(diag.severity));
+	    os << ",\"code\":";
+	    if (diag.code.empty()) {
+	        os << "null";
+	    } else {
+	        printJsonEscaped(os, diag.code);
+	    }
+	    os << ",\"message\":";
+	    printJsonEscaped(os, diag.message);
+	    os << ',';
+	    printJsonLoc(os, diag.loc, sm);
+	    os << ',';
+	    printJsonRange(os, diag.range, sm);
+	    os << ",\"notes\":[";
+	    for (size_t index = 0; index < diag.notes.size(); ++index) {
+	        if (index != 0)
+	            os << ',';
+	        const auto &note = diag.notes[index];
+	        os << '{';
+	        os << "\"message\":";
+	        printJsonEscaped(os, note.message);
+	        os << ',';
+	        printJsonLoc(os, note.loc, sm);
+	        os << '}';
+	    }
+	    os << "]}";
+	}
+	} // namespace
+
 /// @brief Construct an Expected<void> that stores a diagnostic error state.
 ///
 /// @details The constructor moves the provided diagnostic into the optional
@@ -152,49 +339,32 @@ Diag makeErrorWithCode(SourceLoc loc, std::string code, std::string msg) {
 /// @param diag Diagnostic to render.
 /// @param os Output stream receiving the textual representation.
 /// @param sm Optional source manager for mapping file identifiers to paths.
-void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm) {
-    if (sm && diag.loc.file_id != 0) {
-        auto path = sm->getPath(diag.loc.file_id);
-        if (!path.empty()) {
-            os << path;
-            if (diag.loc.line != 0) {
-                os << ':' << diag.loc.line;
-                if (diag.loc.column != 0) {
-                    os << ':' << diag.loc.column;
-                }
-            }
-            os << ": ";
-        }
-    }
-    os << detail::diagSeverityToString(diag.severity);
-    if (!diag.code.empty()) {
-        os << '[' << diag.code << ']';
-    }
-    os << ": " << diag.message << '\n';
+	void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm) {
+	    printDiagHeader(diag, os, sm);
+	    printSourceSnippet(diag.loc, sameLineRangeLength(diag), os, sm);
 
-    // Source snippet with caret marker
-    if (sm && diag.loc.file_id != 0 && diag.loc.line != 0) {
-        auto srcLine = sm->getLine(diag.loc.file_id, diag.loc.line);
-        if (!srcLine.empty()) {
-            // Line number gutter
-            std::string lineNumStr = std::to_string(diag.loc.line);
-            std::string gutter(lineNumStr.size(), ' ');
+    for (const auto &note : diag.notes) {
+        Diag noteDiag{Severity::Note, note.message, note.loc, {}};
+        printDiagHeader(noteDiag, os, sm);
+	        printSourceSnippet(note.loc, 1, os, sm);
+	    }
+	}
 
-            os << ' ' << lineNumStr << " | " << srcLine << '\n';
+	void printDiagnosticsJson(const std::vector<Diag> &diagnostics,
+	                          std::ostream &os,
+	                          const SourceManager *sm) {
+	    os << "{\"diagnostics\":[";
+	    for (size_t index = 0; index < diagnostics.size(); ++index) {
+	        if (index != 0)
+	            os << ',';
+	        printJsonDiagObject(diagnostics[index], os, sm);
+	    }
+	    os << "]}\n";
+	}
 
-            // Caret line
-            if (diag.loc.column != 0 && diag.loc.column <= srcLine.size() + 1) {
-                os << ' ' << gutter << " | ";
-                // Preserve leading whitespace (tabs/spaces) for alignment
-                for (uint32_t i = 1; i < diag.loc.column; ++i) {
-                    if (i <= srcLine.size() && srcLine[i - 1] == '\t')
-                        os << '\t';
-                    else
-                        os << ' ';
-                }
-                os << "^\n";
-            }
-        }
-    }
-}
-} // namespace il::support
+	void printDiagJson(const Diag &diag, std::ostream &os, const SourceManager *sm) {
+	    std::vector<Diag> diagnostics;
+	    diagnostics.push_back(diag);
+	    printDiagnosticsJson(diagnostics, os, sm);
+	}
+	} // namespace il::support

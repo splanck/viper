@@ -652,6 +652,7 @@ The verifier enforces structural and type rules. Typical checks include:
 - `il-verify <file.il>` — static checks with precise diagnostics.
 - `il-dis <file.il>` — pretty-printer / disassembler.
 - `viper -run <file.il>` — run on the VM (uses runtime bridges).
+- `viper -run <file.il> --bytecode` — run through the bytecode VM after checked bytecode compilation.
 - `viper il-opt <file.il> --passes "simplify-cfg"` — run transforms (e.g., SimplifyCFG).
 
 > Use `--help` on each tool for full options.

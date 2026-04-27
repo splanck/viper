@@ -145,7 +145,7 @@ int verifyAndExecute(il::core::Module &module,
                      il::support::SourceManager &sm) {
     auto verification = il::verify::Verifier::verify(module);
     if (!verification) {
-        il::support::printDiag(verification.error(), std::cerr, &sm);
+        ilc::printDiagnostic(verification.error(), std::cerr, &sm, shared.diagnosticFormat);
         return 1;
     }
 
@@ -203,6 +203,7 @@ int verifyAndExecute(il::core::Module &module,
     vmConfig.programArgs = programArgs;
     vmConfig.outputTrapMessage = true;
     vmConfig.flushStdout = true;
+    vmConfig.sourceManager = &sm;
 
     auto vmResult = il::tools::common::executeBytecodeVM(module, vmConfig);
     return vmResult.exitCode;
@@ -226,6 +227,7 @@ il::support::Expected<il::core::Module> compileZiaProject(const ProjectConfig &p
     // Warning policy from CLI flags
     opts.warningPolicy.enableAll = shared.wall;
     opts.warningPolicy.warningsAsErrors = shared.werror;
+    opts.warningPolicy.strictSafetyWarnings = shared.strictDiagnostics;
     for (const auto &w : shared.disabledWarnings) {
         if (auto code = il::frontends::zia::parseWarningCode(w))
             opts.warningPolicy.disabled.insert(*code);
@@ -239,8 +241,11 @@ il::support::Expected<il::core::Module> compileZiaProject(const ProjectConfig &p
         opts.optLevel = il::frontends::zia::OptLevel::O2;
 
     auto result = il::frontends::zia::compileFile(project.entryFile, opts, sm);
+    if (!result.succeeded() ||
+        (shared.showWarnings && result.diagnostics.warningCount() != 0)) {
+        ilc::printDiagnosticEngine(result.diagnostics, std::cerr, &sm, shared.diagnosticFormat);
+    }
     if (!result.succeeded()) {
-        result.diagnostics.printAll(std::cerr, &sm);
         return il::support::Expected<il::core::Module>(
             il::support::Diagnostic{il::support::Severity::Error, "compilation failed", {}, {}});
     }
@@ -255,7 +260,7 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
                                                             il::support::SourceManager &sm) {
     auto source = loadSourceBuffer(project.entryFile, sm);
     if (!source) {
-        il::support::printDiag(source.error(), std::cerr, &sm);
+        ilc::printDiagnostic(source.error(), std::cerr, &sm, shared.diagnosticFormat);
         return il::support::Expected<il::core::Module>(
             il::support::Diagnostic{il::support::Severity::Error, "failed to load source", {}, {}});
     }
@@ -275,11 +280,24 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
     input.fileId = source.value().fileId;
 
     auto result = il::frontends::basic::compileBasic(input, opts, sm);
-    if (!result.succeeded()) {
-        if (result.emitter)
+    const bool shouldPrintDiagnostics =
+        !result.succeeded() || (shared.showWarnings && result.diagnostics.warningCount() != 0);
+    if (shouldPrintDiagnostics && result.emitter) {
+        if (shared.diagnosticFormat == ilc::DiagnosticFormat::Json) {
+            ilc::printDiagnosticEngine(result.diagnostics, std::cerr, &sm, shared.diagnosticFormat);
+        } else {
             result.emitter->printAll(std::cerr);
+        }
+    }
+    if (!result.succeeded()) {
         return il::support::Expected<il::core::Module>(
             il::support::Diagnostic{il::support::Severity::Error, "compilation failed", {}, {}});
+    }
+
+    if (auto verification = il::verify::Verifier::verify(result.module); !verification) {
+        ilc::printDiagnostic(verification.error(), std::cerr, &sm, shared.diagnosticFormat);
+        return il::support::Expected<il::core::Module>(il::support::Diagnostic{
+            il::support::Severity::Error, "BASIC lowering produced invalid IL", {}, {}});
     }
 
     // Apply the canonical IL optimizer pipeline based on the project's opt level.
@@ -294,12 +312,30 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
             pm.setInstrumentationStream(std::cerr);
         }
 
-        if (project.optimizeLevel == "O2")
-            pm.runPipeline(result.module, "O2");
-        else if (project.optimizeLevel == "O1")
-            pm.runPipeline(result.module, "O1");
-        else
-            pm.runPipeline(result.module, "O0");
+        const std::string pipelineId =
+            (project.optimizeLevel == "O2") ? "O2"
+            : (project.optimizeLevel == "O1")
+                ? "O1"
+                : "O0";
+        if (!pm.runPipeline(result.module, pipelineId)) {
+            il::support::Diag diag{il::support::Severity::Error,
+                                   "IL optimization pipeline '" + pipelineId +
+                                       "' failed verification",
+                                   {},
+                                   "V-OPT-PIPELINE"};
+            ilc::printDiagnostic(diag, std::cerr, &sm, shared.diagnosticFormat);
+            return il::support::Expected<il::core::Module>(il::support::Diagnostic{
+                il::support::Severity::Error, "optimization failed", {}, "V-OPT-PIPELINE"});
+        }
+
+        if (auto verification = il::verify::Verifier::verify(result.module); !verification) {
+            ilc::printDiagnostic(verification.error(), std::cerr, &sm, shared.diagnosticFormat);
+            return il::support::Expected<il::core::Module>(il::support::Diagnostic{
+                il::support::Severity::Error,
+                "optimized BASIC IL failed verification",
+                {},
+                "V-OPT-VERIFY"});
+        }
 
         // Dump IL after the full optimization pipeline.
         if (shared.dumpILOpt) {
@@ -423,7 +459,8 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
         // Verify before emitting
         auto verification = il::verify::Verifier::verify(module);
         if (!verification) {
-            il::support::printDiag(verification.error(), std::cerr, &sm);
+            ilc::printDiagnostic(
+                verification.error(), std::cerr, &sm, config.shared.diagnosticFormat);
             return 1;
         }
 

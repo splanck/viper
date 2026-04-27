@@ -25,6 +25,7 @@
 #include <cstring>
 #include <limits>
 #include <mutex>
+#include <sstream>
 #include <string_view>
 #include <vector>
 
@@ -45,6 +46,59 @@ bool runtimeParamIsString(const il::runtime::RuntimeSignature *sig, size_t index
 void registerUnifiedVmRuntimeHandlers();
 
 void bytecodeRuntimeTrapPassthrough(const il::vm::RuntimeTrapSignal &, void *) {}
+
+int32_t defaultBytecodeTrapErrorCode(TrapKind trapKind) {
+    switch (trapKind) {
+        case TrapKind::DivideByZero:
+            return 11;
+        case TrapKind::Overflow:
+            return 6;
+        case TrapKind::Bounds:
+            return 9;
+        case TrapKind::NullPointer:
+            return 91;
+        default:
+            return 0;
+    }
+}
+
+const char *bytecodeTrapKindName(TrapKind trapKind) {
+    switch (trapKind) {
+        case TrapKind::DivideByZero:
+            return "DivideByZero";
+        case TrapKind::Overflow:
+            return "Overflow";
+        case TrapKind::InvalidCast:
+            return "InvalidCast";
+        case TrapKind::DomainError:
+            return "DomainError";
+        case TrapKind::Bounds:
+            return "Bounds";
+        case TrapKind::FileNotFound:
+            return "FileNotFound";
+        case TrapKind::EndOfFile:
+            return "EndOfFile";
+        case TrapKind::IOError:
+            return "IOError";
+        case TrapKind::InvalidOperation:
+            return "InvalidOperation";
+        case TrapKind::RuntimeError:
+            return "RuntimeError";
+        case TrapKind::Interrupt:
+            return "Interrupt";
+        case TrapKind::NetworkError:
+            return "NetworkError";
+        case TrapKind::NullPointer:
+            return "NullPointer";
+        case TrapKind::StackOverflow:
+            return "StackOverflow";
+        case TrapKind::InvalidOpcode:
+            return "InvalidOpcode";
+        case TrapKind::None:
+            return "None";
+    }
+    return "Unknown";
+}
 
 using UnifiedRuntimeHandler = void (*)(void **, void *);
 std::once_flag gUnifiedRuntimeHandlersOnce;
@@ -274,6 +328,7 @@ void BytecodeVM::load(const BytecodeModule *module) {
     state_ = VMState::Ready;
     trapKind_ = TrapKind::None;
     currentErrorCode_ = 0;
+    pendingTrapErrorCode_ = false;
     trapMessage_.clear();
 
     // Initialize global variable storage
@@ -438,6 +493,7 @@ void BytecodeVM::resetExecutionState() {
     sp_ = valueStack_.data();
     fp_ = nullptr;
     allocaTop_ = 0;
+    pendingTrapErrorCode_ = false;
     std::fill(valueStackStringOwned_.begin(), valueStackStringOwned_.end(), 0);
 }
 
@@ -764,6 +820,7 @@ BCSlot BytecodeVM::exec(const BytecodeFunction *func, const std::vector<BCSlot> 
     state_ = VMState::Ready;
     trapKind_ = TrapKind::None;
     currentErrorCode_ = 0;
+    pendingTrapErrorCode_ = false;
     trapMessage_.clear();
     resetExecutionState();
 
@@ -2218,8 +2275,11 @@ bool BytecodeVM::popFrame() {
 /// @param kind The type of error that occurred.
 /// @param message Human-readable description of the error.
 void BytecodeVM::trap(TrapKind kind, const char *message) {
+    if (!(pendingTrapErrorCode_ && trapKind_ == kind))
+        currentErrorCode_ = defaultBytecodeTrapErrorCode(kind);
+    pendingTrapErrorCode_ = false;
     trapKind_ = kind;
-    trapMessage_ = message;
+    trapMessage_ = formatTrapMessage(kind, currentErrorCode_, message);
     state_ = VMState::Trapped;
 }
 
@@ -2374,6 +2434,74 @@ uint32_t BytecodeVM::getSourceLine(const BytecodeFunction *func, uint32_t pc) {
     return func->lineTable[pc];
 }
 
+uint32_t BytecodeVM::currentFaultPc() const {
+    return (fp_ && fp_->pc > 0) ? (fp_->pc - 1) : 0;
+}
+
+std::string BytecodeVM::currentBlockLabelForPc(const BytecodeFunction *func, uint32_t pc) const {
+    if (!func || pc >= func->blockLabelTable.size())
+        return {};
+    return func->blockLabelTable[pc];
+}
+
+std::string BytecodeVM::currentSourcePathForPc(const BytecodeFunction *func, uint32_t pc) const {
+    if (!module_ || !func)
+        return {};
+
+    uint32_t sourceFileEntry = 0;
+    if (pc < func->sourceFileTable.size())
+        sourceFileEntry = func->sourceFileTable[pc];
+
+    if (sourceFileEntry != 0) {
+        const uint32_t sourceIndex = sourceFileEntry - 1;
+        if (sourceIndex < module_->sourceFiles.size())
+            return module_->sourceFiles[sourceIndex].path;
+    }
+
+    if (func->sourceFileIdx < module_->sourceFiles.size())
+        return module_->sourceFiles[func->sourceFileIdx].path;
+
+    return {};
+}
+
+std::string BytecodeVM::formatTrapMessage(TrapKind kind,
+                                          int32_t errorCode,
+                                          const char *message) const {
+    std::ostringstream out;
+    out << "Trap";
+
+    if (fp_ && fp_->func) {
+        const BytecodeFunction *func = fp_->func;
+        const uint32_t pc = currentFaultPc();
+        out << " @" << func->name;
+
+        const std::string blockLabel = currentBlockLabelForPc(func, pc);
+        if (!blockLabel.empty())
+            out << ':' << blockLabel;
+
+        out << '#' << pc;
+
+        const std::string sourcePath = currentSourcePathForPc(func, pc);
+        const uint32_t sourceLine = getSourceLine(func, pc);
+        if (!sourcePath.empty() || sourceLine != 0) {
+            out << " (";
+            if (!sourcePath.empty())
+                out << sourcePath;
+            if (sourceLine != 0) {
+                if (!sourcePath.empty())
+                    out << ':';
+                out << sourceLine;
+            }
+            out << ')';
+        }
+    }
+
+    out << ": " << bytecodeTrapKindName(kind) << " (code=" << errorCode << ')';
+    if (message && *message)
+        out << ": " << message;
+    return out.str();
+}
+
 //==============================================================================
 // Exception Handling
 //==============================================================================
@@ -2411,23 +2539,10 @@ void BytecodeVM::popExceptionHandler() {
 bool BytecodeVM::dispatchTrap(TrapKind kind, int32_t errorCode, const char *message) {
     clearTrapRecord();
     trapKind_ = kind;
+    currentErrorCode_ = errorCode >= 0 ? errorCode : defaultBytecodeTrapErrorCode(kind);
+    pendingTrapErrorCode_ = true;
     if (message)
-        trapMessage_ = message;
-
-    auto mapBasicErrorCode = [](TrapKind trapKind) -> int32_t {
-        switch (trapKind) {
-            case TrapKind::DivideByZero:
-                return 11;
-            case TrapKind::Overflow:
-                return 6;
-            case TrapKind::Bounds:
-                return 9;
-            case TrapKind::NullPointer:
-                return 91;
-            default:
-                return 0;
-        }
-    };
+        trapMessage_ = formatTrapMessage(kind, currentErrorCode_, message);
 
     // Search for a handler and auto-pop it from the EH stack on dispatch.
     // Handler blocks always start with a clean EH stack — if catch body throws,
@@ -2488,7 +2603,8 @@ bool BytecodeVM::dispatchTrap(TrapKind kind, int32_t errorCode, const char *mess
 
             // Store trap info for err.get_* introspection
             trapKind_ = kind;
-            currentErrorCode_ = errorCode >= 0 ? errorCode : mapBasicErrorCode(kind);
+            currentErrorCode_ = errorCode >= 0 ? errorCode : defaultBytecodeTrapErrorCode(kind);
+            pendingTrapErrorCode_ = false;
 
             // Push trap kind onto stack for handler to inspect (as error token)
             sp_->i64 = static_cast<int64_t>(kind);

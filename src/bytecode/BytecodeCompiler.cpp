@@ -7,31 +7,77 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
+#include "support/source_manager.hpp"
 #include <algorithm>
 #include <cassert>
+#include <exception>
+#include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <unordered_set>
+#include <utility>
 
 namespace viper {
 namespace bytecode {
+namespace {
+class BytecodeCompileFailure final : public std::exception {
+  public:
+    explicit BytecodeCompileFailure(il::support::Diag diag) : diag_(std::move(diag)) {}
+
+    const char *what() const noexcept override {
+        return diag_.message.c_str();
+    }
+
+    const il::support::Diag &diag() const {
+        return diag_;
+    }
+
+  private:
+    il::support::Diag diag_;
+};
+} // namespace
 
 /// @brief Compile.
 BytecodeModule BytecodeCompiler::compile(const il::core::Module &ilModule) {
+    auto result = compileChecked(ilModule);
+    if (!result) {
+        throw std::runtime_error(result.error().message);
+    }
+    return std::move(result.value());
+}
+
+il::support::Expected<BytecodeModule> BytecodeCompiler::compileChecked(
+    const il::core::Module &ilModule,
+    const il::support::SourceManager *sourceManager) {
     module_ = BytecodeModule();
     ilModule_ = &ilModule;
+    currentFunc_ = nullptr;
+    currentFunctionName_.clear();
+    currentBlockLabel_.clear();
+    currentLoc_ = {};
+    sourceManager_ = sourceManager;
+    sourceFileIndex_.clear();
 
-    // Pre-register all function names to support recursive and forward calls
-    for (size_t i = 0; i < ilModule.functions.size(); ++i) {
-        module_.functionIndex[ilModule.functions[i].name] = static_cast<uint32_t>(i);
+    try {
+        // Pre-register all function names to support recursive and forward calls.
+        for (size_t i = 0; i < ilModule.functions.size(); ++i) {
+            if (i > std::numeric_limits<uint32_t>::max()) {
+                fail({}, "V-BC-FUNCTION-TABLE", "bytecode supports at most 2^32 functions");
+            }
+            module_.functionIndex[ilModule.functions[i].name] = static_cast<uint32_t>(i);
+        }
+
+        // Compile each function.
+        for (const auto &fn : ilModule.functions) {
+            compileFunction(fn);
+        }
+    } catch (const BytecodeCompileFailure &failure) {
+        return il::support::Expected<BytecodeModule>(failure.diag());
     }
 
-    // Compile each function
-    for (const auto &fn : ilModule.functions) {
-        compileFunction(fn);
-    }
-
-    return std::move(module_);
+    return il::support::Expected<BytecodeModule>(std::move(module_));
 }
 
 /// @brief Compile Function.
@@ -44,6 +90,7 @@ void BytecodeCompiler::compileFunction(const il::core::Function &fn) {
 
     // Set as current function
     currentFunc_ = &bcFunc;
+    currentFunctionName_ = fn.name;
 
     // Reset compilation state
     ssaToLocal_.clear();
@@ -85,6 +132,8 @@ void BytecodeCompiler::compileFunction(const il::core::Function &fn) {
     // Add function to module
     module_.addFunction(std::move(bcFunc));
     currentFunc_ = nullptr;
+    currentFunctionName_.clear();
+    currentBlockLabel_.clear();
 }
 
 /// @brief Build SSA To Locals Map.
@@ -209,6 +258,8 @@ std::vector<const il::core::BasicBlock *> BytecodeCompiler::linearizeBlocks(
 void BytecodeCompiler::compileBlock(const il::core::BasicBlock &block) {
     // Record block offset
     blockOffsets_[block.label] = static_cast<uint32_t>(currentFunc_->code.size());
+    currentBlockLabel_ = block.label;
+    currentLoc_ = block.instructions.empty() ? il::support::SourceLoc{} : block.instructions.front().loc;
 
     // Handle block parameters - they receive values from branch arguments
     // The calling block will have already pushed the arguments
@@ -245,11 +296,14 @@ void BytecodeCompiler::compileBlock(const il::core::BasicBlock &block) {
     for (const auto &instr : block.instructions) {
         compileInstr(instr);
     }
+    currentBlockLabel_.clear();
 }
 
 /// @brief Compile Instr.
 void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
+
+    currentLoc_ = instr.loc;
 
     switch (instr.op) {
         // Arithmetic
@@ -353,6 +407,7 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
         // Bounds check
         case Opcode::IdxChk:
             // Push operands: index, lo, hi
+            requireOperandCount(instr, 3);
             pushValue(instr.operands[0]);
             pushValue(instr.operands[1]);
             pushValue(instr.operands[2]);
@@ -485,6 +540,7 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
 
         case Opcode::TrapFromErr:
             // Push error code operand onto stack, then raise as trap kind
+            requireOperandCount(instr, 1);
             pushValue(instr.operands[0]);
             emit(BCOpcode::TRAP_FROM_ERR);
             break;
@@ -500,8 +556,35 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
             break;
 
         default:
-            // Unknown opcode
-            break;
+            fail(instr.loc,
+                 "V-BC-UNSUPPORTED-OP",
+                 std::string("bytecode backend does not support IL opcode '") +
+                     il::core::toString(instr.op) + "'");
+    }
+}
+
+void BytecodeCompiler::fail(il::support::SourceLoc loc,
+                            std::string code,
+                            std::string message) {
+    if (!currentFunctionName_.empty())
+        message = "bytecode compile failed in @" + currentFunctionName_ + ": " + message;
+    throw BytecodeCompileFailure(
+        il::support::Diag{il::support::Severity::Error, std::move(message), loc, std::move(code)});
+}
+
+void BytecodeCompiler::failCurrent(std::string code, std::string message) {
+    fail(currentLoc_, std::move(code), std::move(message));
+}
+
+void BytecodeCompiler::requireOperandCount(const il::core::Instr &instr, size_t minCount) {
+    if (instr.operands.size() < minCount) {
+        std::ostringstream oss;
+        oss << "opcode '" << il::core::toString(instr.op) << "' requires at least " << minCount
+            << " operand";
+        if (minCount != 1)
+            oss << 's';
+        oss << ", got " << instr.operands.size();
+        fail(instr.loc, "V-BC-MALFORMED-INSTR", oss.str());
     }
 }
 
@@ -528,7 +611,7 @@ void BytecodeCompiler::pushValue(const il::core::Value &val) {
             } else {
                 // Add to constant pool
                 uint32_t idx = module_.addI64(v);
-                emit16(BCOpcode::LOAD_I64, static_cast<uint16_t>(idx));
+                emitPoolLoad(BCOpcode::LOAD_I64, idx, "i64");
             }
             pushStack();
             break;
@@ -536,14 +619,14 @@ void BytecodeCompiler::pushValue(const il::core::Value &val) {
 
         case il::core::Value::Kind::ConstFloat: {
             uint32_t idx = module_.addF64(val.f64);
-            emit16(BCOpcode::LOAD_F64, static_cast<uint16_t>(idx));
+            emitPoolLoad(BCOpcode::LOAD_F64, idx, "f64");
             pushStack();
             break;
         }
 
         case il::core::Value::Kind::ConstStr: {
             uint32_t idx = module_.addString(val.str);
-            emit16(BCOpcode::LOAD_STR, static_cast<uint16_t>(idx));
+            emitPoolLoad(BCOpcode::LOAD_STR, idx, "string");
             pushStack();
             break;
         }
@@ -556,10 +639,11 @@ void BytecodeCompiler::pushValue(const il::core::Value &val) {
                 // This allows call.indirect to identify function references
                 uint64_t taggedPtr = 0x8000000000000000ULL | it->second;
                 uint32_t idx = module_.addI64(static_cast<int64_t>(taggedPtr));
-                emit16(BCOpcode::LOAD_I64, static_cast<uint16_t>(idx));
+                emitPoolLoad(BCOpcode::LOAD_I64, idx, "i64");
             } else {
-                // Non-function global address - emit null for now
-                emit(BCOpcode::LOAD_NULL);
+                failCurrent("V-BC-UNSUPPORTED-GLOBAL",
+                            "global address @" + val.str +
+                                " is not a function pointer supported by the bytecode backend");
             }
             pushStack();
             break;
@@ -584,9 +668,40 @@ void BytecodeCompiler::storeResult(const il::core::Instr &instr) {
     }
 }
 
+uint32_t BytecodeCompiler::sourceFileTableEntry(il::support::SourceLoc loc) {
+    if (loc.file_id == 0)
+        return 0;
+
+    auto found = sourceFileIndex_.find(loc.file_id);
+    if (found != sourceFileIndex_.end())
+        return found->second + 1;
+
+    std::string path;
+    if (sourceManager_) {
+        path = std::string(sourceManager_->getPath(loc.file_id));
+    }
+    if (path.empty()) {
+        path = "file#" + std::to_string(loc.file_id);
+    }
+
+    const uint32_t index = static_cast<uint32_t>(module_.sourceFiles.size());
+    module_.sourceFiles.push_back({std::move(path), 0});
+    sourceFileIndex_.emplace(loc.file_id, index);
+    return index + 1;
+}
+
 /// @brief Emit.
 void BytecodeCompiler::emit(uint32_t instr) {
+    const uint32_t pc = static_cast<uint32_t>(currentFunc_->code.size());
     currentFunc_->code.push_back(instr);
+    currentFunc_->lineTable.push_back(currentLoc_.line);
+    currentFunc_->sourceFileTable.push_back(sourceFileTableEntry(currentLoc_));
+    currentFunc_->blockLabelTable.push_back(currentBlockLabel_);
+    if (currentLoc_.file_id != 0 && currentFunc_->sourceFileIdx == 0) {
+        const uint32_t tableEntry = currentFunc_->sourceFileTable[pc];
+        if (tableEntry != 0)
+            currentFunc_->sourceFileIdx = tableEntry - 1;
+    }
 }
 
 /// @brief Emit.
@@ -612,6 +727,15 @@ void BytecodeCompiler::emit16(BCOpcode op, uint16_t arg) {
 /// @brief Emit I16.
 void BytecodeCompiler::emitI16(BCOpcode op, int16_t arg) {
     emit(encodeOpI16(op, arg));
+}
+
+void BytecodeCompiler::emitPoolLoad(BCOpcode op, uint32_t index, std::string_view poolName) {
+    if (index > 0xFFFFu) {
+        failCurrent("V-BC-POOL-OVERFLOW",
+                    "bytecode " + std::string(poolName) +
+                        " constant pool exceeds 65535 entries");
+    }
+    emit16(op, static_cast<uint16_t>(index));
 }
 
 /// @brief Emit88.
@@ -648,8 +772,8 @@ void BytecodeCompiler::resolveBranches() {
     for (const auto &fixup : pendingBranches_) {
         auto it = blockOffsets_.find(fixup.targetLabel);
         if (it == blockOffsets_.end()) {
-            // Unknown target - should not happen
-            continue;
+            failCurrent("V-BC-UNRESOLVED-BRANCH",
+                        "unresolved bytecode branch target ^" + fixup.targetLabel);
         }
 
         // For regular branches (opcode+offset encoded together), after DISPATCH
@@ -670,8 +794,17 @@ void BytecodeCompiler::resolveBranches() {
             BCOpcode op = decodeOpcode(instr);
 
             if (fixup.isLong) {
+                if (offset < -0x800000 || offset > 0x7FFFFF) {
+                    failCurrent("V-BC-BRANCH-RANGE",
+                                "bytecode long branch target is out of 24-bit range");
+                }
                 currentFunc_->code[fixup.codeOffset] = encodeOpI24(op, offset);
             } else {
+                if (offset < std::numeric_limits<int16_t>::min() ||
+                    offset > std::numeric_limits<int16_t>::max()) {
+                    failCurrent("V-BC-BRANCH-RANGE",
+                                "bytecode branch target is out of 16-bit range");
+                }
                 currentFunc_->code[fixup.codeOffset] =
                     encodeOpI16(op, static_cast<int16_t>(offset));
             }
@@ -712,6 +845,9 @@ void BytecodeCompiler::emitLoadLocal(uint32_t local) {
     if (local < 256) {
         emit8(BCOpcode::LOAD_LOCAL, static_cast<uint8_t>(local));
     } else {
+        if (local > 0xFFFFu) {
+            failCurrent("V-BC-LOCAL-OVERFLOW", "bytecode supports at most 65535 locals");
+        }
         emit16(BCOpcode::LOAD_LOCAL_W, static_cast<uint16_t>(local));
     }
 }
@@ -721,6 +857,9 @@ void BytecodeCompiler::emitStoreLocal(uint32_t local) {
     if (local < 256) {
         emit8(BCOpcode::STORE_LOCAL, static_cast<uint8_t>(local));
     } else {
+        if (local > 0xFFFFu) {
+            failCurrent("V-BC-LOCAL-OVERFLOW", "bytecode supports at most 65535 locals");
+        }
         emit16(BCOpcode::STORE_LOCAL_W, static_cast<uint16_t>(local));
     }
 }
@@ -730,7 +869,7 @@ void BytecodeCompiler::compileArithmetic(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
     // Push operands
-    assert(instr.operands.size() >= 2);
+    requireOperandCount(instr, 2);
     pushValue(instr.operands[0]);
     pushValue(instr.operands[1]);
 
@@ -812,7 +951,10 @@ void BytecodeCompiler::compileArithmetic(const il::core::Instr &instr) {
             bcOp = BCOpcode::DIV_F64;
             break;
         default:
-            bcOp = BCOpcode::NOP;
+            fail(instr.loc,
+                 "V-BC-UNSUPPORTED-OP",
+                 std::string("bytecode backend does not support arithmetic opcode '") +
+                     il::core::toString(instr.op) + "'");
     }
 
     emit(bcOp);
@@ -826,7 +968,7 @@ void BytecodeCompiler::compileComparison(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
     // Push operands
-    assert(instr.operands.size() >= 2);
+    requireOperandCount(instr, 2);
     pushValue(instr.operands[0]);
     pushValue(instr.operands[1]);
 
@@ -882,7 +1024,10 @@ void BytecodeCompiler::compileComparison(const il::core::Instr &instr) {
             bcOp = BCOpcode::CMP_GE_F64;
             break;
         default:
-            bcOp = BCOpcode::NOP;
+            fail(instr.loc,
+                 "V-BC-UNSUPPORTED-OP",
+                 std::string("bytecode backend does not support comparison opcode '") +
+                     il::core::toString(instr.op) + "'");
     }
 
     emit(bcOp);
@@ -896,7 +1041,7 @@ void BytecodeCompiler::compileConversion(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
     // Push operand
-    assert(!instr.operands.empty());
+    requireOperandCount(instr, 1);
     pushValue(instr.operands[0]);
 
     // Emit conversion
@@ -949,7 +1094,10 @@ void BytecodeCompiler::compileConversion(const il::core::Instr &instr) {
             bcOp = BCOpcode::I64_TO_BOOL;
             break;
         default:
-            bcOp = BCOpcode::NOP;
+            fail(instr.loc,
+                 "V-BC-UNSUPPORTED-OP",
+                 std::string("bytecode backend does not support conversion opcode '") +
+                     il::core::toString(instr.op) + "'");
     }
 
     emit(bcOp);
@@ -962,7 +1110,7 @@ void BytecodeCompiler::compileBitwise(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
     // Push operands
-    assert(instr.operands.size() >= 2);
+    requireOperandCount(instr, 2);
     pushValue(instr.operands[0]);
     pushValue(instr.operands[1]);
 
@@ -988,7 +1136,10 @@ void BytecodeCompiler::compileBitwise(const il::core::Instr &instr) {
             bcOp = BCOpcode::ASHR_I64;
             break;
         default:
-            bcOp = BCOpcode::NOP;
+            fail(instr.loc,
+                 "V-BC-UNSUPPORTED-OP",
+                 std::string("bytecode backend does not support bitwise opcode '") +
+                     il::core::toString(instr.op) + "'");
     }
 
     emit(bcOp);
@@ -1034,12 +1185,14 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
 
                 if (found) {
                     uint32_t idx = module_.addString(strValue);
-                    emit16(BCOpcode::LOAD_STR, static_cast<uint16_t>(idx));
+                    emitPoolLoad(BCOpcode::LOAD_STR, idx, "string");
                 } else {
-                    emit(BCOpcode::LOAD_NULL);
+                    fail(instr.loc,
+                         "V-BC-UNKNOWN-STRING-GLOBAL",
+                         "const.str references unknown string global");
                 }
             } else {
-                emit(BCOpcode::LOAD_NULL);
+                fail(instr.loc, "V-BC-MALFORMED-INSTR", "const.str requires one operand");
             }
             pushStack();
             storeResult(instr);
@@ -1047,6 +1200,7 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
 
         case Opcode::Alloca:
             /// @brief Push Value.
+            requireOperandCount(instr, 1);
             pushValue(instr.operands[0]); // Size
             emit(BCOpcode::ALLOCA);
             // Alloca consumes 1, produces 1 - no stack change
@@ -1055,6 +1209,7 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
 
         case Opcode::GEP:
             /// @brief Push Value.
+            requireOperandCount(instr, 2);
             pushValue(instr.operands[0]); // Base pointer
                                           /// @brief Push Value.
             pushValue(instr.operands[1]); // Offset
@@ -1066,6 +1221,7 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
 
         case Opcode::Load:
             // load type, ptr -> operands[0] is ptr (type is in instr.type)
+            requireOperandCount(instr, 1);
             pushValue(instr.operands[0]);
             // Emit appropriate load based on type
             switch (instr.type.kind) {
@@ -1097,6 +1253,7 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
 
         case Opcode::Store:
             // store type, ptr, val -> operands[0] is ptr, operands[1] is val
+            requireOperandCount(instr, 2);
             pushValue(instr.operands[0]); // Pointer
                                           /// @brief Push Value.
             pushValue(instr.operands[1]); // Value
@@ -1129,20 +1286,24 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
             break;
 
         case Opcode::AddrOf:
+            requireOperandCount(instr, 1);
             pushValue(instr.operands[0]);
             // AddrOf is identity for pointers in bytecode
             storeResult(instr);
             break;
 
         case Opcode::GAddr:
-            // Global address - for now emit null
-            emit(BCOpcode::LOAD_NULL);
-            pushStack();
-            storeResult(instr);
+            fail(instr.loc,
+                 "V-BC-UNSUPPORTED-GADDR",
+                 "gaddr is not implemented by the bytecode backend; use a direct function "
+                 "reference or implement global data addressing first");
             break;
 
         default:
-            break;
+            fail(instr.loc,
+                 "V-BC-UNSUPPORTED-OP",
+                 std::string("bytecode backend does not support memory opcode '") +
+                     il::core::toString(instr.op) + "'");
     }
 }
 
@@ -1155,7 +1316,9 @@ void BytecodeCompiler::compileCall(const il::core::Instr &instr) {
         // For call.indirect: operands[0] is the callee (function pointer)
         // operands[1..n] are the arguments
         if (instr.operands.empty()) {
-            return; // Invalid indirect call
+            fail(instr.loc,
+                 "V-BC-MALFORMED-INSTR",
+                 "call.indirect requires a callee operand followed by arguments");
         }
 
         // Push callee (function pointer) first
@@ -1167,7 +1330,13 @@ void BytecodeCompiler::compileCall(const il::core::Instr &instr) {
         }
 
         // Emit CALL_INDIRECT with argument count (not including callee)
-        uint8_t argCount = static_cast<uint8_t>(instr.operands.size() - 1);
+        const size_t indirectArgCount = instr.operands.size() - 1;
+        if (indirectArgCount > 0xFFu) {
+            fail(instr.loc,
+                 "V-BC-CALL-ARGS",
+                 "CALL_INDIRECT supports at most 255 arguments");
+        }
+        uint8_t argCount = static_cast<uint8_t>(indirectArgCount);
         emit8(BCOpcode::CALL_INDIRECT, argCount);
 
         // Pop callee + arguments, push result if any
@@ -1187,20 +1356,23 @@ void BytecodeCompiler::compileCall(const il::core::Instr &instr) {
     // Look up function index
     auto it = module_.functionIndex.find(instr.callee);
     if (it != module_.functionIndex.end()) {
+        if (it->second > 0xFFFFu) {
+            fail(instr.loc, "V-BC-FUNCTION-TABLE", "CALL supports at most 65535 functions");
+        }
         emit16(BCOpcode::CALL, static_cast<uint16_t>(it->second));
     } else {
         // External/native call
         const size_t argCount = instr.operands.size();
         if (argCount > 0xFFu) {
-            throw std::runtime_error(
-                "BytecodeCompiler: CALL_NATIVE supports at most 255 arguments");
+            fail(instr.loc, "V-BC-CALL-ARGS", "CALL_NATIVE supports at most 255 arguments");
         }
 
         uint32_t nativeIdx = module_.addNativeFunc(
             instr.callee, static_cast<uint32_t>(argCount), instr.result.has_value());
         if (nativeIdx > 0xFFFFu) {
-            throw std::runtime_error(
-                "BytecodeCompiler: CALL_NATIVE supports at most 65535 native references");
+            fail(instr.loc,
+                 "V-BC-NATIVE-TABLE",
+                 "CALL_NATIVE supports at most 65535 native references");
         }
 
         emit(encodeOp8_16(BCOpcode::CALL_NATIVE,
@@ -1240,6 +1412,9 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
 
     switch (instr.op) {
         case Opcode::Br: {
+            if (instr.labels.empty()) {
+                fail(instr.loc, "V-BC-MALFORMED-INSTR", "br requires a target label");
+            }
             // Unconditional branch
             // Store branch arguments to target block's parameter locals
             if (!instr.labels.empty() && !instr.brArgs.empty() && !instr.brArgs[0].empty()) {
@@ -1250,6 +1425,10 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
         }
 
         case Opcode::CBr: {
+            requireOperandCount(instr, 1);
+            if (instr.labels.size() < 2) {
+                fail(instr.loc, "V-BC-MALFORMED-INSTR", "cbr requires true and false labels");
+            }
             // Conditional branch: cbr %cond, thenLabel(args), elseLabel(args)
             // We need to handle both branches' arguments
             pushValue(instr.operands[0]); // Condition
@@ -1309,6 +1488,7 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
         }
 
         case Opcode::SwitchI32: {
+            requireOperandCount(instr, 1);
             // Switch statement
             // Push the scrutinee value onto the stack
             pushValue(il::core::switchScrutinee(instr));

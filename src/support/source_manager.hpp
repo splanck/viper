@@ -42,8 +42,9 @@ class SourceManager {
     /// @brief Register file path @p path and return its id.
     /// @param path File system path.
     /// @return New file identifier (>0 on success, 0 on overflow).
-    /// @details Emits an error diagnostic when the identifier space is
-    ///          exhausted and refuses to insert the file.
+    /// @details Returns zero when the identifier space is exhausted and refuses
+    ///          to insert the file. Callers surface the diagnostic in their own
+    ///          reporting context.
     uint32_t addFile(std::string path);
 
     /// @brief Retrieve path for @p file_id.
@@ -57,6 +58,11 @@ class SourceManager {
     /// @return The source line text (without newline), or empty if unavailable.
     /// @details Lazily loads and caches file contents on first access.
     std::string_view getLine(uint32_t file_id, uint32_t line) const;
+
+    /// @brief Cache source text for @p file_id without requiring it to exist on disk.
+    /// @param file_id Identifier returned by addFile().
+    /// @param source Full source text associated with the file id.
+    void setSource(uint32_t file_id, std::string source);
 
   private:
     /// Cached file contents split by line, keyed by file_id.

@@ -19,9 +19,14 @@
 
 #include "cli.hpp"
 
+#include "support/diag_expected.hpp"
+#include "support/diagnostics.hpp"
+
 #include <charconv>
+#include <iostream>
 #include <string_view>
 #include <system_error>
+#include <vector>
 
 namespace ilc {
 
@@ -120,6 +125,48 @@ SharedOptionParseResult parseSharedOption(int &index,
         opts.werror = true;
         return SharedOptionParseResult::Parsed;
     }
+    if (arg == "--strict-diagnostics") {
+        opts.strictDiagnostics = true;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--no-strict-diagnostics") {
+        opts.strictDiagnostics = false;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--show-warnings") {
+        opts.showWarnings = true;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--quiet-warnings" || arg == "--no-warnings") {
+        opts.showWarnings = false;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--diagnostic-format") {
+        if (index + 1 >= argc) {
+            return SharedOptionParseResult::Error;
+        }
+        std::string_view value(argv[++index]);
+        if (value == "text") {
+            opts.diagnosticFormat = DiagnosticFormat::Text;
+        } else if (value == "json") {
+            opts.diagnosticFormat = DiagnosticFormat::Json;
+        } else {
+            return SharedOptionParseResult::Error;
+        }
+        return SharedOptionParseResult::Parsed;
+    }
+    constexpr std::string_view diagFormatPrefix = "--diagnostic-format=";
+    if (arg.substr(0, diagFormatPrefix.size()) == diagFormatPrefix) {
+        std::string_view value = arg.substr(diagFormatPrefix.size());
+        if (value == "text") {
+            opts.diagnosticFormat = DiagnosticFormat::Text;
+        } else if (value == "json") {
+            opts.diagnosticFormat = DiagnosticFormat::Json;
+        } else {
+            return SharedOptionParseResult::Error;
+        }
+        return SharedOptionParseResult::Parsed;
+    }
     if (arg.substr(0, 5) == "-Wno-" && arg.size() > 5) {
         opts.disabledWarnings.emplace_back(arg.substr(5));
         return SharedOptionParseResult::Parsed;
@@ -129,6 +176,42 @@ SharedOptionParseResult parseSharedOption(int &index,
         return SharedOptionParseResult::Parsed;
     }
     return SharedOptionParseResult::NotMatched;
+}
+
+void printDiagnostic(const il::support::Diagnostic &diag,
+                     std::ostream &os,
+                     const il::support::SourceManager *sm,
+                     DiagnosticFormat format) {
+    switch (format) {
+        case DiagnosticFormat::Text:
+            il::support::printDiag(diag, os, sm);
+            return;
+        case DiagnosticFormat::Json:
+            il::support::printDiagJson(diag, os, sm);
+            return;
+    }
+}
+
+void printDiagnostics(const std::vector<il::support::Diagnostic> &diagnostics,
+                      std::ostream &os,
+                      const il::support::SourceManager *sm,
+                      DiagnosticFormat format) {
+    switch (format) {
+        case DiagnosticFormat::Text:
+            for (const auto &diag : diagnostics)
+                il::support::printDiag(diag, os, sm);
+            return;
+        case DiagnosticFormat::Json:
+            il::support::printDiagnosticsJson(diagnostics, os, sm);
+            return;
+    }
+}
+
+void printDiagnosticEngine(const il::support::DiagnosticEngine &engine,
+                           std::ostream &os,
+                           const il::support::SourceManager *sm,
+                           DiagnosticFormat format) {
+    printDiagnostics(engine.diagnostics(), os, sm, format);
 }
 
 } // namespace ilc

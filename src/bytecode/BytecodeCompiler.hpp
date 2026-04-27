@@ -31,8 +31,12 @@
 #include "bytecode/Bytecode.hpp"
 #include "bytecode/BytecodeModule.hpp"
 #include "il/core/Module.hpp"
+#include "support/diag_expected.hpp"
+#include "support/source_location.hpp"
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -57,6 +61,13 @@ class BytecodeCompiler {
     /// @return A fully compiled BytecodeModule ready for execution.
     BytecodeModule compile(const il::core::Module &ilModule);
 
+    /// @brief Compile an IL module, returning a diagnostic instead of throwing.
+    /// @param ilModule The IL module to compile.
+    /// @return A bytecode module on success, or a compile diagnostic on failure.
+    il::support::Expected<BytecodeModule> compileChecked(
+        const il::core::Module &ilModule,
+        const il::support::SourceManager *sourceManager = nullptr);
+
   private:
     /// @brief The bytecode module being built during compilation.
     BytecodeModule module_;
@@ -66,6 +77,21 @@ class BytecodeCompiler {
 
     /// @brief Pointer to the BytecodeFunction currently being compiled.
     BytecodeFunction *currentFunc_;
+
+    /// @brief Name of the function currently being compiled.
+    std::string currentFunctionName_;
+
+    /// @brief Source location of the instruction currently being compiled.
+    il::support::SourceLoc currentLoc_{};
+
+    /// @brief Block label of the instruction currently being compiled.
+    std::string currentBlockLabel_;
+
+    /// @brief Source manager used to resolve file ids for bytecode debug metadata.
+    const il::support::SourceManager *sourceManager_{nullptr};
+
+    /// @brief Mapping from SourceManager file identifiers to BytecodeModule source indices.
+    std::unordered_map<uint32_t, uint32_t> sourceFileIndex_;
 
     /// @brief Mapping from SSA value IDs to local variable slot indices.
     /// @details Populated per-function by buildSSAToLocalsMap().
@@ -141,6 +167,12 @@ class BytecodeCompiler {
     /// @param instr The IL instruction to compile.
     void compileInstr(const il::core::Instr &instr);
 
+    [[noreturn]] void fail(il::support::SourceLoc loc, std::string code, std::string message);
+
+    [[noreturn]] void failCurrent(std::string code, std::string message);
+
+    void requireOperandCount(const il::core::Instr &instr, size_t minCount);
+
     /// @brief Emit bytecode to push an IL value onto the operand stack.
     /// @details Handles constants (immediates), SSA references (local loads),
     ///          and global references.
@@ -154,6 +186,8 @@ class BytecodeCompiler {
     /// @brief Emit a raw 32-bit instruction word into the current function's code.
     /// @param instr The pre-encoded 32-bit instruction word.
     void emit(uint32_t instr);
+
+    uint32_t sourceFileTableEntry(il::support::SourceLoc loc);
 
     /// @brief Emit a zero-argument bytecode instruction.
     /// @param op The opcode to emit.
@@ -178,6 +212,8 @@ class BytecodeCompiler {
     /// @param op  The opcode to emit.
     /// @param arg The signed 16-bit argument.
     void emitI16(BCOpcode op, int16_t arg);
+
+    void emitPoolLoad(BCOpcode op, uint32_t index, std::string_view poolName);
 
     /// @brief Emit a bytecode instruction with two unsigned 8-bit arguments.
     /// @param op   The opcode to emit.

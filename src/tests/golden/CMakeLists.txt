@@ -111,20 +111,9 @@ function(viper_add_golden_suite_tests)
     _golden_error(basic_error_ts_undef_var ${_BE} ts_undef_var)
     _golden_error(basic_error_ts_const_assign ${_BE} ts_const_assign)
     _golden_error(basic_error_ts_bool_arith ${_BE} ts_bool_arith)
-
-    # GAP tests: BASIC allows these without error
-    viper_add_ctest(basic_error_ts_string_to_int
-            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_BE}/ts_string_to_int.bas -DEXPECT_EXIT_ZERO=TRUE
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-    viper_add_ctest(basic_error_ts_float_divmod
-            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_BE}/ts_float_divmod.bas -DEXPECT_EXIT_ZERO=TRUE
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
-    viper_add_ctest(basic_error_ts_wrong_ret_type
-            ${CMAKE_COMMAND} -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_BE}/ts_wrong_ret_type.bas -DEXPECT_EXIT_ZERO=TRUE
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    _golden_error(basic_error_ts_string_to_int ${_BE} ts_string_to_int)
+    _golden_error(basic_error_ts_wrong_ret_type ${_BE} ts_wrong_ret_type)
+    _golden_error(basic_error_ts_float_divmod ${_BE} ts_float_divmod EXPECT_EXIT_ZERO)
 
     # Runtime class readonly property error
     _golden_error(runtime_classes_readonly_prop_set

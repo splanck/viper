@@ -30,11 +30,8 @@
 
 #include "source_manager.hpp"
 
-#include "support/diag_expected.hpp"
-
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <limits>
 
 namespace il::support {
@@ -70,9 +67,8 @@ std::string normalizePath(std::string path) {
 /// @details Normalises @p path using @ref normalizePath before deduplicating it
 ///          against previously seen entries.  Identifiers start at one so that
 ///          zero can unambiguously signal "unknown".  When the identifier space
-///          would overflow, the helper emits a diagnostic via
-///          @ref printDiag and returns zero so callers can surface a fatal
-///          configuration error.  Stored strings live inside the manager's
+///          would overflow, the helper returns zero so callers can surface a fatal
+///          configuration error in their own diagnostic context.  Stored strings live inside the manager's
 ///          @ref files_ container for the remainder of the manager's lifetime,
 ///          making it safe to hand out @ref std::string_view references.
 ///
@@ -85,8 +81,6 @@ uint32_t SourceManager::addFile(std::string path) {
         return it->second;
 
     if (next_file_id_ > std::numeric_limits<uint32_t>::max()) {
-        auto diag = makeError({}, std::string{kSourceManagerFileIdOverflowMessage});
-        printDiag(diag, std::cerr);
         return 0;
     }
 
@@ -151,5 +145,30 @@ std::string_view SourceManager::getLine(uint32_t file_id, uint32_t line) const {
     if (line > lines.size())
         return {};
     return lines[line - 1];
+}
+
+void SourceManager::setSource(uint32_t file_id, std::string source) {
+    if (file_id == 0)
+        return;
+
+    std::vector<std::string> lines;
+    std::string current;
+    for (char ch : source) {
+        if (ch == '\n') {
+            if (!current.empty() && current.back() == '\r')
+                current.pop_back();
+            lines.push_back(std::move(current));
+            current.clear();
+        } else {
+            current.push_back(ch);
+        }
+    }
+    if (!current.empty() || source.empty()) {
+        if (!current.empty() && current.back() == '\r')
+            current.pop_back();
+        lines.push_back(std::move(current));
+    }
+
+    lineCache_[file_id] = std::move(lines);
 }
 } // namespace il::support

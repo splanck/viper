@@ -1150,7 +1150,11 @@ static void test_unhandled_trap() {
     func.code.push_back(encodeOp8(BCOpcode::TRAP, static_cast<uint8_t>(TrapKind::RuntimeError)));
     func.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 0));
     func.code.push_back(encodeOp(BCOpcode::RETURN));
+    func.lineTable = {42, 43, 44};
+    func.sourceFileTable = {1, 1, 1};
+    func.blockLabelTable = {"entry", "entry", "entry"};
 
+    bcModule.sourceFiles.push_back({"unhandled_trap.zia", 0});
     bcModule.functions.push_back(std::move(func));
     bcModule.functionIndex["unhandled"] = 0;
 
@@ -1160,6 +1164,10 @@ static void test_unhandled_trap() {
     vm.exec("unhandled", {});
     assert(vm.state() == VMState::Trapped);
     assert(vm.trapKind() == TrapKind::RuntimeError);
+    const std::string trapMessage = vm.trapMessage();
+    assert(trapMessage.find("Trap @unhandled:entry#0") != std::string::npos);
+    assert(trapMessage.find("unhandled_trap.zia:42") != std::string::npos);
+    assert(trapMessage.find("RuntimeError") != std::string::npos);
 
     std::cout << "PASSED\n";
 }

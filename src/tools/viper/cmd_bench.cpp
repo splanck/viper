@@ -20,6 +20,7 @@
 #include "bytecode/BytecodeVM.hpp"
 #include "cli.hpp"
 #include "il/core/Module.hpp"
+#include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
 #include "viper/vm/VM.hpp"
@@ -34,6 +35,7 @@
 #include <numeric>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #ifdef _WIN32
@@ -374,7 +376,12 @@ bool benchmarkFile(const std::string &file,
     if (!bcStrategies.empty()) {
         // Compile IL to bytecode once
         viper::bytecode::BytecodeCompiler compiler;
-        viper::bytecode::BytecodeModule bcModule = compiler.compile(mod);
+        auto compiled = compiler.compileChecked(mod, &sm);
+        if (!compiled) {
+            il::support::printDiag(compiled.error(), std::cerr, &sm);
+            return false;
+        }
+        viper::bytecode::BytecodeModule bcModule = std::move(compiled.value());
 
         for (const auto &strategy : bcStrategies) {
             std::vector<double> times;

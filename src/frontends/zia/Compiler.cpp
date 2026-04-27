@@ -102,6 +102,14 @@ CompilerResult compile(const CompilerInput &input,
     } else {
         result.fileId = sm.addFile(std::string(input.path));
     }
+    if (result.fileId == 0) {
+        result.diagnostics.report({il::support::Severity::Error,
+                                   std::string{il::support::kSourceManagerFileIdOverflowMessage},
+                                   {},
+                                   "V-SRC-FILE-ID"});
+        return result;
+    }
+    sm.setSource(result.fileId, std::string(input.source));
 
     // Debug timing
     auto debugTime = [](const char *phase) {
@@ -197,7 +205,19 @@ CompilerResult compile(const CompilerInput &input,
         }
 
         const std::string pipelineId = (options.optLevel == OptLevel::O2) ? "O2" : "O1";
-        pm.runPipeline(result.module, pipelineId);
+        if (!pm.runPipeline(result.module, pipelineId)) {
+            result.diagnostics.report(
+                {il::support::Severity::Error,
+                 "IL optimization pipeline '" + pipelineId + "' failed verification",
+                 {},
+                 "V-OPT-PIPELINE"});
+            return result;
+        }
+
+        if (auto verified = il::verify::Verifier::verify(result.module); !verified.hasValue()) {
+            result.diagnostics.report(verified.error());
+            return result;
+        }
     }
 
     // Dump IL after the full optimization pipeline.
@@ -249,6 +269,14 @@ std::unique_ptr<AnalysisResult> parseAndAnalyze(const CompilerInput &input,
     // Register source file (matches the logic in compile()).
     uint32_t fileId =
         input.fileId.has_value() ? *input.fileId : sm.addFile(std::string(input.path));
+    if (fileId == 0) {
+        result->diagnostics.report({il::support::Severity::Error,
+                                    std::string{il::support::kSourceManagerFileIdOverflowMessage},
+                                    {},
+                                    "V-SRC-FILE-ID"});
+        return result;
+    }
+    sm.setSource(fileId, std::string(input.source));
 
     // Phase 1: Lexing
     Lexer lexer(std::string(input.source), fileId, result->diagnostics);

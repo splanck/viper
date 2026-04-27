@@ -75,6 +75,14 @@ std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
     std::string source = buffer.str();
 
     uint32_t fileId = sm_.addFile(path);
+    if (fileId == 0) {
+        diag_.report({il::support::Severity::Error,
+                      std::string{il::support::kSourceManagerFileIdOverflowMessage},
+                      importLoc,
+                      "V-SRC-FILE-ID"});
+        return nullptr;
+    }
+    sm_.setSource(fileId, source);
     fileIdsByPath_[normalizePath(path)] = fileId;
     if (warningSuppressions_)
         warningSuppressions_->scan(fileId, source);

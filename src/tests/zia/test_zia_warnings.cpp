@@ -65,6 +65,16 @@ size_t countWarningCode(const CompilerResult &r, const char *code) {
     return n;
 }
 
+bool hasDiagnosticCodeWithSeverity(const CompilerResult &r,
+                                   const char *code,
+                                   il::support::Severity severity) {
+    for (const auto &d : r.diagnostics.diagnostics()) {
+        if (d.code == code && d.severity == severity)
+            return true;
+    }
+    return false;
+}
+
 void writeFile(const fs::path &path, const std::string &contents) {
     fs::create_directories(path.parent_path());
     std::ofstream out(path);
@@ -291,6 +301,20 @@ func start() {    var x = 10 / 0;
 )");
     EXPECT_TRUE(r.succeeded());
     EXPECT_TRUE(hasWarningCode(r, "W010"));
+}
+
+TEST(ZiaWarnings, StrictSafetyDiagnosticsPromotesDivisionByZero) {
+    WarningPolicy policy;
+    policy.strictSafetyWarnings = true;
+    auto r = compileWithPolicy(R"(
+module T;
+func start() {    var x = 10 / 0;
+}
+)",
+                               policy);
+
+    EXPECT_FALSE(r.succeeded());
+    EXPECT_TRUE(hasDiagnosticCodeWithSeverity(r, "W010", il::support::Severity::Error));
 }
 
 //=============================================================================

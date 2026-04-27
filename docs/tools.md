@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-27
 ---
 
 # CLI Tools Reference
@@ -135,6 +135,28 @@ viper init my-app
 viper run my-app
 ```
 
+### viper run / build
+
+Build and run a source file or project, or build an IL/native artifact.
+
+```bash
+viper run program.zia
+viper run program.zia --no-strict-diagnostics
+viper build program.zia -o program.il
+viper build program.zia -o program
+```
+
+| Flag | Description |
+|------|-------------|
+| `--strict-diagnostics` | For Zia, promote safety-critical warnings to errors before execution |
+| `--no-strict-diagnostics` | Keep safety-critical Zia diagnostics as warnings |
+| `--quiet-warnings`, `--no-warnings` | Do not print warnings when compilation succeeds |
+| `--diagnostic-format text|json` | Select text or machine-readable JSON diagnostics |
+| `--no-runtime-namespaces` | Disable automatic runtime namespace imports |
+| `--bounds-checks` | Enable generated bounds checks where supported |
+
+Both Zia and BASIC source paths print successful warnings by default, verify IL after lowering, and verify again after optimization. If the optimizer fails verification, the command stops with a diagnostic instead of running or building the result.
+
 ### viper -run
 
 Execute IL modules with debugging controls.
@@ -158,6 +180,8 @@ viper -run <file.il> [flags]
 | `--watch <name>`             | Print when scalar changes                    |
 | `--count`                    | Print executed instruction count at exit     |
 | `--time`                     | Print wall-clock execution time              |
+| `--bytecode`                 | Run through the bytecode VM with checked bytecode compilation |
+| `--diagnostic-format text|json` | Select text or JSON diagnostics for load/compile failures |
 
 ### viper front
 
@@ -167,12 +191,12 @@ workflows.
 
 ```bash
 # Zia
-viper front zia -emit-il <file.zia> [--bounds-checks] [--no-runtime-namespaces]
-viper front zia -run <file.zia> [--trace=il|src] [--stdin-from <file>] [--max-steps N]
+viper front zia -emit-il <file.zia> [--bounds-checks] [--strict-diagnostics|--no-strict-diagnostics] [--diagnostic-format text|json]
+viper front zia -run <file.zia> [--strict-diagnostics|--no-strict-diagnostics] [--trace=il|src] [--stdin-from <file>] [--max-steps N]
 
 # BASIC
-viper front basic -emit-il <file.bas> [--bounds-checks] [--no-runtime-namespaces]
-viper front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] [--max-steps N]
+viper front basic -emit-il <file.bas> [--bounds-checks] [--diagnostic-format text|json]
+viper front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] [--max-steps N] [--quiet-warnings]
 ```
 
 ### viper il-opt
@@ -220,6 +244,8 @@ selects the Windows platform policy. When you use `--native-asm` with `-o <file.
 writes a relocatable object instead of linking an executable.
 
 On arm64, target selection is explicit: `--target-darwin`, `--target-linux`, and `--target-windows` select the assembly dialect, native object format, and native-link platform together. When you use `--native-asm` with `-o <file.o>` or `-o <file.obj>`, the compiler writes a relocatable object instead of linking an executable.
+
+Native compilation preflights IL parsing and verification before dispatching to the backend. Invalid IL should therefore produce normal parser or verifier diagnostics rather than backend crashes.
 
 ### viper install-package
 

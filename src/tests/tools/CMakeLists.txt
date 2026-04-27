@@ -33,6 +33,13 @@ function(viper_add_tools_tests)
     target_link_libraries(test_tools_basic_common PRIVATE ${VIPER_TOOLS_LIBS})
     viper_add_ctest(test_tools_basic_common test_tools_basic_common)
 
+    viper_add_ctest(diagnostic_cli
+            ${CMAKE_COMMAND}
+            -DVIPER_EXE=$<TARGET_FILE:viper>
+            -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/diagnostic_cli
+            -P ${_VIPER_TOOLS_DIR}/DiagnosticCliTests.cmake)
+    viper_add_test_labels(diagnostic_cli tools zia)
+
     viper_add_test(test_tools_frontend_native_compiler
             ${_VIPER_TOOLS_DIR}/FrontendToolAndNativeCompilerTests.cpp
             ${CMAKE_SOURCE_DIR}/src/tools/viper/cmd_codegen_x64.cpp)

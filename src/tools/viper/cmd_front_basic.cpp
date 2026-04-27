@@ -63,17 +63,6 @@ struct FrontBasicConfig {
     std::string optLevel{"O0"}; ///< Optimization level: "O0", "O1", or "O2"; default = O0.
 };
 
-/// @brief Identify diagnostics that reflect SourceManager identifier overflow.
-/// @details The BASIC driver must suppress SourceManager overflow diagnostics
-///          because the error itself already gets surfaced during file loading.
-///          This helper compares the diagnostic message against the canonical
-///          overflow text so callers can detect and elide the redundant report.
-/// @param diag Diagnostic produced by helper routines while loading sources.
-/// @return @c true when the diagnostic indicates SourceManager overflow.
-bool isSourceManagerOverflowDiag(const il::support::Diag &diag) {
-    return diag.message == il::support::kSourceManagerFileIdOverflowMessage;
-}
-
 /// @brief Parse CLI arguments for the BASIC frontend subcommand.
 ///
 /// The routine accepts either `-emit-il <file>` or `-run <file>` plus shared
@@ -176,10 +165,19 @@ int runFrontBasic(const FrontBasicConfig &config,
     }
 
     auto result = compileBasic(compilerInput, compilerOpts, sm);
-    if (!result.succeeded()) {
+    const bool shouldPrintDiagnostics =
+        !result.succeeded() || (config.shared.showWarnings && result.diagnostics.warningCount() != 0);
+    if (shouldPrintDiagnostics) {
         if (result.emitter) {
-            result.emitter->printAll(std::cerr);
+            if (config.shared.diagnosticFormat == ilc::DiagnosticFormat::Json) {
+                ilc::printDiagnosticEngine(
+                    result.diagnostics, std::cerr, &sm, config.shared.diagnosticFormat);
+            } else {
+                result.emitter->printAll(std::cerr);
+            }
         }
+    }
+    if (!result.succeeded()) {
         return 1;
     }
 
@@ -188,6 +186,12 @@ int runFrontBasic(const FrontBasicConfig &config,
     std::optional<il::support::Expected<void>> cachedVerification{};
 
     if (config.emitIl) {
+        auto verification = il::verify::Verifier::verify(module);
+        if (!verification) {
+            ilc::printDiagnostic(
+                verification.error(), std::cerr, &sm, config.shared.diagnosticFormat);
+            return 1;
+        }
         io::Serializer::write(module, std::cout);
         return 0;
     }
@@ -219,7 +223,17 @@ int runFrontBasic(const FrontBasicConfig &config,
                 pm.setInstrumentationStream(std::cerr);
             }
 
-            pm.runPipeline(module, config.optLevel);
+            if (!pm.runPipeline(module, config.optLevel)) {
+                ilc::printDiagnostic(il::support::Diag{il::support::Severity::Error,
+                                                       "IL optimization pipeline '" + config.optLevel +
+                                                           "' failed verification",
+                                                       {},
+                                                       "V-OPT-PIPELINE"},
+                                      std::cerr,
+                                      &sm,
+                                      config.shared.diagnosticFormat);
+                return 1;
+            }
 
             // Dump IL after the full optimization pipeline.
             if (config.shared.dumpILOpt) {
@@ -235,7 +249,8 @@ int runFrontBasic(const FrontBasicConfig &config,
     auto verification =
         cachedVerification ? std::move(*cachedVerification) : il::verify::Verifier::verify(module);
     if (!verification) {
-        il::support::printDiag(verification.error(), std::cerr, &sm);
+        ilc::printDiagnostic(
+            verification.error(), std::cerr, &sm, config.shared.diagnosticFormat);
         return 1;
     }
 
@@ -276,6 +291,7 @@ int runFrontBasic(const FrontBasicConfig &config,
     il::tools::common::VMExecutorConfig vmConfig;
     vmConfig.programArgs = config.programArgs;
     vmConfig.outputTrapMessage = true;
+    vmConfig.sourceManager = &sm;
 
     auto vmResult = il::tools::common::executeBytecodeVM(module, vmConfig);
     return vmResult.exitCode;
@@ -305,9 +321,7 @@ int cmdFrontBasicWithSourceManager(int argc, char **argv, il::support::SourceMan
     auto source = il::tools::common::loadSourceBuffer(config.sourcePath, sm);
     if (!source) {
         const auto &diag = source.error();
-        if (!isSourceManagerOverflowDiag(diag)) {
-            il::support::printDiag(diag, std::cerr, &sm);
-        }
+        ilc::printDiagnostic(diag, std::cerr, &sm, config.shared.diagnosticFormat);
         return 1;
     }
 

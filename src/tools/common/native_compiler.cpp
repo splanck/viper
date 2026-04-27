@@ -13,11 +13,13 @@
 #include "tools/common/native_compiler.hpp"
 
 #include "codegen/x86_64/CodegenPipeline.hpp"
+#include "support/source_manager.hpp"
+#include "tools/common/module_loader.hpp"
 #include "tools/viper/cmd_codegen_arm64.hpp"
 
-#include <filesystem>
 #include <atomic>
 #include <chrono>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -65,6 +67,12 @@ int compileToNative(const std::string &ilPath,
                     TargetArch arch,
                     const std::string &assetBlobPath,
                     const std::string &assetObjPath) {
+    il::core::Module preflightModule;
+    il::support::SourceManager sm;
+    auto preflight = il::tools::common::loadAndVerifyModule(ilPath, preflightModule, &sm, std::cerr);
+    if (!preflight.succeeded())
+        return preflight.isFileError() ? 1 : 2;
+
     if (arch == TargetArch::ARM64) {
         // The frontend already emitted the final IL. Do not re-run an IL
         // optimization pipeline here; that can double-optimize build output

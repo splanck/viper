@@ -382,6 +382,12 @@ if (NOT TARGET test_integer_helpers)
     viper_add_ctest(test_integer_helpers test_integer_helpers)
 endif ()
 
+if (NOT TARGET test_il_verify_all)
+    viper_add_test(test_il_verify_all ${VIPER_TESTS_DIR}/unit/test_il_verify_all.cpp)
+    target_link_libraries(test_il_verify_all PRIVATE viper_il_full)
+    viper_add_ctest(test_il_verify_all test_il_verify_all)
+endif ()
+
 if (NOT TARGET test_codegen_x86_64_passes)
     viper_add_test(
             test_codegen_x86_64_passes
@@ -563,6 +569,20 @@ if (NOT TARGET test_bytecode_vm)
     viper_add_test(test_bytecode_vm ${VIPER_TESTS_DIR}/unit/test_bytecode_vm.cpp)
     target_link_libraries(test_bytecode_vm PRIVATE viper_bytecode il_build)
     viper_add_ctest(test_bytecode_vm test_bytecode_vm)
+endif ()
+
+if (NOT TARGET test_bytecode_compiler_diagnostics)
+    viper_add_test(test_bytecode_compiler_diagnostics
+            ${VIPER_TESTS_DIR}/unit/test_bytecode_compiler_diagnostics.cpp)
+    target_link_libraries(test_bytecode_compiler_diagnostics PRIVATE viper_bytecode)
+    viper_add_ctest(test_bytecode_compiler_diagnostics test_bytecode_compiler_diagnostics)
+endif ()
+
+if (NOT TARGET test_vm_executor_compile_diagnostics)
+    viper_add_test(test_vm_executor_compile_diagnostics
+            ${VIPER_TESTS_DIR}/unit/test_vm_executor_compile_diagnostics.cpp)
+    target_link_libraries(test_vm_executor_compile_diagnostics PRIVATE il_tools_common)
+    viper_add_ctest(test_vm_executor_compile_diagnostics test_vm_executor_compile_diagnostics)
 endif ()
 
 # VM vs BytecodeVM equivalence tests

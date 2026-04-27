@@ -1645,8 +1645,23 @@ void Sema::warn(WarningCode code, SourceLoc loc, const std::string &message) {
     if (suppressions_.isSuppressed(code, loc))
         return;
 
-    // Determine severity: Warning or Error (if -Werror)
-    auto sev = (warningPolicy_ && warningPolicy_->warningsAsErrors)
+    auto isSafetyCritical = [](WarningCode warning) {
+        switch (warning) {
+            case WarningCode::W008_MissingReturn:
+            case WarningCode::W010_DivisionByZero:
+            case WarningCode::W015_UninitializedVariable:
+            case WarningCode::W016_OptionalWithoutCheck:
+            case WarningCode::W019_NonExhaustiveMatch:
+                return true;
+            default:
+                return false;
+        }
+    };
+
+    // Determine severity: Warning or Error (-Werror or strict safety diagnostics).
+    auto sev = (warningPolicy_ &&
+                (warningPolicy_->warningsAsErrors ||
+                 (warningPolicy_->strictSafetyWarnings && isSafetyCritical(code))))
                    ? il::support::Severity::Error
                    : il::support::Severity::Warning;
 
