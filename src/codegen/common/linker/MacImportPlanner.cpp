@@ -74,11 +74,12 @@ static constexpr const char *kMacLibSystemPrefixes[] = {
     nullptr,
 };
 static constexpr const char *kMacLibSystemExact[] = {
-    "_NSGetExecutablePath", "_Block_copy",        "_Block_release",     "_Block_object_assign",
-    "_Block_object_dispose","dyld_stub_binder",   "_tlv_atexit",        "_tlv_bootstrap",
-    "mach_timebase_info",   "mach_absolute_time", "mach_task_self_",    "mach_host_self",
-    "task_info",            "host_page_size",     "_os_unfair_lock_lock","_os_unfair_lock_unlock",
-    "os_unfair_lock_lock",  "os_unfair_lock_unlock", nullptr,
+    "_NSGetExecutablePath", "_NSGetArgc",         "_NSGetArgv",         "_Block_copy",
+    "_Block_release",      "_Block_object_assign","_Block_object_dispose","dyld_stub_binder",
+    "_tlv_atexit",         "_tlv_bootstrap",      "mach_timebase_info", "mach_absolute_time",
+    "mach_task_self_",     "mach_host_self",      "task_info",          "host_page_size",
+    "_os_unfair_lock_lock","_os_unfair_lock_unlock","os_unfair_lock_lock","os_unfair_lock_unlock",
+    nullptr,
 };
 static constexpr const char *kMacCoreFoundationPrefixes[] = {"CF", "kCF", nullptr};
 static constexpr const char *kMacFoundationPrefixes[] = {

@@ -553,6 +553,14 @@ static bool runSROA(Function &F) {
     // Now: owner[temp] -> candidate pointer (single lookup)
     std::unordered_map<unsigned, SROACandidate *> owner;
 
+    std::size_t allocaCount = 0;
+    for (const auto &B : F.blocks)
+        for (const auto &I : B.instructions)
+            if (I.op == Opcode::Alloca && I.result)
+                ++allocaCount;
+    candidates.reserve(allocaCount);
+    owner.reserve(allocaCount);
+
     for (auto &B : F.blocks) {
         for (std::size_t idx = 0; idx < B.instructions.size(); ++idx) {
             Instr &I = B.instructions[idx];

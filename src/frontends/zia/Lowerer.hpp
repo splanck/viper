@@ -1006,11 +1006,37 @@ class Lowerer {
     /// @param val The value to store.
     void emitFieldStore(const FieldLayout *field, Value selfPtr, Value val);
 
+    /// @brief Copy an inline semantic value from one address to another.
+    /// @details Handles nested structs, tuples, fixed arrays, and string
+    ///          ownership. @p destInitialized controls whether old destination
+    ///          string references must be released.
+    void emitInlineValueCopy(TypeRef valueType,
+                             Value destPtr,
+                             Value sourcePtr,
+                             bool destInitialized);
+
+    /// @brief Store a lowered value into inline semantic storage.
+    /// @details Aggregate values are represented by source pointers; scalar
+    ///          values are stored directly with string retain/release handling.
+    void emitInlineValueStore(TypeRef valueType,
+                              Value destPtr,
+                              Value value,
+                              bool destInitialized);
+
+    /// @brief Zero-initialize inline semantic storage.
+    void emitInlineValueZero(TypeRef valueType, Value destPtr);
+
     /// @brief Deep copy a struct type (for copy-on-assign semantics).
     /// @param info The struct type info.
     /// @param sourcePtr Pointer to source value.
     /// @return Pointer to the new copy.
     Value emitStructTypeCopy(const StructTypeInfo &info, Value sourcePtr);
+
+    /// @brief Initialize uninitialized struct storage from another struct value.
+    void emitStructTypeInitialize(const StructTypeInfo &info, Value destPtr, Value sourcePtr);
+
+    /// @brief Assign an existing struct storage location from another struct value.
+    void emitStructTypeStore(const StructTypeInfo &info, Value destPtr, Value sourcePtr);
 
     /// @brief Allocate stack space for a struct type without initialization.
     /// @param info The struct type info.
@@ -1220,6 +1246,18 @@ class Lowerer {
     /// Boolean (i1) aligns to 8 bytes to avoid misalignment issues
     /// when followed by pointer-sized fields.
     static size_t getILTypeAlignment(Type type);
+
+    /// @brief Get the inline storage size for a semantic type.
+    size_t getSemanticTypeSize(TypeRef type);
+
+    /// @brief Get the inline storage alignment for a semantic type.
+    size_t getSemanticTypeAlignment(TypeRef type);
+
+    /// @brief Get the byte offset of a tuple element under inline layout.
+    size_t getTupleElementOffset(TypeRef tupleType, size_t index);
+
+    /// @brief Get total inline storage size for a tuple type.
+    size_t getTupleStorageSize(TypeRef tupleType);
 
     /// @brief Align an offset to a given alignment boundary.
     /// @param offset The current offset.

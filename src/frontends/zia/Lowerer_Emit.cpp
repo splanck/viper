@@ -20,6 +20,15 @@ namespace il::frontends::zia {
 
 using namespace runtime;
 
+namespace {
+
+bool isInlineAggregateType(TypeRef type) {
+    return type && (type->kind == TypeKindSem::Struct || type->kind == TypeKindSem::FixedArray ||
+                    type->kind == TypeKindSem::Tuple);
+}
+
+} // namespace
+
 //=============================================================================
 // Block Management
 //=============================================================================
@@ -562,8 +571,9 @@ void Lowerer::emitStore(Value ptr, Value val, Type type) {
 
 Lowerer::Value Lowerer::emitFieldLoad(const FieldLayout *field, Value selfPtr) {
     Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field->offset));
-    // Fixed-size arrays: return the base address of the inline storage (no load).
-    if (field->type && field->type->kind == TypeKindSem::FixedArray)
+    // Inline aggregates live directly inside the containing value. Loading them
+    // as a pointer-sized scalar would read the first bytes of the aggregate.
+    if (isInlineAggregateType(field->type))
         return fieldAddr;
     Type fieldType = mapType(field->type);
     Value loaded = emitLoad(fieldAddr, fieldType);
@@ -577,17 +587,133 @@ Lowerer::Value Lowerer::emitFieldLoad(const FieldLayout *field, Value selfPtr) {
 
 void Lowerer::emitFieldStore(const FieldLayout *field, Value selfPtr, Value val) {
     Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field->offset));
-    Type fieldType = mapType(field->type);
-    // BUG-ADV-002: Retain/release string fields on store to maintain correct
-    // refcounts.  Without this, the caller's deferred release may free the
-    // string while the class still holds a pointer to it.
-    if (fieldType.kind == Type::Kind::Str) {
-        Value oldValue = emitLoad(fieldAddr, fieldType);
-        emitCall(runtime::kStrRetainMaybe, {val});
-        emitStore(fieldAddr, val, fieldType);
-        emitCall(runtime::kStrReleaseMaybe, {oldValue});
-    } else {
-        emitStore(fieldAddr, val, fieldType);
+    emitInlineValueStore(field->type, fieldAddr, val, true);
+}
+
+void Lowerer::emitInlineValueStore(TypeRef valueType,
+                                   Value destPtr,
+                                   Value value,
+                                   bool destInitialized) {
+    if (isInlineAggregateType(valueType)) {
+        emitInlineValueCopy(valueType, destPtr, value, destInitialized);
+        return;
+    }
+
+    Type ilType = mapType(valueType);
+    if (ilType.kind == Type::Kind::Str) {
+        if (destInitialized) {
+            Value oldValue = emitLoad(destPtr, ilType);
+            emitCall(runtime::kStrRetainMaybe, {value});
+            emitStore(destPtr, value, ilType);
+            emitCall(runtime::kStrReleaseMaybe, {oldValue});
+        } else {
+            emitCall(runtime::kStrRetainMaybe, {value});
+            emitStore(destPtr, value, ilType);
+        }
+        return;
+    }
+
+    emitStore(destPtr, value, ilType);
+}
+
+void Lowerer::emitInlineValueCopy(TypeRef valueType,
+                                  Value destPtr,
+                                  Value sourcePtr,
+                                  bool destInitialized) {
+    if (!valueType) {
+        Value loaded = emitLoad(sourcePtr, Type(Type::Kind::Ptr));
+        emitStore(destPtr, loaded, Type(Type::Kind::Ptr));
+        return;
+    }
+
+    if (valueType->kind == TypeKindSem::Struct) {
+        if (const StructTypeInfo *info = getOrCreateStructTypeInfo(valueType->name)) {
+            if (destInitialized)
+                emitStructTypeStore(*info, destPtr, sourcePtr);
+            else
+                emitStructTypeInitialize(*info, destPtr, sourcePtr);
+            return;
+        }
+    }
+
+    if (valueType->kind == TypeKindSem::FixedArray) {
+        TypeRef elemType = valueType->elementType();
+        const size_t elemSize = getSemanticTypeSize(elemType);
+        for (size_t i = 0; i < valueType->elementCount; ++i) {
+            Value dstElem = i == 0 ? destPtr : emitGEP(destPtr, static_cast<int64_t>(i * elemSize));
+            Value srcElem =
+                i == 0 ? sourcePtr : emitGEP(sourcePtr, static_cast<int64_t>(i * elemSize));
+            emitInlineValueCopy(elemType, dstElem, srcElem, destInitialized);
+        }
+        return;
+    }
+
+    if (valueType->kind == TypeKindSem::Tuple) {
+        const auto elements = valueType->tupleElementTypes();
+        for (size_t i = 0; i < elements.size(); ++i) {
+            const size_t offset = getTupleElementOffset(valueType, i);
+            Value dstElem = offset == 0 ? destPtr : emitGEP(destPtr, static_cast<int64_t>(offset));
+            Value srcElem =
+                offset == 0 ? sourcePtr : emitGEP(sourcePtr, static_cast<int64_t>(offset));
+            emitInlineValueCopy(elements[i], dstElem, srcElem, destInitialized);
+        }
+        return;
+    }
+
+    Type ilType = mapType(valueType);
+    Value loaded = emitLoad(sourcePtr, ilType);
+    emitInlineValueStore(valueType, destPtr, loaded, destInitialized);
+}
+
+void Lowerer::emitInlineValueZero(TypeRef valueType, Value destPtr) {
+    if (valueType && valueType->kind == TypeKindSem::Struct) {
+        if (const StructTypeInfo *info = getOrCreateStructTypeInfo(valueType->name)) {
+            for (const auto &field : info->fields) {
+                Value fieldAddr = emitGEP(destPtr, static_cast<int64_t>(field.offset));
+                emitInlineValueZero(field.type, fieldAddr);
+            }
+            return;
+        }
+    }
+
+    if (valueType && valueType->kind == TypeKindSem::FixedArray) {
+        TypeRef elemType = valueType->elementType();
+        const size_t elemSize = getSemanticTypeSize(elemType);
+        for (size_t i = 0; i < valueType->elementCount; ++i) {
+            Value elemPtr = i == 0 ? destPtr : emitGEP(destPtr, static_cast<int64_t>(i * elemSize));
+            emitInlineValueZero(elemType, elemPtr);
+        }
+        return;
+    }
+
+    if (valueType && valueType->kind == TypeKindSem::Tuple) {
+        const auto elements = valueType->tupleElementTypes();
+        for (size_t i = 0; i < elements.size(); ++i) {
+            const size_t offset = getTupleElementOffset(valueType, i);
+            Value elemPtr = offset == 0 ? destPtr : emitGEP(destPtr, static_cast<int64_t>(offset));
+            emitInlineValueZero(elements[i], elemPtr);
+        }
+        return;
+    }
+
+    Type ilType = mapType(valueType);
+    switch (ilType.kind) {
+        case Type::Kind::I64:
+        case Type::Kind::I32:
+        case Type::Kind::I16:
+        case Type::Kind::I1:
+            emitStore(destPtr, Value::constInt(0), ilType);
+            break;
+        case Type::Kind::F64:
+            emitStore(destPtr, Value::constFloat(0.0), ilType);
+            break;
+        case Type::Kind::Str:
+            emitStore(destPtr, Value::null(), Type(Type::Kind::Ptr));
+            break;
+        case Type::Kind::Ptr:
+        default:
+            emitStore(destPtr, Value::null(), Type(Type::Kind::Ptr));
+            break;
     }
 }
 
@@ -603,21 +729,24 @@ Lowerer::Value Lowerer::emitStructTypeCopy(const StructTypeInfo &info, Value sou
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value destPtr = Value::temp(allocaId);
 
-    // Copy all fields from source to destination.
-    // Use raw stores — the destination is freshly allocated (uninitialized),
-    // so emitFieldStore's retain/release on the "old value" would read garbage.
-    for (const auto &field : info.fields) {
-        Value srcValue = emitFieldLoad(&field, sourcePtr);
-        Type fieldType = mapType(field.type);
-        Value fieldAddr = emitGEP(destPtr, static_cast<int64_t>(field.offset));
-        if (fieldType.kind == Type::Kind::Str) {
-            // Retain the source string for the new copy
-            emitCall(runtime::kStrRetainMaybe, {srcValue});
-        }
-        emitStore(fieldAddr, srcValue, fieldType);
-    }
-
+    emitStructTypeInitialize(info, destPtr, sourcePtr);
     return destPtr;
+}
+
+void Lowerer::emitStructTypeInitialize(const StructTypeInfo &info, Value destPtr, Value sourcePtr) {
+    for (const auto &field : info.fields) {
+        Value fieldAddr = emitGEP(destPtr, static_cast<int64_t>(field.offset));
+        Value srcAddr = emitGEP(sourcePtr, static_cast<int64_t>(field.offset));
+        emitInlineValueCopy(field.type, fieldAddr, srcAddr, false);
+    }
+}
+
+void Lowerer::emitStructTypeStore(const StructTypeInfo &info, Value destPtr, Value sourcePtr) {
+    for (const auto &field : info.fields) {
+        Value fieldAddr = emitGEP(destPtr, static_cast<int64_t>(field.offset));
+        Value srcAddr = emitGEP(sourcePtr, static_cast<int64_t>(field.offset));
+        emitInlineValueCopy(field.type, fieldAddr, srcAddr, true);
+    }
 }
 
 Lowerer::Value Lowerer::emitStructTypeAlloc(const StructTypeInfo &info) {
@@ -634,33 +763,8 @@ Lowerer::Value Lowerer::emitStructTypeAlloc(const StructTypeInfo &info) {
 
     // Zero-initialize all fields
     for (const auto &field : info.fields) {
-        Value zeroVal;
-        Type fieldType = mapType(field.type);
-        switch (fieldType.kind) {
-            case Type::Kind::I64:
-            case Type::Kind::I32:
-            case Type::Kind::I16:
-            case Type::Kind::I1:
-                zeroVal = Value::constInt(0);
-                break;
-            case Type::Kind::F64:
-                zeroVal = Value::constFloat(0.0);
-                break;
-            case Type::Kind::Str: {
-                // String fields need null initialization via raw ptr store.
-                // Cannot use emitFieldStore here because it calls retain/release
-                // which require a valid str-typed value, and constStr("") points
-                // to a static literal that crashes rt_string_header.
-                Value fieldAddr = emitGEP(destPtr, static_cast<int64_t>(field.offset));
-                emitStore(fieldAddr, Value::null(), Type(Type::Kind::Ptr));
-                continue;
-            }
-            case Type::Kind::Ptr:
-            default:
-                zeroVal = Value::null();
-                break;
-        }
-        emitFieldStore(&field, destPtr, zeroVal);
+        Value fieldAddr = emitGEP(destPtr, static_cast<int64_t>(field.offset));
+        emitInlineValueZero(field.type, fieldAddr);
     }
 
     return destPtr;
@@ -757,6 +861,85 @@ size_t Lowerer::getILTypeAlignment(Type type) {
         default:
             return 8;
     }
+}
+
+size_t Lowerer::getSemanticTypeSize(TypeRef type) {
+    if (!type)
+        return getILTypeSize(Type(Type::Kind::Ptr));
+
+    switch (type->kind) {
+        case TypeKindSem::Struct:
+            if (const StructTypeInfo *info = getOrCreateStructTypeInfo(type->name))
+                return info->totalSize;
+            return getILTypeSize(mapType(type));
+        case TypeKindSem::FixedArray: {
+            TypeRef elemType = type->elementType();
+            return getSemanticTypeSize(elemType) * type->elementCount;
+        }
+        case TypeKindSem::Tuple:
+            return getTupleStorageSize(type);
+        default:
+            return getILTypeSize(mapType(type));
+    }
+}
+
+size_t Lowerer::getSemanticTypeAlignment(TypeRef type) {
+    if (!type)
+        return getILTypeAlignment(Type(Type::Kind::Ptr));
+
+    switch (type->kind) {
+        case TypeKindSem::Struct: {
+            const StructTypeInfo *info = getOrCreateStructTypeInfo(type->name);
+            size_t alignment = 1;
+            if (info) {
+                for (const auto &field : info->fields)
+                    alignment = std::max(alignment, getSemanticTypeAlignment(field.type));
+                return alignment;
+            }
+            return getILTypeAlignment(mapType(type));
+        }
+        case TypeKindSem::FixedArray:
+            return getSemanticTypeAlignment(type->elementType());
+        case TypeKindSem::Tuple: {
+            size_t alignment = 1;
+            for (const auto &elemType : type->tupleElementTypes())
+                alignment = std::max(alignment, getSemanticTypeAlignment(elemType));
+            return alignment;
+        }
+        default:
+            return getILTypeAlignment(mapType(type));
+    }
+}
+
+size_t Lowerer::getTupleElementOffset(TypeRef tupleType, size_t index) {
+    if (!tupleType || tupleType->kind != TypeKindSem::Tuple)
+        return 0;
+
+    const auto elements = tupleType->tupleElementTypes();
+    size_t offset = 0;
+    for (size_t i = 0; i < elements.size(); ++i) {
+        offset = alignTo(offset, getSemanticTypeAlignment(elements[i]));
+        if (i == index)
+            return offset;
+        offset += getSemanticTypeSize(elements[i]);
+    }
+    return offset;
+}
+
+size_t Lowerer::getTupleStorageSize(TypeRef tupleType) {
+    if (!tupleType || tupleType->kind != TypeKindSem::Tuple)
+        return 0;
+
+    const auto elements = tupleType->tupleElementTypes();
+    size_t offset = 0;
+    size_t alignment = 1;
+    for (const auto &elemType : elements) {
+        const size_t elemAlignment = getSemanticTypeAlignment(elemType);
+        alignment = std::max(alignment, elemAlignment);
+        offset = alignTo(offset, elemAlignment);
+        offset += getSemanticTypeSize(elemType);
+    }
+    return alignTo(offset, alignment);
 }
 
 /// @brief Round @p offset up to the next multiple of @p alignment.

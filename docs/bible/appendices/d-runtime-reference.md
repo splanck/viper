@@ -3182,12 +3182,12 @@ bind Viper.Terminal;
 
 var count = Environment.GetArgumentCount();
 
-if count < 2 {
+if count < 1 {
     Terminal.Say("Usage: program <filename>");
     Environment.EndProgram(1);
 }
 
-var filename = Environment.GetArgument(1);
+var filename = Environment.GetArgument(0);
 processFile(filename);
 Environment.EndProgram(0);  // Success
 ```

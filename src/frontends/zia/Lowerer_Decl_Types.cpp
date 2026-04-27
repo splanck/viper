@@ -102,21 +102,16 @@ void Lowerer::computeClassFieldLayout(ClassDecl &decl,
         if (field->isStatic)
             continue;
 
-        TypeRef fieldType = field->type ? sema_.resolveType(field->type.get()) : types::unknown();
+        TypeRef fieldType = sema_.getFieldType(qualifiedName, field->name);
+        if (!fieldType && qualifiedName != decl.name)
+            fieldType = sema_.getFieldType(decl.name, field->name);
+        if (!fieldType)
+            fieldType = field->type ? sema_.resolveType(field->type.get()) : types::unknown();
 
-        // Compute size and alignment; fixed-size arrays are stored inline.
-        size_t fieldLayoutSize, fieldLayoutAlignment;
-        if (fieldType && fieldType->kind == TypeKindSem::FixedArray) {
-            TypeRef elemType = fieldType->elementType();
-            Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
-            size_t elemSize = getILTypeSize(ilElemType);
-            fieldLayoutSize = elemSize * fieldType->elementCount;
-            fieldLayoutAlignment = elemSize;
-        } else {
-            Type ilFieldType = mapType(fieldType);
-            fieldLayoutSize = getILTypeSize(ilFieldType);
-            fieldLayoutAlignment = getILTypeAlignment(ilFieldType);
-        }
+        // Compute size and alignment using semantic inline layout so nested
+        // structs, tuples, and fixed-size arrays occupy their full storage.
+        size_t fieldLayoutSize = getSemanticTypeSize(fieldType);
+        size_t fieldLayoutAlignment = getSemanticTypeAlignment(fieldType);
 
         FieldLayout layout;
         layout.name = field->name;
@@ -198,22 +193,16 @@ void Lowerer::registerStructLayout(StructDecl &decl) {
     for (auto &member : decl.members) {
         if (member->kind == DeclKind::Field) {
             auto *field = static_cast<FieldDecl *>(member.get());
-            TypeRef fieldType =
-                field->type ? sema_.resolveType(field->type.get()) : types::unknown();
+            TypeRef fieldType = sema_.getFieldType(qualifiedName, field->name);
+            if (!fieldType && qualifiedName != decl.name)
+                fieldType = sema_.getFieldType(decl.name, field->name);
+            if (!fieldType)
+                fieldType = field->type ? sema_.resolveType(field->type.get()) : types::unknown();
 
-            // Compute size and alignment; fixed-size arrays are stored inline.
-            size_t fieldLayoutSize, fieldLayoutAlignment;
-            if (fieldType && fieldType->kind == TypeKindSem::FixedArray) {
-                TypeRef elemType = fieldType->elementType();
-                Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
-                size_t elemSize = getILTypeSize(ilElemType);
-                fieldLayoutSize = elemSize * fieldType->elementCount;
-                fieldLayoutAlignment = elemSize;
-            } else {
-                Type ilFieldType = mapType(fieldType);
-                fieldLayoutSize = getILTypeSize(ilFieldType);
-                fieldLayoutAlignment = getILTypeAlignment(ilFieldType);
-            }
+            // Compute size and alignment using semantic inline layout so nested
+            // structs, tuples, and fixed-size arrays occupy their full storage.
+            size_t fieldLayoutSize = getSemanticTypeSize(fieldType);
+            size_t fieldLayoutAlignment = getSemanticTypeAlignment(fieldType);
 
             FieldLayout layout;
             layout.name = field->name;
@@ -356,6 +345,23 @@ const StructTypeInfo *Lowerer::getOrCreateStructTypeInfo(const std::string &type
         return &it->second;
     }
 
+    if (typeName.find('.') == std::string::npos) {
+        const StructTypeInfo *matched = nullptr;
+        const std::string suffix = "." + typeName;
+        for (const auto &[registeredName, info] : structTypes_) {
+            if (registeredName.size() < suffix.size() ||
+                registeredName.compare(registeredName.size() - suffix.size(),
+                                       suffix.size(),
+                                       suffix) != 0)
+                continue;
+            if (matched)
+                return nullptr;
+            matched = &info;
+        }
+        if (matched)
+            return matched;
+    }
+
     // Check if this is an instantiated generic
     if (!sema_.isInstantiatedGeneric(typeName)) {
         return nullptr;
@@ -382,19 +388,10 @@ const StructTypeInfo *Lowerer::getOrCreateStructTypeInfo(const std::string &type
             if (!fieldType)
                 fieldType = types::unknown();
 
-            // Compute size and alignment; fixed-size arrays are stored inline.
-            size_t fieldLayoutSize, fieldLayoutAlignment;
-            if (fieldType && fieldType->kind == TypeKindSem::FixedArray) {
-                TypeRef elemType = fieldType->elementType();
-                Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
-                size_t elemSize = getILTypeSize(ilElemType);
-                fieldLayoutSize = elemSize * fieldType->elementCount;
-                fieldLayoutAlignment = elemSize;
-            } else {
-                Type ilFieldType = mapType(fieldType);
-                fieldLayoutSize = getILTypeSize(ilFieldType);
-                fieldLayoutAlignment = getILTypeAlignment(ilFieldType);
-            }
+            // Compute size and alignment using semantic inline layout so nested
+            // structs, tuples, and fixed-size arrays occupy their full storage.
+            size_t fieldLayoutSize = getSemanticTypeSize(fieldType);
+            size_t fieldLayoutAlignment = getSemanticTypeAlignment(fieldType);
 
             FieldLayout layout;
             layout.name = field->name;
@@ -427,6 +424,23 @@ const ClassTypeInfo *Lowerer::getOrCreateClassTypeInfo(const std::string &typeNa
     auto it = classTypes_.find(typeName);
     if (it != classTypes_.end()) {
         return &it->second;
+    }
+
+    if (typeName.find('.') == std::string::npos) {
+        const ClassTypeInfo *matched = nullptr;
+        const std::string suffix = "." + typeName;
+        for (const auto &[registeredName, info] : classTypes_) {
+            if (registeredName.size() < suffix.size() ||
+                registeredName.compare(registeredName.size() - suffix.size(),
+                                       suffix.size(),
+                                       suffix) != 0)
+                continue;
+            if (matched)
+                return nullptr;
+            matched = &info;
+        }
+        if (matched)
+            return matched;
     }
 
     // Check if this is an instantiated generic
@@ -472,19 +486,10 @@ const ClassTypeInfo *Lowerer::getOrCreateClassTypeInfo(const std::string &typeNa
             if (!fieldType)
                 fieldType = types::unknown();
 
-            // Compute size and alignment; fixed-size arrays are stored inline.
-            size_t fieldLayoutSize, fieldLayoutAlignment;
-            if (fieldType && fieldType->kind == TypeKindSem::FixedArray) {
-                TypeRef elemType = fieldType->elementType();
-                Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
-                size_t elemSize = getILTypeSize(ilElemType);
-                fieldLayoutSize = elemSize * fieldType->elementCount;
-                fieldLayoutAlignment = elemSize;
-            } else {
-                Type ilFieldType = mapType(fieldType);
-                fieldLayoutSize = getILTypeSize(ilFieldType);
-                fieldLayoutAlignment = getILTypeAlignment(ilFieldType);
-            }
+            // Compute size and alignment using semantic inline layout so nested
+            // structs, tuples, and fixed-size arrays occupy their full storage.
+            size_t fieldLayoutSize = getSemanticTypeSize(fieldType);
+            size_t fieldLayoutAlignment = getSemanticTypeAlignment(fieldType);
 
             FieldLayout layout;
             layout.name = field->name;

@@ -124,8 +124,12 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
             }
         }
 
-        // Handle struct type copy semantics - deep copy on assignment
-        if (rightType && rightType->kind == TypeKindSem::Struct) {
+        // Handle struct type copy semantics for ordinary value storage. Optional
+        // struct storage is already heap-boxed by wrapValueForOptionalField();
+        // copying after that would turn the boxed payload back into a stack
+        // pointer and make globals/fields dangle.
+        const bool targetIsOptional = targetType && targetType->kind == TypeKindSem::Optional;
+        if (!targetIsOptional && rightType && rightType->kind == TypeKindSem::Struct) {
             const StructTypeInfo *info = getOrCreateStructTypeInfo(rightType->name);
             if (info) {
                 assignValue = emitStructTypeCopy(*info, assignValue);
@@ -181,6 +185,8 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
                             fieldValue = Value::temp(convId);
                         }
                     }
+                    if (field->type && field->type->kind == TypeKindSem::Struct)
+                        fieldValue = emitBoxValue(fieldValue, mapType(field->type), field->type);
                     emitFieldStore(field, selfPtr, fieldValue);
                     consumeDeferred(fieldValue);
                     return {fieldValue, mapType(field->type)};
@@ -228,6 +234,8 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
                             fieldValue = Value::temp(convId);
                         }
                     }
+                    if (field->type && field->type->kind == TypeKindSem::Struct)
+                        fieldValue = emitBoxValue(fieldValue, mapType(field->type), field->type);
                     emitFieldStore(field, selfPtr, fieldValue);
                     consumeDeferred(fieldValue);
                     return {fieldValue, mapType(field->type)};
@@ -242,6 +250,9 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
             Type ilType = mapType(globalType);
             Value addr = getGlobalVarAddr(ident->name, globalType);
             Value storeValue = assignValue;
+            if (globalType && globalType->kind == TypeKindSem::Struct) {
+                storeValue = emitBoxValue(right.value, right.type, globalType);
+            }
             emitStore(addr, storeValue, ilType);
             consumeDeferred(storeValue);
             return {storeValue, ilType};
@@ -270,8 +281,7 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
         // Fixed-size array: direct GEP + Store (no boxing, no runtime call)
         if (baseType && baseType->kind == TypeKindSem::FixedArray) {
             TypeRef elemType = baseType->elementType();
-            Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
-            size_t elemSize = getILTypeSize(ilElemType);
+            size_t elemSize = getSemanticTypeSize(elemType);
             Value checkedIndex = emitIndexCheck(
                 widenIntegralToI64(index.value, index.type),
                 Value::constInt(0),
@@ -302,12 +312,7 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
             auto coerced = coerceValueToType(right.value, right.type, indexRightType, elemType);
 
             // Store the element value
-            il::core::Instr storeInstr;
-            storeInstr.op = Opcode::Store;
-            storeInstr.type = ilElemType;
-            storeInstr.operands = {elemAddr, coerced.value};
-            storeInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(storeInstr);
+            emitInlineValueStore(elemType, elemAddr, coerced.value, true);
             consumeDeferred(coerced.value);
             return {coerced.value, coerced.type};
         }
@@ -334,6 +339,9 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
                 Type ilType = mapType(globalType);
                 Value addr = getGlobalVarAddr(globalName, globalType);
                 Value storeValue = wrapValueForOptionalField(right.value, globalType, rightType);
+                if (globalType && globalType->kind == TypeKindSem::Struct) {
+                    storeValue = emitBoxValue(right.value, right.type, globalType);
+                }
                 if (right.type.kind == Type::Kind::Ptr && globalType) {
                     Type globalILType = mapType(globalType);
                     if (globalILType.kind != Type::Kind::Ptr)
@@ -427,6 +435,8 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
                         if (fieldILType.kind != Type::Kind::Ptr)
                             fieldValue = emitUnbox(fieldValue, fieldILType).value;
                     }
+                    if (field->type && field->type->kind == TypeKindSem::Struct)
+                        fieldValue = emitBoxValue(fieldValue, mapType(field->type), field->type);
                     emitFieldStore(field, base.value, fieldValue);
                     consumeDeferred(fieldValue);
                     return {fieldValue, mapType(field->type)};
@@ -446,6 +456,8 @@ LowerResult Lowerer::lowerAssignment(BinaryExpr *expr) {
                         if (fieldILType.kind != Type::Kind::Ptr)
                             fieldValue = emitUnbox(fieldValue, fieldILType).value;
                     }
+                    if (field->type && field->type->kind == TypeKindSem::Struct)
+                        fieldValue = emitBoxValue(fieldValue, mapType(field->type), field->type);
                     emitFieldStore(field, base.value, fieldValue);
                     consumeDeferred(fieldValue);
                     return {fieldValue, mapType(field->type)};

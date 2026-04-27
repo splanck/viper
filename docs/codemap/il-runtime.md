@@ -53,3 +53,9 @@ Runtime signature metadata (`src/il/runtime/`) for C ABI helpers.
 | `signatures/Signatures_Math.cpp`   | Math function signatures                     |
 | `signatures/Signatures_OOP.cpp`    | OOP runtime helper signatures                |
 | `signatures/Signatures_Strings.cpp`| String operation signatures                  |
+
+The debug signature registry is append-only for unique helper names, idempotent
+for duplicate identical registrations, and rejects duplicate names with
+conflicting ABI or effect metadata. Consumers that need effect facts should
+prefer `RuntimeSignatures.hpp`; the category registry is for debug/audit
+coverage.

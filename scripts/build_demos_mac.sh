@@ -180,9 +180,17 @@ build_demo() {
     fi
     echo -e "${GREEN}OK${NC}"
 
+    local codegen_opt="-O1"
+    # The chess Zia demo currently exercises a native arm64 O1 aggregate-codegen
+    # bug around Move values in the GUI path. Build it at O0 until that backend
+    # issue is fixed; the O0 binary preserves the demo behavior.
+    if [[ "$name" == "chess-zia" ]]; then
+        codegen_opt="-O0"
+    fi
+
     # Step 2: Native codegen — binary encoder + native linker.
     echo -n "  Codegen (native asm+link)... "
-    if ! "$VIPER" codegen arm64 "$il_file" --native-asm --native-link -O1 -o "$exe_file" 2>"$codegen_err"; then
+    if ! "$VIPER" codegen arm64 "$il_file" --native-asm --native-link "$codegen_opt" -o "$exe_file" 2>"$codegen_err"; then
         echo -e "${RED}FAILED${NC}"
         head -20 "$codegen_err"
         rm -f "$frontend_err" "$codegen_err" "$run_out" "$run_err" "$il_file"

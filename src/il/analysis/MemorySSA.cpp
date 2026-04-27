@@ -584,70 +584,65 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
             if (!isDead)
                 continue;
 
-            // Cross-block BFS — same precision improvement for successor blocks.
-            std::unordered_set<std::string> visited;
-            std::vector<std::string> succWorklist;
-            if (!B.instructions.empty()) {
-                for (const auto &label : B.instructions.back().labels)
-                    succWorklist.push_back(label);
-            }
+            std::unordered_map<std::string, bool> livePathMemo;
+            std::unordered_set<std::string> visiting;
+            std::function<bool(const std::string &)> allLivePathsKillOrExit =
+                [&](const std::string &label) -> bool {
+                if (auto memoIt = livePathMemo.find(label); memoIt != livePathMemo.end())
+                    return memoIt->second;
 
-            bool allPathsKillOrExit = true;
+                if (!visiting.insert(label).second)
+                    return false; // A live loop can keep the old store reachable.
 
-            while (!succWorklist.empty() && allPathsKillOrExit) {
-                std::string label = std::move(succWorklist.back());
-                succWorklist.pop_back();
-
-                if (visited.count(label))
-                    continue;
-                visited.insert(label);
+                auto finish = [&](bool value) {
+                    visiting.erase(label);
+                    livePathMemo[label] = value;
+                    return value;
+                };
 
                 auto it = labelToBlock.find(label);
-                if (it == labelToBlock.end()) {
-                    allPathsKillOrExit = false;
-                    continue;
-                }
+                if (it == labelToBlock.end())
+                    return finish(false);
+
                 Block *succ = it->second;
-
-                bool pathKilled = false;
-
                 for (const auto &next : succ->instructions) {
                     if (next.op == Opcode::Load && !next.operands.empty()) {
                         auto loadSize = BasicAA::typeSizeBytes(next.type);
                         if (AA.alias(next.operands[0], ptr, loadSize, storeSize) !=
-                            AliasResult::NoAlias) {
-                            // A load reads this alloca — NOT dead.
-                            allPathsKillOrExit = false;
-                            goto nextSuccessor;
-                        }
+                            AliasResult::NoAlias)
+                            return finish(false);
                     }
                     if (next.op == Opcode::Store && !next.operands.empty()) {
                         auto nextSize = BasicAA::typeSizeBytes(next.type);
-                        if (fullyOverwrites(next.operands[0], nextSize, ptr, storeSize, AA)) {
-                            // A later store kills this path — don't explore further.
-                            pathKilled = true;
-                            break;
-                        }
+                        if (fullyOverwrites(next.operands[0], nextSize, ptr, storeSize, AA))
+                            return finish(true);
                     }
-                    // KEY IMPROVEMENT: skip calls entirely for non-escaping allocas.
                     // Calls cannot read or write non-escaping stack memory.
                 }
 
-                if (pathKilled)
-                    continue; // This path is covered, move to next.
+                if (succ->instructions.empty())
+                    return finish(true);
 
-                if (!succ->instructions.empty() && succ->instructions.back().op == Opcode::Ret)
-                    continue; // Path exits without reading — OK.
+                const Instr &term = succ->instructions.back();
+                if (term.op == Opcode::Ret)
+                    return finish(true);
+                if (term.labels.empty())
+                    return finish(true);
 
-                // Enqueue successors.
-                if (!succ->instructions.empty()) {
-                    for (const auto &succLabel : succ->instructions.back().labels) {
-                        if (!visited.count(succLabel))
-                            succWorklist.push_back(succLabel);
+                for (const auto &succLabel : term.labels)
+                    if (!allLivePathsKillOrExit(succLabel))
+                        return finish(false);
+                return finish(true);
+            };
+
+            bool allPathsKillOrExit = true;
+            if (!B.instructions.empty()) {
+                for (const auto &label : B.instructions.back().labels) {
+                    if (!allLivePathsKillOrExit(label)) {
+                        allPathsKillOrExit = false;
+                        break;
                     }
                 }
-
-            nextSuccessor:;
             }
 
             if (allPathsKillOrExit) {

@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <initializer_list>
 #include <string>
 #include <utility>
@@ -56,6 +57,10 @@ void register_signature(const Signature &signature);
 /// @brief Access the registered runtime signature expectations.
 /// @return Reference to the stable list of registered signatures.
 const std::vector<Signature> &all_signatures();
+
+/// @brief Return a monotonically increasing registry version.
+/// @details The version changes only when a new unique signature is appended.
+std::size_t registry_version();
 
 /// @brief Helper to construct a signature from initializer lists.
 /// @param name Runtime symbol name to register.

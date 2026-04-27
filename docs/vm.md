@@ -1187,6 +1187,6 @@ available to both the VM and native backends. For the complete list see the [Run
 
 | Symbol              | Signature     | Semantics                          |
 |---------------------|---------------|------------------------------------|
-| `@rt_args_count`    | `void -> i64` | Number of command-line arguments   |
-| `@rt_args_get`      | `i64 -> str`  | Argument at zero-based index       |
+| `@rt_args_count`    | `void -> i64` | Number of program arguments        |
+| `@rt_args_get`      | `i64 -> str`  | Program argument at zero-based index |
 | `@rt_env_is_native` | `void -> i1`  | 1 for native binary, 0 for VM     |

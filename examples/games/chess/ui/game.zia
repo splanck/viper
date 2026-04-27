@@ -63,10 +63,10 @@ bind "../engine/ai";
 //   -> run (main loop) -> handleInput / handleMousePress / handleMouseRelease
 //   / handleMenuInput / handleGameOverInput / handlePromoInput /
 //   handleHudClick -> handleUndo / undoLastMove -> tryMove / executePromo
-//   / findLegalMove / applyMove -> AI turn (isAITurn / startAITurn /
+//   / applyMoveFields -> AI turn (isAITurn / startAITurn /
 //   pollAITurn / cleanupAIWorker) -> animation -> game-over detection
 //   -> startNewGame -> updateClocks -> render -> getLegalMoves /
-//   invalidateLegalMoves / legalMovesFrom / buildSAN.
+//   invalidateLegalMoves / legalMovesFrom / buildSANFields.
 // ============================================================================
 
 // Background AI search state. Chess only runs one game instance at a time, so
@@ -156,6 +156,8 @@ class ChessGame {
     hide Integer dragFrom;            // square being dragged from (-1 = not dragging)
     hide Integer dragX;               // current drag cursor pixel X
     hide Integer dragY;               // current drag cursor pixel Y
+    hide Integer dragStartX;          // mouse-down pixel X for click-vs-drag
+    hide Integer dragStartY;          // mouse-down pixel Y for click-vs-drag
     hide List[Move] movesForSelected; // legal moves from selectedSq
 
     // --- Board display state ---
@@ -231,6 +233,8 @@ class ChessGame {
         dragFrom         = -1;
         dragX            = 0;
         dragY            = 0;
+        dragStartX       = 0;
+        dragStartY       = 0;
         movesForSelected = [];
 
         lastFrom      = -1;
@@ -423,6 +427,8 @@ class ChessGame {
             dragFrom   = sq;
             dragX      = mx;
             dragY      = my;
+            dragStartX = mx;
+            dragStartY = my;
             movesForSelected = legalMovesFrom(sq);
         } else if selectedSq >= 0 {
             // Try click-to-move to this square
@@ -437,12 +443,19 @@ class ChessGame {
         }
     }
 
-    /// @brief Mouse-up handler: commit drag-and-drop move, or toggle
-    ///        selection if dropped back on origin.
+    /// @brief Mouse-up handler: commit drag-and-drop move, or keep the clicked
+    ///        piece selected if released back on its origin square.
     hide func handleMouseRelease(mx: Integer, my: Integer) {
         if dragFrom < 0 { return; }
 
-        var sq = renderer.squareAt(mx, my);
+        var dropX = mx;
+        var dropY = my;
+        if dragX != dragStartX || dragY != dragStartY {
+            dropX = dragX;
+            dropY = dragY;
+        }
+
+        var sq = renderer.squareAt(dropX, dropY);
 
         if sq >= 0 && sq != dragFrom {
             // Drag-and-drop: attempt move
@@ -455,14 +468,8 @@ class ChessGame {
                 movesForSelected = legalMovesFrom(dragFrom);
             }
         } else if sq == dragFrom {
-            // Dropped back on origin: toggle selection
-            if selectedSq == dragFrom {
-                selectedSq       = -1;
-                movesForSelected = [];
-            } else {
-                selectedSq       = dragFrom;
-                movesForSelected = legalMovesFrom(dragFrom);
-            }
+            // Plain click on a piece: keep it selected for click-to-move.
+            selectedSq = dragFrom;
         }
 
         dragFrom = -1;
@@ -642,19 +649,27 @@ class ChessGame {
     hide func tryMove(fromSq: Integer, toSq: Integer) -> Boolean {
         if !isValidSquare(fromSq) || !isValidSquare(toSq) { return false; }
 
-        var m = findLegalMove(fromSq, toSq, 0);
-        if m.from == -1 { return false; }
+        var all = getLegalMoves();
+        for i in 0..all.length() {
+            var m = all.get(i);
+            if m.from != fromSq { continue; }
+            if m.to   != toSq   { continue; }
 
-        // Pawn reaching the back rank: show promotion dialog first
-        if m.promotion {
-            promoFrom = fromSq;
-            promoTo   = toSq;
-            gameState = STATE_PROMO;
+            // Pawn reaching the back rank: show promotion dialog first.
+            if m.promotion {
+                promoFrom = fromSq;
+                promoTo   = toSq;
+                gameState = STATE_PROMO;
+                return true;
+            }
+
+            applyMoveFields(m.from, m.to, m.captured, m.enPassant,
+                            m.castleKing, m.castleQueen, m.promotion,
+                            m.promotePiece);
             return true;
         }
 
-        applyMove(m);
-        return true;
+        return false;
     }
 
     /// @brief Apply the queued promotion move with the chosen piece type.
@@ -664,46 +679,45 @@ class ChessGame {
             return;
         }
 
-        var m = findLegalMove(promoFrom, promoTo, pieceType);
-        if m.from >= 0 {
-            applyMove(m);
-        }
-        gameState = STATE_PLAYING;
-    }
-
-    /// @brief Lookup a legal move matching (from, to, promoPiece).
-    /// @param promoPiece 0 to match any promotion (caller will dialog).
-    /// @return The matching Move, or sentinel `from=-1` Move if none.
-    hide func findLegalMove(fromSq: Integer, toSq: Integer, promoPiece: Integer) -> Move {
-        if !isValidSquare(fromSq) || !isValidSquare(toSq) {
-            return new Move(-1, -1, 0, false, false, false, false, 0);
-        }
-
         var all = getLegalMoves();
         for i in 0..all.length() {
             var m = all.get(i);
-            if m.from != fromSq { continue; }
-            if m.to   != toSq   { continue; }
-            if m.promotion && promoPiece > 0 && m.promotePiece != promoPiece { continue; }
-            if m.promotion && promoPiece == 0 { return m; }  // any promo (caller shows dialog)
-            return m;
+            if m.from != promoFrom { continue; }
+            if m.to   != promoTo   { continue; }
+            if !m.promotion { continue; }
+            if m.promotePiece != pieceType { continue; }
+
+            applyMoveFields(m.from, m.to, m.captured, m.enPassant,
+                            m.castleKing, m.castleQueen, m.promotion,
+                            m.promotePiece);
+            gameState = STATE_PLAYING;
+            return;
         }
-        return new Move(-1, -1, 0, false, false, false, false, 0);
+        gameState = STATE_PLAYING;
     }
 
     /// @brief Commit a move: push undo state, track captures, update
     ///        last-move highlight, snapshot hash for repetition,
     ///        invoke board.makeMove, build SAN, animate, check
     ///        terminal conditions, and queue the AI if it's its turn.
-    hide func applyMove(m: Move) {
-        if !moveIsLegalNow(m) { return; }
+    hide func applyMoveFields(fromSq: Integer, toSq: Integer, captured: Integer,
+                              enPassant: Boolean, castleKing: Boolean,
+                              castleQueen: Boolean, promotion: Boolean,
+                              promotePiece: Integer) {
+        if !moveIsLegalFields(fromSq, toSq, captured, enPassant, castleKing,
+                              castleQueen, promotion, promotePiece) {
+            return;
+        }
 
-        var movingPiece = board.get(m.from);
+        var movingPiece = board.get(fromSq);
         var movingWhite = board.isWhitePiece(movingPiece);
         var movingType = board.pieceType(movingPiece);
-        if m.promotion {
-            movingType = m.promotePiece;
+        if promotion {
+            movingType = promotePiece;
         }
+
+        var m = new Move(fromSq, toSq, captured, enPassant, castleKing,
+                         castleQueen, promotion, promotePiece);
 
         // --- Push undo state BEFORE modifying anything ---
         undoPrevFromStack.add(lastFrom);
@@ -711,20 +725,20 @@ class ChessGame {
 
         // Track captures. board.whiteToMove = the side making this move.
         var captureColor = 0;
-        if m.captured != 0 {
+        if captured != 0 {
             if board.whiteToMove {
-                whiteCaptured.add(m.captured);
+                whiteCaptured.add(captured);
                 captureColor = 1;
             } else {
-                blackCaptured.add(m.captured);
+                blackCaptured.add(captured);
                 captureColor = -1;
             }
         }
         undoCaptureColorStack.add(captureColor);
 
         // Update move highlight
-        lastFrom = m.from;
-        lastTo   = m.to;
+        lastFrom = fromSq;
+        lastTo   = toSq;
 
         // Record hash of the position BEFORE this move (for threefold detection)
         positionHashes.add(board.getHash());
@@ -738,11 +752,12 @@ class ChessGame {
         undoInfoStack.add(undo);
 
         // SAN notation (board now reflects the post-move state)
-        var san = buildSAN(m);
+        var san = buildSANFields(fromSq, toSq, captured, enPassant, castleKing,
+                                 castleQueen, promotion, promotePiece);
         sanHistory.add(san);
 
         moveCount = moveCount + 1;
-        startMoveAnimation(m.from, m.to, movingType, movingWhite);
+        startMoveAnimation(fromSq, toSq, movingType, movingWhite);
 
         // Check for terminal conditions
         checkGameOver();
@@ -805,21 +820,39 @@ class ChessGame {
                 checkGameOver();
                 return;
             }
-            applyMove(legalFallback.get(0));
+            var fallback = legalFallback.get(0);
+            applyMoveFields(fallback.from, fallback.to, fallback.captured,
+                            fallback.enPassant, fallback.castleKing,
+                            fallback.castleQueen, fallback.promotion,
+                            fallback.promotePiece);
             return;
         }
 
-        var m = nullMove();
+        var moveFrom = -1;
+        var moveTo = -1;
+        var moveCaptured = 0;
+        var moveEnPassant = false;
+        var moveCastleKing = false;
+        var moveCastleQueen = false;
+        var movePromotion = false;
+        var movePromotePiece = 0;
         Monitor.Enter(aiWorkerLock);
         if aiWorkerHasResult {
-            m = loadAIWorkerResult();
+            moveFrom = aiMoveFrom;
+            moveTo = aiMoveTo;
+            moveCaptured = aiMoveCaptured;
+            moveEnPassant = aiMoveEnPassant;
+            moveCastleKing = aiMoveCastleKing;
+            moveCastleQueen = aiMoveCastleQueen;
+            movePromotion = aiMovePromotion;
+            movePromotePiece = aiMovePromotePiece;
         }
         clearAIWorkerResult();
         aiWorkerHasResult = false;
         Monitor.Exit(aiWorkerLock);
 
         // Sentinel: from < 0 means no legal moves — let checkGameOver handle it
-        if m.from < 0 {
+        if moveFrom < 0 {
             checkGameOver();
             return;
         }
@@ -832,16 +865,28 @@ class ChessGame {
             }
         }
 
-        if !moveIsLegalNow(m) {
+        if !moveIsLegalFields(moveFrom, moveTo, moveCaptured, moveEnPassant,
+                              moveCastleKing, moveCastleQueen, movePromotion,
+                              movePromotePiece) {
             var legalFallback = getLegalMoves();
             if legalFallback.length() == 0 {
                 checkGameOver();
                 return;
             }
-            m = legalFallback.get(0);
+            var fallback = legalFallback.get(0);
+            moveFrom = fallback.from;
+            moveTo = fallback.to;
+            moveCaptured = fallback.captured;
+            moveEnPassant = fallback.enPassant;
+            moveCastleKing = fallback.castleKing;
+            moveCastleQueen = fallback.castleQueen;
+            movePromotion = fallback.promotion;
+            movePromotePiece = fallback.promotePiece;
         }
 
-        applyMove(m);
+        applyMoveFields(moveFrom, moveTo, moveCaptured, moveEnPassant,
+                        moveCastleKing, moveCastleQueen, movePromotion,
+                        movePromotePiece);
     }
 
     /// @brief Join any in-flight AI thread + clear its result. Idempotent.
@@ -1117,27 +1162,28 @@ class ChessGame {
         return sq >= 0 && sq < 64;
     }
 
-    hide func sameMove(a: Move, b: Move) -> Boolean {
-        return a.from == b.from &&
-               a.to == b.to &&
-               a.captured == b.captured &&
-               a.enPassant == b.enPassant &&
-               a.castleKing == b.castleKing &&
-               a.castleQueen == b.castleQueen &&
-               a.promotion == b.promotion &&
-               a.promotePiece == b.promotePiece;
-    }
+    hide func moveIsLegalFields(fromSq: Integer, toSq: Integer, captured: Integer,
+                                enPassant: Boolean, castleKing: Boolean,
+                                castleQueen: Boolean, promotion: Boolean,
+                                promotePiece: Integer) -> Boolean {
+        if !isValidSquare(fromSq) || !isValidSquare(toSq) { return false; }
 
-    hide func moveIsLegalNow(m: Move) -> Boolean {
-        if !isValidSquare(m.from) || !isValidSquare(m.to) { return false; }
-
-        var movingPiece = board.get(m.from);
+        var movingPiece = board.get(fromSq);
         if movingPiece == 0 { return false; }
         if board.isWhitePiece(movingPiece) != board.whiteToMove { return false; }
 
         var legal = getLegalMoves();
         for i in 0..legal.length() {
-            if sameMove(legal.get(i), m) { return true; }
+            var m = legal.get(i);
+            if m.from != fromSq { continue; }
+            if m.to != toSq { continue; }
+            if m.captured != captured { continue; }
+            if m.enPassant != enPassant { continue; }
+            if m.castleKing != castleKing { continue; }
+            if m.castleQueen != castleQueen { continue; }
+            if m.promotion != promotion { continue; }
+            if m.promotePiece != promotePiece { continue; }
+            return true;
         }
         return false;
     }
@@ -1159,24 +1205,27 @@ class ChessGame {
     ///   a pawn — reading board.get(m.to) would return the PROMOTED
     ///   piece (e.g. QUEEN) and produce "Qd8=Q". We force type_ = PAWN
     ///   so the prefix letter is suppressed per SAN rules.
-    hide func buildSAN(m: Move) -> String {
-        if !isValidSquare(m.from) || !isValidSquare(m.to) { return "?"; }
+    hide func buildSANFields(fromSq: Integer, toSq: Integer, captured: Integer,
+                             enPassant: Boolean, castleKing: Boolean,
+                             castleQueen: Boolean, promotion: Boolean,
+                             promotePiece: Integer) -> String {
+        if !isValidSquare(fromSq) || !isValidSquare(toSq) { return "?"; }
 
         var files    = ["a", "b", "c", "d", "e", "f", "g", "h"];
-        var fromFile = m.from % 8;
-        var toFile   = m.to % 8;
-        var toRank   = 8 - m.to / 8;
+        var fromFile = fromSq % 8;
+        var toFile   = toSq % 8;
+        var toRank   = 8 - toSq / 8;
 
         // Castling
-        if m.castleKing  { return "O-O"; }
-        if m.castleQueen { return "O-O-O"; }
+        if castleKing  { return "O-O"; }
+        if castleQueen { return "O-O-O"; }
 
         // Determine moving piece type.
         // For promotions the mover was always a pawn → no prefix letter.
         // For normal moves read the piece now at the destination.
         var type_ = PAWN;
-        if !m.promotion {
-            type_ = board.pieceType(board.get(m.to));
+        if !promotion {
+            type_ = board.pieceType(board.get(toSq));
         }
 
         var san = "";
@@ -1187,7 +1236,7 @@ class ChessGame {
         if type_ == KING   { san = "K"; }
 
         // Capture prefix (file letter for pawn captures, piece letter for others)
-        if m.captured != 0 || m.enPassant {
+        if captured != 0 || enPassant {
             if san == "" { san = files.get(fromFile); }
             san = san + "x";
         }
@@ -1195,11 +1244,11 @@ class ChessGame {
         san = san + files.get(toFile) + Int(toRank);
 
         // Promotion suffix
-        if m.promotion {
-            if m.promotePiece == QUEEN  { san = san + "=Q"; }
-            if m.promotePiece == ROOK   { san = san + "=R"; }
-            if m.promotePiece == BISHOP { san = san + "=B"; }
-            if m.promotePiece == KNIGHT { san = san + "=N"; }
+        if promotion {
+            if promotePiece == QUEEN  { san = san + "=Q"; }
+            if promotePiece == ROOK   { san = san + "=R"; }
+            if promotePiece == BISHOP { san = san + "=B"; }
+            if promotePiece == KNIGHT { san = san + "=N"; }
         }
 
         return san;

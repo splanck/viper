@@ -15,6 +15,7 @@
 #include "il/transform/DSE.hpp"
 
 #include "il/analysis/BasicAA.hpp"
+#include "il/analysis/MemorySSA.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -23,6 +24,7 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 #include "il/transform/AnalysisManager.hpp"
+#include "il/transform/AnalysisIDs.hpp"
 #include "tests/TestHarness.hpp"
 
 using namespace il::core;
@@ -33,7 +35,13 @@ namespace {
 il::transform::AnalysisRegistry makeDSERegistry() {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<viper::analysis::BasicAA>(
-        "basic-aa", [](Module &mod, Function &fn) { return viper::analysis::BasicAA(mod, fn); });
+        il::transform::kAnalysisBasicAA,
+        [](Module &mod, Function &fn) { return viper::analysis::BasicAA(mod, fn); });
+    registry.registerFunctionAnalysis<viper::analysis::MemorySSA>(
+        il::transform::kAnalysisMemorySSA, [](Module &mod, Function &fn) {
+            viper::analysis::BasicAA aa(mod, fn);
+            return viper::analysis::computeMemorySSA(fn, aa);
+        });
     return registry;
 }
 
@@ -231,6 +239,49 @@ TEST(DSE, EmptyFunctionNoCrash) {
 
     bool changed = il::transform::runDSE(module.functions.front(), manager);
     EXPECT_FALSE(changed);
+}
+
+TEST(DSE, MemorySSARemovesDeadStoreInExitBlock) {
+    Module module;
+    Function fn;
+    fn.name = "dse_exit_store";
+    fn.retType = Type(Type::Kind::Void);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.instructions.push_back(makeAlloca(0));
+    Instr br;
+    br.op = Opcode::Br;
+    br.type = Type(Type::Kind::Void);
+    br.labels = {"exit"};
+    entry.instructions.push_back(std::move(br));
+    entry.terminated = true;
+
+    BasicBlock exit;
+    exit.label = "exit";
+    exit.instructions.push_back(makeStore(Value::temp(0), Value::constInt(99)));
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    exit.instructions.push_back(std::move(ret));
+    exit.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.blocks.push_back(std::move(exit));
+    module.functions.push_back(std::move(fn));
+
+    auto registry = makeDSERegistry();
+    il::transform::AnalysisManager manager(module, registry);
+
+    bool changed = il::transform::runMemorySSADSE(module.functions.front(), manager);
+    EXPECT_TRUE(changed);
+
+    size_t storeCount = 0;
+    for (const auto &block : module.functions.front().blocks)
+        for (const auto &instr : block.instructions)
+            if (instr.op == Opcode::Store)
+                ++storeCount;
+    EXPECT_EQ(storeCount, 0U);
 }
 
 int main(int argc, char **argv) {

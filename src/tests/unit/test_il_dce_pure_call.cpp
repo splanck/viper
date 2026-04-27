@@ -100,6 +100,15 @@ bool hasCallTo(const Module &m, const std::string &callee) {
     return false;
 }
 
+bool hasResult(const Module &m, unsigned resultId) {
+    for (const auto &f : m.functions)
+        for (const auto &b : f.blocks)
+            for (const auto &i : b.instructions)
+                if (i.result && *i.result == resultId)
+                    return true;
+    return false;
+}
+
 /// @brief Test: Pure call with unused result should be eliminated.
 void testPureCallEliminated() {
     // rt_abs_i64 is marked as pure in HelperEffects
@@ -197,6 +206,50 @@ void testMultiplePureMathEliminated() {
     }
 }
 
+void testDCEIteratesToFixedPoint() {
+    Module m;
+    m.version = "0.1.0";
+
+    Function f;
+    f.name = "fixed_point";
+    f.retType = Type(Type::Kind::I64);
+
+    BasicBlock entry;
+    entry.label = "entry";
+
+    Instr producer;
+    producer.result = 0;
+    producer.op = Opcode::IAddOvf;
+    producer.type = Type(Type::Kind::I64);
+    producer.operands = {Value::constInt(20), Value::constInt(22)};
+    entry.instructions.push_back(producer);
+
+    Instr call;
+    call.result = 1;
+    call.op = Opcode::Call;
+    call.type = Type(Type::Kind::I64);
+    call.callee = "unknown_pure";
+    call.operands = {Value::temp(0)};
+    call.CallAttr.pure = true;
+    call.CallAttr.nothrow = true;
+    entry.instructions.push_back(call);
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::constInt(0)};
+    entry.instructions.push_back(ret);
+    entry.terminated = true;
+
+    f.blocks.push_back(entry);
+    m.functions.push_back(f);
+
+    il::transform::dce(m);
+
+    assert(!hasResult(m, 1) && "unused pure call should be removed");
+    assert(!hasResult(m, 0) && "producer made dead by call removal should also be removed");
+}
+
 } // namespace
 
 int main() {
@@ -208,6 +261,7 @@ int main() {
     testPureButMayThrowCallPreserved();
     testPureNothrowUnknownCallEliminated();
     testMultiplePureMathEliminated();
+    testDCEIteratesToFixedPoint();
 
     return 0;
 }

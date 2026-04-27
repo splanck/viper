@@ -30,9 +30,9 @@ Command-line arguments and environment access.
 
 | Method                     | Signature              | Description                                                             |
 |----------------------------|------------------------|-------------------------------------------------------------------------|
-| `GetArgumentCount()`       | `Integer()`            | Returns the number of command-line arguments                            |
-| `GetArgument(index)`       | `String(Integer)`      | Returns the argument at the specified index (0-based)                   |
-| `GetCommandLine()`         | `String()`             | Returns the full command line as a single string                        |
+| `GetArgumentCount()`       | `Integer()`            | Returns the number of program arguments                                 |
+| `GetArgument(index)`       | `String(Integer)`      | Returns the program argument at the specified zero-based index           |
+| `GetCommandLine()`         | `String()`             | Returns the program arguments joined as a single string                  |
 | `GetVariable(name)`        | `String(String)`       | Returns the value of an environment variable, or `""` when missing      |
 | `HasVariable(name)`        | `Boolean(String)`      | Returns `TRUE` when the environment variable exists                     |
 | `IsNative()`               | `Boolean()`            | Returns `TRUE` when running native code, `FALSE` when running in the VM |
@@ -62,7 +62,7 @@ func start() {
 ### BASIC Example
 
 ```basic
-' Program invoked as: ./program arg1 arg2 arg3
+' Program invoked as: viper front basic -run app.bas -- arg1 arg2 arg3
 
 DIM count AS INTEGER
 count = Viper.Environment.GetArgumentCount()
@@ -77,6 +77,9 @@ NEXT i
 ' Arg 2: arg3
 
 PRINT "Full command: "; Viper.Environment.GetCommandLine()
+
+' Arguments before -- belong to the viper tool. GetArgument(0) is the first
+' argument after --, not the tool or executable name.
 
 ' Environment variables
 DIM name AS STRING

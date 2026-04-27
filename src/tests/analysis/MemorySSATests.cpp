@@ -110,6 +110,24 @@ void addCall(BasicBlock &block, std::string callee) {
     block.instructions.push_back(std::move(call));
 }
 
+void addLocalPtrSink(Module &module, std::string name = "sink") {
+    Function sink;
+    sink.name = std::move(name);
+    sink.retType = Type(Type::Kind::Void);
+    sink.params.push_back(Param{"p", Type(Type::Kind::Ptr), 0});
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    entry.instructions.push_back(std::move(ret));
+    entry.terminated = true;
+
+    sink.blocks.push_back(std::move(entry));
+    module.functions.push_back(std::move(sink));
+}
+
 } // namespace
 
 // -------------------------------------------------------------------------
@@ -329,6 +347,7 @@ TEST(MemorySSA, EliminatesSimpleCrossBlockDeadStore) {
 // -------------------------------------------------------------------------
 TEST(MemorySSA, PreservesStoreToEscapingAlloca) {
     Module module;
+    addLocalPtrSink(module);
     il::build::IRBuilder builder(module);
 
     Function &fn = builder.startFunction("escaping", Type(Type::Kind::Void), {});
@@ -345,15 +364,6 @@ TEST(MemorySSA, PreservesStoreToEscapingAlloca) {
         entry.instructions.push_back(std::move(alloca));
     }
     addStore(entry, ptrId, 99); // potentially live — ptr escapes below
-
-    // Declare "sink" as an external function that takes a Ptr argument.
-    {
-        Extern ext;
-        ext.name = "sink";
-        ext.retType = Type(Type::Kind::Void);
-        ext.params.push_back(Type(Type::Kind::Ptr));
-        module.externs.push_back(std::move(ext));
-    }
 
     // Call with %ptr as an argument — this causes the alloca to "escape".
     {
@@ -383,6 +393,7 @@ TEST(MemorySSA, PreservesStoreToEscapingAlloca) {
 
 TEST(MemorySSA, PreservesStoreWhenDerivedAllocaPointerEscapes) {
     Module module;
+    addLocalPtrSink(module);
     il::build::IRBuilder builder(module);
 
     Function &fn = builder.startFunction("derived_escape", Type(Type::Kind::Void), {});
@@ -412,14 +423,6 @@ TEST(MemorySSA, PreservesStoreWhenDerivedAllocaPointerEscapes) {
     }
 
     addStore(entry, ptrId, 1);
-
-    {
-        Extern ext;
-        ext.name = "sink";
-        ext.retType = Type(Type::Kind::Void);
-        ext.params.push_back(Type(Type::Kind::Ptr));
-        module.externs.push_back(std::move(ext));
-    }
 
     {
         Instr call;

@@ -6,25 +6,26 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/core/rt_args.c
-// Purpose: Implements the Viper.Environment class — access to command-line
+// Purpose: Implements the Viper.Environment class - access to command-line
 //          arguments (argc/argv) and environment variables. Provides argument
 //          count/value queries, full command-line reconstruction, and
 //          getenv/setenv/hasenv wrappers for the BASIC runtime ABI.
 //
 // Key invariants:
-//   - argv[0] is the program name; argument indices start at 0 (matching C
-//     convention); out-of-range indices trap rather than fabricating values.
-//   - The RtContext stores argc/argv; rt_args_init must be called before any
-//     argument query function.
+//   - The store contains the program arguments exposed to Viper code. Tool
+//     runners pass only arguments after "--"; index 0 is the first user
+//     argument, not the viper driver executable.
+//   - Native legacy fallback may populate the store from the host process argv
+//     when no runner explicitly initialized or cleared arguments.
+//   - Out-of-range indices trap rather than fabricating values.
 //   - Environment variable names are case-sensitive on Unix and case-insensitive
-//     on Windows (platform behaviour is preserved transparently).
+//     on Windows (platform behavior is preserved transparently).
 //   - SetVariable (putenv/setenv) affects only the current process; changes are
 //     not propagated to child processes unless explicitly inherited.
 //   - Returned rt_string values are newly allocated; callers own the reference.
 //
 // Ownership/Lifetime:
-//   - The argc/argv pointers are borrowed from the caller of rt_args_init and
-//     must remain valid for the process lifetime.
+//   - Pushed arguments are retained by the store.
 //   - Returned rt_string values transfer ownership to the caller; callers must
 //     call rt_string_unref when done.
 //
@@ -71,10 +72,6 @@ static RtArgsState *rt_args_state_with_kind(int *is_legacy) {
     if (is_legacy)
         *is_legacy = 1;
     return legacy ? &legacy->args_state : NULL;
-}
-
-static RtArgsState *rt_args_state(void) {
-    return rt_args_state_with_kind(NULL);
 }
 
 static void rt_args_mark_legacy_host_initialized(void) {
@@ -228,7 +225,7 @@ static RtArgsState *rt_args_query_state(void) {
 ///          silently-mangled wide string. Used by environment-API
 ///          calls that need to hit the W (wide) Win32 entry points.
 ///          Caller owns the returned buffer (must `free`). Traps on
-///          conversion failure or allocation failure â€” there's no
+///          conversion failure or allocation failure; there is no
 ///          recoverable path for an invalid env-var name on Windows.
 static wchar_t *rt_env_utf8_to_wide_or_trap(const char *utf8, const char *context) {
     if (!utf8)
@@ -300,88 +297,6 @@ static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size) {
     state->cap = new_cap;
     return 1;
 }
-#if 0
-#ifdef _WIN32
-/// @brief Convert a NUL-terminated UTF-8 string to a heap-allocated wide string (Windows).
-/// @details Uses `MultiByteToWideChar` with `MB_ERR_INVALID_CHARS` so
-///          malformed UTF-8 traps cleanly instead of producing a
-///          silently-mangled wide string. Used by environment-API
-///          calls that need to hit the W (wide) Win32 entry points.
-///          Caller owns the returned buffer (must `free`). Traps on
-///          conversion failure or allocation failure — there's no
-///          recoverable path for an invalid env-var name on Windows.
-static wchar_t *rt_env_utf8_to_wide_or_trap(const char *utf8, const char *context) {
-    if (!utf8)
-        return NULL;
-    int needed = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, NULL, 0);
-    if (needed <= 0)
-        rt_trap(context ? context : "Environment: UTF-8 to UTF-16 conversion failed");
-    wchar_t *wide = (wchar_t *)malloc((size_t)needed * sizeof(wchar_t));
-    if (!wide)
-        rt_trap("Environment: allocation failed");
-    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wide, needed) <= 0) {
-        free(wide);
-        rt_trap(context ? context : "Environment: UTF-8 to UTF-16 conversion failed");
-    }
-    return wide;
-}
-
-/// @brief Convert a wide string of known length to an `rt_string` (UTF-8) on Windows.
-/// @details Inverse of `rt_env_utf8_to_wide_or_trap`. Two-call
-///          `WideCharToMultiByte` pattern: first call sizes the
-///          output, second fills it. Traps on conversion failure
-///          rather than returning empty so callers don't silently
-///          lose data on weird input from the OS.
-static rt_string rt_env_wide_to_string_or_trap(
-    const wchar_t *wide, int wide_len, const char *context) {
-    if (!wide || wide_len <= 0)
-        return rt_str_empty();
-    int needed = WideCharToMultiByte(CP_UTF8, 0, wide, wide_len, NULL, 0, NULL, NULL);
-    if (needed <= 0)
-        rt_trap(context ? context : "Environment: UTF-16 to UTF-8 conversion failed");
-    char *buffer = (char *)malloc((size_t)needed);
-    if (!buffer)
-        rt_trap("Environment: allocation failed");
-    if (WideCharToMultiByte(CP_UTF8, 0, wide, wide_len, buffer, needed, NULL, NULL) <= 0) {
-        free(buffer);
-        rt_trap(context ? context : "Environment: UTF-16 to UTF-8 conversion failed");
-    }
-    rt_string out = rt_string_from_bytes(buffer, (size_t)needed);
-    free(buffer);
-    return out;
-}
-#endif
-
-/// @brief Ensure the args array has capacity for at least @p new_size entries.
-/// @details Doubles capacity until sufficient; traps on overflow or alloc failure.
-static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size) {
-    if (!state)
-        return 0;
-    if (new_size <= state->cap)
-        return 1;
-    size_t new_cap = state->cap ? state->cap * 2 : 8;
-    while (new_cap < new_size) {
-        if (new_cap > SIZE_MAX / 2) {
-            rt_trap("rt_args: capacity overflow");
-            return 0;
-        }
-        new_cap *= 2;
-    }
-    if (new_cap > SIZE_MAX / sizeof(rt_string)) {
-        rt_trap("rt_args: size overflow");
-        return 0;
-    }
-    rt_string *next = (rt_string *)realloc(state->items, new_cap * sizeof(rt_string));
-    if (!next) {
-        rt_trap("rt_args: allocation failed");
-        return 0;
-    }
-    state->items = next;
-    state->cap = new_cap;
-    return 1;
-}
-
-#endif
 
 /// @brief Clear all stored command-line arguments.
 ///
@@ -408,7 +323,7 @@ void rt_args_clear(void) {
 /// @brief Add a command-line argument to the argument store.
 ///
 /// Appends an argument string to the argument list. Used during program
-/// initialization to populate arguments from main(argc, argv).
+/// initialization to populate arguments supplied to the Viper program.
 ///
 /// @param s Argument string to add. NULL is stored as empty string.
 ///
@@ -426,8 +341,9 @@ void rt_args_push(rt_string s) {
 
 /// @brief Get the number of command-line arguments.
 ///
-/// Returns the total count of arguments including the program name (index 0).
-/// The count is always at least 1 when arguments have been initialized.
+/// Returns the total count of stored program arguments. Tool runners populate
+/// this from arguments after "--"; native legacy fallback may expose host argv
+/// when no runner initialized the store.
 ///
 /// **Usage example:**
 /// ```
@@ -438,9 +354,9 @@ void rt_args_push(rt_string s) {
 /// End If
 /// ```
 ///
-/// @return Number of arguments (including program name), or 0 if not initialized.
+/// @return Number of stored arguments, or 0 if none were supplied.
 ///
-/// @note Index 0 is the program name; real arguments start at index 1.
+/// @note Under tool runners, index 0 is the first user argument.
 /// @note O(1) time complexity.
 ///
 /// @see rt_args_get For retrieving individual arguments
@@ -451,16 +367,12 @@ int64_t rt_args_count(void) {
 
 /// @brief Get a command-line argument by index.
 ///
-/// Retrieves the argument at the specified index. Index 0 is the program name,
-/// and subsequent indices are the actual command-line arguments.
+/// Retrieves the argument at the specified index.
 ///
 /// **Usage example:**
 /// ```
-/// ' Get program name
-/// Dim progName = Environment.GetArgument(0)
-///
 /// ' Process arguments
-/// For i = 1 To Environment.GetArgumentCount() - 1
+/// For i = 0 To Environment.GetArgumentCount() - 1
 ///     Dim arg = Environment.GetArgument(i)
 ///     ProcessArgument(arg)
 /// Next

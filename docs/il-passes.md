@@ -51,8 +51,8 @@ last-verified: 2026-04-23
   3. Instruction-level `CallAttr` flags, parsed as `[nothrow]`, `[readonly]`, and `[pure]` after direct-call operands,
      are trusted only for unknown callees
   `pure` -> `NoModRef`, `readonly` -> `Ref`, everything else -> `ModRef`.
-- Runtime signature lookup uses a cached hash map for O(1) amortized lookups, rebuilt automatically when new signatures
-  are registered.
+- Runtime signature lookup uses the generated runtime table directly for known helpers and falls back to instruction
+  `CallAttr` only for unknown callees.
 
 ## SimplifyCFG
 
@@ -415,8 +415,8 @@ Regression tests covering fixes from the comprehensive IL optimization review
 | Test File | Tests | Coverage |
 |-----------|-------|---------|
 | `test_opt_review_basicaa.cpp` | 7 | Priority cascade, ModRef classification, alias queries |
-| `test_opt_review_calleffects.cpp` | 6 | Pure/readonly/conservative classification, pure+nothrow deletion gating |
-| `test_opt_review_dse.cpp` | 4 | Dead store elimination, load-intervened stores, different allocas |
+| `test_opt_review_calleffects.cpp` | 7 | Pure/readonly/conservative classification, generated runtime metadata priority, pure+nothrow deletion gating |
+| `test_opt_review_dse.cpp` | 5 | Dead store elimination, load-intervened stores, different allocas, MemorySSA exit-block stores |
 | `test_opt_review_loopinfo.cpp` | 4 | Self-loop dedup, normal loop membership, block counts |
 | `test_opt_review_peephole.cpp` | 23 | UCmp/FCmp constant folding in CBr, reflexive comparisons, trap-preserving skipped folds |
 | `test_opt_review_sccp.cpp` | 4 | FDiv by zero → infinity/NaN, normal FDiv folding |

@@ -32,6 +32,7 @@
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include "il/core/OpcodeInfo.hpp"
 
 #include <algorithm>
 #include <array>
@@ -180,14 +181,16 @@ struct SingleBlockFastPathSetup {
             case il::core::Opcode::CBr:
                 // Control flow terminators don't count as side effects
                 continue;
-            case il::core::Opcode::Call:
-            case il::core::Opcode::Store:
-            case il::core::Opcode::Trap:
-            case il::core::Opcode::TrapFromErr:
-                return true;
             default:
-                continue;
+                break;
         }
+
+        const auto &info = il::core::getOpcodeInfo(instr.op);
+        if (info.hasSideEffects)
+            return true;
+
+        if (il::core::memoryEffects(instr.op) != il::core::MemoryEffects::None)
+            return true;
     }
     return false;
 }

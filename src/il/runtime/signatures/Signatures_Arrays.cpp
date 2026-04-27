@@ -13,10 +13,9 @@
 // Key invariants: Entries describe helpers that manipulate heap storage for
 //                 arrays or reference-counted objects. Signature metadata must
 //                 stay in sync with the runtime C implementations so verifier
-//                 checks remain sound.  The registration function is idempotent
-//                 with respect to observable behaviour; calling it multiple
-//                 times appends duplicate entries without mutating prior
-//                 snapshots.
+//                 checks remain sound.  The registration function is idempotent:
+//                 repeated identical registrations leave the shared registry
+//                 unchanged, while conflicting duplicates are rejected.
 // Ownership/Lifetime: Registered metadata persists for the lifetime of the
 //                     process via the shared registry.
 // Links: docs/il-guide.md#reference, docs/architecture.md#runtime-signatures

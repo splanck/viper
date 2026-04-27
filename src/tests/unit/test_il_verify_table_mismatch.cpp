@@ -35,6 +35,11 @@ std::string verifyAndCaptureMessage(Module &module) {
     return result.error().message;
 }
 
+void verifySucceeds(Module &module) {
+    auto result = il::verify::Verifier::verify(module);
+    assert(result && "verification should succeed");
+}
+
 } // namespace
 
 int main() {
@@ -394,6 +399,56 @@ int main() {
         Module module;
 
         Function fn;
+        fn.name = "unreachable_roots_merge";
+        fn.retType = Type(Type::Kind::Void);
+
+        BasicBlock entry;
+        entry.label = "entry";
+        Instr entryRet;
+        entryRet.op = Opcode::Ret;
+        entryRet.type = Type(Type::Kind::Void);
+        entry.instructions = {entryRet};
+        entry.terminated = true;
+
+        BasicBlock deadA;
+        deadA.label = "dead_a";
+        Instr brA;
+        brA.op = Opcode::Br;
+        brA.type = Type(Type::Kind::Void);
+        brA.labels = {"join"};
+        brA.brArgs = {{Value::constInt(1)}};
+        deadA.instructions = {brA};
+        deadA.terminated = true;
+
+        BasicBlock deadB;
+        deadB.label = "dead_b";
+        Instr brB;
+        brB.op = Opcode::Br;
+        brB.type = Type(Type::Kind::Void);
+        brB.labels = {"join"};
+        brB.brArgs = {{Value::constInt(2)}};
+        deadB.instructions = {brB};
+        deadB.terminated = true;
+
+        BasicBlock join;
+        join.label = "join";
+        join.params.push_back(Param{"x", Type(Type::Kind::I64), 0});
+        Instr joinRet;
+        joinRet.op = Opcode::Ret;
+        joinRet.type = Type(Type::Kind::Void);
+        join.instructions = {joinRet};
+        join.terminated = true;
+
+        fn.blocks = {entry, deadA, deadB, join};
+        module.functions.push_back(fn);
+
+        verifySucceeds(module);
+    }
+
+    {
+        Module module;
+
+        Function fn;
         fn.name = "return_gep_alloca";
         fn.retType = Type(Type::Kind::Ptr);
 
@@ -593,6 +648,115 @@ int main() {
 
     {
         Module module;
+
+        Function fn;
+        fn.name = "branch_i32_literal_arg";
+        fn.retType = Type(Type::Kind::Void);
+
+        BasicBlock entry;
+        entry.label = "entry";
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels = {"target"};
+        br.brArgs = {{Value::constInt(1)}};
+        entry.instructions = {br};
+        entry.terminated = true;
+
+        BasicBlock target;
+        target.label = "target";
+        target.params.push_back(Param{"x", Type(Type::Kind::I32), 0});
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        target.instructions = {ret};
+        target.terminated = true;
+
+        fn.blocks = {entry, target};
+        module.functions.push_back(fn);
+
+        verifySucceeds(module);
+    }
+
+    {
+        Module module;
+
+        Function fn;
+        fn.name = "ret_i32_literal";
+        fn.retType = Type(Type::Kind::I32);
+
+        BasicBlock entry;
+        entry.label = "entry";
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands = {Value::constInt(7)};
+        entry.instructions = {ret};
+        entry.terminated = true;
+
+        fn.blocks.push_back(entry);
+        module.functions.push_back(fn);
+
+        verifySucceeds(module);
+    }
+
+    {
+        Module module;
+
+        Function fn;
+        fn.name = "pure_store";
+        fn.retType = Type(Type::Kind::Void);
+        fn.attrs().pure = true;
+
+        BasicBlock entry;
+        entry.label = "entry";
+        Instr allocPtr;
+        allocPtr.result = 0;
+        allocPtr.op = Opcode::Alloca;
+        allocPtr.type = Type(Type::Kind::Ptr);
+        allocPtr.operands.push_back(Value::constInt(8));
+        Instr store;
+        store.op = Opcode::Store;
+        store.type = Type(Type::Kind::I64);
+        store.operands = {Value::temp(0), Value::constInt(1)};
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        entry.instructions = {allocPtr, store, ret};
+        entry.terminated = true;
+
+        fn.blocks.push_back(entry);
+        module.functions.push_back(fn);
+
+        const std::string message = verifyAndCaptureMessage(module);
+        assert(message.find("pure function contains memory access") != std::string::npos);
+    }
+
+    {
+        Module module;
+
+        Function fn;
+        fn.name = "nothrow_trap";
+        fn.retType = Type(Type::Kind::Void);
+        fn.attrs().nothrow = true;
+
+        BasicBlock entry;
+        entry.label = "entry";
+        Instr trap;
+        trap.op = Opcode::Trap;
+        trap.type = Type(Type::Kind::Void);
+        entry.instructions = {trap};
+        entry.terminated = true;
+
+        fn.blocks.push_back(entry);
+        module.functions.push_back(fn);
+
+        const std::string message = verifyAndCaptureMessage(module);
+        assert(message.find("nothrow function contains trapping instruction") != std::string::npos);
+    }
+
+    {
+        Module module;
         module.externs.push_back({"sink", Type(Type::Kind::Void), {Type(Type::Kind::Ptr)}});
 
         Function fn;
@@ -620,8 +784,8 @@ int main() {
         fn.blocks.push_back(entry);
         module.functions.push_back(fn);
 
-        auto result = il::verify::Verifier::verify(module);
-        assert(result && "byref/out calls may borrow alloca-derived pointers");
+        const std::string message = verifyAndCaptureMessage(module);
+        assert(message.find("passing alloca-derived pointer") != std::string::npos);
     }
 
     return 0;

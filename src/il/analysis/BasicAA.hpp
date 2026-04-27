@@ -10,7 +10,7 @@
 //          memory disambiguation (NoAlias/MayAlias/MustAlias) using SSA-based
 //          reasoning about allocas, noalias parameters, global addresses, and
 //          GEP offsets. Also classifies call-site ModRef behaviour via function
-//          attributes and the runtime signature registry.
+//          attributes and the canonical runtime signature registry.
 // Key invariants:
 //   - Unknown base kinds conservatively return MayAlias.
 //   - Distinct allocas never alias each other.
@@ -21,7 +21,7 @@
 //          and parameter info from the function body. Holds const pointers to
 //          the function and optional module; both must outlive the analysis.
 // Links: il/core/Function.hpp, il/core/Instr.hpp, il/core/Module.hpp,
-//        il/runtime/signatures/Registry.hpp
+//        il/runtime/RuntimeSignatures.hpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -29,6 +29,8 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
+#include "il/runtime/HelperEffects.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/signatures/Registry.hpp"
 
 #include <algorithm>
@@ -317,22 +319,16 @@ inline BasicAA::CallEffect BasicAA::queryFunctionEffect(const il::core::Function
 }
 
 inline BasicAA::CallEffect BasicAA::queryRuntimeEffect(std::string_view name) const {
-    // Build a lookup table on first call to avoid O(n) scans.
-    // Rebuild when the signature registry grows (e.g. dynamic registration in tests).
-    static std::unordered_map<std::string, CallEffect> table;
-    static std::size_t lastSize = 0;
+    if (const auto *sig = il::runtime::findRuntimeSignature(name))
+        return CallEffect{sig->pure, sig->readonly, true};
 
-    const auto &sigs = il::runtime::signatures::all_signatures();
-    if (sigs.size() != lastSize) {
-        table.clear();
-        for (const auto &sig : sigs)
-            table.emplace(sig.name, CallEffect{sig.pure, sig.readonly, true});
-        lastSize = sigs.size();
-    }
+    for (const auto &sig : il::runtime::signatures::all_signatures())
+        if (sig.name == name)
+            return CallEffect{sig.pure, sig.readonly, true};
 
-    auto it = table.find(std::string(name));
-    if (it != table.end())
-        return it->second;
+    const auto helper = il::runtime::classifyHelperEffects(name);
+    if (helper.known)
+        return CallEffect{helper.pure, helper.readonly, true};
     return {};
 }
 

@@ -191,153 +191,145 @@ void dce(Module &M) {
             }
             std::cerr << "[dce] === END BEFORE ===\n";
         }
-        auto uses = countUses(F);
+        std::vector<size_t> uses;
+        bool removedInstruction = false;
+        do {
+            uses = countUses(F);
+            removedInstruction = false;
 
-        // Gather allocas and track if they are "observed" (loaded from or used by GEP).
-        // An alloca is dead only if it has no uses at all, OR if it's only used by
-        // stores (no loads or GEPs that might lead to loads).
-        //
-        // Two-pass approach: first collect all alloca IDs, then mark observations.
-        // This prevents an alloca defined late in block order (e.g., after inlining)
-        // from overwriting observation marks set by earlier loads/GEPs.
-        std::unordered_map<unsigned, bool> allocaObserved;
+            // Gather allocas and track if they are "observed" (loaded from or used by GEP).
+            // An alloca is dead only if it has no uses at all, OR if it's only used by
+            // stores (no loads or GEPs that might lead to loads).
+            std::unordered_map<unsigned, bool> allocaObserved;
 
-        // Pass 1: Collect all alloca result IDs.
-        for (auto &B : F.blocks)
-            for (auto &I : B.instructions) {
-                if (I.op == Opcode::Alloca && I.result) {
-                    allocaObserved[*I.result] = false;
-                    if (traceEnabled())
-                        std::cerr << "[dce] tracking alloca %" << *I.result << " in " << F.name
-                                  << "\n";
-                }
-            }
-
-        // Pass 2: Mark allocas as observed based on their uses.
-        for (auto &B : F.blocks)
-            for (auto &I : B.instructions) {
-                // Mark as observed if loaded from directly
-                if (I.op == Opcode::Load && !I.operands.empty() &&
-                    I.operands[0].kind == Value::Kind::Temp &&
-                    allocaObserved.count(I.operands[0].id)) {
-                    allocaObserved[I.operands[0].id] = true;
-                    if (traceEnabled())
-                        std::cerr << "[dce] marking %" << I.operands[0].id
-                                  << " as observed (load) in " << F.name << "\n";
-                }
-                // Mark as observed if used by GEP (GEP computes derived pointer)
-                if (I.op == Opcode::GEP && !I.operands.empty() &&
-                    I.operands[0].kind == Value::Kind::Temp &&
-                    allocaObserved.count(I.operands[0].id)) {
-                    allocaObserved[I.operands[0].id] = true;
-                    if (traceEnabled())
-                        std::cerr << "[dce] marking %" << I.operands[0].id
-                                  << " as observed (gep) in " << F.name << "\n";
-                }
-                // Mark as observed if passed to a function call (the callee may read from it)
-                if ((I.op == Opcode::Call || I.op == Opcode::CallIndirect) && !I.operands.empty()) {
-                    for (auto &op : I.operands) {
-                        if (op.kind == Value::Kind::Temp && allocaObserved.count(op.id)) {
-                            allocaObserved[op.id] = true;
-                            if (traceEnabled())
-                                std::cerr << "[dce] marking %" << op.id
-                                          << " as observed (call arg) in " << F.name << "\n";
-                        }
-                    }
-                }
-                // Mark as observed if used as a store VALUE operand (operands[1]).
-                // After inlining, an alloca pointer may be stored into another
-                // alloca rather than passed directly to a call or GEP.
-                if (I.op == Opcode::Store && I.operands.size() > 1 &&
-                    I.operands[1].kind == Value::Kind::Temp &&
-                    allocaObserved.count(I.operands[1].id)) {
-                    allocaObserved[I.operands[1].id] = true;
-                    if (traceEnabled())
-                        std::cerr << "[dce] marking %" << I.operands[1].id
-                                  << " as observed (store value) in " << F.name << "\n";
-                }
-                // Mark as observed if returned — a returned alloca escapes the function.
-                if (I.op == Opcode::Ret && !I.operands.empty() &&
-                    I.operands[0].kind == Value::Kind::Temp &&
-                    allocaObserved.count(I.operands[0].id)) {
-                    allocaObserved[I.operands[0].id] = true;
-                    if (traceEnabled())
-                        std::cerr << "[dce] marking %" << I.operands[0].id
-                                  << " as observed (ret) in " << F.name << "\n";
-                }
-                // Mark as observed if used as a branch argument.
-                for (const auto &argList : I.brArgs) {
-                    for (const auto &v : argList) {
-                        if (v.kind == Value::Kind::Temp && allocaObserved.count(v.id)) {
-                            allocaObserved[v.id] = true;
-                            if (traceEnabled())
-                                std::cerr << "[dce] marking %" << v.id
-                                          << " as observed (branch arg) in " << F.name << "\n";
-                        }
-                    }
-                }
-            }
-
-        // Remove dead loads/stores/allocas
-        for (auto &B : F.blocks) {
-            for (std::size_t i = 0; i < B.instructions.size();) {
-                Instr &I = B.instructions[i];
-                if (I.op == Opcode::Load && I.result && uses[*I.result] == 0 &&
-                    isLoadKnownNonTrapping(F, I)) {
-                    if (traceEnabled())
-                        std::cerr << "[dce] removing dead load %" << *I.result << " in " << F.name
-                                  << ":" << B.label << "\n";
-                    B.instructions.erase(B.instructions.begin() + i);
-                    continue;
-                }
-                if (I.op == Opcode::Store && !I.operands.empty() &&
-                    I.operands[0].kind == Value::Kind::Temp &&
-                    allocaObserved.find(I.operands[0].id) != allocaObserved.end() &&
-                    !allocaObserved[I.operands[0].id]) {
-                    if (traceEnabled())
-                        std::cerr << "[dce] removing dead store to %" << I.operands[0].id << " in "
-                                  << F.name << ":" << B.label << "\n";
-                    B.instructions.erase(B.instructions.begin() + i);
-                    continue;
-                }
-                if (I.op == Opcode::Alloca && I.result &&
-                    allocaObserved.find(*I.result) != allocaObserved.end() &&
-                    !allocaObserved[*I.result]) {
-                    if (traceEnabled())
-                        std::cerr << "[dce] removing dead alloca %" << *I.result << " in " << F.name
-                                  << ":" << B.label << "\n";
-                    B.instructions.erase(B.instructions.begin() + i);
-                    continue;
-                }
-                // Eliminate pure calls whose results are unused.
-                // A call is safe to remove if:
-                // 1. It produces a result that is never used
-                // 2. The callee is marked pure (no observable side effects)
-                if (I.op == Opcode::Call && I.result && uses[*I.result] == 0) {
-                    const CallEffects effects = classifyCallEffects(I);
-                    if (effects.canEliminateIfUnused()) {
+            for (auto &B : F.blocks)
+                for (auto &I : B.instructions) {
+                    if (I.op == Opcode::Alloca && I.result) {
+                        allocaObserved[*I.result] = false;
                         if (traceEnabled())
-                            std::cerr << "[dce] removing pure call %" << *I.result << " = "
-                                      << I.callee << " in " << F.name << ":" << B.label << "\n";
+                            std::cerr << "[dce] tracking alloca %" << *I.result << " in "
+                                      << F.name << "\n";
+                    }
+                }
+
+            for (auto &B : F.blocks)
+                for (auto &I : B.instructions) {
+                    if (I.op == Opcode::Load && !I.operands.empty() &&
+                        I.operands[0].kind == Value::Kind::Temp &&
+                        allocaObserved.count(I.operands[0].id)) {
+                        allocaObserved[I.operands[0].id] = true;
+                        if (traceEnabled())
+                            std::cerr << "[dce] marking %" << I.operands[0].id
+                                      << " as observed (load) in " << F.name << "\n";
+                    }
+                    if (I.op == Opcode::GEP && !I.operands.empty() &&
+                        I.operands[0].kind == Value::Kind::Temp &&
+                        allocaObserved.count(I.operands[0].id)) {
+                        allocaObserved[I.operands[0].id] = true;
+                        if (traceEnabled())
+                            std::cerr << "[dce] marking %" << I.operands[0].id
+                                      << " as observed (gep) in " << F.name << "\n";
+                    }
+                    if ((I.op == Opcode::Call || I.op == Opcode::CallIndirect) &&
+                        !I.operands.empty()) {
+                        for (auto &op : I.operands) {
+                            if (op.kind == Value::Kind::Temp && allocaObserved.count(op.id)) {
+                                allocaObserved[op.id] = true;
+                                if (traceEnabled())
+                                    std::cerr << "[dce] marking %" << op.id
+                                              << " as observed (call arg) in " << F.name << "\n";
+                            }
+                        }
+                    }
+                    if (I.op == Opcode::Store && I.operands.size() > 1 &&
+                        I.operands[1].kind == Value::Kind::Temp &&
+                        allocaObserved.count(I.operands[1].id)) {
+                        allocaObserved[I.operands[1].id] = true;
+                        if (traceEnabled())
+                            std::cerr << "[dce] marking %" << I.operands[1].id
+                                      << " as observed (store value) in " << F.name << "\n";
+                    }
+                    if (I.op == Opcode::Ret && !I.operands.empty() &&
+                        I.operands[0].kind == Value::Kind::Temp &&
+                        allocaObserved.count(I.operands[0].id)) {
+                        allocaObserved[I.operands[0].id] = true;
+                        if (traceEnabled())
+                            std::cerr << "[dce] marking %" << I.operands[0].id
+                                      << " as observed (ret) in " << F.name << "\n";
+                    }
+                    for (const auto &argList : I.brArgs) {
+                        for (const auto &v : argList) {
+                            if (v.kind == Value::Kind::Temp && allocaObserved.count(v.id)) {
+                                allocaObserved[v.id] = true;
+                                if (traceEnabled())
+                                    std::cerr << "[dce] marking %" << v.id
+                                              << " as observed (branch arg) in " << F.name << "\n";
+                            }
+                        }
+                    }
+                }
+
+            // Remove dead loads/stores/allocas. Repeat until no instruction deletion
+            // creates new dead producers.
+            for (auto &B : F.blocks) {
+                for (std::size_t i = 0; i < B.instructions.size();) {
+                    Instr &I = B.instructions[i];
+                    if (I.op == Opcode::Load && I.result && uses[*I.result] == 0 &&
+                        isLoadKnownNonTrapping(F, I)) {
+                        if (traceEnabled())
+                            std::cerr << "[dce] removing dead load %" << *I.result << " in "
+                                      << F.name << ":" << B.label << "\n";
                         B.instructions.erase(B.instructions.begin() + i);
+                        removedInstruction = true;
                         continue;
                     }
+                    if (I.op == Opcode::Store && !I.operands.empty() &&
+                        I.operands[0].kind == Value::Kind::Temp &&
+                        allocaObserved.find(I.operands[0].id) != allocaObserved.end() &&
+                        !allocaObserved[I.operands[0].id]) {
+                        if (traceEnabled())
+                            std::cerr << "[dce] removing dead store to %" << I.operands[0].id
+                                      << " in " << F.name << ":" << B.label << "\n";
+                        B.instructions.erase(B.instructions.begin() + i);
+                        removedInstruction = true;
+                        continue;
+                    }
+                    if (I.op == Opcode::Alloca && I.result &&
+                        allocaObserved.find(*I.result) != allocaObserved.end() &&
+                        !allocaObserved[*I.result]) {
+                        if (traceEnabled())
+                            std::cerr << "[dce] removing dead alloca %" << *I.result << " in "
+                                      << F.name << ":" << B.label << "\n";
+                        B.instructions.erase(B.instructions.begin() + i);
+                        removedInstruction = true;
+                        continue;
+                    }
+                    if (I.op == Opcode::Call && I.result && uses[*I.result] == 0) {
+                        const CallEffects effects = classifyCallEffects(I);
+                        if (effects.canEliminateIfUnused()) {
+                            if (traceEnabled())
+                                std::cerr << "[dce] removing pure call %" << *I.result << " = "
+                                          << I.callee << " in " << F.name << ":" << B.label
+                                          << "\n";
+                            B.instructions.erase(B.instructions.begin() + i);
+                            removedInstruction = true;
+                            continue;
+                        }
+                    }
+                    if (I.result && uses[*I.result] == 0 && isDeadOverflowOp(I)) {
+                        if (traceEnabled())
+                            std::cerr << "[dce] removing dead overflow op %" << *I.result << " = "
+                                      << toString(I.op) << " in " << F.name << ":" << B.label
+                                      << "\n";
+                        B.instructions.erase(B.instructions.begin() + i);
+                        removedInstruction = true;
+                        continue;
+                    }
+                    ++i;
                 }
-                // Eliminate overflow-checked ops whose results are unused and
-                // whose constant operands provably do not overflow.  SCCP folds
-                // the result and propagates the constant, but leaves the
-                // instruction because hasSideEffects=true.  Since we can verify
-                // the trap cannot fire, removing the dead instruction is safe.
-                if (I.result && uses[*I.result] == 0 && isDeadOverflowOp(I)) {
-                    if (traceEnabled())
-                        std::cerr << "[dce] removing dead overflow op %" << *I.result << " = "
-                                  << toString(I.op) << " in " << F.name << ":" << B.label << "\n";
-                    B.instructions.erase(B.instructions.begin() + i);
-                    continue;
-                }
-                ++i;
             }
-        }
+        } while (removedInstruction);
+        uses = countUses(F);
 
         // Build a predecessor edge index: for each target label, collect
         // (terminator*, successorIndex) pairs.  This must happen AFTER the dead

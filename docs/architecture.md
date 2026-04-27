@@ -159,7 +159,8 @@ Key design points:
   `trap.kind`, `err.get_code`/`_ip`/`_kind`/`_line`/`_msg`).
 - **Metadata:** source locations, attributes, visibility, and string tables stored per module.
 - **Calling convention:** by-value scalars with explicit pointers for aggregates; strings remain opaque handles
-  manipulated through runtime helpers.
+  manipulated through runtime helpers. Frontends that store aggregates inline must use semantic layout
+  (size, alignment, tuple offsets, and fixed-array element stride), not the lowered pointer type size.
 
 ### Pass pipeline
 

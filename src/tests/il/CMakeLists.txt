@@ -1011,6 +1011,20 @@ function(viper_add_il_invalid_tests)
             -DEXPECT=returning\ alloca-derived\ pointer
             -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
 
+    viper_add_ctest(il_verify_invalid_alloca_store_escape
+            ${CMAKE_COMMAND}
+            -DIL_VERIFY=${IL_VERIFY}
+            -DFILE=${_VIPER_INVALID_DIR}/alloca_store_escape.il
+            -DEXPECT=storing\ alloca-derived\ pointer
+            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+
+    viper_add_ctest(il_verify_invalid_alloca_load_escape
+            ${CMAKE_COMMAND}
+            -DIL_VERIFY=${IL_VERIFY}
+            -DFILE=${_VIPER_INVALID_DIR}/alloca_load_escape.il
+            -DEXPECT=returning\ alloca-derived\ pointer
+            -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
+
     viper_add_ctest(il_verify_invalid_shift_i32_result
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}

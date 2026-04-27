@@ -9,9 +9,9 @@
 // Purpose: Implement the lightweight signature registry used for debug
 //          validation of runtime helper metadata.
 // Key invariants: Registration preserves insertion order, exposes stable
-//                 references for the lifetime of the process, and tolerates
-//                 duplicate entries so higher layers can re-register helpers
-//                 without mutating the data that prior consumers observe.
+//                 references for the lifetime of the process, and treats
+//                 duplicate identical registration as idempotent while rejecting
+//                 conflicting metadata for the same helper name.
 // Ownership/Lifetime: Stored signatures have static storage managed by this
 //                     translation unit, ensuring the registry survives for the
 //                     duration of the process and remains accessible from
@@ -22,6 +22,9 @@
 
 #include "il/runtime/signatures/Registry.hpp"
 #include "il/runtime/HelperEffects.hpp"
+
+#include <mutex>
+#include <stdexcept>
 
 /// @file
 /// @brief Defines the backing container for runtime signature metadata.
@@ -46,14 +49,38 @@ std::vector<Signature> &registry() {
     static std::vector<Signature> g_signatures;
     return g_signatures;
 }
+
+std::mutex &registry_mutex() {
+    static std::mutex g_mutex;
+    return g_mutex;
+}
+
+std::size_t &registry_version_storage() {
+    static std::size_t g_version = 0;
+    return g_version;
+}
+
+bool sameKinds(const std::vector<SigParam> &lhs, const std::vector<SigParam> &rhs) {
+    if (lhs.size() != rhs.size())
+        return false;
+    for (std::size_t i = 0; i < lhs.size(); ++i)
+        if (lhs[i].kind != rhs[i].kind)
+            return false;
+    return true;
+}
+
+bool sameSignature(const Signature &lhs, const Signature &rhs) {
+    return lhs.name == rhs.name && sameKinds(lhs.params, rhs.params) &&
+           sameKinds(lhs.rets, rhs.rets) && lhs.nothrow == rhs.nothrow &&
+           lhs.readonly == rhs.readonly && lhs.pure == rhs.pure;
+}
 } // namespace
 
-/// @brief Append a runtime signature to the diagnostic registry.
+/// @brief Register a runtime signature in the diagnostic registry.
 /// @details Each call records a @ref Signature entry describing a runtime
-///          helper.  The append-only model deliberately allows duplicate names
-///          so independent subsystems can register overlapping helpers without
-///          coordination.  Consumers that require uniqueness can deduplicate the
-///          returned array themselves without mutating the canonical storage.
+///          helper.  Re-registering identical metadata is a no-op, while a
+///          duplicate name with different metadata is rejected so consumers do
+///          not observe order-dependent ABI facts.
 /// @param signature Signature metadata describing a runtime helper.
 Signature apply_effect_overrides(Signature signature) {
     const auto effects = il::runtime::classifyHelperEffects(signature.name);
@@ -64,7 +91,19 @@ Signature apply_effect_overrides(Signature signature) {
 }
 
 void register_signature(const Signature &signature) {
-    registry().push_back(apply_effect_overrides(signature));
+    Signature normalized = apply_effect_overrides(signature);
+    std::lock_guard<std::mutex> lock(registry_mutex());
+    auto &entries = registry();
+    for (const auto &entry : entries) {
+        if (entry.name != normalized.name)
+            continue;
+        if (!sameSignature(entry, normalized))
+            throw std::logic_error("conflicting runtime signature registration for " +
+                                   normalized.name);
+        return;
+    }
+    entries.push_back(std::move(normalized));
+    ++registry_version_storage();
 }
 
 /// @brief Retrieve a stable view of all registered runtime signatures.
@@ -76,6 +115,11 @@ void register_signature(const Signature &signature) {
 /// @return Read-only view of the registered signatures in insertion order.
 const std::vector<Signature> &all_signatures() {
     return registry();
+}
+
+std::size_t registry_version() {
+    std::lock_guard<std::mutex> lock(registry_mutex());
+    return registry_version_storage();
 }
 
 } // namespace il::runtime::signatures

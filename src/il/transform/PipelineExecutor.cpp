@@ -112,12 +112,13 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                     if (!factory->makeFunction)
                         return false;
 
-                    auto runFunctionPass = [&](core::Function &fn) -> bool {
+                    auto runFunctionPass = [&](core::Function &fn, AnalysisManager &functionAnalysis)
+                        -> bool {
                         auto pass = factory->makeFunction();
                         if (!pass)
                             return false;
-                        PreservedAnalyses preserved = pass->run(fn, analysis);
-                        analysis.invalidateAfterFunctionPass(preserved, fn);
+                        PreservedAnalyses preserved = pass->run(fn, functionAnalysis);
+                        functionAnalysis.invalidateAfterFunctionPass(preserved, fn);
                         return true;
                     };
 
@@ -135,11 +136,12 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                         workers.reserve(workerCount);
                         for (std::size_t w = 0; w < workerCount; ++w) {
                             workers.emplace_back([&]() {
+                                AnalysisManager workerAnalysis(module, analysisRegistry_);
                                 for (;;) {
                                     std::size_t idx = nextIndex.fetch_add(1);
                                     if (idx >= module.functions.size())
                                         break;
-                                    if (!runFunctionPass(module.functions[idx]))
+                                    if (!runFunctionPass(module.functions[idx], workerAnalysis))
                                         allOk.store(false, std::memory_order_relaxed);
                                 }
                             });
@@ -149,7 +151,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                         executedAll = allOk.load(std::memory_order_relaxed);
                     } else {
                         for (auto &fn : module.functions)
-                            executedAll &= runFunctionPass(fn);
+                            executedAll &= runFunctionPass(fn, analysis);
                     }
 
                     executed = executedAll;

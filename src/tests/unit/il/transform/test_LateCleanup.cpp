@@ -173,12 +173,10 @@ void test_dce_dead_load_elimination() {
     // Run DCE directly
     il::transform::dce(module);
 
-    // After DCE, the dead load should be removed
-    // Note: The alloca remains because hasLoad was set to true (the load existed)
-    // before DCE ran - it doesn't iterate. This is expected behavior for trivial DCE.
-    assert(function.blocks[0].instructions.size() == 2);
+    // After fixed-point DCE, both the dead load and now-unused alloca are removed.
+    assert(function.blocks[0].instructions.size() == 1);
     assert(countOpcode(function, Opcode::Load) == 0);
-    assert(countOpcode(function, Opcode::Alloca) == 1);
+    assert(countOpcode(function, Opcode::Alloca) == 0);
 }
 
 /// Test 3: DCE preserves dead loads that may trap.

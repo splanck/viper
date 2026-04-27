@@ -12,6 +12,7 @@
 #include "frontends/zia/Compiler.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/Value.hpp"
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
 #include "tests/common/PosixCompat.h"
@@ -63,6 +64,30 @@ size_t countCallsTo(const il::core::Function &fn, const std::string &callee) {
         }
     }
     return count;
+}
+
+bool hasAllocaSize(const il::core::Function &fn, int64_t size) {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op == il::core::Opcode::Alloca && !instr.operands.empty() &&
+                instr.operands[0].kind == il::core::Value::Kind::ConstInt &&
+                instr.operands[0].i64 == size)
+                return true;
+        }
+    }
+    return false;
+}
+
+bool hasIMulByConst(const il::core::Function &fn, int64_t value) {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op == il::core::Opcode::IMulOvf && instr.operands.size() >= 2 &&
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt &&
+                instr.operands[1].i64 == value)
+                return true;
+        }
+    }
+    return false;
 }
 
 bool hasErrorContaining(const CompilerResult &result, const std::string &needle) {
@@ -2540,6 +2565,73 @@ func start() {
     EXPECT_GE(countOpcode(*getFn, il::core::Opcode::IdxChk), static_cast<size_t>(1));
 }
 
+TEST(ZiaBugFixes, FixedArrayOfStructsUsesInlineElementStride) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+struct Pair {
+    expose Integer a;
+    expose Integer b;
+}
+
+class Pairs {
+    expose Pair[2] values;
+
+    expose func set(i: Integer, value: Pair) {
+        values[i] = value;
+    }
+
+    expose func get(i: Integer) -> Pair {
+        return values[i];
+    }
+}
+
+func start() {
+    var pairs = new Pairs();
+    var value = Pair { a = 1, b = 2 };
+    pairs.set(1, value);
+    var loaded = pairs.get(1);
+    Viper.Terminal.SayInt(loaded.b);
+}
+)";
+    CompilerInput input{.source = source, .path = "fixed_array_struct_stride.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *setFn = findFunction(result.module, "Pairs.set");
+    const auto *getFn = findFunction(result.module, "Pairs.get");
+    ASSERT_TRUE(setFn != nullptr);
+    ASSERT_TRUE(getFn != nullptr);
+    EXPECT_TRUE(hasIMulByConst(*setFn, 16));
+    EXPECT_TRUE(hasIMulByConst(*getFn, 16));
+}
+
+TEST(ZiaBugFixes, TupleLayoutUsesSemanticElementOffsets) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var a: Byte = 1;
+    var b: Byte = 2;
+    var t = (a, b, 99);
+    Viper.Terminal.SayInt(t.2);
+}
+)";
+    CompilerInput input{.source = source, .path = "tuple_semantic_offsets.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_TRUE(hasAllocaSize(*mainFn, 16));
+}
+
 TEST(ZiaBugFixes, TernaryLookaheadAllowsExpressionKeywordArms) {
     SourceManager sm;
     const std::string source = R"(
@@ -2617,6 +2709,56 @@ func start() {
     const auto *mainFn = findFunction(result.module, "main");
     ASSERT_TRUE(mainFn != nullptr);
     EXPECT_EQ(countCallsTo(*mainFn, kBoxValueType), static_cast<size_t>(1));
+}
+
+TEST(ZiaBugFixes, NestedTerminatingIfDoesNotCreateLiveDeadMerge) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Node {
+    expose Boolean isLeaf;
+}
+
+func maybeNode() -> Node? {
+    return new Node();
+}
+
+func check(hit: Boolean, pred: Boolean) -> Boolean {
+    var maybe = maybeNode();
+    if maybe == null {
+        return false;
+    }
+
+    var node = maybe!;
+    if hit {
+        if node.isLeaf {
+            return true;
+        } else {
+            if pred {
+                return false;
+            }
+            return false;
+        }
+    }
+
+    if node.isLeaf {
+        return false;
+    }
+    return true;
+}
+
+func start() {
+    Viper.Terminal.SayBool(check(false, false));
+}
+)";
+    CompilerInput input{.source = source, .path = "nested_terminating_if_dead_merge.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_TRUE(findFunction(result.module, "check") != nullptr);
 }
 
 } // namespace

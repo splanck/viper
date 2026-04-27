@@ -24,6 +24,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
 #include "il/verify/DiagFormat.hpp"
+#include "il/verify/InstructionCheckUtils.hpp"
 #include "il/verify/TypeInference.hpp"
 
 #include <limits>
@@ -39,6 +40,14 @@ using il::support::Expected;
 using il::support::makeError;
 
 namespace {
+
+bool valueCompatibleWithType(const Value &value, const Type &actualType, const Type &expectedType) {
+    if (actualType.kind == expectedType.kind)
+        return true;
+    if (value.kind == Value::Kind::ConstInt)
+        return detail::fitsInIntegerKind(value.i64, expectedType.kind);
+    return false;
+}
 
 /// @brief Validate the argument bundle transferred along a branch edge.
 ///
@@ -83,7 +92,7 @@ Expected<void> verifyBranchArgs(const Function &fn,
                 instr.loc,
                 formatInstrDiag(fn, bb, instr, "void branch arg for label " + std::string(label)))};
         }
-        if (argType.kind != target.params[i].type.kind) {
+        if (!valueCompatibleWithType((*args)[i], argType, target.params[i].type)) {
             return Expected<void>{
                 makeError(instr.loc,
                           formatInstrDiag(
@@ -302,7 +311,7 @@ Expected<void> verifyRet_E(const Function &fn,
             makeError(instr.loc, formatInstrDiag(fn, bb, instr, "ret value type mismatch"))};
 
     Type actualType = types.valueType(instr.operands[0]);
-    if (actualType.kind != fn.retType.kind) {
+    if (!valueCompatibleWithType(instr.operands[0], actualType, fn.retType)) {
         std::string message = "ret value type mismatch: expected " + fn.retType.toString() +
                               " but got " + actualType.toString();
         return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, message))};

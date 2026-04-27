@@ -103,6 +103,8 @@ void Lowerer::lowerBlockStmt(BlockStmt *stmt) {
     auto localTypesBackup = localTypes_;
 
     for (auto &s : stmt->statements) {
+        if (isTerminated())
+            break;
         lowerStmt(s.get());
     }
 
@@ -207,6 +209,7 @@ void Lowerer::lowerIfStmt(IfStmt *stmt) {
     size_t thenIdx = createBlock("if_then");
     size_t elseIdx = stmt->elseBranch ? createBlock("if_else") : 0;
     size_t mergeIdx = createBlock("if_end");
+    bool mergeReachable = !stmt->elseBranch;
 
     // Lower condition
     auto cond = lowerExpr(stmt->condition.get());
@@ -226,6 +229,7 @@ void Lowerer::lowerIfStmt(IfStmt *stmt) {
     lowerStmt(stmt->thenBranch.get());
     if (!isTerminated()) {
         emitBr(mergeIdx);
+        mergeReachable = true;
     }
 
     // Lower else branch
@@ -234,10 +238,19 @@ void Lowerer::lowerIfStmt(IfStmt *stmt) {
         lowerStmt(stmt->elseBranch.get());
         if (!isTerminated()) {
             emitBr(mergeIdx);
+            mergeReachable = true;
         }
     }
 
     setBlock(mergeIdx);
+    if (!mergeReachable) {
+        il::core::Instr trap;
+        trap.op = il::core::Opcode::Trap;
+        trap.type = il::core::Type(il::core::Type::Kind::Void);
+        trap.loc = curLoc_;
+        blockMgr_.currentBlock()->instructions.push_back(trap);
+        blockMgr_.currentBlock()->terminated = true;
+    }
 }
 
 void Lowerer::lowerWhileStmt(WhileStmt *stmt) {
@@ -865,6 +878,7 @@ void Lowerer::lowerBreakStmt(BreakStmt * /*stmt*/) {
         trap.type = il::core::Type(il::core::Type::Kind::Void);
         trap.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(trap);
+        blockMgr_.currentBlock()->terminated = true;
     }
 }
 
@@ -879,6 +893,7 @@ void Lowerer::lowerContinueStmt(ContinueStmt * /*stmt*/) {
         trap.type = il::core::Type(il::core::Type::Kind::Void);
         trap.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(trap);
+        blockMgr_.currentBlock()->terminated = true;
     }
 }
 

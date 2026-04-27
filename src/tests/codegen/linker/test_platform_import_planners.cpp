@@ -97,6 +97,20 @@ TEST(PlatformImportPlanners, MacPlannerMapsMachineAndHostSyscallsToLibSystem) {
     EXPECT_EQ(1u, plan.symOrdinals["uname"]);
 }
 
+TEST(PlatformImportPlanners, MacPlannerMapsDarwinArgvAccessorsToLibSystem) {
+    MacImportPlan plan;
+    std::ostringstream err;
+    ASSERT_TRUE(planMacImports({"_NSGetArgc", "_NSGetArgv"}, plan, err));
+
+    EXPECT_TRUE(std::any_of(plan.dylibs.begin(), plan.dylibs.end(), [](const DylibImport &import) {
+        return import.path == "/usr/lib/libSystem.B.dylib";
+    }));
+    ASSERT_TRUE(plan.symOrdinals.count("_NSGetArgc") != 0);
+    EXPECT_EQ(1u, plan.symOrdinals["_NSGetArgc"]);
+    ASSERT_TRUE(plan.symOrdinals.count("_NSGetArgv") != 0);
+    EXPECT_EQ(1u, plan.symOrdinals["_NSGetArgv"]);
+}
+
 TEST(PlatformImportPlanners, MacPlannerMapsCbrtfToLibSystem) {
     MacImportPlan plan;
     std::ostringstream err;

@@ -108,7 +108,17 @@ class MoveGen {
         var legal = [];
         for i in 0..pseudo.length() {
             var m = pseudo.get(i);
-            if self.isLegal(b, m) {
+            if m.from < 0 || m.from >= 64 || m.to < 0 || m.to >= 64 { continue; }
+
+            var piece = b.get(m.from);
+            if piece == 0 { continue; }
+
+            var moverWasWhite = piece > 0;
+            var undo = b.makeMove(m);
+            var inCheck = self.isInCheck(b, moverWasWhite);
+            b.unmakeMove(m, undo);
+
+            if !inCheck {
                 legal.add(m);
             }
         }
@@ -418,25 +428,23 @@ class MoveGen {
     }
 
     // -----------------------------------------------------------------------
-    // Legality filter: does this move leave our king in check?
-    // -----------------------------------------------------------------------
-    hide func isLegal(b: Board, m: Move) -> Boolean {
-        var piece = b.get(m.from);
-        var white = piece > 0;
-        var undo = b.makeMove(m);
-        var inCheck = self.isInCheck(b, white);
-        b.unmakeMove(m, undo);
-        return !inCheck;
-    }
-
-    // -----------------------------------------------------------------------
     // Utility: does the given side have any legal moves?
     // -----------------------------------------------------------------------
     /// @brief Quick check used by checkmate / stalemate detection.
     expose func hasLegalMoves(b: Board, white: Boolean) -> Boolean {
         var pseudo = self.pseudoLegal(b, white);
         for i in 0..pseudo.length() {
-            if self.isLegal(b, pseudo.get(i)) { return true; }
+            var m = pseudo.get(i);
+            if m.from < 0 || m.from >= 64 || m.to < 0 || m.to >= 64 { continue; }
+
+            var piece = b.get(m.from);
+            if piece == 0 { continue; }
+
+            var moverWasWhite = piece > 0;
+            var undo = b.makeMove(m);
+            var inCheck = self.isInCheck(b, moverWasWhite);
+            b.unmakeMove(m, undo);
+            if !inCheck { return true; }
         }
         return false;
     }

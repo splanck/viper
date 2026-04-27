@@ -25,12 +25,18 @@ Lowerer::PatternValue Lowerer::emitTupleElement(const PatternValue &tuple,
                                                 size_t index,
                                                 TypeRef elemType) {
     Type ilType = mapType(elemType);
-    size_t offset = index * 8;
+    size_t offset = getTupleElementOffset(tuple.type, index);
     Value elemPtr = tuple.value;
     if (offset > 0) {
         elemPtr = emitGEP(tuple.value, static_cast<int64_t>(offset));
     }
+    if (elemType && (elemType->kind == TypeKindSem::Struct ||
+                     elemType->kind == TypeKindSem::FixedArray ||
+                     elemType->kind == TypeKindSem::Tuple))
+        return {elemPtr, elemType};
     Value elemVal = emitLoad(elemPtr, ilType);
+    if (ilType.kind == Type::Kind::Str)
+        emitCall(runtime::kStrRetainMaybe, {elemVal});
     return {elemVal, elemType};
 }
 

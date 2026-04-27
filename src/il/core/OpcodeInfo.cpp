@@ -144,6 +144,7 @@ MemoryEffects memoryEffects(Opcode op) noexcept {
         case Opcode::Store:
             return MemoryEffects::Write;
         case Opcode::Call:
+        case Opcode::CallIndirect:
             return MemoryEffects::ReadWrite;
 
         case Opcode::Add:

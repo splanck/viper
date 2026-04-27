@@ -96,6 +96,17 @@ TEST(CallEffects, ClassifyCalleeByName) {
     EXPECT_FALSE(effects.readonly);
 }
 
+TEST(CallEffects, GeneratedRuntimeMetadataIsAuthoritative) {
+    Instr call = makeCall("rt_round_even");
+    call.CallAttr.pure = false;
+    call.CallAttr.nothrow = false;
+
+    auto effects = il::transform::classifyCallEffects(call);
+    EXPECT_TRUE(effects.pure);
+    EXPECT_TRUE(effects.nothrow);
+    EXPECT_TRUE(effects.canEliminateIfUnused());
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

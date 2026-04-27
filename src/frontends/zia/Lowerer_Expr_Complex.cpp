@@ -197,37 +197,8 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
         const FieldLayout *field = info->findField(expr->field);
 
         if (field) {
-            // GEP to get field address
-            unsigned gepId = nextTempId();
-            il::core::Instr gepInstr;
-            gepInstr.result = gepId;
-            gepInstr.op = Opcode::GEP;
-            gepInstr.type = Type(Type::Kind::Ptr);
-            gepInstr.operands = {base.value, Value::constInt(static_cast<int64_t>(field->offset))};
-            gepInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(gepInstr);
-            Value fieldAddr = Value::temp(gepId);
-
-            // Fixed-size arrays: return the base pointer to inline storage (no load).
-            if (field->type && field->type->kind == TypeKindSem::FixedArray)
-                return {fieldAddr, Type(Type::Kind::Ptr)};
-
-            // Load the field value
             Type fieldType = mapType(field->type);
-            unsigned loadId = nextTempId();
-            il::core::Instr loadInstr;
-            loadInstr.result = loadId;
-            loadInstr.op = Opcode::Load;
-            loadInstr.type = fieldType;
-            loadInstr.operands = {fieldAddr};
-            loadInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(loadInstr);
-
-            // BUG-ADV-001: Retain loaded string fields from struct types.
-            if (fieldType.kind == Type::Kind::Str)
-                emitCall(runtime::kStrRetainMaybe, {Value::temp(loadId)});
-
-            return {Value::temp(loadId), fieldType};
+            return {emitFieldLoad(field, base.value), fieldType};
         }
     }
 
@@ -238,40 +209,8 @@ LowerResult Lowerer::lowerField(FieldExpr *expr) {
         const FieldLayout *field = entityInfo.findField(expr->field);
 
         if (field) {
-            // GEP to get field address
-            unsigned gepId = nextTempId();
-            il::core::Instr gepInstr;
-            gepInstr.result = gepId;
-            gepInstr.op = Opcode::GEP;
-            gepInstr.type = Type(Type::Kind::Ptr);
-            gepInstr.operands = {base.value, Value::constInt(static_cast<int64_t>(field->offset))};
-            gepInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(gepInstr);
-            Value fieldAddr = Value::temp(gepId);
-
-            // Fixed-size arrays: return the base pointer to inline storage (no load).
-            if (field->type && field->type->kind == TypeKindSem::FixedArray)
-                return {fieldAddr, Type(Type::Kind::Ptr)};
-
-            // Load the field value
             Type fieldType = mapType(field->type);
-            unsigned loadId = nextTempId();
-            il::core::Instr loadInstr;
-            loadInstr.result = loadId;
-            loadInstr.op = Opcode::Load;
-            loadInstr.type = fieldType;
-            loadInstr.operands = {fieldAddr};
-            loadInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(loadInstr);
-
-            // BUG-ADV-001: Retain loaded string fields from class types.
-            // Load gives a borrowed reference; retain converts it to owned,
-            // preventing use-after-free when the string is consumed by
-            // concatenation or passed cross-module.
-            if (fieldType.kind == Type::Kind::Str)
-                emitCall(runtime::kStrRetainMaybe, {Value::temp(loadId)});
-
-            return {Value::temp(loadId), fieldType};
+            return {emitFieldLoad(field, base.value), fieldType};
         }
     }
 
@@ -603,12 +542,16 @@ LowerResult Lowerer::lowerNew(NewExpr *expr) {
                 auto coerced = coerceValueToType(
                     loweredSources[idx].value, loweredSources[idx].type, argType, field.type);
                 fieldValue = coerced.value;
+                if (field.type && field.type->kind == TypeKindSem::Struct)
+                    fieldValue = emitBoxValue(fieldValue, coerced.type, field.type);
             } else if (i < fieldDecls.size() && fieldDecls[i]->initializer) {
                 auto initValue = lowerExpr(fieldDecls[i]->initializer.get());
                 TypeRef initType = sema_.typeOf(fieldDecls[i]->initializer.get());
                 auto coerced =
                     coerceValueToType(initValue.value, initValue.type, initType, field.type);
                 fieldValue = coerced.value;
+                if (field.type && field.type->kind == TypeKindSem::Struct)
+                    fieldValue = emitBoxValue(fieldValue, coerced.type, field.type);
             } else {
                 // Use default value
                 switch (ilFieldType.kind) {

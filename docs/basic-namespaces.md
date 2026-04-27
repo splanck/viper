@@ -847,9 +847,9 @@ first‑class and tested:
 
 - `Viper.Environment` — Command-line and environment (static utility)
     - Methods (static):
-        - `GetArgumentCount() -> I64` — Number of command-line arguments
-        - `GetArgument(I64 index) -> STRING` — Get argument by index (0-based)
-        - `GetCommandLine() -> STRING` — Full command line as single string
+        - `GetArgumentCount() -> I64` — Number of program arguments
+        - `GetArgument(I64 index) -> STRING` — Get program argument by zero-based index
+        - `GetCommandLine() -> STRING` — Program arguments joined as a single string
 
 #### Viper.Time
 
@@ -991,6 +991,9 @@ FOR i = 0 TO argc - 1
   PRINT "  "; i; ": "; Environment.GetArgument(i)
 NEXT i
 ```
+
+The `viper` tool forwards only arguments after `--` to the program, so
+`GetArgument(0)` is the first user argument, not the `viper` executable name.
 
 Timing with Viper.Time:
 

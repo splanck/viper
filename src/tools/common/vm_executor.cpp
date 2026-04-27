@@ -24,14 +24,13 @@ VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecu
     viper::bytecode::BytecodeCompiler bcCompiler;
     viper::bytecode::BytecodeModule bcModule = bcCompiler.compile(module);
 
-    // Set up program arguments for the runtime
-    if (!config.programArgs.empty()) {
-        rt_args_clear();
-        for (const auto &s : config.programArgs) {
-            rt_string tmp = rt_string_from_bytes(s.data(), s.size());
-            rt_args_push(tmp);
-            rt_string_unref(tmp);
-        }
+    // Set up program arguments for the runtime. An empty forwarded argument
+    // list is meaningful: it must suppress the native host argv fallback.
+    rt_args_clear();
+    for (const auto &s : config.programArgs) {
+        rt_string tmp = rt_string_from_bytes(s.data(), s.size());
+        rt_args_push(tmp);
+        rt_string_unref(tmp);
     }
 
     // Configure and run the VM

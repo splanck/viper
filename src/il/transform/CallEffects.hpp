@@ -22,7 +22,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/runtime/HelperEffects.hpp"
-#include "il/runtime/signatures/Registry.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 
 #include <string_view>
 
@@ -62,20 +62,18 @@ inline CallEffects classifyCallEffects(const il::core::Instr &instr) {
     if (instr.op != il::core::Opcode::Call)
         return effects; // Conservative: unknown effect for non-call instructions
 
-    const auto helperEffects = il::runtime::classifyHelperEffects(instr.callee);
-    bool known = helperEffects.known;
-    effects.pure = helperEffects.pure;
-    effects.readonly = helperEffects.readonly;
-    effects.nothrow = helperEffects.nothrow;
-
-    for (const auto &sig : il::runtime::signatures::all_signatures()) {
-        if (sig.name == instr.callee) {
-            known = true;
-            effects.pure = sig.pure;
-            effects.readonly = sig.readonly;
-            effects.nothrow = sig.nothrow;
-            break;
-        }
+    bool known = false;
+    if (const auto *sig = il::runtime::findRuntimeSignature(instr.callee)) {
+        effects.pure = sig->pure;
+        effects.readonly = sig->readonly;
+        effects.nothrow = sig->nothrow;
+        return effects;
+    } else {
+        const auto helperEffects = il::runtime::classifyHelperEffects(instr.callee);
+        known = helperEffects.known;
+        effects.pure = helperEffects.pure;
+        effects.readonly = helperEffects.readonly;
+        effects.nothrow = helperEffects.nothrow;
     }
 
     if (!known) {
@@ -94,25 +92,17 @@ inline CallEffects classifyCallEffects(const il::core::Instr &instr) {
 inline CallEffects classifyCalleeEffects(std::string_view callee) {
     CallEffects effects;
 
-    // 1. Check HelperEffects constexpr table (fast, covers common helpers)
+    if (const auto *sig = il::runtime::findRuntimeSignature(callee)) {
+        effects.pure = sig->pure;
+        effects.readonly = sig->readonly;
+        effects.nothrow = sig->nothrow;
+        return effects;
+    }
+
     const auto helperEffects = il::runtime::classifyHelperEffects(callee);
     effects.pure = helperEffects.pure;
     effects.readonly = helperEffects.readonly;
     effects.nothrow = helperEffects.nothrow;
-
-    // Skip slower registry scan when already fully classified.
-    if (effects.pure && effects.readonly && effects.nothrow)
-        return effects;
-
-    // 2. Check runtime signature registry (comprehensive)
-    for (const auto &sig : il::runtime::signatures::all_signatures()) {
-        if (sig.name == callee) {
-            effects.pure = effects.pure || sig.pure;
-            effects.readonly = effects.readonly || sig.readonly;
-            effects.nothrow = effects.nothrow || sig.nothrow;
-            break;
-        }
-    }
 
     return effects;
 }

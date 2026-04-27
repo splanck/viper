@@ -55,7 +55,7 @@ Static analysis utilities (`src/il/analysis/`) for IL programs.
 
 - **Alias queries**: Classifies pointer pairs as NoAlias/MayAlias/MustAlias using SSA def-chain analysis
 - **Base tracking**: Follows GEP/AddrOf/GAddr chains up to depth 8 to identify allocation bases
-- **Caching**: Runtime signature effects cached in hash map, rebuilt on registry changes
+- **Runtime effects**: Queries the generated runtime signature table first, then the small helper-effect fallback; no process-wide mutable analysis cache is used.
 - **ModRef queries**: Priority cascade — module functions authoritative, runtime signatures as fallback
 - **Tests**: `src/tests/analysis/BasicAATests.cpp`, `src/tests/unit/il/transform/test_opt_review_basicaa.cpp`
 
@@ -73,6 +73,7 @@ Static analysis utilities (`src/il/analysis/`) for IL programs.
   stack memory, so they are not treated as read barriers (the main limitation of `runCrossBlockDSE`)
 - **Access kinds**: `LiveOnEntry` (id=0, root), `Def` (stores/modifying calls), `Use` (loads/reading calls), `Phi` (join points)
 - **Construction**: Three-phase — escape analysis → RPO forward dataflow (def-use link building) → dead-store detection
+- **Dead-store rule**: A store is removable only when every path to exit either overwrites the same location first or exits without a read; loop/path state is tracked conservatively to avoid conflating live and killed paths.
 - **Dead store**: A `Store` at `(block, instrIdx)` is dead when all forward paths kill or exit without any load reading it
 - **`isDeadStore(block, idx)`**: O(1) predicate queried by `runMemorySSADSE` in `DSE.cpp`
 - **Registration**: Available as `"memory-ssa"` in `PassManager::analyses()`

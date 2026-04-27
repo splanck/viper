@@ -131,6 +131,7 @@ Recent correctness notes:
 - Primitive and struct `Optional[T]` payloads use nullable boxed pointers; optional lowering performs uniform null checks instead of a separate flag/value representation.
 - Map index lowering emits a `Map.Has` guard and traps on missing keys before unboxing a `Map.Get` result.
 - `Set.remove()` lowers to the runtime Boolean result, matching semantic return typing.
+- Inline aggregate layout is centralized in `Lowerer_Emit.cpp`: structs, tuples, and fixed arrays use semantic size/alignment helpers for field layout, tuple offsets, fixed-array strides, and nested copy/zero/store operations. Do not reintroduce pointer-sized `index * 8` assumptions for these values.
 
 ## Warnings
 

@@ -97,12 +97,16 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module) {
 
             std::unordered_set<il::core::Block *> recorded;
             recorded.reserve(succ.size());
+            std::vector<il::core::Block *> uniqueSucc;
+            uniqueSucc.reserve(succ.size());
             for (auto *target : succ) {
                 if (!target || recorded.contains(target))
                     continue;
                 recorded.insert(target);
+                uniqueSucc.push_back(target);
                 blockPredecessors[target].push_back(&blk);
             }
+            succ = std::move(uniqueSucc);
         }
     }
 }

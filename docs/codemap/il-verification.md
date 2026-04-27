@@ -12,8 +12,8 @@ The verifier treats SSA correctness issues as hard errors: duplicate temp
 definitions, invalid function/block parameters, non-dominating uses, undefined
 branch arguments, fixed-opcode result type mismatches, ambiguous
 function/extern/global symbols, invalid indirect-call callees, contradictory
-call attributes for known callees, and returning alloca-derived pointers all
-fail verification.
+call attributes for known callees, invalid function body attributes, and
+alloca-derived pointer escapes all fail verification.
 
 ## Overview
 
@@ -41,6 +41,12 @@ fail verification.
 | `BranchVerifier.cpp`     | Branch validation implementation          |
 | `BranchVerifier.hpp`     | Branch successor and argument validation  |
 | `BlockMap.hpp`           | Block name to index mapping utilities     |
+
+Recent function-level checks:
+
+- Dominance and release-lifetime checks cover unreachable CFG components instead of skipping dead blocks.
+- `pure`, `readonly`, and `nothrow` function attributes are proven against the body before optimizers may trust them.
+- Alloca-derived pointers may not be returned, stored into non-stack memory, or passed to unknown/external mutating calls. Direct local calls are allowed as checked borrows for aggregate constructors and value methods.
 
 ## Instruction Checking
 

@@ -24,7 +24,10 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
+#include "il/core/OpcodeInfo.hpp"
 #include "il/core/Type.hpp"
+#include "il/runtime/HelperEffects.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "il/verify/ControlFlowChecker.hpp"
 #include "il/verify/DiagFormat.hpp"
 #include "il/verify/ExceptionHandlerAnalysis.hpp"
@@ -34,6 +37,9 @@
 #include "il/verify/VerifyCtx.hpp"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <optional>
 #include <queue>
 #include <sstream>
@@ -97,6 +103,123 @@ bool isRuntimeArrayRelease(const Instr &instr) {
     return instr.op == Opcode::Call &&
            (instr.callee == "rt_arr_i32_release" || instr.callee == "rt_arr_str_release" ||
             instr.callee == "rt_arr_obj_release");
+}
+
+bool isPureControlTerminator(Opcode op) {
+    return op == Opcode::Br || op == Opcode::CBr || op == Opcode::SwitchI32 ||
+           op == Opcode::Ret;
+}
+
+bool opcodeMayThrowOrTrap(Opcode op) {
+    switch (op) {
+        case Opcode::IAddOvf:
+        case Opcode::ISubOvf:
+        case Opcode::IMulOvf:
+        case Opcode::SDivChk0:
+        case Opcode::UDivChk0:
+        case Opcode::SRemChk0:
+        case Opcode::URemChk0:
+        case Opcode::IdxChk:
+        case Opcode::CastFpToSiRteChk:
+        case Opcode::CastFpToUiRteChk:
+        case Opcode::CastSiNarrowChk:
+        case Opcode::CastUiNarrowChk:
+        case Opcode::Trap:
+        case Opcode::TrapErr:
+        case Opcode::TrapFromErr:
+            return true;
+        default:
+            return false;
+    }
+}
+
+struct EffectFacts {
+    bool known = false;
+    bool pure = false;
+    bool readonly = false;
+    bool nothrow = false;
+};
+
+EffectFacts directCalleeEffects(
+    std::string_view callee,
+    const std::unordered_map<std::string, const Function *> &functionMap) {
+    if (const auto *runtimeSig = il::runtime::findRuntimeSignature(callee)) {
+        return EffectFacts{true, runtimeSig->pure, runtimeSig->readonly, runtimeSig->nothrow};
+    }
+
+    if (auto helper = il::runtime::classifyHelperEffects(callee); helper.known)
+        return EffectFacts{true, helper.pure, helper.readonly, helper.nothrow};
+
+    if (auto it = functionMap.find(std::string(callee)); it != functionMap.end()) {
+        const FunctionAttrs &attrs = it->second->attrs();
+        return EffectFacts{true, attrs.pure, attrs.readonly, attrs.nothrow};
+    }
+
+    return {};
+}
+
+struct StackLocationKey {
+    unsigned root = 0;
+    int64_t offset = 0;
+
+    bool operator==(const StackLocationKey &other) const {
+        return root == other.root && offset == other.offset;
+    }
+};
+
+struct StackLocationKeyHash {
+    std::size_t operator()(const StackLocationKey &key) const {
+        std::size_t rootHash = std::hash<unsigned>{}(key.root);
+        std::size_t offsetHash = std::hash<int64_t>{}(key.offset);
+        return rootHash ^ (offsetHash + 0x9e3779b97f4a7c15ULL + (rootHash << 6) + (rootHash >> 2));
+    }
+};
+
+std::optional<int64_t> constIntValue(const Value &value) {
+    if (value.kind == Value::Kind::ConstInt)
+        return value.i64;
+    return std::nullopt;
+}
+
+std::optional<int64_t> checkedAdd(int64_t lhs, int64_t rhs) {
+    if ((rhs > 0 && lhs > std::numeric_limits<int64_t>::max() - rhs) ||
+        (rhs < 0 && lhs < std::numeric_limits<int64_t>::min() - rhs))
+        return std::nullopt;
+    return lhs + rhs;
+}
+
+std::optional<StackLocationKey> stackLocationKey(
+    const Value &ptr,
+    const std::unordered_map<unsigned, const Instr *> &defs,
+    unsigned depth = 0) {
+    if (depth > 32 || ptr.kind != Value::Kind::Temp)
+        return std::nullopt;
+
+    auto defIt = defs.find(ptr.id);
+    if (defIt == defs.end())
+        return std::nullopt;
+
+    const Instr &def = *defIt->second;
+    if (def.op == Opcode::Alloca)
+        return StackLocationKey{ptr.id, 0};
+
+    if (def.op != Opcode::GEP || def.operands.size() < 2)
+        return std::nullopt;
+
+    auto base = stackLocationKey(def.operands[0], defs, depth + 1);
+    if (!base)
+        return std::nullopt;
+
+    auto offset = constIntValue(def.operands[1]);
+    if (!offset)
+        return std::nullopt;
+
+    auto combined = checkedAdd(base->offset, *offset);
+    if (!combined)
+        return std::nullopt;
+
+    base->offset = *combined;
+    return base;
 }
 
 Expected<void> validateFunctionParams(const Function &fn) {
@@ -355,6 +478,58 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
             return Expected<void>{makeError({}, formatFunctionDiag(fn, "unknown label " + label))};
     }
 
+    // ===== PASS 2b: Function attribute body verification =====
+    // Function-level effect attributes are consumed by optimisation passes, so
+    // definitions must prove their own annotations instead of relying on call
+    // sites or hand-written metadata being honest.
+    if (fn.attrs().pure || fn.attrs().readonly || fn.attrs().nothrow) {
+        const FunctionAttrs &attrs = fn.attrs();
+        for (const auto &bb : fn.blocks) {
+            for (const auto &instr : bb.instructions) {
+                const auto failAttr = [&](std::string_view message) -> Expected<void> {
+                    return Expected<void>{
+                        makeError(instr.loc, formatInstrDiag(fn, bb, instr, message))};
+                };
+
+                if (instr.op == Opcode::Call) {
+                    const EffectFacts effects = directCalleeEffects(instr.callee, functionMap_);
+                    if (attrs.pure && !(effects.known && effects.pure))
+                        return failAttr("pure function calls non-pure callee");
+                    if (attrs.readonly &&
+                        !(effects.known && (effects.readonly || effects.pure)))
+                        return failAttr("readonly function calls memory-writing callee");
+                    if (attrs.nothrow && !(effects.known && effects.nothrow))
+                        return failAttr("nothrow function calls throwing callee");
+                    continue;
+                }
+
+                if (instr.op == Opcode::CallIndirect) {
+                    if (attrs.pure)
+                        return failAttr("pure function contains indirect call");
+                    if (attrs.readonly)
+                        return failAttr("readonly function contains indirect call");
+                    if (attrs.nothrow)
+                        return failAttr("nothrow function contains indirect call");
+                    continue;
+                }
+
+                const MemoryEffects memory = memoryEffects(instr.op);
+                if (attrs.pure && memory != MemoryEffects::None)
+                    return failAttr("pure function contains memory access");
+                if (attrs.readonly &&
+                    (memory == MemoryEffects::Write || memory == MemoryEffects::ReadWrite ||
+                     memory == MemoryEffects::Unknown))
+                    return failAttr("readonly function contains memory write");
+
+                const OpcodeInfo &info = getOpcodeInfo(instr.op);
+                if (attrs.pure && info.hasSideEffects && !isPureControlTerminator(instr.op))
+                    return failAttr("pure function contains side-effecting instruction");
+                if (attrs.nothrow && opcodeMayThrowOrTrap(instr.op))
+                    return failAttr("nothrow function contains trapping instruction");
+            }
+        }
+    }
+
     // ===== PASS 3: Dominance verification =====
     // Compute dominators using iterative dataflow (Cooper-Harvey-Kennedy) and
     // verify that every use of a temp is dominated by its definition.
@@ -375,8 +550,12 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
             }
         }
 
-        // Compute reverse post-order via DFS.
+        // Compute reverse post-order via DFS over every CFG component. The real
+        // entry remains the first root; unreachable components get independent
+        // roots so malformed SSA inside dead code is still checked.
         std::vector<const BasicBlock *> rpo;
+        std::vector<const BasicBlock *> roots;
+        std::unordered_set<const BasicBlock *> entryReachable;
         {
             std::unordered_set<const BasicBlock *> visited;
 
@@ -385,111 +564,144 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                 bool childrenPushed;
             };
 
-            std::vector<Frame> stack;
-            stack.push_back({entry, false});
-            visited.insert(entry);
-            while (!stack.empty()) {
-                auto &top = stack.back();
-                if (!top.childrenPushed) {
-                    top.childrenPushed = true;
-                    // Push successors
-                    for (const auto &instr : top.bb->instructions) {
-                        if (!isTerminator(instr.op))
-                            continue;
-                        for (const auto &label : instr.labels) {
-                            if (auto it = blockMap.find(label); it != blockMap.end()) {
-                                if (visited.insert(it->second).second)
-                                    stack.push_back({it->second, false});
+            auto visitRoot = [&](const BasicBlock *root) {
+                if (!root || !visited.insert(root).second)
+                    return;
+                roots.push_back(root);
+                std::vector<const BasicBlock *> componentPostorder;
+                std::vector<Frame> stack;
+                stack.push_back({root, false});
+                while (!stack.empty()) {
+                    auto &top = stack.back();
+                    if (!top.childrenPushed) {
+                        top.childrenPushed = true;
+                        for (const auto &instr : top.bb->instructions) {
+                            if (!isTerminator(instr.op))
+                                continue;
+                            for (const auto &label : instr.labels) {
+                                if (auto it = blockMap.find(label); it != blockMap.end()) {
+                                    if (visited.insert(it->second).second)
+                                        stack.push_back({it->second, false});
+                                }
                             }
+                            break;
                         }
-                        break;
+                    } else {
+                        componentPostorder.push_back(top.bb);
+                        stack.pop_back();
                     }
-                } else {
-                    rpo.push_back(top.bb);
-                    stack.pop_back();
                 }
+                rpo.insert(rpo.end(), componentPostorder.rbegin(), componentPostorder.rend());
+            };
+
+            visitRoot(entry);
+            entryReachable = visited;
+            for (const auto &bb : fn.blocks) {
+                if (visited.contains(&bb))
+                    continue;
+                bool hasUnvisitedPred = false;
+                if (auto predIt = preds.find(&bb); predIt != preds.end()) {
+                    for (const auto *pred : predIt->second) {
+                        if (!visited.contains(pred)) {
+                            hasUnvisitedPred = true;
+                            break;
+                        }
+                    }
+                }
+                if (!hasUnvisitedPred)
+                    visitRoot(&bb);
             }
-            std::reverse(rpo.begin(), rpo.end());
+            for (const auto &bb : fn.blocks) {
+                if (!visited.contains(&bb))
+                    visitRoot(&bb);
+            }
         }
 
-        std::unordered_set<const BasicBlock *> reachable(rpo.begin(), rpo.end());
+        std::unordered_set<const BasicBlock *> rootSet(roots.begin(), roots.end());
 
-        // Assign RPO indices for intersection.
-        std::unordered_map<const BasicBlock *, unsigned> rpoIndex;
-        for (unsigned i = 0; i < rpo.size(); ++i)
-            rpoIndex[rpo[i]] = i;
+        std::vector<const BasicBlock *> blocks;
+        blocks.reserve(fn.blocks.size());
+        std::unordered_map<const BasicBlock *, size_t> blockIndex;
+        for (const auto &bb : fn.blocks) {
+            blockIndex[&bb] = blocks.size();
+            blocks.push_back(&bb);
+        }
 
-        // Iterative dominator computation.
-        std::unordered_map<const BasicBlock *, const BasicBlock *> idom;
-        idom[entry] = entry;
-
-        auto intersect = [&](const BasicBlock *b1, const BasicBlock *b2) -> const BasicBlock * {
-            auto finger1 = b1;
-            auto finger2 = b2;
-            while (finger1 != finger2) {
-                while (rpoIndex[finger1] > rpoIndex[finger2])
-                    finger1 = idom[finger1];
-                while (rpoIndex[finger2] > rpoIndex[finger1])
-                    finger2 = idom[finger2];
+        std::vector<std::vector<size_t>> predIndices(blocks.size());
+        for (const auto &[bb, predList] : preds) {
+            auto bbIt = blockIndex.find(bb);
+            if (bbIt == blockIndex.end())
+                continue;
+            auto &indices = predIndices[bbIt->second];
+            indices.reserve(predList.size());
+            const bool targetReachable = entryReachable.contains(bb);
+            for (const auto *pred : predList) {
+                if (entryReachable.contains(pred) != targetReachable)
+                    continue;
+                auto predIdx = blockIndex.find(pred);
+                if (predIdx != blockIndex.end())
+                    indices.push_back(predIdx->second);
             }
-            return finger1;
+        }
+
+        const size_t entryIndex = blockIndex[entry];
+        std::vector<std::vector<unsigned char>> dom(
+            blocks.size(), std::vector<unsigned char>(blocks.size(), 1));
+
+        auto setRootDom = [&](size_t index) {
+            std::fill(dom[index].begin(), dom[index].end(), 0);
+            dom[index][entryIndex] = 1;
+            dom[index][index] = 1;
         };
+
+        for (const auto *root : roots) {
+            if (auto it = blockIndex.find(root); it != blockIndex.end())
+                setRootDom(it->second);
+        }
 
         bool changed = true;
         while (changed) {
             changed = false;
             for (const auto *bb : rpo) {
-                if (bb == entry)
-                    continue;
-                auto predIt = preds.find(bb);
-                if (predIt == preds.end() || predIt->second.empty())
+                if (rootSet.contains(bb))
                     continue;
 
-                // Pick first processed predecessor as initial idom.
-                const BasicBlock *newIdom = nullptr;
-                for (const auto *p : predIt->second) {
-                    if (idom.contains(p)) {
-                        newIdom = p;
-                        break;
+                const size_t index = blockIndex[bb];
+                if (predIndices[index].empty()) {
+                    std::vector<unsigned char> newDom(blocks.size(), 0);
+                    newDom[entryIndex] = 1;
+                    newDom[index] = 1;
+                    if (dom[index] != newDom) {
+                        dom[index] = std::move(newDom);
+                        changed = true;
                     }
-                }
-                if (!newIdom)
                     continue;
-
-                // Intersect with remaining processed predecessors.
-                for (const auto *p : predIt->second) {
-                    if (p == newIdom || !idom.contains(p))
-                        continue;
-                    newIdom = intersect(p, newIdom);
                 }
 
-                if (idom[bb] != newIdom) {
-                    idom[bb] = newIdom;
+                std::vector<unsigned char> newDom(blocks.size(), 1);
+                for (size_t pred : predIndices[index]) {
+                    for (size_t bit = 0; bit < newDom.size(); ++bit)
+                        newDom[bit] = newDom[bit] && dom[pred][bit];
+                }
+                newDom[index] = 1;
+
+                if (dom[index] != newDom) {
+                    dom[index] = std::move(newDom);
                     changed = true;
                 }
             }
         }
 
-        // dominates(A, B): walk B's idom chain up to entry looking for A.
         auto dominates = [&](const BasicBlock *A, const BasicBlock *B) -> bool {
-            if (A == B)
-                return true;
-            const BasicBlock *cur = B;
-            while (cur != entry) {
-                auto it = idom.find(cur);
-                if (it == idom.end() || it->second == cur)
-                    return false;
-                cur = it->second;
-                if (cur == A)
-                    return true;
-            }
-            return A == entry;
+            auto aIt = blockIndex.find(A);
+            auto bIt = blockIndex.find(B);
+            if (aIt == blockIndex.end() || bIt == blockIndex.end())
+                return false;
+            return dom[bIt->second][aIt->second] != 0;
         };
 
         // Check every operand use: the defining block must dominate the using block.
         for (const auto &blk : fn.blocks) {
-            if (!reachable.contains(&blk))
-                continue;
             for (const auto &instr : blk.instructions) {
                 auto checkValue = [&](const Value &op) -> Expected<void> {
                     if (op.kind != Value::Kind::Temp)
@@ -497,14 +709,6 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                     auto defIt = definingBlock.find(op.id);
                     if (defIt == definingBlock.end())
                         return {};
-
-                    if (!reachable.contains(defIt->second)) {
-                        std::ostringstream msg;
-                        msg << "use of %" << op.id << " defined in unreachable block ^"
-                            << defIt->second->label;
-                        return Expected<void>{
-                            makeError(instr.loc, formatInstrDiag(fn, blk, instr, msg.str()))};
-                    }
 
                     if (defIt->second != &blk && !dominates(defIt->second, &blk)) {
                         std::ostringstream msg;
@@ -542,8 +746,6 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         std::vector<ReleaseSite> releaseSites;
         std::vector<ReleasedUse> releasedUses;
         for (const auto &blk : fn.blocks) {
-            if (!reachable.contains(&blk))
-                continue;
             for (size_t index = 0; index < blk.instructions.size(); ++index) {
                 const Instr &instr = blk.instructions[index];
                 if (isRuntimeArrayRelease(instr)) {
@@ -606,12 +808,19 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     }
 
     // ===== PASS 4: Alloca escape verification =====
-    // Detect obvious alloca-derived pointer escapes. Returning a stack address
-    // can leave dangling addresses after the function returns.
+    // Detect obvious alloca-derived pointer escapes. Returning a stack address,
+    // storing one into non-stack storage, or passing one to an unknown/external
+    // mutating call can leave dangling addresses after the function returns.
+    // Direct local calls and known runtime helpers are treated as checked
+    // borrows because frontends use stack-backed aggregate and out-parameters.
     {
         std::unordered_set<unsigned> stackDerived;
+        std::unordered_map<unsigned, const Instr *> defs;
+        std::unordered_set<StackLocationKey, StackLocationKeyHash> stackPtrLocations;
         for (const auto &blk : fn.blocks) {
             for (const auto &instr : blk.instructions) {
+                if (instr.result)
+                    defs.emplace(*instr.result, &instr);
                 if (instr.op == Opcode::Alloca && instr.result)
                     stackDerived.insert(*instr.result);
             }
@@ -626,6 +835,23 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                         instr.operands[0].kind == Value::Kind::Temp &&
                         stackDerived.contains(instr.operands[0].id)) {
                         changed |= stackDerived.insert(*instr.result).second;
+                    }
+
+                    if (instr.op == Opcode::Store && instr.operands.size() >= 2) {
+                        const Value &dst = instr.operands[0];
+                        const Value &stored = instr.operands[1];
+                        if (stored.kind == Value::Kind::Temp && stackDerived.contains(stored.id)) {
+                            if (auto key = stackLocationKey(dst, defs))
+                                changed |= stackPtrLocations.insert(*key).second;
+                        }
+                    }
+
+                    if (instr.op == Opcode::Load && instr.result && !instr.operands.empty() &&
+                        instr.type.kind == Type::Kind::Ptr) {
+                        if (auto key = stackLocationKey(instr.operands[0], defs);
+                            key && stackPtrLocations.contains(*key)) {
+                            changed |= stackDerived.insert(*instr.result).second;
+                        }
                     }
 
                     if (isTerminator(instr.op)) {
@@ -670,6 +896,33 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                                 return result;
                     }
 
+                    if (instr.op == Opcode::Store && instr.operands.size() >= 2) {
+                        const Value &dst = instr.operands[0];
+                        const Value &stored = instr.operands[1];
+                        const bool dstIsStackDerived =
+                            dst.kind == Value::Kind::Temp && stackDerived.contains(dst.id);
+                        if (!dstIsStackDerived) {
+                            if (auto result = failEscape(stored, "storing"); !result)
+                                return result;
+                        }
+                    }
+
+                    if (instr.op == Opcode::Call) {
+                        if (functionMap_.contains(instr.callee))
+                            continue;
+                        const EffectFacts effects = directCalleeEffects(instr.callee, functionMap_);
+                        if (effects.known)
+                            continue;
+                        for (const auto &op : instr.operands)
+                            if (auto result = failEscape(op, "passing"); !result)
+                                return result;
+                    }
+
+                    if (instr.op == Opcode::CallIndirect) {
+                        for (const auto &op : instr.operands)
+                            if (auto result = failEscape(op, "passing"); !result)
+                                return result;
+                    }
                 }
             }
         }

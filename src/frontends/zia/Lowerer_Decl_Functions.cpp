@@ -140,7 +140,10 @@ void Lowerer::emitGlobalInitializers() {
         auto lowered = lowerExpr(entry.initializer);
         TypeRef sourceType = sema_.typeOf(entry.initializer);
 
-        if (sourceType && sourceType->kind == TypeKindSem::Struct) {
+        if (entry.type && entry.type->kind == TypeKindSem::Struct) {
+            lowered.value = emitBoxValue(lowered.value, lowered.type, entry.type);
+            lowered.type = Type(Type::Kind::Ptr);
+        } else if (sourceType && sourceType->kind == TypeKindSem::Struct) {
             if (const StructTypeInfo *info = getOrCreateStructTypeInfo(sourceType->name)) {
                 lowered.value = emitStructTypeCopy(*info, lowered.value);
                 lowered.type = Type(Type::Kind::Ptr);

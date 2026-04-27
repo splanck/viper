@@ -65,15 +65,13 @@ class Runner::Impl {
             il::vm::RuntimeBridge::registerExtern(ext);
 
         // Seed runtime ARGC/ARG$/COMMAND$ only after VM construction so the
-        // runtime is ready for string/heap operations.
-        if (!config.programArgs.empty()) {
-            // Use direct C runtime API for efficiency and to avoid VM traps here.
-            rt_args_clear();
-            for (const auto &s : config.programArgs) {
-                rt_string tmp = rt_string_from_bytes(s.data(), s.size());
-                rt_args_push(tmp);
-                rt_string_unref(tmp);
-            }
+        // runtime is ready for string/heap operations. Empty is explicit and
+        // must suppress the native host argv fallback.
+        rt_args_clear();
+        for (const auto &s : config.programArgs) {
+            rt_string tmp = rt_string_from_bytes(s.data(), s.size());
+            rt_args_push(tmp);
+            rt_string_unref(tmp);
         }
     }
 

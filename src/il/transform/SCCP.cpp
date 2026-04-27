@@ -62,6 +62,8 @@
 #include "il/core/Value.hpp"
 
 #include "il/transform/OverflowArithmetic.hpp"
+#include "il/transform/SimplifyCFG/ReachabilityCleanup.hpp"
+#include "il/transform/SimplifyCFG.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -854,6 +856,10 @@ class SCCPSolver {
         process();
         rewriteConstants();
         foldTerminators();
+        SimplifyCFG::Stats stats;
+        SimplifyCFG::SimplifyCFGPassContext cleanupContext(function_, nullptr, stats);
+        if (simplify_cfg::removeUnreachableBlocks(cleanupContext))
+            changed_ = true;
         return changed_;
     }
 

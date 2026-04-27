@@ -61,6 +61,28 @@ TEST(SignaturesPurity, ReadonlyStringHelpers) {
     EXPECT_TRUE(instrSig->nothrow);
 }
 
+TEST(SignaturesPurity, DuplicateRegistrationIsIdempotent) {
+    using il::runtime::signatures::SigParam;
+
+    const auto signature = il::runtime::signatures::make_signature(
+        "rt_test_idempotent_signature", {SigParam::I64}, {SigParam::I64}, true, false, true);
+
+    const std::size_t before = il::runtime::signatures::registry_version();
+    il::runtime::signatures::register_signature(signature);
+    const std::size_t afterFirst = il::runtime::signatures::registry_version();
+    il::runtime::signatures::register_signature(signature);
+    const std::size_t afterSecond = il::runtime::signatures::registry_version();
+
+    EXPECT_EQ(afterFirst, before + 1);
+    EXPECT_EQ(afterSecond, afterFirst);
+
+    std::size_t count = 0;
+    for (const auto &entry : il::runtime::signatures::all_signatures())
+        if (entry.name == "rt_test_idempotent_signature")
+            ++count;
+    EXPECT_EQ(count, 1U);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

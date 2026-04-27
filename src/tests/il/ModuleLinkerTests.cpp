@@ -367,6 +367,38 @@ TEST(ModuleLinker, ImportSignatureMismatchFails) {
     EXPECT_TRUE(result.errors[0].find("signature mismatch") != std::string::npos);
 }
 
+TEST(ModuleLinker, ImportVarArgMismatchFails) {
+    Module a;
+    a.functions.push_back(makeI64Func("main", Linkage::Internal));
+    Function imported = makeI64FuncWithParams(
+        "helper", Linkage::Import, {Param{"x", Type(Type::Kind::I64), 0}});
+    imported.isVarArg = false;
+    a.functions.push_back(std::move(imported));
+
+    Module b;
+    Function exported = makeI64FuncWithParams(
+        "helper", Linkage::Export, {Param{"x", Type(Type::Kind::I64), 0}});
+    exported.isVarArg = true;
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::I64);
+    ret.operands.push_back(Value::constInt(0));
+    entry.instructions.push_back(std::move(ret));
+    exported.blocks.push_back(std::move(entry));
+    b.functions.push_back(std::move(exported));
+
+    std::vector<Module> modules;
+    modules.push_back(std::move(a));
+    modules.push_back(std::move(b));
+
+    auto result = il::link::linkModules(std::move(modules));
+    EXPECT_FALSE(result.succeeded());
+    ASSERT_FALSE(result.errors.empty());
+    EXPECT_TRUE(result.errors[0].find("signature mismatch") != std::string::npos);
+}
+
 TEST(ModuleLinker, BooleanThunkIntegratedForImportCalls) {
     Module a;
     a.functions.push_back(makeCaller("main", "isReady"));

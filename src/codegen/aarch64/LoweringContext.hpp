@@ -24,6 +24,7 @@
 #include "TargetAArch64.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include "il/core/OpcodeInfo.hpp"
 
 #include <cstddef>
 #include <limits>
@@ -152,14 +153,17 @@ inline const il::core::Instr *findProducerInFunction(const il::core::Function &f
 inline bool hasSideEffects(const il::core::BasicBlock &bb) {
     for (const auto &ins : bb.instructions) {
         switch (ins.op) {
-            case il::core::Opcode::Store:
-            case il::core::Opcode::Call:
-            case il::core::Opcode::Trap:
-            case il::core::Opcode::TrapFromErr:
-                return true;
+            case il::core::Opcode::Ret:
+            case il::core::Opcode::Br:
+            case il::core::Opcode::CBr:
+                continue;
             default:
                 break;
         }
+        if (il::core::getOpcodeInfo(ins.op).hasSideEffects)
+            return true;
+        if (il::core::memoryEffects(ins.op) != il::core::MemoryEffects::None)
+            return true;
     }
     return false;
 }

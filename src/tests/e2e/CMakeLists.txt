@@ -266,6 +266,15 @@ function(viper_add_e2e_vm_suite)
             -P ${_VIPER_E2E_DIR}/test_basic_args_run.cmake)
     viper_set_test_labels(basic_args_none vm)
 
+    viper_add_ctest(basic_args_none_debug
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:viper>
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/basic_args_none.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/basic_args_none.bas.out
+            -DDEBUG_VM=ON
+            -P ${_VIPER_E2E_DIR}/test_basic_args_run.cmake)
+    viper_set_test_labels(basic_args_none_debug vm)
+
     # Command-line arguments: some args
     # Pass two program arguments: "foo" and "bar baz". Semicolons are CMake's
     # list separators, so escape it (\;) to keep both elements inside the single

@@ -378,6 +378,8 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "trunc",
         "truncf",
         "_NSGetExecutablePath",
+        "_NSGetArgc",
+        "_NSGetArgv",
         "_NSConcreteStackBlock",
         "_NSConcreteGlobalBlock",
         "_NSConcreteMallocBlock",

@@ -17,6 +17,7 @@
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
 #include <algorithm>
+#include <optional>
 #include <unordered_map>
 
 namespace il::frontends::zia {
@@ -746,8 +747,7 @@ std::optional<LowerResult> Lowerer::lowerClassTypeConstruction(const std::string
         // No explicit init - do inline field initialization
         for (size_t i = 0; i < info.fields.size(); ++i) {
             const auto &field = info.fields[i];
-            Type ilFieldType = mapType(field.type);
-            Value fieldValue;
+            std::optional<Value> fieldValue;
 
             int sourceIndex = binding && i < binding->fixedParamSources.size()
                                   ? binding->fixedParamSources[i]
@@ -764,7 +764,10 @@ std::optional<LowerResult> Lowerer::lowerClassTypeConstruction(const std::string
                 auto coerced =
                     coerceValueToType(initValue.value, initValue.type, initType, field.type);
                 fieldValue = coerced.value;
-            } else {
+            } else if (!field.type || (field.type->kind != TypeKindSem::Struct &&
+                                       field.type->kind != TypeKindSem::FixedArray &&
+                                       field.type->kind != TypeKindSem::Tuple)) {
+                Type ilFieldType = mapType(field.type);
                 switch (ilFieldType.kind) {
                     case Type::Kind::I1:
                         fieldValue = Value::constBool(false);
@@ -790,7 +793,10 @@ std::optional<LowerResult> Lowerer::lowerClassTypeConstruction(const std::string
             }
 
             Value fieldAddr = emitGEP(ptr, static_cast<int64_t>(field.offset));
-            emitStore(fieldAddr, fieldValue, ilFieldType);
+            if (fieldValue)
+                emitInlineValueStore(field.type, fieldAddr, *fieldValue, false);
+            else
+                emitInlineValueZero(field.type, fieldAddr);
         }
     }
 

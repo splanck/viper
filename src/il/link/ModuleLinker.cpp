@@ -107,7 +107,8 @@ bool isInitFunction(const std::string &name) {
 }
 
 bool sameSignature(const Function &a, const Function &b) {
-    if (a.retType.kind != b.retType.kind || a.params.size() != b.params.size())
+    if (a.retType.kind != b.retType.kind || a.params.size() != b.params.size() ||
+        a.isVarArg != b.isVarArg)
         return false;
     for (size_t i = 0; i < a.params.size(); ++i) {
         if (a.params[i].type.kind != b.params[i].type.kind)
@@ -122,7 +123,8 @@ bool isBooleanMismatch(Type::Kind a, Type::Kind b) {
 }
 
 bool booleanInteropCompatible(const Function &importDecl, const Function &definition) {
-    if (importDecl.params.size() != definition.params.size())
+    if (importDecl.params.size() != definition.params.size() ||
+        importDecl.isVarArg != definition.isVarArg)
         return false;
     if (importDecl.retType.kind != definition.retType.kind &&
         !isBooleanMismatch(importDecl.retType.kind, definition.retType.kind))
