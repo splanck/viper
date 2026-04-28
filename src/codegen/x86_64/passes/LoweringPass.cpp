@@ -31,6 +31,7 @@
 
 #include <cassert>
 #include <optional>
+#include <stdexcept>
 #include <unordered_map>
 #include <utility>
 
@@ -202,8 +203,7 @@ class ModuleAdapter {
             case Opcode::UCmpLE:
                 return 9;
             default:
-                assert(false && "unknown comparison opcode in condCodeFor");
-                return 0;
+                throw std::runtime_error("x86-64 lowering: unsupported comparison opcode");
         }
     }
 

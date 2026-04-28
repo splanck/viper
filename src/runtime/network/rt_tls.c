@@ -1560,7 +1560,7 @@ static int recv_record(rt_tls_session_t *session,
 ///   - `supported_versions` (TLS 1.3 only)
     ///   - `alpn` (optional single protocol, e.g. `http/1.1`)
     ///   - `supported_groups` (X25519 only — see RFC 7748)
-///   - `signature_algorithms` (ECDSA P-256/P-384, RSA-PSS SHA-256/384/512)
+///   - `signature_algorithms` (ECDSA P-256, RSA-PSS SHA-256/384/512)
 ///   - `cookie` (only when echoing back a HelloRetryRequest)
 ///   - `key_share` with a freshly generated X25519 public key
 ///
@@ -1660,16 +1660,14 @@ static int send_client_hello(rt_tls_session_t *session) {
     write_u16(msg + pos, 0x001D); // x25519
     pos += 2;
 
-    // Signature algorithms (ECDSA + RSA-PSS)
+    // Signature algorithms. Advertise only schemes implemented by CertificateVerify.
     write_u16(msg + pos, TLS_EXT_SIGNATURE_ALGORITHMS);
-    pos += 2;
-    write_u16(msg + pos, 12);
     pos += 2;
     write_u16(msg + pos, 10);
     pos += 2;
-    write_u16(msg + pos, 0x0403); // ecdsa_secp256r1_sha256
+    write_u16(msg + pos, 8);
     pos += 2;
-    write_u16(msg + pos, 0x0503); // ecdsa_secp384r1_sha384
+    write_u16(msg + pos, 0x0403); // ecdsa_secp256r1_sha256
     pos += 2;
     write_u16(msg + pos, 0x0804); // rsa_pss_rsae_sha256
     pos += 2;

@@ -151,7 +151,7 @@ The implemented bytecode VM (see `src/bytecode/`):
 | Load | `load` | *ptr | No |
 | Store | `store` | *ptr = val | Yes |
 | AddrOf | `addr_of` | &val | No |
-| GAddr | `gaddr` | &global | No |
+| GAddr | `gaddr` | &global | No at IL level; bytecode compilation reports a `V-BC-*` diagnostic instead of emitting unsupported bytecode |
 
 #### Constants (3 opcodes)
 | Opcode | Mnemonic | Semantics |

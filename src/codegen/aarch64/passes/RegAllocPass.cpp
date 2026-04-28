@@ -19,6 +19,8 @@
 #include "codegen/aarch64/Coalescer.hpp"
 #include "codegen/aarch64/RegAllocLinear.hpp"
 
+#include <exception>
+
 namespace viper::codegen::aarch64::passes {
 
 bool RegAllocPass::run(AArch64Module &module, Diagnostics &diags) {
@@ -28,10 +30,17 @@ bool RegAllocPass::run(AArch64Module &module, Diagnostics &diags) {
     }
 
     for (auto &fn : module.mir) {
-        // Coalesce MovRR/FMovRR between virtual registers before register
-        // allocation to reduce register pressure and eliminate redundant copies.
-        coalesce(fn);
-        [[maybe_unused]] auto result = allocate(fn, *module.ti);
+        try {
+            // Coalesce MovRR/FMovRR between virtual registers before register
+            // allocation to reduce register pressure and eliminate redundant copies.
+            coalesce(fn);
+            [[maybe_unused]] auto result = allocate(fn, *module.ti);
+        } catch (const std::exception &ex) {
+            diags.error("V-CG-AARCH64-REGALLOC",
+                        "AArch64 register allocation failed for function '" + fn.name +
+                            "': " + ex.what());
+            return false;
+        }
     }
 
     return true;

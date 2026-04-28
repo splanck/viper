@@ -305,4 +305,11 @@ function(viper_add_golden_suite_tests)
                 ${_VIPER_GOLDEN_DIR}/basic_to_il/gosub.bas ${_VIPER_GOLDEN_DIR}/basic_to_il/gosub.il)
     endif ()
 
+    viper_add_ctest(basic_to_il_using_exception_cleanup
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_to_il/using_exception_cleanup.bas
+            "-DMUST_HAVE=eh.push;using_handler;eh.entry;resume.same;@rt_obj_release_check0;@rt_obj_free"
+            -P ${_VIPER_GOLDEN_DIR}/basic_to_il/check_il_contains.cmake)
+
 endfunction()

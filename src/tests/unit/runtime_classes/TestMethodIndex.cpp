@@ -85,6 +85,7 @@ TEST(RuntimeMethodIndexBasic, StringSubstringTarget) {
 
     // Verify extern target name
     EXPECT_EQ(info->target, std::string("Viper.String.Substring"));
+    EXPECT_TRUE(info->hasReceiver);
 
     // Verify return type is String
     EXPECT_EQ(info->ret, BasicType::String);
@@ -109,16 +110,19 @@ TEST(RuntimeMethodIndexBasic, ObjectMethodsTargets) {
     auto eq = runtimeMethodIndex().find("Viper.Core.Object", "Equals", 1);
     ASSERT_TRUE(eq.has_value());
     EXPECT_EQ(eq->target, std::string("Viper.Core.Object.Equals"));
+    EXPECT_TRUE(eq->hasReceiver);
 
     // Test Object.HashCode() -> Int
     auto hc = runtimeMethodIndex().find("Viper.Core.Object", "HashCode", 0);
     ASSERT_TRUE(hc.has_value());
     EXPECT_EQ(hc->target, std::string("Viper.Core.Object.HashCode"));
+    EXPECT_TRUE(hc->hasReceiver);
 
     // Test Object.ToString() -> String
     auto ts = runtimeMethodIndex().find("Viper.Core.Object", "ToString", 0);
     ASSERT_TRUE(ts.has_value());
     EXPECT_EQ(ts->target, std::string("Viper.Core.Object.ToString"));
+    EXPECT_TRUE(ts->hasReceiver);
 
     // ReferenceEquals is a static function, not an instance method.
     // It should NOT be found via the method index (which is for instance methods).

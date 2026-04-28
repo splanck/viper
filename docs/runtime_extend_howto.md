@@ -277,7 +277,7 @@ RT_METHOD("name", "signature", target_id)
 | `signature` | Signature WITHOUT receiver | `"void()"` |
 | `target_id` | Implementation function ID | `CounterIncrement` |
 
-**Important:** The signature omits the implicit `self` (receiver) parameter. The C function must still accept it as the first argument.
+**Important:** Instance-method signatures omit the implicit `self` (receiver) parameter. The C function for an instance method must still accept that receiver as its first argument. Static/factory methods have no receiver; their `RT_FUNC` parameter count matches the `RT_METHOD` signature, and the frontend runtime-method index records them as receiverless.
 
 ### Type Abbreviations
 

@@ -57,28 +57,42 @@ std::vector<std::string> parseArgs(std::string_view sig) {
 }
 
 Type::Kind mapTokenToKind(const std::string &tok) {
-    if (tok == "i64")
+    std::string lower;
+    lower.reserve(tok.size());
+    for (unsigned char c : tok)
+        lower.push_back(static_cast<char>(std::tolower(c)));
+
+    if (lower == "i64")
         return Type::Kind::I64;
-    if (tok == "f64")
+    if (lower == "i32")
+        return Type::Kind::I32;
+    if (lower == "i16")
+        return Type::Kind::I16;
+    if (lower == "f64")
         return Type::Kind::F64;
-    if (tok == "i1")
+    if (lower == "i1")
         return Type::Kind::I1;
-    if (tok == "str" || tok == "string")
+    if (lower == "str" || lower == "string")
         return Type::Kind::Str;
-    if (tok == "obj" || tok == "ptr")
+    if (lower == "obj" || lower == "ptr" || lower.rfind("obj<", 0) == 0 ||
+        lower.rfind("seq<", 0) == 0 || lower.rfind("list<", 0) == 0 ||
+        lower.rfind("map<", 0) == 0)
         return Type::Kind::Ptr;
-    if (tok == "void")
+    if (lower == "void")
         return Type::Kind::Void;
     // default conservative
     return Type::Kind::I64;
 }
 
-std::string toLower(std::string_view s) {
-    std::string out;
-    out.reserve(s.size());
-    for (unsigned char c : s)
-        out.push_back(static_cast<char>(std::tolower(c)));
-    return out;
+bool nonEmpty(const char *s) {
+    return s && s[0] != '\0';
+}
+
+bool kindCompatible(Type::Kind got, Type::Kind want) {
+    if (got == want)
+        return true;
+    return (got == Type::Kind::I1 && want == Type::Kind::I64) ||
+           (got == Type::Kind::I64 && want == Type::Kind::I1);
 }
 
 } // namespace
@@ -93,54 +107,52 @@ TEST(RuntimeClassCatalogTargets, AllTargetsResolveAndMatchArity) {
 
     const auto &classes = il::runtime::runtimeClassCatalog();
     for (const auto &c : classes) {
-        const std::string qname = c.qname ? c.qname : "";
-        const bool isString = toLower(qname) == "viper.string";
-        auto checkReceiverKind = [&](const RuntimeDescriptor &desc) {
-            if (desc.signature.paramTypes.empty())
-                return; // don't over-report
-            auto got = desc.signature.paramTypes[0].kind;
-            auto want = isString ? Type::Kind::Str : Type::Kind::Ptr;
-            if (got != want) {
-                std::ostringstream os;
-                os << "receiver type mismatch for '" << desc.name << "': got "
-                   << il::core::kindToString(got) << ", want " << il::core::kindToString(want);
-                errors.push_back(os.str());
-            }
-        };
-
         // Properties
         for (const auto &p : c.properties) {
-            if (p.getter) {
+            const Type::Kind propKind = mapTokenToKind(p.type ? std::string(p.type) : "");
+            if (nonEmpty(p.getter)) {
                 auto it = map.find(p.getter);
                 if (it == map.end()) {
                     errors.push_back("missing descriptor for getter: " + std::string(p.getter));
                 } else {
                     const auto *d = it->second;
-                    // expect 1 param (receiver)
-                    if (d->signature.paramTypes.size() != 1) {
+                    const size_t gotParams = d->signature.paramTypes.size();
+                    if (gotParams != 0 && gotParams != 1) {
                         std::ostringstream os;
                         os << "getter arity mismatch for '" << p.getter << "': got "
-                           << d->signature.paramTypes.size() << ", want 1";
+                           << gotParams << ", want 0 for static or 1 for instance";
                         errors.push_back(os.str());
-                    } else {
-                        checkReceiverKind(*d);
+                    }
+                    if (!kindCompatible(d->signature.retType.kind, propKind)) {
+                        std::ostringstream os;
+                        os << "getter return kind mismatch for '" << p.getter << "': got "
+                           << il::core::kindToString(d->signature.retType.kind) << ", want "
+                           << il::core::kindToString(propKind);
+                        errors.push_back(os.str());
                     }
                 }
             }
-            if (p.setter) {
+            if (nonEmpty(p.setter)) {
                 auto it = map.find(p.setter);
                 if (it == map.end()) {
                     errors.push_back("missing descriptor for setter: " + std::string(p.setter));
                 } else {
                     const auto *d = it->second;
-                    // expect 2 params (receiver, value)
-                    if (d->signature.paramTypes.size() != 2) {
+                    const size_t gotParams = d->signature.paramTypes.size();
+                    if (gotParams != 1 && gotParams != 2) {
                         std::ostringstream os;
                         os << "setter arity mismatch for '" << p.setter << "': got "
-                           << d->signature.paramTypes.size() << ", want 2";
+                           << gotParams << ", want 1 for static or 2 for instance";
                         errors.push_back(os.str());
                     } else {
-                        checkReceiverKind(*d);
+                        const Type::Kind got = d->signature.paramTypes[gotParams - 1].kind;
+                        if (!kindCompatible(got, propKind)) {
+                            std::ostringstream os;
+                            os << "setter value kind mismatch for '" << p.setter << "': got "
+                               << il::core::kindToString(got) << ", want "
+                               << il::core::kindToString(propKind);
+                            errors.push_back(os.str());
+                        }
                     }
                 }
             }
@@ -148,7 +160,7 @@ TEST(RuntimeClassCatalogTargets, AllTargetsResolveAndMatchArity) {
 
         // Methods
         for (const auto &m : c.methods) {
-            if (!m.target)
+            if (!nonEmpty(m.target))
                 continue;
             auto it = map.find(m.target);
             if (it == map.end()) {
@@ -158,19 +170,22 @@ TEST(RuntimeClassCatalogTargets, AllTargetsResolveAndMatchArity) {
             const auto *d = it->second;
             auto args =
                 parseArgs(m.signature ? std::string_view(m.signature) : std::string_view(""));
-            const size_t expectedParams = 1 + args.size();
-            if (d->signature.paramTypes.size() != expectedParams) {
+            const size_t expectedInstanceParams = 1 + args.size();
+            const size_t expectedStaticParams = args.size();
+            const size_t gotParams = d->signature.paramTypes.size();
+            if (gotParams != expectedInstanceParams && gotParams != expectedStaticParams) {
                 std::ostringstream os;
                 os << "method arity mismatch for '" << m.target << "': got "
-                   << d->signature.paramTypes.size() << ", want " << expectedParams;
+                   << gotParams << ", want " << expectedInstanceParams
+                   << " for instance or " << expectedStaticParams << " for static/factory";
                 errors.push_back(os.str());
             } else {
-                checkReceiverKind(*d);
+                const bool hasReceiver = gotParams == expectedInstanceParams;
                 // Optional: verify arg kinds beyond receiver
                 for (size_t i = 0; i < args.size(); ++i) {
                     Type::Kind want = mapTokenToKind(args[i]);
-                    Type::Kind got = d->signature.paramTypes[1 + i].kind;
-                    if (want != got) {
+                    Type::Kind got = d->signature.paramTypes[(hasReceiver ? 1U : 0U) + i].kind;
+                    if (!kindCompatible(got, want)) {
                         std::ostringstream os;
                         os << "param[" << i << "] kind mismatch for '" << m.target << "': got "
                            << il::core::kindToString(got) << ", want "

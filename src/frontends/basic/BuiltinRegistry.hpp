@@ -134,6 +134,7 @@ struct BuiltinLoweringRule {
             Lowerer::ExprType type{Lowerer::ExprType::I64}; ///< Expression type of the default.
             double f64{0.0};                                ///< Floating default payload.
             std::int64_t i64{0};                            ///< Integer default payload.
+            std::string_view str{};                          ///< String default payload.
         };
 
         std::optional<DefaultValue> defaultValue{}; ///< Optional default when argument absent.

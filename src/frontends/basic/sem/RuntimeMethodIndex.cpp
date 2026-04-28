@@ -72,6 +72,15 @@ RuntimeMethodInfo makeRuntimeMethodInfo(std::string_view classQName,
     for (auto p : parsed.signature.params)
         info.args.push_back(toBasicType(p));
 
+    if (const auto *descriptor = il::runtime::findRuntimeDescriptor(info.target)) {
+        const auto runtimeParamCount = descriptor->signature.paramTypes.size();
+        const auto explicitParamCount = parsed.signature.params.size();
+        if (runtimeParamCount == explicitParamCount)
+            info.hasReceiver = false;
+        else if (runtimeParamCount == explicitParamCount + 1U)
+            info.hasReceiver = true;
+    }
+
     return info;
 }
 

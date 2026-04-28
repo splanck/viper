@@ -47,7 +47,7 @@ class BaseballFieldDemo {
         skybox = createSkybox();
         Canvas3D.SetSkybox(canvas, skybox);
 
-        fieldModel = Model3D.Load("model.fbx");
+        fieldModel = Model3D.Load("model.obj");
         scene = Scene3D.New();
         fieldRoot = Model3D.Instantiate(fieldModel);
         normalizeFieldRoot();
@@ -67,7 +67,7 @@ class BaseballFieldDemo {
     }
 
     expose func run() {
-        while (Canvas3D.get_ShouldClose(canvas) == 0 && quitRequested == false) {
+        while (Canvas3D.get_ShouldClose(canvas) == false && quitRequested == false) {
             Canvas3D.Poll(canvas);
 
             var dt = (Canvas3D.get_DeltaTime(canvas) + 0.0) / 1000.0;
@@ -160,7 +160,14 @@ class BaseballFieldDemo {
     }
 
     hide func applyEnvironmentToImportedMaterials() {
-        return;
+        var materialCount = Model3D.get_MaterialCount(fieldModel);
+        for (var i: Integer = 0; i < materialCount; i = i + 1) {
+            var mat = Model3D.GetMaterial(fieldModel, i);
+            Material3D.SetColor(mat, 0.10, 0.34, 0.14);
+            Material3D.SetShininess(mat, 18.0);
+            Material3D.SetEnvMap(mat, skybox);
+            Material3D.set_Reflectivity(mat, 0.06);
+        }
     }
 
     hide func buildLights() {

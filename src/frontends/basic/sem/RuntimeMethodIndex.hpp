@@ -165,6 +165,11 @@ struct RuntimeMethodInfo {
     /// @brief Parameter types excluding the implicit receiver (arg0).
     std::vector<BasicType> args;
 
+    /// @brief Whether the runtime target expects an implicit receiver argument.
+    /// @details Factory/static methods in the runtime catalog do not have a
+    ///          receiver even though they are grouped under a runtime class.
+    bool hasReceiver{true};
+
     /// @brief Canonical extern name for IL generation (e.g., "Viper.String.Substring").
     std::string target;
 };

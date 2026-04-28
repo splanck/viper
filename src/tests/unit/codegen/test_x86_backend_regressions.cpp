@@ -12,6 +12,7 @@
 
 #include "tests/TestHarness.hpp"
 
+#include "codegen/x86_64/AsmEmitter.hpp"
 #include "codegen/x86_64/Backend.hpp"
 #include "codegen/x86_64/ISel.hpp"
 #include "codegen/x86_64/LowerILToMIR.hpp"
@@ -24,6 +25,7 @@
 #include <cstdio>
 #include <iostream>
 #include <regex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -946,6 +948,28 @@ TEST(X86BackendRegressions, LivenessCfgIgnoresInternalSelectLabels) {
     const auto &succs = liveness.successors(0);
     ASSERT_EQ(succs.size(), 1u);
     EXPECT_EQ(succs.front(), 2u);
+}
+
+TEST(X86BackendRegressions, InvalidConditionCodeThrowsDiagnosticException) {
+    MFunction fn{};
+    fn.name = "bad_cc";
+
+    MBasicBlock entry{};
+    entry.label = "bad_cc";
+    entry.instructions = {MInstr::make(MOpcode::JCC,
+                                       {makeImmOperand(99), makeLabelOperand(".Lbad_cc_done")})};
+
+    MBasicBlock done{};
+    done.label = ".Lbad_cc_done";
+    done.instructions = {MInstr::make(MOpcode::RET)};
+
+    fn.blocks = {entry, done};
+
+    AsmEmitter::RoDataPool pool;
+    AsmEmitter emitter(pool);
+    std::ostringstream out;
+
+    EXPECT_THROWS(emitter.emitFunction(out, fn, sysvTarget()), std::runtime_error);
 }
 
 int main(int argc, char **argv) {

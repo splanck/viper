@@ -689,7 +689,7 @@ The TLS implementation uses:
 - **Cipher:** ChaCha20-Poly1305 AEAD
 - **Hash:** SHA-256
 - **Certificate Verification:** Enabled by default against the runtime trust source. Windows uses CryptoAPI; macOS and Linux use the built-in PEM-bundle verifier with standard system trust bundles.
-- **Certificate Signature Support:** In-tree verification of ECDSA P-256, RSA PKCS#1 v1.5, and RSA-PSS certificate signatures
+- **Certificate Signature Support:** In-tree verification of ECDSA P-256, RSA PKCS#1 v1.5, and RSA-PSS certificate signatures. The TLS client advertises only signature algorithms it can verify; ECDSA P-384 is not advertised until P-384 CertificateVerify support is implemented.
 - **Leaf-certificate policy:** Built-in verification enforces TLS server-auth EKU / compatible key-usage on the presented server certificate
 - **Hostname / SNI behavior:** DNS hostnames are sent in SNI; IP literals are verified against IP SANs but are not sent in SNI
 

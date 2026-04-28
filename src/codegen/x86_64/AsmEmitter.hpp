@@ -219,7 +219,7 @@ class AsmEmitter {
     /// \brief Get the condition code suffix for Jcc/SETcc instructions.
     /// \param code Condition code value (0=EQ, 1=NE, etc.).
     /// \return Condition suffix string (e.g., "e", "ne", "l", "g").
-    [[nodiscard]] static std::string_view conditionSuffix(std::int64_t code) noexcept;
+    [[nodiscard]] static std::string_view conditionSuffix(std::int64_t code);
 };
 
 /// \brief Enumerates operand orderings handled by the emitter table.

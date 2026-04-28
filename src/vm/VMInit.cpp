@@ -33,6 +33,7 @@
 #include <clocale>
 #include <cstdio>
 #include <cstdlib>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -67,21 +68,17 @@ struct ThreadsRuntimeInitializer {
 
 [[maybe_unused]] const ThreadsRuntimeInitializer kThreadsRuntimeInitializer{};
 
-/// @brief Static initializer that runs runtime descriptor sanity checks.
-/// @details Validates that runtime descriptors are consistent before any VM
-///          execution occurs. In release builds this catches configuration
-///          errors early; in debug builds it complements the existing assert-
-///          based validation.
-struct RuntimeDescriptorChecker {
-    RuntimeDescriptorChecker() {
-        if (!il::runtime::selfCheckRuntimeDescriptors()) {
-            std::fprintf(stderr, "[FATAL] Runtime descriptor self-check failed\n");
-            std::abort();
-        }
-    }
-};
-
-[[maybe_unused]] const RuntimeDescriptorChecker kRuntimeDescriptorChecker{};
+/// @brief Validate runtime descriptors before VM execution starts.
+/// @details The self-check is cached after the first run. Failures are surfaced
+///          as constructor exceptions instead of aborting during static init,
+///          so callers and tests can report the compiler/runtime configuration
+///          problem as a normal diagnostic.
+void ensureRuntimeDescriptorsValid() {
+    static const bool descriptorsValid = il::runtime::selfCheckRuntimeDescriptors();
+    if (!descriptorsValid)
+        throw std::runtime_error(
+            "VM initialization failed: runtime descriptor self-check failed");
+}
 
 /// @brief Static initializer that registers the VM trap handler for invariant violations.
 /// @details Enables the RuntimeSignatures layer to route invariant violations through
@@ -185,6 +182,8 @@ VM::VM(const Module &m,
 }
 
 void VM::init(std::shared_ptr<ProgramState> program) {
+    ensureRuntimeDescriptorsValid();
+
     // Runtime overrides via environment -------------------------------------
     if (const char *envCounts = std::getenv("VIPER_ENABLE_OPCOUNTS")) {
         std::string v{envCounts};
@@ -264,13 +263,15 @@ void VM::init(std::shared_ptr<ProgramState> program) {
     if (program) {
         programState_ = std::move(program);
         // CONC-009: verify maps were fully populated before sharing across threads.
-        assert(programState_->initComplete.load(std::memory_order_acquire) &&
-               "ProgramState shared to worker thread before init completed");
+        if (!programState_->initComplete.load(std::memory_order_acquire)) {
+            throw std::runtime_error(
+                "VM initialization failed: shared ProgramState was not fully initialized");
+        }
         if (!programState_->module) {
             programState_->module = &mod;
         } else if (programState_->module != &mod) {
-            std::fprintf(stderr, "VM: fatal: thread program state module mismatch\n");
-            std::abort();
+            throw std::runtime_error(
+                "VM initialization failed: shared ProgramState belongs to a different module");
         }
     } else {
         programState_ = std::make_shared<ProgramState>();
@@ -293,8 +294,8 @@ void VM::init(std::shared_ptr<ProgramState> program) {
                 size = 1;
             void *storage = std::calloc(1, size);
             if (!storage) {
-                std::fprintf(stderr, "VM: fatal: failed to allocate mutable global storage\n");
-                std::abort();
+                throw std::runtime_error(
+                    "VM initialization failed: failed to allocate mutable global storage");
             }
             programState_->mutableGlobalMap[g.name] = storage;
         }

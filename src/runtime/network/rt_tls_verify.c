@@ -2377,7 +2377,6 @@ static size_t sig_scheme_hash_len(uint16_t sig_scheme) {
         case 0x0403: /* ecdsa_secp256r1_sha256 */
         case 0x0804: /* rsa_pss_rsae_sha256 */
             return 32;
-        case 0x0503: /* ecdsa_secp384r1_sha384 */
         case 0x0805: /* rsa_pss_rsae_sha384 */
             return 48;
         case 0x0806: /* rsa_pss_rsae_sha512 */
@@ -2469,7 +2468,6 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
         case 0x0804:
             hash_oid = szOID_NIST_sha256;
             break;
-        case 0x0503:
         case 0x0805:
             hash_oid = szOID_NIST_sha384;
             break;
@@ -2511,9 +2509,9 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
         }
 
         HCRYPTHASH hhash = 0;
-        ALG_ID alg_id = (sig_scheme == 0x0403 || sig_scheme == 0x0804)   ? CALG_SHA_256
-                        : (sig_scheme == 0x0503 || sig_scheme == 0x0805) ? CALG_SHA_384
-                                                                         : CALG_SHA_512;
+        ALG_ID alg_id = (sig_scheme == 0x0403 || sig_scheme == 0x0804) ? CALG_SHA_256
+                        : (sig_scheme == 0x0805)                       ? CALG_SHA_384
+                                                                       : CALG_SHA_512;
 
         if (!CryptCreateHash(hprov, alg_id, 0, 0, &hhash)) {
             CryptDestroyKey(hkey);
@@ -2626,11 +2624,6 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
             return RT_TLS_ERROR_HANDSHAKE;
         }
         return RT_TLS_OK;
-    }
-
-    if (sig_scheme == 0x0503) {
-        session->error = "TLS: CertificateVerify: secp384r1 signatures are not implemented";
-        return RT_TLS_ERROR_HANDSHAKE;
     }
 
     if (sig_scheme == 0x0804 || sig_scheme == 0x0805 || sig_scheme == 0x0806) {

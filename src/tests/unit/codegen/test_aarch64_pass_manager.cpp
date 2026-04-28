@@ -327,6 +327,40 @@ TEST(AArch64PassManager, ConditionalBranchLivenessTracksFallthroughSuccessor) {
     EXPECT_TRUE(liveness.liveOutGPR(0).contains(1));
 }
 
+TEST(AArch64PassManager, RegAllocPoolExhaustionBecomesDiagnostic) {
+    TargetInfo target = darwinTarget();
+    target.callerSavedGPR.clear();
+    target.calleeSavedGPR.clear();
+    target.callerSavedFPR.clear();
+    target.calleeSavedFPR.clear();
+
+    MFunction fn;
+    fn.name = "reg_pressure";
+
+    MBasicBlock entry;
+    entry.name = "entry";
+    entry.instrs.push_back(MInstr{
+        MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, 1), MOperand::immOp(42)}});
+    fn.blocks.push_back(std::move(entry));
+
+    AArch64Module m;
+    m.ti = &target;
+    m.mir.push_back(std::move(fn));
+
+    RegAllocPass pass;
+    Diagnostics diags;
+    const bool ok = pass.run(m, diags);
+
+    EXPECT_FALSE(ok);
+    ASSERT_TRUE(diags.hasErrors());
+    ASSERT_FALSE(diags.diagnostics().empty());
+    EXPECT_EQ(diags.diagnostics().front().code, "V-CG-AARCH64-REGALLOC");
+    EXPECT_NE(diags.errors().front().find(
+                  "AArch64 register allocation failed for function 'reg_pressure'"),
+              std::string::npos);
+    EXPECT_NE(diags.errors().front().find("pool exhausted"), std::string::npos);
+}
+
 TEST(AArch64PassManager, OptimizeLevelZeroSkipsBackendOptPasses) {
     const std::string il = "il 0.1\n"
                            "func @branch_only() -> i64 {\n"

@@ -100,6 +100,51 @@ void SemanticAnalyzer::analyzeNamespaceDecl(NamespaceDecl &decl) {
 void SemanticAnalyzer::analyzeClassDecl(ClassDecl &decl) {
     sawDecl_ = true;
 
+    std::string classQName = decl.qualifiedName;
+    if (classQName.empty()) {
+        std::vector<std::string> parts = nsStack_;
+        parts.push_back(decl.name);
+        classQName = JoinDots(parts);
+    }
+    if (const ClassInfo *info = oopIndex_.findClass(classQName))
+        classQName = info->qualifiedName;
+
+    auto analyzeMemberBody = [&](const std::vector<Param> &params,
+                                 const std::vector<StmtPtr> &body,
+                                 bool hasMe,
+                                 std::optional<LoopKind> loopKind) {
+        ProcedureScope procScope(*this);
+
+        const std::string previousClass = activeClassQName_;
+        const bool previousHasMe = activeMemberHasMe_;
+        activeClassQName_ = classQName;
+        activeMemberHasMe_ = hasMe;
+
+        if (loopKind)
+            loopStack_.push_back(*loopKind);
+
+        for (const auto &p : params)
+            registerProcedureParam(p);
+
+        for (const auto &st : body) {
+            if (!st)
+                continue;
+            auto insertResult = labels_.insert(st->line);
+            if (insertResult.second && activeProcScope_)
+                activeProcScope_->noteLabelInserted(st->line);
+        }
+
+        for (const auto &st : body)
+            if (st)
+                visitStmt(*st);
+
+        if (loopKind)
+            loopStack_.pop_back();
+
+        activeClassQName_ = previousClass;
+        activeMemberHasMe_ = previousHasMe;
+    };
+
     // Resolve base class if present.
     if (decl.baseName) {
         std::string resolvedBase = resolveTypeRef(
@@ -122,6 +167,34 @@ void SemanticAnalyzer::analyzeClassDecl(ClassDecl &decl) {
                 ifaceName, nsStack_, decl.loc, static_cast<uint32_t>(ifaceName.size()));
             // Store resolved interface for later use (error recovery - continue even if
             // unresolved).
+        }
+    }
+
+    for (const auto &member : decl.members) {
+        if (!member)
+            continue;
+        switch (member->stmtKind()) {
+            case Stmt::Kind::ConstructorDecl: {
+                auto &ctor = static_cast<ConstructorDecl &>(*member);
+                analyzeMemberBody(ctor.params, ctor.body, !ctor.isStatic, LoopKind::Sub);
+                break;
+            }
+            case Stmt::Kind::DestructorDecl: {
+                static const std::vector<Param> kNoParams;
+                auto &dtor = static_cast<DestructorDecl &>(*member);
+                analyzeMemberBody(kNoParams, dtor.body, true, LoopKind::Sub);
+                break;
+            }
+            case Stmt::Kind::MethodDecl: {
+                auto &method = static_cast<MethodDecl &>(*member);
+                analyzeMemberBody(method.params,
+                                  method.body,
+                                  !method.isStatic,
+                                  method.ret ? LoopKind::Function : LoopKind::Sub);
+                break;
+            }
+            default:
+                break;
         }
     }
 }

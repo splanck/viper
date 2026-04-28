@@ -48,8 +48,17 @@ SemanticAnalyzer::Type analyzeVarExpr(SemanticAnalyzer &analyzer, VarExpr &expr)
     if (expr.name == "NOTHING") {
         return Type::Unknown; // Null pointer has Unknown type in BASIC semantics
     }
+    if (expr.name == "BASE" && analyzer.activeInstanceClassQName()) {
+        return Type::Object;
+    }
 
     ExprCheckContext context(analyzer);
+    if (!context.hasScopedBinding(expr.name)) {
+        if (const auto *field =
+                semantic_analyzer_detail::findActiveInstanceField(analyzer, expr.name))
+            return semantic_analyzer_detail::semanticTypeFromOopField(*field);
+    }
+
     context.resolveAndTrackSymbolRef(expr.name);
 
     if (!context.hasSymbol(expr.name)) {

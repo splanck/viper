@@ -250,7 +250,8 @@ class ControlCheckContext {
     /// @brief Check whether the active procedure scope is a FUNCTION body.
     /// @return True if semantic analysis is currently inside a FUNCTION.
     [[nodiscard]] bool isActiveFunction() const noexcept {
-        return analyzer_->activeFunction_ != nullptr;
+        return analyzer_->activeFunction_ != nullptr ||
+               analyzer_->hasLoopOfKind(SemanticAnalyzer::LoopKind::Function);
     }
 
     /// @brief Check whether the main module contains at least one GOSUB.
@@ -431,6 +432,11 @@ class ExprCheckContext {
     /// @return True if the symbol exists in the symbol table.
     [[nodiscard]] bool hasSymbol(const std::string &name) const {
         return analyzer_->symbols_.count(name) != 0;
+    }
+
+    /// @brief Check whether the current lexical scope binds a source name.
+    [[nodiscard]] bool hasScopedBinding(const std::string &name) const {
+        return analyzer_->scopes_.resolve(name).has_value();
     }
 
     /// @brief Check whether a name refers to a declared enum type.

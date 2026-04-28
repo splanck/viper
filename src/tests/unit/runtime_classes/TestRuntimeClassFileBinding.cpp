@@ -60,21 +60,25 @@ TEST(RuntimeClassFileBinding, MethodIndexTargets) {
     auto a = midx.find("Viper.IO.File", "Exists", 1);
     ASSERT_TRUE(a.has_value());
     EXPECT_EQ(a->target, std::string("Viper.IO.File.Exists"));
+    EXPECT_FALSE(a->hasReceiver);
 
     // Test File.ReadAllText(path: String) -> String
     auto b = midx.find("Viper.IO.File", "ReadAllText", 1);
     ASSERT_TRUE(b.has_value());
     EXPECT_EQ(b->target, std::string("Viper.IO.File.ReadAllText"));
+    EXPECT_FALSE(b->hasReceiver);
 
     // Test File.WriteAllText(path: String, contents: String) -> void
     auto c = midx.find("Viper.IO.File", "WriteAllText", 2);
     ASSERT_TRUE(c.has_value());
     EXPECT_EQ(c->target, std::string("Viper.IO.File.WriteAllText"));
+    EXPECT_FALSE(c->hasReceiver);
 
     // Test File.Delete(path: String) -> void
     auto d = midx.find("Viper.IO.File", "Delete", 1);
     ASSERT_TRUE(d.has_value());
     EXPECT_EQ(d->target, std::string("Viper.IO.File.Delete"));
+    EXPECT_FALSE(d->hasReceiver);
 }
 
 /// @brief Test entry point.

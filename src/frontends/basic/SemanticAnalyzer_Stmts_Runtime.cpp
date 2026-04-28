@@ -129,6 +129,41 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l) {
         activeFunctionNameAssigned_ = true;
     }
 
+    if (!scopes_.resolve(v.name).has_value()) {
+        if (const auto *field = semantic_analyzer_detail::findActiveInstanceField(*this, v.name)) {
+            Type exprTy = Type::Unknown;
+            if (l.expr)
+                exprTy = visitExpr(*l.expr);
+
+            const Type fieldTy = semantic_analyzer_detail::semanticTypeFromOopField(*field);
+            if (!l.expr || fieldTy == Type::Unknown || exprTy == Type::Unknown)
+                return;
+
+            if (fieldTy == Type::Int && exprTy == Type::Float) {
+                markImplicitConversion(*l.expr, Type::Int);
+                std::string msg = "narrowing conversion from FLOAT to INT in assignment";
+                de.emit(il::support::Severity::Warning, "B2002", l.loc, 1, std::move(msg));
+            } else if (fieldTy == Type::Int && (exprTy == Type::String || exprTy == Type::Object)) {
+                std::string msg = "operand type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+            } else if (fieldTy == Type::Bool && exprTy == Type::Int) {
+                markImplicitConversion(*l.expr, Type::Bool);
+            } else if (fieldTy == Type::String && exprTy != Type::String) {
+                std::string msg = "operand type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+            } else if (fieldTy == Type::Bool && exprTy != Type::Bool) {
+                std::string msg = "operand type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+            } else if (fieldTy == Type::Object &&
+                       (exprTy == Type::Int || exprTy == Type::Float ||
+                        exprTy == Type::String || exprTy == Type::Bool)) {
+                std::string msg = "operand type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+            }
+            return;
+        }
+    }
+
     // BUG-001 FIX: Evaluate RHS expression BEFORE resolving variable
     // This allows us to infer the variable's type from the RHS
     Type exprTy = Type::Unknown;
@@ -237,6 +272,8 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l) {
     } else if (varTy == Type::String && exprTy != Type::Unknown && exprTy != Type::String) {
         std::string msg = "operand type mismatch";
         de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+    } else if (varTy == Type::Bool && exprTy == Type::Int) {
+        markImplicitConversion(*l.expr, Type::Bool);
     } else if (varTy == Type::Bool && exprTy != Type::Unknown && exprTy != Type::Bool) {
         std::string msg = "operand type mismatch";
         de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
@@ -376,10 +413,35 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l) {
 }
 
 void SemanticAnalyzer::analyzeMemberAssignment(MemberAccessExpr &m, const LetStmt &l) {
-    if (m.base)
-        visitExpr(*m.base);
+    Type targetTy = visitExpr(m);
+    Type exprTy = Type::Unknown;
     if (l.expr)
-        visitExpr(*l.expr);
+        exprTy = visitExpr(*l.expr);
+
+    if (!l.expr || targetTy == Type::Unknown || exprTy == Type::Unknown)
+        return;
+
+    if (targetTy == Type::Int && exprTy == Type::Float) {
+        markImplicitConversion(*l.expr, Type::Int);
+        std::string msg = "narrowing conversion from FLOAT to INT in assignment";
+        de.emit(il::support::Severity::Warning, "B2002", l.loc, 1, std::move(msg));
+    } else if (targetTy == Type::Int && (exprTy == Type::String || exprTy == Type::Object)) {
+        std::string msg = "operand type mismatch";
+        de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+    } else if (targetTy == Type::Bool && exprTy == Type::Int) {
+        markImplicitConversion(*l.expr, Type::Bool);
+    } else if (targetTy == Type::String && exprTy != Type::String) {
+        std::string msg = "operand type mismatch";
+        de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+    } else if (targetTy == Type::Bool && exprTy != Type::Bool) {
+        std::string msg = "operand type mismatch";
+        de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+    } else if (targetTy == Type::Object &&
+               (exprTy == Type::Int || exprTy == Type::Float || exprTy == Type::String ||
+                exprTy == Type::Bool)) {
+        std::string msg = "operand type mismatch";
+        de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+    }
 }
 
 /// @brief Emit diagnostics when the left-hand side of a LET is not assignable.
@@ -431,6 +493,81 @@ void SemanticAnalyzer::analyzeLet(LetStmt &l) {
         // Analyze RHS to surface type errors; element type will be validated during lowering
         if (l.expr)
             visitExpr(*l.expr);
+    } else if (auto *c = as<CallExpr>(*l.target)) {
+        if (!scopes_.resolve(c->callee).has_value()) {
+            if (const auto *field =
+                    semantic_analyzer_detail::findActiveInstanceField(*this, c->callee);
+                field && field->isArray) {
+                for (auto &arg : c->args) {
+                    if (!arg)
+                        continue;
+                    Type ty = visitExpr(*arg);
+                    if (ty == Type::Float) {
+                        if (auto *fl = as<FloatExpr>(*arg)) {
+                            insertImplicitCast(*arg, Type::Int);
+                            std::string msg =
+                                "narrowing conversion from FLOAT to INT in array index";
+                            de.emit(il::support::Severity::Warning,
+                                    "B2002",
+                                    c->loc,
+                                    1,
+                                    std::move(msg));
+                        } else {
+                            std::string msg = "index type mismatch";
+                            de.emit(il::support::Severity::Error,
+                                    "B2001",
+                                    c->loc,
+                                    1,
+                                    std::move(msg));
+                        }
+                    } else if (ty != Type::Unknown && ty != Type::Int) {
+                        std::string msg = "index type mismatch";
+                        de.emit(il::support::Severity::Error,
+                                "B2001",
+                                c->loc,
+                                1,
+                                std::move(msg));
+                    }
+                }
+
+                Type exprTy = Type::Unknown;
+                if (l.expr)
+                    exprTy = visitExpr(*l.expr);
+
+                const Type fieldTy = semantic_analyzer_detail::semanticTypeFromOopField(*field);
+                if (!l.expr || fieldTy == Type::Unknown || exprTy == Type::Unknown)
+                    return;
+
+                if (fieldTy == Type::Int && exprTy == Type::Float) {
+                    markImplicitConversion(*l.expr, Type::Int);
+                    std::string msg = "narrowing conversion from FLOAT to INT in array assignment";
+                    de.emit(il::support::Severity::Warning, "B2002", l.loc, 1, std::move(msg));
+                } else if (fieldTy == Type::Int &&
+                           (exprTy == Type::String || exprTy == Type::Object)) {
+                    std::string msg = "array element type mismatch: expected INT, got ";
+                    msg += semanticTypeName(exprTy);
+                    de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+                } else if (fieldTy == Type::Bool && exprTy == Type::Int) {
+                    markImplicitConversion(*l.expr, Type::Bool);
+                } else if (fieldTy == Type::String && exprTy != Type::String) {
+                    std::string msg = "array element type mismatch: expected STRING, got ";
+                    msg += semanticTypeName(exprTy);
+                    de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+                } else if (fieldTy == Type::Bool && exprTy != Type::Bool) {
+                    std::string msg = "array element type mismatch: expected BOOLEAN, got ";
+                    msg += semanticTypeName(exprTy);
+                    de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+                } else if (fieldTy == Type::Object &&
+                           (exprTy == Type::Int || exprTy == Type::Float ||
+                            exprTy == Type::String || exprTy == Type::Bool)) {
+                    std::string msg = "array element type mismatch: expected OBJECT, got ";
+                    msg += semanticTypeName(exprTy);
+                    de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+                }
+                return;
+            }
+        }
+        analyzeConstExpr(l);
     } else if (auto *m = as<MemberAccessExpr>(*l.target)) {
         analyzeMemberAssignment(*m, l);
     } else {

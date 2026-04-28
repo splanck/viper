@@ -585,6 +585,12 @@ if (NOT TARGET test_vm_executor_compile_diagnostics)
     viper_add_ctest(test_vm_executor_compile_diagnostics test_vm_executor_compile_diagnostics)
 endif ()
 
+if (NOT TARGET test_vm_init_diagnostics)
+    viper_add_test(test_vm_init_diagnostics ${VIPER_TESTS_DIR}/unit/test_vm_init_diagnostics.cpp)
+    target_link_libraries(test_vm_init_diagnostics PRIVATE il_vm)
+    viper_add_ctest(test_vm_init_diagnostics test_vm_init_diagnostics)
+endif ()
+
 # VM vs BytecodeVM equivalence tests
 if (NOT TARGET test_vm_bytecode_equivalence)
     viper_add_test(test_vm_bytecode_equivalence ${VIPER_TESTS_DIR}/unit/test_vm_bytecode_equivalence.cpp)
@@ -608,7 +614,6 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_string_invalid ${VIPER_TESTS_DIR}/unit/test_rt_string_invalid.cpp)
     target_link_libraries(test_rt_string_invalid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_string_invalid test_rt_string_invalid)
-    set_tests_properties(test_rt_string_invalid PROPERTIES WILL_FAIL TRUE)
 
     viper_add_test(test_rt_conv ${VIPER_TESTS_DIR}/unit/test_rt_conv.cpp)
     target_link_libraries(test_rt_conv PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

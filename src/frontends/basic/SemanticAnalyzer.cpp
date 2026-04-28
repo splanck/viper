@@ -118,6 +118,12 @@ const ProcTable &SemanticAnalyzer::procs() const {
     return procReg_.procs();
 }
 
+std::optional<std::string> SemanticAnalyzer::activeInstanceClassQName() const {
+    if (activeMemberHasMe_ && !activeClassQName_.empty())
+        return activeClassQName_;
+    return std::nullopt;
+}
+
 /// @brief Get canonical lowercase USING import namespaces from file scope.
 ///
 /// @return Vector of imported namespace paths (e.g., "viper.terminal").

@@ -193,6 +193,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
                 if (il::runtime::findRuntimeClassByQName(qname)) {
                     auto &midx = runtimeMethodIndex();
                     auto info = midx.find(qname, expr.method, makeRuntimeArgTypes());
+                    if (info && info->hasReceiver)
+                        info = std::nullopt;
                     if (!info) {
                         if (auto *em = diagnosticEmitter()) {
                             auto cands = midx.candidates(qname, expr.method);
@@ -261,6 +263,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
         if (!qClass.empty() && il::runtime::findRuntimeClassByQName(qClass)) {
             auto &midx = runtimeMethodIndex();
             auto info = midx.find(qClass, expr.method, makeRuntimeArgTypes());
+            if (info && !info->hasReceiver)
+                info = std::nullopt;
             if (!info) {
                 if (auto *em = diagnosticEmitter()) {
                     auto cands = midx.candidates(qClass, expr.method);
@@ -352,6 +356,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
                 midx.find(std::string(il::runtime::RTCLASS_OBJECT),
                           expr.method,
                           makeRuntimeArgTypes());
+            if (info && !info->hasReceiver)
+                info = std::nullopt;
             if (info && !userClassHasMethod) {
                 // Lower base and build (receiver, args...)
                 RVal base = lowerExpr(*expr.base);

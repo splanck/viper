@@ -7,16 +7,29 @@ endif ()
 set(_no_assert_false_globs
         "${VIPER_SOURCE_DIR}/src/frontends/basic/*.cpp"
         "${VIPER_SOURCE_DIR}/src/frontends/basic/*.hpp"
+        "${VIPER_SOURCE_DIR}/src/frontends/basic/*/*.cpp"
+        "${VIPER_SOURCE_DIR}/src/frontends/basic/*/*.hpp"
+        "${VIPER_SOURCE_DIR}/src/frontends/basic/*/*/*.cpp"
+        "${VIPER_SOURCE_DIR}/src/frontends/basic/*/*/*.hpp"
+        "${VIPER_SOURCE_DIR}/src/vm/*.cpp"
+        "${VIPER_SOURCE_DIR}/src/vm/*.hpp"
         "${VIPER_SOURCE_DIR}/src/vm/RuntimeBridge.cpp"
+        "${VIPER_SOURCE_DIR}/src/il/transform/*.cpp"
+        "${VIPER_SOURCE_DIR}/src/il/transform/*.hpp"
+        "${VIPER_SOURCE_DIR}/src/codegen/aarch64/*.cpp"
+        "${VIPER_SOURCE_DIR}/src/codegen/aarch64/*.hpp"
+        "${VIPER_SOURCE_DIR}/src/codegen/aarch64/*/*.cpp"
+        "${VIPER_SOURCE_DIR}/src/codegen/aarch64/*/*.hpp"
+        "${VIPER_SOURCE_DIR}/src/codegen/aarch64/*/*/*.cpp"
+        "${VIPER_SOURCE_DIR}/src/codegen/aarch64/*/*/*.hpp"
+        "${VIPER_SOURCE_DIR}/src/codegen/x86_64/AsmEmitter.cpp"
+        "${VIPER_SOURCE_DIR}/src/codegen/x86_64/AsmEmitter.hpp"
+        "${VIPER_SOURCE_DIR}/src/codegen/x86_64/passes/LoweringPass.cpp"
 )
 
 set(_no_assert_false_offenders)
 
-set(_no_assert_false_allow_strings
-        "string default values are not supported"
-        "builtin lowering referenced missing argument without default"
-        "unsupported custom builtin conversion"
-)
+set(_no_assert_false_allow_strings)
 
 foreach (_pattern IN LISTS _no_assert_false_globs)
     file(GLOB _no_assert_false_files LIST_DIRECTORIES FALSE ${_pattern})

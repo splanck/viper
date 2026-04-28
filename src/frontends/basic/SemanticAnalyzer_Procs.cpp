@@ -526,6 +526,8 @@ void SemanticAnalyzer::analyze(const Program &prog) {
     errorHandlerActive_ = false;
     errorHandlerTarget_.reset();
     mainHasGosub_ = false;
+    activeClassQName_.clear();
+    activeMemberHasMe_ = false;
     procReg_.clear();
     scopes_.reset();
     sawDecl_ = false;

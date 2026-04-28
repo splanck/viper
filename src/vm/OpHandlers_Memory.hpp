@@ -32,7 +32,6 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 
-#include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -70,8 +69,7 @@ inline size_t minimumAlignmentFor(il::core::Type::Kind kind) {
         case il::core::Type::Kind::Void:
             return 1U;
     }
-    assert(false && "unknown type kind in minimumAlignmentFor");
-    return 1U;
+    return 0U;
 }
 
 /// @brief Return the byte size for a given IL type kind.
@@ -102,7 +100,6 @@ inline size_t sizeOfKind(il::core::Type::Kind kind) {
         case il::core::Type::Kind::Void:
             return 0;
     }
-    assert(false && "unknown type kind in sizeOfKind");
     return 0;
 }
 
@@ -271,6 +268,17 @@ inline VM::ExecResult handleLoadImpl(VM &vm,
     }
 
     const size_t alignment = inline_impl::minimumAlignmentFor(in.type.kind);
+    if (alignment == 0U) {
+        const std::string blockLabel = bb ? bb->label : std::string();
+        RuntimeBridge::trap(TrapKind::InvalidOperation,
+                            "unsupported load type",
+                            in.loc,
+                            fr.func ? fr.func->name : std::string(),
+                            blockLabel);
+        VM::ExecResult result{};
+        result.returned = true;
+        return result;
+    }
     const uintptr_t rawPtr = reinterpret_cast<uintptr_t>(ptr);
     // Fast-path: use bitmask for power-of-two alignments; fall back to modulo otherwise.
     if (alignment > 1U && (((alignment & (alignment - 1U)) == 0U)
@@ -327,6 +335,16 @@ inline VM::ExecResult handleStoreImpl(VM &vm,
     }
 
     const size_t alignment = inline_impl::minimumAlignmentFor(in.type.kind);
+    if (alignment == 0U) {
+        RuntimeBridge::trap(TrapKind::InvalidOperation,
+                            "unsupported store type",
+                            in.loc,
+                            fr.func ? fr.func->name : std::string(),
+                            blockLabel);
+        VM::ExecResult result{};
+        result.returned = true;
+        return result;
+    }
     const uintptr_t rawPtr = reinterpret_cast<uintptr_t>(ptr);
     // Fast-path: use bitmask for power-of-two alignments; fall back to modulo otherwise.
     if (alignment > 1U && (((alignment & (alignment - 1U)) == 0U)

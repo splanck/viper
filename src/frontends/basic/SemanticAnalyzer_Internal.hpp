@@ -132,6 +132,13 @@ namespace il::frontends::basic::semantic_analyzer_detail {
 std::optional<std::string> inferObjectClassQName(SemanticAnalyzer &analyzer,
                                                  const Expr &expr);
 
+/// @brief Convert class field metadata to the semantic analyzer's scalar type.
+SemanticAnalyzer::Type semanticTypeFromOopField(const ClassInfo::FieldInfo &field);
+
+/// @brief Find an implicit instance field visible in the active class member.
+const ClassInfo::FieldInfo *findActiveInstanceField(const SemanticAnalyzer &analyzer,
+                                                    std::string_view name);
+
 /// @brief Defines validation and type computation rules for binary operators.
 ///
 /// Each binary operator in BASIC has specific rules for what operand types

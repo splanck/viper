@@ -534,9 +534,9 @@ class VM {
      * @invariant The module reference must remain valid throughout VM lifetime.
      *
      * @note This constructor performs memory allocation for module globals and
-     *       runtime state. On allocation failure, the program terminates via
-     *       `std::abort()` after printing a diagnostic. This is consistent with
-     *       the project's non-throwing convention for library entry points.
+     *       runtime state. Initialization failures are reported with
+     *       `std::runtime_error` so callers can surface a diagnostic instead of
+     *       terminating the process.
      */
     VM(const il::core::Module &m,
        TraceConfig tc = {},

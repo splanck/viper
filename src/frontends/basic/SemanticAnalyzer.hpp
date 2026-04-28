@@ -173,6 +173,9 @@ class SemanticAnalyzer {
         return oopIndex_;
     }
 
+    /// @brief Active instance receiver class while analyzing an instance member.
+    [[nodiscard]] std::optional<std::string> activeInstanceClassQName() const;
+
   private:
     friend class sem::ControlCheckContext;
     friend class sem::ExprCheckContext;
@@ -594,6 +597,8 @@ class SemanticAnalyzer {
     bool errorHandlerActive_{false};
     std::optional<int> errorHandlerTarget_;
     bool mainHasGosub_{false};
+    std::string activeClassQName_;
+    bool activeMemberHasMe_{false};
     const FunctionDecl *activeFunction_{nullptr};
     BasicType activeFunctionExplicitRet_{BasicType::Unknown};
     bool activeFunctionNameAssigned_{

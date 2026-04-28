@@ -52,6 +52,27 @@ namespace il::frontends::basic::sem {
 ///         failure when diagnostics have been emitted).
 SemanticAnalyzer::Type analyzeCallExpr(SemanticAnalyzer &analyzer, const CallExpr &expr) {
     ExprCheckContext context(analyzer);
+    if (!context.hasScopedBinding(expr.callee)) {
+        if (const auto *field =
+                semantic_analyzer_detail::findActiveInstanceField(analyzer, expr.callee);
+            field && field->isArray) {
+            for (const auto &arg : expr.args) {
+                if (!arg)
+                    continue;
+                const auto argTy = context.evaluate(*arg);
+                if (argTy != SemanticAnalyzer::Type::Unknown &&
+                    argTy != SemanticAnalyzer::Type::Int) {
+                    context.diagnostics().emit(il::support::Severity::Error,
+                                               "B2001",
+                                               arg->loc,
+                                               1,
+                                               "index type mismatch");
+                }
+            }
+            return semantic_analyzer_detail::semanticTypeFromOopField(*field);
+        }
+    }
+
     const auto *sig = context.resolveCallee(expr, ProcSignature::Kind::Function);
     auto argTypes [[maybe_unused]] = context.checkCallArgs(expr, sig);
     return context.inferCallType(expr, sig);

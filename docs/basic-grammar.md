@@ -206,6 +206,11 @@ END USING
 
 Scalar initializers such as `USING r AS Resource = 42` are rejected during semantic analysis.
 
+Lowering installs a scoped exception handler for the block. On normal fallthrough, the
+handler is popped and the resource is released/destroyed before execution continues. If
+the body traps, the same cleanup path runs and the original exception token is resumed so
+outer `TRY`/`ON ERROR` handlers still see the failure.
+
 ## Interfaces and conformance
 
 - Declaration:

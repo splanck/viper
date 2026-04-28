@@ -241,7 +241,7 @@ This is the trickiest part of runtime class development. The same C function is 
 | `RT_METHOD` signature | **No** — receiver is implicit | `"void(obj)"` |
 | C function declaration | **Yes** — first param is `void *obj` | `void rt_gauge_push(void *obj, void *item)` |
 
-The `RT_FUNC` describes the actual C ABI. The `RT_METHOD` describes the user-facing API (what the programmer sees). The receiver is always implicit in `RT_METHOD` because it comes from the object the method is called on.
+The `RT_FUNC` describes the actual C ABI. The `RT_METHOD` describes the user-facing API (what the programmer sees). For instance methods, the receiver is implicit in `RT_METHOD` because it comes from the object the method is called on. Static/factory methods are receiverless: their `RT_FUNC` ABI has the same parameter count as the `RT_METHOD` signature, and frontend metadata records `hasReceiver=false`.
 
 ### Complete Header Example
 
@@ -703,6 +703,8 @@ RT_CLASS_BEGIN("Viper.Math", Math, "none", none)
     RT_METHOD("Cos", "f64(f64)", MathCos)
 RT_CLASS_END()
 ```
+
+Static methods do not receive an implicit object. Their `RT_FUNC` signatures should contain only the user-visible parameters shown in the `RT_METHOD` signature.
 
 ### Complete Class Block
 

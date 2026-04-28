@@ -366,6 +366,11 @@ viper_add_ctest(NoAssertFalseGuard
         -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}
         -P ${CMAKE_SOURCE_DIR}/src/tests/tools/NoAssertFalseTest.cmake)
 
+viper_add_ctest(test_tools_tls_signature_policy
+        ${CMAKE_COMMAND}
+        -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -P ${CMAKE_SOURCE_DIR}/src/tests/tools/TlsSignaturePolicyTest.cmake)
+
 viper_add_ctest(smoke_term_basic
         $<TARGET_FILE:viper> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/term_basic.bas)
 
@@ -495,7 +500,7 @@ viper_add_test(test_rt_path_exe_dir
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestPathExeDir.cpp
         LIBS viper_runtime viper_test_common)
 
-viper_add_test(test_runtime_catalog_targets_resolve NO_CTEST
+viper_add_test(test_runtime_catalog_targets_resolve
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestCatalogTargetsResolve.cpp
         LIBS fe_basic)
 
@@ -861,20 +866,17 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
             ENVIRONMENT "VIPER_3D_BACKEND=software")
 endif ()
 
-# TEMPORARILY DISABLED — 3D baseball smoke probe is failing after the recent
-# Graphics3D surface changes. Re-enable once the demo script is brought back
-# in line with the runtime.
-#add_test(NAME zia_smoke_3dbaseball
-#        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbaseball/smoke_probe.zia"
-#        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dbaseball")
-#set_tests_properties(zia_smoke_3dbaseball PROPERTIES
-#        PASS_REGULAR_EXPRESSION "RESULT: ok"
-#        LABELS "zia;smoke;graphics3d;requires_display"
-#        TIMEOUT 30)
-#if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
-#    set_tests_properties(zia_smoke_3dbaseball PROPERTIES
-#            ENVIRONMENT "VIPER_3D_BACKEND=software")
-#endif ()
+add_test(NAME zia_smoke_3dbaseball
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbaseball/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/3dbaseball")
+set_tests_properties(zia_smoke_3dbaseball PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke;graphics3d;requires_display"
+        TIMEOUT 30)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_tests_properties(zia_smoke_3dbaseball PROPERTIES
+            ENVIRONMENT "VIPER_3D_BACKEND=software")
+endif ()
 
 add_test(NAME zia_smoke_3dbowling_overlay
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/3dbowling/overlay_smoke_probe.zia"

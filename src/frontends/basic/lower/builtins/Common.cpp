@@ -45,7 +45,6 @@ using TypeKind = IlKind;
 using Emitter = lower::Emitter;
 
 constexpr const char *kDiagBuiltinCoerceFailed = "B4005";
-constexpr const char *kDiagUnsupportedDefaultValue = "B4006";
 
 enum class CoerceRule : std::uint8_t {
     Exact,
@@ -392,15 +391,9 @@ Lowerer::RVal &BuiltinLowerContext::ensureArgument(const BuiltinLoweringRule::Ar
                 value = {Value::constFloat(def.f64), IlType(IlKind::F64)};
                 break;
             case Lowerer::ExprType::Str:
-                // String default values are not implemented; emit diagnostic
-                if (auto *diag = lowerer_->diagnosticEmitter()) {
-                    diag->emit(il::support::Severity::Error,
-                               kDiagUnsupportedDefaultValue,
-                               call_->loc,
-                               0,
-                               "string default values are not supported in builtin rules");
-                }
-                value = makeTypedZero(typeFromExpr(*this->lowerer_, def.type));
+                value = {lowerer_->emitConstStr(
+                             lowerer_->getStringLabel(std::string(def.str))),
+                         IlType(IlKind::Str)};
                 break;
             case Lowerer::ExprType::Bool:
                 value = {lowerer_->emitBoolConst(def.i64 != 0), lowerer_->ilBoolTy()};
@@ -415,8 +408,6 @@ Lowerer::RVal &BuiltinLowerContext::ensureArgument(const BuiltinLoweringRule::Ar
         }
         return appendSynthetic(std::move(value));
     }
-    // Internal logic error: rule referenced missing argument without default
-    assert(false && "builtin lowering referenced missing argument without default");
     if (auto *diag = lowerer_->diagnosticEmitter()) {
         diag->emit(il::support::Severity::Error,
                    "B9004",

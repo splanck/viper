@@ -49,6 +49,7 @@ CPackSourceConfig.cmake
 *.o
 *.obj
 !tests/runtime/**/*.obj
+!examples/games/3dbaseball/model.obj
 *.lo
 *.slo
 *.la

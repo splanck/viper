@@ -290,7 +290,8 @@ static void addIncoming(BasicBlock *B,
     if (term.brArgs.size() < term.labels.size())
         term.brArgs.resize(term.labels.size());
     if (target >= term.labels.size()) {
-        assert(false && "mem2reg predecessor terminator does not target block");
+        std::cerr << "mem2reg: malformed CFG: predecessor terminator in block '"
+                  << Pred->label << "' does not target block '" << B->label << "'\n";
         return;
     }
     auto &args = term.brArgs[target];

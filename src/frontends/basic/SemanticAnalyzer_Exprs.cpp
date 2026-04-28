@@ -177,7 +177,7 @@ static std::optional<::il::frontends::basic::Type> astTypeFromSemanticType(
     }
 }
 
-static SemanticAnalyzer::Type semanticTypeFromOopField(const ClassInfo::FieldInfo &field) {
+SemanticAnalyzer::Type semanticTypeFromOopField(const ClassInfo::FieldInfo &field) {
     if (!field.objectClassName.empty())
         return SemanticAnalyzer::Type::Object;
 
@@ -192,6 +192,14 @@ static SemanticAnalyzer::Type semanticTypeFromOopField(const ClassInfo::FieldInf
             return SemanticAnalyzer::Type::Bool;
     }
     return SemanticAnalyzer::Type::Unknown;
+}
+
+const ClassInfo::FieldInfo *findActiveInstanceField(const SemanticAnalyzer &analyzer,
+                                                    std::string_view name) {
+    auto className = analyzer.activeInstanceClassQName();
+    if (!className)
+        return nullptr;
+    return analyzer.oopIndex().findFieldInHierarchy(*className, name);
 }
 
 static std::optional<std::string> resolveUserClassQNameFromExpr(SemanticAnalyzer &analyzer,
@@ -271,6 +279,10 @@ static std::optional<std::string> resolveRuntimeFunctionReturnClassQName(
 }
 
 std::optional<std::string> inferObjectClassQName(SemanticAnalyzer &analyzer, const Expr &expr) {
+    if (as<const MeExpr>(expr)) {
+        return analyzer.activeInstanceClassQName();
+    }
+
     if (const auto *var = as<const VarExpr>(expr))
         return analyzer.lookupObjectClassQName(var->name);
 
@@ -472,13 +484,22 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
         result_ = analyzer_.analyzeNew(expr);
     }
 
-    /// @brief ME references are currently untyped placeholders.
-    void visit(MeExpr &) override {
+    /// @brief ME references evaluate to the active instance object.
+    void visit(MeExpr &expr) override {
+        if (analyzer_.activeMemberHasMe_ && !analyzer_.activeClassQName_.empty()) {
+            result_ = SemanticAnalyzer::Type::Object;
+            return;
+        }
+
+        analyzer_.de.emit(il::support::Severity::Error,
+                          "B2130",
+                          expr.loc,
+                          2,
+                          "ME can only be used inside an instance class member");
         result_ = SemanticAnalyzer::Type::Unknown;
     }
 
-    /// @brief Member access expressions remain Unknown until OOP analysis matures.
-    /// However, we validate the base expression to catch undefined variables.
+    /// @brief Member access expressions validate the base and return known field/property types.
     void visit(MemberAccessExpr &expr) override {
         // Validate base expression (catches undefined variables like 'A' in 'A.B')
         if (expr.base && !isRuntimeNamespaceChain(*expr.base)) {
@@ -487,6 +508,15 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
         if (auto rtType = resolveRuntimePropertyType(analyzer_, expr)) {
             result_ = *rtType;
             return;
+        }
+        if (expr.base) {
+            if (auto className = resolveUserClassQNameFromExpr(analyzer_, *expr.base)) {
+                if (const auto *field =
+                        analyzer_.oopIndex().findFieldInHierarchy(*className, expr.member)) {
+                    result_ = semantic_analyzer_detail::semanticTypeFromOopField(*field);
+                    return;
+                }
+            }
         }
         result_ = SemanticAnalyzer::Type::Unknown;
     }

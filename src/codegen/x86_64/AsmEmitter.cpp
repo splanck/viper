@@ -962,8 +962,9 @@ std::string AsmEmitter::formatCallTarget(const Operand &operand, const TargetInf
 
 /// @brief Translate a Machine IR condition code into an x86 suffix.
 /// @param code Integer encoding produced by the selector.
-/// @return String view containing the condition suffix, defaulting to "e".
-std::string_view AsmEmitter::conditionSuffix(std::int64_t code) noexcept {
+/// @return String view containing the condition suffix.
+/// @throws std::runtime_error when @p code is not a known Machine IR condition.
+std::string_view AsmEmitter::conditionSuffix(std::int64_t code) {
     switch (static_cast<int>(code)) {
         case 0:
             return "e";
@@ -994,8 +995,8 @@ std::string_view AsmEmitter::conditionSuffix(std::int64_t code) noexcept {
         case 13:
             return "no";
         default:
-            assert(false && "unknown condition code in conditionSuffix");
-            return "e";
+            throw std::runtime_error("x86-64 asm emitter: unknown condition code " +
+                                     std::to_string(code));
     }
 }
 

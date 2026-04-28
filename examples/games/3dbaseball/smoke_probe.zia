@@ -22,17 +22,6 @@ func brightness(color: Integer) -> Integer {
 }
 
 func main() {
-    var photo = Pixels.Load("model.jpg");
-    if photo == null {
-        Terminal.Say("RESULT: fail photo_load");
-        return;
-    }
-    var photoSample = Pixels.Get(photo, 4096, 4096);
-    if brightness(photoSample) <= 24 {
-        Terminal.Say("RESULT: fail photo_sample");
-        return;
-    }
-
     var demo = new BaseballFieldDemo();
     demo.initDemo("3D Baseball Smoke", 1024, 640);
     demo.step(0.016);

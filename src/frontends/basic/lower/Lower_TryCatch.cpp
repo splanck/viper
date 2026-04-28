@@ -343,23 +343,10 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt) {
 
 /// @brief Lower a USING resource statement into cleanup with destruction.
 ///
-/// Transforms:
-///   USING res AS Resource = NEW Resource()
-///       res.DoWork()
-///   END USING
-///
-/// Into the equivalent of:
-///   DIM res AS Resource = NEW Resource()
-///   res.DoWork()
-///   DELETE res
-///
-/// Note: This is a simplified implementation that handles normal control flow.
-/// Exception handling can be added in a future iteration.
-///
-/// The implementation:
-/// - Initializes the variable with the NEW expression
-/// - Lowers the body statements
-/// - At scope exit, releases the object (calling destructor if present)
+/// The generated IL installs a scoped exception handler around the body. Normal
+/// fallthrough pops the handler and runs cleanup. Exception flow enters the
+/// synthetic handler, runs the same cleanup, then resumes the original exception
+/// token so outer handlers still observe the failure.
 void Lowerer::lowerUsingStmt(const UsingStmt &stmt) {
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
@@ -397,51 +384,24 @@ void Lowerer::lowerUsingStmt(const UsingStmt &stmt) {
     // Store the object pointer in the variable's slot
     emitStore(Type(Type::Kind::Ptr), storage->pointer, objPtr);
 
-    // Step 3: Lower body statements
-    for (const auto &st : stmt.body) {
-        if (!st)
-            continue;
-        lowerStmt(*st);
-        BasicBlock *cur = ctx.current();
-        if (!cur || cur->terminated)
-            break;
-    }
+    const std::size_t usingEntryIdx = ctx.currentIndex();
+    BlockNamer *blockNamer = ctx.blockNames().namer();
 
-    // Step 4: Cleanup - emit DELETE-like destruction
-    if (ctx.current() && !ctx.current()->terminated) {
-        // Load the object pointer
-        Value loadedObj = emitLoad(Type(Type::Kind::Ptr), storage->pointer);
+    func = ctx.function();
+    const size_t handlerIdx = func->blocks.size();
+    std::string handlerLbl =
+        blockNamer ? blockNamer->generic("using_handler") : mangler.block("using_handler");
+    std::vector<il::core::Param> handlerParams = {{"err", Type(Type::Kind::Error)},
+                                                  {"tok", Type(Type::Kind::ResumeTok)}};
+    BasicBlock &handler = builder->createBlock(*func, handlerLbl, handlerParams);
+    Instr entry;
+    entry.op = Opcode::EhEntry;
+    entry.type = Type(Type::Kind::Void);
+    entry.loc = stmt.loc;
+    handler.instructions.push_back(entry);
+    const std::string handlerLabel = handler.label;
 
-        requestHelper(RuntimeFeature::ObjReleaseChk0);
-        requestHelper(RuntimeFeature::ObjFree);
-
-        Value shouldDestroy = emitCallRet(ilBoolTy(), "rt_obj_release_check0", {loadedObj});
-
-        // Create destroy and continue blocks
-        func = ctx.function();
-        BlockNamer *blockNamer = ctx.blockNames().namer();
-
-        const size_t destroyIdx = func->blocks.size();
-        std::string destroyLbl =
-            blockNamer ? blockNamer->generic("using_dtor") : mangler.block("using_dtor");
-        builder->addBlock(*func, destroyLbl);
-
-        func = ctx.function();
-        const size_t contIdx = func->blocks.size();
-        std::string contLbl =
-            blockNamer ? blockNamer->generic("using_cont") : mangler.block("using_cont");
-        builder->addBlock(*func, contLbl);
-
-        func = ctx.function();
-        BasicBlock *destroyBlk = &func->blocks[destroyIdx];
-        BasicBlock *contBlk = &func->blocks[contIdx];
-
-        emitCBr(shouldDestroy, destroyBlk, contBlk);
-
-        // Destroy block: call destructor if available, then free
-        ctx.setCurrent(destroyBlk);
-        curLoc = stmt.loc;
-
+    auto emitResourceDestroy = [&](Value loadedObj) {
         if (!className.empty()) {
             OopLoweringContext oopCtx(*this, oopIndex_);
             // Qualify the class name for lookup
@@ -460,6 +420,48 @@ void Lowerer::lowerUsingStmt(const UsingStmt &stmt) {
             }
         }
         emitCall("rt_obj_free", {loadedObj});
+    };
+
+    auto emitUsingCleanup = [&]() {
+        if (!ctx.current() || ctx.current()->terminated)
+            return;
+        const std::size_t originIdx = ctx.currentIndex();
+
+        // Load the object pointer
+        Value loadedObj = emitLoad(Type(Type::Kind::Ptr), storage->pointer);
+
+        requestHelper(RuntimeFeature::ObjReleaseChk0);
+        requestHelper(RuntimeFeature::ObjFree);
+
+        Value shouldDestroy = emitCallRet(ilBoolTy(), "rt_obj_release_check0", {loadedObj});
+
+        // Create destroy and continue blocks
+        func = ctx.function();
+        BlockNamer *cleanupNamer = ctx.blockNames().namer();
+
+        const size_t destroyIdx = func->blocks.size();
+        std::string destroyLbl =
+            cleanupNamer ? cleanupNamer->generic("using_dtor") : mangler.block("using_dtor");
+        builder->addBlock(*func, destroyLbl);
+
+        func = ctx.function();
+        const size_t contIdx = func->blocks.size();
+        std::string contLbl =
+            cleanupNamer ? cleanupNamer->generic("using_cont") : mangler.block("using_cont");
+        builder->addBlock(*func, contLbl);
+
+        func = ctx.function();
+        BasicBlock *destroyBlk = &func->blocks[destroyIdx];
+        BasicBlock *contBlk = &func->blocks[contIdx];
+
+        ctx.setCurrentByIndex(originIdx);
+        emitCBr(shouldDestroy, destroyBlk, contBlk);
+
+        // Destroy block: call destructor if available, then free
+        ctx.setCurrent(destroyBlk);
+        curLoc = stmt.loc;
+
+        emitResourceDestroy(loadedObj);
         emitBr(contBlk);
 
         // Continue at contBlk
@@ -467,7 +469,159 @@ void Lowerer::lowerUsingStmt(const UsingStmt &stmt) {
 
         // Set variable to null to prevent double-free in function epilogue
         emitStore(Type(Type::Kind::Ptr), storage->pointer, Value::null());
+    };
+
+    auto makeHandlerParams = []() {
+        return std::vector<il::core::Param>{{"err", Type(Type::Kind::Error)},
+                                            {"tok", Type(Type::Kind::ResumeTok)}};
+    };
+
+    auto appendEhEntry = [&](BasicBlock &block) {
+        Instr entryInstr;
+        entryInstr.op = Opcode::EhEntry;
+        entryInstr.type = Type(Type::Kind::Void);
+        entryInstr.loc = stmt.loc;
+        block.instructions.push_back(std::move(entryInstr));
+    };
+
+    auto emitBrWithArgs = [&](BasicBlock *target, std::vector<Value> args) {
+        BasicBlock *block = ctx.current();
+        if (!block || !target)
+            return;
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels.push_back(target->label);
+        br.brArgs.push_back(std::move(args));
+        br.loc = stmt.loc;
+        block->instructions.push_back(std::move(br));
+        block->terminated = true;
+    };
+
+    auto emitCBrWithArgs = [&](Value cond,
+                               BasicBlock *trueTarget,
+                               std::vector<Value> trueArgs,
+                               BasicBlock *falseTarget,
+                               std::vector<Value> falseArgs) {
+        BasicBlock *block = ctx.current();
+        if (!block || !trueTarget || !falseTarget)
+            return;
+        Instr cbr;
+        cbr.op = Opcode::CBr;
+        cbr.type = Type(Type::Kind::Void);
+        cbr.operands.push_back(cond);
+        cbr.labels.push_back(trueTarget->label);
+        cbr.labels.push_back(falseTarget->label);
+        cbr.brArgs.push_back(std::move(trueArgs));
+        cbr.brArgs.push_back(std::move(falseArgs));
+        cbr.loc = stmt.loc;
+        block->instructions.push_back(std::move(cbr));
+        block->terminated = true;
+    };
+
+    auto emitUsingHandlerCleanup = [&]() {
+        BasicBlock *handlerBlock = ctx.current();
+        if (!handlerBlock || handlerBlock->terminated || handlerBlock->params.size() < 2)
+            return;
+
+        const std::size_t originIdx = ctx.currentIndex();
+        Value errArg = Value::temp(handlerBlock->params[0].id);
+        Value tokArg = Value::temp(handlerBlock->params[1].id);
+
+        Value loadedObj = emitLoad(Type(Type::Kind::Ptr), storage->pointer);
+
+        requestHelper(RuntimeFeature::ObjReleaseChk0);
+        requestHelper(RuntimeFeature::ObjFree);
+
+        Value shouldDestroy = emitCallRet(ilBoolTy(), "rt_obj_release_check0", {loadedObj});
+
+        func = ctx.function();
+        BlockNamer *cleanupNamer = ctx.blockNames().namer();
+
+        const size_t destroyIdx = func->blocks.size();
+        std::string destroyLbl =
+            cleanupNamer ? cleanupNamer->generic("using_dtor") : mangler.block("using_dtor");
+        builder->createBlock(*func, destroyLbl, makeHandlerParams());
+        appendEhEntry(func->blocks[destroyIdx]);
+
+        func = ctx.function();
+        const size_t contIdx = func->blocks.size();
+        std::string contLbl =
+            cleanupNamer ? cleanupNamer->generic("using_cont") : mangler.block("using_cont");
+        builder->createBlock(*func, contLbl, makeHandlerParams());
+        appendEhEntry(func->blocks[contIdx]);
+
+        func = ctx.function();
+        BasicBlock *destroyBlk = &func->blocks[destroyIdx];
+        BasicBlock *contBlk = &func->blocks[contIdx];
+
+        ctx.setCurrentByIndex(originIdx);
+        emitCBrWithArgs(
+            shouldDestroy, destroyBlk, {errArg, tokArg}, contBlk, {errArg, tokArg});
+
+        ctx.setCurrent(destroyBlk);
+        curLoc = stmt.loc;
+        Value destroyErr = Value::temp(destroyBlk->params[0].id);
+        Value destroyTok = Value::temp(destroyBlk->params[1].id);
+        emitResourceDestroy(loadedObj);
+        emitBrWithArgs(contBlk, {destroyErr, destroyTok});
+
+        ctx.setCurrent(contBlk);
+        emitStore(Type(Type::Kind::Ptr), storage->pointer, Value::null());
+
+        Instr resume;
+        resume.op = Opcode::ResumeSame;
+        resume.type = Type(Type::Kind::Void);
+        resume.operands.push_back(Value::temp(contBlk->params[1].id));
+        resume.loc = stmt.loc;
+        contBlk->instructions.push_back(std::move(resume));
+        contBlk->terminated = true;
+    };
+
+    ctx.setCurrentByIndex(usingEntryIdx);
+    {
+        Instr in;
+        in.op = Opcode::EhPush;
+        in.type = Type(Type::Kind::Void);
+        in.labels.push_back(handlerLabel);
+        in.loc = stmt.loc;
+        BasicBlock *block = ctx.current();
+        if (block)
+            block->instructions.push_back(std::move(in));
     }
+
+    // Step 3: Lower body statements
+    for (const auto &st : stmt.body) {
+        if (!st)
+            continue;
+        lowerStmt(*st);
+        BasicBlock *cur = ctx.current();
+        if (!cur || cur->terminated)
+            break;
+    }
+
+    std::size_t normalContIdx = 0;
+    bool hasNormalCont = false;
+
+    // Step 4: Normal cleanup - pop the scoped handler, then destroy the resource.
+    if (ctx.current() && !ctx.current()->terminated) {
+        emitEhPop();
+        emitUsingCleanup();
+        if (ctx.current() && !ctx.current()->terminated) {
+            normalContIdx = ctx.currentIndex();
+            hasNormalCont = true;
+        }
+    }
+
+    // Step 5: Exceptional cleanup - destroy the resource, then resume the same exception.
+    func = ctx.function();
+    if (handlerIdx < func->blocks.size()) {
+        ctx.setCurrent(&func->blocks[handlerIdx]);
+        emitUsingHandlerCleanup();
+    }
+
+    if (hasNormalCont && normalContIdx < ctx.function()->blocks.size())
+        ctx.setCurrentByIndex(normalContIdx);
 }
 
 } // namespace il::frontends::basic

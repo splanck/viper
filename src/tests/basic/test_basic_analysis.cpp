@@ -401,6 +401,37 @@ END
     EXPECT_TRUE(result->hasErrors());
 }
 
+TEST(BasicAnalysis, MeMemberFieldTypesAreCheckedInClassBodies) {
+    il::support::SourceManager sm;
+    const std::string source = R"(
+CLASS Widget
+  DIM Enabled AS BOOLEAN
+  SUB Disable()
+    ME.Enabled = "no"
+  END SUB
+END CLASS
+END
+)";
+    BasicCompilerInput input{.source = source, .path = "me_member_bad_assignment.bas"};
+    auto result = parseAndAnalyzeBasic(input, sm);
+
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_TRUE(result->hasErrors());
+}
+
+TEST(BasicAnalysis, MeIsRejectedOutsideInstanceMembers) {
+    il::support::SourceManager sm;
+    const std::string source = R"(
+PRINT ME
+END
+)";
+    BasicCompilerInput input{.source = source, .path = "me_top_level.bas"};
+    auto result = parseAndAnalyzeBasic(input, sm);
+
+    ASSERT_TRUE(result != nullptr);
+    EXPECT_TRUE(result->hasErrors());
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
