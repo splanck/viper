@@ -391,6 +391,7 @@ static bool button_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 event->handled = true;
                 return true;
             }
+            vg_widget_note_click(widget, event->timestamp);
             if (button->on_click)
                 button->on_click(widget, button->user_data);
             if (widget->on_click)

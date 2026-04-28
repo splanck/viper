@@ -174,7 +174,7 @@ Context menus now anchor in screen space for nested widgets, capture input while
 |---------------------------------------|--------------------------|------------------------------------------|
 | `AddItem(text)`                       | `Object(String)`         | Add menu item                            |
 | `AddItemWithShortcut(text, shortcut)` | `Object(String, String)` | Add item with shortcut display           |
-| `AddSeparator()`                      | `Object()`               | Add separator                            |
+| `AddSeparator()`                      | `Object()`               | Add separator and return its item handle |
 | `Clear()`                             | `Void()`                 | Remove all items                         |
 | `Hide()`                              | `Void()`                 | Hide the menu                            |
 | `IsVisible()`                         | `Integer()`              | 1 if menu is visible                     |
@@ -187,7 +187,7 @@ Context menus now anchor in screen space for nested widgets, capture input while
 var ctx = ContextMenu.New();
 var cutItem = ctx.AddItem("Cut");
 var copyItem = ctx.AddItemWithShortcut("Copy", "Ctrl+C");
-ctx.AddSeparator();
+var separator = ctx.AddSeparator();
 var pasteItem = ctx.AddItem("Paste");
 
 // Show on right-click
@@ -387,10 +387,11 @@ if answer == 1 { /* user said yes */ }
 
 ### FileDialog
 
-Native file dialog boxes (static methods).
+Native or in-app file dialog boxes (static methods).
 
 Save dialogs honor the default filename field, append the configured default extension when needed, and keep buttons/bookmarks/file-list hit-testing correct after the window is repositioned.
 Object-style dialogs snapshot their accepted path list on each `Show()`, so repeated `Show()` / `Destroy()` cycles and multi-select accessors stay valid.
+On macOS, one-shot static dialogs use native panels. On other GUI builds, static and object-style dialogs use the same in-app modal dialog and therefore require an active `Viper.GUI.App` window; they return an empty string or `0` when no active GUI window is available.
 The in-app dialog implementation now scrolls long file and bookmark lists, keeps the selected row visible during keyboard navigation, clips long path text, and supports caret-aware editing in the save-name field (`Left` / `Right`, `Home`, `End`, `Backspace`, `Delete`).
 
 | Method                                          | Signature                        | Description                              |
@@ -414,7 +415,7 @@ filters, a default filename, or multiple selected paths:
 | `dialog.AddFilter(label, pattern)` | `Void(String,String)` | Add another named filter |
 | `dialog.SetDefaultName(name)` | `Void(String)` | Set default filename for save dialogs |
 | `dialog.SetMultiple(enabled)` | `Void(Integer)` | Enable multiple selection for open dialogs |
-| `dialog.Show()` | `Integer()` | Show the dialog; returns 1 on accept |
+| `dialog.Show()` | `Integer()` | Show the dialog; returns 1 on accept, 0 on cancel or unavailable GUI window |
 | `dialog.GetPath()` | `String()` | Return the first selected path |
 | `dialog.PathCount` | `Integer` | Number of selected paths |
 | `dialog.GetPathAt(index)` | `String(Integer)` | Return selected path by index |

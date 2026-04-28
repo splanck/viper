@@ -638,8 +638,12 @@ static bool findreplacebar_handle_event(vg_widget_t *widget, vg_event_t *event) 
     if (event->type == VG_EVENT_MOUSE_MOVE || event->type == VG_EVENT_MOUSE_DOWN ||
         event->type == VG_EVENT_MOUSE_UP || event->type == VG_EVENT_CLICK ||
         event->type == VG_EVENT_DOUBLE_CLICK || event->type == VG_EVENT_MOUSE_WHEEL) {
+        float screen_x =
+            event->type == VG_EVENT_MOUSE_WHEEL ? event->wheel.screen_x : event->mouse.screen_x;
+        float screen_y =
+            event->type == VG_EVENT_MOUSE_WHEEL ? event->wheel.screen_y : event->mouse.screen_y;
         vg_widget_t *target =
-            vg_widget_hit_test(widget, event->mouse.screen_x, event->mouse.screen_y);
+            vg_widget_hit_test(widget, screen_x, screen_y);
         if (target && target != widget) {
             return vg_event_send(target, event);
         }

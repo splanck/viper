@@ -567,13 +567,13 @@ void *rt_contextmenu_add_item_with_shortcut(void *menu, rt_string text, rt_strin
 }
 
 /// @brief Append a separator line to a context menu.
-/// Returns NULL because the underlying separator is not addressable.
+/// Returns the separator item handle so callers can configure it consistently
+/// with other menu item handles.
 void *rt_contextmenu_add_separator(void *menu) {
     RT_ASSERT_MAIN_THREAD();
     if (!menu)
         return NULL;
-    vg_contextmenu_add_separator((vg_contextmenu_t *)menu);
-    return NULL; // vg_contextmenu_add_separator returns void
+    return vg_contextmenu_add_separator((vg_contextmenu_t *)menu);
 }
 
 /// @brief Add a nested submenu to a context menu; returns the new submenu handle.

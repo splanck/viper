@@ -841,13 +841,13 @@ vg_menu_item_t *vg_contextmenu_add_submenu(vg_contextmenu_t *menu,
 }
 
 /// @brief Contextmenu add separator.
-void vg_contextmenu_add_separator(vg_contextmenu_t *menu) {
+vg_menu_item_t *vg_contextmenu_add_separator(vg_contextmenu_t *menu) {
     if (!menu)
-        return;
+        return NULL;
 
     vg_menu_item_t *item = calloc(1, sizeof(vg_menu_item_t));
     if (!item)
-        return;
+        return NULL;
 
     item->separator = true;
     item->owner_contextmenu = menu;
@@ -858,13 +858,14 @@ void vg_contextmenu_add_separator(vg_contextmenu_t *menu) {
         vg_menu_item_t **new_items = realloc(menu->items, new_cap * sizeof(vg_menu_item_t *));
         if (!new_items) {
             free(item);
-            return;
+            return NULL;
         }
         menu->items = new_items;
         menu->item_capacity = new_cap;
     }
 
     menu->items[menu->item_count++] = item;
+    return item;
 }
 
 /// @brief Contextmenu clear.

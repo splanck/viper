@@ -40,6 +40,8 @@ crackman/
     fruit.zia           Fruit spawning and drawing
     particles.zia       Particle effects
     utils.zia           Shared grid movement and coordinate helpers
+    smoke_probe.zia     Headless smoke coverage for sprites, ghost return, and progression
+    movement_probe.zia  Headless boundary regression coverage for maze/player movement
 
     audio/
         sfx_bank.zia    Procedural SFX registration

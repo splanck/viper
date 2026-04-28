@@ -129,9 +129,14 @@ void rt_commandpalette_destroy(void *palette) {
     rt_gui_unregister_command_palette(data->app, data->palette);
     if (data->palette) {
         vg_commandpalette_destroy(data->palette);
+        data->palette = NULL;
     }
-    if (data->selected_command)
+    if (data->selected_command) {
         free(data->selected_command);
+        data->selected_command = NULL;
+    }
+    data->was_selected = 0;
+    data->app = NULL;
 }
 
 /// @brief Register a command in the palette's fuzzy-searchable list.
@@ -143,6 +148,8 @@ void rt_commandpalette_add_command(void *palette,
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
+    if (!data->palette)
+        return;
     char *cid = rt_string_to_cstr(id);
     char *clabel = rt_string_to_cstr(label);
     char *ccat = rt_string_to_cstr(category);
@@ -179,6 +186,8 @@ void rt_commandpalette_add_command_with_shortcut(
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
+    if (!data->palette)
+        return;
     char *cid = rt_string_to_cstr(id);
     char *clabel = rt_string_to_cstr(label);
     char *cshort = rt_string_to_cstr(shortcut);
@@ -211,6 +220,8 @@ void rt_commandpalette_remove_command(void *palette, rt_string id) {
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
+    if (!data->palette)
+        return;
     char *cid = rt_string_to_cstr(id);
     vg_commandpalette_remove_command(data->palette, cid);
     if (cid)
@@ -223,6 +234,8 @@ void rt_commandpalette_clear(void *palette) {
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
+    if (!data->palette)
+        return;
     vg_commandpalette_clear(data->palette);
 }
 
@@ -232,6 +245,8 @@ void rt_commandpalette_show(void *palette) {
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
+    if (!data->palette)
+        return;
     data->was_selected = 0; // Reset selection state when showing
     vg_commandpalette_show(data->palette);
 }
@@ -242,6 +257,8 @@ void rt_commandpalette_hide(void *palette) {
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
+    if (!data->palette)
+        return;
     vg_commandpalette_hide(data->palette);
 }
 
@@ -251,6 +268,8 @@ int64_t rt_commandpalette_is_visible(void *palette) {
     if (!palette)
         return 0;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
+    if (!data->palette)
+        return 0;
     return data->palette->base.visible ? 1 : 0;
 }
 
@@ -260,6 +279,8 @@ void rt_commandpalette_set_placeholder(void *palette, rt_string text) {
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
+    if (!data->palette)
+        return;
     char *ctext = rt_string_to_cstr(text);
     if (data->palette)
         vg_commandpalette_set_placeholder(data->palette, ctext);

@@ -817,6 +817,8 @@ rt_string rt_listbox_item_get_text(void *item) {
     if (!item)
         return rt_str_empty();
     vg_listbox_item_t *it = (vg_listbox_item_t *)item;
+    if (!vg_listbox_item_is_live(it))
+        return rt_str_empty();
     if (it->text)
         return rt_string_from_bytes(it->text, strlen(it->text));
     return rt_str_empty();
@@ -828,6 +830,8 @@ void rt_listbox_item_set_text(void *item, rt_string text) {
     if (!item)
         return;
     vg_listbox_item_t *it = (vg_listbox_item_t *)item;
+    if (!vg_listbox_item_is_live(it))
+        return;
     if (it->text)
         free(it->text);
     char *ctext = rt_string_to_cstr(text);
@@ -840,6 +844,8 @@ void rt_listbox_item_set_data(void *item, rt_string data) {
     if (!item)
         return;
     vg_listbox_item_t *it = (vg_listbox_item_t *)item;
+    if (!vg_listbox_item_is_live(it))
+        return;
     if (it->owns_user_data && it->user_data)
         free(it->user_data);
     it->user_data = rt_gui_string_data_new(data);
@@ -852,6 +858,8 @@ rt_string rt_listbox_item_get_data(void *item) {
     if (!item)
         return rt_str_empty();
     vg_listbox_item_t *it = (vg_listbox_item_t *)item;
+    if (!vg_listbox_item_is_live(it))
+        return rt_str_empty();
     if (!it->user_data || !it->owns_user_data)
         return rt_str_empty();
     return rt_gui_string_data_to_rt_string(it->user_data);

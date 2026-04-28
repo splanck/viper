@@ -249,8 +249,9 @@ typedef struct vg_event {
 
         /// @brief Payload for mouse wheel (scroll) events.
         struct {
-            float delta_x; ///< Horizontal scroll amount (positive = right).
-            float delta_y; ///< Vertical scroll amount (positive = up / away from user).
+            float delta_x;            ///< Horizontal scroll amount (positive = right).
+            float delta_y;            ///< Vertical scroll amount (positive = up / away from user).
+            float screen_x, screen_y; ///< Cursor position in screen (root) coordinates.
         } wheel;
 
         /// @brief Payload for keyboard events.

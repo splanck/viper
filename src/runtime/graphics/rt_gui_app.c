@@ -395,6 +395,8 @@ rt_gui_app_t *rt_gui_app_from_widget(vg_widget_t *widget) {
         return NULL;
     if (rt_gui_is_app_handle(widget))
         return (rt_gui_app_t *)widget;
+    if (!vg_widget_is_live(widget))
+        return NULL;
     for (vg_widget_t *w = widget; w; w = w->parent) {
         if (!w->parent && w->user_data) {
             rt_gui_app_t *candidate = (rt_gui_app_t *)w->user_data;
@@ -1355,6 +1357,29 @@ static int rt_gui_send_event_to_widget(vg_widget_t *widget, vg_event_t *event) {
     return vg_event_send(widget, event) ? 1 : 0;
 }
 
+static float rt_gui_event_screen_x(const vg_event_t *event) {
+    return event && event->type == VG_EVENT_MOUSE_WHEEL ? event->wheel.screen_x
+                                                        : event->mouse.screen_x;
+}
+
+static float rt_gui_event_screen_y(const vg_event_t *event) {
+    return event && event->type == VG_EVENT_MOUSE_WHEEL ? event->wheel.screen_y
+                                                        : event->mouse.screen_y;
+}
+
+static void rt_gui_capture_reported_click(rt_gui_app_t *app, const vg_event_t *event) {
+    if (!app)
+        return;
+    vg_widget_runtime_state_t state = {0};
+    vg_widget_get_runtime_state(&state);
+    if (!state.reported_click_widget)
+        return;
+    if (event && state.reported_click_time_ms != 0 &&
+        event->timestamp != state.reported_click_time_ms)
+        return;
+    app->last_clicked = state.reported_click_widget;
+}
+
 static void rt_gui_update_drag_over_target(rt_gui_app_t *app, vg_widget_t *event_root) {
     if (!app)
         return;
@@ -1447,6 +1472,7 @@ void rt_gui_app_poll(void *app_ptr) {
     app->last_statusbar_clicked = NULL;
     app->last_toolbar_clicked = NULL;
     rt_gui_set_last_clicked(NULL);
+    vg_widget_clear_reported_click();
 
     // Clear shortcut triggered flags from previous frame
     rt_shortcuts_clear_triggered(app);
@@ -1515,15 +1541,11 @@ void rt_gui_app_poll(void *app_ptr) {
                 }
             }
 
-            // Track clicked widget for Button.WasClicked() + complete drag-and-drop
+            // Complete drag-and-drop on mouse-up. Click state is recorded only
+            // by actual VG_EVENT_CLICK generation/keyboard activation.
             if (event.type == VGFX_EVENT_MOUSE_UP) {
                 vg_widget_t *hit =
                     vg_widget_hit_test(event_root, (float)app->mouse_x, (float)app->mouse_y);
-                if (hit) {
-                    app->last_clicked = hit;
-                    // Also set global for rt_widget_was_clicked
-                    rt_gui_set_last_clicked(hit);
-                }
 
                 // Drag-and-drop: complete drop on mouse-up
                 if (app->drag_source) {
@@ -1561,10 +1583,11 @@ void rt_gui_app_poll(void *app_ptr) {
                     gui_event.type == VG_EVENT_CLICK || gui_event.type == VG_EVENT_DOUBLE_CLICK ||
                     gui_event.type == VG_EVENT_MOUSE_WHEEL;
                 int inside_palette = rt_gui_palette_contains_point(
-                    top_palette, gui_event.mouse.screen_x, gui_event.mouse.screen_y);
+                    top_palette, rt_gui_event_screen_x(&gui_event), rt_gui_event_screen_y(&gui_event));
 
                 if (is_mouse_event && inside_palette) {
                     rt_gui_send_event_to_widget(&top_palette->base, &gui_event);
+                    rt_gui_capture_reported_click(app, &gui_event);
                     continue;
                 }
                 if (is_mouse_event && !inside_palette) {
@@ -1576,17 +1599,20 @@ void rt_gui_app_poll(void *app_ptr) {
                 if (gui_event.type == VG_EVENT_KEY_DOWN || gui_event.type == VG_EVENT_KEY_UP ||
                     gui_event.type == VG_EVENT_KEY_CHAR) {
                     rt_gui_send_event_to_widget(&top_palette->base, &gui_event);
+                    rt_gui_capture_reported_click(app, &gui_event);
                     continue;
                 }
             }
 
             if (app->notification_manager &&
                 rt_gui_send_event_to_widget(&app->notification_manager->base, &gui_event)) {
+                rt_gui_capture_reported_click(app, &gui_event);
                 continue;
             }
 
             // Dispatch all events to widget tree (handles focus, keyboard, etc.)
             vg_event_dispatch(app->root, &gui_event);
+            rt_gui_capture_reported_click(app, &gui_event);
             rt_gui_sync_modal_root(app);
         }
     }

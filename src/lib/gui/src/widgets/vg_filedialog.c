@@ -1508,8 +1508,8 @@ static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
             return dialog->base.modal;
 
         case VG_EVENT_MOUSE_WHEEL: {
-            float mx = event->mouse.screen_x - widget->x;
-            float my = event->mouse.screen_y - widget->y;
+            float mx = event->wheel.screen_x - widget->x;
+            float my = event->wheel.screen_y - widget->y;
             if (mx > sidebar_width && my > list_y && my < list_y + list_height) {
                 dialog->file_scroll_y +=
                     FILEDIALOG_ROW_HEIGHT * (event->wheel.delta_y > 0.0f ? -3.0f : 3.0f);

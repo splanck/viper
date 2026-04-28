@@ -1,0 +1,74 @@
+// ============================================================================
+// MODULE: movement_probe
+// PURPOSE: Headless regression coverage for Crackman maze boundary movement.
+// ============================================================================
+
+module movement_probe;
+
+bind Viper.Terminal as Terminal;
+bind "./config";
+bind "./maze";
+bind "./player";
+
+func fail(msg: String) {
+    Terminal.Say("RESULT: fail " + msg);
+}
+
+func assertPlayerAt(pac: player.PacMan, x: Integer, y: Integer, msg: String) -> Boolean {
+    if pac.getGridX() != x || pac.getGridY() != y {
+        fail(msg);
+        return false;
+    }
+    return true;
+}
+
+func runFrames(pac: player.PacMan, theMaze: maze.Maze, frames: Integer) {
+    for i in 0..frames {
+        pac.update(theMaze);
+    }
+}
+
+func start() {
+    var theMaze = new maze.Maze();
+    theMaze.init();
+
+    if theMaze.isWalkable(14, -1) {
+        fail("top out-of-bounds is walkable");
+        return;
+    }
+    if theMaze.isWalkable(14, config.GRID_HEIGHT) {
+        fail("bottom out-of-bounds is walkable");
+        return;
+    }
+    if theMaze.isWalkable(1, 0) {
+        fail("top boundary wall is walkable");
+        return;
+    }
+    if !theMaze.isWalkable(1, 1) {
+        fail("interior corridor is not walkable");
+        return;
+    }
+
+    var topPac = new player.PacMan(1, 1);
+    topPac.setNextDirection(config.DIR_UP);
+    runFrames(topPac, theMaze, 24);
+    if !assertPlayerAt(topPac, 1, 1, "player moved through top boundary wall") {
+        return;
+    }
+
+    var forcedTopPac = new player.PacMan(14, 0);
+    forcedTopPac.setNextDirection(config.DIR_UP);
+    runFrames(forcedTopPac, theMaze, 24);
+    if !assertPlayerAt(forcedTopPac, 14, 0, "player moved above maze boundary") {
+        return;
+    }
+
+    var forcedBottomPac = new player.PacMan(14, config.GRID_HEIGHT - 1);
+    forcedBottomPac.setNextDirection(config.DIR_DOWN);
+    runFrames(forcedBottomPac, theMaze, 24);
+    if !assertPlayerAt(forcedBottomPac, 14, config.GRID_HEIGHT - 1, "player moved below maze boundary") {
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

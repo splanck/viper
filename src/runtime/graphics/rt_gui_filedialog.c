@@ -35,9 +35,54 @@
 // Phase 5: FileDialog
 //=============================================================================
 
+static rt_gui_app_t *rt_filedialog_app(void) {
+    rt_gui_app_t *app = rt_gui_get_active_app();
+    return app ? app : s_current_app;
+}
+
+static char *rt_filedialog_strdup(const char *text) {
+    if (!text)
+        return NULL;
+#ifdef _WIN32
+    return _strdup(text);
+#else
+    return strdup(text);
+#endif
+}
+
+static int rt_filedialog_prepare_modal(rt_gui_app_t *app, vg_filedialog_t *dialog) {
+    if (!app || !app->window || !app->root || !dialog)
+        return 0;
+    rt_gui_activate_app(app);
+    rt_gui_ensure_default_font();
+    rt_gui_apply_default_font(&dialog->base.base);
+    vg_dialog_set_modal(&dialog->base, true, app->root);
+    vg_filedialog_show(dialog);
+    rt_gui_push_dialog(app, &dialog->base);
+    return 1;
+}
+
+static int rt_filedialog_run_modal(rt_gui_app_t *app, vg_filedialog_t *dialog) {
+    if (!app || !dialog)
+        return 0;
+    while (dialog->base.is_open && !app->should_close) {
+        rt_gui_app_poll(app);
+        rt_gui_app_render(app);
+    }
+    rt_gui_remove_dialog(app, &dialog->base);
+    rt_gui_sync_modal_root(app);
+    return dialog->selected_file_count > 0 ? 1 : 0;
+}
+
+static int rt_filedialog_show_modal(rt_gui_app_t *app, vg_filedialog_t *dialog) {
+    if (!rt_filedialog_prepare_modal(app, dialog))
+        return 0;
+    return rt_filedialog_run_modal(app, dialog);
+}
+
 /// @brief One-shot "open file" dialog. Blocks the caller until the user picks a single file or
-/// cancels. Returns the absolute path on selection, or an empty string on cancel. `filter` is a
-/// pattern like "*.png" or "*" for any file (platform-formatted via the GUI backend).
+/// cancels when an active GUI app/window exists. Returns the absolute path on selection, or an
+/// empty string on cancel or when no modal GUI window is active.
 rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string filter) {
     char *ctitle = rt_string_to_cstr(title);
     char *cfilter = rt_string_to_cstr(filter);
@@ -47,8 +92,22 @@ rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string 
     // Use native macOS file dialog
     char *result = vg_native_open_file(ctitle, cpath, "Files", cfilter);
 #else
-    // vg_filedialog_open_file expects: title, path, filter_name, filter_pattern
-    char *result = vg_filedialog_open_file(ctitle, cpath, "Files", cfilter);
+    char *result = NULL;
+    vg_filedialog_t *dlg = vg_filedialog_create(VG_FILEDIALOG_OPEN);
+    if (dlg) {
+        if (ctitle)
+            vg_filedialog_set_title(dlg, ctitle);
+        if (cpath)
+            vg_filedialog_set_initial_path(dlg, cpath);
+        if (cfilter && cfilter[0])
+            vg_filedialog_add_filter(dlg, "Files", cfilter);
+        vg_filedialog_add_default_bookmarks(dlg);
+        if (rt_filedialog_show_modal(rt_filedialog_app(), dlg) &&
+            dlg->selected_file_count > 0 && dlg->selected_files[0]) {
+            result = rt_filedialog_strdup(dlg->selected_files[0]);
+        }
+        vg_filedialog_destroy(dlg);
+    }
 #endif
 
     if (ctitle)
@@ -67,7 +126,7 @@ rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string 
 }
 
 /// @brief Open dialog with multi-select. Returns paths as a single semicolon-separated string
-/// (caller can split on ';'), or empty on cancel. Useful for batch-import workflows.
+/// (caller can split on ';'), or empty on cancel/no active GUI window.
 rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, rt_string filter) {
     char *ctitle = rt_string_to_cstr(title);
     char *cpath = rt_string_to_cstr(default_path);
@@ -98,7 +157,7 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
     if (cfilter)
         free(cfilter);
 
-    vg_filedialog_show(dlg);
+    rt_filedialog_show_modal(rt_filedialog_app(), dlg);
 
     size_t count = 0;
     char **paths = vg_filedialog_get_selected_paths(dlg, &count);
@@ -146,8 +205,24 @@ rt_string rt_filedialog_save(rt_string title,
     // Use native macOS file dialog
     char *result = vg_native_save_file(ctitle, cpath, cname, "Files", cfilter);
 #else
-    // vg_filedialog_save_file expects: title, path, default_name, filter_name, filter_pattern
-    char *result = vg_filedialog_save_file(ctitle, cpath, cname, "Files", cfilter);
+    char *result = NULL;
+    vg_filedialog_t *dlg = vg_filedialog_create(VG_FILEDIALOG_SAVE);
+    if (dlg) {
+        if (ctitle)
+            vg_filedialog_set_title(dlg, ctitle);
+        if (cpath)
+            vg_filedialog_set_initial_path(dlg, cpath);
+        if (cname)
+            vg_filedialog_set_filename(dlg, cname);
+        if (cfilter && cfilter[0])
+            vg_filedialog_add_filter(dlg, "Files", cfilter);
+        vg_filedialog_add_default_bookmarks(dlg);
+        if (rt_filedialog_show_modal(rt_filedialog_app(), dlg) &&
+            dlg->selected_file_count > 0 && dlg->selected_files[0]) {
+            result = rt_filedialog_strdup(dlg->selected_files[0]);
+        }
+        vg_filedialog_destroy(dlg);
+    }
 #endif
 
     if (ctitle)
@@ -176,7 +251,20 @@ rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path) {
     // Use native macOS file dialog
     char *result = vg_native_select_folder(ctitle, cpath);
 #else
-    char *result = vg_filedialog_select_folder(ctitle, cpath);
+    char *result = NULL;
+    vg_filedialog_t *dlg = vg_filedialog_create(VG_FILEDIALOG_SELECT_FOLDER);
+    if (dlg) {
+        if (ctitle)
+            vg_filedialog_set_title(dlg, ctitle);
+        if (cpath)
+            vg_filedialog_set_initial_path(dlg, cpath);
+        vg_filedialog_add_default_bookmarks(dlg);
+        if (rt_filedialog_show_modal(rt_filedialog_app(), dlg) &&
+            dlg->selected_file_count > 0 && dlg->selected_files[0]) {
+            result = rt_filedialog_strdup(dlg->selected_files[0]);
+        }
+        vg_filedialog_destroy(dlg);
+    }
 #endif
 
     if (ctitle)
@@ -228,7 +316,7 @@ static int rt_filedialog_copy_selected_paths(rt_filedialog_data_t *data) {
 
     size_t copied = 0;
     for (; copied < count; copied++) {
-        copy[copied] = strdup(paths[copied] ? paths[copied] : "");
+        copy[copied] = rt_filedialog_strdup(paths[copied] ? paths[copied] : "");
         if (!copy[copied])
             break;
     }
@@ -389,16 +477,22 @@ void rt_filedialog_set_multiple(void *dialog, int64_t multiple) {
 }
 
 /// @brief Show the dialog modally. Blocks the caller until the user dismisses it. Returns 1 if
-/// the user confirmed at least one selection, 0 if cancelled. Replaces any prior selection
-/// snapshot (calling `_show` twice on the same handle is allowed).
+/// the user confirmed at least one selection, 0 if cancelled or if no active GUI window exists.
+/// Replaces any prior selection snapshot (calling `_show` twice on the same handle is allowed).
 int64_t rt_filedialog_show(void *dialog) {
     if (!dialog)
         return 0;
     rt_filedialog_data_t *data = (rt_filedialog_data_t *)dialog;
-    vg_filedialog_show(data->dialog);
+    if (!data->dialog)
+        return 0;
 
     // Replace any previous selection snapshot with the latest dialog result.
     rt_filedialog_clear_selected_paths(data);
+    rt_gui_app_t *app = rt_filedialog_app();
+    if (!rt_filedialog_show_modal(app, data->dialog)) {
+        data->result = 0;
+        return 0;
+    }
     rt_filedialog_copy_selected_paths(data);
     data->result = (data->selected_count > 0) ? 1 : 0;
 

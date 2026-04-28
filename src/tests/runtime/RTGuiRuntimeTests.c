@@ -292,6 +292,24 @@ static void test_platform_text_events_translate_to_gui_text(void) {
     printf("test_platform_text_events_translate_to_gui_text: PASSED\n");
 }
 
+static void test_platform_scroll_events_keep_screen_coordinates_separate(void) {
+    vgfx_event_t platform_event = {0};
+    platform_event.type = VGFX_EVENT_SCROLL;
+    platform_event.data.scroll.delta_x = 1.25f;
+    platform_event.data.scroll.delta_y = -2.5f;
+    platform_event.data.scroll.x = 42;
+    platform_event.data.scroll.y = 84;
+
+    vg_event_t gui_event = vg_event_from_platform(&platform_event);
+    assert(gui_event.type == VG_EVENT_MOUSE_WHEEL);
+    assert(gui_event.wheel.delta_x == 1.25f);
+    assert(gui_event.wheel.delta_y == -2.5f);
+    assert(gui_event.wheel.screen_x == 42.0f);
+    assert(gui_event.wheel.screen_y == 84.0f);
+
+    printf("test_platform_scroll_events_keep_screen_coordinates_separate: PASSED\n");
+}
+
 static void test_app_handles_resolve_to_root_widgets_for_overlays(void) {
     rt_gui_app_t app;
     reset_fake_app(&app);
@@ -708,6 +726,124 @@ static void test_treeview_and_listbox_data_preserve_embedded_nuls(void) {
     printf("test_treeview_and_listbox_data_preserve_embedded_nuls: PASSED\n");
 }
 
+static void test_listbox_selection_changed_is_edge_triggered(void) {
+    vg_listbox_t *listbox = vg_listbox_create(NULL);
+    assert(listbox);
+    vg_listbox_item_t *first = vg_listbox_add_item(listbox, "first", NULL);
+    vg_listbox_item_t *second = vg_listbox_add_item(listbox, "second", NULL);
+    assert(first);
+    assert(second);
+
+    assert(rt_listbox_was_selection_changed(listbox) == 0);
+    rt_listbox_select(listbox, first);
+    assert(rt_listbox_was_selection_changed(listbox) == 1);
+    assert(rt_listbox_was_selection_changed(listbox) == 0);
+
+    rt_listbox_select(listbox, first);
+    assert(rt_listbox_was_selection_changed(listbox) == 0);
+
+    rt_listbox_select(listbox, second);
+    assert(rt_listbox_was_selection_changed(listbox) == 1);
+    assert(rt_listbox_was_selection_changed(listbox) == 0);
+
+    vg_widget_destroy(&listbox->base);
+    printf("test_listbox_selection_changed_is_edge_triggered: PASSED\n");
+}
+
+static void test_removed_listbox_and_treeview_handles_are_inert(void) {
+    vg_listbox_t *listbox = vg_listbox_create(NULL);
+    assert(listbox);
+    void *item = rt_listbox_add_item(listbox, rt_const_cstr("item"));
+    assert(item);
+    rt_listbox_item_set_data(item, rt_const_cstr("payload"));
+    rt_listbox_remove_item(listbox, item);
+    assert(rt_str_len(rt_listbox_item_get_text(item)) == 0);
+    assert(rt_str_len(rt_listbox_item_get_data(item)) == 0);
+    rt_listbox_item_set_text(item, rt_const_cstr("ignored"));
+    rt_listbox_select(listbox, item);
+    assert(rt_listbox_get_selected(listbox) == NULL);
+
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    assert(tree);
+    vg_tree_node_t *node = vg_treeview_add_node(tree, NULL, "node");
+    assert(node);
+    vg_tree_node_t *child = vg_treeview_add_node(tree, node, "child");
+    assert(child);
+    rt_treeview_node_set_data(child, rt_const_cstr("payload"));
+    vg_treeview_remove_node(tree, node);
+    assert(rt_str_len(rt_treeview_node_get_text(node)) == 0);
+    assert(rt_str_len(rt_treeview_node_get_text(child)) == 0);
+    assert(rt_str_len(rt_treeview_node_get_data(child)) == 0);
+    rt_treeview_node_set_data(child, rt_const_cstr("ignored"));
+    rt_treeview_select(tree, child);
+    assert(rt_treeview_get_selected(tree) == NULL);
+    assert(rt_treeview_node_is_expanded(child) == 0);
+
+    vg_widget_destroy(&tree->base);
+    vg_widget_destroy(&listbox->base);
+    printf("test_removed_listbox_and_treeview_handles_are_inert: PASSED\n");
+}
+
+static void test_contextmenu_separator_returns_item_handle(void) {
+    void *menu = rt_contextmenu_new();
+    assert(menu);
+    void *separator = rt_contextmenu_add_separator(menu);
+    assert(separator);
+    assert(rt_menuitem_is_separator(separator) == 1);
+
+    rt_contextmenu_destroy(menu);
+    printf("test_contextmenu_separator_returns_item_handle: PASSED\n");
+}
+
+static void test_filedialog_show_without_active_window_returns_zero(void) {
+    rt_gui_activate_app(NULL);
+    void *dialog = rt_filedialog_new_open();
+    assert(dialog);
+    assert(rt_filedialog_show(dialog) == 0);
+    assert(rt_filedialog_get_path_count(dialog) == 0);
+    assert(rt_str_len(rt_filedialog_get_path(dialog)) == 0);
+    rt_filedialog_destroy(dialog);
+
+    printf("test_filedialog_show_without_active_window_returns_zero: PASSED\n");
+}
+
+static void test_commandpalette_methods_after_destroy_are_inert(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *palette = rt_commandpalette_new(&app);
+    assert(palette);
+    rt_commandpalette_add_command(
+        palette, rt_const_cstr("open"), rt_const_cstr("Open"), rt_const_cstr("File"));
+    rt_commandpalette_show(palette);
+    assert(rt_commandpalette_is_visible(palette) == 1);
+    rt_commandpalette_destroy(palette);
+    assert(app.command_palette_count == 0);
+
+    rt_commandpalette_add_command(
+        palette, rt_const_cstr("save"), rt_const_cstr("Save"), rt_const_cstr("File"));
+    rt_commandpalette_add_command_with_shortcut(palette,
+                                                rt_const_cstr("close"),
+                                                rt_const_cstr("Close"),
+                                                rt_const_cstr("File"),
+                                                rt_const_cstr("Ctrl+W"));
+    rt_commandpalette_remove_command(palette, rt_const_cstr("save"));
+    rt_commandpalette_clear(palette);
+    rt_commandpalette_show(palette);
+    rt_commandpalette_hide(palette);
+    rt_commandpalette_set_placeholder(palette, rt_const_cstr("Run command"));
+    assert(rt_commandpalette_is_visible(palette) == 0);
+    assert(rt_commandpalette_was_command_selected(palette) == 0);
+    assert(rt_str_len(rt_commandpalette_get_selected_command(palette)) == 0);
+
+    cleanup_fake_app(&app);
+    printf("test_commandpalette_methods_after_destroy_are_inert: PASSED\n");
+}
+
 static void test_numeric_setters_sanitize_invalid_values(void) {
     vg_widget_t *widget = vg_widget_create(VG_WIDGET_CONTAINER);
     assert(widget);
@@ -806,6 +942,7 @@ int main(void) {
     test_notification_cleanup_runs_for_manual_dismiss();
     test_command_palette_placeholder_and_utf8_input();
     test_platform_text_events_translate_to_gui_text();
+    test_platform_scroll_events_keep_screen_coordinates_separate();
     test_app_handles_resolve_to_root_widgets_for_overlays();
     test_codeeditor_runtime_supports_multicursor_editing();
     test_codeeditor_runtime_pixel_helpers_follow_scroll_and_wrap();
@@ -821,6 +958,11 @@ int main(void) {
     test_widget_focus_null_is_noop();
     test_image_set_pixels_converts_viper_pixels_to_rgba();
     test_treeview_and_listbox_data_preserve_embedded_nuls();
+    test_listbox_selection_changed_is_edge_triggered();
+    test_removed_listbox_and_treeview_handles_are_inert();
+    test_contextmenu_separator_returns_item_handle();
+    test_filedialog_show_without_active_window_returns_zero();
+    test_commandpalette_methods_after_destroy_are_inert();
     test_numeric_setters_sanitize_invalid_values();
     test_font_destroy_defers_live_app_font();
     test_detached_widgets_do_not_inherit_current_app_font();

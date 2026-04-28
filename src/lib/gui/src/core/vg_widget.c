@@ -28,6 +28,8 @@ extern void vg_tooltip_manager_widget_hidden(vg_widget_t *widget);
 //=============================================================================
 
 static uint32_t g_next_widget_id = 1;
+#define VG_WIDGET_MAGIC UINT64_C(0x5647505749444745)
+#define VG_WIDGET_DESTROYED_MAGIC UINT64_C(0x5647505744524F50)
 static vg_widget_t *g_focused_widget = NULL;
 static vg_widget_t *g_input_capture_widget = NULL;
 static vg_widget_t *g_modal_root = NULL;
@@ -37,6 +39,8 @@ static uint64_t g_last_click_time_ms = 0;
 static int32_t g_last_click_button = -1;
 static float g_last_click_screen_x = 0.0f;
 static float g_last_click_screen_y = 0.0f;
+static vg_widget_t *g_reported_click_widget = NULL;
+static uint64_t g_reported_click_time_ms = 0;
 
 static bool widget_paints_children_internally(const vg_widget_t *widget) {
     if (!widget)
@@ -363,6 +367,7 @@ void vg_widget_init(vg_widget_t *widget, vg_widget_type_t type, const vg_widget_
     memset(widget, 0, sizeof(vg_widget_t));
 
     widget->type = type;
+    widget->magic = VG_WIDGET_MAGIC;
     widget->vtable = vtable ? vtable : &g_default_vtable;
     widget->id = vg_widget_next_id();
     widget->visible = true;
@@ -370,6 +375,10 @@ void vg_widget_init(vg_widget_t *widget, vg_widget_type_t type, const vg_widget_
     widget->needs_layout = true;
     widget->needs_paint = true;
     widget->tab_index = -1; // -1 = natural traversal order
+}
+
+bool vg_widget_is_live(const vg_widget_t *widget) {
+    return widget && widget->magic == VG_WIDGET_MAGIC;
 }
 
 //=============================================================================
@@ -388,7 +397,7 @@ vg_widget_t *vg_widget_create(vg_widget_type_t type) {
 
 /// @brief Widget destroy.
 void vg_widget_destroy(vg_widget_t *widget) {
-    if (!widget)
+    if (!vg_widget_is_live(widget))
         return;
 
     if (widget->parent) {
@@ -444,6 +453,10 @@ void vg_widget_destroy(vg_widget_t *widget) {
         g_last_click_screen_x = 0.0f;
         g_last_click_screen_y = 0.0f;
     }
+    if (g_reported_click_widget == widget) {
+        g_reported_click_widget = NULL;
+        g_reported_click_time_ms = 0;
+    }
 
     // Notify tooltip manager so it does not retain a dangling pointer.
     vg_tooltip_manager_widget_destroyed(widget);
@@ -451,6 +464,7 @@ void vg_widget_destroy(vg_widget_t *widget) {
     widget->parent = NULL;
     widget->prev_sibling = NULL;
     widget->next_sibling = NULL;
+    widget->magic = VG_WIDGET_DESTROYED_MAGIC;
     free(widget);
 }
 
@@ -814,6 +828,10 @@ void vg_widget_set_enabled(vg_widget_t *widget, bool enabled) {
             g_last_click_screen_x = 0.0f;
             g_last_click_screen_y = 0.0f;
         }
+        if (g_reported_click_widget && widget_is_ancestor(widget, g_reported_click_widget)) {
+            g_reported_click_widget = NULL;
+            g_reported_click_time_ms = 0;
+        }
         vg_tooltip_manager_widget_hidden(widget);
         clear_interactive_state_recursive(widget);
     }
@@ -851,6 +869,10 @@ void vg_widget_set_visible(vg_widget_t *widget, bool visible) {
             g_last_click_button = -1;
             g_last_click_screen_x = 0.0f;
             g_last_click_screen_y = 0.0f;
+        }
+        if (g_reported_click_widget && widget_is_ancestor(widget, g_reported_click_widget)) {
+            g_reported_click_widget = NULL;
+            g_reported_click_time_ms = 0;
         }
         vg_tooltip_manager_widget_hidden(widget);
         clear_interactive_state_recursive(widget);
@@ -1068,6 +1090,8 @@ void vg_widget_get_runtime_state(vg_widget_runtime_state_t *state) {
     state->last_click_button = g_last_click_button;
     state->last_click_screen_x = g_last_click_screen_x;
     state->last_click_screen_y = g_last_click_screen_y;
+    state->reported_click_widget = g_reported_click_widget;
+    state->reported_click_time_ms = g_reported_click_time_ms;
 }
 
 void vg_widget_set_runtime_state(const vg_widget_runtime_state_t *state) {
@@ -1081,6 +1105,8 @@ void vg_widget_set_runtime_state(const vg_widget_runtime_state_t *state) {
         g_last_click_button = -1;
         g_last_click_screen_x = 0.0f;
         g_last_click_screen_y = 0.0f;
+        g_reported_click_widget = NULL;
+        g_reported_click_time_ms = 0;
         return;
     }
     g_focused_widget = state->focused_widget;
@@ -1092,6 +1118,20 @@ void vg_widget_set_runtime_state(const vg_widget_runtime_state_t *state) {
     g_last_click_button = state->last_click_button;
     g_last_click_screen_x = state->last_click_screen_x;
     g_last_click_screen_y = state->last_click_screen_y;
+    g_reported_click_widget = state->reported_click_widget;
+    g_reported_click_time_ms = state->reported_click_time_ms;
+}
+
+void vg_widget_note_click(vg_widget_t *widget, uint64_t timestamp_ms) {
+    if (!vg_widget_is_live(widget))
+        return;
+    g_reported_click_widget = widget;
+    g_reported_click_time_ms = timestamp_ms;
+}
+
+void vg_widget_clear_reported_click(void) {
+    g_reported_click_widget = NULL;
+    g_reported_click_time_ms = 0;
 }
 
 //=============================================================================

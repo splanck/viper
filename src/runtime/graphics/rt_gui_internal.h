@@ -159,6 +159,10 @@ static inline int rt_gui_is_app_handle(const void *handle) {
     return rt_gui_is_app_handle_known(handle);
 }
 
+static inline int rt_gui_is_widget_handle(const void *handle) {
+    return handle && vg_widget_is_live((const vg_widget_t *)handle);
+}
+
 static inline rt_gui_app_t *rt_gui_app_handle_checked(void *handle) {
     return rt_gui_is_app_handle(handle) ? (rt_gui_app_t *)handle : NULL;
 }
@@ -170,7 +174,7 @@ static inline rt_gui_app_t *rt_gui_app_from_handle(void *handle) {
         return (rt_gui_app_t *)handle;
     if (rt_gui_is_destroyed_app_handle(handle))
         return NULL;
-    return rt_gui_app_from_widget((vg_widget_t *)handle);
+    return rt_gui_is_widget_handle(handle) ? rt_gui_app_from_widget((vg_widget_t *)handle) : NULL;
 }
 
 static inline vg_widget_t *rt_gui_widget_parent_from_handle(void *handle) {
@@ -182,7 +186,7 @@ static inline vg_widget_t *rt_gui_widget_parent_from_handle(void *handle) {
     }
     if (rt_gui_is_destroyed_app_handle(handle))
         return NULL;
-    return (vg_widget_t *)handle;
+    return rt_gui_is_widget_handle(handle) ? (vg_widget_t *)handle : NULL;
 }
 
 #define RT_GUI_MAX_LAYOUT_VALUE 1000000.0

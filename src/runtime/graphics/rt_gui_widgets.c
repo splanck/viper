@@ -758,6 +758,8 @@ rt_string rt_treeview_node_get_text(void *node) {
     if (!node)
         return rt_str_empty();
     vg_tree_node_t *n = (vg_tree_node_t *)node;
+    if (!vg_tree_node_is_live(n))
+        return rt_str_empty();
     if (!n->text)
         return rt_str_empty();
     return rt_string_from_bytes(n->text, strlen(n->text));
@@ -769,6 +771,8 @@ void rt_treeview_node_set_data(void *node, rt_string data) {
     if (!node)
         return;
     vg_tree_node_t *n = (vg_tree_node_t *)node;
+    if (!vg_tree_node_is_live(n))
+        return;
     // Free old data if it exists and is owned by the runtime string wrapper.
     if (n->owns_user_data && n->user_data)
         free(n->user_data);
@@ -783,6 +787,8 @@ rt_string rt_treeview_node_get_data(void *node) {
     if (!node)
         return rt_str_empty();
     vg_tree_node_t *n = (vg_tree_node_t *)node;
+    if (!vg_tree_node_is_live(n))
+        return rt_str_empty();
     if (!n->user_data || !n->owns_user_data)
         return rt_str_empty();
     return rt_gui_string_data_to_rt_string(n->user_data);
@@ -794,6 +800,8 @@ int64_t rt_treeview_node_is_expanded(void *node) {
     if (!node)
         return 0;
     vg_tree_node_t *n = (vg_tree_node_t *)node;
+    if (!vg_tree_node_is_live(n))
+        return 0;
     return n->expanded ? 1 : 0;
 }
 

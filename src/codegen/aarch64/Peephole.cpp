@@ -93,29 +93,44 @@ static std::unordered_map<std::string, std::vector<std::size_t>> buildPredecesso
     std::unordered_map<std::string, std::vector<std::size_t>> preds;
     for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi) {
         const auto &block = fn.blocks[bi];
-        if (block.instrs.empty()) {
+        const auto addPred = [&](const std::string &label) {
+            preds[label].push_back(bi);
+        };
+        const auto addFallthrough = [&]() {
             if (bi + 1 < fn.blocks.size())
-                preds[fn.blocks[bi + 1].name].push_back(bi);
+                addPred(fn.blocks[bi + 1].name);
+        };
+        const auto isConditionalBranch = [](const MInstr &instr) {
+            return instr.opc == MOpcode::BCond || instr.opc == MOpcode::Cbz ||
+                   instr.opc == MOpcode::Cbnz;
+        };
+        if (block.instrs.empty()) {
+            addFallthrough();
             continue;
         }
 
         const auto &last = block.instrs.back();
         if (last.opc == MOpcode::Br && !last.ops.empty() &&
             last.ops[0].kind == MOperand::Kind::Label) {
-            preds[last.ops[0].label].push_back(bi);
+            if (block.instrs.size() >= 2) {
+                const auto &prev = block.instrs[block.instrs.size() - 2];
+                if (isConditionalBranch(prev) && prev.ops.size() >= 2 &&
+                    prev.ops[1].kind == MOperand::Kind::Label)
+                    addPred(prev.ops[1].label);
+            }
+            addPred(last.ops[0].label);
             continue;
         }
 
-        if ((last.opc == MOpcode::BCond || last.opc == MOpcode::Cbz || last.opc == MOpcode::Cbnz) &&
-            last.ops.size() >= 2 && last.ops[1].kind == MOperand::Kind::Label) {
-            preds[last.ops[1].label].push_back(bi);
-            if (bi + 1 < fn.blocks.size())
-                preds[fn.blocks[bi + 1].name].push_back(bi);
+        if (isConditionalBranch(last) && last.ops.size() >= 2 &&
+            last.ops[1].kind == MOperand::Kind::Label) {
+            addPred(last.ops[1].label);
+            addFallthrough();
             continue;
         }
 
-        if (last.opc != MOpcode::Ret && bi + 1 < fn.blocks.size())
-            preds[fn.blocks[bi + 1].name].push_back(bi);
+        if (last.opc != MOpcode::Ret)
+            addFallthrough();
     }
     return preds;
 }
@@ -668,21 +683,7 @@ PeepholeStats runPeephole(MFunction &fn) {
     // If B has multiple predecessors, different paths may store different values
     // to the same FP offset.
     {
-        // Build predecessor count for each block from branch targets.
-        std::unordered_map<std::string, std::size_t> predCount;
-        for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi) {
-            for (const auto &mi : fn.blocks[bi].instrs) {
-                if (mi.opc == MOpcode::Br && !mi.ops.empty() &&
-                    mi.ops[0].kind == MOperand::Kind::Label)
-                    ++predCount[mi.ops[0].label];
-                else if (mi.opc == MOpcode::BCond && mi.ops.size() >= 2 &&
-                         mi.ops[1].kind == MOperand::Kind::Label)
-                    ++predCount[mi.ops[1].label];
-                else if ((mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz) &&
-                         mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
-                    ++predCount[mi.ops[1].label];
-            }
-        }
+        const auto preds = buildPredecessorMap(fn);
 
         for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi) {
             auto &predInstrs = fn.blocks[bi].instrs;
@@ -692,9 +693,12 @@ PeepholeStats runPeephole(MFunction &fn) {
             if (predInstrs.empty() || succInstrs.empty())
                 continue;
 
-            // Only forward to blocks with exactly one predecessor
-            auto pcIt = predCount.find(succBlock.name);
-            if (pcIt == predCount.end() || pcIt->second != 1)
+            // Only forward to blocks with exactly one real predecessor. This
+            // must include fallthrough edges; otherwise short-circuit boolean
+            // joins can be miscompiled by forwarding only one incoming value.
+            auto predIt = preds.find(succBlock.name);
+            if (predIt == preds.end() || predIt->second.size() != 1 ||
+                predIt->second.front() != bi)
                 continue;
 
             // Verify the layout predecessor actually reaches the successor.

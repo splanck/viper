@@ -685,6 +685,10 @@ vg_dropdown_t *vg_dropdown_create(vg_widget_t *parent) {
     dropdown->hovered_index = -1;
     dropdown->item_capacity = 8;
     dropdown->items = calloc(dropdown->item_capacity, sizeof(char *));
+    if (!dropdown->items) {
+        free(dropdown);
+        return NULL;
+    }
 
     // Default appearance
     dropdown->font = theme->typography.font_regular;
@@ -721,6 +725,8 @@ int vg_dropdown_add_item(vg_dropdown_t *dropdown, const char *text) {
     }
 
     dropdown->items[dropdown->item_count] = strdup(text);
+    if (!dropdown->items[dropdown->item_count])
+        return -1;
     dropdown->base.needs_layout = true;
     dropdown->base.needs_paint = true;
     return dropdown->item_count++;
@@ -731,6 +737,9 @@ void vg_dropdown_remove_item(vg_dropdown_t *dropdown, int index) {
     if (!dropdown || index < 0 || index >= dropdown->item_count)
         return;
 
+    if (dropdown->open)
+        dropdown_close(&dropdown->base, dropdown);
+
     free(dropdown->items[index]);
 
     // Shift remaining items
@@ -738,6 +747,7 @@ void vg_dropdown_remove_item(vg_dropdown_t *dropdown, int index) {
         dropdown->items[i] = dropdown->items[i + 1];
     }
     dropdown->item_count--;
+    dropdown->items[dropdown->item_count] = NULL;
 
     // Adjust selected index
     if (dropdown->selected_index == index) {
@@ -759,8 +769,12 @@ void vg_dropdown_clear(vg_dropdown_t *dropdown) {
     if (!dropdown)
         return;
 
+    if (dropdown->open)
+        dropdown_close(&dropdown->base, dropdown);
+
     for (int i = 0; i < dropdown->item_count; i++) {
         free(dropdown->items[i]);
+        dropdown->items[i] = NULL;
     }
     dropdown->item_count = 0;
     dropdown->selected_index = -1;

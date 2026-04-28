@@ -560,8 +560,8 @@ TEST(wheel_delta_survives_localize_call) {
     ev.type = VG_EVENT_MOUSE_WHEEL;
     ev.wheel.delta_x = 2.5f;
     ev.wheel.delta_y = -7.5f;
-    ev.mouse.screen_x = 100.0f;
-    ev.mouse.screen_y = 200.0f;
+    ev.wheel.screen_x = 100.0f;
+    ev.wheel.screen_y = 200.0f;
 
     // Snapshot the on-wire delta (aliased to mouse.x/y).
     float before_dx = ev.wheel.delta_x;
@@ -588,6 +588,140 @@ TEST(wheel_delta_survives_localize_call) {
     ASSERT_EQ(ev.wheel.delta_y, before_dy);
 
     vg_widget_destroy(w);
+}
+
+TEST(button_keyboard_activation_reports_actual_click) {
+    vg_button_t *button = vg_button_create(NULL, "Run");
+    ASSERT_NOT_NULL(button);
+
+    vg_widget_clear_reported_click();
+    vg_event_t key = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_ENTER, 0, 0);
+    key.timestamp = 777;
+    ASSERT_TRUE(vg_event_send(&button->base, &key));
+
+    vg_widget_runtime_state_t state = {0};
+    vg_widget_get_runtime_state(&state);
+    ASSERT(state.reported_click_widget == &button->base);
+    ASSERT_EQ(state.reported_click_time_ms, (uint64_t)777);
+
+    vg_widget_clear_reported_click();
+    key.timestamp = 778;
+    key.key.repeat = true;
+    ASSERT_TRUE(vg_event_send(&button->base, &key));
+    vg_widget_get_runtime_state(&state);
+    ASSERT_NULL(state.reported_click_widget);
+
+    vg_widget_destroy(&button->base);
+}
+
+TEST(mouseup_outside_pressed_widget_does_not_report_click) {
+    vg_button_t *button = vg_button_create(NULL, "Run");
+    ASSERT_NOT_NULL(button);
+    vg_widget_arrange(&button->base, 0.0f, 0.0f, 80.0f, 30.0f);
+
+    vg_widget_clear_reported_click();
+    vg_event_t down = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 10.0f, 10.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_FALSE(vg_event_send(&button->base, &down));
+
+    vg_event_t up = vg_event_mouse(VG_EVENT_MOUSE_UP, 120.0f, 120.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_FALSE(vg_event_send(&button->base, &up));
+
+    vg_widget_runtime_state_t state = {0};
+    vg_widget_get_runtime_state(&state);
+    ASSERT_NULL(state.reported_click_widget);
+
+    vg_widget_destroy(&button->base);
+}
+
+TEST(listbox_removed_item_handle_is_inert) {
+    vg_listbox_t *listbox = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(listbox);
+    vg_listbox_item_t *item = vg_listbox_add_item(listbox, "alpha", NULL);
+    ASSERT_NOT_NULL(item);
+
+    vg_listbox_remove_item(listbox, item);
+    ASSERT_FALSE(vg_listbox_item_is_live(item));
+    vg_listbox_select(listbox, item);
+    ASSERT_NULL(listbox->selected);
+
+    vg_widget_destroy(&listbox->base);
+}
+
+TEST(treeview_removed_node_handles_are_inert) {
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    ASSERT_NOT_NULL(tree);
+    vg_tree_node_t *parent = vg_treeview_add_node(tree, NULL, "parent");
+    ASSERT_NOT_NULL(parent);
+    vg_tree_node_t *child = vg_treeview_add_node(tree, parent, "child");
+    ASSERT_NOT_NULL(child);
+
+    vg_treeview_remove_node(tree, parent);
+    ASSERT_FALSE(vg_tree_node_is_live(parent));
+    ASSERT_FALSE(vg_tree_node_is_live(child));
+
+    vg_treeview_select(tree, child);
+    ASSERT_NULL(tree->selected);
+    vg_tree_node_set_data(child, (void *)0x1234);
+    ASSERT_NULL(vg_treeview_add_node(tree, child, "grandchild"));
+
+    vg_widget_destroy(&tree->base);
+}
+
+TEST(scrollview_auto_content_size_tracks_child_measurement) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    vg_scrollview_t *scroll = vg_scrollview_create(root);
+    ASSERT_NOT_NULL(scroll);
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(child);
+    vg_widget_add_child(&scroll->base, child);
+
+    vg_widget_set_preferred_size(child, 60.0f, 40.0f);
+    vg_widget_arrange(&scroll->base, 0.0f, 0.0f, 100.0f, 30.0f);
+    ASSERT_EQ(scroll->content_height, 40.0f);
+
+    vg_widget_set_preferred_size(child, 60.0f, 90.0f);
+    vg_widget_arrange(&scroll->base, 0.0f, 0.0f, 100.0f, 30.0f);
+    ASSERT_EQ(scroll->content_height, 90.0f);
+    ASSERT_TRUE(scroll->show_v_scrollbar);
+
+    vg_widget_destroy(root);
+}
+
+TEST(dropdown_clear_closes_open_capture) {
+    vg_dropdown_t *dropdown = vg_dropdown_create(NULL);
+    ASSERT_NOT_NULL(dropdown);
+    ASSERT_EQ(vg_dropdown_add_item(dropdown, "one"), 0);
+    ASSERT_EQ(vg_dropdown_add_item(dropdown, "two"), 1);
+
+    dropdown->open = true;
+    vg_widget_set_input_capture(&dropdown->base);
+    ASSERT(vg_widget_get_input_capture() == &dropdown->base);
+
+    vg_dropdown_clear(dropdown);
+    ASSERT_FALSE(dropdown->open);
+    ASSERT_NULL(vg_widget_get_input_capture());
+    ASSERT_EQ(dropdown->item_count, 0);
+
+    vg_widget_destroy(&dropdown->base);
+}
+
+TEST(contextmenu_separator_returns_item_handle) {
+    vg_contextmenu_t *menu = vg_contextmenu_create();
+    ASSERT_NOT_NULL(menu);
+
+    vg_menu_item_t *separator = vg_contextmenu_add_separator(menu);
+    ASSERT_NOT_NULL(separator);
+    ASSERT_TRUE(separator->separator);
+    ASSERT(separator->owner_contextmenu == menu);
+    ASSERT_EQ(menu->item_count, (size_t)1);
+
+    vg_widget_destroy(&menu->base);
+}
+
+TEST(widget_live_sentinel_rejects_non_widget_storage) {
+    uint64_t not_a_widget = 0;
+    ASSERT_FALSE(vg_widget_is_live((const vg_widget_t *)&not_a_widget));
 }
 
 // A3: Dropdown flip-above logic. Without a real window the flip-above branch
@@ -849,6 +983,14 @@ int main(void) {
 
     printf("\nRound 2 — Critical regressions + audit findings\n");
     RUN(wheel_delta_survives_localize_call);
+    RUN(button_keyboard_activation_reports_actual_click);
+    RUN(mouseup_outside_pressed_widget_does_not_report_click);
+    RUN(listbox_removed_item_handle_is_inert);
+    RUN(treeview_removed_node_handles_are_inert);
+    RUN(scrollview_auto_content_size_tracks_child_measurement);
+    RUN(dropdown_clear_closes_open_capture);
+    RUN(contextmenu_separator_returns_item_handle);
+    RUN(widget_live_sentinel_rejects_non_widget_storage);
     RUN(dropdown_flip_above_without_window_is_noop);
     RUN(scrollview_narrow_still_hit_tests_children);
     RUN(tooltip_wrap_terminates_on_whitespace_only_text);

@@ -21,16 +21,21 @@
 #define VG_DOUBLE_CLICK_MAX_DISTANCE_PX 5.0f
 
 static bool event_has_widget_local_mouse_coords(vg_event_type_t type) {
-    // NOTE: VG_EVENT_MOUSE_WHEEL is intentionally excluded. In vg_event_t, the
-    // `mouse` and `wheel` payload structs share a union, so mouse.x/y alias
-    // wheel.delta_x/y. If we localized wheel events, the widget-local writes
-    // would destroy the scroll deltas before the widget's wheel handler could
-    // read them — causing wheel scrolling to silently do nothing. Wheel events
-    // carry screen_x/y for hit-test routing but do not need widget-local
-    // coordinates, so we leave mouse.x/y untouched (== wheel deltas).
+    // Wheel events carry their own screen coordinates. They do not have
+    // widget-local x/y because those slots are the scroll deltas.
     return type == VG_EVENT_MOUSE_MOVE || type == VG_EVENT_MOUSE_DOWN ||
            type == VG_EVENT_MOUSE_UP || type == VG_EVENT_CLICK ||
            type == VG_EVENT_DOUBLE_CLICK;
+}
+
+static float event_screen_x(const vg_event_t *event) {
+    return event && event->type == VG_EVENT_MOUSE_WHEEL ? event->wheel.screen_x
+                                                        : event->mouse.screen_x;
+}
+
+static float event_screen_y(const vg_event_t *event) {
+    return event && event->type == VG_EVENT_MOUSE_WHEEL ? event->wheel.screen_y
+                                                        : event->mouse.screen_y;
 }
 
 static void event_localize_mouse_to_widget(vg_widget_t *widget, vg_event_t *event) {
@@ -283,9 +288,8 @@ vg_event_t vg_event_from_platform(void *platform_event) {
             event.type = VG_EVENT_MOUSE_WHEEL;
             event.wheel.delta_x = pe->data.scroll.delta_x;
             event.wheel.delta_y = pe->data.scroll.delta_y;
-            /* Also populate mouse.screen_x/y for hit-test routing in vg_event_dispatch */
-            event.mouse.screen_x = (float)pe->data.scroll.x;
-            event.mouse.screen_y = (float)pe->data.scroll.y;
+            event.wheel.screen_x = (float)pe->data.scroll.x;
+            event.wheel.screen_y = (float)pe->data.scroll.y;
             break;
 
         case VGFX_EVENT_RESIZE:
@@ -334,7 +338,7 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
             if (event->type == VG_EVENT_MOUSE_UP) {
                 bool handled = vg_event_send(capture, event);
                 if (!vg_widget_contains_point(
-                        capture, event->mouse.screen_x, event->mouse.screen_y)) {
+                        capture, event_screen_x(event), event_screen_y(event))) {
                     vg_event_t click_event = *event;
                     click_event.type = VG_EVENT_CLICK;
                     event_localize_mouse_to_widget(capture, &click_event);
@@ -344,7 +348,7 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
                     vg_widget_t *modal = vg_widget_get_modal_root();
                     vg_widget_t *hit_root = (modal && modal->visible) ? modal : root;
                     vg_widget_t *target =
-                        vg_widget_hit_test(hit_root, event->mouse.screen_x, event->mouse.screen_y);
+                        vg_widget_hit_test(hit_root, event_screen_x(event), event_screen_y(event));
                     update_hovered_widget(target);
                 }
                 return handled;
@@ -355,7 +359,7 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
                 vg_widget_t *modal = vg_widget_get_modal_root();
                 vg_widget_t *hit_root = (modal && modal->visible) ? modal : root;
                 vg_widget_t *target =
-                    vg_widget_hit_test(hit_root, event->mouse.screen_x, event->mouse.screen_y);
+                    vg_widget_hit_test(hit_root, event_screen_x(event), event_screen_y(event));
                 update_hovered_widget(target);
             }
             return handled;
@@ -367,7 +371,7 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
         vg_widget_t *hit_root = (modal && modal->visible) ? modal : root;
 
         vg_widget_t *target =
-            vg_widget_hit_test(hit_root, event->mouse.screen_x, event->mouse.screen_y);
+            vg_widget_hit_test(hit_root, event_screen_x(event), event_screen_y(event));
         update_hovered_widget(target);
         if (!target && modal && modal->visible) {
             // Click landed outside the modal dialog: swallow the event silently.
@@ -463,6 +467,8 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
     bool handled = event->handled;
 
     event_localize_mouse_to_widget(widget, event);
+    if (event->type == VG_EVENT_CLICK)
+        vg_widget_note_click(widget, event->timestamp);
 
     // Handle common state changes for mouse events
     if (event->type == VG_EVENT_MOUSE_ENTER) {

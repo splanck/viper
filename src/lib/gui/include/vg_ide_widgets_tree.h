@@ -92,7 +92,7 @@ vg_menu_item_t *vg_contextmenu_add_submenu(vg_contextmenu_t *menu,
                                            vg_contextmenu_t *submenu);
 
 /// @brief Add a separator to the context menu
-void vg_contextmenu_add_separator(vg_contextmenu_t *menu);
+vg_menu_item_t *vg_contextmenu_add_separator(vg_contextmenu_t *menu);
 
 /// @brief Clear all items from the context menu
 void vg_contextmenu_clear(vg_contextmenu_t *menu);
@@ -147,6 +147,8 @@ void vg_contextmenu_set_font(vg_contextmenu_t *menu, vg_font_t *font, float size
 
 /// @brief Tree node structure
 typedef struct vg_tree_node {
+    uint64_t magic;               ///< Live-node sentinel for stale handle detection
+    struct vg_treeview *owner;    ///< Owning tree while node is live
     const char *text;            ///< Node text (owned)
     void *user_data;             ///< User data associated with node
     bool owns_user_data;         ///< True when user_data is owned and should be freed
@@ -159,6 +161,7 @@ typedef struct vg_tree_node {
     struct vg_tree_node *last_child;
     struct vg_tree_node *next_sibling;
     struct vg_tree_node *prev_sibling;
+    struct vg_tree_node *retired_next; ///< Retired-subtree list link
     int child_count;
     int depth; ///< Depth in tree (0 = root)
 
@@ -207,6 +210,7 @@ typedef struct vg_treeview {
     vg_tree_node_t *root;          ///< Root node (hidden, children are top-level)
     vg_tree_node_t *selected;      ///< Currently selected node
     vg_tree_node_t *prev_selected; ///< Previous selection (for change detection)
+    vg_tree_node_t *retired_nodes; ///< Detached stale node subtrees freed on tree destroy
     vg_font_t *font;               ///< Font for rendering
     float font_size;               ///< Font size
 
@@ -261,6 +265,9 @@ vg_treeview_t *vg_treeview_create(vg_widget_t *parent);
 
 /// @brief Get tree root node
 vg_tree_node_t *vg_treeview_get_root(vg_treeview_t *tree);
+
+/// @brief Return true when a node handle still belongs to a live tree.
+bool vg_tree_node_is_live(const vg_tree_node_t *node);
 
 /// @brief Add a child node
 vg_tree_node_t *vg_treeview_add_node(vg_treeview_t *tree, vg_tree_node_t *parent, const char *text);

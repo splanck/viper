@@ -852,8 +852,8 @@ TEST(filedialog_save_field_supports_cursor_editing_and_list_scroll) {
     vg_event_t wheel = {0};
     wheel.type = VG_EVENT_MOUSE_WHEEL;
     wheel.wheel.delta_y = -1.0f;
-    wheel.mouse.screen_x = 220.0f;
-    wheel.mouse.screen_y = 120.0f;
+    wheel.wheel.screen_x = 220.0f;
+    wheel.wheel.screen_y = 120.0f;
     ASSERT_TRUE(dialog->base.base.vtable->handle_event(&dialog->base.base, &wheel));
     ASSERT(dialog->file_scroll_y > 0.0f);
 

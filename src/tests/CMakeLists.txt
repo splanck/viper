@@ -926,6 +926,14 @@ set_tests_properties(zia_smoke_crackman PROPERTIES
         LABELS "zia;smoke"
         TIMEOUT 30)
 
+add_test(NAME zia_smoke_crackman_movement
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/crackman/movement_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/crackman")
+set_tests_properties(zia_smoke_crackman_movement PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;smoke"
+        TIMEOUT 30)
+
 add_test(NAME zia_smoke_xenoscape
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/xenoscape/smoke_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/xenoscape")
@@ -1058,6 +1066,14 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_chess_ai_native.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_chess_ai_arm64 PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "zia;smoke;native-link"
+            TIMEOUT 120)
+
+    add_test(NAME native_smoke_crackman_movement_arm64
+            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_crackman_movement_native.sh"
+            $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(native_smoke_crackman_movement_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link"
             TIMEOUT 120)

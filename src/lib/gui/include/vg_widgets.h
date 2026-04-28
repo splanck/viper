@@ -425,8 +425,12 @@ typedef struct vg_scrollview {
 
     float scroll_x;                  ///< Horizontal scroll position
     float scroll_y;                  ///< Vertical scroll position
-    float content_width;             ///< Content width (0 = auto from children)
-    float content_height;            ///< Content height (0 = auto from children)
+    float content_width;             ///< Effective content width after auto/explicit resolution
+    float content_height;            ///< Effective content height after auto/explicit resolution
+    float explicit_content_width;    ///< Caller-provided content width, when has_explicit_content_width
+    float explicit_content_height;   ///< Caller-provided content height, when has_explicit_content_height
+    bool has_explicit_content_width; ///< Keep width fixed instead of deriving from children
+    bool has_explicit_content_height;///< Keep height fixed instead of deriving from children
     vg_scroll_direction_t direction; ///< Scroll direction
 
     // Scrollbars
@@ -487,12 +491,15 @@ void vg_scrollview_set_direction(vg_scrollview_t *scroll, vg_scroll_direction_t 
 
 /// @brief ListBox item structure
 typedef struct vg_listbox_item {
+    uint64_t magic;      ///< Live-item sentinel for stale handle detection
+    struct vg_listbox *owner; ///< Owning listbox while the item is live
     char *text;          ///< Item text (owned)
     void *user_data;     ///< User data
     bool owns_user_data; ///< Free user_data when the item is destroyed
     bool selected;       ///< Is item selected
     struct vg_listbox_item *next;
     struct vg_listbox_item *prev;
+    struct vg_listbox_item *retired_next; ///< Retired-item list link
 } vg_listbox_item_t;
 
 /// @brief ListBox selection callback
@@ -527,7 +534,9 @@ typedef struct vg_listbox {
     int item_count;                   ///< Number of items
     vg_listbox_item_t *selected;      ///< Currently selected item
     vg_listbox_item_t *prev_selected; ///< Previous selection (for change detection)
+    vg_listbox_item_t *anchor_selected; ///< Range-selection anchor (non-virtual mode)
     vg_listbox_item_t *hovered;       ///< Currently hovered item
+    vg_listbox_item_t *retired_items; ///< Detached stale handles freed when listbox is destroyed
 
     vg_font_t *font;   ///< Font for rendering
     float font_size;   ///< Font size
@@ -555,6 +564,7 @@ typedef struct vg_listbox {
     size_t selection_bitmap_size; ///< Bitmap size
     size_t selected_index;        ///< Currently selected index (virtual mode)
     size_t prev_selected_index;   ///< Previous selected index (virtual mode change detection)
+    size_t anchor_selected_index; ///< Range-selection anchor (virtual mode)
     size_t hovered_index;         ///< Currently hovered index (virtual mode)
 
     // Appearance
@@ -589,6 +599,9 @@ void vg_listbox_select(vg_listbox_t *listbox, vg_listbox_item_t *item);
 
 /// @brief Get selected item
 vg_listbox_item_t *vg_listbox_get_selected(vg_listbox_t *listbox);
+
+/// @brief Return true when an item handle still belongs to a live listbox.
+bool vg_listbox_item_is_live(const vg_listbox_item_t *item);
 
 /// @brief Set font for listbox
 void vg_listbox_set_font(vg_listbox_t *listbox, vg_font_t *font, float size);

@@ -73,6 +73,8 @@ typedef struct vg_widget_runtime_state {
     int32_t last_click_button;
     float last_click_screen_x;
     float last_click_screen_y;
+    vg_widget_t *reported_click_widget;
+    uint64_t reported_click_time_ms;
 } vg_widget_runtime_state_t;
 
 //=============================================================================
@@ -267,6 +269,8 @@ typedef struct vg_widget_vtable {
 ///          user-supplied callbacks, and an opaque pointer to implementation-
 ///          specific data.
 struct vg_widget {
+    uint64_t magic; ///< Live-widget sentinel used by runtime handle validation.
+
     // Type and vtable
     vg_widget_type_t type;            ///< Runtime type discriminator.
     const vg_widget_vtable_t *vtable; ///< Virtual dispatch table for this widget type.
@@ -375,6 +379,9 @@ struct vg_widget {
 /// @param type   The concrete widget type tag.
 /// @param vtable Pointer to the virtual function table for this widget type.
 void vg_widget_init(vg_widget_t *widget, vg_widget_type_t type, const vg_widget_vtable_t *vtable);
+
+/// @brief Return true when @p widget points at a live ViperGUI widget.
+bool vg_widget_is_live(const vg_widget_t *widget);
 
 /// @brief Allocate and initialise a generic container widget.
 ///
@@ -755,6 +762,12 @@ void vg_widget_get_runtime_state(vg_widget_runtime_state_t *state);
 
 /// @brief Restore toolkit-global widget runtime state from a prior snapshot.
 void vg_widget_set_runtime_state(const vg_widget_runtime_state_t *state);
+
+/// @brief Record that a real click activation occurred on @p widget.
+void vg_widget_note_click(vg_widget_t *widget, uint64_t timestamp_ms);
+
+/// @brief Clear the per-dispatch click activation marker.
+void vg_widget_clear_reported_click(void);
 
 //=============================================================================
 // Focus Management

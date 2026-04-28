@@ -17,6 +17,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define VG_LISTBOX_ITEM_MAGIC UINT64_C(0x56474C424954454D)
+#define VG_LISTBOX_ITEM_RETIRED_MAGIC UINT64_C(0x56474C4244524F50)
+
 //=============================================================================
 // Forward declarations
 //=============================================================================
@@ -41,6 +44,9 @@ static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
                                                   size_t index,
                                                   bool toggle,
                                                   bool range);
+static void listbox_free_item_payload(vg_listbox_item_t *item);
+static void listbox_retire_item(vg_listbox_t *lb, vg_listbox_item_t *item);
+static void listbox_free_retired_items(vg_listbox_t *lb);
 
 //=============================================================================
 // VTable
@@ -81,7 +87,7 @@ static vg_listbox_item_t *listbox_item_at_index_nonvirtual(vg_listbox_t *lb, siz
 }
 
 static size_t listbox_index_of_item(vg_listbox_t *lb, vg_listbox_item_t *target) {
-    if (!lb || !target)
+    if (!lb || !vg_listbox_item_is_live(target) || target->owner != lb)
         return SIZE_MAX;
     size_t index = 0;
     for (vg_listbox_item_t *item = lb->first_item; item; item = item->next, index++) {
@@ -89,6 +95,53 @@ static size_t listbox_index_of_item(vg_listbox_t *lb, vg_listbox_item_t *target)
             return index;
     }
     return SIZE_MAX;
+}
+
+bool vg_listbox_item_is_live(const vg_listbox_item_t *item) {
+    return item && item->magic == VG_LISTBOX_ITEM_MAGIC && item->owner != NULL;
+}
+
+static void listbox_free_item_payload(vg_listbox_item_t *item) {
+    if (!item)
+        return;
+    free(item->text);
+    item->text = NULL;
+    if (item->owns_user_data)
+        free(item->user_data);
+    item->user_data = NULL;
+    item->owns_user_data = false;
+}
+
+static void listbox_free_item(vg_listbox_item_t *item) {
+    if (!item)
+        return;
+    listbox_free_item_payload(item);
+    free(item);
+}
+
+static void listbox_retire_item(vg_listbox_t *lb, vg_listbox_item_t *item) {
+    if (!lb || !item)
+        return;
+    listbox_free_item_payload(item);
+    item->magic = VG_LISTBOX_ITEM_RETIRED_MAGIC;
+    item->owner = NULL;
+    item->selected = false;
+    item->next = NULL;
+    item->prev = NULL;
+    item->retired_next = lb->retired_items;
+    lb->retired_items = item;
+}
+
+static void listbox_free_retired_items(vg_listbox_t *lb) {
+    if (!lb)
+        return;
+    vg_listbox_item_t *item = lb->retired_items;
+    while (item) {
+        vg_listbox_item_t *next = item->retired_next;
+        listbox_free_item(item);
+        item = next;
+    }
+    lb->retired_items = NULL;
 }
 
 static size_t listbox_virtual_item_count(const vg_listbox_t *lb) {
@@ -210,19 +263,19 @@ static void listbox_select_nonvirtual_with_modifiers(vg_listbox_t *lb,
                                                      vg_listbox_item_t *item,
                                                      bool toggle,
                                                      bool range) {
-    if (!lb || !item)
+    if (!lb || !vg_listbox_item_is_live(item) || item->owner != lb)
         return;
 
     if (!lb->multi_select || (!toggle && !range)) {
         listbox_clear_nonvirtual_selection(lb);
         item->selected = true;
         lb->selected = item;
-        lb->prev_selected = item;
+        lb->anchor_selected = item;
         return;
     }
 
     if (range) {
-        vg_listbox_item_t *anchor = lb->prev_selected ? lb->prev_selected : lb->selected;
+        vg_listbox_item_t *anchor = lb->anchor_selected ? lb->anchor_selected : lb->selected;
         size_t anchor_index = listbox_index_of_item(lb, anchor ? anchor : item);
         size_t target_index = listbox_index_of_item(lb, item);
         if (anchor_index == SIZE_MAX || target_index == SIZE_MAX) {
@@ -244,7 +297,7 @@ static void listbox_select_nonvirtual_with_modifiers(vg_listbox_t *lb,
 
     item->selected = !item->selected;
     lb->selected = item;
-    lb->prev_selected = item;
+    lb->anchor_selected = item;
 }
 
 static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
@@ -259,12 +312,13 @@ static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
         lb->selected_index = index;
         if (index < lb->selection_bitmap_size)
             lb->selection_bitmap[index] = true;
-        lb->prev_selected_index = index;
+        lb->anchor_selected_index = index;
         return;
     }
 
     if (range) {
-        size_t anchor = lb->prev_selected_index < lb->total_item_count ? lb->prev_selected_index : index;
+        size_t anchor =
+            lb->anchor_selected_index < lb->total_item_count ? lb->anchor_selected_index : index;
         size_t start = anchor < index ? anchor : index;
         size_t end = anchor > index ? anchor : index;
         listbox_clear_virtual_selection(lb);
@@ -277,7 +331,7 @@ static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
     if (index < lb->selection_bitmap_size)
         lb->selection_bitmap[index] = !lb->selection_bitmap[index];
     lb->selected_index = index;
-    lb->prev_selected_index = index;
+    lb->anchor_selected_index = index;
 }
 
 static void listbox_destroy(vg_widget_t *widget) {
@@ -290,6 +344,7 @@ static void listbox_destroy(vg_widget_t *widget) {
     free(lb->selection_bitmap);
     lb->selection_bitmap = NULL;
     lb->selection_bitmap_size = 0;
+    listbox_free_retired_items(lb);
 }
 
 static float listbox_default_item_height(vg_listbox_t *lb) {
@@ -677,6 +732,7 @@ vg_listbox_t *vg_listbox_create(vg_widget_t *parent) {
     listbox->border_color = _lb_theme->colors.border_primary;
     listbox->selected_index = SIZE_MAX;
     listbox->prev_selected_index = SIZE_MAX;
+    listbox->anchor_selected_index = SIZE_MAX;
     listbox->hovered_index = SIZE_MAX;
     listbox->item_height = listbox_default_item_height(listbox);
 
@@ -696,6 +752,12 @@ vg_listbox_item_t *vg_listbox_add_item(vg_listbox_t *listbox, const char *text, 
         return NULL;
 
     item->text = strdup(text);
+    if (!item->text) {
+        free(item);
+        return NULL;
+    }
+    item->magic = VG_LISTBOX_ITEM_MAGIC;
+    item->owner = listbox;
     item->user_data = user_data;
 
     // Add to end of list
@@ -715,7 +777,7 @@ vg_listbox_item_t *vg_listbox_add_item(vg_listbox_t *listbox, const char *text, 
 
 /// @brief Listbox remove item.
 void vg_listbox_remove_item(vg_listbox_t *listbox, vg_listbox_item_t *item) {
-    if (!listbox || !item)
+    if (!listbox || !vg_listbox_item_is_live(item) || item->owner != listbox)
         return;
 
     if (item->prev)
@@ -732,11 +794,12 @@ void vg_listbox_remove_item(vg_listbox_t *listbox, vg_listbox_item_t *item) {
         listbox->selected = NULL;
     if (listbox->hovered == item)
         listbox->hovered = NULL;
+    if (listbox->anchor_selected == item)
+        listbox->anchor_selected = listbox->selected;
+    if (listbox->prev_selected == item)
+        listbox->prev_selected = NULL;
 
-    free(item->text);
-    if (item->owns_user_data)
-        free(item->user_data);
-    free(item);
+    listbox_retire_item(listbox, item);
     listbox->item_count--;
     listbox->base.needs_layout = true;
     listbox->base.needs_paint = true;
@@ -750,16 +813,14 @@ void vg_listbox_clear(vg_listbox_t *listbox) {
     vg_listbox_item_t *item = listbox->first_item;
     while (item) {
         vg_listbox_item_t *next = item->next;
-        free(item->text);
-        if (item->owns_user_data)
-            free(item->user_data);
-        free(item);
+        listbox_retire_item(listbox, item);
         item = next;
     }
 
     listbox->first_item = listbox->last_item = NULL;
     listbox->selected = listbox->hovered = NULL;
     listbox->prev_selected = NULL;
+    listbox->anchor_selected = NULL;
     listbox->item_count = 0;
     listbox->base.needs_layout = true;
     listbox->base.needs_paint = true;
@@ -769,6 +830,8 @@ void vg_listbox_clear(vg_listbox_t *listbox) {
 void vg_listbox_select(vg_listbox_t *listbox, vg_listbox_item_t *item) {
     if (!listbox)
         return;
+    if (item && (!vg_listbox_item_is_live(item) || item->owner != listbox))
+        return;
 
     if (!listbox->multi_select)
         listbox_clear_nonvirtual_selection(listbox);
@@ -776,7 +839,7 @@ void vg_listbox_select(vg_listbox_t *listbox, vg_listbox_item_t *item) {
     listbox->selected = item;
     if (item) {
         item->selected = true;
-        listbox->prev_selected = item;
+        listbox->anchor_selected = item;
         if (listbox->on_select) {
             listbox->on_select(&listbox->base, item, listbox->on_select_data);
         }
@@ -828,6 +891,7 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
     listbox->total_item_count = total_count;
     listbox->hovered_index = SIZE_MAX;
     listbox->prev_selected_index = SIZE_MAX;
+    listbox->anchor_selected_index = SIZE_MAX;
     if (item_height > 0) {
         listbox->item_height = item_height;
     }
@@ -839,6 +903,7 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
         listbox->selection_bitmap_size = total_count;
         listbox->selected_index = SIZE_MAX; // None selected
         listbox->prev_selected_index = SIZE_MAX;
+        listbox->anchor_selected_index = SIZE_MAX;
 
         // Allocate visible-item cache (capped at 64 — enough for one viewport page)
         size_t cap = total_count < 64 ? total_count : 64;
@@ -855,6 +920,7 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
         listbox->selection_bitmap_size = 0;
         listbox->selected_index = SIZE_MAX;
         listbox->prev_selected_index = SIZE_MAX;
+        listbox->anchor_selected_index = SIZE_MAX;
     }
 
     // Reset scroll and invalidate
@@ -900,7 +966,10 @@ void vg_listbox_set_total_count(vg_listbox_t *listbox, size_t count) {
     if (listbox->selected_index >= count) {
         listbox->selected_index = SIZE_MAX;
         listbox->prev_selected_index = SIZE_MAX;
+        listbox->anchor_selected_index = SIZE_MAX;
     }
+    if (listbox->anchor_selected_index >= count)
+        listbox->anchor_selected_index = SIZE_MAX;
 
     // Clamp scroll position
     float max_scroll = count * listbox->item_height - listbox->base.height;

@@ -35,9 +35,7 @@ static void scrollview_render_overlay_subtree(vg_widget_t *widget,
                                               float parent_abs_y);
 static void scrollview_recompute_content_size(vg_scrollview_t *scroll,
                                               float available_width,
-                                              float available_height,
-                                              float explicit_content_width,
-                                              float explicit_content_height);
+                                              float available_height);
 static void scrollview_get_viewport_size(const vg_scrollview_t *scroll,
                                          float *out_width,
                                          float *out_height);
@@ -98,10 +96,10 @@ static void calculate_content_size(vg_scrollview_t *scroll,
         flow_y = bottom;
     }
 
-    if (scroll->content_width <= 0)
-        scroll->content_width = auto_width;
-    if (scroll->content_height <= 0)
-        scroll->content_height = auto_height;
+    scroll->content_width =
+        scroll->has_explicit_content_width ? scroll->explicit_content_width : auto_width;
+    scroll->content_height =
+        scroll->has_explicit_content_height ? scroll->explicit_content_height : auto_height;
 }
 
 static float scrollbar_thumb_size(float track_size, float content_size, float viewport_size) {
@@ -197,15 +195,9 @@ static void scrollview_get_viewport_size(const vg_scrollview_t *scroll,
 
 static void scrollview_recompute_content_size(vg_scrollview_t *scroll,
                                               float available_width,
-                                              float available_height,
-                                              float explicit_content_width,
-                                              float explicit_content_height) {
+                                              float available_height) {
     if (!scroll)
         return;
-    if (explicit_content_width <= 0.0f)
-        scroll->content_width = 0.0f;
-    if (explicit_content_height <= 0.0f)
-        scroll->content_height = 0.0f;
     calculate_content_size(scroll, available_width, available_height);
 }
 
@@ -229,6 +221,10 @@ vg_scrollview_t *vg_scrollview_create(vg_widget_t *parent) {
     scroll->scroll_y = 0;
     scroll->content_width = 0;  // Auto
     scroll->content_height = 0; // Auto
+    scroll->explicit_content_width = 0.0f;
+    scroll->explicit_content_height = 0.0f;
+    scroll->has_explicit_content_width = false;
+    scroll->has_explicit_content_height = false;
     scroll->direction = VG_SCROLL_BOTH;
 
     // Scrollbars
@@ -290,13 +286,10 @@ static void scrollview_arrange(vg_widget_t *widget, float x, float y, float widt
     widget->width = width;
     widget->height = height;
 
-    float explicit_content_width = scroll->content_width;
-    float explicit_content_height = scroll->content_height;
     float content_area_width = width;
     float content_area_height = height;
 
-    scrollview_recompute_content_size(
-        scroll, content_area_width, content_area_height, explicit_content_width, explicit_content_height);
+    scrollview_recompute_content_size(scroll, content_area_width, content_area_height);
 
     // Determine if scrollbars are needed
     bool needs_h = false;
@@ -311,8 +304,7 @@ static void scrollview_arrange(vg_widget_t *widget, float x, float y, float widt
             if (pass_height < 0.0f)
                 pass_height = 0.0f;
 
-            scrollview_recompute_content_size(
-                scroll, pass_width, pass_height, explicit_content_width, explicit_content_height);
+            scrollview_recompute_content_size(scroll, pass_width, pass_height);
 
             bool new_h =
                 (scroll->direction & VG_SCROLL_HORIZONTAL) && scroll->content_width > pass_width;
@@ -337,8 +329,7 @@ static void scrollview_arrange(vg_widget_t *widget, float x, float y, float widt
     if (content_area_height < 0.0f)
         content_area_height = 0.0f;
 
-    scrollview_recompute_content_size(
-        scroll, content_area_width, content_area_height, explicit_content_width, explicit_content_height);
+    scrollview_recompute_content_size(scroll, content_area_width, content_area_height);
 
     // Clamp scroll position
     clamp_scroll(scroll);
@@ -711,8 +702,18 @@ void vg_scrollview_set_content_size(vg_scrollview_t *scroll, float width, float 
     if (!scroll)
         return;
 
-    scroll->content_width = width;
-    scroll->content_height = height;
+    scroll->has_explicit_content_width = width > 0.0f;
+    scroll->has_explicit_content_height = height > 0.0f;
+    scroll->explicit_content_width = scroll->has_explicit_content_width ? width : 0.0f;
+    scroll->explicit_content_height = scroll->has_explicit_content_height ? height : 0.0f;
+    if (scroll->has_explicit_content_width)
+        scroll->content_width = width;
+    else
+        scroll->content_width = 0.0f;
+    if (scroll->has_explicit_content_height)
+        scroll->content_height = height;
+    else
+        scroll->content_height = 0.0f;
     clamp_scroll(scroll);
     scroll->base.needs_layout = true;
     scroll->base.needs_paint = true;

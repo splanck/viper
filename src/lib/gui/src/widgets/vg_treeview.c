@@ -13,8 +13,12 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define VG_TREE_NODE_MAGIC UINT64_C(0x564754524E4F4445)
+#define VG_TREE_NODE_RETIRED_MAGIC UINT64_C(0x5647545244524F50)
 
 //=============================================================================
 // Forward Declarations
@@ -27,6 +31,8 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event);
 static bool treeview_can_focus(vg_widget_t *widget);
 
 static void free_node(vg_tree_node_t *node);
+static void free_retired_nodes(vg_treeview_t *tree);
+static void retire_node_subtree(vg_treeview_t *tree, vg_tree_node_t *node);
 static int count_visible_nodes(vg_tree_node_t *node);
 static vg_tree_node_t *get_node_at_index(vg_tree_node_t *root, int index, int *current);
 static int get_node_index(vg_tree_node_t *root, vg_tree_node_t *target, int *current);
@@ -86,6 +92,54 @@ static void free_node(vg_tree_node_t *node) {
         node->user_data = NULL;
     }
     free(node);
+}
+
+static void mark_node_subtree_retired(vg_tree_node_t *node) {
+    if (!node)
+        return;
+    for (vg_tree_node_t *child = node->first_child; child; child = child->next_sibling)
+        mark_node_subtree_retired(child);
+    if (node->text) {
+        free((void *)node->text);
+        node->text = NULL;
+    }
+    if (node->owns_user_data && node->user_data) {
+        free(node->user_data);
+        node->user_data = NULL;
+    }
+    node->owns_user_data = false;
+    node->selected = false;
+    node->loading = false;
+    node->owner = NULL;
+    node->magic = VG_TREE_NODE_RETIRED_MAGIC;
+}
+
+static void retire_node_subtree(vg_treeview_t *tree, vg_tree_node_t *node) {
+    if (!tree || !node)
+        return;
+    mark_node_subtree_retired(node);
+    node->parent = NULL;
+    node->prev_sibling = NULL;
+    node->next_sibling = NULL;
+    node->retired_next = tree->retired_nodes;
+    tree->retired_nodes = node;
+}
+
+static void free_retired_nodes(vg_treeview_t *tree) {
+    if (!tree)
+        return;
+    vg_tree_node_t *node = tree->retired_nodes;
+    while (node) {
+        vg_tree_node_t *next = node->retired_next;
+        node->retired_next = NULL;
+        free_node(node);
+        node = next;
+    }
+    tree->retired_nodes = NULL;
+}
+
+bool vg_tree_node_is_live(const vg_tree_node_t *node) {
+    return node && node->magic == VG_TREE_NODE_MAGIC && node->owner != NULL;
 }
 
 static int count_visible_nodes(vg_tree_node_t *node) {
@@ -325,6 +379,8 @@ vg_treeview_t *vg_treeview_create(vg_widget_t *parent) {
     }
     tree->root->expanded = true; // Root is always expanded
     tree->root->depth = -1;
+    tree->root->magic = VG_TREE_NODE_MAGIC;
+    tree->root->owner = tree;
 
     // Get theme
     vg_theme_t *theme = vg_theme_get_current();
@@ -375,6 +431,7 @@ static void treeview_destroy(vg_widget_t *widget) {
         free_node(tree->root);
         tree->root = NULL;
     }
+    free_retired_nodes(tree);
 }
 
 static void treeview_measure(vg_widget_t *widget, float available_width, float available_height) {
@@ -863,12 +920,22 @@ vg_tree_node_t *vg_treeview_add_node(vg_treeview_t *tree,
         return NULL;
 
     node->text = text ? strdup(text) : strdup("");
+    if (!node->text) {
+        free(node);
+        return NULL;
+    }
+    node->magic = VG_TREE_NODE_MAGIC;
+    node->owner = tree;
     node->expanded = false;
     node->selected = false;
     node->has_children = false;
 
     // Add to parent
     vg_tree_node_t *actual_parent = parent ? parent : tree->root;
+    if (!vg_tree_node_is_live(actual_parent) || actual_parent->owner != tree) {
+        free_node(node);
+        return NULL;
+    }
     node->parent = actual_parent;
     node->depth = actual_parent->depth + 1;
 
@@ -891,16 +958,23 @@ vg_tree_node_t *vg_treeview_add_node(vg_treeview_t *tree,
 
 /// @brief Treeview remove node.
 void vg_treeview_remove_node(vg_treeview_t *tree, vg_tree_node_t *node) {
-    if (!tree || !node || node == tree->root)
+    if (!tree || !vg_tree_node_is_live(node) || node->owner != tree || node == tree->root)
         return;
 
     // Update selection if needed
     if (node_in_subtree(node, tree->selected)) {
         tree->selected = NULL;
     }
+    if (node_in_subtree(node, tree->prev_selected)) {
+        tree->prev_selected = NULL;
+    }
     if (node_in_subtree(node, tree->hovered)) {
         tree->hovered = NULL;
     }
+    if (node_in_subtree(node, tree->drag_node))
+        tree->drag_node = NULL;
+    if (node_in_subtree(node, tree->drop_target))
+        tree->drop_target = NULL;
 
     // Remove from parent's child list
     vg_tree_node_t *parent = node->parent;
@@ -919,7 +993,7 @@ void vg_treeview_remove_node(vg_treeview_t *tree, vg_tree_node_t *node) {
         parent->has_children = parent->first_child != NULL;
     }
 
-    free_node(node);
+    retire_node_subtree(tree, node);
 
     tree->base.needs_layout = true;
     tree->base.needs_paint = true;
@@ -930,11 +1004,12 @@ void vg_treeview_clear(vg_treeview_t *tree) {
     if (!tree)
         return;
 
-    // Free all children of root
+    // Retire all children of root so stale node handles remain safely inert
+    // until the tree itself is destroyed.
     vg_tree_node_t *child = tree->root->first_child;
     while (child) {
         vg_tree_node_t *next = child->next_sibling;
-        free_node(child);
+        retire_node_subtree(tree, child);
         child = next;
     }
 
@@ -943,6 +1018,7 @@ void vg_treeview_clear(vg_treeview_t *tree) {
     tree->root->child_count = 0;
     tree->root->has_children = false;
     tree->selected = NULL;
+    tree->prev_selected = NULL;
     tree->hovered = NULL;
     tree->scroll_y = 0;
 
@@ -952,7 +1028,7 @@ void vg_treeview_clear(vg_treeview_t *tree) {
 
 /// @brief Treeview expand.
 void vg_treeview_expand(vg_treeview_t *tree, vg_tree_node_t *node) {
-    if (!tree || !node)
+    if (!tree || !vg_tree_node_is_live(node) || node->owner != tree)
         return;
 
     if (!node->expanded) {
@@ -975,7 +1051,7 @@ void vg_treeview_expand(vg_treeview_t *tree, vg_tree_node_t *node) {
 
 /// @brief Treeview collapse.
 void vg_treeview_collapse(vg_treeview_t *tree, vg_tree_node_t *node) {
-    if (!tree || !node)
+    if (!tree || !vg_tree_node_is_live(node) || node->owner != tree)
         return;
 
     if (node->expanded) {
@@ -996,7 +1072,7 @@ void vg_treeview_collapse(vg_treeview_t *tree, vg_tree_node_t *node) {
 
 /// @brief Treeview toggle.
 void vg_treeview_toggle(vg_treeview_t *tree, vg_tree_node_t *node) {
-    if (!tree || !node)
+    if (!tree || !vg_tree_node_is_live(node) || node->owner != tree)
         return;
 
     if (node->expanded) {
@@ -1009,6 +1085,8 @@ void vg_treeview_toggle(vg_treeview_t *tree, vg_tree_node_t *node) {
 /// @brief Treeview select.
 void vg_treeview_select(vg_treeview_t *tree, vg_tree_node_t *node) {
     if (!tree)
+        return;
+    if (node && (!vg_tree_node_is_live(node) || node->owner != tree))
         return;
 
     if (tree->selected != node) {
@@ -1032,7 +1110,7 @@ void vg_treeview_select(vg_treeview_t *tree, vg_tree_node_t *node) {
 
 /// @brief Treeview scroll to.
 void vg_treeview_scroll_to(vg_treeview_t *tree, vg_tree_node_t *node) {
-    if (!tree || !node)
+    if (!tree || !vg_tree_node_is_live(node) || node->owner != tree)
         return;
 
     // Get node index
@@ -1056,7 +1134,7 @@ void vg_treeview_scroll_to(vg_treeview_t *tree, vg_tree_node_t *node) {
 
 /// @brief Tree node set data.
 void vg_tree_node_set_data(vg_tree_node_t *node, void *data) {
-    if (!node)
+    if (!vg_tree_node_is_live(node))
         return;
 
     if (node->owns_user_data && node->user_data) {
@@ -1116,14 +1194,14 @@ void vg_treeview_set_on_activate(vg_treeview_t *tree,
 //=============================================================================
 
 void vg_tree_node_set_icon(vg_tree_node_t *node, vg_icon_t icon) {
-    if (!node)
+    if (!vg_tree_node_is_live(node))
         return;
     node->icon = icon;
 }
 
 /// @brief Tree node set expanded icon.
 void vg_tree_node_set_expanded_icon(vg_tree_node_t *node, vg_icon_t icon) {
-    if (!node)
+    if (!vg_tree_node_is_live(node))
         return;
     node->expanded_icon = icon;
 }
@@ -1169,14 +1247,14 @@ void vg_treeview_set_on_load_children(vg_treeview_t *tree,
 
 /// @brief Tree node set has children.
 void vg_tree_node_set_has_children(vg_tree_node_t *node, bool has_children) {
-    if (!node)
+    if (!vg_tree_node_is_live(node))
         return;
     node->has_children = has_children;
 }
 
 /// @brief Tree node set loading.
 void vg_tree_node_set_loading(vg_tree_node_t *node, bool loading) {
-    if (!node)
+    if (!vg_tree_node_is_live(node))
         return;
     node->loading = loading;
 }
