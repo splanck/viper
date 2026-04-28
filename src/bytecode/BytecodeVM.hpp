@@ -455,6 +455,18 @@ class BytecodeVM {
     /// @brief Release any string-owning globals before reload or destruction.
     void releaseOwnedGlobals();
 
+    /// @brief Return the global index for an exact pointer to a global slot, or SIZE_MAX.
+    [[nodiscard]] size_t globalIndexForAddress(const void *ptr) const;
+
+    /// @brief Release a string owned by a single global slot.
+    void releaseOwnedGlobalString(size_t idx);
+
+    /// @brief Clear global string ownership before writing raw non-string data through a pointer.
+    void clearGlobalStringOwnershipForRawStore(void *ptr);
+
+    /// @brief Record string ownership when STORE_STR_MEM writes directly to a global slot.
+    void setGlobalStringOwnershipForAddress(void *ptr, bool owns);
+
     /// @brief Release any retained string handles held by the active trap record.
     void clearTrapRecord();
 

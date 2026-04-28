@@ -145,6 +145,15 @@ class BytecodeCompiler {
     /// @param fn The IL function to compile.
     void compileFunction(const il::core::Function &fn);
 
+    /// @brief Register IL globals in the bytecode module before function lowering.
+    /// @param module The source IL module.
+    void registerGlobals(const il::core::Module &module);
+
+    /// @brief Emit a pointer to bytecode global storage.
+    /// @param name Global name to resolve.
+    /// @param loc Source location for diagnostics.
+    void emitGlobalAddress(std::string_view name, il::support::SourceLoc loc);
+
     /// @brief Build the SSA value ID to local slot mapping for a function.
     /// @details Assigns each SSA value (parameters, instruction results) a
     ///          unique local slot index. Parameters occupy the first N slots.

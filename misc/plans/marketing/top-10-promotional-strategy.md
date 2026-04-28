@@ -62,7 +62,7 @@ No other game development platform on Earth can say that.
 Record a **single 2-3 minute video** structured like this:
 
 1. **0:00–0:45** — XENOSCAPE gameplay (Metroid-style sidescroller, 10 levels, bosses, 30+ enemies)
-2. **0:45–1:15** — Quick cuts: Chess AI, Pac-Man, Frogger, Monopoly, VTris
+2. **0:45–1:15** — Quick cuts: Chess AI, Pac-Man, Frogger, VTris
 3. **1:15–1:30** — Flash the Zia source code. It's clean. It's readable.
 4. **1:30–1:45** — `viper build xenoscape` → native binary produced. No external tools.
 5. **1:45–2:00** — Architecture diagram: language → IL → optimizer → assembler → linker → your game

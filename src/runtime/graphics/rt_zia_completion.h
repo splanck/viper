@@ -9,7 +9,8 @@
 //
 // Key invariants:
 //   - Strong implementations live in src/frontends/zia/rt_zia_completion.cpp (fe_zia).
-//   - Weak stub implementations in viper_runtime allow linking without fe_zia.
+//   - Weak stub implementations in viper_runtime allow linking without fe_zia and return
+//     protocol-shaped "completion unavailable" payloads.
 //   - Symbols are resolved at final link time when both fe_zia and viper_runtime are linked.
 //   - Completion API takes source text, cursor line (1-based), and column (0-based).
 //
@@ -35,7 +36,7 @@ extern "C" {
 /// @param line   1-based line number of the cursor.
 /// @param col    0-based column number of the cursor.
 /// @return Tab-delimited completion items: label\tinsertText\tkindInt\tdetail\n
-///         Returns an empty string when no completions are available.
+///         Returns an unavailable item when only the weak runtime stub is linked.
 rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col);
 
 /// @brief Run Zia code completion with the real source file path for relative bind resolution.
@@ -49,6 +50,7 @@ rt_string rt_zia_complete_for_file(rt_string source, rt_string file_path, int64_
 /// @brief Run semantic analysis and return serialized diagnostics for editor tooling.
 /// @param source Zia source text (full file contents).
 /// @return One diagnostic per line encoded as severity\tline\tcol\tcode\tmessage.
+///         The weak runtime stub returns a warning diagnostic explaining that fe_zia is absent.
 rt_string rt_zia_check(rt_string source);
 
 /// @brief Run semantic analysis with the real source file path for relative bind resolution.

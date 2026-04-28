@@ -11,11 +11,11 @@
 // Key invariants:
 //   - Uses the Knuth MMIX LCG multiplier/increment constants for good statistical properties.
 //   - Floating-point output uses the high 53 bits of state for maximum double precision.
-//   - Generator state is process-global; BASIC's random functions are inherently single-stream.
-//   - rt_random_range traps when min > max.
+//   - Generator state is stored per runtime context, with the legacy context used as fallback.
+//   - rt_rand_range normalizes inverted bounds and samples the inclusive range uniformly.
 //
 // Ownership/Lifetime:
-//   - Generator state is a single global variable; not thread-safe.
+//   - Generator state is held by the active RtContext; no separate allocation is made here.
 //   - No heap allocation; all functions are value-returning.
 //
 // Links: src/runtime/core/rt_random.c (implementation)
@@ -56,8 +56,9 @@ long long rt_rand_int(long long max);
 /// @brief Generate a random integer in the range [min, max] (inclusive).
 /// @param min Lower bound (inclusive).
 /// @param max Upper bound (inclusive).
-/// @return A random integer in [min, max].
-/// @details If min > max, the bounds are swapped automatically.
+/// @return A random integer in the normalized inclusive range.
+/// @details If min > max, the bounds are swapped automatically. The full
+///          signed 64-bit range is supported and advances the generator once.
 long long rt_rand_range(long long min, long long max);
 
 /// @brief Generate a random number from a Gaussian (normal) distribution.

@@ -104,6 +104,7 @@ enum class BCOpcode : uint8_t {
     LOAD_ONE = 0x28,     ///< Push i64 one (fast-path constant).
     LOAD_GLOBAL = 0x29,  ///< Push the value of global[arg0:arg1].
     STORE_GLOBAL = 0x2A, ///< Pop TOS and store to global[arg0:arg1].
+    LOAD_GLOBAL_ADDR = 0x2B, ///< Push a pointer to global[arg0:arg1] storage.
 
     // Integer Arithmetic (0x30-0x4F)
     ADD_I64 = 0x30,      ///< Integer addition: a + b.

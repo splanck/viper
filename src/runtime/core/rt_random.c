@@ -37,21 +37,44 @@
 #include "rt_internal.h"
 #include <assert.h>
 #include <math.h>
+#include <stdint.h>
 
 // Forward declare to avoid header dependency (must be at file scope for MSVC)
 extern int64_t rt_seq_len(void *);
 extern void *rt_seq_get(void *, int64_t);
 extern void rt_seq_set(void *, int64_t, void *);
 
+static RtContext *rt_random_context(void) {
+    RtContext *ctx = rt_get_current_context();
+    if (!ctx)
+        ctx = rt_legacy_context();
+    return ctx;
+}
+
+static uint64_t rt_random_next_u64(void) {
+    RtContext *ctx = rt_random_context();
+    ctx->rng_state = ctx->rng_state * 6364136223846793005ULL + 1ULL;
+    return ctx->rng_state;
+}
+
+static uint64_t rt_random_bounded_u64(uint64_t bound) {
+    if (bound == 0)
+        return rt_random_next_u64();
+
+    const uint64_t threshold = (uint64_t)(0ULL - bound) % bound;
+    for (;;) {
+        uint64_t x = rt_random_next_u64();
+        if (x >= threshold)
+            return x % bound;
+    }
+}
+
 /// @brief Seed the random generator with an unsigned 64-bit value.
 /// @details Replaces the linear congruential generator state in the current
 ///          VM's context with the provided seed so that future calls to
 ///          @ref rt_rnd produce the same deterministic sequence.
 void rt_randomize_u64(uint64_t seed) {
-    RtContext *ctx = rt_get_current_context();
-    if (!ctx)
-        ctx = rt_legacy_context();
-    ctx->rng_state = seed;
+    rt_random_context()->rng_state = seed;
 }
 
 /// @brief Seed the random generator with a signed 64-bit value.
@@ -59,10 +82,7 @@ void rt_randomize_u64(uint64_t seed) {
 ///          the current VM's RNG state so that negative seeds map to the
 ///          expected bit patterns produced by the BASIC runtime.
 void rt_randomize_i64(long long seed) {
-    RtContext *ctx = rt_get_current_context();
-    if (!ctx)
-        ctx = rt_legacy_context();
-    ctx->rng_state = (uint64_t)seed;
+    rt_random_context()->rng_state = (uint64_t)seed;
 }
 
 /// @brief Produce a pseudo-random double in the half-open interval [0, 1).
@@ -72,11 +92,7 @@ void rt_randomize_i64(long long seed) {
 ///          range.  The algorithm mirrors the VM implementation so identical
 ///          seeds yield identical sequences across VM instances.
 double rt_rnd(void) {
-    RtContext *ctx = rt_get_current_context();
-    if (!ctx)
-        ctx = rt_legacy_context();
-    ctx->rng_state = ctx->rng_state * 6364136223846793005ULL + 1ULL;
-    uint64_t x = (ctx->rng_state >> 11) & ((1ULL << 53) - 1);
+    uint64_t x = (rt_random_next_u64() >> 11) & ((1ULL << 53) - 1);
     return (double)x * (1.0 / 9007199254740992.0);
 }
 
@@ -87,14 +103,7 @@ double rt_rnd(void) {
 long long rt_rand_int(long long max) {
     if (max <= 0)
         return 0;
-    RtContext *ctx = rt_get_current_context();
-    if (!ctx)
-        ctx = rt_legacy_context();
-    ctx->rng_state = ctx->rng_state * 6364136223846793005ULL + 1ULL;
-    // Use unsigned modulo — has slight modulo bias (~2^-58 per call) which is
-    // negligible for non-cryptographic use. Rejection sampling would eliminate it.
-    uint64_t umax = (uint64_t)max;
-    return (long long)(ctx->rng_state % umax);
+    return (long long)rt_random_bounded_u64((uint64_t)max);
 }
 
 //=============================================================================
@@ -112,10 +121,10 @@ long long rt_rand_range(long long min, long long max) {
     // Use unsigned arithmetic to avoid signed overflow when max - min == LLONG_MAX
     unsigned long long urange = (unsigned long long)max - (unsigned long long)min + 1ULL;
     if (urange == 0) {
-        // Full range (overflow wrapped to 0) — return any random value
-        return (long long)rt_rand_int(0);
+        // Full signed range: every 64-bit LCG state maps to one signed value.
+        return (long long)rt_random_next_u64();
     }
-    return min + (long long)rt_rand_int((long long)urange);
+    return (long long)((uint64_t)min + rt_random_bounded_u64((uint64_t)urange));
 }
 
 /// @brief Generate a random number from a Gaussian (normal) distribution.

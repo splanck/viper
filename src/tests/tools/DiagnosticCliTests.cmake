@@ -127,12 +127,11 @@ if (NOT _fixed_oob_err MATCHES "error\\[V-ZIA-BOUNDS\\]" OR
     message(FATAL_ERROR "fixed-array out-of-bounds diagnostic was not specific:\n${_fixed_oob_err}")
 endif ()
 
-set(_gaddr_il "${TEST_WORK_DIR}/bytecode_gaddr.il")
+set(_gaddr_il "${TEST_WORK_DIR}/bytecode_gaddr_unknown_global.il")
 file(WRITE "${_gaddr_il}" "il 0.2.0\n"
-                          "global const str @gvar = \"test\"\n"
-                          "func @get_addr() -> ptr {\n"
+                          "func @main() -> ptr {\n"
                           "entry:\n"
-                          "  %p = gaddr @gvar\n"
+                          "  %p = gaddr @missing\n"
                           "  ret %p\n"
                           "}\n")
 
@@ -142,11 +141,11 @@ execute_process(
         OUTPUT_VARIABLE _gaddr_out
         ERROR_VARIABLE _gaddr_err)
 if (_gaddr_rc EQUAL 0)
-    message(FATAL_ERROR "bytecode gaddr case unexpectedly succeeded")
+    message(FATAL_ERROR "bytecode gaddr unknown-global case unexpectedly succeeded")
 endif ()
-if (NOT _gaddr_err MATCHES "error\\[V-BC-UNSUPPORTED-GADDR\\]")
-    message(FATAL_ERROR "bytecode gaddr case did not print structured diagnostic:\n${_gaddr_err}")
+if (NOT _gaddr_err MATCHES "error\\[V-BC-UNKNOWN-GLOBAL\\]")
+    message(FATAL_ERROR "bytecode gaddr unknown-global case did not print structured diagnostic:\n${_gaddr_err}")
 endif ()
 if (_gaddr_err MATCHES "libc\\+\\+abi|terminate called|Abort trap|SIGABRT")
-    message(FATAL_ERROR "bytecode gaddr case appears to have crashed:\n${_gaddr_err}")
+    message(FATAL_ERROR "bytecode gaddr unknown-global case appears to have crashed:\n${_gaddr_err}")
 endif ()

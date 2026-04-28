@@ -116,6 +116,21 @@ static vg_icon_t rt_gui_icon_from_pixels(void *pixels) {
     return icon;
 }
 
+static vg_icon_t rt_gui_icon_from_path_cstr(const char *path) {
+    vg_icon_t icon = {0};
+    if (!path || path[0] == '\0')
+        return icon;
+
+    void *pixels = rt_pixels_load(rt_const_cstr(path));
+    if (!pixels)
+        return icon;
+
+    icon = rt_gui_icon_from_pixels(pixels);
+    if (rt_obj_release_check0(pixels))
+        rt_obj_free(pixels);
+    return icon;
+}
+
 /// @brief Create a new menu bar widget at the top of the window.
 /// @details Creates a vg_menubar_t and applies the app's default font. On
 ///          macOS, also registers with the native app menu bar so menus appear
@@ -417,8 +432,14 @@ void rt_menuitem_set_icon(void *item, void *pixels) {
     if (!item)
         return;
     vg_menu_item_t *mi = (vg_menu_item_t *)item;
+    vg_icon_t icon = rt_gui_icon_from_pixels(pixels);
+    if (mi->owner_contextmenu) {
+        vg_contextmenu_item_set_icon(mi, icon);
+        return;
+    }
+
     vg_icon_destroy(&mi->icon);
-    mi->icon = rt_gui_icon_from_pixels(pixels);
+    mi->icon = icon;
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_item(mi));
 }
 
@@ -1019,24 +1040,14 @@ void *rt_toolbar_add_button(void *toolbar, rt_string icon_path, rt_string toolti
     char *cicon = rt_string_to_cstr(icon_path);
     char *ctooltip = rt_string_to_cstr(tooltip);
 
-    vg_icon_t icon = {0};
-    // Only set path icon if there's actually a path
-    if (cicon && cicon[0] != '\0') {
-        icon.type = VG_ICON_PATH;
-        icon.data.path = cicon; // Ownership transferred to item on success
-    } else {
-        icon.type = VG_ICON_NONE;
-        free(cicon); // Empty string, free it
-        cicon = NULL;
-    }
+    vg_icon_t icon = rt_gui_icon_from_path_cstr(cicon);
+    free(cicon);
+    cicon = NULL;
 
     vg_toolbar_item_t *item =
         vg_toolbar_add_button((vg_toolbar_t *)toolbar, NULL, NULL, icon, NULL, NULL);
     if (item) {
         vg_toolbar_item_set_tooltip(item, ctooltip);
-    } else if (cicon) {
-        // Item creation failed, we still own cicon
-        free(cicon);
     }
 
     free(ctooltip);
@@ -1059,16 +1070,9 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
     char *ctext = rt_string_to_cstr(text);
     char *ctooltip = rt_string_to_cstr(tooltip);
 
-    vg_icon_t icon = {0};
-    // Only set path icon if there's actually a path
-    if (cicon && cicon[0] != '\0') {
-        icon.type = VG_ICON_PATH;
-        icon.data.path = cicon; // Ownership transferred to item on success
-    } else {
-        icon.type = VG_ICON_NONE;
-        free(cicon); // Empty string, free it
-        cicon = NULL;
-    }
+    vg_icon_t icon = rt_gui_icon_from_path_cstr(cicon);
+    free(cicon);
+    cicon = NULL;
 
     vg_toolbar_item_t *item =
         vg_toolbar_add_button((vg_toolbar_t *)toolbar, NULL, ctext, icon, NULL, NULL);
@@ -1077,9 +1081,6 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
         // created via AddButtonWithText would otherwise never show their label.
         item->show_label = true;
         vg_toolbar_item_set_tooltip(item, ctooltip);
-    } else if (cicon) {
-        // Item creation failed, we still own cicon
-        free(cicon);
     }
 
     free(ctext);
@@ -1095,24 +1096,14 @@ void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string toolti
     char *cicon = rt_string_to_cstr(icon_path);
     char *ctooltip = rt_string_to_cstr(tooltip);
 
-    vg_icon_t icon = {0};
-    // Only set path icon if there's actually a path
-    if (cicon && cicon[0] != '\0') {
-        icon.type = VG_ICON_PATH;
-        icon.data.path = cicon; // Ownership transferred to item on success
-    } else {
-        icon.type = VG_ICON_NONE;
-        free(cicon); // Empty string, free it
-        cicon = NULL;
-    }
+    vg_icon_t icon = rt_gui_icon_from_path_cstr(cicon);
+    free(cicon);
+    cicon = NULL;
 
     vg_toolbar_item_t *item =
         vg_toolbar_add_toggle((vg_toolbar_t *)toolbar, NULL, NULL, icon, false, NULL, NULL);
     if (item) {
         vg_toolbar_item_set_tooltip(item, ctooltip);
-    } else if (cicon) {
-        // Item creation failed, we still own cicon
-        free(cicon);
     }
 
     free(ctooltip);
@@ -1236,15 +1227,8 @@ void rt_toolbaritem_set_icon(void *item, rt_string icon_path) {
     if (!item)
         return;
     char *cicon = rt_string_to_cstr(icon_path);
-    vg_icon_t icon = {0};
-    // Only set path icon if there's actually a path
-    if (cicon && cicon[0] != '\0') {
-        icon.type = VG_ICON_PATH;
-        icon.data.path = cicon; // Ownership transferred to vg layer — do NOT free
-    } else {
-        icon.type = VG_ICON_NONE;
-        free(cicon);
-    }
+    vg_icon_t icon = rt_gui_icon_from_path_cstr(cicon);
+    free(cicon);
     vg_toolbar_item_set_icon((vg_toolbar_item_t *)item, icon);
 }
 

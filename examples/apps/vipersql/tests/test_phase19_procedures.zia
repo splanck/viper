@@ -57,6 +57,20 @@ func main() -> Integer {
     var substituted = fn2.substituteParams(args);
     assertEq(substituted, "SELECT 10 + 20", "Substituted SQL = SELECT 10 + 20");
 
+    var paramsWithDefault: List[FuncParam] = [];
+    var pRequired = new FuncParam();
+    pRequired.initFull("x", SQL_INTEGER);
+    paramsWithDefault.add(pRequired);
+    var pDefault = new FuncParam();
+    pDefault.initFullDefault("y", SQL_INTEGER, "7");
+    paramsWithDefault.add(pDefault);
+    var fnDefault = new StoredFunction();
+    fnDefault.initFull("ADD_DEFAULT", paramsWithDefault, SQL_INTEGER, "SELECT $1 + $2");
+    var oneArg: List[SqlValue] = [];
+    oneArg.add(sqlInteger(5));
+    assertEqInt(fnDefault.requiredParamCount(), 1, "Defaulted function requires 1 arg");
+    assertEq(fnDefault.substituteParams(oneArg), "SELECT 5 + 7", "Default param substitutes");
+
     // Test 5: toString
     var desc = fn2.toString();
     assert(String.Length(desc) > 0, "toString produces output");
@@ -327,6 +341,25 @@ func main() -> Integer {
     var r36 = exec.executeSql("SELECT square(7)");
     assertSuccess(r36, "square(7) succeeds");
     assertEq(val(r36, 0, 0), "49", "square(7) = 49");
+
+    //=========================================================================
+    // 14. DEFAULT PARAMETERS
+    //=========================================================================
+    section("Default Parameters");
+
+    var r37 = exec.executeSql("CREATE FUNCTION plus_default(x INTEGER, y INTEGER DEFAULT 7) RETURNS INTEGER AS 'SELECT $1 + $2'");
+    assertSuccess(r37, "CREATE FUNCTION plus_default succeeds");
+
+    var r38 = exec.executeSql("SELECT plus_default(5)");
+    assertSuccess(r38, "plus_default(5) succeeds");
+    assertEq(val(r38, 0, 0), "12", "plus_default(5) uses DEFAULT 7");
+
+    var r39 = exec.executeSql("SELECT plus_default(5, 2)");
+    assertSuccess(r39, "plus_default(5,2) succeeds");
+    assertEq(val(r39, 0, 0), "7", "plus_default(5,2) uses explicit arg");
+
+    var r40 = exec.executeSql("CREATE FUNCTION bad_default(a INTEGER DEFAULT 1, b INTEGER) RETURNS INTEGER AS 'SELECT $1 + $2'");
+    assertFailure(r40, "Required parameter after DEFAULT rejected");
 
     //=========================================================================
     // RESULTS

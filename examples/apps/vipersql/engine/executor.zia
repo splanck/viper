@@ -2897,7 +2897,31 @@ class Executor {
                                 parser.advance();
                             }
                             var fp = new FuncParam();
-                            fp.initFull(paramName, paramType);
+                            if parser.currentKind() == TK_DEFAULT {
+                                parser.advance();
+                                var defaultSQL = "";
+                                var depth = 0;
+                                while parser.currentKind() != TK_EOF {
+                                    if parser.currentKind() == TK_LPAREN {
+                                        depth = depth + 1;
+                                    } else if parser.currentKind() == TK_RPAREN {
+                                        if depth == 0 { break; }
+                                        depth = depth - 1;
+                                    } else if parser.currentKind() == TK_COMMA && depth == 0 {
+                                        break;
+                                    }
+                                    var tok = parser.currentText();
+                                    if parser.currentKind() == TK_STRING {
+                                        tok = "'" + tok + "'";
+                                    }
+                                    if String.Length(defaultSQL) > 0 { defaultSQL = defaultSQL + " "; }
+                                    defaultSQL = defaultSQL + tok;
+                                    parser.advance();
+                                }
+                                fp.initFullDefault(paramName, paramType, defaultSQL);
+                            } else {
+                                fp.initFull(paramName, paramType);
+                            }
                             funcParams.add(fp);
                         } else {
                             parser.advance();
@@ -5944,14 +5968,8 @@ class Executor {
         }
         var userFn = fn;
 
-        // Build the SQL body with parameter substitution
-        var bodySqlStr = userFn.bodySQL;
-        var pi = 0;
-        while pi < argSqls.count() {
-            var paramPlaceholder = "$" + Fmt.Int(pi + 1);
-            bodySqlStr = String.Replace(bodySqlStr, paramPlaceholder, argSqls.get(pi));
-            pi = pi + 1;
-        }
+        // Build the SQL body with parameter substitution.
+        var bodySqlStr = userFn.substituteSQLArgs(argSqls);
 
         // Execute the function body
         var fnResult = executeSql(bodySqlStr);

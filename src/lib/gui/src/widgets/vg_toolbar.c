@@ -523,7 +523,7 @@ static vg_contextmenu_t *toolbar_clone_menu_tree(vg_menu_t *menu, vg_toolbar_t *
             vg_contextmenu_item_set_enabled(clone, item->enabled);
             vg_contextmenu_item_set_checked(clone, item->checked);
             if (item->icon.type != VG_ICON_NONE)
-                vg_contextmenu_item_set_icon(clone, item->icon);
+                vg_contextmenu_item_set_icon(clone, vg_icon_clone(&item->icon));
             continue;
         }
 
@@ -535,7 +535,7 @@ static vg_contextmenu_t *toolbar_clone_menu_tree(vg_menu_t *menu, vg_toolbar_t *
         vg_contextmenu_item_set_enabled(clone, item->enabled);
         vg_contextmenu_item_set_checked(clone, item->checked);
         if (item->icon.type != VG_ICON_NONE)
-            vg_contextmenu_item_set_icon(clone, item->icon);
+            vg_contextmenu_item_set_icon(clone, vg_icon_clone(&item->icon));
     }
 
     toolbar_attach_dropdown_callbacks(popup, tb);
@@ -813,7 +813,7 @@ static void toolbar_rebuild_overflow_popup(vg_toolbar_t *tb) {
         if (item->type == VG_TOOLBAR_ITEM_TOGGLE)
             vg_contextmenu_item_set_checked(menu_item, item->checked);
         if (item->icon.type != VG_ICON_NONE)
-            vg_contextmenu_item_set_icon(menu_item, item->icon);
+            vg_contextmenu_item_set_icon(menu_item, vg_icon_clone(&item->icon));
         added_item = true;
     }
 
@@ -1925,6 +1925,25 @@ vg_icon_t vg_icon_from_file(const char *path) {
         icon.type = VG_ICON_NONE;
     }
     return icon;
+}
+
+vg_icon_t vg_icon_clone(const vg_icon_t *icon) {
+    vg_icon_t copy = {0};
+    if (!icon)
+        return copy;
+
+    switch (icon->type) {
+        case VG_ICON_GLYPH:
+            return vg_icon_from_glyph(icon->data.glyph);
+        case VG_ICON_IMAGE:
+            return vg_icon_from_pixels(icon->data.image.pixels,
+                                       icon->data.image.width,
+                                       icon->data.image.height);
+        case VG_ICON_PATH:
+            return vg_icon_from_file(icon->data.path);
+        default:
+            return copy;
+    }
 }
 
 /// @brief Icon destroy.

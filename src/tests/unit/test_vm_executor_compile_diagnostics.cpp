@@ -24,7 +24,7 @@
 
 namespace {
 
-il::core::Module buildUnsupportedBytecodeModule() {
+il::core::Module buildMalformedBytecodeModule() {
     using namespace il::core;
 
     Module module;
@@ -60,14 +60,13 @@ TEST(VMExecutorDiagnostics, BytecodeCompileFailureDoesNotRunVm) {
     il::tools::common::VMExecutorConfig config;
     config.outputTrapMessage = false;
 
-    auto result =
-        il::tools::common::executeBytecodeVM(buildUnsupportedBytecodeModule(), config);
+    auto result = il::tools::common::executeBytecodeVM(buildMalformedBytecodeModule(), config);
 
     EXPECT_EQ(result.exitCode, 1);
     EXPECT_TRUE(result.compileFailed);
     EXPECT_FALSE(result.trapped);
     EXPECT_CONTAINS(result.trapMessage, "bytecode compile failed in @main");
-    EXPECT_CONTAINS(result.trapMessage, "gaddr is not implemented");
+    EXPECT_CONTAINS(result.trapMessage, "unknown global @data");
 }
 
 } // namespace

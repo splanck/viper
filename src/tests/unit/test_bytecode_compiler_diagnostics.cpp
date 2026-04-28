@@ -52,7 +52,7 @@ il::core::Module wrapInMain(il::core::Instr instr) {
     return module;
 }
 
-TEST(BytecodeCompilerDiagnostics, UnsupportedGAddrIsCompileDiagnostic) {
+TEST(BytecodeCompilerDiagnostics, UnknownGAddrGlobalIsCompileDiagnostic) {
     using namespace il::core;
 
     Instr instr;
@@ -66,10 +66,10 @@ TEST(BytecodeCompilerDiagnostics, UnsupportedGAddrIsCompileDiagnostic) {
     auto result = compiler.compileChecked(wrapInMain(std::move(instr)), nullptr, true);
 
     ASSERT_FALSE(result.hasValue());
-    EXPECT_EQ(result.error().code, "V-BC-UNSUPPORTED-GADDR");
+    EXPECT_EQ(result.error().code, "V-BC-UNKNOWN-GLOBAL");
     EXPECT_EQ(result.error().loc.line, 3u);
     EXPECT_CONTAINS(result.error().message, "bytecode compile failed in @main");
-    EXPECT_CONTAINS(result.error().message, "gaddr is not implemented");
+    EXPECT_CONTAINS(result.error().message, "unknown global @data");
 }
 
 TEST(BytecodeCompilerDiagnostics, UnknownStringGlobalIsCompileDiagnostic) {

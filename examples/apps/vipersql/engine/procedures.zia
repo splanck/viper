@@ -12,7 +12,8 @@
 //
 // This file implements the in-memory side of that feature:
 //
-//   * `FuncParam`       — one formal parameter (name + SQL type code).
+//   * `FuncParam`       — one formal parameter (name + SQL type code +
+//                         optional DEFAULT expression).
 //   * `StoredFunction`  — the registered function: name, params,
 //                         return type, raw SQL body, `RETURNS SETOF`
 //                         flag.
@@ -49,7 +50,7 @@
 //   3. Overloading by arity only, not by types.  `findFunction(name,
 //      argCount)` is a best-effort resolver; if no exact-arity match
 //      exists we fall back to name-only.  This catches SQL calls
-//      whose arity matches DEFAULTed parameters PG would resolve to.
+//      whose arity is within the required/defaulted parameter window.
 //      A real multi-type resolver would need a score function over
 //      implicit coercions.
 //
@@ -82,23 +83,35 @@ bind "./types";
 
 /// @brief One formal parameter of a stored function.
 ///
-/// Only a name and SQL type code.  No default value field — PG-style
-/// DEFAULT on parameters is not implemented (the overload resolver
-/// comment above hints at what would need to change).
+/// Holds a name, SQL type code, and optional SQL DEFAULT expression.
 class FuncParam {
     expose String name;
     expose Integer typeCode;    // one of the SQL_* from types.zia
+    expose Boolean hasDefault;
+    expose String defaultSQL;
 
     /// @brief Default: unnamed TEXT parameter.
     expose func init() {
         name = "";
         typeCode = SQL_TEXT;
+        hasDefault = false;
+        defaultSQL = "";
     }
 
     /// @brief Construct with name and type; used by DDL.
     expose func initFull(paramName: String, paramType: Integer) {
         name = paramName;
         typeCode = paramType;
+        hasDefault = false;
+        defaultSQL = "";
+    }
+
+    /// @brief Construct with name, type, and raw SQL default expression.
+    expose func initFullDefault(paramName: String, paramType: Integer, defaultExpr: String) {
+        name = paramName;
+        typeCode = paramType;
+        hasDefault = true;
+        defaultSQL = defaultExpr;
     }
 
     /// @brief "INTEGER", "TEXT", … for rendering in SHOW FUNCTIONS /
@@ -161,6 +174,19 @@ class StoredFunction {
         return params.count();
     }
 
+    /// @brief Number of non-defaulted formal parameters.
+    expose func requiredParamCount() -> Integer {
+        var count = 0;
+        var i = 0;
+        while i < params.count() {
+            if params.get(i).hasDefault == false {
+                count = count + 1;
+            }
+            i = i + 1;
+        }
+        return count;
+    }
+
     /// @brief Positional parameter accessor.  Unchecked — callers
     ///        must have validated against `paramCount()` already.
     expose func getParam(idx: Integer) -> FuncParam {
@@ -181,13 +207,46 @@ class StoredFunction {
     expose func substituteParams(args: List[SqlValue]) -> String {
         var result = bodySQL;
         var i = 0;
-        while i < params.count() && i < args.count() {
+        while i < params.count() {
             var paramIdx = i + 1;
             var placeholder = "$" + Fmt.Int(paramIdx);
-            var argStr = formatArgForSQL(args.get(i));
+            var argStr = "";
+            if i < args.count() {
+                argStr = formatArgForSQL(args.get(i));
+            } else if params.get(i).hasDefault {
+                argStr = params.get(i).defaultSQL;
+            } else {
+                return result;
+            }
             result = replaceAll(result, placeholder, argStr);
             // Named-param substitution.  Flag-don't-fix: lexical, not
             // identifier-aware.
+            var paramName = params.get(i).name;
+            if paramName != "" {
+                result = replaceAll(result, paramName, argStr);
+            }
+            i = i + 1;
+        }
+        return result;
+    }
+
+    /// @brief Substitute raw SQL argument fragments, used by CALL paths that
+    ///        parse arguments as text rather than pre-evaluated SqlValue.
+    expose func substituteSQLArgs(args: List[String]) -> String {
+        var result = bodySQL;
+        var i = 0;
+        while i < params.count() {
+            var paramIdx = i + 1;
+            var placeholder = "$" + Fmt.Int(paramIdx);
+            var argStr = "";
+            if i < args.count() {
+                argStr = args.get(i);
+            } else if params.get(i).hasDefault {
+                argStr = params.get(i).defaultSQL;
+            } else {
+                return result;
+            }
+            result = replaceAll(result, placeholder, argStr);
             var paramName = params.get(i).name;
             if paramName != "" {
                 result = replaceAll(result, paramName, argStr);
@@ -205,6 +264,9 @@ class StoredFunction {
             if i > 0 { result = result + ", "; }
             var p = params.get(i);
             result = result + p.name + " " + p.typeName();
+            if p.hasDefault {
+                result = result + " DEFAULT " + p.defaultSQL;
+            }
             i = i + 1;
         }
         result = result + ") RETURNS " + returnTypeName();
@@ -319,9 +381,7 @@ class FunctionManager {
     ///      the PG-like overload-by-arity path.
     ///   2. If none found, fall back to the first function with the
     ///      matching name regardless of arity — supports
-    ///      DEFAULT-style "call with fewer args" invocations.  Not
-    ///      semantically accurate for true defaults (we have none),
-    ///      but permissive in a way that matches SQLite habits.
+    ///      calls whose omitted trailing args have DEFAULT expressions.
     expose func findFunction(name: String, argCount: Integer) -> StoredFunction? {
         var i = 0;
         while i < functions.count() {
@@ -331,11 +391,12 @@ class FunctionManager {
             }
             i = i + 1;
         }
-        // Name-only fallback.
+        // DEFAULT-aware fallback.
         i = 0;
         while i < functions.count() {
-            if functions.get(i).name == name {
-                return functions.get(i);
+            var defaultFn = functions.get(i);
+            if defaultFn.name == name && argCount >= defaultFn.requiredParamCount() && argCount < defaultFn.paramCount() {
+                return defaultFn;
             }
             i = i + 1;
         }

@@ -202,8 +202,23 @@ func lsCommand(path: String) -> String {
         return "ls: " + path + ": No such directory\n";
     }
 
-    // Simplified version - just show the path for now
-    return "Contents of: " + targetPath + "\n(directory listing not yet implemented)\n";
+    var output = "Contents of: " + targetPath + "\n";
+    var anyEntries = false;
+    for name in IO.Dir.ListSeq(targetPath) {
+        anyEntries = true;
+        var fullPath = IO.Path.Join(targetPath, name);
+        if IO.Dir.Exists(fullPath) {
+            output = output + "  " + name + "/\n";
+        } else {
+            output = output + "  " + name + "\n";
+        }
+    }
+
+    if anyEntries == false {
+        output = output + "  (empty)\n";
+    }
+
+    return output;
 }
 
 // CAT command

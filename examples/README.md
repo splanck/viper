@@ -55,7 +55,6 @@ Playable games showcasing [graphics](../docs/viperlib/graphics/README.md), AI, a
 | [Centipede](games/centipede-basic/) | Terminal centipede | OOP entities, level progression |
 | [Frogger](games/frogger-basic/) | Frogger clone | Multi-lane traffic, river mechanics, OOP |
 | [VTris](games/vtris/) | Tetris | All 7 pieces with rotation, line clearing, level progression |
-| [Monopoly](games/monopoly/) | Monopoly board game | 4 players (1 human + 3 AI), full board, property trading |
 
 ### Shared Game Library
 

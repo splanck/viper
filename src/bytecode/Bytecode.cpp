@@ -63,6 +63,8 @@ const char *opcodeName(BCOpcode op) {
             return "LOAD_GLOBAL";
         case BCOpcode::STORE_GLOBAL:
             return "STORE_GLOBAL";
+        case BCOpcode::LOAD_GLOBAL_ADDR:
+            return "LOAD_GLOBAL_ADDR";
 
         // Integer Arithmetic
         case BCOpcode::ADD_I64:

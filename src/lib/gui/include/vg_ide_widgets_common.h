@@ -81,6 +81,11 @@ vg_icon_t vg_icon_from_pixels(uint8_t *rgba, uint32_t w, uint32_t h);
 /// @return Icon specification
 vg_icon_t vg_icon_from_file(const char *path);
 
+/// @brief Deep-copy an icon
+/// @param icon Icon to copy
+/// @return Copied icon, or VG_ICON_NONE if allocation fails
+vg_icon_t vg_icon_clone(const vg_icon_t *icon);
+
 /// @brief Destroy icon and free resources
 /// @param icon Icon to destroy
 void vg_icon_destroy(vg_icon_t *icon);

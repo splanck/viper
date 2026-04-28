@@ -11,19 +11,21 @@
 //          src/frontends/zia/rt_zia_completion.cpp (part of fe_zia). When
 //          fe_zia is linked the linker prefers those strong symbols; test
 //          binaries that omit fe_zia fall back to these stubs, which return
-//          empty results rather than causing a link error.
+//          protocol-shaped "unavailable" payloads rather than silently
+//          reporting empty editor results.
 //
 // Key invariants:
 //   - Stubs use __attribute__((weak)) on Clang/GCC (macOS, Linux); on MSVC
 //     the define expands to nothing (MSVC builds always link fe_zia).
-//   - rt_zia_complete/check/hover/symbols stubs return rt_str_empty() — a
-//     valid, empty rt_string.
+//   - rt_zia_complete/check/hover/symbols stubs return valid payloads in the
+//     same wire formats as the real completion bridge, with an explicit
+//     unavailable diagnostic/message.
 //   - rt_zia_completion_clear_cache stub is a no-op.
 //   - If fe_zia is linked, none of these functions are called; the overriding
 //     strong symbols in rt_zia_completion.cpp take precedence.
 //
 // Ownership/Lifetime:
-//   - The string-returning stubs return a newly allocated empty string; the
+//   - The string-returning stubs return newly allocated protocol payloads; the
 //     caller owns the reference and must call rt_string_unref when done.
 //   - No heap allocation is performed by rt_zia_completion_clear_cache.
 //
@@ -34,6 +36,8 @@
 
 #include "rt_string.h"
 
+#include <string.h>
+
 #ifndef _MSC_VER
 #define RT_WEAK __attribute__((weak))
 #else
@@ -42,16 +46,24 @@
 #define RT_WEAK
 #endif
 
-/// @brief Weak stub: returns an empty string.
+static rt_string zia_completion_unavailable_string(const char *payload) {
+    return rt_string_from_bytes(payload, strlen(payload));
+}
+
+static const char *const kUnavailableMessage =
+    "Zia completion engine unavailable: link fe_zia to enable editor tooling";
+
+/// @brief Weak stub: returns an unavailable completion item.
 /// Overridden by rt_zia_completion.cpp when fe_zia is linked.
 RT_WEAK rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col) {
     (void)source;
     (void)line;
     (void)col;
-    return rt_str_empty();
+    return zia_completion_unavailable_string(
+        "Zia completion unavailable\t\t8\tlink fe_zia to enable editor completions\n");
 }
 
-/// @brief Weak stub: returns an empty string.
+/// @brief Weak stub: returns an unavailable completion item.
 /// Overridden by rt_zia_completion.cpp when fe_zia is linked.
 RT_WEAK rt_string rt_zia_complete_for_file(rt_string source,
                                            rt_string file_path,
@@ -61,31 +73,33 @@ RT_WEAK rt_string rt_zia_complete_for_file(rt_string source,
     (void)file_path;
     (void)line;
     (void)col;
-    return rt_str_empty();
+    return rt_zia_complete(source, line, col);
 }
 
-/// @brief Weak stub: returns an empty diagnostic payload.
+/// @brief Weak stub: returns an unavailable diagnostic payload.
 RT_WEAK rt_string rt_zia_check(rt_string source) {
     (void)source;
-    return rt_str_empty();
+    return zia_completion_unavailable_string(
+        "1\t1\t1\tV-ZIA-COMP-UNAVAILABLE\tZia completion engine unavailable: link fe_zia "
+        "to enable editor diagnostics\n");
 }
 
-/// @brief Weak stub: returns an empty diagnostic payload.
+/// @brief Weak stub: returns an unavailable diagnostic payload.
 RT_WEAK rt_string rt_zia_check_for_file(rt_string source, rt_string file_path) {
     (void)source;
     (void)file_path;
-    return rt_str_empty();
+    return rt_zia_check(source);
 }
 
-/// @brief Weak stub: returns an empty hover payload.
+/// @brief Weak stub: returns an unavailable hover payload.
 RT_WEAK rt_string rt_zia_hover(rt_string source, int64_t line, int64_t col) {
     (void)source;
     (void)line;
     (void)col;
-    return rt_str_empty();
+    return zia_completion_unavailable_string(kUnavailableMessage);
 }
 
-/// @brief Weak stub: returns an empty hover payload.
+/// @brief Weak stub: returns an unavailable hover payload.
 RT_WEAK rt_string rt_zia_hover_for_file(rt_string source,
                                         rt_string file_path,
                                         int64_t line,
@@ -94,20 +108,21 @@ RT_WEAK rt_string rt_zia_hover_for_file(rt_string source,
     (void)file_path;
     (void)line;
     (void)col;
-    return rt_str_empty();
+    return rt_zia_hover(source, line, col);
 }
 
-/// @brief Weak stub: returns an empty symbol payload.
+/// @brief Weak stub: returns an unavailable symbol payload.
 RT_WEAK rt_string rt_zia_symbols(rt_string source) {
     (void)source;
-    return rt_str_empty();
+    return zia_completion_unavailable_string(
+        "Zia completion unavailable\tstatus\tlink fe_zia to enable document symbols\t1\n");
 }
 
-/// @brief Weak stub: returns an empty symbol payload.
+/// @brief Weak stub: returns an unavailable symbol payload.
 RT_WEAK rt_string rt_zia_symbols_for_file(rt_string source, rt_string file_path) {
     (void)source;
     (void)file_path;
-    return rt_str_empty();
+    return rt_zia_symbols(source);
 }
 
 /// @brief Weak stub: no-op.

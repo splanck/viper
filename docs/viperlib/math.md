@@ -393,7 +393,8 @@ Viper.Math.Random.Shuffle(seq)  ' Now shuffled: e.g., [3, 1, 5, 2, 4]
 - Sequences are deterministic for a given seed
 - `Gaussian` uses the Box-Muller transform for accurate normal distribution
 - `Exponential(lambda)` produces values with mean = 1/lambda
-- `Range(a, b)` automatically swaps bounds if min > max
+- `NextInt(max)` and `Range(min, max)` use rejection sampling to avoid modulo bias
+- `Range(a, b)` automatically swaps bounds if min > max, and the full signed 64-bit range is supported
 - `Shuffle` performs a Fisher-Yates shuffle (O(n) complexity)
 
 ---

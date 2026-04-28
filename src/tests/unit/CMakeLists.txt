@@ -1355,6 +1355,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_random PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_random test_rt_random)
 
+    viper_add_test(test_rt_zia_completion_stub ${VIPER_TESTS_DIR}/runtime/RTZiaCompletionStubTests.cpp)
+    target_link_libraries(test_rt_zia_completion_stub PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_zia_completion_stub test_rt_zia_completion_stub)
+
     viper_add_test(test_rt_instr ${VIPER_TESTS_DIR}/runtime/RTInstrTests.cpp)
     target_link_libraries(test_rt_instr PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_instr test_rt_instr)

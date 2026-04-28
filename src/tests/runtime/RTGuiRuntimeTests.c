@@ -20,6 +20,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 extern void rt_gui_set_clicked_statusbar_item(void *item);
 
@@ -490,6 +493,15 @@ static void test_menu_and_toolbar_pixel_icons_become_image_icons(void) {
     rt_menuitem_set_icon(item, pixels);
     assert(item->icon.type == VG_ICON_IMAGE);
 
+    vg_contextmenu_t *context_menu = vg_contextmenu_create();
+    assert(context_menu);
+    vg_menu_item_t *context_item = vg_contextmenu_add_item(context_menu, "Copy", NULL, NULL, NULL);
+    assert(context_item);
+
+    rt_menuitem_set_icon(context_item, pixels);
+    assert(context_item->icon.type == VG_ICON_IMAGE);
+    assert(context_item->owner_contextmenu == context_menu);
+
     vg_toolbar_t *toolbar = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
     assert(toolbar);
     vg_toolbar_item_t *tool_item =
@@ -499,7 +511,29 @@ static void test_menu_and_toolbar_pixel_icons_become_image_icons(void) {
     rt_toolbaritem_set_icon_pixels(tool_item, pixels);
     assert(tool_item->icon.type == VG_ICON_IMAGE);
 
+    char icon_path[256];
+#ifdef _WIN32
+    snprintf(icon_path, sizeof(icon_path), "viper_gui_icon_test.bmp");
+#else
+    snprintf(icon_path, sizeof(icon_path), "/tmp/viper_gui_icon_%ld.bmp", (long)getpid());
+#endif
+    assert(rt_pixels_save_bmp(pixels, rt_const_cstr(icon_path)) == 1);
+    vg_toolbar_item_t *path_item =
+        (vg_toolbar_item_t *)rt_toolbar_add_button(toolbar, rt_const_cstr(icon_path), rt_const_cstr("path"));
+    assert(path_item);
+    assert(path_item->icon.type == VG_ICON_IMAGE);
+
+    rt_toolbaritem_set_icon(path_item, rt_const_cstr(icon_path));
+    assert(path_item->icon.type == VG_ICON_IMAGE);
+
+#ifdef _WIN32
+    remove(icon_path);
+#else
+    unlink(icon_path);
+#endif
+
     vg_widget_destroy(&toolbar->base);
+    vg_widget_destroy(&context_menu->base);
     vg_widget_destroy(&menubar->base);
     printf("test_menu_and_toolbar_pixel_icons_become_image_icons: PASSED\n");
 }

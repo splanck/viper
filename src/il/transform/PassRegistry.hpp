@@ -268,10 +268,10 @@ void registerDCEPass(PassRegistry &registry);
 /// @brief Register the mem2reg promotion pass.
 void registerMem2RegPass(PassRegistry &registry);
 
-/// @brief Register a simple dead-store elimination pass (placeholder).
+/// @brief Register dead-store elimination, including MemorySSA-backed cleanup.
 void registerDSEPass(PassRegistry &registry);
 
-/// @brief Register an EarlyCSE/GVN-lite pass (placeholder).
+/// @brief Register the dominator-tree-scoped EarlyCSE/GVN-lite pass.
 void registerEarlyCSEPass(PassRegistry &registry);
 
 /// @brief Register the GVN + redundant load elimination pass.

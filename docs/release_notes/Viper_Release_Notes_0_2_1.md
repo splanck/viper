@@ -458,7 +458,6 @@ psql -h localhost -p 5432 -U admin viper
 | `demos/zia/webserver/` | Zia | HTTP/1.1 server with routing, config, thread-safe logging |
 | `demos/zia/viperide/` | Zia | IDE application with editor, build, and services panels |
 | `demos/zia/pacman/` | Zia | Pac-Man rewritten using new game abstraction classes |
-| `demos/basic/monopoly/` | BASIC | Monopoly board game |
 | `demos/basic/particles/` | BASIC | Particle system showcase |
 
 #### ViperDOS

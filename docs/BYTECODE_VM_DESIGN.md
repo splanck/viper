@@ -151,7 +151,7 @@ The implemented bytecode VM (see `src/bytecode/`):
 | Load | `load` | *ptr | No |
 | Store | `store` | *ptr = val | Yes |
 | AddrOf | `addr_of` | &val | No |
-| GAddr | `gaddr` | &global | No at IL level; bytecode compilation reports a `V-BC-*` diagnostic instead of emitting unsupported bytecode |
+| GAddr | `gaddr` | &global | No at IL level; bytecode lowers known globals to bytecode global storage addresses |
 
 #### Constants (3 opcodes)
 | Opcode | Mnemonic | Semantics |
@@ -313,6 +313,7 @@ String values are carried as `void*` (pointer to the runtime string object).
 | 0x28 | LOAD_ONE | - | [] → [1] | Push i64 one |
 | 0x29 | LOAD_GLOBAL | u16 idx | [] → [v] | Push global value |
 | 0x2A | STORE_GLOBAL | u16 idx | [v] → [] | Pop to global |
+| 0x2B | LOAD_GLOBAL_ADDR | u16 idx | [] → [ptr] | Push pointer to global storage |
 
 ### 4.4 Integer Arithmetic (0x30-0x4F)
 
@@ -474,7 +475,7 @@ Actual implementation from `src/bytecode/BytecodeModule.hpp`:
 struct BytecodeModule {
     // Header
     uint32_t magic;   // kBytecodeModuleMagic = 0x01434256 ("VBC\x01")
-    uint32_t version; // kBytecodeVersion = 1
+    uint32_t version; // kBytecodeVersion
     uint32_t flags;   // Feature flags (reserved)
 
     // Constant pools (deduplicated: same value -> same index)
@@ -498,6 +499,8 @@ struct BytecodeModule {
     std::vector<SourceFileInfo> sourceFiles;
 };
 ```
+
+`GlobalInfo` records each global's IL type, byte size/alignment, binary scalar initializer bytes, and string initializer payload. The VM materializes one `BCSlot` of backing storage per global; `LOAD_GLOBAL_ADDR` exposes the address of that slot to `load`/`store` bytecode.
 
 ### 5.2 BytecodeFunction
 

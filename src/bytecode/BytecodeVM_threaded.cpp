@@ -72,6 +72,7 @@ void BytecodeVM::runThreaded() {
         [0x28] = &&L_LOAD_ONE,
         [0x29] = &&L_LOAD_GLOBAL,
         [0x2A] = &&L_STORE_GLOBAL,
+        [0x2B] = &&L_LOAD_GLOBAL_ADDR,
 
         // Integer Arithmetic (0x30-0x3F)
         [0x30] = &&L_ADD_I64,
@@ -541,6 +542,19 @@ L_STORE_GLOBAL: {
     if (gIdx < globalsStringOwned_.size())
         globalsStringOwned_[gIdx] = slotOwnsString(sp) ? 1 : 0;
     setSlotOwnsString(sp, false);
+    DISPATCH();
+}
+
+L_LOAD_GLOBAL_ADDR: {
+    uint16_t gIdx = decodeArg16(instr);
+    if (gIdx >= globals_.size()) {
+        SYNC_STATE();
+        trap(TrapKind::InvalidOpcode, "LOAD_GLOBAL_ADDR index out of range");
+        return;
+    }
+    sp->ptr = &globals_[gIdx];
+    setSlotOwnsString(sp, false);
+    sp++;
     DISPATCH();
 }
 
@@ -1249,6 +1263,7 @@ L_LOAD_PTR_MEM: {
 L_STORE_I8_MEM: {
     int8_t val = static_cast<int8_t>((--sp)->i64);
     void *ptr = (--sp)->ptr;
+    clearGlobalStringOwnershipForRawStore(ptr);
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
@@ -1256,6 +1271,7 @@ L_STORE_I8_MEM: {
 L_STORE_I16_MEM: {
     int16_t val = static_cast<int16_t>((--sp)->i64);
     void *ptr = (--sp)->ptr;
+    clearGlobalStringOwnershipForRawStore(ptr);
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
@@ -1263,6 +1279,7 @@ L_STORE_I16_MEM: {
 L_STORE_I32_MEM: {
     int32_t val = static_cast<int32_t>((--sp)->i64);
     void *ptr = (--sp)->ptr;
+    clearGlobalStringOwnershipForRawStore(ptr);
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
@@ -1270,6 +1287,7 @@ L_STORE_I32_MEM: {
 L_STORE_I64_MEM: {
     int64_t val = (--sp)->i64;
     void *ptr = (--sp)->ptr;
+    clearGlobalStringOwnershipForRawStore(ptr);
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
@@ -1277,6 +1295,7 @@ L_STORE_I64_MEM: {
 L_STORE_F64_MEM: {
     double val = (--sp)->f64;
     void *ptr = (--sp)->ptr;
+    clearGlobalStringOwnershipForRawStore(ptr);
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
@@ -1284,6 +1303,7 @@ L_STORE_F64_MEM: {
 L_STORE_PTR_MEM: {
     void *val = (--sp)->ptr;
     void *ptr = (--sp)->ptr;
+    clearGlobalStringOwnershipForRawStore(ptr);
     std::memcpy(ptr, &val, sizeof(val));
     setSlotOwnsString(sp, false);
     setSlotOwnsString(sp + 1, false);
@@ -1326,6 +1346,7 @@ L_STORE_STR_MEM: {
     if (incoming && !incomingOwns)
         rt_str_retain_maybe(incoming);
     std::memcpy(ptr, &incoming, sizeof(incoming));
+    setGlobalStringOwnershipForAddress(ptr, incoming != nullptr);
     setSlotOwnsString(valueSlot, false);
     setSlotOwnsString(sp, false);
     DISPATCH();

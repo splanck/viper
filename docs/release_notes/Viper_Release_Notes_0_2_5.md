@@ -24,7 +24,7 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator.
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 85 | +85 |
+| Commits | — | 88 | +88 |
 | Source files | 2,869 | 2,951 | +82 |
 | Production SLOC | 450K | 520K | +70K |
 | Test SLOC | 183K | 216K | +33K |
@@ -136,7 +136,7 @@ Eleven-class `Viper.Localization.*` namespace. Zero external dependencies; en-US
 - **HTTP/2 transport (new)** — in-tree HPACK + static Huffman; HTTPS client pools connections; ALPN multi-token bugfix; `HttpReq.SetForceHttp1` knob.
 - **HTTP client** — RFC cookie jar, transparent gzip, streaming download, relative-Location resolution, keep-alive + connection pooling, CRLF injection guards.
 - **HTTP server** — chunked request bodies, Connection-header-aware framing, thread-safe Start/Stop, ephemeral port via `port=0`.
-- **TLS / Crypto** — native RSA (Montgomery ladder, RSA-PSS-SHA256), in-tree X.509 chain validator with EKU (drops `Security.framework`), in-tree `timegm`, PBKDF2 iterations 100K→300K.
+- **TLS / Crypto** — native RSA (Montgomery ladder, RSA-PSS-SHA256), in-tree X.509 chain validator with EKU (drops `Security.framework`), in-tree `timegm`, PBKDF2 iterations 100K→300K. P-384 ECDSA (`0x0503`) removed from ClientHello signature-algorithm extensions and from `tls_verify_cert_verify` — it was advertised but never implemented, creating a silent verification gap.
 - WebSocket subprotocol negotiation, SSE auto-reconnect with `Last-Event-ID`, dual-stack IPv6 UDP, SMTP follow-ups.
 
 ### BASIC frontend
@@ -149,6 +149,10 @@ Eleven-class `Viper.Localization.*` namespace. Zero external dependencies; en-US
 - `rt_map_get_opt_str` (new) — returns NULL for missing keys; used by the `Map.get()` optional-String path.
 - `Viper.System.String`-typed variables now lower to `Type::Str` instead of `Type::Ptr`, fixing store/load type mismatches in string-variable slots.
 - `SourceManager::setSource()` called after file registration so line-snippet printing works without on-disk reads; IL verifier runs post-lowering with failures surfaced through the BASIC emitter at code `B9001`.
+- `lowerUsingStmt` rewritten with an `EhEntry` handler block: the exception path calls `DESTROY`, `__dtor`, and `rt_obj_free` before executing `resume.same(tok)` to re-raise the original error token. Previously, USING cleanup only ran on the normal exit path.
+- `analyzeClassDecl` now walks constructor, destructor, and method bodies under proper scope context (`activeClassQName_`, `activeMemberHasMe_`, loop-context flags), closing a gap where class member bodies were analyzed without their class-member scope.
+- `analyzeMemberAssignment` validates instance-field assignments with typed diagnostics B2001 (type mismatch) and B2002 (missing member); `Bool := Int` implicit widening accepted without error.
+- `widen_to` (B9002), `intType` (B9003), and `lowerNumericDispatch` (B9005) now emit structured diagnostics instead of calling `std::abort()`.
 
 ### Zia frontend
 
@@ -164,7 +168,8 @@ Eleven-class `Viper.Localization.*` namespace. Zero external dependencies; en-US
 - **Inline aggregate lowering fix** — `emitFieldLoad` / `emitFieldStore` and class/struct field-layout now treat `Struct`, `Tuple`, and `FixedArray` uniformly as inline aggregates; previously only `FixedArray` was handled inline while struct/tuple fields were scalar-loaded from their first bytes, corrupting data silently. New `emitInlineValueStore` / `emitInlineValueCopy` helpers recurse through nested members and elements with per-element stride, string retain/release, and init-vs-overwrite semantics. Field layout delegates to `getSemanticTypeSize` / `getSemanticTypeAlignment` for all aggregate kinds.
 - `getOrCreateStructTypeInfo` gains an unqualified suffix-match fallback so short names (`Pair`) resolve to `Module.Pair` without requiring full qualification at the call site.
 - Safety-critical warnings (`W008` missing-return, `W010` division-by-zero, `W015` uninitialized-variable, `W016` optional-without-check, `W019` non-exhaustive-match) are promoted to errors by default; `--no-strict-diagnostics` keeps them as warnings without requiring `-Werror`.
-- Zia lexer and semantic diagnostics now use stable `V-ZIA-*` codes for common failures, including unterminated block comments, unterminated strings, undefined identifiers, type mismatches, and fixed-array literal index bounds errors.
+- Zia lexer and semantic diagnostics now use stable `V-ZIA-*` codes for common failures, including unterminated block comments, unterminated strings, undefined identifiers, type mismatches, and fixed-array literal index bounds errors. Nine new entries in `scripts/spec/diagnostics.yaml`.
+- `nameTemp(id, name)` attaches source-level variable names to SSA temporaries at definition time; `defineLocal()` and `createSlot()` call it so IR dumps show readable names (e.g., `%player.x`) instead of anonymous `%42` temporaries.
 - `SourceManager::setSource()` called after file registration; file-ID overflow now emits a `V-SRC-FILE-ID` diagnostic and returns early; optimizer pipeline failures emit `V-OPT-PIPELINE`; `Verifier::verify` runs post-optimizer.
 
 ### Linker, codegen, tools, IL, build
@@ -176,7 +181,7 @@ Eleven-class `Viper.Localization.*` namespace. Zero external dependencies; en-US
 - Tools: frontend `--` separator, collision-safe temp paths. Build: VERSION `0.2.4-dev` → `0.2.5-snapshot`.
 - **Diagnostic infrastructure** — `Diagnostic` gains `SourceRange range` and `std::vector<DiagnosticNote> notes` fields; `diag_expected.cpp` adds source-snippet printing with caret/tilde underlines (`printSourceSnippet`) and a JSON formatter (`printDiagJson` / `printDiagnosticsJson`). `SourceManager::setSource()` populates line caches from in-memory strings without on-disk reads. `SourceManager::addFile()` no longer emits its own diagnostic on overflow — callers own that report.
 - **CLI flags** — `--diagnostic-format=text|json` (also `--diagnostic-format json`), `--strict-diagnostics` / `--no-strict-diagnostics`, `--bounds-checks` / `--no-bounds-checks`, and `--show-warnings` / `--quiet-warnings` are available across subcommands; strict diagnostics and bounds checks default on. All diagnostic output routes through `printDiagnostic(format)` for consistent text-or-JSON rendering.
-- **BytecodeCompiler** — `compileChecked(module, sourceManager?, assumeVerified=false)` returns `Expected<BytecodeModule>` with a source-located `Diag`; it runs verifier preflight unless the caller explicitly passes `assumeVerified=true`. Internal errors propagate via private `BytecodeCompileFailure` so no undecorated `runtime_error` escapes. Function name, block label, and source location tracked throughout for precise diagnostic attribution (e.g., `V-BC-UNSUPPORTED-GADDR`, `V-BC-UNKNOWN-SSA`, `V-BC-FUNCTION-TABLE`).
+- **BytecodeCompiler** — `compileChecked(module, sourceManager?, assumeVerified=false)` returns `Expected<BytecodeModule>` with a source-located `Diag`; it runs verifier preflight unless the caller explicitly passes `assumeVerified=true`. Internal errors propagate via private `BytecodeCompileFailure` so no undecorated `runtime_error` escapes. Function name, block label, and source location tracked throughout for precise diagnostic attribution (e.g., `V-BC-UNKNOWN-GLOBAL`, `V-BC-UNKNOWN-SSA`, `V-BC-FUNCTION-TABLE`).
 - **BytecodeVM** — trap messages enriched to `"Trap @func:block#pc file.zia:line (TrapKindName)"`.
 - **Signature Registry** — `register_signature` is mutex-guarded and idempotent: identical re-registration is a no-op; conflicting metadata for the same name throws `std::logic_error`. `registry_version()` added for cache-invalidation consumers.
 - `vm_executor`: `compileChecked` integration; `VMExecutorResult::compileFailed` flag; `VMExecutorConfig::sourceManager` for diagnostic context. Pipeline subcommands report all `Verifier::verifyAll` diagnostics at the appropriate stage.
@@ -196,6 +201,7 @@ All four object-file readers and all three writers received a bounds-checking an
 ### Codegen
 
 **AArch64**
+- RegAllocPass wraps the coalesce + allocate pipeline in try/catch; exceptions become a `V-CG-AARCH64-REGALLOC` diagnostic rather than a crash.
 - Target-platform flags (`--target-darwin/linux/windows`) thread through object-writer, native linker, and assembler target triple.
 - `switch.i32` edge arguments route through dedicated edge blocks; larger tables lower as balanced binary decision trees.
 - Trap ABI: `idx.chk` → `rt_trap_raise_error`; checked div/rem → `rt_trap_div0` / `rt_trap_ovf`; `trap.from_err` marshals error code into `x0`.
@@ -209,10 +215,18 @@ All four object-file readers and all three writers received a bounds-checking an
 - `fptosi` NaN + overflow checks before `CVTTSD2SI`; `sdiv.chk0` traps `INT64_MIN / -1`; incoming `i1` parameters normalized at entry.
 - Sub-width checked narrowing preserves annotated result width; Win64 shadow space reserved even for call-free functions.
 - `ErrGetMsg` → `rt_throw_msg_get`; `idx.chk` → `rt_trap_raise_error`; unknown opcodes are hard emitter errors.
+- `conditionSuffix` and `condCodeFor` throw `std::runtime_error` instead of asserting on unrecognised condition codes.
 
 **IL and VM**
 - Variadic functions: `Function::isVarArg`, `...` syntax parsed/serialized/verified; `>= paramCount` arity enforced for variadic callees.
 - `err.get_*` min operand count relaxed to 0 for context-implicit native EH lowering.
+- `VMInit` throws `std::runtime_error` on bad state instead of calling `std::abort()`.
+- `OpHandlers_Memory`: `minimumAlignmentFor` returns 0 for unknown memory kinds; `handleLoadImpl` / `handleStoreImpl` detect alignment 0 and dispatch `RuntimeBridge::trap(InvalidOperation)` instead of asserting.
+- `Marshal::toI64` / `toF64` call `RuntimeBridge::trap(InvalidOperation)` on type mismatch rather than `std::abort()`.
+- `NetworkRuntime` and `ThreadsRuntime` now catch `RuntimeTrapSignal` explicitly before the generic `std::exception` handler so trap payloads are preserved unmodified.
+- IL `PassManager`: `verifyEach` diagnostics always write to `std::cerr` unconditionally; the NDEBUG guard has been removed.
+- `Mem2Reg::addIncoming` logs to `std::cerr` on unexpected state instead of asserting.
+- Codegen `PassManager` wraps each pass in try/catch; uncaught exceptions become a `V-CG-PASS-EXCEPTION` diagnostic.
 
 **IL verifier hardening**
 - Duplicate SSA ID detection across params, block params, and results; dominance violations are now hard errors.
@@ -253,18 +267,19 @@ All four object-file readers and all three writers received a bounds-checking an
 - 11 Localization test files (~360 assertions); 3 libFuzzer harnesses for plural-rules / CLDR date-patterns / locale-JSON (gated on `VIPER_ENABLE_FUZZ`).
 - IL optimizer unit tests: DSE MayAlias/narrow-overwrite preservation, MemorySSA GEP escape, LICM pure-call hoisting, LoopRotate constant-backedge remap, LoopUnroll exit-value correctness, IndVarSimplify loop-local base, BranchVerifier unknown-operand, InstrParser trailing-annotation, ValueKey FAdd non-commutativity.
 - Boolean short-circuit goldens (`boolean_andalso` / `boolean_orelse`) for BASIC-to-IL and IL suites; 3D character FBX assets (Knight + RPG Characters packs) for skin/animation regression; 4 IL source benchmarks (`fib_stress`, `inline_stress`, `redundant_stress`, `udiv_stress`) replace compiled binaries.
-- New `test_bytecode_compiler_diagnostics.cpp`: `compileChecked` surfaces coded failures (`V-BC-UNSUPPORTED-GADDR`, function-table overflow) with source locations; new `test_vm_executor_compile_diagnostics.cpp` covers the executor compile-fail path.
+- New `test_bytecode_compiler_diagnostics.cpp`: `compileChecked` surfaces coded failures (`V-BC-UNKNOWN-GLOBAL`, function-table overflow) with source locations; new `test_vm_executor_compile_diagnostics.cpp` covers the executor compile-fail path.
 - New `test_il_verify_all.cpp`: `verifyAll` deduplication and note attachment across multiple violations; new `DiagnosticCliTests.cmake` e2e test for `--diagnostic-format` flag.
 - New Zia test `FixedArrayOfStructsUsesInlineElementStride` for the inline aggregate fix; verifier golden fixtures for alloca-load and alloca-store escape; extended `MemorySSATests` (cycle-safe DFS case) and `test_SignaturesPurity` (idempotent registry).
+- New `test_vm_init_diagnostics.cpp`: VMInit error raises a typed exception rather than aborting. New `TlsSignaturePolicyTest.cmake`: asserts 0x0503 is absent from ClientHello extensions. `NoAssertFalseTest.cmake` scope widened to subdirectories. 3D baseball smoke probe re-enabled in `CMakeLists.txt`. BASIC sema class-member body tests added. `ThrowingPassBecomesDiagnostic` codegen pass-manager test added.
 
 ### Demos & docs
 
-Demos: human-manager baseball franchise simulator (new), Crackman (Pac-Man rewrite with session/progression/audio-bank split), two new 3D demos, Paint gains layers + undo, ViperIDE picks up file-watcher and context-menu null-active-document guards, XENOSCAPE boss + player fixes, Chess click-vs-drag detection fix (dragStartX/Y fields, click-on-origin keeps selection for click-to-move), three `examples/localization/` programs, Windows ARM64 smoke coverage for 3dbowling / 3dscene / baseball. Docs: `viperlib/` sweep across all subsystems, new `viperlib/graphics/production2d.md` and `viperlib/localization/` set, `README.md` master snapshot, `il-guide.md` Optimizer Correctness Contract, Doxygen pass across ~100 runtime files, updated debugging/tools/il-reference/il-guide for new diagnostic flags and verifyAll API.
+Demos: human-manager baseball franchise simulator (new), Crackman (Pac-Man rewrite with session/progression/audio-bank split), two new 3D demos, Paint gains layers + undo, ViperIDE picks up file-watcher and context-menu null-active-document guards, XENOSCAPE boss + player fixes, Chess click-vs-drag detection fix (dragStartX/Y fields, click-on-origin keeps selection for click-to-move), three `examples/localization/` programs, Windows ARM64 smoke coverage for 3dbowling / 3dscene / baseball, 3D baseball smoke probe re-enabled after model + Zia source fixes. Docs: `viperlib/` sweep across all subsystems, new `viperlib/graphics/production2d.md` and `viperlib/localization/` set, `README.md` master snapshot, `il-guide.md` Optimizer Correctness Contract, Doxygen pass across ~100 runtime files, updated debugging/tools/il-reference/il-guide for new diagnostic flags and verifyAll API, BASIC grammar and runtime reference updated for USING EH semantics and class member scoping.
 
 ---
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 85-commit history. The pattern throughout is feature introduction followed by hardening follow-ups in the same subsystem.
+See `git log a91d388db..HEAD -- .` for the full 88-commit history. The pattern throughout is feature introduction followed by hardening follow-ups in the same subsystem.
 
 <!-- END DRAFT -->

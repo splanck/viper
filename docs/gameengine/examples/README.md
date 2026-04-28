@@ -118,7 +118,6 @@ These games use Viper BASIC and render with ANSI terminal graphics (no Canvas). 
 | [VTris](../../../examples/games/vtris/) | 1,132 | 4 | Tetris with full rules, line clearing, high scores. Demonstrates 2D arrays, matrix rotation, class composition. |
 | [Frogger BASIC](../../../examples/games/frogger-basic/) | 1,320 | 4 | Frogger clone. Stress test for object lifetime and nested references (Frog contains Position). |
 | [Chess BASIC](../../../examples/games/chess-basic/) | 1,100+ | 5 | Chess with board representation, move validation, and basic AI evaluation. |
-| [Monopoly](../../../examples/games/monopoly/) | 600 | 4 | Monopoly with turn-based mechanics, property trading, multiple players. |
 | [Pac-Man BASIC](../../../examples/games/pacman-basic/) | 450 | 5 | Pac-Man-style maze chase with ghost pathfinding and ANSI color maze rendering. |
 | [Centipede BASIC](../../../examples/games/centipede-basic/) | 450 | 5 | Centipede clone with class-based entity architecture. |
 

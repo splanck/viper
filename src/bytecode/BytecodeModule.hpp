@@ -138,7 +138,9 @@ struct GlobalInfo {
     std::string name;              ///< Fully qualified global variable name.
     uint32_t size;                 ///< Size of the global in bytes.
     uint32_t align;                ///< Alignment requirement in bytes.
+    il::core::Type type = il::core::Type(il::core::Type::Kind::I64); ///< IL storage type.
     std::vector<uint8_t> initData; ///< Initial data bytes (empty means zero-initialized).
+    std::string initString;        ///< Initial string payload for Str globals.
 };
 
 /// @brief Source file reference for debug information.
@@ -253,6 +255,20 @@ struct BytecodeModule {
         uint32_t idx = static_cast<uint32_t>(nativeFuncs.size());
         nativeFuncIndex[name] = idx;
         nativeFuncs.push_back({name, paramCount, hasReturn});
+        return idx;
+    }
+
+    /// @brief Add a global variable descriptor, deduplicating by name.
+    /// @param global The global descriptor to add.
+    /// @return The index of the global descriptor.
+    uint32_t addGlobal(GlobalInfo global) {
+        auto it = globalIndex.find(global.name);
+        if (it != globalIndex.end())
+            return it->second;
+
+        uint32_t idx = static_cast<uint32_t>(globals.size());
+        globalIndex[global.name] = idx;
+        globals.push_back(std::move(global));
         return idx;
     }
 };

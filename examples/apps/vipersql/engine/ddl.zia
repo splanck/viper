@@ -2230,6 +2230,19 @@ class DdlHandler {
             return result;
         }
 
+        var seenDefault = false;
+        var pi = 0;
+        while pi < funcParams.count() {
+            var p = funcParams.get(pi);
+            if p.hasDefault {
+                seenDefault = true;
+            } else if seenDefault {
+                result.setError("CREATE FUNCTION parameters without DEFAULT cannot follow defaulted parameters");
+                return result;
+            }
+            pi = pi + 1;
+        }
+
         var fn = new StoredFunction();
         fn.initFull(funcName, funcParams, retType, bodySQL);
         var err = exec.funcMgr.addFunction(fn);
@@ -2274,6 +2287,9 @@ class DdlHandler {
                 if pi > 0 { paramStr = paramStr + ", "; }
                 var p = f.params.get(pi);
                 paramStr = paramStr + p.name + " " + p.typeName();
+                if p.hasDefault {
+                    paramStr = paramStr + " DEFAULT " + p.defaultSQL;
+                }
                 pi = pi + 1;
             }
             row.values.set(1, sqlText(paramStr));

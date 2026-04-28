@@ -340,7 +340,10 @@ void BytecodeVM::load(const BytecodeModule *module) {
         for (size_t i = 0; i < module_->globals.size(); ++i) {
             globals_[i].i64 = 0; // Zero-initialize
             const auto &gi = module_->globals[i];
-            if (!gi.initData.empty()) {
+            if (gi.type.kind == il::core::Type::Kind::Str) {
+                globals_[i].ptr = rt_string_from_bytes(gi.initString.data(), gi.initString.size());
+                globalsStringOwned_[i] = globals_[i].ptr ? 1 : 0;
+            } else if (!gi.initData.empty()) {
                 size_t copySize = std::min<size_t>(gi.initData.size(), sizeof(BCSlot));
                 std::memcpy(&globals_[i], gi.initData.data(), copySize);
             }
@@ -463,14 +466,42 @@ void BytecodeVM::releaseOwnedValueStack() {
 
 void BytecodeVM::releaseOwnedGlobals() {
     for (size_t i = 0; i < globals_.size(); ++i) {
-        if (i >= globalsStringOwned_.size() || globalsStringOwned_[i] == 0)
-            continue;
-        if (globals_[i].ptr && validateStringHandle(globals_[i].ptr, "BytecodeVM::globals")) {
-            rt_str_release_maybe(static_cast<rt_string>(globals_[i].ptr));
-        }
-        globals_[i].ptr = nullptr;
-        globalsStringOwned_[i] = 0;
+        releaseOwnedGlobalString(i);
     }
+}
+
+size_t BytecodeVM::globalIndexForAddress(const void *ptr) const {
+    if (!ptr)
+        return SIZE_MAX;
+    for (size_t i = 0; i < globals_.size(); ++i) {
+        if (ptr == static_cast<const void *>(&globals_[i]))
+            return i;
+    }
+    return SIZE_MAX;
+}
+
+void BytecodeVM::releaseOwnedGlobalString(size_t idx) {
+    if (idx >= globals_.size() || idx >= globalsStringOwned_.size() || globalsStringOwned_[idx] == 0)
+        return;
+    if (globals_[idx].ptr && validateStringHandle(globals_[idx].ptr, "BytecodeVM::globals")) {
+        rt_str_release_maybe(static_cast<rt_string>(globals_[idx].ptr));
+    }
+    globals_[idx].ptr = nullptr;
+    globalsStringOwned_[idx] = 0;
+}
+
+void BytecodeVM::clearGlobalStringOwnershipForRawStore(void *ptr) {
+    const size_t idx = globalIndexForAddress(ptr);
+    if (idx == SIZE_MAX)
+        return;
+    releaseOwnedGlobalString(idx);
+}
+
+void BytecodeVM::setGlobalStringOwnershipForAddress(void *ptr, bool owns) {
+    const size_t idx = globalIndexForAddress(ptr);
+    if (idx == SIZE_MAX || idx >= globalsStringOwned_.size())
+        return;
+    globalsStringOwned_[idx] = owns ? 1 : 0;
 }
 
 void BytecodeVM::clearTrapRecord() {
@@ -664,6 +695,7 @@ bool BytecodeVM::ensureStackForInstruction(const BCFrame &frame,
         case BCOpcode::LOAD_ZERO:
         case BCOpcode::LOAD_ONE:
         case BCOpcode::LOAD_GLOBAL:
+        case BCOpcode::LOAD_GLOBAL_ADDR:
         case BCOpcode::TRAP_KIND:
             delta = 1;
             break;
@@ -1873,6 +1905,7 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_I64_MEM: {
                 int64_t val = (--sp_)->i64;
                 void *ptr = (--sp_)->ptr;
+                clearGlobalStringOwnershipForRawStore(ptr);
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
             }
@@ -1935,6 +1968,7 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_I8_MEM: {
                 int8_t val = static_cast<int8_t>((--sp_)->i64);
                 void *ptr = (--sp_)->ptr;
+                clearGlobalStringOwnershipForRawStore(ptr);
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
             }
@@ -1942,6 +1976,7 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_I16_MEM: {
                 int16_t val = static_cast<int16_t>((--sp_)->i64);
                 void *ptr = (--sp_)->ptr;
+                clearGlobalStringOwnershipForRawStore(ptr);
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
             }
@@ -1949,6 +1984,7 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_I32_MEM: {
                 int32_t val = static_cast<int32_t>((--sp_)->i64);
                 void *ptr = (--sp_)->ptr;
+                clearGlobalStringOwnershipForRawStore(ptr);
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
             }
@@ -1956,6 +1992,7 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_F64_MEM: {
                 double val = (--sp_)->f64;
                 void *ptr = (--sp_)->ptr;
+                clearGlobalStringOwnershipForRawStore(ptr);
                 std::memcpy(ptr, &val, sizeof(val));
                 break;
             }
@@ -1963,6 +2000,7 @@ void BytecodeVM::run() {
             case BCOpcode::STORE_PTR_MEM: {
                 void *val = (--sp_)->ptr;
                 void *ptr = (--sp_)->ptr;
+                clearGlobalStringOwnershipForRawStore(ptr);
                 std::memcpy(ptr, &val, sizeof(val));
                 setSlotOwnsString(sp_, false);
                 setSlotOwnsString(sp_ + 1, false);
@@ -1984,6 +2022,7 @@ void BytecodeVM::run() {
                 if (incoming && !incomingOwns)
                     rt_str_retain_maybe(incoming);
                 std::memcpy(ptr, &incoming, sizeof(incoming));
+                setGlobalStringOwnershipForAddress(ptr, incoming != nullptr);
                 setSlotOwnsString(valueSlot, false);
                 setSlotOwnsString(sp_, false);
                 break;
@@ -2029,6 +2068,18 @@ void BytecodeVM::run() {
                     globalsStringOwned_[idx] = slotOwnsString(sp_) ? 1 : 0;
                 }
                 setSlotOwnsString(sp_, false);
+                break;
+            }
+
+            case BCOpcode::LOAD_GLOBAL_ADDR: {
+                uint16_t idx = decodeArg16(instr);
+                if (idx >= globals_.size()) {
+                    trap(TrapKind::InvalidOpcode, "LOAD_GLOBAL_ADDR index out of range");
+                    break;
+                }
+                sp_->ptr = &globals_[idx];
+                setSlotOwnsString(sp_, false);
+                sp_++;
                 break;
             }
 

@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 
 extern "C" {
 void rt_randomize_i64(long long seed);
@@ -46,6 +47,16 @@ static void test_rand_range() {
         long long r = rt_rand_range(5, 5);
         assert(r == 5);
     }
+
+    // Test the full signed 64-bit interval. This used to get routed through
+    // rt_rand_int(0), which returned 0 without advancing the generator.
+    rt_randomize_i64(0);
+    long long full1 =
+        rt_rand_range(std::numeric_limits<long long>::min(), std::numeric_limits<long long>::max());
+    long long full2 =
+        rt_rand_range(std::numeric_limits<long long>::min(), std::numeric_limits<long long>::max());
+    assert(full1 == 1);
+    assert(full2 == 6364136223846793006LL);
 
     printf("  PASSED\n");
 }

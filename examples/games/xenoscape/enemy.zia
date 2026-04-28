@@ -399,7 +399,7 @@ class EnemyManager {
                 if t == ENEMY_SPOREWALKER { updateSporewalker(i, level, dt); }
                 if t == ENEMY_GLOWMOTH { updateGlowmoth(i, playerPx, playerPy, dt); }
                 if t == ENEMY_FUNGAL_TURRET { updateFungalTurret(i, playerPx, playerPy, dt); }
-                if t == ENEMY_MYCELIUM { updateMycelium(i, playerPx, playerPy, dt); }
+                if t == ENEMY_MYCELIUM { updateMycelium(i, level, playerPx, playerPy, dt); }
                 if t == ENEMY_SPORE_MOTHER { updateSporeMother(i, level, playerPx, playerPy, dt); }
                 if t == ENEMY_CRYSTAL_GOLEM { updateCrystalGolem(i, level, playerPx, playerPy, dt); }
                 if t == ENEMY_SHARD_BAT { updateShardBat(i, playerPx, playerPy, dt); }
@@ -893,7 +893,7 @@ class EnemyManager {
     // Mycelium Crawler — ceiling mount, drops + horizontal dash
     // =========================================================================
     /// @brief Mycelium: tendril whip from a fixed root.
-    hide func updateMycelium(i: Integer, playerPx: Integer, playerPy: Integer, dt: Integer) {
+    hide func updateMycelium(i: Integer, level: Level, playerPx: Integer, playerPy: Integer, dt: Integer) {
         var state = etimer2.get(i); // 0=ceiling, 1=dropping, 2=dashing
         var cx = ex.get(i) / 100; var cy = ey.get(i) / 100;
         if state == 0 {
@@ -909,23 +909,27 @@ class EnemyManager {
             var curVy = evy.get(i) + GRAVITY * dt / DT_BASE;
             if curVy > MAX_FALL { curVy = MAX_FALL; }
             evy.set(i, curVy);
-            ey.set(i, ey.get(i) + curVy * dt / DT_BASE);
-            // TODO: check floor collision to transition to dash
+            var result = phys.moveAndCollide(
+                ex.get(i), ey.get(i), 0, curVy * dt / DT_BASE, MYCELIUM_W, MYCELIUM_H, level);
+            ex.set(i, result.x); ey.set(i, result.y);
             var tm = etimer.get(i) + dt;
             etimer.set(i, tm);
-            if tm > 800 { // Transition to dash after 800ms
+            if result.hitFloor or tm > 800 {
                 etimer2.set(i, 2);
                 etimer.set(i, 0);
+                evy.set(i, 0);
                 if playerPx > cx { evx.set(i, MYCELIUM_SPEED); edir.set(i, 1); }
                 else { evx.set(i, 0 - MYCELIUM_SPEED); edir.set(i, -1); }
             }
         }
         if state == 2 {
             // Horizontal dash
-            ex.set(i, ex.get(i) + evx.get(i) * dt / DT_BASE);
+            var result = phys.moveAndCollide(
+                ex.get(i), ey.get(i), evx.get(i) * dt / DT_BASE, 0, MYCELIUM_W, MYCELIUM_H, level);
+            ex.set(i, result.x); ey.set(i, result.y);
             var tm = etimer.get(i) + dt;
             etimer.set(i, tm);
-            if tm > 1200 { // Dash for 1.2 seconds then deactivate
+            if result.hitLeft or result.hitRight or tm > 1200 {
                 pool.Release(i); estate.set(i, 2);
             }
         }

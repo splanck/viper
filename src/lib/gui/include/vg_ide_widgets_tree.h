@@ -104,6 +104,7 @@ void vg_contextmenu_item_set_enabled(vg_menu_item_t *item, bool enabled);
 void vg_contextmenu_item_set_checked(vg_menu_item_t *item, bool checked);
 
 /// @brief Set item icon
+/// @details Takes ownership of the icon payload, matching vg_toolbar_item_set_icon().
 void vg_contextmenu_item_set_icon(vg_menu_item_t *item, vg_icon_t icon);
 
 /// @brief Show context menu at position
@@ -362,6 +363,7 @@ struct vg_menu_item {
     bool was_clicked;            ///< Set true when item is clicked (cleared on read)
     vg_icon_t icon;              ///< Optional icon (VG_ICON_NONE = no icon)
     struct vg_menu *parent_menu; ///< Owning menu for change propagation.
+    struct vg_contextmenu *owner_contextmenu; ///< Owning context menu for change propagation.
     struct vg_menu *submenu;     ///< Submenu (if any)
     struct vg_menu_item *next;
     struct vg_menu_item *prev;

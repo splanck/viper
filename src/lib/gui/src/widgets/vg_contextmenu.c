@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 // vg_contextmenu.c - ContextMenu widget implementation
 #include "../../../graphics/include/vgfx.h"
+#include "../../../graphics/src/vgfx_internal.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
@@ -62,6 +63,9 @@ static int s_registry_count = 0;
 #define SUBMENU_ARROW_WIDTH 20.0f
 #define SHORTCUT_GAP 30.0f
 #define SUBMENU_DELAY_MS 200
+#define ICON_SLOT_WIDTH 22.0f
+#define ICON_TEXT_GAP 8.0f
+#define ICON_DRAW_SIZE 16.0f
 
 //=============================================================================
 // Helper Functions
@@ -82,6 +86,7 @@ static vg_menu_item_t *create_menu_item(const char *label,
     item->enabled = true;
     item->checked = false;
     item->separator = false;
+    item->icon.type = VG_ICON_NONE;
     item->submenu = NULL;
 
     return item;
@@ -91,8 +96,192 @@ static void free_menu_item(vg_menu_item_t *item) {
     if (item) {
         free((void *)item->text);
         free((void *)item->shortcut);
+        vg_icon_destroy(&item->icon);
         free(item);
     }
+}
+
+static bool item_uses_leading_column(const vg_menu_item_t *item) {
+    return item && !item->separator && (item->checked || item->icon.type != VG_ICON_NONE);
+}
+
+static bool menu_uses_leading_column(const vg_contextmenu_t *menu) {
+    if (!menu)
+        return false;
+    for (size_t i = 0; i < menu->item_count; i++) {
+        if (item_uses_leading_column(menu->items[i]))
+            return true;
+    }
+    return false;
+}
+
+static int contextmenu_clampi(int value, int min_value, int max_value) {
+    if (value < min_value)
+        return min_value;
+    if (value > max_value)
+        return max_value;
+    return value;
+}
+
+static void contextmenu_blend_pixel(uint8_t *dst, const uint8_t *src, uint8_t alpha) {
+    if (alpha == 0)
+        return;
+
+    if (alpha == 255) {
+        dst[0] = src[0];
+        dst[1] = src[1];
+        dst[2] = src[2];
+        dst[3] = 255;
+        return;
+    }
+
+    const uint32_t inv = (uint32_t)(255 - alpha);
+    dst[0] = (uint8_t)(((uint32_t)src[0] * alpha + (uint32_t)dst[0] * inv + 127u) / 255u);
+    dst[1] = (uint8_t)(((uint32_t)src[1] * alpha + (uint32_t)dst[1] * inv + 127u) / 255u);
+    dst[2] = (uint8_t)(((uint32_t)src[2] * alpha + (uint32_t)dst[2] * inv + 127u) / 255u);
+    dst[3] = (uint8_t)(alpha + (((uint32_t)dst[3] * inv + 127u) / 255u));
+}
+
+static void contextmenu_draw_image_icon(vgfx_window_t win,
+                                        const vg_icon_t *icon,
+                                        float x,
+                                        float y,
+                                        float w,
+                                        float h,
+                                        bool enabled) {
+    if (!icon || icon->type != VG_ICON_IMAGE || !icon->data.image.pixels || w <= 0.0f ||
+        h <= 0.0f)
+        return;
+
+    vgfx_framebuffer_t fb;
+    if (!vgfx_get_framebuffer(win, &fb))
+        return;
+
+    const int sw = (int)icon->data.image.width;
+    const int sh = (int)icon->data.image.height;
+    if (sw <= 0 || sh <= 0)
+        return;
+
+    float draw_w = w;
+    float draw_h = h;
+    float scale = w / (float)sw;
+    if ((float)sh * scale > h)
+        scale = h / (float)sh;
+    if (scale <= 0.0f)
+        return;
+
+    draw_w = (float)sw * scale;
+    draw_h = (float)sh * scale;
+    float draw_x = x + (w - draw_w) * 0.5f;
+    float draw_y = y + (h - draw_h) * 0.5f;
+
+    int start_x = contextmenu_clampi((int)draw_x, 0, fb.width);
+    int start_y = contextmenu_clampi((int)draw_y, 0, fb.height);
+    int end_x = contextmenu_clampi((int)(draw_x + draw_w), 0, fb.width);
+    int end_y = contextmenu_clampi((int)(draw_y + draw_h), 0, fb.height);
+    const struct vgfx_window *internal = (const struct vgfx_window *)win;
+    int clip_x = 0;
+    int clip_y = 0;
+    int clip_w = fb.width;
+    int clip_h = fb.height;
+
+    if (internal && internal->clip_enabled) {
+        clip_x = internal->clip_x;
+        clip_y = internal->clip_y;
+        clip_w = internal->clip_w;
+        clip_h = internal->clip_h;
+    }
+    if (start_x < clip_x)
+        start_x = clip_x;
+    if (start_y < clip_y)
+        start_y = clip_y;
+    if (end_x > clip_x + clip_w)
+        end_x = clip_x + clip_w;
+    if (end_y > clip_y + clip_h)
+        end_y = clip_y + clip_h;
+
+    for (int fb_y = start_y; fb_y < end_y; fb_y++) {
+        for (int fb_x = start_x; fb_x < end_x; fb_x++) {
+            float u = draw_w > 0.0f ? ((float)fb_x - draw_x) / draw_w : 0.0f;
+            float v = draw_h > 0.0f ? ((float)fb_y - draw_y) / draw_h : 0.0f;
+            int sx = contextmenu_clampi((int)(u * (float)sw), 0, sw - 1);
+            int sy = contextmenu_clampi((int)(v * (float)sh), 0, sh - 1);
+            const uint8_t *src = &icon->data.image.pixels[(sy * sw + sx) * 4];
+            uint8_t alpha = src[3];
+            if (!enabled)
+                alpha = (uint8_t)(((uint32_t)alpha * 144u + 127u) / 255u);
+            if (alpha == 0)
+                continue;
+
+            uint8_t *dst = &fb.pixels[fb_y * fb.stride + fb_x * 4];
+            contextmenu_blend_pixel(dst, src, alpha);
+        }
+    }
+}
+
+static bool contextmenu_encode_utf8(uint32_t cp, char out[5]) {
+    if (!out)
+        return false;
+    memset(out, 0, 5);
+    if (cp < 0x80) {
+        out[0] = (char)cp;
+    } else if (cp < 0x800) {
+        out[0] = (char)(0xC0 | (cp >> 6));
+        out[1] = (char)(0x80 | (cp & 0x3F));
+    } else if (cp < 0x10000) {
+        out[0] = (char)(0xE0 | (cp >> 12));
+        out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[2] = (char)(0x80 | (cp & 0x3F));
+    } else if (cp <= 0x10FFFF) {
+        out[0] = (char)(0xF0 | (cp >> 18));
+        out[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+        out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[3] = (char)(0x80 | (cp & 0x3F));
+    } else {
+        return false;
+    }
+    return true;
+}
+
+static void contextmenu_draw_glyph(void *canvas,
+                                   vg_font_t *font,
+                                   float font_size,
+                                   uint32_t codepoint,
+                                   float x,
+                                   float y,
+                                   float w,
+                                   float h,
+                                   uint32_t color) {
+    if (!font)
+        return;
+
+    char buf[5];
+    if (!contextmenu_encode_utf8(codepoint, buf))
+        return;
+
+    vg_font_metrics_t font_metrics;
+    vg_font_get_metrics(font, font_size, &font_metrics);
+    vg_text_metrics_t text_metrics = {0};
+    vg_font_measure_text(font, font_size, buf, &text_metrics);
+
+    float glyph_x = x + (w - text_metrics.width) * 0.5f;
+    float glyph_y = y + (h + font_metrics.ascent + font_metrics.descent) * 0.5f;
+    vg_font_draw_text(canvas, font, font_size, glyph_x, glyph_y, buf, color);
+}
+
+static void contextmenu_mark_item_changed(vg_menu_item_t *item, bool layout_changed) {
+    if (!item || !item->owner_contextmenu)
+        return;
+
+    vg_contextmenu_t *menu = item->owner_contextmenu;
+    if (layout_changed && menu->is_visible) {
+        contextmenu_measure(&menu->base, 0, 0);
+        menu->base.width = menu->base.measured_width;
+        menu->base.height = menu->base.measured_height;
+    }
+    if (layout_changed)
+        menu->base.needs_layout = true;
+    menu->base.needs_paint = true;
 }
 
 static float get_item_height(vg_menu_item_t *item) {
@@ -111,9 +300,7 @@ static float calculate_menu_width(vg_contextmenu_t *menu) {
     float max_width = (float)menu->min_width;
     vg_font_t *font = menu->font;
     float font_size = menu->font_size;
-
-    if (!font)
-        return max_width;
+    bool has_leading_column = menu_uses_leading_column(menu);
 
     for (size_t i = 0; i < menu->item_count; i++) {
         vg_menu_item_t *item = menu->items[i];
@@ -121,14 +308,16 @@ static float calculate_menu_width(vg_contextmenu_t *menu) {
             continue;
 
         float width = ITEM_PADDING_X * 2;
+        if (has_leading_column)
+            width += ICON_SLOT_WIDTH + ICON_TEXT_GAP;
 
-        if (item->text) {
+        if (font && item->text) {
             vg_text_metrics_t metrics;
             vg_font_measure_text(font, font_size, item->text, &metrics);
             width += metrics.width;
         }
 
-        if (item->shortcut) {
+        if (font && item->shortcut) {
             vg_text_metrics_t metrics;
             vg_font_measure_text(font, font_size, item->shortcut, &metrics);
             width += SHORTCUT_GAP + metrics.width;
@@ -285,6 +474,7 @@ static void contextmenu_paint(vg_widget_t *widget, void *canvas) {
     (void)theme;
 
     // Draw items
+    bool has_leading_column = menu_uses_leading_column(menu);
     float item_y = y + ITEM_PADDING_Y;
     for (size_t i = 0; i < menu->item_count; i++) {
         vg_menu_item_t *item = menu->items[i];
@@ -306,26 +496,60 @@ static void contextmenu_paint(vg_widget_t *widget, void *canvas) {
                                menu->hover_color);
             }
 
-            // Draw text
-            if (menu->font && item->text) {
-                uint32_t text_color = item->enabled ? menu->text_color : menu->disabled_color;
+            uint32_t text_color = item->enabled ? menu->text_color : menu->disabled_color;
+            float text_x = x + ITEM_PADDING_X;
+            if (has_leading_column) {
+                float icon_slot_x = x + ITEM_PADDING_X;
+                if (item->checked) {
+                    contextmenu_draw_glyph(canvas,
+                                           menu->font,
+                                           menu->font_size,
+                                           0x2713u,
+                                           icon_slot_x,
+                                           item_y,
+                                           ICON_SLOT_WIDTH,
+                                           item_height,
+                                           text_color);
+                } else if (item->icon.type == VG_ICON_GLYPH) {
+                    contextmenu_draw_glyph(canvas,
+                                           menu->font,
+                                           menu->font_size,
+                                           item->icon.data.glyph,
+                                           icon_slot_x,
+                                           item_y,
+                                           ICON_SLOT_WIDTH,
+                                           item_height,
+                                           text_color);
+                } else if (item->icon.type == VG_ICON_IMAGE) {
+                    float icon_x = icon_slot_x + (ICON_SLOT_WIDTH - ICON_DRAW_SIZE) * 0.5f;
+                    float icon_y = item_y + (item_height - ICON_DRAW_SIZE) * 0.5f;
+                    contextmenu_draw_image_icon(win,
+                                                &item->icon,
+                                                icon_x,
+                                                icon_y,
+                                                ICON_DRAW_SIZE,
+                                                ICON_DRAW_SIZE,
+                                                item->enabled);
+                }
+                text_x += ICON_SLOT_WIDTH + ICON_TEXT_GAP;
+            }
 
+            if (menu->font) {
                 vg_font_metrics_t font_metrics;
                 vg_font_get_metrics(menu->font, menu->font_size, &font_metrics);
                 float text_y =
                     item_y + (item_height + font_metrics.ascent + font_metrics.descent) / 2;
 
-                // Draw checkmark if checked
-                float text_x = x + ITEM_PADDING_X;
-                if (item->checked) {
-                    vg_font_draw_text(
-                        canvas, menu->font, menu->font_size, text_x, text_y, "\u2713", text_color);
-                    text_x += 20;
-                }
-
                 // Draw label
-                vg_font_draw_text(
-                    canvas, menu->font, menu->font_size, text_x, text_y, item->text, text_color);
+                if (item->text) {
+                    vg_font_draw_text(canvas,
+                                      menu->font,
+                                      menu->font_size,
+                                      text_x,
+                                      text_y,
+                                      item->text,
+                                      text_color);
+                }
 
                 // Draw shortcut
                 if (item->shortcut) {
@@ -569,6 +793,7 @@ vg_menu_item_t *vg_contextmenu_add_item(vg_contextmenu_t *menu,
     vg_menu_item_t *item = create_menu_item(label, shortcut, action, user_data);
     if (!item)
         return NULL;
+    item->owner_contextmenu = menu;
 
     // Add to array
     if (menu->item_count >= menu->item_capacity) {
@@ -596,6 +821,7 @@ vg_menu_item_t *vg_contextmenu_add_submenu(vg_contextmenu_t *menu,
     if (!item)
         return NULL;
 
+    item->owner_contextmenu = menu;
     item->submenu = (struct vg_menu *)submenu;
 
     // Add to array
@@ -624,6 +850,7 @@ void vg_contextmenu_add_separator(vg_contextmenu_t *menu) {
         return;
 
     item->separator = true;
+    item->owner_contextmenu = menu;
 
     // Add to array
     if (menu->item_count >= menu->item_capacity) {
@@ -653,21 +880,28 @@ void vg_contextmenu_clear(vg_contextmenu_t *menu) {
 
 /// @brief Contextmenu item set enabled.
 void vg_contextmenu_item_set_enabled(vg_menu_item_t *item, bool enabled) {
-    if (item)
+    if (item) {
         item->enabled = enabled;
+        contextmenu_mark_item_changed(item, false);
+    }
 }
 
 /// @brief Contextmenu item set checked.
 void vg_contextmenu_item_set_checked(vg_menu_item_t *item, bool checked) {
-    if (item)
+    if (item) {
         item->checked = checked;
+        contextmenu_mark_item_changed(item, true);
+    }
 }
 
 /// @brief Contextmenu item set icon.
 void vg_contextmenu_item_set_icon(vg_menu_item_t *item, vg_icon_t icon) {
-    (void)item;
-    (void)icon;
-    // Icons not yet implemented for menu items
+    if (!item)
+        return;
+
+    vg_icon_destroy(&item->icon);
+    item->icon = icon;
+    contextmenu_mark_item_changed(item, true);
 }
 
 /// @brief Contextmenu show at.

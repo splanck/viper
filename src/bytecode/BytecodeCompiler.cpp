@@ -13,6 +13,7 @@
 #include "support/source_manager.hpp"
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 #include <exception>
 #include <limits>
 #include <sstream>
@@ -38,6 +39,64 @@ class BytecodeCompileFailure final : public std::exception {
   private:
     il::support::Diag diag_;
 };
+
+uint32_t bytecodeGlobalSize(il::core::Type::Kind kind) {
+    using Kind = il::core::Type::Kind;
+    switch (kind) {
+        case Kind::I1:
+            return 1;
+        case Kind::I16:
+            return 2;
+        case Kind::I32:
+            return 4;
+        case Kind::I64:
+        case Kind::F64:
+        case Kind::Ptr:
+        case Kind::Str:
+        case Kind::Error:
+        case Kind::ResumeTok:
+            return 8;
+        case Kind::Void:
+            return 0;
+    }
+    return 8;
+}
+
+uint32_t bytecodeGlobalAlign(il::core::Type::Kind kind) {
+    using Kind = il::core::Type::Kind;
+    switch (kind) {
+        case Kind::I1:
+            return 1;
+        case Kind::I16:
+            return 2;
+        case Kind::I32:
+            return 4;
+        default:
+            return 8;
+    }
+}
+
+template <typename T>
+void storeGlobalInitializer(std::vector<uint8_t> &dst, T value) {
+    dst.resize(sizeof(T));
+    std::memcpy(dst.data(), &value, sizeof(T));
+}
+
+int64_t parseI64Initializer(const il::core::Global &global) {
+    size_t consumed = 0;
+    int64_t value = std::stoll(global.init, &consumed, 0);
+    if (consumed != global.init.size())
+        throw std::invalid_argument("trailing characters");
+    return value;
+}
+
+double parseF64Initializer(const il::core::Global &global) {
+    size_t consumed = 0;
+    double value = std::stod(global.init, &consumed);
+    if (consumed != global.init.size())
+        throw std::invalid_argument("trailing characters");
+    return value;
+}
 } // namespace
 
 /// @brief Compile.
@@ -82,6 +141,8 @@ il::support::Expected<BytecodeModule> BytecodeCompiler::compileChecked(
             module_.functionIndex[ilModule.functions[i].name] = static_cast<uint32_t>(i);
         }
 
+        registerGlobals(ilModule);
+
         // Compile each function.
         for (const auto &fn : ilModule.functions) {
             compileFunction(fn);
@@ -91,6 +152,92 @@ il::support::Expected<BytecodeModule> BytecodeCompiler::compileChecked(
     }
 
     return il::support::Expected<BytecodeModule>(std::move(module_));
+}
+
+void BytecodeCompiler::registerGlobals(const il::core::Module &module) {
+    if (module.globals.size() > std::numeric_limits<uint16_t>::max()) {
+        fail({}, "V-BC-GLOBAL-TABLE", "bytecode supports at most 65535 globals");
+    }
+
+    for (const auto &global : module.globals) {
+        if (module_.globalIndex.find(global.name) != module_.globalIndex.end()) {
+            fail({}, "V-BC-DUPLICATE-GLOBAL", "duplicate global @" + global.name);
+        }
+
+        if (global.type.kind == il::core::Type::Kind::Void) {
+            fail({}, "V-BC-UNSUPPORTED-GLOBAL-TYPE", "void global @" + global.name);
+        }
+
+        GlobalInfo info;
+        info.name = global.name;
+        info.size = bytecodeGlobalSize(global.type.kind);
+        info.align = bytecodeGlobalAlign(global.type.kind);
+        info.type = global.type;
+
+        if (global.type.kind == il::core::Type::Kind::Str) {
+            info.initString = global.init;
+        } else if (!global.init.empty()) {
+            try {
+                switch (global.type.kind) {
+                    case il::core::Type::Kind::I1: {
+                        int8_t value = parseI64Initializer(global) != 0 ? 1 : 0;
+                        storeGlobalInitializer(info.initData, value);
+                        break;
+                    }
+                    case il::core::Type::Kind::I16: {
+                        int16_t value = static_cast<int16_t>(parseI64Initializer(global));
+                        storeGlobalInitializer(info.initData, value);
+                        break;
+                    }
+                    case il::core::Type::Kind::I32: {
+                        int32_t value = static_cast<int32_t>(parseI64Initializer(global));
+                        storeGlobalInitializer(info.initData, value);
+                        break;
+                    }
+                    case il::core::Type::Kind::I64:
+                    case il::core::Type::Kind::Error:
+                    case il::core::Type::Kind::ResumeTok: {
+                        int64_t value = parseI64Initializer(global);
+                        storeGlobalInitializer(info.initData, value);
+                        break;
+                    }
+                    case il::core::Type::Kind::F64: {
+                        double value = parseF64Initializer(global);
+                        storeGlobalInitializer(info.initData, value);
+                        break;
+                    }
+                    case il::core::Type::Kind::Ptr: {
+                        uintptr_t value =
+                            global.init == "null"
+                                ? 0
+                                : static_cast<uintptr_t>(parseI64Initializer(global));
+                        storeGlobalInitializer(info.initData, value);
+                        break;
+                    }
+                    case il::core::Type::Kind::Str:
+                    case il::core::Type::Kind::Void:
+                        break;
+                }
+            } catch (const std::exception &) {
+                fail({}, "V-BC-GLOBAL-INIT", "invalid initializer for global @" + global.name);
+            }
+        }
+
+        module_.addGlobal(std::move(info));
+    }
+}
+
+void BytecodeCompiler::emitGlobalAddress(std::string_view name, il::support::SourceLoc loc) {
+    auto it = module_.globalIndex.find(std::string(name));
+    if (it == module_.globalIndex.end()) {
+        fail(loc, "V-BC-UNKNOWN-GLOBAL", "unknown global @" + std::string(name));
+    }
+    if (it->second > std::numeric_limits<uint16_t>::max()) {
+        fail(loc, "V-BC-GLOBAL-TABLE", "global index exceeds bytecode operand width");
+    }
+
+    emit16(BCOpcode::LOAD_GLOBAL_ADDR, static_cast<uint16_t>(it->second));
+    pushStack();
 }
 
 /// @brief Compile Function.
@@ -653,12 +800,10 @@ void BytecodeCompiler::pushValue(const il::core::Value &val) {
                 uint64_t taggedPtr = 0x8000000000000000ULL | it->second;
                 uint32_t idx = module_.addI64(static_cast<int64_t>(taggedPtr));
                 emitPoolLoad(BCOpcode::LOAD_I64, idx, "i64");
+                pushStack();
             } else {
-                failCurrent("V-BC-UNSUPPORTED-GLOBAL",
-                            "global address @" + val.str +
-                                " is not a function pointer supported by the bytecode backend");
+                emitGlobalAddress(val.str, currentLoc_);
             }
-            pushStack();
             break;
         }
 
@@ -1305,10 +1450,12 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
             break;
 
         case Opcode::GAddr:
-            fail(instr.loc,
-                 "V-BC-UNSUPPORTED-GADDR",
-                 "gaddr is not implemented by the bytecode backend; use a direct function "
-                 "reference or implement global data addressing first");
+            requireOperandCount(instr, 1);
+            if (instr.operands[0].kind != il::core::Value::Kind::GlobalAddr) {
+                fail(instr.loc, "V-BC-MALFORMED-INSTR", "gaddr requires a global operand");
+            }
+            pushValue(instr.operands[0]);
+            storeResult(instr);
             break;
 
         default:

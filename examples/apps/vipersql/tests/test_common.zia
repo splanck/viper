@@ -26,8 +26,8 @@ bind "../engine/types";
 // TEST COUNTERS
 //=============================================================================
 
-Integer passed = 0;
-Integer failed = 0;
+var passed: Integer = 0;
+var failed: Integer = 0;
 
 //=============================================================================
 // CORE ASSERTIONS

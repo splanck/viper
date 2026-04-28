@@ -63,6 +63,7 @@ static void free_menu_item(vg_menu_item_t *item) {
         free(item->text);
     if (item->shortcut)
         free(item->shortcut);
+    vg_icon_destroy(&item->icon);
 
     // Recursively free submenu
     if (item->submenu) {

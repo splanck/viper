@@ -156,7 +156,6 @@ Viper ships with 14 example games demonstrating the engine at every scale:
 | [VTris](../../examples/games/vtris/) | 1,132 | Puzzle (BASIC) | Terminal rendering, OOP classes, matrix rotation |
 | [Frogger BASIC](../../examples/games/frogger-basic/) | 1,320 | Arcade (BASIC) | OOP stress test, nested objects, collision |
 | [Chess BASIC](../../examples/games/chess-basic/) | 1,100+ | Board game (BASIC) | Complex game logic, AI, terminal rendering |
-| [Monopoly](../../examples/games/monopoly/) | 600 | Board game (BASIC) | Turn-based mechanics, property management |
 | [Pac-Man BASIC](../../examples/games/pacman-basic/) | 450 | Arcade (BASIC) | Ghost pathfinding, ANSI rendering |
 | [Centipede BASIC](../../examples/games/centipede-basic/) | 450 | Arcade (BASIC) | Class-based architecture, grid field |
 | [Fade Test](../../examples/games/fade-test/) | 168 | Test harness | ScreenFX, Canvas coverage verification |

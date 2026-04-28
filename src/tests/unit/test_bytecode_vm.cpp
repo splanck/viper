@@ -488,6 +488,96 @@ static Module createStringFieldLifetimeModule() {
     return m;
 }
 
+/// Create a function that stores through a module-global address and reads it back.
+static Module createGlobalAddressModule() {
+    Module m;
+    m.globals.push_back({"counter", Type(Type::Kind::I64), "41"});
+
+    Function fn;
+    fn.name = "global_addr";
+    fn.retType = Type(Type::Kind::I64);
+
+    BasicBlock entry;
+    entry.label = "entry";
+
+    Instr ptr;
+    ptr.result = 0;
+    ptr.op = Opcode::GAddr;
+    ptr.type = Type(Type::Kind::Ptr);
+    ptr.operands.push_back(Value::global("counter"));
+    ptr.loc = {1, 1, 1};
+    entry.instructions.push_back(ptr);
+
+    Instr before;
+    before.result = 1;
+    before.op = Opcode::Load;
+    before.type = Type(Type::Kind::I64);
+    before.operands.push_back(Value::temp(0));
+    before.loc = {1, 1, 1};
+    entry.instructions.push_back(before);
+
+    Instr next;
+    next.result = 2;
+    next.op = Opcode::Add;
+    next.type = Type(Type::Kind::I64);
+    next.operands.push_back(Value::temp(1));
+    next.operands.push_back(Value::constInt(1));
+    next.loc = {1, 1, 1};
+    entry.instructions.push_back(next);
+
+    Instr store;
+    store.op = Opcode::Store;
+    store.type = Type(Type::Kind::I64);
+    store.operands.push_back(Value::temp(0));
+    store.operands.push_back(Value::temp(2));
+    store.loc = {1, 1, 1};
+    entry.instructions.push_back(store);
+
+    Instr after;
+    after.result = 3;
+    after.op = Opcode::Load;
+    after.type = Type(Type::Kind::I64);
+    after.operands.push_back(Value::temp(0));
+    after.loc = {1, 1, 1};
+    entry.instructions.push_back(after);
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(3));
+    ret.loc = {1, 1, 1};
+    entry.instructions.push_back(ret);
+    entry.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    m.functions.push_back(std::move(fn));
+    return m;
+}
+
+static void test_global_address_storage() {
+    std::cout << "  test_global_address_storage: ";
+
+    BytecodeModule bcModule = compileAssumingVerified(createGlobalAddressModule());
+    assert(bcModule.globals.size() == 1);
+    assert(bcModule.globalIndex["counter"] == 0);
+
+    for (bool threaded : {false, true}) {
+        BytecodeVM vm;
+        vm.setThreadedDispatch(threaded);
+        vm.load(&bcModule);
+
+        BCSlot result = vm.exec("global_addr", {});
+        if (vm.state() != VMState::Halted) {
+            std::cerr << "global address test trapped (threaded=" << threaded
+                      << "): " << vm.trapMessage() << "\n";
+        }
+        assert(vm.state() == VMState::Halted);
+        assert(result.i64 == 42);
+    }
+
+    std::cout << "PASSED\n";
+}
+
 /// Test basic bytecode encoding/decoding
 static void test_bytecode_encoding() {
     std::cout << "  test_bytecode_encoding: ";
@@ -1812,6 +1902,7 @@ int main() {
     test_runtime_bridge_string_aliasing();
     test_string_memory_lifetime();
     test_string_release_call_lifetime();
+    test_global_address_storage();
     test_native_multi_args();
     test_native_wide_index();
     test_exception_handling();

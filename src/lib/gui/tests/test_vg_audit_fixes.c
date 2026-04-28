@@ -295,6 +295,45 @@ TEST(contextmenu_show_at_does_not_dereference_impl_data) {
     vg_widget_destroy(&menu->base);
 }
 
+TEST(contextmenu_item_icon_setter_owns_replaces_and_reserves_space) {
+    vg_contextmenu_t *plain = vg_contextmenu_create();
+    ASSERT_NOT_NULL(plain);
+    plain->min_width = 0;
+    ASSERT_NOT_NULL(vg_contextmenu_add_item(plain, "Open", NULL, NULL, NULL));
+    vg_widget_measure(&plain->base, 0.0f, 0.0f);
+    float plain_width = plain->base.measured_width;
+
+    vg_contextmenu_t *menu = vg_contextmenu_create();
+    ASSERT_NOT_NULL(menu);
+    menu->min_width = 0;
+    vg_menu_item_t *item = vg_contextmenu_add_item(menu, "Open", NULL, NULL, NULL);
+    ASSERT_NOT_NULL(item);
+    ASSERT(item->owner_contextmenu == menu);
+
+    uint8_t rgba[16] = {0x10, 0x20, 0x30, 0xFF, 0x40, 0x50, 0x60, 0x80,
+                        0x70, 0x80, 0x90, 0x40, 0xA0, 0xB0, 0xC0, 0x00};
+    vg_icon_t image = vg_icon_from_pixels(rgba, 2, 2);
+    ASSERT_EQ(image.type, VG_ICON_IMAGE);
+    ASSERT_NOT_NULL(image.data.image.pixels);
+    ASSERT(image.data.image.pixels != rgba);
+
+    vg_contextmenu_item_set_icon(item, image);
+    ASSERT_EQ(item->icon.type, VG_ICON_IMAGE);
+    ASSERT_NOT_NULL(item->icon.data.image.pixels);
+    ASSERT_EQ(item->icon.data.image.width, 2u);
+    ASSERT_EQ(item->icon.data.image.height, 2u);
+
+    vg_widget_measure(&menu->base, 0.0f, 0.0f);
+    ASSERT(menu->base.measured_width > plain_width + 20.0f);
+
+    vg_contextmenu_item_set_icon(item, vg_icon_from_glyph('X'));
+    ASSERT_EQ(item->icon.type, VG_ICON_GLYPH);
+    ASSERT_EQ(item->icon.data.glyph, (uint32_t)'X');
+
+    vg_widget_destroy(&menu->base);
+    vg_widget_destroy(&plain->base);
+}
+
 //=============================================================================
 // Fix #8: clamp_editor_position helpers (verified indirectly via set_cursor)
 //=============================================================================
@@ -788,6 +827,7 @@ int main(void) {
 
     printf("\nFix #6: ContextMenu impl_data independence\n");
     RUN(contextmenu_show_at_does_not_dereference_impl_data);
+    RUN(contextmenu_item_icon_setter_owns_replaces_and_reserves_space);
 
     printf("\nFix #8: CodeEditor clamp_editor_position\n");
     RUN(codeeditor_set_cursor_clamps_atomic);

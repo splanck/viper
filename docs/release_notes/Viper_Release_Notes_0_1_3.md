@@ -119,7 +119,7 @@ Shared components extracted for frontend reuse:
 
 #### New Demos
 
-**BASIC**: Monopoly, Pac-Man, Particles
+**BASIC**: Pac-Man, Particles
 
 **Zia**: Frogger, class examples, collection demos
 
