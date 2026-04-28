@@ -1314,6 +1314,230 @@ TEST(layout_measure_constraints_and_negative_arrange_are_clamped) {
 }
 
 //=============================================================================
+// Round 4 — Runtime-facing GUI correctness fixes
+//=============================================================================
+
+static int g_route_outside_events = 0;
+static int g_route_modal_events = 0;
+
+static bool route_test_handle_event(vg_widget_t *widget, vg_event_t *event) {
+    if (widget->user_data == (void *)1)
+        g_route_outside_events++;
+    else if (widget->user_data == (void *)2)
+        g_route_modal_events++;
+    event->handled = true;
+    return true;
+}
+
+static bool route_test_can_focus(vg_widget_t *widget) {
+    return widget->enabled && widget->visible;
+}
+
+static vg_widget_vtable_t g_route_test_vtable = {
+    .handle_event = route_test_handle_event,
+    .can_focus = route_test_can_focus,
+};
+
+TEST(modal_root_releases_external_mouse_capture) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *outside = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *modal = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    ASSERT_NOT_NULL(outside);
+    ASSERT_NOT_NULL(modal);
+
+    outside->vtable = &g_route_test_vtable;
+    modal->vtable = &g_route_test_vtable;
+    outside->user_data = (void *)1;
+    modal->user_data = (void *)2;
+    vg_widget_add_child(root, outside);
+    vg_widget_add_child(root, modal);
+    vg_widget_arrange(root, 0.0f, 0.0f, 300.0f, 300.0f);
+    vg_widget_arrange(outside, 0.0f, 0.0f, 80.0f, 80.0f);
+    vg_widget_arrange(modal, 100.0f, 100.0f, 80.0f, 80.0f);
+
+    g_route_outside_events = 0;
+    g_route_modal_events = 0;
+    vg_widget_set_input_capture(outside);
+    vg_widget_set_modal_root(modal);
+
+    vg_event_t ev = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 10.0f, 10.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &ev));
+    ASSERT_NULL(vg_widget_get_input_capture());
+    ASSERT_EQ(g_route_outside_events, 0);
+    ASSERT_EQ(g_route_modal_events, 0);
+
+    vg_widget_set_modal_root(NULL);
+    vg_widget_destroy(root);
+}
+
+TEST(modal_root_redirects_keyboard_away_from_external_capture) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *outside = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *modal = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    ASSERT_NOT_NULL(outside);
+    ASSERT_NOT_NULL(modal);
+
+    outside->vtable = &g_route_test_vtable;
+    modal->vtable = &g_route_test_vtable;
+    outside->user_data = (void *)1;
+    modal->user_data = (void *)2;
+    vg_widget_add_child(root, outside);
+    vg_widget_add_child(root, modal);
+
+    g_route_outside_events = 0;
+    g_route_modal_events = 0;
+    vg_widget_set_focus(outside);
+    vg_widget_set_input_capture(outside);
+    vg_widget_set_modal_root(modal);
+
+    vg_event_t ev = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_ENTER, 0, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &ev));
+    ASSERT_NULL(vg_widget_get_input_capture());
+    ASSERT_EQ(g_route_outside_events, 0);
+    ASSERT_EQ(g_route_modal_events, 1);
+
+    vg_widget_set_modal_root(NULL);
+    vg_widget_set_focus(NULL);
+    vg_widget_destroy(root);
+}
+
+TEST(menubar_remove_rejects_cross_owner_handles) {
+    vg_menubar_t *bar = vg_menubar_create(NULL);
+    ASSERT_NOT_NULL(bar);
+    vg_menu_t *file = vg_menubar_add_menu(bar, "File");
+    vg_menu_t *edit = vg_menubar_add_menu(bar, "Edit");
+    ASSERT_NOT_NULL(file);
+    ASSERT_NOT_NULL(edit);
+    vg_menu_item_t *open = vg_menu_add_item(file, "Open", NULL, NULL, NULL);
+    vg_menu_item_t *copy = vg_menu_add_item(edit, "Copy", NULL, NULL, NULL);
+    ASSERT_NOT_NULL(open);
+    ASSERT_NOT_NULL(copy);
+
+    vg_menu_remove_item(file, copy);
+    ASSERT_EQ(file->item_count, 1);
+    ASSERT_EQ(edit->item_count, 1);
+    ASSERT(file->first_item == open);
+    ASSERT(edit->first_item == copy);
+
+    vg_menubar_remove_menu(bar, edit);
+    ASSERT_EQ(bar->menu_count, 1);
+    ASSERT(bar->first_menu == file);
+    vg_menu_remove_item(file, open);
+    ASSERT_EQ(file->item_count, 0);
+
+    vg_widget_destroy(&bar->base);
+}
+
+TEST(textinput_zero_capacity_and_invalid_codepoints_are_ignored) {
+    vg_textinput_t *ti = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(ti);
+
+    free(ti->text);
+    ti->text = NULL;
+    ti->text_capacity = 0;
+    ti->text_len = 0;
+    vg_textinput_set_text(ti, "abc");
+    ASSERT_NOT_NULL(ti->text);
+    ASSERT_EQ(strcmp(ti->text, "abc"), 0);
+    ASSERT(ti->text_capacity >= 4);
+
+    vg_event_t surrogate = vg_event_key(VG_EVENT_KEY_CHAR, 0, 0xD800u, 0);
+    ASSERT_TRUE(ti->base.vtable->handle_event(&ti->base, &surrogate));
+    ASSERT_EQ(strcmp(ti->text, "abc"), 0);
+
+    vg_event_t out_of_range = vg_event_key(VG_EVENT_KEY_CHAR, 0, 0x110000u, 0);
+    ASSERT_TRUE(ti->base.vtable->handle_event(&ti->base, &out_of_range));
+    ASSERT_EQ(strcmp(ti->text, "abc"), 0);
+
+    vg_widget_destroy(&ti->base);
+}
+
+TEST(listbox_select_index_out_of_range_keeps_selection) {
+    vg_listbox_t *lb = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(lb);
+    vg_listbox_item_t *a = vg_listbox_add_item(lb, "A", NULL);
+    vg_listbox_item_t *b = vg_listbox_add_item(lb, "B", NULL);
+    ASSERT_NOT_NULL(a);
+    ASSERT_NOT_NULL(b);
+    vg_listbox_select(lb, b);
+    ASSERT(lb->selected == b);
+
+    vg_listbox_select_index(lb, 99);
+    ASSERT(lb->selected == b);
+    ASSERT_TRUE(b->selected);
+
+    vg_widget_destroy(&lb->base);
+}
+
+TEST(findreplacebar_regex_search_finds_variable_length_matches) {
+    vg_codeeditor_t *ed = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(ed);
+    vg_codeeditor_set_text(ed, "alpha 123 beta\nz9 z10");
+
+    vg_findreplacebar_t *bar = vg_findreplacebar_create();
+    ASSERT_NOT_NULL(bar);
+    vg_findreplacebar_set_target(bar, ed);
+
+    vg_search_options_t options = {0};
+    options.use_regex = true;
+    vg_findreplacebar_set_options(bar, &options);
+    vg_findreplacebar_find(bar, "[0-9]+");
+
+#ifndef _WIN32
+    ASSERT_EQ(bar->match_count, (size_t)3);
+    ASSERT_EQ(bar->matches[0].start_col, (uint32_t)6);
+    ASSERT_EQ(bar->matches[0].end_col, (uint32_t)9);
+    ASSERT_EQ(bar->matches[1].start_col, (uint32_t)1);
+    ASSERT_EQ(bar->matches[2].start_col, (uint32_t)4);
+#else
+    ASSERT_EQ(bar->match_count, (size_t)0);
+#endif
+
+    vg_widget_destroy(&bar->base);
+    vg_widget_destroy(&ed->base);
+}
+
+TEST(treeview_keyboard_navigation_scrolls_selected_node_into_view) {
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    ASSERT_NOT_NULL(tree);
+    tree->base.height = 30.0f;
+    tree->row_height = 10.0f;
+
+    vg_tree_node_t *first = NULL;
+    for (int i = 0; i < 10; i++) {
+        char label[16];
+        snprintf(label, sizeof(label), "node-%d", i);
+        vg_tree_node_t *node = vg_treeview_add_node(tree, NULL, label);
+        if (i == 0)
+            first = node;
+    }
+    ASSERT_NOT_NULL(first);
+    vg_treeview_select(tree, first);
+    ASSERT_EQ(tree->scroll_y, 0.0f);
+
+    vg_event_t down = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_DOWN, 0, 0);
+    for (int i = 0; i < 5; i++)
+        ASSERT_TRUE(tree->base.vtable->handle_event(&tree->base, &down));
+
+    ASSERT_NOT_NULL(tree->selected);
+    ASSERT(tree->scroll_y > 0.0f);
+    int current = 0;
+    int selected_index = -1;
+    for (vg_tree_node_t *node = tree->root->first_child; node; node = node->next_sibling) {
+        if (node == tree->selected) {
+            selected_index = current;
+            break;
+        }
+        current++;
+    }
+    ASSERT_EQ(selected_index, 5);
+
+    vg_widget_destroy(&tree->base);
+}
+
+//=============================================================================
 // Main
 //=============================================================================
 
@@ -1394,6 +1618,15 @@ int main(void) {
     RUN(textinput_unhandled_keydown_bubbles_to_parent);
     RUN(image_load_file_decodes_bmp_into_rgba_pixels);
     RUN(layout_measure_constraints_and_negative_arrange_are_clamped);
+
+    printf("\nRound 4 — Runtime-facing GUI correctness fixes\n");
+    RUN(modal_root_releases_external_mouse_capture);
+    RUN(modal_root_redirects_keyboard_away_from_external_capture);
+    RUN(menubar_remove_rejects_cross_owner_handles);
+    RUN(textinput_zero_capacity_and_invalid_codepoints_are_ignored);
+    RUN(listbox_select_index_out_of_range_keeps_selection);
+    RUN(findreplacebar_regex_search_finds_variable_length_matches);
+    RUN(treeview_keyboard_navigation_scrolls_selected_node_into_view);
 
     printf("\n=== Results: %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;

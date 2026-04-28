@@ -1092,6 +1092,8 @@ void vg_listbox_select_index(vg_listbox_t *listbox, size_t index) {
         for (size_t i = 0; i < index && item; i++) {
             item = item->next;
         }
+        if (!item)
+            return;
         vg_listbox_select(listbox, item);
         return;
     }

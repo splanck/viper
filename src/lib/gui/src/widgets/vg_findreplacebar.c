@@ -18,6 +18,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
+#include <regex.h>
+#endif
 
 //=============================================================================
 // Constants
@@ -51,6 +54,13 @@ static const char *find_in_line(const char *text,
                                 const char *query,
                                 vg_search_options_t *options,
                                 size_t *match_len);
+#ifndef _WIN32
+static const char *find_regex_in_line(const char *text,
+                                      const char *start,
+                                      regex_t *regex,
+                                      vg_search_options_t *options,
+                                      size_t *match_len);
+#endif
 static void highlight_current_match(vg_findreplacebar_t *bar);
 static void update_result_text(vg_findreplacebar_t *bar);
 
@@ -161,6 +171,43 @@ static const char *find_in_line(const char *text,
     return NULL;
 }
 
+#ifndef _WIN32
+static const char *find_regex_in_line(const char *text,
+                                      const char *start,
+                                      regex_t *regex,
+                                      vg_search_options_t *options,
+                                      size_t *match_len) {
+    if (!text || !start || !regex || !match_len)
+        return NULL;
+
+    const char *pos = start;
+    while (*pos) {
+        regmatch_t match = {0};
+        if (regexec(regex, pos, 1, &match, 0) != 0)
+            return NULL;
+        if (match.rm_so < 0 || match.rm_eo < match.rm_so)
+            return NULL;
+
+        const char *found = pos + match.rm_so;
+        size_t len = (size_t)(match.rm_eo - match.rm_so);
+        if (len == 0) {
+            pos = found + 1;
+            continue;
+        }
+
+        if (options->whole_word && !check_whole_word(text, found, len)) {
+            pos = found + 1;
+            continue;
+        }
+
+        *match_len = len;
+        return found;
+    }
+
+    return NULL;
+}
+#endif
+
 static void add_match(vg_findreplacebar_t *bar, uint32_t line, uint32_t start, uint32_t end) {
     // Grow array if needed
     if (bar->match_count >= bar->match_capacity) {
@@ -206,6 +253,26 @@ static void perform_search(vg_findreplacebar_t *bar) {
 
     vg_codeeditor_t *ed = bar->target_editor;
 
+#ifndef _WIN32
+    regex_t regex;
+    bool regex_ready = false;
+    if (bar->options.use_regex) {
+        int flags = REG_EXTENDED;
+        if (!bar->options.case_sensitive)
+            flags |= REG_ICASE;
+        if (regcomp(&regex, query, flags) != 0) {
+            snprintf(bar->result_text, sizeof(bar->result_text), "Invalid regex");
+            return;
+        }
+        regex_ready = true;
+    }
+#else
+    if (bar->options.use_regex) {
+        snprintf(bar->result_text, sizeof(bar->result_text), "Regex unavailable");
+        return;
+    }
+#endif
+
     // Search through editor lines
     for (int line = 0; line < ed->line_count; line++) {
         const char *text = ed->lines[line].text;
@@ -215,7 +282,12 @@ static void perform_search(vg_findreplacebar_t *bar) {
         const char *pos = text;
         size_t match_len;
 
+#ifndef _WIN32
+        while ((pos = regex_ready ? find_regex_in_line(text, pos, &regex, &bar->options, &match_len)
+                                  : find_in_line(pos, query, &bar->options, &match_len)) != NULL) {
+#else
         while ((pos = find_in_line(pos, query, &bar->options, &match_len)) != NULL) {
+#endif
             uint32_t start_col = (uint32_t)(pos - text);
             uint32_t end_col = start_col + (uint32_t)match_len;
             add_match(bar, (uint32_t)line, start_col, end_col);
@@ -225,6 +297,11 @@ static void perform_search(vg_findreplacebar_t *bar) {
             pos += match_len > 0 ? match_len : 1;
         }
     }
+
+#ifndef _WIN32
+    if (regex_ready)
+        regfree(&regex);
+#endif
 
     // Update result text and highlight
     if (bar->match_count > 0) {

@@ -8034,7 +8034,7 @@ RT_CLASS_BEGIN("Viper.GUI.Image", GuiImage, "obj", GuiImageNew)
 RT_CLASS_END()
 
 // Viper.GUI.Theme - theme control (static class)
-RT_CLASS_BEGIN("Viper.GUI.Theme", GuiTheme, "obj", none)
+RT_CLASS_BEGIN("Viper.GUI.Theme", GuiTheme, "none", none)
     RT_METHOD("SetDark",  "void()", GuiThemeSetDark)
     RT_METHOD("SetLight", "void()", GuiThemeSetLight)
     RT_METHOD("GetName",  "str()",  GuiThemeGetName)

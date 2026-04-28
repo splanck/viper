@@ -1569,13 +1569,6 @@ void rt_gui_app_poll(void *app_ptr) {
                 }
             }
 
-            // Check keyboard shortcuts before dispatching KEY_DOWN.
-            // If a shortcut matches, set its triggered flag and suppress
-            // the KEY_CHAR synthesis (so Ctrl+N doesn't insert 'N').
-            if (event.type == VGFX_EVENT_KEY_DOWN) {
-                rt_shortcuts_check_key(app, event.data.key.key, event.data.key.modifiers);
-            }
-
             if (top_palette && top_palette->is_visible) {
                 int is_mouse_event =
                     gui_event.type == VG_EVENT_MOUSE_MOVE ||
@@ -1602,6 +1595,14 @@ void rt_gui_app_poll(void *app_ptr) {
                     rt_gui_capture_reported_click(app, &gui_event);
                     continue;
                 }
+            }
+
+            // Check keyboard shortcuts after modal overlays get first chance.
+            // If a shortcut matches, consume the key-down so the widget tree
+            // does not also process the accelerator key as normal input.
+            if (gui_event.type == VG_EVENT_KEY_DOWN &&
+                rt_shortcuts_check_key(app, gui_event.key.key, (int)gui_event.modifiers)) {
+                continue;
             }
 
             if (app->notification_manager &&

@@ -30,6 +30,7 @@ Desktop menu dropdowns size themselves to the longest visible item/shortcut row,
 Dropdown menu (returned by `MenuBar.AddMenu()`).
 
 Disabled top-level menus render in the disabled state and ignore mouse and keyboard open requests.
+Menu and menu-item handles are owner-checked; removing an item through the wrong menu, or a menu through the wrong menubar, is ignored rather than corrupting either list.
 
 | Method                  | Signature          | Description                    |
 |-------------------------|--------------------|--------------------------------|
@@ -202,6 +203,7 @@ if copyItem.WasClicked() == 1 { /* copy */ }
 Find and replace bar for text searching.
 
 `GetFindText()` and `GetReplaceText()` read the live text currently shown in the inputs, `Replace()` returns `0` when there is no active editor or no current match to replace, and pointer input now routes through the standard widget event pipeline so focus, hover, and click behavior match the rest of the toolkit.
+`SetRegex(1)` enables regular-expression search in the bound `CodeEditor`; matches may have variable length and still honor case-sensitive and whole-word options.
 
 **Constructor:** `NEW Viper.GUI.FindBar(parent)`
 
@@ -251,6 +253,7 @@ SayInt(findbar.GetMatchCount());
 Command palette for searchable command execution.
 
 The palette renders a full panel background, row highlight, and right-aligned shortcuts. Keyboard navigation and mouse-wheel scrolling now maintain a visible selection window, so moving past the first page of results keeps the active command onscreen.
+Palette wrapper handles are finalized by the runtime collector and are disconnected when the owning app is destroyed, so explicit `Destroy()` and app shutdown use the same idempotent cleanup path.
 
 **Constructor:** `NEW Viper.GUI.CommandPalette(parent)`
 
@@ -259,6 +262,7 @@ The palette renders a full panel background, row highlight, and right-aligned sh
 | `AddCommand(id, title, category)`               | `Void(String,String,String)` | Register a command                       |
 | `AddCommandWithShortcut(id,title,cat,shortcut)` | `Void(Str,Str,Str,Str)`      | Register command with shortcut           |
 | `Clear()`                                       | `Void()`                     | Remove all commands                      |
+| `Destroy()`                                     | `Void()`                     | Destroy the palette wrapper/widget       |
 | `GetSelected()`                                 | `String()`                   | Get selected command ID                  |
 | `Hide()`                                        | `Void()`                     | Hide the palette                         |
 | `IsVisible()`                                   | `Integer()`                  | 1 if palette is visible                  |
@@ -290,6 +294,7 @@ if palette.WasSelected() == 1 {
 Breadcrumb navigation widget.
 
 When the path is truncated, the overflow affordance now opens a real dropdown menu that paints, tracks hover, captures input while open, and reports the selected breadcrumb normally.
+Breadcrumb wrappers install runtime finalizers and ignore calls after `Destroy()`, which keeps repeated cleanup safe.
 
 **Constructor:** `NEW Viper.GUI.Breadcrumb(parent)`
 
@@ -297,12 +302,14 @@ When the path is truncated, the overflow affordance now opens a real dropdown me
 |----------------------------|------------------------|------------------------------------------|
 | `AddItem(text, data)`      | `Void(String, String)` | Add breadcrumb item with data            |
 | `Clear()`                  | `Void()`               | Remove all items                         |
+| `Destroy()`                | `Void()`               | Destroy the breadcrumb wrapper/widget    |
 | `GetClickedData()`         | `String()`             | Data of clicked item                     |
 | `GetClickedIndex()`        | `Integer()`            | Index of clicked item                    |
 | `SetItems(items)`          | `Void(String)`         | Set items from delimited string          |
 | `SetMaxItems(max)`         | `Void(Integer)`        | Set max visible items                    |
 | `SetPath(path, separator)` | `Void(String, String)` | Set path with separator (e.g. "/")       |
 | `SetSeparator(sep)`        | `Void(String)`         | Set separator character                  |
+| `SetVisible(visible)`      | `Void(Integer)`        | Show/hide breadcrumb                     |
 | `WasItemClicked()`         | `Integer()`            | 1 if an item was clicked                 |
 
 ### Example
@@ -325,6 +332,8 @@ if bc.WasItemClicked() == 1 {
 
 Code minimap widget (pairs with CodeEditor).
 
+Minimap wrappers install runtime finalizers and clamp width/scale changes through the live widget only; calls after `Destroy()` are ignored.
+
 **Constructor:** `NEW Viper.GUI.Minimap(parent)`
 
 | Method                         | Signature           | Description                              |
@@ -332,10 +341,13 @@ Code minimap widget (pairs with CodeEditor).
 | `AddMarker(line, color, type)` | `Void(Int,Int,Int)` | Add line marker                          |
 | `BindEditor(editor)`           | `Void(Object)`      | Bind to a CodeEditor                     |
 | `ClearMarkers()`               | `Void()`            | Remove all markers                       |
+| `Destroy()`                    | `Void()`            | Destroy the minimap wrapper/widget       |
 | `GetWidth()`                   | `Integer()`         | Get minimap width                        |
+| `IsVisible()`                  | `Integer()`         | Check if visible                         |
 | `RemoveMarkers(type)`          | `Void(Integer)`     | Remove markers by type                   |
 | `SetScale(scale)`              | `Void(Double)`      | Set minimap scale                        |
 | `SetShowSlider(show)`          | `Void(Integer)`     | Show/hide scroll slider                  |
+| `SetVisible(visible)`          | `Void(Integer)`     | Show/hide minimap                        |
 | `SetWidth(width)`              | `Void(Integer)`     | Set minimap width                        |
 | `UnbindEditor()`               | `Void()`            | Unbind from editor                       |
 
@@ -606,6 +618,8 @@ Viper.GUI.Container.SetPadding(vbox, 20.0)
 
 Keyboard shortcut registration system (static methods).
 
+Shortcut matching uses the translated `VG_KEY_*` key space, so function keys, arrows, `Home`/`End`, `PageUp`/`PageDown`, and other named keys match the same strings accepted by `Register()`. Matching key-down events are consumed after modal overlays such as `CommandPalette` get first chance at the input.
+
 | Method                                          | Signature               | Description                              |
 |-------------------------------------------------|-------------------------|------------------------------------------|
 | `Viper.GUI.Shortcuts.Clear()`                   | `Void()`                | Remove all shortcuts                     |
@@ -655,6 +669,8 @@ Cursor.Reset();       // Default cursor
 ---
 
 ## Themes
+
+`Viper.GUI.Theme` is a static class; call its methods directly or through a static bind, not through `NEW`.
 
 ### Setting Theme
 

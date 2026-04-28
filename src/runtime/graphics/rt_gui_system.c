@@ -122,9 +122,9 @@ static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt
         // Trim whitespace
         while (*token == ' ')
             token++;
-        char *end = token + strlen(token) - 1;
-        while (end > token && *end == ' ')
-            *end-- = '\0';
+        char *end = token + strlen(token);
+        while (end > token && end[-1] == ' ')
+            *--end = '\0';
 
         if (strcasecmp(token, "Ctrl") == 0 || strcasecmp(token, "Control") == 0) {
             *ctrl = 1;
@@ -321,7 +321,7 @@ void rt_shortcuts_clear_triggered(rt_gui_app_t *app) {
 /// @details Walks the shortcut table and returns 1 if any enabled shortcut's
 ///          (ctrl, shift, alt, key) tuple matches the incoming event. Several
 ///          normalisations apply before comparison:
-///          - **Cmd → Ctrl on macOS.** Both `VGFX_MOD_CTRL` and `VGFX_MOD_CMD`
+///          - **Cmd → Ctrl on macOS.** Both `VG_MOD_CTRL` and `VG_MOD_SUPER`
 ///            map to `has_ctrl`, so a shortcut registered as `Ctrl+S` fires for
 ///            `Cmd+S` on macOS without callers needing platform-specific logic.
 ///          - **Modifier requirement.** Plain keys (no Ctrl, no Alt) are
@@ -338,7 +338,7 @@ void rt_shortcuts_clear_triggered(rt_gui_app_t *app) {
 ///          freed first.
 /// @param app App owning the shortcut table.
 /// @param key Key code from the event.
-/// @param mods Modifier bitmask (`VGFX_MOD_*`).
+/// @param mods Modifier bitmask (`VG_MOD_*`).
 /// @return 1 if a shortcut was triggered, 0 otherwise.
 int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
     RT_ASSERT_MAIN_THREAD();
@@ -346,10 +346,10 @@ int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
         return 0;
 
     // On macOS, Cmd is used instead of Ctrl for shortcuts.
-    // Treat VGFX_MOD_CMD as Ctrl for cross-platform compatibility.
-    int has_ctrl = (mods & VGFX_MOD_CTRL) || (mods & VGFX_MOD_CMD);
-    int has_shift = (mods & VGFX_MOD_SHIFT) ? 1 : 0;
-    int has_alt = (mods & VGFX_MOD_ALT) ? 1 : 0;
+    // Treat VG_MOD_SUPER as Ctrl for cross-platform compatibility.
+    int has_ctrl = (mods & VG_MOD_CTRL) || (mods & VG_MOD_SUPER);
+    int has_shift = (mods & VG_MOD_SHIFT) ? 1 : 0;
+    int has_alt = (mods & VG_MOD_ALT) ? 1 : 0;
 
     // Only check if at least one modifier is held (plain keys aren't shortcuts)
     if (!has_ctrl && !has_alt && !(key >= VG_KEY_F1 && key <= VG_KEY_F12))

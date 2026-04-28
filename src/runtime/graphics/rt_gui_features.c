@@ -64,6 +64,26 @@ typedef struct {
     int64_t was_selected;
 } rt_commandpalette_data_t;
 
+static void rt_commandpalette_dispose(rt_commandpalette_data_t *data) {
+    if (!data)
+        return;
+    if (data->palette) {
+        rt_gui_unregister_command_palette(data->app, data->palette);
+        if (data->palette->base.user_data == data)
+            data->palette->base.user_data = NULL;
+        vg_commandpalette_destroy(data->palette);
+        data->palette = NULL;
+    }
+    free(data->selected_command);
+    data->selected_command = NULL;
+    data->was_selected = 0;
+    data->app = NULL;
+}
+
+static void rt_commandpalette_finalize(void *palette) {
+    rt_commandpalette_dispose((rt_commandpalette_data_t *)palette);
+}
+
 /// @brief Callback fired by the command palette when the user activates a command.
 ///
 /// Captures the selected command's ID into the per-palette data
@@ -110,7 +130,8 @@ void *rt_commandpalette_new(void *parent) {
     data->palette = palette;
     data->selected_command = NULL;
     data->was_selected = 0;
-    palette->base.user_data = app;
+    palette->base.user_data = data;
+    rt_obj_set_finalizer(data, rt_commandpalette_finalize);
 
     vg_commandpalette_set_callbacks(palette, rt_commandpalette_on_execute, NULL, data);
     if (app && app->default_font)
@@ -126,17 +147,7 @@ void rt_commandpalette_destroy(void *palette) {
     if (!palette)
         return;
     rt_commandpalette_data_t *data = (rt_commandpalette_data_t *)palette;
-    rt_gui_unregister_command_palette(data->app, data->palette);
-    if (data->palette) {
-        vg_commandpalette_destroy(data->palette);
-        data->palette = NULL;
-    }
-    if (data->selected_command) {
-        free(data->selected_command);
-        data->selected_command = NULL;
-    }
-    data->was_selected = 0;
-    data->app = NULL;
+    rt_commandpalette_dispose(data);
 }
 
 /// @brief Register a command in the palette's fuzzy-searchable list.
@@ -778,7 +789,34 @@ typedef struct rt_breadcrumb_data {
     int64_t clicked_index;
     char *clicked_data;
     int64_t was_clicked;
+    const vg_widget_vtable_t *original_vtable;
+    vg_widget_vtable_t vtable;
 } rt_breadcrumb_data_t;
+
+static void rt_breadcrumb_widget_destroy(vg_widget_t *widget) {
+    rt_breadcrumb_data_t *data = widget ? (rt_breadcrumb_data_t *)widget->user_data : NULL;
+    if (data && data->breadcrumb == (vg_breadcrumb_t *)widget)
+        data->breadcrumb = NULL;
+    if (data && data->original_vtable && data->original_vtable->destroy)
+        data->original_vtable->destroy(widget);
+}
+
+static void rt_breadcrumb_dispose(rt_breadcrumb_data_t *data) {
+    if (!data)
+        return;
+    if (data->breadcrumb) {
+        vg_breadcrumb_destroy(data->breadcrumb);
+        data->breadcrumb = NULL;
+    }
+    free(data->clicked_data);
+    data->clicked_data = NULL;
+    data->clicked_index = -1;
+    data->was_clicked = 0;
+}
+
+static void rt_breadcrumb_finalize(void *crumb) {
+    rt_breadcrumb_dispose((rt_breadcrumb_data_t *)crumb);
+}
 
 /// @brief Breadcrumb segment click callback — captures index + per-item data for polling.
 ///
@@ -829,6 +867,14 @@ void *rt_breadcrumb_new(void *parent) {
     data->clicked_index = -1;
     data->clicked_data = NULL;
     data->was_clicked = 0;
+    data->original_vtable = bc->base.vtable;
+    if (data->original_vtable) {
+        data->vtable = *data->original_vtable;
+        data->vtable.destroy = rt_breadcrumb_widget_destroy;
+        bc->base.vtable = &data->vtable;
+        bc->base.user_data = data;
+    }
+    rt_obj_set_finalizer(data, rt_breadcrumb_finalize);
 
     vg_breadcrumb_set_on_click(bc, rt_breadcrumb_on_click, data);
     if (parent_widget) {
@@ -850,11 +896,7 @@ void rt_breadcrumb_destroy(void *crumb) {
     if (!crumb)
         return;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
-    if (data->breadcrumb) {
-        vg_breadcrumb_destroy(data->breadcrumb);
-    }
-    if (data->clicked_data)
-        free(data->clicked_data);
+    rt_breadcrumb_dispose(data);
 }
 
 /// @brief Set the path of the breadcrumb.
@@ -863,6 +905,8 @@ void rt_breadcrumb_set_path(void *crumb, rt_string path, rt_string separator) {
     if (!crumb)
         return;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
+    if (!data->breadcrumb)
+        return;
 
     char *cpath = rt_string_to_cstr(path);
     char *csep = rt_string_to_cstr(separator);
@@ -901,6 +945,8 @@ void rt_breadcrumb_set_items(void *crumb, rt_string items) {
     if (!crumb)
         return;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
+    if (!data->breadcrumb)
+        return;
 
     char *citems = rt_string_to_cstr(items);
 
@@ -915,9 +961,9 @@ void rt_breadcrumb_set_items(void *crumb, rt_string items) {
             // Trim whitespace
             while (*token == ' ')
                 token++;
-            char *end = token + strlen(token) - 1;
-            while (end > token && *end == ' ')
-                *end-- = '\0';
+            char *end = token + strlen(token);
+            while (end > token && end[-1] == ' ')
+                *--end = '\0';
 
             char *label = strdup(token);
             if (label) {
@@ -941,6 +987,8 @@ void rt_breadcrumb_add_item(void *crumb, rt_string text, rt_string item_data) {
     if (!crumb)
         return;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
+    if (!data->breadcrumb)
+        return;
 
     char *ctext = rt_string_to_cstr(text);
     char *cdata = rt_string_to_cstr(item_data);
@@ -968,6 +1016,8 @@ void rt_breadcrumb_clear(void *crumb) {
     if (!crumb)
         return;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
+    if (!data->breadcrumb)
+        return;
     vg_breadcrumb_clear(data->breadcrumb);
 }
 
@@ -1009,6 +1059,8 @@ void rt_breadcrumb_set_separator(void *crumb, rt_string sep) {
     if (!crumb)
         return;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
+    if (!data->breadcrumb)
+        return;
     char *csep = rt_string_to_cstr(sep);
     if (csep) {
         vg_breadcrumb_set_separator(data->breadcrumb, csep);
@@ -1022,6 +1074,8 @@ void rt_breadcrumb_set_max_items(void *crumb, int64_t max) {
     if (!crumb)
         return;
     rt_breadcrumb_data_t *data = (rt_breadcrumb_data_t *)crumb;
+    if (!data->breadcrumb)
+        return;
     vg_breadcrumb_set_max_items(data->breadcrumb,
                                 rt_gui_clamp_i64_to_i32(max, 0, INT32_MAX));
 }
@@ -1056,7 +1110,30 @@ int64_t rt_breadcrumb_is_visible(void *crumb) {
 typedef struct rt_minimap_data {
     vg_minimap_t *minimap;
     int64_t width;
+    const vg_widget_vtable_t *original_vtable;
+    vg_widget_vtable_t vtable;
 } rt_minimap_data_t;
+
+static void rt_minimap_widget_destroy(vg_widget_t *widget) {
+    rt_minimap_data_t *data = widget ? (rt_minimap_data_t *)widget->user_data : NULL;
+    if (data && data->minimap == (vg_minimap_t *)widget)
+        data->minimap = NULL;
+    if (data && data->original_vtable && data->original_vtable->destroy)
+        data->original_vtable->destroy(widget);
+}
+
+static void rt_minimap_dispose(rt_minimap_data_t *data) {
+    if (!data)
+        return;
+    if (data->minimap) {
+        vg_minimap_destroy(data->minimap);
+        data->minimap = NULL;
+    }
+}
+
+static void rt_minimap_finalize(void *minimap) {
+    rt_minimap_dispose((rt_minimap_data_t *)minimap);
+}
 
 /// @brief Create a minimap widget — a small scaled-down preview of a larger document.
 ///
@@ -1078,6 +1155,14 @@ void *rt_minimap_new(void *parent) {
     }
     data->minimap = minimap;
     data->width = 100;
+    data->original_vtable = minimap->base.vtable;
+    if (data->original_vtable) {
+        data->vtable = *data->original_vtable;
+        data->vtable.destroy = rt_minimap_widget_destroy;
+        minimap->base.vtable = &data->vtable;
+        minimap->base.user_data = data;
+    }
+    rt_obj_set_finalizer(data, rt_minimap_finalize);
     minimap->base.constraints.min_width = (float)data->width;
     minimap->base.constraints.preferred_width = (float)data->width;
     minimap->base.constraints.max_width = (float)data->width;
@@ -1093,10 +1178,7 @@ void rt_minimap_destroy(void *minimap) {
     if (!minimap)
         return;
     rt_minimap_data_t *data = (rt_minimap_data_t *)minimap;
-    if (data->minimap) {
-        vg_minimap_destroy(data->minimap);
-        data->minimap = NULL;
-    }
+    rt_minimap_dispose(data);
 }
 
 /// @brief Bind the editor of the minimap.
@@ -1439,6 +1521,12 @@ void rt_gui_features_cleanup(rt_gui_app_t *app) {
     }
     for (int i = 0; i < app->command_palette_count; i++) {
         if (app->command_palettes[i]) {
+            rt_commandpalette_data_t *data =
+                (rt_commandpalette_data_t *)app->command_palettes[i]->base.user_data;
+            if (data && data->palette == app->command_palettes[i]) {
+                data->palette = NULL;
+                data->app = NULL;
+            }
             vg_commandpalette_destroy(app->command_palettes[i]);
             app->command_palettes[i] = NULL;
         }

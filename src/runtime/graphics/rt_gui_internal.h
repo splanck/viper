@@ -374,7 +374,7 @@ void rt_shortcuts_clear_triggered(rt_gui_app_t *app);
 /// @brief Check whether a key/modifier combination matches any registered shortcut.
 /// @details Called during the poll loop to dispatch keyboard shortcuts.
 ///          Defined in rt_gui_system.c.
-/// @param key  The key code that was pressed.
-/// @param mods Active modifier flags (shift, ctrl, alt, etc.).
+/// @param key  The translated VG_KEY_* code that was pressed.
+/// @param mods Translated VG_MOD_* flags active for the event.
 /// @return Non-zero if a matching shortcut was triggered; 0 otherwise.
 int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods);

@@ -832,10 +832,15 @@ void rt_listbox_item_set_text(void *item, rt_string text) {
     vg_listbox_item_t *it = (vg_listbox_item_t *)item;
     if (!vg_listbox_item_is_live(it))
         return;
-    if (it->text)
-        free(it->text);
     char *ctext = rt_string_to_cstr(text);
+    if (!ctext)
+        return;
+    free(it->text);
     it->text = ctext; // Takes ownership
+    if (it->owner) {
+        it->owner->base.needs_layout = true;
+        it->owner->base.needs_paint = true;
+    }
 }
 
 /// @brief Attach arbitrary string data to a listbox item (replaces previous data).

@@ -32,6 +32,7 @@
 #include "rt_gui_internal.h"
 #include "rt_pixels.h"
 #include "rt_platform.h"
+#include <ctype.h>
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
@@ -79,6 +80,8 @@ static int syn_is_custom_keyword(const char *word, size_t wlen, vg_codeeditor_t 
     if (!ce || !ce->custom_keywords)
         return 0;
     for (int i = 0; i < ce->custom_keyword_count; i++) {
+        if (!ce->custom_keywords[i])
+            continue;
         size_t klen = strlen(ce->custom_keywords[i]);
         if (klen == wlen && memcmp(word, ce->custom_keywords[i], wlen) == 0)
             return 1;
@@ -375,51 +378,59 @@ void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords) {
         return;
     vg_codeeditor_t *ce = (vg_codeeditor_t *)editor;
 
-    // Free old custom keywords
-    for (int i = 0; i < ce->custom_keyword_count; i++)
-        free(ce->custom_keywords[i]);
-    free(ce->custom_keywords);
-    ce->custom_keywords = NULL;
-    ce->custom_keyword_count = 0;
-
     // Parse comma-separated keywords into array
     char *ckw = rt_string_to_cstr(keywords);
     if (!ckw || !ckw[0]) {
         free(ckw);
+        for (int i = 0; i < ce->custom_keyword_count; i++)
+            free(ce->custom_keywords[i]);
+        free(ce->custom_keywords);
+        ce->custom_keywords = NULL;
+        ce->custom_keyword_count = 0;
+        ce->base.needs_paint = true;
         return;
     }
 
     // Count commas to estimate capacity
     int cap = 8;
-    ce->custom_keywords = (char **)malloc((size_t)cap * sizeof(char *));
-    if (!ce->custom_keywords) {
+    char **new_keywords = (char **)malloc((size_t)cap * sizeof(char *));
+    if (!new_keywords) {
         free(ckw);
         return;
     }
+    int new_count = 0;
 
     char *saveptr = NULL;
     char *token = rt_strtok_r(ckw, ",", &saveptr);
     while (token) {
         // Trim whitespace
-        while (*token == ' ')
+        while (isspace((unsigned char)*token))
             token++;
-        char *end = token + strlen(token) - 1;
-        while (end > token && *end == ' ')
-            *end-- = '\0';
+        char *end = token + strlen(token);
+        while (end > token && isspace((unsigned char)end[-1]))
+            *--end = '\0';
 
         if (*token) {
-            if (ce->custom_keyword_count >= cap) {
+            if (new_count >= cap) {
                 cap *= 2;
-                char **p = (char **)realloc(ce->custom_keywords, (size_t)cap * sizeof(char *));
+                char **p = (char **)realloc(new_keywords, (size_t)cap * sizeof(char *));
                 if (!p)
                     break;
-                ce->custom_keywords = p;
+                new_keywords = p;
             }
-            ce->custom_keywords[ce->custom_keyword_count++] = strdup(token);
+            char *copy = strdup(token);
+            if (copy)
+                new_keywords[new_count++] = copy;
         }
         token = rt_strtok_r(NULL, ",", &saveptr);
     }
     free(ckw);
+
+    for (int i = 0; i < ce->custom_keyword_count; i++)
+        free(ce->custom_keywords[i]);
+    free(ce->custom_keywords);
+    ce->custom_keywords = new_keywords;
+    ce->custom_keyword_count = new_count;
     ce->base.needs_paint = true;
 }
 

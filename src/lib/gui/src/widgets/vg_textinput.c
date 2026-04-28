@@ -60,7 +60,7 @@ static bool ensure_capacity(vg_textinput_t *input, size_t needed) {
     if (needed <= input->text_capacity)
         return true;
 
-    size_t new_capacity = input->text_capacity;
+    size_t new_capacity = input->text_capacity ? input->text_capacity : TEXTINPUT_INITIAL_CAPACITY;
     while (new_capacity < needed) {
         new_capacity *= TEXTINPUT_GROWTH_FACTOR;
     }
@@ -575,7 +575,7 @@ vg_textinput_t *vg_textinput_create(vg_widget_t *parent) {
     // baseline that Ctrl+Z can restore to.
     input->undo_stack[0] = strdup("");
     input->undo_cursors[0] = 0;
-    input->undo_count = 1;
+    input->undo_count = input->undo_stack[0] ? 1 : 0;
     input->undo_pos = 0;
 
     // Set minimum size
@@ -940,6 +940,18 @@ static void textinput_push_undo(vg_textinput_t *input) {
     if (!input)
         return;
 
+    char *snapshot = strdup(input->text ? input->text : "");
+    if (!snapshot)
+        return;
+
+    if (input->undo_count <= 0) {
+        input->undo_stack[0] = snapshot;
+        input->undo_cursors[0] = input->cursor_pos;
+        input->undo_count = 1;
+        input->undo_pos = 0;
+        return;
+    }
+
     // Truncate redo future: free entries above the current position
     while (input->undo_count > input->undo_pos + 1) {
         input->undo_count--;
@@ -949,8 +961,10 @@ static void textinput_push_undo(vg_textinput_t *input) {
 
     // Deduplicate: skip if current text already matches the top snapshot
     if (input->undo_stack[input->undo_pos] &&
-        strcmp(input->undo_stack[input->undo_pos], input->text) == 0)
+        strcmp(input->undo_stack[input->undo_pos], input->text) == 0) {
+        free(snapshot);
         return;
+    }
 
     // Advance the write position
     input->undo_pos++;
@@ -971,7 +985,7 @@ static void textinput_push_undo(vg_textinput_t *input) {
         input->undo_count = input->undo_pos + 1;
     }
 
-    input->undo_stack[input->undo_pos] = strdup(input->text);
+    input->undo_stack[input->undo_pos] = snapshot;
     input->undo_cursors[input->undo_pos] = input->cursor_pos;
 }
 
@@ -979,15 +993,16 @@ static void textinput_undo(vg_textinput_t *input) {
     if (!input || input->undo_pos <= 0)
         return; // Already at the oldest snapshot
 
-    input->undo_pos--;
+    int next_pos = input->undo_pos - 1;
 
-    const char *snap = input->undo_stack[input->undo_pos];
+    const char *snap = input->undo_stack[next_pos];
     if (!snap)
         return;
 
     size_t len = strlen(snap);
     if (!ensure_capacity(input, len + 1))
         return;
+    input->undo_pos = next_pos;
     memcpy(input->text, snap, len + 1);
     input->text_len = len;
 
@@ -1003,15 +1018,16 @@ static void textinput_redo(vg_textinput_t *input) {
     if (!input || input->undo_pos >= input->undo_count - 1)
         return; // Already at the newest snapshot
 
-    input->undo_pos++;
+    int next_pos = input->undo_pos + 1;
 
-    const char *snap = input->undo_stack[input->undo_pos];
+    const char *snap = input->undo_stack[next_pos];
     if (!snap)
         return;
 
     size_t len = strlen(snap);
     if (!ensure_capacity(input, len + 1))
         return;
+    input->undo_pos = next_pos;
     memcpy(input->text, snap, len + 1);
     input->text_len = len;
 
@@ -1468,6 +1484,8 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 // Convert codepoint to UTF-8
                 uint32_t cp = event->key.codepoint;
                 if (cp == '\r' || cp == '\n')
+                    return true;
+                if (cp == 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
                     return true;
                 if (cp < 0x80) {
                     utf8[0] = (char)cp;

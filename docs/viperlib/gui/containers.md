@@ -216,6 +216,8 @@ Node glyph icons are rendered when present, and lazy/loading nodes now show an i
 
 Node handles returned by `AddNode()` support these methods:
 
+Keyboard navigation keeps the selected node scrolled into view, matching mouse selection and explicit `ScrollTo` behavior.
+
 | Method                    | Signature          | Description                    |
 |---------------------------|--------------------|--------------------------------|
 | `node.GetText()`          | `String()`         | Get node display text          |

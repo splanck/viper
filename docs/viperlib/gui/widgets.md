@@ -81,6 +81,7 @@ Single-line or multiline text input field.
 Long single-line values stay clipped to the field bounds, the caret auto-scrolls horizontally as the cursor moves, and the caret blink is advanced automatically while the field is focused.
 When the widget is configured for multiline mode it now paints real per-line text, selection, and caret state, supports `Enter` for newline insertion, `Up` / `Down` for line navigation, line-local `Home` / `End`, drag selection, and mouse-wheel vertical scrolling.
 `Ctrl+Left` / `Ctrl+Right` now stop on punctuation and whitespace boundaries instead of treating only ASCII spaces as word breaks. `Ctrl/Cmd+Shift+Z` redoes the last undone edit, `Shift+Click` extends the current selection, and double-click selects the word under the pointer.
+Text insertion rejects invalid Unicode scalar values such as surrogate codepoints or values above `U+10FFFF`; valid input remains UTF-8 encoded in the widget buffer.
 
 **Constructor:** `NEW Viper.GUI.TextInput(parent)`
 
@@ -362,6 +363,7 @@ Scrollable list of selectable items with enhanced item management.
 Hit-testing uses widget-local coordinates, so nested list boxes select the correct row. Measured height also follows the actual item count for short lists instead of reserving five rows unconditionally. In multi-select mode, `Ctrl/Cmd+Click` toggles rows, `Shift+Click` extends the active range, and keyboard navigation with `Shift` extends the current selection. Toggling the current row off now clears or moves the current selection instead of leaving `Selected` / `SelectedIndex` pointed at an unselected row.
 Item text is clipped to the viewport and item add/remove/clear/select operations invalidate the list immediately so the visual state updates on the same frame.
 Virtual list cache invalidation refreshes visible rows on the next paint even when the visible range has not changed.
+`SelectIndex(index)` leaves the current selection unchanged when `index` is outside the non-virtual item range, and `ItemSetText()` preserves the old text if allocation fails.
 `ItemSetData()` stores runtime strings with their explicit length, so embedded NUL bytes round-trip through `ItemGetData()`. Runtime-owned item data is freed automatically by `RemoveItem()` and `Clear()`.
 
 **Constructor:** `NEW Viper.GUI.ListBox(parent)`

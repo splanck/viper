@@ -49,6 +49,24 @@ static void event_localize_mouse_to_widget(vg_widget_t *widget, vg_event_t *even
     event->mouse.y = event->mouse.screen_y - sy;
 }
 
+static bool event_widget_is_in_subtree(vg_widget_t *root, vg_widget_t *widget) {
+    for (vg_widget_t *w = widget; w; w = w->parent) {
+        if (w == root)
+            return true;
+    }
+    return false;
+}
+
+static vg_widget_t *event_modal_safe_capture(void) {
+    vg_widget_t *capture = vg_widget_get_input_capture();
+    vg_widget_t *modal = vg_widget_get_modal_root();
+    if (capture && modal && modal->visible && !event_widget_is_in_subtree(modal, capture)) {
+        vg_widget_release_input_capture();
+        return NULL;
+    }
+    return capture;
+}
+
 static vg_widget_t *get_hovered_widget(void) {
     vg_widget_runtime_state_t state = {0};
     vg_widget_get_runtime_state(&state);
@@ -326,7 +344,7 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
         // When capture is active, all mouse events route to the captured widget
         // regardless of hit testing. This allows dropdown menus to receive clicks
         // even though the dropdown renders outside the menubar's widget bounds.
-        vg_widget_t *capture = vg_widget_get_input_capture();
+        vg_widget_t *capture = event_modal_safe_capture();
         if (capture) {
             update_hovered_widget(capture);
             event->target = capture;
@@ -393,7 +411,7 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
     // then to focused widget, then to root.
     if (event->type == VG_EVENT_KEY_DOWN || event->type == VG_EVENT_KEY_UP ||
         event->type == VG_EVENT_KEY_CHAR) {
-        vg_widget_t *capture = vg_widget_get_input_capture();
+        vg_widget_t *capture = event_modal_safe_capture();
         if (capture) {
             event->target = capture;
             if (capture->vtable && capture->vtable->handle_event) {

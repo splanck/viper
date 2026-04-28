@@ -37,6 +37,7 @@ static void menubar_measure(vg_widget_t *widget, float available_width, float av
 static void menubar_paint(vg_widget_t *widget, void *canvas);
 static void menubar_paint_overlay(vg_widget_t *widget, void *canvas);
 static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event);
+void vg_menu_remove_item(vg_menu_t *menu, vg_menu_item_t *item);
 
 //=============================================================================
 // MenuBar VTable
@@ -762,6 +763,10 @@ vg_menu_t *vg_menubar_add_menu(vg_menubar_t *menubar, const char *title) {
         return NULL;
 
     menu->title = title ? strdup(title) : strdup("Menu");
+    if (!menu->title) {
+        free(menu);
+        return NULL;
+    }
     menu->first_item = NULL;
     menu->last_item = NULL;
     menu->item_count = 0;
@@ -790,12 +795,23 @@ vg_menu_item_t *vg_menu_add_item(
     if (!menu)
         return NULL;
 
-    vg_menu_item_t *item = calloc(1, sizeof(vg_menu_item_t));
-    if (!item)
+    char *item_text = text ? strdup(text) : NULL;
+    char *item_shortcut = shortcut ? strdup(shortcut) : NULL;
+    if ((text && !item_text) || (shortcut && !item_shortcut)) {
+        free(item_text);
+        free(item_shortcut);
         return NULL;
+    }
 
-    item->text = text ? strdup(text) : NULL;
-    item->shortcut = shortcut ? strdup(shortcut) : NULL;
+    vg_menu_item_t *item = calloc(1, sizeof(vg_menu_item_t));
+    if (!item) {
+        free(item_text);
+        free(item_shortcut);
+        return NULL;
+    }
+
+    item->text = item_text;
+    item->shortcut = item_shortcut;
     item->action = action;
     item->action_data = data;
     item->enabled = true;
@@ -853,10 +869,18 @@ vg_menu_t *vg_menu_add_submenu(vg_menu_t *menu, const char *title) {
         return NULL;
 
     item->submenu = calloc(1, sizeof(vg_menu_t));
-    if (!item->submenu)
+    if (!item->submenu) {
+        vg_menu_remove_item(menu, item);
         return NULL;
+    }
 
     item->submenu->title = title ? strdup(title) : strdup("Submenu");
+    if (!item->submenu->title) {
+        free(item->submenu);
+        item->submenu = NULL;
+        vg_menu_remove_item(menu, item);
+        return NULL;
+    }
     item->submenu->owner_menubar = menu->owner_menubar;
     item->submenu->enabled = true;
 
@@ -880,6 +904,18 @@ void vg_menu_item_set_checked(vg_menu_item_t *item, bool checked) {
 /// @brief Menu remove item.
 void vg_menu_remove_item(vg_menu_t *menu, vg_menu_item_t *item) {
     if (!menu || !item)
+        return;
+    if (item->parent_menu != menu)
+        return;
+
+    bool found = false;
+    for (vg_menu_item_t *it = menu->first_item; it; it = it->next) {
+        if (it == item) {
+            found = true;
+            break;
+        }
+    }
+    if (!found)
         return;
 
     if (item->prev)
@@ -915,6 +951,18 @@ void vg_menu_clear(vg_menu_t *menu) {
 /// @brief Menubar remove menu.
 void vg_menubar_remove_menu(vg_menubar_t *menubar, vg_menu_t *menu) {
     if (!menubar || !menu)
+        return;
+    if (menu->owner_menubar != menubar)
+        return;
+
+    bool found = false;
+    for (vg_menu_t *it = menubar->first_menu; it; it = it->next) {
+        if (it == menu) {
+            found = true;
+            break;
+        }
+    }
+    if (!found)
         return;
 
     if (menu->prev)
@@ -1072,9 +1120,9 @@ bool vg_parse_accelerator(const char *shortcut, vg_accelerator_t *accel) {
         // Trim whitespace
         while (*token == ' ')
             token++;
-        char *end = token + strlen(token) - 1;
-        while (end > token && *end == ' ')
-            *end-- = '\0';
+        char *end = token + strlen(token);
+        while (end > token && end[-1] == ' ')
+            *--end = '\0';
 
         // Check for modifiers
         if (strcasecmp(token, "Ctrl") == 0 || strcasecmp(token, "Control") == 0) {
