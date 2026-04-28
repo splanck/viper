@@ -47,6 +47,9 @@ static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
 static void listbox_free_item_payload(vg_listbox_item_t *item);
 static void listbox_retire_item(vg_listbox_t *lb, vg_listbox_item_t *item);
 static void listbox_free_retired_items(vg_listbox_t *lb);
+static vg_listbox_item_t *listbox_first_selected_nonvirtual(vg_listbox_t *lb);
+static size_t listbox_first_selected_virtual(vg_listbox_t *lb);
+static void listbox_refresh_virtual_cache_entry(vg_listbox_t *lb, size_t cache_index);
 
 //=============================================================================
 // VTable
@@ -178,6 +181,24 @@ static void listbox_ensure_virtual_cache(vg_listbox_t *lb, size_t needed) {
     lb->cache_capacity = needed;
 }
 
+static void listbox_refresh_virtual_cache_entry(vg_listbox_t *lb, size_t cache_index) {
+    if (!lb || !lb->visible_cache || cache_index >= lb->visible_count ||
+        cache_index >= lb->cache_capacity)
+        return;
+
+    size_t index = lb->visible_start + cache_index;
+    const char *text = "";
+    if (lb->data_provider)
+        lb->data_provider(&lb->base, index, &text, NULL, lb->data_provider_user_data);
+
+    char *copy = strdup(text ? text : "");
+    if (!copy)
+        return;
+
+    free(lb->visible_cache[cache_index].text);
+    lb->visible_cache[cache_index].text = copy;
+}
+
 static void listbox_sync_virtual_cache(vg_listbox_t *lb, float viewport_height) {
     if (!lb || !lb->virtual_mode)
         return;
@@ -204,6 +225,8 @@ static void listbox_sync_virtual_cache(vg_listbox_t *lb, float viewport_height) 
     if (lb->visible_start == start && lb->visible_count == visible) {
         for (size_t i = 0; i < visible; i++) {
             size_t index = start + i;
+            if (!lb->visible_cache[i].text)
+                listbox_refresh_virtual_cache_entry(lb, i);
             lb->visible_cache[i].selected =
                 index < lb->selection_bitmap_size && lb->selection_bitmap[index];
         }
@@ -259,6 +282,26 @@ static void listbox_clear_virtual_selection(vg_listbox_t *lb) {
     memset(lb->selection_bitmap, 0, lb->selection_bitmap_size * sizeof(bool));
 }
 
+static vg_listbox_item_t *listbox_first_selected_nonvirtual(vg_listbox_t *lb) {
+    if (!lb)
+        return NULL;
+    for (vg_listbox_item_t *candidate = lb->first_item; candidate; candidate = candidate->next) {
+        if (candidate->selected)
+            return candidate;
+    }
+    return NULL;
+}
+
+static size_t listbox_first_selected_virtual(vg_listbox_t *lb) {
+    if (!lb || !lb->selection_bitmap)
+        return SIZE_MAX;
+    for (size_t i = 0; i < lb->selection_bitmap_size; i++) {
+        if (lb->selection_bitmap[i])
+            return i;
+    }
+    return SIZE_MAX;
+}
+
 static void listbox_select_nonvirtual_with_modifiers(vg_listbox_t *lb,
                                                      vg_listbox_item_t *item,
                                                      bool toggle,
@@ -296,8 +339,15 @@ static void listbox_select_nonvirtual_with_modifiers(vg_listbox_t *lb,
     }
 
     item->selected = !item->selected;
-    lb->selected = item;
-    lb->anchor_selected = item;
+    if (item->selected) {
+        lb->selected = item;
+        lb->anchor_selected = item;
+    } else {
+        if (lb->selected == item)
+            lb->selected = listbox_first_selected_nonvirtual(lb);
+        if (lb->anchor_selected == item)
+            lb->anchor_selected = lb->selected;
+    }
 }
 
 static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
@@ -328,10 +378,19 @@ static void listbox_select_virtual_with_modifiers(vg_listbox_t *lb,
         return;
     }
 
-    if (index < lb->selection_bitmap_size)
-        lb->selection_bitmap[index] = !lb->selection_bitmap[index];
-    lb->selected_index = index;
-    lb->anchor_selected_index = index;
+    if (index >= lb->selection_bitmap_size)
+        return;
+
+    lb->selection_bitmap[index] = !lb->selection_bitmap[index];
+    if (lb->selection_bitmap[index]) {
+        lb->selected_index = index;
+        lb->anchor_selected_index = index;
+    } else {
+        if (lb->selected_index == index)
+            lb->selected_index = listbox_first_selected_virtual(lb);
+        if (lb->anchor_selected_index == index)
+            lb->anchor_selected_index = lb->selected_index;
+    }
 }
 
 static void listbox_destroy(vg_widget_t *widget) {
@@ -614,7 +673,8 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
         case VG_EVENT_DOUBLE_CLICK: {
             if (lb->virtual_mode) {
-                if (lb->selected_index != SIZE_MAX && lb->on_activate) {
+                if (lb->selected_index != SIZE_MAX && lb->selected_index < lb->selection_bitmap_size &&
+                    lb->selection_bitmap[lb->selected_index] && lb->on_activate) {
                     lb->on_activate(widget, NULL, lb->on_activate_data);
                     event->handled = true;
                     return true;
@@ -665,7 +725,9 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     break;
                 case VG_KEY_ENTER:
                     if (lb->virtual_mode) {
-                        if (lb->selected_index != SIZE_MAX && lb->on_activate)
+                        if (lb->selected_index != SIZE_MAX &&
+                            lb->selected_index < lb->selection_bitmap_size &&
+                            lb->selection_bitmap[lb->selected_index] && lb->on_activate)
                             lb->on_activate(widget, NULL, lb->on_activate_data);
                     } else if (lb->selected && lb->on_activate) {
                         lb->on_activate(widget, lb->selected, lb->on_activate_data);

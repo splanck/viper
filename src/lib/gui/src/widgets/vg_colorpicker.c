@@ -28,6 +28,8 @@ static bool colorpicker_can_focus(vg_widget_t *widget);
 
 static void colorpicker_update_color_from_components(vg_colorpicker_t *picker);
 static void colorpicker_update_components_from_color(vg_colorpicker_t *picker);
+static void colorpicker_update_preview(vg_colorpicker_t *picker);
+static void colorpicker_emit_change(vg_colorpicker_t *picker, uint32_t old_color);
 
 //=============================================================================
 // ColorPicker VTable
@@ -55,11 +57,9 @@ static void on_slider_r_change(vg_widget_t *slider, float value, void *user_data
     picker->r = (uint8_t)(value + 0.5f);
     colorpicker_update_color_from_components(picker);
 
-    if (picker->preview) {
-        vg_colorswatch_set_color(picker->preview, picker->color);
-    }
+    colorpicker_update_preview(picker);
 
-    if (picker->on_change) {
+    if (!picker->syncing_children && picker->on_change) {
         picker->on_change(&picker->base, picker->color, picker->on_change_data);
     }
 }
@@ -74,11 +74,9 @@ static void on_slider_g_change(vg_widget_t *slider, float value, void *user_data
     picker->g = (uint8_t)(value + 0.5f);
     colorpicker_update_color_from_components(picker);
 
-    if (picker->preview) {
-        vg_colorswatch_set_color(picker->preview, picker->color);
-    }
+    colorpicker_update_preview(picker);
 
-    if (picker->on_change) {
+    if (!picker->syncing_children && picker->on_change) {
         picker->on_change(&picker->base, picker->color, picker->on_change_data);
     }
 }
@@ -93,11 +91,9 @@ static void on_slider_b_change(vg_widget_t *slider, float value, void *user_data
     picker->b = (uint8_t)(value + 0.5f);
     colorpicker_update_color_from_components(picker);
 
-    if (picker->preview) {
-        vg_colorswatch_set_color(picker->preview, picker->color);
-    }
+    colorpicker_update_preview(picker);
 
-    if (picker->on_change) {
+    if (!picker->syncing_children && picker->on_change) {
         picker->on_change(&picker->base, picker->color, picker->on_change_data);
     }
 }
@@ -112,11 +108,9 @@ static void on_slider_a_change(vg_widget_t *slider, float value, void *user_data
     picker->a = (uint8_t)(value + 0.5f);
     colorpicker_update_color_from_components(picker);
 
-    if (picker->preview) {
-        vg_colorswatch_set_color(picker->preview, picker->color);
-    }
+    colorpicker_update_preview(picker);
 
-    if (picker->on_change) {
+    if (!picker->syncing_children && picker->on_change) {
         picker->on_change(&picker->base, picker->color, picker->on_change_data);
     }
 }
@@ -165,6 +159,7 @@ vg_colorpicker_t *vg_colorpicker_create(vg_widget_t *parent) {
     // Callbacks
     picker->on_change = NULL;
     picker->on_change_data = NULL;
+    picker->syncing_children = false;
 
     // Create child widgets
 
@@ -407,6 +402,35 @@ static void colorpicker_update_components_from_color(vg_colorpicker_t *picker) {
     picker->b = picker->color & 0xFF;
 }
 
+static void colorpicker_update_preview(vg_colorpicker_t *picker) {
+    if (picker && picker->preview)
+        vg_colorswatch_set_color(picker->preview, picker->color);
+}
+
+static void colorpicker_sync_sliders(vg_colorpicker_t *picker, bool sync_alpha) {
+    if (!picker)
+        return;
+    picker->syncing_children = true;
+    if (picker->slider_r)
+        vg_slider_set_value(picker->slider_r, picker->r);
+    if (picker->slider_g)
+        vg_slider_set_value(picker->slider_g, picker->g);
+    if (picker->slider_b)
+        vg_slider_set_value(picker->slider_b, picker->b);
+    if (sync_alpha && picker->slider_a)
+        vg_slider_set_value(picker->slider_a, picker->a);
+    picker->syncing_children = false;
+}
+
+static void colorpicker_emit_change(vg_colorpicker_t *picker, uint32_t old_color) {
+    if (!picker)
+        return;
+    colorpicker_update_preview(picker);
+    picker->base.needs_paint = true;
+    if (old_color != picker->color && picker->on_change)
+        picker->on_change(&picker->base, picker->color, picker->on_change_data);
+}
+
 //=============================================================================
 // ColorPicker API
 //=============================================================================
@@ -415,30 +439,12 @@ void vg_colorpicker_set_color(vg_colorpicker_t *picker, uint32_t color) {
     if (!picker)
         return;
 
+    uint32_t old_color = picker->color;
     picker->color = color;
     colorpicker_update_components_from_color(picker);
 
-    // Update sliders
-    if (picker->slider_r)
-        vg_slider_set_value(picker->slider_r, picker->r);
-    if (picker->slider_g)
-        vg_slider_set_value(picker->slider_g, picker->g);
-    if (picker->slider_b)
-        vg_slider_set_value(picker->slider_b, picker->b);
-    if (picker->slider_a)
-        vg_slider_set_value(picker->slider_a, picker->a);
-
-    // Update preview
-    if (picker->preview) {
-        vg_colorswatch_set_color(picker->preview, picker->color);
-    }
-
-    picker->base.needs_paint = true;
-
-    // Call callback
-    if (picker->on_change) {
-        picker->on_change(&picker->base, picker->color, picker->on_change_data);
-    }
+    colorpicker_sync_sliders(picker, true);
+    colorpicker_emit_change(picker, old_color);
 }
 
 uint32_t vg_colorpicker_get_color(vg_colorpicker_t *picker) {
@@ -452,29 +458,14 @@ void vg_colorpicker_set_rgb(vg_colorpicker_t *picker, uint8_t r, uint8_t g, uint
     if (!picker)
         return;
 
+    uint32_t old_color = picker->color;
     picker->r = r;
     picker->g = g;
     picker->b = b;
     colorpicker_update_color_from_components(picker);
 
-    // Update sliders
-    if (picker->slider_r)
-        vg_slider_set_value(picker->slider_r, r);
-    if (picker->slider_g)
-        vg_slider_set_value(picker->slider_g, g);
-    if (picker->slider_b)
-        vg_slider_set_value(picker->slider_b, b);
-
-    // Update preview
-    if (picker->preview) {
-        vg_colorswatch_set_color(picker->preview, picker->color);
-    }
-
-    picker->base.needs_paint = true;
-
-    if (picker->on_change) {
-        picker->on_change(&picker->base, picker->color, picker->on_change_data);
-    }
+    colorpicker_sync_sliders(picker, false);
+    colorpicker_emit_change(picker, old_color);
 }
 
 /// @brief Colorpicker get rgb.
@@ -494,21 +485,12 @@ void vg_colorpicker_set_alpha(vg_colorpicker_t *picker, uint8_t alpha) {
     if (!picker)
         return;
 
+    uint32_t old_color = picker->color;
     picker->a = alpha;
     colorpicker_update_color_from_components(picker);
 
-    if (picker->slider_a)
-        vg_slider_set_value(picker->slider_a, alpha);
-
-    if (picker->preview) {
-        vg_colorswatch_set_color(picker->preview, picker->color);
-    }
-
-    picker->base.needs_paint = true;
-
-    if (picker->on_change) {
-        picker->on_change(&picker->base, picker->color, picker->on_change_data);
-    }
+    colorpicker_sync_sliders(picker, true);
+    colorpicker_emit_change(picker, old_color);
 }
 
 /// @brief Colorpicker get alpha.

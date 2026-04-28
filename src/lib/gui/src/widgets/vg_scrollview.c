@@ -147,6 +147,11 @@ static void clamp_scroll(vg_scrollview_t *scroll) {
     float viewport_height = 0.0f;
     scrollview_get_viewport_size(scroll, &viewport_width, &viewport_height);
 
+    if (!(scroll->direction & VG_SCROLL_HORIZONTAL))
+        scroll->scroll_x = 0.0f;
+    if (!(scroll->direction & VG_SCROLL_VERTICAL))
+        scroll->scroll_y = 0.0f;
+
     float max_scroll_x = scroll->content_width - viewport_width;
     float max_scroll_y = scroll->content_height - viewport_height;
 
@@ -523,6 +528,8 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
     if (event->type == VG_EVENT_MOUSE_WHEEL) {
         // Scroll content
+        float old_x = scroll->scroll_x;
+        float old_y = scroll->scroll_y;
         float delta_x = event->wheel.delta_x * 20.0f;
         float delta_y = event->wheel.delta_y * 20.0f;
 
@@ -534,9 +541,13 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
         }
 
         clamp_scroll(scroll);
-        widget->needs_layout = true;
-        widget->needs_paint = true;
-        return true;
+        if (scroll->scroll_x != old_x || scroll->scroll_y != old_y) {
+            widget->needs_layout = true;
+            widget->needs_paint = true;
+            event->handled = true;
+            return true;
+        }
+        return false;
     }
 
     if (event->type == VG_EVENT_MOUSE_DOWN) {
@@ -771,6 +782,7 @@ void vg_scrollview_set_direction(vg_scrollview_t *scroll, vg_scroll_direction_t 
         return;
 
     scroll->direction = direction;
+    clamp_scroll(scroll);
     scroll->base.needs_layout = true;
     scroll->base.needs_paint = true;
 }

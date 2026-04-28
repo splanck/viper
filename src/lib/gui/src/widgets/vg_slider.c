@@ -13,6 +13,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
+#include <math.h>
 #include <stdlib.h>
 
 //=============================================================================
@@ -336,6 +337,9 @@ void vg_slider_set_value(vg_slider_t *slider, float value) {
     if (!slider)
         return;
 
+    if (!isfinite(value))
+        value = slider->min_value;
+
     // Clamp to range
     if (value < slider->min_value)
         value = slider->min_value;
@@ -346,6 +350,10 @@ void vg_slider_set_value(vg_slider_t *slider, float value) {
     if (slider->step > 0) {
         float steps = (value - slider->min_value) / slider->step;
         value = slider->min_value + ((int)(steps + 0.5f)) * slider->step;
+        if (value < slider->min_value)
+            value = slider->min_value;
+        if (value > slider->max_value)
+            value = slider->max_value;
     }
 
     float old = slider->value;
@@ -367,6 +375,13 @@ float vg_slider_get_value(vg_slider_t *slider) {
 void vg_slider_set_range(vg_slider_t *slider, float min_val, float max_val) {
     if (!slider)
         return;
+    if (!isfinite(min_val) || !isfinite(max_val))
+        return;
+    if (min_val > max_val) {
+        float tmp = min_val;
+        min_val = max_val;
+        max_val = tmp;
+    }
     slider->min_value = min_val;
     slider->max_value = max_val;
     // Re-clamp current value
@@ -378,7 +393,7 @@ void vg_slider_set_range(vg_slider_t *slider, float min_val, float max_val) {
 void vg_slider_set_step(vg_slider_t *slider, float step) {
     if (!slider)
         return;
-    slider->step = step > 0 ? step : 0;
+    slider->step = isfinite(step) && step > 0 ? step : 0;
     slider->base.needs_paint = true;
 }
 

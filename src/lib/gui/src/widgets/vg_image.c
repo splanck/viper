@@ -13,7 +13,14 @@
 #include "../../include/vg_widgets.h"
 #include "../../../graphics/src/vgfx_internal.h"
 #include "vgfx.h"
+#if defined(__APPLE__)
+#include <CoreFoundation/CoreFoundation.h>
+#include <CoreGraphics/CoreGraphics.h>
+#include <ImageIO/ImageIO.h>
+#endif
+#include <limits.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -36,6 +43,153 @@ static int clampi(int value, int min_value, int max_value) {
         return max_value;
     return value;
 }
+
+static uint16_t image_read_le16(const uint8_t *p) {
+    return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
+}
+
+static uint32_t image_read_le32(const uint8_t *p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
+           ((uint32_t)p[3] << 24);
+}
+
+static bool image_load_bmp(vg_image_t *image, const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f)
+        return false;
+
+    bool ok = false;
+    uint8_t header[54];
+    uint8_t *row = NULL;
+    uint8_t *rgba = NULL;
+
+    if (fread(header, 1, sizeof(header), f) != sizeof(header))
+        goto cleanup;
+    if (header[0] != 'B' || header[1] != 'M')
+        goto cleanup;
+
+    uint32_t pixel_offset = image_read_le32(header + 10);
+    uint32_t dib_size = image_read_le32(header + 14);
+    if (dib_size < 40)
+        goto cleanup;
+
+    int32_t width = (int32_t)image_read_le32(header + 18);
+    int32_t raw_height = (int32_t)image_read_le32(header + 22);
+    uint16_t planes = image_read_le16(header + 26);
+    uint16_t bpp = image_read_le16(header + 28);
+    uint32_t compression = image_read_le32(header + 30);
+    if (planes != 1 || compression != 0 || (bpp != 24 && bpp != 32))
+        goto cleanup;
+    if (width <= 0 || raw_height == 0 || raw_height == INT32_MIN)
+        goto cleanup;
+
+    bool bottom_up = raw_height > 0;
+    int32_t height = raw_height > 0 ? raw_height : -raw_height;
+    if (width > 32768 || height > 32768)
+        goto cleanup;
+
+    size_t row_payload = (size_t)width * (size_t)(bpp / 8);
+    size_t row_size = (bpp == 24) ? ((row_payload + 3u) & ~(size_t)3u) : row_payload;
+    if (height > 0 && (size_t)height > SIZE_MAX / row_size)
+        goto cleanup;
+    if ((size_t)width > SIZE_MAX / (size_t)height ||
+        (size_t)width * (size_t)height > SIZE_MAX / 4u)
+        goto cleanup;
+
+    row = malloc(row_size);
+    rgba = malloc((size_t)width * (size_t)height * 4u);
+    if (!row || !rgba)
+        goto cleanup;
+
+    if (fseek(f, (long)pixel_offset, SEEK_SET) != 0)
+        goto cleanup;
+
+    for (int32_t src_y = 0; src_y < height; src_y++) {
+        if (fread(row, 1, row_size, f) != row_size)
+            goto cleanup;
+        int32_t dst_y = bottom_up ? (height - 1 - src_y) : src_y;
+        uint8_t *dst = rgba + ((size_t)dst_y * (size_t)width * 4u);
+        for (int32_t x = 0; x < width; x++) {
+            const uint8_t *src = row + (size_t)x * (size_t)(bpp / 8);
+            dst[(size_t)x * 4u + 0u] = src[2];
+            dst[(size_t)x * 4u + 1u] = src[1];
+            dst[(size_t)x * 4u + 2u] = src[0];
+            dst[(size_t)x * 4u + 3u] = bpp == 32 ? src[3] : 255u;
+        }
+    }
+
+    vg_image_set_pixels(image, rgba, width, height);
+    ok = image->pixels != NULL;
+
+cleanup:
+    free(row);
+    free(rgba);
+    fclose(f);
+    return ok;
+}
+
+#if defined(__APPLE__)
+static bool image_load_platform(vg_image_t *image, const char *path) {
+    if (!image || !path)
+        return false;
+
+    bool ok = false;
+    CFStringRef path_ref = CFStringCreateWithCString(NULL, path, kCFStringEncodingUTF8);
+    if (!path_ref)
+        return false;
+
+    CFURLRef url = CFURLCreateWithFileSystemPath(NULL, path_ref, kCFURLPOSIXPathStyle, false);
+    CFRelease(path_ref);
+    if (!url)
+        return false;
+
+    CGImageSourceRef source = CGImageSourceCreateWithURL(url, NULL);
+    CFRelease(url);
+    if (!source)
+        return false;
+
+    CGImageRef cg_image = CGImageSourceCreateImageAtIndex(source, 0, NULL);
+    CFRelease(source);
+    if (!cg_image)
+        return false;
+
+    size_t width = CGImageGetWidth(cg_image);
+    size_t height = CGImageGetHeight(cg_image);
+    if (width == 0 || height == 0 || width > (size_t)INT_MAX || height > (size_t)INT_MAX ||
+        width > SIZE_MAX / height || width * height > SIZE_MAX / 4u) {
+        CGImageRelease(cg_image);
+        return false;
+    }
+
+    size_t stride = width * 4u;
+    uint8_t *pixels = calloc(height, stride);
+    CGColorSpaceRef color_space = CGColorSpaceCreateDeviceRGB();
+    CGContextRef ctx = NULL;
+    if (pixels && color_space) {
+        ctx = CGBitmapContextCreate(pixels,
+                                    width,
+                                    height,
+                                    8,
+                                    stride,
+                                    color_space,
+                                    kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    }
+
+    if (ctx) {
+        CGContextDrawImage(ctx, CGRectMake(0.0, 0.0, (CGFloat)width, (CGFloat)height), cg_image);
+        vg_image_set_pixels(image, pixels, (int)width, (int)height);
+        ok = image->pixels != NULL;
+    }
+
+    if (ctx)
+        CGContextRelease(ctx);
+    if (color_space)
+        CGColorSpaceRelease(color_space);
+    free(pixels);
+    CGImageRelease(cg_image);
+    return ok;
+}
+#endif
 
 static void image_blend_pixel(uint8_t *dst, const uint8_t *src, uint8_t alpha) {
     if (alpha == 0)
@@ -260,10 +414,11 @@ bool vg_image_load_file(vg_image_t *image, const char *path) {
     if (!image || !path)
         return false;
 
-    // Image file loading requires a decode library (e.g. stb_image).
-    // Use vg_image_set_pixels() to supply pre-decoded RGBA pixel data directly.
-    (void)path;
-    return false;
+#if defined(__APPLE__)
+    if (image_load_platform(image, path))
+        return true;
+#endif
+    return image_load_bmp(image, path);
 }
 
 /// @brief Image clear.

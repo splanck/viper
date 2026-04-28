@@ -403,6 +403,12 @@ void vg_checkbox_set_on_change(vg_checkbox_t *checkbox,
                                vg_checkbox_callback_t callback,
                                void *user_data);
 
+/// @brief Set checkbox label font
+/// @param checkbox Checkbox widget
+/// @param font Font to use
+/// @param size Font size in pixels
+void vg_checkbox_set_font(vg_checkbox_t *checkbox, vg_font_t *font, float size);
+
 /// @brief Set the indeterminate (tri-state) state of a checkbox.
 /// @param checkbox     Checkbox widget.
 /// @param indeterminate true to show dash (indeterminate); false to clear it.
@@ -1207,6 +1213,8 @@ typedef struct vg_colorpicker {
     // Callback
     vg_colorpicker_callback_t on_change;
     void *on_change_data;
+
+    bool syncing_children; ///< Internal: suppress child slider callbacks during programmatic sync
 } vg_colorpicker_t;
 
 /// @brief Create a new color picker widget

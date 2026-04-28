@@ -96,7 +96,12 @@ endif ()
 
 # Link UniformTypeIdentifiers framework on macOS (for file dialogs)
 if (APPLE)
-    target_link_libraries(vipergui PRIVATE "-framework UniformTypeIdentifiers")
+    target_link_libraries(vipergui PRIVATE
+            "-framework UniformTypeIdentifiers"
+            "-framework CoreFoundation"
+            "-framework CoreGraphics"
+            "-framework ImageIO"
+    )
 endif ()
 
 # C11 standard

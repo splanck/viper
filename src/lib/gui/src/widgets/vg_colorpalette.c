@@ -12,6 +12,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
+#include "../../../graphics/include/vgfx.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -157,9 +158,18 @@ static void colorpalette_measure(vg_widget_t *widget,
 
 static void colorpalette_paint(vg_widget_t *widget, void *canvas) {
     vg_colorpalette_t *palette = (vg_colorpalette_t *)widget;
-    (void)canvas;
+    vgfx_window_t win = (vgfx_window_t)canvas;
+
+    int32_t bx = (int32_t)widget->x;
+    int32_t by = (int32_t)widget->y;
+    int32_t bw = (int32_t)widget->width;
+    int32_t bh = (int32_t)widget->height;
+    if (bw > 0 && bh > 0)
+        vgfx_fill_rect(win, bx, by, bw, bh, palette->bg_color);
 
     if (palette->color_count == 0 || !palette->colors) {
+        if (bw > 0 && bh > 0)
+            vgfx_rect(win, bx, by, bw, bh, palette->border_color);
         return;
     }
 
@@ -171,22 +181,24 @@ static void colorpalette_paint(vg_widget_t *widget, void *canvas) {
         float swatch_x = widget->x + col * (palette->swatch_size + palette->gap);
         float swatch_y = widget->y + row * (palette->swatch_size + palette->gap);
 
-        // Draw swatch background color
-        // In real implementation: vgfx_draw_rect_filled(canvas, swatch_x, swatch_y,
-        //                                              palette->swatch_size, palette->swatch_size,
-        //                                              palette->colors[i]);
-        (void)swatch_x;
-        (void)swatch_y;
+        int32_t sx = (int32_t)swatch_x;
+        int32_t sy = (int32_t)swatch_y;
+        int32_t ss = (int32_t)palette->swatch_size;
+        if (ss <= 0)
+            continue;
 
-        // Draw border (highlight if selected)
+        vgfx_fill_rect(win, sx, sy, ss, ss, palette->colors[i]);
+
         if (i == palette->selected_index) {
-            // Draw selected border (thicker or different color)
-            // Placeholder
+            vgfx_rect(win, sx - 1, sy - 1, ss + 2, ss + 2, palette->selected_border);
+            vgfx_rect(win, sx, sy, ss, ss, palette->selected_border);
         } else {
-            // Draw normal border
-            // Placeholder
+            vgfx_rect(win, sx, sy, ss, ss, palette->border_color);
         }
     }
+
+    if (bw > 0 && bh > 0)
+        vgfx_rect(win, bx, by, bw, bh, palette->border_color);
 }
 
 // Helper to find which swatch was clicked
@@ -235,7 +247,15 @@ static bool colorpalette_handle_event(vg_widget_t *widget, vg_event_t *event) {
         return false;
     }
 
-    if (event->type == VG_EVENT_MOUSE_DOWN || event->type == VG_EVENT_CLICK) {
+    if (event->type == VG_EVENT_MOUSE_DOWN) {
+        int index = colorpalette_hit_test_swatch(palette, event->mouse.x, event->mouse.y);
+        if (index >= 0) {
+            event->handled = true;
+            return true;
+        }
+    }
+
+    if (event->type == VG_EVENT_CLICK) {
         // Hit test to find which swatch was clicked
         int index = colorpalette_hit_test_swatch(palette, event->mouse.x, event->mouse.y);
         if (index >= 0) {

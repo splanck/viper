@@ -1214,6 +1214,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
             if (input->read_only) {
                 size_t old_cursor = input->cursor_pos;
                 size_t char_count = textinput_char_count(input);
+                bool handled = true;
                 // Only allow navigation in read-only mode
                 switch (event->key.key) {
                     case VG_KEY_LEFT:
@@ -1243,8 +1244,11 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                                                           : char_count;
                         break;
                     default:
+                        handled = false;
                         break;
                 }
+                if (!handled)
+                    return false;
                 if (has_shift) {
                     if (input->selection_start == input->selection_end)
                         input->selection_start = old_cursor;
@@ -1307,6 +1311,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
             }
 
             // Handle editing keys
+            bool handled = true;
             switch (event->key.key) {
                 case VG_KEY_BACKSPACE:
                     if (input->selection_start != input->selection_end) {
@@ -1446,8 +1451,11 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     break;
 
                 default:
+                    handled = false;
                     break;
             }
+            if (!handled)
+                return false;
             widget->needs_paint = true;
             return true;
         }

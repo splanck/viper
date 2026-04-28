@@ -50,9 +50,10 @@ vg_label_t *vg_label_create(vg_widget_t *parent, const char *text) {
 
     // Initialize label-specific fields
     label->text = text ? strdup(text) : strdup("");
-    label->font = NULL;
-    label->font_size = 13.0f; // Default size
-    label->text_color = vg_theme_get_current()->colors.fg_primary;
+    vg_theme_t *theme = vg_theme_get_current();
+    label->font = theme->typography.font_regular;
+    label->font_size = theme->typography.size_normal;
+    label->text_color = theme->colors.fg_primary;
     label->h_align = VG_ALIGN_H_LEFT;
     label->v_align = VG_ALIGN_V_CENTER;
     label->word_wrap = false;

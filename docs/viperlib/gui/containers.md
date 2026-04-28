@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-04-28
 ---
 
 # Containers & Advanced
@@ -20,6 +20,7 @@ Scrollable container for content larger than the viewport.
 Direct children are arranged as vertically stacked content items inside the scroll region. When a direct child does not report its own width it stretches to the viewport width, and scroll clamping now uses the true viewport after scrollbar gutters are reserved. For more complex nested layouts, place a `VBox`, `HBox`, or other container inside the `ScrollView` and add content there.
 Scrollbar thumb drags keep pointer capture until mouse-up, even if the cursor leaves the widget while dragging.
 Child overlay widgets such as dropdown popups and tooltips now render outside the viewport clip instead of being cut off by the scroll region.
+Mouse-wheel events bubble to parent widgets when the scroll position cannot change, which keeps nested scroll views usable. Changing the scroll direction also clears offsets on disabled axes, so vertical-only views cannot retain stale horizontal displacement.
 
 **Constructor:** `NEW Viper.GUI.ScrollView(parent)`
 

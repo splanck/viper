@@ -13,9 +13,12 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define VG_SPINNER_MAX_DECIMALS 128
 
 static void spinner_destroy(vg_widget_t *widget);
 static void spinner_measure(vg_widget_t *widget, float available_width, float available_height);
@@ -71,11 +74,8 @@ vg_spinner_t *vg_spinner_create(vg_widget_t *parent) {
     spinner->step = 1;
     spinner->decimal_places = 0;
 
-    spinner->text_buffer = malloc(64);
-    if (spinner->text_buffer) {
-        snprintf(spinner->text_buffer, 64, "%.0f", spinner->value);
-        spinner->cursor_pos = strlen(spinner->text_buffer);
-    }
+    spinner->text_buffer = NULL;
+    update_text_buffer(spinner);
 
     vg_theme_t *theme = vg_theme_get_current();
     float scale = theme && theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
@@ -443,13 +443,28 @@ static bool spinner_can_focus(vg_widget_t *widget) {
 }
 
 static void update_text_buffer(vg_spinner_t *spinner) {
-    if (!spinner || !spinner->text_buffer)
+    if (!spinner)
         return;
+    int needed = 0;
     if (spinner->decimal_places <= 0) {
-        snprintf(spinner->text_buffer, 64, "%.0f", spinner->value);
+        needed = snprintf(NULL, 0, "%.0f", spinner->value);
     } else {
-        snprintf(spinner->text_buffer, 64, "%.*f", spinner->decimal_places, spinner->value);
+        needed = snprintf(NULL, 0, "%.*f", spinner->decimal_places, spinner->value);
     }
+    if (needed < 0)
+        return;
+    char *buffer = realloc(spinner->text_buffer, (size_t)needed + 1u);
+    if (!buffer)
+        return;
+    spinner->text_buffer = buffer;
+    if (spinner->decimal_places <= 0)
+        snprintf(spinner->text_buffer, (size_t)needed + 1u, "%.0f", spinner->value);
+    else
+        snprintf(spinner->text_buffer,
+                 (size_t)needed + 1u,
+                 "%.*f",
+                 spinner->decimal_places,
+                 spinner->value);
     spinner->cursor_pos = strlen(spinner->text_buffer);
 }
 
@@ -482,7 +497,7 @@ static bool spinner_commit_edit(vg_spinner_t *spinner) {
     char *end = NULL;
     double value = strtod(spinner->text_buffer, &end);
     spinner->editing = false;
-    if (!end || end == spinner->text_buffer || *end != '\0') {
+    if (!end || end == spinner->text_buffer || *end != '\0' || !isfinite(value)) {
         update_text_buffer(spinner);
         return false;
     }
@@ -495,8 +510,6 @@ static void spinner_insert_char(vg_spinner_t *spinner, char ch) {
         return;
 
     size_t len = strlen(spinner->text_buffer);
-    if (len >= 63)
-        return;
     if (spinner->cursor_pos > len)
         spinner->cursor_pos = len;
 
@@ -512,6 +525,11 @@ static void spinner_insert_char(vg_spinner_t *spinner, char ch) {
     if (!allow)
         return;
 
+    char *buffer = realloc(spinner->text_buffer, len + 2u);
+    if (!buffer)
+        return;
+    spinner->text_buffer = buffer;
+
     memmove(spinner->text_buffer + spinner->cursor_pos + 1,
             spinner->text_buffer + spinner->cursor_pos,
             len - spinner->cursor_pos + 1);
@@ -522,6 +540,9 @@ static void spinner_insert_char(vg_spinner_t *spinner, char ch) {
 void vg_spinner_set_value(vg_spinner_t *spinner, double value) {
     if (!spinner)
         return;
+
+    if (!isfinite(value))
+        value = spinner->min_value;
 
     if (value < spinner->min_value)
         value = spinner->min_value;
@@ -548,6 +569,13 @@ double vg_spinner_get_value(vg_spinner_t *spinner) {
 void vg_spinner_set_range(vg_spinner_t *spinner, double min_val, double max_val) {
     if (!spinner)
         return;
+    if (!isfinite(min_val) || !isfinite(max_val))
+        return;
+    if (min_val > max_val) {
+        double tmp = min_val;
+        min_val = max_val;
+        max_val = tmp;
+    }
     spinner->min_value = min_val;
     spinner->max_value = max_val;
     vg_spinner_set_value(spinner, spinner->value);
@@ -557,7 +585,7 @@ void vg_spinner_set_range(vg_spinner_t *spinner, double min_val, double max_val)
 void vg_spinner_set_step(vg_spinner_t *spinner, double step) {
     if (!spinner)
         return;
-    spinner->step = step > 0 ? step : 1;
+    spinner->step = isfinite(step) && step > 0 ? step : 1;
     spinner->base.needs_paint = true;
 }
 
@@ -565,7 +593,11 @@ void vg_spinner_set_step(vg_spinner_t *spinner, double step) {
 void vg_spinner_set_decimals(vg_spinner_t *spinner, int decimals) {
     if (!spinner)
         return;
-    spinner->decimal_places = decimals > 0 ? decimals : 0;
+    if (decimals < 0)
+        decimals = 0;
+    if (decimals > VG_SPINNER_MAX_DECIMALS)
+        decimals = VG_SPINNER_MAX_DECIMALS;
+    spinner->decimal_places = decimals;
     update_text_buffer(spinner);
     spinner->base.needs_layout = true;
     spinner->base.needs_paint = true;

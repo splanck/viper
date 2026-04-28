@@ -36,6 +36,7 @@ static float dropdown_measure_text_width(vg_dropdown_t *dd, const char *text);
 static float dropdown_preferred_width(vg_dropdown_t *dd);
 static float dropdown_panel_width(vg_dropdown_t *dd, float trigger_width);
 static int dropdown_find_typeahead_index(vg_dropdown_t *dd, uint32_t codepoint, int start_index);
+static void dropdown_emit_change(vg_dropdown_t *dd, int old_index);
 
 static float dropdown_scrollbar_thumb_size(float track_size, float content_size, float viewport_size);
 static float dropdown_scrollbar_thumb_offset(float scroll_pos,
@@ -145,22 +146,34 @@ static int dropdown_find_typeahead_index(vg_dropdown_t *dd, uint32_t codepoint, 
     if (!dd || dd->item_count <= 0)
         return -1;
 
-    unsigned char needle = (unsigned char)codepoint;
+    uint32_t needle = codepoint;
     if (needle >= 'A' && needle <= 'Z')
-        needle = (unsigned char)(needle - 'A' + 'a');
+        needle = needle - 'A' + 'a';
 
     for (int offset = 0; offset < dd->item_count; offset++) {
         int index = (start_index + offset) % dd->item_count;
         const char *item = dd->items[index];
         if (!item || !item[0])
             continue;
-        unsigned char first = (unsigned char)item[0];
+        const char *cursor = item;
+        uint32_t first = vg_utf8_decode(&cursor);
         if (first >= 'A' && first <= 'Z')
-            first = (unsigned char)(first - 'A' + 'a');
+            first = first - 'A' + 'a';
         if (first == needle)
             return index;
     }
     return -1;
+}
+
+static void dropdown_emit_change(vg_dropdown_t *dd, int old_index) {
+    if (!dd)
+        return;
+    if (old_index != dd->selected_index && dd->on_change) {
+        dd->on_change(&dd->base,
+                      dd->selected_index,
+                      vg_dropdown_get_selected_text(dd),
+                      dd->on_change_data);
+    }
 }
 
 static void dropdown_get_viewport_bounds(vg_dropdown_t *dd,
@@ -737,6 +750,8 @@ void vg_dropdown_remove_item(vg_dropdown_t *dropdown, int index) {
     if (!dropdown || index < 0 || index >= dropdown->item_count)
         return;
 
+    int old_selected = dropdown->selected_index;
+
     if (dropdown->open)
         dropdown_close(&dropdown->base, dropdown);
 
@@ -760,6 +775,7 @@ void vg_dropdown_remove_item(vg_dropdown_t *dropdown, int index) {
     } else if (dropdown->hovered_index > index) {
         dropdown->hovered_index--;
     }
+    dropdown_emit_change(dropdown, old_selected);
     dropdown->base.needs_layout = true;
     dropdown->base.needs_paint = true;
 }
@@ -768,6 +784,8 @@ void vg_dropdown_remove_item(vg_dropdown_t *dropdown, int index) {
 void vg_dropdown_clear(vg_dropdown_t *dropdown) {
     if (!dropdown)
         return;
+
+    int old_selected = dropdown->selected_index;
 
     if (dropdown->open)
         dropdown_close(&dropdown->base, dropdown);
@@ -780,6 +798,7 @@ void vg_dropdown_clear(vg_dropdown_t *dropdown) {
     dropdown->selected_index = -1;
     dropdown->hovered_index = -1;
     dropdown->scroll_y = 0.0f;
+    dropdown_emit_change(dropdown, old_selected);
     dropdown->base.needs_layout = true;
     dropdown->base.needs_paint = true;
 }
@@ -796,12 +815,7 @@ void vg_dropdown_set_selected(vg_dropdown_t *dropdown, int index) {
         dropdown->selected_index = index;
     }
 
-    if (old_index != dropdown->selected_index && dropdown->on_change) {
-        dropdown->on_change(&dropdown->base,
-                            dropdown->selected_index,
-                            vg_dropdown_get_selected_text(dropdown),
-                            dropdown->on_change_data);
-    }
+    dropdown_emit_change(dropdown, old_index);
     dropdown->base.needs_paint = true;
 }
 

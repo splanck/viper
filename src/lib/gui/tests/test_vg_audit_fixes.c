@@ -18,9 +18,11 @@
 #include "vg_event.h"
 #include "vg_ide_widgets.h"
 #include "vg_layout.h"
+#include "vg_theme.h"
 #include "vg_widget.h"
 #include "vg_widgets.h"
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,6 +56,7 @@ static int g_failed = 0;
     } while (0)
 
 #define ASSERT_EQ(a, b) ASSERT((a) == (b))
+#define ASSERT_NEQ(a, b) ASSERT((a) != (b))
 #define ASSERT_NULL(p) ASSERT((p) == NULL)
 #define ASSERT_NOT_NULL(p) ASSERT((p) != NULL)
 #define ASSERT_TRUE(c) ASSERT(c)
@@ -935,6 +938,382 @@ TEST(notification_manual_dismiss_respects_exit_animation) {
 }
 
 //=============================================================================
+// Round 3 — Viper.GUI class audit fixes
+//=============================================================================
+
+TEST(radiogroup_destroy_and_radio_destroy_clear_cross_references) {
+    vg_radiogroup_t *group = vg_radiogroup_create();
+    ASSERT_NOT_NULL(group);
+    vg_radiobutton_t *a = vg_radiobutton_create(NULL, "A", group);
+    vg_radiobutton_t *b = vg_radiobutton_create(NULL, "B", group);
+    ASSERT_NOT_NULL(a);
+    ASSERT_NOT_NULL(b);
+    ASSERT_EQ(group->button_count, 2);
+
+    vg_radiobutton_set_selected(b, true);
+    ASSERT_EQ(vg_radiogroup_get_selected(group), 1);
+
+    vg_widget_destroy(&b->base);
+    ASSERT_EQ(group->button_count, 1);
+    ASSERT_EQ(vg_radiogroup_get_selected(group), -1);
+
+    vg_radiogroup_destroy(group);
+    ASSERT_NULL(a->group);
+    vg_radiobutton_set_selected(a, true);
+    ASSERT_TRUE(vg_radiobutton_is_selected(a));
+    vg_widget_destroy(&a->base);
+}
+
+typedef struct {
+    int count;
+    uint32_t last_color;
+} colorpicker_change_state_t;
+
+static void colorpicker_change_counter(vg_widget_t *widget, uint32_t color, void *user_data) {
+    (void)widget;
+    colorpicker_change_state_t *state = (colorpicker_change_state_t *)user_data;
+    state->count++;
+    state->last_color = color;
+}
+
+TEST(colorpicker_set_color_emits_once_after_child_slider_sync) {
+    vg_colorpicker_t *picker = vg_colorpicker_create(NULL);
+    ASSERT_NOT_NULL(picker);
+    colorpicker_change_state_t state = {0, 0};
+    vg_colorpicker_set_on_change(picker, colorpicker_change_counter, &state);
+
+    vg_colorpicker_set_color(picker, 0x11223344u);
+    ASSERT_EQ(state.count, 1);
+    ASSERT_EQ(state.last_color, 0x11223344u);
+
+    vg_colorpicker_set_color(picker, 0x11223344u);
+    ASSERT_EQ(state.count, 1);
+
+    vg_widget_destroy(&picker->base);
+}
+
+typedef struct {
+    int count;
+    int last_index;
+    uint32_t last_color;
+} colorpalette_select_state_t;
+
+static void colorpalette_select_counter(
+    vg_widget_t *palette, uint32_t color, int index, void *user_data) {
+    (void)palette;
+    colorpalette_select_state_t *state = (colorpalette_select_state_t *)user_data;
+    state->count++;
+    state->last_index = index;
+    state->last_color = color;
+}
+
+TEST(colorpalette_click_callback_fires_once_per_click) {
+    uint32_t colors[] = {0xFF112233u, 0xFF445566u};
+    vg_colorpalette_t *palette = vg_colorpalette_create(NULL);
+    ASSERT_NOT_NULL(palette);
+    vg_colorpalette_set_colors(palette, colors, 2);
+    vg_widget_arrange(&palette->base, 0.0f, 0.0f, 100.0f, 40.0f);
+
+    colorpalette_select_state_t state = {0, -1, 0};
+    vg_colorpalette_set_on_select(palette, colorpalette_select_counter, &state);
+
+    vg_event_t down = {0};
+    down.type = VG_EVENT_MOUSE_DOWN;
+    down.mouse.x = 5.0f;
+    down.mouse.y = 5.0f;
+    ASSERT_TRUE(palette->base.vtable->handle_event(&palette->base, &down));
+    ASSERT_EQ(state.count, 0);
+
+    vg_event_t click = down;
+    click.type = VG_EVENT_CLICK;
+    ASSERT_TRUE(palette->base.vtable->handle_event(&palette->base, &click));
+    ASSERT_EQ(state.count, 1);
+    ASSERT_EQ(state.last_index, 0);
+    ASSERT_EQ(state.last_color, colors[0]);
+
+    vg_widget_destroy(&palette->base);
+}
+
+TEST(label_and_checkbox_use_theme_regular_font_on_create) {
+    vg_theme_t *old_theme = vg_theme_get_current();
+    vg_theme_t theme = *old_theme;
+    vg_font_t *sentinel_font = (vg_font_t *)(uintptr_t)0x1234;
+    theme.typography.font_regular = sentinel_font;
+    theme.typography.size_normal = 15.0f;
+    vg_theme_set_current(&theme);
+
+    vg_label_t *label = vg_label_create(NULL, "Label");
+    vg_checkbox_t *checkbox = vg_checkbox_create(NULL, "Check");
+    vg_radiogroup_t *group = vg_radiogroup_create();
+    vg_radiobutton_t *radio = vg_radiobutton_create(NULL, "Radio", group);
+    vg_theme_set_current(old_theme);
+
+    ASSERT_NOT_NULL(label);
+    ASSERT_NOT_NULL(checkbox);
+    ASSERT_NOT_NULL(radio);
+    ASSERT(label->font == sentinel_font);
+    ASSERT(checkbox->font == sentinel_font);
+    ASSERT(radio->font == sentinel_font);
+
+    vg_widget_destroy(&label->base);
+    vg_widget_destroy(&checkbox->base);
+    vg_widget_destroy(&radio->base);
+    vg_radiogroup_destroy(group);
+}
+
+TEST(listbox_ctrl_toggle_off_does_not_leave_deselected_current_item) {
+    vg_listbox_t *lb = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(lb);
+    lb->multi_select = true;
+    vg_listbox_item_t *a = vg_listbox_add_item(lb, "A", NULL);
+    vg_listbox_item_t *b = vg_listbox_add_item(lb, "B", NULL);
+    ASSERT_NOT_NULL(a);
+    ASSERT_NOT_NULL(b);
+    vg_listbox_select(lb, a);
+
+    vg_event_t ev = {0};
+    ev.type = VG_EVENT_MOUSE_DOWN;
+    ev.modifiers = VG_MOD_CTRL;
+    ev.mouse.y = lb->item_height + 1.0f;
+    ASSERT_TRUE(lb->base.vtable->handle_event(&lb->base, &ev));
+    ASSERT(b->selected);
+    ASSERT(lb->selected == b);
+
+    ASSERT_TRUE(lb->base.vtable->handle_event(&lb->base, &ev));
+    ASSERT_FALSE(b->selected);
+    ASSERT(lb->selected != b);
+    ASSERT(lb->selected == a);
+
+    vg_widget_destroy(&lb->base);
+}
+
+TEST(listbox_virtual_ctrl_toggle_off_clears_or_moves_current_index) {
+    vg_listbox_t *lb = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(lb);
+    lb->multi_select = true;
+    vg_listbox_set_virtual_mode(lb, true, 3, 20.0f);
+    vg_listbox_select_index(lb, 0);
+
+    vg_event_t ev = {0};
+    ev.type = VG_EVENT_MOUSE_DOWN;
+    ev.modifiers = VG_MOD_CTRL;
+    ev.mouse.y = 21.0f;
+    ASSERT_TRUE(lb->base.vtable->handle_event(&lb->base, &ev));
+    ASSERT_TRUE(lb->selection_bitmap[1]);
+    ASSERT_EQ(lb->selected_index, (size_t)1);
+
+    ASSERT_TRUE(lb->base.vtable->handle_event(&lb->base, &ev));
+    ASSERT_FALSE(lb->selection_bitmap[1]);
+    ASSERT_NEQ(lb->selected_index, (size_t)1);
+    ASSERT_EQ(lb->selected_index, (size_t)0);
+
+    vg_widget_destroy(&lb->base);
+}
+
+TEST(scrollview_wheel_bubbles_when_scroll_does_not_change) {
+    vg_scrollview_t *sv = vg_scrollview_create(NULL);
+    ASSERT_NOT_NULL(sv);
+    vg_scrollview_set_content_size(sv, 100.0f, 100.0f);
+    vg_widget_arrange(&sv->base, 0.0f, 0.0f, 100.0f, 100.0f);
+
+    vg_event_t wheel = {0};
+    wheel.type = VG_EVENT_MOUSE_WHEEL;
+    wheel.wheel.delta_y = -1.0f;
+    ASSERT_FALSE(sv->base.vtable->handle_event(&sv->base, &wheel));
+    ASSERT_FALSE(wheel.handled);
+
+    vg_widget_destroy(&sv->base);
+}
+
+TEST(scrollview_direction_disables_stale_axis_offset) {
+    vg_scrollview_t *sv = vg_scrollview_create(NULL);
+    ASSERT_NOT_NULL(sv);
+    vg_scrollview_set_content_size(sv, 300.0f, 300.0f);
+    vg_widget_arrange(&sv->base, 0.0f, 0.0f, 100.0f, 100.0f);
+    vg_scrollview_set_scroll(sv, 50.0f, 60.0f);
+    ASSERT(sv->scroll_x > 0.0f);
+
+    vg_scrollview_set_direction(sv, VG_SCROLL_VERTICAL);
+    ASSERT_EQ(sv->scroll_x, 0.0f);
+    ASSERT(sv->scroll_y > 0.0f);
+
+    vg_widget_destroy(&sv->base);
+}
+
+TEST(slider_and_spinner_ranges_normalize_and_reject_nonfinite_values) {
+    vg_slider_t *slider = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
+    ASSERT_NOT_NULL(slider);
+    vg_slider_set_range(slider, 100.0f, 0.0f);
+    ASSERT_EQ(slider->min_value, 0.0f);
+    ASSERT_EQ(slider->max_value, 100.0f);
+    vg_slider_set_value(slider, 25.0f);
+    ASSERT_EQ(vg_slider_get_value(slider), 25.0f);
+    vg_slider_set_range(slider, strtof("nan", NULL), 200.0f);
+    ASSERT_EQ(slider->min_value, 0.0f);
+    ASSERT_EQ(slider->max_value, 100.0f);
+    vg_slider_set_value(slider, strtof("nan", NULL));
+    ASSERT_EQ(vg_slider_get_value(slider), 0.0f);
+
+    vg_spinner_t *spinner = vg_spinner_create(NULL);
+    ASSERT_NOT_NULL(spinner);
+    vg_spinner_set_range(spinner, 100.0, 0.0);
+    ASSERT_EQ(spinner->min_value, 0.0);
+    ASSERT_EQ(spinner->max_value, 100.0);
+    vg_spinner_set_value(spinner, 25.0);
+    ASSERT_EQ(vg_spinner_get_value(spinner), 25.0);
+    vg_spinner_set_value(spinner, strtod("nan", NULL));
+    ASSERT_EQ(vg_spinner_get_value(spinner), 0.0);
+
+    vg_widget_destroy(&slider->base);
+    vg_widget_destroy(&spinner->base);
+}
+
+TEST(spinner_decimal_display_resizes_beyond_legacy_fixed_buffer) {
+    vg_spinner_t *spinner = vg_spinner_create(NULL);
+    ASSERT_NOT_NULL(spinner);
+    vg_spinner_set_range(spinner, -10.0, 10.0);
+    vg_spinner_set_decimals(spinner, 90);
+    vg_spinner_set_value(spinner, 1.0 / 3.0);
+
+    ASSERT_NOT_NULL(spinner->text_buffer);
+    ASSERT(strlen(spinner->text_buffer) > 64);
+    ASSERT_EQ(spinner->cursor_pos, strlen(spinner->text_buffer));
+
+    vg_widget_destroy(&spinner->base);
+}
+
+static int dropdown_change_count = 0;
+static int dropdown_last_index = -2;
+static char dropdown_last_text[64];
+
+static void dropdown_change_counter(
+    vg_widget_t *dropdown, int index, const char *text, void *user_data) {
+    (void)dropdown;
+    (void)user_data;
+    dropdown_change_count++;
+    dropdown_last_index = index;
+    snprintf(dropdown_last_text, sizeof(dropdown_last_text), "%s", text ? text : "");
+}
+
+TEST(dropdown_unicode_typeahead_decodes_first_codepoint) {
+    vg_dropdown_t *dd = vg_dropdown_create(NULL);
+    ASSERT_NOT_NULL(dd);
+    vg_dropdown_add_item(dd, "alpha");
+    vg_dropdown_add_item(dd, "\xC3\xA9" "clair");
+
+    vg_event_t ev = {0};
+    ev.type = VG_EVENT_KEY_CHAR;
+    ev.key.codepoint = 0x00E9;
+    ASSERT_TRUE(dd->base.vtable->handle_event(&dd->base, &ev));
+    ASSERT_EQ(vg_dropdown_get_selected(dd), 1);
+
+    vg_widget_destroy(&dd->base);
+}
+
+TEST(dropdown_remove_and_clear_notify_effective_selection_changes) {
+    vg_dropdown_t *dd = vg_dropdown_create(NULL);
+    ASSERT_NOT_NULL(dd);
+    vg_dropdown_add_item(dd, "first");
+    vg_dropdown_add_item(dd, "second");
+    vg_dropdown_set_selected(dd, 1);
+
+    dropdown_change_count = 0;
+    dropdown_last_index = -2;
+    dropdown_last_text[0] = '\0';
+    vg_dropdown_set_on_change(dd, dropdown_change_counter, NULL);
+
+    vg_dropdown_remove_item(dd, 0);
+    ASSERT_EQ(dropdown_change_count, 1);
+    ASSERT_EQ(dropdown_last_index, 0);
+    ASSERT_EQ(strcmp(dropdown_last_text, "second"), 0);
+
+    vg_dropdown_clear(dd);
+    ASSERT_EQ(dropdown_change_count, 2);
+    ASSERT_EQ(dropdown_last_index, -1);
+    ASSERT_EQ(dropdown_last_text[0], '\0');
+
+    vg_widget_destroy(&dd->base);
+}
+
+TEST(textinput_unhandled_keydown_bubbles_to_parent) {
+    vg_textinput_t *input = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(input);
+
+    vg_event_t ev = {0};
+    ev.type = VG_EVENT_KEY_DOWN;
+    ev.key.key = VG_KEY_ESCAPE;
+    ASSERT_FALSE(input->base.vtable->handle_event(&input->base, &ev));
+
+    input->read_only = true;
+    ASSERT_FALSE(input->base.vtable->handle_event(&input->base, &ev));
+
+    vg_widget_destroy(&input->base);
+}
+
+static bool write_test_bmp_2x1(const char *path) {
+    static const uint8_t bmp[] = {
+        0x42, 0x4D, 0x3E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x36, 0x00, 0x00, 0x00,
+        0x28, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00,
+        0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x13, 0x0B, 0x00, 0x00,
+        0x13, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0x00};
+    FILE *f = fopen(path, "wb");
+    if (!f)
+        return false;
+    bool ok = fwrite(bmp, 1, sizeof(bmp), f) == sizeof(bmp);
+    fclose(f);
+    return ok;
+}
+
+TEST(image_load_file_decodes_bmp_into_rgba_pixels) {
+    const char *path = "/tmp/vg_image_load_file_test.bmp";
+    remove(path);
+    ASSERT_TRUE(write_test_bmp_2x1(path));
+
+    vg_image_t *image = vg_image_create(NULL);
+    ASSERT_NOT_NULL(image);
+    ASSERT_TRUE(vg_image_load_file(image, path));
+    ASSERT_EQ(image->img_width, 2);
+    ASSERT_EQ(image->img_height, 1);
+    ASSERT_NOT_NULL(image->pixels);
+    ASSERT_EQ(image->pixels[0], 0xFF);
+    ASSERT_EQ(image->pixels[1], 0x00);
+    ASSERT_EQ(image->pixels[2], 0x00);
+    ASSERT_EQ(image->pixels[3], 0xFF);
+    ASSERT_EQ(image->pixels[4], 0x00);
+    ASSERT_EQ(image->pixels[5], 0xFF);
+    ASSERT_EQ(image->pixels[6], 0x00);
+    ASSERT_EQ(image->pixels[7], 0xFF);
+
+    vg_widget_destroy(&image->base);
+    remove(path);
+}
+
+TEST(layout_measure_constraints_and_negative_arrange_are_clamped) {
+    vg_widget_t *vbox = vg_vbox_create(0.0f);
+    ASSERT_NOT_NULL(vbox);
+    vg_widget_set_preferred_size(vbox, 300.0f, 200.0f);
+    vg_widget_set_max_size(vbox, 120.0f, 90.0f);
+    vg_widget_measure(vbox, 1000.0f, 1000.0f);
+    ASSERT_EQ(vbox->measured_width, 120.0f);
+    ASSERT_EQ(vbox->measured_height, 90.0f);
+    vg_widget_destroy(vbox);
+
+    vg_widget_t *hbox = vg_hbox_create(0.0f);
+    ASSERT_NOT_NULL(hbox);
+    vg_widget_set_paddings(hbox, 0.0f, 50.0f, 0.0f, 50.0f);
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(child);
+    child->vtable = &g_fixed_vtable;
+    vg_widget_add_child(hbox, child);
+    vg_widget_measure(hbox, 20.0f, 20.0f);
+    vg_widget_arrange(hbox, 0.0f, 0.0f, 20.0f, 20.0f);
+    ASSERT(child->height >= 0.0f);
+    ASSERT(child->width >= 0.0f);
+    vg_widget_destroy(hbox);
+}
+
+//=============================================================================
 // Main
 //=============================================================================
 
@@ -998,6 +1377,23 @@ int main(void) {
     RUN(treeview_collapse_reclamps_scroll);
     RUN(notification_manual_dismiss_respects_exit_animation);
     RUN(notification_zero_fade_duration_snaps_cleanly);
+
+    printf("\nRound 3 — Viper.GUI class audit fixes\n");
+    RUN(radiogroup_destroy_and_radio_destroy_clear_cross_references);
+    RUN(colorpicker_set_color_emits_once_after_child_slider_sync);
+    RUN(colorpalette_click_callback_fires_once_per_click);
+    RUN(label_and_checkbox_use_theme_regular_font_on_create);
+    RUN(listbox_ctrl_toggle_off_does_not_leave_deselected_current_item);
+    RUN(listbox_virtual_ctrl_toggle_off_clears_or_moves_current_index);
+    RUN(scrollview_wheel_bubbles_when_scroll_does_not_change);
+    RUN(scrollview_direction_disables_stale_axis_offset);
+    RUN(slider_and_spinner_ranges_normalize_and_reject_nonfinite_values);
+    RUN(spinner_decimal_display_resizes_beyond_legacy_fixed_buffer);
+    RUN(dropdown_unicode_typeahead_decodes_first_codepoint);
+    RUN(dropdown_remove_and_clear_notify_effective_selection_changes);
+    RUN(textinput_unhandled_keydown_bubbles_to_parent);
+    RUN(image_load_file_decodes_bmp_into_rgba_pixels);
+    RUN(layout_measure_constraints_and_negative_arrange_are_clamped);
 
     printf("\n=== Results: %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;

@@ -56,7 +56,7 @@ vg_checkbox_t *vg_checkbox_create(vg_widget_t *parent, const char *text) {
 
     // Initialize checkbox-specific fields
     checkbox->text = text ? strdup(text) : strdup("");
-    checkbox->font = NULL;
+    checkbox->font = theme->typography.font_regular;
     checkbox->font_size = theme->typography.size_normal;
     checkbox->checked = false;
     checkbox->indeterminate = false;
@@ -283,4 +283,14 @@ void vg_checkbox_set_on_change(vg_checkbox_t *checkbox,
 
     checkbox->on_change = callback;
     checkbox->on_change_data = user_data;
+}
+
+void vg_checkbox_set_font(vg_checkbox_t *checkbox, vg_font_t *font, float size) {
+    if (!checkbox)
+        return;
+
+    checkbox->font = font;
+    checkbox->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
+    checkbox->base.needs_layout = true;
+    checkbox->base.needs_paint = true;
 }

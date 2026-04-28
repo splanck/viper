@@ -25,6 +25,7 @@ static void radio_measure(vg_widget_t *widget, float avail_w, float avail_h);
 static void radio_paint(vg_widget_t *widget, void *canvas);
 static bool radio_handle_event(vg_widget_t *widget, vg_event_t *event);
 static bool radio_can_focus(vg_widget_t *widget);
+static void radiogroup_unregister(vg_radiogroup_t *group, vg_radiobutton_t *radio);
 
 //=============================================================================
 // RadioButton VTable
@@ -40,6 +41,8 @@ static vg_widget_vtable_t g_radio_vtable = {.destroy = radio_destroy,
 
 static void radio_destroy(vg_widget_t *widget) {
     vg_radiobutton_t *radio = (vg_radiobutton_t *)widget;
+    if (radio->group)
+        radiogroup_unregister(radio->group, radio);
     free((void *)radio->text);
     radio->text = NULL;
 }
@@ -141,10 +144,48 @@ vg_radiogroup_t *vg_radiogroup_create(void) {
     return group;
 }
 
+static void radiogroup_unregister(vg_radiogroup_t *group, vg_radiobutton_t *radio) {
+    if (!group || !radio)
+        return;
+
+    int removed_index = -1;
+    for (int i = 0; i < group->button_count; i++) {
+        if (group->buttons[i] == radio) {
+            removed_index = i;
+            break;
+        }
+    }
+    if (removed_index < 0)
+        return;
+
+    for (int i = removed_index; i < group->button_count - 1; i++)
+        group->buttons[i] = group->buttons[i + 1];
+    group->button_count--;
+    if (group->button_count >= 0)
+        group->buttons[group->button_count] = NULL;
+
+    radio->group = NULL;
+    if (group->selected_index == removed_index) {
+        group->selected_index = -1;
+        for (int i = 0; i < group->button_count; i++) {
+            if (group->buttons[i] && group->buttons[i]->selected) {
+                group->selected_index = i;
+                break;
+            }
+        }
+    } else if (group->selected_index > removed_index) {
+        group->selected_index--;
+    }
+}
+
 /// @brief Radiogroup destroy.
 void vg_radiogroup_destroy(vg_radiogroup_t *group) {
     if (!group)
         return;
+    for (int i = 0; i < group->button_count; i++) {
+        if (group->buttons[i])
+            group->buttons[i]->group = NULL;
+    }
     free(group->buttons);
     free(group);
 }
@@ -167,9 +208,13 @@ vg_radiobutton_t *vg_radiobutton_create(vg_widget_t *parent,
     radio->circle_color = 0xFF5A5A5A;
     radio->fill_color = 0xFF0078D4;
     radio->text_color = 0xFFCCCCCC;
+    radio->font = vg_theme_get_current()->typography.font_regular;
 
     // Add to group
     if (group) {
+        if (!group->buttons && group->button_capacity > 0) {
+            group->buttons = calloc((size_t)group->button_capacity, sizeof(vg_radiobutton_t *));
+        }
         if (group->button_count >= group->button_capacity) {
             int new_cap = group->button_capacity * 2;
             vg_radiobutton_t **new_btns =
@@ -199,7 +244,7 @@ void vg_radiobutton_set_selected(vg_radiobutton_t *radio, bool selected) {
     if (selected && radio->group) {
         // Deselect all others in group
         for (int i = 0; i < radio->group->button_count; i++) {
-            if (radio->group->buttons[i] != radio) {
+            if (radio->group->buttons[i] && radio->group->buttons[i] != radio) {
                 radio->group->buttons[i]->selected = false;
             }
         }

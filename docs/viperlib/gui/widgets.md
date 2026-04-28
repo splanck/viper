@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-04-28
 ---
 
 # Basic Widgets
@@ -16,6 +16,7 @@ last-verified: 2026-04-22
 ### Label
 
 Text display widget.
+Labels now initialize from the current GUI theme or app font, so text participates in measurement and painting as soon as a default font has been installed. `SetFont()` still overrides that font for one label.
 
 **Constructor:** `NEW Viper.GUI.Label(parent, text)`
 
@@ -118,6 +119,7 @@ var name = nameInput.get_Text();
 ### Checkbox
 
 Toggle checkbox with label.
+Checkbox labels also use the current GUI theme or app font by default, matching buttons, text inputs, dropdowns, and list boxes.
 
 **Constructor:** `NEW Viper.GUI.Checkbox(parent, text)`
 
@@ -148,6 +150,7 @@ if rememberMe.IsChecked() == 1 { SaveCredentials(); }
 ### RadioButton
 
 Mutually exclusive radio button (use with RadioGroup).
+Radio buttons unregister from their group when destroyed, and destroying a group clears the group reference on surviving radio buttons. This prevents stale selection handles after dynamic UI teardown.
 
 **Constructor:** `NEW Viper.GUI.RadioButton(parent, text, group)`
 
@@ -188,7 +191,7 @@ optA.SetSelected(1);
 ### Slider
 
 Draggable value slider.
-Non-finite values are rejected or replaced with bounded defaults; ranges are normalized so the minimum is never greater than the maximum.
+Non-finite values are rejected or replaced with bounded defaults; ranges are normalized so the minimum is never greater than the maximum. Step snapping is clamped after rounding, so a stepped value cannot overshoot the range.
 
 **Constructor:** `NEW Viper.GUI.Slider(parent, horizontal)`
 
@@ -230,6 +233,7 @@ Numeric input with increment/decrement buttons.
 The spinner now behaves as a real interactive widget: the up/down buttons repaint correctly, `Up` / `Down` keys adjust the value while focused, the mouse wheel steps the value when hovered, and the value field accepts direct keyboard entry.
 Typing while the spinner is focused starts inline editing, `Enter` commits the typed number, and `Escape` restores the previous formatted value.
 Programmatic values, ranges, steps, and decimal counts are clamped to finite supported ranges.
+Reversed ranges are normalized, non-finite input is rejected or clamped, and long formatted decimal values resize the internal display buffer instead of truncating at a fixed length.
 
 **Constructor:** `NEW Viper.GUI.Spinner(parent)`
 
@@ -307,7 +311,7 @@ progress.SetValue(0.75);  // 75%
 
 Dropdown selection list.
 
-Item additions, removals, selection changes, and font changes invalidate the widget immediately. The closed control and popup width now size to the widest visible item instead of using a fixed narrow default. Popup hit-testing is screen-correct even when the control is nested or repositioned, long headers clip cleanly, and the popup panel tracks fractional scroll instead of stepping a whole row at a time. Keyboard typeahead selects matching items while closed and moves the hovered row while open; `PageUp` / `PageDown` navigate long menus.
+Item additions, removals, selection changes, and font changes invalidate the widget immediately. Removing or clearing the selected item also raises the selection-change callback with the new effective selection. The closed control and popup width now size to the widest visible item instead of using a fixed narrow default. Popup hit-testing is screen-correct even when the control is nested or repositioned, long headers clip cleanly, and the popup panel tracks fractional scroll instead of stepping a whole row at a time. Keyboard typeahead selects matching items while closed and moves the hovered row while open; it decodes the first UTF-8 codepoint of each item instead of comparing raw bytes. `PageUp` / `PageDown` navigate long menus.
 
 **Constructor:** `NEW Viper.GUI.Dropdown(parent)`
 
@@ -355,8 +359,9 @@ END IF
 
 Scrollable list of selectable items with enhanced item management.
 
-Hit-testing uses widget-local coordinates, so nested list boxes select the correct row. Measured height also follows the actual item count for short lists instead of reserving five rows unconditionally. In multi-select mode, `Ctrl/Cmd+Click` toggles rows, `Shift+Click` extends the active range, and keyboard navigation with `Shift` extends the current selection.
+Hit-testing uses widget-local coordinates, so nested list boxes select the correct row. Measured height also follows the actual item count for short lists instead of reserving five rows unconditionally. In multi-select mode, `Ctrl/Cmd+Click` toggles rows, `Shift+Click` extends the active range, and keyboard navigation with `Shift` extends the current selection. Toggling the current row off now clears or moves the current selection instead of leaving `Selected` / `SelectedIndex` pointed at an unselected row.
 Item text is clipped to the viewport and item add/remove/clear/select operations invalidate the list immediately so the visual state updates on the same frame.
+Virtual list cache invalidation refreshes visible rows on the next paint even when the visible range has not changed.
 `ItemSetData()` stores runtime strings with their explicit length, so embedded NUL bytes round-trip through `ItemGetData()`. Runtime-owned item data is freed automatically by `RemoveItem()` and `Clear()`.
 
 **Constructor:** `NEW Viper.GUI.ListBox(parent)`
@@ -484,6 +489,7 @@ Image display widget.
 
 `SetScaleMode()` and `SetOpacity()` affect the rendered output directly. If you do not call `SetSize()`, the widget measures to the image's natural pixel dimensions once pixels have been assigned.
 `SetPixels()` accepts a `Viper.Graphics.Pixels` object whose elements are packed as `0xRRGGBBAA`; the GUI layer converts them to byte RGBA. Width or height values less than or equal to zero use the source dimensions, requested sizes larger than the source are clamped, and `NULL` pixels clear the image.
+The native C widget `LoadFile()` now decodes BMP directly and uses platform image decoders for PNG/JPEG where available; the Viper runtime binding continues to route through `Viper.Graphics.Pixels` for PNG, BMP, JPEG, and GIF.
 
 **Constructor:** `NEW Viper.GUI.Image(parent)`
 
@@ -514,6 +520,13 @@ preview.SetScaleMode(1);  // Fit
 // Load directly from file (PNG, BMP, JPEG, or GIF)
 preview.LoadFile("photo.png");
 ```
+
+---
+
+### Color Widgets
+
+The native GUI layer includes `ColorSwatch`, `ColorPalette`, and `ColorPicker` widgets for C applications and demos.
+`ColorPalette` renders its swatch grid directly and selection callbacks fire once per completed click. `ColorPicker.SetColor()`, `SetRGB()`, and `SetAlpha()` synchronize their child sliders and preview swatch before emitting one external change callback, so observers no longer see transient intermediate colors.
 
 ---
 
