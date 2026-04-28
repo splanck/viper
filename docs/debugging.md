@@ -140,8 +140,8 @@ Output format:
 
 ### Limitations
 
-- Watch names must match the IL register/variable names used by the lowerer (e.g., `x` for a local named `x`).
-- There is currently no source-name-to-IL-register mapping, so you may need to inspect the IL output (`--dump-il` or `-emit-il`) to find the correct name.
+- Zia local variables and mutable slots carry source names into IL value metadata, so `--watch x` works for ordinary Zia locals named `x`.
+- For compiler-generated temporaries, duplicate shadowed names, and some BASIC lowering paths, you may still need to inspect IL output (`--dump-il` or `-emit-il`) to find the exact name.
 
 ---
 
@@ -241,7 +241,7 @@ All compiler diagnostics follow this format:
 
 For example:
 ```text
-main.zia:42:15: error[V3000]: Type mismatch: expected Integer, got String
+main.zia:42:15: error[V-ZIA-TYPE-MISMATCH]: Type mismatch: expected Integer, got String
  42 | var x: Integer = "hello";
     |                  ^
 ```
@@ -249,10 +249,12 @@ main.zia:42:15: error[V3000]: Type mismatch: expected Integer, got String
 Severity levels: `note`, `warning`, `error`.
 
 Diagnostic codes are prefixed by subsystem:
-- `V3xxx` — Zia frontend (semantic analysis)
+- `V-ZIA-LEX-*` — Zia lexer
+- `V-ZIA-*` — Zia semantic analysis
 - `B1xxx` — BASIC frontend
 - `V-IL-*` — IL verification
 - `V-BC-*` — bytecode compiler
+- `V-CG-*` — native backend/codegen
 - `V-SRC-*` — shared source loading/registration
 
 Use `--diagnostic-format=json` on `viper` subcommands for machine-readable output. The JSON form writes a compact object with a `diagnostics` array and includes severity, code, message, location, range, and notes.
@@ -265,13 +267,15 @@ When a source manager is available, diagnostics include the offending source lin
 
 Several checks now run before a binary or VM run can start:
 
-- Zia and BASIC verify IL immediately after lowering and again after optimization.
+- Zia and BASIC verify IL immediately after lowering, between optimization passes, and again after optimization.
 - BASIC assignment and operator type mismatches, such as assigning a string-valued expression to an integer variable or using `MOD` with a float operand, are reported during semantic analysis with `B2001` before IL is emitted.
 - Optimization pipeline failures are surfaced as diagnostics instead of continuing with potentially invalid IL.
 - Bytecode compilation uses checked diagnostics for unsupported or malformed IL, so the VM reports compile failure instead of crashing during execution.
 - Native compilation preflights IL parsing and verification before dispatching to the x64 or ARM64 backend.
+- Zia lexer errors and semantic errors stop compilation before lowering, so bad token streams cannot still produce IL.
+- Literal fixed-array indexes are checked at compile time when the array length is known.
 
-Use `--strict-diagnostics` with `viper run` or `viper front zia` to promote safety-critical Zia warnings to errors before execution or emission. This currently includes missing returns, division by zero, uninitialized variables, optional access without a check, and non-exhaustive matches. By default those findings are warnings so existing programs keep running while still surfacing the issue.
+`viper run`, `viper build`, and `viper front zia` enable strict diagnostics by default. Safety-critical Zia warnings are promoted to errors before execution or emission; this currently includes missing returns, division by zero, uninitialized variables, optional access without a check, and non-exhaustive matches. Use `--no-strict-diagnostics` only when you intentionally want those findings to remain warnings.
 
 Warnings are printed even when compilation succeeds. Use `--quiet-warnings` or `--no-warnings` to suppress successful warning output.
 
@@ -563,7 +567,7 @@ The IL verifier (`Verifier::verify()`) checks:
 - External function declaration correctness
 - Global variable definitions
 
-Verification runs automatically during compilation. Invalid IL is reported as diagnostics. `Verifier::verify()` returns a primary diagnostic and attaches additional verifier failures as notes; `Verifier::verifyAll()` is available for tooling that needs the full diagnostic list. Independent function-body failures are collected in one run instead of stopping after the first broken function.
+Verification runs automatically during compilation. Invalid IL is reported as diagnostics. `Verifier::verify()` fails only on error-severity diagnostics and attaches additional verifier findings as notes; `Verifier::verifyAll()` is available for tooling that needs the full bounded diagnostic list, including verifier warnings. Independent function-body failures are collected in one run instead of stopping after the first broken function.
 
 ---
 
@@ -774,7 +778,7 @@ std::cout << "Instructions: " << runner.instructionCount() << "\n";
 | Step-over / step-out | Not implemented | No frame-depth-aware stepping |
 | Full backtrace API | Not implemented | `execStack` is private; only single-frame `TrapInfo` exposed |
 | Conditional breakpoints | Not implemented | No expression evaluation on break condition |
-| Source-to-IL name mapping | Not implemented | Watches require IL register names |
+| Source-to-IL name mapping | Partial | Zia local slots carry source names; generated temporaries and some BASIC paths still require IL names |
 | DWARF debug info | Partial | Linker preserves DWARF v5 sections; codegen-generated line tables are limited |
 | Debug Adapter Protocol | Not implemented | No IDE integration (VS Code, etc.) |
 | Signal/crash handler | Not implemented | Native crashes produce no diagnostic output |

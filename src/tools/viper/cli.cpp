@@ -87,6 +87,12 @@ SharedOptionParseResult parseSharedOption(int &index,
     }
     if (arg == "--bounds-checks") {
         opts.boundsChecks = true;
+        opts.boundsChecksSpecified = true;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--no-bounds-checks") {
+        opts.boundsChecks = false;
+        opts.boundsChecksSpecified = true;
         return SharedOptionParseResult::Parsed;
     }
     if (arg == "--dump-trap") {

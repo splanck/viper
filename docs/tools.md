@@ -142,20 +142,22 @@ Build and run a source file or project, or build an IL/native artifact.
 ```bash
 viper run program.zia
 viper run program.zia --no-strict-diagnostics
+viper run program.zia --no-bounds-checks
 viper build program.zia -o program.il
 viper build program.zia -o program
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--strict-diagnostics` | For Zia, promote safety-critical warnings to errors before execution |
+| `--strict-diagnostics` | For Zia, promote safety-critical warnings to errors before execution (default) |
 | `--no-strict-diagnostics` | Keep safety-critical Zia diagnostics as warnings |
 | `--quiet-warnings`, `--no-warnings` | Do not print warnings when compilation succeeds |
 | `--diagnostic-format text|json` | Select text or machine-readable JSON diagnostics |
 | `--no-runtime-namespaces` | Disable automatic runtime namespace imports |
-| `--bounds-checks` | Enable generated bounds checks where supported |
+| `--bounds-checks` | Enable generated bounds checks where supported (default for source lowering) |
+| `--no-bounds-checks` | Disable generated bounds checks for source lowering |
 
-Both Zia and BASIC source paths print successful warnings by default, verify IL after lowering, and verify again after optimization. If the optimizer fails verification, the command stops with a diagnostic instead of running or building the result.
+Both Zia and BASIC source paths print successful warnings by default, verify IL after lowering, verify between optimization passes, and verify again after optimization. If the optimizer fails verification, the command stops with diagnostics instead of running or building the result.
 
 ### viper -run
 
@@ -191,11 +193,11 @@ workflows.
 
 ```bash
 # Zia
-viper front zia -emit-il <file.zia> [--bounds-checks] [--strict-diagnostics|--no-strict-diagnostics] [--diagnostic-format text|json]
+viper front zia -emit-il <file.zia> [--bounds-checks|--no-bounds-checks] [--strict-diagnostics|--no-strict-diagnostics] [--diagnostic-format text|json]
 viper front zia -run <file.zia> [--strict-diagnostics|--no-strict-diagnostics] [--trace=il|src] [--stdin-from <file>] [--max-steps N]
 
 # BASIC
-viper front basic -emit-il <file.bas> [--bounds-checks] [--diagnostic-format text|json]
+viper front basic -emit-il <file.bas> [--bounds-checks|--no-bounds-checks] [--diagnostic-format text|json]
 viper front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] [--max-steps N] [--quiet-warnings]
 ```
 

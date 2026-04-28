@@ -20,6 +20,7 @@
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <utility>
 
 using namespace il::core;
 using namespace il::build;
@@ -102,12 +103,22 @@ void open_async_arg_native(void **args, void *result) {
     open_async_arg_gate();
 }
 
+BytecodeModule compileAssumingVerified(const Module &ilModule) {
+    BytecodeCompiler compiler;
+    auto result = compiler.compileChecked(ilModule, nullptr, true);
+    if (!result) {
+        std::cerr << "bytecode test compile failed: " << result.error().message << "\n";
+        assert(false);
+    }
+    return std::move(result.value());
+}
+
 } // namespace
 
 /// Create a simple addition function for testing
 /// func @add(i64 %a, i64 %b) -> i64
 ///   entry:
-///     %result = add %a, %b
+///     %result = iadd.ovf %a, %b
 ///     ret %result
 static Module createAddModule() {
     Module m;
@@ -122,10 +133,10 @@ static Module createAddModule() {
     auto &entry = b.addBlock(fn, "entry");
     b.setInsertPoint(entry);
 
-    // %result = add %a, %b
+    // %result = iadd.ovf %a, %b
     Instr addInstr;
     addInstr.result = b.reserveTempId(); // temp 2 (after params 0 and 1)
-    addInstr.op = Opcode::Add;
+    addInstr.op = Opcode::IAddOvf;
     addInstr.type = Type(Type::Kind::I64);
     addInstr.operands.push_back(Value::temp(0)); // param a
     addInstr.operands.push_back(Value::temp(1)); // param b
@@ -190,7 +201,7 @@ static Module createAbsModule() {
     b.setInsertPoint(negative);
     Instr subInstr;
     subInstr.result = b.reserveTempId();
-    subInstr.op = Opcode::Sub;
+    subInstr.op = Opcode::ISubOvf;
     subInstr.type = Type(Type::Kind::I64);
     subInstr.operands.push_back(Value::constInt(0));
     subInstr.operands.push_back(Value::temp(0));
@@ -278,7 +289,7 @@ static Module createFibModule() {
     // %nm1 = sub %n, 1
     Instr nm1Instr;
     nm1Instr.result = b.reserveTempId();
-    nm1Instr.op = Opcode::Sub;
+    nm1Instr.op = Opcode::ISubOvf;
     nm1Instr.type = Type(Type::Kind::I64);
     nm1Instr.operands.push_back(Value::temp(0));
     nm1Instr.operands.push_back(Value::constInt(1));
@@ -298,7 +309,7 @@ static Module createFibModule() {
     // %nm2 = sub %n, 2
     Instr nm2Instr;
     nm2Instr.result = b.reserveTempId();
-    nm2Instr.op = Opcode::Sub;
+    nm2Instr.op = Opcode::ISubOvf;
     nm2Instr.type = Type(Type::Kind::I64);
     nm2Instr.operands.push_back(Value::temp(0));
     nm2Instr.operands.push_back(Value::constInt(2));
@@ -318,7 +329,7 @@ static Module createFibModule() {
     // %result = add %fib1, %fib2
     Instr addInstr;
     addInstr.result = b.reserveTempId();
-    addInstr.op = Opcode::Add;
+    addInstr.op = Opcode::IAddOvf;
     addInstr.type = Type(Type::Kind::I64);
     addInstr.operands.push_back(Value::temp(*call1.result));
     addInstr.operands.push_back(Value::temp(*call2.result));
@@ -512,8 +523,7 @@ static void test_add_function() {
     Module ilModule = createAddModule();
 
     // Compile to bytecode
-    BytecodeCompiler compiler;
-    BytecodeModule bcModule = compiler.compile(ilModule);
+    BytecodeModule bcModule = compileAssumingVerified(ilModule);
 
     // Verify compilation
     assert(bcModule.functions.size() == 1);
@@ -543,8 +553,7 @@ static void test_abs_function() {
     Module ilModule = createAbsModule();
 
     // Compile to bytecode
-    BytecodeCompiler compiler;
-    BytecodeModule bcModule = compiler.compile(ilModule);
+    BytecodeModule bcModule = compileAssumingVerified(ilModule);
 
     // Verify compilation
     assert(bcModule.functions.size() == 1);
@@ -580,8 +589,7 @@ static void test_fib_small() {
     Module ilModule = createFibModule();
 
     // Compile to bytecode
-    BytecodeCompiler compiler;
-    BytecodeModule bcModule = compiler.compile(ilModule);
+    BytecodeModule bcModule = compileAssumingVerified(ilModule);
 
     // Verify compilation
     assert(bcModule.functions.size() == 1);
@@ -620,8 +628,7 @@ static void test_fib_benchmark() {
     Module ilModule = createFibModule();
 
     // Compile to bytecode
-    BytecodeCompiler compiler;
-    BytecodeModule bcModule = compiler.compile(ilModule);
+    BytecodeModule bcModule = compileAssumingVerified(ilModule);
 
     // Execute
     BytecodeVM vm;
@@ -767,8 +774,7 @@ static void test_string_memory_lifetime() {
     std::cout << "  test_string_memory_lifetime: ";
 
     Module ilModule = createStringFieldLifetimeModule();
-    BytecodeCompiler compiler;
-    BytecodeModule bcModule = compiler.compile(ilModule);
+    BytecodeModule bcModule = compileAssumingVerified(ilModule);
 
     for (bool threaded : {false, true}) {
         BytecodeVM vm;
@@ -894,8 +900,7 @@ static void test_string_release_call_lifetime() {
     ret.loc = {1, 1, 1};
     entry.instructions.push_back(ret);
 
-    BytecodeCompiler compiler;
-    BytecodeModule bcModule = compiler.compile(m);
+    BytecodeModule bcModule = compileAssumingVerified(m);
 
     for (bool threaded : {false, true}) {
         BytecodeVM vm;
@@ -919,8 +924,7 @@ static void test_dispatch_benchmark() {
     Module ilModule = createFibModule();
 
     // Compile to bytecode
-    BytecodeCompiler compiler;
-    BytecodeModule bcModule = compiler.compile(ilModule);
+    BytecodeModule bcModule = compileAssumingVerified(ilModule);
 
     // Benchmark with threaded dispatch (default)
     {
@@ -1020,8 +1024,7 @@ static void test_native_wide_index() {
 
     Module ilModule = createWideNativeIndexModule();
 
-    BytecodeCompiler compiler;
-    BytecodeModule bcModule = compiler.compile(ilModule);
+    BytecodeModule bcModule = compileAssumingVerified(ilModule);
 
     assert(bcModule.nativeFuncs.size() == 257);
 
@@ -1530,8 +1533,7 @@ static void test_entry_arity_mismatch() {
     std::cout << "  test_entry_arity_mismatch: ";
 
     Module ilModule = createAddModule();
-    BytecodeCompiler compiler;
-    BytecodeModule bcModule = compiler.compile(ilModule);
+    BytecodeModule bcModule = compileAssumingVerified(ilModule);
 
     for (bool threaded : {false, true}) {
         BytecodeVM vm;

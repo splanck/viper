@@ -19,6 +19,9 @@
 #include "rt_https_server.h"
 #include "rt_string.h"
 #include "support/small_vector.hpp"
+
+#include <exception>
+#include <string>
 #include "vm/OpHandlerAccess.hpp"
 #include "vm/VM.hpp"
 #include "vm/VMContext.hpp"
@@ -60,8 +63,17 @@ extern "C" void vm_http_handler_dispatch(void *raw, void *req, void *res) {
         resSlot.ptr = res;
         args.push_back(resSlot);
         detail::VMAccess::callFunction(vm, *payload->entry, args);
+    } catch (const RuntimeTrapSignal &signal) {
+        const std::string message =
+            signal.message.empty() ? "HttpServer.BindHandler: trapped VM handler"
+                                   : signal.message;
+        rt_abort(message.c_str());
+    } catch (const std::exception &ex) {
+        const std::string message =
+            std::string("HttpServer.BindHandler: unhandled exception: ") + ex.what();
+        rt_abort(message.c_str());
     } catch (...) {
-        rt_abort("HttpServer.BindHandler: unhandled exception");
+        rt_abort("HttpServer.BindHandler: unhandled non-standard exception");
     }
 }
 

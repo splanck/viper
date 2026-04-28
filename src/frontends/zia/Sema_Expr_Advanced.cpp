@@ -83,6 +83,14 @@ TypeRef Sema::analyzeIndex(IndexExpr *expr) {
     if (baseType->kind == TypeKindSem::FixedArray) {
         if (!indexType->isIntegral()) {
             error(expr->index->loc, "Index must be an integer");
+        } else if (auto *literal = dynamic_cast<IntLiteralExpr *>(expr->index.get())) {
+            if (literal->value < 0 ||
+                static_cast<size_t>(literal->value) >= baseType->elementCount) {
+                error(expr->index->loc,
+                      "fixed array index " + std::to_string(literal->value) +
+                          " is out of bounds for length " +
+                          std::to_string(baseType->elementCount));
+            }
         }
         return baseType->elementType() ? baseType->elementType() : types::unknown();
     }
@@ -932,6 +940,7 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr) {
 
     for (auto &arm : expr->arms) {
         std::unordered_map<std::string, TypeRef> bindings;
+        std::unordered_map<std::string, bool> bindingWasInitialized;
         pushScope(expr->loc);
 
         analyzeMatchPattern(arm.pattern, scrutineeType, coverage, bindings);
@@ -943,6 +952,8 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr) {
             sym.type = binding.second;
             sym.isFinal = true;
             defineSymbol(binding.first, sym, expr->loc);
+            bindingWasInitialized.emplace(binding.first, isInitialized(binding.first));
+            markInitialized(binding.first);
         }
 
         if (arm.pattern.guard) {
@@ -956,6 +967,10 @@ TypeRef Sema::analyzeMatchExpr(MatchExpr *expr) {
         resultType = commonType(resultType, bodyType);
 
         popScope(arm.body ? arm.body->loc : expr->loc);
+        for (const auto &[name, wasInitialized] : bindingWasInitialized) {
+            if (!wasInitialized)
+                initializedVars_.erase(name);
+        }
     }
 
     if (!coverage.hasIrrefutable) {

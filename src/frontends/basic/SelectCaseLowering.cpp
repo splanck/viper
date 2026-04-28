@@ -28,7 +28,6 @@
 #include "viper/il/Module.hpp"
 
 #include <cassert>
-#include <cstdlib>
 #include <string>
 
 namespace il::frontends::basic {
@@ -390,7 +389,14 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
             case CasePlanEntry::Kind::Default:
                 break;
         }
-        std::abort();
+        if (auto *diag = lowerer_.diagnosticEmitter()) {
+            diag->emit(il::support::Severity::Error,
+                       "B9005",
+                       stmt.loc,
+                       1,
+                       "unsupported SELECT CASE plan entry reached lowering");
+        }
+        return lowerer_.emitBoolConst(false);
     };
 
     size_t switchIdx = emitCompareChain(blocks.currentIdx, plan, emitter);

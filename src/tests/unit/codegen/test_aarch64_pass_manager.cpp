@@ -40,6 +40,7 @@
 #include "codegen/aarch64/passes/SchedulerPass.hpp"
 #include "codegen/aarch64/ra/Liveness.hpp"
 #include "il/io/Parser.hpp"
+#include <stdexcept>
 
 using namespace viper::codegen::aarch64;
 using namespace viper::codegen::aarch64::passes;
@@ -172,6 +173,13 @@ class AlwaysFailPass final : public Pass {
     }
 };
 
+class ThrowingPass final : public Pass {
+  public:
+    bool run(AArch64Module &, Diagnostics &) override {
+        throw std::runtime_error("boom");
+    }
+};
+
 } // namespace
 
 TEST(AArch64PassManager, FailPassShortCircuit) {
@@ -204,6 +212,33 @@ TEST(AArch64PassManager, FailPassShortCircuit) {
     // EmitPass should not have run — assembly must be empty.
     EXPECT_TRUE(m.assembly.empty());
     // MIR may or may not be populated (LoweringPass ran before the failure).
+}
+
+TEST(AArch64PassManager, ThrowingPassBecomesDiagnostic) {
+    const std::string il = "il 0.1\n"
+                           "func @simple() -> i64 {\n"
+                           "entry:\n"
+                           "  ret 0\n"
+                           "}\n";
+
+    il::core::Module mod = parseIL(il);
+    ASSERT_FALSE(mod.functions.empty());
+
+    const TargetInfo &ti = darwinTarget();
+    AArch64Module m;
+    m.ilMod = &mod;
+    m.ti = &ti;
+
+    PassManager pm;
+    pm.addPass(std::make_unique<ThrowingPass>());
+
+    Diagnostics diags;
+    const bool ok = pm.run(m, diags);
+
+    EXPECT_FALSE(ok);
+    ASSERT_FALSE(diags.diagnostics().empty());
+    EXPECT_EQ(diags.diagnostics().front().code, "V-CG-PASS-EXCEPTION");
+    EXPECT_NE(diags.errors().front().find("boom"), std::string::npos);
 }
 
 // ---------------------------------------------------------------------------

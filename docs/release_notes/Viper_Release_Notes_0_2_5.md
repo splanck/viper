@@ -16,6 +16,7 @@ A polish-and-hardening cycle with several notable new capabilities.
 - **Network stack became a platform.** TLS-backed `HttpsServer` + `WssServer`, from-scratch HTTP/2, native RSA, in-tree X.509 validator, cookie jar, streaming downloads, and connection pooling.
 - **Viper.Localization.* (new).** Eleven-class namespace for locale-aware number/date/time/list formatting, translation catalogs, CLDR plural selection, and text-direction utilities. Zero external dependencies; en-US baked in.
 - **Native codegen correctness pass.** Variadic IL end-to-end, checked FP casts with distinct error kinds, sub-width overflow arithmetic, `fptosi` NaN traps, Windows ARM64 native build, and two rounds of IL optimizer/verifier hardening.
+- **Structured diagnostics & developer tooling.** Source-location snippet printing with caret underlines, JSON output mode (`--diagnostic-format=json`), strict diagnostics and bounds checks on by default, `Verifier::verifyAll` multi-diagnostic collection, and `BytecodeCompiler::compileChecked` returning typed `Expected<BytecodeModule>` with verifier preflight instead of throwing.
 
 The biggest user-visible new thing is a text-mode baseball-franchise simulator.
 
@@ -23,10 +24,10 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator.
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 83 | +83 |
-| Source files | 2,869 | 2,948 | +79 |
-| Production SLOC | 450K | 516K | +66K |
-| Test SLOC | 183K | 214K | +31K |
+| Commits | — | 85 | +85 |
+| Source files | 2,869 | 2,951 | +82 |
+| Production SLOC | 450K | 520K | +70K |
+| Test SLOC | 183K | 216K | +33K |
 | Demo SLOC | 177K | 189K | +12K |
 
 Counts via `scripts/count_sloc.sh`.
@@ -146,6 +147,8 @@ Eleven-class `Viper.Localization.*` namespace. Zero external dependencies; en-US
 - Loop checks: EXIT SUB/FUNCTION validated against procedure kind; FOR counter/start/end/step type-checked as numeric; FOR EACH element type inferred from array kind.
 - FINALLY bodies analyzed under surrounding scope; USING initializer type-checked against object/resource; `TryCatchStmt` added to `STMT_KIND_TRAIT`.
 - `rt_map_get_opt_str` (new) — returns NULL for missing keys; used by the `Map.get()` optional-String path.
+- `Viper.System.String`-typed variables now lower to `Type::Str` instead of `Type::Ptr`, fixing store/load type mismatches in string-variable slots.
+- `SourceManager::setSource()` called after file registration so line-snippet printing works without on-disk reads; IL verifier runs post-lowering with failures surfaced through the BASIC emitter at code `B9001`.
 
 ### Zia frontend
 
@@ -158,6 +161,11 @@ Eleven-class `Viper.Localization.*` namespace. Zero external dependencies; en-US
 - **Lowerer** — range `.rev()` / `.step(n)` chains; `widenIntegralToI64` on all index paths; `lowerStructLiteral` typed field defaults; `AddressOf` forward-ref fix; Map subscript traps on absent key; all integer ops emit overflow-checking opcodes unconditionally.
 - EH typed-catch rethrow: `eh.entry` + `resume.same(tok)` preserves original error token instead of synthesizing a new trap.
 - **VM string cache async race fix** — `initStringCache` pre-allocates null slots; `getStringLiteral` materializes on first access, closing concurrent-init window in async worker VMs.
+- **Inline aggregate lowering fix** — `emitFieldLoad` / `emitFieldStore` and class/struct field-layout now treat `Struct`, `Tuple`, and `FixedArray` uniformly as inline aggregates; previously only `FixedArray` was handled inline while struct/tuple fields were scalar-loaded from their first bytes, corrupting data silently. New `emitInlineValueStore` / `emitInlineValueCopy` helpers recurse through nested members and elements with per-element stride, string retain/release, and init-vs-overwrite semantics. Field layout delegates to `getSemanticTypeSize` / `getSemanticTypeAlignment` for all aggregate kinds.
+- `getOrCreateStructTypeInfo` gains an unqualified suffix-match fallback so short names (`Pair`) resolve to `Module.Pair` without requiring full qualification at the call site.
+- Safety-critical warnings (`W008` missing-return, `W010` division-by-zero, `W015` uninitialized-variable, `W016` optional-without-check, `W019` non-exhaustive-match) are promoted to errors by default; `--no-strict-diagnostics` keeps them as warnings without requiring `-Werror`.
+- Zia lexer and semantic diagnostics now use stable `V-ZIA-*` codes for common failures, including unterminated block comments, unterminated strings, undefined identifiers, type mismatches, and fixed-array literal index bounds errors.
+- `SourceManager::setSource()` called after file registration; file-ID overflow now emits a `V-SRC-FILE-ID` diagnostic and returns early; optimizer pipeline failures emit `V-OPT-PIPELINE`; `Verifier::verify` runs post-optimizer.
 
 ### Linker, codegen, tools, IL, build
 
@@ -166,6 +174,12 @@ Eleven-class `Viper.Localization.*` namespace. Zero external dependencies; en-US
 - IL surface: `Canvas.CopyRect` / `Screenshot` return `Pixels`; `AudioUpdate` added; eleven new `RTCLS_Loc*` RuntimeTypeId entries; `RelativeTime.FormatShort` binding corrected.
 - rtgen audit passes with zero findings after classifying 29 previously unclassified symbols.
 - Tools: frontend `--` separator, collision-safe temp paths. Build: VERSION `0.2.4-dev` → `0.2.5-snapshot`.
+- **Diagnostic infrastructure** — `Diagnostic` gains `SourceRange range` and `std::vector<DiagnosticNote> notes` fields; `diag_expected.cpp` adds source-snippet printing with caret/tilde underlines (`printSourceSnippet`) and a JSON formatter (`printDiagJson` / `printDiagnosticsJson`). `SourceManager::setSource()` populates line caches from in-memory strings without on-disk reads. `SourceManager::addFile()` no longer emits its own diagnostic on overflow — callers own that report.
+- **CLI flags** — `--diagnostic-format=text|json` (also `--diagnostic-format json`), `--strict-diagnostics` / `--no-strict-diagnostics`, `--bounds-checks` / `--no-bounds-checks`, and `--show-warnings` / `--quiet-warnings` are available across subcommands; strict diagnostics and bounds checks default on. All diagnostic output routes through `printDiagnostic(format)` for consistent text-or-JSON rendering.
+- **BytecodeCompiler** — `compileChecked(module, sourceManager?, assumeVerified=false)` returns `Expected<BytecodeModule>` with a source-located `Diag`; it runs verifier preflight unless the caller explicitly passes `assumeVerified=true`. Internal errors propagate via private `BytecodeCompileFailure` so no undecorated `runtime_error` escapes. Function name, block label, and source location tracked throughout for precise diagnostic attribution (e.g., `V-BC-UNSUPPORTED-GADDR`, `V-BC-UNKNOWN-SSA`, `V-BC-FUNCTION-TABLE`).
+- **BytecodeVM** — trap messages enriched to `"Trap @func:block#pc file.zia:line (TrapKindName)"`.
+- **Signature Registry** — `register_signature` is mutex-guarded and idempotent: identical re-registration is a no-op; conflicting metadata for the same name throws `std::logic_error`. `registry_version()` added for cache-invalidation consumers.
+- `vm_executor`: `compileChecked` integration; `VMExecutorResult::compileFailed` flag; `VMExecutorConfig::sourceManager` for diagnostic context. Pipeline subcommands report all `Verifier::verifyAll` diagnostics at the appropriate stage.
 
 ### Linker hardening
 
@@ -206,6 +220,10 @@ All four object-file readers and all three writers received a bounds-checking an
 - `VerifyStrategy::IntegerBinary` enables sub-word overflow arithmetic (I16/I32); `And`/`Or`/`Xor`/`Shl`/`LShr`/`AShr` added to verifier table.
 - `BranchVerifier` emits "unknown branch condition" / "unknown switch.i32 scrutinee" for missing operand temps; `InstrParser` detects trailing characters after result type annotation.
 - `OperandParser` resolves call return types from externs, functions, and the runtime signature registry.
+- `Verifier::verifyAll(module, maxDiagnostics=50)` collects all violations with deduplication by (severity + code + message + loc) and collapses them into a primary `Diag` with attached `DiagnosticNote` entries; `verify()` now delegates to it rather than stopping at the first error.
+- Alloca escape detection: the verifier now rejects alloca pointers stored into non-stack destinations or loaded through escaping GEP chains; two new golden IL fixtures (`alloca_load_escape.il`, `alloca_store_escape.il`) lock in the expected diagnostics.
+- `EffectFacts` + `directCalleeEffects` query `RuntimeSignatures`, `HelperEffects`, and `FunctionAttrs` in priority order for per-call-site effect classification.
+- Diagnostic codes normalized to `V-IL-WARN` / `V-IL-VERIFY` across all sub-verifiers.
 
 **IL optimizer hardening**
 - `CallEffects` priority: registry + function-declaration attrs are authoritative over instruction `CallAttr`; `canEliminateIfUnused` requires both `pure` and `nothrow`.
@@ -218,6 +236,11 @@ All four object-file readers and all three writers received a bounds-checking an
 - LoopUnroll: `checkedAdd()` prevents IV overflow; `isSafeToCloneForFullUnroll()` rejects memory/call/alloca in body.
 - IndVarSimplify: `long long` step, `LLONG_MIN` guard. FAdd/FMul removed from `isCommutativeCSE`.
 - `ForwardingElimination`: asserts replaced with guarded early returns for fuzz safety.
+- DCE alloca elimination wrapped in a do-while fixed-point loop; eliminating one dead store can reveal a second dead alloca that was previously blocked.
+- MemorySSA cross-block dead-store analysis rewritten from a BFS-with-`goto` to a recursive memoized DFS with a `visiting` sentinel; back-edges in live loops now correctly return false instead of being treated as killed paths.
+- SCCP calls `SimplifyCFG` post-propagation to prune unreachable blocks created by constant-folded terminators.
+- `Mem2Reg` SROA pre-reserves `candidates` and `owner` maps to the alloca count before candidate collection, reducing rehashing in large functions.
+- `BasicAA::queryRuntimeEffect` now consults `findRuntimeSignature` (O(1)) first, then `all_signatures()` linear scan, then `classifyHelperEffects`; removes stale size-tracking rebuild cache that could diverge from `registry_version`.
 
 ### Platform input
 
@@ -230,15 +253,18 @@ All four object-file readers and all three writers received a bounds-checking an
 - 11 Localization test files (~360 assertions); 3 libFuzzer harnesses for plural-rules / CLDR date-patterns / locale-JSON (gated on `VIPER_ENABLE_FUZZ`).
 - IL optimizer unit tests: DSE MayAlias/narrow-overwrite preservation, MemorySSA GEP escape, LICM pure-call hoisting, LoopRotate constant-backedge remap, LoopUnroll exit-value correctness, IndVarSimplify loop-local base, BranchVerifier unknown-operand, InstrParser trailing-annotation, ValueKey FAdd non-commutativity.
 - Boolean short-circuit goldens (`boolean_andalso` / `boolean_orelse`) for BASIC-to-IL and IL suites; 3D character FBX assets (Knight + RPG Characters packs) for skin/animation regression; 4 IL source benchmarks (`fib_stress`, `inline_stress`, `redundant_stress`, `udiv_stress`) replace compiled binaries.
+- New `test_bytecode_compiler_diagnostics.cpp`: `compileChecked` surfaces coded failures (`V-BC-UNSUPPORTED-GADDR`, function-table overflow) with source locations; new `test_vm_executor_compile_diagnostics.cpp` covers the executor compile-fail path.
+- New `test_il_verify_all.cpp`: `verifyAll` deduplication and note attachment across multiple violations; new `DiagnosticCliTests.cmake` e2e test for `--diagnostic-format` flag.
+- New Zia test `FixedArrayOfStructsUsesInlineElementStride` for the inline aggregate fix; verifier golden fixtures for alloca-load and alloca-store escape; extended `MemorySSATests` (cycle-safe DFS case) and `test_SignaturesPurity` (idempotent registry).
 
 ### Demos & docs
 
-Demos: human-manager baseball franchise simulator (new), Crackman (Pac-Man rewrite with session/progression/audio-bank split), two new 3D demos, Paint gains layers + undo, ViperIDE picks up file-watcher and context-menu null-active-document guards, XENOSCAPE boss + player fixes, Chess AI hardening, three `examples/localization/` programs, Windows ARM64 smoke coverage for 3dbowling / 3dscene / baseball. Docs: `viperlib/` sweep across all subsystems, new `viperlib/graphics/production2d.md` and `viperlib/localization/` set, `README.md` master snapshot, `il-guide.md` Optimizer Correctness Contract, Doxygen pass across ~100 runtime files. `.gitignore` adds `/out/`, `!examples/il/**/*.il`, `!tests/runtime/**/*.fbx`, and `!tests/runtime/**/*.obj`.
+Demos: human-manager baseball franchise simulator (new), Crackman (Pac-Man rewrite with session/progression/audio-bank split), two new 3D demos, Paint gains layers + undo, ViperIDE picks up file-watcher and context-menu null-active-document guards, XENOSCAPE boss + player fixes, Chess click-vs-drag detection fix (dragStartX/Y fields, click-on-origin keeps selection for click-to-move), three `examples/localization/` programs, Windows ARM64 smoke coverage for 3dbowling / 3dscene / baseball. Docs: `viperlib/` sweep across all subsystems, new `viperlib/graphics/production2d.md` and `viperlib/localization/` set, `README.md` master snapshot, `il-guide.md` Optimizer Correctness Contract, Doxygen pass across ~100 runtime files, updated debugging/tools/il-reference/il-guide for new diagnostic flags and verifyAll API.
 
 ---
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 83-commit history. The pattern throughout is feature introduction followed by hardening follow-ups in the same subsystem.
+See `git log a91d388db..HEAD -- .` for the full 85-commit history. The pattern throughout is feature introduction followed by hardening follow-ups in the same subsystem.
 
 <!-- END DRAFT -->

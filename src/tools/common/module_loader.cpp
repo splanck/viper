@@ -27,6 +27,7 @@
 #include "tools/common/module_loader.hpp"
 
 #include "il/api/expected_api.hpp"
+#include "il/verify/Verifier.hpp"
 
 #include <fstream>
 
@@ -147,12 +148,13 @@ LoadResult loadModuleFromFile(const std::string &path,
 bool verifyModule(const il::core::Module &module,
                   std::ostream &err,
                   const il::support::SourceManager *sm) {
-    auto verified = il::api::v2::verify_module_expected(module);
-    if (!verified) {
-        il::support::printDiag(verified.error(), err, sm);
-        return false;
+    bool hasError = false;
+    for (const auto &diag : il::verify::Verifier::verifyAll(module, 50)) {
+        if (diag.severity == il::support::Severity::Error)
+            hasError = true;
+        il::support::printDiag(diag, err, sm);
     }
-    return true;
+    return !hasError;
 }
 
 /// @brief Verify a module and return the result without printing.

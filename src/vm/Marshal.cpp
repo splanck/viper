@@ -245,13 +245,14 @@ int64_t toI64(const il::core::Value &value) {
         case Kind::NullPtr:
             return 0;
         default:
-            // In release builds without assertions, provide a clear diagnostic
-            // before aborting. This should never be reached if assertions are
-            // enabled, but guards against NDEBUG builds hiding bugs.
-            std::fprintf(stderr,
-                         "[FATAL] toI64 called with non-constant value kind: %s\n",
-                         valueKindToString(value.kind));
-            std::abort();
+            RuntimeBridge::trap(
+                TrapKind::InvalidOperation,
+                std::string("toI64 called with non-constant value kind: ") +
+                    valueKindToString(value.kind),
+                {},
+                "",
+                "");
+            return 0;
     }
 }
 
@@ -272,13 +273,14 @@ double toF64(const il::core::Value &value) {
         case Kind::NullPtr:
             return 0.0;
         default:
-            // In release builds without assertions, provide a clear diagnostic
-            // before aborting. This should never be reached if assertions are
-            // enabled, but guards against NDEBUG builds hiding bugs.
-            std::fprintf(stderr,
-                         "[FATAL] toF64 called with non-constant value kind: %s\n",
-                         valueKindToString(value.kind));
-            std::abort();
+            RuntimeBridge::trap(
+                TrapKind::InvalidOperation,
+                std::string("toF64 called with non-constant value kind: ") +
+                    valueKindToString(value.kind),
+                {},
+                "",
+                "");
+            return 0.0;
     }
 }
 

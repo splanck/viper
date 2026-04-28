@@ -12,17 +12,31 @@
 
 #include "codegen/common/Diagnostics.hpp"
 
+#include "support/diag_expected.hpp"
+
 #include <ostream>
 #include <utility>
 
 namespace viper::codegen::common {
 
 void Diagnostics::error(std::string message) {
-    errors_.push_back(std::move(message));
+    error("V-CG-ERROR", std::move(message));
+}
+
+void Diagnostics::error(std::string code, std::string message, il::support::SourceLoc loc) {
+    errors_.push_back(message);
+    diagnostics_.push_back(
+        {il::support::Severity::Error, std::move(message), loc, std::move(code)});
 }
 
 void Diagnostics::warning(std::string message) {
-    warnings_.push_back(std::move(message));
+    warning("V-CG-WARN", std::move(message));
+}
+
+void Diagnostics::warning(std::string code, std::string message, il::support::SourceLoc loc) {
+    warnings_.push_back(message);
+    diagnostics_.push_back(
+        {il::support::Severity::Warning, std::move(message), loc, std::move(code)});
 }
 
 bool Diagnostics::hasErrors() const noexcept {
@@ -41,19 +55,17 @@ const std::vector<std::string> &Diagnostics::warnings() const noexcept {
     return warnings_;
 }
 
+const std::vector<il::support::Diagnostic> &Diagnostics::diagnostics() const noexcept {
+    return diagnostics_;
+}
+
 void Diagnostics::flush(std::ostream &err, std::ostream *warn) const {
-    for (const auto &msg : errors_) {
-        err << msg;
-        if (!msg.empty() && msg.back() != '\n') {
-            err << '\n';
-        }
-    }
-    if (warn != nullptr) {
-        for (const auto &msg : warnings_) {
-            *warn << msg;
-            if (!msg.empty() && msg.back() != '\n') {
-                *warn << '\n';
-            }
+    for (const auto &diag : diagnostics_) {
+        if (diag.severity == il::support::Severity::Warning) {
+            if (warn)
+                il::support::printDiag(diag, *warn);
+        } else {
+            il::support::printDiag(diag, err);
         }
     }
 }

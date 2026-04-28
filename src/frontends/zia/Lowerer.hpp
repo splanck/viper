@@ -976,6 +976,11 @@ class Lowerer {
     /// @return A unique temporary name counter.
     unsigned nextTempId();
 
+    /// @brief Attach a source/debug name to an SSA value when it is unique.
+    /// @param id SSA temporary identifier.
+    /// @param name Preferred source-level name.
+    void nameTemp(unsigned id, const std::string &name);
+
     /// @brief Emit a GEP (get element pointer) instruction.
     /// @param ptr The base pointer.
     /// @param offset The byte offset to add.

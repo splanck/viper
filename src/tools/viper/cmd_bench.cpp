@@ -376,7 +376,7 @@ bool benchmarkFile(const std::string &file,
     if (!bcStrategies.empty()) {
         // Compile IL to bytecode once
         viper::bytecode::BytecodeCompiler compiler;
-        auto compiled = compiler.compileChecked(mod, &sm);
+        auto compiled = compiler.compileChecked(mod, &sm, true);
         if (!compiled) {
             il::support::printDiag(compiled.error(), std::cerr, &sm);
             return false;

@@ -38,6 +38,35 @@
   code: B1003
   severity: error
   format: "unknown line {label}"
+# Zia lexical and semantic diagnostics
+- id: ZIA_LEX_UNTERMINATED_COMMENT
+  code: V-ZIA-LEX-UNTERMINATED-COMMENT
+  severity: error
+  format: "unterminated block comment"
+- id: ZIA_LEX_UNTERMINATED_STRING
+  code: V-ZIA-LEX-UNTERMINATED-STRING
+  severity: error
+  format: "unterminated string"
+- id: ZIA_UNDEFINED
+  code: V-ZIA-UNDEFINED
+  severity: error
+  format: "Undefined identifier: {name}"
+- id: ZIA_TYPE_MISMATCH
+  code: V-ZIA-TYPE-MISMATCH
+  severity: error
+  format: "Type mismatch: expected {expected}, got {actual}"
+- id: ZIA_INDEX
+  code: V-ZIA-INDEX
+  severity: error
+  format: "invalid index expression"
+- id: ZIA_BOUNDS
+  code: V-ZIA-BOUNDS
+  severity: error
+  format: "fixed array index {index} is out of bounds for length {length}"
+- id: ZIA_SEMA
+  code: V-ZIA-SEMA
+  severity: error
+  format: "{message}"
 # OOP / Interface diagnostics
 - id: BASIC_IFACE_DUP_METHOD
   code: B2110

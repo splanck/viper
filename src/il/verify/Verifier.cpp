@@ -65,10 +65,14 @@ bool sameDiagnostic(const Diag &lhs, const Diag &rhs) {
 /// @return @c Expected success on clean modules; otherwise an aggregated error diagnostic.
 Expected<void> Verifier::verify(const Module &m) {
     auto diagnostics = verifyAll(m, 50);
-    if (diagnostics.empty())
+    auto primaryIt =
+        std::find_if(diagnostics.begin(), diagnostics.end(), [](const Diag &diag) {
+            return diag.severity == il::support::Severity::Error;
+        });
+    if (primaryIt == diagnostics.end())
         return {};
 
-    Diag primary = diagnostics.front();
+    Diag primary = *primaryIt;
     if (diagnostics.size() > 1) {
         primary.message += "\n";
         primary.message += std::to_string(diagnostics.size() - 1);
@@ -76,8 +80,10 @@ Expected<void> Verifier::verify(const Module &m) {
         if (diagnostics.size() != 2)
             primary.message += "s";
         primary.message += ":";
-        for (size_t index = 1; index < diagnostics.size(); ++index) {
-            primary.notes.push_back({diagnostics[index].loc, diagnostics[index].message});
+        for (const auto &diag : diagnostics) {
+            if (sameDiagnostic(diag, primary))
+                continue;
+            primary.notes.push_back({diag.loc, diag.message});
         }
     }
     return Expected<void>{std::move(primary)};
@@ -87,15 +93,17 @@ std::vector<Diag> Verifier::verifyAll(const Module &m, size_t maxDiagnostics) {
     CollectingDiagSink sink;
     std::vector<Diag> diagnostics;
 
-    auto appendFailure = [&](const Expected<void> &result) {
-        if (result) {
-            sink.clear();
-            return;
-        }
+    auto appendDiagnostics = [&](const Expected<void> &result) {
         for (const auto &diag : sink.diagnostics()) {
             if (diagnostics.size() >= maxDiagnostics)
                 return;
-            diagnostics.push_back(normalizeVerifierDiag(diag));
+            Diag normalized = normalizeVerifierDiag(diag);
+            const bool duplicate =
+                std::any_of(diagnostics.begin(), diagnostics.end(), [&](const Diag &existing) {
+                    return sameDiagnostic(existing, normalized);
+                });
+            if (!duplicate)
+                diagnostics.push_back(std::move(normalized));
         }
         sink.clear();
         if (!result && diagnostics.size() < maxDiagnostics) {
@@ -110,22 +118,22 @@ std::vector<Diag> Verifier::verifyAll(const Module &m, size_t maxDiagnostics) {
     };
 
     ExternVerifier externVerifier;
-    appendFailure(externVerifier.run(m, sink));
+    appendDiagnostics(externVerifier.run(m, sink));
     if (diagnostics.size() >= maxDiagnostics)
         return diagnostics;
 
     GlobalVerifier globalVerifier;
-    appendFailure(globalVerifier.run(m, sink));
+    appendDiagnostics(globalVerifier.run(m, sink));
     if (diagnostics.size() >= maxDiagnostics)
         return diagnostics;
 
     FunctionVerifier functionVerifier(externVerifier.externs());
-    appendFailure(functionVerifier.run(m, sink));
+    appendDiagnostics(functionVerifier.run(m, sink));
     if (diagnostics.size() >= maxDiagnostics)
         return diagnostics;
 
     EhVerifier ehVerifier;
-    appendFailure(ehVerifier.run(m, sink));
+    appendDiagnostics(ehVerifier.run(m, sink));
 
     return diagnostics;
 }

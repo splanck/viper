@@ -1,4 +1,4 @@
-il 0.2.0
+il VERSION
 extern @Viper.String.Asc(str) -> i64
 extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.IndexOf(str, str) -> i64
@@ -56,6 +56,7 @@ entry:
   store str, %t1, %t2
   %t3 = alloca 8
   store ptr, %t3, null
+  %t4 = alloca 8
   br UL1000000000
 UL1000000000:
   .loc 1 1 1
@@ -65,28 +66,30 @@ UL999999999:
   br UL999999998
 UL999999998:
   .loc 1 3 1
-  %t4:ptr = call @rt_arr_i64_new(3)
+  %t5:ptr = call @rt_arr_i64_new(3)
   .loc 1 3 1
-  call @rt_arr_i64_retain(%t4)
+  call @rt_arr_i64_retain(%t5)
   .loc 1 3 1
-  %t5 = load ptr, %t3
+  %t6 = load ptr, %t3
   .loc 1 3 1
-  call @rt_arr_i64_release(%t5)
+  call @rt_arr_i64_release(%t6)
   .loc 1 3 1
-  store ptr, %t3, %t4
+  store ptr, %t3, %t5
+  .loc 1 3 1
+  store i64, %t4, 3
   .loc 1 3 1
   br UL999999997
 UL999999997:
   .loc 1 4 15
-  %t6 = const_str @.L0
+  %t7 = const_str @.L0
   .loc 1 4 1
-  %t7 = load str, %t1
+  %t8 = load str, %t1
   .loc 1 4 1
-  call @rt_str_release_maybe(%t7)
+  call @rt_str_release_maybe(%t8)
   .loc 1 4 1
-  call @rt_str_retain_maybe(%t6)
+  call @rt_str_retain_maybe(%t7)
   .loc 1 4 1
-  store str, %t1, %t6
+  store str, %t1, %t7
   .loc 1 4 1
   br UL999999996
 UL999999996:
@@ -96,99 +99,99 @@ UL999999996:
   br UL999999995
 UL999999995:
   .loc 1 6 17
-  %t8 = load i64, %t0
+  %t9 = load i64, %t0
   .loc 1 6 1
-  %t9 = load ptr, %t3
+  %t10 = load ptr, %t3
   .loc 1 6 5
-  %t10:i64 = call @rt_arr_i64_len(%t9)
+  %t11:i64 = call @rt_arr_i64_len(%t10)
   .loc 1 6 5
-  %t11 = scmp_lt 0, 0
+  %t12 = scmp_lt 0, 0
   .loc 1 6 5
-  %t12 = scmp_ge 0, %t10
-  .loc 1 6 5
-  %t13 = zext1 %t11
+  %t13 = scmp_ge 0, %t11
   .loc 1 6 5
   %t14 = zext1 %t12
   .loc 1 6 5
-  %t15 = or %t13, %t14
+  %t15 = zext1 %t13
   .loc 1 6 5
-  %t16 = icmp_ne %t15, 0
+  %t16 = or %t14, %t15
   .loc 1 6 5
-  cbr %t16, bc_oob0, bc_ok0
+  %t17 = icmp_ne %t16, 0
+  .loc 1 6 5
+  cbr %t17, bc_oob0, bc_ok0
 UL999999994:
   .loc 1 7 7
-  %t17 = load str, %t1
+  %t18 = load str, %t1
   .loc 1 7 7
-  call @rt_str_retain_maybe(%t17)
-  .loc 1 7 7
-  call @Viper.Terminal.PrintStr(%t17)
-  .loc 1 7 7
-  call @rt_str_release_maybe(%t17)
-  .loc 1 7 7
-  %t18 = const_str @.L1
+  call @rt_str_retain_maybe(%t18)
   .loc 1 7 7
   call @Viper.Terminal.PrintStr(%t18)
+  .loc 1 7 7
+  call @rt_str_release_maybe(%t18)
+  .loc 1 7 7
+  %t19 = const_str @.L1
+  .loc 1 7 7
+  call @Viper.Terminal.PrintStr(%t19)
   .loc 1 7 1
   br UL999999993
 UL999999993:
   .loc 1 8 7
-  %t19 = load i64, %t0
+  %t20 = load i64, %t0
   .loc 1 8 7
-  call @Viper.Terminal.PrintI64(%t19)
+  call @Viper.Terminal.PrintI64(%t20)
   .loc 1 8 7
-  %t20 = const_str @.L1
+  %t21 = const_str @.L1
   .loc 1 8 7
-  call @Viper.Terminal.PrintStr(%t20)
+  call @Viper.Terminal.PrintStr(%t21)
   .loc 1 8 1
   br UL999999992
 UL999999992:
   .loc 1 9 7
-  %t21 = load ptr, %t3
+  %t22 = load ptr, %t3
   .loc 1 9 7
-  %t22:i64 = call @rt_arr_i64_len(%t21)
+  %t23:i64 = call @rt_arr_i64_len(%t22)
   .loc 1 9 7
-  %t23 = scmp_lt 0, 0
+  %t24 = scmp_lt 0, 0
   .loc 1 9 7
-  %t24 = scmp_ge 0, %t22
-  .loc 1 9 7
-  %t25 = zext1 %t23
+  %t25 = scmp_ge 0, %t23
   .loc 1 9 7
   %t26 = zext1 %t24
   .loc 1 9 7
-  %t27 = or %t25, %t26
+  %t27 = zext1 %t25
   .loc 1 9 7
-  %t28 = icmp_ne %t27, 0
+  %t28 = or %t26, %t27
   .loc 1 9 7
-  cbr %t28, bc_oob1, bc_ok1
+  %t29 = icmp_ne %t28, 0
+  .loc 1 9 7
+  cbr %t29, bc_oob1, bc_ok1
 exit:
-  %t31 = load ptr, %t3
-  call @rt_arr_i64_release(%t31)
+  %t32 = load ptr, %t3
+  call @rt_arr_i64_release(%t32)
   store ptr, %t3, null
   ret 0
 bc_ok0:
   .loc 1 6 5
-  call @rt_arr_i64_set(%t9, 0, %t8)
+  call @rt_arr_i64_set(%t10, 0, %t9)
   .loc 1 6 1
   br UL999999994
 bc_oob0:
   .loc 1 6 5
-  call @rt_arr_oob_panic(0, %t10)
+  call @rt_arr_oob_panic(0, %t11)
   .loc 1 6 5
   trap
 bc_ok1:
   .loc 1 9 7
-  %t29:i64 = call @rt_arr_i64_get(%t21, 0)
+  %t30:i64 = call @rt_arr_i64_get(%t22, 0)
   .loc 1 9 7
-  call @Viper.Terminal.PrintI64(%t29)
+  call @Viper.Terminal.PrintI64(%t30)
   .loc 1 9 7
-  %t30 = const_str @.L1
+  %t31 = const_str @.L1
   .loc 1 9 7
-  call @Viper.Terminal.PrintStr(%t30)
+  call @Viper.Terminal.PrintStr(%t31)
   .loc 1 9 1
   br exit
 bc_oob1:
   .loc 1 9 7
-  call @rt_arr_oob_panic(0, %t22)
+  call @rt_arr_oob_panic(0, %t23)
   .loc 1 9 7
   trap
 }

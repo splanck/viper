@@ -26,7 +26,8 @@ func testListShorthand() {    var nums: [Integer] = [1, 2, 3, 4, 5];
 //=============================================================================
 func testBasicTryCatch() {    var caught = false;
     try {
-        var x = 1 / 0;
+        var zero = 0;
+        var x = 1 / zero;
     } catch(e) {
         caught = true;
     }
@@ -38,7 +39,8 @@ func testBasicTryCatch() {    var caught = false;
 //=============================================================================
 func testTypedCatchDivByZero() {    var caught = false;
     try {
-        var x = 1 / 0;
+        var zero = 0;
+        var x = 1 / zero;
     } catch(e: DivideByZero) {
         caught = true;
     }
@@ -54,7 +56,8 @@ func testTypedCatchMismatch() {    // Division by zero should NOT be caught by a
     var caughtOuter = false;
     try {
         try {
-            var x = 1 / 0;
+            var zero = 0;
+            var x = 1 / zero;
         } catch(e: Bounds) {
             caughtInner = true;
         }
@@ -70,7 +73,8 @@ func testTypedCatchMismatch() {    // Division by zero should NOT be caught by a
 //=============================================================================
 func testTypedCatchAll() {    var caught = false;
     try {
-        var x = 1 / 0;
+        var zero = 0;
+        var x = 1 / zero;
     } catch(e: Error) {
         caught = true;
     }
@@ -83,7 +87,8 @@ func testTypedCatchAll() {    var caught = false;
 func testTypedCatchFinally() {    var caught = false;
     var finalized = false;
     try {
-        var x = 1 / 0;
+        var zero = 0;
+        var x = 1 / zero;
     } catch(e: DivideByZero) {
         caught = true;
     } finally {

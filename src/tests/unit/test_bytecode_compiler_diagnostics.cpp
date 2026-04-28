@@ -63,7 +63,7 @@ TEST(BytecodeCompilerDiagnostics, UnsupportedGAddrIsCompileDiagnostic) {
     instr.loc = {7, 3, 5};
 
     viper::bytecode::BytecodeCompiler compiler;
-    auto result = compiler.compileChecked(wrapInMain(std::move(instr)));
+    auto result = compiler.compileChecked(wrapInMain(std::move(instr)), nullptr, true);
 
     ASSERT_FALSE(result.hasValue());
     EXPECT_EQ(result.error().code, "V-BC-UNSUPPORTED-GADDR");
@@ -83,7 +83,7 @@ TEST(BytecodeCompilerDiagnostics, UnknownStringGlobalIsCompileDiagnostic) {
     instr.loc = {7, 8, 9};
 
     viper::bytecode::BytecodeCompiler compiler;
-    auto result = compiler.compileChecked(wrapInMain(std::move(instr)));
+    auto result = compiler.compileChecked(wrapInMain(std::move(instr)), nullptr, true);
 
     ASSERT_FALSE(result.hasValue());
     EXPECT_EQ(result.error().code, "V-BC-UNKNOWN-STRING-GLOBAL");
@@ -101,7 +101,7 @@ TEST(BytecodeCompilerDiagnostics, MissingOperandsAreCompileDiagnostics) {
     instr.loc = {7, 11, 3};
 
     viper::bytecode::BytecodeCompiler compiler;
-    auto result = compiler.compileChecked(wrapInMain(std::move(instr)));
+    auto result = compiler.compileChecked(wrapInMain(std::move(instr)), nullptr, true);
 
     ASSERT_FALSE(result.hasValue());
     EXPECT_EQ(result.error().code, "V-BC-MALFORMED-INSTR");
@@ -121,7 +121,7 @@ TEST(BytecodeCompilerDiagnostics, EmitsPerPcSourceDebugMetadata) {
     instr.loc = {fileId, 12, 5};
 
     viper::bytecode::BytecodeCompiler compiler;
-    auto result = compiler.compileChecked(wrapInMain(std::move(instr)), &sm);
+    auto result = compiler.compileChecked(wrapInMain(std::move(instr)), &sm, true);
 
     ASSERT_TRUE(result.hasValue());
     const auto &module = result.value();
@@ -136,6 +136,43 @@ TEST(BytecodeCompilerDiagnostics, EmitsPerPcSourceDebugMetadata) {
     EXPECT_EQ(fn.lineTable[0], 12u);
     EXPECT_EQ(fn.sourceFileTable[0], 1u);
     EXPECT_EQ(fn.blockLabelTable[0], "entry");
+}
+
+TEST(BytecodeCompilerDiagnostics, PreflightRejectsInvalidILBeforeLowering) {
+    using namespace il::core;
+
+    Instr instr;
+    instr.result = 0;
+    instr.op = Opcode::Add;
+    instr.type = Type(Type::Kind::I64);
+    instr.operands.push_back(Value::temp(99));
+    instr.operands.push_back(Value::constInt(1));
+    instr.loc = {7, 14, 2};
+
+    viper::bytecode::BytecodeCompiler compiler;
+    auto result = compiler.compileChecked(wrapInMain(std::move(instr)));
+
+    ASSERT_FALSE(result.hasValue());
+    EXPECT_CONTAINS(result.error().message, "bytecode preflight failed");
+}
+
+TEST(BytecodeCompilerDiagnostics, UnknownSsaIsCompileDiagnosticWhenVerifierWasBypassed) {
+    using namespace il::core;
+
+    Instr instr;
+    instr.result = 0;
+    instr.op = Opcode::Add;
+    instr.type = Type(Type::Kind::I64);
+    instr.operands.push_back(Value::temp(99));
+    instr.operands.push_back(Value::constInt(1));
+    instr.loc = {7, 15, 4};
+
+    viper::bytecode::BytecodeCompiler compiler;
+    auto result = compiler.compileChecked(wrapInMain(std::move(instr)), nullptr, true);
+
+    ASSERT_FALSE(result.hasValue());
+    EXPECT_EQ(result.error().code, "V-BC-UNKNOWN-SSA");
+    EXPECT_CONTAINS(result.error().message, "unknown SSA value %99");
 }
 
 } // namespace

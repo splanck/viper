@@ -25,7 +25,6 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
-#include <cstdlib>
 #include <limits>
 #include <string>
 #include <utility>
@@ -418,7 +417,14 @@ Lowerer::RVal &BuiltinLowerContext::ensureArgument(const BuiltinLoweringRule::Ar
     }
     // Internal logic error: rule referenced missing argument without default
     assert(false && "builtin lowering referenced missing argument without default");
-    std::abort(); // Unreachable in correct implementation
+    if (auto *diag = lowerer_->diagnosticEmitter()) {
+        diag->emit(il::support::Severity::Error,
+                   "B9004",
+                   call_->loc,
+                   1,
+                   "builtin lowering rule referenced a missing argument without a default");
+    }
+    return appendSynthetic(makeTypedZero(IlType(IlKind::I64)));
 }
 
 /// @brief Resolve the diagnostic location for an argument described by @p spec.

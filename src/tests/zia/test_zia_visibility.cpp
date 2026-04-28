@@ -47,7 +47,7 @@ func start() {    var p: Person = new Person(30, 25);
     for (const auto &d : result.diagnostics.diagnostics()) {
         if (d.message.find("private") != std::string::npos) {
             foundVisibilityError = true;
-            EXPECT_EQ(d.code, "V3000");
+            EXPECT_EQ(d.code, "V-ZIA-SEMA");
         }
     }
     EXPECT_TRUE(foundVisibilityError);

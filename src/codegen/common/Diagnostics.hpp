@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include "support/diagnostics.hpp"
+
 #include <ostream>
 #include <string>
 #include <vector>
@@ -30,8 +32,14 @@ class Diagnostics {
     /// @brief Record an error message and mark the diagnostic stream as failed.
     void error(std::string message);
 
+    /// @brief Record a structured error diagnostic.
+    void error(std::string code, std::string message, il::support::SourceLoc loc = {});
+
     /// @brief Record a non-fatal warning message.
     void warning(std::string message);
+
+    /// @brief Record a structured warning diagnostic.
+    void warning(std::string code, std::string message, il::support::SourceLoc loc = {});
 
     /// @brief Query whether any error has been recorded.
     [[nodiscard]] bool hasErrors() const noexcept;
@@ -48,9 +56,13 @@ class Diagnostics {
     /// @brief Direct read-only access to stored warning messages (for testing).
     [[nodiscard]] const std::vector<std::string> &warnings() const noexcept;
 
+    /// @brief Direct read-only access to structured diagnostics.
+    [[nodiscard]] const std::vector<il::support::Diagnostic> &diagnostics() const noexcept;
+
   private:
     std::vector<std::string> errors_{};
     std::vector<std::string> warnings_{};
+    std::vector<il::support::Diagnostic> diagnostics_{};
 };
 
 } // namespace viper::codegen::common

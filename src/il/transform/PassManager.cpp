@@ -255,15 +255,10 @@ bool PassManager::run(core::Module &module, const Pipeline &pipeline) const {
         instrumentation.verifyEach = [this, &module](std::string_view passId) {
             auto result = il::verify::Verifier::verify(module);
             if (!result) {
-                if (instrumentationStream_) {
-                    *instrumentationStream_ << "verification failed after pass '" << passId
-                                            << "'\n";
-                    il::support::printDiag(result.error(), *instrumentationStream_);
-                    *instrumentationStream_ << "\n";
-                }
-#ifndef NDEBUG
-                assert(false && "IL verification failed after pass");
-#endif
+                std::ostream &out = instrumentationStream_ ? *instrumentationStream_ : std::cerr;
+                out << "verification failed after pass '" << passId << "'\n";
+                il::support::printDiag(result.error(), out);
+                out << "\n";
                 return false;
             }
             return true;

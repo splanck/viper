@@ -54,6 +54,19 @@ namespace {
 
 enum class RunMode { Run, Build };
 
+bool reportVerifierDiagnostics(il::core::Module &module,
+                               std::ostream &err,
+                               il::support::SourceManager &sm,
+                               ilc::DiagnosticFormat format,
+                               bool showWarnings) {
+    il::support::DiagnosticEngine diagnostics;
+    for (auto diag : il::verify::Verifier::verifyAll(module, 50))
+        diagnostics.report(std::move(diag));
+    if (diagnostics.errorCount() != 0 || (showWarnings && diagnostics.warningCount() != 0))
+        ilc::printDiagnosticEngine(diagnostics, err, &sm, format);
+    return diagnostics.errorCount() == 0;
+}
+
 struct RunBuildConfig {
     RunMode mode{RunMode::Run};
     std::string target{"."};
@@ -143,9 +156,8 @@ int verifyAndExecute(il::core::Module &module,
                      const std::vector<std::string> &programArgs,
                      bool debugVm,
                      il::support::SourceManager &sm) {
-    auto verification = il::verify::Verifier::verify(module);
-    if (!verification) {
-        ilc::printDiagnostic(verification.error(), std::cerr, &sm, shared.diagnosticFormat);
+    if (!reportVerifierDiagnostics(
+            module, std::cerr, sm, shared.diagnosticFormat, shared.showWarnings)) {
         return 1;
     }
 
@@ -294,8 +306,7 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
             il::support::Diagnostic{il::support::Severity::Error, "compilation failed", {}, {}});
     }
 
-    if (auto verification = il::verify::Verifier::verify(result.module); !verification) {
-        ilc::printDiagnostic(verification.error(), std::cerr, &sm, shared.diagnosticFormat);
+    if (!reportVerifierDiagnostics(result.module, std::cerr, sm, shared.diagnosticFormat, false)) {
         return il::support::Expected<il::core::Module>(il::support::Diagnostic{
             il::support::Severity::Error, "BASIC lowering produced invalid IL", {}, {}});
     }
@@ -303,13 +314,13 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
     // Apply the canonical IL optimizer pipeline based on the project's opt level.
     {
         il::transform::PassManager pm;
-        pm.setVerifyBetweenPasses(false);
+        pm.setVerifyBetweenPasses(true);
+        pm.setInstrumentationStream(std::cerr);
 
         // Enable per-pass IL dumps when requested.
         if (shared.dumpILPasses) {
             pm.setPrintBeforeEach(true);
             pm.setPrintAfterEach(true);
-            pm.setInstrumentationStream(std::cerr);
         }
 
         const std::string pipelineId =
@@ -328,8 +339,8 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
                 il::support::Severity::Error, "optimization failed", {}, "V-OPT-PIPELINE"});
         }
 
-        if (auto verification = il::verify::Verifier::verify(result.module); !verification) {
-            ilc::printDiagnostic(verification.error(), std::cerr, &sm, shared.diagnosticFormat);
+        if (!reportVerifierDiagnostics(
+                result.module, std::cerr, sm, shared.diagnosticFormat, shared.showWarnings)) {
             return il::support::Expected<il::core::Module>(il::support::Diagnostic{
                 il::support::Severity::Error,
                 "optimized BASIC IL failed verification",
@@ -435,8 +446,8 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
     ProjectConfig &proj = project.value();
 
     // Apply CLI overrides
-    if (config.shared.boundsChecks)
-        proj.boundsChecks = true;
+    if (config.shared.boundsChecksSpecified)
+        proj.boundsChecks = config.shared.boundsChecks;
     if (config.optimizeLevelOverride)
         proj.optimizeLevel = *config.optimizeLevelOverride;
 
@@ -457,10 +468,8 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
     // Build mode: emit IL or compile to native binary
     if (mode == RunMode::Build) {
         // Verify before emitting
-        auto verification = il::verify::Verifier::verify(module);
-        if (!verification) {
-            ilc::printDiagnostic(
-                verification.error(), std::cerr, &sm, config.shared.diagnosticFormat);
+        if (!reportVerifierDiagnostics(
+                module, std::cerr, sm, config.shared.diagnosticFormat, config.shared.showWarnings)) {
             return 1;
         }
 

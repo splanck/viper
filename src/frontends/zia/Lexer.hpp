@@ -227,7 +227,9 @@ class Lexer {
     /// - Block comments: `/* ... */` (supports nesting)
     ///
     /// Called before lexing each token.
-    void skipWhitespaceAndComments();
+    /// @return True when skipped trivia was well-formed; false if a skipped
+    ///         construct, such as a block comment, reported a lexical error.
+    bool skipWhitespaceAndComments();
 
     /// @brief Skip single-line comment (// ...).
     ///

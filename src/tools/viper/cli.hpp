@@ -43,8 +43,11 @@ struct SharedCliOptions {
     /// @brief Maximum number of interpreter steps (0 means unlimited).
     std::uint64_t maxSteps = 0;
 
-    /// @brief Whether bounds checks should be enabled during lowering.
-    bool boundsChecks = false;
+    /// @brief Whether bounds checks should be enabled during source lowering.
+    bool boundsChecks = true;
+
+    /// @brief Whether the bounds-check setting was explicitly supplied on the CLI.
+    bool boundsChecksSpecified = false;
 
     /// @brief Request formatted trap diagnostics on unhandled errors.
     bool dumpTrap = false;
@@ -74,7 +77,7 @@ struct SharedCliOptions {
     bool werror = false;
 
     /// @brief Promote warnings that can indicate runtime traps or unsafe binaries.
-    bool strictDiagnostics = false;
+    bool strictDiagnostics = true;
 
     /// @brief Print warnings even when compilation otherwise succeeds.
     bool showWarnings = true;

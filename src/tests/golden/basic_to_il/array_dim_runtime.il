@@ -1,4 +1,4 @@
-il 0.2.0
+il VERSION
 extern @Viper.String.Asc(str) -> i64
 extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.IndexOf(str, str) -> i64
@@ -52,112 +52,115 @@ entry:
   store ptr, %t0, null
   %t1 = alloca 8
   %t2 = alloca 8
+  %t3 = alloca 8
   br L10
 L10:
   .loc 1 1 4
-  %t3:ptr = call @rt_arr_i64_new(2)
+  %t4:ptr = call @rt_arr_i64_new(2)
   .loc 1 1 4
-  call @rt_arr_i64_retain(%t3)
+  call @rt_arr_i64_retain(%t4)
   .loc 1 1 4
-  %t4 = load ptr, %t0
+  %t5 = load ptr, %t0
   .loc 1 1 4
-  call @rt_arr_i64_release(%t4)
+  call @rt_arr_i64_release(%t5)
   .loc 1 1 4
-  store ptr, %t0, %t3
+  store ptr, %t0, %t4
+  .loc 1 1 4
+  store i64, %t3, 2
   .loc 1 1 4
   br L20
 L20:
   .loc 1 2 13
-  %t5 = load ptr, %t0
+  %t6 = load ptr, %t0
   .loc 1 2 13
-  %t6:i64 = call @rt_arr_i64_len(%t5)
+  %t7:i64 = call @rt_arr_i64_len(%t6)
   .loc 1 2 13
-  %t7 = isub.ovf %t6, 1
+  %t8 = isub.ovf %t7, 1
   .loc 1 2 4
-  store i64, %t1, %t7
+  store i64, %t1, %t8
   .loc 1 2 4
   br L30
 L30:
   .loc 1 3 12
-  %t8 = load i64, %t1
+  %t9 = load i64, %t1
   .loc 1 3 15
-  %t9 = iadd.ovf %t8, 2
+  %t10 = iadd.ovf %t9, 2
   .loc 1 3 4
-  %t10 = iadd.ovf %t9, 1
+  %t11 = iadd.ovf %t10, 1
   .loc 1 3 4
-  %t12 = scmp_lt %t10, 0
+  %t13 = scmp_lt %t11, 0
   .loc 1 3 4
-  cbr %t12, redim_len_fail, redim_len_cont(%t10)
+  cbr %t13, redim_len_fail, redim_len_cont(%t11)
 L40:
   .loc 1 4 4
-  %t16 = load ptr, %t0
+  %t17 = load ptr, %t0
   .loc 1 4 10
-  %t17 = load i64, %t1
+  %t18 = load i64, %t1
   .loc 1 4 8
-  %t18:i64 = call @rt_arr_i64_len(%t16)
+  %t19:i64 = call @rt_arr_i64_len(%t17)
   .loc 1 4 8
-  %t19 = scmp_lt %t17, 0
+  %t20 = scmp_lt %t18, 0
   .loc 1 4 8
-  %t20 = scmp_ge %t17, %t18
-  .loc 1 4 8
-  %t21 = zext1 %t19
+  %t21 = scmp_ge %t18, %t19
   .loc 1 4 8
   %t22 = zext1 %t20
   .loc 1 4 8
-  %t23 = or %t21, %t22
+  %t23 = zext1 %t21
   .loc 1 4 8
-  %t24 = icmp_ne %t23, 0
+  %t24 = or %t22, %t23
   .loc 1 4 8
-  cbr %t24, bc_oob0, bc_ok0
+  %t25 = icmp_ne %t24, 0
+  .loc 1 4 8
+  cbr %t25, bc_oob0, bc_ok0
 L50:
   .loc 1 5 12
-  %t25 = load ptr, %t0
+  %t26 = load ptr, %t0
   .loc 1 5 14
-  %t26 = load i64, %t1
+  %t27 = load i64, %t1
   .loc 1 5 12
-  %t27:i64 = call @rt_arr_i64_len(%t25)
+  %t28:i64 = call @rt_arr_i64_len(%t26)
   .loc 1 5 12
-  %t28 = scmp_lt %t26, 0
+  %t29 = scmp_lt %t27, 0
   .loc 1 5 12
-  %t29 = scmp_ge %t26, %t27
-  .loc 1 5 12
-  %t30 = zext1 %t28
+  %t30 = scmp_ge %t27, %t28
   .loc 1 5 12
   %t31 = zext1 %t29
   .loc 1 5 12
-  %t32 = or %t30, %t31
+  %t32 = zext1 %t30
   .loc 1 5 12
-  %t33 = icmp_ne %t32, 0
+  %t33 = or %t31, %t32
   .loc 1 5 12
-  cbr %t33, bc_oob1, bc_ok1
+  %t34 = icmp_ne %t33, 0
+  .loc 1 5 12
+  cbr %t34, bc_oob1, bc_ok1
 L60:
   .loc 1 6 10
-  %t35 = load i64, %t1
+  %t36 = load i64, %t1
   .loc 1 6 10
-  call @Viper.Terminal.PrintI64(%t35)
+  call @Viper.Terminal.PrintI64(%t36)
   .loc 1 6 10
-  %t36 = const_str @.L0
+  %t37 = const_str @.L0
   .loc 1 6 10
-  call @Viper.Terminal.PrintStr(%t36)
+  call @Viper.Terminal.PrintStr(%t37)
   .loc 1 6 4
   br L70
 L70:
   .loc 1 7 10
-  %t37 = load i64, %t2
+  %t38 = load i64, %t2
   .loc 1 7 10
-  call @Viper.Terminal.PrintI64(%t37)
+  call @Viper.Terminal.PrintI64(%t38)
   .loc 1 7 10
-  %t38 = const_str @.L0
+  %t39 = const_str @.L0
   .loc 1 7 10
-  call @Viper.Terminal.PrintStr(%t38)
+  call @Viper.Terminal.PrintStr(%t39)
   .loc 1 7 4
   br L80
 L80:
   .loc 1 8 4
   ret 0
 exit:
-  %t39 = load ptr, %t0
-  call @rt_arr_i64_release(%t39)
+  %t40 = load ptr, %t0
+  call @rt_arr_i64_release(%t40)
   store ptr, %t0, null
   ret 0
 redim_len_fail:
@@ -165,39 +168,41 @@ redim_len_fail:
   trap
 redim_len_cont(%len:i64):
   .loc 1 3 15
-  %t13 = load ptr, %t0
+  %t14 = load ptr, %t0
   .loc 1 3 15
-  %t14:ptr = call @rt_arr_i64_resize(%t13, %len)
+  %t15:ptr = call @rt_arr_i64_resize(%t14, %len)
   .loc 1 3 15
-  call @rt_arr_i64_retain(%t14)
+  call @rt_arr_i64_retain(%t15)
   .loc 1 3 15
-  %t15 = load ptr, %t0
+  %t16 = load ptr, %t0
   .loc 1 3 15
-  call @rt_arr_i64_release(%t15)
+  call @rt_arr_i64_release(%t16)
   .loc 1 3 15
-  store ptr, %t0, %t14
+  store ptr, %t0, %t15
+  .loc 1 3 15
+  store i64, %t3, %len
   .loc 1 3 4
   br L40
 bc_ok0:
   .loc 1 4 8
-  call @rt_arr_i64_set(%t16, %t17, 7)
+  call @rt_arr_i64_set(%t17, %t18, 7)
   .loc 1 4 4
   br L50
 bc_oob0:
   .loc 1 4 8
-  call @rt_arr_oob_panic(%t17, %t18)
+  call @rt_arr_oob_panic(%t18, %t19)
   .loc 1 4 8
   trap
 bc_ok1:
   .loc 1 5 12
-  %t34:i64 = call @rt_arr_i64_get(%t25, %t26)
+  %t35:i64 = call @rt_arr_i64_get(%t26, %t27)
   .loc 1 5 4
-  store i64, %t2, %t34
+  store i64, %t2, %t35
   .loc 1 5 4
   br L60
 bc_oob1:
   .loc 1 5 12
-  call @rt_arr_oob_panic(%t26, %t27)
+  call @rt_arr_oob_panic(%t27, %t28)
   .loc 1 5 12
   trap
 }

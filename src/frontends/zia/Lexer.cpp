@@ -362,6 +362,21 @@ inline bool isIdentifierContinue(char c) {
     return isLetter(c) || isDigit(c) || c == '_';
 }
 
+std::string classifyLexError(const std::string &message) {
+    if (message.find("unterminated block comment") != std::string::npos)
+        return "V-ZIA-LEX-UNTERMINATED-COMMENT";
+    if (message.find("unterminated") != std::string::npos &&
+        message.find("string") != std::string::npos)
+        return "V-ZIA-LEX-UNTERMINATED-STRING";
+    if (message.find("literal") != std::string::npos)
+        return "V-ZIA-LEX-LITERAL";
+    if (message.find("escape") != std::string::npos)
+        return "V-ZIA-LEX-ESCAPE";
+    if (message.find("identifier too long") != std::string::npos)
+        return "V-ZIA-LEX-IDENTIFIER";
+    return "V-ZIA-LEX";
+}
+
 } // anonymous namespace
 
 std::optional<TokenKind> Lexer::lookupKeyword(const std::string &name) {
@@ -420,7 +435,7 @@ void Lexer::reportError(il::support::SourceLoc loc, const std::string &message) 
         il::support::Severity::Error,
         message,
         loc,
-        "V1000" // Zia lexer error code
+        classifyLexError(message)
     });
 }
 
@@ -460,7 +475,7 @@ bool Lexer::skipBlockComment() {
     return true;
 }
 
-void Lexer::skipWhitespaceAndComments() {
+bool Lexer::skipWhitespaceAndComments() {
     while (!eof()) {
         char c = peekChar();
 
@@ -477,12 +492,14 @@ void Lexer::skipWhitespaceAndComments() {
 
         // Block comment: /* ... */
         if (c == '/' && peekChar(1) == '*') {
-            skipBlockComment();
+            if (!skipBlockComment())
+                return false;
             continue;
         }
 
         break;
     }
+    return true;
 }
 
 Token Lexer::lexIdentifierOrKeyword() {
@@ -907,7 +924,12 @@ Token Lexer::next() {
         return tok;
     }
 
-    skipWhitespaceAndComments();
+    if (!skipWhitespaceAndComments()) {
+        Token tok;
+        tok.kind = TokenKind::Error;
+        tok.loc = currentLoc();
+        return tok;
+    }
 
     if (eof()) {
         Token tok;

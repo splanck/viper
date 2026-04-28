@@ -62,6 +62,18 @@
 namespace il::frontends::zia {
 
 namespace {
+/// @brief Report all verifier diagnostics and return whether verification had no errors.
+bool reportVerifierDiagnostics(const il::core::Module &module,
+                               il::support::DiagnosticEngine &diagnostics) {
+    bool hasError = false;
+    for (auto diag : il::verify::Verifier::verifyAll(module, 50)) {
+        if (diag.severity == il::support::Severity::Error)
+            hasError = true;
+        diagnostics.report(std::move(diag));
+    }
+    return !hasError;
+}
+
 /// @brief Print every token from the source to stderr.
 /// @details Creates a fresh lexer and iterates until EOF, printing each token
 ///          with its location, kind, text, and literal values.
@@ -121,6 +133,8 @@ CompilerResult compile(const CompilerInput &input,
     // still works from the original one.
     if (options.dumpTokens) {
         dumpTokenStream(std::string(input.source), result.fileId, result.diagnostics);
+        if (result.diagnostics.errorCount() > 0)
+            return result;
     }
 
     debugTime("Phase 1: Lexing");
@@ -132,7 +146,7 @@ CompilerResult compile(const CompilerInput &input,
     Parser parser(lexer, result.diagnostics);
     auto module = parser.parseModule();
 
-    if (!module || parser.hasError()) {
+    if (!module || parser.hasError() || result.diagnostics.errorCount() > 0) {
         // Parse failed, return with diagnostics
         return result;
     }
@@ -155,6 +169,8 @@ CompilerResult compile(const CompilerInput &input,
             // Import processing failed
             return result;
         }
+        if (result.diagnostics.errorCount() > 0)
+            return result;
     }
 
     debugTime("Phase 3: Semantic Analysis");
@@ -168,7 +184,7 @@ CompilerResult compile(const CompilerInput &input,
                   << printer.dump(*module) << "=== End AST ===\n";
     }
 
-    if (!semanticOk) {
+    if (!semanticOk || result.diagnostics.errorCount() > 0) {
         // Semantic analysis failed, return with diagnostics
         return result;
     }
@@ -177,8 +193,9 @@ CompilerResult compile(const CompilerInput &input,
     // Phase 4: IL Lowering
     Lowerer lowerer(sema, result.diagnostics, options);
     result.module = lowerer.lower(*module);
-    if (auto verified = il::verify::Verifier::verify(result.module); !verified.hasValue()) {
-        result.diagnostics.report(verified.error());
+    if (result.diagnostics.errorCount() > 0)
+        return result;
+    if (!reportVerifierDiagnostics(result.module, result.diagnostics)) {
         return result;
     }
     debugTime("Phase 4: Done");
@@ -195,13 +212,13 @@ CompilerResult compile(const CompilerInput &input,
     // the full sequence of passes (SCCP, LICM, loop transforms, inlining, etc.).
     if (options.optLevel != OptLevel::O0) {
         il::transform::PassManager pm;
-        pm.setVerifyBetweenPasses(false);
+        pm.setVerifyBetweenPasses(true);
+        pm.setInstrumentationStream(std::cerr);
 
         // Enable per-pass IL dumps when requested.
         if (options.dumpILPasses) {
             pm.setPrintBeforeEach(true);
             pm.setPrintAfterEach(true);
-            pm.setInstrumentationStream(std::cerr);
         }
 
         const std::string pipelineId = (options.optLevel == OptLevel::O2) ? "O2" : "O1";
@@ -214,8 +231,7 @@ CompilerResult compile(const CompilerInput &input,
             return result;
         }
 
-        if (auto verified = il::verify::Verifier::verify(result.module); !verified.hasValue()) {
-            result.diagnostics.report(verified.error());
+        if (!reportVerifierDiagnostics(result.module, result.diagnostics)) {
             return result;
         }
     }

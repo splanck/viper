@@ -24,6 +24,7 @@
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/api/expected_api.hpp"
 #include "il/transform/PassManager.hpp"
+#include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include "tools/common/source_loader.hpp"
@@ -50,6 +51,19 @@ using namespace il::frontends::basic;
 using namespace il::support;
 
 namespace {
+
+bool reportVerifierDiagnostics(il::core::Module &module,
+                               std::ostream &err,
+                               il::support::SourceManager &sm,
+                               ilc::DiagnosticFormat format,
+                               bool showWarnings) {
+    il::support::DiagnosticEngine diagnostics;
+    for (auto diag : il::verify::Verifier::verifyAll(module, 50))
+        diagnostics.report(std::move(diag));
+    if (diagnostics.errorCount() != 0 || (showWarnings && diagnostics.warningCount() != 0))
+        ilc::printDiagnosticEngine(diagnostics, err, &sm, format);
+    return diagnostics.errorCount() == 0;
+}
 
 struct FrontBasicConfig {
     bool emitIl{false};
@@ -183,13 +197,9 @@ int runFrontBasic(const FrontBasicConfig &config,
 
     core::Module module = std::move(result.module);
 
-    std::optional<il::support::Expected<void>> cachedVerification{};
-
     if (config.emitIl) {
-        auto verification = il::verify::Verifier::verify(module);
-        if (!verification) {
-            ilc::printDiagnostic(
-                verification.error(), std::cerr, &sm, config.shared.diagnosticFormat);
+        if (!reportVerifierDiagnostics(
+                module, std::cerr, sm, config.shared.diagnosticFormat, false)) {
             return 1;
         }
         io::Serializer::write(module, std::cout);
@@ -208,19 +218,19 @@ int runFrontBasic(const FrontBasicConfig &config,
     // Verify the module BEFORE handing it to the optimizer: in debug builds the
     // optimizer asserts on invalid IL via verifyPreconditions, which would crash
     // instead of producing a nice source-annotated diagnostic.  Skip optimization
-    // (and cache the failure) when the module is already ill-formed so that the
-    // reporter below can emit the verifier error with proper file locations.
+    // when the module is already ill-formed so the verifier can emit the full
+    // diagnostic set with proper file locations.
     if (!useStandardVm && !config.optLevel.empty()) {
-        auto preOptVerify = il::verify::Verifier::verify(module);
-        if (preOptVerify) {
+        if (reportVerifierDiagnostics(
+                module, std::cerr, sm, config.shared.diagnosticFormat, false)) {
             il::transform::PassManager pm;
-            pm.setVerifyBetweenPasses(false);
+            pm.setVerifyBetweenPasses(true);
+            pm.setInstrumentationStream(std::cerr);
 
             // Enable per-pass IL dumps when requested.
             if (config.shared.dumpILPasses) {
                 pm.setPrintBeforeEach(true);
                 pm.setPrintAfterEach(true);
-                pm.setInstrumentationStream(std::cerr);
             }
 
             if (!pm.runPipeline(module, config.optLevel)) {
@@ -242,15 +252,12 @@ int runFrontBasic(const FrontBasicConfig &config,
                 std::cerr << "=== End IL ===\n";
             }
         } else {
-            cachedVerification = std::move(preOptVerify);
+            return 1;
         }
     }
 
-    auto verification =
-        cachedVerification ? std::move(*cachedVerification) : il::verify::Verifier::verify(module);
-    if (!verification) {
-        ilc::printDiagnostic(
-            verification.error(), std::cerr, &sm, config.shared.diagnosticFormat);
+    if (!reportVerifierDiagnostics(
+            module, std::cerr, sm, config.shared.diagnosticFormat, config.shared.showWarnings)) {
         return 1;
     }
 

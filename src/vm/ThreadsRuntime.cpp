@@ -36,6 +36,8 @@
 
 #include <cstdio>
 #include <cstdint>
+#include <exception>
+#include <string>
 
 namespace il::vm {
 namespace {
@@ -152,9 +154,18 @@ extern "C" void vm_thread_entry_trampoline(void *raw) {
         }
 
         detail::VMAccess::callFunction(vm, *payload->entry, args);
+    } catch (const RuntimeTrapSignal &signal) {
+        releaseThreadStartPayload(payload);
+        const std::string message =
+            signal.message.empty() ? "Thread.Start: trapped VM worker" : signal.message;
+        rt_abort(message.c_str());
+    } catch (const std::exception &ex) {
+        releaseThreadStartPayload(payload);
+        const std::string message = std::string("Thread.Start: unhandled exception: ") + ex.what();
+        rt_abort(message.c_str());
     } catch (...) {
         releaseThreadStartPayload(payload);
-        rt_abort("Thread.Start: unhandled exception");
+        rt_abort("Thread.Start: unhandled non-standard exception");
     }
 
     releaseThreadStartPayload(payload);
@@ -424,8 +435,16 @@ extern "C" void vm_async_run_entry_trampoline(void *raw) {
         Slot result = detail::VMAccess::callFunction(vm, *payload->entry, args);
         // Worker VMs unwind immediately after resolving; the Future must retain the result.
         rt_promise_set_owned(payload->promise, result.ptr);
+    } catch (const RuntimeTrapSignal &signal) {
+        const char *message =
+            signal.message.empty() ? "Async.Run: trapped VM worker" : signal.message.c_str();
+        rt_promise_set_error(payload->promise, rt_const_cstr(message));
+    } catch (const std::exception &ex) {
+        const std::string message = std::string("Async.Run: unhandled exception: ") + ex.what();
+        rt_promise_set_error(payload->promise, rt_const_cstr(message.c_str()));
     } catch (...) {
-        rt_promise_set_error(payload->promise, rt_const_cstr("Async.Run: unhandled exception"));
+        rt_promise_set_error(payload->promise,
+                             rt_const_cstr("Async.Run: unhandled non-standard exception"));
     }
 
     if (rt_obj_release_check0(payload->promise))

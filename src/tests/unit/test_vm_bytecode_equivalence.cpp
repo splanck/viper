@@ -34,6 +34,7 @@
 #include <cassert>
 #include <cstring>
 #include <iostream>
+#include <utility>
 
 using namespace il::core;
 using namespace il::build;
@@ -52,7 +53,12 @@ static int64_t runRegularVM(const Module &m) {
 /// @brief Compile a module to bytecode and run "main" on the BytecodeVM.
 static BCSlot runBytecodeVM(const Module &m) {
     BytecodeCompiler compiler;
-    BytecodeModule bcMod = compiler.compile(m);
+    auto compiled = compiler.compileChecked(m, nullptr, true);
+    if (!compiled) {
+        std::cerr << "bytecode equivalence compile failed: " << compiled.error().message << "\n";
+        assert(false);
+    }
+    BytecodeModule bcMod = std::move(compiled.value());
     BytecodeVM bvm;
     bvm.load(&bcMod);
     BCSlot result = bvm.exec("main", {});
@@ -74,10 +80,10 @@ static void test_add_equivalence() {
     auto &entry = b.addBlock(fn, "entry");
     b.setInsertPoint(entry);
 
-    // %0 = add 17, 25
+    // %0 = iadd.ovf 17, 25
     Instr addInstr;
     addInstr.result = b.reserveTempId();
-    addInstr.op = Opcode::Add;
+    addInstr.op = Opcode::IAddOvf;
     addInstr.type = Type(Type::Kind::I64);
     addInstr.operands.push_back(Value::constInt(17));
     addInstr.operands.push_back(Value::constInt(25));
@@ -157,10 +163,10 @@ static Module buildFibModule() {
         BasicBlock recurse;
         recurse.label = "recurse";
 
-        // %2 = sub %0, 1
+        // %2 = isub.ovf %0, 1
         Instr nm1;
         nm1.result = 2;
-        nm1.op = Opcode::Sub;
+        nm1.op = Opcode::ISubOvf;
         nm1.type = Type(Type::Kind::I64);
         nm1.operands = {Value::temp(0), Value::constInt(1)};
         nm1.loc = {1, 1, 1};
@@ -176,10 +182,10 @@ static Module buildFibModule() {
         call1.loc = {1, 1, 1};
         recurse.instructions.push_back(call1);
 
-        // %4 = sub %0, 2
+        // %4 = isub.ovf %0, 2
         Instr nm2;
         nm2.result = 4;
-        nm2.op = Opcode::Sub;
+        nm2.op = Opcode::ISubOvf;
         nm2.type = Type(Type::Kind::I64);
         nm2.operands = {Value::temp(0), Value::constInt(2)};
         nm2.loc = {1, 1, 1};
@@ -195,10 +201,10 @@ static Module buildFibModule() {
         call2.loc = {1, 1, 1};
         recurse.instructions.push_back(call2);
 
-        // %6 = add %3, %5
+        // %6 = iadd.ovf %3, %5
         Instr addFib;
         addFib.result = 6;
-        addFib.op = Opcode::Add;
+        addFib.op = Opcode::IAddOvf;
         addFib.type = Type(Type::Kind::I64);
         addFib.operands = {Value::temp(3), Value::temp(5)};
         addFib.loc = {1, 1, 1};
@@ -296,10 +302,10 @@ static void test_conditional_equivalence() {
     // entry:
     b.setInsertPoint(entry);
 
-    // %0 = add -7, 0   (load -7 into a temp)
+    // %0 = iadd.ovf -7, 0   (load -7 into a temp)
     Instr load;
     load.result = b.reserveTempId();
-    load.op = Opcode::Add;
+    load.op = Opcode::IAddOvf;
     load.type = Type(Type::Kind::I64);
     load.operands.push_back(Value::constInt(-7));
     load.operands.push_back(Value::constInt(0));
@@ -319,11 +325,11 @@ static void test_conditional_equivalence() {
     // cbr %1, negative, positive
     b.cbr(Value::temp(*cmpInstr.result), negative, {}, positive, {});
 
-    // negative: %2 = sub 0, %0; ret %2
+    // negative: %2 = isub.ovf 0, %0; ret %2
     b.setInsertPoint(negative);
     Instr subInstr;
     subInstr.result = b.reserveTempId();
-    subInstr.op = Opcode::Sub;
+    subInstr.op = Opcode::ISubOvf;
     subInstr.type = Type(Type::Kind::I64);
     subInstr.operands.push_back(Value::constInt(0));
     subInstr.operands.push_back(Value::temp(*load.result));
@@ -433,7 +439,7 @@ static void test_multistep_equivalence() {
     // %0 = mul 5, 8   -> 40
     Instr mulInstr;
     mulInstr.result = b.reserveTempId();
-    mulInstr.op = Opcode::Mul;
+    mulInstr.op = Opcode::IMulOvf;
     mulInstr.type = Type(Type::Kind::I64);
     mulInstr.operands.push_back(Value::constInt(5));
     mulInstr.operands.push_back(Value::constInt(8));
@@ -443,7 +449,7 @@ static void test_multistep_equivalence() {
     // %1 = sub %0, 3  -> 37
     Instr subInstr;
     subInstr.result = b.reserveTempId();
-    subInstr.op = Opcode::Sub;
+    subInstr.op = Opcode::ISubOvf;
     subInstr.type = Type(Type::Kind::I64);
     subInstr.operands.push_back(Value::temp(*mulInstr.result));
     subInstr.operands.push_back(Value::constInt(3));
@@ -453,7 +459,7 @@ static void test_multistep_equivalence() {
     // %2 = add %1, 1  -> 38
     Instr addInstr;
     addInstr.result = b.reserveTempId();
-    addInstr.op = Opcode::Add;
+    addInstr.op = Opcode::IAddOvf;
     addInstr.type = Type(Type::Kind::I64);
     addInstr.operands.push_back(Value::temp(*subInstr.result));
     addInstr.operands.push_back(Value::constInt(1));

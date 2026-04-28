@@ -19,7 +19,10 @@
 
 #include "codegen/common/Diagnostics.hpp"
 
+#include <exception>
 #include <memory>
+#include <string>
+#include <typeinfo>
 #include <vector>
 
 namespace viper::codegen::common {
@@ -52,7 +55,21 @@ template <typename ModuleT> class PassManager {
     /// @return False when a pass signals failure or diagnostics contain errors.
     bool run(ModuleT &module, Diagnostics &diags) const {
         for (const auto &pass : passes_) {
-            if (!pass->run(module, diags)) {
+            bool ok = false;
+            try {
+                ok = pass->run(module, diags);
+            } catch (const std::exception &ex) {
+                diags.error("V-CG-PASS-EXCEPTION",
+                            std::string("codegen pass '") + typeid(*pass).name() +
+                                "' threw exception: " + ex.what());
+                return false;
+            } catch (...) {
+                diags.error("V-CG-PASS-EXCEPTION",
+                            std::string("codegen pass '") + typeid(*pass).name() +
+                                "' threw non-standard exception");
+                return false;
+            }
+            if (!ok) {
                 return false;
             }
             // A pass may report errors via Diagnostics but still return true.

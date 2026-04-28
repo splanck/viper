@@ -58,14 +58,25 @@ void dumpTokenStream(std::string_view source, uint32_t fileId) {
     std::cerr << "=== End Token Stream ===\n";
 }
 
-/// @brief Forward an IL verifier failure through the BASIC diagnostic emitter.
-void emitVerifierFailure(BasicCompilerResult &result, const il::support::Diag &diag) {
+/// @brief Forward an IL verifier diagnostic through the BASIC diagnostic emitter.
+void emitVerifierDiagnostic(BasicCompilerResult &result, const il::support::Diag &diag) {
     const std::string code = diag.code.empty() ? "B9001" : diag.code;
     result.emitter->emit(diag.severity,
                          code,
                          diag.loc,
                          1,
                          "invalid IL after BASIC lowering: " + diag.message);
+}
+
+/// @brief Forward all IL verifier diagnostics through the BASIC diagnostic emitter.
+bool reportVerifierDiagnostics(BasicCompilerResult &result) {
+    bool hasError = false;
+    for (const auto &diag : il::verify::Verifier::verifyAll(result.module, 50)) {
+        if (diag.severity == il::support::Severity::Error)
+            hasError = true;
+        emitVerifierDiagnostic(result, diag);
+    }
+    return !hasError;
 }
 } // namespace
 
@@ -182,8 +193,7 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
         return result;
     }
 
-    if (auto verified = il::verify::Verifier::verify(result.module); !verified.hasValue()) {
-        emitVerifierFailure(result, verified.error());
+    if (!reportVerifierDiagnostics(result)) {
         return result;
     }
 

@@ -209,6 +209,11 @@ class PlateAppearanceEngine {
             pitchLog.add("Pitch " + Fmt.Int(pitchCount) + ": " + self.contactText(batter, bb) + ".");
             return runnerEngine_.resolveBattedBall(state, batter, pitcher, bb, pitchCount, strikePitches, pitchLog);
         }
+
+        // The pitch loop exits through one of the return paths above. Keep a
+        // defensive fallback so strict diagnostics do not depend on proving
+        // `while true` termination.
+        return new play_result.PlayResult();
     }
 
     // Pick a pitch type: 45% fastball, 30% slider, 25% changeup. Pitcher's

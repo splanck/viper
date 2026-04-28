@@ -594,6 +594,7 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt) {
     MatchCoverage coverage;
     for (auto &arm : stmt->arms) {
         std::unordered_map<std::string, TypeRef> bindings;
+        std::unordered_map<std::string, bool> bindingWasInitialized;
         pushScope(stmt->loc);
 
         analyzeMatchPattern(arm.pattern, scrutineeType, coverage, bindings);
@@ -605,6 +606,8 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt) {
             sym.type = binding.second;
             sym.isFinal = true;
             defineSymbol(binding.first, sym, stmt->loc);
+            bindingWasInitialized.emplace(binding.first, isInitialized(binding.first));
+            markInitialized(binding.first);
         }
 
         if (arm.pattern.guard) {
@@ -616,6 +619,10 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt) {
 
         analyzeExpr(arm.body.get());
         popScope(arm.body ? arm.body->loc : stmt->loc);
+        for (const auto &[name, wasInitialized] : bindingWasInitialized) {
+            if (!wasInitialized)
+                initializedVars_.erase(name);
+        }
     }
 
     if (!coverage.hasIrrefutable) {

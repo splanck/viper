@@ -277,7 +277,8 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config) {
         config.stepFlag = false;
     }
 
-    config.boundsChecksRequested = config.sharedOpts.boundsChecks;
+    config.boundsChecksRequested =
+        config.sharedOpts.boundsChecksSpecified && config.sharedOpts.boundsChecks;
 
     // --profile enables both instruction counting and wall-clock timing.
     if (config.sharedOpts.profile) {
@@ -393,7 +394,7 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
     if (config.useBytecode) {
         // Compile IL to bytecode
         viper::bytecode::BytecodeCompiler compiler;
-        auto compiled = compiler.compileChecked(m, &sm);
+        auto compiled = compiler.compileChecked(m, &sm, true);
         if (!compiled) {
             ilc::printDiagnostic(
                 compiled.error(), std::cerr, &sm, config.sharedOpts.diagnosticFormat);

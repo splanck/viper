@@ -45,6 +45,31 @@ int compareLoc(const SourceLoc &a, const SourceLoc &b) {
     return 0;
 }
 
+std::string classifySemanticError(const std::string &message) {
+    auto startsWith = [&](const char *prefix) {
+        return message.rfind(prefix, 0) == 0;
+    };
+    if (startsWith("Undefined identifier"))
+        return "V-ZIA-UNDEFINED";
+    if (startsWith("Type mismatch"))
+        return "V-ZIA-TYPE-MISMATCH";
+    if (message.find("out of bounds") != std::string::npos)
+        return "V-ZIA-BOUNDS";
+    if (message.find("Index") != std::string::npos ||
+        message.find("index") != std::string::npos)
+        return "V-ZIA-INDEX";
+    if (message.find("duplicate") != std::string::npos ||
+        message.find("already defined") != std::string::npos)
+        return "V-ZIA-DUPLICATE";
+    if (message.find("optional") != std::string::npos ||
+        message.find("Optional") != std::string::npos)
+        return "V-ZIA-OPTIONAL";
+    if (message.find("return") != std::string::npos ||
+        message.find("Return") != std::string::npos)
+        return "V-ZIA-RETURN";
+    return "V-ZIA-SEMA";
+}
+
 std::string sanitizeForSymbol(std::string_view input) {
     std::string out;
     out.reserve(input.size());
@@ -1704,7 +1729,7 @@ void Sema::checkUnusedVariables(const Scope &scope) {
 /// @brief Report a semantic error at a source location.
 void Sema::error(SourceLoc loc, const std::string &message) {
     hasError_ = true;
-    diag_.report({il::support::Severity::Error, message, loc, "V3000"});
+    diag_.report({il::support::Severity::Error, message, loc, classifySemanticError(message)});
 }
 
 bool Sema::reportDuplicateDefinition(const std::string &name, SourceLoc loc) {

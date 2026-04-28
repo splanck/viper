@@ -9,6 +9,7 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
+#include "il/verify/Verifier.hpp"
 #include "support/source_manager.hpp"
 #include <algorithm>
 #include <cassert>
@@ -50,7 +51,8 @@ BytecodeModule BytecodeCompiler::compile(const il::core::Module &ilModule) {
 
 il::support::Expected<BytecodeModule> BytecodeCompiler::compileChecked(
     const il::core::Module &ilModule,
-    const il::support::SourceManager *sourceManager) {
+    const il::support::SourceManager *sourceManager,
+    bool assumeVerified) {
     module_ = BytecodeModule();
     ilModule_ = &ilModule;
     currentFunc_ = nullptr;
@@ -61,6 +63,17 @@ il::support::Expected<BytecodeModule> BytecodeCompiler::compileChecked(
     sourceFileIndex_.clear();
 
     try {
+        if (!assumeVerified) {
+            if (auto verified = il::verify::Verifier::verify(ilModule); !verified) {
+                auto diag = verified.error();
+                if (diag.code.empty())
+                    diag.code = "V-BC-IL-VERIFY";
+                if (diag.message.find("bytecode preflight failed") == std::string::npos)
+                    diag.message = "bytecode preflight failed: " + diag.message;
+                return il::support::Expected<BytecodeModule>(std::move(diag));
+            }
+        }
+
         // Pre-register all function names to support recursive and forward calls.
         for (size_t i = 0; i < ilModule.functions.size(); ++i) {
             if (i > std::numeric_limits<uint32_t>::max()) {
@@ -834,10 +847,9 @@ uint32_t BytecodeCompiler::getLocal(uint32_t ssaId) {
     if (it != ssaToLocal_.end()) {
         return it->second;
     }
-    // Allocate new local if not found
-    uint32_t local = nextLocal_++;
-    ssaToLocal_[ssaId] = local;
-    return local;
+    failCurrent("V-BC-UNKNOWN-SSA",
+                "unknown SSA value %" + std::to_string(ssaId) +
+                    " reached bytecode lowering; IL verification should reject use before def");
 }
 
 /// @brief Emit Load Local.

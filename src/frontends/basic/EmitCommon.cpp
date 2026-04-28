@@ -17,12 +17,14 @@
 
 #include "frontends/basic/EmitCommon.hpp"
 
+#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
+#include "support/diagnostics.hpp"
 
 #include <cassert>
 #include <cstdint>
-#include <cstdlib>
+#include <string>
 
 namespace il::frontends::basic {
 
@@ -67,7 +69,7 @@ Emit::Value Emit::to_iN(Value value, int bits, int fromBits, Signedness signedne
 /// @brief Widen an integer to a larger bit width while preserving semantics.
 /// @details Handles boolean extension via explicit zero-extend, masks down
 ///          16- and 32-bit values before performing arithmetic shifts for sign
-///          extension, and aborts for unsupported widths.  Unsigned values are
+///          extension, and reports unsupported widths.  Unsigned values are
 ///          masked to guarantee upper bits are zero.
 /// @param value Operand to widen.
 /// @param fromBits Source width in bits.
@@ -97,7 +99,14 @@ Emit::Value Emit::widen_to(Value value, int fromBits, int toBits, Signedness sig
             il::core::Opcode::AShr, intType(toBits), shl, il::core::Value::constInt(shift));
     }
 
-    std::abort();
+    if (auto *diag = lowerer_->diagnosticEmitter()) {
+        diag->emit(il::support::Severity::Error,
+                   "B9002",
+                   loc_.value_or(il::support::SourceLoc{}),
+                   1,
+                   "unsupported integer widening from " + std::to_string(fromBits) + " to " +
+                       std::to_string(toBits) + " bits");
+    }
     return value;
 }
 
@@ -171,7 +180,7 @@ Emit::Value Emit::logical_xor(Value lhs, Value rhs, int bits) const {
 
 /// @brief Construct an IL integer type object for the given width.
 /// @details Maps the supported bit widths to their corresponding IL type
-///          variants and aborts if an unsupported width is requested.  The
+///          variants and reports an error if an unsupported width is requested.  The
 ///          helper centralises the mapping so call sites remain concise.
 /// @param bits Desired integer width.
 /// @return Type descriptor matching the width.
@@ -188,7 +197,13 @@ Emit::Type Emit::intType(int bits) const {
         default:
             break;
     }
-    std::abort();
+    if (auto *diag = lowerer_->diagnosticEmitter()) {
+        diag->emit(il::support::Severity::Error,
+                   "B9003",
+                   loc_.value_or(il::support::SourceLoc{}),
+                   1,
+                   "unsupported integer width " + std::to_string(bits));
+    }
     return Type(Type::Kind::I64);
 }
 

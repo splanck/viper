@@ -66,7 +66,8 @@ class BytecodeCompiler {
     /// @return A bytecode module on success, or a compile diagnostic on failure.
     il::support::Expected<BytecodeModule> compileChecked(
         const il::core::Module &ilModule,
-        const il::support::SourceManager *sourceManager = nullptr);
+        const il::support::SourceManager *sourceManager = nullptr,
+        bool assumeVerified = false);
 
   private:
     /// @brief The bytecode module being built during compilation.
@@ -250,9 +251,9 @@ class BytecodeCompiler {
     /// @param count Number of stack entries popped (default 1).
     void popStack(int32_t count = 1);
 
-    /// @brief Get or create a local variable slot for an SSA value ID.
-    /// @details Returns the existing mapping if present; otherwise allocates
-    ///          a new slot and records the mapping.
+    /// @brief Get a local variable slot for an SSA value ID.
+    /// @details Returns the existing mapping. Unknown SSA IDs are malformed IL
+    ///          and are reported as diagnostics instead of becoming implicit locals.
     /// @param ssaId The SSA value identifier.
     /// @return The local slot index assigned to this SSA value.
     uint32_t getLocal(uint32_t ssaId);

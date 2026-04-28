@@ -18,6 +18,7 @@
 #include "frontends/zia/Compiler.hpp"
 #include "frontends/zia/Warnings.hpp"
 #include "il/api/expected_api.hpp"
+#include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include "tools/common/source_loader.hpp"
@@ -35,6 +36,19 @@ using namespace il::frontends::zia;
 using namespace il::support;
 
 namespace {
+
+bool reportVerifierDiagnostics(il::core::Module &module,
+                               std::ostream &err,
+                               il::support::SourceManager &sm,
+                               ilc::DiagnosticFormat format,
+                               bool showWarnings) {
+    il::support::DiagnosticEngine diagnostics;
+    for (auto diag : il::verify::Verifier::verifyAll(module, 50))
+        diagnostics.report(std::move(diag));
+    if (diagnostics.errorCount() != 0 || (showWarnings && diagnostics.warningCount() != 0))
+        ilc::printDiagnosticEngine(diagnostics, err, &sm, format);
+    return diagnostics.errorCount() == 0;
+}
 
 /// @brief Parsed configuration for the Zia frontend subcommand.
 /// @details Captures whether the user requested IL emission or execution, plus
@@ -157,10 +171,7 @@ int runFrontZia(const FrontZiaConfig &config,
         return 0;
     }
 
-    auto verification = il::verify::Verifier::verify(module);
-    if (!verification) {
-        ilc::printDiagnostic(
-            verification.error(), std::cerr, &sm, config.shared.diagnosticFormat);
+    if (!reportVerifierDiagnostics(module, std::cerr, sm, config.shared.diagnosticFormat, false)) {
         return 1;
     }
 

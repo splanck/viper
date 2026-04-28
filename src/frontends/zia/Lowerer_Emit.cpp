@@ -388,7 +388,30 @@ Lowerer::Value Lowerer::emitEmptyString() {
 }
 
 unsigned Lowerer::nextTempId() {
-    return builder_->reserveTempId();
+    unsigned id = builder_->reserveTempId();
+    if (currentFunc_) {
+        if (currentFunc_->valueNames.size() <= id)
+            currentFunc_->valueNames.resize(id + 1);
+        if (currentFunc_->valueNames[id].empty())
+            currentFunc_->valueNames[id] = "%t" + std::to_string(id);
+    }
+    return id;
+}
+
+void Lowerer::nameTemp(unsigned id, const std::string &name) {
+    if (!currentFunc_ || name.empty())
+        return;
+    if (currentFunc_->valueNames.size() <= id)
+        currentFunc_->valueNames.resize(id + 1);
+
+    bool nameInUse = false;
+    for (size_t i = 0; i < currentFunc_->valueNames.size(); ++i) {
+        if (i != id && currentFunc_->valueNames[i] == name) {
+            nameInUse = true;
+            break;
+        }
+    }
+    currentFunc_->valueNames[id] = nameInUse ? name + "$" + std::to_string(id) : name;
 }
 
 //=============================================================================
@@ -958,6 +981,8 @@ size_t Lowerer::alignTo(size_t offset, size_t alignment) {
 
 void Lowerer::defineLocal(const std::string &name, Value value) {
     locals_[name] = value;
+    if (value.kind == Value::Kind::Temp)
+        nameTemp(value.id, name);
 }
 
 Lowerer::Value *Lowerer::lookupLocal(const std::string &name) {
@@ -978,6 +1003,7 @@ Lowerer::Value Lowerer::createSlot(const std::string &name, Type type) {
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
 
     Value slot = Value::temp(allocaId);
+    nameTemp(allocaId, name);
     slots_[name] = slot;
     return slot;
 }
