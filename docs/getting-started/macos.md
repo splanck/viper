@@ -26,7 +26,7 @@ Open Terminal and run:
 xcode-select --install
 ```
 
-A dialog will appear — click **Install** and accept the license agreement. This provides Apple Clang (the canonical compiler for Viper on macOS), Git, Make, and all required system frameworks (Cocoa, AudioToolbox, IOKit, CoreFoundation).
+A dialog will appear — click **Install** and accept the license agreement. This provides Apple Clang (the canonical compiler for Viper on macOS), Git, Make, and all required system frameworks (Cocoa, AudioToolbox, IOKit, CoreFoundation, ImageIO).
 
 Verify the installation:
 

@@ -7,7 +7,7 @@
 //
 // File: tests/runtime/RTZiaCompletionStubTests.cpp
 // Purpose: Verify the weak Zia completion bridge stubs report unavailable
-//          editor tooling instead of silently returning empty results.
+//          interactive editor tooling while diagnostic checks stay quiet.
 //
 //===----------------------------------------------------------------------===//
 
@@ -36,6 +36,15 @@ static void expect_contains(rt_string value, const char *needle) {
     rt_string_unref(value);
 }
 
+static void expect_empty(rt_string value) {
+    assert(value != nullptr);
+    assert(rt_str_len(value) == 0);
+    const char *text = rt_string_cstr(value);
+    assert(text != nullptr);
+    assert(text[0] == '\0');
+    rt_string_unref(value);
+}
+
 int main() {
     rt_string source = rt_string_from_bytes("module app;\n", 12);
     rt_string path = rt_string_from_bytes("app.zia", 7);
@@ -43,8 +52,8 @@ int main() {
     expect_contains(rt_zia_complete(source, 1, 0), "Zia completion unavailable\t\t8\t");
     expect_contains(
         rt_zia_complete_for_file(source, path, 1, 0), "Zia completion unavailable\t\t8\t");
-    expect_contains(rt_zia_check(source), "V-ZIA-COMP-UNAVAILABLE");
-    expect_contains(rt_zia_check_for_file(source, path), "V-ZIA-COMP-UNAVAILABLE");
+    expect_empty(rt_zia_check(source));
+    expect_empty(rt_zia_check_for_file(source, path));
     expect_contains(rt_zia_hover(source, 1, 0), "link fe_zia");
     expect_contains(rt_zia_hover_for_file(source, path, 1, 0), "link fe_zia");
     expect_contains(rt_zia_symbols(source), "Zia completion unavailable\tstatus\t");

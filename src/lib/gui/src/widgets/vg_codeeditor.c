@@ -128,6 +128,15 @@ static void free_line(vg_code_line_t *line) {
     line->colors_capacity = 0;
 }
 
+static void codeeditor_clear_highlight_spans(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    free(editor->highlight_spans);
+    editor->highlight_spans = NULL;
+    editor->highlight_span_count = 0;
+    editor->highlight_span_cap = 0;
+}
+
 // Ensure the colors array for line_idx is allocated and call the syntax highlighter.
 // Safe to call every frame — realloc only when capacity is insufficient.
 static void highlight_line(vg_codeeditor_t *editor, size_t line_idx) {
@@ -1373,10 +1382,7 @@ static void codeeditor_destroy(vg_widget_t *widget) {
         editor->custom_keyword_count = 0;
     }
 
-    free(editor->highlight_spans);
-    editor->highlight_spans = NULL;
-    editor->highlight_span_count = 0;
-    editor->highlight_span_cap = 0;
+    codeeditor_clear_highlight_spans(editor);
 
     if (editor->gutter_icons) {
         for (int i = 0; i < editor->gutter_icon_count; i++)
@@ -2693,6 +2699,8 @@ void vg_codeeditor_tick(vg_codeeditor_t *editor, float dt) {
 void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
     if (!editor)
         return;
+
+    codeeditor_clear_highlight_spans(editor);
 
     // Clear existing lines
     for (int i = 0; i < editor->line_count; i++) {

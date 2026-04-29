@@ -242,7 +242,7 @@ The native codegen pipeline uses the built-in native linker to produce the final
 | Aspect | Windows | macOS / Linux |
 |--------|---------|---------------|
 | Library naming | `viper_rt_core.lib` | `libviper_rt_core.a` |
-| Graphics library | `vipergfx.lib` + `user32` + `gdi32` | `libvipergfx.a` + `-framework Cocoa` (macOS) or `-lX11` (Linux) |
+| Graphics library | `vipergfx.lib` + `user32` + `gdi32` | `libvipergfx.a` + `-framework Cocoa` (macOS) or `-lX11` (Linux); GUI image loading also imports `ImageIO.framework` on macOS |
 | Audio library | `viperaud.lib` + `ole32` | `libviperaud.a` + `-framework AudioToolbox` (macOS) or `-lasound` (Linux) |
 | Network library | `ws2_32.lib` | (system sockets, no extra lib) |
 | Final link driver | Native PE writer + import metadata | Native Mach-O / ELF writers + import metadata |

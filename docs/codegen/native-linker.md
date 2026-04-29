@@ -71,6 +71,9 @@ Native-link regressions are caught in three layers:
 2. `test_linker_runtime_import_audit` scans every member of the built runtime and support archives on the host and fails on any unresolved import that is not explicitly classified by the native-link policy.
 3. `scripts/run_cross_platform_smoke.sh` runs the archive-wide audit plus host-native demo smokes such as `native_smoke_3dbowling_build_arm64` when the current host supports them.
 
+On macOS, the planner keeps framework rules ordered from most-specific to broad prefixes. For example,
+`CGImageSource*` imports bind to `ImageIO.framework` before the generic CoreGraphics `CG*` rule.
+
 > **Critical:** macOS arm64 requires 16KB page alignment. The dynamic linker (`dyld`) rejects executables with
 > incorrect page alignment. This is the single most important platform-specific detail in the linker.
 

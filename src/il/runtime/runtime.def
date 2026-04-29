@@ -5690,6 +5690,7 @@ RT_FUNC(SmtpClose,               rt_smtp_close,                "Viper.Network.Sm
 //=============================================================================
 
 RT_FUNC(AsyncConnect,            rt_async_connect,             "Viper.Network.AsyncSocket.ConnectAsync",    "obj(str,i64)")
+RT_FUNC(AsyncConnectFor,         rt_async_connect_for,         "Viper.Network.AsyncSocket.ConnectForAsync", "obj(str,i64,i64)")
 RT_FUNC(AsyncSend,               rt_async_send,                "Viper.Network.AsyncSocket.SendAsync",       "obj(obj,obj)")
 RT_FUNC(AsyncRecv,               rt_async_recv,                "Viper.Network.AsyncSocket.RecvAsync",       "obj(obj,i64)")
 RT_FUNC(AsyncHttpGet,            rt_async_http_get,            "Viper.Network.AsyncSocket.HttpGetAsync",    "obj(str)")
@@ -11111,7 +11112,8 @@ RT_CLASS_END()
 
 // Viper.Network.AsyncSocket - non-blocking socket with Future integration
 RT_CLASS_BEGIN("Viper.Network.AsyncSocket", AsyncSocket, "none", none)
-    RT_METHOD("ConnectAsync", "obj(str,i64)", AsyncConnect)
+    RT_METHOD("ConnectAsync",    "obj(str,i64)",    AsyncConnect)
+    RT_METHOD("ConnectForAsync", "obj(str,i64,i64)", AsyncConnectFor)
     RT_METHOD("SendAsync", "obj(obj,obj)", AsyncSend)
     RT_METHOD("RecvAsync", "obj(obj,i64)", AsyncRecv)
     RT_METHOD("HttpGetAsync", "obj(str)", AsyncHttpGet)

@@ -1056,6 +1056,42 @@ int main() {
         CodeSection text;
         CodeSection rodata;
         text.defineSymbol("entry", SymbolBinding::Global, SymbolSection::Text);
+        text.findOrDeclareSymbol("CGImageSourceCreateImageAtIndex");
+        text.findOrDeclareSymbol("CGContextDrawImage");
+        text.emit32LE(0xD2800000U); // mov x0, #0
+        text.emit32LE(0xD65F03C0U); // ret
+
+        const std::string objPath = tmpPath("macos_imageio_import.o");
+        const std::string exePath = tmpPath("macos_imageio_import");
+
+        std::ostringstream writerErr;
+        MachOWriter writer(ObjArch::AArch64);
+        CHECK(writer.write(objPath, text, rodata, writerErr));
+        CHECK(writerErr.str().empty());
+
+        NativeLinkerOptions opts;
+        opts.platform = LinkPlatform::macOS;
+        opts.arch = LinkArch::AArch64;
+        opts.objPath = objPath;
+        opts.exePath = exePath;
+        opts.entrySymbol = "entry";
+
+        std::ostringstream out;
+        std::ostringstream err;
+        const int rc = nativeLink(opts, out, err);
+        CHECK(rc == 0);
+        CHECK(err.str().find("error:") == std::string::npos);
+        CHECK(std::filesystem::exists(exePath));
+
+        const std::vector<uint8_t> exe = readFile(exePath);
+        CHECK(containsAscii(exe, "ImageIO.framework"));
+        CHECK(containsAscii(exe, "CoreGraphics.framework"));
+    }
+
+    {
+        CodeSection text;
+        CodeSection rodata;
+        text.defineSymbol("entry", SymbolBinding::Global, SymbolSection::Text);
         text.findOrDeclareSymbol("__CFConstantStringClassReference");
         text.findOrDeclareSymbol("__kCFBooleanTrue");
         text.findOrDeclareSymbol("__darwin_check_fd_set_overflow");

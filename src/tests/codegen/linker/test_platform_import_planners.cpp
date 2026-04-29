@@ -152,6 +152,25 @@ TEST(PlatformImportPlanners, MacPlannerMapsSecurityConstantsToSecurityFramework)
     EXPECT_EQ(securityOrdinal, plan.symOrdinals["kSecKeyAlgorithmECDSASignatureDigestX962SHA256"]);
 }
 
+TEST(PlatformImportPlanners, MacPlannerMapsImageIOSymbolsBeforeCoreGraphics) {
+    MacImportPlan plan;
+    std::ostringstream err;
+    ASSERT_TRUE(planMacImports({"_CGImageSourceCreateImageAtIndex", "CGContextDrawImage"},
+                               plan,
+                               err));
+
+    const uint32_t imageIOOrdinal =
+        dylibOrdinalForPath(plan, "/System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO");
+    const uint32_t coreGraphicsOrdinal =
+        dylibOrdinalForPath(plan, "/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics");
+    ASSERT_NE(0u, imageIOOrdinal);
+    ASSERT_NE(0u, coreGraphicsOrdinal);
+    ASSERT_TRUE(plan.symOrdinals.count("_CGImageSourceCreateImageAtIndex") != 0);
+    ASSERT_TRUE(plan.symOrdinals.count("CGContextDrawImage") != 0);
+    EXPECT_EQ(imageIOOrdinal, plan.symOrdinals["_CGImageSourceCreateImageAtIndex"]);
+    EXPECT_EQ(coreGraphicsOrdinal, plan.symOrdinals["CGContextDrawImage"]);
+}
+
 TEST(PlatformImportPlanners, MacPlannerMapsCommonCryptoSymbolsToLibSystem) {
     MacImportPlan plan;
     std::ostringstream err;

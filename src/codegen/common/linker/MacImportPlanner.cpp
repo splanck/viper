@@ -96,6 +96,13 @@ static constexpr const char *kMacAppKitPrefixes[] = {
     "NSMake","NSRect","NSPoint","NSSize","NSDrag","NSBackingStore","NSWindowStyle",
     "NSApplicationActivationPolicy", nullptr,
 };
+static constexpr const char *kMacImageIOPrefixes[] = {
+    "CGImageSource",
+    "CGImageDestination",
+    "CGImageMetadata",
+    "kCGImageProperty",
+    nullptr,
+};
 static constexpr const char *kMacCoreGraphicsPrefixes[] = {"CG", "kCG", nullptr};
 static constexpr const char *kMacIOKitPrefixes[] = {"IOKit","IOHID","IOService","IORegistryEntry",nullptr};
 static constexpr const char *kMacObjCPrefixes[] = {"objc_", "OBJC_", "_objc_", nullptr};
@@ -112,6 +119,7 @@ static constexpr MacImportRule kMacImportRules[] = {
     {"/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation", kMacCoreFoundationPrefixes, kMacNoMatches},
     {"/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation", kMacFoundationPrefixes, kMacFoundationExact},
     {"/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit", kMacAppKitPrefixes, kMacNoMatches},
+    {"/System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO", kMacImageIOPrefixes, kMacNoMatches},
     {"/System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics", kMacCoreGraphicsPrefixes, kMacNoMatches},
     {"/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit", kMacIOKitPrefixes, kMacNoMatches},
     {"/usr/lib/libobjc.A.dylib", kMacObjCPrefixes, kMacObjCExact},

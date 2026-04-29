@@ -632,7 +632,7 @@ void appendAudioLibs(const LinkContext &ctx, std::vector<std::string> &cmd) {
 
 std::vector<std::string> defaultGraphicsFrameworks() {
 #if defined(__APPLE__)
-    return {"Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers", "Metal", "QuartzCore"};
+    return {"Cocoa", "IOKit", "CoreFoundation", "UniformTypeIdentifiers", "ImageIO", "Metal", "QuartzCore"};
 #else
     return {};
 #endif

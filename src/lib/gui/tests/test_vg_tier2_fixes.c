@@ -18,6 +18,7 @@
 //   BINDING-006: SplitPane GetPosition via vg_splitpane_get_position
 //   PARTIAL-001: CodeEditor gutter_icon_count initially zero, array writable
 //   PARTIAL-002: CodeEditor highlight_span_count initially zero, array writable
+//   CODEEDITOR-OWN-003: SetText clears stale document highlight spans
 //   CODEEDITOR-OWN-001: SetText clears stale per-line color metadata before reuse
 //   CODEEDITOR-OWN-002: delete compaction clears vacated line slots
 //   PARTIAL-007: vg_codeeditor_get_selection() returns NULL without selection,
@@ -670,6 +671,28 @@ TEST(codeeditor_highlight_span_count_zero_on_create) {
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     ASSERT_NOT_NULL(editor);
     ASSERT_EQ(editor->highlight_span_count, 0);
+    ASSERT_NULL(editor->highlight_spans);
+    vg_widget_destroy((vg_widget_t *)editor);
+}
+
+TEST(codeeditor_set_text_clears_highlight_spans) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(editor);
+
+    editor->highlight_spans = malloc(sizeof(*editor->highlight_spans));
+    ASSERT_NOT_NULL(editor->highlight_spans);
+    editor->highlight_span_count = 1;
+    editor->highlight_span_cap = 1;
+    editor->highlight_spans[0].start_line = 0;
+    editor->highlight_spans[0].start_col = 1;
+    editor->highlight_spans[0].end_line = 0;
+    editor->highlight_spans[0].end_col = 11;
+    editor->highlight_spans[0].color = 0xFFFF00;
+
+    vg_codeeditor_set_text(editor, "module clean;\n");
+
+    ASSERT_EQ(editor->highlight_span_count, 0);
+    ASSERT_EQ(editor->highlight_span_cap, 0);
     ASSERT_NULL(editor->highlight_spans);
     vg_widget_destroy((vg_widget_t *)editor);
 }
@@ -2132,6 +2155,7 @@ int main(void) {
     // PARTIAL-001/002: CodeEditor arrays zero on create
     RUN(codeeditor_gutter_icon_count_zero_on_create);
     RUN(codeeditor_highlight_span_count_zero_on_create);
+    RUN(codeeditor_set_text_clears_highlight_spans);
 
     // PARTIAL-007: GetSelectedText
     RUN(codeeditor_get_selection_without_selection_is_null);

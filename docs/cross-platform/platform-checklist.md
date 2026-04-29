@@ -147,7 +147,7 @@ Important rule:
 | `src/lib/graphics/src/vgfx_platform_linux.c` | Linux backend — X11: XOpenDisplay, XCreateWindow, XImage, XPutImage, KeySym. |
 | `src/lib/graphics/src/vgfx_platform_win32.c` | Windows backend — Win32 GDI: HWND, HDC, DIB sections, BitBlt, CreateWindowEx, VK_* keycodes. |
 | `src/lib/graphics/CMakeLists.txt` | Platform source selection and library linking: `-framework Cocoa` (macOS), X11 (Linux), `user32`/`gdi32` (Windows). FATAL_ERROR on unknown platform. |
-| `src/lib/gui/CMakeLists.txt` | GUI additions — macOS: `vg_filedialog_native.m` (native file dialogs), `-framework UniformTypeIdentifiers`. Linux: `-lm`, `_GNU_SOURCE`. |
+| `src/lib/gui/CMakeLists.txt` | GUI additions — macOS: `vg_filedialog_native.m` (native file dialogs), `-framework UniformTypeIdentifiers`, `-framework ImageIO` for image loading. Linux: `-lm`, `_GNU_SOURCE`. |
 | `src/runtime/core/rt_term.c` | Terminal input — Windows: `<conio.h>`, `_kbhit()`, `_getch()`, `ENABLE_VIRTUAL_TERMINAL_PROCESSING`. POSIX: `<termios.h>`, `select()` with zero timeout, raw mode caching. |
 | `src/repl/ReplLineEditor.cpp` | REPL terminal width — Windows: `GetConsoleScreenBufferInfo()`. POSIX: `ioctl(TIOCGWINSZ)`. Raw I/O: Windows `WriteConsoleA()` vs POSIX `::write()`. |
 
