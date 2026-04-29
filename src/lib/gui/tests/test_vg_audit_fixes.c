@@ -646,6 +646,47 @@ TEST(mouseup_outside_pressed_widget_does_not_report_click) {
     vg_widget_destroy(&button->base);
 }
 
+static int g_mouseup_click_order[4];
+static int g_mouseup_click_order_count = 0;
+
+static bool mouseup_click_order_handle_event(vg_widget_t *widget, vg_event_t *event) {
+    (void)widget;
+    if (event->type == VG_EVENT_MOUSE_UP) {
+        g_mouseup_click_order[g_mouseup_click_order_count++] = 1;
+        return false;
+    }
+    if (event->type == VG_EVENT_CLICK) {
+        g_mouseup_click_order[g_mouseup_click_order_count++] = 2;
+        return true;
+    }
+    return false;
+}
+
+static vg_widget_vtable_t g_mouseup_click_order_vtable = {
+    .handle_event = mouseup_click_order_handle_event,
+};
+
+TEST(mouseup_handler_runs_before_synthesized_click) {
+    vg_widget_t *widget = vg_widget_create(VG_WIDGET_CUSTOM);
+    ASSERT_NOT_NULL(widget);
+    widget->vtable = &g_mouseup_click_order_vtable;
+    vg_widget_arrange(widget, 0.0f, 0.0f, 80.0f, 30.0f);
+
+    memset(g_mouseup_click_order, 0, sizeof(g_mouseup_click_order));
+    g_mouseup_click_order_count = 0;
+
+    vg_event_t down = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 10.0f, 10.0f, VG_MOUSE_LEFT, 0);
+    (void)vg_event_send(widget, &down);
+    vg_event_t up = vg_event_mouse(VG_EVENT_MOUSE_UP, 10.0f, 10.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_send(widget, &up));
+
+    ASSERT_EQ(g_mouseup_click_order_count, 2);
+    ASSERT_EQ(g_mouseup_click_order[0], 1);
+    ASSERT_EQ(g_mouseup_click_order[1], 2);
+
+    vg_widget_destroy(widget);
+}
+
 TEST(listbox_removed_item_handle_is_inert) {
     vg_listbox_t *listbox = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(listbox);
@@ -1309,6 +1350,43 @@ TEST(layout_measure_constraints_and_negative_arrange_are_clamped) {
     ASSERT_EQ(vbox->measured_height, 90.0f);
     vg_widget_destroy(vbox);
 
+    vg_widget_t *sanitized = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(sanitized);
+    vg_widget_set_min_size(sanitized, 80.0f, strtof("nan", NULL));
+    vg_widget_set_max_size(sanitized, 20.0f, 30.0f);
+    vg_widget_set_preferred_size(sanitized, strtof("nan", NULL), 100.0f);
+    vg_widget_set_margins(sanitized, -1.0f, strtof("nan", NULL), 2.0f, -3.0f);
+    vg_widget_set_paddings(sanitized, strtof("nan", NULL), 3.0f, -4.0f, 5.0f);
+    vg_widget_set_flex(sanitized, strtof("nan", NULL));
+    ASSERT_EQ(sanitized->constraints.min_width, 80.0f);
+    ASSERT_EQ(sanitized->constraints.min_height, 0.0f);
+    ASSERT_EQ(sanitized->constraints.max_width, 80.0f);
+    ASSERT_EQ(sanitized->constraints.max_height, 30.0f);
+    ASSERT_EQ(sanitized->constraints.preferred_width, 0.0f);
+    ASSERT_EQ(sanitized->constraints.preferred_height, 30.0f);
+    ASSERT_EQ(sanitized->layout.margin_left, 0.0f);
+    ASSERT_EQ(sanitized->layout.margin_top, 0.0f);
+    ASSERT_EQ(sanitized->layout.margin_right, 2.0f);
+    ASSERT_EQ(sanitized->layout.margin_bottom, 0.0f);
+    ASSERT_EQ(sanitized->layout.padding_left, 0.0f);
+    ASSERT_EQ(sanitized->layout.padding_top, 3.0f);
+    ASSERT_EQ(sanitized->layout.padding_right, 0.0f);
+    ASSERT_EQ(sanitized->layout.padding_bottom, 5.0f);
+    ASSERT_EQ(sanitized->layout.flex, 0.0f);
+    vg_widget_destroy(sanitized);
+
+    vg_widget_t *grid = vg_grid_create(2, 2);
+    ASSERT_NOT_NULL(grid);
+    vg_grid_set_gap(grid, strtof("nan", NULL), -8.0f);
+    vg_grid_set_column_width(grid, 0, strtof("nan", NULL));
+    vg_grid_set_row_height(grid, 0, -4.0f);
+    vg_grid_layout_t *grid_layout = (vg_grid_layout_t *)grid->impl_data;
+    ASSERT_EQ(grid_layout->column_gap, 0.0f);
+    ASSERT_EQ(grid_layout->row_gap, 0.0f);
+    ASSERT_EQ(grid_layout->column_widths[0], 0.0f);
+    ASSERT_EQ(grid_layout->row_heights[0], 0.0f);
+    vg_widget_destroy(grid);
+
     vg_widget_t *hbox = vg_hbox_create(0.0f);
     ASSERT_NOT_NULL(hbox);
     vg_widget_set_paddings(hbox, 0.0f, 50.0f, 0.0f, 50.0f);
@@ -1926,6 +2004,7 @@ int main(void) {
     RUN(wheel_delta_survives_localize_call);
     RUN(button_keyboard_activation_reports_actual_click);
     RUN(mouseup_outside_pressed_widget_does_not_report_click);
+    RUN(mouseup_handler_runs_before_synthesized_click);
     RUN(listbox_removed_item_handle_is_inert);
     RUN(treeview_removed_node_handles_are_inert);
     RUN(scrollview_auto_content_size_tracks_child_measurement);

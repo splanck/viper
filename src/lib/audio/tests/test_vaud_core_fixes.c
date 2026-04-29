@@ -284,6 +284,31 @@ static void test_music_seek_rejects_nan_without_touching_position(void) {
     vaud_destroy(ctx);
 }
 
+static void test_music_seek_failure_stops_stream_and_clears_buffers(void) {
+    vaud_context_t ctx = vaud_create();
+    EXPECT_TRUE(ctx != NULL);
+
+    struct vaud_music music;
+    memset(&music, 0, sizeof(music));
+    music.ctx = ctx;
+    music.sample_rate = VAUD_SAMPLE_RATE;
+    music.state = VAUD_MUSIC_PLAYING;
+    music.buffer_frames[0] = 32;
+    music.buffer_frames[1] = 16;
+    music.buffer_position = 7;
+    music.current_buffer = 1;
+
+    vaud_music_seek(&music, 1.0f);
+    EXPECT_TRUE(music.state == VAUD_MUSIC_STOPPED);
+    EXPECT_TRUE(music.stream_eof == 1);
+    EXPECT_TRUE(music.buffer_frames[0] == 0);
+    EXPECT_TRUE(music.buffer_frames[1] == 0);
+    EXPECT_TRUE(music.buffer_position == 0);
+    EXPECT_TRUE(music.current_buffer == 0);
+
+    vaud_destroy(ctx);
+}
+
 static void test_playback_parameters_sanitize_nonfinite_values(void) {
     char path[128];
     make_temp_wav_path(path, sizeof(path), "params");
@@ -436,6 +461,7 @@ int main(void) {
     srand(1);
     test_destroy_detaches_loaded_sounds();
     test_music_seek_rejects_nan_without_touching_position();
+    test_music_seek_failure_stops_stream_and_clears_buffers();
     test_playback_parameters_sanitize_nonfinite_values();
     test_music_play_restarts_stopped_eof_stream();
     test_wav_rejects_invalid_block_align_and_byte_rate();

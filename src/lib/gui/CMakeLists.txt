@@ -177,6 +177,7 @@ if (VIPER_BUILD_TESTING)
     target_link_libraries(test_vg_font_bounds vipergui)
     target_include_directories(test_vg_font_bounds PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/font
     )
     add_test(NAME test_vg_font_bounds COMMAND test_vg_font_bounds)
     set_tests_properties(test_vg_font_bounds PROPERTIES LABELS "tui" TIMEOUT 15)

@@ -485,6 +485,9 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
     const float target_mouse_x = event->mouse.x;
     const float target_mouse_y = event->mouse.y;
     bool handled = event->handled;
+    bool synthesize_click = false;
+    bool synthesize_double_click = false;
+    vg_event_t click_source = {0};
 
     event_localize_mouse_to_widget(widget, event);
     if (event->type == VG_EVENT_CLICK)
@@ -509,23 +512,11 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
         widget->state &= ~VG_STATE_PRESSED;
         widget->needs_paint = true;
 
-        // Generate click event if mouse was pressed on this widget
         if (was_pressed &&
             vg_widget_contains_point(widget, event->mouse.screen_x, event->mouse.screen_y)) {
-            vg_event_t click_event = *event;
-            click_event.type = VG_EVENT_CLICK;
-            click_event.mouse.click_count = 1;
-            handled |= vg_event_send(widget, &click_event);
-
-            if (is_double_click_for_widget(widget, event)) {
-                vg_event_t double_click_event = *event;
-                double_click_event.type = VG_EVENT_DOUBLE_CLICK;
-                double_click_event.mouse.click_count = 2;
-                handled |= vg_event_send(widget, &double_click_event);
-                clear_last_click_state();
-            } else {
-                remember_click(widget, event);
-            }
+            synthesize_click = true;
+            synthesize_double_click = is_double_click_for_widget(widget, event);
+            click_source = *event;
         } else if (was_pressed) {
             clear_last_click_state();
         }
@@ -535,11 +526,7 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
     if (widget->vtable && widget->vtable->handle_event) {
         if (widget->vtable->handle_event(widget, event)) {
             event->handled = true;
-            if (restore_mouse) {
-                event->mouse.x = target_mouse_x;
-                event->mouse.y = target_mouse_y;
-            }
-            return true;
+            handled = true;
         }
     }
 
@@ -550,14 +537,30 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
         if (current->vtable && current->vtable->handle_event) {
             if (current->vtable->handle_event(current, event)) {
                 event->handled = true;
-                if (restore_mouse) {
-                    event->mouse.x = target_mouse_x;
-                    event->mouse.y = target_mouse_y;
-                }
-                return true;
+                handled = true;
+                break;
             }
         }
         current = current->parent;
+    }
+
+    if (synthesize_click) {
+        vg_event_t click_event = click_source;
+        click_event.type = VG_EVENT_CLICK;
+        click_event.handled = false;
+        click_event.mouse.click_count = 1;
+        handled |= vg_event_send(widget, &click_event);
+
+        if (synthesize_double_click) {
+            vg_event_t double_click_event = click_source;
+            double_click_event.type = VG_EVENT_DOUBLE_CLICK;
+            double_click_event.handled = false;
+            double_click_event.mouse.click_count = 2;
+            handled |= vg_event_send(widget, &double_click_event);
+            clear_last_click_state();
+        } else {
+            remember_click(widget, &click_source);
+        }
     }
 
     if (handled)

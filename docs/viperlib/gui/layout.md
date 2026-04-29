@@ -26,7 +26,7 @@ Horizontal box layout - arranges children left to right.
 **Constructor:** `NEW Viper.GUI.HBox()`
 
 HBox and VBox spacing/alignment account for child margins when centering or end-aligning content.
-VBox, HBox, Flex, Grid, and Dock containers apply preferred, minimum, and maximum size constraints during measurement. Arrange passes clamp content and child dimensions at zero, so excessive padding or margins cannot produce negative child sizes.
+VBox, HBox, Flex, Grid, and Dock containers apply preferred, minimum, and maximum size constraints during measurement. Arrange passes clamp content and child dimensions at zero, so excessive padding or margins cannot produce negative child sizes. Spacing, gaps, and explicit Grid track sizes also sanitize non-finite or negative values to zero.
 
 ### Layout Methods
 

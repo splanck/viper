@@ -574,18 +574,21 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
         _vgfxWindow->stride * _vgfxWindow->height, /* data size in bytes */
         NULL);                                     /* release callback (none, we own the buffer) */
 
-    CGImageRef image =
-        CGImageCreate(_vgfxWindow->width,  /* width in pixels */
-                      _vgfxWindow->height, /* height in pixels */
-                      8,                   /* bits per component (R/G/B/A each 8 bits) */
-                      32,                  /* bits per pixel (4 * 8 = 32) */
-                      _vgfxWindow->stride, /* bytes per row */
-                      colorSpace,          /* color space (RGB) */
-                      kCGBitmapByteOrderDefault | kCGImageAlphaLast, /* format (RGBA, alpha last) */
-                      provider,                                      /* data provider */
-                      NULL,                                          /* decode array (none) */
-                      false,                      /* should interpolate (no, pixel art) */
-                      kCGRenderingIntentDefault); /* rendering intent */
+    CGImageRef image = NULL;
+    if (colorSpace && provider) {
+        image =
+            CGImageCreate(_vgfxWindow->width,  /* width in pixels */
+                          _vgfxWindow->height, /* height in pixels */
+                          8,                   /* bits per component (R/G/B/A each 8 bits) */
+                          32,                  /* bits per pixel (4 * 8 = 32) */
+                          _vgfxWindow->stride, /* bytes per row */
+                          colorSpace,          /* color space (RGB) */
+                          kCGBitmapByteOrderDefault | kCGImageAlphaLast, /* format (RGBA) */
+                          provider,                                      /* data provider */
+                          NULL,                                          /* decode array (none) */
+                          false,                      /* should interpolate (no, pixel art) */
+                          kCGRenderingIntentDefault); /* rendering intent */
+    }
 
     /* Get the view's Core Graphics context */
     CGContextRef context = [[NSGraphicsContext currentContext] CGContext];
@@ -608,13 +611,18 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
      * This is because CGContextDrawImage interprets the image with its
      * origin at the rect's origin, and the image fills the rect upward from there.
      */
-    CGRect rect = CGRectMake(0, 0, view_width, view_height);
-    CGContextDrawImage(context, rect, image);
+    if (context && image) {
+        CGRect rect = CGRectMake(0, 0, view_width, view_height);
+        CGContextDrawImage(context, rect, image);
+    }
 
     /* Cleanup (release Core Graphics objects) */
-    CGImageRelease(image);
-    CGDataProviderRelease(provider);
-    CGColorSpaceRelease(colorSpace);
+    if (image)
+        CGImageRelease(image);
+    if (provider)
+        CGDataProviderRelease(provider);
+    if (colorSpace)
+        CGColorSpaceRelease(colorSpace);
 }
 
 //===------------------------------------------------------------------===//

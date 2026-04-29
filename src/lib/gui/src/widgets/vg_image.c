@@ -54,6 +54,29 @@ static uint32_t image_read_le32(const uint8_t *p) {
            ((uint32_t)p[3] << 24);
 }
 
+static void image_unpremultiply_rgba(uint8_t *pixels, size_t width, size_t height) {
+    if (!pixels || width == 0 || height == 0 || width > SIZE_MAX / height)
+        return;
+
+    size_t pixel_count = width * height;
+    for (size_t i = 0; i < pixel_count; i++) {
+        uint8_t *p = pixels + i * 4u;
+        uint8_t a = p[3];
+        if (a == 0) {
+            p[0] = 0;
+            p[1] = 0;
+            p[2] = 0;
+        } else if (a < 255) {
+            uint32_t r = (uint32_t)p[0] * 255u / (uint32_t)a;
+            uint32_t g = (uint32_t)p[1] * 255u / (uint32_t)a;
+            uint32_t b = (uint32_t)p[2] * 255u / (uint32_t)a;
+            p[0] = (uint8_t)(r > 255u ? 255u : r);
+            p[1] = (uint8_t)(g > 255u ? 255u : g);
+            p[2] = (uint8_t)(b > 255u ? 255u : b);
+        }
+    }
+}
+
 static bool image_load_bmp(vg_image_t *image, const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f)
@@ -178,6 +201,7 @@ static bool image_load_platform(vg_image_t *image, const char *path) {
 
     if (ctx) {
         CGContextDrawImage(ctx, CGRectMake(0.0, 0.0, (CGFloat)width, (CGFloat)height), cg_image);
+        image_unpremultiply_rgba(pixels, width, height);
         vg_image_set_pixels(image, pixels, (int)width, (int)height);
         ok = image->pixels != NULL;
     }

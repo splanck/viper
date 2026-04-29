@@ -6,9 +6,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "vg_font.h"
+#include "vg_ttf_internal.h"
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int tests_failed = 0;
@@ -226,6 +228,104 @@ static void test_utf8_decoder_rejects_invalid_scalar_values(void) {
     EXPECT_TRUE(p == too_large + 1);
 }
 
+static void test_name_table_odd_utf16_length_does_not_overread(void) {
+    uint8_t name[19] = {0};
+    put_u16(name + 0, 0);  // format
+    put_u16(name + 2, 1);  // count
+    put_u16(name + 4, 18); // stringOffset
+    put_u16(name + 6, 3);  // platformID: Windows
+    put_u16(name + 8, 1);  // encodingID: Unicode BMP
+    put_u16(name + 10, 0); // languageID
+    put_u16(name + 12, 1); // nameID: family
+    put_u16(name + 14, 1); // odd byte length
+    put_u16(name + 16, 0); // offset
+    name[18] = 0;
+
+    vg_font_t font;
+    memset(&font, 0, sizeof(font));
+    EXPECT_TRUE(ttf_parse_name(&font, name, sizeof(name)));
+    EXPECT_TRUE(font.family_name[0] == '\0');
+}
+
+static size_t append_simple_two_point_glyph(uint8_t *out) {
+    put_i16(out + 0, 1);
+    put_i16(out + 2, 0);
+    put_i16(out + 4, 0);
+    put_i16(out + 6, 10);
+    put_i16(out + 8, 0);
+    put_u16(out + 10, 1); // end point index
+    put_u16(out + 12, 0); // instruction length
+    out[14] = 0x31;       // on-curve, x/y unchanged
+    out[15] = 0x33;       // on-curve, +1-byte x, y unchanged
+    out[16] = 10;         // x delta
+    return 17;
+}
+
+static size_t append_composite_point_aligned_glyph(uint8_t *out) {
+    put_i16(out + 0, -1);
+    put_i16(out + 2, 0);
+    put_i16(out + 4, 0);
+    put_i16(out + 6, 20);
+    put_i16(out + 8, 0);
+
+    put_u16(out + 10, 0x0023); // words, xy values, more components
+    put_u16(out + 12, 0);      // glyph 0
+    put_i16(out + 14, 0);
+    put_i16(out + 16, 0);
+
+    put_u16(out + 18, 0x0001); // words, point indices
+    put_u16(out + 20, 0);      // glyph 0
+    put_u16(out + 22, 1);      // parent point index
+    put_u16(out + 24, 0);      // component point index
+    return 26;
+}
+
+static void test_composite_glyph_point_indices_align_component(void) {
+    uint8_t data[128] = {0};
+    uint32_t loca_offset = 0;
+    uint32_t glyf_offset = 12;
+    uint8_t *loca = data + loca_offset;
+    uint8_t *glyf = data + glyf_offset;
+
+    size_t glyph0_len = append_simple_two_point_glyph(glyf);
+    size_t glyph1_len = append_composite_point_aligned_glyph(glyf + glyph0_len);
+    put_u32(loca + 0, 0);
+    put_u32(loca + 4, (uint32_t)glyph0_len);
+    put_u32(loca + 8, (uint32_t)(glyph0_len + glyph1_len));
+
+    vg_font_t font;
+    memset(&font, 0, sizeof(font));
+    font.data = data;
+    font.data_size = sizeof(data);
+    font.loca_offset = loca_offset;
+    font.loca_len = 12;
+    font.glyf_offset = glyf_offset;
+    font.glyf_len = (uint32_t)(glyph0_len + glyph1_len);
+    font.head.index_to_loc_format = 1;
+    font.maxp.num_glyphs = 2;
+
+    float *x = NULL;
+    float *y = NULL;
+    uint8_t *flags = NULL;
+    int *contours = NULL;
+    int num_points = 0;
+    int num_contours = 0;
+    EXPECT_TRUE(ttf_get_glyph_outline(
+        &font, 1, &x, &y, &flags, &contours, &num_points, &num_contours));
+    EXPECT_TRUE(num_points == 4);
+    EXPECT_TRUE(num_contours == 2);
+    EXPECT_TRUE(x[0] == 0.0f);
+    EXPECT_TRUE(x[1] == 10.0f);
+    EXPECT_TRUE(x[2] == 10.0f);
+    EXPECT_TRUE(x[3] == 20.0f);
+    EXPECT_TRUE(y[0] == 0.0f && y[1] == 0.0f && y[2] == 0.0f && y[3] == 0.0f);
+
+    free(x);
+    free(y);
+    free(flags);
+    free(contours);
+}
+
 int main(void) {
     test_wrapped_table_bounds_rejected();
     test_truncated_cmap4_rejected();
@@ -233,6 +333,8 @@ int main(void) {
     test_truncated_glyf_rejected_on_rasterize();
     test_zero_hmtx_metrics_use_fallback_advance();
     test_utf8_decoder_rejects_invalid_scalar_values();
+    test_name_table_odd_utf16_length_does_not_overread();
+    test_composite_glyph_point_indices_align_component();
     if (tests_failed != 0)
         return 1;
     printf("test_vg_font_bounds: PASS\n");

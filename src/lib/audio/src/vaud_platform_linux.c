@@ -47,6 +47,8 @@
 typedef struct {
     snd_pcm_t *pcm;              ///< ALSA PCM device handle
     pthread_t thread;            ///< Audio thread
+    int thread_started;          ///< pthread_create succeeded
+    int16_t *mix_buffer;         ///< Preallocated audio thread mixing buffer
     volatile int running;        ///< Thread running flag
     volatile int paused;         ///< Pause state
     pthread_mutex_t pause_mutex; ///< Protects pause state
@@ -99,13 +101,9 @@ static void *audio_thread_func(void *arg) {
     vaud_context_t ctx = (vaud_context_t)arg;
     vaud_linux_data *plat = (vaud_linux_data *)ctx->platform_data;
 
-    /* Allocate buffer for mixing */
-    int16_t *buffer = (int16_t *)malloc(VAUD_BUFFER_FRAMES * VAUD_CHANNELS * sizeof(int16_t));
-    if (!buffer) {
-        /* H-5: signal that the thread failed so callers don't assume audio is active */
-        __atomic_store_n(&plat->running, 0, __ATOMIC_RELEASE);
+    int16_t *buffer = plat->mix_buffer;
+    if (!buffer)
         return NULL;
-    }
 
     while (__atomic_load_n(&plat->running, __ATOMIC_ACQUIRE)) {
         /* Check for pause state */
@@ -126,7 +124,6 @@ static void *audio_thread_func(void *arg) {
         (void)alsa_write_all(plat, buffer, VAUD_BUFFER_FRAMES);
     }
 
-    free(buffer);
     return NULL;
 }
 
@@ -150,11 +147,24 @@ int vaud_platform_init(vaud_context_t ctx) {
     __atomic_store_n(&plat->paused, 0, __ATOMIC_RELAXED);
 
     /* Initialize synchronization primitives */
-    pthread_mutex_init(&plat->pause_mutex, NULL);
-    pthread_cond_init(&plat->pause_cond, NULL);
+    int err = pthread_mutex_init(&plat->pause_mutex, NULL);
+    if (err != 0) {
+        free(plat);
+        ctx->platform_data = NULL;
+        vaud_set_error(VAUD_ERR_PLATFORM, "Failed to initialize ALSA pause mutex");
+        return 0;
+    }
+    err = pthread_cond_init(&plat->pause_cond, NULL);
+    if (err != 0) {
+        pthread_mutex_destroy(&plat->pause_mutex);
+        free(plat);
+        ctx->platform_data = NULL;
+        vaud_set_error(VAUD_ERR_PLATFORM, "Failed to initialize ALSA pause condition");
+        return 0;
+    }
 
     /* Open the default PCM device */
-    int err = snd_pcm_open(&plat->pcm, "default", SND_PCM_STREAM_PLAYBACK, 0);
+    err = snd_pcm_open(&plat->pcm, "default", SND_PCM_STREAM_PLAYBACK, 0);
     if (err < 0) {
         pthread_mutex_destroy(&plat->pause_mutex);
         pthread_cond_destroy(&plat->pause_cond);
@@ -184,11 +194,24 @@ int vaud_platform_init(vaud_context_t ctx) {
         return 0;
     }
 
+    plat->mix_buffer =
+        (int16_t *)malloc(VAUD_BUFFER_FRAMES * VAUD_CHANNELS * sizeof(int16_t));
+    if (!plat->mix_buffer) {
+        snd_pcm_close(plat->pcm);
+        pthread_mutex_destroy(&plat->pause_mutex);
+        pthread_cond_destroy(&plat->pause_cond);
+        free(plat);
+        ctx->platform_data = NULL;
+        vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate ALSA mix buffer");
+        return 0;
+    }
+
     /* Start the audio thread */
     __atomic_store_n(&plat->running, 1, __ATOMIC_RELEASE);
     err = pthread_create(&plat->thread, NULL, audio_thread_func, ctx);
     if (err != 0) {
         __atomic_store_n(&plat->running, 0, __ATOMIC_RELEASE);
+        free(plat->mix_buffer);
         snd_pcm_close(plat->pcm);
         pthread_mutex_destroy(&plat->pause_mutex);
         pthread_cond_destroy(&plat->pause_cond);
@@ -197,6 +220,7 @@ int vaud_platform_init(vaud_context_t ctx) {
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to create audio thread");
         return 0;
     }
+    plat->thread_started = 1;
 
     return 1;
 }
@@ -218,7 +242,8 @@ void vaud_platform_shutdown(vaud_context_t ctx) {
     snd_pcm_drop(plat->pcm);
 
     /* Wait for thread to finish */
-    pthread_join(plat->thread, NULL);
+    if (plat->thread_started)
+        pthread_join(plat->thread, NULL);
 
     /* Close ALSA device */
     snd_pcm_close(plat->pcm);
@@ -227,6 +252,7 @@ void vaud_platform_shutdown(vaud_context_t ctx) {
     pthread_mutex_destroy(&plat->pause_mutex);
     pthread_cond_destroy(&plat->pause_cond);
 
+    free(plat->mix_buffer);
     free(plat);
     ctx->platform_data = NULL;
 }

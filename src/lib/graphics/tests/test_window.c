@@ -83,6 +83,18 @@ void test_window_invalid_dimensions_use_defaults(void) {
     TEST_END();
 }
 
+void test_monitor_size_allows_null_window(void) {
+    TEST_BEGIN("Audit: Monitor Size Allows Null Window");
+
+    int32_t w = -1;
+    int32_t h = -1;
+    vgfx_get_monitor_size(NULL, &w, &h);
+    ASSERT_EQ(w, 1920);
+    ASSERT_EQ(h, 1080);
+
+    TEST_END();
+}
+
 /* Main test runner */
 /// What: Entry point for window lifecycle tests.
 /// Why:  Validate that window create/resize/teardown flows are robust.
@@ -95,6 +107,7 @@ int main(void) {
     test_window_valid_params();
     test_window_exceed_max();
     test_window_invalid_dimensions_use_defaults();
+    test_monitor_size_allows_null_window();
 
     TEST_SUMMARY();
     return TEST_RETURN_CODE();

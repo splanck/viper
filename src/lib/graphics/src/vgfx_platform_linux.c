@@ -83,6 +83,11 @@ typedef struct {
     Atom xdnd_type_list; ///< XdndTypeList atom
     Atom text_uri_list;  ///< text/uri-list MIME type atom
     Window xdnd_source;  ///< Source window for current drag
+    Atom clipboard_atom;          ///< CLIPBOARD selection atom
+    Atom utf8_string_atom;        ///< UTF8_STRING target atom
+    Atom targets_atom;            ///< TARGETS target atom
+    Atom clipboard_property_atom; ///< Property used for selection conversion
+    char *clipboard_text;         ///< Owned text while this window owns CLIPBOARD
     XIM xim;             ///< Input method for UTF-8 text input
     XIC xic;             ///< Input context for UTF-8 text input
 } vgfx_x11_data;
@@ -275,29 +280,33 @@ static int utf8_decode_codepoint(const char *bytes, int len, uint32_t *out_codep
     if (!s || len <= 0 || !out_codepoint)
         return 0;
 
+    *out_codepoint = 0;
     if (s[0] < 0x80) {
         *out_codepoint = s[0];
         return 1;
     }
-    if (len >= 2 && (s[0] & 0xE0) == 0xC0 && (s[1] & 0xC0) == 0x80) {
+    if (len >= 2 && s[0] >= 0xC2 && s[0] <= 0xDF && (s[1] & 0xC0) == 0x80) {
         *out_codepoint = ((uint32_t)(s[0] & 0x1F) << 6) | (uint32_t)(s[1] & 0x3F);
         return 2;
     }
-    if (len >= 3 && (s[0] & 0xF0) == 0xE0 && (s[1] & 0xC0) == 0x80 &&
+    if (len >= 3 && s[0] >= 0xE0 && s[0] <= 0xEF && (s[1] & 0xC0) == 0x80 &&
         (s[2] & 0xC0) == 0x80) {
+        if ((s[0] == 0xE0 && s[1] < 0xA0) || (s[0] == 0xED && s[1] >= 0xA0))
+            return 1;
         *out_codepoint = ((uint32_t)(s[0] & 0x0F) << 12) |
                          ((uint32_t)(s[1] & 0x3F) << 6) | (uint32_t)(s[2] & 0x3F);
         return 3;
     }
-    if (len >= 4 && (s[0] & 0xF8) == 0xF0 && (s[1] & 0xC0) == 0x80 &&
+    if (len >= 4 && s[0] >= 0xF0 && s[0] <= 0xF4 && (s[1] & 0xC0) == 0x80 &&
         (s[2] & 0xC0) == 0x80 && (s[3] & 0xC0) == 0x80) {
+        if ((s[0] == 0xF0 && s[1] < 0x90) || (s[0] == 0xF4 && s[1] > 0x8F))
+            return 1;
         *out_codepoint = ((uint32_t)(s[0] & 0x07) << 18) |
                          ((uint32_t)(s[1] & 0x3F) << 12) |
                          ((uint32_t)(s[2] & 0x3F) << 6) | (uint32_t)(s[3] & 0x3F);
         return 4;
     }
 
-    *out_codepoint = 0;
     return 1;
 }
 
@@ -384,6 +393,57 @@ static int x11_recreate_ximage(struct vgfx_window *win) {
     x11->width = win->width;
     x11->height = win->height;
     return 1;
+}
+
+static void x11_cleanup_platform(struct vgfx_window *win) {
+    if (!win || !win->platform_data)
+        return;
+
+    if (g_vgfx_cursor_window == win)
+        g_vgfx_cursor_window = NULL;
+
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+
+    if (x11->ximage) {
+        x11->ximage->data = NULL;
+        XDestroyImage(x11->ximage);
+        x11->ximage = NULL;
+    }
+
+    free(x11->ximage_buf);
+    x11->ximage_buf = NULL;
+    x11->ximage_buf_size = 0;
+
+    free(x11->clipboard_text);
+    x11->clipboard_text = NULL;
+
+    if (x11->display) {
+        if (x11->gc) {
+            XFreeGC(x11->display, x11->gc);
+            x11->gc = NULL;
+        }
+        if (x11->xic) {
+            XDestroyIC(x11->xic);
+            x11->xic = NULL;
+        }
+        if (x11->xim) {
+            XCloseIM(x11->xim);
+            x11->xim = NULL;
+        }
+        if (x11->colormap && x11->colormap != DefaultColormap(x11->display, x11->screen)) {
+            XFreeColormap(x11->display, x11->colormap);
+            x11->colormap = 0;
+        }
+        if (x11->window) {
+            XDestroyWindow(x11->display, x11->window);
+            x11->window = 0;
+        }
+        XCloseDisplay(x11->display);
+        x11->display = NULL;
+    }
+
+    free(x11);
+    win->platform_data = NULL;
 }
 
 //===----------------------------------------------------------------------===//
@@ -492,9 +552,8 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     /* Open connection to X server */
     x11->display = XOpenDisplay(NULL);
     if (!x11->display) {
-        free(x11);
-        win->platform_data = NULL;
         vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to open X11 display");
+        x11_cleanup_platform(win);
         return 0;
     }
 
@@ -537,10 +596,8 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
                                 &attrs);
 
     if (!x11->window) {
-        XCloseDisplay(x11->display);
-        free(x11);
-        win->platform_data = NULL;
         vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to create X11 window");
+        x11_cleanup_platform(win);
         return 0;
     }
 
@@ -588,6 +645,10 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     x11->xdnd_selection = XInternAtom(x11->display, "XdndSelection", False);
     x11->xdnd_type_list = XInternAtom(x11->display, "XdndTypeList", False);
     x11->text_uri_list = XInternAtom(x11->display, "text/uri-list", False);
+    x11->clipboard_atom = XInternAtom(x11->display, "CLIPBOARD", False);
+    x11->utf8_string_atom = XInternAtom(x11->display, "UTF8_STRING", False);
+    x11->targets_atom = XInternAtom(x11->display, "TARGETS", False);
+    x11->clipboard_property_atom = XInternAtom(x11->display, "VIPERGFX_CLIPBOARD", False);
     x11->xdnd_source = 0;
     {
         /* Advertise XDND version 5 support */
@@ -605,22 +666,15 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     /* Create graphics context */
     x11->gc = XCreateGC(x11->display, x11->window, 0, NULL);
     if (!x11->gc) {
-        XDestroyWindow(x11->display, x11->window);
-        XCloseDisplay(x11->display);
-        free(x11);
-        win->platform_data = NULL;
         vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to create X11 GC");
+        x11_cleanup_platform(win);
         return 0;
     }
 
     /* Allocate the presentation buffer/XImage at the framebuffer size in
      * physical pixels so present and resize stay consistent with win->pixels. */
     if (!x11_recreate_ximage(win)) {
-        XFreeGC(x11->display, x11->gc);
-        XDestroyWindow(x11->display, x11->window);
-        XCloseDisplay(x11->display);
-        free(x11);
-        win->platform_data = NULL;
+        x11_cleanup_platform(win);
         return 0;
     }
 
@@ -642,62 +696,75 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 /// @post platform_data freed and set to NULL
 /// @post X11 window destroyed and display connection closed (if existed)
 void vgfx_platform_destroy_window(struct vgfx_window *win) {
-    if (!win || !win->platform_data)
+    x11_cleanup_platform(win);
+}
+
+static char *x11_strdup_text(const char *text) {
+    const char *src = text ? text : "";
+    size_t len = strlen(src);
+    char *copy = (char *)malloc(len + 1u);
+    if (!copy)
+        return NULL;
+    memcpy(copy, src, len + 1u);
+    return copy;
+}
+
+static void x11_handle_selection_request(vgfx_x11_data *x11, XSelectionRequestEvent *request) {
+    if (!x11 || !x11->display || !request)
         return;
 
-    if (g_vgfx_cursor_window == win)
-        g_vgfx_cursor_window = NULL;
+    XSelectionEvent reply;
+    memset(&reply, 0, sizeof(reply));
+    reply.type = SelectionNotify;
+    reply.display = request->display;
+    reply.requestor = request->requestor;
+    reply.selection = request->selection;
+    reply.target = request->target;
+    reply.time = request->time;
+    reply.property = None;
 
-    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
-
-    /* Destroy XImage — set data to NULL to prevent XDestroyImage from
-     * freeing our ximage_buf (we manage it separately). */
-    if (x11->ximage) {
-        x11->ximage->data = NULL;
-        XDestroyImage(x11->ximage);
-        x11->ximage = NULL;
+    Atom property = request->property != None ? request->property : request->target;
+    if (request->selection == x11->clipboard_atom && x11->clipboard_text) {
+        if (request->target == x11->targets_atom) {
+            Atom targets[] = {x11->targets_atom, x11->utf8_string_atom, XA_STRING};
+            XChangeProperty(x11->display,
+                            request->requestor,
+                            property,
+                            XA_ATOM,
+                            32,
+                            PropModeReplace,
+                            (const unsigned char *)targets,
+                            (int)(sizeof(targets) / sizeof(targets[0])));
+            reply.property = property;
+        } else if (request->target == x11->utf8_string_atom || request->target == XA_STRING) {
+            const unsigned char *text = (const unsigned char *)x11->clipboard_text;
+            size_t len = strlen(x11->clipboard_text);
+            if (len > INT32_MAX)
+                len = INT32_MAX;
+            XChangeProperty(x11->display,
+                            request->requestor,
+                            property,
+                            request->target,
+                            8,
+                            PropModeReplace,
+                            text,
+                            (int)len);
+            reply.property = property;
+        }
     }
 
-    /* Free the presentation buffer */
-    free(x11->ximage_buf);
-    x11->ximage_buf = NULL;
+    XSendEvent(x11->display, request->requestor, False, 0, (XEvent *)&reply);
+    XFlush(x11->display);
+}
 
-    /* Free graphics context */
-    if (x11->gc) {
-        XFreeGC(x11->display, x11->gc);
-        x11->gc = NULL;
-    }
-
-    if (x11->xic) {
-        XDestroyIC(x11->xic);
-        x11->xic = NULL;
-    }
-    if (x11->xim) {
-        XCloseIM(x11->xim);
-        x11->xim = NULL;
-    }
-
-    /* Free colormap if we created one (not the default) */
-    if (x11->colormap && x11->colormap != DefaultColormap(x11->display, x11->screen)) {
-        XFreeColormap(x11->display, x11->colormap);
-        x11->colormap = 0;
-    }
-
-    /* Destroy window */
-    if (x11->window) {
-        XDestroyWindow(x11->display, x11->window);
-        x11->window = 0;
-    }
-
-    /* Close display connection */
-    if (x11->display) {
-        XCloseDisplay(x11->display);
-        x11->display = NULL;
-    }
-
-    /* Free platform data */
-    free(x11);
-    win->platform_data = NULL;
+static Bool x11_clipboard_selection_notify_predicate(Display *display,
+                                                     XEvent *event,
+                                                     XPointer arg) {
+    (void)display;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)arg;
+    return x11 && event && event->type == SelectionNotify &&
+           event->xselection.requestor == x11->window &&
+           event->xselection.selection == x11->clipboard_atom;
 }
 
 /// @brief Process pending X11 events and translate to ViperGFX events.
@@ -996,6 +1063,17 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 break;
             }
 
+            case SelectionRequest:
+                x11_handle_selection_request(x11, &event.xselectionrequest);
+                break;
+
+            case SelectionClear:
+                if (event.xselectionclear.selection == x11->clipboard_atom) {
+                    free(x11->clipboard_text);
+                    x11->clipboard_text = NULL;
+                }
+                break;
+
             case FocusIn: {
                 if (x11->xic)
                     XSetICFocus(x11->xic);
@@ -1046,6 +1124,62 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
     return 1;
 }
 
+static int x11_mask_byte_index(unsigned long mask) {
+    if (!mask)
+        return -1;
+
+    int shift = 0;
+    while ((mask & 1ul) == 0ul) {
+        mask >>= 1;
+        shift++;
+    }
+    if (mask != 0xFFul || (shift % 8) != 0)
+        return -1;
+
+    int index = shift / 8;
+    return (index >= 0 && index < 4) ? index : -1;
+}
+
+static int x11_convert_rgba_to_native32(struct vgfx_window *win, vgfx_x11_data *x11) {
+    if (!win || !x11 || !x11->visual || !win->pixels || !x11->ximage_buf)
+        return 0;
+
+    int r_index = x11_mask_byte_index(x11->visual->red_mask);
+    int g_index = x11_mask_byte_index(x11->visual->green_mask);
+    int b_index = x11_mask_byte_index(x11->visual->blue_mask);
+    if (r_index < 0 || g_index < 0 || b_index < 0 || r_index == g_index || r_index == b_index ||
+        g_index == b_index) {
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Unsupported X11 visual color masks");
+        return 0;
+    }
+
+    int a_index = -1;
+    for (int i = 0; i < 4; i++) {
+        if (i != r_index && i != g_index && i != b_index) {
+            a_index = i;
+            break;
+        }
+    }
+
+    const uint8_t *src = win->pixels;
+    uint8_t *dst = x11->ximage_buf;
+    const size_t pixel_count = (size_t)win->width * (size_t)win->height;
+    for (size_t i = 0; i < pixel_count; ++i) {
+        dst[0] = 0;
+        dst[1] = 0;
+        dst[2] = 0;
+        dst[3] = 0;
+        dst[r_index] = src[0];
+        dst[g_index] = src[1];
+        dst[b_index] = src[2];
+        if (a_index >= 0)
+            dst[a_index] = src[3];
+        src += 4;
+        dst += 4;
+    }
+    return 1;
+}
+
 /// @brief Present (blit) the framebuffer to the X11 window.
 /// @details Copies the ViperGFX framebuffer (win->pixels) to the X11 window
 ///          using XPutImage.  The XImage wrapper points directly to our
@@ -1068,21 +1202,8 @@ int vgfx_platform_present(struct vgfx_window *win) {
     if (!x11->display || !x11->window || !x11->ximage)
         return 0;
 
-    /* Swizzle RGBA → BGRA: swap bytes 0 (R) and 2 (B) per pixel so that
-     * the X11 TrueColor visual interprets colours correctly. */
-    {
-        const uint8_t *src = win->pixels;
-        uint8_t *dst = x11->ximage_buf;
-        const size_t pixel_count = (size_t)win->width * (size_t)win->height;
-        for (size_t i = 0; i < pixel_count; ++i) {
-            dst[0] = src[2];
-            dst[1] = src[1];
-            dst[2] = src[0];
-            dst[3] = src[3];
-            src += 4;
-            dst += 4;
-        }
-    }
+    if (!x11_convert_rgba_to_native32(win, x11))
+        return 0;
 
     /* Blit presentation buffer to window using XPutImage */
     XPutImage(x11->display,
@@ -1510,16 +1631,30 @@ void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int
         *out_w = 0;
     if (out_h)
         *out_h = 0;
-    if (!win || !win->platform_data)
+
+    Display *display = NULL;
+    int screen = 0;
+    int close_display = 0;
+
+    if (win && win->platform_data) {
+        vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+        display = x11->display;
+        screen = x11->screen;
+    } else {
+        display = XOpenDisplay(NULL);
+        close_display = 1;
+        if (display)
+            screen = DefaultScreen(display);
+    }
+
+    if (!display)
         return;
-    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
-    if (!x11->display)
-        return;
-    int screen = DefaultScreen(x11->display);
     if (out_w)
-        *out_w = (int32_t)DisplayWidth(x11->display, screen);
+        *out_w = (int32_t)DisplayWidth(display, screen);
     if (out_h)
-        *out_h = (int32_t)DisplayHeight(x11->display, screen);
+        *out_h = (int32_t)DisplayHeight(display, screen);
+    if (close_display)
+        XCloseDisplay(display);
 }
 
 void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h) {
@@ -1536,7 +1671,7 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
 }
 
 // ============================================================================
-// Clipboard (stub — X11 clipboard requires ICCCM selection protocol)
+// Clipboard (ICCCM CLIPBOARD selection)
 // ============================================================================
 
 int vgfx_clipboard_has_format(vgfx_clipboard_format_t format) {
@@ -1554,49 +1689,104 @@ int vgfx_clipboard_has_format(vgfx_clipboard_format_t format) {
 
 char *vgfx_clipboard_get_text(void) {
     vgfx_x11_data *x11 = NULL;
-    char *buffer = NULL;
-    int len = 0;
 
     if (!g_vgfx_cursor_window || !g_vgfx_cursor_window->platform_data)
         return NULL;
 
     x11 = (vgfx_x11_data *)g_vgfx_cursor_window->platform_data;
-    if (!x11 || !x11->display)
+    if (!x11 || !x11->display || !x11->window)
         return NULL;
 
-    buffer = XFetchBuffer(x11->display, &len, 0);
-    if (!buffer || len <= 0) {
-        if (buffer)
-            XFree(buffer);
-        return NULL;
-    }
+    if (x11->clipboard_text && XGetSelectionOwner(x11->display, x11->clipboard_atom) == x11->window)
+        return x11_strdup_text(x11->clipboard_text);
 
-    {
-        char *copy = (char *)malloc((size_t)len + 1u);
-        if (!copy) {
-            XFree(buffer);
-            return NULL;
+    Atom targets[2] = {x11->utf8_string_atom, XA_STRING};
+    for (size_t target_index = 0; target_index < 2; target_index++) {
+        Atom target = targets[target_index];
+        XDeleteProperty(x11->display, x11->window, x11->clipboard_property_atom);
+        XConvertSelection(x11->display,
+                          x11->clipboard_atom,
+                          target,
+                          x11->clipboard_property_atom,
+                          x11->window,
+                          CurrentTime);
+        XFlush(x11->display);
+
+        int64_t start = vgfx_platform_now_ms();
+        int target_done = 0;
+        while (!target_done && vgfx_platform_now_ms() - start < 500) {
+            XEvent event;
+            if (XCheckIfEvent(x11->display,
+                              &event,
+                              x11_clipboard_selection_notify_predicate,
+                              (XPointer)x11)) {
+                if (event.xselection.property == None) {
+                    target_done = 1;
+                    continue;
+                }
+
+                Atom actual_type = None;
+                int actual_format = 0;
+                unsigned long nitems = 0;
+                unsigned long bytes_after = 0;
+                unsigned char *data = NULL;
+                int status = XGetWindowProperty(x11->display,
+                                                x11->window,
+                                                x11->clipboard_property_atom,
+                                                0,
+                                                262144,
+                                                True,
+                                                AnyPropertyType,
+                                                &actual_type,
+                                                &actual_format,
+                                                &nitems,
+                                                &bytes_after,
+                                                &data);
+                (void)bytes_after;
+                if (status == Success && data && actual_format == 8 &&
+                    (actual_type == target || actual_type == x11->utf8_string_atom ||
+                     actual_type == XA_STRING)) {
+                    char *copy = (char *)malloc((size_t)nitems + 1u);
+                    if (copy) {
+                        memcpy(copy, data, (size_t)nitems);
+                        copy[nitems] = '\0';
+                    }
+                    XFree(data);
+                    return copy;
+                }
+                if (data)
+                    XFree(data);
+                target_done = 1;
+            } else {
+                usleep(1000);
+            }
         }
-        memcpy(copy, buffer, (size_t)len);
-        copy[len] = '\0';
-        XFree(buffer);
-        return copy;
     }
+
+    return NULL;
 }
 
 void vgfx_clipboard_set_text(const char *text) {
     vgfx_x11_data *x11 = NULL;
-    size_t len = 0;
 
     if (!g_vgfx_cursor_window || !g_vgfx_cursor_window->platform_data)
         return;
 
     x11 = (vgfx_x11_data *)g_vgfx_cursor_window->platform_data;
-    if (!x11 || !x11->display)
+    if (!x11 || !x11->display || !x11->window)
         return;
 
-    len = text ? strlen(text) : 0u;
-    XStoreBuffer(x11->display, text ? text : "", (int)len, 0);
+    char *copy = x11_strdup_text(text);
+    if (!copy)
+        return;
+
+    free(x11->clipboard_text);
+    x11->clipboard_text = copy;
+    XSetSelectionOwner(x11->display, x11->clipboard_atom, x11->window, CurrentTime);
+    if (XGetSelectionOwner(x11->display, x11->clipboard_atom) != x11->window) {
+        free(x11->clipboard_text);
+        x11->clipboard_text = NULL;
+    }
     XFlush(x11->display);
 }
 

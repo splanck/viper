@@ -217,7 +217,7 @@ All widgets share these common functions:
 
 Focusable widgets now participate in standard desktop keyboard traversal: `Tab` moves to the next focusable widget and `Shift+Tab` moves to the previous one, respecting modal roots when a dialog or popup is active.
 Passing `NULL` to `Focus()` is a no-op. Detached widgets no longer inherit the current app's font or theme until they are attached to an app-owned tree or explicitly configured.
-Common numeric setters clamp invalid input: negative sizes and margins become zero, very large layout values are bounded, and non-finite doubles use safe defaults.
+Common numeric setters clamp invalid input: negative sizes, margins, padding, flex factors, and layout gaps become zero, very large layout values are bounded, and non-finite doubles use safe defaults. Widget identifiers are generated from a 64-bit counter for long-running GUI sessions.
 
 | Method                        | Signature                | Description                              |
 |-------------------------------|--------------------------|------------------------------------------|

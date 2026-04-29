@@ -280,7 +280,7 @@ struct vg_widget {
     const vg_widget_vtable_t *vtable; ///< Virtual dispatch table for this widget type.
 
     // Identity
-    uint32_t id; ///< Unique auto-generated widget identifier.
+    uint64_t id; ///< Unique auto-generated widget identifier.
     char *name;  ///< Optional human-readable name for lookup (owned, may be NULL).
 
     // Hierarchy
@@ -495,7 +495,7 @@ vg_widget_t *vg_widget_find_by_name(vg_widget_t *root, const char *name);
 /// @param root The root of the subtree to search.
 /// @param id   The widget ID to find.
 /// @return Pointer to the matching widget, or NULL if none is found.
-vg_widget_t *vg_widget_find_by_id(vg_widget_t *root, uint32_t id);
+vg_widget_t *vg_widget_find_by_id(vg_widget_t *root, uint64_t id);
 
 //=============================================================================
 // Geometry & Constraints
@@ -870,8 +870,8 @@ vg_widget_t *vg_widget_get_modal_root(void);
 ///          is not guaranteed; all widget operations should occur on a single
 ///          thread.
 ///
-/// @return A new unique uint32_t identifier.
-uint32_t vg_widget_next_id(void);
+/// @return A new unique 64-bit identifier.
+uint64_t vg_widget_next_id(void);
 
 #ifdef __cplusplus
 }

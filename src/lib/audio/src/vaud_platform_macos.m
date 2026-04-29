@@ -210,7 +210,10 @@ int64_t vaud_platform_now_ms(void) {
     }
 
     uint64_t ticks = mach_absolute_time();
-    uint64_t nanos = ticks * timebase.numer / timebase.denom;
+    long double nanos = ((long double)ticks * (long double)timebase.numer) /
+                        (long double)timebase.denom;
+    if (nanos > (long double)INT64_MAX)
+        return INT64_MAX / 1000000;
     return (int64_t)(nanos / 1000000);
 }
 

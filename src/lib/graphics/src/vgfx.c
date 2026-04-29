@@ -618,13 +618,6 @@ void vgfx_set_cursor_visible(vgfx_window_t window, int32_t visible) {
 }
 
 void vgfx_get_monitor_size(vgfx_window_t window, int32_t *out_w, int32_t *out_h) {
-    if (!window) {
-        if (out_w)
-            *out_w = 0;
-        if (out_h)
-            *out_h = 0;
-        return;
-    }
     vgfx_platform_get_monitor_size(window, out_w, out_h);
 }
 

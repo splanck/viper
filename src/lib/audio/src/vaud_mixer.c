@@ -231,7 +231,9 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
      * ctx->accum_buf holds VAUD_BUFFER_FRAMES * VAUD_CHANNELS int32s; guard against
      * oversized requests that would overflow it. */
     if (frames > VAUD_BUFFER_FRAMES) {
-        memset(output, 0, (size_t)frames * (size_t)VAUD_CHANNELS * sizeof(int16_t));
+        size_t output_bytes = 0;
+        if (vaud_pcm_s16_buffer_size(frames, VAUD_CHANNELS, &output_bytes))
+            memset(output, 0, output_bytes);
         return;
     }
     int32_t *accum = ctx->accum_buf;
@@ -240,11 +242,9 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
     size_t sample_count = (size_t)frames * (size_t)VAUD_CHANNELS;
     memset(accum, 0, sample_count * sizeof(int32_t));
 
-    /* The render callback must not block behind disk/decoder work in vaud_update(). */
-    if (!vaud_mutex_trylock(&ctx->mutex)) {
-        memset(output, 0, sample_count * sizeof(int16_t));
-        return;
-    }
+    /* Correctness beats dropping an otherwise valid buffer: wait for the state
+     * lock instead of emitting silence when control-side work is in progress. */
+    vaud_mutex_lock(&ctx->mutex);
 
     float master = ctx->master_volume;
     if (!isfinite(master))

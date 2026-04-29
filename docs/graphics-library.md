@@ -231,7 +231,7 @@ void vgfx_clipboard_set_text(const char *text);
 void vgfx_clipboard_clear(void);
 ```
 
-The clipboard helpers operate on UTF-8 text and back the higher-level `Viper.GUI.Clipboard` runtime surface.
+The clipboard helpers operate on UTF-8 text and back the higher-level `Viper.GUI.Clipboard` runtime surface. Linux/X11 uses the modern `CLIPBOARD` selection with `UTF8_STRING` conversion rather than legacy cut buffers.
 
 ---
 

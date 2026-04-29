@@ -11,6 +11,7 @@
 // vg_layout.c - Layout system implementation
 #include "../../include/vg_layout.h"
 #include "../../include/vg_widget.h"
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -73,7 +74,7 @@ static void compute_justify_distribution(vg_justify_t justify,
 }
 
 static float layout_nonnegative(float value) {
-    return value > 0.0f ? value : 0.0f;
+    return (isfinite(value) && value > 0.0f) ? value : 0.0f;
 }
 
 static void layout_apply_constraints(vg_widget_t *widget) {
@@ -133,7 +134,7 @@ vg_widget_t *vg_vbox_create(float spacing) {
         return NULL;
     }
 
-    layout->spacing = spacing;
+    layout->spacing = layout_nonnegative(spacing);
     layout->align = VG_ALIGN_STRETCH;
     layout->justify = VG_JUSTIFY_START;
     widget->impl_data = layout;
@@ -145,7 +146,7 @@ void vg_vbox_set_spacing(vg_widget_t *vbox, float spacing) {
     if (!vbox || !vbox->impl_data)
         return;
     vg_vbox_layout_t *layout = (vg_vbox_layout_t *)vbox->impl_data;
-    layout->spacing = spacing;
+    layout->spacing = layout_nonnegative(spacing);
     vbox->needs_layout = true;
 }
 
@@ -313,7 +314,7 @@ vg_widget_t *vg_hbox_create(float spacing) {
         return NULL;
     }
 
-    layout->spacing = spacing;
+    layout->spacing = layout_nonnegative(spacing);
     layout->align = VG_ALIGN_STRETCH;
     layout->justify = VG_JUSTIFY_START;
     widget->impl_data = layout;
@@ -325,7 +326,7 @@ void vg_hbox_set_spacing(vg_widget_t *hbox, float spacing) {
     if (!hbox || !hbox->impl_data)
         return;
     vg_hbox_layout_t *layout = (vg_hbox_layout_t *)hbox->impl_data;
-    layout->spacing = spacing;
+    layout->spacing = layout_nonnegative(spacing);
     hbox->needs_layout = true;
 }
 
@@ -526,7 +527,7 @@ void vg_flex_set_gap(vg_widget_t *flex, float gap) {
     if (!flex || !flex->impl_data)
         return;
     vg_flex_layout_t *layout = (vg_flex_layout_t *)flex->impl_data;
-    layout->gap = gap;
+    layout->gap = layout_nonnegative(gap);
     flex->needs_layout = true;
 }
 
@@ -1356,8 +1357,8 @@ void vg_grid_set_gap(vg_widget_t *grid, float column_gap, float row_gap) {
     if (!grid || !grid->impl_data)
         return;
     grid_impl_t *g = (grid_impl_t *)grid->impl_data;
-    g->layout.column_gap = column_gap;
-    g->layout.row_gap = row_gap;
+    g->layout.column_gap = layout_nonnegative(column_gap);
+    g->layout.row_gap = layout_nonnegative(row_gap);
     grid->needs_layout = true;
 }
 
@@ -1370,7 +1371,7 @@ void vg_grid_set_column_width(vg_widget_t *grid, int column, float width) {
         return;
     if (!g->layout.column_widths && !grid_resize_track_array(&g->layout.column_widths, 0, cols))
         return;
-    g->layout.column_widths[column] = width;
+    g->layout.column_widths[column] = layout_nonnegative(width);
     grid->needs_layout = true;
 }
 
@@ -1383,7 +1384,7 @@ void vg_grid_set_row_height(vg_widget_t *grid, int row, float height) {
         return;
     if (!g->layout.row_heights && !grid_resize_track_array(&g->layout.row_heights, 0, rows))
         return;
-    g->layout.row_heights[row] = height;
+    g->layout.row_heights[row] = layout_nonnegative(height);
     grid->needs_layout = true;
 }
 

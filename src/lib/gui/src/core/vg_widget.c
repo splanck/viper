@@ -14,6 +14,7 @@
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_widgets.h"
 #include <limits.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,7 +29,7 @@ extern void vg_tooltip_manager_widget_hidden(vg_widget_t *widget);
 // Global State
 //=============================================================================
 
-static uint32_t g_next_widget_id = 1;
+static uint64_t g_next_widget_id = 1;
 #define VG_WIDGET_MAGIC UINT64_C(0x5647505749444745)
 #define VG_WIDGET_DESTROYED_MAGIC UINT64_C(0x5647505744524F50)
 static vg_widget_t *g_focused_widget = NULL;
@@ -49,6 +50,35 @@ static bool widget_paints_children_internally(const vg_widget_t *widget) {
     if (widget->type == VG_WIDGET_SCROLLVIEW)
         return true;
     return widget->type == VG_WIDGET_CUSTOM && widget->vtable && widget->vtable->paint_overlay;
+}
+
+static float widget_nonnegative_finite(float value) {
+    return (isfinite(value) && value > 0.0f) ? value : 0.0f;
+}
+
+static void widget_normalize_constraints(vg_constraints_t *constraints) {
+    if (!constraints)
+        return;
+    constraints->min_width = widget_nonnegative_finite(constraints->min_width);
+    constraints->min_height = widget_nonnegative_finite(constraints->min_height);
+    constraints->max_width = widget_nonnegative_finite(constraints->max_width);
+    constraints->max_height = widget_nonnegative_finite(constraints->max_height);
+    constraints->preferred_width = widget_nonnegative_finite(constraints->preferred_width);
+    constraints->preferred_height = widget_nonnegative_finite(constraints->preferred_height);
+
+    if (constraints->max_width > 0.0f && constraints->max_width < constraints->min_width)
+        constraints->max_width = constraints->min_width;
+    if (constraints->max_height > 0.0f && constraints->max_height < constraints->min_height)
+        constraints->max_height = constraints->min_height;
+    if (constraints->preferred_width > 0.0f && constraints->preferred_width < constraints->min_width)
+        constraints->preferred_width = constraints->min_width;
+    if (constraints->preferred_height > 0.0f &&
+        constraints->preferred_height < constraints->min_height)
+        constraints->preferred_height = constraints->min_height;
+    if (constraints->max_width > 0.0f && constraints->preferred_width > constraints->max_width)
+        constraints->preferred_width = constraints->max_width;
+    if (constraints->max_height > 0.0f && constraints->preferred_height > constraints->max_height)
+        constraints->preferred_height = constraints->max_height;
 }
 
 static void clear_paint_flag_recursive(vg_widget_t *root) {
@@ -107,8 +137,13 @@ static void paint_widget_overlay_tree(vg_widget_t *root, void *canvas) {
 // ID Generation
 //=============================================================================
 
-uint32_t vg_widget_next_id(void) {
-    return g_next_widget_id++;
+uint64_t vg_widget_next_id(void) {
+    if (g_next_widget_id == 0)
+        g_next_widget_id = 1;
+    uint64_t id = g_next_widget_id++;
+    if (g_next_widget_id == 0)
+        g_next_widget_id = 1;
+    return id;
 }
 
 //=============================================================================
@@ -693,7 +728,7 @@ vg_widget_t *vg_widget_find_by_name(vg_widget_t *root, const char *name) {
     return NULL;
 }
 
-vg_widget_t *vg_widget_find_by_id(vg_widget_t *root, uint32_t id) {
+vg_widget_t *vg_widget_find_by_id(vg_widget_t *root, uint64_t id) {
     if (!root)
         return NULL;
 
@@ -717,6 +752,7 @@ vg_widget_t *vg_widget_find_by_id(vg_widget_t *root, uint32_t id) {
 void vg_widget_set_constraints(vg_widget_t *widget, vg_constraints_t constraints) {
     if (!widget)
         return;
+    widget_normalize_constraints(&constraints);
     widget->constraints = constraints;
     widget->needs_layout = true;
 }
@@ -725,8 +761,9 @@ void vg_widget_set_constraints(vg_widget_t *widget, vg_constraints_t constraints
 void vg_widget_set_min_size(vg_widget_t *widget, float width, float height) {
     if (!widget)
         return;
-    widget->constraints.min_width = width;
-    widget->constraints.min_height = height;
+    widget->constraints.min_width = widget_nonnegative_finite(width);
+    widget->constraints.min_height = widget_nonnegative_finite(height);
+    widget_normalize_constraints(&widget->constraints);
     widget->needs_layout = true;
 }
 
@@ -734,8 +771,9 @@ void vg_widget_set_min_size(vg_widget_t *widget, float width, float height) {
 void vg_widget_set_max_size(vg_widget_t *widget, float width, float height) {
     if (!widget)
         return;
-    widget->constraints.max_width = width;
-    widget->constraints.max_height = height;
+    widget->constraints.max_width = widget_nonnegative_finite(width);
+    widget->constraints.max_height = widget_nonnegative_finite(height);
+    widget_normalize_constraints(&widget->constraints);
     widget->needs_layout = true;
 }
 
@@ -743,8 +781,9 @@ void vg_widget_set_max_size(vg_widget_t *widget, float width, float height) {
 void vg_widget_set_preferred_size(vg_widget_t *widget, float width, float height) {
     if (!widget)
         return;
-    widget->constraints.preferred_width = width;
-    widget->constraints.preferred_height = height;
+    widget->constraints.preferred_width = widget_nonnegative_finite(width);
+    widget->constraints.preferred_height = widget_nonnegative_finite(height);
+    widget_normalize_constraints(&widget->constraints);
     widget->needs_layout = true;
 }
 
@@ -752,6 +791,8 @@ void vg_widget_set_preferred_size(vg_widget_t *widget, float width, float height
 void vg_widget_set_fixed_size(vg_widget_t *widget, float width, float height) {
     if (!widget)
         return;
+    width = widget_nonnegative_finite(width);
+    height = widget_nonnegative_finite(height);
     widget->constraints.min_width = width;
     widget->constraints.max_width = width;
     widget->constraints.preferred_width = width;
@@ -812,7 +853,7 @@ void vg_widget_get_screen_bounds(
 void vg_widget_set_flex(vg_widget_t *widget, float flex) {
     if (!widget)
         return;
-    widget->layout.flex = flex;
+    widget->layout.flex = widget_nonnegative_finite(flex);
     if (widget->parent)
         widget->parent->needs_layout = true;
 }
@@ -821,6 +862,7 @@ void vg_widget_set_flex(vg_widget_t *widget, float flex) {
 void vg_widget_set_margin(vg_widget_t *widget, float margin) {
     if (!widget)
         return;
+    margin = widget_nonnegative_finite(margin);
     widget->layout.margin_left = margin;
     widget->layout.margin_top = margin;
     widget->layout.margin_right = margin;
@@ -833,10 +875,10 @@ void vg_widget_set_margin(vg_widget_t *widget, float margin) {
 void vg_widget_set_margins(vg_widget_t *widget, float left, float top, float right, float bottom) {
     if (!widget)
         return;
-    widget->layout.margin_left = left;
-    widget->layout.margin_top = top;
-    widget->layout.margin_right = right;
-    widget->layout.margin_bottom = bottom;
+    widget->layout.margin_left = widget_nonnegative_finite(left);
+    widget->layout.margin_top = widget_nonnegative_finite(top);
+    widget->layout.margin_right = widget_nonnegative_finite(right);
+    widget->layout.margin_bottom = widget_nonnegative_finite(bottom);
     if (widget->parent)
         widget->parent->needs_layout = true;
 }
@@ -845,6 +887,7 @@ void vg_widget_set_margins(vg_widget_t *widget, float left, float top, float rig
 void vg_widget_set_padding(vg_widget_t *widget, float padding) {
     if (!widget)
         return;
+    padding = widget_nonnegative_finite(padding);
     widget->layout.padding_left = padding;
     widget->layout.padding_top = padding;
     widget->layout.padding_right = padding;
@@ -856,10 +899,10 @@ void vg_widget_set_padding(vg_widget_t *widget, float padding) {
 void vg_widget_set_paddings(vg_widget_t *widget, float left, float top, float right, float bottom) {
     if (!widget)
         return;
-    widget->layout.padding_left = left;
-    widget->layout.padding_top = top;
-    widget->layout.padding_right = right;
-    widget->layout.padding_bottom = bottom;
+    widget->layout.padding_left = widget_nonnegative_finite(left);
+    widget->layout.padding_top = widget_nonnegative_finite(top);
+    widget->layout.padding_right = widget_nonnegative_finite(right);
+    widget->layout.padding_bottom = widget_nonnegative_finite(bottom);
     widget->needs_layout = true;
 }
 

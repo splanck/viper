@@ -201,6 +201,40 @@ static int win32_recreate_dib(struct vgfx_window *win) {
     return 1;
 }
 
+static int win32_resize_backing_store(struct vgfx_window *win,
+                                      int dip_w,
+                                      int dip_h,
+                                      int64_t timestamp) {
+    if (!win || !win->platform_data || dip_w <= 0 || dip_h <= 0)
+        return 0;
+
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    int phys_w = win32_logical_to_physical(win, dip_w);
+    int phys_h = win32_logical_to_physical(win, dip_h);
+    if (phys_w <= 0 || phys_h <= 0)
+        return 0;
+
+    if (dip_w == w32->width && dip_h == w32->height && phys_w == win->width &&
+        phys_h == win->height && w32->memdc && w32->hdc && w32->hbmp && w32->dib_pixels) {
+        return 1;
+    }
+
+    if (!vgfx_internal_resize_framebuffer(win, phys_w, phys_h))
+        return 0;
+    if (w32->memdc && !win32_recreate_dib(win))
+        return 0;
+
+    w32->width = dip_w;
+    w32->height = dip_h;
+
+    if (w32->memdc && w32->hdc) {
+        vgfx_event_t event = {0};
+        vgfx_internal_init_resize_event(&event, win, timestamp, phys_w, phys_h);
+        vgfx_internal_enqueue_event(win, &event);
+    }
+    return 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Key Code Translation
 //===----------------------------------------------------------------------===//
@@ -335,23 +369,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             if (!w32 || dip_w <= 0 || dip_h <= 0)
                 return 0;
 
-            if (dip_w != w32->width || dip_h != w32->height) {
-                int phys_w = win32_logical_to_physical(win, dip_w);
-                int phys_h = win32_logical_to_physical(win, dip_h);
-
-                if ((!w32->memdc || !w32->hdc) ||
-                    (vgfx_internal_resize_framebuffer(win, phys_w, phys_h) &&
-                     win32_recreate_dib(win))) {
-                    w32->width = dip_w;
-                    w32->height = dip_h;
-
-                    if (w32->memdc && w32->hdc) {
-                        vgfx_event_t event = {0};
-                        vgfx_internal_init_resize_event(&event, win, timestamp, phys_w, phys_h);
-                        vgfx_internal_enqueue_event(win, &event);
-                    }
-                }
-            }
+            (void)win32_resize_backing_store(win, dip_w, dip_h, timestamp);
             return 0;
         }
 
@@ -372,6 +390,14 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
                              suggested->right - suggested->left,
                              suggested->bottom - suggested->top,
                              SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            if (w32 && w32->hwnd) {
+                RECT client = {0};
+                if (GetClientRect(w32->hwnd, &client)) {
+                    int dip_w = (int)(client.right - client.left);
+                    int dip_h = (int)(client.bottom - client.top);
+                    (void)win32_resize_backing_store(win, dip_w, dip_h, timestamp);
+                }
             }
             return 0;
         }
@@ -1009,7 +1035,13 @@ int64_t vgfx_platform_now_ms(void) {
     LARGE_INTEGER freq, counter;
     QueryPerformanceFrequency(&freq);
     QueryPerformanceCounter(&counter);
-    return (int64_t)((counter.QuadPart * 1000) / freq.QuadPart);
+    if (freq.QuadPart <= 0)
+        return 0;
+    long double millis =
+        ((long double)counter.QuadPart * 1000.0L) / (long double)freq.QuadPart;
+    if (millis > (long double)INT64_MAX)
+        return INT64_MAX;
+    return (int64_t)millis;
 }
 
 /// @brief Sleep for the specified duration in milliseconds.
@@ -1259,18 +1291,22 @@ int32_t vgfx_platform_is_maximized(struct vgfx_window *win) {
 
 /// @brief Get the window's top-left screen position.
 void vgfx_platform_get_position(struct vgfx_window *win, int32_t *x, int32_t *y) {
-    if (!win || !win->platform_data || !x || !y)
+    if (x)
+        *x = 0;
+    if (y)
+        *y = 0;
+    if (!win || !win->platform_data)
         return;
     vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
-    if (!w32->hwnd) {
-        *x = 0;
-        *y = 0;
+    if (!w32->hwnd)
         return;
-    }
     RECT r = {0};
-    GetWindowRect(w32->hwnd, &r);
-    *x = (int32_t)r.left;
-    *y = (int32_t)r.top;
+    if (!GetWindowRect(w32->hwnd, &r))
+        return;
+    if (x)
+        *x = (int32_t)r.left;
+    if (y)
+        *y = (int32_t)r.top;
 }
 
 /// @brief Move the window to the given screen position.

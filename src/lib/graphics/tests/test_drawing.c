@@ -407,6 +407,26 @@ void test_empty_clip_rect_suppresses_drawing(void) {
     TEST_END();
 }
 
+void test_extreme_circle_coordinates_do_not_overflow(void) {
+    TEST_BEGIN("Audit: Extreme Circle Coordinates Do Not Overflow");
+
+    vgfx_window_params_t params = {
+        .width = 8, .height = 8, .title = "Test", .fps = 0, .resizable = 0};
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    vgfx_cls(win, VGFX_BLACK);
+    vgfx_circle(win, INT32_MAX - 1, INT32_MAX - 1, 4, 0xFFFFFF);
+    vgfx_fill_circle(win, INT32_MIN + 1, INT32_MIN + 1, 4, 0xFFFFFF);
+
+    vgfx_color_t color;
+    ASSERT_EQ(vgfx_point(win, 0, 0, &color), 1);
+    ASSERT_EQ(color, VGFX_BLACK);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
 /* Main test runner */
 /// What: Entry point for drawing tests covering primitive rendering.
 /// Why:  Ensure that core drawing operations work end-to-end.
@@ -427,6 +447,7 @@ int main(void) {
     test_extreme_fill_rect_is_clipped();
     test_extreme_clip_rect_is_canonicalized();
     test_empty_clip_rect_suppresses_drawing();
+    test_extreme_circle_coordinates_do_not_overflow();
 
     TEST_SUMMARY();
     return TEST_RETURN_CODE();

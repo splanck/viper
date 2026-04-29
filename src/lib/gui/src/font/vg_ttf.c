@@ -486,7 +486,7 @@ bool ttf_parse_name(vg_font_t *font, const uint8_t *data, uint32_t len) {
             // Platform 3 (Windows) uses UTF-16BE
             if (platform_id == 3 && encoding_id == 1) {
                 int j = 0;
-                for (int k = 0; k < length && j < (int)dest_size - 1; k += 2) {
+                for (int k = 0; k + 1 < length && j < (int)dest_size - 1; k += 2) {
                     uint16_t ch = ttf_read_u16(str + k);
                     if (ch < 128) {
                         dest[j++] = (char)ch;
@@ -805,10 +805,15 @@ static bool ttf_get_composite_glyph_outline(vg_font_t *font,
         if (!ttf_read_u16_checked(&p, glyph_end, &component_glyph_id))
             goto fail;
 
-        // Read translation offsets
+        // Read component arguments. TrueType allows either direct XY offsets
+        // or point-to-point alignment between the accumulated outline and the
+        // component outline.
         float dx = 0, dy = 0;
-        if (flags & COMP_ARGS_ARE_XY_VALUES) {
-            if (flags & COMP_ARG_1_AND_2_ARE_WORDS) {
+        int args_are_xy = (flags & COMP_ARGS_ARE_XY_VALUES) != 0;
+        int arg1 = 0;
+        int arg2 = 0;
+        if (flags & COMP_ARG_1_AND_2_ARE_WORDS) {
+            if (args_are_xy) {
                 int16_t arg = 0;
                 if (!ttf_read_i16_checked(&p, glyph_end, &arg))
                     goto fail;
@@ -817,25 +822,30 @@ static bool ttf_get_composite_glyph_outline(vg_font_t *font,
                     goto fail;
                 dy = (float)arg;
             } else {
-                uint8_t arg = 0;
-                if (!ttf_read_u8_checked(&p, glyph_end, &arg))
+                uint16_t arg = 0;
+                if (!ttf_read_u16_checked(&p, glyph_end, &arg))
                     goto fail;
-                dx = (float)(int8_t)arg;
-                if (!ttf_read_u8_checked(&p, glyph_end, &arg))
+                arg1 = (int)arg;
+                if (!ttf_read_u16_checked(&p, glyph_end, &arg))
                     goto fail;
-                dy = (float)(int8_t)arg;
+                arg2 = (int)arg;
             }
+        } else if (args_are_xy) {
+            uint8_t arg = 0;
+            if (!ttf_read_u8_checked(&p, glyph_end, &arg))
+                goto fail;
+            dx = (float)(int8_t)arg;
+            if (!ttf_read_u8_checked(&p, glyph_end, &arg))
+                goto fail;
+            dy = (float)(int8_t)arg;
         } else {
-            // Point indices - skip for now
-            if (flags & COMP_ARG_1_AND_2_ARE_WORDS) {
-                if (!ttf_cursor_can_read(p, glyph_end, 4))
-                    goto fail;
-                p += 4;
-            } else {
-                if (!ttf_cursor_can_read(p, glyph_end, 2))
-                    goto fail;
-                p += 2;
-            }
+            uint8_t arg = 0;
+            if (!ttf_read_u8_checked(&p, glyph_end, &arg))
+                goto fail;
+            arg1 = (int)arg;
+            if (!ttf_read_u8_checked(&p, glyph_end, &arg))
+                goto fail;
+            arg2 = (int)arg;
         }
 
         float m00 = 1.0f, m01 = 0.0f, m10 = 0.0f, m11 = 1.0f;
@@ -896,6 +906,21 @@ static bool ttf_get_composite_glyph_outline(vg_font_t *font,
                 float src_y = comp_y[i];
                 comp_x[i] = src_x * m00 + src_y * m01 + dx;
                 comp_y[i] = src_x * m10 + src_y * m11 + dy;
+            }
+            if (!args_are_xy) {
+                if (arg1 < 0 || arg1 >= total_points || arg2 < 0 || arg2 >= comp_num_points) {
+                    free(comp_x);
+                    free(comp_y);
+                    free(comp_flags);
+                    free(comp_contours);
+                    goto fail;
+                }
+                float align_dx = all_points_x[arg1] - comp_x[arg2];
+                float align_dy = all_points_y[arg1] - comp_y[arg2];
+                for (int i = 0; i < comp_num_points; i++) {
+                    comp_x[i] += align_dx;
+                    comp_y[i] += align_dy;
+                }
             }
 
             // Adjust contour end indices

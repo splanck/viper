@@ -456,6 +456,36 @@ static int clip_line_to_bounds(int64_t *x0,
 /// @pre  radius >= 0
 /// @post plot() called for all pixels on the circle perimeter (if radius > 0)
 /// @post plot() called once at (cx, cy) if radius == 0
+static void plot_checked_i64(int64_t x,
+                             int64_t y,
+                             void (*plot)(int32_t x, int32_t y, void *ctx),
+                             void *ctx) {
+    if (x < INT32_MIN || x > INT32_MAX || y < INT32_MIN || y > INT32_MAX)
+        return;
+    plot((int32_t)x, (int32_t)y, ctx);
+}
+
+static void hline_checked_i64(int64_t x0,
+                              int64_t x1,
+                              int64_t y,
+                              void (*hline)(int32_t x0, int32_t x1, int32_t y, void *ctx),
+                              void *ctx) {
+    if (y < INT32_MIN || y > INT32_MAX)
+        return;
+    if (x0 > x1) {
+        int64_t tmp = x0;
+        x0 = x1;
+        x1 = tmp;
+    }
+    if (x1 < INT32_MIN || x0 > INT32_MAX)
+        return;
+    if (x0 < INT32_MIN)
+        x0 = INT32_MIN;
+    if (x1 > INT32_MAX)
+        x1 = INT32_MAX;
+    hline((int32_t)x0, (int32_t)x1, (int32_t)y, ctx);
+}
+
 static void midpoint_circle(int32_t cx,
                             int32_t cy,
                             int32_t radius,
@@ -473,24 +503,24 @@ static void midpoint_circle(int32_t cx,
 
     /* Initial position in first octant: (0, radius)
      * This corresponds to the topmost point of the circle */
-    int32_t x = 0;
-    int32_t y = radius;
+    int64_t x = 0;
+    int64_t y = radius;
 
     /* Initial decision parameter: d = 1 - radius
      * This determines whether the midpoint between (x+1, y) and (x+1, y-1)
      * is inside or outside the ideal circle */
-    int32_t d = 1 - radius;
+    int64_t d = 1 - (int64_t)radius;
 
     /* Plot initial 8 symmetric points (all octants at x=0)
      * Each octant has a reflection about the X axis, Y axis, and Y=X line */
-    plot(cx + x, cy + y, ctx); /* Octant 2:  90° (top) */
-    plot(cx - x, cy + y, ctx); /* Octant 1:  90° (top, mirrored) */
-    plot(cx + x, cy - y, ctx); /* Octant 7: 270° (bottom) */
-    plot(cx - x, cy - y, ctx); /* Octant 6: 270° (bottom, mirrored) */
-    plot(cx + y, cy + x, ctx); /* Octant 3:   0° (right) */
-    plot(cx - y, cy + x, ctx); /* Octant 0: 180° (left) */
-    plot(cx + y, cy - x, ctx); /* Octant 4:   0° (right, mirrored) */
-    plot(cx - y, cy - x, ctx); /* Octant 5: 180° (left, mirrored) */
+    plot_checked_i64((int64_t)cx + x, (int64_t)cy + y, plot, ctx);
+    plot_checked_i64((int64_t)cx - x, (int64_t)cy + y, plot, ctx);
+    plot_checked_i64((int64_t)cx + x, (int64_t)cy - y, plot, ctx);
+    plot_checked_i64((int64_t)cx - x, (int64_t)cy - y, plot, ctx);
+    plot_checked_i64((int64_t)cx + y, (int64_t)cy + x, plot, ctx);
+    plot_checked_i64((int64_t)cx - y, (int64_t)cy + x, plot, ctx);
+    plot_checked_i64((int64_t)cx + y, (int64_t)cy - x, plot, ctx);
+    plot_checked_i64((int64_t)cx - y, (int64_t)cy - x, plot, ctx);
 
     /* Iterate through first octant (while x < y, i.e., slope > -1) */
     while (x < y) {
@@ -507,14 +537,14 @@ static void midpoint_circle(int32_t cx,
         }
 
         /* Plot 8 symmetric points for this (x, y) */
-        plot(cx + x, cy + y, ctx);
-        plot(cx - x, cy + y, ctx);
-        plot(cx + x, cy - y, ctx);
-        plot(cx - x, cy - y, ctx);
-        plot(cx + y, cy + x, ctx);
-        plot(cx - y, cy + x, ctx);
-        plot(cx + y, cy - x, ctx);
-        plot(cx - y, cy - x, ctx);
+        plot_checked_i64((int64_t)cx + x, (int64_t)cy + y, plot, ctx);
+        plot_checked_i64((int64_t)cx - x, (int64_t)cy + y, plot, ctx);
+        plot_checked_i64((int64_t)cx + x, (int64_t)cy - y, plot, ctx);
+        plot_checked_i64((int64_t)cx - x, (int64_t)cy - y, plot, ctx);
+        plot_checked_i64((int64_t)cx + y, (int64_t)cy + x, plot, ctx);
+        plot_checked_i64((int64_t)cx - y, (int64_t)cy + x, plot, ctx);
+        plot_checked_i64((int64_t)cx + y, (int64_t)cy - x, plot, ctx);
+        plot_checked_i64((int64_t)cx - y, (int64_t)cy - x, plot, ctx);
     }
 }
 
@@ -563,16 +593,16 @@ static void filled_circle(int32_t cx,
         return;
 
     /* Initial position in first octant (same as outline algorithm) */
-    int32_t x = 0;
-    int32_t y = radius;
-    int32_t d = 1 - radius;
+    int64_t x = 0;
+    int64_t y = radius;
+    int64_t d = 1 - (int64_t)radius;
 
     /* Fill initial horizontal lines (corresponds to initial 8-way symmetry)
      * These are the scanlines at y = cy ± radius and y = cy ± 0 */
-    hline(cx - x, cx + x, cy + y, ctx); /* Top: y = cy + radius */
-    hline(cx - x, cx + x, cy - y, ctx); /* Bottom: y = cy - radius */
-    hline(cx - y, cx + y, cy + x, ctx); /* Middle upper: y = cy + 0 = cy */
-    hline(cx - y, cx + y, cy - x, ctx); /* Middle lower: y = cy - 0 = cy */
+    hline_checked_i64((int64_t)cx - x, (int64_t)cx + x, (int64_t)cy + y, hline, ctx);
+    hline_checked_i64((int64_t)cx - x, (int64_t)cx + x, (int64_t)cy - y, hline, ctx);
+    hline_checked_i64((int64_t)cx - y, (int64_t)cx + y, (int64_t)cy + x, hline, ctx);
+    hline_checked_i64((int64_t)cx - y, (int64_t)cx + y, (int64_t)cy - x, hline, ctx);
 
     /* Iterate through first octant (while x < y) */
     while (x < y) {
@@ -590,10 +620,10 @@ static void filled_circle(int32_t cx,
          * Two scanlines span the width at y = cy ± y (outer)
          * Two scanlines span the width at y = cy ± x (inner)
          * Together these fill the entire circle interior */
-        hline(cx - x, cx + x, cy + y, ctx); /* Upper half, outer */
-        hline(cx - x, cx + x, cy - y, ctx); /* Lower half, outer */
-        hline(cx - y, cx + y, cy + x, ctx); /* Upper half, inner */
-        hline(cx - y, cx + y, cy - x, ctx); /* Lower half, inner */
+        hline_checked_i64((int64_t)cx - x, (int64_t)cx + x, (int64_t)cy + y, hline, ctx);
+        hline_checked_i64((int64_t)cx - x, (int64_t)cx + x, (int64_t)cy - y, hline, ctx);
+        hline_checked_i64((int64_t)cx - y, (int64_t)cx + y, (int64_t)cy + x, hline, ctx);
+        hline_checked_i64((int64_t)cx - y, (int64_t)cx + y, (int64_t)cy - x, hline, ctx);
     }
 }
 

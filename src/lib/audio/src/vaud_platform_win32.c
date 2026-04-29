@@ -461,7 +461,11 @@ int64_t vaud_platform_now_ms(void) {
     LARGE_INTEGER counter;
     QueryPerformanceCounter(&counter);
 
-    return (int64_t)(counter.QuadPart * 1000 / freq.QuadPart);
+    long double millis =
+        ((long double)counter.QuadPart * 1000.0L) / (long double)freq.QuadPart;
+    if (millis > (long double)INT64_MAX)
+        return INT64_MAX;
+    return (int64_t)millis;
 }
 
 #endif /* _WIN32 */
