@@ -13,7 +13,7 @@ with zero external dependencies (only OS-level audio APIs).
 - **Cross-platform** - Native backends for macOS (AudioQueue), Linux (ALSA), Windows (WASAPI)
 - **Sound effects** - Load-and-play with automatic voice management
 - **Music streaming** - Memory-efficient streaming for long audio files
-- **WAV support** - 8-bit and 16-bit PCM, mono or stereo, any sample rate
+- **WAV support** - 8/16/24/32-bit PCM and 32-bit float, mono or stereo, with checked resampling to the mixer rate
 - **Thread-safe** - Audio runs on dedicated thread, all API calls are thread-safe
 
 ## Platform Support

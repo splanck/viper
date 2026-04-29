@@ -696,6 +696,18 @@ int64_t vaud_resample_output_frames(int64_t in_frames, int32_t in_rate, int32_t 
     return (in_frames * out_rate + in_rate - 1) / in_rate;
 }
 
+int vaud_pcm_s16_buffer_size(int64_t frames, int32_t channels, size_t *out_bytes) {
+    if (!out_bytes || frames <= 0 || channels <= 0)
+        return 0;
+    if ((uint64_t)frames > SIZE_MAX / (uint64_t)channels)
+        return 0;
+    size_t samples = (size_t)frames * (size_t)channels;
+    if (samples > SIZE_MAX / sizeof(int16_t))
+        return 0;
+    *out_bytes = samples * sizeof(int16_t);
+    return 1;
+}
+
 void vaud_resample(const int16_t *input,
                    int64_t in_frames,
                    int32_t in_rate,

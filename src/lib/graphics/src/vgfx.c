@@ -180,6 +180,20 @@ static void clear_framebuffer_rgba(uint8_t *pixels, size_t size) {
         pixels[i] = 0xFF;
 }
 
+static int framebuffer_size_bytes(int32_t width, int32_t height, size_t *out_size) {
+    if (!out_size || width <= 0 || height <= 0)
+        return 0;
+    size_t w = (size_t)width;
+    size_t h = (size_t)height;
+    if (w > SIZE_MAX / h)
+        return 0;
+    size_t pixels = w * h;
+    if (pixels > SIZE_MAX / 4u)
+        return 0;
+    *out_size = pixels * 4u;
+    return 1;
+}
+
 int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int32_t height) {
     if (!win || width <= 0 || height <= 0) {
         vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM,
@@ -194,7 +208,11 @@ int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int
     if (win->width == width && win->height == height)
         return 1;
 
-    size_t fb_size = (size_t)width * (size_t)height * 4u;
+    size_t fb_size = 0;
+    if (!framebuffer_size_bytes(width, height, &fb_size)) {
+        vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM, "Framebuffer resize size overflow");
+        return 0;
+    }
     uint8_t *new_pixels =
         (uint8_t *)aligned_alloc_wrapper(VGFX_FRAMEBUFFER_ALIGNMENT, fb_size);
     if (!new_pixels) {
@@ -686,6 +704,13 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) {
     win->scale_factor = vgfx_internal_sanitize_scale(dpi_scale);
     win->width = vgfx_internal_scale_up_i32(actual_params.width, win->scale_factor);
     win->height = vgfx_internal_scale_up_i32(actual_params.height, win->scale_factor);
+    if (win->width <= 0 || win->height <= 0 || win->width > VGFX_MAX_WIDTH ||
+        win->height > VGFX_MAX_HEIGHT) {
+        free(win);
+        vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM,
+                                "Scaled window dimensions exceed framebuffer limits");
+        return NULL;
+    }
     win->stride = win->width * 4;
     win->coord_scale = 1.0f; /* No coordinate scaling by default (GUI layer) */
 
@@ -699,7 +724,12 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) {
     }
 
     /* Allocate framebuffer (aligned for cache performance) */
-    size_t fb_size = (size_t)win->width * (size_t)win->height * 4;
+    size_t fb_size = 0;
+    if (!framebuffer_size_bytes(win->width, win->height, &fb_size)) {
+        free(win);
+        vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM, "Framebuffer size overflow");
+        return NULL;
+    }
     win->pixels = (uint8_t *)aligned_alloc_wrapper(VGFX_FRAMEBUFFER_ALIGNMENT, fb_size);
     if (!win->pixels) {
         free(win);

@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 // vg_font.c - Main font API implementation
 #include "vg_ttf_internal.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -162,7 +163,7 @@ bool vg_font_has_glyph(vg_font_t *font, uint32_t codepoint) {
 //=============================================================================
 
 const vg_glyph_t *vg_font_get_glyph(vg_font_t *font, float size, uint32_t codepoint) {
-    if (!font || size <= 0)
+    if (!font || !isfinite(size) || size <= 0)
         return NULL;
 
     // Check cache first

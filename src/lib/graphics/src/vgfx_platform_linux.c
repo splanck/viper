@@ -68,7 +68,7 @@ typedef struct {
     Visual *visual;        ///< Visual used for window and XImage
     int depth;             ///< Depth matching visual (24 or 32)
     Colormap colormap;     ///< Colormap for the chosen visual (None if default)
-    int ximage_buf_size;   ///< Size of ximage_buf in bytes
+    size_t ximage_buf_size; ///< Size of ximage_buf in bytes
     int width;             ///< Cached window width
     int height;            ///< Cached window height
     int close_requested;   ///< 1 if WM_DELETE_WINDOW received, 0 otherwise
@@ -88,6 +88,91 @@ typedef struct {
 } vgfx_x11_data;
 
 static struct vgfx_window *g_vgfx_cursor_window = NULL;
+
+static int hex_value(unsigned char c) {
+    if (c >= '0' && c <= '9')
+        return (int)(c - '0');
+    if (c >= 'a' && c <= 'f')
+        return (int)(c - 'a') + 10;
+    if (c >= 'A' && c <= 'F')
+        return (int)(c - 'A') + 10;
+    return -1;
+}
+
+static size_t percent_decode_path(const char *src, size_t len, char *dst, size_t dst_cap) {
+    if (!dst || dst_cap == 0)
+        return 0;
+
+    size_t out = 0;
+    for (size_t i = 0; i < len && out + 1 < dst_cap; i++) {
+        unsigned char ch = (unsigned char)src[i];
+        if (ch == '\0')
+            break;
+        if (ch == '%' && i + 2 < len) {
+            int hi = hex_value((unsigned char)src[i + 1]);
+            int lo = hex_value((unsigned char)src[i + 2]);
+            if (hi >= 0 && lo >= 0) {
+                dst[out++] = (char)((hi << 4) | lo);
+                i += 2;
+                continue;
+            }
+        }
+        dst[out++] = (char)ch;
+    }
+    dst[out] = '\0';
+    return out;
+}
+
+static void enqueue_xdnd_uri_line(struct vgfx_window *win,
+                                  int64_t timestamp,
+                                  const char *line,
+                                  size_t line_len) {
+    while (line_len > 0 && (line[line_len - 1] == '\r' || line[line_len - 1] == '\0'))
+        line_len--;
+    if (line_len == 0 || line[0] == '#')
+        return;
+
+    const char *path = line;
+    size_t path_len = line_len;
+    if (line_len >= 7 && strncmp(line, "file://", 7) == 0) {
+        path = line + 7;
+        path_len = line_len - 7;
+        if (path_len >= 10 && strncmp(path, "localhost/", 10) == 0) {
+            path += 9;
+            path_len -= 9;
+        } else if (path_len > 0 && path[0] != '/') {
+            const char *slash = memchr(path, '/', path_len);
+            if (!slash)
+                return;
+            path_len -= (size_t)(slash - path);
+            path = slash;
+        }
+    }
+
+    vgfx_event_t vgfx_event = {0};
+    vgfx_event.type = VGFX_EVENT_FILE_DROP;
+    vgfx_event.time_ms = timestamp;
+    percent_decode_path(path,
+                        path_len,
+                        vgfx_event.data.file_drop.path,
+                        sizeof(vgfx_event.data.file_drop.path));
+    if (vgfx_event.data.file_drop.path[0] != '\0')
+        vgfx_internal_enqueue_event(win, &vgfx_event);
+}
+
+static void parse_xdnd_uri_list(struct vgfx_window *win,
+                                int64_t timestamp,
+                                const unsigned char *data,
+                                size_t len) {
+    size_t line_start = 0;
+    for (size_t i = 0; i <= len; i++) {
+        if (i == len || data[i] == '\n') {
+            enqueue_xdnd_uri_line(
+                win, timestamp, (const char *)data + line_start, i - line_start);
+            line_start = i + 1;
+        }
+    }
+}
 
 //===----------------------------------------------------------------------===//
 // Key Code Translation
@@ -218,7 +303,7 @@ static void x11_enqueue_text_input_events(struct vgfx_window *win,
 }
 
 static int32_t x11_logical_to_physical(const struct vgfx_window *win, int32_t logical) {
-    float scale = (win && win->scale_factor >= 1.0f) ? win->scale_factor : 1.0f;
+    float scale = win ? vgfx_internal_sanitize_scale(win->scale_factor) : 1.0f;
     return vgfx_internal_scale_up_i32(logical, scale);
 }
 
@@ -237,8 +322,15 @@ static int x11_recreate_ximage(struct vgfx_window *win) {
     }
 
     free(x11->ximage_buf);
-    x11->ximage_buf_size = win->height * win->stride;
-    x11->ximage_buf = (uint8_t *)calloc(1, (size_t)x11->ximage_buf_size);
+    if (win->height <= 0 || win->stride <= 0 ||
+        (size_t)win->height > SIZE_MAX / (size_t)win->stride) {
+        x11->ximage_buf = NULL;
+        x11->ximage_buf_size = 0;
+        vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM, "Invalid XImage buffer dimensions");
+        return 0;
+    }
+    x11->ximage_buf_size = (size_t)win->height * (size_t)win->stride;
+    x11->ximage_buf = (uint8_t *)calloc(1, x11->ximage_buf_size);
     if (!x11->ximage_buf) {
         x11->ximage_buf_size = 0;
         vgfx_internal_set_error(VGFX_ERR_ALLOC, "Failed to allocate XImage buffer");
@@ -298,7 +390,7 @@ float vgfx_platform_get_display_scale(void) {
     if (gdk) {
         float s = strtof(gdk, NULL);
         if (s >= 1.0f)
-            return s;
+            return vgfx_internal_sanitize_scale(s);
     }
 
     /* Priority 2: QT_SCALE_FACTOR (KDE Plasma) */
@@ -306,7 +398,7 @@ float vgfx_platform_get_display_scale(void) {
     if (qt) {
         float s = strtof(qt, NULL);
         if (s >= 1.0f)
-            return s;
+            return vgfx_internal_sanitize_scale(s);
     }
 
     /* Priority 3: Xft.dpi from the X11 resource database.
@@ -329,7 +421,7 @@ float vgfx_platform_get_display_scale(void) {
             }
         }
         XCloseDisplay(dpy);
-        return scale;
+        return vgfx_internal_sanitize_scale(scale);
     }
 
     return 1.0f; /* fallback: assume standard 96 DPI */
@@ -840,48 +932,22 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     int actual_format;
                     unsigned long nitems, bytes_after;
                     unsigned char *data = NULL;
-                    XGetWindowProperty(x11->display,
-                                       x11->window,
-                                       x11->xdnd_selection,
-                                       0,
-                                       65536,
-                                       True,
-                                       AnyPropertyType,
-                                       &actual_type,
-                                       &actual_format,
-                                       &nitems,
-                                       &bytes_after,
-                                       &data);
-                    if (data && nitems > 0) {
-                        /* Parse text/uri-list: one URI per line, skip comments (#) */
-                        char *text = (char *)data;
-                        char *line = text;
-                        while (line && *line) {
-                            char *eol = strchr(line, '\n');
-                            if (eol)
-                                *eol = '\0';
-                            /* Remove trailing \r */
-                            size_t llen = strlen(line);
-                            if (llen > 0 && line[llen - 1] == '\r')
-                                line[llen - 1] = '\0';
-                            /* Skip comments and empty lines */
-                            if (line[0] != '#' && line[0] != '\0') {
-                                /* Strip file:// prefix */
-                                const char *path = line;
-                                if (strncmp(path, "file://", 7) == 0)
-                                    path += 7;
-                                vgfx_event_t vgfx_event = {0};
-                                vgfx_event.type = VGFX_EVENT_FILE_DROP;
-                                vgfx_event.time_ms = timestamp;
-                                size_t plen = strlen(path);
-                                if (plen >= sizeof(vgfx_event.data.file_drop.path))
-                                    plen = sizeof(vgfx_event.data.file_drop.path) - 1;
-                                memcpy(vgfx_event.data.file_drop.path, path, plen);
-                                vgfx_event.data.file_drop.path[plen] = '\0';
-                                vgfx_internal_enqueue_event(win, &vgfx_event);
-                            }
-                            line = eol ? eol + 1 : NULL;
-                        }
+                    int prop_status = XGetWindowProperty(x11->display,
+                                                         x11->window,
+                                                         x11->xdnd_selection,
+                                                         0,
+                                                         65536,
+                                                         True,
+                                                         AnyPropertyType,
+                                                         &actual_type,
+                                                         &actual_format,
+                                                         &nitems,
+                                                         &bytes_after,
+                                                         &data);
+                    (void)bytes_after;
+                    if (prop_status == Success && data && nitems > 0 && actual_format == 8 &&
+                        actual_type == x11->text_uri_list) {
+                        parse_xdnd_uri_list(win, timestamp, data, (size_t)nitems);
                     }
                     if (data)
                         XFree(data);

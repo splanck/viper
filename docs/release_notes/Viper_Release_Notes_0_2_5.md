@@ -24,11 +24,11 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator.
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 88 | +88 |
-| Source files | 2,869 | 2,951 | +82 |
-| Production SLOC | 450K | 520K | +70K |
+| Commits | — | 92 | +92 |
+| Source files | 2,869 | 2,953 | +84 |
+| Production SLOC | 450K | 522K | +72K |
 | Test SLOC | 183K | 216K | +33K |
-| Demo SLOC | 177K | 189K | +12K |
+| Demo SLOC | 177K | 188K | +11K |
 
 Counts via `scripts/count_sloc.sh`.
 
@@ -49,6 +49,12 @@ Four rounds of widget audit plus an app-registry + widget-family overhaul.
 - **Overlay widgets** — Dialog, Tooltip, Notification, Breadcrumb, ContextMenu, and FloatingPanel rewritten with rounded-card paint, scaled metrics, fade+slide animation, and screen-bounds anchoring.
 - **Layout and framework** — flex non-stretch alignment, VBox/HBox margin budgets, synthesized double-click, Tab/Shift+Tab focus traversal. Lifetime crashes closed across Tooltip, Dialog, Notification, CodeEditor, and VideoWidget.
 - **App-registry refactor** — `rt_gui_app.c` gains handle-registry arrays for safe liveness queries; handle-validation pass on every public widget entry.
+- **Widget tombstone/retire pattern** — TreeView nodes and ListBox items carry magic tags (`VG_TREE_NODE_MAGIC`, `VG_LISTBOX_ITEM_MAGIC`) and retire on removal; public API entries check the live predicate so handle use-after-remove becomes a silent no-op instead of heap corruption. Widget-base sentinels (`VG_WIDGET_MAGIC`), `vg_widget_is_live()`, and `rt_gui_is_widget_handle()` extend the pattern to all runtime widget handles.
+- **Scroll and click precision** — Wheel events store hit-test coordinates in dedicated `wheel.screen_x/y` fields separate from scroll deltas, preventing delta corruption during coordinate localization. `WasClicked()` now reports the widget that received `VG_EVENT_CLICK` (via `vg_widget_note_click`) rather than the pointer-hit target at mouse-up.
+- **Layout constraint propagation** — `layout_nonnegative()` prevents negative computed dimensions from propagating when padding exceeds container size; `layout_apply_constraints()` enforces preferred/min/max constraints uniformly across VBox, HBox, Flex, Grid, and Dock.
+- **Round-3 widget hardening** — Spinner uses a dynamic `realloc`-based text buffer (was 64 bytes fixed) and rejects NaN/inf; Slider rejects NaN/inf and auto-swaps inverted range bounds; RadioButton/RadioGroup cross-reference lifecycle correctly unregisters on destroy; ColorPicker `syncing_children` reentrancy flag prevents N `on_change` firings during programmatic color set; ColorPalette paint implemented (`vgfx_fill_rect` for swatches, `vgfx_rect` for borders); Label and Checkbox initialize to theme fonts; ListBox ctrl-toggle-off correctly moves `selected` and `anchor_selected`; ScrollView `clamp_scroll` re-clamps on direction change; TextInput returns `false` for unhandled keys so focus events bubble; Dropdown fires `on_change` on item remove/clear and uses `vg_utf8_decode` for Unicode typeahead.
+- **Image loading** — `vg_image_load_file()` implemented: pure-C BMP decoder (24/32bpp, top/bottom-up, overflow-safe stride math) plus macOS CoreGraphics/ImageIO for PNG/JPEG/TIFF. Zero external dependencies maintained.
+- **Round-4 widget hardening** — `event_modal_safe_capture()` releases input capture when a modal root is active and the captured widget lives outside the modal subtree, applied to both mouse and keyboard dispatch. FindReplaceBar gains POSIX `<regex.h>` search (variable-length patterns, `REG_EXTENDED`/`REG_ICASE`, whole-word post-check; Windows path returns "Regex unavailable"); `regcomp`/`regexec`/`regfree`/`regerror` added to `DynamicSymbolPolicy`. MenuBar `remove_item`/`remove_menu` validate `parent_menu`/`owner_menubar` before unlinking and roll back cleanly on OOM. TextInput `ensure_capacity` bootstraps from zero; `push_undo` pre-allocates snapshot before truncating redo history; surrogate codepoints (U+D800–U+DFFF) and scalars above U+10FFFF silently rejected on character input. CodeEditor `SetCustomKeywords` builds the new array atomically before freeing the old one. CommandPalette, Breadcrumb, and Minimap wrappers install GC finalizers and vtable `destroy` intercepts so explicit `Destroy()` and runtime collection share the same idempotent path; all public methods null-guard the backing widget after destroy. Keyboard shortcut evaluation deferred until after modal overlays dispatch; migrated from `VGFX_MOD_*` to `VG_MOD_*` constants. `Viper.GUI.Theme` instance type corrected to `"none"` in `runtime.def` — it is a static class with no constructor.
 
 ### Graphics runtime (2D)
 
@@ -73,6 +79,7 @@ Four rounds of widget audit plus an app-registry + widget-family overhaul.
 - **Input** — action chord releases on last-key-drop frame; debounced press-edge detection; real UTF-8 encoding up to U+10FFFF.
 - **Async UAF fix** — `Async.Run` / `Thread.Start` worker VMs retain the Future payload past worker unwind; pinned by a 25× regression loop.
 - `Config.Load` pre-checks file existence and returns NULL for missing configs (documented soft-fail).
+- **RNG debiasing** — `rt_random_bounded_u64()` uses rejection sampling to eliminate modulo bias; `rt_rand_int` and `rt_rand_range` now produce statistically uniform results across all bound sizes.
 
 ### Collections runtime
 
@@ -202,6 +209,7 @@ All four object-file readers and all three writers received a bounds-checking an
 
 **AArch64**
 - RegAllocPass wraps the coalesce + allocate pipeline in try/catch; exceptions become a `V-CG-AARCH64-REGALLOC` diagnostic rather than a crash.
+- Peephole `buildPredecessorMap` rewritten to record both conditional-branch targets and fallthrough successor edges; previously missing fallthrough entries caused incorrect single-predecessor detection at boolean-join blocks, silently miscompiling short-circuit boolean expressions.
 - Target-platform flags (`--target-darwin/linux/windows`) thread through object-writer, native linker, and assembler target triple.
 - `switch.i32` edge arguments route through dedicated edge blocks; larger tables lower as balanced binary decision trees.
 - Trap ABI: `idx.chk` → `rt_trap_raise_error`; checked div/rem → `rt_trap_div0` / `rt_trap_ovf`; `trap.from_err` marshals error code into `x0`.
@@ -220,6 +228,7 @@ All four object-file readers and all three writers received a bounds-checking an
 **IL and VM**
 - Variadic functions: `Function::isVarArg`, `...` syntax parsed/serialized/verified; `>= paramCount` arity enforced for variadic callees.
 - `err.get_*` min operand count relaxed to 0 for context-implicit native EH lowering.
+- **BytecodeVM global variables** — `LOAD_GLOBAL_ADDR` opcode (`0x2B`); `registerGlobals()` compiles IL `Global` declarations at module-load time with typed initializers for I64/F64/Str; string globals initialized via `rt_string_from_bytes`; per-slot ownership tracking (`globalsStringOwned_`) with `clearGlobalStringOwnershipForRawStore()` called on every store path to prevent double-release.
 - `VMInit` throws `std::runtime_error` on bad state instead of calling `std::abort()`.
 - `OpHandlers_Memory`: `minimumAlignmentFor` returns 0 for unknown memory kinds; `handleLoadImpl` / `handleStoreImpl` detect alignment 0 and dispatch `RuntimeBridge::trap(InvalidOperation)` instead of asserting.
 - `Marshal::toI64` / `toF64` call `RuntimeBridge::trap(InvalidOperation)` on type mismatch rather than `std::abort()`.
@@ -260,9 +269,11 @@ All four object-file readers and all three writers received a bounds-checking an
 
 - macOS: bare arrow keys no longer map to PageUp/Down/Home/End; mouse-wheel delta preserved across coordinate localization.
 - Linux: X11 UTF-8 text input delivers every codepoint; clipboard implemented for editor widgets.
+- Low-level library hardening: ViperGUI rejects malformed TrueType table ranges and truncated glyph data, ViperGFX clips extreme drawing coordinates before rasterization and bounds XDND URI parsing, and ViperAUD rejects oversized resample buffers before allocation.
 
 ### Tests
 
+- Crackman headless movement regression probe (`movement_probe.zia`) with ARM64 native e2e test (`test_crackman_movement_native.sh`) — compiles to IL, runs `codegen arm64 --native-link -O2`, asserts `RESULT: ok`. `RTZiaCompletionStubTests` — 8 tests verifying all completion stubs return protocol-shaped unavailable payloads. 22 new GUI audit test cases in `test_vg_audit_fixes.c` (15 round-3, 7 round-4) covering layout constraints, image BMP decoding, widget lifecycle retire/tombstone, POSIX regex search, modal event routing, and textinput undo hardening.
 - ~20K lines of new coverage: Canvas3D production harness, async 25-iteration race loop, `viper_display` CTest resource lock, human-manager baseball probes, 2D-graphics contract suites, and overflow-boundary tests for every hardened parser.
 - 11 Localization test files (~360 assertions); 3 libFuzzer harnesses for plural-rules / CLDR date-patterns / locale-JSON (gated on `VIPER_ENABLE_FUZZ`).
 - IL optimizer unit tests: DSE MayAlias/narrow-overwrite preservation, MemorySSA GEP escape, LICM pure-call hoisting, LoopRotate constant-backedge remap, LoopUnroll exit-value correctness, IndVarSimplify loop-local base, BranchVerifier unknown-operand, InstrParser trailing-annotation, ValueKey FAdd non-commutativity.
@@ -274,12 +285,12 @@ All four object-file readers and all three writers received a bounds-checking an
 
 ### Demos & docs
 
-Demos: human-manager baseball franchise simulator (new), Crackman (Pac-Man rewrite with session/progression/audio-bank split), two new 3D demos, Paint gains layers + undo, ViperIDE picks up file-watcher and context-menu null-active-document guards, XENOSCAPE boss + player fixes, Chess click-vs-drag detection fix (dragStartX/Y fields, click-on-origin keeps selection for click-to-move), three `examples/localization/` programs, Windows ARM64 smoke coverage for 3dbowling / 3dscene / baseball, 3D baseball smoke probe re-enabled after model + Zia source fixes. Docs: `viperlib/` sweep across all subsystems, new `viperlib/graphics/production2d.md` and `viperlib/localization/` set, `README.md` master snapshot, `il-guide.md` Optimizer Correctness Contract, Doxygen pass across ~100 runtime files, updated debugging/tools/il-reference/il-guide for new diagnostic flags and verifyAll API, BASIC grammar and runtime reference updated for USING EH semantics and class member scoping.
+Demos: human-manager baseball franchise simulator (new), Crackman (Pac-Man rewrite with session/progression/audio-bank split), two new 3D demos, Paint gains layers + undo, ViperIDE picks up file-watcher and context-menu null-active-document guards, XENOSCAPE boss + player fixes, Chess click-vs-drag detection fix (dragStartX/Y fields, click-on-origin keeps selection for click-to-move), three `examples/localization/` programs, Windows ARM64 smoke coverage for 3dbowling / 3dscene / baseball, 3D baseball smoke probe re-enabled after model + Zia source fixes, ViperSQL example gains DEFAULT parameters for stored procedures (`FuncParam.hasDefault`, `substituteSQLArgs`). Docs: `viperlib/` sweep across all subsystems, new `viperlib/graphics/production2d.md` and `viperlib/localization/` set, `README.md` master snapshot, `il-guide.md` Optimizer Correctness Contract, Doxygen pass across ~100 runtime files, updated debugging/tools/il-reference/il-guide for new diagnostic flags and verifyAll API, BASIC grammar and runtime reference updated for USING EH semantics and class member scoping, GUI viperlib docs updated for widget ownership guards, regex search, finalizer lifecycle, static Theme class, and image loading.
 
 ---
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 88-commit history. The pattern throughout is feature introduction followed by hardening follow-ups in the same subsystem.
+See `git log a91d388db..HEAD -- .` for the full 92-commit history. The pattern throughout is feature introduction followed by hardening follow-ups in the same subsystem.
 
 <!-- END DRAFT -->

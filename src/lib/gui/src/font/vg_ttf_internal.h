@@ -281,6 +281,15 @@ struct vg_font {
     uint32_t kern_offset; ///< Byte offset to the 'kern' (kerning) table (0 if absent).
     uint32_t name_offset; ///< Byte offset to the 'name' (naming) table.
 
+    //-- Table byte lengths ------------------------------------------------------
+
+    uint32_t cmap_len; ///< Length of the 'cmap' table in bytes.
+    uint32_t glyf_len; ///< Length of the 'glyf' table in bytes.
+    uint32_t loca_len; ///< Length of the 'loca' table in bytes.
+    uint32_t hmtx_len; ///< Length of the 'hmtx' table in bytes.
+    uint32_t kern_len; ///< Length of the 'kern' table in bytes.
+    uint32_t name_len; ///< Length of the 'name' table in bytes.
+
     //-- CMAP format 4 data (Basic Multilingual Plane, U+0000..U+FFFF) ---------
 
     uint16_t cmap4_seg_count; ///< Number of segments in the format 4 CMAP subtable.

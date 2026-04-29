@@ -21,7 +21,7 @@ last-verified: 2026-04-18
 | [Containers & Advanced](containers.md) | ScrollView, SplitPane, TabBar, TreeView, CodeEditor, Minimap |
 | [Application Components](application.md) | MenuBar, Toolbar, StatusBar, Dialogs, Notifications, Utilities, Themes |
 
-Recent runtime updates include reliable `Tab` / `Shift+Tab` focus traversal, better popup/input-capture behavior for menus and palettes, scroll-safe dialog/list rendering, and clipped floating-panel text rendering for overlay-heavy apps such as ViperIDE.
+Recent runtime updates include reliable `Tab` / `Shift+Tab` focus traversal, better popup/input-capture behavior for menus and palettes, scroll-safe dialog/list rendering, clipped floating-panel text rendering, and stricter TrueType bounds validation so malformed or truncated font tables fail cleanly instead of being rasterized.
 
 ## Complete Example (Zia)
 

@@ -12,6 +12,7 @@ window management, pixel operations, drawing primitives, and input handling with
 - **Software rendering** - 32-bit RGBA framebuffer with direct pixel access
 - **Cross-platform** - Native backends for macOS (Cocoa), Linux (X11), Windows (Win32)
 - **Drawing primitives** - Lines, rectangles, circles (outline & filled)
+- **Overflow-safe clipping** - Extreme public coordinates and clip rectangles are canonicalized before rasterization
 - **Input handling** - Keyboard, mouse, and event queue
 - **FPS limiting** - Configurable frame rate control
 - **Fully documented** - 164% comment coverage with Doxygen annotations

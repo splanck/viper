@@ -22,6 +22,7 @@
 
 #include "test_harness.h"
 #include "vgfx.h"
+#include <limits.h>
 #include <math.h>
 
 /* Helper: Count pixels of a given color in window */
@@ -324,6 +325,88 @@ void test_filled_circle(void) {
     TEST_END();
 }
 
+void test_extreme_line_is_clipped(void) {
+    TEST_BEGIN("Audit: Extreme Line Coordinates Are Clipped");
+
+    vgfx_window_params_t params = {
+        .width = 32, .height = 32, .title = "Test", .fps = 0, .resizable = 0};
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    vgfx_cls(win, VGFX_BLACK);
+    vgfx_line(win, INT32_MIN, 16, INT32_MAX, 16, 0x123456);
+
+    vgfx_color_t color;
+    ASSERT_EQ(vgfx_point(win, 0, 16, &color), 1);
+    ASSERT_EQ(color, 0x123456);
+    ASSERT_EQ(vgfx_point(win, 31, 16, &color), 1);
+    ASSERT_EQ(color, 0x123456);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
+void test_extreme_fill_rect_is_clipped(void) {
+    TEST_BEGIN("Audit: Extreme Filled Rectangle Is Clipped");
+
+    vgfx_window_params_t params = {
+        .width = 16, .height = 16, .title = "Test", .fps = 0, .resizable = 0};
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    vgfx_cls(win, VGFX_BLACK);
+    vgfx_fill_rect(win, -5, -5, INT32_MAX, INT32_MAX, 0xABCDEF);
+
+    vgfx_color_t color;
+    ASSERT_EQ(vgfx_point(win, 0, 0, &color), 1);
+    ASSERT_EQ(color, 0xABCDEF);
+    ASSERT_EQ(vgfx_point(win, 15, 15, &color), 1);
+    ASSERT_EQ(color, 0xABCDEF);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
+void test_extreme_clip_rect_is_canonicalized(void) {
+    TEST_BEGIN("Audit: Extreme Clip Rectangle Is Canonicalized");
+
+    vgfx_window_params_t params = {
+        .width = 12, .height = 12, .title = "Test", .fps = 0, .resizable = 0};
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    vgfx_cls(win, VGFX_BLACK);
+    vgfx_set_clip(win, -100, -100, INT32_MAX, INT32_MAX);
+    vgfx_fill_rect(win, 0, 0, 12, 12, 0x00AAFF);
+
+    vgfx_color_t color;
+    ASSERT_EQ(vgfx_point(win, 11, 11, &color), 1);
+    ASSERT_EQ(color, 0x00AAFF);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
+void test_empty_clip_rect_suppresses_drawing(void) {
+    TEST_BEGIN("Audit: Empty Clip Rectangle Suppresses Drawing");
+
+    vgfx_window_params_t params = {
+        .width = 8, .height = 8, .title = "Test", .fps = 0, .resizable = 0};
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    vgfx_cls(win, VGFX_BLACK);
+    vgfx_set_clip(win, 1, 1, 0, 4);
+    vgfx_fill_rect(win, 0, 0, 8, 8, 0xFFFFFF);
+
+    vgfx_color_t color;
+    ASSERT_EQ(vgfx_point(win, 4, 4, &color), 1);
+    ASSERT_EQ(color, VGFX_BLACK);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
 /* Main test runner */
 /// What: Entry point for drawing tests covering primitive rendering.
 /// Why:  Ensure that core drawing operations work end-to-end.
@@ -340,6 +423,10 @@ int main(void) {
     test_filled_rectangle();
     test_circle_outline();
     test_filled_circle();
+    test_extreme_line_is_clipped();
+    test_extreme_fill_rect_is_clipped();
+    test_extreme_clip_rect_is_canonicalized();
+    test_empty_clip_rect_suppresses_drawing();
 
     TEST_SUMMARY();
     return TEST_RETURN_CODE();

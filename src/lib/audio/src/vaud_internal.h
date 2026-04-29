@@ -316,6 +316,10 @@ void vaud_resample(const int16_t *input,
 /// @return Required output frame count.
 int64_t vaud_resample_output_frames(int64_t in_frames, int32_t in_rate, int32_t out_rate);
 
+/// @brief Compute the byte size of an interleaved int16 PCM buffer.
+/// @return 1 on success, 0 if frames/channels are invalid or overflow size_t.
+int vaud_pcm_s16_buffer_size(int64_t frames, int32_t channels, size_t *out_bytes);
+
 /// @brief Fill a music buffer with frames, resampling if necessary.
 /// @details Reads raw frames from the music's WAV file and, when the source
 ///          sample rate differs from VAUD_SAMPLE_RATE, resamples via linear

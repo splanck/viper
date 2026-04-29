@@ -31,7 +31,72 @@
 
 #include "vgfx.h"
 #include "vgfx_internal.h"
+#include <limits.h>
 #include <stdlib.h> /* abs */
+
+static int32_t clamp_i64_to_i32(int64_t value) {
+    if (value > INT32_MAX)
+        return INT32_MAX;
+    if (value < INT32_MIN)
+        return INT32_MIN;
+    return (int32_t)value;
+}
+
+static int get_effective_clip_bounds(const struct vgfx_window *win,
+                                     int64_t *min_x,
+                                     int64_t *min_y,
+                                     int64_t *max_x,
+                                     int64_t *max_y) {
+    if (!win || !min_x || !min_y || !max_x || !max_y || win->width <= 0 || win->height <= 0)
+        return 0;
+
+    int64_t left = 0;
+    int64_t top = 0;
+    int64_t right = win->width;
+    int64_t bottom = win->height;
+
+    if (win->clip_enabled) {
+        if (win->clip_w <= 0 || win->clip_h <= 0)
+            return 0;
+        int64_t clip_left = win->clip_x;
+        int64_t clip_top = win->clip_y;
+        int64_t clip_right = (int64_t)win->clip_x + (int64_t)win->clip_w;
+        int64_t clip_bottom = (int64_t)win->clip_y + (int64_t)win->clip_h;
+        if (clip_left > left)
+            left = clip_left;
+        if (clip_top > top)
+            top = clip_top;
+        if (clip_right < right)
+            right = clip_right;
+        if (clip_bottom < bottom)
+            bottom = clip_bottom;
+    }
+
+    if (left < 0)
+        left = 0;
+    if (top < 0)
+        top = 0;
+    if (right > win->width)
+        right = win->width;
+    if (bottom > win->height)
+        bottom = win->height;
+    if (left >= right || top >= bottom)
+        return 0;
+
+    *min_x = left;
+    *min_y = top;
+    *max_x = right;
+    *max_y = bottom;
+    return 1;
+}
+
+static void set_empty_clip(struct vgfx_window *win) {
+    win->clip_x = 0;
+    win->clip_y = 0;
+    win->clip_w = 0;
+    win->clip_h = 0;
+    win->clip_enabled = 1;
+}
 
 //===----------------------------------------------------------------------===//
 // Context Structures for Algorithm Callbacks
@@ -79,23 +144,12 @@ static inline void plot_pixel_checked(struct vgfx_window *win,
                                       int32_t x,
                                       int32_t y,
                                       vgfx_color_t color) {
-    /* Bounds check against clip rectangle (or window bounds if no clip) */
-    int32_t min_x = 0, min_y = 0;
-    int32_t max_x = win->width, max_y = win->height;
+    int64_t min_x = 0, min_y = 0, max_x = 0, max_y = 0;
+    if (!get_effective_clip_bounds(win, &min_x, &min_y, &max_x, &max_y))
+        return;
 
-    if (win->clip_enabled) {
-        /* Intersect with clip rectangle */
-        if (win->clip_x > min_x)
-            min_x = win->clip_x;
-        if (win->clip_y > min_y)
-            min_y = win->clip_y;
-        if (win->clip_x + win->clip_w < max_x)
-            max_x = win->clip_x + win->clip_w;
-        if (win->clip_y + win->clip_h < max_y)
-            max_y = win->clip_y + win->clip_h;
-    }
-
-    if (x < min_x || x >= max_x || y < min_y || y >= max_y) {
+    if ((int64_t)x < min_x || (int64_t)x >= max_x || (int64_t)y < min_y ||
+        (int64_t)y >= max_y) {
         return;
     }
 
@@ -106,7 +160,7 @@ static inline void plot_pixel_checked(struct vgfx_window *win,
     uint8_t a = 0xFF; /* Opaque alpha (required by RGBA format) */
 
     /* Write to framebuffer in RGBA format (4 bytes per pixel) */
-    uint8_t *pixel = win->pixels + (y * win->stride) + (x * 4);
+    uint8_t *pixel = win->pixels + ((size_t)y * (size_t)win->stride) + ((size_t)x * 4u);
     pixel[0] = r;
     pixel[1] = g;
     pixel[2] = b;
@@ -151,23 +205,12 @@ static void hline_callback(int32_t x0, int32_t x1, int32_t y, void *ctx) {
     struct vgfx_window *win = hctx->win;
     vgfx_color_t color = hctx->color;
 
-    /* Determine clip bounds */
-    int32_t min_x = 0, min_y = 0;
-    int32_t max_x = win->width, max_y = win->height;
-
-    if (win->clip_enabled) {
-        if (win->clip_x > min_x)
-            min_x = win->clip_x;
-        if (win->clip_y > min_y)
-            min_y = win->clip_y;
-        if (win->clip_x + win->clip_w < max_x)
-            max_x = win->clip_x + win->clip_w;
-        if (win->clip_y + win->clip_h < max_y)
-            max_y = win->clip_y + win->clip_h;
-    }
+    int64_t min_x = 0, min_y = 0, max_x = 0, max_y = 0;
+    if (!get_effective_clip_bounds(win, &min_x, &min_y, &max_x, &max_y))
+        return;
 
     /* Bounds check Y coordinate (reject entire scanline if out of clip bounds) */
-    if (y < min_y || y >= max_y)
+    if ((int64_t)y < min_y || (int64_t)y >= max_y)
         return;
 
     /* Ensure x0 <= x1 (swap if needed) */
@@ -178,10 +221,10 @@ static void hline_callback(int32_t x0, int32_t x1, int32_t y, void *ctx) {
     }
 
     /* Clip X coordinates to clip bounds */
-    if (x0 < min_x)
-        x0 = min_x;
-    if (x1 >= max_x)
-        x1 = max_x - 1;
+    if ((int64_t)x0 < min_x)
+        x0 = (int32_t)min_x;
+    if ((int64_t)x1 >= max_x)
+        x1 = (int32_t)(max_x - 1);
     if (x0 > x1)
         return; /* Scanline entirely clipped */
 
@@ -192,7 +235,7 @@ static void hline_callback(int32_t x0, int32_t x1, int32_t y, void *ctx) {
     uint8_t a = 0xFF;
 
     /* Draw horizontal line segment (scanline fill) */
-    uint8_t *scanline = win->pixels + (y * win->stride) + (x0 * 4);
+    uint8_t *scanline = win->pixels + ((size_t)y * (size_t)win->stride) + ((size_t)x0 * 4u);
     for (int32_t x = x0; x <= x1; x++) {
         scanline[0] = r;
         scanline[1] = g;
@@ -240,9 +283,9 @@ static void bresenham_line(int32_t x0,
                            int32_t y1,
                            void (*plot)(int32_t x, int32_t y, void *ctx),
                            void *ctx) {
-    /* Calculate absolute deltas (line extents) */
-    int32_t dx = abs(x1 - x0);
-    int32_t dy = abs(y1 - y0);
+    /* Calculate absolute deltas (line extents) in widened math. */
+    int64_t dx = llabs((int64_t)x1 - (int64_t)x0);
+    int64_t dy = llabs((int64_t)y1 - (int64_t)y0);
 
     /* Determine step direction for each axis (-1 or +1) */
     int32_t sx = (x0 < x1) ? 1 : -1;
@@ -251,7 +294,7 @@ static void bresenham_line(int32_t x0,
     /* Initialize error term (decision parameter)
      * err represents 2 * accumulated error scaled by dx and dy
      * When err crosses zero, step in the minor axis */
-    int32_t err = dx - dy;
+    int64_t err = dx - dy;
 
     /* Current position (start at beginning of line) */
     int32_t x = x0;
@@ -267,7 +310,7 @@ static void bresenham_line(int32_t x0,
             break;
 
         /* Calculate 2 * error for comparison (avoids division) */
-        int32_t e2 = 2 * err;
+        int64_t e2 = 2 * err;
 
         /* Step in X direction if error threshold exceeded */
         if (e2 > -dy) {
@@ -279,6 +322,100 @@ static void bresenham_line(int32_t x0,
         if (e2 < dx) {
             err += dx;
             y += sy;
+        }
+    }
+}
+
+enum {
+    CLIP_LEFT = 1,
+    CLIP_RIGHT = 2,
+    CLIP_TOP = 4,
+    CLIP_BOTTOM = 8,
+};
+
+static int line_outcode(int64_t x,
+                        int64_t y,
+                        int64_t min_x,
+                        int64_t min_y,
+                        int64_t max_x,
+                        int64_t max_y) {
+    int code = 0;
+    if (x < min_x)
+        code |= CLIP_LEFT;
+    else if (x > max_x)
+        code |= CLIP_RIGHT;
+    if (y < min_y)
+        code |= CLIP_TOP;
+    else if (y > max_y)
+        code |= CLIP_BOTTOM;
+    return code;
+}
+
+static int64_t round_double_to_i64(double value) {
+    return (int64_t)(value >= 0.0 ? value + 0.5 : value - 0.5);
+}
+
+static int clip_line_to_bounds(int64_t *x0,
+                               int64_t *y0,
+                               int64_t *x1,
+                               int64_t *y1,
+                               int64_t min_x,
+                               int64_t min_y,
+                               int64_t max_exclusive_x,
+                               int64_t max_exclusive_y) {
+    int64_t max_x = max_exclusive_x - 1;
+    int64_t max_y = max_exclusive_y - 1;
+    int out0 = line_outcode(*x0, *y0, min_x, min_y, max_x, max_y);
+    int out1 = line_outcode(*x1, *y1, min_x, min_y, max_x, max_y);
+
+    while (1) {
+        if ((out0 | out1) == 0)
+            return 1;
+        if ((out0 & out1) != 0)
+            return 0;
+
+        int out = out0 ? out0 : out1;
+        int64_t x = 0;
+        int64_t y = 0;
+
+        if (out & CLIP_TOP) {
+            if (*y1 == *y0)
+                return 0;
+            x = round_double_to_i64((double)*x0 +
+                                    (double)(*x1 - *x0) * (double)(min_y - *y0) /
+                                        (double)(*y1 - *y0));
+            y = min_y;
+        } else if (out & CLIP_BOTTOM) {
+            if (*y1 == *y0)
+                return 0;
+            x = round_double_to_i64((double)*x0 +
+                                    (double)(*x1 - *x0) * (double)(max_y - *y0) /
+                                        (double)(*y1 - *y0));
+            y = max_y;
+        } else if (out & CLIP_RIGHT) {
+            if (*x1 == *x0)
+                return 0;
+            y = round_double_to_i64((double)*y0 +
+                                    (double)(*y1 - *y0) * (double)(max_x - *x0) /
+                                        (double)(*x1 - *x0));
+            x = max_x;
+        } else {
+            if (*x1 == *x0)
+                return 0;
+            y = round_double_to_i64((double)*y0 +
+                                    (double)(*y1 - *y0) * (double)(min_x - *x0) /
+                                        (double)(*x1 - *x0));
+            x = min_x;
+        }
+
+        if (out == out0) {
+            *x0 = x;
+            *y0 = y;
+            out0 = line_outcode(*x0, *y0, min_x, min_y, max_x, max_y);
+        } else {
+            *x1 = x;
+            *y1 = y;
+            out1 = line_outcode(*x1, *y1, min_x, min_y, max_x, max_y);
         }
     }
 }
@@ -488,11 +625,19 @@ void vgfx_draw_line(
     if (!win)
         return;
 
+    int64_t min_x = 0, min_y = 0, max_x = 0, max_y = 0;
+    if (!get_effective_clip_bounds(win, &min_x, &min_y, &max_x, &max_y))
+        return;
+
+    int64_t cx1 = x1, cy1 = y1, cx2 = x2, cy2 = y2;
+    if (!clip_line_to_bounds(&cx1, &cy1, &cx2, &cy2, min_x, min_y, max_x, max_y))
+        return;
+
     /* Set up plot context (passed to bresenham_line via plot_callback) */
     plot_context_t ctx = {.win = win, .color = color};
 
     /* Draw line using Bresenham algorithm */
-    bresenham_line(x1, y1, x2, y2, plot_callback, &ctx);
+    bresenham_line((int32_t)cx1, (int32_t)cy1, (int32_t)cx2, (int32_t)cy2, plot_callback, &ctx);
 }
 
 /// @brief Draw a rectangle outline.
@@ -515,16 +660,25 @@ void vgfx_draw_rect(
     if (w <= 0 || h <= 0)
         return;
 
+    int64_t x0 = x;
+    int64_t y0 = y;
+    int64_t x1 = (int64_t)x + (int64_t)w - 1;
+    int64_t y1 = (int64_t)y + (int64_t)h - 1;
+
     /* Draw four edges of rectangle using line primitive
      * Top:    (x, y) to (x+w-1, y)
      * Bottom: (x, y+h-1) to (x+w-1, y+h-1)
      * Left:   (x, y) to (x, y+h-1)
      * Right:  (x+w-1, y) to (x+w-1, y+h-1)
      */
-    vgfx_draw_line(window, x, y, x + w - 1, y, color);                 /* Top */
-    vgfx_draw_line(window, x, y + h - 1, x + w - 1, y + h - 1, color); /* Bottom */
-    vgfx_draw_line(window, x, y, x, y + h - 1, color);                 /* Left */
-    vgfx_draw_line(window, x + w - 1, y, x + w - 1, y + h - 1, color); /* Right */
+    vgfx_draw_line(
+        window, clamp_i64_to_i32(x0), clamp_i64_to_i32(y0), clamp_i64_to_i32(x1), clamp_i64_to_i32(y0), color);
+    vgfx_draw_line(
+        window, clamp_i64_to_i32(x0), clamp_i64_to_i32(y1), clamp_i64_to_i32(x1), clamp_i64_to_i32(y1), color);
+    vgfx_draw_line(
+        window, clamp_i64_to_i32(x0), clamp_i64_to_i32(y0), clamp_i64_to_i32(x0), clamp_i64_to_i32(y1), color);
+    vgfx_draw_line(
+        window, clamp_i64_to_i32(x1), clamp_i64_to_i32(y0), clamp_i64_to_i32(x1), clamp_i64_to_i32(y1), color);
 }
 
 /// @brief Draw a filled rectangle.
@@ -551,30 +705,26 @@ void vgfx_draw_fill_rect(
     if (w <= 0 || h <= 0)
         return;
 
-    /* Determine clip bounds (use clip rect if enabled, otherwise window bounds) */
-    int32_t clip_min_x = 0, clip_min_y = 0;
-    int32_t clip_max_x = win->width, clip_max_y = win->height;
-
-    if (win->clip_enabled) {
-        if (win->clip_x > clip_min_x)
-            clip_min_x = win->clip_x;
-        if (win->clip_y > clip_min_y)
-            clip_min_y = win->clip_y;
-        if (win->clip_x + win->clip_w < clip_max_x)
-            clip_max_x = win->clip_x + win->clip_w;
-        if (win->clip_y + win->clip_h < clip_max_y)
-            clip_max_y = win->clip_y + win->clip_h;
-    }
+    int64_t clip_min_x = 0, clip_min_y = 0, clip_max_x = 0, clip_max_y = 0;
+    if (!get_effective_clip_bounds(win, &clip_min_x, &clip_min_y, &clip_max_x, &clip_max_y))
+        return;
 
     /* Clip rectangle to clip bounds */
-    int32_t x1 = (x < clip_min_x) ? clip_min_x : x;
-    int32_t y1 = (y < clip_min_y) ? clip_min_y : y;
-    int32_t x2 = (x + w > clip_max_x) ? clip_max_x : x + w;
-    int32_t y2 = (y + h > clip_max_y) ? clip_max_y : y + h;
+    int64_t rect_x2 = (int64_t)x + (int64_t)w;
+    int64_t rect_y2 = (int64_t)y + (int64_t)h;
+    int64_t clipped_x1 = ((int64_t)x < clip_min_x) ? clip_min_x : (int64_t)x;
+    int64_t clipped_y1 = ((int64_t)y < clip_min_y) ? clip_min_y : (int64_t)y;
+    int64_t clipped_x2 = (rect_x2 > clip_max_x) ? clip_max_x : rect_x2;
+    int64_t clipped_y2 = (rect_y2 > clip_max_y) ? clip_max_y : rect_y2;
 
     /* Check if rectangle is completely out of bounds (no pixels to draw) */
-    if (x1 >= x2 || y1 >= y2)
+    if (clipped_x1 >= clipped_x2 || clipped_y1 >= clipped_y2)
         return;
+
+    int32_t x1 = (int32_t)clipped_x1;
+    int32_t y1 = (int32_t)clipped_y1;
+    int32_t x2 = (int32_t)clipped_x2;
+    int32_t y2 = (int32_t)clipped_y2;
 
     /* Extract color components once for efficiency (avoid repeated bit shifts) */
     uint8_t r = (uint8_t)((color >> 16) & 0xFF);
@@ -585,7 +735,7 @@ void vgfx_draw_fill_rect(
     /* Fill each scanline (row-by-row rendering) */
     for (int32_t row = y1; row < y2; row++) {
         /* Compute scanline base address (start of row) */
-        uint8_t *scanline = win->pixels + (row * win->stride) + (x1 * 4);
+        uint8_t *scanline = win->pixels + ((size_t)row * (size_t)win->stride) + ((size_t)x1 * 4u);
 
         /* Fill scanline with color (column-by-column) */
         for (int32_t col = x1; col < x2; col++) {
@@ -679,6 +829,11 @@ void vgfx_set_clip(vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_
     if (!win)
         return;
 
+    if (w <= 0 || h <= 0) {
+        set_empty_clip(win);
+        return;
+    }
+
     /* Scale clip rect to physical pixels when coord_scale is active */
     float cs = vgfx_internal_coord_scale(win);
     if (cs > 1.0f) {
@@ -688,10 +843,33 @@ void vgfx_set_clip(vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_
         h = vgfx_internal_scale_up_i32(h, cs);
     }
 
-    win->clip_x = x;
-    win->clip_y = y;
-    win->clip_w = w;
-    win->clip_h = h;
+    if (w <= 0 || h <= 0) {
+        set_empty_clip(win);
+        return;
+    }
+
+    int64_t left = x;
+    int64_t top = y;
+    int64_t right = (int64_t)x + (int64_t)w;
+    int64_t bottom = (int64_t)y + (int64_t)h;
+    if (left < 0)
+        left = 0;
+    if (top < 0)
+        top = 0;
+    if (right > win->width)
+        right = win->width;
+    if (bottom > win->height)
+        bottom = win->height;
+
+    if (left >= right || top >= bottom) {
+        set_empty_clip(win);
+        return;
+    }
+
+    win->clip_x = (int32_t)left;
+    win->clip_y = (int32_t)top;
+    win->clip_w = (int32_t)(right - left);
+    win->clip_h = (int32_t)(bottom - top);
     win->clip_enabled = 1;
 }
 

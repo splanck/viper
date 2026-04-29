@@ -35,6 +35,8 @@
 
 #include "vgfx.h"
 #include "vgfx_config.h"
+#include <limits.h>
+#include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -531,16 +533,28 @@ static inline int vgfx_internal_in_bounds(struct vgfx_window *win, int32_t x, in
     return (win && x >= 0 && x < win->width && y >= 0 && y < win->height);
 }
 
+#define VGFX_MAX_SCALE_FACTOR 16.0f
+
 static inline float vgfx_internal_sanitize_scale(float scale) {
-    return (scale >= 1.0f) ? scale : 1.0f;
+    if (!isfinite(scale) || scale < 1.0f)
+        return 1.0f;
+    if (scale > VGFX_MAX_SCALE_FACTOR)
+        return VGFX_MAX_SCALE_FACTOR;
+    return scale;
 }
 
 static inline int32_t vgfx_internal_round_scaled(float value) {
+    if (!isfinite(value))
+        return 0;
+    if (value >= (float)INT32_MAX)
+        return INT32_MAX;
+    if (value <= (float)INT32_MIN)
+        return INT32_MIN;
     return (int32_t)(value >= 0.0f ? value + 0.5f : value - 0.5f);
 }
 
 static inline float vgfx_internal_coord_scale(const struct vgfx_window *win) {
-    return (win && win->coord_scale >= 1.0f) ? win->coord_scale : 1.0f;
+    return win ? vgfx_internal_sanitize_scale(win->coord_scale) : 1.0f;
 }
 
 static inline int32_t vgfx_internal_scale_up_i32(int32_t logical, float scale) {

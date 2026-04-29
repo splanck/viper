@@ -13,6 +13,20 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int glyph_bitmap_size(const vg_glyph_t *glyph, size_t *out_size) {
+    if (!glyph || !out_size || glyph->width <= 0 || glyph->height <= 0) {
+        if (out_size)
+            *out_size = 0;
+        return 1;
+    }
+    size_t width = (size_t)glyph->width;
+    size_t height = (size_t)glyph->height;
+    if (width > SIZE_MAX / height)
+        return 0;
+    *out_size = width * height;
+    return 1;
+}
+
 // Monotonic tick incremented on every cache hit — used for LRU eviction.
 // uint64_t prevents wrap-around after 4B+ hits in long-running applications.
 static uint64_t g_cache_tick = 0;
@@ -243,8 +257,12 @@ void vg_cache_put(vg_glyph_cache_t *cache,
     }
 
     // Check memory limit and evict if necessary
-    size_t glyph_memory = glyph->width * glyph->height;
-    if (cache->memory_used + glyph_memory > VG_CACHE_MAX_MEMORY) {
+    size_t glyph_memory = 0;
+    if (!glyph_bitmap_size(glyph, &glyph_memory))
+        return;
+    if (glyph_memory > VG_CACHE_MAX_MEMORY)
+        return;
+    if (cache->memory_used > VG_CACHE_MAX_MEMORY - glyph_memory) {
         cache_evict_some(cache);
     }
 
@@ -264,7 +282,11 @@ void vg_cache_put(vg_glyph_cache_t *cache,
 
     // Copy bitmap if present
     if (glyph->bitmap && glyph->width > 0 && glyph->height > 0) {
-        size_t bitmap_size = glyph->width * glyph->height;
+        size_t bitmap_size = 0;
+        if (!glyph_bitmap_size(glyph, &bitmap_size)) {
+            free(entry);
+            return;
+        }
         entry->glyph.bitmap = malloc(bitmap_size);
         if (!entry->glyph.bitmap) {
             // Bitmap allocation failed — discard entry rather than caching a NULL bitmap

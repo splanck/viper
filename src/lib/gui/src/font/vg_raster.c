@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 // vg_raster.c - Glyph rasterization with antialiasing
 #include "vg_ttf_internal.h"
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,6 +22,7 @@
 //=============================================================================
 
 #define MAX_POINTS 16384
+#define MAX_GLYPH_BITMAP_DIM 4096
 #define CURVE_TOLERANCE 0.25f
 #define OVERSAMPLE 4 // Supersampling factor for antialiasing
 
@@ -334,6 +336,14 @@ static void rasterize_scanlines(
 //=============================================================================
 
 vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size) {
+    if (!font || !isfinite(size) || size <= 0.0f || font->head.units_per_em == 0)
+        return NULL;
+
+    // Calculate scale factor
+    float scale = size / (float)font->head.units_per_em;
+    if (!isfinite(scale) || scale <= 0.0f)
+        return NULL;
+
     // Get glyph outline
     float *points_x = NULL;
     float *points_y = NULL;
@@ -353,9 +363,6 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size) {
         return NULL;
     }
 
-    // Calculate scale factor
-    float scale = size / (float)font->head.units_per_em;
-
     // Get horizontal metrics
     int advance_width, left_side_bearing;
     ttf_get_h_metrics(font, glyph_id, &advance_width, &left_side_bearing);
@@ -370,7 +377,15 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size) {
         return NULL;
     }
 
-    glyph->advance = (int)(advance_width * scale + 0.5f);
+    float scaled_advance = advance_width * scale;
+    if (!isfinite(scaled_advance))
+        scaled_advance = 0.0f;
+    if (scaled_advance > (float)INT_MAX)
+        glyph->advance = INT_MAX;
+    else if (scaled_advance < (float)INT_MIN)
+        glyph->advance = INT_MIN;
+    else
+        glyph->advance = (int)(scaled_advance + (scaled_advance >= 0.0f ? 0.5f : -0.5f));
 
     // Empty glyph (like space)
     if (num_points == 0) {
@@ -406,11 +421,32 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size) {
     max_x *= scale;
     min_y *= scale;
     max_y *= scale;
+    if (!isfinite(min_x) || !isfinite(max_x) || !isfinite(min_y) || !isfinite(max_y) ||
+        max_x < min_x || max_y < min_y) {
+        free(glyph);
+        free(points_x);
+        free(points_y);
+        free(flags);
+        free(contour_ends);
+        return NULL;
+    }
 
     // Calculate bitmap dimensions with padding
     int padding = 1;
-    int bmp_width = (int)ceilf(max_x - min_x) + padding * 2;
-    int bmp_height = (int)ceilf(max_y - min_y) + padding * 2;
+    float bmp_width_f = ceilf(max_x - min_x) + (float)(padding * 2);
+    float bmp_height_f = ceilf(max_y - min_y) + (float)(padding * 2);
+    if (!isfinite(bmp_width_f) || !isfinite(bmp_height_f) ||
+        bmp_width_f > (float)MAX_GLYPH_BITMAP_DIM ||
+        bmp_height_f > (float)MAX_GLYPH_BITMAP_DIM) {
+        free(glyph);
+        free(points_x);
+        free(points_y);
+        free(flags);
+        free(contour_ends);
+        return NULL;
+    }
+    int bmp_width = (int)bmp_width_f;
+    int bmp_height = (int)bmp_height_f;
 
     if (bmp_width <= 0)
         bmp_width = 1;
@@ -425,8 +461,16 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size) {
     // Note: TTF y increases upward, bitmap y increases downward
     glyph->width = bmp_width;
     glyph->height = bmp_height;
-    glyph->bearing_x = (int)floorf(min_x);
-    glyph->bearing_y = (int)ceilf(max_y); // Top of glyph relative to baseline
+    float bearing_x_f = floorf(min_x);
+    float bearing_y_f = ceilf(max_y);
+    glyph->bearing_x =
+        (bearing_x_f > (float)INT_MAX) ? INT_MAX
+        : (bearing_x_f < (float)INT_MIN) ? INT_MIN
+                                         : (int)bearing_x_f;
+    glyph->bearing_y =
+        (bearing_y_f > (float)INT_MAX) ? INT_MAX
+        : (bearing_y_f < (float)INT_MIN) ? INT_MIN
+                                         : (int)bearing_y_f; // Top of glyph relative to baseline
 
     // Convert outline to polygon
     raster_point_t *polygon = malloc(MAX_POINTS * sizeof(raster_point_t));
@@ -456,10 +500,27 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size) {
     }
 
     // Allocate and rasterize bitmap
-    glyph->bitmap = calloc(bmp_width * bmp_height, 1);
-    if (glyph->bitmap) {
-        rasterize_scanlines(polygon, polygon_count, bmp_width, bmp_height, glyph->bitmap);
+    size_t bitmap_size = (size_t)bmp_width * (size_t)bmp_height;
+    if ((size_t)bmp_width != 0 && bitmap_size / (size_t)bmp_width != (size_t)bmp_height) {
+        free(polygon);
+        free(glyph);
+        free(points_x);
+        free(points_y);
+        free(flags);
+        free(contour_ends);
+        return NULL;
     }
+    glyph->bitmap = calloc(bitmap_size, 1);
+    if (!glyph->bitmap) {
+        free(polygon);
+        free(glyph);
+        free(points_x);
+        free(points_y);
+        free(flags);
+        free(contour_ends);
+        return NULL;
+    }
+    rasterize_scanlines(polygon, polygon_count, bmp_width, bmp_height, glyph->bitmap);
 
     // Cleanup
     free(polygon);

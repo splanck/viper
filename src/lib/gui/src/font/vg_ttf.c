@@ -11,9 +11,48 @@
 //
 //===----------------------------------------------------------------------===//
 #include "vg_ttf_internal.h"
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define TTF_MAX_COMPOSITE_DEPTH 16
+
+static bool ttf_range_fits(size_t total, uint32_t offset, uint32_t length) {
+    return (size_t)offset <= total && (size_t)length <= total - (size_t)offset;
+}
+
+static bool ttf_cursor_can_read(const uint8_t *p, const uint8_t *end, size_t n) {
+    return p <= end && (size_t)(end - p) >= n;
+}
+
+static bool ttf_read_u8_checked(const uint8_t **p, const uint8_t *end, uint8_t *out) {
+    if (!ttf_cursor_can_read(*p, end, 1))
+        return false;
+    *out = **p;
+    (*p)++;
+    return true;
+}
+
+static bool ttf_read_u16_checked(const uint8_t **p, const uint8_t *end, uint16_t *out) {
+    if (!ttf_cursor_can_read(*p, end, 2))
+        return false;
+    *out = ttf_read_u16(*p);
+    *p += 2;
+    return true;
+}
+
+static bool ttf_read_i16_checked(const uint8_t **p, const uint8_t *end, int16_t *out) {
+    uint16_t value;
+    if (!ttf_read_u16_checked(p, end, &value))
+        return false;
+    *out = (int16_t)value;
+    return true;
+}
+
+static bool ttf_mul_size_overflows(size_t a, size_t b) {
+    return a != 0 && b > SIZE_MAX / a;
+}
 
 //=============================================================================
 // Table Finding
@@ -21,6 +60,8 @@
 
 static const uint8_t *ttf_find_table(vg_font_t *font, uint32_t tag, uint32_t *out_len) {
     const uint8_t *data = font->data;
+    if (out_len)
+        *out_len = 0;
 
     /* Minimum header size: 12 bytes (sfVersion + numTables + searchRange + ...) */
     if (font->data_size < 12)
@@ -29,8 +70,9 @@ static const uint8_t *ttf_find_table(vg_font_t *font, uint32_t tag, uint32_t *ou
     uint16_t num_tables = ttf_read_u16(data + 4);
 
     /* Validate that the entire table directory fits within the file */
-    if ((uint32_t)(12 + (uint32_t)num_tables * 16) > font->data_size)
-        num_tables = (uint16_t)((font->data_size - 12) / 16);
+    size_t directory_bytes = 12u + (size_t)num_tables * 16u;
+    if (directory_bytes > font->data_size)
+        return NULL;
 
     for (int i = 0; i < num_tables; i++) {
         const uint8_t *entry = data + 12 + i * 16;
@@ -38,9 +80,9 @@ static const uint8_t *ttf_find_table(vg_font_t *font, uint32_t tag, uint32_t *ou
         if (entry_tag == tag) {
             uint32_t offset = ttf_read_u32(entry + 8);
             uint32_t length = ttf_read_u32(entry + 12);
-            if (out_len)
-                *out_len = length;
-            if (offset + length <= font->data_size) {
+            if (ttf_range_fits(font->data_size, offset, length)) {
+                if (out_len)
+                    *out_len = length;
                 return data + offset;
             }
             return NULL;
@@ -64,7 +106,8 @@ bool ttf_parse_head(vg_font_t *font, const uint8_t *data, uint32_t len) {
     font->head.y_max = ttf_read_i16(data + 42);
     font->head.index_to_loc_format = ttf_read_i16(data + 50);
 
-    return font->head.units_per_em > 0;
+    return font->head.units_per_em > 0 &&
+           (font->head.index_to_loc_format == 0 || font->head.index_to_loc_format == 1);
 }
 
 //=============================================================================
@@ -99,17 +142,56 @@ bool ttf_parse_maxp(vg_font_t *font, const uint8_t *data, uint32_t len) {
 // Parse 'cmap' Table
 //=============================================================================
 
-static bool ttf_parse_cmap_format4(vg_font_t *font, const uint8_t *subtable) {
+static void ttf_free_cmap4(vg_font_t *font) {
+    free(font->cmap4_end_codes);
+    free(font->cmap4_start_codes);
+    free(font->cmap4_id_deltas);
+    free(font->cmap4_id_range_offsets);
+    free(font->cmap4_glyph_ids);
+    font->cmap4_end_codes = NULL;
+    font->cmap4_start_codes = NULL;
+    font->cmap4_id_deltas = NULL;
+    font->cmap4_id_range_offsets = NULL;
+    font->cmap4_glyph_ids = NULL;
+    font->cmap4_seg_count = 0;
+    font->cmap4_glyph_ids_count = 0;
+}
+
+static void ttf_free_cmap12(vg_font_t *font) {
+    free(font->cmap12_start_codes);
+    free(font->cmap12_end_codes);
+    free(font->cmap12_start_glyph_ids);
+    font->cmap12_start_codes = NULL;
+    font->cmap12_end_codes = NULL;
+    font->cmap12_start_glyph_ids = NULL;
+    font->cmap12_num_groups = 0;
+}
+
+static bool ttf_parse_cmap_format4(vg_font_t *font,
+                                   const uint8_t *subtable,
+                                   uint32_t available_len) {
+    if (available_len < 16)
+        return false;
+
     uint16_t length = ttf_read_u16(subtable + 2);
     uint16_t seg_count_x2 = ttf_read_u16(subtable + 6);
+    if (length > available_len || length < 16 || (seg_count_x2 & 1u) != 0)
+        return false;
+
     uint16_t seg_count = seg_count_x2 / 2;
 
     if (seg_count == 0)
         return false;
 
-    font->cmap4_seg_count = seg_count;
+    size_t minimum_len = 16u + (size_t)seg_count * 8u;
+    if (minimum_len > length)
+        return false;
 
     // Allocate arrays
+    if (ttf_mul_size_overflows(seg_count, sizeof(uint16_t)) ||
+        ttf_mul_size_overflows(seg_count, sizeof(int16_t)))
+        return false;
+
     font->cmap4_end_codes = malloc(seg_count * sizeof(uint16_t));
     font->cmap4_start_codes = malloc(seg_count * sizeof(uint16_t));
     font->cmap4_id_deltas = malloc(seg_count * sizeof(int16_t));
@@ -117,91 +199,132 @@ static bool ttf_parse_cmap_format4(vg_font_t *font, const uint8_t *subtable) {
 
     if (!font->cmap4_end_codes || !font->cmap4_start_codes || !font->cmap4_id_deltas ||
         !font->cmap4_id_range_offsets) {
-        free(font->cmap4_end_codes);
-        free(font->cmap4_start_codes);
-        free(font->cmap4_id_deltas);
-        free(font->cmap4_id_range_offsets);
-        font->cmap4_end_codes = NULL;
-        font->cmap4_start_codes = NULL;
-        font->cmap4_id_deltas = NULL;
-        font->cmap4_id_range_offsets = NULL;
+        ttf_free_cmap4(font);
         return false;
     }
 
     const uint8_t *p = subtable + 14;
+    const uint8_t *end = subtable + length;
 
     // End codes
     for (int i = 0; i < seg_count; i++) {
+        if (!ttf_cursor_can_read(p, end, 2)) {
+            ttf_free_cmap4(font);
+            return false;
+        }
         font->cmap4_end_codes[i] = ttf_read_u16(p);
         p += 2;
     }
 
+    if (!ttf_cursor_can_read(p, end, 2)) {
+        ttf_free_cmap4(font);
+        return false;
+    }
     p += 2; // Skip reserved pad
 
     // Start codes
     for (int i = 0; i < seg_count; i++) {
+        if (!ttf_cursor_can_read(p, end, 2)) {
+            ttf_free_cmap4(font);
+            return false;
+        }
         font->cmap4_start_codes[i] = ttf_read_u16(p);
         p += 2;
+        if (font->cmap4_start_codes[i] > font->cmap4_end_codes[i]) {
+            ttf_free_cmap4(font);
+            return false;
+        }
     }
 
     // ID deltas
     for (int i = 0; i < seg_count; i++) {
+        if (!ttf_cursor_can_read(p, end, 2)) {
+            ttf_free_cmap4(font);
+            return false;
+        }
         font->cmap4_id_deltas[i] = ttf_read_i16(p);
         p += 2;
     }
 
     // ID range offsets
     for (int i = 0; i < seg_count; i++) {
+        if (!ttf_cursor_can_read(p, end, 2)) {
+            ttf_free_cmap4(font);
+            return false;
+        }
         font->cmap4_id_range_offsets[i] = ttf_read_u16(p);
         p += 2;
     }
 
     // Glyph ID array follows (remaining bytes)
-    uint32_t glyph_ids_bytes = (subtable + length) - p;
-    font->cmap4_glyph_ids_count = glyph_ids_bytes / 2;
+    size_t glyph_ids_bytes = (size_t)(end - p);
+    font->cmap4_glyph_ids_count = (uint32_t)(glyph_ids_bytes / 2u);
     if (font->cmap4_glyph_ids_count > 0) {
         font->cmap4_glyph_ids = malloc(font->cmap4_glyph_ids_count * sizeof(uint16_t));
-        if (font->cmap4_glyph_ids) {
-            for (uint32_t i = 0; i < font->cmap4_glyph_ids_count; i++) {
-                font->cmap4_glyph_ids[i] = ttf_read_u16(p);
-                p += 2;
+        if (!font->cmap4_glyph_ids) {
+            ttf_free_cmap4(font);
+            return false;
+        }
+        for (uint32_t i = 0; i < font->cmap4_glyph_ids_count; i++) {
+            if (!ttf_cursor_can_read(p, end, 2)) {
+                ttf_free_cmap4(font);
+                return false;
             }
+            font->cmap4_glyph_ids[i] = ttf_read_u16(p);
+            p += 2;
         }
     }
 
+    font->cmap4_seg_count = seg_count;
     return true;
 }
 
-static bool ttf_parse_cmap_format12(vg_font_t *font, const uint8_t *subtable) {
+static bool ttf_parse_cmap_format12(vg_font_t *font,
+                                    const uint8_t *subtable,
+                                    uint32_t available_len) {
+    if (available_len < 16)
+        return false;
+
+    uint32_t length = ttf_read_u32(subtable + 4);
     uint32_t num_groups = ttf_read_u32(subtable + 12);
 
     if (num_groups == 0)
         return false;
+    if (length < 16 || length > available_len)
+        return false;
+    if (num_groups > (length - 16u) / 12u)
+        return false;
+    if (ttf_mul_size_overflows(num_groups, sizeof(uint32_t)))
+        return false;
 
-    font->cmap12_num_groups = num_groups;
     font->cmap12_start_codes = malloc(num_groups * sizeof(uint32_t));
     font->cmap12_end_codes = malloc(num_groups * sizeof(uint32_t));
     font->cmap12_start_glyph_ids = malloc(num_groups * sizeof(uint32_t));
 
     if (!font->cmap12_start_codes || !font->cmap12_end_codes || !font->cmap12_start_glyph_ids) {
-        free(font->cmap12_start_codes);
-        free(font->cmap12_end_codes);
-        free(font->cmap12_start_glyph_ids);
-        font->cmap12_start_codes = NULL;
-        font->cmap12_end_codes = NULL;
-        font->cmap12_start_glyph_ids = NULL;
-        font->cmap12_num_groups = 0;
+        ttf_free_cmap12(font);
         return false;
     }
 
     const uint8_t *p = subtable + 16;
+    const uint8_t *end = subtable + length;
     for (uint32_t i = 0; i < num_groups; i++) {
+        if (!ttf_cursor_can_read(p, end, 12)) {
+            ttf_free_cmap12(font);
+            return false;
+        }
         font->cmap12_start_codes[i] = ttf_read_u32(p);
         font->cmap12_end_codes[i] = ttf_read_u32(p + 4);
         font->cmap12_start_glyph_ids[i] = ttf_read_u32(p + 8);
+        if (font->cmap12_start_codes[i] > font->cmap12_end_codes[i] ||
+            font->cmap12_end_codes[i] > 0x10FFFFu) {
+            ttf_free_cmap12(font);
+            return false;
+        }
         p += 12;
     }
 
+    font->cmap12_num_groups = num_groups;
     return true;
 }
 
@@ -210,41 +333,48 @@ bool ttf_parse_cmap(vg_font_t *font, const uint8_t *data, uint32_t len) {
         return false;
 
     uint16_t num_tables = ttf_read_u16(data + 2);
+    if (4u + (size_t)num_tables * 8u > len)
+        return false;
 
     // Look for format 12 (full Unicode) first, then format 4 (BMP)
     const uint8_t *format4_subtable = NULL;
     const uint8_t *format12_subtable = NULL;
+    uint32_t format4_len = 0;
+    uint32_t format12_len = 0;
 
     for (int i = 0; i < num_tables; i++) {
         const uint8_t *record = data + 4 + i * 8;
         uint16_t platform_id = ttf_read_u16(record);
         uint32_t offset = ttf_read_u32(record + 4);
 
-        if (offset >= len)
+        if (offset > len || len - offset < 2)
             continue;
 
         const uint8_t *subtable = data + offset;
+        uint32_t subtable_len = len - offset;
         uint16_t format = ttf_read_u16(subtable);
 
         // Prefer Unicode platform (0) or Windows (3)
         if (platform_id == 0 || platform_id == 3) {
             if (format == 4 && !format4_subtable) {
                 format4_subtable = subtable;
+                format4_len = subtable_len;
             } else if (format == 12 && !format12_subtable) {
                 format12_subtable = subtable;
+                format12_len = subtable_len;
             }
         }
     }
 
     // Parse format 12 if available (full Unicode support)
     if (format12_subtable) {
-        ttf_parse_cmap_format12(font, format12_subtable);
+        ttf_parse_cmap_format12(font, format12_subtable, format12_len);
     }
 
     // Always try to parse format 4 for BMP characters
     if (format4_subtable) {
-        if (!ttf_parse_cmap_format4(font, format4_subtable)) {
-            return format12_subtable != NULL; // OK if we have format 12
+        if (!ttf_parse_cmap_format4(font, format4_subtable, format4_len)) {
+            return font->cmap12_num_groups > 0; // OK if we have parsed format 12
         }
     }
 
@@ -262,20 +392,28 @@ bool ttf_parse_kern(vg_font_t *font, const uint8_t *data, uint32_t len) {
     uint16_t num_tables = ttf_read_u16(data + 2);
 
     const uint8_t *p = data + 4;
+    const uint8_t *end = data + len;
 
     for (int t = 0; t < num_tables; t++) {
-        if (p + 6 > data + len)
+        if (!ttf_cursor_can_read(p, end, 6))
             break;
 
         uint16_t subtable_length = ttf_read_u16(p + 2);
         uint16_t coverage = ttf_read_u16(p + 4);
+        if (subtable_length < 6 || !ttf_cursor_can_read(p, end, subtable_length))
+            break;
 
         // Only support format 0 (ordered list of kerning pairs)
         uint8_t format = coverage >> 8;
         if (format == 0 && subtable_length >= 14) {
             uint16_t num_pairs = ttf_read_u16(p + 6);
+            size_t pair_bytes = (size_t)num_pairs * 6u;
+            if (pair_bytes > (size_t)subtable_length - 14u)
+                break;
 
             if (num_pairs > 0) {
+                if (ttf_mul_size_overflows(num_pairs, sizeof(ttf_kern_pair_t)))
+                    break;
                 font->kern_pairs = malloc(num_pairs * sizeof(ttf_kern_pair_t));
                 if (font->kern_pairs) {
                     font->kern_pair_count = num_pairs;
@@ -308,6 +446,10 @@ bool ttf_parse_name(vg_font_t *font, const uint8_t *data, uint32_t len) {
 
     uint16_t count = ttf_read_u16(data + 2);
     uint16_t string_offset = ttf_read_u16(data + 4);
+    if ((size_t)string_offset > len)
+        return false;
+    if (6u + (size_t)count * 12u > len)
+        count = (uint16_t)((len - 6u) / 12u);
 
     const uint8_t *string_storage = data + string_offset;
 
@@ -322,7 +464,8 @@ bool ttf_parse_name(vg_font_t *font, const uint8_t *data, uint32_t len) {
         uint16_t length = ttf_read_u16(record + 8);
         uint16_t offset = ttf_read_u16(record + 10);
 
-        if (string_offset + offset + length > len)
+        if ((size_t)offset > (size_t)len - string_offset ||
+            (size_t)length > (size_t)len - string_offset - offset)
             continue;
 
         const uint8_t *str = string_storage + offset;
@@ -404,24 +547,33 @@ bool ttf_parse_tables(vg_font_t *font) {
     table = ttf_find_table(font, TTF_TAG_CMAP, &len);
     if (!table || !ttf_parse_cmap(font, table, len))
         return false;
+    font->cmap_offset = (uint32_t)(table - font->data);
+    font->cmap_len = len;
 
     // Store offsets for tables we'll need later
     table = ttf_find_table(font, TTF_TAG_GLYF, &len);
-    if (table)
+    if (table) {
         font->glyf_offset = (uint32_t)(table - font->data);
+        font->glyf_len = len;
+    }
 
     table = ttf_find_table(font, TTF_TAG_LOCA, &len);
-    if (table)
+    if (table) {
         font->loca_offset = (uint32_t)(table - font->data);
+        font->loca_len = len;
+    }
 
     table = ttf_find_table(font, TTF_TAG_HMTX, &len);
-    if (table)
+    if (table) {
         font->hmtx_offset = (uint32_t)(table - font->data);
+        font->hmtx_len = len;
+    }
 
     // Optional tables
     table = ttf_find_table(font, TTF_TAG_KERN, &len);
     if (table) {
         font->kern_offset = (uint32_t)(table - font->data);
+        font->kern_len = len;
         ttf_parse_kern(font, table, len);
         // Sort kern pairs by (left<<16)|right so binary search works correctly
         if (font->kern_pairs && font->kern_pair_count > 1) {
@@ -435,10 +587,11 @@ bool ttf_parse_tables(vg_font_t *font) {
     table = ttf_find_table(font, TTF_TAG_NAME, &len);
     if (table) {
         font->name_offset = (uint32_t)(table - font->data);
+        font->name_len = len;
         ttf_parse_name(font, table, len);
     }
 
-    return font->glyf_offset > 0 && font->loca_offset > 0;
+    return font->glyf_offset > 0 && font->loca_offset > 0 && font->loca_len > 0;
 }
 
 //=============================================================================
@@ -451,7 +604,13 @@ uint16_t ttf_get_glyph_index(vg_font_t *font, uint32_t codepoint) {
         for (uint32_t i = 0; i < font->cmap12_num_groups; i++) {
             if (codepoint >= font->cmap12_start_codes[i] &&
                 codepoint <= font->cmap12_end_codes[i]) {
-                return font->cmap12_start_glyph_ids[i] + (codepoint - font->cmap12_start_codes[i]);
+                uint32_t delta = codepoint - font->cmap12_start_codes[i];
+                if (delta > UINT32_MAX - font->cmap12_start_glyph_ids[i])
+                    return 0;
+                uint32_t glyph_id = font->cmap12_start_glyph_ids[i] + delta;
+                if (glyph_id <= UINT16_MAX && glyph_id < font->maxp.num_glyphs)
+                    return (uint16_t)glyph_id;
+                return 0;
             }
         }
     }
@@ -462,16 +621,20 @@ uint16_t ttf_get_glyph_index(vg_font_t *font, uint32_t codepoint) {
             if (codepoint <= font->cmap4_end_codes[i]) {
                 if (codepoint >= font->cmap4_start_codes[i]) {
                     if (font->cmap4_id_range_offsets[i] == 0) {
-                        return (uint16_t)((codepoint + font->cmap4_id_deltas[i]) & 0xFFFF);
+                        uint16_t glyph_id =
+                            (uint16_t)((codepoint + font->cmap4_id_deltas[i]) & 0xFFFF);
+                        return (glyph_id < font->maxp.num_glyphs) ? glyph_id : 0;
                     } else {
                         // Calculate glyph ID from range offset
-                        uint32_t idx = (font->cmap4_id_range_offsets[i] / 2) +
-                                       (codepoint - font->cmap4_start_codes[i]) -
-                                       (font->cmap4_seg_count - i);
-                        if (idx < font->cmap4_glyph_ids_count) {
-                            uint16_t glyph_id = font->cmap4_glyph_ids[idx];
+                        int64_t idx = (int64_t)(font->cmap4_id_range_offsets[i] / 2u) +
+                                      (int64_t)(codepoint - font->cmap4_start_codes[i]) -
+                                      (int64_t)(font->cmap4_seg_count - i);
+                        if (idx >= 0 && (uint64_t)idx < font->cmap4_glyph_ids_count) {
+                            uint16_t glyph_id = font->cmap4_glyph_ids[(size_t)idx];
                             if (glyph_id != 0) {
-                                return (uint16_t)((glyph_id + font->cmap4_id_deltas[i]) & 0xFFFF);
+                                glyph_id =
+                                    (uint16_t)((glyph_id + font->cmap4_id_deltas[i]) & 0xFFFF);
+                                return (glyph_id < font->maxp.num_glyphs) ? glyph_id : 0;
                             }
                         }
                     }
@@ -492,7 +655,10 @@ void ttf_get_h_metrics(vg_font_t *font,
                        uint16_t glyph_id,
                        int *advance_width,
                        int *left_side_bearing) {
-    if (font->hmtx_offset == 0) {
+    if (!advance_width || !left_side_bearing)
+        return;
+
+    if (font->hmtx_offset == 0 || font->hmtx_len == 0 || font->hhea.num_h_metrics == 0) {
         *advance_width = font->head.units_per_em;
         *left_side_bearing = 0;
         return;
@@ -501,14 +667,28 @@ void ttf_get_h_metrics(vg_font_t *font,
     const uint8_t *hmtx = font->data + font->hmtx_offset;
 
     if (glyph_id < font->hhea.num_h_metrics) {
+        size_t offset = (size_t)glyph_id * 4u;
+        if (offset > font->hmtx_len || font->hmtx_len - offset < 4u) {
+            *advance_width = font->head.units_per_em;
+            *left_side_bearing = 0;
+            return;
+        }
         *advance_width = ttf_read_u16(hmtx + glyph_id * 4);
         *left_side_bearing = ttf_read_i16(hmtx + glyph_id * 4 + 2);
     } else {
         // Use last advance width for glyphs beyond num_h_metrics
-        *advance_width = ttf_read_u16(hmtx + (font->hhea.num_h_metrics - 1) * 4);
+        size_t last_metric_offset = (size_t)(font->hhea.num_h_metrics - 1u) * 4u;
+        size_t lsb_offset =
+            (size_t)font->hhea.num_h_metrics * 4u +
+            (size_t)(glyph_id - font->hhea.num_h_metrics) * 2u;
+        if (last_metric_offset > font->hmtx_len || font->hmtx_len - last_metric_offset < 2u ||
+            lsb_offset > font->hmtx_len || font->hmtx_len - lsb_offset < 2u) {
+            *advance_width = font->head.units_per_em;
+            *left_side_bearing = 0;
+            return;
+        }
+        *advance_width = ttf_read_u16(hmtx + last_metric_offset);
         // Left side bearing from array after long metrics
-        uint32_t lsb_offset =
-            font->hhea.num_h_metrics * 4 + (glyph_id - font->hhea.num_h_metrics) * 2;
         *left_side_bearing = ttf_read_i16(hmtx + lsb_offset);
     }
 }
@@ -517,21 +697,66 @@ void ttf_get_h_metrics(vg_font_t *font,
 // Glyph Outline
 //=============================================================================
 
-static uint32_t ttf_get_glyph_offset(vg_font_t *font, uint16_t glyph_id) {
+static bool ttf_get_glyph_offset(vg_font_t *font, uint16_t glyph_id, uint32_t *out_offset) {
+    if (!font || !out_offset || glyph_id > font->maxp.num_glyphs || font->loca_len == 0)
+        return false;
+
     const uint8_t *loca = font->data + font->loca_offset;
 
     if (font->head.index_to_loc_format == 0) {
         // Short format (16-bit offsets, multiply by 2)
-        return ttf_read_u16(loca + glyph_id * 2) * 2;
-    } else {
+        size_t offset_pos = (size_t)glyph_id * 2u;
+        if (offset_pos > font->loca_len || font->loca_len - offset_pos < 2u)
+            return false;
+        *out_offset = (uint32_t)ttf_read_u16(loca + offset_pos) * 2u;
+    } else if (font->head.index_to_loc_format == 1) {
         // Long format (32-bit offsets)
-        return ttf_read_u32(loca + glyph_id * 4);
+        size_t offset_pos = (size_t)glyph_id * 4u;
+        if (offset_pos > font->loca_len || font->loca_len - offset_pos < 4u)
+            return false;
+        *out_offset = ttf_read_u32(loca + offset_pos);
+    } else {
+        return false;
     }
+
+    return *out_offset <= font->glyf_len;
+}
+
+static bool ttf_get_glyph_range(vg_font_t *font,
+                                uint16_t glyph_id,
+                                const uint8_t **out_glyph,
+                                const uint8_t **out_end) {
+    if (!font || !out_glyph || !out_end || glyph_id >= font->maxp.num_glyphs)
+        return false;
+
+    uint32_t offset = 0;
+    uint32_t next_offset = 0;
+    if (!ttf_get_glyph_offset(font, glyph_id, &offset) ||
+        !ttf_get_glyph_offset(font, (uint16_t)(glyph_id + 1u), &next_offset))
+        return false;
+    if (offset > next_offset || next_offset > font->glyf_len)
+        return false;
+
+    const uint8_t *glyf = font->data + font->glyf_offset;
+    *out_glyph = glyf + offset;
+    *out_end = glyf + next_offset;
+    return true;
 }
 
 // Forward declaration for recursive composite glyph handling
+static bool ttf_get_glyph_outline_internal(vg_font_t *font,
+                                           uint16_t glyph_id,
+                                           int depth,
+                                           float **out_points_x,
+                                           float **out_points_y,
+                                           uint8_t **out_flags,
+                                           int **out_contour_ends,
+                                           int *out_num_points,
+                                           int *out_num_contours);
+
 static bool ttf_get_simple_glyph_outline(vg_font_t *font,
                                          const uint8_t *glyph_data,
+                                         const uint8_t *glyph_end,
                                          int16_t num_contours,
                                          float **out_points_x,
                                          float **out_points_y,
@@ -550,12 +775,17 @@ static bool ttf_get_simple_glyph_outline(vg_font_t *font,
 
 static bool ttf_get_composite_glyph_outline(vg_font_t *font,
                                             const uint8_t *glyph_data,
+                                            const uint8_t *glyph_end,
+                                            int depth,
                                             float **out_points_x,
                                             float **out_points_y,
                                             uint8_t **out_flags,
                                             int **out_contour_ends,
                                             int *out_num_points,
                                             int *out_num_contours) {
+    if (depth >= TTF_MAX_COMPOSITE_DEPTH)
+        return false;
+
     // Start after the 10-byte glyph header
     const uint8_t *p = glyph_data + 10;
 
@@ -569,45 +799,73 @@ static bool ttf_get_composite_glyph_outline(vg_font_t *font,
 
     uint16_t flags;
     do {
-        flags = ttf_read_u16(p);
-        p += 2;
-        uint16_t component_glyph_id = ttf_read_u16(p);
-        p += 2;
+        if (!ttf_read_u16_checked(&p, glyph_end, &flags))
+            goto fail;
+        uint16_t component_glyph_id = 0;
+        if (!ttf_read_u16_checked(&p, glyph_end, &component_glyph_id))
+            goto fail;
 
         // Read translation offsets
         float dx = 0, dy = 0;
         if (flags & COMP_ARGS_ARE_XY_VALUES) {
             if (flags & COMP_ARG_1_AND_2_ARE_WORDS) {
-                dx = (float)ttf_read_i16(p);
-                p += 2;
-                dy = (float)ttf_read_i16(p);
-                p += 2;
+                int16_t arg = 0;
+                if (!ttf_read_i16_checked(&p, glyph_end, &arg))
+                    goto fail;
+                dx = (float)arg;
+                if (!ttf_read_i16_checked(&p, glyph_end, &arg))
+                    goto fail;
+                dy = (float)arg;
             } else {
-                dx = (float)(int8_t)(*p++);
-                dy = (float)(int8_t)(*p++);
+                uint8_t arg = 0;
+                if (!ttf_read_u8_checked(&p, glyph_end, &arg))
+                    goto fail;
+                dx = (float)(int8_t)arg;
+                if (!ttf_read_u8_checked(&p, glyph_end, &arg))
+                    goto fail;
+                dy = (float)(int8_t)arg;
             }
         } else {
             // Point indices - skip for now
             if (flags & COMP_ARG_1_AND_2_ARE_WORDS) {
+                if (!ttf_cursor_can_read(p, glyph_end, 4))
+                    goto fail;
                 p += 4;
             } else {
+                if (!ttf_cursor_can_read(p, glyph_end, 2))
+                    goto fail;
                 p += 2;
             }
         }
 
-        // Read scale/matrix (skip for now, just advance pointer)
-        float scale_x = 1.0f, scale_y = 1.0f;
+        float m00 = 1.0f, m01 = 0.0f, m10 = 0.0f, m11 = 1.0f;
         if (flags & COMP_WE_HAVE_A_SCALE) {
-            int16_t scale = ttf_read_i16(p);
-            p += 2;
-            scale_x = scale_y = (float)scale / 16384.0f;
+            int16_t scale = 0;
+            if (!ttf_read_i16_checked(&p, glyph_end, &scale))
+                goto fail;
+            m00 = m11 = (float)scale / 16384.0f;
         } else if (flags & COMP_WE_HAVE_AN_X_AND_Y_SCALE) {
-            scale_x = (float)ttf_read_i16(p) / 16384.0f;
-            p += 2;
-            scale_y = (float)ttf_read_i16(p) / 16384.0f;
-            p += 2;
+            int16_t scale = 0;
+            if (!ttf_read_i16_checked(&p, glyph_end, &scale))
+                goto fail;
+            m00 = (float)scale / 16384.0f;
+            if (!ttf_read_i16_checked(&p, glyph_end, &scale))
+                goto fail;
+            m11 = (float)scale / 16384.0f;
         } else if (flags & COMP_WE_HAVE_A_TWO_BY_TWO) {
-            p += 8; // Skip 2x2 matrix for now
+            int16_t value = 0;
+            if (!ttf_read_i16_checked(&p, glyph_end, &value))
+                goto fail;
+            m00 = (float)value / 16384.0f;
+            if (!ttf_read_i16_checked(&p, glyph_end, &value))
+                goto fail;
+            m01 = (float)value / 16384.0f;
+            if (!ttf_read_i16_checked(&p, glyph_end, &value))
+                goto fail;
+            m10 = (float)value / 16384.0f;
+            if (!ttf_read_i16_checked(&p, glyph_end, &value))
+                goto fail;
+            m11 = (float)value / 16384.0f;
         }
 
         // Get component glyph outline recursively
@@ -618,34 +876,26 @@ static bool ttf_get_composite_glyph_outline(vg_font_t *font,
         int comp_num_points = 0;
         int comp_num_contours = 0;
 
-        if (component_glyph_id < font->maxp.num_glyphs) {
-            uint32_t comp_offset = ttf_get_glyph_offset(font, component_glyph_id);
-            uint32_t comp_next = ttf_get_glyph_offset(font, component_glyph_id + 1);
-
-            if (comp_offset != comp_next) {
-                const uint8_t *comp_data = font->data + font->glyf_offset + comp_offset;
-                int16_t comp_contour_count = ttf_read_i16(comp_data);
-
-                if (comp_contour_count >= 0) {
-                    ttf_get_simple_glyph_outline(font,
-                                                 comp_data,
-                                                 comp_contour_count,
-                                                 &comp_x,
-                                                 &comp_y,
-                                                 &comp_flags,
-                                                 &comp_contours,
-                                                 &comp_num_points,
-                                                 &comp_num_contours);
-                }
-                // Note: nested composites not supported to avoid infinite recursion
-            }
-        }
+        if (component_glyph_id >= font->maxp.num_glyphs)
+            goto fail;
+        if (!ttf_get_glyph_outline_internal(font,
+                                            component_glyph_id,
+                                            depth + 1,
+                                            &comp_x,
+                                            &comp_y,
+                                            &comp_flags,
+                                            &comp_contours,
+                                            &comp_num_points,
+                                            &comp_num_contours))
+            goto fail;
 
         if (comp_num_points > 0) {
             // Apply transformation and merge
             for (int i = 0; i < comp_num_points; i++) {
-                comp_x[i] = comp_x[i] * scale_x + dx;
-                comp_y[i] = comp_y[i] * scale_y + dy;
+                float src_x = comp_x[i];
+                float src_y = comp_y[i];
+                comp_x[i] = src_x * m00 + src_y * m01 + dx;
+                comp_y[i] = src_x * m10 + src_y * m11 + dy;
             }
 
             // Adjust contour end indices
@@ -657,8 +907,25 @@ static bool ttf_get_composite_glyph_outline(vg_font_t *font,
             // allocations. realloc success frees the old pointer, so checking all four
             // results after the fact can miss already-freed buffers.
             {
+                if (comp_num_points > INT_MAX - total_points ||
+                    comp_num_contours > INT_MAX - total_contours) {
+                    free(comp_x);
+                    free(comp_y);
+                    free(comp_flags);
+                    free(comp_contours);
+                    goto fail;
+                }
                 size_t np = (size_t)(total_points + comp_num_points);
                 size_t nc = (size_t)(total_contours + comp_num_contours);
+                if (ttf_mul_size_overflows(np, sizeof(float)) ||
+                    ttf_mul_size_overflows(np, sizeof(uint8_t)) ||
+                    ttf_mul_size_overflows(nc, sizeof(int))) {
+                    free(comp_x);
+                    free(comp_y);
+                    free(comp_flags);
+                    free(comp_contours);
+                    goto fail;
+                }
                 float *tmp_x = (float *)realloc(all_points_x, np * sizeof(float));
                 float *tmp_y = (float *)realloc(all_points_y, np * sizeof(float));
                 uint8_t *tmp_f = (uint8_t *)realloc(all_flags, np * sizeof(uint8_t));
@@ -680,7 +947,7 @@ static bool ttf_get_composite_glyph_outline(vg_font_t *font,
                     free(comp_y);
                     free(comp_flags);
                     free(comp_contours);
-                    break;
+                    return false;
                 }
 
                 all_points_x = tmp_x;
@@ -714,40 +981,56 @@ static bool ttf_get_composite_glyph_outline(vg_font_t *font,
     *out_num_contours = total_contours;
 
     return true;
+
+fail:
+    free(all_points_x);
+    free(all_points_y);
+    free(all_flags);
+    free(all_contour_ends);
+    return false;
 }
 
-bool ttf_get_glyph_outline(vg_font_t *font,
-                           uint16_t glyph_id,
-                           float **out_points_x,
-                           float **out_points_y,
-                           uint8_t **out_flags,
-                           int **out_contour_ends,
-                           int *out_num_points,
-                           int *out_num_contours) {
+static bool ttf_get_glyph_outline_internal(vg_font_t *font,
+                                           uint16_t glyph_id,
+                                           int depth,
+                                           float **out_points_x,
+                                           float **out_points_y,
+                                           uint8_t **out_flags,
+                                           int **out_contour_ends,
+                                           int *out_num_points,
+                                           int *out_num_contours) {
+    if (!font || !out_points_x || !out_points_y || !out_flags || !out_contour_ends ||
+        !out_num_points || !out_num_contours || depth > TTF_MAX_COMPOSITE_DEPTH)
+        return false;
+
+    *out_points_x = NULL;
+    *out_points_y = NULL;
+    *out_flags = NULL;
+    *out_contour_ends = NULL;
+    *out_num_points = 0;
+    *out_num_contours = 0;
+
     if (glyph_id >= font->maxp.num_glyphs)
         return false;
 
-    uint32_t offset = ttf_get_glyph_offset(font, glyph_id);
-    uint32_t next_offset = ttf_get_glyph_offset(font, glyph_id + 1);
+    const uint8_t *glyph = NULL;
+    const uint8_t *glyph_end = NULL;
+    if (!ttf_get_glyph_range(font, glyph_id, &glyph, &glyph_end))
+        return false;
 
     // Empty glyph (like space)
-    if (offset == next_offset) {
-        *out_num_points = 0;
-        *out_num_contours = 0;
-        *out_points_x = NULL;
-        *out_points_y = NULL;
-        *out_flags = NULL;
-        *out_contour_ends = NULL;
+    if (glyph == glyph_end)
         return true;
-    }
-
-    const uint8_t *glyph = font->data + font->glyf_offset + offset;
+    if (!ttf_cursor_can_read(glyph, glyph_end, 10))
+        return false;
     int16_t num_contours = ttf_read_i16(glyph);
 
     // Composite glyph (num_contours < 0)
     if (num_contours < 0) {
         return ttf_get_composite_glyph_outline(font,
                                                glyph,
+                                               glyph_end,
+                                               depth,
                                                out_points_x,
                                                out_points_y,
                                                out_flags,
@@ -759,6 +1042,7 @@ bool ttf_get_glyph_outline(vg_font_t *font,
     // Simple glyph - delegate to helper function
     return ttf_get_simple_glyph_outline(font,
                                         glyph,
+                                        glyph_end,
                                         num_contours,
                                         out_points_x,
                                         out_points_y,
@@ -768,8 +1052,28 @@ bool ttf_get_glyph_outline(vg_font_t *font,
                                         out_num_contours);
 }
 
+bool ttf_get_glyph_outline(vg_font_t *font,
+                           uint16_t glyph_id,
+                           float **out_points_x,
+                           float **out_points_y,
+                           uint8_t **out_flags,
+                           int **out_contour_ends,
+                           int *out_num_points,
+                           int *out_num_contours) {
+    return ttf_get_glyph_outline_internal(font,
+                                          glyph_id,
+                                          0,
+                                          out_points_x,
+                                          out_points_y,
+                                          out_flags,
+                                          out_contour_ends,
+                                          out_num_points,
+                                          out_num_contours);
+}
+
 static bool ttf_get_simple_glyph_outline(vg_font_t *font,
                                          const uint8_t *glyph_data,
+                                         const uint8_t *glyph_end,
                                          int16_t num_contours,
                                          float **out_points_x,
                                          float **out_points_y,
@@ -780,28 +1084,62 @@ static bool ttf_get_simple_glyph_outline(vg_font_t *font,
     (void)font;                         // Unused in simple glyph case
     const uint8_t *p = glyph_data + 10; // Skip header
 
+    if (num_contours < 0)
+        return false;
+    if (num_contours == 0) {
+        *out_points_x = NULL;
+        *out_points_y = NULL;
+        *out_flags = NULL;
+        *out_contour_ends = NULL;
+        *out_num_points = 0;
+        *out_num_contours = 0;
+        return true;
+    }
+
     // Read contour end points
-    int *contour_ends = malloc(num_contours * sizeof(int));
+    if (ttf_mul_size_overflows((size_t)num_contours, sizeof(int)))
+        return false;
+    int *contour_ends = malloc((size_t)num_contours * sizeof(int));
     if (!contour_ends)
         return false;
 
     int total_points = 0;
     for (int i = 0; i < num_contours; i++) {
-        contour_ends[i] = ttf_read_u16(p);
-        p += 2;
+        uint16_t contour_end = 0;
+        if (!ttf_read_u16_checked(&p, glyph_end, &contour_end)) {
+            free(contour_ends);
+            return false;
+        }
+        if (i > 0 && contour_end <= (uint16_t)contour_ends[i - 1]) {
+            free(contour_ends);
+            return false;
+        }
+        contour_ends[i] = (int)contour_end;
         if (contour_ends[i] >= total_points) {
             total_points = contour_ends[i] + 1;
         }
     }
 
     // Skip instructions
-    uint16_t instruction_length = ttf_read_u16(p);
-    p += 2 + instruction_length;
+    uint16_t instruction_length = 0;
+    if (!ttf_read_u16_checked(&p, glyph_end, &instruction_length) ||
+        !ttf_cursor_can_read(p, glyph_end, instruction_length)) {
+        free(contour_ends);
+        return false;
+    }
+    p += instruction_length;
+
+    if (total_points <= 0 ||
+        ttf_mul_size_overflows((size_t)total_points, sizeof(float)) ||
+        ttf_mul_size_overflows((size_t)total_points, sizeof(uint8_t))) {
+        free(contour_ends);
+        return false;
+    }
 
     // Allocate output arrays
-    float *points_x = malloc(total_points * sizeof(float));
-    float *points_y = malloc(total_points * sizeof(float));
-    uint8_t *flags = malloc(total_points * sizeof(uint8_t));
+    float *points_x = malloc((size_t)total_points * sizeof(float));
+    float *points_y = malloc((size_t)total_points * sizeof(float));
+    uint8_t *flags = malloc((size_t)total_points * sizeof(uint8_t));
 
     if (!points_x || !points_y || !flags) {
         free(contour_ends);
@@ -814,11 +1152,17 @@ static bool ttf_get_simple_glyph_outline(vg_font_t *font,
     // Read flags (with repeat handling)
     int flags_read = 0;
     while (flags_read < total_points) {
-        uint8_t flag = *p++;
+        uint8_t flag = 0;
+        if (!ttf_read_u8_checked(&p, glyph_end, &flag))
+            goto fail;
         flags[flags_read++] = flag;
 
         if (flag & 0x08) { // Repeat flag
-            uint8_t repeat_count = *p++;
+            uint8_t repeat_count = 0;
+            if (!ttf_read_u8_checked(&p, glyph_end, &repeat_count))
+                goto fail;
+            if (repeat_count > total_points - flags_read)
+                goto fail;
             for (int r = 0; r < repeat_count && flags_read < total_points; r++) {
                 flags[flags_read++] = flag;
             }
@@ -826,34 +1170,44 @@ static bool ttf_get_simple_glyph_outline(vg_font_t *font,
     }
 
     // Read x coordinates
-    int16_t x = 0;
+    int32_t x = 0;
     for (int i = 0; i < total_points; i++) {
         uint8_t flag = flags[i];
         if (flag & 0x02) { // x is 1 byte
-            int16_t dx = *p++;
+            uint8_t byte = 0;
+            if (!ttf_read_u8_checked(&p, glyph_end, &byte))
+                goto fail;
+            int32_t dx = byte;
             if (!(flag & 0x10))
                 dx = -dx; // Sign
             x += dx;
         } else if (!(flag & 0x10)) { // x is 2 bytes
-            x += ttf_read_i16(p);
-            p += 2;
+            int16_t dx = 0;
+            if (!ttf_read_i16_checked(&p, glyph_end, &dx))
+                goto fail;
+            x += dx;
         }
         // else: x is same as previous (delta = 0)
         points_x[i] = (float)x;
     }
 
     // Read y coordinates
-    int16_t y = 0;
+    int32_t y = 0;
     for (int i = 0; i < total_points; i++) {
         uint8_t flag = flags[i];
         if (flag & 0x04) { // y is 1 byte
-            int16_t dy = *p++;
+            uint8_t byte = 0;
+            if (!ttf_read_u8_checked(&p, glyph_end, &byte))
+                goto fail;
+            int32_t dy = byte;
             if (!(flag & 0x20))
                 dy = -dy; // Sign
             y += dy;
         } else if (!(flag & 0x20)) { // y is 2 bytes
-            y += ttf_read_i16(p);
-            p += 2;
+            int16_t dy = 0;
+            if (!ttf_read_i16_checked(&p, glyph_end, &dy))
+                goto fail;
+            y += dy;
         }
         // else: y is same as previous (delta = 0)
         points_y[i] = (float)y;
@@ -872,4 +1226,11 @@ static bool ttf_get_simple_glyph_outline(vg_font_t *font,
     *out_num_contours = num_contours;
 
     return true;
+
+fail:
+    free(contour_ends);
+    free(points_x);
+    free(points_y);
+    free(flags);
+    return false;
 }

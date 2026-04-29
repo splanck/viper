@@ -172,6 +172,14 @@ if (VIPER_BUILD_TESTING)
     )
     add_test(NAME test_vg_audit_fixes COMMAND test_vg_audit_fixes)
     set_tests_properties(test_vg_audit_fixes PROPERTIES LABELS "tui" TIMEOUT 15)
+
+    add_executable(test_vg_font_bounds tests/test_vg_font_bounds.c)
+    target_link_libraries(test_vg_font_bounds vipergui)
+    target_include_directories(test_vg_font_bounds PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    add_test(NAME test_vg_font_bounds COMMAND test_vg_font_bounds)
+    set_tests_properties(test_vg_font_bounds PROPERTIES LABELS "tui" TIMEOUT 15)
 endif ()
 
 # Demo applications
