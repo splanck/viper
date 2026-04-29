@@ -111,10 +111,17 @@ static inline int16_t s24_to_s16(const uint8_t *p) {
     return (int16_t)(val >> 8);
 }
 
+/// @brief Convert 32-bit signed little-endian sample to 16-bit signed.
+static inline int16_t s32_to_s16(const uint8_t *p) {
+    uint32_t hi = read_u32_le(p) >> 16;
+    return hi >= 0x8000u ? (int16_t)((int32_t)hi - 0x10000) : (int16_t)hi;
+}
+
 /// @brief Convert 32-bit IEEE float sample to 16-bit signed.
 static inline int16_t f32_to_s16(const uint8_t *p) {
+    uint32_t bits = read_u32_le(p);
     float val;
-    memcpy(&val, p, sizeof(float));
+    memcpy(&val, &bits, sizeof(float));
     if (!isfinite(val))
         val = 0.0f;
     if (val > 1.0f)
@@ -159,15 +166,8 @@ static inline void decode_pcm_frame(const uint8_t *src,
                 *right = (channels == 2) ? f32_to_s16(src + 4) : *left;
             } else {
                 // 32-bit integer PCM: take upper 16 bits
-                int32_t val;
-                memcpy(&val, src, 4);
-                *left = (int16_t)(val >> 16);
-                if (channels == 2) {
-                    memcpy(&val, src + 4, 4);
-                    *right = (int16_t)(val >> 16);
-                } else {
-                    *right = *left;
-                }
+                *left = s32_to_s16(src);
+                *right = (channels == 2) ? s32_to_s16(src + 4) : *left;
             }
             break;
         default:
@@ -826,7 +826,8 @@ void vaud_resample(const int16_t *input,
                    int64_t out_frames,
                    int32_t out_rate,
                    int32_t channels) {
-    if (!input || !output || in_frames <= 0 || out_frames <= 0)
+    if (!input || !output || in_frames <= 0 || out_frames <= 0 || in_rate <= 0 ||
+        out_rate <= 0 || channels <= 0)
         return;
 
     /* Simple linear interpolation resampler */

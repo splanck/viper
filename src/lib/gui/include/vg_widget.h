@@ -311,6 +311,7 @@ struct vg_widget {
     bool enabled;      ///< Whether the widget accepts user input.
     bool needs_layout; ///< Dirty flag: layout must be recomputed before next paint.
     bool needs_paint;  ///< Dirty flag: widget must be repainted.
+    bool _paint_screen_space; ///< Runtime: x/y are temporarily absolute during paint.
 
     // Tab order
     int tab_index; ///< Explicit tab-stop position. Widgets with tab_index >= 0 are visited in

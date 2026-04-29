@@ -9,6 +9,8 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 static int tests_failed = 0;
 static vaud_error_t last_error_code = VAUD_OK;
@@ -49,11 +51,77 @@ static void test_pcm_size_accepts_normal_stereo_buffer(void) {
     EXPECT_TRUE(bytes == 44100u * 2u * sizeof(int16_t));
 }
 
+static void write_u16_le(uint8_t *p, uint16_t v) {
+    p[0] = (uint8_t)(v & 0xFFu);
+    p[1] = (uint8_t)((v >> 8) & 0xFFu);
+}
+
+static void write_u32_le(uint8_t *p, uint32_t v) {
+    p[0] = (uint8_t)(v & 0xFFu);
+    p[1] = (uint8_t)((v >> 8) & 0xFFu);
+    p[2] = (uint8_t)((v >> 16) & 0xFFu);
+    p[3] = (uint8_t)((v >> 24) & 0xFFu);
+}
+
+static size_t make_pcm32_wav(uint8_t *buf, size_t cap) {
+    if (!buf || cap < 52)
+        return 0;
+    memset(buf, 0, cap);
+    memcpy(buf + 0, "RIFF", 4);
+    write_u32_le(buf + 4, 44);
+    memcpy(buf + 8, "WAVE", 4);
+    memcpy(buf + 12, "fmt ", 4);
+    write_u32_le(buf + 16, 16);
+    write_u16_le(buf + 20, 1);
+    write_u16_le(buf + 22, 1);
+    write_u32_le(buf + 24, 44100);
+    write_u32_le(buf + 28, 44100u * 4u);
+    write_u16_le(buf + 32, 4);
+    write_u16_le(buf + 34, 32);
+    memcpy(buf + 36, "data", 4);
+    write_u32_le(buf + 40, 8);
+    write_u32_le(buf + 44, 0x7FFF0000u);
+    write_u32_le(buf + 48, 0x80000000u);
+    return 52;
+}
+
+static void test_wav_pcm32_decodes_little_endian_samples(void) {
+    uint8_t wav[64];
+    int16_t *samples = NULL;
+    int64_t frames = 0;
+    int32_t rate = 0;
+    int32_t channels = 0;
+    size_t size = make_pcm32_wav(wav, sizeof(wav));
+    EXPECT_TRUE(size > 0);
+    EXPECT_TRUE(vaud_wav_load_mem(wav, size, &samples, &frames, &rate, &channels));
+    EXPECT_TRUE(frames == 2);
+    EXPECT_TRUE(rate == 44100);
+    EXPECT_TRUE(channels == 1);
+    EXPECT_TRUE(samples[0] == 32767);
+    EXPECT_TRUE(samples[1] == 32767);
+    EXPECT_TRUE(samples[2] == -32768);
+    EXPECT_TRUE(samples[3] == -32768);
+    free(samples);
+}
+
+static void test_resample_rejects_invalid_rates_and_channels(void) {
+    int16_t input[2] = {100, -100};
+    int16_t output[2] = {1234, 5678};
+    vaud_resample(input, 1, 0, output, 1, 44100, 1);
+    EXPECT_TRUE(output[0] == 1234 && output[1] == 5678);
+    vaud_resample(input, 1, 44100, output, 1, 0, 1);
+    EXPECT_TRUE(output[0] == 1234 && output[1] == 5678);
+    vaud_resample(input, 1, 44100, output, 1, 44100, 0);
+    EXPECT_TRUE(output[0] == 1234 && output[1] == 5678);
+}
+
 int main(void) {
     test_resample_overflow_returns_sentinel();
     test_pcm_size_rejects_sentinel_frame_count();
     test_pcm_size_rejects_channel_multiply_overflow();
     test_pcm_size_accepts_normal_stereo_buffer();
+    test_wav_pcm32_decodes_little_endian_samples();
+    test_resample_rejects_invalid_rates_and_channels();
 
     if (tests_failed != 0)
         return 1;

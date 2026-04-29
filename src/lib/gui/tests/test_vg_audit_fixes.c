@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/lib/gui/tests/test_vg_audit_fixes.c
-// Purpose: Regression tests for the 13 GUI bugs identified in the
+// Purpose: Regression tests for GUI bugs identified in the
 //          Viper.GUI in-depth audit (plan: do-an-in-depth-scalable-walrus.md).
 // Key invariants:
 //   - Each TEST exercises ONE bug from the audit; the assertion holds only
@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 //=============================================================================
 // Test Harness
@@ -1794,6 +1795,87 @@ TEST(platform_resize_event_reports_logical_gui_dimensions) {
 }
 
 //=============================================================================
+// Round 6: Low-level rendering, grid, text, and widget value hardening
+//=============================================================================
+
+static float g_painted_child_x = -1.0f;
+static float g_painted_child_y = -1.0f;
+
+static void test_capture_paint(vg_widget_t *widget, void *canvas) {
+    (void)canvas;
+    g_painted_child_x = widget->x;
+    g_painted_child_y = widget->y;
+}
+
+TEST(widget_paint_uses_screen_space_for_nested_children) {
+    vg_widget_vtable_t paint_vtable = {0};
+    paint_vtable.paint = test_capture_paint;
+
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *parent = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_CUSTOM);
+    ASSERT_NOT_NULL(root);
+    ASSERT_NOT_NULL(parent);
+    ASSERT_NOT_NULL(child);
+    child->vtable = &paint_vtable;
+
+    vg_widget_add_child(root, parent);
+    vg_widget_add_child(parent, child);
+    vg_widget_arrange(root, 10.0f, 20.0f, 200.0f, 100.0f);
+    vg_widget_arrange(parent, 30.0f, 40.0f, 100.0f, 50.0f);
+    vg_widget_arrange(child, 5.0f, 6.0f, 20.0f, 10.0f);
+
+    vg_widget_paint(root, (void *)1);
+    ASSERT_NEAR(g_painted_child_x, 45.0f, 0.001f);
+    ASSERT_NEAR(g_painted_child_y, 66.0f, 0.001f);
+
+    // Painting in screen space must not mutate layout-space coordinates.
+    ASSERT_NEAR(child->x, 5.0f, 0.001f);
+    ASSERT_NEAR(child->y, 6.0f, 0.001f);
+
+    vg_widget_destroy(root);
+}
+
+TEST(grid_negative_placement_clamps_to_first_cell) {
+    vg_widget_t *grid = vg_grid_create(2, 2);
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_LABEL);
+    ASSERT_NOT_NULL(grid);
+    ASSERT_NOT_NULL(child);
+    vg_widget_add_child(grid, child);
+    vg_grid_place(grid, child, -3, -4, 1, 1);
+    vg_widget_measure(grid, 100.0f, 100.0f);
+    vg_widget_arrange(grid, 0.0f, 0.0f, 100.0f, 100.0f);
+    ASSERT_NEAR(child->x, 0.0f, 0.001f);
+    ASSERT_NEAR(child->y, 0.0f, 0.001f);
+    ASSERT_TRUE(child->width > 0.0f);
+    ASSERT_TRUE(child->height > 0.0f);
+    vg_widget_destroy(grid);
+}
+
+TEST(codeeditor_edit_helpers_clamp_stale_cursor_columns) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(editor);
+    vg_codeeditor_set_text(editor, "abc");
+    editor->cursor_line = 0;
+    editor->cursor_col = 1000;
+    vg_codeeditor_insert_text(editor, "\nX");
+    char *text = vg_codeeditor_get_text(editor);
+    ASSERT_NOT_NULL(text);
+    ASSERT(strcmp(text, "abc\nX") == 0);
+    free(text);
+    vg_widget_destroy(&editor->base);
+}
+
+TEST(image_opacity_sanitizes_nan) {
+    vg_image_t *image = vg_image_create(NULL);
+    ASSERT_NOT_NULL(image);
+    vg_image_set_opacity(image, NAN);
+    ASSERT_TRUE(isfinite(image->opacity));
+    ASSERT_NEAR(image->opacity, 1.0f, 0.001f);
+    vg_widget_destroy(&image->base);
+}
+
+//=============================================================================
 // Main
 //=============================================================================
 
@@ -1894,6 +1976,12 @@ int main(void) {
     RUN(widget_insert_child_negative_index_clamps_to_front);
     RUN(widget_tab_order_handles_more_than_legacy_fixed_cap);
     RUN(platform_resize_event_reports_logical_gui_dimensions);
+
+    printf("\nRound 6 - Library low-level correctness fixes\n");
+    RUN(widget_paint_uses_screen_space_for_nested_children);
+    RUN(grid_negative_placement_clamps_to_first_cell);
+    RUN(codeeditor_edit_helpers_clamp_stale_cursor_columns);
+    RUN(image_opacity_sanitizes_nan);
 
     printf("\n=== Results: %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;

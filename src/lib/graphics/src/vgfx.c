@@ -1228,17 +1228,16 @@ void vgfx_cls(vgfx_window_t window, vgfx_color_t color) {
     uint8_t g = (color >> 8) & 0xFF;
     uint8_t b = (color >> 0) & 0xFF;
 
-    /* Pack RGBA into a single 32-bit word for a 4× faster fill than per-byte
-     * writes.  The framebuffer layout is [R, G, B, A] in byte order.  On the
-     * little-endian targets we support (x86_64, AArch64) the lowest byte of a
-     * uint32_t maps to the lowest memory address, so the correct packing is
-     * R in bits 0-7, G in bits 8-15, B in bits 16-23, A in bits 24-31. */
-    uint32_t packed = (uint32_t)r | ((uint32_t)g << 8) | ((uint32_t)b << 16) | (0xFFu << 24);
     if (!window->clip_enabled) {
         size_t pixel_count = (size_t)window->width * (size_t)window->height;
-        uint32_t *p = (uint32_t *)window->pixels;
-        for (size_t i = 0; i < pixel_count; i++)
-            p[i] = packed;
+        uint8_t *p = window->pixels;
+        for (size_t i = 0; i < pixel_count; i++) {
+            p[0] = r;
+            p[1] = g;
+            p[2] = b;
+            p[3] = 0xFF;
+            p += 4;
+        }
         return;
     }
 
@@ -1261,10 +1260,15 @@ void vgfx_cls(vgfx_window_t window, vgfx_color_t color) {
         return;
 
     for (int64_t y = top; y < bottom; y++) {
-        uint32_t *row =
-            (uint32_t *)(window->pixels + (size_t)y * (size_t)window->stride + (size_t)left * 4u);
-        for (int64_t x = left; x < right; x++)
-            *row++ = packed;
+        uint8_t *row =
+            window->pixels + (size_t)y * (size_t)window->stride + (size_t)left * 4u;
+        for (int64_t x = left; x < right; x++) {
+            row[0] = r;
+            row[1] = g;
+            row[2] = b;
+            row[3] = 0xFF;
+            row += 4;
+        }
     }
 }
 

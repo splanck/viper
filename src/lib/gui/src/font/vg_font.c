@@ -239,7 +239,7 @@ uint32_t vg_utf8_decode(const char **str) {
         return 0;
 
     const uint8_t *s = (const uint8_t *)*str;
-    uint32_t cp;
+    uint32_t cp = 0;
 
     if (s[0] == 0) {
         return 0;
@@ -249,27 +249,40 @@ uint32_t vg_utf8_decode(const char **str) {
         *str += 1;
     } else if ((s[0] & 0xE0) == 0xC0) {
         // 2-byte sequence
-        if ((s[1] & 0xC0) != 0x80) {
+        if (s[1] == 0 || (s[1] & 0xC0) != 0x80) {
             *str += 1; // Skip invalid leading byte so callers always advance
             return 0xFFFD;
         }
         cp = ((s[0] & 0x1F) << 6) | (s[1] & 0x3F);
+        if (cp < 0x80) {
+            *str += 1;
+            return 0xFFFD;
+        }
         *str += 2;
     } else if ((s[0] & 0xF0) == 0xE0) {
         // 3-byte sequence
-        if ((s[1] & 0xC0) != 0x80 || (s[2] & 0xC0) != 0x80) {
+        if (s[1] == 0 || s[2] == 0 || (s[1] & 0xC0) != 0x80 || (s[2] & 0xC0) != 0x80) {
             *str += 1;
             return 0xFFFD;
         }
         cp = ((s[0] & 0x0F) << 12) | ((s[1] & 0x3F) << 6) | (s[2] & 0x3F);
+        if (cp < 0x800 || (cp >= 0xD800 && cp <= 0xDFFF)) {
+            *str += 1;
+            return 0xFFFD;
+        }
         *str += 3;
     } else if ((s[0] & 0xF8) == 0xF0) {
         // 4-byte sequence
-        if ((s[1] & 0xC0) != 0x80 || (s[2] & 0xC0) != 0x80 || (s[3] & 0xC0) != 0x80) {
+        if (s[1] == 0 || s[2] == 0 || s[3] == 0 || (s[1] & 0xC0) != 0x80 ||
+            (s[2] & 0xC0) != 0x80 || (s[3] & 0xC0) != 0x80) {
             *str += 1;
             return 0xFFFD;
         }
         cp = ((s[0] & 0x07) << 18) | ((s[1] & 0x3F) << 12) | ((s[2] & 0x3F) << 6) | (s[3] & 0x3F);
+        if (cp < 0x10000 || cp > 0x10FFFF) {
+            *str += 1;
+            return 0xFFFD;
+        }
         *str += 4;
     } else {
         // Invalid UTF-8

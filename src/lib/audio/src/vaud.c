@@ -692,8 +692,11 @@ static int vaud_music_reserve_leftover(struct vaud_music *music, int32_t frames)
     if (new_cap < frames)
         return 0;
 
-    int16_t *new_buf =
-        (int16_t *)realloc(music->leftover_buf, (size_t)new_cap * 2 * sizeof(int16_t));
+    size_t bytes = 0;
+    if (!vaud_pcm_s16_buffer_size(new_cap, VAUD_CHANNELS, &bytes))
+        return 0;
+
+    int16_t *new_buf = (int16_t *)realloc(music->leftover_buf, bytes);
     if (!new_buf)
         return 0;
 
@@ -1529,12 +1532,17 @@ vaud_music_t vaud_load_music_mp3(vaud_context_t ctx, const char *path) {
         return NULL;
     }
     music->filepath = vaud_strdup(path);
-    if (!vaud_checked_resampled_frames(mp3_stream_total_samples(stream),
-                                       music->source_sample_rate,
-                                       VAUD_SAMPLE_RATE,
-                                       &music->frame_count)) {
-        vaud_free_music(music);
-        return NULL;
+    int total_samples = mp3_stream_total_samples(stream);
+    if (total_samples > 0) {
+        if (!vaud_checked_resampled_frames(total_samples,
+                                           music->source_sample_rate,
+                                           VAUD_SAMPLE_RATE,
+                                           &music->frame_count)) {
+            vaud_free_music(music);
+            return NULL;
+        }
+    } else {
+        music->frame_count = 0;
     }
 
     if (!vaud_music_seek_output_frame(music, 0)) {

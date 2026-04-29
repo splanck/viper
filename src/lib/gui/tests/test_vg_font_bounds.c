@@ -208,12 +208,31 @@ static void test_zero_hmtx_metrics_use_fallback_advance(void) {
     vg_font_destroy(font);
 }
 
+static void test_utf8_decoder_rejects_invalid_scalar_values(void) {
+    const char overlong[] = {(char)0xC0, (char)0xAF, 0};
+    const char surrogate[] = {(char)0xED, (char)0xA0, (char)0x80, 0};
+    const char too_large[] = {(char)0xF4, (char)0x90, (char)0x80, (char)0x80, 0};
+
+    const char *p = overlong;
+    EXPECT_TRUE(vg_utf8_decode(&p) == 0xFFFD);
+    EXPECT_TRUE(p == overlong + 1);
+
+    p = surrogate;
+    EXPECT_TRUE(vg_utf8_decode(&p) == 0xFFFD);
+    EXPECT_TRUE(p == surrogate + 1);
+
+    p = too_large;
+    EXPECT_TRUE(vg_utf8_decode(&p) == 0xFFFD);
+    EXPECT_TRUE(p == too_large + 1);
+}
+
 int main(void) {
     test_wrapped_table_bounds_rejected();
     test_truncated_cmap4_rejected();
     test_bad_cmap12_rejected();
     test_truncated_glyf_rejected_on_rasterize();
     test_zero_hmtx_metrics_use_fallback_advance();
+    test_utf8_decoder_rejects_invalid_scalar_values();
     if (tests_failed != 0)
         return 1;
     printf("test_vg_font_bounds: PASS\n");

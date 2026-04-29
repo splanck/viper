@@ -239,6 +239,20 @@ static vgfx_key_t translate_vk(WPARAM vk) {
             return VGFX_KEY_ENTER;
         case VK_ESCAPE:
             return VGFX_KEY_ESCAPE;
+        case VK_BACK:
+            return VGFX_KEY_BACKSPACE;
+        case VK_DELETE:
+            return VGFX_KEY_DELETE;
+        case VK_TAB:
+            return VGFX_KEY_TAB;
+        case VK_HOME:
+            return VGFX_KEY_HOME;
+        case VK_END:
+            return VGFX_KEY_END;
+        case VK_PRIOR:
+            return VGFX_KEY_PAGE_UP;
+        case VK_NEXT:
+            return VGFX_KEY_PAGE_DOWN;
         case VK_LEFT:
             return VGFX_KEY_LEFT;
         case VK_RIGHT:
@@ -664,6 +678,8 @@ float vgfx_platform_get_display_scale(void) {
      * real system DPI rather than the virtualised 96 DPI given to unaware
      * processes. */
     HDC hdc = GetDC(NULL);
+    if (!hdc)
+        return 1.0f;
     int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
     ReleaseDC(NULL, hdc);
 

@@ -14,6 +14,8 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
+#include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -77,9 +79,13 @@ static bool ensure_line_capacity(vg_codeeditor_t *editor, int needed) {
 
     int new_capacity = editor->line_capacity;
     while (new_capacity < needed) {
+        if (new_capacity > INT_MAX / LINE_CAPACITY_GROWTH)
+            return false;
         new_capacity *= LINE_CAPACITY_GROWTH;
     }
 
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(vg_code_line_t))
+        return false;
     vg_code_line_t *new_lines = realloc(editor->lines, new_capacity * sizeof(vg_code_line_t));
     if (!new_lines)
         return false;
@@ -102,6 +108,8 @@ static bool ensure_text_capacity(vg_code_line_t *line, size_t needed) {
     if (new_capacity == 0)
         new_capacity = INITIAL_TEXT_CAPACITY;
     while (new_capacity < needed) {
+        if (new_capacity > SIZE_MAX / 2)
+            return false;
         new_capacity *= 2;
     }
 
@@ -1182,7 +1190,14 @@ static void apply_edit_targets(vg_codeeditor_t *editor,
         edit_history_begin_group(editor->history);
 
     for (int i = 0; i < target_count; i++) {
-        const vg_edit_target_t *target = &targets[i];
+        vg_edit_target_t clamped_target = targets[i];
+        clamp_editor_position(editor, &clamped_target.start_line, &clamped_target.start_col);
+        clamp_editor_position(editor, &clamped_target.end_line, &clamped_target.end_col);
+        normalize_selection_range(&clamped_target.start_line,
+                                  &clamped_target.start_col,
+                                  &clamped_target.end_line,
+                                  &clamped_target.end_col);
+        const vg_edit_target_t *target = &clamped_target;
         char *old_text = NULL;
         int history_end_line = target->end_line;
         int history_end_col = target->end_col;
@@ -2139,10 +2154,13 @@ static int encode_utf8(uint32_t cp, char *buf) {
 
 // Insert n raw bytes at the current cursor position and advance cursor_col by n.
 VG_UNUSED static void insert_bytes(vg_codeeditor_t *editor, const char *bytes, size_t n) {
-    if (!n)
+    if (!editor || !bytes || !n)
         return;
+    codeeditor_clamp_cursor_to_visible(editor, &editor->cursor_line, &editor->cursor_col);
     vg_code_line_t *line = &editor->lines[editor->cursor_line];
 
+    if (line->length > SIZE_MAX - 1 || n > SIZE_MAX - line->length - 1)
+        return;
     if (!ensure_text_capacity(line, line->length + n + 1))
         return;
 
@@ -2158,8 +2176,13 @@ VG_UNUSED static void insert_bytes(vg_codeeditor_t *editor, const char *bytes, s
 }
 
 VG_UNUSED static void insert_char(vg_codeeditor_t *editor, char c) {
+    if (!editor)
+        return;
+    codeeditor_clamp_cursor_to_visible(editor, &editor->cursor_line, &editor->cursor_col);
     vg_code_line_t *line = &editor->lines[editor->cursor_line];
 
+    if (line->length > SIZE_MAX - 2)
+        return;
     if (!ensure_text_capacity(line, line->length + 2))
         return;
 
@@ -2176,6 +2199,9 @@ VG_UNUSED static void insert_char(vg_codeeditor_t *editor, char c) {
 }
 
 VG_UNUSED static void insert_newline(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    codeeditor_clamp_cursor_to_visible(editor, &editor->cursor_line, &editor->cursor_col);
     if (!ensure_line_capacity(editor, editor->line_count + 1))
         return;
 
@@ -2221,6 +2247,9 @@ VG_UNUSED static void insert_newline(vg_codeeditor_t *editor) {
 }
 
 VG_UNUSED static void delete_char_backward(vg_codeeditor_t *editor) {
+    if (!editor)
+        return;
+    codeeditor_clamp_cursor_to_visible(editor, &editor->cursor_line, &editor->cursor_col);
     if (editor->cursor_col > 0) {
         vg_code_line_t *line = &editor->lines[editor->cursor_line];
         memmove(line->text + editor->cursor_col - 1,
@@ -2786,10 +2815,18 @@ char *vg_codeeditor_get_text(vg_codeeditor_t *editor) {
     if (!editor)
         return NULL;
 
-    // Calculate total size
-    size_t total = 0;
+    // Calculate total size, including one final NUL byte.
+    size_t total = 1;
     for (int i = 0; i < editor->line_count; i++) {
-        total += editor->lines[i].length + 1; // +1 for newline or null
+        size_t add = editor->lines[i].length;
+        if (i < editor->line_count - 1) {
+            if (add == SIZE_MAX)
+                return NULL;
+            add++;
+        }
+        if (add > SIZE_MAX - total)
+            return NULL;
+        total += add;
     }
 
     char *result = malloc(total);
@@ -3019,6 +3056,8 @@ static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, 
     if (!editor || !text || line < 0 || line >= editor->line_count)
         return;
 
+    clamp_editor_position(editor, &line, &col);
+
     // Process character by character
     int cur_line = line;
     int cur_col = col;
@@ -3038,6 +3077,10 @@ static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, 
             vg_code_line_t *next = &editor->lines[cur_line + 1];
 
             memset(next, 0, sizeof(vg_code_line_t));
+            if (cur_col < 0)
+                cur_col = 0;
+            if (cur_col > (int)current->length)
+                cur_col = (int)current->length;
             size_t remaining = current->length - cur_col;
 
             if (remaining > 0) {
@@ -3066,6 +3109,12 @@ static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, 
         } else if (*p >= 32 || *p == '\t') {
             // Insert character
             vg_code_line_t *ln = &editor->lines[cur_line];
+            if (cur_col < 0)
+                cur_col = 0;
+            if (cur_col > (int)ln->length)
+                cur_col = (int)ln->length;
+            if (ln->length > SIZE_MAX - 2)
+                return;
             if (!ensure_text_capacity(ln, ln->length + 2))
                 return;
 
@@ -3090,6 +3139,13 @@ static void delete_text_range_internal(
     if (end_line < 0 || end_line >= editor->line_count)
         return;
 
+    normalize_selection_range(&start_line, &start_col, &end_line, &end_col);
+    clamp_editor_position(editor, &start_line, &start_col);
+    clamp_editor_position(editor, &end_line, &end_col);
+    normalize_selection_range(&start_line, &start_col, &end_line, &end_col);
+    if (compare_positions(start_line, start_col, end_line, end_col) >= 0)
+        return;
+
     if (start_line == end_line) {
         // Single line deletion
         vg_code_line_t *line = &editor->lines[start_line];
@@ -3106,6 +3162,12 @@ static void delete_text_range_internal(
         vg_code_line_t *last = &editor->lines[end_line];
         int old_line_count = editor->line_count;
 
+        if (end_col > (int)last->length)
+            end_col = (int)last->length;
+        if (start_col > (int)first->length)
+            start_col = (int)first->length;
+        if ((size_t)start_col > SIZE_MAX - (last->length - (size_t)end_col))
+            return;
         size_t new_len = start_col + (last->length - end_col);
         if (!ensure_text_capacity(first, new_len + 1))
             return;

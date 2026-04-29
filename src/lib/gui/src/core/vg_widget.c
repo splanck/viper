@@ -65,7 +65,19 @@ static void paint_widget_normal_tree(vg_widget_t *root, void *canvas) {
         return;
 
     if (root->vtable && root->vtable->paint) {
+        float rel_x = root->x;
+        float rel_y = root->y;
+        float screen_x = rel_x;
+        float screen_y = rel_y;
+        vg_widget_get_screen_bounds(root, &screen_x, &screen_y, NULL, NULL);
+        root->x = screen_x;
+        root->y = screen_y;
+        bool was_screen_space = root->_paint_screen_space;
+        root->_paint_screen_space = true;
         root->vtable->paint(root, canvas);
+        root->_paint_screen_space = was_screen_space;
+        root->x = rel_x;
+        root->y = rel_y;
     }
 
     if (widget_paints_children_internally(root))
@@ -772,13 +784,15 @@ void vg_widget_get_screen_bounds(
     float sx = widget->x;
     float sy = widget->y;
 
-    // Child x/y are already stored relative to the arranged content origin of
-    // their parent, so screen conversion only adds ancestor positions.
-    vg_widget_t *p = widget->parent;
-    while (p) {
-        sx += p->x;
-        sy += p->y;
-        p = p->parent;
+    if (!widget->_paint_screen_space) {
+        // Child x/y are already stored relative to the arranged content origin of
+        // their parent, so screen conversion only adds ancestor positions.
+        vg_widget_t *p = widget->parent;
+        while (p) {
+            sx += p->x;
+            sy += p->y;
+            p = p->parent;
+        }
     }
 
     if (x)

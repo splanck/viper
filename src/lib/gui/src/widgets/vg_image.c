@@ -19,6 +19,7 @@
 #include <ImageIO/ImageIO.h>
 #endif
 #include <limits.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -445,6 +446,8 @@ void vg_image_set_scale_mode(vg_image_t *image, vg_image_scale_t mode) {
 void vg_image_set_opacity(vg_image_t *image, float opacity) {
     if (!image)
         return;
+    if (!isfinite(opacity))
+        opacity = 1.0f;
     if (opacity < 0)
         opacity = 0;
     if (opacity > 1)

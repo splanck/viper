@@ -17,6 +17,17 @@ typedef struct ogg_reader ogg_reader_t;
 typedef struct vorbis_decoder vorbis_decoder_t;
 typedef struct mp3_stream mp3_stream_t;
 
+struct mp3_stream {
+    int sample_rate;
+    int channels;
+    int total_samples;
+    int decoded_frames;
+    int freed;
+};
+
+static mp3_stream_t g_fake_zero_total_mp3;
+static int16_t g_fake_mp3_pcm[2] = {100, -100};
+
 typedef struct {
     uint32_t serial_number;
     int64_t granule_position;
@@ -75,31 +86,41 @@ int vorbis_get_channels(const vorbis_decoder_t *dec) {
     return 0;
 }
 mp3_stream_t *mp3_stream_open(const char *filepath) {
-    (void)filepath;
+    if (filepath && strcmp(filepath, "zero-total.mp3") == 0) {
+        g_fake_zero_total_mp3.sample_rate = VAUD_SAMPLE_RATE;
+        g_fake_zero_total_mp3.channels = 2;
+        g_fake_zero_total_mp3.total_samples = 0;
+        g_fake_zero_total_mp3.decoded_frames = 0;
+        g_fake_zero_total_mp3.freed = 0;
+        return &g_fake_zero_total_mp3;
+    }
     return NULL;
 }
 int mp3_stream_decode_frame(mp3_stream_t *stream, int16_t **out_pcm) {
-    (void)stream;
-    (void)out_pcm;
-    return 0;
-}
-int mp3_stream_sample_rate(const mp3_stream_t *stream) {
-    (void)stream;
-    return 0;
-}
-int mp3_stream_channels(const mp3_stream_t *stream) {
-    (void)stream;
-    return 0;
-}
-int mp3_stream_total_samples(const mp3_stream_t *stream) {
-    (void)stream;
-    return 0;
+    if (out_pcm)
+        *out_pcm = NULL;
+    if (!stream || stream->decoded_frames++ > 0)
+        return 0;
+    if (out_pcm)
+        *out_pcm = g_fake_mp3_pcm;
+    return 1;
 }
 void mp3_stream_rewind(mp3_stream_t *stream) {
-    (void)stream;
+    if (stream)
+        stream->decoded_frames = 0;
 }
 void mp3_stream_free(mp3_stream_t *stream) {
-    (void)stream;
+    if (stream)
+        stream->freed = 1;
+}
+int mp3_stream_sample_rate(const mp3_stream_t *stream) {
+    return stream ? stream->sample_rate : 0;
+}
+int mp3_stream_channels(const mp3_stream_t *stream) {
+    return stream ? stream->channels : 0;
+}
+int mp3_stream_total_samples(const mp3_stream_t *stream) {
+    return stream ? stream->total_samples : 0;
 }
 
 int vaud_platform_init(vaud_context_t ctx) {
@@ -399,6 +420,18 @@ static void test_streaming_resample_preserves_total_frame_count(void) {
     remove(path);
 }
 
+static void test_mp3_music_allows_unknown_total_samples(void) {
+    vaud_context_t ctx = vaud_create();
+    EXPECT_TRUE(ctx != NULL);
+    vaud_music_t music = vaud_load_music_mp3(ctx, "zero-total.mp3");
+    EXPECT_TRUE(music != NULL);
+    EXPECT_TRUE(music->frame_count == 0);
+    EXPECT_TRUE(music->state == VAUD_MUSIC_STOPPED);
+    vaud_free_music(music);
+    EXPECT_TRUE(g_fake_zero_total_mp3.freed == 1);
+    vaud_destroy(ctx);
+}
+
 int main(void) {
     srand(1);
     test_destroy_detaches_loaded_sounds();
@@ -408,6 +441,7 @@ int main(void) {
     test_wav_rejects_invalid_block_align_and_byte_rate();
     test_wav_rejects_partial_pcm_frame();
     test_streaming_resample_preserves_total_frame_count();
+    test_mp3_music_allows_unknown_total_samples();
 
     if (tests_failed != 0)
         return 1;

@@ -349,12 +349,15 @@ static void floatingpanel_render_normal_subtree(vg_widget_t *widget,
     float abs_y = parent_abs_y + widget->y;
     float rel_x = widget->x;
     float rel_y = widget->y;
+    bool was_screen_space = widget->_paint_screen_space;
     widget->x = abs_x;
     widget->y = abs_y;
+    widget->_paint_screen_space = true;
 
     if (widget->vtable && widget->vtable->paint)
         widget->vtable->paint(widget, canvas);
 
+    widget->_paint_screen_space = was_screen_space;
     widget->x = rel_x;
     widget->y = rel_y;
 
@@ -377,12 +380,15 @@ static void floatingpanel_render_overlay_subtree(vg_widget_t *widget,
     float abs_y = parent_abs_y + widget->y;
     float rel_x = widget->x;
     float rel_y = widget->y;
+    bool was_screen_space = widget->_paint_screen_space;
     widget->x = abs_x;
     widget->y = abs_y;
+    widget->_paint_screen_space = true;
 
     if (widget->vtable && widget->vtable->paint_overlay)
         widget->vtable->paint_overlay(widget, canvas);
 
+    widget->_paint_screen_space = was_screen_space;
     widget->x = rel_x;
     widget->y = rel_y;
 

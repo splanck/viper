@@ -13,6 +13,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -62,6 +63,8 @@ static bool ensure_capacity(vg_textinput_t *input, size_t needed) {
 
     size_t new_capacity = input->text_capacity ? input->text_capacity : TEXTINPUT_INITIAL_CAPACITY;
     while (new_capacity < needed) {
+        if (new_capacity > SIZE_MAX / TEXTINPUT_GROWTH_FACTOR)
+            return false;
         new_capacity *= TEXTINPUT_GROWTH_FACTOR;
     }
 
@@ -87,6 +90,51 @@ static size_t textinput_byte_offset(const vg_textinput_t *input, size_t char_pos
     return (size_t)vg_utf8_offset(input->text, (int)textinput_clamp_char_pos(input, char_pos));
 }
 
+static bool textinput_utf8_advance_bounded(const char **cursor, const char *limit) {
+    if (!cursor || !*cursor || *cursor >= limit || **cursor == '\0')
+        return false;
+
+    const unsigned char *s = (const unsigned char *)*cursor;
+    size_t remaining = (size_t)(limit - *cursor);
+    uint32_t cp = 0;
+
+    if ((s[0] & 0x80u) == 0) {
+        *cursor += 1;
+        return true;
+    }
+    if ((s[0] & 0xE0u) == 0xC0u) {
+        if (remaining < 2 || (s[1] & 0xC0u) != 0x80u)
+            return false;
+        cp = ((uint32_t)(s[0] & 0x1Fu) << 6) | (uint32_t)(s[1] & 0x3Fu);
+        if (cp < 0x80u)
+            return false;
+        *cursor += 2;
+        return true;
+    }
+    if ((s[0] & 0xF0u) == 0xE0u) {
+        if (remaining < 3 || (s[1] & 0xC0u) != 0x80u || (s[2] & 0xC0u) != 0x80u)
+            return false;
+        cp = ((uint32_t)(s[0] & 0x0Fu) << 12) | ((uint32_t)(s[1] & 0x3Fu) << 6) |
+             (uint32_t)(s[2] & 0x3Fu);
+        if (cp < 0x800u || (cp >= 0xD800u && cp <= 0xDFFFu))
+            return false;
+        *cursor += 3;
+        return true;
+    }
+    if ((s[0] & 0xF8u) == 0xF0u) {
+        if (remaining < 4 || (s[1] & 0xC0u) != 0x80u || (s[2] & 0xC0u) != 0x80u ||
+            (s[3] & 0xC0u) != 0x80u)
+            return false;
+        cp = ((uint32_t)(s[0] & 0x07u) << 18) | ((uint32_t)(s[1] & 0x3Fu) << 12) |
+             ((uint32_t)(s[2] & 0x3Fu) << 6) | (uint32_t)(s[3] & 0x3Fu);
+        if (cp < 0x10000u || cp > 0x10FFFFu)
+            return false;
+        *cursor += 4;
+        return true;
+    }
+    return false;
+}
+
 static size_t textinput_char_index_from_byte_offset(const char *text, size_t byte_offset) {
     if (!text)
         return 0;
@@ -110,8 +158,7 @@ static size_t textinput_codepoint_count_in_prefix(const char *text, size_t byte_
     size_t chars = 0;
     while (*cursor && cursor < end) {
         const char *prev = cursor;
-        vg_utf8_decode(&cursor);
-        if (cursor > end)
+        if (!textinput_utf8_advance_bounded(&cursor, end))
             break;
         if (cursor == prev)
             break;
@@ -144,8 +191,7 @@ static size_t textinput_valid_utf8_prefix(const char *text, size_t max_bytes) {
     const char *limit = text + max_bytes;
     while (*cursor && cursor < limit) {
         const char *prev = cursor;
-        vg_utf8_decode(&cursor);
-        if (cursor > limit)
+        if (!textinput_utf8_advance_bounded(&cursor, limit))
             return (size_t)(prev - text);
         if (cursor == prev)
             break;

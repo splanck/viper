@@ -142,6 +142,31 @@ void test_clear_screen(void) {
     TEST_END();
 }
 
+void test_clear_screen_writes_rgba_bytes(void) {
+    TEST_BEGIN("T6b: Clear Screen Writes RGBA Bytes");
+
+    vgfx_window_params_t params = {
+        .width = 2, .height = 1, .title = "Test", .fps = 0, .resizable = 0};
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+    vgfx_cls(win, 0x123456);
+
+    vgfx_framebuffer_t fb = {0};
+    ASSERT_EQ(vgfx_get_framebuffer(win, &fb), 1);
+    ASSERT_EQ(fb.pixels[0], 0x12);
+    ASSERT_EQ(fb.pixels[1], 0x34);
+    ASSERT_EQ(fb.pixels[2], 0x56);
+    ASSERT_EQ(fb.pixels[3], 0xFF);
+    ASSERT_EQ(fb.pixels[4], 0x12);
+    ASSERT_EQ(fb.pixels[5], 0x34);
+    ASSERT_EQ(fb.pixels[6], 0x56);
+    ASSERT_EQ(fb.pixels[7], 0xFF);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
 /* T14: Framebuffer Access */
 void test_framebuffer_access(void) {
     TEST_BEGIN("T14: Framebuffer Access");
@@ -192,6 +217,7 @@ int main(void) {
     test_out_of_bounds_write();
     test_pixel_writes_respect_clip();
     test_clear_screen();
+    test_clear_screen_writes_rgba_bytes();
     test_framebuffer_access();
 
     TEST_SUMMARY();

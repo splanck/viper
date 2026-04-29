@@ -11,6 +11,7 @@
 // vg_layout.c - Layout system implementation
 #include "../../include/vg_layout.h"
 #include "../../include/vg_widget.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -1092,6 +1093,8 @@ static grid_placement_t *grid_find_placement(grid_impl_t *g, vg_widget_t *child)
 static bool grid_resize_track_array(float **tracks, int old_count, int new_count) {
     if (!tracks || new_count <= 0)
         return false;
+    if ((size_t)new_count > SIZE_MAX / sizeof(float))
+        return false;
     if (!*tracks) {
         *tracks = calloc((size_t)new_count, sizeof(float));
         return *tracks != NULL;
@@ -1238,8 +1241,8 @@ static void grid_arrange(vg_widget_t *self, float x, float y, float width, float
 
         int col, row, cs, rs;
         if (p) {
-            col = p->item.column < cols ? p->item.column : 0;
-            row = p->item.row < rows ? p->item.row : 0;
+            col = (p->item.column >= 0 && p->item.column < cols) ? p->item.column : 0;
+            row = (p->item.row >= 0 && p->item.row < rows) ? p->item.row : 0;
             cs = p->item.col_span > 0 ? p->item.col_span : 1;
             rs = p->item.row_span > 0 ? p->item.row_span : 1;
         } else {
@@ -1331,9 +1334,10 @@ void vg_grid_set_columns(vg_widget_t *grid, int columns) {
         return;
     grid_impl_t *g = (grid_impl_t *)grid->impl_data;
     int old_columns = g->layout.columns;
+    if (g->layout.column_widths &&
+        !grid_resize_track_array(&g->layout.column_widths, old_columns, columns))
+        return;
     g->layout.columns = columns;
-    if (g->layout.column_widths)
-        (void)grid_resize_track_array(&g->layout.column_widths, old_columns, columns);
     grid->needs_layout = true;
 }
 
@@ -1342,9 +1346,9 @@ void vg_grid_set_rows(vg_widget_t *grid, int rows) {
         return;
     grid_impl_t *g = (grid_impl_t *)grid->impl_data;
     int old_rows = g->layout.rows;
+    if (g->layout.row_heights && !grid_resize_track_array(&g->layout.row_heights, old_rows, rows))
+        return;
     g->layout.rows = rows;
-    if (g->layout.row_heights)
-        (void)grid_resize_track_array(&g->layout.row_heights, old_rows, rows);
     grid->needs_layout = true;
 }
 
@@ -1393,8 +1397,8 @@ void vg_grid_place(
     /* Update existing placement if present */
     grid_placement_t *existing = grid_find_placement(g, child);
     if (existing) {
-        existing->item.column = column;
-        existing->item.row = row;
+        existing->item.column = column < 0 ? 0 : column;
+        existing->item.row = row < 0 ? 0 : row;
         existing->item.col_span = col_span > 0 ? col_span : 1;
         existing->item.row_span = row_span > 0 ? row_span : 1;
         grid->needs_layout = true;
@@ -1403,7 +1407,11 @@ void vg_grid_place(
 
     /* Grow placement array if needed */
     if (g->placement_count >= g->placement_capacity) {
+        if (g->placement_capacity > INT32_MAX / 2)
+            return;
         int new_cap = g->placement_capacity * 2;
+        if ((size_t)new_cap > SIZE_MAX / sizeof(grid_placement_t))
+            return;
         grid_placement_t *new_p = realloc(g->placements, new_cap * sizeof(grid_placement_t));
         if (!new_p)
             return;
@@ -1413,8 +1421,8 @@ void vg_grid_place(
 
     grid_placement_t *p = &g->placements[g->placement_count++];
     p->child = child;
-    p->item.column = column;
-    p->item.row = row;
+    p->item.column = column < 0 ? 0 : column;
+    p->item.row = row < 0 ? 0 : row;
     p->item.col_span = col_span > 0 ? col_span : 1;
     p->item.row_span = row_span > 0 ? row_span : 1;
     grid->needs_layout = true;

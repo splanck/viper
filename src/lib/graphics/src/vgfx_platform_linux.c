@@ -1069,22 +1069,18 @@ int vgfx_platform_present(struct vgfx_window *win) {
         return 0;
 
     /* Swizzle RGBA → BGRA: swap bytes 0 (R) and 2 (B) per pixel so that
-     * the X11 TrueColor visual interprets colours correctly.  The draw
-     * code writes R,G,B,A; X11 on little-endian expects B,G,R,A. */
+     * the X11 TrueColor visual interprets colours correctly. */
     {
-        const uint32_t *src = (const uint32_t *)win->pixels;
-        uint32_t *dst = (uint32_t *)x11->ximage_buf;
+        const uint8_t *src = win->pixels;
+        uint8_t *dst = x11->ximage_buf;
         const size_t pixel_count = (size_t)win->width * (size_t)win->height;
         for (size_t i = 0; i < pixel_count; ++i) {
-            const uint32_t px = src[i];
-            /* px on LE: byte[0]=R, byte[1]=G, byte[2]=B, byte[3]=A
-             *           = 0xAABBGGRR as uint32_t
-             * need:     byte[0]=B, byte[1]=G, byte[2]=R, byte[3]=A
-             *           = 0xAARRGGBB as uint32_t
-             * Swap the RR (bits 0-7) and BB (bits 16-23) fields. */
-            dst[i] = (px & 0xFF00FF00u)            /* keep G and A */
-                     | ((px & 0x000000FFu) << 16)  /* R → bits 16-23 */
-                     | ((px & 0x00FF0000u) >> 16); /* B → bits 0-7 */
+            dst[0] = src[2];
+            dst[1] = src[1];
+            dst[2] = src[0];
+            dst[3] = src[3];
+            src += 4;
+            dst += 4;
         }
     }
 
