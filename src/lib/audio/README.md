@@ -13,7 +13,7 @@ with zero external dependencies (only OS-level audio APIs).
 - **Cross-platform** - Native backends for macOS (AudioQueue), Linux (ALSA), Windows (WASAPI)
 - **Sound effects** - Load-and-play with automatic voice management
 - **Music streaming** - Memory-efficient streaming for long audio files
-- **WAV support** - 8/16/24/32-bit PCM and 32-bit float, mono or stereo, with checked resampling to the mixer rate
+- **WAV support** - 8/16/24/32-bit PCM and 32-bit float, mono or stereo, with strict header/data validation and checked resampling to the mixer rate
 - **Thread-safe** - Audio runs on dedicated thread, all API calls are thread-safe
 
 ## Platform Support
@@ -173,6 +173,12 @@ void vaud_pause_all(vaud_context_t ctx);
 void vaud_resume_all(vaud_context_t ctx);
 ```
 
+`vaud_destroy` stops playback, shuts down the platform backend, and detaches
+caller-owned sound/music handles. Existing handles can still be passed to
+`vaud_free_sound` or `vaud_free_music` after the context has been destroyed.
+Volume parameters are sanitized before reaching the mixer: non-finite values
+become 0.0 and finite values outside 0.0..1.0 are clamped.
+
 ### Sound Effects
 
 ```c
@@ -209,6 +215,13 @@ float vaud_music_get_position(vaud_music_t music);
 float vaud_music_get_duration(vaud_music_t music);
 ```
 
+Streaming music resampling carries fractional source position and decoded
+leftovers across buffer boundaries, so non-44.1 kHz music preserves duration
+instead of dropping frames at refill boundaries. `vaud_music_seek` ignores NaN
+or infinity and clamps finite offsets to the known stream duration. Calling
+`vaud_music_play` on a stopped stream restarts from the beginning, including
+after the stream has reached EOF.
+
 ### Error Handling
 
 ```c
@@ -229,8 +242,12 @@ void vaud_clear_error(void);
 - **WAV files** (RIFF format)
     - 8-bit unsigned PCM
     - 16-bit signed PCM
+    - 24-bit signed PCM
+    - 32-bit signed PCM
+    - 32-bit IEEE float
     - Mono or stereo
     - Any sample rate (automatically resampled)
+    - `fmt` `blockAlign`/`byteRate` and `data` frame alignment must be valid
 
 ## Threading Model
 
@@ -267,6 +284,7 @@ The mixer combines up to 32 simultaneous voices plus active music streams:
 2. 32-bit accumulator prevents clipping during mixing
 3. Soft limiting algorithm prevents harsh distortion
 4. Constant-power pan law for natural stereo imaging
+5. Non-finite voice/music/master volumes and pans are normalized before mixing
 
 ### Voice Management
 

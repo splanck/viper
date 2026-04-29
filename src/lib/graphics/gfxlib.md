@@ -42,7 +42,7 @@ version: 1.0.0
 
 - [x] Keyboard state tracking (macOS) — Full key mapping (A-Z, 0-9, arrows, etc.)
 - [x] Mouse position & button tracking (macOS)
-- [x] Event queue implementation (lock-free SPSC ring buffer)
+- [x] Event queue implementation (synchronized ring buffer)
 - [x] `vgfx_poll_event` API
 - [x] Mock platform backend (`src/vgfx_platform_mock.c`) — 430 lines for deterministic testing
 - [x] Unit tests: input & events (test_input.c)
@@ -258,9 +258,8 @@ Phase 3: BASIC frontend support (SCREEN, PSET, LINE, etc.) ⏳ Planned
 
 // Event queue capacity. Power of 2 is recommended for efficient
 // ring-buffer indexing with bit masking, but any positive value is supported.
-// The event queue uses a lock-free single-producer single-consumer (SPSC)
-// design where the platform thread produces events and the application thread
-// consumes them via vgfx_poll_event().
+// The event queue uses a small synchronized ring buffer so platform event
+// production and application polling cannot corrupt queue state.
 #ifndef VGFX_EVENT_QUEUE_SIZE
 #define VGFX_EVENT_QUEUE_SIZE 256
 #endif
@@ -592,10 +591,10 @@ if (vgfx_get_size(win, &width, &height)) {
 
 **Event Queue Thread Safety:**
 
-- The event queue uses a **lock-free SPSC** (Single Producer, Single Consumer) design
-- **Producer:** Platform event thread (OS callbacks)
+- The event queue uses a **synchronized ring buffer**
+- **Producer:** Platform event callbacks
 - **Consumer:** Application thread (via `vgfx_poll_event`)
-- This is the **only** thread-safe interaction in ViperGFX
+- This synchronization is limited to event production/polling; general ViperGFX APIs remain single-threaded
 
 **Error Handling Thread Safety:**
 
@@ -925,8 +924,8 @@ int32_t vgfx_get_size(vgfx_window_t window, int32_t* width, int32_t* height);
 //
 // Event queue behavior:
 //   - Capacity: VGFX_EVENT_QUEUE_SIZE (default 256)
-//   - Implementation: Lock-free SPSC (single producer, single consumer) ring buffer
-//   - Producer: Platform event thread (OS callbacks)
+//   - Implementation: synchronized ring buffer
+//   - Producer: Platform event callbacks
 //   - Consumer: Application thread (via vgfx_poll_event)
 //   - When full: Oldest non-critical events are silently dropped (FIFO eviction)
 //   - Critical events (VGFX_EVENT_CLOSE) are never dropped
@@ -2802,8 +2801,8 @@ int main(void) {
 | Version | Date       | Changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 |---------|------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | 1.0.0   | 2025-11-20 | Initial specification with all core features and refinements                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| 1.0.1   | 2025-11-20 | - Clarified framebuffer byte layout (removed endian confusion)<br>- Enhanced thread safety documentation<br>- Added memory alignment configuration<br>- Added FPS query functions<br>- Added XShm optimization details<br>- Added Performance Considerations section<br>- Clarified event queue SPSC design<br>- Added FPS clamping [1,1000]                                                                                                                                                            |
-| 1.0.2   | 2025-11-20 | - Added common color constants (VGFX_BLACK, VGFX_WHITE, etc.)<br>- Added vgfx_rgb() helper function documentation<br>- Added vgfx_get_fps() and vgfx_get_default_fps() to API section<br>- Enhanced event queue overflow documentation with SPSC details<br>- Added explicit Phase 1 key coverage list (43 keys)<br>- Clarified framebuffer alignment requirements (MUST vs SHOULD)<br>- Enhanced resize section with framebuffer pointer invalidation timing<br>- Added vgfx_version_string() function |
+| 1.0.1   | 2025-11-20 | - Clarified framebuffer byte layout (removed endian confusion)<br>- Enhanced thread safety documentation<br>- Added memory alignment configuration<br>- Added FPS query functions<br>- Added XShm optimization details<br>- Added Performance Considerations section<br>- Clarified synchronized event queue design<br>- Added FPS clamping [1,1000]                                                                                                                                                            |
+| 1.0.2   | 2025-11-20 | - Added common color constants (VGFX_BLACK, VGFX_WHITE, etc.)<br>- Added vgfx_rgb() helper function documentation<br>- Added vgfx_get_fps() and vgfx_get_default_fps() to API section<br>- Enhanced event queue overflow documentation with synchronized queue details<br>- Added explicit Phase 1 key coverage list (43 keys)<br>- Clarified framebuffer alignment requirements (MUST vs SHOULD)<br>- Enhanced resize section with framebuffer pointer invalidation timing<br>- Added vgfx_version_string() function |
 
 ---
 

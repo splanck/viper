@@ -213,7 +213,7 @@ The test suite validates:
 
 ### Ring Buffer Fix
 
-**Issue:** SPSC ring buffer with "one empty slot" strategy can only hold `SIZE-1` elements.
+**Issue:** Ring buffers that reserve one empty slot can only hold `SIZE-1` elements.
 
 **Solution:** Internal array size is `VGFX_EVENT_QUEUE_SIZE + 1` (257 slots) to provide documented capacity of 256
 events.

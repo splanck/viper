@@ -188,6 +188,53 @@ void test_event_queue_overflow(void) {
     TEST_END();
 }
 
+void test_event_queue_flush_and_clear_wrappers(void) {
+    TEST_BEGIN("T20b: Event Queue Flush and Clear Wrappers");
+
+    vgfx_window_params_t params = {
+        .width = 640, .height = 480, .title = "Test", .fps = 0, .resizable = 0};
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    vgfx_mock_inject_key_event(win, VGFX_KEY_A, 1);
+    vgfx_mock_inject_key_event(win, VGFX_KEY_A, 0);
+    vgfx_update(win);
+
+    vgfx_event_t ev;
+    ASSERT_EQ(vgfx_peek_event(win, &ev), 1);
+    ASSERT_EQ(vgfx_flush_events(win), 2);
+    ASSERT_EQ(vgfx_poll_event(win, &ev), 0);
+
+    vgfx_mock_inject_mouse_move(win, 10, 20);
+    vgfx_update(win);
+    ASSERT_EQ(vgfx_peek_event(win, &ev), 1);
+    vgfx_clear_events(win);
+    ASSERT_EQ(vgfx_poll_event(win, &ev), 0);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
+void test_first_limited_update_waits_for_deadline(void) {
+    TEST_BEGIN("T20c: First Limited Update Waits for Deadline");
+
+    vgfx_mock_set_time_ms(1000);
+    vgfx_window_params_t params = {
+        .width = 320, .height = 240, .title = "Test", .fps = 60, .resizable = 0};
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    ASSERT_EQ(vgfx_update(win), 1);
+    ASSERT_TRUE(vgfx_mock_get_time_ms() >= 1016);
+    ASSERT_TRUE(vgfx_frame_time_ms(win) >= 16);
+
+    vgfx_destroy_window(win);
+    vgfx_mock_set_time_ms(0);
+    TEST_END();
+}
+
 /* T21: Resize Event */
 void test_resize_event(void) {
     TEST_BEGIN("T21: Resize Event");
@@ -425,6 +472,51 @@ void test_focus_state_sync(void) {
     TEST_END();
 }
 
+void test_invalid_negative_input_queries_are_safe(void) {
+    TEST_BEGIN("T26: Invalid Negative Input Queries Are Safe");
+
+    vgfx_window_params_t params = {
+        .width = 320, .height = 240, .title = "Test", .fps = 0, .resizable = 0};
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    ASSERT_EQ(vgfx_key_down(win, (vgfx_key_t)-1), 0);
+    ASSERT_EQ(vgfx_mouse_button(win, (vgfx_mouse_button_t)-1), 0);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
+void test_prevent_close_still_emits_close_event(void) {
+    TEST_BEGIN("T27: Prevent Close Still Emits Close Event");
+
+    vgfx_window_params_t params = {
+        .width = 320, .height = 240, .title = "Test", .fps = 0, .resizable = 0};
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    vgfx_set_prevent_close(win, 1);
+    vgfx_mock_inject_close(win);
+    vgfx_update(win);
+
+    vgfx_event_t ev;
+    ASSERT_EQ(vgfx_poll_event(win, &ev), 1);
+    ASSERT_EQ(ev.type, VGFX_EVENT_CLOSE);
+    ASSERT_EQ(vgfx_close_requested(win), 0);
+
+    vgfx_set_prevent_close(win, 0);
+    vgfx_mock_inject_close(win);
+    vgfx_update(win);
+    ASSERT_EQ(vgfx_poll_event(win, &ev), 1);
+    ASSERT_EQ(ev.type, VGFX_EVENT_CLOSE);
+    ASSERT_EQ(vgfx_close_requested(win), 1);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
 /* Main test runner */
 /// What: Entry point for input tests covering key/mouse event handling.
 /// Why:  Validate that the input subsystem reports and sequences events
@@ -441,6 +533,8 @@ int main(void) {
     test_mouse_button();
     test_event_queue_basic();
     test_event_queue_overflow();
+    test_event_queue_flush_and_clear_wrappers();
+    test_first_limited_update_waits_for_deadline();
     test_resize_event();
     test_resize_event_scaled_logical();
     test_pump_events_without_present();
@@ -449,6 +543,8 @@ int main(void) {
     test_scroll_updates_mouse_position();
     test_focus_state_sync();
     test_mock_fullscreen_per_window();
+    test_invalid_negative_input_queries_are_safe();
+    test_prevent_close_still_emits_close_event();
 
     TEST_SUMMARY();
     return TEST_RETURN_CODE();

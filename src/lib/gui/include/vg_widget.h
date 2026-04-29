@@ -30,8 +30,12 @@
 /// Ownership/Lifetime:
 ///   - vg_widget_destroy recursively destroys all children.
 ///   - vg_widget_remove_child detaches without destroying; the caller assumes
-///     ownership and must destroy the child eventually.
+///     ownership and must destroy the child eventually. Detaching a subtree
+///     clears focus, capture, modal, hover, and click runtime references inside it.
 ///   - The `name` string is owned by the widget and freed on destroy.
+///   - The base widget owns `impl_data` by default and frees it after the
+///     vtable destroy hook returns. A type-specific destroy hook that frees
+///     or transfers this pointer must call vg_widget_take_impl_data().
 ///
 /// Links:
 ///   - vg_layout.h  -- layout containers (VBox, HBox, Flex, Grid, Dock)
@@ -340,8 +344,10 @@ struct vg_widget {
     /// @brief Opaque pointer to widget-specific implementation data.
     ///
     /// @details Concrete widget types may allocate additional state and store
-    ///          a pointer here. The vtable's destroy function is responsible
-    ///          for freeing this data.
+    ///          a pointer here. The base widget frees this pointer after the
+    ///          vtable destroy hook returns. If the destroy hook frees or
+    ///          transfers the data itself, it must first call
+    ///          vg_widget_take_impl_data() to clear base ownership.
     void *impl_data;
 };
 
@@ -395,12 +401,23 @@ vg_widget_t *vg_widget_create(vg_widget_type_t type);
 
 /// @brief Destroy a widget and recursively destroy all of its descendants.
 ///
-/// @details Calls the vtable destroy function (if present), frees the name
-///          string, detaches the widget from its parent, and repeats the
-///          process for every child. After this call the pointer is invalid.
+/// @details Calls the vtable destroy function (if present), frees owned base
+///          strings and impl_data, detaches the widget from its parent, and
+///          repeats the process for every child. After this call the pointer is
+///          invalid.
 ///
 /// @param widget The widget to destroy (may be NULL, in which case this is a no-op).
 void vg_widget_destroy(vg_widget_t *widget);
+
+/// @brief Transfer ownership of the widget implementation pointer to the caller.
+///
+/// @details Returns widget->impl_data and clears the field so the base destroy
+///          path will not free it. This is intended for type-specific
+///          destructors that need custom cleanup before releasing the storage.
+///
+/// @param widget The widget whose impl_data should be detached.
+/// @return The previous impl_data pointer, or NULL.
+void *vg_widget_take_impl_data(vg_widget_t *widget);
 
 //=============================================================================
 // Hierarchy Management
@@ -432,7 +449,9 @@ void vg_widget_insert_child(vg_widget_t *parent, vg_widget_t *child, int index);
 ///
 /// @details After removal the child's parent pointer is set to NULL and the
 ///          caller takes ownership. The child must actually be a child of
-///          @p parent; otherwise behaviour is undefined.
+///          @p parent; otherwise behaviour is undefined. Runtime focus, input
+///          capture, modal, hover, and click references into the removed subtree
+///          are cleared.
 ///
 /// @param parent The parent widget.
 /// @param child  The child widget to remove.
@@ -442,7 +461,8 @@ void vg_widget_remove_child(vg_widget_t *parent, vg_widget_t *child);
 ///
 /// @details Every child's parent pointer is set to NULL and the parent's
 ///          child list is emptied. The caller is responsible for eventually
-///          destroying each removed child.
+///          destroying each removed child. Runtime references into removed
+///          child subtrees are cleared.
 ///
 /// @param parent The widget whose children are to be removed.
 void vg_widget_clear_children(vg_widget_t *parent);
@@ -761,6 +781,8 @@ vg_widget_t *vg_widget_get_input_capture(void);
 void vg_widget_get_runtime_state(vg_widget_runtime_state_t *state);
 
 /// @brief Restore toolkit-global widget runtime state from a prior snapshot.
+/// @details Widget pointers in the snapshot are restored only if they still
+///          look like live widget handles; invalid entries are treated as NULL.
 void vg_widget_set_runtime_state(const vg_widget_runtime_state_t *state);
 
 /// @brief Record that a real click activation occurred on @p widget.
@@ -785,23 +807,23 @@ void vg_widget_set_focus(vg_widget_t *widget);
 
 /// @brief Find the widget that currently has keyboard focus within the tree.
 ///
-/// @param root The root of the subtree to search.
-/// @return The focused widget, or NULL if no widget in the tree has focus.
+/// @param root The root of the subtree to search, or NULL to return global focus.
+/// @return The focused widget, or NULL if no widget in the requested tree has focus.
 vg_widget_t *vg_widget_get_focused(vg_widget_t *root);
 
 /// @brief Advance keyboard focus to the next focusable widget in tab order.
 ///
-/// @details Performs a depth-first traversal starting from the currently
-///          focused widget and wraps around to the first focusable widget
-///          if the end of the tree is reached.
+/// @details Builds a dynamic depth-first tab list for the subtree, sorts it by
+///          tab_index, and wraps around to the first focusable widget if the
+///          end of the tree is reached.
 ///
 /// @param root The root of the widget tree.
 void vg_widget_focus_next(vg_widget_t *root);
 
 /// @brief Move keyboard focus to the previous focusable widget in tab order.
 ///
-/// @details Performs a reverse depth-first traversal from the currently
-///          focused widget, wrapping to the last focusable widget if the
+/// @details Builds a dynamic depth-first tab list for the subtree, sorts it by
+///          tab_index, and wraps around to the last focusable widget if the
 ///          beginning of the tree is reached.
 ///
 /// @param root The root of the widget tree.

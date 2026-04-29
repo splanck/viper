@@ -16,7 +16,7 @@
 // - Software mixing for predictable, portable audio output
 // - Thread-safe playback (audio runs on dedicated thread)
 // - Simple resource management (load/play/free)
-// - WAV file format support (16-bit PCM)
+// - WAV file format support (8/16/24/32-bit PCM and 32-bit float)
 //
 // Supported platforms:
 // - macOS (Core Audio / AudioQueue backend)
@@ -120,9 +120,10 @@ void vaud_clear_error(void);
 /// @return Audio context handle on success, NULL on failure.
 vaud_context_t vaud_create(void);
 
-/// @brief Destroy an audio context and free all resources.
-/// @details Stops all playback, frees all loaded sounds and music, shuts down
-///          the audio thread, and releases platform resources. Safe to pass NULL.
+/// @brief Destroy an audio context and release device resources.
+/// @details Stops all playback, shuts down the audio thread, releases platform
+///          resources, and detaches caller-owned sound/music handles so they can
+///          still be freed safely after the context is gone. Safe to pass NULL.
 /// @param ctx Audio context to destroy (may be NULL).
 void vaud_destroy(vaud_context_t ctx);
 
@@ -131,7 +132,8 @@ void vaud_destroy(vaud_context_t ctx);
 ///          individual sound/music volume settings, which are multiplied
 ///          with the master volume.
 /// @param ctx Audio context.
-/// @param volume Master volume (0.0 = silent, 1.0 = full volume).
+/// @param volume Master volume (0.0 = silent, 1.0 = full volume). Non-finite
+///               values become 0.0; finite out-of-range values are clamped.
 void vaud_set_master_volume(vaud_context_t ctx, float volume);
 
 /// @brief Get the current master volume.
@@ -157,8 +159,10 @@ void vaud_resume_all(vaud_context_t ctx);
 
 /// @brief Load a sound effect from a WAV file.
 /// @details Reads the entire file into memory and converts to internal format.
-///          Supports 8-bit and 16-bit PCM WAV files, mono or stereo, any sample
-///          rate (will be resampled to VAUD_SAMPLE_RATE).
+///          Supports 8/16/24/32-bit PCM and 32-bit float WAV files, mono or
+///          stereo, any sample rate (will be resampled to VAUD_SAMPLE_RATE).
+///          WAV headers are validated for block alignment, byte rate, and
+///          complete PCM frames.
 /// @param ctx Audio context.
 /// @param path Path to the WAV file.
 /// @return Sound handle on success, NULL on failure.
@@ -166,6 +170,8 @@ vaud_sound_t vaud_load_sound(vaud_context_t ctx, const char *path);
 
 /// @brief Load a sound effect from memory.
 /// @details Parses WAV data from a memory buffer. Useful for embedded resources.
+///          WAV headers are validated for block alignment, byte rate, and
+///          complete PCM frames.
 /// @param ctx Audio context.
 /// @param data Pointer to WAV file data.
 /// @param size Size of the data in bytes.
@@ -198,16 +204,20 @@ vaud_voice_id vaud_play(vaud_sound_t sound);
 /// @brief Play a sound effect with volume and pan control.
 /// @details Extended version of vaud_play() with per-instance settings.
 /// @param sound Sound to play.
-/// @param volume Playback volume (0.0 to 1.0).
-/// @param pan Stereo pan (-1.0 = left, 0.0 = center, 1.0 = right).
+/// @param volume Playback volume (0.0 to 1.0). Non-finite values become 0.0;
+///               finite out-of-range values are clamped.
+/// @param pan Stereo pan (-1.0 = left, 0.0 = center, 1.0 = right). Non-finite
+///            values become center; finite out-of-range values are clamped.
 /// @return Voice ID for controlling playback, or VAUD_INVALID_VOICE on failure.
 vaud_voice_id vaud_play_ex(vaud_sound_t sound, float volume, float pan);
 
 /// @brief Play a sound effect with looping.
 /// @details Starts looped playback that continues until explicitly stopped.
 /// @param sound Sound to play.
-/// @param volume Playback volume (0.0 to 1.0).
-/// @param pan Stereo pan (-1.0 = left, 0.0 = center, 1.0 = right).
+/// @param volume Playback volume (0.0 to 1.0). Non-finite values become 0.0;
+///               finite out-of-range values are clamped.
+/// @param pan Stereo pan (-1.0 = left, 0.0 = center, 1.0 = right). Non-finite
+///            values become center; finite out-of-range values are clamped.
 /// @return Voice ID for controlling playback, or VAUD_INVALID_VOICE on failure.
 vaud_voice_id vaud_play_loop(vaud_sound_t sound, float volume, float pan);
 
@@ -220,13 +230,15 @@ void vaud_stop_voice(vaud_context_t ctx, vaud_voice_id voice);
 /// @brief Set the volume of a playing voice.
 /// @param ctx Audio context.
 /// @param voice Voice ID.
-/// @param volume New volume (0.0 to 1.0).
+/// @param volume New volume (0.0 to 1.0). Non-finite values become 0.0;
+///               finite out-of-range values are clamped.
 void vaud_set_voice_volume(vaud_context_t ctx, vaud_voice_id voice, float volume);
 
 /// @brief Set the pan of a playing voice.
 /// @param ctx Audio context.
 /// @param voice Voice ID.
-/// @param pan New pan (-1.0 = left, 0.0 = center, 1.0 = right).
+/// @param pan New pan (-1.0 = left, 0.0 = center, 1.0 = right). Non-finite
+///            values become center; finite out-of-range values are clamped.
 void vaud_set_voice_pan(vaud_context_t ctx, vaud_voice_id voice, float pan);
 
 /// @brief Check if a voice is still playing.
@@ -242,6 +254,8 @@ int vaud_voice_is_playing(vaud_context_t ctx, vaud_voice_id voice);
 /// @brief Load music from a WAV file for streaming playback.
 /// @details Opens the file for streaming. Only a small buffer is loaded into
 ///          memory at a time, making this suitable for long audio files.
+///          Calling vaud_music_play() on a stopped stream restarts from the
+///          beginning, including after end-of-file.
 /// @param ctx Audio context.
 /// @param path Path to the WAV file.
 /// @return Music handle on success, NULL on failure.
@@ -304,7 +318,8 @@ void vaud_music_set_loop(vaud_music_t music, int loop);
 
 /// @brief Set music playback volume.
 /// @param music Music handle.
-/// @param volume Volume (0.0 to 1.0).
+/// @param volume Volume (0.0 to 1.0). Non-finite values become 0.0; finite
+///               out-of-range values are clamped.
 void vaud_music_set_volume(vaud_music_t music, float volume);
 
 /// @brief Get music playback volume.
@@ -318,7 +333,9 @@ float vaud_music_get_volume(vaud_music_t music);
 int vaud_music_is_playing(vaud_music_t music);
 
 /// @brief Seek to a position in the music.
-/// @details Seeks to the specified time offset. May cause a brief audio gap.
+/// @details Seeks to the specified time offset. Non-finite values are ignored;
+///          finite values are clamped to the stream duration when known. May
+///          cause a brief audio gap.
 /// @param music Music handle.
 /// @param seconds Time offset in seconds from the beginning.
 void vaud_music_seek(vaud_music_t music, float seconds);

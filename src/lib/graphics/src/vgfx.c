@@ -15,7 +15,7 @@
 // Key Design Decisions:
 //   - Thread-Local Error Storage: Errors are thread-local (C11 _Thread_local)
 //     so concurrent windows can have independent error states.
-//   - Lock-Free Event Queue: Uses SPSC ring buffer with FIFO eviction policy
+//   - Event Queue: Uses a synchronized ring buffer with FIFO eviction policy
 //     that prioritizes CLOSE events.
 //   - Aligned Framebuffer: Allocated with VGFX_FRAMEBUFFER_ALIGNMENT for
 //     cache performance and potential SIMD optimizations.
@@ -248,10 +248,10 @@ int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int
 }
 
 //===----------------------------------------------------------------------===//
-// Event Queue Implementation (Lock-Free SPSC Ring Buffer)
+// Event Queue Implementation (Synchronized Ring Buffer)
 //===----------------------------------------------------------------------===//
-// Single producer (platform thread), single consumer (application thread).
-// Uses FIFO eviction when full, with special handling for CLOSE events.
+// Protected so platform callbacks and application polling do not race. Uses
+// FIFO eviction when full, with special handling for CLOSE events.
 //===----------------------------------------------------------------------===//
 
 /// @brief Enqueue an event into the window's ring buffer.
@@ -274,6 +274,7 @@ int vgfx_internal_enqueue_event(struct vgfx_window *win, const vgfx_event_t *eve
     if (!win || !event)
         return 0;
 
+    vgfx_internal_event_lock(win);
     int32_t next_head = (win->event_head + 1) % VGFX_INTERNAL_EVENT_QUEUE_SLOTS;
 
     /* Queue full? */
@@ -284,10 +285,12 @@ int vgfx_internal_enqueue_event(struct vgfx_window *win, const vgfx_event_t *eve
             /* Oldest event is CLOSE - can't drop it */
             if (event->type == VGFX_EVENT_CLOSE) {
                 /* Duplicate CLOSE event - drop the new one (no overflow increment) */
+                vgfx_internal_event_unlock(win);
                 return 0;
             } else {
                 /* New event is regular - drop it to preserve CLOSE */
                 win->event_overflow++;
+                vgfx_internal_event_unlock(win);
                 return 0;
             }
         } else {
@@ -300,6 +303,7 @@ int vgfx_internal_enqueue_event(struct vgfx_window *win, const vgfx_event_t *eve
     /* Enqueue event (queue now has space) */
     win->event_queue[win->event_head] = *event;
     win->event_head = next_head;
+    vgfx_internal_event_unlock(win);
     return 1;
 }
 
@@ -319,14 +323,17 @@ int vgfx_internal_dequeue_event(struct vgfx_window *win, vgfx_event_t *out_event
     if (!win || !out_event)
         return 0;
 
+    vgfx_internal_event_lock(win);
     /* Queue empty? */
     if (win->event_head == win->event_tail) {
+        vgfx_internal_event_unlock(win);
         return 0;
     }
 
     /* Dequeue event */
     *out_event = win->event_queue[win->event_tail];
     win->event_tail = (win->event_tail + 1) % VGFX_INTERNAL_EVENT_QUEUE_SLOTS;
+    vgfx_internal_event_unlock(win);
     return 1;
 }
 
@@ -346,13 +353,16 @@ int vgfx_internal_peek_event(struct vgfx_window *win, vgfx_event_t *out_event) {
     if (!win || !out_event)
         return 0;
 
+    vgfx_internal_event_lock(win);
     /* Queue empty? */
     if (win->event_head == win->event_tail) {
+        vgfx_internal_event_unlock(win);
         return 0;
     }
 
     /* Peek event (don't modify tail) */
     *out_event = win->event_queue[win->event_tail];
+    vgfx_internal_event_unlock(win);
     return 1;
 }
 
@@ -395,7 +405,7 @@ const char *vgfx_get_last_error(void) {
 /// @details Resets error code to VGFX_OK and error message to NULL.
 ///
 /// @post vgfx_get_last_error() returns NULL
-/// @post vgfx_last_error_code() returns VGFX_OK
+/// @post vgfx_last_error_code() returns VGFX_ERR_NONE
 void vgfx_clear_error(void) {
     g_last_error_str = NULL;
     g_last_error_code = VGFX_ERR_NONE;
@@ -404,7 +414,7 @@ void vgfx_clear_error(void) {
 /// @brief Get the last error code (thread-local).
 /// @details Returns the error code set by the most recent error in this thread.
 ///
-/// @return Error code (VGFX_OK if no error)
+/// @return Error code (VGFX_ERR_NONE if no error)
 vgfx_error_t vgfx_last_error_code(void) {
     return g_last_error_code;
 }
@@ -470,6 +480,10 @@ void vgfx_set_fps(vgfx_window_t window, int32_t fps) {
     } else {
         window->fps = fps; /* Allow negative for unlimited */
     }
+
+    if (window->fps > 0)
+        window->next_frame_deadline_ms =
+            (double)vgfx_platform_now_ms() + (1000.0 / (double)window->fps);
 }
 
 /// @brief Get the current FPS limit for a window.
@@ -740,6 +754,7 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) {
     clear_framebuffer_rgba(win->pixels, fb_size);
 
     /* Initialize event queue (empty ring buffer) */
+    atomic_flag_clear(&win->event_lock);
     win->event_head = 0;
     win->event_tail = 0;
     win->event_overflow = 0;
@@ -755,7 +770,9 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) {
 
     /* Initialize timing (start frame deadline at current time) */
     win->last_frame_time_ms = 0;
-    win->next_frame_deadline = vgfx_platform_now_ms();
+    win->next_frame_deadline_ms = (double)vgfx_platform_now_ms();
+    if (win->fps > 0)
+        win->next_frame_deadline_ms += 1000.0 / (double)win->fps;
 
     /* Initialize platform-specific resources (native window, etc.) */
     if (!vgfx_platform_init_window(win, &actual_params)) {
@@ -830,21 +847,24 @@ int32_t vgfx_update(vgfx_window_t window) {
     /* FPS limiting (only if fps > 0) */
     if (window->fps > 0) {
         int64_t now = vgfx_platform_now_ms();
-        int32_t target_frame_time = 1000 / window->fps;
+        double target_frame_time = 1000.0 / (double)window->fps;
 
         /* Sleep if we're ahead of schedule */
-        if (now < window->next_frame_deadline) {
-            int32_t sleep_time = (int32_t)(window->next_frame_deadline - now);
+        if ((double)now < window->next_frame_deadline_ms) {
+            double remaining = window->next_frame_deadline_ms - (double)now;
+            int32_t sleep_time = (int32_t)remaining;
+            if ((double)sleep_time < remaining)
+                sleep_time++;
             vgfx_platform_sleep_ms(sleep_time);
             now = vgfx_platform_now_ms();
         }
 
         /* Update deadline for next frame (additive to avoid drift) */
-        window->next_frame_deadline += target_frame_time;
+        window->next_frame_deadline_ms += target_frame_time;
 
         /* Resync if we fell behind by more than one frame (prevents runaway) */
-        if (window->next_frame_deadline < now - target_frame_time) {
-            window->next_frame_deadline = now;
+        if (window->next_frame_deadline_ms < (double)now - target_frame_time) {
+            window->next_frame_deadline_ms = (double)now + target_frame_time;
         }
     }
 
@@ -982,12 +1002,17 @@ int32_t vgfx_flush_events(vgfx_window_t window) {
     if (!window)
         return 0;
 
-    int32_t count = 0;
-    vgfx_event_t dummy;
-    while (vgfx_internal_dequeue_event(window, &dummy)) {
-        count++;
-    }
+    vgfx_internal_event_lock(window);
+    int32_t count = window->event_head - window->event_tail;
+    if (count < 0)
+        count += VGFX_INTERNAL_EVENT_QUEUE_SLOTS;
+    window->event_tail = window->event_head;
+    vgfx_internal_event_unlock(window);
     return count;
+}
+
+void vgfx_clear_events(vgfx_window_t window) {
+    (void)vgfx_flush_events(window);
 }
 
 /// @brief Get and reset the event overflow counter.
@@ -1004,8 +1029,10 @@ int32_t vgfx_event_overflow_count(vgfx_window_t window) {
     if (!window)
         return 0;
 
+    vgfx_internal_event_lock(window);
     int32_t count = window->event_overflow;
     window->event_overflow = 0; /* Reset after reading */
+    vgfx_internal_event_unlock(window);
     return count;
 }
 
@@ -1047,8 +1074,8 @@ void vgfx_pset(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t color) {
         for (int32_t dy = 0; dy < sz; dy++) {
             for (int32_t dx = 0; dx < sz; dx++) {
                 int32_t bx = px + dx, by = py + dy;
-                if (bx >= 0 && bx < window->width && by >= 0 && by < window->height) {
-                    int32_t off = by * window->stride + bx * 4;
+                if (vgfx_internal_in_effective_clip(window, bx, by)) {
+                    size_t off = (size_t)by * (size_t)window->stride + (size_t)bx * 4u;
                     window->pixels[off + 0] = r;
                     window->pixels[off + 1] = g;
                     window->pixels[off + 2] = b;
@@ -1060,10 +1087,10 @@ void vgfx_pset(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t color) {
     }
 
     /* Standard 1:1 path */
-    if (!vgfx_internal_in_bounds(window, x, y))
+    if (!vgfx_internal_in_effective_clip(window, x, y))
         return;
 
-    int32_t offset = y * window->stride + x * 4;
+    size_t offset = (size_t)y * (size_t)window->stride + (size_t)x * 4u;
     window->pixels[offset + 0] = (color >> 16) & 0xFF; /* R */
     window->pixels[offset + 1] = (color >> 8) & 0xFF;  /* G */
     window->pixels[offset + 2] = (color >> 0) & 0xFF;  /* B */
@@ -1082,9 +1109,9 @@ static void vgfx_pset_alpha_block(
     for (int32_t dy = 0; dy < sz; dy++) {
         for (int32_t dx = 0; dx < sz; dx++) {
             int32_t bx = px + dx, by = py + dy;
-            if (bx < 0 || bx >= window->width || by < 0 || by >= window->height)
+            if (!vgfx_internal_in_effective_clip(window, bx, by))
                 continue;
-            int32_t off = by * window->stride + bx * 4;
+            size_t off = (size_t)by * (size_t)window->stride + (size_t)bx * 4u;
             if (src_a == 0xFF) {
                 window->pixels[off + 0] = src_r;
                 window->pixels[off + 1] = src_g;
@@ -1118,14 +1145,14 @@ void vgfx_pset_alpha(vgfx_window_t window, int32_t x, int32_t y, uint32_t color)
         return;
     }
 
-    if (!vgfx_internal_in_bounds(window, x, y))
+    if (!vgfx_internal_in_effective_clip(window, x, y))
         return;
 
     uint8_t src_a = (uint8_t)((color >> 24) & 0xFF);
 
     /* Fast path: fully opaque source avoids multiply/divide */
     if (src_a == 0xFF) {
-        int32_t offset = y * window->stride + x * 4;
+        size_t offset = (size_t)y * (size_t)window->stride + (size_t)x * 4u;
         window->pixels[offset + 0] = (uint8_t)((color >> 16) & 0xFF); /* R */
         window->pixels[offset + 1] = (uint8_t)((color >> 8) & 0xFF);  /* G */
         window->pixels[offset + 2] = (uint8_t)(color & 0xFF);         /* B */
@@ -1142,7 +1169,7 @@ void vgfx_pset_alpha(vgfx_window_t window, int32_t x, int32_t y, uint32_t color)
     uint8_t src_g = (uint8_t)((color >> 8) & 0xFF);
     uint8_t src_b = (uint8_t)(color & 0xFF);
 
-    int32_t offset = y * window->stride + x * 4;
+    size_t offset = (size_t)y * (size_t)window->stride + (size_t)x * 4u;
     uint8_t dst_r = window->pixels[offset + 0];
     uint8_t dst_g = window->pixels[offset + 1];
     uint8_t dst_b = window->pixels[offset + 2];
@@ -1176,7 +1203,7 @@ int32_t vgfx_point(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t *out
     if (!vgfx_internal_in_bounds(window, px, py))
         return 0;
 
-    int32_t offset = py * window->stride + px * 4;
+    size_t offset = (size_t)py * (size_t)window->stride + (size_t)px * 4u;
     uint8_t r = window->pixels[offset + 0];
     uint8_t g = window->pixels[offset + 1];
     uint8_t b = window->pixels[offset + 2];
@@ -1192,7 +1219,7 @@ int32_t vgfx_point(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t *out
 /// @param window Window handle
 /// @param color  RGB color (format: 0x00RRGGBB)
 ///
-/// @post All pixels are set to color with alpha=0xFF
+/// @post Active clip pixels, or all pixels when clipping is disabled, are set to color with alpha=0xFF
 void vgfx_cls(vgfx_window_t window, vgfx_color_t color) {
     if (!window)
         return;
@@ -1207,10 +1234,38 @@ void vgfx_cls(vgfx_window_t window, vgfx_color_t color) {
      * uint32_t maps to the lowest memory address, so the correct packing is
      * R in bits 0-7, G in bits 8-15, B in bits 16-23, A in bits 24-31. */
     uint32_t packed = (uint32_t)r | ((uint32_t)g << 8) | ((uint32_t)b << 16) | (0xFFu << 24);
-    size_t pixel_count = (size_t)window->width * (size_t)window->height;
-    uint32_t *p = (uint32_t *)window->pixels;
-    for (size_t i = 0; i < pixel_count; i++)
-        p[i] = packed;
+    if (!window->clip_enabled) {
+        size_t pixel_count = (size_t)window->width * (size_t)window->height;
+        uint32_t *p = (uint32_t *)window->pixels;
+        for (size_t i = 0; i < pixel_count; i++)
+            p[i] = packed;
+        return;
+    }
+
+    if (window->clip_w <= 0 || window->clip_h <= 0)
+        return;
+
+    int64_t left = window->clip_x;
+    int64_t top = window->clip_y;
+    int64_t right = (int64_t)window->clip_x + (int64_t)window->clip_w;
+    int64_t bottom = (int64_t)window->clip_y + (int64_t)window->clip_h;
+    if (left < 0)
+        left = 0;
+    if (top < 0)
+        top = 0;
+    if (right > window->width)
+        right = window->width;
+    if (bottom > window->height)
+        bottom = window->height;
+    if (left >= right || top >= bottom)
+        return;
+
+    for (int64_t y = top; y < bottom; y++) {
+        uint32_t *row =
+            (uint32_t *)(window->pixels + (size_t)y * (size_t)window->stride + (size_t)left * 4u);
+        for (int64_t x = left; x < right; x++)
+            *row++ = packed;
+    }
 }
 
 //===----------------------------------------------------------------------===//
@@ -1389,9 +1444,10 @@ void vgfx_color_to_rgb(vgfx_color_t color, uint8_t *r, uint8_t *g, uint8_t *b) {
 ///
 /// @pre  key < 512
 int32_t vgfx_key_down(vgfx_window_t window, vgfx_key_t key) {
-    if (!window || key == VGFX_KEY_UNKNOWN || key >= 512)
+    int key_index = (int)key;
+    if (!window || key_index <= (int)VGFX_KEY_UNKNOWN || key_index >= 512)
         return 0;
-    return window->key_state[key] != 0;
+    return window->key_state[key_index] != 0;
 }
 
 /// @brief Get the current mouse cursor position.
@@ -1441,9 +1497,10 @@ int32_t vgfx_mouse_pos(vgfx_window_t window, int32_t *x, int32_t *y) {
 ///
 /// @pre  button < 8
 int32_t vgfx_mouse_button(vgfx_window_t window, vgfx_mouse_button_t button) {
-    if (!window || button >= 8)
+    int button_index = (int)button;
+    if (!window || button_index < 0 || button_index >= 8)
         return 0;
-    return window->mouse_button_state[button] != 0;
+    return window->mouse_button_state[button_index] != 0;
 }
 
 void vgfx_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {

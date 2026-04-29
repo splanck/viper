@@ -132,10 +132,12 @@ struct vaud_music {
     int32_t buffer_position;                        ///< Frame position within current buffer
     int stream_eof;                                 ///< Decoder reached EOF while pre-filling.
     int stream_loop_pending;                        ///< Mixer requested a loop rewind.
+    int64_t stream_output_generated;                ///< Output frames decoded since last reset/seek.
 
     // Resampling support (allocated when sample_rate != VAUD_SAMPLE_RATE)
     int16_t *resample_buf; ///< Temp buffer for raw frames before resampling
     int64_t resample_cap;  ///< Capacity of resample_buf in frames
+    double resample_phase; ///< Fractional source-frame offset carried between buffers.
 
     // WAV streaming scratch buffer (allocated before playback, never in mixer callback)
     uint8_t *wav_read_buf; ///< Raw bytes for WAV frame decode
@@ -173,6 +175,10 @@ struct vaud_context {
     // Music (single active music stream for simplicity)
     vaud_music_t active_music[VAUD_MAX_MUSIC]; ///< Active music streams
     int32_t music_count;                       ///< Number of active music streams
+
+    // Loaded sound handles retained so vaud_destroy can detach them safely.
+    vaud_sound_t loaded_sounds[VAUD_MAX_SOUNDS]; ///< Caller-owned sound handles.
+    int32_t sound_count;                         ///< Number of tracked sound handles.
 
     // H-1: Pre-allocated mix accumulator — avoids malloc() inside the real-time audio callback.
     int32_t accum_buf[VAUD_BUFFER_FRAMES * VAUD_CHANNELS]; ///< 32-bit mix accumulator (RT-safe)
@@ -261,6 +267,9 @@ int vaud_wav_open_stream(const char *path,
                          int32_t *out_channels,
                          int32_t *out_bits,
                          int32_t *out_format);
+
+/// @brief Seek a WAV stream using a 64-bit file offset.
+int vaud_wav_seek_stream(void *file, int64_t offset, int origin);
 
 /// @brief Read frames from a streaming WAV file.
 /// @param file File handle from vaud_wav_open_stream.
@@ -381,6 +390,10 @@ void vaud_mutex_lock(vaud_mutex_t *mutex);
 
 /// @brief Unlock a mutex.
 void vaud_mutex_unlock(vaud_mutex_t *mutex);
+
+/// @brief Try to lock a mutex without blocking.
+/// @return 1 if the lock was acquired, 0 otherwise.
+int vaud_mutex_trylock(vaud_mutex_t *mutex);
 
 //===----------------------------------------------------------------------===//
 // Error Handling

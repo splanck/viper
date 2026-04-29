@@ -219,14 +219,39 @@ static vgfx_key_t translate_keysym(KeySym keysym) {
             return VGFX_KEY_ENTER;
         case XK_Escape:
             return VGFX_KEY_ESCAPE;
+        case XK_BackSpace:
+            return VGFX_KEY_BACKSPACE;
+        case XK_Delete:
+        case XK_KP_Delete:
+            return VGFX_KEY_DELETE;
+        case XK_Tab:
+        case XK_ISO_Left_Tab:
+        case XK_KP_Tab:
+            return VGFX_KEY_TAB;
         case XK_Left:
+        case XK_KP_Left:
             return VGFX_KEY_LEFT;
         case XK_Right:
+        case XK_KP_Right:
             return VGFX_KEY_RIGHT;
         case XK_Up:
+        case XK_KP_Up:
             return VGFX_KEY_UP;
         case XK_Down:
+        case XK_KP_Down:
             return VGFX_KEY_DOWN;
+        case XK_Home:
+        case XK_KP_Home:
+            return VGFX_KEY_HOME;
+        case XK_End:
+        case XK_KP_End:
+            return VGFX_KEY_END;
+        case XK_Page_Up:
+        case XK_KP_Page_Up:
+            return VGFX_KEY_PAGE_UP;
+        case XK_Page_Down:
+        case XK_KP_Page_Down:
+            return VGFX_KEY_PAGE_DOWN;
         default:
             return VGFX_KEY_UNKNOWN;
     }
@@ -847,8 +872,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     break; /* Ignore extra buttons */
                 }
 
-                if (button < 8) {
-                    win->mouse_button_state[button] = 1; /* Update input state */
+                if ((int)button >= 0 && button < 8) {
+                    win->mouse_button_state[(int)button] = 1; /* Update input state */
                 }
 
                 vgfx_event_t vgfx_event = {.type = VGFX_EVENT_MOUSE_DOWN,
@@ -875,8 +900,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     break; /* Ignore scroll wheel and extra buttons */
                 }
 
-                if (button < 8) {
-                    win->mouse_button_state[button] = 0; /* Update input state */
+                if ((int)button >= 0 && button < 8) {
+                    win->mouse_button_state[(int)button] = 0; /* Update input state */
                 }
 
                 vgfx_event_t vgfx_event = {.type = VGFX_EVENT_MOUSE_UP,
@@ -889,8 +914,10 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             case ClientMessage: {
                 /* Handle WM_DELETE_WINDOW (window close button clicked) */
                 if ((Atom)event.xclient.data.l[0] == x11->wm_delete_window) {
-                    x11->close_requested = 1;
-                    win->close_requested = 1;
+                    if (!win->prevent_close) {
+                        x11->close_requested = 1;
+                        win->close_requested = 1;
+                    }
 
                     vgfx_event_t vgfx_event = {.type = VGFX_EVENT_CLOSE, .time_ms = timestamp};
                     vgfx_internal_enqueue_event(win, &vgfx_event);
@@ -1047,8 +1074,8 @@ int vgfx_platform_present(struct vgfx_window *win) {
     {
         const uint32_t *src = (const uint32_t *)win->pixels;
         uint32_t *dst = (uint32_t *)x11->ximage_buf;
-        const int pixel_count = win->width * win->height;
-        for (int i = 0; i < pixel_count; ++i) {
+        const size_t pixel_count = (size_t)win->width * (size_t)win->height;
+        for (size_t i = 0; i < pixel_count; ++i) {
             const uint32_t px = src[i];
             /* px on LE: byte[0]=R, byte[1]=G, byte[2]=B, byte[3]=A
              *           = 0xAABBGGRR as uint32_t

@@ -39,13 +39,14 @@
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdatomic.h>
 
 //===----------------------------------------------------------------------===//
 // Internal Constants
 //===----------------------------------------------------------------------===//
 
 /// @def VGFX_INTERNAL_EVENT_QUEUE_SLOTS
-/// @brief Physical array size for the lock-free ring buffer.
+/// @brief Physical array size for the synchronized ring buffer.
 /// @details One extra slot is allocated beyond the advertised capacity to
 ///          distinguish between full and empty states without using separate
 ///          counters.  When (head + 1) % SLOTS == tail, the queue is full.
@@ -125,28 +126,27 @@ struct vgfx_window {
     int8_t skip_software_present;
 
     //===------------------------------------------------------------------===//
-    // Event Queue (Lock-Free SPSC Ring Buffer)
+    // Event Queue (Synchronized Ring Buffer)
     //===------------------------------------------------------------------===//
+
+    /// @brief Spin lock protecting event queue indices and overflow count.
+    atomic_flag event_lock;
 
     /// @brief Ring buffer storage for events.
     /// @details Array of VGFX_INTERNAL_EVENT_QUEUE_SLOTS elements.  The extra
     ///          slot enables full/empty distinction without a separate counter.
     vgfx_event_t event_queue[VGFX_INTERNAL_EVENT_QUEUE_SLOTS];
 
-    /// @brief Next write position (producer index).
-    /// @details Modified only by the platform thread in vgfx_internal_enqueue_event().
-    ///          When (head + 1) % SLOTS == tail, the queue is full.
+    /// @brief Next write position.
+    /// @details Protected by event_lock. When (head + 1) % SLOTS == tail, the queue is full.
     int32_t event_head;
 
-    /// @brief Next read position (consumer index).
-    /// @details Modified only by the application thread in vgfx_poll_event().
-    ///          When head == tail, the queue is empty.
+    /// @brief Next read position.
+    /// @details Protected by event_lock. When head == tail, the queue is empty.
     int32_t event_tail;
 
-    /// @brief Count of events dropped since last vgfx_get_overflow() call.
-    /// @details Incremented by the platform thread when the queue is full and
-    ///          a non-CLOSE event would have been enqueued.  Reset to zero by
-    ///          vgfx_get_overflow().
+    /// @brief Count of events dropped since last vgfx_event_overflow_count() call.
+    /// @details Protected by event_lock.
     int32_t event_overflow;
 
     //===------------------------------------------------------------------===//
@@ -212,8 +212,8 @@ struct vgfx_window {
     /// @brief Absolute timestamp for when the next frame should start.
     /// @details Used for frame rate limiting.  If fps > 0, vgfx_present()
     ///          sleeps until this deadline before returning.  Computed as:
-    ///          next_frame_deadline = last_start_time + (1000 / fps).
-    int64_t next_frame_deadline;
+    ///          next_frame_deadline_ms = last_start_time + (1000.0 / fps).
+    double next_frame_deadline_ms;
 
     //===------------------------------------------------------------------===//
     // Close State
@@ -463,12 +463,12 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
 /// @post vgfx_get_last_error() returns code, vgfx_get_last_error_message() returns msg
 void vgfx_internal_set_error(vgfx_error_t code, const char *msg);
 
-/// @brief Enqueue an event into the window's lock-free ring buffer.
-/// @details Attempts to add the event to the queue.  If the queue is full:
-///            - CLOSE events are always enqueued (overwriting oldest event)
-///            - Other events are dropped and event_overflow is incremented
+/// @brief Enqueue an event into the window's synchronized ring buffer.
+/// @details Attempts to add the event to the queue. If the queue is full, the
+///          oldest non-CLOSE event is evicted; an existing oldest CLOSE event is
+///          preserved and the new event is dropped unless it is a duplicate CLOSE.
 ///
-///          This function is safe to call from the platform thread (producer).
+///          This function is safe to call from platform event callbacks.
 ///
 /// @param win   Pointer to the window structure
 /// @param event Pointer to the event to enqueue (copied into the queue)
@@ -519,6 +519,15 @@ int vgfx_internal_peek_event(struct vgfx_window *win, vgfx_event_t *out_event);
 /// @return 1 on success, 0 on allocation or validation failure
 int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int32_t height);
 
+static inline void vgfx_internal_event_lock(struct vgfx_window *win) {
+    while (atomic_flag_test_and_set_explicit(&win->event_lock, memory_order_acquire)) {
+    }
+}
+
+static inline void vgfx_internal_event_unlock(struct vgfx_window *win) {
+    atomic_flag_clear_explicit(&win->event_lock, memory_order_release);
+}
+
 /// @brief Check if pixel coordinates are within the window's bounds.
 /// @details Fast bounds check for drawing operations.  Returns true if the
 ///          pixel at (x, y) is inside the framebuffer [0, width) × [0, height).
@@ -531,6 +540,22 @@ int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int
 /// @post Return value is 1 iff win != NULL && 0 <= x < width && 0 <= y < height
 static inline int vgfx_internal_in_bounds(struct vgfx_window *win, int32_t x, int32_t y) {
     return (win && x >= 0 && x < win->width && y >= 0 && y < win->height);
+}
+
+static inline int vgfx_internal_in_effective_clip(struct vgfx_window *win, int32_t x, int32_t y) {
+    if (!vgfx_internal_in_bounds(win, x, y))
+        return 0;
+    if (!win->clip_enabled)
+        return 1;
+    if (win->clip_w <= 0 || win->clip_h <= 0)
+        return 0;
+
+    int64_t clip_left = (int64_t)win->clip_x;
+    int64_t clip_top = (int64_t)win->clip_y;
+    int64_t clip_right = clip_left + (int64_t)win->clip_w;
+    int64_t clip_bottom = clip_top + (int64_t)win->clip_h;
+    return (int64_t)x >= clip_left && (int64_t)x < clip_right && (int64_t)y >= clip_top &&
+           (int64_t)y < clip_bottom;
 }
 
 #define VGFX_MAX_SCALE_FACTOR 16.0f

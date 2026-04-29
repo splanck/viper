@@ -81,6 +81,8 @@ static void calculate_pan_gains(float pan,
                                 int32_t source_channels,
                                 float *left_gain,
                                 float *right_gain) {
+    if (!isfinite(pan))
+        pan = 0.0f;
     if (pan < -1.0f)
         pan = -1.0f;
     if (pan > 1.0f)
@@ -122,6 +124,8 @@ static int mix_voice(vaud_voice *voice, int32_t *output, int32_t frames, float m
     calculate_pan_gains(voice->pan, sound->source_channels, &left_gain, &right_gain);
 
     float vol = voice->volume * master_vol;
+    if (!isfinite(vol))
+        vol = 0.0f;
     left_gain *= vol;
     right_gain *= vol;
 
@@ -170,6 +174,8 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
         return;
 
     float vol = music->volume * master_vol;
+    if (!isfinite(vol))
+        vol = 0.0f;
     int32_t vol_fp = (int32_t)(vol * 256.0f);
 
     int32_t frames_remaining = frames;
@@ -225,18 +231,24 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
      * ctx->accum_buf holds VAUD_BUFFER_FRAMES * VAUD_CHANNELS int32s; guard against
      * oversized requests that would overflow it. */
     if (frames > VAUD_BUFFER_FRAMES) {
-        memset(output, 0, (size_t)(frames * 2 * sizeof(int16_t)));
+        memset(output, 0, (size_t)frames * (size_t)VAUD_CHANNELS * sizeof(int16_t));
         return;
     }
     int32_t *accum = ctx->accum_buf;
 
     /* Clear accumulator */
-    memset(accum, 0, (size_t)(frames * 2 * sizeof(int32_t)));
+    size_t sample_count = (size_t)frames * (size_t)VAUD_CHANNELS;
+    memset(accum, 0, sample_count * sizeof(int32_t));
 
-    /* Lock mixer state */
-    vaud_mutex_lock(&ctx->mutex);
+    /* The render callback must not block behind disk/decoder work in vaud_update(). */
+    if (!vaud_mutex_trylock(&ctx->mutex)) {
+        memset(output, 0, sample_count * sizeof(int16_t));
+        return;
+    }
 
     float master = ctx->master_volume;
+    if (!isfinite(master))
+        master = 0.0f;
 
     /* Mix all active voices */
     for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
@@ -255,7 +267,7 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
     vaud_mutex_unlock(&ctx->mutex);
 
     /* Convert to 16-bit with soft clipping */
-    for (int32_t i = 0; i < frames * 2; i++) {
+    for (size_t i = 0; i < sample_count; i++) {
         output[i] = soft_clip(accum[i]);
     }
     /* H-1: accum is ctx->accum_buf — no free needed */

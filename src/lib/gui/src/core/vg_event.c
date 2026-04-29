@@ -312,8 +312,10 @@ vg_event_t vg_event_from_platform(void *platform_event) {
 
         case VGFX_EVENT_RESIZE:
             event.type = VG_EVENT_RESIZE;
-            event.resize.width = pe->data.resize.width;
-            event.resize.height = pe->data.resize.height;
+            event.resize.width = pe->data.resize.logical_width > 0 ? pe->data.resize.logical_width
+                                                                    : pe->data.resize.width;
+            event.resize.height = pe->data.resize.logical_height > 0 ? pe->data.resize.logical_height
+                                                                      : pe->data.resize.height;
             break;
 
         case VGFX_EVENT_CLOSE:

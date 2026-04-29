@@ -23,7 +23,7 @@ target_include_directories(vipergfx_mock PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/../src
 )
 
-target_compile_features(vipergfx_mock PUBLIC c_std_99)
+target_compile_features(vipergfx_mock PUBLIC c_std_11)
 
 # POSIX feature test macros for Linux (posix_memalign, etc.)
 if (NOT WIN32 AND NOT APPLE)

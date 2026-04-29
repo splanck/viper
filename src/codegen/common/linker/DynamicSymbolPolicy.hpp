@@ -213,6 +213,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "pthread_detach",
         "pthread_mutex_init",
         "pthread_mutex_lock",
+        "pthread_mutex_trylock",
         "pthread_mutex_unlock",
         "pthread_mutex_destroy",
         "pthread_cond_init",

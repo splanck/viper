@@ -104,14 +104,14 @@ static void mock_apply_event(struct vgfx_window *win,
             win->mouse_y = event->data.mouse_move.y;
             break;
         case VGFX_EVENT_MOUSE_DOWN:
-            if (event->data.mouse_button.button < 8)
-                win->mouse_button_state[event->data.mouse_button.button] = 1;
+            if ((int)event->data.mouse_button.button >= 0 && event->data.mouse_button.button < 8)
+                win->mouse_button_state[(int)event->data.mouse_button.button] = 1;
             win->mouse_x = event->data.mouse_button.x;
             win->mouse_y = event->data.mouse_button.y;
             break;
         case VGFX_EVENT_MOUSE_UP:
-            if (event->data.mouse_button.button < 8)
-                win->mouse_button_state[event->data.mouse_button.button] = 0;
+            if ((int)event->data.mouse_button.button >= 0 && event->data.mouse_button.button < 8)
+                win->mouse_button_state[(int)event->data.mouse_button.button] = 0;
             win->mouse_x = event->data.mouse_button.x;
             win->mouse_y = event->data.mouse_button.y;
             break;
@@ -123,7 +123,8 @@ static void mock_apply_event(struct vgfx_window *win,
             vgfx_internal_resize_framebuffer(win, event->data.resize.width, event->data.resize.height);
             break;
         case VGFX_EVENT_CLOSE:
-            win->close_requested = 1;
+            if (!win->prevent_close)
+                win->close_requested = 1;
             break;
         case VGFX_EVENT_FOCUS_GAINED:
             win->is_focused = 1;
@@ -424,7 +425,7 @@ void vgfx_mock_inject_mouse_move(vgfx_window_t window, int32_t x, int32_t y) {
 /// @note Only available in mock backend (not in real platform backends).
 void vgfx_mock_inject_mouse_button(vgfx_window_t window, vgfx_mouse_button_t btn, int down) {
     struct vgfx_window *win = (struct vgfx_window *)window;
-    if (!win || btn >= 8)
+    if (!win || (int)btn < 0 || btn >= 8)
         return;
     vgfx_mock_platform *platform = (vgfx_mock_platform *)win->platform_data;
     if (!platform)

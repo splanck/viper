@@ -53,6 +53,41 @@ typedef struct {
     pthread_cond_t pause_cond;   ///< Signal for pause/resume
 } vaud_linux_data;
 
+static int alsa_write_all(vaud_linux_data *plat, const int16_t *buffer, snd_pcm_uframes_t frames) {
+    snd_pcm_uframes_t written_total = 0;
+
+    while (__atomic_load_n(&plat->running, __ATOMIC_ACQUIRE) && written_total < frames) {
+        const int16_t *cursor = buffer + ((size_t)written_total * VAUD_CHANNELS);
+        snd_pcm_sframes_t written = snd_pcm_writei(plat->pcm, cursor, frames - written_total);
+
+        if (written > 0) {
+            written_total += (snd_pcm_uframes_t)written;
+            continue;
+        }
+
+        if (written == 0)
+            return 0;
+
+        if (written == -EAGAIN)
+            continue;
+
+        if (written == -EPIPE || written == -ESTRPIPE) {
+            int rc = snd_pcm_recover(plat->pcm, (int)written, 0);
+            if (rc < 0)
+                return 0;
+            continue;
+        }
+
+        if (written < 0) {
+            int rc = snd_pcm_recover(plat->pcm, (int)written, 0);
+            if (rc < 0)
+                return 0;
+        }
+    }
+
+    return written_total == frames;
+}
+
 //===----------------------------------------------------------------------===//
 // Audio Thread
 //===----------------------------------------------------------------------===//
@@ -87,24 +122,8 @@ static void *audio_thread_func(void *arg) {
         /* Render mixed audio */
         vaud_mixer_render(ctx, buffer, VAUD_BUFFER_FRAMES);
 
-        /* Write to ALSA device */
-        snd_pcm_sframes_t frames_written = snd_pcm_writei(plat->pcm, buffer, VAUD_BUFFER_FRAMES);
-
-        if (frames_written < 0) {
-            /* Handle underrun or other errors */
-            if (frames_written == -EPIPE || frames_written == -ESTRPIPE) {
-                /* Underrun/suspend — recover and retry the write so the frames aren't
-                 * silently dropped (H-6: previous code fell through to next iteration) */
-                snd_pcm_recover(plat->pcm, (int)frames_written, 0);
-                snd_pcm_writei(plat->pcm, buffer, VAUD_BUFFER_FRAMES);
-            } else if (frames_written == -EAGAIN) {
-                /* Try again */
-                continue;
-            } else {
-                /* Other error - try to recover */
-                snd_pcm_recover(plat->pcm, (int)frames_written, 0);
-            }
-        }
+        /* Write the whole period; ALSA may legally accept only part of it. */
+        (void)alsa_write_all(plat, buffer, VAUD_BUFFER_FRAMES);
     }
 
     free(buffer);
@@ -195,11 +214,13 @@ void vaud_platform_shutdown(vaud_context_t ctx) {
     pthread_cond_signal(&plat->pause_cond);
     pthread_mutex_unlock(&plat->pause_mutex);
 
+    /* Abort any blocking snd_pcm_writei() so shutdown cannot hang behind ALSA. */
+    snd_pcm_drop(plat->pcm);
+
     /* Wait for thread to finish */
     pthread_join(plat->thread, NULL);
 
     /* Close ALSA device */
-    snd_pcm_drain(plat->pcm);
     snd_pcm_close(plat->pcm);
 
     /* Clean up synchronization */

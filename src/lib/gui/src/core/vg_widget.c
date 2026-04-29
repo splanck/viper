@@ -13,6 +13,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_widgets.h"
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -103,7 +104,7 @@ uint32_t vg_widget_next_id(void) {
 //=============================================================================
 
 static void default_destroy(vg_widget_t *self) {
-    // Default: do nothing (subclass should clean up impl_data)
+    // Default: do nothing. The base destroy path owns impl_data by default.
 }
 
 static void default_measure(vg_widget_t *self, float available_width, float available_height) {
@@ -287,6 +288,38 @@ static void clear_interactive_state_recursive(vg_widget_t *widget) {
     }
 }
 
+static void clear_runtime_references_for_subtree(vg_widget_t *widget, bool notify_hidden) {
+    if (!widget)
+        return;
+
+    if (g_focused_widget && widget_is_ancestor(widget, g_focused_widget)) {
+        vg_widget_set_focus(NULL);
+    }
+    if (g_input_capture_widget && widget_is_ancestor(widget, g_input_capture_widget)) {
+        g_input_capture_widget = NULL;
+    }
+    if (g_hovered_widget && widget_is_ancestor(widget, g_hovered_widget)) {
+        g_hovered_widget = NULL;
+    }
+    if (g_modal_root && widget_is_ancestor(widget, g_modal_root)) {
+        g_modal_root = NULL;
+    }
+    if (g_last_click_widget && widget_is_ancestor(widget, g_last_click_widget)) {
+        g_last_click_widget = NULL;
+        g_last_click_time_ms = 0;
+        g_last_click_button = -1;
+        g_last_click_screen_x = 0.0f;
+        g_last_click_screen_y = 0.0f;
+    }
+    if (g_reported_click_widget && widget_is_ancestor(widget, g_reported_click_widget)) {
+        g_reported_click_widget = NULL;
+        g_reported_click_time_ms = 0;
+    }
+    if (notify_hidden)
+        vg_tooltip_manager_widget_hidden(widget);
+    clear_interactive_state_recursive(widget);
+}
+
 static bool point_in_rect(float x, float y, float rx, float ry, float rw, float rh) {
     if (rw <= 0.0f || rh <= 0.0f)
         return false;
@@ -419,6 +452,12 @@ void vg_widget_destroy(vg_widget_t *widget) {
         free(widget->impl_data);
     }
 
+    free(widget->drag_type);
+    free(widget->drag_data);
+    free(widget->accepted_drop_types);
+    free(widget->_drop_received_type);
+    free(widget->_drop_received_data);
+
     if (widget->tooltip_text) {
         free(widget->tooltip_text);
     }
@@ -468,6 +507,14 @@ void vg_widget_destroy(vg_widget_t *widget) {
     free(widget);
 }
 
+void *vg_widget_take_impl_data(vg_widget_t *widget) {
+    if (!widget)
+        return NULL;
+    void *data = widget->impl_data;
+    widget->impl_data = NULL;
+    return data;
+}
+
 //=============================================================================
 // Hierarchy Management
 //=============================================================================
@@ -501,10 +548,12 @@ void vg_widget_add_child(vg_widget_t *parent, vg_widget_t *child) {
 
 /// @brief Widget insechild.
 void vg_widget_insert_child(vg_widget_t *parent, vg_widget_t *child, int index) {
-    if (!parent || !child || index < 0)
+    if (!parent || !child)
         return;
     if (parent == child || widget_is_ancestor(child, parent))
         return;
+    if (index < 0)
+        index = 0;
 
     // Remove from previous parent if any
     if (child->parent) {
@@ -560,6 +609,8 @@ void vg_widget_remove_child(vg_widget_t *parent, vg_widget_t *child) {
     if (!parent || !child || child->parent != parent)
         return;
 
+    clear_runtime_references_for_subtree(child, true);
+
     if (child->prev_sibling) {
         child->prev_sibling->next_sibling = child->next_sibling;
     } else {
@@ -588,6 +639,7 @@ void vg_widget_clear_children(vg_widget_t *parent) {
     vg_widget_t *child = parent->first_child;
     while (child) {
         vg_widget_t *next = child->next_sibling;
+        clear_runtime_references_for_subtree(child, true);
         child->parent = NULL;
         child->prev_sibling = NULL;
         child->next_sibling = NULL;
@@ -1109,17 +1161,22 @@ void vg_widget_set_runtime_state(const vg_widget_runtime_state_t *state) {
         g_reported_click_time_ms = 0;
         return;
     }
-    g_focused_widget = state->focused_widget;
-    g_input_capture_widget = state->input_capture_widget;
-    g_modal_root = state->modal_root;
-    g_hovered_widget = state->hovered_widget;
-    g_last_click_widget = state->last_click_widget;
-    g_last_click_time_ms = state->last_click_time_ms;
-    g_last_click_button = state->last_click_button;
-    g_last_click_screen_x = state->last_click_screen_x;
-    g_last_click_screen_y = state->last_click_screen_y;
-    g_reported_click_widget = state->reported_click_widget;
-    g_reported_click_time_ms = state->reported_click_time_ms;
+    g_focused_widget = vg_widget_is_live(state->focused_widget) ? state->focused_widget : NULL;
+    g_input_capture_widget =
+        vg_widget_is_live(state->input_capture_widget) ? state->input_capture_widget : NULL;
+    g_modal_root = vg_widget_is_live(state->modal_root) ? state->modal_root : NULL;
+    g_hovered_widget = vg_widget_is_live(state->hovered_widget) ? state->hovered_widget : NULL;
+
+    g_last_click_widget =
+        vg_widget_is_live(state->last_click_widget) ? state->last_click_widget : NULL;
+    g_last_click_time_ms = g_last_click_widget ? state->last_click_time_ms : 0;
+    g_last_click_button = g_last_click_widget ? state->last_click_button : -1;
+    g_last_click_screen_x = g_last_click_widget ? state->last_click_screen_x : 0.0f;
+    g_last_click_screen_y = g_last_click_widget ? state->last_click_screen_y : 0.0f;
+
+    g_reported_click_widget =
+        vg_widget_is_live(state->reported_click_widget) ? state->reported_click_widget : NULL;
+    g_reported_click_time_ms = g_reported_click_widget ? state->reported_click_time_ms : 0;
 }
 
 void vg_widget_note_click(vg_widget_t *widget, uint64_t timestamp_ms) {
@@ -1150,6 +1207,8 @@ void vg_widget_set_focus(vg_widget_t *widget) {
         }
         return;
     }
+    if (!vg_widget_is_live(widget))
+        return;
     if (!widget->enabled || !widget->visible)
         return;
     if (widget->vtable && widget->vtable->can_focus && !widget->vtable->can_focus(widget)) {
@@ -1176,33 +1235,61 @@ void vg_widget_set_focus(vg_widget_t *widget) {
 }
 
 vg_widget_t *vg_widget_get_focused(vg_widget_t *root) {
-    (void)root; // Currently using global focus
-    return g_focused_widget;
+    if (!vg_widget_is_live(g_focused_widget))
+        return NULL;
+    if (!root)
+        return g_focused_widget;
+    if (!vg_widget_is_live(root))
+        return NULL;
+    return widget_is_ancestor(root, g_focused_widget) ? g_focused_widget : NULL;
 }
 
-// Maximum focusable widgets tracked for tab-order navigation.
-#define TAB_ORDER_MAX 512
+typedef struct focus_list {
+    vg_widget_t **items;
+    int count;
+    int capacity;
+} focus_list_t;
 
-// Collect all focusable, visible, enabled descendants into arr[].
-// Returns the number of widgets collected.
-static int collect_focusable(vg_widget_t *root, vg_widget_t **arr, int max) {
+static bool focus_list_append(focus_list_t *list, vg_widget_t *widget) {
+    if (!list || !widget)
+        return false;
+    if (list->count == list->capacity) {
+        if (list->capacity > INT_MAX / 2)
+            return false;
+        int new_capacity = list->capacity > 0 ? list->capacity * 2 : 32;
+        if (new_capacity <= list->capacity ||
+            (size_t)new_capacity > SIZE_MAX / sizeof(vg_widget_t *)) {
+            return false;
+        }
+        vg_widget_t **items = realloc(list->items, (size_t)new_capacity * sizeof(vg_widget_t *));
+        if (!items)
+            return false;
+        list->items = items;
+        list->capacity = new_capacity;
+    }
+
+    list->items[list->count++] = widget;
+    return true;
+}
+
+// Collect all focusable, visible, enabled descendants into a dynamic list.
+static bool collect_focusable(vg_widget_t *root, focus_list_t *list) {
     if (!root)
-        return 0;
+        return true;
 
-    int count = 0;
     for (vg_widget_t *child = root->first_child; child; child = child->next_sibling) {
         if (!child->visible || !child->enabled)
             continue;
 
         if (child->vtable && child->vtable->can_focus && child->vtable->can_focus(child)) {
-            if (count < max)
-                arr[count++] = child;
+            if (!focus_list_append(list, child))
+                return false;
         }
 
-        int sub = collect_focusable(child, arr + count, max - count);
-        count += sub;
+        if (!collect_focusable(child, list))
+            return false;
     }
-    return count;
+    return true;
 }
 
 // Stable merge sort for tab order — O(n log n), preserves DFS order for equal keys.
@@ -1241,22 +1328,29 @@ static void tab_merge_sort(vg_widget_t **arr, vg_widget_t **tmp, int lo, int hi)
     tab_merge(arr, tmp, lo, mid, hi);
 }
 
-// Build sorted tab-order array for the widget tree rooted at root.
-// Returns the number of focusable widgets found (0..TAB_ORDER_MAX).
-static int build_tab_order(vg_widget_t *root, vg_widget_t **arr) {
-    int count = collect_focusable(root, arr, TAB_ORDER_MAX);
+static int build_tab_order(vg_widget_t *root, vg_widget_t ***out_items) {
+    if (!out_items)
+        return 0;
+    *out_items = NULL;
 
-    if (count > 1) {
+    focus_list_t list = {0};
+    if (!collect_focusable(root, &list)) {
+        free(list.items);
+        return 0;
+    }
+
+    if (list.count > 1) {
         // Stable merge sort by tab_index — O(n log n) vs previous O(n²) insertion sort.
-        vg_widget_t **tmp = malloc(count * sizeof(vg_widget_t *));
+        vg_widget_t **tmp = malloc((size_t)list.count * sizeof(vg_widget_t *));
         if (tmp) {
-            tab_merge_sort(arr, tmp, 0, count);
+            tab_merge_sort(list.items, tmp, 0, list.count);
             free(tmp);
         }
         // If malloc fails, order is preserved from DFS (still usable, just unsorted)
     }
 
-    return count;
+    *out_items = list.items;
+    return list.count;
 }
 
 /// @brief Widget focus next.
@@ -1264,8 +1358,8 @@ void vg_widget_focus_next(vg_widget_t *root) {
     if (!root)
         return;
 
-    vg_widget_t *arr[TAB_ORDER_MAX];
-    int count = build_tab_order(root, arr);
+    vg_widget_t **arr = NULL;
+    int count = build_tab_order(root, &arr);
     if (count == 0)
         return;
 
@@ -1281,6 +1375,7 @@ void vg_widget_focus_next(vg_widget_t *root) {
     // Advance to next (with wraparound)
     int next = (cur + 1) % count;
     vg_widget_set_focus(arr[next]);
+    free(arr);
 }
 
 /// @brief Widget focus prev.
@@ -1288,8 +1383,8 @@ void vg_widget_focus_prev(vg_widget_t *root) {
     if (!root)
         return;
 
-    vg_widget_t *arr[TAB_ORDER_MAX];
-    int count = build_tab_order(root, arr);
+    vg_widget_t **arr = NULL;
+    int count = build_tab_order(root, &arr);
     if (count == 0)
         return;
 
@@ -1305,6 +1400,7 @@ void vg_widget_focus_prev(vg_widget_t *root) {
     // Step back (with wraparound)
     int prev = (cur <= 0) ? (count - 1) : (cur - 1);
     vg_widget_set_focus(arr[prev]);
+    free(arr);
 }
 
 //=============================================================================

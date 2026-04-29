@@ -35,11 +35,23 @@
 /// @file
 /// @brief WAV file parser for ViperAUD.
 
+#if !defined(_WIN32) && !defined(_FILE_OFFSET_BITS)
+#define _FILE_OFFSET_BITS 64
+#endif
+#if !defined(_WIN32) && !defined(_LARGEFILE_SOURCE)
+#define _LARGEFILE_SOURCE
+#endif
+
 #include "vaud_internal.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(_WIN32)
+#include <io.h>
+#else
+#include <sys/types.h>
+#endif
 
 //===----------------------------------------------------------------------===//
 // WAV File Constants
@@ -55,6 +67,26 @@
 //===----------------------------------------------------------------------===//
 // Helper Functions
 //===----------------------------------------------------------------------===//
+
+int vaud_wav_seek_stream(void *file, int64_t offset, int origin) {
+    if (!file)
+        return 0;
+#if defined(_WIN32)
+    return _fseeki64((FILE *)file, offset, origin) == 0;
+#else
+    return fseeko((FILE *)file, (off_t)offset, origin) == 0;
+#endif
+}
+
+static int64_t vaud_wav_tell_stream(FILE *file) {
+    if (!file)
+        return -1;
+#if defined(_WIN32)
+    return (int64_t)_ftelli64(file);
+#else
+    return (int64_t)ftello(file);
+#endif
+}
 
 /// @brief Read a 16-bit little-endian value from a buffer.
 static inline uint16_t read_u16_le(const uint8_t *p) {
@@ -155,9 +187,54 @@ typedef struct {
     int32_t channels;
     int32_t bits_per_sample;
     int32_t audio_format; /* 1=PCM, 3=IEEE float */
+    int32_t byte_rate;
+    int32_t block_align;
     int64_t data_offset;  /* Byte offset to PCM data */
     int64_t data_size;    /* Size of PCM data in bytes */
 } vaud_wav_info;
+
+static int wav_bytes_per_frame(const vaud_wav_info *info, int32_t *out_bytes) {
+    if (!info || !out_bytes || info->channels <= 0 || info->bits_per_sample <= 0)
+        return 0;
+    if ((info->bits_per_sample % 8) != 0)
+        return 0;
+    int32_t bytes_per_sample = info->bits_per_sample / 8;
+    if (bytes_per_sample <= 0 || bytes_per_sample > INT32_MAX / info->channels)
+        return 0;
+    *out_bytes = bytes_per_sample * info->channels;
+    return *out_bytes > 0;
+}
+
+static int validate_wav_format(const vaud_wav_info *info) {
+    int32_t bytes_per_frame = 0;
+    if (!wav_bytes_per_frame(info, &bytes_per_frame)) {
+        vaud_set_error(VAUD_ERR_FORMAT, "Invalid WAV sample size");
+        return 0;
+    }
+
+    if (info->block_align != bytes_per_frame) {
+        vaud_set_error(VAUD_ERR_FORMAT, "Invalid WAV block align");
+        return 0;
+    }
+
+    uint64_t expected_byte_rate = (uint64_t)(uint32_t)info->sample_rate * (uint64_t)bytes_per_frame;
+    if (expected_byte_rate > UINT32_MAX || info->byte_rate != (int32_t)expected_byte_rate) {
+        vaud_set_error(VAUD_ERR_FORMAT, "Invalid WAV byte rate");
+        return 0;
+    }
+
+    return 1;
+}
+
+static int validate_wav_data_alignment(const vaud_wav_info *info) {
+    int32_t bytes_per_frame = 0;
+    if (!wav_bytes_per_frame(info, &bytes_per_frame) || info->data_size < 0 ||
+        (info->data_size % bytes_per_frame) != 0) {
+        vaud_set_error(VAUD_ERR_FORMAT, "Invalid WAV data size");
+        return 0;
+    }
+    return 1;
+}
 
 /// @brief Parse WAV header from memory buffer.
 /// @param data Pointer to WAV file data.
@@ -165,6 +242,13 @@ typedef struct {
 /// @param info Output: parsed format information.
 /// @return 1 on success, 0 on failure.
 static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *info) {
+    if (!data || !info) {
+        vaud_set_error(VAUD_ERR_INVALID_PARAM, "NULL parameter");
+        return 0;
+    }
+
+    memset(info, 0, sizeof(*info));
+
     if (size < 44) {
         vaud_set_error(VAUD_ERR_FORMAT, "WAV file too small");
         return 0;
@@ -213,6 +297,8 @@ static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *inf
             info->audio_format = (int32_t)audio_format;
             info->channels = read_u16_le(fmt + 2);
             info->sample_rate = (int32_t)read_u32_le(fmt + 4);
+            info->byte_rate = (int32_t)read_u32_le(fmt + 8);
+            info->block_align = read_u16_le(fmt + 12);
             info->bits_per_sample = read_u16_le(fmt + 14);
 
             /* H-7: guard against division-by-zero in resampling (malformed file) */
@@ -238,6 +324,9 @@ static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *inf
                     return 0;
                 }
             }
+
+            if (!validate_wav_format(info))
+                return 0;
 
             found_fmt = 1;
         } else if (chunk_id == WAV_DATA_ID) {
@@ -265,7 +354,7 @@ static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *inf
         return 0;
     }
 
-    return 1;
+    return validate_wav_data_alignment(info);
 }
 
 /// @brief Parse a WAV header directly from an open file stream.
@@ -278,18 +367,17 @@ static int parse_wav_stream(FILE *file, vaud_wav_info *info) {
         return 0;
     }
 
-    if (fseek(file, 0, SEEK_END) != 0) {
+    if (!vaud_wav_seek_stream(file, 0, SEEK_END)) {
         vaud_set_error(VAUD_ERR_FILE, "Failed to seek WAV file");
         return 0;
     }
-    long file_size_long = ftell(file);
-    if (file_size_long < 44) {
+    int64_t file_size = vaud_wav_tell_stream(file);
+    if (file_size < 44) {
         vaud_set_error(VAUD_ERR_FORMAT, "WAV file too small");
         return 0;
     }
-    int64_t file_size = (int64_t)file_size_long;
 
-    if (fseek(file, 0, SEEK_SET) != 0) {
+    if (!vaud_wav_seek_stream(file, 0, SEEK_SET)) {
         vaud_set_error(VAUD_ERR_FILE, "Failed to seek WAV file");
         return 0;
     }
@@ -325,7 +413,7 @@ static int parse_wav_stream(FILE *file, vaud_wav_info *info) {
 
         uint32_t chunk_id = read_u32_le(chunk_header);
         uint32_t chunk_size = read_u32_le(chunk_header + 4);
-        long chunk_data_offset = ftell(file);
+        int64_t chunk_data_offset = vaud_wav_tell_stream(file);
         if (chunk_data_offset < 0) {
             vaud_set_error(VAUD_ERR_FILE, "Failed to read WAV chunk offset");
             return 0;
@@ -353,6 +441,8 @@ static int parse_wav_stream(FILE *file, vaud_wav_info *info) {
             info->audio_format = (int32_t)audio_format;
             info->channels = read_u16_le(fmt + 2);
             info->sample_rate = (int32_t)read_u32_le(fmt + 4);
+            info->byte_rate = (int32_t)read_u32_le(fmt + 8);
+            info->block_align = read_u16_le(fmt + 12);
             info->bits_per_sample = read_u16_le(fmt + 14);
 
             if (info->sample_rate <= 0 || info->sample_rate > 384000) {
@@ -376,8 +466,11 @@ static int parse_wav_stream(FILE *file, vaud_wav_info *info) {
                 return 0;
             }
 
+            if (!validate_wav_format(info))
+                return 0;
+
             int64_t remaining = (int64_t)chunk_size - (int64_t)sizeof(fmt);
-            if (remaining > 0 && fseek(file, (long)remaining, SEEK_CUR) != 0) {
+            if (remaining > 0 && !vaud_wav_seek_stream(file, remaining, SEEK_CUR)) {
                 vaud_set_error(VAUD_ERR_FILE, "Failed to skip fmt chunk");
                 return 0;
             }
@@ -385,17 +478,17 @@ static int parse_wav_stream(FILE *file, vaud_wav_info *info) {
         } else if (chunk_id == WAV_DATA_ID) {
             info->data_offset = (int64_t)chunk_data_offset;
             info->data_size = (int64_t)chunk_size;
-            if (fseek(file, (long)chunk_size, SEEK_CUR) != 0) {
+            if (!vaud_wav_seek_stream(file, (int64_t)chunk_size, SEEK_CUR)) {
                 vaud_set_error(VAUD_ERR_FILE, "Failed to skip data chunk");
                 return 0;
             }
             found_data = 1;
-        } else if (chunk_size > 0 && fseek(file, (long)chunk_size, SEEK_CUR) != 0) {
+        } else if (chunk_size > 0 && !vaud_wav_seek_stream(file, (int64_t)chunk_size, SEEK_CUR)) {
             vaud_set_error(VAUD_ERR_FILE, "Failed to skip WAV chunk");
             return 0;
         }
 
-        if ((chunk_size & 1u) != 0 && fseek(file, 1, SEEK_CUR) != 0) {
+        if ((chunk_size & 1u) != 0 && !vaud_wav_seek_stream(file, 1, SEEK_CUR)) {
             vaud_set_error(VAUD_ERR_FILE, "Failed to skip WAV chunk padding");
             return 0;
         }
@@ -417,7 +510,7 @@ static int parse_wav_stream(FILE *file, vaud_wav_info *info) {
         return 0;
     }
 
-    return 1;
+    return validate_wav_data_alignment(info);
 }
 
 //===----------------------------------------------------------------------===//
@@ -436,6 +529,11 @@ static int convert_pcm_to_stereo_s16(const uint8_t *data,
                                      int64_t *out_frames) {
     int32_t bytes_per_sample = info->bits_per_sample / 8;
     int32_t bytes_per_frame = bytes_per_sample * info->channels;
+    if (bytes_per_sample <= 0 || bytes_per_frame <= 0 || info->data_size <= 0 ||
+        (info->data_size % bytes_per_frame) != 0) {
+        vaud_set_error(VAUD_ERR_FORMAT, "Invalid WAV data size");
+        return 0;
+    }
     int64_t frame_count = info->data_size / bytes_per_frame;
     if (frame_count <= 0 || (uint64_t)frame_count > SIZE_MAX / (2u * sizeof(int16_t))) {
         vaud_set_error(VAUD_ERR_FORMAT, "Invalid WAV data size");
@@ -488,9 +586,17 @@ int vaud_wav_load_file(const char *path,
     }
 
     /* Get file size */
-    fseek(file, 0, SEEK_END);
-    long file_size = ftell(file);
-    fseek(file, 0, SEEK_SET);
+    if (!vaud_wav_seek_stream(file, 0, SEEK_END)) {
+        fclose(file);
+        vaud_set_error(VAUD_ERR_FILE, "Failed to seek WAV file");
+        return 0;
+    }
+    int64_t file_size = vaud_wav_tell_stream(file);
+    if (!vaud_wav_seek_stream(file, 0, SEEK_SET)) {
+        fclose(file);
+        vaud_set_error(VAUD_ERR_FILE, "Failed to seek WAV file");
+        return 0;
+    }
 
     if (file_size <= 0 || file_size > 100 * 1024 * 1024) /* Max 100MB for sound effects */
     {
@@ -599,7 +705,12 @@ int vaud_wav_open_stream(const char *path,
     *out_format = info.audio_format;
 
     /* Seek to start of data */
-    fseek(file, (long)info.data_offset, SEEK_SET);
+    if (!vaud_wav_seek_stream(file, info.data_offset, SEEK_SET)) {
+        *out_file = NULL;
+        fclose(file);
+        vaud_set_error(VAUD_ERR_FILE, "Failed to seek WAV data");
+        return 0;
+    }
 
     return 1;
 }

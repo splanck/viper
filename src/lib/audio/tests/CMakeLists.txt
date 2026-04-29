@@ -16,3 +16,22 @@ endif ()
 
 add_test(NAME test_vaud_audit_fixes COMMAND test_vaud_audit_fixes)
 set_tests_properties(test_vaud_audit_fixes PROPERTIES LABELS "unit;audio" TIMEOUT 10)
+
+add_executable(test_vaud_core_fixes
+        test_vaud_core_fixes.c
+        ../src/vaud.c
+        ../src/vaud_wav.c
+        ../src/vaud_mixer.c
+)
+
+target_include_directories(test_vaud_core_fixes PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+if (UNIX AND NOT APPLE)
+    target_link_libraries(test_vaud_core_fixes PRIVATE m)
+endif ()
+
+add_test(NAME test_vaud_core_fixes COMMAND test_vaud_core_fixes)
+set_tests_properties(test_vaud_core_fixes PROPERTIES LABELS "unit;audio" TIMEOUT 10)

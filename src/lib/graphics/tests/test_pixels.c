@@ -75,6 +75,46 @@ void test_out_of_bounds_write(void) {
     TEST_END();
 }
 
+void test_pixel_writes_respect_clip(void) {
+    TEST_BEGIN("T5b: Pixel Writes Respect Clip");
+
+    vgfx_window_params_t params = {
+        .width = 16, .height = 16, .title = "Test", .fps = 0, .resizable = 0};
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+    vgfx_cls(win, VGFX_BLACK);
+
+    vgfx_set_clip(win, 4, 4, 4, 4);
+    vgfx_pset(win, 2, 2, 0xFF0000);
+    vgfx_pset(win, 5, 5, 0x00FF00);
+    vgfx_pset_alpha(win, 3, 3, 0xFFFF0000);
+    vgfx_pset_alpha(win, 6, 6, 0xFF0000FF);
+
+    vgfx_color_t color = 0xFFFFFF;
+    ASSERT_EQ(vgfx_point(win, 2, 2, &color), 1);
+    ASSERT_EQ(color, 0x000000);
+    ASSERT_EQ(vgfx_point(win, 5, 5, &color), 1);
+    ASSERT_EQ(color, 0x00FF00);
+    ASSERT_EQ(vgfx_point(win, 3, 3, &color), 1);
+    ASSERT_EQ(color, 0x000000);
+    ASSERT_EQ(vgfx_point(win, 6, 6, &color), 1);
+    ASSERT_EQ(color, 0x0000FF);
+
+    vgfx_clear_clip(win);
+    vgfx_cls(win, VGFX_BLACK);
+    vgfx_set_clip(win, 4, 4, 4, 4);
+    vgfx_cls(win, 0xFF0000);
+
+    ASSERT_EQ(vgfx_point(win, 2, 2, &color), 1);
+    ASSERT_EQ(color, 0x000000);
+    ASSERT_EQ(vgfx_point(win, 5, 5, &color), 1);
+    ASSERT_EQ(color, 0xFF0000);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
 /* T6: Clear Screen */
 void test_clear_screen(void) {
     TEST_BEGIN("T6: Clear Screen");
@@ -150,6 +190,7 @@ int main(void) {
 
     test_pixel_set_get();
     test_out_of_bounds_write();
+    test_pixel_writes_respect_clip();
     test_clear_screen();
     test_framebuffer_access();
 

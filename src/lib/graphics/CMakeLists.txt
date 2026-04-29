@@ -96,6 +96,8 @@ add_library(vipergfx STATIC
         ${VGFX_PLATFORM_SOURCES}
 )
 
+target_compile_features(vipergfx PUBLIC c_std_11)
+
 # Public include directory
 target_include_directories(vipergfx
         PUBLIC

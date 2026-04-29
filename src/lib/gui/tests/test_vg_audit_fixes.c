@@ -21,6 +21,7 @@
 #include "vg_theme.h"
 #include "vg_widget.h"
 #include "vg_widgets.h"
+#include "vgfx.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -33,6 +34,14 @@
 
 static int g_passed = 0;
 static int g_failed = 0;
+
+static char *test_strdup_local(const char *s) {
+    size_t len = strlen(s) + 1;
+    char *copy = (char *)malloc(len);
+    if (copy)
+        memcpy(copy, s, len);
+    return copy;
+}
 
 #define TEST(name) static void test_##name(void)
 #define RUN(name)                                                                                  \
@@ -1537,6 +1546,253 @@ TEST(treeview_keyboard_navigation_scrolls_selected_node_into_view) {
     vg_widget_destroy(&tree->base);
 }
 
+TEST(widget_remove_child_clears_runtime_references_to_subtree) {
+    vg_widget_runtime_state_t empty = {0};
+    vg_widget_set_runtime_state(&empty);
+
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_button_t *button = vg_button_create(NULL, "Detach");
+    ASSERT_NOT_NULL(root);
+    ASSERT_NOT_NULL(button);
+    vg_widget_add_child(root, &button->base);
+
+    vg_widget_set_focus(&button->base);
+    vg_widget_set_input_capture(&button->base);
+    vg_widget_set_modal_root(&button->base);
+    vg_widget_note_click(&button->base, 1234);
+
+    vg_widget_remove_child(root, &button->base);
+
+    vg_widget_runtime_state_t state = {0};
+    vg_widget_get_runtime_state(&state);
+    ASSERT_NULL(state.focused_widget);
+    ASSERT_NULL(state.input_capture_widget);
+    ASSERT_NULL(state.modal_root);
+    ASSERT_NULL(state.reported_click_widget);
+    ASSERT_EQ(state.reported_click_time_ms, (uint64_t)0);
+    ASSERT_FALSE(vg_widget_has_state(&button->base, VG_STATE_FOCUSED));
+
+    vg_widget_destroy(&button->base);
+    vg_widget_destroy(root);
+    vg_widget_set_runtime_state(&empty);
+}
+
+TEST(widget_clear_children_clears_runtime_references_to_subtrees) {
+    vg_widget_runtime_state_t empty = {0};
+    vg_widget_set_runtime_state(&empty);
+
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_button_t *button = vg_button_create(NULL, "Clear");
+    ASSERT_NOT_NULL(root);
+    ASSERT_NOT_NULL(button);
+    vg_widget_add_child(root, &button->base);
+
+    vg_widget_set_focus(&button->base);
+    vg_widget_set_input_capture(&button->base);
+    vg_widget_set_modal_root(&button->base);
+    vg_widget_note_click(&button->base, 5678);
+
+    vg_widget_clear_children(root);
+
+    vg_widget_runtime_state_t state = {0};
+    vg_widget_get_runtime_state(&state);
+    ASSERT_NULL(state.focused_widget);
+    ASSERT_NULL(state.input_capture_widget);
+    ASSERT_NULL(state.modal_root);
+    ASSERT_NULL(state.reported_click_widget);
+    ASSERT_EQ(root->child_count, 0);
+
+    vg_widget_destroy(&button->base);
+    vg_widget_destroy(root);
+    vg_widget_set_runtime_state(&empty);
+}
+
+TEST(widget_runtime_restore_and_focus_reject_invalid_handles) {
+    vg_widget_runtime_state_t empty = {0};
+    vg_widget_set_runtime_state(&empty);
+
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_button_t *button = vg_button_create(root, "Keep");
+    ASSERT_NOT_NULL(root);
+    ASSERT_NOT_NULL(button);
+    vg_widget_set_focus(&button->base);
+    ASSERT_EQ(vg_widget_get_focused(root), &button->base);
+
+    uint64_t not_a_widget = 0;
+    vg_widget_set_focus((vg_widget_t *)&not_a_widget);
+    ASSERT_EQ(vg_widget_get_focused(root), &button->base);
+
+    vg_widget_runtime_state_t invalid = {0};
+    invalid.focused_widget = (vg_widget_t *)&not_a_widget;
+    invalid.input_capture_widget = (vg_widget_t *)&not_a_widget;
+    invalid.modal_root = (vg_widget_t *)&not_a_widget;
+    invalid.hovered_widget = (vg_widget_t *)&not_a_widget;
+    invalid.last_click_widget = (vg_widget_t *)&not_a_widget;
+    invalid.last_click_time_ms = 99;
+    invalid.last_click_button = VG_MOUSE_LEFT;
+    invalid.reported_click_widget = (vg_widget_t *)&not_a_widget;
+    invalid.reported_click_time_ms = 100;
+
+    vg_widget_set_runtime_state(&invalid);
+
+    vg_widget_runtime_state_t state = {0};
+    vg_widget_get_runtime_state(&state);
+    ASSERT_NULL(state.focused_widget);
+    ASSERT_NULL(state.input_capture_widget);
+    ASSERT_NULL(state.modal_root);
+    ASSERT_NULL(state.hovered_widget);
+    ASSERT_NULL(state.last_click_widget);
+    ASSERT_EQ(state.last_click_time_ms, (uint64_t)0);
+    ASSERT_EQ(state.last_click_button, -1);
+    ASSERT_NULL(state.reported_click_widget);
+    ASSERT_EQ(state.reported_click_time_ms, (uint64_t)0);
+
+    vg_widget_destroy(root);
+    vg_widget_set_runtime_state(&empty);
+}
+
+//=============================================================================
+// Round 5 — Low-level widget/runtime audit fixes
+//=============================================================================
+
+static int g_take_impl_destroy_count = 0;
+static int g_take_impl_saw_data = 0;
+
+static void take_impl_destroy(vg_widget_t *widget) {
+    void *data = vg_widget_take_impl_data(widget);
+    if (data) {
+        g_take_impl_saw_data++;
+        free(data);
+    }
+    g_take_impl_destroy_count++;
+}
+
+static vg_widget_vtable_t g_take_impl_vtable = {
+    .destroy = take_impl_destroy,
+};
+
+TEST(widget_impl_data_can_be_taken_by_custom_destroy) {
+    g_take_impl_destroy_count = 0;
+    g_take_impl_saw_data = 0;
+
+    vg_widget_t *widget = vg_widget_create(VG_WIDGET_CUSTOM);
+    ASSERT_NOT_NULL(widget);
+    widget->vtable = &g_take_impl_vtable;
+    widget->impl_data = malloc(16);
+    ASSERT_NOT_NULL(widget->impl_data);
+
+    vg_widget_destroy(widget);
+    ASSERT_EQ(g_take_impl_destroy_count, 1);
+    ASSERT_EQ(g_take_impl_saw_data, 1);
+}
+
+TEST(widget_destroy_releases_owned_drag_drop_strings) {
+    vg_widget_t *widget = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(widget);
+    widget->drag_type = test_strdup_local("text/plain");
+    widget->drag_data = test_strdup_local("payload");
+    widget->accepted_drop_types = test_strdup_local("text/plain,image/png");
+    widget->_drop_received_type = test_strdup_local("text/plain");
+    widget->_drop_received_data = test_strdup_local("dropped");
+    ASSERT_NOT_NULL(widget->drag_type);
+    ASSERT_NOT_NULL(widget->drag_data);
+    ASSERT_NOT_NULL(widget->accepted_drop_types);
+    ASSERT_NOT_NULL(widget->_drop_received_type);
+    ASSERT_NOT_NULL(widget->_drop_received_data);
+
+    vg_widget_destroy(widget);
+    ASSERT_TRUE(true);
+}
+
+TEST(widget_get_focused_is_scoped_to_root_subtree) {
+    vg_widget_runtime_state_t empty = {0};
+    vg_widget_set_runtime_state(&empty);
+
+    vg_widget_t *left_root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *right_root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_button_t *button = vg_button_create(right_root, "Focus");
+    ASSERT_NOT_NULL(left_root);
+    ASSERT_NOT_NULL(right_root);
+    ASSERT_NOT_NULL(button);
+
+    vg_widget_set_focus(&button->base);
+    ASSERT_EQ(vg_widget_get_focused(right_root), &button->base);
+    ASSERT_NULL(vg_widget_get_focused(left_root));
+    ASSERT_EQ(vg_widget_get_focused(NULL), &button->base);
+
+    vg_widget_destroy(left_root);
+    vg_widget_destroy(right_root);
+    vg_widget_set_runtime_state(&empty);
+}
+
+TEST(widget_insert_child_negative_index_clamps_to_front) {
+    vg_widget_t *parent = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *first = vg_widget_create(VG_WIDGET_LABEL);
+    vg_widget_t *second = vg_widget_create(VG_WIDGET_LABEL);
+    ASSERT_NOT_NULL(parent);
+    ASSERT_NOT_NULL(first);
+    ASSERT_NOT_NULL(second);
+
+    vg_widget_add_child(parent, first);
+    vg_widget_insert_child(parent, second, -10);
+
+    ASSERT_EQ(parent->child_count, 2);
+    ASSERT(parent->first_child == second);
+    ASSERT(parent->last_child == first);
+    ASSERT(second->next_sibling == first);
+    ASSERT(first->prev_sibling == second);
+
+    vg_widget_destroy(parent);
+}
+
+TEST(widget_tab_order_handles_more_than_legacy_fixed_cap) {
+    vg_widget_runtime_state_t empty = {0};
+    vg_widget_set_runtime_state(&empty);
+
+    enum { COUNT = 520 };
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+
+    vg_button_t *buttons[COUNT];
+    for (int i = 0; i < COUNT; i++) {
+        char label[16];
+        snprintf(label, sizeof(label), "B%d", i);
+        buttons[i] = vg_button_create(root, label);
+        ASSERT_NOT_NULL(buttons[i]);
+    }
+
+    vg_widget_set_focus(&buttons[511]->base);
+    vg_widget_focus_next(root);
+    ASSERT_EQ(vg_widget_get_focused(root), &buttons[512]->base);
+
+    vg_widget_focus_prev(root);
+    ASSERT_EQ(vg_widget_get_focused(root), &buttons[511]->base);
+
+    vg_widget_destroy(root);
+    vg_widget_set_runtime_state(&empty);
+}
+
+TEST(platform_resize_event_reports_logical_gui_dimensions) {
+    vgfx_event_t pe;
+    memset(&pe, 0, sizeof(pe));
+    pe.type = VGFX_EVENT_RESIZE;
+    pe.data.resize.width = 2000;
+    pe.data.resize.height = 1000;
+    pe.data.resize.logical_width = 1000;
+    pe.data.resize.logical_height = 500;
+
+    vg_event_t ev = vg_event_from_platform(&pe);
+    ASSERT_EQ(ev.type, VG_EVENT_RESIZE);
+    ASSERT_EQ(ev.resize.width, 1000);
+    ASSERT_EQ(ev.resize.height, 500);
+
+    pe.data.resize.logical_width = 0;
+    pe.data.resize.logical_height = 0;
+    ev = vg_event_from_platform(&pe);
+    ASSERT_EQ(ev.resize.width, 2000);
+    ASSERT_EQ(ev.resize.height, 1000);
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -1627,6 +1883,17 @@ int main(void) {
     RUN(listbox_select_index_out_of_range_keeps_selection);
     RUN(findreplacebar_regex_search_finds_variable_length_matches);
     RUN(treeview_keyboard_navigation_scrolls_selected_node_into_view);
+    RUN(widget_remove_child_clears_runtime_references_to_subtree);
+    RUN(widget_clear_children_clears_runtime_references_to_subtrees);
+    RUN(widget_runtime_restore_and_focus_reject_invalid_handles);
+
+    printf("\nRound 5 — Low-level widget/runtime audit fixes\n");
+    RUN(widget_impl_data_can_be_taken_by_custom_destroy);
+    RUN(widget_destroy_releases_owned_drag_drop_strings);
+    RUN(widget_get_focused_is_scoped_to_root_subtree);
+    RUN(widget_insert_child_negative_index_clamps_to_front);
+    RUN(widget_tab_order_handles_more_than_legacy_fixed_cap);
+    RUN(platform_resize_event_reports_logical_gui_dimensions);
 
     printf("\n=== Results: %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;

@@ -24,7 +24,7 @@
 - **vgfx.c** (596 lines): Platform-agnostic core
     - Thread-local error handling (C11/_Thread_local + fallbacks)
     - Aligned memory allocation (64-byte alignment)
-    - Event queue (lock-free SPSC ring buffer)
+    - Event queue (synchronized ring buffer)
     - Window lifecycle management
     - FPS limiting algorithm
     - Input state tracking

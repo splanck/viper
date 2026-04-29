@@ -302,12 +302,12 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
     switch (msg) {
         case WM_CLOSE: {
             /* User clicked close button - enqueue CLOSE event but don't destroy window */
-            if (win->prevent_close)
-                return 0; /* Blocked by application */
-            if (w32) {
+            if (!win->prevent_close && w32) {
                 w32->close_requested = 1;
             }
-            win->close_requested = 1;
+            if (!win->prevent_close) {
+                win->close_requested = 1;
+            }
 
             vgfx_event_t event = {.type = VGFX_EVENT_CLOSE, .time_ms = timestamp};
             vgfx_internal_enqueue_event(win, &event);
@@ -933,10 +933,10 @@ int vgfx_platform_present(struct vgfx_window *win) {
      * The remaining 0–3 pixels are handled by the scalar tail loop. */
     const uint8_t *src = win->pixels;
     uint8_t *dst = (uint8_t *)w32->dib_pixels;
-    int pixel_count = win->width * win->height;
-    int batch = pixel_count & ~3; /* round down to nearest multiple of 4 */
+    size_t pixel_count = (size_t)win->width * (size_t)win->height;
+    size_t batch = pixel_count & ~(size_t)3; /* round down to nearest multiple of 4 */
 
-    for (int i = 0; i < batch; i += 4, src += 16, dst += 16) {
+    for (size_t i = 0; i < batch; i += 4, src += 16, dst += 16) {
         uint32_t p0, p1, p2, p3;
         memcpy(&p0, src, 4);
         memcpy(&p1, src + 4, 4);
@@ -953,7 +953,7 @@ int vgfx_platform_present(struct vgfx_window *win) {
         memcpy(dst + 12, &p3, 4);
     }
     /* Scalar tail: handle remaining 0-3 pixels */
-    for (int i = batch; i < pixel_count; i++, src += 4, dst += 4) {
+    for (size_t i = batch; i < pixel_count; i++, src += 4, dst += 4) {
         dst[0] = src[2]; /* B */
         dst[1] = src[1]; /* G */
         dst[2] = src[0]; /* R */

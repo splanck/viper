@@ -683,13 +683,11 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
     if (!platform)
         return NO;
 
-    /* If the app has requested we prevent close, swallow the event silently */
-    if (_vgfxWindow->prevent_close)
-        return NO;
-
-    /* Mark close as requested (can be checked by the application) */
-    platform->close_requested = 1;
-    _vgfxWindow->close_requested = 1;
+    if (!_vgfxWindow->prevent_close) {
+        /* Mark close as requested (can be checked by the application) */
+        platform->close_requested = 1;
+        _vgfxWindow->close_requested = 1;
+    }
 
     /* Enqueue CLOSE event for the application to handle */
     vgfx_event_t event = {.type = VGFX_EVENT_CLOSE, .time_ms = vgfx_platform_now_ms()};
@@ -1114,8 +1112,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                         button = VGFX_MOUSE_MIDDLE;
                     }
 
-                    if (button < 8) {
-                        win->mouse_button_state[button] = 1; /* Update input state */
+                    if ((int)button >= 0 && button < 8) {
+                        win->mouse_button_state[(int)button] = 1; /* Update input state */
                     }
                     win->mouse_x = x;
                     win->mouse_y = y;
@@ -1148,8 +1146,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                         button = VGFX_MOUSE_MIDDLE;
                     }
 
-                    if (button < 8) {
-                        win->mouse_button_state[button] = 0; /* Update input state */
+                    if ((int)button >= 0 && button < 8) {
+                        win->mouse_button_state[(int)button] = 0; /* Update input state */
                     }
                     win->mouse_x = x;
                     win->mouse_y = y;
@@ -1259,9 +1257,12 @@ int64_t vgfx_platform_now_ms(void) {
         initialized = 1;
     }
 
-    uint64_t now = mach_absolute_time();                 /* Get current time in mach units */
-    uint64_t ns = now * timebase.numer / timebase.denom; /* Convert to nanoseconds */
-    return (int64_t)(ns / 1000000);                      /* Convert to milliseconds */
+    uint64_t now = mach_absolute_time(); /* Get current time in mach units */
+    uint32_t denom = timebase.denom ? timebase.denom : 1u;
+    double ms = ((double)now * (double)timebase.numer) / ((double)denom * 1000000.0);
+    if (ms >= (double)INT64_MAX)
+        return INT64_MAX;
+    return (int64_t)ms;
 }
 
 /// @brief Sleep for the specified duration in milliseconds.

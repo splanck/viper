@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-04-29
 ---
 
 # ViperDOS Dependencies for Viper Compiler Toolchain
@@ -55,14 +55,17 @@ To get basic compilation and VM execution working, ViperDOS must provide:
 | `__atomic_load_n` | Runtime | Atomic read |
 | `__atomic_store_n` | Runtime | Atomic write |
 | `__atomic_thread_fence` | Runtime | Memory barrier |
+| `atomic_flag_clear_explicit` | Graphics | Event queue spin lock release |
+| `atomic_flag_test_and_set_explicit` | Graphics | Event queue spin lock acquire |
 
 **Source locations:**
 - `src/runtime/core/rt_heap.c:51,67,146,169,178,201,210` - Reference counting atomics
 - `src/runtime/threads/rt_threads.c:500` - Thread ID generation (POSIX)
+- `src/lib/graphics/src/vgfx_internal.h` - C11 `atomic_flag` for the synchronized VGFX event queue
 
 **Notes:**
 - No `mmap`/`munmap` usage - all allocation through malloc
-- Atomics use GCC/Clang builtins; ARM64 has native support
+- Runtime atomics use GCC/Clang builtins; VGFX uses C11 `<stdatomic.h>` `atomic_flag`
 
 ---
 
@@ -228,6 +231,7 @@ CLOCK_REALTIME    // For wall-clock time (fallback)
 | `pthread_mutex_destroy(mutex)` | `<pthread.h>` | Runtime | Destroy mutex |
 | `pthread_mutex_init(mutex, attr)` | `<pthread.h>` | Runtime | Initialize mutex |
 | `pthread_mutex_lock(mutex)` | `<pthread.h>` | Runtime | Lock mutex |
+| `pthread_mutex_trylock(mutex)` | `<pthread.h>` | Runtime | Try to lock mutex without blocking |
 | `pthread_mutex_unlock(mutex)` | `<pthread.h>` | Runtime | Unlock mutex |
 
 **Source locations:**

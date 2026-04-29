@@ -3,18 +3,18 @@
 **Version:** 1.0.0
 **Status:** ✅ Phase 1 Complete (macOS)
 
-ViperGFX is a pure software-rendered, single-window, cross-platform 2D graphics library written in C99. It provides
+ViperGFX is a pure software-rendered, single-window, cross-platform 2D graphics library written in C11. It provides
 window management, pixel operations, drawing primitives, and input handling with zero external dependencies.
 
 ## Features
 
-- **Pure C99** - No external dependencies (no SDL, GLFW, etc.)
+- **Pure C11** - No external dependencies (no SDL, GLFW, etc.)
 - **Software rendering** - 32-bit RGBA framebuffer with direct pixel access
 - **Cross-platform** - Native backends for macOS (Cocoa), Linux (X11), Windows (Win32)
 - **Drawing primitives** - Lines, rectangles, circles (outline & filled)
 - **Overflow-safe clipping** - Extreme public coordinates and clip rectangles are canonicalized before rasterization
-- **Input handling** - Keyboard, mouse, and event queue
-- **FPS limiting** - Configurable frame rate control
+- **Input handling** - Keyboard, mouse, and synchronized event queue
+- **FPS limiting** - Configurable frame rate control with queryable frame timing
 - **Fully documented** - 164% comment coverage with Doxygen annotations
 
 ## Platform Support
@@ -165,6 +165,9 @@ void vgfx_destroy_window(vgfx_window_t window);
 int vgfx_update(vgfx_window_t window);  // Present + events + FPS limit
 int vgfx_pump_events(vgfx_window_t window);  // Events only, no present
 int vgfx_should_close(vgfx_window_t window);
+void vgfx_set_default_fps(int32_t fps);
+int32_t vgfx_get_default_fps(void);
+int32_t vgfx_frame_time_ms(vgfx_window_t window);
 ```
 
 ### Drawing Primitives
@@ -179,14 +182,27 @@ void vgfx_circle(vgfx_window_t window, int32_t cx, int32_t cy, int32_t r, vgfx_c
 void vgfx_circle_fill(vgfx_window_t window, int32_t cx, int32_t cy, int32_t r, vgfx_color_t color);
 ```
 
+All drawing primitives, including `vgfx_pset`, `vgfx_pset_alpha`, and `vgfx_cls`,
+honor the active clip rectangle set by `vgfx_set_clip`. When close prevention is
+enabled, the close event is still delivered; only the automatic close-request
+flag is suppressed.
+
 ### Input Handling
 
 ```c
 int vgfx_poll_event(vgfx_window_t window, vgfx_event_t* event);
+int32_t vgfx_flush_events(vgfx_window_t window);
+void vgfx_clear_events(vgfx_window_t window);  // Compatibility wrapper
+int32_t vgfx_event_overflow_count(vgfx_window_t window);
 int vgfx_key_down(vgfx_window_t window, vgfx_key_t key);
 int vgfx_mouse_pos(vgfx_window_t window, int32_t* x, int32_t* y);
 int vgfx_mouse_button(vgfx_window_t window, vgfx_mouse_button_t button);
 ```
+
+The event queue is protected internally so platform callbacks and application
+polling cannot corrupt queue state. If the queue fills, older non-close events
+may be evicted; `VGFX_EVENT_CLOSE` is preserved and drops are observable through
+`vgfx_event_overflow_count`.
 
 ### Colors
 
@@ -212,6 +228,7 @@ ViperGFX is **single-threaded** and **not thread-safe**:
 - All ViperGFX functions must be called from the **main thread**
 - The platform backend interacts with OS windowing systems that require main-thread execution (Cocoa, X11, Win32)
 - Do **not** call ViperGFX functions from worker threads or signal handlers
+- The internal event queue is synchronized only for backend event production and application polling.
 
 **Correct usage:**
 

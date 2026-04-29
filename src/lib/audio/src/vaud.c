@@ -25,6 +25,7 @@
 
 #include "vaud_internal.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -67,6 +68,57 @@ static int16_t *vaud_alloc_pcm_frames(int64_t frames, int32_t channels) {
     if (!samples)
         vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate PCM buffer");
     return samples;
+}
+
+static float vaud_clamp_unit_float(float value) {
+    if (!isfinite(value))
+        return 0.0f;
+    if (value < 0.0f)
+        return 0.0f;
+    if (value > 1.0f)
+        return 1.0f;
+    return value;
+}
+
+static float vaud_clamp_pan_float(float value) {
+    if (!isfinite(value))
+        return 0.0f;
+    if (value < -1.0f)
+        return -1.0f;
+    if (value > 1.0f)
+        return 1.0f;
+    return value;
+}
+
+static void sound_unregister_locked(vaud_context_t ctx, vaud_sound_t sound) {
+    if (!ctx || !sound)
+        return;
+
+    for (int32_t i = 0; i < ctx->sound_count; i++) {
+        if (ctx->loaded_sounds[i] != sound)
+            continue;
+        int32_t last = ctx->sound_count - 1;
+        ctx->loaded_sounds[i] = ctx->loaded_sounds[last];
+        ctx->loaded_sounds[last] = NULL;
+        ctx->sound_count--;
+        return;
+    }
+}
+
+static int sound_register(vaud_context_t ctx, vaud_sound_t sound) {
+    if (!ctx || !sound)
+        return 0;
+
+    vaud_mutex_lock(&ctx->mutex);
+    if (ctx->sound_count < VAUD_MAX_SOUNDS) {
+        ctx->loaded_sounds[ctx->sound_count++] = sound;
+        vaud_mutex_unlock(&ctx->mutex);
+        return 1;
+    }
+    vaud_mutex_unlock(&ctx->mutex);
+
+    vaud_set_error(VAUD_ERR_INVALID_PARAM, "Maximum loaded sounds reached");
+    return 0;
 }
 
 // Forward declarations for runtime codec APIs (avoids cross-layer #include)
@@ -156,6 +208,10 @@ void vaud_mutex_unlock(vaud_mutex_t *mutex) {
     LeaveCriticalSection(mutex);
 }
 
+int vaud_mutex_trylock(vaud_mutex_t *mutex) {
+    return TryEnterCriticalSection(mutex) ? 1 : 0;
+}
+
 #else /* POSIX */
 
 void vaud_mutex_init(vaud_mutex_t *mutex) {
@@ -172,6 +228,10 @@ void vaud_mutex_lock(vaud_mutex_t *mutex) {
 
 void vaud_mutex_unlock(vaud_mutex_t *mutex) {
     pthread_mutex_unlock(mutex);
+}
+
+int vaud_mutex_trylock(vaud_mutex_t *mutex) {
+    return pthread_mutex_trylock(mutex) == 0;
 }
 
 #endif
@@ -242,13 +302,18 @@ void vaud_destroy(vaud_context_t ctx) {
     /* Shutdown platform (stops audio thread) */
     vaud_platform_shutdown(ctx);
 
-    /* Free all loaded sounds - voices reference sounds so they become invalid */
-    /* Note: sounds track their own context, so we just clear voices here */
+    /* Detach caller-owned sounds and stop voices that reference them. */
     vaud_mutex_lock(&ctx->mutex);
     for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
         ctx->voices[i].state = VAUD_VOICE_INACTIVE;
         ctx->voices[i].sound = NULL;
     }
+    for (int32_t i = 0; i < ctx->sound_count; i++) {
+        if (ctx->loaded_sounds[i])
+            ctx->loaded_sounds[i]->ctx = NULL;
+        ctx->loaded_sounds[i] = NULL;
+    }
+    ctx->sound_count = 0;
 
     /* Detach all music streams so wrapper-owned finalizers can free them later
      * without touching a destroyed context. */
@@ -269,10 +334,7 @@ void vaud_destroy(vaud_context_t ctx) {
 void vaud_set_master_volume(vaud_context_t ctx, float volume) {
     if (!ctx)
         return;
-    if (volume < 0.0f)
-        volume = 0.0f;
-    if (volume > 1.0f)
-        volume = 1.0f;
+    volume = vaud_clamp_unit_float(volume);
 
     vaud_mutex_lock(&ctx->mutex);
     ctx->master_volume = volume;
@@ -367,6 +429,12 @@ vaud_sound_t vaud_load_sound(vaud_context_t ctx, const char *path) {
     sound->source_channels = channels;
     sound->default_volume = VAUD_DEFAULT_SOUND_VOLUME;
 
+    if (!sound_register(ctx, sound)) {
+        free(sound->samples);
+        free(sound);
+        return NULL;
+    }
+
     return sound;
 }
 
@@ -422,6 +490,12 @@ vaud_sound_t vaud_load_sound_mem(vaud_context_t ctx, const void *data, size_t si
     sound->source_channels = channels;
     sound->default_volume = VAUD_DEFAULT_SOUND_VOLUME;
 
+    if (!sound_register(ctx, sound)) {
+        free(sound->samples);
+        free(sound);
+        return NULL;
+    }
+
     return sound;
 }
 
@@ -440,9 +514,11 @@ void vaud_free_sound(vaud_sound_t sound) {
                 ctx->voices[i].sound = NULL;
             }
         }
+        sound_unregister_locked(ctx, sound);
         vaud_mutex_unlock(&ctx->mutex);
     }
 
+    sound->ctx = NULL;
     free(sound->samples);
     free(sound);
 }
@@ -460,6 +536,7 @@ void vaud_detach_sound(vaud_sound_t sound) {
                 ctx->voices[i].sound = NULL;
             }
         }
+        sound_unregister_locked(ctx, sound);
         vaud_mutex_unlock(&ctx->mutex);
     }
 
@@ -494,8 +571,8 @@ vaud_voice_id vaud_play_ex(vaud_sound_t sound, float volume, float pan) {
 
     voice->sound = sound;
     voice->position = 0;
-    voice->volume = (volume < 0.0f) ? 0.0f : (volume > 1.0f) ? 1.0f : volume;
-    voice->pan = (pan < -1.0f) ? -1.0f : (pan > 1.0f) ? 1.0f : pan;
+    voice->volume = vaud_clamp_unit_float(volume);
+    voice->pan = vaud_clamp_pan_float(pan);
     voice->loop = 0;
     voice->state = VAUD_VOICE_PLAYING;
 
@@ -522,8 +599,8 @@ vaud_voice_id vaud_play_loop(vaud_sound_t sound, float volume, float pan) {
 
     voice->sound = sound;
     voice->position = 0;
-    voice->volume = (volume < 0.0f) ? 0.0f : (volume > 1.0f) ? 1.0f : volume;
-    voice->pan = (pan < -1.0f) ? -1.0f : (pan > 1.0f) ? 1.0f : pan;
+    voice->volume = vaud_clamp_unit_float(volume);
+    voice->pan = vaud_clamp_pan_float(pan);
     voice->loop = 1;
     voice->state = VAUD_VOICE_PLAYING;
 
@@ -554,7 +631,7 @@ void vaud_set_voice_volume(vaud_context_t ctx, vaud_voice_id voice_id, float vol
     vaud_mutex_lock(&ctx->mutex);
     vaud_voice *voice = vaud_find_voice(ctx, voice_id);
     if (voice) {
-        voice->volume = (volume < 0.0f) ? 0.0f : (volume > 1.0f) ? 1.0f : volume;
+        voice->volume = vaud_clamp_unit_float(volume);
     }
     vaud_mutex_unlock(&ctx->mutex);
 }
@@ -566,7 +643,7 @@ void vaud_set_voice_pan(vaud_context_t ctx, vaud_voice_id voice_id, float pan) {
     vaud_mutex_lock(&ctx->mutex);
     vaud_voice *voice = vaud_find_voice(ctx, voice_id);
     if (voice) {
-        voice->pan = (pan < -1.0f) ? -1.0f : (pan > 1.0f) ? 1.0f : pan;
+        voice->pan = vaud_clamp_pan_float(pan);
     }
     vaud_mutex_unlock(&ctx->mutex);
 }
@@ -599,6 +676,8 @@ static void vaud_music_clear_buffers(struct vaud_music *music) {
     for (int32_t i = 0; i < VAUD_MUSIC_BUFFER_COUNT; i++)
         music->buffer_frames[i] = 0;
     music->leftover_frames = 0;
+    music->resample_phase = 0.0;
+    music->stream_output_generated = 0;
     music->stream_eof = 0;
     music->stream_loop_pending = 0;
 }
@@ -675,7 +754,7 @@ static int vaud_music_reset_source(struct vaud_music *music) {
 
     if (!music->file)
         return 0;
-    return fseek((FILE *)music->file, (long)music->data_offset, SEEK_SET) == 0;
+    return vaud_wav_seek_stream(music->file, music->data_offset, SEEK_SET);
 }
 
 /// @brief Read decoded PCM frames from an OGG Vorbis stream.
@@ -838,7 +917,10 @@ static int vaud_music_prepare_wav_read_buffer(struct vaud_music *music) {
     int32_t source_rate =
         music->source_sample_rate > 0 ? music->source_sample_rate : music->sample_rate;
     if (source_rate != VAUD_SAMPLE_RATE)
-        raw_frames = (int64_t)VAUD_MUSIC_BUFFER_FRAMES * source_rate / VAUD_SAMPLE_RATE + 2;
+        raw_frames = ((int64_t)(VAUD_MUSIC_BUFFER_FRAMES - 1) * source_rate +
+                      VAUD_SAMPLE_RATE - 1) /
+                         VAUD_SAMPLE_RATE +
+                     2;
     if (raw_frames <= 0 || raw_frames > (int64_t)(SIZE_MAX / (size_t)bytes_per_frame))
         return 0;
 
@@ -889,12 +971,188 @@ static void vaud_music_advance_wav_source(struct vaud_music *music, int32_t fram
         music->source_position += frames_read;
 }
 
+static int32_t vaud_music_resample_source_request(int32_t source_rate) {
+    if (source_rate <= 0)
+        return 0;
+    int64_t raw_needed = ((int64_t)(VAUD_MUSIC_BUFFER_FRAMES - 1) * source_rate +
+                          VAUD_SAMPLE_RATE - 1) /
+                             VAUD_SAMPLE_RATE +
+                         2;
+    if (raw_needed <= 0 || raw_needed > INT32_MAX)
+        return 0;
+    return (int32_t)raw_needed;
+}
+
+static int vaud_music_stash_leftover(struct vaud_music *music,
+                                     const int16_t *frames,
+                                     int32_t frame_count) {
+    if (!music)
+        return 0;
+    if (frame_count <= 0)
+        return 1;
+
+    int32_t existing = music->leftover_frames;
+    if (existing < 0)
+        existing = 0;
+    if (frame_count > INT32_MAX - existing) {
+        music->leftover_frames = 0;
+        return 0;
+    }
+    int32_t total = frame_count + existing;
+    if (!vaud_music_reserve_leftover(music, total)) {
+        music->leftover_frames = 0;
+        return 0;
+    }
+    if (existing > 0) {
+        memmove(music->leftover_buf + frame_count * 2,
+                music->leftover_buf,
+                (size_t)existing * 2 * sizeof(int16_t));
+    }
+    memmove(music->leftover_buf, frames, (size_t)frame_count * 2 * sizeof(int16_t));
+    music->leftover_frames = total;
+    return 1;
+}
+
+static int32_t wav_stream_read_frames_with_leftover(struct vaud_music *music,
+                                                    int16_t *output,
+                                                    int32_t max_frames) {
+    if (!music || !output || max_frames <= 0 || !music->file)
+        return 0;
+
+    int32_t written = 0;
+    if (music->leftover_frames > 0) {
+        int32_t n = music->leftover_frames < max_frames ? music->leftover_frames : max_frames;
+        memcpy(output, music->leftover_buf, (size_t)n * 2 * sizeof(int16_t));
+        music->leftover_frames -= n;
+        if (music->leftover_frames > 0) {
+            memmove(music->leftover_buf,
+                    music->leftover_buf + n * 2,
+                    (size_t)music->leftover_frames * 2 * sizeof(int16_t));
+        }
+        written += n;
+    }
+
+    int32_t to_read = vaud_music_clamp_wav_read_frames(music, max_frames - written);
+    if (to_read <= 0)
+        return written;
+
+    int32_t read = vaud_wav_read_frames_buffered(music->file,
+                                                 output + written * 2,
+                                                 to_read,
+                                                 music->channels,
+                                                 music->bits_per_sample,
+                                                 music->audio_format,
+                                                 music->wav_read_buf,
+                                                 music->wav_read_cap);
+    vaud_music_advance_wav_source(music, read);
+    return written + read;
+}
+
+static int32_t vaud_music_read_source_frames(struct vaud_music *music,
+                                             int16_t *output,
+                                             int32_t max_frames) {
+    if (!music || !output || max_frames <= 0)
+        return 0;
+    if (music->format == 1)
+        return ogg_stream_read_frames(music, output, max_frames);
+    if (music->format == 2)
+        return mp3_stream_read_frames_music(music, output, max_frames);
+    return wav_stream_read_frames_with_leftover(music, output, max_frames);
+}
+
+static int32_t vaud_music_resample_source_into(struct vaud_music *music,
+                                               int16_t *out,
+                                               int32_t source_rate) {
+    int32_t raw_needed = vaud_music_resample_source_request(source_rate);
+    if (raw_needed <= 0)
+        return 0;
+
+    if (!music->resample_buf || music->resample_cap < raw_needed) {
+        free(music->resample_buf);
+        music->resample_cap = (int64_t)raw_needed + 64;
+        music->resample_buf = vaud_alloc_pcm_frames(music->resample_cap, VAUD_CHANNELS);
+        if (!music->resample_buf) {
+            music->resample_cap = 0;
+            return 0;
+        }
+    }
+
+    int32_t raw_read = vaud_music_read_source_frames(music, music->resample_buf, raw_needed);
+    if (raw_read <= 0)
+        return 0;
+
+    double phase = music->resample_phase;
+    double ratio = (double)source_rate / (double)VAUD_SAMPLE_RATE;
+    int source_exhausted = raw_read < raw_needed;
+    int32_t out_frames = 0;
+    const double phase_epsilon = 1.0e-9;
+
+    while (out_frames < VAUD_MUSIC_BUFFER_FRAMES) {
+        if (phase + phase_epsilon >= (double)raw_read)
+            break;
+        int64_t in_idx = (int64_t)phase;
+        if (in_idx < 0 || in_idx >= raw_read)
+            break;
+
+        double frac = phase - (double)in_idx;
+        if (in_idx + 1 >= raw_read && frac != 0.0 && !source_exhausted)
+            break;
+
+        for (int32_t ch = 0; ch < VAUD_CHANNELS; ch++) {
+            int16_t s0 = music->resample_buf[in_idx * VAUD_CHANNELS + ch];
+            int16_t s1 = (in_idx + 1 < raw_read)
+                             ? music->resample_buf[(in_idx + 1) * VAUD_CHANNELS + ch]
+                             : s0;
+            int32_t sample = (int32_t)(s0 * (1.0 - frac) + s1 * frac);
+            if (sample > 32767)
+                sample = 32767;
+            if (sample < -32768)
+                sample = -32768;
+            out[out_frames * VAUD_CHANNELS + ch] = (int16_t)sample;
+        }
+
+        out_frames++;
+        phase += ratio;
+    }
+
+    int64_t consumed = (int64_t)(phase + phase_epsilon);
+    if (consumed < 0)
+        consumed = 0;
+    if (consumed > raw_read)
+        consumed = raw_read;
+    phase -= (double)consumed;
+
+    int32_t remaining = raw_read - (int32_t)consumed;
+    if (remaining > 0) {
+        vaud_music_stash_leftover(music, music->resample_buf + consumed * VAUD_CHANNELS, remaining);
+    }
+    music->resample_phase = phase;
+
+    return out_frames;
+}
+
+static int32_t vaud_music_commit_output_frames(struct vaud_music *music, int32_t frames) {
+    if (!music || frames <= 0)
+        return 0;
+    if (music->frame_count > 0) {
+        if (music->stream_output_generated >= music->frame_count)
+            return 0;
+        int64_t remaining = music->frame_count - music->stream_output_generated;
+        if ((int64_t)frames > remaining)
+            frames = (int32_t)remaining;
+    }
+    music->stream_output_generated += frames;
+    return frames;
+}
+
 //===----------------------------------------------------------------------===//
 // Music Buffer Fill (with resampling)
 //===----------------------------------------------------------------------===//
 
 int32_t vaud_music_fill_buffer(struct vaud_music *music, int32_t buf_idx) {
     if (!music || buf_idx < 0 || buf_idx >= VAUD_MUSIC_BUFFER_COUNT)
+        return 0;
+    if (music->frame_count > 0 && music->stream_output_generated >= music->frame_count)
         return 0;
 
     int16_t *out = music->buffers[buf_idx];
@@ -909,33 +1167,10 @@ int32_t vaud_music_fill_buffer(struct vaud_music *music, int32_t buf_idx) {
             raw_frames = (music->format == 1)
                              ? ogg_stream_read_frames(music, out, VAUD_MUSIC_BUFFER_FRAMES)
                              : mp3_stream_read_frames_music(music, out, VAUD_MUSIC_BUFFER_FRAMES);
-            return raw_frames;
+            return vaud_music_commit_output_frames(music, raw_frames);
         }
-        // Need resampling: decode into temp buffer, then resample into output
-        int64_t raw_needed = (int64_t)VAUD_MUSIC_BUFFER_FRAMES * source_rate / VAUD_SAMPLE_RATE + 2;
-        if (!music->resample_buf || music->resample_cap < raw_needed) {
-            free(music->resample_buf);
-            music->resample_cap = raw_needed + 64;
-            music->resample_buf = vaud_alloc_pcm_frames(music->resample_cap, VAUD_CHANNELS);
-            if (!music->resample_buf) {
-                music->resample_cap = 0;
-                return 0;
-            }
-        }
-        raw_frames =
-            (music->format == 1)
-                ? ogg_stream_read_frames(music, music->resample_buf, (int32_t)raw_needed)
-                : mp3_stream_read_frames_music(music, music->resample_buf, (int32_t)raw_needed);
-        if (raw_frames <= 0)
-            return 0;
-        int64_t out_frames = 0;
-        if (!vaud_checked_resampled_frames(raw_frames, source_rate, VAUD_SAMPLE_RATE, &out_frames))
-            return 0;
-        if (out_frames > VAUD_MUSIC_BUFFER_FRAMES)
-            out_frames = VAUD_MUSIC_BUFFER_FRAMES;
-        vaud_resample(
-            music->resample_buf, raw_frames, source_rate, out, out_frames, VAUD_SAMPLE_RATE, 2);
-        return (int32_t)out_frames;
+        return vaud_music_commit_output_frames(
+            music, vaud_music_resample_source_into(music, out, source_rate));
     }
 
     // WAV path (format == 0)
@@ -955,47 +1190,11 @@ int32_t vaud_music_fill_buffer(struct vaud_music *music, int32_t buf_idx) {
                                                      music->wav_read_buf,
                                                      music->wav_read_cap);
         vaud_music_advance_wav_source(music, read);
-        return read;
+        return vaud_music_commit_output_frames(music, read);
     }
 
-    // WAV resampling path
-    int64_t raw_needed = (int64_t)VAUD_MUSIC_BUFFER_FRAMES * source_rate / VAUD_SAMPLE_RATE + 2;
-
-    if (!music->resample_buf || music->resample_cap < raw_needed) {
-        free(music->resample_buf);
-        music->resample_cap = raw_needed + 64;
-        music->resample_buf = vaud_alloc_pcm_frames(music->resample_cap, VAUD_CHANNELS);
-        if (!music->resample_buf) {
-            music->resample_cap = 0;
-            return 0;
-        }
-    }
-
-    int32_t to_read = vaud_music_clamp_wav_read_frames(music, (int32_t)raw_needed);
-    if (to_read <= 0)
-        return 0;
-
-    int32_t raw_read = vaud_wav_read_frames_buffered(music->file,
-                                                     music->resample_buf,
-                                                     to_read,
-                                                     music->channels,
-                                                     music->bits_per_sample,
-                                                     music->audio_format,
-                                                     music->wav_read_buf,
-                                                     music->wav_read_cap);
-    vaud_music_advance_wav_source(music, raw_read);
-    if (raw_read == 0)
-        return 0;
-
-    int64_t out_frames = 0;
-    if (!vaud_checked_resampled_frames(raw_read, source_rate, VAUD_SAMPLE_RATE, &out_frames))
-        return 0;
-    if (out_frames > VAUD_MUSIC_BUFFER_FRAMES)
-        out_frames = VAUD_MUSIC_BUFFER_FRAMES;
-
-    vaud_resample(music->resample_buf, raw_read, source_rate, out, out_frames, VAUD_SAMPLE_RATE, 2);
-
-    return (int32_t)out_frames;
+    return vaud_music_commit_output_frames(
+        music, vaud_music_resample_source_into(music, out, source_rate));
 }
 
 int vaud_music_seek_output_frame(struct vaud_music *music, int64_t target_frame) {
@@ -1012,6 +1211,7 @@ int vaud_music_seek_output_frame(struct vaud_music *music, int64_t target_frame)
 
     if (music->frame_count > 0 && target_frame == music->frame_count) {
         music->position = target_frame;
+        music->stream_output_generated = target_frame;
         music->buffer_frames[0] = 0;
         music->buffer_position = 0;
         music->current_buffer = 0;
@@ -1446,11 +1646,12 @@ void vaud_music_play(vaud_music_t music, int loop) {
     vaud_mutex_lock(&music->ctx->mutex);
 
     music->loop = loop ? 1 : 0;
-    if (music->state == VAUD_MUSIC_STOPPED && music->position == 0 &&
-        !vaud_music_seek_output_frame(music, 0)) {
-        music->state = VAUD_MUSIC_STOPPED;
-        vaud_mutex_unlock(&music->ctx->mutex);
-        return;
+    if (music->state == VAUD_MUSIC_STOPPED) {
+        if (!vaud_music_seek_output_frame(music, 0)) {
+            music->state = VAUD_MUSIC_STOPPED;
+            vaud_mutex_unlock(&music->ctx->mutex);
+            return;
+        }
     }
     music->state = VAUD_MUSIC_PLAYING;
     vaud_music_prefill_locked(music);
@@ -1511,10 +1712,7 @@ void vaud_music_set_volume(vaud_music_t music, float volume) {
     if (!music)
         return;
 
-    if (volume < 0.0f)
-        volume = 0.0f;
-    if (volume > 1.0f)
-        volume = 1.0f;
+    volume = vaud_clamp_unit_float(volume);
 
     if (music->ctx) {
         vaud_mutex_lock(&music->ctx->mutex);
@@ -1553,10 +1751,20 @@ int vaud_music_is_playing(vaud_music_t music) {
 void vaud_music_seek(vaud_music_t music, float seconds) {
     if (!music || !music->ctx)
         return;
+    if (!isfinite(seconds))
+        return;
 
     vaud_mutex_lock(&music->ctx->mutex);
 
-    int64_t target_frame = (int64_t)(seconds * music->sample_rate);
+    double target = (double)seconds * (double)music->sample_rate;
+    if (target < 0.0)
+        target = 0.0;
+    if (music->frame_count > 0 && target > (double)music->frame_count)
+        target = (double)music->frame_count;
+    if (target > (double)INT64_MAX)
+        target = (double)INT64_MAX;
+
+    int64_t target_frame = (int64_t)target;
     vaud_music_seek_output_frame(music, target_frame);
     vaud_music_prefill_locked(music);
 

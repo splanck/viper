@@ -1074,12 +1074,11 @@ typedef struct grid_impl {
 static void grid_destroy(vg_widget_t *self) {
     if (!self || !self->impl_data)
         return;
-    grid_impl_t *g = (grid_impl_t *)self->impl_data;
+    grid_impl_t *g = (grid_impl_t *)vg_widget_take_impl_data(self);
     free(g->layout.column_widths);
     free(g->layout.row_heights);
     free(g->placements);
     free(g);
-    self->impl_data = NULL;
 }
 
 static grid_placement_t *grid_find_placement(grid_impl_t *g, vg_widget_t *child) {
@@ -1441,10 +1440,9 @@ typedef struct dock_impl {
 static void dock_destroy(vg_widget_t *self) {
     if (!self || !self->impl_data)
         return;
-    dock_impl_t *d = (dock_impl_t *)self->impl_data;
+    dock_impl_t *d = (dock_impl_t *)vg_widget_take_impl_data(self);
     free(d->entries);
     free(d);
-    self->impl_data = NULL;
 }
 
 static void dock_measure(vg_widget_t *self, float available_width, float available_height) {

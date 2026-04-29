@@ -240,6 +240,61 @@ TEST(AArch64PeepholeSubpasses, LoopPhiEdgeMovesPreserveOverlappingSources) {
     EXPECT_EQ(movs[1], std::make_pair(PhysReg::X10, PhysReg::X17));
 }
 
+TEST(AArch64PeepholeSubpasses, LoopConstHoistRejectsBackwardJoinEdge) {
+    MFunction fn{};
+    fn.name = "backward_join_not_loop";
+    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    fn.blocks.push_back(MBasicBlock{"else_path", {}});
+    fn.blocks.push_back(MBasicBlock{"join", {}});
+    fn.blocks.push_back(MBasicBlock{"then_path", {}});
+    fn.blocks.push_back(MBasicBlock{"exit", {}});
+
+    auto &entry = fn.blocks[0];
+    auto &elsePath = fn.blocks[1];
+    auto &join = fn.blocks[2];
+    auto &thenPath = fn.blocks[3];
+    auto &exit = fn.blocks[4];
+
+    entry.instrs.push_back(
+        MInstr{MOpcode::Cbz, {MOperand::regOp(PhysReg::X0), MOperand::labelOp("then_path")}});
+    entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("else_path")}});
+
+    elsePath.instrs.push_back(MInstr{MOpcode::MovRI,
+                                     {MOperand::regOp(PhysReg::X20), MOperand::immOp(1)}});
+    elsePath.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("join")}});
+
+    join.instrs.push_back(MInstr{MOpcode::MovRI,
+                                 {MOperand::regOp(PhysReg::X28), MOperand::immOp(6)}});
+    join.instrs.push_back(MInstr{MOpcode::MovRR,
+                                 {MOperand::regOp(PhysReg::X4),
+                                  MOperand::regOp(PhysReg::X28)}});
+    join.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("exit")}});
+
+    thenPath.instrs.push_back(MInstr{MOpcode::MovRI,
+                                     {MOperand::regOp(PhysReg::X21), MOperand::immOp(42)}});
+    thenPath.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("join")}});
+
+    exit.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    (void)runPeephole(fn);
+
+    const auto joinIt =
+        std::find_if(fn.blocks.begin(), fn.blocks.end(), [](const MBasicBlock &bb) {
+            return bb.name == "join";
+        });
+    ASSERT_TRUE(joinIt != fn.blocks.end());
+
+    const bool joinStillDefinesScale =
+        std::any_of(joinIt->instrs.begin(), joinIt->instrs.end(), [](const MInstr &instr) {
+            return instr.opc == MOpcode::MovRI && instr.ops.size() == 2 &&
+                   instr.ops[0].kind == MOperand::Kind::Reg &&
+                   (instr.ops[0].reg.idOrPhys == static_cast<uint16_t>(PhysReg::X28) ||
+                    instr.ops[0].reg.idOrPhys == static_cast<uint16_t>(PhysReg::X4)) &&
+                   instr.ops[1].kind == MOperand::Kind::Imm && instr.ops[1].imm == 6;
+        });
+    EXPECT_TRUE(joinStillDefinesScale);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

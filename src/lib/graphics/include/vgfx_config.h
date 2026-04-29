@@ -132,16 +132,12 @@
 #endif
 
 /// @def VGFX_EVENT_QUEUE_SIZE
-/// @brief Capacity of the lock-free event queue (number of events).
+/// @brief Capacity of the synchronized event queue (number of events).
 /// @details Determines how many unprocessed events can accumulate before
-///          new events are dropped.  The event queue uses a lock-free SPSC
-///          (single producer, single consumer) ring buffer design where:
-///            - Producer: Platform backend thread (window events from OS)
-///            - Consumer: Application thread (vgfx_poll_event() calls)
-///
-///          Power-of-2 sizes enable efficient modulo indexing via bitwise AND,
-///          but any positive value is supported.  Larger queues reduce the
-///          risk of event loss during processing spikes at the cost of memory.
+///          old events are evicted. The queue is protected internally so
+///          platform callbacks and application polling do not race. Larger
+///          queues reduce the risk of event loss during processing spikes at
+///          the cost of memory.
 ///
 /// @note Memory overhead: VGFX_EVENT_QUEUE_SIZE * sizeof(vgfx_event_t)
 ///       (typically ~64 bytes per event, so 256 events = ~16 KB)

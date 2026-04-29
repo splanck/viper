@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 namespace viper::codegen::aarch64::peephole {
 namespace {
@@ -146,6 +147,62 @@ std::size_t hoistLoopConstants(MFunction &fn) {
         }
     }
 
+    const auto computeDominators = [&preds, &fn]() {
+        const std::size_t n = fn.blocks.size();
+        std::vector<std::unordered_set<std::size_t>> dom(n);
+        if (n == 0)
+            return dom;
+
+        dom[0].insert(0);
+        for (std::size_t i = 1; i < n; ++i) {
+            for (std::size_t j = 0; j < n; ++j)
+                dom[i].insert(j);
+        }
+
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            for (std::size_t i = 1; i < n; ++i) {
+                auto pit = preds.find(i);
+                if (pit == preds.end() || pit->second.empty()) {
+                    std::unordered_set<std::size_t> onlySelf{i};
+                    if (dom[i] != onlySelf) {
+                        dom[i] = std::move(onlySelf);
+                        changed = true;
+                    }
+                    continue;
+                }
+
+                std::unordered_set<std::size_t> next;
+                bool firstPred = true;
+                for (std::size_t p : pit->second) {
+                    if (p >= n)
+                        continue;
+                    if (firstPred) {
+                        next = dom[p];
+                        firstPred = false;
+                        continue;
+                    }
+                    for (auto it = next.begin(); it != next.end();) {
+                        if (dom[p].count(*it) == 0)
+                            it = next.erase(it);
+                        else
+                            ++it;
+                    }
+                }
+                next.insert(i);
+
+                if (dom[i] != next) {
+                    dom[i] = std::move(next);
+                    changed = true;
+                }
+            }
+        }
+        return dom;
+    };
+
+    const auto dominators = computeDominators();
+
     // Compute natural loop body from a back-edge (latch -> header).
     // Uses the standard reverse-reachability algorithm: start from the latch,
     // walk predecessors until reaching the header to find all blocks on paths
@@ -199,6 +256,12 @@ std::size_t hoistLoopConstants(MFunction &fn) {
 
             auto it = nameToIdx.find(target);
             if (it != nameToIdx.end() && it->second < i) {
+                // A layout-created backward edge is not necessarily a loop.
+                // If/else joins can be placed before one predecessor, making
+                // that predecessor branch "back" to the join. Only a real loop
+                // header dominates its latch.
+                if (i >= dominators.size() || dominators[i].count(it->second) == 0)
+                    continue;
                 if (seenHeaders.insert(it->second).second)
                     loops.push_back({it->second, i, computeLoopBody(it->second, i)});
             }
