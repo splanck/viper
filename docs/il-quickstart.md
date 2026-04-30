@@ -238,20 +238,24 @@ viper il-opt program.il --passes "simplify-cfg" -o optimized.il
 Preset pipelines via `viper il-opt`:
 
 ```sh
-# O1 (default): simplify-cfg → SCCP → ConstFold → DCE → SimplifyCFG → SCCP → Inline → DCE → SimplifyCFG
-# (mem2reg, LICM, and peephole are intentionally excluded from O1 because of open correctness issues.)
+# O1 (default): simplify-cfg → SCCP → ConstFold → PeepholeSafe → DCE → SimplifyCFG →
+#               SCCP → Inline → PeepholeSafe → DCE → SimplifyCFG
+# (mem2reg, full LICM, and full peephole remain outside O1 while broader workload validation continues.)
 viper il-opt program.il --pipeline O1 -o program.o1.il
 
-# O2: LoopSimplify → LoopRotate → IndVars → LoopUnroll → SimplifyCFG → SCCP → CheckOpt → EHOpt → DCE →
-#     SimplifyCFG → SiblingRecursion → Inline → SimplifyCFG → SCCP → ConstFold → DCE → SimplifyCFG →
-#     GVN → Reassociate → EarlyCSE → DSE → DCE → LateCleanup
+# O2: LoopSimplify → LICMSafe → LoopRotate → IndVars → LoopUnroll → SimplifyCFG → SCCP →
+#     CheckOpt → EHOpt → DCE → SimplifyCFG → SiblingRecursion → Inline → SimplifyCFG →
+#     SCCP → ConstFold → PeepholeSafe → DCE → SimplifyCFG → GVN → Reassociate → EarlyCSE →
+#     DSE → DCE → LateCleanup
 viper il-opt program.il --pipeline O2 -o program.o2.il
 
 # Custom sequence
 viper il-opt program.il --passes "simplify-cfg,sccp,dce" -o out.il
 ```
 
-Available passes: `check-opt`, `constfold`, `dce`, `dse`, `earlycse`, `ehopt`, `gvn`, `indvars`, `inline`, `late-cleanup`, `licm`, `loop-rotate`, `loop-simplify`, `loop-unroll`, `mem2reg`, `peephole`, `reassociate`, `sccp`, `simplify-cfg`
+Available passes: `check-opt`, `constfold`, `dce`, `dse`, `earlycse`, `ehopt`, `gvn`, `indvars`, `inline`, `late-cleanup`, `licm`, `licm-safe`, `loop-rotate`, `loop-simplify`, `loop-unroll`, `mem2reg`, `peephole`, `peephole-safe`, `reassociate`, `sccp`, `simplify-cfg`
+
+Rehab pipelines are also addressable by name: `rehab-mem2reg`, `rehab-peephole`, and `rehab-licm`.
 
 ---
 

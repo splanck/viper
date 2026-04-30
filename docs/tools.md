@@ -215,7 +215,7 @@ viper il-opt <in.il> -o <out.il> [flags]
 | `--no-mem2reg`    | Drop mem2reg from selected legacy/custom pipelines when present |
 | `--mem2reg-stats` | Print counts of promoted variables |
 
-Default pipeline: O1 (`simplify-cfg, sccp, constfold, dce, simplify-cfg, sccp, inline, dce, simplify-cfg`)
+Default pipeline: O1 (`simplify-cfg, sccp, constfold, peephole-safe, dce, simplify-cfg, sccp, inline, peephole-safe, dce, simplify-cfg`)
 
 ### viper codegen
 

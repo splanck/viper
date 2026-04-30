@@ -67,7 +67,7 @@ int cmdILOpt(int argc, char **argv) {
     bool printBefore = false;
     bool printAfter = false;
     bool verifyEach = false;
-    std::string pipelineName; // O0/O1/O2
+    std::string pipelineName;
     auto trimToken = [](const std::string &token) {
         auto begin = token.begin();
         auto end = token.end();
@@ -137,30 +137,37 @@ int cmdILOpt(int argc, char **argv) {
     pm.addSimplifyCFG();
 
     transform::PassManager::Pipeline selectedPipeline;
-    auto resolvePipeline = [&](std::string name) -> bool {
-        const auto *pipeline = pm.getPipeline(name);
-        if (!pipeline) {
-            std::cerr << "unknown pipeline '" << name << "' (use O0/O1/O2)\n";
-            return false;
-        }
-        selectedPipeline = *pipeline;
-        return true;
+    auto resolvePipeline = [&](const std::string &name) -> const transform::PassManager::Pipeline * {
+        return pm.getPipeline(name);
     };
 
     if (!pipelineName.empty()) {
-        std::string upper = pipelineName;
-        std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c) {
-            return static_cast<char>(std::toupper(c));
-        });
-        if (!resolvePipeline(upper))
+        const auto *pipeline = resolvePipeline(pipelineName);
+        if (!pipeline) {
+            std::string upper = pipelineName;
+            std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c) {
+                return static_cast<char>(std::toupper(c));
+            });
+            if (upper != pipelineName)
+                pipeline = resolvePipeline(upper);
+        }
+        if (!pipeline) {
+            std::cerr << "unknown pipeline '" << pipelineName
+                      << "' (use a registered pipeline such as O0/O1/O2 or rehab-*)\n";
             return 1;
+        }
+        selectedPipeline = *pipeline;
     }
 
     if (passesExplicit) {
         selectedPipeline = passList;
     } else if (selectedPipeline.empty()) {
-        if (!resolvePipeline("O1"))
+        const auto *pipeline = resolvePipeline("O1");
+        if (!pipeline) {
+            std::cerr << "unknown pipeline 'O1'\n";
             return 1;
+        }
+        selectedPipeline = *pipeline;
     }
 
     if (selectedPipeline.empty()) {
@@ -194,7 +201,8 @@ int cmdILOpt(int argc, char **argv) {
         }
     }
 
-    pm.run(m, selectedPipeline);
+    if (!pm.run(m, selectedPipeline))
+        return 1;
     std::ofstream ofs(outFile);
     if (!ofs) {
         std::cerr << "unable to open " << outFile << "\n";

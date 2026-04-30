@@ -256,4 +256,7 @@ inline constexpr std::array<Rule, 57> kRules{{
 /// \brief Run peephole simplifications over @p m using registered rules.
 void peephole(core::Module &m);
 
+/// \brief Run the verifier-safe peephole subset used by canonical pipelines.
+void peepholeSafe(core::Module &m);
+
 } // namespace il::transform

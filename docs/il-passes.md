@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-29
+last-verified: 2026-04-30
 ---
 
 # IL Optimization Passes
@@ -71,8 +71,8 @@ required structure.
 
 ### Execution Order
 
-This pass runs once during the early pipeline, just before **Mem2Reg**, and again immediately after **Mem2Reg** to clean
-up any new opportunities introduced by SSA promotion.
+Canonical pipelines run this pass early and again after major simplification points. The `rehab-mem2reg` pipeline still
+places `SimplifyCFG` around **Mem2Reg** so SSA-promotion edge arguments are canonicalized before cleanup.
 
 ## Mem2Reg
 
@@ -85,11 +85,14 @@ Promotes alloca/store/load patterns to pure SSA values:
   promotion does not erase pointer escape information.
 - **SROA (Scalar Replacement of Aggregates)**: Splits struct/record allocas into per-field allocas before promotion,
   allowing fields accessed independently to be promoted individually.
-- **Sealed SSA construction**: Builds complete SSA form in a single pass via iterated dominance frontier computation.
+- **Sealed SSA construction**: Uses the sealed-block SSA algorithm, with deterministic alloca promotion order and sorted
+  completion of incomplete block parameters.
+- **Edge repair**: After promotion, mem2reg repairs branch arguments for every block parameter it introduced so partially
+  populated edge argument vectors do not escape into the verifier or serializer.
 - **Lazy dominator tree**: The dominator tree is computed only when non-entry allocas with cross-block uses are
   encountered, keeping the common (entry-block-only) case fast.
 - **Tests**: `test_il_mem2reg_nonentry` — single-block alloca in non-entry block, dominating non-entry alloca with
-  conditional CFG.
+  conditional CFG, default value before first store, and deterministic loop-header parameter/edge repair.
 
 ## Inline
 
@@ -145,7 +148,7 @@ Promotes alloca/store/load patterns to pure SSA values:
 
 ## Peephole
 
-The peephole pass applies 45 pattern-based algebraic simplifications:
+The peephole pass applies 57 pattern-based algebraic simplifications:
 
 - **Bitwise identities**: `x & -1 = x`, `x | 0 = x`, `x ^ 0 = x`, `x & 0 = 0`, `x ^ x = 0`, `x | x = x`
 - **Division identities** (on div-by-zero–checked variants `SDivChk0`, `UDivChk0`, `SRemChk0`, `URemChk0`):
@@ -156,15 +159,20 @@ The peephole pass applies 45 pattern-based algebraic simplifications:
 - **Float arithmetic identities**: `x * 1.0 = x`, `x / 1.0 = x`, `x - 0.0 = x`
 - **Integer arithmetic identities** (on overflow-checked variants `IAddOvf`, `ISubOvf`, `IMulOvf`): `x + 0 = x`,
   `x * 1 = x`, `x - 0 = x`, `x * 0 = 0`, `x - x = 0`
-- **Reflexive comparisons**: `x == x = true`, `x < x = false`, etc. for signed, unsigned, and float comparisons
-  (ICmpEq/Ne, SCmpLT/LE/GT/GE, UCmpLT/LE/GT/GE, FCmpEQ/NE/LT/LE/GT/GE)
+- **Reflexive comparisons**: `x == x = true`, `x < x = false`, etc. for integer, signed, and unsigned comparisons
+  (ICmpEq/Ne, SCmpLT/LE/GT/GE, UCmpLT/LE/GT/GE). Float reflexive comparisons are intentionally skipped because NaN
+  makes `fcmp.* %x, %x` non-reflexive under IEEE-754 semantics.
 - **Shift identities**: `x << 0 = x`, `x >> 0 = x`, `0 << y = 0`, `0 >> y = 0`
 
 The pass also simplifies CBr terminators when the branch condition is a comparison of two constants:
 - Float constant comparisons fold the branch to an unconditional jump
 - Integer constant comparisons (signed and unsigned) fold the branch to an unconditional jump
 
-The pass is table-driven, making it easy to add new rules without modifying core logic.
+The pass is table-driven, making it easy to add new rules without modifying core logic. Operand-forwarding rewrites are
+kept within the defining block after the definition so the replacement value is available at every rewritten use.
+Use-count data is refreshed after each mutation, preventing stale single-use decisions from deleting still-live
+conditions. `peephole-safe` is the canonical-pipeline entry point for this verifier-safe subset; `peephole` remains
+available explicitly and through `rehab-peephole`.
 
 ## ConstFold
 
@@ -244,6 +252,9 @@ Threads jumps through blocks with predictable branch conditions:
     This prevents type-mismatch verifier errors when the check result is used as a narrower-typed discriminant.
 - Guard-based `isub.ovf x, K` demotion requires a proof that covers the relevant overflow side. A lower-bound guard can
   demote non-negative `K`; negative constants require an upper-bound proof and remain checked.
+- The verifier still rejects plain unchecked signed arithmetic by default. It accepts a demoted `sub` only when every
+  incoming edge to the containing block carries the exact lower-bound proof emitted by CheckOpt; unguarded `sub`
+  remains invalid IL.
 - Hoists loop-invariant checks from loop headers to preheaders when the loop is EH-insensitive and operands are
   invariant, preserving trap behaviour.
 - Safety rules: a check is eliminated only if the dominating check block dominates the use-site block; hoisting is
@@ -339,7 +350,9 @@ Direct-call graph with strongly connected component analysis:
 
 - Hoists instructions whose operands are defined outside the loop to the loop preheader.
 - Requires `LoopInfo` and `Dominators` analyses.
-- Checks `canReorderWithMemory()` to avoid moving instructions past memory barriers.
+- Full `licm` may hoist non-trapping loads and readonly calls when BasicAA proves the loop cannot modify the observed
+  memory. The `licm-safe` variant never hoists memory reads; it only moves pure, non-trapping arithmetic and pure calls.
+- O2 uses `licm-safe`; full `licm` remains available explicitly and through `rehab-licm`.
 - Implementation: `src/il/transform/LICM.cpp`
 
 ## EHOpt (Exception Handling Optimization)
@@ -373,13 +386,12 @@ instead of the registered canonical O1/O2 pipelines:
 
 | Level | Old (custom) | New (canonical) |
 |-------|-------------|-----------------|
-| O1 | 4 passes (simplify-cfg, mem2reg, peephole, dce) | Conservative registered O1: SimplifyCFG, SCCP, ConstFold, DCE, Inline |
-| O2 | 9 passes (missing SCCP, loop passes, inline, check-opt) | Conservative registered O2: loop shaping, SCCP, CheckOpt, EHOpt, DCE, SiblingRecursion, Inline, GVN, Reassociate, EarlyCSE, DSE, LateCleanup |
+| O1 | 4 passes (simplify-cfg, mem2reg, peephole, dce) | Registered O1: SimplifyCFG, SCCP, ConstFold, PeepholeSafe, DCE, Inline |
+| O2 | 9 passes (missing SCCP, loop passes, inline, check-opt) | Registered O2: loop shaping, LICMSafe, SCCP, CheckOpt, EHOpt, DCE, SiblingRecursion, Inline, GVN, Reassociate, EarlyCSE, DSE, LateCleanup |
 
-`mem2reg`, IL `peephole`, and `LICM` are intentionally excluded from the
-canonical O1/O2 presets. They are still available as explicit passes and via
-rehab pipelines, but they are not production defaults because real workloads
-have exposed correctness issues that are still being validated.
+`mem2reg`, full IL `peephole`, and full memory-hoisting `LICM` remain outside the canonical O1/O2 presets. Safe subsets
+(`peephole-safe`, `licm-safe`) are enabled where they are verifier-clean; the full passes remain available as explicit
+passes and via rehab pipelines while broader workload equivalence is validated.
 
 The pass manager verifies IR after each pass by default, including release
 builds. Callers may disable this for specialised measurement, but rehab and CI
@@ -392,7 +404,8 @@ applies the canonical O0/O1/O2 pipeline unconditionally.
 the canonically registered pipelines, ensuring VM-interpreted programs receive the same optimization as
 natively compiled ones.
 
-**Test**: `test_il_canonical_pipeline` — verifies O1/O2 contain expected passes and that SCCP runs.
+**Test**: `test_il_canonical_pipeline` — verifies O1/O2 contain expected passes, safe subsets are registered, and SCCP
+runs.
 
 ### Rehab Pipelines
 
@@ -403,6 +416,9 @@ The pass manager also registers targeted rehab pipelines for disabled passes:
 | `rehab-mem2reg` | `simplify-cfg, mem2reg, dce` | Isolate SSA promotion behavior while loop and join cases are validated |
 | `rehab-peephole` | `peephole, dce` | Exercise IL peephole rewrites without silently promoting them to O1/O2 |
 | `rehab-licm` | `loop-simplify, licm, simplify-cfg, dce` | Validate loop-invariant code motion independently from the broader optimizer |
+
+`viper il-opt --pipeline` accepts these registered names directly; lowercase rehab names are not uppercased to O-level
+aliases.
 
 Promotion criteria for any rehab pass should include verifier-clean IR,
 native-vs-VM equivalence, and representative demo/application workload runs.
@@ -418,7 +434,7 @@ Regression tests covering fixes from the comprehensive IL optimization review
 | `test_opt_review_calleffects.cpp` | 7 | Pure/readonly/conservative classification, generated runtime metadata priority, pure+nothrow deletion gating |
 | `test_opt_review_dse.cpp` | 5 | Dead store elimination, load-intervened stores, different allocas, MemorySSA exit-block stores |
 | `test_opt_review_loopinfo.cpp` | 4 | Self-loop dedup, normal loop membership, block counts |
-| `test_opt_review_peephole.cpp` | 23 | UCmp/FCmp constant folding in CBr, reflexive comparisons, trap-preserving skipped folds |
+| `test_opt_review_peephole.cpp` | 23 | UCmp/FCmp constant folding in CBr, integer reflexive comparisons, trap-preserving skipped folds |
 | `test_opt_review_sccp.cpp` | 4 | FDiv by zero preservation, normal FDiv folding |
 | `test_opt_review_valuekey.cpp` | 8 | Commutative normalization, safe opcode classification |
 
@@ -426,8 +442,8 @@ Regression tests covering fixes from the comprehensive IL optimization review
 
 | Test File | Tests | Coverage |
 |-----------|-------|---------|
-| `test_il_canonical_pipeline.cpp` | 4 | O1/O2 pass registration, SCCP execution via canonical pipeline |
-| `test_il_mem2reg_nonentry.cpp` | 2 | Non-entry-block alloca promotion, domination-filtered promotion |
+| `test_il_canonical_pipeline.cpp` | 8 | O1/O2 pass registration, safe subset registration, SCCP execution via canonical pipeline |
+| `test_il_mem2reg_nonentry.cpp` | 4 | Non-entry-block alloca promotion, domination-filtered promotion, edge repair |
 | `test_il_inline_threshold.cpp` | 3 | New default thresholds (80/8/3), 50-instr inline, oversized rejection |
 | `test_il_earlycse_domtree.cpp` | 3 | Cross-block CSE via domtree, sibling-branch non-elimination, textually-unsafe rejection |
 | `test_il_callgraph_scc.cpp` | 4 | Linear chain SCC ordering, mutual recursion, self-recursion, isRecursive |

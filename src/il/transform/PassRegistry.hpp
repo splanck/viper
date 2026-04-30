@@ -262,6 +262,9 @@ void registerConstFoldPass(PassRegistry &registry);
 /// @brief Register the peephole/inst-combine style pass.
 void registerPeepholePass(PassRegistry &registry);
 
+/// @brief Register the verifier-safe peephole subset.
+void registerPeepholeSafePass(PassRegistry &registry);
+
 /// @brief Register the trivial dead-code elimination pass.
 void registerDCEPass(PassRegistry &registry);
 

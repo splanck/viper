@@ -552,7 +552,8 @@ function(viper_add_il_utils_test)
     endif ()
     target_link_libraries(
             test_il_alias_precision PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
-    viper_add_ctest(test_il_alias_precision test_il_alias_precision)
+    viper_add_ctest(
+            test_il_alias_precision $<TARGET_FILE:test_il_alias_precision>)
 
     viper_add_test(
             test_il_dce_param_compaction

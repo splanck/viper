@@ -67,6 +67,13 @@ static void verifyOrDie(const Module &module) {
     }
 }
 
+static BasicBlock *findBlock(Function &fn, const std::string &label) {
+    auto it = std::find_if(fn.blocks.begin(), fn.blocks.end(), [&](BasicBlock &blk) {
+        return blk.label == label;
+    });
+    return it == fn.blocks.end() ? nullptr : &*it;
+}
+
 } // namespace
 
 TEST(IL, testDSENoElimOnDisjointFields) {
@@ -131,6 +138,11 @@ TEST(IL, testDSENoElimOnDisjointFields) {
 
 TEST(IL, testLICMLoadHoistWithDisjointStore) {
     Module m;
+    Global global;
+    global.name = "g";
+    global.type = Type(Type::Kind::I64);
+    m.globals.push_back(std::move(global));
+
     il::build::IRBuilder b(m);
     Function &fn = b.startFunction("licm_alias", Type(Type::Kind::Void), {});
 
@@ -219,14 +231,25 @@ TEST(IL, testLICMLoadHoistWithDisjointStore) {
     auto &loopInfo = am.getFunctionResult<il::transform::LoopInfo>("loop-info", fn);
     std::cerr << "loops=" << loopInfo.loops().size() << std::endl;
 
+    BasicBlock *headerAfterSimplify = findBlock(fn, "header");
+    ASSERT_TRUE(headerAfterSimplify != nullptr);
+    const Instr *loadAfterSimplify = nullptr;
+    const Instr *storeAfterSimplify = nullptr;
+    for (const auto &ins : headerAfterSimplify->instructions) {
+        if (ins.op == Opcode::Load)
+            loadAfterSimplify = &ins;
+        if (ins.op == Opcode::Store)
+            storeAfterSimplify = &ins;
+    }
+    ASSERT_TRUE(loadAfterSimplify != nullptr);
+    ASSERT_TRUE(storeAfterSimplify != nullptr);
+
     auto &aa = am.getFunctionResult<viper::analysis::BasicAA>("basic-aa", fn);
-    auto loadSize = viper::analysis::BasicAA::typeSizeBytes(header.instructions[0].type);
-    auto storeSize = viper::analysis::BasicAA::typeSizeBytes(header.instructions[2].type);
+    auto loadSize = viper::analysis::BasicAA::typeSizeBytes(loadAfterSimplify->type);
+    auto storeSize = viper::analysis::BasicAA::typeSizeBytes(storeAfterSimplify->type);
     std::cerr << "alias(load,store)="
-              << static_cast<int>(aa.alias(header.instructions[0].operands[0],
-                                           header.instructions[2].operands[0],
-                                           loadSize,
-                                           storeSize))
+              << static_cast<int>(aa.alias(loadAfterSimplify->operands[0],
+                                           storeAfterSimplify->operands[0], loadSize, storeSize))
               << std::endl;
 
     bool loopHasMod = false;
@@ -245,18 +268,24 @@ TEST(IL, testLICMLoadHoistWithDisjointStore) {
             }
         }
     }
-    std::cerr << "loopHasModFlag=" << loopHasMod << " stores=" << header.instructions.size()
-              << std::endl;
+    std::cerr << "loopHasModFlag=" << loopHasMod
+              << " stores=" << headerAfterSimplify->instructions.size() << std::endl;
 
     il::transform::LICM licm;
     licm.run(fn, am);
 
+    BasicBlock *headerAfterLICM = findBlock(fn, "header");
+    ASSERT_TRUE(headerAfterLICM != nullptr);
     bool loadInHeader = false;
-    for (const auto &ins : header.instructions)
+    for (const auto &ins : headerAfterLICM->instructions)
         loadInHeader |= ins.op == Opcode::Load;
 
+    BasicBlock *preheader = findBlock(fn, "header.preheader");
+    if (!preheader)
+        preheader = findBlock(fn, "entry");
+    ASSERT_TRUE(preheader != nullptr);
     bool loadInPre = false;
-    for (const auto &ins : fn.blocks[0].instructions)
+    for (const auto &ins : preheader->instructions)
         loadInPre |= ins.op == Opcode::Load;
 
     if (!(loadInPre && !loadInHeader))

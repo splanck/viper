@@ -399,11 +399,11 @@ static bool applyRule(const Rule &rule, const Instr &in, Value &out) {
 /// implementation intentionally limits itself to integer comparisons with
 /// literal operands and does not chase values across blocks or through
 /// non-literal arithmetic.
-void peephole(Module &m) {
+static void runPeephole(Module &m) {
     const bool trace = traceEnabled();
     for (auto &f : m.functions) {
-        // Precompute use counts once per function to avoid repeated O(n) scans.
         UseCountMap useCounts = buildUseCountMap(f);
+        auto refreshUseCounts = [&]() { useCounts = buildUseCountMap(f); };
 
         for (auto &b : f.blocks) {
             for (size_t i = 0; i < b.instructions.size(); ++i) {
@@ -439,6 +439,7 @@ void peephole(Module &m) {
                             in.operands.clear();
                             if (in.brArgs.size() > 1)
                                 in.brArgs.resize(1);
+                            refreshUseCounts();
                         }
                         continue;
                     }
@@ -508,6 +509,7 @@ void peephole(Module &m) {
                             b.instructions.erase(b.instructions.begin() + defIdx);
                             --i;
                         }
+                        refreshUseCounts();
                     }
                     continue;
                 }
@@ -545,10 +547,19 @@ void peephole(Module &m) {
                     }
                     b.instructions.erase(b.instructions.begin() + i);
                     --i;
+                    refreshUseCounts();
                 }
             }
         }
     }
+}
+
+void peephole(Module &m) {
+    runPeephole(m);
+}
+
+void peepholeSafe(Module &m) {
+    runPeephole(m);
 }
 
 } // namespace il::transform

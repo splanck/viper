@@ -24,8 +24,12 @@
 
 #include "il/verify/InstructionChecker.hpp"
 
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
+#include "il/core/Value.hpp"
 #include "il/verify/DiagSink.hpp"
 #include "il/verify/InstructionCheckUtils.hpp"
 #include "il/verify/InstructionCheckerShared.hpp"
@@ -37,6 +41,7 @@
 #include "support/diag_expected.hpp"
 
 #include <array>
+#include <limits>
 #include <string>
 #include <unordered_map>
 
@@ -59,7 +64,11 @@ using checker::checkTrapErr;
 using checker::checkTrapFromErr;
 using checker::checkTrapKind;
 using checker::fail;
+using il::core::BasicBlock;
+using il::core::Instr;
+using il::core::Opcode;
 using il::core::Type;
+using il::core::Value;
 using il::support::Expected;
 using il::support::makeError;
 
@@ -296,6 +305,92 @@ Expected<void> applyShift(const VerifyCtx &ctx, const InstructionSpec &spec) {
     return checkShift(ctx);
 }
 
+/// @brief Find a temporary definition inside one basic block.
+/// @details Guarded overflow demotion is validated only when the condition and
+///          guarded operation are connected by a direct predecessor edge, so a
+///          local scan is enough and avoids depending on a separate def-use map.
+/// @param block Block to scan.
+/// @param id Temporary identifier to find.
+/// @return Pointer to the defining instruction, or null when absent.
+const Instr *findLocalDef(const BasicBlock &block, unsigned id) {
+    for (const Instr &instr : block.instructions) {
+        if (instr.result && *instr.result == id)
+            return &instr;
+    }
+    return nullptr;
+}
+
+/// @brief Validate one false-edge proof for a checked-sub demotion.
+/// @details CheckOpt rewrites `%y = isub.ovf %x, K` to `%y = sub %x, K` only
+///          on the false edge of `cbr (icmp.sle %x, T), overflow, work`.  The
+///          false edge establishes `%x >= T + 1`; that is sufficient for
+///          `x - K` when `K >= 0` and `T + 1 >= INT64_MIN + K`.
+/// @param ctx Current instruction verification context.
+/// @param pred Predecessor block that branches to the current block.
+/// @param term Predecessor terminator.
+/// @return True if the predecessor's edge proves the current `sub` cannot
+///         signed-overflow.
+bool falseEdgeProvesCheckedSubDemotion(const VerifyCtx &ctx, const BasicBlock &pred,
+                                       const Instr &term) {
+    if (term.op != Opcode::CBr || term.operands.size() != 1 || term.labels.size() < 2)
+        return false;
+    if (term.labels[1] != ctx.block.label)
+        return false;
+    if (term.labels[0] == ctx.block.label)
+        return false;
+
+    const Value &cond = term.operands.front();
+    if (cond.kind != Value::Kind::Temp)
+        return false;
+    const Instr *cmp = findLocalDef(pred, cond.id);
+    if (!cmp || cmp->op != Opcode::SCmpLE || cmp->operands.size() != 2)
+        return false;
+
+    if (ctx.instr.operands.size() != 2)
+        return false;
+    const Value &lhs = ctx.instr.operands[0];
+    const Value &rhs = ctx.instr.operands[1];
+    if (rhs.kind != Value::Kind::ConstInt || rhs.i64 < 0)
+        return false;
+    if (!valueEquals(cmp->operands[0], lhs))
+        return false;
+    if (cmp->operands[1].kind != Value::Kind::ConstInt)
+        return false;
+
+    const long long threshold = cmp->operands[1].i64;
+    if (threshold == std::numeric_limits<long long>::max())
+        return false;
+
+    const long long lowerBound = threshold + 1;
+    const long long requiredLowerBound = std::numeric_limits<long long>::min() + rhs.i64;
+    return lowerBound >= requiredLowerBound;
+}
+
+/// @brief Decide whether a rejected signed `sub` has a verifier-visible proof.
+/// @details Plain signed arithmetic remains rejected by default.  The verifier
+///          accepts `sub` only when every incoming edge to the block carries the
+///          exact lower-bound proof emitted by CheckOpt.
+/// @param ctx Verification context for the rejected instruction.
+/// @return True when all incoming edges prove signed subtraction cannot trap.
+bool isVerifiedCheckedSubDemotion(const VerifyCtx &ctx) {
+    if (ctx.instr.op != Opcode::Sub || ctx.instr.operands.size() != 2)
+        return false;
+    bool sawIncomingEdge = false;
+    for (const BasicBlock &pred : ctx.fn.blocks) {
+        if (pred.instructions.empty())
+            continue;
+        const Instr &term = pred.instructions.back();
+        for (const std::string &target : term.labels) {
+            if (target != ctx.block.label)
+                continue;
+            sawIncomingEdge = true;
+            if (!falseEdgeProvesCheckedSubDemotion(ctx, pred, term))
+                return false;
+        }
+    }
+    return sawIncomingEdge;
+}
+
 /// @brief Force verification failure for explicitly rejected opcodes.
 /// @details Emits the rejection message provided by the specification so
 ///          tooling can surface meaningful diagnostics for disabled opcodes.
@@ -303,6 +398,10 @@ Expected<void> applyShift(const VerifyCtx &ctx, const InstructionSpec &spec) {
 /// @param spec Specification entry containing the rejection message.
 /// @return Always returns a failure diagnostic.
 Expected<void> applyReject(const VerifyCtx &ctx, const InstructionSpec &spec) {
+    if (isVerifiedCheckedSubDemotion(ctx)) {
+        ctx.types.recordResult(ctx.instr, resolveResultType(ctx, spec));
+        return {};
+    }
     const char *message = spec.rejectMessage ? spec.rejectMessage : "opcode rejected";
     return fail(ctx, std::string(message));
 }

@@ -32,6 +32,7 @@
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 using namespace il::core;
@@ -125,7 +126,7 @@ struct BlockState {
     unsigned totalPreds = 0;
     unsigned seenPreds = 0;
     std::unordered_map<unsigned, unsigned> params;
-    std::unordered_set<unsigned> incomplete;
+    std::vector<unsigned> incomplete;
 };
 
 using AllocaMap = std::unordered_map<unsigned, AllocaInfo>;
@@ -136,6 +137,13 @@ using LabelIndexCache =
 
 static Value zeroValueForType(const Type &type) {
     return type.kind == Type::Kind::F64 ? Value::constFloat(0.0) : Value::constInt(0);
+}
+
+static void addIncomplete(BlockState &state, unsigned varId) {
+    if (std::find(state.incomplete.begin(), state.incomplete.end(), varId) ==
+        state.incomplete.end()) {
+        state.incomplete.push_back(varId);
+    }
 }
 
 /// @brief Gather information about @c alloca instructions within a function.
@@ -375,7 +383,7 @@ static Value renameUses(Function &F,
         unsigned pIdx = ensureParam(B, varId, vars, blocks, nextId);
         Value v = Value::temp(B->params[pIdx].id);
         VS.defs[B] = v;
-        BS.incomplete.insert(varId);
+        addIncomplete(BS, varId);
         return v;
     }
     auto preds = analysis::predecessors(ctx, *B);
@@ -426,6 +434,7 @@ static void sealBlocks(Function &F,
     BlockState &BS = blocks[B];
     if (BS.sealed)
         return;
+    std::sort(BS.incomplete.begin(), BS.incomplete.end());
     for (unsigned varId : BS.incomplete) {
         Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, idxCache);
         if (!vars[varId].defs.contains(B))
@@ -433,6 +442,64 @@ static void sealBlocks(Function &F,
     }
     BS.incomplete.clear();
     BS.sealed = true;
+}
+
+/// @brief Fill branch arguments for parameters introduced by mem2reg.
+/// @details The rename algorithm wires most edges while reading predecessor
+///          values.  A final deterministic repair pass closes any remaining
+///          gaps for promoted variables, which prevents partially populated
+///          branch-argument vectors when a block parameter is created before all
+///          incoming edges have been visited.
+static void repairPromotedBranchArgs(Function &F,
+                                     VarMap &vars,
+                                     BlockMap &blocks,
+                                     unsigned &nextId,
+                                     const analysis::CFGContext &ctx) {
+    std::unordered_map<std::string, BasicBlock *> labels;
+    labels.reserve(F.blocks.size());
+    for (auto &B : F.blocks)
+        labels.emplace(B.label, &B);
+
+    for (auto &Pred : F.blocks) {
+        if (Pred.instructions.empty())
+            continue;
+        auto predStateIt = blocks.find(&Pred);
+        if (predStateIt == blocks.end() || !predStateIt->second.sealed)
+            continue;
+
+        Instr &term = Pred.instructions.back();
+        if (term.labels.empty())
+            continue;
+        if (term.brArgs.size() < term.labels.size())
+            term.brArgs.resize(term.labels.size());
+
+        for (std::size_t targetIndex = 0; targetIndex < term.labels.size(); ++targetIndex) {
+            auto labelIt = labels.find(term.labels[targetIndex]);
+            if (labelIt == labels.end())
+                continue;
+
+            BasicBlock *target = labelIt->second;
+            auto targetStateIt = blocks.find(target);
+            if (targetStateIt == blocks.end() || targetStateIt->second.params.empty())
+                continue;
+
+            std::vector<std::pair<unsigned, unsigned>> slots;
+            slots.reserve(targetStateIt->second.params.size());
+            for (const auto &[varId, paramIdx] : targetStateIt->second.params)
+                slots.emplace_back(paramIdx, varId);
+            std::sort(slots.begin(), slots.end());
+
+            auto &args = term.brArgs[targetIndex];
+            for (const auto &[paramIdx, varId] : slots) {
+                if (args.size() > paramIdx && args[paramIdx].kind != Value::Kind::NullPtr)
+                    continue;
+                Value arg = renameUses(F, &Pred, varId, vars, blocks, nextId, ctx);
+                if (args.size() <= paramIdx)
+                    args.resize(paramIdx + 1);
+                args[paramIdx] = arg;
+            }
+        }
+    }
 }
 
 /// @brief Promote eligible allocas within a function to SSA registers.
@@ -451,7 +518,14 @@ static void promoteVariables(Function &F,
                              const analysis::CFGContext &ctx) {
     VarMap vars;
     vars.reserve(infos.size());
-    for (auto &[id, AI] : infos) {
+    std::vector<unsigned> orderedAllocaIds;
+    orderedAllocaIds.reserve(infos.size());
+    for (const auto &entry : infos)
+        orderedAllocaIds.push_back(entry.first);
+    std::sort(orderedAllocaIds.begin(), orderedAllocaIds.end());
+
+    for (unsigned id : orderedAllocaIds) {
+        const AllocaInfo &AI = infos.at(id);
         if (AI.addressTaken || !AI.hasStore || !AI.typeConsistent)
             continue;
         if (!isPromotableScalarType(AI.type))
@@ -475,8 +549,14 @@ static void promoteVariables(Function &F,
     if (std::getenv("VIPER_MEM2REG_TRACE")) {
         std::cerr << "[mem2reg] " << F.name << ": promoting " << vars.size()
                   << " vars, nextId=" << nextId << "\n";
-        for (auto &[id, vs] : vars)
-            std::cerr << "[mem2reg]   var %" << id << " type=" << vs.type.toString() << "\n";
+        std::vector<unsigned> traceIds;
+        traceIds.reserve(vars.size());
+        for (const auto &entry : vars)
+            traceIds.push_back(entry.first);
+        std::sort(traceIds.begin(), traceIds.end());
+        for (unsigned id : traceIds)
+            std::cerr << "[mem2reg]   var %" << id << " type=" << vars[id].type.toString()
+                      << "\n";
     }
 
     BlockMap blocks;
@@ -543,6 +623,8 @@ static void promoteVariables(Function &F,
                 sealBlocks(F, S, vars, blocks, nextId, ctx, &idxCache);
         }
     }
+
+    repairPromotedBranchArgs(F, vars, blocks, nextId, ctx);
 }
 
 } // namespace

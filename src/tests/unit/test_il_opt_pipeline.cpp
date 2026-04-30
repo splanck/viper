@@ -103,5 +103,45 @@ int main() {
         assert(out.find("ret") != std::string::npos);
     }
 
+    // Lower-case rehabilitation pipeline names should be accepted directly.
+    TempFile rehab{".rehab.il"};
+    {
+        std::vector<std::string> args{
+            input.path.string(), "-o", rehab.path.string(), "--pipeline", "rehab-peephole"};
+        std::vector<char *> argv;
+        for (auto &a : args)
+            argv.push_back(a.data());
+        gUsageCalled = false;
+        const int rc = cmdILOpt(static_cast<int>(argv.size()), argv.data());
+        assert(rc == 0);
+        assert(!gUsageCalled);
+        const std::string out = readFile(rehab.path);
+        assert(out.find("func @main") != std::string::npos);
+    }
+
+    // Pass-manager verification failures must propagate as il-opt failures.
+    TempFile invalid{".invalid.il"};
+    {
+        std::ofstream ofs(invalid.path);
+        ofs << "il 0.2.0\n";
+        ofs << "func @main(%x: i64) -> i64 {\n";
+        ofs << "entry:\n";
+        ofs << "  %y = sub %x, 1\n";
+        ofs << "  ret %y\n";
+        ofs << "}\n";
+    }
+    TempFile invalidOut{".invalid.out.il"};
+    {
+        std::vector<std::string> args{invalid.path.string(), "-o", invalidOut.path.string(),
+                                      "--passes", "simplify-cfg", "-verify-each"};
+        std::vector<char *> argv;
+        for (auto &a : args)
+            argv.push_back(a.data());
+        gUsageCalled = false;
+        const int rc = cmdILOpt(static_cast<int>(argv.size()), argv.data());
+        assert(rc != 0);
+        assert(!gUsageCalled);
+    }
+
     return 0;
 }

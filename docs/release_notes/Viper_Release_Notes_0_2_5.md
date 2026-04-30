@@ -24,10 +24,10 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator.
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 98 | +98 |
-| Source files | 2,869 | 2,956 | +87 |
-| Production SLOC | 450K | 526K | +76K |
-| Test SLOC | 183K | 216K | +33K |
+| Commits | — | 97 | +97 |
+| Source files | 2,869 | 2,958 | +89 |
+| Production SLOC | 450K | 527K | +77K |
+| Test SLOC | 183K | 217K | +34K |
 | Demo SLOC | 177K | 188K | +11K |
 
 Counts via `scripts/count_sloc.sh`.
@@ -66,6 +66,8 @@ Six rounds of widget audit plus an app-registry + widget-family overhaul.
 - **Round-6 low-level correctness** — `_paint_screen_space` flag added to `vg_widget_t`; `paint_widget_normal_tree()` temporarily elevates widget coordinates to screen-absolute before calling `vtable->paint`, then restores layout-relative values, preventing `vg_widget_get_screen_bounds()` from double-accumulating ancestor positions. FloatingPanel and ScrollView subtree renderers set/restore the flag. `vg_widget_next_id()` counter widened from `uint32_t` to `uint64_t` with skip-zero wrap guard. `widget_normalize_constraints()` sanitizes all six constraint fields against `isfinite` + nonnegative and enforces min ≤ max ≤ preferred ordering; applied to `set_min/max/preferred_size`, `set_margins`, `set_paddings`, `set_flex`. `layout_nonnegative()` extended with `isfinite()` so NaN spacing/gap/track sizes become 0 across VBox, HBox, Flex, and Grid. `vg_event_send()` defers CLICK/DOUBLE_CLICK synthesis until after the full vtable+parent handler chain; previously, CLICK was synthesised inside the MOUSE_UP early-return path, preventing the widget's own MOUSE_UP handler from running. CodeEditor `ensure_line_capacity`/`ensure_text_capacity` guard multiplication overflow; `apply_edit_targets`, `insert_bytes/char/newline`, `delete_text_range_internal` clamp positions and guard size arithmetic. `vg_image_set_opacity()` rejects NaN/inf. `image_unpremultiply_rgba()` called after `CGContextDrawImage` on macOS — CoreGraphics delivers premultiplied alpha; without unpremultiply, semi-transparent images appear dark under the engine's straight-alpha compositing.
 - **Round-6 low-level correctness** — normal widget painting now supplies screen-space coordinates while preserving layout-space state; Grid clamps negative placements and commits row/column count changes only after track-array allocation succeeds; UTF-8 decoding rejects overlong, surrogate, and out-of-range scalar values, with TextInput prefix scans bounded by the caller's byte limit. CodeEditor edit paths clamp stale cursor/history positions, guard growth math, and check `get_text()` size accumulation; Image opacity sanitizes non-finite values.
 - **Library low-level audit follow-up** — widget IDs are now 64-bit so long-running GUI sessions do not silently wrap through a 32-bit ID space. Constraint, margin, padding, flex, spacing, gap, and grid-track setters reject NaN/inf and clamp negative values before layout. Mouse-up handlers now run before synthesized `CLICK`/`DOUBLE_CLICK` events, preserving release-first event ordering. TrueType name parsing ignores dangling odd UTF-16 bytes, and composite glyphs using point-index component alignment now position the component from the referenced parent/component points instead of dropping that feature. macOS ImageIO imports unpremultiply CoreGraphics premultiplied RGBA before storing widget pixels.
+- **TrueType rasterizer contour isolation** — `outline_to_polygon()` now tracks per-contour end indices and passes `out_contour_ends`/`out_contour_count` to `build_edges()`; `build_edges()` wraps edges within each contour independently instead of across the whole point array. The previous cross-contour wrap created phantom fill regions between independent contours (e.g., the outer and inner contours of 'O' or '8') due to incorrect closing edges spanning contour boundaries.
+- **Grid layout overflow guards** — `VG_GRID_MAX_TRACKS` (4096) cap added; `grid_clamp_track_count/index/span()` helpers prevent negative or out-of-bounds placements; `grid_effective_rows()` computes the actual row requirement from child placements rather than trusting `layout.rows` directly, so auto-placed children beyond the declared row count always get a valid cell.
 
 ### Graphics runtime (2D)
 
@@ -242,6 +244,7 @@ All four object-file readers and all three writers received a bounds-checking an
 - `err.get_*` min operand count relaxed to 0 for context-implicit native EH lowering.
 - **BytecodeVM global variables** — `LOAD_GLOBAL_ADDR` opcode (`0x2B`); `registerGlobals()` compiles IL `Global` declarations at module-load time with typed initializers for I64/F64/Str; string globals initialized via `rt_string_from_bytes`; per-slot ownership tracking (`globalsStringOwned_`) with `clearGlobalStringOwnershipForRawStore()` called on every store path to prevent double-release.
 - `VMInit` throws `std::runtime_error` on bad state instead of calling `std::abort()`.
+- `VMInit` global allocation: `globalStorageSize()` returns the correct byte width per type kind (I1=1, I16=2, I32=4, I64/F64/Ptr=8); `initializeGlobalStorage()` decodes the initializer string to typed binary via `strtoll`/`strtod` + `memcpy`. Previously all globals were allocated 8 bytes with I1 size special-cased only, silently misaligning I16/I32 globals. `fp_ops.cpp` delegates FP→int bound computation to `checkedFpToSiRte`/`checkedFpToUiRte`, removing duplicated boundary helper functions.
 - `OpHandlers_Memory`: `minimumAlignmentFor` returns 0 for unknown memory kinds; `handleLoadImpl` / `handleStoreImpl` detect alignment 0 and dispatch `RuntimeBridge::trap(InvalidOperation)` instead of asserting.
 - `Marshal::toI64` / `toF64` call `RuntimeBridge::trap(InvalidOperation)` on type mismatch rather than `std::abort()`.
 - `NetworkRuntime` and `ThreadsRuntime` now catch `RuntimeTrapSignal` explicitly before the generic `std::exception` handler so trap payloads are preserved unmodified.
@@ -259,9 +262,13 @@ All four object-file readers and all three writers received a bounds-checking an
 - Alloca escape detection: the verifier now rejects alloca pointers stored into non-stack destinations or loaded through escaping GEP chains; two new golden IL fixtures (`alloca_load_escape.il`, `alloca_store_escape.il`) lock in the expected diagnostics.
 - `EffectFacts` + `directCalleeEffects` query `RuntimeSignatures`, `HelperEffects`, and `FunctionAttrs` in priority order for per-call-site effect classification.
 - Diagnostic codes normalized to `V-IL-WARN` / `V-IL-VERIFY` across all sub-verifiers.
+- `FunctionVerifier`: `computeStackDerivedTemps()` iterative fixpoint traces alloca → GEP chains → brArgs to find all stack-derived temporaries; `isPrivateStackMemoryAccess()` exempts Alloca and loads/stores through those temporaries from pure/readonly/nothrow attribute violations, allowing functions that only touch their own stack frames to be correctly classified. Dominance computation fixed: `setRootDom` no longer also sets `dom[index][entryIndex]`, which was making every block appear to dominate the entry block. `SDiv`/`UDiv`/`SRem`/`URem` added to `opcodeMayThrowOrTrap()` so division by zero is tracked as a potential trap.
+- `GlobalVerifier`: `validateGlobal()` rejects globals with unsupported types (`Void`/`Error`/`ResumeTok`), rejects import-linkage globals with initializers, and validates integer initializer syntax via `std::from_chars` and float syntax via `strtod` before accepting the textual form.
+- `FPCast.hpp` (new): `checkedFpToSiRte()` / `checkedFpToUiRte()` — shared precise FP→integer checked conversions with exact signed/unsigned boundary semantics. Extracted from `fp_ops.cpp` so both VM and codegen backends use identical overflow and NaN detection logic.
+- `Global.hpp`: `isConst` and `hasInitializer` fields added to distinguish an explicitly-supplied empty initializer from an omitted one, preserving intent for textual round-trips and string-constant immutability.
 
 **IL optimizer hardening**
-- `CallEffects` priority: registry + function-declaration attrs are authoritative over instruction `CallAttr`; `canEliminateIfUnused` requires both `pure` and `nothrow`.
+- `CallEffects` priority: registry + function-declaration attrs are authoritative; unknown callees now conservatively receive no effects rather than falling back to `instr.CallAttr` (which was unverified and could permit incorrect dead-call elimination). `BasicAA::modRef` follows the same conservative path. `canEliminateIfUnused` requires both `pure` and `nothrow`.
 - `LoadSafety.hpp` — `isLoadKnownNonTrapping` gates dead-load elimination, GVN, and LICM hoisting on pointer provenance.
 - `Mem2Reg` SROA offset arithmetic overflow-safe; field iteration order deterministic. `Peephole` brArgs use-counts correct; operand-forwarding scoped to intra-block only.
 - `isTerminated(Block&)` replaces stale `BasicBlock::terminated` flag reads across six passes (LICM, CheckOpt, Inline, SiblingRecursion, IndVarSimplify, LoopUnroll).
@@ -272,6 +279,7 @@ All four object-file readers and all three writers received a bounds-checking an
 - IndVarSimplify: `long long` step, `LLONG_MIN` guard. FAdd/FMul removed from `isCommutativeCSE`.
 - `ForwardingElimination`: asserts replaced with guarded early returns for fuzz safety.
 - DCE alloca elimination wrapped in a do-while fixed-point loop; eliminating one dead store can reveal a second dead alloca that was previously blocked.
+- `ConstFold`: shift operations (`Shl`/`LShr`/`AShr`) now mask the shift amount with `& 63ULL` instead of a range guard, producing defined behavior for all constant-fold paths. FP cast folding unified through `checkedFpToSiRte`/`checkedFpToUiRte` from `FPCast.hpp` instead of local boundary tables.
 - MemorySSA cross-block dead-store analysis rewritten from a BFS-with-`goto` to a recursive memoized DFS with a `visiting` sentinel; back-edges in live loops now correctly return false instead of being treated as killed paths.
 - SCCP calls `SimplifyCFG` post-propagation to prune unreachable blocks created by constant-folded terminators.
 - `Mem2Reg` SROA pre-reserves `candidates` and `owner` maps to the alloca count before candidate collection, reducing rehashing in large functions.
@@ -299,6 +307,7 @@ All four object-file readers and all three writers received a bounds-checking an
 - New `test_il_verify_all.cpp`: `verifyAll` deduplication and note attachment across multiple violations; new `DiagnosticCliTests.cmake` e2e test for `--diagnostic-format` flag.
 - New Zia test `FixedArrayOfStructsUsesInlineElementStride` for the inline aggregate fix; verifier golden fixtures for alloca-load and alloca-store escape; extended `MemorySSATests` (cycle-safe DFS case) and `test_SignaturesPurity` (idempotent registry).
 - New `test_vm_init_diagnostics.cpp`: VMInit error raises a typed exception rather than aborting. New `TlsSignaturePolicyTest.cmake`: asserts 0x0503 is absent from ClientHello extensions. `NoAssertFalseTest.cmake` scope widened to subdirectories. 3D baseball smoke probe re-enabled in `CMakeLists.txt`. BASIC sema class-member body tests added. `ThrowingPassBecomesDiagnostic` codegen pass-manager test added.
+- `ILCorrectnessFixes.cpp` (new): IL correctness regression suite covering `computeStackDerivedTemps` stack-access exemption, `validateGlobal` type/linkage/initializer rejection, conservative unknown-callee CallEffects classification, `globalStorageSize` per-type allocation, and shift-amount masking semantics. `test_vaud_core_fixes.c` (new): WAV format validation across 8/16/24/32-bit PCM and float32, ALSA partial-write simulation, and volume clamping. Grid layout clamping tests (`VG_GRID_MAX_TRACKS` boundary, negative placement, auto-row overflow) and TrueType contour-isolation regressions added to `test_vg_audit_fixes.c`.
 
 ### Demos & docs
 
@@ -308,6 +317,6 @@ Demos: human-manager baseball franchise simulator (new), Crackman (Pac-Man rewri
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 98-commit history. The pattern throughout is feature introduction followed by hardening follow-ups in the same subsystem.
+See `git log a91d388db..HEAD -- .` for the full 97-commit history. The pattern throughout is feature introduction followed by hardening follow-ups in the same subsystem.
 
 <!-- END DRAFT -->

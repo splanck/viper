@@ -33,14 +33,23 @@ namespace il::transform {
 ///          Assumes LoopSimplify has provided a dedicated preheader/latch.
 class LICM : public FunctionPass {
   public:
+    /// @brief Configure whether memory reads may be hoisted.
+    explicit LICM(bool allowMemoryHoisting = true);
+
     /// @brief Identifier used when registering the pass.
     std::string_view id() const override;
 
     /// @brief Run loop-invariant code motion over @p function.
     PreservedAnalyses run(core::Function &function, AnalysisManager &analysis) override;
+
+  private:
+    bool allowMemoryHoisting_ = true;
 };
 
 /// @brief Register the LICM pass with the provided registry.
 void registerLICMPass(PassRegistry &registry);
+
+/// @brief Register the memory-safe LICM subset with the provided registry.
+void registerLICMSafePass(PassRegistry &registry);
 
 } // namespace il::transform

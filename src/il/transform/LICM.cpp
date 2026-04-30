@@ -294,11 +294,13 @@ BasicBlock *findPreheader(const Loop &loop,
     return preheader;
 }
 
+LICM::LICM(bool allowMemoryHoisting) : allowMemoryHoisting_(allowMemoryHoisting) {}
+
 /// @brief Return the unique identifier for this pass.
 /// @details Used when registering and invoking LICM via the pass registry.
 /// @return The canonical pass id string "licm".
 std::string_view LICM::id() const {
-    return "licm";
+    return allowMemoryHoisting_ ? "licm" : "licm-safe";
 }
 
 /// @brief Execute loop-invariant code motion on a function.
@@ -373,7 +375,7 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis) {
         for (BasicBlock *block : blockOrder) {
             for (std::size_t idx = 0; idx < block->instructions.size();) {
                 Instr &instr = block->instructions[idx];
-                bool allowLoads = true;
+                bool allowLoads = allowMemoryHoisting_;
                 if (instr.op == Opcode::Load) {
                     // When the loop contains memory-modifying calls, loads from
                     // non-escaping allocas are still safe: the call cannot

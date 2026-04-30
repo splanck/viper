@@ -109,6 +109,20 @@ TEST(CanonicalPipeline, O1PipelineContainsInline) {
     EXPECT_TRUE(found);
 }
 
+TEST(CanonicalPipeline, O1PipelineContainsSafePeephole) {
+    PassManager pm;
+    const PassManager::Pipeline *pipeline = pm.getPipeline("O1");
+    ASSERT_NE(pipeline, nullptr);
+
+    bool found = false;
+    for (const auto &id : *pipeline)
+        if (id == "peephole-safe") {
+            found = true;
+            break;
+        }
+    EXPECT_TRUE(found);
+}
+
 TEST(CanonicalPipeline, O1PipelineExcludesLICM) {
     PassManager pm;
     const PassManager::Pipeline *pipeline = pm.getPipeline("O1");
@@ -123,7 +137,8 @@ TEST(CanonicalPipeline, O1PipelineExcludesLICM) {
     EXPECT_FALSE(found);
 }
 
-// The canonical O2 pipeline must include SCCP, inline, loop-unroll, check-opt.
+// The canonical O2 pipeline must include SCCP, inline, loop-unroll, check-opt,
+// and the verifier-safe subsets of formerly disabled passes.
 // The old Zia frontend O2 pipeline excluded all of these.
 TEST(CanonicalPipeline, O2PipelineContainsKeyPasses) {
     PassManager pm;
@@ -131,6 +146,7 @@ TEST(CanonicalPipeline, O2PipelineContainsKeyPasses) {
     ASSERT_NE(pipeline, nullptr);
 
     bool hasSccp = false, hasInline = false, hasLoopUnroll = false, hasCheckOpt = false;
+    bool hasLICMSafe = false, hasPeepholeSafe = false;
     for (const auto &id : *pipeline) {
         if (id == "sccp")
             hasSccp = true;
@@ -140,11 +156,17 @@ TEST(CanonicalPipeline, O2PipelineContainsKeyPasses) {
             hasLoopUnroll = true;
         if (id == "check-opt")
             hasCheckOpt = true;
+        if (id == "licm-safe")
+            hasLICMSafe = true;
+        if (id == "peephole-safe")
+            hasPeepholeSafe = true;
     }
     EXPECT_TRUE(hasSccp);
     EXPECT_TRUE(hasInline);
     EXPECT_TRUE(hasLoopUnroll);
     EXPECT_TRUE(hasCheckOpt);
+    EXPECT_TRUE(hasLICMSafe);
+    EXPECT_TRUE(hasPeepholeSafe);
 }
 
 TEST(CanonicalPipeline, O2PipelineExcludesUnsafePasses) {

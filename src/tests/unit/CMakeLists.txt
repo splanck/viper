@@ -1298,6 +1298,7 @@ function(viper_add_runtime_tests)
     endif ()
     viper_add_ctest(test_rt_gui_runtime test_rt_gui_runtime)
     viper_add_test_labels(test_rt_gui_runtime requires_display)
+    set_tests_properties(test_rt_gui_runtime PROPERTIES RESOURCE_LOCK viper_display)
 
     viper_add_test(test_rt_canvas_ext ${VIPER_TESTS_DIR}/runtime/RTCanvasExtTests.cpp)
     target_link_libraries(test_rt_canvas_ext PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

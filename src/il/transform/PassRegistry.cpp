@@ -375,6 +375,10 @@ void registerLICMPass(PassRegistry &registry) {
     registry.registerFunctionPass("licm", []() { return std::make_unique<LICM>(); });
 }
 
+void registerLICMSafePass(PassRegistry &registry) {
+    registry.registerFunctionPass("licm-safe", []() { return std::make_unique<LICM>(false); });
+}
+
 void registerSCCPPass(PassRegistry &registry) {
     registry.registerModulePass("sccp", [](core::Module &module, AnalysisManager &) {
         PreservedAnalyses preserved;
@@ -402,6 +406,13 @@ void registerConstFoldPass(PassRegistry &registry) {
 void registerPeepholePass(PassRegistry &registry) {
     registry.registerModulePass("peephole", [](core::Module &module, AnalysisManager &) {
         peephole(module);
+        return PreservedAnalyses::none();
+    });
+}
+
+void registerPeepholeSafePass(PassRegistry &registry) {
+    registry.registerModulePass("peephole-safe", [](core::Module &module, AnalysisManager &) {
+        peepholeSafe(module);
         return PreservedAnalyses::none();
     });
 }

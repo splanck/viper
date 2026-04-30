@@ -91,9 +91,11 @@ PassManager::PassManager() {
     addSimplifyCFG(false); // Register simplify-cfg pass (non-aggressive by default)
     registerLoopSimplifyPass(passRegistry_);
     registerLICMPass(passRegistry_);
+    registerLICMSafePass(passRegistry_);
     registerSCCPPass(passRegistry_);
     registerConstFoldPass(passRegistry_);
     registerPeepholePass(passRegistry_);
+    registerPeepholeSafePass(passRegistry_);
     registerDCEPass(passRegistry_);
     registerMem2RegPass(passRegistry_);
     registerDSEPass(passRegistry_);
@@ -118,36 +120,40 @@ PassManager::PassManager() {
     registerPipeline("rehab-mem2reg", {"simplify-cfg", "mem2reg", "dce"});
     registerPipeline("rehab-peephole", {"peephole", "dce"});
     registerPipeline("rehab-licm", {"loop-simplify", "licm", "simplify-cfg", "dce"});
-    // mem2reg and IL peephole are disabled due to correctness bugs:
+    // mem2reg and full IL peephole are disabled due to correctness bugs:
     // - mem2reg: incorrect SSA promotion corrupts loop counters
-    // - IL peephole: global replaceAll + DCE param compaction breaks values
+    // - full IL peephole: kept on rehab pipeline while the safe subset runs in O1/O2
     // inline is re-enabled in O1 with conservative eligibility checks:
     // block insertion now preserves textual def-before-use ordering, and
     // callees with allocas / non-scalar signatures remain non-inlineable.
-    // licm is also excluded from O1 for now: even after the current loop-load
-    // fixes it still corrupts sqldb persistence stress under native O1.
+    // Full licm is still excluded from canonical pipelines; O2 uses licm-safe,
+    // which hoists pure non-memory instructions but leaves loads in place.
     registerPipeline("O1",
                      {"simplify-cfg",
                       "sccp",
                       "constfold",
+                      "peephole-safe",
                       "dce",
                       "simplify-cfg",
                       "sccp",
                       "inline",
+                      "peephole-safe",
                       "dce",
                       "simplify-cfg"});
     // O2 pipeline with interprocedural constant propagation:
     // Run SCCP both before (to simplify callees) and after inline
     // (to propagate constants through inlined code from call sites).
-    // mem2reg, LICM, and IL peephole remain excluded for now because each still
-    // has open correctness bugs in real demo workloads.
+    // mem2reg and full LICM remain excluded for now because each still has open
+    // correctness bugs in real demo workloads.
     registerPipeline(
-        "O2", {"loop-simplify", "loop-rotate",  "indvars",     "loop-unroll",  "simplify-cfg",
+        "O2", {"loop-simplify", "licm-safe",    "loop-rotate", "indvars",      "loop-unroll",
+               "simplify-cfg",
                "sccp", // Pre-inline SCCP: simplify callees
                "check-opt",     "eh-opt",       "dce",         "simplify-cfg", "sibling-recursion",
                "inline",        "simplify-cfg",
                "sccp",      // Post-inline SCCP: propagate call-site constants
                "constfold", // Fold runtime math calls exposed by SCCP
+               "peephole-safe",
                "dce",       // Clean up after second SCCP
                "simplify-cfg",  "gvn",          "reassociate", "earlycse",     "dse",
                "dce",           "late-cleanup"});
