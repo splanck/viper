@@ -117,6 +117,10 @@ void addReturnUsedRegs(const TargetInfo &target, std::unordered_set<uint16_t> &u
     usedRegs.insert(static_cast<uint16_t>(target.intReturnReg));
     usedRegs.insert(static_cast<uint16_t>(target.f64ReturnReg));
     usedRegs.insert(static_cast<uint16_t>(PhysReg::RSP));
+    for (PhysReg reg : target.calleeSavedGPR)
+        usedRegs.insert(static_cast<uint16_t>(reg));
+    for (PhysReg reg : target.calleeSavedFPR)
+        usedRegs.insert(static_cast<uint16_t>(reg));
 }
 
 void addExitLiveRegs(const TargetInfo &target, std::unordered_set<uint16_t> &liveRegs) {

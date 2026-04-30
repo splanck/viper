@@ -26,7 +26,7 @@ namespace viper::codegen::x64 {
 
 namespace lowering {
 
-const std::array<RuleSpec, 55> kLoweringRuleTable = {
+const std::array<RuleSpec, 57> kLoweringRuleTable = {
     // === Arithmetic Operations ===
     RuleSpec{"add",
              OperandShape{2U,
@@ -230,6 +230,17 @@ const std::array<RuleSpec, 55> kLoweringRuleTable = {
              RuleFlags::None,
              &emitDivFamily,
              "udiv"},
+    RuleSpec{"udiv.chk0",
+             OperandShape{2U,
+                          2U,
+                          2U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Value,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitDivFamily,
+             "udiv.chk0"},
     RuleSpec{"urem",
              OperandShape{2U,
                           2U,
@@ -241,6 +252,17 @@ const std::array<RuleSpec, 55> kLoweringRuleTable = {
              RuleFlags::None,
              &emitDivFamily,
              "urem"},
+    RuleSpec{"urem.chk0",
+             OperandShape{2U,
+                          2U,
+                          2U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Value,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitDivFamily,
+             "urem.chk0"},
     RuleSpec{"rem",
              OperandShape{2U,
                           2U,

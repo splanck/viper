@@ -255,7 +255,8 @@ bool lowerGprSelect(MBasicBlock &block, std::size_t index) {
 /// @details Matches the explicit SELECT_XMM pseudo emitted by the IL bridge and
 ///          rewrites it into a small branchy sequence using unique local
 ///          labels. The rewritten sequence uses `movsd` for both true and false
-///          paths so that register allocators can reason about the value flow.
+///          paths and explicit jumps to the join point so later layout changes
+///          cannot turn the false arm into a fallthrough past the epilogue.
 ///
 /// @param func Machine function supplying the label allocator.
 /// @param block Machine basic block containing the pattern.
@@ -301,6 +302,8 @@ bool lowerXmmSelect(MFunction &func, MBasicBlock &block, std::size_t index) {
     replacement.push_back(MInstr::make(
         MOpcode::MOVSDrr,
         std::vector<Operand>{cloneOperand(selectInstr.operands[0]), cloneOperand(falseVal)}));
+    replacement.push_back(
+        MInstr::make(MOpcode::JMP, std::vector<Operand>{makeLabelOperand(endLabel)}));
     replacement.push_back(
         MInstr::make(MOpcode::LABEL, std::vector<Operand>{makeLabelOperand(endLabel)}));
 

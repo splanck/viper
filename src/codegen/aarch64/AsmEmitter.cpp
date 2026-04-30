@@ -198,7 +198,10 @@ static std::string mangleCallTargetImpl(const std::string &name, bool isDarwin) 
 /// @param name Original label identifier.
 /// @return Sanitized copy suitable for assembly.
 static std::string sanitizeLabel(const std::string &name) {
-    return viper::codegen::common::sanitizeLabel(name);
+    std::string sanitized = viper::codegen::common::sanitizeLabel(name);
+    if (sanitized.rfind(".L", 0) == 0)
+        sanitized.insert(sanitized.begin(), 'L');
+    return sanitized;
 }
 
 void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) const {
@@ -849,10 +852,10 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const {
 
     // Leaf function optimization: skip frame setup entirely when the function
     // makes no calls, uses no callee-saved registers, and has no local frame.
-    // Exclude @main because emitFunction injects bl calls to rt_legacy_context
-    // and rt_set_current_context at the assembly level (not in MIR).
+    // LegalizePass inserts any backend-required calls before emission, so
+    // fn.isLeaf already reflects the emitted instruction stream.
     const bool skipFrame = fn.isLeaf && fn.savedGPRs.empty() && fn.savedFPRs.empty() &&
-                           fn.localFrameSize == 0 && fn.name != "main";
+                           fn.localFrameSize == 0;
 
     const bool usePlan = !fn.savedGPRs.empty() || !fn.savedFPRs.empty() || fn.localFrameSize > 0;
     FramePlan plan;
@@ -866,14 +869,6 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const {
             emitPrologue(os, plan);
         else
             emitPrologue(os);
-    }
-
-    // For the main function, initialize the runtime context before executing user code.
-    // This is required because runtime functions expect an active RtContext.
-    const bool darwin = !target_->isLinux() && !target_->isWindows();
-    if (fn.name == "main") {
-        os << "  bl " << mangleCallTargetImpl("rt_legacy_context", darwin) << "\n";
-        os << "  bl " << mangleCallTargetImpl("rt_set_current_context", darwin) << "\n";
     }
 
     // Store the plan for use by Ret instructions

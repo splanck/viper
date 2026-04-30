@@ -15,12 +15,14 @@
 //      multi-function modules to prevent label collisions in the assembler).
 //   4. Remap AdrPage/AddPageOff label operands to pooled rodata labels.
 //
+// Pre-RA target legalization such as overflow pseudo expansion and runtime
+// entry sequencing is handled by LegalizePass.
+//
 //===----------------------------------------------------------------------===//
 
 #include "codegen/aarch64/passes/LoweringPass.hpp"
 
 #include "codegen/aarch64/LowerILToMIR.hpp"
-#include "codegen/aarch64/LowerOvf.hpp"
 #include "codegen/common/LabelUtil.hpp"
 
 #include <exception>
@@ -67,9 +69,6 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags) {
     try {
         for (const auto &fn : ilMod.functions) {
             MFunction mir = lowerer.lowerFunction(fn);
-
-            // --- Expand overflow-checked arithmetic pseudo-ops ----
-            lowerOverflowOps(mir);
 
             // --- Label sanitization: hyphens → underscores, optional suffix ----
             using viper::codegen::common::sanitizeLabel;
@@ -135,20 +134,6 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags) {
                             break;
                     }
                 }
-            }
-
-            mir.isLeaf = true;
-            for (const auto &bb : mir.blocks) {
-                if (bb.name.find(".Ltrap_") == 0)
-                    continue;
-                for (const auto &mi : bb.instrs) {
-                    if (mi.opc == MOpcode::Bl || mi.opc == MOpcode::Blr) {
-                        mir.isLeaf = false;
-                        break;
-                    }
-                }
-                if (!mir.isLeaf)
-                    break;
             }
 
             module.mir.push_back(std::move(mir));

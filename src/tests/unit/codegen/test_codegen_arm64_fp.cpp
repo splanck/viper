@@ -18,6 +18,7 @@
 
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/aarch64/passes/EmitPass.hpp"
+#include "codegen/aarch64/passes/LegalizePass.hpp"
 #include "codegen/aarch64/passes/LoweringPass.hpp"
 #include "codegen/aarch64/passes/PassManager.hpp"
 #include "codegen/aarch64/passes/RegAllocPass.hpp"
@@ -205,6 +206,7 @@ TEST(Arm64FP, PlainFptosiChecksNaNAndRange) {
 
     passes::PassManager pm;
     pm.addPass(std::make_unique<passes::LoweringPass>());
+    pm.addPass(std::make_unique<passes::LegalizePass>());
     pm.addPass(std::make_unique<passes::RegAllocPass>());
     pm.addPass(std::make_unique<passes::EmitPass>());
 

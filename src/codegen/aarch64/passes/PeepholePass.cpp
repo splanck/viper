@@ -18,7 +18,9 @@
 
 #include "codegen/aarch64/Peephole.hpp"
 
+#include <cstdlib>
 #include <sstream>
+#include <string>
 #include <unordered_set>
 
 namespace viper::codegen::aarch64::passes {
@@ -27,6 +29,12 @@ namespace {
 [[nodiscard]] bool isBranchTargetOpcode(MOpcode opcode) noexcept {
     return opcode == MOpcode::Br || opcode == MOpcode::BCond || opcode == MOpcode::Cbz ||
            opcode == MOpcode::Cbnz;
+}
+
+[[nodiscard]] bool codegenStatsEnabled() noexcept {
+    if (const char *value = std::getenv("VIPER_CODEGEN_STATS"))
+        return value[0] != '\0' && value[0] != '0';
+    return false;
 }
 
 [[nodiscard]] bool isHardTerminator(MOpcode opcode) noexcept {
@@ -95,12 +103,18 @@ bool PeepholePass::run(AArch64Module &module, Diagnostics &diags) {
         return false;
     }
 
+    int total = 0;
     for (auto &fn : module.mir) {
-        [[maybe_unused]] auto stats = runPeephole(fn, module.ti);
+        auto stats = runPeephole(fn, module.ti);
+        total += stats.total();
         pruneUnusedCalleeSaved(fn);
         if (!validateFunction(fn, diags))
             return false;
     }
+
+    if (codegenStatsEnabled())
+        diags.warning("aarch64 peephole: " + std::to_string(total) + " transformations");
+
     return true;
 }
 

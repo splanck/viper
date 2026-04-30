@@ -194,8 +194,8 @@ namespace {
 // ===----------------------------------------------------------------------===
 
 /// Replace all occurrences of a pattern prefix followed by digits with a stable placeholder.
-/// E.g., normalizePrefix(text, ".Lfptoui_trap_") replaces ".Lfptoui_trap_42" with
-/// ".Lfptoui_trap_X".
+/// E.g., normalizePrefix(text, ".Lfptoui_invalid_") replaces ".Lfptoui_invalid_42" with
+/// ".Lfptoui_invalid_X".
 void normalizePrefix(std::string &text, const std::string &prefix) {
     std::size_t pos = 0;
     while ((pos = text.find(prefix, pos)) != std::string::npos) {
@@ -213,7 +213,8 @@ void normalizePrefix(std::string &text, const std::string &prefix) {
 
 [[nodiscard]] std::string normalizeCounterLabels(const std::string &text) {
     std::string result = text;
-    normalizePrefix(result, ".Lfptoui_trap_");
+    normalizePrefix(result, ".Lfptoui_invalid_");
+    normalizePrefix(result, ".Lfptoui_ovf_");
     normalizePrefix(result, ".Lfptoui_sm_");
     normalizePrefix(result, ".Lfptoui_done_");
     normalizePrefix(result, ".Luitofp_hi_");
@@ -885,7 +886,7 @@ void testPerFunctionLabelCounters(TestContext &ctx) {
     const auto baseline = compileToAsm(mod);
 
     // Verify labels start at 0 (per-function reset)
-    ctx.checkAsm("label_starts_at_0", baseline, ".Lfptoui_trap_0");
+    ctx.checkAsm("label_starts_at_0", baseline, ".Lfptoui_invalid_0");
 
     // Compile again — must be byte-identical (no counter drift)
     for (int i = 1; i <= 10; ++i) {

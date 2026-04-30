@@ -41,6 +41,7 @@
 #include "codegen/aarch64/binenc/A64BinaryEncoder.hpp"
 #include "codegen/aarch64/passes/BinaryEmitPass.hpp"
 #include "codegen/aarch64/passes/EmitPass.hpp"
+#include "codegen/aarch64/passes/LegalizePass.hpp"
 #include "codegen/aarch64/passes/LoweringPass.hpp"
 #include "codegen/aarch64/passes/PassManager.hpp"
 #include "codegen/aarch64/passes/PeepholePass.hpp"
@@ -75,6 +76,7 @@ static std::string compileToAsm(const std::string &il, const TargetInfo &ti) {
     m.ti = &ti;
     PassManager pm;
     pm.addPass(std::make_unique<LoweringPass>());
+    pm.addPass(std::make_unique<LegalizePass>());
     pm.addPass(std::make_unique<RegAllocPass>());
     pm.addPass(std::make_unique<PeepholePass>());
     pm.addPass(std::make_unique<EmitPass>());
@@ -272,7 +274,7 @@ TEST(AArch64LinuxABI, DarwinBinaryEncoderLeavesNamesUnprefixedForWriter) {
     EXPECT_FALSE(hasSymbol(symbols, "_hello_linux"));
 }
 
-TEST(AArch64LinuxABI, BinaryEmitPassInjectsMainStartupWithNonLeafFrame) {
+TEST(AArch64LinuxABI, BinaryEmitPassConsumesLegalizedMainStartupWithNonLeafFrame) {
     AArch64Module module;
     module.ti = &darwinTarget();
 
@@ -287,6 +289,9 @@ TEST(AArch64LinuxABI, BinaryEmitPassInjectsMainStartupWithNonLeafFrame) {
     module.mir.push_back(std::move(fn));
 
     Diagnostics diags;
+    LegalizePass legalize;
+    ASSERT_TRUE(legalize.run(module, diags));
+
     BinaryEmitPass pass;
     ASSERT_TRUE(pass.run(module, diags));
     ASSERT_EQ(module.binaryTextSections.size(), 1u);

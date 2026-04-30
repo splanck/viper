@@ -13,7 +13,7 @@
 // Key invariants:
 //   - All FP arithmetic produces SSE2 scalar double instructions (addsd, etc.)
 //   - FP comparisons use UCOMISD; condition codes must respect IEEE 754 NaN rules
-//   - FP constants are bit-exact in .rodata via std::bit_cast
+//   - FP constants are bit-exact in the target read-only data section via std::bit_cast
 //   - No user-facing SIMD/packed operations exist in the IL
 // Ownership/Lifetime: IL modules are constructed within each test scope.
 // Links: src/codegen/x86_64/Lowering.EmitCommon.cpp,
@@ -159,6 +159,12 @@ namespace {
     return text.find(oss.str()) != std::string::npos;
 }
 
+[[nodiscard]] bool hasReadonlyDataSection(const std::string &text) {
+    return text.find(".section .rodata") != std::string::npos ||
+           text.find(".section __TEXT,__const") != std::string::npos ||
+           text.find(".section .rdata") != std::string::npos;
+}
+
 // ===----------------------------------------------------------------------===
 // Test result tracking
 // ===----------------------------------------------------------------------===
@@ -273,10 +279,9 @@ TestResult testFpConstSpecialVals() {
         return r;
     }
 
-    // Verify .rodata/.rdata section exists
-    if (cg.asmText.find(".section .rodata") == std::string::npos &&
-        cg.asmText.find(".section .rdata") == std::string::npos) {
-        r.failReason = "No .rodata/.rdata section found";
+    // Verify a target read-only data section exists.
+    if (!hasReadonlyDataSection(cg.asmText)) {
+        r.failReason = "No read-only data section found";
         return r;
     }
 
@@ -302,13 +307,13 @@ TestResult testFpConstSpecialVals() {
     }
 
     if (!missing.empty()) {
-        r.failReason = "Missing .rodata patterns: " + missing;
+        r.failReason = "Missing read-only data patterns: " + missing;
         return r;
     }
 
     const std::size_t labelCount = countOccurrences(cg.asmText, ".LC_f64_");
     r.status = TestResult::PASS;
-    r.notes = "NaN/Inf/-0.0/denorm in .rodata (" + std::to_string(labelCount / 2) + " labels)";
+    r.notes = "NaN/Inf/-0.0/denorm in rodata (" + std::to_string(labelCount / 2) + " labels)";
     return r;
 }
 
@@ -577,7 +582,8 @@ TestResult testFpConversions() {
     const bool hasUcomisd = fptouiAsm.find("ucomisd") != std::string::npos;
     const bool hasRoundEven = fptouiAsm.find("rt_round_even") != std::string::npos;
     const bool hasRaiseError = fptouiAsm.find("rt_trap_raise_error") != std::string::npos;
-    const bool hasTrapLabel = fptouiAsm.find(".Lfptoui_trap_") != std::string::npos;
+    const bool hasTrapLabel = fptouiAsm.find(".Lfptoui_invalid_") != std::string::npos &&
+                              fptouiAsm.find(".Lfptoui_ovf_") != std::string::npos;
 
     if (!hasUcomisd || !hasRoundEven || !hasRaiseError || !hasTrapLabel) {
         r.failReason = "fptoui missing checked conversion:";
@@ -763,9 +769,9 @@ TestResult testNanPropagation() {
         return r;
     }
 
-    // Verify NaN bit pattern in .rodata
+    // Verify NaN bit pattern in read-only data.
     if (!rodataContainsHex(cg.asmText, 0x7FF8000000000000ULL)) {
-        r.failReason = "NaN bit pattern not found in .rodata";
+        r.failReason = "NaN bit pattern not found in read-only data";
         return r;
     }
 
@@ -814,16 +820,16 @@ TestResult testNegativeZero() {
         return r;
     }
 
-    // -0.0 and +0.0 should have distinct .rodata entries
+    // -0.0 and +0.0 should have distinct read-only data entries.
     const bool hasNegZero = rodataContainsHex(cg.asmText, 0x8000000000000000ULL);
     const bool hasPosZero = rodataContainsHex(cg.asmText, 0x0000000000000000ULL);
 
     if (!hasNegZero) {
-        r.failReason = "-0.0 bit pattern (0x8000000000000000) not in .rodata";
+        r.failReason = "-0.0 bit pattern (0x8000000000000000) not in read-only data";
         return r;
     }
     if (!hasPosZero) {
-        r.failReason = "+0.0 bit pattern (0x0000000000000000) not in .rodata";
+        r.failReason = "+0.0 bit pattern (0x0000000000000000) not in read-only data";
         return r;
     }
 
@@ -831,7 +837,7 @@ TestResult testNegativeZero() {
     const bool hasUcomisd = cg.asmText.find("ucomisd") != std::string::npos;
 
     r.status = TestResult::PASS;
-    r.notes = "Distinct bit patterns in .rodata";
+    r.notes = "Distinct bit patterns in rodata";
     if (hasUcomisd)
         r.notes += ", ucomisd for eq";
     return r;

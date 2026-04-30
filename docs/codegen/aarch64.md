@@ -31,7 +31,7 @@ programs, and the development roadmap. It is kept developer-focused with concret
 - **Runtime error access**: `ErrGetMsg` lowers to `rt_throw_msg_get`, matching the VM/native EH contract.
 - **Control-flow correctness**: `switch.i32` edge arguments travel through phi spill slots via dedicated edge blocks, and larger switches lower as balanced decision trees instead of pure compare chains
 - **Call ABI hardening**: direct calls to module-defined variadic callees (`...`) now honor the variadic stack-tail ABI, and malformed direct-call IL is diagnosed instead of being silently dropped
-- **Emitter parity**: text assembly and the binary encoder now gate BTI / PACIASP / AUTIASP on target policy; branch-target identification and return-address signing are emitted by default on Darwin and skipped for Linux/Windows objects
+- **Emitter parity**: text assembly and the binary encoder now gate BTI / PACIASP / AUTIASP on target policy; branch-target identification and return-address signing are emitted by default on Darwin and skipped for Linux/Windows objects. Text emission keeps internal branch targets assembler-local under Darwin `.subsections_via_symbols` so conditional trap branches assemble with Apple `as`.
 - **Strength reduction**: signed and unsigned division by arbitrary constants now lower through magic-multiply sequences; `UmulhRRR` is part of the MIR and binary encoder surface
 - **Peephole hardening**: optimized builds now run block layout before peephole cleanup, then schedule, then run a
   final peephole cleanup. The peephole pass validates that no virtual registers remain, branch targets still name MIR

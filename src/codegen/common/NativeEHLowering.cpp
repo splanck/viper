@@ -690,4 +690,24 @@ bool lowerNativeEh(Module &module) {
     return changed;
 }
 
+std::optional<std::string> findResidualStructuredEh(const Module &module) {
+    for (const auto &fn : module.functions) {
+        for (const auto &bb : fn.blocks) {
+            if (bb.params.size() >= 2 && bb.params[0].type.kind == Type::Kind::Error &&
+                bb.params[1].type.kind == Type::Kind::ResumeTok) {
+                return fn.name + ":" + bb.label +
+                       ": residual handler error/resume-token block parameters after NativeEHLowering";
+            }
+
+            for (const auto &instr : bb.instructions) {
+                if (!isEhOpcode(instr.op))
+                    continue;
+                return fn.name + ":" + bb.label + ": residual " +
+                       std::string(il::core::toString(instr.op)) + " after NativeEHLowering";
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 } // namespace viper::codegen::common

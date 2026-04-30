@@ -33,6 +33,7 @@ add_library(il_codegen_aarch64 STATIC
         peephole/LoopOpt.cpp
         # Modular PassManager passes (Priority 2F)
         passes/LoweringPass.cpp
+        passes/LegalizePass.cpp
         passes/RegAllocPass.cpp
         passes/PeepholePass.cpp
         passes/EmitPass.cpp

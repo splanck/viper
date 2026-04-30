@@ -55,8 +55,6 @@ namespace {
 
 using TargetPlatform = CodegenOptions::TargetPlatform;
 
-constexpr std::size_t kLargeModuleIlOptThreshold = 100000;
-
 [[nodiscard]] TargetPlatform effectiveTargetPlatform(const CodegenPipeline::Options &opts) {
     if (opts.target_platform != TargetPlatform::Host)
         return opts.target_platform;
@@ -132,41 +130,6 @@ std::filesystem::path pickFirstExisting(std::initializer_list<std::filesystem::p
             return candidate;
     }
     return std::filesystem::path{};
-}
-
-std::size_t totalInstructionCount(const il::core::Module &module) {
-    std::size_t totalInstrs = 0;
-    for (const auto &fn : module.functions)
-        for (const auto &bb : fn.blocks)
-            totalInstrs += bb.instructions.size();
-    return totalInstrs;
-}
-
-bool hasEhSensitiveControl(const il::core::Module &module) {
-    for (const auto &fn : module.functions) {
-        for (const auto &bb : fn.blocks) {
-            if (bb.params.size() >= 2 &&
-                bb.params[0].type.kind == il::core::Type::Kind::Error &&
-                bb.params[1].type.kind == il::core::Type::Kind::ResumeTok) {
-                return true;
-            }
-
-            for (const auto &instr : bb.instructions) {
-                switch (instr.op) {
-                    case il::core::Opcode::EhPush:
-                    case il::core::Opcode::EhPop:
-                    case il::core::Opcode::EhEntry:
-                    case il::core::Opcode::ResumeSame:
-                    case il::core::Opcode::ResumeNext:
-                    case il::core::Opcode::ResumeLabel:
-                        return true;
-                    default:
-                        break;
-                }
-            }
-        }
-    }
-    return false;
 }
 
 /// @brief Compute the output assembly path from pipeline options.
@@ -369,51 +332,19 @@ PipelineResult CodegenPipeline::run() {
     }
 
     viper::codegen::common::lowerNativeEh(module);
+    if (const auto residualEh = viper::codegen::common::findResidualStructuredEh(module)) {
+        err << "error: " << *residualEh << "\n";
+        result.exit_code = 1;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
 
-    // Run IL optimizations before lowering to MIR. Keep these backend-specific
-    // pipelines aligned with the canonical O1/O2 pass policy while preserving
-    // the codegen size gate below.
+    // Run the canonical IL optimization pipeline before lowering to MIR so native
+    // backends stay aligned with frontend/VM optimization behavior.
     if (opts_.optimize >= 1) {
         il::transform::PassManager ilpm;
-        const std::size_t totalInstrs = totalInstructionCount(module);
-        bool ok = true;
-        if (hasEhSensitiveControl(module)) {
-            ilpm.registerPipeline("codegen-eh-safe", {"eh-opt"});
-            ok = ilpm.runPipeline(module, "codegen-eh-safe");
-        } else if (totalInstrs > kLargeModuleIlOptThreshold) {
-            ilpm.registerPipeline("codegen-large",
-                                  {"simplify-cfg", "sccp", "constfold", "dce", "simplify-cfg"});
-            ok = ilpm.runPipeline(module, "codegen-large");
-        } else {
-            if (opts_.optimize >= 2) {
-                ilpm.registerPipeline(
-                    "codegen-O2",
-                    {"simplify-cfg",  "mem2reg",      "simplify-cfg",      "loop-simplify",
-                     "licm",          "loop-rotate",  "indvars",           "loop-unroll",
-                     "simplify-cfg",  "sccp",         "check-opt",         "eh-opt",
-                     "dce",           "simplify-cfg", "sibling-recursion", "inline",
-                     "simplify-cfg",  "sccp",         "constfold",         "peephole",
-                     "dce",           "simplify-cfg", "gvn",               "reassociate",
-                     "earlycse",      "dse",          "dce",               "late-cleanup"});
-                ok = ilpm.runPipeline(module, "codegen-O2");
-            } else {
-                ilpm.registerPipeline("codegen-O1",
-                                      {"simplify-cfg",
-                                       "mem2reg",
-                                       "simplify-cfg",
-                                       "sccp",
-                                       "constfold",
-                                       "peephole",
-                                       "dce",
-                                       "simplify-cfg",
-                                       "sccp",
-                                       "inline",
-                                       "peephole",
-                                       "dce",
-                                       "simplify-cfg"});
-                ok = ilpm.runPipeline(module, "codegen-O1");
-            }
-        }
+        const bool ok = ilpm.runPipeline(module, opts_.optimize >= 2 ? "O2" : "O1");
 
         if (!ok) {
             err << "error: failed to run x86-64 IL optimization pipeline\n";

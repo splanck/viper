@@ -154,12 +154,11 @@ namespace {
         return false;
     }
 
-    const std::size_t jmpPos = asmText.find("jmp", movsdTruePos);
-    if (jmpPos == std::string::npos) {
+    const std::size_t endLabelPos = asmText.find(".Lend", movsdTruePos);
+    const std::size_t falseLabelPos = asmText.find(".Lfalse", jePos);
+    if (endLabelPos == std::string::npos) {
         return false;
     }
-
-    const std::size_t falseLabelPos = asmText.find(".Lfalse", jmpPos);
     if (falseLabelPos == std::string::npos) {
         return false;
     }
@@ -169,8 +168,12 @@ namespace {
         return false;
     }
 
-    const std::size_t endLabelPos = asmText.find(".Lend", movsdFalsePos);
-    return endLabelPos != std::string::npos;
+    if (falseLabelPos < endLabelPos) {
+        return movsdFalsePos < endLabelPos;
+    }
+
+    const std::size_t jmpEndPos = asmText.find("jmp .Lend", movsdFalsePos);
+    return jmpEndPos != std::string::npos;
 }
 
 } // namespace

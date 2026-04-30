@@ -278,9 +278,9 @@ TEST(CheckOpt, ReplacesIdxChkWithNormalizedConstant) {
     EXPECT_EQ(retInstr.operands[0].i64, 2);
 }
 
-TEST(CheckOpt, PreservesSDivChk0WithNonZeroConstDivisor) {
-    // Even with a non-zero constant divisor, sdiv.chk0 still produces the
-    // division result. CheckOpt must not erase or rewrite it to the divisor.
+TEST(CheckOpt, DemotesSDivChk0WithNonZeroConstDivisor) {
+    // A non-zero divisor proves the divide-by-zero check unnecessary. CheckOpt
+    // must keep the division result but can lower to the plain opcode.
     Module M;
     Function F;
     F.name = "const_sdiv";
@@ -309,12 +309,8 @@ TEST(CheckOpt, PreservesSDivChk0WithNonZeroConstDivisor) {
     il::transform::CheckOpt pass;
     pass.run(Fn, manager);
 
-    size_t chkCount = 0;
-    for (const auto &I : Fn.blocks[0].instructions) {
-        if (I.op == Opcode::SDivChk0)
-            ++chkCount;
-    }
-    EXPECT_EQ(chkCount, 1U);
+    ASSERT_FALSE(Fn.blocks[0].instructions.empty());
+    EXPECT_EQ(Fn.blocks[0].instructions.front().op, Opcode::SDiv);
 }
 
 TEST(CheckOpt, PreservesCheckedDivResultWhenDivisorIsConstNonZero) {
@@ -363,13 +359,140 @@ TEST(CheckOpt, PreservesCheckedDivResultWhenDivisorIsConstNonZero) {
     const auto &divInstr = Fn.blocks[0].instructions[0];
     const auto &addInstr = Fn.blocks[0].instructions[1];
 
-    EXPECT_EQ(divInstr.op, Opcode::SDivChk0);
+    EXPECT_EQ(divInstr.op, Opcode::SDiv);
     ASSERT_EQ(addInstr.op, Opcode::IAddOvf);
     ASSERT_EQ(addInstr.operands.size(), 2U);
     EXPECT_EQ(addInstr.operands[0].kind, Value::Kind::ConstInt);
     EXPECT_EQ(addInstr.operands[0].i64, 7);
     EXPECT_EQ(addInstr.operands[1].kind, Value::Kind::Temp);
     EXPECT_EQ(addInstr.operands[1].id, 1U);
+}
+
+TEST(CheckOpt, DemotesUnsignedDivRemWithNonZeroConstDivisor) {
+    Module M;
+    Function F;
+    F.name = "checked_unsigned_div_rem";
+    F.retType = Type(Type::Kind::Void);
+
+    Param lhs;
+    lhs.id = 0;
+    lhs.type = Type(Type::Kind::I64);
+    F.params.push_back(lhs);
+
+    BasicBlock entry;
+    entry.label = "entry";
+
+    Instr div;
+    div.result = 1;
+    div.op = Opcode::UDivChk0;
+    div.type = Type(Type::Kind::I64);
+    div.operands = {Value::temp(0), Value::constInt(8)};
+
+    Instr rem;
+    rem.result = 2;
+    rem.op = Opcode::URemChk0;
+    rem.type = Type(Type::Kind::I64);
+    rem.operands = {Value::temp(0), Value::constInt(8)};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    entry.instructions = {std::move(div), std::move(rem), std::move(ret)};
+    entry.terminated = true;
+
+    F.blocks.push_back(std::move(entry));
+    M.functions.push_back(std::move(F));
+    auto &Fn = M.functions.front();
+
+    il::transform::AnalysisRegistry registry = makeRegistry();
+    il::transform::AnalysisManager manager(M, registry);
+
+    il::transform::CheckOpt pass;
+    pass.run(Fn, manager);
+
+    ASSERT_GE(Fn.blocks[0].instructions.size(), 2U);
+    EXPECT_EQ(Fn.blocks[0].instructions[0].op, Opcode::UDiv);
+    EXPECT_EQ(Fn.blocks[0].instructions[1].op, Opcode::URem);
+}
+
+TEST(CheckOpt, DemotesSignedRemainderByMinusOne) {
+    Module M;
+    Function F;
+    F.name = "checked_srem_minus_one";
+    F.retType = Type(Type::Kind::Void);
+
+    Param lhs;
+    lhs.id = 0;
+    lhs.type = Type(Type::Kind::I64);
+    F.params.push_back(lhs);
+
+    BasicBlock entry;
+    entry.label = "entry";
+
+    Instr rem;
+    rem.result = 1;
+    rem.op = Opcode::SRemChk0;
+    rem.type = Type(Type::Kind::I64);
+    rem.operands = {Value::temp(0), Value::constInt(-1)};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    entry.instructions = {std::move(rem), std::move(ret)};
+    entry.terminated = true;
+
+    F.blocks.push_back(std::move(entry));
+    M.functions.push_back(std::move(F));
+    auto &Fn = M.functions.front();
+
+    il::transform::AnalysisRegistry registry = makeRegistry();
+    il::transform::AnalysisManager manager(M, registry);
+
+    il::transform::CheckOpt pass;
+    pass.run(Fn, manager);
+
+    ASSERT_FALSE(Fn.blocks[0].instructions.empty());
+    EXPECT_EQ(Fn.blocks[0].instructions.front().op, Opcode::SRem);
+}
+
+TEST(CheckOpt, KeepsSignedDivisionByMinusOneWhenNumeratorUnknown) {
+    Module M;
+    Function F;
+    F.name = "checked_sdiv_minus_one";
+    F.retType = Type(Type::Kind::Void);
+
+    Param lhs;
+    lhs.id = 0;
+    lhs.type = Type(Type::Kind::I64);
+    F.params.push_back(lhs);
+
+    BasicBlock entry;
+    entry.label = "entry";
+
+    Instr div;
+    div.result = 1;
+    div.op = Opcode::SDivChk0;
+    div.type = Type(Type::Kind::I64);
+    div.operands = {Value::temp(0), Value::constInt(-1)};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    entry.instructions = {std::move(div), std::move(ret)};
+    entry.terminated = true;
+
+    F.blocks.push_back(std::move(entry));
+    M.functions.push_back(std::move(F));
+    auto &Fn = M.functions.front();
+
+    il::transform::AnalysisRegistry registry = makeRegistry();
+    il::transform::AnalysisManager manager(M, registry);
+
+    il::transform::CheckOpt pass;
+    pass.run(Fn, manager);
+
+    ASSERT_FALSE(Fn.blocks[0].instructions.empty());
+    EXPECT_EQ(Fn.blocks[0].instructions.front().op, Opcode::SDivChk0);
 }
 
 TEST(CheckOpt, PreservesIdxChkWhenOutOfBounds) {

@@ -178,34 +178,52 @@ macro(_aarch64_add_test_common _name _src _libs)
     viper_add_ctest(${_name} $<TARGET_FILE:${_name}>)
 endmacro()
 
-# ARM64/AArch64 codegen tests — gated on ARM64 processor.
+# ── Pure AArch64 backend tests: build on every host; they do not execute
+# generated ARM64 code or require a native ARM64 assembler.
+set(_AARCH64_CODEGEN_ONLY_TESTS
+        test_target_aarch64
+        test_emit_aarch64_minimal
+        test_emit_aarch64_mir_minimal
+        test_emit_aarch64_frameplan
+        test_emit_aarch64_mir_bitwise
+        test_emit_aarch64_mir_branches
+        test_emit_aarch64_mir_frameplan
+        test_codegen_arm64_peephole
+        test_codegen_arm64_div_strength
+        test_regalloc_aarch64_linear
+        test_aarch64_rodata_pool
+        test_codegen_review_fixes
+        test_aarch64_frame_spill_reuse
+        test_aarch64_logical_imm
+        test_codegen_arm64_peephole_subpasses
+)
+foreach (_test IN LISTS _AARCH64_CODEGEN_ONLY_TESTS)
+    _aarch64_add_test(${_test}
+            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/${_test}.cpp
+            "il_codegen_aarch64")
+endforeach ()
+
+# AArch64 modular pipeline and ABI tests are also pure codegen tests.
+_aarch64_add_test_common(test_aarch64_pass_manager
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_pass_manager.cpp
+        "il_codegen_aarch64")
+
+_aarch64_add_test_common(test_aarch64_scheduler
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_scheduler.cpp
+        "il_codegen_aarch64")
+
+_aarch64_add_test_common(test_aarch64_linux_abi
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_linux_abi.cpp
+        "il_codegen_aarch64")
+
+_aarch64_add_test_common(test_aarch64_block_layout
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_block_layout.cpp
+        "il_codegen_aarch64")
+
+# ARM64/AArch64 command/native tests — gated on ARM64 processor.
 # Windows ARM64 builds the backend, but the current native/link test path still
 # assumes Unix/Darwin assembler and process semantics.
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND NOT WIN32)
-
-    # ── Group 1: il_codegen_aarch64 only ────────────────────────────────
-    set(_AARCH64_CODEGEN_ONLY_TESTS
-            test_target_aarch64
-            test_emit_aarch64_minimal
-            test_emit_aarch64_mir_minimal
-            test_emit_aarch64_frameplan
-            test_emit_aarch64_mir_bitwise
-            test_emit_aarch64_mir_branches
-            test_emit_aarch64_mir_frameplan
-            test_codegen_arm64_peephole
-            test_codegen_arm64_div_strength
-            test_regalloc_aarch64_linear
-            test_aarch64_rodata_pool
-            test_codegen_review_fixes
-            test_aarch64_frame_spill_reuse
-            test_aarch64_logical_imm
-            test_codegen_arm64_peephole_subpasses
-    )
-    foreach (_test IN LISTS _AARCH64_CODEGEN_ONLY_TESTS)
-        _aarch64_add_test(${_test}
-                ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/${_test}.cpp
-                "il_codegen_aarch64")
-    endforeach ()
 
     # ── Group 2: il_codegen_aarch64 + viper_cmd_arm64 ──────────────────
     set(_AARCH64_CMD_TESTS
@@ -291,26 +309,6 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND NOT WIN32)
     #     "il_codegen_aarch64;viper_cmd_arm64")
 
     # ── Group 3: special link patterns ──────────────────────────────────
-
-    # AArch64 modular PassManager API (Priority 2F)
-    _aarch64_add_test_common(test_aarch64_pass_manager
-            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_pass_manager.cpp
-            "il_codegen_aarch64")
-
-    # AArch64 post-RA instruction scheduler (Priority 2G)
-    _aarch64_add_test_common(test_aarch64_scheduler
-            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_scheduler.cpp
-            "il_codegen_aarch64")
-
-    # AArch64 Linux ELF ABI output mode (Priority 3H)
-    _aarch64_add_test_common(test_aarch64_linux_abi
-            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_linux_abi.cpp
-            "il_codegen_aarch64")
-
-    # AArch64 block layout pass — greedy trace reordering (Priority 3J)
-    _aarch64_add_test_common(test_aarch64_block_layout
-            ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_block_layout.cpp
-            "il_codegen_aarch64")
 
     # Environment.IsNative should distinguish VM vs native paths
     _aarch64_add_test_common(test_codegen_env_is_native

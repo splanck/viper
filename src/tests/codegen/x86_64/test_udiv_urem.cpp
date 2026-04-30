@@ -6,7 +6,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_udiv_urem.cpp
-// Purpose: Validate unsigned 64-bit division/remainder lowering expands into the
+// Purpose: Validate plain unsigned 64-bit division/remainder lowering expands
+//          into unchecked DIV sequences after the optimizer has proven safety.
 // Key invariants: Emitted assembly must zero-extend the dividend via XOR on
 // Ownership/Lifetime: Test constructs IL adapter modules locally and inspects
 // Links: src/codegen/x86_64/LowerDiv.cpp
@@ -105,24 +106,9 @@ namespace {
     return asmText.find("divq") != std::string::npos;
 }
 
-[[nodiscard]] bool hasTrapGuard(const std::string &asmText) {
-    bool hasTest = false;
-    bool hasJeTrap = false;
-    bool hasTrapCall = asmText.find("rt_trap_div0") != std::string::npos;
-
-    std::istringstream stream{asmText};
-    std::string line{};
-    while (std::getline(stream, line)) {
-        if (!hasTest && line.find("test") != std::string::npos) {
-            hasTest = true;
-        }
-        if (!hasJeTrap && line.find("je") != std::string::npos &&
-            line.find(".Ltrap_div0") != std::string::npos) {
-            hasJeTrap = true;
-        }
-    }
-
-    return hasTest && hasJeTrap && hasTrapCall;
+[[nodiscard]] bool hasDiv0Trap(const std::string &asmText) {
+    return asmText.find("rt_trap_div0") != std::string::npos ||
+           asmText.find(".Ltrap_div0") != std::string::npos;
 }
 
 } // namespace
@@ -140,7 +126,7 @@ int main() {
     }
 
     if (!hasEdxZeroExtend(result.asmText) || !hasDivqInstruction(result.asmText) ||
-        !hasTrapGuard(result.asmText)) {
+        hasDiv0Trap(result.asmText)) {
         std::cerr << "Unsigned division lowering missing expected pattern:\n" << result.asmText;
         return EXIT_FAILURE;
     }

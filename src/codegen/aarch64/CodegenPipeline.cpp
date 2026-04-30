@@ -22,6 +22,7 @@
 #include "codegen/aarch64/passes/BinaryEmitPass.hpp"
 #include "codegen/aarch64/passes/BlockLayoutPass.hpp"
 #include "codegen/aarch64/passes/EmitPass.hpp"
+#include "codegen/aarch64/passes/LegalizePass.hpp"
 #include "codegen/aarch64/passes/LoweringPass.hpp"
 #include "codegen/aarch64/passes/PeepholePass.hpp"
 #include "codegen/aarch64/passes/RegAllocPass.hpp"
@@ -214,104 +215,12 @@ static int linkObjToExe(const std::string &objPath,
     return viper::codegen::linker::nativeLink(linkOpts, out, err);
 }
 
-static std::optional<std::string> findResidualStructuredEh(const il::core::Module &mod) {
-    for (const auto &fn : mod.functions) {
-        for (const auto &bb : fn.blocks) {
-            for (const auto &instr : bb.instructions) {
-                switch (instr.op) {
-                    case il::core::Opcode::ResumeSame:
-                    case il::core::Opcode::ResumeNext:
-                        return fn.name + ":" + bb.label + ": residual " +
-                               std::string(il::core::toString(instr.op)) +
-                               " after NativeEHLowering";
-                    default:
-                        break;
-                }
-            }
-        }
-    }
-    return std::nullopt;
-}
-
 static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel) {
     if (optimizeLevel < 1)
         return true;
 
-    auto hasEhSensitiveControl = [](const il::core::Module &module) {
-        for (const auto &fn : module.functions) {
-            for (const auto &bb : fn.blocks) {
-                if (bb.params.size() >= 2 &&
-                    bb.params[0].type.kind == il::core::Type::Kind::Error &&
-                    bb.params[1].type.kind == il::core::Type::Kind::ResumeTok) {
-                    return true;
-                }
-
-                for (const auto &instr : bb.instructions) {
-                    switch (instr.op) {
-                        case il::core::Opcode::EhPush:
-                        case il::core::Opcode::EhPop:
-                        case il::core::Opcode::EhEntry:
-                        case il::core::Opcode::ResumeSame:
-                        case il::core::Opcode::ResumeNext:
-                        case il::core::Opcode::ResumeLabel:
-                            return true;
-                        default:
-                            break;
-                    }
-                }
-            }
-        }
-        return false;
-    };
-
-    constexpr std::size_t kLargeModuleIlOptThreshold = 100000;
-    auto totalInstructionCount = [](const il::core::Module &module) {
-        std::size_t totalInstrs = 0;
-        for (const auto &fn : module.functions)
-            for (const auto &bb : fn.blocks)
-                totalInstrs += bb.instructions.size();
-        return totalInstrs;
-    };
-
     il::transform::PassManager ilpm;
-    if (hasEhSensitiveControl(mod)) {
-        ilpm.registerPipeline("codegen-eh-safe", {"eh-opt"});
-        return ilpm.runPipeline(mod, "codegen-eh-safe");
-    }
-
-    const std::size_t totalInstrs = totalInstructionCount(mod);
-    if (totalInstrs > kLargeModuleIlOptThreshold) {
-        ilpm.registerPipeline("codegen-large",
-                              {"simplify-cfg", "sccp", "constfold", "dce", "simplify-cfg"});
-        return ilpm.runPipeline(mod, "codegen-large");
-    }
-    if (optimizeLevel >= 2) {
-        ilpm.registerPipeline("codegen-O2",
-                              {"simplify-cfg",  "mem2reg",      "simplify-cfg",      "loop-simplify",
-                               "licm",          "loop-rotate",  "indvars",           "loop-unroll",
-                               "simplify-cfg",  "sccp",         "check-opt",         "eh-opt",
-                               "dce",           "simplify-cfg", "sibling-recursion", "inline",
-                               "simplify-cfg",  "sccp",         "constfold",         "peephole",
-                               "dce",           "simplify-cfg", "gvn",               "reassociate",
-                               "earlycse",      "dse",          "dce",               "late-cleanup"});
-        return ilpm.runPipeline(mod, "codegen-O2");
-    }
-
-    ilpm.registerPipeline("codegen-O1",
-                          {"simplify-cfg",
-                           "mem2reg",
-                           "simplify-cfg",
-                           "sccp",
-                           "constfold",
-                           "peephole",
-                           "dce",
-                           "simplify-cfg",
-                           "sccp",
-                           "inline",
-                           "peephole",
-                           "dce",
-                           "simplify-cfg"});
-    return ilpm.runPipeline(mod, "codegen-O1");
+    return ilpm.runPipeline(mod, optimizeLevel >= 2 ? "O2" : "O1");
 }
 
 static const TargetInfo &hostAArch64Target() {
@@ -340,10 +249,10 @@ static const TargetInfo &selectAArch64Target(CodegenPipeline::TargetPlatform pla
 
 } // namespace
 
-/// @brief Run the full AArch64 codegen pipeline: lower → peephole → regalloc → schedule → emit.
+/// @brief Run the full AArch64 codegen pipeline: lower → legalize → regalloc → optimize → emit.
 /// @details Orchestrates all passes via PassManager in order: IL-to-MIR lowering,
-///          peephole optimization, register allocation (with optional coalescing),
-///          post-RA scheduling (O1+), block layout, and assembly/binary emission.
+///          pre-RA MIR legalization, register allocation (with optional coalescing),
+///          post-RA layout/peephole/scheduling (O1+), and assembly/binary emission.
 bool runCodegenPipeline(passes::AArch64Module &module,
                         const PipelineOptions &opts,
                         std::ostream &diagOut) {
@@ -356,6 +265,7 @@ bool runCodegenPipeline(passes::AArch64Module &module,
     {
         passes::PassManager manager;
         manager.addPass(std::make_unique<passes::LoweringPass>());
+        manager.addPass(std::make_unique<passes::LegalizePass>());
         if (!manager.run(module, diags))
             return flushOnFailure();
     }
@@ -423,7 +333,7 @@ PipelineResult CodegenPipeline::run() {
     }
 
     viper::codegen::common::lowerNativeEh(mod);
-    if (const auto residualEh = findResidualStructuredEh(mod)) {
+    if (const auto residualEh = viper::codegen::common::findResidualStructuredEh(mod)) {
         err << "error: " << *residualEh << "\n";
         result.exit_code = 1;
         result.stdout_text = out.str();

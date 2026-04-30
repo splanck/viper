@@ -519,6 +519,8 @@ void X64BinaryEncoder::encodeInstructionImpl(const MInstr &instr,
         case MOpcode::REMS64Chk0rr:
         case MOpcode::DIVU64rr:
         case MOpcode::REMU64rr:
+        case MOpcode::DIVU64Chk0rr:
+        case MOpcode::REMU64Chk0rr:
         case MOpcode::ADDOvfrr:
         case MOpcode::SUBOvfrr:
         case MOpcode::IMULOvfrr:

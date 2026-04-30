@@ -98,16 +98,8 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
         seedDebugFiles(funcDebugLines, std::vector<MFunction>{fn}, module.debugSourcePath);
         binenc::A64BinaryEncoder funcEncoder;
         funcEncoder.setDebugLineTable(&funcDebugLines);
-        MFunction emitFn = fn;
-        if (emitFn.name == "main" && !emitFn.blocks.empty()) {
-            emitFn.isLeaf = false;
-            auto &entryInstrs = emitFn.blocks.front().instrs;
-            entryInstrs.insert(entryInstrs.begin(),
-                               {MInstr{MOpcode::Bl, {MOperand::labelOp("rt_legacy_context")}},
-                                MInstr{MOpcode::Bl, {MOperand::labelOp("rt_set_current_context")}}});
-        }
         try {
-            funcEncoder.encodeFunction(emitFn, module.binaryTextSections.back(), rodata, abi);
+            funcEncoder.encodeFunction(fn, module.binaryTextSections.back(), rodata, abi);
         } catch (const std::exception &ex) {
             module.binaryTextSections.pop_back();
             diags.error("BinaryEmitPass: failed to encode AArch64 function '" + fn.name +

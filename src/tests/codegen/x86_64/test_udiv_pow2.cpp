@@ -18,6 +18,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <utility>
 
 namespace viper::codegen::x64 {
 namespace {
@@ -101,6 +102,34 @@ namespace {
     return module;
 }
 
+[[nodiscard]] ILModule makeUnsignedDivModule(std::string opcode, int64_t divisor, std::string name) {
+    ILValue dividend = makeI64Param(0);
+
+    ILInstr divInstr{};
+    divInstr.opcode = std::move(opcode);
+    divInstr.resultId = 1;
+    divInstr.resultKind = ILValue::Kind::I64;
+    divInstr.ops = {dividend, makeI64Imm(divisor)};
+
+    ILInstr retInstr{};
+    retInstr.opcode = "ret";
+    retInstr.ops = {makeValueRef(1)};
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {dividend.id};
+    entry.paramKinds = {dividend.kind};
+    entry.instrs = {divInstr, retInstr};
+
+    ILFunction func{};
+    func.name = std::move(name);
+    func.blocks = {entry};
+
+    ILModule module{};
+    module.funcs = {func};
+    return module;
+}
+
 } // namespace
 } // namespace viper::codegen::x64
 
@@ -125,10 +154,8 @@ int main() {
         if (hasShr && !hasDiv) {
             std::cout << "PASS: udiv by pow2 uses SHR\n";
         } else {
-            // Optimization may not fire if constant isn't visible at div lowering.
-            // This is acceptable — the test verifies codegen produces valid output.
-            std::cout << "INFO: udiv by pow2 still uses IDIV (constant not visible at lowering)\n"
-                      << result.asmText;
+            std::cerr << "Expected udiv by pow2 to use SHR without divq:\n" << result.asmText;
+            return EXIT_FAILURE;
         }
     }
 
@@ -149,8 +176,46 @@ int main() {
         if (hasAnd && !hasDiv) {
             std::cout << "PASS: urem by pow2 uses AND\n";
         } else {
-            std::cout << "INFO: urem by pow2 still uses IDIV (constant not visible at lowering)\n"
+            std::cerr << "Expected urem by pow2 to use AND without divq:\n" << result.asmText;
+            return EXIT_FAILURE;
+        }
+    }
+
+    // Test 3: plain udiv with a proven non-zero non-power-of-two divisor must not keep a trap.
+    {
+        const ILModule module = makeUnsignedDivModule("udiv", 10, "udiv_plain_nonpow2");
+        const CodegenResult result = emitModuleToAssembly(module, {});
+
+        if (!result.errors.empty()) {
+            std::cerr << "udiv plain codegen error: " << result.errors;
+            return EXIT_FAILURE;
+        }
+
+        if (result.asmText.find("rt_trap_div0") != std::string::npos) {
+            std::cerr << "Plain udiv should not emit a div0 trap:\n" << result.asmText;
+            return EXIT_FAILURE;
+        }
+        if (result.asmText.find("divq") == std::string::npos) {
+            std::cerr << "Plain non-pow2 udiv should still lower to divq:\n" << result.asmText;
+            return EXIT_FAILURE;
+        }
+    }
+
+    // Test 4: checked udiv with the same divisor still keeps the runtime guard.
+    {
+        const ILModule module = makeUnsignedDivModule("udiv.chk0", 10, "udiv_checked_nonpow2");
+        const CodegenResult result = emitModuleToAssembly(module, {});
+
+        if (!result.errors.empty()) {
+            std::cerr << "udiv checked codegen error: " << result.errors;
+            return EXIT_FAILURE;
+        }
+
+        if (result.asmText.find("rt_trap_div0") == std::string::npos ||
+            result.asmText.find("divq") == std::string::npos) {
+            std::cerr << "Checked non-pow2 udiv should emit divq with div0 trap:\n"
                       << result.asmText;
+            return EXIT_FAILURE;
         }
     }
 

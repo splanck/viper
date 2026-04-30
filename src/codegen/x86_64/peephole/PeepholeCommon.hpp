@@ -243,6 +243,8 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
         case MOpcode::REMS64Chk0rr:
         case MOpcode::DIVU64rr:
         case MOpcode::REMU64rr:
+        case MOpcode::DIVU64Chk0rr:
+        case MOpcode::REMU64Chk0rr:
         case MOpcode::SETcc:
         case MOpcode::MOVZXrr8:
         case MOpcode::MOVZXrr32:
@@ -331,6 +333,8 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
         case MOpcode::REMS64Chk0rr:
         case MOpcode::DIVU64rr:
         case MOpcode::REMU64rr:
+        case MOpcode::DIVU64Chk0rr:
+        case MOpcode::REMU64Chk0rr:
         case MOpcode::SETcc:
         case MOpcode::MOVZXrr8:
         case MOpcode::MOVZXrr32:

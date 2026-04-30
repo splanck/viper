@@ -7,9 +7,9 @@
 //
 // Implements the lowering pass that expands signed and unsigned 64-bit division
 // and remainder pseudos into explicit CQO/IDIV or XOR/DIV sequences for the
-// x86-64 backend.  The implementation guards each operation with a
-// division-by-zero test, branching to a lazily created trap block when necessary
-// so runtime behaviour matches the VM's expectations.
+// x86-64 backend.  Checked pseudos are guarded with division-by-zero tests,
+// while plain div/rem pseudos lower directly so optimizer-proven nonzero
+// divisors do not keep unnecessary trap edges alive.
 //
 // The pass executes between IL→MIR lowering and register allocation.  It keeps
 // operand usage confined to general-purpose registers, builds continuation
@@ -37,8 +37,6 @@
 namespace viper::codegen::x64 {
 
 namespace {
-constexpr std::string_view kTrapLabel{".Ltrap_div0"};
-
 /// @brief Produce a shallow copy of a Machine IR operand.
 ///
 /// @details Operands in Phase A Machine IR are small value types, so copying by
@@ -228,8 +226,10 @@ void lowerSignedDivRem(MFunction &fn) {
             const bool isSignedRem = candidate.opcode == MOpcode::REMS64rr;
             const bool isCheckedSignedDiv = candidate.opcode == MOpcode::DIVS64Chk0rr;
             const bool isCheckedSignedRem = candidate.opcode == MOpcode::REMS64Chk0rr;
-            const bool isUnsignedDiv = candidate.opcode == MOpcode::DIVU64rr;
-            const bool isUnsignedRem = candidate.opcode == MOpcode::REMU64rr;
+            const bool isCheckedUnsignedDiv = candidate.opcode == MOpcode::DIVU64Chk0rr;
+            const bool isCheckedUnsignedRem = candidate.opcode == MOpcode::REMU64Chk0rr;
+            const bool isUnsignedDiv = candidate.opcode == MOpcode::DIVU64rr || isCheckedUnsignedDiv;
+            const bool isUnsignedRem = candidate.opcode == MOpcode::REMU64rr || isCheckedUnsignedRem;
             if (!isSignedDiv && !isSignedRem && !isCheckedSignedDiv && !isCheckedSignedRem &&
                 !isUnsignedDiv && !isUnsignedRem) {
                 continue;
@@ -309,6 +309,8 @@ void lowerSignedDivRem(MFunction &fn) {
             const bool isSigned =
                 isSignedDiv || isSignedRem || isCheckedSignedDiv || isCheckedSignedRem;
             const bool isCheckedSigned = isCheckedSignedDiv || isCheckedSignedRem;
+            const bool needsDiv0Check =
+                isCheckedSigned || isCheckedUnsignedDiv || isCheckedUnsignedRem;
 
             MBasicBlock afterBlock{};
             afterBlock.label = makeContinuationLabel(fn, fn.blocks[blockIdx], sequenceId++);
@@ -324,7 +326,9 @@ void lowerSignedDivRem(MFunction &fn) {
                                          static_cast<std::ptrdiff_t>(instrIdx));
             }
 
-            ensureTrapBlock(trapLabel, "rt_trap_div0", div0TrapIndex);
+            if (needsDiv0Check) {
+                ensureTrapBlock(trapLabel, "rt_trap_div0", div0TrapIndex);
+            }
             if (isCheckedSignedDiv) {
                 ensureTrapBlock(ovfTrapLabel, "rt_trap_ovf", ovfTrapIndex);
             }
@@ -347,12 +351,14 @@ void lowerSignedDivRem(MFunction &fn) {
             currentBlock.append(MInstr::make(
                 MOpcode::MOVrr,
                 std::vector<Operand>{cloneOperand(divisorRegOp), cloneOperand(divisorClone)}));
-            currentBlock.append(MInstr::make(
-                MOpcode::TESTrr,
-                std::vector<Operand>{cloneOperand(divisorRegOp), cloneOperand(divisorRegOp)}));
-            currentBlock.append(
-                MInstr::make(MOpcode::JCC,
-                             std::vector<Operand>{makeImmOperand(0), makeLabelOperand(trapLabel)}));
+            if (needsDiv0Check) {
+                currentBlock.append(MInstr::make(
+                    MOpcode::TESTrr,
+                    std::vector<Operand>{cloneOperand(divisorRegOp), cloneOperand(divisorRegOp)}));
+                currentBlock.append(
+                    MInstr::make(MOpcode::JCC,
+                                 std::vector<Operand>{makeImmOperand(0), makeLabelOperand(trapLabel)}));
+            }
 
             if (std::holds_alternative<OpImm>(dividendClone)) {
                 currentBlock.append(MInstr::make(

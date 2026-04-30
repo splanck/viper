@@ -35,6 +35,7 @@
 
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
+#include "codegen/aarch64/ra/OperandRoles.hpp"
 
 #include <algorithm>
 #include <array>
@@ -362,59 +363,6 @@ static bool usesSP(MOpcode opc) noexcept {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Operand definition helpers
-// ---------------------------------------------------------------------------
-
-/// @brief Returns the number of leading register operands that are definitions
-///        (destinations) for a given opcode.  All remaining register operands
-///        are treated as uses (sources).
-///
-/// Most ALU instructions define ops[0] only.  Pair loads define ops[0] and
-/// ops[1].  Stores, compares, branches, and calls define no explicit register.
-static int numDefOperands(MOpcode opc) noexcept {
-    switch (opc) {
-        // Stores: ops[0] is the source register being stored, NOT a definition.
-        case MOpcode::StrRegFpImm:
-        case MOpcode::StrRegBaseImm:
-        case MOpcode::StrRegSpImm:
-        case MOpcode::StrFprFpImm:
-        case MOpcode::StrFprBaseImm:
-        case MOpcode::StrFprSpImm:
-        case MOpcode::StpRegFpImm:
-        case MOpcode::StpFprFpImm:
-        case MOpcode::PhiStoreGPR:
-        case MOpcode::PhiStoreFPR:
-        // Compares: no register destination; only set flags.
-        case MOpcode::CmpRR:
-        case MOpcode::CmpRI:
-        case MOpcode::TstRR:
-        case MOpcode::FCmpRR:
-        // Branches and returns: no register destination.
-        case MOpcode::Br:
-        case MOpcode::BCond:
-        case MOpcode::Cbz:
-        case MOpcode::Cbnz:
-        case MOpcode::Ret:
-        // Calls: implicit defs handled separately (caller-saved clobber).
-        case MOpcode::Bl:
-        case MOpcode::Blr:
-        // Stack pointer adjustments
-        case MOpcode::SubSpImm:
-        case MOpcode::AddSpImm:
-            return 0;
-
-        // Pair loads define two registers.
-        case MOpcode::LdpRegFpImm:
-        case MOpcode::LdpFprFpImm:
-            return 2;
-
-        // Everything else: single destination in ops[0].
-        default:
-            return 1;
-    }
-}
-
 /// @brief Returns true if the opcode is a call (Bl or Blr).
 static bool isCall(MOpcode opc) noexcept {
     return opc == MOpcode::Bl || opc == MOpcode::Blr;
@@ -436,7 +384,7 @@ struct DepNode {
 // Block scheduler
 // ---------------------------------------------------------------------------
 
-static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body) {
+static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetInfo &target) {
     const std::size_t N = body.size();
     if (N <= 1)
         return body;
@@ -472,51 +420,29 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body) {
     std::vector<MemoryHistoryEntry> memoryHistory;
     memoryHistory.reserve(N);
 
-    // Caller-saved registers that Bl/Blr implicitly clobber.
-    static const uint32_t callerSaved[] = {
-        static_cast<uint32_t>(PhysReg::X0),  static_cast<uint32_t>(PhysReg::X1),
-        static_cast<uint32_t>(PhysReg::X2),  static_cast<uint32_t>(PhysReg::X3),
-        static_cast<uint32_t>(PhysReg::X4),  static_cast<uint32_t>(PhysReg::X5),
-        static_cast<uint32_t>(PhysReg::X6),  static_cast<uint32_t>(PhysReg::X7),
-        static_cast<uint32_t>(PhysReg::X8),  static_cast<uint32_t>(PhysReg::X9),
-        static_cast<uint32_t>(PhysReg::X10), static_cast<uint32_t>(PhysReg::X11),
-        static_cast<uint32_t>(PhysReg::X12), static_cast<uint32_t>(PhysReg::X13),
-        static_cast<uint32_t>(PhysReg::X14), static_cast<uint32_t>(PhysReg::X15),
-        static_cast<uint32_t>(PhysReg::X16), static_cast<uint32_t>(PhysReg::X17),
-        static_cast<uint32_t>(PhysReg::V0),  static_cast<uint32_t>(PhysReg::V1),
-        static_cast<uint32_t>(PhysReg::V2),  static_cast<uint32_t>(PhysReg::V3),
-        static_cast<uint32_t>(PhysReg::V4),  static_cast<uint32_t>(PhysReg::V5),
-        static_cast<uint32_t>(PhysReg::V6),  static_cast<uint32_t>(PhysReg::V7),
-        static_cast<uint32_t>(PhysReg::V16), static_cast<uint32_t>(PhysReg::V17),
-        static_cast<uint32_t>(PhysReg::V18), static_cast<uint32_t>(PhysReg::V19),
-        static_cast<uint32_t>(PhysReg::V20), static_cast<uint32_t>(PhysReg::V21),
-        static_cast<uint32_t>(PhysReg::V22), static_cast<uint32_t>(PhysReg::V23),
-        static_cast<uint32_t>(PhysReg::V24), static_cast<uint32_t>(PhysReg::V25),
-        static_cast<uint32_t>(PhysReg::V26), static_cast<uint32_t>(PhysReg::V27),
-        static_cast<uint32_t>(PhysReg::V28), static_cast<uint32_t>(PhysReg::V29),
-        static_cast<uint32_t>(PhysReg::V30), static_cast<uint32_t>(PhysReg::V31),
-    };
+    // Caller-saved registers that Bl/Blr implicitly clobber.  Pull these from
+    // the selected target so scheduling follows Darwin/Linux/Windows ABI data.
+    std::vector<uint32_t> callerSaved;
+    callerSaved.reserve(target.callerSavedGPR.size() + target.callerSavedFPR.size());
+    for (const PhysReg reg : target.callerSavedGPR)
+        callerSaved.push_back(static_cast<uint32_t>(reg));
+    for (const PhysReg reg : target.callerSavedFPR)
+        callerSaved.push_back(static_cast<uint32_t>(reg));
 
     for (std::size_t i = 0; i < N; ++i) {
         const MInstr &mi = body[i];
-        const int nDefs = numDefOperands(mi.opc);
 
         // --- Register USE dependencies (RAW) ---
-        // Operands at index >= nDefs are uses; they depend on the last def.
-        for (std::size_t opIdx = static_cast<std::size_t>(nDefs); opIdx < mi.ops.size(); ++opIdx) {
+        // Register allocator operand roles are the single source of truth for
+        // explicit register uses and defs.
+        for (std::size_t opIdx = 0; opIdx < mi.ops.size(); ++opIdx) {
+            const auto roles = ra::operandRoles(mi, opIdx);
+            if (!roles.first)
+                continue;
             const auto &op = mi.ops[opIdx];
             if (op.kind != MOperand::Kind::Reg || !op.reg.isPhys)
                 continue;
             const std::size_t ri = regIdx(op.reg.idOrPhys);
-            if (lastDef[ri] != kNone)
-                addDep(i, lastDef[ri], instrLatency(body[lastDef[ri]].opc));
-            usesSinceDef[ri].push_back(i);
-        }
-
-        // For Blr, ops[0] is a USE (the target register to call through).
-        if (mi.opc == MOpcode::Blr && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Reg &&
-            mi.ops[0].reg.isPhys) {
-            const std::size_t ri = regIdx(mi.ops[0].reg.idOrPhys);
             if (lastDef[ri] != kNone)
                 addDep(i, lastDef[ri], instrLatency(body[lastDef[ri]].opc));
             usesSinceDef[ri].push_back(i);
@@ -589,16 +515,19 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body) {
         //      it must come after the old definition.
         // WAR: if this instruction defines a register that was previously read,
         //      it must come after that reader (so the reader sees the old value).
-        for (int d = 0; d < nDefs && d < static_cast<int>(mi.ops.size()); ++d) {
-            if (mi.ops[d].kind == MOperand::Kind::Reg && mi.ops[d].reg.isPhys) {
-                const std::size_t ri = regIdx(mi.ops[d].reg.idOrPhys);
+        for (std::size_t opIdx = 0; opIdx < mi.ops.size(); ++opIdx) {
+            const auto [isUse, isDef] = ra::operandRoles(mi, opIdx);
+            if (!isDef)
+                continue;
+            if (mi.ops[opIdx].kind == MOperand::Kind::Reg && mi.ops[opIdx].reg.isPhys) {
+                const std::size_t ri = regIdx(mi.ops[opIdx].reg.idOrPhys);
                 if (lastDef[ri] != kNone)
                     addDep(i, lastDef[ri], 1); // WAW dependency
                 for (auto u : usesSinceDef[ri])
                     addDep(i, u, 1); // WAR dependency
                 usesSinceDef[ri].clear();
                 lastDef[ri] = i;
-                if (ri < kNumPhysRegs && mi.ops[d].reg.cls == RegClass::GPR)
+                if (ri < kNumPhysRegs && mi.ops[opIdx].reg.cls == RegClass::GPR)
                     trackedAddrs[ri] = std::nullopt;
             }
         }
@@ -750,7 +679,7 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body) {
 // Per-function entry point
 // ---------------------------------------------------------------------------
 
-static void scheduleFunction(MFunction &fn) {
+static void scheduleFunction(MFunction &fn, const TargetInfo &target) {
     for (auto &bb : fn.blocks) {
         if (bb.instrs.size() <= 1)
             continue;
@@ -791,7 +720,7 @@ static void scheduleFunction(MFunction &fn) {
                 // Mid-block terminator or call — schedule the preceding segment,
                 // then append the boundary instruction in place.
                 if (segment.size() > 1)
-                    segment = scheduleBlock(std::move(segment));
+                    segment = scheduleBlock(std::move(segment), target);
                 result.insert(result.end(), segment.begin(), segment.end());
                 segment.clear();
                 result.push_back(mi);
@@ -803,7 +732,7 @@ static void scheduleFunction(MFunction &fn) {
         // Schedule the final body segment (between the last mid-block branch
         // and the final terminator group).
         if (segment.size() > 1)
-            segment = scheduleBlock(std::move(segment));
+            segment = scheduleBlock(std::move(segment), target);
         result.insert(result.end(), segment.begin(), segment.end());
 
         // Append final terminators in original order.
@@ -820,9 +749,14 @@ static void scheduleFunction(MFunction &fn) {
 // Pass implementation
 // ---------------------------------------------------------------------------
 
-bool SchedulerPass::run(AArch64Module &module, Diagnostics & /*diags*/) {
+bool SchedulerPass::run(AArch64Module &module, Diagnostics &diags) {
+    if (module.ti == nullptr) {
+        diags.error("aarch64 scheduler: target info is required");
+        return false;
+    }
+
     for (auto &fn : module.mir)
-        scheduleFunction(fn);
+        scheduleFunction(fn, *module.ti);
     return true;
 }
 

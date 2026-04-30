@@ -94,8 +94,8 @@ TEST(Arm64Division, UDivSimple) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O2"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect udiv instruction
     EXPECT_NE(asmText.find("udiv x"), std::string::npos);
@@ -221,12 +221,12 @@ TEST(Arm64Division, DivByConstant) {
                            "  ret %r\n"
                            "}\n";
     writeFile(in, il);
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
-    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const char *argv[] = {in.c_str(), "-S", out.c_str(), "-O2"};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Could be either sdiv or optimized to shift
-    // At minimum, the code should compile
     EXPECT_FALSE(asmText.empty());
+    EXPECT_FALSE(hasExactCall(asmText, "rt_trap_div0"));
+    EXPECT_FALSE(hasExactCall(asmText, "rt_trap_ovf"));
 }
 
 int main(int argc, char **argv) {

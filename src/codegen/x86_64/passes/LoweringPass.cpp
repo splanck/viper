@@ -420,12 +420,16 @@ class ModuleAdapter {
                 adaptIntDiv(instr, out, "srem.chk0");
                 break;
             case il::core::Opcode::UDiv:
-            case il::core::Opcode::UDivChk0:
                 adaptIntDiv(instr, out, "udiv");
                 break;
+            case il::core::Opcode::UDivChk0:
+                adaptIntDiv(instr, out, "udiv.chk0");
+                break;
             case il::core::Opcode::URem:
-            case il::core::Opcode::URemChk0:
                 adaptIntDiv(instr, out, "urem");
+                break;
+            case il::core::Opcode::URemChk0:
+                adaptIntDiv(instr, out, "urem.chk0");
                 break;
 
             // Shift operations

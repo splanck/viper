@@ -391,6 +391,42 @@ bool isVerifiedCheckedSubDemotion(const VerifyCtx &ctx) {
     return sawIncomingEdge;
 }
 
+/// @brief Decide whether a rejected plain div/rem has a verifier-visible proof.
+/// @details CheckOpt demotes checked div/rem only when the divisor is a nonzero
+///          constant, with the signed division MIN/-1 overflow case also proven
+///          impossible. Keep plain op acceptance limited to that syntactic proof
+///          so frontends still have to emit the checked opcodes.
+bool isVerifiedCheckedDivRemDemotion(const VerifyCtx &ctx) {
+    switch (ctx.instr.op) {
+        case Opcode::SDiv:
+        case Opcode::UDiv:
+        case Opcode::SRem:
+        case Opcode::URem:
+            break;
+        default:
+            return false;
+    }
+
+    if (ctx.instr.operands.size() != 2 || ctx.instr.operands[1].kind != Value::Kind::ConstInt)
+        return false;
+
+    const int64_t divisor = ctx.instr.operands[1].i64;
+    if (divisor == 0)
+        return false;
+
+    if (ctx.instr.op != Opcode::SDiv || divisor != -1) {
+        ctx.types.recordResult(ctx.instr, resolveResultType(ctx, getInstructionSpec(ctx.instr.op)));
+        return true;
+    }
+
+    const Value &lhs = ctx.instr.operands[0];
+    if (lhs.kind != Value::Kind::ConstInt || lhs.i64 == std::numeric_limits<int64_t>::min())
+        return false;
+
+    ctx.types.recordResult(ctx.instr, resolveResultType(ctx, getInstructionSpec(ctx.instr.op)));
+    return true;
+}
+
 /// @brief Force verification failure for explicitly rejected opcodes.
 /// @details Emits the rejection message provided by the specification so
 ///          tooling can surface meaningful diagnostics for disabled opcodes.
@@ -402,6 +438,8 @@ Expected<void> applyReject(const VerifyCtx &ctx, const InstructionSpec &spec) {
         ctx.types.recordResult(ctx.instr, resolveResultType(ctx, spec));
         return {};
     }
+    if (isVerifiedCheckedDivRemDemotion(ctx))
+        return {};
     const char *message = spec.rejectMessage ? spec.rejectMessage : "opcode rejected";
     return fail(ctx, std::string(message));
 }

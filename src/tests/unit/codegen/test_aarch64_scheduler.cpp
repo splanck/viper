@@ -50,6 +50,7 @@
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/aarch64/passes/BlockLayoutPass.hpp"
 #include "codegen/aarch64/passes/EmitPass.hpp"
+#include "codegen/aarch64/passes/LegalizePass.hpp"
 #include "codegen/aarch64/passes/LoweringPass.hpp"
 #include "codegen/aarch64/passes/PassManager.hpp"
 #include "codegen/aarch64/passes/PeepholePass.hpp"
@@ -78,6 +79,7 @@ static il::core::Module parseIL(const std::string &src) {
 static PassManager buildScheduledPipeline() {
     PassManager pm;
     pm.addPass(std::make_unique<LoweringPass>());
+    pm.addPass(std::make_unique<LegalizePass>());
     pm.addPass(std::make_unique<RegAllocPass>());
     pm.addPass(std::make_unique<BlockLayoutPass>());
     pm.addPass(std::make_unique<PeepholePass>());
@@ -167,12 +169,14 @@ TEST(AArch64Scheduler, InstructionCountStable) {
     // Unscheduled pipeline (no SchedulerPass).
     PassManager unscheduled;
     unscheduled.addPass(std::make_unique<LoweringPass>());
+    unscheduled.addPass(std::make_unique<LegalizePass>());
     unscheduled.addPass(std::make_unique<RegAllocPass>());
     unscheduled.addPass(std::make_unique<EmitPass>());
 
     // Scheduled pipeline (with SchedulerPass after RA, before emit).
     PassManager scheduled;
     scheduled.addPass(std::make_unique<LoweringPass>());
+    scheduled.addPass(std::make_unique<LegalizePass>());
     scheduled.addPass(std::make_unique<RegAllocPass>());
     scheduled.addPass(std::make_unique<SchedulerPass>());
     scheduled.addPass(std::make_unique<EmitPass>());
@@ -492,6 +496,7 @@ TEST(AArch64Scheduler, TerminatorLast) {
     // code before the first block label. MIR inspection avoids both issues.
     PassManager mirPipeline;
     mirPipeline.addPass(std::make_unique<LoweringPass>());
+    mirPipeline.addPass(std::make_unique<LegalizePass>());
     mirPipeline.addPass(std::make_unique<RegAllocPass>());
     mirPipeline.addPass(std::make_unique<SchedulerPass>());
 
@@ -514,7 +519,9 @@ TEST(AArch64Scheduler, TerminatorLast) {
                 continue;
             const MOpcode lastOpc = bb.instrs.back().opc;
             if (!isMirTerminator(lastOpc)) {
-                if (bb.name.rfind("L.Ltrap_ovf_", 0) == 0)
+                if (bb.name.rfind("Ltrap_ovf_", 0) == 0 ||
+                    bb.name.rfind("L.Ltrap_ovf_", 0) == 0 ||
+                    bb.name.rfind(".Ltrap_ovf_", 0) == 0)
                     continue;
                 std::cerr << "Block '" << bb.name << "' does not end with a terminator.\n";
                 terminatorOk = false;

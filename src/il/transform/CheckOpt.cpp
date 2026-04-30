@@ -135,6 +135,45 @@ bool tryConstantFoldOverflow(Instr &instr) {
     return false;
 }
 
+/// @brief Return true when a checked div/rem instruction can be represented by
+///        its plain counterpart because the divisor check is statically proven.
+bool tryDemoteCheckedDivRem(Instr &instr) {
+    if (instr.operands.size() < 2 || instr.operands[1].kind != Value::Kind::ConstInt)
+        return false;
+
+    const Value &lhs = instr.operands[0];
+    const int64_t divisor = instr.operands[1].i64;
+    if (divisor == 0)
+        return false;
+
+    switch (instr.op) {
+        case Opcode::SDivChk0:
+            // sdiv.chk0 also traps on INT_MIN / -1. A constant divisor other than
+            // -1 proves the overflow case impossible; divisor -1 needs a known
+            // non-minimum numerator.
+            if (divisor == -1 &&
+                (lhs.kind != Value::Kind::ConstInt ||
+                 lhs.i64 == std::numeric_limits<int64_t>::min())) {
+                return false;
+            }
+            instr.op = Opcode::SDiv;
+            return true;
+        case Opcode::UDivChk0:
+            instr.op = Opcode::UDiv;
+            return true;
+        case Opcode::SRemChk0:
+            // MIN % -1 is defined as 0 for Viper's checked remainder semantics,
+            // so a nonzero divisor fully proves the trap check unnecessary.
+            instr.op = Opcode::SRem;
+            return true;
+        case Opcode::URemChk0:
+            instr.op = Opcode::URem;
+            return true;
+        default:
+            return false;
+    }
+}
+
 /// @brief Key representing a check condition for redundancy detection.
 /// @details Two checks with the same key test the same condition. Uses the
 ///          shared valueEquals() helper for consistent value comparison.
@@ -180,7 +219,7 @@ CheckKey makeCheckKey(const Instr &instr) {
     return key;
 }
 
-/// @brief Test whether a check instruction is trivially satisfied by constant operands.
+/// @brief Test whether a standalone check instruction is trivially satisfied by constant operands.
 ///
 /// @details After SCCP runs its constant-rewriting phase, any operand that was proven
 ///          constant appears in the IR as a ConstInt/ConstFloat literal rather than a
@@ -190,9 +229,9 @@ CheckKey makeCheckKey(const Instr &instr) {
 ///
 ///          Rules applied per opcode:
 ///          - IdxChk(index, lo, hi)     — all three ConstInt and lo <= index < hi
-///          - SDivChk0 / UDivChk0 /
-///            SRemChk0 / URemChk0
-///            (lhs, divisor)            — divisor is a non-zero ConstInt
+///          Checked div/rem result-producing instructions are handled earlier
+///          by tryDemoteCheckedDivRem(), which preserves the result and rewrites
+///          to the corresponding plain arithmetic opcode when safe.
 ///
 /// @param instr Check instruction to inspect.
 /// @param replacementOut When the function returns true and the check has a result,
@@ -387,15 +426,17 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
     viper::il::UseDefInfo useInfo(function);
 
     // =========================================================================
-    // Phase 0: Overflow check strength reduction
+    // Phase 0: Check opcode demotion
     // =========================================================================
-    // When both operands of IAddOvf/ISubOvf/IMulOvf are compile-time constants,
-    // evaluate whether the operation overflows. If not, demote to the plain
-    // (unchecked) opcode — this eliminates trap-generating code and enables
-    // further constant folding downstream.
+    // Result-producing checks cannot be erased when their value is used. For
+    // checked div/rem, a statically nonzero divisor proves the guard safe, so
+    // demote to the matching plain opcode and let later arithmetic passes keep
+    // optimizing the value.
     for (auto &block : function.blocks) {
         for (auto &instr : block.instructions) {
             if (isOverflowOpcode(instr.op) && tryConstantFoldOverflow(instr))
+                changed = true;
+            if (tryDemoteCheckedDivRem(instr))
                 changed = true;
         }
     }

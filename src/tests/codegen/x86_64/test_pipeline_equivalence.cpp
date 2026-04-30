@@ -21,6 +21,7 @@
 #include "codegen/x86_64/passes/PassManager.hpp"
 #include "codegen/x86_64/passes/PeepholePass.hpp"
 #include "codegen/x86_64/passes/RegAllocPass.hpp"
+#include "codegen/x86_64/passes/SchedulerPass.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -94,6 +95,8 @@ namespace {
     manager.addPass(std::make_unique<viper::codegen::x64::passes::LoweringPass>());
     manager.addPass(std::make_unique<viper::codegen::x64::passes::LegalizePass>());
     manager.addPass(std::make_unique<viper::codegen::x64::passes::RegAllocPass>());
+    manager.addPass(std::make_unique<viper::codegen::x64::passes::SchedulerPass>());
+    manager.addPass(std::make_unique<viper::codegen::x64::passes::PeepholePass>());
     manager.addPass(std::make_unique<viper::codegen::x64::passes::EmitPass>(
         viper::codegen::x64::CodegenOptions{}));
 

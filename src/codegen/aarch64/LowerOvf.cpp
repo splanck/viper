@@ -16,13 +16,13 @@
 //
 // Pattern generated for add/sub overflow:
 //   adds/subs  Xd, Xn, Xm   (or #imm variant)
-//   b.vs  .Ltrap_ovf_<funcname>
+//   b.vs  Ltrap_ovf_<funcname>
 //
 // Pattern generated for mul overflow:
 //   mul    Xd, Xn, Xm
 //   smulh  Xtmp, Xn, Xm
 //   cmp    Xtmp, Xd, asr #63
-//   b.ne   .Ltrap_ovf_<funcname>
+//   b.ne   Ltrap_ovf_<funcname>
 //
 // The trap block calls rt_trap to abort execution.
 //
@@ -66,7 +66,10 @@ namespace {
 } // namespace
 
 void lowerOverflowOps(MFunction &fn) {
-    const std::string trapLabel = ".Ltrap_ovf_" + fn.name;
+    // Darwin assembly with .subsections_via_symbols requires conditional branch
+    // targets to be assembler-local labels.  `L...` is local on Mach-O and also
+    // resolves as a normal non-exported label on ELF.
+    const std::string trapLabel = "Ltrap_ovf_" + fn.name;
     std::optional<std::size_t> trapIndex{};
 
     auto ensureTrapBlock = [&]() -> std::size_t {
@@ -133,7 +136,7 @@ void lowerOverflowOps(MFunction &fn) {
                 //   smulh  Xtmp1, Xn, Xm       // high 64 bits (signed)
                 //   asr    Xtmp2, Xd, #63       // sign extension of bit 63
                 //   cmp    Xtmp1, Xtmp2         // compare high bits with expected sign
-                //   b.ne   .Ltrap_ovf           // overflow if they don't match
+                //   b.ne   Ltrap_ovf            // overflow if they don't match
                 auto dst = instr.ops[0];
                 auto lhs = instr.ops[1];
                 auto rhs = instr.ops[2];
@@ -152,7 +155,7 @@ void lowerOverflowOps(MFunction &fn) {
                 // 4. cmp Xtmp1, Xtmp2
                 MInstr cmp{MOpcode::CmpRR, {smulhDst, asrDst}};
 
-                // 5. b.ne .Ltrap_ovf
+                // 5. b.ne Ltrap_ovf
                 MInstr bne{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel)}};
 
                 // Insert instructions after the mul
@@ -200,9 +203,8 @@ void lowerOverflowOps(MFunction &fn) {
     }
 
     // Note: the trap block contains a `bl rt_trap` call, but rt_trap is noreturn.
-    // The isLeaf scan in CodegenPipeline.cpp skips .Ltrap_ blocks so that the
-    // hot path can benefit from leaf-function optimizations (no callee-saved
-    // register save/restore, potentially frameless).
+    // LegalizePass skips trap blocks when refreshing isLeaf so that the hot path
+    // can still benefit from leaf-function optimizations.
 }
 
 } // namespace viper::codegen::aarch64

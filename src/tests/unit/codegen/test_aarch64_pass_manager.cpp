@@ -18,7 +18,7 @@
 //   1. PipelineRoundtrip   — Full pass sequence
 //                            (Lower → RegAlloc → Scheduler → BlockLayout → Peephole → Emit)
 //                            produces correct assembly for a simple function.
-//   2. PartialPipeline     — Running only LoweringPass + RegAllocPass populates mir
+//   2. PartialPipeline     — Running only LoweringPass populates mir
 //                            but leaves assembly empty.
 //   3. FailPassShortCircuit — A pass that signals failure stops subsequent passes.
 //   4. EmptyModule         — PassManager on an empty IL module succeeds with no output.
@@ -28,11 +28,13 @@
 #include "tests/TestHarness.hpp"
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include "codegen/aarch64/CodegenPipeline.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/aarch64/passes/BlockLayoutPass.hpp"
 #include "codegen/aarch64/passes/EmitPass.hpp"
+#include "codegen/aarch64/passes/LegalizePass.hpp"
 #include "codegen/aarch64/passes/LoweringPass.hpp"
 #include "codegen/aarch64/passes/PassManager.hpp"
 #include "codegen/aarch64/passes/PeepholePass.hpp"
@@ -65,6 +67,7 @@ static il::core::Module parseIL(const std::string &src) {
 static PassManager buildFullPipeline() {
     PassManager pm;
     pm.addPass(std::make_unique<LoweringPass>());
+    pm.addPass(std::make_unique<LegalizePass>());
     pm.addPass(std::make_unique<RegAllocPass>());
     pm.addPass(std::make_unique<BlockLayoutPass>());
     pm.addPass(std::make_unique<PeepholePass>());
@@ -157,6 +160,88 @@ TEST(AArch64PassManager, PartialPipeline) {
     EXPECT_TRUE(m.assembly.empty());
 }
 
+TEST(AArch64PassManager, LegalizePassExpandsOverflowPseudos) {
+    const std::string il = "il 0.1\n"
+                           "func @checked_add(%a:i64, %b:i64) -> i64 {\n"
+                           "entry(%a:i64, %b:i64):\n"
+                           "  %r = iadd.ovf %a, %b\n"
+                           "  ret %r\n"
+                           "}\n";
+
+    il::core::Module mod = parseIL(il);
+    ASSERT_FALSE(mod.functions.empty());
+
+    const TargetInfo &ti = darwinTarget();
+    AArch64Module m;
+    m.ilMod = &mod;
+    m.ti = &ti;
+
+    PassManager pm;
+    pm.addPass(std::make_unique<LoweringPass>());
+    pm.addPass(std::make_unique<LegalizePass>());
+
+    Diagnostics diags;
+    ASSERT_TRUE(pm.run(m, diags));
+    ASSERT_EQ(m.mir.size(), 1u);
+
+    bool sawPseudo = false;
+    bool sawGuard = false;
+    bool sawTrapCall = false;
+    for (const auto &bb : m.mir[0].blocks) {
+        for (const auto &instr : bb.instrs) {
+            sawPseudo = sawPseudo || instr.opc == MOpcode::AddOvfRRR ||
+                        instr.opc == MOpcode::AddOvfRI;
+            sawGuard = sawGuard || instr.opc == MOpcode::BCond;
+            sawTrapCall = sawTrapCall || instr.opc == MOpcode::Bl;
+        }
+    }
+
+    EXPECT_FALSE(sawPseudo);
+    EXPECT_TRUE(sawGuard);
+    EXPECT_TRUE(sawTrapCall);
+}
+
+TEST(AArch64PassManager, LegalizePassInsertsMainRuntimeInitOnce) {
+    AArch64Module m;
+    m.ti = &darwinTarget();
+
+    MFunction fn;
+    fn.name = "main";
+    MBasicBlock entry;
+    entry.name = "entry";
+    entry.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    fn.blocks.push_back(std::move(entry));
+    m.mir.push_back(std::move(fn));
+
+    LegalizePass pass;
+    Diagnostics diags;
+    ASSERT_TRUE(pass.run(m, diags));
+    ASSERT_TRUE(pass.run(m, diags));
+
+    ASSERT_EQ(m.mir.size(), 1u);
+    ASSERT_EQ(m.mir[0].blocks.size(), 1u);
+    const auto &instrs = m.mir[0].blocks[0].instrs;
+    ASSERT_GE(instrs.size(), 3u);
+    ASSERT_EQ(instrs[0].opc, MOpcode::Bl);
+    ASSERT_EQ(instrs[1].opc, MOpcode::Bl);
+    ASSERT_FALSE(m.mir[0].isLeaf);
+    ASSERT_FALSE(instrs[0].ops.empty());
+    ASSERT_FALSE(instrs[1].ops.empty());
+    EXPECT_EQ(instrs[0].ops[0].label, "rt_legacy_context");
+    EXPECT_EQ(instrs[1].ops[0].label, "rt_set_current_context");
+
+    std::size_t initCalls = 0;
+    for (const auto &instr : instrs) {
+        if (instr.opc == MOpcode::Bl && !instr.ops.empty() &&
+            instr.ops[0].kind == MOperand::Kind::Label &&
+            (instr.ops[0].label == "rt_legacy_context" ||
+             instr.ops[0].label == "rt_set_current_context")) {
+            ++initCalls;
+        }
+    }
+    EXPECT_EQ(initCalls, 2u);
+}
+
 // ---------------------------------------------------------------------------
 // Test 3: A failing pass stops subsequent passes.
 // ---------------------------------------------------------------------------
@@ -201,6 +286,7 @@ TEST(AArch64PassManager, FailPassShortCircuit) {
     // Pipeline: Lower → FAIL → (Peephole should NOT run) → (Emit should NOT run).
     PassManager pm;
     pm.addPass(std::make_unique<LoweringPass>());
+    pm.addPass(std::make_unique<LegalizePass>());
     pm.addPass(std::make_unique<AlwaysFailPass>());
     pm.addPass(std::make_unique<PeepholePass>());
     pm.addPass(std::make_unique<EmitPass>());

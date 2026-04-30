@@ -106,6 +106,8 @@ enum class MOpcode {
     REMS64Chk0rr, ///< Checked signed 64-bit remainder pseudo (/0 trap, MIN%-1 = 0).
     DIVU64rr,  ///< Unsigned 64-bit division pseudo (dest <- lhs / rhs).
     REMU64rr,  ///< Unsigned 64-bit remainder pseudo (dest <- lhs % rhs).
+    DIVU64Chk0rr, ///< Checked unsigned 64-bit division pseudo (trap on /0).
+    REMU64Chk0rr, ///< Checked unsigned 64-bit remainder pseudo (trap on /0).
     CQO,       ///< Sign-extend RAX into RDX:RAX.
     IDIVrm,    ///< Signed divide RDX:RAX by the given operand.
     DIVrm,     ///< Unsigned divide RDX:RAX by the given operand.

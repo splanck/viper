@@ -740,20 +740,26 @@ void EmitCommon::emitDivRem(const ILInstr &instr, std::string_view opcode) {
     divisor = materialiseGpr(divisor);
 
     const MOpcode pseudo = [&]() {
-        if (opcode == "div" || opcode == "sdiv") {
+        if (opcode == "sdiv") {
             return MOpcode::DIVS64rr;
         }
-        if (opcode == "sdiv.chk0") {
+        if (opcode == "div" || opcode == "sdiv.chk0") {
             return MOpcode::DIVS64Chk0rr;
         }
-        if (opcode == "rem" || opcode == "srem") {
+        if (opcode == "srem") {
             return MOpcode::REMS64rr;
         }
-        if (opcode == "srem.chk0") {
+        if (opcode == "rem" || opcode == "srem.chk0") {
             return MOpcode::REMS64Chk0rr;
         }
         if (opcode == "udiv") {
             return MOpcode::DIVU64rr;
+        }
+        if (opcode == "udiv.chk0") {
+            return MOpcode::DIVU64Chk0rr;
+        }
+        if (opcode == "urem.chk0") {
+            return MOpcode::REMU64Chk0rr;
         }
         return MOpcode::REMU64rr;
     }();

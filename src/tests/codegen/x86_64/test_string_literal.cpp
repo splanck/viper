@@ -54,8 +54,10 @@ namespace {
 }
 
 [[nodiscard]] bool hasExpectedStringLiteralSequence(const std::string &asmText) {
-    // Accept both .rodata (ELF/Mach-O) and .rdata (COFF/Windows).
+    // Accept ELF, Mach-O, and COFF read-only data sections.
     auto rodataPos = asmText.find(".section .rodata");
+    if (rodataPos == std::string::npos)
+        rodataPos = asmText.find(".section __TEXT,__const");
     if (rodataPos == std::string::npos)
         rodataPos = asmText.find(".section .rdata");
     if (rodataPos == std::string::npos) {

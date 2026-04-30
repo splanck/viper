@@ -49,9 +49,10 @@ still requires `.ovf` opcodes regardless of the flag.
 | `sdiv.chk0` | Toward zero (C99) | **Trap** | **Trap** |
 | `udiv.chk0` | Toward zero | **Trap** | N/A |
 
-The plain `sdiv` / `udiv` opcodes are verifier-rejected with
-*"signed/unsigned division must use sdiv.chk0/udiv.chk0"*. Use the `.chk0`
-forms exclusively.
+Source IL should use the `.chk0` forms. The verifier rejects plain `sdiv` /
+`udiv` unless an optimizer has already proven the divisor non-zero; CheckOpt
+uses that proof to demote checked division to the plain opcode so native
+backends can omit dead trap edges.
 
 **Division truncation direction**: `7 / -2 = -3`, `-7 / 2 = -3`.
 
@@ -62,8 +63,9 @@ forms exclusively.
 | `srem.chk0` | Dividend's sign | **Trap** | `0` (no trap) |
 | `urem.chk0` | Unsigned | **Trap** | N/A |
 
-The plain `srem` / `urem` opcodes are verifier-rejected (matches BASIC `MOD`
-semantics per the verifier message). Use the `.chk0` forms exclusively.
+Source IL should use the `.chk0` forms. As with division, the verifier accepts
+plain `srem` / `urem` only when CheckOpt has preserved a non-zero constant
+divisor proof by demoting from a checked opcode.
 
 **Remainder sign rule** (C99): `-7 % 2 = -1`, `7 % -2 = 1`, `-7 % -2 = -1`.
 
@@ -202,8 +204,9 @@ Type hierarchy: `INTEGER% (I16) < LONG& (I64) < SINGLE! (F64) < DOUBLE# (F64)`
 | `A / B` (float div) | `fdiv` | Both promoted to F64 |
 | `TRUE` | `-1` (I64) | BASIC uses `-1` for true |
 
-Both frontends emit the checked variants because the IL verifier rejects the
-plain (non-`.ovf` / non-`.chk0`) signed integer opcodes. The BASIC frontend
+Both frontends emit the checked variants because source IL is expected to use
+the plain (non-`.ovf` / non-`.chk0`) signed integer opcodes only after a
+proving optimizer demotes them. The BASIC frontend
 exposes an internal `OverflowPolicy::Wrap` switch (in `EmitCommon.cpp:135`),
 but every current call site passes `OverflowPolicy::Checked`, so the wrapping
 path is dead code at lowering time and would fail verification if enabled.

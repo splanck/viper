@@ -641,7 +641,7 @@ struct RuleSpec {
 ///
 /// @see lookupRuleSpec() to find a rule for an instruction
 /// @see matchesRuleSpec() for the rule matching implementation
-extern const std::array<RuleSpec, 55> kLoweringRuleTable;
+extern const std::array<RuleSpec, 57> kLoweringRuleTable;
 
 } // namespace lowering
 

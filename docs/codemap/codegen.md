@@ -222,7 +222,7 @@ Targeting System V AMD64 ABI (Linux/macOS) and Windows x64 ABI.
 |---------------------------|------------------------------------------|
 | `BinaryEmitPass.hpp/cpp`  | Native binary object emission pass       |
 | `EmitPass.hpp/cpp`        | Assembly text emission pass              |
-| `LegalizePass.hpp/cpp`    | Instruction selection/legalization pass   |
+| `LegalizePass.hpp/cpp`    | Pre-RA legalization, pseudo expansion, runtime-entry MIR insertion |
 | `LoweringPass.hpp/cpp`    | IL to MIR lowering pass                  |
 | `PassManager.hpp/cpp`     | Pass orchestration and sequencing        |
 | `PeepholePass.hpp/cpp`    | Peephole optimization pass               |

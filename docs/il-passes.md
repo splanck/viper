@@ -248,7 +248,8 @@ Threads jumps through blocks with predictable branch conditions:
 - **Constant-operand elimination (SCCP integration)**: When SCCP's `rewriteConstants()` has inlined operands as literal
   `ConstInt` values before CheckOpt runs, the pass evaluates check conditions statically at compile time:
   - `IdxChk(index, lo, hi)` — eliminated when all three are ConstInt and `lo <= index < hi`
-  - `SDivChk0/UDivChk0/SRemChk0/URemChk0(lhs, divisor)` — eliminated when divisor is a non-zero ConstInt
+  - `SDivChk0/UDivChk0/SRemChk0/URemChk0(lhs, divisor)` — demoted to the corresponding plain div/rem opcode when the
+    divisor is a non-zero ConstInt and the signed `MIN / -1` trap case is impossible. The result temp is preserved.
   - **Type safety**: ConstInt values type as I64 in the verifier. When the check result type is narrower (e.g. I32 for
     IdxChk) and the result has live uses, constant elimination is skipped and the dominance-based check still applies.
     This prevents type-mismatch verifier errors when the check result is used as a narrower-typed discriminant.
@@ -262,7 +263,7 @@ Threads jumps through blocks with predictable branch conditions:
 - Safety rules: a check is eliminated only if the dominating check block dominates the use-site block; hoisting is
   restricted to loop headers with canonical preheaders. EH-sensitive opcodes (resume/eh push/pop) keep loops ineligible.
 - Tests: `src/tests/unit/il/transform/checkopt_redundancy.cpp` covers nested-loop redundancies, non-dominating siblings (no
-  elimination), constant in-bounds elimination, constant non-zero divisor elimination, and trap-preservation cases.
+  elimination), constant in-bounds elimination, checked div/rem demotion, and trap-preservation cases.
 
 ## EarlyCSE
 
@@ -404,9 +405,10 @@ pipelines should keep per-pass verification enabled.
 The BASIC frontend (`src/tools/viper/cmd_run.cpp`) only ran `SimplifyCFG` on verification failure; it now
 applies the canonical O0/O1/O2 pipeline unconditionally.
 
-**Fix**: Both frontends now call `pm.runPipeline(module, "O1")` / `pm.runPipeline(module, "O2")` to use
-the canonically registered pipelines, ensuring VM-interpreted programs receive the same optimization as
-natively compiled ones.
+**Fix**: Frontends and native codegen entry points call `pm.runPipeline(module, "O1")` / `pm.runPipeline(module, "O2")`
+to use the canonically registered pipelines. The AArch64 and x86-64 native pipelines no longer maintain backend-local
+O1/O2 pass lists; after native EH lowering they reject any residual structured EH opcodes before optimization, then run
+the same IL pipelines as the VM/frontends.
 
 **Test**: `test_il_canonical_pipeline` — verifies O1/O2 contain expected passes, full peephole is canonical, and SCCP
 runs.

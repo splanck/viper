@@ -3,15 +3,17 @@
 # Purpose: Build the x86-64 codegen smoke tests that exercise the adapter
 #          ILModule facade and verify minimal assembly output.
 
-# Gate x86_64-specific tests to x86_64 hosts to avoid cross-arch
-# assembler/runtime issues (e.g., Apple Silicon without Rosetta).
+# Run pure x86-64 backend tests on every host.  Gate only tests that assemble,
+# link, or execute x86-64 machine code through the native host path.
 string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" VIPER_HOST_ARCH)
-if (NOT VIPER_HOST_ARCH MATCHES "x86_64|amd64")
-    message(STATUS "Skipping x86_64 codegen tests on host arch: ${CMAKE_SYSTEM_PROCESSOR}")
-    return()
+set(VIPER_X86_64_NATIVE_TESTS OFF)
+if (VIPER_HOST_ARCH MATCHES "x86_64|amd64")
+    set(VIPER_X86_64_NATIVE_TESTS ON)
+else ()
+    message(STATUS "Building pure x86_64 codegen tests only on host arch: ${CMAKE_SYSTEM_PROCESSOR}")
 endif ()
 
-set(_viper_codegen_x86_64_tests
+set(_viper_codegen_x86_64_pure_tests
         abi_probe
         add_ret
         addr_stress
@@ -21,8 +23,6 @@ set(_viper_codegen_x86_64_tests
         cf_stress
         determinism
         varargs_al
-        diff_vm_native
-        div_trap
         ovf_trap
         udiv_urem
         i1_normalization
@@ -37,13 +37,20 @@ set(_viper_codegen_x86_64_tests
         regalloc_consistency
         regalloc_stress
         fp_stress
-        udiv_pow2)
+        udiv_pow2
+        object_only_cli)
 
-list(APPEND _viper_codegen_x86_64_tests
+set(_viper_codegen_x86_64_native_tests
+        diff_vm_native
+        div_trap
         e2e_bitwise_cli
         e2e_fdiv_cli
-        object_only_cli
         native_asm)
+
+set(_viper_codegen_x86_64_tests ${_viper_codegen_x86_64_pure_tests})
+if (VIPER_X86_64_NATIVE_TESTS)
+    list(APPEND _viper_codegen_x86_64_tests ${_viper_codegen_x86_64_native_tests})
+endif ()
 
 if (WIN32)
     list(REMOVE_ITEM _viper_codegen_x86_64_tests varargs_al)

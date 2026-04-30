@@ -130,10 +130,13 @@ The backend implements a **sequential multi-pass pipeline**:
 
 ```cpp
 // High-level pipeline flow
-ILModule → LoweringPass → LegalizePass → RegAllocPass → PeepholePass → EmitPass → Assembly
+ILModule → LoweringPass → LegalizePass → RegAllocPass → SchedulerPass → PeepholePass → EmitPass → Assembly
 ```
 
 Each pass operates on a shared `Module` structure that threads state through the pipeline.
+`LegalizePass` is a real backend stage on both native backends: x86-64 lowers adapter IL to MIR and expands early
+machine pseudos; AArch64 expands overflow pseudos, inserts the `main` runtime-context calls into MIR, and refreshes
+leaf metadata before register allocation.
 
 ### PassManager
 
@@ -152,6 +155,7 @@ class PassManager {
 - Failure in any pass short-circuits the pipeline
 - Diagnostics accumulate throughout execution
 - Each pass reports success/failure via return value
+- `VIPER_CODEGEN_STATS=1` enables non-fatal diagnostics with backend peephole transformation counts
 
 ### Module State
 
@@ -1007,11 +1011,14 @@ src/codegen/
     ├── asmfmt/Format.hpp/cpp      # Formatting helpers
     ├── generated/                 # Generated opcode/format tables (EncodingTable.inc, OpFmtTable.inc)
     ├── passes/                    # Pipeline passes
+    │   ├── BinaryEmitPass.hpp/cpp # Native object emission pass
     │   ├── EmitPass.hpp/cpp       # Assembly emission pass
     │   ├── LegalizePass.hpp/cpp   # Instruction selection pass
     │   ├── LoweringPass.hpp/cpp   # IL lowering pass
     │   ├── PassManager.hpp/cpp    # Pass orchestration
-    │   └── RegAllocPass.hpp/cpp   # Register allocation pass
+    │   ├── PeepholePass.hpp/cpp   # Post-RA MIR optimization pass
+    │   ├── RegAllocPass.hpp/cpp   # Register allocation pass
+    │   └── SchedulerPass.hpp/cpp  # Post-RA scheduling pass
     └── ra/                        # Register allocation internals
         ├── Allocator.hpp/cpp      # Linear scan allocator
         ├── Coalescer.hpp/cpp      # Copy coalescing

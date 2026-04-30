@@ -43,6 +43,7 @@
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/aarch64/passes/BlockLayoutPass.hpp"
 #include "codegen/aarch64/passes/EmitPass.hpp"
+#include "codegen/aarch64/passes/LegalizePass.hpp"
 #include "codegen/aarch64/passes/LoweringPass.hpp"
 #include "codegen/aarch64/passes/PassManager.hpp"
 #include "codegen/aarch64/passes/PeepholePass.hpp"
@@ -70,6 +71,7 @@ static il::core::Module parseIL(const std::string &src) {
 static PassManager buildLayoutPipeline() {
     PassManager pm;
     pm.addPass(std::make_unique<LoweringPass>());
+    pm.addPass(std::make_unique<LegalizePass>());
     pm.addPass(std::make_unique<RegAllocPass>());
     pm.addPass(std::make_unique<BlockLayoutPass>());
     pm.addPass(std::make_unique<PeepholePass>());
@@ -142,6 +144,7 @@ TEST(AArch64BlockLayout, BlockCountStable) {
     // Without BlockLayoutPass.
     PassManager withoutLayout;
     withoutLayout.addPass(std::make_unique<LoweringPass>());
+    withoutLayout.addPass(std::make_unique<LegalizePass>());
     withoutLayout.addPass(std::make_unique<RegAllocPass>());
     withoutLayout.addPass(std::make_unique<PeepholePass>());
     withoutLayout.addPass(std::make_unique<EmitPass>());
@@ -219,6 +222,7 @@ TEST(AArch64BlockLayout, LoopBranchReduced) {
     // Without BlockLayoutPass.
     PassManager withoutLayout;
     withoutLayout.addPass(std::make_unique<LoweringPass>());
+    withoutLayout.addPass(std::make_unique<LegalizePass>());
     withoutLayout.addPass(std::make_unique<RegAllocPass>());
     withoutLayout.addPass(std::make_unique<PeepholePass>());
     withoutLayout.addPass(std::make_unique<EmitPass>());
@@ -282,6 +286,7 @@ TEST(AArch64BlockLayout, ConditionalFalseEdgeBecomesFallthrough) {
 
     PassManager withoutLayout;
     withoutLayout.addPass(std::make_unique<LoweringPass>());
+    withoutLayout.addPass(std::make_unique<LegalizePass>());
     withoutLayout.addPass(std::make_unique<RegAllocPass>());
     withoutLayout.addPass(std::make_unique<PeepholePass>());
     withoutLayout.addPass(std::make_unique<EmitPass>());
@@ -341,6 +346,7 @@ TEST(AArch64BlockLayout, EntryBlockFirst) {
     // Run only through BlockLayoutPass (no emit needed).
     PassManager pm;
     pm.addPass(std::make_unique<LoweringPass>());
+    pm.addPass(std::make_unique<LegalizePass>());
     pm.addPass(std::make_unique<RegAllocPass>());
     pm.addPass(std::make_unique<BlockLayoutPass>());
 
