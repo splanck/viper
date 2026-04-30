@@ -26,10 +26,30 @@
 #include "BranchOpt.hpp"
 
 #include <string>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
 namespace viper::codegen::x64::peephole {
+
+namespace {
+
+std::optional<std::size_t> lookupUnplacedTarget(const MInstr &instr,
+                                                const std::unordered_map<std::string, std::size_t> &nameToIdx,
+                                                const std::vector<bool> &placed) {
+    for (auto it = instr.operands.rbegin(); it != instr.operands.rend(); ++it) {
+        const auto *lbl = std::get_if<OpLabel>(&*it);
+        if (!lbl)
+            continue;
+        auto target = nameToIdx.find(lbl->name);
+        if (target == nameToIdx.end() || placed[target->second])
+            return std::nullopt;
+        return target->second;
+    }
+    return std::nullopt;
+}
+
+} // namespace
 
 void traceBlockLayout(MFunction &fn, PeepholeStats &stats) {
     if (fn.blocks.size() <= 2)
@@ -54,14 +74,27 @@ void traceBlockLayout(MFunction &fn, PeepholeStats &stats) {
             placed[cur] = true;
             order.push_back(cur);
 
-            // Follow unconditional JMP target to extend the trace.
+            // Follow a preferred fallthrough edge to extend the trace.
             const auto &instrs = fn.blocks[cur].instructions;
-            if (!instrs.empty() && instrs.back().opcode == MOpcode::JMP) {
-                const auto *lbl = std::get_if<OpLabel>(&instrs.back().operands[0]);
-                if (lbl) {
-                    auto it = nameToIdx.find(lbl->name);
-                    if (it != nameToIdx.end() && !placed[it->second]) {
-                        cur = it->second;
+            if (!instrs.empty()) {
+                const auto &last = instrs.back();
+                if (instrs.size() >= 2 &&
+                    instrs[instrs.size() - 2].opcode == MOpcode::JCC &&
+                    last.opcode == MOpcode::JMP) {
+                    if (auto fallthrough = lookupUnplacedTarget(last, nameToIdx, placed)) {
+                        cur = *fallthrough;
+                        continue;
+                    }
+                    if (auto taken =
+                            lookupUnplacedTarget(instrs[instrs.size() - 2], nameToIdx, placed)) {
+                        cur = *taken;
+                        continue;
+                    }
+                }
+
+                if (last.opcode == MOpcode::JMP || last.opcode == MOpcode::JCC) {
+                    if (auto target = lookupUnplacedTarget(last, nameToIdx, placed)) {
+                        cur = *target;
                         continue;
                     }
                 }

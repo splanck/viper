@@ -10,7 +10,7 @@
 // Key invariants: Passes execute sequentially with early exit on failure; assembly
 //                 is written before linking when emit_asm is set; run() returns
 //                 a zero exit_code only when all stages succeed; optimize level
-//                 controls which optimisation passes are run (0=none, 1=peephole).
+//                 controls backend optimization passes (0=none, 1+=scheduler+peephole).
 // Ownership/Lifetime: Callers retain ownership of file paths and do not transfer
 //                     resource management; pipeline state is local to each run().
 // Links: docs/codemap.md, src/codegen/x86_64/Backend.hpp

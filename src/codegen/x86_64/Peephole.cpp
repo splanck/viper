@@ -34,6 +34,7 @@
 #include "peephole/ArithSimplify.hpp"
 #include "peephole/BranchOpt.hpp"
 #include "peephole/DCE.hpp"
+#include "peephole/MemoryOpt.hpp"
 #include "peephole/MovFolding.hpp"
 #include "peephole/PeepholeCommon.hpp"
 
@@ -51,7 +52,9 @@ static constexpr std::size_t kMaxIterations = 100;
 
 /// Run per-block rewrite passes (strength reduction, identity elimination,
 /// move folding, DCE). Returns the number of transformations applied.
-static std::size_t runBlockRewrites(MFunction &fn, ph::PeepholeStats &stats) {
+static std::size_t runBlockRewrites(MFunction &fn,
+                                    ph::PeepholeStats &stats,
+                                    const TargetInfo &target) {
     std::size_t before = stats.total();
 
     for (auto &block : fn.blocks) {
@@ -133,40 +136,38 @@ static std::size_t runBlockRewrites(MFunction &fn, ph::PeepholeStats &stats) {
         }
 
         // Pass 5: Dead code elimination
-        ph::runBlockDCE(instrs, stats);
+        ph::forwardFrameStoreLoads(instrs, stats);
+        ph::eliminateDeadFrameStores(instrs, stats);
+        ph::runBlockDCE(instrs, stats, target);
     }
 
     return stats.total() - before;
 }
 
-std::size_t runPeepholes(MFunction &fn) {
+std::size_t runPeepholes(MFunction &fn, const TargetInfo &target) {
     ph::PeepholeStats stats;
 
     // Iterate block rewrites to a fixed point. One rewrite can expose
     // further opportunities (e.g., strength reduction → identity move →
     // DCE), so iterate until no new transformations are found.
     for (std::size_t iter = 0; iter < kMaxIterations; ++iter) {
-        if (runBlockRewrites(fn, stats) == 0)
+        if (runBlockRewrites(fn, stats, target) == 0)
             break;
     }
 
-    // Layout and branch passes run once — they are idempotent and don't
-    // benefit from iteration.
-
-    // Pass 6: Greedy trace block layout
-    ph::traceBlockLayout(fn, stats);
-
-    // Pass 7: Cold block reordering
-    ph::moveColdBlocks(fn, stats);
-
-    // Pass 8: Branch chain elimination
-    ph::eliminateBranchChains(fn, stats);
-
-    // Pass 9: Conditional branch inversion
-    ph::invertConditionalBranches(fn, stats);
-
-    // Pass 10: Remove fallthrough jumps
-    ph::removeFallthroughJumps(fn, stats);
+    // Layout and branch passes can expose each other: chain elimination may
+    // create fallthrough jumps, and block layout can create branch-inversion
+    // opportunities. Iterate them to the same bounded fixed point.
+    for (std::size_t iter = 0; iter < kMaxIterations; ++iter) {
+        const std::size_t before = stats.total();
+        ph::traceBlockLayout(fn, stats);
+        ph::moveColdBlocks(fn, stats);
+        ph::eliminateBranchChains(fn, stats);
+        ph::invertConditionalBranches(fn, stats);
+        ph::removeFallthroughJumps(fn, stats);
+        if (stats.total() == before)
+            break;
+    }
 
     return stats.total();
 }

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-24
+last-verified: 2026-04-30
 ---
 
 # AArch64 (arm64) Backend — Status and Plan
@@ -33,6 +33,13 @@ programs, and the development roadmap. It is kept developer-focused with concret
 - **Call ABI hardening**: direct calls to module-defined variadic callees (`...`) now honor the variadic stack-tail ABI, and malformed direct-call IL is diagnosed instead of being silently dropped
 - **Emitter parity**: text assembly and the binary encoder now gate BTI / PACIASP / AUTIASP on target policy; branch-target identification and return-address signing are emitted by default on Darwin and skipped for Linux/Windows objects
 - **Strength reduction**: signed and unsigned division by arbitrary constants now lower through magic-multiply sequences; `UmulhRRR` is part of the MIR and binary encoder surface
+- **Peephole hardening**: optimized builds now run block layout before peephole cleanup, then schedule, then run a
+  final peephole cleanup. The peephole pass validates that no virtual registers remain, branch targets still name MIR
+  blocks, and non-terminators do not follow terminators.
+- **Target-aware DCE**: AArch64 peephole DCE can use `TargetInfo` for CFG-level physical-register liveness, including
+  callee-saved FPRs and call-clobber/argument registers.
+- **Loop cleanup**: loop phi spill/reload cleanup iterates to a bounded fixed point and re-runs cross-block dead
+  frame-store cleanup after each successful iteration.
 - **117 codegen test files**
 
 ## Source File Map
@@ -194,12 +201,15 @@ The AArch64 backend uses `CodegenPipeline` to orchestrate passes. The pipeline s
 4. **Register coalescing** (`Coalescer`) — pre-RA copy elimination
 5. **Register allocation** (`ra/Allocator`) — linear scan, spill/reload insertion
 6. **Frame finalization** (`FrameBuilder`) — stack slot layout, frame size computation
-7. **Peephole optimization** (`Peephole` + 6 sub-passes) — post-RA pattern rewrites
-8. **Post-RA scheduling** — instruction reordering for pipeline utilization
-9. **Assembly emission** (`AsmEmitter::emitFunction`) — MIR → text assembly
-10. **Binary encoding** (`A64BinaryEncoder`) — direct object code emission (optional)
-11. **Rodata emission** — string/FP constant pool to `.section __TEXT,__const` (macOS) or `.section .rodata` (Linux)
-12. **Assembly + linking** (`LinkerSupport`) — invoke assembler/linker, link with only the runtime archives and support libraries required by the module; the selected target platform now also chooses the object format, linker platform, and system-assembler triple
+7. **Block layout** — reorder hot/fallthrough blocks before branch cleanup
+8. **Peephole optimization** (`Peephole` + sub-passes) — post-RA pattern rewrites, CFG-aware DCE, branch cleanup,
+   phi spill/reload cleanup, and MIR validation
+9. **Post-RA scheduling** — instruction reordering for pipeline utilization
+10. **Final peephole cleanup** — removes branches/fallthroughs and dead moves exposed by scheduling
+11. **Assembly emission** (`AsmEmitter::emitFunction`) — MIR → text assembly
+12. **Binary encoding** (`A64BinaryEncoder`) — direct object code emission (optional)
+13. **Rodata emission** — string/FP constant pool to `.section __TEXT,__const` (macOS) or `.section .rodata` (Linux)
+14. **Assembly + linking** (`LinkerSupport`) — invoke assembler/linker, link with only the runtime archives and support libraries required by the module; the selected target platform now also chooses the object format, linker platform, and system-assembler triple
 
 Before MIR lowering, `CodegenPipeline` now runs a selective IL optimization stage:
 

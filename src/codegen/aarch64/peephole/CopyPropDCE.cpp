@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 namespace viper::codegen::aarch64::peephole {
 
@@ -197,6 +198,230 @@ std::size_t removeDeadInstructions(std::vector<MInstr> &instrs, PeepholeStats &s
         stats.deadInstructionsRemoved += static_cast<int>(removed);
     }
 
+    return removed;
+}
+
+namespace {
+
+[[nodiscard]] uint32_t physRegKey(PhysReg reg) noexcept {
+    const RegClass cls = isGPR(reg) ? RegClass::GPR : RegClass::FPR;
+    return (static_cast<uint32_t>(cls) << 16) | static_cast<uint32_t>(reg);
+}
+
+void addTargetExitLive(const TargetInfo &target, std::unordered_set<uint32_t> &regs) {
+    regs.insert(physRegKey(target.intReturnReg));
+    regs.insert(physRegKey(target.f64ReturnReg));
+    regs.insert(physRegKey(PhysReg::SP));
+    for (PhysReg reg : target.calleeSavedGPR)
+        regs.insert(physRegKey(reg));
+    for (PhysReg reg : target.calleeSavedFPR)
+        regs.insert(physRegKey(reg));
+}
+
+void addCallImplicitUses(const TargetInfo &target, std::unordered_set<uint32_t> &uses) {
+    for (PhysReg reg : target.intArgOrder)
+        uses.insert(physRegKey(reg));
+    for (PhysReg reg : target.f64ArgOrder)
+        uses.insert(physRegKey(reg));
+    uses.insert(physRegKey(PhysReg::SP));
+}
+
+void addCallClobbers(const TargetInfo &target, std::unordered_set<uint32_t> &defs) {
+    for (PhysReg reg : target.callerSavedGPR)
+        defs.insert(physRegKey(reg));
+    for (PhysReg reg : target.callerSavedFPR)
+        defs.insert(physRegKey(reg));
+}
+
+void collectUsesDefs(const MInstr &instr,
+                     const TargetInfo &target,
+                     std::unordered_set<uint32_t> &uses,
+                     std::unordered_set<uint32_t> &defs) {
+    for (std::size_t idx = 0; idx < instr.ops.size(); ++idx) {
+        const auto [isUse, isDef] = classifyOperand(instr, idx);
+        const auto &op = instr.ops[idx];
+        if (!isPhysReg(op))
+            continue;
+        const uint32_t key = regKey(op);
+        if (isUse)
+            uses.insert(key);
+        if (isDef)
+            defs.insert(key);
+    }
+
+    if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr) {
+        addCallImplicitUses(target, uses);
+        addCallClobbers(target, defs);
+    }
+}
+
+void addUniqueSucc(std::vector<std::size_t> &succs,
+                   const std::unordered_map<std::string, std::size_t> &labelToIndex,
+                   const std::string &label) {
+    const auto it = labelToIndex.find(label);
+    if (it == labelToIndex.end())
+        return;
+    if (std::find(succs.begin(), succs.end(), it->second) == succs.end())
+        succs.push_back(it->second);
+}
+
+[[nodiscard]] bool isConditionalBranch(const MInstr &instr) noexcept {
+    return instr.opc == MOpcode::BCond || instr.opc == MOpcode::Cbz || instr.opc == MOpcode::Cbnz;
+}
+
+[[nodiscard]] bool setsFlagsForDCE(MOpcode opcode) noexcept {
+    switch (opcode) {
+        case MOpcode::CmpRR:
+        case MOpcode::CmpRI:
+        case MOpcode::TstRR:
+        case MOpcode::FCmpRR:
+        case MOpcode::AddsRRR:
+        case MOpcode::SubsRRR:
+        case MOpcode::AddsRI:
+        case MOpcode::SubsRI:
+            return true;
+        default:
+            return false;
+    }
+}
+
+[[nodiscard]] std::vector<std::vector<std::size_t>> buildSuccessors(const MFunction &fn) {
+    std::unordered_map<std::string, std::size_t> labelToIndex;
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i)
+        labelToIndex.emplace(fn.blocks[i].name, i);
+
+    std::vector<std::vector<std::size_t>> succs(fn.blocks.size());
+    for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi) {
+        const auto addFallthrough = [&]() {
+            if (bi + 1 < fn.blocks.size())
+                succs[bi].push_back(bi + 1);
+        };
+
+        const auto &instrs = fn.blocks[bi].instrs;
+        if (instrs.empty()) {
+            addFallthrough();
+            continue;
+        }
+
+        const auto &last = instrs.back();
+        if (last.opc == MOpcode::Br && !last.ops.empty() &&
+            last.ops[0].kind == MOperand::Kind::Label) {
+            if (instrs.size() >= 2) {
+                const auto &prev = instrs[instrs.size() - 2];
+                if (isConditionalBranch(prev) && prev.ops.size() >= 2 &&
+                    prev.ops[1].kind == MOperand::Kind::Label)
+                    addUniqueSucc(succs[bi], labelToIndex, prev.ops[1].label);
+            }
+            addUniqueSucc(succs[bi], labelToIndex, last.ops[0].label);
+            continue;
+        }
+
+        if (isConditionalBranch(last) && last.ops.size() >= 2 &&
+            last.ops[1].kind == MOperand::Kind::Label) {
+            addUniqueSucc(succs[bi], labelToIndex, last.ops[1].label);
+            addFallthrough();
+            continue;
+        }
+
+        if (last.opc != MOpcode::Ret)
+            addFallthrough();
+    }
+    return succs;
+}
+
+} // namespace
+
+std::size_t removeDeadInstructionsCFG(MFunction &fn,
+                                      PeepholeStats &stats,
+                                      const TargetInfo &target) {
+    if (fn.blocks.empty())
+        return 0;
+
+    const auto successors = buildSuccessors(fn);
+    const std::size_t blockCount = fn.blocks.size();
+
+    std::vector<std::unordered_set<uint32_t>> gen(blockCount);
+    std::vector<std::unordered_set<uint32_t>> kill(blockCount);
+    std::vector<std::unordered_set<uint32_t>> liveIn(blockCount);
+    std::vector<std::unordered_set<uint32_t>> liveOut(blockCount);
+
+    for (std::size_t bi = 0; bi < blockCount; ++bi) {
+        for (const auto &instr : fn.blocks[bi].instrs) {
+            std::unordered_set<uint32_t> uses;
+            std::unordered_set<uint32_t> defs;
+            collectUsesDefs(instr, target, uses, defs);
+
+            for (uint32_t key : uses) {
+                if (kill[bi].count(key) == 0)
+                    gen[bi].insert(key);
+            }
+            kill[bi].insert(defs.begin(), defs.end());
+        }
+    }
+
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (std::size_t bi = blockCount; bi-- > 0;) {
+            std::unordered_set<uint32_t> newOut;
+            if (successors[bi].empty()) {
+                addTargetExitLive(target, newOut);
+            } else {
+                for (std::size_t succ : successors[bi])
+                    newOut.insert(liveIn[succ].begin(), liveIn[succ].end());
+            }
+
+            std::unordered_set<uint32_t> newIn = gen[bi];
+            for (uint32_t key : newOut) {
+                if (kill[bi].count(key) == 0)
+                    newIn.insert(key);
+            }
+
+            if (newOut != liveOut[bi] || newIn != liveIn[bi]) {
+                liveOut[bi] = std::move(newOut);
+                liveIn[bi] = std::move(newIn);
+                changed = true;
+            }
+        }
+    }
+
+    std::size_t removed = 0;
+    for (std::size_t bi = 0; bi < blockCount; ++bi) {
+        auto &instrs = fn.blocks[bi].instrs;
+        if (instrs.empty())
+            continue;
+
+        std::unordered_set<uint32_t> live = liveOut[bi];
+        std::vector<bool> toRemove(instrs.size(), false);
+
+        for (std::size_t i = instrs.size(); i-- > 0;) {
+            const auto &instr = instrs[i];
+            std::unordered_set<uint32_t> uses;
+            std::unordered_set<uint32_t> defs;
+            collectUsesDefs(instr, target, uses, defs);
+
+            const bool defLive =
+                std::any_of(defs.begin(), defs.end(), [&](uint32_t key) {
+                    return live.count(key) != 0;
+                });
+
+            if (!defs.empty() && !defLive && !hasSideEffects(instr) &&
+                !setsFlagsForDCE(instr.opc)) {
+                toRemove[i] = true;
+                ++removed;
+                continue;
+            }
+
+            for (uint32_t key : defs)
+                live.erase(key);
+            live.insert(uses.begin(), uses.end());
+        }
+
+        if (std::any_of(toRemove.begin(), toRemove.end(), [](bool value) { return value; }))
+            removeMarkedInstructions(instrs, toRemove);
+    }
+
+    stats.deadInstructionsRemoved += static_cast<int>(removed);
     return removed;
 }
 

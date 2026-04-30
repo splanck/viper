@@ -35,16 +35,20 @@
 //                               increasing the load-use distance.
 //   4. TerminatorLast         — Terminator instructions (ret, b, cbnz) remain
 //                               at the end of their block after scheduling.
-//   5. PipelineIntegration    — SchedulerPass inserted between RA and Peephole
+//   5. CallsAreBoundaries     — Calls stay fixed while surrounding segments
+//                               are scheduled independently.
+//   6. PipelineIntegration    — SchedulerPass inserted between RA and Peephole
 //                               in the PassManager produces identical behaviour.
 //
 //===----------------------------------------------------------------------===//
 
 #include "tests/TestHarness.hpp"
+#include <iostream>
 #include <sstream>
 #include <string>
 
 #include "codegen/aarch64/TargetAArch64.hpp"
+#include "codegen/aarch64/passes/BlockLayoutPass.hpp"
 #include "codegen/aarch64/passes/EmitPass.hpp"
 #include "codegen/aarch64/passes/LoweringPass.hpp"
 #include "codegen/aarch64/passes/PassManager.hpp"
@@ -70,11 +74,13 @@ static il::core::Module parseIL(const std::string &src) {
     return mod;
 }
 
-/// Build a PassManager with the scheduler inserted between RA and Peephole.
+/// Build a PassManager with the production optimized pass order.
 static PassManager buildScheduledPipeline() {
     PassManager pm;
     pm.addPass(std::make_unique<LoweringPass>());
     pm.addPass(std::make_unique<RegAllocPass>());
+    pm.addPass(std::make_unique<BlockLayoutPass>());
+    pm.addPass(std::make_unique<PeepholePass>());
     pm.addPass(std::make_unique<SchedulerPass>());
     pm.addPass(std::make_unique<PeepholePass>());
     pm.addPass(std::make_unique<EmitPass>());
@@ -90,6 +96,13 @@ static int countSubstr(const std::string &text, const std::string &needle) {
         pos += needle.size();
     }
     return n;
+}
+
+static void dumpDiagnosticsOnFailure(bool ok, const Diagnostics &diags) {
+    if (ok)
+        return;
+    for (const auto &err : diags.errors())
+        std::cerr << err << '\n';
 }
 
 } // namespace
@@ -121,6 +134,7 @@ TEST(AArch64Scheduler, CorrectOutput) {
 
     Diagnostics diags;
     const bool ok = buildScheduledPipeline().run(m, diags);
+    dumpDiagnosticsOnFailure(ok, diags);
 
     EXPECT_TRUE(ok);
     EXPECT_FALSE(m.assembly.empty());
@@ -254,6 +268,7 @@ TEST(AArch64Scheduler, LoadUseSeparation) {
 
     Diagnostics diags;
     const bool ok = buildScheduledPipeline().run(m, diags);
+    dumpDiagnosticsOnFailure(ok, diags);
 
     EXPECT_TRUE(ok);
 
@@ -392,7 +407,62 @@ TEST(AArch64Scheduler, TerminatorLast) {
 }
 
 // ---------------------------------------------------------------------------
-// Test 5: SchedulerPass integrates cleanly into the full PassManager pipeline.
+// Test 5: Calls remain hard scheduling boundaries.
+// ---------------------------------------------------------------------------
+//
+// The scheduler may reorder independent arithmetic inside a call-free segment,
+// but helper/runtime calls must stay in program order.  In this hand-built
+// block the post-call multiply has a higher scheduling priority than the call;
+// without call segmentation it can be hoisted above the call.
+//
+TEST(AArch64Scheduler, CallsAreBoundaries) {
+    AArch64Module module;
+    module.ti = &darwinTarget();
+
+    MFunction fn;
+    fn.name = "call_boundary";
+    MBasicBlock bb;
+    bb.name = "entry";
+
+    MInstr call;
+    call.opc = MOpcode::Bl;
+    call.ops = {MOperand::labelOp("rt_side_effect")};
+    bb.instrs.push_back(std::move(call));
+
+    MInstr mul;
+    mul.opc = MOpcode::MulRRR;
+    mul.ops = {MOperand::regOp(PhysReg::X19),
+               MOperand::regOp(PhysReg::X20),
+               MOperand::regOp(PhysReg::X21)};
+    bb.instrs.push_back(std::move(mul));
+
+    MInstr add;
+    add.opc = MOpcode::AddRRR;
+    add.ops = {MOperand::regOp(PhysReg::X22),
+               MOperand::regOp(PhysReg::X19),
+               MOperand::regOp(PhysReg::X23)};
+    bb.instrs.push_back(std::move(add));
+
+    MInstr ret;
+    ret.opc = MOpcode::Ret;
+    bb.instrs.push_back(std::move(ret));
+
+    fn.blocks.push_back(std::move(bb));
+    module.mir.push_back(std::move(fn));
+
+    Diagnostics diags;
+    ASSERT_TRUE(SchedulerPass().run(module, diags));
+
+    const auto &instrs = module.mir[0].blocks[0].instrs;
+    ASSERT_EQ(instrs.size(), 4u);
+    EXPECT_EQ(instrs[0].opc, MOpcode::Bl);
+    EXPECT_EQ(instrs[1].opc, MOpcode::MulRRR);
+    EXPECT_EQ(instrs[2].opc, MOpcode::AddRRR);
+    EXPECT_EQ(instrs[3].opc, MOpcode::Ret);
+}
+
+// ---------------------------------------------------------------------------
+// Test 6: SchedulerPass integrates cleanly into the full PassManager pipeline.
 // ---------------------------------------------------------------------------
 TEST(AArch64Scheduler, PipelineIntegration) {
     const std::string il = "il 0.1\n"
@@ -415,6 +485,7 @@ TEST(AArch64Scheduler, PipelineIntegration) {
     // Full pipeline with scheduler.
     Diagnostics diags;
     const bool ok = buildScheduledPipeline().run(m, diags);
+    dumpDiagnosticsOnFailure(ok, diags);
 
     EXPECT_TRUE(ok);
     EXPECT_TRUE(diags.errors().empty());

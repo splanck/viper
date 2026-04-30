@@ -66,8 +66,9 @@ static PassManager buildFullPipeline() {
     PassManager pm;
     pm.addPass(std::make_unique<LoweringPass>());
     pm.addPass(std::make_unique<RegAllocPass>());
-    pm.addPass(std::make_unique<SchedulerPass>());
     pm.addPass(std::make_unique<BlockLayoutPass>());
+    pm.addPass(std::make_unique<PeepholePass>());
+    pm.addPass(std::make_unique<SchedulerPass>());
     pm.addPass(std::make_unique<PeepholePass>());
     pm.addPass(std::make_unique<EmitPass>());
     return pm;
@@ -359,6 +360,67 @@ TEST(AArch64PassManager, RegAllocPoolExhaustionBecomesDiagnostic) {
                   "AArch64 register allocation failed for function 'reg_pressure'"),
               std::string::npos);
     EXPECT_NE(diags.errors().front().find("pool exhausted"), std::string::npos);
+}
+
+TEST(AArch64PassManager, PeepholeRejectsRemainingVirtualRegisters) {
+    const TargetInfo &ti = darwinTarget();
+    AArch64Module m;
+    m.ti = &ti;
+
+    MFunction fn;
+    fn.name = "bad_vreg";
+    MBasicBlock entry;
+    entry.name = "entry";
+    entry.instrs.push_back(
+        MInstr{MOpcode::MovRR,
+               {MOperand::vregOp(RegClass::GPR, 1), MOperand::regOp(PhysReg::X0)}});
+    entry.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    fn.blocks.push_back(std::move(entry));
+    m.mir.push_back(std::move(fn));
+
+    Diagnostics diags;
+    PeepholePass pass;
+    EXPECT_FALSE(pass.run(m, diags));
+    EXPECT_TRUE(diags.hasErrors());
+}
+
+TEST(AArch64PassManager, PeepholeRejectsMissingBranchTarget) {
+    const TargetInfo &ti = darwinTarget();
+    AArch64Module m;
+    m.ti = &ti;
+
+    MFunction fn;
+    fn.name = "bad_branch";
+    MBasicBlock entry;
+    entry.name = "entry";
+    entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("missing")}});
+    fn.blocks.push_back(std::move(entry));
+    m.mir.push_back(std::move(fn));
+
+    Diagnostics diags;
+    PeepholePass pass;
+    EXPECT_FALSE(pass.run(m, diags));
+    EXPECT_TRUE(diags.hasErrors());
+}
+
+TEST(AArch64PassManager, PeepholeRejectsInstructionAfterTerminator) {
+    const TargetInfo &ti = darwinTarget();
+    AArch64Module m;
+    m.ti = &ti;
+
+    MFunction fn;
+    fn.name = "bad_terminator";
+    MBasicBlock entry;
+    entry.name = "entry";
+    entry.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    entry.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("callee")}});
+    fn.blocks.push_back(std::move(entry));
+    m.mir.push_back(std::move(fn));
+
+    Diagnostics diags;
+    PeepholePass pass;
+    EXPECT_FALSE(pass.run(m, diags));
+    EXPECT_TRUE(diags.hasErrors());
 }
 
 TEST(AArch64PassManager, OptimizeLevelZeroSkipsBackendOptPasses) {

@@ -12,6 +12,7 @@ add_library(viper_codegen_x86_64 STATIC
         ra/Liveness.cpp
         FrameLowering.cpp
         CallLowering.cpp
+        OperandRoles.cpp
         ISel.cpp
         LowerDiv.cpp
         LowerOvf.cpp
@@ -24,9 +25,11 @@ add_library(viper_codegen_x86_64 STATIC
         Lowering.EH.cpp
         Lowering.CF.cpp
         LoweringRules.cpp
+        Scheduler.cpp
         Peephole.cpp
         peephole/ArithSimplify.cpp
         peephole/MovFolding.cpp
+        peephole/MemoryOpt.cpp
         peephole/DCE.cpp
         peephole/BranchOpt.cpp
         Backend.cpp
@@ -35,6 +38,7 @@ add_library(viper_codegen_x86_64 STATIC
         passes/LoweringPass.cpp
         passes/LegalizePass.cpp
         passes/RegAllocPass.cpp
+        passes/SchedulerPass.cpp
         passes/PeepholePass.cpp
         passes/EmitPass.cpp
         passes/BinaryEmitPass.cpp

@@ -21,6 +21,7 @@
 
 #include "Liveness.hpp"
 
+#include "codegen/x86_64/OperandRoles.hpp"
 #include "codegen/common/ra/DataflowLiveness.hpp"
 
 #include <algorithm>
@@ -129,66 +130,6 @@ void LivenessAnalysis::buildCFG(const MFunction &func) {
 void LivenessAnalysis::collectVregs(const MInstr &instr,
                                     std::vector<uint16_t> &uses,
                                     std::vector<uint16_t> &defs) {
-    // Classify operands based on opcode — simplified version of classifyOperands.
-    // For liveness, we need to know which vregs are used and which are defined.
-    // Default: operand 0 is use+def, rest are use-only.
-    // Pure defs: MOVrr[0], MOVri[0], MOVmr[0], LEA[0], SETcc[1],
-    //            MOVZXrr32[0], CVTSI2SD[0], CVTTSD2SI[0], MOVQrx[0], MOVQxr[0],
-    //            MOVSDrr[0], MOVSDmr[0], MOVUPSmr[0], XORrr32[0]
-
-    auto isDefOnly = [&](std::size_t idx) -> bool {
-        switch (instr.opcode) {
-            case MOpcode::MOVrr:
-            case MOpcode::MOVri:
-            case MOpcode::MOVmr:
-            case MOpcode::LEA:
-            case MOpcode::MOVZXrr8:
-            case MOpcode::MOVZXrr32:
-            case MOpcode::CVTSI2SD:
-            case MOpcode::CVTTSD2SI:
-            case MOpcode::MOVQrx:
-            case MOpcode::MOVQxr:
-            case MOpcode::MOVSDrr:
-            case MOpcode::MOVSDmr:
-            case MOpcode::MOVUPSmr:
-            case MOpcode::XORrr32:
-                return idx == 0;
-            case MOpcode::SETcc:
-                return idx == 1;
-            default:
-                return false;
-        }
-    };
-
-    auto isUseDef = [&](std::size_t idx) -> bool {
-        switch (instr.opcode) {
-            case MOpcode::ADDrr:
-            case MOpcode::SUBrr:
-            case MOpcode::IMULrr:
-            case MOpcode::FADD:
-            case MOpcode::FSUB:
-            case MOpcode::FMUL:
-            case MOpcode::FDIV:
-            case MOpcode::ADDri:
-            case MOpcode::CMOVNErr:
-            case MOpcode::ANDrr:
-            case MOpcode::ORrr:
-            case MOpcode::XORrr:
-            case MOpcode::SHLrc:
-            case MOpcode::SHRrc:
-            case MOpcode::SARrc:
-            case MOpcode::SHLri:
-            case MOpcode::SHRri:
-            case MOpcode::SARri:
-            case MOpcode::ANDri:
-            case MOpcode::ORri:
-            case MOpcode::XORri:
-                return idx == 0;
-            default:
-                return false;
-        }
-    };
-
     for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
         const auto &op = instr.operands[idx];
 
@@ -197,14 +138,11 @@ void LivenessAnalysis::collectVregs(const MInstr &instr,
             if (reg->isPhys)
                 continue; // Physical registers don't participate in vreg liveness.
 
-            if (isDefOnly(idx)) {
-                defs.push_back(reg->idOrPhys);
-            } else if (isUseDef(idx)) {
+            const auto [isUse, isDef] = operandRoles(instr, idx);
+            if (isUse)
                 uses.push_back(reg->idOrPhys);
+            if (isDef)
                 defs.push_back(reg->idOrPhys);
-            } else {
-                uses.push_back(reg->idOrPhys);
-            }
         }
         // Handle memory operand base/index registers as uses.
         else if (const auto *mem = std::get_if<OpMem>(&op)) {

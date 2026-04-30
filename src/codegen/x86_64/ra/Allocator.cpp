@@ -22,6 +22,7 @@
 #include "Allocator.hpp"
 
 #include "Coalescer.hpp"
+#include "codegen/x86_64/OperandRoles.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -787,130 +788,10 @@ void LinearScanAllocator::releaseActiveForBlock(MBasicBlock &block, std::size_t 
 /// @return Vector describing the role of each operand.
 std::vector<LinearScanAllocator::OperandRole> LinearScanAllocator::classifyOperands(
     const MInstr &instr) const {
-    std::vector<OperandRole> roles(instr.operands.size(), OperandRole{true, false});
-    switch (instr.opcode) {
-        case MOpcode::MOVrr:
-            if (!roles.empty()) {
-                roles[0] = OperandRole{false, true};
-            }
-            if (roles.size() > 1) {
-                roles[1] = OperandRole{true, false};
-            }
-            break;
-        case MOpcode::MOVri:
-            if (!roles.empty()) {
-                roles[0] = OperandRole{false, true};
-            }
-            break;
-        case MOpcode::MOVmr:
-            // Load from memory to register: dest is def-only, source memory is use
-            if (!roles.empty()) {
-                roles[0] = OperandRole{false, true};
-            }
-            // operand 1 (memory) base/index handled by handleOperand
-            break;
-        case MOpcode::LEA:
-            if (!roles.empty()) {
-                roles[0] = OperandRole{false, true};
-            }
-            break;
-        case MOpcode::ADDrr:
-        case MOpcode::SUBrr:
-        case MOpcode::IMULrr:
-        case MOpcode::FADD:
-        case MOpcode::FSUB:
-        case MOpcode::FMUL:
-        case MOpcode::FDIV:
-            if (!roles.empty()) {
-                roles[0] = OperandRole{true, true};
-            }
-            if (roles.size() > 1) {
-                roles[1] = OperandRole{true, false};
-            }
-            break;
-        case MOpcode::ADDri:
-            if (!roles.empty()) {
-                roles[0] = OperandRole{true, true};
-            }
-            break;
-        case MOpcode::XORrr32:
-            if (!roles.empty()) {
-                roles[0] = OperandRole{false, true};
-            }
-            if (roles.size() > 1) {
-                roles[1] = OperandRole{true, false};
-            }
-            break;
-        case MOpcode::CMOVNErr:
-        case MOpcode::ANDrr:
-        case MOpcode::ORrr:
-        case MOpcode::XORrr:
-        case MOpcode::SHLrc:
-        case MOpcode::SHRrc:
-        case MOpcode::SARrc:
-            if (!roles.empty()) {
-                roles[0] = OperandRole{true, true};
-            }
-            if (roles.size() > 1) {
-                roles[1] = OperandRole{true, false};
-            }
-            break;
-        case MOpcode::SHLri:
-        case MOpcode::SHRri:
-        case MOpcode::SARri:
-        case MOpcode::ANDri:
-        case MOpcode::ORri:
-        case MOpcode::XORri:
-            if (!roles.empty()) {
-                roles[0] = OperandRole{true, true};
-            }
-            break;
-        case MOpcode::CMPrr:
-        case MOpcode::TESTrr:
-        case MOpcode::UCOMIS:
-            for (auto &role : roles) {
-                role = OperandRole{true, false};
-            }
-            break;
-        case MOpcode::CMPri:
-            if (!roles.empty()) {
-                roles[0] = OperandRole{true, false};
-            }
-            break;
-        case MOpcode::SETcc:
-            // SETcc has operands: (condCode:Imm, dest:RegOrMem)
-            // The condition code is read-only, the destination is write-only
-            if (!roles.empty()) {
-                roles[0] = OperandRole{true, false}; // condition code is read
-            }
-            if (roles.size() > 1) {
-                roles[1] = OperandRole{false, true}; // destination is write
-            }
-            break;
-        case MOpcode::MOVZXrr8:
-        case MOpcode::MOVZXrr32:
-        case MOpcode::CVTSI2SD:
-        case MOpcode::CVTTSD2SI:
-        case MOpcode::MOVQrx:
-        case MOpcode::MOVQxr:
-        case MOpcode::MOVSDrr:
-        case MOpcode::MOVSDmr:
-        case MOpcode::MOVUPSmr:
-            if (!roles.empty()) {
-                roles[0] = OperandRole{false, true};
-            }
-            if (roles.size() > 1) {
-                roles[1] = OperandRole{true, false};
-            }
-            break;
-        case MOpcode::MOVSDrm:
-        case MOpcode::MOVUPSrm:
-            if (roles.size() > 1) {
-                roles[1] = OperandRole{true, false};
-            }
-            break;
-        default:
-            break;
+    std::vector<OperandRole> roles(instr.operands.size(), OperandRole{false, false});
+    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
+        const auto [isUse, isDef] = operandRoles(instr, idx);
+        roles[idx] = OperandRole{isUse, isDef};
     }
     return roles;
 }

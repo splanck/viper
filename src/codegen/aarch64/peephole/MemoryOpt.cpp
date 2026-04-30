@@ -64,10 +64,13 @@ bool tryLdpStpMerge(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats 
     long long off1 = first.ops[1].imm;
     long long off2 = second.ops[1].imm;
 
-    if (off2 != off1 + 8)
+    const bool ascending = off2 == off1 + 8;
+    const bool descending = off1 == off2 + 8;
+    if (!ascending && !descending)
         return false;
 
-    if (off1 < -512 || off1 > 504)
+    const long long pairOffset = ascending ? off1 : off2;
+    if (pairOffset < -512 || pairOffset > 504)
         return false;
 
     if (isLoad) {
@@ -78,9 +81,9 @@ bool tryLdpStpMerge(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats 
     (void)isFPR;
 
     first.opc = pairOpc;
-    MOperand reg1 = first.ops[0];
-    MOperand reg2 = second.ops[0];
-    MOperand offset = first.ops[1];
+    MOperand reg1 = ascending ? first.ops[0] : second.ops[0];
+    MOperand reg2 = ascending ? second.ops[0] : first.ops[0];
+    MOperand offset = MOperand::immOp(pairOffset);
     first.ops.clear();
     first.ops.push_back(reg1);
     first.ops.push_back(reg2);

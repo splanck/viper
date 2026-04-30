@@ -65,7 +65,7 @@ struct PeepholeStats {
 ///
 /// @param fn Machine function to optimize (modified in place).
 /// @return Statistics about optimizations applied.
-[[nodiscard]] PeepholeStats runPeephole(MFunction &fn);
+[[nodiscard]] PeepholeStats runPeephole(MFunction &fn, const TargetInfo *target = nullptr);
 
 /// @brief Re-scan MIR after peephole to remove callee-saved registers that are
 ///        no longer referenced.  Peephole may fold away uses of callee-saved

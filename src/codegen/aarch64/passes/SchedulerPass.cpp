@@ -10,7 +10,8 @@
 //
 // Algorithm:
 //   For each basic block in each MIR function:
-//   1. Partition instructions into non-terminator body + terminators.
+//   1. Partition instructions into non-terminator body segments separated by
+//      calls and mid-block guard branches, plus the final terminator group.
 //   2. Build a data-dependency DAG from physical-register def/use chains.
 //      Memory dependencies are tracked by access class when the address is
 //      known (FP/SP/base+imm), so disjoint stack slots and base-address ranges
@@ -774,10 +775,14 @@ static void scheduleFunction(MFunction &fn) {
         if (bb.instrs.size() <= 1)
             continue;
 
-        // Split the instruction stream into segments separated by mid-block
-        // terminators (BCond, Cbz, Cbnz that appear before the final
+        // Split the instruction stream into segments separated by calls and
+        // mid-block terminators (BCond, Cbz, Cbnz that appear before the final
         // terminator group).  Each segment is scheduled independently, then
-        // reassembled with the separator branches in their original positions.
+        // reassembled with the separators in their original positions.  Calls
+        // remain hard scheduling boundaries because the dependency model tracks
+        // register and memory effects, but does not model all runtime side
+        // effects or helper-call conventions precisely enough to safely move
+        // unrelated arithmetic across them.
         //
         // Example block layout:
         //   adds x15, x12, #3      ← segment 0
@@ -802,14 +807,14 @@ static void scheduleFunction(MFunction &fn) {
 
         for (std::size_t i = 0; i < termStart; ++i) {
             auto &mi = bb.instrs[i];
-            if (isTerminator(mi.opc)) {
-                // Mid-block terminator — schedule the preceding segment,
-                // then append the terminator as a barrier.
+            if (isTerminator(mi.opc) || isCall(mi.opc)) {
+                // Mid-block terminator or call — schedule the preceding segment,
+                // then append the boundary instruction in place.
                 if (segment.size() > 1)
                     segment = scheduleBlock(std::move(segment));
                 result.insert(result.end(), segment.begin(), segment.end());
                 segment.clear();
-                result.push_back(mi); // Keep the mid-block branch in place.
+                result.push_back(mi);
             } else {
                 segment.push_back(mi);
             }

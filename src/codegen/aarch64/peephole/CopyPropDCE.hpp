@@ -37,6 +37,11 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats);
 /// @brief Perform dead code elimination within a basic block.
 std::size_t removeDeadInstructions(std::vector<MInstr> &instrs, PeepholeStats &stats);
 
+/// @brief Perform CFG-aware physical-register dead code elimination.
+std::size_t removeDeadInstructionsCFG(MFunction &fn,
+                                      PeepholeStats &stats,
+                                      const TargetInfo &target);
+
 /// @brief Eliminate dead stores to frame-pointer-relative offsets.
 std::size_t eliminateDeadFpStores(std::vector<MInstr> &instrs, PeepholeStats &stats);
 

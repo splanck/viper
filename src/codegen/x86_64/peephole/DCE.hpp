@@ -33,6 +33,8 @@ namespace viper::codegen::x64::peephole {
 
 /// @brief Run dead code elimination on a basic block.
 /// @return Number of instructions eliminated.
-std::size_t runBlockDCE(std::vector<MInstr> &instrs, PeepholeStats &stats);
+std::size_t runBlockDCE(std::vector<MInstr> &instrs,
+                        PeepholeStats &stats,
+                        const TargetInfo &target);
 
 } // namespace viper::codegen::x64::peephole

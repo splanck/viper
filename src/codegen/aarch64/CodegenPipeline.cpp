@@ -375,8 +375,9 @@ bool runCodegenPipeline(passes::AArch64Module &module,
 
     if (opts.optimizeLevel >= 1) {
         passes::PassManager manager;
-        manager.addPass(std::make_unique<passes::SchedulerPass>());
         manager.addPass(std::make_unique<passes::BlockLayoutPass>());
+        manager.addPass(std::make_unique<passes::PeepholePass>());
+        manager.addPass(std::make_unique<passes::SchedulerPass>());
         manager.addPass(std::make_unique<passes::PeepholePass>());
         if (!manager.run(module, diags))
             return flushOnFailure();

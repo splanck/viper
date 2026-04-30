@@ -96,6 +96,11 @@ struct BinaryEmitResult {
                                      const CodegenOptions &options,
                                      std::string &errors);
 
+/// \brief Run post-register-allocation instruction scheduling on MIR.
+[[nodiscard]] bool scheduleModuleMIR(std::vector<MFunction> &mir,
+                                     const CodegenOptions &options,
+                                     std::string &errors);
+
 /// \brief Run explicit post-RA backend optimizations on MIR.
 [[nodiscard]] bool optimizeModuleMIR(std::vector<MFunction> &mir,
                                      const CodegenOptions &options,

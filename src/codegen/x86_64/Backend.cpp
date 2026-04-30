@@ -33,6 +33,7 @@
 #include "ISel.hpp"
 #include "Peephole.hpp"
 #include "RegAllocLinear.hpp"
+#include "Scheduler.hpp"
 #include "peephole/PeepholeCommon.hpp"
 #include "TargetX64.hpp"
 #include "binenc/X64BinaryEncoder.hpp"
@@ -365,6 +366,17 @@ bool allocateModuleMIR(std::vector<MFunction> &mir,
     return true;
 }
 
+bool scheduleModuleMIR(std::vector<MFunction> &mir,
+                       const CodegenOptions &options,
+                       std::string &errors) {
+    errors.clear();
+    if (options.optimizeLevel < 1)
+        return true;
+
+    (void)scheduleModule(mir);
+    return true;
+}
+
 bool optimizeModuleMIR(std::vector<MFunction> &mir,
                        const CodegenOptions &options,
                        std::string &errors) {
@@ -372,8 +384,9 @@ bool optimizeModuleMIR(std::vector<MFunction> &mir,
     if (options.optimizeLevel < 1)
         return true;
 
+    const TargetInfo &target = selectTarget(options.targetABI);
     for (auto &fn : mir) {
-        runPeepholes(fn);
+        runPeepholes(fn, target);
     }
     return true;
 }
@@ -442,6 +455,8 @@ CodegenResult emitFunctionToAssembly(const ILFunction &func, const CodegenOption
         return CodegenResult{{}, errors};
     if (!allocateModuleMIR(mir, frames, target, options, errors))
         return CodegenResult{{}, errors};
+    if (!scheduleModuleMIR(mir, options, errors))
+        return CodegenResult{{}, errors};
     if (!optimizeModuleMIR(mir, options, errors))
         return CodegenResult{{}, errors};
     return emitMIRToAssembly(mir, roData, target, options);
@@ -464,6 +479,8 @@ CodegenResult emitModuleToAssembly(const ILModule &mod, const CodegenOptions &op
     if (!legalizeModuleToMIR(mod, target, options, roData, mir, frames, errors))
         return CodegenResult{{}, errors};
     if (!allocateModuleMIR(mir, frames, target, options, errors))
+        return CodegenResult{{}, errors};
+    if (!scheduleModuleMIR(mir, options, errors))
         return CodegenResult{{}, errors};
     if (!optimizeModuleMIR(mir, options, errors))
         return CodegenResult{{}, errors};
@@ -577,6 +594,8 @@ BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &o
     if (!legalizeModuleToMIR(mod, target, opt, roData, mir, frames, errors))
         return BinaryEmitResult{{}, {}, errors};
     if (!allocateModuleMIR(mir, frames, target, opt, errors))
+        return BinaryEmitResult{{}, {}, errors};
+    if (!scheduleModuleMIR(mir, opt, errors))
         return BinaryEmitResult{{}, {}, errors};
     if (!optimizeModuleMIR(mir, opt, errors))
         return BinaryEmitResult{{}, {}, errors};

@@ -19,6 +19,7 @@
 #pragma once
 
 #include "MachineIR.hpp"
+#include "TargetX64.hpp"
 
 namespace viper::codegen::x64 {
 
@@ -29,7 +30,8 @@ namespace viper::codegen::x64 {
 ///          to a fixed point (bounded by kMaxIterations=100); layout/branch passes
 ///          run once.
 /// \param fn The MIR function to optimize in-place.
+/// \param target Target ABI metadata used by ABI-sensitive peepholes.
 /// \return Total number of transformations applied across all passes.
-std::size_t runPeepholes(MFunction &fn);
+std::size_t runPeepholes(MFunction &fn, const TargetInfo &target = sysvTarget());
 
 } // namespace viper::codegen::x64

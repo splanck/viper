@@ -240,6 +240,54 @@ TEST(AArch64PeepholeSubpasses, LoopPhiEdgeMovesPreserveOverlappingSources) {
     EXPECT_EQ(movs[1], std::make_pair(PhysReg::X10, PhysReg::X17));
 }
 
+TEST(AArch64PeepholeSubpasses, LoopPhiRejectsRedefinedEdgeSource) {
+    MFunction fn{};
+    fn.name = "loop_phi_redefined_source";
+    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    fn.blocks.push_back(MBasicBlock{"loop", {}});
+    fn.blocks.push_back(MBasicBlock{"latch", {}});
+    fn.blocks.push_back(MBasicBlock{"exit", {}});
+
+    auto &entry = fn.blocks[0];
+    auto &loop = fn.blocks[1];
+    auto &latch = fn.blocks[2];
+    auto &exit = fn.blocks[3];
+
+    entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("loop")}});
+
+    loop.instrs.push_back(
+        MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X24), MOperand::immOp(-40)}});
+    loop.instrs.push_back(
+        MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X10), MOperand::immOp(-48)}});
+    loop.instrs.push_back(MInstr{MOpcode::AddRRR,
+                                 {MOperand::regOp(PhysReg::X12),
+                                  MOperand::regOp(PhysReg::X24),
+                                  MOperand::regOp(PhysReg::X10)}});
+    loop.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("latch")}});
+
+    latch.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X24), MOperand::immOp(-40)}});
+    latch.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X10), MOperand::immOp(-48)}});
+    latch.instrs.push_back(MInstr{MOpcode::AddRRR,
+                                  {MOperand::regOp(PhysReg::X24),
+                                   MOperand::regOp(PhysReg::X10),
+                                   MOperand::regOp(PhysReg::X12)}});
+    latch.instrs.push_back(
+        MInstr{MOpcode::Cbz, {MOperand::regOp(PhysReg::X24), MOperand::labelOp("exit")}});
+    latch.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("loop")}});
+
+    exit.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    (void)runPeephole(fn);
+
+    const bool splitLoopHeader =
+        std::any_of(fn.blocks.begin(), fn.blocks.end(), [](const MBasicBlock &bb) {
+            return bb.name == "loop_body";
+        });
+    EXPECT_FALSE(splitLoopHeader);
+}
+
 TEST(AArch64PeepholeSubpasses, LoopConstHoistRejectsBackwardJoinEdge) {
     MFunction fn{};
     fn.name = "backward_join_not_loop";

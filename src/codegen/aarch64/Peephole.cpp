@@ -41,6 +41,7 @@
 #include "peephole/StrengthReduce.hpp"
 
 #include <algorithm>
+#include <array>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -249,6 +250,23 @@ static bool collectJoinSuffixStores(const MFunction &fn,
                                          instr.opc == MOpcode::StrFprFpImm ? RegClass::FPR
                                                                             : RegClass::GPR});
                 storeInstrs.insert(i);
+            }
+            continue;
+        }
+
+        if ((instr.opc == MOpcode::StpRegFpImm || instr.opc == MOpcode::StpFprFpImm) &&
+            instr.ops.size() >= 3 && ph::isPhysReg(instr.ops[0]) &&
+            ph::isPhysReg(instr.ops[1]) && instr.ops[2].kind == MOperand::Kind::Imm) {
+            const RegClass cls =
+                instr.opc == MOpcode::StpFprFpImm ? RegClass::FPR : RegClass::GPR;
+            const int64_t baseOff = instr.ops[2].imm;
+            const std::array<std::pair<int64_t, MOperand>, 2> pairStores = {
+                {{baseOff, instr.ops[0]}, {baseOff + 8, instr.ops[1]}}};
+            for (const auto &[off, src] : pairStores) {
+                if (!stores.count(off) && !clobbered.count(regKey(src))) {
+                    stores.emplace(off, JoinStore{i, off, src, cls});
+                    storeInstrs.insert(i);
+                }
             }
             continue;
         }
@@ -506,7 +524,7 @@ static bool coalesceJoinPhiLoads(MFunction &fn, PeepholeStats &stats) {
 
 } // namespace
 
-PeepholeStats runPeephole(MFunction &fn) {
+PeepholeStats runPeephole(MFunction &fn, const TargetInfo *target) {
     PeepholeStats stats;
 
     // Pass 0: Reorder blocks for better code layout
@@ -662,13 +680,23 @@ PeepholeStats runPeephole(MFunction &fn) {
             ph::removeMarkedInstructions(instrs, toRemove);
         }
 
-        // Pass 4.5: Dead code elimination - remove instructions with unused results
-        ph::removeDeadInstructions(instrs, stats);
+        // Pass 4.5: Dead code elimination - remove instructions with unused results.
+        // The modular pipeline supplies TargetInfo and runs the CFG-aware variant
+        // after all blocks have been locally simplified. Direct unit tests keep
+        // the legacy per-block behaviour by omitting the target.
+        if (target == nullptr)
+            ph::removeDeadInstructions(instrs, stats);
 
         // Pass 4.6: Dead flag-setter elimination -- must run AFTER general DCE
         // so that dead Cset/Csel instructions (which read flags) are removed
         // first, exposing flag-setters whose results are truly unused.
         ph::removeDeadFlagSetters(instrs, stats);
+    }
+
+    if (target != nullptr) {
+        ph::removeDeadInstructionsCFG(fn, stats, *target);
+        for (auto &block : fn.blocks)
+            ph::removeDeadFlagSetters(block.instrs, stats);
     }
 
     ph::eliminateDeadFpStoresCrossBlock(fn, stats);
@@ -874,7 +902,13 @@ PeepholeStats runPeephole(MFunction &fn) {
     // Must run AFTER Pass 4.8 (cross-block store-load forwarding) because that pass
     // may convert phi loads to register movs, changing the header's instruction mix.
     // Running after 4.8 ensures we see the final form of the header instructions.
-    stats.loopConstsHoisted += static_cast<int>(ph::eliminateLoopPhiSpills(fn));
+    for (int iter = 0; iter < 16; ++iter) {
+        const auto eliminated = ph::eliminateLoopPhiSpills(fn);
+        if (eliminated == 0)
+            break;
+        stats.loopConstsHoisted += static_cast<int>(eliminated);
+        ph::eliminateDeadFpStoresCrossBlock(fn, stats);
+    }
 
     // Pass 4.95: Re-run cross-block dead spill-store elimination after forwarding
     // and loop phi cleanup. Pass 4.8 can replace the only remaining reload from a

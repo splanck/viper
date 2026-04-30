@@ -37,6 +37,7 @@
 #include "codegen/x86_64/passes/PassManager.hpp"
 #include "codegen/x86_64/passes/PeepholePass.hpp"
 #include "codegen/x86_64/passes/RegAllocPass.hpp"
+#include "codegen/x86_64/passes/SchedulerPass.hpp"
 #include "il/transform/PassManager.hpp"
 #include "tools/common/module_loader.hpp"
 
@@ -139,6 +140,33 @@ std::size_t totalInstructionCount(const il::core::Module &module) {
         for (const auto &bb : fn.blocks)
             totalInstrs += bb.instructions.size();
     return totalInstrs;
+}
+
+bool hasEhSensitiveControl(const il::core::Module &module) {
+    for (const auto &fn : module.functions) {
+        for (const auto &bb : fn.blocks) {
+            if (bb.params.size() >= 2 &&
+                bb.params[0].type.kind == il::core::Type::Kind::Error &&
+                bb.params[1].type.kind == il::core::Type::Kind::ResumeTok) {
+                return true;
+            }
+
+            for (const auto &instr : bb.instructions) {
+                switch (instr.op) {
+                    case il::core::Opcode::EhPush:
+                    case il::core::Opcode::EhPop:
+                    case il::core::Opcode::EhEntry:
+                    case il::core::Opcode::ResumeSame:
+                    case il::core::Opcode::ResumeNext:
+                    case il::core::Opcode::ResumeLabel:
+                        return true;
+                    default:
+                        break;
+                }
+            }
+        }
+    }
+    return false;
 }
 
 /// @brief Compute the output assembly path from pipeline options.
@@ -348,8 +376,15 @@ PipelineResult CodegenPipeline::run() {
     if (opts_.optimize >= 1) {
         il::transform::PassManager ilpm;
         const std::size_t totalInstrs = totalInstructionCount(module);
-        if (totalInstrs <= kLargeModuleIlOptThreshold) {
-            bool ok = true;
+        bool ok = true;
+        if (hasEhSensitiveControl(module)) {
+            ilpm.registerPipeline("codegen-eh-safe", {"eh-opt"});
+            ok = ilpm.runPipeline(module, "codegen-eh-safe");
+        } else if (totalInstrs > kLargeModuleIlOptThreshold) {
+            ilpm.registerPipeline("codegen-large",
+                                  {"simplify-cfg", "sccp", "constfold", "dce", "simplify-cfg"});
+            ok = ilpm.runPipeline(module, "codegen-large");
+        } else {
             if (opts_.optimize >= 2) {
                 ilpm.registerPipeline(
                     "codegen-O2",
@@ -378,14 +413,14 @@ PipelineResult CodegenPipeline::run() {
                                        "simplify-cfg"});
                 ok = ilpm.runPipeline(module, "codegen-O1");
             }
+        }
 
-            if (!ok) {
-                err << "error: failed to run x86-64 IL optimization pipeline\n";
-                result.exit_code = 1;
-                result.stdout_text = out.str();
-                result.stderr_text = err.str();
-                return result;
-            }
+        if (!ok) {
+            err << "error: failed to run x86-64 IL optimization pipeline\n";
+            result.exit_code = 1;
+            result.stdout_text = out.str();
+            result.stderr_text = err.str();
+            return result;
         }
         // Re-verify IL after optimization to catch optimizer bugs early.
         if (!il::tools::common::verifyModule(module, err)) {
@@ -423,6 +458,7 @@ PipelineResult CodegenPipeline::run() {
     manager.addPass(std::make_unique<passes::LoweringPass>());
     manager.addPass(std::make_unique<passes::LegalizePass>());
     manager.addPass(std::make_unique<passes::RegAllocPass>());
+    manager.addPass(std::make_unique<passes::SchedulerPass>());
     manager.addPass(std::make_unique<passes::PeepholePass>());
 
     if (useNativeAsm) {

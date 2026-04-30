@@ -27,6 +27,7 @@
 
 #include "codegen/x86_64/MachineIR.hpp"
 #include "codegen/x86_64/Peephole.hpp"
+#include "codegen/x86_64/Scheduler.hpp"
 #include "codegen/x86_64/TargetX64.hpp"
 
 using namespace viper::codegen::x64;
@@ -49,6 +50,17 @@ Operand xmm(PhysReg pr) {
 /// Helper: create an immediate operand.
 Operand imm(int64_t val) {
     return OpImm{val};
+}
+
+/// Helper: create a frame-pointer-relative memory operand.
+Operand mem(PhysReg base, int32_t disp) {
+    return OpMem{std::get<OpReg>(gpr(base)), OpReg{}, 1, disp, false};
+}
+
+bool sameRegOperand(const Operand &lhs, const Operand &rhs) {
+    const auto *l = std::get_if<OpReg>(&lhs);
+    const auto *r = std::get_if<OpReg>(&rhs);
+    return l && r && l->isPhys && r->isPhys && l->cls == r->cls && l->idOrPhys == r->idOrPhys;
 }
 
 /// Helper: create a label operand.
@@ -501,6 +513,131 @@ TEST(X86Peephole, ColdBlockMovedToEnd) {
     EXPECT_EQ(fn.blocks[0].label, ".Lentry");
     // Trap block (cold) should be last
     EXPECT_EQ(fn.blocks.back().label, ".Ltrap_div0");
+}
+
+TEST(X86Peephole, StoreLoadForwardingReplacesFrameReload) {
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::MOVrm, {mem(PhysReg::RBP, -8), gpr(PhysReg::RDX)}},
+                           MInstr{MOpcode::MOVmr, {gpr(PhysReg::RAX), mem(PhysReg::RBP, -8)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
+
+    auto count = runPeepholes(fn);
+    EXPECT_TRUE(count > 0U);
+
+    bool hasForwardedMove = false;
+    bool hasReload = false;
+    for (const auto &instr : fn.blocks[0].instructions) {
+        if (instr.opcode == MOpcode::MOVrr && instr.operands.size() == 2 &&
+            sameRegOperand(instr.operands[0], gpr(PhysReg::RAX)) &&
+            sameRegOperand(instr.operands[1], gpr(PhysReg::RDX)))
+            hasForwardedMove = true;
+        if (instr.opcode == MOpcode::MOVmr)
+            hasReload = true;
+    }
+    EXPECT_TRUE(hasForwardedMove);
+    EXPECT_FALSE(hasReload);
+}
+
+TEST(X86Peephole, DeadFrameStoreEliminatesOverwrittenStore) {
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::MOVrm, {mem(PhysReg::RBP, -8), gpr(PhysReg::RCX)}},
+                           MInstr{MOpcode::MOVrm, {mem(PhysReg::RBP, -8), gpr(PhysReg::RDX)}},
+                           MInstr{MOpcode::MOVmr, {gpr(PhysReg::RAX), mem(PhysReg::RBP, -8)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
+
+    auto count = runPeepholes(fn);
+    EXPECT_TRUE(count > 0U);
+
+    int stores = 0;
+    for (const auto &instr : fn.blocks[0].instructions) {
+        if (instr.opcode == MOpcode::MOVrm)
+            ++stores;
+    }
+    EXPECT_EQ(stores, 1);
+}
+
+TEST(X86Peephole, DeadFlagProducerRemovedWhenFlagsUnused) {
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::CMPri, {gpr(PhysReg::RBX), imm(0)}},
+                           MInstr{MOpcode::MOVri, {gpr(PhysReg::RAX), imm(1)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
+
+    auto count = runPeepholes(fn);
+    EXPECT_TRUE(count > 0U);
+
+    for (const auto &instr : fn.blocks[0].instructions) {
+        EXPECT_NE(instr.opcode, MOpcode::CMPri);
+        EXPECT_NE(instr.opcode, MOpcode::TESTrr);
+    }
+}
+
+TEST(X86Peephole, FlagProducingDeadRegisterKeptWhenBranchReadsFlags) {
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::ADDrr, {gpr(PhysReg::RBX), gpr(PhysReg::RCX)}},
+                           MInstr{MOpcode::JCC, {imm(1), lbl(".Ltarget")}},
+                           MInstr{MOpcode::RET, {}},
+                       });
+
+    runPeepholes(fn);
+
+    bool hasAdd = false;
+    for (const auto &instr : fn.blocks[0].instructions) {
+        if (instr.opcode == MOpcode::ADDrr)
+            hasAdd = true;
+    }
+    EXPECT_TRUE(hasAdd);
+}
+
+TEST(X86Peephole, CallArgumentDCEHonorsTargetABI) {
+    auto makeCallFunc = [] {
+        return makeFunc(".Lentry",
+                        {
+                            MInstr{MOpcode::MOVSDrr,
+                                   {xmm(PhysReg::XMM4), xmm(PhysReg::XMM5)}},
+                            MInstr{MOpcode::CALL, {lbl("callee")}},
+                            MInstr{MOpcode::RET, {}},
+                        });
+    };
+
+    auto sysvFn = makeCallFunc();
+    auto winFn = makeCallFunc();
+
+    runPeepholes(sysvFn, sysvTarget());
+    runPeepholes(winFn, win64Target());
+
+    auto hasXmm4Move = [](const MFunction &fn) {
+        for (const auto &instr : fn.blocks[0].instructions) {
+            if (instr.opcode == MOpcode::MOVSDrr && instr.operands.size() == 2 &&
+                sameRegOperand(instr.operands[0], xmm(PhysReg::XMM4)))
+                return true;
+        }
+        return false;
+    };
+
+    EXPECT_TRUE(hasXmm4Move(sysvFn));
+    EXPECT_FALSE(hasXmm4Move(winFn));
+}
+
+TEST(X86Scheduler, PrioritizesLoadUseChainWithinBlock) {
+    auto fn = makeFunc(".Lentry",
+                       {
+                           MInstr{MOpcode::ADDrr, {gpr(PhysReg::RBX), gpr(PhysReg::RCX)}},
+                           MInstr{MOpcode::MOVmr, {gpr(PhysReg::RAX), mem(PhysReg::RBP, -8)}},
+                           MInstr{MOpcode::ADDrr, {gpr(PhysReg::RAX), gpr(PhysReg::RDX)}},
+                           MInstr{MOpcode::RET, {}},
+                       });
+
+    const auto changed = scheduleFunction(fn);
+    EXPECT_TRUE(changed > 0U);
+    ASSERT_FALSE(fn.blocks[0].instructions.empty());
+    EXPECT_EQ(fn.blocks[0].instructions[0].opcode, MOpcode::MOVmr);
 }
 
 // ---------------------------------------------------------------------------

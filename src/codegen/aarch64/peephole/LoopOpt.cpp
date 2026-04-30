@@ -564,6 +564,16 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
                opc == MOpcode::Cbnz || opc == MOpcode::Ret;
     };
 
+    auto callClobbersReg = [](const MInstr &mi, const MOperand &reg) -> bool {
+        if ((mi.opc != MOpcode::Bl && mi.opc != MOpcode::Blr) || !isPhysReg(reg))
+            return false;
+        const auto phys = static_cast<PhysReg>(reg.reg.idOrPhys);
+        if (reg.reg.cls == RegClass::GPR)
+            return phys >= PhysReg::X0 && phys <= PhysReg::X17;
+        return (phys >= PhysReg::V0 && phys <= PhysReg::V7) ||
+               (phys >= PhysReg::V16 && phys <= PhysReg::V31);
+    };
+
     // Find back-edges: block i branches to block j where j <= i.
     struct BackEdge {
         std::size_t latchIdx;
@@ -801,7 +811,23 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
 
         std::size_t firstNonPhiIdx = phiLoads.back().instrIdx + 1;
 
-        auto planEdgeMoves = [&](const std::vector<PhiStore> &stores, EdgePlan &plan) {
+        auto sourceRegSurvivesToEdge = [&](const std::vector<MInstr> &instrs,
+                                           const PhiStore &store) -> bool {
+            if (!isPhysReg(store.srcReg))
+                return false;
+            if (store.instrIdx >= instrs.size())
+                return false;
+            for (std::size_t i = store.instrIdx + 1; i < instrs.size(); ++i) {
+                const auto &instr = instrs[i];
+                if (definesReg(instr, store.srcReg) || callClobbersReg(instr, store.srcReg))
+                    return false;
+            }
+            return true;
+        };
+
+        auto planEdgeMoves = [&](const std::vector<MInstr> &edgeInstrs,
+                                 const std::vector<PhiStore> &stores,
+                                 EdgePlan &plan) {
             plan.storeIndicesToRemove.clear();
             plan.orderedMoves.clear();
             plan.eliminatedCount = 0;
@@ -809,9 +835,12 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
             std::vector<EdgeMove> moves;
             for (const auto &load : phiLoads) {
                 bool matched = false;
-                for (const auto &store : stores) {
+                for (auto storeIt = stores.rbegin(); storeIt != stores.rend(); ++storeIt) {
+                    const auto &store = *storeIt;
                     if (load.fpOffset != store.fpOffset)
                         continue;
+                    if (!sourceRegSurvivesToEdge(edgeInstrs, store))
+                        return false;
                     matched = true;
                     plan.storeIndicesToRemove.insert(store.instrIdx);
                     ++plan.eliminatedCount;
@@ -831,17 +860,18 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         };
 
         EdgePlan edgePlan;
+        std::vector<MInstr> selfBodyInstrs;
         if (edge.latchIdx == edge.headerIdx) {
+            selfBodyInstrs.assign(
+                header.instrs.begin() + static_cast<std::ptrdiff_t>(firstNonPhiIdx),
+                header.instrs.end());
             std::vector<PhiStore> bodyPhiStores;
-            for (std::size_t i = firstNonPhiIdx; i < header.instrs.size(); ++i) {
-                (void)appendPhiStores(header.instrs[i],
-                                      i - firstNonPhiIdx,
-                                      bodyPhiStores,
-                                      phiLoadOffsets);
+            for (std::size_t i = 0; i < selfBodyInstrs.size(); ++i) {
+                (void)appendPhiStores(selfBodyInstrs[i], i, bodyPhiStores, phiLoadOffsets);
             }
-            if (!planEdgeMoves(bodyPhiStores, edgePlan))
+            if (!planEdgeMoves(selfBodyInstrs, bodyPhiStores, edgePlan))
                 continue;
-        } else if (!planEdgeMoves(phiStores, edgePlan)) {
+        } else if (!planEdgeMoves(latch.instrs, phiStores, edgePlan)) {
             continue;
         }
 
@@ -849,12 +879,19 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         // everything after the phi loads. The back-edge will target this body block.
         std::string bodyName = header.name + "_body";
         std::string headerName = header.name;
+        if (nameToIdx.find(bodyName) != nameToIdx.end())
+            continue;
 
         // Build the body block with instructions after the phi loads.
         MBasicBlock bodyBlock;
         bodyBlock.name = bodyName;
-        bodyBlock.instrs.assign(header.instrs.begin() + static_cast<std::ptrdiff_t>(firstNonPhiIdx),
-                                header.instrs.end());
+        if (edge.latchIdx == edge.headerIdx) {
+            bodyBlock.instrs = std::move(selfBodyInstrs);
+        } else {
+            bodyBlock.instrs.assign(
+                header.instrs.begin() + static_cast<std::ptrdiff_t>(firstNonPhiIdx),
+                header.instrs.end());
+        }
 
         // Trim the header to just the phi loads + unconditional branch to body.
         header.instrs.resize(firstNonPhiIdx);

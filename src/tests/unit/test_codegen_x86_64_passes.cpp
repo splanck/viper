@@ -20,6 +20,7 @@
 #include "codegen/x86_64/passes/PassManager.hpp"
 #include "codegen/x86_64/passes/PeepholePass.hpp"
 #include "codegen/x86_64/passes/RegAllocPass.hpp"
+#include "codegen/x86_64/passes/SchedulerPass.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -191,6 +192,7 @@ std::size_t binarySizeForOptLevel(int optimizeLevel) {
     pm.addPass(std::make_unique<LoweringPass>());
     pm.addPass(std::make_unique<LegalizePass>());
     pm.addPass(std::make_unique<RegAllocPass>());
+    pm.addPass(std::make_unique<SchedulerPass>());
     pm.addPass(std::make_unique<PeepholePass>());
 
     viper::codegen::x64::CodegenOptions opts{};
@@ -326,6 +328,14 @@ TEST(RegAllocPass, RequiresLegalize) {
     Diagnostics diagsSuccess{};
     ASSERT_TRUE(runThroughRegAlloc(module, diagsSuccess));
     EXPECT_TRUE(module.registersAllocated);
+}
+
+TEST(SchedulerPass, RequiresRegAlloc) {
+    Module module{};
+    Diagnostics diags{};
+    SchedulerPass pass{};
+    EXPECT_FALSE(pass.run(module, diags));
+    EXPECT_TRUE(diags.hasErrors());
 }
 
 TEST(EmitPass, ProducesAssembly) {
