@@ -287,23 +287,28 @@ static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel) {
     }
     if (optimizeLevel >= 2) {
         ilpm.registerPipeline("codegen-O2",
-                              {"loop-simplify", "loop-rotate",  "indvars",           "loop-unroll",
+                              {"simplify-cfg",  "mem2reg",      "simplify-cfg",      "loop-simplify",
+                               "licm",          "loop-rotate",  "indvars",           "loop-unroll",
                                "simplify-cfg",  "sccp",         "check-opt",         "eh-opt",
                                "dce",           "simplify-cfg", "sibling-recursion", "inline",
-                               "simplify-cfg",  "sccp",         "constfold",         "dce",
-                               "simplify-cfg",  "gvn",          "reassociate",       "earlycse",
-                               "dse",           "dce",          "late-cleanup"});
+                               "simplify-cfg",  "sccp",         "constfold",         "peephole",
+                               "dce",           "simplify-cfg", "gvn",               "reassociate",
+                               "earlycse",      "dse",          "dce",               "late-cleanup"});
         return ilpm.runPipeline(mod, "codegen-O2");
     }
 
     ilpm.registerPipeline("codegen-O1",
                           {"simplify-cfg",
+                           "mem2reg",
+                           "simplify-cfg",
                            "sccp",
                            "constfold",
+                           "peephole",
                            "dce",
                            "simplify-cfg",
                            "sccp",
                            "inline",
+                           "peephole",
                            "dce",
                            "simplify-cfg"});
     return ilpm.runPipeline(mod, "codegen-O1");

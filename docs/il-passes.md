@@ -71,8 +71,8 @@ required structure.
 
 ### Execution Order
 
-Canonical pipelines run this pass early and again after major simplification points. The `rehab-mem2reg` pipeline still
-places `SimplifyCFG` around **Mem2Reg** so SSA-promotion edge arguments are canonicalized before cleanup.
+Canonical pipelines run this pass early and again after major simplification points. The `rehab-mem2reg` pipeline also
+places `SimplifyCFG` around **Mem2Reg** so SSA-promotion edge arguments can be validated in isolation before cleanup.
 
 ## Mem2Reg
 
@@ -171,8 +171,7 @@ The pass also simplifies CBr terminators when the branch condition is a comparis
 The pass is table-driven, making it easy to add new rules without modifying core logic. Operand-forwarding rewrites are
 kept within the defining block after the definition so the replacement value is available at every rewritten use.
 conditions. Floating constant identity matches compare signed zero exactly, so `fsub x, +0.0 -> x` is allowed while
-`fsub x, -0.0` is left intact. Full `peephole` is part of the canonical O1/O2 pipelines; `peephole-safe` remains a
-legacy alias for existing scripts.
+`fsub x, -0.0` is left intact. Full `peephole` is part of the canonical O1/O2 pipelines.
 
 ## ConstFold
 
@@ -351,8 +350,8 @@ Direct-call graph with strongly connected component analysis:
 - Hoists instructions whose operands are defined outside the loop to the loop preheader.
 - Requires `LoopInfo` and `Dominators` analyses.
 - Full `licm` may hoist non-trapping loads and readonly calls when BasicAA proves the loop cannot modify the observed
-  memory. The `licm-safe` variant never hoists memory reads; it only moves pure, non-trapping arithmetic and pure calls.
-- O2 uses `licm-safe`; full `licm` remains available explicitly and through `rehab-licm`.
+  memory. The `licm-safe` variant remains available as an explicit diagnostic subset that never hoists memory reads.
+- O2 uses full `licm`; `rehab-licm` remains available to validate LICM independently from the broader optimizer.
 - Implementation: `src/il/transform/LICM.cpp`
 
 ## EHOpt (Exception Handling Optimization)
@@ -386,12 +385,13 @@ instead of the registered canonical O1/O2 pipelines:
 
 | Level | Old (custom) | New (canonical) |
 |-------|-------------|-----------------|
-| O1 | 4 passes (simplify-cfg, mem2reg, peephole, dce) | Registered O1: SimplifyCFG, SCCP, ConstFold, Peephole, DCE, Inline |
-| O2 | 9 passes (missing SCCP, loop passes, inline, check-opt) | Registered O2: loop shaping, LICMSafe, SCCP, CheckOpt, EHOpt, DCE, SiblingRecursion, Inline, Peephole, GVN, Reassociate, EarlyCSE, DSE, LateCleanup |
+| O1 | 4 passes (simplify-cfg, mem2reg, peephole, dce) | Registered O1: SimplifyCFG, Mem2Reg, SCCP, ConstFold, Peephole, DCE, Inline |
+| O2 | 9 passes (missing SCCP, loop passes, inline, check-opt) | Registered O2: Mem2Reg, loop shaping, full LICM, SCCP, CheckOpt, EHOpt, DCE, SiblingRecursion, Inline, Peephole, GVN, Reassociate, EarlyCSE, DSE, LateCleanup |
 
-`mem2reg` and full memory-hoisting `LICM` remain outside the canonical O1/O2 presets. Full IL `peephole` is canonical
-after verifier-clean local-use, use-count, trap-preservation, and signed-zero coverage. `licm-safe` remains enabled in O2
-while full LICM continues through rehab validation.
+`mem2reg` is canonical in O1/O2 after dominance, edge-repair, non-entry alloca, and loop-reentered allocation guards made
+SSA promotion verifier-clean. Full memory-hoisting `LICM` is canonical in O2 after load-safety and BasicAA mod/ref guards
+made hoisting alias-conservative. Full IL `peephole` is canonical after verifier-clean local-use, use-count,
+trap-preservation, and signed-zero coverage.
 
 The pass manager verifies IR after each pass by default, including release
 builds. Callers may disable this for specialised measurement, but rehab and CI
@@ -409,19 +409,19 @@ runs.
 
 ### Rehab Pipelines
 
-The pass manager also registers targeted rehab pipelines for disabled passes:
+The pass manager also registers targeted rehab pipelines for focused pass validation:
 
 | Pipeline | Passes | Purpose |
 |----------|--------|---------|
-| `rehab-mem2reg` | `simplify-cfg, mem2reg, dce` | Isolate SSA promotion behavior while loop and join cases are validated |
+| `rehab-mem2reg` | `simplify-cfg, mem2reg, dce` | Isolate SSA promotion behavior for loop, non-entry alloca, and edge-repair cases |
 | `rehab-peephole` | `peephole, dce` | Exercise IL peephole rewrites in isolation from the broader O1/O2 pipelines |
-| `rehab-licm` | `loop-simplify, licm, simplify-cfg, dce` | Validate loop-invariant code motion independently from the broader optimizer |
+| `rehab-licm` | `loop-simplify, licm, simplify-cfg, dce` | Validate full loop-invariant code motion independently from the broader optimizer |
 
 `viper il-opt --pipeline` accepts these registered names directly; lowercase rehab names are not uppercased to O-level
 aliases.
 
-Promotion criteria for any rehab pass should include verifier-clean IR,
-native-vs-VM equivalence, and representative demo/application workload runs.
+Further pipeline changes should include verifier-clean IR, native-vs-VM equivalence,
+and representative demo/application workload runs.
 
 ## Optimization Review Test Coverage
 
@@ -442,8 +442,8 @@ Regression tests covering fixes from the comprehensive IL optimization review
 
 | Test File | Tests | Coverage |
 |-----------|-------|---------|
-| `test_il_canonical_pipeline.cpp` | 8 | O1/O2 pass registration, full peephole promotion, SCCP execution via canonical pipeline |
-| `test_il_mem2reg_nonentry.cpp` | 4 | Non-entry-block alloca promotion, domination-filtered promotion, edge repair |
+| `test_il_canonical_pipeline.cpp` | 9 | O1/O2 pass registration, mem2reg and full LICM promotion, full peephole promotion, removed legacy safe alias, SCCP execution via canonical pipeline |
+| `test_il_mem2reg_nonentry.cpp` | 5 | Non-entry-block alloca promotion, domination-filtered promotion, edge repair, loop-reentered alloca guard |
 | `test_il_inline_threshold.cpp` | 3 | New default thresholds (80/8/3), 50-instr inline, oversized rejection |
 | `test_il_earlycse_domtree.cpp` | 3 | Cross-block CSE via domtree, sibling-branch non-elimination, textually-unsafe rejection |
 | `test_il_callgraph_scc.cpp` | 4 | Linear chain SCC ordering, mutual recursion, self-recursion, isRecursive |

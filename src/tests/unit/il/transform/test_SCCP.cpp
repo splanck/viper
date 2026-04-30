@@ -286,6 +286,147 @@ Module buildConstantSwitchModule() {
     return module;
 }
 
+Module buildEntryParamLoopModule() {
+    Module module;
+    Function fn;
+    fn.name = "sccp_entry_param_loop";
+    fn.retType = Type(Type::Kind::I64);
+    fn.params.push_back(Param{"arg", Type(Type::Kind::I64), 0});
+
+    unsigned nextId = 1;
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Param entryArg{"entry_arg", Type(Type::Kind::I64), nextId++};
+    entry.params.push_back(entryArg);
+    Instr entryBr;
+    entryBr.op = Opcode::Br;
+    entryBr.type = Type(Type::Kind::Void);
+    entryBr.labels.push_back("loop");
+    entryBr.brArgs.push_back({Value::constInt(0), Value::temp(entryArg.id)});
+    entry.instructions.push_back(std::move(entryBr));
+    entry.terminated = true;
+
+    BasicBlock loop;
+    loop.label = "loop";
+    Param iParam{"i", Type(Type::Kind::I64), nextId++};
+    Param mParam{"m", Type(Type::Kind::I64), nextId++};
+    loop.params.push_back(iParam);
+    loop.params.push_back(mParam);
+    Instr cmp;
+    cmp.result = nextId++;
+    cmp.op = Opcode::SCmpLT;
+    cmp.type = Type(Type::Kind::I1);
+    cmp.operands.push_back(Value::temp(iParam.id));
+    cmp.operands.push_back(Value::constInt(720));
+    Instr loopBr;
+    loopBr.op = Opcode::CBr;
+    loopBr.type = Type(Type::Kind::Void);
+    loopBr.operands.push_back(Value::temp(*cmp.result));
+    loopBr.labels.push_back("body");
+    loopBr.labels.push_back("done");
+    loopBr.brArgs.emplace_back();
+    loopBr.brArgs.emplace_back();
+    loop.instructions.push_back(std::move(cmp));
+    loop.instructions.push_back(std::move(loopBr));
+    loop.terminated = true;
+
+    BasicBlock body;
+    body.label = "body";
+    Instr div;
+    div.result = nextId++;
+    div.op = Opcode::SDivChk0;
+    div.type = Type(Type::Kind::I64);
+    div.operands.push_back(Value::temp(mParam.id));
+    div.operands.push_back(Value::constInt(30));
+    Instr addUnknown;
+    addUnknown.result = nextId++;
+    addUnknown.op = Opcode::IAddOvf;
+    addUnknown.type = Type(Type::Kind::I64);
+    addUnknown.operands.push_back(Value::temp(iParam.id));
+    addUnknown.operands.push_back(Value::temp(*div.result));
+    Instr rem;
+    rem.result = nextId++;
+    rem.op = Opcode::SRemChk0;
+    rem.type = Type(Type::Kind::I64);
+    rem.operands.push_back(Value::temp(*addUnknown.result));
+    rem.operands.push_back(Value::constInt(40));
+    Instr pred;
+    pred.result = nextId++;
+    pred.op = Opcode::SCmpLT;
+    pred.type = Type(Type::Kind::I1);
+    pred.operands.push_back(Value::temp(*rem.result));
+    pred.operands.push_back(Value::constInt(3));
+    Instr bodyBr;
+    bodyBr.op = Opcode::CBr;
+    bodyBr.type = Type(Type::Kind::Void);
+    bodyBr.operands.push_back(Value::temp(*pred.result));
+    bodyBr.labels.push_back("then");
+    bodyBr.labels.push_back("join");
+    bodyBr.brArgs.emplace_back();
+    bodyBr.brArgs.push_back({Value::temp(iParam.id), Value::temp(mParam.id)});
+    body.instructions.push_back(std::move(div));
+    body.instructions.push_back(std::move(addUnknown));
+    body.instructions.push_back(std::move(rem));
+    body.instructions.push_back(std::move(pred));
+    body.instructions.push_back(std::move(bodyBr));
+    body.terminated = true;
+
+    BasicBlock thenBlock;
+    thenBlock.label = "then";
+    Instr thenBr;
+    thenBr.op = Opcode::Br;
+    thenBr.type = Type(Type::Kind::Void);
+    thenBr.labels.push_back("join");
+    thenBr.brArgs.push_back({Value::temp(iParam.id), Value::temp(mParam.id)});
+    thenBlock.instructions.push_back(std::move(thenBr));
+    thenBlock.terminated = true;
+
+    BasicBlock join;
+    join.label = "join";
+    Param jParam{"j", Type(Type::Kind::I64), nextId++};
+    Param kParam{"k", Type(Type::Kind::I64), nextId++};
+    join.params.push_back(jParam);
+    join.params.push_back(kParam);
+    Instr next;
+    next.result = nextId++;
+    next.op = Opcode::IAddOvf;
+    next.type = Type(Type::Kind::I64);
+    next.operands.push_back(Value::temp(jParam.id));
+    next.operands.push_back(Value::constInt(8));
+    Instr backedge;
+    backedge.op = Opcode::Br;
+    backedge.type = Type(Type::Kind::Void);
+    backedge.labels.push_back("loop");
+    backedge.brArgs.push_back({Value::temp(*next.result), Value::temp(kParam.id)});
+    join.instructions.push_back(std::move(next));
+    join.instructions.push_back(std::move(backedge));
+    join.terminated = true;
+
+    BasicBlock done;
+    done.label = "done";
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(iParam.id));
+    done.instructions.push_back(std::move(ret));
+    done.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.blocks.push_back(std::move(loop));
+    fn.blocks.push_back(std::move(body));
+    fn.blocks.push_back(std::move(thenBlock));
+    fn.blocks.push_back(std::move(join));
+    fn.blocks.push_back(std::move(done));
+    fn.valueNames.resize(nextId);
+    fn.valueNames[0] = "arg";
+    fn.valueNames[entryArg.id] = "entry_arg";
+    fn.valueNames[iParam.id] = "i";
+    fn.valueNames[mParam.id] = "m";
+    module.functions.push_back(std::move(fn));
+    return module;
+}
+
 } // namespace
 
 TEST(SCCP, FoldsConstantBranchAndPhi) {
@@ -357,6 +498,19 @@ TEST(SCCP, RewritesSwitchOnConstant) {
     // Default should be unreachable after SimplifyCFG.
     EXPECT_EQ(findBlock(function, "default"), nullptr);
     EXPECT_EQ(findBlock(function, "hit"), nullptr);
+}
+
+TEST(SCCP, EntryBlockParamsAreOverdefinedInputs) {
+    Module module = buildEntryParamLoopModule();
+    Function &function = module.functions.front();
+
+    il::transform::sccp(module);
+
+    BasicBlock *loop = findBlock(function, "loop");
+    ASSERT_NE(loop, nullptr);
+    ASSERT_FALSE(loop->instructions.empty());
+    EXPECT_EQ(loop->instructions.back().op, Opcode::CBr);
+    EXPECT_NE(findBlock(function, "done"), nullptr);
 }
 
 int main(int argc, char **argv) {

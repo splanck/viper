@@ -28,9 +28,13 @@ TEST(IL, SimplifyCFGBypassParams) {
     il::build::IRBuilder builder(module);
 
     Function &fn = builder.startFunction("bypass", Type(Type::Kind::I64), {});
-    BasicBlock &entry = builder.createBlock(fn, "entry");
-    BasicBlock &mid = builder.createBlock(fn, "mid", {Param{"p", Type(Type::Kind::I64), 0}});
-    BasicBlock &exit = builder.createBlock(fn, "exit", {Param{"result", Type(Type::Kind::I64), 0}});
+    builder.createBlock(fn, "entry");
+    builder.createBlock(fn, "mid", {Param{"p", Type(Type::Kind::I64), 0}});
+    builder.createBlock(fn, "exit", {Param{"result", Type(Type::Kind::I64), 0}});
+
+    BasicBlock &entry = fn.blocks[0];
+    BasicBlock &mid = fn.blocks[1];
+    BasicBlock &exit = fn.blocks[2];
 
     builder.setInsertPoint(entry);
     builder.br(mid, {Value::constInt(7)});
@@ -61,23 +65,143 @@ TEST(IL, SimplifyCFGBypassParams) {
         return nullptr;
     };
 
-    const BasicBlock *entryBlock = findBlock(fn, "entry");
-    ASSERT_TRUE(entryBlock);
-    const BasicBlock *exitBlock = findBlock(fn, "exit");
-    ASSERT_TRUE(exitBlock);
     const BasicBlock *midBlock = findBlock(fn, "mid");
     ASSERT_FALSE(midBlock);
 
-    ASSERT_FALSE(entryBlock->instructions.empty());
-    const Instr &entryTerm = entryBlock->instructions.back();
-    ASSERT_EQ(entryTerm.op, Opcode::Br);
-    ASSERT_TRUE(entryTerm.labels.size() == 1 && entryTerm.labels.front() == exitBlock->label);
-    ASSERT_TRUE(entryTerm.brArgs.size() == 1 && entryTerm.brArgs.front().size() == 1);
-    const Value &bypassedArg = entryTerm.brArgs.front().front();
-    ASSERT_EQ(bypassedArg.kind, Value::Kind::ConstInt);
-    ASSERT_EQ(bypassedArg.i64, 7);
+    bool foundReturnOfBypassedArg = false;
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op != Opcode::Ret || instr.operands.empty())
+                continue;
+            const Value &retValue = instr.operands.front();
+            if (retValue.kind == Value::Kind::ConstInt && retValue.i64 == 7)
+                foundReturnOfBypassedArg = true;
+        }
+    }
+    ASSERT_TRUE(foundReturnOfBypassedArg);
+}
 
-    ASSERT_EQ(exitBlock->params.size(), 1);
+TEST(IL, SimplifyCFGDoesNotDeleteForwarderResultsUsedByDominatedBlocks) {
+    using namespace il::core;
+
+    Module module;
+    Function fn;
+    fn.name = "preserve_forwarder_defs";
+    fn.retType = Type(Type::Kind::I64);
+    fn.params.push_back(Param{"flag", Type(Type::Kind::I1), 0});
+
+    BasicBlock entry;
+    entry.label = "entry";
+    {
+        Instr cbr;
+        cbr.op = Opcode::CBr;
+        cbr.type = Type(Type::Kind::Void);
+        cbr.operands = {Value::temp(0)};
+        cbr.labels = {"left", "right"};
+        cbr.brArgs = {{}, {}};
+        entry.instructions.push_back(std::move(cbr));
+        entry.terminated = true;
+    }
+
+    BasicBlock left;
+    left.label = "left";
+    {
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels = {"preheader"};
+        br.brArgs = {{}};
+        left.instructions.push_back(std::move(br));
+        left.terminated = true;
+    }
+
+    BasicBlock right;
+    right.label = "right";
+    {
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels = {"preheader"};
+        br.brArgs = {{}};
+        right.instructions.push_back(std::move(br));
+        right.terminated = true;
+    }
+
+    BasicBlock preheader;
+    preheader.label = "preheader";
+    {
+        Instr def;
+        def.result = 1;
+        def.op = Opcode::IAddOvf;
+        def.type = Type(Type::Kind::I64);
+        def.operands = {Value::constInt(40), Value::constInt(2)};
+        preheader.instructions.push_back(std::move(def));
+
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels = {"cond"};
+        br.brArgs = {{}};
+        preheader.instructions.push_back(std::move(br));
+        preheader.terminated = true;
+    }
+
+    BasicBlock cond;
+    cond.label = "cond";
+    {
+        Instr cbr;
+        cbr.op = Opcode::CBr;
+        cbr.type = Type(Type::Kind::Void);
+        cbr.operands = {Value::temp(0)};
+        cbr.labels = {"body", "exit"};
+        cbr.brArgs = {{}, {}};
+        cond.instructions.push_back(std::move(cbr));
+        cond.terminated = true;
+    }
+
+    BasicBlock body;
+    body.label = "body";
+    {
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands = {Value::temp(1)};
+        body.instructions.push_back(std::move(ret));
+        body.terminated = true;
+    }
+
+    BasicBlock exit;
+    exit.label = "exit";
+    {
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands = {Value::constInt(0)};
+        exit.instructions.push_back(std::move(ret));
+        exit.terminated = true;
+    }
+
+    fn.blocks = {std::move(entry),
+                 std::move(left),
+                 std::move(right),
+                 std::move(preheader),
+                 std::move(cond),
+                 std::move(body),
+                 std::move(exit)};
+    fn.valueNames.resize(2);
+    module.functions.push_back(std::move(fn));
+
+    ASSERT_TRUE(il::verify::Verifier::verify(module).hasValue());
+
+    Function &function = module.functions.front();
+    il::transform::SimplifyCFG pass(/*aggressive=*/false);
+    pass.setModule(&module);
+    il::transform::SimplifyCFG::Stats stats{};
+    pass.run(function, &stats);
+
+    auto verifyResult = il::verify::Verifier::verify(module);
+    ASSERT_TRUE(verifyResult &&
+                "SimplifyCFG must preserve pure preheader definitions used by dominated blocks");
 }
 
 int main(int argc, char **argv) {

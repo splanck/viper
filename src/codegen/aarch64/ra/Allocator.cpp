@@ -549,12 +549,8 @@ void LinearAllocator::allocateBlock(MBasicBlock &bb) {
         }
         if (!endSpills.empty()) {
             std::size_t insertPos = rewritten.size();
-            for (std::size_t i = 0; i < rewritten.size(); ++i) {
-                if (isTerminator(rewritten[i].opc)) {
-                    insertPos = i;
-                    break;
-                }
-            }
+            while (insertPos > 0 && isTerminator(rewritten[insertPos - 1].opc))
+                --insertPos;
             rewritten.insert(rewritten.begin() + static_cast<long>(insertPos),
                              endSpills.begin(),
                              endSpills.end());

@@ -8,8 +8,8 @@
 // Tests for the canonical O1/O2 pipeline structure and SCCP constant folding.
 //
 // Verifies:
-//   1. O1 pipeline contains "sccp" — old Zia frontend excluded it entirely.
-//   2. O2 pipeline contains sccp, inline, loop-unroll, check-opt.
+//   1. O1 pipeline contains "sccp" and "mem2reg".
+//   2. O2 pipeline contains sccp, inline, loop-unroll, check-opt, mem2reg, and full LICM.
 //   3. SCCP (as run by the canonical pipeline) folds constant additions.
 //   4. runPipeline returns true for registered pipeline IDs.
 //
@@ -115,14 +115,27 @@ TEST(CanonicalPipeline, O1PipelineContainsFullPeephole) {
     ASSERT_NE(pipeline, nullptr);
 
     bool foundPeephole = false;
-    bool foundSafeAlias = false;
     for (const auto &id : *pipeline)
         if (id == "peephole")
             foundPeephole = true;
-        else if (id == "peephole-safe")
-            foundSafeAlias = true;
     EXPECT_TRUE(foundPeephole);
-    EXPECT_FALSE(foundSafeAlias);
+}
+
+TEST(CanonicalPipeline, O1PipelineContainsMem2Reg) {
+    PassManager pm;
+    const PassManager::Pipeline *pipeline = pm.getPipeline("O1");
+    ASSERT_NE(pipeline, nullptr);
+
+    bool found = false;
+    for (const auto &id : *pipeline)
+        if (id == "mem2reg")
+            found = true;
+    EXPECT_TRUE(found);
+}
+
+TEST(CanonicalPipeline, PeepholeSafeAliasIsNotRegistered) {
+    PassManager pm;
+    EXPECT_EQ(pm.passes().lookup("peephole-safe"), nullptr);
 }
 
 TEST(CanonicalPipeline, O1PipelineExcludesLICM) {
@@ -140,7 +153,7 @@ TEST(CanonicalPipeline, O1PipelineExcludesLICM) {
 }
 
 // The canonical O2 pipeline must include SCCP, inline, loop-unroll, check-opt,
-// full peephole, and the verifier-safe LICM subset.
+// full peephole, mem2reg, and full LICM.
 // The old Zia frontend O2 pipeline excluded all of these.
 TEST(CanonicalPipeline, O2PipelineContainsKeyPasses) {
     PassManager pm;
@@ -148,7 +161,7 @@ TEST(CanonicalPipeline, O2PipelineContainsKeyPasses) {
     ASSERT_NE(pipeline, nullptr);
 
     bool hasSccp = false, hasInline = false, hasLoopUnroll = false, hasCheckOpt = false;
-    bool hasLICMSafe = false, hasPeephole = false, hasPeepholeSafe = false;
+    bool hasMem2Reg = false, hasLICM = false, hasLICMSafe = false, hasPeephole = false;
     for (const auto &id : *pipeline) {
         if (id == "sccp")
             hasSccp = true;
@@ -158,37 +171,23 @@ TEST(CanonicalPipeline, O2PipelineContainsKeyPasses) {
             hasLoopUnroll = true;
         if (id == "check-opt")
             hasCheckOpt = true;
+        if (id == "mem2reg")
+            hasMem2Reg = true;
+        if (id == "licm")
+            hasLICM = true;
         if (id == "licm-safe")
             hasLICMSafe = true;
         if (id == "peephole")
             hasPeephole = true;
-        if (id == "peephole-safe")
-            hasPeepholeSafe = true;
     }
     EXPECT_TRUE(hasSccp);
     EXPECT_TRUE(hasInline);
     EXPECT_TRUE(hasLoopUnroll);
     EXPECT_TRUE(hasCheckOpt);
-    EXPECT_TRUE(hasLICMSafe);
+    EXPECT_TRUE(hasMem2Reg);
+    EXPECT_TRUE(hasLICM);
+    EXPECT_FALSE(hasLICMSafe);
     EXPECT_TRUE(hasPeephole);
-    EXPECT_FALSE(hasPeepholeSafe);
-}
-
-TEST(CanonicalPipeline, O2PipelineExcludesUnsafePasses) {
-    PassManager pm;
-    const PassManager::Pipeline *pipeline = pm.getPipeline("O2");
-    ASSERT_NE(pipeline, nullptr);
-
-    bool hasMem2Reg = false;
-    bool hasLICM = false;
-    for (const auto &id : *pipeline) {
-        if (id == "mem2reg")
-            hasMem2Reg = true;
-        if (id == "licm")
-            hasLICM = true;
-    }
-    EXPECT_FALSE(hasMem2Reg);
-    EXPECT_FALSE(hasLICM);
 }
 
 // runPipeline returns true for all registered canonical pipeline IDs.

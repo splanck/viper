@@ -397,18 +397,27 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st) {
             return Expected<void>{
                 il::io::makeLineErrorDiag(in.loc, st.lineNo, "malformed result name")};
         }
-        auto [it, inserted] = st.tempIds.emplace(res, st.nextTemp);
-        if (!inserted) {
-            std::ostringstream oss;
-            oss << "duplicate result name '%" << res << "'";
-            return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
-        }
+        if (st.forwardTempNames.erase(res) > 0) {
+            auto it = st.tempIds.find(res);
+            if (it == st.tempIds.end()) {
+                return Expected<void>{il::io::makeLineErrorDiag(
+                    in.loc, st.lineNo, "internal parser error resolving forward temp")};
+            }
+            in.result = it->second;
+        } else {
+            auto [it, inserted] = st.tempIds.emplace(res, st.nextTemp);
+            if (!inserted) {
+                std::ostringstream oss;
+                oss << "duplicate result name '%" << res << "'";
+                return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
+            }
 
-        if (st.curFn->valueNames.size() <= st.nextTemp)
-            st.curFn->valueNames.resize(st.nextTemp + 1);
-        st.curFn->valueNames[st.nextTemp] = res;
-        in.result = st.nextTemp;
-        st.nextTemp++;
+            if (st.curFn->valueNames.size() <= st.nextTemp)
+                st.curFn->valueNames.resize(st.nextTemp + 1);
+            st.curFn->valueNames[st.nextTemp] = res;
+            in.result = st.nextTemp;
+            st.nextTemp++;
+        }
         work = trim(work.substr(eq + 1));
     }
     std::istringstream ss(work);

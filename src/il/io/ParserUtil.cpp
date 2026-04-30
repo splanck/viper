@@ -254,6 +254,27 @@ bool parseIntegerLiteral(const std::string &token, long long &value) {
     }
 }
 
+/// @brief Parse a serializer-style temporary identifier name.
+/// @param name Identifier without the leading `%` sigil.
+/// @return Numeric id for names of the form `tN`, or std::nullopt otherwise.
+std::optional<unsigned> parseExplicitTempName(std::string_view name) {
+    if (name.size() < 2 || name.front() != 't')
+        return std::nullopt;
+
+    unsigned long long value = 0;
+    for (size_t index = 1; index < name.size(); ++index) {
+        const unsigned char ch = static_cast<unsigned char>(name[index]);
+        if (!std::isdigit(ch))
+            return std::nullopt;
+
+        value = value * 10 + static_cast<unsigned long long>(ch - '0');
+        if (value > std::numeric_limits<unsigned>::max())
+            return std::nullopt;
+    }
+
+    return static_cast<unsigned>(value);
+}
+
 /// @brief Parse a token as a floating-point literal.
 ///
 /// Uses std::stod to recognise decimal or scientific-notation values and checks

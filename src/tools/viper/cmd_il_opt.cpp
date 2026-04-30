@@ -133,9 +133,6 @@ int cmdILOpt(int argc, char **argv) {
     if (verifyEach)
         pm.setVerifyBetweenPasses(true);
 
-    // Ensure the canonical simplify-cfg registration (aggressive by default).
-    pm.addSimplifyCFG();
-
     transform::PassManager::Pipeline selectedPipeline;
     auto resolvePipeline = [&](const std::string &name) -> const transform::PassManager::Pipeline * {
         return pm.getPipeline(name);

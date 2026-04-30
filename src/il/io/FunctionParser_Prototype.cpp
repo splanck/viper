@@ -328,6 +328,7 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st) {
 
     st.curLoc = fh.loc;
     st.tempIds.clear();
+    st.forwardTempNames.clear();
     unsigned nextId = 0;
     for (auto &param : fh.proto.params) {
         param.id = nextId;

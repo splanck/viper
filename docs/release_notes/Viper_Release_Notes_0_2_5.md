@@ -24,7 +24,7 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator.
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 97 | +97 |
+| Commits | — | 103 | +103 |
 | Source files | 2,869 | 2,958 | +89 |
 | Production SLOC | 450K | 527K | +77K |
 | Test SLOC | 183K | 217K | +34K |
@@ -280,6 +280,8 @@ All four object-file readers and all three writers received a bounds-checking an
 - `ForwardingElimination`: asserts replaced with guarded early returns for fuzz safety.
 - DCE alloca elimination wrapped in a do-while fixed-point loop; eliminating one dead store can reveal a second dead alloca that was previously blocked.
 - `ConstFold`: shift operations (`Shl`/`LShr`/`AShr`) now mask the shift amount with `& 63ULL` instead of a range guard, producing defined behavior for all constant-fold paths. FP cast folding unified through `checkedFpToSiRte`/`checkedFpToUiRte` from `FPCast.hpp` instead of local boundary tables.
+- **Peephole signed-zero safety** — `sameFloatConstant()` helper compares floating-point constants using `std::signbit` to distinguish `+0.0` from `-0.0`; both `sameValue()` and `isConstFloatEq()` route through it. The `fsub x, +0.0 → x` identity fires only for positive zero; `fsub x, -0.0` is left intact because `x - (-0.0)` can produce a different sign when `x` is negative zero. Float reflexive comparisons (`fcmp x, x`) remain unfolded because NaN makes them non-reflexive under IEEE-754.
+- **Mem2Reg, full LICM, and full peephole promoted to canonical pipelines** — after dominance/edge-repair and loop-reentered alloca guards made Mem2Reg verifier-clean, O1/O2 now schedule `"mem2reg"` directly. O2 now uses full memory-hoisting `"licm"` after load-safety and BasicAA mod/ref guards made hoisting alias-conservative; `licm-safe` remains available as an explicit diagnostic subset. Full `"peephole"` remains canonical in O1/O2 after local-use scoping, use-count-refresh, trap-preservation, and signed-zero fixes made the 57-rule set verifier-clean across the full test suite. The transitional `peephole-safe` alias and exported helper have been removed instead of kept as compatibility names.
 - MemorySSA cross-block dead-store analysis rewritten from a BFS-with-`goto` to a recursive memoized DFS with a `visiting` sentinel; back-edges in live loops now correctly return false instead of being treated as killed paths.
 - SCCP calls `SimplifyCFG` post-propagation to prune unreachable blocks created by constant-folded terminators.
 - `Mem2Reg` SROA pre-reserves `candidates` and `owner` maps to the alloca count before candidate collection, reducing rehashing in large functions.
@@ -308,6 +310,7 @@ All four object-file readers and all three writers received a bounds-checking an
 - New Zia test `FixedArrayOfStructsUsesInlineElementStride` for the inline aggregate fix; verifier golden fixtures for alloca-load and alloca-store escape; extended `MemorySSATests` (cycle-safe DFS case) and `test_SignaturesPurity` (idempotent registry).
 - New `test_vm_init_diagnostics.cpp`: VMInit error raises a typed exception rather than aborting. New `TlsSignaturePolicyTest.cmake`: asserts 0x0503 is absent from ClientHello extensions. `NoAssertFalseTest.cmake` scope widened to subdirectories. 3D baseball smoke probe re-enabled in `CMakeLists.txt`. BASIC sema class-member body tests added. `ThrowingPassBecomesDiagnostic` codegen pass-manager test added.
 - `ILCorrectnessFixes.cpp` (new): IL correctness regression suite covering `computeStackDerivedTemps` stack-access exemption, `validateGlobal` type/linkage/initializer rejection, conservative unknown-callee CallEffects classification, `globalStorageSize` per-type allocation, and shift-amount masking semantics. `test_vaud_core_fixes.c` (new): WAV format validation across 8/16/24/32-bit PCM and float32, ALSA partial-write simulation, and volume clamping. Grid layout clamping tests (`VG_GRID_MAX_TRACKS` boundary, negative placement, auto-row overflow) and TrueType contour-isolation regressions added to `test_vg_audit_fixes.c`.
+- `test_opt_review_peephole.cpp` expanded to 25 tests: `FSubPositiveZeroFolds` verifies `x - +0.0 → x`; `FSubNegativeZeroPreservesSignedZeroSemantics` verifies `x - -0.0` is left untouched. `test_canonical_pipeline.cpp` now verifies canonical O1/O2 schedule `"peephole"` directly and that the legacy safe alias is not registered.
 
 ### Demos & docs
 
@@ -317,6 +320,6 @@ Demos: human-manager baseball franchise simulator (new), Crackman (Pac-Man rewri
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 97-commit history. The pattern throughout is feature introduction followed by hardening follow-ups in the same subsystem.
+See `git log a91d388db..HEAD -- .` for the full 103-commit history. The pattern throughout is feature introduction followed by hardening follow-ups in the same subsystem.
 
 <!-- END DRAFT -->

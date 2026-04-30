@@ -99,10 +99,15 @@ TEST(Arm64CLI, Select_LoadArms) {
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Expect str to locals, loads via [fp,#off], conditional branch, and movs for phi edge copies
-    EXPECT_NE(asmText.find("str x"), std::string::npos);
-    EXPECT_NE(asmText.find("ldr x"), std::string::npos);
+    // O1 IL optimization promotes the local slots, so this may lower either as
+    // stack traffic or as direct immediate edge values.
+    const bool hasStackTransport =
+        asmText.find("str x") != std::string::npos || asmText.find("ldr x") != std::string::npos;
+    const bool hasPromotedValues =
+        asmText.find("#11") != std::string::npos && asmText.find("#22") != std::string::npos;
+    EXPECT_TRUE(hasStackTransport || hasPromotedValues);
     EXPECT_NE(asmText.find("b."), std::string::npos);
+    EXPECT_NE(asmText.find("Ljoin:"), std::string::npos);
     EXPECT_NE(asmText.find(" mov x"), std::string::npos);
 }
 

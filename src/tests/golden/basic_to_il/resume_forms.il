@@ -95,20 +95,20 @@ L400:
 exit:
   eh.pop
   ret 0
-handler ^handler_L100(%err:Error, %tok:ResumeTok):
+handler ^handler_L100(%t0:Error, %t1:ResumeTok):
   eh.entry
   .loc 1 5 5
   eh.pop
   .loc 1 5 5
   ret 0
-handler ^handler_L200(%err:Error, %tok:ResumeTok):
+handler ^handler_L200(%t2:Error, %t3:ResumeTok):
   eh.entry
   .loc 1 7 5
   eh.pop
   .loc 1 7 5
   ret 0
-handler ^handler_L300(%err:Error, %tok:ResumeTok):
+handler ^handler_L300(%t4:Error, %t5:ResumeTok):
   eh.entry
   .loc 1 5 5
-  resume.same %tok
+  resume.same %t5
 }

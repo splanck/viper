@@ -95,7 +95,6 @@ PassManager::PassManager() {
     registerSCCPPass(passRegistry_);
     registerConstFoldPass(passRegistry_);
     registerPeepholePass(passRegistry_);
-    registerPeepholeSafePass(passRegistry_);
     registerDCEPass(passRegistry_);
     registerMem2RegPass(passRegistry_);
     registerDSEPass(passRegistry_);
@@ -113,24 +112,26 @@ PassManager::PassManager() {
 
     // Pre-register common pipelines
     registerPipeline("O0", {"simplify-cfg", "dce"});
-    // Rehab-only pipelines for disabled passes. These are intentionally not
-    // part of the canonical O1/O2 presets; they exist so differential,
-    // randomized, and native-vs-VM validation can exercise one risky pass in
-    // relative isolation without rewriting the production pipelines.
+    // Targeted validation pipelines. These remain useful even after the passes
+    // are promoted to canonical presets because differential, randomized, and
+    // native-vs-VM validation can exercise one pass in relative isolation
+    // without rewriting the production pipelines.
     registerPipeline("rehab-mem2reg", {"simplify-cfg", "mem2reg", "dce"});
     registerPipeline("rehab-peephole", {"peephole", "dce"});
     registerPipeline("rehab-licm", {"loop-simplify", "licm", "simplify-cfg", "dce"});
-    // mem2reg remains disabled due to correctness bugs:
-    // - mem2reg: incorrect SSA promotion corrupts loop counters
+    // mem2reg is enabled after dominance, edge-repair, non-entry alloca, and
+    // loop-reentered dynamic-allocation guards made promotion verifier-clean.
     // inline is re-enabled in O1 with conservative eligibility checks:
     // block insertion now preserves textual def-before-use ordering, and
     // callees with allocas / non-scalar signatures remain non-inlineable.
     // Full IL peephole is enabled in O1/O2 after the local-use, use-count, and
     // signed-zero fixes made its rule set verifier-clean across the suite.
-    // Full licm is still excluded from canonical pipelines; O2 uses licm-safe,
-    // which hoists pure non-memory instructions but leaves loads in place.
+    // Full LICM is enabled in O2 after load-safety and BasicAA mod/ref guards
+    // made memory hoisting verifier-clean and alias-conservative.
     registerPipeline("O1",
                      {"simplify-cfg",
+                      "mem2reg",
+                      "simplify-cfg",
                       "sccp",
                       "constfold",
                       "peephole",
@@ -144,10 +145,11 @@ PassManager::PassManager() {
     // O2 pipeline with interprocedural constant propagation:
     // Run SCCP both before (to simplify callees) and after inline
     // (to propagate constants through inlined code from call sites).
-    // mem2reg and full LICM remain excluded for now because each still has open
-    // correctness bugs in real demo workloads. Full IL peephole is canonical.
+    // mem2reg runs before loop optimizers so stack-promoted induction variables
+    // and scalar temporaries are visible to SCCP/LICM/loop cleanup.
     registerPipeline(
-        "O2", {"loop-simplify", "licm-safe",    "loop-rotate", "indvars",      "loop-unroll",
+        "O2", {"simplify-cfg", "mem2reg",      "simplify-cfg",
+               "loop-simplify", "licm",        "loop-rotate", "indvars",      "loop-unroll",
                "simplify-cfg",
                "sccp", // Pre-inline SCCP: simplify callees
                "check-opt",     "eh-opt",       "dce",         "simplify-cfg", "sibling-recursion",

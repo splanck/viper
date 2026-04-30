@@ -209,6 +209,13 @@ Expected<void> parseBody(TokenStream &stream, parser_impl::ParserState &state) {
         return lineError<void>(unresolved.line, oss.str());
     }
 
+    if (!state.legacy->forwardTempNames.empty()) {
+        const auto &name = *state.legacy->forwardTempNames.begin();
+        std::ostringstream oss;
+        oss << "unknown temp '%" << name << "'";
+        return lineError<void>(state.lineNo(), oss.str());
+    }
+
     return {};
 }
 
@@ -271,6 +278,14 @@ Expected<Param> parseBlockParam(const std::string &paramText,
             // Reuse the function param ID
             return Param{nm, ty, it->second};
         }
+    }
+
+    if (st.forwardTempNames.erase(nm) > 0) {
+        auto it = st.tempIds.find(nm);
+        if (it == st.tempIds.end())
+            return lineError<Param>(st.lineNo, "internal parser error resolving forward temp");
+        Param param{nm, ty, it->second};
+        return param;
     }
 
     Param param{nm, ty, st.nextTemp};

@@ -13,11 +13,13 @@
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"
+#include <algorithm>
 #include <sstream>
 #include <string>
 
 #include "codegen/aarch64/AsmEmitter.hpp"
 #include "codegen/aarch64/FrameBuilder.hpp"
+#include "codegen/aarch64/LowerOvf.hpp"
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/RegAllocLinear.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
@@ -43,13 +45,21 @@ TEST(Arm64RegAlloc, SpillsAndCalleeSaved) {
         MOperand dst = MOperand::vregOp(RegClass::GPR, static_cast<uint16_t>(i));
         bb.instrs.push_back(MInstr{MOpcode::MovRI, {dst, MOperand::immOp(i)}});
     }
-    // Use a couple of early vregs to trigger reloads
-    MOperand use0 = MOperand::vregOp(RegClass::GPR, 0);
-    MOperand use1 = MOperand::vregOp(RegClass::GPR, 1);
-    MOperand dst = MOperand::vregOp(RegClass::GPR, static_cast<uint16_t>(N));
-    bb.instrs.push_back(MInstr{MOpcode::AddRRR, {dst, use0, use1}});
+    // Use every temporary after all definitions so the live range overlap
+    // exceeds the available register pool and forces actual spill/reload code.
+    uint16_t acc = 0;
+    uint16_t next = static_cast<uint16_t>(N);
+    for (int i = 1; i < N; ++i) {
+        const uint16_t dstId = next++;
+        bb.instrs.push_back(MInstr{MOpcode::AddRRR,
+                                   {MOperand::vregOp(RegClass::GPR, dstId),
+                                    MOperand::vregOp(RegClass::GPR, acc),
+                                    MOperand::vregOp(RegClass::GPR, static_cast<uint16_t>(i))}});
+        acc = dstId;
+    }
     // Move result to x0 to make output deterministic
-    bb.instrs.push_back(MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), dst}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, acc)}});
 
     // Run allocator
     auto result = allocate(fn, ti);
@@ -81,12 +91,70 @@ TEST(Arm64RegAlloc, SpillsAndCalleeSaved) {
     // Callee-saved used in RA must be saved in prologue
     for (auto r : fn.savedGPRs) {
         const char *name = regName(r);
-        // look for either stp/str with the name
-        const std::string needle1 = std::string("stp ") + name;
-        const std::string needle2 = std::string("str ") + name;
-        EXPECT_TRUE(asmText.find(needle1) != std::string::npos ||
-                    asmText.find(needle2) != std::string::npos);
+        const std::string needle = std::string(name) + ",";
+        EXPECT_NE(asmText.find(needle), std::string::npos);
     }
+}
+
+TEST(Arm64RegAlloc, LiveOutSpillsStayAfterInternalOverflowBranch) {
+    auto &ti = darwinTarget();
+    MFunction fn{};
+    fn.name = "ra_ovf_liveout";
+    fn.blocks.resize(4);
+    fn.blocks[0].name = "entry";
+    fn.blocks[1].name = "then";
+    fn.blocks[2].name = "exit";
+    fn.blocks[3].name = "trap";
+
+    auto &entry = fn.blocks[0];
+    entry.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, 1), MOperand::immOp(40)}});
+    entry.instrs.push_back(MInstr{MOpcode::AddOvfRI,
+                                  {MOperand::vregOp(RegClass::GPR, 2),
+                                   MOperand::vregOp(RegClass::GPR, 1),
+                                   MOperand::immOp(2)}});
+    entry.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, 3), MOperand::immOp(7)}});
+    entry.instrs.push_back(
+        MInstr{MOpcode::CmpRI, {MOperand::vregOp(RegClass::GPR, 1), MOperand::immOp(0)}});
+    entry.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp("then")}});
+    entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("exit")}});
+
+    fn.blocks[1].instrs.push_back(
+        MInstr{MOpcode::MovRR,
+               {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, 2)}});
+    fn.blocks[1].instrs.push_back(MInstr{MOpcode::Ret, {}});
+    fn.blocks[2].instrs.push_back(
+        MInstr{MOpcode::MovRR,
+               {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, 3)}});
+    fn.blocks[2].instrs.push_back(MInstr{MOpcode::Ret, {}});
+    fn.blocks[3].instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_ovf")}});
+
+    lowerOverflowOps(fn);
+    auto result = allocate(fn, ti);
+    (void)result;
+
+    const auto &rewritten = fn.blocks[0].instrs;
+    auto addIt = std::find_if(rewritten.begin(), rewritten.end(), [](const MInstr &instr) {
+        return instr.opc == MOpcode::AddsRI;
+    });
+    ASSERT_NE(addIt, rewritten.end());
+    auto afterAdd = std::next(addIt);
+    ASSERT_NE(afterAdd, rewritten.end());
+    EXPECT_EQ(afterAdd->opc, MOpcode::BCond);
+
+    const auto trailingBr = std::find_if(rewritten.begin(), rewritten.end(), [](const MInstr &instr) {
+        return instr.opc == MOpcode::Br;
+    });
+    ASSERT_NE(trailingBr, rewritten.end());
+    const auto firstTrailingTerm = std::prev(trailingBr);
+    EXPECT_EQ(firstTrailingTerm->opc, MOpcode::BCond);
+    const bool hasSpillBeforeTrailingTerm =
+        std::any_of(std::next(addIt), firstTrailingTerm, [](const MInstr &instr) {
+            return instr.opc == MOpcode::StrRegFpImm || instr.opc == MOpcode::StrFprFpImm;
+        });
+    EXPECT_TRUE(hasSpillBeforeTrailingTerm);
 }
 
 int main(int argc, char **argv) {

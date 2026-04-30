@@ -13,6 +13,8 @@
 //   1. Single-block alloca in non-entry block — always promotable.
 //   2. Multi-block alloca where defining block dominates all uses — promotable.
 //   3. Multi-block alloca where defining block does NOT dominate a use — not promoted.
+//   4. Loop-header block params remain deterministic and branch edges are repaired.
+//   5. Cross-block alloca in a re-entered loop header — not promoted.
 //
 //===----------------------------------------------------------------------===//
 
@@ -402,6 +404,101 @@ Module buildLoopHeaderTwoPromotedValues() {
     return module;
 }
 
+Module buildLoopHeaderDynamicAlloca() {
+    Module module;
+    Function fn;
+    fn.name = "loop_header_dynamic_alloca";
+    fn.retType = Type(Type::Kind::I64);
+
+    unsigned id = 0;
+
+    BasicBlock entry;
+    entry.label = "entry";
+    {
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels = {"header"};
+        br.brArgs = {{}};
+        entry.instructions.push_back(std::move(br));
+        entry.terminated = true;
+    }
+
+    BasicBlock header;
+    header.label = "header";
+    {
+        Instr alloca_;
+        alloca_.result = id++;
+        alloca_.op = Opcode::Alloca;
+        alloca_.type = Type(Type::Kind::Ptr);
+        alloca_.operands = {Value::constInt(8)};
+        header.instructions.push_back(std::move(alloca_));
+
+        Instr store;
+        store.op = Opcode::Store;
+        store.type = Type(Type::Kind::I64);
+        store.operands = {Value::temp(0), Value::constInt(0)};
+        header.instructions.push_back(std::move(store));
+
+        Instr cbr;
+        cbr.op = Opcode::CBr;
+        cbr.type = Type(Type::Kind::Void);
+        cbr.operands = {Value::constBool(true)};
+        cbr.labels = {"body", "exit"};
+        cbr.brArgs = {{}, {}};
+        header.instructions.push_back(std::move(cbr));
+        header.terminated = true;
+    }
+
+    BasicBlock body;
+    body.label = "body";
+    {
+        Instr load;
+        load.result = id++;
+        load.op = Opcode::Load;
+        load.type = Type(Type::Kind::I64);
+        load.operands = {Value::temp(0)};
+        body.instructions.push_back(std::move(load));
+
+        Instr inc;
+        inc.result = id++;
+        inc.op = Opcode::IAddOvf;
+        inc.type = Type(Type::Kind::I64);
+        inc.operands = {Value::temp(1), Value::constInt(1)};
+        body.instructions.push_back(std::move(inc));
+
+        Instr store;
+        store.op = Opcode::Store;
+        store.type = Type(Type::Kind::I64);
+        store.operands = {Value::temp(0), Value::temp(2)};
+        body.instructions.push_back(std::move(store));
+
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels = {"header"};
+        br.brArgs = {{}};
+        body.instructions.push_back(std::move(br));
+        body.terminated = true;
+    }
+
+    BasicBlock exit;
+    exit.label = "exit";
+    {
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands = {Value::constInt(0)};
+        exit.instructions.push_back(std::move(ret));
+        exit.terminated = true;
+    }
+
+    fn.blocks = {std::move(entry), std::move(header), std::move(body), std::move(exit)};
+    fn.valueNames.resize(id);
+    module.functions.push_back(std::move(fn));
+    return module;
+}
+
 } // namespace
 
 // A single-block alloca in a non-entry block must be promoted.
@@ -495,6 +592,20 @@ TEST(Mem2RegNonEntry, LoopHeaderParamsAreDeterministicAndEdgesAreRepaired) {
     const Instr &latchTerm = latch->instructions.back();
     ASSERT_EQ(latchTerm.brArgs.size(), 1u);
     ASSERT_EQ(latchTerm.brArgs[0].size(), 2u);
+}
+
+TEST(Mem2RegNonEntry, ReenteredNonEntryAllocaIsNotPromotedAcrossBlocks) {
+    Module module = buildLoopHeaderDynamicAlloca();
+
+    viper::passes::Mem2RegStats stats{};
+    viper::passes::mem2reg(module, &stats);
+
+    ASSERT_TRUE(il::verify::Verifier::verify(module).hasValue());
+    const Function &fn = module.functions.front();
+    EXPECT_EQ(stats.promotedVars, 0u);
+    EXPECT_EQ(countOpcodeInFunction(fn, Opcode::Alloca), 1u);
+    EXPECT_EQ(countOpcodeInFunction(fn, Opcode::Load), 1u);
+    EXPECT_EQ(countOpcodeInFunction(fn, Opcode::Store), 2u);
 }
 
 int main(int argc, char **argv) {

@@ -25,7 +25,6 @@
 #include <algorithm>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace il::transform::simplify_cfg {
@@ -205,6 +204,13 @@ bool threadJumps(SimplifyCFG::SimplifyCFGPassContext &ctx) {
 
         // Check if this is a simple cbr block
         if (!isSimpleCbrBlock(block))
+            continue;
+
+        // Block parameters may be used by dominated successor blocks. Bypassing
+        // this block would remove the dominating definition without rewriting
+        // those successor uses, so leave that shape to later, dominance-aware
+        // cleanups.
+        if (blockParamsUsedOutside(F, block))
             continue;
 
         // Find the condition parameter index

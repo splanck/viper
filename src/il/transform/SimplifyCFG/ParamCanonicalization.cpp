@@ -77,6 +77,24 @@ void realignBranchArgs(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::Basic
     }
 }
 
+/// @brief Return true if @p tempId is referenced anywhere in @p function.
+bool isTempUsedInFunction(const il::core::Function &function, unsigned tempId) {
+    for (const auto &block : function.blocks) {
+        for (const auto &instr : block.instructions) {
+            for (const auto &operand : instr.operands)
+                if (valueReferencesTemp(operand, tempId))
+                    return true;
+
+            for (const auto &argList : instr.brArgs)
+                for (const auto &arg : argList)
+                    if (valueReferencesTemp(arg, tempId))
+                        return true;
+        }
+    }
+
+    return false;
+}
+
 /// @brief Remove parameters that receive the same value from every predecessor.
 ///
 /// @details Walks all incoming edges to @p block and checks whether each block
@@ -138,6 +156,15 @@ bool shrinkParamsEqualAcrossPreds(SimplifyCFG::SimplifyCFGPassContext &ctx,
             }
 
             if (!hasCommonValue || mismatch) {
+                ++paramIdx;
+                continue;
+            }
+
+            // Block params may be used in dominated successor blocks after
+            // mem2reg and frontend boolean lowering. This helper only rewrites
+            // the current block; removing a param with cross-block uses would
+            // leave those successor references dangling.
+            if (isTempUsedOutsideBlock(ctx.function, block, paramId)) {
                 ++paramIdx;
                 continue;
             }
@@ -239,7 +266,8 @@ bool dropUnusedParams(SimplifyCFG::SimplifyCFGPassContext &ctx,
 
     for (size_t paramIdx = 0; paramIdx < block.params.size();) {
         const unsigned paramId = block.params[paramIdx].id;
-        bool used = allUsedIds.count(paramId) > 0;
+        const bool used = allUsedIds.count(paramId) > 0 ||
+                          isTempUsedInFunction(ctx.function, paramId);
 
         if (used) {
             ++paramIdx;

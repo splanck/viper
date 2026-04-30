@@ -477,11 +477,12 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
             const auto &classes = phiRegClass[bbIn.label];
             for (std::size_t pi = 0; pi < bbIn.params.size() && pi < ids.size(); ++pi) {
                 const uint16_t vid = allocateNextVReg(nextVRegId);
-                tempVReg[bbIn.params[pi].id] = vid;
+                const unsigned paramId = bbIn.params[pi].id;
+                tempVReg[paramId] = vid;
                 const auto &pt = bbIn.params[pi].type;
                 const RegClass cls =
                     (pt.kind == il::core::Type::Kind::F64) ? RegClass::FPR : RegClass::GPR;
-                tempRegClass[bbIn.params[pi].id] = cls;
+                tempRegClass[paramId] = cls;
                 const int offset = spillOffsets[pi];
                 // Load from spill slot into vreg
                 if (cls == RegClass::FPR) {
@@ -492,6 +493,26 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
                     bbOutFn().instrs.push_back(
                         MInstr{MOpcode::LdrRegFpImm,
                                {MOperand::vregOp(RegClass::GPR, vid), MOperand::immOp(offset)}});
+                }
+
+                // A promoted block parameter can be used directly by dominated
+                // successor blocks. Those uses are handled by the cross-block
+                // temp reload path below, so publish the freshly loaded phi
+                // value into its cross-block spill slot at the defining block.
+                if (auto spillIt = liveness.crossBlockSpillOffset.find(paramId);
+                    spillIt != liveness.crossBlockSpillOffset.end()) {
+                    const int crossBlockOffset = spillIt->second;
+                    if (cls == RegClass::FPR) {
+                        bbOutFn().instrs.push_back(
+                            MInstr{MOpcode::StrFprFpImm,
+                                   {MOperand::vregOp(RegClass::FPR, vid),
+                                    MOperand::immOp(crossBlockOffset)}});
+                    } else {
+                        bbOutFn().instrs.push_back(
+                            MInstr{MOpcode::StrRegFpImm,
+                                   {MOperand::vregOp(RegClass::GPR, vid),
+                                    MOperand::immOp(crossBlockOffset)}});
+                    }
                 }
             }
         }

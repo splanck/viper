@@ -194,6 +194,7 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND NOT WIN32)
             test_emit_aarch64_mir_frameplan
             test_codegen_arm64_peephole
             test_codegen_arm64_div_strength
+            test_regalloc_aarch64_linear
             test_aarch64_rodata_pool
             test_codegen_review_fixes
             test_aarch64_frame_spill_reuse

@@ -342,10 +342,9 @@ PipelineResult CodegenPipeline::run() {
 
     viper::codegen::common::lowerNativeEh(module);
 
-    // Run IL optimizations before lowering to MIR.
-    // Keep these pipelines aligned with the currently safe canonical O1/O2
-    // policies: mem2reg, LICM, and IL peephole remain disabled here too until
-    // their rehab pipelines are proven sound.
+    // Run IL optimizations before lowering to MIR. Keep these backend-specific
+    // pipelines aligned with the canonical O1/O2 pass policy while preserving
+    // the codegen size gate below.
     if (opts_.optimize >= 1) {
         il::transform::PassManager ilpm;
         const std::size_t totalInstrs = totalInstructionCount(module);
@@ -354,22 +353,27 @@ PipelineResult CodegenPipeline::run() {
             if (opts_.optimize >= 2) {
                 ilpm.registerPipeline(
                     "codegen-O2",
-                    {"loop-simplify", "loop-rotate",  "indvars",           "loop-unroll",
+                    {"simplify-cfg",  "mem2reg",      "simplify-cfg",      "loop-simplify",
+                     "licm",          "loop-rotate",  "indvars",           "loop-unroll",
                      "simplify-cfg",  "sccp",         "check-opt",         "eh-opt",
                      "dce",           "simplify-cfg", "sibling-recursion", "inline",
-                     "simplify-cfg",  "sccp",         "constfold",         "dce",
-                     "simplify-cfg",  "gvn",          "reassociate",       "earlycse",
-                     "dse",           "dce",          "late-cleanup"});
+                     "simplify-cfg",  "sccp",         "constfold",         "peephole",
+                     "dce",           "simplify-cfg", "gvn",               "reassociate",
+                     "earlycse",      "dse",          "dce",               "late-cleanup"});
                 ok = ilpm.runPipeline(module, "codegen-O2");
             } else {
                 ilpm.registerPipeline("codegen-O1",
                                       {"simplify-cfg",
+                                       "mem2reg",
+                                       "simplify-cfg",
                                        "sccp",
                                        "constfold",
+                                       "peephole",
                                        "dce",
                                        "simplify-cfg",
                                        "sccp",
                                        "inline",
+                                       "peephole",
                                        "dce",
                                        "simplify-cfg"});
                 ok = ilpm.runPipeline(module, "codegen-O1");

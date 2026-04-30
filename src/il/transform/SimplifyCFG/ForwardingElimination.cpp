@@ -31,7 +31,6 @@
 #include <algorithm>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace il::transform::simplify_cfg {
@@ -97,33 +96,11 @@ bool isEmptyForwardingBlock(SimplifyCFG::SimplifyCFGPassContext &ctx,
         }
     }
 
-    // Reject blocks whose params are referenced from other blocks.
-    // After inlining, cross-block references to block params may exist.
-    // Removing such a forwarder without global substitution would leave
-    // dangling references.  Let mergeSinglePredBlocks handle these instead.
-    if (!block.params.empty()) {
-        std::unordered_set<unsigned> paramIds;
-        for (const auto &p : block.params)
-            paramIds.insert(p.id);
-
-        const il::core::Function &F = ctx.function;
-        for (const auto &bb : F.blocks) {
-            if (&bb == &block)
-                continue;
-            for (const auto &instr : bb.instructions) {
-                for (const auto &op : instr.operands) {
-                    if (op.kind == il::core::Value::Kind::Temp && paramIds.count(op.id))
-                        return false;
-                }
-                for (const auto &argList : instr.brArgs) {
-                    for (const auto &v : argList) {
-                        if (v.kind == il::core::Value::Kind::Temp && paramIds.count(v.id))
-                            return false;
-                    }
-                }
-            }
-        }
-    }
+    // Reject blocks whose definitions are referenced from other blocks.  Loop
+    // preheaders often contain pure setup instructions whose results are used
+    // inside the loop; bypassing the preheader would erase those definitions.
+    if (blockParamsUsedOutside(ctx.function, block) || blockResultsUsedOutside(ctx.function, block))
+        return false;
 
     return true;
 }

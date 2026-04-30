@@ -229,6 +229,78 @@ TEST(IL, testJumpThreadingWithArgs) {
     // (since condition is true, takes first branch which passes val=42)
 }
 
+TEST(IL, testJumpThreadingPreservesDominatedParamUses) {
+    Module module;
+    Function fn;
+    fn.name = "threading_preserve_param_uses";
+    fn.retType = Type(Type::Kind::I64);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    {
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels = {"mid"};
+        br.brArgs = {{Value::constBool(true), Value::constInt(42)}};
+        entry.instructions.push_back(std::move(br));
+        entry.terminated = true;
+    }
+
+    BasicBlock mid;
+    mid.label = "mid";
+    mid.params.push_back(Param{"cond", Type(Type::Kind::I1), 0});
+    mid.params.push_back(Param{"carried", Type(Type::Kind::I64), 1});
+    {
+        Instr cbr;
+        cbr.op = Opcode::CBr;
+        cbr.type = Type(Type::Kind::Void);
+        cbr.operands = {Value::temp(0)};
+        cbr.labels = {"use", "exit"};
+        cbr.brArgs = {{}, {}};
+        mid.instructions.push_back(std::move(cbr));
+        mid.terminated = true;
+    }
+
+    BasicBlock use;
+    use.label = "use";
+    {
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands = {Value::temp(1)};
+        use.instructions.push_back(std::move(ret));
+        use.terminated = true;
+    }
+
+    BasicBlock exit;
+    exit.label = "exit";
+    {
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands = {Value::constInt(0)};
+        exit.instructions.push_back(std::move(ret));
+        exit.terminated = true;
+    }
+
+    fn.blocks = {std::move(entry), std::move(mid), std::move(use), std::move(exit)};
+    fn.valueNames.resize(2);
+    module.functions.push_back(std::move(fn));
+
+    verifyOrDie(module);
+
+    Function &function = module.functions.front();
+    il::transform::SimplifyCFG simplify(true);
+    simplify.setModule(&module);
+    simplify.run(function);
+
+    verifyOrDie(module);
+
+    // The pass may still merge the single-predecessor block later, but it must
+    // not leave the dominated successor with a dangling reference to %carried.
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

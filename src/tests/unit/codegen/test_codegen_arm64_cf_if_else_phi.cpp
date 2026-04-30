@@ -66,6 +66,47 @@ TEST(Arm64CLI, CF_IfElse_Phi) {
     EXPECT_TRUE(hasSpillTransport || hasEdgeSplit);
 }
 
+TEST(Arm64CLI, CF_BlockParamUsedInDominatedSuccessor) {
+    const std::string in = outPath("arm64_cf_param_successor.il");
+    const std::string out = outPath("arm64_cf_param_successor.s");
+    const std::string il = "il 0.2.0\n"
+                           "func @f(%flag:i1) -> i64 {\n"
+                           "entry(%flag:i1):\n"
+                           "  cbr %flag, left, right\n"
+                           "left:\n"
+                           "  br carrier(41)\n"
+                           "right:\n"
+                           "  br carrier(42)\n"
+                           "use:\n"
+                           "  ret %carried\n"
+                           "carrier(%carried:i64):\n"
+                           "  cbr %flag, use, exit\n"
+                           "exit:\n"
+                           "  ret 0\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-O0", "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(4, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+
+    auto blockText = [&](const std::string &label) {
+        const std::size_t start = asmText.find(label);
+        if (start == std::string::npos)
+            return std::string{};
+        const std::size_t next = asmText.find("\nL", start + label.size());
+        if (next == std::string::npos)
+            return asmText.substr(start);
+        return asmText.substr(start, next - start);
+    };
+
+    const std::string carrierBlock = blockText("Lcarrier:");
+    const std::string useBlock = blockText("Luse:");
+    ASSERT_FALSE(carrierBlock.empty());
+    ASSERT_FALSE(useBlock.empty());
+    EXPECT_NE(carrierBlock.find("str x"), std::string::npos);
+    EXPECT_NE(useBlock.find("ldr x"), std::string::npos);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();

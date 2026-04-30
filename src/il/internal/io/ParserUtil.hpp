@@ -60,6 +60,11 @@ std::string formatLineDiag(unsigned lineNo, std::string_view message);
 /// @return True if the entire token was consumed as an integer.
 bool parseIntegerLiteral(const std::string &token, long long &value);
 
+/// @brief Parse serializer-style temp names such as "t42" into their numeric id.
+/// @param name Identifier text without the leading '%' sigil.
+/// @return Temp id when @p name is exactly `t` followed by decimal digits.
+std::optional<unsigned> parseExplicitTempName(std::string_view name);
+
 /// @brief Attempt to parse a floating-point literal token.
 /// @param token Textual representation of a floating value.
 /// @param value Destination receiving the parsed value on success.

@@ -568,8 +568,4 @@ void peephole(Module &m) {
     runPeephole(m);
 }
 
-void peepholeSafe(Module &m) {
-    runPeephole(m);
-}
-
 } // namespace il::transform

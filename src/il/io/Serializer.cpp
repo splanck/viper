@@ -36,6 +36,9 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 namespace il::io {
 
@@ -47,16 +50,35 @@ namespace {
 /// @details Allows value printing to resolve temp IDs to their declared names,
 ///          ensuring IL round-trips correctly through serialize/parse cycles.
 struct SerializeContext {
-    /// @brief Value name table from the current function (may be null for global context).
-    const std::vector<std::string> *valueNames = nullptr;
+    /// @brief Preferred textual name for each SSA temp in the current function.
+    std::vector<std::string> valueNames;
+
+    /// @brief Names owned by more than one SSA temp and therefore unsafe to print directly.
+    std::unordered_set<std::string> ambiguousValueNames;
 
     /// @brief Look up a name for the given temp ID.
     /// @param id Temp ID to resolve.
-    /// @return The declared name if available and non-empty, empty string otherwise.
+    /// @return The declared name when it is unique and cannot collide with `%tN` fallback syntax.
     [[nodiscard]] std::string_view nameForTemp(unsigned id) const {
-        if (!valueNames || id >= valueNames->size())
+        if (id >= valueNames.size())
             return {};
-        return (*valueNames)[id];
+        const auto &name = valueNames[id];
+        if (name.empty() || !isValidILIdentifier(name))
+            return {};
+        if (ambiguousValueNames.count(name) != 0)
+            return {};
+        if (auto explicitId = parseExplicitTempName(name); explicitId && *explicitId != id)
+            return {};
+        return name;
+    }
+
+    /// @brief Return the name that should be printed for a temp definition or declaration.
+    /// @param id Temp ID to resolve.
+    /// @return A unique parseable name without the leading `%` sigil.
+    [[nodiscard]] std::string printableNameForTemp(unsigned id) const {
+        if (auto name = nameForTemp(id); !name.empty())
+            return std::string(name);
+        return "t" + std::to_string(id);
     }
 };
 
@@ -450,12 +472,7 @@ void printInstr(const Instr &in, std::ostream &os, const SerializeContext &ctx) 
     os << "  ";
     const auto &info = getOpcodeInfo(in.op);
     if (in.result) {
-        // Use named result if available for readability
-        auto name = ctx.nameForTemp(*in.result);
-        if (!name.empty() && name[0] != '%')
-            os << '%' << name;
-        else
-            os << "%t" << *in.result;
+        os << '%' << ctx.printableNameForTemp(*in.result);
         if (auto def = defaultResultKind(info)) {
             if (in.type.kind != *def)
                 os << ':' << in.type.toString();
@@ -468,6 +485,73 @@ void printInstr(const Instr &in, std::ostream &os, const SerializeContext &ctx) 
     const auto &formatter = formatterFor(in.op);
     formatter(in, os, ctx);
     os << "\n";
+}
+
+/// @brief Build function-scoped naming metadata for parseable serialization.
+/// @details Optimisation passes may leave stale or duplicate diagnostic names in
+///          `valueNames` after cloning, promotion, and CFG rewrites.  The textual
+///          format has a single function-wide temp namespace, so names that are
+///          duplicated or that look like another temp's `%tN` fallback are not
+///          safe to print.  This routine chooses each definition's preferred
+///          source name when possible and lets `SerializeContext` fall back to
+///          `%t<id>` otherwise.
+[[nodiscard]] SerializeContext makeSerializeContext(const Function &function) {
+    SerializeContext ctx;
+
+    size_t capacity = function.valueNames.size();
+    auto touchId = [&](unsigned id) { capacity = std::max(capacity, static_cast<size_t>(id) + 1); };
+    for (const auto &param : function.params)
+        touchId(param.id);
+    for (const auto &block : function.blocks) {
+        for (const auto &param : block.params)
+            touchId(param.id);
+        for (const auto &instr : block.instructions) {
+            if (instr.result)
+                touchId(*instr.result);
+        }
+    }
+
+    ctx.valueNames.assign(capacity, {});
+    for (size_t id = 0; id < function.valueNames.size(); ++id)
+        ctx.valueNames[id] = function.valueNames[id];
+
+    // Parameter declarations are authoritative for parameter ids; valueNames is
+    // only a diagnostic side table and may lag behind CFG edits.
+    for (const auto &param : function.params) {
+        if (param.id < ctx.valueNames.size())
+            ctx.valueNames[param.id] = param.name;
+    }
+    for (const auto &block : function.blocks) {
+        for (const auto &param : block.params) {
+            if (param.id < ctx.valueNames.size())
+                ctx.valueNames[param.id] = param.name;
+        }
+    }
+
+    std::unordered_map<std::string, unsigned> nameOwners;
+    auto recordDefinitionName = [&](unsigned id) {
+        if (id >= ctx.valueNames.size())
+            return;
+        const auto &name = ctx.valueNames[id];
+        if (name.empty() || !isValidILIdentifier(name))
+            return;
+        auto [it, inserted] = nameOwners.emplace(name, id);
+        if (!inserted && it->second != id)
+            ctx.ambiguousValueNames.insert(name);
+    };
+
+    for (const auto &param : function.params)
+        recordDefinitionName(param.id);
+    for (const auto &block : function.blocks) {
+        for (const auto &param : block.params)
+            recordDefinitionName(param.id);
+        for (const auto &instr : block.instructions) {
+            if (instr.result)
+                recordDefinitionName(*instr.result);
+        }
+    }
+
+    return ctx;
 }
 
 } // namespace
@@ -513,9 +597,7 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode) {
     }
 
     for (const auto &f : m.functions) {
-        // Create serialization context with this function's value names
-        SerializeContext ctx;
-        ctx.valueNames = &f.valueNames;
+        SerializeContext ctx = makeSerializeContext(f);
 
         os << "func ";
         if (f.linkage == Linkage::Export)
@@ -526,7 +608,7 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode) {
         for (size_t i = 0; i < f.params.size(); ++i) {
             if (i)
                 os << ", ";
-            os << f.params[i].type.toString() << " %" << f.params[i].name;
+            os << f.params[i].type.toString() << " %" << ctx.printableNameForTemp(f.params[i].id);
         }
         if (f.isVarArg) {
             if (!f.params.empty())
@@ -553,7 +635,7 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode) {
                 for (size_t i = 0; i < bb.params.size(); ++i) {
                     if (i)
                         os << ", ";
-                    os << '%' << bb.params[i].name << ':';
+                    os << '%' << ctx.printableNameForTemp(bb.params[i].id) << ':';
                     if (handler) {
                         if (bb.params[i].type.kind == Type::Kind::Error)
                             os << "Error";

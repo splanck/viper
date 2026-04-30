@@ -52,7 +52,7 @@ If evidence is missing, state the gap explicitly in the review summary.
 |------|---------------------|--------------------------|
 | Runtime signatures | Frontends, VM, bytecode VM, and native codegen all depend on exact ABI shape | Require runtime.def, header, implementation, and generated registry alignment |
 | Bytecode VM | `BytecodeVM.cpp` still owns dispatch, frames, EH, runtime calls, debug, and state | Prefer small behavioral changes with focused tests |
-| IL optimizer | Some passes remain in rehab pipelines because production workloads exposed correctness issues | Do not promote disabled passes without equivalence tests |
+| IL optimizer | Canonical O1/O2 passes affect VM and native behavior across frontends | Require verifier-clean IR, equivalence tests, and representative workload runs for pass changes |
 | Graphics stubs | Disabled graphics builds must trap deterministically while pure helpers still work | Require explicit stub contract tests |
 | Platform backends | Cocoa, X11, Win32, Metal, D3D11, OpenGL differ in event, pixel, and ABI details | Require platform-specific validation when touched |
 

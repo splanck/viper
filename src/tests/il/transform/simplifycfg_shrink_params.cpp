@@ -111,6 +111,89 @@ TEST(IL, SimplifyCFGShrinkParams) {
     ASSERT_TRUE(falseArg.kind == Value::Kind::ConstInt && falseArg.i64 == 2);
 }
 
+TEST(IL, SimplifyCFGDoesNotShrinkParamsUsedInDominatedSuccessors) {
+    using namespace il::core;
+
+    Module module;
+    Function fn;
+    fn.name = "preserve_cross_block_param";
+    fn.retType = Type(Type::Kind::I64);
+    fn.params.push_back(Param{"flag", Type(Type::Kind::I1), 0});
+
+    BasicBlock entry;
+    entry.label = "entry";
+    {
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels = {"carrier"};
+        br.brArgs = {{Value::constInt(42)}};
+        entry.instructions.push_back(std::move(br));
+        entry.terminated = true;
+    }
+
+    BasicBlock carrier;
+    carrier.label = "carrier";
+    carrier.params.push_back(Param{"carried", Type(Type::Kind::I64), 1});
+    {
+        Instr cbr;
+        cbr.op = Opcode::CBr;
+        cbr.type = Type(Type::Kind::Void);
+        cbr.operands = {Value::temp(0)};
+        cbr.labels = {"use", "latch"};
+        cbr.brArgs = {{}, {}};
+        carrier.instructions.push_back(std::move(cbr));
+        carrier.terminated = true;
+    }
+
+    BasicBlock latch;
+    latch.label = "latch";
+    {
+        Instr cbr;
+        cbr.op = Opcode::CBr;
+        cbr.type = Type(Type::Kind::Void);
+        cbr.operands = {Value::temp(0)};
+        cbr.labels = {"carrier", "use"};
+        cbr.brArgs = {{Value::constInt(42)}, {}};
+        latch.instructions.push_back(std::move(cbr));
+        latch.terminated = true;
+    }
+
+    BasicBlock use;
+    use.label = "use";
+    {
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands = {Value::temp(1)};
+        use.instructions.push_back(std::move(ret));
+        use.terminated = true;
+    }
+
+    fn.blocks = {std::move(entry), std::move(carrier), std::move(latch), std::move(use)};
+    fn.valueNames.resize(2);
+    module.functions.push_back(std::move(fn));
+
+    ASSERT_TRUE(il::verify::Verifier::verify(module).hasValue());
+
+    Function &function = module.functions.front();
+    il::transform::SimplifyCFG pass;
+    pass.setModule(&module);
+    il::transform::SimplifyCFG::Stats stats{};
+    pass.run(function, &stats);
+
+    auto verifyResult = il::verify::Verifier::verify(module);
+    ASSERT_TRUE(verifyResult && "SimplifyCFG must preserve dominated cross-block param uses");
+
+    const BasicBlock *carrierBlock = nullptr;
+    for (const auto &block : function.blocks)
+        if (block.label == "carrier")
+            carrierBlock = &block;
+    ASSERT_NE(carrierBlock, nullptr);
+    ASSERT_EQ(carrierBlock->params.size(), 1u);
+    EXPECT_EQ(carrierBlock->params.front().id, 1u);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

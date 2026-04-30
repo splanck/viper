@@ -238,24 +238,25 @@ viper il-opt program.il --passes "simplify-cfg" -o optimized.il
 Preset pipelines via `viper il-opt`:
 
 ```sh
-# O1 (default): simplify-cfg → SCCP → ConstFold → Peephole → DCE → SimplifyCFG →
-#               SCCP → Inline → Peephole → DCE → SimplifyCFG
-# (mem2reg and full LICM remain outside O1 while broader workload validation continues.)
+# O1 (default): SimplifyCFG → Mem2Reg → SimplifyCFG → SCCP → ConstFold →
+#               Peephole → DCE → SimplifyCFG → SCCP → Inline → Peephole →
+#               DCE → SimplifyCFG
 viper il-opt program.il --pipeline O1 -o program.o1.il
 
-# O2: LoopSimplify → LICMSafe → LoopRotate → IndVars → LoopUnroll → SimplifyCFG → SCCP →
-#     CheckOpt → EHOpt → DCE → SimplifyCFG → SiblingRecursion → Inline → SimplifyCFG →
-#     SCCP → ConstFold → Peephole → DCE → SimplifyCFG → GVN → Reassociate → EarlyCSE →
-#     DSE → DCE → LateCleanup
+# O2: SimplifyCFG → Mem2Reg → SimplifyCFG → LoopSimplify → LICM → LoopRotate →
+#     IndVars → LoopUnroll → SimplifyCFG → SCCP → CheckOpt → EHOpt → DCE →
+#     SimplifyCFG → SiblingRecursion → Inline → SimplifyCFG → SCCP →
+#     ConstFold → Peephole → DCE → SimplifyCFG → GVN → Reassociate →
+#     EarlyCSE → DSE → DCE → LateCleanup
 viper il-opt program.il --pipeline O2 -o program.o2.il
 
 # Custom sequence
 viper il-opt program.il --passes "simplify-cfg,sccp,dce" -o out.il
 ```
 
-Available passes: `check-opt`, `constfold`, `dce`, `dse`, `earlycse`, `ehopt`, `gvn`, `indvars`, `inline`, `late-cleanup`, `licm`, `licm-safe`, `loop-rotate`, `loop-simplify`, `loop-unroll`, `mem2reg`, `peephole`, `peephole-safe` (legacy alias), `reassociate`, `sccp`, `simplify-cfg`
+Available passes: `check-opt`, `constfold`, `dce`, `dse`, `earlycse`, `ehopt`, `gvn`, `indvars`, `inline`, `late-cleanup`, `licm`, `licm-safe`, `loop-rotate`, `loop-simplify`, `loop-unroll`, `mem2reg`, `peephole`, `reassociate`, `sccp`, `simplify-cfg`
 
-Rehab pipelines are also addressable by name: `rehab-mem2reg`, `rehab-peephole`, and `rehab-licm`.
+Focused validation pipelines are also addressable by name: `rehab-mem2reg`, `rehab-peephole`, and `rehab-licm`.
 
 ---
 

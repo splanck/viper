@@ -20,6 +20,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace il::io::detail {
@@ -37,6 +38,9 @@ struct ParserState {
 
     /// @brief Mapping from SSA value names to their numeric identifiers.
     std::unordered_map<std::string, unsigned> tempIds;
+
+    /// @brief Temp names referenced before their defining result/block parameter is parsed.
+    std::unordered_set<std::string> forwardTempNames;
 
     /// @brief Next SSA identifier to assign to a new temporary.
     unsigned nextTemp = 0;

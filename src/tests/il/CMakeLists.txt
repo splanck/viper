@@ -497,6 +497,14 @@ function(viper_add_il_utils_test)
             test_il_simplifycfg_cbr_fold test_il_simplifycfg_cbr_fold)
 
     viper_add_test(
+            test_il_simplifycfg_bypass_params
+            ${_VIPER_IL_DIR}/transform/simplifycfg_bypass_params.cpp)
+    target_link_libraries(
+            test_il_simplifycfg_bypass_params PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(
+            test_il_simplifycfg_bypass_params test_il_simplifycfg_bypass_params)
+
+    viper_add_test(
             test_il_simplifycfg_merge_single_pred
             ${_VIPER_IL_DIR}/transform/simplifycfg_merge_single_pred.cpp)
     target_link_libraries(
@@ -992,7 +1000,7 @@ function(viper_add_il_invalid_tests)
             ${CMAKE_COMMAND}
             -DIL_VERIFY=${IL_VERIFY}
             -DFILE=${_VIPER_INVALID_DIR}/param_use_before_entry.il
-            -DEXPECT=use\ before\ def
+            -DEXPECT=not\ dominated\ by\ definition
             -P ${_VIPER_INVALID_DIR}/check_invalid.cmake)
 
     viper_add_ctest(il_verify_invalid_unknown_temp

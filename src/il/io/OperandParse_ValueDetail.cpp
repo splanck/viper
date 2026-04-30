@@ -24,12 +24,14 @@
 
 #include "viper/il/io/OperandParse.hpp"
 
+#include "il/core/Function.hpp"
 #include "il/core/Value.hpp"
 #include "il/internal/io/ParserState.hpp"
 #include "il/internal/io/ParserUtil.hpp"
 
 #include "support/diag_expected.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <charconv>
 #include <limits>
@@ -211,21 +213,33 @@ Expected<size_t> tryParseRegister(std::string_view text, Value &out, Context &ct
         return Expected<size_t>{1 + ident->size()};
     }
 
-    if (name.size() > 1 && name.front() == 't') {
-        std::string_view digits = name;
-        digits.remove_prefix(1);
-        std::string_view digitCursor = digits;
-        int64_t parsed = 0;
-        if (parseInt(digitCursor, parsed) && digitCursor.empty() && parsed >= 0 &&
-            static_cast<uint64_t>(parsed) <= std::numeric_limits<unsigned>::max()) {
-            out = Value::temp(static_cast<unsigned>(parsed));
-            return Expected<size_t>{1 + ident->size()};
+    unsigned reservedId = ctx.state.nextTemp;
+    if (auto explicitId = ::il::io::parseExplicitTempName(name)) {
+        if (ctx.state.curFn && (ctx.state.curFn->valueNames.size() <= *explicitId ||
+                                ctx.state.curFn->valueNames[*explicitId].empty())) {
+            reservedId = *explicitId;
         }
     }
 
-    std::ostringstream oss;
-    oss << "unknown temp '%" << name << "'";
-    return makeSyntaxError<size_t>(ctx.state, oss.str());
+    if (ctx.state.curFn) {
+        while (ctx.state.curFn->valueNames.size() > reservedId &&
+               !ctx.state.curFn->valueNames[reservedId].empty()) {
+            if (reservedId == std::numeric_limits<unsigned>::max())
+                return makeSyntaxError<size_t>(ctx.state, "temp id is too large");
+            ++reservedId;
+        }
+        if (ctx.state.curFn->valueNames.size() <= reservedId)
+            ctx.state.curFn->valueNames.resize(reservedId + 1);
+        ctx.state.curFn->valueNames[reservedId] = name;
+    }
+
+    ctx.state.tempIds.emplace(name, reservedId);
+    ctx.state.forwardTempNames.insert(name);
+    if (reservedId == std::numeric_limits<unsigned>::max())
+        return makeSyntaxError<size_t>(ctx.state, "temp id is too large");
+    ctx.state.nextTemp = std::max(ctx.state.nextTemp, reservedId + 1);
+    out = Value::temp(reservedId);
+    return Expected<size_t>{1 + ident->size()};
 }
 
 /// @brief Attempt to parse a bracketed memory operand.

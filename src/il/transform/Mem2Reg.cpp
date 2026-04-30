@@ -13,9 +13,10 @@
 //
 // KNOWN LIMITATIONS:
 //
-// 1. Only allocas whose defining block dominates all their uses are promoted.
-//    This covers entry-block allocas (which dominate everything) and allocas
-//    in non-entry blocks whose uses are fully dominated by the defining block.
+// 1. Cross-block non-entry allocas are promoted only when the defining block
+//    dominates all uses and is not re-entered by a loop backedge. Re-executing
+//    a dynamic alloca inside a loop creates a fresh slot; carrying promoted
+//    state across that backedge would change semantics.
 //
 //===----------------------------------------------------------------------===//
 
@@ -627,6 +628,22 @@ static void promoteVariables(Function &F,
     repairPromotedBranchArgs(F, vars, blocks, nextId, ctx);
 }
 
+/// @brief Return true when @p block can be reached from a predecessor it dominates.
+/// @details For a non-entry alloca with cross-block uses, such an edge means the
+///          allocation site is re-executed by loop control flow. Promoting that
+///          alloca as one long-lived SSA variable would incorrectly carry stores
+///          from a previous dynamic allocation into the next execution.
+static bool hasDominatedPredecessor(const viper::analysis::DomTree &domTree,
+                                    const analysis::CFGContext &ctx,
+                                    BasicBlock *block) {
+    if (!block)
+        return false;
+    for (BasicBlock *pred : analysis::predecessors(ctx, *block))
+        if (pred && domTree.dominates(block, pred))
+            return true;
+    return false;
+}
+
 } // namespace
 
 static bool runSROA(Function &F) {
@@ -923,6 +940,9 @@ void mem2reg(Module &M, Mem2RegStats *stats) {
             // the defining block dominates every block that contains a use.
             // Single-block allocas are always safe (no cross-block SSA needed).
             if (!info.singleBlock && info.block != entryBlock && domTree) {
+                if (hasDominatedPredecessor(*domTree, cfg, info.block))
+                    continue;
+
                 bool dominated = true;
                 for (BasicBlock *useBlk : info.useBlocks) {
                     if (!domTree->dominates(info.block, useBlk)) {

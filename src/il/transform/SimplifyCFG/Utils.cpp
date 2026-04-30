@@ -116,6 +116,98 @@ il::core::Value substituteValue(const il::core::Value &value,
     return value;
 }
 
+/// @brief Check whether a value references a specific SSA temp.
+/// @param value Value to inspect.
+/// @param tempId SSA temp id to find.
+/// @return True when @p value is exactly `%t<tempId>`.
+bool valueReferencesTemp(const il::core::Value &value, unsigned tempId) {
+    return value.kind == il::core::Value::Kind::Temp && value.id == tempId;
+}
+
+namespace {
+
+bool instructionReferencesAnyTemp(const il::core::Instr &instr,
+                                  const std::unordered_set<unsigned> &tempIds) {
+    auto referencesTrackedTemp = [&tempIds](const il::core::Value &value) {
+        return value.kind == il::core::Value::Kind::Temp && tempIds.contains(value.id);
+    };
+
+    for (const auto &operand : instr.operands) {
+        if (referencesTrackedTemp(operand))
+            return true;
+    }
+
+    for (const auto &argList : instr.brArgs) {
+        for (const auto &arg : argList) {
+            if (referencesTrackedTemp(arg))
+                return true;
+        }
+    }
+
+    return false;
+}
+
+bool anyTempUsedOutsideBlock(const il::core::Function &function,
+                             const il::core::BasicBlock &owner,
+                             const std::unordered_set<unsigned> &tempIds) {
+    if (tempIds.empty())
+        return false;
+
+    for (const auto &block : function.blocks) {
+        if (&block == &owner)
+            continue;
+
+        for (const auto &instr : block.instructions) {
+            if (instructionReferencesAnyTemp(instr, tempIds))
+                return true;
+        }
+    }
+
+    return false;
+}
+
+} // namespace
+
+/// @brief Check whether a temp is referenced by another block.
+/// @param function Function containing @p owner.
+/// @param owner Block that defines @p tempId.
+/// @param tempId SSA temp id to query.
+/// @return True when any other block uses @p tempId in operands or branch arguments.
+bool isTempUsedOutsideBlock(const il::core::Function &function,
+                            const il::core::BasicBlock &owner,
+                            unsigned tempId) {
+    return anyTempUsedOutsideBlock(function, owner, std::unordered_set<unsigned>{tempId});
+}
+
+/// @brief Check whether block parameters have cross-block uses.
+/// @param function Function containing @p block.
+/// @param block Block whose parameters are inspected.
+/// @return True when any parameter id is referenced outside @p block.
+bool blockParamsUsedOutside(const il::core::Function &function,
+                            const il::core::BasicBlock &block) {
+    std::unordered_set<unsigned> paramIds;
+    paramIds.reserve(block.params.size());
+    for (const auto &param : block.params)
+        paramIds.insert(param.id);
+
+    return anyTempUsedOutsideBlock(function, block, paramIds);
+}
+
+/// @brief Check whether instruction results have cross-block uses.
+/// @param function Function containing @p block.
+/// @param block Block whose instruction results are inspected.
+/// @return True when any result defined by @p block is referenced outside it.
+bool blockResultsUsedOutside(const il::core::Function &function,
+                             const il::core::BasicBlock &block) {
+    std::unordered_set<unsigned> resultIds;
+    for (const auto &instr : block.instructions) {
+        if (instr.result)
+            resultIds.insert(*instr.result);
+    }
+
+    return anyTempUsedOutsideBlock(function, block, resultIds);
+}
+
 /// @brief Translate a block label into its index when available.
 /// @param labelToIndex Mapping from labels to indices.
 /// @param label Label to search for.

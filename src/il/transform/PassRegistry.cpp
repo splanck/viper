@@ -410,13 +410,6 @@ void registerPeepholePass(PassRegistry &registry) {
     });
 }
 
-void registerPeepholeSafePass(PassRegistry &registry) {
-    registry.registerModulePass("peephole-safe", [](core::Module &module, AnalysisManager &) {
-        peepholeSafe(module);
-        return PreservedAnalyses::none();
-    });
-}
-
 void registerDCEPass(PassRegistry &registry) {
     registry.registerModulePass("dce", [](core::Module &module, AnalysisManager &) {
         dce(module);

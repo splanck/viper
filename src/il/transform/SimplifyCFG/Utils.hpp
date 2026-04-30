@@ -31,6 +31,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #if defined(__has_include)
@@ -104,6 +105,22 @@ bool valueVectorsEqual(const std::vector<il::core::Value> &lhs,
 /// \brief Substitute temps according to @p mapping; non-temps are returned unchanged.
 il::core::Value substituteValue(const il::core::Value &value,
                                 const std::unordered_map<unsigned, il::core::Value> &mapping);
+
+/// \brief Return true if @p value references @p tempId.
+bool valueReferencesTemp(const il::core::Value &value, unsigned tempId);
+
+/// \brief Return true if any instruction or branch argument outside @p owner uses @p tempId.
+bool isTempUsedOutsideBlock(const il::core::Function &function,
+                            const il::core::BasicBlock &owner,
+                            unsigned tempId);
+
+/// \brief Return true if any parameter of @p block is used outside the block.
+bool blockParamsUsedOutside(const il::core::Function &function,
+                            const il::core::BasicBlock &block);
+
+/// \brief Return true if any instruction result in @p block is used outside the block.
+bool blockResultsUsedOutside(const il::core::Function &function,
+                             const il::core::BasicBlock &block);
 
 /// \brief Resolve a basic block index from a label->index map.
 size_t lookupBlockIndex(const std::unordered_map<std::string, size_t> &labelToIndex,

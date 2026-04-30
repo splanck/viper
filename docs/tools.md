@@ -212,10 +212,10 @@ viper il-opt <in.il> -o <out.il> [flags]
 | Flag              | Description                        |
 |-------------------|------------------------------------|
 | `--passes a,b,c`  | Override the pass list             |
-| `--no-mem2reg`    | Drop mem2reg from selected legacy/custom pipelines when present |
+| `--no-mem2reg`    | Drop mem2reg from the selected pipeline when present |
 | `--mem2reg-stats` | Print counts of promoted variables |
 
-Default pipeline: O1 (`simplify-cfg, sccp, constfold, peephole, dce, simplify-cfg, sccp, inline, peephole, dce, simplify-cfg`)
+Default pipeline: O1 (`simplify-cfg, mem2reg, simplify-cfg, sccp, constfold, peephole, dce, simplify-cfg, sccp, inline, peephole, dce, simplify-cfg`)
 
 ### viper codegen
 

@@ -858,7 +858,9 @@ class SCCPSolver {
         for (size_t bi = 0; bi < function_.blocks.size(); ++bi) {
             BasicBlock &block = function_.blocks[bi];
             for (auto &param : block.params)
-                registerValue(param.id, false);
+                // Entry block params are ABI inputs even when their SSA ids differ
+                // from Function::params after frontend lowering or serialization.
+                registerValue(param.id, bi == 0);
 
             for (auto &instr : block.instructions) {
                 instrBlock_[&instr] = bi;

@@ -179,8 +179,8 @@ int main() {
 
     BasicBlock compute;
     compute.label = "compute";
-    compute.params.push_back(Param{"wide", Type(Type::Kind::I64), 0});
-    compute.params.push_back(Param{"loaded", Type(Type::Kind::I64), 1});
+    compute.params.push_back(Param{"wide", Type(Type::Kind::I64), nextTemp++});
+    compute.params.push_back(Param{"loaded", Type(Type::Kind::I64), nextTemp++});
     Instr br;
     br.op = Opcode::Br;
     br.type = Type(Type::Kind::Void);
@@ -199,8 +199,8 @@ int main() {
 
     BasicBlock join;
     join.label = "join";
-    join.params.push_back(Param{"lhs", Type(Type::Kind::I64), 0});
-    join.params.push_back(Param{"rhs", Type(Type::Kind::I64), 1});
+    join.params.push_back(Param{"lhs", Type(Type::Kind::I64), nextTemp++});
+    join.params.push_back(Param{"rhs", Type(Type::Kind::I64), nextTemp++});
     Instr ret;
     ret.op = Opcode::Ret;
     ret.type = Type(Type::Kind::Void);

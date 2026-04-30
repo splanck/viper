@@ -85,8 +85,7 @@ int main() {
     }
 
     // Default (no --passes/pipeline) should use O1.
-    // mem2reg is currently disabled, so alloca/store/load may remain.
-    // SCCP should still fold the constant computation: ret 5.
+    // O1 now includes mem2reg, so SCCP can see through the promoted scalar.
     TempFile def{".o1.il"};
     {
         std::vector<std::string> args{input.path.string(), "-o", def.path.string(), "-verify-each"};
@@ -98,9 +97,10 @@ int main() {
         assert(rc == 0);
         assert(!gUsageCalled);
         const std::string out = readFile(def.path);
-        // Without mem2reg, SCCP can't fold through allocas.
-        // Just verify the output is valid IL with a ret instruction.
-        assert(out.find("ret") != std::string::npos);
+        assert(out.find("alloca") == std::string::npos);
+        assert(out.find("store") == std::string::npos);
+        assert(out.find("load") == std::string::npos);
+        assert(out.find("ret 5") != std::string::npos);
     }
 
     // Lower-case rehabilitation pipeline names should be accepted directly.
