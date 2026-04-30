@@ -728,8 +728,7 @@ int main() {
         fn.blocks.push_back(entry);
         module.functions.push_back(fn);
 
-        const std::string message = verifyAndCaptureMessage(module);
-        assert(message.find("pure function contains memory access") != std::string::npos);
+        verifySucceeds(module);
     }
 
     {

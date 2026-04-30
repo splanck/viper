@@ -24,12 +24,108 @@
 #include "il/core/Global.hpp"
 #include "il/core/Module.hpp"
 
+#include <cerrno>
+#include <charconv>
+#include <cstdint>
+#include <cstdlib>
+#include <limits>
+#include <string_view>
+
 using namespace il::core;
 
 namespace il::verify {
 namespace {
 using il::support::Expected;
 using il::support::makeError;
+
+bool parseInteger(std::string_view text, long long &out) {
+    const char *begin = text.data();
+    const char *end = begin + text.size();
+    auto [ptr, ec] = std::from_chars(begin, end, out, 10);
+    return ec == std::errc{} && ptr == end;
+}
+
+bool parseFloat(std::string_view text, double &out) {
+    std::string tmp{text};
+    char *end = nullptr;
+    errno = 0;
+    out = std::strtod(tmp.c_str(), &end);
+    return errno == 0 && end == tmp.c_str() + tmp.size();
+}
+
+Expected<void> validateGlobal(const Global &global) {
+    if (global.name.empty())
+        return Expected<void>{makeError({}, "global has empty name")};
+
+    if (global.type.kind == Type::Kind::Void || global.type.kind == Type::Kind::Error ||
+        global.type.kind == Type::Kind::ResumeTok) {
+        return Expected<void>{makeError({}, "global @" + global.name + " has unsupported type " +
+                                                global.type.toString())};
+    }
+
+    if (global.linkage == Linkage::Import && !global.init.empty()) {
+        return Expected<void>{
+            makeError({}, "import global @" + global.name + " must not have an initializer")};
+    }
+
+    if (global.type.kind == Type::Kind::Str)
+        return {};
+
+    if (global.init.empty())
+        return {};
+
+    long long intValue = 0;
+    switch (global.type.kind) {
+        case Type::Kind::I1:
+            if (!parseInteger(global.init, intValue) || (intValue != 0 && intValue != 1)) {
+                return Expected<void>{
+                    makeError({}, "global @" + global.name + " initializer must be i1 0 or 1")};
+            }
+            return {};
+        case Type::Kind::I16:
+            if (!parseInteger(global.init, intValue) ||
+                intValue < std::numeric_limits<int16_t>::min() ||
+                intValue > std::numeric_limits<int16_t>::max()) {
+                return Expected<void>{
+                    makeError({}, "global @" + global.name + " initializer out of range for i16")};
+            }
+            return {};
+        case Type::Kind::I32:
+            if (!parseInteger(global.init, intValue) ||
+                intValue < std::numeric_limits<int32_t>::min() ||
+                intValue > std::numeric_limits<int32_t>::max()) {
+                return Expected<void>{
+                    makeError({}, "global @" + global.name + " initializer out of range for i32")};
+            }
+            return {};
+        case Type::Kind::I64:
+            if (!parseInteger(global.init, intValue)) {
+                return Expected<void>{
+                    makeError({}, "global @" + global.name + " initializer must be an integer")};
+            }
+            return {};
+        case Type::Kind::F64: {
+            double floatValue = 0.0;
+            if (!parseFloat(global.init, floatValue)) {
+                return Expected<void>{
+                    makeError({}, "global @" + global.name + " initializer must be f64")};
+            }
+            return {};
+        }
+        case Type::Kind::Ptr:
+            if (global.init != "null") {
+                return Expected<void>{
+                    makeError({}, "global @" + global.name + " ptr initializer must be null")};
+            }
+            return {};
+        case Type::Kind::Void:
+        case Type::Kind::Str:
+        case Type::Kind::Error:
+        case Type::Kind::ResumeTok:
+            break;
+    }
+    return {};
+}
 } // namespace
 
 /// @brief Expose the cached map from global names to module-owned definitions.
@@ -53,6 +149,8 @@ Expected<void> GlobalVerifier::run(const Module &module, [[maybe_unused]] DiagSi
     globals_.clear();
 
     for (const auto &global : module.globals) {
+        if (auto result = validateGlobal(global); !result)
+            return result;
         if (!globals_.emplace(global.name, &global).second)
             return Expected<void>{makeError({}, "duplicate global @" + global.name)};
     }

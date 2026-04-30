@@ -115,6 +115,10 @@ bool opcodeMayThrowOrTrap(Opcode op) {
         case Opcode::IAddOvf:
         case Opcode::ISubOvf:
         case Opcode::IMulOvf:
+        case Opcode::SDiv:
+        case Opcode::UDiv:
+        case Opcode::SRem:
+        case Opcode::URem:
         case Opcode::SDivChk0:
         case Opcode::UDivChk0:
         case Opcode::SRemChk0:
@@ -222,6 +226,82 @@ std::optional<StackLocationKey> stackLocationKey(
     return base;
 }
 
+std::unordered_set<unsigned> computeStackDerivedTemps(const Function &fn, const BlockMap &blockMap) {
+    std::unordered_map<unsigned, const Instr *> defs;
+    std::unordered_set<unsigned> stackDerived;
+    std::unordered_set<StackLocationKey, StackLocationKeyHash> stackPtrLocations;
+
+    for (const auto &blk : fn.blocks) {
+        for (const auto &instr : blk.instructions) {
+            if (instr.result)
+                defs.emplace(*instr.result, &instr);
+            if (instr.op == Opcode::Alloca && instr.result)
+                stackDerived.insert(*instr.result);
+        }
+    }
+
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const auto &blk : fn.blocks) {
+            for (const auto &instr : blk.instructions) {
+                if (instr.op == Opcode::GEP && instr.result && !instr.operands.empty() &&
+                    instr.operands[0].kind == Value::Kind::Temp &&
+                    stackDerived.contains(instr.operands[0].id)) {
+                    changed |= stackDerived.insert(*instr.result).second;
+                }
+
+                if (instr.op == Opcode::Store && instr.operands.size() >= 2) {
+                    const Value &dst = instr.operands[0];
+                    const Value &stored = instr.operands[1];
+                    if (stored.kind == Value::Kind::Temp && stackDerived.contains(stored.id)) {
+                        if (auto key = stackLocationKey(dst, defs))
+                            changed |= stackPtrLocations.insert(*key).second;
+                    }
+                }
+
+                if (instr.op == Opcode::Load && instr.result && !instr.operands.empty() &&
+                    instr.type.kind == Type::Kind::Ptr) {
+                    if (auto key = stackLocationKey(instr.operands[0], defs);
+                        key && stackPtrLocations.contains(*key)) {
+                        changed |= stackDerived.insert(*instr.result).second;
+                    }
+                }
+
+                if (isTerminator(instr.op)) {
+                    for (size_t edge = 0; edge < instr.labels.size() && edge < instr.brArgs.size();
+                         ++edge) {
+                        auto targetIt = blockMap.find(instr.labels[edge]);
+                        if (targetIt == blockMap.end())
+                            continue;
+                        const BasicBlock *target = targetIt->second;
+                        const auto &args = instr.brArgs[edge];
+                        const size_t count = std::min(args.size(), target->params.size());
+                        for (size_t idx = 0; idx < count; ++idx) {
+                            const Value &arg = args[idx];
+                            if (arg.kind == Value::Kind::Temp && stackDerived.contains(arg.id))
+                                changed |= stackDerived.insert(target->params[idx].id).second;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return stackDerived;
+}
+
+bool isPrivateStackMemoryAccess(const Instr &instr,
+                                const std::unordered_set<unsigned> &stackDerived) {
+    if (instr.op == Opcode::Alloca)
+        return true;
+    if ((instr.op == Opcode::Load || instr.op == Opcode::Store) && !instr.operands.empty()) {
+        const Value &ptr = instr.operands[0];
+        return ptr.kind == Value::Kind::Temp && stackDerived.contains(ptr.id);
+    }
+    return false;
+}
+
 Expected<void> validateFunctionParams(const Function &fn) {
     std::unordered_set<std::string> paramNames;
     std::unordered_set<unsigned> paramIds;
@@ -274,8 +354,9 @@ Expected<void> verifyInstruction_E(const Function &fn,
 ///          the default collection used to validate every opcode.
 ///
 /// @param externs Map from extern names to their declarations.
-FunctionVerifier::FunctionVerifier(const ExternMap &externs)
-    : externs_(externs), strategies_(makeDefaultInstructionStrategies()) {}
+/// @param globals Map from global names to their declarations.
+FunctionVerifier::FunctionVerifier(const ExternMap &externs, const GlobalMap &globals)
+    : externs_(externs), globals_(globals), strategies_(makeDefaultInstructionStrategies()) {}
 
 /// @brief Verify every function in a module for structural correctness.
 ///
@@ -495,6 +576,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     // sites or hand-written metadata being honest.
     if (fn.attrs().pure || fn.attrs().readonly || fn.attrs().nothrow) {
         const FunctionAttrs &attrs = fn.attrs();
+        const auto stackDerived = computeStackDerivedTemps(fn, blockMap);
         for (const auto &bb : fn.blocks) {
             for (const auto &instr : bb.instructions) {
                 const auto failAttr = [&](std::string_view message) -> Expected<void> {
@@ -525,15 +607,18 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                 }
 
                 const MemoryEffects memory = memoryEffects(instr.op);
-                if (attrs.pure && memory != MemoryEffects::None)
+                const bool privateStackAccess = isPrivateStackMemoryAccess(instr, stackDerived);
+                if (attrs.pure && memory != MemoryEffects::None && !privateStackAccess)
                     return failAttr("pure function contains memory access");
                 if (attrs.readonly &&
                     (memory == MemoryEffects::Write || memory == MemoryEffects::ReadWrite ||
-                     memory == MemoryEffects::Unknown))
+                     memory == MemoryEffects::Unknown) &&
+                    !privateStackAccess)
                     return failAttr("readonly function contains memory write");
 
                 const OpcodeInfo &info = getOpcodeInfo(instr.op);
-                if (attrs.pure && info.hasSideEffects && !isPureControlTerminator(instr.op))
+                if (attrs.pure && info.hasSideEffects && !isPureControlTerminator(instr.op) &&
+                    !privateStackAccess)
                     return failAttr("pure function contains side-effecting instruction");
                 if (attrs.nothrow && opcodeMayThrowOrTrap(instr.op))
                     return failAttr("nothrow function contains trapping instruction");
@@ -661,7 +746,6 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
 
         auto setRootDom = [&](size_t index) {
             std::fill(dom[index].begin(), dom[index].end(), 0);
-            dom[index][entryIndex] = 1;
             dom[index][index] = 1;
         };
 
@@ -680,7 +764,6 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                 const size_t index = blockIndex[bb];
                 if (predIndices[index].empty()) {
                     std::vector<unsigned char> newDom(blocks.size(), 0);
-                    newDom[entryIndex] = 1;
                     newDom[index] = 1;
                     if (dom[index] != newDom) {
                         dom[index] = std::move(newDom);
@@ -711,6 +794,8 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
             return dom[bIt->second][aIt->second] != 0;
         };
 
+        const auto stackDerivedForDominance = computeStackDerivedTemps(fn, blockMap);
+
         // Check every operand use: the defining block must dominate the using block.
         for (const auto &blk : fn.blocks) {
             for (const auto &instr : blk.instructions) {
@@ -721,7 +806,12 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                     if (defIt == definingBlock.end())
                         return {};
 
-                    if (defIt->second != &blk && !dominates(defIt->second, &blk)) {
+                    const bool entryStackAddress =
+                        defIt->second == entry && stackDerivedForDominance.contains(op.id) &&
+                        temps.find(op.id) != temps.end() &&
+                        temps.find(op.id)->second.kind == Type::Kind::Ptr;
+                    if (defIt->second != &blk && !entryStackAddress &&
+                        !dominates(defIt->second, &blk)) {
                         std::ostringstream msg;
                         msg << "use of %" << op.id << " in ^" << blk.label
                             << " not dominated by definition in ^" << defIt->second->label;
@@ -1105,14 +1195,15 @@ Expected<void> FunctionVerifier::verifyInstruction(const Function &fn,
                                                    const BlockMap &blockMap,
                                                    TypeInference &types,
                                                    DiagSink &sink) {
-    VerifyCtx ctx{sink, types, externs_, functionMap_, fn, bb, instr};
+    VerifyCtx ctx{sink, types, externs_, functionMap_, globals_, fn, bb, instr};
     if (auto result = verifyOpcodeSignature_E(ctx); !result)
         return result;
 
     for (const auto &strategy : strategies_) {
         if (!strategy->matches(instr))
             continue;
-        return strategy->verify(fn, bb, instr, blockMap, externs_, functionMap_, types, sink);
+        return strategy->verify(
+            fn, bb, instr, blockMap, externs_, functionMap_, globals_, types, sink);
     }
 
     return Expected<void>{makeError({}, formatFunctionDiag(fn, "no instruction strategy for op"))};

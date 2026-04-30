@@ -18,6 +18,7 @@
 
 #include "il/verify/InstructionCheckerShared.hpp"
 
+#include "il/core/Global.hpp"
 #include "il/core/Instr.hpp"
 #include "il/verify/DiagSink.hpp"
 #include "il/verify/TypeInference.hpp"
@@ -138,6 +139,13 @@ Expected<void> checkAddrOf(const VerifyCtx &ctx) {
     if (ctx.instr.operands.size() != 1 || ctx.instr.operands[0].kind != Value::Kind::GlobalAddr)
         return fail(ctx, "operand must be global");
 
+    const std::string &name = ctx.instr.operands[0].str;
+    auto it = ctx.globals.find(name);
+    if (it == ctx.globals.end())
+        return fail(ctx, "unknown global @" + name);
+    if (it->second->type.kind != Type::Kind::Str)
+        return fail(ctx, "addr.of operand must name a string global");
+
     ctx.types.recordResult(ctx.instr, Type(Type::Kind::Ptr));
     return {};
 }
@@ -149,14 +157,41 @@ Expected<void> checkConstStr(const VerifyCtx &ctx) {
     if (ctx.instr.operands.size() != 1 || ctx.instr.operands[0].kind != Value::Kind::GlobalAddr)
         return fail(ctx, "unknown string global");
 
+    const std::string &name = ctx.instr.operands[0].str;
+    auto it = ctx.globals.find(name);
+    if (it == ctx.globals.end())
+        return fail(ctx, "unknown string global @" + name);
+    if (it->second->type.kind != Type::Kind::Str)
+        return fail(ctx, "const.str operand must name a string global");
+
     ctx.types.recordResult(ctx.instr, Type(Type::Kind::Str));
     return {};
 }
 
+/// @brief Verify the @c gaddr instruction.
+/// @details Requires a declared non-string global with addressable storage.
+Expected<void> checkGAddr(const VerifyCtx &ctx) {
+    if (ctx.instr.operands.size() != 1 || ctx.instr.operands[0].kind != Value::Kind::GlobalAddr)
+        return fail(ctx, "gaddr operand must be global");
+
+    const std::string &name = ctx.instr.operands[0].str;
+    auto it = ctx.globals.find(name);
+    if (it == ctx.globals.end())
+        return fail(ctx, "unknown global @" + name);
+
+    const Type::Kind kind = it->second->type.kind;
+    if (kind == Type::Kind::Str)
+        return fail(ctx, "gaddr requires a scalar storage global, not a string constant");
+    if (kind == Type::Kind::Void || kind == Type::Kind::Error || kind == Type::Kind::ResumeTok)
+        return fail(ctx, "gaddr requires a scalar storage global");
+
+    ctx.types.recordResult(ctx.instr, Type(Type::Kind::Ptr));
+    return {};
+}
+
 /// @brief Verify the @c const.null instruction.
-/// @details Normalises the result type to a pointer-like class when the
-///          annotation is absent or unsupported, then records the result for
-///          downstream passes.
+/// @details Accepts only pointer-like result annotations and records the result
+///          for downstream passes.
 Expected<void> checkConstNull(const VerifyCtx &ctx) {
     Type resultType = ctx.instr.type;
     switch (resultType.kind) {
@@ -166,8 +201,7 @@ Expected<void> checkConstNull(const VerifyCtx &ctx) {
         case Type::Kind::ResumeTok:
             break;
         default:
-            resultType = Type(Type::Kind::Ptr);
-            break;
+            return fail(ctx, "const.null result type must be ptr, str, error, or resumetok");
     }
 
     ctx.types.recordResult(ctx.instr, resultType);

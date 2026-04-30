@@ -188,6 +188,8 @@ MemoryEffects memoryEffects(Opcode op) noexcept {
         case Opcode::FCmpLT:
         case Opcode::FCmpLE:
         case Opcode::FCmpGE:
+        case Opcode::FCmpOrd:
+        case Opcode::FCmpUno:
         case Opcode::Sitofp:
         case Opcode::Fptosi:
         case Opcode::CastFpToSiRteChk:
@@ -207,10 +209,8 @@ MemoryEffects memoryEffects(Opcode op) noexcept {
         case Opcode::CBr:
         case Opcode::SwitchI32:
         case Opcode::Ret:
-            return MemoryEffects::None;
-
         case Opcode::Alloca:
-            return MemoryEffects::Write;
+            return MemoryEffects::None;
 
         default:
             return MemoryEffects::Unknown;

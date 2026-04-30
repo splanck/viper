@@ -149,7 +149,7 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st) {
     return {};
 }
 
-/// @brief Parse a global string binding written as `global @name = "literal"`.
+/// @brief Parse a global binding written as `global [linkage] [const] type @name [= init]`.
 ///
 /// @details Validates that an assignment operator is present, trims the name
 /// token to ignore incidental whitespace, and copies the quoted payload after
@@ -179,7 +179,9 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st) {
         tokens.erase(tokens.begin());
     }
 
+    bool isConst = false;
     if (!tokens.empty() && tokens.front() == "const") {
+        isConst = true;
         tokens.erase(tokens.begin());
         if (tokens.empty()) {
             return Expected<void>{
@@ -197,46 +199,62 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st) {
     }
 
     const std::string &typeToken = tokens.front();
-    if (typeToken != "str") {
+    bool typeOk = true;
+    Type globalType = parseType(typeToken, &typeOk);
+    if (!typeOk || globalType.kind == Type::Kind::Void || globalType.kind == Type::Kind::Error ||
+        globalType.kind == Type::Kind::ResumeTok) {
         std::ostringstream oss;
-        oss << "unsupported global type '" << typeToken << "' (expected 'str')";
+        oss << "unsupported global type '" << typeToken << "'";
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, oss.str())};
     }
 
     size_t eq = line.find('=', at);
-    if (eq == std::string::npos) {
+    if (globalType.kind == Type::Kind::Str && eq == std::string::npos) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing '='")};
     }
-    size_t q1 = line.find('"', eq);
-    if (q1 == std::string::npos) {
-        return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing opening '\"'")};
-    }
-    size_t q2 = line.rfind('"');
-    if (q2 == std::string::npos || q2 <= q1) {
-        return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing closing '\"'")};
-    }
-    std::string name = trim(line.substr(at + 1, eq - at - 1));
+    const size_t nameEnd = eq == std::string::npos ? line.size() : eq;
+    std::string name = trim(line.substr(at + 1, nameEnd - at - 1));
     if (name.empty()) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing global name")};
     }
     if (!isValidILIdentifier(name)) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "malformed global name")};
     }
-    std::string init = line.substr(q1 + 1, q2 - q1 - 1);
-    auto trailingBegin = line.begin() + static_cast<std::ptrdiff_t>(q2 + 1);
-    auto trailingEnd = line.end();
-    auto nonWs = std::find_if(
-        trailingBegin, trailingEnd, [](unsigned char ch) { return !std::isspace(ch); });
-    if (nonWs != trailingEnd) {
-        return Expected<void>{
-            il::io::makeLineErrorDiag({}, st.lineNo, "unexpected characters after closing '\"'")};
-    }
+
     std::string decoded;
-    std::string errMsg;
-    if (!il::io::decodeEscapedString(init, decoded, &errMsg)) {
-        return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, errMsg)};
+    bool hasInitializer = eq != std::string::npos;
+    if (globalType.kind == Type::Kind::Str) {
+        size_t q1 = line.find('"', eq);
+        if (q1 == std::string::npos) {
+            return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing opening '\"'")};
+        }
+        size_t q2 = line.rfind('"');
+        if (q2 == std::string::npos || q2 <= q1) {
+            return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing closing '\"'")};
+        }
+        std::string init = line.substr(q1 + 1, q2 - q1 - 1);
+        auto trailingBegin = line.begin() + static_cast<std::ptrdiff_t>(q2 + 1);
+        auto trailingEnd = line.end();
+        auto nonWs = std::find_if(
+            trailingBegin, trailingEnd, [](unsigned char ch) { return !std::isspace(ch); });
+        if (nonWs != trailingEnd) {
+            return Expected<void>{
+                il::io::makeLineErrorDiag({}, st.lineNo, "unexpected characters after closing '\"'")};
+        }
+        std::string errMsg;
+        if (!il::io::decodeEscapedString(init, decoded, &errMsg)) {
+            return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, errMsg)};
+        }
+        isConst = true;
+    } else if (eq != std::string::npos) {
+        decoded = trim(line.substr(eq + 1));
+        if (decoded.empty()) {
+            return Expected<void>{
+                il::io::makeLineErrorDiag({}, st.lineNo, "missing global initializer")};
+        }
     }
-    st.m.globals.push_back({name, Type(Type::Kind::Str), decoded, globalLinkage});
+
+    st.m.globals.push_back({name, globalType, decoded, globalLinkage, isConst, hasInitializer});
     return {};
 }
 

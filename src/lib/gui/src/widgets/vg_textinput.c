@@ -199,6 +199,47 @@ static size_t textinput_valid_utf8_prefix(const char *text, size_t max_bytes) {
     return (size_t)(cursor - text);
 }
 
+static char *textinput_sanitize_utf8_copy(const char *text,
+                                          size_t input_len,
+                                          size_t *out_len,
+                                          size_t *out_chars) {
+    if (out_len)
+        *out_len = 0;
+    if (out_chars)
+        *out_chars = 0;
+    if (!text)
+        input_len = 0;
+    if (input_len > SIZE_MAX - 1)
+        return NULL;
+
+    char *clean = (char *)malloc(input_len + 1);
+    if (!clean)
+        return NULL;
+
+    const char *cursor = text ? text : "";
+    const char *end = cursor + input_len;
+    size_t write = 0;
+    size_t chars = 0;
+    while (cursor < end && *cursor) {
+        const char *prev = cursor;
+        if (textinput_utf8_advance_bounded(&cursor, end)) {
+            size_t span = (size_t)(cursor - prev);
+            memcpy(clean + write, prev, span);
+            write += span;
+            chars++;
+        } else {
+            cursor = prev + 1;
+        }
+    }
+
+    clean[write] = '\0';
+    if (out_len)
+        *out_len = write;
+    if (out_chars)
+        *out_chars = chars;
+    return clean;
+}
+
 static bool textinput_is_word_separator(unsigned char ch) {
     if (ch <= ' ')
         return true;
@@ -1580,20 +1621,30 @@ void vg_textinput_set_text(vg_textinput_t *input, const char *text) {
     if (!input)
         return;
 
-    const char *next_text = text ? text : "";
-    bool changed = strcmp(input->text ? input->text : "", next_text) != 0;
-    size_t len = text ? strlen(text) : 0;
-
-    if (!ensure_capacity(input, len + 1))
+    size_t len = 0;
+    size_t chars = 0;
+    char *clean = textinput_sanitize_utf8_copy(text, text ? strlen(text) : 0, &len, &chars);
+    if (!clean)
         return;
 
-    if (text) {
-        memcpy(input->text, text, len + 1);
-    } else {
-        input->text[0] = '\0';
+    if (input->max_length > 0 && chars > (size_t)input->max_length) {
+        len = textinput_prefix_for_codepoints(clean, (size_t)input->max_length);
+        len = textinput_valid_utf8_prefix(clean, len);
+        clean[len] = '\0';
+        chars = textinput_codepoint_count_in_prefix(clean, len);
     }
+
+    bool changed = strcmp(input->text ? input->text : "", clean) != 0;
+
+    if (len > SIZE_MAX - 1 || !ensure_capacity(input, len + 1)) {
+        free(clean);
+        return;
+    }
+
+    memcpy(input->text, clean, len + 1);
+    free(clean);
     input->text_len = len;
-    textinput_set_cursor_internal(input, textinput_char_count(input));
+    textinput_set_cursor_internal(input, chars);
     input->scroll_x = 0.0f;
     input->scroll_y = 0.0f;
     textinput_ensure_cursor_visible(input);
@@ -1683,33 +1734,51 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text) {
     if (!input || !text || input->read_only)
         return;
 
+    size_t insert_len = 0;
+    size_t insert_chars = 0;
+    char *clean = textinput_sanitize_utf8_copy(text, strlen(text), &insert_len, &insert_chars);
+    if (!clean)
+        return;
+    if (insert_len == 0 || insert_chars == 0) {
+        free(clean);
+        return;
+    }
+
     // Delete selection first
     if (input->selection_start != input->selection_end) {
         vg_textinput_delete_selection(input);
     }
 
-    size_t insert_len = strlen(text);
-    size_t insert_chars = textinput_codepoint_count_in_prefix(text, insert_len);
-
     if (input->max_length > 0) {
         size_t current_chars = textinput_char_count(input);
         size_t max_chars = (size_t)input->max_length;
-        if (current_chars >= max_chars)
+        if (current_chars >= max_chars) {
+            free(clean);
             return;
+        }
         if (current_chars + insert_chars > max_chars) {
             size_t remaining_chars = max_chars - current_chars;
-            insert_len = textinput_prefix_for_codepoints(text, remaining_chars);
-            insert_len = textinput_valid_utf8_prefix(text, insert_len);
-            if (insert_len == 0)
+            insert_len = textinput_prefix_for_codepoints(clean, remaining_chars);
+            insert_len = textinput_valid_utf8_prefix(clean, insert_len);
+            if (insert_len == 0) {
+                free(clean);
                 return;
-            insert_chars = textinput_codepoint_count_in_prefix(text, insert_len);
+            }
+            clean[insert_len] = '\0';
+            insert_chars = textinput_codepoint_count_in_prefix(clean, insert_len);
         }
     }
 
+    if (input->text_len > SIZE_MAX - 1 || insert_len > SIZE_MAX - input->text_len - 1) {
+        free(clean);
+        return;
+    }
     size_t new_len = input->text_len + insert_len;
 
-    if (!ensure_capacity(input, new_len + 1))
+    if (!ensure_capacity(input, new_len + 1)) {
+        free(clean);
         return;
+    }
 
     size_t byte_pos = textinput_byte_offset(input, input->cursor_pos);
 
@@ -1719,7 +1788,8 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text) {
             input->text_len - byte_pos + 1);
 
     // Insert text
-    memcpy(input->text + byte_pos, text, insert_len);
+    memcpy(input->text + byte_pos, clean, insert_len);
+    free(clean);
     input->text_len = new_len;
     input->cursor_pos += insert_chars;
     input->selection_start = input->selection_end = input->cursor_pos;

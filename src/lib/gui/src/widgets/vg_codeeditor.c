@@ -73,11 +73,16 @@ static vg_widget_vtable_t g_codeeditor_vtable = {.destroy = codeeditor_destroy,
 // Helper Functions
 //=============================================================================
 
-static bool ensure_line_capacity(vg_codeeditor_t *editor, int needed) {
-    if (needed <= editor->line_capacity)
+static bool ensure_line_array_capacity(vg_code_line_t **lines, int *capacity, int needed) {
+    if (!lines || !capacity || needed < 0)
+        return false;
+    if (needed <= *capacity)
         return true;
 
-    int new_capacity = editor->line_capacity;
+    int old_capacity = *capacity;
+    int new_capacity = old_capacity;
+    if (new_capacity <= 0)
+        new_capacity = INITIAL_LINE_CAPACITY;
     while (new_capacity < needed) {
         if (new_capacity > INT_MAX / LINE_CAPACITY_GROWTH)
             return false;
@@ -86,18 +91,21 @@ static bool ensure_line_capacity(vg_codeeditor_t *editor, int needed) {
 
     if ((size_t)new_capacity > SIZE_MAX / sizeof(vg_code_line_t))
         return false;
-    vg_code_line_t *new_lines = realloc(editor->lines, new_capacity * sizeof(vg_code_line_t));
+    vg_code_line_t *new_lines = realloc(*lines, (size_t)new_capacity * sizeof(vg_code_line_t));
     if (!new_lines)
         return false;
 
-    // Zero new entries
-    memset(new_lines + editor->line_capacity,
-           0,
-           (new_capacity - editor->line_capacity) * sizeof(vg_code_line_t));
+    memset(new_lines + old_capacity, 0, (size_t)(new_capacity - old_capacity) * sizeof(vg_code_line_t));
 
-    editor->lines = new_lines;
-    editor->line_capacity = new_capacity;
+    *lines = new_lines;
+    *capacity = new_capacity;
     return true;
+}
+
+static bool ensure_line_capacity(vg_codeeditor_t *editor, int needed) {
+    if (!editor)
+        return false;
+    return ensure_line_array_capacity(&editor->lines, &editor->line_capacity, needed);
 }
 
 static bool ensure_text_capacity(vg_code_line_t *line, size_t needed) {
@@ -122,7 +130,40 @@ static bool ensure_text_capacity(vg_code_line_t *line, size_t needed) {
     return true;
 }
 
+static bool init_line_text(vg_code_line_t *line, const char *text, size_t len) {
+    if (!line || len > SIZE_MAX - 1)
+        return false;
+    char *copy = (char *)malloc(len + 1);
+    if (!copy)
+        return false;
+    if (len > 0 && text)
+        memcpy(copy, text, len);
+    copy[len] = '\0';
+    memset(line, 0, sizeof(*line));
+    line->text = copy;
+    line->length = len;
+    line->capacity = len + 1;
+    return true;
+}
+
+static bool ensure_line_text_exists(vg_code_line_t *line) {
+    if (!line)
+        return false;
+    if (line->text)
+        return true;
+    char *empty = (char *)malloc(1);
+    if (!empty)
+        return false;
+    empty[0] = '\0';
+    line->text = empty;
+    line->length = 0;
+    line->capacity = 1;
+    return true;
+}
+
 static void free_line(vg_code_line_t *line) {
+    if (!line)
+        return;
     if (line->text) {
         free(line->text);
         line->text = NULL;
@@ -134,6 +175,54 @@ static void free_line(vg_code_line_t *line) {
     line->length = 0;
     line->capacity = 0;
     line->colors_capacity = 0;
+}
+
+static void free_line_array(vg_code_line_t *lines, int count) {
+    if (!lines)
+        return;
+    for (int i = 0; i < count; i++)
+        free_line(&lines[i]);
+    free(lines);
+}
+
+static size_t codeeditor_utf8_span(const char *p) {
+    if (!p || *p == '\0')
+        return 0;
+
+    const unsigned char *s = (const unsigned char *)p;
+    if ((s[0] & 0x80u) == 0)
+        return 1;
+    if ((s[0] & 0xE0u) == 0xC0u) {
+        if (s[1] == '\0')
+            return 0;
+        if ((s[1] & 0xC0u) != 0x80u)
+            return 0;
+        uint32_t cp = ((uint32_t)(s[0] & 0x1Fu) << 6) | (uint32_t)(s[1] & 0x3Fu);
+        return cp >= 0x80u ? 2u : 0u;
+    }
+    if ((s[0] & 0xF0u) == 0xE0u) {
+        if (s[1] == '\0' || s[2] == '\0')
+            return 0;
+        if ((s[1] & 0xC0u) != 0x80u || (s[2] & 0xC0u) != 0x80u)
+            return 0;
+        uint32_t cp = ((uint32_t)(s[0] & 0x0Fu) << 12) |
+                      ((uint32_t)(s[1] & 0x3Fu) << 6) | (uint32_t)(s[2] & 0x3Fu);
+        if (cp < 0x800u || (cp >= 0xD800u && cp <= 0xDFFFu))
+            return 0;
+        return 3;
+    }
+    if ((s[0] & 0xF8u) == 0xF0u) {
+        if (s[1] == '\0' || s[2] == '\0' || s[3] == '\0')
+            return 0;
+        if ((s[1] & 0xC0u) != 0x80u || (s[2] & 0xC0u) != 0x80u ||
+            (s[3] & 0xC0u) != 0x80u)
+            return 0;
+        uint32_t cp = ((uint32_t)(s[0] & 0x07u) << 18) |
+                      ((uint32_t)(s[1] & 0x3Fu) << 12) |
+                      ((uint32_t)(s[2] & 0x3Fu) << 6) | (uint32_t)(s[3] & 0x3Fu);
+        return (cp >= 0x10000u && cp <= 0x10FFFFu) ? 4u : 0u;
+    }
+    return 0;
 }
 
 static void codeeditor_clear_highlight_spans(vg_codeeditor_t *editor) {
@@ -2198,50 +2287,82 @@ VG_UNUSED static void insert_char(vg_codeeditor_t *editor, char c) {
     line->modified = true;
 }
 
+static bool codeeditor_insert_bytes_at(vg_codeeditor_t *editor,
+                                       int line_idx,
+                                       int *col,
+                                       const char *bytes,
+                                       size_t n) {
+    if (!editor || !bytes || !col || n == 0 || line_idx < 0 || line_idx >= editor->line_count)
+        return false;
+
+    vg_code_line_t *line = &editor->lines[line_idx];
+    if (!ensure_line_text_exists(line))
+        return false;
+    if (*col < 0)
+        *col = 0;
+    if (*col > (int)line->length)
+        *col = (int)line->length;
+
+    if (line->length > SIZE_MAX - 1 || n > SIZE_MAX - line->length - 1)
+        return false;
+    if (n > (size_t)(INT_MAX - *col))
+        return false;
+    if (!ensure_text_capacity(line, line->length + n + 1))
+        return false;
+
+    memmove(line->text + *col + n, line->text + *col, line->length - (size_t)*col + 1);
+    memcpy(line->text + *col, bytes, n);
+    line->length += n;
+    *col += (int)n;
+    line->modified = true;
+    return true;
+}
+
+static bool codeeditor_split_line_at(vg_codeeditor_t *editor, int line_idx, int col) {
+    if (!editor || line_idx < 0 || line_idx >= editor->line_count)
+        return false;
+    if (!ensure_line_capacity(editor, editor->line_count + 1))
+        return false;
+
+    vg_code_line_t *current = &editor->lines[line_idx];
+    if (!ensure_line_text_exists(current))
+        return false;
+    if (col < 0)
+        col = 0;
+    if (col > (int)current->length)
+        col = (int)current->length;
+
+    size_t split_col = (size_t)col;
+    size_t remaining = current->length - split_col;
+    vg_code_line_t new_line;
+    if (!init_line_text(&new_line, current->text + split_col, remaining))
+        return false;
+
+    if (line_idx + 1 < editor->line_count) {
+        memmove(&editor->lines[line_idx + 2],
+                &editor->lines[line_idx + 1],
+                (size_t)(editor->line_count - line_idx - 1) * sizeof(vg_code_line_t));
+    }
+    editor->lines[line_idx + 1] = new_line;
+    current = &editor->lines[line_idx];
+    current->text[split_col] = '\0';
+    current->length = split_col;
+    current->modified = true;
+    editor->lines[line_idx + 1].modified = true;
+    editor->line_count++;
+    return true;
+}
+
 VG_UNUSED static void insert_newline(vg_codeeditor_t *editor) {
     if (!editor)
         return;
     codeeditor_clamp_cursor_to_visible(editor, &editor->cursor_line, &editor->cursor_col);
-    if (!ensure_line_capacity(editor, editor->line_count + 1))
+    if (!codeeditor_split_line_at(editor, editor->cursor_line, editor->cursor_col))
         return;
 
-    // Move lines down
-    memmove(&editor->lines[editor->cursor_line + 2],
-            &editor->lines[editor->cursor_line + 1],
-            (editor->line_count - editor->cursor_line - 1) * sizeof(vg_code_line_t));
-
-    // Split current line
-    vg_code_line_t *current = &editor->lines[editor->cursor_line];
-    vg_code_line_t *next = &editor->lines[editor->cursor_line + 1];
-
-    memset(next, 0, sizeof(vg_code_line_t));
-    size_t remaining = current->length - editor->cursor_col;
-
-    if (remaining > 0) {
-        next->text = malloc(remaining + 1);
-        if (next->text) {
-            memcpy(next->text, current->text + editor->cursor_col, remaining);
-            next->text[remaining] = '\0';
-            next->length = remaining;
-            next->capacity = remaining + 1;
-        }
-    } else {
-        next->text = malloc(1);
-        if (next->text) {
-            next->text[0] = '\0';
-            next->length = 0;
-            next->capacity = 1;
-        }
-    }
-
-    current->text[editor->cursor_col] = '\0';
-    current->length = editor->cursor_col;
-
-    editor->line_count++;
     editor->cursor_line++;
     editor->cursor_col = 0;
     editor->modified = true;
-    next->modified = true;
 
     vg_codeeditor_refresh_layout_state(editor);
 }
@@ -2729,74 +2850,50 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
     if (!editor)
         return;
 
-    codeeditor_clear_highlight_spans(editor);
-
-    // Clear existing lines
-    for (int i = 0; i < editor->line_count; i++) {
-        free_line(&editor->lines[i]);
-    }
-    editor->line_count = 0;
-
-    // Compaction paths can leave stale structs past line_count. Clear the full
-    // slot array before reusing line entries so old colors/text metadata cannot
-    // bleed into a new document load or syntax pass.
-    if (editor->lines && editor->line_capacity > 0) {
-        memset(editor->lines, 0, (size_t)editor->line_capacity * sizeof(vg_code_line_t));
-    }
+    vg_code_line_t *new_lines = NULL;
+    int new_capacity = 0;
+    int new_count = 0;
 
     if (!text || !text[0]) {
-        // Create empty line
-        if (!ensure_line_capacity(editor, 1))
+        if (!ensure_line_array_capacity(&new_lines, &new_capacity, 1) ||
+            !init_line_text(&new_lines[0], "", 0)) {
+            free_line_array(new_lines, new_count);
             return;
-        memset(&editor->lines[0], 0, sizeof(vg_code_line_t));
-        editor->lines[0].text = malloc(1);
-        if (editor->lines[0].text) {
-            editor->lines[0].text[0] = '\0';
-            editor->lines[0].length = 0;
-            editor->lines[0].capacity = 1;
         }
-        editor->line_count = 1;
+        new_count = 1;
     } else {
-        // Parse text into lines
         const char *start = text;
         while (*start) {
             const char *end = strchr(start, '\n');
             size_t len = end ? (size_t)(end - start) : strlen(start);
 
-            if (!ensure_line_capacity(editor, editor->line_count + 1))
-                break;
-
-            vg_code_line_t *line = &editor->lines[editor->line_count];
-            memset(line, 0, sizeof(*line));
-            line->text = malloc(len + 1);
-            if (line->text) {
-                memcpy(line->text, start, len);
-                line->text[len] = '\0';
-                line->length = len;
-                line->capacity = len + 1;
+            if (!ensure_line_array_capacity(&new_lines, &new_capacity, new_count + 1) ||
+                !init_line_text(&new_lines[new_count], start, len)) {
+                free_line_array(new_lines, new_count);
+                return;
             }
-            editor->line_count++;
+            new_count++;
 
             if (!end)
                 break;
             start = end + 1;
         }
 
-        // Ensure at least one line
-        if (editor->line_count == 0) {
-            if (ensure_line_capacity(editor, 1)) {
-                memset(&editor->lines[0], 0, sizeof(vg_code_line_t));
-                editor->lines[0].text = malloc(1);
-                if (editor->lines[0].text) {
-                    editor->lines[0].text[0] = '\0';
-                    editor->lines[0].length = 0;
-                    editor->lines[0].capacity = 1;
-                }
-                editor->line_count = 1;
+        if (new_count == 0) {
+            if (!ensure_line_array_capacity(&new_lines, &new_capacity, 1) ||
+                !init_line_text(&new_lines[0], "", 0)) {
+                free_line_array(new_lines, new_count);
+                return;
             }
+            new_count = 1;
         }
     }
 
+    codeeditor_clear_highlight_spans(editor);
+    free_line_array(editor->lines, editor->line_count);
+    editor->lines = new_lines;
+    editor->line_capacity = new_capacity;
+    editor->line_count = new_count;
     editor->cursor_line = 0;
     editor->cursor_col = 0;
     editor->has_selection = false;
@@ -3058,77 +3155,43 @@ static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, 
 
     clamp_editor_position(editor, &line, &col);
 
-    // Process character by character
     int cur_line = line;
     int cur_col = col;
+    bool changed = false;
 
-    for (const char *p = text; *p; p++) {
+    for (const char *p = text; *p;) {
         if (*p == '\n') {
-            // Insert newline
-            if (!ensure_line_capacity(editor, editor->line_count + 1))
+            if (!codeeditor_split_line_at(editor, cur_line, cur_col))
                 return;
-
-            // Move lines down
-            memmove(&editor->lines[cur_line + 2],
-                    &editor->lines[cur_line + 1],
-                    (editor->line_count - cur_line - 1) * sizeof(vg_code_line_t));
-
-            vg_code_line_t *current = &editor->lines[cur_line];
-            vg_code_line_t *next = &editor->lines[cur_line + 1];
-
-            memset(next, 0, sizeof(vg_code_line_t));
-            if (cur_col < 0)
-                cur_col = 0;
-            if (cur_col > (int)current->length)
-                cur_col = (int)current->length;
-            size_t remaining = current->length - cur_col;
-
-            if (remaining > 0) {
-                next->text = malloc(remaining + 1);
-                if (next->text) {
-                    memcpy(next->text, current->text + cur_col, remaining);
-                    next->text[remaining] = '\0';
-                    next->length = remaining;
-                    next->capacity = remaining + 1;
-                }
-            } else {
-                next->text = malloc(1);
-                if (next->text) {
-                    next->text[0] = '\0';
-                    next->length = 0;
-                    next->capacity = 1;
-                }
-            }
-
-            current->text[cur_col] = '\0';
-            current->length = cur_col;
-            editor->line_count++;
-
             cur_line++;
             cur_col = 0;
-        } else if (*p >= 32 || *p == '\t') {
-            // Insert character
-            vg_code_line_t *ln = &editor->lines[cur_line];
-            if (cur_col < 0)
-                cur_col = 0;
-            if (cur_col > (int)ln->length)
-                cur_col = (int)ln->length;
-            if (ln->length > SIZE_MAX - 2)
-                return;
-            if (!ensure_text_capacity(ln, ln->length + 2))
-                return;
-
-            memmove(ln->text + cur_col + 1, ln->text + cur_col, ln->length - cur_col + 1);
-            ln->text[cur_col] = *p;
-            ln->length++;
-            cur_col++;
+            changed = true;
+            p++;
+            continue;
         }
+
+        size_t span = codeeditor_utf8_span(p);
+        if (span == 0) {
+            unsigned char byte = (unsigned char)*p;
+            if (byte < 32 && byte != '\t') {
+                p++;
+                continue;
+            }
+            span = 1;
+        }
+
+        if (!codeeditor_insert_bytes_at(editor, cur_line, &cur_col, p, span))
+            return;
+        changed = true;
+        p += span;
     }
 
     editor->cursor_line = cur_line;
     editor->cursor_col = cur_col;
-    editor->modified = true;
-    vg_codeeditor_refresh_layout_state(editor);
+    if (changed) {
+        editor->modified = true;
+        vg_codeeditor_refresh_layout_state(editor);
+    }
 }
 
 // Internal helper: delete text range without recording to history
@@ -3203,15 +3266,33 @@ static void compute_text_end_position(
     int start_line, int start_col, const char *text, int *out_line, int *out_col) {
     int line = start_line;
     int col = start_col;
+    if (col < 0)
+        col = 0;
 
     if (text) {
-        for (const char *p = text; *p; p++) {
+        for (const char *p = text; *p;) {
             if (*p == '\n') {
                 line++;
                 col = 0;
-            } else if (*p >= 32 || *p == '\t') {
-                col++;
+                p++;
+                continue;
             }
+
+            size_t span = codeeditor_utf8_span(p);
+            if (span == 0) {
+                unsigned char byte = (unsigned char)*p;
+                if (byte < 32 && byte != '\t') {
+                    p++;
+                    continue;
+                }
+                span = 1;
+            }
+
+            if (span > (size_t)(INT_MAX - col))
+                col = INT_MAX;
+            else
+                col += (int)span;
+            p += span;
         }
     }
 

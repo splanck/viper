@@ -43,6 +43,30 @@ static float g_last_click_screen_x = 0.0f;
 static float g_last_click_screen_y = 0.0f;
 static vg_widget_t *g_reported_click_widget = NULL;
 static uint64_t g_reported_click_time_ms = 0;
+static vg_widget_t *g_live_widgets = NULL;
+
+static void widget_register_live(vg_widget_t *widget) {
+    if (!widget)
+        return;
+    widget->_live_prev = NULL;
+    widget->_live_next = g_live_widgets;
+    if (g_live_widgets)
+        g_live_widgets->_live_prev = widget;
+    g_live_widgets = widget;
+}
+
+static void widget_unregister_live(vg_widget_t *widget) {
+    if (!widget)
+        return;
+    if (widget->_live_prev)
+        widget->_live_prev->_live_next = widget->_live_next;
+    else if (g_live_widgets == widget)
+        g_live_widgets = widget->_live_next;
+    if (widget->_live_next)
+        widget->_live_next->_live_prev = widget->_live_prev;
+    widget->_live_prev = NULL;
+    widget->_live_next = NULL;
+}
 
 static bool widget_paints_children_internally(const vg_widget_t *widget) {
     if (!widget)
@@ -455,10 +479,17 @@ void vg_widget_init(vg_widget_t *widget, vg_widget_type_t type, const vg_widget_
     widget->needs_layout = true;
     widget->needs_paint = true;
     widget->tab_index = -1; // -1 = natural traversal order
+    widget_register_live(widget);
 }
 
 bool vg_widget_is_live(const vg_widget_t *widget) {
-    return widget && widget->magic == VG_WIDGET_MAGIC;
+    if (!widget)
+        return false;
+    for (const vg_widget_t *live = g_live_widgets; live; live = live->_live_next) {
+        if (live == widget)
+            return live->magic == VG_WIDGET_MAGIC;
+    }
+    return false;
 }
 
 //=============================================================================
@@ -550,6 +581,7 @@ void vg_widget_destroy(vg_widget_t *widget) {
     widget->parent = NULL;
     widget->prev_sibling = NULL;
     widget->next_sibling = NULL;
+    widget_unregister_live(widget);
     widget->magic = VG_WIDGET_DESTROYED_MAGIC;
     free(widget);
 }

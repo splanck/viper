@@ -30,6 +30,14 @@ namespace il::io {
 /// @return Substring view with surrounding whitespace stripped.
 std::string trim(const std::string &text);
 
+/// @brief Remove inline IL comments while preserving quoted string contents.
+/// @details Treats `#` and `//` outside double-quoted strings as comment
+///          introducers when they start a line or follow whitespace. Backslash
+///          escapes inside strings are honoured.
+/// @param text Source line to process.
+/// @return Text before the first inline comment marker.
+std::string stripInlineComment(const std::string &text);
+
 /// @brief Extract the next comma or whitespace delimited token from a stream.
 /// @param stream Source stream backed by an instruction tail segment.
 /// @return Token without any trailing comma delimiter.

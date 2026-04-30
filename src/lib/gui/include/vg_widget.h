@@ -274,6 +274,8 @@ typedef struct vg_widget_vtable {
 ///          specific data.
 struct vg_widget {
     uint64_t magic; ///< Live-widget sentinel used by runtime handle validation.
+    vg_widget_t *_live_prev; ///< Private: previous entry in the live-widget registry.
+    vg_widget_t *_live_next; ///< Private: next entry in the live-widget registry.
 
     // Type and vtable
     vg_widget_type_t type;            ///< Runtime type discriminator.

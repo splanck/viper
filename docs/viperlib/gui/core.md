@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-22
+last-verified: 2026-04-29
 ---
 
 # Core & Application
@@ -179,6 +179,7 @@ while !app.get_ShouldClose() {
 ## Viper.GUI.Font
 
 Font loading for GUI widgets. Supports TrueType (.ttf) fonts.
+TrueType outline rasterization preserves separate contour boundaries, so glyphs with holes or multiple independent contours render with the intended even-odd fill instead of connecting unrelated contour endpoints.
 
 **Type:** Static/Instance
 **Constructor:** `Viper.GUI.Font.Load(path)`

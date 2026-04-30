@@ -90,7 +90,7 @@ int main() {
 
     Instr pureCall = makeCall("unknown_pure");
     pureCall.CallAttr.pure = true;
-    assert(aa.modRef(pureCall) == ModRefResult::NoModRef);
+    assert(aa.modRef(pureCall) == ModRefResult::ModRef);
 
     Instr contradictoryPureCall = makeCall("callee");
     contradictoryPureCall.CallAttr.pure = true;

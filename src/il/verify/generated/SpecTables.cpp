@@ -785,7 +785,7 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
         false,
         static_cast<uint8_t>(0),
         false,
-        VerifyStrategy::Default,
+        VerifyStrategy::GAddr,
         nullptr,
     },
     {

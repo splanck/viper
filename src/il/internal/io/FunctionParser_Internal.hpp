@@ -90,7 +90,7 @@ class TokenStream {
     bool advance() {
         while (std::getline(*stream_, line_)) {
             ++legacy_->lineNo;
-            line_ = trim(line_);
+            line_ = trim(stripInlineComment(line_));
             if (line_.empty() || line_.rfind("//", 0) == 0)
                 continue;
             if (!line_.empty() && line_.front() == '#')

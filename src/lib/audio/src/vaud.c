@@ -688,9 +688,9 @@ static int vaud_music_reserve_leftover(struct vaud_music *music, int32_t frames)
     if (frames <= music->leftover_cap)
         return 1;
 
-    int32_t new_cap = frames + 256;
-    if (new_cap < frames)
+    if (frames > INT32_MAX - 256)
         return 0;
+    int32_t new_cap = frames + 256;
 
     size_t bytes = 0;
     if (!vaud_pcm_s16_buffer_size(new_cap, VAUD_CHANNELS, &bytes))

@@ -43,6 +43,7 @@ bool opcodeHasStrategyValidatedResultType(il::core::Opcode op) {
         case il::core::Opcode::CastFpToUiRteChk:
         case il::core::Opcode::CastSiNarrowChk:
         case il::core::Opcode::CastUiNarrowChk:
+        case il::core::Opcode::ConstNull:
             return true;
         default:
             return false;

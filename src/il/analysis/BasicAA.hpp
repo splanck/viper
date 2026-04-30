@@ -523,8 +523,8 @@ inline ModRefResult BasicAA::modRef(const il::core::Instr &instr) const {
         return ModRefResult::ModRef;
 
     const CallEffect callee = computeCalleeEffect(instr.callee);
-    const bool pure = callee.known ? callee.pure : instr.CallAttr.pure;
-    const bool readonly = callee.known ? callee.readonly : instr.CallAttr.readonly;
+    const bool pure = callee.known && callee.pure;
+    const bool readonly = callee.known && callee.readonly;
 
     if (pure)
         return ModRefResult::NoModRef;

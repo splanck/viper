@@ -70,10 +70,12 @@ class ControlFlowStrategy final : public FunctionVerifier::InstructionStrategy {
                           const BlockMap &blockMap,
                           const std::unordered_map<std::string, const Extern *> &externs,
                           const std::unordered_map<std::string, const Function *> &funcs,
+                          const std::unordered_map<std::string, const Global *> &globals,
                           TypeInference &types,
                           DiagSink &sink) const override {
         (void)externs;
         (void)funcs;
+        (void)globals;
         (void)sink;
         switch (instr.op) {
             case Opcode::Br:
@@ -122,10 +124,11 @@ class DefaultInstructionStrategy final : public FunctionVerifier::InstructionStr
                           const BlockMap &blockMap,
                           const std::unordered_map<std::string, const Extern *> &externs,
                           const std::unordered_map<std::string, const Function *> &funcs,
+                          const std::unordered_map<std::string, const Global *> &globals,
                           TypeInference &types,
                           DiagSink &sink) const override {
         (void)blockMap;
-        VerifyCtx ctx{sink, types, externs, funcs, fn, bb, instr};
+        VerifyCtx ctx{sink, types, externs, funcs, globals, fn, bb, instr};
         return verifyInstruction_E(ctx);
     }
 };

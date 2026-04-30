@@ -179,8 +179,8 @@ void testPureButMayThrowCallPreserved() {
            "Pure call without nothrow must be preserved because it may trap");
 }
 
-/// @brief Test: Unknown call attrs are trusted only when both pure and nothrow.
-void testPureNothrowUnknownCallEliminated() {
+/// @brief Test: Unknown call attrs do not justify deleting a call.
+void testPureNothrowUnknownCallPreserved() {
     Module m = buildTestModule("unknown_function", false);
     Instr *call = findFirstCall(m);
     assert(call && "Precondition: call should exist before DCE");
@@ -189,8 +189,8 @@ void testPureNothrowUnknownCallEliminated() {
 
     il::transform::dce(m);
 
-    assert(!hasCallTo(m, "unknown_function") &&
-           "Pure+nothrow unknown call with unused result should be eliminated");
+    assert(hasCallTo(m, "unknown_function") &&
+           "Unknown call attrs must be conservative without callee metadata");
 }
 
 /// @brief Test: Multiple pure math functions are eliminated.
@@ -228,7 +228,7 @@ void testDCEIteratesToFixedPoint() {
     call.result = 1;
     call.op = Opcode::Call;
     call.type = Type(Type::Kind::I64);
-    call.callee = "unknown_pure";
+    call.callee = "rt_abs_i64";
     call.operands = {Value::temp(0)};
     call.CallAttr.pure = true;
     call.CallAttr.nothrow = true;
@@ -246,7 +246,7 @@ void testDCEIteratesToFixedPoint() {
 
     il::transform::dce(m);
 
-    assert(!hasResult(m, 1) && "unused pure call should be removed");
+    assert(!hasResult(m, 1) && "unused known pure call should be removed");
     assert(!hasResult(m, 0) && "producer made dead by call removal should also be removed");
 }
 
@@ -259,7 +259,7 @@ int main() {
     testUnknownCalleePreserved();
     testReadonlyCallPreserved();
     testPureButMayThrowCallPreserved();
-    testPureNothrowUnknownCallEliminated();
+    testPureNothrowUnknownCallPreserved();
     testMultiplePureMathEliminated();
     testDCEIteratesToFixedPoint();
 

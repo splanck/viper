@@ -50,6 +50,7 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 #include "il/utils/Utils.hpp"
+#include "il/verify/VerifierTable.hpp"
 
 #include <string>
 #include <unordered_map>
@@ -122,6 +123,8 @@ bool isRotatableHeader(const BasicBlock &header, const Loop &loop) {
         const auto &info = getOpcodeInfo(instr.op);
         // Reject instructions with side effects or that are terminators
         if (info.hasSideEffects || info.isTerminator)
+            return false;
+        if (const auto props = il::verify::lookup(instr.op); props && props->canTrap)
             return false;
         // Reject memory operations (loads/stores/allocas) — not safe to duplicate
         if (hasMemoryRead(instr.op) || hasMemoryWrite(instr.op))

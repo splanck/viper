@@ -49,6 +49,10 @@ constexpr Table buildTable() {
         makeBinary(TypeClass::InstrType, TypeClass::InstrType, true);
     table[static_cast<size_t>(Opcode::IMulOvf)] =
         makeBinary(TypeClass::InstrType, TypeClass::InstrType, true);
+    table[static_cast<size_t>(Opcode::SDiv)] = makeBinary(TypeClass::I64, TypeClass::I64, true);
+    table[static_cast<size_t>(Opcode::UDiv)] = makeBinary(TypeClass::I64, TypeClass::I64, true);
+    table[static_cast<size_t>(Opcode::SRem)] = makeBinary(TypeClass::I64, TypeClass::I64, true);
+    table[static_cast<size_t>(Opcode::URem)] = makeBinary(TypeClass::I64, TypeClass::I64, true);
     table[static_cast<size_t>(Opcode::SDivChk0)] =
         makeBinary(TypeClass::InstrType, TypeClass::InstrType, true);
     table[static_cast<size_t>(Opcode::UDivChk0)] =

@@ -127,7 +127,7 @@ std::vector<Diag> Verifier::verifyAll(const Module &m, size_t maxDiagnostics) {
     if (diagnostics.size() >= maxDiagnostics)
         return diagnostics;
 
-    FunctionVerifier functionVerifier(externVerifier.externs());
+    FunctionVerifier functionVerifier(externVerifier.externs(), globalVerifier.globals());
     appendDiagnostics(functionVerifier.run(m, sink));
     if (diagnostics.size() >= maxDiagnostics)
         return diagnostics;

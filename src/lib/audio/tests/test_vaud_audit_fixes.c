@@ -63,6 +63,12 @@ static void write_u32_le(uint8_t *p, uint32_t v) {
     p[3] = (uint8_t)((v >> 24) & 0xFFu);
 }
 
+static void write_f32_le(uint8_t *p, float v) {
+    uint32_t bits = 0;
+    memcpy(&bits, &v, sizeof(bits));
+    write_u32_le(p, bits);
+}
+
 static size_t make_pcm32_wav(uint8_t *buf, size_t cap) {
     if (!buf || cap < 52)
         return 0;
@@ -85,6 +91,28 @@ static size_t make_pcm32_wav(uint8_t *buf, size_t cap) {
     return 52;
 }
 
+static size_t make_float32_wav(uint8_t *buf, size_t cap) {
+    if (!buf || cap < 52)
+        return 0;
+    memset(buf, 0, cap);
+    memcpy(buf + 0, "RIFF", 4);
+    write_u32_le(buf + 4, 44);
+    memcpy(buf + 8, "WAVE", 4);
+    memcpy(buf + 12, "fmt ", 4);
+    write_u32_le(buf + 16, 16);
+    write_u16_le(buf + 20, 3);
+    write_u16_le(buf + 22, 1);
+    write_u32_le(buf + 24, 44100);
+    write_u32_le(buf + 28, 44100u * 4u);
+    write_u16_le(buf + 32, 4);
+    write_u16_le(buf + 34, 32);
+    memcpy(buf + 36, "data", 4);
+    write_u32_le(buf + 40, 8);
+    write_f32_le(buf + 44, -1.0f);
+    write_f32_le(buf + 48, 1.0f);
+    return 52;
+}
+
 static void test_wav_pcm32_decodes_little_endian_samples(void) {
     uint8_t wav[64];
     int16_t *samples = NULL;
@@ -101,6 +129,25 @@ static void test_wav_pcm32_decodes_little_endian_samples(void) {
     EXPECT_TRUE(samples[1] == 32767);
     EXPECT_TRUE(samples[2] == -32768);
     EXPECT_TRUE(samples[3] == -32768);
+    free(samples);
+}
+
+static void test_wav_float32_maps_full_scale_endpoints(void) {
+    uint8_t wav[64];
+    int16_t *samples = NULL;
+    int64_t frames = 0;
+    int32_t rate = 0;
+    int32_t channels = 0;
+    size_t size = make_float32_wav(wav, sizeof(wav));
+    EXPECT_TRUE(size > 0);
+    EXPECT_TRUE(vaud_wav_load_mem(wav, size, &samples, &frames, &rate, &channels));
+    EXPECT_TRUE(frames == 2);
+    EXPECT_TRUE(rate == 44100);
+    EXPECT_TRUE(channels == 1);
+    EXPECT_TRUE(samples[0] == INT16_MIN);
+    EXPECT_TRUE(samples[1] == INT16_MIN);
+    EXPECT_TRUE(samples[2] == INT16_MAX);
+    EXPECT_TRUE(samples[3] == INT16_MAX);
     free(samples);
 }
 
@@ -121,6 +168,7 @@ int main(void) {
     test_pcm_size_rejects_channel_multiply_overflow();
     test_pcm_size_accepts_normal_stereo_buffer();
     test_wav_pcm32_decodes_little_endian_samples();
+    test_wav_float32_maps_full_scale_endpoints();
     test_resample_rejects_invalid_rates_and_channels();
 
     if (tests_failed != 0)

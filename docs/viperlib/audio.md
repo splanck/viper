@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-21
+last-verified: 2026-04-29
 ---
 
 # Audio
@@ -332,6 +332,7 @@ destroying those handles remains safe, but playback calls on them fail until the
 loaded again.
 Call `Audio.Update()` once per frame when using streaming `Music` or direct
 `Music.CrossfadeTo`; `Playlist.Update()` already forwards through the same update path.
+The mixer also attempts a locked buffer prefill if playback reaches an empty music buffer before end-of-stream has been reported, so transient stream-buffer gaps do not force the rest of the render block to silence.
 
 ### Zia Example
 
@@ -812,8 +813,9 @@ auto-detected from file magic bytes — no extension matching required.
 2. **Music playback:** Any supported sample rate works — the engine resamples during buffered playback.
 3. **Memory:** Sounds are loaded entirely into memory; keep individual clips short.
 4. **Buffered decode:** WAV and OGG music read incrementally; MP3 music keeps the compressed file in memory and decodes frame-by-frame during playback.
-5. **MP3 decoder scope:** Unsupported MP3 Huffman codebooks now fail at load time instead of producing corrupted audio. Re-encode the file if a specific MP3 is rejected.
-6. **Encoding:** Use a tool such as ffmpeg to convert source audio between formats:
+5. **Float WAV endpoints:** 32-bit float WAV samples map full-scale `-1.0` to `-32768` and `+1.0` to `32767` when converted to the engine's 16-bit mix format.
+6. **MP3 decoder scope:** Unsupported MP3 Huffman codebooks now fail at load time instead of producing corrupted audio. Re-encode the file if a specific MP3 is rejected.
+7. **Encoding:** Use a tool such as ffmpeg to convert source audio between formats:
    ```
    ffmpeg -i input.wav output.ogg                      # OGG Vorbis
    ffmpeg -i input.wav -codec:a libmp3lame output.mp3 # MP3

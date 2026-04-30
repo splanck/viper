@@ -175,25 +175,12 @@ Expected<void> checkIdxChk(const VerifyCtx &ctx) {
     return {};
 }
 
-/// @brief Warn when a shift instruction uses a constant amount outside [0, 63].
-/// @details On x86-64, shifts by >= 64 produce undefined results (the hardware
-///          masks the count to 6 bits).  This emits a warning rather than an
-///          error because the IL spec does not forbid it.
+/// @brief Verify shift instructions.
+/// @details IL shift counts are masked modulo 64, so every constant amount is
+///          valid. Structural operand and result checks happen in the generated
+///          verifier table.
 Expected<void> checkShift(const VerifyCtx &ctx) {
-    if (ctx.instr.operands.size() >= 2) {
-        const auto &shiftAmt = ctx.instr.operands[1];
-        if (shiftAmt.kind == Value::Kind::ConstInt) {
-            if (shiftAmt.i64 < 0 || shiftAmt.i64 >= 64) {
-                il::support::Diagnostic warning{};
-                warning.severity = il::support::Severity::Warning;
-                warning.message = formatDiag(ctx,
-                                             "shift amount " + std::to_string(shiftAmt.i64) +
-                                                 " is outside valid range [0, 63]");
-                warning.loc = ctx.instr.loc;
-                ctx.diags.report(std::move(warning));
-            }
-        }
-    }
+    (void)ctx;
     return {};
 }
 

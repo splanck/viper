@@ -216,6 +216,31 @@ Sub WaitForKey()
     k = Viper.Terminal.GetKey()
 End Sub
 
+' === GAME INPUT ===
+' Terminal arrow keys arrive as ANSI escape sequences: ESC [ A/B/C/D.
+' The raw InKey byte reader would otherwise surface the final A or D as
+' regular WASD input, making Up act like A and Left act like D. Normalize
+' those sequences into stable direction names before the game loop dispatches.
+Function ReadGameKey() As String
+    Dim k As String
+    Dim prefix As String
+    Dim code As String
+
+    k = Viper.Terminal.InKey()
+    If k <> CHR(27) Then Return k
+
+    prefix = Viper.Terminal.GetKeyTimeout(5)
+    If prefix <> "[" And prefix <> "O" Then Return k
+
+    code = Viper.Terminal.GetKeyTimeout(5)
+    If code = "A" Then Return "UP"
+    If code = "B" Then Return "DOWN"
+    If code = "C" Then Return "RIGHT"
+    If code = "D" Then Return "LEFT"
+
+    Return ""
+End Function
+
 ' === INITIALIZE NEW LEVEL ===
 ' Rebuild all per-level state: fresh field (with level-scaled mushroom
 ' density), fresh centipede (longer and faster), fresh spider (inactive —
@@ -339,19 +364,19 @@ Sub PlayGame()
 
     Do While GameRunning = 1
         ' Get input (non-blocking)
-        key = Viper.Terminal.InKey()
+        key = ReadGameKey()
 
         ' Handle input
         oldX = ThePlayer.X
         oldY = ThePlayer.Y
 
-        If key = "w" Or key = "W" Then
+        If key = "w" Or key = "W" Or key = "UP" Then
             ThePlayer.MoveUp()
-        ElseIf key = "s" Or key = "S" Then
+        ElseIf key = "s" Or key = "S" Or key = "DOWN" Then
             ThePlayer.MoveDown()
-        ElseIf key = "a" Or key = "A" Then
+        ElseIf key = "a" Or key = "A" Or key = "LEFT" Then
             ThePlayer.MoveLeft()
-        ElseIf key = "d" Or key = "D" Then
+        ElseIf key = "d" Or key = "D" Or key = "RIGHT" Then
             ThePlayer.MoveRight()
         ElseIf key = " " Then
             ThePlayer.Fire()

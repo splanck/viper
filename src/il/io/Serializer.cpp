@@ -501,8 +501,15 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode) {
             os << "export ";
         else if (g.linkage == Linkage::Import)
             os << "import ";
-        os << "const " << g.type.toString() << " @" << g.name << " = \""
-           << encodeEscapedString(g.init) << "\"\n";
+        if (g.isConst || g.type.kind == Type::Kind::Str)
+            os << "const ";
+        os << g.type.toString() << " @" << g.name;
+        if (g.type.kind == Type::Kind::Str) {
+            os << " = \"" << encodeEscapedString(g.init) << "\"";
+        } else if (g.hasInitializer || !g.init.empty()) {
+            os << " = " << g.init;
+        }
+        os << "\n";
     }
 
     for (const auto &f : m.functions) {

@@ -247,10 +247,10 @@ TEST(ConstFoldEdge, NormalComparison) {
 // ---------------------------------------------------------------------------
 
 TEST(ConstFoldEdge, Shl_ByBitwidth) {
-    // shl 1, 64 => undefined behavior — must NOT fold
+    // IL masks shift counts modulo 64, so shl 1, 64 => shl 1, 0 => 1.
     auto module = buildConstFoldTest(Opcode::Shl, Value::constInt(1), Value::constInt(64));
     il::transform::constFold(module);
-    ASSERT_TRUE(retNotFolded(module));
+    ASSERT_TRUE(retFoldedToInt(module, 1));
 }
 
 TEST(ConstFoldEdge, Shl_Normal) {

@@ -107,8 +107,12 @@ static int outline_to_polygon(float *points_x,
                               float offset_x,
                               float offset_y,
                               raster_point_t *out,
-                              int max_points) {
+                              int max_points,
+                              int *out_contour_ends,
+                              int *out_contour_count) {
     int count = 0;
+    if (out_contour_count)
+        *out_contour_count = 0;
 
     for (int c = 0; c < num_contours; c++) {
         int contour_end = contour_ends[c];
@@ -118,6 +122,8 @@ static int outline_to_polygon(float *points_x,
         if (contour_len < 2) {
             continue;
         }
+
+        int polygon_contour_start = count;
 
         // Process points in contour
         for (int i = 0; i < contour_len; i++) {
@@ -175,6 +181,11 @@ static int outline_to_polygon(float *points_x,
                 // This is handled by previous point's curve
             }
         }
+
+        if (count - polygon_contour_start >= 2 && out_contour_ends && out_contour_count) {
+            out_contour_ends[*out_contour_count] = count - 1;
+            (*out_contour_count)++;
+        }
     }
 
     return count;
@@ -208,24 +219,41 @@ static int compare_edges(const void *a, const void *b) {
 // Build Edge List from Polygon
 //=============================================================================
 
-static int build_edges(raster_point_t *points, int count, raster_edge_t *edges) {
+static int build_edges(raster_point_t *points,
+                       int count,
+                       const int *contour_ends,
+                       int contour_count,
+                       raster_edge_t *edges) {
     int edge_count = 0;
+    int contour_start = 0;
 
-    for (int i = 0; i < count; i++) {
-        int j = (i + 1) % count;
-
-        // Skip horizontal edges
-        if (fabsf(points[i].y - points[j].y) < 0.001f)
+    for (int c = 0; c < contour_count && contour_start < count; c++) {
+        int contour_end = contour_ends[c];
+        if (contour_end >= count)
+            contour_end = count - 1;
+        if (contour_end - contour_start + 1 < 2) {
+            contour_start = contour_end + 1;
             continue;
+        }
 
-        raster_edge_t *e = &edges[edge_count++];
-        e->x0 = points[i].x;
-        e->y0 = points[i].y;
-        e->x1 = points[j].x;
-        e->y1 = points[j].y;
+        for (int i = contour_start; i <= contour_end; i++) {
+            int j = (i == contour_end) ? contour_start : i + 1;
 
-        // Precompute for scanline intersection
-        e->dx = (e->x1 - e->x0) / (e->y1 - e->y0);
+            // Skip horizontal edges
+            if (fabsf(points[i].y - points[j].y) < 0.001f)
+                continue;
+
+            raster_edge_t *e = &edges[edge_count++];
+            e->x0 = points[i].x;
+            e->y0 = points[i].y;
+            e->x1 = points[j].x;
+            e->y1 = points[j].y;
+
+            // Precompute for scanline intersection
+            e->dx = (e->x1 - e->x0) / (e->y1 - e->y0);
+        }
+
+        contour_start = contour_end + 1;
     }
 
     // Sort edges by minimum y
@@ -238,12 +266,17 @@ static int build_edges(raster_point_t *points, int count, raster_edge_t *edges) 
 // Scanline Rasterization with Coverage-Based Antialiasing
 //=============================================================================
 
-static void rasterize_scanlines(
-    raster_point_t *points, int point_count, int width, int height, uint8_t *bitmap) {
+static void rasterize_scanlines(raster_point_t *points,
+                                int point_count,
+                                const int *contour_ends,
+                                int contour_count,
+                                int width,
+                                int height,
+                                uint8_t *bitmap) {
     // Clear bitmap
     memset(bitmap, 0, width * height);
 
-    if (point_count < 3)
+    if (point_count < 3 || !contour_ends || contour_count <= 0)
         return;
 
     // Build edge list
@@ -251,7 +284,7 @@ static void rasterize_scanlines(
     if (!edges)
         return;
 
-    int edge_count = build_edges(points, point_count, edges);
+    int edge_count = build_edges(points, point_count, contour_ends, contour_count, edges);
 
     // Supersampled scanline buffer
     float *coverage = calloc(width, sizeof(float));
@@ -483,6 +516,18 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size) {
         return NULL;
     }
 
+    int *polygon_contour_ends = calloc((size_t)num_contours, sizeof(int));
+    if (!polygon_contour_ends) {
+        free(polygon);
+        free(glyph);
+        free(points_x);
+        free(points_y);
+        free(flags);
+        free(contour_ends);
+        return NULL;
+    }
+
+    int polygon_contour_count = 0;
     int polygon_count = outline_to_polygon(points_x,
                                            points_y,
                                            flags,
@@ -492,7 +537,9 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size) {
                                            offset_x,
                                            offset_y,
                                            polygon,
-                                           MAX_POINTS);
+                                           MAX_POINTS,
+                                           polygon_contour_ends,
+                                           &polygon_contour_count);
 
     // Flip y coordinates (TTF y-up to bitmap y-down)
     for (int i = 0; i < polygon_count; i++) {
@@ -502,6 +549,7 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size) {
     // Allocate and rasterize bitmap
     size_t bitmap_size = (size_t)bmp_width * (size_t)bmp_height;
     if ((size_t)bmp_width != 0 && bitmap_size / (size_t)bmp_width != (size_t)bmp_height) {
+        free(polygon_contour_ends);
         free(polygon);
         free(glyph);
         free(points_x);
@@ -512,6 +560,7 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size) {
     }
     glyph->bitmap = calloc(bitmap_size, 1);
     if (!glyph->bitmap) {
+        free(polygon_contour_ends);
         free(polygon);
         free(glyph);
         free(points_x);
@@ -520,9 +569,16 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size) {
         free(contour_ends);
         return NULL;
     }
-    rasterize_scanlines(polygon, polygon_count, bmp_width, bmp_height, glyph->bitmap);
+    rasterize_scanlines(polygon,
+                        polygon_count,
+                        polygon_contour_ends,
+                        polygon_contour_count,
+                        bmp_width,
+                        bmp_height,
+                        glyph->bitmap);
 
     // Cleanup
+    free(polygon_contour_ends);
     free(polygon);
     free(points_x);
     free(points_y);

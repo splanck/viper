@@ -42,13 +42,12 @@ static std::string readFile(const std::string &path) {
     return ss.str();
 }
 
-// Test 1: Global string address (gaddr produces ptr to global)
+// Test 1: Scalar global address (gaddr produces ptr to global storage)
 TEST(Arm64GaddrNull, GlobalAddress) {
     const std::string in = outPath("arm64_gaddr.il");
     const std::string out = outPath("arm64_gaddr.s");
-    // Use string global since parser currently only supports str type
     const std::string il = "il 0.1\n"
-                           "global const str @gvar = \"test\"\n"
+                           "global i64 @gvar = 0\n"
                            "func @get_addr() -> ptr {\n"
                            "entry:\n"
                            "  %p = gaddr @gvar\n"
@@ -86,15 +85,15 @@ TEST(Arm64GaddrNull, ConstNull) {
     EXPECT_TRUE(hasNull);
 }
 
-// Test 3: Load from pointer (via alloca since integer globals not yet supported)
+// Test 3: Load from scalar global pointer
 TEST(Arm64GaddrNull, LoadFromPointer) {
     const std::string in = outPath("arm64_load_ptr.il");
     const std::string out = outPath("arm64_load_ptr.s");
     const std::string il = "il 0.1\n"
+                           "global i64 @value = 42\n"
                            "func @load_value() -> i64 {\n"
                            "entry:\n"
-                           "  %p = alloca 8\n"
-                           "  store i64, %p, 42\n"
+                           "  %p = gaddr @value\n"
                            "  %v = load i64, %p\n"
                            "  ret %v\n"
                            "}\n";
@@ -112,9 +111,10 @@ TEST(Arm64GaddrNull, StoreToPointer) {
     const std::string in = outPath("arm64_store_ptr.il");
     const std::string out = outPath("arm64_store_ptr.s");
     const std::string il = "il 0.1\n"
+                           "global i64 @slot = 0\n"
                            "func @store_value(%v:i64) -> i64 {\n"
                            "entry(%v:i64):\n"
-                           "  %p = alloca 8\n"
+                           "  %p = gaddr @slot\n"
                            "  store i64, %p, %v\n"
                            "  %r = load i64, %p\n"
                            "  ret %r\n"
@@ -152,13 +152,13 @@ TEST(Arm64GaddrNull, CmpWithNull) {
     EXPECT_TRUE(hasCmp);
 }
 
-// Test 6: Multiple string globals
+// Test 6: Multiple scalar globals
 TEST(Arm64GaddrNull, MultipleGlobals) {
     const std::string in = outPath("arm64_multi_global.il");
     const std::string out = outPath("arm64_multi_global.s");
     const std::string il = "il 0.1\n"
-                           "global const str @a = \"hello\"\n"
-                           "global const str @b = \"world\"\n"
+                           "global i64 @a = 1\n"
+                           "global i64 @b = 2\n"
                            "func @get_addrs() -> ptr {\n"
                            "entry:\n"
                            "  %pa = gaddr @a\n"

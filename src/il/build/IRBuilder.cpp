@@ -22,6 +22,7 @@
 ///          types to validate call emission.
 
 #include "il/build/IRBuilder.hpp"
+#include "il/core/OpcodeInfo.hpp"
 #include <cassert>
 #include <stdexcept>
 #include <unordered_set>
@@ -106,6 +107,7 @@ il::core::Global &IRBuilder::addGlobal(const std::string &name,
 #endif
 
     mod.globals.push_back({name, type, init});
+    mod.globals.back().hasInitializer = !init.empty();
     return mod.globals.back();
 }
 
@@ -115,7 +117,10 @@ il::core::Global &IRBuilder::addGlobal(const std::string &name,
 /// @return Reference to the inserted global definition.
 /// @note The global is always recorded with Type::Kind::Str.
 il::core::Global &IRBuilder::addGlobalStr(const std::string &name, const std::string &value) {
-    return addGlobal(name, il::core::Type(il::core::Type::Kind::Str), value);
+    auto &global = addGlobal(name, il::core::Type(il::core::Type::Kind::Str), value);
+    global.isConst = true;
+    global.hasInitializer = true;
+    return global;
 }
 
 /// @brief Begin building a new function and make it the active insertion target.
@@ -397,10 +402,7 @@ il::core::Instr &IRBuilder::append(il::core::Instr instr) {
 /// @param op Opcode to categorize.
 /// @return True when @p op ends the block (branch, conditional branch, return, trap).
 bool IRBuilder::isTerminator(il::core::Opcode op) const {
-    return op == il::core::Opcode::Br || op == il::core::Opcode::CBr ||
-           op == il::core::Opcode::SwitchI32 || op == il::core::Opcode::Ret ||
-           op == il::core::Opcode::Trap || op == il::core::Opcode::ResumeSame ||
-           op == il::core::Opcode::ResumeNext || op == il::core::Opcode::ResumeLabel;
+    return il::core::getOpcodeInfo(op).isTerminator;
 }
 
 /// @brief Materialize a string constant by referencing an existing global.

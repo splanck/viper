@@ -191,10 +191,17 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
                 if (music->loop && music->stream_eof) {
                     music->stream_loop_pending = 1;
                     music->stream_eof = 0;
-                } else if (!music->loop && music->stream_eof) {
+                }
+
+                if (!music->stream_eof)
+                    vaud_music_prefill_locked(music);
+
+                if (music->buffer_frames[music->current_buffer] <= 0 && !music->loop &&
+                    music->stream_eof) {
                     music->state = VAUD_MUSIC_STOPPED;
                 }
-                return;
+                if (music->buffer_frames[music->current_buffer] <= 0)
+                    return;
             }
         }
 

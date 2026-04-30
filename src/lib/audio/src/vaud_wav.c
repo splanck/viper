@@ -124,11 +124,11 @@ static inline int16_t f32_to_s16(const uint8_t *p) {
     memcpy(&val, &bits, sizeof(float));
     if (!isfinite(val))
         val = 0.0f;
-    if (val > 1.0f)
-        val = 1.0f;
-    if (val < -1.0f)
-        val = -1.0f;
-    return (int16_t)(val * 32767.0f);
+    if (val >= 1.0f)
+        return INT16_MAX;
+    if (val <= -1.0f)
+        return INT16_MIN;
+    return (int16_t)(val < 0.0f ? val * 32768.0f : val * 32767.0f);
 }
 
 /// @brief Convert one PCM frame from raw bytes to stereo 16-bit signed samples.

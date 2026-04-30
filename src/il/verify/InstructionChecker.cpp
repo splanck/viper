@@ -49,6 +49,7 @@ using checker::checkCall;
 using checker::checkConstNull;
 using checker::checkConstStr;
 using checker::checkDefault;
+using checker::checkGAddr;
 using checker::checkGEP;
 using checker::checkIdxChk;
 using checker::checkLoad;
@@ -154,6 +155,14 @@ Expected<void> applyAddrOf(const VerifyCtx &ctx, const InstructionSpec &) {
 /// @return Success or diagnostic error.
 Expected<void> applyConstStr(const VerifyCtx &ctx, const InstructionSpec &) {
     return checkConstStr(ctx);
+}
+
+/// @brief Validate @c gaddr instructions.
+/// @details Confirms the operand names an addressable module global.
+/// @param ctx Verification context for the instruction.
+/// @return Success or diagnostic error.
+Expected<void> applyGAddr(const VerifyCtx &ctx, const InstructionSpec &) {
+    return checkGAddr(ctx);
 }
 
 /// @brief Validate @c const_null instructions.
@@ -273,9 +282,9 @@ Expected<void> applyIntegerBinary(const VerifyCtx &ctx, const InstructionSpec &)
     return {};
 }
 
-/// @brief Validate shift instructions and warn on out-of-bounds constant amounts.
+/// @brief Validate shift instructions.
 /// @details Records the result type and delegates to @ref checker::checkShift
-///          which emits a warning when the shift amount is a constant >= 64.
+///          for any semantic rules beyond the generated structural checks.
 /// @param ctx Verification context for the instruction.
 /// @param spec Specification entry driving strategy selection.
 /// @return Empty on success (warnings do not block verification).
@@ -306,6 +315,7 @@ constexpr std::array<StrategyFn, static_cast<size_t>(VerifyStrategy::Count)> kSt
     &applyStore,
     &applyAddrOf,
     &applyConstStr,
+    &applyGAddr,
     &applyConstNull,
     &applyCall,
     &applyTrapKind,
@@ -496,7 +506,8 @@ Expected<void> verifyInstruction_E(
     const std::unordered_map<std::string, const il::core::Function *> &funcs,
     TypeInference &types,
     DiagSink &sink) {
-    VerifyCtx ctx{sink, types, externs, funcs, fn, bb, instr};
+    static const std::unordered_map<std::string, const il::core::Global *> kNoGlobals;
+    VerifyCtx ctx{sink, types, externs, funcs, kNoGlobals, fn, bb, instr};
     return verifyInstruction_impl(ctx);
 }
 

@@ -357,7 +357,7 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
             // which fails for dropdown clicks outside the widget bounds.
             if (event->type == VG_EVENT_MOUSE_UP) {
                 bool handled = vg_event_send(capture, event);
-                if (!vg_widget_contains_point(
+                if (vg_widget_get_input_capture() == capture && !vg_widget_contains_point(
                         capture, event_screen_x(event), event_screen_y(event))) {
                     vg_event_t click_event = *event;
                     click_event.type = VG_EVENT_CLICK;

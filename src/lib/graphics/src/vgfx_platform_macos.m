@@ -117,6 +117,34 @@ static CGDirectDisplayID macos_display_id_for_screen(NSScreen *screen) {
     return screen_number ? (CGDirectDisplayID)[screen_number unsignedIntValue] : CGMainDisplayID();
 }
 
+static void macos_event_location_to_physical(struct vgfx_window *win,
+                                             NSPoint location,
+                                             NSRect content_rect,
+                                             int32_t *out_x,
+                                             int32_t *out_y) {
+    float sf = (win && win->scale_factor > 0.0f) ? win->scale_factor : 1.0f;
+    int32_t width = vgfx_internal_round_scaled((float)content_rect.size.width * sf);
+    int32_t height = vgfx_internal_round_scaled((float)content_rect.size.height * sf);
+    int32_t max_x = width > 0 ? width - 1 : 0;
+    int32_t max_y = height > 0 ? height - 1 : 0;
+
+    int32_t x = vgfx_internal_round_scaled((float)location.x * sf);
+    int32_t y = vgfx_internal_round_scaled((float)(content_rect.size.height - location.y) * sf) - 1;
+    if (x < 0)
+        x = 0;
+    else if (x > max_x)
+        x = max_x;
+    if (y < 0)
+        y = 0;
+    else if (y > max_y)
+        y = max_y;
+
+    if (out_x)
+        *out_x = x;
+    if (out_y)
+        *out_y = y;
+}
+
 static void macos_sync_window_metrics(struct vgfx_window *win,
                                       int emit_resize_event,
                                       int invoke_resize_callback) {
@@ -1082,13 +1110,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     NSPoint location = [event locationInWindow];
                     NSRect contentRect = [platform->view bounds];
 
-                    /* Convert to ViperGFX coordinate system (top-left origin) and
-                     * scale logical points to physical pixels for the framebuffer. */
-                    float sf = win->scale_factor;
-                    int32_t x = vgfx_internal_round_scaled((float)location.x * sf);
-                    int32_t y =
-                        vgfx_internal_round_scaled((float)(contentRect.size.height - location.y) * sf) -
-                        1;
+                    int32_t x, y;
+                    macos_event_location_to_physical(win, location, contentRect, &x, &y);
 
                     win->mouse_x = x; /* Update input state */
                     win->mouse_y = y;
@@ -1106,11 +1129,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     NSPoint location = [event locationInWindow];
                     NSRect contentRect = [platform->view bounds];
 
-                    float sf = win->scale_factor;
-                    int32_t x = vgfx_internal_round_scaled((float)location.x * sf);
-                    int32_t y =
-                        vgfx_internal_round_scaled((float)(contentRect.size.height - location.y) * sf) -
-                        1;
+                    int32_t x, y;
+                    macos_event_location_to_physical(win, location, contentRect, &x, &y);
 
                     /* Determine which button was pressed */
                     vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;
@@ -1140,11 +1160,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     NSPoint location = [event locationInWindow];
                     NSRect contentRect = [platform->view bounds];
 
-                    float sf = win->scale_factor;
-                    int32_t x = vgfx_internal_round_scaled((float)location.x * sf);
-                    int32_t y =
-                        vgfx_internal_round_scaled((float)(contentRect.size.height - location.y) * sf) -
-                        1;
+                    int32_t x, y;
+                    macos_event_location_to_physical(win, location, contentRect, &x, &y);
 
                     /* Determine which button was released */
                     vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;
@@ -1172,10 +1189,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     NSPoint location = [event locationInWindow];
                     NSRect contentRect = [platform->view bounds];
                     float sf = win->scale_factor;
-                    int32_t x = vgfx_internal_round_scaled((float)location.x * sf);
-                    int32_t y =
-                        vgfx_internal_round_scaled((float)(contentRect.size.height - location.y) * sf) -
-                        1;
+                    int32_t x, y;
+                    macos_event_location_to_physical(win, location, contentRect, &x, &y);
                     win->mouse_x = x;
                     win->mouse_y = y;
 

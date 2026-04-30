@@ -24,6 +24,7 @@
 ///          exposing the public @ref constFold entry point.
 
 #include "il/transform/ConstFold.hpp"
+#include "il/core/FPCast.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
@@ -91,39 +92,6 @@ static int integerTypeBits(Type::Kind kind) {
             return 64;
         default:
             return 64;
-    }
-}
-
-static double signedLowerBound(int bits) {
-    switch (bits) {
-        case 16:
-            return -32768.0;
-        case 32:
-            return -2147483648.0;
-        default:
-            return -9223372036854775808.0;
-    }
-}
-
-static double signedUpperExclusive(int bits) {
-    switch (bits) {
-        case 16:
-            return 32768.0;
-        case 32:
-            return 2147483648.0;
-        default:
-            return 9223372036854775808.0;
-    }
-}
-
-static double unsignedUpperExclusive(int bits) {
-    switch (bits) {
-        case 16:
-            return 65536.0;
-        case 32:
-            return 4294967296.0;
-        default:
-            return 18446744073709551616.0;
     }
 }
 
@@ -461,26 +429,21 @@ void constFold(Module &m) {
                 } else if (in.operands.size() == 1) {
                     if (in.op == Opcode::CastFpToSiRteChk) {
                         double operand;
-                        if (getConstFloat(in.operands[0], operand) && std::isfinite(operand)) {
-                            double rounded = std::nearbyint(operand);
-                            if (std::isfinite(rounded)) {
-                                const int bits = integerTypeBits(in.type.kind);
-                                if (rounded >= signedLowerBound(bits) &&
-                                    rounded < signedUpperExclusive(bits)) {
-                                    repl = Value::constInt(static_cast<long long>(rounded));
-                                    folded = true;
-                                }
+                        if (getConstFloat(in.operands[0], operand)) {
+                            const auto result =
+                                checkedFpToSiRte(operand, integerTypeBits(in.type.kind));
+                            if (result.ok()) {
+                                repl = Value::constInt(result.value);
+                                folded = true;
                             }
                         }
                     } else if (in.op == Opcode::CastFpToUiRteChk) {
                         double operand;
-                        if (getConstFloat(in.operands[0], operand) && std::isfinite(operand)) {
-                            double rounded = std::nearbyint(operand);
-                            const int bits = integerTypeBits(in.type.kind);
-                            if (std::isfinite(rounded) && rounded >= 0.0 &&
-                                rounded < unsignedUpperExclusive(bits)) {
-                                repl = Value::constInt(static_cast<long long>(
-                                    static_cast<unsigned long long>(rounded)));
+                        if (getConstFloat(in.operands[0], operand)) {
+                            const auto result =
+                                checkedFpToUiRte(operand, integerTypeBits(in.type.kind));
+                            if (result.ok()) {
+                                repl = Value::constInt(result.value);
                                 folded = true;
                             }
                         }
@@ -538,24 +501,16 @@ void constFold(Module &m) {
                                 break;
                             // Shift operations
                             case Opcode::Shl:
-                                if (rhs >= 0 && rhs < 64)
-                                    res = static_cast<long long>(
-                                        static_cast<unsigned long long>(lhs) << rhs);
-                                else
-                                    folded = false;
+                                res = static_cast<long long>(static_cast<unsigned long long>(lhs)
+                                                             << (static_cast<unsigned long long>(rhs) & 63ULL));
                                 break;
                             case Opcode::LShr:
-                                if (rhs >= 0 && rhs < 64)
-                                    res = static_cast<long long>(
-                                        static_cast<unsigned long long>(lhs) >> rhs);
-                                else
-                                    folded = false;
+                                res = static_cast<long long>(static_cast<unsigned long long>(lhs)
+                                                             >> (static_cast<unsigned long long>(rhs) & 63ULL));
                                 break;
                             case Opcode::AShr:
-                                if (rhs >= 0 && rhs < 64)
-                                    res = arithmeticShiftRight(lhs, static_cast<unsigned>(rhs));
-                                else
-                                    folded = false;
+                                res = arithmeticShiftRight(
+                                    lhs, static_cast<unsigned>(static_cast<unsigned long long>(rhs) & 63ULL));
                                 break;
                             // Integer comparisons - produce boolean results
                             case Opcode::ICmpEq:

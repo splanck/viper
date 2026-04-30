@@ -199,6 +199,10 @@ TEST(IL, IOPrintParseRoundTrip) {
         il::core::Module initialModule;
         std::istringstream firstStream(originalText);
         const auto firstParse = il::api::v2::parse_text_expected(firstStream, initialModule);
+        if (!firstParse) {
+            std::cerr << "failed to parse fixture: " << fixture << '\n';
+            reportDiag(firstParse.error());
+        }
         ASSERT_TRUE(firstParse);
 
         const std::string firstPrinted = il::io::Serializer::toString(initialModule);
@@ -207,6 +211,10 @@ TEST(IL, IOPrintParseRoundTrip) {
         il::core::Module roundTripped;
         std::istringstream secondStream(firstPrinted);
         const auto secondParse = il::api::v2::parse_text_expected(secondStream, roundTripped);
+        if (!secondParse) {
+            std::cerr << "failed to parse serialized fixture: " << fixture << '\n';
+            reportDiag(secondParse.error());
+        }
         ASSERT_TRUE(secondParse);
 
         const std::string secondPrinted = il::io::Serializer::toString(roundTripped);

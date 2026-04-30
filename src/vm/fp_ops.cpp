@@ -15,6 +15,7 @@
 #include "vm/OpHandlers_Float.hpp"
 
 #include "il/core/BasicBlock.hpp"
+#include "il/core/FPCast.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "viper/vm/internal/OpHelpers.hpp"
@@ -38,8 +39,6 @@ using namespace il::core;
 
 namespace il::vm::detail::floating {
 namespace {
-constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel for overflow.
-
 [[nodiscard]] int integerTypeBits(Type::Kind kind) {
     switch (kind) {
         case Type::Kind::I16:
@@ -50,39 +49,6 @@ constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel f
             return 64;
         default:
             return 64;
-    }
-}
-
-[[nodiscard]] double signedLowerBound(int bits) {
-    switch (bits) {
-        case 16:
-            return -32768.0;
-        case 32:
-            return -2147483648.0;
-        default:
-            return -9223372036854775808.0;
-    }
-}
-
-[[nodiscard]] double signedUpperExclusive(int bits) {
-    switch (bits) {
-        case 16:
-            return 32768.0;
-        case 32:
-            return 2147483648.0;
-        default:
-            return 9223372036854775808.0;
-    }
-}
-
-[[nodiscard]] double unsignedUpperExclusive(int bits) {
-    switch (bits) {
-        case 16:
-            return 65536.0;
-        case 32:
-            return 4294967296.0;
-        default:
-            return kUint64Boundary;
     }
 }
 
@@ -119,31 +85,14 @@ constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel f
                             bb ? bb->label : std::string());
     };
 
-    if (!std::isfinite(operand) || std::signbit(operand)) {
+    const auto result = checkedFpToUiRte(operand, resultBits);
+    if (result.failure == CheckedFPCastFailure::Invalid) {
         trap(TrapKind::InvalidCast, kInvalidOperandMessage);
     }
-
-    const double upperExclusive = unsignedUpperExclusive(resultBits);
-    if (operand >= upperExclusive) {
+    if (result.failure == CheckedFPCastFailure::Overflow) {
         trap(TrapKind::Overflow, kOverflowMessage);
     }
-
-    double integral = 0.0;
-    const double fractional = std::modf(operand, &integral);
-
-    if (fractional > 0.5) {
-        integral += 1.0;
-    } else if (fractional == 0.5) {
-        if (std::fmod(integral, 2.0) != 0.0) {
-            integral += 1.0;
-        }
-    }
-
-    if (integral >= upperExclusive) {
-        trap(TrapKind::Overflow, kOverflowMessage);
-    }
-
-    return static_cast<uint64_t>(integral);
+    return static_cast<uint64_t>(result.value);
 }
 } // namespace
 
@@ -567,25 +516,15 @@ VM::ExecResult handleCastFpToSiRteChk(VM &vm,
     (void)ip;
     const Slot value = VMAccess::eval(vm, fr, in.operands[0]);
     const double operand = value.f64;
-    if (!std::isfinite(operand)) {
+    const auto result = checkedFpToSiRte(operand, integerTypeBits(in.type.kind));
+    if (result.failure == CheckedFPCastFailure::Invalid) {
         RuntimeBridge::trap(TrapKind::InvalidCast,
                             "invalid fp operand in cast.fp_to_si.rte.chk",
                             in.loc,
                             fr.func ? fr.func->name : std::string(),
                             bb ? bb->label : std::string());
     }
-
-    const double rounded = std::nearbyint(operand);
-    if (!std::isfinite(rounded)) {
-        RuntimeBridge::trap(TrapKind::Overflow,
-                            "fp overflow in cast.fp_to_si.rte.chk",
-                            in.loc,
-                            fr.func ? fr.func->name : std::string(),
-                            bb ? bb->label : std::string());
-    }
-
-    const int resultBits = integerTypeBits(in.type.kind);
-    if (rounded < signedLowerBound(resultBits) || rounded >= signedUpperExclusive(resultBits)) {
+    if (result.failure == CheckedFPCastFailure::Overflow) {
         RuntimeBridge::trap(TrapKind::Overflow,
                             "fp overflow in cast.fp_to_si.rte.chk",
                             in.loc,
@@ -594,7 +533,7 @@ VM::ExecResult handleCastFpToSiRteChk(VM &vm,
     }
 
     Slot out{};
-    out.i64 = static_cast<int64_t>(rounded);
+    out.i64 = result.value;
     ops::storeResult(fr, in, out);
     return {};
 }

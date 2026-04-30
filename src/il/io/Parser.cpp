@@ -55,7 +55,7 @@ il::support::Expected<void> Parser::parse(std::istream &is, il::core::Module &m)
         if (st.lineNo == 1 && line.compare(0, 3, "\xEF\xBB\xBF") == 0) {
             line.erase(0, 3);
         }
-        line = trim(line);
+        line = trim(stripInlineComment(line));
         if (line.empty() || line.rfind("//", 0) == 0 || (!line.empty() && line[0] == '#'))
             continue;
         if (auto result = detail::parseModuleHeader_E(is, line, st); !result)

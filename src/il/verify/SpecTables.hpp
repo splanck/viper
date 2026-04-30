@@ -40,6 +40,7 @@ enum class VerifyStrategy : uint8_t {
     Store,            ///< Delegate to checker::checkStore.
     AddrOf,           ///< Delegate to checker::checkAddrOf.
     ConstStr,         ///< Delegate to checker::checkConstStr.
+    GAddr,            ///< Delegate to checker::checkGAddr.
     ConstNull,        ///< Delegate to checker::checkConstNull.
     Call,             ///< Delegate to checker::checkCall.
     TrapKind,         ///< Delegate to checker::checkTrapKind.

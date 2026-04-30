@@ -11,7 +11,8 @@
 //          can be safely eliminated, reordered, or hoisted.
 // Key invariants: Effect classification is conservative—when in doubt, assume
 //                 the call may have side effects. The API integrates runtime
-//                 signature metadata with instruction-level attributes.
+//                 signature metadata and deliberately does not trust raw
+//                 instruction attributes without verified callee metadata.
 // Ownership/Lifetime: Header-only utilities; no global state.
 // Links: docs/il-guide.md#reference, docs/architecture.md#runtime-signatures
 //
@@ -30,8 +31,7 @@ namespace il::transform {
 
 /// @brief Describe the side-effect classification of a call instruction.
 /// @details Used by optimization passes to determine what transformations
-///          are safe. Known callee metadata is authoritative; instruction
-///          attributes are used only when no registry metadata exists.
+///          are safe. Known callee metadata is authoritative.
 struct CallEffects {
     bool pure = false;     ///< Call has no observable side effects (can eliminate if unused).
     bool readonly = false; ///< Call may read memory but performs no writes (can reorder).
@@ -49,10 +49,9 @@ struct CallEffects {
 };
 
 /// @brief Query side-effect metadata for a call instruction.
-/// @details Runtime metadata is authoritative when available. Instruction
-///          attributes are only trusted for callees that are not present in the
-///          runtime helper tables; the verifier rejects contradictory attrs for
-///          known callees.
+/// @details Runtime metadata is authoritative when available. Unknown callees
+///          are classified conservatively; the verifier rejects call-site
+///          attributes unless the callee has effect metadata.
 ///
 /// @param instr The call instruction to classify.
 /// @return Effect classification for the call.
@@ -62,7 +61,6 @@ inline CallEffects classifyCallEffects(const il::core::Instr &instr) {
     if (instr.op != il::core::Opcode::Call)
         return effects; // Conservative: unknown effect for non-call instructions
 
-    bool known = false;
     if (const auto *sig = il::runtime::findRuntimeSignature(instr.callee)) {
         effects.pure = sig->pure;
         effects.readonly = sig->readonly;
@@ -70,16 +68,11 @@ inline CallEffects classifyCallEffects(const il::core::Instr &instr) {
         return effects;
     } else {
         const auto helperEffects = il::runtime::classifyHelperEffects(instr.callee);
-        known = helperEffects.known;
-        effects.pure = helperEffects.pure;
-        effects.readonly = helperEffects.readonly;
-        effects.nothrow = helperEffects.nothrow;
-    }
-
-    if (!known) {
-        effects.pure = instr.CallAttr.pure;
-        effects.readonly = instr.CallAttr.readonly;
-        effects.nothrow = instr.CallAttr.nothrow;
+        if (helperEffects.known) {
+            effects.pure = helperEffects.pure;
+            effects.readonly = helperEffects.readonly;
+            effects.nothrow = helperEffects.nothrow;
+        }
     }
 
     return effects;

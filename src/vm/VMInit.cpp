@@ -30,9 +30,12 @@
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <cerrno>
 #include <clocale>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -141,6 +144,73 @@ constexpr const char *dispatchKindName(VM::DispatchKind kind) noexcept {
             return "Threaded";
     }
     return "Unknown";
+}
+
+size_t globalStorageSize(Type::Kind kind) {
+    switch (kind) {
+        case Type::Kind::I1:
+            return sizeof(uint8_t);
+        case Type::Kind::I16:
+            return sizeof(int16_t);
+        case Type::Kind::I32:
+            return sizeof(int32_t);
+        case Type::Kind::I64:
+            return sizeof(int64_t);
+        case Type::Kind::F64:
+            return sizeof(double);
+        case Type::Kind::Ptr:
+        case Type::Kind::Error:
+        case Type::Kind::ResumeTok:
+            return sizeof(void *);
+        case Type::Kind::Str:
+            return sizeof(rt_string);
+        case Type::Kind::Void:
+            return 0;
+    }
+    return 0;
+}
+
+void initializeGlobalStorage(const Global &global, void *storage) {
+    if (global.init.empty())
+        return;
+
+    switch (global.type.kind) {
+        case Type::Kind::I1: {
+            const uint8_t value = static_cast<uint8_t>(std::strtoll(global.init.c_str(), nullptr, 10) & 1);
+            std::memcpy(storage, &value, sizeof(value));
+            break;
+        }
+        case Type::Kind::I16: {
+            const int16_t value = static_cast<int16_t>(std::strtoll(global.init.c_str(), nullptr, 10));
+            std::memcpy(storage, &value, sizeof(value));
+            break;
+        }
+        case Type::Kind::I32: {
+            const int32_t value = static_cast<int32_t>(std::strtoll(global.init.c_str(), nullptr, 10));
+            std::memcpy(storage, &value, sizeof(value));
+            break;
+        }
+        case Type::Kind::I64: {
+            const int64_t value = static_cast<int64_t>(std::strtoll(global.init.c_str(), nullptr, 10));
+            std::memcpy(storage, &value, sizeof(value));
+            break;
+        }
+        case Type::Kind::F64: {
+            const double value = std::strtod(global.init.c_str(), nullptr);
+            std::memcpy(storage, &value, sizeof(value));
+            break;
+        }
+        case Type::Kind::Ptr: {
+            void *value = nullptr;
+            std::memcpy(storage, &value, sizeof(value));
+            break;
+        }
+        case Type::Kind::Void:
+        case Type::Kind::Str:
+        case Type::Kind::Error:
+        case Type::Kind::ResumeTok:
+            break;
+    }
 }
 
 } // namespace
@@ -289,14 +359,15 @@ void VM::init(std::shared_ptr<ProgramState> program) {
                 continue;
             }
 
-            size_t size = 8;
-            if (g.type.kind == il::core::Type::Kind::I1)
-                size = 1;
+            const size_t size = globalStorageSize(g.type.kind);
+            if (size == 0)
+                throw std::runtime_error("VM initialization failed: unsupported global type");
             void *storage = std::calloc(1, size);
             if (!storage) {
                 throw std::runtime_error(
                     "VM initialization failed: failed to allocate mutable global storage");
             }
+            initializeGlobalStorage(g, storage);
             programState_->mutableGlobalMap[g.name] = storage;
         }
         programState_->initComplete.store(true, std::memory_order_release);

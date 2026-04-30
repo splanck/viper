@@ -52,6 +52,17 @@ struct Global {
     /// @details Defaults to Internal for backwards compatibility.
     /// @see ADR-0003, il/core/Linkage.hpp
     Linkage linkage = Linkage::Internal;
+
+    /// @brief Whether source text declared this global with the `const` qualifier.
+    /// @details String globals are immutable runtime string constants regardless
+    ///          of this flag; the flag preserves round-trip intent for other
+    ///          scalar globals.
+    bool isConst = false;
+
+    /// @brief Whether the source explicitly supplied an initializer.
+    /// @details An empty string initializer is distinct from an omitted
+    ///          initializer for textual round-tripping.
+    bool hasInitializer = false;
 };
 
 } // namespace il::core

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-28
+last-verified: 2026-04-29
 ---
 
 # Basic Widgets
@@ -81,7 +81,7 @@ Single-line or multiline text input field.
 Long single-line values stay clipped to the field bounds, the caret auto-scrolls horizontally as the cursor moves, and the caret blink is advanced automatically while the field is focused.
 When the widget is configured for multiline mode it now paints real per-line text, selection, and caret state, supports `Enter` for newline insertion, `Up` / `Down` for line navigation, line-local `Home` / `End`, drag selection, and mouse-wheel vertical scrolling.
 `Ctrl+Left` / `Ctrl+Right` now stop on punctuation and whitespace boundaries instead of treating only ASCII spaces as word breaks. `Ctrl/Cmd+Shift+Z` redoes the last undone edit, `Shift+Click` extends the current selection, and double-click selects the word under the pointer.
-Text insertion rejects invalid Unicode scalar values such as surrogate codepoints or values above `U+10FFFF`; valid input remains UTF-8 encoded in the widget buffer.
+Text insertion rejects invalid Unicode scalar values such as surrogate codepoints or values above `U+10FFFF`; public text replacement and insertion also skip malformed UTF-8 byte sequences before storing text. Valid input remains UTF-8 encoded in the widget buffer, and `max_length` is enforced by codepoint count rather than raw bytes.
 
 **Constructor:** `NEW Viper.GUI.TextInput(parent)`
 

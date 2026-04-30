@@ -65,6 +65,45 @@ std::string trim(const std::string &text) {
     return text.substr(begin, end - begin);
 }
 
+/// @brief Strip inline comments from an IL source line.
+///
+/// `#` and `//` begin comments only when they occur outside a quoted string and
+/// are at the beginning of a line or preceded by whitespace. This preserves IL
+/// identifiers such as BASIC-style `%name#` and `@F#`.
+std::string stripInlineComment(const std::string &text) {
+    bool inString = false;
+    bool escape = false;
+    const auto beginsComment = [&](size_t pos) {
+        return pos == 0 || std::isspace(static_cast<unsigned char>(text[pos - 1]));
+    };
+    for (size_t i = 0; i < text.size(); ++i) {
+        const char ch = text[i];
+        if (inString) {
+            if (escape) {
+                escape = false;
+                continue;
+            }
+            if (ch == '\\') {
+                escape = true;
+                continue;
+            }
+            if (ch == '"')
+                inString = false;
+            continue;
+        }
+
+        if (ch == '"') {
+            inString = true;
+            continue;
+        }
+        if (ch == '#' && beginsComment(i))
+            return text.substr(0, i);
+        if (ch == '/' && i + 1 < text.size() && text[i + 1] == '/' && beginsComment(i))
+            return text.substr(0, i);
+    }
+    return text;
+}
+
 /// @brief Read the next token from a comma-delimited instruction tail segment.
 ///
 /// Extraction skips leading whitespace and gathers either a quoted string

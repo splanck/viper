@@ -7,7 +7,7 @@
 //
 // Tests for CallEffects fixes from the IL optimization review:
 // - Early return when fully classified (skip O(n) registry scan)
-// - Correct classification from instruction attributes
+// - Unknown call-site attributes remain conservative without metadata
 // - Non-call instructions return conservative default
 //
 //===----------------------------------------------------------------------===//
@@ -32,35 +32,33 @@ Instr makeCall(std::string callee) {
 
 } // namespace
 
-// Test that instruction-level pure attribute is detected
-TEST(CallEffects, InstrPureAttribute) {
+TEST(CallEffects, UnknownInstrPureAttributeIsConservative) {
     Instr call = makeCall("unknown_fn");
     call.CallAttr.pure = true;
 
     auto effects = il::transform::classifyCallEffects(call);
-    EXPECT_TRUE(effects.pure);
+    EXPECT_FALSE(effects.pure);
     EXPECT_FALSE(effects.canEliminateIfUnused());
 }
 
-TEST(CallEffects, InstrPureNothrowCanEliminate) {
+TEST(CallEffects, UnknownInstrPureNothrowCannotEliminate) {
     Instr call = makeCall("unknown_fn");
     call.CallAttr.pure = true;
     call.CallAttr.nothrow = true;
 
     auto effects = il::transform::classifyCallEffects(call);
-    EXPECT_TRUE(effects.pure);
-    EXPECT_TRUE(effects.nothrow);
-    EXPECT_TRUE(effects.canEliminateIfUnused());
+    EXPECT_FALSE(effects.pure);
+    EXPECT_FALSE(effects.nothrow);
+    EXPECT_FALSE(effects.canEliminateIfUnused());
 }
 
-// Test that instruction-level readonly attribute is detected
-TEST(CallEffects, InstrReadonlyAttribute) {
+TEST(CallEffects, UnknownInstrReadonlyAttributeIsConservative) {
     Instr call = makeCall("unknown_fn");
     call.CallAttr.readonly = true;
 
     auto effects = il::transform::classifyCallEffects(call);
-    EXPECT_TRUE(effects.readonly);
-    EXPECT_TRUE(effects.canReorderWithMemory());
+    EXPECT_FALSE(effects.readonly);
+    EXPECT_FALSE(effects.canReorderWithMemory());
 }
 
 // Test that non-call instructions get conservative classification
@@ -77,13 +75,12 @@ TEST(CallEffects, NonCallIsConservative) {
     EXPECT_FALSE(effects.canReorderWithMemory());
 }
 
-// Test that pure + readonly = canReorderWithMemory
-TEST(CallEffects, PureImpliesCanReorder) {
+TEST(CallEffects, UnknownPureAttributeDoesNotImplyCanReorder) {
     Instr call = makeCall("some_fn");
     call.CallAttr.pure = true;
 
     auto effects = il::transform::classifyCallEffects(call);
-    EXPECT_TRUE(effects.canReorderWithMemory());
+    EXPECT_FALSE(effects.canReorderWithMemory());
     EXPECT_FALSE(effects.canEliminateIfUnused());
 }
 

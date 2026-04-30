@@ -1059,6 +1059,8 @@ static void flex_arrange(vg_widget_t *self, float x, float y, float width, float
 // Grid Layout Implementation
 //=============================================================================
 
+#define VG_GRID_MAX_TRACKS 4096
+
 /// @brief Per-child grid placement entry stored inside grid_impl_t.
 typedef struct grid_placement {
     vg_widget_t *child;
@@ -1091,6 +1093,56 @@ static grid_placement_t *grid_find_placement(grid_impl_t *g, vg_widget_t *child)
     return NULL;
 }
 
+static int grid_clamp_track_count(int count) {
+    if (count < 1)
+        return 1;
+    if (count > VG_GRID_MAX_TRACKS)
+        return VG_GRID_MAX_TRACKS;
+    return count;
+}
+
+static int grid_clamp_track_index(int index) {
+    if (index < 0)
+        return 0;
+    if (index >= VG_GRID_MAX_TRACKS)
+        return VG_GRID_MAX_TRACKS - 1;
+    return index;
+}
+
+static int grid_clamp_span(int span) {
+    if (span < 1)
+        return 1;
+    if (span > VG_GRID_MAX_TRACKS)
+        return VG_GRID_MAX_TRACKS;
+    return span;
+}
+
+static int grid_effective_rows(grid_impl_t *g, vg_widget_t *self, int cols) {
+    int rows = grid_clamp_track_count(g->layout.rows);
+    int auto_count = 0;
+
+    VG_FOREACH_VISIBLE_CHILD(self, child) {
+        grid_placement_t *p = grid_find_placement(g, child);
+        if (!p) {
+            if (auto_count < VG_GRID_MAX_TRACKS)
+                auto_count++;
+            continue;
+        }
+
+        int row = grid_clamp_track_index(p->item.row);
+        int row_span = grid_clamp_span(p->item.row_span);
+        if (row_span > VG_GRID_MAX_TRACKS - row)
+            row_span = VG_GRID_MAX_TRACKS - row;
+        if (row + row_span > rows)
+            rows = row + row_span;
+    }
+
+    int auto_rows = (auto_count + cols - 1) / cols;
+    if (auto_rows > rows)
+        rows = auto_rows;
+    return grid_clamp_track_count(rows);
+}
+
 static bool grid_resize_track_array(float **tracks, int old_count, int new_count) {
     if (!tracks || new_count <= 0)
         return false;
@@ -1115,8 +1167,8 @@ static void grid_measure(vg_widget_t *self, float available_width, float availab
         return;
 
     grid_impl_t *g = (grid_impl_t *)self->impl_data;
-    int cols = g->layout.columns > 0 ? g->layout.columns : 1;
-    int rows = g->layout.rows > 0 ? g->layout.rows : 1;
+    int cols = grid_clamp_track_count(g->layout.columns);
+    int rows = grid_effective_rows(g, self, cols);
 
     float padding_h = self->layout.padding_left + self->layout.padding_right;
     float padding_v = self->layout.padding_top + self->layout.padding_bottom;
@@ -1138,8 +1190,16 @@ static void grid_measure(vg_widget_t *self, float available_width, float availab
     /* Measure each child at its cell size */
     VG_FOREACH_VISIBLE_CHILD(self, child) {
         grid_placement_t *p = grid_find_placement(g, child);
-        int cs = p ? (p->item.col_span > 0 ? p->item.col_span : 1) : 1;
-        int rs = p ? (p->item.row_span > 0 ? p->item.row_span : 1) : 1;
+        int col = p ? ((p->item.column >= 0 && p->item.column < cols) ? p->item.column : 0) : 0;
+        int row = p ? grid_clamp_track_index(p->item.row) : 0;
+        if (row >= rows)
+            row = rows - 1;
+        int cs = p ? grid_clamp_span(p->item.col_span) : 1;
+        int rs = p ? grid_clamp_span(p->item.row_span) : 1;
+        if (col + cs > cols)
+            cs = cols - col;
+        if (row + rs > rows)
+            rs = rows - row;
 
         float cell_w = auto_col_w * cs + g->layout.column_gap * (cs - 1);
         float cell_h = auto_row_h * rs + g->layout.row_gap * (rs - 1);
@@ -1161,8 +1221,9 @@ static void grid_measure(vg_widget_t *self, float available_width, float availab
     }
 
     for (int r = 0; r < rows; r++) {
-        float h = (g->layout.row_heights && g->layout.row_heights[r] > 0) ? g->layout.row_heights[r]
-                                                                          : auto_row_h;
+        float h = (g->layout.row_heights && r < g->layout.rows && g->layout.row_heights[r] > 0)
+                      ? g->layout.row_heights[r]
+                      : auto_row_h;
         grid_h += h;
         if (r < rows - 1)
             grid_h += g->layout.row_gap;
@@ -1183,8 +1244,8 @@ static void grid_arrange(vg_widget_t *self, float x, float y, float width, float
     self->height = height;
 
     grid_impl_t *g = (grid_impl_t *)self->impl_data;
-    int cols = g->layout.columns > 0 ? g->layout.columns : 1;
-    int rows = g->layout.rows > 0 ? g->layout.rows : 1;
+    int cols = grid_clamp_track_count(g->layout.columns);
+    int rows = grid_effective_rows(g, self, cols);
 
     float content_x = self->layout.padding_left;
     float content_y = self->layout.padding_top;
@@ -1199,7 +1260,9 @@ static void grid_arrange(vg_widget_t *self, float x, float y, float width, float
     if (auto_col_w < 0)
         auto_col_w = 0;
 
-    size_t scratch_count = (size_t)(cols * 2 + rows * 2);
+    size_t scratch_count = ((size_t)cols + (size_t)rows) * 2u;
+    if (scratch_count > SIZE_MAX / sizeof(float))
+        return;
     float scratch_stack[128];
     float *scratch = scratch_count <= (sizeof(scratch_stack) / sizeof(scratch_stack[0]))
                          ? scratch_stack
@@ -1229,7 +1292,7 @@ static void grid_arrange(vg_widget_t *self, float x, float y, float width, float
     cursor = content_y;
     for (int r = 0; r < rows; r++) {
         row_y[r] = cursor;
-        row_h[r] = (g->layout.row_heights && g->layout.row_heights[r] > 0)
+        row_h[r] = (g->layout.row_heights && r < g->layout.rows && g->layout.row_heights[r] > 0)
                        ? g->layout.row_heights[r]
                        : auto_row_h;
         cursor += row_h[r] + g->layout.row_gap;
@@ -1243,9 +1306,11 @@ static void grid_arrange(vg_widget_t *self, float x, float y, float width, float
         int col, row, cs, rs;
         if (p) {
             col = (p->item.column >= 0 && p->item.column < cols) ? p->item.column : 0;
-            row = (p->item.row >= 0 && p->item.row < rows) ? p->item.row : 0;
-            cs = p->item.col_span > 0 ? p->item.col_span : 1;
-            rs = p->item.row_span > 0 ? p->item.row_span : 1;
+            row = grid_clamp_track_index(p->item.row);
+            if (row >= rows)
+                row = rows - 1;
+            cs = grid_clamp_span(p->item.col_span);
+            rs = grid_clamp_span(p->item.row_span);
         } else {
             /* Auto-flow: place sequentially left-to-right, top-to-bottom */
             col = auto_idx % cols;
@@ -1294,10 +1359,8 @@ static const vg_widget_vtable_t g_grid_vtable = {
 };
 
 vg_widget_t *vg_grid_create(int columns, int rows) {
-    if (columns < 1)
-        columns = 1;
-    if (rows < 1)
-        rows = 1;
+    columns = grid_clamp_track_count(columns);
+    rows = grid_clamp_track_count(rows);
 
     vg_widget_t *widget = vg_widget_create(VG_WIDGET_CONTAINER);
     if (!widget)
@@ -1331,8 +1394,9 @@ vg_widget_t *vg_grid_create(int columns, int rows) {
 }
 
 void vg_grid_set_columns(vg_widget_t *grid, int columns) {
-    if (!grid || !grid->impl_data || columns < 1)
+    if (!grid || !grid->impl_data)
         return;
+    columns = grid_clamp_track_count(columns);
     grid_impl_t *g = (grid_impl_t *)grid->impl_data;
     int old_columns = g->layout.columns;
     if (g->layout.column_widths &&
@@ -1343,8 +1407,9 @@ void vg_grid_set_columns(vg_widget_t *grid, int columns) {
 }
 
 void vg_grid_set_rows(vg_widget_t *grid, int rows) {
-    if (!grid || !grid->impl_data || rows < 1)
+    if (!grid || !grid->impl_data)
         return;
+    rows = grid_clamp_track_count(rows);
     grid_impl_t *g = (grid_impl_t *)grid->impl_data;
     int old_rows = g->layout.rows;
     if (g->layout.row_heights && !grid_resize_track_array(&g->layout.row_heights, old_rows, rows))
@@ -1398,10 +1463,10 @@ void vg_grid_place(
     /* Update existing placement if present */
     grid_placement_t *existing = grid_find_placement(g, child);
     if (existing) {
-        existing->item.column = column < 0 ? 0 : column;
-        existing->item.row = row < 0 ? 0 : row;
-        existing->item.col_span = col_span > 0 ? col_span : 1;
-        existing->item.row_span = row_span > 0 ? row_span : 1;
+        existing->item.column = grid_clamp_track_index(column);
+        existing->item.row = grid_clamp_track_index(row);
+        existing->item.col_span = grid_clamp_span(col_span);
+        existing->item.row_span = grid_clamp_span(row_span);
         grid->needs_layout = true;
         return;
     }
@@ -1422,10 +1487,10 @@ void vg_grid_place(
 
     grid_placement_t *p = &g->placements[g->placement_count++];
     p->child = child;
-    p->item.column = column < 0 ? 0 : column;
-    p->item.row = row < 0 ? 0 : row;
-    p->item.col_span = col_span > 0 ? col_span : 1;
-    p->item.row_span = row_span > 0 ? row_span : 1;
+    p->item.column = grid_clamp_track_index(column);
+    p->item.row = grid_clamp_track_index(row);
+    p->item.col_span = grid_clamp_span(col_span);
+    p->item.row_span = grid_clamp_span(row_span);
     grid->needs_layout = true;
 }
 

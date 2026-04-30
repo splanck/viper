@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-27
+last-verified: 2026-04-29
 ---
 
 # Viper IL — Complete Guide
@@ -62,7 +62,8 @@ An IL module is plain text. Its top‑level layout is:
 1. **Version line** – `il 0.2.0` pins the expected IL grammar version.
 2. **Extern declarations** – `extern @name(signature) -> ret` describes functions provided by the runtime or other
    modules.
-3. **Global constants** – `global const str @.msg = "hi"` defines immutable data.
+3. **Globals** – `global const str @.msg = "hi"` defines immutable strings; scalar storage globals use forms such as
+   `global i64 @counter = 0`.
 4. **Functions** – `func @main() -> i64 { ... }` contains basic blocks and instructions.
 
 Inside a function:
@@ -70,7 +71,7 @@ Inside a function:
 * Each basic block starts with a label like `entry:`. There is no fall‑through; control transfers with a terminator such
   as `ret`, `br`, or `cbr`.
 * Instructions assign results to SSA registers (`%v0`, `%tmp1`). A register is defined once and used many times.
-* Comments begin with `#` and run to the end of the line.
+* Comments begin with `#` or `//` outside quoted strings and run to the end of the line.
 
 These pieces mirror what a compiler would normally keep in its internal IR and make it explicit for learning and
 debugging.
@@ -104,7 +105,7 @@ Expected output:
 
 **Line by line**
 
-- `# Print the number 4 and exit.` – comments start with `#` and are ignored by the VM.
+- `# Print the number 4 and exit.` – comments start with `#` or `//` and are ignored by the VM.
 - `il 0.2.0` – required version header that pins the expected IL grammar version.
 - `extern @Viper.Terminal.PrintI64(i64) -> void` – declare a runtime function taking an `i64` and returning `void`.
 - `func @main() -> i64 {` – define the `@main` function that returns an `i64` exit code.
@@ -483,17 +484,24 @@ entry:
 }
 ```
 
-##### Global Constants
+##### Globals
 
-Module-level constants bind a symbol to immutable data such as strings.
+Module-level globals bind a symbol to immutable string data or scalar storage.
+String globals require a quoted initializer and are immutable. Scalar globals may
+be `i1`, `i16`, `i32`, `i64`, `f64`, or `ptr`; omitted initializers default to
+zero or null. `const` on scalar globals records source intent but does not change
+the pointer representation exposed by `gaddr`.
 
 ```text
 il 0.2.0
 global const str @.msg = "hi"
+global i64 @counter = 41
 func @main() -> i64 {
 entry:
   %s = const_str @.msg
-  ret 0
+  %p = gaddr @counter
+  %v = load i64, %p
+  ret %v
 }
 ```
 
@@ -516,7 +524,8 @@ entry:
 
 Integers use decimal notation (`-?[0-9]+`). Floats use decimal with optional fraction (`-?[0-9]+(\.[0-9]+)?`) and permit
 `NaN`, `Inf`, and `-Inf`. Booleans `true`/`false` sugar to `i1` values `1`/`0`. Strings appear in quotes with escapes
-`\"`, `\\`, `\n`, `\t`, `\xNN`.  `const_null` yields a `ptr` null.
+`\"`, `\\`, `\n`, `\t`, `\xNN`. `const_null` yields a null value for pointer-like result annotations (`ptr`, `str`,
+`error`, or `resumetok`).
 
 #### Basic Blocks
 
@@ -691,12 +700,12 @@ denotes round-to-even (IEEE 754 default). The `.chk` suffix indicates trap-on-ov
 
 | Instr        | Form                     | Result                                          |
 |--------------|--------------------------|-------------------------------------------------|
-| `addr_of`    | `addr_of @global`        | `ptr`                                           |
+| `addr_of`    | `addr_of @global`        | `ptr` (address of immutable string storage)     |
 | `alloca`     | `alloca size`            | `ptr` (size < 0 traps; memory zero-initialized) |
 | `const.f64`  | `const.f64 3.14`         | `f64` (load floating-point constant)            |
-| `const_null` | `const_null`             | `ptr`                                           |
-| `const_str`  | `const_str @label`       | `str`                                           |
-| `gaddr`      | `gaddr @global`          | `ptr` (address of mutable module-level global)  |
+| `const_null` | `const_null`             | `ptr`, `str`, `error`, or `resumetok`           |
+| `const_str`  | `const_str @label`       | `str` (requires a declared string global)       |
+| `gaddr`      | `gaddr @global`          | `ptr` (address of scalar module-level storage)  |
 | `gep`        | `gep ptr, offs`          | `ptr` (no bounds checks)                        |
 | `idx.chk`    | `idx.chk idx, lo, hi`    | `i64` (trap if idx < lo or idx >= hi)           |
 | `load`       | `load type, ptr`         | `type` (null or misaligned trap)                |
@@ -731,7 +740,9 @@ the verifier enforces the declared prefix and permits additional arguments after
 Direct calls may carry bracketed semantic hints after the argument list:
 `[nothrow]`, `[readonly]`, `[pure]`, or a comma-separated combination. Known
 runtime helpers and local functions remain authoritative; contradictory
-call-site attributes are rejected by the verifier.
+call-site attributes are rejected by the verifier. Calls to externs or unknown
+symbols cannot use these attributes unless the callee also has runtime or local
+function effect metadata.
 
 ```text
 call @f(%x, %y) [nothrow, readonly]
@@ -876,8 +887,9 @@ wired directly to runtime contracts. Passes can also observe the
   must use the schema result type unless a specialised cast/check strategy
   validates an instruction-declared result type.
 * Calls match callee arity and types.
-* Direct call attributes cannot contradict known runtime helper or local function metadata.
+* Direct call attributes cannot contradict known runtime helper or local function metadata, and require such metadata.
 * `call.indirect` requires a pointer-typed callee operand unless it names a known `globaladdr` callee.
+* `addr_of` and `const_str` require a declared string global; `gaddr` requires a declared scalar storage global.
 * `load`/`store` use `ptr` operands and non-void element types.
 * `alloca` sizes are `i64`; constant operands must be non-negative.
 * Temporaries are defined exactly once and every reachable cross-block use is dominated by its definition.
@@ -915,7 +927,7 @@ VERSION     ::= NUMBER "." NUMBER ("." NUMBER)?
 target_decl ::= "target" STRING
 decl        ::= extern | global | func
 extern      ::= "extern" SYMBOL "(" type_list? ")" "->" type
-global      ::= "global" ("const")? type SYMBOL "=" ginit
+global      ::= "global" linkage? ("const")? type SYMBOL ("=" ginit)?
 ginit       ::= STRING | INT | FLOAT | "null" | SYMBOL
 linkage     ::= "export" | "import"
 func        ::= "func" linkage? SYMBOL "(" func_params? ")" "->" type ( "{" block+ "}" )?

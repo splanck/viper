@@ -159,8 +159,7 @@ TEST(BasicAA, ModuleReadonlyFunctionReturnsRef) {
     EXPECT_EQ(aa.modRef(call), ModRefResult::Ref);
 }
 
-// Test that instruction-level pure attribute is respected
-TEST(BasicAA, InstrPureAttrReturnsNoModRef) {
+TEST(BasicAA, UnknownInstrPureAttrIsConservative) {
     Module module;
     Function fn;
     fn.name = "test_fn";
@@ -179,7 +178,7 @@ TEST(BasicAA, InstrPureAttrReturnsNoModRef) {
 
     Instr call = makeCall("unknown_fn");
     call.CallAttr.pure = true;
-    EXPECT_EQ(aa.modRef(call), ModRefResult::NoModRef);
+    EXPECT_EQ(aa.modRef(call), ModRefResult::ModRef);
 }
 
 // Test that non-call instructions return ModRef (conservative)

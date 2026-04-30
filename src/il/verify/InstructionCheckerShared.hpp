@@ -163,6 +163,11 @@ std::optional<Type> typeFromClass(TypeClass typeClass);
 /// @return Success when the string reference is valid; diagnostic error otherwise.
 [[nodiscard]] Expected<void> checkConstStr(const VerifyCtx &ctx);
 
+/// @brief Verify a gaddr instruction that returns mutable global storage.
+/// @param ctx Verification context containing the gaddr instruction.
+/// @return Success when the global reference is valid and addressable.
+[[nodiscard]] Expected<void> checkGAddr(const VerifyCtx &ctx);
+
 /// @brief Verify a const.null instruction that produces a null pointer.
 /// @param ctx Verification context containing the const.null instruction.
 /// @return Success when the result type is a pointer; diagnostic error otherwise.

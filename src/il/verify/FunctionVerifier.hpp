@@ -60,6 +60,7 @@ struct Function;
 struct BasicBlock;
 struct Instr;
 struct Extern;
+struct Global;
 struct Type;
 } // namespace il::core
 
@@ -129,6 +130,7 @@ class FunctionVerifier {
     /// checks that call instructions to external functions match the declared
     /// signature (parameter count and types, return type).
     using ExternMap = std::unordered_map<std::string, const il::core::Extern *>;
+    using GlobalMap = std::unordered_map<std::string, const il::core::Global *>;
 
     /// @brief Constructs a function verifier with access to external declarations.
     ///
@@ -137,7 +139,7 @@ class FunctionVerifier {
     /// before constructing the verifier.
     ///
     /// @param externs Map of external function declarations for call validation.
-    explicit FunctionVerifier(const ExternMap &externs);
+    explicit FunctionVerifier(const ExternMap &externs, const GlobalMap &globals);
 
     /**
      * @brief Verify all functions in the module for correctness.
@@ -224,6 +226,7 @@ class FunctionVerifier {
             const BlockMap &blockMap,
             const std::unordered_map<std::string, const il::core::Extern *> &externs,
             const std::unordered_map<std::string, const il::core::Function *> &funcs,
+            const std::unordered_map<std::string, const il::core::Global *> &globals,
             TypeInference &types,
             DiagSink &sink) const = 0;
     };
@@ -296,6 +299,12 @@ class FunctionVerifier {
     /// Used to resolve and validate calls to external functions. The map is
     /// owned by the caller and must remain valid for the verifier's lifetime.
     const ExternMap &externs_;
+
+    /// @brief Reference to the module's global declarations.
+    ///
+    /// Used to validate global-address operands for const strings and mutable
+    /// storage references.
+    const GlobalMap &globals_;
 
     /// @brief Map from function names to their definitions within the module.
     ///

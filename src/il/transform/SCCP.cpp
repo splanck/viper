@@ -54,6 +54,7 @@
 
 #include "il/transform/SCCP.hpp"
 
+#include "il/core/FPCast.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
@@ -429,20 +430,15 @@ static FoldResult foldIntegerArithmetic(Opcode op, const FoldContext &ctx) {
             return FoldResult::constant(Value::constInt(static_cast<long long>(ulhs % urhs)));
         }
         case Opcode::Shl:
-            if (rhs < 0 || rhs >= 64)
-                return FoldResult::unknown();
             return FoldResult::constant(Value::constInt(static_cast<long long>(
-                static_cast<unsigned long long>(lhs) << rhs)));
+                static_cast<unsigned long long>(lhs) << (static_cast<unsigned long long>(rhs) & 63ULL))));
         case Opcode::LShr:
-            if (rhs < 0 || rhs >= 64)
-                return FoldResult::unknown();
             return FoldResult::constant(Value::constInt(
-                static_cast<long long>(static_cast<unsigned long long>(lhs) >> rhs)));
+                static_cast<long long>(static_cast<unsigned long long>(lhs) >>
+                                       (static_cast<unsigned long long>(rhs) & 63ULL))));
         case Opcode::AShr:
-            if (rhs < 0 || rhs >= 64)
-                return FoldResult::unknown();
-            return FoldResult::constant(
-                Value::constInt(arithmeticShiftRight(lhs, static_cast<unsigned>(rhs))));
+            return FoldResult::constant(Value::constInt(arithmeticShiftRight(
+                lhs, static_cast<unsigned>(static_cast<unsigned long long>(rhs) & 63ULL))));
         default:
             return FoldResult::unknown();
     }
@@ -682,72 +678,34 @@ static int integerTypeBits(Type::Kind kind) {
     }
 }
 
-static double signedLowerBound(int bits) {
-    switch (bits) {
-        case 16:
-            return -32768.0;
-        case 32:
-            return -2147483648.0;
-        default:
-            return -9223372036854775808.0;
-    }
-}
-
-static double signedUpperExclusive(int bits) {
-    switch (bits) {
-        case 16:
-            return 32768.0;
-        case 32:
-            return 2147483648.0;
-        default:
-            return 9223372036854775808.0;
-    }
-}
-
-static double unsignedUpperExclusive(int bits) {
-    switch (bits) {
-        case 16:
-            return 65536.0;
-        case 32:
-            return 4294967296.0;
-        default:
-            return 18446744073709551616.0;
-    }
-}
-
 /// @brief Fold floating-point to signed integer conversion with range check.
 static FoldResult foldCastFpToSi(const FoldContext &ctx) {
     double operand{};
-    if (!ctx.getConstFloatOperand(0, operand) || !std::isfinite(operand))
+    if (!ctx.getConstFloatOperand(0, operand))
         return FoldResult::unknown();
 
-    double rounded = std::nearbyint(operand);
-    if (!std::isfinite(rounded))
+    const auto result = checkedFpToSiRte(operand, integerTypeBits(ctx.instr.type.kind));
+    if (result.failure == CheckedFPCastFailure::Invalid)
+        return FoldResult::unknown();
+    if (result.failure == CheckedFPCastFailure::Overflow)
         return FoldResult::trap();
 
-    const int bits = integerTypeBits(ctx.instr.type.kind);
-    if (rounded < signedLowerBound(bits) || rounded >= signedUpperExclusive(bits))
-        return FoldResult::trap();
-
-    return FoldResult::constant(Value::constInt(static_cast<long long>(rounded)));
+    return FoldResult::constant(Value::constInt(result.value));
 }
 
 /// @brief Fold floating-point to unsigned integer conversion with range check.
 static FoldResult foldCastFpToUi(const FoldContext &ctx) {
     double operand{};
-    if (!ctx.getConstFloatOperand(0, operand) || !std::isfinite(operand))
+    if (!ctx.getConstFloatOperand(0, operand))
         return FoldResult::unknown();
 
-    double rounded = std::nearbyint(operand);
-    if (!std::isfinite(rounded))
+    const auto result = checkedFpToUiRte(operand, integerTypeBits(ctx.instr.type.kind));
+    if (result.failure == CheckedFPCastFailure::Invalid)
+        return FoldResult::unknown();
+    if (result.failure == CheckedFPCastFailure::Overflow)
         return FoldResult::trap();
 
-    const int bits = integerTypeBits(ctx.instr.type.kind);
-    if (rounded < 0.0 || rounded >= unsignedUpperExclusive(bits))
-        return FoldResult::trap();
-
-    return FoldResult::constant(
-        Value::constInt(static_cast<long long>(static_cast<unsigned long long>(rounded))));
+    return FoldResult::constant(Value::constInt(result.value));
 }
 
 //===----------------------------------------------------------------------===//

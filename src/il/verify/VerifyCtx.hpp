@@ -42,6 +42,7 @@
 
 namespace il::core {
 struct Extern;
+struct Global;
 }
 
 namespace il::verify {
@@ -57,6 +58,8 @@ struct VerifyCtx {
         &externs; ///< Known extern signatures.
     const std::unordered_map<std::string, const il::core::Function *>
         &functions;                    ///< Known function definitions.
+    const std::unordered_map<std::string, const il::core::Global *>
+        &globals;                      ///< Known global definitions.
     const il::core::Function &fn;      ///< Function that owns the instruction.
     const il::core::BasicBlock &block; ///< Basic block containing the instruction.
     const il::core::Instr &instr;      ///< Instruction under validation.

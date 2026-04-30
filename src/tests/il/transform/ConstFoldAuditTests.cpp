@@ -607,7 +607,7 @@ TEST(ConstFoldAudit, LShrFolded) {
     EXPECT_TRUE(retIsConstInt(entry, 4));
 }
 
-TEST(ConstFoldAudit, ShlBy64NotFolded) {
+TEST(ConstFoldAudit, ShlBy64MasksToZero) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -620,11 +620,10 @@ TEST(ConstFoldAudit, ShlBy64NotFolded) {
     builder.emitRet(Value::temp(id), {});
 
     optimizeAndSerialize(module);
-    // Out-of-range shift: must NOT be folded (ISSUE-4 fix)
-    EXPECT_TRUE(hasInstr(entry, Opcode::Shl));
+    EXPECT_TRUE(retIsConstInt(entry, 1));
 }
 
-TEST(ConstFoldAudit, ShlByNegativeNotFolded) {
+TEST(ConstFoldAudit, ShlByNegativeMasksTo63) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -637,8 +636,7 @@ TEST(ConstFoldAudit, ShlByNegativeNotFolded) {
     builder.emitRet(Value::temp(id), {});
 
     optimizeAndSerialize(module);
-    // Negative shift: must NOT be folded (ISSUE-4 fix)
-    EXPECT_TRUE(hasInstr(entry, Opcode::Shl));
+    EXPECT_TRUE(retIsConstInt(entry, static_cast<long long>(1ULL << 63)));
 }
 
 // ---------------------------------------------------------------------------

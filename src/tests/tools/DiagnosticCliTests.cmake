@@ -143,7 +143,8 @@ execute_process(
 if (_gaddr_rc EQUAL 0)
     message(FATAL_ERROR "bytecode gaddr unknown-global case unexpectedly succeeded")
 endif ()
-if (NOT _gaddr_err MATCHES "error\\[V-BC-UNKNOWN-GLOBAL\\]")
+if (NOT _gaddr_err MATCHES "error\\[V-IL-VERIFY\\]" OR
+    NOT _gaddr_err MATCHES "unknown global")
     message(FATAL_ERROR "bytecode gaddr unknown-global case did not print structured diagnostic:\n${_gaddr_err}")
 endif ()
 if (_gaddr_err MATCHES "libc\\+\\+abi|terminate called|Abort trap|SIGABRT")

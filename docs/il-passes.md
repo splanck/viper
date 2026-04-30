@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-23
+last-verified: 2026-04-29
 ---
 
 # IL Optimization Passes
@@ -48,11 +48,11 @@ last-verified: 2026-04-23
 - ModRef uses a priority cascade for call effect classification:
   1. Module-level function attributes are authoritative when the callee is defined locally
   2. Runtime signature table is authoritative for known external helpers
-  3. Instruction-level `CallAttr` flags, parsed as `[nothrow]`, `[readonly]`, and `[pure]` after direct-call operands,
-     are trusted only for unknown callees
+  3. Unknown callees remain conservative; raw instruction-level `CallAttr` flags are not trusted without verified
+     runtime or local function metadata
   `pure` -> `NoModRef`, `readonly` -> `Ref`, everything else -> `ModRef`.
-- Runtime signature lookup uses the generated runtime table directly for known helpers and falls back to instruction
-  `CallAttr` only for unknown callees.
+- Runtime signature lookup uses the generated runtime table directly for known helpers and treats unknown callees as
+  `ModRef`.
 
 ## SimplifyCFG
 
@@ -184,8 +184,7 @@ Propagates constants through the IL using sparse conditional evaluation:
 
 - Identifies executable regions of the CFG and evaluates instructions whose operands become constant
 - Folds conditional branches with known conditions; rewrites block parameters (SSA phi nodes)
-- Float division by zero is folded to IEEE 754 infinity/NaN rather than left as overdefined, enabling
-  further optimization of code paths that depend on the result
+- Float division by zero is not folded, keeping non-finite results out of propagated constants
 - Trapping operations (SDivChk0, UDivChk0) are never folded when the divisor is zero to preserve trap semantics
 
 ## DSE (Dead Store Elimination)
@@ -289,7 +288,8 @@ Unified API for querying call instruction side effects:
 
 - Runtime helper metadata overrides call-site hints for known helpers; the verifier rejects contradictory call
   attributes on known callees.
-- Instruction-level `CallAttr` flags are used only when helper/function metadata is unavailable.
+- Instruction-level `CallAttr` flags are metadata assertions, not an optimizer proof by themselves; unknown callees stay
+  conservative.
 - `canEliminateIfUnused()` requires both `pure` and `nothrow`; `canReorderWithMemory()` gates LICM and code motion.
 
 ## IndVarSimplify
@@ -419,7 +419,7 @@ Regression tests covering fixes from the comprehensive IL optimization review
 | `test_opt_review_dse.cpp` | 5 | Dead store elimination, load-intervened stores, different allocas, MemorySSA exit-block stores |
 | `test_opt_review_loopinfo.cpp` | 4 | Self-loop dedup, normal loop membership, block counts |
 | `test_opt_review_peephole.cpp` | 23 | UCmp/FCmp constant folding in CBr, reflexive comparisons, trap-preserving skipped folds |
-| `test_opt_review_sccp.cpp` | 4 | FDiv by zero → infinity/NaN, normal FDiv folding |
+| `test_opt_review_sccp.cpp` | 4 | FDiv by zero preservation, normal FDiv folding |
 | `test_opt_review_valuekey.cpp` | 8 | Commutative normalization, safe opcode classification |
 
 ### Optimizer Improvement Tests (2026-02-17)

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-28
+last-verified: 2026-04-29
 ---
 
 # Containers & Advanced
@@ -269,6 +269,7 @@ The focused caret blink is advanced automatically during the app render loop, ma
 When word wrap is enabled, the editor uses wrapped visual rows for painting, cursor up/down movement, pixel hit-testing, scrollbar math, and `ScrollToLine`; only the stored document text remains unchanged.
 Hiding line numbers fully collapses the line-number gutter. `SetLineNumberWidth(width)` is measured in character cells, so the gutter scales with the active font metrics instead of staying pinned to stale pixels. Fold regions now render in the gutter and hide folded body lines from cursor movement, scrolling, and pixel-position helpers.
 Syntax-colored text now renders in contiguous same-color runs instead of issuing one draw call per byte, which keeps large highlighted files responsive.
+Keyboard text input and pasted text preserve valid multi-byte UTF-8 sequences as complete byte ranges. Document replacement builds the new line array before swapping it into the editor, so allocation failure leaves the previous document intact instead of installing partially initialized lines.
 
 **Constructor:** `NEW Viper.GUI.CodeEditor(parent)`
 

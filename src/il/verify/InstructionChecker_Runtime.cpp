@@ -403,8 +403,15 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
                             std::string("call.indirect callee must be ptr but got ") +
                                 kindToString(calleeType));
             }
-            // Pointer-based indirect call (e.g., interface dispatch). Skip static signature checks
-            // but still record the result type if the instruction has a result.
+            // Pointer-based indirect call (e.g., interface dispatch). Current IL pointer
+            // types do not carry function signatures, so validate only the shape that is
+            // statically available at the call site.
+            if (ctx.instr.result && ctx.instr.type.kind == il::core::Type::Kind::Void)
+                return fail(ctx, "call.indirect result must have non-void type");
+            for (size_t i = 1; i < ctx.instr.operands.size(); ++i) {
+                if (ctx.types.valueType(ctx.instr.operands[i]).kind == il::core::Type::Kind::Void)
+                    return fail(ctx, "call.indirect argument has unknown or void type");
+            }
             if (ctx.instr.result && ctx.instr.type.kind != il::core::Type::Kind::Void) {
                 ctx.types.recordResult(ctx.instr, ctx.instr.type);
             }
@@ -428,12 +435,7 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
     const il::runtime::RuntimeSignature *runtimeSig = il::runtime::findRuntimeSignature(calleeName);
     if (!externSig && !fnSig) {
         if (!runtimeSig) {
-            // For vararg helpers that may not be in the main registry, allow them
-            // if they follow the rt_ naming convention (they're handled specially).
-            if (!il::runtime::isVarArgCallee(calleeName))
-                return fail(ctx, std::string("unknown callee @") + calleeName);
-            // Vararg helpers bypass static signature validation.
-            return {};
+            return fail(ctx, std::string("unknown callee @") + calleeName);
         }
     }
 
@@ -453,6 +455,11 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
             calleePure = fnSig->attrs().pure;
             calleeReadonly = fnSig->attrs().readonly;
             calleeNothrow = fnSig->attrs().nothrow;
+        }
+
+        if (!knownEffects &&
+            (ctx.instr.CallAttr.pure || ctx.instr.CallAttr.readonly || ctx.instr.CallAttr.nothrow)) {
+            return fail(ctx, "call attributes require callee effect metadata");
         }
 
         if (knownEffects) {

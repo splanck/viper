@@ -21,7 +21,7 @@
 
 int main() {
     const char *src = R"(il 0.2.0
-global const ptr @g = "lit"
+global const error @g = null
 )";
     std::istringstream in(src);
     il::core::Module m;
@@ -32,6 +32,6 @@ global const ptr @g = "lit"
     }
     assert(!parse);
     const std::string message = diag.str();
-    assert(message.find("unsupported global type 'ptr'") != std::string::npos);
+    assert(message.find("unsupported global type 'error'") != std::string::npos);
     return 0;
 }

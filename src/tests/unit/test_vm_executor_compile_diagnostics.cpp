@@ -65,7 +65,7 @@ TEST(VMExecutorDiagnostics, BytecodeCompileFailureDoesNotRunVm) {
     EXPECT_EQ(result.exitCode, 1);
     EXPECT_TRUE(result.compileFailed);
     EXPECT_FALSE(result.trapped);
-    EXPECT_CONTAINS(result.trapMessage, "bytecode compile failed in @main");
+    EXPECT_CONTAINS(result.trapMessage, "bytecode preflight failed");
     EXPECT_CONTAINS(result.trapMessage, "unknown global @data");
 }
 

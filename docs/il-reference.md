@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-04-29
 ---
 
 # Viper IL — Reference
@@ -63,6 +63,7 @@ entry:
 - **Basic blocks**: Labeled with `label:` (no caret prefix)
 - **Terminators**: Every block must end with `ret`, `br`, `cbr`, `switch.i32`, `trap`, `trap.from_err`, or `resume.*`
 - **SSA form**: Values (`%vX`) are defined once and used multiple times
+- **Comments**: `#` and `//` start line comments when they appear outside quoted strings
 
 ---
 
@@ -271,7 +272,7 @@ keeps the dividend's sign. Matches BASIC `MOD`.
 
 ### Memory
 
-**`addr_of`** — Take address of global variable or constant.
+**`addr_of`** — Take address of immutable string global storage.
 
 ```llvm
 %t41 = addr_of @.Lstr
@@ -284,7 +285,7 @@ keeps the dividend's sign. Matches BASIC `MOD`.
 %b_slot = alloca 8
 ```
 
-**`gaddr`** — Address of a mutable module-level global (modvar).
+**`gaddr`** — Address of a scalar module-level storage global.
 
 ```llvm
 %p = gaddr @.Counter        # pointer to module variable storage
@@ -422,6 +423,8 @@ trap.from_err i32 6
 %t12 = ashr -8, 1
 ```
 
+Shift counts are masked modulo 64 for `shl`, `lshr`, and `ashr`.
+
 **`cast.fp_to_si.rte.chk`** — Cast float to signed integer with round-to-even and overflow check (traps on overflow).
 
 ```llvm
@@ -466,14 +469,14 @@ trap.from_err i32 6
 %t0 = const.f64 0.0
 ```
 
-**`const_null`** — Create null pointer constant.
+**`const_null`** — Create a null value for a pointer-like result type (`ptr`, `str`, `error`, or `resumetok`).
 
 ```llvm
 %t43 = const_null
 %p = const_null
 ```
 
-**`const_str`** — Load string constant from global string literal.
+**`const_str`** — Load string constant from a declared global string literal.
 
 ```llvm
 %sA = const_str @.L0
@@ -545,7 +548,13 @@ func @add(i64 %a, i64 %b) -> i64 {
 ```llvm
 global const str @.L0 = "JOHN"
 global const str @.L1 = "DOE"
+global i64 @counter = 0
+global ptr @handle = null
 ```
+
+String globals require a quoted initializer and are immutable. Scalar globals may use `i1`, `i16`, `i32`, `i64`,
+`f64`, or `ptr`; omitted initializers default to zero or null, and the VM allocates storage according to the declared
+type.
 
 **`idx.chk`** — Check array index bounds; traps if index is out of range [lo, hi) and returns the normalized zero-based index `idx - lo`.
 
@@ -646,6 +655,9 @@ The verifier enforces structural and type rules. Typical checks include:
 - Block parameters must be passed correctly by all predecessor branches.
 - Branch targets must be valid labels in the same function.
 - Calls must match callee signature exactly.
+- Direct call attributes require runtime or local function effect metadata and cannot contradict it.
+- `addr_of` and `const_str` require declared string globals; `gaddr` requires a declared scalar storage global.
+- Scalar global initializers must parse and fit the declared type; imported globals cannot define initial storage.
 
 ## Tools
 

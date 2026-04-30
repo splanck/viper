@@ -1953,6 +1953,169 @@ TEST(image_opacity_sanitizes_nan) {
     vg_widget_destroy(&image->base);
 }
 
+TEST(textinput_sanitizes_invalid_utf8_before_storage) {
+    vg_textinput_t *input = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(input);
+
+    char invalid_set[] = {'a', (char)0xFF, 'b', '\0'};
+    vg_textinput_set_text(input, invalid_set);
+    ASSERT_EQ(strcmp(input->text, "ab"), 0);
+
+    input->max_length = 3;
+    vg_textinput_set_text(input, "abcdef");
+    ASSERT_EQ(strcmp(input->text, "abc"), 0);
+
+    input->max_length = 0;
+    vg_textinput_set_cursor(input, 3);
+    char invalid_insert[] = {'x', (char)0xC0, 'y', '\0'};
+    vg_textinput_insert(input, invalid_insert);
+    ASSERT_EQ(strcmp(input->text, "abcxy"), 0);
+
+    vg_widget_destroy(&input->base);
+}
+
+TEST(codeeditor_inserts_utf8_as_complete_byte_sequences) {
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(editor);
+
+    vg_event_t event = vg_event_key(VG_EVENT_KEY_CHAR, 0, 0x00E9u, 0);
+    ASSERT_TRUE(editor->base.vtable->handle_event(&editor->base, &event));
+
+    char *text = vg_codeeditor_get_text(editor);
+    ASSERT_NOT_NULL(text);
+    const char expected[] = {(char)0xC3, (char)0xA9, '\0'};
+    ASSERT_EQ(strcmp(text, expected), 0);
+    free(text);
+
+    vg_codeeditor_insert_text(editor, "Z");
+    text = vg_codeeditor_get_text(editor);
+    ASSERT_NOT_NULL(text);
+    ASSERT_EQ(strcmp(text, "\xC3\xA9Z"), 0);
+    free(text);
+
+    vg_widget_destroy(&editor->base);
+}
+
+static int g_capture_release_clicks = 0;
+static int g_capture_release_ups = 0;
+
+static bool capture_release_handle_event(vg_widget_t *widget, vg_event_t *event) {
+    if (event->type == VG_EVENT_MOUSE_DOWN) {
+        vg_widget_set_input_capture(widget);
+        return true;
+    }
+    if (event->type == VG_EVENT_MOUSE_UP) {
+        g_capture_release_ups++;
+        vg_widget_release_input_capture();
+        return true;
+    }
+    if (event->type == VG_EVENT_CLICK) {
+        g_capture_release_clicks++;
+        return true;
+    }
+    return false;
+}
+
+static vg_widget_vtable_t g_capture_release_vtable = {
+    .handle_event = capture_release_handle_event,
+};
+
+TEST(captured_mouseup_release_suppresses_outside_synthetic_click) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_CUSTOM);
+    ASSERT_NOT_NULL(root);
+    ASSERT_NOT_NULL(child);
+    child->vtable = &g_capture_release_vtable;
+    vg_widget_add_child(root, child);
+    vg_widget_arrange(root, 0.0f, 0.0f, 200.0f, 200.0f);
+    vg_widget_arrange(child, 0.0f, 0.0f, 20.0f, 20.0f);
+
+    g_capture_release_clicks = 0;
+    g_capture_release_ups = 0;
+
+    vg_event_t down = vg_event_mouse(VG_EVENT_MOUSE_DOWN, 5.0f, 5.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &down));
+    ASSERT_EQ(vg_widget_get_input_capture(), child);
+
+    vg_event_t up = vg_event_mouse(VG_EVENT_MOUSE_UP, 120.0f, 120.0f, VG_MOUSE_LEFT, 0);
+    ASSERT_TRUE(vg_event_dispatch(root, &up));
+    ASSERT_EQ(g_capture_release_ups, 1);
+    ASSERT_EQ(g_capture_release_clicks, 0);
+    ASSERT_NULL(vg_widget_get_input_capture());
+
+    vg_widget_destroy(root);
+}
+
+TEST(grid_auto_flow_creates_implicit_rows) {
+    vg_widget_t *grid = vg_grid_create(2, 1);
+    vg_widget_t *a = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *b = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *c = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(grid);
+    ASSERT_NOT_NULL(a);
+    ASSERT_NOT_NULL(b);
+    ASSERT_NOT_NULL(c);
+    vg_widget_add_child(grid, a);
+    vg_widget_add_child(grid, b);
+    vg_widget_add_child(grid, c);
+
+    vg_widget_measure(grid, 200.0f, 100.0f);
+    vg_widget_arrange(grid, 0.0f, 0.0f, 200.0f, 100.0f);
+
+    ASSERT_TRUE(c->y > a->y);
+    ASSERT_TRUE(c->height > 0.0f);
+    ASSERT_TRUE(c->width > 0.0f);
+
+    vg_widget_destroy(grid);
+}
+
+TEST(grid_explicit_placement_extends_effective_rows) {
+    vg_widget_t *grid = vg_grid_create(2, 1);
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(grid);
+    ASSERT_NOT_NULL(child);
+    vg_widget_add_child(grid, child);
+    vg_grid_place(grid, child, 1, 3, 1, 1);
+
+    vg_widget_measure(grid, 200.0f, 100.0f);
+    vg_widget_arrange(grid, 0.0f, 0.0f, 200.0f, 100.0f);
+
+    ASSERT_TRUE(child->y > 0.0f);
+    ASSERT_TRUE(child->height > 0.0f);
+    ASSERT_TRUE(child->width > 0.0f);
+
+    vg_widget_destroy(grid);
+}
+
+TEST(widget_runtime_restore_rejects_destroyed_widget_pointer) {
+    vg_widget_runtime_state_t empty = {0};
+    vg_widget_set_runtime_state(&empty);
+
+    vg_widget_t *widget = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(widget);
+    vg_widget_runtime_state_t state = {0};
+    state.focused_widget = widget;
+    state.input_capture_widget = widget;
+    state.modal_root = widget;
+    state.hovered_widget = widget;
+    state.last_click_widget = widget;
+    state.reported_click_widget = widget;
+    state.last_click_time_ms = 11;
+    state.reported_click_time_ms = 22;
+
+    vg_widget_destroy(widget);
+    vg_widget_set_runtime_state(&state);
+
+    vg_widget_runtime_state_t restored = {0};
+    vg_widget_get_runtime_state(&restored);
+    ASSERT_NULL(restored.focused_widget);
+    ASSERT_NULL(restored.input_capture_widget);
+    ASSERT_NULL(restored.modal_root);
+    ASSERT_NULL(restored.hovered_widget);
+    ASSERT_NULL(restored.last_click_widget);
+    ASSERT_NULL(restored.reported_click_widget);
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -2061,6 +2224,12 @@ int main(void) {
     RUN(grid_negative_placement_clamps_to_first_cell);
     RUN(codeeditor_edit_helpers_clamp_stale_cursor_columns);
     RUN(image_opacity_sanitizes_nan);
+    RUN(textinput_sanitizes_invalid_utf8_before_storage);
+    RUN(codeeditor_inserts_utf8_as_complete_byte_sequences);
+    RUN(captured_mouseup_release_suppresses_outside_synthetic_click);
+    RUN(grid_auto_flow_creates_implicit_rows);
+    RUN(grid_explicit_placement_extends_effective_rows);
+    RUN(widget_runtime_restore_rejects_destroyed_widget_pointer);
 
     printf("\n=== Results: %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;
