@@ -171,7 +171,7 @@ inline void BasicAA::collectFunctionInfo(const il::core::Function &function) {
     for (const auto &block : function.blocks)
         for (const auto &instr : block.instructions) {
             if (instr.result)
-                defs_.insert({*instr.result, DefInfo{instr.op, instr.operands}});
+                defs_[*instr.result] = DefInfo{instr.op, instr.operands};
             if (instr.op == il::core::Opcode::Alloca && instr.result)
                 allocas_.insert(*instr.result);
         }
@@ -267,7 +267,7 @@ inline bool BasicAA::equalValues(const il::core::Value &lhs, const il::core::Val
         case Kind::ConstInt:
             return lhs.i64 == rhs.i64 && lhs.isBool == rhs.isBool;
         case Kind::ConstFloat:
-            return lhs.f64 == rhs.f64;
+            return il::core::valueEquals(lhs, rhs);
         case Kind::ConstStr:
         case Kind::GlobalAddr:
             return lhs.str == rhs.str;
@@ -438,7 +438,10 @@ inline std::optional<unsigned> BasicAA::typeSizeBytes(const il::core::Type &type
             return 8;
         case K::Ptr:
         case K::Str:
+        case K::ResumeTok:
             return 8;
+        case K::Error:
+            return 24;
         default:
             return std::nullopt;
     }

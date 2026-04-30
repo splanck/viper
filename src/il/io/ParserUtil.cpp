@@ -146,9 +146,28 @@ std::string readToken(std::istringstream &stream) {
         return token;
     }
 
-    stream >> token;
-    if (!token.empty() && token.back() == ',')
-        token.pop_back();
+    char c = '\0';
+    bool stoppedOnWhitespace = false;
+    while (stream.get(c)) {
+        if (std::isspace(static_cast<unsigned char>(c))) {
+            stoppedOnWhitespace = true;
+            break;
+        }
+        if (c == ',')
+            break;
+        token.push_back(c);
+    }
+    if (token.empty()) {
+        stream.setstate(std::ios::failbit);
+    } else {
+        if (stoppedOnWhitespace) {
+            stream >> std::ws;
+            if (stream.peek() == ',')
+                stream.get();
+        }
+        if (stream.eof())
+            stream.clear(stream.rdstate() & ~std::ios::failbit);
+    }
     return token;
 }
 

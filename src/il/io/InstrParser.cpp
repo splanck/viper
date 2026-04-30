@@ -269,22 +269,15 @@ Expected<void> parseWithMetadata(Opcode opcode,
             case OperandParseKind::Value: {
                 std::string token = readToken(ss);
                 if (token.empty()) {
-                    const bool readFailed = ss.fail();
-                    if (spec.role) {
-                        std::ostringstream oss;
-                        oss << "missing " << spec.role << " for " << info.name;
-                        return Expected<void>{
-                            il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
-                    }
-                    if (readFailed) {
+                    if (in.operands.size() >= info.numOperandsMin) {
                         ss.clear();
                         break;
                     }
-                    auto value = operandParser.parseValueToken(token);
-                    if (!value)
-                        return Expected<void>{value.error()};
-                    in.operands.push_back(std::move(value.value()));
-                    break;
+                    std::ostringstream oss;
+                    oss << "missing " << (spec.role ? spec.role : "operand") << " for "
+                        << info.name;
+                    return Expected<void>{
+                        il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
                 }
                 if (opcode == Opcode::TrapKind) {
                     long long trapValue = 0;

@@ -30,6 +30,7 @@
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
 #include "il/internal/io/ParserUtil.hpp"
+#include "il/internal/io/TypeParser.hpp"
 #include "il/runtime/signatures/Registry.hpp"
 
 #include "support/diag_expected.hpp"
@@ -277,6 +278,61 @@ Expected<void> parseCallAttrs(ParserState &state, Instr &instr, const std::strin
     return {};
 }
 
+Expected<void> parseIndirectSignature(ParserState &state,
+                                      Instr &instr,
+                                      const std::string &body) {
+    const size_t lp = body.find('(');
+    const size_t rp = body.rfind(')');
+    if (lp == std::string::npos || rp == std::string::npos || rp < lp ||
+        !trim(body.substr(rp + 1)).empty()) {
+        return Expected<void>{il::io::makeLineErrorDiag(
+            instr.loc, state.lineNo, "malformed call.indirect signature")};
+    }
+
+    bool retOk = true;
+    Type retType = il::io::parseType(trim(body.substr(0, lp)), &retOk);
+    if (!retOk) {
+        return Expected<void>{il::io::makeLineErrorDiag(
+            instr.loc, state.lineNo, "unknown call.indirect return type")};
+    }
+
+    std::vector<Type> params;
+    bool isVarArg = false;
+    std::string paramsText = body.substr(lp + 1, rp - lp - 1);
+    auto pieces = splitTopLevel(state, instr, paramsText, ',', "call.indirect signature");
+    if (!pieces)
+        return Expected<void>{pieces.error()};
+
+    const auto &tokens = pieces.value();
+    for (size_t index = 0; index < tokens.size(); ++index) {
+        const std::string token = trim(tokens[index]);
+        if (token == "...") {
+            if (isVarArg || index + 1 != tokens.size()) {
+                return Expected<void>{il::io::makeLineErrorDiag(
+                    instr.loc, state.lineNo, "call.indirect variadic marker must appear last")};
+            }
+            isVarArg = true;
+            continue;
+        }
+
+        bool ok = true;
+        Type paramType = il::io::parseType(token, &ok);
+        if (!ok || paramType.kind == Type::Kind::Void) {
+            return Expected<void>{il::io::makeLineErrorDiag(
+                instr.loc, state.lineNo, "unknown call.indirect parameter type")};
+        }
+        params.push_back(paramType);
+    }
+
+    instr.hasIndirectSignature = true;
+    instr.indirectRetType = retType;
+    instr.indirectParamTypes = std::move(params);
+    instr.indirectIsVarArg = isVarArg;
+    if (instr.result && retType.kind != Type::Kind::Void)
+        instr.type = retType;
+    return {};
+}
+
 } // namespace
 
 /// @brief Create an operand parser bound to the current parser state and instruction.
@@ -421,9 +477,22 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text) {
 /// @brief Parse call.indirect operands: %fnPtr(%arg1, %arg2, ...).
 /// @details First operand is function pointer, remaining are arguments in parens.
 Expected<void> OperandParser::parseCallIndirectOperands(const std::string &text) {
-    if (text.find('(') == std::string::npos) {
+    std::string work = trim(text);
+    if (!work.empty() && work.front() == '[') {
+        const size_t close = work.find(']');
+        if (close == std::string::npos) {
+            return Expected<void>{il::io::makeLineErrorDiag(
+                instr_.loc, state_.lineNo, "malformed call.indirect signature")};
+        }
+        auto sig = parseIndirectSignature(state_, instr_, trim(work.substr(1, close - 1)));
+        if (!sig)
+            return sig;
+        work = trim(work.substr(close + 1));
+    }
+
+    if (work.find('(') == std::string::npos) {
         // No parens — just a function pointer with no args
-        std::string fnTok = trim(text);
+        std::string fnTok = trim(work);
         if (fnTok.find(')') != std::string::npos) {
             return Expected<void>{
                 il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "malformed call.indirect")};
@@ -436,18 +505,18 @@ Expected<void> OperandParser::parseCallIndirectOperands(const std::string &text)
         }
         return {};
     }
-    auto parens = findTopLevelParenRange(state_, instr_, text, 0, "call.indirect");
+    auto parens = findTopLevelParenRange(state_, instr_, work, 0, "call.indirect");
     if (!parens)
         return Expected<void>{parens.error()};
     const size_t lp = parens.value().first;
     const size_t rp = parens.value().second;
-    if (!trim(text.substr(rp + 1)).empty()) {
+    if (!trim(work.substr(rp + 1)).empty()) {
         return Expected<void>{
             il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "malformed call.indirect")};
     }
 
     // Parse function pointer before the paren
-    std::string fnTok = trim(text.substr(0, lp));
+    std::string fnTok = trim(work.substr(0, lp));
     if (!fnTok.empty()) {
         auto fnVal = parseValueToken(fnTok);
         if (!fnVal)
@@ -456,7 +525,7 @@ Expected<void> OperandParser::parseCallIndirectOperands(const std::string &text)
     }
 
     // Parse comma-separated args inside parens
-    std::string argsText = text.substr(lp + 1, rp - lp - 1);
+    std::string argsText = work.substr(lp + 1, rp - lp - 1);
     auto tokens = splitCommaSeparated(argsText, "call.indirect");
     if (!tokens)
         return Expected<void>{tokens.error()};

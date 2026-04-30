@@ -27,6 +27,7 @@
 #include <deque>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace il::transform::simplify_cfg {
@@ -107,6 +108,17 @@ bool removeUnreachableBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx) {
     }
 
     size_t removedBlocks = 0;
+    std::unordered_set<std::string> labelsReferencedByRetainedUnreachable;
+    for (size_t blockIndex : unreachableBlocks) {
+        if (blockIndex >= F.blocks.size())
+            continue;
+        const il::core::BasicBlock &candidate = F.blocks[blockIndex];
+        if (!ctx.isEHSensitive(candidate))
+            continue;
+        for (const auto &instr : candidate.instructions)
+            for (const auto &label : instr.labels)
+                labelsReferencedByRetainedUnreachable.insert(label);
+    }
 
     for (auto it = unreachableBlocks.rbegin(); it != unreachableBlocks.rend(); ++it) {
         const size_t blockIndex = *it;
@@ -118,23 +130,8 @@ bool removeUnreachableBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx) {
             continue;
 
         const std::string label = candidate.label;
-
-        for (auto &block : F.blocks) {
-            for (auto &instr : block.instructions) {
-                if (instr.labels.empty())
-                    continue;
-
-                for (size_t idx = 0; idx < instr.labels.size();) {
-                    if (instr.labels[idx] == label) {
-                        instr.labels.erase(instr.labels.begin() + idx);
-                        if (idx < instr.brArgs.size())
-                            instr.brArgs.erase(instr.brArgs.begin() + idx);
-                    } else {
-                        ++idx;
-                    }
-                }
-            }
-        }
+        if (labelsReferencedByRetainedUnreachable.contains(label))
+            continue;
 
         F.blocks.erase(F.blocks.begin() + static_cast<std::ptrdiff_t>(blockIndex));
         ++removedBlocks;

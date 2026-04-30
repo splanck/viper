@@ -2283,6 +2283,15 @@ const char *sigParamKindName(signatures::SigParam::Kind kind) {
     return "unknown";
 }
 
+bool sigParamKindsCompatible(signatures::SigParam::Kind expected,
+                             signatures::SigParam::Kind actual) {
+    using signatures::SigParam;
+    if (expected == actual)
+        return true;
+    return (expected == SigParam::Kind::Str && actual == SigParam::Kind::Ptr) ||
+           (expected == SigParam::Kind::Ptr && actual == SigParam::Kind::Str);
+}
+
 /// @brief Translate IL type kinds into signature parameter kinds.
 /// @details Normalises several IL integer types down to the ABI shapes used in
 ///          runtime signatures, asserting in debug builds when encountering
@@ -2411,7 +2420,7 @@ void validateRuntimeDescriptors(const std::vector<RuntimeDescriptor> &descriptor
             for (std::size_t index = 0; index < params.size(); ++index) {
                 const auto expectedKind = signature.params[index].kind;
                 const auto actualKind = params[index];
-                if (expectedKind != actualKind) {
+                if (!sigParamKindsCompatible(expectedKind, actualKind)) {
                     std::fprintf(stderr,
                                  "Runtime signature '%s' parameter %zu type mismatch (expected %s, "
                                  "got %s).\n",
@@ -2436,7 +2445,7 @@ void validateRuntimeDescriptors(const std::vector<RuntimeDescriptor> &descriptor
             for (std::size_t index = 0; index < returns.size(); ++index) {
                 const auto expectedKind = signature.rets[index].kind;
                 const auto actualKind = returns[index];
-                if (expectedKind != actualKind) {
+                if (!sigParamKindsCompatible(expectedKind, actualKind)) {
                     std::fprintf(
                         stderr,
                         "Runtime signature '%s' return %zu type mismatch (expected %s, got %s).\n",

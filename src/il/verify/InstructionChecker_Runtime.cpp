@@ -119,6 +119,57 @@ RuntimeArrayCallee classifyRuntimeArrayCallee(std::string_view callee) {
     return RuntimeArrayCallee::None;
 }
 
+bool typeKindsCompatible(Type::Kind actual, Type::Kind expected) {
+    if (actual == expected)
+        return true;
+    return (expected == Type::Kind::Ptr && actual == Type::Kind::Str) ||
+           (expected == Type::Kind::Str && actual == Type::Kind::Ptr);
+}
+
+bool isSupportedVarArgType(Type::Kind kind) {
+    switch (kind) {
+        case Type::Kind::I1:
+        case Type::Kind::I16:
+        case Type::Kind::I32:
+        case Type::Kind::I64:
+        case Type::Kind::F64:
+        case Type::Kind::Ptr:
+        case Type::Kind::Str:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool startsWith(std::string_view text, std::string_view prefix) {
+    return text.size() >= prefix.size() && text.substr(0, prefix.size()) == prefix;
+}
+
+bool contains(std::string_view text, std::string_view needle) {
+    return text.find(needle) != std::string_view::npos;
+}
+
+bool runtimeReturnMustBeBound(std::string_view callee, Type retType) {
+    if (retType.kind == Type::Kind::Str)
+        return true;
+    if (retType.kind != Type::Kind::Ptr)
+        return false;
+    if (callee == "rt_alloc")
+        return true;
+    if (startsWith(callee, "rt_arr_") &&
+        (contains(callee, "_new") || contains(callee, "_alloc") || contains(callee, "_resize")))
+        return true;
+    if (startsWith(callee, "rt_obj_new"))
+        return true;
+    if (startsWith(callee, "rt_str_") &&
+        (contains(callee, "_alloc") || callee == "rt_str_empty" || callee == "rt_str_left" ||
+         callee == "rt_str_right" || callee == "rt_str_mid" || callee == "rt_str_mid_len" ||
+         callee == "rt_str_ltrim" || callee == "rt_str_rtrim" || callee == "rt_str_trim" ||
+         callee == "rt_str_ucase" || callee == "rt_str_lcase" || callee == "rt_str_chr"))
+        return true;
+    return false;
+}
+
 /// @brief Validate runtime array helper invocations.
 /// @details Ensures that helper-specific operand counts, operand types, and
 ///          result expectations are satisfied for array allocation, indexing,
@@ -403,9 +454,58 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
                             std::string("call.indirect callee must be ptr but got ") +
                                 kindToString(calleeType));
             }
-            // Pointer-based indirect call (e.g., interface dispatch). Current IL pointer
-            // types do not carry function signatures, so validate only the shape that is
-            // statically available at the call site.
+            if (ctx.instr.hasIndirectSignature) {
+                const size_t provided =
+                    ctx.instr.operands.size() > 0 ? ctx.instr.operands.size() - 1 : 0;
+                const size_t fixed = ctx.instr.indirectParamTypes.size();
+                const bool badCount =
+                    ctx.instr.indirectIsVarArg ? provided < fixed : provided != fixed;
+                if (badCount) {
+                    std::ostringstream ss;
+                    ss << "call.indirect arg count mismatch: signature expects ";
+                    if (ctx.instr.indirectIsVarArg)
+                        ss << "at least ";
+                    ss << fixed << " argument" << (fixed == 1 ? "" : "s") << " but got "
+                       << provided;
+                    return fail(ctx, ss.str());
+                }
+                for (size_t i = 0; i < fixed; ++i) {
+                    const auto expected = ctx.instr.indirectParamTypes[i].kind;
+                    const auto actual = ctx.types.valueType(ctx.instr.operands[1 + i]).kind;
+                    if (!typeKindsCompatible(actual, expected)) {
+                        std::ostringstream ss;
+                        ss << "call.indirect arg type mismatch: signature parameter " << i
+                           << " expects " << kindToString(expected) << " but got "
+                           << kindToString(actual);
+                        return fail(ctx, ss.str());
+                    }
+                }
+                for (size_t i = fixed; i < provided; ++i) {
+                    const auto actual = ctx.types.valueType(ctx.instr.operands[1 + i]).kind;
+                    if (!isSupportedVarArgType(actual)) {
+                        std::ostringstream ss;
+                        ss << "call.indirect vararg type mismatch: argument " << i
+                           << " has unsupported type " << kindToString(actual);
+                        return fail(ctx, ss.str());
+                    }
+                }
+                if (ctx.instr.indirectRetType.kind == Type::Kind::Void) {
+                    if (ctx.instr.result)
+                        return fail(ctx, "call.indirect to void signature must not have a result");
+                } else if (ctx.instr.result) {
+                    if (!typeKindsCompatible(ctx.instr.type.kind, ctx.instr.indirectRetType.kind)) {
+                        std::ostringstream ss;
+                        ss << "call.indirect return type mismatch: signature returns "
+                           << kindToString(ctx.instr.indirectRetType.kind)
+                           << " but instruction declares " << kindToString(ctx.instr.type.kind);
+                        return fail(ctx, ss.str());
+                    }
+                    ctx.types.recordResult(ctx.instr, ctx.instr.indirectRetType);
+                }
+                return {};
+            }
+
+            // Legacy pointer-based indirect call without signature metadata.
             if (ctx.instr.result && ctx.instr.type.kind == il::core::Type::Kind::Void)
                 return fail(ctx, "call.indirect result must have non-void type");
             for (size_t i = 1; i < ctx.instr.operands.size(); ++i) {
@@ -509,14 +609,19 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
             expected = runtimeSig->paramTypes[i];
 
         const auto actualKind = ctx.types.valueType(ctx.instr.operands[argStart + i]).kind;
-        // Accept IL 'str' where runtime ABI expects 'ptr' (string handle compatibility).
-        const bool strAsPtr = (expected.kind == Type::Kind::Ptr && actualKind == Type::Kind::Str);
-        // Accept IL 'ptr' where runtime ABI expects 'str' (for some legacy patterns).
-        const bool ptrAsStr = (expected.kind == Type::Kind::Str && actualKind == Type::Kind::Ptr);
-        if (actualKind != expected.kind && !strAsPtr && !ptrAsStr) {
+        if (!typeKindsCompatible(actualKind, expected.kind)) {
             std::ostringstream ss;
             ss << "call arg type mismatch: @" << calleeName << " parameter " << i << " expects "
                << kindToString(expected.kind) << " but got " << kindToString(actualKind);
+            return fail(ctx, ss.str());
+        }
+    }
+    for (size_t i = paramCount; i < providedArgs; ++i) {
+        const auto actualKind = ctx.types.valueType(ctx.instr.operands[argStart + i]).kind;
+        if (!isSupportedVarArgType(actualKind)) {
+            std::ostringstream ss;
+            ss << "call vararg type mismatch: @" << calleeName << " argument " << i
+               << " has unsupported type " << kindToString(actualKind);
             return fail(ctx, ss.str());
         }
     }
@@ -530,6 +635,42 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
     else if (runtimeSig)
         retType = runtimeSig->retType;
 
+    if (ctx.instr.op == il::core::Opcode::CallIndirect && ctx.instr.hasIndirectSignature) {
+        if (!typeKindsCompatible(ctx.instr.indirectRetType.kind, retType.kind)) {
+            std::ostringstream ss;
+            ss << "call.indirect signature return mismatch: @" << calleeName << " returns "
+               << kindToString(retType.kind) << " but signature declares "
+               << kindToString(ctx.instr.indirectRetType.kind);
+            return fail(ctx, ss.str());
+        }
+        if (ctx.instr.indirectIsVarArg != isVarArg) {
+            return fail(ctx, "call.indirect signature variadic flag mismatch");
+        }
+        if (ctx.instr.indirectParamTypes.size() != paramCount) {
+            std::ostringstream ss;
+            ss << "call.indirect signature arg count mismatch: @" << calleeName << " expects "
+               << paramCount << " parameter" << (paramCount == 1 ? "" : "s")
+               << " but signature declares " << ctx.instr.indirectParamTypes.size();
+            return fail(ctx, ss.str());
+        }
+        for (size_t i = 0; i < paramCount; ++i) {
+            Type expected;
+            if (externSig)
+                expected = externSig->params[i];
+            else if (fnSig)
+                expected = fnSig->params[i].type;
+            else if (runtimeSig)
+                expected = runtimeSig->paramTypes[i];
+            if (!typeKindsCompatible(ctx.instr.indirectParamTypes[i].kind, expected.kind)) {
+                std::ostringstream ss;
+                ss << "call.indirect signature parameter " << i << " mismatch: @" << calleeName
+                   << " expects " << kindToString(expected.kind) << " but signature declares "
+                   << kindToString(ctx.instr.indirectParamTypes[i].kind);
+                return fail(ctx, ss.str());
+            }
+        }
+    }
+
     // Validate return type consistency.
     if (retType.kind == Type::Kind::Void) {
         // Void-returning call should not have a result.
@@ -541,22 +682,21 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
     } else {
         // Non-void call should have a result.
         if (!ctx.instr.result) {
-            // Allow discarding results silently - this is common for side-effecting calls.
-            // The return value is simply not used.
+            if (runtimeSig && runtimeReturnMustBeBound(calleeName, retType)) {
+                std::ostringstream ss;
+                ss << "discarding owned return from @" << calleeName
+                   << " requires binding the result";
+                return fail(ctx, ss.str());
+            }
         } else {
             // Validate that the declared instruction type matches the return type.
-            if (ctx.instr.type.kind != Type::Kind::Void && ctx.instr.type.kind != retType.kind) {
-                // Allow str/ptr interchangeability for return types too.
-                const bool strPtrCompat =
-                    (ctx.instr.type.kind == Type::Kind::Str && retType.kind == Type::Kind::Ptr) ||
-                    (ctx.instr.type.kind == Type::Kind::Ptr && retType.kind == Type::Kind::Str);
-                if (!strPtrCompat) {
-                    std::ostringstream ss;
-                    ss << "call return type mismatch: @" << calleeName << " returns "
-                       << kindToString(retType.kind) << " but instruction declares "
-                       << kindToString(ctx.instr.type.kind);
-                    return fail(ctx, ss.str());
-                }
+            if (ctx.instr.type.kind != Type::Kind::Void &&
+                !typeKindsCompatible(ctx.instr.type.kind, retType.kind)) {
+                std::ostringstream ss;
+                ss << "call return type mismatch: @" << calleeName << " returns "
+                   << kindToString(retType.kind) << " but instruction declares "
+                   << kindToString(ctx.instr.type.kind);
+                return fail(ctx, ss.str());
             }
             // Record the result type for type inference.
             ctx.types.recordResult(ctx.instr, retType);

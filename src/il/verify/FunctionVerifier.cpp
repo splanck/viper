@@ -101,8 +101,13 @@ bool isErrAccessOpcode(Opcode op) {
 /// @return @c true when the instruction is the runtime array release helper.
 bool isRuntimeArrayRelease(const Instr &instr) {
     return instr.op == Opcode::Call &&
-           (instr.callee == "rt_arr_i32_release" || instr.callee == "rt_arr_str_release" ||
-            instr.callee == "rt_arr_obj_release");
+           (instr.callee == "rt_arr_i32_release" || instr.callee == "rt_arr_i64_release" ||
+            instr.callee == "rt_arr_str_release" || instr.callee == "rt_arr_obj_release");
+}
+
+bool isRuntimeArrayRetain(const Instr &instr) {
+    return instr.op == Opcode::Call &&
+           (instr.callee == "rt_arr_i32_retain" || instr.callee == "rt_arr_i64_retain");
 }
 
 bool isPureControlTerminator(Opcode op) {
@@ -124,6 +129,11 @@ bool opcodeMayThrowOrTrap(Opcode op) {
         case Opcode::SRemChk0:
         case Opcode::URemChk0:
         case Opcode::IdxChk:
+        case Opcode::Alloca:
+        case Opcode::Load:
+        case Opcode::Store:
+        case Opcode::GEP:
+        case Opcode::ConstStr:
         case Opcode::CastFpToSiRteChk:
         case Opcode::CastFpToUiRteChk:
         case Opcode::CastSiNarrowChk:
@@ -843,9 +853,16 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
             size_t index;
             unsigned id;
         };
+        struct RetainSite {
+            const BasicBlock *block;
+            const Instr *instr;
+            size_t index;
+            unsigned id;
+        };
 
         std::vector<ReleaseSite> releaseSites;
         std::vector<ReleasedUse> releasedUses;
+        std::vector<RetainSite> retainSites;
         for (const auto &blk : fn.blocks) {
             for (size_t index = 0; index < blk.instructions.size(); ++index) {
                 const Instr &instr = blk.instructions[index];
@@ -853,6 +870,10 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                     if (!instr.operands.empty() && instr.operands[0].kind == Value::Kind::Temp)
                         releaseSites.push_back({&blk, &instr, index, instr.operands[0].id});
                     continue;
+                }
+                if (isRuntimeArrayRetain(instr) && !instr.operands.empty() &&
+                    instr.operands[0].kind == Value::Kind::Temp) {
+                    retainSites.push_back({&blk, &instr, index, instr.operands[0].id});
                 }
 
                 auto recordUse = [&](const Value &value) {
@@ -875,6 +896,22 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                 return releaseIndex < useIndex;
             return dominates(releaseBlock, useBlock);
         };
+        auto retainBetween = [&](unsigned id,
+                                 const BasicBlock *releaseBlock,
+                                 size_t releaseIndex,
+                                 const BasicBlock *useBlock,
+                                 size_t useIndex) {
+            for (const RetainSite &retain : retainSites) {
+                if (retain.id != id)
+                    continue;
+                if (!siteDominates(releaseBlock, releaseIndex, retain.block, retain.index))
+                    continue;
+                if (!siteDominates(retain.block, retain.index, useBlock, useIndex))
+                    continue;
+                return true;
+            }
+            return false;
+        };
 
         for (size_t i = 0; i < releaseSites.size(); ++i) {
             const ReleaseSite &first = releaseSites[i];
@@ -885,6 +922,8 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                 if (first.id != second.id)
                     continue;
                 if (!siteDominates(first.block, first.index, second.block, second.index))
+                    continue;
+                if (retainBetween(first.id, first.block, first.index, second.block, second.index))
                     continue;
 
                 std::ostringstream message;
@@ -898,6 +937,8 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                 if (first.id != use.id)
                     continue;
                 if (!siteDominates(first.block, first.index, use.block, use.index))
+                    continue;
+                if (retainBetween(first.id, first.block, first.index, use.block, use.index))
                     continue;
 
                 std::ostringstream message;
@@ -1126,6 +1167,17 @@ Expected<void> FunctionVerifier::verifyBlock(
                         /// @brief Handles error condition.
                         makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
                 }
+            }
+        } else if (isRuntimeArrayRetain(instr)) {
+            if (!instr.operands.empty() && instr.operands[0].kind == Value::Kind::Temp) {
+                const unsigned id = instr.operands[0].id;
+                if (released.contains(id)) {
+                    std::ostringstream message;
+                    message << "use after release of %" << id;
+                    return Expected<void>{
+                        makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
+                }
+                released.erase(id);
             }
         } else {
             const auto checkValue = [&](const Value &value) -> Expected<void> {

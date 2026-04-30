@@ -80,10 +80,10 @@ void register_array_signatures() {
     // String array operations
     register_signature(make_signature("rt_arr_str_alloc", {Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_arr_str_release", {Kind::Ptr, Kind::I64}));
-    // String array element access: string parameters map to Ptr at the ABI level
-    // (mapToSigParamKind(Str) -> Ptr), so use Ptr here for validation.
-    register_signature(make_signature("rt_arr_str_get", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
-    register_signature(make_signature("rt_arr_str_put", {Kind::Ptr, Kind::I64, Kind::Ptr}));
+    // String array element access uses the IL string handle type; lowering maps
+    // that handle to the platform pointer ABI.
+    register_signature(make_signature("rt_arr_str_get", {Kind::Ptr, Kind::I64}, {Kind::Str}));
+    register_signature(make_signature("rt_arr_str_put", {Kind::Ptr, Kind::I64, Kind::Str}));
     register_signature(make_signature("rt_arr_str_len", {Kind::Ptr}, {Kind::I64}));
 }
 

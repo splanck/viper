@@ -266,7 +266,7 @@ static unsigned ensureParam(
 /// @param blocks Block state table used to lookup parameter indices.
 /// @param nextId Counter used when new parameters must be created.
 /// @sideeffect Mutates branch arguments in @p Pred and may add block params.
-static void addIncoming(BasicBlock *B,
+static bool addIncoming(BasicBlock *B,
                         unsigned varId,
                         BasicBlock *Pred,
                         const Value &val,
@@ -299,14 +299,13 @@ static void addIncoming(BasicBlock *B,
     if (term.brArgs.size() < term.labels.size())
         term.brArgs.resize(term.labels.size());
     if (target >= term.labels.size()) {
-        std::cerr << "mem2reg: malformed CFG: predecessor terminator in block '"
-                  << Pred->label << "' does not target block '" << B->label << "'\n";
-        return;
+        return false;
     }
     auto &args = term.brArgs[target];
     if (args.size() <= pIdx)
         args.resize(pIdx + 1);
     args[pIdx] = val;
+    return true;
 }
 
 /// Forward declaration for recursive SSA renaming.
@@ -316,7 +315,8 @@ static Value renameUses(Function &F,
                         VarMap &vars,
                         BlockMap &blocks,
                         unsigned &nextId,
-                        const analysis::CFGContext &ctx);
+                        const analysis::CFGContext &ctx,
+                        bool &ok);
 
 /// @brief Resolve a promoted variable's value at the start of a block.
 ///
@@ -340,7 +340,8 @@ static Value readFromPreds(Function &F,
                            BlockMap &blocks,
                            unsigned &nextId,
                            const analysis::CFGContext &ctx,
-                           LabelIndexCache *idxCache) {
+                           LabelIndexCache *idxCache,
+                           bool &ok) {
     auto preds = analysis::predecessors(ctx, *B);
     if (preds.empty()) {
         return vars[varId].initialValue;
@@ -348,8 +349,11 @@ static Value readFromPreds(Function &F,
     unsigned pIdx = ensureParam(B, varId, vars, blocks, nextId);
     Value paramVal = Value::temp(B->params[pIdx].id);
     for (auto *P : preds) {
-        Value arg = renameUses(F, P, varId, vars, blocks, nextId, ctx);
-        addIncoming(B, varId, P, arg, vars, blocks, nextId, idxCache);
+        Value arg = renameUses(F, P, varId, vars, blocks, nextId, ctx, ok);
+        if (!ok || !addIncoming(B, varId, P, arg, vars, blocks, nextId, idxCache)) {
+            ok = false;
+            return paramVal;
+        }
     }
     return paramVal;
 }
@@ -375,7 +379,10 @@ static Value renameUses(Function &F,
                         VarMap &vars,
                         BlockMap &blocks,
                         unsigned &nextId,
-                        const analysis::CFGContext &ctx) {
+                        const analysis::CFGContext &ctx,
+                        bool &ok) {
+    if (!ok)
+        return vars[varId].initialValue;
     VarState &VS = vars[varId];
     if (auto it = VS.defs.find(B); it != VS.defs.end())
         return it->second;
@@ -394,7 +401,7 @@ static Value renameUses(Function &F,
         return v;
     }
     if (preds.size() == 1) {
-        Value v = renameUses(F, preds.front(), varId, vars, blocks, nextId, ctx);
+        Value v = renameUses(F, preds.front(), varId, vars, blocks, nextId, ctx, ok);
         VS.defs[B] = v;
         return v;
     }
@@ -406,7 +413,7 @@ static Value renameUses(Function &F,
     unsigned pIdx = ensureParam(B, varId, vars, blocks, nextId);
     Value placeholder = Value::temp(B->params[pIdx].id);
     VS.defs[B] = placeholder;
-    Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, nullptr);
+    Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, nullptr, ok);
     if (!valueEquals(v, placeholder))
         VS.defs[B] = v;
     return VS.defs[B];
@@ -431,13 +438,16 @@ static void sealBlocks(Function &F,
                        BlockMap &blocks,
                        unsigned &nextId,
                        const analysis::CFGContext &ctx,
-                       LabelIndexCache *idxCache) {
+                       LabelIndexCache *idxCache,
+                       bool &ok) {
     BlockState &BS = blocks[B];
     if (BS.sealed)
         return;
     std::sort(BS.incomplete.begin(), BS.incomplete.end());
     for (unsigned varId : BS.incomplete) {
-        Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, idxCache);
+        Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, idxCache, ok);
+        if (!ok)
+            break;
         if (!vars[varId].defs.contains(B))
             vars[varId].defs[B] = v;
     }
@@ -455,7 +465,8 @@ static void repairPromotedBranchArgs(Function &F,
                                      VarMap &vars,
                                      BlockMap &blocks,
                                      unsigned &nextId,
-                                     const analysis::CFGContext &ctx) {
+                                     const analysis::CFGContext &ctx,
+                                     bool &ok) {
     std::unordered_map<std::string, BasicBlock *> labels;
     labels.reserve(F.blocks.size());
     for (auto &B : F.blocks)
@@ -492,9 +503,11 @@ static void repairPromotedBranchArgs(Function &F,
 
             auto &args = term.brArgs[targetIndex];
             for (const auto &[paramIdx, varId] : slots) {
-                if (args.size() > paramIdx && args[paramIdx].kind != Value::Kind::NullPtr)
+                if (args.size() > paramIdx)
                     continue;
-                Value arg = renameUses(F, &Pred, varId, vars, blocks, nextId, ctx);
+                Value arg = renameUses(F, &Pred, varId, vars, blocks, nextId, ctx, ok);
+                if (!ok)
+                    return;
                 if (args.size() <= paramIdx)
                     args.resize(paramIdx + 1);
                 args[paramIdx] = arg;
@@ -578,8 +591,11 @@ static void promoteVariables(Function &F,
     }
 
     LabelIndexCache idxCache;
+    bool ok = true;
 
     while (!work.empty()) {
+        if (!ok)
+            return;
         BasicBlock *B = work.front();
         work.pop();
 
@@ -592,7 +608,9 @@ static void promoteVariables(Function &F,
             if (I.op == Opcode::Load && I.operands.size() &&
                 I.operands[0].kind == Value::Kind::Temp && vars.contains(I.operands[0].id)) {
                 unsigned varId = I.operands[0].id;
-                Value v = renameUses(F, B, varId, vars, blocks, nextId, ctx);
+                Value v = renameUses(F, B, varId, vars, blocks, nextId, ctx, ok);
+                if (!ok)
+                    return;
                 if (I.result)
                     viper::il::replaceAllUses(F, *I.result, v);
                 B->instructions.erase(B->instructions.begin() + i);
@@ -621,11 +639,13 @@ static void promoteVariables(Function &F,
                 queued.insert(S);
             }
             if (SS.seenPreds == SS.totalPreds)
-                sealBlocks(F, S, vars, blocks, nextId, ctx, &idxCache);
+                sealBlocks(F, S, vars, blocks, nextId, ctx, &idxCache, ok);
+            if (!ok)
+                return;
         }
     }
 
-    repairPromotedBranchArgs(F, vars, blocks, nextId, ctx);
+    repairPromotedBranchArgs(F, vars, blocks, nextId, ctx, ok);
 }
 
 /// @brief Return true when @p block can be reached from a predecessor it dominates.
@@ -910,9 +930,9 @@ static bool runSROA(Function &F) {
 ///              variables and removed loads/stores.
 /// @sideeffect Mutates functions within the module.
 void mem2reg(Module &M, Mem2RegStats *stats) {
-    analysis::CFGContext cfg(M);
     for (auto &F : M.functions) {
         runSROA(F);
+        analysis::CFGContext cfg(M);
 
         AllocaMap infos = collectAllocas(F);
 

@@ -72,14 +72,14 @@ TEST(GVNCSE, EarlyCSE_WithinBlock_Commutative) {
 
     Instr add1;
     add1.result = id++;
-    add1.op = Opcode::Add;
+    add1.op = Opcode::IAddOvf;
     add1.type = Type(Type::Kind::I64);
     add1.operands = {Value::temp(a.id), Value::temp(b.id)};
     entry.instructions.push_back(std::move(add1));
 
     Instr add2;
     add2.result = id++;
-    add2.op = Opcode::Add;
+    add2.op = Opcode::IAddOvf;
     add2.type = Type(Type::Kind::I64);
     add2.operands = {Value::temp(b.id), Value::temp(a.id)}; // commuted
     entry.instructions.push_back(std::move(add2));
@@ -98,7 +98,7 @@ TEST(GVNCSE, EarlyCSE_WithinBlock_Commutative) {
     il::transform::runEarlyCSE(M, M.functions.front());
 
     BasicBlock &B = M.functions.front().blocks.front();
-    ASSERT_EQ(B.instructions.size(), 2U); // add + ret
+    ASSERT_EQ(B.instructions.size(), 2U); // checked add + ret
     const Instr &keptAdd = B.instructions[0];
     ASSERT_TRUE(keptAdd.result.has_value());
     const unsigned keptId = *keptAdd.result;
@@ -124,7 +124,7 @@ TEST(GVNCSE, GVN_CommutativeAcrossBlocks) {
     entry.label = "entry";
     Instr add1;
     add1.result = id++;
-    add1.op = Opcode::Add;
+    add1.op = Opcode::IAddOvf;
     add1.type = Type(Type::Kind::I64);
     add1.operands = {Value::temp(a.id), Value::temp(b.id)};
     entry.instructions.push_back(std::move(add1));
@@ -141,7 +141,7 @@ TEST(GVNCSE, GVN_CommutativeAcrossBlocks) {
     next.label = "next";
     Instr add2;
     add2.result = id++;
-    add2.op = Opcode::Add;
+    add2.op = Opcode::IAddOvf;
     add2.type = Type(Type::Kind::I64);
     add2.operands = {Value::temp(b.id), Value::temp(a.id)};
     next.instructions.push_back(std::move(add2));
@@ -163,7 +163,7 @@ TEST(GVNCSE, GVN_CommutativeAcrossBlocks) {
     BasicBlock &entryBlock = M.functions.front().blocks[0];
     BasicBlock &nextBlock = M.functions.front().blocks[1];
 
-    ASSERT_EQ(entryBlock.instructions.size(), 2U); // add1 + br
+    ASSERT_EQ(entryBlock.instructions.size(), 2U); // checked add1 + br
     ASSERT_EQ(nextBlock.instructions.size(), 1U);  // ret only (add2 removed)
     const Instr &retInstr = nextBlock.instructions.back();
     ASSERT_FALSE(retInstr.operands.empty());

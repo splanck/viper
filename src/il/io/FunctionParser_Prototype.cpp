@@ -187,7 +187,11 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false
         return Expected<PrototypeParseResult>{
             makeSyntaxError(cursorPos(cur), "malformed function header", {})};
     }
-    std::string retRaw(cur.view().substr(cur.offset(), brace - cur.offset()));
+    size_t retEnd = brace;
+    size_t attrStart = cur.view().find('[', cur.offset());
+    if (attrStart != std::string_view::npos && attrStart < brace)
+        retEnd = attrStart;
+    std::string retRaw(cur.view().substr(cur.offset(), retEnd - cur.offset()));
     std::string retStr = trim(retRaw);
     bool retOk = true;
     Type retTy = parseType(retStr, &retOk);
@@ -195,7 +199,7 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false
         return Expected<PrototypeParseResult>{
             makeSyntaxError(cursorPos(cur), "unknown return type", {})};
 
-    cur.seek(brace);
+    cur.seek(retEnd);
     return PrototypeParseResult{Prototype{retTy, std::move(params), isVarArg}, ccSegment};
 }
 
@@ -224,9 +228,43 @@ Expected<Attrs> parseAttributes(Cursor &cur) {
     cur.skipWs();
     if (cur.atEnd())
         return Expected<Attrs>{makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
+    Attrs attrs;
+    if (cur.peek() == '[') {
+        cur.consume('[');
+        const size_t attrsBegin = cur.offset();
+        const size_t close = cur.view().find(']', attrsBegin);
+        if (close == std::string_view::npos)
+            return Expected<Attrs>{makeSyntaxError(cursorPos(cur), "malformed function attributes", {})};
+
+        std::string body = trim(std::string(cur.view().substr(attrsBegin, close - attrsBegin)));
+        if (body.empty())
+            return Expected<Attrs>{makeSyntaxError(cursorPos(cur), "empty function attribute list", {})};
+
+        for (char &ch : body)
+            if (ch == ',')
+                ch = ' ';
+
+        std::istringstream ss(body);
+        std::string attr;
+        while (ss >> attr) {
+            if (attr == "nothrow") {
+                attrs.nothrow = true;
+            } else if (attr == "readonly") {
+                attrs.readonly = true;
+            } else if (attr == "pure") {
+                attrs.pure = true;
+            } else {
+                std::ostringstream oss;
+                oss << "unknown function attribute '" << attr << "'";
+                return lineError<Attrs>(cur.line(), oss.str());
+            }
+        }
+        cur.seek(close + 1);
+        cur.skipWs();
+    }
     if (!cur.consume('{'))
         return Expected<Attrs>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
-    return Attrs{};
+    return attrs;
 }
 
 /// @brief Parse an optional source location directive.
@@ -343,6 +381,9 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st) {
     fn.params = std::move(fh.proto.params);
     fn.isVarArg = fh.proto.isVarArg;
     fn.linkage = linkage;
+    fn.attrs().nothrow = fh.attrs.nothrow;
+    fn.attrs().readonly = fh.attrs.readonly;
+    fn.attrs().pure = fh.attrs.pure;
     st.m.functions.push_back(std::move(fn));
     st.curFn = &st.m.functions.back();
     st.curBB = nullptr;

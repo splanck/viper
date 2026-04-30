@@ -81,8 +81,6 @@ size_t ValueKeyHash::operator()(const ValueKey &k) const noexcept {
 /// @return True if operand order does not affect the result; false otherwise.
 bool isCommutativeCSE(Opcode op) noexcept {
     switch (op) {
-        case Opcode::Add:
-        case Opcode::Mul:
         case Opcode::IAddOvf:
         case Opcode::IMulOvf:
         case Opcode::And:
@@ -100,18 +98,14 @@ bool isCommutativeCSE(Opcode op) noexcept {
 
 /// @brief Determine whether an opcode is safe to use in expression CSE/GVN.
 /// @details The whitelist includes operations with no side effects beyond
-///          possible trapping. Overflow-checked operations (IAddOvf, ISubOvf,
-///          IMulOvf) are safe for CSE: if the first execution does not trap,
-///          all subsequent identical operations will produce the same result
-///          and also not trap. CSE only eliminates redundant computations; it
-///          never introduces new trapping paths.
+///          possible trapping. Plain signed Add/Sub/Mul are intentionally
+///          excluded because their overflow semantics are not represented in
+///          the value key; frontends should use checked or bitwise forms when
+///          they need optimisable wrap-independent arithmetic.
 /// @param op Opcode to test.
 /// @return True if the opcode is safe for value-based CSE; false otherwise.
 bool isSafeCSEOpcode(Opcode op) noexcept {
     switch (op) {
-        case Opcode::Add:
-        case Opcode::Sub:
-        case Opcode::Mul:
         case Opcode::IAddOvf:
         case Opcode::ISubOvf:
         case Opcode::IMulOvf:

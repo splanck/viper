@@ -101,8 +101,11 @@ LowerResult Lowerer::lowerVirtualMethodCall(const ClassTypeInfo &entityInfo,
     Value resultSlot;
     if (ilReturnType.kind != Type::Kind::Void) {
         unsigned id = nextTempId();
-        il::core::Instr instr{
-            id, Opcode::Alloca, Type(Type::Kind::Ptr), {Value::constInt(8)}, {}, {}, {}, {}, {}};
+        il::core::Instr instr;
+        instr.result = id;
+        instr.op = Opcode::Alloca;
+        instr.type = Type(Type::Kind::Ptr);
+        instr.operands.push_back(Value::constInt(8));
         instr.loc = curLoc_;
         blockMgr_.currentBlock()->instructions.push_back(instr);
         resultSlot = Value::temp(id);

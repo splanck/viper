@@ -26,7 +26,6 @@
 
 #include "il/core/BasicBlock.hpp"
 
-#include <cassert>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -46,7 +45,8 @@ namespace {
 ///
 /// @param ctx   SimplifyCFG context providing access to the parent function.
 /// @param block Block whose incoming arguments must be realigned.
-void realignBranchArgs(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBlock &block) {
+bool realignBranchArgs(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBlock &block) {
+    bool ok = true;
     for (auto &pred : ctx.function.blocks) {
         il::core::Instr *term = findTerminator(pred);
         if (!term)
@@ -57,7 +57,8 @@ void realignBranchArgs(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::Basic
                 continue;
 
             if (term->brArgs.size() <= edgeIdx) {
-                assert(block.params.empty() && "missing branch args for block parameters");
+                if (!block.params.empty())
+                    ok = false;
                 continue;
             }
 
@@ -71,10 +72,14 @@ void realignBranchArgs(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::Basic
             if (args.size() > block.params.size())
                 args.resize(block.params.size());
 
-            assert(args.size() == block.params.size() &&
-                   "mismatched branch argument count after parameter update");
+            if (args.size() != block.params.size())
+                ok = false;
         }
     }
+    if (!ok && ctx.isDebugLoggingEnabled())
+        ctx.logDebug("skipped full branch argument realignment for malformed block '" +
+                     block.label + "'");
+    return ok;
 }
 
 /// @brief Return true if @p tempId is referenced anywhere in @p function.
@@ -242,7 +247,7 @@ bool shrinkParamsEqualAcrossPreds(SimplifyCFG::SimplifyCFGPassContext &ctx,
     }
 
     if (removedAny)
-        realignBranchArgs(ctx, block);
+        (void)realignBranchArgs(ctx, block);
 
     return removedAny;
 }
@@ -298,7 +303,7 @@ bool dropUnusedParams(SimplifyCFG::SimplifyCFGPassContext &ctx,
     }
 
     if (removedAny)
-        realignBranchArgs(ctx, block);
+        (void)realignBranchArgs(ctx, block);
 
     return removedAny;
 }

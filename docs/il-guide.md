@@ -420,13 +420,17 @@ See [examples/il](../examples/il/) for complete programs.
 Each function has the form:
 
 ```il
-func @name(param_list?) -> ret_type {
+func @name(param_list?) -> ret_type [attrs?] {
 entry:
   ...
 }
 ```
 
 The parameter list may end with `...` to mark a C-style variadic function:
+
+Function definitions may carry `[nothrow]`, `[readonly]`, `[pure]`, or a comma-separated combination before the opening
+brace. The verifier checks the body against those promises, and direct call sites can only claim attributes that agree
+with runtime metadata or verified local function attributes.
 
 ```il
 func export @printfLike(str %fmt, ...) -> i64
@@ -706,7 +710,7 @@ denotes round-to-even (IEEE 754 default). The `.chk` suffix indicates trap-on-ov
 | `const_null` | `const_null`             | `ptr`, `str`, `error`, or `resumetok`           |
 | `const_str`  | `const_str @label`       | `str` (requires a declared string global)       |
 | `gaddr`      | `gaddr @global`          | `ptr` (address of scalar module-level storage)  |
-| `gep`        | `gep ptr, offs`          | `ptr` (no bounds checks)                        |
+| `gep`        | `gep ptr, offs`          | `ptr` (constant alloca-derived offsets checked) |
 | `idx.chk`    | `idx.chk idx, lo, hi`    | `i64` (trap if idx < lo or idx >= hi)           |
 | `load`       | `load type, ptr`         | `type` (null or misaligned trap)                |
 | `store`      | `store type, ptr, value` | — (null or misaligned trap)                     |
@@ -731,11 +735,12 @@ entry:
 | Instr           | Form                            | Result                   |
 |-----------------|---------------------------------|--------------------------|
 | `call`          | `call @f(%x, %y) [attrs?]`      | return type of `@f`      |
-| `call.indirect` | `call.indirect %fn_ptr(%x, %y)` | return type from pointer |
+| `call.indirect` | `call.indirect [ret(params?)] %fn_ptr(%x, %y)` | annotated return type |
 
 Direct calls use `@symbol` references. Indirect calls use a function pointer as the first operand, followed by
-arguments. The verifier checks arity and types for both forms. For variadic callees declared with a trailing `...`,
-the verifier enforces the declared prefix and permits additional arguments after it.
+arguments. Pointer-based indirect calls may carry an explicit signature, for example `[i64(ptr, i64)]`; when present,
+the verifier checks argument count, argument types, variadic tails, and return type. For variadic callees declared with a
+trailing `...`, the verifier enforces the declared prefix and permits only scalar, pointer, or string values after it.
 
 Direct calls may carry bracketed semantic hints after the argument list:
 `[nothrow]`, `[readonly]`, `[pure]`, or a comma-separated combination. Known
@@ -746,7 +751,7 @@ function effect metadata.
 
 ```text
 call @f(%x, %y) [nothrow, readonly]
-%result = call.indirect %fn_ptr(%arg)
+%result = call.indirect [i64(ptr)] %fn_ptr(%arg)
 ```
 
 ##### Error Handling
@@ -888,15 +893,19 @@ wired directly to runtime contracts. Passes can also observe the
   validates an instruction-declared result type.
 * Calls match callee arity and types.
 * Direct call attributes cannot contradict known runtime helper or local function metadata, and require such metadata.
-* `call.indirect` requires a pointer-typed callee operand unless it names a known `globaladdr` callee.
+* `call.indirect` requires a pointer-typed callee operand unless it names a known `globaladdr` callee; explicit
+  `[ret(params)]` signatures are checked for pointer callees.
 * `addr_of` and `const_str` require a declared string global; `gaddr` requires a declared scalar storage global.
 * `load`/`store` use `ptr` operands and non-void element types.
-* `alloca` sizes are `i64`; constant operands must be non-negative.
+* `alloca` sizes are `i64`; constant operands must be non-negative. Constant `gep` offsets are signed byte offsets.
+  When a constant `gep` derives from a constant-size `alloca`, the cumulative alloca-relative offset is
+  range-checked.
 * Temporaries are defined exactly once and every reachable cross-block use is dominated by its definition.
 * Function and block parameters have unique names/ids, non-void types, and each predecessor passes matching arguments.
 * Branch arguments must match each destination block's parameters and must reference defined, non-void values. Trailing empty successor bundles may be omitted.
 * Returning an `alloca`-derived pointer, including through `gep` or block parameters, is invalid. Calls and stores may borrow or stage stack addresses for frontend ABIs; alias analyses still treat those uses as escapes unless proven otherwise.
-* Runtime array release helpers (`rt_arr_i32_release`, `rt_arr_str_release`, `rt_arr_obj_release`) reject double release and dominated use-after-release.
+* Runtime array release helpers (`rt_arr_i32_release`, `rt_arr_i64_release`, `rt_arr_str_release`,
+  `rt_arr_obj_release`) reject double release and dominated use-after-release.
 * `cbr` takes an `i1` condition.
 
 Tooling can call `Verifier::verify()` for a single primary diagnostic with related verifier failures attached as notes, or `Verifier::verifyAll()` to collect a bounded list of independent verifier failures. Function-body verification continues across independent functions, so one bad function no longer hides later broken functions in the same module. Frontends and native build paths run verification before handing IL to an optimizer, VM, bytecode compiler, or native backend.
@@ -930,7 +939,7 @@ extern      ::= "extern" SYMBOL "(" type_list? ")" "->" type
 global      ::= "global" linkage? ("const")? type SYMBOL ("=" ginit)?
 ginit       ::= STRING | INT | FLOAT | "null" | SYMBOL
 linkage     ::= "export" | "import"
-func        ::= "func" linkage? SYMBOL "(" func_params? ")" "->" type ( "{" block+ "}" )?
+func        ::= "func" linkage? SYMBOL "(" func_params? ")" "->" type func_attrs? ( "{" block+ "}" )?
 func_params ::= func_param ("," func_param)* ("," "...")? | "..."
 func_param  ::= type TEMP | TEMP ":" type   (* canonical: "type %name"; legacy "%name: type" also accepted *)
 type_list   ::= type ("," type)*
@@ -940,10 +949,12 @@ blk_param   ::= TEMP ":" type               (* block params always use "%name: t
 instr       ::= (TEMP (":" type)? "=")? op   (* type annotation on result: %name:i32 = op *)
 term        ::= "ret" value? | "br" label_ref | "cbr" value "," label_ref "," label_ref | "trap" | "trap.from_err" type value | "switch.i32" value "," label_ref ("," INT "->" label_ref)* | "resume.same" value | "resume.next" value | "resume.label" value "," label_ref
 label_ref   ::= ("^")? LABEL ("(" value_list? ")")?   (* "^" caret is optional; args passed to block params *)
+func_attrs  ::= call_attrs
 call_attrs  ::= "[" ("nothrow" | "readonly" | "pure") ("," ("nothrow" | "readonly" | "pure"))* "]"
+ind_sig     ::= "[" type "(" (type ("," type)* ("," "...")? | "...")? ")" "]"
 op          ::= "add" value "," value | "and" value "," value | "ashr" value "," value |
                 "alloca" value | "addr_of" SYMBOL |
-                "call" SYMBOL "(" args? ")" call_attrs? | "call.indirect" value "(" args? ")" |
+                "call" SYMBOL "(" args? ")" call_attrs? | "call.indirect" ind_sig? value "(" args? ")" |
                 "cast.fp_to_si.rte.chk" value | "cast.fp_to_ui.rte.chk" value |
                 "cast.si_narrow.chk" value | "cast.si_to_fp" value |
                 "cast.ui_narrow.chk" value | "cast.ui_to_fp" value |

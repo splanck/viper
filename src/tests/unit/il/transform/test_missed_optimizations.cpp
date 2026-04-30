@@ -335,21 +335,21 @@ TEST(MissedOpt, CSEDuplicateExpr) {
     {
         Instr add1;
         add1.result = nextId++; // %2
-        add1.op = Opcode::Add;
+        add1.op = Opcode::IAddOvf;
         add1.type = Type(Type::Kind::I64);
         add1.operands = {Value::temp(0), Value::temp(1)};
         entry.instructions.push_back(std::move(add1));
 
         Instr add2;
         add2.result = nextId++; // %3
-        add2.op = Opcode::Add;
+        add2.op = Opcode::IAddOvf;
         add2.type = Type(Type::Kind::I64);
         add2.operands = {Value::temp(0), Value::temp(1)};
         entry.instructions.push_back(std::move(add2));
 
         Instr add3;
         add3.result = nextId++; // %4
-        add3.op = Opcode::Add;
+        add3.op = Opcode::IAddOvf;
         add3.type = Type(Type::Kind::I64);
         add3.operands = {Value::temp(2), Value::temp(3)};
         entry.instructions.push_back(std::move(add3));
@@ -371,21 +371,16 @@ TEST(MissedOpt, CSEDuplicateExpr) {
     fn.valueNames[4] = "c";
     m.functions.push_back(std::move(fn));
 
-    // Note: Add (non-overflow) with temp operands is rejected by the verifier
-    // which requires IAddOvf for signed integer adds. We intentionally skip
-    // verification here to test CSE on a simple non-trapping opcode, matching
-    // the pattern used in test_earlycse_domtree.cpp.
-
-    size_t addsBefore = countOpcode(m.functions[0], Opcode::Add);
+    size_t addsBefore = countOpcode(m.functions[0], Opcode::IAddOvf);
     ASSERT_EQ(addsBefore, 3u);
 
     il::transform::PassManager pm;
     pm.setVerifyBetweenPasses(false);
     pm.run(m, {"earlycse"});
 
-    // CSE replaces %3 with %2; the third add (%4 = add %2, %2) survives.
-    // Total: 2 Add instructions (down from 3).
-    EXPECT_TRUE(countOpcode(m.functions[0], Opcode::Add) < 3u);
+    // CSE replaces %3 with %2; the third checked add (%4 = iadd.ovf %2, %2) survives.
+    // Total: 2 IAddOvf instructions (down from 3).
+    EXPECT_TRUE(countOpcode(m.functions[0], Opcode::IAddOvf) < 3u);
 }
 
 // Mem2Reg promotes a simple alloca/store/load sequence to SSA.

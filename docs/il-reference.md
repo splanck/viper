@@ -51,7 +51,7 @@ Viper IL supports the following primitive types:
 Functions are the primary unit of IL code:
 
 ```llvm
-func @name(<typed args>) -> <type> {
+func @name(<typed args>) -> <type> [attrs?] {
 entry:
   ; instructions
 }
@@ -63,6 +63,8 @@ entry:
 - **Basic blocks**: Labeled with `label:` (no caret prefix)
 - **Terminators**: Every block must end with `ret`, `br`, `cbr`, `switch.i32`, `trap`, `trap.from_err`, or `resume.*`
 - **SSA form**: Values (`%vX`) are defined once and used multiple times
+- **Function attributes**: Definitions may use `[nothrow]`, `[readonly]`, and `[pure]`; the verifier checks the body
+  and call sites against those promises
 - **Comments**: `#` and `//` start line comments when they appear outside quoted strings
 
 ---
@@ -293,6 +295,8 @@ store i64, %p, 1            # write 1 into the counter
 ```
 
 **`gep`** — Get element pointer; compute address offset from base pointer (base + offset).
+Constant offsets are signed byte offsets. If the base is derived from a constant-size `alloca`, the verifier rejects
+cumulative static offsets outside the allocation.
 
 ```llvm
 %elem_ptr = gep %a0, %off
@@ -329,11 +333,12 @@ br loop_header(%i)
 %c2 = call @Viper.String.Concat(%c1, %b0)
 ```
 
-**`call.indirect`** — Call through a function pointer; first operand is the function pointer, followed by arguments.
+**`call.indirect`** — Call through a function pointer; optional `[ret(params)]` metadata makes pointer calls
+type-checked.
 
 ```llvm
 %result = call.indirect %fn_ptr(%arg1, %arg2)
-%val = call.indirect %callback(%data)
+%val = call.indirect [i64(ptr)] %callback(%data)
 ```
 
 **`cbr`** — Conditional branch; takes a boolean condition and two target labels.
@@ -656,6 +661,7 @@ The verifier enforces structural and type rules. Typical checks include:
 - Branch targets must be valid labels in the same function.
 - Calls must match callee signature exactly.
 - Direct call attributes require runtime or local function effect metadata and cannot contradict it.
+- Pointer-based `call.indirect` sites with `[ret(params)]` signatures must match their arguments and result annotation.
 - `addr_of` and `const_str` require declared string globals; `gaddr` requires a declared scalar storage global.
 - Scalar global initializers must parse and fit the declared type; imported globals cannot define initial storage.
 

@@ -83,6 +83,13 @@ namespace {
     call.operands.push_back(Value::global("callee"));
     entry.instructions.push_back(std::move(call));
 
+    Instr alloca;
+    alloca.result = 10U;
+    alloca.op = Opcode::Alloca;
+    alloca.type = Type(Type::Kind::Ptr);
+    alloca.operands.push_back(Value::constInt(8));
+    entry.instructions.push_back(std::move(alloca));
+
     fn.blocks.push_back(std::move(entry));
     return fn;
 }
@@ -93,7 +100,7 @@ TEST(MemoryEffects, ClassifiesRepresentativeOpcodes) {
     const Function fn = makeProbeFunction();
     const auto &instructions = fn.blocks.front().instructions;
 
-    ASSERT_EQ(instructions.size(), 6U);
+    ASSERT_EQ(instructions.size(), 7U);
 
     EXPECT_TRUE(hasMemoryRead(instructions[0].op));
     EXPECT_FALSE(hasMemoryWrite(instructions[0].op));
@@ -106,6 +113,9 @@ TEST(MemoryEffects, ClassifiesRepresentativeOpcodes) {
 
     EXPECT_TRUE(hasMemoryRead(instructions[5].op));
     EXPECT_TRUE(hasMemoryWrite(instructions[5].op));
+
+    EXPECT_EQ(memoryEffects(instructions[6].op), MemoryEffects::Write);
+    EXPECT_TRUE(hasMemoryWrite(instructions[6].op));
 }
 
 int main(int argc, char **argv) {

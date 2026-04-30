@@ -13,14 +13,21 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
+#include "il/analysis/BasicAA.hpp"
 #include "il/io/Parser.hpp"
 #include "il/io/Serializer.hpp"
+#include "il/runtime/signatures/Registry.hpp"
 #include "il/transform/ConstFold.hpp"
+#include "il/transform/SimplifyCFG.hpp"
+#include "il/transform/SimplifyCFG/ParamCanonicalization.hpp"
+#include "il/transform/SimplifyCFG/ReachabilityCleanup.hpp"
+#include "il/transform/ValueKey.hpp"
 #include "il/verify/Verifier.hpp"
 #include "il/verify/VerifierTable.hpp"
 #include "tests/TestHarness.hpp"
 #include "viper/vm/VM.hpp"
 
+#include <algorithm>
 #include <sstream>
 #include <string>
 
@@ -51,6 +58,12 @@ Function makeMain(Type ret = Type(Type::Kind::I64)) {
     entry.label = "entry";
     fn.blocks.push_back(std::move(entry));
     return fn;
+}
+
+bool hasBlockLabel(const Function &fn, const std::string &label) {
+    return std::any_of(fn.blocks.begin(), fn.blocks.end(), [&](const BasicBlock &block) {
+        return block.label == label;
+    });
 }
 
 } // namespace
@@ -291,6 +304,287 @@ TEST(ILCorrectness, ConstFoldMasksShiftCounts) {
     ASSERT_EQ(retInstr.operands.size(), 1u);
     ASSERT_EQ(retInstr.operands.front().kind, Value::Kind::ConstInt);
     EXPECT_EQ(retInstr.operands.front().i64, 2);
+}
+
+TEST(ILCorrectness, FunctionAttributesRoundTripAndDriveCallMetadata) {
+    Module module = parseModule(R"(il 0.2.0
+func @helper() -> i64 [nothrow, readonly, pure] {
+entry:
+  ret 7
+}
+func @main() -> i64 {
+entry:
+  %v = call @helper() [nothrow, readonly, pure]
+  ret %v
+}
+)");
+
+    ASSERT_EQ(module.functions.size(), 2u);
+    EXPECT_TRUE(module.functions[0].attrs().nothrow);
+    EXPECT_TRUE(module.functions[0].attrs().readonly);
+    EXPECT_TRUE(module.functions[0].attrs().pure);
+    EXPECT_TRUE(il::verify::Verifier::verify(module).hasValue());
+
+    const std::string text = il::io::Serializer::toString(module);
+    EXPECT_CONTAINS(text, "func @helper() -> i64 [nothrow, readonly, pure] {");
+
+    Module reparsed = parseModule(text.c_str());
+    ASSERT_EQ(reparsed.functions.size(), 2u);
+    EXPECT_TRUE(reparsed.functions[0].attrs().nothrow);
+    EXPECT_TRUE(reparsed.functions[0].attrs().readonly);
+    EXPECT_TRUE(reparsed.functions[0].attrs().pure);
+}
+
+TEST(ILCorrectness, ParserAcceptsCommaDelimitedOperandsWithoutWhitespace) {
+    Module module = parseModule(R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  %p = alloca 8
+  store i64,%p,3
+  %v = load i64,%p
+  ret %v
+}
+)");
+    EXPECT_TRUE(il::verify::Verifier::verify(module).hasValue());
+}
+
+TEST(ILCorrectness, VariadicCallsRejectUnsupportedExtraArgumentTypes) {
+    Module module = parseModule(R"(il 0.2.0
+func @sink(i64 %x, ...) -> void {
+entry:
+  ret
+}
+func @main() -> i64 {
+entry:
+  %err:error = const_null
+  call @sink(1, %err)
+  ret 0
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(module, "call vararg type mismatch"));
+}
+
+TEST(ILCorrectness, RuntimeStringArrayRegistryUsesStringElements) {
+    using Kind = il::runtime::signatures::SigParam::Kind;
+    const auto &signatures = il::runtime::signatures::all_signatures();
+
+    auto find = [&](const std::string &name) {
+        return std::find_if(signatures.begin(), signatures.end(), [&](const auto &sig) {
+            return sig.name == name;
+        });
+    };
+
+    auto get = find("rt_arr_str_get");
+    ASSERT_TRUE(get != signatures.end());
+    ASSERT_EQ(get->rets.size(), 1u);
+    EXPECT_EQ(get->rets[0].kind, Kind::Str);
+
+    auto put = find("rt_arr_str_put");
+    ASSERT_TRUE(put != signatures.end());
+    ASSERT_EQ(put->params.size(), 3u);
+    EXPECT_EQ(put->params[2].kind, Kind::Str);
+}
+
+TEST(ILCorrectness, NothrowRejectsPotentiallyTrappingMemoryOperations) {
+    Module module = parseModule(R"(il 0.2.0
+func @main() -> i64 [nothrow] {
+entry:
+  %p = alloca 8
+  ret 0
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(module, "nothrow function contains trapping instruction"));
+}
+
+TEST(ILCorrectness, ExplicitCallIndirectSignaturesAreCheckedAndSerialized) {
+    Module ok = parseModule(R"(il 0.2.0
+func @main(ptr %fn, i64 %x) -> i64 {
+entry:
+  %r = call.indirect [i64(i64)] %fn(%x)
+  ret %r
+}
+)");
+    EXPECT_TRUE(il::verify::Verifier::verify(ok).hasValue());
+    const std::string text = il::io::Serializer::toString(ok);
+    EXPECT_CONTAINS(text, "call.indirect [i64(i64)] %fn(%x)");
+
+    Module bad = parseModule(R"(il 0.2.0
+func @main(ptr %fn) -> i64 {
+entry:
+  %r = call.indirect [i64(i64)] %fn(null)
+  ret %r
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(bad, "call.indirect arg type mismatch"));
+}
+
+TEST(ILCorrectness, DiscardingOwnedRuntimeReturnsIsRejected) {
+    Module module = parseModule(R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  call @rt_str_empty()
+  ret 0
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(module, "discarding owned return from @rt_str_empty"));
+}
+
+TEST(ILCorrectness, GepAllowsSignedOffsetsButRejectsStaticOutOfBoundsOffsets) {
+    Module negativeWithinBounds = parseModule(R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  %p = alloca 32
+  %mid = gep %p, 16
+  %q = gep %mid, -8
+  store i64, %q, 1
+  ret 0
+}
+)");
+    EXPECT_TRUE(il::verify::Verifier::verify(negativeWithinBounds).hasValue());
+
+    Module negativeOutOfBounds = parseModule(R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  %p = alloca 8
+  %q = gep %p, -1
+  ret 0
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(negativeOutOfBounds, "gep offset outside alloca"));
+
+    Module outOfBounds = parseModule(R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  %p = alloca 8
+  %q = gep %p, 8
+  ret 0
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(outOfBounds, "gep offset outside alloca"));
+}
+
+TEST(ILCorrectness, I64RuntimeArrayReleaseLifetimeIsTracked) {
+    Module module = parseModule(R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  %a = call @rt_arr_i64_new(4)
+  call @rt_arr_i64_release(%a)
+  call @rt_arr_i64_release(%a)
+  ret 0
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(module, "double release"));
+}
+
+TEST(ILCorrectness, CSEExcludesPlainSignedArithmetic) {
+    Instr add;
+    add.result = 0;
+    add.op = Opcode::Add;
+    add.type = Type(Type::Kind::I64);
+    add.operands = {Value::temp(1), Value::temp(2)};
+    EXPECT_FALSE(il::transform::makeValueKey(add).has_value());
+
+    Instr checked;
+    checked.result = 3;
+    checked.op = Opcode::IAddOvf;
+    checked.type = Type(Type::Kind::I64);
+    checked.operands = {Value::temp(1), Value::temp(2)};
+    EXPECT_TRUE(il::transform::makeValueKey(checked).has_value());
+}
+
+TEST(ILCorrectness, BasicAAReportsOpaqueTypeSizes) {
+    EXPECT_EQ(viper::analysis::BasicAA::typeSizeBytes(Type(Type::Kind::Error)), 24u);
+    EXPECT_EQ(viper::analysis::BasicAA::typeSizeBytes(Type(Type::Kind::ResumeTok)), 8u);
+}
+
+TEST(ILCorrectness, AllocaIsClassifiedAsMemoryWriting) {
+    EXPECT_EQ(memoryEffects(Opcode::Alloca), MemoryEffects::Write);
+    EXPECT_TRUE(hasMemoryWrite(Opcode::Alloca));
+}
+
+TEST(ILCorrectness, SimplifyCFGKeepsBlocksReferencedByRetainedEHBlocks) {
+    Function fn = makeMain();
+    fn.blocks.front().instructions.clear();
+    fn.blocks.front().terminated = true;
+    Instr retEntry;
+    retEntry.op = Opcode::Ret;
+    retEntry.type = Type(Type::Kind::Void);
+    retEntry.operands = {Value::constInt(0)};
+    fn.blocks.front().instructions.push_back(std::move(retEntry));
+
+    BasicBlock handler;
+    handler.label = "handler";
+    handler.params.push_back(Param{"err", Type(Type::Kind::Error), 0});
+    handler.params.push_back(Param{"tok", Type(Type::Kind::ResumeTok), 1});
+    Instr ehEntry;
+    ehEntry.op = Opcode::EhEntry;
+    handler.instructions.push_back(std::move(ehEntry));
+    Instr brCleanup;
+    brCleanup.op = Opcode::Br;
+    brCleanup.labels = {"cleanup"};
+    handler.instructions.push_back(std::move(brCleanup));
+    handler.terminated = true;
+    fn.blocks.push_back(std::move(handler));
+
+    BasicBlock cleanup;
+    cleanup.label = "cleanup";
+    Instr retCleanup;
+    retCleanup.op = Opcode::Ret;
+    retCleanup.type = Type(Type::Kind::Void);
+    retCleanup.operands = {Value::constInt(0)};
+    cleanup.instructions.push_back(std::move(retCleanup));
+    cleanup.terminated = true;
+    fn.blocks.push_back(std::move(cleanup));
+
+    BasicBlock dead;
+    dead.label = "dead";
+    Instr retDead;
+    retDead.op = Opcode::Ret;
+    retDead.type = Type(Type::Kind::Void);
+    retDead.operands = {Value::constInt(0)};
+    dead.instructions.push_back(std::move(retDead));
+    dead.terminated = true;
+    fn.blocks.push_back(std::move(dead));
+
+    il::transform::SimplifyCFG::Stats stats;
+    il::transform::SimplifyCFG::SimplifyCFGPassContext ctx(fn, nullptr, stats);
+    EXPECT_TRUE(il::transform::simplify_cfg::removeUnreachableBlocks(ctx));
+    EXPECT_TRUE(hasBlockLabel(fn, "handler"));
+    EXPECT_TRUE(hasBlockLabel(fn, "cleanup"));
+    EXPECT_FALSE(hasBlockLabel(fn, "dead"));
+}
+
+TEST(ILCorrectness, ParamCanonicalizationSkipsMalformedEdgesWithoutAsserting) {
+    Function fn;
+    fn.name = "param_canonical_malformed_edge";
+    fn.retType = Type(Type::Kind::I64);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr br;
+    br.op = Opcode::Br;
+    br.labels = {"target"};
+    entry.instructions.push_back(std::move(br));
+    entry.terminated = true;
+    fn.blocks.push_back(std::move(entry));
+
+    BasicBlock target;
+    target.label = "target";
+    target.params.push_back(Param{"unused", Type(Type::Kind::I64), 0});
+    target.params.push_back(Param{"used", Type(Type::Kind::I64), 1});
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(1)};
+    target.instructions.push_back(std::move(ret));
+    target.terminated = true;
+    fn.blocks.push_back(std::move(target));
+
+    il::transform::SimplifyCFG::Stats stats;
+    il::transform::SimplifyCFG::SimplifyCFGPassContext ctx(fn, nullptr, stats);
+    EXPECT_TRUE(il::transform::simplify_cfg::canonicalizeParamsAndArgs(ctx));
+    ASSERT_EQ(fn.blocks[1].params.size(), 1u);
+    EXPECT_EQ(fn.blocks[1].params[0].id, 1u);
 }
 
 int main(int argc, char **argv) {

@@ -43,8 +43,8 @@ last-verified: 2026-04-30
 - Distinguishes address spaces: stack vs global are `NoAlias`; different globals are `NoAlias`; null aliases only
   null. `noalias` parameters are disambiguated from other pointer parameters, but not from arbitrary globals or stack
   slots.
-- `typeSizeBytes` exposes conservative byte widths (i1/i16/i32/i64/f64/ptr/str) for passes to thread sizes into
-  `alias(...)`.
+- `typeSizeBytes` exposes conservative byte widths (i1/i16/i32/i64/f64/ptr/str/resumetok/error) for passes to thread
+  sizes into `alias(...)`.
 - ModRef uses a priority cascade for call effect classification:
   1. Module-level function attributes are authoritative when the callee is defined locally
   2. Runtime signature table is authoritative for known external helpers
@@ -88,9 +88,12 @@ Promotes alloca/store/load patterns to pure SSA values:
 - **Sealed SSA construction**: Uses the sealed-block SSA algorithm, with deterministic alloca promotion order and sorted
   completion of incomplete block parameters.
 - **Edge repair**: After promotion, mem2reg repairs branch arguments for every block parameter it introduced so partially
-  populated edge argument vectors do not escape into the verifier or serializer.
+  populated edge argument vectors do not escape into the verifier or serializer. A literal `null` branch argument is
+  preserved as data rather than treated as an unfilled repair slot.
 - **Lazy dominator tree**: The dominator tree is computed only when non-entry allocas with cross-block uses are
   encountered, keeping the common (entry-block-only) case fast.
+- **Fresh CFG context**: Each function is analysed with a CFG built after SROA for that function, avoiding stale edge
+  state when earlier functions or SROA rewrites changed the module.
 - **Tests**: `test_il_mem2reg_nonentry` — single-block alloca in non-entry block, dominating non-entry alloca with
   conditional CFG, default value before first store, and deterministic loop-header parameter/edge repair.
 
@@ -286,8 +289,9 @@ Dominator-tree-scoped common subexpression elimination:
 
 Expression identity keys used by EarlyCSE and GVN:
 
-- Commutative operations (Add, Mul, And, Or, Xor, ICmpEq/Ne, FAdd, FMul, FCmpEQ/NE) have operands
-  normalized by a deterministic ranking function so `add a,b` and `add b,a` produce the same key
+- Commutative operations with well-defined value semantics (checked integer overflow ops, And, Or, Xor, ICmpEq/Ne,
+  FAdd, FMul, FCmpEQ/NE) have operands normalized by a deterministic ranking function. Plain signed Add/Sub/Mul are
+  excluded because overflow policy is not encoded in the key.
 - Ranking caches computed values to avoid redundant tuple construction
 - `isSafeCSEOpcode` whitelist restricts CSE to pure, non-trapping operations with no memory effects
 - `makeValueKey` rejects terminators, side-effecting, and memory operations

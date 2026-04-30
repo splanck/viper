@@ -198,6 +198,28 @@ void printCallOperands(const Instr &instr, std::ostream &os, const SerializeCont
     os << ']';
 }
 
+/// @brief Emit a stable attribute list for function definitions.
+void printFunctionAttrs(const FunctionAttrs &attrs, std::ostream &os) {
+    const bool hasAttrs = attrs.nothrow || attrs.readonly || attrs.pure;
+    if (!hasAttrs)
+        return;
+    os << " [";
+    bool first = true;
+    auto printAttr = [&](std::string_view name) {
+        if (!first)
+            os << ", ";
+        first = false;
+        os << name;
+    };
+    if (attrs.nothrow)
+        printAttr("nothrow");
+    if (attrs.readonly)
+        printAttr("readonly");
+    if (attrs.pure)
+        printAttr("pure");
+    os << ']';
+}
+
 /// @brief Emit operand list for call.indirect instructions.
 /// @details Format: call.indirect %fnPtr(%arg1, %arg2, ...)
 ///          First operand is the function pointer, remaining are arguments.
@@ -205,6 +227,20 @@ void printCallIndirectOperands(const Instr &instr, std::ostream &os, const Seria
     if (instr.operands.empty())
         return;
     os << ' ';
+    if (instr.hasIndirectSignature) {
+        os << '[' << instr.indirectRetType.toString() << '(';
+        for (size_t i = 0; i < instr.indirectParamTypes.size(); ++i) {
+            if (i)
+                os << ", ";
+            os << instr.indirectParamTypes[i].toString();
+        }
+        if (instr.indirectIsVarArg) {
+            if (!instr.indirectParamTypes.empty())
+                os << ", ";
+            os << "...";
+        }
+        os << ")] ";
+    }
     printValue(os, instr.operands[0], ctx);
     os << '(';
     if (instr.operands.size() > 1) {
@@ -623,6 +659,7 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode) {
             continue;
         }
 
+        printFunctionAttrs(f.attrs(), os);
         os << " {\n";
         for (const auto &bb : f.blocks) {
             const bool handler = isHandlerBlock(bb);

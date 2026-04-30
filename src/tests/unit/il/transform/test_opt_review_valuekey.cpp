@@ -49,8 +49,8 @@ Instr makeFloatArith(Opcode op, Value lhs, Value rhs, unsigned resultId = 0) {
 
 // Test that commutative operations produce the same key regardless of operand order
 TEST(ValueKey, CommutativeAddNormalization) {
-    Instr a = makeArith(Opcode::Add, Value::temp(1), Value::temp(2));
-    Instr b = makeArith(Opcode::Add, Value::temp(2), Value::temp(1));
+    Instr a = makeArith(Opcode::IAddOvf, Value::temp(1), Value::temp(2));
+    Instr b = makeArith(Opcode::IAddOvf, Value::temp(2), Value::temp(1));
 
     auto keyA = il::transform::makeValueKey(a);
     auto keyB = il::transform::makeValueKey(b);
@@ -67,8 +67,8 @@ TEST(ValueKey, CommutativeAddNormalization) {
 
 // Test that commutative Mul produces same key
 TEST(ValueKey, CommutativeMulNormalization) {
-    Instr a = makeArith(Opcode::Mul, Value::constInt(3), Value::temp(5));
-    Instr b = makeArith(Opcode::Mul, Value::temp(5), Value::constInt(3));
+    Instr a = makeArith(Opcode::IMulOvf, Value::constInt(3), Value::temp(5));
+    Instr b = makeArith(Opcode::IMulOvf, Value::temp(5), Value::constInt(3));
 
     auto keyA = il::transform::makeValueKey(a);
     auto keyB = il::transform::makeValueKey(b);
@@ -80,8 +80,8 @@ TEST(ValueKey, CommutativeMulNormalization) {
 
 // Test that non-commutative Sub does NOT normalize
 TEST(ValueKey, NonCommutativeSubNotNormalized) {
-    Instr a = makeArith(Opcode::Sub, Value::temp(1), Value::temp(2));
-    Instr b = makeArith(Opcode::Sub, Value::temp(2), Value::temp(1));
+    Instr a = makeArith(Opcode::ISubOvf, Value::temp(1), Value::temp(2));
+    Instr b = makeArith(Opcode::ISubOvf, Value::temp(2), Value::temp(1));
 
     auto keyA = il::transform::makeValueKey(a);
     auto keyB = il::transform::makeValueKey(b);
@@ -109,8 +109,10 @@ TEST(ValueKey, FAddNotCommutedForCSE) {
 
 // Test isCommutativeCSE classifications
 TEST(ValueKey, CommutativeClassifications) {
-    EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::Add));
-    EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::Mul));
+    EXPECT_FALSE(il::transform::isCommutativeCSE(Opcode::Add));
+    EXPECT_FALSE(il::transform::isCommutativeCSE(Opcode::Mul));
+    EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::IAddOvf));
+    EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::IMulOvf));
     EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::And));
     EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::Or));
     EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::Xor));
@@ -122,6 +124,7 @@ TEST(ValueKey, CommutativeClassifications) {
     EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::FCmpNE));
 
     EXPECT_FALSE(il::transform::isCommutativeCSE(Opcode::Sub));
+    EXPECT_FALSE(il::transform::isCommutativeCSE(Opcode::ISubOvf));
     EXPECT_FALSE(il::transform::isCommutativeCSE(Opcode::FSub));
     EXPECT_FALSE(il::transform::isCommutativeCSE(Opcode::FDiv));
     EXPECT_FALSE(il::transform::isCommutativeCSE(Opcode::SCmpLT));
@@ -129,9 +132,12 @@ TEST(ValueKey, CommutativeClassifications) {
 
 // Test isSafeCSEOpcode classifications
 TEST(ValueKey, SafeCSEClassifications) {
-    EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::Add));
-    EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::Sub));
-    EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::Mul));
+    EXPECT_FALSE(il::transform::isSafeCSEOpcode(Opcode::Add));
+    EXPECT_FALSE(il::transform::isSafeCSEOpcode(Opcode::Sub));
+    EXPECT_FALSE(il::transform::isSafeCSEOpcode(Opcode::Mul));
+    EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::IAddOvf));
+    EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::ISubOvf));
+    EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::IMulOvf));
     EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::ICmpEq));
     EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::FCmpLT));
     EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::Zext1));

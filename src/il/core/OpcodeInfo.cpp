@@ -20,6 +20,7 @@
 
 #include "il/core/OpcodeInfo.hpp"
 
+#include <cassert>
 #include <string>
 #include <vector>
 
@@ -110,7 +111,11 @@ static_assert(kOpcodeTable.size() == kNumOpcodes, "Opcode table must match enum 
 /// @param op Opcode whose metadata is required.
 /// @return Reference to the immutable opcode descriptor.
 const OpcodeInfo &getOpcodeInfo(Opcode op) {
-    return kOpcodeTable[static_cast<size_t>(op)];
+    const size_t index = static_cast<size_t>(op);
+    assert(index < kOpcodeTable.size() && "invalid opcode");
+    if (index >= kOpcodeTable.size())
+        return kOpcodeTable.front();
+    return kOpcodeTable[index];
 }
 
 /// @brief Enumerate every opcode in declaration order.
@@ -142,6 +147,8 @@ MemoryEffects memoryEffects(Opcode op) noexcept {
         case Opcode::Load:
             return MemoryEffects::Read;
         case Opcode::Store:
+            return MemoryEffects::Write;
+        case Opcode::Alloca:
             return MemoryEffects::Write;
         case Opcode::Call:
         case Opcode::CallIndirect:
@@ -209,7 +216,6 @@ MemoryEffects memoryEffects(Opcode op) noexcept {
         case Opcode::CBr:
         case Opcode::SwitchI32:
         case Opcode::Ret:
-        case Opcode::Alloca:
             return MemoryEffects::None;
 
         default:

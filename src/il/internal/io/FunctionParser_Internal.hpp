@@ -188,9 +188,12 @@ enum class CallingConv {
     Default, ///< Standard platform calling convention.
 };
 
-/// @brief Parsed function attributes (currently empty).
-/// @details Placeholder for future attribute parsing (nothrow, readonly, etc.).
-struct Attrs {};
+/// @brief Parsed function attributes.
+struct Attrs {
+    bool nothrow = false;
+    bool readonly = false;
+    bool pure = false;
+};
 
 /// @brief Complete parsed function header including name, prototype, and metadata.
 struct FunctionHeader {

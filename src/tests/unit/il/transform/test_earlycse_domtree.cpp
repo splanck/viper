@@ -59,7 +59,7 @@ Module buildCrossBlockCSE() {
     {
         Instr add1;
         add1.result = id++; // t2
-        add1.op = Opcode::Add;
+        add1.op = Opcode::IAddOvf;
         add1.type = Type(Type::Kind::I64);
         add1.operands = {Value::temp(a.id), Value::temp(b.id)};
         entry.instructions.push_back(std::move(add1));
@@ -79,7 +79,7 @@ Module buildCrossBlockCSE() {
     {
         Instr add2;
         add2.result = id++; // t3
-        add2.op = Opcode::Add;
+        add2.op = Opcode::IAddOvf;
         add2.type = Type(Type::Kind::I64);
         add2.operands = {Value::temp(b.id), Value::temp(a.id)}; // commuted
         next.instructions.push_back(std::move(add2));
@@ -158,7 +158,7 @@ Module buildSiblingBranchCSE() {
     {
         Instr add;
         add.result = id++; // t2
-        add.op = Opcode::Add;
+        add.op = Opcode::IAddOvf;
         add.type = Type(Type::Kind::I64);
         add.operands = {Value::temp(a.id), Value::temp(b.id)};
         then_.instructions.push_back(std::move(add));
@@ -178,7 +178,7 @@ Module buildSiblingBranchCSE() {
     {
         Instr add;
         add.result = id++; // t3
-        add.op = Opcode::Add;
+        add.op = Opcode::IAddOvf;
         add.type = Type(Type::Kind::I64);
         add.operands = {Value::temp(a.id), Value::temp(b.id)};
         els_.instructions.push_back(std::move(add));
@@ -246,7 +246,7 @@ Module buildTextuallyUnsafeCrossBlockCSE() {
     {
         Instr add;
         add.result = id++;
-        add.op = Opcode::Add;
+        add.op = Opcode::IAddOvf;
         add.type = Type(Type::Kind::I64);
         add.operands = {Value::temp(a.id), Value::temp(b.id)};
         update.instructions.push_back(std::move(add));
@@ -264,7 +264,7 @@ Module buildTextuallyUnsafeCrossBlockCSE() {
     {
         Instr add;
         add.result = id++;
-        add.op = Opcode::Add;
+        add.op = Opcode::IAddOvf;
         add.type = Type(Type::Kind::I64);
         add.operands = {Value::temp(a.id), Value::temp(b.id)};
         late.instructions.push_back(std::move(add));
@@ -306,7 +306,7 @@ Module buildSameBlockRepeatedEliminationCSE() {
     {
         Instr add0;
         add0.result = id++;
-        add0.op = Opcode::Add;
+        add0.op = Opcode::IAddOvf;
         add0.type = Type(Type::Kind::I64);
         add0.operands = {Value::temp(a.id), Value::temp(b.id)};
         const unsigned add0Id = *add0.result;
@@ -314,7 +314,7 @@ Module buildSameBlockRepeatedEliminationCSE() {
 
         Instr add1;
         add1.result = id++;
-        add1.op = Opcode::Add;
+        add1.op = Opcode::IAddOvf;
         add1.type = Type(Type::Kind::I64);
         add1.operands = {Value::temp(a.id), Value::temp(b.id)};
         const unsigned add1Id = *add1.result;
@@ -329,7 +329,7 @@ Module buildSameBlockRepeatedEliminationCSE() {
 
         Instr add2;
         add2.result = id++;
-        add2.op = Opcode::Add;
+        add2.op = Opcode::IAddOvf;
         add2.type = Type(Type::Kind::I64);
         add2.operands = {Value::temp(a.id), Value::temp(b.id)};
         const unsigned add2Id = *add2.result;
@@ -362,14 +362,14 @@ TEST(EarlyCSEDomTree, CrossBlockCSEEliminatesDuplicateInDominatedBlock) {
     ASSERT_EQ(M.functions.size(), 1u);
     Function &fn = M.functions.front();
 
-    unsigned addsBefore = countOpcode(fn, Opcode::Add);
+    unsigned addsBefore = countOpcode(fn, Opcode::IAddOvf);
     ASSERT_EQ(addsBefore, 2u); // entry add + next add
 
     bool changed = il::transform::runEarlyCSE(M, fn);
     EXPECT_TRUE(changed);
 
     // Duplicate add in "next" must be gone.
-    unsigned addsAfter = countOpcode(fn, Opcode::Add);
+    unsigned addsAfter = countOpcode(fn, Opcode::IAddOvf);
     EXPECT_EQ(addsAfter, 1u);
 
     // The surviving ret must reference the entry-block add result.
@@ -391,13 +391,13 @@ TEST(EarlyCSEDomTree, SiblingBranchExpressionsAreNotEliminated) {
     ASSERT_EQ(M.functions.size(), 1u);
     Function &fn = M.functions.front();
 
-    unsigned addsBefore = countOpcode(fn, Opcode::Add);
+    unsigned addsBefore = countOpcode(fn, Opcode::IAddOvf);
     ASSERT_EQ(addsBefore, 2u); // one in then, one in els
 
     il::transform::runEarlyCSE(M, fn);
 
     // Both adds must survive — neither branch dominates the other.
-    unsigned addsAfter = countOpcode(fn, Opcode::Add);
+    unsigned addsAfter = countOpcode(fn, Opcode::IAddOvf);
     EXPECT_EQ(addsAfter, 2u);
 }
 
@@ -406,20 +406,20 @@ TEST(EarlyCSEDomTree, TextuallyLaterDominatorDoesNotCreateUseBeforeDef) {
     ASSERT_EQ(M.functions.size(), 1u);
     Function &fn = M.functions.front();
 
-    unsigned addsBefore = countOpcode(fn, Opcode::Add);
+    unsigned addsBefore = countOpcode(fn, Opcode::IAddOvf);
     ASSERT_EQ(addsBefore, 2u);
 
     il::transform::runEarlyCSE(M, fn);
 
     // The update block must keep its own add because reusing the later block's
     // temp would violate textual def-before-use.
-    unsigned addsAfter = countOpcode(fn, Opcode::Add);
+    unsigned addsAfter = countOpcode(fn, Opcode::IAddOvf);
     EXPECT_EQ(addsAfter, 2u);
 
     const BasicBlock &updateBlock = fn.blocks[1];
     ASSERT_EQ(updateBlock.instructions.size(), 2u);
     ASSERT_TRUE(updateBlock.instructions[0].result.has_value());
-    EXPECT_EQ(updateBlock.instructions[0].op, Opcode::Add);
+    EXPECT_EQ(updateBlock.instructions[0].op, Opcode::IAddOvf);
     EXPECT_EQ(updateBlock.instructions[1].op, Opcode::Ret);
     EXPECT_EQ(updateBlock.instructions[1].operands[0].id, *updateBlock.instructions[0].result);
 }
@@ -436,7 +436,7 @@ TEST(EarlyCSEDomTree, RepeatedSameBlockEliminationKeepsLaterUsesCorrect) {
     ASSERT_EQ(entry.instructions.size(), 3u);
     ASSERT_TRUE(entry.instructions[0].result.has_value());
     ASSERT_TRUE(entry.instructions[1].result.has_value());
-    EXPECT_EQ(entry.instructions[0].op, Opcode::Add);
+    EXPECT_EQ(entry.instructions[0].op, Opcode::IAddOvf);
     EXPECT_EQ(entry.instructions[1].op, Opcode::Sub);
     EXPECT_EQ(entry.instructions[2].op, Opcode::Ret);
 

@@ -64,7 +64,7 @@ static void test_cse_cross_block() {
     {
         Instr add1;
         add1.result = id++;
-        add1.op = Opcode::Add;
+        add1.op = Opcode::IAddOvf;
         add1.type = Type(Type::Kind::I64);
         add1.operands.push_back(Value::temp(a.id));
         add1.operands.push_back(Value::temp(b.id));
@@ -88,7 +88,7 @@ static void test_cse_cross_block() {
     {
         Instr add2;
         add2.result = id++;
-        add2.op = Opcode::Add;
+        add2.op = Opcode::IAddOvf;
         add2.type = Type(Type::Kind::I64);
         add2.operands.push_back(Value::temp(a.id));
         add2.operands.push_back(Value::temp(b.id));
@@ -325,7 +325,7 @@ static void test_same_block_def_before_use_guard() {
     {
         Instr first;
         first.result = id++;
-        first.op = Opcode::Add;
+        first.op = Opcode::IAddOvf;
         first.type = Type(Type::Kind::I64);
         first.operands.push_back(Value::temp(a.id));
         first.operands.push_back(Value::temp(b.id));
@@ -333,7 +333,7 @@ static void test_same_block_def_before_use_guard() {
 
         Instr second;
         second.result = id++;
-        second.op = Opcode::Add;
+        second.op = Opcode::IAddOvf;
         second.type = Type(Type::Kind::I64);
         second.operands.push_back(Value::temp(a.id));
         second.operands.push_back(Value::temp(b.id));
@@ -364,7 +364,7 @@ static void test_same_block_def_before_use_guard() {
 
     const BasicBlock &EntryB = Fn.blocks.front();
     assert(EntryB.instructions.size() == 2);
-    assert(EntryB.instructions.front().op == Opcode::Add);
+    assert(EntryB.instructions.front().op == Opcode::IAddOvf);
     assert(EntryB.instructions.back().op == Opcode::Ret);
     assert(EntryB.instructions.back().operands.size() == 1);
     assert(EntryB.instructions.back().operands.front().kind == Value::Kind::Temp);
@@ -389,7 +389,7 @@ static void test_repeated_same_block_elimination_updates_later_uses() {
     {
         Instr add0;
         add0.result = id++;
-        add0.op = Opcode::Add;
+        add0.op = Opcode::IAddOvf;
         add0.type = Type(Type::Kind::I64);
         add0.operands = {Value::temp(a.id), Value::temp(b.id)};
         const unsigned add0Id = *add0.result;
@@ -397,7 +397,7 @@ static void test_repeated_same_block_elimination_updates_later_uses() {
 
         Instr add1;
         add1.result = id++;
-        add1.op = Opcode::Add;
+        add1.op = Opcode::IAddOvf;
         add1.type = Type(Type::Kind::I64);
         add1.operands = {Value::temp(a.id), Value::temp(b.id)};
         const unsigned add1Id = *add1.result;
@@ -405,14 +405,14 @@ static void test_repeated_same_block_elimination_updates_later_uses() {
 
         Instr sub;
         sub.result = id++;
-        sub.op = Opcode::Sub;
+        sub.op = Opcode::ISubOvf;
         sub.type = Type(Type::Kind::I64);
         sub.operands = {Value::temp(add1Id), Value::constInt(1)};
         entry.instructions.push_back(std::move(sub));
 
         Instr add2;
         add2.result = id++;
-        add2.op = Opcode::Add;
+        add2.op = Opcode::IAddOvf;
         add2.type = Type(Type::Kind::I64);
         add2.operands = {Value::temp(a.id), Value::temp(b.id)};
         const unsigned add2Id = *add2.result;
@@ -440,8 +440,8 @@ static void test_repeated_same_block_elimination_updates_later_uses() {
 
     const BasicBlock &EntryB = Fn.blocks.front();
     assert(EntryB.instructions.size() == 3);
-    assert(EntryB.instructions[0].op == Opcode::Add);
-    assert(EntryB.instructions[1].op == Opcode::Sub);
+    assert(EntryB.instructions[0].op == Opcode::IAddOvf);
+    assert(EntryB.instructions[1].op == Opcode::ISubOvf);
     assert(EntryB.instructions[2].op == Opcode::Ret);
     assert(EntryB.instructions[1].operands.size() == 2);
     assert(EntryB.instructions[1].operands[0].kind == Value::Kind::Temp);

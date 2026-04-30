@@ -18,6 +18,7 @@
 
 #include "il/verify/InstructionCheckerShared.hpp"
 
+#include "il/core/Function.hpp"
 #include "il/core/Global.hpp"
 #include "il/core/Instr.hpp"
 #include "il/verify/DiagSink.hpp"
@@ -25,6 +26,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <optional>
 
 namespace il::verify::checker {
 
@@ -41,6 +43,58 @@ namespace {
 /// @param message Warning text to append to the diagnostic.
 void emitWarning(const VerifyCtx &ctx, std::string_view message) {
     ctx.diags.report(Diag{Severity::Warning, formatDiag(ctx, message), ctx.instr.loc, {}});
+}
+
+std::optional<long long> constInt(const Value &value) {
+    if (value.kind != Value::Kind::ConstInt)
+        return std::nullopt;
+    return value.i64;
+}
+
+bool addOverflows(long long lhs, long long rhs) {
+    return (rhs > 0 && lhs > std::numeric_limits<long long>::max() - rhs) ||
+           (rhs < 0 && lhs < std::numeric_limits<long long>::min() - rhs);
+}
+
+const il::core::Instr *findDef(const il::core::Function &fn, unsigned temp) {
+    for (const auto &block : fn.blocks)
+        for (const auto &instr : block.instructions)
+            if (instr.result && *instr.result == temp)
+                return &instr;
+    return nullptr;
+}
+
+struct StackBounds {
+    long long size = 0;
+    long long offset = 0;
+};
+
+std::optional<StackBounds> stackBoundsForPointer(const il::core::Function &fn,
+                                                 const Value &ptr,
+                                                 unsigned depth = 0) {
+    if (depth > 32 || ptr.kind != Value::Kind::Temp)
+        return std::nullopt;
+    const il::core::Instr *def = findDef(fn, ptr.id);
+    if (!def)
+        return std::nullopt;
+
+    if (def->op == il::core::Opcode::Alloca && !def->operands.empty()) {
+        auto size = constInt(def->operands.front());
+        if (!size || *size < 0)
+            return std::nullopt;
+        return StackBounds{*size, 0};
+    }
+
+    if (def->op != il::core::Opcode::GEP || def->operands.size() < 2)
+        return std::nullopt;
+    auto base = stackBoundsForPointer(fn, def->operands[0], depth + 1);
+    auto offset = constInt(def->operands[1]);
+    if (!base || !offset)
+        return std::nullopt;
+    if (addOverflows(base->offset, *offset))
+        return std::nullopt;
+    base->offset += *offset;
+    return base;
 }
 
 } // namespace
@@ -74,6 +128,30 @@ Expected<void> checkAlloca(const VerifyCtx &ctx) {
 Expected<void> checkGEP(const VerifyCtx &ctx) {
     if (ctx.instr.operands.size() < 2)
         return fail(ctx, "invalid operand count");
+
+    bool baseMissing = false;
+    if (ctx.types.valueType(ctx.instr.operands[0], &baseMissing).kind != Type::Kind::Ptr) {
+        if (baseMissing)
+            return fail(ctx, "base pointer type is unknown");
+        return fail(ctx, "base pointer must be ptr");
+    }
+
+    bool offsetMissing = false;
+    if (ctx.types.valueType(ctx.instr.operands[1], &offsetMissing).kind != Type::Kind::I64) {
+        if (offsetMissing)
+            return fail(ctx, "offset type is unknown");
+        return fail(ctx, "offset must be i64");
+    }
+
+    if (const auto offset = constInt(ctx.instr.operands[1])) {
+        if (auto bounds = stackBoundsForPointer(ctx.fn, ctx.instr.operands[0])) {
+            if (addOverflows(bounds->offset, *offset))
+                return fail(ctx, "gep offset overflow");
+            const long long absolute = bounds->offset + *offset;
+            if (absolute < 0 || absolute >= bounds->size)
+                return fail(ctx, "gep offset outside alloca");
+        }
+    }
 
     ctx.types.recordResult(ctx.instr, Type(Type::Kind::Ptr));
     return {};

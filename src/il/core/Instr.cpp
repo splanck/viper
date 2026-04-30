@@ -26,8 +26,9 @@ namespace {
 /// @brief Verifies that a helper is operating on a switch instruction.
 /// @param instr Instruction subjected to the helper.
 /// @pre instr.op must be Opcode::SwitchI32.
-void requireSwitch(const Instr &instr) {
+bool requireSwitch(const Instr &instr) {
     assert(instr.op == Opcode::SwitchI32 && "expected switch instruction");
+    return instr.op == Opcode::SwitchI32;
 }
 
 /// @brief Returns the branch arguments vector for a switch target.
@@ -38,7 +39,11 @@ void requireSwitch(const Instr &instr) {
 /// @pre index must be less than instr.labels.size() and instr.brArgs.size().
 /// @post The returned reference remains valid for the lifetime of @p instr.
 const std::vector<Value> &argsOrEmpty(const Instr &instr, size_t index) {
-    requireSwitch(instr);
+    static const std::vector<Value> kEmptyArgs;
+    if (!requireSwitch(instr))
+        return kEmptyArgs;
+    if (index >= instr.labels.size() || index >= instr.brArgs.size())
+        return kEmptyArgs;
     assert(index < instr.labels.size());
     assert(index < instr.brArgs.size());
     return instr.brArgs[index];
@@ -51,8 +56,12 @@ const std::vector<Value> &argsOrEmpty(const Instr &instr, size_t index) {
 /// @pre instr must satisfy requireSwitch().
 /// @pre instr.operands must contain at least one entry representing the scrutinee.
 const Value &switchScrutinee(const Instr &instr) {
-    requireSwitch(instr);
+    static const Value kInvalidValue = Value::constInt(0);
+    if (!requireSwitch(instr))
+        return kInvalidValue;
     assert(!instr.operands.empty());
+    if (instr.operands.empty())
+        return kInvalidValue;
     return instr.operands.front();
 }
 
@@ -62,8 +71,12 @@ const Value &switchScrutinee(const Instr &instr) {
 /// @pre instr must satisfy requireSwitch().
 /// @pre instr.labels must contain at least one entry representing the default label.
 const std::string &switchDefaultLabel(const Instr &instr) {
-    requireSwitch(instr);
+    static const std::string kEmptyLabel;
+    if (!requireSwitch(instr))
+        return kEmptyLabel;
     assert(!instr.labels.empty());
+    if (instr.labels.empty())
+        return kEmptyLabel;
     return instr.labels.front();
 }
 
@@ -80,7 +93,8 @@ const std::vector<Value> &switchDefaultArgs(const Instr &instr) {
 /// @return Number of explicit case labels in the instruction.
 /// @pre instr must satisfy requireSwitch().
 size_t switchCaseCount(const Instr &instr) {
-    requireSwitch(instr);
+    if (!requireSwitch(instr))
+        return 0;
     if (instr.labels.empty())
         return 0;
     return instr.labels.size() - 1;
@@ -94,7 +108,11 @@ size_t switchCaseCount(const Instr &instr) {
 /// @pre index must be less than switchCaseCount(instr).
 /// @pre instr.operands must contain the scrutinee followed by case values.
 const Value &switchCaseValue(const Instr &instr, size_t index) {
-    requireSwitch(instr);
+    static const Value kInvalidValue = Value::constInt(0);
+    if (!requireSwitch(instr))
+        return kInvalidValue;
+    if (index >= switchCaseCount(instr) || instr.operands.size() <= index + 1)
+        return kInvalidValue;
     assert(index < switchCaseCount(instr));
     assert(instr.operands.size() > index + 1);
     return instr.operands[index + 1];
@@ -107,7 +125,11 @@ const Value &switchCaseValue(const Instr &instr, size_t index) {
 /// @pre instr must satisfy requireSwitch().
 /// @pre index must be less than switchCaseCount(instr).
 const std::string &switchCaseLabel(const Instr &instr, size_t index) {
-    requireSwitch(instr);
+    static const std::string kEmptyLabel;
+    if (!requireSwitch(instr))
+        return kEmptyLabel;
+    if (index >= switchCaseCount(instr) || instr.labels.size() <= index + 1)
+        return kEmptyLabel;
     assert(index < switchCaseCount(instr));
     return instr.labels[index + 1];
 }

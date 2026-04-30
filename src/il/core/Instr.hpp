@@ -96,6 +96,18 @@ struct Instr {
 
     /// @brief Semantic attributes describing the behaviour of call-like instructions.
     CallAttrs CallAttr{};
+
+    /// @brief True when a pointer-based call.indirect carries an explicit signature.
+    bool hasIndirectSignature = false;
+
+    /// @brief Declared return type for an explicitly-typed call.indirect.
+    Type indirectRetType{};
+
+    /// @brief Declared parameter types for an explicitly-typed call.indirect.
+    std::vector<Type> indirectParamTypes;
+
+    /// @brief True when an explicitly-typed call.indirect accepts a variadic tail.
+    bool indirectIsVarArg = false;
 };
 
 /// @brief Access the scrutinee operand of a switch instruction.
