@@ -220,6 +220,7 @@ static bool collectJoinSuffixStores(const MFunction &fn,
     }
 
     std::unordered_set<std::uint32_t> clobbered;
+    std::unordered_set<int64_t> blockedOffsets;
     for (std::size_t i = scanEnd; i-- > 0;) {
         const auto &instr = instrs[i];
         if ((instr.opc == MOpcode::LdrRegFpImm || instr.opc == MOpcode::LdrFprFpImm ||
@@ -242,7 +243,11 @@ static bool collectJoinSuffixStores(const MFunction &fn,
             instr.ops[1].kind == MOperand::Kind::Imm) {
             const auto key = regKey(instr.ops[0]);
             const int64_t off = instr.ops[1].imm;
-            if (!clobbered.count(key) && stores.find(off) == stores.end()) {
+            if (stores.find(off) == stores.end() && !blockedOffsets.count(off)) {
+                if (clobbered.count(key)) {
+                    blockedOffsets.insert(off);
+                    continue;
+                }
                 stores.emplace(off,
                                JoinStore{i,
                                          off,
@@ -263,10 +268,14 @@ static bool collectJoinSuffixStores(const MFunction &fn,
             const std::array<std::pair<int64_t, MOperand>, 2> pairStores = {
                 {{baseOff, instr.ops[0]}, {baseOff + 8, instr.ops[1]}}};
             for (const auto &[off, src] : pairStores) {
-                if (!stores.count(off) && !clobbered.count(regKey(src))) {
-                    stores.emplace(off, JoinStore{i, off, src, cls});
-                    storeInstrs.insert(i);
+                if (stores.count(off) || blockedOffsets.count(off))
+                    continue;
+                if (clobbered.count(regKey(src))) {
+                    blockedOffsets.insert(off);
+                    continue;
                 }
+                stores.emplace(off, JoinStore{i, off, src, cls});
+                storeInstrs.insert(i);
             }
             continue;
         }

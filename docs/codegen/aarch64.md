@@ -39,7 +39,19 @@ programs, and the development roadmap. It is kept developer-focused with concret
 - **Target-aware DCE**: AArch64 peephole DCE can use `TargetInfo` for CFG-level physical-register liveness, including
   callee-saved FPRs and call-clobber/argument registers.
 - **Loop cleanup**: loop phi spill/reload cleanup iterates to a bounded fixed point and re-runs cross-block dead
-  frame-store cleanup after each successful iteration.
+  frame-store cleanup after each successful iteration. Loop-phi spill elimination now accepts only natural loop
+  back-edges whose header dominates the latch, so layout-created backward branches to if/else joins keep their
+  phi-slot stores intact.
+- **Dead spill-store safety**: whole-function FP-relative dead-store cleanup is limited to compiler-created spill
+  slots recorded in `MFunction::frame.spills`; addressable stack locals/allocas are preserved because they can be
+  observed through derived base-register loads even when no direct `LdrRegFpImm` remains.
+- **Join forwarding safety**: cross-block phi-load forwarding tracks the latest store for each frame offset, even when
+  that store cannot be forwarded because its source register is clobbered before the edge. This prevents stale older
+  stores from replacing join-entry reloads.
+- **Scheduler alias safety**: post-RA scheduling only disambiguates memory through explicit FP/SP-derived stack
+  addresses. Heap/object/list accesses through base registers are conservatively treated as may-alias, including
+  pointers loaded from different frame slots, so object updates cannot be reordered ahead of later reads through an
+  aliased register.
 - **117 codegen test files**
 
 ## Source File Map
@@ -204,7 +216,8 @@ The AArch64 backend uses `CodegenPipeline` to orchestrate passes. The pipeline s
 7. **Block layout** — reorder hot/fallthrough blocks before branch cleanup
 8. **Peephole optimization** (`Peephole` + sub-passes) — post-RA pattern rewrites, CFG-aware DCE, branch cleanup,
    phi spill/reload cleanup, and MIR validation
-9. **Post-RA scheduling** — instruction reordering for pipeline utilization
+9. **Post-RA scheduling** — instruction reordering for pipeline utilization; memory scheduling remains conservative
+   for base-register heap/object accesses and only separates explicit FP/SP stack slots
 10. **Final peephole cleanup** — removes branches/fallthroughs and dead moves exposed by scheduling
 11. **Assembly emission** (`AsmEmitter::emitFunction`) — MIR → text assembly
 12. **Binary encoding** (`A64BinaryEncoder`) — direct object code emission (optional)

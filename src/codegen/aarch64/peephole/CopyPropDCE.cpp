@@ -630,6 +630,17 @@ std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &st
 }
 
 std::size_t eliminateDeadFpStoresCrossBlock(MFunction &fn, PeepholeStats &stats) {
+    // Only compiler-created spill slots are safe for whole-function dead-store
+    // removal. FP-relative locals/allocas can be observed through address-derived
+    // base-register loads even when no direct LdrRegFpImm remains.
+    std::unordered_set<int64_t> eligibleOffsets;
+    for (const auto &slot : fn.frame.spills) {
+        for (int byte = 0; byte < slot.size; byte += 8)
+            eligibleOffsets.insert(static_cast<int64_t>(slot.offset + byte));
+    }
+    if (eligibleOffsets.empty())
+        return 0;
+
     // Step 1: Collect all FP offsets that are LOADED anywhere in the function.
     std::unordered_set<int64_t> loadedOffsets;
     for (const auto &bb : fn.blocks) {
@@ -655,6 +666,7 @@ std::size_t eliminateDeadFpStoresCrossBlock(MFunction &fn, PeepholeStats &stats)
                                            if (mi.opc == MOpcode::StrRegFpImm &&
                                                mi.ops.size() >= 2 &&
                                                mi.ops[1].kind == MOperand::Kind::Imm &&
+                                               eligibleOffsets.count(mi.ops[1].imm) != 0 &&
                                                !loadedOffsets.count(mi.ops[1].imm)) {
                                                ++removed;
                                                return true;

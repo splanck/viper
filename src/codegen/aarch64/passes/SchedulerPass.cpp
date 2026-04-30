@@ -13,9 +13,10 @@
 //   1. Partition instructions into non-terminator body segments separated by
 //      calls and mid-block guard branches, plus the final terminator group.
 //   2. Build a data-dependency DAG from physical-register def/use chains.
-//      Memory dependencies are tracked by access class when the address is
-//      known (FP/SP/base+imm), so disjoint stack slots and base-address ranges
-//      do not serialize each other unnecessarily.
+//      Memory dependencies are tracked precisely only for explicit FP/SP-derived
+//      stack addresses. Base-register heap/object accesses are conservatively
+//      treated as may-alias because different registers or spill slots can hold
+//      the same runtime object/list pointer.
 //   3. Assign latencies to each dependency edge using a simplified Apple M1
 //      latency model (loads: 4 cycles, multiplies: 3 cycles, FP: 3 cycles,
 //      all other: 1 cycle).
@@ -141,8 +142,6 @@ enum class MemBaseKind : uint8_t {
     FramePointer,
     StackPointer,
     BaseRegister,
-    FrameSlotValue,
-    StackSlotValue,
 };
 
 struct AddressValue {
@@ -230,8 +229,10 @@ classifyMemoryAccess(const MInstr &mi,
                         getTrackedAddressValue(trackedAddrs, mi.ops[1].reg.idOrPhys)) {
                     return makeResolvedAccessClass(*tracked, mi.ops[2].imm, 8);
                 }
-                return MemoryAccessClass{
-                    MemBaseKind::BaseRegister, mi.ops[1].reg.idOrPhys, mi.ops[2].imm, 8};
+                // Unknown base-register accesses are heap/object accesses for
+                // aliasing purposes. Physical register identity is not a
+                // provenance guarantee: two registers may hold the same object.
+                return std::nullopt;
             }
             return std::nullopt;
         default:
@@ -245,12 +246,8 @@ static bool mayAliasMemory(const std::optional<MemoryAccessClass> &lhs,
         return true;
     if (lhs->baseKind != rhs->baseKind)
         return false;
-    if ((lhs->baseKind == MemBaseKind::BaseRegister ||
-         lhs->baseKind == MemBaseKind::FrameSlotValue ||
-         lhs->baseKind == MemBaseKind::StackSlotValue) &&
-        lhs->baseTag != rhs->baseTag) {
-        return false;
-    }
+    if (lhs->baseKind == MemBaseKind::BaseRegister)
+        return true;
     const long long lhsEnd = lhs->offset + static_cast<long long>(lhs->size);
     const long long rhsEnd = rhs->offset + static_cast<long long>(rhs->size);
     return !(lhsEnd <= rhs->offset || rhsEnd <= lhs->offset);
@@ -268,20 +265,9 @@ deriveTrackedAddressValue(const MInstr &mi,
         return getTrackedAddressValue(trackedAddrs, mi.ops[opIdx].reg.idOrPhys);
     };
 
-    auto fallbackRoot = [&](std::size_t opIdx) -> std::optional<AddressValue> {
-        if (opIdx >= mi.ops.size() || mi.ops[opIdx].kind != MOperand::Kind::Reg ||
-            !mi.ops[opIdx].reg.isPhys) {
-            return std::nullopt;
-        }
-        return AddressValue{MemBaseKind::BaseRegister, mi.ops[opIdx].reg.idOrPhys, 0};
-    };
-
     switch (mi.opc) {
         case MOpcode::MovRR: {
-            auto tracked = regTracked(1);
-            if (tracked)
-                return tracked;
-            return fallbackRoot(1);
+            return regTracked(1);
         }
         case MOpcode::AddRI:
         case MOpcode::SubRI:
@@ -290,8 +276,6 @@ deriveTrackedAddressValue(const MInstr &mi,
             if (mi.ops.size() < 3 || mi.ops[2].kind != MOperand::Kind::Imm)
                 return std::nullopt;
             auto base = regTracked(1);
-            if (!base)
-                base = fallbackRoot(1);
             if (!base)
                 return std::nullopt;
             const long long delta = (mi.opc == MOpcode::SubRI || mi.opc == MOpcode::SubsRI)
@@ -303,10 +287,6 @@ deriveTrackedAddressValue(const MInstr &mi,
         case MOpcode::AddFpImm:
             if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Imm)
                 return AddressValue{MemBaseKind::FramePointer, 0, mi.ops[1].imm};
-            return std::nullopt;
-        case MOpcode::LdrRegFpImm:
-            if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Imm)
-                return AddressValue{MemBaseKind::FrameSlotValue, mi.ops[1].imm, 0};
             return std::nullopt;
         default:
             return std::nullopt;

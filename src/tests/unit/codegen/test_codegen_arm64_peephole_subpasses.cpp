@@ -288,6 +288,58 @@ TEST(AArch64PeepholeSubpasses, LoopPhiRejectsRedefinedEdgeSource) {
     EXPECT_FALSE(splitLoopHeader);
 }
 
+TEST(AArch64PeepholeSubpasses, LoopPhiRejectsBackwardJoinEdge) {
+    MFunction fn{};
+    fn.name = "loop_phi_backward_join";
+    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    fn.blocks.push_back(MBasicBlock{"else_path", {}});
+    fn.blocks.push_back(MBasicBlock{"join", {}});
+    fn.blocks.push_back(MBasicBlock{"then_path", {}});
+    fn.blocks.push_back(MBasicBlock{"exit", {}});
+
+    auto &entry = fn.blocks[0];
+    auto &elsePath = fn.blocks[1];
+    auto &join = fn.blocks[2];
+    auto &thenPath = fn.blocks[3];
+    auto &exit = fn.blocks[4];
+
+    entry.instrs.push_back(
+        MInstr{MOpcode::Cbz, {MOperand::regOp(PhysReg::X0), MOperand::labelOp("then_path")}});
+    entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("else_path")}});
+
+    elsePath.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X20), MOperand::immOp(-40)}});
+    elsePath.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X21), MOperand::immOp(-48)}});
+    elsePath.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("join")}});
+
+    join.instrs.push_back(
+        MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X10), MOperand::immOp(-40)}});
+    join.instrs.push_back(
+        MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X11), MOperand::immOp(-48)}});
+    join.instrs.push_back(MInstr{MOpcode::AddRRR,
+                                 {MOperand::regOp(PhysReg::X12),
+                                  MOperand::regOp(PhysReg::X10),
+                                  MOperand::regOp(PhysReg::X11)}});
+    join.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("exit")}});
+
+    thenPath.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X22), MOperand::immOp(-40)}});
+    thenPath.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X23), MOperand::immOp(-48)}});
+    thenPath.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("join")}});
+
+    exit.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    (void)runPeephole(fn);
+
+    const bool splitJoin =
+        std::any_of(fn.blocks.begin(), fn.blocks.end(), [](const MBasicBlock &bb) {
+            return bb.name == "join_body";
+        });
+    EXPECT_FALSE(splitJoin);
+}
+
 TEST(AArch64PeepholeSubpasses, LoopConstHoistRejectsBackwardJoinEdge) {
     MFunction fn{};
     fn.name = "backward_join_not_loop";

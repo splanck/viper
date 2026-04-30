@@ -15,6 +15,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"
+#include <algorithm>
 #include <sstream>
 #include <string>
 
@@ -190,6 +191,7 @@ TEST(AArch64Peephole, MixedOperations) {
 TEST(AArch64Peephole, ForwardSinglePredJoinLoadsFromAcyclicEdgeStores) {
     MFunction fn{};
     fn.name = "test_single_pred_join";
+    fn.frame.spills.push_back(MFunction::SpillSlot{1, 8, 8, -8});
     fn.blocks.push_back(MBasicBlock{"pred", {}});
     fn.blocks.push_back(MBasicBlock{"join", {}});
 
@@ -212,6 +214,70 @@ TEST(AArch64Peephole, ForwardSinglePredJoinLoadsFromAcyclicEdgeStores) {
     EXPECT_EQ(join.instrs[0].opc, MOpcode::MovRR);
     EXPECT_EQ(static_cast<PhysReg>(join.instrs[0].ops[0].reg.idOrPhys), PhysReg::X11);
     EXPECT_EQ(static_cast<PhysReg>(join.instrs[0].ops[1].reg.idOrPhys), PhysReg::X10);
+    EXPECT_EQ(join.instrs[1].opc, MOpcode::Ret);
+}
+
+TEST(AArch64Peephole, CrossBlockDeadFpStoreSkipsAddressableStackLocals) {
+    MFunction fn{};
+    fn.name = "test_dead_fp_store_locals";
+    fn.frame.locals.push_back(MFunction::StackLocal{1, 8, 8, -24});
+    fn.frame.spills.push_back(MFunction::SpillSlot{2, 8, 8, -40});
+    fn.blocks.push_back(MBasicBlock{"entry", {}});
+
+    auto &entry = fn.blocks[0];
+    entry.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X9), MOperand::immOp(-24)}});
+    entry.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X10), MOperand::immOp(-40)}});
+    entry.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    (void)runPeephole(fn);
+
+    const bool keptLocalStore =
+        std::any_of(entry.instrs.begin(), entry.instrs.end(), [](const MInstr &instr) {
+            return instr.opc == MOpcode::StrRegFpImm && instr.ops.size() >= 2 &&
+                   instr.ops[1].kind == MOperand::Kind::Imm && instr.ops[1].imm == -24;
+        });
+    const bool removedSpillStore =
+        std::none_of(entry.instrs.begin(), entry.instrs.end(), [](const MInstr &instr) {
+            return instr.opc == MOpcode::StrRegFpImm && instr.ops.size() >= 2 &&
+                   instr.ops[1].kind == MOperand::Kind::Imm && instr.ops[1].imm == -40;
+        });
+
+    EXPECT_TRUE(keptLocalStore);
+    EXPECT_TRUE(removedSpillStore);
+}
+
+TEST(AArch64Peephole, JoinForwardingBlocksClobberedLatestPairStoreOffset) {
+    MFunction fn{};
+    fn.name = "test_pair_store_blocked";
+    fn.blocks.push_back(MBasicBlock{"pred", {}});
+    fn.blocks.push_back(MBasicBlock{"join", {}});
+
+    auto &pred = fn.blocks[0];
+    pred.instrs.push_back(MInstr{MOpcode::StpRegFpImm,
+                                 {MOperand::regOp(PhysReg::X20),
+                                  MOperand::regOp(PhysReg::X21),
+                                  MOperand::immOp(-16)}});
+    pred.instrs.push_back(MInstr{MOpcode::StpRegFpImm,
+                                 {MOperand::regOp(PhysReg::X19),
+                                  MOperand::regOp(PhysReg::X22),
+                                  MOperand::immOp(-16)}});
+    pred.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X19), MOperand::regOp(PhysReg::X4)}});
+    pred.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("join")}});
+
+    auto &join = fn.blocks[1];
+    join.instrs.push_back(MInstr{MOpcode::LdpRegFpImm,
+                                 {MOperand::regOp(PhysReg::X10),
+                                  MOperand::regOp(PhysReg::X11),
+                                  MOperand::immOp(-16)}});
+    join.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    (void)runPeephole(fn);
+
+    ASSERT_GE(join.instrs.size(), 2U);
+    EXPECT_EQ(join.instrs[0].opc, MOpcode::LdpRegFpImm);
     EXPECT_EQ(join.instrs[1].opc, MOpcode::Ret);
 }
 

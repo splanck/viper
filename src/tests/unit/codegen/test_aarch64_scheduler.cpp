@@ -339,6 +339,124 @@ TEST(AArch64Scheduler, IndependentStackSlotsDoNotSerializeLoadAfterStore) {
     EXPECT_EQ(instrs.back().opc, MOpcode::Ret);
 }
 
+TEST(AArch64Scheduler, BaseRegisterMemoryMayAliasAcrossRegisters) {
+    AArch64Module module;
+    module.ti = &darwinTarget();
+
+    MFunction fn;
+    fn.name = "base_register_alias";
+
+    MBasicBlock bb;
+    bb.name = "entry";
+
+    MInstr store;
+    store.opc = MOpcode::StrRegBaseImm;
+    store.ops = {MOperand::regOp(PhysReg::X0),
+                 MOperand::regOp(PhysReg::X10),
+                 MOperand::immOp(0)};
+    bb.instrs.push_back(std::move(store));
+
+    MInstr load;
+    load.opc = MOpcode::LdrRegBaseImm;
+    load.ops = {MOperand::regOp(PhysReg::X1),
+                MOperand::regOp(PhysReg::X11),
+                MOperand::immOp(0)};
+    bb.instrs.push_back(std::move(load));
+
+    MInstr add;
+    add.opc = MOpcode::AddRRR;
+    add.ops = {MOperand::regOp(PhysReg::X2),
+               MOperand::regOp(PhysReg::X1),
+               MOperand::regOp(PhysReg::X3)};
+    bb.instrs.push_back(std::move(add));
+
+    MInstr ret;
+    ret.opc = MOpcode::Ret;
+    bb.instrs.push_back(std::move(ret));
+
+    fn.blocks.push_back(std::move(bb));
+    module.mir.push_back(std::move(fn));
+
+    Diagnostics diags;
+    ASSERT_TRUE(SchedulerPass().run(module, diags));
+
+    const auto &instrs = module.mir[0].blocks[0].instrs;
+    const auto storeIt = std::find_if(instrs.begin(), instrs.end(), [](const MInstr &instr) {
+        return instr.opc == MOpcode::StrRegBaseImm;
+    });
+    const auto loadIt = std::find_if(instrs.begin(), instrs.end(), [](const MInstr &instr) {
+        return instr.opc == MOpcode::LdrRegBaseImm;
+    });
+    ASSERT_NE(storeIt, instrs.end());
+    ASSERT_NE(loadIt, instrs.end());
+    EXPECT_LT(storeIt, loadIt);
+    EXPECT_EQ(instrs.back().opc, MOpcode::Ret);
+}
+
+TEST(AArch64Scheduler, PointersLoadedFromDifferentFrameSlotsMayAlias) {
+    AArch64Module module;
+    module.ti = &darwinTarget();
+
+    MFunction fn;
+    fn.name = "frame_slot_pointer_alias";
+
+    MBasicBlock bb;
+    bb.name = "entry";
+
+    MInstr loadPtrA;
+    loadPtrA.opc = MOpcode::LdrRegFpImm;
+    loadPtrA.ops = {MOperand::regOp(PhysReg::X10), MOperand::immOp(-8)};
+    bb.instrs.push_back(std::move(loadPtrA));
+
+    MInstr loadPtrB;
+    loadPtrB.opc = MOpcode::LdrRegFpImm;
+    loadPtrB.ops = {MOperand::regOp(PhysReg::X11), MOperand::immOp(-16)};
+    bb.instrs.push_back(std::move(loadPtrB));
+
+    MInstr store;
+    store.opc = MOpcode::StrRegBaseImm;
+    store.ops = {MOperand::regOp(PhysReg::X0),
+                 MOperand::regOp(PhysReg::X10),
+                 MOperand::immOp(0)};
+    bb.instrs.push_back(std::move(store));
+
+    MInstr load;
+    load.opc = MOpcode::LdrRegBaseImm;
+    load.ops = {MOperand::regOp(PhysReg::X1),
+                MOperand::regOp(PhysReg::X11),
+                MOperand::immOp(0)};
+    bb.instrs.push_back(std::move(load));
+
+    MInstr add;
+    add.opc = MOpcode::AddRRR;
+    add.ops = {MOperand::regOp(PhysReg::X2),
+               MOperand::regOp(PhysReg::X1),
+               MOperand::regOp(PhysReg::X3)};
+    bb.instrs.push_back(std::move(add));
+
+    MInstr ret;
+    ret.opc = MOpcode::Ret;
+    bb.instrs.push_back(std::move(ret));
+
+    fn.blocks.push_back(std::move(bb));
+    module.mir.push_back(std::move(fn));
+
+    Diagnostics diags;
+    ASSERT_TRUE(SchedulerPass().run(module, diags));
+
+    const auto &instrs = module.mir[0].blocks[0].instrs;
+    const auto storeIt = std::find_if(instrs.begin(), instrs.end(), [](const MInstr &instr) {
+        return instr.opc == MOpcode::StrRegBaseImm;
+    });
+    const auto loadIt = std::find_if(instrs.begin(), instrs.end(), [](const MInstr &instr) {
+        return instr.opc == MOpcode::LdrRegBaseImm;
+    });
+    ASSERT_NE(storeIt, instrs.end());
+    ASSERT_NE(loadIt, instrs.end());
+    EXPECT_LT(storeIt, loadIt);
+    EXPECT_EQ(instrs.back().opc, MOpcode::Ret);
+}
+
 // ---------------------------------------------------------------------------
 // Test 4: Terminators remain at the end of their block after scheduling.
 // ---------------------------------------------------------------------------

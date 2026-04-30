@@ -564,6 +564,85 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
                opc == MOpcode::Cbnz || opc == MOpcode::Ret;
     };
 
+    // Build predecessors and dominators so layout-created backward branches to
+    // earlier join blocks are not mistaken for loop back-edges.
+    std::unordered_map<std::size_t, std::vector<std::size_t>> preds;
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
+        const auto &instrs = fn.blocks[i].instrs;
+        for (const auto &mi : instrs) {
+            const std::string target = getBranchTarget(mi);
+            if (target.empty())
+                continue;
+            auto it = nameToIdx.find(target);
+            if (it != nameToIdx.end())
+                preds[it->second].push_back(i);
+        }
+
+        if (i + 1 < fn.blocks.size()) {
+            if (instrs.empty() || !isTerminator(instrs.back().opc) ||
+                instrs.back().opc == MOpcode::BCond || instrs.back().opc == MOpcode::Cbz ||
+                instrs.back().opc == MOpcode::Cbnz) {
+                preds[i + 1].push_back(i);
+            }
+        }
+    }
+
+    const auto computeDominators = [&preds, &fn]() {
+        const std::size_t n = fn.blocks.size();
+        std::vector<std::unordered_set<std::size_t>> dom(n);
+        if (n == 0)
+            return dom;
+
+        dom[0].insert(0);
+        for (std::size_t i = 1; i < n; ++i) {
+            for (std::size_t j = 0; j < n; ++j)
+                dom[i].insert(j);
+        }
+
+        bool changed = true;
+        while (changed) {
+            changed = false;
+            for (std::size_t i = 1; i < n; ++i) {
+                auto pit = preds.find(i);
+                if (pit == preds.end() || pit->second.empty()) {
+                    std::unordered_set<std::size_t> onlySelf{i};
+                    if (dom[i] != onlySelf) {
+                        dom[i] = std::move(onlySelf);
+                        changed = true;
+                    }
+                    continue;
+                }
+
+                std::unordered_set<std::size_t> next;
+                bool firstPred = true;
+                for (std::size_t p : pit->second) {
+                    if (p >= n)
+                        continue;
+                    if (firstPred) {
+                        next = dom[p];
+                        firstPred = false;
+                        continue;
+                    }
+                    for (auto it = next.begin(); it != next.end();) {
+                        if (dom[p].count(*it) == 0)
+                            it = next.erase(it);
+                        else
+                            ++it;
+                    }
+                }
+                next.insert(i);
+
+                if (dom[i] != next) {
+                    dom[i] = std::move(next);
+                    changed = true;
+                }
+            }
+        }
+        return dom;
+    };
+
+    const auto dominators = computeDominators();
+
     auto callClobbersReg = [](const MInstr &mi, const MOperand &reg) -> bool {
         if ((mi.opc != MOpcode::Bl && mi.opc != MOpcode::Blr) || !isPhysReg(reg))
             return false;
@@ -588,7 +667,8 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
             if (target.empty())
                 continue;
             auto it = nameToIdx.find(target);
-            if (it != nameToIdx.end() && it->second <= i)
+            if (it != nameToIdx.end() && it->second <= i &&
+                i < dominators.size() && dominators[i].count(it->second) != 0)
                 backEdges.push_back({i, it->second});
         }
     }

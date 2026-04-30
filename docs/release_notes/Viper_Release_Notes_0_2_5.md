@@ -24,10 +24,10 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator.
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 103 | +103 |
-| Source files | 2,869 | 2,958 | +89 |
-| Production SLOC | 450K | 527K | +77K |
-| Test SLOC | 183K | 217K | +34K |
+| Commits | — | 106 | +106 |
+| Source files | 2,869 | 2,966 | +97 |
+| Production SLOC | 450K | 529K | +79K |
+| Test SLOC | 183K | 218K | +35K |
 | Demo SLOC | 177K | 188K | +11K |
 
 Counts via `scripts/count_sloc.sh`.
@@ -230,6 +230,10 @@ All four object-file readers and all three writers received a bounds-checking an
 - Checked FP casts lower as `FRintN` + NaN/range guards with distinct `InvalidCast` vs `Overflow` errors; `fptosi` traps NaN and signed overflow; FP compare predicates match IEEE NaN semantics.
 - Logical-immediate bitwise: `AndRI`, `OrrRI`, `EorRI` with correct ARM64 encoding. BTI/PAC/compact-unwind gated to Darwin. Unsigned division → `UmulhRRR` magic-multiply.
 - **Windows ARM64** — `IMAGE_REL_ARM64_*` COFF relocation constants; section-relative reloc via instruction bit-field decode; MSVC runtime/SEH helper stubs; `ExitProcess` startup import; dynamic import wiring. Build scripts (`build_demos.cmd`, `CMakeLists.txt`) default to host architecture; `--arch` / `VIPER_DEMO_ARCH` override. Portability pass covers 64-bit atomic CAS, Win32 threading timeout, TLS chain, D3D11 enumeration, LC_NUMERIC isolation, and VM bridge alignment.
+- **Phi-spill cross-block fix** — after mem2reg promotion, block parameters receive their value from a phi-load at block entry; `LowerILToMIR` now also stores that value to the cross-block spill slot so dominated successors that reload from the slot see the correct value rather than a stale frame word.
+- **Allocator end-spill insertion** — the end-spill insertion pass scans backward from the block's physical end with `while (isTerminator)` instead of stopping at the first terminal; this correctly places spills before all consecutive terminator instructions in blocks that lower to multiple terminal opcodes.
+- **CFG-aware AArch64 DCE** — `removeDeadInstructionsCFG()` replaces the intra-block dead scan with a backward dataflow liveness pass over all blocks: `physRegKey()` maps physical registers to stable keys; `addTargetExitLive()` seeds return-register live sets; `addCallImplicitUses()` and `addCallClobbers()` seed call-site live-in and killed sets from `TargetInfo`. Dead instructions are removed only after full function-wide liveness converges, eliminating false dead classifications that arose from cross-block register uses.
+- **LoopOpt call-clobber guard + STP recognition** — `callClobbersReg()` checks AArch64 caller-saved registers against the call opcode; `sourceRegSurvivesToEdge()` validates that the source register of a phi-store is not clobbered by any instruction between the store and the loop-back edge before eliminating the redundant reload. Cross-block store collection iterates in reverse order so the most-recent store wins when multiple stores target the same slot, and an unforwardable latest store blocks older stores at that offset so stale values cannot replace join-entry reloads. `collectJoinSuffixStores` now recognises `STP` pair stores in addition to individual `STR` instructions. `LoopOpt` iterates to a fixed point (up to 16×) interleaved with `eliminateDeadFpStoresCrossBlock` to expose cascading elimination opportunities. The AArch64 post-RA scheduler now treats base-register heap/object/list accesses as may-alias unless the address is explicitly FP/SP-derived, preventing object/list stores from being reordered past reads through another register or a pointer loaded from another frame slot.
 
 **x86_64**
 - `MOVZXrr8` and `MOVZXrr32` are now distinct MIR opcodes with correct per-form binary encoding.
@@ -238,6 +242,11 @@ All four object-file readers and all three writers received a bounds-checking an
 - Sub-width checked narrowing preserves annotated result width; Win64 shadow space reserved even for call-free functions.
 - `ErrGetMsg` → `rt_throw_msg_get`; `idx.chk` → `rt_trap_raise_error`; unknown opcodes are hard emitter errors.
 - `conditionSuffix` and `condCodeFor` throw `std::runtime_error` instead of asserting on unrecognised condition codes.
+- **OperandRoles single source of truth** — `operandRoles(instr, idx)`, `usesEFlags(opcode)`, `definesEFlags(opcode)`, and `hasObservableSideEffects(opcode)` live in a new `OperandRoles.hpp/cpp`; the previously duplicated and diverged switch tables in DCE, Allocator, and Liveness are replaced with calls into this shared classification.
+- **Post-RA list scheduler** — `Scheduler.hpp/cpp` add a latency-table-driven list scheduler (`opcodeLatency()` per opcode), a dependency graph builder (`buildDeps()` with use/def/flags/memory edges), and `scheduleBlock()` topological emission; the `SchedulerPass` wrapper inserts the scheduler between register allocation and peephole in the x86-64 pipeline.
+- **MemoryOpt peephole** — `MemoryOpt.hpp/cpp` add `forwardFrameStoreLoads()` (eliminates redundant RBP-relative loads when the same frame slot was just stored) and `eliminateDeadFrameStores()` (removes stores to frame slots with no subsequent load before overwrite or function exit); both run before DCE to expose dead store candidates.
+- **Peephole layout/branch fixed-point** — the layout and branch optimization sub-passes now iterate to a fixed point rather than running once; each iteration can expose new opportunities for the other pass.
+- **EH-sensitive pipeline** — `hasEhSensitiveControl()` detects functions containing EH opcodes; those functions are routed through an `"eh-opt"`-only pipeline that avoids reordering across EH control-flow edges. A `"codegen-large"` pipeline variant is introduced for modules above a size threshold.
 
 **IL and VM**
 - Variadic functions: `Function::isVarArg`, `...` syntax parsed/serialized/verified; `>= paramCount` arity enforced for variadic callees.
@@ -266,6 +275,11 @@ All four object-file readers and all three writers received a bounds-checking an
 - `GlobalVerifier`: `validateGlobal()` rejects globals with unsupported types (`Void`/`Error`/`ResumeTok`), rejects import-linkage globals with initializers, and validates integer initializer syntax via `std::from_chars` and float syntax via `strtod` before accepting the textual form.
 - `FPCast.hpp` (new): `checkedFpToSiRte()` / `checkedFpToUiRte()` — shared precise FP→integer checked conversions with exact signed/unsigned boundary semantics. Extracted from `fp_ops.cpp` so both VM and codegen backends use identical overflow and NaN detection logic.
 - `Global.hpp`: `isConst` and `hasInitializer` fields added to distinguish an explicitly-supplied empty initializer from an omitted one, preserving intent for textual round-trips and string-constant immutability.
+- **`call.indirect` explicit signatures** — `Instr` gains `hasIndirectSignature`, `indirectRetType`, `indirectParamTypes`, and `indirectIsVarArg` fields; the serializer emits `[retType(p0,...)]` bracket notation; the parser reconstructs it via `parseIndirectSignature()` with `splitTopLevel()` for nested generics; the verifier validates arg count, per-arg type compatibility (Str/Ptr interchangeable), variadic suffix, and return-type agreement when the signature is present, replacing a prior unvalidated opaque call.
+- **GEP type + bounds checking** — `checkGEP()` in `InstructionChecker_Memory.cpp` rejects GEPs whose base is not a pointer or whose offset is not `I64`; `stackBoundsForPointer()` performs a depth-limited backward walk through GEP/load chains to bound access extent and reject out-of-bounds stack accesses statically.
+- **Array retain/release tracking** — `RetainSite` records each `rt_arr_*_retain` call site; `retainBetween()` checks whether a retain covers the interval between a value's definition and a suspicious release, suppressing false-positive "unmatched release" diagnostics on arrays whose retain is conditional or comes from a callee. `isRuntimeArrayRetain()` and `isRuntimeArrayRelease()` classify the full set of typed retain/release helpers including `i64_retain`/`i64_release`.
+- **`Instr.cpp` switch helper sentinels** — `requireSwitch()` now returns `bool`; all six switch accessor helpers (`argsOrEmpty`, `switchScrutinee`, `switchDefaultLabel`, `switchCaseCount`, `switchCaseValue`, `switchCaseLabel`) return static sentinels on contract violation instead of invoking undefined behavior through an unchecked dereference.
+- **`Alloca` → `MemoryEffects::Write`** — `OpcodeInfo` reclassifies `Alloca` from side-effect-free to `MemoryEffects::Write`; this closes a gap where LICM could incorrectly hoist an alloca out of a loop, and aligns the effect model with the verifier's new stack-escape analysis.
 
 **IL optimizer hardening**
 - `CallEffects` priority: registry + function-declaration attrs are authoritative; unknown callees now conservatively receive no effects rather than falling back to `instr.CallAttr` (which was unverified and could permit incorrect dead-call elimination). `BasicAA::modRef` follows the same conservative path. `canEliminateIfUnused` requires both `pure` and `nothrow`.
@@ -286,6 +300,13 @@ All four object-file readers and all three writers received a bounds-checking an
 - SCCP calls `SimplifyCFG` post-propagation to prune unreachable blocks created by constant-folded terminators.
 - `Mem2Reg` SROA pre-reserves `candidates` and `owner` maps to the alloca count before candidate collection, reducing rehashing in large functions.
 - `BasicAA::queryRuntimeEffect` now consults `findRuntimeSignature` (O(1)) first, then `all_signatures()` linear scan, then `classifyHelperEffects`; removes stale size-tracking rebuild cache that could diverge from `registry_version`.
+- **SimplifyCFG safety guards** — `Utils.cpp/hpp` add `blockParamsUsedOutside()`, `blockResultsUsedOutside()`, and `isTempUsedOutsideBlock()` shared predicates; `ForwardingElimination` checks both param and result uses before eliminating a forwarding block; `JumpThreading` guards on `blockParamsUsedOutside()` before threading to prevent threading through a block whose params are live in non-threaded successors.
+- **`ValueKey` CSE conservatism** — plain `Add`, `Sub`, and `Mul` removed from `isCommutativeCSE()` and `isSafeCSEOpcode()`; only the checked overflow variants (`IAddOvf`, `ISubOvf`, `IMulOvf`) remain eligible for GVN/CSE since plain integer arithmetic has undefined overflow semantics that make CSE substitution unsound across distinct trap edges.
+- **`Mem2Reg` error propagation** — `addIncoming()` returns `bool`; `renameUses()` and `readFromPreds()` take a `bool& ok` parameter that propagates failure upward through the entire rename chain, replacing a prior `std::cerr` log-and-continue that could produce malformed SSA after a partially failed promotion.
+- **`BasicAA` signed-zero and size fixes** — `ConstFloat` comparisons route through `valueEquals()` using `std::signbit` so `+0.0` and `-0.0` are distinguished in aliasing queries; `typeSizeBytes()` assigns `ResumeTok` → 8 and `Error` → 24 to match their actual in-memory representations; `defs_` map uses `operator[]` (insert-or-update) instead of `insert()` (first-write-wins), ensuring redefined temporaries pick up their latest reaching definition.
+- **`RuntimeSignatures` Str/Ptr interchangeability** — `sigParamKindsCompatible()` accepts `Kind::Str` and `Kind::Ptr` as mutually compatible; `rt_arr_str_get`/`rt_arr_str_put` signatures updated to use `Kind::Str` for their string-element parameters so verifier type-compatibility checks pass for string-array operations.
+- **Serializer name deduplication** — `makeSerializeContext()` builds a `SerializeContext` with an `ambiguousValueNames` set populated by a pre-pass over all function temporaries; `printableNameForTemp()` falls back to `%t<id>` for any name that collides, preventing the serializer from emitting two distinct temporaries with the same textual name after inlining or loop-unrolling duplicates a value name.
+- **Forward temp parsing** — `InstrParser` maintains a `forwardTempNames` set; `parseExplicitTempName()` reserves the numeric ID before the definition instruction is encountered, allowing `%tN` references that appear before their defining instruction (as produced by optimized serializations with non-increasing temp numbering) to resolve without error.
 
 ### Platform input
 
@@ -311,6 +332,10 @@ All four object-file readers and all three writers received a bounds-checking an
 - New `test_vm_init_diagnostics.cpp`: VMInit error raises a typed exception rather than aborting. New `TlsSignaturePolicyTest.cmake`: asserts 0x0503 is absent from ClientHello extensions. `NoAssertFalseTest.cmake` scope widened to subdirectories. 3D baseball smoke probe re-enabled in `CMakeLists.txt`. BASIC sema class-member body tests added. `ThrowingPassBecomesDiagnostic` codegen pass-manager test added.
 - `ILCorrectnessFixes.cpp` (new): IL correctness regression suite covering `computeStackDerivedTemps` stack-access exemption, `validateGlobal` type/linkage/initializer rejection, conservative unknown-callee CallEffects classification, `globalStorageSize` per-type allocation, and shift-amount masking semantics. `test_vaud_core_fixes.c` (new): WAV format validation across 8/16/24/32-bit PCM and float32, ALSA partial-write simulation, and volume clamping. Grid layout clamping tests (`VG_GRID_MAX_TRACKS` boundary, negative placement, auto-row overflow) and TrueType contour-isolation regressions added to `test_vg_audit_fixes.c`.
 - `test_opt_review_peephole.cpp` expanded to 25 tests: `FSubPositiveZeroFolds` verifies `x - +0.0 → x`; `FSubNegativeZeroPreservesSignedZeroSemantics` verifies `x - -0.0` is left untouched. `test_canonical_pipeline.cpp` now verifies canonical O1/O2 schedule `"peephole"` directly and that the legacy safe alias is not registered.
+- `test_il_roundtrip.cpp`: `assertRoundTrip()` helper verifies textual IL survives a serialize→parse→serialize cycle; new forward-reference fixtures exercise `%tN` references appearing before their defining instruction and serializer name-dedup for post-optimization IR with colliding value names.
+- x86-64 codegen tests: `test_platform_import_planners.cpp` extended for `OperandRoles` classification coverage; `SchedulerPass` and `MemoryOpt` peephole paths covered by new codegen pipeline integration tests verifying latency-table scheduling order and frame-slot store-forwarding/dead-store elimination.
+- AArch64 tests: `test_LateCleanup.cpp` and `ModuleLinkerTests.cpp` updated for the phi-spill cross-block fix, CFG-aware DCE, and LoopOpt call-clobber guard; `LoopConstHoistRejectsBackwardJoinEdge` verifies the dominator guard prevents hoisting into an if/else join block.
+- AArch64 backend O1 hardening: loop-phi spill cleanup now requires natural-loop dominance before rewriting a backward edge, preventing if/else joins from being split as loops; whole-function dead FP-store cleanup is restricted to compiler spill slots so addressable stack locals survive derived-address reads. Added regressions for backward-join loop-phi rejection and spill-only dead-store cleanup.
 
 ### Demos & docs
 
@@ -320,6 +345,6 @@ Demos: human-manager baseball franchise simulator (new), Crackman (Pac-Man rewri
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 103-commit history. The pattern throughout is feature introduction followed by hardening follow-ups in the same subsystem.
+See `git log a91d388db..HEAD -- .` for the full 106-commit history. The pattern throughout is feature introduction followed by hardening follow-ups in the same subsystem.
 
 <!-- END DRAFT -->
