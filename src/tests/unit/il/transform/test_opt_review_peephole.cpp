@@ -224,6 +224,34 @@ Module buildFAddZeroModule() {
     return module;
 }
 
+Module buildFSubZeroModule(double zero) {
+    Module module;
+    Function fn;
+    fn.name = "fsub_zero";
+    fn.retType = Type(Type::Kind::F64);
+    fn.params.push_back(Param{"x", Type(Type::Kind::F64), 0});
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr sub;
+    sub.result = 1;
+    sub.op = Opcode::FSub;
+    sub.type = Type(Type::Kind::F64);
+    sub.operands = {Value::temp(0), Value::constFloat(zero)};
+    entry.instructions.push_back(std::move(sub));
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(1)};
+    entry.instructions.push_back(std::move(ret));
+    entry.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    module.functions.push_back(std::move(fn));
+    return module;
+}
+
 } // namespace
 
 // --- Unsigned comparison folding in CBr ---
@@ -402,6 +430,18 @@ TEST(Peephole, FAddZeroPreservesSignedZeroSemantics) {
     Module m = buildFAddZeroModule();
     il::transform::peephole(m);
     EXPECT_EQ(countOpcode(m, Opcode::FAdd), 1U);
+}
+
+TEST(Peephole, FSubPositiveZeroFolds) {
+    Module m = buildFSubZeroModule(0.0);
+    il::transform::peephole(m);
+    EXPECT_EQ(countOpcode(m, Opcode::FSub), 0U);
+}
+
+TEST(Peephole, FSubNegativeZeroPreservesSignedZeroSemantics) {
+    Module m = buildFSubZeroModule(-0.0);
+    il::transform::peephole(m);
+    EXPECT_EQ(countOpcode(m, Opcode::FSub), 1U);
 }
 
 /// @brief Main.

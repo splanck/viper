@@ -170,9 +170,9 @@ The pass also simplifies CBr terminators when the branch condition is a comparis
 
 The pass is table-driven, making it easy to add new rules without modifying core logic. Operand-forwarding rewrites are
 kept within the defining block after the definition so the replacement value is available at every rewritten use.
-Use-count data is refreshed after each mutation, preventing stale single-use decisions from deleting still-live
-conditions. `peephole-safe` is the canonical-pipeline entry point for this verifier-safe subset; `peephole` remains
-available explicitly and through `rehab-peephole`.
+conditions. Floating constant identity matches compare signed zero exactly, so `fsub x, +0.0 -> x` is allowed while
+`fsub x, -0.0` is left intact. Full `peephole` is part of the canonical O1/O2 pipelines; `peephole-safe` remains a
+legacy alias for existing scripts.
 
 ## ConstFold
 
@@ -386,12 +386,12 @@ instead of the registered canonical O1/O2 pipelines:
 
 | Level | Old (custom) | New (canonical) |
 |-------|-------------|-----------------|
-| O1 | 4 passes (simplify-cfg, mem2reg, peephole, dce) | Registered O1: SimplifyCFG, SCCP, ConstFold, PeepholeSafe, DCE, Inline |
-| O2 | 9 passes (missing SCCP, loop passes, inline, check-opt) | Registered O2: loop shaping, LICMSafe, SCCP, CheckOpt, EHOpt, DCE, SiblingRecursion, Inline, GVN, Reassociate, EarlyCSE, DSE, LateCleanup |
+| O1 | 4 passes (simplify-cfg, mem2reg, peephole, dce) | Registered O1: SimplifyCFG, SCCP, ConstFold, Peephole, DCE, Inline |
+| O2 | 9 passes (missing SCCP, loop passes, inline, check-opt) | Registered O2: loop shaping, LICMSafe, SCCP, CheckOpt, EHOpt, DCE, SiblingRecursion, Inline, Peephole, GVN, Reassociate, EarlyCSE, DSE, LateCleanup |
 
-`mem2reg`, full IL `peephole`, and full memory-hoisting `LICM` remain outside the canonical O1/O2 presets. Safe subsets
-(`peephole-safe`, `licm-safe`) are enabled where they are verifier-clean; the full passes remain available as explicit
-passes and via rehab pipelines while broader workload equivalence is validated.
+`mem2reg` and full memory-hoisting `LICM` remain outside the canonical O1/O2 presets. Full IL `peephole` is canonical
+after verifier-clean local-use, use-count, trap-preservation, and signed-zero coverage. `licm-safe` remains enabled in O2
+while full LICM continues through rehab validation.
 
 The pass manager verifies IR after each pass by default, including release
 builds. Callers may disable this for specialised measurement, but rehab and CI
@@ -404,7 +404,7 @@ applies the canonical O0/O1/O2 pipeline unconditionally.
 the canonically registered pipelines, ensuring VM-interpreted programs receive the same optimization as
 natively compiled ones.
 
-**Test**: `test_il_canonical_pipeline` — verifies O1/O2 contain expected passes, safe subsets are registered, and SCCP
+**Test**: `test_il_canonical_pipeline` — verifies O1/O2 contain expected passes, full peephole is canonical, and SCCP
 runs.
 
 ### Rehab Pipelines
@@ -414,7 +414,7 @@ The pass manager also registers targeted rehab pipelines for disabled passes:
 | Pipeline | Passes | Purpose |
 |----------|--------|---------|
 | `rehab-mem2reg` | `simplify-cfg, mem2reg, dce` | Isolate SSA promotion behavior while loop and join cases are validated |
-| `rehab-peephole` | `peephole, dce` | Exercise IL peephole rewrites without silently promoting them to O1/O2 |
+| `rehab-peephole` | `peephole, dce` | Exercise IL peephole rewrites in isolation from the broader O1/O2 pipelines |
 | `rehab-licm` | `loop-simplify, licm, simplify-cfg, dce` | Validate loop-invariant code motion independently from the broader optimizer |
 
 `viper il-opt --pipeline` accepts these registered names directly; lowercase rehab names are not uppercased to O-level
@@ -434,7 +434,7 @@ Regression tests covering fixes from the comprehensive IL optimization review
 | `test_opt_review_calleffects.cpp` | 7 | Pure/readonly/conservative classification, generated runtime metadata priority, pure+nothrow deletion gating |
 | `test_opt_review_dse.cpp` | 5 | Dead store elimination, load-intervened stores, different allocas, MemorySSA exit-block stores |
 | `test_opt_review_loopinfo.cpp` | 4 | Self-loop dedup, normal loop membership, block counts |
-| `test_opt_review_peephole.cpp` | 23 | UCmp/FCmp constant folding in CBr, integer reflexive comparisons, trap-preserving skipped folds |
+| `test_opt_review_peephole.cpp` | 25 | UCmp/FCmp constant folding in CBr, integer reflexive comparisons, trap-preserving skipped folds, signed-zero FP identities |
 | `test_opt_review_sccp.cpp` | 4 | FDiv by zero preservation, normal FDiv folding |
 | `test_opt_review_valuekey.cpp` | 8 | Commutative normalization, safe opcode classification |
 
@@ -442,7 +442,7 @@ Regression tests covering fixes from the comprehensive IL optimization review
 
 | Test File | Tests | Coverage |
 |-----------|-------|---------|
-| `test_il_canonical_pipeline.cpp` | 8 | O1/O2 pass registration, safe subset registration, SCCP execution via canonical pipeline |
+| `test_il_canonical_pipeline.cpp` | 8 | O1/O2 pass registration, full peephole promotion, SCCP execution via canonical pipeline |
 | `test_il_mem2reg_nonentry.cpp` | 4 | Non-entry-block alloca promotion, domination-filtered promotion, edge repair |
 | `test_il_inline_threshold.cpp` | 3 | New default thresholds (80/8/3), 50-instr inline, oversized rejection |
 | `test_il_earlycse_domtree.cpp` | 3 | Cross-block CSE via domtree, sibling-branch non-elimination, textually-unsafe rejection |

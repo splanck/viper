@@ -120,31 +120,32 @@ PassManager::PassManager() {
     registerPipeline("rehab-mem2reg", {"simplify-cfg", "mem2reg", "dce"});
     registerPipeline("rehab-peephole", {"peephole", "dce"});
     registerPipeline("rehab-licm", {"loop-simplify", "licm", "simplify-cfg", "dce"});
-    // mem2reg and full IL peephole are disabled due to correctness bugs:
+    // mem2reg remains disabled due to correctness bugs:
     // - mem2reg: incorrect SSA promotion corrupts loop counters
-    // - full IL peephole: kept on rehab pipeline while the safe subset runs in O1/O2
     // inline is re-enabled in O1 with conservative eligibility checks:
     // block insertion now preserves textual def-before-use ordering, and
     // callees with allocas / non-scalar signatures remain non-inlineable.
+    // Full IL peephole is enabled in O1/O2 after the local-use, use-count, and
+    // signed-zero fixes made its rule set verifier-clean across the suite.
     // Full licm is still excluded from canonical pipelines; O2 uses licm-safe,
     // which hoists pure non-memory instructions but leaves loads in place.
     registerPipeline("O1",
                      {"simplify-cfg",
                       "sccp",
                       "constfold",
-                      "peephole-safe",
+                      "peephole",
                       "dce",
                       "simplify-cfg",
                       "sccp",
                       "inline",
-                      "peephole-safe",
+                      "peephole",
                       "dce",
                       "simplify-cfg"});
     // O2 pipeline with interprocedural constant propagation:
     // Run SCCP both before (to simplify callees) and after inline
     // (to propagate constants through inlined code from call sites).
     // mem2reg and full LICM remain excluded for now because each still has open
-    // correctness bugs in real demo workloads.
+    // correctness bugs in real demo workloads. Full IL peephole is canonical.
     registerPipeline(
         "O2", {"loop-simplify", "licm-safe",    "loop-rotate", "indvars",      "loop-unroll",
                "simplify-cfg",
@@ -153,7 +154,7 @@ PassManager::PassManager() {
                "inline",        "simplify-cfg",
                "sccp",      // Post-inline SCCP: propagate call-site constants
                "constfold", // Fold runtime math calls exposed by SCCP
-               "peephole-safe",
+               "peephole",
                "dce",       // Clean up after second SCCP
                "simplify-cfg",  "gvn",          "reassociate", "earlycse",     "dse",
                "dce",           "late-cleanup"});

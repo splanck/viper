@@ -59,6 +59,7 @@
 #include "il/core/Module.hpp"
 #include "il/core/Value.hpp"
 
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <unordered_map>
@@ -106,6 +107,15 @@ static bool isConstEq(const Value &v, long long target) {
     return isConstInt(v, c) && c == target;
 }
 
+/// @brief Compare floating constants without losing signed-zero identity.
+static bool sameFloatConstant(double value, double target) {
+    if (value != target)
+        return false;
+    if (value == 0.0)
+        return std::signbit(value) == std::signbit(target);
+    return true;
+}
+
 /// @brief Determine whether two operands are identical.
 ///
 /// Peephole rules occasionally rely on reflexivity (e.g. @c xor x, x -> 0).
@@ -120,7 +130,7 @@ static bool sameValue(const Value &a, const Value &b) {
         case Value::Kind::ConstInt:
             return a.i64 == b.i64 && a.isBool == b.isBool;
         case Value::Kind::ConstFloat:
-            return a.f64 == b.f64;
+            return sameFloatConstant(a.f64, b.f64);
         case Value::Kind::ConstStr:
         case Value::Kind::GlobalAddr:
             return a.str == b.str;
@@ -332,7 +342,7 @@ static bool traceEnabled() {
 /// @brief Check if a value is a float constant with the expected value.
 static bool isConstFloatEq(const Value &v, double target) {
     if (v.kind == Value::Kind::ConstFloat) {
-        return v.f64 == target;
+        return sameFloatConstant(v.f64, target);
     }
     return false;
 }
