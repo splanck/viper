@@ -224,6 +224,9 @@ The AArch64 backend uses `CodegenPipeline` to orchestrate passes. The pipeline s
 13. **Rodata emission** — string/FP constant pool to `.section __TEXT,__const` (macOS) or `.section .rodata` (Linux)
 14. **Assembly + linking** (`LinkerSupport`) — invoke assembler/linker, link with only the runtime archives and support libraries required by the module; the selected target platform now also chooses the object format, linker platform, and system-assembler triple
 
+Set `VIPER_CODEGEN_STATS=1` to emit non-fatal diagnostics with peephole transformation counts and MIR
+function/block/instruction, call, branch, load, and store counters.
+
 Before MIR lowering, `CodegenPipeline` now runs a selective IL optimization stage:
 
 - EH-sensitive modules run an `eh-opt`-only safety pipeline instead of bypassing IL optimization entirely.

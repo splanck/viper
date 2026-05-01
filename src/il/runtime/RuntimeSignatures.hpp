@@ -33,6 +33,7 @@
 #pragma once
 
 #include "il/core/Type.hpp"
+#include <cstdint>
 #include <cstddef>
 #include <optional>
 #include <string_view>
@@ -179,6 +180,10 @@ struct RuntimeSignature {
     bool readonly{false}; ///< Helper may read from memory without writes.
     bool pure{false};     ///< Helper has no observable side effects.
     bool isVarArg{false}; ///< Helper uses C-style variadic arguments.
+    std::uint64_t consumedArgMask{0}; ///< IL-visible args whose ownership is consumed.
+    std::uint64_t retainedArgMask{0}; ///< IL-visible args whose reference count is retained.
+    bool returnsOwned{false};         ///< Helper returns an owned reference/string handle.
+    bool mayAllocate{false};          ///< Helper may allocate runtime-managed storage.
 };
 
 /// @brief Aggregated descriptor covering signature, handler, and lowering metadata.

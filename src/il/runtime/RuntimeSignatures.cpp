@@ -39,6 +39,7 @@
 #include <atomic>
 
 #include "il/runtime/HelperEffects.hpp"
+#include "il/runtime/RuntimeOwnership.hpp"
 #include "il/runtime/RuntimeSignatureParser.hpp"
 #include "il/runtime/RuntimeSignaturesData.hpp"
 #include "il/runtime/RuntimeSignatures_Handlers.hpp"
@@ -334,6 +335,14 @@ using Kind = il::core::Type::Kind;
 
 constexpr std::size_t kRtSigCount = data::kRtSigCount;
 
+void applyOwnershipEffects(RuntimeSignature &signature, std::string_view name) {
+    const auto ownership = classifyRuntimeOwnership(name);
+    signature.consumedArgMask |= ownership.consumedArgMask;
+    signature.retainedArgMask |= ownership.retainedArgMask;
+    signature.returnsOwned = signature.returnsOwned || ownership.returnsOwned;
+    signature.mayAllocate = signature.mayAllocate || ownership.mayAllocate;
+}
+
 /// @brief Retrieve the parsed runtime signature for a generated enumerator.
 ///
 /// @details Lazily initialises an array of signatures by parsing the table of
@@ -351,6 +360,7 @@ const RuntimeSignature &signatureFor(RtSig sig) {
             entries[i].nothrow = effects.nothrow;
             entries[i].readonly = effects.readonly;
             entries[i].pure = effects.pure;
+            applyOwnershipEffects(entries[i], data::kRtSigSymbolNames[i]);
         }
         return entries;
     }();
@@ -2240,6 +2250,7 @@ RuntimeSignature buildSignature(const DescriptorRow &row) {
     signature.nothrow = signature.nothrow || effects.nothrow;
     signature.readonly = signature.readonly || effects.readonly;
     signature.pure = signature.pure || effects.pure;
+    applyOwnershipEffects(signature, row.name);
     return signature;
 }
 

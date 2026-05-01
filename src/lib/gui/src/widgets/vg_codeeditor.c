@@ -1380,7 +1380,7 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
     // Allocate initial lines
     editor->lines = calloc(INITIAL_LINE_CAPACITY, sizeof(vg_code_line_t));
     if (!editor->lines) {
-        free(editor);
+        vg_widget_destroy(&editor->base);
         return NULL;
     }
     editor->line_capacity = INITIAL_LINE_CAPACITY;

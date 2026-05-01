@@ -22,6 +22,7 @@
 
 #include "il/runtime/signatures/Registry.hpp"
 #include "il/runtime/HelperEffects.hpp"
+#include "il/runtime/RuntimeOwnership.hpp"
 
 #include <mutex>
 #include <stdexcept>
@@ -72,7 +73,10 @@ bool sameKinds(const std::vector<SigParam> &lhs, const std::vector<SigParam> &rh
 bool sameSignature(const Signature &lhs, const Signature &rhs) {
     return lhs.name == rhs.name && sameKinds(lhs.params, rhs.params) &&
            sameKinds(lhs.rets, rhs.rets) && lhs.nothrow == rhs.nothrow &&
-           lhs.readonly == rhs.readonly && lhs.pure == rhs.pure;
+           lhs.readonly == rhs.readonly && lhs.pure == rhs.pure &&
+           lhs.consumedArgMask == rhs.consumedArgMask &&
+           lhs.retainedArgMask == rhs.retainedArgMask &&
+           lhs.returnsOwned == rhs.returnsOwned && lhs.mayAllocate == rhs.mayAllocate;
 }
 } // namespace
 
@@ -87,6 +91,11 @@ Signature apply_effect_overrides(Signature signature) {
     signature.nothrow = signature.nothrow || effects.nothrow;
     signature.readonly = signature.readonly || effects.readonly;
     signature.pure = signature.pure || effects.pure;
+    const auto ownership = il::runtime::classifyRuntimeOwnership(signature.name);
+    signature.consumedArgMask |= ownership.consumedArgMask;
+    signature.retainedArgMask |= ownership.retainedArgMask;
+    signature.returnsOwned = signature.returnsOwned || ownership.returnsOwned;
+    signature.mayAllocate = signature.mayAllocate || ownership.mayAllocate;
     return signature;
 }
 

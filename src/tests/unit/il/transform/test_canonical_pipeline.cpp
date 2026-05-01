@@ -152,21 +152,21 @@ TEST(CanonicalPipeline, O1PipelineExcludesLICM) {
     EXPECT_FALSE(found);
 }
 
-// The canonical O2 pipeline must include SCCP, inline, loop-unroll, check-opt,
-// full peephole, mem2reg, and full LICM.
+// The canonical O2 pipeline must include SCCP, inline-o2, loop-unroll,
+// check-opt, full peephole, mem2reg, and full LICM.
 // The old Zia frontend O2 pipeline excluded all of these.
 TEST(CanonicalPipeline, O2PipelineContainsKeyPasses) {
     PassManager pm;
     const PassManager::Pipeline *pipeline = pm.getPipeline("O2");
     ASSERT_NE(pipeline, nullptr);
 
-    bool hasSccp = false, hasInline = false, hasLoopUnroll = false, hasCheckOpt = false;
+    bool hasSccp = false, hasInlineO2 = false, hasLoopUnroll = false, hasCheckOpt = false;
     bool hasMem2Reg = false, hasLICM = false, hasLICMSafe = false, hasPeephole = false;
     for (const auto &id : *pipeline) {
         if (id == "sccp")
             hasSccp = true;
-        if (id == "inline")
-            hasInline = true;
+        if (id == "inline-o2")
+            hasInlineO2 = true;
         if (id == "loop-unroll")
             hasLoopUnroll = true;
         if (id == "check-opt")
@@ -181,7 +181,7 @@ TEST(CanonicalPipeline, O2PipelineContainsKeyPasses) {
             hasPeephole = true;
     }
     EXPECT_TRUE(hasSccp);
-    EXPECT_TRUE(hasInline);
+    EXPECT_TRUE(hasInlineO2);
     EXPECT_TRUE(hasLoopUnroll);
     EXPECT_TRUE(hasCheckOpt);
     EXPECT_TRUE(hasMem2Reg);

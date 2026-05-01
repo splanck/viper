@@ -26,6 +26,8 @@
 #include "il/utils/UseDefInfo.hpp"
 #include "il/utils/Utils.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -65,6 +67,20 @@ bool isOverflowOpcode(Opcode op) {
     return op == Opcode::IAddOvf || op == Opcode::ISubOvf || op == Opcode::IMulOvf;
 }
 
+/// @brief Return the plain arithmetic opcode corresponding to a checked op.
+std::optional<Opcode> plainOpcodeForOverflow(Opcode op) {
+    switch (op) {
+        case Opcode::IAddOvf:
+            return Opcode::Add;
+        case Opcode::ISubOvf:
+            return Opcode::Sub;
+        case Opcode::IMulOvf:
+            return Opcode::Mul;
+        default:
+            return std::nullopt;
+    }
+}
+
 /// @brief Check if a signed addition of two constants overflows.
 bool addOverflows(int64_t a, int64_t b) {
     if (b > 0 && a > std::numeric_limits<int64_t>::max() - b)
@@ -95,6 +111,348 @@ bool mulOverflows(int64_t a, int64_t b) {
         return a > std::numeric_limits<int64_t>::max() / b;
     else
         return a < std::numeric_limits<int64_t>::min() / b;
+}
+
+struct IntRange {
+    std::optional<int64_t> lower;
+    std::optional<int64_t> upper;
+};
+
+IntRange exactRange(int64_t value) {
+    return IntRange{value, value};
+}
+
+std::optional<IntRange> rangeForValue(
+    const Value &value,
+    const std::unordered_map<unsigned, IntRange> &ranges) {
+    if (value.kind == Value::Kind::ConstInt)
+        return exactRange(value.i64);
+    if (value.kind != Value::Kind::Temp)
+        return std::nullopt;
+    auto it = ranges.find(value.id);
+    if (it == ranges.end())
+        return std::nullopt;
+    return it->second;
+}
+
+std::optional<int64_t> addCheckedValue(int64_t lhs, int64_t rhs) {
+    if (addOverflows(lhs, rhs))
+        return std::nullopt;
+    return lhs + rhs;
+}
+
+std::optional<int64_t> subCheckedValue(int64_t lhs, int64_t rhs) {
+    if (subOverflows(lhs, rhs))
+        return std::nullopt;
+    return lhs - rhs;
+}
+
+std::optional<int64_t> mulCheckedValue(int64_t lhs, int64_t rhs) {
+    if (mulOverflows(lhs, rhs))
+        return std::nullopt;
+    return lhs * rhs;
+}
+
+std::optional<IntRange> addRanges(const IntRange &lhs, const IntRange &rhs) {
+    const int64_t lhsLower = lhs.lower.value_or(std::numeric_limits<int64_t>::min());
+    const int64_t lhsUpper = lhs.upper.value_or(std::numeric_limits<int64_t>::max());
+    const int64_t rhsLower = rhs.lower.value_or(std::numeric_limits<int64_t>::min());
+    const int64_t rhsUpper = rhs.upper.value_or(std::numeric_limits<int64_t>::max());
+    auto lower = addCheckedValue(lhsLower, rhsLower);
+    auto upper = addCheckedValue(lhsUpper, rhsUpper);
+    if (!lower || !upper)
+        return std::nullopt;
+
+    IntRange result;
+    if (lhs.lower || rhs.lower)
+        result.lower = *lower;
+    if (lhs.upper || rhs.upper)
+        result.upper = *upper;
+    return result;
+}
+
+std::optional<IntRange> subRanges(const IntRange &lhs, const IntRange &rhs) {
+    const int64_t lhsLower = lhs.lower.value_or(std::numeric_limits<int64_t>::min());
+    const int64_t lhsUpper = lhs.upper.value_or(std::numeric_limits<int64_t>::max());
+    const int64_t rhsLower = rhs.lower.value_or(std::numeric_limits<int64_t>::min());
+    const int64_t rhsUpper = rhs.upper.value_or(std::numeric_limits<int64_t>::max());
+    auto lower = subCheckedValue(lhsLower, rhsUpper);
+    auto upper = subCheckedValue(lhsUpper, rhsLower);
+    if (!lower || !upper)
+        return std::nullopt;
+
+    IntRange result;
+    if (lhs.lower || rhs.upper)
+        result.lower = *lower;
+    if (lhs.upper || rhs.lower)
+        result.upper = *upper;
+    return result;
+}
+
+std::optional<IntRange> mulRanges(const IntRange &lhs, const IntRange &rhs) {
+    if (!lhs.lower || !lhs.upper || !rhs.lower || !rhs.upper)
+        return std::nullopt;
+
+    std::array<std::optional<int64_t>, 4> products{
+        mulCheckedValue(*lhs.lower, *rhs.lower),
+        mulCheckedValue(*lhs.lower, *rhs.upper),
+        mulCheckedValue(*lhs.upper, *rhs.lower),
+        mulCheckedValue(*lhs.upper, *rhs.upper),
+    };
+    for (const auto &product : products)
+        if (!product)
+            return std::nullopt;
+
+    int64_t lo = *products[0];
+    int64_t hi = *products[0];
+    for (const auto &product : products) {
+        lo = std::min(lo, *product);
+        hi = std::max(hi, *product);
+    }
+    return IntRange{lo, hi};
+}
+
+std::optional<IntRange> mergeIncomingRange(const IntRange &lhs, const IntRange &rhs) {
+    IntRange merged;
+    if (lhs.lower && rhs.lower)
+        merged.lower = std::min(*lhs.lower, *rhs.lower);
+    if (lhs.upper && rhs.upper)
+        merged.upper = std::max(*lhs.upper, *rhs.upper);
+    if (!merged.lower && !merged.upper)
+        return std::nullopt;
+    return merged;
+}
+
+bool deriveCompareBranchRange(const Instr &cmp,
+                              size_t branchIndex,
+                              Value &constrainedValue,
+                              IntRange &range) {
+    if (cmp.operands.size() != 2)
+        return false;
+
+    Opcode op = cmp.op;
+    Value variable;
+    int64_t constant = 0;
+
+    if (cmp.operands[0].kind == Value::Kind::Temp &&
+        cmp.operands[1].kind == Value::Kind::ConstInt) {
+        variable = cmp.operands[0];
+        constant = cmp.operands[1].i64;
+    } else if (cmp.operands[0].kind == Value::Kind::ConstInt &&
+               cmp.operands[1].kind == Value::Kind::Temp) {
+        variable = cmp.operands[1];
+        constant = cmp.operands[0].i64;
+        switch (op) {
+            case Opcode::SCmpLT:
+                op = Opcode::SCmpGT;
+                break;
+            case Opcode::SCmpLE:
+                op = Opcode::SCmpGE;
+                break;
+            case Opcode::SCmpGT:
+                op = Opcode::SCmpLT;
+                break;
+            case Opcode::SCmpGE:
+                op = Opcode::SCmpLE;
+                break;
+            default:
+                break;
+        }
+    } else {
+        return false;
+    }
+
+    if (variable.kind != Value::Kind::Temp)
+        return false;
+
+    IntRange fact;
+    const bool trueBranch = branchIndex == 0;
+    switch (op) {
+        case Opcode::SCmpLT:
+            if (trueBranch) {
+                if (constant == std::numeric_limits<int64_t>::min())
+                    return false;
+                fact.upper = constant - 1;
+            } else {
+                fact.lower = constant;
+            }
+            break;
+        case Opcode::SCmpLE:
+            if (trueBranch) {
+                fact.upper = constant;
+            } else {
+                if (constant == std::numeric_limits<int64_t>::max())
+                    return false;
+                fact.lower = constant + 1;
+            }
+            break;
+        case Opcode::SCmpGT:
+            if (trueBranch) {
+                if (constant == std::numeric_limits<int64_t>::max())
+                    return false;
+                fact.lower = constant + 1;
+            } else {
+                fact.upper = constant;
+            }
+            break;
+        case Opcode::SCmpGE:
+            if (trueBranch) {
+                fact.lower = constant;
+            } else {
+                if (constant == std::numeric_limits<int64_t>::min())
+                    return false;
+                fact.upper = constant - 1;
+            }
+            break;
+        case Opcode::ICmpEq:
+            if (!trueBranch)
+                return false;
+            fact = exactRange(constant);
+            break;
+        default:
+            return false;
+    }
+
+    constrainedValue = variable;
+    range = fact;
+    return true;
+}
+
+std::unordered_map<unsigned, IntRange> edgeRangesForTarget(const BasicBlock &pred,
+                                                           const Instr &term,
+                                                           size_t branchIndex,
+                                                           const BasicBlock &target) {
+    std::unordered_map<unsigned, IntRange> facts;
+    if (term.labels.size() <= branchIndex)
+        return facts;
+
+    if (branchIndex < term.brArgs.size()) {
+        const auto &args = term.brArgs[branchIndex];
+        for (size_t i = 0; i < args.size() && i < target.params.size(); ++i)
+            if (args[i].kind == Value::Kind::ConstInt)
+                facts[target.params[i].id] = exactRange(args[i].i64);
+    }
+
+    if (term.op != Opcode::CBr || term.operands.size() != 1)
+        return facts;
+
+    const Value &cond = term.operands.front();
+    if (cond.kind != Value::Kind::Temp)
+        return facts;
+
+    const Instr *cmp = nullptr;
+    for (const auto &instr : pred.instructions) {
+        if (instr.result && *instr.result == cond.id) {
+            cmp = &instr;
+            break;
+        }
+    }
+    if (!cmp)
+        return facts;
+
+    Value constrained;
+    IntRange range;
+    if (!deriveCompareBranchRange(*cmp, branchIndex, constrained, range))
+        return facts;
+
+    facts[constrained.id] = range;
+
+    if (branchIndex >= term.brArgs.size())
+        return facts;
+
+    const auto &args = term.brArgs[branchIndex];
+    for (size_t i = 0; i < args.size() && i < target.params.size(); ++i) {
+        if (valueEquals(args[i], constrained))
+            facts[target.params[i].id] = range;
+    }
+
+    return facts;
+}
+
+std::unordered_map<unsigned, IntRange> collectIncomingRanges(const Function &function,
+                                                             const BasicBlock &target) {
+    std::unordered_map<unsigned, IntRange> merged;
+    bool sawPred = false;
+
+    for (const auto &pred : function.blocks) {
+        if (pred.instructions.empty())
+            continue;
+        const Instr &term = pred.instructions.back();
+        for (size_t branchIndex = 0; branchIndex < term.labels.size(); ++branchIndex) {
+            if (term.labels[branchIndex] != target.label)
+                continue;
+
+            auto edgeFacts = edgeRangesForTarget(pred, term, branchIndex, target);
+            if (!sawPred) {
+                merged = std::move(edgeFacts);
+                sawPred = true;
+                continue;
+            }
+
+            for (auto it = merged.begin(); it != merged.end();) {
+                auto rhs = edgeFacts.find(it->first);
+                if (rhs == edgeFacts.end()) {
+                    it = merged.erase(it);
+                    continue;
+                }
+                auto combined = mergeIncomingRange(it->second, rhs->second);
+                if (!combined) {
+                    it = merged.erase(it);
+                    continue;
+                }
+                it->second = *combined;
+                ++it;
+            }
+        }
+    }
+
+    return merged;
+}
+
+std::optional<IntRange> computeInstructionRange(
+    const Instr &instr,
+    const std::unordered_map<unsigned, IntRange> &ranges) {
+    if (instr.operands.size() >= 2) {
+        auto lhs = rangeForValue(instr.operands[0], ranges);
+        auto rhs = rangeForValue(instr.operands[1], ranges);
+        switch (instr.op) {
+            case Opcode::Add:
+            case Opcode::IAddOvf:
+                if (lhs && rhs)
+                    return addRanges(*lhs, *rhs);
+                break;
+            case Opcode::Sub:
+            case Opcode::ISubOvf:
+                if (lhs && rhs)
+                    return subRanges(*lhs, *rhs);
+                break;
+            case Opcode::Mul:
+            case Opcode::IMulOvf:
+                if (lhs && rhs)
+                    return mulRanges(*lhs, *rhs);
+                break;
+            case Opcode::And: {
+                if (instr.operands[1].kind == Value::Kind::ConstInt &&
+                    instr.operands[1].i64 >= 0) {
+                    return IntRange{0, instr.operands[1].i64};
+                }
+                if (instr.operands[0].kind == Value::Kind::ConstInt &&
+                    instr.operands[0].i64 >= 0) {
+                    return IntRange{0, instr.operands[0].i64};
+                }
+                break;
+            }
+            case Opcode::LShr:
+                if (instr.operands[1].kind == Value::Kind::ConstInt &&
+                    instr.operands[1].i64 > 0 && instr.operands[1].i64 < 64) {
+                    return IntRange{0, std::numeric_limits<int64_t>::max()};
+                }
+                break;
+            default:
+                break;
+        }
+    }
+    return std::nullopt;
 }
 
 /// @brief Try to strength-reduce an overflow-checked arithmetic op to its plain
@@ -531,6 +889,35 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
                 instr.op = Opcode::Sub;
                 changed = true;
             }
+        }
+    }
+
+    // =========================================================================
+    // Phase 0.6: Range-backed overflow elimination
+    // =========================================================================
+    // Seed simple integer ranges from comparison-controlled incoming edges and
+    // propagate them through straight-line arithmetic. This catches hot counted
+    // loop bodies where the header condition proves the induction increment is
+    // safe (for example, `%i < 50_000_000` before `%i + 1`) while keeping the
+    // proof syntactically visible to the verifier.
+    for (auto &block : function.blocks) {
+        auto ranges = collectIncomingRanges(function, block);
+
+        for (auto &instr : block.instructions) {
+            std::optional<IntRange> resultRange = computeInstructionRange(instr, ranges);
+
+            if (resultRange) {
+                if (auto plainOp = plainOpcodeForOverflow(instr.op)) {
+                    instr.op = *plainOp;
+                    changed = true;
+                }
+                if (instr.result)
+                    ranges[*instr.result] = *resultRange;
+                continue;
+            }
+
+            if (instr.result)
+                ranges.erase(*instr.result);
         }
     }
 

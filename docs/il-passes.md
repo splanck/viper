@@ -17,6 +17,9 @@ last-verified: 2026-04-30
   receive lines like `[pass licm] bb 6 -> 6, inst 42 -> 40, analyses M:0 F:2, time 1500us`.
 - Statistics track IR size (basic blocks and instructions), analysis recomputations, and wall-clock duration per pass to
   highlight redundant work.
+- The `viper il-opt` CLI exposes the same instrumentation with `--pass-stats`. Use `--bisect-pipeline` with a named
+  pipeline to run each prefix on a fresh copy of the input and print the resulting block/instruction count; this is the
+  fastest way to isolate verifier failures introduced by a specific optimization pass.
 
 ## Post-Dominator Tree Analysis (`"post-dominators"`)
 
@@ -53,6 +56,12 @@ last-verified: 2026-04-30
   `pure` -> `NoModRef`, `readonly` -> `Ref`, everything else -> `ModRef`.
 - Runtime signature lookup uses the generated runtime table directly for known helpers and treats unknown callees as
   `ModRef`.
+- Runtime signature metadata also records string/reference ownership effects. Helpers such as `rt_str_concat` consume
+  their string arguments and return an owned result; retain/release helpers are modeled explicitly so optimizers do not
+  reorder or eliminate calls across ownership boundaries.
+- `const_str` materializes an owned runtime string handle. It is intentionally modeled as side-effecting and
+  read/write-memory, so LICM, GVN, EarlyCSE, and related passes cannot hoist or merge it until a retain-insertion pass
+  exists for duplicated uses.
 
 ## SimplifyCFG
 
@@ -101,8 +110,9 @@ Promotes alloca/store/load patterns to pure SSA values:
 
 - Enhanced cost model considers multiple factors beyond raw instruction count:
   - Base instruction/block budgets (defaults: `instrThreshold = 80` instructions, `blockBudget = 1` block,
-    `maxInlineDepth = 3`). `blockBudget` was temporarily raised to 8 but has been reverted to 1 until open
-    correctness issues in viperide and chess-zia are resolved.
+    `maxInlineDepth = 3`). The default `inline` pass remains single-block for O1 stability.
+  - The O2 pipeline uses `inline-o2`, which raises the instruction threshold to 120, permits up to four blocks, caps
+    module growth at 4000 instructions, and requires multi-block callees to have a single return continuation.
   - Constant argument bonus: each constant arg reduces effective cost, enabling more inlining when optimization
     opportunities exist
   - Nested call penalty: functions with many internal calls incur code growth penalty
@@ -111,8 +121,22 @@ Promotes alloca/store/load patterns to pure SSA values:
   - Total code growth tracking: limits module-wide instruction expansion
 - Inline depth capped at 3 to allow multi-level utility-function chains to collapse; skips EH-sensitive opcodes and
   recursive calls.
+- `inline-o2` runs to a bounded fixpoint so nested helper chains exposed by earlier inlining can collapse in one O2
+  pipeline invocation.
+- Callee entry-block parameters are mapped to call operands by exact id when possible and by position/type otherwise.
+  This supports textual IL where the function prototype and entry block use different SSA names for the same ABI
+  parameters.
 - Rewrites calls by cloning the callee CFG, threading branch arguments for block parameters, and branching returns to a
   continuation block at the call site.
+
+## Benchmark Regression Coverage
+
+- `test_il_backend_benchmark_regressions` checks the two benchmark-discovered O2 hazards in pure IL:
+  owned string work must stay inside consuming loops unless it is folded into an equivalent owned literal, checked
+  unsigned division/remainder by a power of two must reduce to `lshr`/`and`, signed power-of-two remainder must avoid
+  `srem`, and O2 inlining must handle prototype/entry parameter name mismatches.
+- `test_codegen_arm64_benchmark_regressions` runs reduced native ARM64 versions of the same cases under `-O2` on ARM64
+  hosts. The string test returns the accumulated concatenated length; the unsigned-division loop returns a fixed checksum.
 
 ### Threshold Changes
 
@@ -151,7 +175,7 @@ Promotes alloca/store/load patterns to pure SSA values:
 
 ## Peephole
 
-The peephole pass applies 57 pattern-based algebraic simplifications:
+The peephole pass applies 61 pattern-based algebraic simplifications plus a small set of procedural rewrites:
 
 - **Bitwise identities**: `x & -1 = x`, `x | 0 = x`, `x ^ 0 = x`, `x & 0 = 0`, `x ^ x = 0`, `x | x = x`
 - **Division identities** (on div-by-zero–checked variants `SDivChk0`, `UDivChk0`, `SRemChk0`, `URemChk0`):
@@ -166,6 +190,12 @@ The peephole pass applies 57 pattern-based algebraic simplifications:
   (ICmpEq/Ne, SCmpLT/LE/GT/GE, UCmpLT/LE/GT/GE). Float reflexive comparisons are intentionally skipped because NaN
   makes `fcmp.* %x, %x` non-reflexive under IEEE-754 semantics.
 - **Shift identities**: `x << 0 = x`, `x >> 0 = x`, `0 << y = 0`, `0 >> y = 0`
+- **Unsigned power-of-two division/remainder**: `udiv`/`urem` by constant powers of two become `lshr`/`and`.
+- **Signed power-of-two division/remainder**: `sdiv`/`srem` by positive powers of two expand to sign-bias shift/mask
+  sequences so optimized IL can avoid native signed division while preserving truncate-toward-zero semantics.
+- **Owned literal concat folding**: when `rt_str_concat` or `Viper.String.Concat` consumes two `const_str` results that
+  have no other uses in the block, the pass replaces the whole sequence with one owned `const_str` for the combined
+  literal and removes the consumed literal materializations.
 
 The pass also simplifies CBr terminators when the branch condition is a comparison of two constants:
 - Float constant comparisons fold the branch to an unconditional jump
@@ -255,9 +285,12 @@ Threads jumps through blocks with predictable branch conditions:
     This prevents type-mismatch verifier errors when the check result is used as a narrower-typed discriminant.
 - Guard-based `isub.ovf x, K` demotion requires a proof that covers the relevant overflow side. A lower-bound guard can
   demote non-negative `K`; negative constants require an upper-bound proof and remain checked.
-- The verifier still rejects plain unchecked signed arithmetic by default. It accepts a demoted `sub` only when every
-  incoming edge to the containing block carries the exact lower-bound proof emitted by CheckOpt; unguarded `sub`
-  remains invalid IL.
+- Range-backed overflow demotion uses comparison-edge and branch-argument facts to demote
+  `iadd.ovf`/`isub.ovf`/`imul.ovf` only when the verifier can independently reconstruct the same proof. This primarily
+  targets rotated counted-loop increments and arithmetic exposed by inlining/peephole rewrites.
+- The verifier still rejects plain unchecked signed arithmetic by default. It accepts demoted `add`/`sub`/`mul` only
+  when its local range reconstruction proves the operation cannot overflow; unguarded plain arithmetic remains invalid
+  frontend IL.
 - Hoists loop-invariant checks from loop headers to preheaders when the loop is EH-insensitive and operands are
   invariant, preserving trap behaviour.
 - Safety rules: a check is eliminated only if the dominating check block dominates the use-site block; hoisting is
@@ -391,7 +424,7 @@ instead of the registered canonical O1/O2 pipelines:
 | Level | Old (custom) | New (canonical) |
 |-------|-------------|-----------------|
 | O1 | 4 passes (simplify-cfg, mem2reg, peephole, dce) | Registered O1: SimplifyCFG, Mem2Reg, SCCP, ConstFold, Peephole, DCE, Inline |
-| O2 | 9 passes (missing SCCP, loop passes, inline, check-opt) | Registered O2: Mem2Reg, loop shaping, full LICM, SCCP, CheckOpt, EHOpt, DCE, SiblingRecursion, Inline, Peephole, GVN, Reassociate, EarlyCSE, DSE, LateCleanup |
+| O2 | 9 passes (missing SCCP, loop passes, inline, check-opt) | Registered O2: Mem2Reg, loop shaping, full LICM, SCCP, CheckOpt, EHOpt, DCE, SiblingRecursion, fixpoint Inline, post-inline loop cleanup, Peephole, GVN, Reassociate, EarlyCSE, DSE, LateCleanup |
 
 `mem2reg` is canonical in O1/O2 after dominance, edge-repair, non-entry alloca, and loop-reentered allocation guards made
 SSA promotion verifier-clean. Full memory-hoisting `LICM` is canonical in O2 after load-safety and BasicAA mod/ref guards

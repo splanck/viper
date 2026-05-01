@@ -554,7 +554,7 @@ TEST(PeepholeOptimizations, EmitCbnz) {
     emitter.emitFunction(oss, fn);
     const std::string output = oss.str();
 
-    EXPECT_NE(output.find("cbnz x0, .Ltarget"), std::string::npos);
+    EXPECT_NE(output.find("cbnz x0, L.Ltarget"), std::string::npos);
 }
 
 TEST(PeepholeOptimizations, EmitMadd) {

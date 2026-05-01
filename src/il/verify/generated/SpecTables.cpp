@@ -770,7 +770,7 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
         static_cast<uint8_t>(1),
         static_cast<uint8_t>(1),
         {il::core::TypeCategory::Ptr, il::core::TypeCategory::None, il::core::TypeCategory::None},
-        false,
+        true,
         static_cast<uint8_t>(0),
         false,
         VerifyStrategy::ConstStr,

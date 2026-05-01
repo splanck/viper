@@ -329,6 +329,7 @@ static void test_null_inputs() {
     assert(rt_parse_int_radix(NULL, 10, 99) == 99);
 
     rt_string bogus = (rt_string)(uintptr_t)1;
+    assert(rt_string_is_handle((const void *)bogus) == 0);
     assert(rt_parse_try_int(bogus, &i) == 0);
     assert(rt_parse_try_num(bogus, &d) == 0);
     assert(rt_parse_try_bool(bogus, &b) == 0);

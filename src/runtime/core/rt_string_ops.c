@@ -215,7 +215,8 @@ static void rt_string_registry_remove_locked_(rt_string s) {
 
 /// @brief Probe the registry for `s`. Returns 1 if found, 0 otherwise.
 static int rt_string_registry_contains_locked_(const rt_string s) {
-    if (!s || !g_string_registry_.slots || g_string_registry_.capacity == 0)
+    if (!s || s == RT_STRING_REG_TOMBSTONE || !g_string_registry_.slots ||
+        g_string_registry_.capacity == 0)
         return 0;
     const size_t mask = g_string_registry_.capacity - 1;
     size_t idx = (size_t)(rt_string_ptr_hash_(s) & mask);
@@ -517,7 +518,7 @@ rt_string rt_str_from_lit(const char *bytes, size_t len) {
 /// Used at language boundaries where a `void*` could be either a
 /// real string or a raw object — the registry lookup tells them apart.
 int8_t rt_string_is_handle(const void *p) {
-    if (!p)
+    if (!p || p == (const void *)RT_STRING_REG_TOMBSTONE)
         return 0;
     rt_string_registry_lock_();
     int found = rt_string_registry_contains_locked_((rt_string)(uintptr_t)p);

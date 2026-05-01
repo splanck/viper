@@ -209,7 +209,6 @@ MemoryEffects memoryEffects(Opcode op) noexcept {
         case Opcode::Trunc1:
         case Opcode::GEP:
         case Opcode::AddrOf:
-        case Opcode::ConstStr:
         case Opcode::GAddr:
         case Opcode::ConstNull:
         case Opcode::Br:
@@ -217,6 +216,9 @@ MemoryEffects memoryEffects(Opcode op) noexcept {
         case Opcode::SwitchI32:
         case Opcode::Ret:
             return MemoryEffects::None;
+
+        case Opcode::ConstStr:
+            return MemoryEffects::ReadWrite;
 
         default:
             return MemoryEffects::Unknown;

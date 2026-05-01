@@ -17,7 +17,7 @@
         ]
       },
       "flags": {
-        "side_effects": false,
+        "side_effects": true,
         "successors": 0,
         "terminator": false
       },

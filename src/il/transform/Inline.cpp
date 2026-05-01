@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -102,6 +103,8 @@ struct InlineCost {
         if (!isInlinable())
             return false;
         if (blockCount > config.blockBudget)
+            return false;
+        if (blockCount > 1 && config.requireSingleReturnForMultiBlock && returnCount != 1)
             return false;
         if (callSites > kMaxCallSites)
             return false;
@@ -427,28 +430,39 @@ bool inlineCallSite(Function &caller,
     if (callInstr.operands.size() != callee.params.size())
         return false;
 
-    // Skip inlining callees that were already modified by a prior inline.
-    for (const auto &B : callee.blocks) {
-        if (B.label.find(".inline.") != std::string::npos)
-            return false;
-    }
-
-    // Skip inlining when the callee's entry block has params that can't ALL
-    // be mapped to function params. After mem2reg + SimplifyCFG, the entry
-    // block may have loop-carried params or rewritten param IDs that don't
-    // correspond to any function param. The inline pass can only provide call
-    // operands (matching function params), not loop-internal values.
+    // Map entry-block params to call operands. Textual IL commonly names
+    // function params and entry block params independently:
+    //
+    //   func @f(i64 %x) -> i64 {
+    //   entry(%x0: i64):
+    //
+    // Older inliner logic required the ids to match, causing otherwise-valid
+    // tiny callees to be skipped. Prefer exact id matches, then fall back to
+    // positional type-compatible mapping for canonical entry params.
+    std::vector<size_t> entryParamToCallArg;
     if (!callee.blocks.empty()) {
-        for (const auto &ep : callee.blocks.front().params) {
-            bool mapped = false;
-            for (const auto &fp : callee.params) {
-                if (fp.id == ep.id) {
-                    mapped = true;
+        const auto &entryParams = callee.blocks.front().params;
+        entryParamToCallArg.reserve(entryParams.size());
+        for (size_t epIdx = 0; epIdx < entryParams.size(); ++epIdx) {
+            const auto &ep = entryParams[epIdx];
+            std::optional<size_t> mappedIndex;
+            for (size_t fpIdx = 0; fpIdx < callee.params.size(); ++fpIdx) {
+                const auto &fp = callee.params[fpIdx];
+                if (fp.id == ep.id && fp.type.kind == ep.type.kind) {
+                    mappedIndex = fpIdx;
                     break;
                 }
             }
-            if (!mapped)
+
+            if (!mappedIndex && entryParams.size() == callee.params.size() &&
+                epIdx < callee.params.size() &&
+                callee.params[epIdx].type.kind == ep.type.kind) {
+                mappedIndex = epIdx;
+            }
+
+            if (!mappedIndex)
                 return false;
+            entryParamToCallArg.push_back(*mappedIndex);
         }
     }
 
@@ -783,26 +797,14 @@ bool inlineCallSite(Function &caller,
     jump.labels.push_back(labelMap.at(callee.blocks.front().label));
 
     // Pass call arguments as branch args when the entry block has params.
-    // The pre-mutation validation guarantees all entry block params can be
-    // mapped to function params by ID. Map each to its call operand.
     const auto &origEntryParams = callee.blocks.front().params;
     if (!origEntryParams.empty()) {
         std::vector<Value> args;
         args.reserve(origEntryParams.size());
-        for (const auto &ep : origEntryParams) {
-            bool found = false;
-            for (size_t k = 0; k < callee.params.size(); ++k) {
-                if (callee.params[k].id == ep.id && k < callInstr.operands.size()) {
-                    args.push_back(callInstr.operands[k]);
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                // Entry block param has no matching function param — bail out.
-                // This can happen after SimplifyCFG/mem2reg rewrites params.
+        for (size_t mappedIndex : entryParamToCallArg) {
+            if (mappedIndex >= callInstr.operands.size())
                 return false;
-            }
+            args.push_back(callInstr.operands[mappedIndex]);
         }
         jump.brArgs.push_back(std::move(args));
     }
@@ -835,19 +837,6 @@ std::string_view Inliner::id() const {
 }
 
 PreservedAnalyses Inliner::run(Module &module, AnalysisManager &) {
-    viper::analysis::CallGraph cg = viper::analysis::buildCallGraph(module);
-
-    std::unordered_map<std::string, const Function *> functionLookup;
-    std::unordered_map<std::string, InlineCost> costCache;
-
-    functionLookup.reserve(module.functions.size());
-    costCache.reserve(module.functions.size());
-
-    for (const auto &fn : module.functions) {
-        functionLookup.emplace(fn.name, &fn);
-        costCache.emplace(fn.name, evaluateInlineCost(fn, cg));
-    }
-
     unsigned codeGrowth = 0;
 
     BlockDepthMap depths;
@@ -858,79 +847,101 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &) {
     bool changed = false;
     std::unordered_set<std::string> changedFunctions;
 
-    for (size_t fnIdx = 0; fnIdx < module.functions.size(); ++fnIdx) {
-        Function &caller = module.functions[fnIdx];
+    const unsigned maxRounds = config_.aggressive ? 8U : 1U;
+    for (unsigned round = 0; round < maxRounds; ++round) {
+        viper::analysis::CallGraph cg = viper::analysis::buildCallGraph(module);
 
-        // Snapshot block count: only iterate ORIGINAL blocks, not ones added
-        // by inlining. Newly inlined blocks will be handled on the next pass
-        // invocation. This prevents unbounded growth when inlined code contains
-        // more calls.
-        const size_t originalBlockCount = caller.blocks.size();
-        for (size_t blockIdx = 0; blockIdx < originalBlockCount; ++blockIdx) {
-            BasicBlock &block = caller.blocks[blockIdx];
-            size_t instIdx = 0;
-            while (instIdx < block.instructions.size()) {
-                const Instr &I = block.instructions[instIdx];
-                if (!isDirectCall(I)) {
-                    ++instIdx;
-                    continue;
+        std::unordered_map<std::string, const Function *> functionLookup;
+        std::unordered_map<std::string, InlineCost> costCache;
+
+        functionLookup.reserve(module.functions.size());
+        costCache.reserve(module.functions.size());
+
+        for (const auto &fn : module.functions) {
+            functionLookup.emplace(fn.name, &fn);
+            costCache.emplace(fn.name, evaluateInlineCost(fn, cg));
+        }
+
+        bool roundChanged = false;
+
+        for (size_t fnIdx = 0; fnIdx < module.functions.size(); ++fnIdx) {
+            Function &caller = module.functions[fnIdx];
+
+            // Snapshot block count for this round. Newly inserted blocks are
+            // picked up on the next aggressive round, giving nested helper
+            // chains a bounded fixpoint without recursively editing a block
+            // while iterating it.
+            const size_t originalBlockCount = caller.blocks.size();
+            for (size_t blockIdx = 0; blockIdx < originalBlockCount; ++blockIdx) {
+                BasicBlock &block = caller.blocks[blockIdx];
+                size_t instIdx = 0;
+                while (instIdx < block.instructions.size()) {
+                    const Instr &I = block.instructions[instIdx];
+                    if (!isDirectCall(I)) {
+                        ++instIdx;
+                        continue;
+                    }
+
+                    auto calleeIt = functionLookup.find(I.callee);
+                    if (calleeIt == functionLookup.end()) {
+                        ++instIdx;
+                        continue;
+                    }
+                    const Function *callee = calleeIt->second;
+                    if (callee->name == caller.name) {
+                        ++instIdx;
+                        continue;
+                    }
+
+                    auto edgeIt = cg.edges.find(callee->name);
+                    if (edgeIt != cg.edges.end() &&
+                        std::find(edgeIt->second.begin(), edgeIt->second.end(), caller.name) !=
+                            edgeIt->second.end()) {
+                        ++instIdx;
+                        continue;
+                    }
+
+                    // Check code growth budget
+                    const InlineCost &cost = costCache.at(callee->name);
+                    if (codeGrowth + cost.instrCount > config_.maxCodeGrowth) {
+                        ++instIdx;
+                        continue;
+                    }
+
+                    // Use enhanced cost model with constant argument bonuses
+                    unsigned constArgs = countConstantArgs(I);
+                    if (!cost.withinBudget(config_, constArgs)) {
+                        ++instIdx;
+                        continue;
+                    }
+
+                    unsigned depth = getBlockDepth(depths, caller.name, block.label);
+                    if (!inlineCallSite(caller,
+                                        blockIdx,
+                                        instIdx,
+                                        *callee,
+                                        depth,
+                                        config_.maxInlineDepth,
+                                        depths,
+                                        functionLookup)) {
+                        ++instIdx;
+                        continue;
+                    }
+
+                    // Track code growth (callee instructions minus the call itself)
+                    if (cost.instrCount > 1)
+                        codeGrowth += cost.instrCount - 1;
+
+                    changed = true;
+                    roundChanged = true;
+                    changedFunctions.insert(caller.name);
+                    break; // block reshaped; move to next block
                 }
-
-                auto calleeIt = functionLookup.find(I.callee);
-                if (calleeIt == functionLookup.end()) {
-                    ++instIdx;
-                    continue;
-                }
-                const Function *callee = calleeIt->second;
-                if (callee->name == caller.name) {
-                    ++instIdx;
-                    continue;
-                }
-
-                auto edgeIt = cg.edges.find(callee->name);
-                if (edgeIt != cg.edges.end() &&
-                    std::find(edgeIt->second.begin(), edgeIt->second.end(), caller.name) !=
-                        edgeIt->second.end()) {
-                    ++instIdx;
-                    continue;
-                }
-
-                // Check code growth budget
-                const InlineCost &cost = costCache.at(callee->name);
-                if (codeGrowth + cost.instrCount > config_.maxCodeGrowth) {
-                    ++instIdx;
-                    continue;
-                }
-
-                // Use enhanced cost model with constant argument bonuses
-                unsigned constArgs = countConstantArgs(I);
-                if (!cost.withinBudget(config_, constArgs)) {
-                    ++instIdx;
-                    continue;
-                }
-
-                unsigned depth = getBlockDepth(depths, caller.name, block.label);
-                if (!inlineCallSite(caller,
-                                    blockIdx,
-                                    instIdx,
-                                    *callee,
-                                    depth,
-                                    config_.maxInlineDepth,
-                                    depths,
-                                    functionLookup)) {
-                    ++instIdx;
-                    continue;
-                }
-
-                // Track code growth (callee instructions minus the call itself)
-                if (cost.instrCount > 1)
-                    codeGrowth += cost.instrCount - 1;
-
-                changed = true;
-                changedFunctions.insert(caller.name);
-                break; // block reshaped; move to next block
             }
         }
+
+        if (!config_.aggressive || !roundChanged)
+            break;
     }
 
     if (!changed)
@@ -944,6 +955,16 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &) {
 void registerInlinePass(PassRegistry &registry) {
     registry.registerModulePass("inline", [](core::Module &module, AnalysisManager &analysis) {
         Inliner inliner;
+        return inliner.run(module, analysis);
+    });
+    registry.registerModulePass("inline-o2", [](core::Module &module, AnalysisManager &analysis) {
+        InlineCostConfig config;
+        config.instrThreshold = 120;
+        config.blockBudget = 4;
+        config.maxCodeGrowth = 4000;
+        config.aggressive = true;
+        config.requireSingleReturnForMultiBlock = true;
+        Inliner inliner(config);
         return inliner.run(module, analysis);
     });
 }

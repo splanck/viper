@@ -155,7 +155,8 @@ class PassManager {
 - Failure in any pass short-circuits the pipeline
 - Diagnostics accumulate throughout execution
 - Each pass reports success/failure via return value
-- `VIPER_CODEGEN_STATS=1` enables non-fatal diagnostics with backend peephole transformation counts
+- `VIPER_CODEGEN_STATS=1` enables non-fatal diagnostics with backend peephole transformation counts and MIR size/memory
+  mix counters
 
 ### Module State
 

@@ -57,6 +57,9 @@ struct InlineCostConfig {
 
     /// Enable aggressive inlining mode.
     bool aggressive = false;
+
+    /// Require multi-block callees to have a single return continuation.
+    bool requireSingleReturnForMultiBlock = true;
 };
 
 /// @brief Direct-call inliner module pass with a configurable cost model.

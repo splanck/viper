@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <cstddef>
 #include <initializer_list>
 #include <string>
@@ -48,6 +49,10 @@ struct Signature {
     bool nothrow = false;         ///< Helper is guaranteed not to throw.
     bool readonly = false;        ///< Helper may read memory but performs no writes.
     bool pure = false;            ///< Helper is free of side effects and memory access.
+    std::uint64_t consumedArgMask = 0; ///< IL-visible args whose ownership is consumed.
+    std::uint64_t retainedArgMask = 0; ///< IL-visible args whose reference count is retained.
+    bool returnsOwned = false;         ///< Helper returns an owned reference/string handle.
+    bool mayAllocate = false;          ///< Helper may allocate runtime-managed storage.
 };
 
 /// @brief Register an expected runtime signature in the debug registry.
@@ -72,7 +77,11 @@ inline Signature make_signature(std::string name,
                                 std::initializer_list<SigParam::Kind> returns = {},
                                 bool nothrow = false,
                                 bool readonly = false,
-                                bool pure = false) {
+                                bool pure = false,
+                                std::uint64_t consumedArgMask = 0,
+                                std::uint64_t retainedArgMask = 0,
+                                bool returnsOwned = false,
+                                bool mayAllocate = false) {
     Signature signature;
     signature.name = std::move(name);
     signature.params.reserve(params.size());
@@ -84,6 +93,10 @@ inline Signature make_signature(std::string name,
     signature.nothrow = nothrow;
     signature.readonly = readonly;
     signature.pure = pure;
+    signature.consumedArgMask = consumedArgMask;
+    signature.retainedArgMask = retainedArgMask;
+    signature.returnsOwned = returnsOwned;
+    signature.mayAllocate = mayAllocate;
     return signature;
 }
 

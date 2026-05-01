@@ -23,8 +23,10 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/runtime/HelperEffects.hpp"
+#include "il/runtime/RuntimeOwnership.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
+#include <cstdint>
 #include <string_view>
 
 namespace il::transform {
@@ -36,6 +38,10 @@ struct CallEffects {
     bool pure = false;     ///< Call has no observable side effects (can eliminate if unused).
     bool readonly = false; ///< Call may read memory but performs no writes (can reorder).
     bool nothrow = false;  ///< Call cannot throw or trap (can hoist across exception boundaries).
+    std::uint64_t consumedArgMask = 0; ///< IL-visible args whose ownership is consumed.
+    std::uint64_t retainedArgMask = 0; ///< IL-visible args whose reference count is retained.
+    bool returnsOwned = false;         ///< Call returns an owned reference/string handle.
+    bool mayAllocate = false;          ///< Call may allocate runtime-managed storage.
 
     /// @brief Returns true if the call can be safely eliminated when its result is unused.
     [[nodiscard]] constexpr bool canEliminateIfUnused() const noexcept {
@@ -46,7 +52,30 @@ struct CallEffects {
     [[nodiscard]] constexpr bool canReorderWithMemory() const noexcept {
         return pure || readonly;
     }
+
+    /// @brief True when argument @p index has ownership consumed by this call.
+    [[nodiscard]] constexpr bool consumesArg(unsigned index) const noexcept {
+        return index < 64 && (consumedArgMask & (std::uint64_t{1} << index)) != 0;
+    }
+
+    /// @brief True when argument @p index has its reference count retained by this call.
+    [[nodiscard]] constexpr bool retainsArg(unsigned index) const noexcept {
+        return index < 64 && (retainedArgMask & (std::uint64_t{1} << index)) != 0;
+    }
+
+    /// @brief True when any known ownership effect is attached to this call.
+    [[nodiscard]] constexpr bool hasOwnershipEffects() const noexcept {
+        return consumedArgMask != 0 || retainedArgMask != 0 || returnsOwned || mayAllocate;
+    }
 };
+
+inline void applyRuntimeOwnership(CallEffects &effects,
+                                  il::runtime::RuntimeOwnershipEffects ownership) {
+    effects.consumedArgMask |= ownership.consumedArgMask;
+    effects.retainedArgMask |= ownership.retainedArgMask;
+    effects.returnsOwned = effects.returnsOwned || ownership.returnsOwned;
+    effects.mayAllocate = effects.mayAllocate || ownership.mayAllocate;
+}
 
 /// @brief Query side-effect metadata for a call instruction.
 /// @details Runtime metadata is authoritative when available. Unknown callees
@@ -65,6 +94,11 @@ inline CallEffects classifyCallEffects(const il::core::Instr &instr) {
         effects.pure = sig->pure;
         effects.readonly = sig->readonly;
         effects.nothrow = sig->nothrow;
+        effects.consumedArgMask = sig->consumedArgMask;
+        effects.retainedArgMask = sig->retainedArgMask;
+        effects.returnsOwned = sig->returnsOwned;
+        effects.mayAllocate = sig->mayAllocate;
+        applyRuntimeOwnership(effects, il::runtime::classifyRuntimeOwnership(instr.callee));
         return effects;
     } else {
         const auto helperEffects = il::runtime::classifyHelperEffects(instr.callee);
@@ -74,6 +108,7 @@ inline CallEffects classifyCallEffects(const il::core::Instr &instr) {
             effects.nothrow = helperEffects.nothrow;
         }
     }
+    applyRuntimeOwnership(effects, il::runtime::classifyRuntimeOwnership(instr.callee));
 
     return effects;
 }
@@ -89,6 +124,11 @@ inline CallEffects classifyCalleeEffects(std::string_view callee) {
         effects.pure = sig->pure;
         effects.readonly = sig->readonly;
         effects.nothrow = sig->nothrow;
+        effects.consumedArgMask = sig->consumedArgMask;
+        effects.retainedArgMask = sig->retainedArgMask;
+        effects.returnsOwned = sig->returnsOwned;
+        effects.mayAllocate = sig->mayAllocate;
+        applyRuntimeOwnership(effects, il::runtime::classifyRuntimeOwnership(callee));
         return effects;
     }
 
@@ -96,6 +136,7 @@ inline CallEffects classifyCalleeEffects(std::string_view callee) {
     effects.pure = helperEffects.pure;
     effects.readonly = helperEffects.readonly;
     effects.nothrow = helperEffects.nothrow;
+    applyRuntimeOwnership(effects, il::runtime::classifyRuntimeOwnership(callee));
 
     return effects;
 }

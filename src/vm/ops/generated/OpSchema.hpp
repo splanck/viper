@@ -930,7 +930,7 @@ inline constexpr std::array<OpSchemaEntry, il::core::kNumOpcodes> kOpSchema = {
             {il::core::TypeCategory::Ptr,
              il::core::TypeCategory::None,
              il::core::TypeCategory::None},
-            false,
+            true,
             static_cast<uint8_t>(0),
             false,
             il::core::VMDispatch::ConstStr,

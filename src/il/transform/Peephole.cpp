@@ -54,15 +54,21 @@
 ///          peephole driver can focus on pass orchestration.
 
 #include "il/transform/Peephole.hpp"
+#include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
+#include "il/core/Global.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
+#include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
+#include "il/utils/Utils.hpp"
 
 #include <cmath>
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <unordered_map>
+#include <unordered_set>
 
 using namespace il::core;
 
@@ -105,6 +111,19 @@ static bool isConstInt(const Value &v, long long &out) {
 static bool isConstEq(const Value &v, long long target) {
     long long c;
     return isConstInt(v, c) && c == target;
+}
+
+/// @brief Recognize positive powers of two and return the shift amount.
+static bool isPositivePowerOfTwo(long long value, unsigned &shift) {
+    if (value <= 0)
+        return false;
+    const auto unsignedValue = static_cast<unsigned long long>(value);
+    if ((unsignedValue & (unsignedValue - 1ULL)) != 0)
+        return false;
+    shift = 0;
+    while ((1ULL << shift) != unsignedValue)
+        ++shift;
+    return true;
 }
 
 /// @brief Compare floating constants without losing signed-zero identity.
@@ -387,6 +406,250 @@ static bool applyRule(const Rule &rule, const Instr &in, Value &out) {
     return false;
 }
 
+/// @brief Rewrite unsigned division/remainder by a constant power of two.
+/// @details Checked variants are safe to rewrite because the matched divisor is
+///          a non-zero constant. Signed division is deliberately excluded: it
+///          rounds toward zero, while arithmetic shifts round toward -infinity.
+static bool tryRewriteUnsignedPowerOfTwoDivRem(Instr &in) {
+    if (in.operands.size() != 2)
+        return false;
+
+    const bool isDiv = in.op == Opcode::UDiv || in.op == Opcode::UDivChk0;
+    const bool isRem = in.op == Opcode::URem || in.op == Opcode::URemChk0;
+    if (!isDiv && !isRem)
+        return false;
+
+    long long divisor = 0;
+    unsigned shift = 0;
+    if (!isConstInt(in.operands[1], divisor) || !isPositivePowerOfTwo(divisor, shift) ||
+        shift == 0)
+        return false;
+
+    if (isDiv) {
+        in.op = Opcode::LShr;
+        in.operands[1] = Value::constInt(static_cast<long long>(shift));
+    } else {
+        in.op = Opcode::And;
+        in.operands[1] = Value::constInt(divisor - 1);
+    }
+    return true;
+}
+
+/// @brief Expand signed division/remainder by a positive power of two.
+/// @details Signed division rounds toward zero, so plain arithmetic shift is
+///          wrong for negative dividends. The expansion applies the standard
+///          sign-bias correction before the final shift/mask:
+///
+///   q = (x + ((x >> 63) & (d - 1))) >> log2(d)
+///   r = x - (q << log2(d))
+///
+/// The remainder form computes the rounded multiple with a mask to avoid
+/// needing a multiply or left shift. Checked add/sub are used because they are
+/// verifier-legal before range cleanup; the correction is mathematically safe.
+static bool tryExpandSignedPowerOfTwoDivRem(Function &function,
+                                            BasicBlock &block,
+                                            size_t &idx,
+                                            unsigned &nextId) {
+    if (idx >= block.instructions.size())
+        return false;
+
+    Instr &in = block.instructions[idx];
+    if (!in.result || in.operands.size() != 2)
+        return false;
+
+    const bool isDiv = in.op == Opcode::SDiv || in.op == Opcode::SDivChk0;
+    const bool isRem = in.op == Opcode::SRem || in.op == Opcode::SRemChk0;
+    if (!isDiv && !isRem)
+        return false;
+
+    long long divisor = 0;
+    unsigned shift = 0;
+    if (!isConstInt(in.operands[1], divisor) || !isPositivePowerOfTwo(divisor, shift) ||
+        shift == 0)
+        return false;
+
+    const Value dividend = in.operands[0];
+    const unsigned originalResult = *in.result;
+    const Type i64(Type::Kind::I64);
+
+    const unsigned signId = nextId++;
+    const unsigned biasId = nextId++;
+    const unsigned biasedId = nextId++;
+
+    Instr sign;
+    sign.op = Opcode::AShr;
+    sign.result = signId;
+    sign.type = i64;
+    sign.operands = {dividend, Value::constInt(63)};
+
+    Instr bias;
+    bias.op = Opcode::And;
+    bias.result = biasId;
+    bias.type = i64;
+    bias.operands = {Value::temp(signId), Value::constInt(divisor - 1)};
+
+    Instr biased;
+    biased.op = Opcode::IAddOvf;
+    biased.result = biasedId;
+    biased.type = i64;
+    biased.operands = {dividend, Value::temp(biasId)};
+
+    std::vector<Instr> replacement;
+    replacement.reserve(isDiv ? 4 : 5);
+    replacement.push_back(std::move(sign));
+    replacement.push_back(std::move(bias));
+    replacement.push_back(std::move(biased));
+
+    if (isDiv) {
+        Instr quotient;
+        quotient.op = Opcode::AShr;
+        quotient.result = originalResult;
+        quotient.type = i64;
+        quotient.operands = {Value::temp(biasedId), Value::constInt(static_cast<long long>(shift))};
+        replacement.push_back(std::move(quotient));
+    } else {
+        const unsigned roundedId = nextId++;
+
+        Instr rounded;
+        rounded.op = Opcode::And;
+        rounded.result = roundedId;
+        rounded.type = i64;
+        rounded.operands = {Value::temp(biasedId), Value::constInt(~(divisor - 1))};
+
+        Instr rem;
+        rem.op = Opcode::ISubOvf;
+        rem.result = originalResult;
+        rem.type = i64;
+        rem.operands = {dividend, Value::temp(roundedId)};
+
+        replacement.push_back(std::move(rounded));
+        replacement.push_back(std::move(rem));
+    }
+
+    auto insertPos = block.instructions.begin() + static_cast<std::ptrdiff_t>(idx);
+    block.instructions.erase(insertPos);
+    block.instructions.insert(block.instructions.begin() + static_cast<std::ptrdiff_t>(idx),
+                              std::make_move_iterator(replacement.begin()),
+                              std::make_move_iterator(replacement.end()));
+
+    if (function.valueNames.size() <= nextId)
+        function.valueNames.resize(nextId + 1);
+    idx += replacement.size() - 1;
+    return true;
+}
+
+const Global *findStringGlobal(const Module &module, const std::string &name) {
+    for (const auto &global : module.globals)
+        if (global.name == name && global.type.kind == Type::Kind::Str)
+            return &global;
+    return nullptr;
+}
+
+std::string findOrCreateStringGlobal(Module &module, const std::string &value) {
+    for (const auto &global : module.globals) {
+        if (global.type.kind == Type::Kind::Str && global.init == value)
+            return global.name;
+    }
+
+    std::unordered_set<std::string> usedNames;
+    usedNames.reserve(module.globals.size());
+    for (const auto &global : module.globals)
+        usedNames.insert(global.name);
+
+    std::string name;
+    unsigned suffix = 0;
+    do {
+        name = ".Lopt.concat." + std::to_string(suffix++);
+    } while (usedNames.contains(name));
+
+    Global global;
+    global.name = name;
+    global.type = Type(Type::Kind::Str);
+    global.init = value;
+    global.isConst = true;
+    global.hasInitializer = true;
+    module.globals.push_back(std::move(global));
+    return name;
+}
+
+struct ConstStrDef {
+    size_t index = 0;
+    std::string globalName;
+};
+
+std::optional<ConstStrDef> findLocalConstStrDef(const BasicBlock &block,
+                                                size_t beforeIdx,
+                                                const Value &value) {
+    if (value.kind != Value::Kind::Temp)
+        return std::nullopt;
+    for (size_t i = beforeIdx; i > 0; --i) {
+        const size_t idx = i - 1;
+        const Instr &candidate = block.instructions[idx];
+        if (!candidate.result || *candidate.result != value.id)
+            continue;
+        if (candidate.op != Opcode::ConstStr || candidate.operands.size() != 1 ||
+            candidate.operands[0].kind != Value::Kind::GlobalAddr) {
+            return std::nullopt;
+        }
+        return ConstStrDef{idx, candidate.operands[0].str};
+    }
+    return std::nullopt;
+}
+
+bool tryFoldLiteralConcat(Module &module,
+                          BasicBlock &block,
+                          size_t &idx,
+                          const UseCountMap &useCounts) {
+    if (idx >= block.instructions.size())
+        return false;
+
+    Instr &call = block.instructions[idx];
+    const bool isStringConcat =
+        call.callee == "rt_str_concat" || call.callee == "Viper.String.Concat";
+    if (call.op != Opcode::Call || !isStringConcat || !call.result || call.operands.size() != 2) {
+        return false;
+    }
+
+    const Value &lhs = call.operands[0];
+    const Value &rhs = call.operands[1];
+    if (lhs.kind != Value::Kind::Temp || rhs.kind != Value::Kind::Temp)
+        return false;
+    if (getUseCount(useCounts, lhs.id) != 1 || getUseCount(useCounts, rhs.id) != 1)
+        return false;
+
+    auto lhsDef = findLocalConstStrDef(block, idx, lhs);
+    auto rhsDef = findLocalConstStrDef(block, idx, rhs);
+    if (!lhsDef || !rhsDef || lhsDef->index == rhsDef->index)
+        return false;
+
+    const Global *lhsGlobal = findStringGlobal(module, lhsDef->globalName);
+    const Global *rhsGlobal = findStringGlobal(module, rhsDef->globalName);
+    if (!lhsGlobal || !rhsGlobal)
+        return false;
+
+    const std::string foldedName = findOrCreateStringGlobal(module, lhsGlobal->init + rhsGlobal->init);
+
+    Instr replacement;
+    replacement.op = Opcode::ConstStr;
+    replacement.result = call.result;
+    replacement.type = Type(Type::Kind::Str);
+    replacement.operands = {Value::global(foldedName)};
+
+    std::array<size_t, 2> eraseIndices{lhsDef->index, rhsDef->index};
+    std::sort(eraseIndices.begin(), eraseIndices.end(), std::greater<size_t>{});
+
+    size_t adjustedIdx = idx;
+    for (size_t eraseIdx : eraseIndices) {
+        block.instructions.erase(block.instructions.begin() + static_cast<std::ptrdiff_t>(eraseIdx));
+        if (eraseIdx < adjustedIdx)
+            --adjustedIdx;
+    }
+
+    block.instructions[adjustedIdx] = std::move(replacement);
+    idx = adjustedIdx;
+    return true;
+}
+
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -412,6 +675,7 @@ static bool applyRule(const Rule &rule, const Instr &in, Value &out) {
 static void runPeephole(Module &m) {
     const bool trace = traceEnabled();
     for (auto &f : m.functions) {
+        unsigned nextId = viper::il::nextTempId(f);
         UseCountMap useCounts = buildUseCountMap(f);
         auto refreshUseCounts = [&]() { useCounts = buildUseCountMap(f); };
 
@@ -524,6 +788,13 @@ static void runPeephole(Module &m) {
                     continue;
                 }
 
+                if (tryFoldLiteralConcat(m, b, i, useCounts)) {
+                    if (trace)
+                        std::cerr << "[peephole] folded literal concat (func " << f.name << ")\n";
+                    refreshUseCounts();
+                    continue;
+                }
+
                 //===----------------------------------------------------------===//
                 // Algebraic Identity Rules
                 //===----------------------------------------------------------===//
@@ -534,6 +805,22 @@ static void runPeephole(Module &m) {
                 //===----------------------------------------------------------===//
                 if (!in.result)
                     continue;
+
+                if (tryExpandSignedPowerOfTwoDivRem(f, b, i, nextId)) {
+                    if (trace)
+                        std::cerr << "[peephole] signed power-of-two div/rem (func " << f.name
+                                  << ")\n";
+                    refreshUseCounts();
+                    continue;
+                }
+
+                if (tryRewriteUnsignedPowerOfTwoDivRem(in)) {
+                    if (trace)
+                        std::cerr << "[peephole] unsigned power-of-two div/rem in %"
+                                  << *in.result << " (func " << f.name << ")\n";
+                    refreshUseCounts();
+                    continue;
+                }
 
                 Value repl{};
                 bool match = false;

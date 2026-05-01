@@ -112,17 +112,16 @@ static struct {
     int64_t pass_count;
 } g_gc;
 
-/// GC lock — initialized statically to avoid init races (CONC-001 fix).
+/// GC lock — initialized once and kept alive for the process lifetime.
+/// `rt_gc_shutdown()` releases GC-owned tables but intentionally does not
+/// destroy this primitive, so embedders and tests can shut down and reuse the
+/// GC without racing a late lock user.
 #ifdef _WIN32
 static INIT_ONCE g_gc_lock_once = INIT_ONCE_STATIC_INIT;
 static CRITICAL_SECTION g_gc_lock_cs;
 #else
 static pthread_mutex_t g_gc_lock_mtx = PTHREAD_MUTEX_INITIALIZER;
 #endif
-
-/// Set to 1 after rt_gc_shutdown(); prevents gc_lock() from re-initializing
-/// a destroyed lock primitive (Windows: DeleteCriticalSection + InitOnce reset).
-static volatile int g_gc_is_shutdown = 0;
 
 /// Auto-trigger: allocation counter and threshold.
 /// When g_gc_threshold > 0, every rt_gc_notify_alloc() call increments
@@ -160,27 +159,19 @@ static BOOL CALLBACK gc_lock_init_callback(PINIT_ONCE InitOnce, PVOID Parameter,
 }
 
 static void gc_lock(void) {
-    if (__atomic_load_n(&g_gc_is_shutdown, __ATOMIC_ACQUIRE))
-        return; // Lock destroyed after shutdown — no-op to prevent UB
     InitOnceExecuteOnce(&g_gc_lock_once, gc_lock_init_callback, NULL, NULL);
     EnterCriticalSection(&g_gc_lock_cs);
 }
 
 static void gc_unlock(void) {
-    if (__atomic_load_n(&g_gc_is_shutdown, __ATOMIC_ACQUIRE))
-        return;
     LeaveCriticalSection(&g_gc_lock_cs);
 }
 #else
 static void gc_lock(void) {
-    if (__atomic_load_n(&g_gc_is_shutdown, __ATOMIC_ACQUIRE))
-        return;
     pthread_mutex_lock(&g_gc_lock_mtx);
 }
 
 static void gc_unlock(void) {
-    if (__atomic_load_n(&g_gc_is_shutdown, __ATOMIC_ACQUIRE))
-        return;
     pthread_mutex_unlock(&g_gc_lock_mtx);
 }
 #endif
@@ -381,7 +372,8 @@ static void register_weak_ref(void *target, rt_weakref *ref) {
 }
 
 static void unregister_weak_ref(void *target, rt_weakref *ref) {
-    ensure_weak_buckets();
+    if (!g_gc.weak_buckets || g_gc.weak_bucket_count <= 0)
+        return;
     uint64_t bucket = ptr_hash(target) % (uint64_t)g_gc.weak_bucket_count;
     weak_chain *wc = g_gc.weak_buckets[bucket].next;
 
@@ -520,7 +512,10 @@ void rt_gc_clear_weak_refs(void *target) {
         return;
 
     gc_lock();
-    ensure_weak_buckets();
+    if (!g_gc.weak_buckets || g_gc.weak_bucket_count <= 0) {
+        gc_unlock();
+        return;
+    }
     uint64_t bucket = ptr_hash(target) % (uint64_t)g_gc.weak_bucket_count;
 
     weak_chain **wc_pp = &g_gc.weak_buckets[bucket].next;
@@ -824,31 +819,37 @@ void rt_gc_run_all_finalizers(void) {
     free(snapshot);
 }
 
-/// @brief Tear down GC state at process exit: drain tracked objects (running finalizers), free
-/// the tracking and weak-ref tables, and destroy the GC mutex. Idempotent; safe to call once.
+static void free_weak_buckets(weak_chain *weak_buckets, int64_t weak_bucket_count) {
+    if (!weak_buckets)
+        return;
+    for (int64_t i = 0; i < weak_bucket_count; i++) {
+        weak_chain *wc = weak_buckets[i].next;
+        while (wc) {
+            weak_chain *next = wc->next;
+            free(wc);
+            wc = next;
+        }
+    }
+    free(weak_buckets);
+}
+
+/// @brief Tear down GC state at process exit or embedder reset.
+/// @details Detaches the tracking and weak-ref tables while holding the GC lock,
+/// then frees the detached storage after unlocking. This keeps shutdown
+/// idempotent and allows a later allocation/GC pass to lazily recreate the
+/// tables without touching a destroyed mutex.
 void rt_gc_shutdown(void) {
     gc_lock();
 
-    /* Free tracked-object hash table. */
-    free(g_gc.entries);
+    gc_entry *entries = g_gc.entries;
+    weak_chain *weak_buckets = g_gc.weak_buckets;
+    int64_t weak_bucket_count = g_gc.weak_bucket_count;
+
     g_gc.entries = NULL;
     g_gc.count = 0;
     g_gc.capacity = 0;
-
-    /* Free weak reference bucket chains. */
-    if (g_gc.weak_buckets) {
-        for (int64_t i = 0; i < g_gc.weak_bucket_count; i++) {
-            weak_chain *wc = g_gc.weak_buckets[i].next;
-            while (wc) {
-                weak_chain *next = wc->next;
-                free(wc);
-                wc = next;
-            }
-        }
-        free(g_gc.weak_buckets);
-        g_gc.weak_buckets = NULL;
-        g_gc.weak_bucket_count = 0;
-    }
+    g_gc.weak_buckets = NULL;
+    g_gc.weak_bucket_count = 0;
 
     /* Reset auto-trigger state. */
     __atomic_store_n(&g_gc_threshold, 0, __ATOMIC_RELAXED);
@@ -856,16 +857,6 @@ void rt_gc_shutdown(void) {
 
     gc_unlock();
 
-    /* Mark as shut down BEFORE destroying the lock to prevent gc_lock()
-       from re-initializing a destroyed primitive (e.g., from a late finalizer). */
-    __atomic_store_n(&g_gc_is_shutdown, 1, __ATOMIC_RELEASE);
-
-    /* Destroy and reinitialize lock primitive so it can be reused. */
-#ifdef _WIN32
-    DeleteCriticalSection(&g_gc_lock_cs);
-    g_gc_lock_once = (INIT_ONCE)INIT_ONCE_STATIC_INIT;
-#else
-    pthread_mutex_destroy(&g_gc_lock_mtx);
-    g_gc_lock_mtx = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
-#endif
+    free(entries);
+    free_weak_buckets(weak_buckets, weak_bucket_count);
 }

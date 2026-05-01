@@ -1775,10 +1775,8 @@ static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
 //=============================================================================
 
 void vg_filedialog_destroy(vg_filedialog_t *dialog) {
-    if (dialog) {
-        filedialog_destroy(&dialog->base.base);
-        free(dialog);
-    }
+    if (dialog)
+        vg_widget_destroy(&dialog->base.base);
 }
 
 /// @brief Filedialog set title.

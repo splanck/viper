@@ -291,6 +291,7 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64" AND NOT WIN32)
             test_codegen_arm64_il_opt
             test_codegen_arm64_leaf_func
             test_codegen_arm64_native_asm
+            test_codegen_arm64_benchmark_regressions
     )
     foreach (_test IN LISTS _AARCH64_CMD_TESTS)
         _aarch64_add_test(${_test}
@@ -358,6 +359,10 @@ _aarch64_add_test_common(test_emit_x86_runtime_map
 # architecture dependency.
 _aarch64_add_test_common(test_il_opt_equivalence
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_il_opt_equivalence.cpp
+        "il_transform;viper::il_verify")
+
+_aarch64_add_test_common(test_il_backend_benchmark_regressions
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_il_backend_benchmark_regressions.cpp
         "il_transform;viper::il_verify")
 
 viper_add_ctest(NoAssertFalseGuard

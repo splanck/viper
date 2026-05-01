@@ -618,7 +618,7 @@ vg_textinput_t *vg_textinput_create(vg_widget_t *parent) {
     // Allocate initial text buffer
     input->text = malloc(TEXTINPUT_INITIAL_CAPACITY);
     if (!input->text) {
-        free(input);
+        vg_widget_destroy(&input->base);
         return NULL;
     }
     input->text[0] = '\0';

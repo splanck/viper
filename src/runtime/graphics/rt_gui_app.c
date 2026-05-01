@@ -195,6 +195,12 @@ static void rt_gui_restore_app_runtime_state(rt_gui_app_t *app) {
     *vg_tooltip_manager_get() = app->tooltip_manager_state;
 }
 
+#ifdef __APPLE__
+static int rt_gui_should_sync_macos_menu(rt_gui_app_t *incoming, rt_gui_app_t *outgoing) {
+    return (incoming && incoming->window) || (!incoming && outgoing && outgoing->window);
+}
+#endif
+
 /// @brief Return the base (unscaled) theme for a given theme kind.
 /// @details Maps the runtime enum to the built-in vg_theme constant. The
 ///          returned pointer is a static singleton — do not free it.
@@ -365,6 +371,7 @@ rt_gui_app_t *rt_gui_get_active_app(void) {
 /// @param app App to activate. May be NULL to deactivate.
 void rt_gui_activate_app(rt_gui_app_t *app) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *previous_active = s_active_app;
     if (app == s_active_app) {
         s_current_app = app;
         rt_gui_refresh_theme(app);
@@ -379,7 +386,12 @@ void rt_gui_activate_app(rt_gui_app_t *app) {
     s_current_app = app;
     rt_gui_refresh_theme(app);
     rt_gui_restore_app_runtime_state(app);
+#ifdef __APPLE__
+    if (rt_gui_should_sync_macos_menu(app, previous_active))
+        rt_gui_macos_menu_sync_app(app);
+#else
     rt_gui_macos_menu_sync_app(app);
+#endif
 }
 
 /// @brief Resolve the owning app for a given widget by walking the parent chain.

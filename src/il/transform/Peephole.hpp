@@ -80,7 +80,7 @@ struct Rule {
 };
 
 /// \brief Registry of peephole rules.
-inline constexpr std::array<Rule, 57> kRules{{
+inline constexpr std::array<Rule, 61> kRules{{
     // Integer arithmetic identities (checked overflow variants)
     {{core::Opcode::IAddOvf, Match::Kind::ConstOperand, 0, 0},
      {Replace::Kind::Operand, 1, 0, false},
@@ -240,6 +240,12 @@ inline constexpr std::array<Rule, 57> kRules{{
     {{core::Opcode::UDivChk0, Match::Kind::ConstOperand, 1, 1},
      {Replace::Kind::Operand, 0},
      "udiv/x1"},
+    {{core::Opcode::SDiv, Match::Kind::ConstOperand, 1, 1},
+     {Replace::Kind::Operand, 0},
+     "sdiv.plain/x1"},
+    {{core::Opcode::UDiv, Match::Kind::ConstOperand, 1, 1},
+     {Replace::Kind::Operand, 0},
+     "udiv.plain/x1"},
 
     // Integer remainder identities: x % 1 = 0
     {{core::Opcode::SRemChk0, Match::Kind::ConstOperand, 1, 1},
@@ -248,6 +254,12 @@ inline constexpr std::array<Rule, 57> kRules{{
     {{core::Opcode::URemChk0, Match::Kind::ConstOperand, 1, 1},
      {Replace::Kind::Const, 0, 0},
      "urem%x1"},
+    {{core::Opcode::SRem, Match::Kind::ConstOperand, 1, 1},
+     {Replace::Kind::Const, 0, 0},
+     "srem.plain%x1"},
+    {{core::Opcode::URem, Match::Kind::ConstOperand, 1, 1},
+     {Replace::Kind::Const, 0, 0},
+     "urem.plain%x1"},
 
     // 0 / x and 0 % x are intentionally not folded for checked division:
     // the operation must still trap when x is zero.

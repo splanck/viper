@@ -227,8 +227,8 @@ TEST(CodegenReviewBatch3, AArch64BranchTargetsSanitized) {
     const std::string output = oss.str();
 
     // Branch target and label definition must both be sanitized
-    EXPECT_TRUE(output.find("b .Ltarget_block") != std::string::npos);
-    EXPECT_TRUE(output.find(".Ltarget_block:") != std::string::npos);
+    EXPECT_TRUE(output.find("b L.Ltarget_block") != std::string::npos);
+    EXPECT_TRUE(output.find("L.Ltarget_block:") != std::string::npos);
 }
 
 TEST(CodegenReviewBatch3, AArch64BCondTargetSanitized) {
@@ -262,8 +262,8 @@ TEST(CodegenReviewBatch3, AArch64BCondTargetSanitized) {
     const std::string output = oss.str();
 
     // Both the b.eq target and label definition must be sanitized
-    EXPECT_TRUE(output.find("b.eq .Leq_target") != std::string::npos);
-    EXPECT_TRUE(output.find(".Leq_target:") != std::string::npos);
+    EXPECT_TRUE(output.find("b.eq L.Leq_target") != std::string::npos);
+    EXPECT_TRUE(output.find("L.Leq_target:") != std::string::npos);
 }
 
 int main(int argc, char **argv) {

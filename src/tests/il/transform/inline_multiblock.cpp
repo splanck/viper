@@ -440,8 +440,9 @@ TEST(IL, test_o2_pipeline_runs) {
     ASSERT_TRUE(ran);
 
     const Function &caller = M.functions[1];
-    // With blockBudget=1, multi-block callees are not inlined even at O2.
-    ASSERT_TRUE(hasCall(caller));
+    // O2 uses the guarded inline-o2 profile, which permits small multi-block
+    // single-return callees while the default O1 inliner remains single-block.
+    ASSERT_FALSE(hasCall(caller));
 }
 
 int main(int argc, char **argv) {

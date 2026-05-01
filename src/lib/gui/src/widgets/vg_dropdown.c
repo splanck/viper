@@ -699,7 +699,7 @@ vg_dropdown_t *vg_dropdown_create(vg_widget_t *parent) {
     dropdown->item_capacity = 8;
     dropdown->items = calloc(dropdown->item_capacity, sizeof(char *));
     if (!dropdown->items) {
-        free(dropdown);
+        vg_widget_destroy(&dropdown->base);
         return NULL;
     }
 

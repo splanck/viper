@@ -27,6 +27,7 @@
 #include "viper/il/IO.hpp"
 #include <algorithm>
 #include <cctype>
+#include <cstddef>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -34,6 +35,25 @@
 #include <vector>
 
 using namespace il;
+
+namespace {
+
+struct ModuleSize {
+    std::size_t blocks = 0;
+    std::size_t instructions = 0;
+};
+
+ModuleSize computeModuleSize(const core::Module &module) {
+    ModuleSize size{};
+    for (const auto &fn : module.functions) {
+        size.blocks += fn.blocks.size();
+        for (const auto &block : fn.blocks)
+            size.instructions += block.instructions.size();
+    }
+    return size;
+}
+
+} // namespace
 
 /// @brief Optimize an IL module using selected passes.
 ///
@@ -67,6 +87,8 @@ int cmdILOpt(int argc, char **argv) {
     bool printBefore = false;
     bool printAfter = false;
     bool verifyEach = false;
+    bool passStats = false;
+    bool bisectPipeline = false;
     std::string pipelineName;
     auto trimToken = [](const std::string &token) {
         auto begin = token.begin();
@@ -106,6 +128,10 @@ int cmdILOpt(int argc, char **argv) {
             pipelineName = argv[++i];
         } else if (arg == "--mem2reg-stats") {
             mem2regStats = true;
+        } else if (arg == "--pass-stats") {
+            passStats = true;
+        } else if (arg == "--bisect-pipeline") {
+            bisectPipeline = true;
         } else if (arg == "-print-before") {
             printBefore = true;
         } else if (arg == "-print-after") {
@@ -130,6 +156,7 @@ int cmdILOpt(int argc, char **argv) {
     pm.setInstrumentationStream(std::cerr);
     pm.setPrintBeforeEach(printBefore);
     pm.setPrintAfterEach(printAfter);
+    pm.setReportPassStatistics(passStats);
     if (verifyEach)
         pm.setVerifyBetweenPasses(true);
 
@@ -195,6 +222,24 @@ int cmdILOpt(int argc, char **argv) {
         if (!pm.passes().lookup(passId)) {
             std::cerr << "unknown pass '" << passId << "'\n";
             return 1;
+        }
+    }
+
+    if (bisectPipeline) {
+        for (std::size_t prefixLen = 1; prefixLen <= selectedPipeline.size(); ++prefixLen) {
+            core::Module probe = m;
+            transform::PassManager::Pipeline prefix(selectedPipeline.begin(),
+                                                    selectedPipeline.begin() +
+                                                        static_cast<std::ptrdiff_t>(prefixLen));
+            if (!pm.run(probe, prefix)) {
+                std::cerr << "[bisect] failed after " << prefixLen << " pass(es), last='"
+                          << prefix.back() << "'\n";
+                return 1;
+            }
+            const ModuleSize size = computeModuleSize(probe);
+            std::cerr << "[bisect] prefix " << prefixLen << "/" << selectedPipeline.size()
+                      << " last='" << prefix.back() << "' bb=" << size.blocks
+                      << " inst=" << size.instructions << "\n";
         }
     }
 

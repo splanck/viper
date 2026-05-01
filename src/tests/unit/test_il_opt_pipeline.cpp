@@ -119,6 +119,27 @@ int main() {
         assert(out.find("func @main") != std::string::npos);
     }
 
+    // O2 diagnostics should be usable from the CLI without changing output.
+    TempFile diag{".diag.il"};
+    {
+        std::vector<std::string> args{input.path.string(),
+                                      "-o",
+                                      diag.path.string(),
+                                      "--pipeline",
+                                      "O2",
+                                      "--pass-stats",
+                                      "--bisect-pipeline"};
+        std::vector<char *> argv;
+        for (auto &a : args)
+            argv.push_back(a.data());
+        gUsageCalled = false;
+        const int rc = cmdILOpt(static_cast<int>(argv.size()), argv.data());
+        assert(rc == 0);
+        assert(!gUsageCalled);
+        const std::string out = readFile(diag.path);
+        assert(out.find("ret 5") != std::string::npos);
+    }
+
     // Pass-manager verification failures must propagate as il-opt failures.
     TempFile invalid{".invalid.il"};
     {

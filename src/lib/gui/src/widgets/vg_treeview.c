@@ -374,7 +374,7 @@ vg_treeview_t *vg_treeview_create(vg_widget_t *parent) {
     // Create root node
     tree->root = calloc(1, sizeof(vg_tree_node_t));
     if (!tree->root) {
-        free(tree);
+        vg_widget_destroy(&tree->base);
         return NULL;
     }
     tree->root->expanded = true; // Root is always expanded

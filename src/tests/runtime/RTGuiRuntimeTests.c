@@ -804,6 +804,17 @@ static void test_filedialog_show_without_active_window_returns_zero(void) {
     assert(rt_str_len(rt_filedialog_get_path(dialog)) == 0);
     rt_filedialog_destroy(dialog);
 
+    vg_filedialog_t *raw_dialog = vg_filedialog_create(VG_FILEDIALOG_OPEN);
+    assert(raw_dialog);
+    vg_widget_t *raw_widget = &raw_dialog->base.base;
+    assert(vg_widget_is_live(raw_widget));
+    vg_filedialog_destroy(raw_dialog);
+    assert(!vg_widget_is_live(raw_widget));
+
+    vg_widget_t *probe = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(probe);
+    vg_widget_destroy(probe);
+
     printf("test_filedialog_show_without_active_window_returns_zero: PASSED\n");
 }
 
