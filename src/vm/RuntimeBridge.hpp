@@ -223,6 +223,16 @@ class RuntimeBridge {
                      const std::string &fn,
                      const std::string &block);
 
+    /// @brief Invoke an already resolved built-in runtime descriptor.
+    /// @details Keeps RuntimeBridge validation and trap context handling while
+    ///          avoiding repeated descriptor lookup on hot bytecode calls.
+    static Slot call(RuntimeCallContext &ctx,
+                     const il::runtime::RuntimeDescriptor &desc,
+                     std::span<const Slot> args,
+                     const il::support::SourceLoc &loc,
+                     const std::string &fn,
+                     const std::string &block);
+
     // Backward-compatible overload accepting std::vector to avoid callers copying into spans.
     static Slot call(RuntimeCallContext &ctx,
                      std::string_view name,

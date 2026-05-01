@@ -626,8 +626,8 @@ class RuntimeBridge {
 **Call flow:**
 
 1. IL `call @Viper.Terminal.PrintI64(args)` instruction (or legacy `@rt_*` alias)
-2. Handler evaluates arguments into `Slot` vector
-3. `RuntimeBridge::call()` looks up function descriptor by canonical name
+2. Handler evaluates arguments into bytecode/VM slots
+3. Bytecode caches known runtime descriptors in the native-function table and calls the resolved-descriptor RuntimeBridge entry point when possible
 4. C function is invoked with marshalled arguments
 5. Return value is marshalled back to `Slot`
 
@@ -880,6 +880,11 @@ vm.resetOpcodeCounts();
 ### Execution Context Optimization
 
 The VM execution context has been optimized to minimize overhead on the hot path:
+
+**Trusted bytecode dispatch:** Source execution uses `BytecodeCompiler::compileChecked()` and then enables trusted
+dispatch in the bytecode VM. Trusted dispatch skips per-instruction PC and operand-stack validation in the interpreter
+loop while keeping checked compilation, verifier diagnostics, runtime traps, and branch-target checks available for
+debug/unchecked embedding paths.
 
 **ExecState-based dispatch:** The dispatch macros (`VIPER_VM_DISPATCH_BEFORE`, `VIPER_VM_DISPATCH_AFTER`) use
 `ExecState` directly instead of `VMContext`, avoiding an extra indirection per instruction:

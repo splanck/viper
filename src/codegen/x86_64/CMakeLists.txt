@@ -13,6 +13,7 @@ add_library(viper_codegen_x86_64 STATIC
         FrameLowering.cpp
         CallLowering.cpp
         OperandRoles.cpp
+        PreRegAllocOpt.cpp
         ISel.cpp
         LowerDiv.cpp
         LowerOvf.cpp
@@ -37,6 +38,7 @@ add_library(viper_codegen_x86_64 STATIC
         binenc/X64BinaryEncoder.cpp
         passes/LoweringPass.cpp
         passes/LegalizePass.cpp
+        passes/PreRegAllocOptPass.cpp
         passes/RegAllocPass.cpp
         passes/SchedulerPass.cpp
         passes/PeepholePass.cpp

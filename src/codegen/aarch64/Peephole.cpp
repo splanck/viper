@@ -350,6 +350,102 @@ static void markInstructionDefs(const MInstr &instr, std::unordered_set<std::uin
         clobbered.insert(regKey(*def));
 }
 
+static std::unordered_set<std::size_t> collectNaturalLoopBlocks(
+    const MFunction &fn,
+    const std::unordered_map<std::string, std::vector<std::size_t>> &preds,
+    std::size_t headerIndex,
+    std::size_t latchIndex) {
+    std::unordered_set<std::size_t> loopBlocks;
+    std::vector<std::size_t> worklist;
+    loopBlocks.insert(headerIndex);
+    worklist.push_back(latchIndex);
+
+    while (!worklist.empty()) {
+        const std::size_t blockIndex = worklist.back();
+        worklist.pop_back();
+        if (blockIndex >= fn.blocks.size())
+            continue;
+        if (!loopBlocks.insert(blockIndex).second)
+            continue;
+
+        auto predIt = preds.find(fn.blocks[blockIndex].name);
+        if (predIt == preds.end())
+            continue;
+        for (std::size_t predIndex : predIt->second) {
+            if (loopBlocks.count(predIndex) == 0)
+                worklist.push_back(predIndex);
+        }
+    }
+
+    return loopBlocks;
+}
+
+static bool blocksContainCall(const MFunction &fn, const std::unordered_set<std::size_t> &blocks) {
+    for (std::size_t blockIndex : blocks) {
+        if (blockIndex >= fn.blocks.size())
+            return true;
+        for (const auto &instr : fn.blocks[blockIndex].instrs) {
+            if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr)
+                return true;
+        }
+    }
+    return false;
+}
+
+static std::vector<std::unordered_set<std::size_t>> computeDominators(
+    const MFunction &fn,
+    const std::unordered_map<std::string, std::vector<std::size_t>> &preds) {
+    std::vector<std::unordered_set<std::size_t>> dom(fn.blocks.size());
+    if (fn.blocks.empty())
+        return dom;
+
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
+        if (i == 0) {
+            dom[i].insert(i);
+            continue;
+        }
+        for (std::size_t j = 0; j < fn.blocks.size(); ++j)
+            dom[i].insert(j);
+    }
+
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (std::size_t i = 1; i < fn.blocks.size(); ++i) {
+            std::unordered_set<std::size_t> next;
+            auto predIt = preds.find(fn.blocks[i].name);
+            if (predIt == preds.end() || predIt->second.empty()) {
+                next.insert(i);
+            } else {
+                bool firstPred = true;
+                for (std::size_t predIndex : predIt->second) {
+                    if (predIndex >= dom.size())
+                        continue;
+                    if (firstPred) {
+                        next = dom[predIndex];
+                        firstPred = false;
+                        continue;
+                    }
+                    for (auto it = next.begin(); it != next.end();) {
+                        if (dom[predIndex].count(*it) == 0)
+                            it = next.erase(it);
+                        else
+                            ++it;
+                    }
+                }
+                next.insert(i);
+            }
+
+            if (dom[i] != next) {
+                dom[i] = std::move(next);
+                changed = true;
+            }
+        }
+    }
+
+    return dom;
+}
+
 static bool forwardSinglePredPhiLoads(MFunction &fn, PeepholeStats &stats) {
     bool changed = false;
     const auto preds = buildPredecessorMap(fn);
@@ -428,14 +524,35 @@ static bool forwardSinglePredPhiLoads(MFunction &fn, PeepholeStats &stats) {
 static bool coalesceJoinPhiLoads(MFunction &fn, PeepholeStats &stats) {
     bool changed = false;
     const auto preds = buildPredecessorMap(fn);
+    const auto dominators = computeDominators(fn, preds);
 
-    for (auto &block : fn.blocks) {
+    for (std::size_t blockIndex = 0; blockIndex < fn.blocks.size(); ++blockIndex) {
+        auto &block = fn.blocks[blockIndex];
         std::vector<JoinLoad> loads;
         if (!collectJoinPrefixLoads(block, loads))
             continue;
 
         auto predIt = preds.find(block.name);
         if (predIt == preds.end() || predIt->second.size() < 2)
+            continue;
+
+        // Loop headers are safe to coalesce only while their natural loop is
+        // call-free. If the loop body calls out, the generic join rewrite can
+        // keep loop-carried values only in physical registers across complex
+        // call-heavy paths without proving every rewritten register live range.
+        bool unsafeLoopHeader = false;
+        for (std::size_t predIndex : predIt->second) {
+            if (predIndex < blockIndex)
+                continue;
+            if (predIndex >= dominators.size() || dominators[predIndex].count(blockIndex) == 0)
+                continue;
+            const auto loopBlocks = collectNaturalLoopBlocks(fn, preds, blockIndex, predIndex);
+            if (blocksContainCall(fn, loopBlocks)) {
+                unsafeLoopHeader = true;
+                break;
+            }
+        }
+        if (unsafeLoopHeader)
             continue;
 
         std::vector<std::vector<JoinCopy>> predCopies;

@@ -97,6 +97,28 @@ double parseF64Initializer(const il::core::Global &global) {
         throw std::invalid_argument("trailing characters");
     return value;
 }
+
+struct ArrayFastOpcode {
+    BCOpcode opcode;
+    uint32_t expectedArgs;
+    bool hasReturn;
+};
+
+std::optional<ArrayFastOpcode> arrayFastOpcodeFor(std::string_view callee) {
+    if (callee == "rt_arr_i32_get_fast")
+        return ArrayFastOpcode{BCOpcode::ARR_I32_GET_FAST, 2, true};
+    if (callee == "rt_arr_i32_set_fast")
+        return ArrayFastOpcode{BCOpcode::ARR_I32_SET_FAST, 3, false};
+    if (callee == "rt_arr_i64_get_fast")
+        return ArrayFastOpcode{BCOpcode::ARR_I64_GET_FAST, 2, true};
+    if (callee == "rt_arr_i64_set_fast")
+        return ArrayFastOpcode{BCOpcode::ARR_I64_SET_FAST, 3, false};
+    if (callee == "rt_arr_f64_get_fast")
+        return ArrayFastOpcode{BCOpcode::ARR_F64_GET_FAST, 2, true};
+    if (callee == "rt_arr_f64_set_fast")
+        return ArrayFastOpcode{BCOpcode::ARR_F64_SET_FAST, 3, false};
+    return std::nullopt;
+}
 } // namespace
 
 /// @brief Compile.
@@ -1507,6 +1529,31 @@ void BytecodeCompiler::compileCall(const il::core::Instr &instr) {
         return;
     }
 
+    if (auto fast = arrayFastOpcodeFor(instr.callee)) {
+        if (instr.operands.size() != fast->expectedArgs) {
+            fail(instr.loc,
+                 "V-BC-FAST-ARRAY-ARGS",
+                 "array fast-path helper has unexpected argument count");
+        }
+        if (instr.result.has_value() != fast->hasReturn) {
+            fail(instr.loc,
+                 "V-BC-FAST-ARRAY-RESULT",
+                 "array fast-path helper result does not match bytecode opcode");
+        }
+
+        for (const auto &arg : instr.operands)
+            pushValue(arg);
+
+        emit(fast->opcode);
+        if (fast->hasReturn) {
+            popStack(static_cast<int32_t>(fast->expectedArgs) - 1);
+            storeResult(instr);
+        } else {
+            popStack(static_cast<int32_t>(fast->expectedArgs));
+        }
+        return;
+    }
+
     // Regular direct call - push all arguments
     for (const auto &arg : instr.operands) {
         pushValue(arg);
@@ -1559,11 +1606,16 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
             return;
         }
         const auto &paramIds = it->second;
-        // Store arguments to corresponding block parameter locals
-        // Store in reverse order since we pushed them in forward order
-        for (size_t i = 0; i < args.size() && i < paramIds.size(); ++i) {
+        const size_t argCount = std::min(args.size(), paramIds.size());
+
+        // Branch arguments are phi-edge values. Evaluate all sources before
+        // assigning any target parameter so backedges can swap/reuse params
+        // without clobbering a later source read.
+        for (size_t i = 0; i < argCount; ++i) {
             pushValue(args[i]);
-            uint32_t local = getLocal(paramIds[i]);
+        }
+        for (size_t i = argCount; i > 0; --i) {
+            uint32_t local = getLocal(paramIds[i - 1]);
             emitStoreLocal(local);
             popStack();
         }

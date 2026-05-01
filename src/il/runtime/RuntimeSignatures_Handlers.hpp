@@ -130,6 +130,10 @@ void invokeRtArrI32Len(void **args, void *result);
 void invokeRtArrI32Get(void **args, void *result);
 /// @brief Write an element into an i32 array at the given index.
 void invokeRtArrI32Set(void **args, void *result);
+/// @brief Read an element from an i32 array after a dominating bounds check.
+void invokeRtArrI32GetFast(void **args, void *result);
+/// @brief Write an element into an i32 array after a dominating bounds check.
+void invokeRtArrI32SetFast(void **args, void *result);
 /// @brief Resize an i32 array to a new capacity.
 void invokeRtArrI32Resize(void **args, void *result);
 
@@ -144,6 +148,10 @@ void invokeRtArrI64Len(void **args, void *result);
 void invokeRtArrI64Get(void **args, void *result);
 /// @brief Write an element into an i64 array at the given index.
 void invokeRtArrI64Set(void **args, void *result);
+/// @brief Read an element from an i64 array after a dominating bounds check.
+void invokeRtArrI64GetFast(void **args, void *result);
+/// @brief Write an element into an i64 array after a dominating bounds check.
+void invokeRtArrI64SetFast(void **args, void *result);
 /// @brief Resize an i64 array to a new capacity.
 void invokeRtArrI64Resize(void **args, void *result);
 
@@ -158,6 +166,10 @@ void invokeRtArrF64Len(void **args, void *result);
 void invokeRtArrF64Get(void **args, void *result);
 /// @brief Write an element into an f64 array at the given index.
 void invokeRtArrF64Set(void **args, void *result);
+/// @brief Read an element from an f64 array after a dominating bounds check.
+void invokeRtArrF64GetFast(void **args, void *result);
+/// @brief Write an element into an f64 array after a dominating bounds check.
+void invokeRtArrF64SetFast(void **args, void *result);
 /// @brief Resize an f64 array to a new capacity.
 void invokeRtArrF64Resize(void **args, void *result);
 

@@ -60,6 +60,14 @@ int64_t rt_arr_i64_get(int64_t *arr, size_t idx);
 /// @brief Write @p value to index @p idx with bounds checking.
 void rt_arr_i64_set(int64_t *arr, size_t idx, int64_t value);
 
+/// @brief Read element at index @p idx after the compiler proved bounds.
+/// @warning No bounds checking. Use only when a dominating check guarantees safety.
+int64_t rt_arr_i64_get_fast(int64_t *arr, size_t idx);
+
+/// @brief Write @p value to index @p idx after the compiler proved bounds.
+/// @warning No bounds checking. Use only when a dominating check guarantees safety.
+void rt_arr_i64_set_fast(int64_t *arr, size_t idx, int64_t value);
+
 /// @brief Read element at index @p idx WITHOUT bounds checking.
 /// @warning No bounds checking! Use only when compiler has verified safety.
 static inline int64_t rt_arr_i64_get_unchecked(int64_t *arr, size_t idx) {

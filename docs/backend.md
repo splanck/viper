@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-04-09
+last-verified: 2026-05-01
 ---
 
 # Viper Backend — Native Code Generation
@@ -56,6 +56,11 @@ Source → Frontend → IL → Backend → Assembly → Executable
 | **Strategy**      | SSA-based with linear scan register allocation           |
 | **Pipeline**      | Multi-pass: Lowering → Selection → Allocation → Emission |
 | **Current Phase** | Phase A (bring-up); x86_64 validated on Windows, AArch64 validated on Apple Silicon |
+
+Native builds from `viper build` now keep frontend/project IL optimization and backend optimization separate. The
+driver serializes the verified, already-optimized IL once, tells the backend to skip its own IL optimization pass, and
+still forwards the selected `O0`/`O1`/`O2` level to MIR/codegen passes such as pre-regalloc cleanup, block layout,
+scheduling, and peephole optimization.
 
 ### Phase A Goals
 
@@ -130,13 +135,19 @@ The backend implements a **sequential multi-pass pipeline**:
 
 ```cpp
 // High-level pipeline flow
-ILModule → LoweringPass → LegalizePass → RegAllocPass → SchedulerPass → PeepholePass → EmitPass → Assembly
+ILModule → LoweringPass → LegalizePass → PreRegAllocOptPass → RegAllocPass → SchedulerPass → PeepholePass → EmitPass → Assembly
 ```
 
 Each pass operates on a shared `Module` structure that threads state through the pipeline.
 `LegalizePass` is a real backend stage on both native backends: x86-64 lowers adapter IL to MIR and expands early
 machine pseudos; AArch64 expands overflow pseudos, inserts the `main` runtime-context calls into MIR, and refreshes
 leaf metadata before register allocation.
+
+At O1 and above, both native backends run a conservative `PreRegAllocOptPass` after legalization and before register
+allocation. The pass removes identity register copies and forwards single-use virtual-to-virtual register copies within
+the same basic block when the source is not clobbered before the use and the destination has no later use after a call
+boundary. It deliberately does not forward physical ABI sources such as `x0`/`rax` return registers, because those are
+not modeled as durable pre-RA live ranges and may be reused by register allocation before the forwarded use.
 
 ### PassManager
 
@@ -157,6 +168,10 @@ class PassManager {
 - Each pass reports success/failure via return value
 - `VIPER_CODEGEN_STATS=1` enables non-fatal diagnostics with backend peephole transformation counts and MIR size/memory
   mix counters
+- AArch64 post-RA join coalescing handles acyclic joins and true loop headers only when the natural loop is call-free.
+  Loop headers with call-containing bodies stay on stack-backed phi slots until the pass has full liveness proof for
+  every rewritten physical register through complex application update loops. The loop-phi spill pass uses the same
+  call-free natural-loop restriction.
 
 ### Module State
 
@@ -167,6 +182,7 @@ struct Module {
     il::core::Module il;                    // Original IL module
     std::optional<ILModule> lowered;        // Adapter module (MIR)
     bool legalised;                         // Post-selection flag
+    // PreRegAllocOptPass runs here at O1+ while MIR still uses virtual registers.
     bool registersAllocated;                // Post-allocation flag
     std::optional<CodegenResult> codegenResult; // Final assembly
 };

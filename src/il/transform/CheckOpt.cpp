@@ -532,6 +532,60 @@ bool tryDemoteCheckedDivRem(Instr &instr) {
     }
 }
 
+const Instr *findDefBefore(const BasicBlock &block, const Instr &limit, unsigned id) {
+    for (const auto &instr : block.instructions) {
+        if (&instr == &limit)
+            return nullptr;
+        if (instr.result && *instr.result == id)
+            return &instr;
+    }
+    return nullptr;
+}
+
+bool isSignBiasForDividend(const BasicBlock &block,
+                           const Instr &limit,
+                           const Value &dividend,
+                           const Value &biasValue) {
+    if (dividend.kind != Value::Kind::Temp || biasValue.kind != Value::Kind::Temp)
+        return false;
+
+    const Instr *bias = findDefBefore(block, limit, biasValue.id);
+    if (!bias || bias->op != Opcode::And || bias->operands.size() != 2 ||
+        bias->operands[0].kind != Value::Kind::Temp ||
+        bias->operands[1].kind != Value::Kind::ConstInt || bias->operands[1].i64 < 0) {
+        return false;
+    }
+
+    const Instr *sign = findDefBefore(block, *bias, bias->operands[0].id);
+    return sign && sign->op == Opcode::AShr && sign->operands.size() == 2 &&
+           valueEquals(sign->operands[0], dividend) &&
+           sign->operands[1].kind == Value::Kind::ConstInt && sign->operands[1].i64 == 63;
+}
+
+bool tryDemoteSignBiasAdd(const BasicBlock &block, Instr &instr) {
+    if (instr.op != Opcode::IAddOvf || instr.operands.size() != 2)
+        return false;
+
+    if (isSignBiasForDividend(block, instr, instr.operands[0], instr.operands[1]) ||
+        isSignBiasForDividend(block, instr, instr.operands[1], instr.operands[0])) {
+        instr.op = Opcode::Add;
+        return true;
+    }
+    return false;
+}
+
+std::unordered_map<std::string, unsigned> computePredecessorCounts(const Function &function) {
+    std::unordered_map<std::string, unsigned> counts;
+    for (const auto &block : function.blocks) {
+        if (block.instructions.empty())
+            continue;
+        const auto &term = block.instructions.back();
+        for (const auto &label : term.labels)
+            ++counts[label];
+    }
+    return counts;
+}
+
 /// @brief Key representing a check condition for redundancy detection.
 /// @details Two checks with the same key test the same condition. Uses the
 ///          shared valueEquals() helper for consistent value comparison.
@@ -779,6 +833,7 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
     std::unordered_map<std::string, BasicBlock *> blockMap;
     for (auto &bb : function.blocks)
         blockMap[bb.label] = &bb;
+    const auto predecessorCounts = computePredecessorCounts(function);
 
     // Build initial use-count info once for safe temp replacement queries.
     viper::il::UseDefInfo useInfo(function);
@@ -795,6 +850,8 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
             if (isOverflowOpcode(instr.op) && tryConstantFoldOverflow(instr))
                 changed = true;
             if (tryDemoteCheckedDivRem(instr))
+                changed = true;
+            if (tryDemoteSignBiasAdd(block, instr))
                 changed = true;
         }
     }
@@ -856,6 +913,9 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
         //      labels[1] = false branch (cmp is false → x > C → x >= C+1)
         // On the FALSE branch, we know: guardedVar >= threshold + 1
         const std::string &falseBranch = term.labels[1];
+        auto predCountIt = predecessorCounts.find(falseBranch);
+        if (predCountIt == predecessorCounts.end() || predCountIt->second != 1)
+            continue;
         const int64_t lowerBound = threshold + 1; // x >= lowerBound on false branch
 
         // Find the false-branch target block and demote safe overflow ops.

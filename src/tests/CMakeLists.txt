@@ -754,6 +754,24 @@ foreach (test_name IN LISTS ZIA_LANG_TESTS)
     endif ()
 endforeach ()
 
+set(ZIA_VIPER_RUN_O1_REGRESSION_TESTS
+        18_numeric_algorithms
+        31_typed_catch_list_shorthand
+)
+
+foreach (test_name IN LISTS ZIA_VIPER_RUN_O1_REGRESSION_TESTS)
+    set(test_file "${ZIA_LANG_TESTS_DIR}/${test_name}.zia")
+    if (EXISTS "${test_file}")
+        add_test(NAME viper_run_o1_zia_${test_name}
+                COMMAND $<TARGET_FILE:viper> run "${test_file}"
+                WORKING_DIRECTORY "${ZIA_LANG_TESTS_DIR}")
+        set_tests_properties(viper_run_o1_zia_${test_name} PROPERTIES
+                PASS_REGULAR_EXPRESSION "RESULT: ok"
+                LABELS "zia;viper;optimization"
+                TIMEOUT 30)
+    endif ()
+endforeach ()
+
 if (VIPER_BASH_EXECUTABLE)
     add_test(NAME zia_lang_34_async_functions_repeat
             COMMAND "${VIPER_BASH_EXECUTABLE}"

@@ -161,6 +161,22 @@ void rt_arr_i32_set(int32_t *arr, size_t idx, int32_t value) {
     arr[idx] = value;
 }
 
+/// @brief Read an element after the compiler has proved the access in-bounds.
+/// @details This out-of-line ABI surface lets native backends call the fast path
+///          directly; it deliberately preserves the checked helper for all
+///          unoptimized and unverifiable call sites.
+int32_t rt_arr_i32_get_fast(int32_t *arr, size_t idx) {
+    return arr[idx];
+}
+
+/// @brief Write an element after the compiler has proved the access in-bounds.
+/// @details Bounds checks must dominate calls to this helper. Keeping the helper
+///          separate from the checked entry point prevents accidental unchecked
+///          access in O0 code paths.
+void rt_arr_i32_set_fast(int32_t *arr, size_t idx, int32_t value) {
+    arr[idx] = value;
+}
+
 /// @brief Copy @p count elements between array payloads.
 /// @details Validates that both payloads are non-null when copying a non-empty
 ///          range and then performs a `memcpy`.  Bounds are assumed to have been

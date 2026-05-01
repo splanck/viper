@@ -28,13 +28,17 @@
 #include "il/analysis/MemorySSA.hpp"
 #include "il/io/Serializer.hpp"
 #include "il/transform/AnalysisIDs.hpp"
+#include "il/transform/ArrayFastPathOpt.hpp"
 #include "il/transform/CheckOpt.hpp"
+#include "il/transform/Devirtualize.hpp"
 #include "il/transform/EHOpt.hpp"
 #include "il/transform/LICM.hpp"
 #include "il/transform/LateCleanup.hpp"
 #include "il/transform/LoopRotate.hpp"
 #include "il/transform/LoopUnroll.hpp"
+#include "il/transform/OwnershipOpt.hpp"
 #include "il/transform/PipelineExecutor.hpp"
+#include "il/transform/RuntimeFastPathOpt.hpp"
 #include "il/transform/SiblingRecursion.hpp"
 #include "il/transform/SimplifyCFG.hpp"
 #include "il/transform/analysis/Liveness.hpp"
@@ -109,6 +113,10 @@ PassManager::PassManager() {
     registerReassociatePass(passRegistry_);
     registerEHOptPass(passRegistry_);
     registerLoopRotatePass(passRegistry_);
+    registerOwnershipOptPass(passRegistry_);
+    registerArrayFastPathOptPass(passRegistry_);
+    registerRuntimeFastPathOptPass(passRegistry_);
+    registerDevirtualizePass(passRegistry_);
 
     // Pre-register common pipelines
     registerPipeline("O0", {"simplify-cfg", "dce"});
@@ -153,11 +161,12 @@ PassManager::PassManager() {
                "simplify-cfg",
                "sccp", // Pre-inline SCCP: simplify callees
                "check-opt",     "eh-opt",       "dce",         "simplify-cfg", "sibling-recursion",
-               "inline-o2",     "simplify-cfg",
+               "devirt",        "inline-o2",    "simplify-cfg",
                "sccp",      // Post-inline SCCP: propagate call-site constants
                "constfold", // Fold runtime math calls exposed by SCCP
                "loop-simplify", "licm",      "loop-rotate", "indvars", "loop-unroll",
                "check-opt",
+               "runtime-fastpath", "array-fastpath", "ownership-opt",
                "peephole",
                "check-opt",
                "dce",       // Clean up after second SCCP

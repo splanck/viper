@@ -269,6 +269,21 @@ il::support::Expected<bool> parseBool(const std::string &val,
                            "invalid value '" + val + "' for " + directive + "; expected on or off");
 }
 
+il::support::Expected<std::string> optimizeForBuildProfile(const std::string &profile,
+                                                           const std::string &manifestPath,
+                                                           int line) {
+    if (profile == "debug")
+        return std::string("O0");
+    if (profile == "balanced")
+        return std::string("O1");
+    if (profile == "release")
+        return std::string("O2");
+    return makeManifestErr(manifestPath,
+                           line,
+                           "invalid build profile '" + profile +
+                               "'; expected debug, balanced, or release");
+}
+
 } // anonymous namespace
 
 il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPath) {
@@ -291,6 +306,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
     bool hasVersion = false;
     bool hasLang = false;
     bool hasEntry = false;
+    bool hasProfile = false;
     bool hasOptimize = false;
     bool hasBoundsChecks = false;
     bool hasOverflowChecks = false;
@@ -357,6 +373,16 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             sourceDirs.push_back(value);
         } else if (directive == "exclude") {
             excludes.push_back(value);
+        } else if (directive == "profile" || directive == "build-profile") {
+            if (hasProfile)
+                return makeManifestErr(manifestPath, lineNum, "duplicate directive 'profile'");
+            hasProfile = true;
+            auto mapped = optimizeForBuildProfile(value, manifestPath, lineNum);
+            if (!mapped)
+                return il::support::Expected<ProjectConfig>(mapped.error());
+            config.buildProfile = value;
+            if (!hasOptimize)
+                config.optimizeLevel = mapped.value();
         } else if (directive == "optimize") {
             if (hasOptimize)
                 return makeManifestErr(manifestPath, lineNum, "duplicate directive 'optimize'");

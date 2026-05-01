@@ -36,6 +36,7 @@
 #include "codegen/x86_64/passes/LoweringPass.hpp"
 #include "codegen/x86_64/passes/PassManager.hpp"
 #include "codegen/x86_64/passes/PeepholePass.hpp"
+#include "codegen/x86_64/passes/PreRegAllocOptPass.hpp"
 #include "codegen/x86_64/passes/RegAllocPass.hpp"
 #include "codegen/x86_64/passes/SchedulerPass.hpp"
 #include "il/transform/PassManager.hpp"
@@ -342,7 +343,7 @@ PipelineResult CodegenPipeline::run() {
 
     // Run the canonical IL optimization pipeline before lowering to MIR so native
     // backends stay aligned with frontend/VM optimization behavior.
-    if (opts_.optimize >= 1) {
+    if (!opts_.skip_il_optimization && opts_.optimize >= 1) {
         il::transform::PassManager ilpm;
         const bool ok = ilpm.runPipeline(module, opts_.optimize >= 2 ? "O2" : "O1");
 
@@ -388,6 +389,8 @@ PipelineResult CodegenPipeline::run() {
     passes::PassManager manager{};
     manager.addPass(std::make_unique<passes::LoweringPass>());
     manager.addPass(std::make_unique<passes::LegalizePass>());
+    if (codegenOpts.optimizeLevel >= 1)
+        manager.addPass(std::make_unique<passes::PreRegAllocOptPass>());
     manager.addPass(std::make_unique<passes::RegAllocPass>());
     manager.addPass(std::make_unique<passes::SchedulerPass>());
     manager.addPass(std::make_unique<passes::PeepholePass>());

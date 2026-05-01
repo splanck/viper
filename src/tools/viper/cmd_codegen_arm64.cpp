@@ -34,7 +34,8 @@ constexpr std::string_view kUsage =
     "       [--stack-size=SIZE]\n"
     "       [--dump-mir-before-ra] [--dump-mir-after-ra] [--dump-mir-full]\n"
     "       [--native-asm|--system-asm] [--native-link|--system-link(deprecated)]\n"
-    "       [--target-host|--target-darwin|--target-linux|--target-windows] [-O0|-O1|-O2]\n";
+    "       [--target-host|--target-darwin|--target-linux|--target-windows] [-O0|-O1|-O2]\n"
+    "       [--skip-il-optimization]\n";
 
 using Pipeline = viper::codegen::aarch64::CodegenPipeline;
 
@@ -115,6 +116,10 @@ ParseOutcome parseArgs(const ArgvView &args) {
         }
         if (tok.size() == 3 && tok[0] == '-' && tok[1] == 'O' && tok[2] >= '0' && tok[2] <= '2') {
             opts.optimize = tok[2] - '0';
+            continue;
+        }
+        if (tok == "--skip-il-optimization") {
+            opts.skip_il_optimization = true;
             continue;
         }
         if (tok == "--native-asm") {

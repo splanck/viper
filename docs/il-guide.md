@@ -1035,6 +1035,13 @@ Integer arguments to `SQR`, `FLOOR`, and `CEIL` are first widened to `f64`.
 > helpers such as `@rt_arr_i64_new`, `@rt_arr_i64_len`, `@rt_arr_i64_get`, and
 > `@rt_arr_i64_set` (or the corresponding `_str` and `_f64` variants). The
 > front end emits bounds checks in IL via `idx.chk` before accessing array storage.
+> Optimized O2 IL may rewrite numeric checked accesses to `@rt_arr_i32_get_fast`,
+> `@rt_arr_i64_set_fast`, and the corresponding `_f64` helpers only when a
+> dominating `idx.chk` or equivalent single-predecessor bounds branch proves the
+> same array/index pair safe. Frontends should still emit the checked helpers;
+> the optimizer owns the conversion to unchecked fast ABI calls. The bytecode
+> backend lowers these `_fast` helpers to direct array opcodes instead of
+> out-of-line runtime calls.
 
 ### Procedure calls
 

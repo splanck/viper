@@ -162,6 +162,8 @@ TEST(CanonicalPipeline, O2PipelineContainsKeyPasses) {
 
     bool hasSccp = false, hasInlineO2 = false, hasLoopUnroll = false, hasCheckOpt = false;
     bool hasMem2Reg = false, hasLICM = false, hasLICMSafe = false, hasPeephole = false;
+    bool hasDevirt = false, hasRuntimeFastPath = false, hasArrayFastPath = false;
+    bool hasOwnershipOpt = false;
     for (const auto &id : *pipeline) {
         if (id == "sccp")
             hasSccp = true;
@@ -179,6 +181,14 @@ TEST(CanonicalPipeline, O2PipelineContainsKeyPasses) {
             hasLICMSafe = true;
         if (id == "peephole")
             hasPeephole = true;
+        if (id == "devirt")
+            hasDevirt = true;
+        if (id == "runtime-fastpath")
+            hasRuntimeFastPath = true;
+        if (id == "array-fastpath")
+            hasArrayFastPath = true;
+        if (id == "ownership-opt")
+            hasOwnershipOpt = true;
     }
     EXPECT_TRUE(hasSccp);
     EXPECT_TRUE(hasInlineO2);
@@ -188,6 +198,10 @@ TEST(CanonicalPipeline, O2PipelineContainsKeyPasses) {
     EXPECT_TRUE(hasLICM);
     EXPECT_FALSE(hasLICMSafe);
     EXPECT_TRUE(hasPeephole);
+    EXPECT_TRUE(hasDevirt);
+    EXPECT_TRUE(hasRuntimeFastPath);
+    EXPECT_TRUE(hasArrayFastPath);
+    EXPECT_TRUE(hasOwnershipOpt);
 }
 
 // runPipeline returns true for all registered canonical pipeline IDs.

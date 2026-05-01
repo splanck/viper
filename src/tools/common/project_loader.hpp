@@ -60,8 +60,11 @@ struct ProjectConfig {
     /// @brief BASIC source files (populated for Mixed projects).
     std::vector<std::string> basicFiles;
 
+    /// @brief Project performance profile ("debug", "balanced", "release").
+    std::string buildProfile{"balanced"};
+
     /// @brief Optimization level string ("O0", "O1", "O2").
-    std::string optimizeLevel{"O0"};
+    std::string optimizeLevel{"O1"};
 
     /// @brief Enable runtime bounds checks.
     bool boundsChecks{true};

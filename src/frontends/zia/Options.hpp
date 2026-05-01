@@ -69,9 +69,9 @@ struct CompilerOptions {
     bool dumpILPasses{false};
 
     /// @brief Optimization level for IL transformations.
-    /// @details O1 is the default, providing a good balance of compilation
-    ///          speed and runtime performance. Use O0 for debugging or O2
-    ///          for maximum performance.
+    /// @details Frontend embedders default to O0 so tests and tools can inspect
+    ///          raw lowering. Project loading and `viper run/build` default to
+    ///          O1 for real applications unless overridden.
     OptLevel optLevel{OptLevel::O0};
 
     /// @brief Warning policy controlling which warnings are enabled, whether

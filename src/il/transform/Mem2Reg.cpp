@@ -664,6 +664,25 @@ static bool hasDominatedPredecessor(const viper::analysis::DomTree &domTree,
     return false;
 }
 
+static bool hasExceptionHandling(const Function &F) {
+    for (const auto &B : F.blocks) {
+        for (const auto &I : B.instructions) {
+            switch (I.op) {
+                case Opcode::EhPush:
+                case Opcode::EhPop:
+                case Opcode::EhEntry:
+                case Opcode::ResumeSame:
+                case Opcode::ResumeNext:
+                case Opcode::ResumeLabel:
+                    return true;
+                default:
+                    break;
+            }
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 static bool runSROA(Function &F) {
@@ -931,6 +950,9 @@ static bool runSROA(Function &F) {
 /// @sideeffect Mutates functions within the module.
 void mem2reg(Module &M, Mem2RegStats *stats) {
     for (auto &F : M.functions) {
+        if (hasExceptionHandling(F))
+            continue;
+
         runSROA(F);
         analysis::CFGContext cfg(M);
 

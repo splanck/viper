@@ -54,6 +54,7 @@ class CodegenPipeline {
         std::string output_asm_path; ///< Optional assembly output path when emit_asm is true.
         bool emit_asm = false;       ///< Emit assembly text to disk for inspection.
         int optimize = 1;            ///< Optimization level: 0 = none, 1 = O1, 2 = O2.
+        bool skip_il_optimization = false; ///< True when input IL is already optimized.
         bool run_native = false;     ///< Execute the produced binary after linking when true.
         std::size_t stack_size = 0;  ///< Stack size in bytes; 0 means use system default.
         AssemblerMode assembler_mode = AssemblerMode::Native;

@@ -461,6 +461,8 @@ std::string canonicalizeExternName(std::string_view n) {
 
 static const RuntimeDescriptor *resolveRuntimeDescriptor(std::string_view name,
                                                          RuntimeDescriptor &localDesc);
+static const RuntimeDescriptor *resolveExternDescriptor(std::string_view name,
+                                                        RuntimeDescriptor &localDesc);
 static Slot dispatchRuntimeCall(RuntimeCallContext &ctx,
                                 std::string_view name,
                                 const RuntimeDescriptor &desc,
@@ -513,8 +515,38 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     return result;
 }
 
-static const RuntimeDescriptor *resolveRuntimeDescriptor(std::string_view name,
-                                                         RuntimeDescriptor &localDesc) {
+Slot RuntimeBridge::call(RuntimeCallContext &ctx,
+                         const il::runtime::RuntimeDescriptor &desc,
+                         std::span<const Slot> args,
+                         const SourceLoc &loc,
+                         const std::string &fn,
+                         const std::string &block) {
+    ctx.loc = loc;
+    ctx.function = fn;
+    ctx.block = block;
+    ContextGuard guard(ctx);
+    Slot result{};
+
+    il::runtime::RuntimeDescriptor localDesc;
+    const il::runtime::RuntimeDescriptor *effectiveDesc =
+        resolveExternDescriptor(desc.name, localDesc);
+    if (!effectiveDesc)
+        effectiveDesc = &desc;
+
+    validateArgumentCount(*effectiveDesc, args, loc, fn, block);
+
+    ctx.descriptor = effectiveDesc;
+    ctx.argBegin = args.empty() ? nullptr : const_cast<Slot *>(args.data());
+    ctx.argCount = args.size();
+
+    VM *activeVm = VM::activeInstance();
+    result = dispatchRuntimeCall(ctx, effectiveDesc->name, *effectiveDesc, activeVm);
+
+    return result;
+}
+
+static const RuntimeDescriptor *resolveExternDescriptor(std::string_view name,
+                                                        RuntimeDescriptor &localDesc) {
     il::runtime::RuntimeSignature sig;
     il::runtime::RuntimeHandler handler = nullptr;
     const ExternDesc *extDesc = nullptr;
@@ -527,13 +559,20 @@ static const RuntimeDescriptor *resolveRuntimeDescriptor(std::string_view name,
         extDesc = il::vm::resolveExternIn(processGlobalExternRegistry(), name, &sig, &handler);
     }
 
-    if (extDesc) {
-        localDesc.name = extDesc->name;
-        localDesc.signature = sig;
-        localDesc.handler = handler;
-        localDesc.lowering = {};
-        return &localDesc;
-    }
+    if (!extDesc)
+        return nullptr;
+
+    localDesc.name = extDesc->name;
+    localDesc.signature = sig;
+    localDesc.handler = handler;
+    localDesc.lowering = {};
+    return &localDesc;
+}
+
+static const RuntimeDescriptor *resolveRuntimeDescriptor(std::string_view name,
+                                                         RuntimeDescriptor &localDesc) {
+    if (const RuntimeDescriptor *ext = resolveExternDescriptor(name, localDesc))
+        return ext;
 
     return il::runtime::findRuntimeDescriptor(name);
 }

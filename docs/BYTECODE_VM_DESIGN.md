@@ -430,6 +430,17 @@ String values are carried as `void*` (pointer to the runtime string object).
 | 0xB9 | RETURN_VOID | - | [] → <ret> | Return void |
 | 0xBA | TAIL_CALL | u16 fn | [args...] → <ret> | Tail call |
 
+### 4.10.1 Runtime Fast Paths (0xD8-0xDF)
+
+| Code | Mnemonic | Args | Stack | Description |
+|------|----------|------|-------|-------------|
+| 0xD8 | ARR_I32_GET_FAST | - | [arr,idx] → [v] | Unchecked i32 array load |
+| 0xD9 | ARR_I32_SET_FAST | - | [arr,idx,v] → [] | Unchecked i32 array store |
+| 0xDA | ARR_I64_GET_FAST | - | [arr,idx] → [v] | Unchecked i64 array load |
+| 0xDB | ARR_I64_SET_FAST | - | [arr,idx,v] → [] | Unchecked i64 array store |
+| 0xDC | ARR_F64_GET_FAST | - | [arr,idx] → [v] | Unchecked f64 array load |
+| 0xDD | ARR_F64_SET_FAST | - | [arr,idx,v] → [] | Unchecked f64 array store |
+
 ### 4.11 Exception Handling (0xC0-0xCF)
 
 | Code | Mnemonic | Args | Stack | Description |
@@ -1228,7 +1239,7 @@ Frequently-called runtime functions can have specialized bytecode. Note: `BCSlot
 strings as `void*` (no separate `str` field); the pattern below uses `ptr`:
 
 ```cpp
-// BC_CALL_NATIVE with inline cache for hot functions
+// BC_CALL_NATIVE with cached runtime metadata for hot functions
 case BC_CALL_NATIVE_CACHED: {
     uint16_t fnIdx = (instr >> 8) & 0xFFFF;
     void* cachedHandler = nativeCache[fnIdx];

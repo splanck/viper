@@ -59,7 +59,11 @@ void register_array_signatures() {
     register_signature(make_signature("rt_arr_i32_release", {Kind::Ptr}));
     register_signature(make_signature("rt_arr_i32_len", {Kind::Ptr}, {Kind::I64}));
     register_signature(make_signature("rt_arr_i32_get", {Kind::Ptr, Kind::I64}, {Kind::I64}));
+    register_signature(
+        make_signature("rt_arr_i32_get_fast", {Kind::Ptr, Kind::I64}, {Kind::I64}));
     register_signature(make_signature("rt_arr_i32_set", {Kind::Ptr, Kind::I64, Kind::I64}));
+    register_signature(
+        make_signature("rt_arr_i32_set_fast", {Kind::Ptr, Kind::I64, Kind::I64}));
     register_signature(make_signature("rt_arr_i32_resize", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
     // I64 array operations (for LONG arrays in BASIC)
     register_signature(make_signature("rt_arr_i64_new", {Kind::I64}, {Kind::Ptr}));
@@ -67,12 +71,29 @@ void register_array_signatures() {
     register_signature(make_signature("rt_arr_i64_release", {Kind::Ptr}));
     register_signature(make_signature("rt_arr_i64_len", {Kind::Ptr}, {Kind::I64}));
     register_signature(make_signature("rt_arr_i64_get", {Kind::Ptr, Kind::I64}, {Kind::I64}));
+    register_signature(
+        make_signature("rt_arr_i64_get_fast", {Kind::Ptr, Kind::I64}, {Kind::I64}));
     register_signature(make_signature("rt_arr_i64_set", {Kind::Ptr, Kind::I64, Kind::I64}));
+    register_signature(
+        make_signature("rt_arr_i64_set_fast", {Kind::Ptr, Kind::I64, Kind::I64}));
     register_signature(make_signature("rt_arr_i64_resize", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
+    register_signature(make_signature("rt_arr_f64_new", {Kind::I64}, {Kind::Ptr}));
+    register_signature(make_signature("rt_arr_f64_retain", {Kind::Ptr}));
+    register_signature(make_signature("rt_arr_f64_release", {Kind::Ptr}));
+    register_signature(make_signature("rt_arr_f64_len", {Kind::Ptr}, {Kind::I64}));
+    register_signature(make_signature("rt_arr_f64_get", {Kind::Ptr, Kind::I64}, {Kind::F64}));
+    register_signature(
+        make_signature("rt_arr_f64_get_fast", {Kind::Ptr, Kind::I64}, {Kind::F64}));
+    register_signature(make_signature("rt_arr_f64_set", {Kind::Ptr, Kind::I64, Kind::F64}));
+    register_signature(
+        make_signature("rt_arr_f64_set_fast", {Kind::Ptr, Kind::I64, Kind::F64}));
+    register_signature(make_signature("rt_arr_f64_resize", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_arr_oob_panic", {Kind::I64, Kind::I64}));
     register_signature(make_signature("rt_obj_new_i64", {Kind::I64, Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_obj_retain_maybe", {Kind::Ptr}));
+    register_signature(make_signature("rt_obj_retain_known", {Kind::Ptr}));
     register_signature(make_signature("rt_obj_release_check0", {Kind::Ptr}, {Kind::I1}));
+    register_signature(make_signature("rt_obj_release_known_check0", {Kind::Ptr}, {Kind::I1}));
     register_signature(make_signature("rt_obj_free", {Kind::Ptr}));
     register_signature(make_signature("rt_obj_class_id", {Kind::Ptr}, {Kind::I64}));
     register_signature(make_signature("rt_heap_mark_disposed", {Kind::Ptr}, {Kind::I1}));

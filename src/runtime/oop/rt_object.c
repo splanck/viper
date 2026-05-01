@@ -201,6 +201,17 @@ void rt_obj_retain_maybe(void *p) {
     rt_heap_retain(p);
 }
 
+/// @brief Retain a non-null runtime heap object without dynamic kind checks.
+/// @details Native optimized code calls this only when IL analysis has proven
+///          the value comes from an object allocation helper. The NULL guard
+///          preserves the broad retain contract while removing string and raw
+///          pointer probes from hot exact-object paths.
+void rt_obj_retain_known(void *p) {
+    if (!p)
+        return;
+    rt_heap_retain(p);
+}
+
 /// @brief Decrement the reference count and report last-user semantics.
 /// @details Mirrors BASIC string behaviour by returning non-zero when the
 ///          underlying retain count reaches zero.  Null payloads are ignored to
@@ -215,6 +226,15 @@ int32_t rt_obj_release_check0(void *p) {
         return 0;
     }
     if (!rt_heap_is_payload(p))
+        return 0;
+    return (int32_t)(rt_heap_release_deferred(p) == 0);
+}
+
+/// @brief Release a non-null runtime heap object without dynamic kind checks.
+/// @details The caller must free the object through @ref rt_obj_free when this
+///          returns non-zero, matching @ref rt_obj_release_check0 semantics.
+int32_t rt_obj_release_known_check0(void *p) {
+    if (!p)
         return 0;
     return (int32_t)(rt_heap_release_deferred(p) == 0);
 }

@@ -26,6 +26,7 @@
 
 #include "bytecode/Bytecode.hpp"
 #include "il/core/Type.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -129,6 +130,11 @@ struct NativeFuncRef {
     std::string name;    ///< Function name (e.g., "Viper.Terminal.Say").
     uint32_t paramCount = 0; ///< Number of parameters the function expects.
     bool hasReturn = false;  ///< True if the function returns a value.
+    const il::runtime::RuntimeDescriptor *runtimeDescriptor = nullptr; ///< Cached runtime descriptor.
+    const il::runtime::RuntimeSignature *runtimeSignature = nullptr;   ///< Cached runtime signature.
+    bool consumesClonedStringArgs = false; ///< True when bridge needs retained string aliases.
+    bool consumesOwnedStringArgs = false;  ///< True when runtime consumes original string args.
+    bool returnsString = false;            ///< True when runtime result is a managed string.
 };
 
 /// @brief Information about a global variable in the bytecode module.
@@ -254,7 +260,21 @@ struct BytecodeModule {
         }
         uint32_t idx = static_cast<uint32_t>(nativeFuncs.size());
         nativeFuncIndex[name] = idx;
-        nativeFuncs.push_back({name, paramCount, hasReturn});
+        NativeFuncRef ref;
+        ref.name = name;
+        ref.paramCount = paramCount;
+        ref.hasReturn = hasReturn;
+        ref.runtimeDescriptor = il::runtime::findRuntimeDescriptor(name);
+        ref.runtimeSignature =
+            ref.runtimeDescriptor ? &ref.runtimeDescriptor->signature
+                                  : il::runtime::findRuntimeSignature(name);
+        ref.consumesClonedStringArgs = name == "rt_str_concat" ||
+                                       name == "Viper.String.Concat" ||
+                                       name == "Viper.String.ConcatSelf";
+        ref.consumesOwnedStringArgs = name == "rt_str_release_maybe";
+        ref.returnsString = ref.runtimeSignature &&
+                            ref.runtimeSignature->retType.kind == il::core::Type::Kind::Str;
+        nativeFuncs.push_back(std::move(ref));
         return idx;
     }
 

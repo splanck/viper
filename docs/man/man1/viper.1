@@ -91,8 +91,11 @@ Show detailed trap diagnostics.
 \fB--debug-vm\fR
 Enable VM debug mode.
 .TP
+\fB--build-profile\fR debug|balanced|release
+Select a build profile. Profiles map to \fBO0\fR, \fBO1\fR, and \fBO2\fR respectively.
+.TP
 \fB-O0\fR, \fB-O1\fR, \fB-O2\fR
-Select optimization level.
+Select optimization level. Explicit \fB-O\fR flags override the build profile.
 .TP
 \fB--arch\fR arm64|x64
 Override the native build architecture.

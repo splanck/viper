@@ -1,0 +1,36 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/codegen/x86_64/passes/PreRegAllocOptPass.cpp
+// Purpose: Run x86-64 pre-register-allocation MIR cleanup in the modular pipeline.
+//
+//===----------------------------------------------------------------------===//
+
+#include "codegen/x86_64/passes/PreRegAllocOptPass.hpp"
+
+#include "codegen/x86_64/PreRegAllocOpt.hpp"
+
+namespace viper::codegen::x64::passes {
+
+bool PreRegAllocOptPass::run(Module &module, Diagnostics &diags) {
+    if (module.options.optimizeLevel < 1)
+        return true;
+    if (!module.legalised) {
+        diags.error("pre-ra-opt: legalisation must run before pre-register-allocation cleanup");
+        return false;
+    }
+    if (module.registersAllocated) {
+        diags.error("pre-ra-opt: cannot run after register allocation");
+        return false;
+    }
+
+    for (auto &fn : module.mir)
+        (void)runPreRegAllocOpt(fn);
+    return true;
+}
+
+} // namespace viper::codegen::x64::passes

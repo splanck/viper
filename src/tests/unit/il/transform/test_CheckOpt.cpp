@@ -537,6 +537,144 @@ void test_guard_demote_produces_verifiable_il() {
     assert(il::verify::Verifier::verify(module).hasValue());
 }
 
+void test_guard_demote_skips_multi_predecessor_target() {
+    Module module;
+    Function fn;
+    fn.name = "test_guard_sub_multi_pred";
+    fn.retType = Type(Type::Kind::I64);
+
+    unsigned nextId = 0;
+    Param x{"x", Type(Type::Kind::I64), nextId++};
+    fn.params.push_back(x);
+    fn.valueNames.resize(nextId);
+    fn.valueNames[x.id] = x.name;
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr cmp;
+    cmp.result = nextId++;
+    cmp.op = Opcode::SCmpLE;
+    cmp.type = Type(Type::Kind::I1);
+    cmp.operands = {Value::temp(x.id), Value::constInt(0)};
+    const unsigned cmpId = *cmp.result;
+    Instr cbr;
+    cbr.op = Opcode::CBr;
+    cbr.type = Type(Type::Kind::Void);
+    cbr.operands = {Value::temp(cmpId)};
+    cbr.labels = {"side", "work"};
+    cbr.brArgs = {{}, {}};
+    entry.instructions = {cmp, cbr};
+    entry.terminated = true;
+
+    BasicBlock side;
+    side.label = "side";
+    Instr sideBr;
+    sideBr.op = Opcode::Br;
+    sideBr.type = Type(Type::Kind::Void);
+    sideBr.labels = {"work"};
+    side.instructions = {sideBr};
+    side.terminated = true;
+
+    BasicBlock work;
+    work.label = "work";
+    Instr sub;
+    sub.result = nextId++;
+    sub.op = Opcode::ISubOvf;
+    sub.type = Type(Type::Kind::I64);
+    sub.operands = {Value::temp(x.id), Value::constInt(1)};
+    const unsigned subId = *sub.result;
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(subId)};
+    work.instructions = {sub, ret};
+    work.terminated = true;
+
+    fn.blocks = {entry, side, work};
+    fn.valueNames.resize(nextId);
+    module.functions.push_back(std::move(fn));
+    Function &function = module.functions.back();
+
+    assert(il::verify::Verifier::verify(module).hasValue());
+
+    auto registry = createRegistry();
+    il::transform::AnalysisManager analysisManager(module, registry);
+    il::transform::CheckOpt checkOpt;
+    auto preserved = checkOpt.run(function, analysisManager);
+    (void)preserved;
+
+    assert(countOpcode(function, Opcode::ISubOvf) == 1);
+    assert(countOpcode(function, Opcode::Sub) == 0);
+    assert(il::verify::Verifier::verify(module).hasValue());
+}
+
+void test_sign_bias_add_demotes_and_verifies() {
+    Module module;
+    Function fn;
+    fn.name = "test_sign_bias_add";
+    fn.retType = Type(Type::Kind::I64);
+
+    unsigned nextId = 0;
+    Param x{"x", Type(Type::Kind::I64), nextId++};
+    fn.params.push_back(x);
+    fn.valueNames.resize(nextId);
+    fn.valueNames[x.id] = x.name;
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr sign;
+    sign.result = nextId++;
+    sign.op = Opcode::AShr;
+    sign.type = Type(Type::Kind::I64);
+    sign.operands = {Value::temp(x.id), Value::constInt(63)};
+    const unsigned signId = *sign.result;
+
+    Instr bias;
+    bias.result = nextId++;
+    bias.op = Opcode::And;
+    bias.type = Type(Type::Kind::I64);
+    bias.operands = {Value::temp(signId), Value::constInt(3)};
+    const unsigned biasId = *bias.result;
+
+    Instr add;
+    add.result = nextId++;
+    add.op = Opcode::IAddOvf;
+    add.type = Type(Type::Kind::I64);
+    add.operands = {Value::temp(x.id), Value::temp(biasId)};
+    const unsigned addId = *add.result;
+
+    Instr quot;
+    quot.result = nextId++;
+    quot.op = Opcode::AShr;
+    quot.type = Type(Type::Kind::I64);
+    quot.operands = {Value::temp(addId), Value::constInt(2)};
+    const unsigned quotId = *quot.result;
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(quotId)};
+    entry.instructions = {sign, bias, add, quot, ret};
+    entry.terminated = true;
+
+    fn.blocks = {entry};
+    fn.valueNames.resize(nextId);
+    module.functions.push_back(std::move(fn));
+    Function &function = module.functions.back();
+
+    assert(il::verify::Verifier::verify(module).hasValue());
+
+    auto registry = createRegistry();
+    il::transform::AnalysisManager analysisManager(module, registry);
+    il::transform::CheckOpt checkOpt;
+    auto preserved = checkOpt.run(function, analysisManager);
+    (void)preserved;
+
+    assert(countOpcode(function, Opcode::IAddOvf) == 0);
+    assert(countOpcode(function, Opcode::Add) == 1);
+    assert(il::verify::Verifier::verify(module).hasValue());
+}
+
 void test_unguarded_sub_remains_rejected() {
     Module module;
     Function fn;
@@ -579,6 +717,8 @@ int main() {
     test_loop_invariant_hoisting();
     test_guard_demote_rejects_unproven_subtractions();
     test_guard_demote_produces_verifiable_il();
+    test_guard_demote_skips_multi_predecessor_target();
+    test_sign_bias_add_demotes_and_verifies();
     test_unguarded_sub_remains_rejected();
     return 0;
 }

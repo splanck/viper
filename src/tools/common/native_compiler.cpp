@@ -66,7 +66,9 @@ int compileToNative(const std::string &ilPath,
                     const std::string &outputPath,
                     TargetArch arch,
                     const std::string &assetBlobPath,
-                    const std::string &assetObjPath) {
+                    const std::string &assetObjPath,
+                    int backendOptimizeLevel,
+                    bool skipIlOptimization) {
     il::core::Module preflightModule;
     il::support::SourceManager sm;
     auto preflight = il::tools::common::loadAndVerifyModule(ilPath, preflightModule, &sm, std::cerr);
@@ -74,10 +76,12 @@ int compileToNative(const std::string &ilPath,
         return preflight.isFileError() ? 1 : 2;
 
     if (arch == TargetArch::ARM64) {
-        // The frontend already emitted the final IL. Do not re-run an IL
-        // optimization pipeline here; that can double-optimize build output
-        // and introduce correctness regressions.
-        std::vector<std::string> storage = {ilPath, "-o", outputPath, "-O0"};
+        std::vector<std::string> storage = {ilPath,
+                                            "-o",
+                                            outputPath,
+                                            "-O" + std::to_string(backendOptimizeLevel)};
+        if (skipIlOptimization)
+            storage.push_back("--skip-il-optimization");
         if (!assetBlobPath.empty()) {
             storage.push_back("--asset-blob");
             storage.push_back(assetBlobPath);
@@ -97,7 +101,8 @@ int compileToNative(const std::string &ilPath,
     viper::codegen::x64::CodegenPipeline::Options opts;
     opts.input_il_path = ilPath;
     opts.output_obj_path = outputPath;
-    opts.optimize = 0;
+    opts.optimize = backendOptimizeLevel;
+    opts.skip_il_optimization = skipIlOptimization;
     opts.asset_blob_path = assetBlobPath;
 #if defined(_WIN32)
     opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::Win64;

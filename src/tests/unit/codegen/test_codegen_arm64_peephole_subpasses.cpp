@@ -288,6 +288,51 @@ TEST(AArch64PeepholeSubpasses, LoopPhiRejectsRedefinedEdgeSource) {
     EXPECT_FALSE(splitLoopHeader);
 }
 
+TEST(AArch64PeepholeSubpasses, LoopPhiRejectsLoopsContainingCalls) {
+    MFunction fn{};
+    fn.name = "loop_phi_call_body";
+    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    fn.blocks.push_back(MBasicBlock{"loop", {}});
+    fn.blocks.push_back(MBasicBlock{"latch", {}});
+    fn.blocks.push_back(MBasicBlock{"exit", {}});
+
+    auto &entry = fn.blocks[0];
+    auto &loop = fn.blocks[1];
+    auto &latch = fn.blocks[2];
+    auto &exit = fn.blocks[3];
+
+    entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("loop")}});
+
+    loop.instrs.push_back(
+        MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X22), MOperand::immOp(-40)}});
+    loop.instrs.push_back(
+        MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X23), MOperand::immOp(-48)}});
+    loop.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("may_touch_callee_saved")}});
+    loop.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("latch")}});
+
+    latch.instrs.push_back(MInstr{MOpcode::AddsRI,
+                                  {MOperand::regOp(PhysReg::X24),
+                                   MOperand::regOp(PhysReg::X22),
+                                   MOperand::immOp(1)}});
+    latch.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X24), MOperand::immOp(-40)}});
+    latch.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X23), MOperand::immOp(-48)}});
+    latch.instrs.push_back(
+        MInstr{MOpcode::Cbz, {MOperand::regOp(PhysReg::X24), MOperand::labelOp("exit")}});
+    latch.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("loop")}});
+
+    exit.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    (void)runPeephole(fn);
+
+    const bool splitLoopHeader =
+        std::any_of(fn.blocks.begin(), fn.blocks.end(), [](const MBasicBlock &bb) {
+            return bb.name == "loop_body";
+        });
+    EXPECT_FALSE(splitLoopHeader);
+}
+
 TEST(AArch64PeepholeSubpasses, LoopPhiRejectsBackwardJoinEdge) {
     MFunction fn{};
     fn.name = "loop_phi_backward_join";
@@ -338,6 +383,71 @@ TEST(AArch64PeepholeSubpasses, LoopPhiRejectsBackwardJoinEdge) {
             return bb.name == "join_body";
         });
     EXPECT_FALSE(splitJoin);
+}
+
+TEST(AArch64PeepholeSubpasses, JoinPhiCoalescerSkipsLoopHeaderBackedgeWithCalls) {
+    MFunction fn{};
+    fn.name = "join_phi_coalescer_loop_header";
+    fn.blocks.push_back(MBasicBlock{"entry", {}});
+    fn.blocks.push_back(MBasicBlock{"loop", {}});
+    fn.blocks.push_back(MBasicBlock{"body", {}});
+    fn.blocks.push_back(MBasicBlock{"exit", {}});
+    fn.blocks.push_back(MBasicBlock{"trap", {}});
+
+    auto &entry = fn.blocks[0];
+    auto &loop = fn.blocks[1];
+    auto &body = fn.blocks[2];
+    auto &exit = fn.blocks[3];
+    auto &trap = fn.blocks[4];
+
+    entry.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X12), MOperand::immOp(0)}});
+    entry.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X12), MOperand::immOp(-24)}});
+    entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("loop")}});
+
+    loop.instrs.push_back(
+        MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X21), MOperand::immOp(-24)}});
+    loop.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X21), MOperand::immOp(-32)}});
+    loop.instrs.push_back(
+        MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X21), MOperand::immOp(64)}});
+    loop.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("lt"), MOperand::labelOp("body")}});
+    loop.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("exit")}});
+
+    body.instrs.push_back(
+        MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X22), MOperand::immOp(-32)}});
+    body.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("may_touch_loop_state")}});
+    body.instrs.push_back(MInstr{MOpcode::AddsRI,
+                                 {MOperand::regOp(PhysReg::X11),
+                                  MOperand::regOp(PhysReg::X22),
+                                  MOperand::immOp(1)}});
+    body.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("vs"), MOperand::labelOp("trap")}});
+    body.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X11), MOperand::immOp(-24)}});
+    body.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("loop")}});
+
+    exit.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    trap.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap_ovf")}});
+
+    (void)runPeephole(fn);
+
+    const auto loopIt =
+        std::find_if(fn.blocks.begin(), fn.blocks.end(), [](const MBasicBlock &bb) {
+            return bb.name == "loop";
+        });
+    ASSERT_TRUE(loopIt != fn.blocks.end());
+
+    const bool stillLoadsLoopIndex =
+        std::any_of(loopIt->instrs.begin(), loopIt->instrs.end(), [](const MInstr &instr) {
+            return instr.opc == MOpcode::LdrRegFpImm && instr.ops.size() == 2 &&
+                   instr.ops[0].kind == MOperand::Kind::Reg &&
+                   instr.ops[0].reg.idOrPhys == static_cast<uint16_t>(PhysReg::X21) &&
+                   instr.ops[1].kind == MOperand::Kind::Imm && instr.ops[1].imm == -24;
+        });
+    EXPECT_TRUE(stillLoadsLoopIndex);
 }
 
 TEST(AArch64PeepholeSubpasses, LoopConstHoistRejectsBackwardJoinEdge) {

@@ -484,6 +484,14 @@ if (NOT TARGET test_codegen_review_fixes_batch3)
     viper_add_ctest(test_codegen_review_fixes_batch3 test_codegen_review_fixes_batch3)
 endif ()
 
+if (NOT TARGET test_codegen_preregalloc_opt)
+    viper_add_test(
+            test_codegen_preregalloc_opt
+            ${VIPER_TESTS_DIR}/unit/codegen/test_codegen_preregalloc_opt.cpp)
+    target_link_libraries(test_codegen_preregalloc_opt PRIVATE viper_codegen_x86_64 il_codegen_aarch64)
+    viper_add_ctest(test_codegen_preregalloc_opt test_codegen_preregalloc_opt)
+endif ()
+
 if (NOT TARGET test_codegen_peephole_optimizations)
     viper_add_test(
             test_codegen_peephole_optimizations

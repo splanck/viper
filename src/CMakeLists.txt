@@ -193,8 +193,12 @@ add_library(il_transform STATIC
         il/transform/PassRegistry.cpp
         il/transform/PipelineExecutor.cpp
         il/transform/CheckOpt.cpp
+        il/transform/ArrayFastPathOpt.cpp
+        il/transform/Devirtualize.cpp
         il/transform/LateCleanup.cpp
         il/transform/Inline.cpp
+        il/transform/OwnershipOpt.cpp
+        il/transform/RuntimeFastPathOpt.cpp
         il/transform/Peephole.cpp
         il/transform/ConstFold.cpp
         il/transform/DCE.cpp

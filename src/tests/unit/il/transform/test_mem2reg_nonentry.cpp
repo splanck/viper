@@ -15,6 +15,7 @@
 //   3. Multi-block alloca where defining block does NOT dominate a use — not promoted.
 //   4. Loop-header block params remain deterministic and branch edges are repaired.
 //   5. Cross-block alloca in a re-entered loop header — not promoted.
+//   6. EH functions are skipped until mem2reg has an exception-aware CFG.
 //
 //===----------------------------------------------------------------------===//
 
@@ -120,6 +121,110 @@ Module buildSingleBlockNonEntryAlloca() {
     fn.valueNames.resize(id);
     fn.valueNames[0] = "ptr";
     fn.valueNames[1] = "val";
+    module.functions.push_back(std::move(fn));
+    return module;
+}
+
+Module buildEhFunctionWithHandlerStore() {
+    Module module;
+    Function fn;
+    fn.name = "eh_store";
+    fn.retType = Type(Type::Kind::I1);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    {
+        Instr alloca_;
+        alloca_.result = 0;
+        alloca_.op = Opcode::Alloca;
+        alloca_.type = Type(Type::Kind::Ptr);
+        alloca_.operands.push_back(Value::constInt(8));
+        entry.instructions.push_back(std::move(alloca_));
+
+        Instr init;
+        init.op = Opcode::Store;
+        init.type = Type(Type::Kind::I1);
+        init.operands.push_back(Value::temp(0));
+        init.operands.push_back(Value::constInt(0));
+        entry.instructions.push_back(std::move(init));
+
+        Instr push;
+        push.op = Opcode::EhPush;
+        push.type = Type(Type::Kind::Void);
+        push.labels.push_back("handler");
+        entry.instructions.push_back(std::move(push));
+
+        Instr div;
+        div.result = 1;
+        div.op = Opcode::SDivChk0;
+        div.type = Type(Type::Kind::I64);
+        div.operands.push_back(Value::constInt(1));
+        div.operands.push_back(Value::constInt(0));
+        entry.instructions.push_back(std::move(div));
+
+        Instr pop;
+        pop.op = Opcode::EhPop;
+        pop.type = Type(Type::Kind::Void);
+        entry.instructions.push_back(std::move(pop));
+
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels.push_back("done");
+        br.brArgs.push_back({});
+        entry.instructions.push_back(std::move(br));
+        entry.terminated = true;
+    }
+
+    BasicBlock done;
+    done.label = "done";
+    {
+        Instr load;
+        load.result = 2;
+        load.op = Opcode::Load;
+        load.type = Type(Type::Kind::I1);
+        load.operands.push_back(Value::temp(0));
+        done.instructions.push_back(std::move(load));
+
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands.push_back(Value::temp(2));
+        done.instructions.push_back(std::move(ret));
+        done.terminated = true;
+    }
+
+    BasicBlock handler;
+    handler.label = "handler";
+    handler.params.push_back(Param{"err", Type(Type::Kind::Error), 3});
+    handler.params.push_back(Param{"tok", Type(Type::Kind::ResumeTok), 4});
+    {
+        Instr marker;
+        marker.op = Opcode::EhEntry;
+        marker.type = Type(Type::Kind::Void);
+        handler.instructions.push_back(std::move(marker));
+
+        Instr caught;
+        caught.op = Opcode::Store;
+        caught.type = Type(Type::Kind::I1);
+        caught.operands.push_back(Value::temp(0));
+        caught.operands.push_back(Value::constInt(1));
+        handler.instructions.push_back(std::move(caught));
+
+        Instr resume;
+        resume.op = Opcode::ResumeLabel;
+        resume.type = Type(Type::Kind::Void);
+        resume.operands.push_back(Value::temp(4));
+        resume.labels.push_back("done");
+        resume.brArgs.push_back({});
+        handler.instructions.push_back(std::move(resume));
+        handler.terminated = true;
+    }
+
+    fn.blocks.push_back(std::move(entry));
+    fn.blocks.push_back(std::move(done));
+    fn.blocks.push_back(std::move(handler));
+    fn.valueNames.resize(5);
     module.functions.push_back(std::move(fn));
     return module;
 }
@@ -596,6 +701,21 @@ TEST(Mem2RegNonEntry, LoopHeaderParamsAreDeterministicAndEdgesAreRepaired) {
 
 TEST(Mem2RegNonEntry, ReenteredNonEntryAllocaIsNotPromotedAcrossBlocks) {
     Module module = buildLoopHeaderDynamicAlloca();
+
+    viper::passes::Mem2RegStats stats{};
+    viper::passes::mem2reg(module, &stats);
+
+    ASSERT_TRUE(il::verify::Verifier::verify(module).hasValue());
+    const Function &fn = module.functions.front();
+    EXPECT_EQ(stats.promotedVars, 0u);
+    EXPECT_EQ(countOpcodeInFunction(fn, Opcode::Alloca), 1u);
+    EXPECT_EQ(countOpcodeInFunction(fn, Opcode::Load), 1u);
+    EXPECT_EQ(countOpcodeInFunction(fn, Opcode::Store), 2u);
+}
+
+TEST(Mem2RegNonEntry, ExceptionHandlingFunctionIsSkipped) {
+    Module module = buildEhFunctionWithHandlerStore();
+    ASSERT_TRUE(il::verify::Verifier::verify(module).hasValue());
 
     viper::passes::Mem2RegStats stats{};
     viper::passes::mem2reg(module, &stats);

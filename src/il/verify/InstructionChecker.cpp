@@ -704,6 +704,43 @@ bool isVerifiedCheckedArithmeticDemotion(const VerifyCtx &ctx) {
     return false;
 }
 
+const Instr *findLocalDefBefore(const BasicBlock &block, const Instr &limit, unsigned id) {
+    for (const Instr &instr : block.instructions) {
+        if (&instr == &limit)
+            return nullptr;
+        if (instr.result && *instr.result == id)
+            return &instr;
+    }
+    return nullptr;
+}
+
+bool isSignBiasForDividend(const BasicBlock &block,
+                           const Instr &limit,
+                           const Value &dividend,
+                           const Value &biasValue) {
+    if (dividend.kind != Value::Kind::Temp || biasValue.kind != Value::Kind::Temp)
+        return false;
+
+    const Instr *bias = findLocalDefBefore(block, limit, biasValue.id);
+    if (!bias || bias->op != Opcode::And || bias->operands.size() != 2 ||
+        bias->operands[0].kind != Value::Kind::Temp ||
+        bias->operands[1].kind != Value::Kind::ConstInt || bias->operands[1].i64 < 0) {
+        return false;
+    }
+
+    const Instr *sign = findLocalDefBefore(block, *bias, bias->operands[0].id);
+    return sign && sign->op == Opcode::AShr && sign->operands.size() == 2 &&
+           valueEquals(sign->operands[0], dividend) &&
+           sign->operands[1].kind == Value::Kind::ConstInt && sign->operands[1].i64 == 63;
+}
+
+bool isVerifiedSignBiasAddDemotion(const VerifyCtx &ctx) {
+    if (ctx.instr.op != Opcode::Add || ctx.instr.operands.size() != 2)
+        return false;
+    return isSignBiasForDividend(ctx.block, ctx.instr, ctx.instr.operands[0], ctx.instr.operands[1]) ||
+           isSignBiasForDividend(ctx.block, ctx.instr, ctx.instr.operands[1], ctx.instr.operands[0]);
+}
+
 /// @brief Validate one false-edge proof for a checked-sub demotion.
 /// @details CheckOpt rewrites `%y = isub.ovf %x, K` to `%y = sub %x, K` only
 ///          on the false edge of `cbr (icmp.sle %x, T), overflow, work`.  The
@@ -819,6 +856,10 @@ bool isVerifiedCheckedDivRemDemotion(const VerifyCtx &ctx) {
 /// @return Always returns a failure diagnostic.
 Expected<void> applyReject(const VerifyCtx &ctx, const InstructionSpec &spec) {
     if (isVerifiedCheckedArithmeticDemotion(ctx)) {
+        ctx.types.recordResult(ctx.instr, resolveResultType(ctx, spec));
+        return {};
+    }
+    if (isVerifiedSignBiasAddDemotion(ctx)) {
         ctx.types.recordResult(ctx.instr, resolveResultType(ctx, spec));
         return {};
     }

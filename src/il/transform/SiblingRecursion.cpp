@@ -78,6 +78,24 @@ bool isSignedCmp(Opcode op) {
            op == Opcode::SCmpGT;
 }
 
+Opcode checkedOpcodeForLoopCarriedArithmetic(Opcode op) {
+    switch (op) {
+        case Opcode::Add:
+            return Opcode::IAddOvf;
+        case Opcode::Sub:
+            return Opcode::ISubOvf;
+        case Opcode::Mul:
+            return Opcode::IMulOvf;
+        default:
+            return op;
+    }
+}
+
+Instr makeLoopCarriedVerifierStable(Instr instr) {
+    instr.op = checkedOpcodeForLoopCarriedArithmetic(instr.op);
+    return instr;
+}
+
 /// Matched pattern information for the sibling recursion transformation.
 struct SiblingPattern {
     size_t blockIdx; // Index of the recurse block in fn.blocks
@@ -323,17 +341,17 @@ PreservedAnalyses SiblingRecursion::run(Function &fn, AnalysisManager &) {
 
     // Keep instructions [0, call1Idx] (up to and including first call).
     for (size_t i = 0; i <= pat.call1Idx; ++i)
-        newInstrs.push_back(fn.blocks[pat.blockIdx].instructions[i]);
+        newInstrs.push_back(makeLoopCarriedVerifierStable(fn.blocks[pat.blockIdx].instructions[i]));
 
     // Keep instructions between calls (e.g., second arg computation).
     for (size_t i = pat.call1Idx + 1; i < pat.call2Idx; ++i)
-        newInstrs.push_back(fn.blocks[pat.blockIdx].instructions[i]);
+        newInstrs.push_back(makeLoopCarriedVerifierStable(fn.blocks[pat.blockIdx].instructions[i]));
 
     // New: accumulate — %accNew = addOp %acc, %r1
     {
         Instr accInstr;
         accInstr.result = accNewId;
-        accInstr.op = pat.addOp;
+        accInstr.op = checkedOpcodeForLoopCarriedArithmetic(pat.addOp);
         accInstr.type = Type(Type::Kind::I64);
         accInstr.operands.push_back(Value::temp(accParamId));
         accInstr.operands.push_back(Value::temp(r1Id));
@@ -404,7 +422,7 @@ PreservedAnalyses SiblingRecursion::run(Function &fn, AnalysisManager &) {
     {
         Instr addInstr;
         addInstr.result = doneResultId;
-        addInstr.op = pat.addOp;
+        addInstr.op = checkedOpcodeForLoopCarriedArithmetic(pat.addOp);
         addInstr.type = Type(Type::Kind::I64);
         addInstr.operands.push_back(secondCallArg);
         addInstr.operands.push_back(Value::temp(accNewId));

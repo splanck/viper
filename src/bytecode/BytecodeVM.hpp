@@ -216,6 +216,19 @@ class BytecodeVM {
         return runtimeBridgeEnabled_;
     }
 
+    /// @brief Enable or disable trusted dispatch for verified bytecode.
+    /// @details Trusted dispatch skips per-instruction PC and stack-shape
+    ///          validation in the interpreter loop. Use only for modules
+    ///          produced by BytecodeCompiler::compileChecked after IL verification.
+    void setTrustedDispatch(bool enabled) {
+        trustedDispatch_ = enabled;
+    }
+
+    /// @brief Check whether trusted dispatch is enabled.
+    bool trustedDispatch() const {
+        return trustedDispatch_;
+    }
+
     /// @brief Register a native handler for direct invocation by name.
     /// @details Handlers registered here bypass the RuntimeBridge and are
     ///          called directly by the VM when a matching CALL_NATIVE is executed.
@@ -230,6 +243,7 @@ class BytecodeVM {
     struct ExecutionEnvironment {
         bool runtimeBridgeEnabled = false;
         bool useThreadedDispatch = true;
+        bool trustedDispatch = false;
         std::unordered_map<std::string, NativeHandler> nativeHandlers;
     };
 
@@ -378,6 +392,7 @@ class BytecodeVM {
     // Runtime integration
     bool runtimeBridgeEnabled_; ///< Whether CALL_NATIVE routes through RuntimeBridge.
     bool useThreadedDispatch_;  ///< Whether to use computed-goto dispatch.
+    bool trustedDispatch_;      ///< Whether verified bytecode skips hot-path guards.
     std::unordered_map<std::string, NativeHandler> nativeHandlers_; ///< Registered native handlers.
 
     /// @brief Exception handler stack (pushed by EH_PUSH, popped by EH_POP).
@@ -444,7 +459,7 @@ class BytecodeVM {
     ///          ownership of their incoming string handles. Those slots must be
     ///          detached before @ref releaseCallArgs runs to avoid a second
     ///          release on the same handle.
-    void dismissConsumedStringArgs(std::string_view name, BCSlot *args, uint8_t argCount);
+    void dismissConsumedStringArgs(const NativeFuncRef &ref, BCSlot *args, uint8_t argCount);
 
     /// @brief Release string-owning locals in a frame before unwinding it.
     void releaseFrameLocals(const BCFrame &frame);
@@ -508,19 +523,19 @@ class BytecodeVM {
     ///          operand stack. Helpers such as `Viper.String.Concat` release
     ///          their input strings, so the bridge must receive retained copies
     ///          rather than the VM's original aliases.
-    /// @param name Runtime helper name.
+    /// @param ref Runtime helper reference.
     /// @param args Argument slots currently on the operand stack.
     /// @param argCount Number of arguments in @p args.
     /// @return Retained argument copy for consuming helpers; otherwise an empty
     ///         vector.
-    std::vector<BCSlot> cloneRuntimeStringArgs(std::string_view name,
+    std::vector<BCSlot> cloneRuntimeStringArgs(const NativeFuncRef &ref,
                                                const BCSlot *args,
                                                size_t argCount) const;
 
     /// @brief Release any retained string arguments created for a runtime call.
-    /// @param name Runtime helper name.
+    /// @param ref Runtime helper reference.
     /// @param args Retained argument copy returned by @ref cloneRuntimeStringArgs.
-    void releaseRuntimeStringArgs(std::string_view name, std::vector<BCSlot> &args) const;
+    void releaseRuntimeStringArgs(const NativeFuncRef &ref, std::vector<BCSlot> &args) const;
 
     /// @brief Invoke a runtime-bridge native helper with bytecode trap integration.
     /// @details Returns false when execution was diverted into bytecode trap

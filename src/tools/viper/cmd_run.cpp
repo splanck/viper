@@ -78,8 +78,29 @@ struct RunBuildConfig {
 
     // CLI overrides (take precedence over manifest)
     std::optional<std::string> optimizeLevelOverride;
+    std::optional<std::string> buildProfileOverride;
     std::optional<viper::tools::TargetArch> archOverride;
 };
+
+std::optional<std::string> optimizeForBuildProfile(std::string_view profile) {
+    if (profile == "debug")
+        return std::string("O0");
+    if (profile == "balanced")
+        return std::string("O1");
+    if (profile == "release")
+        return std::string("O2");
+    return std::nullopt;
+}
+
+std::optional<int> optimizeLevelNumber(std::string_view level) {
+    if (level == "O0")
+        return 0;
+    if (level == "O1")
+        return 1;
+    if (level == "O2")
+        return 2;
+    return std::nullopt;
+}
 
 il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, char **argv) {
     RunBuildConfig config;
@@ -106,6 +127,33 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
             config.outputPath = argv[++i];
         } else if (arg == "-O0" || arg == "-O1" || arg == "-O2") {
             config.optimizeLevelOverride = std::string(arg.substr(1));
+        } else if (arg == "--build-profile") {
+            if (i + 1 >= argc) {
+                return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
+                    il::support::Severity::Error,
+                    "--build-profile requires debug, balanced, or release",
+                    {},
+                    {}});
+            }
+            std::string_view value = argv[++i];
+            if (!optimizeForBuildProfile(value)) {
+                return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
+                    il::support::Severity::Error,
+                    "--build-profile must be 'debug', 'balanced', or 'release'",
+                    {},
+                    {}});
+            }
+            config.buildProfileOverride = std::string(value);
+        } else if (arg.substr(0, 16) == "--build-profile=") {
+            std::string_view value = arg.substr(16);
+            if (!optimizeForBuildProfile(value)) {
+                return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
+                    il::support::Severity::Error,
+                    "--build-profile must be 'debug', 'balanced', or 'release'",
+                    {},
+                    {}});
+            }
+            config.buildProfileOverride = std::string(value);
         } else if (arg == "--debug-vm") {
             config.debugVm = true;
         } else if (arg == "--no-runtime-namespaces") {
@@ -448,6 +496,10 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
     // Apply CLI overrides
     if (config.shared.boundsChecksSpecified)
         proj.boundsChecks = config.shared.boundsChecks;
+    if (config.buildProfileOverride) {
+        proj.buildProfile = *config.buildProfileOverride;
+        proj.optimizeLevel = *optimizeForBuildProfile(*config.buildProfileOverride);
+    }
     if (config.optimizeLevelOverride)
         proj.optimizeLevel = *config.optimizeLevelOverride;
 
@@ -539,8 +591,14 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
             }
         }
 
-        int rc = viper::tools::compileToNative(
-            tempIlPath, config.outputPath, arch, assetBlobPath, assetObjPath);
+        const int backendOptimizeLevel = optimizeLevelNumber(proj.optimizeLevel).value_or(1);
+        int rc = viper::tools::compileToNative(tempIlPath,
+                                               config.outputPath,
+                                               arch,
+                                               assetBlobPath,
+                                               assetObjPath,
+                                               backendOptimizeLevel,
+                                               true);
         std::error_code ec;
         std::filesystem::remove(tempIlPath, ec);
         if (!assetBlobPath.empty())

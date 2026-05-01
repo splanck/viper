@@ -280,6 +280,20 @@ const char *opcodeName(BCOpcode op) {
         case BCOpcode::WATCH_VAR:
             return "WATCH_VAR";
 
+        // Runtime Fast-Path Operations
+        case BCOpcode::ARR_I32_GET_FAST:
+            return "ARR_I32_GET_FAST";
+        case BCOpcode::ARR_I32_SET_FAST:
+            return "ARR_I32_SET_FAST";
+        case BCOpcode::ARR_I64_GET_FAST:
+            return "ARR_I64_GET_FAST";
+        case BCOpcode::ARR_I64_SET_FAST:
+            return "ARR_I64_SET_FAST";
+        case BCOpcode::ARR_F64_GET_FAST:
+            return "ARR_F64_GET_FAST";
+        case BCOpcode::ARR_F64_SET_FAST:
+            return "ARR_F64_SET_FAST";
+
         // String Operations
         case BCOpcode::STR_RETAIN:
             return "STR_RETAIN";

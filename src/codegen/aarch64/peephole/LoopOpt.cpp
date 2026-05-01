@@ -676,6 +676,41 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
     if (backEdges.empty())
         return 0;
 
+    auto collectNaturalLoop = [&preds](const BackEdge &edge) {
+        std::unordered_set<std::size_t> loopBlocks;
+        std::vector<std::size_t> worklist;
+        loopBlocks.insert(edge.headerIdx);
+        worklist.push_back(edge.latchIdx);
+
+        while (!worklist.empty()) {
+            const std::size_t blockIdx = worklist.back();
+            worklist.pop_back();
+            if (!loopBlocks.insert(blockIdx).second)
+                continue;
+
+            auto pit = preds.find(blockIdx);
+            if (pit == preds.end())
+                continue;
+            for (std::size_t predIdx : pit->second) {
+                if (loopBlocks.count(predIdx) == 0)
+                    worklist.push_back(predIdx);
+            }
+        }
+        return loopBlocks;
+    };
+
+    auto loopContainsCall = [&fn](const std::unordered_set<std::size_t> &loopBlocks) {
+        for (std::size_t blockIdx : loopBlocks) {
+            if (blockIdx >= fn.blocks.size())
+                return true;
+            for (const auto &instr : fn.blocks[blockIdx].instrs) {
+                if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr)
+                    return true;
+            }
+        }
+        return false;
+    };
+
     struct PhiLoad {
         std::size_t instrIdx;
         int64_t fpOffset;
@@ -767,6 +802,13 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
     // Process each back-edge. We process at most one per pass to avoid
     // invalidating indices after block insertion.
     for (const auto &edge : backEdges) {
+        const auto loopBlocks = collectNaturalLoop(edge);
+        // The edge-move rewrite extends physical-register phi values across the
+        // hot loop body. Keep it to call-free loops until the pass has a full
+        // liveness proof for every rewritten register through complex bodies.
+        if (loopContainsCall(loopBlocks))
+            continue;
+
         auto &header = fn.blocks[edge.headerIdx];
         auto &latch = fn.blocks[edge.latchIdx];
 

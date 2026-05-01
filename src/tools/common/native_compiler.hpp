@@ -48,12 +48,16 @@ bool isNativeOutputPath(const std::string &path);
 /// @param arch Target architecture (defaults to host architecture).
 /// @param assetBlobPath Path to VPA asset blob for .rodata embedding (optional).
 /// @param assetObjPath  Path to extra .o file with asset blob C array (optional).
+/// @param backendOptimizeLevel Backend optimization level to preserve after frontend IL optimization.
+/// @param skipIlOptimization True when the input IL has already run the frontend/project pipeline.
 /// @return 0 on success, non-zero on failure.
 int compileToNative(const std::string &ilPath,
                     const std::string &outputPath,
                     TargetArch arch = detectHostArch(),
                     const std::string &assetBlobPath = "",
-                    const std::string &assetObjPath = "");
+                    const std::string &assetObjPath = "",
+                    int backendOptimizeLevel = 1,
+                    bool skipIlOptimization = true);
 
 /// @brief Generate a unique temporary file path for IL serialization.
 /// @return A path in the system temp directory with a .il extension.

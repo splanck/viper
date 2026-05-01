@@ -25,6 +25,7 @@
 #include <cstring>
 #include <limits>
 #include <mutex>
+#include <span>
 #include <sstream>
 #include <string_view>
 #include <vector>
@@ -33,10 +34,6 @@ namespace viper {
 namespace bytecode {
 
 namespace {
-
-const il::runtime::RuntimeSignature *lookupRuntimeSignature(std::string_view name) {
-    return il::runtime::findRuntimeSignature(name);
-}
 
 bool runtimeParamIsString(const il::runtime::RuntimeSignature *sig, size_t index) {
     return sig && index < sig->paramTypes.size() &&
@@ -142,7 +139,8 @@ ActiveBytecodeVMGuard::~ActiveBytecodeVMGuard() {
 BytecodeVM::BytecodeVM()
     : module_(nullptr), state_(VMState::Ready), trapKind_(TrapKind::None), currentErrorCode_(0),
       sp_(nullptr), fp_(nullptr), instrCount_(0), runtimeBridgeEnabled_(false),
-      useThreadedDispatch_(true) // Default to faster threaded dispatch
+      useThreadedDispatch_(true), // Default to faster threaded dispatch
+      trustedDispatch_(false)
       ,
       allocaTop_(0), singleStep_(false) {
     // Pre-allocate reasonable stack size
@@ -213,15 +211,15 @@ bool BytecodeVM::runtimeCallConsumesOwnedStringArgs(std::string_view name) {
     return name == "rt_str_release_maybe";
 }
 
-std::vector<BCSlot> BytecodeVM::cloneRuntimeStringArgs(std::string_view name,
+std::vector<BCSlot> BytecodeVM::cloneRuntimeStringArgs(const NativeFuncRef &ref,
                                                        const BCSlot *args,
                                                        size_t argCount) const {
     if (!args || argCount == 0)
         return {};
-    if (!runtimeCallConsumesClonedStringArgs(name))
+    if (!ref.consumesClonedStringArgs)
         return {};
 
-    const auto *sig = lookupRuntimeSignature(name);
+    const auto *sig = ref.runtimeSignature;
     if (!sig)
         return {};
 
@@ -233,13 +231,14 @@ std::vector<BCSlot> BytecodeVM::cloneRuntimeStringArgs(std::string_view name,
     return cloned;
 }
 
-void BytecodeVM::releaseRuntimeStringArgs(std::string_view name, std::vector<BCSlot> &args) const {
+void BytecodeVM::releaseRuntimeStringArgs(const NativeFuncRef &ref,
+                                          std::vector<BCSlot> &args) const {
     if (args.empty())
         return;
-    if (!runtimeCallConsumesClonedStringArgs(name))
+    if (!ref.consumesClonedStringArgs)
         return;
 
-    const auto *sig = lookupRuntimeSignature(name);
+    const auto *sig = ref.runtimeSignature;
     if (!sig)
         return;
     for (size_t i = 0; i < args.size(); ++i) {
@@ -253,40 +252,47 @@ bool BytecodeVM::invokeRuntimeBridgeNative(const NativeFuncRef &ref,
                                            uint8_t argCount,
                                            BCSlot &result) {
     std::vector<BCSlot> preservedArgs =
-        cloneRuntimeStringArgs(ref.name, args, static_cast<size_t>(argCount));
+        cloneRuntimeStringArgs(ref, args, static_cast<size_t>(argCount));
     BCSlot *callArgs = preservedArgs.empty() ? args : preservedArgs.data();
     il::vm::Slot *vmArgs = reinterpret_cast<il::vm::Slot *>(callArgs);
-    std::vector<il::vm::Slot> argVec(vmArgs, vmArgs + argCount);
+    std::span<const il::vm::Slot> argSpan{vmArgs, static_cast<size_t>(argCount)};
 
     il::vm::RuntimeCallContext ctx;
     try {
         il::vm::ScopedRuntimeTrapInterceptor trapInterceptor(&bytecodeRuntimeTrapPassthrough, this);
-        il::vm::Slot vmResult = il::vm::RuntimeBridge::call(
-            ctx,
-            ref.name,
-            argVec,
-            il::support::SourceLoc{},
-            fp_ && fp_->func ? fp_->func->name : std::string{},
-            "");
+        il::vm::Slot vmResult =
+            ref.runtimeDescriptor
+                ? il::vm::RuntimeBridge::call(ctx,
+                                              *ref.runtimeDescriptor,
+                                              argSpan,
+                                              il::support::SourceLoc{},
+                                              fp_ && fp_->func ? fp_->func->name : std::string{},
+                                              "")
+                : il::vm::RuntimeBridge::call(ctx,
+                                              ref.name,
+                                              argSpan,
+                                              il::support::SourceLoc{},
+                                              fp_ && fp_->func ? fp_->func->name : std::string{},
+                                              "");
         result.i64 = vmResult.i64;
     } catch (const il::vm::RuntimeTrapSignal &signal) {
-        releaseRuntimeStringArgs(ref.name, preservedArgs);
+        releaseRuntimeStringArgs(ref, preservedArgs);
         if (!dispatchTrap(static_cast<TrapKind>(signal.kind), signal.code, signal.message.c_str()))
             trap(static_cast<TrapKind>(signal.kind), signal.message.c_str());
         return false;
     }
 
-    releaseRuntimeStringArgs(ref.name, preservedArgs);
+    releaseRuntimeStringArgs(ref, preservedArgs);
     return true;
 }
 
-void BytecodeVM::dismissConsumedStringArgs(std::string_view name, BCSlot *args, uint8_t argCount) {
+void BytecodeVM::dismissConsumedStringArgs(const NativeFuncRef &ref, BCSlot *args, uint8_t argCount) {
     if (!args || argCount == 0)
         return;
-    if (!runtimeCallConsumesOwnedStringArgs(name))
+    if (!ref.consumesOwnedStringArgs)
         return;
 
-    const auto *sig = lookupRuntimeSignature(name);
+    const auto *sig = ref.runtimeSignature;
     if (!sig)
         return;
 
@@ -304,6 +310,7 @@ BytecodeVM::ExecutionEnvironment BytecodeVM::captureExecutionEnvironment() const
     ExecutionEnvironment env;
     env.runtimeBridgeEnabled = runtimeBridgeEnabled_;
     env.useThreadedDispatch = useThreadedDispatch_;
+    env.trustedDispatch = trustedDispatch_;
     env.nativeHandlers = nativeHandlers_;
     return env;
 }
@@ -311,6 +318,7 @@ BytecodeVM::ExecutionEnvironment BytecodeVM::captureExecutionEnvironment() const
 void BytecodeVM::applyExecutionEnvironment(const ExecutionEnvironment &env) {
     runtimeBridgeEnabled_ = env.runtimeBridgeEnabled;
     useThreadedDispatch_ = env.useThreadedDispatch;
+    trustedDispatch_ = env.trustedDispatch;
     nativeHandlers_ = env.nativeHandlers;
 }
 
@@ -679,9 +687,21 @@ bool BytecodeVM::ensureStackForInstruction(const BCFrame &frame,
             required = 2;
             delta = -1;
             break;
+        case BCOpcode::ARR_I32_GET_FAST:
+        case BCOpcode::ARR_I64_GET_FAST:
+        case BCOpcode::ARR_F64_GET_FAST:
+            required = 2;
+            delta = -1;
+            break;
         case BCOpcode::IDX_CHK:
             required = 3;
             delta = -2;
+            break;
+        case BCOpcode::ARR_I32_SET_FAST:
+        case BCOpcode::ARR_I64_SET_FAST:
+        case BCOpcode::ARR_F64_SET_FAST:
+            required = 3;
+            delta = -3;
             break;
         case BCOpcode::LOAD_LOCAL:
         case BCOpcode::LOAD_LOCAL_W:
@@ -899,11 +919,15 @@ void BytecodeVM::run() {
     state_ = VMState::Running;
 
     while (state_ == VMState::Running) {
-        if (!fp_ || !fp_->func || !ensurePcInRange(*fp_->func, fp_->pc, "BytecodeVM::run(fetch)"))
+        if (!fp_ || !fp_->func)
             return;
 
-        if (!ensureStackForInstruction(*fp_, sp_, fp_->func->code[fp_->pc], "BytecodeVM::run"))
-            return;
+        if (!trustedDispatch_) {
+            if (!ensurePcInRange(*fp_->func, fp_->pc, "BytecodeVM::run(fetch)"))
+                return;
+            if (!ensureStackForInstruction(*fp_, sp_, fp_->func->code[fp_->pc], "BytecodeVM::run"))
+                return;
+        }
 
         // Fetch instruction
         uint32_t instr = fp_->func->code[fp_->pc++];
@@ -1791,7 +1815,7 @@ void BytecodeVM::run() {
                     it->second(args, argCount, &result);
                 }
 
-                dismissConsumedStringArgs(ref.name, args, argCount);
+                dismissConsumedStringArgs(ref, args, argCount);
                 releaseCallArgs(args, argCount);
 
                 // Pop arguments
@@ -1800,15 +1824,87 @@ void BytecodeVM::run() {
                 // Push result if function returns a value
                 if (ref.hasReturn) {
                     *sp_++ = result;
-                    if (lookupRuntimeSignature(ref.name) &&
-                        lookupRuntimeSignature(ref.name)->retType.kind ==
-                            il::core::Type::Kind::Str &&
-                        result.ptr) {
+                    if (ref.returnsString && result.ptr) {
                         setSlotOwnsString(sp_ - 1, true);
                     } else {
                         setSlotOwnsString(sp_ - 1, false);
                     }
                 }
+                break;
+            }
+
+            case BCOpcode::ARR_I32_GET_FAST: {
+                BCSlot *idxSlot = --sp_;
+                const size_t idx = static_cast<size_t>(idxSlot->i64);
+                setSlotOwnsString(idxSlot, false);
+                BCSlot *arrSlot = sp_ - 1;
+                auto *arr = static_cast<int32_t *>(arrSlot->ptr);
+                arrSlot->i64 = static_cast<int64_t>(arr[idx]);
+                setSlotOwnsString(arrSlot, false);
+                break;
+            }
+
+            case BCOpcode::ARR_I32_SET_FAST: {
+                BCSlot *valueSlot = --sp_;
+                const int32_t value = static_cast<int32_t>(valueSlot->i64);
+                setSlotOwnsString(valueSlot, false);
+                BCSlot *idxSlot = --sp_;
+                const size_t idx = static_cast<size_t>(idxSlot->i64);
+                setSlotOwnsString(idxSlot, false);
+                BCSlot *arrSlot = --sp_;
+                auto *arr = static_cast<int32_t *>(arrSlot->ptr);
+                setSlotOwnsString(arrSlot, false);
+                arr[idx] = value;
+                break;
+            }
+
+            case BCOpcode::ARR_I64_GET_FAST: {
+                BCSlot *idxSlot = --sp_;
+                const size_t idx = static_cast<size_t>(idxSlot->i64);
+                setSlotOwnsString(idxSlot, false);
+                BCSlot *arrSlot = sp_ - 1;
+                auto *arr = static_cast<int64_t *>(arrSlot->ptr);
+                arrSlot->i64 = arr[idx];
+                setSlotOwnsString(arrSlot, false);
+                break;
+            }
+
+            case BCOpcode::ARR_I64_SET_FAST: {
+                BCSlot *valueSlot = --sp_;
+                const int64_t value = valueSlot->i64;
+                setSlotOwnsString(valueSlot, false);
+                BCSlot *idxSlot = --sp_;
+                const size_t idx = static_cast<size_t>(idxSlot->i64);
+                setSlotOwnsString(idxSlot, false);
+                BCSlot *arrSlot = --sp_;
+                auto *arr = static_cast<int64_t *>(arrSlot->ptr);
+                setSlotOwnsString(arrSlot, false);
+                arr[idx] = value;
+                break;
+            }
+
+            case BCOpcode::ARR_F64_GET_FAST: {
+                BCSlot *idxSlot = --sp_;
+                const size_t idx = static_cast<size_t>(idxSlot->i64);
+                setSlotOwnsString(idxSlot, false);
+                BCSlot *arrSlot = sp_ - 1;
+                auto *arr = static_cast<double *>(arrSlot->ptr);
+                arrSlot->f64 = arr[idx];
+                setSlotOwnsString(arrSlot, false);
+                break;
+            }
+
+            case BCOpcode::ARR_F64_SET_FAST: {
+                BCSlot *valueSlot = --sp_;
+                const double value = valueSlot->f64;
+                setSlotOwnsString(valueSlot, false);
+                BCSlot *idxSlot = --sp_;
+                const size_t idx = static_cast<size_t>(idxSlot->i64);
+                setSlotOwnsString(idxSlot, false);
+                BCSlot *arrSlot = --sp_;
+                auto *arr = static_cast<double *>(arrSlot->ptr);
+                setSlotOwnsString(arrSlot, false);
+                arr[idx] = value;
                 break;
             }
 

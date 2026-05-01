@@ -127,7 +127,7 @@ viper init <project-name> [--lang zia|basic]
 | `--lang basic`  | Create a BASIC project             | —       |
 
 Creates a project directory containing:
-- `viper.project` — Project manifest (name, version, language, entry point)
+- `viper.project` — Project manifest (name, version, language, entry point, `profile balanced`, `optimize O1`)
 - `main.zia` or `main.bas` — Entry-point source file with a hello-world template
 
 ```bash
@@ -156,8 +156,12 @@ viper build program.zia -o program
 | `--no-runtime-namespaces` | Disable automatic runtime namespace imports |
 | `--bounds-checks` | Enable generated bounds checks where supported (default for source lowering) |
 | `--no-bounds-checks` | Disable generated bounds checks for source lowering |
+| `--build-profile debug|balanced|release` | Override the manifest build profile (`debug`=`O0`, `balanced`=`O1`, `release`=`O2`) |
+| `-O0`, `-O1`, `-O2` | Override the final optimization level; this takes precedence over the build profile |
 
 Both Zia and BASIC source paths print successful warnings by default, verify IL after lowering, verify between optimization passes, and verify again after optimization. If the optimizer fails verification, the command stops with diagnostics instead of running or building the result.
+
+Project manifests default to the `balanced` profile and `O1` optimization when no explicit directive is present. Native builds serialize the already-optimized frontend IL and pass the selected optimization level to the backend, so backend MIR/codegen passes still run without re-running the IL optimizer.
 
 ### viper -run
 

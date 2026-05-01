@@ -25,6 +25,7 @@
 #include "codegen/aarch64/passes/LegalizePass.hpp"
 #include "codegen/aarch64/passes/LoweringPass.hpp"
 #include "codegen/aarch64/passes/PeepholePass.hpp"
+#include "codegen/aarch64/passes/PreRegAllocOptPass.hpp"
 #include "codegen/aarch64/passes/RegAllocPass.hpp"
 #include "codegen/aarch64/passes/SchedulerPass.hpp"
 #include "codegen/common/LinkerSupport.hpp"
@@ -266,6 +267,8 @@ bool runCodegenPipeline(passes::AArch64Module &module,
         passes::PassManager manager;
         manager.addPass(std::make_unique<passes::LoweringPass>());
         manager.addPass(std::make_unique<passes::LegalizePass>());
+        if (opts.optimizeLevel >= 1)
+            manager.addPass(std::make_unique<passes::PreRegAllocOptPass>());
         if (!manager.run(module, diags))
             return flushOnFailure();
     }
@@ -341,14 +344,15 @@ PipelineResult CodegenPipeline::run() {
         return result;
     }
 
-    if (!runIlOptimizations(mod, opts_.optimize)) {
+    if (!opts_.skip_il_optimization && !runIlOptimizations(mod, opts_.optimize)) {
         err << "error: failed to run AArch64 IL optimization pipeline\n";
         result.exit_code = 1;
         result.stdout_text = out.str();
         result.stderr_text = err.str();
         return result;
     }
-    if (opts_.optimize >= 1 && !il::tools::common::verifyModule(mod, err)) {
+    if (!opts_.skip_il_optimization && opts_.optimize >= 1 &&
+        !il::tools::common::verifyModule(mod, err)) {
         err << "error: IL verification failed after optimization\n";
         result.exit_code = 1;
         result.stdout_text = out.str();

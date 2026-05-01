@@ -39,6 +39,9 @@ struct VMExecutorConfig {
 
     /// @brief Optional source manager for bytecode compile diagnostics and trap locations.
     const il::support::SourceManager *sourceManager{nullptr};
+
+    /// @brief Skip per-instruction interpreter validation after checked bytecode compilation.
+    bool trustedDispatch{true};
 };
 
 /// @brief Result of bytecode VM execution.

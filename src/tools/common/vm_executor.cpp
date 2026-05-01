@@ -51,6 +51,7 @@ VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecu
     // Configure and run the VM
     viper::bytecode::BytecodeVM bcVm;
     bcVm.setThreadedDispatch(true);
+    bcVm.setTrustedDispatch(config.trustedDispatch);
     bcVm.setRuntimeBridgeEnabled(true);
     bcVm.load(&bcModule);
 

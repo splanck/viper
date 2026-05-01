@@ -72,7 +72,8 @@ constexpr uint32_t kMaxStackSize = 1024;
 ///          - 0xA0-0xAF  Memory operations
 ///          - 0xB0-0xBF  Control flow
 ///          - 0xC0-0xCF  Exception handling
-///          - 0xD0-0xDF  Debug operations
+///          - 0xD0-0xD7  Debug operations
+///          - 0xD8-0xDF  Runtime fast-path operations
 ///          - 0xE0-0xEF  String operations
 enum class BCOpcode : uint8_t {
     // Stack Operations (0x00-0x0F)
@@ -222,6 +223,14 @@ enum class BCOpcode : uint8_t {
     LINE = 0xD0,       ///< Source line marker for debug info.
     BREAKPOINT = 0xD1, ///< Debug breakpoint trap.
     WATCH_VAR = 0xD2,  ///< Variable watch trigger for the debugger.
+
+    // Runtime Fast-Path Operations (0xD8-0xDF)
+    ARR_I32_GET_FAST = 0xD8, ///< Direct unchecked i32 array load: arr, idx -> value.
+    ARR_I32_SET_FAST = 0xD9, ///< Direct unchecked i32 array store: arr, idx, value -> void.
+    ARR_I64_GET_FAST = 0xDA, ///< Direct unchecked i64 array load: arr, idx -> value.
+    ARR_I64_SET_FAST = 0xDB, ///< Direct unchecked i64 array store: arr, idx, value -> void.
+    ARR_F64_GET_FAST = 0xDC, ///< Direct unchecked f64 array load: arr, idx -> value.
+    ARR_F64_SET_FAST = 0xDD, ///< Direct unchecked f64 array store: arr, idx, value -> void.
 
     // String Operations (0xE0-0xEF)
     STR_RETAIN = 0xE0,  ///< Increment the reference count of a string handle.

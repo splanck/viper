@@ -143,6 +143,16 @@ void rt_arr_f64_set(double *arr, size_t idx, double value) {
     arr[idx] = value;
 }
 
+/// @brief Read a double element after the compiler has proved the access safe.
+double rt_arr_f64_get_fast(double *arr, size_t idx) {
+    return arr[idx];
+}
+
+/// @brief Write a double element after the compiler has proved the access safe.
+void rt_arr_f64_set_fast(double *arr, size_t idx, double value) {
+    arr[idx] = value;
+}
+
 /// @brief Copy a sequence of elements between payload buffers.
 /// @details Traps when either pointer is NULL and @p count is non-zero.
 /// @param dst Destination payload pointer.

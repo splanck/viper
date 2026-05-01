@@ -157,6 +157,16 @@ void rt_arr_i64_set(int64_t *arr, size_t idx, int64_t value) {
     arr[idx] = value;
 }
 
+/// @brief Read an int64 element after the compiler has proved the access safe.
+int64_t rt_arr_i64_get_fast(int64_t *arr, size_t idx) {
+    return arr[idx];
+}
+
+/// @brief Write an int64 element after the compiler has proved the access safe.
+void rt_arr_i64_set_fast(int64_t *arr, size_t idx, int64_t value) {
+    arr[idx] = value;
+}
+
 /// @brief Copy a sequence of elements between payload buffers.
 /// @details Traps when either pointer is NULL and @p count is non-zero.
 /// @param dst Destination payload pointer.

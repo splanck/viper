@@ -89,7 +89,8 @@ int cmdInit(int argc, char **argv) {
     // Generate viper.project manifest.
     std::string entryFile = (lang == "basic") ? "main.bas" : "main.zia";
     std::string manifest = "project " + projectName + "\n" + "version 0.1.0\n" + "lang " + lang +
-                           "\n" + "entry " + entryFile + "\n";
+                           "\n" + "entry " + entryFile + "\n" + "profile balanced\n" +
+                           "optimize O1\n";
 
     if (!writeFile(projectDir / "viper.project", manifest)) {
         return 1;

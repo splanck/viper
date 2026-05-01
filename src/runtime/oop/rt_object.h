@@ -47,10 +47,23 @@ int64_t rt_obj_class_id(void *p);
 /// @param p Pointer to a runtime-managed object; NULL pointers are ignored.
 void rt_obj_retain_maybe(void *p);
 
+/// @brief Increment the reference count for a compiler-proven runtime heap object.
+/// @param p Pointer to a runtime-managed object; NULL pointers are ignored.
+/// @warning This skips string/raw-pointer discrimination and is only valid for
+///          values proven to originate from object allocation helpers.
+void rt_obj_retain_known(void *p);
+
 /// @brief Decrement the reference count and report whether the object should be destroyed.
 /// @param p Pointer to a runtime-managed object.
 /// @return 1 when the reference count reaches zero, otherwise 0.
 int32_t rt_obj_release_check0(void *p);
+
+/// @brief Release a compiler-proven runtime heap object and report last-user state.
+/// @param p Pointer to a runtime-managed object.
+/// @return 1 when the reference count reaches zero, otherwise 0.
+/// @warning This skips string/raw-pointer discrimination and is only valid for
+///          values proven to originate from object allocation helpers.
+int32_t rt_obj_release_known_check0(void *p);
 
 /// @brief Release storage for a runtime-managed object without modifying its reference count.
 /// @param p Pointer to a runtime-managed object to free; must not be NULL.

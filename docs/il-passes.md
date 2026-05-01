@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-30
+last-verified: 2026-05-01
 ---
 
 # IL Optimization Passes
@@ -103,8 +103,11 @@ Promotes alloca/store/load patterns to pure SSA values:
   encountered, keeping the common (entry-block-only) case fast.
 - **Fresh CFG context**: Each function is analysed with a CFG built after SROA for that function, avoiding stale edge
   state when earlier functions or SROA rewrites changed the module.
+- **EH conservatism**: Functions containing structured exception-handling opcodes are skipped until mem2reg has an
+  exception-aware CFG. This preserves handler/resume semantics while still allowing the rest of O1/O2 to run.
 - **Tests**: `test_il_mem2reg_nonentry` — single-block alloca in non-entry block, dominating non-entry alloca with
-  conditional CFG, default value before first store, and deterministic loop-header parameter/edge repair.
+  conditional CFG, default value before first store, deterministic loop-header parameter/edge repair, and EH skip
+  coverage.
 
 ## Inline
 
@@ -137,6 +140,25 @@ Promotes alloca/store/load patterns to pure SSA values:
   `srem`, and O2 inlining must handle prototype/entry parameter name mismatches.
 - `test_codegen_arm64_benchmark_regressions` runs reduced native ARM64 versions of the same cases under `-O2` on ARM64
   hosts. The string test returns the accumulated concatenated length; the unsigned-division loop returns a fixed checksum.
+
+## Real-World Runtime Fast Paths
+
+The O2 pipeline includes four targeted passes that reduce runtime-helper overhead exposed by real applications:
+
+- `devirt` rewrites `call.indirect` through a constant `gaddr` function pointer into a direct `call`. This gives inline,
+  SCCP, GVN, and backend call lowering a named callee instead of an opaque indirect call.
+- `runtime-fastpath` rewrites generic object retain/release helpers to `rt_obj_retain_known` and
+  `rt_obj_release_known_check0` when the object value is proven to come from a runtime object allocation helper. The
+  known helpers skip string-handle/raw-pointer discrimination while preserving NULL-safe retain/release semantics.
+- `array-fastpath` rewrites numeric `rt_arr_i32/i64/f64_get` and `_set` calls to separate `_fast` ABI helpers when an
+  `idx.chk` or equivalent single-predecessor bounds branch dominates the access. The checked helpers remain the default
+  for O0 and unproven accesses. The bytecode backend recognizes these `_fast` helpers and emits direct array load/store
+  opcodes for i32, i64, and f64 arrays.
+- `ownership-opt` removes local retain/release pairs for strings and numeric arrays when only pure, non-owning
+  instructions sit between them. Calls with ownership effects or memory writes block the rewrite.
+
+These passes run after O2 inlining/check simplification and before the final peephole/GVN/DSE cleanup window so their
+rewrites expose direct calls, fewer runtime branches, and less reference-counting traffic to later optimizers.
 
 ### Threshold Changes
 
@@ -284,10 +306,15 @@ Threads jumps through blocks with predictable branch conditions:
     IdxChk) and the result has live uses, constant elimination is skipped and the dominance-based check still applies.
     This prevents type-mismatch verifier errors when the check result is used as a narrower-typed discriminant.
 - Guard-based `isub.ovf x, K` demotion requires a proof that covers the relevant overflow side. A lower-bound guard can
-  demote non-negative `K`; negative constants require an upper-bound proof and remain checked.
+  demote non-negative `K`; negative constants require an upper-bound proof and remain checked. The guarded target must be
+  reached only by the proving predecessor when the rewrite runs, so later CFG passes do not inherit a one-edge proof as
+  an all-path fact.
 - Range-backed overflow demotion uses comparison-edge and branch-argument facts to demote
   `iadd.ovf`/`isub.ovf`/`imul.ovf` only when the verifier can independently reconstruct the same proof. This primarily
   targets rotated counted-loop increments and arithmetic exposed by inlining/peephole rewrites.
+- Signed power-of-two division expansions use a sign-bias add. CheckOpt recognizes
+  `x + ((x >> 63) & mask)` as overflow-safe and demotes that `iadd.ovf` to `add`; the verifier accepts only that exact
+  dominating local pattern.
 - The verifier still rejects plain unchecked signed arithmetic by default. It accepts demoted `add`/`sub`/`mul` only
   when its local range reconstruction proves the operation cannot overflow; unguarded plain arithmetic remains invalid
   frontend IL.
@@ -414,6 +441,9 @@ Direct-call graph with strongly connected component analysis:
 
 - Detects sibling recursive calls (tail calls to the same function) and optimizes them.
 - Reduces stack growth for mutually-recursive patterns.
+- When it creates a loop backedge, any copied plain signed arithmetic is restored to checked arithmetic so earlier
+  one-edge check demotions do not become unverifiable loop-header operations. Later CheckOpt runs may demote them again
+  when the loop-shaped proof is visible.
 - Implementation: `src/il/transform/SiblingRecursion.cpp`
 
 ## Canonical Optimization Pipelines (Zia and BASIC frontends)
@@ -424,7 +454,7 @@ instead of the registered canonical O1/O2 pipelines:
 | Level | Old (custom) | New (canonical) |
 |-------|-------------|-----------------|
 | O1 | 4 passes (simplify-cfg, mem2reg, peephole, dce) | Registered O1: SimplifyCFG, Mem2Reg, SCCP, ConstFold, Peephole, DCE, Inline |
-| O2 | 9 passes (missing SCCP, loop passes, inline, check-opt) | Registered O2: Mem2Reg, loop shaping, full LICM, SCCP, CheckOpt, EHOpt, DCE, SiblingRecursion, fixpoint Inline, post-inline loop cleanup, Peephole, GVN, Reassociate, EarlyCSE, DSE, LateCleanup |
+| O2 | 9 passes (missing SCCP, loop passes, inline, check-opt) | Registered O2: Mem2Reg, loop shaping, full LICM, SCCP, CheckOpt, EHOpt, DCE, SiblingRecursion, devirtualization, fixpoint Inline, post-inline runtime/array/ownership fast paths, Peephole, GVN, Reassociate, EarlyCSE, DSE, LateCleanup |
 
 `mem2reg` is canonical in O1/O2 after dominance, edge-repair, non-entry alloca, and loop-reentered allocation guards made
 SSA promotion verifier-clean. Full memory-hoisting `LICM` is canonical in O2 after load-safety and BasicAA mod/ref guards
@@ -444,7 +474,8 @@ O1/O2 pass lists; after native EH lowering they reject any residual structured E
 the same IL pipelines as the VM/frontends.
 
 **Test**: `test_il_canonical_pipeline` — verifies O1/O2 contain expected passes, full peephole is canonical, and SCCP
-runs.
+runs. `test_il_realworld_perf_passes` covers devirtualization, array fast-path rewriting, known-object RC helpers,
+ownership-pair cleanup, and runtime ownership metadata.
 
 ### Rehab Pipelines
 
@@ -482,7 +513,8 @@ Regression tests covering fixes from the comprehensive IL optimization review
 | Test File | Tests | Coverage |
 |-----------|-------|---------|
 | `test_il_canonical_pipeline.cpp` | 9 | O1/O2 pass registration, mem2reg and full LICM promotion, full peephole promotion, removed legacy safe alias, SCCP execution via canonical pipeline |
-| `test_il_mem2reg_nonentry.cpp` | 5 | Non-entry-block alloca promotion, domination-filtered promotion, edge repair, loop-reentered alloca guard |
+| `test_realworld_perf_passes.cpp` | 6 | Runtime ownership metadata, object RC fast paths, numeric array fast helpers after bounds proof, fast-path invalidation across memory effects, direct-call devirtualization, retain/release pair cleanup |
+| `test_il_mem2reg_nonentry.cpp` | 6 | Non-entry-block alloca promotion, domination-filtered promotion, edge repair, loop-reentered alloca guard, EH skip |
 | `test_il_inline_threshold.cpp` | 3 | New default thresholds (80/8/3), 50-instr inline, oversized rejection |
 | `test_il_earlycse_domtree.cpp` | 3 | Cross-block CSE via domtree, sibling-branch non-elimination, textually-unsafe rejection |
 | `test_il_callgraph_scc.cpp` | 4 | Linear chain SCC ordering, mutual recursion, self-recursion, isRecursive |

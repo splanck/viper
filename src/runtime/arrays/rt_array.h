@@ -82,6 +82,20 @@ int32_t rt_arr_i32_get(int32_t *arr, size_t idx);
 /// @note Traps on out-of-bounds access.
 void rt_arr_i32_set(int32_t *arr, size_t idx, int32_t value);
 
+/// @brief Read element at index @p idx after the compiler proved bounds.
+/// @param arr Array payload pointer; must be non-null.
+/// @param idx Zero-based index; caller guarantees idx < length.
+/// @return Stored value at @p idx.
+/// @warning No bounds checking. Only generated after an explicit dominating check.
+int32_t rt_arr_i32_get_fast(int32_t *arr, size_t idx);
+
+/// @brief Write @p value to index @p idx after the compiler proved bounds.
+/// @param arr Array payload pointer; must be non-null.
+/// @param idx Zero-based index; caller guarantees idx < length.
+/// @param value Value to store.
+/// @warning No bounds checking. Only generated after an explicit dominating check.
+void rt_arr_i32_set_fast(int32_t *arr, size_t idx, int32_t value);
+
 /// @brief Read element at index @p idx WITHOUT bounds checking.
 /// @param arr Array payload pointer; must be non-null and in range.
 /// @param idx Zero-based index; caller guarantees idx < length.

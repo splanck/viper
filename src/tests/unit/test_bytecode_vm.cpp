@@ -379,6 +379,121 @@ static Module createWideNativeIndexModule() {
     return m;
 }
 
+static Module createArrayFastPathModule() {
+    Module m;
+    IRBuilder b(m);
+
+    auto &fn =
+        b.startFunction("main", Type(Type::Kind::I64), {Param{"arr", Type(Type::Kind::Ptr), 0}});
+    auto &entry = b.addBlock(fn, "entry");
+    b.setInsertPoint(entry);
+
+    Instr set;
+    set.op = Opcode::Call;
+    set.type = Type(Type::Kind::Void);
+    set.callee = "rt_arr_i64_set_fast";
+    set.operands.push_back(Value::temp(0));
+    set.operands.push_back(Value::constInt(0));
+    set.operands.push_back(Value::constInt(123));
+    set.loc = {1, 1, 1};
+    entry.instructions.push_back(set);
+
+    Instr get;
+    get.result = b.reserveTempId();
+    get.op = Opcode::Call;
+    get.type = Type(Type::Kind::I64);
+    get.callee = "rt_arr_i64_get_fast";
+    get.operands.push_back(Value::temp(0));
+    get.operands.push_back(Value::constInt(0));
+    get.loc = {1, 1, 1};
+    entry.instructions.push_back(get);
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(*get.result));
+    ret.loc = {1, 1, 1};
+    entry.instructions.push_back(ret);
+
+    return m;
+}
+
+static Module createBranchArgumentSwapModule() {
+    Module m;
+
+    Function fn;
+    fn.name = "branch_arg_swap";
+    fn.retType = Type(Type::Kind::I64);
+    fn.params = {Param{"a", Type(Type::Kind::I64), 0}, Param{"b", Type(Type::Kind::I64), 1}};
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr enter;
+    enter.op = Opcode::Br;
+    enter.type = Type(Type::Kind::Void);
+    enter.labels.push_back("loop");
+    enter.brArgs.push_back({Value::temp(0), Value::temp(1), Value::constInt(1)});
+    enter.loc = {1, 1, 1};
+    entry.instructions.push_back(enter);
+    entry.terminated = true;
+
+    BasicBlock loop;
+    loop.label = "loop";
+    loop.params = {Param{"x", Type(Type::Kind::I64), 2},
+                   Param{"y", Type(Type::Kind::I64), 3},
+                   Param{"n", Type(Type::Kind::I64), 4}};
+    Instr cmp;
+    cmp.result = 5;
+    cmp.op = Opcode::ICmpNe;
+    cmp.type = Type(Type::Kind::I1);
+    cmp.operands.push_back(Value::temp(4));
+    cmp.operands.push_back(Value::constInt(0));
+    cmp.loc = {1, 1, 1};
+    loop.instructions.push_back(cmp);
+    Instr branch;
+    branch.op = Opcode::CBr;
+    branch.type = Type(Type::Kind::Void);
+    branch.operands.push_back(Value::temp(5));
+    branch.labels.push_back("body");
+    branch.labels.push_back("done");
+    branch.brArgs.push_back({});
+    branch.brArgs.push_back({Value::temp(2), Value::temp(3)});
+    branch.loc = {1, 1, 1};
+    loop.instructions.push_back(branch);
+    loop.terminated = true;
+
+    BasicBlock body;
+    body.label = "body";
+    Instr backedge;
+    backedge.op = Opcode::Br;
+    backedge.type = Type(Type::Kind::Void);
+    backedge.labels.push_back("loop");
+    backedge.brArgs.push_back({Value::temp(3), Value::temp(2), Value::constInt(0)});
+    backedge.loc = {1, 1, 1};
+    body.instructions.push_back(backedge);
+    body.terminated = true;
+
+    BasicBlock done;
+    done.label = "done";
+    done.params = {Param{"out_x", Type(Type::Kind::I64), 6},
+                   Param{"out_y", Type(Type::Kind::I64), 7}};
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(7));
+    ret.loc = {1, 1, 1};
+    done.instructions.push_back(ret);
+    done.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.blocks.push_back(std::move(loop));
+    fn.blocks.push_back(std::move(body));
+    fn.blocks.push_back(std::move(done));
+    fn.valueNames.resize(8);
+    m.functions.push_back(std::move(fn));
+    return m;
+}
+
 /// Create a function that exercises bytecode string ownership for memory slots.
 static Module createStringFieldLifetimeModule() {
     Module m;
@@ -1704,6 +1819,80 @@ static void test_truncated_extended_instruction() {
     std::cout << "PASSED\n";
 }
 
+static void test_trusted_dispatch_toggle() {
+    std::cout << "  test_trusted_dispatch_toggle: ";
+
+    BytecodeModule bcModule;
+    BytecodeFunction fn;
+    fn.name = "main";
+    fn.hasReturn = true;
+    fn.numParams = 0;
+    fn.numLocals = 0;
+    fn.maxStack = 1;
+    fn.code.push_back(encodeOp(BCOpcode::LOAD_ONE));
+    fn.code.push_back(encodeOp(BCOpcode::RETURN));
+    bcModule.addFunction(std::move(fn));
+
+    for (bool trusted : {false, true}) {
+        BytecodeVM vm;
+        vm.setThreadedDispatch(false);
+        vm.setTrustedDispatch(trusted);
+        vm.load(&bcModule);
+        BCSlot result = vm.exec("main", {});
+        assert(vm.state() == VMState::Halted);
+        assert(result.i64 == 1);
+    }
+
+    std::cout << "PASSED\n";
+}
+
+static void test_native_refs_cache_runtime_metadata() {
+    std::cout << "  test_native_refs_cache_runtime_metadata: ";
+
+    BytecodeModule bcModule;
+    uint32_t idx = bcModule.addNativeFunc("rt_abs_i64", 1, true);
+    const NativeFuncRef &ref = bcModule.nativeFuncs[idx];
+    assert(ref.runtimeDescriptor != nullptr);
+    assert(ref.runtimeSignature != nullptr);
+    assert(!ref.returnsString);
+
+    std::cout << "PASSED\n";
+}
+
+static void test_array_fast_path_bytecode_ops() {
+    std::cout << "  test_array_fast_path_bytecode_ops: ";
+
+    BytecodeModule bcModule = compileAssumingVerified(createArrayFastPathModule());
+    assert(bcModule.nativeFuncs.empty());
+
+    const BytecodeFunction *main = bcModule.findFunction("main");
+    assert(main != nullptr);
+    bool sawSet = false;
+    bool sawGet = false;
+    for (uint32_t word : main->code) {
+        sawSet = sawSet || decodeOpcode(word) == BCOpcode::ARR_I64_SET_FAST;
+        sawGet = sawGet || decodeOpcode(word) == BCOpcode::ARR_I64_GET_FAST;
+    }
+    assert(sawSet);
+    assert(sawGet);
+
+    for (bool threaded : {false, true}) {
+        for (bool trusted : {false, true}) {
+            int64_t storage[1] = {0};
+            BytecodeVM vm;
+            vm.setThreadedDispatch(threaded);
+            vm.setTrustedDispatch(trusted);
+            vm.load(&bcModule);
+            BCSlot result = vm.exec("main", {BCSlot::fromPtr(storage)});
+            assert(vm.state() == VMState::Halted);
+            assert(result.i64 == 123);
+            assert(storage[0] == 123);
+        }
+    }
+
+    std::cout << "PASSED\n";
+}
+
 /// Test that bytecode Thread.StartSafe records worker traps instead of swallowing them.
 static void test_thread_start_safe_reports_bytecode_trap() {
     std::cout << "  test_thread_start_safe_reports_bytecode_trap: ";
@@ -1887,6 +2076,26 @@ static void test_async_run_retains_bytecode_argument() {
     std::cout << "PASSED\n";
 }
 
+static void test_branch_arguments_are_atomic() {
+    std::cout << "  test_branch_arguments_are_atomic: ";
+
+    BytecodeModule bcModule = compileAssumingVerified(createBranchArgumentSwapModule());
+
+    for (bool threaded : {false, true}) {
+        for (bool trusted : {false, true}) {
+            BytecodeVM vm;
+            vm.setThreadedDispatch(threaded);
+            vm.setTrustedDispatch(trusted);
+            vm.load(&bcModule);
+            BCSlot result = vm.exec("branch_arg_swap", {BCSlot::fromInt(3), BCSlot::fromInt(5)});
+            assert(vm.state() == VMState::Halted);
+            assert(result.i64 == 3);
+        }
+    }
+
+    std::cout << "PASSED\n";
+}
+
 /// @brief Main.
 int main() {
     VIPER_DISABLE_ABORT_DIALOG();
@@ -1916,6 +2125,10 @@ int main() {
     test_entry_arity_mismatch();
     test_invalid_branch_target();
     test_truncated_extended_instruction();
+    test_trusted_dispatch_toggle();
+    test_native_refs_cache_runtime_metadata();
+    test_array_fast_path_bytecode_ops();
+    test_branch_arguments_are_atomic();
     test_thread_start_safe_reports_bytecode_trap();
     test_async_run_retains_bytecode_argument();
 

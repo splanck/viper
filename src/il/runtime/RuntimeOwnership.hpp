@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/il/runtime/RuntimeOwnership.hpp
-// Purpose: Centralize runtime string ownership metadata for optimizer queries.
+// Purpose: Centralize runtime reference ownership metadata for optimizer queries.
 // Key invariants: Unknown helpers are classified conservatively with no
 //                 ownership facts. Bitmasks refer to explicit IL-visible
 //                 arguments, not hidden bridge parameters.
@@ -45,11 +45,29 @@ struct RuntimeOwnershipEffects {
     }
 };
 
+namespace detail {
+
+[[nodiscard]] constexpr bool startsWith(std::string_view value,
+                                        std::string_view prefix) noexcept {
+    return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
+}
+
+[[nodiscard]] constexpr bool endsWith(std::string_view value, std::string_view suffix) noexcept {
+    return value.size() >= suffix.size() &&
+           value.substr(value.size() - suffix.size(), suffix.size()) == suffix;
+}
+
+[[nodiscard]] constexpr bool contains(std::string_view value, std::string_view needle) noexcept {
+    return value.find(needle) != std::string_view::npos;
+}
+
+} // namespace detail
+
 /// @brief Classify string/reference ownership effects for known runtime helpers.
-/// @details This metadata prevents optimizers from treating owned string
-///          construction and consuming calls as pure value operations. Names
-///          include both C runtime symbols and high-level runtime namespace
-///          aliases produced by frontends.
+/// @details This metadata prevents optimizers from treating owned string,
+///          object, array, and collection construction/consumption as ordinary
+///          value operations. Names include both C runtime symbols and
+///          high-level runtime namespace aliases produced by frontends.
 [[nodiscard]] inline RuntimeOwnershipEffects classifyRuntimeOwnership(std::string_view name) {
     RuntimeOwnershipEffects effects{};
 
@@ -95,6 +113,68 @@ struct RuntimeOwnershipEffects {
         name == "Viper.String.UCase" || name == "Viper.String.LCase" ||
         name == "Viper.String.Chr" || name == "Viper.String.FromI64" ||
         name == "Viper.String.FromF64") {
+        effects.returnsOwned = true;
+        effects.mayAllocate = true;
+        return effects;
+    }
+
+    if (name == "rt_arr_i32_new" || name == "rt_arr_i64_new" || name == "rt_arr_f64_new" ||
+        name == "rt_arr_str_alloc" || name == "rt_arr_obj_new") {
+        effects.returnsOwned = true;
+        effects.mayAllocate = true;
+        return effects;
+    }
+
+    if (name == "rt_arr_i32_retain" || name == "rt_arr_i64_retain" ||
+        name == "rt_arr_f64_retain") {
+        effects.retainedArgMask = 0b1;
+        return effects;
+    }
+
+    if (name == "rt_arr_i32_release" || name == "rt_arr_i64_release" ||
+        name == "rt_arr_f64_release" || name == "rt_arr_obj_release") {
+        effects.consumedArgMask = 0b1;
+        return effects;
+    }
+
+    if (name == "rt_arr_str_get" || name == "rt_arr_obj_get") {
+        effects.returnsOwned = true;
+        return effects;
+    }
+
+    if (name == "rt_arr_str_put" || name == "rt_arr_obj_put") {
+        effects.retainedArgMask = 0b100;
+        return effects;
+    }
+
+    if (name == "rt_obj_new_i64" || name == "rt_box_i64" || name == "rt_box_f64" ||
+        name == "rt_box_i1" || name == "rt_box_str" || name == "rt_box_value_type") {
+        effects.returnsOwned = true;
+        effects.mayAllocate = true;
+        return effects;
+    }
+
+    if (name == "rt_obj_retain_maybe" || name == "rt_obj_retain_known") {
+        effects.retainedArgMask = 0b1;
+        return effects;
+    }
+
+    if (name == "rt_obj_release_check0" || name == "rt_obj_release_known_check0") {
+        effects.consumedArgMask = 0b1;
+        return effects;
+    }
+
+    if (detail::startsWith(name, "rt_") &&
+        (detail::endsWith(name, "_new") || detail::endsWith(name, "_clone") ||
+         detail::contains(name, "_from_"))) {
+        effects.returnsOwned = true;
+        effects.mayAllocate = true;
+        return effects;
+    }
+
+    if (detail::startsWith(name, "Viper.") &&
+        (detail::endsWith(name, ".New") || detail::endsWith(name, ".Clone") ||
+         detail::contains(name, ".From"))) {
         effects.returnsOwned = true;
         effects.mayAllocate = true;
         return effects;

@@ -808,6 +808,13 @@ function(viper_add_il_utils_test)
             test_il_opt_review_calleffects PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_opt_review_calleffects test_il_opt_review_calleffects)
 
+    viper_add_test(
+            test_il_realworld_perf_passes
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_realworld_perf_passes.cpp)
+    target_link_libraries(
+            test_il_realworld_perf_passes PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_realworld_perf_passes test_il_realworld_perf_passes)
+
     # Canonical pipeline test: verifies runPipeline("O1"/"O2") uses full passes including SCCP
     viper_add_test(
             test_il_canonical_pipeline

@@ -24,7 +24,7 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator.
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 105 | +105 |
+| Commits | — | 106 | +106 |
 | Source files | 2,869 | 2,968 | +99 |
 | Production SLOC | 450K | 529K | +79K |
 | Test SLOC | 183K | 219K | +36K |
@@ -129,7 +129,7 @@ Eleven-class `Viper.Localization.*` namespace. Zero external dependencies; en-US
 
 - `rt_fmt` locale-aware rewrite — float/currency/percent route through a C-locale isolated `snprintf` (`uselocale` on POSIX, `_create_locale` on Windows) so numeric output is deterministic regardless of process `setlocale` state.
 - Float formatter standardized to `%.15g`; `rt_fmt_bool_yn` lowercase (`"yes"` / `"no"`); BASIC `VAL` permissive parse restored (`strtod` + trailing-garbage tolerance); `rt_parse` integer/double parsers tightened.
-- GC shutdown now detaches tracking and weak-reference tables under the GC lock, frees them after unlocking, and keeps the lock primitive alive for reuse. Weak-ref clearing no longer allocates an empty weak bucket table when no weak refs exist, avoiding teardown-only allocator churn in GUI/runtime tests.
+- GC shutdown now detaches tracking and weak-reference tables under the GC lock, frees them after unlocking, and keeps the lock primitive alive for reuse. Weak-ref clearing no longer allocates an empty weak bucket table when no weak refs exist, avoiding teardown-only allocator churn in GUI/runtime tests. `g_gc_is_shutdown` flag removed — because the lock primitive is never destroyed, the shutdown-guard early-returns in `gc_lock`/`gc_unlock` were dead code and a latent correctness risk; `unregister_weak_ref` and `rt_gc_clear_weak_refs` now null-check `weak_buckets` directly before accessing it. `free_weak_buckets()` extracted as a standalone helper to isolate weak-chain teardown from the main shutdown path.
 - GUI widget lifetime hardening: `vg_filedialog_destroy()` now routes through `vg_widget_destroy()` so file dialogs unregister from the live-widget registry before freeing, fixing stale live-list writes on the next widget allocation. TextInput, Dropdown, CodeEditor, and TreeView constructor failure paths now use the same widget-core teardown instead of direct `free()`, and headless/fake app activation on macOS no longer initializes native menu/AppKit state unless a real windowed app is involved.
 
 ### Time runtime
@@ -200,7 +200,7 @@ Eleven-class `Viper.Localization.*` namespace. Zero external dependencies; en-US
 - Codegen: `RtComponent::Localization` enum entry with `rt_locale_*` prefix classifier; `viper_rt_localization` archive in install manifest.
 - IL surface: `Canvas.CopyRect` / `Screenshot` return `Pixels`; `AudioUpdate` added; eleven new `RTCLS_Loc*` RuntimeTypeId entries; `RelativeTime.FormatShort` binding corrected; `AsyncSocket.ConnectForAsync` classified in the signature registry (`rt_async_connect_for`, `"obj(str,i64,i64)"`) so the optimizer no longer treats it as a full-barrier call.
 - rtgen audit passes with zero findings after classifying 30 previously unclassified symbols.
-- Tools: frontend `--` separator, collision-safe temp paths. Build: VERSION `0.2.4-dev` → `0.2.5-snapshot`.
+- Tools: frontend `--` separator, collision-safe temp paths. Build: VERSION `0.2.4-dev` → `0.2.5-snapshot`. `viper il-opt` gains `--pass-stats` (per-pass transformation counts via `PassManager::setReportPassStatistics()`) and `--bisect-pipeline` (iterates all pipeline prefixes to isolate the first pass that causes a failure), plus a `ModuleSize` block/instruction count helper for before-vs-after reporting.
 - **Diagnostic infrastructure** — `Diagnostic` gains `SourceRange range` and `std::vector<DiagnosticNote> notes` fields; `diag_expected.cpp` adds source-snippet printing with caret/tilde underlines (`printSourceSnippet`) and a JSON formatter (`printDiagJson` / `printDiagnosticsJson`). `SourceManager::setSource()` populates line caches from in-memory strings without on-disk reads. `SourceManager::addFile()` no longer emits its own diagnostic on overflow — callers own that report.
 - **CLI flags** — `--diagnostic-format=text|json` (also `--diagnostic-format json`), `--strict-diagnostics` / `--no-strict-diagnostics`, `--bounds-checks` / `--no-bounds-checks`, and `--show-warnings` / `--quiet-warnings` are available across subcommands; strict diagnostics and bounds checks default on. All diagnostic output routes through `printDiagnostic(format)` for consistent text-or-JSON rendering.
 - **BytecodeCompiler** — `compileChecked(module, sourceManager?, assumeVerified=false)` returns `Expected<BytecodeModule>` with a source-located `Diag`; it runs verifier preflight unless the caller explicitly passes `assumeVerified=true`. Internal errors propagate via private `BytecodeCompileFailure` so no undecorated `runtime_error` escapes. Function name, block label, and source location tracked throughout for precise diagnostic attribution (e.g., `V-BC-UNKNOWN-GLOBAL`, `V-BC-UNKNOWN-SSA`, `V-BC-FUNCTION-TABLE`).
@@ -241,7 +241,7 @@ All four object-file readers and all three writers received a bounds-checking an
 - **Scheduler target-aware caller-saved set** — `scheduleBlock()` and `scheduleFunction()` accept `const TargetInfo&`; the caller-saved register set used for call dependency edges is derived from `target.callerSavedGPR + target.callerSavedFPR` instead of a hardcoded Darwin ABI list, so Windows and Linux ABI conventions are correctly reflected. Operand def/use classification delegates to `ra::operandRoles()` (the shared AArch64 register-allocator classifier) rather than a local `numDefOperands()` switch, making scheduler and register allocator agree on def/use semantics. `SchedulerPass::run()` validates `module.ti != nullptr` before proceeding.
 - Both backends now call `ilpm.runPipeline(mod, "O1")` / `ilpm.runPipeline(mod, "O2")` directly, aligning native codegen IL optimization with the canonical `PassManager` pipelines used by the VM and frontend tools. The backend-specific `"codegen-O1"` / `"codegen-O2"` / `"codegen-large"` / `"codegen-eh-safe"` registration blocks and their `hasEhSensitiveControl()` / `totalInstructionCount()` helpers have been removed from both `CodegenPipeline.cpp` files; EH gating is handled inside the canonical pipeline. `findResidualStructuredEh()` promoted from a local helper in each backend to a shared `NativeEHLowering.hpp/.cpp` API called by both pipelines after `lowerNativeEh()`.
 - **Benchmark-driven O2 performance fixes** — `inline-o2` now runs to a bounded fixpoint and maps callee entry parameters by position/type when textual IL uses different prototype and entry-block SSA names, allowing nested helper chains in hot loops to inline. O2 reruns loop cleanup after inlining so LICM, indvars, unroll, and CheckOpt see newly exposed loop arithmetic. CheckOpt adds verifier-reconstructible range proofs for safe `iadd.ovf`/`isub.ovf`/`imul.ovf` demotion. IL peephole expands signed power-of-two div/rem into sign-bias shift/mask sequences and folds owned literal `rt_str_concat` / `Viper.String.Concat` chains into one owned `const_str` when both consumed operands are single-use literals.
-- `PeepholePass` (both backends): `VIPER_CODEGEN_STATS` environment variable enables a warning-level diagnostic reporting the total transformation count after the peephole run.
+- `PeepholePass` (both backends): `VIPER_CODEGEN_STATS` environment variable enables a warning-level diagnostic reporting the total transformation count after the peephole run. `MirStats` struct and `isCallOpcode`/`isBranchOpcode`/`isLoadOpcode`/`isStoreOpcode` classifiers accumulate per-function instruction-mix counts reported alongside the transformation totals.
 
 **x86_64**
 - `MOVZXrr8` and `MOVZXrr32` are now distinct MIR opcodes with correct per-form binary encoding.
@@ -294,6 +294,8 @@ All four object-file readers and all three writers received a bounds-checking an
 
 **IL optimizer hardening**
 - `CallEffects` priority: registry + function-declaration attrs are authoritative; unknown callees now conservatively receive no effects rather than falling back to `instr.CallAttr` (which was unverified and could permit incorrect dead-call elimination). `BasicAA::modRef` follows the same conservative path. `canEliminateIfUnused` requires both `pure` and `nothrow`.
+- **`RuntimeOwnership.hpp` (new)** — `RuntimeOwnershipEffects` struct centralises string/reference ownership metadata: `consumedArgMask`, `retainedArgMask`, `returnsOwned`, `mayAllocate`. `classifyRuntimeOwnership()` covers `rt_str_concat`, `rt_str_copy`, `rt_str_free`, and their `Viper.String.*` aliases. `CallEffects` gains the same four fields with `consumesArg(idx)` / `retainsArg(idx)` / `hasOwnershipEffects()` accessors; `applyRuntimeOwnership()` merges ownership facts into a `CallEffects` at classification time. `RuntimeSignature` and the signature `Registry` both carry and compare the ownership fields, so the optimizer sees accurate ownership constraints for every known helper without consulting ad-hoc string comparisons.
+- **`ConstStr` opcode reclassification** — `Opcode.def` marks `ConstStr` as having observable side effects (was incorrectly false); `OpcodeInfo.cpp` returns `MemoryEffects::ReadWrite` instead of `None`. String constant materialization may allocate or touch the interning table, so DCE can no longer treat it as a pure, memory-free operation — this closes a correctness hole where an `rt_str_concat` chain could be folded away with the `ConstStr` inputs silently eliminated.
 - `LoadSafety.hpp` — `isLoadKnownNonTrapping` gates dead-load elimination, GVN, and LICM hoisting on pointer provenance.
 - `Mem2Reg` SROA offset arithmetic overflow-safe; field iteration order deterministic. `Peephole` brArgs use-counts correct; operand-forwarding scoped to intra-block only.
 - `isTerminated(Block&)` replaces stale `BasicBlock::terminated` flag reads across six passes (LICM, CheckOpt, Inline, SiblingRecursion, IndVarSimplify, LoopUnroll).
@@ -359,6 +361,6 @@ Demos: human-manager baseball franchise simulator (new), Crackman (Pac-Man rewri
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 105-commit history. The pattern throughout is feature introduction followed by hardening follow-ups in the same subsystem.
+See `git log a91d388db..HEAD -- .` for the full 106-commit history. The pattern throughout is feature introduction followed by hardening follow-ups in the same subsystem.
 
 <!-- END DRAFT -->

@@ -10,6 +10,7 @@ add_library(il_codegen_aarch64 STATIC
         InstrLowering.cpp
         OpcodeDispatch.cpp
         FastPaths.cpp
+        PreRegAllocOpt.cpp
         fastpaths/FastPaths_Arithmetic.cpp
         fastpaths/FastPaths_Call.cpp
         fastpaths/FastPaths_Cast.cpp
@@ -34,6 +35,7 @@ add_library(il_codegen_aarch64 STATIC
         # Modular PassManager passes (Priority 2F)
         passes/LoweringPass.cpp
         passes/LegalizePass.cpp
+        passes/PreRegAllocOptPass.cpp
         passes/RegAllocPass.cpp
         passes/PeepholePass.cpp
         passes/EmitPass.cpp

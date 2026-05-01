@@ -184,6 +184,14 @@ void BytecodeVM::runThreaded() {
         [0xCB] = &&L_RESUME_NEXT,
         [0xCC] = &&L_RESUME_LABEL,
         [0xCD] = &&L_TRAP_KIND,
+
+        // Runtime Fast-Path Operations (0xD8-0xDF)
+        [0xD8] = &&L_ARR_I32_GET_FAST,
+        [0xD9] = &&L_ARR_I32_SET_FAST,
+        [0xDA] = &&L_ARR_I64_GET_FAST,
+        [0xDB] = &&L_ARR_I64_SET_FAST,
+        [0xDC] = &&L_ARR_F64_GET_FAST,
+        [0xDD] = &&L_ARR_F64_SET_FAST,
     };
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -217,14 +225,18 @@ void BytecodeVM::runThreaded() {
             return;                                                                                \
         }                                                                                          \
         code = fp_->func->code.data();                                                             \
-        if (!ensurePcInRange(*fp_->func, pc, "BytecodeVM::runThreaded(fetch)")) {                  \
-            SYNC_STATE();                                                                          \
-            return;                                                                                \
-        }                                                                                          \
-        instr = code[pc];                                                                          \
-        if (!ensureStackForInstruction(*fp_, sp, instr, "BytecodeVM::runThreaded")) {              \
-            SYNC_STATE();                                                                          \
-            return;                                                                                \
+        if (!trustedDispatch_) {                                                                   \
+            if (!ensurePcInRange(*fp_->func, pc, "BytecodeVM::runThreaded(fetch)")) {              \
+                SYNC_STATE();                                                                      \
+                return;                                                                            \
+            }                                                                                      \
+            instr = code[pc];                                                                      \
+            if (!ensureStackForInstruction(*fp_, sp, instr, "BytecodeVM::runThreaded")) {          \
+                SYNC_STATE();                                                                      \
+                return;                                                                            \
+            }                                                                                      \
+        } else {                                                                                   \
+            instr = code[pc];                                                                      \
         }                                                                                          \
         ++pc;                                                                                      \
         ++instrCount_;                                                                             \
@@ -1495,19 +1507,93 @@ L_CALL_NATIVE: {
         it->second(args, argCount, &result);
     }
 
-    dismissConsumedStringArgs(ref.name, args, argCount);
+    dismissConsumedStringArgs(ref, args, argCount);
     releaseCallArgs(args, argCount);
 
     sp -= argCount;
     if (ref.hasReturn) {
         *sp++ = result;
-        const auto *sig = il::runtime::findRuntimeSignature(ref.name);
-        if (sig && sig->retType.kind == il::core::Type::Kind::Str && result.ptr) {
+        if (ref.returnsString && result.ptr) {
             setSlotOwnsString(sp - 1, true);
         } else {
             setSlotOwnsString(sp - 1, false);
         }
     }
+    DISPATCH();
+}
+
+L_ARR_I32_GET_FAST: {
+    BCSlot *idxSlot = --sp;
+    const size_t idx = static_cast<size_t>(idxSlot->i64);
+    setSlotOwnsString(idxSlot, false);
+    BCSlot *arrSlot = sp - 1;
+    auto *arr = static_cast<int32_t *>(arrSlot->ptr);
+    arrSlot->i64 = static_cast<int64_t>(arr[idx]);
+    setSlotOwnsString(arrSlot, false);
+    DISPATCH();
+}
+
+L_ARR_I32_SET_FAST: {
+    BCSlot *valueSlot = --sp;
+    const int32_t value = static_cast<int32_t>(valueSlot->i64);
+    setSlotOwnsString(valueSlot, false);
+    BCSlot *idxSlot = --sp;
+    const size_t idx = static_cast<size_t>(idxSlot->i64);
+    setSlotOwnsString(idxSlot, false);
+    BCSlot *arrSlot = --sp;
+    auto *arr = static_cast<int32_t *>(arrSlot->ptr);
+    setSlotOwnsString(arrSlot, false);
+    arr[idx] = value;
+    DISPATCH();
+}
+
+L_ARR_I64_GET_FAST: {
+    BCSlot *idxSlot = --sp;
+    const size_t idx = static_cast<size_t>(idxSlot->i64);
+    setSlotOwnsString(idxSlot, false);
+    BCSlot *arrSlot = sp - 1;
+    auto *arr = static_cast<int64_t *>(arrSlot->ptr);
+    arrSlot->i64 = arr[idx];
+    setSlotOwnsString(arrSlot, false);
+    DISPATCH();
+}
+
+L_ARR_I64_SET_FAST: {
+    BCSlot *valueSlot = --sp;
+    const int64_t value = valueSlot->i64;
+    setSlotOwnsString(valueSlot, false);
+    BCSlot *idxSlot = --sp;
+    const size_t idx = static_cast<size_t>(idxSlot->i64);
+    setSlotOwnsString(idxSlot, false);
+    BCSlot *arrSlot = --sp;
+    auto *arr = static_cast<int64_t *>(arrSlot->ptr);
+    setSlotOwnsString(arrSlot, false);
+    arr[idx] = value;
+    DISPATCH();
+}
+
+L_ARR_F64_GET_FAST: {
+    BCSlot *idxSlot = --sp;
+    const size_t idx = static_cast<size_t>(idxSlot->i64);
+    setSlotOwnsString(idxSlot, false);
+    BCSlot *arrSlot = sp - 1;
+    auto *arr = static_cast<double *>(arrSlot->ptr);
+    arrSlot->f64 = arr[idx];
+    setSlotOwnsString(arrSlot, false);
+    DISPATCH();
+}
+
+L_ARR_F64_SET_FAST: {
+    BCSlot *valueSlot = --sp;
+    const double value = valueSlot->f64;
+    setSlotOwnsString(valueSlot, false);
+    BCSlot *idxSlot = --sp;
+    const size_t idx = static_cast<size_t>(idxSlot->i64);
+    setSlotOwnsString(idxSlot, false);
+    BCSlot *arrSlot = --sp;
+    auto *arr = static_cast<double *>(arrSlot->ptr);
+    setSlotOwnsString(arrSlot, false);
+    arr[idx] = value;
     DISPATCH();
 }
 
