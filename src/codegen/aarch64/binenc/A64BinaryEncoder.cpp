@@ -81,6 +81,17 @@ static bool isLegalScaledUImm64(long long offset) {
     return offset >= 0 && (offset % 8) == 0 && (offset / 8) <= 4095;
 }
 
+static int32_t checkedPairImm7(int64_t offset, const char *opcode) {
+    if ((offset % 8) != 0)
+        throw std::out_of_range(std::string("AArch64 ") + opcode +
+                                " offset must be 8-byte aligned");
+    const int64_t scaled = offset / 8;
+    if (scaled < -64 || scaled > 63)
+        throw std::out_of_range(std::string("AArch64 ") + opcode +
+                                " offset is outside signed imm7 pair range");
+    return static_cast<int32_t>(scaled);
+}
+
 static int32_t checkedBranchDispWords(int64_t deltaBytes,
                                       int immBits,
                                       const char *kind,
@@ -518,10 +529,20 @@ void A64BinaryEncoder::encodeAddSp(int64_t bytes, objfile::CodeSection &cs) {
 
 void A64BinaryEncoder::encodeLargeOffsetLdSt(
     uint32_t rt, uint32_t base, int64_t offset, bool isLoad, bool isFPR, objfile::CodeSection &cs) {
-    // Use scratch X9 to materialise the effective address.
-    const uint32_t scratch = hwGPR(PhysReg::X9);
+    const uint32_t candidates[] = {hwGPR(kScratchGPR), hwGPR(kScratchGPR2), hwGPR(kScratchGPR3)};
+    uint32_t scratch = UINT32_MAX;
+    for (uint32_t candidate : candidates) {
+        if (candidate == base)
+            continue;
+        if (!isLoad && !isFPR && candidate == rt)
+            continue;
+        scratch = candidate;
+        break;
+    }
+    if (scratch == UINT32_MAX)
+        throw std::runtime_error("AArch64 binary encoder: no scratch register for large offset load/store");
     encodeMovImm64(scratch, static_cast<uint64_t>(offset), cs);
-    // add x9, base, x9
+    // add scratch, base, scratch
     emit32(encode3Reg(kAddRRR, scratch, base, scratch), cs);
     // ldr/str rt, [x9]  (offset 0)
     if (isFPR)
@@ -937,33 +958,33 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         case MOpcode::LdpRegFpImm: {
             uint32_t rt = hwGPR(getReg(mi.ops[0]));
             uint32_t rt2 = hwGPR(getReg(mi.ops[1]));
-            auto offset = static_cast<int32_t>(getImm(mi.ops[2]));
+            auto offset = checkedPairImm7(getImm(mi.ops[2]), "ldp");
             uint32_t fp = hwGPR(PhysReg::X29);
-            emit32(encodePair(kLdpGpr, rt, rt2, fp, offset / 8), cs);
+            emit32(encodePair(kLdpGpr, rt, rt2, fp, offset), cs);
             return;
         }
         case MOpcode::StpRegFpImm: {
             uint32_t rt = hwGPR(getReg(mi.ops[0]));
             uint32_t rt2 = hwGPR(getReg(mi.ops[1]));
-            auto offset = static_cast<int32_t>(getImm(mi.ops[2]));
+            auto offset = checkedPairImm7(getImm(mi.ops[2]), "stp");
             uint32_t fp = hwGPR(PhysReg::X29);
-            emit32(encodePair(kStpGpr, rt, rt2, fp, offset / 8), cs);
+            emit32(encodePair(kStpGpr, rt, rt2, fp, offset), cs);
             return;
         }
         case MOpcode::LdpFprFpImm: {
             uint32_t rt = hwFPR(getReg(mi.ops[0]));
             uint32_t rt2 = hwFPR(getReg(mi.ops[1]));
-            auto offset = static_cast<int32_t>(getImm(mi.ops[2]));
+            auto offset = checkedPairImm7(getImm(mi.ops[2]), "ldp");
             uint32_t fp = hwGPR(PhysReg::X29);
-            emit32(encodePair(kLdpFpr, rt, rt2, fp, offset / 8), cs);
+            emit32(encodePair(kLdpFpr, rt, rt2, fp, offset), cs);
             return;
         }
         case MOpcode::StpFprFpImm: {
             uint32_t rt = hwFPR(getReg(mi.ops[0]));
             uint32_t rt2 = hwFPR(getReg(mi.ops[1]));
-            auto offset = static_cast<int32_t>(getImm(mi.ops[2]));
+            auto offset = checkedPairImm7(getImm(mi.ops[2]), "stp");
             uint32_t fp = hwGPR(PhysReg::X29);
-            emit32(encodePair(kStpFpr, rt, rt2, fp, offset / 8), cs);
+            emit32(encodePair(kStpFpr, rt, rt2, fp, offset), cs);
             return;
         }
 

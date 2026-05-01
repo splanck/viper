@@ -13,7 +13,8 @@
 //   - hwEncode() is constexpr and covers all 32 PhysReg values
 //   - x86CC nibble values match Intel SDM Table B-1 (JCC/SETcc second opcode byte)
 //   - SSE mandatory prefixes (F2/66) are emitted BEFORE REX, then 0F + opcode
-// Ownership/Lifetime: Stateless; all functions are constexpr or inline.
+// Ownership/Lifetime: Stateless; helpers are constexpr where invalid input
+// cannot occur, otherwise checked inline functions.
 // Links: codegen/x86_64/TargetX64.hpp
 //        codegen/x86_64/binenc/X64BinaryEncoder.hpp
 //
@@ -90,7 +91,7 @@ inline constexpr HwReg hwEncode(PhysReg reg) {
 ///   Viper 4 (gt)  -> x86 F (G)     Viper 11 (np)-> x86 B (NP/PO)
 ///   Viper 5 (ge)  -> x86 D (GE)    Viper 12 (o) -> x86 0 (O)
 ///   Viper 6 (a)   -> x86 7 (A/NBE) Viper 13 (no)-> x86 1 (NO)
-inline constexpr uint8_t x86CC(int viperCC) {
+inline uint8_t x86CC(int viperCC) {
     constexpr uint8_t kTable[] = {
         0x4, // 0: eq  -> E
         0x5, // 1: ne  -> NE
@@ -107,7 +108,8 @@ inline constexpr uint8_t x86CC(int viperCC) {
         0x0, // 12: o  -> O
         0x1, // 13: no -> NO
     };
-    assert(viperCC >= 0 && viperCC <= 13);
+    if (viperCC < 0 || viperCC > 13)
+        throw std::out_of_range("x86-64 binary encoder: invalid condition code");
     return kTable[viperCC];
 }
 

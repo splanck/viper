@@ -67,6 +67,7 @@ static constexpr uint32_t kX86_64RelocBranch = 2;
 static constexpr uint32_t kArm64RelocBranch26 = 2;
 static constexpr uint32_t kArm64RelocPage21 = 3;
 static constexpr uint32_t kArm64RelocPageoff12 = 4;
+static constexpr uint32_t kArm64RelocAddend = 10;
 
 // nlist_64 type field
 static constexpr uint8_t kNUndf = 0x00;
@@ -255,6 +256,11 @@ struct MachoRelocAttrs {
     uint8_t pcrel;
     uint8_t length;
     bool skip; // true if this reloc kind has no Mach-O equivalent
+};
+
+struct MachoReloc {
+    uint32_t address;
+    uint32_t packed;
 };
 
 static MachoRelocAttrs machoRelocAttrs(RelocKind kind) {
@@ -484,78 +490,101 @@ bool MachOWriter::write(const std::string &path,
         if (sym.binding == SymbolBinding::External)
             continue;
         auto it = rodataSymMap.find(i);
-        if (it != rodataSymMap.end())
-            definedRodataByName[sym.name] = it->second;
+        if (it != rodataSymMap.end()) {
+            auto [nameIt, inserted] = definedRodataByName.emplace(sym.name, it->second);
+            if (!inserted)
+                nameIt->second = UINT32_MAX;
+        }
     }
 
-    // --- 4. Build relocation entries for __text ---
-    struct MachoReloc {
-        uint32_t address;
-        uint32_t packed;
-    };
-
-    std::vector<MachoReloc> textRelocs;
-
-    for (const auto &rel : text.relocations()) {
-        auto attrs = machoRelocAttrs(rel.kind);
-        if (attrs.skip) {
-            err << "MachOWriter: relocation kind " << static_cast<int>(rel.kind)
-                << " has no Mach-O encoding for __text at offset " << rel.offset << "\n";
-            return false;
+    std::unordered_map<std::string, uint32_t> definedTextByName;
+    for (uint32_t i = 1; i < text.symbols().count(); ++i) {
+        const Symbol &sym = text.symbols().at(i);
+        if (sym.binding == SymbolBinding::External)
+            continue;
+        auto it = textSymMap.find(i);
+        if (it != textSymMap.end()) {
+            auto [nameIt, inserted] = definedTextByName.emplace(sym.name, it->second);
+            if (!inserted)
+                nameIt->second = UINT32_MAX;
         }
+    }
 
-        // Map encoder symbol index to a Mach-O symbol index.
-        // Mach-O symbol indices are zero-based, so index 0 is valid and cannot
-        // double as a "not found" sentinel.
-        uint32_t symIdx = 0;
+    auto resolveRelocSym = [&](const Relocation &rel,
+                               const CodeSection &source,
+                               const std::unordered_map<uint32_t, uint32_t> &sourceMap,
+                               const char *sectionName,
+                               uint32_t &symIdx) -> bool {
+        symIdx = 0;
         bool haveSymIdx = false;
-        auto it = textSymMap.find(rel.symbolIndex);
-        if (rel.targetSection == SymbolSection::Rodata) {
-            if (rel.symbolIndex < text.symbols().count()) {
-                const Symbol &sym = text.symbols().at(rel.symbolIndex);
-                auto rodIt = definedRodataByName.find(sym.name);
-                if (rodIt != definedRodataByName.end()) {
-                    symIdx = rodIt->second;
-                    haveSymIdx = true;
-                }
+        if (rel.targetSection != SymbolSection::Undefined &&
+            rel.symbolIndex < source.symbols().count()) {
+            const Symbol &sym = source.symbols().at(rel.symbolIndex);
+            const auto &targetByName = (rel.targetSection == SymbolSection::Rodata)
+                                           ? definedRodataByName
+                                           : definedTextByName;
+            auto nameIt = targetByName.find(sym.name);
+            if (nameIt != targetByName.end() && nameIt->second != UINT32_MAX) {
+                symIdx = nameIt->second;
+                haveSymIdx = true;
             }
-            if (!haveSymIdx) {
-                auto rit = rodataSymMap.find(rel.symbolIndex);
-                if (rit != rodataSymMap.end()) {
-                    symIdx = rit->second;
-                    haveSymIdx = true;
-                }
-            }
-            if (!haveSymIdx && it != textSymMap.end()) {
+        }
+        if (!haveSymIdx) {
+            auto it = sourceMap.find(rel.symbolIndex);
+            if (it != sourceMap.end()) {
                 symIdx = it->second;
                 haveSymIdx = true;
             }
-        } else if (it != textSymMap.end()) {
-            symIdx = it->second;
-            haveSymIdx = true;
-        } else {
-            auto rit = rodataSymMap.find(rel.symbolIndex);
-            if (rit != rodataSymMap.end()) {
-                symIdx = rit->second;
-                haveSymIdx = true;
-            }
         }
-
         if (!haveSymIdx) {
-            err << "MachOWriter: relocation at offset " << rel.offset
+            err << "MachOWriter: relocation in " << sectionName << " at offset " << rel.offset
                 << " references unknown symbol index " << rel.symbolIndex << "\n";
             return false;
         }
+        return true;
+    };
 
-        uint32_t packed =
-            packRelocInfo(symIdx, attrs.pcrel, attrs.length, 1 /*extern*/, attrs.type);
-        textRelocs.push_back({static_cast<uint32_t>(rel.offset), packed});
-    }
+    auto appendRelocs = [&](const CodeSection &source,
+                            const std::unordered_map<uint32_t, uint32_t> &sourceMap,
+                            const char *sectionName,
+                            std::vector<MachoReloc> &outRelocs) -> bool {
+        for (const auto &rel : source.relocations()) {
+            auto attrs = machoRelocAttrs(rel.kind);
+            if (attrs.skip) {
+                err << "MachOWriter: relocation kind " << static_cast<int>(rel.kind)
+                    << " has no Mach-O encoding for " << sectionName << " at offset "
+                    << rel.offset << "\n";
+                return false;
+            }
 
-    // Sort relocations by address descending (Mach-O convention).
-    std::sort(textRelocs.begin(), textRelocs.end(), [](const MachoReloc &a, const MachoReloc &b) {
-        return a.address > b.address;
-    });
+            uint32_t symIdx = 0;
+            if (!resolveRelocSym(rel, source, sourceMap, sectionName, symIdx))
+                return false;
+
+            if (arch_ == ObjArch::AArch64 && rel.addend != 0) {
+                const uint32_t addend = static_cast<uint32_t>(rel.addend) & 0x00FFFFFFu;
+                outRelocs.push_back(
+                    {static_cast<uint32_t>(rel.offset),
+                     packRelocInfo(addend, 0, attrs.length, 0, kArm64RelocAddend)});
+            }
+
+            uint32_t packed =
+                packRelocInfo(symIdx, attrs.pcrel, attrs.length, 1 /*extern*/, attrs.type);
+            outRelocs.push_back({static_cast<uint32_t>(rel.offset), packed});
+        }
+        std::stable_sort(outRelocs.begin(), outRelocs.end(), [](const MachoReloc &a, const MachoReloc &b) {
+            return a.address > b.address;
+        });
+        return true;
+    };
+
+    std::vector<MachoReloc> textRelocs;
+    if (!appendRelocs(text, textSymMap, "__text", textRelocs))
+        return false;
+
+    std::vector<MachoReloc> constRelocs;
+    if (!appendRelocs(rodata, rodataSymMap, "__const", constRelocs))
+        return false;
 
     // --- 4b. Build compact unwind section data (AArch64 only) ---
     // Collect unwind entries from the text section and generate __compact_unwind
@@ -638,7 +667,10 @@ bool MachOWriter::write(const std::string &path,
     size_t textRelocOff = lastDataEnd;
     uint32_t nTextRelocs = static_cast<uint32_t>(textRelocs.size());
 
-    size_t unwindRelocOff = textRelocOff + nTextRelocs * kRelocSize;
+    size_t constRelocOff = textRelocOff + nTextRelocs * kRelocSize;
+    uint32_t nConstRelocs = static_cast<uint32_t>(constRelocs.size());
+
+    size_t unwindRelocOff = constRelocOff + nConstRelocs * kRelocSize;
     uint32_t nUnwindRelocs = static_cast<uint32_t>(unwindRelocs.size());
 
     size_t symOff = unwindRelocOff + nUnwindRelocs * kRelocSize;
@@ -675,8 +707,8 @@ bool MachOWriter::write(const std::string &path,
                     rodataSize,
                     static_cast<uint32_t>(constFileOff),
                     constAlignLog2,
-                    0,
-                    0, // no __const relocations
+                    (nConstRelocs > 0) ? static_cast<uint32_t>(constRelocOff) : 0,
+                    nConstRelocs,
                     0);
 
     // __compact_unwind section header
@@ -738,35 +770,44 @@ bool MachOWriter::write(const std::string &path,
 
     // --- Patch addends into instruction bytes (Mach-O REL convention) ---
     if (arch_ == ObjArch::X86_64) {
-        for (const auto &rel : text.relocations()) {
-            if (rel.kind == RelocKind::PCRel32 || rel.kind == RelocKind::Branch32) {
-                size_t patchOff = textFileOff + rel.offset;
-                if (patchOff + 4 > file.size()) {
-                    err << "error: addend patch at offset " << patchOff
-                        << " out of bounds (file size=" << file.size() << ")\n";
-                    return false;
+        auto patchX64Addends = [&](const CodeSection &section, size_t sectionFileOff) -> bool {
+            for (const auto &rel : section.relocations()) {
+                if (rel.kind == RelocKind::PCRel32 || rel.kind == RelocKind::Branch32) {
+                    size_t patchOff = sectionFileOff + rel.offset;
+                    if (patchOff + 4 > file.size()) {
+                        err << "error: addend patch at offset " << patchOff
+                            << " out of bounds (file size=" << file.size() << ")\n";
+                        return false;
+                    }
+                    auto addend = static_cast<int32_t>(rel.addend);
+                    file[patchOff + 0] = static_cast<uint8_t>(addend);
+                    file[patchOff + 1] = static_cast<uint8_t>(addend >> 8);
+                    file[patchOff + 2] = static_cast<uint8_t>(addend >> 16);
+                    file[patchOff + 3] = static_cast<uint8_t>(addend >> 24);
+                } else if (rel.kind == RelocKind::Abs64 && rel.addend != 0) {
+                    size_t patchOff = sectionFileOff + rel.offset;
+                    if (patchOff + 8 > file.size()) {
+                        err << "error: addend patch at offset " << patchOff
+                            << " out of bounds (file size=" << file.size() << ")\n";
+                        return false;
+                    }
+                    auto addend = static_cast<uint64_t>(rel.addend);
+                    for (int i = 0; i < 8; ++i)
+                        file[patchOff + i] = static_cast<uint8_t>(addend >> (i * 8));
                 }
-                auto addend = static_cast<int32_t>(rel.addend);
-                file[patchOff + 0] = static_cast<uint8_t>(addend);
-                file[patchOff + 1] = static_cast<uint8_t>(addend >> 8);
-                file[patchOff + 2] = static_cast<uint8_t>(addend >> 16);
-                file[patchOff + 3] = static_cast<uint8_t>(addend >> 24);
-            } else if (rel.kind == RelocKind::Abs64 && rel.addend != 0) {
-                size_t patchOff = textFileOff + rel.offset;
-                if (patchOff + 8 > file.size()) {
-                    err << "error: addend patch at offset " << patchOff
-                        << " out of bounds (file size=" << file.size() << ")\n";
-                    return false;
-                }
-                auto addend = static_cast<uint64_t>(rel.addend);
-                for (int i = 0; i < 8; ++i)
-                    file[patchOff + i] = static_cast<uint8_t>(addend >> (i * 8));
             }
-        }
+            return true;
+        };
+        if (!patchX64Addends(text, textFileOff) || !patchX64Addends(rodata, constFileOff))
+            return false;
     }
 
     // --- Relocation entries ---
     for (const auto &r : textRelocs)
+        writeMachoReloc(file, r.address, r.packed);
+
+    // __const relocations
+    for (const auto &r : constRelocs)
         writeMachoReloc(file, r.address, r.packed);
 
     // __compact_unwind relocations

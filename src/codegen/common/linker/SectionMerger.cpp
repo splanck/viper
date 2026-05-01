@@ -62,6 +62,28 @@ int permClass(const OutputSection &s) {
     return 1; // readonly
 }
 
+int sectionClassOrder(SectionClass cls) {
+    switch (cls) {
+        case SectionClass::Text:
+            return 0;
+        case SectionClass::Rodata:
+            return 1;
+        case SectionClass::Data:
+            return 2;
+        case SectionClass::Bss:
+            return 3;
+        case SectionClass::TlsData:
+            return 4;
+        case SectionClass::TlsBss:
+            return 5;
+        case SectionClass::ObjC:
+            return 6;
+        case SectionClass::Other:
+            return 7;
+    }
+    return 7;
+}
+
 } // namespace
 
 void assignSectionVirtualAddresses(LinkLayout &layout, LinkPlatform platform) {
@@ -123,7 +145,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         }
     }
 
-    // Sort chunks within each class.
+    // Sort chunks by class, then within each class.
     // Default: higher-alignment chunks first to minimize inter-chunk padding.
     // Windows exception: COFF subsection families such as .CRT$X* and .tls$*
     // must preserve lexicographic subsection order so the CRT startup ranges
@@ -131,7 +153,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     std::stable_sort(
         pending.begin(), pending.end(), [platform](const PendingChunk &a, const PendingChunk &b) {
             if (a.cls != b.cls)
-                return false; // Preserve inter-class ordering.
+                return sectionClassOrder(a.cls) < sectionClassOrder(b.cls);
 
             if (platform == LinkPlatform::Windows) {
                 const bool aCrt = isWindowsCrtSubsection(a.name);

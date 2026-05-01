@@ -107,6 +107,31 @@ int main() {
         CHECK(objs[2].sections[1].data.empty());
     }
 
+    // --- Synthetic names avoid collisions with existing object/global symbols ---
+    {
+        auto obj1 = makeRodataObj("a.o", "collision");
+        auto obj2 = makeRodataObj("b.o", "collision");
+
+        ObjSymbol existing;
+        existing.name = "__viper_dedup_str_0";
+        existing.binding = ObjSymbol::Global;
+        existing.sectionIndex = 1;
+        existing.offset = 0;
+        obj1.symbols.push_back(existing);
+
+        std::vector<ObjFile> objs = {obj1, obj2};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        globalSyms["__viper_dedup_str_1"] =
+            {"__viper_dedup_str_1", GlobalSymEntry::Global, 0, 1, 0, 0};
+
+        size_t eliminated = deduplicateStrings(objs, globalSyms);
+
+        CHECK(eliminated == 1);
+        CHECK(objs[0].symbols[1].name == "__viper_dedup_str_2");
+        CHECK(objs[1].symbols[1].name == "__viper_dedup_str_2");
+        CHECK(globalSyms.count("__viper_dedup_str_2") == 1);
+    }
+
     // --- Strings with same prefix but different length are NOT merged ---
     {
         auto obj1 = makeRodataObj("a.o", "he");

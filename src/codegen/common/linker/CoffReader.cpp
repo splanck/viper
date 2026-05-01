@@ -153,7 +153,7 @@ static int64_t signExtend(uint64_t value, unsigned bits) {
 }
 
 template <typename T> static const T *coffAt(const uint8_t *data, size_t size, size_t offset) {
-    if (offset + sizeof(T) > size)
+    if (offset > size || sizeof(T) > size - offset)
         return nullptr;
     return reinterpret_cast<const T *>(data + offset);
 }
@@ -163,9 +163,9 @@ static int64_t extractCoffAddend(uint16_t machine,
                                  const std::vector<uint8_t> &sectionData,
                                  size_t offset) {
     if (machine == coff::IMAGE_FILE_MACHINE_AMD64) {
-        if (relocType == coff_x64::kAddr64 && offset + 8 <= sectionData.size())
+        if (relocType == coff_x64::kAddr64 && checkedRange(offset, 8, sectionData.size()))
             return static_cast<int64_t>(readLE64(sectionData.data() + offset));
-        if (relocType != coff_x64::kSection && offset + 4 <= sectionData.size()) {
+        if (relocType != coff_x64::kSection && checkedRange(offset, 4, sectionData.size())) {
             int32_t val = 0;
             std::memcpy(&val, sectionData.data() + offset, 4);
             return val;
@@ -173,11 +173,11 @@ static int64_t extractCoffAddend(uint16_t machine,
         return 0;
     }
 
-    if (machine != coff::IMAGE_FILE_MACHINE_ARM64 || offset + 4 > sectionData.size())
+    if (machine != coff::IMAGE_FILE_MACHINE_ARM64 || !checkedRange(offset, 4, sectionData.size()))
         return 0;
 
     if (relocType == coff_a64::kAddr64) {
-        if (offset + 8 <= sectionData.size())
+        if (checkedRange(offset, 8, sectionData.size()))
             return static_cast<int64_t>(readLE64(sectionData.data() + offset));
         return 0;
     }
@@ -229,6 +229,7 @@ bool readCoffObj(
     obj.isLittleEndian = true;
     obj.name = name;
     obj.machine = hdr->Machine;
+    obj.symbols.assign(1, ObjSymbol{});
     if (hdr->Machine != coff::IMAGE_FILE_MACHINE_AMD64 &&
         hdr->Machine != coff::IMAGE_FILE_MACHINE_ARM64) {
         err << "error: " << name << ": unsupported COFF machine\n";
@@ -415,9 +416,6 @@ bool readCoffObj(
         if (secNo < obj.sections.size())
             obj.sections[secNo].associativeSection = associativeSectionBySection[secNo];
     }
-
-    obj.symbols.resize(1); // Null symbol at index 0.
-    obj.symbols[0] = ObjSymbol{};
 
     for (uint32_t i = 0; i < hdr->NumberOfSymbols;) {
         const auto *sym = coffAt<coff::CoffSymbol>(

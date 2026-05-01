@@ -11,7 +11,7 @@
 // Key invariants:
 //   - Only scans LOCAL symbols at exact offsets with NUL-terminated content
 //   - Non-string rodata (floats, alignment padding) is skipped
-//   - All duplicates share one synthetic global name (__dedup_str_N)
+//   - All duplicates share one collision-free synthetic global name
 //   - Canonical copy is first occurrence; others become aliases
 // Links: codegen/common/linker/StringDedup.hpp
 //
@@ -43,6 +43,24 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
 
     auto makeSectionKey = [](size_t objIdx, uint32_t secIdx) -> uint64_t {
         return (static_cast<uint64_t>(objIdx) << 32) | static_cast<uint64_t>(secIdx);
+    };
+
+    auto objectSymbolExists = [&](const std::string &name) -> bool {
+        for (const auto &obj : allObjects) {
+            for (const auto &sym : obj.symbols) {
+                if (sym.name == name)
+                    return true;
+            }
+        }
+        return false;
+    };
+
+    auto makeDedupSymbolName = [&](size_t &counter) -> std::string {
+        for (;;) {
+            std::string name = "__viper_dedup_str_" + std::to_string(counter++);
+            if (globalSyms.find(name) == globalSyms.end() && !objectSymbolExists(name))
+                return name;
+        }
     };
 
     std::unordered_map<std::string, std::vector<size_t>> contentMap;
@@ -111,7 +129,7 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
             continue;
 
         // Generate synthetic global name.
-        std::string synthName = "__dedup_str_" + std::to_string(dedupCounter++);
+        std::string synthName = makeDedupSymbolName(dedupCounter);
 
         // First occurrence is canonical.
         const auto &canonical = locations[locs[0]];

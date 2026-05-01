@@ -357,6 +357,50 @@ int main() {
         CHECK(patched == 0x12345678);
     }
 
+    // --- Local defined symbols win over same-name globals ---
+    {
+        ObjFile obj;
+        obj.name = "local_alias.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data.resize(16, 0);
+        text.executable = true;
+        text.alloc = true;
+        text.alignment = 4;
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = 1; // R_X86_64_64
+        rel.symIndex = 1;
+        rel.addend = 0;
+        text.relocs.push_back(rel);
+        obj.sections.push_back(text);
+
+        obj.symbols.push_back({});
+        ObjSymbol local;
+        local.name = "dup";
+        local.binding = ObjSymbol::Local;
+        local.sectionIndex = 1;
+        local.offset = 8;
+        obj.symbols.push_back(local);
+
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x401000);
+
+        GlobalSymEntry global;
+        global.name = "dup";
+        global.binding = GlobalSymEntry::Dynamic;
+        global.resolvedAddr = 0x500000;
+        layout.globalSyms["dup"] = global;
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        CHECK(applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err));
+        CHECK(readLE64(layout.sections[0].data.data()) == 0x401008);
+    }
+
     // --- COFF x86_64 ADDR32NB writes an RVA (S + A - ImageBase) ---
     {
         std::vector<uint8_t> code(8, 0);

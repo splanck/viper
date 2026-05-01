@@ -187,6 +187,22 @@ int main() {
         CHECK(!objs[1].sections[1].data.empty());
     }
 
+    // --- Always-live ELF init/fini sections include priority suffixes ---
+    {
+        auto user = makeObj("user.o", {".text"});
+        auto initObj = makeObj("init.o", {".preinit_array", ".init_array.101", ".fini_array.999"});
+
+        std::vector<ObjFile> objs = {user, initObj};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        std::ostringstream err;
+
+        deadStrip(objs, 1, globalSyms, "main", err);
+
+        CHECK(!objs[1].sections[1].data.empty());
+        CHECK(!objs[1].sections[2].data.empty());
+        CHECK(!objs[1].sections[3].data.empty());
+    }
+
     // --- Always-live sections: ObjC metadata ---
     {
         auto user = makeObj("user.o", {".text"});

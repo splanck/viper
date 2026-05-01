@@ -473,8 +473,11 @@ bool CoffWriter::write(const std::string &path,
             if (s.binding == SymbolBinding::External)
                 continue;
             auto it = rodataSymMap.find(i);
-            if (it != rodataSymMap.end())
-                definedRodataByName[s.name] = it->second;
+            if (it != rodataSymMap.end()) {
+                auto [nameIt, inserted] = definedRodataByName.emplace(s.name, it->second);
+                if (!inserted)
+                    nameIt->second = UINT32_MAX;
+            }
         }
     }
 
@@ -530,6 +533,19 @@ bool CoffWriter::write(const std::string &path,
             definedNameMap[s.name] = coffIdx;
     }
 
+    std::unordered_map<std::string, uint32_t> definedTextByName;
+    for (uint32_t i = 1; i < text.symbols().count(); ++i) {
+        const Symbol &s = text.symbols().at(i);
+        if (s.binding == SymbolBinding::External)
+            continue;
+        auto it = textSymMap.find(i);
+        if (it == textSymMap.end())
+            continue;
+        auto [nameIt, inserted] = definedTextByName.emplace(s.name, it->second);
+        if (!inserted)
+            nameIt->second = UINT32_MAX;
+    }
+
     uint32_t debugLineStrOff = 0;
     if (hasDebugLine)
         debugLineStrOff = addToStrTab(".debug_line");
@@ -543,52 +559,72 @@ bool CoffWriter::write(const std::string &path,
     strtabBytes[3] = static_cast<uint8_t>(strtabSize >> 24);
 
     std::vector<uint8_t> textRelocBytes;
-    for (const auto &rel : text.relocations()) {
-        if (!validateCoffRelocationAddend(text, rel, err))
-            return false;
-        uint32_t coffSymIdx = 0;
+    auto resolveRelocSym = [&](const Relocation &rel,
+                               const CodeSection &source,
+                               const std::unordered_map<uint32_t, uint32_t> &sourceMap,
+                               const char *sectionName,
+                               uint32_t &coffSymIdx) -> bool {
+        coffSymIdx = 0;
         bool resolved = false;
-        auto it = textSymMap.find(rel.symbolIndex);
-        if (rel.targetSection == SymbolSection::Rodata) {
-            if (rel.symbolIndex < text.symbols().count()) {
-                const Symbol &sym = text.symbols().at(rel.symbolIndex);
-                auto rodIt = definedRodataByName.find(sym.name);
-                if (rodIt != definedRodataByName.end()) {
-                    coffSymIdx = rodIt->second;
-                    resolved = true;
-                }
-            }
-            if (!resolved) {
-                auto rit = rodataSymMap.find(rel.symbolIndex);
-                if (rit != rodataSymMap.end()) {
-                    coffSymIdx = rit->second;
-                    resolved = true;
-                }
-            }
-            if (!resolved && it != textSymMap.end()) {
-                coffSymIdx = it->second;
+        if (rel.targetSection != SymbolSection::Undefined &&
+            rel.symbolIndex < source.symbols().count()) {
+            const Symbol &sym = source.symbols().at(rel.symbolIndex);
+            const auto &targetByName = (rel.targetSection == SymbolSection::Rodata)
+                                           ? definedRodataByName
+                                           : definedTextByName;
+            auto nameIt = targetByName.find(sym.name);
+            if (nameIt != targetByName.end() && nameIt->second != UINT32_MAX) {
+                coffSymIdx = nameIt->second;
                 resolved = true;
             }
-        } else {
-            if (it != textSymMap.end()) {
+        }
+        if (!resolved) {
+            auto it = sourceMap.find(rel.symbolIndex);
+            if (it != sourceMap.end()) {
                 coffSymIdx = it->second;
                 resolved = true;
             }
         }
         if (!resolved) {
-            err << "CoffWriter: relocation at offset " << rel.offset
+            err << "CoffWriter: relocation in " << sectionName << " at offset " << rel.offset
                 << " references unknown symbol index " << rel.symbolIndex << "\n";
             return false;
         }
-        uint32_t relocOff = 0;
-        if (!checkedU32(rel.offset, "relocation offset", err, relocOff))
-            return false;
-        writeReloc(textRelocBytes, relocOff, coffSymIdx, coffRelocType(rel.kind));
-    }
+        return true;
+    };
+
+    auto appendRelocBytes = [&](const CodeSection &source,
+                                const std::unordered_map<uint32_t, uint32_t> &sourceMap,
+                                const char *sectionName,
+                                std::vector<uint8_t> &relocBytes) -> bool {
+        for (const auto &rel : source.relocations()) {
+            if (!validateCoffRelocationAddend(source, rel, err))
+                return false;
+            uint32_t coffSymIdx = 0;
+            if (!resolveRelocSym(rel, source, sourceMap, sectionName, coffSymIdx))
+                return false;
+            uint32_t relocOff = 0;
+            if (!checkedU32(rel.offset, "relocation offset", err, relocOff))
+                return false;
+            writeReloc(relocBytes, relocOff, coffSymIdx, coffRelocType(rel.kind));
+        }
+        return true;
+    };
+
+    if (!appendRelocBytes(text, textSymMap, ".text", textRelocBytes))
+        return false;
     uint32_t numTextRelocs = 0;
     if (!checkedU32(text.relocations().size(), "text relocation count", err, numTextRelocs))
         return false;
     addRelocationOverflowRecord(textRelocBytes, numTextRelocs);
+
+    std::vector<uint8_t> rdataRelocBytes;
+    if (!appendRelocBytes(rodata, rodataSymMap, ".rdata", rdataRelocBytes))
+        return false;
+    uint32_t numRdataRelocs = 0;
+    if (!checkedU32(rodata.relocations().size(), ".rdata relocation count", err, numRdataRelocs))
+        return false;
+    addRelocationOverflowRecord(rdataRelocBytes, numRdataRelocs);
 
     std::vector<uint8_t> pdataRelocBytes;
     for (const auto &rel : pdataRelocs) {
@@ -631,10 +667,16 @@ bool CoffWriter::write(const std::string &path,
     uint32_t cursor = static_cast<uint32_t>(alignUp(textRelocEnd, 4));
 
     uint32_t rdataDataOff = 0;
+    uint32_t rdataRelocOff = 0;
     if (hasRodata) {
         rdataDataOff = cursor;
         uint32_t end = 0;
-        if (!addU32Checked(rdataDataOff, rdataSize, ".rdata data", err, end))
+        if (!addU32Checked(rdataDataOff, rdataSize, ".rdata relocation offset", err, rdataRelocOff))
+            return false;
+        uint32_t rdataRelocSize = 0;
+        if (!coffRelocTableSize(numRdataRelocs, ".rdata", err, rdataRelocSize))
+            return false;
+        if (!addU32Checked(rdataRelocOff, rdataRelocSize, ".rdata relocation table", err, end))
             return false;
         cursor = static_cast<uint32_t>(alignUp(end, 4));
     }
@@ -698,8 +740,18 @@ bool CoffWriter::write(const std::string &path,
                        textChars);
 
     if (hasRodata) {
-        const uint32_t rdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign8;
-        writeSectionHeader(file, ".rdata", 0, 0, rdataSize, rdataDataOff, 0, 0, rdataChars);
+        uint32_t rdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign8;
+        if (numRdataRelocs > kCoffMaxStandardRelocs)
+            rdataChars |= kImageScnLnkNrelocOvfl;
+        writeSectionHeader(file,
+                           ".rdata",
+                           0,
+                           0,
+                           rdataSize,
+                           rdataDataOff,
+                           (numRdataRelocs > 0) ? rdataRelocOff : 0,
+                           coffHeaderRelocCount(numRdataRelocs),
+                           rdataChars);
     }
     if (hasXdata) {
         const uint32_t xdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign4;
@@ -745,6 +797,10 @@ bool CoffWriter::write(const std::string &path,
     if (hasRodata) {
         padTo(file, rdataDataOff);
         file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());
+        if (!rdataRelocBytes.empty()) {
+            padTo(file, rdataRelocOff);
+            file.insert(file.end(), rdataRelocBytes.begin(), rdataRelocBytes.end());
+        }
     }
     if (hasXdata) {
         padTo(file, xdataDataOff);
@@ -905,8 +961,11 @@ bool CoffWriter::write(const std::string &path,
             if (s.binding == SymbolBinding::External)
                 continue;
             auto it = rodataSymMap.find(i);
-            if (it != rodataSymMap.end())
-                definedRodataByName[s.name] = it->second;
+            if (it != rodataSymMap.end()) {
+                auto [nameIt, inserted] = definedRodataByName.emplace(s.name, it->second);
+                if (!inserted)
+                    nameIt->second = UINT32_MAX;
+            }
         }
     }
 
@@ -943,6 +1002,22 @@ bool CoffWriter::write(const std::string &path,
             const uint32_t coffIdx = coffSymCount++;
             textSymMaps[ti][i] = coffIdx;
             definedNameMap[s.name] = coffIdx;
+        }
+    }
+
+    std::unordered_map<std::string, uint32_t> definedTextByName;
+    for (size_t ti = 0; ti < textCount; ++ti) {
+        const auto &text = textSections[ti];
+        for (uint32_t i = 1; i < text.symbols().count(); ++i) {
+            const Symbol &s = text.symbols().at(i);
+            if (s.binding == SymbolBinding::External)
+                continue;
+            auto it = textSymMaps[ti].find(i);
+            if (it == textSymMaps[ti].end())
+                continue;
+            auto [nameIt, inserted] = definedTextByName.emplace(s.name, it->second);
+            if (!inserted)
+                nameIt->second = UINT32_MAX;
         }
     }
 
@@ -985,56 +1060,76 @@ bool CoffWriter::write(const std::string &path,
 
     std::vector<std::vector<uint8_t>> textRelocBytes(textCount);
     std::vector<uint32_t> numTextRelocs(textCount, 0);
-    for (size_t ti = 0; ti < textCount; ++ti) {
-        const auto &text = textSections[ti];
-        auto &relocBytes = textRelocBytes[ti];
-        for (const auto &rel : text.relocations()) {
-            if (!validateCoffRelocationAddend(text, rel, err))
+    auto resolveRelocSym = [&](const Relocation &rel,
+                               const CodeSection &source,
+                               const std::unordered_map<uint32_t, uint32_t> &sourceMap,
+                               const char *sectionName,
+                               uint32_t &coffSymIdx) -> bool {
+        coffSymIdx = 0;
+        bool resolved = false;
+        if (rel.targetSection != SymbolSection::Undefined &&
+            rel.symbolIndex < source.symbols().count()) {
+            const Symbol &sym = source.symbols().at(rel.symbolIndex);
+            const auto &targetByName = (rel.targetSection == SymbolSection::Rodata)
+                                           ? definedRodataByName
+                                           : definedTextByName;
+            auto nameIt = targetByName.find(sym.name);
+            if (nameIt != targetByName.end() && nameIt->second != UINT32_MAX) {
+                coffSymIdx = nameIt->second;
+                resolved = true;
+            }
+        }
+        if (!resolved) {
+            auto it = sourceMap.find(rel.symbolIndex);
+            if (it != sourceMap.end()) {
+                coffSymIdx = it->second;
+                resolved = true;
+            }
+        }
+        if (!resolved) {
+            err << "CoffWriter: relocation in " << sectionName << " at offset " << rel.offset
+                << " references unknown symbol index " << rel.symbolIndex << "\n";
+            return false;
+        }
+        return true;
+    };
+
+    auto appendRelocBytes = [&](const CodeSection &source,
+                                const std::unordered_map<uint32_t, uint32_t> &sourceMap,
+                                const char *sectionName,
+                                std::vector<uint8_t> &relocBytes) -> bool {
+        for (const auto &rel : source.relocations()) {
+            if (!validateCoffRelocationAddend(source, rel, err))
                 return false;
             uint32_t coffSymIdx = 0;
-            bool resolved = false;
-            auto it = textSymMaps[ti].find(rel.symbolIndex);
-            if (rel.targetSection == SymbolSection::Rodata) {
-                if (rel.symbolIndex < text.symbols().count()) {
-                    const Symbol &sym = text.symbols().at(rel.symbolIndex);
-                    auto rodIt = definedRodataByName.find(sym.name);
-                    if (rodIt != definedRodataByName.end()) {
-                        coffSymIdx = rodIt->second;
-                        resolved = true;
-                    }
-                }
-                if (!resolved) {
-                    auto rit = rodataSymMap.find(rel.symbolIndex);
-                    if (rit != rodataSymMap.end()) {
-                        coffSymIdx = rit->second;
-                        resolved = true;
-                    }
-                }
-                if (!resolved && it != textSymMaps[ti].end()) {
-                    coffSymIdx = it->second;
-                    resolved = true;
-                }
-            } else {
-                if (it != textSymMaps[ti].end()) {
-                    coffSymIdx = it->second;
-                    resolved = true;
-                }
-            }
-            if (!resolved) {
-                err << "CoffWriter: relocation at offset " << rel.offset
-                    << " references unknown symbol index " << rel.symbolIndex << "\n";
+            if (!resolveRelocSym(rel, source, sourceMap, sectionName, coffSymIdx))
                 return false;
-            }
             uint32_t relocOff = 0;
             if (!checkedU32(rel.offset, "relocation offset", err, relocOff))
                 return false;
             writeReloc(relocBytes, relocOff, coffSymIdx, coffRelocType(rel.kind));
         }
+        return true;
+    };
+
+    for (size_t ti = 0; ti < textCount; ++ti) {
+        const auto &text = textSections[ti];
+        auto &relocBytes = textRelocBytes[ti];
+        if (!appendRelocBytes(text, textSymMaps[ti], ".text", relocBytes))
+            return false;
         if (!checkedU32(
                 text.relocations().size(), "text relocation count", err, numTextRelocs[ti]))
             return false;
         addRelocationOverflowRecord(relocBytes, numTextRelocs[ti]);
     }
+
+    std::vector<uint8_t> rdataRelocBytes;
+    if (!appendRelocBytes(rodata, rodataSymMap, ".rdata", rdataRelocBytes))
+        return false;
+    uint32_t numRdataRelocs = 0;
+    if (!checkedU32(rodata.relocations().size(), ".rdata relocation count", err, numRdataRelocs))
+        return false;
+    addRelocationOverflowRecord(rdataRelocBytes, numRdataRelocs);
 
     std::vector<uint8_t> pdataRelocBytes;
     for (const auto &rel : pdataRelocs) {
@@ -1091,12 +1186,19 @@ bool CoffWriter::write(const std::string &path,
     }
 
     uint32_t rdataDataOff = 0;
+    uint32_t rdataRelocOff = 0;
     if (hasRodata) {
         rdataDataOff = cursor;
-        uint32_t end = 0;
-        if (!addU32Checked(rdataDataOff, rdataSize, ".rdata data", err, end))
+        if (!addU32Checked(rdataDataOff, rdataSize, ".rdata relocation offset", err, rdataRelocOff))
             return false;
-        cursor = static_cast<uint32_t>(alignUp(end, 4));
+        uint32_t rdataRelocEnd = 0;
+        uint32_t rdataRelocSize = 0;
+        if (!coffRelocTableSize(numRdataRelocs, ".rdata", err, rdataRelocSize))
+            return false;
+        if (!addU32Checked(
+                rdataRelocOff, rdataRelocSize, ".rdata relocation table", err, rdataRelocEnd))
+            return false;
+        cursor = static_cast<uint32_t>(alignUp(rdataRelocEnd, 4));
     }
     uint32_t xdataDataOff = 0;
     if (hasXdata) {
@@ -1160,8 +1262,18 @@ bool CoffWriter::write(const std::string &path,
     }
 
     if (hasRodata) {
-        const uint32_t rdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign8;
-        writeSectionHeader(file, ".rdata", 0, 0, rdataSize, rdataDataOff, 0, 0, rdataChars);
+        uint32_t rdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign8;
+        if (numRdataRelocs > kCoffMaxStandardRelocs)
+            rdataChars |= kImageScnLnkNrelocOvfl;
+        writeSectionHeader(file,
+                           ".rdata",
+                           0,
+                           0,
+                           rdataSize,
+                           rdataDataOff,
+                           (numRdataRelocs > 0) ? rdataRelocOff : 0,
+                           coffHeaderRelocCount(numRdataRelocs),
+                           rdataChars);
     }
     if (hasXdata) {
         const uint32_t xdataChars = kImageScnCntInitData | kImageScnMemRead | kImageScnAlign4;
@@ -1208,6 +1320,10 @@ bool CoffWriter::write(const std::string &path,
     if (hasRodata) {
         padTo(file, rdataDataOff);
         file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());
+        if (!rdataRelocBytes.empty()) {
+            padTo(file, rdataRelocOff);
+            file.insert(file.end(), rdataRelocBytes.begin(), rdataRelocBytes.end());
+        }
     }
     if (hasXdata) {
         padTo(file, xdataDataOff);

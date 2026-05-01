@@ -109,7 +109,7 @@ struct relocation_info {
 } // namespace macho
 
 template <typename T> static const T *readAt(const uint8_t *data, size_t size, size_t offset) {
-    if (offset + sizeof(T) > size)
+    if (offset > size || sizeof(T) > size - offset)
         return nullptr;
     return reinterpret_cast<const T *>(data + offset);
 }
@@ -155,10 +155,10 @@ static int64_t extractMachOAddend(const uint8_t *sectionData,
                                   size_t sectionSize,
                                   size_t offset,
                                   uint32_t relocType,
-                                  uint32_t relocLength,
-                                  bool isArm64) {
+    uint32_t relocLength,
+    bool isArm64) {
     if (isArm64) {
-        if (offset + 4 > sectionSize)
+        if (!checkedRange(offset, 4, sectionSize))
             return 0;
         const uint32_t insn = readLE32(sectionData + offset);
         switch (relocType) {
@@ -189,7 +189,7 @@ static int64_t extractMachOAddend(const uint8_t *sectionData,
         return 0;
     } else {
         const size_t fieldSize = size_t{1} << relocLength;
-        if (offset + fieldSize <= sectionSize) {
+        if (checkedRange(offset, fieldSize, sectionSize)) {
             if (fieldSize == 1) {
                 int8_t val = 0;
                 std::memcpy(&val, sectionData + offset, 1);
@@ -225,6 +225,7 @@ bool readMachOObj(
     obj.is64bit = true;
     obj.isLittleEndian = true;
     obj.name = name;
+    obj.symbols.assign(1, ObjSymbol{});
 
     const bool isArm64 = (hdr->cputype == macho::CPU_TYPE_ARM64);
     if (hdr->filetype != macho::MH_OBJECT ||
@@ -427,8 +428,10 @@ bool readMachOObj(
     // Parse symbols from LC_SYMTAB.
     if (symtabLcOff != 0) {
         // LC_SYMTAB layout: cmd(4) + cmdsize(4) + symoff(4) + nsyms(4) + stroff(4) + strsize(4)
-        if (symtabLcOff + 24 > size)
-            return true;
+        if (!checkedRange(symtabLcOff, 24, size)) {
+            err << "error: " << name << ": Mach-O LC_SYMTAB is out of bounds\n";
+            return false;
+        }
 
         const uint32_t symoff = readLE32(data + symtabLcOff + 8);
         const uint32_t nsyms = readLE32(data + symtabLcOff + 12);
@@ -445,9 +448,6 @@ bool readMachOObj(
             err << "error: " << name << ": symbol count " << nsyms << " exceeds limit\n";
             return false;
         }
-
-        obj.symbols.resize(1); // Null symbol at index 0.
-        obj.symbols[0] = ObjSymbol{};
 
         // Build symbol index map: Mach-O nlist index → ObjFile symbol index.
         // Mach-O relocations reference nlist indices directly.
@@ -549,6 +549,14 @@ bool readMachOObj(
                         << rel.symIndex << "\n";
                     return false;
                 }
+            }
+        }
+    } else {
+        for (const auto &sec : obj.sections) {
+            if (!sec.relocs.empty()) {
+                err << "error: " << name
+                    << ": Mach-O relocations require LC_SYMTAB for symbol mapping\n";
+                return false;
             }
         }
     }

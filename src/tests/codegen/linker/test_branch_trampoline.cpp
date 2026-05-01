@@ -147,6 +147,62 @@ int main() {
         CHECK(layout.sections[0].data.size() == 8);
     }
 
+    // --- Test 1b: Local branch target wins over same-name far global ---
+    {
+        ObjFile obj;
+        obj.name = "local_branch.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text.funcA";
+        text.data = {0x00, 0x00, 0x00, 0x94, 0xC0, 0x03, 0x5F, 0xD6}; // BL + RET
+        text.executable = true;
+        text.alloc = true;
+        text.alignment = 4;
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = elf_a64::kCall26;
+        rel.symIndex = 2;
+        rel.addend = 0;
+        text.relocs.push_back(rel);
+        obj.sections.push_back(text);
+
+        obj.symbols.push_back({});
+        ObjSymbol funcA;
+        funcA.name = "funcA";
+        funcA.binding = ObjSymbol::Global;
+        funcA.sectionIndex = 1;
+        funcA.offset = 0;
+        obj.symbols.push_back(funcA);
+        ObjSymbol localTarget;
+        localTarget.name = "dup";
+        localTarget.binding = ObjSymbol::Local;
+        localTarget.sectionIndex = 1;
+        localTarget.offset = 4;
+        obj.symbols.push_back(localTarget);
+
+        std::vector<ObjFile> objs = {obj};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        GlobalSymEntry funcEntry;
+        funcEntry.name = "funcA";
+        funcEntry.binding = GlobalSymEntry::Global;
+        funcEntry.objIndex = 0;
+        funcEntry.secIndex = 1;
+        globalSyms["funcA"] = funcEntry;
+        GlobalSymEntry farGlobal;
+        farGlobal.name = "dup";
+        farGlobal.binding = GlobalSymEntry::Dynamic;
+        farGlobal.resolvedAddr = 0x401000 + 140ULL * 1024 * 1024;
+        globalSyms["dup"] = farGlobal;
+
+        LinkLayout layout;
+        std::ostringstream err;
+        CHECK(runPipeline(objs, globalSyms, layout, LinkArch::AArch64, LinkPlatform::Linux, err));
+        CHECK(!layout.sections.empty());
+        CHECK(layout.sections[0].data.size() == 8);
+    }
+
     // --- Test 2: x86_64 no-op — pass does nothing ---
     {
         auto obj1 = makeCodeObj("a.o", "funcA", {0xE8, 0x00, 0x00, 0x00, 0x00}); // CALL +0

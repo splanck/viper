@@ -262,19 +262,18 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     return false;
                 }
 
-                const std::string &symName = obj.symbols[rel.symIndex].name;
+                const ObjSymbol &targetSym = obj.symbols[rel.symIndex];
+                const std::string &symName = targetSym.name;
 
                 uint64_t S = 0;
                 bool symResolved = false;
-                if (!symName.empty()) {
+                if (targetSym.sectionIndex > 0 || targetSym.absolute)
+                    symResolved = resolveLocalSymAddr(targetSym, oi, locMap, layout, S);
+                if (!symResolved && !symName.empty()) {
                     symResolved = resolveSymAddr(symName, layout.globalSyms, S);
-                    // Fall back to local symbol resolution for static functions.
-                    if (!symResolved && rel.symIndex < obj.symbols.size())
-                        symResolved =
-                            resolveLocalSymAddr(obj.symbols[rel.symIndex], oi, locMap, layout, S);
                 }
-                if (!symResolved && !symName.empty() && obj.symbols[rel.symIndex].weakExternal) {
-                    const std::string &fallback = obj.symbols[rel.symIndex].weakDefaultName;
+                if (!symResolved && !symName.empty() && targetSym.weakExternal) {
+                    const std::string &fallback = targetSym.weakDefaultName;
                     if (!fallback.empty())
                         symResolved = resolveSymAddr(fallback, layout.globalSyms, S);
                     if (!symResolved) {

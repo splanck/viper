@@ -76,6 +76,13 @@ static uint64_t readLE64(const std::vector<uint8_t> &d, size_t off) {
     return val;
 }
 
+static void writeLE32(std::vector<uint8_t> &d, size_t off, uint32_t value) {
+    d[off] = static_cast<uint8_t>(value);
+    d[off + 1] = static_cast<uint8_t>(value >> 8);
+    d[off + 2] = static_cast<uint8_t>(value >> 16);
+    d[off + 3] = static_cast<uint8_t>(value >> 24);
+}
+
 /// Extract a C string from the data at given offset.
 static std::string readCStr(const std::vector<uint8_t> &d, size_t off) {
     std::string s;
@@ -452,6 +459,42 @@ static void testA64Relocations() {
     std::remove(path.c_str());
 }
 
+static void testA64AddendRelocationPair() {
+    CodeSection text, rodata;
+
+    const uint32_t symIdx = text.findOrDeclareSymbol("target");
+    text.addRelocation(RelocKind::A64Call26, symIdx, 12);
+    text.emit32LE(0x94000000); // bl placeholder
+    text.emit32LE(0xD65F03C0); // ret
+
+    std::string path = "/tmp/viper_test_macho_a64_addend.o";
+    std::ostringstream errStream;
+
+    MachOWriter writer(ObjArch::AArch64);
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    auto data = readFile(path);
+    uint32_t reloff = readLE32(data, kOffTextSect + 56);
+    uint32_t nreloc = readLE32(data, kOffTextSect + 60);
+    CHECK(nreloc == 2);
+
+    uint32_t addendAddr = readLE32(data, reloff);
+    uint32_t addendPacked = readLE32(data, reloff + 4);
+    uint32_t targetAddr = readLE32(data, reloff + 8);
+    uint32_t targetPacked = readLE32(data, reloff + 12);
+
+    CHECK(addendAddr == 0);
+    CHECK(((addendPacked >> 28) & 0xF) == 10); // ARM64_RELOC_ADDEND
+    CHECK((addendPacked & 0x00FFFFFF) == 12);
+    CHECK(((addendPacked >> 27) & 1) == 0);
+
+    CHECK(targetAddr == 0);
+    CHECK(((targetPacked >> 28) & 0xF) == 2); // ARM64_RELOC_BRANCH26
+    CHECK(((targetPacked >> 27) & 1) == 1);
+
+    std::remove(path.c_str());
+}
+
 // =============================================================================
 // Test: Relocation Descending Order
 // =============================================================================
@@ -533,6 +576,55 @@ static void testRodataSection() {
     std::string content(reinterpret_cast<const char *>(data.data() + constOff),
                         static_cast<size_t>(constSize) - 1);
     CHECK(content == "Hello, World!");
+
+    std::remove(path.c_str());
+}
+
+static void testRodataRelocation() {
+    CodeSection text, rodata;
+    text.defineSymbol("target_func", SymbolBinding::Local, SymbolSection::Text);
+    text.emit8(0xC3);
+
+    const uint32_t symIdx = rodata.findOrDeclareSymbol("target_func");
+    rodata.addRelocation(RelocKind::Abs64, symIdx, 4, SymbolSection::Text);
+    rodata.emit64LE(0);
+
+    std::string path = "/tmp/viper_test_macho_rodata_reloc.o";
+    std::ostringstream errStream;
+
+    MachOWriter writer(ObjArch::X86_64);
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    auto data = readFile(path);
+    uint32_t constOff = readLE32(data, kOffConstSect + 48);
+    uint32_t reloff = readLE32(data, kOffConstSect + 56);
+    uint32_t nreloc = readLE32(data, kOffConstSect + 60);
+    CHECK(nreloc == 1);
+    CHECK(reloff > 0);
+    CHECK(readLE64(data, constOff) == 4);
+
+    uint32_t rAddress = readLE32(data, reloff);
+    uint32_t rPacked = readLE32(data, reloff + 4);
+    CHECK(rAddress == 0);
+    CHECK(((rPacked >> 28) & 0xF) == 0); // X86_64_RELOC_UNSIGNED
+    CHECK(((rPacked >> 25) & 3) == 3);   // 8-byte relocation
+    CHECK(((rPacked >> 27) & 1) == 1);   // extern
+
+    ObjFile obj;
+    CHECK(readObjFile(path, obj, errStream));
+    const ObjSection *constSec = nullptr;
+    for (size_t i = 1; i < obj.sections.size(); ++i) {
+        if (obj.sections[i].name == "__TEXT,__const")
+            constSec = &obj.sections[i];
+    }
+    CHECK(constSec != nullptr);
+    if (constSec != nullptr) {
+        CHECK(constSec->relocs.size() == 1);
+        if (!constSec->relocs.empty()) {
+            CHECK(obj.symbols[constSec->relocs[0].symIndex].name == "target_func");
+            CHECK(constSec->relocs[0].addend == 4);
+        }
+    }
 
     std::remove(path.c_str());
 }
@@ -694,6 +786,23 @@ static void testUndefinedRodataLocalReferenceUsesLocalDefinition() {
     std::remove(path.c_str());
 }
 
+static void testMalformedSymtabFails() {
+    std::vector<uint8_t> data(40, 0);
+    writeLE32(data, 0, 0xFEEDFACF);  // MH_MAGIC_64
+    writeLE32(data, 4, 0x01000007);  // CPU_TYPE_X86_64
+    writeLE32(data, 8, 3);           // CPU_SUBTYPE_X86_64_ALL
+    writeLE32(data, 12, 1);          // MH_OBJECT
+    writeLE32(data, 16, 1);          // one load command
+    writeLE32(data, 20, 8);          // sizeofcmds: only load_command header
+    writeLE32(data, 32, 0x02);       // LC_SYMTAB
+    writeLE32(data, 36, 8);          // malformed: smaller than symtab_command
+
+    ObjFile obj;
+    std::ostringstream errStream;
+    CHECK(!readObjFile(data.data(), data.size(), "bad_symtab.macho", obj, errStream));
+    CHECK(errStream.str().find("LC_SYMTAB") != std::string::npos);
+}
+
 // =============================================================================
 // Main
 // =============================================================================
@@ -706,14 +815,17 @@ int main() {
     testSymbolMangling();
     testX64Relocations();
     testA64Relocations();
+    testA64AddendRelocationPair();
     testRelocDescendingOrder();
     testFactory();
     testRodataSection();
+    testRodataRelocation();
     testDysymtabRanges();
     testMultiSectionMergeRebasesSymbolOffsets();
     testUnsupportedRelocationFails();
     testDuplicateLocalSymbolsStayDistinct();
     testUndefinedRodataLocalReferenceUsesLocalDefinition();
+    testMalformedSymtabFails();
 
     if (gFail == 0)
         std::cout << "All Mach-O writer tests passed.\n";

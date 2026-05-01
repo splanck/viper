@@ -154,6 +154,32 @@ int main() {
     }
 
     {
+        CodeSection relocText;
+        CodeSection relocRodata;
+        relocText.defineSymbol("target_func", SymbolBinding::Local, SymbolSection::Text);
+        relocText.emit8(0xC3);
+
+        const uint32_t symIdx = relocRodata.findOrDeclareSymbol("target_func");
+        relocRodata.addRelocation(RelocKind::Abs64, symIdx, 0, SymbolSection::Text);
+        relocRodata.emit64LE(0);
+
+        std::ostringstream relocErr;
+        CoffWriter relocWriter(ObjArch::X86_64);
+        const std::string relocPath = "build/test-out/coff_rdata_reloc.obj";
+        ASSERT(relocWriter.write(relocPath, relocText, relocRodata, relocErr));
+
+        ObjFile relocObj;
+        ASSERT(readObjFile(relocPath, relocObj, relocErr));
+        const ObjSection *rdataSec = findSection(relocObj, ".rdata");
+        ASSERT(rdataSec != nullptr);
+        CHECK(rdataSec->relocs.size() == 1);
+        if (!rdataSec->relocs.empty()) {
+            CHECK(rdataSec->relocs[0].type == 1); // IMAGE_REL_AMD64_ADDR64
+            CHECK(relocObj.symbols[rdataSec->relocs[0].symIndex].name == "target_func");
+        }
+    }
+
+    {
         CodeSection badArmText;
         CodeSection badArmRodata;
         badArmText.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);

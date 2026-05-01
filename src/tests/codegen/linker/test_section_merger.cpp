@@ -191,6 +191,24 @@ int main() {
         CHECK(layout.sections[0].data.size() == 7);
     }
 
+    // --- Class ordering is primary even when rodata has higher alignment ---
+    {
+        auto obj1 = makeObj(
+            "ro.o", ObjFileFormat::ELF, {makeSection(".rodata", 4, false, false, false, 64)});
+        auto obj2 =
+            makeObj("tx.o", ObjFileFormat::ELF, {makeSection(".text", 4, true, false, false, 1)});
+
+        std::vector<ObjFile> objs = {obj1, obj2};
+        LinkLayout layout;
+        std::ostringstream err;
+
+        bool ok = mergeSections(objs, LinkPlatform::Linux, LinkArch::X86_64, layout, err);
+        CHECK(ok);
+        CHECK(layout.sections.size() == 2);
+        CHECK(layout.sections[0].name == ".text");
+        CHECK(layout.sections[1].name == ".rodata");
+    }
+
     // --- Multiple objects merge into same section ---
     {
         auto obj1 = makeObj("a.o", ObjFileFormat::ELF, {makeSection(".text", 10, true, false)});

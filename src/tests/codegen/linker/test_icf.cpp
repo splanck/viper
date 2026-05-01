@@ -300,7 +300,47 @@ int main() {
         CHECK(!objs[1].sections[1].data.empty());
     }
 
-    // --- Test 7: Generic .text section (not per-function) is skipped ---
+    // --- Test 7: Executable PC-relative address materialization is address-taking ---
+    {
+        auto obj1 = makeTextObj("a.o", "funcA", {0xC3, 0x90, 0x90, 0x90});
+        auto obj2 = makeTextObj("b.o", "funcB", {0xC3, 0x90, 0x90, 0x90});
+
+        ObjFile obj3;
+        obj3.name = "addr.o";
+        obj3.format = ObjFileFormat::ELF;
+        obj3.sections.push_back({});
+
+        ObjSection textAddr;
+        textAddr.name = ".text.addr";
+        textAddr.data = {0, 0, 0, 0};
+        textAddr.executable = true;
+        textAddr.alloc = true;
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = 2; // R_X86_64_PC32, used by LEA/mov-address materialization.
+        rel.symIndex = 1;
+        rel.addend = -4;
+        textAddr.relocs.push_back(rel);
+        obj3.sections.push_back(textAddr);
+
+        obj3.symbols.push_back({});
+        ObjSymbol funcBRef;
+        funcBRef.name = "funcB";
+        funcBRef.binding = ObjSymbol::Undefined;
+        obj3.symbols.push_back(funcBRef);
+
+        std::vector<ObjFile> objs = {obj1, obj2, obj3};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        registerGlobal(globalSyms, "funcA", 0, 1);
+        registerGlobal(globalSyms, "funcB", 1, 1);
+
+        size_t folded = foldIdenticalCode(objs, globalSyms);
+        CHECK(folded == 0);
+        CHECK(!objs[0].sections[1].data.empty());
+        CHECK(!objs[1].sections[1].data.empty());
+    }
+
+    // --- Test 8: Generic .text section (not per-function) is skipped ---
     {
         ObjFile obj;
         obj.name = "mono.o";
@@ -336,7 +376,7 @@ int main() {
         CHECK(folded == 0); // Generic .text excluded.
     }
 
-    // --- Test 8: Three identical functions → 2 folded ---
+    // --- Test 9: Three identical functions → 2 folded ---
     {
         auto obj1 = makeTextObj("a.o", "funcA", {0xD6, 0x5F, 0x03, 0xC0}); // ret
         auto obj2 = makeTextObj("b.o", "funcB", {0xD6, 0x5F, 0x03, 0xC0});
@@ -366,7 +406,7 @@ int main() {
         CHECK(globalSyms["funcC"].objIndex == 0);
     }
 
-    // --- Test 8: COFF executable sections are not folded ---
+    // --- Test 10: COFF executable sections are not folded ---
     {
         auto obj1 = makeTextObj("a.obj", "funcA", {0xC3, 0x90, 0x90, 0x90});
         obj1.format = ObjFileFormat::COFF;
@@ -386,7 +426,7 @@ int main() {
         CHECK(globalSyms["funcB"].objIndex == 1);
     }
 
-    // --- Test 9: functions with local section symbols are not folded ---
+    // --- Test 11: functions with local section symbols are not folded ---
     {
         ObjSymbol localA;
         localA.name = ".Llocal";

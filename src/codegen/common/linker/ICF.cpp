@@ -22,6 +22,8 @@
 
 #include "codegen/common/linker/LinkTypes.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
+#include "codegen/common/linker/RelocClassify.hpp"
+#include "codegen/common/linker/RelocConstants.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -169,25 +171,48 @@ bool candidatesIdentical(const std::vector<ObjFile> &objects,
     return true;
 }
 
+LinkArch archForObject(const ObjFile &obj) {
+    return (obj.machine == 183 || obj.machine == 0xAA64) ? LinkArch::AArch64 : LinkArch::X86_64;
+}
+
+bool isKnownBranchReloc(const ObjFile &obj, RelocAction action, uint32_t type) {
+    if (action == RelocAction::Branch26 || action == RelocAction::CondBr19)
+        return true;
+    if (obj.format == ObjFileFormat::ELF && type == elf_x64::kPLT32)
+        return true;
+    if (obj.format == ObjFileFormat::MachO && type == macho_x64::kBranch)
+        return true;
+    return false;
+}
+
+bool isAddressTakingReloc(const ObjFile &obj, const ObjSection &sec, const ObjReloc &rel) {
+    const RelocAction action = classifyReloc(obj.format, archForObject(obj), rel.type);
+    if (action == RelocAction::Abs64 || action == RelocAction::Abs32)
+        return true;
+    if (!sec.executable)
+        return true;
+    return !isKnownBranchReloc(obj, action, rel.type);
+}
+
 } // namespace
 
 size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
                          std::unordered_map<std::string, GlobalSymEntry> &globalSyms) {
     // Step 1: Identify address-taken functions.
-    // A function is address-taken if any Abs64/Abs32 data relocation references it.
-    // Relocation type classification: we check the raw type values. On x86-64,
-    // R_X86_64_64=1 (Abs64) and R_X86_64_32=10 (Abs32). On AArch64,
-    // R_AARCH64_ABS64=257 and R_AARCH64_ABS32=258. We check all data/rodata
-    // sections for relocations pointing to .text symbols.
+    // A function is address-taken if a non-branch relocation references it.
+    // Data references are address-taking by definition. Executable sections are
+    // scanned too so RIP-relative LEA / ADRP+ADD materialization preserves
+    // observable function identity while direct branches remain foldable.
     std::unordered_set<std::string> addressTaken;
     for (size_t oi = 0; oi < allObjects.size(); ++oi) {
         const auto &obj = allObjects[oi];
         for (size_t si = 1; si < obj.sections.size(); ++si) {
             const auto &sec = obj.sections[si];
-            // Only scan data/rodata sections (non-executable, allocatable).
-            if (sec.executable || sec.data.empty())
+            if (sec.data.empty())
                 continue;
             for (const auto &rel : sec.relocs) {
+                if (!isAddressTakingReloc(obj, sec, rel))
+                    continue;
                 if (rel.symIndex >= obj.symbols.size())
                     continue;
                 const auto &targetSym = obj.symbols[rel.symIndex];

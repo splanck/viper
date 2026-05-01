@@ -34,6 +34,10 @@ static uint64_t makeKey(size_t objIdx, size_t secIdx) {
     return (static_cast<uint64_t>(objIdx) << 32) | static_cast<uint64_t>(secIdx);
 }
 
+static bool hasPrefix(const std::string &s, const char *prefix) {
+    return s.rfind(prefix, 0) == 0;
+}
+
 /// Check if a section name indicates it must always be kept.
 static bool isAlwaysLiveSection(const std::string &name) {
     // ObjC metadata — runtime discovers classes, selectors, protocols by section name.
@@ -48,8 +52,10 @@ static bool isAlwaysLiveSection(const std::string &name) {
     if (name.find("__mod_term_func") != std::string::npos)
         return true;
 
-    // ELF init/fini.
-    if (name == ".init_array" || name == ".fini_array")
+    // ELF init/fini arrays, including priority-suffixed forms such as
+    // .init_array.101 and .preinit_array.
+    if (hasPrefix(name, ".init_array") || hasPrefix(name, ".fini_array") ||
+        hasPrefix(name, ".preinit_array"))
         return true;
     if (name == ".init" || name == ".fini")
         return true;

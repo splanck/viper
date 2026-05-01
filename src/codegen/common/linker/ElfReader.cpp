@@ -103,7 +103,7 @@ struct Elf64_Rel {
 } // namespace elf
 
 template <typename T> static const T *readStruct(const uint8_t *data, size_t size, size_t offset) {
-    if (offset + sizeof(T) > size)
+    if (offset > size || sizeof(T) > size - offset)
         return nullptr;
     return reinterpret_cast<const T *>(data + offset);
 }
@@ -136,9 +136,9 @@ static int64_t extractRelAddend(uint16_t machine,
                                 const std::vector<uint8_t> &sectionData,
                                 size_t offset) {
     if (machine == elf::EM_X86_64) {
-        if (relocType == elf_x64::kAbs64 && offset + 8 <= sectionData.size())
+        if (relocType == elf_x64::kAbs64 && checkedRange(offset, 8, sectionData.size()))
             return static_cast<int64_t>(readLE64(sectionData.data() + offset));
-        if (offset + 4 <= sectionData.size()) {
+        if (checkedRange(offset, 4, sectionData.size())) {
             int32_t val = 0;
             std::memcpy(&val, sectionData.data() + offset, 4);
             return val;
@@ -146,11 +146,11 @@ static int64_t extractRelAddend(uint16_t machine,
         return 0;
     }
 
-    if (machine != elf::EM_AARCH64 || offset + 4 > sectionData.size())
+    if (machine != elf::EM_AARCH64 || !checkedRange(offset, 4, sectionData.size()))
         return 0;
 
     if (relocType == elf_a64::kAbs64) {
-        if (offset + 8 <= sectionData.size())
+        if (checkedRange(offset, 8, sectionData.size()))
             return static_cast<int64_t>(readLE64(sectionData.data() + offset));
         return 0;
     }
@@ -182,10 +182,10 @@ static int64_t extractRelAddend(uint16_t machine,
 
 static std::string readString(
     const uint8_t *data, size_t size, size_t strTabOff, size_t strTabSize, uint32_t nameOff) {
-    if (nameOff >= strTabSize)
+    if (!checkedRange(strTabOff, strTabSize, size) || nameOff >= strTabSize)
         return "";
     size_t pos = strTabOff + nameOff;
-    if (!checkedRange(strTabOff, strTabSize, size) || pos < strTabOff || pos >= strTabOff + strTabSize)
+    if (pos < strTabOff || pos >= strTabOff + strTabSize)
         return "";
     const uint8_t *begin = data + pos;
     const uint8_t *end = data + strTabOff + strTabSize;
@@ -209,6 +209,7 @@ bool readElfObj(
     obj.isLittleEndian = (ehdr->e_ident[5] == 1);
     obj.machine = ehdr->e_machine;
     obj.name = name;
+    obj.symbols.assign(1, ObjSymbol{});
 
     if (ehdr->e_ident[4] != 2 || ehdr->e_ident[5] != 1 || ehdr->e_ident[6] != 1 ||
         ehdr->e_type != 1 || ehdr->e_shentsize != sizeof(elf::Elf64_Shdr)) {
@@ -336,9 +337,6 @@ bool readElfObj(
             return false;
         }
         symMap.resize(symCount, 0);
-
-        obj.symbols.resize(1); // Null symbol at index 0.
-        obj.symbols[0] = ObjSymbol{};
 
         uint32_t commonSecIdx = 0;
         auto allocateCommon = [&](size_t sizeBytes, size_t alignment) -> size_t {

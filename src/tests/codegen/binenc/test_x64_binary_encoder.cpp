@@ -104,6 +104,19 @@ static bool bytesMatch(const std::vector<uint8_t> &actual,
 
 int main() {
     // ================================================================
+    // 0. Encoder validation
+    // ================================================================
+    {
+        bool threw = false;
+        try {
+            (void)x86CC(99);
+        } catch (const std::out_of_range &) {
+            threw = true;
+        }
+        CHECK(threw);
+    }
+
+    // ================================================================
     // 1. Nullary instructions
     // ================================================================
 

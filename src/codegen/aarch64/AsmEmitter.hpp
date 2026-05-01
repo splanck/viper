@@ -37,6 +37,7 @@
 
 #pragma once
 
+#include <optional>
 #include <ostream>
 #include <string>
 
@@ -552,7 +553,8 @@ class AsmEmitter {
     [[nodiscard]] PhysReg resolveBaseOffset(std::ostream &os,
                                             PhysReg base,
                                             long long offset,
-                                            long long &resolvedOffset) const;
+                                            long long &resolvedOffset,
+                                            std::optional<PhysReg> avoid = std::nullopt) const;
 
     const TargetInfo *target_{nullptr};
     // Mutable state used during emitFunction to pass frame plan to Ret instructions

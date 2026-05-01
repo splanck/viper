@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-24
+last-verified: 2026-05-01
 ---
 
 # Native Assembler — Binary Encoding & Object File Generation
@@ -156,6 +156,8 @@ The `PhysReg` enum order differs from hardware encoding. The encoder maps via lo
 - **PC-relative addend**: x86_64 branch and RIP-relative relocations always carry addend = −4 because the CPU
   computes displacement relative to the *end* of the instruction, but the relocation offset points to the *start*
   of the 4-byte displacement field
+- **Condition codes**: Invalid MIR condition-code integers are rejected even in release builds before the encoder
+  constructs JCC/SETcc/CMOVcc opcodes.
 - **Symbol names**: Encoders record canonical, unmangled names in `CodeSection`; platform ABI spelling is applied
   by the object writer. This keeps ELF/COFF/Mach-O inputs comparable until serialization.
 
@@ -212,6 +214,10 @@ The AArch64 encoder synthesizes function prologues and epilogues at emit time:
 - **Large frames**: SP adjustment chunked in multiples of 4080 (preserving 16-byte alignment between steps)
 - **Frame-size checks**: Large-frame helpers reject negative or wider-than-32-bit byte counts before narrowing into
   instruction immediates.
+- **Large stack/base offsets**: Materialized-address load/store fallbacks choose a scratch register that does not
+  alias the base register or a GPR store source.
+- **Pair load/store offsets**: `ldp/stp` immediate offsets are validated for 8-byte alignment and signed imm7 range
+  before encoding.
 
 ### Branch Resolution
 
@@ -272,12 +278,14 @@ Each writer maps these to format-specific codes (ELF `R_X86_64_*`, Mach-O `X86_6
 
 Produces valid ELF 64-bit relocatable object files for Linux.
 
-**Layout:** ELF header (64B) → sections: null, `.text`, `.rodata`, `.note.GNU-stack`, `.rela.text`, `.symtab`,
-`.strtab`, `.shstrtab` → section header table.
+**Layout:** ELF header (64B) → sections: null, `.text`, `.rodata`, `.rela.text`, `.rela.rodata`, `.symtab`,
+`.strtab`, `.shstrtab`, `.note.GNU-stack` → section header table.
 
 **Key details:**
 - Machine: `EM_X86_64` (62) or `EM_AARCH64` (183)
 - Relocations use `.rela` format (explicit addend)
+- Both `.text` and `.rodata` relocations are emitted; `.rela.*` section headers link to `.symtab` and identify the
+  relocated input section through `sh_info`.
 - All local symbols precede global symbols (ELF spec requirement)
 - `.note.GNU-stack` emitted for non-executable stack marker
 
@@ -295,6 +303,8 @@ LC_BUILD_VERSION → LC_SYMTAB → LC_DYSYMTAB → section data → relocations 
   `__CFConstantStringClassReference` becomes `___CFConstantStringClassReference` in the raw object symbol table.
 - Local labels starting with `L` or `.` are not ABI-prefixed.
 - Relocations stored per-section (not in separate `.rela` sections like ELF)
+- Both `__TEXT,__text` and `__TEXT,__const` publish their own relocation tables when needed.
+- AArch64 non-zero addends are serialized with paired `ARM64_RELOC_ADDEND` records before the target relocation.
 - Compact format: `r_address(32) | r_symbolnum(24) | r_pcrel(1) | r_length(2) | r_extern(1) | r_type(4)`
 - LC_BUILD_VERSION mandatory (platform=macOS, minos=14.0)
 - `MH_SUBSECTIONS_VIA_SYMBOLS` flag set
@@ -307,7 +317,7 @@ LC_BUILD_VERSION → LC_SYMTAB → LC_DYSYMTAB → section data → relocations 
 Produces valid COFF object files for Windows.
 
 **Layout:** COFF header (20B) → section headers (40B each) → `.text` data → `.text` relocations →
-`.rdata` data → symbol table → string table.
+`.rdata` data → `.rdata` relocations → symbol table → string table.
 
 **Key details:**
 - Machine: `IMAGE_FILE_MACHINE_AMD64` (0x8664) or `IMAGE_FILE_MACHINE_ARM64` (0xAA64)
@@ -315,7 +325,8 @@ Produces valid COFF object files for Windows.
 - No explicit addend — addend is embedded in instruction bytes at relocation site
 - Symbol names ≤8 chars stored inline; longer names reference string table (4-byte size prefix)
 - Relocation symbol indexes must resolve to emitted symbols.
-- Sections with more than 65,535 relocations are rejected instead of producing an invalid classic COFF object.
+- Sections with more than 65,535 relocations use the standard COFF overflow relocation record instead of truncating
+  the section-header relocation count.
 
 ---
 

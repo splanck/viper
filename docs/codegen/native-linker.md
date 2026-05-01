@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-24
+last-verified: 2026-05-01
 ---
 
 # Native Linker — Object File Linking & Executable Generation
@@ -188,6 +188,9 @@ truncated relocation tables, dangling Mach-O ARM64 addend records, and invalid r
 unwind metadata such as `__compact_unwind`, `__eh_frame`, `.debug_line`, and `__DWARF` sections is preserved for
 later passes or executable debug-section emission.
 
+Reader range checks avoid offset+size overflow before slicing input buffers. Mach-O objects that contain relocation
+records must also provide `LC_SYMTAB`; without it relocation symbol indexes cannot be mapped safely.
+
 ### Input Compatibility
 
 Before generating synthetic dynamic-import stubs, `NativeLinker` checks that every real input object matches the
@@ -261,7 +264,8 @@ Input sections are classified by name and attributes:
 Output sections are laid out in order: `.text` → `.rodata` → `.data` → `.tdata` → `.bss` → `.tbss`.
 
 Each section starts on a page boundary. Within a section, input chunks are concatenated with their alignment
-requirements preserved.
+requirements preserved. Chunk sorting uses section class as the primary key and alignment only within the same class,
+so a high-alignment data or rodata contribution cannot move ahead of executable code.
 
 ### Base Addresses
 
@@ -310,6 +314,10 @@ This avoids a single `switch` with colliding cases.
 
 Where: `S` = symbol address, `A` = addend, `P` = patch site address, `Page(X)` = `X & ~0xFFF`.
 
+Relocation symbol lookup resolves a defined local or absolute symbol from the referencing object before consulting
+the global symbol table. This keeps duplicate local labels or local symbols with the same spelling as an external
+symbol from being rebound to an unrelated global definition.
+
 ### Range Checking
 
 - AArch64 B/BL: ±128MB (`imm26` × 4)
@@ -329,8 +337,12 @@ labels from different objects cannot collide.
 ### Dead Strip and ICF
 
 Dead stripping keeps EH/unwind metadata roots alive (`.eh_frame`, `.gcc_except_table`, `__compact_unwind`, and
-`__eh_frame`). Identical Code Folding includes local relocation identity in function signatures and skips candidates
-with extra local symbols in the function section, preventing folds that would strand non-redirectable local labels.
+`__eh_frame`) and treats ELF constructor/destructor arrays as live by prefix, including priority-suffixed
+`.preinit_array.*`, `.init_array.*`, and `.fini_array.*` inputs. Identical Code Folding includes local relocation
+identity in function signatures and skips candidates with extra local symbols in the function section, preventing
+folds that would strand non-redirectable local labels. Executable-section relocations that materialize a function
+address, such as x86_64 `PCRel32` LEA patterns, mark that function address-taken; only known direct branch
+relocations remain foldable.
 
 ---
 

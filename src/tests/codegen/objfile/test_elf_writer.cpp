@@ -78,6 +78,19 @@ static uint64_t readLE64(const std::vector<uint8_t> &d, size_t off) {
     return val;
 }
 
+static constexpr size_t kElfShdrSize = 64;
+static constexpr size_t kSecText = 1;
+static constexpr size_t kSecRodata = 2;
+static constexpr size_t kSecRelaText = 3;
+static constexpr size_t kSecRelaRodata = 4;
+static constexpr size_t kSecSymtab = 5;
+static constexpr size_t kSecStrtab = 6;
+static constexpr size_t kSecShstrtab = 7;
+
+static size_t sectionHeaderOff(const std::vector<uint8_t> &data, size_t secIndex) {
+    return static_cast<size_t>(readLE64(data, 40)) + secIndex * kElfShdrSize;
+}
+
 static const ObjSection *findSection(const ObjFile &obj, const std::string &name) {
     for (size_t i = 1; i < obj.sections.size(); ++i) {
         if (obj.sections[i].name == name)
@@ -133,11 +146,12 @@ static void testMinimalX64Elf() {
     // e_shentsize = 64
     CHECK(readLE16(data, 58) == 64);
 
-    // e_shnum = 8 (null, .text, .rodata, .rela.text, .symtab, .strtab, .shstrtab, .note.GNU-stack)
-    CHECK(readLE16(data, 60) == 8);
+    // e_shnum = 9 (null, .text, .rodata, .rela.text, .rela.rodata, .symtab,
+    // .strtab, .shstrtab, .note.GNU-stack)
+    CHECK(readLE16(data, 60) == 9);
 
-    // e_shstrndx = 6 (.shstrtab)
-    CHECK(readLE16(data, 62) == 6);
+    // e_shstrndx = 7 (.shstrtab)
+    CHECK(readLE16(data, 62) == kSecShstrtab);
 
     // Verify .text data at the expected offset (should be aligned to 16 for x86_64)
     size_t textOff =
@@ -206,9 +220,8 @@ static void testX64Relocations() {
     auto data = readFile(path);
     CHECK(data.size() > 64);
 
-    // Find .rela.text section: index 3, header at e_shoff + 3*64
-    uint64_t shoff = readLE64(data, 40);
-    size_t relaHdr = static_cast<size_t>(shoff) + 3 * 64;
+    // Find .rela.text section.
+    size_t relaHdr = sectionHeaderOff(data, kSecRelaText);
 
     // sh_type should be SHT_RELA (4)
     CHECK(readLE32(data, relaHdr + 4) == 4);
@@ -260,8 +273,7 @@ static void testA64Relocations() {
     auto data = readFile(path);
 
     // Find .rela.text section
-    uint64_t shoff = readLE64(data, 40);
-    size_t relaHdr = static_cast<size_t>(shoff) + 3 * 64;
+    size_t relaHdr = sectionHeaderOff(data, kSecRelaText);
 
     uint64_t relaSize = readLE64(data, relaHdr + 32);
     CHECK(relaSize == 24); // one rela entry
@@ -294,9 +306,8 @@ static void testSymbolTable() {
 
     auto data = readFile(path);
 
-    // Find .symtab section: index 4, header at e_shoff + 4*64
-    uint64_t shoff = readLE64(data, 40);
-    size_t symHdr = static_cast<size_t>(shoff) + 4 * 64;
+    // Find .symtab section.
+    size_t symHdr = sectionHeaderOff(data, kSecSymtab);
 
     // sh_type = SHT_SYMTAB (2)
     CHECK(readLE32(data, symHdr + 4) == 2);
@@ -363,9 +374,8 @@ static void testSectionNames() {
 
     auto data = readFile(path);
 
-    // Find .shstrtab section: index 6
-    uint64_t shoff = readLE64(data, 40);
-    size_t shstrHdr = static_cast<size_t>(shoff) + 6 * 64;
+    // Find .shstrtab section.
+    size_t shstrHdr = sectionHeaderOff(data, kSecShstrtab);
 
     uint64_t shstrOff = readLE64(data, shstrHdr + 24);
     uint64_t shstrSize = readLE64(data, shstrHdr + 32);
@@ -379,6 +389,7 @@ static void testSectionNames() {
     CHECK(shstrtab.find(".text") != std::string::npos);
     CHECK(shstrtab.find(".rodata") != std::string::npos);
     CHECK(shstrtab.find(".rela.text") != std::string::npos);
+    CHECK(shstrtab.find(".rela.rodata") != std::string::npos);
     CHECK(shstrtab.find(".symtab") != std::string::npos);
     CHECK(shstrtab.find(".strtab") != std::string::npos);
     CHECK(shstrtab.find(".shstrtab") != std::string::npos);
@@ -408,9 +419,8 @@ static void testRodataSection() {
 
     auto data = readFile(path);
 
-    // Find .rodata section: index 2
-    uint64_t shoff = readLE64(data, 40);
-    size_t rodataHdr = static_cast<size_t>(shoff) + 2 * 64;
+    // Find .rodata section.
+    size_t rodataHdr = sectionHeaderOff(data, kSecRodata);
 
     uint64_t rodataOff = readLE64(data, rodataHdr + 24);
     uint64_t rodataSize = readLE64(data, rodataHdr + 32);
@@ -442,9 +452,8 @@ static void testRodataSymbolType() {
     CHECK(ok);
 
     auto data = readFile(path);
-    uint64_t shoff = readLE64(data, 40);
-    size_t symHdr = static_cast<size_t>(shoff) + 4 * 64;
-    size_t strHdr = static_cast<size_t>(shoff) + 5 * 64;
+    size_t symHdr = sectionHeaderOff(data, kSecSymtab);
+    size_t strHdr = sectionHeaderOff(data, kSecStrtab);
 
     uint64_t symOff = readLE64(data, symHdr + 24);
     uint64_t symSize = readLE64(data, symHdr + 32);
@@ -512,6 +521,50 @@ static void testExplicitRodataRelocationHint() {
     std::remove(path.c_str());
 }
 
+static void testRodataRelocations() {
+    CodeSection text, rodata;
+
+    text.defineSymbol("target_func", SymbolBinding::Local, SymbolSection::Text);
+    text.emit8(0xC3);
+
+    const uint32_t symIdx = rodata.findOrDeclareSymbol("target_func");
+    rodata.addRelocation(RelocKind::Abs64, symIdx, 8, SymbolSection::Text);
+    rodata.emit64LE(0);
+
+    std::string path = "/tmp/viper_test_elf_rela_rodata.o";
+    std::ostringstream errStream;
+
+    ElfWriter writer(ObjArch::X86_64);
+    CHECK(writer.write(path, text, rodata, errStream));
+
+    auto data = readFile(path);
+    size_t relaHdr = sectionHeaderOff(data, kSecRelaRodata);
+    CHECK(readLE32(data, relaHdr + 4) == 4);                 // SHT_RELA
+    CHECK(readLE32(data, relaHdr + 40) == kSecSymtab);       // sh_link
+    CHECK(readLE32(data, relaHdr + 44) == kSecRodata);       // sh_info
+    CHECK(readLE64(data, relaHdr + 32) == 24);               // one Elf64_Rela
+
+    uint64_t relaOff = readLE64(data, relaHdr + 24);
+    uint64_t rOffset = readLE64(data, static_cast<size_t>(relaOff));
+    uint64_t rInfo = readLE64(data, static_cast<size_t>(relaOff) + 8);
+    int64_t rAddend = static_cast<int64_t>(readLE64(data, static_cast<size_t>(relaOff) + 16));
+    CHECK(rOffset == 0);
+    CHECK((rInfo & 0xFFFFFFFF) == 1); // R_X86_64_64
+    CHECK(rAddend == 8);
+
+    ObjFile obj;
+    CHECK(readObjFile(path, obj, errStream));
+    const ObjSection *rodataSec = findSection(obj, ".rodata");
+    CHECK(rodataSec != nullptr);
+    if (rodataSec != nullptr) {
+        CHECK(rodataSec->relocs.size() == 1);
+        if (!rodataSec->relocs.empty())
+            CHECK(obj.symbols[rodataSec->relocs[0].symIndex].name == "target_func");
+    }
+
+    std::remove(path.c_str());
+}
+
 int main() {
     testMinimalX64Elf();
     testMinimalA64Elf();
@@ -523,6 +576,7 @@ int main() {
     testRodataSection();
     testRodataSymbolType();
     testExplicitRodataRelocationHint();
+    testRodataRelocations();
 
     if (gFail == 0)
         std::cout << "All ELF writer tests passed.\n";

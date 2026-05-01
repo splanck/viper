@@ -555,17 +555,26 @@ static bool isInSignedImmRange(long long offset) {
     return offset >= -256 && offset <= 255;
 }
 
+static PhysReg chooseGprScratch(PhysReg base, std::optional<PhysReg> avoid = std::nullopt) {
+    const PhysReg candidates[] = {kScratchGPR, kScratchGPR2, kScratchGPR3};
+    for (PhysReg candidate : candidates) {
+        if (candidate == base)
+            continue;
+        if (avoid.has_value() && candidate == *avoid)
+            continue;
+        return candidate;
+    }
+    throw std::runtime_error("AArch64 asm emitter: no scratch register for large offset load/store");
+}
+
 void AsmEmitter::emitLdrFromFp(std::ostream &os, PhysReg dst, long long offset) const {
     if (isInSignedImmRange(offset)) {
         os << "  ldr " << rn(dst) << ", [x29, #" << offset << "]\n";
     } else {
-        // Large offset: use scratch register x9 to compute address
-        // mov x9, #offset
-        // add x9, x29, x9
-        // ldr dst, [x9]
-        emitMovRI(os, kScratchGPR, offset);
-        os << "  add " << rn(kScratchGPR) << ", x29, " << rn(kScratchGPR) << "\n";
-        os << "  ldr " << rn(dst) << ", [" << rn(kScratchGPR) << "]\n";
+        PhysReg scratch = chooseGprScratch(PhysReg::X29);
+        emitMovRI(os, scratch, offset);
+        os << "  add " << rn(scratch) << ", x29, " << rn(scratch) << "\n";
+        os << "  ldr " << rn(dst) << ", [" << rn(scratch) << "]\n";
     }
 }
 
@@ -573,13 +582,10 @@ void AsmEmitter::emitStrToFp(std::ostream &os, PhysReg src, long long offset) co
     if (isInSignedImmRange(offset)) {
         os << "  str " << rn(src) << ", [x29, #" << offset << "]\n";
     } else {
-        // Large offset: use scratch register x9 to compute address
-        // mov x9, #offset
-        // add x9, x29, x9
-        // str src, [x9]
-        emitMovRI(os, kScratchGPR, offset);
-        os << "  add " << rn(kScratchGPR) << ", x29, " << rn(kScratchGPR) << "\n";
-        os << "  str " << rn(src) << ", [" << rn(kScratchGPR) << "]\n";
+        PhysReg scratch = chooseGprScratch(PhysReg::X29, src);
+        emitMovRI(os, scratch, offset);
+        os << "  add " << rn(scratch) << ", x29, " << rn(scratch) << "\n";
+        os << "  str " << rn(src) << ", [" << rn(scratch) << "]\n";
     }
 }
 
@@ -589,12 +595,12 @@ void AsmEmitter::emitLdrFprFromFp(std::ostream &os, PhysReg dst, long long offse
         printD(os, dst);
         os << ", [x29, #" << offset << "]\n";
     } else {
-        // Large offset: use scratch register x9 to compute address
-        emitMovRI(os, kScratchGPR, offset);
-        os << "  add " << rn(kScratchGPR) << ", x29, " << rn(kScratchGPR) << "\n";
+        PhysReg scratch = chooseGprScratch(PhysReg::X29);
+        emitMovRI(os, scratch, offset);
+        os << "  add " << rn(scratch) << ", x29, " << rn(scratch) << "\n";
         os << "  ldr ";
         printD(os, dst);
-        os << ", [" << rn(kScratchGPR) << "]\n";
+        os << ", [" << rn(scratch) << "]\n";
     }
 }
 
@@ -604,12 +610,12 @@ void AsmEmitter::emitStrFprToFp(std::ostream &os, PhysReg src, long long offset)
         printD(os, src);
         os << ", [x29, #" << offset << "]\n";
     } else {
-        // Large offset: use scratch register x9 to compute address
-        emitMovRI(os, kScratchGPR, offset);
-        os << "  add " << rn(kScratchGPR) << ", x29, " << rn(kScratchGPR) << "\n";
+        PhysReg scratch = chooseGprScratch(PhysReg::X29);
+        emitMovRI(os, scratch, offset);
+        os << "  add " << rn(scratch) << ", x29, " << rn(scratch) << "\n";
         os << "  str ";
         printD(os, src);
-        os << ", [" << rn(kScratchGPR) << "]\n";
+        os << ", [" << rn(scratch) << "]\n";
     }
 }
 
@@ -632,8 +638,8 @@ void AsmEmitter::emitAddFpImm(std::ostream &os, PhysReg dst, long long offset) c
 /// @details When @p offset fits in the signed immediate range, returns @p base
 ///          unchanged and sets @p resolvedOffset to @p offset. For large offsets
 ///          that exceed the immediate range, materialises the effective address
-///          into @c kScratchGPR (x9) via movz/movk + add and returns that register
-///          with @p resolvedOffset set to 0.
+///          into a non-conflicting scratch register via movz/movk + add and
+///          returns that register with @p resolvedOffset set to 0.
 /// @param os Output stream for any scratch-register setup instructions.
 /// @param base Original base register.
 /// @param offset Byte offset from base.
@@ -642,16 +648,29 @@ void AsmEmitter::emitAddFpImm(std::ostream &os, PhysReg dst, long long offset) c
 PhysReg AsmEmitter::resolveBaseOffset(std::ostream &os,
                                       PhysReg base,
                                       long long offset,
-                                      long long &resolvedOffset) const {
+                                      long long &resolvedOffset,
+                                      std::optional<PhysReg> avoid) const {
     if (isInSignedImmRange(offset)) {
         resolvedOffset = offset;
         return base;
     }
-    // Large offset: materialise effective address into scratch register
-    emitMovRI(os, kScratchGPR, offset);
-    os << "  add " << rn(kScratchGPR) << ", " << rn(base) << ", " << rn(kScratchGPR) << "\n";
+    const PhysReg candidates[] = {kScratchGPR, kScratchGPR2, kScratchGPR3};
+    std::optional<PhysReg> scratch;
+    for (PhysReg candidate : candidates) {
+        if (candidate == base)
+            continue;
+        if (avoid.has_value() && candidate == *avoid)
+            continue;
+        scratch = candidate;
+        break;
+    }
+    if (!scratch)
+        throw std::runtime_error("AArch64 asm emitter: no scratch register for large offset load/store");
+    // Large offset: materialise effective address into scratch register.
+    emitMovRI(os, *scratch, offset);
+    os << "  add " << rn(*scratch) << ", " << rn(base) << ", " << rn(*scratch) << "\n";
     resolvedOffset = 0;
-    return kScratchGPR;
+    return *scratch;
 }
 
 /// @brief Load a GPR from [base + offset], using a scratch register for large offsets.
@@ -670,7 +689,7 @@ void AsmEmitter::emitStrToBase(std::ostream &os,
                                PhysReg base,
                                long long offset) const {
     long long resolved;
-    PhysReg b = resolveBaseOffset(os, base, offset, resolved);
+    PhysReg b = resolveBaseOffset(os, base, offset, resolved, src);
     os << "  str " << rn(src) << ", [" << rn(b) << ", #" << resolved << "]\n";
 }
 

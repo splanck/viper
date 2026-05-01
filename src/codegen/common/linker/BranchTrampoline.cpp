@@ -84,6 +84,33 @@ bool resolveLocalSymbol(const ObjSymbol &sym,
     return true;
 }
 
+bool resolveGlobalSymbol(const std::string &name,
+                         const LinkLayout &layout,
+                         uint64_t &addr) {
+    auto it = layout.globalSyms.find(name);
+    if (it == layout.globalSyms.end())
+        return false;
+    if (it->second.resolvedAddr == 0 &&
+        (it->second.binding == GlobalSymEntry::Undefined ||
+         it->second.binding == GlobalSymEntry::Dynamic))
+        return false;
+    addr = it->second.resolvedAddr;
+    return true;
+}
+
+bool resolveRelocSymbol(const ObjSymbol &sym,
+                        size_t objIdx,
+                        const std::unordered_map<uint64_t, std::pair<size_t, size_t>> &locMap,
+                        const LinkLayout &layout,
+                        uint64_t &addr) {
+    if ((sym.sectionIndex > 0 || sym.absolute) &&
+        resolveLocalSymbol(sym, objIdx, locMap, layout, addr))
+        return true;
+    if (!sym.name.empty() && resolveGlobalSymbol(sym.name, layout, addr))
+        return true;
+    return false;
+}
+
 constexpr size_t kTrampolineSize = 12;
 
 bool branch26Reachable(uint64_t from, uint64_t to) {
@@ -204,14 +231,11 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                         << rel.symIndex << "\n";
                     return false;
                 }
-                const std::string &symName = obj.symbols[rel.symIndex].name;
+                const ObjSymbol &targetSym = obj.symbols[rel.symIndex];
+                const std::string &symName = targetSym.name;
                 uint64_t S = 0;
-                auto symIt = layout.globalSyms.find(symName);
-                if (symIt != layout.globalSyms.end()) {
-                    S = symIt->second.resolvedAddr;
-                } else if (!resolveLocalSymbol(obj.symbols[rel.symIndex], oi, locMap, layout, S)) {
+                if (!resolveRelocSymbol(targetSym, oi, locMap, layout, S))
                     continue;
-                }
                 const int64_t A = rel.addend;
                 const uint64_t P = secVA + chunkBase + rel.offset;
                 if (branch26Reachable(P, static_cast<uint64_t>(static_cast<int64_t>(S) + A)))

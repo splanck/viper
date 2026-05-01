@@ -235,7 +235,7 @@ uint32_t addString(std::vector<uint8_t> &strtab, const std::string &s) {
     return off;
 }
 
-uint32_t dynInfoForSym(uint32_t symIndex, uint32_t type) {
+uint64_t dynInfoForSym(uint32_t symIndex, uint32_t type) {
     return (static_cast<uint64_t>(symIndex) << 32) | type;
 }
 

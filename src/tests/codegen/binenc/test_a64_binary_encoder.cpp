@@ -29,6 +29,7 @@
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 using namespace viper::codegen::aarch64;
@@ -703,6 +704,29 @@ static void testLdpStpRegFpImm() {
                  (29u << 5) | 0u));
 }
 
+static void testPairOffsetValidation() {
+    bool threw = false;
+    try {
+        MInstr bad{MOpcode::LdpRegFpImm, {gpr(PhysReg::X0), gpr(PhysReg::X1), imm(12)}};
+        (void)encodeInstrBytes({bad});
+    } catch (const std::out_of_range &ex) {
+        threw = std::string(ex.what()).find("ldp") != std::string::npos;
+    }
+    CHECK(threw);
+}
+
+static void testLargeStoreAvoidsSourceAndBaseScratch() {
+    MInstr mi{
+        MOpcode::StrRegBaseImm, {gpr(PhysReg::X9), gpr(PhysReg::X16), imm(512)}};
+    auto bytes = encodeInstrBytes({mi});
+
+    // BTI + mov scratch + add scratch,base,scratch + str source,[scratch] + ret.
+    CHECK(bytes.size() >= 20);
+    uint32_t store = readWord(bytes, bytes.size() - 8);
+    CHECK((store & 31u) == 9u);              // Rt = original store source X9.
+    CHECK(((store >> 5) & 31u) == 17u);      // Rn = scratch X17, not X9 or X16.
+}
+
 static void testVariableShift() {
     // lslv x0, x1, x2
     MInstr mi{MOpcode::LslvRRR, {gpr(PhysReg::X0), gpr(PhysReg::X1), gpr(PhysReg::X2)}};
@@ -1006,6 +1030,8 @@ int main() {
     testBlr();
     testAddsSubsRRR();
     testLdpStpRegFpImm();
+    testPairOffsetValidation();
+    testLargeStoreAvoidsSourceAndBaseScratch();
     testVariableShift();
     testHighRegisters();
     testFMovRR();
