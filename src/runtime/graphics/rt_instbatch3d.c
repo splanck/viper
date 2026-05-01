@@ -26,6 +26,7 @@
 #include "vgfx3d_backend.h"
 
 #include <math.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,7 +38,7 @@ extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
 #include "rt_trap.h"
 extern double rt_mat4_get(void *m, int64_t r, int64_t c);
-extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
+extern int rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
 
 #define INST_INIT_CAP 64
 
@@ -55,6 +56,35 @@ typedef struct {
     int64_t last_motion_frame;
     int8_t has_prev_snapshot;
 } rt_instbatch3d;
+
+static int instbatch_next_capacity(int32_t current, int32_t *out_capacity) {
+    if (!out_capacity)
+        return 0;
+    if (current <= 0) {
+        *out_capacity = INST_INIT_CAP;
+        return 1;
+    }
+    if (current > INT32_MAX / 2)
+        return 0;
+    int32_t next = current * 2;
+    if ((size_t)next > SIZE_MAX / (16u * sizeof(float)))
+        return 0;
+    *out_capacity = next;
+    return 1;
+}
+
+static float instbatch_identity_at(int row, int col) {
+    return row == col ? 1.0f : 0.0f;
+}
+
+static void instbatch_copy_mat4_sanitized(float *dst, void *transform) {
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            double value = rt_mat4_get(transform, i, j);
+            dst[i * 4 + j] = isfinite(value) ? (float)value : instbatch_identity_at(i, j);
+        }
+    }
+}
 
 /// @brief Copy one 4x4 matrix between stride-16-float slots.
 /// @details Instance batches store transforms in a flat float array where
@@ -168,6 +198,8 @@ void *rt_instbatch3d_new(void *mesh, void *material) {
     b->has_prev_snapshot = 0;
     if (!b->transforms || !b->current_snapshot || !b->prev_transforms) {
         instbatch_finalizer(b);
+        if (rt_obj_release_check0(b))
+            rt_obj_free(b);
         rt_trap("InstanceBatch3D.New: allocation failed");
         return NULL;
     }
@@ -184,7 +216,11 @@ void rt_instbatch3d_add(void *obj, void *transform) {
     rt_instbatch3d *b = (rt_instbatch3d *)obj;
 
     if (b->instance_count >= b->instance_capacity) {
-        int32_t new_cap = b->instance_capacity * 2;
+        int32_t new_cap;
+        if (!instbatch_next_capacity(b->instance_capacity, &new_cap)) {
+            rt_trap("InstanceBatch3D.Add: instance capacity overflow");
+            return;
+        }
         size_t old_bytes = (size_t)b->instance_capacity * 16u * sizeof(float);
         float *new_transforms = (float *)calloc((size_t)new_cap * 16u, sizeof(float));
         float *new_snapshot = (float *)calloc((size_t)new_cap * 16u, sizeof(float));
@@ -209,11 +245,8 @@ void rt_instbatch3d_add(void *obj, void *transform) {
         b->instance_capacity = new_cap;
     }
 
-    /* Copy Mat4 (double) to float[16] */
-    float *dst = &b->transforms[b->instance_count * 16];
-    for (int i = 0; i < 4; i++)
-        for (int j = 0; j < 4; j++)
-            dst[i * 4 + j] = (float)rt_mat4_get(transform, i, j);
+    float *dst = &b->transforms[(size_t)b->instance_count * 16u];
+    instbatch_copy_mat4_sanitized(dst, transform);
 
     b->instance_count++;
 }
@@ -260,9 +293,7 @@ void rt_instbatch3d_set(void *obj, int64_t index, void *transform) {
         return;
 
     float *dst = &b->transforms[index * 16];
-    for (int i = 0; i < 4; i++)
-        for (int j = 0; j < 4; j++)
-            dst[i * 4 + j] = (float)rt_mat4_get(transform, i, j);
+    instbatch_copy_mat4_sanitized(dst, transform);
 }
 
 /// @brief Remove all instances from the batch, resetting count to zero.
@@ -290,6 +321,10 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
     rt_instbatch3d *b = (rt_instbatch3d *)batch_obj;
     if (!c->in_frame || !c->backend || b->instance_count == 0)
         return;
+    if ((size_t)b->instance_count > SIZE_MAX / (16u * sizeof(float))) {
+        rt_trap("InstanceBatch3D.Draw: instance matrix allocation overflow");
+        return;
+    }
 
     rt_mesh3d *mesh = (rt_mesh3d *)b->mesh;
     if (!mesh || mesh->vertex_count == 0 || mesh->index_count == 0)
@@ -312,7 +347,7 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
             b->prev_count = b->motion_snapshot_count;
             b->has_prev_snapshot = 1;
         }
-        memcpy(b->current_snapshot, b->transforms, (size_t)b->instance_count * 16 * sizeof(float));
+        memcpy(b->current_snapshot, b->transforms, (size_t)b->instance_count * 16u * sizeof(float));
         b->motion_snapshot_count = b->instance_count;
         b->last_motion_frame = rt_canvas3d_get_frame_serial(canvas_obj);
     }
@@ -373,9 +408,17 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
                     return;
                 }
                 if (visible_count < b->instance_count) {
-                    rt_canvas3d_add_temp_buffer(canvas_obj, visible_transforms);
-                    if (visible_prev)
-                        rt_canvas3d_add_temp_buffer(canvas_obj, visible_prev);
+                    int visible_tracked = rt_canvas3d_add_temp_buffer(canvas_obj, visible_transforms);
+                    int prev_tracked =
+                        visible_prev ? rt_canvas3d_add_temp_buffer(canvas_obj, visible_prev) : 1;
+                    if (!visible_tracked || !prev_tracked) {
+                        if (!visible_tracked)
+                            free(visible_transforms);
+                        if (!prev_tracked)
+                            free(visible_prev);
+                        free(owned_prev);
+                        return;
+                    }
                     free(owned_prev);
                     submit_transforms = visible_transforms;
                     submit_prev = visible_prev;
@@ -391,7 +434,10 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
             }
         }
         if (owned_prev && submit_prev == owned_prev)
-            rt_canvas3d_add_temp_buffer(canvas_obj, owned_prev);
+            if (!rt_canvas3d_add_temp_buffer(canvas_obj, owned_prev)) {
+                free(owned_prev);
+                return;
+            }
         rt_canvas3d_queue_instanced_batch(
             canvas_obj, mesh, mat, submit_transforms, submit_count, submit_prev, has_prev);
     }

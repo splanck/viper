@@ -128,6 +128,19 @@ static void test_ray_sphere_miss() {
     EXPECT_TRUE(t < 0, "Ray-sphere miss returns -1");
 }
 
+static void test_ray_sphere_rejects_invalid_inputs() {
+    void *origin = rt_vec3_new(0, 0, 5);
+    void *zero_dir = rt_vec3_new(0, 0, 0);
+    void *bad_dir = rt_vec3_new(NAN, 0, -1);
+    void *center = rt_vec3_new(0, 0, 0);
+    EXPECT_TRUE(rt_ray3d_intersect_sphere(origin, zero_dir, center, 1.0) < 0,
+                "Ray-sphere rejects zero-length direction");
+    EXPECT_TRUE(rt_ray3d_intersect_sphere(origin, bad_dir, center, 1.0) < 0,
+                "Ray-sphere rejects non-finite direction");
+    EXPECT_TRUE(rt_ray3d_intersect_sphere(origin, rt_vec3_new(0, 0, -1), center, NAN) < 0,
+                "Ray-sphere rejects non-finite radius");
+}
+
 static void test_aabb_overlaps() {
     void *a0 = rt_vec3_new(0, 0, 0), *a1 = rt_vec3_new(2, 2, 2);
     void *b0 = rt_vec3_new(1, 1, 1), *b1 = rt_vec3_new(3, 3, 3);
@@ -148,6 +161,25 @@ static void test_aabb_penetration() {
     double px = fabs(rt_vec3_x(pen));
     EXPECT_NEAR(px, 0.5, 0.01, "AABB penetration X = 0.5");
     EXPECT_NEAR(rt_vec3_y(pen), 0.0, 0.01, "AABB penetration Y = 0 (not min axis)");
+}
+
+static void test_aabb_penetration_uses_per_axis_centers() {
+    void *a0 = rt_vec3_new(-100.0, 10.0, 0.0);
+    void *a1 = rt_vec3_new(-98.0, 12.0, 2.0);
+    void *b0 = rt_vec3_new(-99.0, 9.5, 0.0);
+    void *b1 = rt_vec3_new(-97.0, 10.5, 2.0);
+    void *pen = rt_aabb3d_penetration(a0, a1, b0, b1);
+    EXPECT_NEAR(rt_vec3_x(pen), 0.0, 0.01, "AABB Y-min penetration has zero X");
+    EXPECT_NEAR(rt_vec3_y(pen), 0.5, 0.01, "AABB Y-min penetration sign uses Y centers");
+    EXPECT_NEAR(rt_vec3_z(pen), 0.0, 0.01, "AABB Y-min penetration has zero Z");
+}
+
+static void test_sphere_penetration_coincident_centers() {
+    void *center = rt_vec3_new(0, 0, 0);
+    void *pen = rt_sphere3d_penetration(center, 1.0, center, 1.0);
+    EXPECT_NEAR(rt_vec3_x(pen), 0.0, 0.01, "Coincident sphere penetration X = 0");
+    EXPECT_NEAR(rt_vec3_y(pen), 2.0, 0.01, "Coincident sphere penetration returns stable depth");
+    EXPECT_NEAR(rt_vec3_z(pen), 0.0, 0.01, "Coincident sphere penetration Z = 0");
 }
 
 static void test_ray_mesh() {
@@ -205,9 +237,12 @@ int main() {
     test_ray_aabb_inside();
     test_ray_sphere_hit();
     test_ray_sphere_miss();
+    test_ray_sphere_rejects_invalid_inputs();
     test_aabb_overlaps();
     test_aabb_separate();
     test_aabb_penetration();
+    test_aabb_penetration_uses_per_axis_centers();
+    test_sphere_penetration_coincident_centers();
     test_ray_mesh();
     test_ray_mesh_translated();
     test_aabb_closest_point_surface_inside();

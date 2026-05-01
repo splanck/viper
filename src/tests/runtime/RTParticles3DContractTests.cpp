@@ -66,6 +66,36 @@ struct StubMaterial {
     double custom_params[8] = {0.0};
 };
 
+struct ParticlesView {
+    void *vptr;
+    void *particles;
+    int32_t count;
+    int32_t max_particles;
+    double position[3];
+    double emit_dir[3];
+    double emit_spread;
+    double speed_min;
+    double speed_max;
+    double life_min;
+    double life_max;
+    double size_start;
+    double size_end;
+    double gravity[3];
+    float color_start[3];
+    float color_end[3];
+    double alpha_start;
+    double alpha_end;
+    double rate;
+    double accumulator;
+    int8_t emitting;
+    int8_t additive_blend;
+    void *texture;
+    int32_t emitter_shape;
+    double emitter_size[3];
+    uint32_t prng_state;
+    void *cached_material;
+};
+
 } // namespace
 
 extern "C" void *rt_obj_new_i64(int64_t, int64_t byte_size) {
@@ -214,6 +244,58 @@ static void test_particles_expire_after_lifetime() {
     assert(rt_particles3d_get_count(ps) == 0);
 }
 
+static void test_setters_sanitize_nonfinite_ranges() {
+    void *ps = rt_particles3d_new(8);
+    assert(ps != nullptr);
+    ParticlesView *view = static_cast<ParticlesView *>(ps);
+
+    rt_particles3d_set_position(ps, NAN, 2.0, INFINITY);
+    assert(view->position[0] == 0.0);
+    assert(view->position[1] == 2.0);
+    assert(view->position[2] == 0.0);
+
+    rt_particles3d_set_direction(ps, NAN, 0.0, INFINITY, INFINITY);
+    assert(std::fabs(view->emit_dir[0]) < 1e-9);
+    assert(std::fabs(view->emit_dir[1] - 1.0) < 1e-9);
+    assert(std::fabs(view->emit_dir[2]) < 1e-9);
+    assert(view->emit_spread == 0.0);
+
+    rt_particles3d_set_speed(ps, 4.0, -2.0);
+    assert(view->speed_min == 0.0);
+    assert(view->speed_max == 4.0);
+
+    rt_particles3d_set_lifetime(ps, NAN, -1.0);
+    assert(view->life_min >= 0.01);
+    assert(view->life_max >= 0.01);
+
+    rt_particles3d_set_size(ps, NAN, -3.0);
+    assert(view->size_start == 0.0);
+    assert(view->size_end == 0.0);
+
+    rt_particles3d_set_gravity(ps, INFINITY, -9.0, NAN);
+    assert(view->gravity[0] == 0.0);
+    assert(view->gravity[1] == -9.0);
+    assert(view->gravity[2] == 0.0);
+
+    rt_particles3d_set_alpha(ps, -1.0, 2.0);
+    assert(view->alpha_start == 0.0);
+    assert(view->alpha_end == 1.0);
+
+    rt_particles3d_set_rate(ps, INFINITY);
+    assert(view->rate == 0.0);
+    rt_particles3d_set_additive(ps, 7);
+    assert(view->additive_blend == 1);
+
+    rt_particles3d_set_emitter_shape(ps, 99);
+    assert(view->emitter_shape == 2);
+    rt_particles3d_set_emitter_shape(ps, -1);
+    assert(view->emitter_shape == 0);
+    rt_particles3d_set_emitter_size(ps, NAN, -2.0, INFINITY);
+    assert(view->emitter_size[0] == 0.0);
+    assert(view->emitter_size[1] == 2.0);
+    assert(view->emitter_size[2] == 0.0);
+}
+
 static void reset_draw_records() {
     g_draw_mesh_calls = 0;
     g_draw_mesh_matrix_keyed_calls = 0;
@@ -284,6 +366,7 @@ int main() {
     test_burst_and_clear();
     test_start_stop_and_update_spawns_particles();
     test_particles_expire_after_lifetime();
+    test_setters_sanitize_nonfinite_ranges();
     test_draw_additive_batches_and_alpha_splits_per_particle();
     std::printf("RTParticles3DContractTests passed.\n");
     return 0;

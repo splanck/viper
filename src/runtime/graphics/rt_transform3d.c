@@ -67,6 +67,40 @@ typedef struct {
     int8_t dirty;
 } rt_transform3d;
 
+static double transform3d_finite_or(double value, double fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
+static double transform3d_scale_or_unit(double value) {
+    return isfinite(value) ? value : 1.0;
+}
+
+static void transform3d_quat_identity(double *q) {
+    q[0] = 0.0;
+    q[1] = 0.0;
+    q[2] = 0.0;
+    q[3] = 1.0;
+}
+
+static void transform3d_quat_normalize(double *q) {
+    if (!q)
+        return;
+    if (!isfinite(q[0]) || !isfinite(q[1]) || !isfinite(q[2]) || !isfinite(q[3])) {
+        transform3d_quat_identity(q);
+        return;
+    }
+    double len_sq = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+    if (!isfinite(len_sq) || len_sq < 1e-24) {
+        transform3d_quat_identity(q);
+        return;
+    }
+    double inv_len = 1.0 / sqrt(len_sq);
+    q[0] *= inv_len;
+    q[1] *= inv_len;
+    q[2] *= inv_len;
+    q[3] *= inv_len;
+}
+
 /// @brief GC finalizer — Transform3D owns no heap allocations, so this is a no-op.
 /// @details All fields (`position`, `rotation`, `scale`, cached `matrix`) live
 ///   inline inside the struct and get freed with the object body. The finalizer
@@ -150,9 +184,9 @@ void rt_transform3d_set_position(void *obj, double x, double y, double z) {
     if (!obj)
         return;
     rt_transform3d *xf = (rt_transform3d *)obj;
-    xf->position[0] = x;
-    xf->position[1] = y;
-    xf->position[2] = z;
+    xf->position[0] = transform3d_finite_or(x, 0.0);
+    xf->position[1] = transform3d_finite_or(y, 0.0);
+    xf->position[2] = transform3d_finite_or(z, 0.0);
     xf->dirty = 1;
 }
 
@@ -173,6 +207,7 @@ void rt_transform3d_set_rotation(void *obj, void *quat) {
     xf->rotation[1] = rt_quat_y(quat);
     xf->rotation[2] = rt_quat_z(quat);
     xf->rotation[3] = rt_quat_w(quat);
+    transform3d_quat_normalize(xf->rotation);
     xf->dirty = 1;
 }
 
@@ -192,6 +227,9 @@ void rt_transform3d_set_euler(void *obj, double pitch, double yaw, double roll) 
     if (!obj)
         return;
     rt_transform3d *xf = (rt_transform3d *)obj;
+    pitch = transform3d_finite_or(pitch, 0.0);
+    yaw = transform3d_finite_or(yaw, 0.0);
+    roll = transform3d_finite_or(roll, 0.0);
     /* Convert Euler angles (radians) to quaternion using ZYX convention */
     double hp = pitch * 0.5, hy = yaw * 0.5, hr = roll * 0.5;
     double cp = cos(hp), sp = sin(hp);
@@ -201,6 +239,7 @@ void rt_transform3d_set_euler(void *obj, double pitch, double yaw, double roll) 
     xf->rotation[1] = cr * sp * cy + sr * cp * sy; /* y */
     xf->rotation[2] = cr * cp * sy - sr * sp * cy; /* z */
     xf->rotation[3] = cr * cp * cy + sr * sp * sy; /* w */
+    transform3d_quat_normalize(xf->rotation);
     xf->dirty = 1;
 }
 
@@ -209,9 +248,9 @@ void rt_transform3d_set_scale(void *obj, double x, double y, double z) {
     if (!obj)
         return;
     rt_transform3d *xf = (rt_transform3d *)obj;
-    xf->scale[0] = x;
-    xf->scale[1] = y;
-    xf->scale[2] = z;
+    xf->scale[0] = transform3d_scale_or_unit(x);
+    xf->scale[1] = transform3d_scale_or_unit(y);
+    xf->scale[2] = transform3d_scale_or_unit(z);
     xf->dirty = 1;
 }
 
@@ -254,9 +293,12 @@ void rt_transform3d_translate(void *obj, void *delta) {
     if (!obj || !delta)
         return;
     rt_transform3d *xf = (rt_transform3d *)obj;
-    xf->position[0] += rt_vec3_x(delta);
-    xf->position[1] += rt_vec3_y(delta);
-    xf->position[2] += rt_vec3_z(delta);
+    double nx = xf->position[0] + transform3d_finite_or(rt_vec3_x(delta), 0.0);
+    double ny = xf->position[1] + transform3d_finite_or(rt_vec3_y(delta), 0.0);
+    double nz = xf->position[2] + transform3d_finite_or(rt_vec3_z(delta), 0.0);
+    xf->position[0] = transform3d_finite_or(nx, 0.0);
+    xf->position[1] = transform3d_finite_or(ny, 0.0);
+    xf->position[2] = transform3d_finite_or(nz, 0.0);
     xf->dirty = 1;
 }
 
@@ -271,8 +313,10 @@ void rt_transform3d_rotate(void *obj, void *axis, double angle) {
 
     /* Build quaternion from axis-angle */
     double ax = rt_vec3_x(axis), ay = rt_vec3_y(axis), az = rt_vec3_z(axis);
+    if (!isfinite(ax) || !isfinite(ay) || !isfinite(az) || !isfinite(angle))
+        return;
     double len = sqrt(ax * ax + ay * ay + az * az);
-    if (len < 1e-12)
+    if (!isfinite(len) || len < 1e-12)
         return;
     ax /= len;
     ay /= len;
@@ -289,6 +333,7 @@ void rt_transform3d_rotate(void *obj, void *axis, double angle) {
     xf->rotation[1] = qw * cy - qx * cz + qy * cw + qz * cx;
     xf->rotation[2] = qw * cz + qx * cy - qy * cx + qz * cw;
     xf->rotation[3] = qw * cw - qx * cx - qy * cy - qz * cz;
+    transform3d_quat_normalize(xf->rotation);
     xf->dirty = 1;
 }
 
@@ -305,11 +350,16 @@ void rt_transform3d_look_at(void *obj, void *target, void *up_vec) {
         return;
     rt_transform3d *xf = (rt_transform3d *)obj;
 
-    double tx = rt_vec3_x(target) - xf->position[0];
-    double ty = rt_vec3_y(target) - xf->position[1];
-    double tz = rt_vec3_z(target) - xf->position[2];
+    double target_x = rt_vec3_x(target);
+    double target_y = rt_vec3_y(target);
+    double target_z = rt_vec3_z(target);
+    if (!isfinite(target_x) || !isfinite(target_y) || !isfinite(target_z))
+        return;
+    double tx = target_x - xf->position[0];
+    double ty = target_y - xf->position[1];
+    double tz = target_z - xf->position[2];
     double flen = sqrt(tx * tx + ty * ty + tz * tz);
-    if (flen < 1e-12)
+    if (!isfinite(flen) || flen < 1e-12)
         return;
     tx /= flen;
     ty /= flen;
@@ -320,13 +370,33 @@ void rt_transform3d_look_at(void *obj, void *target, void *up_vec) {
         ux = rt_vec3_x(up_vec);
         uy = rt_vec3_y(up_vec);
         uz = rt_vec3_z(up_vec);
+        if (!isfinite(ux) || !isfinite(uy) || !isfinite(uz)) {
+            ux = 0.0;
+            uy = 1.0;
+            uz = 0.0;
+        }
     }
 
     /* Right = normalize(cross(forward, up)) */
     double rx = ty * uz - tz * uy, ry = tz * ux - tx * uz, rz = tx * uy - ty * ux;
     double rlen = sqrt(rx * rx + ry * ry + rz * rz);
-    if (rlen < 1e-12)
-        return;
+    if (!isfinite(rlen) || rlen < 1e-12) {
+        if (fabs(ty) < 0.9) {
+            ux = 0.0;
+            uy = 1.0;
+            uz = 0.0;
+        } else {
+            ux = 1.0;
+            uy = 0.0;
+            uz = 0.0;
+        }
+        rx = ty * uz - tz * uy;
+        ry = tz * ux - tx * uz;
+        rz = tx * uy - ty * ux;
+        rlen = sqrt(rx * rx + ry * ry + rz * rz);
+        if (!isfinite(rlen) || rlen < 1e-12)
+            return;
+    }
     rx /= rlen;
     ry /= rlen;
     rz /= rlen;
@@ -365,6 +435,7 @@ void rt_transform3d_look_at(void *obj, void *target, void *up_vec) {
         xf->rotation[1] = (m12 + m21) / s;
         xf->rotation[2] = 0.25 * s;
     }
+    transform3d_quat_normalize(xf->rotation);
     xf->dirty = 1;
 }
 

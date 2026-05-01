@@ -43,7 +43,7 @@ extern void rt_obj_retain_maybe(void *obj);
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
 #include "rt_trap.h"
-extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
+extern int rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
 
 /*==========================================================================
  * Internal types
@@ -124,6 +124,26 @@ static void unpack_color(int64_t packed, float *rgb) {
     rgb[0] = (float)((packed >> 16) & 0xFF) / 255.0f;
     rgb[1] = (float)((packed >> 8) & 0xFF) / 255.0f;
     rgb[2] = (float)(packed & 0xFF) / 255.0f;
+}
+
+static double particles_finite_or(double value, double fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
+static double particles_nonnegative_or_zero(double value) {
+    if (!isfinite(value) || value < 0.0)
+        return 0.0;
+    return value;
+}
+
+static double particles_clamp(double value, double lo, double hi) {
+    if (!isfinite(value))
+        return lo;
+    if (value < lo)
+        return lo;
+    if (value > hi)
+        return hi;
+    return value;
 }
 
 /// @brief Normalize a mutable 3-vector in place. NULL-safe and epsilon-guarded — vectors
@@ -307,9 +327,9 @@ void rt_particles3d_set_position(void *o, double x, double y, double z) {
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
-    p->position[0] = x;
-    p->position[1] = y;
-    p->position[2] = z;
+    p->position[0] = particles_finite_or(x, 0.0);
+    p->position[1] = particles_finite_or(y, 0.0);
+    p->position[2] = particles_finite_or(z, 0.0);
 }
 
 /// @brief Set the average emit direction (normalized internally) and the cone half-angle
@@ -318,13 +338,20 @@ void rt_particles3d_set_direction(void *o, double dx, double dy, double dz, doub
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
+    dx = particles_finite_or(dx, 0.0);
+    dy = particles_finite_or(dy, 1.0);
+    dz = particles_finite_or(dz, 0.0);
     double len = sqrt(dx * dx + dy * dy + dz * dz);
-    if (len > 1e-8) {
+    if (isfinite(len) && len > 1e-8) {
         p->emit_dir[0] = dx / len;
         p->emit_dir[1] = dy / len;
         p->emit_dir[2] = dz / len;
+    } else {
+        p->emit_dir[0] = 0.0;
+        p->emit_dir[1] = 1.0;
+        p->emit_dir[2] = 0.0;
     }
-    p->emit_spread = spread;
+    p->emit_spread = particles_clamp(spread, 0.0, M_PI);
 }
 
 /// @brief Set the per-particle initial speed range [mn, mx] in world-units/sec (uniform random).
@@ -332,6 +359,13 @@ void rt_particles3d_set_speed(void *o, double mn, double mx) {
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
+    mn = particles_nonnegative_or_zero(mn);
+    mx = particles_nonnegative_or_zero(mx);
+    if (mx < mn) {
+        double tmp = mn;
+        mn = mx;
+        mx = tmp;
+    }
     p->speed_min = mn;
     p->speed_max = mx;
 }
@@ -341,6 +375,17 @@ void rt_particles3d_set_lifetime(void *o, double mn, double mx) {
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
+    mn = particles_finite_or(mn, 0.01);
+    mx = particles_finite_or(mx, mn);
+    if (mn < 0.01)
+        mn = 0.01;
+    if (mx < 0.01)
+        mx = 0.01;
+    if (mx < mn) {
+        double tmp = mn;
+        mn = mx;
+        mx = tmp;
+    }
     p->life_min = mn;
     p->life_max = mx;
 }
@@ -350,8 +395,8 @@ void rt_particles3d_set_size(void *o, double s, double e) {
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
-    p->size_start = s;
-    p->size_end = e;
+    p->size_start = particles_nonnegative_or_zero(s);
+    p->size_end = particles_nonnegative_or_zero(e);
 }
 
 /// @brief Set the constant acceleration applied to every particle each frame (typical: (0,-9.8,0)).
@@ -359,9 +404,9 @@ void rt_particles3d_set_gravity(void *o, double gx, double gy, double gz) {
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
-    p->gravity[0] = gx;
-    p->gravity[1] = gy;
-    p->gravity[2] = gz;
+    p->gravity[0] = particles_finite_or(gx, 0.0);
+    p->gravity[1] = particles_finite_or(gy, 0.0);
+    p->gravity[2] = particles_finite_or(gz, 0.0);
 }
 
 /// @brief Set start (`sc`) and end (`ec`) colors as packed 0xRRGGBBAA. Each particle linearly
@@ -379,8 +424,8 @@ void rt_particles3d_set_alpha(void *o, double sa, double ea) {
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
-    p->alpha_start = sa;
-    p->alpha_end = ea;
+    p->alpha_start = particles_clamp(sa, 0.0, 1.0);
+    p->alpha_end = particles_clamp(ea, 0.0, 1.0);
 }
 
 /// @brief Set the spawn rate in particles per second. The accumulator pattern emits whole
@@ -388,7 +433,7 @@ void rt_particles3d_set_alpha(void *o, double sa, double ea) {
 void rt_particles3d_set_rate(void *o, double r) {
     if (!o)
         return;
-    ((rt_particles3d *)o)->rate = r > 0.0 ? r : 0.0;
+    ((rt_particles3d *)o)->rate = particles_nonnegative_or_zero(r);
 }
 
 /// @brief Toggle additive blend mode (1 = additive for fire/glow, 0 = alpha blend for smoke).
@@ -396,7 +441,7 @@ void rt_particles3d_set_rate(void *o, double r) {
 void rt_particles3d_set_additive(void *o, int8_t a) {
     if (!o)
         return;
-    ((rt_particles3d *)o)->additive_blend = a;
+    ((rt_particles3d *)o)->additive_blend = a ? 1 : 0;
 }
 
 /// @brief Set the per-particle billboard texture. NULL produces solid color quads.
@@ -417,6 +462,10 @@ void rt_particles3d_set_texture(void *o, void *tex) {
 void rt_particles3d_set_emitter_shape(void *o, int64_t s) {
     if (!o)
         return;
+    if (s < 0)
+        s = 0;
+    if (s > 2)
+        s = 2;
     ((rt_particles3d *)o)->emitter_shape = (int32_t)s;
 }
 
@@ -426,9 +475,9 @@ void rt_particles3d_set_emitter_size(void *o, double sx, double sy, double sz) {
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
-    p->emitter_size[0] = sx;
-    p->emitter_size[1] = sy;
-    p->emitter_size[2] = sz;
+    p->emitter_size[0] = fabs(particles_finite_or(sx, 0.0));
+    p->emitter_size[1] = fabs(particles_finite_or(sy, 0.0));
+    p->emitter_size[2] = fabs(particles_finite_or(sz, 0.0));
 }
 
 /*==========================================================================
@@ -543,7 +592,7 @@ void rt_particles3d_burst(void *o, int64_t count) {
 /// vel += gravity*dt), age-interpolate size/color/alpha, and reap dead ones via O(1) swap-with-
 /// last. Then accumulates and emits new particles from the rate while emission is enabled.
 void rt_particles3d_update(void *o, double delta_time) {
-    if (!o || delta_time <= 0.0)
+    if (!o || !isfinite(delta_time) || delta_time <= 0.0)
         return;
     rt_particles3d *ps = (rt_particles3d *)o;
     float dt = (float)delta_time;
@@ -659,6 +708,12 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     }
 
     /* Build batched vertex + index buffers */
+    if ((uint64_t)ps->count > UINT32_MAX / 6u ||
+        (size_t)ps->count > SIZE_MAX / (4u * sizeof(vgfx3d_vertex_t)) ||
+        (size_t)ps->count > SIZE_MAX / (6u * sizeof(uint32_t))) {
+        rt_trap("Particles3D.Draw: particle buffer allocation overflow");
+        return;
+    }
     uint32_t vert_count = (uint32_t)ps->count * 4;
     uint32_t idx_count = (uint32_t)ps->count * 6;
     vgfx3d_vertex_t *verts = (vgfx3d_vertex_t *)calloc(vert_count, sizeof(vgfx3d_vertex_t));
@@ -742,9 +797,16 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     rt_material3d_set_texture(mat, ps->texture);
     ((rt_material3d *)mat)->additive_blend = 0;
 
-    /* Register buffers for end-of-frame cleanup */
-    rt_canvas3d_add_temp_buffer(canvas3d, verts);
-    rt_canvas3d_add_temp_buffer(canvas3d, indices);
+    /* Register buffers for end-of-frame cleanup. */
+    int verts_tracked = rt_canvas3d_add_temp_buffer(canvas3d, verts);
+    int indices_tracked = rt_canvas3d_add_temp_buffer(canvas3d, indices);
+    if (!verts_tracked || !indices_tracked) {
+        if (!verts_tracked)
+            free(verts);
+        if (!indices_tracked)
+            free(indices);
+        return;
+    }
 
     if (ps->additive_blend) {
         static const double identity[16] = {

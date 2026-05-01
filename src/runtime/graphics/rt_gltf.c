@@ -1496,13 +1496,21 @@ static void *gltf_new_punctual_light(void *light_json) {
         return light;
     }
     if (strcmp(type, "spot") == 0) {
+        const double max_spot_angle = pi * 0.5;
+        const double spot_eps = 1e-4;
         light->type = 3;
-        inner_angle = gltf_clamp_double(inner_angle, 0.0, pi * 0.5 - 1e-4, 0.0);
-        outer_angle = gltf_clamp_double(outer_angle, inner_angle + 1e-4, pi * 0.5, pi / 4.0);
-        if (outer_angle <= inner_angle)
-            outer_angle = inner_angle + 1e-4;
-        if (outer_angle > pi * 0.5)
-            outer_angle = pi * 0.5;
+        inner_angle = gltf_clamp_double(inner_angle, 0.0, max_spot_angle - spot_eps, 0.0);
+        outer_angle = gltf_clamp_double(outer_angle, 0.0, max_spot_angle, pi / 4.0);
+        if (outer_angle <= inner_angle + spot_eps) {
+            if (inner_angle > max_spot_angle - spot_eps)
+                inner_angle = max_spot_angle - spot_eps;
+            outer_angle = inner_angle + spot_eps;
+        }
+        if (outer_angle > max_spot_angle) {
+            outer_angle = max_spot_angle;
+            if (inner_angle >= outer_angle)
+                inner_angle = outer_angle - spot_eps;
+        }
         light->inner_cos = cos(inner_angle);
         light->outer_cos = cos(outer_angle);
         return light;

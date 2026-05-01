@@ -261,14 +261,34 @@ static void test_mesh_box() {
     PASS();
 }
 
+static double mesh_triangle_area_sq(const rt_mesh3d *mesh, uint32_t tri) {
+    const uint32_t *idx = &mesh->indices[(size_t)tri * 3u];
+    const float *a = mesh->vertices[idx[0]].pos;
+    const float *b = mesh->vertices[idx[1]].pos;
+    const float *c = mesh->vertices[idx[2]].pos;
+    double abx = (double)b[0] - (double)a[0];
+    double aby = (double)b[1] - (double)a[1];
+    double abz = (double)b[2] - (double)a[2];
+    double acx = (double)c[0] - (double)a[0];
+    double acy = (double)c[1] - (double)a[1];
+    double acz = (double)c[2] - (double)a[2];
+    double cx = aby * acz - abz * acy;
+    double cy = abz * acx - abx * acz;
+    double cz = abx * acy - aby * acx;
+    return cx * cx + cy * cy + cz * cz;
+}
+
 static void test_mesh_sphere() {
-    TEST("Mesh3D.NewSphere — correct vertex count");
+    TEST("Mesh3D.NewSphere — correct non-degenerate geometry");
     void *m = rt_mesh3d_new_sphere(1.0, 8);
     assert(m);
     // rings=8, slices=16 → (8+1)*(16+1) = 153 verts
     EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 153);
-    // 8*16*2 = 256 triangles
-    EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 256);
+    // Top and bottom caps use one triangle per slice to avoid zero-area pole faces.
+    EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 224);
+    rt_mesh3d *mesh = (rt_mesh3d *)m;
+    for (uint32_t tri = 0; tri < mesh->index_count / 3u; ++tri)
+        EXPECT_TRUE(mesh_triangle_area_sq(mesh, tri) > 1e-12, "Sphere triangles are non-degenerate");
     PASS();
 }
 
@@ -314,7 +334,7 @@ static void test_mesh_clone() {
     assert(c);
     EXPECT_EQ(rt_mesh3d_get_vertex_count(c), 24);
     EXPECT_EQ(rt_mesh3d_get_triangle_count(c), 12);
-    EXPECT_EQ(((rt_mesh3d *)c)->bone_count, 4);
+    EXPECT_EQ(((rt_mesh3d *)c)->bone_count, 0);
     PASS();
 }
 
@@ -476,6 +496,44 @@ static void test_mesh_obj_loader_rejects_invalid_indices() {
                     },
                     "FromOBJ"),
                 "FromOBJ traps instead of emitting origin-collapsed triangles");
+    PASS();
+}
+
+static void test_mesh_obj_loader_rejects_invalid_numeric_tokens() {
+    TEST("Mesh3D.FromOBJ — rejects invalid numeric tokens");
+    const char *path = "/tmp/viper_obj_invalid_numeric_test.obj";
+    FILE *f = fopen(path, "w");
+    assert(f);
+    fputs("v nan 0 0\n"
+          "v 1 0 0\n"
+          "v 0 1 0\n"
+          "f 1 2 3\n",
+          f);
+    fclose(f);
+
+    EXPECT_TRUE(expect_trap_contains(
+                    [path] {
+                        rt_string obj_path = rt_string_from_bytes(path, (int64_t)strlen(path));
+                        rt_mesh3d_from_obj(obj_path);
+                    },
+                    "FromOBJ"),
+                "FromOBJ traps on NaN vertex positions");
+
+    f = fopen(path, "w");
+    assert(f);
+    fputs("v 0 0 0\n"
+          "v 1 0 0\n"
+          "v 0 1 0\n"
+          "f 1 2 999999999999999999999999999999\n",
+          f);
+    fclose(f);
+    EXPECT_TRUE(expect_trap_contains(
+                    [path] {
+                        rt_string obj_path = rt_string_from_bytes(path, (int64_t)strlen(path));
+                        rt_mesh3d_from_obj(obj_path);
+                    },
+                    "FromOBJ"),
+                "FromOBJ traps on overflowing face indices");
     PASS();
 }
 
@@ -1116,8 +1174,18 @@ static void test_light_validation_and_clamping() {
     EXPECT_NEAR(dir->direction[1], -1.0, 0.001);
     EXPECT_NEAR(dir->direction[2], 0.0, 0.001);
     EXPECT_NEAR(point->attenuation, 0.0, 0.001);
-    EXPECT_TRUE(spot->inner_cos >= spot->outer_cos,
+    EXPECT_TRUE(spot->inner_cos > spot->outer_cos,
                 "Spot lights reorder inner/outer cones into a valid range");
+    rt_light3d *equal_spot = (rt_light3d *)rt_light3d_new_spot(rt_vec3_new(0.0, 5.0, 0.0),
+                                                               rt_vec3_new(0.0, -1.0, 0.0),
+                                                               1.0,
+                                                               1.0,
+                                                               1.0,
+                                                               0.0,
+                                                               45.0,
+                                                               45.0);
+    EXPECT_TRUE(equal_spot->inner_cos > equal_spot->outer_cos,
+                "Spot lights keep equal cones separated for shader falloff");
     rt_light3d_set_intensity(spot, -5.0);
     EXPECT_NEAR(spot->intensity, 0.0, 0.001);
     PASS();
@@ -1161,7 +1229,7 @@ static void test_light_sanitizes_nonfinite_inputs() {
     EXPECT_NEAR(ambient->color[0], 0.0, 0.001);
     EXPECT_NEAR(ambient->color[1], 1.0, 0.001);
     EXPECT_NEAR(ambient->color[2], 0.0, 0.001);
-    EXPECT_TRUE(spot->inner_cos >= spot->outer_cos, "Invalid spot angles clamp to a valid cone");
+    EXPECT_TRUE(spot->inner_cos > spot->outer_cos, "Invalid spot angles clamp to a valid cone");
 
     rt_light3d_set_intensity(spot, INFINITY);
     rt_light3d_set_color(spot, INFINITY, 2.0, -1.0);
@@ -1258,6 +1326,12 @@ static void test_material_alpha() {
     EXPECT_NEAR(rt_material3d_get_alpha(m), 1.0, 0.001);
     rt_material3d_set_alpha(m, -1.0);
     EXPECT_NEAR(rt_material3d_get_alpha(m), 0.0, 0.001);
+    EXPECT_EQ(rt_material3d_get_alpha_mode(m), RT_MATERIAL3D_ALPHA_MODE_BLEND);
+    rt_material3d_set_alpha(m, 1.0);
+    EXPECT_EQ(rt_material3d_get_alpha_mode(m), RT_MATERIAL3D_ALPHA_MODE_OPAQUE);
+    rt_material3d_set_alpha_mode(m, RT_MATERIAL3D_ALPHA_MODE_BLEND);
+    rt_material3d_set_alpha(m, 1.0);
+    EXPECT_EQ(rt_material3d_get_alpha_mode(m), RT_MATERIAL3D_ALPHA_MODE_BLEND);
     /* Null safety */
     rt_material3d_set_alpha(NULL, 0.5);
     EXPECT_NEAR(rt_material3d_get_alpha(NULL), 1.0, 0.001);
@@ -1724,6 +1798,35 @@ static void test_canvas_render_target_retains_owned_reference() {
         FAIL("Canvas3D did not release RenderTarget3D on reset");
         return;
     }
+    PASS();
+}
+
+static void test_canvas_render_target_rejects_mid_frame_changes() {
+    TEST("Canvas3D render target binding rejects mid-frame changes");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    void *rt = rt_rendertarget3d_new(16, 16);
+    assert(rt != NULL);
+
+    canvas.in_frame = 1;
+    EXPECT_TRUE(expect_trap_contains([&] { rt_canvas3d_set_render_target(&canvas, rt); },
+                                     "during a frame"),
+                "SetRenderTarget traps during an active frame");
+    EXPECT_TRUE(canvas.render_target_owner == NULL && canvas.render_target == NULL,
+                "SetRenderTarget leaves canvas target unchanged when rejected");
+
+    canvas.in_frame = 0;
+    rt_canvas3d_set_render_target(&canvas, rt);
+    canvas.in_frame = 1;
+    EXPECT_TRUE(expect_trap_contains([&] { rt_canvas3d_reset_render_target(&canvas); },
+                                     "during a frame"),
+                "ResetRenderTarget traps during an active frame");
+    EXPECT_TRUE(canvas.render_target_owner == rt,
+                "ResetRenderTarget leaves current target bound when rejected");
+    canvas.in_frame = 0;
+    rt_canvas3d_reset_render_target(&canvas);
+    if (rt_obj_release_check0(rt))
+        rt_obj_free(rt);
     PASS();
 }
 
@@ -2752,6 +2855,7 @@ int main() {
     test_mesh_obj_loader_flattens_material_groups();
     test_mesh_obj_loader_deduplicates_vertices_and_handles_ngons();
     test_mesh_obj_loader_rejects_invalid_indices();
+    test_mesh_obj_loader_rejects_invalid_numeric_tokens();
 
     /* Mesh3D — extended */
     test_mesh_many_vertices();
@@ -2860,6 +2964,7 @@ int main() {
     test_canvas_postfx_rejects_advanced_cpu_rtt_effects();
     test_canvas_postfx_retains_owned_reference();
     test_canvas_render_target_retains_owned_reference();
+    test_canvas_render_target_rejects_mid_frame_changes();
     test_canvas_light_retains_owned_reference();
     test_canvas_light_supports_last_slot();
     test_canvas_delta_time_preserves_first_zero();

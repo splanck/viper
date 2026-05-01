@@ -79,6 +79,28 @@ static double sanitize_spot_angle(double value, double fallback) {
     return value;
 }
 
+static void sanitize_spot_angles(double *inner_angle, double *outer_angle) {
+    const double eps = 0.01;
+    double inner = sanitize_spot_angle(inner_angle ? *inner_angle : 0.0, 0.0);
+    double outer = sanitize_spot_angle(outer_angle ? *outer_angle : inner + eps, inner + eps);
+    if (outer <= inner + eps) {
+        if (inner > 89.0 - eps)
+            inner = 89.0 - eps;
+        outer = inner + eps;
+    }
+    if (outer > 89.0) {
+        outer = 89.0;
+        if (inner >= outer)
+            inner = outer - eps;
+    }
+    if (inner < 0.0)
+        inner = 0.0;
+    if (inner_angle)
+        *inner_angle = inner;
+    if (outer_angle)
+        *outer_angle = outer;
+}
+
 /// @brief Normalize a light's direction vector, defaulting to down on zero input.
 /// @details When a caller hands in a degenerate (zero-length) direction,
 ///   rather than producing NaN we fall back to `(0, -1, 0)` — straight-down
@@ -248,10 +270,7 @@ void *rt_light3d_new_spot(void *position,
     light->attenuation = clamp_min0(attenuation);
     /* Convert angles (degrees) to cosines for shader comparison */
     double pi = 3.14159265358979323846;
-    inner_angle = sanitize_spot_angle(inner_angle, 0.0);
-    outer_angle = sanitize_spot_angle(outer_angle, inner_angle);
-    if (outer_angle < inner_angle)
-        outer_angle = inner_angle;
+    sanitize_spot_angles(&inner_angle, &outer_angle);
     light->inner_cos = cos(inner_angle * pi / 180.0);
     light->outer_cos = cos(outer_angle * pi / 180.0);
     return light;

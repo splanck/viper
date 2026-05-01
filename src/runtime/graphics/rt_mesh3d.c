@@ -45,6 +45,8 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 #include "rt_trap.h"
 extern const char *rt_string_cstr(rt_string s);
 
+#include <errno.h>
+#include <limits.h>
 #define MESH_INIT_VERTS 64
 #define MESH_INIT_IDXS 128
 #define MESH_MAX_SPHERE_SEGMENTS 512
@@ -67,6 +69,14 @@ static int mesh_validate_positive_finite(double value, const char *label) {
     snprintf(msg, sizeof(msg), "%s must be finite and greater than zero", label);
     rt_trap(msg);
     return 0;
+}
+
+static void *mesh_return_null_if_build_failed(void *mesh) {
+    if (!mesh || !((rt_mesh3d *)mesh)->build_failed)
+        return mesh;
+    if (rt_obj_release_check0(mesh))
+        rt_obj_free(mesh);
+    return NULL;
 }
 
 /// @brief Latch the `build_failed` bit on a mesh so subsequent builder calls bail early.
@@ -187,7 +197,7 @@ void *rt_mesh3d_new(void) {
         return NULL;
     }
     rt_obj_set_finalizer(m, rt_mesh3d_finalize);
-    return m;
+    return mesh_return_null_if_build_failed(m);
 }
 
 /// @brief Remove all vertices and indices from the mesh, resetting to empty.
@@ -399,6 +409,16 @@ void *rt_mesh3d_clone(void *obj) {
 
     free(dst->vertices);
     free(dst->indices);
+    dst->vertices = NULL;
+    dst->indices = NULL;
+
+    if ((size_t)src->vertex_count > SIZE_MAX / sizeof(vgfx3d_vertex_t) ||
+        (size_t)src->index_count > SIZE_MAX / sizeof(uint32_t)) {
+        if (rt_obj_release_check0(dst))
+            rt_obj_free(dst);
+        rt_trap("Mesh3D.Clone: allocation overflow");
+        return NULL;
+    }
 
     dst->vertex_capacity = src->vertex_count > 0 ? src->vertex_count : 1;
     dst->vertices = (vgfx3d_vertex_t *)malloc(dst->vertex_capacity * sizeof(vgfx3d_vertex_t));
@@ -406,8 +426,6 @@ void *rt_mesh3d_clone(void *obj) {
     dst->indices = (uint32_t *)malloc(dst->index_capacity * sizeof(uint32_t));
 
     if (!dst->vertices || !dst->indices) {
-        free(dst->vertices);
-        free(dst->indices);
         if (rt_obj_release_check0(dst))
             rt_obj_free(dst);
         return NULL;
@@ -421,13 +439,13 @@ void *rt_mesh3d_clone(void *obj) {
     if (src->index_count > 0)
         memcpy(dst->indices, src->indices, src->index_count * sizeof(uint32_t));
     dst->bone_palette = NULL;
-    dst->bone_count = src->bone_count;
+    dst->prev_bone_palette = NULL;
+    dst->bone_count = 0;
     dst->morph_deltas = NULL;
     dst->morph_weights = NULL;
     dst->morph_shape_count = 0;
     dst->morph_normal_deltas = NULL;
     dst->prev_morph_weights = NULL;
-    dst->prev_bone_palette = NULL;
     mesh_assign_ref(&dst->morph_targets_ref, src->morph_targets_ref);
     dst->geometry_revision = src->geometry_revision;
     dst->build_failed = src->build_failed;
@@ -590,7 +608,7 @@ void *rt_mesh3d_new_box(double sx, double sy, double sz) {
     rt_mesh3d_add_triangle(m, 20, 21, 22);
     rt_mesh3d_add_triangle(m, 20, 22, 23);
 
-    return m;
+    return mesh_return_null_if_build_failed(m);
 }
 
 /// @brief Generate a UV sphere mesh with the given radius and segment count.
@@ -632,12 +650,18 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments) {
         for (int64_t slice = 0; slice < slices; slice++) {
             int64_t a = ring * (slices + 1) + slice;
             int64_t b = a + slices + 1;
-            rt_mesh3d_add_triangle(m, a, b, a + 1);
-            rt_mesh3d_add_triangle(m, a + 1, b, b + 1);
+            if (ring == 0) {
+                rt_mesh3d_add_triangle(m, a + 1, b, b + 1);
+            } else if (ring == rings - 1) {
+                rt_mesh3d_add_triangle(m, a, b, a + 1);
+            } else {
+                rt_mesh3d_add_triangle(m, a, b, a + 1);
+                rt_mesh3d_add_triangle(m, a + 1, b, b + 1);
+            }
         }
     }
 
-    return m;
+    return mesh_return_null_if_build_failed(m);
 }
 
 /// @brief Generate a flat plane mesh on the XZ plane (facing +Y) with the given size.
@@ -662,7 +686,7 @@ void *rt_mesh3d_new_plane(double sx, double sz) {
     rt_mesh3d_add_triangle(m, 0, 1, 2);
     rt_mesh3d_add_triangle(m, 0, 2, 3);
 
-    return m;
+    return mesh_return_null_if_build_failed(m);
 }
 
 /// @brief Generate a cylinder mesh with circular caps, centered at the origin.
@@ -726,7 +750,7 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
         rt_mesh3d_add_triangle(m, bc, bc + 1 + next, bc + 1 + i);
     }
 
-    return m;
+    return mesh_return_null_if_build_failed(m);
 }
 
 /*==========================================================================
@@ -748,20 +772,34 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
 // ---------------------------------------------------------------------------
 
 /// @brief Parse a signed decimal integer from `*p`, advancing `*p` past it.
-static int64_t obj_parse_int(const char **p) {
-    if (!**p || **p == '/' || **p == ' ' || **p == '\n' || **p == '\r')
+static int obj_parse_int(const char **p, int64_t *out) {
+    const char *s = *p;
+    int negative = 0;
+    uint64_t val = 0;
+    int saw_digit = 0;
+    if (!*s || *s == '/' || *s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') {
+        *out = 0;
+        return 1;
+    }
+    if (*s == '-') {
+        negative = 1;
+        s++;
+    } else if (*s == '+') {
+        s++;
+    }
+    while (*s >= '0' && *s <= '9') {
+        uint64_t digit = (uint64_t)(*s - '0');
+        if (val > ((uint64_t)INT64_MAX - digit) / 10u)
+            return 0;
+        val = val * 10u + digit;
+        saw_digit = 1;
+        s++;
+    }
+    if (!saw_digit)
         return 0;
-    int64_t sign = 1;
-    if (**p == '-') {
-        sign = -1;
-        (*p)++;
-    }
-    int64_t val = 0;
-    while (**p >= '0' && **p <= '9') {
-        val = val * 10 + (**p - '0');
-        (*p)++;
-    }
-    return val * sign;
+    *out = negative ? -(int64_t)val : (int64_t)val;
+    *p = s;
+    return 1;
 }
 
 /* Parse a face vertex index: v[/vt[/vn]] or v//vn
@@ -775,28 +813,54 @@ static int64_t obj_parse_int(const char **p) {
 ///   - `v/vt/vn`   (all three)
 /// 1-based indices in the file (OBJ convention); negative values
 /// reference from the end of the current vertex list.
-static void obj_parse_face_vert(const char **p, int64_t *vi, int64_t *ti, int64_t *ni) {
-    *vi = obj_parse_int(p);
+static int obj_parse_face_vert(const char **p, int64_t *vi, int64_t *ti, int64_t *ni) {
+    if (!obj_parse_int(p, vi))
+        return 0;
     *ti = 0;
     *ni = 0;
     if (**p == '/') {
         (*p)++;
-        *ti = obj_parse_int(p);
+        if (!obj_parse_int(p, ti))
+            return 0;
         if (**p == '/') {
             (*p)++;
-            *ni = obj_parse_int(p);
+            if (!obj_parse_int(p, ni))
+                return 0;
         }
     }
+    return 1;
 }
 
 /// @brief Parse a double-precision float from `*p` via `strtod`, advancing `*p` past it.
-static double obj_parse_double(const char **p) {
+static int obj_parse_double(const char **p, double *out) {
     while (**p == ' ' || **p == '\t')
         (*p)++;
+    const char *start = *p;
     char *end;
+    errno = 0;
     double val = strtod(*p, &end);
+    if (end == start || errno == ERANGE || !isfinite(val))
+        return 0;
     *p = end;
-    return val;
+    *out = val;
+    return 1;
+}
+
+static int obj_grow_float_array(float **array, int *capacity, int components) {
+    if (!array || !capacity || components <= 0)
+        return 0;
+    if (*capacity > INT_MAX / 2)
+        return 0;
+    int new_capacity = *capacity * 2;
+    size_t component_bytes = (size_t)components * sizeof(float);
+    if ((size_t)new_capacity > SIZE_MAX / component_bytes)
+        return 0;
+    float *tmp = (float *)realloc(*array, (size_t)new_capacity * component_bytes);
+    if (!tmp)
+        return 0;
+    *array = tmp;
+    *capacity = new_capacity;
+    return 1;
 }
 
 typedef struct {
@@ -1227,48 +1291,62 @@ void *rt_mesh3d_from_obj(rt_string path) {
             /* Vertex position: v x y z */
             p += 2;
             if (cnt_p >= cap_p) {
-                cap_p *= 2;
-                float *tmp = (float *)realloc(positions, (size_t)cap_p * 3 * sizeof(float));
-                if (!tmp) {
+                if (!obj_grow_float_array(&positions, &cap_p, 3)) {
                     parse_failed = 1;
                     break;
                 }
-                positions = tmp;
             }
-            positions[cnt_p * 3 + 0] = (float)obj_parse_double(&p);
-            positions[cnt_p * 3 + 1] = (float)obj_parse_double(&p);
-            positions[cnt_p * 3 + 2] = (float)obj_parse_double(&p);
+            {
+                double x, y, z;
+                if (!obj_parse_double(&p, &x) || !obj_parse_double(&p, &y) ||
+                    !obj_parse_double(&p, &z)) {
+                    parse_failed = 1;
+                    break;
+                }
+                positions[cnt_p * 3 + 0] = (float)x;
+                positions[cnt_p * 3 + 1] = (float)y;
+                positions[cnt_p * 3 + 2] = (float)z;
+            }
             cnt_p++;
         } else if (p[0] == 'v' && p[1] == 'n' && p[2] == ' ') {
             /* Vertex normal: vn x y z */
             p += 3;
             if (cnt_n >= cap_n) {
-                cap_n *= 2;
-                float *tmp = (float *)realloc(normals, (size_t)cap_n * 3 * sizeof(float));
-                if (!tmp) {
+                if (!obj_grow_float_array(&normals, &cap_n, 3)) {
                     parse_failed = 1;
                     break;
                 }
-                normals = tmp;
             }
-            normals[cnt_n * 3 + 0] = (float)obj_parse_double(&p);
-            normals[cnt_n * 3 + 1] = (float)obj_parse_double(&p);
-            normals[cnt_n * 3 + 2] = (float)obj_parse_double(&p);
+            {
+                double x, y, z;
+                if (!obj_parse_double(&p, &x) || !obj_parse_double(&p, &y) ||
+                    !obj_parse_double(&p, &z)) {
+                    parse_failed = 1;
+                    break;
+                }
+                normals[cnt_n * 3 + 0] = (float)x;
+                normals[cnt_n * 3 + 1] = (float)y;
+                normals[cnt_n * 3 + 2] = (float)z;
+            }
             cnt_n++;
         } else if (p[0] == 'v' && p[1] == 't' && p[2] == ' ') {
             /* Texture coordinate: vt u v */
             p += 3;
             if (cnt_t >= cap_t) {
-                cap_t *= 2;
-                float *tmp = (float *)realloc(texcoords, (size_t)cap_t * 2 * sizeof(float));
-                if (!tmp) {
+                if (!obj_grow_float_array(&texcoords, &cap_t, 2)) {
                     parse_failed = 1;
                     break;
                 }
-                texcoords = tmp;
             }
-            texcoords[cnt_t * 2 + 0] = (float)obj_parse_double(&p);
-            texcoords[cnt_t * 2 + 1] = (float)obj_parse_double(&p);
+            {
+                double u, v;
+                if (!obj_parse_double(&p, &u) || !obj_parse_double(&p, &v)) {
+                    parse_failed = 1;
+                    break;
+                }
+                texcoords[cnt_t * 2 + 0] = (float)u;
+                texcoords[cnt_t * 2 + 1] = (float)v;
+            }
             cnt_t++;
         } else if (p[0] == 'f' && p[1] == ' ') {
             /* Face: f v1[/vt1[/vn1]] v2[/vt2[/vn2]] ... */
@@ -1294,6 +1372,11 @@ void *rt_mesh3d_from_obj(rt_string path) {
                     break;
 
                 if ((size_t)face_count >= face_capacity) {
+                    if (face_capacity > SIZE_MAX / 2u ||
+                        face_capacity * 2u > SIZE_MAX / sizeof(int64_t)) {
+                        parse_failed = 1;
+                        break;
+                    }
                     size_t new_capacity = face_capacity * 2u;
                     int64_t *new_vi = (int64_t *)malloc(new_capacity * sizeof(int64_t));
                     int64_t *new_ti = (int64_t *)malloc(new_capacity * sizeof(int64_t));
@@ -1318,9 +1401,9 @@ void *rt_mesh3d_from_obj(rt_string path) {
                 }
 
                 const char *before = p;
-                obj_parse_face_vert(
-                    &p, &face_vi[face_count], &face_ti[face_count], &face_ni[face_count]);
-                if (p == before || face_vi[face_count] == 0) {
+                if (!obj_parse_face_vert(
+                        &p, &face_vi[face_count], &face_ti[face_count], &face_ni[face_count]) ||
+                    p == before || face_vi[face_count] == 0) {
                     parse_failed = 1;
                     break;
                 }

@@ -41,6 +41,7 @@
 #include "vgfx3d_backend_utils.h"
 
 #include <float.h>
+#include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -293,6 +294,9 @@ static void canvas3d_submit_deferred(rt_canvas3d *c, const deferred_draw_t *dd);
 /// capacities: 256 vertices, 384 indices.
 static int ensure_text_capacity(rt_canvas3d *c, int32_t vertex_count, int32_t index_count) {
     if (!c || vertex_count < 0 || index_count < 0)
+        return 0;
+    if ((size_t)vertex_count > SIZE_MAX / sizeof(vgfx3d_vertex_t) ||
+        (size_t)index_count > SIZE_MAX / sizeof(uint32_t))
         return 0;
 
     if (vertex_count > c->text_vertex_capacity) {
@@ -809,18 +813,20 @@ static void canvas3d_apply_shadow_light_params(vgfx3d_light_params_t *lights,
 ///
 /// Used when the deferred path needs to allocate a transient instance-
 /// matrix buffer that outlives the calling Zia frame. Geometric
-/// growth (cap doubles, starting at 8). On growth failure, frees
-/// the buffer to avoid a leak.
+/// growth (cap doubles, starting at 8). Ownership transfers only on
+/// success; callers keep ownership and must free the buffer on failure.
 static int canvas3d_track_temp_buffer(rt_canvas3d *c, void *buffer) {
     if (!c || !buffer)
         return 0;
     if (c->temp_buf_count >= c->temp_buf_capacity) {
-        int32_t new_cap = c->temp_buf_capacity == 0 ? 8 : c->temp_buf_capacity * 2;
-        void **nb = (void **)realloc(c->temp_buffers, (size_t)new_cap * sizeof(void *));
-        if (!nb) {
-            free(buffer);
+        if (c->temp_buf_capacity > INT32_MAX / 2)
             return 0;
-        }
+        int32_t new_cap = c->temp_buf_capacity == 0 ? 8 : c->temp_buf_capacity * 2;
+        if ((size_t)new_cap > SIZE_MAX / sizeof(void *))
+            return 0;
+        void **nb = (void **)realloc(c->temp_buffers, (size_t)new_cap * sizeof(void *));
+        if (!nb)
+            return 0;
         c->temp_buffers = nb;
         c->temp_buf_capacity = new_cap;
     }
@@ -2182,8 +2188,13 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
 
     if (!c || !c->in_frame || !vertices || vertex_count <= 0 || !indices || index_count <= 0)
         return 0;
+    if ((size_t)vertex_count > SIZE_MAX / sizeof(vgfx3d_vertex_t) ||
+        (size_t)index_count > SIZE_MAX / sizeof(uint32_t))
+        return 0;
     vertex_bytes = (size_t)vertex_count * sizeof(vgfx3d_vertex_t);
     index_bytes = (size_t)index_count * sizeof(uint32_t);
+    if (vertex_bytes > SIZE_MAX - index_bytes)
+        return 0;
     block = (uint8_t *)malloc(vertex_bytes + index_bytes);
     if (!block)
         return 0;
@@ -2191,8 +2202,10 @@ static int canvas3d_queue_screen_geometry(rt_canvas3d *c,
     indices_copy = (uint32_t *)(block + vertex_bytes);
     memcpy(verts_copy, vertices, vertex_bytes);
     memcpy(indices_copy, indices, index_bytes);
-    if (!canvas3d_track_temp_buffer(c, block))
+    if (!canvas3d_track_temp_buffer(c, block)) {
+        free(block);
         return 0;
+    }
 
     memset(&cmd, 0, sizeof(cmd));
     cmd.vertices = verts_copy;
@@ -2445,7 +2458,7 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
     };
 
     /* Count "on" pixels to size the reusable scratch mesh exactly. */
-    int32_t quad_count = 0;
+    size_t quad_count = 0;
     for (const char *p = str; *p; p++) {
         int ch = *p;
         if (ch < 32 || ch > 126)
@@ -2453,15 +2466,20 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
         const uint8_t *glyph = font5x7[ch - 32];
         for (int row = 0; row < 7; row++)
             for (int col = 0; col < 5; col++)
-                if (glyph[row] & (1 << (4 - col)))
+                if (glyph[row] & (1 << (4 - col))) {
+                    if (quad_count >= (size_t)INT32_MAX / 6u) {
+                        rt_trap("Canvas3D.DrawText3D: text is too large");
+                        return;
+                    }
                     quad_count++;
+                }
     }
 
-    if (quad_count <= 0)
+    if (quad_count == 0)
         return;
 
-    int32_t vertex_count = quad_count * 4;
-    int32_t index_count = quad_count * 6;
+    int32_t vertex_count = (int32_t)(quad_count * 4u);
+    int32_t index_count = (int32_t)(quad_count * 6u);
     if (!ensure_text_capacity(c, vertex_count, index_count))
         return;
 
@@ -2841,6 +2859,10 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
         return;
     }
 
+    if ((size_t)instance_count > SIZE_MAX / (16u * sizeof(float))) {
+        rt_trap("Canvas3D.DrawMeshInstanced: instance matrix allocation overflow");
+        return;
+    }
     size_t matrix_float_count = (size_t)instance_count * 16u;
     float *queued_instance_matrices =
         (float *)malloc(matrix_float_count * sizeof(*queued_instance_matrices));
@@ -2849,8 +2871,10 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
         return;
     }
     memcpy(queued_instance_matrices, instance_matrices, matrix_float_count * sizeof(float));
-    if (!canvas3d_track_temp_buffer(c, queued_instance_matrices))
+    if (!canvas3d_track_temp_buffer(c, queued_instance_matrices)) {
+        free(queued_instance_matrices);
         return;
+    }
 
     float *queued_prev_instance_matrices = NULL;
     if (has_prev_instance_matrices && prev_instance_matrices) {
@@ -2863,8 +2887,10 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
         memcpy(queued_prev_instance_matrices,
                prev_instance_matrices,
                matrix_float_count * sizeof(float));
-        if (!canvas3d_track_temp_buffer(c, queued_prev_instance_matrices))
+        if (!canvas3d_track_temp_buffer(c, queued_prev_instance_matrices)) {
+            free(queued_prev_instance_matrices);
             return;
+        }
     }
 
     base_cmd.prev_instance_matrices = queued_prev_instance_matrices;
@@ -3323,10 +3349,10 @@ void rt_canvas3d_set_backface_cull(void *obj, int8_t enabled) {
 /// Used by skinning / morph-target paths that allocate
 /// per-draw vertex transforms — the canvas owns the lifetime
 /// until after the GPU has consumed the data on `end()`.
-void rt_canvas3d_add_temp_buffer(void *obj, void *buffer) {
+int rt_canvas3d_add_temp_buffer(void *obj, void *buffer) {
     if (!obj || !buffer)
-        return;
-    (void)canvas3d_track_temp_buffer((rt_canvas3d *)obj, buffer);
+        return 0;
+    return canvas3d_track_temp_buffer((rt_canvas3d *)obj, buffer);
 }
 
 /// @brief Park a GC-managed object reference for end-of-frame release.
@@ -3460,11 +3486,11 @@ void rt_canvas3d_enable_shadows(void *obj, int64_t resolution) {
     if (!obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
+    if (resolution < 64)
+        resolution = 64;
+    if (resolution > 4096)
+        resolution = 4096;
     int32_t res = (int32_t)resolution;
-    if (res < 64)
-        res = 64;
-    if (res > 4096)
-        res = 4096;
     c->shadows_enabled = 1;
     c->shadow_resolution = res;
     ok = canvas3d_ensure_shadow_targets(c, res);

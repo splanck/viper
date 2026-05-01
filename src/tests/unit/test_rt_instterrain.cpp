@@ -26,6 +26,22 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 extern void *rt_mat4_identity(void);
+extern void *rt_mat4_new(double m00,
+                         double m01,
+                         double m02,
+                         double m03,
+                         double m10,
+                         double m11,
+                         double m12,
+                         double m13,
+                         double m20,
+                         double m21,
+                         double m22,
+                         double m23,
+                         double m30,
+                         double m31,
+                         double m32,
+                         double m33);
 extern void *rt_mat4_translate(double x, double y, double z);
 extern void *rt_mesh3d_new_box(double sx, double sy, double sz);
 extern void *rt_material3d_new_color(double r, double g, double b);
@@ -150,6 +166,37 @@ static void test_instbatch_clear() {
     EXPECT_TRUE(rt_instbatch3d_count(batch) == 0, "Batch count = 0 after clear");
 }
 
+static void test_instbatch_sanitizes_nonfinite_matrices() {
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new_color(0.5, 0.5, 0.5);
+    void *batch = rt_instbatch3d_new(mesh, mat);
+    rt_instbatch3d_view *view = (rt_instbatch3d_view *)batch;
+    void *bad = rt_mat4_new(NAN,
+                            0.0,
+                            0.0,
+                            INFINITY,
+                            0.0,
+                            INFINITY,
+                            0.0,
+                            2.0,
+                            0.0,
+                            0.0,
+                            NAN,
+                            3.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            NAN);
+    rt_instbatch3d_add(batch, bad);
+    EXPECT_TRUE(rt_instbatch3d_count(batch) == 1, "Batch accepts matrix after sanitizing it");
+    EXPECT_NEAR(view->transforms[0], 1.0, 0.001, "NaN matrix diagonal falls back to identity");
+    EXPECT_NEAR(view->transforms[3], 0.0, 0.001, "Infinite matrix translation falls back to 0");
+    EXPECT_NEAR(view->transforms[5], 1.0, 0.001, "Infinite matrix diagonal falls back to identity");
+    EXPECT_NEAR(view->transforms[7], 2.0, 0.001, "Finite matrix component is preserved");
+    EXPECT_NEAR(view->transforms[10], 1.0, 0.001, "NaN matrix diagonal falls back to identity");
+    EXPECT_NEAR(view->transforms[15], 1.0, 0.001, "NaN homogeneous component falls back to identity");
+}
+
 /*==========================================================================
  * Terrain3D tests
  *=========================================================================*/
@@ -199,6 +246,7 @@ int main() {
     test_instbatch_remove();
     test_instbatch_remove_keeps_motion_history_aligned();
     test_instbatch_clear();
+    test_instbatch_sanitizes_nonfinite_matrices();
 
     /* Terrain3D */
     test_terrain_create();

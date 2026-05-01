@@ -188,6 +188,7 @@ typedef struct {
     int8_t double_sided;
     int8_t additive_blend; /* internal-only: route through additive blend state when true */
     int32_t alpha_mode; /* 0=opaque, 1=mask, 2=blend */
+    int8_t alpha_mode_auto; /* true when SetAlpha auto-promoted OPAQUE -> BLEND */
     int32_t texture_wrap_s; /* RT_MATERIAL3D_TEXTURE_WRAP_* for imported material textures */
     int32_t texture_wrap_t;
     int32_t texture_filter; /* RT_MATERIAL3D_TEXTURE_FILTER_* */

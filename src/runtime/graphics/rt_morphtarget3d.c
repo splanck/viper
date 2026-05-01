@@ -747,8 +747,11 @@ static void morphtarget_draw_mesh_matrix(void *canvas,
     }
 
     /* Register buffer for end-of-frame cleanup (avoids use-after-free
-     * with deferred draw queue) */
-    rt_canvas3d_add_temp_buffer(canvas, morphed);
+     * with deferred draw queue). */
+    if (!rt_canvas3d_add_temp_buffer(canvas, morphed)) {
+        free(morphed);
+        return;
+    }
 
     /* Submit via normal draw pipeline */
     rt_mesh3d tmp = *m;

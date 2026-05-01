@@ -226,6 +226,10 @@ The rendering surface. Creates a window and manages the render loop.
 | `SetFrustumCulling(enabled)` | `void(i1)` | Toggle coarse CPU frustum rejection plus front-to-back opaque ordering |
 | `SetOcclusionCulling(enabled)` | `void(i1)` | Compatibility alias for `SetFrustumCulling`; this is not hardware occlusion-query culling |
 
+Render targets must be bound or reset outside a `Begin`/`End` frame. Changing the active output
+mid-frame is rejected so queued draws, overlays, post-processing, and readback state all target one
+consistent surface.
+
 ### Debug Drawing
 
 | Method | Signature | Description |
@@ -475,7 +479,7 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
-| `Alpha` | Float | read/write | Opacity [0.0=invisible, 1.0=opaque]. Default 1.0. Setting alpha below 1.0 promotes `AlphaMode` from `Opaque` to `Blend`. |
+| `Alpha` | Float | read/write | Opacity [0.0=invisible, 1.0=opaque]. Default 1.0. Setting alpha below 1.0 promotes `AlphaMode` from `Opaque` to `Blend`; returning to 1.0 restores `Opaque` only when that promotion was automatic. |
 | `Metallic` | Float | read/write | PBR metallic factor [0.0=dielectric, 1.0=metal]. Default 0.0 |
 | `Roughness` | Float | read/write | PBR roughness [0.0=smooth, 1.0=rough]. Default 0.5 |
 | `AO` | Float | read/write | Ambient-occlusion multiplier. Default 1.0 |
@@ -521,6 +525,8 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
   - `0`: opaque. Texture/material alpha does not enable blending, and surviving fragments write depth as opaque.
   - `1`: masked. Fragments below the cutoff are discarded; surviving fragments render as opaque coverage.
   - `2`: blended. Texture/material alpha participates in transparency and transparent sorting.
+- Explicit `SetAlphaMode` calls take precedence over alpha auto-promotion. For example, a material
+  explicitly set to `Blend` remains blended even if `Alpha` is later set back to `1.0`.
 - `SetShadingModel` and `SetCustomParam` remain available as advanced escape hatches. They are not the main PBR API.
 
 **Shading models:** `SetShadingModel` selects how the surface is shaded on the legacy path and can post-process the PBR result:
@@ -619,6 +625,8 @@ func start() {
 ```
 
 `Canvas3D.SetLight()` retains the assigned light until you replace that slot or clear it with `null`.
+Spot-light inner and outer cone angles are sanitized to remain finite and strictly separated before
+their cosines are sent to the software and GPU backends, avoiding undefined falloff at equal cones.
 
 **Lighting model:** Blinn-Phong with per-vertex (software) or per-pixel (GPU) shading. Includes diffuse and specular components.
 
@@ -963,7 +971,7 @@ Format note:
 - FBX-backed `Model3D` assets preserve authored `Model` hierarchy, local TRS, and mesh/material attachments when the source file contains object connections, instead of always collapsing to synthetic `mesh_N` nodes.
 - OBJ-backed `Model3D` assets use the existing geometry-only OBJ loader and synthesize template nodes because OBJ has no scene hierarchy.
 - glTF imports populate meshes, materials, active-scene node hierarchy, skins, morph targets, punctual lights, skeletal clips, and node/morph animation clips.
-- glTF skeletal tracks map to `Skeleton3D` / `Animation3D`; non-joint node translation, rotation, scale, and morph `weights` tracks are bound automatically on `Model3D.Instantiate()` and `InstantiateScene()`. LINEAR rotation tracks use quaternion slerp, and CUBICSPLINE tracks use glTF Hermite tangents. Call `Scene3D.SyncBindings(dt)` each frame to advance those imported node clips.
+- glTF skeletal tracks map to `Skeleton3D` / `Animation3D`; non-joint node translation, rotation, scale, and morph `weights` tracks are bound automatically on `Model3D.Instantiate()` and `InstantiateScene()`. Node animation channels reject non-finite sample data and non-increasing key times before playback; LINEAR rotation tracks use quaternion slerp, and CUBICSPLINE tracks use glTF Hermite tangents. Call `Scene3D.SyncBindings(dt)` each frame to advance those imported node clips.
 - glTF mesh extraction supports `POSITION`, `NORMAL`, `TEXCOORD_0`, `TEXCOORD_1`, `COLOR_0`, `TANGENT`, `JOINTS_0`/`WEIGHTS_0`, and `JOINTS_1`/`WEIGHTS_1`. Secondary joint sets are reduced to the four strongest supported influences and renormalized. Skins above the runtime 256-bone palette are rejected instead of silently dropping the rig.
 - glTF morph targets import `POSITION`, `NORMAL`, and `TANGENT` deltas. Position/normal morphs can use the GPU path; tangent morphs currently route through the CPU morph path so tangent-space normal mapping stays correct.
 - glTF node hierarchies are rejected if they contain invalid child references, duplicate parents, or cycles; valid meshes/materials still remain available to the asset container.
@@ -1026,7 +1034,9 @@ Keyframe animation clip with per-bone position, rotation, and scale tracks.
 |--------|-----------|-------------|
 | `AddKeyframe(boneIdx, time, pos, rot, scale)` | `void(i64, f64, obj, obj, obj)` | Add keyframe: bone index, time, position Vec3, rotation Quat, scale Vec3 |
 
-Rotation keyframes use SLERP; position/scale use linear interpolation.
+Keyframes are kept sorted by time within each bone channel. Rotation keyframes use normalized
+quaternions and SLERP; position/scale use linear interpolation. Non-finite keyframe times are
+ignored, and non-finite TRS components fall back to identity-safe values.
 
 ---
 
@@ -1312,6 +1322,8 @@ Supported glTF material fidelity:
 ## Particles3D
 
 Emitter-based 3D particle effects with physics, lifetime, and billboard rendering.
+Particle setters sanitize non-finite values: ranges are kept non-negative and ordered, alpha and
+spread are clamped, invalid directions fall back to +Y, and invalid update deltas are ignored.
 
 ### Constructor
 
@@ -1735,9 +1747,9 @@ AABB-sphere uses closest-point projection. Collision detection uses a sweep-and-
 before narrow-phase tests. Coulomb friction and Baumgarte positional correction are applied to
 non-trigger contacts.
 
-**Current limitation:** rotational state is fully integrated for all bodies, but the simple
-box/capsule collision backend still treats AABB and capsule primitives as axis-aligned /
-upright collision shapes. Sphere bodies are the best fit today for fully-physical rotation.
+Capsule primitive collision honors body orientation for capsule-vs-capsule, capsule-vs-sphere,
+capsule-vs-AABB, mesh, and heightfield tests. AABB primitives remain axis-aligned boxes; use
+compound colliders or mesh/convex-hull colliders when you need rotated box geometry.
 
 ### Physics3DWorld
 
@@ -1854,7 +1866,7 @@ wrappers for simple cases.
 |-------------|-----------|-------------|
 | `NewBox(hx, hy, hz)` | `obj(f64, f64, f64)` | Box collider with half-extents |
 | `NewSphere(radius)` | `obj(f64)` | Sphere collider |
-| `NewCapsule(radius, height)` | `obj(f64, f64)` | Upright capsule collider |
+| `NewCapsule(radius, height)` | `obj(f64, f64)` | Capsule collider authored along local Y; body/collider rotation orients it in world space |
 | `NewConvexHull(mesh)` | `obj(obj)` | Convex-hull collider sourced from a `Mesh3D` |
 | `NewMesh(mesh)` | `obj(obj)` | Static triangle-mesh collider |
 | `NewHeightfield(heightmap, sx, sy, sz)` | `obj(obj, f64, f64, f64)` | Static heightfield collider from `Pixels` |
@@ -2407,6 +2419,8 @@ See `examples/apiaudit/graphics3d/procedural_terrain_demo.zia` and `terrain_lod_
 ## InstanceBatch3D
 
 Draw many copies of one mesh with different transforms in a single draw call.
+Transforms passed to `Add` and `Set` are copied into finite float matrices; any non-finite element is
+replaced with the corresponding identity-matrix value before culling or backend submission.
 
 ### Constructor
 

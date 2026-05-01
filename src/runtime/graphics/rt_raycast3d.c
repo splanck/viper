@@ -50,6 +50,33 @@ static double clampd(double v, double lo, double hi) {
     return v;
 }
 
+static int vec3_is_finite_raw(const double *v) {
+    return v && isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
+}
+
+static void segment3d_closest_point_raw(const double *a,
+                                        const double *b,
+                                        const double *point,
+                                        double *closest) {
+    double dx = b[0] - a[0];
+    double dy = b[1] - a[1];
+    double dz = b[2] - a[2];
+    double len_sq = dx * dx + dy * dy + dz * dz;
+    if (!isfinite(len_sq) || len_sq < 1e-12) {
+        closest[0] = a[0];
+        closest[1] = a[1];
+        closest[2] = a[2];
+        return;
+    }
+    double t =
+        ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy + (point[2] - a[2]) * dz) /
+        len_sq;
+    t = clampd(t, 0.0, 1.0);
+    closest[0] = a[0] + t * dx;
+    closest[1] = a[1] + t * dy;
+    closest[2] = a[2] + t * dz;
+}
+
 /// @brief Project a 3-point onto an axis-aligned bounding box by clamping each
 /// coordinate independently into the box's extent. The result is the closest point on
 /// (or inside) the box to the input point. Used by sphere-vs-AABB and capsule-vs-AABB
@@ -280,14 +307,20 @@ double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double r
     double ox = rt_vec3_x(origin), oy = rt_vec3_y(origin), oz = rt_vec3_z(origin);
     double dx = rt_vec3_x(dir), dy = rt_vec3_y(dir), dz = rt_vec3_z(dir);
     double cx = rt_vec3_x(center), cy = rt_vec3_y(center), cz = rt_vec3_z(center);
+    if (!isfinite(ox) || !isfinite(oy) || !isfinite(oz) || !isfinite(dx) || !isfinite(dy) ||
+        !isfinite(dz) || !isfinite(cx) || !isfinite(cy) || !isfinite(cz) || !isfinite(radius) ||
+        radius < 0.0)
+        return -1.0;
 
     double lx = ox - cx, ly = oy - cy, lz = oz - cz;
     double a = dx * dx + dy * dy + dz * dz;
+    if (!isfinite(a) || a < EPSILON)
+        return -1.0;
     double b = 2.0 * (lx * dx + ly * dy + lz * dz);
     double c = lx * lx + ly * ly + lz * lz - radius * radius;
 
     double disc = b * b - 4.0 * a * c;
-    if (disc < 0.0)
+    if (!isfinite(disc) || disc < 0.0)
         return -1.0;
 
     double sqrt_disc = sqrt(disc);
@@ -605,17 +638,20 @@ void *rt_aabb3d_penetration(void *min_a, void *max_a, void *min_b, void *max_b) 
 
     /* Push out on the axis of minimum overlap */
     double ax = fabs(ox), ay = fabs(oy), az = fabs(oz);
-    double ca = (a0 + a3) * 0.5, cb;
+    double cax = (a0 + a3) * 0.5;
+    double cay = (a1 + a4) * 0.5;
+    double caz = (a2 + a5) * 0.5;
+    double cb;
 
     if (ax <= ay && ax <= az) {
         cb = (b0 + b3) * 0.5;
-        return rt_vec3_new(ca < cb ? -ox : ox, 0, 0);
+        return rt_vec3_new(cax < cb ? -ox : ox, 0, 0);
     } else if (ay <= az) {
         cb = (b1 + b4) * 0.5;
-        return rt_vec3_new(0, ca < cb ? -oy : oy, 0);
+        return rt_vec3_new(0, cay < cb ? -oy : oy, 0);
     } else {
         cb = (b2 + b5) * 0.5;
-        return rt_vec3_new(0, 0, ca < cb ? -oz : oz);
+        return rt_vec3_new(0, 0, caz < cb ? -oz : oz);
     }
 }
 
@@ -657,26 +693,43 @@ int64_t rt_ray3d_hit_triangle(void *hit) {
 int8_t rt_sphere3d_overlaps(void *center_a, double radius_a, void *center_b, double radius_b) {
     if (!center_a || !center_b)
         return 0;
-    double dx = rt_vec3_x(center_b) - rt_vec3_x(center_a);
-    double dy = rt_vec3_y(center_b) - rt_vec3_y(center_a);
-    double dz = rt_vec3_z(center_b) - rt_vec3_z(center_a);
+    double ca[3] = {rt_vec3_x(center_a), rt_vec3_y(center_a), rt_vec3_z(center_a)};
+    double cb[3] = {rt_vec3_x(center_b), rt_vec3_y(center_b), rt_vec3_z(center_b)};
+    if (!vec3_is_finite_raw(ca) || !vec3_is_finite_raw(cb))
+        return 0;
+    radius_a = isfinite(radius_a) && radius_a > 0.0 ? radius_a : 0.0;
+    radius_b = isfinite(radius_b) && radius_b > 0.0 ? radius_b : 0.0;
+    double dx = cb[0] - ca[0];
+    double dy = cb[1] - ca[1];
+    double dz = cb[2] - ca[2];
     double dist_sq = dx * dx + dy * dy + dz * dz;
     double r_sum = radius_a + radius_b;
-    return dist_sq < r_sum * r_sum ? 1 : 0;
+    return isfinite(dist_sq) && dist_sq <= r_sum * r_sum ? 1 : 0;
 }
 
 /// @brief Compute the penetration vector to separate two overlapping spheres.
 void *rt_sphere3d_penetration(void *center_a, double radius_a, void *center_b, double radius_b) {
     if (!center_a || !center_b)
         return rt_vec3_new(0, 0, 0);
-    double dx = rt_vec3_x(center_b) - rt_vec3_x(center_a);
-    double dy = rt_vec3_y(center_b) - rt_vec3_y(center_a);
-    double dz = rt_vec3_z(center_b) - rt_vec3_z(center_a);
-    double dist = sqrt(dx * dx + dy * dy + dz * dz);
+    double ca[3] = {rt_vec3_x(center_a), rt_vec3_y(center_a), rt_vec3_z(center_a)};
+    double cb[3] = {rt_vec3_x(center_b), rt_vec3_y(center_b), rt_vec3_z(center_b)};
+    if (!vec3_is_finite_raw(ca) || !vec3_is_finite_raw(cb))
+        return rt_vec3_new(0, 0, 0);
+    radius_a = isfinite(radius_a) && radius_a > 0.0 ? radius_a : 0.0;
+    radius_b = isfinite(radius_b) && radius_b > 0.0 ? radius_b : 0.0;
+    double dx = cb[0] - ca[0];
+    double dy = cb[1] - ca[1];
+    double dz = cb[2] - ca[2];
+    double dist_sq = dx * dx + dy * dy + dz * dz;
+    if (!isfinite(dist_sq))
+        return rt_vec3_new(0, 0, 0);
+    double dist = sqrt(dist_sq);
     double r_sum = radius_a + radius_b;
-    if (dist >= r_sum || dist < 1e-12)
+    if (r_sum <= 0.0 || dist >= r_sum)
         return rt_vec3_new(0, 0, 0);
     double depth = r_sum - dist;
+    if (dist < 1e-12)
+        return rt_vec3_new(0, depth, 0);
     double inv_dist = 1.0 / dist;
     return rt_vec3_new(dx * inv_dist * depth, dy * inv_dist * depth, dz * inv_dist * depth);
 }
@@ -761,19 +814,14 @@ int8_t rt_aabb3d_sphere_overlaps(void *aabb_min, void *aabb_max, void *center, d
 void *rt_segment3d_closest_point(void *seg_a, void *seg_b, void *point) {
     if (!seg_a || !seg_b || !point)
         return rt_vec3_new(0, 0, 0);
-    double ax = rt_vec3_x(seg_a), ay = rt_vec3_y(seg_a), az = rt_vec3_z(seg_a);
-    double bx = rt_vec3_x(seg_b), by = rt_vec3_y(seg_b), bz = rt_vec3_z(seg_b);
-    double px = rt_vec3_x(point), py = rt_vec3_y(point), pz = rt_vec3_z(point);
-    double dx = bx - ax, dy = by - ay, dz = bz - az;
-    double len_sq = dx * dx + dy * dy + dz * dz;
-    if (len_sq < 1e-12)
-        return rt_vec3_new(ax, ay, az);
-    double t = ((px - ax) * dx + (py - ay) * dy + (pz - az) * dz) / len_sq;
-    if (t < 0.0)
-        t = 0.0;
-    if (t > 1.0)
-        t = 1.0;
-    return rt_vec3_new(ax + t * dx, ay + t * dy, az + t * dz);
+    double a[3] = {rt_vec3_x(seg_a), rt_vec3_y(seg_a), rt_vec3_z(seg_a)};
+    double b[3] = {rt_vec3_x(seg_b), rt_vec3_y(seg_b), rt_vec3_z(seg_b)};
+    double p[3] = {rt_vec3_x(point), rt_vec3_y(point), rt_vec3_z(point)};
+    double closest[3];
+    if (!vec3_is_finite_raw(a) || !vec3_is_finite_raw(b) || !vec3_is_finite_raw(p))
+        return rt_vec3_new(0, 0, 0);
+    segment3d_closest_point_raw(a, b, p, closest);
+    return rt_vec3_new(closest[0], closest[1], closest[2]);
 }
 
 /// @brief Capsule-vs-sphere overlap. Reduces to a point-segment distance check —
@@ -785,12 +833,21 @@ int8_t rt_capsule3d_sphere_overlaps(
     void *cap_a, void *cap_b, double cap_radius, void *sphere_center, double sphere_radius) {
     if (!cap_a || !cap_b || !sphere_center)
         return 0;
-    void *closest = rt_segment3d_closest_point(cap_a, cap_b, sphere_center);
-    double dx = rt_vec3_x(sphere_center) - rt_vec3_x(closest);
-    double dy = rt_vec3_y(sphere_center) - rt_vec3_y(closest);
-    double dz = rt_vec3_z(sphere_center) - rt_vec3_z(closest);
+    double a[3] = {rt_vec3_x(cap_a), rt_vec3_y(cap_a), rt_vec3_z(cap_a)};
+    double b[3] = {rt_vec3_x(cap_b), rt_vec3_y(cap_b), rt_vec3_z(cap_b)};
+    double c[3] = {rt_vec3_x(sphere_center), rt_vec3_y(sphere_center), rt_vec3_z(sphere_center)};
+    double closest[3];
+    if (!vec3_is_finite_raw(a) || !vec3_is_finite_raw(b) || !vec3_is_finite_raw(c))
+        return 0;
+    cap_radius = isfinite(cap_radius) && cap_radius > 0.0 ? cap_radius : 0.0;
+    sphere_radius = isfinite(sphere_radius) && sphere_radius > 0.0 ? sphere_radius : 0.0;
+    segment3d_closest_point_raw(a, b, c, closest);
+    double dx = c[0] - closest[0];
+    double dy = c[1] - closest[1];
+    double dz = c[2] - closest[2];
     double r_sum = cap_radius + sphere_radius;
-    return (dx * dx + dy * dy + dz * dz) < r_sum * r_sum ? 1 : 0;
+    double dist_sq = dx * dx + dy * dy + dz * dz;
+    return isfinite(dist_sq) && dist_sq <= r_sum * r_sum ? 1 : 0;
 }
 
 /// @brief Approximate capsule-vs-AABB overlap using a two-step closest-point
@@ -804,27 +861,26 @@ int8_t rt_capsule3d_aabb_overlaps(
     void *cap_a, void *cap_b, double radius, void *aabb_min, void *aabb_max) {
     if (!cap_a || !cap_b || !aabb_min || !aabb_max)
         return 0;
-    /* Test: closest point on capsule segment to closest point on AABB */
-    /* Approximate: find closest point on segment to AABB center, then
-     * find closest point on AABB to that segment point, check distance */
-    double aabb_cx = (rt_vec3_x(aabb_min) + rt_vec3_x(aabb_max)) * 0.5;
-    double aabb_cy = (rt_vec3_y(aabb_min) + rt_vec3_y(aabb_max)) * 0.5;
-    double aabb_cz = (rt_vec3_z(aabb_min) + rt_vec3_z(aabb_max)) * 0.5;
-    void *aabb_center = rt_vec3_new(aabb_cx, aabb_cy, aabb_cz);
-
-    /* Closest point on segment to AABB center */
-    void *seg_pt = rt_segment3d_closest_point(cap_a, cap_b, aabb_center);
-
+    double a[3] = {rt_vec3_x(cap_a), rt_vec3_y(cap_a), rt_vec3_z(cap_a)};
+    double b[3] = {rt_vec3_x(cap_b), rt_vec3_y(cap_b), rt_vec3_z(cap_b)};
+    double mn[3] = {rt_vec3_x(aabb_min), rt_vec3_y(aabb_min), rt_vec3_z(aabb_min)};
+    double mx[3] = {rt_vec3_x(aabb_max), rt_vec3_y(aabb_max), rt_vec3_z(aabb_max)};
+    double aabb_center[3] = {
+        (mn[0] + mx[0]) * 0.5, (mn[1] + mx[1]) * 0.5, (mn[2] + mx[2]) * 0.5};
+    double seg_pt[3];
+    if (!vec3_is_finite_raw(a) || !vec3_is_finite_raw(b) || !vec3_is_finite_raw(mn) ||
+        !vec3_is_finite_raw(mx))
+        return 0;
+    radius = isfinite(radius) && radius > 0.0 ? radius : 0.0;
+    segment3d_closest_point_raw(a, b, aabb_center, seg_pt);
     {
-        double p[3] = {rt_vec3_x(seg_pt), rt_vec3_y(seg_pt), rt_vec3_z(seg_pt)};
-        double mn[3] = {rt_vec3_x(aabb_min), rt_vec3_y(aabb_min), rt_vec3_z(aabb_min)};
-        double mx[3] = {rt_vec3_x(aabb_max), rt_vec3_y(aabb_max), rt_vec3_z(aabb_max)};
         double c[3];
-        aabb3d_clamp_point_raw(mn, mx, p, c);
-        double dx = p[0] - c[0];
-        double dy = p[1] - c[1];
-        double dz = p[2] - c[2];
-        return (dx * dx + dy * dy + dz * dz) < radius * radius ? 1 : 0;
+        aabb3d_clamp_point_raw(mn, mx, seg_pt, c);
+        double dx = seg_pt[0] - c[0];
+        double dy = seg_pt[1] - c[1];
+        double dz = seg_pt[2] - c[2];
+        double dist_sq = dx * dx + dy * dy + dz * dz;
+        return isfinite(dist_sq) && dist_sq <= radius * radius ? 1 : 0;
     }
 }
 

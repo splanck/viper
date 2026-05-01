@@ -109,6 +109,11 @@ static void navagent_release_ref(void **slot) {
     *slot = NULL;
 }
 
+static void navagent_release_local(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 /// @brief Address the xyz triple for corner `index` in the flat path buffer.
 /// @details Path corners are stored as a packed `[x0,y0,z0, x1,y1,z1, ...]`
 ///   array — returning a stride-adjusted pointer avoids constructing a
@@ -173,8 +178,9 @@ static void navagent_sample_point(rt_navagent3d *agent, const double src[3], dou
             navagent_vec_set(dst, 0.0, 0.0, 0.0);
         return;
     }
-    void *sample = rt_navmesh3d_sample_position(
-        agent->navmesh, rt_vec3_new(src ? src[0] : 0.0, src ? src[1] : 0.0, src ? src[2] : 0.0));
+    void *query = rt_vec3_new(src ? src[0] : 0.0, src ? src[1] : 0.0, src ? src[2] : 0.0);
+    void *sample = query ? rt_navmesh3d_sample_position(agent->navmesh, query) : NULL;
+    navagent_release_local(query);
     if (!sample) {
         if (src)
             navagent_vec_copy(dst, src);
@@ -185,6 +191,7 @@ static void navagent_sample_point(rt_navagent3d *agent, const double src[3], dou
     dst[0] = rt_vec3_x(sample);
     dst[1] = rt_vec3_y(sample);
     dst[2] = rt_vec3_z(sample);
+    navagent_release_local(sample);
 }
 
 /// @brief Resolve a SceneNode3D's world-space position by transforming the origin through
@@ -205,12 +212,17 @@ static void navagent_get_node_world_position(void *node, double out_pos[3]) {
         out_pos[0] = local ? rt_vec3_x(local) : 0.0;
         out_pos[1] = local ? rt_vec3_y(local) : 0.0;
         out_pos[2] = local ? rt_vec3_z(local) : 0.0;
+        navagent_release_local(local);
         return;
     }
-    world_pos = rt_mat4_transform_point(world_matrix, rt_vec3_new(0.0, 0.0, 0.0));
+    void *origin = rt_vec3_new(0.0, 0.0, 0.0);
+    world_pos = origin ? rt_mat4_transform_point(world_matrix, origin) : NULL;
     out_pos[0] = world_pos ? rt_vec3_x(world_pos) : 0.0;
     out_pos[1] = world_pos ? rt_vec3_y(world_pos) : 0.0;
     out_pos[2] = world_pos ? rt_vec3_z(world_pos) : 0.0;
+    navagent_release_local(origin);
+    navagent_release_local(world_pos);
+    navagent_release_local(world_matrix);
 }
 
 /// @brief Write a world-space position into a SceneNode3D, converting through the
@@ -231,15 +243,17 @@ static void navagent_set_node_world_position(void *node, const double world_pos[
     {
         void *parent_world = rt_scene_node3d_get_world_matrix(parent);
         void *parent_inv = parent_world ? rt_mat4_inverse(parent_world) : NULL;
-        void *local =
-            parent_inv ? rt_mat4_transform_point(parent_inv,
-                                                 rt_vec3_new(world_pos[0], world_pos[1], world_pos[2]))
-                       : NULL;
+        void *world_vec = rt_vec3_new(world_pos[0], world_pos[1], world_pos[2]);
+        void *local = (parent_inv && world_vec) ? rt_mat4_transform_point(parent_inv, world_vec) : NULL;
         if (local) {
             rt_scene_node3d_set_position(node, rt_vec3_x(local), rt_vec3_y(local), rt_vec3_z(local));
         } else {
             rt_scene_node3d_set_position(node, world_pos[0], world_pos[1], world_pos[2]);
         }
+        navagent_release_local(local);
+        navagent_release_local(world_vec);
+        navagent_release_local(parent_inv);
+        navagent_release_local(parent_world);
     }
 }
 
@@ -257,6 +271,7 @@ static void navagent_sync_position_from_bindings(rt_navagent3d *agent) {
         agent->position[0] = pos ? rt_vec3_x(pos) : 0.0;
         agent->position[1] = pos ? rt_vec3_y(pos) : 0.0;
         agent->position[2] = pos ? rt_vec3_z(pos) : 0.0;
+        navagent_release_local(pos);
         return;
     }
     if (agent->bound_node) {
@@ -342,8 +357,13 @@ static void navagent_rebuild_path(rt_navagent3d *agent) {
     navagent_sample_point(agent, agent->target, goal);
     navagent_vec_copy(agent->target, goal);
 
-    point_count = rt_navmesh3d_copy_path_points(
-        agent->navmesh, rt_vec3_new(start[0], start[1], start[2]), rt_vec3_new(goal[0], goal[1], goal[2]), &points);
+    void *start_vec = rt_vec3_new(start[0], start[1], start[2]);
+    void *goal_vec = rt_vec3_new(goal[0], goal[1], goal[2]);
+    point_count = (start_vec && goal_vec)
+                      ? rt_navmesh3d_copy_path_points(agent->navmesh, start_vec, goal_vec, &points)
+                      : 0;
+    navagent_release_local(start_vec);
+    navagent_release_local(goal_vec);
     if (point_count <= 0 || !points) {
         navagent_zero_motion(agent);
         return;
@@ -487,11 +507,13 @@ void rt_navagent3d_update(void *obj, double dt) {
     }
 
     if (agent->bound_character) {
+        void *move_vec = rt_vec3_new(agent->desired_velocity[0],
+                                     agent->desired_velocity[1],
+                                     agent->desired_velocity[2]);
         rt_character3d_move(agent->bound_character,
-                            rt_vec3_new(agent->desired_velocity[0],
-                                        agent->desired_velocity[1],
-                                        agent->desired_velocity[2]),
+                            move_vec,
                             dt);
+        navagent_release_local(move_vec);
         navagent_sync_position_from_bindings(agent);
         if (agent->bound_node)
             navagent_set_node_world_position(agent->bound_node, agent->position);

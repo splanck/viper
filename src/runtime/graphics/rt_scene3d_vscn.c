@@ -25,6 +25,7 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -1250,6 +1251,17 @@ static rt_light3d *vscn_parse_light(void *light_obj) {
     light->attenuation = vjson_f64(light_obj, "attenuation", 0.0);
     light->inner_cos = vjson_f64(light_obj, "innerCos", 1.0);
     light->outer_cos = vjson_f64(light_obj, "outerCos", 0.7071067811865476);
+    if (!isfinite(light->inner_cos) || light->inner_cos < 0.0 || light->inner_cos > 1.0)
+        light->inner_cos = 1.0;
+    if (!isfinite(light->outer_cos) || light->outer_cos < 0.0 || light->outer_cos > 1.0)
+        light->outer_cos = 0.7071067811865476;
+    if (light->type == 3 && light->inner_cos <= light->outer_cos + 1e-6) {
+        if (light->inner_cos <= 1e-6)
+            light->inner_cos = 1.0;
+        light->outer_cos = light->inner_cos - 1e-6;
+        if (light->outer_cos < 0.0)
+            light->outer_cos = 0.0;
+    }
 
     arr = vjson_get(light_obj, "direction");
     if (arr && vjson_len(arr) >= 3) {

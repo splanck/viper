@@ -39,6 +39,8 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 #include "rt_trap.h"
 extern void *rt_vec3_new(double x, double y, double z);
 extern double rt_vec3_x(void *v);
@@ -82,6 +84,11 @@ static void navmesh3d_finalizer(void *obj) {
     nm->triangles = NULL;
 }
 
+static void navmesh3d_free_partial(rt_navmesh3d *nm) {
+    if (nm && rt_obj_release_check0(nm))
+        rt_obj_free(nm);
+}
+
 /// @brief Bake a navigation mesh from a triangle mesh. Filters out triangles whose normal
 /// exceeds the default 45° slope (re-configurable via `_set_max_slope`). Stores agent radius/
 /// height for later edge-pull-in safety. Returns the navmesh handle, or NULL on alloc failure
@@ -92,6 +99,11 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
     rt_mesh3d *m = (rt_mesh3d *)mesh_obj;
     if (m->vertex_count == 0 || m->index_count < 3)
         return NULL;
+    if (m->vertex_count > INT32_MAX || m->index_count > INT32_MAX ||
+        (m->index_count / 3u) > INT32_MAX) {
+        rt_trap("NavMesh3D.Build: mesh is too large");
+        return NULL;
+    }
 
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_navmesh3d));
     if (!nm) {
@@ -110,6 +122,7 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
     nm->vertex_count = (int32_t)m->vertex_count;
     nm->vertices = (nav_vertex_t *)malloc((size_t)nm->vertex_count * sizeof(nav_vertex_t));
     if (!nm->vertices) {
+        navmesh3d_free_partial(nm);
         rt_trap("NavMesh3D.Build: vertex allocation failed");
         return NULL;
     }
@@ -123,6 +136,7 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
     int32_t tri_cap = (int32_t)(m->index_count / 3);
     nm->triangles = (nav_triangle_t *)malloc((size_t)tri_cap * sizeof(nav_triangle_t));
     if (!nm->triangles) {
+        navmesh3d_free_partial(nm);
         rt_trap("NavMesh3D.Build: triangle allocation failed");
         return NULL;
     }
@@ -178,7 +192,13 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
      * the two triangles sharing that edge are adjacent. */
     {
         int32_t tc = nm->triangle_count;
-        int32_t map_cap = tc * 4; /* load factor ~0.75 for 3 edges per tri */
+        int32_t map_cap;
+        if (tc > INT32_MAX / 4) {
+            navmesh3d_free_partial(nm);
+            rt_trap("NavMesh3D.Build: adjacency map too large");
+            return NULL;
+        }
+        map_cap = tc * 4; /* load factor ~0.75 for 3 edges per tri */
         if (map_cap < 16)
             map_cap = 16;
 
@@ -190,9 +210,17 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
             int8_t used;
         } edge_entry_t;
 
+        if ((size_t)map_cap > SIZE_MAX / sizeof(edge_entry_t)) {
+            navmesh3d_free_partial(nm);
+            rt_trap("NavMesh3D.Build: adjacency allocation overflow");
+            return NULL;
+        }
         edge_entry_t *emap = (edge_entry_t *)calloc((size_t)map_cap, sizeof(edge_entry_t));
-        if (!emap)
-            goto skip_adjacency; /* degrade gracefully — no adjacency */
+        if (!emap) {
+            navmesh3d_free_partial(nm);
+            rt_trap("NavMesh3D.Build: adjacency allocation failed");
+            return NULL;
+        }
 
         for (int32_t i = 0; i < tc; i++) {
             for (int e = 0; e < 3; e++) {
@@ -232,7 +260,6 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
         }
         free(emap);
     }
-skip_adjacency:
 
     return nm;
 }
@@ -377,15 +404,29 @@ int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, doubl
 
     /* A* */
     int32_t tc = nm->triangle_count;
+    if (tc <= 0 || tc > INT32_MAX / 3)
+        return 0;
+    int32_t heap_cap = tc * 3;
+    if ((size_t)tc > SIZE_MAX / sizeof(float) ||
+        (size_t)tc > SIZE_MAX / sizeof(int32_t) ||
+        (size_t)tc > SIZE_MAX / sizeof(int8_t) ||
+        (size_t)heap_cap > SIZE_MAX / sizeof(heap_entry_t))
+        return 0;
     float *g_cost = (float *)calloc((size_t)tc, sizeof(float));
     int32_t *parent = (int32_t *)malloc((size_t)tc * sizeof(int32_t));
     int8_t *closed = (int8_t *)calloc((size_t)tc, sizeof(int8_t));
+    heap_entry_t *heap = (heap_entry_t *)malloc((size_t)heap_cap * sizeof(heap_entry_t));
+    if (!g_cost || !parent || !closed || !heap) {
+        free(g_cost);
+        free(parent);
+        free(closed);
+        free(heap);
+        return 0;
+    }
     memset(parent, -1, (size_t)tc * sizeof(int32_t));
     for (int32_t i = 0; i < tc; i++)
         g_cost[i] = FLT_MAX;
 
-    int32_t heap_cap = tc * 3;
-    heap_entry_t *heap = (heap_entry_t *)malloc((size_t)heap_cap * sizeof(heap_entry_t));
     int32_t heap_size = 0;
 
     g_cost[start] = 0;

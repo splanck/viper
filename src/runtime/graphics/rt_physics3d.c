@@ -307,6 +307,16 @@ static double ph3d_clamp_nonnegative_finite(double value, double fallback) {
     return value < 0.0 ? 0.0 : value;
 }
 
+static double ph3d_finite_or(double value, double fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
+static void ph3d_vec3_set_finite(double *dst, double x, double y, double z) {
+    dst[0] = ph3d_finite_or(x, 0.0);
+    dst[1] = ph3d_finite_or(y, 0.0);
+    dst[2] = ph3d_finite_or(z, 0.0);
+}
+
 typedef struct {
     void *vptr;
     rt_body3d *body;
@@ -386,6 +396,7 @@ static void transform_point_to_local(const rt_collider_pose *pose,
                                      const double *world_point,
                                      double *local_point);
 static void body3d_update_shape_cache_from_collider(rt_body3d *body);
+static void capsule_axis_endpoints(const rt_body3d *b, double *a, double *c);
 static int test_collision(const rt_body3d *a,
                           const rt_body3d *b,
                           double *normal,
@@ -428,13 +439,14 @@ static void body_aabb(const rt_body3d *b, double *mn, double *mx) {
         mx[2] = b->position[2] + b->radius;
     } else /* capsule */
     {
-        double hh = b->height * 0.5;
-        mn[0] = b->position[0] - b->radius;
-        mn[1] = b->position[1] - hh;
-        mn[2] = b->position[2] - b->radius;
-        mx[0] = b->position[0] + b->radius;
-        mx[1] = b->position[1] + hh;
-        mx[2] = b->position[2] + b->radius;
+        double a[3], c[3];
+        capsule_axis_endpoints(b, a, c);
+        mn[0] = (a[0] < c[0] ? a[0] : c[0]) - b->radius;
+        mn[1] = (a[1] < c[1] ? a[1] : c[1]) - b->radius;
+        mn[2] = (a[2] < c[2] ? a[2] : c[2]) - b->radius;
+        mx[0] = (a[0] > c[0] ? a[0] : c[0]) + b->radius;
+        mx[1] = (a[1] > c[1] ? a[1] : c[1]) + b->radius;
+        mx[2] = (a[2] > c[2] ? a[2] : c[2]) + b->radius;
     }
 }
 
@@ -534,8 +546,12 @@ static double quat_len_sq(const double *q) {
 /// Important for stability: numerical drift over many integration steps
 /// gradually denormalizes orientations, which causes geometry to skew.
 static void quat_normalize(double *q) {
+    if (!isfinite(q[0]) || !isfinite(q[1]) || !isfinite(q[2]) || !isfinite(q[3])) {
+        quat_identity(q);
+        return;
+    }
     double len_sq = quat_len_sq(q);
-    if (len_sq < 1e-24) {
+    if (!isfinite(len_sq) || len_sq < 1e-24) {
         quat_identity(q);
         return;
     }
@@ -564,7 +580,7 @@ static void quat_mul(const double *a, const double *b, double *out) {
 /// the identity for zero-length axis or zero angle.
 static void quat_from_axis_angle(const double *axis, double angle, double *out) {
     double axis_len = vec3_len(axis);
-    if (axis_len < 1e-12 || fabs(angle) < 1e-12) {
+    if (!isfinite(axis_len) || !isfinite(angle) || axis_len < 1e-12 || fabs(angle) < 1e-12) {
         quat_identity(out);
         return;
     }
@@ -584,7 +600,7 @@ static void quat_from_axis_angle(const double *axis, double angle, double *out) 
 /// to prevent drift. Skipped when angular velocity or `dt` is zero.
 static void quat_integrate(double *orientation, const double *angular_velocity, double dt) {
     double speed = vec3_len(angular_velocity);
-    if (speed < 1e-12 || dt <= 0.0)
+    if (!isfinite(speed) || !isfinite(dt) || speed < 1e-12 || dt <= 0.0)
         return;
     double axis[3] = {
         angular_velocity[0] / speed,
@@ -922,51 +938,174 @@ static void make_temp_sphere(rt_body3d *out, const double *center, double radius
     out->radius = radius;
 }
 
-/// @brief Return the two endpoints of a capsule's axis segment.
+/// @brief Return the two world-space endpoints of a capsule's oriented axis segment.
 ///
-/// Capsules in this engine are Y-aligned with the position at the
-/// center. Endpoints sit `(height/2 - radius)` away on each side; the
-/// hemispherical caps sit beyond those endpoints.
-///
-/// DESIGN LIMITATION: this routine ignores `b->orientation`. Rotating a
-/// capsule away from vertical produces wrong collision geometry. When
-/// `RT_PHYSICS3D_STRICT_CAPSULE_AXIS` is defined at build time we trap on
-/// non-identity orientations so the limitation is visible rather than
-/// silently corrupting results. Identity quaternion = (x=0,y=0,z=0,w=1).
+/// Capsules are authored along local Y with the body position at the center.
+/// The body orientation rotates that local axis before collision tests use it.
 static void capsule_axis_endpoints(const rt_body3d *b, double *a, double *c) {
-#ifdef RT_PHYSICS3D_STRICT_CAPSULE_AXIS
-    const double eps = 1e-5;
-    if (fabs(b->orientation[0]) > eps || fabs(b->orientation[1]) > eps ||
-        fabs(b->orientation[2]) > eps || fabs(b->orientation[3] - 1.0) > eps) {
-        rt_trap("Physics3D: capsule axis is Y-aligned; rotating the body has no effect");
-    }
-#endif
     double half_axis = fmax(b->height * 0.5 - b->radius, 0.0);
-    vec3_set(a, b->position[0], b->position[1] - half_axis, b->position[2]);
-    vec3_set(c, b->position[0], b->position[1] + half_axis, b->position[2]);
+    double local_axis[3] = {0.0, half_axis, 0.0};
+    double axis[3];
+    quat_rotate_vec3(b->orientation, local_axis, axis);
+    vec3_set(a, b->position[0] - axis[0], b->position[1] - axis[1], b->position[2] - axis[2]);
+    vec3_set(c, b->position[0] + axis[0], b->position[1] + axis[1], b->position[2] + axis[2]);
+}
+
+static void closest_point_on_segment(const double *a,
+                                     const double *b,
+                                     const double *point,
+                                     double *closest) {
+    double ab[3], ap[3];
+    vec3_sub(b, a, ab);
+    vec3_sub(point, a, ap);
+    double denom = vec3_dot(ab, ab);
+    double t = denom > 1e-18 ? vec3_dot(ap, ab) / denom : 0.0;
+    t = clampd(t, 0.0, 1.0);
+    closest[0] = a[0] + ab[0] * t;
+    closest[1] = a[1] + ab[1] * t;
+    closest[2] = a[2] + ab[2] * t;
+}
+
+static void closest_points_on_segments(const double *p1,
+                                       const double *q1,
+                                       const double *p2,
+                                       const double *q2,
+                                       double *c1,
+                                       double *c2) {
+    const double eps = 1e-18;
+    double d1[3], d2[3], r[3];
+    vec3_sub(q1, p1, d1);
+    vec3_sub(q2, p2, d2);
+    vec3_sub(p1, p2, r);
+    double a = vec3_dot(d1, d1);
+    double e = vec3_dot(d2, d2);
+    double f = vec3_dot(d2, r);
+    double s, t;
+
+    if (a <= eps && e <= eps) {
+        vec3_copy(c1, p1);
+        vec3_copy(c2, p2);
+        return;
+    }
+    if (a <= eps) {
+        s = 0.0;
+        t = clampd(f / e, 0.0, 1.0);
+    } else {
+        double c = vec3_dot(d1, r);
+        if (e <= eps) {
+            t = 0.0;
+            s = clampd(-c / a, 0.0, 1.0);
+        } else {
+            double b = vec3_dot(d1, d2);
+            double denom = a * e - b * b;
+            if (denom != 0.0)
+                s = clampd((b * f - c * e) / denom, 0.0, 1.0);
+            else
+                s = 0.0;
+            t = (b * s + f) / e;
+            if (t < 0.0) {
+                t = 0.0;
+                s = clampd(-c / a, 0.0, 1.0);
+            } else if (t > 1.0) {
+                t = 1.0;
+                s = clampd((b - c) / a, 0.0, 1.0);
+            }
+        }
+    }
+    c1[0] = p1[0] + d1[0] * s;
+    c1[1] = p1[1] + d1[1] * s;
+    c1[2] = p1[2] + d1[2] * s;
+    c2[0] = p2[0] + d2[0] * t;
+    c2[1] = p2[1] + d2[1] * t;
+    c2[2] = p2[2] + d2[2] * t;
+}
+
+static double point_aabb_distance_sq(const double *point, const double *mn, const double *mx) {
+    double q[3] = {clampd(point[0], mn[0], mx[0]),
+                   clampd(point[1], mn[1], mx[1]),
+                   clampd(point[2], mn[2], mx[2])};
+    double delta[3];
+    vec3_sub(point, q, delta);
+    return vec3_len_sq(delta);
+}
+
+static void closest_point_segment_to_aabb(const double *a,
+                                          const double *c,
+                                          const double *mn,
+                                          const double *mx,
+                                          double *closest_axis) {
+    double d[3];
+    double best_t = 0.0;
+    double best_dist = 1e300;
+    vec3_sub(c, a, d);
+
+    #define PH3D_EVAL_SEG_AABB_T(t_expr) do { \
+        double eval_t = clampd((t_expr), 0.0, 1.0); \
+        double p_eval[3] = {a[0] + d[0] * eval_t, a[1] + d[1] * eval_t, a[2] + d[2] * eval_t}; \
+        double dist_eval = point_aabb_distance_sq(p_eval, mn, mx); \
+        if (dist_eval < best_dist) { \
+            best_dist = dist_eval; \
+            best_t = eval_t; \
+        } \
+    } while (0)
+
+    PH3D_EVAL_SEG_AABB_T(0.0);
+    PH3D_EVAL_SEG_AABB_T(1.0);
+    {
+        double center[3] = {
+            (mn[0] + mx[0]) * 0.5,
+            (mn[1] + mx[1]) * 0.5,
+            (mn[2] + mx[2]) * 0.5,
+        };
+        double ac[3];
+        vec3_sub(center, a, ac);
+        double len_sq = vec3_len_sq(d);
+        if (len_sq > 1e-18)
+            PH3D_EVAL_SEG_AABB_T(vec3_dot(ac, d) / len_sq);
+    }
+    for (int axis = 0; axis < 3; axis++) {
+        if (fabs(d[axis]) > 1e-18) {
+            PH3D_EVAL_SEG_AABB_T((mn[axis] - a[axis]) / d[axis]);
+            PH3D_EVAL_SEG_AABB_T((mx[axis] - a[axis]) / d[axis]);
+        }
+    }
+    {
+        double lo = 0.0;
+        double hi = 1.0;
+        for (int iter = 0; iter < 24; iter++) {
+            double m1 = lo + (hi - lo) / 3.0;
+            double m2 = hi - (hi - lo) / 3.0;
+            double p1[3] = {a[0] + d[0] * m1, a[1] + d[1] * m1, a[2] + d[2] * m1};
+            double p2[3] = {a[0] + d[0] * m2, a[1] + d[1] * m2, a[2] + d[2] * m2};
+            if (point_aabb_distance_sq(p1, mn, mx) < point_aabb_distance_sq(p2, mn, mx))
+                hi = m2;
+            else
+                lo = m1;
+        }
+        PH3D_EVAL_SEG_AABB_T((lo + hi) * 0.5);
+    }
+
+    #undef PH3D_EVAL_SEG_AABB_T
+
+    closest_axis[0] = a[0] + d[0] * best_t;
+    closest_axis[1] = a[1] + d[1] * best_t;
+    closest_axis[2] = a[2] + d[2] * best_t;
 }
 
 /// @brief Project a point onto the capsule's axis segment.
 ///
-/// X/Z are clamped to the capsule's column (axis is Y-aligned), Y is
-/// clamped between the segment endpoints. Used as the first step in
-/// capsule-vs-anything distance computations.
+/// Used as the first step in capsule-vs-anything distance computations.
 static void closest_point_capsule_axis_to_point(const rt_body3d *cap,
                                                 const double *point,
                                                 double *closest) {
     double a[3], c[3];
     capsule_axis_endpoints(cap, a, c);
-    closest[0] = cap->position[0];
-    closest[1] = clampd(point[1], a[1], c[1]);
-    closest[2] = cap->position[2];
+    closest_point_on_segment(a, c, point, closest);
 }
 
 /// @brief Find the closest point pair on two capsule axes.
 ///
-/// Both capsules are Y-aligned in this engine, so the math reduces to
-/// 1D segment-vs-segment along Y: either the segments overlap (use the
-/// midpoint of the overlap) or one is entirely above/below the other
-/// (use the nearest endpoints). X/Z just take each capsule's center.
+/// Handles arbitrary capsule orientations by solving segment-vs-segment.
 static void closest_points_capsule_axes(const rt_body3d *a,
                                         const rt_body3d *b,
                                         double *closest_a,
@@ -974,48 +1113,19 @@ static void closest_points_capsule_axes(const rt_body3d *a,
     double aa[3], ac[3], ba[3], bc[3];
     capsule_axis_endpoints(a, aa, ac);
     capsule_axis_endpoints(b, ba, bc);
-
-    closest_a[0] = a->position[0];
-    closest_a[2] = a->position[2];
-    closest_b[0] = b->position[0];
-    closest_b[2] = b->position[2];
-
-    if (ac[1] < ba[1]) {
-        closest_a[1] = ac[1];
-        closest_b[1] = ba[1];
-    } else if (bc[1] < aa[1]) {
-        closest_a[1] = aa[1];
-        closest_b[1] = bc[1];
-    } else {
-        double overlap_min = aa[1] > ba[1] ? aa[1] : ba[1];
-        double overlap_max = ac[1] < bc[1] ? ac[1] : bc[1];
-        double y = clampd((a->position[1] + b->position[1]) * 0.5, overlap_min, overlap_max);
-        closest_a[1] = y;
-        closest_b[1] = y;
-    }
+    closest_points_on_segments(aa, ac, ba, bc, closest_a, closest_b);
 }
 
 /// @brief Find the point on a capsule's axis closest to a box.
 ///
-/// X/Z take the capsule center; Y picks whichever capsule endpoint
-/// overhangs the box (or, if neither does, the projection of the
-/// capsule center clamped into the box-axis-overlap range). Used as
-/// the first step of capsule-vs-AABB collision.
+/// Used as the first step of capsule-vs-AABB collision.
 static void closest_point_capsule_axis_to_aabb(const rt_body3d *cap,
                                                const rt_body3d *box,
                                                double *closest_axis) {
     double mn[3], mx[3], a[3], c[3];
     body_aabb(box, mn, mx);
     capsule_axis_endpoints(cap, a, c);
-    closest_axis[0] = cap->position[0];
-    closest_axis[2] = cap->position[2];
-    if (c[1] < mn[1])
-        closest_axis[1] = c[1];
-    else if (a[1] > mx[1])
-        closest_axis[1] = a[1];
-    else
-        closest_axis[1] =
-            clampd(cap->position[1], mn[1] > a[1] ? mn[1] : a[1], mx[1] < c[1] ? mx[1] : c[1]);
+    closest_point_segment_to_aabb(a, c, mn, mx, closest_axis);
 }
 
 /// @brief Layer/mask filter for one-sided queries (raycast, overlap).
@@ -1125,12 +1235,25 @@ static void collider_support_point(void *collider,
     case RT_COLLIDER3D_TYPE_CAPSULE: {
         double radius = rt_collider3d_get_radius_raw(collider);
         double half_axis = fmax(rt_collider3d_get_height_raw(collider) * 0.5 - radius, 0.0);
-        double max_radial_scale = pose->scale[0] > pose->scale[2] ? pose->scale[0] : pose->scale[2];
-        out_point[0] = pose->position[0] + dir[0] * radius * max_radial_scale;
+        double sx = fabs(pose->scale[0]);
+        double sy = fabs(pose->scale[1]);
+        double sz = fabs(pose->scale[2]);
+        double max_radial_scale = sx > sz ? sx : sz;
+        double axis_dir[3];
+        double local_y[3] = {0.0, 1.0, 0.0};
+        quat_rotate_vec3(pose->rotation, local_y, axis_dir);
+        if (vec3_normalize_in_place(axis_dir) <= 1e-12)
+            vec3_set(axis_dir, 0.0, 1.0, 0.0);
+        double side = vec3_dot(dir, axis_dir) >= 0.0 ? 1.0 : -1.0;
+        out_point[0] =
+            pose->position[0] + axis_dir[0] * half_axis * sy * side +
+            dir[0] * radius * max_radial_scale;
         out_point[1] =
-            pose->position[1] + (dir[1] >= 0.0 ? half_axis * pose->scale[1] : -half_axis * pose->scale[1]) +
-            dir[1] * radius * pose->scale[1];
-        out_point[2] = pose->position[2] + dir[2] * radius * max_radial_scale;
+            pose->position[1] + axis_dir[1] * half_axis * sy * side +
+            dir[1] * radius * max_radial_scale;
+        out_point[2] =
+            pose->position[2] + axis_dir[2] * half_axis * sy * side +
+            dir[2] * radius * max_radial_scale;
         return;
     }
     case RT_COLLIDER3D_TYPE_COMPOUND: {
@@ -1703,17 +1826,19 @@ static int test_meshlike_capsule(rt_mesh3d *mesh,
                                  double *normal,
                                  double *depth) {
     double half_axis = fmax(capsule->height * 0.5 - capsule->radius, 0.0);
+    double axis_a[3], axis_b[3];
     double best_depth = 0.0;
     double best_normal[3] = {0.0, 1.0, 0.0};
     int samples = half_axis > 1e-9 ? 5 : 1;
+    capsule_axis_endpoints(capsule, axis_a, axis_b);
     for (int i = 0; i < samples; ++i) {
         double t = samples == 1 ? 0.5 : (double)i / (double)(samples - 1);
         rt_body3d sphere;
         memset(&sphere, 0, sizeof(sphere));
         sphere.shape = PH3D_SHAPE_SPHERE;
-        sphere.position[0] = capsule->position[0];
-        sphere.position[1] = capsule->position[1] - half_axis + 2.0 * half_axis * t;
-        sphere.position[2] = capsule->position[2];
+        sphere.position[0] = axis_a[0] + (axis_b[0] - axis_a[0]) * t;
+        sphere.position[1] = axis_a[1] + (axis_b[1] - axis_a[1]) * t;
+        sphere.position[2] = axis_a[2] + (axis_b[2] - axis_a[2]) * t;
         sphere.radius = capsule->radius;
         {
             double cur_normal[3];
@@ -1774,24 +1899,40 @@ static int test_heightfield_sphere(void *heightfield,
 
 /// @brief Capsule-vs-heightfield narrow phase.
 ///
-/// Only the bottom-end sphere of the capsule's axis is sampled — for
-/// gravity-aligned capsule characters that's the contact point of
-/// interest. A more accurate version would sample multiple points
-/// along the axis as `test_meshlike_capsule` does.
+/// Samples along the oriented capsule axis and keeps the deepest hit.
 static int test_heightfield_capsule(void *heightfield,
                                     const rt_collider_pose *field_pose,
                                     const rt_body3d *capsule,
                                     double *normal,
                                     double *depth) {
-    rt_body3d sphere;
     double half_axis = fmax(capsule->height * 0.5 - capsule->radius, 0.0);
-    memset(&sphere, 0, sizeof(sphere));
-    sphere.shape = PH3D_SHAPE_SPHERE;
-    sphere.position[0] = capsule->position[0];
-    sphere.position[1] = capsule->position[1] - half_axis;
-    sphere.position[2] = capsule->position[2];
-    sphere.radius = capsule->radius;
-    return test_heightfield_sphere(heightfield, field_pose, &sphere, normal, depth);
+    double axis_a[3], axis_b[3];
+    double best_depth = 0.0;
+    double best_normal[3] = {0.0, 1.0, 0.0};
+    int samples = half_axis > 1e-9 ? 5 : 1;
+    capsule_axis_endpoints(capsule, axis_a, axis_b);
+    for (int i = 0; i < samples; ++i) {
+        double t = samples == 1 ? 0.5 : (double)i / (double)(samples - 1);
+        rt_body3d sphere;
+        double cur_normal[3];
+        double cur_depth;
+        memset(&sphere, 0, sizeof(sphere));
+        sphere.shape = PH3D_SHAPE_SPHERE;
+        sphere.position[0] = axis_a[0] + (axis_b[0] - axis_a[0]) * t;
+        sphere.position[1] = axis_a[1] + (axis_b[1] - axis_a[1]) * t;
+        sphere.position[2] = axis_a[2] + (axis_b[2] - axis_a[2]) * t;
+        sphere.radius = capsule->radius;
+        if (test_heightfield_sphere(heightfield, field_pose, &sphere, cur_normal, &cur_depth) &&
+            cur_depth > best_depth) {
+            best_depth = cur_depth;
+            vec3_copy(best_normal, cur_normal);
+        }
+    }
+    if (best_depth <= 0.0)
+        return 0;
+    *depth = best_depth;
+    vec3_copy(normal, best_normal);
+    return 1;
 }
 
 /// @brief Box-vs-heightfield narrow phase via 5-sample bottom probe.
@@ -2686,9 +2827,7 @@ void *rt_world3d_new(double gx, double gy, double gz) {
         return NULL;
     }
     w->vptr = NULL;
-    w->gravity[0] = gx;
-    w->gravity[1] = gy;
-    w->gravity[2] = gz;
+    ph3d_vec3_set_finite(w->gravity, gx, gy, gz);
     w->body_count = 0;
     w->contact_count = 0;
     w->previous_contact_count = 0;
@@ -2739,7 +2878,7 @@ void *rt_world3d_new(double gx, double gy, double gz) {
 /// Clamped to `[1, PH3D_MAX_CCD_SUBSTEPS]`.
 static int world3d_compute_substeps(const rt_world3d *w, double dt) {
     int substeps = 1;
-    if (!w || dt <= 0.0)
+    if (!w || !isfinite(dt) || dt <= 0.0)
         return substeps;
     for (int32_t i = 0; i < w->body_count; i++) {
         const rt_body3d *b = w->bodies[i];
@@ -2757,6 +2896,8 @@ static int world3d_compute_substeps(const rt_world3d *w, double dt) {
             };
             speed += vec3_len(accel) * dt;
         }
+        if (!isfinite(speed))
+            continue;
         {
             int needed = (int)ceil((speed * dt) / threshold);
             if (needed > substeps)
@@ -2788,7 +2929,7 @@ static int world3d_compute_substeps(const rt_world3d *w, double dt) {
 /// @param obj `World3D` handle.
 /// @param dt  Step duration (seconds). No-op for `dt <= 0`.
 void rt_world3d_step(void *obj, double dt) {
-    if (!obj || dt <= 0)
+    if (!obj || !isfinite(dt) || dt <= 0)
         return;
     rt_world3d *w = (rt_world3d *)obj;
     int substeps = world3d_compute_substeps(w, dt);
@@ -2967,9 +3108,7 @@ void rt_world3d_set_gravity(void *obj, double gx, double gy, double gz) {
     if (!obj)
         return;
     rt_world3d *w = (rt_world3d *)obj;
-    w->gravity[0] = gx;
-    w->gravity[1] = gy;
-    w->gravity[2] = gz;
+    ph3d_vec3_set_finite(w->gravity, gx, gy, gz);
 }
 
 /*==========================================================================
@@ -3584,15 +3723,13 @@ void *rt_world3d_sweep_sphere(void *obj, void *center_obj, double radius, void *
     double center[3], delta[3];
     double max_distance;
     void *sphere_collider;
-    if (!w || !center_obj || !delta_obj || radius < 0.0)
+    if (!w || !center_obj || !delta_obj || !isfinite(radius) || radius < 0.0)
         return NULL;
-    center[0] = rt_vec3_x(center_obj);
-    center[1] = rt_vec3_y(center_obj);
-    center[2] = rt_vec3_z(center_obj);
-    delta[0] = rt_vec3_x(delta_obj);
-    delta[1] = rt_vec3_y(delta_obj);
-    delta[2] = rt_vec3_z(delta_obj);
+    ph3d_vec3_set_finite(center, rt_vec3_x(center_obj), rt_vec3_y(center_obj), rt_vec3_z(center_obj));
+    ph3d_vec3_set_finite(delta, rt_vec3_x(delta_obj), rt_vec3_y(delta_obj), rt_vec3_z(delta_obj));
     max_distance = vec3_len(delta);
+    if (!isfinite(max_distance))
+        return NULL;
     sphere_collider = rt_collider3d_new_sphere(radius);
     if (!sphere_collider)
         return NULL;
@@ -3628,18 +3765,14 @@ void *rt_world3d_sweep_capsule(void *obj,
     int found = 0;
     double a[3], b[3], delta[3];
     double max_distance;
-    if (!w || !a_obj || !b_obj || !delta_obj || radius < 0.0)
+    if (!w || !a_obj || !b_obj || !delta_obj || !isfinite(radius) || radius < 0.0)
         return NULL;
-    a[0] = rt_vec3_x(a_obj);
-    a[1] = rt_vec3_y(a_obj);
-    a[2] = rt_vec3_z(a_obj);
-    b[0] = rt_vec3_x(b_obj);
-    b[1] = rt_vec3_y(b_obj);
-    b[2] = rt_vec3_z(b_obj);
-    delta[0] = rt_vec3_x(delta_obj);
-    delta[1] = rt_vec3_y(delta_obj);
-    delta[2] = rt_vec3_z(delta_obj);
+    ph3d_vec3_set_finite(a, rt_vec3_x(a_obj), rt_vec3_y(a_obj), rt_vec3_z(a_obj));
+    ph3d_vec3_set_finite(b, rt_vec3_x(b_obj), rt_vec3_y(b_obj), rt_vec3_z(b_obj));
+    ph3d_vec3_set_finite(delta, rt_vec3_x(delta_obj), rt_vec3_y(delta_obj), rt_vec3_z(delta_obj));
     max_distance = vec3_len(delta);
+    if (!isfinite(max_distance))
+        return NULL;
     for (int32_t i = 0; i < w->body_count; ++i) {
         rt_body3d *body = w->bodies[i];
         rt_query_hit3d hit;
@@ -3665,11 +3798,13 @@ void *rt_world3d_raycast(void *obj, void *origin_obj, void *direction_obj, doubl
     double dir[3];
     void *delta;
     void *hit;
-    if (!origin_obj || !direction_obj || max_distance <= 0.0)
+    if (!origin_obj || !direction_obj || !isfinite(max_distance) || max_distance <= 0.0)
         return NULL;
     dir[0] = rt_vec3_x(direction_obj);
     dir[1] = rt_vec3_y(direction_obj);
     dir[2] = rt_vec3_z(direction_obj);
+    if (!isfinite(dir[0]) || !isfinite(dir[1]) || !isfinite(dir[2]))
+        return NULL;
     if (vec3_normalize_in_place(dir) <= 1e-12)
         return NULL;
     delta = rt_vec3_new(dir[0] * max_distance, dir[1] * max_distance, dir[2] * max_distance);
@@ -3692,14 +3827,14 @@ void *rt_world3d_raycast_all(void *obj,
     double origin[3], dir[3], delta[3];
     int32_t hit_count = 0;
     void *sphere_collider;
-    if (!w || !origin_obj || !direction_obj || max_distance <= 0.0)
+    if (!w || !origin_obj || !direction_obj || !isfinite(max_distance) || max_distance <= 0.0)
         return NULL;
-    origin[0] = rt_vec3_x(origin_obj);
-    origin[1] = rt_vec3_y(origin_obj);
-    origin[2] = rt_vec3_z(origin_obj);
+    ph3d_vec3_set_finite(origin, rt_vec3_x(origin_obj), rt_vec3_y(origin_obj), rt_vec3_z(origin_obj));
     dir[0] = rt_vec3_x(direction_obj);
     dir[1] = rt_vec3_y(direction_obj);
     dir[2] = rt_vec3_z(direction_obj);
+    if (!isfinite(dir[0]) || !isfinite(dir[1]) || !isfinite(dir[2]))
+        return NULL;
     if (vec3_normalize_in_place(dir) <= 1e-12)
         return NULL;
     delta[0] = dir[0] * max_distance;
@@ -3779,12 +3914,12 @@ static void *make_body(double mass) {
         return NULL;
     }
     memset(b, 0, sizeof(rt_body3d));
-    b->mass = mass;
+    b->mass = ph3d_clamp_nonnegative_finite(mass, 0.0);
     b->restitution = 0.3;
     b->friction = 0.5;
     b->collision_layer = 1;
     b->collision_mask = ~(int64_t)0;
-    b->motion_mode = (mass <= 1e-12) ? PH3D_MODE_STATIC : PH3D_MODE_DYNAMIC;
+    b->motion_mode = (b->mass <= 1e-12) ? PH3D_MODE_STATIC : PH3D_MODE_DYNAMIC;
     b->can_sleep = 1;
     b->ground_normal[1] = 1.0;
     quat_identity(b->orientation);
@@ -3881,9 +4016,7 @@ void *rt_body3d_get_collider(void *o) {
 void rt_body3d_set_position(void *o, double x, double y, double z) {
     if (o) {
         rt_body3d *b = (rt_body3d *)o;
-        b->position[0] = x;
-        b->position[1] = y;
-        b->position[2] = z;
+        ph3d_vec3_set_finite(b->position, x, y, z);
         body3d_wake_if_dynamic(b);
     }
 }
@@ -3935,9 +4068,7 @@ void *rt_body3d_get_orientation(void *o) {
 void rt_body3d_set_velocity(void *o, double x, double y, double z) {
     if (o) {
         rt_body3d *b = (rt_body3d *)o;
-        b->velocity[0] = x;
-        b->velocity[1] = y;
-        b->velocity[2] = z;
+        ph3d_vec3_set_finite(b->velocity, x, y, z);
         if (vec3_len_sq(b->velocity) > 1e-12)
             body3d_wake_if_dynamic(b);
     }
@@ -3959,9 +4090,7 @@ void *rt_body3d_get_velocity(void *o) {
 void rt_body3d_set_angular_velocity(void *o, double x, double y, double z) {
     if (o) {
         rt_body3d *b = (rt_body3d *)o;
-        b->angular_velocity[0] = x;
-        b->angular_velocity[1] = y;
-        b->angular_velocity[2] = z;
+        ph3d_vec3_set_finite(b->angular_velocity, x, y, z);
         if (vec3_len_sq(b->angular_velocity) > 1e-12)
             body3d_wake_if_dynamic(b);
     }
@@ -3988,6 +4117,9 @@ void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
         rt_body3d *b = (rt_body3d *)o;
         if (b->motion_mode != PH3D_MODE_DYNAMIC)
             return;
+        fx = ph3d_finite_or(fx, 0.0);
+        fy = ph3d_finite_or(fy, 0.0);
+        fz = ph3d_finite_or(fz, 0.0);
         b->force[0] += fx;
         b->force[1] += fy;
         b->force[2] += fz;
@@ -4005,6 +4137,9 @@ void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz) {
         rt_body3d *b = (rt_body3d *)o;
         if (b->motion_mode != PH3D_MODE_DYNAMIC)
             return;
+        ix = ph3d_finite_or(ix, 0.0);
+        iy = ph3d_finite_or(iy, 0.0);
+        iz = ph3d_finite_or(iz, 0.0);
         b->velocity[0] += ix * b->inv_mass;
         b->velocity[1] += iy * b->inv_mass;
         b->velocity[2] += iz * b->inv_mass;
@@ -4021,6 +4156,9 @@ void rt_body3d_apply_torque(void *o, double tx, double ty, double tz) {
         rt_body3d *b = (rt_body3d *)o;
         if (b->motion_mode != PH3D_MODE_DYNAMIC)
             return;
+        tx = ph3d_finite_or(tx, 0.0);
+        ty = ph3d_finite_or(ty, 0.0);
+        tz = ph3d_finite_or(tz, 0.0);
         b->torque[0] += tx;
         b->torque[1] += ty;
         b->torque[2] += tz;
@@ -4037,6 +4175,9 @@ void rt_body3d_apply_angular_impulse(void *o, double ix, double iy, double iz) {
         rt_body3d *b = (rt_body3d *)o;
         if (b->motion_mode != PH3D_MODE_DYNAMIC)
             return;
+        ix = ph3d_finite_or(ix, 0.0);
+        iy = ph3d_finite_or(iy, 0.0);
+        iz = ph3d_finite_or(iz, 0.0);
         b->angular_velocity[0] += ix * b->inv_inertia[0];
         b->angular_velocity[1] += iy * b->inv_inertia[1];
         b->angular_velocity[2] += iz * b->inv_inertia[2];
@@ -4081,7 +4222,7 @@ double rt_body3d_get_friction(void *o) {
 /// air-resistance proxy. Negative values clamp to 0.
 void rt_body3d_set_linear_damping(void *o, double d) {
     if (o)
-        ((rt_body3d *)o)->linear_damping = d > 0.0 ? d : 0.0;
+        ((rt_body3d *)o)->linear_damping = ph3d_clamp_nonnegative_finite(d, 0.0);
 }
 
 /// @brief `Body3D.GetLinearDamping` — read linear damping coefficient.
@@ -4092,7 +4233,7 @@ double rt_body3d_get_linear_damping(void *o) {
 /// @brief `Body3D.SetAngularDamping(d)` — per-second angular velocity decay.
 void rt_body3d_set_angular_damping(void *o, double d) {
     if (o)
-        ((rt_body3d *)o)->angular_damping = d > 0.0 ? d : 0.0;
+        ((rt_body3d *)o)->angular_damping = ph3d_clamp_nonnegative_finite(d, 0.0);
 }
 
 /// @brief `Body3D.GetAngularDamping` — read angular damping coefficient.
@@ -4636,16 +4777,16 @@ void *rt_character3d_new(double radius, double height, double mass) {
 /// actual achieved displacement / dt — useful for animation systems
 /// that read velocity off the controller.
 void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
-    if (!obj || !velocity_vec || dt <= 0)
+    if (!obj || !velocity_vec || !isfinite(dt) || dt <= 0)
         return;
     rt_character3d *ctrl = (rt_character3d *)obj;
     rt_body3d *body = ctrl->body;
     if (!body)
         return;
 
-    double vx = rt_vec3_x(velocity_vec);
-    double vy = rt_vec3_y(velocity_vec);
-    double vz = rt_vec3_z(velocity_vec);
+    double vx = ph3d_finite_or(rt_vec3_x(velocity_vec), 0.0);
+    double vy = ph3d_finite_or(rt_vec3_y(velocity_vec), 0.0);
+    double vz = ph3d_finite_or(rt_vec3_z(velocity_vec), 0.0);
 
     ctrl->was_grounded = ctrl->is_grounded;
     character3d_set_ground_state(ctrl, 0, NULL);
@@ -4671,7 +4812,7 @@ void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
 /// @brief `Character3D.SetStepHeight(h)` — max obstacle height the controller can step over.
 void rt_character3d_set_step_height(void *o, double h) {
     if (o)
-        ((rt_character3d *)o)->step_height = h;
+        ((rt_character3d *)o)->step_height = ph3d_clamp_nonnegative_finite(h, 0.0);
 }
 
 /// @brief `Character3D.GetStepHeight` — read the configured step height.
@@ -4684,8 +4825,11 @@ double rt_character3d_get_step_height(void *o) {
 /// Stored as `cos(angle)` to make the per-step "is this surface walkable"
 /// test a single comparison (no trig in the hot path).
 void rt_character3d_set_slope_limit(void *o, double degrees) {
-    if (o)
+    if (o) {
+        degrees = ph3d_finite_or(degrees, 45.0);
+        degrees = clampd(degrees, 0.0, 89.9);
         ((rt_character3d *)o)->slope_limit_cos = cos(degrees * 3.14159265358979323846 / 180.0);
+    }
 }
 
 /// @brief `Character3D.SetWorld(world)` — bind the character to a physics world.

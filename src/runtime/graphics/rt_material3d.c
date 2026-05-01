@@ -190,6 +190,7 @@ static void material_init_defaults(rt_material3d *mat) {
     mat->alpha = 1.0;
     mat->alpha_cutoff = 0.5;
     mat->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+    mat->alpha_mode_auto = 0;
     material_init_texture_slots(mat);
     mat->env_map = NULL;
     mat->reflectivity = 0.0;
@@ -245,6 +246,7 @@ static void *material_clone_like(void *obj) {
     dst->alpha = src->alpha;
     dst->alpha_cutoff = src->alpha_cutoff;
     dst->alpha_mode = src->alpha_mode;
+    dst->alpha_mode_auto = src->alpha_mode_auto;
     dst->texture_wrap_s = src->texture_wrap_s;
     dst->texture_wrap_t = src->texture_wrap_t;
     dst->texture_filter = src->texture_filter;
@@ -492,8 +494,14 @@ void rt_material3d_set_alpha(void *obj, double alpha) {
         return;
     rt_material3d *mat = (rt_material3d *)obj;
     mat->alpha = clamp01(alpha);
-    if (mat->alpha < 0.999 && mat->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE)
+    if (mat->alpha < 0.999 && mat->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE) {
         mat->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_BLEND;
+        mat->alpha_mode_auto = 1;
+    } else if (mat->alpha >= 0.999 && mat->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND &&
+               mat->alpha_mode_auto) {
+        mat->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+        mat->alpha_mode_auto = 0;
+    }
 }
 
 /// @brief Get the current transparency level of the material.
@@ -647,6 +655,7 @@ void rt_material3d_set_alpha_mode(void *obj, int64_t mode) {
     if (mode < RT_MATERIAL3D_ALPHA_MODE_OPAQUE || mode > RT_MATERIAL3D_ALPHA_MODE_BLEND)
         mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
     ((rt_material3d *)obj)->alpha_mode = (int32_t)mode;
+    ((rt_material3d *)obj)->alpha_mode_auto = 0;
 }
 
 /// @brief Read the alpha mode (default OPAQUE).

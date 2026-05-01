@@ -319,7 +319,8 @@ void rt_light3d_set_intensity(void *obj, double intensity);
 void rt_light3d_set_color(void *obj, double r, double g, double b);
 
 /// @brief Register a temporary buffer to be freed at the end of the current frame.
-void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
+/// @return 1 when ownership transfers to the canvas, 0 when the caller still owns `buffer`.
+int rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
 
 /* Screen-space HUD overlay */
 /// @brief Draw a screen-space filled rectangle as a HUD element.

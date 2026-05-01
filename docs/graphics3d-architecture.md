@@ -75,11 +75,20 @@ fallbacks, so they remain stable if backend names or platform selection change.
 Graphics3D clamps public numeric state before it enters renderer-facing structs. `Canvas3D` clamps
 clear, ambient, fog, and frame-delta inputs before they reach backend color state or camera shake.
 `Camera3D` rejects non-finite projection, `LookAt`, orbit, FPS, shake, and follow inputs so
-view/projection matrices and picking rays stay finite. `Light3D` clamps colors, intensities,
-attenuations, spot angles, and fallback directions before the light list is copied into backend
-parameters. `PostFX3D` bounds every effect parameter and exports the sanitized ordered chain,
-including bloom pass counts, to GPU backends. These guards are intentionally in the runtime classes
-instead of individual backends so
+view/projection matrices and picking rays stay finite. `SceneNode3D` and `Transform3D` sanitize TRS
+components, normalize quaternions, and keep LOD distances non-negative; node animation clips reject
+non-finite samples and non-increasing key times before they reach the sampler. `Collider3D` sanitizes
+primitive dimensions and heightfield scales, rejects compound-child cycles, and guards heightfield
+allocation sizes. `Physics3D` keeps world gravity, time steps, body motion state, damping, impulses,
+and character-controller settings finite before they feed integration and broadphase code; capsule
+primitive narrow-phase uses the body's quaternion orientation when deriving its world-space axis.
+`Mesh3D` rejects invalid procedural dimensions, non-finite OBJ attributes, and overflowing OBJ face
+indices; generated UV spheres avoid zero-area pole triangles. `Particles3D` bounds emitter ranges,
+rates, alpha, spread, shape, and update time. `InstanceBatch3D` stores only finite matrix elements
+for culling and backend submission. `Light3D` clamps colors, intensities, attenuations, spot angles,
+and fallback directions before the light list is copied into backend parameters. `PostFX3D` bounds
+every effect parameter and exports the sanitized ordered chain, including bloom pass counts, to GPU
+backends. These guards are intentionally in the runtime classes instead of individual backends so
 software, Metal, D3D11, and OpenGL receive the same clean state.
 
 ### Metal Window Presentation Model
@@ -121,6 +130,7 @@ GPU backends now treat `RenderTarget3D` color buffers as lazily synchronized CPU
 - [`rt_rendertarget3d_as_pixels()`](/Users/stephen/git/viper/src/runtime/graphics/rt_rendertarget3d.c) and [`rt_canvas3d_screenshot()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d_overlay.c) call the backend-owned sync hook only when CPU pixels are actually requested
 - [`rt_canvas3d_begin()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c) synchronizes the camera's effective projection aspect against the active output size before `begin_frame`, so window resizes and RTT passes share the correct frustum
 - while a render target is bound, Canvas3D overlay sizing, screenshots, and `Width`/`Height` queries follow the active target dimensions instead of the window dimensions
+- `SetRenderTarget` and `ResetRenderTarget` are rejected while `Canvas3D` is inside `Begin`/`End`, so all queued draws in a frame flush to one consistent output
 - `RenderTarget3D.NewHdr()` keeps the GPU color attachment in `RGBA16F` on GPU backends; backend sync hooks now fill both a `Pixels`-compatible tonemapped RGBA8 mirror and a linear RGBA32F CPU mirror so CPU-supported render-target postfx can operate before final `AsPixels()` conversion
 - this avoids unconditional GPU stalls on RTT-heavy frames while preserving the `RenderTarget3D.AsPixels()` contract
 
@@ -398,7 +408,7 @@ When a node is bound to an `AnimController3D`, the draw path forwards the contro
 Bone palette computation (per-frame, in `compute_bone_palette`):
 
 1. Start with bind pose for all bones (local transforms)
-2. Override with sampled animation channels (keyframe interpolation: SLERP for rotation, lerp for position/scale)
+2. Override with sampled animation channels (keyframes are kept sorted by time; interpolation uses SLERP for rotation and lerp for position/scale)
 3. Optional crossfade: blend local transforms between outgoing and incoming animations
 4. Two-phase global computation:
    - Phase 1: compute global transforms (`globals[i] = globals[parent] * local[i]`) — requires topological order

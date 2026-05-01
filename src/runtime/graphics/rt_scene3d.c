@@ -45,6 +45,7 @@
 #include "vgfx3d_frustum.h"
 
 #include <float.h>
+#include <limits.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -61,6 +62,14 @@ static void scene3d_release_ref(void **slot) {
     if (rt_obj_release_check0(*slot))
         rt_obj_free(*slot);
     *slot = NULL;
+}
+
+static double scene3d_finite_or(double value, double fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
+static double scene3d_scale_or_unit(double value) {
+    return isfinite(value) ? value : 1.0;
 }
 
 extern void *rt_anim_controller3d_consume_root_motion_rotation(void *obj);
@@ -145,6 +154,39 @@ static int node_animation_reserve_channels(rt_node_animation3d *anim, int32_t ne
     return 1;
 }
 
+static int node_animation_validate_channel_data(int64_t path,
+                                                int64_t key_count,
+                                                int64_t value_width,
+                                                const double *times,
+                                                const float *values,
+                                                const float *in_tangents,
+                                                const float *out_tangents,
+                                                int cubic) {
+    int64_t min_width = 1;
+    if (path == RT_NODE_ANIM_PATH_TRANSLATION || path == RT_NODE_ANIM_PATH_SCALE)
+        min_width = 3;
+    else if (path == RT_NODE_ANIM_PATH_ROTATION)
+        min_width = 4;
+    if (value_width < min_width)
+        return 0;
+    for (int64_t i = 0; i < key_count; i++) {
+        if (!isfinite(times[i]))
+            return 0;
+        if (i > 0 && times[i] <= times[i - 1])
+            return 0;
+    }
+    if ((uint64_t)key_count > SIZE_MAX / (uint64_t)value_width)
+        return 0;
+    size_t value_count = (size_t)key_count * (size_t)value_width;
+    for (size_t i = 0; i < value_count; i++) {
+        if (!isfinite(values[i]))
+            return 0;
+        if (cubic && (!isfinite(in_tangents[i]) || !isfinite(out_tangents[i])))
+            return 0;
+    }
+    return 1;
+}
+
 /// @brief Add one channel (one animated property on one target node) to an animation
 ///        clip, taking defensive copies of the sample data.
 /// @details Validation the caller doesn't have to repeat:
@@ -181,6 +223,15 @@ static int64_t node_animation_add_channel_impl(void *obj,
     if (path < RT_NODE_ANIM_PATH_TRANSLATION || path > RT_NODE_ANIM_PATH_WEIGHTS)
         return -1;
     if (key_count > INT32_MAX || value_width > INT32_MAX)
+        return -1;
+    if (!node_animation_validate_channel_data(path,
+                                              key_count,
+                                              value_width,
+                                              times,
+                                              values,
+                                              in_tangents,
+                                              out_tangents,
+                                              interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE))
         return -1;
     value_count = (size_t)key_count * (size_t)value_width;
     if (value_count > SIZE_MAX / sizeof(float))
@@ -432,8 +483,12 @@ static void quat_normalize_local(double *q) {
     double inv_len;
     if (!q)
         return;
+    if (!isfinite(q[0]) || !isfinite(q[1]) || !isfinite(q[2]) || !isfinite(q[3])) {
+        quat_identity(q);
+        return;
+    }
     len_sq = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
-    if (len_sq < 1e-20) {
+    if (!isfinite(len_sq) || len_sq < 1e-20) {
         quat_identity(q);
         return;
     }
@@ -818,9 +873,9 @@ static void node_anim_apply_channel(rt_scene_node3d *root,
             break;
         case RT_NODE_ANIM_PATH_SCALE:
             if (width >= 3) {
-                target->scale_xyz[0] = values[0];
-                target->scale_xyz[1] = values[1];
-                target->scale_xyz[2] = values[2];
+                target->scale_xyz[0] = scene3d_scale_or_unit(values[0]);
+                target->scale_xyz[1] = scene3d_scale_or_unit(values[1]);
+                target->scale_xyz[2] = scene3d_scale_or_unit(values[2]);
                 mark_dirty(target);
             }
             break;
@@ -1487,9 +1542,9 @@ void rt_scene_node3d_set_position(void *obj, double x, double y, double z) {
     if (!obj)
         return;
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
-    n->position[0] = x;
-    n->position[1] = y;
-    n->position[2] = z;
+    n->position[0] = scene3d_finite_or(x, 0.0);
+    n->position[1] = scene3d_finite_or(y, 0.0);
+    n->position[2] = scene3d_finite_or(z, 0.0);
     mark_dirty(n);
 }
 
@@ -1527,9 +1582,9 @@ void rt_scene_node3d_set_scale(void *obj, double x, double y, double z) {
     if (!obj)
         return;
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
-    n->scale_xyz[0] = x;
-    n->scale_xyz[1] = y;
-    n->scale_xyz[2] = z;
+    n->scale_xyz[0] = scene3d_scale_or_unit(x);
+    n->scale_xyz[1] = scene3d_scale_or_unit(y);
+    n->scale_xyz[2] = scene3d_scale_or_unit(z);
     mark_dirty(n);
 }
 
@@ -1727,7 +1782,7 @@ void *rt_scene_node3d_get_light(void *obj) {
 /// @brief Toggle whether this node participates in rendering.
 void rt_scene_node3d_set_visible(void *obj, int8_t visible) {
     if (obj)
-        ((rt_scene_node3d *)obj)->visible = visible;
+        ((rt_scene_node3d *)obj)->visible = visible ? 1 : 0;
 }
 
 /// @brief Read the visibility flag (0 or 1; 0 if `obj` is NULL).
@@ -2118,9 +2173,20 @@ void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh) {
     if (!obj || !mesh)
         return;
     rt_scene_node3d *node = (rt_scene_node3d *)obj;
+    distance = scene3d_finite_or(distance, 0.0);
+    if (distance < 0.0)
+        distance = 0.0;
 
     if (node->lod_count >= node->lod_capacity) {
+        if (node->lod_capacity >= INT32_MAX / 2) {
+            rt_trap("SceneNode3D.AddLOD: too many LOD levels");
+            return;
+        }
         int32_t new_cap = node->lod_capacity < 4 ? 4 : node->lod_capacity * 2;
+        if ((size_t)new_cap > SIZE_MAX / sizeof(node->lod_levels[0])) {
+            rt_trap("SceneNode3D.AddLOD: LOD allocation overflow");
+            return;
+        }
         void *tmp = realloc(node->lod_levels, (size_t)new_cap * sizeof(node->lod_levels[0]));
         if (!tmp)
             return;

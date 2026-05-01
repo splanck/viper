@@ -26,6 +26,9 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 extern void *rt_quat_new(double x, double y, double z, double w);
+extern double rt_quat_x(void *q);
+extern double rt_quat_y(void *q);
+extern double rt_quat_z(void *q);
 extern double rt_quat_w(void *q);
 extern void *rt_mat4_new(double m0,
                          double m1,
@@ -141,6 +144,41 @@ static void test_transform_dirty_flag() {
     (void)mat1;
 }
 
+static void test_transform_sanitizes_nonfinite_inputs() {
+    void *xf = rt_transform3d_new();
+    rt_transform3d_set_position(xf, NAN, 2.0, INFINITY);
+    void *pos = rt_transform3d_get_position(xf);
+    EXPECT_NEAR(rt_vec3_x(pos), 0.0, 0.01, "Transform non-finite pos X falls back to 0");
+    EXPECT_NEAR(rt_vec3_y(pos), 2.0, 0.01, "Transform finite pos Y is preserved");
+    EXPECT_NEAR(rt_vec3_z(pos), 0.0, 0.01, "Transform non-finite pos Z falls back to 0");
+
+    rt_transform3d_set_scale(xf, NAN, -2.0, INFINITY);
+    void *scale = rt_transform3d_get_scale(xf);
+    EXPECT_NEAR(rt_vec3_x(scale), 1.0, 0.01, "Transform non-finite scale X falls back to 1");
+    EXPECT_NEAR(rt_vec3_y(scale), -2.0, 0.01, "Transform finite negative scale is preserved");
+    EXPECT_NEAR(rt_vec3_z(scale), 1.0, 0.01, "Transform non-finite scale Z falls back to 1");
+
+    rt_transform3d_set_rotation(xf, rt_quat_new(NAN, 0.0, 0.0, 0.0));
+    void *rot = rt_transform3d_get_rotation(xf);
+    EXPECT_NEAR(rt_quat_x(rot), 0.0, 0.01, "Transform invalid quaternion resets X");
+    EXPECT_NEAR(rt_quat_y(rot), 0.0, 0.01, "Transform invalid quaternion resets Y");
+    EXPECT_NEAR(rt_quat_z(rot), 0.0, 0.01, "Transform invalid quaternion resets Z");
+    EXPECT_NEAR(rt_quat_w(rot), 1.0, 0.01, "Transform invalid quaternion resets W");
+
+    rt_transform3d_translate(xf, rt_vec3_new(INFINITY, 3.0, NAN));
+    pos = rt_transform3d_get_position(xf);
+    EXPECT_NEAR(rt_vec3_x(pos), 0.0, 0.01, "Transform translate ignores non-finite X delta");
+    EXPECT_NEAR(rt_vec3_y(pos), 5.0, 0.01, "Transform translate applies finite Y delta");
+    EXPECT_NEAR(rt_vec3_z(pos), 0.0, 0.01, "Transform translate ignores non-finite Z delta");
+
+    rt_transform3d_set_euler(xf, NAN, INFINITY, 0.0);
+    void *mat = rt_transform3d_get_matrix(xf);
+    for (int r = 0; r < 4; ++r)
+        for (int c = 0; c < 4; ++c)
+            EXPECT_TRUE(std::isfinite(rt_mat4_get(mat, r, c)),
+                        "Transform matrix stays finite after invalid Euler input");
+}
+
 /*==========================================================================
  * Path3D tests
  *=========================================================================*/
@@ -230,6 +268,7 @@ int main() {
     test_transform_translate();
     test_transform_euler();
     test_transform_dirty_flag();
+    test_transform_sanitizes_nonfinite_inputs();
 
     /* Path3D */
     test_path_linear();

@@ -24,7 +24,9 @@
 #include "rt_transform3d.h"
 #include <cassert>
 #include <cmath>
+#include <csetjmp>
 #include <cstdio>
+#include <cstring>
 
 extern "C" {
 extern void *rt_vec3_new(double x, double y, double z);
@@ -37,6 +39,19 @@ static int tests_passed = 0;
 static int tests_run = 0;
 static const double TEST_PI = 3.14159265358979323846;
 
+namespace {
+static std::jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_expect_trap = false;
+} // namespace
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_expect_trap)
+        std::longjmp(g_trap_jmp, 1);
+    rt_abort(msg);
+}
+
 #define EXPECT_TRUE(cond, msg)                                                                     \
     do {                                                                                           \
         tests_run++;                                                                               \
@@ -46,6 +61,19 @@ static const double TEST_PI = 3.14159265358979323846;
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
+
+template <typename Fn>
+static bool expect_trap_contains(Fn &&fn, const char *needle) {
+    g_last_trap = nullptr;
+    g_expect_trap = true;
+    if (setjmp(g_trap_jmp) == 0) {
+        fn();
+        g_expect_trap = false;
+        return false;
+    }
+    g_expect_trap = false;
+    return g_last_trap && (!needle || std::strstr(g_last_trap, needle) != nullptr);
+}
 
 #define EXPECT_NEAR(a, b, eps, msg)                                                                \
     do {                                                                                           \
@@ -114,6 +142,34 @@ static void test_wrapper_constructors_assign_colliders() {
                 "Capsule wrapper assigns capsule collider");
 }
 
+static void test_collider_constructors_sanitize_nonfinite_dimensions() {
+    double half_extents[3];
+    double mn[3], mx[3];
+    void *box = rt_collider3d_new_box(NAN, -2.0, INFINITY);
+    rt_collider3d_get_box_half_extents_raw(box, half_extents);
+    EXPECT_NEAR(half_extents[0], 0.0, 0.001, "Box collider NaN half extent becomes zero");
+    EXPECT_NEAR(half_extents[1], 2.0, 0.001, "Box collider negative half extent becomes positive");
+    EXPECT_NEAR(half_extents[2], 0.0, 0.001, "Box collider infinite half extent becomes zero");
+
+    void *sphere = rt_collider3d_new_sphere(NAN);
+    EXPECT_NEAR(rt_collider3d_get_radius_raw(sphere), 0.0, 0.001, "Sphere collider NaN radius becomes zero");
+
+    void *capsule = rt_collider3d_new_capsule(INFINITY, NAN);
+    EXPECT_NEAR(rt_collider3d_get_radius_raw(capsule), 0.0, 0.001, "Capsule infinite radius becomes zero");
+    EXPECT_NEAR(rt_collider3d_get_height_raw(capsule), 0.0, 0.001, "Capsule NaN height becomes zero");
+
+    void *pixels = rt_pixels_new(2, 2);
+    rt_pixels_set(pixels, 0, 0, encode_height16(0));
+    rt_pixels_set(pixels, 1, 0, encode_height16(65535));
+    rt_pixels_set(pixels, 0, 1, encode_height16(0));
+    rt_pixels_set(pixels, 1, 1, encode_height16(65535));
+    void *heightfield = rt_collider3d_new_heightfield(pixels, NAN, INFINITY, -2.0);
+    rt_collider3d_get_local_bounds_raw(heightfield, mn, mx);
+    EXPECT_NEAR(mx[0], 0.5, 0.001, "Heightfield NaN X scale falls back to unit scale");
+    EXPECT_NEAR(mx[1], 1.0, 0.001, "Heightfield infinite Y scale falls back to unit scale");
+    EXPECT_NEAR(mx[2], 1.0, 0.001, "Heightfield negative Z scale uses absolute value");
+}
+
 static void test_mesh_collider_attaches_to_static_body() {
     void *mesh = rt_mesh3d_new_box(4.0, 1.0, 4.0);
     void *mesh_collider = rt_collider3d_new_mesh(mesh);
@@ -170,6 +226,44 @@ static void test_body_material_coefficients_are_sanitized() {
     EXPECT_NEAR(rt_body3d_get_friction(b), 0.0, 0.001, "NaN friction clamps to zero");
     rt_body3d_set_friction(b, 2.5);
     EXPECT_NEAR(rt_body3d_get_friction(b), 2.5, 0.001, "Finite friction is preserved");
+}
+
+static void test_body_sanitizes_nonfinite_motion_state() {
+    void *static_body = rt_body3d_new(NAN);
+    EXPECT_NEAR(rt_body3d_get_mass(static_body), 0.0, 0.001, "NaN mass becomes static zero mass");
+    EXPECT_TRUE(rt_body3d_is_static(static_body) != 0, "NaN mass body is static");
+
+    void *b = rt_body3d_new_sphere(1.0, 1.0);
+    rt_body3d_set_position(b, NAN, 2.0, INFINITY);
+    void *pos = rt_body3d_get_position(b);
+    EXPECT_NEAR(rt_vec3_x(pos), 0.0, 0.001, "Body non-finite position X falls back to 0");
+    EXPECT_NEAR(rt_vec3_y(pos), 2.0, 0.001, "Body finite position Y is preserved");
+    EXPECT_NEAR(rt_vec3_z(pos), 0.0, 0.001, "Body non-finite position Z falls back to 0");
+
+    rt_body3d_set_velocity(b, NAN, 3.0, INFINITY);
+    rt_body3d_apply_impulse(b, NAN, 2.0, INFINITY);
+    void *vel = rt_body3d_get_velocity(b);
+    EXPECT_NEAR(rt_vec3_x(vel), 0.0, 0.001, "Body non-finite velocity X falls back to 0");
+    EXPECT_NEAR(rt_vec3_y(vel), 5.0, 0.001, "Body finite velocity and impulse are applied");
+    EXPECT_NEAR(rt_vec3_z(vel), 0.0, 0.001, "Body non-finite velocity Z falls back to 0");
+
+    rt_body3d_set_angular_velocity(b, INFINITY, 4.0, NAN);
+    rt_body3d_apply_angular_impulse(b, INFINITY, 1.0, NAN);
+    void *ang = rt_body3d_get_angular_velocity(b);
+    EXPECT_NEAR(rt_vec3_x(ang), 0.0, 0.001, "Body non-finite angular velocity X falls back to 0");
+    EXPECT_TRUE(rt_vec3_y(ang) > 4.0, "Body finite angular impulse updates Y angular velocity");
+    EXPECT_NEAR(rt_vec3_z(ang), 0.0, 0.001, "Body non-finite angular velocity Z falls back to 0");
+
+    rt_body3d_set_orientation(b, rt_quat_new(NAN, 0.0, 0.0, 0.0));
+    EXPECT_NEAR(rt_quat_w(rt_body3d_get_orientation(b)),
+                1.0,
+                0.001,
+                "Body invalid quaternion resets to identity");
+
+    rt_body3d_set_linear_damping(b, INFINITY);
+    rt_body3d_set_angular_damping(b, NAN);
+    EXPECT_NEAR(rt_body3d_get_linear_damping(b), 0.0, 0.001, "Body non-finite linear damping clamps");
+    EXPECT_NEAR(rt_body3d_get_angular_damping(b), 0.0, 0.001, "Body non-finite angular damping clamps");
 }
 
 static void test_body_trigger() {
@@ -481,6 +575,26 @@ static void test_character_step_height() {
     EXPECT_NEAR(rt_character3d_get_step_height(c), 0.5, 0.01, "Step height set to 0.5");
 }
 
+static void test_character_sanitizes_motion_config() {
+    void *c = rt_character3d_new(0.5, 2.0, 80.0);
+    rt_character3d_set_step_height(c, NAN);
+    EXPECT_NEAR(rt_character3d_get_step_height(c), 0.0, 0.001, "NaN step height clamps to zero");
+    rt_character3d_set_step_height(c, -1.0);
+    EXPECT_NEAR(rt_character3d_get_step_height(c), 0.0, 0.001, "Negative step height clamps to zero");
+
+    rt_character3d_set_position(c, 1.0, 2.0, 3.0);
+    rt_character3d_move(c, rt_vec3_new(NAN, 0.0, INFINITY), 1.0);
+    void *pos = rt_character3d_get_position(c);
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(pos)) && std::isfinite(rt_vec3_y(pos)) &&
+                    std::isfinite(rt_vec3_z(pos)),
+                "Character move ignores non-finite velocity components");
+    rt_character3d_move(c, rt_vec3_new(1.0, 0.0, 0.0), NAN);
+    pos = rt_character3d_get_position(c);
+    EXPECT_TRUE(std::isfinite(rt_vec3_x(pos)) && std::isfinite(rt_vec3_y(pos)) &&
+                    std::isfinite(rt_vec3_z(pos)),
+                "Character move ignores non-finite dt");
+}
+
 static void test_character_world_binding() {
     void *w = rt_world3d_new(0, -9.81, 0);
     void *c = rt_character3d_new(0.5, 2.0, 80.0);
@@ -608,6 +722,22 @@ static void test_capsule_aabb_collision() {
     }
 }
 
+static void test_rotated_capsule_aabb_collision() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *capsule = rt_body3d_new_capsule(0.25, 4.0, 1.0);
+    void *wall = rt_body3d_new_aabb(0.25, 0.5, 0.5, 0.0);
+    void *q = rt_quat_from_axis_angle(rt_vec3_new(0.0, 0.0, 1.0), TEST_PI * 0.5);
+    rt_body3d_set_orientation(capsule, q);
+    rt_body3d_set_position(capsule, 0.0, 0.0, 0.0);
+    rt_body3d_set_position(wall, 2.1, 0.0, 0.0);
+    rt_world3d_add(world, capsule);
+    rt_world3d_add(world, wall);
+    rt_world3d_step(world, 1.0 / 60.0);
+
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) == 1,
+                "rotated capsule-aabb: oriented capsule axis participates in collision");
+}
+
 static void test_convex_hull_collider_blocks_sphere() {
     void *world = rt_world3d_new(0, 0, 0);
     void *mesh = rt_mesh3d_new_box(2.0, 2.0, 2.0);
@@ -659,6 +789,17 @@ static void test_compound_collider_child_transform_affects_contact() {
     rt_world3d_step(world, 0.016);
     EXPECT_TRUE(rt_world3d_get_collision_count(world) > 0,
                 "compound collider: child offset affects contacts");
+}
+
+static void test_compound_collider_rejects_transitive_cycle() {
+    void *a = rt_collider3d_new_compound();
+    void *b = rt_collider3d_new_compound();
+    rt_collider3d_add_child(a, b, NULL);
+    EXPECT_TRUE(rt_collider3d_get_child_count_raw(a) == 1, "Compound cycle test starts with one child");
+    EXPECT_TRUE(expect_trap_contains([&] { rt_collider3d_add_child(b, a, NULL); }, "cycle"),
+                "Compound collider rejects transitive cycles");
+    EXPECT_TRUE(rt_collider3d_get_child_count_raw(b) == 0,
+                "Rejected compound cycle does not mutate child list");
 }
 
 static void test_heightfield_collider_supports_ground_contact() {
@@ -1056,6 +1197,7 @@ int main() {
     test_body_static_zero_mass();
     test_body_new_and_set_collider();
     test_wrapper_constructors_assign_colliders();
+    test_collider_constructors_sanitize_nonfinite_dimensions();
     test_mesh_collider_attaches_to_static_body();
 
     /* Property accessors */
@@ -1064,6 +1206,7 @@ int main() {
     test_body_velocity();
     test_body_collision_layer_mask();
     test_body_material_coefficients_are_sanitized();
+    test_body_sanitizes_nonfinite_motion_state();
     test_body_trigger();
     test_body_torque_updates_angular_velocity_and_orientation();
     test_body_angular_damping();
@@ -1092,6 +1235,7 @@ int main() {
     test_character_create();
     test_character_position();
     test_character_step_height();
+    test_character_sanitizes_motion_config();
     test_character_world_binding();
     test_character_slide_against_wall();
     test_character_step_up();
@@ -1112,9 +1256,11 @@ int main() {
     test_sphere_sphere_no_overlap();
     test_aabb_sphere_collision();
     test_capsule_aabb_collision();
+    test_rotated_capsule_aabb_collision();
     test_convex_hull_collider_blocks_sphere();
     test_mesh_collider_blocks_falling_sphere();
     test_compound_collider_child_transform_affects_contact();
+    test_compound_collider_rejects_transitive_cycle();
     test_heightfield_collider_supports_ground_contact();
 
     /* Collision event queue */

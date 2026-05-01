@@ -34,7 +34,9 @@
 #include "vgfx3d_backend.h"
 #include "vgfx3d_skinning.h"
 
+#include <float.h>
 #include <math.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -364,6 +366,42 @@ static void rt_animation3d_finalize(void *obj) {
     a->channels = NULL;
 }
 
+static void animation3d_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+static void animation3d_assign_ref(void **slot, void *value) {
+    if (!slot || *slot == value)
+        return;
+    rt_obj_retain_maybe(value);
+    animation3d_release_ref(slot);
+    *slot = value;
+}
+
+static void sanitize_keyframe_quat(float *q) {
+    if (!q)
+        return;
+    if (!isfinite(q[0]) || !isfinite(q[1]) || !isfinite(q[2]) || !isfinite(q[3])) {
+        q[0] = q[1] = q[2] = 0.0f;
+        q[3] = 1.0f;
+        return;
+    }
+    float len = sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+    if (!isfinite(len) || len <= 1e-8f) {
+        q[0] = q[1] = q[2] = 0.0f;
+        q[3] = 1.0f;
+        return;
+    }
+    q[0] /= len;
+    q[1] /= len;
+    q[2] /= len;
+    q[3] /= len;
+}
+
 /// @brief Create a new empty animation clip with the given identifier and duration (seconds).
 void *rt_animation3d_new(rt_string name, double duration) {
     rt_animation3d *a = (rt_animation3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_animation3d));
@@ -385,7 +423,8 @@ void *rt_animation3d_new(rt_string name, double duration) {
     a->channels = NULL;
     a->channel_count = 0;
     a->channel_capacity = 0;
-    a->duration = (float)duration;
+    a->duration =
+        (float)((isfinite(duration) && duration > 0.0 && duration <= FLT_MAX) ? duration : 0.0);
     a->looping = 0;
     rt_obj_set_finalizer(a, rt_animation3d_finalize);
     return a;
@@ -397,9 +436,34 @@ void *rt_animation3d_new(rt_string name, double duration) {
 /// binary-search to find the correct interpolation interval.
 void rt_animation3d_add_keyframe(
     void *obj, int64_t bone_index, double time, void *position, void *rotation, void *scale) {
-    if (!obj)
+    if (!obj || bone_index < 0 || bone_index > INT32_MAX || !isfinite(time) ||
+        fabs(time) > FLT_MAX)
         return;
     rt_animation3d *a = (rt_animation3d *)obj;
+    vgfx3d_keyframe_t new_kf;
+    memset(&new_kf, 0, sizeof(new_kf));
+    new_kf.time = (float)time;
+    new_kf.position[0] =
+        position && isfinite(rt_vec3_x(position)) ? (float)rt_vec3_x(position) : 0.0f;
+    new_kf.position[1] =
+        position && isfinite(rt_vec3_y(position)) ? (float)rt_vec3_y(position) : 0.0f;
+    new_kf.position[2] =
+        position && isfinite(rt_vec3_z(position)) ? (float)rt_vec3_z(position) : 0.0f;
+    new_kf.rotation[0] =
+        rotation && isfinite(rt_quat_x(rotation)) ? (float)rt_quat_x(rotation) : 0.0f;
+    new_kf.rotation[1] =
+        rotation && isfinite(rt_quat_y(rotation)) ? (float)rt_quat_y(rotation) : 0.0f;
+    new_kf.rotation[2] =
+        rotation && isfinite(rt_quat_z(rotation)) ? (float)rt_quat_z(rotation) : 0.0f;
+    new_kf.rotation[3] =
+        rotation && isfinite(rt_quat_w(rotation)) ? (float)rt_quat_w(rotation) : 1.0f;
+    sanitize_keyframe_quat(new_kf.rotation);
+    new_kf.scale_xyz[0] =
+        scale && isfinite(rt_vec3_x(scale)) ? (float)rt_vec3_x(scale) : 1.0f;
+    new_kf.scale_xyz[1] =
+        scale && isfinite(rt_vec3_y(scale)) ? (float)rt_vec3_y(scale) : 1.0f;
+    new_kf.scale_xyz[2] =
+        scale && isfinite(rt_vec3_z(scale)) ? (float)rt_vec3_z(scale) : 1.0f;
 
     /* Find or create channel for this bone */
     vgfx3d_anim_channel_t *ch = NULL;
@@ -424,7 +488,6 @@ void rt_animation3d_add_keyframe(
         ch->bone_index = (int32_t)bone_index;
     }
 
-    /* Add keyframe */
     if (ch->keyframe_count >= ch->keyframe_capacity) {
         int32_t new_cap = ch->keyframe_capacity == 0 ? 16 : ch->keyframe_capacity * 2;
         vgfx3d_keyframe_t *nk = (vgfx3d_keyframe_t *)realloc(
@@ -435,18 +498,20 @@ void rt_animation3d_add_keyframe(
         ch->keyframe_capacity = new_cap;
     }
 
-    vgfx3d_keyframe_t *kf = &ch->keyframes[ch->keyframe_count++];
-    kf->time = (float)time;
-    kf->position[0] = position ? (float)rt_vec3_x(position) : 0.0f;
-    kf->position[1] = position ? (float)rt_vec3_y(position) : 0.0f;
-    kf->position[2] = position ? (float)rt_vec3_z(position) : 0.0f;
-    kf->rotation[0] = rotation ? (float)rt_quat_x(rotation) : 0.0f;
-    kf->rotation[1] = rotation ? (float)rt_quat_y(rotation) : 0.0f;
-    kf->rotation[2] = rotation ? (float)rt_quat_z(rotation) : 0.0f;
-    kf->rotation[3] = rotation ? (float)rt_quat_w(rotation) : 1.0f;
-    kf->scale_xyz[0] = scale ? (float)rt_vec3_x(scale) : 1.0f;
-    kf->scale_xyz[1] = scale ? (float)rt_vec3_y(scale) : 1.0f;
-    kf->scale_xyz[2] = scale ? (float)rt_vec3_z(scale) : 1.0f;
+    int32_t insert = ch->keyframe_count;
+    while (insert > 0 && ch->keyframes[insert - 1].time > new_kf.time)
+        insert--;
+    if (insert < ch->keyframe_count && ch->keyframes[insert].time == new_kf.time) {
+        ch->keyframes[insert] = new_kf;
+        return;
+    }
+    if (insert < ch->keyframe_count) {
+        memmove(&ch->keyframes[insert + 1],
+                &ch->keyframes[insert],
+                (size_t)(ch->keyframe_count - insert) * sizeof(ch->keyframes[0]));
+    }
+    ch->keyframes[insert] = new_kf;
+    ch->keyframe_count++;
 }
 
 /// @brief Mark this clip as looping (wraps back to t=0 at end) or one-shot (stops at end).
@@ -583,6 +648,9 @@ static void sample_channel_trs(
 /// @brief GC finalizer for AnimPlayer3D — release the bound skeleton/animation refs and the bone palette buffer.
 static void rt_anim_player3d_finalize(void *obj) {
     rt_anim_player3d *p = (rt_anim_player3d *)obj;
+    animation3d_release_ref((void **)&p->skeleton);
+    animation3d_release_ref((void **)&p->current);
+    animation3d_release_ref((void **)&p->crossfade_from);
     free(p->bone_palette);
     p->bone_palette = NULL;
     free(p->prev_bone_palette);
@@ -614,6 +682,7 @@ void *rt_anim_player3d_new(void *skeleton) {
     }
     p->vptr = NULL;
     p->skeleton = skel;
+    rt_obj_retain_maybe(skeleton);
     p->current = NULL;
     p->crossfade_from = NULL;
     p->current_time = 0.0f;
@@ -635,6 +704,8 @@ void *rt_anim_player3d_new(void *skeleton) {
     if (!p->bone_palette || !p->prev_bone_palette || !p->motion_palette_snapshot ||
         !p->local_transforms) {
         rt_anim_player3d_finalize(p);
+        if (rt_obj_release_check0(p))
+            rt_obj_free(p);
         rt_trap("AnimPlayer3D.New: memory allocation failed");
         return NULL;
     }
@@ -656,10 +727,10 @@ void rt_anim_player3d_play(void *obj, void *animation) {
     if (!obj)
         return;
     rt_anim_player3d *p = (rt_anim_player3d *)obj;
-    p->current = (rt_animation3d *)animation;
+    animation3d_assign_ref((void **)&p->current, animation);
     p->current_time = 0.0f;
     p->playing = animation ? 1 : 0;
-    p->crossfade_from = NULL;
+    animation3d_assign_ref((void **)&p->crossfade_from, NULL);
     p->has_prev_motion_palette = 0;
     p->last_motion_frame = 0;
 }
@@ -672,9 +743,13 @@ void rt_anim_player3d_crossfade(void *obj, void *animation, double duration) {
     if (!obj || !animation)
         return;
     rt_anim_player3d *p = (rt_anim_player3d *)obj;
-    p->crossfade_from = p->current;
+    if (!isfinite(duration) || duration <= 0.0) {
+        rt_anim_player3d_play(obj, animation);
+        return;
+    }
+    animation3d_assign_ref((void **)&p->crossfade_from, p->current);
     p->crossfade_from_time = p->current_time;
-    p->current = (rt_animation3d *)animation;
+    animation3d_assign_ref((void **)&p->current, animation);
     p->current_time = 0.0f;
     p->crossfade_time = 0.0f;
     p->crossfade_duration = (float)duration;
@@ -753,27 +828,27 @@ static void compute_bone_palette(rt_anim_player3d *p) {
                  * A row/column-major 4x4 laid out with the basis vectors in
                  * columns 0..2 and translation in column 3 decomposes as:
                  *   scale_i = length of column i
-                 *   rotation basis = column_i / scale_i
-                 *   translation = column 3
-                 * Previously this fell back to (identity rot, unit scale),
-                 * which collapsed any non-trivial bind pose toward the origin
-                 * mid-crossfade. */
+                *   rotation basis = column_i / scale_i
+                *   translation = column 3
+                * Previously this fell back to (identity rot, unit scale),
+                * which collapsed any non-trivial bind pose toward the origin
+                * mid-crossfade. */
                 const float *bp = skel->bones[bone].bind_pose_local;
-                to_pos[0] = bp[12];
-                to_pos[1] = bp[13];
-                to_pos[2] = bp[14];
-                float sx = sqrtf(bp[0] * bp[0] + bp[1] * bp[1] + bp[2] * bp[2]);
-                float sy = sqrtf(bp[4] * bp[4] + bp[5] * bp[5] + bp[6] * bp[6]);
-                float sz = sqrtf(bp[8] * bp[8] + bp[9] * bp[9] + bp[10] * bp[10]);
+                to_pos[0] = bp[3];
+                to_pos[1] = bp[7];
+                to_pos[2] = bp[11];
+                float sx = sqrtf(bp[0] * bp[0] + bp[4] * bp[4] + bp[8] * bp[8]);
+                float sy = sqrtf(bp[1] * bp[1] + bp[5] * bp[5] + bp[9] * bp[9]);
+                float sz = sqrtf(bp[2] * bp[2] + bp[6] * bp[6] + bp[10] * bp[10]);
                 to_scl[0] = sx > 1e-6f ? sx : 1.0f;
                 to_scl[1] = sy > 1e-6f ? sy : 1.0f;
                 to_scl[2] = sz > 1e-6f ? sz : 1.0f;
                 float inv_sx = 1.0f / to_scl[0];
                 float inv_sy = 1.0f / to_scl[1];
                 float inv_sz = 1.0f / to_scl[2];
-                float r00 = bp[0] * inv_sx, r01 = bp[1] * inv_sx, r02 = bp[2] * inv_sx;
-                float r10 = bp[4] * inv_sy, r11 = bp[5] * inv_sy, r12 = bp[6] * inv_sy;
-                float r20 = bp[8] * inv_sz, r21 = bp[9] * inv_sz, r22 = bp[10] * inv_sz;
+                float r00 = bp[0] * inv_sx, r01 = bp[1] * inv_sy, r02 = bp[2] * inv_sz;
+                float r10 = bp[4] * inv_sx, r11 = bp[5] * inv_sy, r12 = bp[6] * inv_sz;
+                float r20 = bp[8] * inv_sx, r21 = bp[9] * inv_sy, r22 = bp[10] * inv_sz;
                 /* Rotation matrix → quaternion (Shepperd's method) */
                 float tr = r00 + r11 + r22;
                 if (tr > 0.0f) {
@@ -883,7 +958,7 @@ void rt_anim_player3d_update(void *obj, double delta_time) {
         p->crossfade_time += (float)delta_time;
         p->crossfade_from_time += (float)(delta_time * p->speed);
         if (p->crossfade_time >= p->crossfade_duration)
-            p->crossfade_from = NULL;
+            animation3d_assign_ref((void **)&p->crossfade_from, NULL);
     }
 
     compute_bone_palette(p);
@@ -1079,7 +1154,10 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed(void *canvas,
     tmp.bone_palette = NULL;
     tmp.prev_bone_palette = NULL;
     tmp.bone_count = 0;
-    rt_canvas3d_add_temp_buffer(canvas, skinned);
+    if (!rt_canvas3d_add_temp_buffer(canvas, skinned)) {
+        free(skinned);
+        return;
+    }
     rt_canvas3d_draw_mesh_matrix_keyed(canvas, &tmp, model_matrix, material, motion_key, NULL, NULL);
 }
 

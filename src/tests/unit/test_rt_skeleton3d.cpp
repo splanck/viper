@@ -37,6 +37,7 @@ extern double rt_quat_w(void *q);
 extern void *rt_mat4_identity(void);
 extern void *rt_mat4_translate(double tx, double ty, double tz);
 extern rt_string rt_const_cstr(const char *s);
+extern int rt_obj_release_check0(void *obj);
 }
 
 static int tests_passed = 0;
@@ -110,6 +111,52 @@ static void test_animation_keyframes() {
     rt_animation3d_add_keyframe(anim, 0, 1.0, pos1, rot, scl);
     /* Keyframes stored successfully — no crash */
     EXPECT_TRUE(1, "AddKeyframe succeeds");
+}
+
+static void test_animation_keyframes_are_sorted() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *anim = rt_animation3d_new(rt_const_cstr("sorted"), 1.0);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_add_keyframe(anim, 0, 1.0, rt_vec3_new(10.0, 0.0, 0.0), rot, scl);
+    rt_animation3d_add_keyframe(anim, 0, 0.0, rt_vec3_new(0.0, 0.0, 0.0), rot, scl);
+
+    void *player = rt_anim_player3d_new(skel);
+    rt_anim_player3d_play(player, anim);
+    rt_anim_player3d_update(player, 0.5);
+
+    typedef struct {
+        double m[16];
+    } mat4_view;
+    mat4_view *mv = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
+    EXPECT_NEAR(mv->m[3], 5.0, 0.1, "Out-of-order keyframes sample at sorted midpoint");
+}
+
+static void test_anim_player_retains_inputs() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *anim = rt_animation3d_new(rt_const_cstr("held"), 1.0);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_add_keyframe(anim, 0, 0.0, rt_vec3_new(0.0, 0.0, 0.0), rot, scl);
+    rt_animation3d_add_keyframe(anim, 0, 1.0, rt_vec3_new(1.0, 0.0, 0.0), rot, scl);
+
+    void *player = rt_anim_player3d_new(skel);
+    rt_anim_player3d_play(player, anim);
+    int skel_zero = rt_obj_release_check0(skel);
+    int anim_zero = rt_obj_release_check0(anim);
+    EXPECT_TRUE(skel_zero == 0, "AnimPlayer3D retains its skeleton");
+    EXPECT_TRUE(anim_zero == 0, "AnimPlayer3D retains the current animation");
+    if (skel_zero || anim_zero)
+        return;
+    rt_anim_player3d_update(player, 0.5);
+    EXPECT_TRUE(rt_anim_player3d_get_bone_matrix(player, 0) != nullptr,
+                "AnimPlayer3D remains usable after caller releases inputs");
 }
 
 static void test_player_create() {
@@ -342,6 +389,31 @@ static void test_crossfade_basic() {
     EXPECT_TRUE(bone_mat != NULL, "crossfade: bone matrix is non-null at midpoint");
 }
 
+static void test_crossfade_falls_back_to_bind_pose_translation() {
+    void *skel = rt_skeleton3d_new();
+    rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_translate(2.0, 0.0, 0.0));
+    rt_skeleton3d_compute_inverse_bind(skel);
+
+    void *anim_a = rt_animation3d_new(rt_const_cstr("from"), 1.0);
+    void *anim_b = rt_animation3d_new(rt_const_cstr("to_bind"), 1.0);
+    void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
+    void *scl = rt_vec3_new(1.0, 1.0, 1.0);
+    rt_animation3d_add_keyframe(anim_a, 0, 0.0, rt_vec3_new(10.0, 0.0, 0.0), rot, scl);
+    rt_animation3d_add_keyframe(anim_a, 0, 1.0, rt_vec3_new(10.0, 0.0, 0.0), rot, scl);
+
+    void *player = rt_anim_player3d_new(skel);
+    rt_anim_player3d_play(player, anim_a);
+    rt_anim_player3d_crossfade(player, anim_b, 1.0);
+    rt_anim_player3d_update(player, 0.5);
+
+    typedef struct {
+        double m[16];
+    } mat4_view;
+    mat4_view *mv = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
+    EXPECT_NEAR(mv->m[3], 4.0, 0.1,
+                "Crossfade missing-channel fallback uses row-major bind-pose translation");
+}
+
 static void test_crossfade_preserves_structure() {
     EXPECT_TRUE(1, "crossfade: TRS blend preserves matrix orthogonality (compile check)");
     /* This test ensures the crossfade code path compiles and runs
@@ -355,6 +427,8 @@ int main() {
     test_skeleton_find_bone();
     test_animation_create();
     test_animation_keyframes();
+    test_animation_keyframes_are_sorted();
+    test_anim_player_retains_inputs();
     test_player_create();
     test_player_playback();
     test_player_loop();
@@ -366,6 +440,7 @@ int main() {
 
     /* Crossfade tests */
     test_crossfade_basic();
+    test_crossfade_falls_back_to_bind_pose_translation();
     test_crossfade_preserves_structure();
 
     printf("Skeleton3D tests: %d/%d passed\n", tests_passed, tests_run);

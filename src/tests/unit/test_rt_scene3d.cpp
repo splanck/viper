@@ -44,6 +44,7 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 extern rt_string rt_const_cstr(const char *s);
+extern void *rt_quat_new(double x, double y, double z, double w);
 extern void *rt_quat_from_euler(double pitch, double yaw, double roll);
 extern double rt_quat_x(void *q);
 extern double rt_quat_y(void *q);
@@ -385,6 +386,40 @@ static void test_default_transform() {
 
     void *rot = rt_scene_node3d_get_rotation(node);
     EXPECT_NEAR(rt_quat_w(rot), 1.0, 0.001, "Default rotation W = 1 (identity)");
+}
+
+static void test_node_sanitizes_nonfinite_transform_and_lod() {
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+
+    rt_scene_node3d_set_position(node, NAN, 3.0, INFINITY);
+    void *pos = rt_scene_node3d_get_position(node);
+    EXPECT_NEAR(rt_vec3_x(pos), 0.0, 0.001, "SceneNode non-finite position X falls back to 0");
+    EXPECT_NEAR(rt_vec3_y(pos), 3.0, 0.001, "SceneNode finite position Y is preserved");
+    EXPECT_NEAR(rt_vec3_z(pos), 0.0, 0.001, "SceneNode non-finite position Z falls back to 0");
+
+    rt_scene_node3d_set_scale(node, NAN, -2.0, INFINITY);
+    void *scale = rt_scene_node3d_get_scale(node);
+    EXPECT_NEAR(rt_vec3_x(scale), 1.0, 0.001, "SceneNode non-finite scale X falls back to 1");
+    EXPECT_NEAR(rt_vec3_y(scale), -2.0, 0.001, "SceneNode finite negative scale is preserved");
+    EXPECT_NEAR(rt_vec3_z(scale), 1.0, 0.001, "SceneNode non-finite scale Z falls back to 1");
+
+    rt_scene_node3d_set_rotation(node, rt_quat_new(NAN, 0.0, 0.0, 0.0));
+    void *rot = rt_scene_node3d_get_rotation(node);
+    EXPECT_NEAR(rt_quat_x(rot), 0.0, 0.001, "SceneNode invalid quaternion resets X");
+    EXPECT_NEAR(rt_quat_y(rot), 0.0, 0.001, "SceneNode invalid quaternion resets Y");
+    EXPECT_NEAR(rt_quat_z(rot), 0.0, 0.001, "SceneNode invalid quaternion resets Z");
+    EXPECT_NEAR(rt_quat_w(rot), 1.0, 0.001, "SceneNode invalid quaternion resets W");
+
+    rt_scene_node3d_set_visible(node, 42);
+    EXPECT_TRUE(rt_scene_node3d_get_visible(node) == 1, "SceneNode visibility normalizes to bool");
+
+    rt_scene_node3d_add_lod(node, NAN, mesh);
+    EXPECT_TRUE(rt_scene_node3d_get_lod_count(node) == 1, "SceneNode accepts sanitized LOD");
+    EXPECT_NEAR(rt_scene_node3d_get_lod_distance(node, 0),
+                0.0,
+                0.001,
+                "SceneNode non-finite LOD distance clamps to zero");
 }
 
 /*==========================================================================
@@ -957,6 +992,54 @@ static void test_node_animator_slerps_linear_rotation_channels() {
     EXPECT_NEAR(rt_quat_w(rot), 0.98079, 0.001, "Node animation uses quaternion slerp for rotation W");
 }
 
+static void test_node_animation_rejects_invalid_channel_data() {
+    void *anim = rt_node_animation3d_new(rt_const_cstr("invalid"), 1.0);
+    double unsorted_times[2] = {1.0, 0.0};
+    double valid_times[2] = {0.0, 1.0};
+    float translation_values[6] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    float bad_values[6] = {0.0f, 0.0f, 0.0f, NAN, 0.0f, 0.0f};
+    float tangent_values[6] = {};
+    float bad_tangents[6] = {0.0f, INFINITY, 0.0f, 0.0f, 0.0f, 0.0f};
+
+    EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
+                                                rt_const_cstr("target"),
+                                                RT_NODE_ANIM_PATH_TRANSLATION,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                3,
+                                                unsorted_times,
+                                                translation_values) < 0,
+                "Node animation rejects unsorted key times");
+    EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
+                                                rt_const_cstr("target"),
+                                                RT_NODE_ANIM_PATH_TRANSLATION,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                3,
+                                                valid_times,
+                                                bad_values) < 0,
+                "Node animation rejects non-finite values");
+    EXPECT_TRUE(rt_node_animation3d_add_channel(anim,
+                                                rt_const_cstr("target"),
+                                                RT_NODE_ANIM_PATH_TRANSLATION,
+                                                RT_NODE_ANIM_INTERP_LINEAR,
+                                                2,
+                                                2,
+                                                valid_times,
+                                                translation_values) < 0,
+                "Node animation rejects translation channels narrower than xyz");
+    EXPECT_TRUE(rt_node_animation3d_add_cubic_channel(anim,
+                                                      rt_const_cstr("target"),
+                                                      RT_NODE_ANIM_PATH_TRANSLATION,
+                                                      2,
+                                                      3,
+                                                      valid_times,
+                                                      translation_values,
+                                                      bad_tangents,
+                                                      tangent_values) < 0,
+                "Node animation rejects non-finite cubic tangents");
+}
+
 static void test_frustum_aabb_inside() {
     /* Object at origin, camera looking at it → visible (not culled) */
     void *scene = rt_scene3d_new();
@@ -1261,6 +1344,7 @@ int main() {
     test_clear();
     test_get_child();
     test_default_transform();
+    test_node_sanitizes_nonfinite_transform_and_lod();
 
     /* Frustum culling */
     test_frustum_aabb_inside();
@@ -1280,6 +1364,7 @@ int main() {
     test_node_animator_handles_large_morph_weight_channels();
     test_node_animator_samples_cubic_translation_channels();
     test_node_animator_slerps_linear_rotation_channels();
+    test_node_animation_rejects_invalid_channel_data();
     test_scene_draw_includes_node_attached_lights();
     test_scene_roundtrip_preserves_node_lights();
 

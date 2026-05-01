@@ -225,6 +225,10 @@ void rt_canvas3d_set_render_target(void *canvas, void *target) {
     if (!canvas)
         return;
     rt_canvas3d *c = (rt_canvas3d *)canvas;
+    if (c->in_frame) {
+        rt_trap("Canvas3D.SetRenderTarget: cannot change render targets during a frame");
+        return;
+    }
     if (!target) {
         rt_canvas3d_reset_render_target(canvas);
         return;
@@ -247,6 +251,10 @@ void rt_canvas3d_reset_render_target(void *canvas) {
     if (!canvas)
         return;
     rt_canvas3d *c = (rt_canvas3d *)canvas;
+    if (c->in_frame) {
+        rt_trap("Canvas3D.ResetRenderTarget: cannot change render targets during a frame");
+        return;
+    }
 
     if (c->backend && c->backend->set_render_target)
         c->backend->set_render_target(c->backend_ctx, NULL);

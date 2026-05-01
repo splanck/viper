@@ -91,6 +91,21 @@ static double clampd(double value, double lo, double hi) {
     return value;
 }
 
+static double collider3d_extent_or_zero(double value) {
+    return isfinite(value) ? fabs(value) : 0.0;
+}
+
+static double collider3d_scale_or_unit(double value) {
+    if (!isfinite(value))
+        return 1.0;
+    value = fabs(value);
+    return value > 1e-12 ? value : 1.0;
+}
+
+static double collider3d_transform_component_or(double value, double fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
 /// @brief Set a quaternion to the identity rotation `(0, 0, 0, 1)` — no rotation.
 /// @details Layout is `(x, y, z, w)` with `w` as the scalar part. Used
 ///          to initialize child transforms before reading from a real
@@ -100,6 +115,25 @@ static void quat_identity(double *q) {
     q[1] = 0.0;
     q[2] = 0.0;
     q[3] = 1.0;
+}
+
+static void quat_normalize_local(double *q) {
+    if (!q)
+        return;
+    if (!isfinite(q[0]) || !isfinite(q[1]) || !isfinite(q[2]) || !isfinite(q[3])) {
+        quat_identity(q);
+        return;
+    }
+    double len_sq = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+    if (!isfinite(len_sq) || len_sq < 1e-24) {
+        quat_identity(q);
+        return;
+    }
+    double inv_len = 1.0 / sqrt(len_sq);
+    q[0] *= inv_len;
+    q[1] *= inv_len;
+    q[2] *= inv_len;
+    q[3] *= inv_len;
 }
 
 /// @brief Hamilton quaternion product `out = a * b`.
@@ -270,13 +304,33 @@ static void collider3d_set_from_transform(rt_collider3d_child *dst, void *transf
         return;
     {
         rt_transform3d_view *xf = (rt_transform3d_view *)transform_obj;
-        vec3_copy(dst->position, xf->position);
-        vec3_copy(dst->scale, xf->scale);
+        dst->position[0] = collider3d_transform_component_or(xf->position[0], 0.0);
+        dst->position[1] = collider3d_transform_component_or(xf->position[1], 0.0);
+        dst->position[2] = collider3d_transform_component_or(xf->position[2], 0.0);
+        dst->scale[0] = collider3d_transform_component_or(xf->scale[0], 1.0);
+        dst->scale[1] = collider3d_transform_component_or(xf->scale[1], 1.0);
+        dst->scale[2] = collider3d_transform_component_or(xf->scale[2], 1.0);
         dst->rotation[0] = xf->rotation[0];
         dst->rotation[1] = xf->rotation[1];
         dst->rotation[2] = xf->rotation[2];
         dst->rotation[3] = xf->rotation[3];
+        quat_normalize_local(dst->rotation);
     }
+}
+
+static int collider3d_contains_child(rt_collider3d *root, rt_collider3d *needle) {
+    if (!root || !needle || root->type != RT_COLLIDER3D_TYPE_COMPOUND)
+        return 0;
+    for (int32_t i = 0; i < root->child_count; ++i) {
+        rt_collider3d *child = (rt_collider3d *)root->children[i];
+        if (!child)
+            continue;
+        if (child == needle)
+            return 1;
+        if (collider3d_contains_child(child, needle))
+            return 1;
+    }
+    return 0;
 }
 
 /// @brief Recompute the collider's local-space AABB based on its shape parameters.
@@ -396,9 +450,9 @@ void *rt_collider3d_new_box(double hx, double hy, double hz) {
     rt_collider3d *collider = collider3d_alloc(RT_COLLIDER3D_TYPE_BOX);
     if (!collider)
         return NULL;
-    collider->half_extents[0] = fabs(hx);
-    collider->half_extents[1] = fabs(hy);
-    collider->half_extents[2] = fabs(hz);
+    collider->half_extents[0] = collider3d_extent_or_zero(hx);
+    collider->half_extents[1] = collider3d_extent_or_zero(hy);
+    collider->half_extents[2] = collider3d_extent_or_zero(hz);
     collider3d_recompute_bounds(collider);
     return collider;
 }
@@ -408,7 +462,7 @@ void *rt_collider3d_new_sphere(double radius) {
     rt_collider3d *collider = collider3d_alloc(RT_COLLIDER3D_TYPE_SPHERE);
     if (!collider)
         return NULL;
-    collider->radius = fabs(radius);
+    collider->radius = collider3d_extent_or_zero(radius);
     collider3d_recompute_bounds(collider);
     return collider;
 }
@@ -419,8 +473,8 @@ void *rt_collider3d_new_capsule(double radius, double height) {
     rt_collider3d *collider = collider3d_alloc(RT_COLLIDER3D_TYPE_CAPSULE);
     if (!collider)
         return NULL;
-    collider->radius = fabs(radius);
-    collider->height = fabs(height);
+    collider->radius = collider3d_extent_or_zero(radius);
+    collider->height = collider3d_extent_or_zero(height);
     collider3d_recompute_bounds(collider);
     return collider;
 }
@@ -480,8 +534,12 @@ void *rt_collider3d_new_heightfield(
     width = rt_pixels_width(heightmap);
     height = rt_pixels_height(heightmap);
     raw = rt_pixels_raw_buffer(heightmap);
-    if (width < 2 || height < 2 || !raw) {
+    if (width < 2 || height < 2 || width > INT32_MAX || height > INT32_MAX || !raw) {
         rt_trap("Collider3D.NewHeightfield: heightmap must be a valid Pixels object");
+        return NULL;
+    }
+    if ((uint64_t)width > SIZE_MAX / (uint64_t)height / sizeof(float)) {
+        rt_trap("Collider3D.NewHeightfield: heightmap is too large");
         return NULL;
     }
     collider = collider3d_alloc(RT_COLLIDER3D_TYPE_HEIGHTFIELD);
@@ -490,9 +548,9 @@ void *rt_collider3d_new_heightfield(
     collider->static_only = 1;
     collider->heightfield_width = (int32_t)width;
     collider->heightfield_depth = (int32_t)height;
-    collider->heightfield_scale[0] = fabs(scale_x);
-    collider->heightfield_scale[1] = fabs(scale_y);
-    collider->heightfield_scale[2] = fabs(scale_z);
+    collider->heightfield_scale[0] = collider3d_scale_or_unit(scale_x);
+    collider->heightfield_scale[1] = collider3d_scale_or_unit(scale_y);
+    collider->heightfield_scale[2] = collider3d_scale_or_unit(scale_z);
     collider->heightfield_heights =
         (float *)calloc((size_t)(width * height), sizeof(float));
     if (!collider->heightfield_heights) {
@@ -554,10 +612,23 @@ void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_tr
         rt_trap("Collider3D.AddChild: a collider cannot contain itself");
         return;
     }
+    if (collider3d_contains_child((rt_collider3d *)child_obj, compound)) {
+        rt_trap("Collider3D.AddChild: adding this child would create a cycle");
+        return;
+    }
     if (compound->child_count >= compound->child_capacity) {
         void **new_children;
         rt_collider3d_child *new_transforms;
+        if (compound->child_capacity >= INT32_MAX / 2) {
+            rt_trap("Collider3D.AddChild: too many children");
+            return;
+        }
         new_capacity = compound->child_capacity > 0 ? compound->child_capacity * 2 : 4;
+        if ((size_t)new_capacity > SIZE_MAX / sizeof(void *) ||
+            (size_t)new_capacity > SIZE_MAX / sizeof(rt_collider3d_child)) {
+            rt_trap("Collider3D.AddChild: allocation overflow");
+            return;
+        }
         new_children = (void **)calloc((size_t)new_capacity, sizeof(void *));
         new_transforms =
             (rt_collider3d_child *)calloc((size_t)new_capacity, sizeof(rt_collider3d_child));
