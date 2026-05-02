@@ -260,9 +260,9 @@ void Lowerer::emitItableInit() {
 
     // Phase 1: Register each interface
     for (const auto &[ifaceName, ifaceInfo] : interfaceTypes_) {
-        // rt_register_interface_direct(ifaceId, qname, slotCount)
+        // rt_register_interface_direct_rs(ifaceId, qname, slotCount)
         Value qnameStr = emitConstStr(stringTable_.intern(ifaceName));
-        emitCall("rt_register_interface_direct",
+        emitCall("rt_register_interface_direct_rs",
                  {Value::constInt(static_cast<int64_t>(ifaceInfo.ifaceId)),
                   qnameStr,
                   Value::constInt(static_cast<int64_t>(ifaceInfo.methods.size()))});

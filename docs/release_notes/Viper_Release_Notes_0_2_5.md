@@ -17,6 +17,7 @@ A polish-and-hardening cycle with several notable new capabilities.
 - **Viper.Localization.* (new).** Eleven-class namespace for locale-aware number/date/time/list formatting, translation catalogs, CLDR plural selection, and text-direction utilities. Zero external dependencies; en-US baked in.
 - **Native codegen correctness pass.** Variadic IL end-to-end, checked FP casts with distinct error kinds, sub-width overflow arithmetic, `fptosi` NaN traps, Windows ARM64 native build, and two rounds of IL optimizer/verifier hardening.
 - **Structured diagnostics & developer tooling.** Source-location snippet printing with caret underlines, JSON output mode (`--diagnostic-format=json`), strict diagnostics and bounds checks on by default, `Verifier::verifyAll` multi-diagnostic collection, and `BytecodeCompiler::compileChecked` returning typed `Expected<BytecodeModule>` with verifier preflight instead of throwing.
+- **Compiler throughput.** Parallel IL optimizer and codegen passes (hardware-concurrency thread pool), zero-copy codegen pipeline eliminating the IL serialize→file→reparse round-trip, analytical AArch64 instruction sizing, bitset-backed liveness in the peephole and copy-prop passes, pipeline cleanup skipping, linker fast-link mode, and zero-copy archive member views. `--pass-stats`, `--fast-link`, and `--paranoid-verify` CLI flags added; `viper run` defaults to no optimization for fast script invocation while respecting explicit project profiles.
 
 The biggest user-visible new thing is a text-mode baseball-franchise simulator.
 
@@ -24,10 +25,10 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator.
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 111 | +111 |
+| Commits | — | 118 | +118 |
 | Source files | 2,869 | 2,989 | +120 |
-| Production SLOC | 450K | 534K | +84K |
-| Test SLOC | 183K | 221K | +38K |
+| Production SLOC | 450K | 536K | +86K |
+| Test SLOC | 183K | 222K | +39K |
 | Demo SLOC | 177K | 188K | +11K |
 
 Counts via `scripts/count_sloc.sh`.
@@ -350,6 +351,46 @@ All four object-file readers and all three writers received a bounds-checking an
 - **Framebuffer and Win32 input correctness** — `vgfx_cls()` and Linux X11 presentation now write/swizzle RGBA byte-wise instead of relying on `uint32_t*` aliasing and little-endian packing. Win32 maps Backspace, Delete, Tab, Home/End, and PageUp/PageDown into the public `VGFX_KEY_*` codes and guards a failed primary-monitor `GetDC()` during DPI detection.
 - **Native backend correctness audit** — Win32 rebuilds the framebuffer/DIB backing store when `WM_DPICHANGED` changes physical pixel dimensions, even if logical client dimensions are unchanged, and `GetPosition` now fills either coordinate independently. Linux X11 presentation derives byte placement from the active visual masks instead of assuming BGRA; init failure paths share cleanup for XImage/GC/IC/IM/colormap/display resources; `vgfx_get_monitor_size(NULL, ...)` queries the primary display. macOS `drawRect:` guards CoreGraphics object creation failures before drawing.
 
+### Compiler & Toolchain Performance
+
+**Parallel compilation**
+- IL optimizer: `Mem2Reg` replaces per-alloca `replaceAllUses()` (O(alloca×instruction)) with a deferred `ReplacementMap`; `processFunction` dispatched across a hardware-concurrency thread pool sharing one read-only `CFGContext`. `SCCP` parallelizes per-function constant propagation via atomic-index work-stealing. Thirteen function passes marked `parallelSafe=true` and run concurrently by default: check-opt, devirt, gvn, indvars, loop-unroll, loop-rotate, loop-simplify, licm/licm-safe, dse, earlycse, simplify-cfg, array-fastpath-opt, and ownership-opt.
+- AArch64 codegen: `LoweringPass` and `RegAllocPass` dispatch per-function work across a thread pool; results written to pre-allocated index slots without cross-thread aliasing.
+- x86-64 codegen: `allocateModuleMIR` and `optimizeModuleMIR` parallelize function pipelines with the same atomic work-stealing pattern; x86-64 `PeepholePass` parallelizes `runPeepholes()` with per-worker `MirStats` merged under a mutex.
+- `CFG::successors()` / `predecessors()` return `const std::vector<Block*>&` to cached internal entries, eliminating a per-call vector copy across all optimizer and analysis passes.
+- `PipelineExecutor` separates pass time from `verifyEach` time: `PassMetrics` gains `verifyDuration` and `verifyRan`; the instrumentation stream reports both independently.
+
+**Zero-copy codegen pipeline**
+- `compileModuleToNative()` in `native_compiler` accepts a verified `il::core::Module` and passes it directly to the target backend, skipping IL serialization → temp file → re-parse → re-verify round-trip. `viper build` and `viper run` both call this path.
+
+**Pipeline cleanup skip**
+- `PipelineExecutor` tracks `changedSinceLastCleanup` / `hasRunAnyPass` state; DCE, `simplify-cfg`, and `late-cleanup` are skipped when no upstream pass has mutated IR since the last cleanup sweep, eliminating redundant sweeps on already-clean modules.
+- `PassRegistry::PreservedAnalyses::preservesAllAnalyses()` detects no-op passes.
+- `AnalysisManager`: empty-cache early exits in all three invalidation paths avoid iterating an empty cache.
+- Per-phase compile timing (`--time-compile`): `printPhaseTime()` instruments all 9 Zia and corresponding BASIC compilation phases (source-manager, tokens, parse, imports, sema, lower, verify-lower, optimize, verify-opt). AArch64 and x86-64 codegen `PassManager` instances emit per-pass `[time-compile] aarch64/x86` lines via `setTimingStream`. `--pass-stats` reports optimizer pass statistics decoupled from `--time-compile`.
+
+**AArch64 analytical instruction sizing**
+- `measureInstructionSize()` rewritten as a direct switch over `MOpcode`, computing encoded byte counts analytically (`movImm64Size`, `addSubImmSmartSize`, `largeOffsetLdStSize`, `spOffsetStoreSize`, `prologueSize`, `epilogueSize`) instead of dry-running the encoder into a scratch section, eliminating O(fn_size) allocations per size-measurement call.
+- Branch relaxation: `longConditionalBranchOrdinals_` tracks which conditional branches have been promoted; if convergence stalls after 16 iterations all BCond/Cbz/Cbnz are promoted to the invertable-branch + unconditional-`Br` two-instruction form for a guaranteed-stable layout.
+- `BinaryEmitPass`: parallel function encoding via atomic work-stealing; `coalesceTextSections` mode merges per-function sections into one for fast-link or `-O0` builds.
+
+**AArch64 peephole bitset liveness**
+- Dominator computation rewritten with dense bitsets (`DominatorSets = vector<vector<uint64_t>>`): initialization fills with all-ones then masks tail bits; intersection uses bitwise AND; eliminating per-block heap allocation per iteration.
+- `CopyPropDCE`: `RegSet` 64-bit packed bitset (GPR X0–SP + FPR V0–V31) replaces `unordered_set<uint32_t>` for gen/kill/liveIn/liveOut; all union/intersection/difference operations lowered to bitwise OR/AND/NOT.
+- `runPostSchedulePeephole()` added: lightweight post-schedule cleanup subset (copy propagation, ImmThenMove/ConsecutiveMoves folds, identity mov/fmov removal, dead instructions, dead flag-setters, BCond inversion, branch-to-next removal) without cross-block phi/spill rewrites. `PeepholePass::Mode` enum `{Full, PostScheduleCleanup}` selects between the two.
+- `SchedulerPass`: separate `memoryStoreHistory` for pure-load WAR dependency scanning; pure loads no longer serialize against other loads.
+
+**Linker fast-link and zero-copy archive**
+- `NativeLinkerOptions::fastLink` gates `deduplicateStrings` and `foldIdenticalCode`; exposed via `--fast-link` CLI flag.
+- `ArchiveMemberView` non-owning view struct replaces `extractMember()` copies in the archive resolution hot path.
+- `LinkerSupport`: `linkContextCacheKey()` + static mutex-guarded cache skips repeated archive resolution for identical (buildDir, symbols) tuples.
+
+**CLI flags and run-profile fix**
+- `--paranoid-verify`: enables `verifyAfterLowering` + `verifyAfterOptimization` Zia checkpoints independently of `--time-compile`.
+- `--pass-stats`: reports per-pass optimizer statistics; previously inadvertently coupled to `--time-compile`.
+- `--fast-link`: enables fast-link mode in the native linker.
+- `viper run` default profile: skips `zia.optimize` for scriptlike invocations; project manifests that declare an explicit `profile` override this default so `run` respects the project's stated optimization intent.
+
 ### Tests
 
 - Crackman headless movement regression probe (`movement_probe.zia`) with ARM64 native e2e test (`test_crackman_movement_native.sh`) — compiles to IL, runs `codegen arm64 --native-link -O2`, asserts `RESULT: ok`. `RTZiaCompletionStubTests` — 8 tests verifying completion/hover/symbol stubs return protocol-shaped unavailable payloads while diagnostic stubs return an empty stream. 22 new GUI audit test cases in `test_vg_audit_fixes.c` (15 round-3, 7 round-4) covering layout constraints, image BMP decoding, widget lifecycle retire/tombstone, POSIX regex search, modal event routing, and textinput undo hardening; 9 new round-5 cases: `widget_remove_child_clears_runtime_references_to_subtree`, `widget_clear_children_clears_runtime_references_to_subtrees`, `widget_runtime_restore_and_focus_reject_invalid_handles`, `widget_impl_data_can_be_taken_by_custom_destroy`, `widget_destroy_releases_owned_drag_drop_strings`, `widget_get_focused_is_scoped_to_root_subtree`, `widget_insert_child_negative_index_clamps_to_front`, `widget_tab_order_handles_more_than_legacy_fixed_cap`, `platform_resize_event_reports_logical_gui_dimensions`; 4 round-6 cases: `widget_paint_uses_screen_space_for_nested_children`, `grid_negative_placement_clamps_to_first_cell`, `codeeditor_edit_helpers_clamp_stale_cursor_columns`, `image_opacity_sanitizes_nan`; `mouseup_handler_runs_before_synthesized_click` (event ordering); NaN/inf constraint and layout-spacing sanitization assertions expanded. `test_vaud_audit_fixes.c` (new): PCM buffer-size overflow boundary, resampled frame count guard, running-flag atomicity, WAV 32-bit PCM little-endian decode, resample invalid-rate/channel rejection; `test_music_seek_failure_stops_stream_and_clears_buffers`. `test_vaud_core_fixes.c` (new): WAV format validation across all bit-depths, ALSA partial-write simulation, volume clamping. `test_vg_font_bounds.c` (new): truncated TrueType tables, out-of-range glyph IDs, malformed cmap, zero-size font buffer, valid ASCII round-trip; name-table odd UTF-16 length, composite point-index alignment. `test_drawing.c` expanded with clip-bounds, negative-dimension, extreme-coordinate draw, and `test_extreme_circle_coordinates_do_not_overflow`; `test_window.c` expanded with `test_monitor_size_allows_null_window`. 4 new graphics input tests covering `vgfx_flush_events`, FPS deadline enforcement, negative button index safety, and `prevent_close` event delivery. `LoopConstHoistRejectsBackwardJoinEdge` — AArch64 peephole unit test verifying the dominator guard prevents hoisting into an if/else join.
@@ -379,6 +420,6 @@ Demos: human-manager baseball franchise simulator (new), Crackman (Pac-Man rewri
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 108-commit history. The pattern throughout is feature introduction followed by hardening follow-ups in the same subsystem.
+See `git log a91d388db..HEAD -- .` for the full 118-commit history. The pattern throughout is feature introduction followed by hardening follow-ups in the same subsystem.
 
 <!-- END DRAFT -->

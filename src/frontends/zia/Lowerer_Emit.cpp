@@ -273,6 +273,9 @@ void Lowerer::emitCallIndirect(Value funcPtr, const std::vector<Value> &args) {
     il::core::Instr instr;
     instr.op = Opcode::CallIndirect;
     instr.type = Type(Type::Kind::Void);
+    instr.hasIndirectSignature = true;
+    instr.indirectRetType = Type(Type::Kind::Void);
+    instr.indirectIsVarArg = true;
     // For call.indirect, the function pointer is the first operand
     instr.operands.push_back(funcPtr);
     for (const auto &arg : args) {
@@ -290,6 +293,9 @@ Lowerer::Value Lowerer::emitCallIndirectRet(Type retTy,
     instr.result = id;
     instr.op = Opcode::CallIndirect;
     instr.type = retTy;
+    instr.hasIndirectSignature = true;
+    instr.indirectRetType = retTy;
+    instr.indirectIsVarArg = true;
     // For call.indirect, the function pointer is the first operand
     instr.operands.push_back(funcPtr);
     for (const auto &arg : args) {

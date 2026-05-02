@@ -27,6 +27,7 @@
 #include "il/transform/analysis/Liveness.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -214,6 +215,25 @@ struct DefInfo {
 
 using RootMap = std::unordered_map<unsigned, std::unordered_set<unsigned>>;
 
+bool hasExceptionHandling(const Function &F) {
+    for (const auto &B : F.blocks) {
+        for (const auto &I : B.instructions) {
+            switch (I.op) {
+                case Opcode::EhPush:
+                case Opcode::EhPop:
+                case Opcode::EhEntry:
+                case Opcode::ResumeSame:
+                case Opcode::ResumeNext:
+                case Opcode::ResumeLabel:
+                    return true;
+                default:
+                    break;
+            }
+        }
+    }
+    return false;
+}
+
 std::unordered_map<unsigned, DefInfo> collectDefs(const Function &F) {
     std::unordered_map<unsigned, DefInfo> defs;
     for (const auto &B : F.blocks) {
@@ -332,47 +352,6 @@ bool allocaEscapes(const Function &F,
     return false;
 }
 
-/// Check if a block reads from the given address
-bool blockReadsFrom(const BasicBlock &B,
-                    const Value &ptr,
-                    std::optional<unsigned> size,
-                    viper::analysis::BasicAA &AA) {
-    for (const auto &I : B.instructions) {
-        if (I.op == Opcode::Load && !I.operands.empty()) {
-            auto loadSize = viper::analysis::BasicAA::typeSizeBytes(I.type);
-            if (AA.alias(I.operands[0], ptr, loadSize, size) !=
-                viper::analysis::AliasResult::NoAlias) {
-                return true;
-            }
-        }
-        // Calls might read
-        if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
-            auto mr = AA.modRef(I);
-            if (mr == viper::analysis::ModRefResult::Ref ||
-                mr == viper::analysis::ModRefResult::ModRef) {
-                return true; // Conservative: assume call reads the address
-            }
-        }
-    }
-    return false;
-}
-
-/// Check if a block has a store that kills the pending store
-bool blockKillsStore(const BasicBlock &B,
-                     const Value &ptr,
-                     std::optional<unsigned> size,
-                     viper::analysis::BasicAA &AA) {
-    for (const auto &I : B.instructions) {
-        if (I.op == Opcode::Store && !I.operands.empty()) {
-            auto storeSize = viper::analysis::BasicAA::typeSizeBytes(I.type);
-            if (fullyOverwrites(I.operands[0], storeSize, ptr, size, AA)) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
 /// Get successor block labels from a terminator instruction
 std::vector<std::string> getSuccessors(const BasicBlock &B) {
     std::vector<std::string> succs;
@@ -397,6 +376,8 @@ bool isReturn(const BasicBlock &B) {
 /// Cross-block DSE: eliminate stores that are dead across block boundaries
 bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
     if (F.blocks.empty())
+        return false;
+    if (hasExceptionHandling(F))
         return false;
 
     viper::analysis::BasicAA &AA =
@@ -472,54 +453,72 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
             if (reachedRead || !isDeadStore)
                 continue;
 
-            // Now check successor blocks using a worklist
-            std::unordered_set<std::string> visited;
-            std::vector<std::string> worklist = getSuccessors(B);
-            bool allPathsKill = true;
+            const auto successors = getSuccessors(B);
+            if (successors.empty())
+                continue;
 
-            while (!worklist.empty() && allPathsKill) {
-                std::string label = worklist.back();
-                worklist.pop_back();
+            std::unordered_map<std::string, bool> memo;
+            std::unordered_set<std::string> visiting;
+            std::function<bool(const std::string &)> allPathsKillOrExit =
+                [&](const std::string &label) -> bool {
+                if (auto memoIt = memo.find(label); memoIt != memo.end())
+                    return memoIt->second;
 
-                if (visited.count(label))
-                    continue;
-                visited.insert(label);
+                if (!visiting.insert(label).second)
+                    return false; // A cycle may preserve the original store into a later read.
+
+                auto finish = [&](bool value) {
+                    visiting.erase(label);
+                    memo[label] = value;
+                    return value;
+                };
 
                 auto it = blockMap.find(label);
-                if (it == blockMap.end()) {
-                    allPathsKill = false;
-                    continue;
-                }
+                if (it == blockMap.end())
+                    return finish(false);
+
                 BasicBlock *succ = it->second;
+                for (const auto &next : succ->instructions) {
+                    if (next.op == Opcode::Load && !next.operands.empty()) {
+                        auto loadSize = viper::analysis::BasicAA::typeSizeBytes(next.type);
+                        if (AA.alias(next.operands[0], ptr, loadSize, storeSize) !=
+                            viper::analysis::AliasResult::NoAlias)
+                            return finish(false);
+                    }
+                    if (next.op == Opcode::Store && !next.operands.empty()) {
+                        auto nextSize = viper::analysis::BasicAA::typeSizeBytes(next.type);
+                        if (fullyOverwrites(next.operands[0], nextSize, ptr, storeSize, AA))
+                            return finish(true);
+                    }
+                    if (next.op == Opcode::Call || next.op == Opcode::CallIndirect) {
+                        auto mr = AA.modRef(next);
+                        if (mr != viper::analysis::ModRefResult::NoModRef)
+                            return finish(false);
+                    }
+                }
 
-                // Check if this block reads from the address
-                if (blockReadsFrom(*succ, ptr, storeSize, AA)) {
+                if (isReturn(*succ))
+                    return finish(true);
+
+                const auto nextSuccs = getSuccessors(*succ);
+                if (nextSuccs.empty())
+                    return finish(true);
+
+                for (const auto &succLabel : nextSuccs)
+                    if (!allPathsKillOrExit(succLabel))
+                        return finish(false);
+                return finish(true);
+            };
+
+            bool allPathsKill = true;
+            for (const auto &label : successors) {
+                if (!allPathsKillOrExit(label)) {
                     allPathsKill = false;
-                    continue;
-                }
-
-                // Check if this block kills the store
-                if (blockKillsStore(*succ, ptr, storeSize, AA)) {
-                    // This path kills the store, don't need to explore further
-                    continue;
-                }
-
-                // If this block returns without killing, the store might be
-                // observable (unless it's truly dead-on-exit)
-                if (isReturn(*succ)) {
-                    // Store is dead if we reach a return without reading
-                    continue;
-                }
-
-                // Add successors to worklist
-                auto nextSuccs = getSuccessors(*succ);
-                for (const auto &s : nextSuccs) {
-                    if (!visited.count(s))
-                        worklist.push_back(s);
+                    break;
                 }
             }
 
-            if (allPathsKill && visited.size() > 0) {
+            if (allPathsKill) {
                 toRemove.emplace_back(&B, i);
             }
         }
@@ -549,6 +548,9 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
 /// pass eliminates stores in functions that contain runtime calls inside loops
 /// or conditional branches — the most common pattern in Zia-lowered code.
 bool runMemorySSADSE(Function &F, AnalysisManager &AM) {
+    if (hasExceptionHandling(F))
+        return false;
+
     viper::analysis::MemorySSA &mssa =
         AM.getFunctionResult<viper::analysis::MemorySSA>(kAnalysisMemorySSA, F);
 

@@ -1910,6 +1910,15 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
         0,
         RuntimeTrapClass::None},
     DescriptorRow{
+        "rt_register_interface_direct_rs",
+        std::nullopt,
+        "void(i64,str,i64)",
+        &DirectHandler<&rt_register_interface_direct_rs, void, int64_t, rt_string, int64_t>::invoke,
+        kManualLowering,
+        nullptr,
+        0,
+        RuntimeTrapClass::None},
+    DescriptorRow{
         "rt_register_interface_impl",
         std::nullopt,
         "void(i64,i64,ptr)",

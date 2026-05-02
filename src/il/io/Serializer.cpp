@@ -453,6 +453,8 @@ std::optional<Type::Kind> defaultResultKind(const OpcodeInfo &info) {
     switch (info.resultType) {
         case TypeCategory::I1:
             return Kind::I1;
+        case TypeCategory::I16:
+            return Kind::I16;
         case TypeCategory::I32:
             return Kind::I32;
         case TypeCategory::I64:

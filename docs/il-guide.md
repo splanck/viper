@@ -256,7 +256,8 @@ done:
 
 **What just happened?** Labels (`then`, `else`, `done`) mark basic blocks. `br` is an unconditional jump.
 
-**Gotcha:** There is no fall-through; every block must end with a terminator.
+**Gotcha:** There is no fall-through; every block must end with a terminator, and textual IL is rejected if more
+instructions appear after that terminator in the same block.
 
 ### Strings and text
 
@@ -524,6 +525,11 @@ entry:
 | `error`     | error value          | 8         | exception handling only              |
 | `resumetok` | resume token         | 8         | exception handling only              |
 
+`ptr` and `str` have the same storage width but are distinct verifier types; raw extern calls and indirect-call
+signatures must use the exact type declared by the callee. Known runtime helpers whose catalog signature spells a
+parameter as `obj` are the only compatibility bridge: those object slots lower to `ptr` at the ABI boundary, but may
+accept a managed `str` handle.
+
 #### Constants & Literals
 
 Integers use decimal notation (`-?[0-9]+`). Floats use decimal with optional fraction (`-?[0-9]+(\.[0-9]+)?`) and permit
@@ -718,7 +724,9 @@ denotes round-to-even (IEEE 754 default). The `.chk` suffix indicates trap-on-ov
 `idx.chk` performs bounds checking for array accesses, trapping if the index is outside `[lo, hi)`. It returns the normalized zero-based index `idx - lo`.
 
 `i64`, `f64`, `ptr`, and `str` loads and stores require 8-byte alignment; misaligned or null accesses trap. Stack
-allocations created by `alloca` are zero-initialized and live until the function returns.
+allocations created by `alloca` are zero-initialized and live until the function returns. When a load/store address is
+statically derived from a constant-size `alloca`, the verifier checks the full access width, not just the pointer
+offset.
 
 ```text
 func @main() -> i64 {
@@ -738,9 +746,10 @@ entry:
 | `call.indirect` | `call.indirect [ret(params?)] %fn_ptr(%x, %y)` | annotated return type |
 
 Direct calls use `@symbol` references. Indirect calls use a function pointer as the first operand, followed by
-arguments. Pointer-based indirect calls may carry an explicit signature, for example `[i64(ptr, i64)]`; when present,
-the verifier checks argument count, argument types, variadic tails, and return type. For variadic callees declared with a
-trailing `...`, the verifier enforces the declared prefix and permits only scalar, pointer, or string values after it.
+arguments. Pointer-based indirect calls must carry an explicit signature, for example `[i64(ptr, i64)]`; the verifier
+checks argument count, argument types, variadic tails, and return type. A non-void indirect signature must bind the
+result to a temp. For variadic callees declared with a trailing `...`, the verifier enforces the declared prefix and
+permits only scalar, pointer, or string values after it.
 
 Direct calls may carry bracketed semantic hints after the argument list:
 `[nothrow]`, `[readonly]`, `[pure]`, or a comma-separated combination. Known
@@ -891,12 +900,14 @@ wired directly to runtime contracts. Passes can also observe the
 * Operand and result types match instruction signatures; fixed-result opcodes
   must use the schema result type unless a specialised cast/check strategy
   validates an instruction-declared result type.
-* Calls match callee arity and types.
+* Calls match callee arity and types. Runtime catalog parameters spelled `obj` may accept either object pointers or
+  managed string handles; raw `ptr` parameters remain distinct from `str`.
 * Direct call attributes cannot contradict known runtime helper or local function metadata, and require such metadata.
-* `call.indirect` requires a pointer-typed callee operand unless it names a known `globaladdr` callee; explicit
-  `[ret(params)]` signatures are checked for pointer callees.
+* `call.indirect` requires a pointer-typed callee operand unless it names a known `globaladdr` callee; pointer callees
+  require explicit `[ret(params)]` signatures, and non-void signatures require a result temp.
 * `addr_of` and `const_str` require a declared string global; `gaddr` requires a declared scalar storage global.
-* `load`/`store` use `ptr` operands and non-void element types.
+* `load`/`store` use `ptr` operands and non-void element types. Constant alloca-derived accesses must fit within the
+  allocation after considering the access type's byte width.
 * `alloca` sizes are `i64`; constant operands must be non-negative. Constant `gep` offsets are signed byte offsets.
   When a constant `gep` derives from a constant-size `alloca`, the cumulative alloca-relative offset is
   range-checked.
@@ -904,8 +915,9 @@ wired directly to runtime contracts. Passes can also observe the
 * Function and block parameters have unique names/ids, non-void types, and each predecessor passes matching arguments.
 * Branch arguments must match each destination block's parameters and must reference defined, non-void values. Trailing empty successor bundles may be omitted.
 * Returning an `alloca`-derived pointer, including through `gep` or block parameters, is invalid. Calls and stores may borrow or stage stack addresses for frontend ABIs; alias analyses still treat those uses as escapes unless proven otherwise.
-* Runtime array release helpers (`rt_arr_i32_release`, `rt_arr_i64_release`, `rt_arr_str_release`,
-  `rt_arr_obj_release`) reject double release and dominated use-after-release.
+* Runtime string and array release helpers (`rt_str_release`, `rt_str_release_maybe`, `rt_arr_i32_release`,
+  `rt_arr_i64_release`, `rt_arr_f64_release`, `rt_arr_str_release`, `rt_arr_obj_release`) reject double release and
+  dominated use-after-release.
 * `cbr` takes an `i1` condition.
 
 Tooling can call `Verifier::verify()` for a single primary diagnostic with related verifier failures attached as notes, or `Verifier::verifyAll()` to collect a bounded list of independent verifier failures. Function-body verification continues across independent functions, so one bad function no longer hides later broken functions in the same module. Frontends and native build paths run verification before handing IL to an optimizer, VM, bytecode compiler, or native backend.

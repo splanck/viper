@@ -261,12 +261,31 @@ bool fullyOverwrites(const Value &laterPtr,
     return AA.alias(laterPtr, earlierPtr, laterSize, earlierSize) == AliasResult::MustAlias;
 }
 
+bool hasExceptionHandling(const Function &F) {
+    for (const auto &B : F.blocks) {
+        for (const auto &I : B.instructions) {
+            switch (I.op) {
+                case Opcode::EhPush:
+                case Opcode::EhPop:
+                case Opcode::EhEntry:
+                case Opcode::ResumeSame:
+                case Opcode::ResumeNext:
+                case Opcode::ResumeLabel:
+                    return true;
+                default:
+                    break;
+            }
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
     MemorySSA mssa;
 
-    if (F.blocks.empty())
+    if (F.blocks.empty() || hasExceptionHandling(F))
         return mssa;
 
     // LiveOnEntry sentinel at index 0.
@@ -280,6 +299,33 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
         mssa.accesses_.push_back(MemoryAccess{kind, id, block, instrIdx, definingAccess, {}, {}});
         mssa.instrToAccess_[block][static_cast<size_t>(instrIdx)] = id;
         return id;
+    };
+
+    auto findLocalReachingDef =
+        [&](Block *block,
+            size_t beforeIdx,
+            const Value &ptr,
+            std::optional<unsigned> size) -> std::optional<uint32_t> {
+        for (size_t j = beforeIdx; j-- > 0;) {
+            const Instr &prev = block->instructions[j];
+            if (prev.op == Opcode::Store && !prev.operands.empty()) {
+                auto prevSize = BasicAA::typeSizeBytes(prev.type);
+                if (AA.alias(prev.operands[0], ptr, prevSize, size) != AliasResult::NoAlias) {
+                    auto bit = mssa.instrToAccess_.find(block);
+                    if (bit == mssa.instrToAccess_.end())
+                        return std::nullopt;
+                    auto ait = bit->second.find(j);
+                    if (ait == bit->second.end())
+                        return std::nullopt;
+                    return ait->second;
+                }
+            }
+            if (prev.op == Opcode::Call || prev.op == Opcode::CallIndirect) {
+                if (AA.modRef(prev) != ModRefResult::NoModRef)
+                    return std::nullopt;
+            }
+        }
+        return std::nullopt;
     };
 
     const auto defs = collectDefs(F);
@@ -438,12 +484,15 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                 if (I.op == Opcode::Store) {
                     const Value &ptr = I.operands.empty() ? Value{} : I.operands[0];
                     bool nonEscaping = isNonEscapingAlloca(ptr, nonEsc, roots);
+                    auto storeSize = BasicAA::typeSizeBytes(I.type);
+                    uint32_t reachingDef =
+                        findLocalReachingDef(B, i, ptr, storeSize).value_or(curDef);
 
                     // Create or update MemoryDef.
                     if (existingId == 0) {
-                        uint32_t defId = makeAccess(MemAccessKind::Def, B, (int)i, curDef);
+                        uint32_t defId = makeAccess(MemAccessKind::Def, B, (int)i, reachingDef);
                         // Link curDef's users to include this new def.
-                        if (curDef < mssa.accesses_.size()) {
+                        if (reachingDef < mssa.accesses_.size()) {
                             // Only link if the store potentially reads curDef
                             // (i.e., reading first then writing). For stores we only
                             // link as Def; use consumers are separate.
@@ -453,24 +502,27 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                     } else {
                         // Update definingAccess if it changed.
                         MemoryAccess &acc = mssa.accesses_[existingId];
-                        acc.definingAccess = curDef;
+                        acc.definingAccess = reachingDef;
                         curDef = existingId;
                     }
                 } else if (I.op == Opcode::Load) {
                     const Value &ptr = I.operands.empty() ? Value{} : I.operands[0];
                     bool nonEscaping = isNonEscapingAlloca(ptr, nonEsc, roots);
                     (void)nonEscaping;
+                    auto loadSize = BasicAA::typeSizeBytes(I.type);
+                    uint32_t reachingDef =
+                        findLocalReachingDef(B, i, ptr, loadSize).value_or(curDef);
 
                     // Create or update MemoryUse.
                     if (existingId == 0) {
-                        makeAccess(MemAccessKind::Use, B, (int)i, curDef);
+                        uint32_t useId = makeAccess(MemAccessKind::Use, B, (int)i, reachingDef);
                         // Register this use in the def's users list.
-                        if (curDef < mssa.accesses_.size()) {
-                            mssa.accesses_[curDef].users.push_back(mssa.instrToAccess_[B][i]);
+                        if (reachingDef < mssa.accesses_.size()) {
+                            mssa.accesses_[reachingDef].users.push_back(useId);
                         }
                     } else {
                         MemoryAccess &acc = mssa.accesses_[existingId];
-                        if (acc.definingAccess != curDef) {
+                        if (acc.definingAccess != reachingDef) {
                             // Remove from old def's users, add to new.
                             uint32_t oldDef = acc.definingAccess;
                             if (oldDef < mssa.accesses_.size()) {
@@ -478,9 +530,9 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                                 users.erase(std::remove(users.begin(), users.end(), existingId),
                                             users.end());
                             }
-                            acc.definingAccess = curDef;
-                            if (curDef < mssa.accesses_.size()) {
-                                mssa.accesses_[curDef].users.push_back(existingId);
+                            acc.definingAccess = reachingDef;
+                            if (reachingDef < mssa.accesses_.size()) {
+                                mssa.accesses_[reachingDef].users.push_back(existingId);
                             }
                         }
                         // curDef unchanged by loads.

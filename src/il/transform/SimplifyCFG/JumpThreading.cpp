@@ -41,48 +41,43 @@ il::core::BasicBlock *findBlock(il::core::Function &F, const std::string &label)
 }
 
 /// @brief Build a map of all predecessors for each block.
-std::unordered_map<std::string, std::vector<il::core::BasicBlock *>> buildPredecessorMap(
-    il::core::Function &F) {
-    std::unordered_map<std::string, std::vector<il::core::BasicBlock *>> preds;
+struct PredEdge {
+    il::core::BasicBlock *block = nullptr;
+    size_t edgeIndex = 0;
+};
+
+std::unordered_map<std::string, std::vector<PredEdge>> buildPredecessorMap(il::core::Function &F) {
+    std::unordered_map<std::string, std::vector<PredEdge>> preds;
 
     for (auto &block : F.blocks) {
         const il::core::Instr *term = findTerminator(block);
         if (!term)
             continue;
 
-        for (const auto &label : term->labels) {
-            preds[label].push_back(&block);
+        for (size_t edge = 0; edge < term->labels.size(); ++edge) {
+            preds[term->labels[edge]].push_back(PredEdge{&block, edge});
         }
     }
 
     return preds;
 }
 
-/// @brief Get the index of a label in a terminator's labels vector.
-std::optional<size_t> labelIndex(const il::core::Instr &term, const std::string &target) {
-    for (size_t i = 0; i < term.labels.size(); ++i) {
-        if (term.labels[i] == target)
-            return i;
-    }
-    return std::nullopt;
-}
-
 /// @brief Determine what constant value (if any) flows to a block parameter.
 std::optional<il::core::Value> getConstantArgForParam(const il::core::BasicBlock &pred,
                                                       const il::core::BasicBlock &target,
+                                                      size_t edgeIndex,
                                                       size_t paramIndex) {
     const il::core::Instr *term = findTerminator(pred);
     if (!term)
         return std::nullopt;
 
-    auto targetIdx = labelIndex(*term, target.label);
-    if (!targetIdx)
+    if (edgeIndex >= term->labels.size() || term->labels[edgeIndex] != target.label)
         return std::nullopt;
 
-    if (*targetIdx >= term->brArgs.size())
+    if (edgeIndex >= term->brArgs.size())
         return std::nullopt;
 
-    const auto &args = term->brArgs[*targetIdx];
+    const auto &args = term->brArgs[edgeIndex];
     if (paramIndex >= args.size())
         return std::nullopt;
 
@@ -142,6 +137,7 @@ bool isSimpleCbrBlock(const il::core::BasicBlock &block) {
 std::vector<il::core::Value> computeThreadedArgs(const il::core::BasicBlock &pred,
                                                  const il::core::BasicBlock &intermediate,
                                                  const il::core::BasicBlock &target,
+                                                 size_t predToIntermediateEdge,
                                                  size_t targetBranchIdx) {
     const il::core::Instr *predTerm = findTerminator(pred);
     const il::core::Instr *intTerm = findTerminator(intermediate);
@@ -149,11 +145,12 @@ std::vector<il::core::Value> computeThreadedArgs(const il::core::BasicBlock &pre
         return {};
 
     // Get args that pred passes to intermediate
-    auto toIntIdx = labelIndex(*predTerm, intermediate.label);
-    if (!toIntIdx || *toIntIdx >= predTerm->brArgs.size())
+    if (predToIntermediateEdge >= predTerm->labels.size() ||
+        predTerm->labels[predToIntermediateEdge] != intermediate.label ||
+        predToIntermediateEdge >= predTerm->brArgs.size())
         return {};
 
-    const auto &predToIntArgs = predTerm->brArgs[*toIntIdx];
+    const auto &predToIntArgs = predTerm->brArgs[predToIntermediateEdge];
 
     // Build mapping: intermediate param id -> value from pred
     std::unordered_map<unsigned, il::core::Value> mapping;
@@ -227,7 +224,8 @@ bool threadJumps(SimplifyCFG::SimplifyCFGPassContext &ctx) {
         if (predIt == predecessors.end())
             continue;
 
-        for (il::core::BasicBlock *pred : predIt->second) {
+        for (PredEdge predEdge : predIt->second) {
+            il::core::BasicBlock *pred = predEdge.block;
             // Skip self-loops
             if (pred == &block)
                 continue;
@@ -237,7 +235,8 @@ bool threadJumps(SimplifyCFG::SimplifyCFGPassContext &ctx) {
                 continue;
 
             // Check if pred passes a constant for the condition
-            auto constArg = getConstantArgForParam(*pred, block, *condParamIdx);
+            auto constArg =
+                getConstantArgForParam(*pred, block, predEdge.edgeIndex, *condParamIdx);
             if (!constArg)
                 continue;
 
@@ -257,18 +256,19 @@ bool threadJumps(SimplifyCFG::SimplifyCFGPassContext &ctx) {
             auto *targetBlock = findBlock(F, newTarget);
             if (!targetBlock)
                 continue;
-            auto newArgs = computeThreadedArgs(*pred, block, *targetBlock, targetBranchIdx);
+            auto newArgs =
+                computeThreadedArgs(*pred, block, *targetBlock, predEdge.edgeIndex, targetBranchIdx);
 
             // Find which branch index in pred goes to this block
             il::core::Instr *predTerm = findTerminator(*pred);
             if (!predTerm)
                 continue;
 
-            auto predBranchIdx = labelIndex(*predTerm, block.label);
-            if (!predBranchIdx)
+            if (predEdge.edgeIndex >= predTerm->labels.size() ||
+                predTerm->labels[predEdge.edgeIndex] != block.label)
                 continue;
 
-            candidates.push_back({pred, &block, newTarget, newArgs, *predBranchIdx});
+            candidates.push_back({pred, &block, newTarget, newArgs, predEdge.edgeIndex});
         }
     }
 

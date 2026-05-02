@@ -390,6 +390,10 @@ static bool foldCall(const Instr &in, Value &out) {
     }
     if (c == "rt_sgn_f64" && in.operands.size() == 1) {
         if (getConstFloat(in.operands[0], a)) {
+            if (std::isnan(a)) {
+                out = Value::constFloat(a);
+                return true;
+            }
             out = Value::constFloat(a > 0.0 ? 1.0 : (a < 0.0 ? -1.0 : 0.0));
             return true;
         }

@@ -107,8 +107,8 @@ func start() {    var c = new Circle();
     // main (mangled from start) should call __zia_iface_init
     EXPECT_TRUE(hasCall(result.module, "main", "__zia_iface_init"));
 
-    // __zia_iface_init should call rt_register_interface_direct
-    EXPECT_TRUE(hasCall(result.module, "__zia_iface_init", "rt_register_interface_direct"));
+    // __zia_iface_init should call the runtime-string registration bridge
+    EXPECT_TRUE(hasCall(result.module, "__zia_iface_init", "rt_register_interface_direct_rs"));
 
     // __zia_iface_init should call rt_bind_interface
     EXPECT_TRUE(hasCall(result.module, "__zia_iface_init", "rt_bind_interface"));

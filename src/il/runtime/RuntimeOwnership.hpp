@@ -132,7 +132,8 @@ namespace detail {
     }
 
     if (name == "rt_arr_i32_release" || name == "rt_arr_i64_release" ||
-        name == "rt_arr_f64_release" || name == "rt_arr_obj_release") {
+        name == "rt_arr_f64_release" || name == "rt_arr_str_release" ||
+        name == "rt_arr_obj_release") {
         effects.consumedArgMask = 0b1;
         return effects;
     }

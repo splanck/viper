@@ -16,7 +16,7 @@
 //   - Distinct allocas never alias each other.
 //   - Non-escaping allocas never alias with function parameters.
 //   - noalias parameters never alias other pointers.
-//   - ModRef queries only apply to Opcode::Call instructions.
+//   - ModRef queries apply to Opcode::Call and Opcode::CallIndirect instructions.
 // Ownership/Lifetime: BasicAA is constructed per-function, collecting alloca
 //          and parameter info from the function body. Holds const pointers to
 //          the function and optional module; both must outlive the analysis.

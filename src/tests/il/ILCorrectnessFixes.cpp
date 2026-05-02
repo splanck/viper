@@ -16,6 +16,7 @@
 #include "il/analysis/BasicAA.hpp"
 #include "il/io/Parser.hpp"
 #include "il/io/Serializer.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/signatures/Registry.hpp"
 #include "il/transform/ConstFold.hpp"
 #include "il/transform/SimplifyCFG.hpp"
@@ -28,6 +29,8 @@
 #include "viper/vm/VM.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <sstream>
 #include <string>
 
@@ -418,6 +421,69 @@ entry:
     EXPECT_TRUE(verifyFailsWith(bad, "call.indirect arg type mismatch"));
 }
 
+TEST(ILCorrectness, PointerCallIndirectRequiresSignatureAndResultBinding) {
+    Module noSignature = parseModule(R"(il 0.2.0
+func @main(ptr %fn) -> i64 {
+entry(%fn:ptr):
+  %r = call.indirect %fn()
+  ret %r
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(noSignature,
+                                "call.indirect through pointer requires an explicit signature"));
+
+    Module missingResult = parseModule(R"(il 0.2.0
+func @main(ptr %fn) -> i64 {
+entry(%fn:ptr):
+  call.indirect [i64()] %fn()
+  ret 0
+}
+)");
+    EXPECT_TRUE(
+        verifyFailsWith(missingResult, "call.indirect to non-void signature requires a result"));
+}
+
+TEST(ILCorrectness, VerifierKeepsPtrAndStrTypesDistinct) {
+    Module module = parseModule(R"(il 0.2.0
+global const str @s = "hello"
+func @sink(ptr %p) -> void {
+entry(%p:ptr):
+  ret
+}
+func @main() -> i64 {
+entry:
+  %s = const_str @s
+  call @sink(%s)
+  ret 0
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(module, "call arg type mismatch: @sink parameter 0 expects ptr"));
+}
+
+TEST(ILCorrectness, RuntimeObjectParametersAcceptStringHandles) {
+    const auto *sig = il::runtime::findRuntimeSignature("Viper.Collections.Map.Set");
+    ASSERT_NE(sig, nullptr);
+    ASSERT_EQ(sig->paramTypes.size(), 3u);
+    EXPECT_EQ(sig->paramTypes[0].kind, Type::Kind::Ptr);
+    EXPECT_EQ(sig->paramTypes[1].kind, Type::Kind::Str);
+    EXPECT_EQ(sig->paramTypes[2].kind, Type::Kind::Ptr);
+    EXPECT_NE(sig->objectParamMask & 0x1u, 0u);
+    EXPECT_NE(sig->objectParamMask & 0x4u, 0u);
+
+    Module module = parseModule(R"(il 0.2.0
+global const str @k = "key"
+global const str @v = "value"
+func @main() -> i64 {
+entry:
+  %k = const_str @k
+  %v = const_str @v
+  call @Viper.Collections.Map.Set(null, %k, %v)
+  ret 0
+}
+)");
+    EXPECT_TRUE(il::verify::Verifier::verify(module).hasValue());
+}
+
 TEST(ILCorrectness, DiscardingOwnedRuntimeReturnsIsRejected) {
     Module module = parseModule(R"(il 0.2.0
 func @main() -> i64 {
@@ -427,6 +493,30 @@ entry:
 }
 )");
     EXPECT_TRUE(verifyFailsWith(module, "discarding owned return from @rt_str_empty"));
+}
+
+TEST(ILCorrectness, RuntimeF64ArrayHelpersAreVerified) {
+    Module ok = parseModule(R"(il 0.2.0
+func @main() -> f64 {
+entry:
+  %a = call @rt_arr_f64_new(2)
+  call @rt_arr_f64_set(%a, 0, 1.5)
+  %v = call @rt_arr_f64_get(%a, 0)
+  call @rt_arr_f64_release(%a)
+  ret %v
+}
+)");
+    EXPECT_TRUE(il::verify::Verifier::verify(ok).hasValue());
+
+    Module bad = parseModule(R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  %a = call @rt_arr_f64_new(2)
+  call @rt_arr_f64_set(%a, 0, 1)
+  ret 0
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(bad, "@rt_arr_f64_set value operand must be f64"));
 }
 
 TEST(ILCorrectness, GepAllowsSignedOffsetsButRejectsStaticOutOfBoundsOffsets) {
@@ -463,6 +553,30 @@ entry:
     EXPECT_TRUE(verifyFailsWith(outOfBounds, "gep offset outside alloca"));
 }
 
+TEST(ILCorrectness, StackLoadStoreBoundsUseAccessWidth) {
+    Module loadTooWide = parseModule(R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  %p = alloca 8
+  %q = gep %p, 4
+  %v = load i64, %q
+  ret %v
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(loadTooWide, "load exceeds alloca bounds"));
+
+    Module storeTooWide = parseModule(R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  %p = alloca 8
+  %q = gep %p, 6
+  store i32, %q, 1
+  ret 0
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(storeTooWide, "store exceeds alloca bounds"));
+}
+
 TEST(ILCorrectness, I64RuntimeArrayReleaseLifetimeIsTracked) {
     Module module = parseModule(R"(il 0.2.0
 func @main() -> i64 {
@@ -474,6 +588,38 @@ entry:
 }
 )");
     EXPECT_TRUE(verifyFailsWith(module, "double release"));
+}
+
+TEST(ILCorrectness, ParserRejectsInstructionsAfterTerminators) {
+    const char *text = R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  ret 0
+  %late = iadd.ovf 1, 2
+}
+)";
+    Module module;
+    std::istringstream input{text};
+    auto parsed = il::io::Parser::parse(input, module);
+    ASSERT_FALSE(parsed.hasValue());
+    EXPECT_CONTAINS(parsed.error().message, "instruction appears after block terminator");
+}
+
+TEST(ILCorrectness, ConstFoldPreservesSgnF64NaN) {
+    Module module = parseModule(R"(il 0.2.0
+func @main() -> f64 {
+entry:
+  %v = call @rt_sgn_f64(NaN)
+  ret %v
+}
+)");
+
+    il::transform::constFold(module);
+    const Function &fn = module.functions.front();
+    const Instr &ret = fn.blocks.front().instructions.back();
+    ASSERT_EQ(ret.operands.size(), 1u);
+    ASSERT_EQ(ret.operands.front().kind, Value::Kind::ConstFloat);
+    EXPECT_TRUE(std::isnan(ret.operands.front().f64));
 }
 
 TEST(ILCorrectness, CSEExcludesPlainSignedArithmetic) {

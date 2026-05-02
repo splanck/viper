@@ -56,6 +56,28 @@ bool addOverflows(long long lhs, long long rhs) {
            (rhs < 0 && lhs < std::numeric_limits<long long>::min() - rhs);
 }
 
+std::optional<long long> typeSizeBytes(Type::Kind kind) {
+    switch (kind) {
+        case Type::Kind::I1:
+            return 1;
+        case Type::Kind::I16:
+            return 2;
+        case Type::Kind::I32:
+            return 4;
+        case Type::Kind::I64:
+        case Type::Kind::F64:
+        case Type::Kind::Ptr:
+        case Type::Kind::Str:
+        case Type::Kind::ResumeTok:
+            return 8;
+        case Type::Kind::Error:
+            return 24;
+        case Type::Kind::Void:
+            return std::nullopt;
+    }
+    return std::nullopt;
+}
+
 const il::core::Instr *findDef(const il::core::Function &fn, unsigned temp) {
     for (const auto &block : fn.blocks)
         for (const auto &instr : block.instructions)
@@ -95,6 +117,25 @@ std::optional<StackBounds> stackBoundsForPointer(const il::core::Function &fn,
         return std::nullopt;
     base->offset += *offset;
     return base;
+}
+
+Expected<void> checkStackAccessBounds(const VerifyCtx &ctx,
+                                      const Value &ptr,
+                                      Type::Kind accessKind,
+                                      std::string_view operation) {
+    const auto size = typeSizeBytes(accessKind);
+    if (!size)
+        return fail(ctx, std::string(operation) + " type has no storage size");
+
+    auto bounds = stackBoundsForPointer(ctx.fn, ptr);
+    if (!bounds)
+        return {};
+
+    if (bounds->offset < 0 || bounds->offset > bounds->size)
+        return fail(ctx, std::string(operation) + " outside alloca");
+    if (*size > bounds->size - bounds->offset)
+        return fail(ctx, std::string(operation) + " exceeds alloca bounds");
+    return {};
 }
 
 } // namespace
@@ -168,6 +209,11 @@ Expected<void> checkLoad(const VerifyCtx &ctx) {
     if (ctx.types.valueType(ctx.instr.operands[0]).kind != Type::Kind::Ptr)
         return fail(ctx, "pointer type mismatch");
 
+    if (auto result =
+            checkStackAccessBounds(ctx, ctx.instr.operands[0], ctx.instr.type.kind, "load");
+        !result)
+        return result;
+
     ctx.types.recordResult(ctx.instr, ctx.instr.type);
     return {};
 }
@@ -187,6 +233,11 @@ Expected<void> checkStore(const VerifyCtx &ctx) {
 
     if (pointerType.kind != Type::Kind::Ptr)
         return fail(ctx, "pointer type mismatch");
+
+    if (auto result =
+            checkStackAccessBounds(ctx, ctx.instr.operands[0], ctx.instr.type.kind, "store");
+        !result)
+        return result;
 
     const bool isBoolConst = ctx.instr.type.kind == Type::Kind::I1 &&
                              ctx.instr.operands[1].kind == Value::Kind::ConstInt;

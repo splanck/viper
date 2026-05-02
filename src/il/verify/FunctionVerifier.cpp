@@ -100,14 +100,23 @@ bool isErrAccessOpcode(Opcode op) {
 /// @param instr Instruction being analysed.
 /// @return @c true when the instruction is the runtime array release helper.
 bool isRuntimeArrayRelease(const Instr &instr) {
-    return instr.op == Opcode::Call &&
-           (instr.callee == "rt_arr_i32_release" || instr.callee == "rt_arr_i64_release" ||
-            instr.callee == "rt_arr_str_release" || instr.callee == "rt_arr_obj_release");
+    if (instr.op != Opcode::Call)
+        return false;
+    return instr.callee == "rt_str_release" || instr.callee == "rt_str_release_maybe" ||
+           instr.callee == "Viper.String.ReleaseMaybe" ||
+           instr.callee == "rt_arr_i32_release" || instr.callee == "rt_arr_i64_release" ||
+           instr.callee == "rt_arr_f64_release" || instr.callee == "rt_arr_str_release" ||
+           instr.callee == "rt_arr_obj_release";
 }
 
 bool isRuntimeArrayRetain(const Instr &instr) {
-    return instr.op == Opcode::Call &&
-           (instr.callee == "rt_arr_i32_retain" || instr.callee == "rt_arr_i64_retain");
+    if (instr.op != Opcode::Call)
+        return false;
+    return instr.callee == "rt_str_retain" || instr.callee == "rt_str_retain_maybe" ||
+           instr.callee == "Viper.String.RetainMaybe" ||
+           instr.callee == "rt_arr_i32_retain" || instr.callee == "rt_arr_i64_retain" ||
+           instr.callee == "rt_arr_f64_retain" || instr.callee == "rt_obj_retain_maybe" ||
+           instr.callee == "rt_obj_retain_known";
 }
 
 bool isPureControlTerminator(Opcode op) {
@@ -513,6 +522,21 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     // We also track which block each definition comes from so that verifyBlock can
     // still detect within-block use-before-def errors.
     std::unordered_map<unsigned, const BasicBlock *> definingBlock;
+    auto precollectedResultType = [&](const Instr &instr) {
+        if (!instr.result)
+            return instr.type;
+        if (instr.op == Opcode::Call) {
+            if (auto extIt = externs_.find(instr.callee); extIt != externs_.end())
+                return extIt->second->retType;
+            if (auto fnIt = functionMap_.find(instr.callee); fnIt != functionMap_.end())
+                return fnIt->second->retType;
+            if (const auto *runtimeSig = il::runtime::findRuntimeSignature(instr.callee))
+                return runtimeSig->retType;
+        }
+        if (instr.op == Opcode::CallIndirect && instr.hasIndirectSignature)
+            return instr.indirectRetType;
+        return instr.type;
+    };
 
     for (const auto &bb : fn.blocks) {
         // Block parameters define temporaries
@@ -531,7 +555,9 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
             if (instr.result.has_value()) {
                 std::ostringstream description;
                 description << "instruction result in ^" << bb.label;
-                if (auto result = defineTemp(*instr.result, instr.type, description.str()); !result)
+                if (auto result =
+                        defineTemp(*instr.result, precollectedResultType(instr), description.str());
+                    !result)
                     return result;
                 definingBlock[*instr.result] = &bb;
             }

@@ -123,6 +123,9 @@ All floating-point operations use **F64** (IEEE-754 binary64, double precision).
 | `Inf - Inf` | `NaN` |
 | `Inf * 0.0` | `NaN` |
 
+Runtime sign helpers preserve unordered input: `rt_sgn_f64(NaN)` returns `NaN`, while negative, zero, and positive
+finite values return `-1.0`, `0.0`, and `1.0`.
+
 ### Floating-Point Comparisons
 
 | Opcode | `NaN` behavior | Meaning |

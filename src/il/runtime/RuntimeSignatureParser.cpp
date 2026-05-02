@@ -68,6 +68,13 @@ il::core::Type::Kind parseKindToken(std::string_view token) {
     return Kind::Error;
 }
 
+bool isObjectParamToken(std::string_view token) {
+    token = trim(token);
+    if (!token.empty() && token.back() == '?')
+        token.remove_suffix(1);
+    return token == "obj" || token.rfind("obj<", 0) == 0;
+}
+
 } // namespace
 
 /// @brief Strip leading and trailing ASCII whitespace from a string view.
@@ -140,8 +147,12 @@ RuntimeSignature parseSignatureSpec(std::string_view spec) {
     if (!paramsSlice.empty()) {
         const auto tokens = splitTypeList(paramsSlice);
         signature.paramTypes.reserve(tokens.size());
-        for (auto token : tokens)
+        for (std::size_t index = 0; index < tokens.size(); ++index) {
+            auto token = tokens[index];
             signature.paramTypes.emplace_back(parseKindToken(token));
+            if (index < 64 && isObjectParamToken(token))
+                signature.objectParamMask |= std::uint64_t{1} << index;
+        }
     }
 
     return signature;

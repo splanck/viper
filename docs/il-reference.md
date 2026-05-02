@@ -304,6 +304,8 @@ cumulative static offsets outside the allocation.
 ```
 
 **`load`** — Load from memory.
+If the pointer is statically derived from a constant-size `alloca`, the verifier checks that the full access width fits
+inside the allocation.
 
 ```llvm
 %a0 = load str, %a_slot
@@ -311,6 +313,8 @@ cumulative static offsets outside the allocation.
 ```
 
 **`store`** — Store to memory.
+If the pointer is statically derived from a constant-size `alloca`, the verifier checks that the full access width fits
+inside the allocation.
 
 ```llvm
 store str, %a_slot, %sA
@@ -661,7 +665,11 @@ The verifier enforces structural and type rules. Typical checks include:
 - Branch targets must be valid labels in the same function.
 - Calls must match callee signature exactly.
 - Direct call attributes require runtime or local function effect metadata and cannot contradict it.
-- Pointer-based `call.indirect` sites with `[ret(params)]` signatures must match their arguments and result annotation.
+- `ptr` and `str` are distinct verifier types even though both occupy one machine word. The only relaxed direct-call
+  path is a known runtime helper parameter spelled `obj` in the generated runtime catalog; raw `ptr` externs and
+  indirect-call signatures still reject `str`.
+- Pointer-based `call.indirect` sites require `[ret(params)]` signatures; signatures must match their arguments and
+  non-void signatures must bind a result temp.
 - `addr_of` and `const_str` require declared string globals; `gaddr` requires a declared scalar storage global.
 - Scalar global initializers must parse and fit the declared type; imported globals cannot define initial storage.
 

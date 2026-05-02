@@ -64,9 +64,10 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         return RtComponent::Arrays;
 
     // OOP component
-    if (starts("rt_obj_") || starts("rt_type_") || starts("rt_cast_") || starts("rt_ns_") ||
-        starts("rt_box_") || starts("rt_exc_") || starts("rt_result_") || starts("rt_option_") ||
-        starts("rt_lazy") || starts("rt_oop_") || sym == "rt_bind_interface")
+    if (starts("rt_obj_") || starts("rt_type_") || starts("rt_register_") ||
+        starts("rt_cast_") || starts("rt_ns_") || starts("rt_box_") || starts("rt_exc_") ||
+        starts("rt_result_") || starts("rt_option_") || starts("rt_lazy") ||
+        starts("rt_oop_") || sym == "rt_bind_interface")
         return RtComponent::Oop;
 
     // Collections component

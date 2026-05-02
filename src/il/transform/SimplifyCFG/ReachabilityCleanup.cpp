@@ -66,6 +66,13 @@ BitVector markReachable(il::core::Function &function) {
             enqueueSuccessor(reachable, worklist, lookupBlockIndex(labelToIndex, label));
         };
 
+        for (const auto &instr : block.instructions) {
+            if (instr.op != il::core::Opcode::EhPush)
+                continue;
+            for (const auto &label : instr.labels)
+                addLabel(label);
+        }
+
         switch (terminator->op) {
             case il::core::Opcode::Br:
                 if (!terminator->labels.empty())

@@ -78,9 +78,10 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr) {
                     }
                     args.push_back(v.value);
                 }
-                // Heuristic return type: strings return Str; others Ptr
-                Type ret = (qname == il::runtime::RTCLASS_STRING) ? Type(Type::Kind::Str)
-                                                                  : Type(Type::Kind::Ptr);
+                Type ret = ctorDesc ? ctorDesc->signature.retType
+                                    : (string_utils::iequals(qname, il::runtime::RTCLASS_STRING)
+                                           ? Type(Type::Kind::Str)
+                                           : Type(Type::Kind::Ptr));
                 Value obj = emitCallRet(ret, c->ctor, args);
                 return {obj, ret};
             }

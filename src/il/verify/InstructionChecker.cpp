@@ -835,7 +835,9 @@ bool isVerifiedCheckedDivRemDemotion(const VerifyCtx &ctx) {
     if (divisor == 0)
         return false;
 
-    if (ctx.instr.op != Opcode::SDiv || divisor != -1) {
+    const bool signedMinDivisorOverflow =
+        (ctx.instr.op == Opcode::SDiv || ctx.instr.op == Opcode::SRem) && divisor == -1;
+    if (!signedMinDivisorOverflow) {
         ctx.types.recordResult(ctx.instr, resolveResultType(ctx, getInstructionSpec(ctx.instr.op)));
         return true;
     }

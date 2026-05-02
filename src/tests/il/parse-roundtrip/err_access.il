@@ -3,6 +3,7 @@ func @f() -> void {
 entry:
   eh.push ^H
   trap.from_err i32 7
+normal:
   ret
 handler ^H(%e:Error, %t:ResumeTok):
   eh.entry

@@ -69,6 +69,23 @@ int main() {
     b.setInsertPoint(otherT);
     b.emitRet(std::nullopt, {});
 
+    Function &dup = b.startFunction("dup", Type(Type::Kind::Void), {});
+    b.createBlock(dup, "entry");
+    b.createBlock(dup, "join");
+    Block &dupEntry = dup.blocks[0];
+    Block &dupJoin = dup.blocks[1];
+
+    Instr dupCbr;
+    dupCbr.op = Opcode::CBr;
+    dupCbr.type = Type(Type::Kind::Void);
+    dupCbr.operands.push_back(Value::constBool(true));
+    dupCbr.labels = {"join", "join"};
+    dupEntry.instructions.push_back(std::move(dupCbr));
+    dupEntry.terminated = true;
+
+    b.setInsertPoint(dupJoin);
+    b.emitRet(std::nullopt, {});
+
     viper::analysis::CFGContext ctx(m);
 
     auto sEntry = successors(ctx, entry);
@@ -95,6 +112,14 @@ int main() {
 
     auto pHandler = predecessors(ctx, handler);
     assert(pHandler.size() == 1 && pHandler[0] == &f);
+
+    auto sDupEntry = successors(ctx, dupEntry);
+    assert(sDupEntry.size() == 2);
+    assert(sDupEntry[0] == &dupJoin && sDupEntry[1] == &dupJoin);
+
+    auto pDupJoin = predecessors(ctx, dupJoin);
+    assert(pDupJoin.size() == 2);
+    assert(pDupJoin[0] == &dupEntry && pDupJoin[1] == &dupEntry);
 
     return 0;
 }

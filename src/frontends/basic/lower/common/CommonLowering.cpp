@@ -360,6 +360,9 @@ CommonLowering::Value CommonLowering::emitCallIndirectRet(Type ty,
     in.result = id;
     in.op = Opcode::CallIndirect;
     in.type = ty;
+    in.hasIndirectSignature = true;
+    in.indirectRetType = ty;
+    in.indirectIsVarArg = true;
     in.operands.reserve(1 + args.size());
     in.operands.push_back(callee);
     for (const auto &a : args)
@@ -375,6 +378,9 @@ void CommonLowering::emitCallIndirect(Value callee, const std::vector<Value> &ar
     Instr in;
     in.op = Opcode::CallIndirect;
     in.type = Type(Type::Kind::Void);
+    in.hasIndirectSignature = true;
+    in.indirectRetType = Type(Type::Kind::Void);
+    in.indirectIsVarArg = true;
     in.operands.reserve(1 + args.size());
     in.operands.push_back(callee);
     for (const auto &a : args)

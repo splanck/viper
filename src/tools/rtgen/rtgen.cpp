@@ -616,7 +616,9 @@ static std::string ilTypeToSigType(const std::string &ilType) {
     std::string baseType = stripTypeArgs(ilType);
     if (baseType == "str")
         return "string";
-    if (baseType == "obj" || baseType == "ptr")
+    if (baseType == "obj")
+        return ilType;
+    if (baseType == "ptr")
         return "ptr";
     if (baseType == "bool")
         return "i1";

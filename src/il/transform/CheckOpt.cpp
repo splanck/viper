@@ -521,7 +521,14 @@ bool tryDemoteCheckedDivRem(Instr &instr) {
             return true;
         case Opcode::SRemChk0:
             // MIN % -1 is defined as 0 for Viper's checked remainder semantics,
-            // so a nonzero divisor fully proves the trap check unnecessary.
+            // but the plain opcode may lower through a native signed divide path.
+            // Like sdiv, demotion to the plain form needs a known non-minimum
+            // numerator when the divisor is -1.
+            if (divisor == -1 &&
+                (lhs.kind != Value::Kind::ConstInt ||
+                 lhs.i64 == std::numeric_limits<int64_t>::min())) {
+                return false;
+            }
             instr.op = Opcode::SRem;
             return true;
         case Opcode::URemChk0:

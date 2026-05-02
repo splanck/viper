@@ -301,6 +301,84 @@ TEST(IL, testJumpThreadingPreservesDominatedParamUses) {
     // not leave the dominated successor with a dangling reference to %carried.
 }
 
+TEST(IL, testJumpThreadingUsesDuplicateEdgeArguments) {
+    Module module;
+    Function fn;
+    fn.name = "threading_duplicate_edges";
+    fn.retType = Type(Type::Kind::I64);
+    fn.params.push_back(Param{"flag", Type(Type::Kind::I1), 0});
+
+    BasicBlock entry;
+    entry.label = "entry";
+    {
+        Instr cbr;
+        cbr.op = Opcode::CBr;
+        cbr.type = Type(Type::Kind::Void);
+        cbr.operands = {Value::temp(0)};
+        cbr.labels = {"mid", "mid"};
+        cbr.brArgs = {{Value::constBool(false), Value::constInt(11)},
+                      {Value::constBool(true), Value::constInt(22)}};
+        entry.instructions.push_back(std::move(cbr));
+        entry.terminated = true;
+    }
+
+    BasicBlock mid;
+    mid.label = "mid";
+    mid.params.push_back(Param{"cond", Type(Type::Kind::I1), 1});
+    mid.params.push_back(Param{"value", Type(Type::Kind::I64), 2});
+    {
+        Instr cbr;
+        cbr.op = Opcode::CBr;
+        cbr.type = Type(Type::Kind::Void);
+        cbr.operands = {Value::temp(1)};
+        cbr.labels = {"target", "target"};
+        cbr.brArgs = {{Value::temp(2)}, {Value::constInt(0)}};
+        mid.instructions.push_back(std::move(cbr));
+        mid.terminated = true;
+    }
+
+    BasicBlock target;
+    target.label = "target";
+    target.params.push_back(Param{"result", Type(Type::Kind::I64), 3});
+    {
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands = {Value::temp(3)};
+        target.instructions.push_back(std::move(ret));
+        target.terminated = true;
+    }
+
+    fn.blocks = {std::move(entry), std::move(mid), std::move(target)};
+    fn.valueNames.resize(4);
+    module.functions.push_back(std::move(fn));
+
+    verifyOrDie(module);
+
+    Function &function = module.functions.front();
+    il::transform::SimplifyCFG simplify(true);
+    simplify.setModule(&module);
+    simplify.run(function);
+
+    verifyOrDie(module);
+
+    BasicBlock *entryAfter = findBlock(function, "entry");
+    ASSERT_TRUE(entryAfter != nullptr);
+    ASSERT_FALSE(entryAfter->instructions.empty());
+    const Instr &term = entryAfter->instructions.back();
+    ASSERT_EQ(term.op, Opcode::CBr);
+    ASSERT_EQ(term.labels.size(), 2u);
+    EXPECT_EQ(term.labels[0], "target");
+    EXPECT_EQ(term.labels[1], "target");
+    ASSERT_EQ(term.brArgs.size(), 2u);
+    ASSERT_EQ(term.brArgs[0].size(), 1u);
+    ASSERT_EQ(term.brArgs[1].size(), 1u);
+    EXPECT_EQ(term.brArgs[0][0].kind, Value::Kind::ConstInt);
+    EXPECT_EQ(term.brArgs[0][0].i64, 0);
+    EXPECT_EQ(term.brArgs[1][0].kind, Value::Kind::ConstInt);
+    EXPECT_EQ(term.brArgs[1][0].i64, 22);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

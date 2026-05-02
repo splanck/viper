@@ -4,13 +4,20 @@ global const str @.msg1 = "after"
 
 func @errors_demo() -> void {
 entry:
+  br same_fault
+same_fault:
   eh.push ^handle_same
   trap.from_err i32 6
+next_fault:
   eh.push ^handle_next
   trap.from_err i32 4
+label_fault:
   eh.push ^handle_label
   trap.from_err i32 5
+plain_fault:
   trap
+normal_exit:
+  eh.push ^handle_next
   eh.pop
   ret
 handler ^handle_same(%err:Error, %tok:ResumeTok):

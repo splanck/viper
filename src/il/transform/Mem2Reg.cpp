@@ -135,9 +135,12 @@ struct BlockState {
 using AllocaMap = std::unordered_map<unsigned, AllocaInfo>;
 using VarMap = std::unordered_map<unsigned, VarState>;
 using BlockMap = std::unordered_map<BasicBlock *, BlockState>;
-using LabelIndexCache =
-    std::unordered_map<const Instr *, std::unordered_map<std::string, std::size_t>>;
 using ReplacementMap = std::unordered_map<unsigned, Value>;
+
+struct IncomingEdge {
+    BasicBlock *pred = nullptr;
+    std::size_t edgeIndex = 0;
+};
 
 static Value zeroValueForType(const Type &type) {
     return type.kind == Type::Kind::F64 ? Value::constFloat(0.0) : Value::constInt(0);
@@ -182,6 +185,22 @@ static void addIncomplete(BlockState &state, unsigned varId) {
         state.incomplete.end()) {
         state.incomplete.push_back(varId);
     }
+}
+
+static std::vector<IncomingEdge> incomingEdges(Function &F, const BasicBlock *target) {
+    std::vector<IncomingEdge> edges;
+    if (!target)
+        return edges;
+
+    for (auto &pred : F.blocks) {
+        if (pred.instructions.empty())
+            continue;
+        const Instr &term = pred.instructions.back();
+        for (std::size_t edge = 0; edge < term.labels.size(); ++edge)
+            if (term.labels[edge] == target->label)
+                edges.push_back(IncomingEdge{&pred, edge});
+    }
+    return edges;
 }
 
 /// @brief Gather information about @c alloca instructions within a function.
@@ -310,35 +329,15 @@ static bool addIncoming(BasicBlock *B,
                         VarMap &vars,
                         BlockMap &blocks,
                         unsigned &nextId,
-                        LabelIndexCache *idxCache) {
+                        std::size_t edgeIndex) {
     unsigned pIdx = ensureParam(B, varId, vars, blocks, nextId);
     Instr &term = Pred->instructions.back();
-    std::size_t target = 0;
-    if (idxCache && term.labels.size() >= 6) {
-        auto &map = (*idxCache)[&term];
-        if (map.empty()) {
-            for (std::size_t i = 0; i < term.labels.size(); ++i)
-                map.emplace(term.labels[i], i);
-        }
-        auto it = map.find(B->label);
-        if (it != map.end())
-            target = it->second;
-        else {
-            for (target = 0; target < term.labels.size(); ++target)
-                if (term.labels[target] == B->label)
-                    break;
-        }
-    } else {
-        for (target = 0; target < term.labels.size(); ++target)
-            if (term.labels[target] == B->label)
-                break;
-    }
+    if (edgeIndex >= term.labels.size() || term.labels[edgeIndex] != B->label)
+        return false;
+
     if (term.brArgs.size() < term.labels.size())
         term.brArgs.resize(term.labels.size());
-    if (target >= term.labels.size()) {
-        return false;
-    }
-    auto &args = term.brArgs[target];
+    auto &args = term.brArgs[edgeIndex];
     if (args.size() <= pIdx)
         args.resize(pIdx + 1);
     args[pIdx] = val;
@@ -377,17 +376,17 @@ static Value readFromPreds(Function &F,
                            BlockMap &blocks,
                            unsigned &nextId,
                            const analysis::CFGContext &ctx,
-                           LabelIndexCache *idxCache,
                            bool &ok) {
-    const auto &preds = analysis::predecessors(ctx, *B);
+    const auto preds = incomingEdges(F, B);
     if (preds.empty()) {
         return vars[varId].initialValue;
     }
     unsigned pIdx = ensureParam(B, varId, vars, blocks, nextId);
     Value paramVal = Value::temp(B->params[pIdx].id);
-    for (auto *P : preds) {
-        Value arg = renameUses(F, P, varId, vars, blocks, nextId, ctx, ok);
-        if (!ok || !addIncoming(B, varId, P, arg, vars, blocks, nextId, idxCache)) {
+    for (const auto &edge : preds) {
+        Value arg = renameUses(F, edge.pred, varId, vars, blocks, nextId, ctx, ok);
+        if (!ok ||
+            !addIncoming(B, varId, edge.pred, arg, vars, blocks, nextId, edge.edgeIndex)) {
             ok = false;
             return paramVal;
         }
@@ -431,14 +430,14 @@ static Value renameUses(Function &F,
         addIncomplete(BS, varId);
         return v;
     }
-    const auto &preds = analysis::predecessors(ctx, *B);
+    const auto preds = incomingEdges(F, B);
     if (preds.empty()) {
         Value v = VS.initialValue;
         VS.defs[B] = v;
         return v;
     }
     if (preds.size() == 1) {
-        Value v = renameUses(F, preds.front(), varId, vars, blocks, nextId, ctx, ok);
+        Value v = renameUses(F, preds.front().pred, varId, vars, blocks, nextId, ctx, ok);
         VS.defs[B] = v;
         return v;
     }
@@ -450,7 +449,7 @@ static Value renameUses(Function &F,
     unsigned pIdx = ensureParam(B, varId, vars, blocks, nextId);
     Value placeholder = Value::temp(B->params[pIdx].id);
     VS.defs[B] = placeholder;
-    Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, nullptr, ok);
+    Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, ok);
     if (!valueEquals(v, placeholder))
         VS.defs[B] = v;
     return VS.defs[B];
@@ -475,14 +474,13 @@ static void sealBlocks(Function &F,
                        BlockMap &blocks,
                        unsigned &nextId,
                        const analysis::CFGContext &ctx,
-                       LabelIndexCache *idxCache,
                        bool &ok) {
     BlockState &BS = blocks[B];
     if (BS.sealed)
         return;
     std::sort(BS.incomplete.begin(), BS.incomplete.end());
     for (unsigned varId : BS.incomplete) {
-        Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, idxCache, ok);
+        Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, ok);
         if (!ok)
             break;
         if (!vars[varId].defs.contains(B))
@@ -627,7 +625,6 @@ static void promoteVariables(Function &F,
         queued.insert(&F.blocks.front());
     }
 
-    LabelIndexCache idxCache;
     ReplacementMap replacements;
     bool ok = true;
 
@@ -677,7 +674,7 @@ static void promoteVariables(Function &F,
                 queued.insert(S);
             }
             if (SS.seenPreds == SS.totalPreds)
-                sealBlocks(F, S, vars, blocks, nextId, ctx, &idxCache, ok);
+                sealBlocks(F, S, vars, blocks, nextId, ctx, ok);
             if (!ok)
                 return;
         }

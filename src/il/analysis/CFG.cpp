@@ -103,18 +103,11 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module) {
                     appendLabel(lbl);
             }
 
-            std::unordered_set<il::core::Block *> recorded;
-            recorded.reserve(succ.size());
-            std::vector<il::core::Block *> uniqueSucc;
-            uniqueSucc.reserve(succ.size());
             for (auto *target : succ) {
-                if (!target || recorded.contains(target))
+                if (!target)
                     continue;
-                recorded.insert(target);
-                uniqueSucc.push_back(target);
                 blockPredecessors[target].push_back(&blk);
             }
-            succ = std::move(uniqueSucc);
         }
     }
 }
@@ -142,9 +135,9 @@ const std::vector<il::core::Block *> &successors(const CFGContext &ctx, const il
 ///
 /// @details Returns the cached predecessor list accumulated during context
 ///          construction.  Each entry represents a block that branches to
-///          @p B.  Because duplicates are removed when caching, the result set is
-///          unique and suitable for algorithms that assume each predecessor is
-///          visited once.
+///          @p B.  Duplicate entries are preserved when multiple terminator
+///          edges target the same block because each edge can carry different
+///          block arguments.
 /// @param ctx Context providing block-to-function lookup.
 /// @param B Target block whose incoming edges are requested.
 /// @return Cached list of predecessor blocks; empty if none are found.

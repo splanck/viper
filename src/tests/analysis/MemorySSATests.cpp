@@ -562,6 +562,56 @@ TEST(MemorySSA, AssignsDefAndUseNodes) {
     EXPECT_TRUE(mssa.isDeadStore(&entry, 3));
 }
 
+TEST(MemorySSA, SameBlockLoadUsesNearestAliasingStore) {
+    Module module;
+    il::build::IRBuilder builder(module);
+
+    Function &fn = builder.startFunction("same_block_locations", Type(Type::Kind::I64), {});
+    builder.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks[0];
+
+    unsigned ptr1 = builder.reserveTempId();
+    unsigned ptr2 = builder.reserveTempId();
+    unsigned val = builder.reserveTempId();
+
+    Instr alloca1;
+    alloca1.result = ptr1;
+    alloca1.op = Opcode::Alloca;
+    alloca1.type = Type(Type::Kind::Ptr);
+    alloca1.operands.push_back(Value::constInt(8));
+    entry.instructions.push_back(std::move(alloca1));
+
+    Instr alloca2;
+    alloca2.result = ptr2;
+    alloca2.op = Opcode::Alloca;
+    alloca2.type = Type(Type::Kind::Ptr);
+    alloca2.operands.push_back(Value::constInt(8));
+    entry.instructions.push_back(std::move(alloca2));
+
+    addStore(entry, ptr1, 11); // index 2
+    addStore(entry, ptr2, 22); // index 3, different alloca
+    addLoad(entry, val, ptr1); // index 4, must read index 2
+
+    builder.setInsertPoint(entry);
+    builder.emitRet(Value::temp(val), {});
+
+    verifyOrDie(module);
+
+    viper::analysis::BasicAA aa(module, fn);
+    viper::analysis::MemorySSA mssa = viper::analysis::computeMemorySSA(fn, aa);
+
+    const auto *store1 = mssa.accessFor(&entry, 2);
+    ASSERT_TRUE(store1 != nullptr);
+    const auto *store2 = mssa.accessFor(&entry, 3);
+    ASSERT_TRUE(store2 != nullptr);
+    const auto *load = mssa.accessFor(&entry, 4);
+    ASSERT_TRUE(load != nullptr);
+
+    EXPECT_EQ(load->definingAccess, store1->id);
+    EXPECT_NE(load->definingAccess, store2->id);
+    EXPECT_FALSE(mssa.isDeadStore(&entry, 2));
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

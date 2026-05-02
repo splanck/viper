@@ -232,6 +232,9 @@ class InstructionEmitter {
         instr.result = id;
         instr.op = Opcode::CallIndirect;
         instr.type = retTy;
+        instr.hasIndirectSignature = true;
+        instr.indirectRetType = retTy;
+        instr.indirectIsVarArg = true;
         instr.operands.push_back(callee);
         for (const auto &arg : args)
             instr.operands.push_back(arg);
@@ -245,6 +248,9 @@ class InstructionEmitter {
         il::core::Instr instr;
         instr.op = Opcode::CallIndirect;
         instr.type = Type(Type::Kind::Void);
+        instr.hasIndirectSignature = true;
+        instr.indirectRetType = Type(Type::Kind::Void);
+        instr.indirectIsVarArg = true;
         instr.operands.push_back(callee);
         for (const auto &arg : args)
             instr.operands.push_back(arg);

@@ -415,7 +415,7 @@ TEST(CheckOpt, DemotesUnsignedDivRemWithNonZeroConstDivisor) {
     EXPECT_EQ(Fn.blocks[0].instructions[1].op, Opcode::URem);
 }
 
-TEST(CheckOpt, DemotesSignedRemainderByMinusOne) {
+TEST(CheckOpt, KeepsSignedRemainderByMinusOneWhenNumeratorUnknown) {
     Module M;
     Function F;
     F.name = "checked_srem_minus_one";
@@ -434,6 +434,41 @@ TEST(CheckOpt, DemotesSignedRemainderByMinusOne) {
     rem.op = Opcode::SRemChk0;
     rem.type = Type(Type::Kind::I64);
     rem.operands = {Value::temp(0), Value::constInt(-1)};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    entry.instructions = {std::move(rem), std::move(ret)};
+    entry.terminated = true;
+
+    F.blocks.push_back(std::move(entry));
+    M.functions.push_back(std::move(F));
+    auto &Fn = M.functions.front();
+
+    il::transform::AnalysisRegistry registry = makeRegistry();
+    il::transform::AnalysisManager manager(M, registry);
+
+    il::transform::CheckOpt pass;
+    pass.run(Fn, manager);
+
+    ASSERT_FALSE(Fn.blocks[0].instructions.empty());
+    EXPECT_EQ(Fn.blocks[0].instructions.front().op, Opcode::SRemChk0);
+}
+
+TEST(CheckOpt, DemotesSignedRemainderByMinusOneWhenNumeratorConstantSafe) {
+    Module M;
+    Function F;
+    F.name = "checked_srem_minus_one_const";
+    F.retType = Type(Type::Kind::Void);
+
+    BasicBlock entry;
+    entry.label = "entry";
+
+    Instr rem;
+    rem.result = 1;
+    rem.op = Opcode::SRemChk0;
+    rem.type = Type(Type::Kind::I64);
+    rem.operands = {Value::constInt(42), Value::constInt(-1)};
 
     Instr ret;
     ret.op = Opcode::Ret;

@@ -193,6 +193,9 @@ void applyDefaultType(const OpcodeInfo &info, Instr &in) {
         case TypeCategory::I1:
             in.type = Type(Kind::I1);
             break;
+        case TypeCategory::I16:
+            in.type = Type(Kind::I16);
+            break;
         case TypeCategory::I32:
             in.type = Type(Kind::I32);
             break;
@@ -348,6 +351,11 @@ Expected<void> parseWithMetadata(Opcode opcode,
 /// @return Empty on success; otherwise, a diagnostic for malformed syntax,
 /// operands, or shape violations.
 Expected<void> parseInstruction_E(const std::string &line, ParserState &st) {
+    if (st.curBB && st.curBB->terminated) {
+        return Expected<void>{il::io::makeLineErrorDiag(
+            st.curLoc, st.lineNo, "instruction appears after block terminator")};
+    }
+
     Instr in;
     in.loc = st.curLoc;
     std::string work = line;

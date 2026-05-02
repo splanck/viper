@@ -810,9 +810,9 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog) {
         builder->addBlock(f, "entry");
         context().setCurrent(&f.blocks.front());
         f.blocks.front().terminated = false;
-        // Call rt_register_interface_direct(ifaceId, "qname", slot_count)
+        // Call the runtime-string bridge so IL `str` is not passed to a raw pointer ABI.
         std::string qnameLabel = getStringLabel(qname);
-        emitCall("rt_register_interface_direct",
+        emitCall("rt_register_interface_direct_rs",
                  {Value::constInt(iface.ifaceId),
                   emitConstStr(qnameLabel),
                   Value::constInt((long long)iface.slots.size())});

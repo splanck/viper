@@ -51,6 +51,22 @@ enum class RuntimeArrayCallee {
     ResizeI32,
     RetainI32,
     ReleaseI32,
+    // i64 arrays
+    NewI64,
+    LenI64,
+    GetI64,
+    SetI64,
+    ResizeI64,
+    RetainI64,
+    ReleaseI64,
+    // f64 arrays
+    NewF64,
+    LenF64,
+    GetF64,
+    SetF64,
+    ResizeF64,
+    RetainF64,
+    ReleaseF64,
     // string arrays
     NewStr,
     LenStr,
@@ -92,6 +108,38 @@ RuntimeArrayCallee classifyRuntimeArrayCallee(std::string_view callee) {
     if (callee == "rt_arr_i32_release")
         return RuntimeArrayCallee::ReleaseI32;
 
+    // i64 array helpers
+    if (callee == "rt_arr_i64_new")
+        return RuntimeArrayCallee::NewI64;
+    if (callee == "rt_arr_i64_len")
+        return RuntimeArrayCallee::LenI64;
+    if (callee == "rt_arr_i64_get")
+        return RuntimeArrayCallee::GetI64;
+    if (callee == "rt_arr_i64_set")
+        return RuntimeArrayCallee::SetI64;
+    if (callee == "rt_arr_i64_resize")
+        return RuntimeArrayCallee::ResizeI64;
+    if (callee == "rt_arr_i64_retain")
+        return RuntimeArrayCallee::RetainI64;
+    if (callee == "rt_arr_i64_release")
+        return RuntimeArrayCallee::ReleaseI64;
+
+    // f64 array helpers
+    if (callee == "rt_arr_f64_new")
+        return RuntimeArrayCallee::NewF64;
+    if (callee == "rt_arr_f64_len")
+        return RuntimeArrayCallee::LenF64;
+    if (callee == "rt_arr_f64_get")
+        return RuntimeArrayCallee::GetF64;
+    if (callee == "rt_arr_f64_set")
+        return RuntimeArrayCallee::SetF64;
+    if (callee == "rt_arr_f64_resize")
+        return RuntimeArrayCallee::ResizeF64;
+    if (callee == "rt_arr_f64_retain")
+        return RuntimeArrayCallee::RetainF64;
+    if (callee == "rt_arr_f64_release")
+        return RuntimeArrayCallee::ReleaseF64;
+
     // string array helpers
     if (callee == "rt_arr_str_alloc")
         return RuntimeArrayCallee::NewStr;
@@ -120,10 +168,20 @@ RuntimeArrayCallee classifyRuntimeArrayCallee(std::string_view callee) {
 }
 
 bool typeKindsCompatible(Type::Kind actual, Type::Kind expected) {
-    if (actual == expected)
+    return actual == expected;
+}
+
+bool runtimeArgTypeCompatible(Type::Kind actual,
+                              Type::Kind expected,
+                              const il::runtime::RuntimeSignature *runtimeSig,
+                              size_t index) {
+    if (typeKindsCompatible(actual, expected))
         return true;
-    return (expected == Type::Kind::Ptr && actual == Type::Kind::Str) ||
-           (expected == Type::Kind::Str && actual == Type::Kind::Ptr);
+    if (!runtimeSig || index >= 64)
+        return false;
+    const bool objectParam =
+        (runtimeSig->objectParamMask & (std::uint64_t{1} << index)) != 0;
+    return objectParam && expected == Type::Kind::Ptr && actual == Type::Kind::Str;
 }
 
 bool isSupportedVarArgType(Type::Kind kind) {
@@ -304,6 +362,120 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx) {
             return requireNoResult();
         }
         case RuntimeArrayCallee::ReleaseI32: {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            return requireNoResult();
+        }
+        case RuntimeArrayCallee::NewI64: {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::I64, "length"); !result)
+                return result;
+            return requireResultType(Type::Kind::Ptr);
+        }
+        case RuntimeArrayCallee::LenI64: {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            return requireResultType(Type::Kind::I64);
+        }
+        case RuntimeArrayCallee::GetI64: {
+            if (auto result = requireArgCount(2); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            if (auto result = requireOperandType(1, Type::Kind::I64, "index"); !result)
+                return result;
+            return requireResultType(Type::Kind::I64);
+        }
+        case RuntimeArrayCallee::SetI64: {
+            if (auto result = requireArgCount(3); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            if (auto result = requireOperandType(1, Type::Kind::I64, "index"); !result)
+                return result;
+            if (auto result = requireOperandType(2, Type::Kind::I64, "value"); !result)
+                return result;
+            return requireNoResult();
+        }
+        case RuntimeArrayCallee::ResizeI64: {
+            if (auto result = requireArgCount(2); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            if (auto result = requireOperandType(1, Type::Kind::I64, "length"); !result)
+                return result;
+            return requireResultType(Type::Kind::Ptr);
+        }
+        case RuntimeArrayCallee::RetainI64: {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            return requireNoResult();
+        }
+        case RuntimeArrayCallee::ReleaseI64: {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            return requireNoResult();
+        }
+        case RuntimeArrayCallee::NewF64: {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::I64, "length"); !result)
+                return result;
+            return requireResultType(Type::Kind::Ptr);
+        }
+        case RuntimeArrayCallee::LenF64: {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            return requireResultType(Type::Kind::I64);
+        }
+        case RuntimeArrayCallee::GetF64: {
+            if (auto result = requireArgCount(2); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            if (auto result = requireOperandType(1, Type::Kind::I64, "index"); !result)
+                return result;
+            return requireResultType(Type::Kind::F64);
+        }
+        case RuntimeArrayCallee::SetF64: {
+            if (auto result = requireArgCount(3); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            if (auto result = requireOperandType(1, Type::Kind::I64, "index"); !result)
+                return result;
+            if (auto result = requireOperandType(2, Type::Kind::F64, "value"); !result)
+                return result;
+            return requireNoResult();
+        }
+        case RuntimeArrayCallee::ResizeF64: {
+            if (auto result = requireArgCount(2); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            if (auto result = requireOperandType(1, Type::Kind::I64, "length"); !result)
+                return result;
+            return requireResultType(Type::Kind::Ptr);
+        }
+        case RuntimeArrayCallee::RetainF64: {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            return requireNoResult();
+        }
+        case RuntimeArrayCallee::ReleaseF64: {
             if (auto result = requireArgCount(1); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
@@ -492,7 +664,9 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
                 if (ctx.instr.indirectRetType.kind == Type::Kind::Void) {
                     if (ctx.instr.result)
                         return fail(ctx, "call.indirect to void signature must not have a result");
-                } else if (ctx.instr.result) {
+                } else {
+                    if (!ctx.instr.result)
+                        return fail(ctx, "call.indirect to non-void signature requires a result");
                     if (!typeKindsCompatible(ctx.instr.type.kind, ctx.instr.indirectRetType.kind)) {
                         std::ostringstream ss;
                         ss << "call.indirect return type mismatch: signature returns "
@@ -506,16 +680,7 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
             }
 
             // Legacy pointer-based indirect call without signature metadata.
-            if (ctx.instr.result && ctx.instr.type.kind == il::core::Type::Kind::Void)
-                return fail(ctx, "call.indirect result must have non-void type");
-            for (size_t i = 1; i < ctx.instr.operands.size(); ++i) {
-                if (ctx.types.valueType(ctx.instr.operands[i]).kind == il::core::Type::Kind::Void)
-                    return fail(ctx, "call.indirect argument has unknown or void type");
-            }
-            if (ctx.instr.result && ctx.instr.type.kind != il::core::Type::Kind::Void) {
-                ctx.types.recordResult(ctx.instr, ctx.instr.type);
-            }
-            return {};
+            return fail(ctx, "call.indirect through pointer requires an explicit signature");
         }
     } else {
         // Not a call; defer to default checker.
@@ -609,7 +774,7 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
             expected = runtimeSig->paramTypes[i];
 
         const auto actualKind = ctx.types.valueType(ctx.instr.operands[argStart + i]).kind;
-        if (!typeKindsCompatible(actualKind, expected.kind)) {
+        if (!runtimeArgTypeCompatible(actualKind, expected.kind, runtimeSig, i)) {
             std::ostringstream ss;
             ss << "call arg type mismatch: @" << calleeName << " parameter " << i << " expects "
                << kindToString(expected.kind) << " but got " << kindToString(actualKind);

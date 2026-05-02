@@ -180,6 +180,7 @@ struct RuntimeSignature {
     bool readonly{false}; ///< Helper may read from memory without writes.
     bool pure{false};     ///< Helper has no observable side effects.
     bool isVarArg{false}; ///< Helper uses C-style variadic arguments.
+    std::uint64_t objectParamMask{0};  ///< Parameters spelled `obj` in the runtime surface.
     std::uint64_t consumedArgMask{0}; ///< IL-visible args whose ownership is consumed.
     std::uint64_t retainedArgMask{0}; ///< IL-visible args whose reference count is retained.
     bool returnsOwned{false};         ///< Helper returns an owned reference/string handle.

@@ -57,9 +57,9 @@ last-verified: 2026-05-01
   `pure` -> `NoModRef`, `readonly` -> `Ref`, everything else -> `ModRef`.
 - Runtime signature lookup uses the generated runtime table directly for known helpers and treats unknown callees as
   `ModRef`.
-- Runtime signature metadata also records string/reference ownership effects. Helpers such as `rt_str_concat` consume
-  their string arguments and return an owned result; retain/release helpers are modeled explicitly so optimizers do not
-  reorder or eliminate calls across ownership boundaries.
+- Runtime signature metadata also records string/reference ownership effects and which parameters are runtime `obj`
+  slots. Helpers such as `rt_str_concat` consume their string arguments and return an owned result; retain/release
+  helpers are modeled explicitly so optimizers do not reorder or eliminate calls across ownership boundaries.
 - `const_str` materializes an owned runtime string handle. It is intentionally modeled as side-effecting and
   read/write-memory, so LICM, GVN, EarlyCSE, and related passes cannot hoist or merge it until a retain-insertion pass
   exists for duplicated uses.
@@ -73,6 +73,8 @@ The **SimplifyCFG** pass tidies the control-flow graph before and after SSA prom
 - Folds trivial `cbr` instructions when their condition is constant or both edges converge.
 - Merges blocks that have a single predecessor with their unique successor when it preserves semantics.
 - Prunes blocks that have become unreachable.
+- Reachability treats `eh.push` handler labels as CFG edges so landing pads referenced only through EH metadata are not
+  pruned.
 
 ### Safety Notes
 
@@ -100,6 +102,9 @@ Promotes alloca/store/load patterns to pure SSA values:
 - **Edge repair**: After promotion, mem2reg repairs branch arguments for every block parameter it introduced so partially
   populated edge argument vectors do not escape into the verifier or serializer. A literal `null` branch argument is
   preserved as data rather than treated as an unfilled repair slot.
+- **Duplicate-edge safety**: CFG successor/predecessor caches preserve parallel edges, and mem2reg writes promoted
+  values to the exact predecessor edge index. This matters for `cbr`/`switch` sites that target the same block more than
+  once with different branch-argument bundles.
 - **Lazy dominator tree**: The dominator tree is computed only when non-entry allocas with cross-block uses are
   encountered, keeping the common (entry-block-only) case fast.
 - **Batched use rewriting**: Load replacements are collected and applied in one function-local rewrite pass instead of
@@ -248,6 +253,8 @@ Constant folding evaluates pure operations at compile time:
 - **Intrinsics**: `abs`, `ceil`, `clamp`, `cos`, `exp`, `floor`, `log`, `max`, `min`, `pow`, `sgn`, `sin`, `sqrt`, `tan`
 - **Type conversions**: int/float casts with constant operands
 
+`rt_sgn_f64(NaN)` folds to `NaN`, preserving the runtime's IEEE behavior instead of collapsing unordered input to zero.
+
 ## SCCP (Sparse Conditional Constant Propagation)
 
 Propagates constants through the IL using sparse conditional evaluation:
@@ -265,8 +272,9 @@ Three-level dead store elimination:
    read. Uses BasicAA for alias disambiguation and is conservative about calls that may modify or reference memory.
    Uses `size_t` loop counters for safe unsigned backward iteration.
 
-2. **Cross-block DSE** (`runCrossBlockDSE`): Forward BFS analysis identifies stores to non-escaping allocas that are
-   provably dead because they are overwritten on all paths before being read. Uses escape analysis for safety.
+2. **Cross-block DSE** (`runCrossBlockDSE`): Recursive path analysis identifies stores to non-escaping allocas that are
+   provably dead because they are overwritten on all paths before being read. Uses escape analysis for safety, treats
+   unknown cycles as live, and skips functions that still contain structured EH opcodes.
    **Limitation**: Conservatively treats any `ModRef` call as a read barrier, even for non-escaping allocas.
    Escape analysis follows `gep` and block-parameter forwarding so branch arguments cannot hide captured stack slots.
 
@@ -275,6 +283,8 @@ Three-level dead store elimination:
    allocas because non-escaping stack memory is inaccessible to external calls. This eliminates stores in functions
    that call runtime helpers between writes — the dominant pattern in Zia-lowered loops.
    The non-escaping set follows `gep` chains and branch-argument propagation before treating calls as transparent.
+   Same-block loads are linked to the nearest aliasing store, so independent stack slots do not share a single coarse
+   reaching def. EH functions are skipped until MemorySSA models exceptional successors.
    - Registered as `"memory-ssa"` function analysis in `PassManager`
    - Runs after `runDSE` within the `"dse"` pipeline pass
    - Tests: `src/tests/analysis/MemorySSATests.cpp` — call-barrier precision, live-store preservation,
@@ -298,6 +308,8 @@ Threads jumps through blocks with predictable branch conditions:
   to bypass the intermediate block and jump directly to the known successor
 - Eliminates unnecessary control flow and can enable further simplifications
 - Runs in aggressive mode alongside other SimplifyCFG transformations
+- Duplicate-edge aware: when one predecessor has multiple edges to the same intermediate block, threading reads the
+  branch arguments from the specific edge being rewritten instead of the first matching label.
 - Null-safe: target block lookups guard against missing labels to avoid crashes on malformed CFG
 
 ## CheckOpt
@@ -309,7 +321,9 @@ Threads jumps through blocks with predictable branch conditions:
   `ConstInt` values before CheckOpt runs, the pass evaluates check conditions statically at compile time:
   - `IdxChk(index, lo, hi)` — eliminated when all three are ConstInt and `lo <= index < hi`
   - `SDivChk0/UDivChk0/SRemChk0/URemChk0(lhs, divisor)` — demoted to the corresponding plain div/rem opcode when the
-    divisor is a non-zero ConstInt and the signed `MIN / -1` trap case is impossible. The result temp is preserved.
+    divisor is a non-zero ConstInt and the signed `MIN / -1` trap case is impossible. `SRemChk0 x, -1` also requires
+    proof that `x` is not `INT64_MIN`, because the plain signed-remainder opcode may lower through a trapping native
+    divide path. The result temp is preserved.
   - **Type safety**: ConstInt values type as I64 in the verifier. When the check result type is narrower (e.g. I32 for
     IdxChk) and the result has live uses, constant elimination is skipped and the dominance-based check still applies.
     This prevents type-mismatch verifier errors when the check result is used as a narrower-typed discriminant.
