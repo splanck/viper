@@ -42,6 +42,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
+#include <limits>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -392,30 +394,50 @@ static bool blocksContainCall(const MFunction &fn, const std::unordered_set<std:
     return false;
 }
 
-static std::vector<std::unordered_set<std::size_t>> computeDominators(
+using DominatorSets = std::vector<std::vector<std::uint64_t>>;
+
+static void setDomBit(std::vector<std::uint64_t> &bits, std::size_t index) {
+    bits[index / 64] |= std::uint64_t{1} << (index % 64);
+}
+
+static bool hasDomBit(const DominatorSets &dom, std::size_t block, std::size_t bit) {
+    return block < dom.size() && bit / 64 < dom[block].size() &&
+           (dom[block][bit / 64] & (std::uint64_t{1} << (bit % 64))) != 0;
+}
+
+static DominatorSets computeDominators(
     const MFunction &fn,
     const std::unordered_map<std::string, std::vector<std::size_t>> &preds) {
-    std::vector<std::unordered_set<std::size_t>> dom(fn.blocks.size());
+    const std::size_t blockCount = fn.blocks.size();
+    const std::size_t wordCount = (blockCount + 63) / 64;
+    DominatorSets dom(blockCount, std::vector<std::uint64_t>(wordCount, 0));
     if (fn.blocks.empty())
         return dom;
 
-    for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
+    const auto maskUnusedTailBits = [&]() {
+        if (blockCount == 0 || (blockCount % 64) == 0)
+            return std::numeric_limits<std::uint64_t>::max();
+        return (std::uint64_t{1} << (blockCount % 64)) - 1;
+    };
+    const std::uint64_t tailMask = maskUnusedTailBits();
+
+    for (std::size_t i = 0; i < blockCount; ++i) {
         if (i == 0) {
-            dom[i].insert(i);
+            setDomBit(dom[i], i);
             continue;
         }
-        for (std::size_t j = 0; j < fn.blocks.size(); ++j)
-            dom[i].insert(j);
+        std::fill(dom[i].begin(), dom[i].end(), std::numeric_limits<std::uint64_t>::max());
+        dom[i].back() &= tailMask;
     }
 
     bool changed = true;
     while (changed) {
         changed = false;
-        for (std::size_t i = 1; i < fn.blocks.size(); ++i) {
-            std::unordered_set<std::size_t> next;
+        for (std::size_t i = 1; i < blockCount; ++i) {
+            std::vector<std::uint64_t> next(wordCount, 0);
             auto predIt = preds.find(fn.blocks[i].name);
             if (predIt == preds.end() || predIt->second.empty()) {
-                next.insert(i);
+                setDomBit(next, i);
             } else {
                 bool firstPred = true;
                 for (std::size_t predIndex : predIt->second) {
@@ -426,14 +448,10 @@ static std::vector<std::unordered_set<std::size_t>> computeDominators(
                         firstPred = false;
                         continue;
                     }
-                    for (auto it = next.begin(); it != next.end();) {
-                        if (dom[predIndex].count(*it) == 0)
-                            it = next.erase(it);
-                        else
-                            ++it;
-                    }
+                    for (std::size_t word = 0; word < wordCount; ++word)
+                        next[word] &= dom[predIndex][word];
                 }
-                next.insert(i);
+                setDomBit(next, i);
             }
 
             if (dom[i] != next) {
@@ -544,7 +562,7 @@ static bool coalesceJoinPhiLoads(MFunction &fn, PeepholeStats &stats) {
         for (std::size_t predIndex : predIt->second) {
             if (predIndex < blockIndex)
                 continue;
-            if (predIndex >= dominators.size() || dominators[predIndex].count(blockIndex) == 0)
+            if (!hasDomBit(dominators, predIndex, blockIndex))
                 continue;
             const auto loopBlocks = collectNaturalLoopBlocks(fn, preds, blockIndex, predIndex);
             if (blocksContainCall(fn, loopBlocks)) {
@@ -1077,6 +1095,73 @@ PeepholeStats runPeephole(MFunction &fn, const TargetInfo *target) {
         // Remove branches to the immediately following block
         auto &lastInstr = block.instrs.back();
         if (ph::isBranchTo(lastInstr, nextBlock.name)) {
+            block.instrs.pop_back();
+            ++stats.branchesToNextRemoved;
+        }
+    }
+
+    return stats;
+}
+
+PeepholeStats runPostSchedulePeephole(MFunction &fn, const TargetInfo *target) {
+    PeepholeStats stats;
+
+    for (auto &block : fn.blocks) {
+        auto &instrs = block.instrs;
+        if (instrs.empty())
+            continue;
+
+        ph::propagateCopies(instrs, stats);
+
+        for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
+            if (!ph::tryFoldImmThenMove(instrs, i, stats))
+                (void)ph::tryFoldConsecutiveMoves(instrs, i, stats);
+        }
+
+        std::vector<bool> toRemove(instrs.size(), false);
+        for (std::size_t i = 0; i < instrs.size(); ++i) {
+            if (ph::isIdentityMovRR(instrs[i])) {
+                toRemove[i] = true;
+                ++stats.identityMovesRemoved;
+            } else if (ph::isIdentityFMovRR(instrs[i])) {
+                toRemove[i] = true;
+                ++stats.identityFMovesRemoved;
+            }
+        }
+        if (std::any_of(toRemove.begin(), toRemove.end(), [](bool v) { return v; }))
+            ph::removeMarkedInstructions(instrs, toRemove);
+
+        if (target == nullptr)
+            ph::removeDeadInstructions(instrs, stats);
+        ph::removeDeadFlagSetters(instrs, stats);
+    }
+
+    for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi) {
+        auto &block = fn.blocks[bi];
+        const auto &nextBlock = fn.blocks[bi + 1];
+        if (block.instrs.empty())
+            continue;
+
+        if (block.instrs.size() >= 2) {
+            auto &secondLast = block.instrs[block.instrs.size() - 2];
+            auto &last = block.instrs[block.instrs.size() - 1];
+            if (secondLast.opc == MOpcode::BCond && secondLast.ops.size() == 2 &&
+                secondLast.ops[0].kind == MOperand::Kind::Cond &&
+                secondLast.ops[1].kind == MOperand::Kind::Label && last.opc == MOpcode::Br &&
+                last.ops.size() == 1 && last.ops[0].kind == MOperand::Kind::Label &&
+                secondLast.ops[1].label == nextBlock.name) {
+                const char *inv = ph::invertCondition(secondLast.ops[0].cond);
+                if (inv) {
+                    secondLast.ops[0] = MOperand::condOp(inv);
+                    secondLast.ops[1] = last.ops[0];
+                    block.instrs.pop_back();
+                    ++stats.branchInversions;
+                    continue;
+                }
+            }
+        }
+
+        if (ph::isBranchTo(block.instrs.back(), nextBlock.name)) {
             block.instrs.pop_back();
             ++stats.branchesToNextRemoved;
         }

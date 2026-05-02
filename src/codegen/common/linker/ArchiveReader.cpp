@@ -437,4 +437,10 @@ std::vector<uint8_t> extractMember(const Archive &ar, const ArchiveMember &membe
         ar.data.begin() + static_cast<std::ptrdiff_t>(member.dataOffset + member.dataSize));
 }
 
+ArchiveMemberView memberDataView(const Archive &ar, const ArchiveMember &member) {
+    if (member.dataOffset + member.dataSize > ar.data.size())
+        return {};
+    return ArchiveMemberView{ar.data.data() + member.dataOffset, member.dataSize};
+}
+
 } // namespace viper::codegen::linker

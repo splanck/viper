@@ -19,7 +19,10 @@
 
 #include "codegen/aarch64/AsmEmitter.hpp"
 #include "codegen/aarch64/MachineIR.hpp"
+#include "codegen/aarch64/Peephole.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
+#include "codegen/aarch64/passes/BinaryEmitPass.hpp"
+#include "codegen/aarch64/passes/PassManager.hpp"
 #include "codegen/x86_64/MachineIR.hpp"
 #include "codegen/x86_64/OperandUtils.hpp"
 #include "codegen/x86_64/Peephole.hpp"
@@ -229,6 +232,63 @@ TEST(CodegenReviewBatch3, AArch64BranchTargetsSanitized) {
     // Branch target and label definition must both be sanitized
     EXPECT_TRUE(output.find("b L.Ltarget_block") != std::string::npos);
     EXPECT_TRUE(output.find("L.Ltarget_block:") != std::string::npos);
+}
+
+TEST(CodegenReviewBatch3, AArch64PostSchedulePeepholeRunsCleanupOnly) {
+    using namespace viper::codegen::aarch64;
+
+    MFunction fn{};
+    fn.name = "post_sched_cleanup";
+
+    MBasicBlock entry{};
+    entry.name = ".Lentry";
+    entry.instrs.push_back(MInstr{
+        MOpcode::MovRR,
+        {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0)},
+    });
+    entry.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(".Lnext")}});
+    fn.blocks.push_back(std::move(entry));
+
+    MBasicBlock next{};
+    next.name = ".Lnext";
+    next.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    fn.blocks.push_back(std::move(next));
+
+    const PeepholeStats stats = runPostSchedulePeephole(fn, &darwinTarget());
+
+    EXPECT_EQ(stats.identityMovesRemoved, 1);
+    EXPECT_EQ(stats.branchesToNextRemoved, 1);
+    ASSERT_EQ(fn.blocks[0].instrs.size(), 0u);
+}
+
+TEST(CodegenReviewBatch3, AArch64BinaryEmitCanCoalesceFunctionSections) {
+    using namespace viper::codegen::aarch64;
+    using namespace viper::codegen::aarch64::passes;
+
+    AArch64Module module{};
+    module.ti = &darwinTarget();
+    module.coalesceTextSections = true;
+
+    auto makeLeaf = [](std::string name) {
+        MFunction fn{};
+        fn.name = std::move(name);
+        fn.isLeaf = true;
+        MBasicBlock entry{};
+        entry.name = ".Lentry";
+        entry.instrs.push_back(MInstr{MOpcode::Ret, {}});
+        fn.blocks.push_back(std::move(entry));
+        return fn;
+    };
+
+    module.mir.push_back(makeLeaf("first_func"));
+    module.mir.push_back(makeLeaf("second_func"));
+
+    BinaryEmitPass pass;
+    Diagnostics diags;
+    ASSERT_TRUE(pass.run(module, diags));
+    ASSERT_EQ(module.binaryTextSections.size(), 1u);
+    EXPECT_NE(module.binaryTextSections[0].symbols().find("first_func"), 0u);
+    EXPECT_NE(module.binaryTextSections[0].symbols().find("second_func"), 0u);
 }
 
 TEST(CodegenReviewBatch3, AArch64BCondTargetSanitized) {

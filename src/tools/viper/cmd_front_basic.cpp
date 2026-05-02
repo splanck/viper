@@ -225,7 +225,7 @@ int runFrontBasic(const FrontBasicConfig &config,
                 module, std::cerr, sm, config.shared.diagnosticFormat, false)) {
             il::transform::PassManager pm;
             pm.setVerifyBetweenPasses(config.shared.verifyEachPass);
-            pm.setReportPassStatistics(config.shared.timeCompile);
+            pm.setReportPassStatistics(config.shared.passStats);
             pm.setInstrumentationStream(std::cerr);
 
             // Enable per-pass IL dumps when requested.

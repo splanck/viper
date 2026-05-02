@@ -43,6 +43,22 @@ endif ()
 if (NOT _build_err MATCHES "\\[time-compile\\] zia\\.optimize")
     message(FATAL_ERROR "implicit viper build did not use the balanced optimization default:\n${_build_err}")
 endif ()
+if (_build_err MATCHES "\\[pass ")
+    message(FATAL_ERROR "--time-compile unexpectedly enabled detailed pass statistics:\n${_build_err}")
+endif ()
+
+execute_process(
+        COMMAND "${VIPER_EXE}" build "${_implicit_dir}" -o "${TEST_WORK_DIR}/implicit_stats.il"
+                --pass-stats --quiet-warnings
+        RESULT_VARIABLE _stats_result
+        OUTPUT_VARIABLE _stats_out
+        ERROR_VARIABLE _stats_err)
+if (NOT _stats_result EQUAL 0)
+    message(FATAL_ERROR "implicit viper build with --pass-stats failed:\nstdout=${_stats_out}\nstderr=${_stats_err}")
+endif ()
+if (NOT _stats_err MATCHES "\\[pass ")
+    message(FATAL_ERROR "--pass-stats did not report optimizer pass statistics:\n${_stats_err}")
+endif ()
 
 set(_explicit_dir "${TEST_WORK_DIR}/explicit")
 file(MAKE_DIRECTORY "${_explicit_dir}")

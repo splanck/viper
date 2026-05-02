@@ -40,7 +40,8 @@ constexpr std::string_view kUsage =
     "[-run-native] [--stack-size=SIZE] [--native-asm|--system-asm] "
     "[--native-link|--system-link(deprecated)] [--asset-blob <file.vpa>] "
     "[--extra-obj <file.o>] [--target-host|--target-sysv|--target-win64] "
-    "[--target-darwin|--target-linux|--target-windows] [--debug-lines]\n";
+    "[--target-darwin|--target-linux|--target-windows] [--debug-lines] "
+    "[--fast-link|--no-fast-link]\n";
 
 // Use shared ArgvView from tools/common
 using viper::tools::ArgvView;
@@ -169,6 +170,14 @@ ParseOutcome parseCompileArgs(const ArgvView &args) {
         }
         if (arg == "--no-debug-lines") {
             opts.emit_debug_lines = false;
+            continue;
+        }
+        if (arg == "--fast-link") {
+            opts.fast_link = true;
+            continue;
+        }
+        if (arg == "--no-fast-link") {
+            opts.fast_link = false;
             continue;
         }
         if (arg == "--asset-blob") {

@@ -218,14 +218,14 @@ bool addArchiveClosureSymbols(const LinkContext &ctx,
                 if (!extractedMembers.insert(memberKey).second)
                     continue;
 
-                auto memberData = extractMember(ar, ar.members[memberIdx]);
-                if (memberData.empty())
+                auto memberData = memberDataView(ar, ar.members[memberIdx]);
+                if (memberData.data == nullptr || memberData.size == 0)
                     continue;
 
                 ObjFile memberObj;
                 std::ostringstream memberErr;
-                if (!readObjFile(memberData.data(),
-                                 memberData.size(),
+                if (!readObjFile(memberData.data,
+                                 memberData.size,
                                  ar.path + "(" + ar.members[memberIdx].name + ")",
                                  memberObj,
                                  memberErr)) {

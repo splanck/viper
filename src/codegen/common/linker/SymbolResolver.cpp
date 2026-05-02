@@ -186,14 +186,14 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
 
                 // Extract and parse this member.
                 extractedMembers.insert(key);
-                auto memberData = extractMember(ar, ar.members[memberIdx]);
-                if (memberData.empty())
+                auto memberData = memberDataView(ar, ar.members[memberIdx]);
+                if (memberData.data == nullptr || memberData.size == 0)
                     continue;
 
                 ObjFile memberObj;
                 std::ostringstream memberErr;
-                if (!readObjFile(memberData.data(),
-                                 memberData.size(),
+                if (!readObjFile(memberData.data,
+                                 memberData.size,
                                  ar.path + "(" + ar.members[memberIdx].name + ")",
                                  memberObj,
                                  memberErr)) {

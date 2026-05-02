@@ -81,6 +81,7 @@ struct RunBuildConfig {
     std::optional<std::string> optimizeLevelOverride;
     std::optional<std::string> buildProfileOverride;
     std::optional<viper::tools::TargetArch> archOverride;
+    std::optional<bool> fastLinkOverride;
 };
 
 struct CompiledProjectModule {
@@ -177,6 +178,10 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
             config.buildProfileOverride = std::string(value);
         } else if (arg == "--debug-vm") {
             config.debugVm = true;
+        } else if (arg == "--fast-link") {
+            config.fastLinkOverride = true;
+        } else if (arg == "--no-fast-link") {
+            config.fastLinkOverride = false;
         } else if (arg == "--no-runtime-namespaces") {
             config.noRuntimeNamespaces = true;
         } else if (arg == "--arch") {
@@ -308,7 +313,7 @@ il::support::Expected<CompiledProjectModule> compileZiaProject(const ProjectConf
     opts.dumpILOpt = shared.dumpILOpt;
     opts.dumpILPasses = shared.dumpILPasses;
     opts.verifyEachPass = shared.verifyEachPass;
-    opts.passStats = shared.timeCompile;
+    opts.passStats = shared.passStats;
     opts.timeCompile = shared.timeCompile;
     opts.parallelFunctionPasses = shouldEnableParallelFunctionPasses(shared);
 
@@ -327,6 +332,12 @@ il::support::Expected<CompiledProjectModule> compileZiaProject(const ProjectConf
         opts.optLevel = il::frontends::zia::OptLevel::O1;
     else if (project.optimizeLevel == "O2")
         opts.optLevel = il::frontends::zia::OptLevel::O2;
+
+    const bool optimized = opts.optLevel != il::frontends::zia::OptLevel::O0;
+    const bool needsLowerVerify = !optimized || shared.paranoidVerify || shared.verifyEachPass ||
+                                  shared.dumpIL || shared.dumpILPasses;
+    opts.verifyAfterLowering = needsLowerVerify;
+    opts.verifyAfterOptimization = optimized || shared.paranoidVerify;
 
     auto result = il::frontends::zia::compileFile(project.entryFile, opts, sm);
     if (!result.succeeded() ||
@@ -390,7 +401,7 @@ il::support::Expected<CompiledProjectModule> compileBasicProject(const ProjectCo
     if (optimizeModule && project.optimizeLevel != "O0") {
         il::transform::PassManager pm;
         pm.setVerifyBetweenPasses(shared.verifyEachPass);
-        pm.setReportPassStatistics(shared.timeCompile);
+        pm.setReportPassStatistics(shared.passStats);
         pm.setInstrumentationStream(std::cerr);
         pm.enableParallelFunctionPasses(shouldEnableParallelFunctionPasses(shared));
 
@@ -499,7 +510,7 @@ il::support::Expected<CompiledProjectModule> compileMixedProject(const ProjectCo
     if (project.optimizeLevel != "O0") {
         il::transform::PassManager pm;
         pm.setVerifyBetweenPasses(shared.verifyEachPass);
-        pm.setReportPassStatistics(shared.timeCompile);
+        pm.setReportPassStatistics(shared.passStats);
         pm.setInstrumentationStream(std::cerr);
         pm.enableParallelFunctionPasses(shouldEnableParallelFunctionPasses(shared));
         const std::string pipelineId = (project.optimizeLevel == "O2") ? "O2" : "O1";
@@ -642,6 +653,7 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
         }
 
         const int backendOptimizeLevel = optimizeLevelNumber(proj.optimizeLevel).value_or(1);
+        const bool fastLink = config.fastLinkOverride.value_or(backendOptimizeLevel == 0);
         const auto nativeStart = std::chrono::steady_clock::now();
         int rc = viper::tools::compileModuleToNative(std::move(module),
                                                      proj.entryFile,
@@ -652,7 +664,8 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
                                                      backendOptimizeLevel,
                                                      true,
                                                      moduleVerified,
-                                                     config.shared.timeCompile);
+                                                     config.shared.timeCompile,
+                                                     fastLink);
         printCompileTime(config.shared, "native-codegen-link", nativeStart);
         std::error_code ec;
         if (!assetBlobPath.empty())

@@ -24,10 +24,14 @@
 #include "codegen/aarch64/binenc/A64BinaryEncoder.hpp"
 #include "codegen/common/objfile/DebugLineTable.hpp"
 
+#include <algorithm>
+#include <atomic>
 #include <exception>
 #include <filesystem>
 #include <string_view>
+#include <thread>
 #include <utility>
+#include <vector>
 
 namespace viper::codegen::aarch64::passes {
 
@@ -113,26 +117,90 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
         seedDebugFiles(debugLines, module.mir, module.debugSourcePath);
     uint64_t debugBias = 0;
 
-    for (const auto &fn : module.mir) {
-        // Emit each function into its own CodeSection for per-function dead stripping.
-        module.binaryTextSections.emplace_back();
-        viper::codegen::DebugLineTable funcDebugLines;
-        if (module.emitDebugLines)
-            seedDebugFiles(funcDebugLines, fn, module.debugSourcePath);
-        binenc::A64BinaryEncoder funcEncoder;
-        if (module.emitDebugLines)
-            funcEncoder.setDebugLineTable(&funcDebugLines);
-        try {
-            funcEncoder.encodeFunction(fn, module.binaryTextSections.back(), rodata, abi);
-        } catch (const std::exception &ex) {
-            module.binaryTextSections.pop_back();
-            diags.error("BinaryEmitPass: failed to encode AArch64 function '" + fn.name +
-                        "': " + ex.what());
-            return false;
+    auto encodeSequentially = [&]() {
+        for (const auto &fn : module.mir) {
+            // Emit each function into its own CodeSection for per-function dead stripping.
+            module.binaryTextSections.emplace_back();
+            viper::codegen::DebugLineTable funcDebugLines;
+            if (module.emitDebugLines)
+                seedDebugFiles(funcDebugLines, fn, module.debugSourcePath);
+            binenc::A64BinaryEncoder funcEncoder;
+            if (module.emitDebugLines)
+                funcEncoder.setDebugLineTable(&funcDebugLines);
+            try {
+                funcEncoder.encodeFunction(fn, module.binaryTextSections.back(), rodata, abi);
+            } catch (const std::exception &ex) {
+                module.binaryTextSections.pop_back();
+                diags.error("BinaryEmitPass: failed to encode AArch64 function '" + fn.name +
+                            "': " + ex.what());
+                return false;
+            }
+            if (module.emitDebugLines)
+                debugLines.append(funcDebugLines, debugBias);
+            debugBias += static_cast<uint64_t>(module.binaryTextSections.back().currentOffset());
         }
-        if (module.emitDebugLines)
-            debugLines.append(funcDebugLines, debugBias);
-        debugBias += static_cast<uint64_t>(module.binaryTextSections.back().currentOffset());
+        return true;
+    };
+
+    const unsigned workerLimit = std::thread::hardware_concurrency();
+    if (module.emitDebugLines || module.mir.size() < 2 || workerLimit < 2) {
+        if (!encodeSequentially())
+            return false;
+    } else {
+        struct EncodedFunction {
+            objfile::CodeSection text;
+            std::string error;
+        };
+
+        std::vector<EncodedFunction> encoded(module.mir.size());
+        std::atomic_size_t next{0};
+        std::atomic_bool failed{false};
+        const size_t workerCount =
+            std::min<size_t>(module.mir.size(), static_cast<size_t>(workerLimit));
+        std::vector<std::thread> workers;
+        workers.reserve(workerCount);
+
+        for (size_t worker = 0; worker < workerCount; ++worker) {
+            workers.emplace_back([&]() {
+                while (!failed.load(std::memory_order_relaxed)) {
+                    const size_t index = next.fetch_add(1, std::memory_order_relaxed);
+                    if (index >= module.mir.size())
+                        return;
+
+                    binenc::A64BinaryEncoder encoder;
+                    try {
+                        encoder.encodeFunction(module.mir[index], encoded[index].text, rodata, abi);
+                    } catch (const std::exception &ex) {
+                        encoded[index].error = ex.what();
+                        failed.store(true, std::memory_order_relaxed);
+                        return;
+                    }
+                }
+            });
+        }
+
+        for (auto &worker : workers)
+            worker.join();
+
+        for (size_t i = 0; i < encoded.size(); ++i) {
+            if (!encoded[i].error.empty()) {
+                diags.error("BinaryEmitPass: failed to encode AArch64 function '" +
+                            module.mir[i].name + "': " + encoded[i].error);
+                return false;
+            }
+        }
+
+        module.binaryTextSections.reserve(encoded.size());
+        for (auto &fn : encoded)
+            module.binaryTextSections.push_back(std::move(fn.text));
+    }
+
+    if (module.coalesceTextSections && module.binaryTextSections.size() > 1) {
+        objfile::CodeSection merged;
+        for (const auto &section : module.binaryTextSections)
+            merged.appendSection(section);
+        module.binaryTextSections.clear();
+        module.binaryTextSections.push_back(std::move(merged));
     }
 
     // Encode DWARF .debug_line if any entries were recorded.

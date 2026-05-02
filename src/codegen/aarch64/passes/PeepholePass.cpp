@@ -158,7 +158,9 @@ bool PeepholePass::run(AArch64Module &module, Diagnostics &diags) {
     int total = 0;
     MirStats stats{};
     for (auto &fn : module.mir) {
-        auto peepholeStats = runPeephole(fn, module.ti);
+        auto peepholeStats =
+            mode_ == Mode::Full ? runPeephole(fn, module.ti)
+                                : runPostSchedulePeephole(fn, module.ti);
         total += peepholeStats.total();
         pruneUnusedCalleeSaved(fn);
         if (!validateFunction(fn, diags))

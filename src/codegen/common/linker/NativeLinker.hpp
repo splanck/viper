@@ -44,6 +44,7 @@ struct NativeLinkerOptions {
     std::vector<std::string> extraObjPaths; ///< Additional .o files to link (e.g. asset blob).
     std::size_t stackSize = 0; ///< Requested stack size in bytes; 0 uses format defaults.
     std::optional<bool> windowsDebugRuntime; ///< Override CRT flavor on Windows when set.
+    bool fastLink = false; ///< Skip non-essential size-reduction passes for edit/build cycles.
 };
 
 /// Run the native linker.

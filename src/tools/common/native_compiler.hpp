@@ -60,7 +60,8 @@ int compileToNative(const std::string &ilPath,
                     const std::string &assetObjPath = "",
                     int backendOptimizeLevel = 1,
                     bool skipIlOptimization = true,
-                    bool timePasses = false);
+                    bool timePasses = false,
+                    bool fastLink = false);
 
 /// @brief Compile an already-built IL module to a native binary without reparsing IL text.
 int compileModuleToNative(il::core::Module module,
@@ -72,7 +73,8 @@ int compileModuleToNative(il::core::Module module,
                           int backendOptimizeLevel = 1,
                           bool skipIlOptimization = true,
                           bool moduleAlreadyVerified = true,
-                          bool timePasses = false);
+                          bool timePasses = false,
+                          bool fastLink = false);
 
 /// @brief Generate a unique temporary file path for IL serialization.
 /// @return A path in the system temp directory with a .il extension.

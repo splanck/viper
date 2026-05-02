@@ -67,6 +67,14 @@ struct PeepholeStats {
 /// @return Statistics about optimizations applied.
 [[nodiscard]] PeepholeStats runPeephole(MFunction &fn, const TargetInfo *target = nullptr);
 
+/// @brief Run the cheap cleanup subset intended after instruction scheduling.
+///
+/// The full peephole pass performs cross-block phi/spill rewrites and CFG-aware
+/// DCE. Scheduling only needs local cleanup for newly adjacent moves, dead
+/// flag setters, simple copy chains, and branches to the next block.
+[[nodiscard]] PeepholeStats runPostSchedulePeephole(MFunction &fn,
+                                                    const TargetInfo *target = nullptr);
+
 /// @brief Re-scan MIR after peephole to remove callee-saved registers that are
 ///        no longer referenced.  Peephole may fold away uses of callee-saved
 ///        registers (e.g., compute-into-target fold), but the savedGPRs/savedFPRs

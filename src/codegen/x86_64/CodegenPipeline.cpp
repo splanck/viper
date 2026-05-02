@@ -285,6 +285,7 @@ int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
                                TargetPlatform targetPlatform,
                                const std::vector<std::string> &extraObjects,
                                std::size_t stackSize,
+                               bool fastLink,
                                std::ostream &out,
                                std::ostream &err) {
     linker::NativeLinkerOptions linkOpts;
@@ -294,6 +295,7 @@ int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
     linkOpts.platform = targetLinkPlatform(targetPlatform);
     linkOpts.arch = linker::LinkArch::X86_64;
     linkOpts.stackSize = stackSize;
+    linkOpts.fastLink = fastLink;
     collectNativeLinkArchives(ctx, linkOpts.archivePaths);
     linkOpts.extraObjPaths = extraObjects;
     return linker::nativeLink(linkOpts, out, err);
@@ -559,8 +561,15 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
             err << "warning: --system-link is deprecated; using the native linker\n";
 
         const int linkExit =
-            linkObjectWithNativeLinker(
-                objPath, exePath, ctx, targetPlatform, opts_.extra_objects, opts_.stack_size, out, err);
+            linkObjectWithNativeLinker(objPath,
+                                       exePath,
+                                       ctx,
+                                       targetPlatform,
+                                       opts_.extra_objects,
+                                       opts_.stack_size,
+                                       opts_.fast_link,
+                                       out,
+                                       err);
         if (linkExit != 0) {
             result.exit_code = linkExit == -1 ? 1 : linkExit;
             result.stdout_text = out.str();
@@ -684,8 +693,15 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         err << "warning: --system-link is deprecated; using the native linker\n";
 
     const int linkExit =
-        linkObjectWithNativeLinker(
-            objPath, exePath, ctx, targetPlatform, opts_.extra_objects, opts_.stack_size, out, err);
+        linkObjectWithNativeLinker(objPath,
+                                   exePath,
+                                   ctx,
+                                   targetPlatform,
+                                   opts_.extra_objects,
+                                   opts_.stack_size,
+                                   opts_.fast_link,
+                                   out,
+                                   err);
 
     {
         std::error_code ec;

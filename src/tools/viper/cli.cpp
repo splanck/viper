@@ -127,8 +127,16 @@ SharedOptionParseResult parseSharedOption(int &index,
         opts.verifyEachPass = true;
         return SharedOptionParseResult::Parsed;
     }
+    if (arg == "--paranoid-verify") {
+        opts.paranoidVerify = true;
+        return SharedOptionParseResult::Parsed;
+    }
     if (arg == "--time-compile") {
         opts.timeCompile = true;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--pass-stats") {
+        opts.passStats = true;
         return SharedOptionParseResult::Parsed;
     }
     if (arg == "-Wall") {

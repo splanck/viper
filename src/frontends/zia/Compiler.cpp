@@ -212,10 +212,12 @@ CompilerResult compile(const CompilerInput &input,
         return result;
     result.moduleVerified = false;
     printPhaseTime("lower");
-    if (!reportVerifierDiagnostics(result.module, result.diagnostics)) {
-        return result;
+    if (options.verifyAfterLowering) {
+        if (!reportVerifierDiagnostics(result.module, result.diagnostics)) {
+            return result;
+        }
+        result.moduleVerified = true;
     }
-    result.moduleVerified = true;
     printPhaseTime("verify-lower");
     debugTime("Phase 4: Done");
 
@@ -255,10 +257,12 @@ CompilerResult compile(const CompilerInput &input,
         }
         printPhaseTime("optimize");
 
-        if (!reportVerifierDiagnostics(result.module, result.diagnostics)) {
-            return result;
+        if (options.verifyAfterOptimization) {
+            if (!reportVerifierDiagnostics(result.module, result.diagnostics)) {
+                return result;
+            }
+            result.moduleVerified = true;
         }
-        result.moduleVerified = true;
         printPhaseTime("verify-opt");
     }
 

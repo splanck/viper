@@ -45,6 +45,12 @@ struct Archive {
     std::unordered_map<std::string, size_t> symbolIndex; ///< Symbol name → member index.
 };
 
+/// Non-owning view over an archive member's bytes.
+struct ArchiveMemberView {
+    const uint8_t *data{nullptr};
+    size_t size{0};
+};
+
 /// Parse an archive file (.a / .lib).
 /// @param path  Path to the archive.
 /// @param ar    Output archive structure.
@@ -57,5 +63,8 @@ bool readArchive(const std::string &path, Archive &ar, std::ostream &err);
 /// @param member The member to extract.
 /// @return A vector of the member's raw bytes.
 std::vector<uint8_t> extractMember(const Archive &ar, const ArchiveMember &member);
+
+/// Return a non-copying view of a specific member's raw bytes.
+ArchiveMemberView memberDataView(const Archive &ar, const ArchiveMember &member);
 
 } // namespace viper::codegen::linker

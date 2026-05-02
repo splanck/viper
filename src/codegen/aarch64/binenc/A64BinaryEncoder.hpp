@@ -35,6 +35,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace viper::codegen {
@@ -73,7 +74,7 @@ class A64BinaryEncoder {
     /// @param abi     ABI format controlling runtime symbol mapping.
     void encodeFunction(const MFunction &fn,
                         objfile::CodeSection &text,
-                        objfile::CodeSection &rodata,
+                        const objfile::CodeSection &rodata,
                         ABIFormat abi);
 
   private:
@@ -88,7 +89,20 @@ class A64BinaryEncoder {
     /// Measure the encoded byte size of one MIR instruction at a specific byte offset.
     size_t measureInstructionSize(const MInstr &mi,
                                   size_t currentOffset,
-                                  const LabelOffsetMap &knownLabelOffsets);
+                                  const LabelOffsetMap &knownLabelOffsets,
+                                  size_t instructionOrdinal,
+                                  const std::unordered_set<size_t> &assumedLongConditionalBranches,
+                                  std::unordered_set<size_t> *discoveredLongConditionalBranches);
+
+    /// Compute byte size for synthesized function prologue/epilogue.
+    size_t prologueSize(const MFunction &fn) const;
+    size_t epilogueSize(const MFunction &fn) const;
+
+    /// Compute byte size for common multi-instruction helper sequences.
+    size_t movImm64Size(uint64_t imm) const;
+    size_t addSubImmSmartSize(uint32_t value) const;
+    size_t largeOffsetLdStSize(int64_t offset) const;
+    size_t spOffsetStoreSize(int64_t offset) const;
 
     /// Compute stable intra-function label offsets before final emission.
     LabelOffsetMap computeFunctionLabelOffsets(const MFunction &fn);
@@ -154,6 +168,13 @@ class A64BinaryEncoder {
 
     /// Whether prologue/epilogue should be skipped (leaf function optimization).
     bool skipFrame_{false};
+
+    /// Conditional/cbz/cbnz MIR instruction ordinals that must use the long
+    /// two-instruction sequence for final emission.
+    std::unordered_set<size_t> longConditionalBranchOrdinals_;
+
+    /// MIR instruction ordinal currently being encoded.
+    size_t currentInstructionOrdinal_{0};
 
     /// Pointer to current function being encoded (for epilogue synthesis on Ret).
     const MFunction *currentFn_{nullptr};

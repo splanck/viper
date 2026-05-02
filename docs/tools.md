@@ -157,15 +157,18 @@ viper build program.zia -o program
 | `--bounds-checks` | Enable generated bounds checks where supported (default for source lowering) |
 | `--no-bounds-checks` | Disable generated bounds checks for source lowering |
 | `--verify-each` | Verify IL after every optimizer pass for debugging pass failures |
-| `--time-compile` | Print project resolution, source read, frontend phase, final verifier, asset, backend pass, and native-codegen/link timings; also enables per-pass optimizer stats |
+| `--paranoid-verify` | Run every frontend verifier checkpoint, including intermediate optimized-build checks |
+| `--time-compile` | Print project resolution, source read, frontend phase, final verifier, asset, backend pass, and native-codegen/link timings |
+| `--pass-stats` | Print detailed IL optimizer pass statistics; kept separate from `--time-compile` because it scans the module around each pass |
+| `--fast-link` | Skip non-essential native-link size reductions and coalesce generated arm64 function sections; enabled automatically for debug/O0 native builds |
 | `--build-profile debug|balanced|release` | Override the manifest build profile (`debug`=`O0`, `balanced`=`O1`, `release`=`O2`) |
 | `-O0`, `-O1`, `-O2` | Override the final optimization level; this takes precedence over the build profile |
 
-Both Zia and BASIC source paths print successful warnings by default and verify IL after lowering. Optimized builds verify again after the optimization pipeline, then carry that verified-module state into execution or native codegen so the driver can skip duplicate final verifier runs. Per-pass verification is available with `--verify-each` when debugging an optimizer regression, but is not part of the normal build path because it is expensive on large modules. If any verifier run fails, the command stops with diagnostics instead of running or building the result.
+Both Zia and BASIC source paths print successful warnings by default. Zia O0/debug builds verify after lowering; optimized Zia builds normally verify the final optimized IL and skip the intermediate lower-stage verifier to keep large builds fast. `--paranoid-verify` restores every frontend verifier checkpoint, and `--verify-each` verifies after every optimizer pass when debugging an optimizer regression. If any verifier run fails, the command stops with diagnostics instead of running or building the result.
 
 `viper build` defaults to the `balanced` profile and `O1` optimization when no explicit directive is present. `viper run` defaults to `debug`/`O0` for convention projects and manifests that do not set `profile`, `build-profile`, or `optimize`, keeping edit-run cycles fast. An explicit manifest profile, explicit manifest optimization level, `--build-profile`, or `-O*` flag is respected by both commands.
 
-Native builds hand the already-verified, already-optimized frontend IL module directly to the backend and pass the selected optimization level to MIR/codegen passes such as pre-regalloc cleanup, block layout, scheduling, and peephole optimization. Safe per-function IL optimizer passes and x86-64 peephole work may run in parallel unless a diagnostic dump or `--verify-each` requires strict serial instrumentation.
+Native builds hand the already-verified, already-optimized frontend IL module directly to the backend and pass the selected optimization level to MIR/codegen passes such as pre-regalloc cleanup, block layout, scheduling, and peephole optimization. Safe per-function IL optimizer passes, x86-64 peephole work, and arm64 binary function emission may run in parallel unless a diagnostic dump or `--verify-each` requires strict serial instrumentation.
 
 ### viper -run
 
@@ -257,7 +260,7 @@ writes a relocatable object instead of linking an executable.
 
 On arm64, target selection is explicit: `--target-darwin`, `--target-linux`, and `--target-windows` select the assembly dialect, native object format, and native-link platform together. When you use `--native-asm` with `-o <file.o>` or `-o <file.obj>`, the compiler writes a relocatable object instead of linking an executable.
 
-File-based `viper codegen` loads and verifies the input IL once before backend lowering. Project builds through `viper build` skip the textual IL round trip and transfer the verified in-memory module to the backend. Native assembler debug line emission is disabled by default for faster object generation; pass `--debug-lines` when you need DWARF `.debug_line` content.
+File-based `viper codegen` loads and verifies the input IL once before backend lowering. Project builds through `viper build` skip the textual IL round trip and transfer the verified in-memory module to the backend. Native assembler debug line emission is disabled by default for faster object generation; pass `--debug-lines` when you need DWARF `.debug_line` content. `--fast-link` skips string deduplication and identical-code folding in the native linker; on arm64 it also emits one generated text section instead of per-function sections for faster debug links.
 
 ### viper install-package
 

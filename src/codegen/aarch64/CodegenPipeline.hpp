@@ -86,6 +86,7 @@ class CodegenPipeline {
         TargetPlatform target_platform = TargetPlatform::Host;
         bool emit_debug_lines = false;
         bool time_passes = false; ///< Emit per-backend-pass timings.
+        bool fast_link = false;   ///< Skip non-essential native-link size reductions.
         std::string asset_blob_path{};            ///< Path to VPA asset blob for .rodata embedding.
         std::vector<std::string> extra_objects{}; ///< Extra .o files to link.
     };

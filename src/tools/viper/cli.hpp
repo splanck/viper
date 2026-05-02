@@ -73,8 +73,14 @@ struct SharedCliOptions {
     /// @brief Verify the full IL module after each optimization pass.
     bool verifyEachPass = false;
 
+    /// @brief Run all normal frontend verifier checkpoints instead of the profile-selected subset.
+    bool paranoidVerify = false;
+
     /// @brief Emit phase timing information for source-to-IL/native compilation.
     bool timeCompile = false;
+
+    /// @brief Emit detailed per-pass optimizer statistics.
+    bool passStats = false;
 
     /// @brief Enable all warnings (corresponds to `-Wall`).
     bool wall = false;

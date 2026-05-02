@@ -30,6 +30,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 using namespace viper::codegen::aarch64;
@@ -48,7 +49,10 @@ struct A64BinaryEncoderTestAccess {
         enc.skipFrame_ = true;
         enc.usePlan_ = false;
         enc.labelOffsets_["target"] = targetOffset;
-        return enc.measureInstructionSize(mi, currentOffset, enc.labelOffsets_);
+        std::unordered_set<size_t> assumedLong;
+        std::unordered_set<size_t> discoveredLong;
+        return enc.measureInstructionSize(
+            mi, currentOffset, enc.labelOffsets_, 0, assumedLong, &discoveredLong);
     }
 
     static std::vector<uint8_t> encodeWithKnownTarget(const MInstr &mi,

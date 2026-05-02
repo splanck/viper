@@ -35,6 +35,7 @@ constexpr std::string_view kUsage =
     "       [--dump-mir-before-ra] [--dump-mir-after-ra] [--dump-mir-full]\n"
     "       [--native-asm|--system-asm] [--native-link|--system-link(deprecated)]\n"
     "       [--target-host|--target-darwin|--target-linux|--target-windows] [--debug-lines]\n"
+    "       [--fast-link|--no-fast-link]\n"
     "       [-O0|-O1|-O2]\n"
     "       [--skip-il-optimization]\n";
 
@@ -161,6 +162,14 @@ ParseOutcome parseArgs(const ArgvView &args) {
         }
         if (tok == "--no-debug-lines") {
             opts.emit_debug_lines = false;
+            continue;
+        }
+        if (tok == "--fast-link") {
+            opts.fast_link = true;
+            continue;
+        }
+        if (tok == "--no-fast-link") {
+            opts.fast_link = false;
             continue;
         }
 

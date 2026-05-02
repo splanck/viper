@@ -1033,11 +1033,13 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     // objects, rooting only entry points and always-live metadata.
     deadStrip(allObjects, initialObjects.size(), globalSyms, opts.entrySymbol, err);
 
-    // Step 3.5d: Deduplicate identical rodata strings across object files.
-    deduplicateStrings(allObjects, globalSyms);
+    if (!opts.fastLink) {
+        // Step 3.5d: Deduplicate identical rodata strings across object files.
+        deduplicateStrings(allObjects, globalSyms);
 
-    // Step 3.5d2: Fold identical .text sections (Identical Code Folding).
-    foldIdenticalCode(allObjects, globalSyms);
+        // Step 3.5d2: Fold identical .text sections (Identical Code Folding).
+        foldIdenticalCode(allObjects, globalSyms);
+    }
 
     // Step 3.5e: Remove global symbols that reference explicitly stripped sections.
     {

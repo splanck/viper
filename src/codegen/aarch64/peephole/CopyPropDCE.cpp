@@ -26,6 +26,7 @@
 #include "PeepholeCommon.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -208,6 +209,62 @@ namespace {
     return (static_cast<uint32_t>(cls) << 16) | static_cast<uint32_t>(reg);
 }
 
+struct RegSet {
+    uint64_t bits{0};
+
+    void insertBit(unsigned bit) noexcept {
+        bits |= (uint64_t{1} << bit);
+    }
+
+    void insertKey(uint32_t key) noexcept {
+        const uint32_t cls = key >> 16;
+        const uint32_t phys = key & 0xFFFFu;
+        if (cls == static_cast<uint32_t>(RegClass::GPR)) {
+            if (phys <= static_cast<uint32_t>(PhysReg::SP))
+                insertBit(phys);
+            return;
+        }
+        const uint32_t v0 = static_cast<uint32_t>(PhysReg::V0);
+        if (phys >= v0 && phys <= static_cast<uint32_t>(PhysReg::V31))
+            insertBit(32u + (phys - v0));
+    }
+
+    void eraseKey(uint32_t key) noexcept {
+        const uint32_t cls = key >> 16;
+        const uint32_t phys = key & 0xFFFFu;
+        unsigned bit = 64;
+        if (cls == static_cast<uint32_t>(RegClass::GPR)) {
+            if (phys <= static_cast<uint32_t>(PhysReg::SP))
+                bit = phys;
+        } else {
+            const uint32_t v0 = static_cast<uint32_t>(PhysReg::V0);
+            if (phys >= v0 && phys <= static_cast<uint32_t>(PhysReg::V31))
+                bit = 32u + (phys - v0);
+        }
+        if (bit < 64)
+            bits &= ~(uint64_t{1} << bit);
+    }
+
+    [[nodiscard]] bool containsKey(uint32_t key) const noexcept {
+        const uint32_t cls = key >> 16;
+        const uint32_t phys = key & 0xFFFFu;
+        unsigned bit = 64;
+        if (cls == static_cast<uint32_t>(RegClass::GPR)) {
+            if (phys <= static_cast<uint32_t>(PhysReg::SP))
+                bit = phys;
+        } else {
+            const uint32_t v0 = static_cast<uint32_t>(PhysReg::V0);
+            if (phys >= v0 && phys <= static_cast<uint32_t>(PhysReg::V31))
+                bit = 32u + (phys - v0);
+        }
+        return bit < 64 && (bits & (uint64_t{1} << bit)) != 0;
+    }
+
+    [[nodiscard]] bool empty() const noexcept {
+        return bits == 0;
+    }
+};
+
 void addTargetExitLive(const TargetInfo &target, std::unordered_set<uint32_t> &regs) {
     regs.insert(physRegKey(target.intReturnReg));
     regs.insert(physRegKey(target.f64ReturnReg));
@@ -216,6 +273,16 @@ void addTargetExitLive(const TargetInfo &target, std::unordered_set<uint32_t> &r
         regs.insert(physRegKey(reg));
     for (PhysReg reg : target.calleeSavedFPR)
         regs.insert(physRegKey(reg));
+}
+
+void addTargetExitLive(const TargetInfo &target, RegSet &regs) {
+    regs.insertKey(physRegKey(target.intReturnReg));
+    regs.insertKey(physRegKey(target.f64ReturnReg));
+    regs.insertKey(physRegKey(PhysReg::SP));
+    for (PhysReg reg : target.calleeSavedGPR)
+        regs.insertKey(physRegKey(reg));
+    for (PhysReg reg : target.calleeSavedFPR)
+        regs.insertKey(physRegKey(reg));
 }
 
 void addCallImplicitUses(const TargetInfo &target, std::unordered_set<uint32_t> &uses) {
@@ -233,6 +300,21 @@ void addCallClobbers(const TargetInfo &target, std::unordered_set<uint32_t> &def
         defs.insert(physRegKey(reg));
 }
 
+void addCallImplicitUses(const TargetInfo &target, RegSet &uses) {
+    for (PhysReg reg : target.intArgOrder)
+        uses.insertKey(physRegKey(reg));
+    for (PhysReg reg : target.f64ArgOrder)
+        uses.insertKey(physRegKey(reg));
+    uses.insertKey(physRegKey(PhysReg::SP));
+}
+
+void addCallClobbers(const TargetInfo &target, RegSet &defs) {
+    for (PhysReg reg : target.callerSavedGPR)
+        defs.insertKey(physRegKey(reg));
+    for (PhysReg reg : target.callerSavedFPR)
+        defs.insertKey(physRegKey(reg));
+}
+
 void collectUsesDefs(const MInstr &instr,
                      const TargetInfo &target,
                      std::unordered_set<uint32_t> &uses,
@@ -247,6 +329,25 @@ void collectUsesDefs(const MInstr &instr,
             uses.insert(key);
         if (isDef)
             defs.insert(key);
+    }
+
+    if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr) {
+        addCallImplicitUses(target, uses);
+        addCallClobbers(target, defs);
+    }
+}
+
+void collectUsesDefs(const MInstr &instr, const TargetInfo &target, RegSet &uses, RegSet &defs) {
+    for (std::size_t idx = 0; idx < instr.ops.size(); ++idx) {
+        const auto [isUse, isDef] = classifyOperand(instr, idx);
+        const auto &op = instr.ops[idx];
+        if (!isPhysReg(op))
+            continue;
+        const uint32_t key = regKey(op);
+        if (isUse)
+            uses.insertKey(key);
+        if (isDef)
+            defs.insertKey(key);
     }
 
     if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr) {
@@ -340,22 +441,19 @@ std::size_t removeDeadInstructionsCFG(MFunction &fn,
     const auto successors = buildSuccessors(fn);
     const std::size_t blockCount = fn.blocks.size();
 
-    std::vector<std::unordered_set<uint32_t>> gen(blockCount);
-    std::vector<std::unordered_set<uint32_t>> kill(blockCount);
-    std::vector<std::unordered_set<uint32_t>> liveIn(blockCount);
-    std::vector<std::unordered_set<uint32_t>> liveOut(blockCount);
+    std::vector<RegSet> gen(blockCount);
+    std::vector<RegSet> kill(blockCount);
+    std::vector<RegSet> liveIn(blockCount);
+    std::vector<RegSet> liveOut(blockCount);
 
     for (std::size_t bi = 0; bi < blockCount; ++bi) {
         for (const auto &instr : fn.blocks[bi].instrs) {
-            std::unordered_set<uint32_t> uses;
-            std::unordered_set<uint32_t> defs;
+            RegSet uses;
+            RegSet defs;
             collectUsesDefs(instr, target, uses, defs);
 
-            for (uint32_t key : uses) {
-                if (kill[bi].count(key) == 0)
-                    gen[bi].insert(key);
-            }
-            kill[bi].insert(defs.begin(), defs.end());
+            gen[bi].bits |= uses.bits & ~kill[bi].bits;
+            kill[bi].bits |= defs.bits;
         }
     }
 
@@ -363,23 +461,20 @@ std::size_t removeDeadInstructionsCFG(MFunction &fn,
     while (changed) {
         changed = false;
         for (std::size_t bi = blockCount; bi-- > 0;) {
-            std::unordered_set<uint32_t> newOut;
+            RegSet newOut;
             if (successors[bi].empty()) {
                 addTargetExitLive(target, newOut);
             } else {
                 for (std::size_t succ : successors[bi])
-                    newOut.insert(liveIn[succ].begin(), liveIn[succ].end());
+                    newOut.bits |= liveIn[succ].bits;
             }
 
-            std::unordered_set<uint32_t> newIn = gen[bi];
-            for (uint32_t key : newOut) {
-                if (kill[bi].count(key) == 0)
-                    newIn.insert(key);
-            }
+            RegSet newIn;
+            newIn.bits = gen[bi].bits | (newOut.bits & ~kill[bi].bits);
 
-            if (newOut != liveOut[bi] || newIn != liveIn[bi]) {
-                liveOut[bi] = std::move(newOut);
-                liveIn[bi] = std::move(newIn);
+            if (newOut.bits != liveOut[bi].bits || newIn.bits != liveIn[bi].bits) {
+                liveOut[bi] = newOut;
+                liveIn[bi] = newIn;
                 changed = true;
             }
         }
@@ -391,19 +486,16 @@ std::size_t removeDeadInstructionsCFG(MFunction &fn,
         if (instrs.empty())
             continue;
 
-        std::unordered_set<uint32_t> live = liveOut[bi];
+        RegSet live = liveOut[bi];
         std::vector<bool> toRemove(instrs.size(), false);
 
         for (std::size_t i = instrs.size(); i-- > 0;) {
             const auto &instr = instrs[i];
-            std::unordered_set<uint32_t> uses;
-            std::unordered_set<uint32_t> defs;
+            RegSet uses;
+            RegSet defs;
             collectUsesDefs(instr, target, uses, defs);
 
-            const bool defLive =
-                std::any_of(defs.begin(), defs.end(), [&](uint32_t key) {
-                    return live.count(key) != 0;
-                });
+            const bool defLive = (defs.bits & live.bits) != 0;
 
             if (!defs.empty() && !defLive && !hasSideEffects(instr) &&
                 !setsFlagsForDCE(instr.opc)) {
@@ -412,9 +504,8 @@ std::size_t removeDeadInstructionsCFG(MFunction &fn,
                 continue;
             }
 
-            for (uint32_t key : defs)
-                live.erase(key);
-            live.insert(uses.begin(), uses.end());
+            live.bits &= ~defs.bits;
+            live.bits |= uses.bits;
         }
 
         if (std::any_of(toRemove.begin(), toRemove.end(), [](bool value) { return value; }))

@@ -71,6 +71,12 @@ struct CompilerOptions {
     /// @brief Verify the full IL module after each optimization pass.
     bool verifyEachPass{false};
 
+    /// @brief Verify the lowered IL before running the optimizer.
+    bool verifyAfterLowering{true};
+
+    /// @brief Verify optimized IL after the optimizer pipeline.
+    bool verifyAfterOptimization{true};
+
     /// @brief Print per-pass IL optimization statistics to stderr.
     bool passStats{false};
 

@@ -22,11 +22,21 @@ namespace viper::codegen::aarch64::passes {
 /// @brief Apply peephole optimisations to all MIR functions after register allocation.
 class PeepholePass final : public Pass {
   public:
+    enum class Mode {
+        Full,
+        PostScheduleCleanup,
+    };
+
+    explicit PeepholePass(Mode mode = Mode::Full) noexcept : mode_(mode) {}
+
     /// @brief Run peephole optimisations on all functions in AArch64Module::mir.
     /// @param module Module state; mir must have physical registers assigned.
     /// @param diags  Diagnostic sink (peephole is non-failing; always returns true).
     /// @return Always true; peephole failures are ignored silently.
     bool run(AArch64Module &module, Diagnostics &diags) override;
+
+  private:
+    Mode mode_{Mode::Full};
 };
 
 } // namespace viper::codegen::aarch64::passes

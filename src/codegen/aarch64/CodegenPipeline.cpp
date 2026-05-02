@@ -122,6 +122,7 @@ static int linkObjToExe(const std::string &objPath,
                         TargetPlatform targetPlatform,
                         std::size_t stackSize,
                         const std::vector<std::string> &extraObjects,
+                        bool fastLink,
                         std::ostream &out,
                         std::ostream &err);
 
@@ -145,8 +146,8 @@ static int linkToExe(const std::string &asmPath,
     if (arc != 0)
         return arc;
 
-    const int lrc =
-        linkObjToExe(objPath.string(), exePath, ctx, targetPlatform, stackSize, extraObjects, out, err);
+    const int lrc = linkObjToExe(
+        objPath.string(), exePath, ctx, targetPlatform, stackSize, extraObjects, false, out, err);
     std::error_code ec;
     std::filesystem::remove(objPath, ec);
     return lrc;
@@ -197,6 +198,7 @@ static int linkObjToExe(const std::string &objPath,
                         TargetPlatform targetPlatform,
                         std::size_t stackSize,
                         const std::vector<std::string> &extraObjects,
+                        bool fastLink,
                         std::ostream &out,
                         std::ostream &err) {
     using namespace viper::codegen::common;
@@ -210,6 +212,7 @@ static int linkObjToExe(const std::string &objPath,
     linkOpts.arch = linker::LinkArch::AArch64;
     linkOpts.entrySymbol = "main";
     linkOpts.stackSize = stackSize;
+    linkOpts.fastLink = fastLink;
     linkOpts.extraObjPaths = extraObjects;
     collectNativeLinkArchives(ctx, linkOpts.archivePaths);
 
@@ -297,7 +300,8 @@ bool runCodegenPipeline(passes::AArch64Module &module,
         manager.addPass(std::make_unique<passes::BlockLayoutPass>());
         manager.addPass(std::make_unique<passes::PeepholePass>());
         manager.addPass(std::make_unique<passes::SchedulerPass>());
-        manager.addPass(std::make_unique<passes::PeepholePass>());
+        manager.addPass(std::make_unique<passes::PeepholePass>(
+            passes::PeepholePass::Mode::PostScheduleCleanup));
         if (!manager.run(module, diags))
             return flushOnFailure();
     }
@@ -412,6 +416,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
     pipelineModule.ti = &ti;
     pipelineModule.debugSourcePath = debugSourcePath;
     pipelineModule.emitDebugLines = opts_.emit_debug_lines;
+    pipelineModule.coalesceTextSections = opts_.fast_link || opts_.optimize == 0;
 
     PipelineOptions pipeOpts;
     pipeOpts.dumpMirBeforeRA = opts_.dump_mir_before_ra;
@@ -554,6 +559,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
                          opts_.target_platform,
                          opts_.stack_size,
                          opts_.extra_objects,
+                         opts_.fast_link,
                          out,
                          err);
 

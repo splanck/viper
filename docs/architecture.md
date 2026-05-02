@@ -294,8 +294,8 @@ Differential testing against the VM keeps codegen honest once implemented.
 
 The CLI (`viper`) dispatches to focused handlers based on the first tokens:
 
-- `run <target> [--trace=il|src] [--stdin-from <file>] [--max-steps N] [--bounds-checks] [--verify-each] [--time-compile]`
-- `build <target> [-o output] [--bounds-checks] [--no-runtime-namespaces] [--verify-each] [--time-compile]`
+- `run <target> [--trace=il|src] [--stdin-from <file>] [--max-steps N] [--bounds-checks] [--verify-each] [--paranoid-verify] [--time-compile] [--pass-stats]`
+- `build <target> [-o output] [--bounds-checks] [--no-runtime-namespaces] [--verify-each] [--paranoid-verify] [--time-compile] [--pass-stats] [--fast-link]`
 - `init <project-name> [--lang zia|basic]`
 - `repl [zia|basic]`
 - `package [target] [--target macos|linux|windows|tarball] [--arch arm64|x64]`
@@ -304,8 +304,8 @@ The CLI (`viper`) dispatches to focused handlers based on the first tokens:
 - `front zia -emit-il|-run <file.zia>`
 - `front basic -emit-il <file.bas> [--bounds-checks]`
 - `front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] [--max-steps N] [--bounds-checks]`
-- `codegen x64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native] [--debug-lines]`
-- `codegen arm64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native] [--debug-lines]`
+- `codegen x64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native] [--debug-lines] [--fast-link]`
+- `codegen arm64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native] [--debug-lines] [--fast-link]`
 - `il-opt <in.il> -o <out.il> [--passes p1,p2] [-print-before] [-print-after] [-verify-each] [--pass-stats]`
 - `bench <file.il> [-n N] [--table|--switch|--threaded] [--json]`
 

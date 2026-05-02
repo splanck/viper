@@ -419,6 +419,8 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetI
 
     std::vector<MemoryHistoryEntry> memoryHistory;
     memoryHistory.reserve(N);
+    std::vector<MemoryHistoryEntry> memoryStoreHistory;
+    memoryStoreHistory.reserve(N);
 
     // Caller-saved registers that Bl/Blr implicitly clobber.  Pull these from
     // the selected target so scheduling follows Darwin/Linux/Windows ABI data.
@@ -479,7 +481,9 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetI
         const auto memClass =
             (memLoad || memStore) ? classifyMemoryAccess(mi, trackedAddrs) : std::nullopt;
         if (memLoad || memStore) {
-            for (const auto &prev : memoryHistory) {
+            const auto &dependencyHistory = (memLoad && !memStore) ? memoryStoreHistory
+                                                                   : memoryHistory;
+            for (const auto &prev : dependencyHistory) {
                 if (prev.isBarrier) {
                     addDep(i, prev.instrIdx, 1);
                     continue;
@@ -491,7 +495,10 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetI
                 if (memStore && (prev.isLoad || prev.isStore))
                     addDep(i, prev.instrIdx, 1);
             }
-            memoryHistory.push_back(MemoryHistoryEntry{i, memLoad, memStore, false, memClass});
+            MemoryHistoryEntry entry{i, memLoad, memStore, false, memClass};
+            memoryHistory.push_back(entry);
+            if (memStore)
+                memoryStoreHistory.push_back(entry);
         }
 
         // --- Calls act as full memory barriers ---
@@ -507,7 +514,9 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetI
             }
             if (lastDef[kIdxNZCV] != kNone)
                 addDep(i, lastDef[kIdxNZCV], 1);
-            memoryHistory.push_back(MemoryHistoryEntry{i, false, false, true, std::nullopt});
+            MemoryHistoryEntry barrier{i, false, false, true, std::nullopt};
+            memoryHistory.push_back(barrier);
+            memoryStoreHistory.push_back(barrier);
         }
 
         // --- WAW + WAR dependencies, then update DEF map ---

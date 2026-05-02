@@ -137,50 +137,193 @@ static bool fitsBranchDispWords(int64_t deltaBytes, int immBits) {
     return deltaWords >= min && deltaWords <= max;
 }
 
-size_t A64BinaryEncoder::measurePreludeSize(const MFunction &fn) {
-    objfile::CodeSection text;
-    text.reserveBytes(32);
-    if (currentAbi_ == ABIFormat::Darwin)
-        emit32(kBtiC, text);
-    if (!skipFrame_)
-        encodePrologue(fn, text);
-    return text.currentOffset();
+size_t A64BinaryEncoder::movImm64Size(uint64_t imm) const {
+    size_t count = 0;
+    forEachMoveWideInst(imm, [&](const MoveWideInst &) { ++count; });
+    return count * 4;
 }
 
-size_t A64BinaryEncoder::measureInstructionSize(const MInstr &mi,
-                                                size_t currentOffset,
-                                                const LabelOffsetMap &knownLabelOffsets) {
-    A64BinaryEncoder measureEncoder;
-    measureEncoder.labelOffsets_ = knownLabelOffsets;
-    measureEncoder.currentFn_ = currentFn_;
-    measureEncoder.currentAbi_ = currentAbi_;
-    measureEncoder.currentRodata_ = currentRodata_;
-    measureEncoder.usePlan_ = usePlan_;
-    measureEncoder.skipFrame_ = skipFrame_;
+size_t A64BinaryEncoder::addSubImmSmartSize(uint32_t value) const {
+    if (value <= 4095)
+        return 4;
+    if ((value & 0xFFF) == 0 && (value >> 12) <= 4095)
+        return 4;
 
-    objfile::CodeSection text;
-    text.reserveBytes(32);
-    text.setLogicalOffsetBias(currentOffset);
-    measureEncoder.encodeInstruction(mi, text);
-    return text.currentOffset() - currentOffset;
+    const uint32_t hi = value >> 12;
+    const uint32_t lo = value & 0xFFF;
+    if (hi > 0 && hi <= 4095)
+        return lo > 0 ? 8 : 4;
+
+    size_t bytes = 0;
+    while (value > 4095) {
+        bytes += 4;
+        value -= 4080;
+    }
+    if (value > 0)
+        bytes += 4;
+    return bytes;
+}
+
+size_t A64BinaryEncoder::largeOffsetLdStSize(int64_t offset) const {
+    return movImm64Size(static_cast<uint64_t>(offset)) + 8; // add scratch + ldr/str
+}
+
+size_t A64BinaryEncoder::spOffsetStoreSize(int64_t offset) const {
+    if (isLegalScaledUImm64(offset))
+        return 4;
+
+    size_t bytes = 8; // mov scratch, sp + final store
+    if (offset > 0)
+        bytes += addSubImmSmartSize(static_cast<uint32_t>(offset));
+    else if (offset < 0)
+        bytes += addSubImmSmartSize(static_cast<uint32_t>(-offset));
+    return bytes;
+}
+
+size_t A64BinaryEncoder::prologueSize(const MFunction &fn) const {
+    size_t size = 0;
+    if (currentAbi_ == ABIFormat::Darwin)
+        size += 4; // paciasp
+    size += 8;     // stp fp/lr + mov fp, sp
+    if (fn.localFrameSize > 0)
+        size += addSubImmSmartSize(static_cast<uint32_t>(fn.localFrameSize));
+    size += ((fn.savedGPRs.size() + 1) / 2) * 4;
+    size += ((fn.savedFPRs.size() + 1) / 2) * 4;
+    return size;
+}
+
+size_t A64BinaryEncoder::epilogueSize(const MFunction &fn) const {
+    size_t size = 0;
+    size += ((fn.savedFPRs.size() + 1) / 2) * 4;
+    size += ((fn.savedGPRs.size() + 1) / 2) * 4;
+    if (fn.localFrameSize > 0)
+        size += addSubImmSmartSize(static_cast<uint32_t>(fn.localFrameSize));
+    size += 4; // ldp fp/lr
+    if (currentAbi_ == ABIFormat::Darwin)
+        size += 4; // autiasp
+    size += 4;     // ret
+    return size;
+}
+
+size_t A64BinaryEncoder::measurePreludeSize(const MFunction &fn) {
+    size_t size = 0;
+    if (currentAbi_ == ABIFormat::Darwin)
+        size += 4; // BTI landing pad
+    if (!skipFrame_)
+        size += prologueSize(fn);
+    return size;
+}
+
+size_t A64BinaryEncoder::measureInstructionSize(
+    const MInstr &mi,
+    size_t currentOffset,
+    const LabelOffsetMap &knownLabelOffsets,
+    size_t instructionOrdinal,
+    const std::unordered_set<size_t> &assumedLongConditionalBranches,
+    std::unordered_set<size_t> *discoveredLongConditionalBranches) {
+    auto conditionalBranchSize = [&](const std::string &target) {
+        if (assumedLongConditionalBranches.count(instructionOrdinal) != 0) {
+            if (discoveredLongConditionalBranches)
+                discoveredLongConditionalBranches->insert(instructionOrdinal);
+            return size_t{8};
+        }
+        auto it = knownLabelOffsets.find(sanitizeLabel(target));
+        if (it == knownLabelOffsets.end())
+            return size_t{4};
+        const int64_t delta =
+            static_cast<int64_t>(it->second) - static_cast<int64_t>(currentOffset);
+        if (fitsBranchDispWords(delta, 19))
+            return size_t{4};
+        if (discoveredLongConditionalBranches)
+            discoveredLongConditionalBranches->insert(instructionOrdinal);
+        return size_t{8};
+    };
+
+    switch (mi.opc) {
+        case MOpcode::Ret:
+            return skipFrame_ ? 4 : epilogueSize(*currentFn_);
+
+        case MOpcode::MovRI: {
+            const long long imm = getImm(mi.ops[1]);
+            return needsWideImmSequence(imm) ? movImm64Size(static_cast<uint64_t>(imm)) : 4;
+        }
+
+        case MOpcode::CmpRI: {
+            const long long imm = getImm(mi.ops[1]);
+            if ((imm >= 0 && imm <= 4095) || (imm >= -4095 && imm < 0))
+                return 4;
+            return movImm64Size(static_cast<uint64_t>(imm)) + 4;
+        }
+
+        case MOpcode::LdrRegFpImm:
+        case MOpcode::PhiStoreGPR:
+        case MOpcode::StrRegFpImm:
+        case MOpcode::LdrFprFpImm:
+        case MOpcode::PhiStoreFPR:
+        case MOpcode::StrFprFpImm:
+            return isInSignedImmRange(getImm(mi.ops[1])) ? 4
+                                                         : largeOffsetLdStSize(getImm(mi.ops[1]));
+
+        case MOpcode::LdrRegBaseImm:
+        case MOpcode::StrRegBaseImm:
+        case MOpcode::LdrFprBaseImm:
+        case MOpcode::StrFprBaseImm:
+            return isInSignedImmRange(getImm(mi.ops[2])) ? 4
+                                                         : largeOffsetLdStSize(getImm(mi.ops[2]));
+
+        case MOpcode::SubSpImm:
+        case MOpcode::AddSpImm:
+            return addSubImmSmartSize(static_cast<uint32_t>(getImm(mi.ops[0])));
+
+        case MOpcode::StrRegSpImm:
+        case MOpcode::StrFprSpImm:
+            return spOffsetStoreSize(static_cast<int64_t>(getImm(mi.ops[1])));
+
+        case MOpcode::AddFpImm: {
+            const long long offset = getImm(mi.ops[1]);
+            const uint64_t magnitude = absImmUnsigned(offset);
+            return classifyAddSubImmEncoding(magnitude).has_value() ? 4
+                                                                    : movImm64Size(magnitude) + 4;
+        }
+
+        case MOpcode::AndRI:
+        case MOpcode::OrrRI:
+        case MOpcode::EorRI: {
+            const auto imm = static_cast<uint64_t>(getImm(mi.ops[2]));
+            return encodeLogicalImmediate(imm) >= 0 ? 4 : movImm64Size(imm) + 4;
+        }
+
+        case MOpcode::FMovRI: {
+            double val;
+            std::memcpy(&val, &mi.ops[1].imm, sizeof(val));
+            if (encodeFP8Immediate(val) >= 0)
+                return 4;
+            uint64_t bits;
+            std::memcpy(&bits, &val, sizeof(bits));
+            return movImm64Size(bits) + 4;
+        }
+
+        case MOpcode::BCond:
+            return conditionalBranchSize(mi.ops[1].label);
+        case MOpcode::Cbz:
+        case MOpcode::Cbnz:
+            return conditionalBranchSize(mi.ops[1].label);
+
+        default:
+            return 4;
+    }
 }
 
 A64BinaryEncoder::LabelOffsetMap A64BinaryEncoder::computeFunctionLabelOffsets(const MFunction &fn) {
     LabelOffsetMap estimated;
+    std::unordered_set<size_t> longConditionalBranches;
 
-    size_t relaxCandidates = 0;
-    for (const auto &bb : fn.blocks) {
-        for (const auto &mi : bb.instrs) {
-            if (mi.opc == MOpcode::BCond || mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz)
-                ++relaxCandidates;
-        }
-    }
-
-    const size_t maxIterations = std::max<size_t>(2, relaxCandidates + 1);
+    const size_t maxIterations = 16;
     for (size_t iter = 0; iter < maxIterations; ++iter) {
         bool changed = false;
         LabelOffsetMap known = estimated;
         LabelOffsetMap next;
+        std::unordered_set<size_t> nextLongConditionalBranches;
         next.reserve(estimated.size() + fn.blocks.size());
 
         auto assignLabel = [&](const std::string &name, size_t offset) {
@@ -193,28 +336,68 @@ A64BinaryEncoder::LabelOffsetMap A64BinaryEncoder::computeFunctionLabelOffsets(c
         };
 
         size_t offset = measurePreludeSize(fn);
+        size_t ordinal = 0;
         for (const auto &bb : fn.blocks) {
             if (!bb.name.empty())
                 assignLabel(bb.name, offset);
-            for (const auto &mi : bb.instrs)
-                offset += measureInstructionSize(mi, offset, known);
+            for (const auto &mi : bb.instrs) {
+                offset += measureInstructionSize(
+                    mi, offset, known, ordinal, longConditionalBranches, &nextLongConditionalBranches);
+                ++ordinal;
+            }
         }
 
         lastEstimatedFunctionSize_ = offset;
-        if (!changed && next.size() == estimated.size())
+        if (!changed && next.size() == estimated.size() &&
+            nextLongConditionalBranches == longConditionalBranches) {
+            longConditionalBranchOrdinals_ = std::move(nextLongConditionalBranches);
             return next;
+        }
         estimated = std::move(next);
+        longConditionalBranches = std::move(nextLongConditionalBranches);
     }
 
-    return estimated;
+    std::unordered_set<size_t> allLongConditionalBranches;
+    size_t ordinal = 0;
+    for (const auto &bb : fn.blocks) {
+        for (const auto &mi : bb.instrs) {
+            if (mi.opc == MOpcode::BCond || mi.opc == MOpcode::Cbz || mi.opc == MOpcode::Cbnz)
+                allLongConditionalBranches.insert(ordinal);
+            ++ordinal;
+        }
+    }
+
+    LabelOffsetMap conservative;
+    LabelOffsetMap known;
+    size_t offset = measurePreludeSize(fn);
+    ordinal = 0;
+    for (const auto &bb : fn.blocks) {
+        if (!bb.name.empty()) {
+            const std::string sanitized = sanitizeLabel(bb.name);
+            known[sanitized] = offset;
+            conservative[sanitized] = offset;
+        }
+        for (const auto &mi : bb.instrs) {
+            offset += measureInstructionSize(
+                mi, offset, known, ordinal, allLongConditionalBranches, nullptr);
+            ++ordinal;
+        }
+    }
+    lastEstimatedFunctionSize_ = offset;
+    longConditionalBranchOrdinals_ = std::move(allLongConditionalBranches);
+    return conservative;
 }
 
 size_t A64BinaryEncoder::estimateFunctionSize(const MFunction &fn,
                                               const LabelOffsetMap &knownLabelOffsets) {
     size_t size = measurePreludeSize(fn);
+    size_t ordinal = 0;
     for (const auto &bb : fn.blocks) {
-        for (const auto &mi : bb.instrs)
-            size += measureInstructionSize(mi, size, knownLabelOffsets);
+        for (const auto &mi : bb.instrs) {
+            size += measureInstructionSize(
+                mi, size, knownLabelOffsets, ordinal, longConditionalBranchOrdinals_, nullptr);
+            ++ordinal;
+        }
     }
     return size;
 }
@@ -236,10 +419,12 @@ void A64BinaryEncoder::verifyPredictedLabelOffset(const std::string &label, size
 
 void A64BinaryEncoder::encodeFunction(const MFunction &fn,
                                       objfile::CodeSection &text,
-                                      objfile::CodeSection &rodata,
+                                      const objfile::CodeSection &rodata,
                                       ABIFormat abi) {
     labelOffsets_.clear();
     pendingBranches_.clear();
+    longConditionalBranchOrdinals_.clear();
+    currentInstructionOrdinal_ = 0;
     lastEstimatedFunctionSize_ = 0;
     currentFn_ = &fn;
     currentAbi_ = abi;
@@ -285,6 +470,7 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
             encodePrologue(fn, text);
 
         // Encode all blocks.
+        size_t ordinal = 0;
         for (const auto &bb : fn.blocks) {
             if (!bb.name.empty()) {
                 const std::string label = sanitizeLabel(bb.name);
@@ -296,6 +482,7 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
                 if (debugLines_ && mi.loc.hasLine())
                     debugLines_->addEntry(
                         text.currentOffset(), mi.loc.file_id, mi.loc.line, mi.loc.column);
+                currentInstructionOrdinal_ = ordinal++;
                 encodeInstruction(mi, text);
             }
         }
@@ -1195,11 +1382,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         case MOpcode::BCond: {
             uint32_t cc = condCode(mi.ops[0].cond);
             std::string target = sanitizeLabel(mi.ops[1].label);
+            const bool forceLong =
+                longConditionalBranchOrdinals_.count(currentInstructionOrdinal_) != 0;
             auto it = labelOffsets_.find(target);
             if (it != labelOffsets_.end()) {
                 const int64_t delta =
                     static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset());
-                if (fitsBranchDispWords(delta, 19)) {
+                if (!forceLong && fitsBranchDispWords(delta, 19)) {
                     const int32_t imm19 =
                         checkedBranchDispWords(delta,
                                                19,
@@ -1230,11 +1419,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         case MOpcode::Cbz: {
             uint32_t rt = hwGPR(getReg(mi.ops[0]));
             std::string target = sanitizeLabel(mi.ops[1].label);
+            const bool forceLong =
+                longConditionalBranchOrdinals_.count(currentInstructionOrdinal_) != 0;
             auto it = labelOffsets_.find(target);
             if (it != labelOffsets_.end()) {
                 const int64_t delta =
                     static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset());
-                if (fitsBranchDispWords(delta, 19)) {
+                if (!forceLong && fitsBranchDispWords(delta, 19)) {
                     const int32_t imm19 =
                         checkedBranchDispWords(delta,
                                                19,
@@ -1265,11 +1456,13 @@ void A64BinaryEncoder::encodeInstruction(const MInstr &mi, objfile::CodeSection 
         case MOpcode::Cbnz: {
             uint32_t rt = hwGPR(getReg(mi.ops[0]));
             std::string target = sanitizeLabel(mi.ops[1].label);
+            const bool forceLong =
+                longConditionalBranchOrdinals_.count(currentInstructionOrdinal_) != 0;
             auto it = labelOffsets_.find(target);
             if (it != labelOffsets_.end()) {
                 const int64_t delta =
                     static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset());
-                if (fitsBranchDispWords(delta, 19)) {
+                if (!forceLong && fitsBranchDispWords(delta, 19)) {
                     const int32_t imm19 =
                         checkedBranchDispWords(delta,
                                                19,

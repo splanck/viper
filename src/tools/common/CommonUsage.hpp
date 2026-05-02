@@ -35,6 +35,8 @@ inline void printSharedOptions(std::ostream &os) {
        << "  --strict-diagnostics           Error on safety-critical warnings (default)\n"
        << "  --no-strict-diagnostics        Leave safety-critical warnings non-fatal\n"
        << "  --quiet-warnings               Suppress warning output on successful compiles\n"
+       << "  --paranoid-verify              Run all frontend verifier checkpoints\n"
+       << "  --pass-stats                   Print detailed optimizer pass statistics\n"
        << "  --diagnostic-format text|json   Select diagnostic output format\n"
        << "  -Wno-XXXX                      Disable warning (code or name)\n"
        << "  -h, --help                     Show this help message\n"
