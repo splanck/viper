@@ -43,13 +43,6 @@ static int testTrapInstruction() {
     trap.loc = {1, 42, 1}; // {file_id, line, column}
     bb.instructions.push_back(trap);
 
-    // ret is unreachable but required for well-formed IL
-    Instr ret;
-    ret.op = Opcode::Ret;
-    ret.type = Type(Type::Kind::Void);
-    ret.operands.push_back(Value::constInt(0));
-    bb.instructions.push_back(ret);
-
     VmFixture fixture;
     const std::string out = fixture.captureTrap(m);
 

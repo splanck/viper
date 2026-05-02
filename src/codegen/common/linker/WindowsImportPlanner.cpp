@@ -72,7 +72,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "GetModuleFileNameA","GetProcAddress","GetProcessHeap","GetStartupInfoW","GetStdHandle",
         "GetSystemInfo","GetSystemTimeAsFileTime","GetTempPathA","HeapAlloc","HeapFree",
         "IsDebuggerPresent","InitOnceExecuteOnce","InitializeCriticalSection","InitializeSListHead",
-        "LeaveCriticalSection","DeleteCriticalSection","EnterCriticalSection","MultiByteToWideChar",
+        "LeaveCriticalSection","DeleteCriticalSection","EnterCriticalSection","TryEnterCriticalSection","MultiByteToWideChar",
         "OutputDebugStringA","RaiseException","SetEnvironmentVariableA","SetEnvironmentVariableW","SetLastError",
         "SetUnhandledExceptionFilter",
         "SetErrorMode","SetCurrentDirectoryW","SwitchToThread","WriteFile","GetTickCount",
@@ -95,7 +95,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
     static const std::unordered_set<std::string> user32 = {
         "AdjustWindowRect","AdjustWindowRectEx","BeginPaint","ClientToScreen","CloseClipboard","CreateWindowExW",
         "DefWindowProcW","DestroyWindow","DispatchMessageW","EmptyClipboard","EndPaint",
-        "GetClipboardData","GetDC","GetKeyState","GetMonitorInfoA","GetSystemMetrics",
+        "GetClipboardData","GetClientRect","GetDC","GetKeyState","GetMonitorInfoA","GetSystemMetrics",
         "GetWindowLongA","GetWindowLongPtrA","GetWindowRect","IsClipboardFormatAvailable","IsIconic",
         "IsZoomed","LoadCursorA","MonitorFromPoint","MonitorFromWindow","OpenClipboard","PeekMessageW","RegisterClassExW",
         "RegisterClipboardFormatW","ReleaseDC","SetClipboardData","SetCursor","SetCursorPos",

@@ -78,6 +78,23 @@ size_t rvaToOffset(const std::vector<uint8_t> &data, uint32_t rva) {
     return static_cast<size_t>(-1);
 }
 
+std::vector<std::string> sectionNames(const std::vector<uint8_t> &data) {
+    uint32_t peOffset = readU32(data, 0x3C);
+    uint16_t numSections = readU16(data, peOffset + 6);
+    uint16_t optSize = readU16(data, peOffset + 20);
+    size_t secOff = peOffset + 24 + optSize;
+
+    std::vector<std::string> names;
+    names.reserve(numSections);
+    for (uint16_t i = 0; i < numSections; ++i) {
+        size_t sh = secOff + static_cast<size_t>(i) * 40;
+        std::string name(reinterpret_cast<const char *>(data.data() + sh), 8);
+        name.resize(std::strlen(name.c_str()));
+        names.push_back(std::move(name));
+    }
+    return names;
+}
+
 /// Create a minimal link layout with one text section.
 LinkLayout makeMinimalLayout() {
     LinkLayout layout;
@@ -316,6 +333,33 @@ TEST(PeWriter, EmptyImportsSucceeds) {
     EXPECT_TRUE(err.str().empty());
 }
 
+TEST(PeWriter, ResourceDirectoryIncludesAsInvokerManifest) {
+    auto layout = makeMinimalLayout();
+    std::ostringstream err;
+    std::string path = "build/test-out/pe_test_manifest.exe";
+    std::filesystem::create_directories("build/test-out");
+
+    bool ok = writePeExe(path, layout, LinkArch::X86_64, {}, err);
+    ASSERT_TRUE(ok);
+
+    auto data = readBinaryFile(path);
+    uint32_t peOffset = readU32(data, 0x3C);
+    size_t optOffset = peOffset + 24;
+    uint32_t resourceRva = readU32(data, optOffset + 112 + 2 * 8);
+    uint32_t resourceSize = readU32(data, optOffset + 112 + 2 * 8 + 4);
+
+    EXPECT_GT(resourceRva, 0U);
+    EXPECT_GT(resourceSize, 0U);
+    ASSERT_NE(rvaToOffset(data, resourceRva), static_cast<size_t>(-1));
+
+    auto names = sectionNames(data);
+    EXPECT_TRUE(std::find(names.begin(), names.end(), ".rsrc") != names.end());
+
+    std::string fileText(data.begin(), data.end());
+    EXPECT_TRUE(fileText.find("requestedExecutionLevel level=\"asInvoker\"") !=
+                std::string::npos);
+}
+
 TEST(PeWriter, SkipsNonAllocDebugSections) {
     auto layout = makeMinimalLayout();
 
@@ -335,15 +379,12 @@ TEST(PeWriter, SkipsNonAllocDebugSections) {
     auto data = readBinaryFile(path);
     uint32_t peOffset = readU32(data, 0x3C);
     uint16_t numSections = readU16(data, peOffset + 6);
-    uint16_t optSize = readU16(data, peOffset + 20);
-    size_t secOff = peOffset + 24 + optSize;
 
-    EXPECT_EQ(numSections, 1U);
-    for (uint16_t i = 0; i < numSections; ++i) {
-        size_t sh = secOff + static_cast<size_t>(i) * 40;
-        ASSERT_LT(sh + 8, data.size());
-        std::string name(reinterpret_cast<const char *>(data.data() + sh), 8);
-        name.resize(std::strlen(name.c_str()));
+    EXPECT_EQ(numSections, 2U);
+    auto names = sectionNames(data);
+    EXPECT_TRUE(std::find(names.begin(), names.end(), ".text") != names.end());
+    EXPECT_TRUE(std::find(names.begin(), names.end(), ".rsrc") != names.end());
+    for (const auto &name : names) {
         EXPECT_NE(name, ".debug");
         EXPECT_NE(name, ".debug_line");
     }

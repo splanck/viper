@@ -26,6 +26,10 @@
 #include "vaud.h"
 #include <stddef.h>
 
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -49,6 +53,24 @@ typedef struct {
     pthread_cond_t cond;
     int signaled;
 } vaud_event_t;
+#endif
+
+#if defined(_MSC_VER) && !defined(__clang__)
+static inline void vaud_atomic_store_i32(volatile int *ptr, int value) {
+    (void)_InterlockedExchange((volatile long *)ptr, value);
+}
+
+static inline int vaud_atomic_load_i32(const volatile int *ptr) {
+    return (int)_InterlockedCompareExchange((volatile long *)ptr, 0, 0);
+}
+#else
+static inline void vaud_atomic_store_i32(volatile int *ptr, int value) {
+    __atomic_store_n(ptr, value, __ATOMIC_RELEASE);
+}
+
+static inline int vaud_atomic_load_i32(const volatile int *ptr) {
+    return __atomic_load_n(ptr, __ATOMIC_ACQUIRE);
+}
 #endif
 
 //===----------------------------------------------------------------------===//

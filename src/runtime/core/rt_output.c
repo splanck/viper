@@ -38,6 +38,13 @@
 
 #include "rt_atomic_compat.h"
 
+#if RT_PLATFORM_WINDOWS
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
 #include <stdio.h>
 #include <string.h>
 
@@ -58,6 +65,26 @@ static int g_output_init_state = 0;
 /// @details Allows nested begin/end batch calls to work correctly across threads.
 static int g_batch_mode_depth = 0;
 
+#if RT_PLATFORM_WINDOWS
+static void rt_output_write_bytes(const char *s, size_t len) {
+    if (!s || len == 0)
+        return;
+
+    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (out == NULL || out == INVALID_HANDLE_VALUE)
+        return;
+
+    while (len > 0) {
+        const DWORD chunk = len > 0xFFFFFFFFu ? 0xFFFFFFFFu : (DWORD)len;
+        DWORD written = 0;
+        if (!WriteFile(out, s, chunk, &written, NULL) || written == 0)
+            return;
+        s += written;
+        len -= written;
+    }
+}
+#endif
+
 /// @brief Initialize stdout buffering (idempotent, thread-safe).
 /// @details Switches stdout to full buffering with a 16KB static buffer.
 ///          Uses double-checked locking so concurrent callers are safe.
@@ -68,10 +95,16 @@ void rt_output_init(void) {
     int expected = 0;
     if (__atomic_compare_exchange_n(
             &g_output_init_state, &expected, 1, /*weak=*/0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+#if RT_PLATFORM_WINDOWS
+        // Native-linked Windows executables enter directly through Viper's
+        // startup shim, bypassing CRT startup. Avoid configuring CRT stdio in
+        // that mode; writes below go straight to the OS handle.
+#else
         // Configure stdout for full buffering with our internal buffer.
         // _IOFBF = full buffering: output is written when buffer is full or fflush() is called.
         // This is the key change that reduces system calls.
         setvbuf(stdout, g_output_buffer, _IOFBF, RT_OUTPUT_BUFFER_SIZE);
+#endif
         __atomic_store_n(&g_output_init_state, 2, __ATOMIC_RELEASE);
         return;
     }
@@ -86,19 +119,29 @@ void rt_output_init(void) {
 void rt_output_str(const char *s) {
     if (!s)
         return;
+#if RT_PLATFORM_WINDOWS
+    rt_output_write_bytes(s, strlen(s));
+#else
     fputs(s, stdout);
+#endif
 }
 
 /// @brief Write exactly @p len bytes from @p s to stdout without flushing.
 void rt_output_strn(const char *s, size_t len) {
     if (!s || len == 0)
         return;
+#if RT_PLATFORM_WINDOWS
+    rt_output_write_bytes(s, len);
+#else
     fwrite(s, 1, len, stdout);
+#endif
 }
 
 /// @brief Flush the stdout buffer immediately.
 void rt_output_flush(void) {
+#if !RT_PLATFORM_WINDOWS
     fflush(stdout);
+#endif
 }
 
 /// @brief Enter batch mode — defer all flushes until the matching end_batch.
@@ -118,7 +161,9 @@ void rt_output_end_batch(void) {
     int prev = __atomic_fetch_sub(&g_batch_mode_depth, 1, __ATOMIC_ACQ_REL);
     if (prev <= 1) {
         // Exiting outermost batch mode: flush accumulated output
+#if !RT_PLATFORM_WINDOWS
         fflush(stdout);
+#endif
     }
 }
 
@@ -132,6 +177,8 @@ int8_t rt_output_is_batch_mode(void) {
 ///          interactively but deferred output during canvas rendering loops.
 void rt_output_flush_if_not_batch(void) {
     if (__atomic_load_n(&g_batch_mode_depth, __ATOMIC_ACQUIRE) == 0) {
+#if !RT_PLATFORM_WINDOWS
         fflush(stdout);
+#endif
     }
 }

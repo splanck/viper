@@ -40,12 +40,6 @@ int main(int argc, char *argv[]) {
     trap.loc = {1, 1, 1};
     bb.instructions.push_back(trap);
 
-    Instr ret;
-    ret.op = Opcode::Ret;
-    ret.type = Type(Type::Kind::Void);
-    ret.loc = {1, 1, 1};
-    bb.instructions.push_back(ret);
-
     VmFixture fixture;
     const std::string out = fixture.captureTrap(module);
     // Format: "Trap @function:block#ip line N: Kind (code=C)"

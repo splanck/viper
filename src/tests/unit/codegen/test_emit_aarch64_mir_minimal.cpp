@@ -23,11 +23,7 @@ using namespace viper::codegen::aarch64;
 
 /// @brief Returns the expected mangled symbol name on Darwin.
 static std::string mangledSym(const std::string &name) {
-#if defined(__APPLE__)
     return "_" + name;
-#else
-    return name;
-#endif
 }
 
 TEST(AArch64MIR, PrologueAddEpilogue) {

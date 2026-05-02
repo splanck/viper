@@ -18,6 +18,7 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
+#include "il/core/OpcodeInfo.hpp"
 
 #include <algorithm>
 #include <iterator>
@@ -95,7 +96,10 @@ void TestIRBuilder::store(il::core::Value pointer,
 }
 
 void TestIRBuilder::ret(const std::optional<il::core::Value> &value, il::support::SourceLoc loc) {
-    if (!block().terminated) {
+    const auto &instructions = block().instructions;
+    const bool endsWithTerminator =
+        !instructions.empty() && il::core::getOpcodeInfo(instructions.back().op).isTerminator;
+    if (!block().terminated && !endsWithTerminator) {
         builder_.emitRet(value, loc);
     }
 }

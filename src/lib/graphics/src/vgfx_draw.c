@@ -34,6 +34,10 @@
 #include <limits.h>
 #include <stdlib.h> /* abs */
 
+static int64_t vgfx_abs_i64(int64_t value) {
+    return value < 0 ? -value : value;
+}
+
 static int32_t clamp_i64_to_i32(int64_t value) {
     if (value > INT32_MAX)
         return INT32_MAX;
@@ -284,8 +288,8 @@ static void bresenham_line(int32_t x0,
                            void (*plot)(int32_t x, int32_t y, void *ctx),
                            void *ctx) {
     /* Calculate absolute deltas (line extents) in widened math. */
-    int64_t dx = llabs((int64_t)x1 - (int64_t)x0);
-    int64_t dy = llabs((int64_t)y1 - (int64_t)y0);
+    int64_t dx = vgfx_abs_i64((int64_t)x1 - (int64_t)x0);
+    int64_t dy = vgfx_abs_i64((int64_t)y1 - (int64_t)y0);
 
     /* Determine step direction for each axis (-1 or +1) */
     int32_t sx = (x0 < x1) ? 1 : -1;

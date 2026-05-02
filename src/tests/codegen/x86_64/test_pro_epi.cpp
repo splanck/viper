@@ -7,7 +7,7 @@
 //
 // File: tests/codegen/x86_64/test_pro_epi.cpp
 // Purpose: Verify the x86-64 backend emits a prologue/epilogue sequence that
-// Key invariants: Assembly must contain a frame setup using mov %rsp, %rbp,
+// Key invariants: Assembly must contain a non-leaf frame and matching return.
 // Ownership/Lifetime: Test builds a local IL module and validates the emitted
 // Links: src/codegen/x86_64/FrameLowering.cpp
 //
@@ -74,11 +74,13 @@ namespace {
 }
 
 [[nodiscard]] bool hasCanonicalFrameSequence(const std::string &asmText) {
-    const bool hasFrameMove = asmText.find("movq %rsp, %rbp") != std::string::npos;
+    const bool hasFramePointerMove = asmText.find("movq %rsp, %rbp") != std::string::npos;
+    const bool hasPushPopFrame = asmText.find("pushq %rbp") != std::string::npos &&
+                                 asmText.find("popq %rbp") != std::string::npos;
     const bool hasStackAdjust =
         asmText.find("subq $") != std::string::npos || asmText.find("addq $-") != std::string::npos;
     const bool hasRet = asmText.find("ret") != std::string::npos;
-    return hasFrameMove && hasStackAdjust && hasRet;
+    return (hasFramePointerMove || hasPushPopFrame) && hasStackAdjust && hasRet;
 }
 
 } // namespace

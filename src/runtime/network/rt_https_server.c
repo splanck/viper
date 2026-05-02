@@ -1046,18 +1046,41 @@ typedef struct {
     void *tcp;
 } http_conn_task_t;
 
+static void close_accepted_tcp_handle(void *tcp) {
+    if (!tcp)
+        return;
+    rt_tcp_close(tcp);
+    if (rt_obj_release_check0(tcp))
+        rt_obj_free(tcp);
+}
+
 /// @brief Worker-pool task wrapper around `handle_connection`.
 ///
-/// The accept loop allocates an `http_conn_task_t` (server + tcp pair)
-/// and submits it to the worker pool; the worker calls this function,
-/// which forwards to `handle_connection` and frees the task struct
-/// afterwards. The TCP handle's lifetime is owned by `handle_connection`,
-/// not the task.
+/// The accept loop allocates an `http_conn_task_t` (server + accepted TCP
+/// handle) and submits it to the worker pool. Performing the TLS handshake in
+/// the worker keeps a slow or rejected handshake from blocking the accept loop
+/// and delaying later clients.
 ///
 /// @param arg `http_conn_task_t *` cast to `void *`.
 static void handle_connection_task(void *arg) {
     http_conn_task_t *task = (http_conn_task_t *)arg;
-    handle_connection(task->server, task->tcp);
+    rt_http_server_impl *server = task ? task->server : NULL;
+    void *tcp = task ? task->tcp : NULL;
+    rt_tls_session_t *tls = NULL;
+
+    if (server && tcp && https_server_is_running(server)) {
+        tls = rt_tls_server_accept_socket((int)rt_tcp_socket_fd(tcp), server->tls_ctx);
+        rt_tcp_detach_socket(tcp);
+        if (rt_obj_release_check0(tcp))
+            rt_obj_free(tcp);
+        tcp = NULL;
+    }
+
+    if (tls)
+        handle_connection(server, tls);
+    else
+        close_accepted_tcp_handle(tcp);
+
     free(task);
 }
 
@@ -1191,32 +1214,23 @@ static void *accept_loop(void *arg)
             continue; // Timeout — check running flag
 
         if (!https_server_is_running(server)) {
-            rt_tcp_close(tcp);
-            if (rt_obj_release_check0(tcp))
-                rt_obj_free(tcp);
+            close_accepted_tcp_handle(tcp);
             break;
         }
 
-        rt_tls_session_t *tls = rt_tls_server_accept_socket((int)rt_tcp_socket_fd(tcp), server->tls_ctx);
-        rt_tcp_detach_socket(tcp);
-        if (rt_obj_release_check0(tcp))
-            rt_obj_free(tcp);
-        if (!tls)
-            continue;
-
         http_conn_task_t *task = (http_conn_task_t *)malloc(sizeof(http_conn_task_t));
         if (!task) {
-            rt_tls_close(tls);
+            close_accepted_tcp_handle(tcp);
             continue;
         }
 
         task->server = server;
-        task->tcp = tls;
+        task->tcp = tcp;
 
         if (!server->worker_pool ||
             !rt_threadpool_submit(server->worker_pool, (void *)handle_connection_task, task)) {
             free(task);
-            rt_tls_close(tls);
+            close_accepted_tcp_handle(tcp);
         }
     }
 

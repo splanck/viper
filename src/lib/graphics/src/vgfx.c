@@ -747,7 +747,7 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) {
     clear_framebuffer_rgba(win->pixels, fb_size);
 
     /* Initialize event queue (empty ring buffer) */
-    atomic_flag_clear(&win->event_lock);
+    vgfx_atomic_flag_clear(&win->event_lock);
     win->event_head = 0;
     win->event_tail = 0;
     win->event_overflow = 0;

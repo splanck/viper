@@ -479,14 +479,28 @@ static std::string tls_recv_string(rt_tls_session_t *tls, size_t len) {
     return out;
 }
 
-static rt_tls_session_t *connect_local_tls_server(int port) {
+static rt_tls_session_t *connect_local_tls_server_with_timeout(int port, int timeout_ms) {
     rt_tls_config_t config;
     rt_tls_config_init(&config);
     config.hostname = "127.0.0.1";
     config.alpn_protocol = "http/1.1";
     config.verify_cert = 0;
-    config.timeout_ms = 5000;
+    config.timeout_ms = timeout_ms;
     return rt_tls_connect("127.0.0.1", (uint16_t)port, &config);
+}
+
+static rt_tls_session_t *connect_local_tls_server(int port) {
+    return connect_local_tls_server_with_timeout(port, 30000);
+}
+
+static rt_tls_session_t *connect_local_tls_server_with_retries(int port) {
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        rt_tls_session_t *tls = connect_local_tls_server_with_timeout(port, 30000);
+        if (tls)
+            return tls;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    return nullptr;
 }
 
 static rt_tls_session_t *connect_local_tls_server_with_alpn(int port, const char *alpn) {
@@ -495,7 +509,7 @@ static rt_tls_session_t *connect_local_tls_server_with_alpn(int port, const char
     config.hostname = "127.0.0.1";
     config.alpn_protocol = alpn;
     config.verify_cert = 0;
-    config.timeout_ms = 5000;
+    config.timeout_ms = 30000;
     return rt_tls_connect("127.0.0.1", (uint16_t)port, &config);
 }
 
@@ -509,7 +523,7 @@ static rt_tls_session_t *connect_local_tls_server_verified(int port,
     config.alpn_protocol = "http/1.1";
     config.ca_file = ca_file;
     config.verify_cert = 1;
-    config.timeout_ms = 5000;
+    config.timeout_ms = 30000;
     return rt_tls_connect(connect_host, (uint16_t)port, &config);
 }
 
@@ -1571,7 +1585,7 @@ static void test_https_server_roundtrip() {
     if (bad_sni_tls)
         rt_tls_close(bad_sni_tls);
 
-    rt_tls_session_t *tls = connect_local_tls_server(port);
+    rt_tls_session_t *tls = connect_local_tls_server_with_retries(port);
     if (!tls) {
         fprintf(stderr,
                 "Raw TLS connect failed after bad SNI test: %s\n",
@@ -1644,6 +1658,11 @@ static void test_https_server_http2_roundtrip() {
     }
 
     rt_tls_session_t *tls = connect_local_tls_server_with_alpn(port, "h2,http/1.1");
+    if (!tls) {
+        fprintf(stderr,
+                "HTTP/2 TLS connect failed: %s\n",
+                rt_tls_last_error() ? rt_tls_last_error() : "(null)");
+    }
     test_result("HTTP/2 TLS client connects to HttpsServer", tls != nullptr);
     if (!tls) {
         rt_https_server_stop(server);

@@ -78,6 +78,12 @@ struct BaseRelocLayout {
     uint32_t directorySize = 0;
 };
 
+struct ResourceLayout {
+    std::vector<uint8_t> data;
+    uint32_t directoryRva = 0;
+    uint32_t directorySize = 0;
+};
+
 struct PeSection {
     std::string name;
     const std::vector<uint8_t> *data = nullptr;
@@ -491,6 +497,63 @@ std::vector<uint8_t> buildBaseRelocationBlocks(std::vector<uint32_t> rvas, bool 
     return data;
 }
 
+ResourceLayout buildDefaultManifestResource(uint32_t sectionRva) {
+    static constexpr uint16_t kRtManifest = 24;
+    static constexpr uint16_t kExeManifestId = 1;
+    static constexpr uint16_t kLangEnUs = 0x0409;
+
+    static const char kManifest[] =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+        "<assembly xmlns=\"urn:schemas-microsoft-com:asm.v1\" manifestVersion=\"1.0\">\n"
+        "  <trustInfo xmlns=\"urn:schemas-microsoft-com:asm.v3\">\n"
+        "    <security><requestedPrivileges>\n"
+        "      <requestedExecutionLevel level=\"asInvoker\" uiAccess=\"false\"/>\n"
+        "    </requestedPrivileges></security>\n"
+        "  </trustInfo>\n"
+        "</assembly>\n";
+
+    ResourceLayout result{};
+
+    const uint32_t rootDirOff = 0;
+    const uint32_t rootEntryOff = rootDirOff + 16;
+    const uint32_t typeDirOff = rootEntryOff + 8;
+    const uint32_t typeEntryOff = typeDirOff + 16;
+    const uint32_t nameDirOff = typeEntryOff + 8;
+    const uint32_t langEntryOff = nameDirOff + 16;
+    const uint32_t dataEntryOff = langEntryOff + 8;
+    const uint32_t manifestOff = static_cast<uint32_t>(alignUp(dataEntryOff + 16, 4));
+    const uint32_t manifestSize = static_cast<uint32_t>(sizeof(kManifest) - 1);
+    const uint32_t totalSize = static_cast<uint32_t>(alignUp(manifestOff + manifestSize, 4));
+
+    std::vector<uint8_t> data(totalSize, 0);
+    auto putDir = [&](uint32_t off, uint16_t idEntryCount) {
+        putLE16(data, off + 12, 0);           // NumberOfNamedEntries
+        putLE16(data, off + 14, idEntryCount); // NumberOfIdEntries
+    };
+
+    putDir(rootDirOff, 1);
+    putLE32(data, rootEntryOff + 0, kRtManifest);
+    putLE32(data, rootEntryOff + 4, 0x80000000u | typeDirOff);
+
+    putDir(typeDirOff, 1);
+    putLE32(data, typeEntryOff + 0, kExeManifestId);
+    putLE32(data, typeEntryOff + 4, 0x80000000u | nameDirOff);
+
+    putDir(nameDirOff, 1);
+    putLE32(data, langEntryOff + 0, kLangEnUs);
+    putLE32(data, langEntryOff + 4, dataEntryOff);
+
+    putLE32(data, dataEntryOff + 0, sectionRva + manifestOff);
+    putLE32(data, dataEntryOff + 4, manifestSize);
+    putLE32(data, dataEntryOff + 8, 65001); // UTF-8
+    std::memcpy(data.data() + manifestOff, kManifest, manifestSize);
+
+    result.data = std::move(data);
+    result.directoryRva = sectionRva;
+    result.directorySize = totalSize;
+    return result;
+}
+
 } // namespace
 
 bool writePeExe(const std::string &path,
@@ -520,7 +583,7 @@ bool writePeExe(const std::string &path,
     ownedSectionData.reserve(layout.sections.size());
 
     std::vector<PeSection> sections;
-    sections.reserve(layout.sections.size() + 2);
+    sections.reserve(layout.sections.size() + 4);
 
     uint32_t nextGeneratedRva = sectionAlignment;
     for (const auto &sec : layout.sections) {
@@ -555,9 +618,11 @@ bool writePeExe(const std::string &path,
     std::vector<uint8_t> generatedStubData;
     std::vector<uint8_t> generatedTlsData;
     std::vector<uint8_t> generatedBaseRelocData;
+    std::vector<uint8_t> generatedResourceData;
     ImportLayout importLayout{};
     TlsLayout tlsLayout{};
     BaseRelocLayout baseRelocLayout{};
+    ResourceLayout resourceLayout{};
 
     if (!imports.empty()) {
         const uint32_t importRva =
@@ -691,6 +756,24 @@ bool writePeExe(const std::string &path,
             static_cast<uint32_t>(alignUp(generatedBaseRelocData.size(), sectionAlignment));
     }
 
+    const uint32_t resourceRva =
+        static_cast<uint32_t>(alignUp(nextGeneratedRva, sectionAlignment));
+    resourceLayout = buildDefaultManifestResource(resourceRva);
+    generatedResourceData = resourceLayout.data;
+    if (!generatedResourceData.empty()) {
+        PeSection resourceSec;
+        resourceSec.name = ".rsrc";
+        resourceSec.data = &generatedResourceData;
+        resourceSec.virtualAddress = resourceRva;
+        resourceSec.virtualSize = static_cast<uint32_t>(generatedResourceData.size());
+        resourceSec.characteristics = sectionChars(false, false, true);
+        sections.push_back(resourceSec);
+
+        nextGeneratedRva =
+            resourceRva +
+            static_cast<uint32_t>(alignUp(generatedResourceData.size(), sectionAlignment));
+    }
+
     std::stable_sort(sections.begin(), sections.end(), [](const PeSection &a, const PeSection &b) {
         if (a.alloc != b.alloc)
             return a.alloc > b.alloc;
@@ -797,6 +880,10 @@ bool writePeExe(const std::string &path,
         putLE32(file, optHeaderStart + 112 + 1 * 8 + 4, importLayout.importDirSize);
         putLE32(file, optHeaderStart + 112 + 12 * 8 + 0, importLayout.iatRva);
         putLE32(file, optHeaderStart + 112 + 12 * 8 + 4, importLayout.iatSize);
+    }
+    if (resourceLayout.directoryRva != 0) {
+        putLE32(file, optHeaderStart + 112 + 2 * 8 + 0, resourceLayout.directoryRva);
+        putLE32(file, optHeaderStart + 112 + 2 * 8 + 4, resourceLayout.directorySize);
     }
     if (exceptionLayout.directoryRva != 0) {
         putLE32(file, optHeaderStart + 112 + 3 * 8 + 0, exceptionLayout.directoryRva);

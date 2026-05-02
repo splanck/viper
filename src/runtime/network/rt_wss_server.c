@@ -139,9 +139,8 @@ typedef struct {
 
 typedef struct {
     rt_ws_server_impl *server;
-    int slot;
     void *tcp;
-} ws_client_task_t;
+} ws_accept_task_t;
 
 typedef struct {
     int slot;
@@ -158,6 +157,15 @@ static void ws_release_tcp(void **tcp_ptr) {
     if (!tcp_ptr || !*tcp_ptr)
         return;
     rt_tls_close((rt_tls_session_t *)*tcp_ptr);
+    *tcp_ptr = NULL;
+}
+
+static void ws_release_raw_tcp(void **tcp_ptr) {
+    if (!tcp_ptr || !*tcp_ptr)
+        return;
+    rt_tcp_close(*tcp_ptr);
+    if (rt_obj_release_check0(*tcp_ptr))
+        rt_obj_free(*tcp_ptr);
     *tcp_ptr = NULL;
 }
 
@@ -506,13 +514,7 @@ static int ws_server_send_locked(rt_ws_server_impl *s, void *tcp, uint8_t opcode
     return ok;
 }
 
-static void ws_client_task_run(void *arg) {
-    ws_client_task_t *task = (ws_client_task_t *)arg;
-    rt_ws_server_impl *s = task ? task->server : NULL;
-    void *tcp = task ? task->tcp : NULL;
-    int slot = task ? task->slot : -1;
-
-    free(task);
+static void ws_client_run(rt_ws_server_impl *s, int slot, void *tcp) {
     if (!s || !tcp || slot < 0)
         return;
 
@@ -605,6 +607,56 @@ done:
     ws_server_remove_client(s, slot, tcp);
 }
 
+static void ws_accept_task_run(void *arg) {
+    ws_accept_task_t *task = (ws_accept_task_t *)arg;
+    rt_ws_server_impl *s = task ? task->server : NULL;
+    void *tcp = task ? task->tcp : NULL;
+    rt_tls_session_t *tls = NULL;
+    int slot = -1;
+
+    free(task);
+    if (!s || !tcp || !s->running) {
+        ws_release_raw_tcp(&tcp);
+        return;
+    }
+
+    tls = rt_tls_server_accept_socket((int)rt_tcp_socket_fd(tcp), s->tls_ctx);
+    rt_tcp_detach_socket(tcp);
+    if (rt_obj_release_check0(tcp))
+        rt_obj_free(tcp);
+    tcp = NULL;
+    if (!tls)
+        return;
+
+    if (!s->running || !ws_server_handshake(tls, s->subprotocol)) {
+        ws_release_tcp((void **)&tls);
+        return;
+    }
+
+    WS_MUTEX_LOCK(&s->lock);
+    for (int i = 0; i < s->client_count; i++) {
+        if (!s->clients[i].active) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0 && s->client_count < WS_SERVER_MAX_CLIENTS)
+        slot = s->client_count++;
+
+    if (slot >= 0) {
+        s->clients[slot].tcp = tls;
+        s->clients[slot].active = true;
+    }
+    WS_MUTEX_UNLOCK(&s->lock);
+
+    if (slot < 0) {
+        ws_release_tcp((void **)&tls);
+        return;
+    }
+
+    ws_client_run(s, slot, tls);
+}
+
 //=============================================================================
 // Accept Loop
 //=============================================================================
@@ -622,59 +674,21 @@ static void *ws_accept_loop(void *arg)
         if (!tcp)
             continue;
         if (!s->running) {
-            rt_tcp_close(tcp);
-            if (rt_obj_release_check0(tcp))
-                rt_obj_free(tcp);
+            ws_release_raw_tcp(&tcp);
             break;
         }
 
-        rt_tls_session_t *tls = rt_tls_server_accept_socket((int)rt_tcp_socket_fd(tcp), s->tls_ctx);
-        rt_tcp_detach_socket(tcp);
-        if (rt_obj_release_check0(tcp))
-            rt_obj_free(tcp);
-        if (!tls)
-            continue;
-
-        // Perform WebSocket handshake
-        if (!ws_server_handshake(tls, s->subprotocol)) {
-            ws_release_tcp((void **)&tls);
+        ws_accept_task_t *task = (ws_accept_task_t *)malloc(sizeof(*task));
+        if (!task) {
+            ws_release_raw_tcp(&tcp);
             continue;
         }
-
-        // Add client
-        WS_MUTEX_LOCK(&s->lock);
-        int slot = -1;
-        for (int i = 0; i < s->client_count; i++) {
-            if (!s->clients[i].active) {
-                slot = i;
-                break;
-            }
-        }
-        if (slot < 0 && s->client_count < WS_SERVER_MAX_CLIENTS)
-            slot = s->client_count++;
-
-        if (slot >= 0) {
-            s->clients[slot].tcp = tls;
-            s->clients[slot].active = true;
-        } else {
-            ws_release_tcp((void **)&tls);
-        }
-        WS_MUTEX_UNLOCK(&s->lock);
-
-        if (slot >= 0) {
-            ws_client_task_t *task = (ws_client_task_t *)malloc(sizeof(*task));
-            if (!task) {
-                ws_server_remove_client(s, slot, tls);
-                continue;
-            }
-            task->server = s;
-            task->slot = slot;
-            task->tcp = tls;
-            if (!s->worker_pool ||
-                !rt_threadpool_submit(s->worker_pool, (void *)ws_client_task_run, task)) {
-                free(task);
-                ws_server_remove_client(s, slot, tls);
-            }
+        task->server = s;
+        task->tcp = tcp;
+        if (!s->worker_pool ||
+            !rt_threadpool_submit(s->worker_pool, (void *)ws_accept_task_run, task)) {
+            free(task);
+            ws_release_raw_tcp(&tcp);
         }
     }
 

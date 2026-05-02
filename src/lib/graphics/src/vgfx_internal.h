@@ -39,7 +39,33 @@
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+#else
 #include <stdatomic.h>
+#endif
+
+#if defined(_MSC_VER) && !defined(__clang__)
+typedef volatile long vgfx_atomic_flag_t;
+
+static inline int vgfx_atomic_flag_test_and_set(vgfx_atomic_flag_t *flag) {
+    return _InterlockedExchange(flag, 1) != 0;
+}
+
+static inline void vgfx_atomic_flag_clear(vgfx_atomic_flag_t *flag) {
+    (void)_InterlockedExchange(flag, 0);
+}
+#else
+typedef atomic_flag vgfx_atomic_flag_t;
+
+static inline int vgfx_atomic_flag_test_and_set(vgfx_atomic_flag_t *flag) {
+    return atomic_flag_test_and_set_explicit(flag, memory_order_acquire);
+}
+
+static inline void vgfx_atomic_flag_clear(vgfx_atomic_flag_t *flag) {
+    atomic_flag_clear_explicit(flag, memory_order_release);
+}
+#endif
 
 //===----------------------------------------------------------------------===//
 // Internal Constants
@@ -130,7 +156,7 @@ struct vgfx_window {
     //===------------------------------------------------------------------===//
 
     /// @brief Spin lock protecting event queue indices and overflow count.
-    atomic_flag event_lock;
+    vgfx_atomic_flag_t event_lock;
 
     /// @brief Ring buffer storage for events.
     /// @details Array of VGFX_INTERNAL_EVENT_QUEUE_SLOTS elements.  The extra
@@ -520,12 +546,12 @@ int vgfx_internal_peek_event(struct vgfx_window *win, vgfx_event_t *out_event);
 int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int32_t height);
 
 static inline void vgfx_internal_event_lock(struct vgfx_window *win) {
-    while (atomic_flag_test_and_set_explicit(&win->event_lock, memory_order_acquire)) {
+    while (vgfx_atomic_flag_test_and_set(&win->event_lock)) {
     }
 }
 
 static inline void vgfx_internal_event_unlock(struct vgfx_window *win) {
-    atomic_flag_clear_explicit(&win->event_lock, memory_order_release);
+    vgfx_atomic_flag_clear(&win->event_lock);
 }
 
 /// @brief Check if pixel coordinates are within the window's bounds.

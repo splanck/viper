@@ -54,6 +54,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 using namespace il::core;
@@ -175,10 +176,10 @@ Instr cloneInstr(const Instr &src,
     return clone;
 }
 
-void setValueName(Function &function, unsigned id, const std::string &name) {
+void setValueName(Function &function, unsigned id, std::string name) {
     if (function.valueNames.size() <= id)
         function.valueNames.resize(id + 1);
-    function.valueNames[id] = name;
+    function.valueNames[id] = std::move(name);
 }
 
 /// @brief Attempt to rotate a single loop.

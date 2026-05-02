@@ -63,6 +63,7 @@
 #include "il/core/Value.hpp"
 #include "il/utils/Utils.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <functional>

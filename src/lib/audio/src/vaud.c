@@ -263,7 +263,7 @@ vaud_context_t vaud_create(void) {
     ctx->master_volume = VAUD_DEFAULT_MASTER_VOLUME;
     ctx->next_voice_id = 1; /* Start at 1 so 0 is never valid */
     ctx->frame_counter = 0;
-    __atomic_store_n(&ctx->running, 1, __ATOMIC_RELEASE);
+    vaud_atomic_store_i32(&ctx->running, 1);
     ctx->paused = 0;
     ctx->music_count = 0;
 
@@ -297,7 +297,7 @@ void vaud_destroy(vaud_context_t ctx) {
         return;
 
     /* Stop running flag first */
-    __atomic_store_n(&ctx->running, 0, __ATOMIC_RELEASE);
+    vaud_atomic_store_i32(&ctx->running, 0);
 
     /* Shutdown platform (stops audio thread) */
     vaud_platform_shutdown(ctx);
