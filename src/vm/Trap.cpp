@@ -163,8 +163,9 @@ std::string vm_current_trap_message() {
 ///          source location into a concise diagnostic.  Missing data defaults
 ///          to placeholder values so the resulting string is still informative.
 ///
-/// Format: "Trap @function:block#ip (path:line:column): Kind (code=C)"
-/// When a path is unavailable, falls back to "line N[:C]".
+/// Format: "Trap @function:block#ip line N: Kind (code=C): path:line:column"
+/// When a path is unavailable, falls back to "file#ID:line:column" after the
+/// stable "line N" trap prefix.
 ///
 /// @param error Trap token describing the failure.
 /// @param frame Frame metadata captured when the trap surfaced.
@@ -176,8 +177,8 @@ std::string vm_format_error(const VmError &error, const FrameInfo &frame) {
     const int32_t line = error.line >= 0 ? error.line : (frame.line >= 0 ? frame.line : -1);
     const auto kindStr = toString(error.kind);
 
-    // Pre-allocate buffer: "Trap @<func>:<block>#<ip> (<path>:line:col): <kind> (code=<code>)"
-    // Typical overhead ~50 bytes + function + block + numbers
+    // Pre-allocate buffer: "Trap @<func>:<block>#<ip> line N: <kind> (code=<code>)"
+    // plus optional source detail. Typical overhead ~60 bytes + function + block + numbers.
     std::string result;
     result.reserve(64 + function.size() + frame.block.size());
 
@@ -192,43 +193,42 @@ std::string vm_format_error(const VmError &error, const FrameInfo &frame) {
     const int32_t column =
         frame.column >= 0 ? frame.column
                           : (frame.loc.hasColumn() ? static_cast<int32_t>(frame.loc.column) : -1);
+    std::string sourceDetail;
     if (!frame.file.empty()) {
-        result.append(" (");
-        result.append(frame.file);
+        sourceDetail.append(frame.file);
         if (line >= 0) {
-            result.push_back(':');
-            result.append(std::to_string(line));
+            sourceDetail.push_back(':');
+            sourceDetail.append(std::to_string(line));
             if (column >= 0) {
-                result.push_back(':');
-                result.append(std::to_string(column));
+                sourceDetail.push_back(':');
+                sourceDetail.append(std::to_string(column));
             }
         }
-        result.push_back(')');
     } else if (frame.loc.hasFile()) {
-        result.append(" (file#");
-        result.append(std::to_string(frame.loc.file_id));
+        sourceDetail.append("file#");
+        sourceDetail.append(std::to_string(frame.loc.file_id));
         if (line >= 0) {
-            result.push_back(':');
-            result.append(std::to_string(line));
+            sourceDetail.push_back(':');
+            sourceDetail.append(std::to_string(line));
             if (column >= 0) {
-                result.push_back(':');
-                result.append(std::to_string(column));
+                sourceDetail.push_back(':');
+                sourceDetail.append(std::to_string(column));
             }
         }
-        result.push_back(')');
-    } else if (line >= 0) {
+    }
+    if (line >= 0) {
         result.append(" line ");
         result.append(std::to_string(line));
-        if (column >= 0) {
-            result.push_back(':');
-            result.append(std::to_string(column));
-        }
     }
     result.append(": ");
     result.append(kindStr);
     result.append(" (code=");
     result.append(std::to_string(error.code));
     result.push_back(')');
+    if (!sourceDetail.empty()) {
+        result.append(": ");
+        result.append(sourceDetail);
+    }
     return result;
 }
 

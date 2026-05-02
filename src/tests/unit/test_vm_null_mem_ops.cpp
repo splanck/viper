@@ -28,6 +28,10 @@
 
 namespace {
 
+bool containsAll(const std::string &text, const std::string &first, const std::string &second) {
+    return text.find(first) != std::string::npos && text.find(second) != std::string::npos;
+}
+
 il::core::Module makeLoadModule() {
     using namespace il::core;
 
@@ -206,9 +210,9 @@ int main(int argc, char *argv[]) {
         auto m = makeLoadModule();
         auto result = viper::tests::runModuleIsolated(m);
         assert(result.trapped());
-        bool loadOk = result.stderrText.find(
-                          "Trap @main:entry#0 line 1: InvalidOperation (code=0): null load") !=
-                      std::string::npos;
+        bool loadOk = containsAll(result.stderrText,
+                                  "Trap @main:entry#0 line 1: InvalidOperation (code=0)",
+                                  "null load");
         assert(loadOk);
     }
 
@@ -216,9 +220,9 @@ int main(int argc, char *argv[]) {
         auto m = makeStoreModule();
         auto result = viper::tests::runModuleIsolated(m);
         assert(result.trapped());
-        bool storeOk = result.stderrText.find(
-                           "Trap @main:entry#0 line 2: InvalidOperation (code=0): null store") !=
-                       std::string::npos;
+        bool storeOk = containsAll(result.stderrText,
+                                   "Trap @main:entry#0 line 2: InvalidOperation (code=0)",
+                                   "null store");
         assert(storeOk);
     }
 
@@ -235,8 +239,8 @@ int main(int argc, char *argv[]) {
         auto m = makeMisalignedLoadModule(kind);
         auto result = viper::tests::runModuleIsolated(m);
         assert(result.trapped());
-        bool trapped = result.stderrText.find("InvalidOperation (code=0): misaligned load") !=
-                       std::string::npos;
+        bool trapped =
+            containsAll(result.stderrText, "InvalidOperation (code=0)", "misaligned load");
         assert(trapped);
     }
 
@@ -244,8 +248,8 @@ int main(int argc, char *argv[]) {
         auto m = makeMisalignedStoreModule(kind);
         auto result = viper::tests::runModuleIsolated(m);
         assert(result.trapped());
-        bool trapped = result.stderrText.find("InvalidOperation (code=0): misaligned store") !=
-                       std::string::npos;
+        bool trapped =
+            containsAll(result.stderrText, "InvalidOperation (code=0)", "misaligned store");
         assert(trapped);
     }
 

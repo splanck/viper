@@ -293,16 +293,16 @@ Warnings are printed even when compilation succeeds. Use `--quiet-warnings` or `
 Runtime traps (VM errors) use this format:
 
 ```text
-Trap @function:block#ip (path:line:column): Kind (code=C): message
+Trap @function:block#ip line N: Kind (code=C): path:line:column: message
 ```
 
 For example:
 ```text
-Trap @processRow:L3#2 (src/main.zia:145:12): Bounds (code=7): index out of bounds
+Trap @processRow:L3#2 line 145: Bounds (code=7): src/main.zia:145:12: index out of bounds
 ```
 
-When no source path is registered, the VM falls back to `file#ID:line:column` or `line N:C` so trap output still points
-back to the instruction that raised it.
+When no source path is registered, the VM falls back to `file#ID:line:column` after the trap kind while preserving the
+stable `line N` token used by existing tooling.
 
 ### Trap Kinds
 

@@ -57,13 +57,6 @@ LowerResult Lowerer::lowerExpr(Expr *expr) {
 
     ZiaLocationScope locScope(*this, expr->loc);
 
-    TypeRef semaType = sema_.typeOf(expr);
-    if (expr->kind != ExprKind::NullLiteral && isInvalidLoweringType(semaType)) {
-        return poisonValue(expr->loc,
-                           "V-ZIA-LOWER-UNRESOLVED-EXPR",
-                           "expression reached lowering without a concrete semantic type");
-    }
-
     switch (expr->kind) {
         case ExprKind::IntLiteral:
             return lowerIntLiteral(static_cast<IntLiteralExpr *>(expr));

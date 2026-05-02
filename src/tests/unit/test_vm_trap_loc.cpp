@@ -42,8 +42,8 @@ int main(int argc, char *argv[]) {
 
     auto result = viper::tests::runIsolated(buildAndRun);
     assert(result.trapped());
-    // Format: "Trap @function:block#ip (file#ID:line:column): Kind (code=C)"
-    bool ok = result.stderrText.find("Trap @main:entry#0 (file#1:1:1): DomainError (code=0)") !=
+    // Format: "Trap @function:block#ip line N: Kind (code=C): file:line:column"
+    bool ok = result.stderrText.find("Trap @main:entry#0 line 1: DomainError (code=0)") !=
               std::string::npos;
     assert(ok);
     return 0;

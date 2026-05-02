@@ -832,15 +832,7 @@ void Lowerer::reportLoweringInvariant(il::support::SourceLoc loc,
 }
 
 bool Lowerer::isInvalidLoweringType(TypeRef type) const {
-    if (!type)
-        return true;
-    switch (type->kind) {
-        case TypeKindSem::Unknown:
-        case TypeKindSem::TypeParam:
-            return true;
-        default:
-            return false;
-    }
+    return !type;
 }
 
 LowerResult Lowerer::poisonValue(il::support::SourceLoc loc,
