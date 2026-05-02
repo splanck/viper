@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include "support/source_location.hpp"
+
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -55,7 +57,10 @@ struct FrameInfo {
     std::string function;          ///< Function in which the trap occurred.
     std::string block;             ///< Block label where the trap occurred.
     uint64_t ip = 0;               ///< Instruction pointer of the trap.
+    il::support::SourceLoc loc{};  ///< Full source location when known.
+    std::string file;              ///< Resolved source file path when known.
     int32_t line = -1;             ///< Source line for diagnostics (-1 = unknown).
+    int32_t column = -1;           ///< Source column for diagnostics (-1 = unknown).
     bool handlerInstalled = false; ///< Whether an error handler is active.
 };
 

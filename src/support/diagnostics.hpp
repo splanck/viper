@@ -39,6 +39,18 @@ struct DiagnosticNote {
     std::string message;
 };
 
+/// @brief Machine-readable source replacement hint attached to a diagnostic.
+struct DiagnosticFixIt {
+    /// @brief Source range to replace. Empty/invalid means insert at the diagnostic location.
+    SourceRange range{};
+
+    /// @brief Replacement text.
+    std::string replacement;
+
+    /// @brief Human-readable description of the fix.
+    std::string message;
+};
+
 /// @brief Single diagnostic message with location.
 struct Diagnostic {
     Severity severity;   ///< Message severity
@@ -47,6 +59,9 @@ struct Diagnostic {
     std::string code;    ///< Optional diagnostic code (e.g., "B1001", "IL001")
     SourceRange range{}; ///< Optional range to underline when printing snippets.
     std::vector<DiagnosticNote> notes{}; ///< Optional related notes.
+    std::string stage{}; ///< Optional pipeline stage (parse, sema, lower, verify, runtime).
+    std::string help{};  ///< Optional help text or URL for this diagnostic code.
+    std::vector<DiagnosticFixIt> fixits{}; ///< Optional machine-readable fix suggestions.
 };
 
 /// @brief Collects diagnostics and prints them in order.

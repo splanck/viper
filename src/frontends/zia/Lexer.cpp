@@ -40,6 +40,7 @@
 #include <array>
 #include <charconv>
 #include <string_view>
+#include <utility>
 
 namespace il::frontends::zia {
 
@@ -431,12 +432,20 @@ il::support::SourceLoc Lexer::currentLoc() const {
 }
 
 void Lexer::reportError(il::support::SourceLoc loc, const std::string &message) {
-    diag_.report(il::support::Diagnostic{
+    il::support::Diagnostic diag{
         il::support::Severity::Error,
         message,
         loc,
-        classifyLexError(message)
-    });
+        classifyLexError(message),
+    };
+    if (loc.isValid()) {
+        diag.range = il::support::SourceRange{
+            loc,
+            il::support::SourceLoc{loc.file_id, loc.line, loc.column + 1},
+        };
+    }
+    diag.stage = "lex";
+    diag_.report(std::move(diag));
 }
 
 void Lexer::skipLineComment() {

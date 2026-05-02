@@ -28,8 +28,9 @@
 namespace il::vm {
 /// @brief Construct a script by loading actions from a command file.
 /// @details Reads the file line-by-line, interpreting recognised commands into
-///          queued actions.  "continue" lines enqueue a Continue action while
-///          "step" and "step N" emit Step actions with appropriate counts.
+///          queued actions.  "continue" lines enqueue a Continue action,
+///          "step" and "step N" emit Step actions with appropriate counts, and
+///          "step-over" / "step-out" request frame-depth-aware stepping.
 ///          Unknown lines emit `[DEBUG]` messages to stderr but do not abort
 ///          parsing, allowing iterative script development.
 DebugScript::DebugScript(const std::string &path) {

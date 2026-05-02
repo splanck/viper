@@ -26,6 +26,7 @@
 
 #include "frontends/zia/Sema.hpp"
 #include "frontends/zia/Types.hpp"
+#include <algorithm>
 #include <cassert>
 #include <cctype>
 #include <limits>
@@ -68,6 +69,22 @@ std::string classifySemanticError(const std::string &message) {
         message.find("Return") != std::string::npos)
         return "V-ZIA-RETURN";
     return "V-ZIA-SEMA";
+}
+
+size_t editDistance(std::string_view lhs, std::string_view rhs) {
+    std::vector<size_t> previous(rhs.size() + 1);
+    std::vector<size_t> current(rhs.size() + 1);
+    for (size_t j = 0; j <= rhs.size(); ++j)
+        previous[j] = j;
+    for (size_t i = 1; i <= lhs.size(); ++i) {
+        current[0] = i;
+        for (size_t j = 1; j <= rhs.size(); ++j) {
+            const size_t substitution = previous[j - 1] + (lhs[i - 1] == rhs[j - 1] ? 0 : 1);
+            current[j] = std::min({previous[j] + 1, current[j - 1] + 1, substitution});
+        }
+        previous.swap(current);
+    }
+    return previous[rhs.size()];
 }
 
 std::string sanitizeForSymbol(std::string_view input) {
@@ -1651,7 +1668,9 @@ std::string Sema::narrowingKeyForExpr(Expr *expr) const {
 
 /// @brief Report a semantic warning at a source location (legacy).
 void Sema::warning(SourceLoc loc, const std::string &message) {
-    diag_.report({il::support::Severity::Warning, message, loc, "V3001"});
+    il::support::Diagnostic diag{il::support::Severity::Warning, message, loc, "V3001"};
+    diag.stage = "sema";
+    diag_.report(std::move(diag));
 }
 
 /// @brief Report a coded warning with policy and suppression checks.
@@ -1693,7 +1712,9 @@ void Sema::warn(WarningCode code, SourceLoc loc, const std::string &message) {
     if (sev == il::support::Severity::Error)
         hasError_ = true;
 
-    diag_.report({sev, message, loc, warningCodeStr(code)});
+    il::support::Diagnostic diag{sev, message, loc, warningCodeStr(code)};
+    diag.stage = "sema";
+    diag_.report(std::move(diag));
 }
 
 /// @brief Check for unused variables in a scope and emit W001 warnings.
@@ -1728,8 +1749,54 @@ void Sema::checkUnusedVariables(const Scope &scope) {
 
 /// @brief Report a semantic error at a source location.
 void Sema::error(SourceLoc loc, const std::string &message) {
+    errorWithCode(loc, classifySemanticError(message), message);
+}
+
+void Sema::errorWithCode(SourceLoc loc,
+                         std::string code,
+                         std::string message,
+                         il::support::SourceRange range,
+                         std::vector<il::support::DiagnosticNote> notes,
+                         std::string help) {
     hasError_ = true;
-    diag_.report({il::support::Severity::Error, message, loc, classifySemanticError(message)});
+    if (!range.isValid() && loc.isValid()) {
+        range = il::support::SourceRange{
+            loc,
+            il::support::SourceLoc{loc.file_id, loc.line, loc.column + 1},
+        };
+    }
+    il::support::Diagnostic diag{il::support::Severity::Error, std::move(message), loc, std::move(code)};
+    diag.range = range;
+    diag.notes = std::move(notes);
+    diag.stage = "sema";
+    diag.help = std::move(help);
+    diag_.report(std::move(diag));
+}
+
+std::optional<std::string> Sema::suggestSymbolName(const std::string &name) const {
+    std::optional<std::string> best;
+    size_t bestDistance = std::numeric_limits<size_t>::max();
+
+    auto consider = [&](const std::string &candidate) {
+        if (candidate.empty() || candidate == name)
+            return;
+        const size_t distance = editDistance(name, candidate);
+        const size_t limit = name.size() <= 4 ? 1 : 2;
+        if (distance <= limit && distance < bestDistance) {
+            bestDistance = distance;
+            best = candidate;
+        }
+    };
+
+    for (const Scope *scope = currentScope_; scope != nullptr; scope = scope->parent()) {
+        for (const auto &[candidate, _] : scope->getSymbols())
+            consider(candidate);
+    }
+    for (const auto &[candidate, _] : importedSymbols_)
+        consider(candidate);
+    for (const auto &[candidate, _] : typeRegistry_)
+        consider(candidate);
+    return best;
 }
 
 bool Sema::reportDuplicateDefinition(const std::string &name, SourceLoc loc) {
@@ -1753,11 +1820,18 @@ bool Sema::reportDuplicateDefinition(const std::string &name, SourceLoc loc) {
     }
 
     std::string message = "Duplicate definition of '" + name + "'";
+    std::vector<il::support::DiagnosticNote> notes;
     if (existingLoc.isValid()) {
         message += " (previous definition at line " + std::to_string(existingLoc.line) +
                    ", column " + std::to_string(existingLoc.column) + ")";
+        notes.push_back({existingLoc, "previous definition of '" + name + "' is here"});
     }
-    error(loc, message);
+    errorWithCode(loc,
+                  "V-ZIA-DUPLICATE",
+                  std::move(message),
+                  {},
+                  std::move(notes),
+                  "Rename one declaration or move it to a different scope.");
     return false;
 }
 
@@ -1810,7 +1884,36 @@ SourceLoc Sema::scopeEndForStmt(const Stmt *stmt) {
 
 /// @brief Report an "undefined identifier" error for the given name.
 void Sema::errorUndefined(SourceLoc loc, const std::string &name) {
-    error(loc, "Undefined identifier: " + name);
+    std::string message = "Undefined identifier: " + name;
+    std::vector<il::support::DiagnosticNote> notes;
+    std::vector<il::support::DiagnosticFixIt> fixits;
+    il::support::SourceRange range{};
+    if (loc.isValid()) {
+        range = il::support::SourceRange{
+            loc,
+            il::support::SourceLoc{
+                loc.file_id, loc.line, loc.column + static_cast<uint32_t>(std::max<size_t>(1, name.size()))},
+        };
+    }
+    if (auto suggestion = suggestSymbolName(name)) {
+        message += "; did you mean '" + *suggestion + "'?";
+        notes.push_back({loc, "candidate symbol '" + *suggestion + "' is visible here"});
+        fixits.push_back({range, *suggestion, "replace with '" + *suggestion + "'"});
+    }
+
+    hasError_ = true;
+    il::support::Diagnostic diag{
+        il::support::Severity::Error,
+        std::move(message),
+        loc,
+        "V-ZIA-UNDEFINED",
+    };
+    diag.range = range;
+    diag.notes = std::move(notes);
+    diag.stage = "sema";
+    diag.help = "Declare the symbol, import it, or correct the spelling.";
+    diag.fixits = std::move(fixits);
+    diag_.report(std::move(diag));
 }
 
 /// @brief Report a type mismatch error showing expected vs actual types.

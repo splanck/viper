@@ -43,6 +43,8 @@ Diag normalizeVerifierDiag(Diag diag) {
     if (diag.code.empty()) {
         diag.code = diag.severity == il::support::Severity::Warning ? "V-IL-WARN" : "V-IL-VERIFY";
     }
+    if (diag.stage.empty())
+        diag.stage = "verify";
     return diag;
 }
 

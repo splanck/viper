@@ -44,6 +44,14 @@ bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle) 
     return false;
 }
 
+bool hasDiagCode(const DiagnosticEngine &diag, const std::string &code) {
+    for (const auto &d : diag.diagnostics()) {
+        if (d.code == code)
+            return true;
+    }
+    return false;
+}
+
 //===----------------------------------------------------------------------===//
 // Missing tokens
 //===----------------------------------------------------------------------===//
@@ -74,6 +82,7 @@ func start() {    var x = (1 + 2
 }
 )");
     EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagCode(result.diagnostics, "V-ZIA-PARSE-EXPECTED"));
 }
 
 TEST(ZiaParserErrors, MissingFuncBody) {
@@ -82,6 +91,7 @@ module Test;
 func start()
 )");
     EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagCode(result.diagnostics, "V-ZIA-PARSE-DECL"));
 }
 
 //===----------------------------------------------------------------------===//
@@ -155,6 +165,7 @@ func start() {    var x: 123 = 5
 }
 )");
     EXPECT_FALSE(result.succeeded());
+    EXPECT_TRUE(hasDiagCode(result.diagnostics, "V-ZIA-PARSE-TYPE"));
 }
 
 //===----------------------------------------------------------------------===//
@@ -236,6 +247,7 @@ func add(Integer a, Integer b) -> Integer { return a + b; }
 )");
     EXPECT_FALSE(result.succeeded());
     EXPECT_TRUE(hasDiagContaining(result.diagnostics, "expected ':' after parameter name"));
+    EXPECT_TRUE(hasDiagCode(result.diagnostics, "V-ZIA-PARSE-EXPECTED"));
 }
 
 TEST(ZiaParserErrors, RejectsColonReturnTypeSyntax) {
@@ -254,6 +266,27 @@ func start() {
 }
 )");
     EXPECT_FALSE(result.succeeded());
+}
+
+TEST(ZiaParserErrors, UndefinedIdentifierHasSuggestionAndFixit) {
+    auto result = compileSource(R"(
+module Test;
+func start() {
+    var count = 1;
+    var copy = cout;
+}
+)");
+    EXPECT_FALSE(result.succeeded());
+    bool found = false;
+    for (const auto &d : result.diagnostics.diagnostics()) {
+        if (d.code == "V-ZIA-UNDEFINED" && d.message.find("did you mean 'count'") != std::string::npos) {
+            found = true;
+            EXPECT_EQ(d.stage, "sema");
+            EXPECT_FALSE(d.fixits.empty());
+            EXPECT_EQ(d.fixits.front().replacement, "count");
+        }
+    }
+    EXPECT_TRUE(found);
 }
 
 TEST(ZiaParserErrors, RejectsBindDoubleAliasSyntax) {

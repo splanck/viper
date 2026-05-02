@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-27
+last-verified: 2026-05-02
 ---
 
 # Viper Debugging Guide
@@ -197,12 +197,16 @@ The debug script file contains one command per line:
 | `continue` | Resume execution until next breakpoint or halt |
 | `step` | Execute exactly 1 instruction |
 | `step N` | Execute exactly N instructions |
+| `step-over` | Execute through the current call without pausing in the callee |
+| `step-out` | Continue until the current function returns to its caller |
 
 Example `script.dbg`:
 ```text
 step 5
 continue
+step-over
 step 10
+step-out
 continue
 ```
 
@@ -224,8 +228,8 @@ auto status = runner.continueRun();
 ### Current Limitations
 
 - **Step = 1 IL instruction**, not 1 source line. A single source line may compile to many IL instructions.
-- **No step-over**: stepping into function calls cannot be skipped.
-- **No step-out**: there is no mechanism to run until the current function returns.
+- Step-over and step-out are frame-depth based. They work for VM function calls; they do not yet provide source-line
+  granularity or native debugger integration.
 
 ---
 
@@ -250,14 +254,16 @@ Severity levels: `note`, `warning`, `error`.
 
 Diagnostic codes are prefixed by subsystem:
 - `V-ZIA-LEX-*` — Zia lexer
+- `V-ZIA-PARSE-*` — Zia parser
 - `V-ZIA-*` — Zia semantic analysis
+- `V-ZIA-LOWER-*` — Zia lowering invariants
 - `B1xxx` — BASIC frontend
 - `V-IL-*` — IL verification
 - `V-BC-*` — bytecode compiler
 - `V-CG-*` — native backend/codegen
 - `V-SRC-*` — shared source loading/registration
 
-Use `--diagnostic-format=json` on `viper` subcommands for machine-readable output. The JSON form writes a compact object with a `diagnostics` array and includes severity, code, message, location, range, and notes.
+Use `--diagnostic-format=json` on `viper` subcommands for machine-readable output. The JSON form writes a compact object with a `diagnostics` array and includes severity, code, message, stage, location, range, source line, help text, fix-its, and notes when available.
 
 ### Source Snippets
 
@@ -287,13 +293,16 @@ Warnings are printed even when compilation succeeds. Use `--quiet-warnings` or `
 Runtime traps (VM errors) use this format:
 
 ```text
-Trap @function:block#ip (path:line): Kind (code=C): message
+Trap @function:block#ip (path:line:column): Kind (code=C): message
 ```
 
 For example:
 ```text
-Trap @processRow:L3#2 (src/main.zia:145): Bounds (code=9): index out of bounds
+Trap @processRow:L3#2 (src/main.zia:145:12): Bounds (code=7): index out of bounds
 ```
+
+When no source path is registered, the VM falls back to `file#ID:line:column` or `line N:C` so trap output still points
+back to the instruction that raised it.
 
 ### Trap Kinds
 
@@ -778,7 +787,7 @@ std::cout << "Instructions: " << runner.instructionCount() << "\n";
 | Area | Status | Notes |
 |------|--------|-------|
 | Source-line stepping | Not implemented | `step()` advances 1 IL instruction, not 1 source line |
-| Step-over / step-out | Not implemented | No frame-depth-aware stepping |
+| Step-over / step-out | Implemented | Frame-depth based; still instruction-level rather than source-line stepping |
 | Full backtrace API | Not implemented | `execStack` is private; only single-frame `TrapInfo` exposed |
 | Conditional breakpoints | Not implemented | No expression evaluation on break condition |
 | Source-to-IL name mapping | Partial | Zia local slots carry source names; generated temporaries and some BASIC paths still require IL names |

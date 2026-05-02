@@ -22,6 +22,7 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VMContext.hpp"
+#include "vm/err_bridge.hpp"
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -1754,10 +1755,11 @@ L_TRAP: {
 
 L_TRAP_FROM_ERR: {
     int64_t errCode = (--sp)->i64;
-    TrapKind trapKind = static_cast<TrapKind>(errCode);
+    const il::vm::TrapKind vmTrapKind = il::vm::map_err_to_trap(static_cast<int32_t>(errCode));
+    TrapKind trapKind = static_cast<TrapKind>(static_cast<int32_t>(vmTrapKind));
     SYNC_STATE();
     sp_ = sp;
-    if (!dispatchTrap(trapKind)) {
+    if (!dispatchTrap(trapKind, static_cast<int32_t>(errCode))) {
         trap(trapKind, "Unhandled trap from error");
         return;
     }

@@ -47,6 +47,54 @@
   code: V-ZIA-LEX-UNTERMINATED-STRING
   severity: error
   format: "unterminated string"
+- id: ZIA_PARSE_DEPTH
+  code: V-ZIA-PARSE-DEPTH
+  severity: error
+  format: "{message}"
+- id: ZIA_PARSE_LITERAL
+  code: V-ZIA-PARSE-LITERAL
+  severity: error
+  format: "{message}"
+- id: ZIA_PARSE_TYPE
+  code: V-ZIA-PARSE-TYPE
+  severity: error
+  format: "{message}"
+- id: ZIA_PARSE_LAMBDA
+  code: V-ZIA-PARSE-LAMBDA
+  severity: error
+  format: "{message}"
+- id: ZIA_PARSE_PATTERN
+  code: V-ZIA-PARSE-PATTERN
+  severity: error
+  format: "{message}"
+- id: ZIA_PARSE_STRING
+  code: V-ZIA-PARSE-STRING
+  severity: error
+  format: "{message}"
+- id: ZIA_PARSE_DECL
+  code: V-ZIA-PARSE-DECL
+  severity: error
+  format: "{message}"
+- id: ZIA_PARSE_ASSIGNMENT
+  code: V-ZIA-PARSE-ASSIGNMENT
+  severity: error
+  format: "{message}"
+- id: ZIA_PARSE_EXPR
+  code: V-ZIA-PARSE-EXPR
+  severity: error
+  format: "{message}"
+- id: ZIA_PARSE_EXPECTED
+  code: V-ZIA-PARSE-EXPECTED
+  severity: error
+  format: "{message}"
+- id: ZIA_PARSE_UNEXPECTED
+  code: V-ZIA-PARSE-UNEXPECTED
+  severity: error
+  format: "{message}"
+- id: ZIA_PARSE_GENERIC
+  code: V-ZIA-PARSE
+  severity: error
+  format: "{message}"
 - id: ZIA_UNDEFINED
   code: V-ZIA-UNDEFINED
   severity: error
@@ -65,6 +113,38 @@
   format: "fixed array index {index} is out of bounds for length {length}"
 - id: ZIA_SEMA
   code: V-ZIA-SEMA
+  severity: error
+  format: "{message}"
+- id: ZIA_LOWER_MISSING_TYPE
+  code: V-ZIA-LOWER-MISSING-TYPE
+  severity: error
+  format: "missing semantic type during lowering"
+- id: ZIA_LOWER_DEPTH
+  code: V-ZIA-LOWER-DEPTH
+  severity: error
+  format: "{message}"
+- id: ZIA_LOWER_UNRESOLVED_TYPE
+  code: V-ZIA-LOWER-UNRESOLVED-TYPE
+  severity: error
+  format: "{message}"
+- id: ZIA_LOWER_NULL_EXPR
+  code: V-ZIA-LOWER-NULL-EXPR
+  severity: error
+  format: "null expression reached lowering"
+- id: ZIA_LOWER_UNRESOLVED_EXPR
+  code: V-ZIA-LOWER-UNRESOLVED-EXPR
+  severity: error
+  format: "{message}"
+- id: ZIA_LOWER_UNKNOWN_EXPR
+  code: V-ZIA-LOWER-UNKNOWN-EXPR
+  severity: error
+  format: "{message}"
+- id: ZIA_LOWER_NULL_STMT
+  code: V-ZIA-LOWER-NULL-STMT
+  severity: error
+  format: "null statement reached lowering"
+- id: ZIA_LOWER_MISSING_RUNTIME
+  code: V-ZIA-LOWER-MISSING-RUNTIME
   severity: error
   format: "{message}"
 # OOP / Interface diagnostics

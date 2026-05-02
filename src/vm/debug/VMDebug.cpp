@@ -35,10 +35,48 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <string_view>
 
 using namespace il::core;
 
 namespace il::vm {
+
+void VM::applyDebugAction(DebugAction action, size_t currentDepth) {
+    stepBudget = 0;
+    debugStepMode_ = DebugStepMode::None;
+    debugStepTargetDepth_ = currentDepth;
+    debugStepArmed_ = false;
+
+    switch (action.kind) {
+        case DebugActionKind::Continue:
+            break;
+        case DebugActionKind::Step:
+            stepBudget = action.count == 0 ? 1 : action.count;
+            break;
+        case DebugActionKind::StepOver:
+            debugStepMode_ = DebugStepMode::StepOver;
+            debugStepTargetDepth_ = currentDepth;
+            break;
+        case DebugActionKind::StepOut:
+            debugStepMode_ = DebugStepMode::StepOut;
+            debugStepTargetDepth_ = currentDepth == 0 ? 0 : currentDepth - 1;
+            break;
+    }
+}
+
+std::optional<Slot> VM::pauseOrAdvanceDebugScript(ExecState &st, std::string_view reason) {
+    std::cerr << "[BREAK] fn=@" << st.fr.func->name << " blk=" << st.bb->label << " reason="
+              << reason << "\n";
+    if (!script || script->empty()) {
+        Slot s{};
+        s.i64 = kDebugBreakpointSentinel;
+        return s;
+    }
+
+    applyDebugAction(script->nextAction(), execStack.size());
+    st.skipBreakOnce = true;
+    return std::nullopt;
+}
 
 /// @brief Apply pending block parameter transfers for the given block.
 /// @details Any arguments staged by a predecessor terminator are copied into the
@@ -96,9 +134,7 @@ std::optional<Slot> VM::handleDebugBreak(
                 s.i64 = kDebugBreakpointSentinel;
                 return s;
             }
-            auto act = script->nextAction();
-            if (act.kind == DebugActionKind::Step)
-                stepBudget = act.count;
+            applyDebugAction(script->nextAction(), execStack.size());
             skipBreakOnce = true;
         }
         return std::nullopt;
@@ -115,9 +151,13 @@ std::optional<Slot> VM::handleDebugBreak(
                 std::cerr << ':' << in->loc.column;
         }
         std::cerr << " fn=@" << fr.func->name << " blk=" << bb.label << " ip=#" << ip << "\n";
-        Slot s{};
-        s.i64 = kDebugBreakpointSentinel;
-        return s;
+        if (!script || script->empty()) {
+            Slot s{};
+            s.i64 = kDebugBreakpointSentinel;
+            return s;
+        }
+        applyDebugAction(script->nextAction(), execStack.size());
+        skipBreakOnce = true;
     }
     return std::nullopt;
 }
@@ -161,17 +201,24 @@ std::optional<Slot> VM::processDebugControl(ExecState &st, const Instr *in, bool
     if (stepBudget > 0) {
         --stepBudget;
         if (stepBudget == 0) {
-            std::cerr << "[BREAK] fn=@" << st.fr.func->name << " blk=" << st.bb->label
-                      << " reason=step\n";
-            if (!script || script->empty()) {
-                Slot s{};
-                s.i64 = kDebugBreakpointSentinel;
-                return s;
-            }
-            auto act = script->nextAction();
-            if (act.kind == DebugActionKind::Step)
-                stepBudget = act.count;
-            st.skipBreakOnce = true;
+            if (auto pause = pauseOrAdvanceDebugScript(st, "step"))
+                return pause;
+            return std::nullopt;
+        }
+    }
+    if (debugStepMode_ != DebugStepMode::None) {
+        debugStepArmed_ = true;
+        const size_t depth = execStack.size();
+        const bool shouldPause =
+            (debugStepMode_ == DebugStepMode::StepOver && depth <= debugStepTargetDepth_) ||
+            (debugStepMode_ == DebugStepMode::StepOut && depth <= debugStepTargetDepth_);
+        if (debugStepArmed_ && shouldPause) {
+            const std::string_view reason =
+                debugStepMode_ == DebugStepMode::StepOver ? "step-over" : "step-out";
+            debugStepMode_ = DebugStepMode::None;
+            debugStepArmed_ = false;
+            if (auto pause = pauseOrAdvanceDebugScript(st, reason))
+                return pause;
         }
     }
     return std::nullopt;

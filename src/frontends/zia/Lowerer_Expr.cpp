@@ -37,14 +37,13 @@ using namespace runtime;
 
 LowerResult Lowerer::lowerExpr(Expr *expr) {
     if (!expr)
-        return {Value::constInt(0), Type(Type::Kind::I64)};
+        return poisonValue({}, "V-ZIA-LOWER-NULL-EXPR", "null expression reached lowering");
 
     if (++exprLowerDepth_ > kMaxLowerDepth) {
         --exprLowerDepth_;
-        diag_.report({il::support::Severity::Error,
-                      "expression nesting too deep during lowering (limit: 512)",
-                      expr->loc,
-                      "V3200"});
+        reportLoweringInvariant(expr->loc,
+                                "V-ZIA-LOWER-DEPTH",
+                                "expression nesting too deep during lowering (limit: 512)");
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 
@@ -57,6 +56,13 @@ LowerResult Lowerer::lowerExpr(Expr *expr) {
     } exprGuard_{exprLowerDepth_};
 
     ZiaLocationScope locScope(*this, expr->loc);
+
+    TypeRef semaType = sema_.typeOf(expr);
+    if (expr->kind != ExprKind::NullLiteral && isInvalidLoweringType(semaType)) {
+        return poisonValue(expr->loc,
+                           "V-ZIA-LOWER-UNRESOLVED-EXPR",
+                           "expression reached lowering without a concrete semantic type");
+    }
 
     switch (expr->kind) {
         case ExprKind::IntLiteral:
@@ -139,7 +145,9 @@ LowerResult Lowerer::lowerExpr(Expr *expr) {
         case ExprKind::SetLiteral:
             return lowerSetLiteral(static_cast<SetLiteralExpr *>(expr));
         default:
-            return {Value::constInt(0), Type(Type::Kind::I64)};
+            return poisonValue(expr->loc,
+                               "V-ZIA-LOWER-UNKNOWN-EXPR",
+                               "unknown expression kind reached lowering");
     }
 }
 

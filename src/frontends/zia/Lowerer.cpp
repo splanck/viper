@@ -217,8 +217,13 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module) {
             continue;
 
         const auto *desc = il::runtime::findRuntimeDescriptor(externName);
-        if (!desc)
+        if (!desc) {
+            reportLoweringInvariant({},
+                                    "V-ZIA-LOWER-MISSING-RUNTIME",
+                                    "runtime helper '" + externName +
+                                        "' was referenced but no runtime descriptor exists");
             continue;
+        }
         builder_->addExtern(
             std::string(desc->name), desc->signature.retType, desc->signature.paramTypes);
     }

@@ -17,6 +17,7 @@
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
 #include "vm/VMContext.hpp"
+#include "vm/err_bridge.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -2246,10 +2247,13 @@ void BytecodeVM::run() {
             }
 
             case BCOpcode::TRAP_FROM_ERR: {
-                // Pop error code from stack and use as trap kind
+                // Pop legacy error code from stack, map it to a structured
+                // trap kind, and preserve the original code for diagnostics.
                 int64_t code = (--sp_)->i64;
-                TrapKind trapKind = static_cast<TrapKind>(code);
-                if (!dispatchTrap(trapKind)) {
+                const il::vm::TrapKind vmTrapKind =
+                    il::vm::map_err_to_trap(static_cast<int32_t>(code));
+                TrapKind trapKind = static_cast<TrapKind>(static_cast<int32_t>(vmTrapKind));
+                if (!dispatchTrap(trapKind, static_cast<int32_t>(code))) {
                     trap(trapKind, "Unhandled trap from error");
                 }
                 break;

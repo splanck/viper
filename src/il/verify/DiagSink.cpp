@@ -70,7 +70,9 @@ il::support::Diag makeVerifierDiag(VerifyDiagCode code,
                                    il::support::SourceLoc loc,
                                    std::string message) {
     const std::string_view prefix = diagCodeToPrefix(code);
-    return {severity, std::move(message), loc, std::string(prefix)};
+    il::support::Diag diag{severity, std::move(message), loc, std::string(prefix)};
+    diag.stage = "verify";
+    return diag;
 }
 
 /// @brief Convenience wrapper that always reports an error severity.

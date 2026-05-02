@@ -811,9 +811,59 @@ LowerResult Lowerer::materializeCallResult(Value result, TypeRef semanticType, T
 // Type Mapping
 //=============================================================================
 
-Lowerer::Type Lowerer::mapType(TypeRef type) {
+void Lowerer::reportLoweringInvariant(il::support::SourceLoc loc,
+                                      std::string code,
+                                      std::string message) {
+    il::support::Diagnostic diag{
+        il::support::Severity::Error,
+        std::move(message),
+        loc,
+        std::move(code),
+    };
+    if (loc.isValid()) {
+        diag.range = il::support::SourceRange{
+            loc,
+            il::support::SourceLoc{loc.file_id, loc.line, loc.column + 1},
+        };
+    }
+    diag.stage = "lower";
+    diag.help = "This indicates semantic analysis left an unresolved construct for lowering.";
+    diag_.report(std::move(diag));
+}
+
+bool Lowerer::isInvalidLoweringType(TypeRef type) const {
     if (!type)
+        return true;
+    switch (type->kind) {
+        case TypeKindSem::Unknown:
+        case TypeKindSem::TypeParam:
+            return true;
+        default:
+            return false;
+    }
+}
+
+LowerResult Lowerer::poisonValue(il::support::SourceLoc loc,
+                                 std::string code,
+                                 std::string message) {
+    reportLoweringInvariant(loc, std::move(code), std::move(message));
+    return {Value::constInt(0), Type(Type::Kind::Error)};
+}
+
+Lowerer::Type Lowerer::mapType(TypeRef type) {
+    if (!type) {
+        reportLoweringInvariant(
+            curLoc_, "V-ZIA-LOWER-MISSING-TYPE", "missing semantic type during lowering");
         return Type(Type::Kind::Void);
+    }
+
+    if (isInvalidLoweringType(type)) {
+        reportLoweringInvariant(curLoc_,
+                                "V-ZIA-LOWER-UNRESOLVED-TYPE",
+                                "unresolved semantic type '" + type->toString() +
+                                    "' reached lowering");
+        return Type(Type::Kind::Error);
+    }
 
     return Type(toILType(*type));
 }

@@ -196,6 +196,9 @@ viper -run <file.il> [flags]
 | `--bytecode`                 | Run through the bytecode VM with checked bytecode compilation |
 | `--diagnostic-format text|json` | Select text or JSON diagnostics for load/compile failures |
 
+Debugger command files accept `continue`, `step`, `step N`, `step-over`, and `step-out`. Step-over and step-out are
+frame-depth based and are intended for VM debugging workflows where source-level line stepping is not required.
+
 ### viper front
 
 Low-level frontend entry points retained for direct compiler testing and

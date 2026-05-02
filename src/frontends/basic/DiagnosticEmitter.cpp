@@ -55,7 +55,18 @@ void DiagnosticEmitter::emit(il::support::Severity sev,
                              il::support::SourceLoc loc,
                              uint32_t length,
                              std::string message) {
-    de_.report({sev, message, loc, code});
+    il::support::SourceRange range{};
+    if (loc.isValid()) {
+        const uint32_t caretLength = length == 0 ? 1 : length;
+        range = il::support::SourceRange{
+            loc,
+            il::support::SourceLoc{loc.file_id, loc.line, loc.column + caretLength},
+        };
+    }
+    il::support::Diagnostic diag{sev, message, loc, code};
+    diag.range = range;
+    diag.stage = "basic";
+    de_.report(std::move(diag));
     entries_.push_back({sev, std::move(code), std::move(message), loc, length});
 }
 

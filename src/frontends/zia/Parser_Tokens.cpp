@@ -12,7 +12,66 @@
 
 #include "frontends/zia/Parser.hpp"
 
+#include <algorithm>
+#include <string_view>
+#include <utility>
+
 namespace il::frontends::zia {
+namespace {
+
+bool startsWith(std::string_view text, std::string_view prefix) {
+    return text.substr(0, prefix.size()) == prefix;
+}
+
+bool contains(std::string_view text, std::string_view needle) {
+    return text.find(needle) != std::string_view::npos;
+}
+
+std::string classifyParserDiagnostic(std::string_view message) {
+    if (contains(message, "nesting too deep"))
+        return "V-ZIA-PARSE-DEPTH";
+    if (contains(message, "literal") || contains(message, "out of range"))
+        return "V-ZIA-PARSE-LITERAL";
+    if (contains(message, "type parameter") || contains(message, "expected type") ||
+        contains(message, "fixed-size array"))
+        return "V-ZIA-PARSE-TYPE";
+    if (contains(message, "lambda parameters"))
+        return "V-ZIA-PARSE-LAMBDA";
+    if (contains(message, "pattern"))
+        return "V-ZIA-PARSE-PATTERN";
+    if (contains(message, "string interpolation") || contains(message, "interpolated string"))
+        return "V-ZIA-PARSE-STRING";
+    if (contains(message, "declaration") || contains(message, "module level") ||
+        contains(message, "function body") || contains(message, "field") ||
+        contains(message, "method") || contains(message, "property") ||
+        contains(message, "namespace"))
+        return "V-ZIA-PARSE-DECL";
+    if (contains(message, "assignment target") || contains(message, "lvalue"))
+        return "V-ZIA-PARSE-ASSIGNMENT";
+    if (contains(message, "expected expression"))
+        return "V-ZIA-PARSE-EXPR";
+    if (startsWith(message, "expected "))
+        return "V-ZIA-PARSE-EXPECTED";
+    if (startsWith(message, "unexpected "))
+        return "V-ZIA-PARSE-UNEXPECTED";
+    return "V-ZIA-PARSE";
+}
+
+il::support::SourceRange tokenRange(const Token &token, SourceLoc loc) {
+    if (!loc.isValid())
+        return {};
+    uint32_t length = 1;
+    if (token.loc.file_id == loc.file_id && token.loc.line == loc.line &&
+        token.loc.column == loc.column) {
+        length = static_cast<uint32_t>(std::max<std::size_t>(1, token.text.size()));
+    }
+    return il::support::SourceRange{
+        loc,
+        il::support::SourceLoc{loc.file_id, loc.line, loc.column + length},
+    };
+}
+
+} // namespace
 
 Parser::Parser(Lexer &lexer, il::support::DiagnosticEngine &diag) : lexer_(lexer), diag_(diag) {
     tokens_.push_back(lexer_.next());
@@ -166,12 +225,16 @@ void Parser::errorAt(SourceLoc loc, const std::string &message) {
     if (suppressionDepth_ > 0)
         return;
     hasError_ = true;
-    diag_.report(il::support::Diagnostic{
+    const Token &token = peek();
+    il::support::Diagnostic diag{
         il::support::Severity::Error,
         message,
         loc,
-        "V2000" // Zia parser error code
-    });
+        classifyParserDiagnostic(message),
+    };
+    diag.range = tokenRange(token, loc);
+    diag.stage = "parse";
+    diag_.report(std::move(diag));
 }
 
 } // namespace il::frontends::zia

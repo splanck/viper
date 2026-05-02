@@ -95,6 +95,7 @@
 #include "support/diagnostics.hpp"
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -1378,6 +1379,17 @@ class Sema {
     /// @param loc Source location of the error.
     /// @param message Error message.
     void error(SourceLoc loc, const std::string &message);
+
+    /// @brief Report a semantic error with an explicit stable diagnostic code.
+    void errorWithCode(SourceLoc loc,
+                       std::string code,
+                       std::string message,
+                       il::support::SourceRange range = {},
+                       std::vector<il::support::DiagnosticNote> notes = {},
+                       std::string help = {});
+
+    /// @brief Find a close in-scope symbol name for an undefined identifier.
+    std::optional<std::string> suggestSymbolName(const std::string &name) const;
 
     /// @brief Report a duplicate definition in the current lexical scope.
     /// @param name Symbol name being redefined.

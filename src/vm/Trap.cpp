@@ -53,8 +53,12 @@ thread_local bool tlsTrapValid = false;
 
 il::support::SourceLoc locFromFrame(const FrameInfo &frame) {
     il::support::SourceLoc loc{};
+    if (frame.loc.isValid())
+        return frame.loc;
     if (frame.line >= 0)
         loc.line = static_cast<uint32_t>(frame.line);
+    if (frame.column >= 0)
+        loc.column = static_cast<uint32_t>(frame.column);
     return loc;
 }
 } // namespace
@@ -156,11 +160,11 @@ std::string vm_current_trap_message() {
 /// @brief Format a trap error and frame information into a printable string.
 ///
 /// @details Consolidates function name, block label, instruction pointer, and
-///          line information into a concise diagnostic.  Missing data defaults
+///          source location into a concise diagnostic.  Missing data defaults
 ///          to placeholder values so the resulting string is still informative.
 ///
-/// Format: "Trap @function:block#ip line N: Kind (code=C)"
-/// When line is unknown: "Trap @function:block#ip: Kind (code=C)"
+/// Format: "Trap @function:block#ip (path:line:column): Kind (code=C)"
+/// When a path is unavailable, falls back to "line N[:C]".
 ///
 /// @param error Trap token describing the failure.
 /// @param frame Frame metadata captured when the trap surfaced.
@@ -172,7 +176,7 @@ std::string vm_format_error(const VmError &error, const FrameInfo &frame) {
     const int32_t line = error.line >= 0 ? error.line : (frame.line >= 0 ? frame.line : -1);
     const auto kindStr = toString(error.kind);
 
-    // Pre-allocate buffer: "Trap @<func>:<block>#<ip> line <line>: <kind> (code=<code>)"
+    // Pre-allocate buffer: "Trap @<func>:<block>#<ip> (<path>:line:col): <kind> (code=<code>)"
     // Typical overhead ~50 bytes + function + block + numbers
     std::string result;
     result.reserve(64 + function.size() + frame.block.size());
@@ -185,9 +189,40 @@ std::string vm_format_error(const VmError &error, const FrameInfo &frame) {
     }
     result.push_back('#');
     result.append(std::to_string(ip));
-    if (line >= 0) {
+    const int32_t column =
+        frame.column >= 0 ? frame.column
+                          : (frame.loc.hasColumn() ? static_cast<int32_t>(frame.loc.column) : -1);
+    if (!frame.file.empty()) {
+        result.append(" (");
+        result.append(frame.file);
+        if (line >= 0) {
+            result.push_back(':');
+            result.append(std::to_string(line));
+            if (column >= 0) {
+                result.push_back(':');
+                result.append(std::to_string(column));
+            }
+        }
+        result.push_back(')');
+    } else if (frame.loc.hasFile()) {
+        result.append(" (file#");
+        result.append(std::to_string(frame.loc.file_id));
+        if (line >= 0) {
+            result.push_back(':');
+            result.append(std::to_string(line));
+            if (column >= 0) {
+                result.push_back(':');
+                result.append(std::to_string(column));
+            }
+        }
+        result.push_back(')');
+    } else if (line >= 0) {
         result.append(" line ");
         result.append(std::to_string(line));
+        if (column >= 0) {
+            result.push_back(':');
+            result.append(std::to_string(column));
+        }
     }
     result.append(": ");
     result.append(kindStr);

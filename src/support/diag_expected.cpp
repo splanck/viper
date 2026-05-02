@@ -154,6 +154,27 @@ void printSourceSnippet(SourceLoc loc,
 	    os << '}';
 	}
 
+    void printJsonOptionalString(std::ostream &os, std::string_view text) {
+        if (text.empty())
+            os << "null";
+        else
+            printJsonEscaped(os, text);
+    }
+
+    void printJsonSourceLine(std::ostream &os, SourceLoc loc, const SourceManager *sm) {
+        os << "\"source\":";
+        if (!sm || loc.file_id == 0 || loc.line == 0) {
+            os << "null";
+            return;
+        }
+        const std::string line{sm->getLine(loc.file_id, loc.line)};
+        if (line.empty()) {
+            os << "null";
+            return;
+        }
+        printJsonEscaped(os, line);
+    }
+
 	void printJsonRange(std::ostream &os, const SourceRange &range, const SourceManager *sm) {
 	    os << "\"range\":";
 	    if (!range.isValid()) {
@@ -194,12 +215,18 @@ void printSourceSnippet(SourceLoc loc,
 	    } else {
 	        printJsonEscaped(os, diag.code);
 	    }
+        os << ",\"stage\":";
+        printJsonOptionalString(os, diag.stage);
 	    os << ",\"message\":";
 	    printJsonEscaped(os, diag.message);
 	    os << ',';
 	    printJsonLoc(os, diag.loc, sm);
 	    os << ',';
 	    printJsonRange(os, diag.range, sm);
+        os << ',';
+        printJsonSourceLine(os, diag.loc, sm);
+        os << ",\"help\":";
+        printJsonOptionalString(os, diag.help);
 	    os << ",\"notes\":[";
 	    for (size_t index = 0; index < diag.notes.size(); ++index) {
 	        if (index != 0)
@@ -212,6 +239,20 @@ void printSourceSnippet(SourceLoc loc,
 	        printJsonLoc(os, note.loc, sm);
 	        os << '}';
 	    }
+        os << "],\"fixits\":[";
+        for (size_t index = 0; index < diag.fixits.size(); ++index) {
+            if (index != 0)
+                os << ',';
+            const auto &fixit = diag.fixits[index];
+            os << '{';
+            os << "\"message\":";
+            printJsonOptionalString(os, fixit.message);
+            os << ',';
+            printJsonRange(os, fixit.range, sm);
+            os << ",\"replacement\":";
+            printJsonEscaped(os, fixit.replacement);
+            os << '}';
+        }
 	    os << "]}";
 	}
 	} // namespace

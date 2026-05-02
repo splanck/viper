@@ -118,6 +118,9 @@ int main() {
         il::support::SourceLoc{memoryFile, 2, 23},
     };
     rangedDiag.notes.push_back({il::support::SourceLoc{memoryFile, 1, 8}, "module declared here"});
+    rangedDiag.stage = "sema";
+    rangedDiag.help = "Check the callee name.";
+    rangedDiag.fixits.push_back({rangedDiag.range, "goodCall", "replace bad call"});
     std::ostringstream rangedStream;
     il::support::printDiag(rangedDiag, rangedStream, &sm);
     const std::string rangedText = rangedStream.str();
@@ -125,6 +128,14 @@ int main() {
     assert(rangedText.find("2 | func start() { badCall(); }") != std::string::npos);
     assert(rangedText.find("^~~~~~~") != std::string::npos);
     assert(rangedText.find("<memory>.zia:1:8: note: module declared here") != std::string::npos);
+
+    std::ostringstream jsonStream;
+    il::support::printDiagJson(rangedDiag, jsonStream, &sm);
+    const std::string jsonText = jsonStream.str();
+    assert(jsonText.find("\"stage\":\"sema\"") != std::string::npos);
+    assert(jsonText.find("\"source\":\"func start() { badCall(); }\"") != std::string::npos);
+    assert(jsonText.find("\"help\":\"Check the callee name.\"") != std::string::npos);
+    assert(jsonText.find("\"replacement\":\"goodCall\"") != std::string::npos);
 
     // Captured string views must remain valid after subsequent insertions.
     il::support::SourceManager viewSm;

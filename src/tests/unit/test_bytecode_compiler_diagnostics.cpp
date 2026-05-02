@@ -11,6 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "bytecode/BytecodeCompiler.hpp"
+#include "bytecode/Bytecode.hpp"
+#include "bytecode/BytecodeVM.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -26,6 +28,18 @@
 #include <utility>
 
 namespace {
+
+viper::bytecode::BCOpcode opcodeOf(uint32_t word) {
+    return viper::bytecode::decodeOpcode(word);
+}
+
+bool containsOpcode(const viper::bytecode::BytecodeFunction &fn, viper::bytecode::BCOpcode op) {
+    for (uint32_t word : fn.code) {
+        if (opcodeOf(word) == op)
+            return true;
+    }
+    return false;
+}
 
 il::core::Module wrapInMain(il::core::Instr instr) {
     using namespace il::core;
@@ -136,6 +150,64 @@ TEST(BytecodeCompilerDiagnostics, EmitsPerPcSourceDebugMetadata) {
     EXPECT_EQ(fn.lineTable[0], 12u);
     EXPECT_EQ(fn.sourceFileTable[0], 1u);
     EXPECT_EQ(fn.blockLabelTable[0], "entry");
+}
+
+TEST(BytecodeCompilerDiagnostics, PlainTrapLowersToDomainError) {
+    using namespace il::core;
+    using namespace viper::bytecode;
+
+    Instr instr;
+    instr.op = Opcode::Trap;
+    instr.type = Type(Type::Kind::Void);
+    instr.loc = {7, 19, 2};
+
+    BytecodeCompiler compiler;
+    auto result = compiler.compileChecked(wrapInMain(std::move(instr)), nullptr, true);
+
+    ASSERT_TRUE(result.hasValue());
+    const auto &code = result.value().functions[0].code;
+    ASSERT_FALSE(code.empty());
+    EXPECT_EQ(opcodeOf(code[0]), BCOpcode::TRAP);
+    EXPECT_EQ(decodeArg8_0(code[0]), static_cast<uint8_t>(TrapKind::DomainError));
+}
+
+TEST(BytecodeCompilerDiagnostics, TrapErrLowersToErrorValueNotTrap) {
+    using namespace il::core;
+    using namespace viper::bytecode;
+
+    Instr instr;
+    instr.result = 0;
+    instr.op = Opcode::TrapErr;
+    instr.type = Type(Type::Kind::Error);
+    instr.operands.push_back(Value::constInt(7));
+    instr.loc = {7, 20, 2};
+
+    BytecodeCompiler compiler;
+    auto result = compiler.compileChecked(wrapInMain(std::move(instr)), nullptr, true);
+
+    ASSERT_TRUE(result.hasValue());
+    const auto &fn = result.value().functions[0];
+    EXPECT_TRUE(containsOpcode(fn, BCOpcode::LOAD_I8));
+    EXPECT_TRUE(containsOpcode(fn, BCOpcode::STORE_LOCAL));
+    EXPECT_FALSE(containsOpcode(fn, BCOpcode::TRAP));
+    EXPECT_FALSE(containsOpcode(fn, BCOpcode::TRAP_FROM_ERR));
+}
+
+TEST(BytecodeCompilerDiagnostics, TrapErrWithoutResultIsCompileDiagnostic) {
+    using namespace il::core;
+
+    Instr instr;
+    instr.op = Opcode::TrapErr;
+    instr.type = Type(Type::Kind::Error);
+    instr.operands.push_back(Value::constInt(7));
+    instr.loc = {7, 21, 2};
+
+    viper::bytecode::BytecodeCompiler compiler;
+    auto result = compiler.compileChecked(wrapInMain(std::move(instr)), nullptr, true);
+
+    ASSERT_FALSE(result.hasValue());
+    EXPECT_EQ(result.error().code, "V-BC-MALFORMED-INSTR");
+    EXPECT_CONTAINS(result.error().message, "trap.err must produce an error value");
 }
 
 TEST(BytecodeCompilerDiagnostics, PreflightRejectsInvalidILBeforeLowering) {

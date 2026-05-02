@@ -274,7 +274,8 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver {
 #define DISPATCH_NEXT_FAST()                                                                       \
     do {                                                                                           \
         if (state.ip < state.bb->instructions.size()) [[likely]] {                                 \
-            if (vm.tracingActive_) [[unlikely]]                                                    \
+            if (vm.tracingActive_ || vm.stepBudget > 0 ||                                          \
+                vm.debugStepMode_ != VM::DebugStepMode::None) [[unlikely]]                          \
                 goto LBL_SLOW_PATH;                                                                \
             ++vm.instrCount;                                                                       \
             currentInstr = &state.bb->instructions[state.ip];                                      \
@@ -606,10 +607,10 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec) {
     else [[likely]]
         ++state.ip;
 
-    // Only check debug pause when step-mode is active (stepBudget > 0).
+    // Only check debug pause when step-mode is active.
     // This avoids the function-call overhead of shouldPause on every instruction
     // during normal (non-debug) execution.
-    if (stepBudget > 0) [[unlikely]] {
+    if (stepBudget > 0 || debugStepMode_ != DebugStepMode::None) [[unlikely]] {
         if (auto pause = shouldPause(state, nullptr, true)) [[unlikely]]
         {
             state.pendingResult = *pause;

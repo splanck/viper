@@ -25,6 +25,7 @@
 
 #include "il/core/Function.hpp"
 #include "il/core/OpcodeInfo.hpp"
+#include "support/source_manager.hpp"
 #include "vm/VM.hpp"
 #include <algorithm>
 #include <iostream>
@@ -34,6 +35,20 @@ namespace il::vm {
 namespace {
 using il::core::getOpcodeInfo;
 using il::core::kNumOpcodes;
+
+void fillFrameLocation(FrameInfo &frame,
+                       il::support::SourceLoc loc,
+                       const il::support::SourceManager *sm) {
+    if (!loc.isValid())
+        return;
+    frame.loc = loc;
+    if (loc.hasLine())
+        frame.line = static_cast<int32_t>(loc.line);
+    if (loc.hasColumn())
+        frame.column = static_cast<int32_t>(loc.column);
+    if (sm && loc.hasFile())
+        frame.file = std::string(sm->getPath(loc.file_id));
+}
 } // namespace
 
 /// @brief Translate an opcode to a printable mnemonic.
@@ -114,14 +129,26 @@ FrameInfo VM::buildFrameInfo(const VmError &error) const {
     else if (frame.ip == 0 && lastTrap.frame.ip != 0)
         frame.ip = lastTrap.frame.ip;
 
-    // Source line
-    frame.line = error.line;
-    if (frame.line < 0 && ctx.loc.hasLine())
-        frame.line = static_cast<int32_t>(ctx.loc.line);
-    else if (frame.line < 0 && runtimeContext.loc.hasLine())
-        frame.line = static_cast<int32_t>(runtimeContext.loc.line);
-    else if (frame.line < 0 && lastTrap.frame.line >= 0)
+    const auto *sm = debug.getSourceManager();
+
+    // Source location
+    if (ctx.loc.isValid()) {
+        fillFrameLocation(frame, ctx.loc, sm);
+    } else if (runtimeContext.loc.isValid()) {
+        fillFrameLocation(frame, runtimeContext.loc, sm);
+    } else if (lastTrap.frame.loc.isValid()) {
+        frame.loc = lastTrap.frame.loc;
+        frame.file = lastTrap.frame.file;
         frame.line = lastTrap.frame.line;
+        frame.column = lastTrap.frame.column;
+    }
+
+    if (error.line >= 0) {
+        frame.line = error.line;
+    } else if (frame.line < 0 && lastTrap.frame.line >= 0) {
+        frame.line = lastTrap.frame.line;
+        frame.column = lastTrap.frame.column;
+    }
 
     // Check if any handler is installed
     frame.handlerInstalled =
@@ -172,8 +199,7 @@ std::vector<FrameInfo> VM::buildBacktrace() const {
 
             if (es->ip < es->bb->instructions.size()) {
                 const auto &instr = es->bb->instructions[es->ip];
-                if (instr.loc.hasLine())
-                    frame.line = static_cast<int32_t>(instr.loc.line);
+                fillFrameLocation(frame, instr.loc, debug.getSourceManager());
             }
         }
 
@@ -194,8 +220,18 @@ void VM::printBacktrace(const std::vector<FrameInfo> &frames) {
         std::cerr << "  #" << i << "  @" << (f.function.empty() ? "<unknown>" : f.function);
         if (!f.block.empty())
             std::cerr << "  " << f.block << "#" << f.ip;
-        if (f.line >= 0)
+        if (!f.file.empty()) {
+            std::cerr << "  " << f.file;
+            if (f.line >= 0) {
+                std::cerr << ':' << f.line;
+                if (f.column >= 0)
+                    std::cerr << ':' << f.column;
+            }
+        } else if (f.line >= 0) {
             std::cerr << "  line " << f.line;
+            if (f.column >= 0)
+                std::cerr << ':' << f.column;
+        }
         std::cerr << '\n';
     }
 }

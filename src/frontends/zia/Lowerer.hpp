@@ -1217,6 +1217,24 @@ class Lowerer {
 
     /// @}
     //=========================================================================
+    /// @name Lowering Invariants
+    /// @brief Helpers that turn missed semantic facts into compiler diagnostics.
+    /// @{
+    //=========================================================================
+
+    /// @brief Report a lowerer invariant violation at @p loc.
+    void reportLoweringInvariant(il::support::SourceLoc loc,
+                                 std::string code,
+                                 std::string message);
+
+    /// @brief Check whether a semantic type is concrete enough for lowering.
+    bool isInvalidLoweringType(TypeRef type) const;
+
+    /// @brief Return a poison value after reporting a fatal lowering diagnostic.
+    LowerResult poisonValue(il::support::SourceLoc loc, std::string code, std::string message);
+
+    /// @}
+    //=========================================================================
     /// @name Type Mapping
     /// @brief Methods for mapping Zia types to IL types.
     /// @{

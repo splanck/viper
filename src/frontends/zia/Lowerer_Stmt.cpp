@@ -24,16 +24,16 @@ using namespace runtime;
 //=============================================================================
 
 void Lowerer::lowerStmt(Stmt *stmt) {
-    if (!stmt)
+    if (!stmt) {
+        reportLoweringInvariant({}, "V-ZIA-LOWER-NULL-STMT", "null statement reached lowering");
         return;
+    }
 
     if (++stmtLowerDepth_ > kMaxLowerDepth) {
         --stmtLowerDepth_;
-        if (stmt)
-            diag_.report({il::support::Severity::Error,
-                          "statement nesting too deep during lowering (limit: 512)",
-                          stmt->loc,
-                          "V3201"});
+        reportLoweringInvariant(stmt->loc,
+                                "V-ZIA-LOWER-DEPTH",
+                                "statement nesting too deep during lowering (limit: 512)");
         return;
     }
 

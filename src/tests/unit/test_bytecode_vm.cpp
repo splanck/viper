@@ -1380,6 +1380,46 @@ static void test_unhandled_trap() {
     std::cout << "PASSED\n";
 }
 
+/// Test TrapFromErr maps legacy error numbers to structured trap kinds.
+static void test_trap_from_err_maps_legacy_error_code() {
+    std::cout << "  test_trap_from_err_maps_legacy_error_code: ";
+
+    BytecodeModule bcModule;
+    bcModule.magic = kBytecodeModuleMagic;
+    bcModule.version = kBytecodeVersion;
+    bcModule.flags = 0;
+
+    BytecodeFunction func;
+    func.name = "trap_from_err";
+    func.numParams = 0;
+    func.numLocals = 0;
+    func.maxStack = 1;
+
+    func.code.push_back(encodeOp8(BCOpcode::LOAD_I8, 7));
+    func.code.push_back(encodeOp(BCOpcode::TRAP_FROM_ERR));
+    func.code.push_back(encodeOp(BCOpcode::RETURN));
+    func.lineTable = {31, 32, 33};
+    func.sourceFileTable = {1, 1, 1};
+    func.blockLabelTable = {"entry", "entry", "entry"};
+
+    bcModule.sourceFiles.push_back({"trap_from_err.zia", 0});
+    bcModule.functions.push_back(std::move(func));
+    bcModule.functionIndex["trap_from_err"] = 0;
+
+    for (bool threaded : {false, true}) {
+        BytecodeVM vm;
+        vm.setThreadedDispatch(threaded);
+        vm.load(&bcModule);
+
+        vm.exec("trap_from_err", {});
+        assert(vm.state() == VMState::Trapped);
+        assert(vm.trapKind() == TrapKind::Bounds);
+        assert(vm.trapMessage().find("Bounds (code=7)") != std::string::npos);
+    }
+
+    std::cout << "PASSED\n";
+}
+
 /// Test EH_POP (handler unregistration)
 static void test_eh_pop() {
     std::cout << "  test_eh_pop: ";
@@ -2116,6 +2156,7 @@ int main() {
     test_native_wide_index();
     test_exception_handling();
     test_unhandled_trap();
+    test_trap_from_err_maps_legacy_error_code();
     test_eh_pop();
     test_runtime_bridge_trap_dispatch();
     test_resume_next_and_trap_metadata();

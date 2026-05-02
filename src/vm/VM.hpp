@@ -817,6 +817,17 @@ class VM {
     /// @brief Remaining instructions to step before pausing.
     uint64_t stepBudget = 0;
 
+    enum class DebugStepMode { None, StepOver, StepOut };
+
+    /// @brief Active frame-depth-aware stepping mode.
+    DebugStepMode debugStepMode_ = DebugStepMode::None;
+
+    /// @brief Execution stack depth at which the active stepping mode should pause.
+    size_t debugStepTargetDepth_ = 0;
+
+    /// @brief True once the active step-over/out command has executed at least one instruction.
+    bool debugStepArmed_ = false;
+
     /// @brief Function name lookup table.
     /// @ownership Owned by the VM; values reference functions in @c mod.
     std::unordered_map<std::string_view,
@@ -1019,6 +1030,12 @@ class VM {
 
     /// @brief Forward to debug control logic for pause decisions.
     std::optional<Slot> shouldPause(ExecState &st, const il::core::Instr *in, bool postExec);
+
+    /// @brief Apply a debugger script action to the current execution depth.
+    void applyDebugAction(DebugAction action, size_t currentDepth);
+
+    /// @brief Pause execution or consume the next scripted debugger action.
+    std::optional<Slot> pauseOrAdvanceDebugScript(ExecState &st, std::string_view reason);
 
     /// @brief Consume the current process-wide interrupt epoch for this VM, if any.
     bool consumePendingInterrupt() noexcept;

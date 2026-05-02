@@ -721,20 +721,27 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
             break;
 
         case Opcode::TrapFromErr:
-            // Push error code operand onto stack, then raise as trap kind
+            // Push legacy error code operand onto stack; the bytecode VM maps
+            // that code to a structured TrapKind while preserving the code.
             requireOperandCount(instr, 1);
             pushValue(instr.operands[0]);
             emit(BCOpcode::TRAP_FROM_ERR);
             break;
 
         case Opcode::TrapErr:
-            // These create error objects - for now emit a simple trap
-            emit8(BCOpcode::TRAP, static_cast<uint8_t>(TrapKind::RuntimeError));
+            // Bytecode represents Error values as their legacy numeric code.
+            // This keeps trap.err non-terminating and lets trap.from_err and
+            // err.get_* consume the value without starting the VM's trap path.
+            requireOperandCount(instr, 1);
+            if (!instr.result)
+                fail(instr.loc, "V-BC-MALFORMED-INSTR", "trap.err must produce an error value");
+            pushValue(instr.operands[0]);
+            storeResult(instr);
             break;
 
         case Opcode::Trap:
-            // Simple trap - raises Overflow trap (default trap kind)
-            emit8(BCOpcode::TRAP, static_cast<uint8_t>(1)); // TrapKind::Overflow = 1
+            // Match the standard VM: plain IL trap is a domain error.
+            emit8(BCOpcode::TRAP, static_cast<uint8_t>(TrapKind::DomainError));
             break;
 
         default:
