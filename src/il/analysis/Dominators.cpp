@@ -99,7 +99,7 @@ DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F) {
         changed = false;
         for (std::size_t i = 1; i < rpo.size(); ++i) {
             il::core::Block *b = rpo[i];
-            auto preds = predecessors(ctx, *b);
+            const auto &preds = predecessors(ctx, *b);
 
             il::core::Block *newIdom = nullptr;
             for (auto *p : preds) {
@@ -295,7 +295,7 @@ PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &
             if (successors(ctx, *b).empty())
                 continue;
 
-            auto succs = successors(ctx, *b);
+            const auto &succs = successors(ctx, *b);
 
             // Find the first already-processed successor as the initial candidate.
             il::core::Block *newIdom = nullptr;

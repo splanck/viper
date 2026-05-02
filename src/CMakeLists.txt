@@ -410,7 +410,7 @@ add_library(viper_native_compiler STATIC
         tools/common/native_compiler.cpp)
 target_link_libraries(viper_native_compiler
         PUBLIC il_tools_common
-        PRIVATE viper_codegen_x86_64 viper_cmd_arm64 viper_common)
+        PRIVATE viper_codegen_x86_64 il_codegen_aarch64 viper_common)
 target_include_directories(viper_native_compiler PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 

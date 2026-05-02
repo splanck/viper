@@ -142,6 +142,8 @@ int runFrontZia(const FrontZiaConfig &config,
     compilerOpts.dumpIL = config.shared.dumpIL;
     compilerOpts.dumpILOpt = config.shared.dumpILOpt;
     compilerOpts.dumpILPasses = config.shared.dumpILPasses;
+    compilerOpts.verifyEachPass = config.shared.verifyEachPass;
+    compilerOpts.passStats = config.shared.timeCompile;
 
     // Warning policy from CLI flags
     compilerOpts.warningPolicy.enableAll = config.shared.wall;

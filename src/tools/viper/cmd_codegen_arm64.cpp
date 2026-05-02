@@ -34,7 +34,8 @@ constexpr std::string_view kUsage =
     "       [--stack-size=SIZE]\n"
     "       [--dump-mir-before-ra] [--dump-mir-after-ra] [--dump-mir-full]\n"
     "       [--native-asm|--system-asm] [--native-link|--system-link(deprecated)]\n"
-    "       [--target-host|--target-darwin|--target-linux|--target-windows] [-O0|-O1|-O2]\n"
+    "       [--target-host|--target-darwin|--target-linux|--target-windows] [--debug-lines]\n"
+    "       [-O0|-O1|-O2]\n"
     "       [--skip-il-optimization]\n";
 
 using Pipeline = viper::codegen::aarch64::CodegenPipeline;
@@ -152,6 +153,14 @@ ParseOutcome parseArgs(const ArgvView &args) {
         }
         if (tok == "--target-windows") {
             opts.target_platform = Pipeline::TargetPlatform::Windows;
+            continue;
+        }
+        if (tok == "--debug-lines") {
+            opts.emit_debug_lines = true;
+            continue;
+        }
+        if (tok == "--no-debug-lines") {
+            opts.emit_debug_lines = false;
             continue;
         }
 

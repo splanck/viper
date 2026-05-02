@@ -324,7 +324,7 @@ PreservedAnalyses GVN::run(Function &function, AnalysisManager &analysis) {
 ///          a new @ref GVN instance.
 /// @param registry Pass registry to update.
 void registerGVNPass(PassRegistry &registry) {
-    registry.registerFunctionPass("gvn", []() { return std::make_unique<GVN>(); });
+    registry.registerFunctionPass("gvn", []() { return std::make_unique<GVN>(); }, true);
 }
 
 } // namespace il::transform

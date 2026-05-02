@@ -60,14 +60,14 @@ struct CFGContext {
 
 /// @brief Return successors of block @p B by inspecting its terminator.
 /// @param B Block whose outgoing edges are requested.
-/// @return List of successor blocks (may be empty).
-std::vector<il::core::Block *> successors(const CFGContext &ctx, const il::core::Block &B);
+/// @return Cached list of successor blocks (may be empty).
+const std::vector<il::core::Block *> &successors(const CFGContext &ctx, const il::core::Block &B);
 
 /// @brief Return predecessors of block @p B within function @p F.
 /// @param F Function containing blocks to scan.
 /// @param B Target block whose incoming edges are requested.
-/// @return List of predecessor blocks (may be empty).
-std::vector<il::core::Block *> predecessors(const CFGContext &ctx, const il::core::Block &B);
+/// @return Cached list of predecessor blocks (may be empty).
+const std::vector<il::core::Block *> &predecessors(const CFGContext &ctx, const il::core::Block &B);
 
 /// @brief Compute DFS post-order of blocks in @p F starting from the entry block.
 /// @param F Function whose blocks are traversed.

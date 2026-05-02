@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-27
+last-verified: 2026-05-01
 ---
 
 # CLI Tools Reference
@@ -156,12 +156,14 @@ viper build program.zia -o program
 | `--no-runtime-namespaces` | Disable automatic runtime namespace imports |
 | `--bounds-checks` | Enable generated bounds checks where supported (default for source lowering) |
 | `--no-bounds-checks` | Disable generated bounds checks for source lowering |
+| `--verify-each` | Verify IL after every optimizer pass for debugging pass failures |
+| `--time-compile` | Print source-to-IL, final verifier, asset, and native-codegen/link timings; also enables per-pass optimizer stats |
 | `--build-profile debug|balanced|release` | Override the manifest build profile (`debug`=`O0`, `balanced`=`O1`, `release`=`O2`) |
 | `-O0`, `-O1`, `-O2` | Override the final optimization level; this takes precedence over the build profile |
 
-Both Zia and BASIC source paths print successful warnings by default, verify IL after lowering, verify between optimization passes, and verify again after optimization. If the optimizer fails verification, the command stops with diagnostics instead of running or building the result.
+Both Zia and BASIC source paths print successful warnings by default, verify IL after lowering, and verify again after optimization. Per-pass verification is available with `--verify-each` when debugging an optimizer regression, but is not part of the normal build path because it is expensive on large modules. If any verifier run fails, the command stops with diagnostics instead of running or building the result.
 
-Project manifests default to the `balanced` profile and `O1` optimization when no explicit directive is present. Native builds serialize the already-optimized frontend IL and pass the selected optimization level to the backend, so backend MIR/codegen passes still run without re-running the IL optimizer.
+Project manifests default to the `balanced` profile and `O1` optimization when no explicit directive is present. Native builds hand the already-verified, already-optimized frontend IL module directly to the backend and pass the selected optimization level to MIR/codegen passes such as pre-regalloc cleanup, block layout, scheduling, and peephole optimization.
 
 ### viper -run
 
@@ -231,6 +233,7 @@ viper codegen x64 <in.il> -o <executable>
 viper codegen x64 <in.il> -S <out.s>  # Assembly only
 viper codegen x64 <in.il> -o <executable> --asset-blob assets.vpa --extra-obj assets.o
 viper codegen x64 <in.il> --native-asm -o <out.o>
+viper codegen x64 <in.il> --native-asm --debug-lines -o <out.o>
 viper codegen x64 <in.il> --native-asm --target-linux -o <out.o>
 viper codegen x64 <in.il> --native-asm --target-windows -o <out.obj>
 
@@ -238,6 +241,7 @@ viper codegen x64 <in.il> --native-asm --target-windows -o <out.obj>
 viper codegen arm64 <in.il> -S <out.s>
 viper codegen arm64 <in.il> -o <executable> --asset-blob assets.vpa --extra-obj assets.o
 viper codegen arm64 <in.il> --native-asm -o <out.o>
+viper codegen arm64 <in.il> --native-asm --debug-lines -o <out.o>
 viper codegen arm64 <in.il> --native-asm --target-linux -o <out.o>
 viper codegen arm64 <in.il> --native-asm --target-windows -o <out.obj>
 ```
@@ -251,7 +255,7 @@ writes a relocatable object instead of linking an executable.
 
 On arm64, target selection is explicit: `--target-darwin`, `--target-linux`, and `--target-windows` select the assembly dialect, native object format, and native-link platform together. When you use `--native-asm` with `-o <file.o>` or `-o <file.obj>`, the compiler writes a relocatable object instead of linking an executable.
 
-Native compilation preflights IL parsing and verification before dispatching to the backend. Invalid IL should therefore produce normal parser or verifier diagnostics rather than backend crashes.
+File-based `viper codegen` loads and verifies the input IL once before backend lowering. Project builds through `viper build` skip the textual IL round trip and transfer the verified in-memory module to the backend. Native assembler debug line emission is disabled by default for faster object generation; pass `--debug-lines` when you need DWARF `.debug_line` content.
 
 ### viper install-package
 

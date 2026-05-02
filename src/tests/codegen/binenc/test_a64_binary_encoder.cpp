@@ -1298,6 +1298,13 @@ int main() {
                       << pseudoCount << " pseudo-opcodes skipped.\n";
     }
 
+    {
+        MInstr ret{MOpcode::Ret, {}};
+        constexpr size_t kLargeOffset = size_t{1} << 30;
+        CHECK(A64BinaryEncoderTestAccess::measureWithKnownTarget(
+                  ret, kLargeOffset, kLargeOffset) == 4);
+    }
+
     if (gFail == 0)
         std::cout << "All A64 binary encoder tests passed.\n";
     else

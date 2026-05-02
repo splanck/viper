@@ -12,16 +12,17 @@
 
 #include "tools/common/native_compiler.hpp"
 
+#include "codegen/aarch64/CodegenPipeline.hpp"
 #include "codegen/x86_64/CodegenPipeline.hpp"
 #include "support/source_manager.hpp"
-#include "tools/common/module_loader.hpp"
-#include "tools/viper/cmd_codegen_arm64.hpp"
 
 #include <atomic>
 #include <chrono>
+#include <exception>
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #ifdef _WIN32
@@ -69,32 +70,23 @@ int compileToNative(const std::string &ilPath,
                     const std::string &assetObjPath,
                     int backendOptimizeLevel,
                     bool skipIlOptimization) {
-    il::core::Module preflightModule;
-    il::support::SourceManager sm;
-    auto preflight = il::tools::common::loadAndVerifyModule(ilPath, preflightModule, &sm, std::cerr);
-    if (!preflight.succeeded())
-        return preflight.isFileError() ? 1 : 2;
-
     if (arch == TargetArch::ARM64) {
-        std::vector<std::string> storage = {ilPath,
-                                            "-o",
-                                            outputPath,
-                                            "-O" + std::to_string(backendOptimizeLevel)};
-        if (skipIlOptimization)
-            storage.push_back("--skip-il-optimization");
-        if (!assetBlobPath.empty()) {
-            storage.push_back("--asset-blob");
-            storage.push_back(assetBlobPath);
-        }
-        if (!assetObjPath.empty()) {
-            storage.push_back("--extra-obj");
-            storage.push_back(assetObjPath);
-        }
-        std::vector<char *> argv;
-        argv.reserve(storage.size());
-        for (auto &s : storage)
-            argv.push_back(s.data());
-        return viper::tools::ilc::cmd_codegen_arm64(static_cast<int>(argv.size()), argv.data());
+        viper::codegen::aarch64::CodegenPipeline::Options opts;
+        opts.input_il_path = ilPath;
+        opts.output_obj_path = outputPath;
+        opts.optimize = backendOptimizeLevel;
+        opts.skip_il_optimization = skipIlOptimization;
+        opts.asset_blob_path = assetBlobPath;
+        if (!assetObjPath.empty())
+            opts.extra_objects.push_back(assetObjPath);
+
+        viper::codegen::aarch64::CodegenPipeline pipeline(opts);
+        auto result = pipeline.run();
+        if (!result.stdout_text.empty())
+            std::cout << result.stdout_text;
+        if (!result.stderr_text.empty())
+            std::cerr << result.stderr_text;
+        return result.exit_code;
     }
 
     // X64: use CodegenPipeline directly
@@ -121,6 +113,73 @@ int compileToNative(const std::string &ilPath,
     PipelineResult result;
     try {
         result = pipeline.run();
+    } catch (const std::exception &e) {
+        std::cerr << "error: " << e.what() << "\n";
+        return 2;
+    }
+
+    if (!result.stdout_text.empty())
+        std::cout << result.stdout_text;
+    if (!result.stderr_text.empty())
+        std::cerr << result.stderr_text;
+
+    return result.exit_code;
+}
+
+int compileModuleToNative(il::core::Module module,
+                          const std::string &debugSourcePath,
+                          const std::string &outputPath,
+                          TargetArch arch,
+                          const std::string &assetBlobPath,
+                          const std::string &assetObjPath,
+                          int backendOptimizeLevel,
+                          bool skipIlOptimization,
+                          bool moduleAlreadyVerified) {
+    const std::string syntheticInputPath = generateTempIlPath();
+
+    if (arch == TargetArch::ARM64) {
+        viper::codegen::aarch64::CodegenPipeline::Options opts;
+        opts.input_il_path = syntheticInputPath;
+        opts.output_obj_path = outputPath;
+        opts.optimize = backendOptimizeLevel;
+        opts.skip_il_optimization = skipIlOptimization;
+        opts.asset_blob_path = assetBlobPath;
+        if (!assetObjPath.empty())
+            opts.extra_objects.push_back(assetObjPath);
+
+        viper::codegen::aarch64::CodegenPipeline pipeline(opts);
+        auto result =
+            pipeline.runWithModule(std::move(module), debugSourcePath, moduleAlreadyVerified);
+        if (!result.stdout_text.empty())
+            std::cout << result.stdout_text;
+        if (!result.stderr_text.empty())
+            std::cerr << result.stderr_text;
+        return result.exit_code;
+    }
+
+    viper::codegen::x64::CodegenPipeline::Options opts;
+    opts.input_il_path = syntheticInputPath;
+    opts.output_obj_path = outputPath;
+    opts.optimize = backendOptimizeLevel;
+    opts.skip_il_optimization = skipIlOptimization;
+    opts.asset_blob_path = assetBlobPath;
+#if defined(_WIN32)
+    opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::Win64;
+    opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Windows;
+#elif defined(__APPLE__)
+    opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::SysV;
+    opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Darwin;
+#else
+    opts.target_abi = viper::codegen::x64::CodegenOptions::TargetABI::SysV;
+    opts.target_platform = viper::codegen::x64::CodegenOptions::TargetPlatform::Linux;
+#endif
+    if (!assetObjPath.empty())
+        opts.extra_objects.push_back(assetObjPath);
+
+    viper::codegen::x64::CodegenPipeline pipeline(opts);
+    PipelineResult result;
+    try {
+        result = pipeline.runWithModule(std::move(module), debugSourcePath, moduleAlreadyVerified);
     } catch (const std::exception &e) {
         std::cerr << "error: " << e.what() << "\n";
         return 2;

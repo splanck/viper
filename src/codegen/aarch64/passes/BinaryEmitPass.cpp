@@ -56,6 +56,27 @@ void seedDebugFiles(DebugLineTable &table,
         table.addFileSlot(filePath);
 }
 
+void seedDebugFiles(DebugLineTable &table,
+                    const MFunction &fn,
+                    std::string_view debugSourcePath) {
+    uint32_t maxFileId = 1;
+    for (const auto &bb : fn.blocks) {
+        for (const auto &mi : bb.instrs) {
+            if (mi.loc.file_id > maxFileId)
+                maxFileId = mi.loc.file_id;
+        }
+    }
+
+    std::string filePath = std::string(debugSourcePath);
+    if (filePath.empty())
+        filePath = "<source>";
+    else
+        filePath = std::filesystem::path(filePath).lexically_normal().string();
+
+    for (uint32_t fileId = 1; fileId <= maxFileId; ++fileId)
+        table.addFileSlot(filePath);
+}
+
 } // namespace
 
 bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
@@ -76,7 +97,6 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
 
     const auto abi = module.ti->abiFormat;
 
-    objfile::CodeSection text;
     objfile::CodeSection rodata;
 
     // Seed rodata before encoding so cross-section fixups can identify
@@ -87,17 +107,21 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
         rodata.emit8(0); // NUL terminator
     }
 
-    // Set up debug line table for address→line mapping.
+    // Set up debug line table for address→line mapping when requested.
     viper::codegen::DebugLineTable debugLines;
-    seedDebugFiles(debugLines, module.mir, module.debugSourcePath);
+    if (module.emitDebugLines)
+        seedDebugFiles(debugLines, module.mir, module.debugSourcePath);
+    uint64_t debugBias = 0;
 
     for (const auto &fn : module.mir) {
         // Emit each function into its own CodeSection for per-function dead stripping.
         module.binaryTextSections.emplace_back();
         viper::codegen::DebugLineTable funcDebugLines;
-        seedDebugFiles(funcDebugLines, std::vector<MFunction>{fn}, module.debugSourcePath);
+        if (module.emitDebugLines)
+            seedDebugFiles(funcDebugLines, fn, module.debugSourcePath);
         binenc::A64BinaryEncoder funcEncoder;
-        funcEncoder.setDebugLineTable(&funcDebugLines);
+        if (module.emitDebugLines)
+            funcEncoder.setDebugLineTable(&funcDebugLines);
         try {
             funcEncoder.encodeFunction(fn, module.binaryTextSections.back(), rodata, abi);
         } catch (const std::exception &ex) {
@@ -106,16 +130,16 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
                         "': " + ex.what());
             return false;
         }
-        const uint64_t debugBias = static_cast<uint64_t>(text.currentOffset());
-        debugLines.append(funcDebugLines, debugBias);
-        text.appendSection(module.binaryTextSections.back());
+        if (module.emitDebugLines)
+            debugLines.append(funcDebugLines, debugBias);
+        debugBias += static_cast<uint64_t>(module.binaryTextSections.back().currentOffset());
     }
 
     // Encode DWARF .debug_line if any entries were recorded.
-    if (!debugLines.empty())
+    if (module.emitDebugLines && !debugLines.empty())
         module.debugLineData = debugLines.encodeDwarf5(8);
 
-    module.binaryText = std::move(text);
+    module.binaryText.emplace();
     module.binaryRodata = std::move(rodata);
     return true;
 }

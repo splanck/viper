@@ -3,10 +3,10 @@
 viper \- Viper project driver, IL tool, and native build frontend
 .SH SYNOPSIS
 .B viper
-\fBrun\fR [\fItarget\fR] [\fIoptions\fR] [\fB--\fR \fIprogram-args...\fR]
+\fBrun\fR [\fItarget\fR] [\fIoptions\fR] [\fB--verify-each\fR] [\fB--time-compile\fR] [\fB--\fR \fIprogram-args...\fR]
 .br
 .B viper
-\fBbuild\fR [\fItarget\fR] [\fB-o\fR \fIoutput\fR] [\fIoptions\fR]
+\fBbuild\fR [\fItarget\fR] [\fB-o\fR \fIoutput\fR] [\fIoptions\fR] [\fB--verify-each\fR] [\fB--time-compile\fR]
 .br
 .B viper
 \fBinit\fR \fIproject-name\fR [\fB--lang\fR zia|basic]
@@ -40,14 +40,15 @@ viper \- Viper project driver, IL tool, and native build frontend
 \fBfront basic\fR \fB-run\fR \fIFILE.bas\fR [\fIrun-options\fR] [\fB--debug-vm\fR] [\fB--no-runtime-namespaces\fR]
 .br
 .B viper
-\fBcodegen\fR x64 \fIin.il\fR [\fB-S\fR \fIout.s\fR] [\fB-o\fR \fIexe|obj\fR] [\fB--run-native\fR]
+\fBcodegen\fR x64 \fIin.il\fR [\fB-S\fR \fIout.s\fR] [\fB-o\fR \fIexe|obj\fR] [\fB--run-native\fR] [\fB--debug-lines\fR]
 .br
 .B viper
-\fBcodegen\fR arm64 \fIin.il\fR [\fB-S\fR \fIout.s\fR] [\fB-o\fR \fIexe|obj\fR] [\fB--run-native\fR]
+\fBcodegen\fR arm64 \fIin.il\fR [\fB-S\fR \fIout.s\fR] [\fB-o\fR \fIexe|obj\fR] [\fB--run-native\fR] [\fB--debug-lines\fR]
 .br
 .B viper
 \fBil-opt\fR \fIin.il\fR \fB-o\fR \fIout.il\fR [\fB--pipeline\fR O0|O1|O2]
 [\fB--passes\fR p1,p2] [\fB-print-before\fR] [\fB-print-after\fR] [\fB-verify-each\fR]
+[\fB--pass-stats\fR]
 .br
 .B viper
 \fB--version\fR
@@ -100,6 +101,12 @@ Select optimization level. Explicit \fB-O\fR flags override the build profile.
 \fB--arch\fR arm64|x64
 Override the native build architecture.
 .TP
+\fB--verify-each\fR
+Verify IL after each optimizer pass. This is useful for pass debugging and is disabled by default.
+.TP
+\fB--time-compile\fR
+Print compile phase timings and per-pass optimizer statistics.
+.TP
 \fB--no-runtime-namespaces\fR
 Disable runtime namespace emission in generated IL.
 .SH DIAGNOSTIC OPTIONS
@@ -140,7 +147,8 @@ Show per-opcode execution counts.
 Show wall-clock runtime.
 .SH CODEGEN OPTIONS
 See SYNOPSIS for target-specific forms. \fB--run-native\fR builds and runs the
-produced executable when toolchains are configured.
+produced executable when toolchains are configured. The native assembler is the
+default; \fB--debug-lines\fR opts into DWARF line-table emission.
 .SH EXAMPLES
 .TP
 Run a Zia project from the current directory

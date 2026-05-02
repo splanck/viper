@@ -68,6 +68,12 @@ struct CompilerOptions {
     /// @brief Dump IL before and after each optimization pass.
     bool dumpILPasses{false};
 
+    /// @brief Verify the full IL module after each optimization pass.
+    bool verifyEachPass{false};
+
+    /// @brief Print per-pass IL optimization statistics to stderr.
+    bool passStats{false};
+
     /// @brief Optimization level for IL transformations.
     /// @details Frontend embedders default to O0 so tests and tools can inspect
     ///          raw lowering. Project loading and `viper run/build` default to

@@ -355,7 +355,8 @@ Both x86_64 and AArch64 have their own `BinaryEmitPass` implementations that:
 
 1. Create a binary encoder instance
 2. Iterate over MIR functions, encoding each
-3. Write the resulting CodeSections through an ObjectFileWriter
+3. Write the resulting CodeSections through an ObjectFileWriter. AArch64 keeps per-function text sections and avoids
+   constructing a duplicate aggregate text buffer on the hot path.
 4. Set up the `LinkContext` from the symbol table (no assembly text scanning needed)
 
 ### CodegenPipeline
@@ -374,6 +375,11 @@ Both x86_64 and AArch64 have their own `BinaryEmitPass` implementations that:
 | `--native-asm` | Use native binary encoder (this is the default) |
 | `--system-asm` | Override: use system assembler (`cc -c`) instead |
 | `-S <path>` | Emit text assembly (always uses text emitter, no assembling) |
+| `--debug-lines` | Emit DWARF `.debug_line` tables in native object output |
+| `--no-debug-lines` | Disable debug line tables explicitly; this is the default |
+
+The AArch64 encoder measures instruction sizes against a logical offset when resolving labels, so large functions no
+longer materialize zero padding during dry-run sizing.
 
 ---
 

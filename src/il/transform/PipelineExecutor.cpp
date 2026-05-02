@@ -77,14 +77,13 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
         driver.setPrintBeforeHook(instrumentation_.printBefore);
     if (instrumentation_.printAfter)
         driver.setPrintAfterHook(instrumentation_.printAfter);
-    if (instrumentation_.verifyEach)
-        driver.setVerifyEachHook(instrumentation_.verifyEach);
 
     for (const auto &passId : pipeline) {
         driver.registerPass(passId, [this, &module, &analysis, passId, collectMetrics]() -> bool {
             PassMetrics metrics{};
             AnalysisCounts countsBefore{};
             std::chrono::steady_clock::time_point startTime{};
+            std::chrono::steady_clock::time_point passEndTime{};
             if (collectMetrics) {
                 metrics.before = computeIRSize(module);
                 countsBefore = analysis.counts();
@@ -162,6 +161,19 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
             if (!executed)
                 return false;
 
+            if (collectMetrics)
+                passEndTime = std::chrono::steady_clock::now();
+
+            if (instrumentation_.verifyEach) {
+                const auto verifyStart = std::chrono::steady_clock::now();
+                const bool verified = instrumentation_.verifyEach(passId);
+                metrics.verifyRan = true;
+                if (collectMetrics)
+                    metrics.verifyDuration = std::chrono::steady_clock::now() - verifyStart;
+                if (!verified)
+                    return false;
+            }
+
             if (collectMetrics && instrumentation_.passMetrics) {
                 metrics.after = computeIRSize(module);
                 AnalysisCounts countsAfter = analysis.counts();
@@ -169,7 +181,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                     countsAfter.moduleComputations - countsBefore.moduleComputations;
                 metrics.analysesComputed.functionComputations =
                     countsAfter.functionComputations - countsBefore.functionComputations;
-                metrics.duration = std::chrono::steady_clock::now() - startTime;
+                metrics.duration = passEndTime - startTime;
                 instrumentation_.passMetrics(passId, metrics);
             }
 

@@ -32,7 +32,11 @@
 #include "il/transform/Reassociate.hpp"
 #include "il/transform/SCCP.hpp"
 
+#include <algorithm>
+#include <atomic>
+#include <thread>
 #include <utility>
+#include <vector>
 
 namespace il::transform {
 
@@ -368,26 +372,56 @@ const detail::PassFactory *PassRegistry::lookup(std::string_view id) const {
 
 void registerLoopSimplifyPass(PassRegistry &registry) {
     registry.registerFunctionPass("loop-simplify",
-                                  []() { return std::make_unique<LoopSimplify>(); });
+                                  []() { return std::make_unique<LoopSimplify>(); },
+                                  true);
 }
 
 void registerLICMPass(PassRegistry &registry) {
-    registry.registerFunctionPass("licm", []() { return std::make_unique<LICM>(); });
+    registry.registerFunctionPass("licm", []() { return std::make_unique<LICM>(); }, true);
 }
 
 void registerLICMSafePass(PassRegistry &registry) {
-    registry.registerFunctionPass("licm-safe", []() { return std::make_unique<LICM>(false); });
+    registry.registerFunctionPass("licm-safe", []() { return std::make_unique<LICM>(false); }, true);
 }
 
 void registerSCCPPass(PassRegistry &registry) {
     registry.registerModulePass("sccp", [](core::Module &module, AnalysisManager &) {
         PreservedAnalyses preserved;
+        const std::size_t functionCount = module.functions.size();
+        std::vector<unsigned char> changedFunctions(functionCount, 0);
+        const std::size_t workerCount =
+            std::min(functionCount,
+                     std::max<std::size_t>(
+                         1, static_cast<std::size_t>(std::thread::hardware_concurrency())));
+
+        if (workerCount <= 1) {
+            for (std::size_t i = 0; i < functionCount; ++i)
+                changedFunctions[i] = sccp(module.functions[i]) ? 1 : 0;
+        } else {
+            std::atomic_size_t nextIndex{0};
+            std::vector<std::thread> workers;
+            workers.reserve(workerCount);
+            for (std::size_t worker = 0; worker < workerCount; ++worker) {
+                workers.emplace_back([&]() {
+                    for (;;) {
+                        const std::size_t index =
+                            nextIndex.fetch_add(1, std::memory_order_relaxed);
+                        if (index >= functionCount)
+                            break;
+                        changedFunctions[index] = sccp(module.functions[index]) ? 1 : 0;
+                    }
+                });
+            }
+            for (auto &worker : workers)
+                worker.join();
+        }
+
         bool changed = false;
-        for (auto &function : module.functions) {
-            if (!sccp(function))
+        for (std::size_t i = 0; i < functionCount; ++i) {
+            if (!changedFunctions[i])
                 continue;
             changed = true;
-            preserved.markChangedFunction(function.name);
+            preserved.markChangedFunction(module.functions[i].name);
         }
         if (!changed)
             return PreservedAnalyses::all();
@@ -425,37 +459,43 @@ void registerMem2RegPass(PassRegistry &registry) {
 }
 
 void registerDSEPass(PassRegistry &registry) {
-    registry.registerFunctionPass("dse", [](core::Function &fn, AnalysisManager &am) {
-        bool changed = runDSE(fn, am);
-        if (changed)
-            am.invalidateAfterFunctionPass(PreservedAnalyses::none(), fn);
-        // MemorySSA-based cross-block DSE: catches stores that
-        // runDSE's conservative call-barrier logic would miss for
-        // non-escaping allocas.
-        changed |= runMemorySSADSE(fn, am);
-        if (!changed)
-            return PreservedAnalyses::all();
-        PreservedAnalyses p;
-        p.preserveAllModules();
-        p.preserveCFG();
-        p.preserveDominators();
-        p.preserveLoopInfo();
-        return p;
-    });
+    registry.registerFunctionPass(
+        "dse",
+        [](core::Function &fn, AnalysisManager &am) {
+            bool changed = runDSE(fn, am);
+            if (changed)
+                am.invalidateAfterFunctionPass(PreservedAnalyses::none(), fn);
+            // MemorySSA-based cross-block DSE: catches stores that
+            // runDSE's conservative call-barrier logic would miss for
+            // non-escaping allocas.
+            changed |= runMemorySSADSE(fn, am);
+            if (!changed)
+                return PreservedAnalyses::all();
+            PreservedAnalyses p;
+            p.preserveAllModules();
+            p.preserveCFG();
+            p.preserveDominators();
+            p.preserveLoopInfo();
+            return p;
+        },
+        true);
 }
 
 void registerEarlyCSEPass(PassRegistry &registry) {
-    registry.registerFunctionPass("earlycse", [](core::Function &fn, AnalysisManager &am) {
-        bool changed = runEarlyCSE(am.module(), fn);
-        if (!changed)
-            return PreservedAnalyses::all();
-        PreservedAnalyses p;
-        p.preserveAllModules();
-        p.preserveCFG();
-        p.preserveDominators();
-        p.preserveLoopInfo();
-        return p;
-    });
+    registry.registerFunctionPass(
+        "earlycse",
+        [](core::Function &fn, AnalysisManager &am) {
+            bool changed = runEarlyCSE(am.module(), fn);
+            if (!changed)
+                return PreservedAnalyses::all();
+            PreservedAnalyses p;
+            p.preserveAllModules();
+            p.preserveCFG();
+            p.preserveDominators();
+            p.preserveLoopInfo();
+            return p;
+        },
+        true);
 }
 
 void registerReassociatePass(PassRegistry &registry) {
@@ -473,7 +513,7 @@ void registerEHOptPass(PassRegistry &registry) {
 }
 
 void registerLoopRotatePass(PassRegistry &registry) {
-    registry.registerFunctionPass("loop-rotate", []() { return std::make_unique<LoopRotate>(); });
+    registry.registerFunctionPass("loop-rotate", []() { return std::make_unique<LoopRotate>(); }, true);
 }
 
 } // namespace il::transform

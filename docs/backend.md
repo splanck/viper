@@ -52,15 +52,15 @@ Source → Frontend → IL → Backend → Assembly → Executable
 |-------------------|----------------------------------------------------------|
 | **Target**        | x86-64 (AMD64) and AArch64 (ARM64) architectures         |
 | **ABI**           | System V AMD64 (Linux/macOS) and Windows x64             |
-| **Output**        | AT&T syntax assembly (GAS-compatible)                    |
+| **Output**        | Text assembly, native relocatable objects, and executables |
 | **Strategy**      | SSA-based with linear scan register allocation           |
 | **Pipeline**      | Multi-pass: Lowering → Selection → Allocation → Emission |
 | **Current Phase** | Phase A (bring-up); x86_64 validated on Windows, AArch64 validated on Apple Silicon |
 
-Native builds from `viper build` now keep frontend/project IL optimization and backend optimization separate. The
-driver serializes the verified, already-optimized IL once, tells the backend to skip its own IL optimization pass, and
-still forwards the selected `O0`/`O1`/`O2` level to MIR/codegen passes such as pre-regalloc cleanup, block layout,
-scheduling, and peephole optimization.
+Native builds from `viper build` keep frontend/project IL optimization and backend optimization separate. The driver
+hands the verified, already-optimized IL module directly to the backend, tells the backend to skip its own IL
+optimization pass, and still forwards the selected `O0`/`O1`/`O2` level to MIR/codegen passes such as pre-regalloc
+cleanup, block layout, scheduling, and peephole optimization.
 
 ### Phase A Goals
 

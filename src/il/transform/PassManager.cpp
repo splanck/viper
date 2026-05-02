@@ -57,12 +57,11 @@ using namespace il::core;
 namespace il::transform {
 
 /// @brief Initialise the pass manager with default analyses and settings.
-/// @details Enables verification between passes by default and registers
+/// @details Registers
 ///          core analyses (CFG, dominator tree, and liveness) used by canonical
 ///          pipelines.  The registrations install factory callbacks that lazily
 ///          compute results when passes request them.
 PassManager::PassManager() {
-    verifyBetweenPasses_ = true;
     instrumentationStream_ = &std::cerr;
 
     analysisRegistry_.registerFunctionAnalysis<CFGInfo>(
@@ -193,7 +192,8 @@ void PassManager::addSimplifyCFG(bool aggressive) {
             PreservedAnalyses preserved;
             preserved.preserveAllModules();
             return preserved;
-        });
+        },
+        true);
 }
 
 /// @brief Associate a pipeline identifier with a sequence of pass identifiers.
@@ -299,7 +299,14 @@ bool PassManager::run(core::Module &module, const Pipeline &pipeline) const {
                 << metrics.after.instructions
                 << ", analyses M:" << metrics.analysesComputed.moduleComputations
                 << " F:" << metrics.analysesComputed.functionComputations << ", time " << micros
-                << "us\n";
+                << "us";
+            if (metrics.verifyRan) {
+                const auto verifyMicros =
+                    std::chrono::duration_cast<std::chrono::microseconds>(metrics.verifyDuration)
+                        .count();
+                *instrumentationStream_ << ", verify " << verifyMicros << "us";
+            }
+            *instrumentationStream_ << "\n";
         };
     }
 

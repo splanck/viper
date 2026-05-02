@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include "il/core/Module.hpp"
+
 #include <filesystem>
 #include <string>
 
@@ -58,6 +60,17 @@ int compileToNative(const std::string &ilPath,
                     const std::string &assetObjPath = "",
                     int backendOptimizeLevel = 1,
                     bool skipIlOptimization = true);
+
+/// @brief Compile an already-built IL module to a native binary without reparsing IL text.
+int compileModuleToNative(il::core::Module module,
+                          const std::string &debugSourcePath,
+                          const std::string &outputPath,
+                          TargetArch arch = detectHostArch(),
+                          const std::string &assetBlobPath = "",
+                          const std::string &assetObjPath = "",
+                          int backendOptimizeLevel = 1,
+                          bool skipIlOptimization = true,
+                          bool moduleAlreadyVerified = true);
 
 /// @brief Generate a unique temporary file path for IL serialization.
 /// @return A path in the system temp directory with a .il extension.

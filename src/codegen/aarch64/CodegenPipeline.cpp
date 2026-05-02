@@ -335,6 +335,26 @@ PipelineResult CodegenPipeline::run() {
         return result;
     }
 
+    return runWithModule(std::move(mod), opts_.input_il_path, true);
+}
+
+PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
+                                              std::string debugSourcePath,
+                                              bool moduleAlreadyVerified) {
+    PipelineResult result{};
+    std::ostringstream out;
+    std::ostringstream err;
+
+    if (debugSourcePath.empty())
+        debugSourcePath = opts_.input_il_path;
+
+    if (!moduleAlreadyVerified && !il::tools::common::verifyModule(mod, err)) {
+        result.exit_code = 1;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
+
     viper::codegen::common::lowerNativeEh(mod);
     if (const auto residualEh = viper::codegen::common::findResidualStructuredEh(mod)) {
         err << "error: " << *residualEh << "\n";
@@ -382,7 +402,8 @@ PipelineResult CodegenPipeline::run() {
     passes::AArch64Module pipelineModule;
     pipelineModule.ilMod = &mod;
     pipelineModule.ti = &ti;
-    pipelineModule.debugSourcePath = opts_.input_il_path;
+    pipelineModule.debugSourcePath = debugSourcePath;
+    pipelineModule.emitDebugLines = opts_.emit_debug_lines;
 
     PipelineOptions pipeOpts;
     pipeOpts.dumpMirBeforeRA = opts_.dump_mir_before_ra;
@@ -493,10 +514,11 @@ PipelineResult CodegenPipeline::run() {
         }
 
         std::unordered_set<std::string> extSymbols;
-        for (const auto &sym : pipelineModule.binaryText->symbols()) {
-            if (sym.binding == viper::codegen::objfile::SymbolBinding::External)
-                extSymbols.insert(sym.name);
-        }
+        for (const auto &section : pipelineModule.binaryTextSections)
+            for (const auto &sym : section.symbols()) {
+                if (sym.binding == viper::codegen::objfile::SymbolBinding::External)
+                    extSymbols.insert(sym.name);
+            }
 
         LinkContext ctx;
         if (const int rc =

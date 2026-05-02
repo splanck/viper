@@ -25,8 +25,13 @@
 #include "codegen/aarch64/LowerILToMIR.hpp"
 #include "codegen/common/LabelUtil.hpp"
 
+#include <algorithm>
+#include <atomic>
 #include <exception>
+#include <mutex>
+#include <thread>
 #include <unordered_map>
+#include <vector>
 
 namespace viper::codegen::aarch64::passes {
 
@@ -57,17 +62,22 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags) {
             stringLiteralByteLengths.emplace(g.name, g.init.size());
     }
 
-    LowerILToMIR lowerer{ti, &stringLiteralByteLengths};
     std::unordered_map<std::string, std::size_t> knownVarArgNamedArgCounts;
     for (const auto &fn : ilMod.functions) {
         if (fn.isVarArg)
             knownVarArgNamedArgCounts.emplace(fn.name, fn.params.size());
     }
-    lowerer.setKnownVarArgCallees(std::move(knownVarArgNamedArgCounts));
     const bool uniquify = (ilMod.functions.size() > 1);
 
-    try {
-        for (const auto &fn : ilMod.functions) {
+    std::vector<MFunction> lowered(ilMod.functions.size());
+    std::string firstError;
+    std::mutex errorMutex;
+
+    auto lowerOne = [&](std::size_t index) {
+        try {
+            const auto &fn = ilMod.functions[index];
+            LowerILToMIR lowerer{ti, &stringLiteralByteLengths};
+            lowerer.setKnownVarArgCallees(knownVarArgNamedArgCounts);
             MFunction mir = lowerer.lowerFunction(fn);
 
             // --- Label sanitization: hyphens → underscores, optional suffix ----
@@ -136,13 +146,47 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags) {
                 }
             }
 
-            module.mir.push_back(std::move(mir));
+            lowered[index] = std::move(mir);
+        } catch (const std::exception &ex) {
+            std::lock_guard<std::mutex> lock(errorMutex);
+            if (firstError.empty())
+                firstError = ex.what();
         }
-    } catch (const std::exception &ex) {
-        diags.error(std::string("AArch64 lowering failed: ") + ex.what());
+    };
+
+    const std::size_t functionCount = ilMod.functions.size();
+    const std::size_t workerCount =
+        std::min(functionCount,
+                 std::max<std::size_t>(
+                     1, static_cast<std::size_t>(std::thread::hardware_concurrency())));
+    if (workerCount <= 1) {
+        for (std::size_t i = 0; i < functionCount; ++i)
+            lowerOne(i);
+    } else {
+        std::atomic_size_t nextIndex{0};
+        std::vector<std::thread> workers;
+        workers.reserve(workerCount);
+        for (std::size_t worker = 0; worker < workerCount; ++worker) {
+            workers.emplace_back([&]() {
+                for (;;) {
+                    const std::size_t index =
+                        nextIndex.fetch_add(1, std::memory_order_relaxed);
+                    if (index >= functionCount)
+                        break;
+                    lowerOne(index);
+                }
+            });
+        }
+        for (auto &worker : workers)
+            worker.join();
+    }
+
+    if (!firstError.empty()) {
+        diags.error(std::string("AArch64 lowering failed: ") + firstError);
         return false;
     }
 
+    module.mir = std::move(lowered);
     return true;
 }
 

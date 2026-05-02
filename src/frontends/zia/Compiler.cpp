@@ -55,9 +55,9 @@
 #include "il/verify/Verifier.hpp"
 #include "viper/il/IO.hpp"
 #include <chrono>
+#include <cstddef>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 
 namespace il::frontends::zia {
 
@@ -212,7 +212,8 @@ CompilerResult compile(const CompilerInput &input,
     // the full sequence of passes (SCCP, LICM, loop transforms, inlining, etc.).
     if (options.optLevel != OptLevel::O0) {
         il::transform::PassManager pm;
-        pm.setVerifyBetweenPasses(true);
+        pm.setVerifyBetweenPasses(options.verifyEachPass);
+        pm.setReportPassStatistics(options.passStats);
         pm.setInstrumentationStream(std::cerr);
 
         // Enable per-pass IL dumps when requested.
@@ -253,7 +254,7 @@ CompilerResult compileFile(const std::string &path,
                            const CompilerOptions &options,
                            il::support::SourceManager &sm) {
     // Read file contents
-    std::ifstream file(path);
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file) {
         CompilerResult result{};
         result.diagnostics.report({il::support::Severity::Error,
@@ -263,9 +264,11 @@ CompilerResult compileFile(const std::string &path,
         return result;
     }
 
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string source = buffer.str();
+    const auto size = file.tellg();
+    file.seekg(0);
+    std::string source(static_cast<std::size_t>(size), '\0');
+    if (size > 0)
+        file.read(source.data(), size);
 
     CompilerInput input;
     input.source = source;

@@ -273,7 +273,7 @@ CFGInfo buildCFG(core::Module &module, core::Function &fn) {
 
     for (auto &block : fn.blocks) {
         auto &succ = info.successors[&block];
-        auto succBlocks = viper::analysis::successors(ctx, block);
+        const auto &succBlocks = viper::analysis::successors(ctx, block);
         succ.reserve(succBlocks.size());
         for (auto *succBlock : succBlocks)
             succ.push_back(succBlock);
@@ -281,7 +281,7 @@ CFGInfo buildCFG(core::Module &module, core::Function &fn) {
 
     for (auto &block : fn.blocks) {
         auto &pred = info.predecessors[&block];
-        auto predBlocks = viper::analysis::predecessors(ctx, block);
+        const auto &predBlocks = viper::analysis::predecessors(ctx, block);
         pred.reserve(predBlocks.size());
         for (auto *predBlock : predBlocks)
             pred.push_back(predBlock);

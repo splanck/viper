@@ -636,7 +636,7 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
 ///          a new @ref IndVarSimplify instance.
 /// @param registry Pass registry to update.
 void registerIndVarSimplifyPass(PassRegistry &registry) {
-    registry.registerFunctionPass("indvars", []() { return std::make_unique<IndVarSimplify>(); });
+    registry.registerFunctionPass("indvars", []() { return std::make_unique<IndVarSimplify>(); }, true);
 }
 
 } // namespace il::transform

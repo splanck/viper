@@ -282,7 +282,8 @@ PreservedAnalyses ArrayFastPathOpt::run(Function &function, AnalysisManager & /*
 
 void registerArrayFastPathOptPass(PassRegistry &registry) {
     registry.registerFunctionPass("array-fastpath",
-                                  []() { return std::make_unique<ArrayFastPathOpt>(); });
+                                  []() { return std::make_unique<ArrayFastPathOpt>(); },
+                                  true);
 }
 
 } // namespace il::transform

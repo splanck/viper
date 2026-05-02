@@ -166,6 +166,7 @@ class A64BinaryEncoder {
 
     /// Optional debug line table for recording address→line mappings.
     DebugLineTable *debugLines_{nullptr};
+    size_t lastEstimatedFunctionSize_{0};
 };
 
 } // namespace viper::codegen::aarch64::binenc

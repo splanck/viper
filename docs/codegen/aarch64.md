@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-30
+last-verified: 2026-05-01
 ---
 
 # AArch64 (arm64) Backend — Status and Plan
@@ -17,6 +17,10 @@ programs, and the development roadmap. It is kept developer-focused with concret
 - **Core pipeline mature**: MIR layer, instruction selection, register allocation (with coalescer and protected-use eviction), frame lowering, peephole optimization (6 sub-passes), post-RA scheduler, linker integration
 - **Immediate utils**: Extracted `A64ImmediateUtils.hpp` for consistent immediate encoding
 - **Binary encoder**: Direct object code emission (bypassing assembler text)
+- **Large-module compile path**: `CodegenPipeline` accepts an already-verified in-memory IL module from `viper build`,
+  avoiding a textual IL round trip for project builds.
+- **Parallel backend passes**: IL-to-MIR lowering and register allocation run per function concurrently while preserving
+  deterministic function order in the module.
 - **Fastpaths**: Arithmetic and call fastpath optimizations for common patterns
 - **Register allocator hardening**: Protected-use sets prevent source-operand eviction during def allocation; FPR load/store classification; operandRoles fix for immediate-ALU instructions; clean FPR spill slot reuse across calls; dead vreg early release
 - **Emergency spill reloads**: Reserved scratch registers cover no-free-register reload cases instead of letting `takeGPR` / `takeFPR` abort mid-instruction.
@@ -202,16 +206,19 @@ codegen review.
 - `src/codegen/aarch64/CMakeLists.txt` builds `il_codegen_aarch64` (target, emitter, lowering, RA, peephole).
 - `src/CMakeLists.txt` exposes `viper_cmd_arm64` as a static lib; `viper` links `viper_cmd_arm64` and
   `il_codegen_aarch64`.
+- `viper_native_compiler` links `il_codegen_aarch64` directly so `viper build` can call the AArch64 pipeline without
+  routing through the CLI adapter.
 
 ## Backend Pipeline
 
 The AArch64 backend uses `CodegenPipeline` to orchestrate passes. The pipeline stages are:
 
-1. **IL loading** — load module from disk
+1. **IL input** — load and verify textual IL for `viper codegen`, or accept an already-verified in-memory module from
+   `viper build`
 2. **Rodata pool construction** (`RodataPool`) — scan globals, deduplicate string literals
-3. **IL to MIR lowering** (`LowerILToMIR::lowerFunction`) — instruction selection via `InstrLowering` + `TerminatorLowering` + fast paths
+3. **IL to MIR lowering** (`LowerILToMIR::lowerFunction`) — instruction selection via `InstrLowering` + `TerminatorLowering` + fast paths; functions are lowered in parallel and written back in source order
 4. **Register coalescing** (`Coalescer`) — pre-RA copy elimination
-5. **Register allocation** (`ra/Allocator`) — linear scan, spill/reload insertion
+5. **Register allocation** (`ra/Allocator`) — linear scan, spill/reload insertion; functions are allocated in parallel
 6. **Frame finalization** (`FrameBuilder`) — stack slot layout, frame size computation
 7. **Block layout** — reorder hot/fallthrough blocks before branch cleanup
 8. **Peephole optimization** (`Peephole` + sub-passes) — post-RA pattern rewrites, CFG-aware DCE, branch cleanup,
@@ -220,12 +227,16 @@ The AArch64 backend uses `CodegenPipeline` to orchestrate passes. The pipeline s
    for base-register heap/object accesses and only separates explicit FP/SP stack slots
 10. **Final peephole cleanup** — removes branches/fallthroughs and dead moves exposed by scheduling
 11. **Assembly emission** (`AsmEmitter::emitFunction`) — MIR → text assembly
-12. **Binary encoding** (`A64BinaryEncoder`) — direct object code emission (optional)
+12. **Binary encoding** (`A64BinaryEncoder`) — direct object code emission (optional); per-function text sections are
+    handed to the object writer without building a duplicate aggregate text buffer
 13. **Rodata emission** — string/FP constant pool to `.section __TEXT,__const` (macOS) or `.section .rodata` (Linux)
 14. **Assembly + linking** (`LinkerSupport`) — invoke assembler/linker, link with only the runtime archives and support libraries required by the module; the selected target platform now also chooses the object format, linker platform, and system-assembler triple
 
 Set `VIPER_CODEGEN_STATS=1` to emit non-fatal diagnostics with peephole transformation counts and MIR
 function/block/instruction, call, branch, load, and store counters.
+
+Native assembler debug line tables are disabled by default for faster object generation. Use `--debug-lines` on
+`viper codegen arm64` when DWARF `.debug_line` output is needed.
 
 Before MIR lowering, `CodegenPipeline` now runs a selective IL optimization stage:
 

@@ -675,7 +675,7 @@ PreservedAnalyses LoopUnroll::run(Function &function, AnalysisManager &analysis)
 }
 
 void registerLoopUnrollPass(PassRegistry &registry) {
-    registry.registerFunctionPass("loop-unroll", []() { return std::make_unique<LoopUnroll>(); });
+    registry.registerFunctionPass("loop-unroll", []() { return std::make_unique<LoopUnroll>(); }, true);
 }
 
 } // namespace il::transform

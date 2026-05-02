@@ -48,6 +48,7 @@ struct CodegenOptions {
     TargetABI targetABI{TargetABI::Host}; ///< Target ABI used for lowering/allocation.
     TargetPlatform targetPlatform{TargetPlatform::Host}; ///< Object/link/platform policy.
     std::string debugSourcePath{};        ///< Source path used for DWARF line table file entries.
+    bool emitDebugLines{false};           ///< Emit DWARF .debug_line entries when true.
 };
 
 /// \brief Aggregated result of a backend emission request.

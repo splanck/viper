@@ -47,6 +47,8 @@ class PipelineExecutor {
         IRSize after;
         AnalysisCounts analysesComputed{};
         std::chrono::nanoseconds duration{};
+        std::chrono::nanoseconds verifyDuration{};
+        bool verifyRan = false;
     };
 
     /// @brief Configuration for instrumentation hooks around pass execution.

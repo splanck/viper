@@ -93,6 +93,22 @@ void testX64CodegenAcceptsAssetBlobAndExtraObjectFlags() {
     assert(diagnostics.find("--extra-obj requires") == std::string::npos);
 }
 
+void testX64CodegenAcceptsDebugLineFlags() {
+    char input[] = "missing.il";
+    char debugLines[] = "--debug-lines";
+    char noDebugLines[] = "--no-debug-lines";
+    char *argv[] = {input, debugLines, noDebugLines};
+
+    std::ostringstream errCapture;
+    auto *oldErr = std::cerr.rdbuf(errCapture.rdbuf());
+    const int rc = viper::tools::ilc::cmd_codegen_x64(3, argv);
+    std::cerr.rdbuf(oldErr);
+
+    const std::string diagnostics = errCapture.str();
+    assert(rc != 0);
+    assert(diagnostics.find("unknown flag") == std::string::npos);
+}
+
 void writeText(const std::filesystem::path &path, const std::string &text) {
     std::ofstream out(path);
     assert(out.is_open());
@@ -155,6 +171,7 @@ int main() {
     testFrontendDoubleDashSeparatesProgramArgs();
     testNativeCompilerTempPathsAreUnique();
     testX64CodegenAcceptsAssetBlobAndExtraObjectFlags();
+    testX64CodegenAcceptsDebugLineFlags();
     testProjectDefaultsUseBalancedOptimization();
     testProjectProfilesMapToOptimizationLevels();
     return 0;

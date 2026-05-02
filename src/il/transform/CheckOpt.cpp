@@ -1162,7 +1162,7 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
 }
 
 void registerCheckOptPass(PassRegistry &registry) {
-    registry.registerFunctionPass("check-opt", []() { return std::make_unique<CheckOpt>(); });
+    registry.registerFunctionPass("check-opt", []() { return std::make_unique<CheckOpt>(); }, true);
 }
 
 } // namespace il::transform

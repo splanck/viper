@@ -123,6 +123,14 @@ SharedOptionParseResult parseSharedOption(int &index,
         opts.dumpILPasses = true;
         return SharedOptionParseResult::Parsed;
     }
+    if (arg == "--verify-each") {
+        opts.verifyEachPass = true;
+        return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--time-compile") {
+        opts.timeCompile = true;
+        return SharedOptionParseResult::Parsed;
+    }
     if (arg == "-Wall") {
         opts.wall = true;
         return SharedOptionParseResult::Parsed;

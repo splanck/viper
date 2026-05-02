@@ -70,6 +70,12 @@ struct SharedCliOptions {
     /// @brief Dump IL before and after each optimization pass.
     bool dumpILPasses = false;
 
+    /// @brief Verify the full IL module after each optimization pass.
+    bool verifyEachPass = false;
+
+    /// @brief Emit phase timing information for source-to-IL/native compilation.
+    bool timeCompile = false;
+
     /// @brief Enable all warnings (corresponds to `-Wall`).
     bool wall = false;
 

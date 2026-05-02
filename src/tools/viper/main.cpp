@@ -254,7 +254,7 @@ void usage() {
         << "           [--strict-diagnostics|--no-strict-diagnostics] [--no-runtime-namespaces]\n"
         << "  Diagnostics: [--dump-tokens] [--dump-ast] [--dump-sema-ast] [--dump-il]\n"
         << "               [--dump-il-opt] [--dump-il-passes] [--diagnostic-format text|json]\n"
-        << "               [--quiet-warnings]\n"
+        << "               [--quiet-warnings] [--verify-each] [--time-compile]\n"
         << "\n"
         << "Advanced:\n"
         << "       viper -run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N]"

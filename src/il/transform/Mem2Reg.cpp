@@ -25,12 +25,14 @@
 #include "il/analysis/Dominators.hpp"
 #include "il/utils/Utils.hpp"
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <climits>
 #include <functional>
 #include <iostream>
 #include <optional>
 #include <queue>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -135,9 +137,44 @@ using VarMap = std::unordered_map<unsigned, VarState>;
 using BlockMap = std::unordered_map<BasicBlock *, BlockState>;
 using LabelIndexCache =
     std::unordered_map<const Instr *, std::unordered_map<std::string, std::size_t>>;
+using ReplacementMap = std::unordered_map<unsigned, Value>;
 
 static Value zeroValueForType(const Type &type) {
     return type.kind == Type::Kind::F64 ? Value::constFloat(0.0) : Value::constInt(0);
+}
+
+static Value resolveReplacementValue(const ReplacementMap &replacements, Value value) {
+    std::unordered_set<unsigned> seen;
+    while (value.kind == Value::Kind::Temp) {
+        auto it = replacements.find(value.id);
+        if (it == replacements.end() || seen.contains(value.id))
+            break;
+        seen.insert(value.id);
+        value = it->second;
+    }
+    return value;
+}
+
+static void rewriteValue(Value &value, const ReplacementMap &replacements) {
+    value = resolveReplacementValue(replacements, value);
+}
+
+static void rewriteInstructionUses(Instr &instr, const ReplacementMap &replacements) {
+    if (replacements.empty())
+        return;
+    for (auto &operand : instr.operands)
+        rewriteValue(operand, replacements);
+    for (auto &argList : instr.brArgs)
+        for (auto &arg : argList)
+            rewriteValue(arg, replacements);
+}
+
+static void applyReplacements(Function &F, const ReplacementMap &replacements) {
+    if (replacements.empty())
+        return;
+    for (auto &B : F.blocks)
+        for (auto &I : B.instructions)
+            rewriteInstructionUses(I, replacements);
 }
 
 static void addIncomplete(BlockState &state, unsigned varId) {
@@ -342,7 +379,7 @@ static Value readFromPreds(Function &F,
                            const analysis::CFGContext &ctx,
                            LabelIndexCache *idxCache,
                            bool &ok) {
-    auto preds = analysis::predecessors(ctx, *B);
+    const auto &preds = analysis::predecessors(ctx, *B);
     if (preds.empty()) {
         return vars[varId].initialValue;
     }
@@ -394,7 +431,7 @@ static Value renameUses(Function &F,
         addIncomplete(BS, varId);
         return v;
     }
-    auto preds = analysis::predecessors(ctx, *B);
+    const auto &preds = analysis::predecessors(ctx, *B);
     if (preds.empty()) {
         Value v = VS.initialValue;
         VS.defs[B] = v;
@@ -591,6 +628,7 @@ static void promoteVariables(Function &F,
     }
 
     LabelIndexCache idxCache;
+    ReplacementMap replacements;
     bool ok = true;
 
     while (!work.empty()) {
@@ -599,10 +637,11 @@ static void promoteVariables(Function &F,
         BasicBlock *B = work.front();
         work.pop();
 
-        for (std::size_t i = 0; i < B->instructions.size();) {
-            Instr &I = B->instructions[i];
+        std::vector<Instr> rewritten;
+        rewritten.reserve(B->instructions.size());
+        for (auto &I : B->instructions) {
+            rewriteInstructionUses(I, replacements);
             if (I.op == Opcode::Alloca && I.result && vars.contains(*I.result)) {
-                B->instructions.erase(B->instructions.begin() + i);
                 continue;
             }
             if (I.op == Opcode::Load && I.operands.size() &&
@@ -612,8 +651,7 @@ static void promoteVariables(Function &F,
                 if (!ok)
                     return;
                 if (I.result)
-                    viper::il::replaceAllUses(F, *I.result, v);
-                B->instructions.erase(B->instructions.begin() + i);
+                    replacements[*I.result] = resolveReplacementValue(replacements, v);
                 if (stats)
                     stats->removedLoads++;
                 continue;
@@ -621,16 +659,16 @@ static void promoteVariables(Function &F,
             if (I.op == Opcode::Store && I.operands.size() > 1 &&
                 I.operands[0].kind == Value::Kind::Temp && vars.contains(I.operands[0].id)) {
                 unsigned varId = I.operands[0].id;
-                vars[varId].defs[B] = I.operands[1];
-                B->instructions.erase(B->instructions.begin() + i);
+                vars[varId].defs[B] = resolveReplacementValue(replacements, I.operands[1]);
                 if (stats)
                     stats->removedStores++;
                 continue;
             }
-            ++i;
+            rewritten.push_back(std::move(I));
         }
+        B->instructions = std::move(rewritten);
 
-        auto succs = analysis::successors(ctx, *B);
+        const auto &succs = analysis::successors(ctx, *B);
         for (auto *S : succs) {
             BlockState &SS = blocks[S];
             SS.seenPreds++;
@@ -646,6 +684,9 @@ static void promoteVariables(Function &F,
     }
 
     repairPromotedBranchArgs(F, vars, blocks, nextId, ctx, ok);
+    if (!ok)
+        return;
+    applyReplacements(F, replacements);
 }
 
 /// @brief Return true when @p block can be reached from a predecessor it dominates.
@@ -949,12 +990,12 @@ static bool runSROA(Function &F) {
 ///              variables and removed loads/stores.
 /// @sideeffect Mutates functions within the module.
 void mem2reg(Module &M, Mem2RegStats *stats) {
-    for (auto &F : M.functions) {
+    analysis::CFGContext cfg(M);
+    auto processFunction = [&](Function &F, Mem2RegStats *localStats) {
         if (hasExceptionHandling(F))
-            continue;
+            return;
 
         runSROA(F);
-        analysis::CFGContext cfg(M);
 
         AllocaMap infos = collectAllocas(F);
 
@@ -997,7 +1038,43 @@ void mem2reg(Module &M, Mem2RegStats *stats) {
             }
             promotable.emplace(id, info);
         }
-        promoteVariables(F, promotable, stats, cfg);
+        promoteVariables(F, promotable, localStats, cfg);
+    };
+
+    const std::size_t functionCount = M.functions.size();
+    const std::size_t hardwareThreads =
+        std::max<std::size_t>(1, static_cast<std::size_t>(std::thread::hardware_concurrency()));
+    const std::size_t workerCount = std::min(functionCount, hardwareThreads);
+
+    if (workerCount <= 1) {
+        for (auto &F : M.functions)
+            processFunction(F, stats);
+        return;
+    }
+
+    std::vector<Mem2RegStats> localStats(workerCount);
+    std::atomic_size_t nextIndex{0};
+    std::vector<std::thread> workers;
+    workers.reserve(workerCount);
+    for (std::size_t workerIndex = 0; workerIndex < workerCount; ++workerIndex) {
+        workers.emplace_back([&, workerIndex]() {
+            for (;;) {
+                const std::size_t index = nextIndex.fetch_add(1, std::memory_order_relaxed);
+                if (index >= functionCount)
+                    break;
+                processFunction(M.functions[index], stats ? &localStats[workerIndex] : nullptr);
+            }
+        });
+    }
+    for (auto &worker : workers)
+        worker.join();
+
+    if (stats) {
+        for (const auto &local : localStats) {
+            stats->promotedVars += local.promotedVars;
+            stats->removedLoads += local.removedLoads;
+            stats->removedStores += local.removedStores;
+        }
     }
 }
 

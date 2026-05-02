@@ -14,9 +14,9 @@
 #include "frontends/zia/Lexer.hpp"
 #include "frontends/zia/Parser.hpp"
 #include <algorithm>
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
-#include <sstream>
 #include <unordered_set>
 
 namespace il::frontends::zia {
@@ -61,7 +61,7 @@ std::string ImportResolver::resolveImportPath(const std::string &importPath,
 
 std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
                                                       il::support::SourceLoc importLoc) {
-    std::ifstream file(path);
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file) {
         diag_.report({il::support::Severity::Error,
                       "Failed to open imported file: " + path,
@@ -70,9 +70,11 @@ std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
         return nullptr;
     }
 
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string source = buffer.str();
+    const auto size = file.tellg();
+    file.seekg(0);
+    std::string source(static_cast<std::size_t>(size), '\0');
+    if (size > 0)
+        file.read(source.data(), size);
 
     uint32_t fileId = sm_.addFile(path);
     if (fileId == 0) {

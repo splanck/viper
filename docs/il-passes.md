@@ -16,7 +16,8 @@ last-verified: 2026-05-01
 - Enable per-pass statistics with `PassManager::setReportPassStatistics(true)` plus `setInstrumentationStream(...)` to
   receive lines like `[pass licm] bb 6 -> 6, inst 42 -> 40, analyses M:0 F:2, time 1500us`.
 - Statistics track IR size (basic blocks and instructions), analysis recomputations, and wall-clock duration per pass to
-  highlight redundant work.
+  highlight redundant work. When per-pass verification is enabled, statistics report verifier time separately from the
+  transform time.
 - The `viper il-opt` CLI exposes the same instrumentation with `--pass-stats`. Use `--bisect-pipeline` with a named
   pipeline to run each prefix on a fresh copy of the input and print the resulting block/instruction count; this is the
   fastest way to isolate verifier failures introduced by a specific optimization pass.
@@ -101,8 +102,13 @@ Promotes alloca/store/load patterns to pure SSA values:
   preserved as data rather than treated as an unfilled repair slot.
 - **Lazy dominator tree**: The dominator tree is computed only when non-entry allocas with cross-block uses are
   encountered, keeping the common (entry-block-only) case fast.
-- **Fresh CFG context**: Each function is analysed with a CFG built after SROA for that function, avoiding stale edge
-  state when earlier functions or SROA rewrites changed the module.
+- **Batched use rewriting**: Load replacements are collected and applied in one function-local rewrite pass instead of
+  repeatedly walking the IR for each promoted load.
+- **Function parallelism**: Independent functions are promoted concurrently in the module pass; aggregate promotion
+  statistics remain deterministic.
+- **Shared CFG context**: The module CFG is built once for the promotion pass and reused across functions. SROA rewrites
+  memory instructions but does not alter control-flow edges, so the cached CFG remains valid while avoiding repeated
+  whole-module CFG construction.
 - **EH conservatism**: Functions containing structured exception-handling opcodes are skipped until mem2reg has an
   exception-aware CFG. This preserves handler/resume semantics while still allowing the rest of O1/O2 to run.
 - **Tests**: `test_il_mem2reg_nonentry` — single-block alloca in non-entry block, dominating non-entry alloca with
@@ -176,13 +182,15 @@ rewrites expose direct calls, fewer runtime branches, and less reference-countin
   can see how much cleanup occurred.
 - Keeps work bounded; if nothing changes on an iteration, the pass exits without further scans.
 
-## Parallel Function Passes (Experimental)
+## Parallel Function Passes
 
-- `PassManager::enableParallelFunctionPasses(true)` allows function-local passes to run across multiple functions
-  concurrently; module passes remain sequential.
-- Analysis caching uses coarse locking inside `AnalysisManager` to keep computations and invalidations thread-safe;
-  default remains single-threaded for determinism.
-- Expect identical IR with the flag on; instrumentation order may differ slightly in parallel mode.
+- `PassManager::enableParallelFunctionPasses(true)` is the default for audited function-local passes. Call it with
+  `false` when debugging a pass that has not been marked parallel-safe.
+- Module passes remain sequential unless they implement their own internal function parallelism, as `mem2reg` and SCCP
+  do for large modules.
+- Analysis caching uses coarse locking inside `AnalysisManager` to keep computations and invalidations thread-safe.
+- Pass-level instrumentation is emitted in pipeline order. Function scheduling inside a parallel pass is intentionally
+  unspecified, but the resulting IR should remain deterministic.
 
 ## Differential Testing
 

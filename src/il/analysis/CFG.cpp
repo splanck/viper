@@ -33,6 +33,14 @@
 #include <unordered_set>
 
 namespace viper::analysis {
+namespace {
+
+const std::vector<il::core::Block *> &emptyBlockList() {
+    static const std::vector<il::core::Block *> empty;
+    return empty;
+}
+
+} // namespace
 
 /// @brief Construct a CFG analysis context for the provided module.
 ///
@@ -120,13 +128,13 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module) {
 ///          empty vector so callers can treat absent edges as "no successors".
 /// @param ctx Context providing access to the parent function mapping.
 /// @param B Block whose outgoing edges are requested.
-/// @return List of successor blocks; empty when the block was not indexed or
+/// @return Cached list of successor blocks; empty when the block was not indexed or
 ///         does not terminate with a branch.
 /// @invariant A valid CFGContext describing @p B's parent function is provided.
-std::vector<il::core::Block *> successors(const CFGContext &ctx, const il::core::Block &B) {
+const std::vector<il::core::Block *> &successors(const CFGContext &ctx, const il::core::Block &B) {
     auto it = ctx.blockSuccessors.find(&B);
     if (it == ctx.blockSuccessors.end())
-        return {};
+        return emptyBlockList();
     return it->second;
 }
 
@@ -139,12 +147,12 @@ std::vector<il::core::Block *> successors(const CFGContext &ctx, const il::core:
 ///          visited once.
 /// @param ctx Context providing block-to-function lookup.
 /// @param B Target block whose incoming edges are requested.
-/// @return List of predecessor blocks; empty if none are found.
+/// @return Cached list of predecessor blocks; empty if none are found.
 /// @note Blocks with non-branch terminators are ignored.
-std::vector<il::core::Block *> predecessors(const CFGContext &ctx, const il::core::Block &B) {
+const std::vector<il::core::Block *> &predecessors(const CFGContext &ctx, const il::core::Block &B) {
     auto it = ctx.blockPredecessors.find(&B);
     if (it == ctx.blockPredecessors.end())
-        return {};
+        return emptyBlockList();
     return it->second;
 }
 
@@ -170,22 +178,22 @@ std::vector<il::core::Block *> postOrder(const CFGContext &ctx, il::core::Functi
     struct Frame {
         il::core::Block *block;
         std::size_t idx;
-        std::vector<il::core::Block *> succ;
+        const std::vector<il::core::Block *> *succ;
     };
 
     std::vector<Frame> stack;
 
     il::core::Block *entry = &F.blocks[0];
-    stack.push_back({entry, 0, successors(ctx, *entry)});
+    stack.push_back({entry, 0, &successors(ctx, *entry)});
     visited.insert(entry);
 
     while (!stack.empty()) {
         Frame &f = stack.back();
-        if (f.idx < f.succ.size()) {
-            il::core::Block *next = f.succ[f.idx++];
+        if (f.idx < f.succ->size()) {
+            il::core::Block *next = (*f.succ)[f.idx++];
             if (!visited.contains(next)) {
                 visited.insert(next);
-                stack.push_back({next, 0, successors(ctx, *next)});
+                stack.push_back({next, 0, &successors(ctx, *next)});
             }
         } else {
             out.push_back(f.block);

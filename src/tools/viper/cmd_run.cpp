@@ -39,6 +39,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #ifdef _WIN32
 inline int setenv(const char *name, const char *value, int) {
@@ -100,6 +101,16 @@ std::optional<int> optimizeLevelNumber(std::string_view level) {
     if (level == "O2")
         return 2;
     return std::nullopt;
+}
+
+void printCompileTime(const ilc::SharedCliOptions &shared,
+                      std::string_view phase,
+                      std::chrono::steady_clock::time_point start) {
+    if (!shared.timeCompile)
+        return;
+    const auto elapsed = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - start);
+    std::cerr << "[time-compile] " << phase << " " << elapsed.count() << "ms\n";
 }
 
 il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, char **argv) {
@@ -283,6 +294,8 @@ il::support::Expected<il::core::Module> compileZiaProject(const ProjectConfig &p
     opts.dumpIL = shared.dumpIL;
     opts.dumpILOpt = shared.dumpILOpt;
     opts.dumpILPasses = shared.dumpILPasses;
+    opts.verifyEachPass = shared.verifyEachPass;
+    opts.passStats = shared.timeCompile;
 
     // Warning policy from CLI flags
     opts.warningPolicy.enableAll = shared.wall;
@@ -362,7 +375,8 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
     // Apply the canonical IL optimizer pipeline based on the project's opt level.
     {
         il::transform::PassManager pm;
-        pm.setVerifyBetweenPasses(true);
+        pm.setVerifyBetweenPasses(shared.verifyEachPass);
+        pm.setReportPassStatistics(shared.timeCompile);
         pm.setInstrumentationStream(std::cerr);
 
         // Enable per-pass IL dumps when requested.
@@ -505,12 +519,14 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
 
     // Compile
     SourceManager sm;
+    const auto compileStart = std::chrono::steady_clock::now();
     il::support::Expected<il::core::Module> moduleResult =
         (proj.lang == ProjectLang::Mixed)
             ? compileMixedProject(proj, config.noRuntimeNamespaces, config.shared, sm)
         : (proj.lang == ProjectLang::Zia)
             ? compileZiaProject(proj, config.shared, sm)
             : compileBasicProject(proj, config.noRuntimeNamespaces, config.shared, sm);
+    printCompileTime(config.shared, "source-to-il", compileStart);
 
     if (!moduleResult)
         return 1; // diagnostics already printed
@@ -520,10 +536,12 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
     // Build mode: emit IL or compile to native binary
     if (mode == RunMode::Build) {
         // Verify before emitting
+        const auto verifyStart = std::chrono::steady_clock::now();
         if (!reportVerifierDiagnostics(
                 module, std::cerr, sm, config.shared.diagnosticFormat, config.shared.showWarnings)) {
             return 1;
         }
+        printCompileTime(config.shared, "final-verify", verifyStart);
 
         // No -o: emit IL to stdout (backwards compat)
         if (config.outputPath.empty()) {
@@ -546,26 +564,14 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
             return 0;
         }
 
-        // Native binary output: serialize IL to temp file, then codegen
+        // Native binary output: hand the verified module directly to codegen.
         auto arch = config.archOverride.value_or(viper::tools::detectHostArch());
-        std::string tempIlPath = viper::tools::generateTempIlPath();
-        {
-            std::ofstream tempFile(tempIlPath);
-            if (!tempFile.is_open()) {
-                std::cerr << "error: cannot create temporary file for IL serialization\n";
-                return 1;
-            }
-            io::Serializer::write(module, tempFile);
-            if (!tempFile) {
-                std::cerr << "error: failed to write IL to temporary file\n";
-                return 1;
-            }
-        }
 
         // Compile assets (embed → blob, pack → .vpa files)
         std::string assetBlobPath;
         std::string assetObjPath;
         if (!proj.embedAssets.empty() || !proj.packGroups.empty()) {
+            const auto assetStart = std::chrono::steady_clock::now();
             std::string outputDir = std::filesystem::path(config.outputPath).parent_path().string();
             if (outputDir.empty())
                 outputDir = ".";
@@ -574,7 +580,6 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
             auto bundle = viper::asset::compileAssets(proj, outputDir, assetErr);
             if (!bundle) {
                 std::cerr << "error: asset compilation failed: " << assetErr << "\n";
-                std::filesystem::remove(tempIlPath);
                 return 1;
             }
 
@@ -585,22 +590,25 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
                 if (!viper::asset::writeAssetBlobObject(
                         bundle->embeddedBlob, assetObjPath, assetErr)) {
                     std::cerr << "error: " << assetErr << "\n";
-                    std::filesystem::remove(tempIlPath);
                     return 1;
                 }
             }
+            printCompileTime(config.shared, "assets", assetStart);
         }
 
         const int backendOptimizeLevel = optimizeLevelNumber(proj.optimizeLevel).value_or(1);
-        int rc = viper::tools::compileToNative(tempIlPath,
-                                               config.outputPath,
-                                               arch,
-                                               assetBlobPath,
-                                               assetObjPath,
-                                               backendOptimizeLevel,
-                                               true);
+        const auto nativeStart = std::chrono::steady_clock::now();
+        int rc = viper::tools::compileModuleToNative(std::move(module),
+                                                     proj.entryFile,
+                                                     config.outputPath,
+                                                     arch,
+                                                     assetBlobPath,
+                                                     assetObjPath,
+                                                     backendOptimizeLevel,
+                                                     true,
+                                                     true);
+        printCompileTime(config.shared, "native-codegen-link", nativeStart);
         std::error_code ec;
-        std::filesystem::remove(tempIlPath, ec);
         if (!assetBlobPath.empty())
             std::filesystem::remove(assetBlobPath, ec);
         if (!assetObjPath.empty())

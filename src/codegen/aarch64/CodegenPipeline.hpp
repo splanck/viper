@@ -83,6 +83,7 @@ class CodegenPipeline {
         AssemblerMode assembler_mode = AssemblerMode::Native;
         LinkMode link_mode = LinkMode::Native;
         TargetPlatform target_platform = TargetPlatform::Host;
+        bool emit_debug_lines = false;
         std::string asset_blob_path{};            ///< Path to VPA asset blob for .rodata embedding.
         std::vector<std::string> extra_objects{}; ///< Extra .o files to link.
     };
@@ -90,6 +91,9 @@ class CodegenPipeline {
     explicit CodegenPipeline(Options opts);
 
     [[nodiscard]] PipelineResult run();
+    [[nodiscard]] PipelineResult runWithModule(il::core::Module module,
+                                               std::string debugSourcePath = {},
+                                               bool moduleAlreadyVerified = false);
 
   private:
     Options opts_;

@@ -159,8 +159,8 @@ size_t A64BinaryEncoder::measureInstructionSize(const MInstr &mi,
     measureEncoder.skipFrame_ = skipFrame_;
 
     objfile::CodeSection text;
-    text.reserveBytes(currentOffset + 32);
-    text.emitZeros(currentOffset);
+    text.reserveBytes(32);
+    text.setLogicalOffsetBias(currentOffset);
     measureEncoder.encodeInstruction(mi, text);
     return text.currentOffset() - currentOffset;
 }
@@ -200,6 +200,7 @@ A64BinaryEncoder::LabelOffsetMap A64BinaryEncoder::computeFunctionLabelOffsets(c
                 offset += measureInstructionSize(mi, offset, known);
         }
 
+        lastEstimatedFunctionSize_ = offset;
         if (!changed && next.size() == estimated.size())
             return next;
         estimated = std::move(next);
@@ -239,6 +240,7 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
                                       ABIFormat abi) {
     labelOffsets_.clear();
     pendingBranches_.clear();
+    lastEstimatedFunctionSize_ = 0;
     currentFn_ = &fn;
     currentAbi_ = abi;
     currentRodata_ = &rodata;
@@ -252,7 +254,10 @@ void A64BinaryEncoder::encodeFunction(const MFunction &fn,
         // Define function symbol at current offset.
         const size_t funcStartOffset = text.currentOffset();
         const auto relativeLabelOffsets = computeFunctionLabelOffsets(fn);
-        text.reserveAdditionalBytes(estimateFunctionSize(fn, relativeLabelOffsets));
+        const size_t estimatedSize =
+            lastEstimatedFunctionSize_ != 0 ? lastEstimatedFunctionSize_
+                                            : estimateFunctionSize(fn, relativeLabelOffsets);
+        text.reserveAdditionalBytes(estimatedSize);
         labelOffsets_.clear();
         labelOffsets_.reserve(relativeLabelOffsets.size());
         for (const auto &[label, offset] : relativeLabelOffsets)

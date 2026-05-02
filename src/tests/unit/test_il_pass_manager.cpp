@@ -247,6 +247,46 @@ int main() {
     assert(statsAfter.find("licm") != std::string::npos ||
            statsAfter.find("inline") != std::string::npos);
 
+    {
+        transform::PassManager noVerifyPm;
+        noVerifyPm.registerFunctionPass(
+            "drop-terminator", [](core::Function &fn, transform::AnalysisManager &) {
+                fn.blocks.front().instructions.clear();
+                return transform::PreservedAnalyses::none();
+            });
+        noVerifyPm.registerPipeline("drop", {"drop-terminator"});
+        core::Module broken = parseModule();
+        assert(noVerifyPm.runPipeline(broken, "drop"));
+    }
+
+    {
+        transform::PassManager verifyPm;
+        std::ostringstream verifyStats;
+        verifyPm.setInstrumentationStream(verifyStats);
+        verifyPm.setReportPassStatistics(true);
+        verifyPm.setVerifyBetweenPasses(true);
+        verifyPm.registerFunctionPass(
+            "drop-terminator", [](core::Function &fn, transform::AnalysisManager &) {
+                fn.blocks.front().instructions.clear();
+                return transform::PreservedAnalyses::none();
+            });
+        verifyPm.registerPipeline("drop", {"drop-terminator"});
+        core::Module broken = parseModule();
+        assert(!verifyPm.runPipeline(broken, "drop"));
+        assert(verifyStats.str().find("verify ") == std::string::npos);
+    }
+
+    {
+        transform::PassManager verifyStatsPm;
+        std::ostringstream verifyStats;
+        verifyStatsPm.setInstrumentationStream(verifyStats);
+        verifyStatsPm.setReportPassStatistics(true);
+        verifyStatsPm.setVerifyBetweenPasses(true);
+        core::Module valid = parseModule();
+        assert(verifyStatsPm.runPipeline(valid, "O0"));
+        assert(verifyStats.str().find("verify ") != std::string::npos);
+    }
+
     std::atomic<int> parallelRuns{0};
     pm.registerFunctionPass(
         "count-fns",

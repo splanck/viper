@@ -182,7 +182,8 @@ PreservedAnalyses OwnershipOpt::run(Function &function, AnalysisManager & /*anal
 
 void registerOwnershipOptPass(PassRegistry &registry) {
     registry.registerFunctionPass("ownership-opt",
-                                  []() { return std::make_unique<OwnershipOpt>(); });
+                                  []() { return std::make_unique<OwnershipOpt>(); },
+                                  true);
 }
 
 } // namespace il::transform

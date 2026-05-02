@@ -267,11 +267,13 @@ When a source manager is available, diagnostics include the offending source lin
 
 Several checks now run before a binary or VM run can start:
 
-- Zia and BASIC verify IL immediately after lowering, between optimization passes, and again after optimization.
+- Zia and BASIC verify IL immediately after lowering and again after optimization. Use `--verify-each` to add verifier
+  runs between optimizer passes while debugging pass failures.
 - BASIC assignment and operator type mismatches, such as assigning a string-valued expression to an integer variable or using `MOD` with a float operand, are reported during semantic analysis with `B2001` before IL is emitted.
 - Optimization pipeline failures are surfaced as diagnostics instead of continuing with potentially invalid IL.
 - Bytecode compilation uses checked diagnostics for unsupported or malformed IL, so the VM reports compile failure instead of crashing during execution.
-- Native compilation preflights IL parsing and verification before dispatching to the x64 or ARM64 backend.
+- File-based native codegen loads and verifies textual IL before backend lowering. `viper build` reuses the already
+  verified in-memory module from the frontend pipeline.
 - Zia lexer errors and semantic errors stop compilation before lowering, so bad token streams cannot still produce IL.
 - Literal fixed-array indexes are checked at compile time when the array length is known.
 

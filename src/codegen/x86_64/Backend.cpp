@@ -40,6 +40,7 @@
 #include "codegen/common/objfile/DebugLineTable.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cstddef>
@@ -48,9 +49,11 @@
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <string_view>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 
@@ -282,6 +285,27 @@ static void seedDebugFiles(DebugLineTable &table,
         table.addFileSlot(filePath);
 }
 
+static void seedDebugFiles(DebugLineTable &table,
+                           const MFunction &fn,
+                           std::string_view debugSourcePath) {
+    uint32_t maxFileId = 1;
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.loc.file_id > maxFileId)
+                maxFileId = instr.loc.file_id;
+        }
+    }
+
+    std::string filePath = std::string(debugSourcePath);
+    if (filePath.empty())
+        filePath = "<source>";
+    else
+        filePath = std::filesystem::path(filePath).lexically_normal().string();
+
+    for (uint32_t fileId = 1; fileId <= maxFileId; ++fileId)
+        table.addFileSlot(filePath);
+}
+
 } // namespace
 
 const TargetInfo &selectTarget(CodegenOptions::TargetABI abi) noexcept {
@@ -342,8 +366,47 @@ bool allocateModuleMIR(std::vector<MFunction> &mir,
         return false;
     }
 
-    for (std::size_t i = 0; i < mir.size(); ++i) {
-        allocateFunctionPipeline(mir[i], target, options, frames[i]);
+    std::string firstError;
+    std::mutex errorMutex;
+    auto allocateOne = [&](std::size_t index) {
+        try {
+            allocateFunctionPipeline(mir[index], target, options, frames[index]);
+        } catch (const std::exception &ex) {
+            std::lock_guard<std::mutex> lock(errorMutex);
+            if (firstError.empty())
+                firstError = ex.what();
+        }
+    };
+
+    const std::size_t workerCount =
+        std::min(mir.size(),
+                 std::max<std::size_t>(
+                     1, static_cast<std::size_t>(std::thread::hardware_concurrency())));
+    if (workerCount <= 1) {
+        for (std::size_t i = 0; i < mir.size(); ++i)
+            allocateOne(i);
+    } else {
+        std::atomic_size_t nextIndex{0};
+        std::vector<std::thread> workers;
+        workers.reserve(workerCount);
+        for (std::size_t worker = 0; worker < workerCount; ++worker) {
+            workers.emplace_back([&]() {
+                for (;;) {
+                    const std::size_t index =
+                        nextIndex.fetch_add(1, std::memory_order_relaxed);
+                    if (index >= mir.size())
+                        break;
+                    allocateOne(index);
+                }
+            });
+        }
+        for (auto &worker : workers)
+            worker.join();
+    }
+
+    if (!firstError.empty()) {
+        errors = firstError;
+        return false;
     }
 
     // Strip identity moves (mov r, r) that the register allocator may insert
@@ -385,8 +448,47 @@ bool optimizeModuleMIR(std::vector<MFunction> &mir,
         return true;
 
     const TargetInfo &target = selectTarget(options.targetABI);
-    for (auto &fn : mir) {
-        runPeepholes(fn, target);
+    std::string firstError;
+    std::mutex errorMutex;
+    auto optimizeOne = [&](std::size_t index) {
+        try {
+            runPeepholes(mir[index], target);
+        } catch (const std::exception &ex) {
+            std::lock_guard<std::mutex> lock(errorMutex);
+            if (firstError.empty())
+                firstError = ex.what();
+        }
+    };
+
+    const std::size_t workerCount =
+        std::min(mir.size(),
+                 std::max<std::size_t>(
+                     1, static_cast<std::size_t>(std::thread::hardware_concurrency())));
+    if (workerCount <= 1) {
+        for (std::size_t index = 0; index < mir.size(); ++index)
+            optimizeOne(index);
+    } else {
+        std::atomic_size_t nextIndex{0};
+        std::vector<std::thread> workers;
+        workers.reserve(workerCount);
+        for (std::size_t worker = 0; worker < workerCount; ++worker) {
+            workers.emplace_back([&]() {
+                for (;;) {
+                    const std::size_t index =
+                        nextIndex.fetch_add(1, std::memory_order_relaxed);
+                    if (index >= mir.size())
+                        break;
+                    optimizeOne(index);
+                }
+            });
+        }
+        for (auto &worker : workers)
+            worker.join();
+    }
+
+    if (!firstError.empty()) {
+        errors = firstError;
+        return false;
     }
     return true;
 }
@@ -496,7 +598,7 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
     std::ostringstream errorStream{};
     const objfile::ObjFormat format = targetObjectFormat(opt.targetPlatform);
     const bool emitWin64Unwind = format == objfile::ObjFormat::COFF;
-    const bool emitDebugLines = format != objfile::ObjFormat::COFF;
+    const bool emitDebugLines = opt.emitDebugLines && format != objfile::ObjFormat::COFF;
 
     if (const auto warning = syntaxWarning(opt); !warning.empty()) {
         // Syntax warnings don't apply to binary emission, but keep parity.
@@ -537,7 +639,7 @@ BinaryEmitResult emitMIRToBinary(const std::vector<MFunction> &mir,
         objfile::CodeSection funcText;
         DebugLineTable funcDebugLines;
         if (emitDebugLines)
-            seedDebugFiles(funcDebugLines, std::vector<MFunction>{mir[i]}, opt.debugSourcePath);
+            seedDebugFiles(funcDebugLines, mir[i], opt.debugSourcePath);
 
         binenc::X64BinaryEncoder funcEncoder;
         if (emitDebugLines)

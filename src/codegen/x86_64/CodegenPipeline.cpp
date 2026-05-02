@@ -49,6 +49,7 @@
 #include <sstream>
 #include <string_view>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace viper::codegen::x64 {
@@ -332,6 +333,26 @@ PipelineResult CodegenPipeline::run() {
         return result;
     }
 
+    return runWithModule(std::move(module), opts_.input_il_path, true);
+}
+
+PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
+                                              std::string debugSourcePath,
+                                              bool moduleAlreadyVerified) {
+    PipelineResult result{0, "", ""};
+    std::ostringstream out;
+    std::ostringstream err;
+
+    if (debugSourcePath.empty())
+        debugSourcePath = opts_.input_il_path;
+
+    if (!moduleAlreadyVerified && !il::tools::common::verifyModule(module, err)) {
+        result.exit_code = 1;
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
+
     viper::codegen::common::lowerNativeEh(module);
     if (const auto residualEh = viper::codegen::common::findResidualStructuredEh(module)) {
         err << "error: " << *residualEh << "\n";
@@ -381,7 +402,8 @@ PipelineResult CodegenPipeline::run() {
     codegenOpts.optimizeLevel = opts_.optimize;
     codegenOpts.targetABI = opts_.target_abi;
     codegenOpts.targetPlatform = targetPlatform;
-    codegenOpts.debugSourcePath = opts_.input_il_path;
+    codegenOpts.debugSourcePath = debugSourcePath;
+    codegenOpts.emitDebugLines = opts_.emit_debug_lines;
     pipelineModule.options = codegenOpts;
     pipelineModule.target = &selectTarget(pipelineModule.options.targetABI);
 

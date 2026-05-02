@@ -87,7 +87,7 @@ PreservedAnalyses Devirtualize::run(Function &function, AnalysisManager & /*anal
 }
 
 void registerDevirtualizePass(PassRegistry &registry) {
-    registry.registerFunctionPass("devirt", []() { return std::make_unique<Devirtualize>(); });
+    registry.registerFunctionPass("devirt", []() { return std::make_unique<Devirtualize>(); }, true);
 }
 
 } // namespace il::transform
