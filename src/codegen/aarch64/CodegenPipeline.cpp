@@ -265,6 +265,8 @@ bool runCodegenPipeline(passes::AArch64Module &module,
 
     {
         passes::PassManager manager;
+        if (opts.timePasses)
+            manager.setTimingStream(&diagOut, "aarch64");
         manager.addPass(std::make_unique<passes::LoweringPass>());
         manager.addPass(std::make_unique<passes::LegalizePass>());
         if (opts.optimizeLevel >= 1)
@@ -278,6 +280,8 @@ bool runCodegenPipeline(passes::AArch64Module &module,
 
     {
         passes::PassManager manager;
+        if (opts.timePasses)
+            manager.setTimingStream(&diagOut, "aarch64");
         manager.addPass(std::make_unique<passes::RegAllocPass>());
         if (!manager.run(module, diags))
             return flushOnFailure();
@@ -288,6 +292,8 @@ bool runCodegenPipeline(passes::AArch64Module &module,
 
     if (opts.optimizeLevel >= 1) {
         passes::PassManager manager;
+        if (opts.timePasses)
+            manager.setTimingStream(&diagOut, "aarch64");
         manager.addPass(std::make_unique<passes::BlockLayoutPass>());
         manager.addPass(std::make_unique<passes::PeepholePass>());
         manager.addPass(std::make_unique<passes::SchedulerPass>());
@@ -301,6 +307,8 @@ bool runCodegenPipeline(passes::AArch64Module &module,
 
     {
         passes::PassManager manager;
+        if (opts.timePasses)
+            manager.setTimingStream(&diagOut, "aarch64");
         if (opts.emitAssemblyText)
             manager.addPass(std::make_unique<passes::EmitPass>());
         if (opts.useBinaryEmit)
@@ -412,6 +420,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
                                 (opts_.output_obj_path.empty() && !opts_.run_native);
     pipeOpts.useBinaryEmit = opts_.assembler_mode == AssemblerMode::Native;
     pipeOpts.optimizeLevel = opts_.optimize;
+    pipeOpts.timePasses = opts_.time_passes;
 
     if (!runCodegenPipeline(pipelineModule, pipeOpts, err)) {
         result.exit_code = 1;

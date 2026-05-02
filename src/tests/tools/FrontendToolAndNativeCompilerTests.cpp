@@ -15,6 +15,7 @@
 #include "tools/common/project_loader.hpp"
 #include "tools/viper/cmd_codegen_x64.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <filesystem>
 #include <fstream>
@@ -127,6 +128,8 @@ void testProjectDefaultsUseBalancedOptimization() {
     assert(resolved);
     assert(resolved.value().buildProfile == "balanced");
     assert(resolved.value().optimizeLevel == "O1");
+    assert(!resolved.value().buildProfileExplicit);
+    assert(!resolved.value().optimizeLevelExplicit);
 
     std::filesystem::remove_all(dir);
 }
@@ -149,6 +152,8 @@ void testProjectProfilesMapToOptimizationLevels() {
     assert(resolved);
     assert(resolved.value().buildProfile == "release");
     assert(resolved.value().optimizeLevel == "O2");
+    assert(resolved.value().buildProfileExplicit);
+    assert(!resolved.value().optimizeLevelExplicit);
 
     writeText(dir / "viper.project",
               "project perf\n"
@@ -161,6 +166,35 @@ void testProjectProfilesMapToOptimizationLevels() {
     assert(overridden);
     assert(overridden.value().buildProfile == "release");
     assert(overridden.value().optimizeLevel == "O1");
+    assert(overridden.value().buildProfileExplicit);
+    assert(overridden.value().optimizeLevelExplicit);
+
+    std::filesystem::remove_all(dir);
+}
+
+void testConventionDiscoverySkipsGeneratedAndVendorTrees() {
+    using namespace il::tools::common;
+    using namespace viper::tools;
+
+    std::filesystem::path dir = std::filesystem::path(generateTempIlPath()).replace_extension("");
+    std::filesystem::create_directories(dir / "build");
+    std::filesystem::create_directories(dir / "vendor");
+    std::filesystem::create_directories(dir / "node_modules" / "pkg");
+    writeText(dir / "main.zia", "module main;\nfunc start() {}\n");
+    writeText(dir / "build" / "ignored.zia", "module ignored;\nfunc helper() {}\n");
+    writeText(dir / "vendor" / "ignored.zia", "module ignored_vendor;\nfunc helper() {}\n");
+    writeText(dir / "node_modules" / "pkg" / "ignored.zia",
+              "module ignored_node;\nfunc helper() {}\n");
+
+    auto resolved = resolveProject(dir.string());
+    assert(resolved);
+    assert(resolved.value().sourceFiles.size() == 1);
+    assert(std::filesystem::path(resolved.value().sourceFiles.front()).filename() == "main.zia");
+    assert(std::find_if(resolved.value().sourceFiles.begin(),
+                        resolved.value().sourceFiles.end(),
+                        [](const std::string &path) {
+                            return path.find("ignored.zia") != std::string::npos;
+                        }) == resolved.value().sourceFiles.end());
 
     std::filesystem::remove_all(dir);
 }
@@ -174,5 +208,6 @@ int main() {
     testX64CodegenAcceptsDebugLineFlags();
     testProjectDefaultsUseBalancedOptimization();
     testProjectProfilesMapToOptimizationLevels();
+    testConventionDiscoverySkipsGeneratedAndVendorTrees();
     return 0;
 }

@@ -37,6 +37,7 @@
 #include "frontends/basic/passes/CollectProcs.hpp"
 #include "il/verify/Verifier.hpp"
 #include "viper/il/IO.hpp"
+#include <chrono>
 #include <iostream>
 
 namespace il::frontends::basic {
@@ -122,6 +123,15 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
                                  const BasicCompilerOptions &options,
                                  il::support::SourceManager &sm) {
     BasicCompilerResult result{};
+    auto phaseStart = std::chrono::steady_clock::now();
+    auto printPhaseTime = [&](const char *phase) {
+        if (!options.timeCompile)
+            return;
+        const auto elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - phaseStart);
+        std::cerr << "[time-compile] basic." << phase << " " << elapsed.count() << "ms\n";
+        phaseStart = std::chrono::steady_clock::now();
+    };
     result.emitter = std::make_unique<DiagnosticEmitter>(result.diagnostics, sm);
 
     uint32_t fileId = input.fileId.value_or(0);
@@ -142,11 +152,13 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
 
     result.emitter->addSource(fileId, std::string{input.source});
     sm.setSource(fileId, std::string{input.source});
+    printPhaseTime("source-manager");
 
     // Dump token stream before parsing if requested.
     if (options.dumpTokens) {
         dumpTokenStream(input.source, fileId);
     }
+    printPhaseTime("tokens");
 
     // Runtime namespaces feature is controlled globally via FrontendOptions (default ON).
     // Allow disabling via environment variable for CLI/debugging.
@@ -164,6 +176,7 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     if (!program) {
         return result;
     }
+    printPhaseTime("parse");
 
     // Dump AST after parsing.
     if (options.dumpAst) {
@@ -177,9 +190,11 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     CollectProcedures(*program);
 
     foldConstants(*program);
+    printPhaseTime("fold");
 
     SemanticAnalyzer sema(*result.emitter);
     sema.analyze(*program);
+    printPhaseTime("sema");
 
     if (!result.succeeded()) {
         return result;
@@ -189,13 +204,17 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     lower.setDiagnosticEmitter(result.emitter.get());
     lower.setSemanticAnalyzer(&sema);
     result.module = lower.lower(*program);
+    result.moduleVerified = false;
     if (!result.succeeded()) {
         return result;
     }
+    printPhaseTime("lower");
 
     if (!reportVerifierDiagnostics(result)) {
         return result;
     }
+    result.moduleVerified = true;
+    printPhaseTime("verify-lower");
 
     // Dump IL after lowering, before optimization.
     if (options.dumpIL) {

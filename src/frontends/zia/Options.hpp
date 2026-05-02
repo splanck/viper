@@ -74,10 +74,17 @@ struct CompilerOptions {
     /// @brief Print per-pass IL optimization statistics to stderr.
     bool passStats{false};
 
+    /// @brief Print frontend phase timings to stderr.
+    bool timeCompile{false};
+
+    /// @brief Allow audited function passes to run in parallel.
+    bool parallelFunctionPasses{false};
+
     /// @brief Optimization level for IL transformations.
     /// @details Frontend embedders default to O0 so tests and tools can inspect
-    ///          raw lowering. Project loading and `viper run/build` default to
-    ///          O1 for real applications unless overridden.
+    ///          raw lowering. `viper build` defaults to O1 for artifacts while
+    ///          `viper run` defaults to O0 unless the project or CLI asks for
+    ///          optimization.
     OptLevel optLevel{OptLevel::O0};
 
     /// @brief Warning policy controlling which warnings are enabled, whether

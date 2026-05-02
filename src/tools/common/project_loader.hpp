@@ -66,6 +66,12 @@ struct ProjectConfig {
     /// @brief Optimization level string ("O0", "O1", "O2").
     std::string optimizeLevel{"O1"};
 
+    /// @brief True when the manifest explicitly set a build profile.
+    bool buildProfileExplicit{false};
+
+    /// @brief True when the manifest explicitly set an optimization level.
+    bool optimizeLevelExplicit{false};
+
     /// @brief Enable runtime bounds checks.
     bool boundsChecks{true};
 

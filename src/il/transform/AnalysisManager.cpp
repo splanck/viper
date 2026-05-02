@@ -54,6 +54,8 @@ class AnalysisCacheInvalidator {
         assertWellFormed();
         if (!manager_.functionAnalyses_)
             return;
+        if (manager_.functionCache_.empty())
+            return;
         if (preserved_.preservesAllFunctionAnalyses())
             return;
         if (!preserved_.hasFunctionPreservations()) {
@@ -92,6 +94,8 @@ class AnalysisCacheInvalidator {
     void invalidateModuleCache() {
         if (!manager_.moduleAnalyses_)
             return;
+        if (manager_.moduleCache_.empty())
+            return;
         if (preserved_.preservesAllModuleAnalyses())
             return;
         if (!preserved_.hasModulePreservations()) {
@@ -114,6 +118,8 @@ class AnalysisCacheInvalidator {
     ///          analyses are preserved, only the stale per-analysis entries are removed.
     void invalidateFunctionCacheForModulePass() {
         if (!manager_.functionAnalyses_)
+            return;
+        if (manager_.functionCache_.empty())
             return;
         if (preserved_.preservesAllFunctionAnalyses())
             return;

@@ -78,6 +78,10 @@ class PreservedAnalyses {
     /// @return True if all function analyses remain valid.
     bool preservesAllFunctionAnalyses() const;
 
+    /// @brief Check if both module and function analyses are fully preserved.
+    /// @return True when the pass reported no IR mutation requiring invalidation.
+    bool preservesAllAnalyses() const;
+
     /// @brief Check if a specific module analysis is preserved.
     /// @param id Analysis identifier to query.
     /// @return True if the module analysis remains valid.

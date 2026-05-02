@@ -409,6 +409,8 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
 
     passes::Diagnostics diagnostics{};
     passes::PassManager manager{};
+    if (opts_.time_passes)
+        manager.setTimingStream(&err, "x86_64");
     manager.addPass(std::make_unique<passes::LoweringPass>());
     manager.addPass(std::make_unique<passes::LegalizePass>());
     if (codegenOpts.optimizeLevel >= 1)

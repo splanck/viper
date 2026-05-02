@@ -120,6 +120,10 @@ bool PreservedAnalyses::preservesAllFunctionAnalyses() const {
     return preserveAllFunctions_;
 }
 
+bool PreservedAnalyses::preservesAllAnalyses() const {
+    return preserveAllModules_ && preserveAllFunctions_ && changedFunctions_.empty();
+}
+
 /// @brief Determine whether a specific module analysis is preserved.
 /// @details Checks the fast-path flag and falls back to the preserved identifier
 ///          set, enabling selective retention of cached results.

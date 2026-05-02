@@ -27,6 +27,7 @@
 #include <cassert>
 #include <chrono>
 #include <iostream>
+#include <string_view>
 #include <thread>
 #include <utility>
 
@@ -40,6 +41,10 @@ PipelineExecutor::PassMetrics::IRSize computeIRSize(const core::Module &module) 
             size.instructions += block.instructions.size();
     }
     return size;
+}
+
+bool isCleanupPass(std::string_view passId) {
+    return passId == "dce" || passId == "simplify-cfg" || passId == "late-cleanup";
 }
 } // namespace
 
@@ -78,8 +83,20 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
     if (instrumentation_.printAfter)
         driver.setPrintAfterHook(instrumentation_.printAfter);
 
+    bool changedSinceLastCleanup = true;
+    bool hasRunAnyPass = false;
     for (const auto &passId : pipeline) {
-        driver.registerPass(passId, [this, &module, &analysis, passId, collectMetrics]() -> bool {
+        driver.registerPass(passId,
+                            [this,
+                             &module,
+                             &analysis,
+                             &changedSinceLastCleanup,
+                             &hasRunAnyPass,
+                             passId,
+                             collectMetrics]() -> bool {
+            if (hasRunAnyPass && isCleanupPass(passId) && !changedSinceLastCleanup)
+                return true;
+
             PassMetrics metrics{};
             AnalysisCounts countsBefore{};
             std::chrono::steady_clock::time_point startTime{};
@@ -95,6 +112,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                 return false;
 
             bool executed = false;
+            bool passChanged = false;
             switch (factory->kind) {
                 case detail::PassKind::Module: {
                     if (!factory->makeModule)
@@ -103,6 +121,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                     if (!pass)
                         return false;
                     PreservedAnalyses preserved = pass->run(module, analysis);
+                    passChanged = !preserved.preservesAllAnalyses();
                     analysis.invalidateAfterModulePass(preserved);
                     executed = true;
                     break;
@@ -111,12 +130,14 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                     if (!factory->makeFunction)
                         return false;
 
-                    auto runFunctionPass = [&](core::Function &fn, AnalysisManager &functionAnalysis)
-                        -> bool {
+                    auto runFunctionPass = [&](core::Function &fn,
+                                               AnalysisManager &functionAnalysis,
+                                               bool &functionChanged) -> bool {
                         auto pass = factory->makeFunction();
                         if (!pass)
                             return false;
                         PreservedAnalyses preserved = pass->run(fn, functionAnalysis);
+                        functionChanged = !preserved.preservesAllAnalyses();
                         functionAnalysis.invalidateAfterFunctionPass(preserved, fn);
                         return true;
                     };
@@ -131,6 +152,7 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                             std::max<std::size_t>(1, std::thread::hardware_concurrency()));
                         std::atomic_size_t nextIndex{0};
                         std::atomic_bool allOk{true};
+                        std::atomic_bool anyChanged{false};
                         std::vector<std::thread> workers;
                         workers.reserve(workerCount);
                         for (std::size_t w = 0; w < workerCount; ++w) {
@@ -140,17 +162,25 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                                     std::size_t idx = nextIndex.fetch_add(1);
                                     if (idx >= module.functions.size())
                                         break;
-                                    if (!runFunctionPass(module.functions[idx], workerAnalysis))
+                                    bool functionChanged = false;
+                                    if (!runFunctionPass(
+                                            module.functions[idx], workerAnalysis, functionChanged))
                                         allOk.store(false, std::memory_order_relaxed);
+                                    if (functionChanged)
+                                        anyChanged.store(true, std::memory_order_relaxed);
                                 }
                             });
                         }
                         for (auto &worker : workers)
                             worker.join();
                         executedAll = allOk.load(std::memory_order_relaxed);
+                        passChanged = anyChanged.load(std::memory_order_relaxed);
                     } else {
-                        for (auto &fn : module.functions)
-                            executedAll &= runFunctionPass(fn, analysis);
+                        for (auto &fn : module.functions) {
+                            bool functionChanged = false;
+                            executedAll &= runFunctionPass(fn, analysis, functionChanged);
+                            passChanged = passChanged || functionChanged;
+                        }
                     }
 
                     executed = executedAll;
@@ -184,6 +214,12 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                 metrics.duration = passEndTime - startTime;
                 instrumentation_.passMetrics(passId, metrics);
             }
+
+            hasRunAnyPass = true;
+            if (isCleanupPass(passId))
+                changedSinceLastCleanup = passChanged;
+            else if (passChanged)
+                changedSinceLastCleanup = true;
 
             return true;
         });

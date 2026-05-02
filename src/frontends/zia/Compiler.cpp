@@ -56,6 +56,7 @@
 #include "viper/il/IO.hpp"
 #include <chrono>
 #include <cstddef>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 
@@ -107,6 +108,15 @@ CompilerResult compile(const CompilerInput &input,
                        const CompilerOptions &options,
                        il::support::SourceManager &sm) {
     CompilerResult result{};
+    auto phaseStart = std::chrono::steady_clock::now();
+    auto printPhaseTime = [&](const char *phase) {
+        if (!options.timeCompile)
+            return;
+        const auto elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - phaseStart);
+        std::cerr << "[time-compile] zia." << phase << " " << elapsed.count() << "ms\n";
+        phaseStart = std::chrono::steady_clock::now();
+    };
 
     // Register source file if not already registered
     if (input.fileId.has_value()) {
@@ -122,6 +132,7 @@ CompilerResult compile(const CompilerInput &input,
         return result;
     }
     sm.setSource(result.fileId, std::string(input.source));
+    printPhaseTime("source-manager");
 
     // Debug timing
     auto debugTime = [](const char *phase) {
@@ -136,6 +147,7 @@ CompilerResult compile(const CompilerInput &input,
         if (result.diagnostics.errorCount() > 0)
             return result;
     }
+    printPhaseTime("tokens");
 
     debugTime("Phase 1: Lexing");
     // Phase 1: Lexing
@@ -150,6 +162,7 @@ CompilerResult compile(const CompilerInput &input,
         // Parse failed, return with diagnostics
         return result;
     }
+    printPhaseTime("parse");
 
     // Dump AST after parsing (before sema).
     if (options.dumpAst) {
@@ -172,10 +185,12 @@ CompilerResult compile(const CompilerInput &input,
         if (result.diagnostics.errorCount() > 0)
             return result;
     }
+    printPhaseTime("imports");
 
     debugTime("Phase 3: Semantic Analysis");
     // Phase 3: Semantic Analysis
     bool semanticOk = sema.analyze(*module);
+    printPhaseTime("sema");
 
     // Dump AST after semantic analysis.
     if (options.dumpSemaAst) {
@@ -195,9 +210,13 @@ CompilerResult compile(const CompilerInput &input,
     result.module = lowerer.lower(*module);
     if (result.diagnostics.errorCount() > 0)
         return result;
+    result.moduleVerified = false;
+    printPhaseTime("lower");
     if (!reportVerifierDiagnostics(result.module, result.diagnostics)) {
         return result;
     }
+    result.moduleVerified = true;
+    printPhaseTime("verify-lower");
     debugTime("Phase 4: Done");
 
     // Dump IL after lowering, before optimization.
@@ -215,6 +234,8 @@ CompilerResult compile(const CompilerInput &input,
         pm.setVerifyBetweenPasses(options.verifyEachPass);
         pm.setReportPassStatistics(options.passStats);
         pm.setInstrumentationStream(std::cerr);
+        pm.enableParallelFunctionPasses(options.parallelFunctionPasses && !options.verifyEachPass &&
+                                        !options.dumpILPasses);
 
         // Enable per-pass IL dumps when requested.
         if (options.dumpILPasses) {
@@ -223,6 +244,7 @@ CompilerResult compile(const CompilerInput &input,
         }
 
         const std::string pipelineId = (options.optLevel == OptLevel::O2) ? "O2" : "O1";
+        result.moduleVerified = false;
         if (!pm.runPipeline(result.module, pipelineId)) {
             result.diagnostics.report(
                 {il::support::Severity::Error,
@@ -231,10 +253,13 @@ CompilerResult compile(const CompilerInput &input,
                  "V-OPT-PIPELINE"});
             return result;
         }
+        printPhaseTime("optimize");
 
         if (!reportVerifierDiagnostics(result.module, result.diagnostics)) {
             return result;
         }
+        result.moduleVerified = true;
+        printPhaseTime("verify-opt");
     }
 
     // Dump IL after the full optimization pipeline.
@@ -253,6 +278,7 @@ CompilerResult compile(const CompilerInput &input,
 CompilerResult compileFile(const std::string &path,
                            const CompilerOptions &options,
                            il::support::SourceManager &sm) {
+    auto readStart = std::chrono::steady_clock::now();
     // Read file contents
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file) {
@@ -266,9 +292,30 @@ CompilerResult compileFile(const std::string &path,
 
     const auto size = file.tellg();
     file.seekg(0);
+    if (size < 0) {
+        CompilerResult result{};
+        result.diagnostics.report({il::support::Severity::Error,
+                                   "Failed to determine file size: " + path,
+                                   il::support::SourceLoc{},
+                                   "V1000"});
+        return result;
+    }
     std::string source(static_cast<std::size_t>(size), '\0');
     if (size > 0)
         file.read(source.data(), size);
+    if (!file) {
+        CompilerResult result{};
+        result.diagnostics.report({il::support::Severity::Error,
+                                   "Failed to read file: " + path,
+                                   il::support::SourceLoc{},
+                                   "V1000"});
+        return result;
+    }
+    if (options.timeCompile) {
+        const auto elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - readStart);
+        std::cerr << "[time-compile] zia.read " << elapsed.count() << "ms\n";
+    }
 
     CompilerInput input;
     input.source = source;

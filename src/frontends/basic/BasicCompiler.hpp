@@ -112,6 +112,9 @@ struct BasicCompilerOptions {
 
     /// @brief Dump IL before and after each optimization pass.
     bool dumpILPasses{false};
+
+    /// @brief Print frontend phase timings to stderr.
+    bool timeCompile{false};
 };
 
 /// @brief Input parameters describing the source to compile.
@@ -136,6 +139,9 @@ struct BasicCompilerResult {
     uint32_t fileId{0};
     /// @brief Lowered IL module.
     il::core::Module module{};
+
+    /// @brief True when the module has been verified since the last mutation.
+    bool moduleVerified{false};
 
     /// @brief Helper indicating whether compilation succeeded without errors.
     [[nodiscard]] bool succeeded() const;

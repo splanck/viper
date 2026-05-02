@@ -14,11 +14,15 @@
 #include "tools/common/project_loader.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
-#include <regex>
+#include <initializer_list>
+#include <mutex>
 #include <sstream>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 
 namespace fs = std::filesystem;
 
@@ -45,9 +49,44 @@ il::support::Diag makeManifestErr(const std::string &path, int line, const std::
 std::vector<std::string> collectFiles(const fs::path &dir,
                                       const std::string &ext,
                                       const std::vector<std::string> &excludes) {
+    struct CacheEntry {
+        fs::file_time_type stamp{};
+        std::vector<std::string> files;
+    };
+    static std::unordered_map<std::string, CacheEntry> cache;
+    static std::mutex cacheMutex;
+
+    std::string key = fs::absolute(dir).lexically_normal().string();
+    key.push_back('\n');
+    key += ext;
+    for (const auto &ex : excludes) {
+        key.push_back('\n');
+        key += ex;
+    }
+
+    std::error_code stampEc;
+    const auto stamp = fs::last_write_time(dir, stampEc);
+    if (!stampEc) {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        if (auto it = cache.find(key); it != cache.end() && it->second.stamp == stamp)
+            return it->second.files;
+    }
+
     std::vector<std::string> result;
     if (!fs::is_directory(dir))
         return result;
+
+    std::vector<std::string> effectiveExcludes = excludes;
+    effectiveExcludes.insert(effectiveExcludes.end(),
+                             {".git",
+                              ".svn",
+                              ".hg",
+                              "build",
+                              "build-",
+                              "cmake-build",
+                              "node_modules",
+                              "vendor",
+                              ".viper-cache"});
 
     for (auto it =
              fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied);
@@ -56,7 +95,7 @@ std::vector<std::string> collectFiles(const fs::path &dir,
         // Check excludes against the relative path from dir
         if (it->is_directory()) {
             auto rel = fs::relative(it->path(), dir).string();
-            for (const auto &ex : excludes) {
+            for (const auto &ex : effectiveExcludes) {
                 // Match if the relative path starts with the exclude prefix
                 if (rel == ex || rel.rfind(ex, 0) == 0) {
                     it.disable_recursion_pending();
@@ -72,7 +111,45 @@ std::vector<std::string> collectFiles(const fs::path &dir,
     }
 
     std::sort(result.begin(), result.end());
+    if (!stampEc) {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        cache[key] = CacheEntry{stamp, result};
+    }
     return result;
+}
+
+bool startsWithKeywordLine(std::string_view line,
+                           std::initializer_list<std::string_view> keywords,
+                           bool caseInsensitive) {
+    std::size_t pos = line.find_first_not_of(" \t");
+    if (pos == std::string_view::npos)
+        return false;
+    line.remove_prefix(pos);
+    for (std::string_view keyword : keywords) {
+        if (line.size() < keyword.size())
+            continue;
+        bool matches = true;
+        for (std::size_t i = 0; i < keyword.size(); ++i) {
+            char lhs = line[i];
+            char rhs = keyword[i];
+            if (caseInsensitive) {
+                lhs = static_cast<char>(std::tolower(static_cast<unsigned char>(lhs)));
+                rhs = static_cast<char>(std::tolower(static_cast<unsigned char>(rhs)));
+            }
+            if (lhs != rhs) {
+                matches = false;
+                break;
+            }
+        }
+        if (!matches)
+            continue;
+        if (line.size() == keyword.size())
+            return true;
+        const char next = line[keyword.size()];
+        if (next == ' ' || next == '\t' || next == '(')
+            return true;
+    }
+    return false;
 }
 
 /// @brief Check if a file contains a Zia entry point (func start() or func main()).
@@ -82,11 +159,28 @@ bool hasZiaEntryPoint(const std::string &path) {
     if (!file.is_open())
         return false;
 
-    // Match "func start(" or "func main(" with optional whitespace
-    static const std::regex entryPattern(R"(^\s*func\s+(start|main)\s*\()");
     std::string line;
     while (std::getline(file, line)) {
-        if (std::regex_search(line, entryPattern))
+        std::size_t pos = line.find_first_not_of(" \t");
+        if (pos == std::string::npos)
+            continue;
+        std::string_view sv(line);
+        sv.remove_prefix(pos);
+        if (sv.rfind("func", 0) != 0)
+            continue;
+        sv.remove_prefix(4);
+        pos = sv.find_first_not_of(" \t");
+        if (pos == std::string_view::npos)
+            continue;
+        sv.remove_prefix(pos);
+        auto isEntryName = [](std::string_view rest, std::string_view name) {
+            if (rest.rfind(name, 0) != 0)
+                return false;
+            rest.remove_prefix(name.size());
+            const std::size_t lparen = rest.find_first_not_of(" \t");
+            return lparen != std::string_view::npos && rest[lparen] == '(';
+        };
+        if (isEntryName(sv, "start") || isEntryName(sv, "main"))
             return true;
     }
     return false;
@@ -98,10 +192,9 @@ bool hasBasicAddFile(const std::string &path) {
     if (!file.is_open())
         return false;
 
-    static const std::regex addFilePattern(R"(^\s*AddFile\s+)");
     std::string line;
     while (std::getline(file, line)) {
-        if (std::regex_search(line, addFilePattern))
+        if (startsWithKeywordLine(line, {"AddFile"}, true))
             return true;
     }
     return false;
@@ -113,14 +206,6 @@ bool hasBasicTopLevelCode(const std::string &path) {
     std::ifstream file(path);
     if (!file.is_open())
         return false;
-
-    // Simple heuristic: look for lines that aren't blank, comments,
-    // SUB/FUNCTION/END SUB/END FUNCTION definitions, or AddFile/Dim
-    static const std::regex subFuncPattern(R"(^\s*(Sub|Function|End Sub|End Function)\b)",
-                                           std::regex::icase);
-    static const std::regex execPattern(
-        R"(^\s*(Print|Input|If|For|While|Do|Call|Let|Dim|Goto|GoSub|Return|AddFile)\b)",
-        std::regex::icase);
 
     std::string line;
     while (std::getline(file, line)) {
@@ -136,7 +221,21 @@ bool hasBasicTopLevelCode(const std::string &path) {
             continue;
 
         // If it matches an executable statement, this file has top-level code
-        if (std::regex_search(line, execPattern))
+        if (startsWithKeywordLine(line,
+                                  {"Print",
+                                   "Input",
+                                   "If",
+                                   "For",
+                                   "While",
+                                   "Do",
+                                   "Call",
+                                   "Let",
+                                   "Dim",
+                                   "Goto",
+                                   "GoSub",
+                                   "Return",
+                                   "AddFile"},
+                                  true))
             return true;
     }
     return false;
@@ -381,6 +480,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             if (!mapped)
                 return il::support::Expected<ProjectConfig>(mapped.error());
             config.buildProfile = value;
+            config.buildProfileExplicit = true;
             if (!hasOptimize)
                 config.optimizeLevel = mapped.value();
         } else if (directive == "optimize") {
@@ -393,6 +493,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
                                        "invalid optimize level '" + value +
                                            "'; expected O0, O1, or O2");
             config.optimizeLevel = value;
+            config.optimizeLevelExplicit = true;
         } else if (directive == "bounds-checks") {
             if (hasBoundsChecks)
                 return makeManifestErr(

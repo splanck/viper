@@ -48,6 +48,7 @@ struct PipelineOptions {
     bool emitAssemblyText = true;
     bool useBinaryEmit = false; ///< When true, also run BinaryEmitPass after EmitPass.
     int optimizeLevel = 1;      ///< Backend optimization level: 0 disables post-RA backend passes.
+    bool timePasses = false;    ///< Emit per-backend-pass timings.
 };
 
 class CodegenPipeline {
@@ -84,6 +85,7 @@ class CodegenPipeline {
         LinkMode link_mode = LinkMode::Native;
         TargetPlatform target_platform = TargetPlatform::Host;
         bool emit_debug_lines = false;
+        bool time_passes = false; ///< Emit per-backend-pass timings.
         std::string asset_blob_path{};            ///< Path to VPA asset blob for .rodata embedding.
         std::vector<std::string> extra_objects{}; ///< Extra .o files to link.
     };

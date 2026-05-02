@@ -15,8 +15,11 @@
 #include "frontends/zia/Parser.hpp"
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace il::frontends::zia {
@@ -61,20 +64,66 @@ std::string ImportResolver::resolveImportPath(const std::string &importPath,
 
 std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
                                                       il::support::SourceLoc importLoc) {
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file) {
-        diag_.report({il::support::Severity::Error,
-                      "Failed to open imported file: " + path,
-                      importLoc,
-                      "V1000"});
-        return nullptr;
+    struct CachedSource {
+        std::filesystem::file_time_type stamp{};
+        std::uintmax_t size{0};
+        std::string source;
+    };
+    static std::unordered_map<std::string, CachedSource> sourceCache;
+    static std::mutex sourceCacheMutex;
+
+    const std::string normalized = normalizePath(path);
+    std::error_code stampEc;
+    std::error_code sizeEc;
+    const auto stamp = std::filesystem::last_write_time(path, stampEc);
+    const auto fileSize = std::filesystem::file_size(path, sizeEc);
+    const bool canCache = !stampEc && !sizeEc;
+
+    std::string source;
+    bool cacheHit = false;
+    if (canCache) {
+        std::lock_guard<std::mutex> lock(sourceCacheMutex);
+        auto it = sourceCache.find(normalized);
+        if (it != sourceCache.end() && it->second.stamp == stamp && it->second.size == fileSize) {
+            source = it->second.source;
+            cacheHit = true;
+        }
     }
 
-    const auto size = file.tellg();
-    file.seekg(0);
-    std::string source(static_cast<std::size_t>(size), '\0');
-    if (size > 0)
-        file.read(source.data(), size);
+    if (!cacheHit) {
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        if (!file) {
+            diag_.report({il::support::Severity::Error,
+                          "Failed to open imported file: " + path,
+                          importLoc,
+                          "V1000"});
+            return nullptr;
+        }
+
+        const auto size = file.tellg();
+        file.seekg(0);
+        if (size < 0) {
+            diag_.report({il::support::Severity::Error,
+                          "Failed to determine imported file size: " + path,
+                          importLoc,
+                          "V1000"});
+            return nullptr;
+        }
+        source.resize(static_cast<std::size_t>(size));
+        if (size > 0)
+            file.read(source.data(), size);
+        if (!file) {
+            diag_.report({il::support::Severity::Error,
+                          "Failed to read imported file: " + path,
+                          importLoc,
+                          "V1000"});
+            return nullptr;
+        }
+        if (canCache) {
+            std::lock_guard<std::mutex> lock(sourceCacheMutex);
+            sourceCache[normalized] = CachedSource{stamp, fileSize, source};
+        }
+    }
 
     uint32_t fileId = sm_.addFile(path);
     if (fileId == 0) {
@@ -85,7 +134,7 @@ std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
         return nullptr;
     }
     sm_.setSource(fileId, source);
-    fileIdsByPath_[normalizePath(path)] = fileId;
+    fileIdsByPath_[normalized] = fileId;
     if (warningSuppressions_)
         warningSuppressions_->scan(fileId, source);
     Lexer lexer(source, fileId, diag_);
@@ -94,7 +143,7 @@ std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
     auto module = parser.parseModule();
     if (!module || parser.hasError())
         return nullptr;
-    moduleNamesByPath_[normalizePath(path)] = module->name;
+    moduleNamesByPath_[normalized] = module->name;
     return module;
 }
 

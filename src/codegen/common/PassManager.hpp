@@ -19,10 +19,14 @@
 
 #include "codegen/common/Diagnostics.hpp"
 
+#include <chrono>
 #include <exception>
+#include <iosfwd>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <typeinfo>
+#include <utility>
 #include <vector>
 
 namespace viper::codegen::common {
@@ -49,6 +53,12 @@ template <typename ModuleT> class PassManager {
         passes_.push_back(std::move(pass));
     }
 
+    /// @brief Enable or disable per-pass timing diagnostics.
+    void setTimingStream(std::ostream *stream, std::string prefix = {}) {
+        timingStream_ = stream;
+        timingPrefix_ = std::move(prefix);
+    }
+
     /// @brief Execute all registered passes in order.
     /// @param module The backend-specific module state to transform.
     /// @param diags  Diagnostic sink checked after each pass for errors.
@@ -56,6 +66,7 @@ template <typename ModuleT> class PassManager {
     bool run(ModuleT &module, Diagnostics &diags) const {
         for (const auto &pass : passes_) {
             bool ok = false;
+            const auto start = std::chrono::steady_clock::now();
             try {
                 ok = pass->run(module, diags);
             } catch (const std::exception &ex) {
@@ -68,6 +79,15 @@ template <typename ModuleT> class PassManager {
                             std::string("codegen pass '") + typeid(*pass).name() +
                                 "' threw non-standard exception");
                 return false;
+            }
+            if (timingStream_) {
+                const auto elapsed = std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - start);
+                *timingStream_ << "[time-compile] codegen";
+                if (!timingPrefix_.empty())
+                    *timingStream_ << "." << timingPrefix_;
+                *timingStream_ << "." << typeid(*pass).name() << " " << elapsed.count()
+                               << "ms\n";
             }
             if (!ok) {
                 return false;
@@ -83,6 +103,8 @@ template <typename ModuleT> class PassManager {
 
   private:
     std::vector<std::unique_ptr<Pass<ModuleT>>> passes_{};
+    std::ostream *timingStream_{nullptr};
+    std::string timingPrefix_{};
 };
 
 } // namespace viper::codegen::common

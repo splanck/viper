@@ -58,6 +58,7 @@ class CodegenPipeline {
         bool run_native = false;     ///< Execute the produced binary after linking when true.
         std::size_t stack_size = 0;  ///< Stack size in bytes; 0 means use system default.
         bool emit_debug_lines = false;
+        bool time_passes = false; ///< Emit per-backend-pass timings.
         AssemblerMode assembler_mode = AssemblerMode::Native;
         LinkMode link_mode = LinkMode::Native;
         std::string asset_blob_path; ///< Path to VPA asset blob for .rodata embedding (optional).

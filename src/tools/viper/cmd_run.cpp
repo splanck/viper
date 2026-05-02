@@ -83,6 +83,11 @@ struct RunBuildConfig {
     std::optional<viper::tools::TargetArch> archOverride;
 };
 
+struct CompiledProjectModule {
+    il::core::Module module;
+    bool verified{false};
+};
+
 std::optional<std::string> optimizeForBuildProfile(std::string_view profile) {
     if (profile == "debug")
         return std::string("O0");
@@ -111,6 +116,11 @@ void printCompileTime(const ilc::SharedCliOptions &shared,
     const auto elapsed = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - start);
     std::cerr << "[time-compile] " << phase << " " << elapsed.count() << "ms\n";
+}
+
+bool shouldEnableParallelFunctionPasses(const ilc::SharedCliOptions &shared) {
+    return !shared.verifyEachPass && !shared.dumpILPasses && !shared.dumpIL &&
+           !shared.dumpILOpt && !shared.dumpAst && !shared.dumpSemaAst && !shared.dumpTokens;
 }
 
 il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, char **argv) {
@@ -214,8 +224,10 @@ int verifyAndExecute(il::core::Module &module,
                      const ilc::SharedCliOptions &shared,
                      const std::vector<std::string> &programArgs,
                      bool debugVm,
+                     bool moduleAlreadyVerified,
                      il::support::SourceManager &sm) {
-    if (!reportVerifierDiagnostics(
+    if (!moduleAlreadyVerified &&
+        !reportVerifierDiagnostics(
             module, std::cerr, sm, shared.diagnosticFormat, shared.showWarnings)) {
         return 1;
     }
@@ -281,9 +293,10 @@ int verifyAndExecute(il::core::Module &module,
 }
 
 /// @brief Compile a Zia project and return the module.
-il::support::Expected<il::core::Module> compileZiaProject(const ProjectConfig &project,
-                                                          const ilc::SharedCliOptions &shared,
-                                                          il::support::SourceManager &sm) {
+il::support::Expected<CompiledProjectModule> compileZiaProject(const ProjectConfig &project,
+                                                               const ilc::SharedCliOptions &shared,
+                                                               il::support::SourceManager &sm,
+                                                               bool optimizeModule = true) {
     il::frontends::zia::CompilerOptions opts;
     opts.boundsChecks = project.boundsChecks;
     opts.overflowChecks = project.overflowChecks;
@@ -296,6 +309,8 @@ il::support::Expected<il::core::Module> compileZiaProject(const ProjectConfig &p
     opts.dumpILPasses = shared.dumpILPasses;
     opts.verifyEachPass = shared.verifyEachPass;
     opts.passStats = shared.timeCompile;
+    opts.timeCompile = shared.timeCompile;
+    opts.parallelFunctionPasses = shouldEnableParallelFunctionPasses(shared);
 
     // Warning policy from CLI flags
     opts.warningPolicy.enableAll = shared.wall;
@@ -306,7 +321,7 @@ il::support::Expected<il::core::Module> compileZiaProject(const ProjectConfig &p
             opts.warningPolicy.disabled.insert(*code);
     }
 
-    if (project.optimizeLevel == "O0")
+    if (!optimizeModule || project.optimizeLevel == "O0")
         opts.optLevel = il::frontends::zia::OptLevel::O0;
     else if (project.optimizeLevel == "O1")
         opts.optLevel = il::frontends::zia::OptLevel::O1;
@@ -319,24 +334,27 @@ il::support::Expected<il::core::Module> compileZiaProject(const ProjectConfig &p
         ilc::printDiagnosticEngine(result.diagnostics, std::cerr, &sm, shared.diagnosticFormat);
     }
     if (!result.succeeded()) {
-        return il::support::Expected<il::core::Module>(
+        return il::support::Expected<CompiledProjectModule>(
             il::support::Diagnostic{il::support::Severity::Error, "compilation failed", {}, {}});
     }
 
-    return std::move(result.module);
+    return CompiledProjectModule{std::move(result.module), result.moduleVerified};
 }
 
 /// @brief Compile a BASIC project and return the module.
-il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig &project,
-                                                            bool noRuntimeNamespaces,
-                                                            const ilc::SharedCliOptions &shared,
-                                                            il::support::SourceManager &sm) {
+il::support::Expected<CompiledProjectModule> compileBasicProject(const ProjectConfig &project,
+                                                                 bool noRuntimeNamespaces,
+                                                                 const ilc::SharedCliOptions &shared,
+                                                                 il::support::SourceManager &sm,
+                                                                 bool optimizeModule = true) {
+    const auto readStart = std::chrono::steady_clock::now();
     auto source = loadSourceBuffer(project.entryFile, sm);
     if (!source) {
         ilc::printDiagnostic(source.error(), std::cerr, &sm, shared.diagnosticFormat);
-        return il::support::Expected<il::core::Module>(
+        return il::support::Expected<CompiledProjectModule>(
             il::support::Diagnostic{il::support::Severity::Error, "failed to load source", {}, {}});
     }
+    printCompileTime(shared, "basic.read", readStart);
 
     if (noRuntimeNamespaces)
         setenv("VIPER_NO_RUNTIME_NAMESPACES", "1", 1);
@@ -348,6 +366,7 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
     opts.dumpIL = shared.dumpIL;
     opts.dumpILOpt = shared.dumpILOpt;
     opts.dumpILPasses = shared.dumpILPasses;
+    opts.timeCompile = shared.timeCompile;
 
     il::frontends::basic::BasicCompilerInput input{source.value().buffer, project.entryFile};
     input.fileId = source.value().fileId;
@@ -363,21 +382,17 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
         }
     }
     if (!result.succeeded()) {
-        return il::support::Expected<il::core::Module>(
+        return il::support::Expected<CompiledProjectModule>(
             il::support::Diagnostic{il::support::Severity::Error, "compilation failed", {}, {}});
     }
 
-    if (!reportVerifierDiagnostics(result.module, std::cerr, sm, shared.diagnosticFormat, false)) {
-        return il::support::Expected<il::core::Module>(il::support::Diagnostic{
-            il::support::Severity::Error, "BASIC lowering produced invalid IL", {}, {}});
-    }
-
     // Apply the canonical IL optimizer pipeline based on the project's opt level.
-    {
+    if (optimizeModule && project.optimizeLevel != "O0") {
         il::transform::PassManager pm;
         pm.setVerifyBetweenPasses(shared.verifyEachPass);
         pm.setReportPassStatistics(shared.timeCompile);
         pm.setInstrumentationStream(std::cerr);
+        pm.enableParallelFunctionPasses(shouldEnableParallelFunctionPasses(shared));
 
         // Enable per-pass IL dumps when requested.
         if (shared.dumpILPasses) {
@@ -385,11 +400,8 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
             pm.setPrintAfterEach(true);
         }
 
-        const std::string pipelineId =
-            (project.optimizeLevel == "O2") ? "O2"
-            : (project.optimizeLevel == "O1")
-                ? "O1"
-                : "O0";
+        const std::string pipelineId = (project.optimizeLevel == "O2") ? "O2" : "O1";
+        result.moduleVerified = false;
         if (!pm.runPipeline(result.module, pipelineId)) {
             il::support::Diag diag{il::support::Severity::Error,
                                    "IL optimization pipeline '" + pipelineId +
@@ -397,18 +409,19 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
                                    {},
                                    "V-OPT-PIPELINE"};
             ilc::printDiagnostic(diag, std::cerr, &sm, shared.diagnosticFormat);
-            return il::support::Expected<il::core::Module>(il::support::Diagnostic{
+            return il::support::Expected<CompiledProjectModule>(il::support::Diagnostic{
                 il::support::Severity::Error, "optimization failed", {}, "V-OPT-PIPELINE"});
         }
 
         if (!reportVerifierDiagnostics(
                 result.module, std::cerr, sm, shared.diagnosticFormat, shared.showWarnings)) {
-            return il::support::Expected<il::core::Module>(il::support::Diagnostic{
+            return il::support::Expected<CompiledProjectModule>(il::support::Diagnostic{
                 il::support::Severity::Error,
                 "optimized BASIC IL failed verification",
                 {},
                 "V-OPT-VERIFY"});
         }
+        result.moduleVerified = true;
 
         // Dump IL after the full optimization pipeline.
         if (shared.dumpILOpt) {
@@ -418,14 +431,14 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
         }
     }
 
-    return std::move(result.module);
+    return CompiledProjectModule{std::move(result.module), result.moduleVerified};
 }
 
 /// @brief Compile a mixed-language project (Zia + BASIC) and link the modules.
-il::support::Expected<il::core::Module> compileMixedProject(const ProjectConfig &project,
-                                                            bool noRuntimeNamespaces,
-                                                            const ilc::SharedCliOptions &shared,
-                                                            il::support::SourceManager &sm) {
+il::support::Expected<CompiledProjectModule> compileMixedProject(const ProjectConfig &project,
+                                                                 bool noRuntimeNamespaces,
+                                                                 const ilc::SharedCliOptions &shared,
+                                                                 il::support::SourceManager &sm) {
     // Determine entry language from file extension.
     std::string entryExt;
     if (project.entryFile.size() >= 4)
@@ -444,9 +457,9 @@ il::support::Expected<il::core::Module> compileMixedProject(const ProjectConfig 
     libProject.sourceFiles = entryIsZia ? project.basicFiles : project.ziaFiles;
 
     // Compile the entry module.
-    il::support::Expected<il::core::Module> entryResult =
-        entryIsZia ? compileZiaProject(entryProject, shared, sm)
-                   : compileBasicProject(entryProject, noRuntimeNamespaces, shared, sm);
+    il::support::Expected<CompiledProjectModule> entryResult =
+        entryIsZia ? compileZiaProject(entryProject, shared, sm, false)
+                   : compileBasicProject(entryProject, noRuntimeNamespaces, shared, sm, false);
     if (!entryResult)
         return entryResult;
 
@@ -456,32 +469,53 @@ il::support::Expected<il::core::Module> compileMixedProject(const ProjectConfig 
         return entryResult; // No library files, just return the entry module.
 
     libProject.entryFile = libProject.sourceFiles[0];
-    il::support::Expected<il::core::Module> libResult =
-        entryIsZia ? compileBasicProject(libProject, noRuntimeNamespaces, shared, sm)
-                   : compileZiaProject(libProject, shared, sm);
+    il::support::Expected<CompiledProjectModule> libResult =
+        entryIsZia ? compileBasicProject(libProject, noRuntimeNamespaces, shared, sm, false)
+                   : compileZiaProject(libProject, shared, sm, false);
     if (!libResult)
         return libResult;
 
     // Generate boolean interop thunks.
-    auto thunks = il::link::generateBooleanThunks(entryResult.value(), libResult.value());
+    auto thunks =
+        il::link::generateBooleanThunks(entryResult.value().module, libResult.value().module);
     for (auto &thunk : thunks)
-        entryResult.value().functions.push_back(std::move(thunk.thunk));
+        entryResult.value().module.functions.push_back(std::move(thunk.thunk));
 
     // Link the two modules.
     std::vector<il::core::Module> modules;
-    modules.push_back(std::move(entryResult.value()));
-    modules.push_back(std::move(libResult.value()));
+    modules.push_back(std::move(entryResult.value().module));
+    modules.push_back(std::move(libResult.value().module));
 
     auto linkResult = il::link::linkModules(std::move(modules));
     if (!linkResult.succeeded()) {
         std::string errMsg = "link errors:";
         for (const auto &e : linkResult.errors)
             errMsg += "\n  " + e;
-        return il::support::Expected<il::core::Module>(
+        return il::support::Expected<CompiledProjectModule>(
             il::support::Diagnostic{il::support::Severity::Error, errMsg, {}, {}});
     }
 
-    return std::move(linkResult.module);
+    CompiledProjectModule compiled{std::move(linkResult.module), false};
+    if (project.optimizeLevel != "O0") {
+        il::transform::PassManager pm;
+        pm.setVerifyBetweenPasses(shared.verifyEachPass);
+        pm.setReportPassStatistics(shared.timeCompile);
+        pm.setInstrumentationStream(std::cerr);
+        pm.enableParallelFunctionPasses(shouldEnableParallelFunctionPasses(shared));
+        const std::string pipelineId = (project.optimizeLevel == "O2") ? "O2" : "O1";
+        if (!pm.runPipeline(compiled.module, pipelineId)) {
+            return il::support::Expected<CompiledProjectModule>(il::support::Diagnostic{
+                il::support::Severity::Error, "linked mixed-module optimization failed", {}, {}});
+        }
+    }
+
+    if (!reportVerifierDiagnostics(
+            compiled.module, std::cerr, sm, shared.diagnosticFormat, shared.showWarnings)) {
+        return il::support::Expected<CompiledProjectModule>(il::support::Diagnostic{
+            il::support::Severity::Error, "linked mixed-module verification failed", {}, {}});
+    }
+    compiled.verified = true;
+    return compiled;
 }
 
 /// @brief Common implementation for both run and build commands.
@@ -498,6 +532,7 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
     RunBuildConfig config = std::move(parsed.value());
 
     // Resolve the project
+    const auto projectStart = std::chrono::steady_clock::now();
     auto project = resolveProject(config.target);
     if (!project) {
         SourceManager sm;
@@ -506,6 +541,7 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
     }
 
     ProjectConfig &proj = project.value();
+    printCompileTime(config.shared, "project-resolve", projectStart);
 
     // Apply CLI overrides
     if (config.shared.boundsChecksSpecified)
@@ -516,11 +552,16 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
     }
     if (config.optimizeLevelOverride)
         proj.optimizeLevel = *config.optimizeLevelOverride;
+    if (mode == RunMode::Run && !config.buildProfileOverride && !config.optimizeLevelOverride &&
+        !proj.buildProfileExplicit && !proj.optimizeLevelExplicit) {
+        proj.buildProfile = "debug";
+        proj.optimizeLevel = "O0";
+    }
 
     // Compile
     SourceManager sm;
     const auto compileStart = std::chrono::steady_clock::now();
-    il::support::Expected<il::core::Module> moduleResult =
+    il::support::Expected<CompiledProjectModule> moduleResult =
         (proj.lang == ProjectLang::Mixed)
             ? compileMixedProject(proj, config.noRuntimeNamespaces, config.shared, sm)
         : (proj.lang == ProjectLang::Zia)
@@ -531,16 +572,20 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
     if (!moduleResult)
         return 1; // diagnostics already printed
 
-    il::core::Module module = std::move(moduleResult.value());
+    CompiledProjectModule compiled = std::move(moduleResult.value());
+    il::core::Module module = std::move(compiled.module);
+    bool moduleVerified = compiled.verified;
 
     // Build mode: emit IL or compile to native binary
     if (mode == RunMode::Build) {
         // Verify before emitting
         const auto verifyStart = std::chrono::steady_clock::now();
-        if (!reportVerifierDiagnostics(
+        if (!moduleVerified &&
+            !reportVerifierDiagnostics(
                 module, std::cerr, sm, config.shared.diagnosticFormat, config.shared.showWarnings)) {
             return 1;
         }
+        moduleVerified = true;
         printCompileTime(config.shared, "final-verify", verifyStart);
 
         // No -o: emit IL to stdout (backwards compat)
@@ -606,7 +651,8 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
                                                      assetObjPath,
                                                      backendOptimizeLevel,
                                                      true,
-                                                     true);
+                                                     moduleVerified,
+                                                     config.shared.timeCompile);
         printCompileTime(config.shared, "native-codegen-link", nativeStart);
         std::error_code ec;
         if (!assetBlobPath.empty())
@@ -617,7 +663,8 @@ int runOrBuild(RunMode mode, int argc, char **argv) {
     }
 
     // Run mode: verify and execute
-    return verifyAndExecute(module, config.shared, config.programArgs, config.debugVm, sm);
+    return verifyAndExecute(
+        module, config.shared, config.programArgs, config.debugVm, moduleVerified, sm);
 }
 
 } // namespace

@@ -22,9 +22,11 @@
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
-#include <set>
 #include <initializer_list>
+#include <mutex>
+#include <set>
 #include <sstream>
+#include <unordered_map>
 #include <vector>
 
 #if defined(_WIN32)
@@ -256,6 +258,18 @@ bool addArchiveClosureSymbols(const LinkContext &ctx,
     }
 
     return true;
+}
+
+std::string linkContextCacheKey(const std::filesystem::path &buildDir,
+                                const std::unordered_set<std::string> &symbols) {
+    std::vector<std::string> ordered(symbols.begin(), symbols.end());
+    std::sort(ordered.begin(), ordered.end());
+    std::string key = buildDir.lexically_normal().string();
+    for (const auto &symbol : ordered) {
+        key.push_back('\n');
+        key += symbol;
+    }
+    return key;
 }
 
 } // namespace
@@ -537,6 +551,17 @@ static int resolveAndBuildArchives(const std::unordered_set<std::string> &symbol
     const std::optional<std::filesystem::path> buildDirOpt = findBuildDir();
     ctx.buildDir = buildDirOpt.value_or(std::filesystem::path{});
 
+    static std::mutex cacheMutex;
+    static std::unordered_map<std::string, LinkContext> cache;
+    const std::string cacheKey = linkContextCacheKey(ctx.buildDir, symbols);
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        if (auto it = cache.find(cacheKey); it != cache.end()) {
+            ctx = it->second;
+            return ensureRequiredTargetsBuilt(ctx, out, err) ? 0 : 1;
+        }
+    }
+
     while (true) {
         const auto previousComponents = ctx.requiredComponents;
         ctx.requiredComponents = resolveRequiredComponents(closureSymbols);
@@ -558,6 +583,10 @@ static int resolveAndBuildArchives(const std::unordered_set<std::string> &symbol
         }
     }
 
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        cache[cacheKey] = ctx;
+    }
     return 0;
 }
 

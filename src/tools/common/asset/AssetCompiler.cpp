@@ -30,14 +30,73 @@
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 #include "tools/common/project_loader.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <sstream>
+#include <unordered_map>
 
 namespace fs = std::filesystem;
 
 namespace viper::asset {
+namespace {
+
+static void appendFileFingerprint(const fs::path &path, std::string &key) {
+    std::error_code ec;
+    key += path.lexically_normal().string();
+    key.push_back('|');
+    const auto size = fs::file_size(path, ec);
+    key += ec ? std::string{"?"} : std::to_string(size);
+    key.push_back('|');
+    if (!ec) {
+        ec.clear();
+        const auto ticks = fs::last_write_time(path, ec).time_since_epoch().count();
+        if (!ec)
+            key += std::to_string(static_cast<long long>(ticks));
+    }
+    key.push_back('\n');
+}
+
+static void appendSourceFingerprint(const fs::path &rootDir,
+                                    const std::string &sourcePath,
+                                    bool compressed,
+                                    std::string &key) {
+    fs::path absPath = rootDir / sourcePath;
+    key += compressed ? "C:" : "U:";
+    std::error_code ec;
+    if (fs::is_directory(absPath, ec)) {
+        std::vector<fs::path> files;
+        for (auto it = fs::recursive_directory_iterator(absPath, ec);
+             it != fs::recursive_directory_iterator();
+             it.increment(ec)) {
+            if (!ec && it->is_regular_file())
+                files.push_back(it->path());
+        }
+        std::sort(files.begin(), files.end());
+        for (const auto &file : files)
+            appendFileFingerprint(file, key);
+        return;
+    }
+    appendFileFingerprint(absPath, key);
+}
+
+static std::string assetCacheKey(const il::tools::common::ProjectConfig &config,
+                                 const std::string &outputDir) {
+    fs::path rootDir(config.rootDir);
+    std::string key = rootDir.lexically_normal().string() + "\n" + outputDir + "\n";
+    for (const auto &entry : config.embedAssets)
+        appendSourceFingerprint(rootDir, entry.sourcePath, false, key);
+    for (const auto &group : config.packGroups) {
+        key += "PACK:" + group.name + ":" + (group.compressed ? "1" : "0") + "\n";
+        for (const auto &src : group.sources)
+            appendSourceFingerprint(rootDir, src, group.compressed, key);
+    }
+    return key;
+}
+
+} // namespace
 
 // ─── File reading helper ────────────────────────────────────────────────────
 
@@ -151,6 +210,25 @@ static bool addSourceToWriter(const std::string &sourcePath,
 std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig &config,
                                          const std::string &outputDir,
                                          std::string &err) {
+    static std::mutex cacheMutex;
+    static std::unordered_map<std::string, AssetBundle> cache;
+    const std::string cacheKey = assetCacheKey(config, outputDir);
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        if (auto it = cache.find(cacheKey); it != cache.end()) {
+            bool packsExist = true;
+            for (const auto &pack : it->second.packFilePaths) {
+                std::error_code ec;
+                if (!fs::exists(pack, ec)) {
+                    packsExist = false;
+                    break;
+                }
+            }
+            if (packsExist)
+                return it->second;
+        }
+    }
+
     AssetBundle bundle;
     fs::path rootDir(config.rootDir);
 
@@ -195,6 +273,10 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
         std::cerr << "  packed " << packWriter.entryCount() << " asset(s) into " << vpaName << "\n";
     }
 
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        cache[cacheKey] = bundle;
+    }
     return bundle;
 }
 

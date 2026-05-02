@@ -157,13 +157,15 @@ viper build program.zia -o program
 | `--bounds-checks` | Enable generated bounds checks where supported (default for source lowering) |
 | `--no-bounds-checks` | Disable generated bounds checks for source lowering |
 | `--verify-each` | Verify IL after every optimizer pass for debugging pass failures |
-| `--time-compile` | Print source-to-IL, final verifier, asset, and native-codegen/link timings; also enables per-pass optimizer stats |
+| `--time-compile` | Print project resolution, source read, frontend phase, final verifier, asset, backend pass, and native-codegen/link timings; also enables per-pass optimizer stats |
 | `--build-profile debug|balanced|release` | Override the manifest build profile (`debug`=`O0`, `balanced`=`O1`, `release`=`O2`) |
 | `-O0`, `-O1`, `-O2` | Override the final optimization level; this takes precedence over the build profile |
 
-Both Zia and BASIC source paths print successful warnings by default, verify IL after lowering, and verify again after optimization. Per-pass verification is available with `--verify-each` when debugging an optimizer regression, but is not part of the normal build path because it is expensive on large modules. If any verifier run fails, the command stops with diagnostics instead of running or building the result.
+Both Zia and BASIC source paths print successful warnings by default and verify IL after lowering. Optimized builds verify again after the optimization pipeline, then carry that verified-module state into execution or native codegen so the driver can skip duplicate final verifier runs. Per-pass verification is available with `--verify-each` when debugging an optimizer regression, but is not part of the normal build path because it is expensive on large modules. If any verifier run fails, the command stops with diagnostics instead of running or building the result.
 
-Project manifests default to the `balanced` profile and `O1` optimization when no explicit directive is present. Native builds hand the already-verified, already-optimized frontend IL module directly to the backend and pass the selected optimization level to MIR/codegen passes such as pre-regalloc cleanup, block layout, scheduling, and peephole optimization.
+`viper build` defaults to the `balanced` profile and `O1` optimization when no explicit directive is present. `viper run` defaults to `debug`/`O0` for convention projects and manifests that do not set `profile`, `build-profile`, or `optimize`, keeping edit-run cycles fast. An explicit manifest profile, explicit manifest optimization level, `--build-profile`, or `-O*` flag is respected by both commands.
+
+Native builds hand the already-verified, already-optimized frontend IL module directly to the backend and pass the selected optimization level to MIR/codegen passes such as pre-regalloc cleanup, block layout, scheduling, and peephole optimization. Safe per-function IL optimizer passes and x86-64 peephole work may run in parallel unless a diagnostic dump or `--verify-each` requires strict serial instrumentation.
 
 ### viper -run
 

@@ -47,6 +47,13 @@ function(viper_add_tools_tests)
     target_link_libraries(test_tools_frontend_native_compiler PRIVATE ${VIPER_TOOLS_LIBS} viper_native_compiler viper_codegen_x86_64)
     viper_add_ctest(test_tools_frontend_native_compiler test_tools_frontend_native_compiler)
 
+    viper_add_ctest(run_build_performance_flags
+            ${CMAKE_COMMAND}
+            -DVIPER_EXE=$<TARGET_FILE:viper>
+            -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/run_build_performance_flags
+            -P ${_VIPER_TOOLS_DIR}/RunBuildPerformanceFlagTests.cmake)
+    viper_add_test_labels(run_build_performance_flags tools zia)
+
     viper_add_test(test_cli_run_missing_main
             ${VIPER_TESTS_DIR}/unit/test_cli_run_missing_main.cpp
             ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp
