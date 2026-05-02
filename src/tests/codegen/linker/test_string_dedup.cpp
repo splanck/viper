@@ -132,6 +132,43 @@ int main() {
         CHECK(globalSyms.count("__viper_dedup_str_2") == 1);
     }
 
+    // --- Same-section duplicate strings are compacted using original offsets ---
+    {
+        ObjFile obj;
+        obj.name = "same_section.o";
+        obj.format = ObjFileFormat::ELF;
+        obj.sections.push_back({});
+
+        ObjSection sec;
+        sec.name = ".rodata.str1.1";
+        sec.data = {'s', 'a', 'm', 'e', 0, 's', 'a', 'm', 'e', 0};
+        sec.alloc = true;
+        sec.isCStringSection = true;
+        obj.sections.push_back(sec);
+
+        obj.symbols.push_back({});
+        ObjSymbol first;
+        first.name = "L.str.0";
+        first.sectionIndex = 1;
+        first.offset = 0;
+        first.binding = ObjSymbol::Local;
+        obj.symbols.push_back(first);
+        ObjSymbol second = first;
+        second.name = "L.str.1";
+        second.offset = 5;
+        obj.symbols.push_back(second);
+
+        std::vector<ObjFile> objs = {obj};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        size_t eliminated = deduplicateStrings(objs, globalSyms);
+
+        CHECK(eliminated == 1);
+        CHECK(objs[0].sections[1].data.size() == 5);
+        CHECK(objs[0].symbols[1].sectionIndex == 1);
+        CHECK(objs[0].symbols[1].offset == 0);
+        CHECK(objs[0].symbols[2].sectionIndex == 0);
+    }
+
     // --- Strings with same prefix but different length are NOT merged ---
     {
         auto obj1 = makeRodataObj("a.o", "he");

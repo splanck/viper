@@ -116,6 +116,76 @@ int main() {
         CHECK(threw);
     }
 
+    {
+        MFunction fn;
+        fn.name = "win64_unwind_ok";
+        MBasicBlock bb;
+        bb.label = ".Lentry";
+        bb.append(MInstr::make(MOpcode::PUSH, {gpr(PhysReg::RBP)}));
+        bb.append(MInstr::make(MOpcode::ADDri, {gpr(PhysReg::RSP), imm(-8)}));
+        fn.addBlock(std::move(bb));
+
+        FrameInfo frame;
+        frame.prologueEmitted = true;
+        frame.win64UnwindOps.push_back({Win64UnwindOpKind::PushNonVol, PhysReg::RBP, 0});
+        frame.win64UnwindOps.push_back({Win64UnwindOpKind::AllocStack, PhysReg::RSP, 8});
+
+        X64BinaryEncoder enc;
+        CodeSection text, rodata;
+        enc.encodeFunction(fn, text, rodata, false, &frame, true);
+        CHECK(text.win64UnwindEntries().size() == 1);
+        CHECK(text.win64UnwindEntries()[0].codes.size() == 2);
+        CHECK(text.win64UnwindEntries()[0].prologueSize == 5);
+    }
+
+    {
+        MFunction fn;
+        fn.name = "win64_unwind_partial";
+        MBasicBlock bb;
+        bb.label = ".Lentry";
+        bb.append(MInstr::make(MOpcode::ADDri, {gpr(PhysReg::RAX), imm(-8)}));
+        fn.addBlock(std::move(bb));
+
+        FrameInfo frame;
+        frame.prologueEmitted = true;
+        frame.win64UnwindOps.push_back({Win64UnwindOpKind::AllocStack, PhysReg::RSP, 8});
+
+        bool threw = false;
+        try {
+            X64BinaryEncoder enc;
+            CodeSection text, rodata;
+            enc.encodeFunction(fn, text, rodata, false, &frame, true);
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("Win64 unwind plan") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
+    {
+        MFunction fn;
+        fn.name = "win64_unwind_too_large";
+        MBasicBlock bb;
+        bb.label = ".Lentry";
+        for (int i = 0; i < 260; ++i)
+            bb.append(MInstr::make(MOpcode::RET, {}));
+        bb.append(MInstr::make(MOpcode::ADDri, {gpr(PhysReg::RSP), imm(-8)}));
+        fn.addBlock(std::move(bb));
+
+        FrameInfo frame;
+        frame.prologueEmitted = true;
+        frame.win64UnwindOps.push_back({Win64UnwindOpKind::AllocStack, PhysReg::RSP, 8});
+
+        bool threw = false;
+        try {
+            X64BinaryEncoder enc;
+            CodeSection text, rodata;
+            enc.encodeFunction(fn, text, rodata, false, &frame, true);
+        } catch (const std::runtime_error &ex) {
+            threw = std::string(ex.what()).find("exceeds 255") != std::string::npos;
+        }
+        CHECK(threw);
+    }
+
     // ================================================================
     // 1. Nullary instructions
     // ================================================================

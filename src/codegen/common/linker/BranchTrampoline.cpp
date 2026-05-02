@@ -135,6 +135,7 @@ std::vector<size_t> collectChunkBoundaries(const OutputSection &textSec) {
 
 bool chooseReachableBoundary(const std::vector<size_t> &boundaries,
                              uint64_t sourceOffset,
+                             size_t reachSlack,
                              size_t &chosenBoundary) {
     bool found = false;
     uint64_t bestDistance = 0;
@@ -144,6 +145,9 @@ bool chooseReachableBoundary(const std::vector<size_t> &boundaries,
         if (!branch26Reachable(from, to))
             continue;
         const uint64_t dist = (from > to) ? (from - to) : (to - from);
+        const uint64_t maxReach = static_cast<uint64_t>(0x1FFFFFF) << 2;
+        if (dist + reachSlack > maxReach)
+            continue;
         if (!found || dist < bestDistance) {
             found = true;
             bestDistance = dist;
@@ -151,6 +155,30 @@ bool chooseReachableBoundary(const std::vector<size_t> &boundaries,
         }
     }
     return found;
+}
+
+bool trampolineSymbolExists(const std::vector<ObjFile> &objects,
+                            const LinkLayout &layout,
+                            const std::string &name) {
+    if (layout.globalSyms.find(name) != layout.globalSyms.end())
+        return true;
+    for (const auto &obj : objects) {
+        for (const auto &sym : obj.symbols) {
+            if (sym.name == name)
+                return true;
+        }
+    }
+    return false;
+}
+
+std::string makeTrampolineSymbolName(const std::vector<ObjFile> &objects,
+                                     const LinkLayout &layout,
+                                     size_t &counter) {
+    for (;;) {
+        std::string name = "__viper_trampoline_" + std::to_string(counter++);
+        if (!trampolineSymbolExists(objects, layout, name))
+            return name;
+    }
 }
 
 /// Record of an out-of-range branch that needs a trampoline.
@@ -274,6 +302,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     auto &textSec = layout.sections[textSecIdx];
     const std::vector<size_t> chunkBoundaries = collectChunkBoundaries(textSec);
     std::unordered_map<std::string, TrampolineEntry> trampolines;
+    size_t trampolineNameCounter = 0;
+    const size_t reachSlack = outOfRange.size() * kTrampolineSize;
 
     for (auto &oob : outOfRange) {
         size_t chosenBoundary = 0;
@@ -292,6 +322,9 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             const uint64_t dist = (sourceOffset > trampoline.islandBoundary)
                                       ? (sourceOffset - trampoline.islandBoundary)
                                       : (trampoline.islandBoundary - sourceOffset);
+            const uint64_t maxReach = static_cast<uint64_t>(0x1FFFFFF) << 2;
+            if (dist + reachSlack > maxReach)
+                continue;
             if (chosenExisting == nullptr || dist < bestExistingDistance) {
                 chosenExisting = &trampoline;
                 bestExistingDistance = dist;
@@ -303,7 +336,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             continue;
         }
 
-        if (!chooseReachableBoundary(chunkBoundaries, sourceOffset, chosenBoundary)) {
+        if (!chooseReachableBoundary(chunkBoundaries, sourceOffset, reachSlack, chosenBoundary)) {
             err << "error: no reachable trampoline island boundary for branch to '"
                 << oob.targetSymName << "'\n";
             return false;
@@ -317,7 +350,8 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             it->second.targetSymName = oob.targetSymName;
             it->second.targetAddr = oob.targetAddr;
             it->second.islandBoundary = oob.islandBoundary;
-            it->second.symbolName = "__viper_trampoline_" + std::to_string(trampolines.size() - 1);
+            it->second.symbolName =
+                makeTrampolineSymbolName(objects, layout, trampolineNameCounter);
         }
         oob.trampolineSymName = it->second.symbolName;
     }

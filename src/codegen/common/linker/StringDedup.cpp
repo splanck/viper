@@ -36,6 +36,7 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
         size_t objIdx;
         size_t symIdx;
         uint32_t secIdx;
+        size_t originalOffset;
         size_t strLen;
         std::string content;
         bool keepBytes = true;
@@ -114,7 +115,7 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
             // Use the raw bytes (including NUL) as the content key.
             std::string content(reinterpret_cast<const char *>(start), strLen);
             const size_t locIdx = locations.size();
-            locations.push_back({oi, si, sym.sectionIndex, strLen, content, true});
+            locations.push_back({oi, si, sym.sectionIndex, sym.offset, strLen, content, true});
             contentMap[content].push_back(locIdx);
             sectionMap[makeSectionKey(oi, sym.sectionIndex)].push_back(locIdx);
         }
@@ -175,17 +176,14 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
 
         std::vector<size_t> sortedByOffset = locIndices;
         std::sort(sortedByOffset.begin(), sortedByOffset.end(), [&](size_t aIdx, size_t bIdx) {
-            const auto &symA = obj.symbols[locations[aIdx].symIdx];
-            const auto &symB = obj.symbols[locations[bIdx].symIdx];
-            return symA.offset < symB.offset;
+            return locations[aIdx].originalOffset < locations[bIdx].originalOffset;
         });
 
         size_t cursor = 0;
         bool fullyCovered = true;
         for (size_t locIdx : sortedByOffset) {
             const auto &loc = locations[locIdx];
-            const auto &sym = obj.symbols[loc.symIdx];
-            if (sym.offset != cursor) {
+            if (loc.originalOffset != cursor) {
                 fullyCovered = false;
                 break;
             }

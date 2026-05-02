@@ -224,6 +224,53 @@ int main() {
         CHECK(layout.sections[0].data.size() == 5);
     }
 
+    // --- Test 2b: Synthetic trampoline names avoid user/global collisions ---
+    {
+        ObjSymbol farTarget;
+        farTarget.name = "far_target";
+        farTarget.binding = ObjSymbol::Undefined;
+
+        ObjSymbol userCollision;
+        userCollision.name = "__viper_trampoline_0";
+        userCollision.binding = ObjSymbol::Global;
+        userCollision.sectionIndex = 1;
+        userCollision.offset = 0;
+
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = elf_a64::kCall26;
+        rel.symIndex = 2; // far_target
+        rel.addend = 0;
+
+        auto obj = makeCodeObj("collision.o",
+                               "funcA",
+                               {0x00, 0x00, 0x00, 0x94},
+                               {rel},
+                               {farTarget, userCollision});
+
+        std::vector<ObjFile> objs = {obj};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        GlobalSymEntry e;
+        e.name = "funcA";
+        e.binding = GlobalSymEntry::Global;
+        e.objIndex = 0;
+        e.secIndex = 1;
+        globalSyms["funcA"] = e;
+        e.name = "__viper_trampoline_0";
+        globalSyms["__viper_trampoline_0"] = e;
+        GlobalSymEntry far;
+        far.name = "far_target";
+        far.binding = GlobalSymEntry::Dynamic;
+        far.resolvedAddr = 0x401000 + 200ULL * 1024 * 1024;
+        globalSyms["far_target"] = far;
+
+        LinkLayout layout;
+        std::ostringstream err;
+        CHECK(runPipeline(objs, globalSyms, layout, LinkArch::AArch64, LinkPlatform::Linux, err));
+        CHECK(layout.globalSyms.count("__viper_trampoline_1") == 1);
+        CHECK(layout.globalSyms["__viper_trampoline_0"].objIndex == 0);
+    }
+
     // --- Test 3: Out-of-range Branch26 — trampoline inserted ---
     // Layout: funcB (4B) → padding (140MB) → funcA (4B + BL reloc)
     // funcA calls funcB. The distance >128MB triggers trampoline insertion.

@@ -944,6 +944,15 @@ static void testStrRegSpImm_largeOffsetFallback() {
     CHECK((bytes.size() / 4) > 4);
 }
 
+static void testStrRegSpImm_largeOffsetAvoidsX16Source() {
+    const std::vector<uint8_t> bytes =
+        encodeInstrBytes({MInstr{MOpcode::StrRegSpImm, {gpr(PhysReg::X16), imm(40000)}}});
+    CHECK((bytes.size() / 4) > 4);
+    const uint32_t store = readWord(bytes, bytes.size() - 8);
+    CHECK((store & 31u) == 16u);          // Rt remains the source register X16.
+    CHECK(((store >> 5) & 31u) != 16u);   // Rn uses a non-conflicting scratch.
+}
+
 static void testAddRI_rejectsNegativeImmediate() {
     MFunction fn;
     fn.name = "bad_add_imm";
@@ -1050,6 +1059,7 @@ int main() {
     testFMovRI_fallback();
     testAddRI_shift12();
     testStrRegSpImm_largeOffsetFallback();
+    testStrRegSpImm_largeOffsetAvoidsX16Source();
     testAddRI_rejectsNegativeImmediate();
     testBranchRejectsMissingTarget();
 

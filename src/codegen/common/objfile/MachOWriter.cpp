@@ -93,12 +93,19 @@ static constexpr uint32_t kSAttrDebug = 0x02000000;
 
 // Helpers: appendLE16/32/64, alignUp, padTo are provided by ObjFileWriterUtil.hpp.
 
-/// Mangle a symbol name for Darwin: prepend '_' unless it's a local label.
-static std::string mangleName(const std::string &name) {
+static bool isMachOLocalLabelName(const std::string &name) {
+    return !name.empty() &&
+           (name[0] == '.' || name.rfind("L.", 0) == 0 || name.rfind("Ltmp", 0) == 0 ||
+            name.rfind("LBB", 0) == 0);
+}
+
+/// Mangle a symbol name for Darwin: prepend '_' to non-local nlist names.
+static std::string mangleName(const Symbol &sym) {
+    const std::string &name = sym.name;
     if (name.empty())
         return name;
-    if (name[0] == 'L' || name[0] == '.')
-        return name; // local label
+    if (sym.binding == SymbolBinding::Local || isMachOLocalLabelName(name))
+        return name;
     return "_" + name;
 }
 
@@ -345,7 +352,7 @@ bool MachOWriter::write(const std::string &path,
     auto processSymbols = [&](const CodeSection &sec, bool isText) {
         for (uint32_t i = 1; i < sec.symbols().count(); ++i) {
             const Symbol &s = sec.symbols().at(i);
-            std::string mangled = mangleName(s.name);
+            std::string mangled = mangleName(s);
             uint32_t strOff = strtab.add(mangled);
 
             PendingSym ps{};
@@ -516,31 +523,38 @@ bool MachOWriter::write(const std::string &path,
                                const char *sectionName,
                                uint32_t &symIdx) -> bool {
         symIdx = 0;
-        bool haveSymIdx = false;
-        if (rel.targetSection != SymbolSection::Undefined &&
-            rel.symbolIndex < source.symbols().count()) {
+        if (rel.targetSection != SymbolSection::Undefined) {
+            if (rel.symbolIndex >= source.symbols().count()) {
+                err << "MachOWriter: relocation in " << sectionName << " at offset " << rel.offset
+                    << " references unknown symbol index " << rel.symbolIndex << "\n";
+                return false;
+            }
             const Symbol &sym = source.symbols().at(rel.symbolIndex);
             const auto &targetByName = (rel.targetSection == SymbolSection::Rodata)
                                            ? definedRodataByName
                                            : definedTextByName;
             auto nameIt = targetByName.find(sym.name);
-            if (nameIt != targetByName.end() && nameIt->second != UINT32_MAX) {
-                symIdx = nameIt->second;
-                haveSymIdx = true;
+            if (nameIt == targetByName.end()) {
+                err << "MachOWriter: relocation in " << sectionName << " at offset " << rel.offset
+                    << " references missing cross-section target '" << sym.name << "'\n";
+                return false;
             }
-        }
-        if (!haveSymIdx) {
-            auto it = sourceMap.find(rel.symbolIndex);
-            if (it != sourceMap.end()) {
-                symIdx = it->second;
-                haveSymIdx = true;
+            if (nameIt->second == UINT32_MAX) {
+                err << "MachOWriter: relocation in " << sectionName << " at offset " << rel.offset
+                    << " references ambiguous cross-section target '" << sym.name << "'\n";
+                return false;
             }
+            symIdx = nameIt->second;
+            return true;
         }
-        if (!haveSymIdx) {
+
+        auto it = sourceMap.find(rel.symbolIndex);
+        if (it == sourceMap.end()) {
             err << "MachOWriter: relocation in " << sectionName << " at offset " << rel.offset
                 << " references unknown symbol index " << rel.symbolIndex << "\n";
             return false;
         }
+        symIdx = it->second;
         return true;
     };
 
@@ -562,6 +576,12 @@ bool MachOWriter::write(const std::string &path,
                 return false;
 
             if (arch_ == ObjArch::AArch64 && rel.addend != 0) {
+                if (rel.addend < -0x800000LL || rel.addend > 0x7FFFFFLL) {
+                    err << "MachOWriter: AArch64 relocation addend " << rel.addend
+                        << " is outside signed 24-bit ARM64_RELOC_ADDEND range for "
+                        << sectionName << " at offset " << rel.offset << "\n";
+                    return false;
+                }
                 const uint32_t addend = static_cast<uint32_t>(rel.addend) & 0x00FFFFFFu;
                 outRelocs.push_back(
                     {static_cast<uint32_t>(rel.offset),

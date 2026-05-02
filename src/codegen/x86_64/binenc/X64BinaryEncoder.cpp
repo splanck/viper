@@ -224,14 +224,30 @@ static void recordWin64Unwind(const MFunction &fn,
     if (!frame.prologueEmitted || emittedOps.empty())
         return;
 
+    auto checkedU8 = [&](size_t value, const char *field) -> uint8_t {
+        if (value > std::numeric_limits<uint8_t>::max()) {
+            throw std::runtime_error("x86-64 binary encoder: Win64 unwind " +
+                                     std::string(field) + " for function '" + fn.name +
+                                     "' exceeds 255 bytes");
+        }
+        return static_cast<uint8_t>(value);
+    };
+
+    const size_t functionLength = text.currentOffset() - funcStartOffset;
+    if (functionLength > std::numeric_limits<uint32_t>::max()) {
+        throw std::runtime_error("x86-64 binary encoder: Win64 function length for '" + fn.name +
+                                 "' exceeds 32-bit unwind range");
+    }
+
     objfile::Win64UnwindEntry unwind{};
     unwind.symbolIndex = funcSymIdx;
-    unwind.functionLength = static_cast<uint32_t>(text.currentOffset() - funcStartOffset);
+    unwind.functionLength = static_cast<uint32_t>(functionLength);
 
-    unwind.prologueSize = static_cast<uint8_t>(emittedOps.back().endOffset - funcStartOffset);
+    unwind.prologueSize =
+        checkedU8(emittedOps.back().endOffset - funcStartOffset, "prologue size");
     for (const auto &emitted : emittedOps) {
         const uint8_t codeOffset =
-            static_cast<uint8_t>(emitted.endOffset - funcStartOffset);
+            checkedU8(emitted.endOffset - funcStartOffset, "code offset");
         switch (emitted.op.kind) {
             case Win64UnwindOpKind::PushNonVol:
                 unwind.codes.push_back({objfile::Win64UnwindCode::Kind::PushNonVol,
@@ -450,8 +466,16 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
         text.patch32LE(pb.patchOffset, static_cast<uint32_t>(rel));
     }
 
-    if (emitWin64Unwind && frame)
+    if (emitWin64Unwind && frame) {
+        if (frame->prologueEmitted && win64UnwindCursor != frame->win64UnwindOps.size()) {
+            throw std::runtime_error("x86-64 binary encoder: Win64 unwind plan for function '" +
+                                     fn.name + "' matched " +
+                                     std::to_string(win64UnwindCursor) + " of " +
+                                     std::to_string(frame->win64UnwindOps.size()) +
+                                     " prologue operation(s)");
+        }
         recordWin64Unwind(fn, *frame, funcSymIdx, funcStartOffset, emittedWin64UnwindOps, text);
+    }
 }
 
 // === Main instruction dispatch ===

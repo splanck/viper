@@ -180,6 +180,27 @@ int main() {
     }
 
     {
+        CodeSection ambigText;
+        CodeSection ambigRodata;
+        ambigText.defineSymbol("dup", SymbolBinding::Local, SymbolSection::Text);
+        ambigText.emit8(0xC3);
+        ambigText.defineSymbol("dup", SymbolBinding::Local, SymbolSection::Text);
+        ambigText.emit8(0xC3);
+
+        const uint32_t symIdx = ambigRodata.findOrDeclareSymbol("dup");
+        ambigRodata.addRelocation(RelocKind::Abs64, symIdx, 0, SymbolSection::Text);
+        ambigRodata.emit64LE(0);
+
+        std::ostringstream ambigErr;
+        CoffWriter ambigWriter(ObjArch::X86_64);
+        CHECK(!ambigWriter.write("build/test-out/coff_ambiguous_cross.obj",
+                                 ambigText,
+                                 ambigRodata,
+                                 ambigErr));
+        CHECK(ambigErr.str().find("ambiguous cross-section target") != std::string::npos);
+    }
+
+    {
         CodeSection badArmText;
         CodeSection badArmRodata;
         badArmText.defineSymbol("caller", SymbolBinding::Global, SymbolSection::Text);

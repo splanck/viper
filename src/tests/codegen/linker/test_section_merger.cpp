@@ -361,6 +361,50 @@ int main() {
         CHECK(layout.sections[2].tls);
     }
 
+    // --- ELF init/fini arrays use constructor priority instead of alignment order ---
+    {
+        auto obj = makeObj("ctors.o",
+                           ObjFileFormat::ELF,
+                           {makeSection(".init_array.65535", 8, false, true, false, 64),
+                            makeSection(".init_array.101", 8, false, true, false, 1),
+                            makeSection(".fini_array.200", 8, false, true, false, 32),
+                            makeSection(".preinit_array.50", 8, false, true, false, 1)});
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        std::ostringstream err;
+
+        bool ok = mergeSections(objs, LinkPlatform::Linux, LinkArch::X86_64, layout, err);
+        CHECK(ok);
+        CHECK(layout.sections.size() == 1);
+        CHECK(layout.sections[0].name == ".data");
+        CHECK(layout.sections[0].chunks.size() == 4);
+        CHECK(layout.sections[0].chunks[0].inputSecIndex == 4); // .preinit_array.50
+        CHECK(layout.sections[0].chunks[1].inputSecIndex == 2); // .init_array.101
+        CHECK(layout.sections[0].chunks[2].inputSecIndex == 1); // .init_array.65535
+        CHECK(layout.sections[0].chunks[3].inputSecIndex == 3); // .fini_array.200
+    }
+
+    // --- Mach-O mod-init functions preserve source order instead of alignment order ---
+    {
+        auto obj = makeObj("modinit.o",
+                           ObjFileFormat::MachO,
+                           {makeSection("__DATA,__mod_init_func", 8, false, true, false, 1),
+                            makeSection("__DATA,__mod_init_func", 8, false, true, false, 64)});
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        std::ostringstream err;
+
+        bool ok = mergeSections(objs, LinkPlatform::macOS, LinkArch::AArch64, layout, err);
+        CHECK(ok);
+        CHECK(layout.sections.size() == 1);
+        CHECK(layout.sections[0].name == ".data");
+        CHECK(layout.sections[0].chunks.size() == 2);
+        CHECK(layout.sections[0].chunks[0].inputSecIndex == 1);
+        CHECK(layout.sections[0].chunks[1].inputSecIndex == 2);
+    }
+
     // --- Result ---
     if (gFail == 0) {
         std::cout << "All SectionMerger tests passed.\n";

@@ -197,6 +197,12 @@ void deadStrip(std::vector<ObjFile> &allObjects,
                 auto git = globalSyms.find(sym.name);
                 if (git != globalSyms.end() && git->second.secIndex > 0)
                     markLive(git->second.objIndex, git->second.secIndex);
+
+                if (sym.weakExternal && !sym.weakDefaultName.empty()) {
+                    auto fallback = globalSyms.find(sym.weakDefaultName);
+                    if (fallback != globalSyms.end() && fallback->second.secIndex > 0)
+                        markLive(fallback->second.objIndex, fallback->second.secIndex);
+                }
             }
         }
     }

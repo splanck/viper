@@ -94,19 +94,6 @@ static bool checkPageOffsetAlignment(uint32_t pageOff,
     return false;
 }
 
-static bool findSectionByAddr(const LinkLayout &layout, uint64_t addr, size_t &outSecIdx) {
-    for (size_t i = 0; i < layout.sections.size(); ++i) {
-        const auto &sec = layout.sections[i];
-        if (!sec.alloc || sec.data.empty())
-            continue;
-        if (addr >= sec.virtualAddr && addr < sec.virtualAddr + sec.data.size()) {
-            outSecIdx = i;
-            return true;
-        }
-    }
-    return false;
-}
-
 static void sortWindowsPdata(LinkLayout &layout, LinkArch arch) {
     const size_t recordSize = (arch == LinkArch::AArch64) ? 8 : 12;
 
@@ -162,23 +149,6 @@ static bool findOutputLocation(const LocationMap &locMap,
     return true;
 }
 
-/// Resolve a symbol name to its virtual address.
-static bool resolveSymAddr(const std::string &symName,
-                           const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
-                           uint64_t &addr) {
-    auto it = globalSyms.find(symName);
-    if (it == globalSyms.end())
-        return false;
-    // Skip truly unresolved symbols: Undefined/Dynamic binding with no
-    // address set.  Dynamic symbols that DO have a resolved address (e.g.
-    // GOT stubs, import thunks) must still be resolvable here.
-    if (it->second.resolvedAddr == 0 && (it->second.binding == GlobalSymEntry::Undefined ||
-                                         it->second.binding == GlobalSymEntry::Dynamic))
-        return false;
-    addr = it->second.resolvedAddr;
-    return true;
-}
-
 /// Resolve a local symbol address from the object's symbol table.
 /// For symbols not in globalSyms (e.g., static functions), compute their
 /// address from their section and offset within the output layout.
@@ -186,7 +156,8 @@ static bool resolveLocalSymAddr(const ObjSymbol &sym,
                                 size_t objIdx,
                                 const LocationMap &locMap,
                                 const LinkLayout &layout,
-                                uint64_t &addr) {
+                                uint64_t &addr,
+                                size_t *resolvedOutSecIdx = nullptr) {
     if (sym.absolute) {
         addr = static_cast<uint64_t>(sym.offset);
         return true;
@@ -201,6 +172,45 @@ static bool resolveLocalSymAddr(const ObjSymbol &sym,
     if (chunkOff + sym.offset > outSec.data.size())
         return false; // Symbol offset exceeds section bounds (malformed .o).
     addr = outSec.virtualAddr + chunkOff + sym.offset;
+    if (resolvedOutSecIdx)
+        *resolvedOutSecIdx = outSecIdx;
+    return true;
+}
+
+static bool resolveGlobalSymLocation(const std::string &symName,
+                                     const std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
+                                     const LocationMap &locMap,
+                                     const LinkLayout &layout,
+                                     uint64_t &addr,
+                                     size_t *resolvedOutSecIdx = nullptr) {
+    auto it = globalSyms.find(symName);
+    if (it == globalSyms.end())
+        return false;
+
+    const auto &entry = it->second;
+    if (entry.absolute) {
+        addr = static_cast<uint64_t>(entry.offset);
+        return true;
+    }
+
+    if (entry.secIndex > 0) {
+        size_t outSecIdx = 0;
+        size_t chunkOff = 0;
+        if (findOutputLocation(locMap, entry.objIndex, entry.secIndex, outSecIdx, chunkOff)) {
+            const auto &outSec = layout.sections[outSecIdx];
+            if (chunkOff + entry.offset > outSec.data.size())
+                return false;
+            addr = outSec.virtualAddr + chunkOff + entry.offset;
+            if (resolvedOutSecIdx)
+                *resolvedOutSecIdx = outSecIdx;
+            return true;
+        }
+    }
+
+    if (entry.resolvedAddr == 0 &&
+        (entry.binding == GlobalSymEntry::Undefined || entry.binding == GlobalSymEntry::Dynamic))
+        return false;
+    addr = entry.resolvedAddr;
     return true;
 }
 
@@ -264,18 +274,32 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
 
                 const ObjSymbol &targetSym = obj.symbols[rel.symIndex];
                 const std::string &symName = targetSym.name;
+                const std::string targetDisplay =
+                    symName.empty() ? std::string("<anonymous section symbol>") : symName;
 
                 uint64_t S = 0;
                 bool symResolved = false;
+                size_t symOutSecIdx = SIZE_MAX;
+                bool hasSymOutputSection = false;
                 if (targetSym.sectionIndex > 0 || targetSym.absolute)
-                    symResolved = resolveLocalSymAddr(targetSym, oi, locMap, layout, S);
+                    symResolved =
+                        resolveLocalSymAddr(targetSym, oi, locMap, layout, S, &symOutSecIdx);
+                if (symResolved && symOutSecIdx != SIZE_MAX)
+                    hasSymOutputSection = true;
                 if (!symResolved && !symName.empty()) {
-                    symResolved = resolveSymAddr(symName, layout.globalSyms, S);
+                    symResolved =
+                        resolveGlobalSymLocation(symName, layout.globalSyms, locMap, layout, S, &symOutSecIdx);
+                    if (symResolved && symOutSecIdx != SIZE_MAX)
+                        hasSymOutputSection = true;
                 }
                 if (!symResolved && !symName.empty() && targetSym.weakExternal) {
                     const std::string &fallback = targetSym.weakDefaultName;
-                    if (!fallback.empty())
-                        symResolved = resolveSymAddr(fallback, layout.globalSyms, S);
+                    if (!fallback.empty()) {
+                        symResolved = resolveGlobalSymLocation(
+                            fallback, layout.globalSyms, locMap, layout, S, &symOutSecIdx);
+                        if (symResolved && symOutSecIdx != SIZE_MAX)
+                            hasSymOutputSection = true;
+                    }
                     if (!symResolved) {
                         S = 0;
                         symResolved = true;
@@ -286,12 +310,24 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                         S = 0x140000000ULL;
                         symResolved = true;
                     } else if (platform == LinkPlatform::Windows && symName == "vm_trap") {
-                        symResolved = resolveSymAddr("vm_trap_default", layout.globalSyms, S) ||
-                                      resolveSymAddr("rt_abort", layout.globalSyms, S);
+                        symResolved = resolveGlobalSymLocation("vm_trap_default",
+                                                               layout.globalSyms,
+                                                               locMap,
+                                                               layout,
+                                                               S,
+                                                               &symOutSecIdx) ||
+                                      resolveGlobalSymLocation("rt_abort",
+                                                               layout.globalSyms,
+                                                               locMap,
+                                                               layout,
+                                                               S,
+                                                               &symOutSecIdx);
+                        if (symResolved && symOutSecIdx != SIZE_MAX)
+                            hasSymOutputSection = true;
                     }
                 }
-                if (!symResolved && !symName.empty()) {
-                    err << "error: " << obj.name << ": undefined symbol '" << symName << "'\n";
+                if (!symResolved) {
+                    err << "error: " << obj.name << ": undefined symbol '" << targetDisplay << "'\n";
                     return false;
                 }
 
@@ -307,33 +343,33 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
 
                 uint8_t *patch = outSec.data.data() + patchOff;
 
+                auto requireTargetOutputSection = [&](const char *kind) -> bool {
+                    if (hasSymOutputSection)
+                        return true;
+                    err << "error: " << obj.name << ": " << kind << " target '" << targetDisplay
+                        << "' has no output section\n";
+                    return false;
+                };
+
                 if (obj.format == ObjFileFormat::COFF && arch == LinkArch::X86_64) {
                     if (rel.type == coff_x64::kSecRel) {
-                        size_t symSecIdx = 0;
-                        if (!findSectionByAddr(layout, S, symSecIdx)) {
-                            err << "error: " << obj.name << ": SECREL target '" << symName
-                                << "' has no output section\n";
+                        if (!requireTargetOutputSection("SECREL"))
                             return false;
-                        }
                         const uint32_t val = static_cast<uint32_t>(
                             static_cast<int64_t>(S) -
-                            static_cast<int64_t>(layout.sections[symSecIdx].virtualAddr) + A);
+                            static_cast<int64_t>(layout.sections[symOutSecIdx].virtualAddr) + A);
                         writeLE32(patch, val);
                         continue;
                     }
                     if (rel.type == coff_x64::kSection) {
-                        size_t symSecIdx = 0;
-                        if (!findSectionByAddr(layout, S, symSecIdx)) {
-                            err << "error: " << obj.name << ": SECTION target '" << symName
-                                << "' has no output section\n";
+                        if (!requireTargetOutputSection("SECTION"))
                             return false;
-                        }
                         if (patchOff + 2 > outSec.data.size()) {
                             err << "error: section relocation at offset " << patchOff
                                 << " out of bounds in '" << outSec.name << "'\n";
                             return false;
                         }
-                        writeLE16(patch, static_cast<uint16_t>(symSecIdx + 1));
+                        writeLE16(patch, static_cast<uint16_t>(symOutSecIdx + 1));
                         continue;
                     }
                     if (rel.type == coff_x64::kAddr32Nb) {
@@ -365,31 +401,23 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
 
                 if (obj.format == ObjFileFormat::COFF && arch == LinkArch::AArch64) {
                     if (rel.type == coff_a64::kSecRel) {
-                        size_t symSecIdx = 0;
-                        if (!findSectionByAddr(layout, S, symSecIdx)) {
-                            err << "error: " << obj.name << ": SECREL target '" << symName
-                                << "' has no output section\n";
+                        if (!requireTargetOutputSection("SECREL"))
                             return false;
-                        }
                         const uint32_t val = static_cast<uint32_t>(
                             static_cast<int64_t>(S) -
-                            static_cast<int64_t>(layout.sections[symSecIdx].virtualAddr) + A);
+                            static_cast<int64_t>(layout.sections[symOutSecIdx].virtualAddr) + A);
                         writeLE32(patch, val);
                         continue;
                     }
                     if (rel.type == coff_a64::kSection) {
-                        size_t symSecIdx = 0;
-                        if (!findSectionByAddr(layout, S, symSecIdx)) {
-                            err << "error: " << obj.name << ": SECTION target '" << symName
-                                << "' has no output section\n";
+                        if (!requireTargetOutputSection("SECTION"))
                             return false;
-                        }
                         if (patchOff + 2 > outSec.data.size()) {
                             err << "error: section relocation at offset " << patchOff
                                 << " out of bounds in '" << outSec.name << "'\n";
                             return false;
                         }
-                        writeLE16(patch, static_cast<uint16_t>(symSecIdx + 1));
+                        writeLE16(patch, static_cast<uint16_t>(symOutSecIdx + 1));
                         continue;
                     }
                     if (rel.type == coff_a64::kAddr32Nb) {
@@ -402,15 +430,11 @@ bool applyRelocations(const std::vector<ObjFile> &objects,
                     if (rel.type == coff_a64::kSecRelLow12A ||
                         rel.type == coff_a64::kSecRelHigh12A ||
                         rel.type == coff_a64::kSecRelLow12L) {
-                        size_t symSecIdx = 0;
-                        if (!findSectionByAddr(layout, S, symSecIdx)) {
-                            err << "error: " << obj.name << ": SECREL target '" << symName
-                                << "' has no output section\n";
+                        if (!requireTargetOutputSection("SECREL"))
                             return false;
-                        }
                         uint32_t value = static_cast<uint32_t>(
                             static_cast<int64_t>(S) -
-                            static_cast<int64_t>(layout.sections[symSecIdx].virtualAddr) + A);
+                            static_cast<int64_t>(layout.sections[symOutSecIdx].virtualAddr) + A);
                         if (rel.type == coff_a64::kSecRelHigh12A)
                             value >>= 12;
                         else

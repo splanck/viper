@@ -158,6 +158,8 @@ The `PhysReg` enum order differs from hardware encoding. The encoder maps via lo
   of the 4-byte displacement field
 - **Condition codes**: Invalid MIR condition-code integers are rejected even in release builds before the encoder
   constructs JCC/SETcc/CMOVcc opcodes.
+- **Win64 unwind metadata**: COFF unwind emission requires every planned prologue operation to match emitted code,
+  and rejects prologue/code offsets that exceed the 8-bit PE unwind fields.
 - **Symbol names**: Encoders record canonical, unmangled names in `CodeSection`; platform ABI spelling is applied
   by the object writer. This keeps ELF/COFF/Mach-O inputs comparable until serialization.
 
@@ -214,8 +216,8 @@ The AArch64 encoder synthesizes function prologues and epilogues at emit time:
 - **Large frames**: SP adjustment chunked in multiples of 4080 (preserving 16-byte alignment between steps)
 - **Frame-size checks**: Large-frame helpers reject negative or wider-than-32-bit byte counts before narrowing into
   instruction immediates.
-- **Large stack/base offsets**: Materialized-address load/store fallbacks choose a scratch register that does not
-  alias the base register or a GPR store source.
+- **Large stack/base offsets**: Materialized-address load/store fallbacks, including SP-relative stores, choose a
+  scratch register that does not alias the base register or a GPR store source.
 - **Pair load/store offsets**: `ldp/stp` immediate offsets are validated for 8-byte alignment and signed imm7 range
   before encoding.
 
@@ -301,16 +303,20 @@ LC_BUILD_VERSION → LC_SYMTAB → LC_DYSYMTAB → section data → relocations 
 - Symbol names are stored canonically in `CodeSection`; the writer prefixes non-local Mach-O nlist names with `_`
   at serialization time. Canonical C symbols that already begin with `_` still receive the ABI prefix, so
   `__CFConstantStringClassReference` becomes `___CFConstantStringClassReference` in the raw object symbol table.
-- Local labels starting with `L` or `.` are not ABI-prefixed.
+- Local symbols and compiler-generated local-label patterns such as `.L*`, `L.*`, `Ltmp*`, and `LBB*` are not
+  ABI-prefixed; normal external/global names beginning with `L` still receive the Darwin `_` prefix.
 - Relocations stored per-section (not in separate `.rela` sections like ELF)
 - Both `__TEXT,__text` and `__TEXT,__const` publish their own relocation tables when needed.
-- AArch64 non-zero addends are serialized with paired `ARM64_RELOC_ADDEND` records before the target relocation.
+- AArch64 non-zero addends are range-checked as signed 24-bit values and serialized with paired
+  `ARM64_RELOC_ADDEND` records before the target relocation.
 - Compact format: `r_address(32) | r_symbolnum(24) | r_pcrel(1) | r_length(2) | r_extern(1) | r_type(4)`
 - LC_BUILD_VERSION mandatory (platform=macOS, minos=14.0)
 - `MH_SUBSECTIONS_VIA_SYMBOLS` flag set
 - Multi-text emission uses an explicit writer override that merges input atoms through `CodeSection::appendSection()`
   before emitting one `__TEXT,__text` section with subsection-by-symbol semantics.
-- Relocations and compact-unwind entries fail fast if they reference an unknown symbol index.
+- Relocations and compact-unwind entries fail fast if they reference an unknown symbol index. Explicit
+  cross-section relocation hints must resolve to exactly one target symbol; missing or duplicate target names are
+  diagnosed instead of falling back to the source section symbol.
 
 ### COFF Writer
 

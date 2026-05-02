@@ -565,6 +565,40 @@ static void testRodataRelocations() {
     std::remove(path.c_str());
 }
 
+static void testAmbiguousCrossSectionRelocationFails() {
+    CodeSection text, rodata;
+    text.defineSymbol("dup", SymbolBinding::Local, SymbolSection::Text);
+    text.emit8(0xC3);
+    text.defineSymbol("dup", SymbolBinding::Local, SymbolSection::Text);
+    text.emit8(0xC3);
+
+    const uint32_t symIdx = rodata.findOrDeclareSymbol("dup");
+    rodata.addRelocation(RelocKind::Abs64, symIdx, 0, SymbolSection::Text);
+    rodata.emit64LE(0);
+
+    std::ostringstream errStream;
+    ElfWriter writer(ObjArch::X86_64);
+    CHECK(!writer.write("/tmp/viper_test_elf_ambiguous_cross.o", text, rodata, errStream));
+    CHECK(errStream.str().find("ambiguous cross-section target") != std::string::npos);
+    std::remove("/tmp/viper_test_elf_ambiguous_cross.o");
+}
+
+static void testMissingCrossSectionRelocationFails() {
+    CodeSection text, rodata;
+    text.defineSymbol("main", SymbolBinding::Global, SymbolSection::Text);
+    text.emit8(0xC3);
+
+    const uint32_t symIdx = rodata.findOrDeclareSymbol("missing");
+    rodata.addRelocation(RelocKind::Abs64, symIdx, 0, SymbolSection::Text);
+    rodata.emit64LE(0);
+
+    std::ostringstream errStream;
+    ElfWriter writer(ObjArch::X86_64);
+    CHECK(!writer.write("/tmp/viper_test_elf_missing_cross.o", text, rodata, errStream));
+    CHECK(errStream.str().find("missing cross-section target") != std::string::npos);
+    std::remove("/tmp/viper_test_elf_missing_cross.o");
+}
+
 int main() {
     testMinimalX64Elf();
     testMinimalA64Elf();
@@ -577,6 +611,8 @@ int main() {
     testRodataSymbolType();
     testExplicitRodataRelocationHint();
     testRodataRelocations();
+    testAmbiguousCrossSectionRelocationFails();
+    testMissingCrossSectionRelocationFails();
 
     if (gFail == 0)
         std::cout << "All ELF writer tests passed.\n";

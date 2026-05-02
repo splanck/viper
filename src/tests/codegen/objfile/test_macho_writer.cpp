@@ -298,6 +298,7 @@ static void testSymbolMangling() {
     text.emit8(0xC3);
     text.defineSymbol("my_func", SymbolBinding::Global, SymbolSection::Text);
     text.defineSymbol("_already_mangled", SymbolBinding::Global, SymbolSection::Text);
+    text.defineSymbol("Log", SymbolBinding::Global, SymbolSection::Text);
     text.findOrDeclareSymbol("external_func");
 
     std::string path = "/tmp/viper_test_macho_mangle.o";
@@ -320,6 +321,7 @@ static void testSymbolMangling() {
     bool foundMyFunc = false;
     bool foundAlreadyMangled = false;
     bool foundExternalFunc = false;
+    bool foundLog = false;
     for (uint32_t i = 0; i < nsyms; ++i) {
         size_t nlistOff = symOff + i * 16;
         uint32_t strx = readLE32(data, nlistOff);
@@ -340,11 +342,15 @@ static void testSymbolMangling() {
         } else if (name == "__already_mangled") {
             foundAlreadyMangled = true;
             CHECK(data[nlistOff + 4] == 0x0F);
+        } else if (name == "_Log") {
+            foundLog = true;
+            CHECK(data[nlistOff + 4] == 0x0F);
         }
     }
     CHECK(foundMyFunc);
     CHECK(foundAlreadyMangled);
     CHECK(foundExternalFunc);
+    CHECK(foundLog);
 
     std::remove(path.c_str());
 }
@@ -493,6 +499,39 @@ static void testA64AddendRelocationPair() {
     CHECK(((targetPacked >> 27) & 1) == 1);
 
     std::remove(path.c_str());
+}
+
+static void testA64AddendRangeValidation() {
+    {
+        CodeSection text, rodata;
+        const uint32_t symIdx = text.findOrDeclareSymbol("target");
+        text.addRelocation(RelocKind::A64Call26, symIdx, -1);
+        text.emit32LE(0x94000000);
+
+        const std::string path = "/tmp/viper_test_macho_a64_negative_addend.o";
+        std::ostringstream errStream;
+        MachOWriter writer(ObjArch::AArch64);
+        CHECK(writer.write(path, text, rodata, errStream));
+
+        auto data = readFile(path);
+        uint32_t reloff = readLE32(data, kOffTextSect + 56);
+        uint32_t addendPacked = readLE32(data, reloff + 4);
+        CHECK((addendPacked & 0x00FFFFFF) == 0x00FFFFFF);
+        std::remove(path.c_str());
+    }
+
+    {
+        CodeSection text, rodata;
+        const uint32_t symIdx = text.findOrDeclareSymbol("target");
+        text.addRelocation(RelocKind::A64Call26, symIdx, 0x800000);
+        text.emit32LE(0x94000000);
+
+        std::ostringstream errStream;
+        MachOWriter writer(ObjArch::AArch64);
+        CHECK(!writer.write("/tmp/viper_test_macho_a64_large_addend.o", text, rodata, errStream));
+        CHECK(errStream.str().find("signed 24-bit") != std::string::npos);
+        std::remove("/tmp/viper_test_macho_a64_large_addend.o");
+    }
 }
 
 // =============================================================================
@@ -786,6 +825,24 @@ static void testUndefinedRodataLocalReferenceUsesLocalDefinition() {
     std::remove(path.c_str());
 }
 
+static void testAmbiguousCrossSectionRelocationFails() {
+    CodeSection text, rodata;
+    text.defineSymbol("dup", SymbolBinding::Local, SymbolSection::Text);
+    text.emit8(0xC3);
+    text.defineSymbol("dup", SymbolBinding::Local, SymbolSection::Text);
+    text.emit8(0xC3);
+
+    const uint32_t symIdx = rodata.findOrDeclareSymbol("dup");
+    rodata.addRelocation(RelocKind::Abs64, symIdx, 0, SymbolSection::Text);
+    rodata.emit64LE(0);
+
+    std::ostringstream errStream;
+    MachOWriter writer(ObjArch::X86_64);
+    CHECK(!writer.write("/tmp/viper_test_macho_ambiguous_cross.o", text, rodata, errStream));
+    CHECK(errStream.str().find("ambiguous cross-section target") != std::string::npos);
+    std::remove("/tmp/viper_test_macho_ambiguous_cross.o");
+}
+
 static void testMalformedSymtabFails() {
     std::vector<uint8_t> data(40, 0);
     writeLE32(data, 0, 0xFEEDFACF);  // MH_MAGIC_64
@@ -816,6 +873,7 @@ int main() {
     testX64Relocations();
     testA64Relocations();
     testA64AddendRelocationPair();
+    testA64AddendRangeValidation();
     testRelocDescendingOrder();
     testFactory();
     testRodataSection();
@@ -825,6 +883,7 @@ int main() {
     testUnsupportedRelocationFails();
     testDuplicateLocalSymbolsStayDistinct();
     testUndefinedRodataLocalReferenceUsesLocalDefinition();
+    testAmbiguousCrossSectionRelocationFails();
     testMalformedSymtabFails();
 
     if (gFail == 0)

@@ -523,6 +523,90 @@ int main() {
         CHECK(patched == 0x00000FF8);
     }
 
+    // --- Anonymous unresolved relocation must fail instead of patching address zero ---
+    {
+        std::vector<uint8_t> code(8, 0);
+        auto obj = makeObj("test_anon_undef.o",
+                           ObjFileFormat::ELF,
+                           code,
+                           "",
+                           /*R_X86_64_64=*/1,
+                           /*relocOff=*/0,
+                           /*addend=*/0);
+
+        std::vector<ObjFile> objs = {obj};
+        auto layout = makeLayout(objs, 0x401000);
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Linux, LinkArch::X86_64, err);
+        CHECK(!ok);
+        CHECK(err.str().find("<anonymous section symbol>") != std::string::npos);
+    }
+
+    // --- COFF SECREL uses symbol provenance and accepts end-of-section symbols ---
+    {
+        ObjFile obj;
+        obj.name = "test_secrel_end.obj";
+        obj.format = ObjFileFormat::COFF;
+        obj.sections.push_back({});
+
+        ObjSection text;
+        text.name = ".text";
+        text.data.resize(4, 0);
+        text.executable = true;
+        text.alloc = true;
+        ObjReloc rel;
+        rel.offset = 0;
+        rel.type = 11; // IMAGE_REL_AMD64_SECREL
+        rel.symIndex = 1;
+        text.relocs.push_back(rel);
+        obj.sections.push_back(text);
+
+        ObjSection data;
+        data.name = ".data";
+        data.data.resize(4, 0xAA);
+        data.writable = true;
+        data.alloc = true;
+        obj.sections.push_back(data);
+
+        obj.symbols.push_back({});
+        ObjSymbol endSym;
+        endSym.name = "data_end";
+        endSym.binding = ObjSymbol::Global;
+        endSym.sectionIndex = 2;
+        endSym.offset = 4;
+        obj.symbols.push_back(endSym);
+
+        std::vector<ObjFile> objs = {obj};
+        LinkLayout layout;
+        layout.pageSize = 0x1000;
+        OutputSection outText;
+        outText.name = ".text";
+        outText.executable = true;
+        outText.virtualAddr = 0x140001000ULL;
+        outText.data = text.data;
+        outText.chunks.push_back({0, 1, 0, text.data.size()});
+        layout.sections.push_back(outText);
+
+        OutputSection outData;
+        outData.name = ".data";
+        outData.writable = true;
+        outData.virtualAddr = 0x140002000ULL;
+        outData.data = data.data;
+        outData.chunks.push_back({0, 2, 0, data.data.size()});
+        layout.sections.push_back(outData);
+        layout.globalSyms["data_end"] = {"data_end", GlobalSymEntry::Global, 0, 2, 4, 0};
+
+        std::ostringstream err;
+        std::unordered_set<std::string> dynSyms;
+        bool ok =
+            applyRelocations(objs, layout, dynSyms, LinkPlatform::Windows, LinkArch::X86_64, err);
+        CHECK(ok);
+        CHECK(readLE32(layout.sections[0].data.data()) == 4);
+    }
+
     // --- COFF AArch64 BRANCH26 patches BL/B using the Windows relocation kind ---
     {
         std::vector<uint8_t> code(4, 0);

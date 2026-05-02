@@ -441,23 +441,35 @@ bool ElfWriter::write(const std::string &path,
                                const char *sectionName,
                                uint32_t &elfSymIdx) -> bool {
         elfSymIdx = 0;
-        if (rel.targetSection != SymbolSection::Undefined &&
-            rel.symbolIndex < source.symbols().count()) {
+        if (rel.targetSection != SymbolSection::Undefined) {
+            if (rel.symbolIndex >= source.symbols().count()) {
+                err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
+                    << " references unknown symbol index " << rel.symbolIndex << "\n";
+                return false;
+            }
             const Symbol &sym = source.symbols().at(rel.symbolIndex);
             auto nameIt = targetByName.find(sym.name);
-            if (nameIt != targetByName.end() && nameIt->second != UINT32_MAX)
-                elfSymIdx = nameIt->second;
+            if (nameIt == targetByName.end()) {
+                err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
+                    << " references missing cross-section target '" << sym.name << "'\n";
+                return false;
+            }
+            if (nameIt->second == UINT32_MAX) {
+                err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
+                    << " references ambiguous cross-section target '" << sym.name << "'\n";
+                return false;
+            }
+            elfSymIdx = nameIt->second;
+            return true;
         }
-        if (elfSymIdx == 0) {
-            auto it = sourceMap.find(rel.symbolIndex);
-            if (it != sourceMap.end())
-                elfSymIdx = it->second;
-        }
-        if (elfSymIdx == 0) {
+
+        auto it = sourceMap.find(rel.symbolIndex);
+        if (it == sourceMap.end()) {
             err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
                 << " references unknown symbol index " << rel.symbolIndex << "\n";
             return false;
         }
+        elfSymIdx = it->second;
         return true;
     };
 
@@ -904,23 +916,35 @@ bool ElfWriter::write(const std::string &path,
                                const char *sectionName,
                                uint32_t &elfSymIdx) -> bool {
         elfSymIdx = 0;
-        if (rel.targetSection != SymbolSection::Undefined &&
-            rel.symbolIndex < source.symbols().count()) {
+        if (rel.targetSection != SymbolSection::Undefined) {
+            if (rel.symbolIndex >= source.symbols().count()) {
+                err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
+                    << " references unknown symbol index " << rel.symbolIndex << "\n";
+                return false;
+            }
             const Symbol &sym = source.symbols().at(rel.symbolIndex);
             auto nameIt = targetByName.find(sym.name);
-            if (nameIt != targetByName.end() && nameIt->second != UINT32_MAX)
-                elfSymIdx = nameIt->second;
+            if (nameIt == targetByName.end()) {
+                err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
+                    << " references missing cross-section target '" << sym.name << "'\n";
+                return false;
+            }
+            if (nameIt->second == UINT32_MAX) {
+                err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
+                    << " references ambiguous cross-section target '" << sym.name << "'\n";
+                return false;
+            }
+            elfSymIdx = nameIt->second;
+            return true;
         }
-        if (elfSymIdx == 0) {
-            auto it = sourceMap.find(rel.symbolIndex);
-            if (it != sourceMap.end())
-                elfSymIdx = it->second;
-        }
-        if (elfSymIdx == 0) {
+
+        auto it = sourceMap.find(rel.symbolIndex);
+        if (it == sourceMap.end()) {
             err << "ElfWriter: relocation in " << sectionName << " at offset " << rel.offset
                 << " references unknown symbol index " << rel.symbolIndex << "\n";
             return false;
         }
+        elfSymIdx = it->second;
         return true;
     };
 

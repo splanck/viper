@@ -150,6 +150,32 @@ int main() {
         CHECK(!objs[2].sections[1].data.empty());
     }
 
+    // --- COFF weak external fallback sections are marked live ---
+    {
+        auto user = makeObj("user.o", {".text"});
+        addSymbol(user, "main", 1, ObjSymbol::Global);
+        ObjSymbol weak;
+        weak.name = "maybe_func";
+        weak.binding = ObjSymbol::Undefined;
+        weak.weakExternal = true;
+        weak.weakDefaultName = "fallback_func";
+        user.symbols.push_back(weak);
+        addReloc(user, 1, 2);
+
+        auto fallbackObj = makeObj("fallback.obj", {".text"});
+        fallbackObj.format = ObjFileFormat::COFF;
+        addSymbol(fallbackObj, "fallback_func", 1, ObjSymbol::Global);
+
+        std::vector<ObjFile> objs = {user, fallbackObj};
+        std::unordered_map<std::string, GlobalSymEntry> globalSyms;
+        globalSyms["main"] = {"main", GlobalSymEntry::Global, 0, 1, 0, 0};
+        globalSyms["fallback_func"] = {"fallback_func", GlobalSymEntry::Global, 1, 1, 0, 0};
+
+        std::ostringstream err;
+        deadStrip(objs, 1, globalSyms, "main", err);
+        CHECK(!objs[1].sections[1].data.empty());
+    }
+
     // --- Unreferenced archive sections are stripped ---
     {
         auto user = makeObj("user.o", {".text"});

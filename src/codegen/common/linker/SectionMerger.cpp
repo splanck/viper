@@ -20,6 +20,8 @@
 #include "codegen/common/linker/AlignUtil.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <limits>
 #include <map>
 
 namespace viper::codegen::linker {
@@ -32,6 +34,50 @@ bool isWindowsCrtSubsection(const std::string &name) {
 
 bool isWindowsTlsSubsection(const std::string &name) {
     return name.rfind(".tls", 0) == 0;
+}
+
+struct InitArraySortKey {
+    int family = 0;
+    uint32_t priority = std::numeric_limits<uint32_t>::max();
+    bool isInitArray = false;
+};
+
+InitArraySortKey elfInitArraySortKey(const std::string &name) {
+    auto parsePriority = [&](const char *prefix) -> uint32_t {
+        const size_t prefixLen = std::char_traits<char>::length(prefix);
+        if (name.size() == prefixLen)
+            return 65535;
+        if (name.size() <= prefixLen || name[prefixLen] != '.')
+            return std::numeric_limits<uint32_t>::max();
+        uint32_t value = 0;
+        for (size_t i = prefixLen + 1; i < name.size(); ++i) {
+            if (!std::isdigit(static_cast<unsigned char>(name[i])))
+                return std::numeric_limits<uint32_t>::max();
+            value = value * 10 + static_cast<uint32_t>(name[i] - '0');
+        }
+        return value;
+    };
+
+    InitArraySortKey key;
+    if (name.rfind(".preinit_array", 0) == 0) {
+        key.family = 0;
+        key.priority = parsePriority(".preinit_array");
+        key.isInitArray = key.priority != std::numeric_limits<uint32_t>::max();
+    } else if (name.rfind(".init_array", 0) == 0) {
+        key.family = 1;
+        key.priority = parsePriority(".init_array");
+        key.isInitArray = key.priority != std::numeric_limits<uint32_t>::max();
+    } else if (name.rfind(".fini_array", 0) == 0) {
+        key.family = 2;
+        key.priority = parsePriority(".fini_array");
+        key.isInitArray = key.priority != std::numeric_limits<uint32_t>::max();
+    }
+    return key;
+}
+
+bool isMachOModInitTermSection(const std::string &name) {
+    return name.find("__mod_init_func") != std::string::npos ||
+           name.find("__mod_term_func") != std::string::npos;
 }
 
 uint64_t imageBaseForPlatform(LinkPlatform platform) {
@@ -124,6 +170,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         SectionClass cls;
         std::string name;
         uint32_t alignment;
+        size_t inputOrder;
     };
 
     std::vector<PendingChunk> pending;
@@ -141,7 +188,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
 
             SectionClass cls =
                 classifySection(sec.name, sec.executable, sec.writable, sec.tls, sec.zeroFill);
-            pending.push_back({oi, si, cls, sec.name, sec.alignment});
+            pending.push_back({oi, si, cls, sec.name, sec.alignment, pending.size()});
         }
     }
 
@@ -154,6 +201,30 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         pending.begin(), pending.end(), [platform](const PendingChunk &a, const PendingChunk &b) {
             if (a.cls != b.cls)
                 return sectionClassOrder(a.cls) < sectionClassOrder(b.cls);
+
+            if (platform == LinkPlatform::Linux) {
+                const auto aInit = elfInitArraySortKey(a.name);
+                const auto bInit = elfInitArraySortKey(b.name);
+                if (aInit.isInitArray || bInit.isInitArray) {
+                    if (aInit.isInitArray != bInit.isInitArray)
+                        return aInit.isInitArray;
+                    if (aInit.family != bInit.family)
+                        return aInit.family < bInit.family;
+                    if (aInit.priority != bInit.priority)
+                        return aInit.priority < bInit.priority;
+                    return a.inputOrder < b.inputOrder;
+                }
+            }
+
+            if (platform == LinkPlatform::macOS) {
+                const bool aMod = isMachOModInitTermSection(a.name);
+                const bool bMod = isMachOModInitTermSection(b.name);
+                if (aMod || bMod) {
+                    if (aMod != bMod)
+                        return aMod;
+                    return a.inputOrder < b.inputOrder;
+                }
+            }
 
             if (platform == LinkPlatform::Windows) {
                 const bool aCrt = isWindowsCrtSubsection(a.name);

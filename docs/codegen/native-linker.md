@@ -324,25 +324,36 @@ symbol from being rebound to an unrelated global definition.
 - AArch64 B.cond/CBZ/CBNZ: ±1MB (`imm19` × 4)
 - x86_64: rel32 can reach ±2GB (sufficient for most programs)
 - Invalid relocation symbol indexes are rejected before address resolution.
+- Relocations whose target symbol cannot be resolved fail even when the object used an anonymous section symbol;
+  unresolved targets are never patched as address zero.
 - AArch64 branch targets must be 4-byte aligned.
 - AArch64 page-offset load/store relocations validate scaled alignment for the instruction size.
 - `Abs32` relocations must fit in the unsigned 32-bit range.
+- COFF `SECTION`/`SECREL` relocations resolve the target output section from the symbol's input-section identity,
+  not by searching final addresses, so legal end-of-section symbols are accepted.
 
 ### AArch64 Branch Trampolines
 
 The trampoline pass can redirect both global and local branch targets. Local targets are resolved from the merged
-section location map, and trampoline reuse is keyed by target address rather than display name so duplicate local
-labels from different objects cannot collide.
+section location map, trampoline reuse is keyed by target address rather than display name so duplicate local labels
+from different objects cannot collide, and generated trampoline symbol names are checked against user and global
+symbols before insertion.
 
 ### Dead Strip and ICF
 
 Dead stripping keeps EH/unwind metadata roots alive (`.eh_frame`, `.gcc_except_table`, `__compact_unwind`, and
 `__eh_frame`) and treats ELF constructor/destructor arrays as live by prefix, including priority-suffixed
-`.preinit_array.*`, `.init_array.*`, and `.fini_array.*` inputs. Identical Code Folding includes local relocation
-identity in function signatures and skips candidates with extra local symbols in the function section, preventing
-folds that would strand non-redirectable local labels. Executable-section relocations that materialize a function
-address, such as x86_64 `PCRel32` LEA patterns, mark that function address-taken; only known direct branch
-relocations remain foldable.
+`.preinit_array.*`, `.init_array.*`, and `.fini_array.*` inputs. Weak COFF external fallback definitions are also
+marked live when referenced. Identical Code Folding includes local relocation identity in function signatures and
+skips candidates with extra local symbols in the function section, preventing folds that would strand
+non-redirectable local labels. Executable-section relocations that materialize a function address, such as x86_64
+`PCRel32` LEA patterns, mark that function address-taken; only known direct branch relocations remain foldable.
+
+### Section Ordering
+
+Within merged output sections, Windows `.CRT$*` and `.tls$*` subsections retain lexicographic order, ELF
+`.preinit_array.*`/`.init_array.*`/`.fini_array.*` inputs sort by constructor priority before generic alignment
+sorting, and Mach-O `__mod_init_func`/`__mod_term_func` inputs preserve source order.
 
 ---
 

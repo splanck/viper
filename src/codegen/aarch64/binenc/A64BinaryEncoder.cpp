@@ -34,6 +34,7 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -79,6 +80,18 @@ static bool isInSignedImmRange(long long offset) {
 
 static bool isLegalScaledUImm64(long long offset) {
     return offset >= 0 && (offset % 8) == 0 && (offset / 8) <= 4095;
+}
+
+static uint32_t chooseGprScratch(uint32_t base, std::optional<uint32_t> avoid = std::nullopt) {
+    const uint32_t candidates[] = {hwGPR(kScratchGPR), hwGPR(kScratchGPR2), hwGPR(kScratchGPR3)};
+    for (uint32_t candidate : candidates) {
+        if (candidate == base)
+            continue;
+        if (avoid.has_value() && candidate == *avoid)
+            continue;
+        return candidate;
+    }
+    throw std::runtime_error("AArch64 binary encoder: no scratch register for large offset load/store");
 }
 
 static int32_t checkedPairImm7(int64_t offset, const char *opcode) {
@@ -529,18 +542,8 @@ void A64BinaryEncoder::encodeAddSp(int64_t bytes, objfile::CodeSection &cs) {
 
 void A64BinaryEncoder::encodeLargeOffsetLdSt(
     uint32_t rt, uint32_t base, int64_t offset, bool isLoad, bool isFPR, objfile::CodeSection &cs) {
-    const uint32_t candidates[] = {hwGPR(kScratchGPR), hwGPR(kScratchGPR2), hwGPR(kScratchGPR3)};
-    uint32_t scratch = UINT32_MAX;
-    for (uint32_t candidate : candidates) {
-        if (candidate == base)
-            continue;
-        if (!isLoad && !isFPR && candidate == rt)
-            continue;
-        scratch = candidate;
-        break;
-    }
-    if (scratch == UINT32_MAX)
-        throw std::runtime_error("AArch64 binary encoder: no scratch register for large offset load/store");
+    const uint32_t scratch = chooseGprScratch(base, (!isLoad && !isFPR) ? std::optional<uint32_t>(rt)
+                                                                        : std::nullopt);
     encodeMovImm64(scratch, static_cast<uint64_t>(offset), cs);
     // add scratch, base, scratch
     emit32(encode3Reg(kAddRRR, scratch, base, scratch), cs);
@@ -562,7 +565,7 @@ void A64BinaryEncoder::encodeSpOffsetStore(uint32_t rt,
         return;
     }
 
-    const uint32_t scratch = hwGPR(kScratchGPR2);
+    const uint32_t scratch = chooseGprScratch(sp, (!isFPR) ? std::optional<uint32_t>(rt) : std::nullopt);
     emit32(encodeAddSubImm(kAddRI, scratch, sp, 0), cs);
     if (offset > 0)
         emitAddSubImmSmart(kAddRI, scratch, scratch, static_cast<uint32_t>(offset), cs);

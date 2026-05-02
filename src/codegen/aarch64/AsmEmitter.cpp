@@ -158,6 +158,7 @@ inline void emit3D(std::ostream &os, const char *mnem, PhysReg d, PhysReg a, Phy
 
 #include <cstring>
 #include <iomanip>
+#include <optional>
 #include <stdexcept>
 
 namespace viper::codegen::aarch64 {
@@ -523,38 +524,6 @@ void AsmEmitter::emitAddSp(std::ostream &os, long long bytes) const {
     }
 }
 
-void AsmEmitter::emitStrToSp(std::ostream &os, PhysReg src, long long offset) const {
-    if (offset >= 0 && (offset % 8) == 0 && (offset / 8) <= 4095) {
-        os << "  str " << rn(src) << ", [sp, #" << offset << "]\n";
-        return;
-    }
-
-    os << "  mov " << rn(kScratchGPR2) << ", sp\n";
-    emitAddRI(os, kScratchGPR2, kScratchGPR2, offset);
-    os << "  str " << rn(src) << ", [" << rn(kScratchGPR2) << "]\n";
-}
-
-void AsmEmitter::emitStrFprToSp(std::ostream &os, PhysReg src, long long offset) const {
-    if (offset >= 0 && (offset % 8) == 0 && (offset / 8) <= 4095) {
-        os << "  str ";
-        printD(os, src);
-        os << ", [sp, #" << offset << "]\n";
-        return;
-    }
-
-    os << "  mov " << rn(kScratchGPR2) << ", sp\n";
-    emitAddRI(os, kScratchGPR2, kScratchGPR2, offset);
-    os << "  str ";
-    printD(os, src);
-    os << ", [" << rn(kScratchGPR2) << "]\n";
-}
-
-/// @brief Check if offset is in ARM64 signed immediate range for str/ldr instructions.
-/// The signed unscaled immediate for str/ldr is [-256, 255].
-static bool isInSignedImmRange(long long offset) {
-    return offset >= -256 && offset <= 255;
-}
-
 static PhysReg chooseGprScratch(PhysReg base, std::optional<PhysReg> avoid = std::nullopt) {
     const PhysReg candidates[] = {kScratchGPR, kScratchGPR2, kScratchGPR3};
     for (PhysReg candidate : candidates) {
@@ -565,6 +534,40 @@ static PhysReg chooseGprScratch(PhysReg base, std::optional<PhysReg> avoid = std
         return candidate;
     }
     throw std::runtime_error("AArch64 asm emitter: no scratch register for large offset load/store");
+}
+
+void AsmEmitter::emitStrToSp(std::ostream &os, PhysReg src, long long offset) const {
+    if (offset >= 0 && (offset % 8) == 0 && (offset / 8) <= 4095) {
+        os << "  str " << rn(src) << ", [sp, #" << offset << "]\n";
+        return;
+    }
+
+    const PhysReg scratch = chooseGprScratch(PhysReg::SP, src);
+    os << "  mov " << rn(scratch) << ", sp\n";
+    emitAddRI(os, scratch, scratch, offset);
+    os << "  str " << rn(src) << ", [" << rn(scratch) << "]\n";
+}
+
+void AsmEmitter::emitStrFprToSp(std::ostream &os, PhysReg src, long long offset) const {
+    if (offset >= 0 && (offset % 8) == 0 && (offset / 8) <= 4095) {
+        os << "  str ";
+        printD(os, src);
+        os << ", [sp, #" << offset << "]\n";
+        return;
+    }
+
+    const PhysReg scratch = chooseGprScratch(PhysReg::SP);
+    os << "  mov " << rn(scratch) << ", sp\n";
+    emitAddRI(os, scratch, scratch, offset);
+    os << "  str ";
+    printD(os, src);
+    os << ", [" << rn(scratch) << "]\n";
+}
+
+/// @brief Check if offset is in ARM64 signed immediate range for str/ldr instructions.
+/// The signed unscaled immediate for str/ldr is [-256, 255].
+static bool isInSignedImmRange(long long offset) {
+    return offset >= -256 && offset <= 255;
 }
 
 void AsmEmitter::emitLdrFromFp(std::ostream &os, PhysReg dst, long long offset) const {

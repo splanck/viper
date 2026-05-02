@@ -565,31 +565,38 @@ bool CoffWriter::write(const std::string &path,
                                const char *sectionName,
                                uint32_t &coffSymIdx) -> bool {
         coffSymIdx = 0;
-        bool resolved = false;
-        if (rel.targetSection != SymbolSection::Undefined &&
-            rel.symbolIndex < source.symbols().count()) {
+        if (rel.targetSection != SymbolSection::Undefined) {
+            if (rel.symbolIndex >= source.symbols().count()) {
+                err << "CoffWriter: relocation in " << sectionName << " at offset " << rel.offset
+                    << " references unknown symbol index " << rel.symbolIndex << "\n";
+                return false;
+            }
             const Symbol &sym = source.symbols().at(rel.symbolIndex);
             const auto &targetByName = (rel.targetSection == SymbolSection::Rodata)
                                            ? definedRodataByName
                                            : definedTextByName;
             auto nameIt = targetByName.find(sym.name);
-            if (nameIt != targetByName.end() && nameIt->second != UINT32_MAX) {
-                coffSymIdx = nameIt->second;
-                resolved = true;
+            if (nameIt == targetByName.end()) {
+                err << "CoffWriter: relocation in " << sectionName << " at offset " << rel.offset
+                    << " references missing cross-section target '" << sym.name << "'\n";
+                return false;
             }
-        }
-        if (!resolved) {
-            auto it = sourceMap.find(rel.symbolIndex);
-            if (it != sourceMap.end()) {
-                coffSymIdx = it->second;
-                resolved = true;
+            if (nameIt->second == UINT32_MAX) {
+                err << "CoffWriter: relocation in " << sectionName << " at offset " << rel.offset
+                    << " references ambiguous cross-section target '" << sym.name << "'\n";
+                return false;
             }
+            coffSymIdx = nameIt->second;
+            return true;
         }
-        if (!resolved) {
+
+        auto it = sourceMap.find(rel.symbolIndex);
+        if (it == sourceMap.end()) {
             err << "CoffWriter: relocation in " << sectionName << " at offset " << rel.offset
                 << " references unknown symbol index " << rel.symbolIndex << "\n";
             return false;
         }
+        coffSymIdx = it->second;
         return true;
     };
 
@@ -1066,31 +1073,38 @@ bool CoffWriter::write(const std::string &path,
                                const char *sectionName,
                                uint32_t &coffSymIdx) -> bool {
         coffSymIdx = 0;
-        bool resolved = false;
-        if (rel.targetSection != SymbolSection::Undefined &&
-            rel.symbolIndex < source.symbols().count()) {
+        if (rel.targetSection != SymbolSection::Undefined) {
+            if (rel.symbolIndex >= source.symbols().count()) {
+                err << "CoffWriter: relocation in " << sectionName << " at offset " << rel.offset
+                    << " references unknown symbol index " << rel.symbolIndex << "\n";
+                return false;
+            }
             const Symbol &sym = source.symbols().at(rel.symbolIndex);
             const auto &targetByName = (rel.targetSection == SymbolSection::Rodata)
                                            ? definedRodataByName
                                            : definedTextByName;
             auto nameIt = targetByName.find(sym.name);
-            if (nameIt != targetByName.end() && nameIt->second != UINT32_MAX) {
-                coffSymIdx = nameIt->second;
-                resolved = true;
+            if (nameIt == targetByName.end()) {
+                err << "CoffWriter: relocation in " << sectionName << " at offset " << rel.offset
+                    << " references missing cross-section target '" << sym.name << "'\n";
+                return false;
             }
-        }
-        if (!resolved) {
-            auto it = sourceMap.find(rel.symbolIndex);
-            if (it != sourceMap.end()) {
-                coffSymIdx = it->second;
-                resolved = true;
+            if (nameIt->second == UINT32_MAX) {
+                err << "CoffWriter: relocation in " << sectionName << " at offset " << rel.offset
+                    << " references ambiguous cross-section target '" << sym.name << "'\n";
+                return false;
             }
+            coffSymIdx = nameIt->second;
+            return true;
         }
-        if (!resolved) {
+
+        auto it = sourceMap.find(rel.symbolIndex);
+        if (it == sourceMap.end()) {
             err << "CoffWriter: relocation in " << sectionName << " at offset " << rel.offset
                 << " references unknown symbol index " << rel.symbolIndex << "\n";
             return false;
         }
+        coffSymIdx = it->second;
         return true;
     };
 
