@@ -95,22 +95,36 @@ typedef struct {
     uint32_t *data;
 } spritebatch_pixels_view;
 
+/// @brief Clamp a scale percentage to a minimum of 1 — prevents division by zero in
+///        `spritebatch_saturating_scaled_dim` and ensures the sprite remains visible.
 static int64_t spritebatch_normalize_scale(int64_t scale) {
     return scale < 1 ? 1 : scale;
 }
 
+/// @brief Sanitize a caller-supplied initial capacity: substitute the default (256)
+///        for zero-or-negative values, and cap at MAX_BATCH_CAPACITY to prevent a
+///        single over-sized allocation from exhausting heap memory at construction.
 static int64_t spritebatch_initial_capacity(int64_t capacity) {
     if (capacity <= 0)
         return DEFAULT_CAPACITY;
     return capacity > MAX_BATCH_CAPACITY ? MAX_BATCH_CAPACITY : capacity;
 }
 
+/// @brief Normalize a batch tint color to 24-bit RGB or the "no tint" sentinel -1.
+/// @details Negative values are the sentinel for "disabled"; any other value is masked
+///   to the low 24 bits because the tint is applied as an RGB multiply — the alpha
+///   channel is managed per-item independently.
 static int64_t spritebatch_normalize_tint(int64_t color) {
     if (color < 0)
         return -1;
     return (int64_t)((uint64_t)color & 0x00FFFFFFu);
 }
 
+/// @brief Compute a scaled pixel dimension with saturation and a minimum of 1.
+/// @details Similar to `sprite_saturating_scale` but enforces a floor of 1 instead
+///   of rounding to 0, so a very small scale never produces a zero-size allocation
+///   in the subsequent `rt_pixels_scale` call. Long double avoids intermediate
+///   overflow before the /100 division.
 static int64_t spritebatch_saturating_scaled_dim(int64_t value, int64_t scale) {
     long double scaled =
         ((long double)value * (long double)spritebatch_normalize_scale(scale)) / 100.0L;
@@ -125,6 +139,9 @@ static int64_t spritebatch_saturating_scaled_dim(int64_t value, int64_t scale) {
 // Helper Functions
 //=============================================================================
 
+/// @brief qsort comparator for batch items: primary key is depth (ascending, painter's
+///        order), secondary key is submission_order (ascending, preserves insertion order
+///        for items at equal depth so draws are deterministic regardless of sort stability).
 static int compare_depth(const void *a, const void *b) {
     const batch_item *ia = (const batch_item *)a;
     const batch_item *ib = (const batch_item *)b;
@@ -139,6 +156,9 @@ static int compare_depth(const void *a, const void *b) {
     return 0;
 }
 
+/// @brief Release a GC-managed heap payload; skips non-heap pointers (e.g. stack vars).
+/// @details `rt_heap_is_payload` guards against releasing static or stack data that was
+///   accidentally stored in a batch item's source slot during development.
 static void spritebatch_release_object(void *obj) {
     if (!obj || !rt_heap_is_payload(obj))
         return;
@@ -146,12 +166,21 @@ static void spritebatch_release_object(void *obj) {
         rt_obj_free(obj);
 }
 
+/// @brief Retain a GC-managed heap payload; skips non-heap pointers.
+/// @details Symmetric with `spritebatch_release_object` — used when `add_item` copies
+///   an item's source reference into the batch so the batch owns a counted share.
 static void spritebatch_retain_object(void *obj) {
     if (!obj || !rt_heap_is_payload(obj))
         return;
     rt_obj_retain_maybe(obj);
 }
 
+/// @brief Release a temporary transform result and restore the slot to the original source.
+/// @details When a draw pipeline stage (scale, rotate, tint) produces a new Pixels object
+///   the temporary replaces @p *slot. This helper releases only that temporary — it
+///   guards against releasing when the slot still holds the original (no transform was
+///   applied) to avoid a double-free. After release the slot is reset to @p original so
+///   subsequent stages see a consistent starting state.
 static void spritebatch_release_temp(void **slot, void *original) {
     if (!slot || !*slot || *slot == original)
         return;
@@ -159,6 +188,13 @@ static void spritebatch_release_temp(void **slot, void *original) {
     *slot = original;
 }
 
+/// @brief Replace the temporary in @p *slot with @p replacement, releasing the old
+///        temporary if it differs from the canonical @p original.
+/// @details Complements `spritebatch_release_temp`: used mid-pipeline when one
+///   transformed result is immediately replaced by the next (e.g., scaled result fed
+///   into the rotate stage). The old temp is freed only when it's truly a temp (not
+///   the original source), avoiding spurious releases on the first stage where the
+///   slot might still hold the original.
 static void spritebatch_replace_temp(void **slot, void *replacement, void *original) {
     if (!slot || !replacement || replacement == *slot)
         return;
@@ -167,6 +203,9 @@ static void spritebatch_replace_temp(void **slot, void *replacement, void *origi
     *slot = replacement;
 }
 
+/// @brief Release the source Pixels object held by a batch item and zero the struct.
+/// @details Zeroing after release ensures that if the item is ever re-used (e.g., from
+///   a cleared-and-refilled batch) it starts in a clean state with no stale pointers.
 static void spritebatch_release_item(batch_item *item) {
     if (!item)
         return;
@@ -174,6 +213,10 @@ static void spritebatch_release_item(batch_item *item) {
     memset(item, 0, sizeof(*item));
 }
 
+/// @brief Release all items in the batch and reset the item count to zero.
+/// @details Does NOT free or resize the underlying `items` array — capacity is preserved
+///   so that subsequent `begin/draw/end` cycles can reuse the same allocation. Called
+///   at the end of every `_end` pass and also by the GC finalizer.
 static void spritebatch_clear_items(spritebatch_impl *batch) {
     if (!batch)
         return;
@@ -182,6 +225,13 @@ static void spritebatch_clear_items(spritebatch_impl *batch) {
     batch->count = 0;
 }
 
+/// @brief Grow the item array so it can hold at least `batch->count + needed` entries.
+/// @details Uses GROWTH_FACTOR doubling (capped at MAX_BATCH_CAPACITY) to amortize
+///   realloc costs over many `add` calls. All intermediate multiplication/addition
+///   overflow scenarios are checked explicitly so a large `needed` value cannot wrap
+///   to a small allocation. Returns 0 (and traps) on allocation failure; the existing
+///   array is left intact so callers can partially recover or drain the current batch.
+/// @return 1 if the batch has sufficient capacity, 0 on overflow or allocation failure.
 static int8_t ensure_capacity(spritebatch_impl *batch, int64_t needed) {
     if (!batch || needed < 0)
         return 0;
@@ -214,6 +264,11 @@ static int8_t ensure_capacity(spritebatch_impl *batch, int64_t needed) {
     return 1;
 }
 
+/// @brief Append one draw command to the batch, retaining its source Pixels reference.
+/// @details The submission_order counter is stamped before the copy so depth-equal items
+///   remain in insertion order after qsort. The source is retained here (not at draw
+///   time) so the caller can release their own reference immediately after calling
+///   `add_item` without risk of premature collection.
 static void add_item(spritebatch_impl *batch, batch_item *item) {
     if (!ensure_capacity(batch, 1))
         return;
@@ -223,6 +278,17 @@ static void add_item(spritebatch_impl *batch, batch_item *item) {
     batch->count++;
 }
 
+/// @brief Apply a batch-level tint and/or alpha to a Pixels object, returning either
+///        the original (unmodified) or a transformed copy.
+/// @details Tint is applied first via `rt_pixels_tint`, which always creates a new
+///   object. Alpha modulation requires in-place mutation; if the tint already produced
+///   a copy that copy is mutated directly, otherwise a clone is made so the original
+///   frame data is never altered. The caller is responsible for releasing any new
+///   object returned (i.e., when the result pointer ≠ the input @p pixels pointer).
+/// @param pixels      Source Pixels to transform; returned unchanged if no color needed.
+/// @param tint_color  24-bit RGB tint, or -1 for none.
+/// @param alpha       Global alpha in [0, 255]; 255 means fully opaque (skip alpha pass).
+/// @return Transformed Pixels (new object) or @p pixels unchanged.
 static void *apply_batch_color(void *pixels, int64_t tint_color, int64_t alpha) {
     if (!pixels || (tint_color < 0 && alpha >= 255))
         return pixels;
@@ -256,6 +322,12 @@ static void *apply_batch_color(void *pixels, int64_t tint_color, int64_t alpha) 
     return result;
 }
 
+/// @brief Crop a rectangular region from @p pixels into a new Pixels object.
+/// @details Allocates a fresh Pixels of size sw×sh and copies the source rectangle
+///   into it via `rt_pixels_copy`. Used by `draw_region_item` to isolate the source
+///   region before applying scale or rotation transforms, which operate on the full
+///   image and cannot be constrained to a sub-rectangle directly.
+/// @return New Pixels object containing the extracted region, or NULL on failure.
 static void *extract_region_pixels(void *pixels, int64_t sx, int64_t sy, int64_t sw, int64_t sh) {
     if (!pixels || sw <= 0 || sh <= 0)
         return NULL;
@@ -268,6 +340,16 @@ static void *extract_region_pixels(void *pixels, int64_t sx, int64_t sy, int64_t
     return region;
 }
 
+/// @brief Draw one batch item to the canvas, applying scale, rotation, and color transforms.
+/// @details Fast path: if no transforms or color effects are needed, calls
+///   `rt_canvas_blit_region` directly without any allocation. Otherwise:
+///   1. Extracts the source region into a fresh Pixels object.
+///   2. Scales it if scale_x/scale_y ≠ 100%.
+///   3. Rotates it if rotation ≠ 0.
+///   4. Applies batch-level tint and alpha via `apply_batch_color`.
+///   5. Blits the result with `rt_canvas_blit_alpha`.
+///   Each stage uses `spritebatch_replace_temp` / `spritebatch_release_temp` to
+///   ensure the previous intermediate is freed and the source Pixels is never mutated.
 static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_item *item) {
     if (!item->source)
         return;
@@ -317,6 +399,11 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
 // SpriteBatch Creation
 //=============================================================================
 
+/// @brief GC finalizer for a SpriteBatch — releases all retained item sources and
+///        frees the items array.
+/// @details `spritebatch_clear_items` releases each item's source reference; the
+///   `items` array itself is freed here because it is a plain heap allocation outside
+///   the GC pool.
 static void spritebatch_finalize(void *obj) {
     spritebatch_impl *batch = (spritebatch_impl *)obj;
     spritebatch_clear_items(batch);

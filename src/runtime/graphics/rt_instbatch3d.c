@@ -57,6 +57,12 @@ typedef struct {
     int8_t has_prev_snapshot;
 } rt_instbatch3d;
 
+/// @brief Compute the next geometric growth capacity for the instance buffer.
+/// @details Starting capacity is INST_INIT_CAP; subsequent doublings are guarded
+///   against INT32_MAX/2 overflow and against the resulting byte-count exceeding
+///   SIZE_MAX so both signed-integer and size_t overflow are prevented.  Returns 1
+///   on success and writes the new capacity into *out_capacity; returns 0 if the
+///   current capacity is already too large to double safely.
 static int instbatch_next_capacity(int32_t current, int32_t *out_capacity) {
     if (!out_capacity)
         return 0;
@@ -73,10 +79,20 @@ static int instbatch_next_capacity(int32_t current, int32_t *out_capacity) {
     return 1;
 }
 
+/// @brief Return the (row, col) element of a 4x4 identity matrix.
+/// @details Used as a NaN/Inf fallback value when sanitizing incoming Mat4
+///   transforms — replacing bad floats with the identity element preserves the
+///   matrix structure and avoids propagating undefined GPU state.
 static float instbatch_identity_at(int row, int col) {
     return row == col ? 1.0f : 0.0f;
 }
 
+/// @brief Copy a Mat4 object into a float[16] slot, replacing any NaN/Inf with
+///   the corresponding identity-matrix element.
+/// @details rt_mat4_get returns double, so the per-element isfinite check and
+///   narrowing cast to float both happen here.  Replacing non-finite values
+///   with the identity element keeps the matrix structurally valid and prevents
+///   GPU pipeline exceptions that would otherwise silently corrupt a frame.
 static void instbatch_copy_mat4_sanitized(float *dst, void *transform) {
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {

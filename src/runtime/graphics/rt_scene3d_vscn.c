@@ -1233,6 +1233,10 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
     return mesh;
 }
 
+/// @brief Parse a JSON light object from a VSCN file into an `rt_light3d` struct.
+/// @details Reads type, direction, color, intensity, attenuation, and spot-cone
+///          cosines from the vjson object. Defaults to a point light (type 1) when
+///          the type field is absent or out of range [0–3].
 static rt_light3d *vscn_parse_light(void *light_obj) {
     rt_light3d *light;
     void *arr;

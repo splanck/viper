@@ -93,7 +93,9 @@ static void sprite_apply_alpha(void *pixels, int64_t alpha) {
         return;
     if (alpha < 0)
         alpha = 0;
-    rt_pixels_impl *impl = (rt_pixels_impl *)pixels;
+    rt_pixels_impl *impl = rt_pixels_checked_impl_or_null(pixels);
+    if (!impl)
+        return;
     if (!impl->data)
         return;
     uint32_t *data = impl->data;
@@ -106,10 +108,21 @@ static void sprite_apply_alpha(void *pixels, int64_t alpha) {
     }
 }
 
+/// @brief Clamp a sprite scale percentage to a minimum of 1 (never zero or negative).
+/// @details A scale of 0 would divide by zero in `sprite_saturating_scale`; negative
+///   values are semantically invalid (use flip flags for mirroring). Clamping to 1
+///   produces a 1% scale rather than asserting so the sprite renders as a near-invisible
+///   single pixel rather than crashing.
 static int64_t sprite_normalize_scale(int64_t scale) {
     return scale < 1 ? 1 : scale;
 }
 
+/// @brief Multiply @p value by a percentage @p scale (e.g., 200 = double) with saturation.
+/// @details The computation `value * scale / 100` is done in `long double` to avoid
+///   integer overflow before the division. The result is rounded to the nearest
+///   integer (away from zero) rather than truncating, which keeps scaled coordinates
+///   from drifting when repeatedly scaled and unscaled. Saturates to INT64_MAX/MIN
+///   rather than wrapping on overflow.
 static int64_t sprite_saturating_scale(int64_t value, int64_t scale) {
     long double scaled = ((long double)value * (long double)sprite_normalize_scale(scale)) / 100.0L;
     if (scaled >= (long double)INT64_MAX)
@@ -119,6 +132,11 @@ static int64_t sprite_saturating_scale(int64_t value, int64_t scale) {
     return (int64_t)(scaled >= 0.0L ? scaled + 0.5L : scaled - 0.5L);
 }
 
+/// @brief Add two int64_t values with saturation at INT64_MAX / INT64_MIN.
+/// @details Standard overflow-safe addition: checks whether the result would exceed
+///   the representable range before performing the addition. Used to safely compute
+///   the last coordinate of a sprite region (origin + length - 1) without wrapping
+///   on pathological dimension values supplied from untrusted asset data.
 static int64_t sprite_add_saturating(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;
@@ -127,6 +145,11 @@ static int64_t sprite_add_saturating(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief Subtract two int64_t values with saturation, computed via long double.
+/// @details Uses long double to avoid integer overflow during the intermediate
+///   computation (INT64_MIN - 1 would wrap in signed integer arithmetic). Saturates
+///   rather than wrapping to keep pixel coordinate arithmetic predictable when
+///   dealing with extreme or adversarial dimension values.
 static int64_t sprite_sub_saturating(int64_t a, int64_t b) {
     long double value = (long double)a - (long double)b;
     if (value >= (long double)INT64_MAX)
@@ -136,6 +159,12 @@ static int64_t sprite_sub_saturating(int64_t a, int64_t b) {
     return (int64_t)value;
 }
 
+/// @brief Test whether two 1D intervals [a0, a0+a_len) and [b0, b0+b_len) overlap.
+/// @details Used for sprite-region intersection checks (e.g., clip-rect vs. draw-rect).
+///   Both lengths must be positive for an overlap to be possible; a zero-length interval
+///   is treated as empty. The endpoint computation uses `sprite_add_saturating` to
+///   prevent overflow when length is near INT64_MAX.
+/// @return 1 if the intervals share at least one point, 0 otherwise.
 static int8_t sprite_interval_overlaps(int64_t a0, int64_t a_len, int64_t b0, int64_t b_len) {
     if (a_len <= 0 || b_len <= 0)
         return 0;
@@ -144,6 +173,11 @@ static int8_t sprite_interval_overlaps(int64_t a0, int64_t a_len, int64_t b0, in
     return a0 <= b_last && b0 <= a_last;
 }
 
+/// @brief Test whether @p point falls within the closed interval [start, start+len-1].
+/// @details Complement to `sprite_interval_overlaps` for point-in-region tests.
+///   Returns 0 immediately for empty intervals (len ≤ 0) or points before start.
+///   Overflow-safe endpoint via `sprite_add_saturating`.
+/// @return 1 if start <= point <= start+len-1, 0 otherwise.
 static int8_t sprite_interval_contains(int64_t start, int64_t len, int64_t point) {
     if (len <= 0 || point < start)
         return 0;
@@ -156,12 +190,21 @@ static int64_t sprite_scale_origin(int64_t origin, int64_t scale) {
     return sprite_saturating_scale(origin, scale);
 }
 
+/// @brief Saturating absolute value: handles the INT64_MIN edge case that overflows
+///        with plain negation (`-INT64_MIN == INT64_MIN` due to two's complement).
+/// @return |value|, saturated to INT64_MAX when value == INT64_MIN.
 static int64_t sprite_abs_sat(int64_t value) {
     if (value == INT64_MIN)
         return INT64_MAX;
     return value < 0 ? -value : value;
 }
 
+/// @brief Subtract @p b from @p a with saturation — distinct from `sprite_sub_saturating`
+///        in using integer range checks rather than long double arithmetic.
+/// @details Handles the `a - b` overflow cases: if b is negative and a is near
+///   INT64_MAX the result wraps upward; if b is positive and a is near INT64_MIN the
+///   result wraps downward. Both are caught by the inequality `a < INT64_MIN + b`
+///   (respectively `a > INT64_MAX + b`).
 static int64_t sprite_saturating_sub(int64_t a, int64_t b) {
     if (b < 0 && a > INT64_MAX + b)
         return INT64_MAX;
@@ -170,6 +213,12 @@ static int64_t sprite_saturating_sub(int64_t a, int64_t b) {
     return a - b;
 }
 
+/// @brief Normalize a tint color value to a valid 24-bit RGB or the sentinel -1.
+/// @details -1 is the "no tint" sentinel: when the tint field equals -1 the renderer
+///   skips the per-pixel tint multiply entirely. Any other value is masked to the
+///   low 24 bits (0x00RRGGBB) to strip the alpha channel — tint alpha is not used
+///   because the sprite's own alpha channel is already managed separately.
+/// @return Masked 24-bit RGB, or -1 if @p tint_color < 0.
 static int64_t sprite_normalize_tint(int64_t tint_color) {
     if (tint_color < 0)
         return -1;
@@ -187,6 +236,10 @@ static void sprite_release_if_owned(void *pixels, void *frame) {
         rt_heap_release(pixels);
 }
 
+/// @brief Release a GC-managed object unconditionally — utility wrapper for frame teardown.
+/// @details Used during GIF frame cleanup where the caller has already confirmed the
+///   pixels pointer is non-NULL. If the object's refcount drops to zero, `rt_obj_free`
+///   is called to hand the memory back to the pool.
 static void sprite_release_object(void *obj) {
     if (!obj)
         return;
@@ -194,6 +247,12 @@ static void sprite_release_object(void *obj) {
         rt_obj_free(obj);
 }
 
+/// @brief Release all pixel objects in a GIF frame array and then free the array itself.
+/// @details Each frame's `pixels` is a GC-managed Pixels object; the frame metadata
+///   struct is heap-allocated outside the GC. The GC objects are released first (so
+///   pool memory is returned), then the containing array is freed with `free()`.
+/// @param frames Heap-allocated array of gif_frame_t structs; may be NULL (no-op).
+/// @param count  Number of valid entries in @p frames.
 static void sprite_release_gif_frames(gif_frame_t *frames, int count) {
     if (!frames)
         return;
@@ -561,9 +620,10 @@ int64_t rt_sprite_get_width(void *sprite_ptr) {
         return 0;
     }
     rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
-    if (sprite->frame_count == 0 || !sprite->frames[sprite->current_frame])
+    void *frame = sprite_get_current_frame_ptr(sprite);
+    if (!frame)
         return 0;
-    return rt_pixels_width(sprite->frames[sprite->current_frame]);
+    return rt_pixels_width(frame);
 }
 
 /// @brief Height in pixels of the current frame (0 if no frames). Traps on null.
@@ -573,9 +633,10 @@ int64_t rt_sprite_get_height(void *sprite_ptr) {
         return 0;
     }
     rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
-    if (sprite->frame_count == 0 || !sprite->frames[sprite->current_frame])
+    void *frame = sprite_get_current_frame_ptr(sprite);
+    if (!frame)
         return 0;
-    return rt_pixels_height(sprite->frames[sprite->current_frame]);
+    return rt_pixels_height(frame);
 }
 
 /// @brief Horizontal scale percent (100 = unscaled). Default 100 when null (with trap).
@@ -772,7 +833,10 @@ void rt_sprite_draw_transformed(void *sprite_ptr,
     // If no transform at all, use simple blit
     if (scale_x == 100 && scale_y == 100 && rotation == 0 && !sprite->flip_x && !sprite->flip_y &&
         tint_color < 0 && alpha >= 255) {
-        rt_canvas_blit_alpha(canvas_ptr, x - sprite->origin_x, y - sprite->origin_y, frame);
+        rt_canvas_blit_alpha(canvas_ptr,
+                             sprite_sub_saturating(x, sprite->origin_x),
+                             sprite_sub_saturating(y, sprite->origin_y),
+                             frame);
         return;
     }
 
@@ -791,11 +855,11 @@ void rt_sprite_draw_transformed(void *sprite_ptr,
     if (!transformed)
         return;
 
-    int64_t blit_x = x - origin_x;
-    int64_t blit_y = y - origin_y;
+    int64_t blit_x = sprite_sub_saturating(x, origin_x);
+    int64_t blit_y = sprite_sub_saturating(y, origin_y);
     if (origin_centered) {
-        blit_x = x - rt_pixels_width(transformed) / 2;
-        blit_y = y - rt_pixels_height(transformed) / 2;
+        blit_x = sprite_sub_saturating(x, rt_pixels_width(transformed) / 2);
+        blit_y = sprite_sub_saturating(y, rt_pixels_height(transformed) / 2);
     }
 
     rt_canvas_blit_alpha(canvas_ptr, blit_x, blit_y, transformed);
@@ -884,12 +948,20 @@ void rt_sprite_update(void *sprite_ptr) {
         sprite->last_frame_time = now;
 
     int64_t elapsed = now - sprite->last_frame_time;
+    if (elapsed < 0) {
+        sprite->last_frame_time = now;
+        elapsed = 0;
+    }
     if (elapsed >= sprite->frame_delay_ms) {
         int64_t steps = elapsed / sprite->frame_delay_ms;
         if (steps < 1)
             steps = 1;
-        sprite->current_frame = (sprite->current_frame + steps) % sprite->frame_count;
-        sprite->last_frame_time += steps * sprite->frame_delay_ms;
+        int64_t frame_advance = steps % sprite->frame_count;
+        sprite->current_frame = (sprite->current_frame + frame_advance) % sprite->frame_count;
+        int64_t consumed =
+            steps > INT64_MAX / sprite->frame_delay_ms ? INT64_MAX : steps * sprite->frame_delay_ms;
+        sprite->last_frame_time =
+            sprite->last_frame_time > INT64_MAX - consumed ? now : sprite->last_frame_time + consumed;
     }
 }
 
@@ -1022,7 +1094,7 @@ int rt_sprite_animator_add_clip(rt_sprite_animator_t *animator,
         i++;
     }
     clip->name[i] = '\0';
-    clip->start_frame = start_frame;
+    clip->start_frame = start_frame < 0 ? 0 : start_frame;
     clip->frame_count = frame_count > 0 ? frame_count : 1;
     clip->frame_delay_ms = frame_delay_ms > 0 ? frame_delay_ms : 100;
     clip->loop = loop;
@@ -1078,36 +1150,67 @@ void rt_sprite_animator_stop(rt_sprite_animator_t *animator) {
 /// transition. On reaching the end of a non-looping clip, holds
 /// the final frame and stops; looping clips wrap to `start_frame`.
 void rt_sprite_animator_update(rt_sprite_animator_t *animator, void *sprite_ptr) {
-    if (!animator || !animator->playing || animator->current_clip < 0 || !sprite_ptr)
+    if (!animator || !animator->playing || animator->current_clip < 0 ||
+        animator->current_clip >= animator->clip_count || !sprite_ptr)
         return;
 
     rt_anim_clip_t *clip = &animator->clips[animator->current_clip];
+    int64_t sprite_frames = rt_sprite_get_frame_count(sprite_ptr);
+    if (sprite_frames <= 0 || clip->start_frame >= sprite_frames) {
+        animator->playing = 0;
+        animator->clip_frame = 0;
+        return;
+    }
+    int64_t effective_count = clip->frame_count;
+    int64_t available = sprite_frames - clip->start_frame;
+    if (effective_count > available)
+        effective_count = available;
+    if (effective_count <= 0) {
+        animator->playing = 0;
+        animator->clip_frame = 0;
+        return;
+    }
+    if (animator->clip_frame < 0)
+        animator->clip_frame = 0;
+    if (animator->clip_frame >= effective_count)
+        animator->clip_frame = clip->loop ? animator->clip_frame % effective_count
+                                          : effective_count - 1;
+
     int64_t now = rt_timer_ms();
 
     if (animator->last_update_ms == 0)
         animator->last_update_ms = now;
 
     int64_t elapsed = now - animator->last_update_ms;
+    if (elapsed < 0) {
+        animator->last_update_ms = now;
+        elapsed = 0;
+    }
     if (elapsed >= clip->frame_delay_ms) {
         /* Advance one frame (may be multiple if behind) */
         int64_t steps = elapsed / clip->frame_delay_ms;
-        animator->clip_frame += steps;
-        animator->last_update_ms += steps * clip->frame_delay_ms;
+        int64_t consumed =
+            steps > INT64_MAX / clip->frame_delay_ms ? INT64_MAX : steps * clip->frame_delay_ms;
+        animator->last_update_ms =
+            animator->last_update_ms > INT64_MAX - consumed ? now : animator->last_update_ms + consumed;
 
-        if (animator->clip_frame >= clip->frame_count) {
-            if (clip->loop) {
-                animator->clip_frame = animator->clip_frame % clip->frame_count;
-            } else {
+        if (clip->loop) {
+            steps %= effective_count;
+            animator->clip_frame = (animator->clip_frame + steps) % effective_count;
+        } else {
+            if (steps >= effective_count - animator->clip_frame) {
                 /* Play-once: hold on last frame */
-                animator->clip_frame = clip->frame_count - 1;
+                animator->clip_frame = effective_count - 1;
                 animator->playing = 0;
+            } else {
+                animator->clip_frame += steps;
             }
         }
     }
 
     /* Update the sprite's current frame */
-    int64_t abs_frame = clip->start_frame + animator->clip_frame;
-    rt_sprite_set_frame(sprite_ptr, abs_frame);
+    if (clip->start_frame <= INT64_MAX - animator->clip_frame)
+        rt_sprite_set_frame(sprite_ptr, clip->start_frame + animator->clip_frame);
 }
 
 /// @brief True if a clip is currently playing (was started and hasn't reached a non-loop end).

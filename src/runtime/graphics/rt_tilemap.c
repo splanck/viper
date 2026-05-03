@@ -53,6 +53,7 @@
 #include "rt_string.h"
 
 #include <limits.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,6 +63,14 @@
 #define TILE_COLLISION_SOLID RT_TILE_COLLISION_SOLID
 #define TILE_COLLISION_ONE_WAY RT_TILE_COLLISION_ONE_WAY_UP
 
+/// @brief Integer floor division that rounds toward -∞ rather than toward zero.
+/// @details C's built-in `/` operator truncates toward zero, which produces incorrect
+///   tile-coordinate results for negative world positions. For example, world pixel -1
+///   on a 16-pixel tile should map to tile -1, not tile 0. The correction subtracts 1
+///   when the quotient was rounded toward zero away from the true floor (i.e., when the
+///   remainder is non-zero and the operands have different signs).
+/// @param divisor Must not be zero; returns 0 if it is (defensive).
+/// @return ⌊value / divisor⌋ with floor semantics.
 static int64_t tilemap_floor_div(int64_t value, int64_t divisor) {
     if (divisor == 0)
         return 0;
@@ -72,6 +81,31 @@ static int64_t tilemap_floor_div(int64_t value, int64_t divisor) {
     return quot;
 }
 
+/// @brief Convert a double to int64_t with saturation, writing the result to *out.
+/// @details Handles NaN/infinity (returns 0) and values at or beyond the int64_t bounds
+///          (saturates to INT64_MAX / INT64_MIN). Used to convert floating-point camera
+///          scroll positions to tile coordinates without undefined-behavior casts.
+/// @return 1 on success (finite value in range or saturated); 0 if `out` is NULL or value is non-finite.
+static int8_t tilemap_double_to_i64_sat(double value, int64_t *out) {
+    if (!out || !isfinite(value))
+        return 0;
+    if (value >= (double)INT64_MAX) {
+        *out = INT64_MAX;
+        return 1;
+    }
+    if (value <= (double)INT64_MIN) {
+        *out = INT64_MIN;
+        return 1;
+    }
+    *out = (int64_t)value;
+    return 1;
+}
+
+/// @brief Validate tilemap dimensions and compute allocation sizes without overflow.
+/// @details Returns 0 for non-positive dimensions or if width × height would overflow int64_t,
+///          or if tile_count × sizeof(int64_t) would overflow size_t. On success writes the
+///          tile count and byte size to the optional output pointers.
+/// @return 1 if the grid is valid and sizes were computed; 0 otherwise.
 static int32_t tilemap_checked_grid_size(int64_t width,
                                          int64_t height,
                                          int64_t *tile_count_out,
@@ -91,18 +125,30 @@ static int32_t tilemap_checked_grid_size(int64_t width,
     return 1;
 }
 
+/// @brief Return the absolute distance from @p value to zero as an unsigned integer.
+/// @details Equivalent to (uint64_t)(-value) but safe for all int64_t inputs including
+///          INT64_MIN, which has no positive two's-complement representation. The result
+///          is used to measure how far a negative tile coordinate is from the origin so
+///          the caller can skip that many tiles without signed-overflow arithmetic.
 static uint64_t tilemap_distance_to_zero(int64_t value) {
     return (uint64_t)(-(value + 1)) + 1u;
 }
 
+/// @brief Negate @p value with saturation — INT64_MIN has no positive representation
+///        in two's complement, so it saturates to INT64_MAX instead.
 static int64_t tilemap_negate_saturating(int64_t value) {
     return value == INT64_MIN ? INT64_MAX : -value;
 }
 
+/// @brief Add 2 to @p value with saturation — used when computing tile collision bounds
+///        to extend a range by one tile without overflowing near INT64_MAX.
 static int64_t tilemap_add_two_saturating(int64_t value) {
     return value > INT64_MAX - 2 ? INT64_MAX : value + 2;
 }
 
+/// @brief Add two int64_t values with saturation at INT64_MAX / INT64_MIN.
+/// @details Used for all pixel-coordinate addition in tilemap rendering and collision
+///   to prevent wrapping when a world coordinate plus offset exceeds the int64_t range.
 static int64_t tilemap_add_saturating(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;
@@ -111,6 +157,12 @@ static int64_t tilemap_add_saturating(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief Multiply two int64_t values with saturation at INT64_MAX / INT64_MIN.
+/// @details All intermediate tilemap coordinate computations (tile_x * tile_width,
+///   tile_y * tile_height, etc.) pass through this function to prevent undefined
+///   behavior from signed integer overflow. The special case `(-1) * INT64_MIN` is
+///   handled explicitly because it is the only multiply whose absolute value exceeds
+///   INT64_MAX.
 static int64_t tilemap_mul_saturating(int64_t a, int64_t b) {
     if (a == 0 || b == 0)
         return 0;
@@ -132,6 +184,12 @@ static int64_t tilemap_mul_saturating(int64_t a, int64_t b) {
     return a * b;
 }
 
+/// @brief Clip a 1-D span [*start, *start + *length) so it fits within [0, limit).
+/// @details Adjusts *start and *length in-place: negative starts are advanced to 0 (consuming
+///          the leading skipped tiles from *length); spans that extend past @p limit are
+///          truncated. Returns 0 and zeroes *length for degenerate inputs (null pointers,
+///          non-positive length or limit, span fully outside [0, limit)).
+/// @return 1 if the clipped span has length > 0; 0 if the span was fully clipped or invalid.
 static int32_t tilemap_clip_span_to_bounds(int64_t *start, int64_t *length, int64_t limit) {
     if (!start || !length || *length <= 0 || limit <= 0) {
         if (length)
@@ -415,6 +473,18 @@ void rt_tilemap_fill_rect(
 // Rendering
 //=============================================================================
 
+/// @brief Render one tilemap layer over a rectangular region of tile coordinates.
+/// @details Iterates over tile rows [view_y, view_y+view_h) and columns
+///   [view_x, view_x+view_w), skipping empty (tile_index == 0) or out-of-range
+///   tiles. For each valid tile, the source rectangle is computed from the tile index
+///   in the tileset image (`ts_x = (ti % cols) * tw`, `ts_y = (ti / cols) * th`) and
+///   blitted to the canvas at the screen-space position `(tx * tw + offset_x, ty * th + offset_y)`.
+///   All coordinate multiplications use `tilemap_mul_saturating` and additions use
+///   `tilemap_add_saturating` to prevent overflow on extreme map sizes. The per-layer
+///   tileset (if set) overrides the tilemap's default tileset.
+/// @param view_x,view_y    Top-left tile coordinate of the visible region.
+/// @param view_w,view_h    Width and height of the visible region in tiles.
+/// @param offset_x,offset_y Canvas pixel offset for the top-left tile.
 static void rt_tilemap_draw_region_layer_impl(rt_tilemap_impl *tilemap,
                                               void *tilemap_ptr,
                                               void *canvas_ptr,
@@ -669,12 +739,30 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr) {
     double bvx = rt_physics2d_body_vx(body_ptr);
     double bvy = rt_physics2d_body_vy(body_ptr);
     double prev_by = rt_physics2d_body_prev_y(body_ptr);
+    if (!isfinite(bvx))
+        bvx = 0.0;
+    if (!isfinite(bvy))
+        bvy = 0.0;
+    if (!isfinite(prev_by))
+        prev_by = by;
 
     // Determine the range of tiles the body overlaps
-    int64_t left = tilemap_floor_div((int64_t)bx, tw);
-    int64_t right = tilemap_floor_div((int64_t)(bx + bw - 1), tw);
-    int64_t top = tilemap_floor_div((int64_t)by, th);
-    int64_t bottom = tilemap_floor_div((int64_t)(by + bh - 1), th);
+    double right_d = bx + bw - 1.0;
+    double bottom_d = by + bh - 1.0;
+    int64_t bx_i = 0;
+    int64_t by_i = 0;
+    int64_t right_i = 0;
+    int64_t bottom_i = 0;
+    if (bw <= 0.0 || bh <= 0.0 || !tilemap_double_to_i64_sat(bx, &bx_i) ||
+        !tilemap_double_to_i64_sat(by, &by_i) ||
+        !tilemap_double_to_i64_sat(right_d, &right_i) ||
+        !tilemap_double_to_i64_sat(bottom_d, &bottom_i))
+        return 0;
+
+    int64_t left = tilemap_floor_div(bx_i, tw);
+    int64_t right = tilemap_floor_div(right_i, tw);
+    int64_t top = tilemap_floor_div(by_i, th);
+    int64_t bottom = tilemap_floor_div(bottom_i, th);
 
     // Clamp to tilemap bounds
     if (left < 0)
@@ -1098,7 +1186,7 @@ void rt_tilemap_set_tile_anim(void *tilemap_ptr,
     anim->ms_per_frame = ms_per_frame;
     // Default: sequential tile IDs (base, base+1, base+2, ...)
     for (int32_t i = 0; i < anim->frame_count; i++)
-        anim->frame_tiles[i] = base_tile_id + i;
+        anim->frame_tiles[i] = base_tile_id > INT64_MAX - i ? INT64_MAX : base_tile_id + i;
 }
 
 /// @brief Override one frame in an existing animation (selected by `base_tile_id`).

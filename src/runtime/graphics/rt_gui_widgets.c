@@ -84,6 +84,10 @@ void rt_font_destroy(void *font) {
 // Widget Functions
 //=============================================================================
 
+/// @brief Return non-zero if `candidate` is `root` or any descendant in the widget tree.
+/// @details Used by rt_widget_forget_runtime_refs to check whether a cached app-level
+///          pointer (last_clicked, drag_source, etc.) falls inside the subtree that is
+///          about to be destroyed, so it can be nulled out before the widget is freed.
 static int rt_widget_tree_contains(vg_widget_t *root, vg_widget_t *candidate) {
     if (!root || !candidate)
         return 0;
@@ -96,6 +100,11 @@ static int rt_widget_tree_contains(vg_widget_t *root, vg_widget_t *candidate) {
     return 0;
 }
 
+/// @brief Clear any rt_gui_app_t back-pointers that reference `widget` or its subtree.
+/// @details Called immediately before vg_widget_destroy to prevent the app's cached
+///          raw pointers (last_clicked, drag_source, drag_over_widget,
+///          last_statusbar_clicked, last_toolbar_clicked) from becoming dangling after
+///          the widget tree is freed.
 static void rt_widget_forget_runtime_refs(rt_gui_app_t *app, vg_widget_t *widget) {
     if (!app || !widget)
         return;
@@ -175,6 +184,14 @@ void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
     }
 }
 
+/// @brief Set the preferred (natural) size hint for the layout engine.
+/// @details Unlike a fixed size, a preferred size is a soft request — the layout
+///          engine will try to honor it but may shrink or grow the widget to satisfy
+///          flex constraints or container limits. Use when you want a "default" size
+///          without preventing the widget from stretching.
+/// @param widget Widget to modify.
+/// @param width  Preferred width in logical pixels (>= 0).
+/// @param height Preferred height in logical pixels (>= 0).
 void rt_widget_set_preferred_size(void *widget, double width, double height) {
     RT_ASSERT_MAIN_THREAD();
     if (widget) {
@@ -186,6 +203,13 @@ void rt_widget_set_preferred_size(void *widget, double width, double height) {
     }
 }
 
+/// @brief Set the maximum size the widget may grow to during layout.
+/// @details Caps the upper bound on the widget's computed dimensions. A flex-grow
+///          widget will not exceed these values even if there is extra space.
+///          Passing 0 for either dimension removes the maximum constraint for that axis.
+/// @param widget Widget to modify.
+/// @param width  Maximum width in logical pixels (0 = unconstrained).
+/// @param height Maximum height in logical pixels (0 = unconstrained).
 void rt_widget_set_max_size(void *widget, double width, double height) {
     RT_ASSERT_MAIN_THREAD();
     if (widget) {
@@ -590,12 +614,23 @@ void rt_checkbox_set_text(void *checkbox, rt_string text) {
     free(ctext);
 }
 
+/// @brief Set the indeterminate (mixed) state of a checkbox.
+/// @details Indeterminate is a tri-state used when a checkbox represents a group
+///          of items whose states are mixed (some checked, some not). Visually
+///          the checkbox shows a dash or filled square rather than a tick mark.
+///          Setting this overrides the checked state visually; the underlying
+///          checked value is preserved and re-shown when indeterminate is cleared.
+/// @param checkbox      Checkbox widget handle.
+/// @param indeterminate Non-zero to show mixed state, zero to clear it.
 void rt_checkbox_set_indeterminate(void *checkbox, int64_t indeterminate) {
     RT_ASSERT_MAIN_THREAD();
     if (checkbox)
         vg_checkbox_set_indeterminate((vg_checkbox_t *)checkbox, indeterminate != 0);
 }
 
+/// @brief Query whether the checkbox is in the indeterminate (mixed) state.
+/// @param checkbox Checkbox widget handle.
+/// @return 1 if indeterminate, 0 if determined (checked or unchecked) or NULL.
 int64_t rt_checkbox_is_indeterminate(void *checkbox) {
     RT_ASSERT_MAIN_THREAD();
     if (!checkbox)
@@ -847,6 +882,7 @@ int64_t rt_treeview_node_is_expanded(void *node) {
 // inherit from the real impls above by virtue of identical names.
 // ===========================================================================
 
+/// @brief Stub: graphics disabled — returns NULL; no font data is loaded.
 void *rt_font_load(rt_string path) {
     (void)path;
     return NULL;
@@ -947,6 +983,7 @@ double rt_widget_get_flex(void *widget) {
     return 0.0;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no label widget is created.
 void *rt_label_new(void *parent, rt_string text) {
     (void)parent;
     (void)text;
@@ -972,6 +1009,7 @@ void rt_label_set_color(void *label, int64_t color) {
     (void)color;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no button widget is created.
 void *rt_button_new(void *parent, rt_string text) {
     (void)parent;
     (void)text;
@@ -1009,6 +1047,7 @@ void rt_button_set_icon_pos(void *button, int64_t pos) {
     (void)pos;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no text input widget is created.
 void *rt_textinput_new(void *parent) {
     (void)parent;
     return NULL;
@@ -1039,6 +1078,7 @@ void rt_textinput_set_font(void *input, void *font, double size) {
     (void)size;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no checkbox widget is created.
 void *rt_checkbox_new(void *parent, rt_string text) {
     (void)parent;
     (void)text;
@@ -1069,6 +1109,7 @@ void rt_checkbox_set_text(void *checkbox, rt_string text) {
     (void)text;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no scroll view widget is created.
 void *rt_scrollview_new(void *parent) {
     (void)parent;
     return NULL;
@@ -1100,11 +1141,13 @@ double rt_scrollview_get_scroll_y(void *scroll) {
     return 0.0;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no tree view widget is created.
 void *rt_treeview_new(void *parent) {
     (void)parent;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no tree node is created or added.
 void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text) {
     (void)tree;
     (void)parent_node;
@@ -1148,6 +1191,7 @@ void rt_treeview_set_font(void *tree, void *font, double size) {
     (void)size;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no selection exists without a tree view.
 void *rt_treeview_get_selected(void *tree) {
     (void)tree;
     return NULL;

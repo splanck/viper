@@ -20,7 +20,10 @@ The current 2D runtime includes clip-correct text/image rendering inside GUI sur
 | [Canvas & Color](canvas.md) | Canvas drawing surface and Color utilities |
 | [Fonts](fonts.md) | BitmapFont for custom BDF/PSF font rendering |
 | [Images & Sprites](pixels.md) | Pixels, Sprite, SpriteSheet, Tilemap |
-| [Production 2D Graphics](production2d.md) | RenderTarget2D, Texture2D, Renderer2D, Material2D, Shader2D, PostProcess2D, Viewport2D, TileSet2D, TileLayer2D, ObjectLayer2D, AutoTile2D, ParticleSystem2D, Path2D, ShapeRenderer2D, TextRenderer2D, NineSlice2D, DebugDraw2D, Transform2D, Sampler2D, BlendState2D, SpriteRenderer2D, TilemapRenderer2D, AnimationClip2D, AnimatedSprite2D, TextLayout2D, RenderGraph2D, CollisionMask2D, Hitbox2D, Palette2D, Gradient2D, CameraRig2D |
+| [2D Rendering and Effects](rendering2d.md) | RenderTarget2D, Texture2D, Renderer2D, Material2D, Shader2D, PostProcess2D, Sampler2D, BlendState2D, SpriteRenderer2D, RenderPass2D, RenderGraph2D, Palette2D, Gradient2D |
+| [2D Tilemaps and Layers](tilemaps2d.md) | TileSet2D, TileLayer2D, ObjectLayer2D, AutoTile2D, TilemapRenderer2D, TileChunkCache2D, TexturePackerAtlas, AsepriteImporter, TiledMapLoader |
+| [2D Shapes, Text, and UI](shapes2d.md) | Path2D, ShapeRenderer2D, TextRenderer2D, TextLayout2D, SpriteFont, SdfFont, NineSlice2D, DebugDraw2D |
+| [2D Animation, Collision, and Camera](game2d.md) | Viewport2D, ScreenScaler, Transform2D, AnimationClip2D, AnimatedSprite2D, CollisionMask2D, Hitbox2D, CameraRig2D, ParticleSystem2D, Emitter2D, Lighting2D |
 | [Scene Graph](scene.md) | SceneNode, Scene, SpriteBatch, TextureAtlas, Camera, SpriteAnimation |
 | [3D Physics](physics3d.md) | `Physics3DWorld`, `PhysicsHit3D`, `PhysicsHitList3D`, `CollisionEvent3D`, `ContactPoint3D`, `Collider3D`, `Physics3DBody`, `Character3D`, `DistanceJoint3D`, `SpringJoint3D` |
 | [Graphics 3D Guide](../../graphics3d-guide.md) | `Model3D`, `AnimController3D`, `Canvas3D`, `Scene3D`, `SceneNode3D`, `Scene3D.SyncBindings`, `Mesh3D`, `Material3D`, `FBX`, `GLTF`, and the higher-level 3D asset pipeline |

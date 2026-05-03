@@ -53,6 +53,9 @@
 #define px_ftell(fp) ftello((fp))
 #endif
 
+/// @brief Multiply two size_t values, returning 0 on overflow.
+/// @details Writes the product to @p out only on success.  Used by the PNG
+///   decoder to compute row-stride and total buffer sizes without wrapping.
 static int px_mul_size(size_t a, size_t b, size_t *out) {
     if (a != 0 && b > SIZE_MAX / a)
         return 0;
@@ -61,6 +64,9 @@ static int px_mul_size(size_t a, size_t b, size_t *out) {
     return 1;
 }
 
+/// @brief Add two size_t values, returning 0 on overflow.
+/// @details Writes the sum to @p out only on success.  Companion to px_mul_size
+///   for computing PNG row strides that involve both multiplication and addition.
 static int px_add_size(size_t a, size_t b, size_t *out) {
     if (b > SIZE_MAX - a)
         return 0;
@@ -69,6 +75,16 @@ static int px_add_size(size_t a, size_t b, size_t *out) {
     return 1;
 }
 
+/// @brief Compute the unfiltered byte stride for a PNG scanline, guarding overflow.
+/// @details Handles both sub-8-bit depths (1/2/4 bpp — bits packed across bytes) and
+///   >= 8-bit depths (bytes per sample * samples).  All intermediate multiplications use
+///   px_mul_size so a pathological (width=UINT32_MAX, bpp=8) input cannot overflow size_t.
+///   Returns 0 and does not write @p stride_out if any overflow would occur.
+/// @param width             Scanline width in pixels.
+/// @param bit_depth         PNG bit depth (1, 2, 4, 8, or 16).
+/// @param samples_per_pixel Color channels per pixel (1=greyscale, 2=GA, 3=RGB, 4=RGBA).
+/// @param stride_out        Output: number of unfiltered data bytes per row on success.
+/// @return 1 on success, 0 on overflow or invalid inputs.
 static int px_png_stride_checked(uint32_t width,
                                  uint8_t bit_depth,
                                  int samples_per_pixel,

@@ -109,6 +109,9 @@ static void navagent_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Release a locally-held GC reference, freeing the object if the refcount reaches zero.
+/// @details Used by navagent cleanup to drop borrowed pointers (mesh, path, etc.)
+///          that were retained at assignment time.
 static void navagent_release_local(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);

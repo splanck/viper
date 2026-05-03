@@ -42,16 +42,19 @@
 #include "rt_camera.h"
 
 #include "rt_graphics.h"
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
 
 #include <limits.h>
 #include <math.h>
+#include <stdint.h>
 #include <string.h>
 
 /// Maximum number of parallax scrolling layers per camera.
 #define RT_CAMERA_MAX_PARALLAX 8
+#define RT_CAMERA_MAX_PARALLAX_TILES 65536
 
 /// @brief A single parallax scrolling layer.
 typedef struct {
@@ -82,14 +85,16 @@ typedef struct rt_camera_impl {
     int64_t parallax_count;                             ///< Number of active layers
 } rt_camera_impl;
 
+/// @brief Release a GC-managed object held in `*slot` and NULL-out the slot.
 static void camera_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
-    if (rt_obj_release_check0(*slot))
+    if (rt_heap_is_payload(*slot) && rt_obj_release_check0(*slot))
         rt_obj_free(*slot);
     *slot = NULL;
 }
 
+/// @brief Round a long double to the nearest int64, saturating at INT64_MIN/MAX instead of overflowing.
 static int64_t camera_ld_to_i64_sat(long double value) {
     if (value >= (long double)INT64_MAX)
         return INT64_MAX;
@@ -98,6 +103,7 @@ static int64_t camera_ld_to_i64_sat(long double value) {
     return (int64_t)(value >= 0.0L ? value + 0.5L : value - 0.5L);
 }
 
+/// @brief Add two int64 values with saturation at INT64_MIN/MAX.
 static int64_t camera_add_saturating(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;
@@ -106,10 +112,12 @@ static int64_t camera_add_saturating(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief Subtract two int64 values with saturation at INT64_MIN/MAX (delegates through long double).
 static int64_t camera_sub_saturating(int64_t a, int64_t b) {
     return camera_ld_to_i64_sat((long double)a - (long double)b);
 }
 
+/// @brief Compute `value * mul / div` via long double with saturation; returns 0 on zero divisor.
 static int64_t camera_mul_div_saturating(int64_t value, int64_t mul, int64_t div) {
     if (div == 0)
         return 0;
@@ -198,6 +206,40 @@ static int64_t camera_floor_div(int64_t value, int64_t divisor) {
     if (r != 0 && ((r < 0) != (divisor < 0)))
         q--;
     return q;
+}
+
+/// @brief Compute the tile span from `first` to `last` (inclusive) and validate it is within
+///        `RT_CAMERA_MAX_PARALLAX_TILES`. Writes the span count to `out_span` on success.
+/// @return 1 if the span fits the parallax budget, 0 otherwise.
+static int8_t camera_tile_span_within_limit(int64_t first, int64_t last, int64_t *out_span) {
+    if (!out_span || last < first)
+        return 0;
+    uint64_t diff = (uint64_t)last - (uint64_t)first;
+    if (diff >= (uint64_t)RT_CAMERA_MAX_PARALLAX_TILES)
+        return 0;
+    *out_span = (int64_t)(diff + 1u);
+    return 1;
+}
+
+/// @brief Return 1 if `span_x * span_y` is within the `RT_CAMERA_MAX_PARALLAX_TILES` budget.
+/// @details Divides rather than multiplies to avoid overflow on large span values.
+static int8_t camera_tile_product_within_limit(int64_t span_x, int64_t span_y) {
+    if (span_x <= 0 || span_y <= 0)
+        return 0;
+    return span_x <= RT_CAMERA_MAX_PARALLAX_TILES / span_y;
+}
+
+/// @brief Compute the number of tiles visible across a viewport dimension plus a one-tile margin.
+/// @details Returns one more than the integer quotient so the visible strip fully covers the
+///          viewport even when the camera offset is not tile-aligned. Clamped to
+///          `RT_CAMERA_MAX_PARALLAX_TILES + 1` to trigger the "exceeds budget" early-out.
+static int64_t camera_view_tile_span(int64_t viewport, int64_t tile_size) {
+    if (viewport <= 0 || tile_size <= 0)
+        return 0;
+    int64_t base = viewport / tile_size;
+    if (base > RT_CAMERA_MAX_PARALLAX_TILES - 2)
+        return RT_CAMERA_MAX_PARALLAX_TILES + 1;
+    return base + 2;
 }
 
 /// @brief Render one parallax layer at the camera's current zoom + rotation.
@@ -314,6 +356,16 @@ static int64_t camera_draw_parallax_transformed(const rt_camera_impl *camera,
     int64_t last_tile_y =
         camera_floor_div(camera_add_saturating(camera_ld_to_i64_sat(floorl(max_world_y)), ph), ph);
 
+    int64_t span_x = 0;
+    int64_t span_y = 0;
+    if (!camera_tile_span_within_limit(first_tile_x, last_tile_x, &span_x) ||
+        !camera_tile_span_within_limit(first_tile_y, last_tile_y, &span_y) ||
+        !camera_tile_product_within_limit(span_x, span_y)) {
+        camera_release_ref(&rotated);
+        camera_release_ref(&scaled);
+        return 0;
+    }
+
     for (int64_t ty = first_tile_y; ty <= last_tile_y; ty++) {
         for (int64_t tx = first_tile_x; tx <= last_tile_x; tx++) {
             double screen_x = 0.0;
@@ -336,6 +388,7 @@ static int64_t camera_draw_parallax_transformed(const rt_camera_impl *camera,
     return 1;
 }
 
+/// @brief Release all resources held by a parallax layer and mark it inactive.
 static void camera_release_parallax_layer(rt_parallax_layer *layer) {
     if (!layer || !layer->active)
         return;
@@ -346,6 +399,7 @@ static void camera_release_parallax_layer(rt_parallax_layer *layer) {
     layer->active = 0;
 }
 
+/// @brief GC finalizer: release all parallax layers before the camera allocation is freed.
 static void camera_finalize(void *obj) {
     rt_camera_impl *camera = (rt_camera_impl *)obj;
     if (!camera)
@@ -866,6 +920,11 @@ int64_t rt_camera_draw_parallax(void *camera_ptr, void *canvas) {
             layers_drawn += camera_draw_parallax_transformed(camera, layer, canvas);
             continue;
         }
+
+        int64_t span_x = camera_view_tile_span(camera->width, pw);
+        int64_t span_y = camera_view_tile_span(camera->height, ph);
+        if (!camera_tile_product_within_limit(span_x, span_y))
+            continue;
 
         /* Compute the parallax scroll offset */
         int64_t scroll_x = camera_mul_div_saturating(camera->x, layer->scroll_factor_x, 100);

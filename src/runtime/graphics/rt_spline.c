@@ -53,6 +53,11 @@ typedef struct {
     double *ys;
 } ViperSpline;
 
+/// @brief GC finalizer for a ViperSpline — frees the coordinate arrays.
+/// @details `xs` and `ys` are heap-allocated by `spline_alloc` and must be freed
+///   independently because the spline object itself is managed by the GC pool.
+///   NULLing the pointers after free is defensive but harmless since the finalizer
+///   is called exactly once before the object memory is reclaimed.
 static void spline_finalizer(void *payload) {
     ViperSpline *s = (ViperSpline *)payload;
     if (s) {
@@ -63,6 +68,10 @@ static void spline_finalizer(void *payload) {
     }
 }
 
+/// @brief Allocate a GC-managed spline object with `count` control point slots.
+/// @details Allocates xs/ys double arrays via calloc and sets the spline kind.
+///          On allocation failure, releases the partially-constructed object and traps.
+/// @return New ViperSpline or NULL on OOM.
 static ViperSpline *spline_alloc(SplineKind kind, int64_t count) {
     ViperSpline *s = (ViperSpline *)rt_obj_new_i64(0, (int64_t)sizeof(ViperSpline));
     if (!s) {
@@ -83,6 +92,13 @@ static ViperSpline *spline_alloc(SplineKind kind, int64_t count) {
     return s;
 }
 
+/// @brief Copy Vec2 coordinates from a Seq of points into the spline's xs/ys arrays.
+/// @details Iterates up to `min(rt_seq_len(points), s->count)` entries, reading each
+///   element as a Vec2. NULL elements (e.g., from a sparse Seq) leave the corresponding
+///   xs/ys entries at their calloc-initialized zero, which is a safe but possibly
+///   incorrect default — callers should ensure the Seq contains only valid Vec2 values.
+/// @param points Runtime Seq object containing Vec2 elements.
+/// @param s      Pre-allocated spline with xs/ys buffers of capacity s->count.
 static void extract_points(void *points, ViperSpline *s) {
     int64_t n = rt_seq_len(points);
     int64_t count = n < s->count ? n : s->count;
@@ -156,6 +172,14 @@ void *rt_spline_linear(void *points) {
 // Evaluation Helpers
 //=============================================================================
 
+/// @brief Evaluate a polyline spline at normalized parameter @p t in [0, 1].
+/// @details Maps @p t to a continuous segment index via `t * (count - 1)`, then
+///   linearly interpolates within the selected segment. Values outside [0, 1] are
+///   clamped to the first or last point so evaluation beyond the ends is well-defined.
+/// @param s  Linear spline with at least 2 control points.
+/// @param t  Normalized curve parameter; 0 = first point, 1 = last point.
+/// @param ox Output X coordinate.
+/// @param oy Output Y coordinate.
 static void eval_linear(ViperSpline *s, double t, double *ox, double *oy) {
     if (t <= 0.0) {
         *ox = s->xs[0];
@@ -176,6 +200,14 @@ static void eval_linear(ViperSpline *s, double t, double *ox, double *oy) {
     *oy = s->ys[i] + (s->ys[i + 1] - s->ys[i]) * f;
 }
 
+/// @brief Evaluate a cubic Bézier spline at normalized parameter @p t in [0, 1].
+/// @details Uses the standard Bernstein basis: B(t) = (1-t)³P0 + 3(1-t)²tP1 +
+///   3(1-t)t²P2 + t³P3. The curve interpolates P0 and P3 (endpoints) and is pulled
+///   toward P1 and P2 (interior control handles) without passing through them.
+/// @param s  Bezier spline with exactly 4 control points.
+/// @param t  Normalized parameter in [0, 1].
+/// @param ox Output X coordinate.
+/// @param oy Output Y coordinate.
 static void eval_bezier(ViperSpline *s, double t, double *ox, double *oy) {
     double u = 1.0 - t;
     double u2 = u * u;
@@ -188,6 +220,18 @@ static void eval_bezier(ViperSpline *s, double t, double *ox, double *oy) {
     *oy = a * s->ys[0] + b * s->ys[1] + c * s->ys[2] + d * s->ys[3];
 }
 
+/// @brief Evaluate one segment of a Catmull-Rom spline at local parameter @p t in [0, 1].
+/// @details The standard Catmull-Rom formula derived from the cubic Hermite basis:
+///   the tangent at each interpolated point is `0.5 * (next - prev)`. Produces C¹
+///   continuity across segment boundaries when adjacent segments share the same p1/p2
+///   as neighbors' p2/p1. P0 and P3 are the ghost points (neighbors outside the
+///   segment); p1 and p2 are the actual interpolated endpoints for this segment.
+/// @param p0x,p0y  Previous control point (ghost before segment start).
+/// @param p1x,p1y  Segment start — the curve passes through this point at t=0.
+/// @param p2x,p2y  Segment end — the curve passes through this point at t=1.
+/// @param p3x,p3y  Next control point (ghost after segment end).
+/// @param t        Local segment parameter in [0, 1].
+/// @param ox,oy    Output position.
 static void catmull_rom_segment(double p0x,
                                 double p0y,
                                 double p1x,
@@ -207,6 +251,15 @@ static void catmull_rom_segment(double p0x,
                  (-p0y + 3.0 * p1y - 3.0 * p2y + p3y) * t3);
 }
 
+/// @brief Evaluate a Catmull-Rom spline through all control points at parameter @p t.
+/// @details Maps @p t to a segment index in the same way as `eval_linear`, then
+///   constructs the four-point neighborhood for `catmull_rom_segment`. The endpoint
+///   ghost points clamp to the first/last stored point rather than reflecting, which
+///   produces a slightly tighter curve at the ends compared to reflective ghosts.
+/// @param s  Catmull-Rom spline with at least 2 control points.
+/// @param t  Normalized parameter in [0, 1].
+/// @param ox Output X coordinate.
+/// @param oy Output Y coordinate.
 static void eval_catmull_rom(ViperSpline *s, double t, double *ox, double *oy) {
     int64_t n = s->count;
     if (n < 2) {
@@ -252,6 +305,15 @@ static void eval_catmull_rom(ViperSpline *s, double t, double *ox, double *oy) {
 // Tangent Helpers
 //=============================================================================
 
+/// @brief Compute the unnormalized tangent vector of a polyline at parameter @p t.
+/// @details Returns the difference vector of the active segment (P[i+1] - P[i]), which
+///   is constant within each segment. The magnitude equals the segment length so the
+///   caller must normalize if a unit tangent is needed. There is no averaging at
+///   segment joints — the tangent is discontinuous at those points.
+/// @param s  Linear spline with at least 2 control points.
+/// @param t  Normalized parameter in [0, 1].
+/// @param ox Output tangent X component.
+/// @param oy Output tangent Y component.
 static void tangent_linear(ViperSpline *s, double t, double *ox, double *oy) {
     int64_t n = s->count;
     double seg = t * (double)(n - 1);
@@ -264,6 +326,15 @@ static void tangent_linear(ViperSpline *s, double t, double *ox, double *oy) {
     *oy = s->ys[i + 1] - s->ys[i];
 }
 
+/// @brief Compute the analytical tangent (derivative) of the cubic Bézier at @p t.
+/// @details The derivative of B(t) is B'(t) = 3[(1-t)²(P1-P0) + 2t(1-t)(P2-P1) + t²(P3-P2)],
+///   expanded here using the four Bernstein basis derivatives. The result is
+///   unnormalized (magnitude varies with t); callers that need a unit tangent must
+///   normalize the output.
+/// @param s  Bezier spline with exactly 4 control points.
+/// @param t  Normalized parameter in [0, 1].
+/// @param ox Output tangent X component.
+/// @param oy Output tangent Y component.
 static void tangent_bezier(ViperSpline *s, double t, double *ox, double *oy) {
     double u = 1.0 - t;
     double a = -3.0 * u * u;
@@ -274,6 +345,17 @@ static void tangent_bezier(ViperSpline *s, double t, double *ox, double *oy) {
     *oy = a * s->ys[0] + b * s->ys[1] + c * s->ys[2] + d * s->ys[3];
 }
 
+/// @brief Approximate the tangent of a Catmull-Rom spline via central-difference.
+/// @details The analytical derivative of the Catmull-Rom basis exists but is complex
+///   to implement correctly across ghost-point boundaries. A symmetric finite
+///   difference with h=0.0001 is accurate enough for all current uses (orientation
+///   of objects along a path) and avoids the branch-heavy boundary logic. The step
+///   is halved at the endpoints (t=0 and t=1) where the symmetric window would
+///   overshoot the range; the smaller asymmetric step introduces negligible error.
+/// @param s  Catmull-Rom spline with at least 2 control points.
+/// @param t  Normalized parameter in [0, 1].
+/// @param ox Output tangent X component (not normalized).
+/// @param oy Output tangent Y component (not normalized).
 static void tangent_catmull_rom(ViperSpline *s, double t, double *ox, double *oy) {
     /* Numerical derivative via central difference. */
     double h = 0.0001;

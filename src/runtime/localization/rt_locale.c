@@ -57,26 +57,31 @@ static int loc_is_alpha(char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
 
+/// @brief Check whether @p c is an ASCII decimal digit ('0'–'9').
 static int loc_is_digit(char c) {
     return c >= '0' && c <= '9';
 }
 
+/// @brief Check whether @p c is ASCII alphanumeric (alpha or digit).
 static int loc_is_alnum(char c) {
     return loc_is_alpha(c) || loc_is_digit(c);
 }
 
+/// @brief Convert an ASCII uppercase letter to lowercase; pass through everything else.
 static char loc_to_lower(char c) {
     if (c >= 'A' && c <= 'Z')
         return (char)(c - 'A' + 'a');
     return c;
 }
 
+/// @brief Convert an ASCII lowercase letter to uppercase; pass through everything else.
 static char loc_to_upper(char c) {
     if (c >= 'a' && c <= 'z')
         return (char)(c - 'a' + 'A');
     return c;
 }
 
+/// @brief Check whether @p c is a BCP-47 subtag separator ('-' or '_').
 static int loc_is_separator(char c) {
     return c == '-' || c == '_';
 }
@@ -281,6 +286,11 @@ int rt_locale_internal_parse_into(const char *input, size_t input_len, rt_locale
 // Constructors
 //===----------------------------------------------------------------------===//
 
+/// @brief GC finalizer for Locale handles — releases the retained locale-data pointer.
+/// @details Called by the GC when the Locale handle's reference count drops to zero.
+///          Releases the non-owning `data` pointer back to the LocaleManager registry
+///          so the data record's formatter_refs counter stays accurate.
+/// @param obj Pointer to the rt_locale_t being collected; NULL is safe.
 void rt_locale_internal_finalizer(void *obj);
 void rt_locale_internal_finalizer(void *obj) {
     rt_locale_t *l = (rt_locale_t *)obj;
@@ -290,6 +300,10 @@ void rt_locale_internal_finalizer(void *obj) {
     l->data = NULL;
 }
 
+/// @brief Allocate a zero-initialised rt_locale_t handle and register its finalizer.
+/// @details Uses `rt_obj_new_i64` so the handle participates in the GC lifetime system.
+///          Traps on OOM (never returns NULL to the caller in practice).
+/// @return Pointer to a fresh, zeroed rt_locale_t registered with the GC.
 static void *loc_alloc(void) {
     rt_locale_t *loc = (rt_locale_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_locale_t));
     if (!loc) {
@@ -301,6 +315,8 @@ static void *loc_alloc(void) {
     return loc;
 }
 
+/// @brief Decrement the GC reference count on a Locale handle and free it if it hits zero.
+/// @param obj Opaque Locale handle, or NULL (safe to call).
 static void loc_release_handle(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
@@ -314,6 +330,12 @@ static void *loc_make_invariant(void) {
     return loc;
 }
 
+/// @brief Allocate a Locale handle from a known-canonical BCP-47 tag string.
+/// @details Falls back to the invariant locale when @p tag is NULL, "root", or
+///          fails to parse. Calls `rt_locale_manager_lookup_data_retained` so the
+///          returned handle holds a retained reference to any matching data record.
+/// @param tag NUL-terminated canonical BCP-47 tag (e.g., "en-US"), or NULL.
+/// @return A fresh, GC-tracked Locale handle; never NULL.
 static void *loc_from_canonical_tag(const char *tag) {
     if (!tag || strcmp(tag, "root") == 0)
         return loc_make_invariant();
@@ -326,6 +348,12 @@ static void *loc_from_canonical_tag(const char *tag) {
     return loc;
 }
 
+/// @brief Push @p loc onto @p list and immediately release the caller's reference.
+/// @details The list takes ownership via `rt_list_push`, so the caller's local
+///          reference is released to avoid a double-retain. NULL @p loc is silently
+///          ignored to simplify the fallback-chain loop.
+/// @param list rt_list handle to append to.
+/// @param loc  Locale handle to transfer; may be NULL.
 static void loc_list_push_owned(void *list, void *loc) {
     if (!loc)
         return;
@@ -333,14 +361,28 @@ static void loc_list_push_owned(void *list, void *loc) {
     loc_release_handle(loc);
 }
 
+/// @brief Construct a new Locale handle initialised to the invariant ("root") locale.
+/// @return A fresh, GC-tracked Locale handle pointing at the en-US invariant data.
 void *rt_locale_new(void) {
     return loc_make_invariant();
 }
 
+/// @brief Return a Locale handle for the invariant ("root") locale.
+/// @details Equivalent to `rt_locale_new()`; provided as a named entry-point for
+///          the `Locale.Invariant` property path in the Zia runtime binding.
+/// @return A fresh, GC-tracked Locale handle for the root/invariant locale.
 void *rt_locale_invariant(void) {
     return loc_make_invariant();
 }
 
+/// @brief Parse a BCP-47 tag string into a Locale handle.
+/// @details When @p strict is non-zero, traps on empty/invalid input (matches
+///          the `Locale.Parse` contract). When @p strict is zero, returns NULL
+///          on any failure (matches `Locale.TryParse`). On success resolves and
+///          retains any matching locale-data record from the LocaleManager.
+/// @param tag    rt_string containing the BCP-47 tag; NULL treated as empty.
+/// @param strict 1 to trap on failure; 0 to return NULL silently.
+/// @return A fresh, GC-tracked Locale handle on success; NULL on failure (non-strict).
 void *rt_locale_parse_internal(rt_string tag, int strict) {
     const char *bytes = tag ? rt_string_cstr(tag) : NULL;
     int64_t sl = tag ? rt_str_len(tag) : 0;
@@ -378,14 +420,32 @@ void *rt_locale_parse_internal(rt_string tag, int strict) {
     return loc;
 }
 
+/// @brief Parse a BCP-47 tag, trapping if the tag is invalid or empty.
+/// @details Implements `Locale.Parse(tag)` — the throwing variant. Use
+///          `rt_locale_try_parse` when failure should return NULL instead.
+/// @param tag rt_string containing the BCP-47 tag.
+/// @return A fresh, GC-tracked Locale handle; never returns on invalid input.
 void *rt_locale_parse(rt_string tag) {
     return rt_locale_parse_internal(tag, /*strict=*/1);
 }
 
+/// @brief Attempt to parse a BCP-47 tag, returning NULL on failure instead of trapping.
+/// @details Implements `Locale.TryParse(tag)` — the non-throwing variant.
+/// @param tag rt_string containing the BCP-47 tag; NULL or empty returns NULL.
+/// @return A fresh, GC-tracked Locale handle, or NULL if the tag is invalid.
 void *rt_locale_try_parse(rt_string tag) {
     return rt_locale_parse_internal(tag, /*strict=*/0);
 }
 
+/// @brief Construct a Locale from separate language, script, and region subtag strings.
+/// @details Assembles the subtags into a synthetic BCP-47 tag and routes through
+///          the normal parser so validation and canonicalization are applied exactly
+///          once. Traps if @p language is empty, or if any subtag combination would
+///          fail BCP-47 validation. @p script and @p region may be NULL or empty.
+/// @param language Required BCP-47 primary language subtag (e.g., "en").
+/// @param script   Optional 4-letter script subtag (e.g., "Hans"), or NULL.
+/// @param region   Optional 2-letter/3-digit region subtag (e.g., "US"), or NULL.
+/// @return A fresh, GC-tracked Locale handle; traps on invalid input.
 void *rt_locale_from_parts(rt_string language, rt_string script, rt_string region) {
     const char *ls = language ? rt_string_cstr(language) : NULL;
     int64_t ll = language ? rt_str_len(language) : 0;
@@ -448,30 +508,50 @@ void *rt_locale_from_parts(rt_string language, rt_string script, rt_string regio
 // Accessors
 //===----------------------------------------------------------------------===//
 
+/// @brief Convert a NUL-terminated C string to a freshly allocated rt_string.
+/// @details NULL input produces an empty rt_string. Unlike `loc_info_str` in
+///          rt_locale_info.c, this variant does not treat "" as "missing" — the
+///          empty string is a valid output for a Locale with no script or region.
+/// @param s NUL-terminated C string, or NULL.
+/// @return A freshly allocated rt_string copy of @p s, or an empty string for NULL.
 static rt_string loc_str(const char *s) {
     if (!s)
         return rt_string_from_bytes("", 0);
     return rt_string_from_bytes(s, strlen(s));
 }
 
+/// @brief Return the primary language subtag of @p locale (e.g., "en").
+/// @details Returns an empty string for a NULL handle or the invariant locale.
+/// @param locale Opaque Locale handle; may be NULL.
+/// @return A freshly allocated rt_string with the language subtag.
 rt_string rt_locale_language(void *locale) {
     if (!locale)
         return rt_string_from_bytes("", 0);
     return loc_str(((rt_locale_t *)locale)->language);
 }
 
+/// @brief Return the script subtag of @p locale (e.g., "Hans"), or empty if absent.
+/// @param locale Opaque Locale handle; may be NULL.
+/// @return A freshly allocated rt_string with the 4-letter script subtag, or empty.
 rt_string rt_locale_script(void *locale) {
     if (!locale)
         return rt_string_from_bytes("", 0);
     return loc_str(((rt_locale_t *)locale)->script);
 }
 
+/// @brief Return the region subtag of @p locale (e.g., "US"), or empty if absent.
+/// @param locale Opaque Locale handle; may be NULL.
+/// @return A freshly allocated rt_string with the 2-letter or 3-digit region subtag, or empty.
 rt_string rt_locale_region(void *locale) {
     if (!locale)
         return rt_string_from_bytes("", 0);
     return loc_str(((rt_locale_t *)locale)->region);
 }
 
+/// @brief Return the full canonical BCP-47 tag for @p locale (e.g., "en-US").
+/// @details Returns "root" for a NULL handle or a Locale with no language subtag.
+/// @param locale Opaque Locale handle; may be NULL.
+/// @return A freshly allocated rt_string with the canonical tag.
 rt_string rt_locale_tag(void *locale) {
     if (!locale)
         return rt_string_from_bytes("root", 4);
@@ -481,10 +561,21 @@ rt_string rt_locale_tag(void *locale) {
     return loc_str(l->tag);
 }
 
+/// @brief Return a string representation of @p locale (identical to `rt_locale_tag`).
+/// @details Provided as the `ToString()` entry-point for the Zia object model.
+/// @param locale Opaque Locale handle; may be NULL.
+/// @return A freshly allocated rt_string with the canonical BCP-47 tag.
 rt_string rt_locale_to_string(void *locale) {
     return rt_locale_tag(locale);
 }
 
+/// @brief Return 1 if two Locale handles represent the same canonical BCP-47 tag.
+/// @details Compares the already-normalised tag strings directly; handles the edge
+///          case where an empty tag and the literal string "root" are both invariant.
+///          Same-pointer fast-path avoids the string compare for common usage.
+/// @param a First Locale handle; may be NULL (treated as invariant).
+/// @param b Second Locale handle; may be NULL (treated as invariant).
+/// @return 1 if equal, 0 if different.
 int8_t rt_locale_equals(void *a, void *b) {
     if (a == b)
         return 1;
@@ -503,6 +594,14 @@ int8_t rt_locale_equals(void *a, void *b) {
 // Fallback chain
 //===----------------------------------------------------------------------===//
 
+/// @brief Build the ordered fallback chain for @p locale as a List of Locale handles.
+/// @details The chain follows CLDR conventions: full tag → base lang+script+region →
+///          lang+region (if script present) → lang-only → invariant ("root").
+///          Variant/extension subtags are preserved on the first element but dropped
+///          on all subsequent steps. The list always terminates with the invariant so
+///          callers can unconditionally use the last entry as a safe fallback.
+/// @param locale Opaque Locale handle; NULL produces a list containing only invariant.
+/// @return A new rt_list owned by the caller, containing at least one entry.
 void *rt_locale_fallbacks(void *locale) {
     void *list = rt_list_new();
     if (!list)
@@ -580,6 +679,13 @@ void *rt_locale_fallbacks(void *locale) {
 // Internal helpers used by LocaleManager / LocaleInfo
 //===----------------------------------------------------------------------===//
 
+/// @brief Bind a locale-data record to a Locale handle, replacing any prior binding.
+/// @details Performs a retain-then-release swap so the reference counts stay accurate
+///          even when @p data is the same record that is already bound. No-op for
+///          NULL @p locale. Called by the LocaleManager when a new data record is
+///          loaded and the handle's tag matches.
+/// @param locale Opaque Locale handle; may be NULL.
+/// @param data   New locale-data record to bind; may be NULL to clear.
 void rt_locale_bind_data(void *locale, const rt_locale_data_t *data) {
     if (!locale)
         return;
@@ -591,6 +697,11 @@ void rt_locale_bind_data(void *locale, const rt_locale_data_t *data) {
     l->data = data;
 }
 
+/// @brief Return the locale-data record bound to @p locale, falling back to en-US invariant.
+/// @details The returned pointer is non-owning; its lifetime is managed by the
+///          LocaleManager. Never returns NULL — the invariant record is always available.
+/// @param locale Opaque Locale handle; NULL returns the en-US invariant.
+/// @return Pointer to the bound rt_locale_data_t, or the en-US invariant record.
 const rt_locale_data_t *rt_locale_get_data(void *locale) {
     if (!locale)
         return rt_locale_data_en_us();

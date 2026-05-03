@@ -84,6 +84,9 @@ static void navmesh3d_finalizer(void *obj) {
     nm->triangles = NULL;
 }
 
+/// @brief Release a partially-constructed navmesh on allocation failure, freeing if refcount hits zero.
+/// @details Called in error paths where the navmesh object was allocated but bake failed,
+///          so the half-built object must be dropped without going through the normal finalizer.
 static void navmesh3d_free_partial(rt_navmesh3d *nm) {
     if (nm && rt_obj_release_check0(nm))
         rt_obj_free(nm);

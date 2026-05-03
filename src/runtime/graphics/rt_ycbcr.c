@@ -23,6 +23,7 @@
 
 #include "rt_ycbcr.h"
 
+/// @brief Saturate an int32_t to the [0, 255] byte range.
 static inline int32_t clamp255(int32_t v) {
     if (v < 0)
         return 0;
@@ -31,6 +32,23 @@ static inline int32_t clamp255(int32_t v) {
     return v;
 }
 
+/// @brief Convert a YCbCr 4:2:0 planar image to packed RGBA (Viper 0xRRGGBBAA format).
+/// @details Uses BT.601 limited-range coefficients with ×256 fixed-point scaling
+///   (shift by 8 after accumulation) to avoid floating-point overhead in the inner
+///   loop. The chroma planes are 2× subsampled in both axes (4:2:0), so each Cb/Cr
+///   sample covers a 2×2 luma block — accessed as `cb_row[col / 2]`. Level offsets
+///   are applied per the BT.601 spec: Y is biased by -16 (limited range base),
+///   Cb/Cr are biased by -128 (signed centering). All RGB outputs are clamped to
+///   [0, 255] via `clamp255` before packing. Alpha is always 0xFF (fully opaque).
+///   Used by the Theora decoder's YUV→pixels conversion path.
+/// @param y_plane   Luma plane, width × height bytes.
+/// @param cb_plane  Blue-difference chroma plane, (width/2) × (height/2) bytes.
+/// @param cr_plane  Red-difference chroma plane, (width/2) × (height/2) bytes.
+/// @param width     Image width in pixels.
+/// @param height    Image height in pixels.
+/// @param y_stride  Row stride of the luma plane in bytes (may be > width).
+/// @param c_stride  Row stride of the chroma planes in bytes (may be > width/2).
+/// @param rgba_out  Output buffer of width × height uint32_t RGBA pixels.
 void ycbcr420_to_rgba(const uint8_t *y_plane,
                       const uint8_t *cb_plane,
                       const uint8_t *cr_plane,

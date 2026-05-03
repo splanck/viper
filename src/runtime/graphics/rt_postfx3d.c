@@ -698,6 +698,10 @@ static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h,
     free(fbuf);
 }
 
+/// @brief Apply post-processing effects to an HDR render target's floating-point color buffer.
+/// @details Copies the HDR RGBA16F buffer into a temporary packed RGB float buffer, applies
+///          the enabled post-fx chain (tone mapping, bloom, color grading, etc.), then
+///          writes the result back into the 8-bit UNORM color buffer for display/readback.
 static void postfx_apply_hdr_target(rt_postfx3d *fx, vgfx3d_rendertarget_t *target) {
     int32_t count;
     int tonemapped;

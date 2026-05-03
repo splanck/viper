@@ -38,7 +38,9 @@ Creates a new pixel buffer initialized to transparent black (0x00000000). Negati
 | `Clear()`                         | `Void()`                                                             | Clear buffer to transparent black (0x00000000)                                    |
 | `Clone()`                         | `Pixels()`                                                           | Create a deep copy of this buffer                                                 |
 | `Copy(dx, dy, src, sx, sy, w, h)` | `Void(Integer, Integer, Pixels, Integer, Integer, Integer, Integer)` | Copy a rectangle from source to this buffer                                       |
-| `Fill(color)`                     | `Void(Integer)`                                                      | Fill entire buffer with a color                                                   |
+| `Fill(color)`                     | `Void(Integer)`                                                      | Fill entire buffer with raw `0xRRGGBBAA`                                          |
+| `FillRGBA(color)`                 | `Void(Integer)`                                                      | Explicit raw `0xRRGGBBAA` fill alias                                              |
+| `FillColor(color)`                | `Void(Integer)`                                                      | Fill from `Color.RGB()`, Canvas `0x00RRGGBB`, or `Color.RGBA()`                   |
 | `FlipH()`                         | `Pixels()`                                                           | Return a horizontally mirrored copy (left-right)                                  |
 | `FlipV()`                         | `Pixels()`                                                           | Return a vertically mirrored copy (top-bottom)                                    |
 | `Get(x, y)`                       | `Integer(Integer, Integer)`                                          | Get pixel color at (x, y) as packed RGBA (0xRRGGBBAA). Returns 0 if out of bounds |
@@ -51,7 +53,9 @@ Creates a new pixel buffer initialized to transparent black (0x00000000). Negati
 | `SaveBmp(path)`                   | `Integer(String)`                                                    | Save to a BMP file. Returns 1 on success, 0 on failure                            |
 | `SavePng(path)`                   | `Integer(String)`                                                    | Save to a PNG file. Returns 1 on success, 0 on failure                            |
 | `Scale(width, height)`            | `Pixels(Integer, Integer)`                                           | Return a scaled copy using nearest-neighbor interpolation                         |
-| `Set(x, y, color)`                | `Void(Integer, Integer, Integer)`                                    | Set pixel color at (x, y). Silently ignores out of bounds                         |
+| `Set(x, y, color)`                | `Void(Integer, Integer, Integer)`                                    | Set raw `0xRRGGBBAA` at (x, y). Silently ignores out of bounds                    |
+| `SetRGBA(x, y, color)`            | `Void(Integer, Integer, Integer)`                                    | Explicit raw `0xRRGGBBAA` set alias                                               |
+| `SetColor(x, y, color)`           | `Void(Integer, Integer, Integer)`                                    | Set from `Color.RGB()`, Canvas `0x00RRGGBB`, or `Color.RGBA()`                    |
 | `Tint(color)`                     | `Pixels(Integer)`                                                    | Return a copy with a color tint applied (0x00RRGGBB)                              |
 | `ToBytes()`                       | `Bytes()`                                                            | Convert to raw bytes (RGBA, row-major)                                            |
 
@@ -87,11 +91,11 @@ Alpha is always 255 (fully opaque). Coordinates outside the pixel buffer are sil
 | `DrawTriangle(x1, y1, x2, y2, x3, y3, color)` | `Void(Integer...)` | Filled triangle |
 | `DrawBezier(x1, y1, cx, cy, x2, y2, color)` | `Void(Integer...)` | Quadratic Bezier curve |
 
-> **Color format note:** `Pixels.Set(x, y, color)` and `Pixels.Get(x, y)` use `0xRRGGBBAA` (packed RGBA
-> with explicit alpha). Drawing primitives and `SetRGB`/`GetRGB` use `0x00RRGGBB` — the same format as
-> `Canvas` drawing calls and `Color.RGB()`. This allows the same color constants to be used when drawing
-> to both a Canvas and an off-screen Pixels buffer without any format conversion. If a `Color.RGBA()`
-> value is passed to an RGB-only primitive, its alpha byte is ignored and the RGB channels are used.
+> **Color format note:** `Pixels.Set(x, y, color)`, `Pixels.SetRGBA`, `Pixels.Fill`, and
+> `Pixels.FillRGBA` use raw `0xRRGGBBAA` storage. Drawing primitives and `SetRGB`/`GetRGB` use
+> `0x00RRGGBB` — the same format as `Canvas` drawing calls and `Color.RGB()`. Use `SetColor` and
+> `FillColor` when you want to pass `Color.RGB()`, Canvas `0x00RRGGBB`, or tagged `Color.RGBA()`
+> values and have them converted into pixel storage.
 
 #### Zia Example — Drawing into an off-screen buffer
 
@@ -137,13 +141,13 @@ format as `Canvas` methods and `Color.RGB()`. This makes it straightforward to s
 between on-screen canvas drawing and off-screen pixel buffer operations. `Color.RGBA()` values are
 also accepted for these RGB-only primitives; alpha is ignored.
 
-Use packed literals like `0xRRGGBBAA` for `Set`/`Get`, and `Viper.Graphics.Color.RGB()` for
-drawing primitives.
+Use packed literals like `0xRRGGBBAA` for raw `Set`/`Get`, and `Viper.Graphics.Color.RGB()` for
+drawing primitives. Use `SetColor` or `FillColor` for `Color.RGBA()` values with alpha.
 
-> `Viper.Graphics.Color.RGBA()` returns `0xAARRGGBB`, which is suitable for alpha-aware Canvas
-> drawing APIs and RGB-only drawing primitives, but it does **not** match the `0xRRGGBBAA` layout used
-> by `Pixels.Set`/`Pixels.Get`. For opaque pixels, prefer `SetRGB()`; for explicit alpha, pass a packed
-> `0xRRGGBBAA` value.
+> `Viper.Graphics.Color.RGBA()` returns a tagged `0xAARRGGBB` color value so alpha can be preserved
+> even when `a = 0`. It does **not** match the raw `0xRRGGBBAA` layout used by `Pixels.Set` and
+> `Pixels.Get`; pass it to `SetColor`/`FillColor`, or pass an explicit raw `0xRRGGBBAA` value to
+> `Set`/`Fill`.
 
 ### Zia Example
 
@@ -159,8 +163,9 @@ func start() {
     var p = Pixels.New(64, 64);
     Say("Size: " + Fmt.Int(p.get_Width()) + "x" + Fmt.Int(p.get_Height()));
 
-    // Set and get pixels (Pixels.Set uses 0xRRGGBBAA)
+    // Raw Set/Get use 0xRRGGBBAA
     p.Set(0, 0, 0xFF0000FF);
+    p.SetColor(1, 0, Color.RGBA(0, 0, 255, 128));
     var c = p.Get(0, 0);
     Say("Pixel(0,0): " + Fmt.Int(c));
 
@@ -466,6 +471,7 @@ Sprite sheet/atlas for named region extraction from a single texture. Defines na
 - `FromGrid()` automatically slices the atlas into equal cells, named `"0"`, `"1"`, etc. (left-to-right, top-to-bottom)
 - `GetRegion()` returns a new Pixels object on each call — cache results for repeated use
 - Region coordinates are in pixels, relative to the atlas top-left corner
+- `SetRegion()` rejects regions with negative coordinates, non-positive width or height, or bounds outside the atlas; rejected updates leave any existing region unchanged
 - All regions share the underlying atlas Pixels object
 
 ### Zia Example
@@ -594,7 +600,7 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 
 Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. Layer names are limited to the fixed runtime name slot (31 bytes); overlong names are rejected without adding a layer. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress. JSON loading ignores layers beyond the runtime layer cap, normalizes negative saved animation frames, and clamps CSV tile values that exceed the int64 range.
 
-Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type. Invalid collision types are ignored. Negative animation deltas are ignored; very large deltas advance in one modulo step instead of looping once per elapsed frame. `FillRect`, tile drawing, and tile-to-pixel conversion clip or saturate extreme coordinates rather than wrapping.
+Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type. Invalid collision types are ignored. Negative animation deltas are ignored; very large deltas advance in one modulo step instead of looping once per elapsed frame. Default sequential animation frame IDs saturate at the int64 limit instead of wrapping. `FillRect`, tile drawing, and tile-to-pixel conversion clip or saturate extreme coordinates rather than wrapping.
 
 ### Zia Example
 

@@ -104,7 +104,7 @@ Colors are specified as 32-bit integers in `0x00RRGGBB` format:
 - White: `0x00FFFFFF`
 - Black: `0x00000000`
 
-Use `Viper.Graphics.Color.RGB()` or `Viper.Graphics.Color.RGBA()` to create colors from components. RGB-only drawing calls use the RGB channels. Alpha-aware calls such as `BoxAlpha`, `DiscAlpha`, `EllipseAlpha`, and `BlitAlpha` use straight-alpha source-over compositing.
+Use `Viper.Graphics.Color.RGB()` or `Viper.Graphics.Color.RGBA()` to create colors from components. RGB-only drawing calls use the RGB channels. Alpha-aware calls such as `BoxAlpha`, `DiscAlpha`, `EllipseAlpha`, and `BlitAlpha` use straight-alpha source-over compositing. `Color.RGBA()` values carry an internal explicit-alpha tag; use `Color.Get*` or `Color.ToHex()` instead of raw integer equality for RGBA colors.
 
 ### Zia Example
 
@@ -291,6 +291,8 @@ canvas.GradientH(0, 0, 800, 600, 16711680, 255)  ' Red to blue (horizontal)
 canvas.GradientV(0, 0, 800, 600, 0, 16777215)  ' Black to white (vertical)
 ```
 
+`CopyRect` and `Screenshot` return `NULL` when the canvas is closed or unavailable. `SaveBmp` and `SavePng` snapshot the canvas into a temporary `Pixels` buffer, write the file, release the temporary buffer, and return `0` on invalid canvas handles or write failure.
+
 ### Canvas Clipping
 
 Restrict drawing to a rectangular region. All drawing operations will be clipped to the
@@ -458,7 +460,7 @@ Color utility functions for graphics operations.
 | `Saturate(color, amount)` | `Integer(Integer, Integer)`                  | Increases saturation of a color (0-100)                                         |
 | `ToHex(color)`           | `String(Integer)`                             | Converts a color to hex string and preserves explicit alpha, including `#RRGGBB00` |
 
-`Color.ToHex(Color.RGBA(r, g, b, 0))` now round-trips through `Color.FromHex()` as `#RRGGBB00`.
+`Color.ToHex(Color.RGBA(r, g, b, a))` round-trips through `Color.FromHex()` as `#RRGGBBAA`, including `#RRGGBB00`.
 
 ### Zia Example
 
@@ -577,6 +579,8 @@ Each layer's Pixels buffer is tiled horizontally and vertically to fill the view
 Camera zoom and rotation are applied to those tiles during `DrawParallax`, so the
 background stays visually aligned with the current view transform instead of only
 tracking camera translation.
+Pathological combinations that would require an extremely large number of tiles
+in one call are skipped and do not count as drawn.
 
 ### Parallax Example
 

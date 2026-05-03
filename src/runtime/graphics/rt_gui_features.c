@@ -64,6 +64,7 @@ typedef struct {
     int64_t was_selected;
 } rt_commandpalette_data_t;
 
+/// @brief Release the command palette widget, unregister it from the app, and zero all fields.
 static void rt_commandpalette_dispose(rt_commandpalette_data_t *data) {
     if (!data)
         return;
@@ -80,6 +81,7 @@ static void rt_commandpalette_dispose(rt_commandpalette_data_t *data) {
     data->app = NULL;
 }
 
+/// @brief GC finalizer — delegates to `rt_commandpalette_dispose`.
 static void rt_commandpalette_finalize(void *palette) {
     rt_commandpalette_dispose((rt_commandpalette_data_t *)palette);
 }
@@ -793,6 +795,8 @@ typedef struct rt_breadcrumb_data {
     vg_widget_vtable_t vtable;
 } rt_breadcrumb_data_t;
 
+/// @brief Widget vtable `destroy` override — clears the back-pointer before calling the
+///        original vtable's destroy so dangling pointer re-use in the teardown is safe.
 static void rt_breadcrumb_widget_destroy(vg_widget_t *widget) {
     rt_breadcrumb_data_t *data = widget ? (rt_breadcrumb_data_t *)widget->user_data : NULL;
     if (data && data->breadcrumb == (vg_breadcrumb_t *)widget)
@@ -801,6 +805,7 @@ static void rt_breadcrumb_widget_destroy(vg_widget_t *widget) {
         data->original_vtable->destroy(widget);
 }
 
+/// @brief Release breadcrumb widget and free the clicked-item string buffer.
 static void rt_breadcrumb_dispose(rt_breadcrumb_data_t *data) {
     if (!data)
         return;
@@ -814,6 +819,7 @@ static void rt_breadcrumb_dispose(rt_breadcrumb_data_t *data) {
     data->was_clicked = 0;
 }
 
+/// @brief GC finalizer — delegates to `rt_breadcrumb_dispose`.
 static void rt_breadcrumb_finalize(void *crumb) {
     rt_breadcrumb_dispose((rt_breadcrumb_data_t *)crumb);
 }
@@ -1114,6 +1120,8 @@ typedef struct rt_minimap_data {
     vg_widget_vtable_t vtable;
 } rt_minimap_data_t;
 
+/// @brief Widget vtable `destroy` override — clears back-pointer before chaining to the
+///        original vtable's destroy, matching the breadcrumb pattern.
 static void rt_minimap_widget_destroy(vg_widget_t *widget) {
     rt_minimap_data_t *data = widget ? (rt_minimap_data_t *)widget->user_data : NULL;
     if (data && data->minimap == (vg_minimap_t *)widget)
@@ -1122,6 +1130,7 @@ static void rt_minimap_widget_destroy(vg_widget_t *widget) {
         data->original_vtable->destroy(widget);
 }
 
+/// @brief Destroy the underlying minimap widget and zero the pointer.
 static void rt_minimap_dispose(rt_minimap_data_t *data) {
     if (!data)
         return;
@@ -1131,6 +1140,7 @@ static void rt_minimap_dispose(rt_minimap_data_t *data) {
     }
 }
 
+/// @brief GC finalizer — delegates to `rt_minimap_dispose`.
 static void rt_minimap_finalize(void *minimap) {
     rt_minimap_dispose((rt_minimap_data_t *)minimap);
 }
@@ -1546,6 +1556,7 @@ void rt_gui_features_cleanup(rt_gui_app_t *app) {
 // inherited from the real functions above by virtue of identical names.
 // ===========================================================================
 
+/// @brief Stub: returns NULL — command palette requires graphics.
 void *rt_commandpalette_new(void *parent) {
     (void)parent;
     return NULL;
@@ -1567,6 +1578,7 @@ void rt_commandpalette_add_command(void *palette,
     (void)category;
 }
 
+/// @brief Stub: `CommandPalette.AddCommandWithShortcut` is a no-op without graphics.
 void rt_commandpalette_add_command_with_shortcut(
     void *palette, rt_string id, rt_string label, rt_string category, rt_string shortcut) {
     (void)palette;
@@ -1682,6 +1694,7 @@ void rt_toast_error(rt_string message) {
     (void)message;
 }
 
+/// @brief Stub: returns NULL — toast notifications require graphics.
 void *rt_toast_new(rt_string message, int64_t type, int64_t duration_ms) {
     (void)message;
     (void)type;
@@ -1725,6 +1738,7 @@ void rt_toast_set_max_visible(int64_t count) {
 /// @brief Dismiss the all of the toast.
 void rt_toast_dismiss_all(void) {}
 
+/// @brief Stub: returns NULL — breadcrumb widget requires graphics.
 void *rt_breadcrumb_new(void *parent) {
     (void)parent;
     return NULL;
@@ -1802,6 +1816,7 @@ int64_t rt_breadcrumb_is_visible(void *crumb) {
     return 0;
 }
 
+/// @brief Stub: returns NULL — minimap widget requires graphics.
 void *rt_minimap_new(void *parent) {
     (void)parent;
     return NULL;

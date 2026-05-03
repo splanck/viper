@@ -94,6 +94,9 @@ static void release_owned_ref(void **slot);
 static void scene_node_finalize(void *obj);
 static void scene_finalize(void *obj);
 
+/// @brief Release a GC reference stored in @p slot and NULL it.
+/// @details If the reference count drops to zero after release, frees the object
+///   immediately.  Nulling the slot prevents double-free if called again.
 static void release_owned_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -102,6 +105,11 @@ static void release_owned_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief GC finalizer for a scene node — release children, sprite, and name.
+/// @details Before releasing the children Seq, clears every child's parent pointer
+///   so that children being freed during Seq teardown don't attempt a dangling
+///   remove_child back on this node.  Called automatically when the node's
+///   reference count reaches zero.
 static void scene_node_finalize(void *obj) {
     scene_node_impl *node = (scene_node_impl *)obj;
     if (!node)
@@ -121,6 +129,10 @@ static void scene_node_finalize(void *obj) {
     release_owned_ref((void **)&node->name);
 }
 
+/// @brief GC finalizer for the scene container — release the root node.
+/// @details Clears root->parent before releasing so the root's finalizer doesn't
+///   try to call remove_child on a now-dead parent.  Releasing root triggers
+///   a cascade release of the whole node tree.
 static void scene_finalize(void *obj) {
     scene_impl *scene = (scene_impl *)obj;
     if (!scene)
@@ -183,6 +195,11 @@ void *rt_scene_node_from_sprite(void *sprite) {
 // Transform Management
 //=============================================================================
 
+/// @brief Mark @p node and all of its descendants as needing a world-transform recalculation.
+/// @details Sets transform_dirty on every node in the subtree rooted at @p node.  The
+///   actual recalculation is deferred until a world-transform getter (world_x, world_y, etc.)
+///   is called, making repeated local-transform changes O(1) per change rather than
+///   O(subtree size).  Already-dirty subtrees are short-circuited to avoid redundant work.
 static void mark_transform_dirty(scene_node_impl *node) {
     if (!node || node->transform_dirty)
         return;
@@ -197,7 +214,12 @@ static void mark_transform_dirty(scene_node_impl *node) {
     }
 }
 
-// Compute the world transform for a single node, assuming its parent is already clean.
+/// @brief Compute and store the world transform for @p node, assuming its parent's world
+///        transform is already up-to-date.
+/// @details For non-root nodes the world position is derived by scaling the local offset by
+///          the parent's world scale, then rotating it by the parent's world rotation angle.
+///          World scale and rotation accumulate multiplicatively from the root. For root nodes
+///          the world transform equals the local transform directly. Clears `transform_dirty`.
 static void apply_node_transform(scene_node_impl *node) {
     if (node->parent) {
         node->world_scale_x = (node->parent->world_scale_x * node->scale_x) / 100;
@@ -229,9 +251,12 @@ static void apply_node_transform(scene_node_impl *node) {
     node->transform_dirty = 0;
 }
 
-// Iterative equivalent of the former recursive update_world_transform.
-// Walks UP the ancestor chain to find the highest dirty ancestor, then
-// applies transforms top-down so each node's parent is always clean first.
+/// @brief Propagate world transforms from the highest dirty ancestor down to @p node.
+/// @details Iterative replacement for the former recursive implementation. Walks up the
+///          ancestor chain collecting all dirty nodes into a small inline buffer (spills to
+///          heap for hierarchies deeper than 64 nodes), then applies `apply_node_transform`
+///          top-down so each parent is always clean before its child is processed.
+///          No-op when @p node is NULL or its transform is already clean.
 static void update_world_transform(scene_node_impl *node) {
     if (!node || !node->transform_dirty)
         return;
@@ -274,14 +299,14 @@ static void update_world_transform(scene_node_impl *node) {
 // Scene Node Properties - Position
 //=============================================================================
 
-/// @brief Get the x of the node.
+/// @brief Return the node's local X position relative to its parent (or world origin if root).
 int64_t rt_scene_node_get_x(void *node_ptr) {
     if (!node_ptr)
         return 0;
     return ((scene_node_impl *)node_ptr)->x;
 }
 
-/// @brief Set the x of the node.
+/// @brief Set the node's local X position and mark the subtree's world transforms dirty.
 void rt_scene_node_set_x(void *node_ptr, int64_t x) {
     if (!node_ptr)
         return;
@@ -290,14 +315,14 @@ void rt_scene_node_set_x(void *node_ptr, int64_t x) {
     mark_transform_dirty(node);
 }
 
-/// @brief Get the y of the node.
+/// @brief Return the node's local Y position relative to its parent (or world origin if root).
 int64_t rt_scene_node_get_y(void *node_ptr) {
     if (!node_ptr)
         return 0;
     return ((scene_node_impl *)node_ptr)->y;
 }
 
-/// @brief Set the y of the node.
+/// @brief Set the node's local Y position and mark the subtree's world transforms dirty.
 void rt_scene_node_set_y(void *node_ptr, int64_t y) {
     if (!node_ptr)
         return;
@@ -306,7 +331,7 @@ void rt_scene_node_set_y(void *node_ptr, int64_t y) {
     mark_transform_dirty(node);
 }
 
-/// @brief Get the world x of the node.
+/// @brief Return the node's computed world-space X position, updating dirty transforms first.
 int64_t rt_scene_node_get_world_x(void *node_ptr) {
     if (!node_ptr)
         return 0;
@@ -315,7 +340,7 @@ int64_t rt_scene_node_get_world_x(void *node_ptr) {
     return node->world_x;
 }
 
-/// @brief Get the world y of the node.
+/// @brief Return the node's computed world-space Y position, updating dirty transforms first.
 int64_t rt_scene_node_get_world_y(void *node_ptr) {
     if (!node_ptr)
         return 0;
@@ -328,14 +353,14 @@ int64_t rt_scene_node_get_world_y(void *node_ptr) {
 // Scene Node Properties - Scale
 //=============================================================================
 
-/// @brief Get the scale x of the node.
+/// @brief Return the node's local X scale as a percentage (100 = 1.0×).
 int64_t rt_scene_node_get_scale_x(void *node_ptr) {
     if (!node_ptr)
         return 100;
     return ((scene_node_impl *)node_ptr)->scale_x;
 }
 
-/// @brief Set the scale x of the node.
+/// @brief Set the node's local X scale (percentage) and mark the subtree's transforms dirty.
 void rt_scene_node_set_scale_x(void *node_ptr, int64_t scale) {
     if (!node_ptr)
         return;
@@ -344,14 +369,14 @@ void rt_scene_node_set_scale_x(void *node_ptr, int64_t scale) {
     mark_transform_dirty(node);
 }
 
-/// @brief Get the scale y of the node.
+/// @brief Return the node's local Y scale as a percentage (100 = 1.0×).
 int64_t rt_scene_node_get_scale_y(void *node_ptr) {
     if (!node_ptr)
         return 100;
     return ((scene_node_impl *)node_ptr)->scale_y;
 }
 
-/// @brief Set the scale y of the node.
+/// @brief Set the node's local Y scale (percentage) and mark the subtree's transforms dirty.
 void rt_scene_node_set_scale_y(void *node_ptr, int64_t scale) {
     if (!node_ptr)
         return;
@@ -360,7 +385,7 @@ void rt_scene_node_set_scale_y(void *node_ptr, int64_t scale) {
     mark_transform_dirty(node);
 }
 
-/// @brief Get the world scale x of the node.
+/// @brief Return the node's accumulated world-space X scale (parent scales multiplied in).
 int64_t rt_scene_node_get_world_scale_x(void *node_ptr) {
     if (!node_ptr)
         return 100;
@@ -369,7 +394,7 @@ int64_t rt_scene_node_get_world_scale_x(void *node_ptr) {
     return node->world_scale_x;
 }
 
-/// @brief Get the world scale y of the node.
+/// @brief Return the node's accumulated world-space Y scale (parent scales multiplied in).
 int64_t rt_scene_node_get_world_scale_y(void *node_ptr) {
     if (!node_ptr)
         return 100;
@@ -382,14 +407,14 @@ int64_t rt_scene_node_get_world_scale_y(void *node_ptr) {
 // Scene Node Properties - Rotation
 //=============================================================================
 
-/// @brief Get the rotation of the node.
+/// @brief Return the node's local rotation in whole degrees.
 int64_t rt_scene_node_get_rotation(void *node_ptr) {
     if (!node_ptr)
         return 0;
     return ((scene_node_impl *)node_ptr)->rotation;
 }
 
-/// @brief Set the rotation of the node.
+/// @brief Set the node's local rotation in whole degrees and mark the subtree's transforms dirty.
 void rt_scene_node_set_rotation(void *node_ptr, int64_t degrees) {
     if (!node_ptr)
         return;
@@ -398,7 +423,7 @@ void rt_scene_node_set_rotation(void *node_ptr, int64_t degrees) {
     mark_transform_dirty(node);
 }
 
-/// @brief Get the world rotation of the node.
+/// @brief Return the node's accumulated world-space rotation (sum of all ancestor rotations).
 int64_t rt_scene_node_get_world_rotation(void *node_ptr) {
     if (!node_ptr)
         return 0;
@@ -411,28 +436,34 @@ int64_t rt_scene_node_get_world_rotation(void *node_ptr) {
 // Scene Node Properties - Visibility & Depth
 //=============================================================================
 
-/// @brief Get the visible of the node.
+/// @brief Return whether the node (and its subtree) will be rendered.
+/// @details A node whose visible flag is 0 is skipped entirely during draw traversal,
+///   including all of its descendants.
 int8_t rt_scene_node_get_visible(void *node_ptr) {
     if (!node_ptr)
         return 0;
     return ((scene_node_impl *)node_ptr)->visible;
 }
 
-/// @brief Set the visible of the node.
+/// @brief Show or hide the node and its entire subtree.
+/// @details Setting visible to 0 prevents the node from being collected during
+///   draw traversal — equivalent to removing it from the scene without detaching.
 void rt_scene_node_set_visible(void *node_ptr, int8_t visible) {
     if (!node_ptr)
         return;
     ((scene_node_impl *)node_ptr)->visible = visible ? 1 : 0;
 }
 
-/// @brief Get the depth of the node.
+/// @brief Return the node's Z-order depth used for depth-sorted rendering.
+/// @details Higher values render on top of lower values.  Siblings with equal depth
+///   are drawn in traversal order.
 int64_t rt_scene_node_get_depth(void *node_ptr) {
     if (!node_ptr)
         return 0;
     return ((scene_node_impl *)node_ptr)->depth;
 }
 
-/// @brief Set the depth of the node.
+/// @brief Set the node's Z-order depth for depth-sorted rendering.
 void rt_scene_node_set_depth(void *node_ptr, int64_t depth) {
     if (!node_ptr)
         return;
@@ -443,14 +474,17 @@ void rt_scene_node_set_depth(void *node_ptr, int64_t depth) {
 // Scene Node Properties - Name & Sprite
 //=============================================================================
 
-/// @brief Get the name of the node.
+/// @brief Return the node's name string (borrowed — do not release the returned value).
 rt_string rt_scene_node_get_name(void *node_ptr) {
     if (!node_ptr)
         return rt_const_cstr("");
     return ((scene_node_impl *)node_ptr)->name;
 }
 
-/// @brief Set the name of the node.
+/// @brief Set the node's name string, retaining the new value and releasing the old.
+/// @details Retains @p name before releasing the old name so the value is safe even
+///   when the old and new strings happen to be the same object.  Empty string is
+///   substituted when @p name is NULL.
 void rt_scene_node_set_name(void *node_ptr, rt_string name) {
     if (!node_ptr)
         return;
@@ -464,13 +498,18 @@ void rt_scene_node_set_name(void *node_ptr, rt_string name) {
     node->name = name;
 }
 
+/// @brief Return the sprite attached to the node (borrowed reference — do not release).
+/// @details Returns NULL if no sprite has been set.  The sprite is retained by the
+///   node; callers that need to hold a long-lived reference must retain it themselves.
 void *rt_scene_node_get_sprite(void *node_ptr) {
     if (!node_ptr)
         return NULL;
     return ((scene_node_impl *)node_ptr)->sprite;
 }
 
-/// @brief Set the sprite of the node.
+/// @brief Attach a sprite to the node, retaining it and releasing the previous sprite.
+/// @details The node takes ownership: the sprite is retained on assignment and
+///   released when the node is finalized or a new sprite is set.
 void rt_scene_node_set_sprite(void *node_ptr, void *sprite) {
     if (!node_ptr)
         return;
@@ -486,7 +525,10 @@ void rt_scene_node_set_sprite(void *node_ptr, void *sprite) {
 // Scene Node Hierarchy
 //=============================================================================
 
-/// @brief Add the child of the node.
+/// @brief Attach @p child_ptr as a child of @p node_ptr in the scene hierarchy.
+/// @details Guards against cycles by walking the ancestor chain before attaching.
+///   If the child already has a parent, it is detached first.  Marks the child's
+///   world transforms dirty since its inherited transform will change.
 void rt_scene_node_add_child(void *node_ptr, void *child_ptr) {
     if (!node_ptr || !child_ptr)
         return;
@@ -510,7 +552,10 @@ void rt_scene_node_add_child(void *node_ptr, void *child_ptr) {
     mark_transform_dirty(child);
 }
 
-/// @brief Remove the child of the node.
+/// @brief Detach @p child_ptr from @p node_ptr and release the node's reference to it.
+/// @details Clears child->parent before removing from the Seq so the child's finalizer
+///   cannot call back into this parent during teardown.  Frees the child if the release
+///   drops its reference count to zero.  No-op if the child is not a direct child.
 void rt_scene_node_remove_child(void *node_ptr, void *child_ptr) {
     if (!node_ptr || !child_ptr)
         return;
@@ -531,7 +576,7 @@ void rt_scene_node_remove_child(void *node_ptr, void *child_ptr) {
     }
 }
 
-/// @brief Return the count of elements in the node.
+/// @brief Return the number of direct children attached to @p node_ptr.
 int64_t rt_scene_node_child_count(void *node_ptr) {
     if (!node_ptr)
         return 0;
@@ -580,7 +625,9 @@ void *rt_scene_node_find(void *node_ptr, rt_string name) {
     return NULL;
 }
 
-/// @brief Detach the node.
+/// @brief Detach the node from its parent, if any.
+/// @details Convenience wrapper that calls remove_child on the node's current parent.
+///   No-op for root or unparented nodes.
 void rt_scene_node_detach(void *node_ptr) {
     if (!node_ptr)
         return;
@@ -594,7 +641,10 @@ void rt_scene_node_detach(void *node_ptr) {
 // Scene Node Methods
 //=============================================================================
 
-/// @brief Draw the node.
+/// @brief Recursively draw this node and all its descendants to @p canvas.
+/// @details Skips invisible nodes (and their subtrees).  Each visible node with a sprite
+///   is rendered using its computed world-space transform.  Children are drawn in
+///   insertion order after their parent, so siblings stack naturally.
 void rt_scene_node_draw(void *node_ptr, void *canvas) {
     if (!node_ptr || !canvas)
         return;
@@ -624,7 +674,9 @@ void rt_scene_node_draw(void *node_ptr, void *canvas) {
     }
 }
 
-/// @brief Draw the with camera of the node.
+/// @brief Recursively draw this node and all its descendants, applying @p camera's view transform.
+/// @details Same traversal as rt_scene_node_draw, but each node's world position is
+///   converted to screen space via the camera and the camera zoom/rotation are applied.
 void rt_scene_node_draw_with_camera(void *node_ptr, void *canvas, void *camera) {
     if (!node_ptr || !canvas)
         return;
@@ -662,7 +714,9 @@ void rt_scene_node_draw_with_camera(void *node_ptr, void *canvas, void *camera) 
     }
 }
 
-/// @brief Update the node state (called per frame/tick).
+/// @brief Advance this node's state by one tick and recursively update all children.
+/// @details Calls rt_sprite_update on any attached sprite to advance its frame animation,
+///   then propagates the update to all children.
 void rt_scene_node_update(void *node_ptr) {
     if (!node_ptr)
         return;
@@ -681,7 +735,7 @@ void rt_scene_node_update(void *node_ptr) {
     }
 }
 
-/// @brief Move the node.
+/// @brief Translate the node by (dx, dy) relative to its current local position.
 void rt_scene_node_move(void *node_ptr, int64_t dx, int64_t dy) {
     if (!node_ptr)
         return;
@@ -739,9 +793,11 @@ void *rt_scene_get_root(void *scene_ptr) {
     return ((scene_impl *)scene_ptr)->root;
 }
 
-/// @brief Add add.
-/// @param scene_ptr
-/// @param node_ptr
+/// @brief Add a top-level node to the scene by attaching it as a child of the root.
+/// @details Equivalent to rt_scene_node_add_child(scene->root, node).  The node's
+///   world transform will inherit the root's identity transform.
+/// @param scene_ptr  Scene handle.
+/// @param node_ptr   Scene node to attach; silently ignored if NULL.
 void rt_scene_add(void *scene_ptr, void *node_ptr) {
     if (!scene_ptr || !node_ptr)
         return;
@@ -749,9 +805,11 @@ void rt_scene_add(void *scene_ptr, void *node_ptr) {
     rt_scene_node_add_child(scene->root, node_ptr);
 }
 
-/// @brief Remove remove.
-/// @param scene_ptr
-/// @param node_ptr
+/// @brief Remove a top-level node from the scene (detach from the root).
+/// @details Only direct children of the scene root are removed.  Nodes that are
+///   grandchildren or deeper are not affected.
+/// @param scene_ptr  Scene handle.
+/// @param node_ptr   Node to detach; silently ignored if NULL or not a direct child.
 void rt_scene_remove(void *scene_ptr, void *node_ptr) {
     if (!scene_ptr || !node_ptr)
         return;
@@ -778,6 +836,10 @@ typedef struct {
     int64_t traversal_order;
 } node_sort_entry;
 
+/// @brief Depth-first traversal: collect all visible nodes that have a sprite into @p list.
+/// @details Stops descending into a node subtree if the root node is not visible.
+///   Only nodes with a non-NULL sprite field are appended; nodes used purely as
+///   transform containers are skipped.  Used by rt_scene_draw to build the depth-sort array.
 static void collect_visible_nodes(scene_node_impl *node, void *list) {
     if (!node || !node->visible)
         return;
@@ -794,6 +856,10 @@ static void collect_visible_nodes(scene_node_impl *node, void *list) {
     }
 }
 
+/// @brief qsort comparator for node_sort_entry — sorts by depth ascending, ties by traversal order.
+/// @details Preserving traversal order for equal-depth nodes guarantees that sibling
+///   insertion order and tree-traversal order remain stable across frames even when
+///   many nodes share the same depth value.
 static int compare_depth(const void *a, const void *b) {
     const node_sort_entry *na = (const node_sort_entry *)a;
     const node_sort_entry *nb = (const node_sort_entry *)b;
@@ -809,9 +875,12 @@ static int compare_depth(const void *a, const void *b) {
     return 0;
 }
 
-/// @brief Draw draw to the canvas.
-/// @param scene_ptr
-/// @param canvas
+/// @brief Draw all visible nodes to @p canvas, sorted by depth.
+/// @details Collects every visible node that has a sprite into a temporary list,
+///   stable-sorts them by depth (ascending), and renders each in order using
+///   world-space transforms.  Nodes with equal depth are drawn in traversal (insertion) order.
+/// @param scene_ptr  Scene handle.
+/// @param canvas     Target 2D canvas to draw to.
 void rt_scene_draw(void *scene_ptr, void *canvas) {
     if (!scene_ptr || !canvas)
         return;
@@ -867,10 +936,14 @@ void rt_scene_draw(void *scene_ptr, void *canvas) {
         rt_obj_free(nodes);
 }
 
-/// @brief Draw with camera to the canvas.
-/// @param scene_ptr
-/// @param canvas
-/// @param camera
+/// @brief Draw all visible nodes to @p canvas with camera-space transform applied.
+/// @details Same depth-sorted traversal as rt_scene_draw, but each node's world position
+///   is converted to screen space via rt_camera_world_to_screen and the camera zoom is
+///   multiplied into the scale before rendering.  Camera rotation is subtracted from each
+///   node's world rotation so nodes counter-rotate relative to the viewport.
+/// @param scene_ptr  Scene handle.
+/// @param canvas     Target 2D canvas.
+/// @param camera     Camera that provides the view transform; may be NULL (identity view).
 void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera) {
     if (!scene_ptr || !canvas)
         return;
@@ -935,8 +1008,10 @@ void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera) {
         rt_obj_free(nodes);
 }
 
-/// @brief Update update state for current frame.
-/// @param scene_ptr
+/// @brief Advance all nodes in the scene by one frame — call once per game tick.
+/// @details Recursively calls rt_scene_node_update on the root, which propagates to
+///   every child, advancing sprite frame animations and any per-node update logic.
+/// @param scene_ptr  Scene handle.
 void rt_scene_update(void *scene_ptr) {
     if (!scene_ptr)
         return;
@@ -944,7 +1019,9 @@ void rt_scene_update(void *scene_ptr) {
     rt_scene_node_update(scene->root);
 }
 
-/// @brief Return the count of elements in the node.
+/// @brief Return the number of direct children attached to the scene root.
+/// @details Only counts immediate children of the root node, not the entire tree.
+///   Returns 0 for a NULL or invalid scene.
 int64_t rt_scene_node_count(void *scene_ptr) {
     if (!scene_ptr)
         return 0;
@@ -952,8 +1029,11 @@ int64_t rt_scene_node_count(void *scene_ptr) {
     return scene && scene->root ? rt_seq_len(scene->root->children) : 0;
 }
 
-/// @brief Clear all clear.
-/// @param scene_ptr
+/// @brief Remove all direct children from the scene root, releasing their references.
+/// @details Clears every child's parent pointer before releasing the Seq entries to
+///   prevent remove_child callbacks from firing during teardown.  Deep children are
+///   freed transitively as their parent nodes lose their last reference.
+/// @param scene_ptr  Scene handle.
 void rt_scene_clear(void *scene_ptr) {
     if (!scene_ptr)
         return;

@@ -2438,6 +2438,34 @@ static void gl_draw_texture_to_target(gl_context_t *ctx,
     GL_CHECK();
 }
 
+/// @brief Apply a full chain of post-FX effects using ping-pong FBO rendering.
+/// @details Iterates `chain->effects[0..effect_count-1]`, drawing each pass via
+///   `gl_draw_texture_to_target`. Passes alternate between `scene_fbo`/`scene_color_tex`
+///   and `postfx_readback_fbo`/`postfx_readback_tex` as source and destination so
+///   no pass samples and writes the same texture simultaneously (ping-pong pattern).
+///   For the final pass, unless @p force_offscreen_final is non-zero, the output
+///   goes directly into @p final_framebuffer / @p final_draw_buffer (usually the
+///   default swapchain FBO) at the caller's resolution, avoiding an extra blit.
+///
+///   When @p force_offscreen_final is set (screenshot readback path), the last
+///   pass also writes to an offscreen FBO, and the framebuffer + read-buffer
+///   identifiers are returned via @p out_result_framebuffer / @p out_result_read_buffer
+///   so the caller can `glReadPixels` from the result without touching the swapchain.
+///
+///   Returns 0 early if any required inputs are absent, if the postfx readback target
+///   can't be allocated, or if any pass encounters a GL error.
+/// @param ctx                    Active OpenGL backend context.
+/// @param source_tex             GL texture name for the scene colour to process.
+/// @param width                  Scene render width in pixels.
+/// @param height                 Scene render height in pixels.
+/// @param chain                  Effect chain descriptor (enabled flag + effects array).
+/// @param final_framebuffer      FBO to write the last pass into (0 = default framebuffer).
+/// @param final_draw_buffer      Draw buffer attachment for @p final_framebuffer.
+/// @param force_offscreen_final  If non-zero, always write the last pass to an offscreen FBO.
+/// @param out_result_framebuffer Receives the FBO holding the last pass's output when
+///                               @p force_offscreen_final is set.
+/// @param out_result_read_buffer Receives the read-buffer enum for @p out_result_framebuffer.
+/// @return 1 on success, 0 if resources are missing or allocation fails.
 static int gl_apply_postfx_chain(gl_context_t *ctx,
                                  GLuint source_tex,
                                  int32_t width,
@@ -3103,6 +3131,10 @@ static void bind_texture_unit(GLint uniform_loc, int unit, GLenum target, GLuint
         gl.Uniform1i(uniform_loc, unit);
 }
 
+/// @brief Map a Viper material texture-wrap constant to the corresponding OpenGL enum.
+/// @details RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE → GL_CLAMP_TO_EDGE,
+///          RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT → GL_MIRRORED_REPEAT,
+///          all other values → GL_REPEAT (the GL default).
 static GLenum gl_material_wrap_mode(int32_t mode) {
     if (mode == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE)
         return GL_CLAMP_TO_EDGE;
@@ -3111,10 +3143,23 @@ static GLenum gl_material_wrap_mode(int32_t mode) {
     return GL_REPEAT;
 }
 
+/// @brief Map a Viper material texture-filter constant to the corresponding OpenGL enum.
+/// @details RT_MATERIAL3D_TEXTURE_FILTER_NEAREST → GL_NEAREST (pixel-art / point sampling);
+///          all other values → GL_LINEAR (bilinear).
 static GLenum gl_material_filter_mode(int32_t mode) {
     return mode == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? GL_NEAREST : GL_LINEAR;
 }
 
+/// @brief Map a material texture-wrap mode constant to a 3-entry sampler-cache index.
+/// @details The material sampler cache is a 3D array `material_samplers[wrap_s][wrap_t][filter]`
+///   where each wrap axis has exactly 3 valid values. This function maps the abstract
+///   `RT_MATERIAL3D_TEXTURE_WRAP_*` constant to the corresponding compact array index:
+///     - 0 = GL_REPEAT (the default)
+///     - 1 = GL_CLAMP_TO_EDGE
+///     - 2 = GL_MIRRORED_REPEAT
+///   Any unrecognised value falls through to 0 (repeat), matching the GL default.
+/// @param mode  One of the `RT_MATERIAL3D_TEXTURE_WRAP_*` constants.
+/// @return Array index in [0, 2] for use as a `material_samplers` axis subscript.
 static int gl_sampler_wrap_index(int32_t mode) {
     if (mode == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE)
         return 1;
@@ -3123,6 +3168,12 @@ static int gl_sampler_wrap_index(int32_t mode) {
     return 0;
 }
 
+/// @brief Return a cached or newly-created OpenGL sampler object for the given draw command and texture slot.
+/// @details Resolves wrap_s, wrap_t, and filter from the per-slot or primary material parameters,
+///          maps them to cache indices via `gl_sampler_wrap_index`, and returns the cached sampler
+///          when available. Otherwise generates a new GL sampler, configures WRAP_S/T and
+///          MIN/MAG filters, stores it in `ctx->material_samplers[wrap_s][wrap_t][filter]`, and
+///          returns it. Returns 0 on null context/cmd or GL sampler generation failure.
 static GLuint gl_get_material_sampler(gl_context_t *ctx,
                                       const vgfx3d_draw_cmd_t *cmd,
                                       int32_t slot) {
@@ -3163,6 +3214,25 @@ static GLuint gl_get_material_sampler(gl_context_t *ctx,
     return sampler;
 }
 
+/// @brief Bind a material texture to a unit and apply the draw command's sampler state.
+/// @details Extends `bind_texture_unit` with per-material wrap and filter state. For 2D
+///   textures with a valid draw command, it first attempts to retrieve a pre-built
+///   `GLuint` sampler object from the `material_samplers` cache via `gl_get_material_sampler`.
+///   If a cached sampler exists it is bound via `glBindSampler` (DSA-style), which overrides
+///   any texture-object state. If no cached sampler is available (i.e., the sampler object
+///   could not be created), the wrap and filter parameters are applied directly to the texture
+///   object via `glTexParameteri` as a fallback. For non-2D targets (cubemaps etc.) the
+///   call degrades to a plain `bind_texture_unit` with no sampler override.
+///   @p slot selects which per-slot texture parameters to use from the draw command when it
+///   is in [0, RT_MATERIAL3D_TEXTURE_SLOT_COUNT); a negative slot uses the command's global
+///   wrap/filter fields instead.
+/// @param ctx          Active OpenGL backend context (holds the sampler object cache).
+/// @param uniform_loc  GLSL sampler uniform location; -1 is safe (write is skipped).
+/// @param unit         Texture unit index (0-based); activates `GL_TEXTURE0 + unit`.
+/// @param target       Texture target (e.g. `GL_TEXTURE_2D`, `GL_TEXTURE_CUBE_MAP`).
+/// @param texture      GL texture name to bind; 0 effectively unbinds.
+/// @param cmd          Draw command providing wrap/filter parameters; may be NULL.
+/// @param slot         Per-slot index for texture parameters, or -1 for global fields.
 static void bind_texture_unit_with_sampler(gl_context_t *ctx,
                                            GLint uniform_loc,
                                            int unit,

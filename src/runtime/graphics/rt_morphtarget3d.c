@@ -293,6 +293,9 @@ void *rt_morphtarget3d_new(int64_t vertex_count) {
     return mt;
 }
 
+/// @brief Create a deep copy of a morph target, duplicating all shape delta buffers.
+/// @param obj Source morph target handle.
+/// @return New morph target handle with identical shape data, or NULL on failure.
 void *rt_morphtarget3d_clone(void *obj) {
     rt_morphtarget3d *src = (rt_morphtarget3d *)obj;
     rt_morphtarget3d *dst;
@@ -531,6 +534,9 @@ const float *rt_morphtarget3d_get_packed_normal_deltas(void *obj) {
     return mt->packed_nrm_deltas;
 }
 
+/// @brief Return 1 if any shape in the morph target has packed tangent deltas, 0 otherwise.
+/// @details Used by the renderer to decide whether to upload and apply tangent-space
+///          morph deltas, which incur an additional GPU pass.
 int64_t rt_morphtarget3d_has_tangent_deltas(void *obj) {
     rt_morphtarget3d *mt = (rt_morphtarget3d *)obj;
     if (!mt)

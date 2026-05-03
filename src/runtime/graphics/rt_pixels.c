@@ -27,7 +27,7 @@
 //
 // Ownership/Lifetime:
 //   - Pixels objects are GC-managed (rt_obj_new_i64). The pixel data array is
-//     malloc'd separately and freed by the GC finalizer (pixels_finalizer).
+//     embedded in the GC allocation immediately after rt_pixels_impl.
 //
 // Links: src/runtime/graphics/rt_pixels_internal.h (shared struct definition),
 //        src/runtime/graphics/rt_pixels_io.c (BMP/PNG/JPEG I/O),
@@ -52,6 +52,20 @@
 
 static volatile int64_t g_next_pixels_cache_identity = 1;
 
+/// @brief Validate a Pixels layout and compute safe allocation sizes.
+/// @details Guards against three overflow scenarios:
+///   1. Negative dimensions (early reject).
+///   2. `width * height` int64_t overflow — rejected before computing pixel_count.
+///   3. `sizeof(rt_pixels_impl) + data_size` size_t overflow — rejected before
+///      passing total_size to rt_obj_new_i64.
+///   All outputs are only written on success so callers can pass NULL for
+///   fields they don't need.
+/// @param width           Buffer width in pixels; must be >= 0.
+/// @param height          Buffer height in pixels; must be >= 0.
+/// @param pixel_count_out Optional output: total pixel count (width * height).
+/// @param data_size_out   Optional output: byte size of the pixel array.
+/// @param total_size_out  Optional output: total GC allocation size including header.
+/// @return 1 if the layout is valid, 0 if any overflow was detected.
 static int32_t pixels_checked_layout(int64_t width,
                                      int64_t height,
                                      int64_t *pixel_count_out,
@@ -84,6 +98,14 @@ static int32_t pixels_checked_layout(int64_t width,
     return 1;
 }
 
+/// @brief Validate a pixel grid's dimensions and compute the raw 4-bytes-per-pixel byte count.
+/// @details Delegates the overflow check to pixels_checked_layout, then additionally
+///   guards against `pixel_count * 4` int64_t overflow.  Used before allocating or
+///   validating a Bytes blob that is expected to hold raw RGBA pixel data.
+/// @param width          Buffer width in pixels; must be >= 0.
+/// @param height         Buffer height in pixels; must be >= 0.
+/// @param byte_count_out Optional output: total byte count (pixel_count * 4).
+/// @return 1 if the dimensions are valid, 0 on any overflow.
 static int32_t pixels_checked_raw_bytes(int64_t width, int64_t height, int64_t *byte_count_out) {
     int64_t pixel_count = 0;
     if (!pixels_checked_layout(width, height, &pixel_count, NULL, NULL))
@@ -148,26 +170,29 @@ void *rt_pixels_new(int64_t width, int64_t height) {
 
 /// @brief Pixel buffer width. Traps on null.
 int64_t rt_pixels_width(void *pixels) {
-    if (!pixels) {
-        rt_trap("Pixels.Width: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.Width: invalid pixels");
+    if (!p)
         return 0;
-    }
-    return ((rt_pixels_impl *)pixels)->width;
+    return p->width;
 }
 
 /// @brief Pixel buffer height. Traps on null.
 int64_t rt_pixels_height(void *pixels) {
-    if (!pixels) {
-        rt_trap("Pixels.Height: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.Height: invalid pixels");
+    if (!p)
         return 0;
-    }
-    return ((rt_pixels_impl *)pixels)->height;
+    return p->height;
 }
 
+/// @brief Return the generation counter, which is bumped on every write to the buffer.
+/// @details Used by the GPU upload cache to detect when a Pixels buffer's content has
+///   changed since it was last uploaded as a texture, avoiding redundant GPU transfers.
+///   Returns 0 for a NULL pixels object.
 uint64_t rt_pixels_generation(void *pixels) {
-    if (!pixels)
+    rt_pixels_impl *p = rt_pixels_checked_impl_or_null(pixels);
+    if (!p)
         return 0;
-    return ((rt_pixels_impl *)pixels)->generation;
+    return p->generation;
 }
 
 //=============================================================================
@@ -176,11 +201,9 @@ uint64_t rt_pixels_generation(void *pixels) {
 
 /// @brief Read the pixel at (x, y) as 0xRRGGBBAA. Out-of-bounds returns 0 (transparent).
 int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y) {
-    if (!pixels) {
-        rt_trap("Pixels.Get: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.Get: invalid pixels");
+    if (!p)
         return 0;
-    }
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
     // Bounds check - return 0 for out of bounds
     if (x < 0 || x >= p->width || y < 0 || y >= p->height)
@@ -190,29 +213,58 @@ int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y) {
     return (int64_t)p->data[idx];
 }
 
-/// @brief Write `color` (0xRRGGBBAA) at (x, y). Out-of-bounds is a silent no-op.
-void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color) {
-    if (!pixels) {
-        rt_trap("Pixels.Set: null pixels");
+/// @brief Write a raw uint32_t color value to (x, y) in a Pixels buffer.
+/// @details Shared implementation for rt_pixels_set, rt_pixels_set_rgba, and
+///   rt_pixels_set_color.  Traps on NULL with the caller-supplied @p trap_op message.
+///   Out-of-bounds coordinates are silently ignored (no trap).  Bumps the
+///   generation counter via pixels_touch so GPU caches know the content changed.
+/// @param pixels   Pixels buffer; traps if NULL.
+/// @param x        Column coordinate (0 = left); silently ignored if out of bounds.
+/// @param y        Row coordinate (0 = top); silently ignored if out of bounds.
+/// @param color    Raw 0xRRGGBBAA pixel value to write.
+/// @param trap_op  Trap message used when @p pixels is NULL.
+static void rt_pixels_set_raw_internal(void *pixels,
+                                       int64_t x,
+                                       int64_t y,
+                                       uint32_t color,
+                                       const char *trap_op) {
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, trap_op);
+    if (!p)
         return;
-    }
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
     // Bounds check - silently ignore out of bounds
     if (x < 0 || x >= p->width || y < 0 || y >= p->height)
         return;
 
     int64_t idx = y * p->width + x;
-    p->data[idx] = (uint32_t)color;
+    p->data[idx] = color;
     pixels_touch(p);
+}
+
+/// @brief Write raw `color` (0xRRGGBBAA) at (x, y). Out-of-bounds is a silent no-op.
+void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color) {
+    rt_pixels_set_raw_internal(
+        pixels, x, y, rt_pixels_raw_rgba(color), "Pixels.Set: null pixels");
+}
+
+/// @brief Explicit raw-RGBA alias for scripts that distinguish raw storage from color values.
+void rt_pixels_set_rgba(void *pixels, int64_t x, int64_t y, int64_t rgba) {
+    rt_pixels_set_raw_internal(
+        pixels, x, y, rt_pixels_raw_rgba(rgba), "Pixels.SetRGBA: null pixels");
+}
+
+/// @brief Write Canvas RGB or Color.RGBA at (x, y), converting to raw 0xRRGGBBAA.
+void rt_pixels_set_color(void *pixels, int64_t x, int64_t y, int64_t color) {
+    rt_pixels_set_raw_internal(
+        pixels, x, y, rt_pixels_color_to_rgba(color), "Pixels.SetColor: null pixels");
 }
 
 /// @brief Internal: borrow the raw uint32_t pixel array (row-major). NULL-safe. Use sparingly —
 /// caller must respect width × height bounds and not free the pointer.
 const uint32_t *rt_pixels_raw_buffer(void *pixels) {
-    if (!pixels)
+    rt_pixels_impl *p = rt_pixels_checked_impl_or_null(pixels);
+    if (!p)
         return NULL;
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
     return p->data;
 }
 
@@ -220,37 +272,59 @@ const uint32_t *rt_pixels_raw_buffer(void *pixels) {
 // Fill Operations
 //=============================================================================
 
-/// @brief Fill the entire buffer with `color`. Optimized for color=0 (memset).
-void rt_pixels_fill(void *pixels, int64_t color) {
-    if (!pixels) {
-        rt_trap("Pixels.Fill: null pixels");
+/// @brief Fill every pixel in the buffer with a raw uint32_t color value.
+/// @details Shared implementation for rt_pixels_fill, rt_pixels_fill_rgba, and
+///   rt_pixels_fill_color.  Uses memset when color == 0 (transparent black) for
+///   maximum performance, and a simple loop otherwise.  Traps on NULL; no-ops on
+///   empty buffers.  Bumps the generation counter via pixels_touch.
+/// @param pixels   Pixels buffer; traps if NULL.
+/// @param color    Raw 0xRRGGBBAA value to broadcast to every pixel.
+/// @param trap_op  Trap message used when @p pixels is NULL.
+static void rt_pixels_fill_raw_internal(void *pixels, uint32_t color, const char *trap_op) {
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, trap_op);
+    if (!p)
         return;
-    }
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
-    uint32_t c = (uint32_t)color;
     int64_t count = p->width * p->height;
     if (count <= 0 || !p->data)
         return;
-    if (c == 0) {
+    if (color == 0) {
         memset(p->data, 0, (size_t)count * sizeof(uint32_t));
         pixels_touch(p);
         return;
     }
     for (int64_t i = 0; i < count; i++)
-        p->data[i] = c;
+        p->data[i] = color;
     pixels_touch(p);
+}
+
+/// @brief Fill the entire buffer with raw `color` (0xRRGGBBAA). Optimized for color=0.
+void rt_pixels_fill(void *pixels, int64_t color) {
+    rt_pixels_fill_raw_internal(pixels, rt_pixels_raw_rgba(color), "Pixels.Fill: null pixels");
+}
+
+/// @brief Explicit raw-RGBA alias for scripts that distinguish raw storage from color values.
+void rt_pixels_fill_rgba(void *pixels, int64_t rgba) {
+    rt_pixels_fill_raw_internal(pixels, rt_pixels_raw_rgba(rgba), "Pixels.FillRGBA: null pixels");
+}
+
+/// @brief Fill with Canvas RGB or Color.RGBA, converting to raw 0xRRGGBBAA.
+void rt_pixels_fill_color(void *pixels, int64_t color) {
+    rt_pixels_fill_raw_internal(
+        pixels, rt_pixels_color_to_rgba(color), "Pixels.FillColor: null pixels");
 }
 
 /// @brief Reset every pixel to 0 (transparent black). Equivalent to `_fill(pixels, 0)`.
 void rt_pixels_clear(void *pixels) {
-    if (!pixels) {
-        rt_trap("Pixels.Clear: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.Clear: invalid pixels");
+    if (!p)
+        return;
+
+    size_t size = 0;
+    if (!pixels_checked_layout(p->width, p->height, NULL, &size, NULL)) {
+        rt_trap("Pixels.Clear: invalid pixels layout");
         return;
     }
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
-
-    size_t size = (size_t)(p->width * p->height) * sizeof(uint32_t);
     if (p->data && size > 0) {
         memset(p->data, 0, size);
         pixels_touch(p);
@@ -265,13 +339,10 @@ void rt_pixels_clear(void *pixels) {
 /// to both source and dest bounds; out-of-range pixels are skipped silently.
 void rt_pixels_copy(
     void *dst, int64_t dx, int64_t dy, void *src, int64_t sx, int64_t sy, int64_t w, int64_t h) {
-    if (!dst || !src) {
-        rt_trap("Pixels.Copy: null pixels");
+    rt_pixels_impl *d = rt_pixels_checked_impl(dst, "Pixels.Copy: invalid destination pixels");
+    rt_pixels_impl *s = rt_pixels_checked_impl(src, "Pixels.Copy: invalid source pixels");
+    if (!d || !s)
         return;
-    }
-
-    rt_pixels_impl *d = (rt_pixels_impl *)dst;
-    rt_pixels_impl *s = (rt_pixels_impl *)src;
 
     if (!rt_pixels_clip_copy_axis(d->width, s->width, &dx, &sx, &w) ||
         !rt_pixels_clip_copy_axis(d->height, s->height, &dy, &sy, &h))
@@ -297,11 +368,9 @@ void rt_pixels_copy(
 /// @brief Return a deep copy of the buffer (independent storage). Useful before applying
 /// destructive transforms or sharing a snapshot across threads.
 void *rt_pixels_clone(void *pixels) {
-    if (!pixels) {
-        rt_trap("Pixels.Clone: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.Clone: invalid pixels");
+    if (!p)
         return NULL;
-    }
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
     rt_pixels_impl *clone = pixels_alloc(p->width, p->height);
     if (!clone)
@@ -326,11 +395,9 @@ typedef struct rt_bytes_impl {
 /// @brief Serialize the buffer to a fresh Bytes blob (raw 4 bytes/pixel, row-major). Useful for
 /// hashing, persistence, or transmission. Inverse: `_from_bytes`.
 void *rt_pixels_to_bytes(void *pixels) {
-    if (!pixels) {
-        rt_trap("Pixels.ToBytes: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.ToBytes: invalid pixels");
+    if (!p)
         return NULL;
-    }
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
     int64_t byte_count = 0;
     if (!pixels_checked_raw_bytes(p->width, p->height, &byte_count)) {

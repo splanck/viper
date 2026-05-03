@@ -51,6 +51,8 @@ typedef struct {
     double w;
 } ViperQuat;
 
+/// @brief Allocate a GC-managed quaternion object and initialize all four components.
+/// @return New ViperQuat with the given (x, y, z, w) components, or NULL on OOM.
 static ViperQuat *quat_alloc(double x, double y, double z, double w) {
     ViperQuat *q = (ViperQuat *)rt_obj_new_i64(0, (int64_t)sizeof(ViperQuat));
     if (!q) {

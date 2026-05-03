@@ -10,7 +10,7 @@
 // Key invariants:
 //   - Pixel format is 0xRRGGBBAA (big-endian RGBA); drawing helpers use 0x00RRGGBB.
 //   - Coordinates are 0-based from the top-left corner.
-//   - All bounds checks trap on out-of-range pixel access.
+//   - Out-of-bounds reads return 0; out-of-bounds writes and drawing spans are clipped/no-op.
 //   - Drawing primitives (box, disc, line, etc.) render directly into the pixel buffer.
 //
 // Ownership/Lifetime:
@@ -50,12 +50,18 @@ int64_t rt_pixels_height(void *pixels);
 /// @return Pixel color as packed RGBA (0xRRGGBBAA), or 0 if out of bounds.
 int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y);
 
-/// @brief Set a pixel color at (x, y).
+/// @brief Set a raw RGBA pixel at (x, y).
 /// @param pixels Pixels object.
 /// @param x X coordinate.
 /// @param y Y coordinate.
 /// @param color Pixel color as packed RGBA (0xRRGGBBAA).
 void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
+
+/// @brief Set a raw RGBA pixel at (x, y). Explicit alias for Pixels.Set.
+void rt_pixels_set_rgba(void *pixels, int64_t x, int64_t y, int64_t rgba);
+
+/// @brief Set a pixel from a Canvas RGB or Color.RGBA value, converting to raw RGBA.
+void rt_pixels_set_color(void *pixels, int64_t x, int64_t y, int64_t color);
 
 /// @brief Get direct read-only access to the underlying RGBA pixel buffer.
 /// @param pixels Pixels object.
@@ -65,10 +71,16 @@ const uint32_t *rt_pixels_raw_buffer(void *pixels);
 /// @brief Return the mutation generation for cache invalidation.
 uint64_t rt_pixels_generation(void *pixels);
 
-/// @brief Fill entire buffer with a color.
+/// @brief Fill entire buffer with a raw RGBA color.
 /// @param pixels Pixels object.
-/// @param color Fill color as packed RGBA.
+/// @param color Fill color as packed RGBA (0xRRGGBBAA).
 void rt_pixels_fill(void *pixels, int64_t color);
+
+/// @brief Fill entire buffer with a raw RGBA color. Explicit alias for Pixels.Fill.
+void rt_pixels_fill_rgba(void *pixels, int64_t rgba);
+
+/// @brief Fill entire buffer from a Canvas RGB or Color.RGBA value, converting to raw RGBA.
+void rt_pixels_fill_color(void *pixels, int64_t color);
 
 /// @brief Clear buffer to transparent black (0x00000000).
 void rt_pixels_clear(void *pixels);

@@ -1258,6 +1258,16 @@ static void mat4f_mul_d3d(const float *a, const float *b, float *out) {
 /// `OutputDebugStringA` so the message shows in the IDE debugger,
 /// `fputs(stderr)` so it's visible from a console-launched process.
 /// Used everywhere a D3D call returns a non-S_OK HRESULT.
+/// @brief Log a D3D11 API failure to both the debugger output and stderr.
+/// @details Formats `msg` and the raw HRESULT value as a hex string into a
+///   256-byte stack buffer, then writes it via `OutputDebugStringA` (visible
+///   in Visual Studio's Output pane / DebugView) and `fputs(stderr)` so CI
+///   logs capture it. Intentionally does not assert or abort — most D3D11
+///   failures at steady state are recoverable (e.g., device-removed events
+///   are handled by the calling layer).
+/// @param msg  Human-readable label for the API call that failed (e.g.,
+///   `"Map(cbPostFX)"`), used as the leading text in the log entry.
+/// @param hr   The HRESULT returned by the failing call, printed as 0x%08lx.
 static void d3d11_log_hresult(const char *msg, HRESULT hr) {
     char buffer[256];
     snprintf(
@@ -2390,6 +2400,13 @@ static HRESULT d3d11_ensure_overlay_target(d3d11_context_t *ctx, int32_t width, 
     return hr;
 }
 
+/// @brief Ensure the post-processing render target is allocated at the requested dimensions.
+/// @details Skips reallocation when an existing target already matches @p width × @p height.
+///          On a size change (or first call) releases the old color SRV/RTV/texture, then
+///          calls d3d11_create_color_target to allocate a new scene-format texture. Cleans up
+///          all three D3D11 objects and returns the failure HRESULT if allocation fails.
+/// @return S_OK on success; E_INVALIDARG for a null context or non-positive dimensions;
+///         the D3D11 HRESULT from d3d11_create_color_target on allocation failure.
 static HRESULT d3d11_ensure_postfx_target(d3d11_context_t *ctx, int32_t width, int32_t height) {
     HRESULT hr;
 
@@ -2760,6 +2777,9 @@ static int d3d11_sampler_wrap_index(int32_t mode) {
     return 0;
 }
 
+/// @brief Map a Viper wrap-mode index (returned by d3d11_wrap_mode_index) to the
+///        corresponding D3D11_TEXTURE_ADDRESS_MODE enum value.
+/// @details index 1 → CLAMP, index 2 → MIRROR, any other value → WRAP (default repeat).
 static D3D11_TEXTURE_ADDRESS_MODE d3d11_sampler_address_mode(int index) {
     if (index == 1)
         return D3D11_TEXTURE_ADDRESS_CLAMP;
@@ -2768,6 +2788,12 @@ static D3D11_TEXTURE_ADDRESS_MODE d3d11_sampler_address_mode(int index) {
     return D3D11_TEXTURE_ADDRESS_WRAP;
 }
 
+/// @brief Return a cached or newly-created D3D11 sampler state for the given draw command and texture slot.
+/// @details Resolves wrap_s, wrap_t, and filter from the per-slot or primary material parameters,
+///          maps them to cache indices via `d3d11_sampler_wrap_index`, and returns the cached entry
+///          in `ctx->material_samplers[wrap_s][wrap_t][filter]` when available. Otherwise creates
+///          a new `ID3D11SamplerState` and caches it. Falls back to `ctx->linear_wrap_sampler` on
+///          creation failure or null cmd.
 static ID3D11SamplerState *d3d11_get_material_sampler(d3d11_context_t *ctx,
                                                       const vgfx3d_draw_cmd_t *cmd,
                                                       int32_t slot) {
@@ -2803,6 +2829,12 @@ static ID3D11SamplerState *d3d11_get_material_sampler(d3d11_context_t *ctx,
     return ctx->material_samplers[wrap_s][wrap_t][filter];
 }
 
+/// @brief Bind all material sampler states for a draw command to the pixel shader slots.
+/// @details Material textures occupy PS sampler slots 0–7: slot 0 = base color,
+///   slot 1 = shadow comparison sampler, slot 2 = linear-clamp (for screen-space
+///   textures), slots 3–7 = normal, specular, emissive, metallic-roughness, AO.
+///   Each per-material sampler is created lazily (or retrieved from a cache) by
+///   `d3d11_get_material_sampler`, so NULL entries are skipped rather than bound.
 static void d3d11_bind_common_state(d3d11_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
     ID3D11SamplerState *material_samplers[8] = {NULL};
     if (!ctx)
@@ -4537,6 +4569,27 @@ static void d3d11_bind_postfx_target(
     ID3D11DeviceContext_RSSetViewports(ctx->ctx, 1, &viewport);
 }
 
+/// @brief Execute one post-FX pass: upload the effect's constant data and issue a
+///        fullscreen-triangle draw from @p source_color_srv into @p dest_rtv.
+/// @details The pass uses `vs_postfx` (a no-input-layout shader that generates a
+///   clip-space fullscreen triangle from `SV_VertexID`) together with `ps_postfx`
+///   which samples four PS SRV slots:
+///     - slot 0: @p source_color_srv — the colour result of the previous pass
+///     - slot 1: `ctx->scene_depth_srv` — linear depth for depth-aware effects
+///     - slot 2: `ctx->scene_motion_srv` — screen-space motion vectors (TAA / blur)
+///     - slot 3: unused (NULL)
+///   The postfx constant buffer is updated from @p snapshot before the draw so
+///   per-effect uniforms (exposure, bloom threshold, vignette, etc.) are current.
+///   Depth testing and stencil are disabled; the opaque blend state is used because
+///   the post-FX shaders output the final composited colour directly. SRVs are
+///   unbound after the draw to avoid hazards on the next write to the scene targets.
+/// @param ctx               Active D3D11 backend context.
+/// @param source_color_srv  The colour texture from the previous pass or the scene.
+/// @param dest_rtv          The render target to write this pass's output into.
+/// @param width             Viewport width in pixels (must match RTV dimensions).
+/// @param height            Viewport height in pixels.
+/// @param snapshot          Per-effect uniform data written into the postfx cbuffer.
+/// @return 1 on success, 0 if any parameter is invalid or the cbuffer update failed.
 static int d3d11_draw_postfx_pass(d3d11_context_t *ctx,
                                   ID3D11ShaderResourceView *source_color_srv,
                                   ID3D11RenderTargetView *dest_rtv,
@@ -4582,6 +4635,22 @@ static int d3d11_draw_postfx_pass(d3d11_context_t *ctx,
     return 1;
 }
 
+/// @brief Composite the 2D GUI overlay texture on top of the 3D scene using alpha blending.
+/// @details After all post-FX passes have resolved the scene colour, the 2D overlay
+///   (rendered earlier into `ctx->overlay_color_srv`) is blended over @p dest_rtv
+///   using `ps_overlay_composite` and the alpha blend state. The overlay SRV is bound
+///   at PS slot 3 (matching the shader's expected binding), and the same
+///   no-input-layout fullscreen-triangle technique used by `d3d11_draw_postfx_pass`
+///   is re-used here for consistency. The function is a no-op (returns 1) when no
+///   overlay was produced this frame (`ctx->overlay_used_this_frame == 0`) or when
+///   the overlay resources or composite shader are absent, so callers can always
+///   call it unconditionally without checking state themselves.
+/// @param ctx        Active D3D11 backend context.
+/// @param dest_rtv   Render target to composite the overlay into (final output or
+///                   intermediate offscreen buffer when `force_offscreen_final` is set).
+/// @param width      Viewport width in pixels.
+/// @param height     Viewport height in pixels.
+/// @return Always 1; kept as int for symmetry with `d3d11_draw_postfx_pass`.
 static int d3d11_draw_overlay_composite(d3d11_context_t *ctx,
                                         ID3D11RenderTargetView *dest_rtv,
                                         int32_t width,
@@ -4613,6 +4682,35 @@ static int d3d11_draw_overlay_composite(d3d11_context_t *ctx,
     return 1;
 }
 
+/// @brief Apply a full chain of post-FX effects to the rendered scene using ping-pong buffers.
+/// @details Iterates `chain->effects[0..effect_count-1]`, drawing each via
+///   `d3d11_draw_postfx_pass`. Passes alternate between `scene_color_srv/rtv` and
+///   `postfx_color_srv/rtv` as source and destination so no pass reads and writes the
+///   same texture simultaneously (the classic GPU ping-pong pattern). For the final
+///   pass, unless @p force_offscreen_final is set, the output goes directly into
+///   @p final_rtv (usually the swapchain back buffer) at @p final_width × @p
+///   final_height so no extra blit is needed.
+///
+///   When @p force_offscreen_final is non-zero (used by the screenshot readback path)
+///   the final pass also writes to an offscreen scene texture and the result texture
+///   pointer is returned via @p out_result_tex so the caller can stage-copy it.
+///
+///   After all post-FX passes, `d3d11_draw_overlay_composite` is called once to
+///   alpha-blend the 2D GUI overlay over the result regardless of effect count.
+///
+///   Returns 0 early if any of the required scene resources (scene_color_srv,
+///   scene_depth_srv, scene_motion_srv) are absent, or if any individual pass fails.
+/// @param ctx                 Active D3D11 backend context.
+/// @param chain               Effect chain descriptor (enabled flag + effects array).
+/// @param final_rtv           Swapchain (or caller-supplied) render target for the last pass.
+/// @param final_width         Width of @p final_rtv in pixels.
+/// @param final_height        Height of @p final_rtv in pixels.
+/// @param force_offscreen_final If non-zero, the last pass writes to an offscreen texture
+///                             instead of @p final_rtv; the texture is returned via
+///                             @p out_result_tex.
+/// @param out_result_tex      Receives the offscreen result texture when
+///                            @p force_offscreen_final is set; set to NULL otherwise.
+/// @return 1 on success, 0 if resources are missing or any pass fails.
 static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
                                     const vgfx3d_postfx_chain_t *chain,
                                     ID3D11RenderTargetView *final_rtv,

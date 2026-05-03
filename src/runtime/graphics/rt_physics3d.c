@@ -227,23 +227,35 @@ static int world3d_reserve_contact_array(rt_contact3d **array,
     return 1;
 }
 
+/// @brief Grow w->contacts to hold at least @p needed entries.
 static int world3d_reserve_contacts(rt_world3d *w, int32_t needed) {
     return world3d_reserve_contact_array(&w->contacts, &w->contact_capacity, needed);
 }
 
+/// @brief Grow w->previous_contacts to hold at least @p needed entries.
+/// @details Stores the contact set from the previous step for enter/exit event diffing.
 static int world3d_reserve_previous_contacts(rt_world3d *w, int32_t needed) {
     return world3d_reserve_contact_array(
         &w->previous_contacts, &w->previous_contact_capacity, needed);
 }
 
+/// @brief Grow w->enter_events to hold at least @p needed entries.
+/// @details Enter events are emitted when a contact pair appears this step but
+///   was absent from the previous step's contact set.
 static int world3d_reserve_enter_events(rt_world3d *w, int32_t needed) {
     return world3d_reserve_contact_array(&w->enter_events, &w->enter_event_capacity, needed);
 }
 
+/// @brief Grow w->stay_events to hold at least @p needed entries.
+/// @details Stay events are emitted for contact pairs that existed both last step
+///   and this step (continuous contact).
 static int world3d_reserve_stay_events(rt_world3d *w, int32_t needed) {
     return world3d_reserve_contact_array(&w->stay_events, &w->stay_event_capacity, needed);
 }
 
+/// @brief Grow w->exit_events to hold at least @p needed entries.
+/// @details Exit events are emitted when a contact pair was present last step but
+///   is absent this step (separation).
 static int world3d_reserve_exit_events(rt_world3d *w, int32_t needed) {
     return world3d_reserve_contact_array(&w->exit_events, &w->exit_event_capacity, needed);
 }
@@ -301,16 +313,25 @@ static int world3d_reserve_broadphase_capacity(rt_world3d *w, int32_t needed) {
     return 1;
 }
 
+/// @brief Clamp @p value to [0, +∞), substituting @p fallback for non-finite inputs.
+/// @details Used to sanitize body properties such as mass, restitution, and damping
+///   on creation so internal state never contains NaN or negative physical quantities.
 static double ph3d_clamp_nonnegative_finite(double value, double fallback) {
     if (!isfinite(value))
         return fallback;
     return value < 0.0 ? 0.0 : value;
 }
 
+/// @brief Return @p value if it is finite, otherwise return @p fallback.
+/// @details Thin guard used wherever scalar inputs (gravity components, position offsets)
+///   must be well-defined doubles before being stored in body or world state.
 static double ph3d_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Write a sanitized 3D vector to @p dst, replacing each NaN/Inf component with 0.
+/// @details Used when accepting Vec3 arguments from Zia to populate force, velocity, and
+///   position arrays — ensures that a single bad component cannot contaminate the solver.
 static void ph3d_vec3_set_finite(double *dst, double x, double y, double z) {
     dst[0] = ph3d_finite_or(x, 0.0);
     dst[1] = ph3d_finite_or(y, 0.0);
@@ -383,20 +404,30 @@ typedef struct {
     double separation;
 } rt_contact_point3d_obj;
 
+// Forward declarations for functions defined later in this translation unit.
+// They are referenced from helpers above that must be inlined by the compiler
+// before the full definitions appear.
+/// @brief Build a rt_collider_pose from the body's position/orientation/scale fields.
 static void collider_pose_from_body(const rt_body3d *body, rt_collider_pose *pose);
+/// @brief Compose a parent pose with a child's local position/rotation/scale.
 static void collider_pose_compose(const rt_collider_pose *parent,
                                   const double *child_position,
                                   const double *child_rotation,
                                   const double *child_scale,
                                   rt_collider_pose *out);
+/// @brief Transform a point from the collider's local space into world space.
 static void transform_point_from_pose(const rt_collider_pose *pose,
                                       const double *local_point,
                                       double *world_point);
+/// @brief Transform a point from world space into the collider's local space.
 static void transform_point_to_local(const rt_collider_pose *pose,
                                      const double *world_point,
                                      double *local_point);
+/// @brief Sync the body's cached primitive shape from its attached collider's geometry.
 static void body3d_update_shape_cache_from_collider(rt_body3d *body);
+/// @brief Compute the two world-space endpoint positions of a capsule's axis segment.
 static void capsule_axis_endpoints(const rt_body3d *b, double *a, double *c);
+/// @brief Run narrow-phase collision detection between two bodies.
 static int test_collision(const rt_body3d *a,
                           const rt_body3d *b,
                           double *normal,
@@ -951,6 +982,14 @@ static void capsule_axis_endpoints(const rt_body3d *b, double *a, double *c) {
     vec3_set(c, b->position[0] + axis[0], b->position[1] + axis[1], b->position[2] + axis[2]);
 }
 
+/// @brief Find the point on segment [a, b] closest to @p point.
+/// @details Projects @p point onto the line through a and b, clamps the
+///   parameter t to [0, 1] to stay within the segment, then evaluates
+///   the position.  The degenerate case (a == b, denom ≈ 0) returns a.
+/// @param a        Segment start endpoint (world space).
+/// @param b        Segment end endpoint (world space).
+/// @param point    Query point (world space).
+/// @param closest  Output: closest point on the segment to @p point.
 static void closest_point_on_segment(const double *a,
                                      const double *b,
                                      const double *point,
@@ -966,6 +1005,18 @@ static void closest_point_on_segment(const double *a,
     closest[2] = a[2] + ab[2] * t;
 }
 
+/// @brief Find the pair of closest points between two line segments in 3D.
+/// @details Implements the GDC/Ericson Real-Time Collision Detection segment–segment
+///   closest-point algorithm.  Handles degenerate cases where either or both segments
+///   collapse to a point (length ≤ eps).  The result is the world-space pair (c1, c2)
+///   such that |c1 - c2| is minimized over the two segments.  Used in capsule–capsule
+///   and capsule–box narrow-phase collision to compute the axis-to-axis gap.
+/// @param p1  Start of segment 1.
+/// @param q1  End of segment 1.
+/// @param p2  Start of segment 2.
+/// @param q2  End of segment 2.
+/// @param c1  Output: closest point on segment 1.
+/// @param c2  Output: closest point on segment 2.
 static void closest_points_on_segments(const double *p1,
                                        const double *q1,
                                        const double *p2,
@@ -1020,6 +1071,15 @@ static void closest_points_on_segments(const double *p1,
     c2[2] = p2[2] + d2[2] * t;
 }
 
+/// @brief Compute the squared distance from @p point to the AABB defined by [mn, mx].
+/// @details Projects the point onto the closest face/edge/corner of the box using
+///   per-axis clamping, then returns the squared length of the gap vector.  Returns
+///   0 for points inside the AABB.  Used by the segment-to-AABB search to evaluate
+///   candidate t parameters quickly without a sqrt.
+/// @param point  Query point (world space, double[3]).
+/// @param mn     AABB minimum corner (world space, double[3]).
+/// @param mx     AABB maximum corner (world space, double[3]).
+/// @return       Squared Euclidean distance from @p point to the nearest AABB surface.
 static double point_aabb_distance_sq(const double *point, const double *mn, const double *mx) {
     double q[3] = {clampd(point[0], mn[0], mx[0]),
                    clampd(point[1], mn[1], mx[1]),
@@ -1029,6 +1089,17 @@ static double point_aabb_distance_sq(const double *point, const double *mn, cons
     return vec3_len_sq(delta);
 }
 
+/// @brief Find the point on segment [a, c] that is closest to the AABB [mn, mx].
+/// @details Uses a multi-probe sampling strategy: evaluates point_aabb_distance_sq
+///   at t = 0, 1, and at each of the six per-axis candidate t values derived from
+///   the AABB face planes (where the segment crosses each slab boundary).  The
+///   sample with the smallest squared distance wins.  This avoids a full analytic
+///   segment–AABB solver while remaining robust for the capsule–box narrow phase.
+/// @param a           Segment start endpoint (world space, double[3]).
+/// @param c           Segment end endpoint (world space, double[3]).
+/// @param mn          AABB minimum corner (world space, double[3]).
+/// @param mx          AABB maximum corner (world space, double[3]).
+/// @param closest_axis  Output: best-candidate point on the segment (world space, double[3]).
 static void closest_point_segment_to_aabb(const double *a,
                                           const double *c,
                                           const double *mn,
@@ -2402,6 +2473,9 @@ static double resolve_collision(rt_body3d *a,
     return fabs(j);
 }
 
+/// @brief qsort comparator for sweep-and-prune broad-phase — sorts entries by min-X.
+/// @details After sorting, the inner collision loop can break early as soon as
+///   entry[j].min[0] > entry[i].max[0], reducing the O(n²) pair count in practice.
 static int ph3d_broadphase_compare_min_x(const void *lhs, const void *rhs) {
     const ph3d_broadphase_entry *a = (const ph3d_broadphase_entry *)lhs;
     const ph3d_broadphase_entry *b = (const ph3d_broadphase_entry *)rhs;
@@ -2412,11 +2486,26 @@ static int ph3d_broadphase_compare_min_x(const void *lhs, const void *rhs) {
     return 0;
 }
 
+/// @brief Return 1 if two 3D AABBs overlap, 0 if separated on any axis.
+/// @details Separating-axis test on all three axes simultaneously.  Used in the
+///   broad phase after the X-axis early-out to confirm overlap on Y and Z.
 static int ph3d_bounds_overlap(const double *a_min, const double *a_max, const double *b_min, const double *b_max) {
     return a_min[0] <= b_max[0] && a_max[0] >= b_min[0] && a_min[1] <= b_max[1] &&
            a_max[1] >= b_min[1] && a_min[2] <= b_max[2] && a_max[2] >= b_min[2];
 }
 
+/// @brief Run narrow-phase collision detection and impulse response for one body pair.
+/// @details Skips pairs that are both non-dynamic or that fail the bidirectional
+///   layer/mask filter.  On a detected overlap, appends a new rt_contact3d to the
+///   world's contact array (reallocating if needed), then either calls resolve_collision
+///   for non-trigger pairs (applying impulse + Baumgarte correction) or just records
+///   the relative speed for trigger pairs.  Updates is_grounded on whichever body has
+///   a contact normal pointing more than ~45° upward (|normal.y| > 0.7).
+/// @param w  World containing the bodies.
+/// @param a  First body of the candidate pair.
+/// @param b  Second body of the candidate pair.
+/// @return   1 on success (including skipped pairs), 0 if the contact array
+///           could not be reallocated.
 static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d *b) {
     double normal[3], depth, point[3];
     double relative_speed = 0.0;
@@ -2477,6 +2566,17 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
     return 1;
 }
 
+/// @brief Run the full broad-phase + narrow-phase collision pass for one world step.
+/// @details Clears the contact list from the previous step, then:
+///   1. Attempts to allocate a broadphase_entries scratch array for sweep-and-prune.
+///   2. If allocation fails, falls back to brute-force O(n²) pair testing.
+///   3. On success: computes each body's AABB, sorts entries by min-X (SAP), and
+///      only tests pairs whose X intervals overlap, short-circuiting the inner loop
+///      when the X-axis gap guarantees no overlap.
+///   Each surviving pair is processed by world3d_process_collision_pair, which
+///   handles narrow-phase detection, impulse resolution, and contact recording.
+/// @param w  World to process.
+/// @return   1 on success, 0 if any contact could not be allocated.
 static int world3d_detect_and_resolve_contacts(rt_world3d *w) {
     if (!w)
         return 0;

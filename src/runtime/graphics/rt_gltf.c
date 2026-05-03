@@ -202,6 +202,17 @@ static void gltf_set_node_name(rt_scene_node3d *node, const char *name) {
     rt_scene_node3d_set_name(node, rt_const_cstr(name));
 }
 
+/// @brief Return the best available name for a glTF node, falling back to a synthetic index string.
+/// @details First tries the JSON `"name"` field for the node at @p node_index. If that field
+///   is absent or empty, a fallback string `"node_N"` is written into @p buffer and returned.
+///   The buffer fallback avoids returning NULL to callers that always want a printable label,
+///   at the cost of a stack-allocated temporary that must remain live as long as the returned
+///   pointer is used. Returns NULL only when both the JSON name is absent and no buffer is provided.
+/// @param nodes_arr   JSON array of glTF node objects.
+/// @param node_index  Zero-based index into @p nodes_arr.
+/// @param buffer      Caller-supplied scratch buffer for the synthetic name; may be NULL.
+/// @param buffer_size Capacity of @p buffer including NUL terminator.
+/// @return Borrowed pointer to the name string (JSON storage or @p buffer), or NULL.
 static const char *gltf_effective_node_name(void *nodes_arr,
                                             int32_t node_index,
                                             char *buffer,
@@ -319,6 +330,17 @@ static void gltf_matrix_column_major_to_row_major(const double *src, double *dst
     }
 }
 
+/// @brief Compose a row-major 4×4 transform matrix from separate translation, quaternion, and scale.
+/// @details Expands the unit quaternion `(x,y,z,w)` into the 3×3 rotation submatrix using the
+///   standard double-angle identities (`xx = x*(2x)`, etc.), then multiplies each column by the
+///   corresponding scale component and appends the translation in the rightmost column. The
+///   bottom row is `[0, 0, 0, 1]`. This is the inverse of `gltf_matrix_to_trs` — it rebuilds
+///   the TRS matrix after decomposition so we can accumulate world-space transforms during
+///   the node-graph traversal.
+/// @param pos   3-element translation vector `[tx, ty, tz]`.
+/// @param quat  4-element unit quaternion `[x, y, z, w]`.
+/// @param scale 3-element scale vector `[sx, sy, sz]`.
+/// @param out   Caller-supplied 16-element array that receives the row-major matrix.
 static void gltf_build_trs_matrix(const double *pos,
                                   const double *quat,
                                   const double *scale,
@@ -346,6 +368,18 @@ static void gltf_build_trs_matrix(const double *pos,
     out[15] = 1.0;
 }
 
+/// @brief Compute the local-space 4×4 matrix for a glTF node.
+/// @details A glTF node stores its transform as either a 16-element column-major `"matrix"` array
+///   or as separate `"translation"`, `"rotation"`, and `"scale"` arrays. This function handles
+///   both forms: when a `"matrix"` field is present it is transposed from glTF's column-major
+///   convention to Viper's row-major layout via `gltf_matrix_column_major_to_row_major`; otherwise
+///   the three TRS arrays are read (defaulting to identity when absent) and reassembled into a
+///   matrix by `gltf_build_trs_matrix`. Returns 1 on success, 0 if the node index is out of
+///   range or required data is missing.
+/// @param nodes_arr  JSON array of glTF node objects.
+/// @param node_idx   Zero-based node index.
+/// @param out        Caller-supplied 16-element double array for the row-major result matrix.
+/// @return 1 on success, 0 if the node is inaccessible or @p out is NULL.
 static int gltf_node_local_matrix(void *nodes_arr, int32_t node_idx, double *out) {
     void *node_json;
     void *matrix_arr;
@@ -529,6 +563,9 @@ static int gltf_validate_required_extensions(void *root) {
     return 1;
 }
 
+/// @brief Zero-initialise a `gltf_texture_info_t` to identity-transform defaults.
+/// @details Sets texcoord=0, has_transform=0, offset=(0,0), scale=(1,1), rotation=0.0 so callers
+///   can always call `gltf_read_texture_info` after this without guarding on partial initialisation.
 static void gltf_texture_info_init(gltf_texture_info_t *info) {
     if (!info)
         return;
@@ -541,6 +578,15 @@ static void gltf_texture_info_init(gltf_texture_info_t *info) {
     info->rotation = 0.0;
 }
 
+/// @brief Parse a glTF `textureInfo` object (including `KHR_texture_transform` if present).
+/// @details Reads the `texCoord` index and, if the `KHR_texture_transform` extension block is
+///   present in `extensions`, reads the UV transform (offset, scale, rotation) and sets
+///   `has_transform = 1`. The extension's `texCoord` can override the base texcoord index,
+///   matching the KHR_texture_transform spec. When no transform block is present the struct
+///   retains identity defaults from `gltf_texture_info_init`. Null @p texture_info leaves @p out
+///   at defaults so callers need not guard against missing fields.
+/// @param texture_info  Parsed glTF `textureInfo` JSON object (may be NULL for default texture slot).
+/// @param out           Output struct; always initialised to defaults before filling.
 static void gltf_read_texture_info(void *texture_info, gltf_texture_info_t *out) {
     void *extensions;
     void *transform;
@@ -575,6 +621,12 @@ static void gltf_read_texture_info(void *texture_info, gltf_texture_info_t *out)
     out->rotation = jnum(transform, "rotation", 0.0);
 }
 
+/// @brief Map a glTF sampler `wrapS`/`wrapT` integer to a Viper wrap-mode constant.
+/// @details glTF uses the original GL enum integers: 33071 = GL_CLAMP_TO_EDGE,
+///   33648 = GL_MIRRORED_REPEAT. Anything else (including the default 10497 =
+///   GL_REPEAT) maps to `RT_MATERIAL3D_TEXTURE_WRAP_REPEAT`.
+/// @param wrap  Raw integer from the glTF sampler JSON.
+/// @return One of the `RT_MATERIAL3D_TEXTURE_WRAP_*` constants.
 static int32_t gltf_map_sampler_wrap(int64_t wrap) {
     if (wrap == 33071)
         return RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE;
@@ -583,6 +635,15 @@ static int32_t gltf_map_sampler_wrap(int64_t wrap) {
     return RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
 }
 
+/// @brief Map a glTF sampler min/mag filter pair to a Viper filter-mode constant.
+/// @details glTF separates min and mag filters; Viper uses a single constant. The mag filter
+///   is preferred (it directly controls visible texel appearance). GL nearest constants:
+///   9728 = GL_NEAREST, 9984 = GL_NEAREST_MIPMAP_NEAREST, 9986 = GL_NEAREST_MIPMAP_LINEAR.
+///   All other values (including linear variants 9729, 9985, 9987) map to LINEAR. When
+///   @p mag_filter is -1 (absent in the JSON), falls back to @p min_filter.
+/// @param min_filter  Raw `minFilter` value from the glTF sampler JSON, or -1 if absent.
+/// @param mag_filter  Raw `magFilter` value, or -1 if absent.
+/// @return `RT_MATERIAL3D_TEXTURE_FILTER_NEAREST` or `RT_MATERIAL3D_TEXTURE_FILTER_LINEAR`.
 static int32_t gltf_map_sampler_filter(int64_t min_filter, int64_t mag_filter) {
     int64_t filter = mag_filter >= 0 ? mag_filter : min_filter;
     if (filter == 9728 || filter == 9984 || filter == 9986)
@@ -590,6 +651,8 @@ static int32_t gltf_map_sampler_filter(int64_t min_filter, int64_t mag_filter) {
     return RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
 }
 
+/// @brief Initialise a `gltf_sampler_info_t` to the glTF default sampler state.
+/// @details glTF defaults: wrapS = wrapT = REPEAT, filter = LINEAR (per spec §5.24.1).
 static void gltf_sampler_info_init(gltf_sampler_info_t *info) {
     if (!info)
         return;
@@ -598,6 +661,13 @@ static void gltf_sampler_info_init(gltf_sampler_info_t *info) {
     info->filter = RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
 }
 
+/// @brief Parse a glTF sampler JSON object into a `gltf_sampler_info_t`.
+/// @details Reads `wrapS`, `wrapT`, `minFilter`, and `magFilter` using their glTF
+///   default values (10497 = REPEAT for wrap; -1 = absent for filter) and maps them
+///   to Viper constants via `gltf_map_sampler_wrap` / `gltf_map_sampler_filter`.
+///   A NULL @p sampler_json leaves @p out at the glTF defaults (REPEAT / LINEAR).
+/// @param sampler_json  Parsed glTF sampler object JSON; may be NULL for default state.
+/// @param out           Output struct; always initialised before filling.
 static void gltf_read_sampler_info(void *sampler_json, gltf_sampler_info_t *out) {
     if (!out)
         return;
@@ -610,6 +680,16 @@ static void gltf_read_sampler_info(void *sampler_json, gltf_sampler_info_t *out)
                                           jint(sampler_json, "magFilter", -1));
 }
 
+/// @brief DFS helper for cycle detection in the glTF node graph.
+/// @details Uses a three-colour state array: 0 = unvisited, 1 = in-progress (grey), 2 = done (black).
+///   Returning 0 from a grey node means a back-edge (cycle) was found. Children that are out of
+///   range or already grey are also treated as invalid. Called by `gltf_validate_node_graph`
+///   once per node. The @p state array must be zero-initialised by the caller before the first call.
+/// @param nodes_arr   JSON array of glTF node objects.
+/// @param node_count  Total number of nodes (bounds the valid index range).
+/// @param node_idx    Node to visit.
+/// @param state       Per-node colour byte array of length @p node_count.
+/// @return 1 if the subtree is DAG-valid, 0 if a cycle or out-of-bounds child is found.
 static int gltf_validate_node_visit(void *nodes_arr, int32_t node_count, int32_t node_idx, uint8_t *state) {
     void *node_json;
     void *children;
@@ -633,6 +713,18 @@ static int gltf_validate_node_visit(void *nodes_arr, int32_t node_count, int32_t
     return 1;
 }
 
+/// @brief Validate the glTF node graph for a well-formed forest (no cycles, unique parents).
+/// @details A valid glTF scene node graph must be a directed acyclic forest: each node has at most
+///   one parent, there are no back-edges (cycles), and all child indices are in `[0, node_count)`.
+///   This function builds a parent array (each entry is -1 for roots or the parent's index), then
+///   runs a DFS over every node to detect cycles via `gltf_validate_node_graph`. Returns 0 and frees
+///   intermediates if any of these invariants are violated. When @p out_parent is non-NULL and
+///   validation succeeds the parent array is returned (caller must `free` it); otherwise it is
+///   freed internally. A null or empty nodes array is treated as a trivially valid empty forest.
+/// @param nodes_arr   JSON array of glTF node objects.
+/// @param node_count  Number of nodes; must match `jarr_len(nodes_arr)`.
+/// @param out_parent  If non-NULL, receives the allocated parent-index array on success.
+/// @return 1 if the graph is valid, 0 if a cycle, duplicate parent, or OOM is detected.
 static int gltf_validate_node_graph(void *nodes_arr, int32_t node_count, int **out_parent) {
     int *parent = NULL;
     uint8_t *state = NULL;
@@ -677,6 +769,19 @@ static int gltf_validate_node_graph(void *nodes_arr, int32_t node_count, int **o
     return 1;
 }
 
+/// @brief Bind a texture index + sampler state + UV-transform to one material texture slot.
+/// @details Looks up wrap/filter from the pre-built @p texture_samplers array at @p texture_index
+///   (defaulting to REPEAT/LINEAR when the index is out of range), then calls
+///   `rt_material3d_set_import_texture_slot` with the full combined parameters. If @p info is NULL
+///   an identity `gltf_texture_info_t` (texcoord=0, no transform) is used so callers can pass NULL
+///   for textures that have no `KHR_texture_transform` extension block. Slots outside the valid
+///   range `[0, RT_MATERIAL3D_TEXTURE_SLOT_COUNT)` are silently ignored.
+/// @param texture_samplers  Per-texture sampler state array resolved from the `"samplers"` array.
+/// @param texture_count     Length of @p texture_samplers.
+/// @param texture_index     glTF texture index into @p texture_samplers (and the image table).
+/// @param material          Viper material object to write the slot into.
+/// @param slot              Destination slot index in `[0, RT_MATERIAL3D_TEXTURE_SLOT_COUNT)`.
+/// @param info              Optional UV-transform + texcoord override; NULL uses identity.
 static void gltf_apply_texture_slot(const gltf_sampler_info_t *texture_samplers,
                                     int32_t texture_count,
                                     int64_t texture_index,
@@ -736,11 +841,19 @@ typedef struct {
     int32_t sparse_value_stride;
 } gltf_accessor_view_t;
 
+/// @brief Read a little-endian uint32 from an unaligned byte pointer.
+/// @details Uses individual byte loads and explicit shifts to avoid undefined behaviour
+///   from unaligned access on strict-alignment platforms. Used for parsing the 12-byte
+///   GLB (binary glTF) header and chunk-header magic/length fields.
 static uint32_t gltf_read_u32_le(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
            ((uint32_t)p[3] << 24);
 }
 
+/// @brief Overflow-safe size_t addition: sets *out = a+b and returns 1, or returns 0 on overflow.
+/// @details Guards all byte-range arithmetic in the accessor/buffer-view bounds checks so that
+///   a malformed glTF with exaggerated offsets or lengths can't wrap around to a valid-looking
+///   in-bounds address. Returns 0 also when @p out is NULL.
 static int gltf_checked_add_size(size_t a, size_t b, size_t *out) {
     if (!out || a > SIZE_MAX - b)
         return 0;
@@ -748,6 +861,10 @@ static int gltf_checked_add_size(size_t a, size_t b, size_t *out) {
     return 1;
 }
 
+/// @brief Overflow-safe size_t multiplication: sets *out = a*b and returns 1, or returns 0 on overflow.
+/// @details Uses the `b > SIZE_MAX / a` guard (avoiding the multiply itself when `a != 0`) to
+///   detect the overflow before it happens. Used alongside `gltf_checked_add_size` to
+///   safely compute `stride * count` and `comp_size * comp_count` bounds checks.
 static int gltf_checked_mul_size(size_t a, size_t b, size_t *out) {
     if (!out)
         return 0;
@@ -757,6 +874,15 @@ static int gltf_checked_mul_size(size_t a, size_t b, size_t *out) {
     return 1;
 }
 
+/// @brief Read a non-negative integer field from a JSON object as a `size_t`.
+/// @details Calls `jint` with the supplied default, then rejects negative values (which indicate
+///   a malformed glTF or missing field) by returning 0. Used for `byteOffset`, `byteLength`,
+///   and `byteStride` fields where negative values would cause pointer arithmetic to underflow.
+/// @param obj  JSON object to read from.
+/// @param key  Field name.
+/// @param def  Default `size_t` value when the field is absent.
+/// @param out  Receives the validated value; not written on failure.
+/// @return 1 on success, 0 if the value is negative or @p out is NULL.
 static int gltf_nonnegative_size(void *obj, const char *key, size_t def, size_t *out) {
     int64_t raw;
     if (!out)
@@ -768,6 +894,15 @@ static int gltf_nonnegative_size(void *obj, const char *key, size_t def, size_t 
     return 1;
 }
 
+/// @brief Validate that a decoded URI is a safe relative file path with no directory traversal.
+/// @details Rejects URIs that are absolute paths (`/` or `\` prefix), Windows drive paths
+///   (`X:` prefix), URLs with a scheme (`://`), and any path containing `.` or `..` segments.
+///   Only forward-slash and backslash are treated as separators. This guards against
+///   malicious glTF files that try to load assets from outside the intended directory by
+///   embedding paths like `../../etc/passwd` or `file:///C:/Windows/System32/...`.
+/// @param decoded_uri  Percent-decoded URI string (the raw value from the glTF JSON, already
+///                     URL-decoded by the caller).
+/// @return 1 if the URI is a safe relative path, 0 if it should be rejected.
 static int gltf_safe_relative_uri(const char *decoded_uri) {
     const char *p;
     const char *seg;
@@ -944,6 +1079,11 @@ static const uint8_t *gltf_get_buffer_view_data(
     return buffers[buf_idx].data + byte_offset;
 }
 
+/// @brief Return the byte size of one glTF accessor component by its GL-enum component type.
+/// @details glTF uses the original GL integer constants for component types:
+///   5120 = BYTE (1), 5121 = UNSIGNED_BYTE (1), 5122 = SHORT (2), 5123 = UNSIGNED_SHORT (2),
+///   5125 = UNSIGNED_INT (4), 5126 = FLOAT (4). Returns 0 for unrecognised values so callers
+///   can treat 0 as an error sentinel.
 static int gltf_component_size(int comp_type) {
     switch (comp_type) {
         case 5120:
@@ -960,6 +1100,10 @@ static int gltf_component_size(int comp_type) {
     }
 }
 
+/// @brief Return the number of components for a glTF accessor `"type"` string.
+/// @details Maps the glTF type name to its component count: "SCALAR"=1, "VEC2"=2, "VEC3"=3,
+///   "VEC4"=4, "MAT4"=16. Unrecognised strings (including "MAT2"/"MAT3") return 1 as a safe
+///   fallback — callers that depend on a correct count for MAT2/MAT3 would need to extend this.
 static int gltf_component_count(const char *acc_type) {
     if (!acc_type)
         return 1;
@@ -1118,6 +1262,21 @@ static int gltf_get_accessor_view(void *root,
     return 1;
 }
 
+/// @brief Decode one glTF accessor component from raw bytes to a float.
+/// @details Handles all six glTF component types. For integer types, when @p normalized is
+///   non-zero, the value is linearly mapped to [−1, 1] (signed) or [0, 1] (unsigned) per the
+///   glTF spec §3.6.2.4:
+///     - INT8:  max(value/127, −1) to preserve the symmetric range at the cost of −128 → −1.
+///     - UINT8:  value/255.
+///     - INT16:  max(value/32767, −1).
+///     - UINT16: value/65535.
+///     - UINT32: value/4294967295 (double precision to avoid float precision loss).
+///     - FLOAT:  returned as-is regardless of the normalized flag.
+///   Used when reading attribute accessors (positions, normals, UVs, joint weights, etc.).
+/// @param src        Pointer to the first byte of the component in the buffer.
+/// @param comp_type  glTF component type integer (5120–5126).
+/// @param normalized Non-zero to apply normalization; 0 to return the raw numeric value.
+/// @return The decoded float value, or 0.0f for unknown component types.
 static float gltf_decode_component_f32(const uint8_t *src, int comp_type, int normalized) {
     switch (comp_type) {
         case 5120: {
@@ -1163,6 +1322,15 @@ static float gltf_decode_component_f32(const uint8_t *src, int comp_type, int no
     }
 }
 
+/// @brief Decode one glTF accessor component from raw bytes to a uint32.
+/// @details Used for reading index accessors (SCALAR UNSIGNED_INT/SHORT/BYTE) and joint-index
+///   accessors (UNSIGNED_BYTE, UNSIGNED_SHORT). Signed integer types clamp negative values to 0
+///   so that malformed data can't produce garbage joint indices or out-of-range triangle indices.
+///   FLOAT is converted by truncation toward zero with negative values clamped to 0. Normalization
+///   is never applied for uint32 reads — the raw integer value is always returned.
+/// @param src        Pointer to the first byte of the component.
+/// @param comp_type  glTF component type integer (5120–5126).
+/// @return Raw unsigned integer value, or 0u for unknown component types.
 static uint32_t gltf_decode_component_u32(const uint8_t *src, int comp_type) {
     switch (comp_type) {
         case 5120: {
@@ -1200,6 +1368,16 @@ static uint32_t gltf_decode_component_u32(const uint8_t *src, int comp_type) {
     }
 }
 
+/// @brief Binary-search the accessor's sparse-index array for @p element_idx.
+/// @details glTF sparse accessors store a sorted list of (index, value) pairs that override
+///   specific elements in the base buffer. To resolve element N: first check the base buffer
+///   data (if present), then binary-search for N in the sparse indices array; if found, the
+///   corresponding sparse value overrides the base. This function performs the binary search
+///   and returns the position in the sparse array, not the element value itself.
+///   Returns -1 when @p element_idx is not among the sparse overrides (i.e. the base data applies).
+/// @param view         Accessor view with a non-NULL sparse_indices pointer.
+/// @param element_idx  Zero-based logical element index to look up.
+/// @return Sparse array slot (≥0) if found, -1 if not overridden.
 static int32_t gltf_accessor_sparse_value_index(const gltf_accessor_view_t *view,
                                                 int32_t element_idx) {
     int32_t lo;
@@ -1224,6 +1402,17 @@ static int32_t gltf_accessor_sparse_value_index(const gltf_accessor_view_t *view
     return -1;
 }
 
+/// @brief Read one element from an accessor view into a float array, applying sparse overrides.
+/// @details First zeros @p out_components output slots, then — if the base buffer is present —
+///   reads up to `min(view->comp_count, out_components)` components from the strided base data
+///   via `gltf_decode_component_f32`. Finally, if a sparse override exists for @p element_idx
+///   (detected by `gltf_accessor_sparse_value_index`), the sparse values are decoded over the
+///   same component slots. The two-phase approach correctly handles the case where the base buffer
+///   is NULL (accessor with sparse overrides only, no bufferView).
+/// @param view            Accessor view to read from; may have a NULL base data pointer.
+/// @param element_idx     Zero-based logical element index.
+/// @param out             Output array; receives up to @p out_components floats.
+/// @param out_components  Number of float slots in @p out; may be less than view->comp_count.
 static void gltf_accessor_read_f32(const gltf_accessor_view_t *view,
                                    int32_t element_idx,
                                    float *out,
@@ -1259,6 +1448,14 @@ static void gltf_accessor_read_f32(const gltf_accessor_view_t *view,
     }
 }
 
+/// @brief Read one element from an accessor view into a uint32 array, applying sparse overrides.
+/// @details Same two-phase (base + sparse-override) strategy as `gltf_accessor_read_f32`, but
+///   decodes via `gltf_decode_component_u32` instead. Used for index buffers (SCALAR UINT/USHORT/
+///   UBYTE accessor type) and joint-index attributes (UNSIGNED_BYTE/UNSIGNED_SHORT VEC4).
+/// @param view            Accessor view to read from.
+/// @param element_idx     Zero-based logical element index.
+/// @param out             Output array; receives up to @p out_components uint32 values.
+/// @param out_components  Number of uint32 slots in @p out.
 static void gltf_accessor_read_u32(const gltf_accessor_view_t *view,
                                    int32_t element_idx,
                                    uint32_t *out,
@@ -1365,6 +1562,11 @@ static void gltf_normalize_joint_influences(float *weights) {
     }
 }
 
+/// @brief Validate and emit one triangle to the mesh if all three indices are distinct and in range.
+/// @details Degenerate triangles (any two indices equal) and out-of-range indices are silently
+///   dropped. This is a safety net for glTF files that include degenerate geometry (exported by
+///   tools that strip vertices but leave the index buffer unchanged). Returns 1 if the triangle
+///   was emitted, 0 if it was rejected.
 static int gltf_emit_triangle(
     void *mesh, uint32_t vertex_count, uint32_t i0, uint32_t i1, uint32_t i2) {
     if (i0 == i1 || i1 == i2 || i0 == i2)
@@ -1375,6 +1577,10 @@ static int gltf_emit_triangle(
     return 1;
 }
 
+/// @brief Read a triangle index from an optional index accessor, or use the element position directly.
+/// @details When @p view is NULL the primitive has no index buffer, so the element index itself
+///   is used as the vertex index (sequential triangles). This mirrors how GL_TRIANGLES works
+///   with `glDrawArrays` vs `glDrawElements`.
 static uint32_t gltf_read_index(const gltf_accessor_view_t *view, int32_t element_idx) {
     if (!view)
         return (uint32_t)element_idx;
@@ -1383,6 +1589,20 @@ static uint32_t gltf_read_index(const gltf_accessor_view_t *view, int32_t elemen
     return value;
 }
 
+/// @brief Convert glTF primitive topology indices to triangles and append them to a mesh.
+/// @details Handles the three glTF triangle-topology modes:
+///   - mode 4 = GL_TRIANGLES: every three consecutive indices form one triangle.
+///   - mode 5 = GL_TRIANGLE_STRIP: each new vertex extends the strip; winding alternates
+///     on odd indices (i+1, i, i+2 instead of i, i+1, i+2) to preserve clockwise order.
+///   - mode 6 = GL_TRIANGLE_FAN: a fixed first vertex (the fan center) combined with each
+///     consecutive pair of subsequent vertices.
+///   Other topology modes (POINTS, LINES, LINE_STRIP, LINE_LOOP — modes 0-3) are not
+///   supported and return 0. @p index_view may be NULL for unindexed draws.
+/// @param mesh         Viper mesh object to receive the triangles.
+/// @param mode         glTF primitive topology mode (4, 5, or 6).
+/// @param index_view   Optional index buffer accessor; NULL for non-indexed draw.
+/// @param vertex_count Total number of vertices in the primitive (used for bounds-checking).
+/// @return 1 if at least one triangle was emitted, 0 on unsupported topology or no data.
 static int gltf_append_primitive_indices(void *mesh,
                                          int64_t mode,
                                          const gltf_accessor_view_t *index_view,
@@ -1444,10 +1664,17 @@ static void gltf_release_local(void *obj) {
     gltf_release_ref(&tmp);
 }
 
+/// @brief Return @p value if it is finite, otherwise return @p fallback.
+/// @details Protects downstream arithmetic from NaN and ±Inf values that can appear
+///   in glTF fields parsed from malformed JSON numbers.
 static double gltf_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Sanitise a double: replace non-finite values with @p fallback, then clamp to [lo, hi].
+/// @details Combines `gltf_finite_or` with a bounds clamp in one call. Used for material
+///   colour components, emissive strength, metallic/roughness factors, and spot-light angles
+///   where both NaN/Inf rejection and range enforcement are required.
 static double gltf_clamp_double(double value, double lo, double hi, double fallback) {
     value = gltf_finite_or(value, fallback);
     if (value < lo)
@@ -1457,12 +1684,28 @@ static double gltf_clamp_double(double value, double lo, double hi, double fallb
     return value;
 }
 
+/// @brief Read one numeric element from a JSON array by index, with bounds-check and default.
+/// @details Combines `jarr_len` bounds-check, `rt_seq_get`, and `jvalue_num` into a single call
+///   for safely reading glTF array fields like `"color"` and `"translation"` that may have
+///   fewer than the expected number of elements.
 static double gltf_arr_num(void *arr, int64_t index, double fallback) {
     if (!arr || index < 0 || index >= jarr_len(arr))
         return fallback;
     return jvalue_num(rt_seq_get(arr, index), fallback);
 }
 
+/// @brief Construct a `rt_light3d` from a `KHR_lights_punctual` extension light JSON object.
+/// @details Reads `type` (directional/point/spot), `color`, `intensity`, and `range` from
+///   the light JSON. Intensity is stored directly; range is converted to an inverse-square
+///   attenuation factor (`1 / range²`), or 0 for unbounded lights (range = 0 per spec).
+///   For spot lights, `innerConeAngle` and `outerConeAngle` are read from the nested `"spot"`
+///   object, clamped to `(0, π/2]`, and stored as their cosines — the convention expected by
+///   the shader. A minimum angular gap (`spot_eps`) is enforced between inner and outer angles
+///   to prevent the penumbra from collapsing to zero width. The default direction `(0, 0, −1)`
+///   matches the glTF spec's local-space forward vector; the actual world-space direction is
+///   applied when the node's transform is combined with the light during scene-graph traversal.
+/// @param light_json  Parsed KHR_lights_punctual light JSON object; must be non-NULL.
+/// @return Newly allocated `rt_light3d` on success; NULL if the type field is absent or unknown.
 static void *gltf_new_punctual_light(void *light_json) {
     static const double pi = 3.14159265358979323846;
     const char *type = jstr(light_json, "type");
@@ -1520,6 +1763,10 @@ static void *gltf_new_punctual_light(void *light_json) {
     return NULL;
 }
 
+/// @brief Parse the KHR_lights_punctual extension block from the glTF root and build a light array.
+/// @details Walks `root.extensions.KHR_lights_punctual.lights`, calls `gltf_new_punctual_light`
+///          for each entry, and writes the resulting pointer array and count to the output params.
+///          On failure or missing extension both outputs are left at NULL/0.
 static void gltf_parse_punctual_lights(void *root, void ***out_lights, int32_t *out_count) {
     void *extensions;
     void *punctual;
@@ -1547,6 +1794,10 @@ static void gltf_parse_punctual_lights(void *root, void ***out_lights, int32_t *
     *out_count = (int32_t)count64;
 }
 
+/// @brief Retrieve a morph-target name from the mesh's `extras.targetNames` array.
+/// @details If no name is present (missing extras, out-of-range index, or empty string),
+///          fills @p fallback with `"target_N"` and returns it so the caller always
+///          gets a non-NULL, non-empty string.
 static const char *gltf_target_name(void *mesh_json,
                                     int32_t target_index,
                                     char *fallback,
@@ -1568,6 +1819,11 @@ static const char *gltf_target_name(void *mesh_json,
     return cstr && cstr[0] != '\0' ? cstr : fallback;
 }
 
+/// @brief Read all morph targets from a glTF primitive's `targets` array into a MorphTarget3D object.
+/// @details Creates a `rt_morphtarget3d` with @p vertex_count slots, iterates each target
+///          entry, reads POSITION / NORMAL / TANGENT accessor deltas, and registers them as
+///          named shapes. Initial weights come from the mesh-level `weights` array when present.
+///          The morph target is attached to @p mesh_obj via `rt_mesh3d_set_morph_targets`.
 static void gltf_import_primitive_morph_targets(void *root,
                                                 gltf_buffer_t *buffers,
                                                 int buf_count,
@@ -1650,6 +1906,10 @@ static void gltf_import_primitive_morph_targets(void *root,
     gltf_release_local(morph);
 }
 
+/// @brief Write per-shape weights from a glTF node's `weights` array into the mesh's morph target.
+/// @details Iterates up to `min(shape_count, weights_arr length)` entries and calls
+///          `rt_morphtarget3d_set_weight` for each. No-op when the mesh has no morph targets
+///          or when @p weights_arr is NULL.
 static void gltf_apply_node_morph_weights(void *mesh_obj, void *weights_arr) {
     rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
     int64_t shape_count;
@@ -1680,6 +1940,11 @@ static int gltf_hex_digit(char ch) {
     return -1;
 }
 
+/// @brief Decode a percent-encoded URI path component into a plain filesystem path string.
+/// @details Converts `%XX` escape sequences to their byte values, stops at `#` (fragment)
+///          or `?` (query), and NUL-terminates @p out. Handles malformed escapes by copying
+///          them verbatim. Does not handle scheme prefixes (file://, http://) — caller must
+///          strip those before passing here.
 static void gltf_decode_uri_path(const char *uri, char *out, size_t out_cap) {
     size_t oi = 0;
     if (!out || out_cap == 0)
@@ -1704,6 +1969,11 @@ static void gltf_decode_uri_path(const char *uri, char *out, size_t out_cap) {
     out[oi] = '\0';
 }
 
+/// @brief Combine a glTF document's base path with a relative URI to produce an absolute path.
+/// @details Decodes the URI via `gltf_decode_uri_path`, validates it with `gltf_safe_relative_uri`
+///          (rejects absolute paths, `..` traversal, etc.), then prepends the directory component
+///          of @p base_path. Both `/` and `\` separators are recognised for cross-platform support.
+///          Writes an empty string to @p out on any validation failure.
 static void gltf_resolve_relative_path(const char *base_path,
                                        const char *uri,
                                        char *out,
@@ -2077,6 +2347,10 @@ static void gltf_apply_skin_to_mesh(void *mesh_obj, const gltf_skin_t *skin) {
     mesh->bone_count = max_bone;
 }
 
+/// @brief Deep-clone a mesh and its morph targets for per-node variant use.
+/// @details Calls `rt_mesh3d_clone` for the geometry, then clones the morph target
+///          separately (so each node instance gets independent weights) and re-attaches
+///          it via `rt_mesh3d_set_morph_targets`. Returns NULL on allocation failure.
 static void *gltf_clone_mesh_variant(void *source_mesh) {
     rt_mesh3d *variant;
     rt_mesh3d *mesh;
@@ -2097,6 +2371,11 @@ static void *gltf_clone_mesh_variant(void *source_mesh) {
     return variant;
 }
 
+/// @brief Return the mesh to attach to a glTF scene node, creating a per-node variant when needed.
+/// @details Returns the shared asset mesh directly when neither skinning nor morph weights require
+///          per-instance state. When a skin or a weights array is present, clones the mesh via
+///          `gltf_clone_mesh_variant`, applies the skin's inverse-bind matrices, and writes the
+///          initial morph weights. Falls back to the shared mesh on clone failure.
 static void *gltf_make_node_mesh_variant(rt_gltf_asset *asset,
                                          int32_t mesh_index,
                                          int64_t skin_ref,
@@ -2135,6 +2414,8 @@ typedef struct {
     gltf_accessor_view_t output;
 } gltf_anim_curve_t;
 
+/// @brief Look up the engine bone index for a glTF node in a specific skin.
+/// @return Engine bone index, or -1 if the node is not a joint in this skin.
 static int32_t gltf_skin_bone_for_node(const gltf_skin_t *skin, int32_t node_idx) {
     int32_t joint;
     if (!skin || !skin->joint_to_bone)
@@ -2145,6 +2426,9 @@ static int32_t gltf_skin_bone_for_node(const gltf_skin_t *skin, int32_t node_idx
     return -1;
 }
 
+/// @brief Read the time value at @p index from a glTF animation input accessor as a double.
+/// @details glTF animation times are stored as float32 scalars in the input accessor;
+///          this function reads one float and promotes it to double for precision.
 static double gltf_curve_time(const gltf_accessor_view_t *view, int32_t index) {
     float t = 0.0f;
     gltf_accessor_read_f32(view, index, &t, 1);
@@ -2191,6 +2475,9 @@ static int32_t gltf_curve_output_index(const gltf_anim_curve_t *curve, int32_t k
     return key_index;
 }
 
+/// @brief Read @p components floats from the curve's output accessor at an already-computed index.
+/// @details Thin wrapper around `gltf_accessor_read_f32` that accepts a pre-multiplied index
+///          (CUBICSPLINE callers pass `key * 3 + 1` for the value sample; linear callers pass `key`).
 static void gltf_curve_read_output_value(const gltf_anim_curve_t *curve,
                                          int32_t output_index,
                                          float *out,
@@ -2207,6 +2494,12 @@ static void gltf_curve_read_value(const gltf_anim_curve_t *curve,
     gltf_curve_read_output_value(curve, gltf_curve_output_index(curve, key_index), out, components);
 }
 
+/// @brief Read a single scalar float from an accessor by flat component index.
+/// @details Converts a flat index (element_index * comp_count + component) into the correct
+///          (element, component) pair, reads a full element into a temporary buffer, then
+///          returns the requested component. Used to read per-vertex weight scalars from
+///          multi-component accessor views.
+/// @return The float value at @p flat_index, or 0.0 on out-of-range or null view.
 static float gltf_accessor_read_flat_f32(const gltf_accessor_view_t *view, int32_t flat_index) {
     float tmp[16];
     int32_t comp_count;
@@ -2223,6 +2516,10 @@ static float gltf_accessor_read_flat_f32(const gltf_accessor_view_t *view, int32
     return tmp[component];
 }
 
+/// @brief Normalize @p out in-place when @p components == 4 (quaternion interpolation result).
+/// @details glTF CUBICSPLINE and linear interpolation can drift the magnitude of rotation
+///          quaternions away from unit length; renormalization prevents visual artifacts.
+///          Non-quaternion paths (translation/scale with components ≠ 4) are left unchanged.
 static void gltf_normalize_sample_if_quat(float *out, int32_t components) {
     if (components == 4) {
         float len =
@@ -2234,6 +2531,11 @@ static void gltf_normalize_sample_if_quat(float *out, int32_t components) {
     }
 }
 
+/// @brief Spherically interpolate two quaternions by @p alpha ∈ [0, 1].
+/// @details Both inputs are normalized before interpolation. When the dot product is
+///          negative, `q1` is negated to ensure slerp travels the shortest arc (< 180°).
+///          When the quaternions are nearly parallel (dot > 0.9995), plain nlerp is used
+///          to avoid division-by-zero in the sin/cos path. Result is always renormalized.
 static void gltf_slerp_quat(const float *a, const float *b, double alpha, float *out) {
     float q0[4];
     float q1[4];
@@ -2548,6 +2850,9 @@ static void gltf_parse_animations(rt_gltf_asset *asset,
     }
 }
 
+/// @brief Return non-zero if @p node_idx is a joint in any of the @p skin_count skins.
+/// @details Used during scene-graph construction to decide whether a node should be excluded
+///          from the scene hierarchy (skin joints are already represented inside the skeleton).
 static int gltf_node_is_skin_joint(const gltf_skin_t *skins, int32_t skin_count, int32_t node_idx) {
     if (!skins || skin_count <= 0)
         return 0;
@@ -2558,6 +2863,8 @@ static int gltf_node_is_skin_joint(const gltf_skin_t *skins, int32_t skin_count,
     return 0;
 }
 
+/// @brief Map a glTF animation channel path string to the engine's RT_NODE_ANIM_PATH_* constant.
+/// @return RT_NODE_ANIM_PATH_TRANSLATION / ROTATION / SCALE / WEIGHTS, or -1 for unknown paths.
 static int32_t gltf_node_anim_path(const char *path) {
     if (!path || strcmp(path, "translation") == 0)
         return RT_NODE_ANIM_PATH_TRANSLATION;
@@ -2570,6 +2877,10 @@ static int32_t gltf_node_anim_path(const char *path) {
     return -1;
 }
 
+/// @brief Determine how many float components are stored per keyframe for a given animation path.
+/// @details For TRANSLATION/SCALE the width is 3 (XYZ); for ROTATION it is 4 (XYZW quaternion).
+///          For the WEIGHTS path the width is derived by dividing the total output components by
+///          the number of input keyframes (× 3 for CUBICSPLINE). Returns 0 for degenerate data.
 static int32_t gltf_node_anim_width_for_path(int32_t path,
                                              const gltf_accessor_view_t *input,
                                              const gltf_accessor_view_t *output,
@@ -2591,6 +2902,13 @@ static int32_t gltf_node_anim_width_for_path(int32_t path,
     return (int32_t)(total_components / divisor);
 }
 
+/// @brief Parse all glTF node animations and attach them to the asset.
+/// @details Iterates the `animations` array, builds one `rt_node_animation3d` per animation,
+///          then for each channel resolves the sampler, maps the target node to a bone (skin
+///          joint) or scene node index, unions the time range across all channels to compute
+///          the animation duration, and emits per-track keyframe data. Animations with no
+///          valid channels are skipped. Named or auto-named (`"node_animation_N"`) animations
+///          are stored in `asset->node_animations` for retrieval by the caller.
 static void gltf_parse_node_animations(rt_gltf_asset *asset,
                                        void *root,
                                        gltf_buffer_t *buffers,
@@ -3931,6 +4249,7 @@ void *rt_gltf_get_animation(void *obj, int64_t index) {
     return a->animations[index];
 }
 
+/// @brief Return the number of node animations (AnimationClip-style tracks) in the glTF asset.
 int64_t rt_gltf_node_animation_count(void *obj) {
     return obj ? ((rt_gltf_asset *)obj)->node_animation_count : 0;
 }

@@ -265,6 +265,12 @@ static const rt_locale_data_t g_en_us_data = {
     .formatter_refs = 0,
 };
 
+/// @brief Return the statically-baked en-US locale data record.
+/// @details The returned pointer refers to a process-lifetime static object.
+///          The `arena` field is NULL (no heap allocation); `formatter_refs`
+///          starts at zero and may be incremented by the locale-manager retain
+///          path. Callers must not free or mutate the returned record.
+/// @return Pointer to the global `g_en_us_data` record; never NULL.
 const rt_locale_data_t *rt_locale_data_en_us(void) {
     return &g_en_us_data;
 }

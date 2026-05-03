@@ -52,6 +52,11 @@
 static _Thread_local void *vec3_pool_buf_[VEC3_POOL_CAPACITY];
 static _Thread_local int vec3_pool_top_ = 0;
 
+/// @brief GC finalizer that returns a Vec3 object to the thread-local free pool.
+/// @details When the pool is at capacity the object is dropped (GC reclaims it);
+///          otherwise `rt_obj_resurrect` prevents GC collection and re-registers
+///          this function as the next finalizer so the object re-enters the pool
+///          on the next release.
 static void vec3_pool_return(void *p) {
     if (vec3_pool_top_ < VEC3_POOL_CAPACITY) {
         rt_obj_resurrect(p);

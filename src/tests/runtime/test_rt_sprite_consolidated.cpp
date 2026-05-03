@@ -462,6 +462,30 @@ TEST(RTSprite, UpdateExistingRegion) {
     rt_obj_release_check0(atlas);
 }
 
+TEST(RTSprite, InvalidRegionsRejected) {
+    void *atlas = make_test_atlas(32, 32);
+    void *sheet = rt_spritesheet_new(atlas);
+
+    rt_string name = rt_const_cstr("bad");
+    rt_spritesheet_set_region(sheet, name, -1, 0, 16, 16);
+    rt_spritesheet_set_region(sheet, name, 0, 0, 0, 16);
+    rt_spritesheet_set_region(sheet, name, 24, 0, 16, 16);
+    ASSERT(rt_spritesheet_region_count(sheet) == 0, "invalid regions are not added");
+    ASSERT(rt_spritesheet_has_region(sheet, name) == 0, "invalid region name is absent");
+    ASSERT(rt_spritesheet_get_region(sheet, name) == NULL, "invalid region has no pixels");
+
+    rt_spritesheet_set_region(sheet, name, 0, 0, 16, 16);
+    ASSERT(rt_spritesheet_region_count(sheet) == 1, "valid region is added");
+    rt_spritesheet_set_region(sheet, name, 24, 0, 16, 16);
+    void *region = rt_spritesheet_get_region(sheet, name);
+    ASSERT(region != NULL, "region remains valid after rejected update");
+    ASSERT(rt_pixels_width(region) == 16, "rejected update preserves width");
+
+    rt_obj_release_check0(region);
+    rt_obj_release_check0(sheet);
+    rt_obj_release_check0(atlas);
+}
+
 TEST(RTSprite, RemoveRegion) {
     void *atlas = make_test_atlas(32, 32);
     void *sheet = rt_spritesheet_new(atlas);

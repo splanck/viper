@@ -40,6 +40,11 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+/// @brief Return 1 if @p s is a C/POSIX no-locale sentinel value.
+/// @details Used in the MinGW/MSYS fallback path where POSIX env vars may be set.
+///          "C", "c", "POSIX", and "posix" map to no-locale. NULL and empty are also no-locale.
+/// @param s Environment variable value to check; may be NULL.
+/// @return 1 if @p s is a no-locale sentinel; 0 otherwise.
 static int is_c_or_posix(const char *s) {
     if (!s || !*s)
         return 1;
@@ -47,6 +52,13 @@ static int is_c_or_posix(const char *s) {
            (strcmp(s, "c") == 0) || (strcmp(s, "posix") == 0);
 }
 
+/// @brief Strip encoding/modifier suffixes from a POSIX-style locale string and normalize.
+/// @details Used in the MinGW/MSYS fallback path. Strips `.encoding` and `@modifier`
+///          suffixes and converts underscores to dashes (e.g., "fr_FR.UTF-8" → "fr-FR").
+/// @param src POSIX locale string; may be NULL (-1 returned).
+/// @param out Caller-provided buffer for the cleaned BCP-47-compatible tag.
+/// @param cap Capacity of @p out in bytes (must be ≥ 2).
+/// @return 0 on success; -1 if input/output are NULL, @p cap is too small, or result overflows.
 static int clean_posix_tag(const char *src, char *out, size_t cap) {
     if (!src || !out || cap < 2)
         return -1;
@@ -67,6 +79,17 @@ static int clean_posix_tag(const char *src, char *out, size_t cap) {
     return 0;
 }
 
+/// @brief Detect the Windows system locale and write a BCP-47 tag to @p out.
+/// @details Primary path: calls `GetUserDefaultLocaleName` (Vista+) which returns a
+///          BCP-47 tag as UTF-16. Since BCP-47 is ASCII by construction, the
+///          UTF-16 → UTF-8 transcoding is a safe byte truncation. Rejects any
+///          non-ASCII wide character as a corrupt locale indicator.
+///          Fallback path: when the Win32 call returns empty (MSYS/MinGW environments),
+///          polls `LC_ALL`, `LANG`, and `LC_MESSAGES` env vars and applies the
+///          POSIX cleanup path.
+/// @param out  Caller-provided buffer to receive the BCP-47 tag.
+/// @param cap  Capacity of @p out in bytes (must be ≥ 2).
+/// @return 0 if a usable tag was written to @p out; -1 if detection failed.
 int rt_locale_platform_detect_system(char *out, size_t cap) {
     if (!out || cap < 2)
         return -1;

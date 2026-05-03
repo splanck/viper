@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_graphics2d.c
-// Purpose: Production 2D Graphics runtime — CPU-backed implementations of
+// Purpose: Viper.Graphics 2D support runtime — CPU-backed implementations of
 //   RenderTarget2D / Surface2D, Texture2D / GpuTexture2D, Renderer2D,
 //   Material2D, Shader2D / PostProcess2D, Viewport2D / ScreenScaler,
 //   TileSet2D / TileLayer2D / ObjectLayer2D / AutoTile2D, Path2D /
@@ -55,12 +55,17 @@
 #define RT2D_MAX_ELEMENTS 268435456LL
 #define RT2D_INITIAL_CAP 16
 #define RT2D_PI 3.14159265358979323846
+#define RT2D_RENDERTARGET_MAGIC 0x525432445247544cLL /* "RT2DRGTL" */
+#define RT2D_TEXTURE_MAGIC 0x525432445445584cLL      /* "RT2DTEXL" */
+#define RT2D_RENDERER_MAGIC 0x52543244524e444cLL     /* "RT2DRNDL" */
 
 typedef struct {
+    int64_t magic;
     void *pixels;
 } rt_rendertarget2d_impl;
 
 typedef struct {
+    int64_t magic;
     void *pixels;
     int64_t filter;
     int64_t wrap;
@@ -78,9 +83,12 @@ typedef struct {
     int64_t tint;
     int64_t alpha;
     int64_t blend_mode;
+    int64_t sampler_filter;
+    int64_t sampler_wrap;
 } rt_renderer2d_cmd;
 
 typedef struct {
+    int64_t magic;
     rt_renderer2d_cmd *cmds;
     int64_t count;
     int64_t capacity;
@@ -218,6 +226,7 @@ static int64_t clamp_u8_i64(int64_t value) {
     return clamp_i64(value, 0, 255);
 }
 
+/// @brief Saturating integer addition: returns INT64_MAX / INT64_MIN instead of wrapping.
 static int64_t saturating_add_i64(int64_t a, int64_t b) {
     if (b > 0 && a > INT64_MAX - b)
         return INT64_MAX;
@@ -226,12 +235,54 @@ static int64_t saturating_add_i64(int64_t a, int64_t b) {
     return a + b;
 }
 
+/// @brief Saturating integer multiplication using `long double` to detect overflow before truncation.
+static int64_t saturating_mul_i64(int64_t a, int64_t b) {
+    long double value = (long double)a * (long double)b;
+    if (value >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)value;
+}
+
+/// @brief Validate and cast a `void *` to `rt_rendertarget2d_impl *` by checking the magic cookie.
+/// @details Returns NULL for NULL input or handles whose magic doesn't match, preventing
+///   type-confused pointer dereferences from badly-typed Zia/BASIC caller code.
+static rt_rendertarget2d_impl *rendertarget2d_checked(void *target) {
+    if (!target)
+        return NULL;
+    rt_rendertarget2d_impl *impl = (rt_rendertarget2d_impl *)target;
+    return impl->magic == RT2D_RENDERTARGET_MAGIC ? impl : NULL;
+}
+
+/// @brief Validate and cast a `void *` to `rt_texture2d_impl *` by checking the magic cookie.
+static rt_texture2d_impl *texture2d_checked(void *texture) {
+    if (!texture)
+        return NULL;
+    rt_texture2d_impl *impl = (rt_texture2d_impl *)texture;
+    return impl->magic == RT2D_TEXTURE_MAGIC ? impl : NULL;
+}
+
+/// @brief Validate and cast a `void *` to `rt_renderer2d_impl *` by checking the magic cookie.
+static rt_renderer2d_impl *renderer2d_checked(void *renderer) {
+    if (!renderer)
+        return NULL;
+    rt_renderer2d_impl *impl = (rt_renderer2d_impl *)renderer;
+    return impl->magic == RT2D_RENDERER_MAGIC ? impl : NULL;
+}
+
+/// @brief Test whether @p value falls in the half-open interval `[start, start+length)`.
+/// @details Uses an unsigned subtraction trick to collapse the "negative start" and
+///   "value < start" cases into a single bounds check without signed-overflow UB.
 static int32_t point_in_interval_i64(int64_t start, int64_t length, int64_t value) {
     if (length <= 0 || value < start)
         return 0;
     return ((uint64_t)value - (uint64_t)start) < (uint64_t)length;
 }
 
+/// @brief Test whether two intervals `[a_start, a_start+a_length)` and `[b_start, b_start+b_length)` overlap.
+/// @details Implemented as "does either interval contain the other's start?" — one containment implies
+///   overlap in both directions. Zero-length intervals never overlap.
 static int32_t intervals_overlap_i64(int64_t a_start,
                                      int64_t a_length,
                                      int64_t b_start,
@@ -242,10 +293,20 @@ static int32_t intervals_overlap_i64(int64_t a_start,
            point_in_interval_i64(b_start, b_length, a_start);
 }
 
+/// @brief Return the unsigned distance from @p value to zero (i.e. `abs(value)` as uint64).
+/// @details The expression `(uint64_t)(-(value+1))+1u` correctly handles INT64_MIN without
+///   signed-overflow UB: for INT64_MIN, `-(value+1) = INT64_MAX` (all-ones), so the uint64
+///   result is `INT64_MAX + 1 = 2^63`, matching the true absolute value.
 static uint64_t distance_to_zero_i64(int64_t value) {
     return (uint64_t)(-(value + 1)) + 1u;
 }
 
+/// @brief Clip a blit operation along one axis, adjusting destination, source, and length in place.
+/// @details Handles the four cases where the destination or source position is negative or runs past
+///   the limit: computes the largest offset `skip` that makes both positions non-negative, advances
+///   both positions by `skip`, reduces `length` accordingly, then clips `length` to the remaining
+///   space in both buffers. Sets `*length = 0` and returns 0 on any out-of-bounds condition. Called
+///   twice per blit (once for X, once for Y) so the blit loop never has to range-check coordinates.
 static int32_t blit_clip_axis(
     int64_t *dst_pos, int64_t *src_pos, int64_t *length, int64_t dst_limit, int64_t src_limit) {
     if (!dst_pos || !src_pos || !length || *length <= 0 || dst_limit <= 0 || src_limit <= 0) {
@@ -298,6 +359,10 @@ static int32_t blit_clip_axis(
     return *length > 0;
 }
 
+/// @brief Round a `long double` to the nearest `int64_t`, saturating at INT64_MIN/INT64_MAX.
+/// @details Used for viewport coordinate transforms where the intermediate result must
+///   be in `long double` to avoid losing precision, but must ultimately become an integer
+///   pixel coordinate. Non-finite values are clamped to the appropriate extreme.
 static int64_t round_long_double_to_i64(long double value) {
     if (!isfinite((double)value))
         return value < 0.0L ? INT64_MIN : INT64_MAX;
@@ -440,7 +505,7 @@ static uint32_t blend_pixel(uint32_t dst, uint32_t src, int64_t blend_mode) {
     int64_t db = (dst >> 8) & 255;
     int64_t da = dst & 255;
 
-    if (blend_mode == RT_GRAPHICS2D_BLEND_OPAQUE || sa >= 255)
+    if (blend_mode == RT_GRAPHICS2D_BLEND_OPAQUE)
         return src;
 
     if (blend_mode == RT_GRAPHICS2D_BLEND_ADD) {
@@ -450,6 +515,9 @@ static uint32_t blend_pixel(uint32_t dst, uint32_t src, int64_t blend_mode) {
         int64_t a = clamp_u8_i64(da + sa - (da * sa + 127) / 255);
         return (uint32_t)((r << 24) | (g << 16) | (b << 8) | a);
     }
+
+    if (sa >= 255)
+        return src;
 
     return rt_pixels_alpha_over_rgba(dst, src);
 }
@@ -529,6 +597,11 @@ static void apply_tint_alpha_in_place(void *pixels, int64_t tint, int64_t alpha)
     }
 }
 
+/// @brief Extract a rectangular sub-region of @p pixels into a new Pixels buffer.
+/// @details Allocates a `width × height` Pixels and copies from `(sx, sy)` in the source.
+///   The source coordinates are NOT clipped — callers that may have out-of-bounds regions
+///   should call `clip_region_to_source` first. Returns NULL if allocation fails or inputs
+///   are invalid.
 static void *copy_region_pixels(
     void *pixels, int64_t sx, int64_t sy, int64_t width, int64_t height) {
     if (!pixels || width <= 0 || height <= 0)
@@ -540,6 +613,59 @@ static void *copy_region_pixels(
     return out;
 }
 
+/// @brief Clip a source sub-rectangle to the actual Pixels bounds, adjusting destination offset.
+/// @details When the source rectangle extends past the left or top edge (negative sx/sy), the
+///   overlap is clipped by advancing the destination offset and shrinking the rectangle.
+///   When the rectangle runs past the right or bottom edge of the source, width/height are
+///   trimmed. Updates all six in-out parameters and returns 1 if a non-empty intersection
+///   remains, 0 if the rectangle is fully out of bounds.
+static int8_t clip_region_to_source(
+    void *pixels, int64_t *dx, int64_t *dy, int64_t *sx, int64_t *sy, int64_t *w, int64_t *h) {
+    if (!pixels || !dx || !dy || !sx || !sy || !w || !h || *w <= 0 || *h <= 0)
+        return 0;
+
+    int64_t src_w = rt_pixels_width(pixels);
+    int64_t src_h = rt_pixels_height(pixels);
+    if (src_w <= 0 || src_h <= 0)
+        return 0;
+
+    if (*sx < 0) {
+        int64_t skip = *sx == INT64_MIN ? *w : -*sx;
+        if (skip >= *w)
+            return 0;
+        if (*dx > INT64_MAX - skip)
+            return 0;
+        *dx += skip;
+        *sx = 0;
+        *w -= skip;
+    }
+    if (*sy < 0) {
+        int64_t skip = *sy == INT64_MIN ? *h : -*sy;
+        if (skip >= *h)
+            return 0;
+        if (*dy > INT64_MAX - skip)
+            return 0;
+        *dy += skip;
+        *sy = 0;
+        *h -= skip;
+    }
+
+    if (*sx >= src_w || *sy >= src_h)
+        return 0;
+    int64_t src_remaining_w = src_w - *sx;
+    int64_t src_remaining_h = src_h - *sy;
+    if (*w > src_remaining_w)
+        *w = src_remaining_w;
+    if (*h > src_remaining_h)
+        *h = src_remaining_h;
+    return *w > 0 && *h > 0;
+}
+
+/// @brief Clone @p pixels and apply tint+alpha in place; returns NULL if no processing is needed.
+/// @details The "no-op" condition (tint < 0 and alpha == 255) is checked first to avoid
+///   an unnecessary clone when neither tint nor alpha modification is active. Callers use the
+///   NULL return to avoid the clone overhead in the common "unmodified" case — if non-NULL is
+///   returned the caller owns the clone and must release it.
 static void *processed_pixels_or_null(void *pixels, int64_t tint, int64_t alpha) {
     if (!pixels || (tint < 0 && clamp_u8_i64(alpha) == 255))
         return NULL;
@@ -558,6 +684,7 @@ static void *processed_pixels_or_null(void *pixels, int64_t tint, int64_t alpha)
 /// @brief GC finalizer — releases the owned Pixels buffer.
 static void rendertarget2d_finalize(void *obj) {
     rt_rendertarget2d_impl *target = (rt_rendertarget2d_impl *)obj;
+    target->magic = 0;
     release_ref_slot(&target->pixels);
 }
 
@@ -578,6 +705,7 @@ void *rt_rendertarget2d_new(int64_t width, int64_t height) {
         (rt_rendertarget2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_rendertarget2d_impl));
     if (!target)
         return NULL;
+    target->magic = RT2D_RENDERTARGET_MAGIC;
     target->pixels = rt_pixels_new(width, height);
     if (!target->pixels) {
         if (rt_obj_release_check0(target))
@@ -588,24 +716,30 @@ void *rt_rendertarget2d_new(int64_t width, int64_t height) {
     return target;
 }
 
+/// @brief Return the width of the render target's backing Pixels buffer in pixels, or 0 if invalid.
 int64_t rt_rendertarget2d_width(void *target) {
-    return target ? rt_pixels_width(((rt_rendertarget2d_impl *)target)->pixels) : 0;
+    rt_rendertarget2d_impl *impl = rendertarget2d_checked(target);
+    return impl ? rt_pixels_width(impl->pixels) : 0;
 }
 
+/// @brief Return the height of the render target's backing Pixels buffer in pixels, or 0 if invalid.
 int64_t rt_rendertarget2d_height(void *target) {
-    return target ? rt_pixels_height(((rt_rendertarget2d_impl *)target)->pixels) : 0;
+    rt_rendertarget2d_impl *impl = rendertarget2d_checked(target);
+    return impl ? rt_pixels_height(impl->pixels) : 0;
 }
 
+/// @brief Return the backing Pixels buffer (borrowed reference — do not release).
 void *rt_rendertarget2d_get_pixels(void *target) {
-    if (!target)
-        return NULL;
-    return ((rt_rendertarget2d_impl *)target)->pixels;
+    rt_rendertarget2d_impl *impl = rendertarget2d_checked(target);
+    return impl ? impl->pixels : NULL;
 }
 
+/// @brief Fill the entire render target with @p rgba (0xRRGGBBAA); no-op for invalid handles.
 void rt_rendertarget2d_clear(void *target, int64_t rgba) {
-    if (!target)
+    rt_rendertarget2d_impl *impl = rendertarget2d_checked(target);
+    if (!impl)
         return;
-    rt_pixels_fill(((rt_rendertarget2d_impl *)target)->pixels, rgba);
+    rt_pixels_fill(impl->pixels, rgba);
 }
 
 /// @brief Replace the owned Pixels buffer with a fresh `width × height` allocation.
@@ -614,7 +748,8 @@ void rt_rendertarget2d_clear(void *target, int64_t rgba) {
 ///          pathological "resize to my current dimensions" can't briefly drop the
 ///          refcount to zero.
 void rt_rendertarget2d_resize(void *target, int64_t width, int64_t height) {
-    if (!target)
+    rt_rendertarget2d_impl *impl = rendertarget2d_checked(target);
+    if (!impl)
         return;
     if (!checked_count(width, height, 4, NULL)) {
         rt_trap("RenderTarget2D.Resize: invalid dimensions");
@@ -623,15 +758,18 @@ void rt_rendertarget2d_resize(void *target, int64_t width, int64_t height) {
     void *pixels = rt_pixels_new(width, height);
     if (!pixels)
         return;
-    rt_rendertarget2d_impl *impl = (rt_rendertarget2d_impl *)target;
     release_ref_slot(&impl->pixels);
     impl->pixels = pixels;
 }
 
+/// @brief Blit @p pixels onto the render target at `(x, y)` using straight-alpha compositing.
+/// @details Covers the full source Pixels extent (no region selection). Clips to the target
+///   bounds automatically. Uses ALPHA blend mode with no tint and full opacity.
 void rt_rendertarget2d_draw_pixels(void *target, int64_t x, int64_t y, void *pixels) {
-    if (!target || !pixels)
+    rt_rendertarget2d_impl *impl = rendertarget2d_checked(target);
+    if (!impl || !pixels)
         return;
-    blit_pixels(((rt_rendertarget2d_impl *)target)->pixels,
+    blit_pixels(impl->pixels,
                 x,
                 y,
                 pixels,
@@ -644,6 +782,10 @@ void rt_rendertarget2d_draw_pixels(void *target, int64_t x, int64_t y, void *pix
                 RT_GRAPHICS2D_BLEND_ALPHA);
 }
 
+/// @brief Blit a sub-rectangle `(sx, sy, width, height)` of @p pixels onto the target at `(x, y)`.
+/// @details Selects a region of the source Pixels and blits it with straight-alpha compositing,
+///   no tint, and full opacity. Both source and destination coordinates are clipped to their
+///   respective buffer bounds by `blit_pixels`.
 void rt_rendertarget2d_draw_region(void *target,
                                    int64_t x,
                                    int64_t y,
@@ -652,9 +794,10 @@ void rt_rendertarget2d_draw_region(void *target,
                                    int64_t sy,
                                    int64_t width,
                                    int64_t height) {
-    if (!target || !pixels)
+    rt_rendertarget2d_impl *impl = rendertarget2d_checked(target);
+    if (!impl || !pixels)
         return;
-    blit_pixels(((rt_rendertarget2d_impl *)target)->pixels,
+    blit_pixels(impl->pixels,
                 x,
                 y,
                 pixels,
@@ -677,6 +820,7 @@ void rt_rendertarget2d_draw_region(void *target,
 /// @brief GC finalizer — releases the retained Pixels reference.
 static void texture2d_finalize(void *obj) {
     rt_texture2d_impl *texture = (rt_texture2d_impl *)obj;
+    texture->magic = 0;
     release_ref_slot(&texture->pixels);
 }
 
@@ -693,6 +837,7 @@ void *rt_texture2d_new(void *pixels) {
         (rt_texture2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_texture2d_impl));
     if (!texture)
         return NULL;
+    texture->magic = RT2D_TEXTURE_MAGIC;
     texture->pixels = pixels;
     texture->filter = RT_GRAPHICS2D_FILTER_NEAREST;
     texture->wrap = RT_GRAPHICS2D_WRAP_CLAMP;
@@ -701,6 +846,10 @@ void *rt_texture2d_new(void *pixels) {
     return texture;
 }
 
+/// @brief Load a Pixels buffer from disk and wrap it as a Texture2D.
+/// @details The transient Pixels reference is released after the Texture2D takes its own
+///   retain, so the caller gets a Texture2D with a net-zero effect on the Pixels refcount.
+///   Returns NULL if the file cannot be loaded or the Texture2D allocation fails.
 void *rt_texture2d_from_file(rt_string path) {
     void *pixels = rt_pixels_load(path);
     if (!pixels)
@@ -710,50 +859,61 @@ void *rt_texture2d_from_file(rt_string path) {
     return texture;
 }
 
+/// @brief Return the pixel width of the texture, or 0 for an invalid handle.
 int64_t rt_texture2d_width(void *texture) {
-    if (!texture)
-        return 0;
-    return rt_pixels_width(((rt_texture2d_impl *)texture)->pixels);
+    rt_texture2d_impl *impl = texture2d_checked(texture);
+    return impl ? rt_pixels_width(impl->pixels) : 0;
 }
 
+/// @brief Return the pixel height of the texture, or 0 for an invalid handle.
 int64_t rt_texture2d_height(void *texture) {
-    if (!texture)
-        return 0;
-    return rt_pixels_height(((rt_texture2d_impl *)texture)->pixels);
+    rt_texture2d_impl *impl = texture2d_checked(texture);
+    return impl ? rt_pixels_height(impl->pixels) : 0;
 }
 
+/// @brief Return the underlying Pixels buffer (borrowed reference — caller must not release).
 void *rt_texture2d_get_pixels(void *texture) {
-    return texture ? ((rt_texture2d_impl *)texture)->pixels : NULL;
+    rt_texture2d_impl *impl = texture2d_checked(texture);
+    return impl ? impl->pixels : NULL;
 }
 
+/// @brief Clone the underlying Pixels buffer (caller owns the returned copy).
 void *rt_texture2d_clone_pixels(void *texture) {
     void *pixels = rt_texture2d_get_pixels(texture);
     return pixels ? rt_pixels_clone(pixels) : NULL;
 }
 
+/// @brief Set the sampling filter mode (`RT_GRAPHICS2D_FILTER_NEAREST` or `LINEAR`).
 void rt_texture2d_set_filter(void *texture, int64_t filter) {
-    if (!texture)
+    rt_texture2d_impl *impl = texture2d_checked(texture);
+    if (!impl)
         return;
-    ((rt_texture2d_impl *)texture)->filter = (filter == RT_GRAPHICS2D_FILTER_LINEAR)
-                                                 ? RT_GRAPHICS2D_FILTER_LINEAR
-                                                 : RT_GRAPHICS2D_FILTER_NEAREST;
+    impl->filter = (filter == RT_GRAPHICS2D_FILTER_LINEAR) ? RT_GRAPHICS2D_FILTER_LINEAR
+                                                           : RT_GRAPHICS2D_FILTER_NEAREST;
 }
 
+/// @brief Get the current sampling filter mode, defaulting to NEAREST for invalid handles.
 int64_t rt_texture2d_get_filter(void *texture) {
-    return texture ? ((rt_texture2d_impl *)texture)->filter : RT_GRAPHICS2D_FILTER_NEAREST;
+    rt_texture2d_impl *impl = texture2d_checked(texture);
+    return impl ? impl->filter : RT_GRAPHICS2D_FILTER_NEAREST;
 }
 
+/// @brief Set the texture wrap mode (`RT_GRAPHICS2D_WRAP_CLAMP` or `REPEAT`).
 void rt_texture2d_set_wrap(void *texture, int64_t wrap) {
-    if (!texture)
+    rt_texture2d_impl *impl = texture2d_checked(texture);
+    if (!impl)
         return;
-    ((rt_texture2d_impl *)texture)->wrap =
+    impl->wrap =
         (wrap == RT_GRAPHICS2D_WRAP_REPEAT) ? RT_GRAPHICS2D_WRAP_REPEAT : RT_GRAPHICS2D_WRAP_CLAMP;
 }
 
+/// @brief Get the current wrap mode, defaulting to CLAMP for invalid handles.
 int64_t rt_texture2d_get_wrap(void *texture) {
-    return texture ? ((rt_texture2d_impl *)texture)->wrap : RT_GRAPHICS2D_WRAP_CLAMP;
+    rt_texture2d_impl *impl = texture2d_checked(texture);
+    return impl ? impl->wrap : RT_GRAPHICS2D_WRAP_CLAMP;
 }
 
+/// @brief Release the source reference in a draw command and zero-wipe the slot.
 static void renderer2d_release_cmd(rt_renderer2d_cmd *cmd) {
     if (!cmd)
         return;
@@ -761,8 +921,10 @@ static void renderer2d_release_cmd(rt_renderer2d_cmd *cmd) {
     memset(cmd, 0, sizeof(*cmd));
 }
 
+/// @brief GC finalizer — releases all retained source references and frees the command buffer.
 static void renderer2d_finalize(void *obj) {
     rt_renderer2d_impl *renderer = (rt_renderer2d_impl *)obj;
+    renderer->magic = 0;
     if (renderer->cmds) {
         for (int64_t i = 0; i < renderer->count; i++)
             renderer2d_release_cmd(&renderer->cmds[i]);
@@ -816,6 +978,7 @@ void *rt_renderer2d_new(int64_t capacity) {
         (rt_renderer2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_renderer2d_impl));
     if (!renderer)
         return NULL;
+    renderer->magic = RT2D_RENDERER_MAGIC;
     renderer->capacity = initial_capacity(capacity);
     renderer->cmds =
         (rt_renderer2d_cmd *)calloc((size_t)renderer->capacity, sizeof(rt_renderer2d_cmd));
@@ -831,39 +994,50 @@ void *rt_renderer2d_new(int64_t capacity) {
     return renderer;
 }
 
+/// @brief Release all queued draw commands and reset the command count to zero.
 void rt_renderer2d_clear(void *renderer) {
-    if (!renderer)
+    rt_renderer2d_impl *impl = renderer2d_checked(renderer);
+    if (!impl)
         return;
-    rt_renderer2d_impl *impl = (rt_renderer2d_impl *)renderer;
     for (int64_t i = 0; i < impl->count; i++)
         renderer2d_release_cmd(&impl->cmds[i]);
     impl->count = 0;
 }
 
+/// @brief Clear the command queue and mark the renderer active for new draw commands.
 void rt_renderer2d_begin(void *renderer) {
-    if (!renderer)
+    rt_renderer2d_impl *impl = renderer2d_checked(renderer);
+    if (!impl)
         return;
     rt_renderer2d_clear(renderer);
-    ((rt_renderer2d_impl *)renderer)->active = 1;
+    impl->active = 1;
 }
 
+/// @brief Return the number of draw commands currently queued.
 int64_t rt_renderer2d_count(void *renderer) {
-    return renderer ? ((rt_renderer2d_impl *)renderer)->count : 0;
+    rt_renderer2d_impl *impl = renderer2d_checked(renderer);
+    return impl ? impl->count : 0;
 }
 
+/// @brief Set the multiplicative tint color (`0x00RRGGBB`); negative disables tinting.
 void rt_renderer2d_set_tint(void *renderer, int64_t rgb) {
-    if (renderer)
-        ((rt_renderer2d_impl *)renderer)->tint = rgb < 0 ? -1 : (rgb & 0x00FFFFFF);
+    rt_renderer2d_impl *impl = renderer2d_checked(renderer);
+    if (impl)
+        impl->tint = rgb < 0 ? -1 : (rgb & 0x00FFFFFF);
 }
 
+/// @brief Set the alpha scale clamped to `[0, 255]`; 255 = fully opaque.
 void rt_renderer2d_set_alpha(void *renderer, int64_t alpha) {
-    if (renderer)
-        ((rt_renderer2d_impl *)renderer)->alpha = clamp_u8_i64(alpha);
+    rt_renderer2d_impl *impl = renderer2d_checked(renderer);
+    if (impl)
+        impl->alpha = clamp_u8_i64(alpha);
 }
 
+/// @brief Set the blend mode (`RT_GRAPHICS2D_BLEND_*`) clamped to the valid range `[0, 2]`.
 void rt_renderer2d_set_blend_mode(void *renderer, int64_t blend_mode) {
-    if (renderer)
-        ((rt_renderer2d_impl *)renderer)->blend_mode = clamp_i64(blend_mode, 0, 2);
+    rt_renderer2d_impl *impl = renderer2d_checked(renderer);
+    if (impl)
+        impl->blend_mode = clamp_i64(blend_mode, 0, 2);
 }
 
 /// @brief Append one draw command to the active queue, snapshotting current render
@@ -886,8 +1060,10 @@ static void renderer2d_queue(rt_renderer2d_impl *renderer,
                              int64_t sx,
                              int64_t sy,
                              int64_t width,
-                             int64_t height) {
-    if (!renderer || !renderer->active || !source)
+                             int64_t height,
+                             int64_t sampler_filter,
+                             int64_t sampler_wrap) {
+    if (!renderer || renderer->magic != RT2D_RENDERER_MAGIC || !renderer->active || !source)
         return;
     if (!renderer2d_reserve(renderer, renderer->count + 1)) {
         rt_trap("Renderer2D: command capacity overflow");
@@ -905,27 +1081,34 @@ static void renderer2d_queue(rt_renderer2d_impl *renderer,
     cmd->tint = renderer->tint;
     cmd->alpha = renderer->alpha;
     cmd->blend_mode = renderer->blend_mode;
+    cmd->sampler_filter = sampler_filter;
+    cmd->sampler_wrap = sampler_wrap;
     retain_ref(source);
 }
 
+/// @brief Queue a draw command to blit the full @p pixels buffer at `(x, y)` with current render state.
 void rt_renderer2d_draw_pixels(void *renderer, void *pixels, int64_t x, int64_t y) {
-    if (!pixels)
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Renderer2D.DrawPixels: null pixels");
+    if (!p)
         return;
-    renderer2d_queue((rt_renderer2d_impl *)renderer,
+    renderer2d_queue(renderer2d_checked(renderer),
                      0,
                      pixels,
                      x,
                      y,
                      0,
                      0,
-                     rt_pixels_width(pixels),
-                     rt_pixels_height(pixels));
+                     p->width,
+                     p->height,
+                     RT_GRAPHICS2D_FILTER_NEAREST,
+                     RT_GRAPHICS2D_WRAP_CLAMP);
 }
 
+/// @brief Queue a draw command to blit the full Texture2D at `(x, y)`, propagating its sampler state.
 void rt_renderer2d_draw_texture(void *renderer, void *texture, int64_t x, int64_t y) {
-    if (!texture)
+    if (!texture || !texture2d_checked(texture))
         return;
-    renderer2d_queue((rt_renderer2d_impl *)renderer,
+    renderer2d_queue(renderer2d_checked(renderer),
                      1,
                      texture,
                      x,
@@ -933,9 +1116,12 @@ void rt_renderer2d_draw_texture(void *renderer, void *texture, int64_t x, int64_
                      0,
                      0,
                      rt_texture2d_width(texture),
-                     rt_texture2d_height(texture));
+                     rt_texture2d_height(texture),
+                     rt_texture2d_get_filter(texture),
+                     rt_texture2d_get_wrap(texture));
 }
 
+/// @brief Queue a draw command to blit the sub-region `(sx, sy, width, height)` of @p pixels at `(x, y)`.
 void rt_renderer2d_draw_region(void *renderer,
                                void *pixels,
                                int64_t x,
@@ -944,9 +1130,24 @@ void rt_renderer2d_draw_region(void *renderer,
                                int64_t sy,
                                int64_t width,
                                int64_t height) {
-    renderer2d_queue((rt_renderer2d_impl *)renderer, 0, pixels, x, y, sx, sy, width, height);
+    if (!rt_pixels_checked_impl(pixels, "Renderer2D.DrawRegion: null pixels"))
+        return;
+    renderer2d_queue(renderer2d_checked(renderer),
+                     0,
+                     pixels,
+                     x,
+                     y,
+                     sx,
+                     sy,
+                     width,
+                     height,
+                     RT_GRAPHICS2D_FILTER_NEAREST,
+                     RT_GRAPHICS2D_WRAP_CLAMP);
 }
 
+/// @brief Execute one queued draw command against a Pixels render target.
+/// @details Resolves the source (Texture2D → its Pixels, or raw Pixels directly) then calls
+///   `blit_pixels` with the command's snapshot of tint, alpha, blend mode, and region.
 static void renderer2d_flush_cmd_to_target(rt_renderer2d_cmd *cmd, void *target_pixels) {
     void *pixels = cmd->source_kind == 1 ? rt_texture2d_get_pixels(cmd->source) : cmd->source;
     if (!pixels)
@@ -964,13 +1165,48 @@ static void renderer2d_flush_cmd_to_target(rt_renderer2d_cmd *cmd, void *target_
                 cmd->blend_mode);
 }
 
+/// @brief Blit a Pixels buffer to a Canvas surface using the specified blend mode.
+/// @details Routes through the appropriate Canvas API function based on blend mode:
+///   OPAQUE → `rt_canvas_blit`, ALPHA → `rt_canvas_blit_alpha`, ADD → read-modify-write
+///   via `rt_canvas_copy_rect` + `blit_pixels(ADD)` + `rt_canvas_blit`. The additive
+///   path is the only one that needs a round-trip through a temporary Pixels buffer.
+static void renderer2d_blit_pixels_to_canvas(
+    void *canvas, int64_t x, int64_t y, void *pixels, int64_t blend_mode) {
+    if (!canvas || !pixels)
+        return;
+    if (blend_mode == RT_GRAPHICS2D_BLEND_OPAQUE) {
+        rt_canvas_blit(canvas, x, y, pixels);
+        return;
+    }
+    if (blend_mode != RT_GRAPHICS2D_BLEND_ADD) {
+        rt_canvas_blit_alpha(canvas, x, y, pixels);
+        return;
+    }
+
+    int64_t width = rt_pixels_width(pixels);
+    int64_t height = rt_pixels_height(pixels);
+    if (width <= 0 || height <= 0)
+        return;
+    void *dest = rt_canvas_copy_rect(canvas, x, y, width, height);
+    if (!dest)
+        return;
+    blit_pixels(dest, 0, 0, pixels, 0, 0, width, height, -1, 255, RT_GRAPHICS2D_BLEND_ADD);
+    rt_canvas_blit(canvas, x, y, dest);
+    release_ref_slot(&dest);
+}
+
+/// @brief Execute all queued draw commands against a RenderTarget2D.
+/// @details Does NOT deactivate the renderer — use `rt_renderer2d_end` for the
+///   Canvas path or `rt_renderer2d_clear` to reset without flushing.
 void rt_renderer2d_flush_to_target(void *renderer, void *target) {
     if (!renderer || !target)
         return;
     void *target_pixels = rt_rendertarget2d_get_pixels(target);
     if (!target_pixels)
         return;
-    rt_renderer2d_impl *impl = (rt_renderer2d_impl *)renderer;
+    rt_renderer2d_impl *impl = renderer2d_checked(renderer);
+    if (!impl)
+        return;
     for (int64_t i = 0; i < impl->count; i++)
         renderer2d_flush_cmd_to_target(&impl->cmds[i], target_pixels);
 }
@@ -988,9 +1224,9 @@ void rt_renderer2d_flush_to_target(void *renderer, void *target) {
 ///          After flush, `active = 0` so a subsequent `Begin` is required to
 ///          queue more draws.
 void rt_renderer2d_end(void *renderer, void *canvas) {
-    if (!renderer)
+    rt_renderer2d_impl *impl = renderer2d_checked(renderer);
+    if (!impl)
         return;
-    rt_renderer2d_impl *impl = (rt_renderer2d_impl *)renderer;
     if (!impl->active)
         return;
     if (canvas) {
@@ -1002,16 +1238,24 @@ void rt_renderer2d_end(void *renderer, void *canvas) {
                 continue;
             void *region = NULL;
             void *draw_pixels = pixels;
+            int64_t blit_x = cmd->x;
+            int64_t blit_y = cmd->y;
             if (cmd->sx != 0 || cmd->sy != 0 || cmd->width != rt_pixels_width(pixels) ||
                 cmd->height != rt_pixels_height(pixels)) {
-                region = copy_region_pixels(pixels, cmd->sx, cmd->sy, cmd->width, cmd->height);
+                int64_t sx = cmd->sx;
+                int64_t sy = cmd->sy;
+                int64_t width = cmd->width;
+                int64_t height = cmd->height;
+                if (!clip_region_to_source(pixels, &blit_x, &blit_y, &sx, &sy, &width, &height))
+                    continue;
+                region = copy_region_pixels(pixels, sx, sy, width, height);
                 draw_pixels = region;
             }
             void *processed = processed_pixels_or_null(draw_pixels, cmd->tint, cmd->alpha);
             if (processed)
                 draw_pixels = processed;
             if (draw_pixels)
-                rt_canvas_blit_alpha(canvas, cmd->x, cmd->y, draw_pixels);
+                renderer2d_blit_pixels_to_canvas(canvas, blit_x, blit_y, draw_pixels, cmd->blend_mode);
             release_ref_slot(&processed);
             release_ref_slot(&region);
         }
@@ -1039,29 +1283,35 @@ void *rt_material2d_new(void) {
     return material;
 }
 
+/// @brief Set the multiplicative tint color (`0x00RRGGBB`); negative disables tinting.
 void rt_material2d_set_tint(void *material, int64_t rgb) {
     if (material)
         ((rt_material2d_impl *)material)->tint = rgb < 0 ? -1 : (rgb & 0x00FFFFFF);
 }
 
+/// @brief Get the current tint color, or -1 (no tint) for an invalid material.
 int64_t rt_material2d_get_tint(void *material) {
     return material ? ((rt_material2d_impl *)material)->tint : -1;
 }
 
+/// @brief Set the alpha scale clamped to `[0, 255]`.
 void rt_material2d_set_alpha(void *material, int64_t alpha) {
     if (material)
         ((rt_material2d_impl *)material)->alpha = clamp_u8_i64(alpha);
 }
 
+/// @brief Get the current alpha scale in `[0, 255]`, defaulting to 255 for invalid handles.
 int64_t rt_material2d_get_alpha(void *material) {
     return material ? ((rt_material2d_impl *)material)->alpha : 255;
 }
 
+/// @brief Set the blend mode (`RT_GRAPHICS2D_BLEND_*`) clamped to `[0, 2]`.
 void rt_material2d_set_blend_mode(void *material, int64_t blend_mode) {
     if (material)
         ((rt_material2d_impl *)material)->blend_mode = clamp_i64(blend_mode, 0, 2);
 }
 
+/// @brief Get the current blend mode, defaulting to ALPHA for invalid handles.
 int64_t rt_material2d_get_blend_mode(void *material) {
     return material ? ((rt_material2d_impl *)material)->blend_mode : RT_GRAPHICS2D_BLEND_ALPHA;
 }
@@ -1105,33 +1355,42 @@ void *rt_shader2d_new(int64_t effect) {
     return shader;
 }
 
+/// @brief Set the shader effect index clamped to `[0, 4]` (NONE/INVERT/GRAYSCALE/TINT/BLUR).
 void rt_shader2d_set_effect(void *shader, int64_t effect) {
     if (shader)
         ((rt_shader2d_impl *)shader)->effect = clamp_i64(effect, 0, 4);
 }
 
+/// @brief Get the current effect index, defaulting to NONE for invalid handles.
 int64_t rt_shader2d_get_effect(void *shader) {
     return shader ? ((rt_shader2d_impl *)shader)->effect : RT_GRAPHICS2D_EFFECT_NONE;
 }
 
+/// @brief Set the effect amount (e.g. blur radius) clamped to `[0, 10]`.
 void rt_shader2d_set_amount(void *shader, int64_t amount) {
     if (shader)
         ((rt_shader2d_impl *)shader)->amount = clamp_i64(amount, 0, 10);
 }
 
+/// @brief Get the current effect amount, or 0 for invalid handles.
 int64_t rt_shader2d_get_amount(void *shader) {
     return shader ? ((rt_shader2d_impl *)shader)->amount : 0;
 }
 
+/// @brief Set the effect color (`0x00RRGGBB`), used for the TINT effect.
 void rt_shader2d_set_color(void *shader, int64_t rgb) {
     if (shader)
         ((rt_shader2d_impl *)shader)->color = rgb & 0x00FFFFFF;
 }
 
+/// @brief Get the current effect color, defaulting to white (0x00FFFFFF) for invalid handles.
 int64_t rt_shader2d_get_color(void *shader) {
     return shader ? ((rt_shader2d_impl *)shader)->color : 0x00FFFFFF;
 }
 
+/// @brief Dispatch to the correct pixel-effect function for the given effect index.
+/// @details Returns a new Pixels buffer with the effect applied. Effect NONE returns a plain clone.
+///   INVERT, GRAYSCALE, TINT, and BLUR delegate to the corresponding `rt_pixels_*` functions.
 static void *apply_effect(int64_t effect, int64_t amount, int64_t color, void *pixels) {
     if (!pixels)
         return NULL;
@@ -1150,6 +1409,8 @@ static void *apply_effect(int64_t effect, int64_t amount, int64_t color, void *p
     }
 }
 
+/// @brief Apply the shader's effect to @p pixels and return a new Pixels buffer with the result.
+/// @details A NULL shader degrades gracefully to a plain clone. Callers own the returned Pixels.
 void *rt_shader2d_apply(void *shader, void *pixels) {
     if (!shader)
         return pixels ? rt_pixels_clone(pixels) : NULL;
@@ -1157,22 +1418,27 @@ void *rt_shader2d_apply(void *shader, void *pixels) {
     return apply_effect(impl->effect, impl->amount, impl->color, pixels);
 }
 
+/// @brief Allocate a PostProcess2D (a Shader2D starting with EFFECT_NONE).
 void *rt_postprocess2d_new(void) {
     return rt_shader2d_new(RT_GRAPHICS2D_EFFECT_NONE);
 }
 
+/// @brief Set the post-process effect index (forwarded to Shader2D).
 void rt_postprocess2d_set_effect(void *postprocess, int64_t effect) {
     rt_shader2d_set_effect(postprocess, effect);
 }
 
+/// @brief Set the post-process effect amount (forwarded to Shader2D).
 void rt_postprocess2d_set_amount(void *postprocess, int64_t amount) {
     rt_shader2d_set_amount(postprocess, amount);
 }
 
+/// @brief Set the post-process effect color (forwarded to Shader2D).
 void rt_postprocess2d_set_color(void *postprocess, int64_t rgb) {
     rt_shader2d_set_color(postprocess, rgb);
 }
 
+/// @brief Apply the post-process effect and return a new Pixels buffer (forwarded to Shader2D).
 void *rt_postprocess2d_apply(void *postprocess, void *pixels) {
     return rt_shader2d_apply(postprocess, pixels);
 }
@@ -1205,17 +1471,28 @@ void *rt_postprocess2d_apply(void *postprocess, void *pixels) {
 static void viewport2d_recalculate(rt_viewport2d_impl *viewport) {
     if (!viewport)
         return;
-    int64_t scale_x = viewport->screen_width * 1000 / viewport->virtual_width;
-    int64_t scale_y = viewport->screen_height * 1000 / viewport->virtual_height;
+    long double scale_x_ld =
+        ((long double)viewport->screen_width * 1000.0L) / (long double)viewport->virtual_width;
+    long double scale_y_ld =
+        ((long double)viewport->screen_height * 1000.0L) / (long double)viewport->virtual_height;
+    int64_t scale_x = scale_x_ld >= (long double)INT64_MAX ? INT64_MAX : (int64_t)scale_x_ld;
+    int64_t scale_y = scale_y_ld >= (long double)INT64_MAX ? INT64_MAX : (int64_t)scale_y_ld;
     viewport->scale = scale_x < scale_y ? scale_x : scale_y;
+    if (viewport->scale < 1)
+        viewport->scale = 1;
     if (viewport->integer_scaling) {
         int64_t whole = viewport->scale / 1000;
-        if (whole < 1)
-            whole = 1;
-        viewport->scale = whole * 1000;
+        if (whole >= 1)
+            viewport->scale = whole > INT64_MAX / 1000 ? INT64_MAX : whole * 1000;
     }
-    int64_t scaled_width = viewport->virtual_width * viewport->scale / 1000;
-    int64_t scaled_height = viewport->virtual_height * viewport->scale / 1000;
+    long double scaled_width_ld =
+        ((long double)viewport->virtual_width * (long double)viewport->scale) / 1000.0L;
+    long double scaled_height_ld =
+        ((long double)viewport->virtual_height * (long double)viewport->scale) / 1000.0L;
+    int64_t scaled_width =
+        scaled_width_ld >= (long double)INT64_MAX ? INT64_MAX : (int64_t)scaled_width_ld;
+    int64_t scaled_height =
+        scaled_height_ld >= (long double)INT64_MAX ? INT64_MAX : (int64_t)scaled_height_ld;
     viewport->offset_x = (viewport->screen_width - scaled_width) / 2;
     viewport->offset_y = (viewport->screen_height - scaled_height) / 2;
 }
@@ -1242,6 +1519,7 @@ void *rt_viewport2d_new(int64_t virtual_width,
     return viewport;
 }
 
+/// @brief Update the virtual (design) canvas size and recalculate scale/offsets.
 void rt_viewport2d_set_virtual_size(void *viewport, int64_t width, int64_t height) {
     if (!viewport)
         return;
@@ -1251,6 +1529,7 @@ void rt_viewport2d_set_virtual_size(void *viewport, int64_t width, int64_t heigh
     viewport2d_recalculate(impl);
 }
 
+/// @brief Update the physical screen size and recalculate scale/offsets.
 void rt_viewport2d_set_screen_size(void *viewport, int64_t width, int64_t height) {
     if (!viewport)
         return;
@@ -1260,6 +1539,7 @@ void rt_viewport2d_set_screen_size(void *viewport, int64_t width, int64_t height
     viewport2d_recalculate(impl);
 }
 
+/// @brief Enable or disable integer-only scaling (whole-number scale factors only).
 void rt_viewport2d_set_integer_scaling(void *viewport, int64_t enabled) {
     if (!viewport)
         return;
@@ -1268,18 +1548,24 @@ void rt_viewport2d_set_integer_scaling(void *viewport, int64_t enabled) {
     viewport2d_recalculate(impl);
 }
 
+/// @brief Return the current scale factor as a fixed-point integer (1000 = 1.0x).
 int64_t rt_viewport2d_get_scale(void *viewport) {
     return viewport ? ((rt_viewport2d_impl *)viewport)->scale : 1000;
 }
 
+/// @brief Return the horizontal letterbox/pillarbox offset in screen pixels.
 int64_t rt_viewport2d_get_offset_x(void *viewport) {
     return viewport ? ((rt_viewport2d_impl *)viewport)->offset_x : 0;
 }
 
+/// @brief Return the vertical letterbox/pillarbox offset in screen pixels.
 int64_t rt_viewport2d_get_offset_y(void *viewport) {
     return viewport ? ((rt_viewport2d_impl *)viewport)->offset_y : 0;
 }
 
+/// @brief Convert a virtual-space X coordinate to a screen-space X pixel position.
+/// @details Applies `screen_x = offset_x + (virtual_x * scale / 1000)` using `long double`
+///   to preserve sub-pixel accuracy before rounding to the nearest integer.
 int64_t rt_viewport2d_world_to_screen_x(void *viewport, int64_t x) {
     if (!viewport)
         return x;
@@ -1289,6 +1575,7 @@ int64_t rt_viewport2d_world_to_screen_x(void *viewport, int64_t x) {
     return round_long_double_to_i64(mapped);
 }
 
+/// @brief Convert a virtual-space Y coordinate to a screen-space Y pixel position.
 int64_t rt_viewport2d_world_to_screen_y(void *viewport, int64_t y) {
     if (!viewport)
         return y;
@@ -1298,6 +1585,8 @@ int64_t rt_viewport2d_world_to_screen_y(void *viewport, int64_t y) {
     return round_long_double_to_i64(mapped);
 }
 
+/// @brief Convert a screen-space X pixel position back to a virtual-space X coordinate.
+/// @details Inverse of `world_to_screen_x`: `virtual_x = (screen_x - offset_x) * 1000 / scale`.
 int64_t rt_viewport2d_screen_to_world_x(void *viewport, int64_t x) {
     if (!viewport)
         return x;
@@ -1307,6 +1596,7 @@ int64_t rt_viewport2d_screen_to_world_x(void *viewport, int64_t x) {
     return round_long_double_to_i64(mapped);
 }
 
+/// @brief Convert a screen-space Y pixel position back to a virtual-space Y coordinate.
 int64_t rt_viewport2d_screen_to_world_y(void *viewport, int64_t y) {
     if (!viewport)
         return y;
@@ -1353,6 +1643,7 @@ void *rt_tileset2d_new(void *pixels, int64_t tile_width, int64_t tile_height) {
     return tileset;
 }
 
+/// @brief Return the number of whole tile columns in the tileset image.
 int64_t rt_tileset2d_columns(void *tileset) {
     if (!tileset)
         return 0;
@@ -1360,6 +1651,7 @@ int64_t rt_tileset2d_columns(void *tileset) {
     return rt_pixels_width(impl->pixels) / impl->tile_width;
 }
 
+/// @brief Return the number of whole tile rows in the tileset image.
 int64_t rt_tileset2d_rows(void *tileset) {
     if (!tileset)
         return 0;
@@ -1367,10 +1659,14 @@ int64_t rt_tileset2d_rows(void *tileset) {
     return rt_pixels_height(impl->pixels) / impl->tile_height;
 }
 
+/// @brief Return the total number of tiles (`columns * rows`) in the tileset.
 int64_t rt_tileset2d_tile_count(void *tileset) {
     return rt_tileset2d_columns(tileset) * rt_tileset2d_rows(tileset);
 }
 
+/// @brief Extract one tile by index and return it as a new Pixels buffer.
+/// @details Tiles are indexed left-to-right, top-to-bottom starting at 0. Returns NULL for
+///   out-of-range indices; caller owns the returned Pixels.
 void *rt_tileset2d_get_tile_pixels(void *tileset, int64_t tile_index) {
     if (!tileset || tile_index < 0 || tile_index >= rt_tileset2d_tile_count(tileset))
         return NULL;
@@ -1426,18 +1722,24 @@ void *rt_tilelayer2d_new(int64_t width, int64_t height) {
     return layer;
 }
 
+/// @brief Return the width (in tiles) of the layer.
 int64_t rt_tilelayer2d_width(void *layer) {
     return layer ? ((rt_tilelayer2d_impl *)layer)->width : 0;
 }
 
+/// @brief Return the height (in tiles) of the layer.
 int64_t rt_tilelayer2d_height(void *layer) {
     return layer ? ((rt_tilelayer2d_impl *)layer)->height : 0;
 }
 
+/// @brief Return non-zero if tile cell (x, y) is within the layer's bounds.
 static int32_t tilelayer2d_in_bounds(rt_tilelayer2d_impl *layer, int64_t x, int64_t y) {
     return layer && x >= 0 && y >= 0 && x < layer->width && y < layer->height;
 }
 
+/// @brief Write a tile ID into a cell, using row-major flat indexing.
+/// @details Bounds are checked via `tilelayer2d_in_bounds`; out-of-range writes
+///          are silently dropped. Tile ID 0 conventionally means "empty".
 void rt_tilelayer2d_set(void *layer, int64_t x, int64_t y, int64_t tile) {
     rt_tilelayer2d_impl *impl = (rt_tilelayer2d_impl *)layer;
     if (!tilelayer2d_in_bounds(impl, x, y))
@@ -1445,6 +1747,7 @@ void rt_tilelayer2d_set(void *layer, int64_t x, int64_t y, int64_t tile) {
     impl->tiles[y * impl->width + x] = tile;
 }
 
+/// @brief Read the tile ID at `(x, y)`, returning -1 for out-of-range coords.
 int64_t rt_tilelayer2d_get(void *layer, int64_t x, int64_t y) {
     rt_tilelayer2d_impl *impl = (rt_tilelayer2d_impl *)layer;
     if (!tilelayer2d_in_bounds(impl, x, y))
@@ -1452,6 +1755,7 @@ int64_t rt_tilelayer2d_get(void *layer, int64_t x, int64_t y) {
     return impl->tiles[y * impl->width + x];
 }
 
+/// @brief Fill every cell in the layer with the same tile ID.
 void rt_tilelayer2d_fill(void *layer, int64_t tile) {
     rt_tilelayer2d_impl *impl = (rt_tilelayer2d_impl *)layer;
     if (!impl)
@@ -1461,24 +1765,29 @@ void rt_tilelayer2d_fill(void *layer, int64_t tile) {
         impl->tiles[i] = tile;
 }
 
+/// @brief Fill every cell with tile ID 0 (empty).
 void rt_tilelayer2d_clear(void *layer) {
     rt_tilelayer2d_fill(layer, 0);
 }
 
+/// @brief Set whether the layer is included in tilemap renders.
 void rt_tilelayer2d_set_visible(void *layer, int64_t visible) {
     if (layer)
         ((rt_tilelayer2d_impl *)layer)->visible = visible != 0;
 }
 
+/// @brief Return non-zero if the layer is currently marked visible.
 int64_t rt_tilelayer2d_is_visible(void *layer) {
     return layer ? ((rt_tilelayer2d_impl *)layer)->visible : 0;
 }
 
+/// @brief Set the layer opacity in [0, 255]; values are clamped.
 void rt_tilelayer2d_set_opacity(void *layer, int64_t opacity) {
     if (layer)
         ((rt_tilelayer2d_impl *)layer)->opacity = clamp_u8_i64(opacity);
 }
 
+/// @brief Return the current layer opacity in [0, 255].
 int64_t rt_tilelayer2d_get_opacity(void *layer) {
     return layer ? ((rt_tilelayer2d_impl *)layer)->opacity : 0;
 }
@@ -1542,6 +1851,11 @@ static int32_t objectlayer2d_reserve(rt_objectlayer2d_impl *layer, int64_t neede
     return 1;
 }
 
+/// @brief Append a new rect entry and return its index.
+/// @details Grows the backing array if needed (doubling, checked). Traps via
+///          `rt_trap` on capacity overflow. Returns -1 if `layer` is NULL.
+///          The `type` field is opaque — callers use it as a category tag
+///          (e.g. collision=1, trigger=2, spawn=3).
 int64_t rt_objectlayer2d_add_rect(
     void *layer, int64_t x, int64_t y, int64_t width, int64_t height, int64_t type) {
     rt_objectlayer2d_impl *impl = (rt_objectlayer2d_impl *)layer;
@@ -1560,15 +1874,18 @@ int64_t rt_objectlayer2d_add_rect(
     return index;
 }
 
+/// @brief Return the number of rect entries currently in the layer.
 int64_t rt_objectlayer2d_count(void *layer) {
     return layer ? ((rt_objectlayer2d_impl *)layer)->count : 0;
 }
 
+/// @brief Reset the entry count to zero without freeing the backing array.
 void rt_objectlayer2d_clear(void *layer) {
     if (layer)
         ((rt_objectlayer2d_impl *)layer)->count = 0;
 }
 
+/// @brief Return a pointer to the entry at @p index in the object layer, or NULL if out of range.
 static rt_objectlayer2d_entry *objectlayer2d_get_entry(void *layer, int64_t index) {
     rt_objectlayer2d_impl *impl = (rt_objectlayer2d_impl *)layer;
     if (!impl || index < 0 || index >= impl->count)
@@ -1576,26 +1893,32 @@ static rt_objectlayer2d_entry *objectlayer2d_get_entry(void *layer, int64_t inde
     return &impl->items[index];
 }
 
+/// @brief Return the X position of the entry at `index`, or 0 if out of range.
 int64_t rt_objectlayer2d_get_x(void *layer, int64_t index) {
     rt_objectlayer2d_entry *entry = objectlayer2d_get_entry(layer, index);
     return entry ? entry->x : 0;
 }
 
+/// @brief Return the Y position of the entry at `index`, or 0 if out of range.
 int64_t rt_objectlayer2d_get_y(void *layer, int64_t index) {
     rt_objectlayer2d_entry *entry = objectlayer2d_get_entry(layer, index);
     return entry ? entry->y : 0;
 }
 
+/// @brief Return the width of the entry at `index`, or 0 if out of range.
 int64_t rt_objectlayer2d_get_width(void *layer, int64_t index) {
     rt_objectlayer2d_entry *entry = objectlayer2d_get_entry(layer, index);
     return entry ? entry->width : 0;
 }
 
+/// @brief Return the height of the entry at `index`, or 0 if out of range.
 int64_t rt_objectlayer2d_get_height(void *layer, int64_t index) {
     rt_objectlayer2d_entry *entry = objectlayer2d_get_entry(layer, index);
     return entry ? entry->height : 0;
 }
 
+/// @brief Return the application-defined type tag of the entry at `index`,
+///        or 0 if out of range.
 int64_t rt_objectlayer2d_get_type(void *layer, int64_t index) {
     rt_objectlayer2d_entry *entry = objectlayer2d_get_entry(layer, index);
     return entry ? entry->type : 0;
@@ -1615,16 +1938,24 @@ void *rt_autotile2d_new(void) {
     return rt_obj_new_i64(0, (int64_t)sizeof(rt_autotile2d_impl));
 }
 
+/// @brief Register the tile ID to use when the neighbour mask equals `mask`.
+/// @details Only the low 4 bits of `mask` are used (16 possible combinations).
 void rt_autotile2d_set_variant(void *autotile, int64_t mask, int64_t tile) {
     if (!autotile)
         return;
     ((rt_autotile2d_impl *)autotile)->variants[mask & 15] = tile;
 }
 
+/// @brief Look up the tile ID for a given 4-bit neighbour `mask`.
+/// @details Returns 0 if the autotile pointer is NULL or the variant was never
+///          set (variants default to 0 on allocation).
 int64_t rt_autotile2d_resolve(void *autotile, int64_t mask) {
     return autotile ? ((rt_autotile2d_impl *)autotile)->variants[mask & 15] : 0;
 }
 
+/// @brief Resolve `mask` to a tile ID and write it into the TileLayer2D cell at `(x, y)`.
+/// @details Combines `rt_autotile2d_resolve` + `rt_tilelayer2d_set` so game
+///          code can update a cell in one call without a temporary variable.
 void rt_autotile2d_apply(void *autotile, void *layer, int64_t x, int64_t y, int64_t mask) {
     if (!autotile || !layer)
         return;
@@ -1687,6 +2018,8 @@ static int32_t path2d_reserve(rt_path2d_impl *path, int64_t needed) {
     return 1;
 }
 
+/// @brief Append a point to the path, growing the backing buffer as needed.
+/// @param move  1 for a pen-up move (new subpath start); 0 for a pen-down line segment.
 static void path2d_add(void *path, int64_t x, int64_t y, int32_t move) {
     rt_path2d_impl *impl = (rt_path2d_impl *)path;
     if (!impl)
@@ -1701,23 +2034,31 @@ static void path2d_add(void *path, int64_t x, int64_t y, int32_t move) {
     point->move = move;
 }
 
+/// @brief Reset the path to empty without freeing the backing buffer.
 void rt_path2d_clear(void *path) {
     if (path)
         ((rt_path2d_impl *)path)->count = 0;
 }
 
+/// @brief Append a pen-up move point — starts a new subpath at `(x, y)`.
+/// @details No line is drawn from the previous point to this one; `DrawToPixels`
+///          skips across move-flagged points when iterating.
 void rt_path2d_move_to(void *path, int64_t x, int64_t y) {
     path2d_add(path, x, y, 1);
 }
 
+/// @brief Append a pen-down line point — a line will be drawn from the previous
+///        point to `(x, y)` during `DrawToPixels`.
 void rt_path2d_line_to(void *path, int64_t x, int64_t y) {
     path2d_add(path, x, y, 0);
 }
 
+/// @brief Return the number of points (both move and line) in the path.
 int64_t rt_path2d_count(void *path) {
     return path ? ((rt_path2d_impl *)path)->count : 0;
 }
 
+/// @brief Return the X coordinate of the point at `index`, or 0 if out of range.
 int64_t rt_path2d_get_x(void *path, int64_t index) {
     rt_path2d_impl *impl = (rt_path2d_impl *)path;
     if (!impl || index < 0 || index >= impl->count)
@@ -1725,6 +2066,7 @@ int64_t rt_path2d_get_x(void *path, int64_t index) {
     return impl->points[index].x;
 }
 
+/// @brief Return the Y coordinate of the point at `index`, or 0 if out of range.
 int64_t rt_path2d_get_y(void *path, int64_t index) {
     rt_path2d_impl *impl = (rt_path2d_impl *)path;
     if (!impl || index < 0 || index >= impl->count)
@@ -1774,24 +2116,34 @@ void *rt_shaperenderer2d_new(void) {
     return renderer;
 }
 
+/// @brief Set the stroke (outline) color; pass any negative value to disable stroke.
 void rt_shaperenderer2d_set_stroke(void *renderer, int64_t rgba) {
     if (renderer)
         ((rt_shaperenderer2d_impl *)renderer)->stroke = rgba;
 }
 
+/// @brief Set the fill color; pass any negative value to disable fill (stroke-only mode).
 void rt_shaperenderer2d_set_fill(void *renderer, int64_t rgba) {
     if (renderer)
         ((rt_shaperenderer2d_impl *)renderer)->fill = rgba;
 }
 
+/// @brief Draw a line from `(x0, y0)` to `(x1, y1)` using the current stroke color.
+/// @details Uses `rt_pixels_draw_line`; no-op if stroke is negative or any pointer is NULL.
 void rt_shaperenderer2d_line(
     void *renderer, void *pixels, int64_t x0, int64_t y0, int64_t x1, int64_t y1) {
     if (!renderer || !pixels)
         return;
-    rt_pixels_draw_line(
-        pixels, x0, y0, x1, y1, draw_rgb(((rt_shaperenderer2d_impl *)renderer)->stroke));
+    rt_shaperenderer2d_impl *impl = (rt_shaperenderer2d_impl *)renderer;
+    if (impl->stroke < 0)
+        return;
+    rt_pixels_draw_line(pixels, x0, y0, x1, y1, draw_rgb(impl->stroke));
 }
 
+/// @brief Draw a rectangle at `(x, y)` with `width × height`.
+/// @details Draws a filled solid rect first (if fill >= 0), then a 1-px
+///          outline frame on top (if stroke >= 0), so the stroke is always
+///          visible over the fill color.
 void rt_shaperenderer2d_rect(
     void *renderer, void *pixels, int64_t x, int64_t y, int64_t width, int64_t height) {
     if (!renderer || !pixels)
@@ -1803,6 +2155,9 @@ void rt_shaperenderer2d_rect(
         rt_pixels_draw_frame(pixels, x, y, width, height, draw_rgb(impl->stroke));
 }
 
+/// @brief Draw a circle at `(x, y)` with the given `radius`.
+/// @details Same fill-then-stroke ordering as `rt_shaperenderer2d_rect`.
+///          Fill uses `rt_pixels_draw_disc`; stroke uses `rt_pixels_draw_ring`.
 void rt_shaperenderer2d_circle(void *renderer, void *pixels, int64_t x, int64_t y, int64_t radius) {
     if (!renderer || !pixels)
         return;
@@ -1813,10 +2168,16 @@ void rt_shaperenderer2d_circle(void *renderer, void *pixels, int64_t x, int64_t 
         rt_pixels_draw_ring(pixels, x, y, radius, draw_rgb(impl->stroke));
 }
 
+/// @brief Render a Path2D into `pixels` using the current stroke color.
+/// @details Delegates entirely to `rt_path2d_draw_to_pixels`; fill is ignored
+///          for paths (paths have no closed-region fill support).
 void rt_shaperenderer2d_path(void *renderer, void *pixels, void *path) {
-    if (!renderer)
+    if (!renderer || !pixels || !path)
         return;
-    rt_path2d_draw_to_pixels(path, pixels, ((rt_shaperenderer2d_impl *)renderer)->stroke);
+    rt_shaperenderer2d_impl *impl = (rt_shaperenderer2d_impl *)renderer;
+    if (impl->stroke < 0)
+        return;
+    rt_path2d_draw_to_pixels(path, pixels, impl->stroke);
 }
 
 //=============================================================================
@@ -1845,6 +2206,10 @@ void *rt_textrenderer2d_new(void) {
     return renderer;
 }
 
+/// @brief Bind a BitmapFont to this renderer, retaining a reference.
+/// @details Releases any previously held font before storing the new one,
+///          following the standard retain-before-release slot discipline.
+///          Pass NULL to revert to the built-in Canvas font.
 void rt_textrenderer2d_set_font(void *renderer, void *font) {
     if (!renderer)
         return;
@@ -1854,34 +2219,45 @@ void rt_textrenderer2d_set_font(void *renderer, void *font) {
     impl->font = font;
 }
 
+/// @brief Set the integer pixel scale factor; clamped to [1, 64].
 void rt_textrenderer2d_set_scale(void *renderer, int64_t scale) {
     if (renderer)
         ((rt_textrenderer2d_impl *)renderer)->scale = clamp_i64(scale, 1, 64);
 }
 
+/// @brief Set the text color as a packed 0x00RRGGBB value (alpha bits are masked off).
 void rt_textrenderer2d_set_color(void *renderer, int64_t rgb) {
     if (renderer)
         ((rt_textrenderer2d_impl *)renderer)->color = rgb & 0x00FFFFFF;
 }
 
+/// @brief Measure the pixel width of `text` using the bound font and scale.
+/// @details Falls back to `rt_canvas_text_width` when no BitmapFont is bound.
+///          Width is multiplied by scale using saturating arithmetic to avoid overflow.
 int64_t rt_textrenderer2d_measure_width(void *renderer, rt_string text) {
     if (!renderer)
         return rt_canvas_text_width(text);
     rt_textrenderer2d_impl *impl = (rt_textrenderer2d_impl *)renderer;
     int64_t width =
         impl->font ? rt_bitmapfont_text_width(impl->font, text) : rt_canvas_text_width(text);
-    return width * impl->scale;
+    return saturating_mul_i64(width, impl->scale);
 }
 
+/// @brief Measure the pixel height of one line of text with the bound font and scale.
+/// @details The `text` argument is ignored — line height is font-uniform, not
+///          string-dependent. Falls back to `rt_canvas_text_height` when no font is bound.
 int64_t rt_textrenderer2d_measure_height(void *renderer, rt_string text) {
     (void)text;
     if (!renderer)
         return rt_canvas_text_height();
     rt_textrenderer2d_impl *impl = (rt_textrenderer2d_impl *)renderer;
     int64_t height = impl->font ? rt_bitmapfont_text_height(impl->font) : rt_canvas_text_height();
-    return height * impl->scale;
+    return saturating_mul_i64(height, impl->scale);
 }
 
+/// @brief Draw `text` at `(x, y)` into `canvas` using the bound font, scale, and color.
+/// @details If a BitmapFont is bound, uses `rt_canvas_text_font_scaled`; otherwise
+///          falls back to `rt_canvas_text_scaled` with the built-in Canvas font.
 void rt_textrenderer2d_draw(void *renderer, void *canvas, int64_t x, int64_t y, rt_string text) {
     if (!renderer || !canvas)
         return;
@@ -1921,10 +2297,12 @@ void *rt_sdffont_new(void *bitmap_font, int64_t spread) {
     return font;
 }
 
+/// @brief Return the underlying BitmapFont pointer (not retained — caller must not release it).
 void *rt_sdffont_get_bitmap_font(void *font) {
     return font ? ((rt_sdffont_impl *)font)->bitmap_font : NULL;
 }
 
+/// @brief Return the SDF spread value stored at construction time (range [1, 64]).
 int64_t rt_sdffont_get_spread(void *font) {
     return font ? ((rt_sdffont_impl *)font)->spread : 0;
 }
@@ -2088,15 +2466,21 @@ void *rt_debugdraw2d_new(int64_t capacity) {
     return debug_draw;
 }
 
+/// @brief Discard all queued commands without freeing the backing buffer.
 void rt_debugdraw2d_clear(void *debug_draw) {
     if (debug_draw)
         ((rt_debugdraw2d_impl *)debug_draw)->count = 0;
 }
 
+/// @brief Return the number of commands currently queued.
 int64_t rt_debugdraw2d_count(void *debug_draw) {
     return debug_draw ? ((rt_debugdraw2d_impl *)debug_draw)->count : 0;
 }
 
+/// @brief Ensure the debug-draw command buffer has capacity for at least @p needed entries.
+/// @details Grows geometrically from RT2D_INITIAL_CAP, doubling until capacity ≥ needed.
+///          Guards against integer overflow when computing the byte size for realloc.
+/// @return 1 on success; 0 on OOM or overflow.
 static int32_t debugdraw2d_reserve(rt_debugdraw2d_impl *debug_draw, int64_t needed) {
     if (!debug_draw || needed <= debug_draw->capacity)
         return 1;
@@ -2118,6 +2502,10 @@ static int32_t debugdraw2d_reserve(rt_debugdraw2d_impl *debug_draw, int64_t need
     return 1;
 }
 
+/// @brief Append a single typed debug-draw command (line, circle, rect, text, etc.) to the buffer.
+/// @details Calls debugdraw2d_reserve to grow if needed; traps on overflow. The @p type field
+///          selects the shape; @p value and @p rgba carry shape-specific extra data (e.g.,
+///          radius or packed color).
 static void debugdraw2d_add(rt_debugdraw2d_impl *debug_draw,
                             int32_t type,
                             int64_t x0,
@@ -2142,20 +2530,30 @@ static void debugdraw2d_add(rt_debugdraw2d_impl *debug_draw,
     cmd->color = rgba;
 }
 
+/// @brief Queue a line from `(x0, y0)` to `(x1, y1)` with `rgba` color (type=1).
 void rt_debugdraw2d_line(
     void *debug_draw, int64_t x0, int64_t y0, int64_t x1, int64_t y1, int64_t rgba) {
     debugdraw2d_add((rt_debugdraw2d_impl *)debug_draw, 1, x0, y0, x1, y1, 0, rgba);
 }
 
+/// @brief Queue a rectangle outline at `(x, y)` with `width × height` and `rgba` color (type=2).
 void rt_debugdraw2d_rect(
     void *debug_draw, int64_t x, int64_t y, int64_t width, int64_t height, int64_t rgba) {
     debugdraw2d_add((rt_debugdraw2d_impl *)debug_draw, 2, x, y, width, height, 0, rgba);
 }
 
+/// @brief Queue a circle outline at `(x, y)` with the given `radius` and `rgba` color (type=3).
 void rt_debugdraw2d_circle(void *debug_draw, int64_t x, int64_t y, int64_t radius, int64_t rgba) {
     debugdraw2d_add((rt_debugdraw2d_impl *)debug_draw, 3, x, y, 0, 0, radius, rgba);
 }
 
+/// @brief Flush all queued commands into `pixels`.
+/// @details Iterates the command list and dispatches to the appropriate
+///          `rt_pixels_draw_*` primitive by command type:
+///          - type 1 → `rt_pixels_draw_line`
+///          - type 2 → `rt_pixels_draw_frame` (outline rect)
+///          - type 3 → `rt_pixels_draw_ring` (outline circle)
+///          Unknown types are silently skipped.
 void rt_debugdraw2d_draw_to_pixels(void *debug_draw, void *pixels) {
     rt_debugdraw2d_impl *impl = (rt_debugdraw2d_impl *)debug_draw;
     if (!impl || !pixels)
@@ -2354,11 +2752,16 @@ static void transform2d_point(
     double ry = px * s + py * c;
 
     if (out_x)
-        *out_x = impl->x + impl->origin_x + round_double_to_i64(rx);
+        *out_x = saturating_add_i64(saturating_add_i64(impl->x, impl->origin_x),
+                                    round_double_to_i64(rx));
     if (out_y)
-        *out_y = impl->y + impl->origin_y + round_double_to_i64(ry);
+        *out_y = saturating_add_i64(saturating_add_i64(impl->y, impl->origin_y),
+                                    round_double_to_i64(ry));
 }
 
+/// @brief Allocate a Transform2D with identity state (pos=0, scale=100, rotation=0, origin=0).
+/// @details Scale is initialized to 100, which equals 1.0× in the fixed-point convention
+///          used throughout (100 == 1.0×, 200 == 2.0×, 50 == 0.5×).
 void *rt_transform2d_new(void) {
     rt_transform2d_impl *impl =
         (rt_transform2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_transform2d_impl));
@@ -2369,51 +2772,62 @@ void *rt_transform2d_new(void) {
     return impl;
 }
 
+/// @brief Return the X world-space position of the transform.
 int64_t rt_transform2d_get_x(void *transform) {
     return transform ? ((rt_transform2d_impl *)transform)->x : 0;
 }
 
+/// @brief Set the X world-space position of the transform.
 void rt_transform2d_set_x(void *transform, int64_t x) {
     if (transform)
         ((rt_transform2d_impl *)transform)->x = x;
 }
 
+/// @brief Return the Y world-space position of the transform.
 int64_t rt_transform2d_get_y(void *transform) {
     return transform ? ((rt_transform2d_impl *)transform)->y : 0;
 }
 
+/// @brief Set the Y world-space position of the transform.
 void rt_transform2d_set_y(void *transform, int64_t y) {
     if (transform)
         ((rt_transform2d_impl *)transform)->y = y;
 }
 
+/// @brief Return the X scale in fixed-point units (100 == 1.0×).
 int64_t rt_transform2d_get_scale_x(void *transform) {
     return transform ? ((rt_transform2d_impl *)transform)->scale_x : 100;
 }
 
+/// @brief Set the X scale; clamped to [1, 10000] (0.01× to 100×).
 void rt_transform2d_set_scale_x(void *transform, int64_t scale_x) {
     if (transform)
         ((rt_transform2d_impl *)transform)->scale_x = clamp_i64(scale_x, 1, 10000);
 }
 
+/// @brief Return the Y scale in fixed-point units (100 == 1.0×).
 int64_t rt_transform2d_get_scale_y(void *transform) {
     return transform ? ((rt_transform2d_impl *)transform)->scale_y : 100;
 }
 
+/// @brief Set the Y scale; clamped to [1, 10000].
 void rt_transform2d_set_scale_y(void *transform, int64_t scale_y) {
     if (transform)
         ((rt_transform2d_impl *)transform)->scale_y = clamp_i64(scale_y, 1, 10000);
 }
 
+/// @brief Return the rotation in integer degrees (no clamping — can be any multiple of 1°).
 int64_t rt_transform2d_get_rotation(void *transform) {
     return transform ? ((rt_transform2d_impl *)transform)->rotation : 0;
 }
 
+/// @brief Set the rotation in integer degrees.
 void rt_transform2d_set_rotation(void *transform, int64_t degrees) {
     if (transform)
         ((rt_transform2d_impl *)transform)->rotation = degrees;
 }
 
+/// @brief Set both X and Y position in one call.
 void rt_transform2d_set_position(void *transform, int64_t x, int64_t y) {
     if (!transform)
         return;
@@ -2422,11 +2836,13 @@ void rt_transform2d_set_position(void *transform, int64_t x, int64_t y) {
     impl->y = y;
 }
 
+/// @brief Set X and Y scale in one call (each clamped to [1, 10000]).
 void rt_transform2d_set_scale(void *transform, int64_t scale_x, int64_t scale_y) {
     rt_transform2d_set_scale_x(transform, scale_x);
     rt_transform2d_set_scale_y(transform, scale_y);
 }
 
+/// @brief Set the pivot / rotation origin as an offset from the transform position.
 void rt_transform2d_set_origin(void *transform, int64_t x, int64_t y) {
     if (!transform)
         return;
@@ -2435,6 +2851,7 @@ void rt_transform2d_set_origin(void *transform, int64_t x, int64_t y) {
     impl->origin_y = y;
 }
 
+/// @brief Translate (move) the transform by `(dx, dy)` using saturating addition.
 void rt_transform2d_translate(void *transform, int64_t dx, int64_t dy) {
     if (!transform)
         return;
@@ -2443,18 +2860,23 @@ void rt_transform2d_translate(void *transform, int64_t dx, int64_t dy) {
     impl->y = saturating_add_i64(impl->y, dy);
 }
 
+/// @brief Return the transformed X coordinate for input point `(x, y)`.
+/// @details Delegates to `transform2d_point`; useful when callers only need the X component.
 int64_t rt_transform2d_transform_x(void *transform, int64_t x, int64_t y) {
     int64_t out_x = x;
     transform2d_point((rt_transform2d_impl *)transform, x, y, &out_x, NULL);
     return out_x;
 }
 
+/// @brief Return the transformed Y coordinate for input point `(x, y)`.
+/// @details Delegates to `transform2d_point`; useful when callers only need the Y component.
 int64_t rt_transform2d_transform_y(void *transform, int64_t x, int64_t y) {
     int64_t out_y = y;
     transform2d_point((rt_transform2d_impl *)transform, x, y, NULL, &out_y);
     return out_y;
 }
 
+/// @brief Allocate a Sampler2D with default state (nearest filter, clamp wrap).
 void *rt_sampler2d_new(void) {
     rt_sampler2d_impl *impl =
         (rt_sampler2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sampler2d_impl));
@@ -2465,6 +2887,7 @@ void *rt_sampler2d_new(void) {
     return impl;
 }
 
+/// @brief Set the filter mode; unrecognised values fall back to NEAREST.
 void rt_sampler2d_set_filter(void *sampler, int64_t filter) {
     if (sampler)
         ((rt_sampler2d_impl *)sampler)->filter = filter == RT_GRAPHICS2D_FILTER_LINEAR
@@ -2472,10 +2895,12 @@ void rt_sampler2d_set_filter(void *sampler, int64_t filter) {
                                                      : RT_GRAPHICS2D_FILTER_NEAREST;
 }
 
+/// @brief Return the current filter mode (NEAREST or LINEAR).
 int64_t rt_sampler2d_get_filter(void *sampler) {
     return sampler ? ((rt_sampler2d_impl *)sampler)->filter : RT_GRAPHICS2D_FILTER_NEAREST;
 }
 
+/// @brief Set the wrap mode; unrecognised values fall back to CLAMP.
 void rt_sampler2d_set_wrap(void *sampler, int64_t wrap) {
     if (sampler)
         ((rt_sampler2d_impl *)sampler)->wrap = wrap == RT_GRAPHICS2D_WRAP_REPEAT
@@ -2483,10 +2908,14 @@ void rt_sampler2d_set_wrap(void *sampler, int64_t wrap) {
                                                    : RT_GRAPHICS2D_WRAP_CLAMP;
 }
 
+/// @brief Return the current wrap mode (CLAMP or REPEAT).
 int64_t rt_sampler2d_get_wrap(void *sampler) {
     return sampler ? ((rt_sampler2d_impl *)sampler)->wrap : RT_GRAPHICS2D_WRAP_CLAMP;
 }
 
+/// @brief Push the sampler's filter and wrap settings into a Texture2D.
+/// @details Convenience combinator — equivalent to calling `SetFilter` + `SetWrap`
+///          on the texture directly, but expressed through the sampler's parameters.
 void rt_sampler2d_apply_to_texture(void *sampler, void *texture) {
     if (!sampler || !texture)
         return;
@@ -2494,6 +2923,8 @@ void rt_sampler2d_apply_to_texture(void *sampler, void *texture) {
     rt_texture2d_set_wrap(texture, rt_sampler2d_get_wrap(sampler));
 }
 
+/// @brief Allocate a BlendState2D with default state (alpha blend, no tint, full opacity).
+/// @details `tint` defaults to -1 meaning "no tint override"; `alpha` defaults to 255.
 void *rt_blendstate2d_new(void) {
     rt_blendstate2d_impl *impl =
         (rt_blendstate2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_blendstate2d_impl));
@@ -2505,33 +2936,42 @@ void *rt_blendstate2d_new(void) {
     return impl;
 }
 
+/// @brief Set the blend mode; clamped to [0, 2] (NONE / ALPHA / ADDITIVE).
 void rt_blendstate2d_set_blend_mode(void *state, int64_t blend_mode) {
     if (state)
         ((rt_blendstate2d_impl *)state)->blend_mode = clamp_i64(blend_mode, 0, 2);
 }
 
+/// @brief Return the current blend mode.
 int64_t rt_blendstate2d_get_blend_mode(void *state) {
     return state ? ((rt_blendstate2d_impl *)state)->blend_mode : RT_GRAPHICS2D_BLEND_ALPHA;
 }
 
+/// @brief Set the tint as 0x00RRGGBB; pass a negative value to disable tint.
 void rt_blendstate2d_set_tint(void *state, int64_t rgb) {
     if (state)
         ((rt_blendstate2d_impl *)state)->tint = rgb < 0 ? -1 : (rgb & 0x00FFFFFF);
 }
 
+/// @brief Return the tint color (0x00RRGGBB), or -1 if no tint is set.
 int64_t rt_blendstate2d_get_tint(void *state) {
     return state ? ((rt_blendstate2d_impl *)state)->tint : -1;
 }
 
+/// @brief Set the global alpha in [0, 255]; values are clamped.
 void rt_blendstate2d_set_alpha(void *state, int64_t alpha) {
     if (state)
         ((rt_blendstate2d_impl *)state)->alpha = clamp_u8_i64(alpha);
 }
 
+/// @brief Return the current global alpha in [0, 255].
 int64_t rt_blendstate2d_get_alpha(void *state) {
     return state ? ((rt_blendstate2d_impl *)state)->alpha : 255;
 }
 
+/// @brief Push blend mode, alpha, and tint from this state into a Renderer2D.
+/// @details Equivalent to three separate `SetBlendMode` / `SetAlpha` / `SetTint`
+///          calls, combined into a single apply step.
 void rt_blendstate2d_apply_to_renderer(void *state, void *renderer) {
     if (!state || !renderer)
         return;
@@ -2540,6 +2980,7 @@ void rt_blendstate2d_apply_to_renderer(void *state, void *renderer) {
     rt_renderer2d_set_tint(renderer, rt_blendstate2d_get_tint(state));
 }
 
+/// @brief GC finalizer — releases retained references to material, sampler, and blend state.
 static void spriterenderer2d_finalize(void *obj) {
     rt_spriterenderer2d_impl *impl = (rt_spriterenderer2d_impl *)obj;
     release_ref_slot(&impl->material);
@@ -2547,6 +2988,7 @@ static void spriterenderer2d_finalize(void *obj) {
     release_ref_slot(&impl->blend_state);
 }
 
+/// @brief Allocate a SpriteRenderer2D with no material, sampler, or blend state bound.
 void *rt_spriterenderer2d_new(void) {
     rt_spriterenderer2d_impl *impl =
         (rt_spriterenderer2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_spriterenderer2d_impl));
@@ -2556,29 +2998,44 @@ void *rt_spriterenderer2d_new(void) {
     return impl;
 }
 
+/// @brief Retain-before-release helper for all three sprite-renderer reference slots.
 static void spriterenderer2d_set_ref(void **slot, void *value) {
     retain_ref(value);
     release_ref_slot(slot);
     *slot = value;
 }
 
+/// @brief Bind a Material2D to this renderer, retaining a reference.
+/// @details When set, the material's tint, alpha, and blend-mode override the
+///          renderer state each time `DrawPixels` or `DrawTexture` is called.
 void rt_spriterenderer2d_set_material(void *sprite_renderer, void *material) {
     if (sprite_renderer)
         spriterenderer2d_set_ref(&((rt_spriterenderer2d_impl *)sprite_renderer)->material,
                                  material);
 }
 
+/// @brief Bind a Sampler2D to this renderer, retaining a reference.
+/// @details When set, the sampler's filter and wrap settings override the texture's
+///          own settings during `DrawTexture`.
 void rt_spriterenderer2d_set_sampler(void *sprite_renderer, void *sampler) {
     if (sprite_renderer)
         spriterenderer2d_set_ref(&((rt_spriterenderer2d_impl *)sprite_renderer)->sampler, sampler);
 }
 
+/// @brief Bind a BlendState2D to this renderer, retaining a reference.
+/// @details BlendState overrides are applied *after* material overrides, so the
+///          blend state wins if both are bound and specify the same property.
 void rt_spriterenderer2d_set_blend_state(void *sprite_renderer, void *blend_state) {
     if (sprite_renderer)
         spriterenderer2d_set_ref(&((rt_spriterenderer2d_impl *)sprite_renderer)->blend_state,
                                  blend_state);
 }
 
+/// @brief Push material and blend-state overrides from the sprite renderer onto the renderer.
+/// @details When a material is assigned, its tint, alpha, and blend mode are forwarded to
+///          @p renderer. An explicit blend state then layers on top via
+///          `rt_blendstate2d_apply_to_renderer`. Called before every draw operation so the
+///          renderer reflects the sprite renderer's current configuration.
 static void spriterenderer2d_apply_state(rt_spriterenderer2d_impl *impl, void *renderer) {
     if (!impl || !renderer)
         return;
@@ -2591,21 +3048,44 @@ static void spriterenderer2d_apply_state(rt_spriterenderer2d_impl *impl, void *r
         rt_blendstate2d_apply_to_renderer(impl->blend_state, renderer);
 }
 
+/// @brief Apply state and draw a Pixels buffer into the Renderer2D at `(x, y)`.
+/// @details Pushes material/blend-state overrides onto the renderer, then issues
+///          `rt_renderer2d_draw_pixels`. The renderer's prior tint/alpha/blend-mode
+///          are replaced for this draw and remain changed until the caller resets them.
 void rt_spriterenderer2d_draw_pixels(
     void *sprite_renderer, void *renderer, void *pixels, int64_t x, int64_t y) {
     spriterenderer2d_apply_state((rt_spriterenderer2d_impl *)sprite_renderer, renderer);
     rt_renderer2d_draw_pixels(renderer, pixels, x, y);
 }
 
+/// @brief Apply state and draw a Texture2D into the Renderer2D at `(x, y)`.
+/// @details Same state-push as `DrawPixels`, but also resolves filter/wrap from
+///          the bound sampler (if any) before queuing the texture draw command.
 void rt_spriterenderer2d_draw_texture(
     void *sprite_renderer, void *renderer, void *texture, int64_t x, int64_t y) {
     rt_spriterenderer2d_impl *impl = (rt_spriterenderer2d_impl *)sprite_renderer;
-    if (impl && impl->sampler)
-        rt_sampler2d_apply_to_texture(impl->sampler, texture);
     spriterenderer2d_apply_state(impl, renderer);
-    rt_renderer2d_draw_texture(renderer, texture, x, y);
+    int64_t filter = impl && impl->sampler ? rt_sampler2d_get_filter(impl->sampler)
+                                           : rt_texture2d_get_filter(texture);
+    int64_t wrap =
+        impl && impl->sampler ? rt_sampler2d_get_wrap(impl->sampler) : rt_texture2d_get_wrap(texture);
+    renderer2d_queue(renderer2d_checked(renderer),
+                     1,
+                     texture,
+                     x,
+                     y,
+                     0,
+                     0,
+                     rt_texture2d_width(texture),
+                     rt_texture2d_height(texture),
+                     filter,
+                     wrap);
 }
 
+/// @brief Allocate a TileChunkCache2D describing chunk dimensions for dirty-region tracking.
+/// @details Chunk dimensions are sanitized via `normalized_dim`. Game code that modifies
+///          tiles in a chunk calls `MarkDirty`; a renderer that caches per-chunk textures
+///          checks `GetDirtyCount` and rebuilds stale chunks before drawing.
 void *rt_tilechunkcache2d_new(int64_t chunk_width, int64_t chunk_height) {
     rt_tilechunkcache2d_impl *impl =
         (rt_tilechunkcache2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tilechunkcache2d_impl));
@@ -2616,33 +3096,43 @@ void *rt_tilechunkcache2d_new(int64_t chunk_width, int64_t chunk_height) {
     return impl;
 }
 
+/// @brief Return the chunk width in tiles.
 int64_t rt_tilechunkcache2d_get_chunk_width(void *cache) {
     return cache ? ((rt_tilechunkcache2d_impl *)cache)->chunk_width : 0;
 }
 
+/// @brief Return the chunk height in tiles.
 int64_t rt_tilechunkcache2d_get_chunk_height(void *cache) {
     return cache ? ((rt_tilechunkcache2d_impl *)cache)->chunk_height : 0;
 }
 
+/// @brief Increment the dirty counter — signals that at least one chunk needs rebuild.
 void rt_tilechunkcache2d_mark_dirty(void *cache) {
-    if (cache)
-        ((rt_tilechunkcache2d_impl *)cache)->dirty_count++;
+    if (!cache)
+        return;
+    rt_tilechunkcache2d_impl *impl = (rt_tilechunkcache2d_impl *)cache;
+    if (impl->dirty_count < INT64_MAX)
+        impl->dirty_count++;
 }
 
+/// @brief Reset the dirty counter to zero after the renderer has processed all dirty chunks.
 void rt_tilechunkcache2d_clear_dirty(void *cache) {
     if (cache)
         ((rt_tilechunkcache2d_impl *)cache)->dirty_count = 0;
 }
 
+/// @brief Return the number of pending dirty-chunk notifications.
 int64_t rt_tilechunkcache2d_get_dirty_count(void *cache) {
     return cache ? ((rt_tilechunkcache2d_impl *)cache)->dirty_count : 0;
 }
 
+/// @brief GC finalizer — releases the retained TileChunkCache2D reference.
 static void tilemaprenderer2d_finalize(void *obj) {
     rt_tilemaprenderer2d_impl *impl = (rt_tilemaprenderer2d_impl *)obj;
     release_ref_slot(&impl->cache);
 }
 
+/// @brief Allocate a TilemapRenderer2D with no chunk cache bound and zero draw count.
 void *rt_tilemaprenderer2d_new(void) {
     rt_tilemaprenderer2d_impl *impl =
         (rt_tilemaprenderer2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tilemaprenderer2d_impl));
@@ -2652,15 +3142,19 @@ void *rt_tilemaprenderer2d_new(void) {
     return impl;
 }
 
+/// @brief Bind a TileChunkCache2D to this renderer, retaining a reference.
 void rt_tilemaprenderer2d_set_chunk_cache(void *renderer, void *cache) {
     if (renderer)
         spriterenderer2d_set_ref(&((rt_tilemaprenderer2d_impl *)renderer)->cache, cache);
 }
 
+/// @brief Return the total number of draw calls issued since construction (or last reset).
 int64_t rt_tilemaprenderer2d_get_draw_count(void *renderer) {
     return renderer ? ((rt_tilemaprenderer2d_impl *)renderer)->draw_count : 0;
 }
 
+/// @brief Draw the entire tilemap into `canvas` offset by `(offset_x, offset_y)`.
+/// @details Delegates to `rt_tilemap_draw` and increments the internal draw counter.
 void rt_tilemaprenderer2d_draw(
     void *renderer, void *tilemap, void *canvas, int64_t offset_x, int64_t offset_y) {
     if (!renderer || !tilemap || !canvas)
@@ -2669,6 +3163,10 @@ void rt_tilemaprenderer2d_draw(
     ((rt_tilemaprenderer2d_impl *)renderer)->draw_count++;
 }
 
+/// @brief Draw a viewport-clipped region of the tilemap into `canvas`.
+/// @details Delegates to `rt_tilemap_draw_region`, culling tiles outside the
+///          `(view_x, view_y, view_w, view_h)` rectangle before drawing.
+///          Increments the draw counter regardless.
 void rt_tilemaprenderer2d_draw_region(void *renderer,
                                       void *tilemap,
                                       void *canvas,
@@ -2706,28 +3204,36 @@ void *rt_animationclip2d_new(int64_t start_frame,
     return impl;
 }
 
+/// @brief Return the first sprite frame index this clip plays from.
 int64_t rt_animationclip2d_get_start_frame(void *clip) {
     return clip ? ((rt_animationclip2d_impl *)clip)->start_frame : 0;
 }
 
+/// @brief Return the number of sprite frames in this clip.
 int64_t rt_animationclip2d_get_frame_count(void *clip) {
     return clip ? ((rt_animationclip2d_impl *)clip)->frame_count : 0;
 }
 
+/// @brief Return the per-frame delay in milliseconds.
 int64_t rt_animationclip2d_get_frame_delay_ms(void *clip) {
     return clip ? ((rt_animationclip2d_impl *)clip)->frame_delay_ms : 0;
 }
 
+/// @brief Return non-zero if the clip loops back to its first frame after the last.
 int64_t rt_animationclip2d_get_loop(void *clip) {
     return clip ? ((rt_animationclip2d_impl *)clip)->loop : 0;
 }
 
+/// @brief GC finalizer — releases retained references to the sprite and animation clip.
 static void animatedsprite2d_finalize(void *obj) {
     rt_animatedsprite2d_impl *impl = (rt_animatedsprite2d_impl *)obj;
     release_ref_slot(&impl->sprite);
     release_ref_slot(&impl->clip);
 }
 
+/// @brief Allocate an AnimatedSprite2D wrapping `sprite`, ready to play clips.
+/// @details Retains a reference to `sprite`. Starts with `playing = 1` so the
+///          first `Update` call after `SetClip` immediately begins advancing frames.
 void *rt_animatedsprite2d_new(void *sprite) {
     rt_animatedsprite2d_impl *impl =
         (rt_animatedsprite2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_animatedsprite2d_impl));
@@ -2740,6 +3246,10 @@ void *rt_animatedsprite2d_new(void *sprite) {
     return impl;
 }
 
+/// @brief Bind an AnimationClip2D and reset elapsed time and frame counter.
+/// @details Calling `SetClip` with a non-NULL clip immediately seeks the bound
+///          sprite to `clip->start_frame`, so the first drawn frame is always
+///          consistent even before the first `Update`. Passing NULL stops playback.
 void rt_animatedsprite2d_set_clip(void *animated_sprite, void *clip) {
     if (!animated_sprite)
         return;
@@ -2752,11 +3262,13 @@ void rt_animatedsprite2d_set_clip(void *animated_sprite, void *clip) {
         rt_sprite_set_frame(impl->sprite, rt_animationclip2d_get_start_frame(clip));
 }
 
+/// @brief Resume playback after `Stop` (or after a non-looping clip finished).
 void rt_animatedsprite2d_play(void *animated_sprite) {
     if (animated_sprite)
         ((rt_animatedsprite2d_impl *)animated_sprite)->playing = 1;
 }
 
+/// @brief Pause playback; the current frame remains visible and elapsed time is preserved.
 void rt_animatedsprite2d_stop(void *animated_sprite) {
     if (animated_sprite)
         ((rt_animatedsprite2d_impl *)animated_sprite)->playing = 0;
@@ -2785,37 +3297,71 @@ void rt_animatedsprite2d_update(void *animated_sprite, int64_t delta_ms) {
     if (!impl || !impl->sprite || !impl->clip || !impl->playing)
         return;
     rt_animationclip2d_impl *clip = (rt_animationclip2d_impl *)impl->clip;
+    int64_t sprite_frames = rt_sprite_get_frame_count(impl->sprite);
+    if (sprite_frames <= 0 || clip->start_frame >= sprite_frames) {
+        impl->playing = 0;
+        impl->frame = 0;
+        impl->elapsed_ms = 0;
+        return;
+    }
+    int64_t effective_count = clip->frame_count;
+    int64_t available = sprite_frames - clip->start_frame;
+    if (effective_count > available)
+        effective_count = available;
+    if (effective_count <= 0) {
+        impl->playing = 0;
+        impl->frame = 0;
+        impl->elapsed_ms = 0;
+        return;
+    }
+    if (impl->frame < 0)
+        impl->frame = 0;
+    if (impl->frame >= effective_count)
+        impl->frame = clip->loop ? impl->frame % effective_count : effective_count - 1;
     if (delta_ms < 0)
         delta_ms = 0;
-    impl->elapsed_ms += delta_ms;
-    while (impl->elapsed_ms >= clip->frame_delay_ms && impl->playing) {
-        impl->elapsed_ms -= clip->frame_delay_ms;
-        impl->frame++;
-        if (impl->frame >= clip->frame_count) {
-            if (clip->loop)
-                impl->frame = 0;
-            else {
-                impl->frame = clip->frame_count - 1;
+    if (delta_ms > INT64_MAX - impl->elapsed_ms)
+        impl->elapsed_ms = INT64_MAX;
+    else
+        impl->elapsed_ms += delta_ms;
+
+    if (impl->elapsed_ms >= clip->frame_delay_ms) {
+        int64_t steps = impl->elapsed_ms / clip->frame_delay_ms;
+        impl->elapsed_ms %= clip->frame_delay_ms;
+        if (clip->loop) {
+            steps %= effective_count;
+            impl->frame = (impl->frame + steps) % effective_count;
+        } else {
+            if (steps >= effective_count - impl->frame) {
+                impl->frame = effective_count - 1;
                 impl->playing = 0;
+                impl->elapsed_ms = 0;
+            } else {
+                impl->frame += steps;
             }
         }
     }
-    rt_sprite_set_frame(impl->sprite, clip->start_frame + impl->frame);
+    if (clip->start_frame <= INT64_MAX - impl->frame)
+        rt_sprite_set_frame(impl->sprite, clip->start_frame + impl->frame);
 }
 
+/// @brief Return the current local frame index within the clip (not the sprite sheet index).
 int64_t rt_animatedsprite2d_get_frame(void *animated_sprite) {
     return animated_sprite ? ((rt_animatedsprite2d_impl *)animated_sprite)->frame : 0;
 }
 
+/// @brief Return non-zero if the animation is currently playing.
 int64_t rt_animatedsprite2d_is_playing(void *animated_sprite) {
     return animated_sprite ? ((rt_animatedsprite2d_impl *)animated_sprite)->playing : 0;
 }
 
+/// @brief GC finalizer — releases the retained BitmapFont reference.
 static void textlayout2d_finalize(void *obj) {
     rt_textlayout2d_impl *impl = (rt_textlayout2d_impl *)obj;
     release_ref_slot(&impl->font);
 }
 
+/// @brief Allocate a TextLayout2D with defaults (scale=1, white, no wrap, left-align).
 void *rt_textlayout2d_new(void) {
     rt_textlayout2d_impl *impl =
         (rt_textlayout2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_textlayout2d_impl));
@@ -2827,38 +3373,49 @@ void *rt_textlayout2d_new(void) {
     return impl;
 }
 
+/// @brief Bind a BitmapFont, retaining a reference.
 void rt_textlayout2d_set_font(void *layout, void *font) {
     if (layout)
         spriterenderer2d_set_ref(&((rt_textlayout2d_impl *)layout)->font, font);
 }
 
+/// @brief Set the integer pixel scale; clamped to [1, 64].
 void rt_textlayout2d_set_scale(void *layout, int64_t scale) {
     if (layout)
         ((rt_textlayout2d_impl *)layout)->scale = clamp_i64(scale, 1, 64);
 }
 
+/// @brief Set the wrap width in pixels; 0 means no wrapping.
 void rt_textlayout2d_set_wrap_width(void *layout, int64_t width) {
     if (layout)
         ((rt_textlayout2d_impl *)layout)->wrap_width = width < 0 ? 0 : width;
 }
 
+/// @brief Set text alignment: 0=left, 1=center, 2=right; clamped to [0, 2].
 void rt_textlayout2d_set_alignment(void *layout, int64_t alignment) {
     if (layout)
         ((rt_textlayout2d_impl *)layout)->alignment = clamp_i64(alignment, 0, 2);
 }
 
+/// @brief Set the text color as 0x00RRGGBB (alpha bits are masked off).
 void rt_textlayout2d_set_color(void *layout, int64_t rgb) {
     if (layout)
         ((rt_textlayout2d_impl *)layout)->color = rgb & 0x00FFFFFF;
 }
 
+/// @brief Compute the raw pixel width of @p text using the layout's font and scale, without wrap clamping.
+/// @details Uses the layout's bitmap font if set; falls back to the canvas default font.
+///          Width is multiplied by the layout's scale factor with saturation.
 static int64_t textlayout2d_raw_width(rt_textlayout2d_impl *impl, rt_string text) {
     int64_t width = impl && impl->font ? rt_bitmapfont_text_width(impl->font, text)
                                        : rt_canvas_text_width(text);
     int64_t scale = impl ? impl->scale : 1;
-    return width * scale;
+    return saturating_mul_i64(width, scale);
 }
 
+/// @brief Measure the display width of `text` respecting the wrap width limit.
+/// @details If wrapping is enabled and the raw pixel width exceeds `wrap_width`,
+///          returns `wrap_width`; otherwise returns the unclipped pixel width.
 int64_t rt_textlayout2d_measure_width(void *layout, rt_string text) {
     rt_textlayout2d_impl *impl = (rt_textlayout2d_impl *)layout;
     int64_t width = textlayout2d_raw_width(impl, text);
@@ -2867,6 +3424,10 @@ int64_t rt_textlayout2d_measure_width(void *layout, rt_string text) {
     return width;
 }
 
+/// @brief Measure the total pixel height of `text`, accounting for line-wrapping.
+/// @details Computes the number of wrapped lines as `ceil(raw_width / wrap_width)`
+///          and multiplies by the scaled line height. Returns one line-height when
+///          wrapping is off or the text fits on a single line.
 int64_t rt_textlayout2d_measure_height(void *layout, rt_string text) {
     rt_textlayout2d_impl *impl = (rt_textlayout2d_impl *)layout;
     int64_t line_height =
@@ -2875,13 +3436,15 @@ int64_t rt_textlayout2d_measure_height(void *layout, rt_string text) {
     int64_t lines = 1;
     if (impl && impl->wrap_width > 0) {
         int64_t width = textlayout2d_raw_width(impl, text);
-        lines = (width + impl->wrap_width - 1) / impl->wrap_width;
+        int64_t numerator = saturating_add_i64(width, impl->wrap_width - 1);
+        lines = numerator / impl->wrap_width;
         if (lines < 1)
             lines = 1;
     }
-    return line_height * scale * lines;
+    return saturating_mul_i64(saturating_mul_i64(line_height, scale), lines);
 }
 
+/// @brief GC finalizer — releases retained references to source, target, and shader.
 static void renderpass2d_finalize(void *obj) {
     rt_renderpass2d_impl *impl = (rt_renderpass2d_impl *)obj;
     release_ref_slot(&impl->source);
@@ -2889,6 +3452,10 @@ static void renderpass2d_finalize(void *obj) {
     release_ref_slot(&impl->shader);
 }
 
+/// @brief Allocate a RenderPass2D that reads from `source` and writes to `target`.
+/// @details Both references are retained. The pass starts enabled. A Shader2D
+///          can be attached later via `SetShader`; without one, source is
+///          cloned directly into target (pixel-perfect copy).
 void *rt_renderpass2d_new(void *source, void *target) {
     rt_renderpass2d_impl *impl =
         (rt_renderpass2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_renderpass2d_impl));
@@ -2903,33 +3470,44 @@ void *rt_renderpass2d_new(void *source, void *target) {
     return impl;
 }
 
+/// @brief Replace the source RenderTarget2D, retaining a reference to the new one.
 void rt_renderpass2d_set_source(void *pass, void *source) {
     if (pass)
         spriterenderer2d_set_ref(&((rt_renderpass2d_impl *)pass)->source, source);
 }
 
+/// @brief Replace the target RenderTarget2D, retaining a reference to the new one.
 void rt_renderpass2d_set_target(void *pass, void *target) {
     if (pass)
         spriterenderer2d_set_ref(&((rt_renderpass2d_impl *)pass)->target, target);
 }
 
+/// @brief Bind a Shader2D for this pass, retaining a reference.
 void rt_renderpass2d_set_shader(void *pass, void *shader) {
     if (pass)
         spriterenderer2d_set_ref(&((rt_renderpass2d_impl *)pass)->shader, shader);
 }
 
+/// @brief Enable or disable this pass (disabled passes are skipped by `Execute`).
 void rt_renderpass2d_set_enabled(void *pass, int64_t enabled) {
     if (pass)
         ((rt_renderpass2d_impl *)pass)->enabled = enabled != 0;
 }
 
+/// @brief Return non-zero if this pass is currently enabled.
 int64_t rt_renderpass2d_get_enabled(void *pass) {
     return pass ? ((rt_renderpass2d_impl *)pass)->enabled : 0;
 }
 
+/// @brief Execute this pass: apply the optional shader and blit the result to target.
+/// @details No-op if disabled, or if source/target are NULL or not valid RenderTarget2Ds.
+///          If a Shader2D is bound, applies it via `rt_shader2d_apply`; otherwise
+///          clones the source pixels directly. The target is cleared before writing.
 void rt_renderpass2d_execute(void *pass) {
     rt_renderpass2d_impl *impl = (rt_renderpass2d_impl *)pass;
     if (!impl || !impl->enabled || !impl->source || !impl->target)
+        return;
+    if (!rendertarget2d_checked(impl->source) || !rendertarget2d_checked(impl->target))
         return;
     void *source_pixels = rt_rendertarget2d_get_pixels(impl->source);
     if (!source_pixels)
@@ -2943,6 +3521,7 @@ void rt_renderpass2d_execute(void *pass) {
     release_ref_slot(&processed);
 }
 
+/// @brief GC finalizer — releases all retained pass references and frees the passes array.
 static void rendergraph2d_finalize(void *obj) {
     rt_rendergraph2d_impl *impl = (rt_rendergraph2d_impl *)obj;
     if (!impl)
@@ -2952,6 +3531,7 @@ static void rendergraph2d_finalize(void *obj) {
     free(impl->passes);
 }
 
+/// @brief Allocate a RenderGraph2D with the given initial pass-array capacity.
 void *rt_rendergraph2d_new(int64_t capacity) {
     rt_rendergraph2d_impl *impl =
         (rt_rendergraph2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_rendergraph2d_impl));
@@ -2977,7 +3557,7 @@ void *rt_rendergraph2d_new(int64_t capacity) {
 static int32_t rendergraph2d_reserve(rt_rendergraph2d_impl *impl, int64_t needed) {
     if (!impl || needed <= impl->capacity)
         return 1;
-    int64_t cap = impl->capacity;
+    int64_t cap = impl->capacity > 0 ? impl->capacity : RT2D_INITIAL_CAP;
     while (cap < needed) {
         if (cap > INT64_MAX / 2)
             return 0;
@@ -2994,6 +3574,8 @@ static int32_t rendergraph2d_reserve(rt_rendergraph2d_impl *impl, int64_t needed
     return 1;
 }
 
+/// @brief Append a RenderPass2D to the graph, retaining a reference to it.
+/// @details Grows the backing array if needed. Traps on capacity overflow.
 void rt_rendergraph2d_add_pass(void *graph, void *pass) {
     rt_rendergraph2d_impl *impl = (rt_rendergraph2d_impl *)graph;
     if (!impl || !pass)
@@ -3006,6 +3588,7 @@ void rt_rendergraph2d_add_pass(void *graph, void *pass) {
     impl->passes[impl->count++] = pass;
 }
 
+/// @brief Remove all passes from the graph, releasing their retained references.
 void rt_rendergraph2d_clear(void *graph) {
     rt_rendergraph2d_impl *impl = (rt_rendergraph2d_impl *)graph;
     if (!impl)
@@ -3015,10 +3598,14 @@ void rt_rendergraph2d_clear(void *graph) {
     impl->count = 0;
 }
 
+/// @brief Return the number of passes currently in the graph.
 int64_t rt_rendergraph2d_get_count(void *graph) {
     return graph ? ((rt_rendergraph2d_impl *)graph)->count : 0;
 }
 
+/// @brief Execute every pass in insertion order.
+/// @details Each pass is executed unconditionally here — individual passes skip
+///          themselves via their `enabled` flag inside `rt_renderpass2d_execute`.
 void rt_rendergraph2d_execute(void *graph) {
     rt_rendergraph2d_impl *impl = (rt_rendergraph2d_impl *)graph;
     if (!impl)
@@ -3027,11 +3614,16 @@ void rt_rendergraph2d_execute(void *graph) {
         rt_renderpass2d_execute(impl->passes[i]);
 }
 
+/// @brief GC finalizer — frees the packed bit grid.
 static void collisionmask2d_finalize(void *obj) {
     rt_collisionmask2d_impl *impl = (rt_collisionmask2d_impl *)obj;
     free(impl->bits);
 }
 
+/// @brief Allocate a CollisionMask2D with all cells initially clear (solid=0).
+/// @details `checked_count` guards against dimension overflow; traps with a message
+///          if `width * height` overflows. One byte per cell — not a true bit-pack,
+///          but faster to read with no bit-shift math.
 void *rt_collisionmask2d_new(int64_t width, int64_t height) {
     int64_t count = 0;
     if (!checked_count(width, height, 1, &count)) {
@@ -3054,6 +3646,10 @@ void *rt_collisionmask2d_new(int64_t width, int64_t height) {
     return impl;
 }
 
+/// @brief Build a CollisionMask2D by classifying each pixel as solid/empty by alpha.
+/// @details Pixels with alpha >= `alpha_threshold` (clamped to [0, 255]) are marked
+///          solid. Useful for creating a per-pixel collision shape from a sprite's
+///          alpha channel without any manual tilemap authoring.
 void *rt_collisionmask2d_from_pixels(void *pixels, int64_t alpha_threshold) {
     if (!pixels)
         return NULL;
@@ -3072,18 +3668,22 @@ void *rt_collisionmask2d_from_pixels(void *pixels, int64_t alpha_threshold) {
     return mask;
 }
 
+/// @brief Return the width of the mask in cells.
 int64_t rt_collisionmask2d_get_width(void *mask) {
     return mask ? ((rt_collisionmask2d_impl *)mask)->width : 0;
 }
 
+/// @brief Return the height of the mask in cells.
 int64_t rt_collisionmask2d_get_height(void *mask) {
     return mask ? ((rt_collisionmask2d_impl *)mask)->height : 0;
 }
 
+/// @brief Return non-zero if cell (x, y) is within the collision mask's bounds.
 static int32_t collisionmask2d_in_bounds(rt_collisionmask2d_impl *impl, int64_t x, int64_t y) {
     return impl && x >= 0 && y >= 0 && x < impl->width && y < impl->height;
 }
 
+/// @brief Set or clear the solid flag at `(x, y)`; out-of-range calls are silently dropped.
 void rt_collisionmask2d_set(void *mask, int64_t x, int64_t y, int64_t solid) {
     rt_collisionmask2d_impl *impl = (rt_collisionmask2d_impl *)mask;
     if (!collisionmask2d_in_bounds(impl, x, y))
@@ -3091,6 +3691,7 @@ void rt_collisionmask2d_set(void *mask, int64_t x, int64_t y, int64_t solid) {
     impl->bits[y * impl->width + x] = solid != 0;
 }
 
+/// @brief Return 1 if cell `(x, y)` is solid, 0 if empty or out of range.
 int64_t rt_collisionmask2d_get(void *mask, int64_t x, int64_t y) {
     rt_collisionmask2d_impl *impl = (rt_collisionmask2d_impl *)mask;
     if (!collisionmask2d_in_bounds(impl, x, y))
@@ -3098,6 +3699,11 @@ int64_t rt_collisionmask2d_get(void *mask, int64_t x, int64_t y) {
     return impl->bits[y * impl->width + x] ? 1 : 0;
 }
 
+/// @brief Pixel-perfect overlap test between two masks at world positions `(ax, ay)` and `(bx, by)`.
+/// @details Computes the axis-aligned intersection rectangle, then walks every cell
+///          in that rectangle checking whether both masks are solid — returns 1 on the
+///          first matching solid pair, 0 if no overlap exists. Early-exits if the AABBs
+///          don't intersect at all.
 int64_t rt_collisionmask2d_overlaps(
     void *a, int64_t ax, int64_t ay, void *b, int64_t bx, int64_t by) {
     rt_collisionmask2d_impl *ma = (rt_collisionmask2d_impl *)a;
@@ -3134,6 +3740,7 @@ int64_t rt_collisionmask2d_overlaps(
     return 0;
 }
 
+/// @brief Allocate a Hitbox2D at `(x, y)` with the given dimensions (negative sizes clamped to 0).
 void *rt_hitbox2d_new(int64_t x, int64_t y, int64_t width, int64_t height) {
     rt_hitbox2d_impl *impl =
         (rt_hitbox2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_hitbox2d_impl));
@@ -3143,6 +3750,7 @@ void *rt_hitbox2d_new(int64_t x, int64_t y, int64_t width, int64_t height) {
     return impl;
 }
 
+/// @brief Reposition and resize an existing hitbox in one call.
 void rt_hitbox2d_set(void *hitbox, int64_t x, int64_t y, int64_t width, int64_t height) {
     if (!hitbox)
         return;
@@ -3153,28 +3761,36 @@ void rt_hitbox2d_set(void *hitbox, int64_t x, int64_t y, int64_t width, int64_t 
     impl->height = height < 0 ? 0 : height;
 }
 
+/// @brief Return the X world-position of the hitbox's top-left corner.
 int64_t rt_hitbox2d_get_x(void *hitbox) {
     return hitbox ? ((rt_hitbox2d_impl *)hitbox)->x : 0;
 }
 
+/// @brief Return the Y world-position of the hitbox's top-left corner.
 int64_t rt_hitbox2d_get_y(void *hitbox) {
     return hitbox ? ((rt_hitbox2d_impl *)hitbox)->y : 0;
 }
 
+/// @brief Return the width of the hitbox in pixels.
 int64_t rt_hitbox2d_get_width(void *hitbox) {
     return hitbox ? ((rt_hitbox2d_impl *)hitbox)->width : 0;
 }
 
+/// @brief Return the height of the hitbox in pixels.
 int64_t rt_hitbox2d_get_height(void *hitbox) {
     return hitbox ? ((rt_hitbox2d_impl *)hitbox)->height : 0;
 }
 
+/// @brief Return non-zero if point `(x, y)` is inside this hitbox.
+/// @details Uses `point_in_interval_i64` for both axes: [x, x+width) × [y, y+height).
 int64_t rt_hitbox2d_contains(void *hitbox, int64_t x, int64_t y) {
     rt_hitbox2d_impl *impl = (rt_hitbox2d_impl *)hitbox;
     return impl && point_in_interval_i64(impl->x, impl->width, x) &&
            point_in_interval_i64(impl->y, impl->height, y);
 }
 
+/// @brief Return non-zero if two hitboxes overlap (AABB vs AABB test).
+/// @details Uses `intervals_overlap_i64` on both axes — no separation means overlap.
 int64_t rt_hitbox2d_intersects(void *a, void *b) {
     rt_hitbox2d_impl *ha = (rt_hitbox2d_impl *)a;
     rt_hitbox2d_impl *hb = (rt_hitbox2d_impl *)b;
@@ -3184,6 +3800,7 @@ int64_t rt_hitbox2d_intersects(void *a, void *b) {
            intervals_overlap_i64(ha->y, ha->height, hb->y, hb->height);
 }
 
+/// @brief Allocate an empty Palette2D (all 256 slots zeroed, count=0).
 void *rt_palette2d_new(void) {
     rt_palette2d_impl *impl =
         (rt_palette2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_palette2d_impl));
@@ -3192,15 +3809,18 @@ void *rt_palette2d_new(void) {
     return impl;
 }
 
+/// @brief Set a palette entry at `index` [0, 255] to `rgba`.
+/// @details `count` is extended to `index+1` if the new index is the highest seen so far.
 void rt_palette2d_set_color(void *palette, int64_t index, int64_t rgba) {
     rt_palette2d_impl *impl = (rt_palette2d_impl *)palette;
     if (!impl || index < 0 || index >= 256)
         return;
-    impl->colors[index] = (uint32_t)rgba;
+    impl->colors[index] = rt_pixels_rgba_or_tagged_color_to_rgba(rgba);
     if (index + 1 > impl->count)
         impl->count = index + 1;
 }
 
+/// @brief Return the RGBA color at `index`, or 0 if out of range or beyond `count`.
 int64_t rt_palette2d_get_color(void *palette, int64_t index) {
     rt_palette2d_impl *impl = (rt_palette2d_impl *)palette;
     if (!impl || index < 0 || index >= 256 || index >= impl->count)
@@ -3208,10 +3828,16 @@ int64_t rt_palette2d_get_color(void *palette, int64_t index) {
     return impl->colors[index];
 }
 
+/// @brief Return the number of palette entries set (highest set index + 1).
 int64_t rt_palette2d_get_count(void *palette) {
     return palette ? ((rt_palette2d_impl *)palette)->count : 0;
 }
 
+/// @brief Remap a Pixels image through this palette and return a new Pixels.
+/// @details For each pixel, the alpha byte (bits [7:0] in the RGBA word used here)
+///          is taken as a palette index; the pixel is replaced with `colors[index]`.
+///          Pixels with indices beyond `count` are copied unchanged. Returns NULL on
+///          allocation failure.
 void *rt_palette2d_apply(void *palette, void *pixels) {
     rt_palette2d_impl *impl = (rt_palette2d_impl *)palette;
     if (!impl || !pixels)
@@ -3224,7 +3850,7 @@ void *rt_palette2d_apply(void *palette, void *pixels) {
     for (int64_t y = 0; y < height; y++) {
         for (int64_t x = 0; x < width; x++) {
             uint32_t src = (uint32_t)rt_pixels_get(pixels, x, y);
-            int64_t index = (src >> 24) & 255;
+            int64_t index = src & 255;
             uint32_t mapped = index < impl->count ? impl->colors[index] : src;
             rt_pixels_set(out, x, y, mapped);
         }
@@ -3232,6 +3858,11 @@ void *rt_palette2d_apply(void *palette, void *pixels) {
     return out;
 }
 
+/// @brief Linear interpolation between two RGBA colors at `t_pct` percent [0, 100].
+/// @details Each channel is interpolated independently in integer arithmetic:
+///          `result_ch = a_ch + (b_ch - a_ch) * t / 100`. No gamma correction —
+///          interpolation happens in gamma-encoded space, matching the simpler
+///          expectation of the 2D tool palette.
 static uint32_t lerp_rgba(uint32_t a, uint32_t b, int64_t t_pct) {
     int64_t t = clamp_i64(t_pct, 0, 100);
     int64_t ar = (a >> 24) & 255;
@@ -3249,37 +3880,56 @@ static uint32_t lerp_rgba(uint32_t a, uint32_t b, int64_t t_pct) {
     return (uint32_t)((r << 24) | (g << 16) | (blue << 8) | alpha);
 }
 
+/// @brief Allocate a Gradient2D with the given start/end RGBA colors and step count.
+/// @details `steps` is the number of quantization levels; 2 means a smooth linear
+///          gradient, higher values produce visible banding. Non-positive steps
+///          default to 2. Colors are normalized via `rt_pixels_rgba_or_tagged_color_to_rgba`.
 void *rt_gradient2d_new(int64_t start_rgba, int64_t end_rgba, int64_t steps) {
     rt_gradient2d_impl *impl =
         (rt_gradient2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_gradient2d_impl));
     if (!impl)
         return NULL;
-    impl->start = (uint32_t)start_rgba;
-    impl->end = (uint32_t)end_rgba;
+    impl->start = rt_pixels_rgba_or_tagged_color_to_rgba(start_rgba);
+    impl->end = rt_pixels_rgba_or_tagged_color_to_rgba(end_rgba);
     impl->steps = steps <= 0 ? 2 : steps;
     return impl;
 }
 
+/// @brief Update the start and end colors of an existing gradient.
 void rt_gradient2d_set_colors(void *gradient, int64_t start_rgba, int64_t end_rgba) {
     if (!gradient)
         return;
     rt_gradient2d_impl *impl = (rt_gradient2d_impl *)gradient;
-    impl->start = (uint32_t)start_rgba;
-    impl->end = (uint32_t)end_rgba;
+    impl->start = rt_pixels_rgba_or_tagged_color_to_rgba(start_rgba);
+    impl->end = rt_pixels_rgba_or_tagged_color_to_rgba(end_rgba);
 }
 
+/// @brief Set the step count; non-positive values reset to 2 (smooth).
 void rt_gradient2d_set_steps(void *gradient, int64_t steps) {
     if (gradient)
         ((rt_gradient2d_impl *)gradient)->steps = steps <= 0 ? 2 : steps;
 }
 
+/// @brief Sample the gradient at position `t_pct` percent [0, 100] and return RGBA.
+/// @details Quantizes `t` into `steps` buckets first, then interpolates between
+///          start and end via `lerp_rgba`. Steps above 101 are clamped to 101 to
+///          keep the bucket arithmetic safe.
 int64_t rt_gradient2d_sample(void *gradient, int64_t t_pct) {
     rt_gradient2d_impl *impl = (rt_gradient2d_impl *)gradient;
     if (!impl)
         return 0;
-    return lerp_rgba(impl->start, impl->end, t_pct);
+    int64_t t = clamp_i64(t_pct, 0, 100);
+    int64_t steps = impl->steps < 2 ? 2 : impl->steps;
+    if (steps > 101)
+        steps = 101;
+    int64_t bucket = (t * (steps - 1) + 50) / 100;
+    int64_t stepped_t = steps <= 1 ? 0 : bucket * 100 / (steps - 1);
+    return lerp_rgba(impl->start, impl->end, stepped_t);
 }
 
+/// @brief Fill `pixels` with a left-to-right horizontal gradient.
+/// @details Maps each column X to a sample position `X * 100 / (width - 1)` and writes
+///          the same sampled color to all rows in that column.
 void rt_gradient2d_fill_horizontal(void *gradient, void *pixels) {
     rt_gradient2d_impl *impl = (rt_gradient2d_impl *)gradient;
     if (!impl || !pixels)
@@ -3289,10 +3939,13 @@ void rt_gradient2d_fill_horizontal(void *gradient, void *pixels) {
     int64_t denom = width > 1 ? width - 1 : 1;
     for (int64_t y = 0; y < height; y++) {
         for (int64_t x = 0; x < width; x++)
-            rt_pixels_set(pixels, x, y, lerp_rgba(impl->start, impl->end, x * 100 / denom));
+            rt_pixels_set(pixels, x, y, rt_gradient2d_sample(gradient, x * 100 / denom));
     }
 }
 
+/// @brief Fill `pixels` with a top-to-bottom vertical gradient.
+/// @details Maps each row Y to a sample position `Y * 100 / (height - 1)` and writes
+///          the full row with a single color — avoids redundant samples per pixel.
 void rt_gradient2d_fill_vertical(void *gradient, void *pixels) {
     rt_gradient2d_impl *impl = (rt_gradient2d_impl *)gradient;
     if (!impl || !pixels)
@@ -3301,17 +3954,21 @@ void rt_gradient2d_fill_vertical(void *gradient, void *pixels) {
     int64_t height = rt_pixels_height(pixels);
     int64_t denom = height > 1 ? height - 1 : 1;
     for (int64_t y = 0; y < height; y++) {
-        uint32_t color = lerp_rgba(impl->start, impl->end, y * 100 / denom);
+        uint32_t color = (uint32_t)rt_gradient2d_sample(gradient, y * 100 / denom);
         for (int64_t x = 0; x < width; x++)
             rt_pixels_set(pixels, x, y, color);
     }
 }
 
+/// @brief GC finalizer — releases the retained Camera2D reference.
 static void camerarig2d_finalize(void *obj) {
     rt_camerarig2d_impl *impl = (rt_camerarig2d_impl *)obj;
     release_ref_slot(&impl->camera);
 }
 
+/// @brief Allocate a CameraRig2D wrapping `camera` with default smoothing (1000 = 100.0%).
+/// @details `smoothing` of 1000 means instant snapping (camera jumps straight to target);
+///          lower values produce lag-based smooth follow. Shake starts zeroed.
 void *rt_camerarig2d_new(void *camera) {
     rt_camerarig2d_impl *impl =
         (rt_camerarig2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_camerarig2d_impl));
@@ -3324,11 +3981,13 @@ void *rt_camerarig2d_new(void *camera) {
     return impl;
 }
 
+/// @brief Replace the Camera2D, retaining a reference to the new one.
 void rt_camerarig2d_set_camera(void *rig, void *camera) {
     if (rig)
         spriterenderer2d_set_ref(&((rt_camerarig2d_impl *)rig)->camera, camera);
 }
 
+/// @brief Set the world-space target position the camera should track.
 void rt_camerarig2d_set_target(void *rig, int64_t x, int64_t y) {
     if (!rig)
         return;
@@ -3337,25 +3996,30 @@ void rt_camerarig2d_set_target(void *rig, int64_t x, int64_t y) {
     impl->target_y = y;
 }
 
+/// @brief Set the smooth-follow strength in [0, 1000] (per-mille lerp factor).
+/// @details 1000 = snap instantly, 0 = camera never moves, ~50 = gentle follow.
 void rt_camerarig2d_set_smoothing(void *rig, int64_t lerp_pct) {
     if (rig)
         ((rt_camerarig2d_impl *)rig)->smoothing = clamp_i64(lerp_pct, 0, 1000);
 }
 
+/// @brief Set the camera's deadzone rectangle (camera doesn't move while target is inside).
 void rt_camerarig2d_set_deadzone(void *rig, int64_t width, int64_t height) {
     rt_camerarig2d_impl *impl = (rt_camerarig2d_impl *)rig;
     if (impl && impl->camera)
         rt_camera_set_deadzone(impl->camera, width, height);
 }
 
+/// @brief Add a shake displacement offset (accumulated via saturating addition).
 void rt_camerarig2d_add_shake(void *rig, int64_t x, int64_t y) {
     if (!rig)
         return;
     rt_camerarig2d_impl *impl = (rt_camerarig2d_impl *)rig;
-    impl->shake_x += x;
-    impl->shake_y += y;
+    impl->shake_x = saturating_add_i64(impl->shake_x, x);
+    impl->shake_y = saturating_add_i64(impl->shake_y, y);
 }
 
+/// @brief Reset the shake offset to zero.
 void rt_camerarig2d_clear_shake(void *rig) {
     if (!rig)
         return;
@@ -3364,27 +4028,38 @@ void rt_camerarig2d_clear_shake(void *rig) {
     impl->shake_y = 0;
 }
 
+/// @brief Advance the rig by calling `rt_camera_smooth_follow` toward the current target.
+/// @details Should be called once per frame before querying render positions.
 void rt_camerarig2d_update(void *rig) {
     rt_camerarig2d_impl *impl = (rt_camerarig2d_impl *)rig;
     if (impl && impl->camera)
         rt_camera_smooth_follow(impl->camera, impl->target_x, impl->target_y, impl->smoothing);
 }
 
+/// @brief Return the X render position: camera X plus current shake X offset.
 int64_t rt_camerarig2d_get_render_x(void *rig) {
     rt_camerarig2d_impl *impl = (rt_camerarig2d_impl *)rig;
-    return impl && impl->camera ? rt_camera_get_x(impl->camera) + impl->shake_x : 0;
+    return impl && impl->camera ? saturating_add_i64(rt_camera_get_x(impl->camera), impl->shake_x)
+                                : 0;
 }
 
+/// @brief Return the Y render position: camera Y plus current shake Y offset.
 int64_t rt_camerarig2d_get_render_y(void *rig) {
     rt_camerarig2d_impl *impl = (rt_camerarig2d_impl *)rig;
-    return impl && impl->camera ? rt_camera_get_y(impl->camera) + impl->shake_y : 0;
+    return impl && impl->camera ? saturating_add_i64(rt_camera_get_y(impl->camera), impl->shake_y)
+                                : 0;
 }
 
+/// @brief GC finalizer — releases the retained TexAtlas reference.
 static void texturepackeratlas_finalize(void *obj) {
     rt_texturepackeratlas_impl *impl = (rt_texturepackeratlas_impl *)obj;
     release_ref_slot(&impl->atlas);
 }
 
+/// @brief Wrap a Pixels image as a TexturePackerAtlas, constructing a TexAtlas from it.
+/// @details Traps with a message if `pixels` is NULL. The internal `rt_texatlas_new`
+///          call may still return NULL on allocation failure, in which case this
+///          function tears down the partially-constructed object cleanly.
 void *rt_texturepackeratlas_new(void *pixels) {
     if (!pixels) {
         rt_trap("TexturePackerAtlas.New: null pixels");
@@ -3404,10 +4079,12 @@ void *rt_texturepackeratlas_new(void *pixels) {
     return impl;
 }
 
+/// @brief Return the underlying TexAtlas pointer (not retained — caller must not release it).
 void *rt_texturepackeratlas_get_atlas(void *packer) {
     return packer ? ((rt_texturepackeratlas_impl *)packer)->atlas : NULL;
 }
 
+/// @brief Register a named sub-region `(x, y, width, height)` in the atlas.
 void rt_texturepackeratlas_add(
     void *packer, rt_string name, int64_t x, int64_t y, int64_t width, int64_t height) {
     void *atlas = rt_texturepackeratlas_get_atlas(packer);
@@ -3415,16 +4092,19 @@ void rt_texturepackeratlas_add(
         rt_texatlas_add(atlas, name, x, y, width, height);
 }
 
+/// @brief Return non-zero if a region with the given `name` exists in the atlas.
 int64_t rt_texturepackeratlas_has(void *packer, rt_string name) {
     void *atlas = rt_texturepackeratlas_get_atlas(packer);
     return atlas ? rt_texatlas_has(atlas, name) : 0;
 }
 
+/// @brief Return the total number of named regions registered in the atlas.
 int64_t rt_texturepackeratlas_region_count(void *packer) {
     void *atlas = rt_texturepackeratlas_get_atlas(packer);
     return atlas ? rt_texatlas_region_count(atlas) : 0;
 }
 
+/// @brief Allocate an AsepriteImporter with zeroed grid dimensions (must call SetGrid first).
 void *rt_asepriteimporter_new(void) {
     rt_asepriteimporter_impl *impl =
         (rt_asepriteimporter_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_asepriteimporter_impl));
@@ -3433,6 +4113,8 @@ void *rt_asepriteimporter_new(void) {
     return impl;
 }
 
+/// @brief Set the frame cell dimensions for slicing a horizontal strip sprite sheet.
+/// @details Dimensions are sanitized via `normalized_dim` (negative → 1).
 void rt_asepriteimporter_set_grid(void *importer, int64_t frame_width, int64_t frame_height) {
     if (!importer)
         return;
@@ -3441,14 +4123,19 @@ void rt_asepriteimporter_set_grid(void *importer, int64_t frame_width, int64_t f
     impl->frame_height = normalized_dim(frame_height);
 }
 
+/// @brief Return the configured frame width in pixels (0 if not set).
 int64_t rt_asepriteimporter_get_frame_width(void *importer) {
     return importer ? ((rt_asepriteimporter_impl *)importer)->frame_width : 0;
 }
 
+/// @brief Return the configured frame height in pixels (0 if not set).
 int64_t rt_asepriteimporter_get_frame_height(void *importer) {
     return importer ? ((rt_asepriteimporter_impl *)importer)->frame_height : 0;
 }
 
+/// @brief Slice `pixels` into a grid atlas using the configured frame dimensions.
+/// @details Returns NULL if any required value is missing or zero. Delegates to
+///          `rt_texatlas_load_grid`; the returned atlas owns its region data.
 void *rt_asepriteimporter_to_atlas(void *importer, void *pixels) {
     rt_asepriteimporter_impl *impl = (rt_asepriteimporter_impl *)importer;
     if (!impl || !pixels || impl->frame_width <= 0 || impl->frame_height <= 0)
@@ -3456,6 +4143,7 @@ void *rt_asepriteimporter_to_atlas(void *importer, void *pixels) {
     return rt_texatlas_load_grid(pixels, impl->frame_width, impl->frame_height);
 }
 
+/// @brief Allocate a TiledMapLoader with default tile size 16×16.
 void *rt_tiledmaploader_new(void) {
     rt_tiledmaploader_impl *impl =
         (rt_tiledmaploader_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tiledmaploader_impl));
@@ -3466,6 +4154,8 @@ void *rt_tiledmaploader_new(void) {
     return impl;
 }
 
+/// @brief Override the tile dimensions used when creating new tilemaps.
+/// @details Dimensions are sanitized via `normalized_dim` (negative → 1).
 void rt_tiledmaploader_set_tile_size(void *loader, int64_t tile_width, int64_t tile_height) {
     if (!loader)
         return;
@@ -3474,14 +4164,18 @@ void rt_tiledmaploader_set_tile_size(void *loader, int64_t tile_width, int64_t t
     impl->tile_height = normalized_dim(tile_height);
 }
 
+/// @brief Return the configured tile width in pixels.
 int64_t rt_tiledmaploader_get_tile_width(void *loader) {
     return loader ? ((rt_tiledmaploader_impl *)loader)->tile_width : 0;
 }
 
+/// @brief Return the configured tile height in pixels.
 int64_t rt_tiledmaploader_get_tile_height(void *loader) {
     return loader ? ((rt_tiledmaploader_impl *)loader)->tile_height : 0;
 }
 
+/// @brief Allocate a blank Tilemap2D with `width × height` cells using this loader's tile size.
+/// @details Delegates to `rt_tilemap_new` — the returned tilemap has all cells set to 0 (empty).
 void *rt_tiledmaploader_new_tilemap(void *loader, int64_t width, int64_t height) {
     rt_tiledmaploader_impl *impl = (rt_tiledmaploader_impl *)loader;
     if (!impl)

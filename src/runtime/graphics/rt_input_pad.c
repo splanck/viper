@@ -480,6 +480,16 @@ static void mac_apply_hat(rt_pad_state *pad, int hat_value) {
     pad->buttons[VIPER_PAD_RIGHT] = right;
 }
 
+/// @brief macOS IOKit HID implementation of platform_pad_poll.
+/// @details Lazily initializes the IOKit HID manager on first call, then scans
+///   for newly connected devices if no pad is currently marked connected.
+///   For each registered device slot, this reads the current value of every
+///   axis element (left stick, right stick, triggers) via mac_read_value, maps
+///   raw hardware ranges to [-1, +1] / [0, 1] using mac_normalize_axis and
+///   mac_normalize_trigger, reads all mapped button elements, and converts any
+///   hat-switch element into the four discrete D-pad button flags.
+///   The results are written directly into the shared g_pads[] array so that
+///   the public rt_pad_* API functions can read consistent state.
 static void platform_pad_poll(void) {
     if (!g_mac_initialized)
         mac_init_manager();
@@ -537,6 +547,13 @@ static void platform_pad_poll(void) {
     }
 }
 
+/// @brief macOS IOKit HID implementation of platform_pad_vibrate — no-op.
+/// @details The generic IOKit HID API does not expose force-feedback output
+///   reports for gamepads.  Rumble motors are device-specific and require
+///   vendor extensions (e.g. the MFi FFBDevice protocol or Sony's DualShock
+///   HID reports) that are not available through the generic IOHIDManager
+///   interface used by this backend.  Parameters are silenced to avoid
+///   compiler warnings.
 static void platform_pad_vibrate(int64_t index, double left, double right) {
     (void)index;
     (void)left;
@@ -734,6 +751,16 @@ static void linux_pad_init(void) {
     g_linux_initialized = true;
 }
 
+/// @brief Linux evdev implementation of platform_pad_poll.
+/// @details Calls linux_pad_init to ensure /dev/input/event* devices have been
+///   scanned and opened.  For each active pad file descriptor, drains the evdev
+///   event queue in a non-blocking read loop: EV_KEY events update button state
+///   (BTN_SOUTH/EAST/WEST/NORTH map to A/B/X/Y; shoulder, stick-click, and
+///   guide buttons follow), while EV_ABS events update analog axes and triggers
+///   (ABS_X/Y for the left stick, ABS_RX/RY for the right stick, ABS_Z/RZ for
+///   the triggers, and ABS_HAT0X/Y for D-pad via linux_apply_hat).  If the read
+///   returns ENODEV the device has been unplugged, so the pad is reset and
+///   marked disconnected.
 static void platform_pad_poll(void) {
     linux_pad_init();
 
@@ -846,6 +873,16 @@ static void platform_pad_poll(void) {
     }
 }
 
+/// @brief Linux evdev FF_RUMBLE implementation of platform_pad_vibrate.
+/// @details Submits a force-feedback effect to the evdev device using the
+///   kernel's FF_RUMBLE interface.  The caller-supplied [left, right] strengths
+///   are clamped to [0, 1], then scaled to the 0–0xFFFF uint16 range expected
+///   by ff_effect.u.rumble.strong_magnitude (low-frequency / left motor) and
+///   weak_magnitude (high-frequency / right motor).  EVIOCSFF uploads the
+///   effect and EV_FF/play activates it for 1000 ms.  If EVIOCSFF fails (e.g.
+///   the device was hot-unplugged), has_rumble is cleared so future calls
+///   short-circuit immediately.  Index bounds are validated before dereferencing
+///   g_linux_pads.
 static void platform_pad_vibrate(int64_t index, double left, double right) {
     if (index < 0 || index >= VIPER_PAD_MAX)
         return;
@@ -906,6 +943,17 @@ static void platform_pad_vibrate(int64_t index, double left, double right) {
 #include <Xinput.h>
 #include <windows.h>
 
+/// @brief Windows XInput implementation of platform_pad_poll.
+/// @details Calls XInputGetState for each pad slot in [0, VIPER_PAD_MAX).
+///   On ERROR_SUCCESS the pad is marked connected: all digital buttons are
+///   extracted from the XINPUT_GAMEPAD.wButtons bitmask, analog sticks are
+///   normalized from the signed 16-bit SHORT range to [-1, +1] (using -32768
+///   as the negative divisor to handle the asymmetric two's-complement range
+///   correctly), and triggers are mapped from BYTE [0, 255] to [0, 1].
+///   The guide button is conditionally compiled under XINPUT_GAMEPAD_GUIDE
+///   since it is absent from some XInput SDK versions.  When XInputGetState
+///   returns any other error the pad is marked disconnected and all state is
+///   zeroed.
 static void platform_pad_poll(void) {
     for (DWORD i = 0; i < VIPER_PAD_MAX; ++i) {
         XINPUT_STATE state;
@@ -962,6 +1010,14 @@ static void platform_pad_poll(void) {
     }
 }
 
+/// @brief Windows XInput implementation of platform_pad_vibrate.
+/// @details Clamps the caller-supplied [left, right] strengths to [0, 1], scales
+///   them to the 0–65535 WORD range required by XINPUT_VIBRATION, and calls
+///   XInputSetState to activate the motors.  The left motor is the large
+///   low-frequency rumble motor; the right motor is the small high-frequency
+///   vibration motor — mapping left→wLeftMotorSpeed and right→wRightMotorSpeed
+///   preserves the conventional strong/weak semantics.  Index bounds are
+///   validated before the XInput call.
 static void platform_pad_vibrate(int64_t index, double left, double right) {
     if (index < 0 || index >= VIPER_PAD_MAX)
         return;
@@ -988,10 +1044,19 @@ static void platform_pad_vibrate(int64_t index, double left, double right) {
 // Unsupported Platform
 //-----------------------------------------------------------------------------
 
+/// @brief Fallback no-op implementation of platform_pad_poll for unsupported platforms.
+/// @details Compiled when none of the recognised platform macros (__APPLE__,
+///   __linux__, _WIN32) are defined.  All g_pads[] entries remain in their
+///   default-initialised disconnected state; no hardware is queried.
 static void platform_pad_poll(void) {
     // No gamepad support on this platform
 }
 
+/// @brief Fallback no-op implementation of platform_pad_vibrate for unsupported platforms.
+/// @details Compiled when none of the recognised platform macros are defined.
+///   Vibration output requires platform-specific APIs (IOKit FF, evdev FF_RUMBLE,
+///   XInput) that are unavailable here.  Parameters are suppressed to avoid
+///   unused-variable warnings.
 static void platform_pad_vibrate(int64_t index, double left, double right) {
     (void)index;
     (void)left;
@@ -1327,58 +1392,72 @@ int64_t rt_pad_button_a(void) {
     return VIPER_PAD_A;
 }
 
+/// @brief Return the integer index for the B (east face) button.
 int64_t rt_pad_button_b(void) {
     return VIPER_PAD_B;
 }
 
+/// @brief Return the integer index for the X (west face) button.
 int64_t rt_pad_button_x(void) {
     return VIPER_PAD_X;
 }
 
+/// @brief Return the integer index for the Y (north face) button.
 int64_t rt_pad_button_y(void) {
     return VIPER_PAD_Y;
 }
 
+/// @brief Return the integer index for the left bumper (LB / L1) button.
 int64_t rt_pad_button_lb(void) {
     return VIPER_PAD_LB;
 }
 
+/// @brief Return the integer index for the right bumper (RB / R1) button.
 int64_t rt_pad_button_rb(void) {
     return VIPER_PAD_RB;
 }
 
+/// @brief Return the integer index for the Back / Select button.
 int64_t rt_pad_button_back(void) {
     return VIPER_PAD_BACK;
 }
 
+/// @brief Return the integer index for the Start / Menu button.
 int64_t rt_pad_button_start(void) {
     return VIPER_PAD_START;
 }
 
+/// @brief Return the integer index for the left-stick click (L3) button.
 int64_t rt_pad_button_lstick(void) {
     return VIPER_PAD_LSTICK;
 }
 
+/// @brief Return the integer index for the right-stick click (R3) button.
 int64_t rt_pad_button_rstick(void) {
     return VIPER_PAD_RSTICK;
 }
 
+/// @brief Return the integer index for the D-pad Up button.
 int64_t rt_pad_button_up(void) {
     return VIPER_PAD_UP;
 }
 
+/// @brief Return the integer index for the D-pad Down button.
 int64_t rt_pad_button_down(void) {
     return VIPER_PAD_DOWN;
 }
 
+/// @brief Return the integer index for the D-pad Left button.
 int64_t rt_pad_button_left(void) {
     return VIPER_PAD_LEFT;
 }
 
+/// @brief Return the integer index for the D-pad Right button.
 int64_t rt_pad_button_right(void) {
     return VIPER_PAD_RIGHT;
 }
 
+/// @brief Return the integer index for the Guide / Home / Xbox button.
 int64_t rt_pad_button_guide(void) {
     return VIPER_PAD_GUIDE;
 }

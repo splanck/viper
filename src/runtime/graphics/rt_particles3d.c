@@ -126,16 +126,26 @@ static void unpack_color(int64_t packed, float *rgb) {
     rgb[2] = (float)(packed & 0xFF) / 255.0f;
 }
 
+/// @brief Return `value` if it is finite, otherwise return `fallback`.
+/// @details Used by all particle setters for position, gravity, and direction
+///   components to silently absorb NaN/Inf from user code without trapping.
 static double particles_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Clamp a parameter to [0, +inf), converting NaN/Inf and negatives to 0.
+/// @details Applied to speeds, rates, sizes, and lifetimes that have no meaningful
+///   negative value — negative inputs are treated as zero rather than as an error
+///   so callers can pass unchecked user-supplied values.
 static double particles_nonnegative_or_zero(double value) {
     if (!isfinite(value) || value < 0.0)
         return 0.0;
     return value;
 }
 
+/// @brief Clamp `value` to [lo, hi], converting NaN/Inf to `lo`.
+/// @details Used for parameters like spread (0..PI) and alpha (0..1) where the
+///   valid range is bounded on both ends and NaN must be handled gracefully.
 static double particles_clamp(double value, double lo, double hi) {
     if (!isfinite(value))
         return lo;

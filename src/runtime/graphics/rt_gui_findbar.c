@@ -47,6 +47,7 @@ typedef struct {
     int64_t replace_mode;
 } rt_findbar_data_t;
 
+/// @brief Release the find/replace bar widget and free cached text buffers.
 static void rt_findbar_dispose(rt_findbar_data_t *data) {
     if (!data)
         return;
@@ -65,6 +66,7 @@ static void rt_findbar_dispose(rt_findbar_data_t *data) {
     data->bound_editor = NULL;
 }
 
+/// @brief GC finalizer — delegates to `rt_findbar_dispose`.
 static void rt_findbar_finalize(void *bar) {
     rt_findbar_dispose((rt_findbar_data_t *)bar);
 }
@@ -372,119 +374,143 @@ void *rt_findbar_new(void *parent) {
     return NULL;
 }
 
+/// @brief Stub: `FindBar.Destroy` is a no-op without graphics.
 void rt_findbar_destroy(void *bar) {
     (void)bar;
 }
 
+/// @brief Stub: `FindBar.BindEditor` is a no-op without graphics.
 void rt_findbar_bind_editor(void *bar, void *editor) {
     (void)bar;
     (void)editor;
 }
 
+/// @brief Stub: `FindBar.UnbindEditor` is a no-op without graphics.
 void rt_findbar_unbind_editor(void *bar) {
     (void)bar;
 }
 
+/// @brief Stub: `FindBar.SetReplaceMode` is a no-op without graphics.
 void rt_findbar_set_replace_mode(void *bar, int64_t replace) {
     (void)bar;
     (void)replace;
 }
 
+/// @brief Stub: returns 0 (replace mode always off without graphics).
 int64_t rt_findbar_is_replace_mode(void *bar) {
     (void)bar;
     return 0;
 }
 
+/// @brief Stub: `FindBar.SetFindText` is a no-op without graphics.
 void rt_findbar_set_find_text(void *bar, rt_string text) {
     (void)bar;
     (void)text;
 }
 
+/// @brief Stub: returns empty string (no find text without graphics).
 rt_string rt_findbar_get_find_text(void *bar) {
     (void)bar;
     return rt_str_empty();
 }
 
+/// @brief Stub: `FindBar.SetReplaceText` is a no-op without graphics.
 void rt_findbar_set_replace_text(void *bar, rt_string text) {
     (void)bar;
     (void)text;
 }
 
+/// @brief Stub: returns empty string (no replace text without graphics).
 rt_string rt_findbar_get_replace_text(void *bar) {
     (void)bar;
     return rt_str_empty();
 }
 
+/// @brief Stub: `FindBar.SetCaseSensitive` is a no-op without graphics.
 void rt_findbar_set_case_sensitive(void *bar, int64_t sensitive) {
     (void)bar;
     (void)sensitive;
 }
 
+/// @brief Stub: returns 0 (case-insensitive by default without graphics).
 int64_t rt_findbar_is_case_sensitive(void *bar) {
     (void)bar;
     return 0;
 }
 
+/// @brief Stub: `FindBar.SetWholeWord` is a no-op without graphics.
 void rt_findbar_set_whole_word(void *bar, int64_t whole) {
     (void)bar;
     (void)whole;
 }
 
+/// @brief Stub: returns 0 (whole-word off without graphics).
 int64_t rt_findbar_is_whole_word(void *bar) {
     (void)bar;
     return 0;
 }
 
+/// @brief Stub: `FindBar.SetRegex` is a no-op without graphics.
 void rt_findbar_set_regex(void *bar, int64_t regex) {
     (void)bar;
     (void)regex;
 }
 
+/// @brief Stub: returns 0 (regex off without graphics).
 int64_t rt_findbar_is_regex(void *bar) {
     (void)bar;
     return 0;
 }
 
+/// @brief Stub: returns 0 (no search without graphics).
 int64_t rt_findbar_find_next(void *bar) {
     (void)bar;
     return 0;
 }
 
+/// @brief Stub: returns 0 (no search without graphics).
 int64_t rt_findbar_find_previous(void *bar) {
     (void)bar;
     return 0;
 }
 
+/// @brief Stub: returns 0 (no replace without graphics).
 int64_t rt_findbar_replace(void *bar) {
     (void)bar;
     return 0;
 }
 
+/// @brief Stub: returns 0 (no replace-all without graphics).
 int64_t rt_findbar_replace_all(void *bar) {
     (void)bar;
     return 0;
 }
 
+/// @brief Stub: returns 0 (no match count without graphics).
 int64_t rt_findbar_get_match_count(void *bar) {
     (void)bar;
     return 0;
 }
 
+/// @brief Stub: returns 0 (no current match without graphics).
 int64_t rt_findbar_get_current_match(void *bar) {
     (void)bar;
     return 0;
 }
 
+/// @brief Stub: `FindBar.SetVisible` is a no-op without graphics.
 void rt_findbar_set_visible(void *bar, int64_t visible) {
     (void)bar;
     (void)visible;
 }
 
+/// @brief Stub: returns 0 (always hidden without graphics).
 int64_t rt_findbar_is_visible(void *bar) {
     (void)bar;
     return 0;
 }
 
+/// @brief Stub: `FindBar.Focus` is a no-op without graphics.
 void rt_findbar_focus(void *bar) {
     (void)bar;
 }

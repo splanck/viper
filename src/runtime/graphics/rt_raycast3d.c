@@ -50,6 +50,7 @@ static double clampd(double v, double lo, double hi) {
     return v;
 }
 
+/// @brief Return non-zero if all three components of the raw double[3] vector are finite (not NaN/inf).
 static int vec3_is_finite_raw(const double *v) {
     return v && isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
 }

@@ -277,6 +277,20 @@ TEST(parallax_draw_transformed_path) {
     std::free(canvas);
 }
 
+TEST(parallax_skips_pathological_tile_counts) {
+    void *cam = rt_camera_new(INT64_MAX / 4, INT64_MAX / 4);
+    ASSERT(cam != NULL);
+
+    void *pixels = rt_pixels_new(1, 1);
+    ASSERT(pixels != NULL);
+    ASSERT(rt_camera_add_parallax(cam, pixels, 100, 100) == 0);
+
+    FakeCanvas *canvas = make_fake_canvas();
+    ASSERT(rt_camera_draw_parallax(cam, canvas) == 0);
+
+    std::free(canvas);
+}
+
 /// @brief Main.
 int main() {
     printf("RTCameraTests:\n");
@@ -296,6 +310,7 @@ int main() {
     RUN_TEST(parallax_max_layers);
     RUN_TEST(parallax_null_safety);
     RUN_TEST(parallax_draw_transformed_path);
+    RUN_TEST(parallax_skips_pathological_tile_counts);
 
     printf("\n%d tests passed, %d tests failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

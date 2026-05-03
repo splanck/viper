@@ -33,6 +33,12 @@
 
 #if RT_PLATFORM_MACOS
 
+/// @brief Return 1 if @p s is a C/POSIX no-locale sentinel value.
+/// @details "C", "c", "POSIX", and "posix" are treated as "no real locale" so
+///          the caller falls back to the invariant instead of trying to parse them.
+///          NULL and empty strings are also treated as no-locale.
+/// @param s Environment variable value to check; may be NULL.
+/// @return 1 if @p s is a no-locale sentinel; 0 otherwise.
 static int is_c_or_posix(const char *s) {
     if (!s || !*s)
         return 1;
@@ -40,6 +46,15 @@ static int is_c_or_posix(const char *s) {
            (strcmp(s, "c") == 0) || (strcmp(s, "posix") == 0);
 }
 
+/// @brief Strip encoding suffixes and convert a POSIX locale string to a near-BCP-47 tag.
+/// @details Copies @p src into @p out until a `.` (encoding, e.g., `.UTF-8`) or `@`
+///          (modifier, e.g., `@latin`) is encountered. Underscores are converted to
+///          dashes so the result matches BCP-47 conventions (e.g., "en_US" → "en-US").
+/// @param src POSIX locale string (e.g., "en_US.UTF-8"); may be NULL (-1 returned).
+/// @param out Caller-provided output buffer for the cleaned tag.
+/// @param cap Capacity of @p out in bytes (must be ≥ 2).
+/// @return 0 on success; -1 if @p src/@p out is NULL, @p cap is too small, the result
+///         would overflow, or the cleaned result is empty.
 static int clean_posix_tag(const char *src, char *out, size_t cap) {
     if (!src || !out || cap < 2)
         return -1;
@@ -60,6 +75,14 @@ static int clean_posix_tag(const char *src, char *out, size_t cap) {
     return 0;
 }
 
+/// @brief Detect the macOS system locale via the POSIX environment variable cascade.
+/// @details Polls `LC_ALL`, then `LANG`, then `LC_MESSAGES` in that order of
+///          precedence. Skips values that are C/POSIX sentinels. Cleans each
+///          candidate with `clean_posix_tag` to produce a BCP-47-compatible tag.
+///          Uses env vars rather than CoreFoundation to avoid a framework dependency.
+/// @param out  Caller-provided buffer to receive the BCP-47 tag.
+/// @param cap  Capacity of @p out in bytes (must be ≥ 2).
+/// @return 0 if a usable tag was written to @p out; -1 if detection failed.
 int rt_locale_platform_detect_system(char *out, size_t cap) {
     if (!out || cap < 2)
         return -1;

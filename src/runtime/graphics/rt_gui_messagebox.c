@@ -34,11 +34,13 @@
 // Phase 5: MessageBox Dialog
 //=============================================================================
 
+/// @brief Return the active GUI app for message box hosting (falls back to `s_current_app`).
 static rt_gui_app_t *rt_messagebox_app(void) {
     rt_gui_app_t *app = rt_gui_get_active_app();
     return app ? app : s_current_app;
 }
 
+/// @brief Return non-zero if the button label should be treated as a "cancel / close / no" action.
 static int rt_messagebox_label_is_cancel(const char *label) {
     if (!label)
         return 0;
@@ -46,6 +48,8 @@ static int rt_messagebox_label_is_cancel(const char *label) {
            strcasecmp(label, "no") == 0;
 }
 
+/// @brief Configure a dialog for modal presentation: enforce minimum width, apply font,
+///        set modal root, center-show, and push onto the app's dialog stack.
 static void rt_messagebox_prepare_modal(rt_gui_app_t *app, vg_dialog_t *dlg) {
     rt_gui_activate_app(app);
     rt_gui_ensure_default_font();
@@ -58,6 +62,8 @@ static void rt_messagebox_prepare_modal(rt_gui_app_t *app, vg_dialog_t *dlg) {
     rt_gui_push_dialog(app, dlg);
 }
 
+/// @brief Run the event loop until the dialog closes or the app signals shutdown.
+/// @details Pops the dialog from the stack on exit and returns the VG dialog result code.
 static vg_dialog_result_t rt_messagebox_run_modal(rt_gui_app_t *app, vg_dialog_t *dlg) {
     while (dlg && dlg->is_open && app && !app->should_close) {
         rt_gui_app_poll(app);
@@ -169,6 +175,7 @@ typedef struct {
     vg_dialog_t *dialog;
 } rt_prompt_commit_data_t;
 
+/// @brief Text-input `on_commit` callback — closes the prompt dialog as OK when Enter is pressed.
 static void prompt_on_commit(vg_widget_t *w, const char *text, void *user_data) {
     (void)w;
     (void)text;
@@ -259,6 +266,8 @@ typedef struct {
     size_t custom_button_cap;
 } rt_messagebox_data_t;
 
+/// @brief Release all resources: free custom button labels, destroy the VG dialog,
+///        and remove it from the app's dialog stack.
 static void rt_messagebox_dispose(rt_messagebox_data_t *data) {
     if (!data)
         return;
@@ -277,6 +286,8 @@ static void rt_messagebox_dispose(rt_messagebox_data_t *data) {
     data->result = -1;
 }
 
+/// @brief GC finalizer — delegates to `rt_messagebox_dispose` to free custom button labels
+///        and destroy the underlying VG dialog handle before the GC reclaims the object.
 static void rt_messagebox_finalize(void *box) {
     rt_messagebox_dispose((rt_messagebox_data_t *)box);
 }
@@ -435,42 +446,49 @@ void rt_messagebox_destroy(void *box) {
 
 #else /* !VIPER_ENABLE_GRAPHICS */
 
+/// @brief Stub: graphics disabled — no dialog shown; returns 0 immediately.
 int64_t rt_messagebox_info(rt_string title, rt_string message) {
     (void)title;
     (void)message;
     return 0;
 }
 
+/// @brief Stub: graphics disabled — no dialog shown; returns 0 immediately.
 int64_t rt_messagebox_warning(rt_string title, rt_string message) {
     (void)title;
     (void)message;
     return 0;
 }
 
+/// @brief Stub: graphics disabled — no dialog shown; returns 0 immediately.
 int64_t rt_messagebox_error(rt_string title, rt_string message) {
     (void)title;
     (void)message;
     return 0;
 }
 
+/// @brief Stub: graphics disabled — no Yes/No dialog; returns 0 (treated as "No").
 int64_t rt_messagebox_question(rt_string title, rt_string message) {
     (void)title;
     (void)message;
     return 0;
 }
 
+/// @brief Stub: graphics disabled — no OK/Cancel dialog; returns 0 (treated as "Cancel").
 int64_t rt_messagebox_confirm(rt_string title, rt_string message) {
     (void)title;
     (void)message;
     return 0;
 }
 
+/// @brief Stub: graphics disabled — no text-input prompt; returns empty string immediately.
 rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
     (void)title;
     (void)message;
     return rt_str_empty();
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no stateful dialog object is created.
 void *rt_messagebox_new(rt_string title, rt_string message, int64_t type) {
     (void)title;
     (void)message;
@@ -478,46 +496,54 @@ void *rt_messagebox_new(rt_string title, rt_string message, int64_t type) {
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no info dialog object is created.
 void *rt_messagebox_new_info(rt_string title, rt_string message) {
     (void)title;
     (void)message;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no warning dialog object is created.
 void *rt_messagebox_new_warning(rt_string title, rt_string message) {
     (void)title;
     (void)message;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no error dialog object is created.
 void *rt_messagebox_new_error(rt_string title, rt_string message) {
     (void)title;
     (void)message;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no question dialog object is created.
 void *rt_messagebox_new_question(rt_string title, rt_string message) {
     (void)title;
     (void)message;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — no-op; button registration is silently ignored.
 void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
     (void)box;
     (void)text;
     (void)id;
 }
 
+/// @brief Stub: graphics disabled — no-op; default button selection is silently ignored.
 void rt_messagebox_set_default_button(void *box, int64_t id) {
     (void)box;
     (void)id;
 }
 
+/// @brief Stub: graphics disabled — returns -1 (no dialog to show, no button chosen).
 int64_t rt_messagebox_show(void *box) {
     (void)box;
     return -1;
 }
 
+/// @brief Stub: graphics disabled — no-op; nothing to destroy when graphics are absent.
 void rt_messagebox_destroy(void *box) {
     (void)box;
 }

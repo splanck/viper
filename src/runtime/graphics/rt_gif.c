@@ -37,6 +37,7 @@ typedef struct {
     size_t pos;
 } gif_reader_t;
 
+/// @brief Read `count` bytes from the GIF stream into `buf`; returns 1 on success, 0 on underflow.
 static int gif_read(gif_reader_t *r, void *buf, size_t count) {
     if (r->pos + count > r->len)
         return 0;
@@ -45,12 +46,14 @@ static int gif_read(gif_reader_t *r, void *buf, size_t count) {
     return 1;
 }
 
+/// @brief Read one unsigned byte from the GIF stream; returns -1 on end of data.
 static int gif_read_u8(gif_reader_t *r) {
     if (r->pos >= r->len)
         return -1;
     return r->data[r->pos++];
 }
 
+/// @brief Read a little-endian uint16 from the GIF stream; returns -1 on underflow.
 static int gif_read_u16_le(gif_reader_t *r) {
     if (r->pos + 2 > r->len)
         return -1;
@@ -132,6 +135,7 @@ static uint8_t *gif_read_sub_blocks(gif_reader_t *r, size_t *out_len) {
     return buf;
 }
 
+/// @brief Initialize LZW decompressor state with root entries for all `clear_code` color indices.
 static void lzw_init(lzw_state_t *s, int min_code_size, const uint8_t *data, size_t len) {
     s->min_code_size = min_code_size;
     s->clear_code = 1 << min_code_size;
@@ -154,6 +158,7 @@ static void lzw_init(lzw_state_t *s, int min_code_size, const uint8_t *data, siz
     s->block_pos = 0;
 }
 
+/// @brief Read the next variable-width LZW code from the bit stream; returns -1 on end of data.
 static int lzw_read_code(lzw_state_t *s) {
     while (s->bits_left < s->code_size) {
         if (s->block_pos >= s->block_len)

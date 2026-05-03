@@ -45,6 +45,7 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,6 +65,12 @@ typedef struct {
 
 #define SS_INITIAL_CAP 16
 
+/// @brief GC finalizer for a SpriteSheet — frees the name strings, region/name arrays,
+///        and releases the retained atlas Pixels reference.
+/// @details Name strings are heap-allocated via `strdup` and must be freed one by one.
+///   The `regions` and `names` pointer arrays are plain `malloc` blocks freed with
+///   `free()`. The atlas Pixels is GC-managed so it gets a proper `release_check0`/
+///   `free` pair rather than a raw `free`.
 static void ss_finalizer(void *obj) {
     rt_spritesheet_impl *ss = (rt_spritesheet_impl *)obj;
     if (ss) {
@@ -84,6 +91,11 @@ static void ss_finalizer(void *obj) {
     }
 }
 
+/// @brief Linear scan for a region by name; returns its index or -1 if not found.
+/// @details The sheet is not expected to have thousands of regions so a linear scan is
+///   acceptable. If performance becomes a concern a hash map could replace this, but
+///   the allocation complexity of the current sequential two-array layout favors the
+///   simple approach.
 static int64_t find_region(rt_spritesheet_impl *ss, const char *name) {
     int64_t i;
     for (i = 0; i < ss->count; i++) {
@@ -93,6 +105,33 @@ static int64_t find_region(rt_spritesheet_impl *ss, const char *name) {
     return -1;
 }
 
+/// @brief Validate that a proposed region rectangle lies entirely within the atlas bounds.
+/// @details Checks x/y/w/h are positive, that the origin is inside the atlas, and that
+///   the region does not exceed the right/bottom edge. The arithmetic `w > atlas_w - x`
+///   is safe because x < atlas_w guarantees atlas_w - x > 0. Callers can use this to
+///   reject out-of-bounds regions before they cause buffer overreads during `GetRegion`.
+/// @return 1 if the region is within bounds, 0 otherwise.
+static int8_t spritesheet_region_valid(
+    rt_spritesheet_impl *ss, int64_t x, int64_t y, int64_t w, int64_t h) {
+    if (!ss || !ss->atlas || x < 0 || y < 0 || w <= 0 || h <= 0)
+        return 0;
+    int64_t atlas_w = rt_pixels_width(ss->atlas);
+    int64_t atlas_h = rt_pixels_height(ss->atlas);
+    if (atlas_w <= 0 || atlas_h <= 0 || x >= atlas_w || y >= atlas_h)
+        return 0;
+    if (w > atlas_w - x || h > atlas_h - y)
+        return 0;
+    return 1;
+}
+
+/// @brief Double the regions/names arrays when the sheet is full.
+/// @details Deliberately uses malloc+memcpy rather than realloc so both arrays can be
+///   freed independently on partial failure — if the second `malloc` fails the first
+///   temp buffer is freed before trapping, leaving the existing arrays intact. The
+///   two-array parallel structure (regions and names) cannot be grown by a single
+///   realloc call, so this approach avoids the asymmetric state that would result from
+///   one realloc succeeding and the other failing.
+/// @return 1 if capacity is sufficient (or was successfully grown), 0 on overflow/OOM.
 static int8_t ensure_cap(rt_spritesheet_impl *ss) {
     if (ss->count < ss->capacity)
         return 1;
@@ -183,18 +222,20 @@ void *rt_spritesheet_from_grid(void *atlas_pixels, int64_t frame_w, int64_t fram
     if (atlas_w <= 0 || atlas_h <= 0 || atlas_w % frame_w != 0 || atlas_h % frame_h != 0)
         return NULL;
 
+    cols = atlas_w / frame_w;
+    rows = atlas_h / frame_h;
+    if (cols <= 0 || rows <= 0 || rows > INT64_MAX / cols)
+        return NULL;
+
     sheet = rt_spritesheet_new(atlas_pixels);
     if (!sheet)
         return NULL;
-
-    cols = atlas_w / frame_w;
-    rows = atlas_h / frame_h;
 
     idx = 0;
     for (iy = 0; iy < rows; iy++) {
         for (ix = 0; ix < cols; ix++) {
             char name_buf[32];
-            snprintf(name_buf, sizeof(name_buf), "%d", (int)idx);
+            snprintf(name_buf, sizeof(name_buf), "%lld", (long long)idx);
             rt_string name = rt_const_cstr(name_buf);
             rt_spritesheet_set_region(sheet, name, ix * frame_w, iy * frame_h, frame_w, frame_h);
             rt_string_unref(name);
@@ -217,6 +258,8 @@ void rt_spritesheet_set_region(
     ss = (rt_spritesheet_impl *)obj;
     cstr = rt_string_cstr(name);
     if (!cstr)
+        return;
+    if (!spritesheet_region_valid(ss, x, y, w, h))
         return;
 
     /* Update existing region if name matches */

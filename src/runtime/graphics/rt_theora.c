@@ -650,6 +650,16 @@ static int theora_finish_setup(theora_decoder_t *dec, theora_priv_t *priv) {
     return 0;
 }
 
+/// @brief Parse the Theora setup header (packet type 0x82) — the third of the three
+///        required headers. Allocates and initialises `theora_priv_t` with the QP tables,
+///        base matrices, quantization ranges, and Huffman codebooks read from the bitstream.
+/// @details The setup header contains the loop filter limits array, AC/DC scale arrays,
+///   the base matrix table (nbms matrices of 64 bytes each), per-plane quantization
+///   ranges, and the Huffman tree definitions. All of these are stored in `priv` for
+///   use during frame decoding. Returns -1 if the signature check fails, if the
+///   bitstream is malformed, or if any allocation fails; in those cases `dec->priv` is
+///   left as set (callers free it via the decoder finalizer). Sets `headers_complete = 1`
+///   on success so subsequent calls know the decoder is ready for frame data.
 static int parse_setup_header(theora_decoder_t *dec, const uint8_t *data, size_t len) {
     theora_priv_t *priv;
     bitreader_t br;
@@ -872,6 +882,12 @@ static int decode_long_run_length(bitreader_t *br) {
     return (int)br_read(br, 12) + 32;
 }
 
+/// @brief Decode a short run-length value from the bitstream (for partially-coded SBs).
+/// @details Uses a variable-length prefix code:
+///   `0` → run = 1; `10` → reads 1 bit → run in [2,3]; `110` → reads 2 bits → [4,7];
+///   `111` → reads 4 bits → [8,23]. Short runs are used in the final pass of
+///   `decode_block_flags` for blocks within partially-coded superblocks.
+/// @return Run length in [1, 23].
 static int decode_short_run_length(bitreader_t *br) {
     int bit0 = br_read1(br);
     if (bit0 == 0)
@@ -883,6 +899,13 @@ static int decode_short_run_length(bitreader_t *br) {
     return (int)br_read(br, 4) + 8;
 }
 
+/// @brief Decode a run-length-encoded bit array from the bitstream into @p out.
+/// @details Each iteration reads one bit (the run value), then reads a run length via
+///   `decode_long_run_length` (for superblock-level flags) or `decode_short_run_length`
+///   (for block-level flags within partial superblocks). The run value is written to
+///   that many consecutive entries in @p out. Returns 0 if exactly @p count entries
+///   were written, -1 on bitstream failure or if a run length is nonsensical.
+/// @param long_runs  1 for long-run decoding (used for SB-level arrays), 0 for short.
 static int decode_rle_bits(bitreader_t *br, uint8_t *out, int count, int long_runs) {
     int filled = 0;
     while (filled < count) {
@@ -896,6 +919,13 @@ static int decode_rle_bits(bitreader_t *br, uint8_t *out, int count, int long_ru
     return filled == count ? 0 : -1;
 }
 
+/// @brief Count the number of DCT blocks that belong to superblock @p sbi.
+/// @details Determines superblock membership by computing each block's superblock
+///   index from its plane, bx/4, and by/4 coordinates plus the plane's superblock
+///   offset. Used to size the temporary `bits` allocation in `decode_block_flags`
+///   for the partially-coded superblock pass. O(total_blocks) — acceptable since
+///   superblock decoding is per-frame, not per-block.
+/// @return Number of blocks in superblock @p sbi.
 static int sb_block_count(const theora_priv_t *priv, int sbi) {
     int count = 0;
     for (int bi = 0; bi < priv->total_blocks; bi++) {
@@ -909,6 +939,15 @@ static int sb_block_count(const theora_priv_t *priv, int sbi) {
     return count;
 }
 
+/// @brief Decode the coded/uncoded flags for all blocks in the frame.
+/// @details For intra frames all blocks are marked coded. For inter frames the
+///   Theora spec encodes block flags in a three-pass RLE scheme:
+///   1. Partially-coded superblock flags (1 bit/SB, long-run RLE).
+///   2. Fully-coded superblock flags for non-partial SBs (1 bit/SB, long-run RLE).
+///   3. Per-block flags for blocks inside partially-coded SBs (short-run RLE).
+///   Each pass requires a temporary heap buffer sized to the number of items decoded
+///   in that pass; both buffers are freed before returning.
+/// @return 0 on success, -1 on bitstream error or allocation failure.
 static int decode_block_flags(theora_decoder_t *dec,
                               theora_priv_t *priv,
                               bitreader_t *br,
@@ -979,6 +1018,10 @@ static int decode_block_flags(theora_decoder_t *dec,
     return 0;
 }
 
+/// @brief Decode one macroblock mode index using the default Theora Huffman code.
+/// @details The default mode alphabet is a simple unary code where mode N is
+///   encoded as N '1' bits followed by a '0' (except mode 0 which is just '0').
+///   Returns the decoded mode index in [0,7] or -1 on bitstream failure.
 static int decode_mb_mode_huff(bitreader_t *br) {
     int code = 0;
     for (int len = 1; len <= 8; len++) {
@@ -1005,6 +1048,11 @@ static int decode_mb_mode_huff(bitreader_t *br) {
     return -1;
 }
 
+/// @brief Test whether a macroblock has at least one coded luma block.
+/// @details Used to determine whether motion-vector modes need to be decoded for a
+///   macroblock: if none of its four luma blocks (Y0..Y3) are coded, the macroblock
+///   is effectively uncoded and its mode defaults to 0 (INTER_NOMV).
+/// @return 1 if any luma block index is valid and coded, 0 otherwise.
 static int mb_has_coded_luma(const theora_priv_t *priv, int mbi) {
     for (int i = 0; i < 4; i++) {
         int bi = priv->mbs[mbi].luma[i];
@@ -1014,6 +1062,14 @@ static int mb_has_coded_luma(const theora_priv_t *priv, int mbi) {
     return 0;
 }
 
+/// @brief Decode the prediction mode for every macroblock in an inter frame.
+/// @details For intra frames all MBs are marked as INTRA (mode 1). For inter frames,
+///   a 3-bit mode scheme selector determines how modes are encoded:
+///   - Scheme 0: custom 3-bit Huffman alphabet read from the bitstream.
+///   - Schemes 1–6: one of the six pre-defined mode alphabets.
+///   - Scheme 7: raw 3-bit mode index per MB (no Huffman coding).
+///   Macroblocks without coded luma blocks are always assigned mode 0 (INTER_NOMV).
+/// @return 0 on success, -1 on bitstream error.
 static int decode_mb_modes(theora_decoder_t *dec,
                            theora_priv_t *priv,
                            bitreader_t *br,
@@ -1060,6 +1116,13 @@ static int decode_mb_modes(theora_decoder_t *dec,
     return 0;
 }
 
+/// @brief Decode one motion-vector component (horizontal or vertical) from the bitstream.
+/// @details The Theora motion-vector Huffman code encodes signed integer displacements
+///   in the range roughly [-31, +31]. Very small magnitudes (0, ±1, ±2, ±3) have
+///   short codewords; larger magnitudes (4..39) use progressively longer codes. The
+///   sign of each non-zero displacement is encoded as an additional bit after the
+///   magnitude codeword. Returns 0 on bitstream failure (sets br->failed = 1).
+/// @return Signed displacement in approximately [-31, +31], or 0 on error.
 static int decode_mv_component_huff(bitreader_t *br) {
     int code = 0;
     for (int len = 1; len <= 8; len++) {
@@ -1114,6 +1177,12 @@ static int decode_mv_component_huff(bitreader_t *br) {
     return 0;
 }
 
+/// @brief Propagate a macroblock's motion vector to all of its coded blocks.
+/// @details All four luma blocks and all chroma blocks in both Cb and Cr planes
+///   that are marked coded receive the same MV (mvx, mvy). Uncoded blocks retain
+///   their zero-initialized MV from the `memset` at the top of `decode_motion_vectors`.
+///   This broadcast pattern is required because the residual reconstruction step
+///   operates per-block and needs the MV stored alongside the block data.
 static void assign_mv_to_coded_blocks(const theora_priv_t *priv, int mbi, int mvx, int mvy) {
     for (int i = 0; i < 4; i++) {
         int bi = priv->mbs[mbi].luma[i];
@@ -1133,6 +1202,17 @@ static void assign_mv_to_coded_blocks(const theora_priv_t *priv, int mbi, int mv
     }
 }
 
+/// @brief Decode all macroblock motion vectors for an inter frame.
+/// @details The MV encoding scheme is determined by a 1-bit selector:
+///   - Mode 0: each MV component is read from a 6-bit signed fixed value.
+///   - Mode 1: each MV component is decoded with `decode_mv_component_huff`.
+///   The MV for each coded macroblock is decoded according to its prediction mode:
+///   - INTER modes: one MV per MB, assigned to all coded blocks via
+///     `assign_mv_to_coded_blocks`. Last-MV tracking (`last1x`/`last1y`,
+///     `last2x`/`last2y`) enables the INTER_MV_LAST and INTER_MV_LAST2 modes.
+///   - GOLDEN modes use the same MV decoding but reference the golden frame buffer.
+///   - INTRA/INTER_NOMV: MV = (0, 0).
+/// @return 0 on success, -1 on bitstream error.
 static int decode_motion_vectors(theora_decoder_t *dec,
                                  theora_priv_t *priv,
                                  bitreader_t *br,
@@ -1284,6 +1364,13 @@ static int decode_motion_vectors(theora_decoder_t *dec,
     return 0;
 }
 
+/// @brief Decode per-block quantization index selectors (QIIs) for the @p nqi QP levels.
+/// @details Theora allows up to 3 quantization indices per frame (`nqi` from the frame
+///   header). QIIs are encoded per coded block as (nqi-1) binary flags decoded with
+///   long-run RLE. The final QII for each block determines which qi[] entry selects
+///   the AC scale factor. All qiis are zero-initialized before the pass loop so blocks
+///   with fewer QII bits than available QP levels default to QII=0.
+/// @return 0 on success, -1 on bitstream error or allocation failure.
 static int decode_qiis(theora_priv_t *priv, bitreader_t *br, int nqi) {
     memset(priv->qiis, 0, (size_t)priv->total_blocks);
     for (int qii = 0; qii < nqi - 1; qii++) {
@@ -1310,6 +1397,14 @@ static int decode_qiis(theora_priv_t *priv, bitreader_t *br, int nqi) {
     return 0;
 }
 
+/// @brief Process an end-of-block token — zeros remaining coefficients and advances
+///        the block's transform index past all 64 positions.
+/// @details Tokens 0–5 encode run lengths from 1 to 31 via progressively wider
+///   fixed-length bitfields. Token 6 reads a 12-bit field; if zero, it counts all
+///   remaining uncompleted coded blocks as the run (a "clear to end of frame" token).
+///   The @p *eobs counter is decremented for each subsequent coded block that falls
+///   within the run, shortcutting the Huffman decode loop in `decode_coefficients`.
+/// @return 0 on success, -1 on bitstream error or invalid run.
 static int decode_eob_token(
     theora_priv_t *priv, bitreader_t *br, int token, int bi, int ti, int *eobs) {
     int run = 0;
@@ -1355,6 +1450,14 @@ static int decode_eob_token(
     return 0;
 }
 
+/// @brief Decode one coefficient token into the block's coefficient array.
+/// @details Theora defines 32 coefficient token values (tokens 7–31 after EOB tokens
+///   0–6). Tokens 7–8 are zero-run tokens (write @p rlen zeros, advance ti). Tokens
+///   9–22 encode direct coefficient values of increasing magnitude with optional sign
+///   bits. Tokens 23–31 combine zero runs with a trailing non-zero coefficient. All
+///   token handlers advance `priv->tis[bi]` to track where the next coefficient lands;
+///   `priv->ncoeffs[bi]` is also updated to reflect the new highest populated index.
+/// @return 0 on success, -1 on bitstream error or out-of-range index.
 static int decode_coeff_token(theora_priv_t *priv, bitreader_t *br, int token, int bi, int ti) {
     int sign = 0;
     int mag = 0;
@@ -1515,6 +1618,13 @@ static int decode_coeff_token(theora_priv_t *priv, bitreader_t *br, int token, i
     return 0;
 }
 
+/// @brief Map a DCT coefficient index @p ti to its Huffman table group (0–4).
+/// @details Theora partitions the 64 coefficient positions into 5 frequency bands
+///   for Huffman coding: DC (ti=0), low AC (1–5), mid-low AC (6–14), mid-high AC
+///   (15–27), and high AC (28–63). Each band can use a different Huffman table
+///   for luma and chroma blocks. The group index is combined with `hti_l`/`hti_c`
+///   to select the specific Huffman table from `priv->huff`.
+/// @return Huffman group index in [0, 4].
 static int huffman_group_for_ti(int ti) {
     if (ti == 0)
         return 0;
@@ -1527,6 +1637,17 @@ static int huffman_group_for_ti(int ti) {
     return 4;
 }
 
+/// @brief Decode all DCT coefficients for every coded block in the frame.
+/// @details Iterates over all 64 coefficient positions (ti = 0..63) in the Theora
+///   scan order. New Huffman table indices are read from the bitstream at ti=0 and
+///   ti=1 (DC and first AC position each have independent table selectors for luma
+///   and chroma). For each coded block at the current ti:
+///   - If an eob run is active, the block's remaining coefficients are zeroed and
+///     the eob counter is decremented.
+///   - Otherwise, a token is decoded from the appropriate Huffman table, dispatched
+///     to either `decode_eob_token` or `decode_coeff_token`.
+///   Validation at the end confirms every coded block consumed all 64 positions.
+/// @return 0 on success, -1 on bitstream error or validation failure.
 static int decode_coefficients(theora_priv_t *priv, bitreader_t *br) {
     int hti_l = 0;
     int hti_c = 0;
@@ -1578,6 +1699,15 @@ static int decode_coefficients(theora_priv_t *priv, bitreader_t *br) {
     return 0;
 }
 
+/// @brief Compute the DC prediction for block @p bi from its coded neighbors.
+/// @details Theora's DC prediction uses up to four neighbors (left, upper-left, upper,
+///   upper-right) with weights from the `dc_weights` table indexed by a 4-bit presence
+///   mask. Only neighbors that are coded AND reference the same frame buffer as the
+///   current block (same `rfi` from mode) contribute to the prediction. If no neighbor
+///   qualifies, `lastdc[rfi]` is returned as a fall-back. The three-neighbor clamping
+///   logic (lines ~1616–1623) guards against DC drift when the weighted average deviates
+///   by more than 128 from any single neighbor.
+/// @return DC prediction value in [-32767, 32767].
 static int compute_dc_pred(const theora_priv_t *priv, const int16_t lastdc[3], int bi) {
     static const int dx[4] = {-1, -1, 0, 1};
     static const int dy[4] = {0, -1, -1, -1};
@@ -1625,6 +1755,12 @@ static int compute_dc_pred(const theora_priv_t *priv, const int16_t lastdc[3], i
     }
 }
 
+/// @brief Restore absolute DC values from the delta-coded representation in the bitstream.
+/// @details Theora encodes DC coefficients as deltas from a spatial prediction
+///   (`compute_dc_pred`). This function adds the prediction back, iterating blocks
+///   in raster order (required by the spatial predictor) per plane. The three
+///   `lastdc[rfi]` values track the most recent decoded DC per reference frame index
+///   so that blocks referencing different frames accumulate their own DC histories.
 static void undo_dc_prediction(theora_priv_t *priv) {
     int plane;
     for (plane = 0; plane < 3; plane++) {
@@ -1648,6 +1784,12 @@ static void undo_dc_prediction(theora_priv_t *priv) {
 #define TH_FIX(x) ((int32_t)((x) * 4096.0 + 0.5))
 #define TH_DESCALE(x, n) (((x) + (1 << ((n) - 1))) >> (n))
 
+/// @brief Apply one horizontal pass of the separable AAN integer IDCT to an 8-element row.
+/// @details Implements the factored 8-point IDCT butterfly using 12-bit fixed-point
+///   constants (via TH_FIX / TH_DESCALE). Operates in-place on @p row. This pass
+///   leaves the values in a partially-scaled state; the column pass (`idct_col`) adds
+///   the final >>5 descale to produce the pixel-range residual output.
+/// @param row In/out pointer to 8 int32_t values representing one DCT row.
 static void idct_row(int32_t *row) {
     int32_t x0 = row[0], x1 = row[1], x2 = row[2], x3 = row[3];
     int32_t x4 = row[4], x5 = row[5], x6 = row[6], x7 = row[7];
@@ -1678,6 +1820,13 @@ static void idct_row(int32_t *row) {
     row[7] = e0 - (TH_DESCALE(x1 * TH_FIX(1.501321110), 12) + t0 + t3);
 }
 
+/// @brief Apply one vertical pass of the separable AAN integer IDCT to column @p col.
+/// @details Identical butterfly structure to `idct_row` but reads from column-strided
+///   positions (`workspace[col + k*8]`) and includes the final >>5 right-shift on
+///   every output value. After both passes the 64-element workspace holds 8-bit-range
+///   residuals ready for clamping by `idct_block`. Called once per column (0..7).
+/// @param workspace 64-element int32_t scratch buffer (8×8, row-major).
+/// @param col       Column index in [0, 7].
 static void idct_col(int32_t *workspace, int col) {
     int32_t x0 = workspace[col + 0 * 8], x1 = workspace[col + 1 * 8];
     int32_t x2 = workspace[col + 2 * 8], x3 = workspace[col + 3 * 8];
@@ -1714,6 +1863,14 @@ static void idct_col(int32_t *workspace, int col) {
         TH_DESCALE(e0 - (TH_DESCALE(x1 * TH_FIX(1.501321110), 12) + t0 + t3), 5);
 }
 
+/// @brief Perform a full separable 8×8 IDCT on a block of 64 quantized DCT coefficients.
+/// @details Copies @p in to an int32_t workspace, applies `idct_row` across all 8 rows,
+///   then `idct_col` down all 8 columns, and clips each int32_t result to int16_t range
+///   via `trunc_i16` before storing to @p out. The two-pass separable structure keeps
+///   the butterfly table small while correctly handling the scaling introduced by
+///   the AAN row pass.
+/// @param in  64 quantized DCT coefficients in zigzag order (after de-zigzag by caller).
+/// @param out 64 spatial-domain residual values, clamped to int16_t range.
 static void idct_block(const int16_t in[64], int16_t out[64]) {
     int32_t ws[64];
     for (int i = 0; i < 64; i++)
@@ -1726,6 +1883,17 @@ static void idct_block(const int16_t in[64], int16_t out[64]) {
         out[i] = trunc_i16(ws[i]);
 }
 
+/// @brief Dequantize and IDCT one block's coefficients to produce spatial-domain residuals.
+/// @details Three cases:
+///   - `ncoeffs == 0`: no coefficients; output is all zeros (block is identical to prediction).
+///   - `ncoeffs == 1`: DC-only shortcut; repeats the single DC value across all 64 positions
+///     as allowed by the Theora spec for flat areas.
+///   - General: builds a full 64-element coefficient array by dequantizing DC with
+///     `qmat[qti][plane][qi_dc]` and AC with `qmat[qti][plane][qi_ac]`, then calls `idct_block`.
+///   The quantization type `qti` is 0 for intra blocks (mode 1) and 1 for inter blocks.
+/// @param bi  Block index in [0, total_blocks).
+/// @param fh  Frame header supplying qi[] and nqi.
+/// @param out 64-element output residual array.
 static void build_residual_block(const theora_decoder_t *dec,
                                  const theora_priv_t *priv,
                                  int bi,
@@ -1757,6 +1925,16 @@ static void build_residual_block(const theora_decoder_t *dec,
     idct_block(coeff_block, out);
 }
 
+/// @brief Resolve the current, reference, and golden plane buffer pointers for @p plane.
+/// @details Provides a single dispatch point that maps plane index (0=Y, 1=Cb, 2=Cr)
+///   to the three per-plane buffer pointers and the correct stride (y_stride for luma,
+///   c_stride for chroma). Used by `reconstruct_frame` and `apply_loop_filter` so
+///   each does not need its own plane-dispatch switch.
+/// @param plane  0=Y, 1=Cb, 2=Cr.
+/// @param cur    Output: writable current-frame buffer.
+/// @param ref    Output: read-only reference (previous) frame buffer.
+/// @param gold   Output: read-only golden frame buffer.
+/// @param stride Output: row stride in bytes for this plane.
 static void select_plane_buffers(const theora_decoder_t *dec,
                                  int plane,
                                  uint8_t **cur,
@@ -1781,6 +1959,15 @@ static void select_plane_buffers(const theora_decoder_t *dec,
     }
 }
 
+/// @brief Compute the loop-filter delta for a boundary given residual @p r and @p limit.
+/// @details Implements the Theora loop filter response function (VP3 spec §6.5):
+///   - |r| >= 2*limit: no filtering (return 0).
+///   - limit <= |r| < 2*limit: push back by `sign(r) * (2*limit - |r|)`.
+///   - |r| < limit: pass through as-is.
+///   The response is applied to the two pixels straddling a block boundary to reduce
+///   DCT ringing artefacts. A limit of 0 (all pixels are unfiltered) short-circuits
+///   the entire loop-filter pass.
+/// @return Signed correction delta to be added/subtracted from the two boundary pixels.
 static int loop_filter_limit_response(int r, int limit) {
     if (limit <= 0)
         return 0;
@@ -1795,6 +1982,17 @@ static int loop_filter_limit_response(int r, int limit) {
     return 0;
 }
 
+/// @brief Apply the Theora loop filter along a vertical block boundary (filtering
+///        pixel pairs horizontally across the boundary at column @p fx).
+/// @details For each of the 8 rows in the block row, computes the 4-tap boundary
+///   residual `r = (p[fx] - 3*p[fx+1] + 3*p[fx+2] - p[fx+3] + 4) >> 3` and applies
+///   `loop_filter_limit_response` to get the delta. The delta is added to p[fx+1]
+///   and subtracted from p[fx+2], clamped to [0, 255].
+/// @param plane  Plane data buffer.
+/// @param stride Row stride in bytes.
+/// @param fx     First column of the 4-tap window (boundary is between fx+1 and fx+2).
+/// @param fy     First row of the 8-row block.
+/// @param limit  Filter limit from `dec->loop_filter_limits[qi]`.
 static void apply_horizontal_filter(uint8_t *plane, int stride, int fx, int fy, int limit) {
     for (int by = 0; by < 8; by++) {
         int row = fy + by;
@@ -1809,6 +2007,16 @@ static void apply_horizontal_filter(uint8_t *plane, int stride, int fx, int fy, 
     }
 }
 
+/// @brief Apply the Theora loop filter along a horizontal block boundary (filtering
+///        pixel pairs vertically across the boundary at row @p fy).
+/// @details Symmetric to `apply_horizontal_filter` but operates on a 4-row vertical
+///   window, computing the residual column-by-column across 8 columns of the block.
+///   Modifies `p[(fy+1)*stride+x]` and `p[(fy+2)*stride+x]` in-place.
+/// @param plane  Plane data buffer.
+/// @param stride Row stride in bytes.
+/// @param fx     First column of the 8-column block.
+/// @param fy     First row of the 4-row window (boundary is between fy+1 and fy+2).
+/// @param limit  Filter limit from `dec->loop_filter_limits[qi]`.
 static void apply_vertical_filter(uint8_t *plane, int stride, int fx, int fy, int limit) {
     for (int bx = 0; bx < 8; bx++) {
         int r = (plane[fy * stride + fx + bx] - 3 * plane[(fy + 1) * stride + fx + bx] +
@@ -1822,6 +2030,15 @@ static void apply_vertical_filter(uint8_t *plane, int stride, int fx, int fy, in
     }
 }
 
+/// @brief Apply the Theora deblocking loop filter to all three planes of the current frame.
+/// @details Iterates over all coded blocks and applies horizontal and vertical boundary
+///   filters at each block edge. Four cases:
+///   - Left edge (bx > 0): horizontal filter at column bx*8-2.
+///   - Top edge (by > 0): vertical filter at row by*8-2.
+///   - Right edge (if right neighbor is uncoded): horizontal filter at bx*8+6.
+///   - Bottom edge (if bottom neighbor is uncoded): vertical filter at by*8+6.
+///   The limit is looked up from `dec->loop_filter_limits[fh->qi[0]]`; a limit of 0
+///   skips the entire filter pass (no-op for very low bitrate / already-flat frames).
 static void apply_loop_filter(theora_decoder_t *dec,
                               const theora_priv_t *priv,
                               const theora_frame_header_t *fh) {
@@ -1880,6 +2097,16 @@ static void apply_loop_filter(theora_decoder_t *dec,
     }
 }
 
+/// @brief Copy the motion-compensated prediction block using full-pixel (integer-pel)
+///        addressing from the reference plane.
+/// @details Clamps the source coordinates to [0, max_w-1] / [0, max_h-1] at every
+///   pixel to handle motion vectors that extend beyond the frame boundary. The
+///   clamped-border padding matches the Theora spec's boundary extension rules.
+/// @param dst   8×8 output block (row-major, row stride = 8).
+/// @param src   Reference plane buffer.
+/// @param stride Reference plane row stride.
+/// @param bw,bh Block width and height (may be < 8 at right/bottom frame edges).
+/// @param sx,sy Top-left reference coordinate (may be outside [0, max_w/h)).
 static void copy_pred_whole(uint8_t *dst,
                             const uint8_t *src,
                             int stride,
@@ -1898,6 +2125,14 @@ static void copy_pred_whole(uint8_t *dst,
     }
 }
 
+/// @brief Copy a half-pixel-interpolated prediction block by averaging two reference
+///        pixels at (x0+x, y0+y) and (x1+x, y1+y) per output position.
+/// @details Used for INTER_MV_HALF (half-pixel motion-compensated mode) where the
+///   effective MV has a fractional component. Both source coordinates are clamped
+///   independently to the frame boundary. The rounding `(a + b + 1) >> 1` uses
+///   round-half-up matching the Theora spec's half-pixel interpolation rule.
+/// @param x0,y0 Integer-pixel reference position A (top-left corner of the bw×bh region).
+/// @param x1,y1 Integer-pixel reference position B (one pixel away in the fractional direction).
 static void copy_pred_half(uint8_t *dst,
                            const uint8_t *src,
                            int stride,
@@ -1920,18 +2155,44 @@ static void copy_pred_half(uint8_t *dst,
     }
 }
 
+/// @brief Convert a Theora motion-vector component to the full-pixel component of a
+///        half-pixel MV by truncating toward zero.
+/// @details Theora encodes MVs in units of half-pixels. The full-pixel base coordinate
+///   is `sign(mv) * floor(|mv| / 2)`. This function computes that value. For even MVs
+///   this is exact; for odd MVs it gives the floor. Paired with `motion_trunc_away_zero`
+///   for the second reference position in half-pixel interpolation.
 static int motion_trunc_toward_zero(int mv) {
     int s = mv < 0 ? -1 : 1;
     int a = mv < 0 ? -mv : mv;
     return s * (a / 2);
 }
 
+/// @brief Compute the second full-pixel component of a half-pixel MV by truncating
+///        away from zero (ceiling of |mv| / 2).
+/// @details For an odd MV the second reference pixel is one position further in the
+///   direction of motion than the result of `motion_trunc_toward_zero`. For even MVs
+///   both functions return the same value (no fractional component). The two functions
+///   together construct the pair (x0, x1) passed to `copy_pred_half`.
 static int motion_trunc_away_zero(int mv) {
     int s = mv < 0 ? -1 : 1;
     int a = mv < 0 ? -mv : mv;
     return s * ((a + 1) / 2);
 }
 
+/// @brief Reconstruct the current frame by combining motion-compensated predictions
+///        with decoded residuals for every block in all three planes.
+/// @details Per-block pipeline:
+///   1. `select_plane_buffers` resolves cur/ref/gold pointers and stride.
+///   2. `build_residual_block` dequantizes and IDCTs the block's coefficients into
+///      a 64-element int16_t residual (or all-zeros for uncoded blocks).
+///   3. The prediction block (`pred`) is constructed based on the MB mode:
+///      - INTRA: flat 128 (no prediction needed — residual is the signal).
+///      - INTER_NOMV: copy from co-located ref position (zero MV).
+///      - INTER_MV / INTER_MV_LAST / INTER_MV_LAST2: whole-pixel or half-pixel
+///        copy from ref frame using the stored MV.
+///      - GOLDEN modes: same as INTER but references the golden frame buffer.
+///   4. The 8-bit prediction is summed with the int16_t residual, clamped to [0,255],
+///      and written back to the current plane at the block's raster position.
 static void reconstruct_frame(theora_decoder_t *dec,
                               const theora_priv_t *priv,
                               const theora_frame_header_t *fh) {

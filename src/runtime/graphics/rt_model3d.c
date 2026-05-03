@@ -247,6 +247,16 @@ static void *model_clone_mutable_mesh(void *mesh) {
     return mesh_clone;
 }
 
+/// @brief Recursive deep-copy of a scene-node subtree from `src` into a new GC-allocated node.
+/// @details Copies TRS (translation, rotation, scale), world-dirty flag, visibility, AABB, and
+///   bounding-sphere radius.  Mesh and material handles are retained (not cloned) so the clone
+///   shares static geometry with the template.  When `clone_mutable_meshes` is nonzero, any
+///   mesh that has attached morph targets is deep-cloned via `model_clone_mutable_mesh` so each
+///   instance can have independent blend-shape weights.  LOD level geometry follows the same
+///   retain / clone logic as the primary mesh.  Children are recursively cloned and attached via
+///   `rt_scene_node3d_add_child`; the local reference is released after attachment so the parent
+///   node is the sole owner.  Returns NULL on allocation failure (partial nodes may have been
+///   constructed but are GC-collected normally).
 static rt_scene_node3d *model_clone_node(const rt_scene_node3d *src, int clone_mutable_meshes) {
     rt_scene_node3d *dst;
     if (!src)
@@ -345,6 +355,10 @@ static void model_clone_children_to_root(rt_scene_node3d *dst_root, const rt_sce
 
 static int model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *node);
 
+/// @brief Collect mesh/material references from every top-level child of the template root.
+/// @details Delegates to `model_collect_scene_refs` for each immediate child so the template
+///   root node itself is not registered (it is a synthetic container, not a content node).
+///   Returns 1 on success, 0 if any registration step fails due to an allocation error.
 static int model_collect_template_refs(rt_model3d *model) {
     if (!model || !model->template_root)
         return 1;
@@ -355,6 +369,13 @@ static int model_collect_template_refs(rt_model3d *model) {
     return 1;
 }
 
+/// @brief Wire a default skeletal AnimationController3D onto `root` when one is present in the model.
+/// @details Creates an AnimController3D backed by the first skeleton, adds one state per loaded
+///   animation clip (naming it after its rt_animation3d name, with a "animation_<i>" fallback for
+///   unnamed clips), then plays the first state so the model arrives in a live pose immediately
+///   after instantiation.  No-op when the root already has a bound animator, there are no
+///   skeletons, or there are no animation clips to add.  The controller's local reference is
+///   released after binding because the root's `bound_animator` slot owns the retain.
 static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root) {
     void *controller;
     char first_state[64];
@@ -393,6 +414,12 @@ static void model_bind_default_animator(rt_model3d *model, rt_scene_node3d *root
     model_release_local(controller);
 }
 
+/// @brief Wire a default NodeAnimator3D onto `root` using any node-animation clips in the model.
+/// @details Creates a NodeAnimator3D from the full `node_animations` array so scene-node TRS
+///   animations (camera paths, object tracks) play automatically after instantiation, mirroring
+///   the same auto-play convenience as `model_bind_default_animator` for skeletal animations.
+///   No-op when a node animator is already bound or when no node-animation clips were loaded.
+///   The animator's local reference is released after binding.
 static void model_bind_default_node_animator(rt_model3d *model, rt_scene_node3d *root) {
     void *animator;
     if (!model || !root || root->bound_node_animator || model->node_animation_count <= 0)

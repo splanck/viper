@@ -35,11 +35,16 @@
 // Phase 5: FileDialog
 //=============================================================================
 
+/// @brief Return the active GUI app for file-dialog hosting.
+/// @details Prefers the app returned by `rt_gui_get_active_app`; falls back to
+///          the module-level `s_current_app` pointer so dialogs work even when
+///          the "active" app is temporarily null during event dispatch.
 static rt_gui_app_t *rt_filedialog_app(void) {
     rt_gui_app_t *app = rt_gui_get_active_app();
     return app ? app : s_current_app;
 }
 
+/// @brief Portable `strdup` wrapper — uses `_strdup` on Windows, `strdup` elsewhere.
 static char *rt_filedialog_strdup(const char *text) {
     if (!text)
         return NULL;
@@ -50,6 +55,9 @@ static char *rt_filedialog_strdup(const char *text) {
 #endif
 }
 
+/// @brief Configure `dialog` for modal presentation and push it onto the app's dialog stack.
+/// @details Ensures default font is applied, sets the dialog as the modal root over `app->root`,
+///          shows it, and pushes it so the main loop blocks on it. Returns 0 if any pointer is NULL.
 static int rt_filedialog_prepare_modal(rt_gui_app_t *app, vg_filedialog_t *dialog) {
     if (!app || !app->window || !app->root || !dialog)
         return 0;
@@ -62,6 +70,9 @@ static int rt_filedialog_prepare_modal(rt_gui_app_t *app, vg_filedialog_t *dialo
     return 1;
 }
 
+/// @brief Run the GUI event loop until the dialog closes or the app signals shutdown.
+/// @details Polls and renders the app in a tight loop; pops the dialog from the stack
+///          and syncs the modal root on exit. Returns 1 if at least one file was selected.
 static int rt_filedialog_run_modal(rt_gui_app_t *app, vg_filedialog_t *dialog) {
     if (!app || !dialog)
         return 0;
@@ -74,6 +85,8 @@ static int rt_filedialog_run_modal(rt_gui_app_t *app, vg_filedialog_t *dialog) {
     return dialog->selected_file_count > 0 ? 1 : 0;
 }
 
+/// @brief Prepare and then run a modal file dialog in one call.
+/// @details Combines `rt_filedialog_prepare_modal` + `rt_filedialog_run_modal`.
 static int rt_filedialog_show_modal(rt_gui_app_t *app, vg_filedialog_t *dialog) {
     if (!rt_filedialog_prepare_modal(app, dialog))
         return 0;
@@ -288,6 +301,7 @@ typedef struct {
     int64_t result;
 } rt_filedialog_data_t;
 
+/// @brief Free the selected-paths array and reset count to zero.
 static void rt_filedialog_clear_selected_paths(rt_filedialog_data_t *data) {
     if (!data || !data->selected_paths)
         return;
@@ -299,6 +313,10 @@ static void rt_filedialog_clear_selected_paths(rt_filedialog_data_t *data) {
     data->selected_count = 0;
 }
 
+/// @brief Copy the dialog's current selected-path list into the wrapper struct.
+/// @details Fetches the path array from the VG backend, deep-copies every string, then
+///          atomically replaces the wrapper's previous list. Partial copy failures clean
+///          up fully and return 0 rather than leaving a corrupt partial list.
 static int rt_filedialog_copy_selected_paths(rt_filedialog_data_t *data) {
     if (!data || !data->dialog)
         return 0;
@@ -333,6 +351,7 @@ static int rt_filedialog_copy_selected_paths(rt_filedialog_data_t *data) {
     return 1;
 }
 
+/// @brief Release all resources owned by the file-dialog wrapper.
 static void rt_filedialog_dispose(rt_filedialog_data_t *data) {
     if (!data)
         return;
@@ -344,6 +363,7 @@ static void rt_filedialog_dispose(rt_filedialog_data_t *data) {
     data->result = 0;
 }
 
+/// @brief GC finalizer — delegates to `rt_filedialog_dispose`.
 static void rt_filedialog_finalize(void *dialog) {
     rt_filedialog_dispose((rt_filedialog_data_t *)dialog);
 }
@@ -541,6 +561,7 @@ void rt_filedialog_destroy(void *dialog) {
 
 #else /* !VIPER_ENABLE_GRAPHICS */
 
+/// @brief Stub: returns empty string — file open dialog requires graphics.
 rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string filter) {
     (void)title;
     (void)default_path;
@@ -548,6 +569,7 @@ rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string 
     return rt_str_empty();
 }
 
+/// @brief Stub: returns empty string — multi-select open dialog requires graphics.
 rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, rt_string filter) {
     (void)title;
     (void)default_path;
@@ -555,6 +577,7 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
     return rt_str_empty();
 }
 
+/// @brief Stub: returns empty string — save dialog requires graphics.
 rt_string rt_filedialog_save(rt_string title,
                              rt_string default_path,
                              rt_string filter,
@@ -566,82 +589,98 @@ rt_string rt_filedialog_save(rt_string title,
     return rt_str_empty();
 }
 
+/// @brief Stub: returns empty string — folder picker requires graphics.
 rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path) {
     (void)title;
     (void)default_path;
     return rt_str_empty();
 }
 
+/// @brief Stub: returns NULL — file dialog object requires graphics.
 void *rt_filedialog_new(int64_t type) {
     (void)type;
     return NULL;
 }
 
+/// @brief Stub: returns NULL — open-file dialog requires graphics.
 void *rt_filedialog_new_open(void) {
     return NULL;
 }
 
+/// @brief Stub: returns NULL — save-file dialog requires graphics.
 void *rt_filedialog_new_save(void) {
     return NULL;
 }
 
+/// @brief Stub: returns NULL — folder-picker dialog requires graphics.
 void *rt_filedialog_new_folder(void) {
     return NULL;
 }
 
+/// @brief Stub: `FileDialog.SetTitle` is a no-op without graphics.
 void rt_filedialog_set_title(void *dialog, rt_string title) {
     (void)dialog;
     (void)title;
 }
 
+/// @brief Stub: `FileDialog.SetPath` is a no-op without graphics.
 void rt_filedialog_set_path(void *dialog, rt_string path) {
     (void)dialog;
     (void)path;
 }
 
+/// @brief Stub: `FileDialog.SetFilter` is a no-op without graphics.
 void rt_filedialog_set_filter(void *dialog, rt_string name, rt_string pattern) {
     (void)dialog;
     (void)name;
     (void)pattern;
 }
 
+/// @brief Stub: `FileDialog.AddFilter` is a no-op without graphics.
 void rt_filedialog_add_filter(void *dialog, rt_string name, rt_string pattern) {
     (void)dialog;
     (void)name;
     (void)pattern;
 }
 
+/// @brief Stub: `FileDialog.SetDefaultName` is a no-op without graphics.
 void rt_filedialog_set_default_name(void *dialog, rt_string name) {
     (void)dialog;
     (void)name;
 }
 
+/// @brief Stub: `FileDialog.SetMultiple` is a no-op without graphics.
 void rt_filedialog_set_multiple(void *dialog, int64_t multiple) {
     (void)dialog;
     (void)multiple;
 }
 
+/// @brief Stub: returns 0 — dialog cannot be shown without graphics.
 int64_t rt_filedialog_show(void *dialog) {
     (void)dialog;
     return 0;
 }
 
+/// @brief Stub: returns empty string — no path available without graphics.
 rt_string rt_filedialog_get_path(void *dialog) {
     (void)dialog;
     return rt_str_empty();
 }
 
+/// @brief Stub: returns 0 — no paths available without graphics.
 int64_t rt_filedialog_get_path_count(void *dialog) {
     (void)dialog;
     return 0;
 }
 
+/// @brief Stub: returns empty string — no path at index without graphics.
 rt_string rt_filedialog_get_path_at(void *dialog, int64_t index) {
     (void)dialog;
     (void)index;
     return rt_str_empty();
 }
 
+/// @brief Stub: `FileDialog.Destroy` is a no-op without graphics.
 void rt_filedialog_destroy(void *dialog) {
     (void)dialog;
 }

@@ -178,29 +178,29 @@ implemented in C and exposed through the IL runtime system.
 | [`Camera`](graphics/README.md#vipergraphicscamera)         | Instance | 2D camera for scrolling/zoom/parallax |
 | [`Canvas`](graphics/README.md#vipergraphicscanvas)         | Instance | 2D graphics canvas with delta time    |
 | [`Color`](graphics/README.md#vipergraphicscolor)           | Static   | Color creation                   |
-| [`DebugDraw2D`](graphics/production2d.md#classes)          | Instance | Retained debug drawing queue     |
-| [`Material2D`](graphics/production2d.md#classes)           | Instance | 2D tint, alpha, and blend state  |
-| [`NineSlice2D`](graphics/production2d.md#ui-and-debug-drawing) | Instance | Stretchable UI image drawing |
-| [`ObjectLayer2D`](graphics/production2d.md#tile-and-object-layers) | Instance | Rect object map layer       |
-| [`ParticleSystem2D`](graphics/production2d.md#classes)     | Instance | Graphics alias for particle effects |
+| [`DebugDraw2D`](graphics/shapes2d.md#classes)              | Instance | Retained debug drawing queue     |
+| [`Material2D`](graphics/rendering2d.md#classes)            | Instance | 2D tint, alpha, and blend state  |
+| [`NineSlice2D`](graphics/shapes2d.md#classes)              | Instance | Stretchable UI image drawing |
+| [`ObjectLayer2D`](graphics/tilemaps2d.md#classes)          | Instance | Rect object map layer       |
+| [`ParticleSystem2D`](graphics/game2d.md#classes)           | Instance | Graphics alias for particle effects |
 | [`Pixels`](graphics/README.md#vipergraphicspixels)         | Instance | Software image buffer            |
-| [`PostProcess2D`](graphics/production2d.md#classes)        | Instance | CPU image post-processing pass   |
-| [`RenderTarget2D`](graphics/production2d.md#render-target-and-renderer) | Instance | Offscreen alpha-aware render surface |
-| [`Renderer2D`](graphics/production2d.md#render-target-and-renderer) | Instance | Retained 2D draw command stream |
+| [`PostProcess2D`](graphics/rendering2d.md#classes)         | Instance | CPU image post-processing pass   |
+| [`RenderTarget2D`](graphics/rendering2d.md#render-targets-textures-and-renderer) | Instance | Offscreen alpha-aware render surface |
+| [`Renderer2D`](graphics/rendering2d.md#render-targets-textures-and-renderer) | Instance | Retained 2D draw command stream |
 | [`Scene`](graphics/README.md#vipergraphicsscene)           | Instance | Scene graph container            |
 | [`SceneNode`](graphics/README.md#vipergraphicsscenenode)   | Instance | Hierarchical scene graph node    |
-| [`Shader2D`](graphics/production2d.md#classes)             | Instance | CPU 2D image effect wrapper      |
-| [`ShapeRenderer2D`](graphics/production2d.md#classes)      | Instance | Lines, rectangles, circles, paths |
-| [`SdfFont`](graphics/production2d.md#classes)              | Instance | SDF-ready bitmap font wrapper    |
+| [`Shader2D`](graphics/rendering2d.md#classes)              | Instance | CPU 2D image effect wrapper      |
+| [`ShapeRenderer2D`](graphics/shapes2d.md#classes)          | Instance | Lines, rectangles, circles, paths |
+| [`SdfFont`](graphics/shapes2d.md#classes)                  | Instance | SDF-ready bitmap font wrapper    |
 | [`Sprite`](graphics/README.md#vipergraphicssprite)         | Instance | 2D sprite with flip/animation    |
 | [`SpriteBatch`](graphics/README.md#vipergraphicsspritebatch)| Instance | Batched sprite rendering        |
 | [`SpriteSheet`](graphics/README.md#vipergraphicsspritesheet)| Instance | Sprite sheet/atlas with named region extraction |
-| [`TextRenderer2D`](graphics/production2d.md#classes)       | Instance | Text measurement and Canvas draw wrapper |
-| [`Texture2D`](graphics/production2d.md#classes)            | Instance | Retained texture handle over Pixels |
-| [`TileLayer2D`](graphics/production2d.md#tile-and-object-layers) | Instance | Dense tile ID layer          |
-| [`TileSet2D`](graphics/production2d.md#tile-and-object-layers) | Instance | Uniform grid tileset         |
+| [`TextRenderer2D`](graphics/shapes2d.md#classes)           | Instance | Text measurement and Canvas draw wrapper |
+| [`Texture2D`](graphics/rendering2d.md#classes)             | Instance | Retained texture handle over Pixels |
+| [`TileLayer2D`](graphics/tilemaps2d.md#classes)            | Instance | Dense tile ID layer          |
+| [`TileSet2D`](graphics/tilemaps2d.md#classes)              | Instance | Uniform grid tileset         |
 | [`Tilemap`](graphics/README.md#vipergraphicstilemap)       | Instance | Tile-based game maps             |
-| [`Viewport2D`](graphics/production2d.md#color-and-scale-conventions) | Instance | Virtual-to-screen scaling and transforms |
+| [`Viewport2D`](graphics/game2d.md#viewport-scale)          | Instance | Virtual-to-screen scaling and transforms |
 
 ### Viper.Graphics3D
 

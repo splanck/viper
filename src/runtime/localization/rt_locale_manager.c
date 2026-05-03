@@ -107,6 +107,10 @@ extern void rt_locale_internal_finalizer(void *obj);
 
 static int loc_register_entry_locked(const rt_locale_data_t *data, int is_baked);
 
+/// @brief Return the current atomic reference count for a locale-data record.
+/// @details Returns 0 for NULL or baked records (arena == NULL); those are immortal.
+/// @param data Locale-data record to query; may be NULL.
+/// @return The current `formatter_refs` counter value, or 0 for baked/NULL records.
 static int64_t loc_data_ref_count(const rt_locale_data_t *data) {
     if (!data || data->arena == NULL)
         return 0;
@@ -118,6 +122,10 @@ static int64_t loc_data_ref_count(const rt_locale_data_t *data) {
 // Arena + JSON schema helpers
 //===----------------------------------------------------------------------===//
 
+/// @brief Allocate a new arena for locale-data JSON loading.
+/// @details The arena is a linked-list of individual allocations that can all
+///          be freed at once via `loc_arena_free`. Traps on OOM.
+/// @return Pointer to a new, empty arena; never NULL.
 static loc_arena_t *loc_arena_new(void) {
     loc_arena_t *arena = (loc_arena_t *)calloc(1, sizeof(*arena));
     if (!arena)
@@ -125,6 +133,13 @@ static loc_arena_t *loc_arena_new(void) {
     return arena;
 }
 
+/// @brief Allocate @p size zero-initialised bytes from the arena and track them.
+/// @details Each allocation appends a sentinel node to the arena's linked list so
+///          `loc_arena_free` can walk and release everything in one pass.
+///          Traps on OOM; returns NULL for NULL @p arena or zero @p size.
+/// @param arena Arena to allocate from; may be NULL (returns NULL).
+/// @param size  Number of bytes to allocate; 0 returns NULL without trapping.
+/// @return Pointer to zeroed memory, or NULL on invalid input; traps on OOM.
 static void *loc_arena_alloc(loc_arena_t *arena, size_t size) {
     if (!arena || size == 0)
         return NULL;
@@ -142,6 +157,13 @@ static void *loc_arena_alloc(loc_arena_t *arena, size_t size) {
     return ptr;
 }
 
+/// @brief Duplicate at most @p len bytes of @p s into the arena.
+/// @details NULL @p s is treated as an empty string. Strings longer than 256 bytes
+///          are rejected (returns NULL) to guard against malformed locale JSON.
+/// @param arena Arena to allocate from.
+/// @param s     Source string bytes; NULL is treated as "".
+/// @param len   Number of bytes to copy (must be ≤ 256).
+/// @return Arena-owned NUL-terminated copy, or NULL if @p len > 256.
 static char *loc_arena_strndup(loc_arena_t *arena, const char *s, size_t len) {
     if (!s)
         s = "";
@@ -155,10 +177,19 @@ static char *loc_arena_strndup(loc_arena_t *arena, const char *s, size_t len) {
     return copy;
 }
 
+/// @brief Duplicate the full NUL-terminated string @p s into the arena.
+/// @details Convenience wrapper around `loc_arena_strndup` for known-valid strings.
+/// @param arena Arena to allocate from.
+/// @param s     NUL-terminated source string; NULL is treated as "".
+/// @return Arena-owned NUL-terminated copy of @p s.
 static char *loc_arena_strdup(loc_arena_t *arena, const char *s) {
     return loc_arena_strndup(arena, s ? s : "", strlen(s ? s : ""));
 }
 
+/// @brief Free all allocations in the arena and the arena struct itself.
+/// @details Walks the linked list of `loc_arena_alloc_t` nodes, freeing each
+///          tracked allocation and its sentinel. Safe to call with NULL.
+/// @param arena Arena to destroy; may be NULL (no-op).
 static void loc_arena_free(loc_arena_t *arena) {
     if (!arena)
         return;
@@ -172,40 +203,62 @@ static void loc_arena_free(loc_arena_t *arena) {
     free(arena);
 }
 
+/// @brief Release all memory for a loaded (non-baked) locale-data record.
+/// @details No-op for NULL or baked records (arena == NULL). For loaded records,
+///          frees the arena, which releases all strings, arrays, and plural-rule
+///          nodes in a single pass.
+/// @param data Locale-data record to free; may be NULL or baked (both no-ops).
 static void loc_free_loaded_data(const rt_locale_data_t *data) {
     if (!data || !data->arena)
         return;
     loc_arena_free((loc_arena_t *)data->arena);
 }
 
+/// @brief Decrement the GC refcount on a runtime object and free it if it hits zero.
+/// @param obj GC-tracked object; NULL is safe.
 static void loc_release_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief Conditionally trap with @p msg, then return 0.
+/// @details Provides a uniform "fail path" for JSON schema validation: either
+///          traps (for the Load* strict path) or returns 0 silently (for TryLoad*).
+/// @param trap_on_error Non-zero to trap immediately; 0 to return silently.
+/// @param msg           Trap message passed to `rt_trap`.
+/// @return Always 0.
 static int loc_fail(int trap_on_error, const char *msg) {
     if (trap_on_error)
         rt_trap(msg);
     return 0;
 }
 
+/// @brief Return non-zero if @p obj is a runtime string handle.
 static int loc_is_string(void *obj) {
     return obj && rt_string_is_handle(obj);
 }
 
+/// @brief Return non-zero if @p obj is a runtime map (JSON object) handle.
 static int loc_is_map(void *obj) {
     return obj && rt_obj_class_id(obj) == RT_MAP_CLASS_ID;
 }
 
+/// @brief Return non-zero if @p obj is a runtime seq (JSON array) handle.
 static int loc_is_seq(void *obj) {
     return obj && rt_obj_class_id(obj) == RT_SEQ_CLASS_ID;
 }
 
+/// @brief Decrement the GC refcount on a Locale handle and free it if it hits zero.
+/// @param obj Locale handle; NULL is safe.
 static void loc_release_handle(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief Look up a key in a JSON map object, returning the value or NULL.
+/// @param map Runtime map handle (JSON object); NULL or non-map returns NULL.
+/// @param key NUL-terminated key string.
+/// @return Runtime value handle for the key, or NULL if absent/invalid.
 static void *json_get(void *map, const char *key) {
     if (!loc_is_map(map) || !key)
         return NULL;
@@ -215,6 +268,12 @@ static void *json_get(void *map, const char *key) {
     return v;
 }
 
+/// @brief Return the raw C-string pointer for a runtime string object.
+/// @details Sets @p *ok to 1 on success, 0 when @p obj is not a string.
+///          The returned pointer is valid only as long as the string object lives.
+/// @param obj Runtime object to check; non-string returns NULL.
+/// @param ok  Out-parameter set to 1 on success, 0 on type mismatch; may be NULL.
+/// @return Pointer to the NUL-terminated string data, or NULL on type mismatch.
 static const char *json_string_cstr(void *obj, int *ok) {
     if (ok) *ok = 0;
     if (!loc_is_string(obj))
@@ -226,6 +285,11 @@ static const char *json_string_cstr(void *obj, int *ok) {
     return s;
 }
 
+/// @brief Return the byte length of the first UTF-8 code-point starting at @p s.
+/// @details Supports 1–4-byte sequences per RFC 3629. Returns 0 for NULL, empty,
+///          or malformed leading bytes. Used to validate locale digit strings.
+/// @param s Pointer to the first byte of a UTF-8 sequence.
+/// @return 1, 2, 3, or 4 for valid sequences; 0 for invalid/empty input.
 static size_t loc_utf8_cp_len(const char *s) {
     if (!s || !*s) return 0;
     unsigned char c = (unsigned char)s[0];
@@ -236,6 +300,11 @@ static size_t loc_utf8_cp_len(const char *s) {
     return 0;
 }
 
+/// @brief Validate that @p digits is a UTF-8 string of exactly 10 code-points.
+/// @details The locale number digit string must have exactly 10 entries (0–9
+///          equivalents). Each entry may be multibyte (e.g., Arabic-Indic digits).
+/// @param digits NUL-terminated UTF-8 string to validate.
+/// @return 1 if the string contains exactly 10 valid code-points; 0 otherwise.
 static int loc_digits_are_valid(const char *digits) {
     if (!digits || !*digits)
         return 0;
@@ -249,6 +318,9 @@ static int loc_digits_are_valid(const char *digits) {
     return *p == '\0';
 }
 
+/// @brief Return 1 if @p code is a valid ISO 4217 three-letter uppercase currency code.
+/// @param code NUL-terminated string to test.
+/// @return 1 when @p code is exactly 3 uppercase ASCII letters; 0 otherwise.
 static int loc_currency_code_valid(const char *code) {
     if (!code || strlen(code) != 3)
         return 0;
@@ -257,6 +329,12 @@ static int loc_currency_code_valid(const char *code) {
            code[2] >= 'A' && code[2] <= 'Z';
 }
 
+/// @brief Return 1 if @p pattern contains exactly one `{n}` and one `{s}` placeholder.
+/// @details Currency format patterns must embed both the numeric value placeholder
+///          (`{n}`) and the symbol placeholder (`{s}`). Any other `{...}` syntax
+///          or unmatched `}` makes the pattern invalid.
+/// @param pattern NUL-terminated currency pattern string.
+/// @return 1 when both `{n}` and `{s}` are present; 0 otherwise.
 static int loc_currency_pattern_valid(const char *pattern) {
     if (!pattern || !*pattern)
         return 0;
@@ -280,6 +358,18 @@ static int loc_currency_pattern_valid(const char *pattern) {
     return saw_n && saw_s;
 }
 
+/// @brief Fetch and arena-duplicate a string field from a JSON map.
+/// @details When the key is absent and @p required is non-zero, records failure via
+///          @p ok and calls `loc_fail`. When absent and not required, returns a
+///          duplicate of @p fallback. Enforces a 256-byte length limit.
+/// @param arena         Arena for the duplicate string.
+/// @param map           JSON map to look up in.
+/// @param key           Field name to look up.
+/// @param fallback      Value to use when the field is absent and not required; may be NULL.
+/// @param required      Non-zero to treat absence as an error.
+/// @param trap_on_error Non-zero to trap on validation failure.
+/// @param ok            Out-parameter cleared to 0 on error; may be NULL.
+/// @return Arena-owned duplicate of the field value, or @p fallback copy on absence.
 static char *json_dup_string(loc_arena_t *arena, void *map, const char *key,
                              const char *fallback, int required,
                              int trap_on_error, int *ok) {
@@ -308,6 +398,17 @@ static char *json_dup_string(loc_arena_t *arena, void *map, const char *key,
     return loc_arena_strndup(arena, cs, (size_t)len);
 }
 
+/// @brief Fetch an integer field from a JSON map, converting from float or int64.
+/// @details Accepts both JSON number types (RT_BOX_F64 or RT_BOX_I64). Validates
+///          that the value is representable as int32_t and is an integer (no fraction).
+///          Returns @p fallback on absence (and on range error when @p trap_on_error is 0).
+/// @param map           JSON map to look up in.
+/// @param key           Field name to look up.
+/// @param fallback      Value returned when the field is absent.
+/// @param required      Non-zero to treat absence as an error.
+/// @param trap_on_error Non-zero to trap on type/range error.
+/// @param ok            Out-parameter cleared to 0 on error; may be NULL.
+/// @return The field value as int32_t, or @p fallback on absence or error.
 static int32_t json_get_i32(void *map, const char *key, int32_t fallback,
                             int required, int trap_on_error, int *ok) {
     void *v = json_get(map, key);
@@ -337,6 +438,11 @@ static int32_t json_get_i32(void *map, const char *key, int32_t fallback,
     return (int32_t)d;
 }
 
+/// @brief Map a CLDR plural category name string to the `rt_plural_category_t` enum.
+/// @details Accepts "zero", "one", "two", "few", "many"; anything else maps to
+///          RT_PLURAL_OTHER (the safe default for unknown category names).
+/// @param s NUL-terminated category name; NULL maps to RT_PLURAL_OTHER.
+/// @return The matching `rt_plural_category_t` value.
 static rt_plural_category_t parse_category(const char *s) {
     if (!s) return RT_PLURAL_OTHER;
     if (strcmp(s, "zero") == 0) return RT_PLURAL_ZERO;
@@ -347,6 +453,10 @@ static rt_plural_category_t parse_category(const char *s) {
     return RT_PLURAL_OTHER;
 }
 
+/// @brief Return 1 if @p s is one of the six valid CLDR plural category names.
+/// @details Valid names are: "zero", "one", "two", "few", "many", "other".
+/// @param s NUL-terminated string to test; NULL returns 0.
+/// @return 1 if @p s is a valid CLDR plural category name; 0 otherwise.
 static int valid_category_name(const char *s) {
     return s &&
            (strcmp(s, "zero") == 0 ||
@@ -365,6 +475,8 @@ typedef struct rule_parser {
     int failed;
 } rule_parser_t;
 
+/// @brief Advance the rule parser past any whitespace (space, tab, CR, LF).
+/// @param p Active rule parser; must not be NULL.
 static void rp_skip(rule_parser_t *p) {
     while (p->pos < p->len) {
         char c = p->s[p->pos];
@@ -374,6 +486,12 @@ static void rp_skip(rule_parser_t *p) {
     }
 }
 
+/// @brief Attempt to consume the keyword @p word from the rule parser.
+/// @details Skips leading whitespace, then checks for an exact prefix match that
+///          is not followed by an alphanumeric or underscore character (word boundary).
+/// @param p    Active rule parser.
+/// @param word Keyword to match (e.g., "and", "or", "in", "within").
+/// @return 1 if the keyword was consumed; 0 if it was not present.
 static int rp_word(rule_parser_t *p, const char *word) {
     rp_skip(p);
     size_t wl = strlen(word);
@@ -389,6 +507,11 @@ static int rp_word(rule_parser_t *p, const char *word) {
     return 1;
 }
 
+/// @brief Allocate a new rule AST node of the given @p kind from the arena.
+/// @details Sets `p->failed = 1` and returns NULL on OOM.
+/// @param p    Active rule parser.
+/// @param kind The node kind (`RT_PRN_*`).
+/// @return Pointer to a fresh, uninitialised node; NULL on OOM.
 static rt_plural_rule_node_t *rp_node(rule_parser_t *p, rt_plural_rule_kind_t kind) {
     rt_plural_rule_node_t *n =
         (rt_plural_rule_node_t *)loc_arena_alloc(p->arena, sizeof(*n));
@@ -400,6 +523,12 @@ static rt_plural_rule_node_t *rp_node(rule_parser_t *p, rt_plural_rule_kind_t ki
     return n;
 }
 
+/// @brief Parse a primary expression: an integer literal or an operand variable.
+/// @details Handles numeric literals (RT_PRN_INT), variable names (`n`, `i`, `v`,
+///          `f`, `t`) optionally followed by `mod N` (RT_PRN_VAR). Sets
+///          `p->failed` on unrecognised input and returns NULL.
+/// @param p Active rule parser.
+/// @return A new literal or variable AST node; NULL on parse failure.
 static rt_plural_rule_node_t *rp_expr(rule_parser_t *p) {
     rp_skip(p);
     if (p->pos >= p->len) {
@@ -460,6 +589,12 @@ static rt_plural_rule_node_t *rp_expr(rule_parser_t *p) {
     return n;
 }
 
+/// @brief Consume an unsigned decimal integer from the rule parser into @p *out.
+/// @details Overflow is detected and sets `p->failed`. Returns 0 (not consuming)
+///          when the next character is not a digit.
+/// @param p   Active rule parser.
+/// @param out Written with the parsed value on success; may be NULL.
+/// @return 1 if an integer was consumed; 0 if none was available.
 static int rp_integer(rule_parser_t *p, int64_t *out) {
     rp_skip(p);
     int saw = 0;
@@ -480,6 +615,13 @@ static int rp_integer(rule_parser_t *p, int64_t *out) {
     return 1;
 }
 
+/// @brief Parse a comma-separated list of integer ranges (e.g., "1, 3..5, 7").
+/// @details Each range is either a single integer or `start..end`. The range list
+///          starts with capacity 4 and is doubled as needed, capped at 64 entries.
+///          Sets `p->failed` on any parse error.
+/// @param p         Active rule parser.
+/// @param out_count Written with the number of parsed ranges on success.
+/// @return Arena-allocated array of `rt_plural_rule_range_t`; NULL on failure.
 static rt_plural_rule_range_t *rp_range_list(rule_parser_t *p, size_t *out_count) {
     if (out_count) *out_count = 0;
     size_t cap = 4;
@@ -542,6 +684,13 @@ static rt_plural_rule_range_t *rp_range_list(rule_parser_t *p, size_t *out_count
     return ranges;
 }
 
+/// @brief Parse a comparison expression: `true`, or `<expr> <op> <rhs>`.
+/// @details Handles `in`, `not in`, `within`, `not within`, `=`, and `!=`.
+///          Range-based operators consume a range list; scalar operators consume
+///          either a range list (collapsed to a WITHIN/NOT_WITHIN node) or a
+///          single expression.
+/// @param p Active rule parser.
+/// @return A comparison AST node, or a literal RT_PRN_TRUE; NULL on failure.
 static rt_plural_rule_node_t *rp_comparison(rule_parser_t *p) {
     if (rp_word(p, "true"))
         return rp_node(p, RT_PRN_TRUE);
@@ -620,6 +769,11 @@ static rt_plural_rule_node_t *rp_comparison(rule_parser_t *p) {
     return n;
 }
 
+/// @brief Parse a left-associative `and`-chain of comparison expressions.
+/// @details Builds a left-leaning tree of RT_PRN_AND nodes. Stops when no
+///          `and` keyword follows the last comparison.
+/// @param p Active rule parser.
+/// @return Root of the AND sub-tree; NULL on failure.
 static rt_plural_rule_node_t *rp_and(rule_parser_t *p) {
     rt_plural_rule_node_t *left = rp_comparison(p);
     while (!p->failed && rp_word(p, "and")) {
@@ -633,6 +787,11 @@ static rt_plural_rule_node_t *rp_and(rule_parser_t *p) {
     return left;
 }
 
+/// @brief Parse a left-associative `or`-chain of `and`-chains.
+/// @details Builds a left-leaning tree of RT_PRN_OR nodes (lowest precedence level).
+///          The CLDR grammar is: rule ::= or_chain; or_chain ::= and_chain ('or' and_chain)*.
+/// @param p Active rule parser.
+/// @return Root of the OR sub-tree; NULL on failure.
 static rt_plural_rule_node_t *rp_or(rule_parser_t *p) {
     rt_plural_rule_node_t *left = rp_and(p);
     while (!p->failed && rp_word(p, "or")) {
@@ -646,6 +805,13 @@ static rt_plural_rule_node_t *rp_or(rule_parser_t *p) {
     return left;
 }
 
+/// @brief Parse a CLDR plural rule expression string into an AST.
+/// @details Entry point for the recursive-descent parser. NULL @p rule is treated
+///          as "true". Rules longer than 256 bytes or that fail to consume all input
+///          return NULL. The returned AST is fully arena-owned.
+/// @param arena Arena for all node allocations.
+/// @param rule  NUL-terminated CLDR plural rule expression; NULL → "true".
+/// @return Root AST node, or NULL if the expression is invalid or too long.
 static rt_plural_rule_node_t *parse_rule(loc_arena_t *arena, const char *rule) {
     if (!rule)
         rule = "true";
@@ -660,6 +826,18 @@ static rt_plural_rule_node_t *parse_rule(loc_arena_t *arena, const char *rule) {
     return head;
 }
 
+/// @brief Load a fixed-length JSON string array into the arena, falling back to a default.
+/// @details When the field is absent, @p *out is set to @p fallback (no allocation).
+///          When present, validates that it is a seq of exactly @p expected strings,
+///          each at most 256 bytes, and copies each into the arena.
+/// @param arena         Arena for duplicated strings.
+/// @param map           JSON map to look up in.
+/// @param key           Field name of the array.
+/// @param fallback      Fallback pointer array when the field is absent.
+/// @param expected      Required number of array elements.
+/// @param out           Written with a pointer to the loaded (or fallback) array.
+/// @param trap_on_error Non-zero to trap on schema violations.
+/// @return 1 on success (or absent-with-fallback); 0 on validation failure.
 static int load_string_array(loc_arena_t *arena, void *map, const char *key,
                              const char *const *fallback, size_t expected,
                              const char *const **out,
@@ -687,6 +865,19 @@ static int load_string_array(loc_arena_t *arena, void *map, const char *key,
     return 1;
 }
 
+/// @brief Load a plural rule chain (cardinal or ordinal) from a JSON array field.
+/// @details When the field is absent, @p *out_entries / @p *out_count are set to
+///          the fallback values (no allocation). When present, validates category
+///          names, parses each rule expression into an AST, and stores the entries.
+/// @param arena           Arena for parsed rule nodes.
+/// @param root            JSON map object containing the field.
+/// @param key             Field name (e.g., "plural_cardinal").
+/// @param fallback_entries Fallback entry array used when the field is absent.
+/// @param fallback_count  Element count of @p fallback_entries.
+/// @param out_entries     Written with the loaded (or fallback) entry pointer.
+/// @param out_count       Written with the entry count.
+/// @param trap_on_error   Non-zero to trap on schema violations.
+/// @return 1 on success; 0 on validation failure.
 static int load_plural_chain(loc_arena_t *arena, void *root, const char *key,
                              const rt_plural_rule_entry_t *fallback_entries,
                              size_t fallback_count,
@@ -728,6 +919,17 @@ static int load_plural_chain(loc_arena_t *arena, void *root, const char *key,
     return 1;
 }
 
+/// @brief Load a single relative-time unit object from a JSON map into @p out.
+/// @details When the unit key is absent, copies @p fallback unchanged. When present,
+///          validates that it is a map and loads each category string (other, zero,
+///          one, two, few, many) as optional fields.
+/// @param arena         Arena for duplicated strings.
+/// @param units         Parent JSON map containing the unit key.
+/// @param name          Unit key name (e.g., "second", "day").
+/// @param fallback      Fallback unit data copied when the key is absent.
+/// @param out           Written with the loaded unit data.
+/// @param trap_on_error Non-zero to trap on schema violations.
+/// @return 1 on success; 0 on validation failure.
 static int load_reltime_unit(loc_arena_t *arena, void *units,
                              const char *name,
                              const rt_locdata_reltime_unit_t *fallback,
@@ -749,6 +951,16 @@ static int load_reltime_unit(loc_arena_t *arena, void *units,
     return ok;
 }
 
+/// @brief Load a list-format style (pair, start, middle, end) from a JSON field.
+/// @details When the key is absent, copies @p fallback unchanged. When present,
+///          validates it is a map and loads the four template strings as optional fields.
+/// @param arena         Arena for duplicated strings.
+/// @param parent        Parent JSON map containing the style key.
+/// @param key           Style key name (e.g., "and", "or", "unit").
+/// @param fallback      Fallback style data copied when the key is absent.
+/// @param out           Written with the loaded style.
+/// @param trap_on_error Non-zero to trap on schema violations.
+/// @return 1 on success; 0 on validation failure.
 static int load_list_style(loc_arena_t *arena, void *parent, const char *key,
                            const rt_locdata_list_style_t *fallback,
                            rt_locdata_list_style_t *out,
@@ -767,6 +979,14 @@ static int load_list_style(loc_arena_t *arena, void *parent, const char *key,
     return ok;
 }
 
+/// @brief Parse a JSON object into a fully-populated rt_locale_data_t record.
+/// @details Allocates a fresh arena, copies the en-US defaults as the base record,
+///          then applies all fields present in @p root (tag, names, numbers,
+///          currency, dates, relative_time, plural chains, list_format, collation).
+///          The arena is freed and NULL is returned on any schema violation.
+/// @param root          Runtime map handle for the parsed JSON object.
+/// @param trap_on_error Non-zero to trap on schema violations; 0 to return NULL silently.
+/// @return Heap-allocated, arena-owned locale-data record; NULL on failure.
 static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
     if (!loc_is_map(root)) {
         loc_fail(trap_on_error, "Viper.Localization.LocaleManager: locale JSON root must be object");
@@ -1044,6 +1264,11 @@ static rt_locale_data_t *loc_data_from_json(void *root, int trap_on_error) {
     return data;
 }
 
+/// @brief Return 1 if @p text contains a JSON object (`{`) as its first non-whitespace char.
+/// @details Used as a quick pre-check before calling the full JSON parser, to give
+///          a clearer error for obviously wrong input (bare strings, arrays, etc.).
+/// @param text rt_string to inspect; NULL or empty returns 0.
+/// @return 1 if the first non-whitespace byte is '{'; 0 otherwise.
 static int loc_text_starts_object(rt_string text) {
     if (!text)
         return 0;
@@ -1058,6 +1283,13 @@ static int loc_text_starts_object(rt_string text) {
     return 0;
 }
 
+/// @brief Parse a JSON string containing locale data and register it in the manager.
+/// @details Validates the JSON string (size, structure, parseable), delegates to
+///          `loc_data_from_json`, then registers under the write lock. Returns 0
+///          if registration fails (e.g., locale in use).
+/// @param text          rt_string containing the raw JSON blob.
+/// @param trap_on_error Non-zero to trap on validation or parse failure.
+/// @return 1 on successful registration; 0 on failure.
 static int loc_register_json_text(rt_string text, int trap_on_error) {
     if (!text)
         return loc_fail(trap_on_error, "Viper.Localization.LocaleManager: empty locale JSON");
@@ -1087,6 +1319,9 @@ static int loc_register_json_text(rt_string text, int trap_on_error) {
 // Init and teardown
 //===----------------------------------------------------------------------===//
 
+/// @brief Double the capacity of the locale registry entry array.
+/// @details Starts at 4, doubles each time. Traps on capacity overflow or OOM.
+///          Caller must hold the write lock.
 static void loc_registry_grow(void) {
     size_t new_cap = g_mgr.capacity == 0 ? 4 : g_mgr.capacity * 2;
     if (g_mgr.capacity > SIZE_MAX / 2 ||
@@ -1104,6 +1339,14 @@ static void loc_registry_grow(void) {
     g_mgr.capacity = new_cap;
 }
 
+/// @brief Register (or replace) a locale-data record in the registry.
+/// @details Caller must hold the write lock. Baked records (is_baked=1) take
+///          permanent precedence over loaded records for the same tag. Loaded records
+///          can only replace loaded records if the existing record has no live
+///          references; if they do, the new data is freed and 0 is returned.
+/// @param data      Locale-data record to register; must have a non-NULL `tag`.
+/// @param is_baked  1 for permanent built-in records; 0 for JSON/VPA loaded records.
+/// @return 1 on success; 0 if the existing record is in use and cannot be replaced.
 static int loc_register_entry_locked(const rt_locale_data_t *data, int is_baked) {
     if (!data || !data->tag)
         return 0;
@@ -1171,6 +1414,12 @@ static void *loc_make_handle_locked(const char *tag) {
     return loc;
 }
 
+/// @brief Lazily initialise the LocaleManager singleton on first use.
+/// @details Uses a double-checked locking pattern with acquire/release atomics.
+///          On the slow path, allocates the rwlock via a CAS idiom (concurrent
+///          allocators lose their extra lock to avoid a leak), registers the baked
+///          en-US data, detects the system locale, and builds `current` and `system`
+///          Locale handles. Safe to call from multiple threads concurrently.
 static void loc_mgr_ensure_init(void) {
     // Fast path: double-checked.
     if (__atomic_load_n(&g_mgr.initialized, __ATOMIC_ACQUIRE))
@@ -1256,6 +1505,12 @@ static void loc_mgr_ensure_init(void) {
 // Lookup / retain / release — internal helpers called by rt_locale.c
 //===----------------------------------------------------------------------===//
 
+/// @brief Look up locale data for a canonical BCP-47 tag without incrementing the reference count.
+/// @details Returns the raw data pointer; the caller must not store it across any
+///          manager call that could free the record. Prefer `_retained` when the
+///          pointer must outlive the lookup.
+/// @param tag Canonical BCP-47 tag string (e.g., "en-US"); NULL or empty returns NULL.
+/// @return Non-owning pointer to the locale data, or NULL if not registered.
 const rt_locale_data_t *rt_locale_manager_lookup_data(const char *tag) {
     if (!tag || !*tag)
         return NULL;
@@ -1272,6 +1527,12 @@ const rt_locale_data_t *rt_locale_manager_lookup_data(const char *tag) {
     return data;
 }
 
+/// @brief Look up locale data for a tag and atomically increment its reference count.
+/// @details The caller owns the resulting reference and must call
+///          `rt_locale_manager_release_data` when done. Used by `rt_locale_parse`
+///          so Locale handles keep their data alive.
+/// @param tag Canonical BCP-47 tag string; NULL or empty returns NULL.
+/// @return Retained pointer to the locale data, or NULL if not registered.
 const rt_locale_data_t *rt_locale_manager_lookup_data_retained(const char *tag) {
     if (!tag || !*tag)
         return NULL;
@@ -1289,6 +1550,10 @@ const rt_locale_data_t *rt_locale_manager_lookup_data_retained(const char *tag) 
     return data;
 }
 
+/// @brief Increment the reference count of a locale-data record.
+/// @details No-op for NULL or baked records (arena == NULL) — baked records are
+///          immortal and need no reference tracking. Thread-safe via atomic fetch-add.
+/// @param data Locale-data record to retain; NULL and baked records are ignored.
 void rt_locale_manager_retain_data(const rt_locale_data_t *data) {
     if (!data || data->arena == NULL)
         return; // baked records are immortal; no counter needed
@@ -1299,6 +1564,11 @@ void rt_locale_manager_retain_data(const rt_locale_data_t *data) {
     __atomic_fetch_add(counter, 1, __ATOMIC_ACQ_REL);
 }
 
+/// @brief Decrement the reference count of a locale-data record.
+/// @details No-op for NULL or baked records. Traps if the count would go negative
+///          (underflow guard). Does NOT free the record — that happens via
+///          `loc_free_loaded_data` when the registry removes the entry.
+/// @param data Locale-data record to release; NULL and baked records are ignored.
 void rt_locale_manager_release_data(const rt_locale_data_t *data) {
     if (!data || data->arena == NULL)
         return;
@@ -1314,6 +1584,10 @@ void rt_locale_manager_release_data(const rt_locale_data_t *data) {
 // Public class surface
 //===----------------------------------------------------------------------===//
 
+/// @brief Return the current locale handle with an incremented GC retain count.
+/// @details The caller is responsible for releasing the handle. Initialises the
+///          manager on first call. Thread-safe under the read lock.
+/// @return Retained Locale handle for the current locale; never NULL after init.
 void *rt_locale_manager_current(void) {
     loc_mgr_ensure_init();
     rt_rwlock_read_enter(g_mgr.lock);
@@ -1324,6 +1598,10 @@ void *rt_locale_manager_current(void) {
     return handle;
 }
 
+/// @brief Set the current locale to @p locale, trapping if it is not loaded.
+/// @details Binds the locale's data pointer from the registry, retains the new
+///          handle, and releases the old `current` handle. Traps on NULL input.
+/// @param locale Opaque Locale handle that must be registered in the manager.
 void rt_locale_manager_set_current(void *locale) {
     loc_mgr_ensure_init();
     if (!locale) {
@@ -1358,6 +1636,11 @@ void rt_locale_manager_set_current(void *locale) {
         loc_release_handle(old);
 }
 
+/// @brief Return the detected system locale handle with an incremented GC retain count.
+/// @details The system locale is detected at first-init from the platform API.
+///          Falls back to en-US when detection fails. The caller owns the returned
+///          reference and must release it when done.
+/// @return Retained Locale handle for the detected system locale; never NULL after init.
 void *rt_locale_manager_system(void) {
     loc_mgr_ensure_init();
     rt_rwlock_read_enter(g_mgr.lock);
@@ -1368,6 +1651,10 @@ void *rt_locale_manager_system(void) {
     return handle;
 }
 
+/// @brief Return a new List of BCP-47 tag strings for all registered locales.
+/// @details Includes both baked and JSON-loaded records. The list is owned by
+///          the caller. Tags are returned in registration order.
+/// @return A new rt_list of rt_string BCP-47 tags; caller must release.
 void *rt_locale_manager_available(void) {
     loc_mgr_ensure_init();
     void *list = rt_list_new();
@@ -1384,6 +1671,11 @@ void *rt_locale_manager_available(void) {
     return list;
 }
 
+/// @brief Return 1 if the locale for @p locale's tag is registered in the manager.
+/// @details Uses the canonical tag of @p locale for the registry lookup. Treats
+///          the invariant locale (empty tag) as "root".
+/// @param locale Opaque Locale handle to check; NULL returns 0.
+/// @return 1 if registered; 0 if absent or @p locale is NULL.
 int8_t rt_locale_manager_is_loaded(void *locale) {
     if (!locale)
         return 0;
@@ -1402,6 +1694,10 @@ int8_t rt_locale_manager_is_loaded(void *locale) {
     return found;
 }
 
+/// @brief Load and register a locale from a JSON file at @p path, trapping on failure.
+/// @details Reads the file as text, parses it, and registers it under the write lock.
+///          Traps if the path is NULL, the file cannot be read, or the JSON is invalid.
+/// @param path rt_string file-system path to the locale JSON file.
 void rt_locale_manager_load_from_json(rt_string path) {
     loc_mgr_ensure_init();
     if (!path) {
@@ -1417,6 +1713,12 @@ void rt_locale_manager_load_from_json(rt_string path) {
     rt_string_unref(text);
 }
 
+/// @brief Attempt to load and register a locale from a JSON file, returning 0 on failure.
+/// @details Checks that the file exists before reading. Returns 0 silently on any
+///          failure instead of trapping. Used internally by `rt_locale_manager_load`
+///          when scanning search paths.
+/// @param path rt_string file-system path to the locale JSON file.
+/// @return 1 on successful registration; 0 on any failure.
 int8_t rt_locale_manager_try_load_from_json(rt_string path) {
     loc_mgr_ensure_init();
     if (!path || rt_io_file_exists(path) != 1)
@@ -1429,6 +1731,11 @@ int8_t rt_locale_manager_try_load_from_json(rt_string path) {
     return ok ? 1 : 0;
 }
 
+/// @brief Load and register a locale from a named VPA asset, trapping on failure.
+/// @details Loads the asset as bytes, converts to a string, and passes through the
+///          JSON registration path. Traps if the name is NULL, the asset is missing,
+///          or the JSON is invalid.
+/// @param name rt_string asset name as registered in the VPA package.
 void rt_locale_manager_load_from_asset(rt_string name) {
     loc_mgr_ensure_init();
     if (!name) {
@@ -1446,6 +1753,10 @@ void rt_locale_manager_load_from_asset(rt_string name) {
     rt_string_unref(text);
 }
 
+/// @brief Attempt to load and register a locale from a named VPA asset, returning 0 on failure.
+/// @details Non-trapping counterpart to `rt_locale_manager_load_from_asset`.
+/// @param name rt_string asset name to look up.
+/// @return 1 on successful registration; 0 if the asset is absent or the JSON is invalid.
 int8_t rt_locale_manager_try_load_from_asset(rt_string name) {
     loc_mgr_ensure_init();
     if (!name)
@@ -1460,6 +1771,10 @@ int8_t rt_locale_manager_try_load_from_asset(rt_string name) {
     return ok ? 1 : 0;
 }
 
+/// @brief Register a baked built-in locale by BCP-47 tag, trapping if it is unknown.
+/// @details Currently only "en-US" is supported. Traps on invalid, too-long, or
+///          unknown tag strings. Re-registering "en-US" is idempotent.
+/// @param tag rt_string BCP-47 tag for the built-in locale (currently only "en-US").
 void rt_locale_manager_load_builtin(rt_string tag) {
     loc_mgr_ensure_init();
     const char *bytes = tag ? rt_string_cstr(tag) : NULL;
@@ -1492,6 +1807,13 @@ void rt_locale_manager_load_builtin(rt_string tag) {
     rt_trap("Viper.Localization.LocaleManager: unknown builtin locale (only 'en-US' is baked)");
 }
 
+/// @brief Find, load (if needed), and return a Locale handle for @p tag.
+/// @details If the tag is already registered, returns a parsed handle immediately.
+///          Otherwise walks the search-path list, trying `<path>/<tag>.json` for
+///          each directory. Returns NULL if no matching file is found or the tag
+///          is invalid. The returned handle is owned by the caller.
+/// @param tag rt_string BCP-47 tag to load (e.g., "fr-FR").
+/// @return A new Locale handle on success; NULL if the locale cannot be found.
 void *rt_locale_manager_load(rt_string tag) {
     loc_mgr_ensure_init();
     const char *bytes = tag ? rt_string_cstr(tag) : NULL;
@@ -1569,6 +1891,11 @@ void *rt_locale_manager_load(rt_string tag) {
     return loc;
 }
 
+/// @brief Return the current locale search path as a platform-separator-delimited string.
+/// @details Directories are joined with `:` on POSIX and `;` on Windows, mirroring
+///          the PATH environment variable convention. Returns an empty string when no
+///          paths are registered.
+/// @return A freshly allocated rt_string with the concatenated search path.
 rt_string rt_locale_manager_search_path(void) {
     loc_mgr_ensure_init();
     rt_rwlock_read_enter(g_mgr.lock);
@@ -1606,6 +1933,11 @@ rt_string rt_locale_manager_search_path(void) {
     return result;
 }
 
+/// @brief Append a directory path to the locale JSON search list.
+/// @details Copies the path string so the caller's storage can be freed immediately.
+///          Traps on OOM. Duplicate paths are allowed (not deduplicated).
+///          The paths are searched in insertion order by `rt_locale_manager_load`.
+/// @param path rt_string directory path to append; empty or NULL is silently ignored.
 void rt_locale_manager_add_search_path(rt_string path) {
     loc_mgr_ensure_init();
     const char *bytes = path ? rt_string_cstr(path) : NULL;
@@ -1644,6 +1976,11 @@ void rt_locale_manager_add_search_path(rt_string path) {
     rt_rwlock_write_exit(g_mgr.lock);
 }
 
+/// @brief Unload a registered non-baked locale from the registry.
+/// @details Refuses to unload: baked records, the current locale, the system locale,
+///          or records with remaining live references. Frees the arena on success.
+/// @param locale Opaque Locale handle whose tag identifies the record to unload.
+/// @return 1 if the record was removed; 0 if it could not be unloaded.
 int8_t rt_locale_manager_unload(void *locale) {
     loc_mgr_ensure_init();
     if (!locale)
@@ -1694,6 +2031,12 @@ int8_t rt_locale_manager_unload(void *locale) {
     return 1;
 }
 
+/// @brief Reset the manager to a clean state: current and system revert to en-US.
+/// @details Clears all search paths and removes all non-baked, unreferenced locale
+///          records. Records that still have live references are kept until those
+///          references are released. The baked en-US record always survives.
+///          Thread-safe; acquires the write lock twice (once for handle swap, once
+///          for registry pruning).
 void rt_locale_manager_reset(void) {
     loc_mgr_ensure_init();
     rt_rwlock_write_enter(g_mgr.lock);

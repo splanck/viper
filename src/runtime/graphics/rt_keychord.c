@@ -76,6 +76,11 @@ typedef struct {
     int64_t frame_counter;
 } rt_keychord_impl;
 
+/// @brief Linear search for a keychord entry by name.
+/// @details Used for both deduplication on add and for the public query API.
+///   Entry counts are typically small (single digits to low tens) so linear
+///   search is appropriate; the keychord object is not designed for hundreds
+///   of named bindings.  Returns NULL when no match is found.
 static kc_entry *find_entry(rt_keychord_impl *kc, const char *name) {
     int64_t i;
     for (i = 0; i < kc->count; i++) {
@@ -85,6 +90,11 @@ static kc_entry *find_entry(rt_keychord_impl *kc, const char *name) {
     return NULL;
 }
 
+/// @brief GC finalizer — free all entry names and the entries array.
+/// @details Called by the GC when the KeyChord object's reference count drops
+///   to zero.  Each entry owns a malloc'd name string, so those are freed first
+///   in order before the entries array itself is freed.  Pointers and count are
+///   cleared to prevent double-free if the finalizer is somehow called twice.
 static void kc_finalizer(void *obj) {
     rt_keychord_impl *kc = (rt_keychord_impl *)obj;
     if (kc) {
@@ -98,6 +108,11 @@ static void kc_finalizer(void *obj) {
     }
 }
 
+/// @brief Grow the entries array by 2x if it is full.
+/// @details Called before every insertion so callers do not need to check.
+///   Uses realloc for in-place growth where possible; traps on allocation
+///   failure because a half-grown entries array would leave the object
+///   in an inconsistent state.
 static void ensure_capacity(rt_keychord_impl *kc) {
     if (kc->count < kc->capacity)
         return;
@@ -111,6 +126,13 @@ static void ensure_capacity(rt_keychord_impl *kc) {
     kc->capacity = new_cap;
 }
 
+/// @brief Add or replace a chord/combo entry in the keychord manager.
+/// @details If an entry with the same name already exists it is removed first
+///   (shift-delete) so the new definition replaces it.  Key codes are extracted
+///   from the Zia Seq[Integer] object via rt_seq_get / rt_unbox_i64 and stored
+///   in a fixed-size array capped at KC_MAX_KEYS (16).  The entry name is heap-
+///   copied so the caller's string does not need to outlive the call.  Silently
+///   returns if key_count is out of range or the name allocation fails.
 static void add_entry(
     rt_keychord_impl *kc, const char *name, kc_type type, void *keys, int64_t window_frames) {
     int64_t key_count = rt_seq_len(keys);

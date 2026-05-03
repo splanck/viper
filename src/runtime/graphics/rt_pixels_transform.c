@@ -33,6 +33,7 @@
 
 #include "rt_internal.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,6 +42,9 @@
 // Image Transforms
 //=============================================================================
 
+/// @brief Clamp an int64_t to the [0, 255] range and return as uint8_t.
+/// @details Used when converting premultiplied-alpha intermediate values back to
+///   straight-alpha 8-bit channels after bilinear interpolation or blur passes.
 static uint8_t pixels_clamp_u8_i64(int64_t value) {
     if (value <= 0)
         return 0;
@@ -49,6 +53,15 @@ static uint8_t pixels_clamp_u8_i64(int64_t value) {
     return (uint8_t)value;
 }
 
+/// @brief Pack premultiplied RGB channels and a straight alpha into a 0xRRGGBBAA pixel.
+/// @details Unpremultiplies r/g/b by dividing by @p a (with rounding) before packing.
+///   Returns 0 (transparent black) when @p a == 0 to avoid divide-by-zero and because
+///   a fully transparent pixel should carry no colour information.
+/// @param premul_r  Red channel already multiplied by alpha (pre-alpha value).
+/// @param premul_g  Green channel already multiplied by alpha.
+/// @param premul_b  Blue channel already multiplied by alpha.
+/// @param a         Straight alpha value in [0, 255].
+/// @return          Packed 0xRRGGBBAA pixel with straight-alpha channels.
 static uint32_t pixels_pack_rgba_pm(int64_t premul_r,
                                     int64_t premul_g,
                                     int64_t premul_b,
@@ -64,6 +77,18 @@ static uint32_t pixels_pack_rgba_pm(int64_t premul_r,
            ((uint32_t)pixels_clamp_u8_i64(b) << 8) | (uint32_t)a8;
 }
 
+/// @brief Bilinear interpolation of four RGBA pixels in premultiplied-alpha space (fixed-point).
+/// @details Weights are expressed as fixed-point fractions in [0, 256]; the
+///   four bilinear weights sum to 256*256.  Interpolation is done in premultiplied-alpha
+///   space to avoid dark-fringe artefacts at transparent boundaries, then the result is
+///   unpremultiplied via pixels_pack_rgba_pm.
+/// @param c00     Top-left pixel (0xRRGGBBAA).
+/// @param c10     Top-right pixel.
+/// @param c01     Bottom-left pixel.
+/// @param c11     Bottom-right pixel.
+/// @param frac_x  Fractional X in [0, 256] (256 = fully right).
+/// @param frac_y  Fractional Y in [0, 256] (256 = fully bottom).
+/// @return        Interpolated 0xRRGGBBAA pixel.
 static uint32_t pixels_bilerp_rgba_premul_fixed(
     uint32_t c00, uint32_t c10, uint32_t c01, uint32_t c11, int64_t frac_x, int64_t frac_y) {
     int64_t inv_frac_x = 256 - frac_x;
@@ -99,6 +124,18 @@ static uint32_t pixels_bilerp_rgba_premul_fixed(
     return pixels_pack_rgba_pm(premul_r, premul_g, premul_b, a);
 }
 
+/// @brief Bilinear interpolation of four RGBA pixels in premultiplied-alpha space (floating-point).
+/// @details Double-precision variant of pixels_bilerp_rgba_premul_fixed, used for the
+///   arbitrary-angle rotation pass where the source coordinates are already expressed in
+///   double-precision floats.  Higher precision than the fixed-point variant at the cost of
+///   slightly slower arithmetic.
+/// @param c00  Top-left pixel (0xRRGGBBAA).
+/// @param c10  Top-right pixel.
+/// @param c01  Bottom-left pixel.
+/// @param c11  Bottom-right pixel.
+/// @param fx   Fractional X in [0.0, 1.0).
+/// @param fy   Fractional Y in [0.0, 1.0).
+/// @return     Interpolated 0xRRGGBBAA pixel.
 static uint32_t pixels_bilerp_rgba_premul_double(
     uint32_t c00, uint32_t c10, uint32_t c01, uint32_t c11, double fx, double fy) {
     double wx0 = 1.0 - fx;
@@ -133,6 +170,17 @@ static uint32_t pixels_bilerp_rgba_premul_double(
                                (int64_t)(a + 0.5));
 }
 
+/// @brief Average @p count premultiplied-alpha samples and return as a 0xRRGGBBAA pixel.
+/// @details Used by the separable box blur to combine the running sums accumulated over
+///   the kernel window.  Rounds all channels using count/2 before dividing to reduce
+///   systematic darkening from truncation.  Returns transparent black when count == 0
+///   or the alpha average rounds to zero.
+/// @param sum_premul_r  Sum of (R * A) values across the kernel window.
+/// @param sum_premul_g  Sum of (G * A) values.
+/// @param sum_premul_b  Sum of (B * A) values.
+/// @param sum_a         Sum of alpha values.
+/// @param count         Number of samples summed; must be > 0.
+/// @return              Averaged 0xRRGGBBAA pixel.
 static uint32_t pixels_average_rgba_premul(int64_t sum_premul_r,
                                            int64_t sum_premul_g,
                                            int64_t sum_premul_b,
@@ -151,14 +199,65 @@ static uint32_t pixels_average_rgba_premul(int64_t sum_premul_r,
     return pixels_pack_rgba_pm(premul_r, premul_g, premul_b, a);
 }
 
+/// @brief Map a destination pixel index to the corresponding nearest-neighbor source index.
+/// @details Computes floor(dst * src_size / dst_size), clamped to [0, src_size - 1].
+///   Used by the nearest-neighbor scale pass (rt_pixels_scale).  Long double arithmetic
+///   avoids integer rounding errors on large images.
+/// @param dst       Destination pixel coordinate (0-based).
+/// @param src_size  Source dimension (width or height).
+/// @param dst_size  Destination dimension.
+/// @return          Source coordinate in [0, src_size - 1].
+static int64_t pixels_map_index(int64_t dst, int64_t src_size, int64_t dst_size) {
+    if (src_size <= 1 || dst_size <= 1)
+        return 0;
+    long double mapped = ((long double)dst * (long double)src_size) / (long double)dst_size;
+    if (mapped >= (long double)(src_size - 1))
+        return src_size - 1;
+    if (mapped <= 0.0L)
+        return 0;
+    return (int64_t)mapped;
+}
+
+/// @brief Map a destination pixel index to a 8.8 fixed-point source position for bilinear resize.
+/// @details Returns dst * src_size * 256 / dst_size, i.e. the source coordinate expressed in
+///   units of 1/256 of a pixel.  The caller shifts right by 8 to get the integer part and masks
+///   with 0xFF to get the fractional weight for pixels_bilerp_rgba_premul_fixed.
+/// @param dst       Destination pixel coordinate (0-based).
+/// @param src_size  Source dimension.
+/// @param dst_size  Destination dimension.
+/// @return          256× magnified source coordinate, clamped to [0, INT64_MAX].
+static int64_t pixels_map_fixed_256(int64_t dst, int64_t src_size, int64_t dst_size) {
+    if (src_size <= 1 || dst_size <= 1)
+        return 0;
+    long double mapped =
+        ((long double)dst * (long double)src_size * 256.0L) / (long double)dst_size;
+    if (mapped >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (mapped <= 0.0L)
+        return 0;
+    return (int64_t)mapped;
+}
+
+static int8_t pixels_long_double_extent_to_i64(long double extent, int64_t *out) {
+    if (!out || !isfinite((double)extent) || extent < 0.0L)
+        return 0;
+
+    long double rounded = ceill(extent);
+    if (rounded < 1.0L)
+        rounded = 1.0L;
+    if (rounded > (long double)INT64_MAX)
+        return 0;
+
+    *out = (int64_t)rounded;
+    return 1;
+}
+
 /// @brief Mirror the pixel buffer horizontally (left↔right). Returns a new Pixels.
 void *rt_pixels_flip_h(void *pixels) {
-    if (!pixels) {
-        rt_trap("Pixels.FlipH: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.FlipH: null pixels");
+    if (!p)
         return NULL;
-    }
 
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
     rt_pixels_impl *result = pixels_alloc(p->width, p->height);
     if (!result)
         return NULL;
@@ -174,12 +273,10 @@ void *rt_pixels_flip_h(void *pixels) {
 
 /// @brief Mirror the pixel buffer vertically (top↔bottom). Returns a new Pixels.
 void *rt_pixels_flip_v(void *pixels) {
-    if (!pixels) {
-        rt_trap("Pixels.FlipV: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.FlipV: null pixels");
+    if (!p)
         return NULL;
-    }
 
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
     rt_pixels_impl *result = pixels_alloc(p->width, p->height);
     if (!result)
         return NULL;
@@ -195,12 +292,9 @@ void *rt_pixels_flip_v(void *pixels) {
 
 /// @brief Rotate 90° clockwise. Returns a NEW Pixels (dimensions swap: w×h → h×w).
 void *rt_pixels_rotate_cw(void *pixels) {
-    if (!pixels) {
-        rt_trap("Pixels.RotateCW: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.RotateCW: null pixels");
+    if (!p)
         return NULL;
-    }
-
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
     // New dimensions: width becomes height, height becomes width
     int64_t new_width = p->height;
@@ -227,12 +321,9 @@ void *rt_pixels_rotate_cw(void *pixels) {
 
 /// @brief Rotate 90° counter-clockwise. Returns a NEW Pixels (dimensions swap).
 void *rt_pixels_rotate_ccw(void *pixels) {
-    if (!pixels) {
-        rt_trap("Pixels.RotateCCW: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.RotateCCW: null pixels");
+    if (!p)
         return NULL;
-    }
-
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
     // New dimensions: width becomes height, height becomes width
     int64_t new_width = p->height;
@@ -258,12 +349,10 @@ void *rt_pixels_rotate_ccw(void *pixels) {
 
 /// @brief Rotate 180° (equivalent to flip-h then flip-v). Returns a NEW Pixels.
 void *rt_pixels_rotate_180(void *pixels) {
-    if (!pixels) {
-        rt_trap("Pixels.Rotate180: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.Rotate180: null pixels");
+    if (!p)
         return NULL;
-    }
 
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
     rt_pixels_impl *result = pixels_alloc(p->width, p->height);
     if (!result)
         return NULL;
@@ -281,21 +370,20 @@ void *rt_pixels_rotate_180(void *pixels) {
 /// is sized to fit the rotated rectangle; corners outside become transparent. Bilinear sampling
 /// for smooth interpolation. Returns a NEW Pixels.
 void *rt_pixels_rotate(void *pixels, double angle_degrees) {
-    if (!pixels) {
-        rt_trap("Pixels.Rotate: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.Rotate: null pixels");
+    if (!p)
         return NULL;
-    }
-
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
     if (p->width <= 0 || p->height <= 0)
         return pixels_alloc(0, 0);
 
-    // Normalize angle to 0-360
-    while (angle_degrees < 0)
+    if (!isfinite(angle_degrees))
+        return rt_pixels_clone(pixels);
+
+    // Normalize angle to [0, 360) without unbounded loops for huge inputs.
+    angle_degrees = fmod(angle_degrees, 360.0);
+    if (angle_degrees < 0.0)
         angle_degrees += 360.0;
-    while (angle_degrees >= 360.0)
-        angle_degrees -= 360.0;
 
     // Fast paths for common angles
     if (fabs(angle_degrees) < 0.001 || fabs(angle_degrees - 360.0) < 0.001) {
@@ -344,19 +432,19 @@ void *rt_pixels_rotate(void *pixels, double angle_degrees) {
             max_y = corners[i][1];
     }
 
-    int64_t new_width = (int64_t)ceil(max_x - min_x);
-    int64_t new_height = (int64_t)ceil(max_y - min_y);
-    if (new_width < 1)
-        new_width = 1;
-    if (new_height < 1)
-        new_height = 1;
+    int64_t new_width = 0;
+    int64_t new_height = 0;
+    if (!pixels_long_double_extent_to_i64((long double)max_x - (long double)min_x,
+                                          &new_width) ||
+        !pixels_long_double_extent_to_i64((long double)max_y - (long double)min_y,
+                                          &new_height)) {
+        rt_trap("Pixels.Rotate: dimensions too large");
+        return NULL;
+    }
 
     rt_pixels_impl *result = pixels_alloc(new_width, new_height);
     if (!result)
         return NULL;
-
-    // Clear to transparent
-    memset(result->data, 0, (size_t)(new_width * new_height) * sizeof(uint32_t));
 
     // New center
     double new_hw = new_width / 2.0;
@@ -411,20 +499,17 @@ void *rt_pixels_rotate(void *pixels, double angle_degrees) {
     return result;
 }
 
-/// @brief Resize via bilinear filtering to (`new_width`, `new_height`). Returns a NEW Pixels.
-/// Use `_resize` for nearest-neighbor (preserves hard pixel edges, ideal for pixel art).
+/// @brief Resize via nearest-neighbor sampling to (`new_width`, `new_height`). Returns a NEW Pixels.
+/// Use `_resize` for bilinear filtering.
 void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height) {
-    if (!pixels) {
-        rt_trap("Pixels.Scale: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.Scale: null pixels");
+    if (!p)
         return NULL;
-    }
 
     if (new_width <= 0)
         new_width = 1;
     if (new_height <= 0)
         new_height = 1;
-
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
     // Handle empty source
     if (p->width <= 0 || p->height <= 0) {
@@ -438,18 +523,14 @@ void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height) {
     // Nearest-neighbor scaling
     for (int64_t y = 0; y < new_height; y++) {
         // Map destination y to source y
-        int64_t src_y = (y * p->height) / new_height;
-        if (src_y >= p->height)
-            src_y = p->height - 1;
+        int64_t src_y = pixels_map_index(y, p->height, new_height);
 
         uint32_t *src_row = p->data + src_y * p->width;
         uint32_t *dst_row = result->data + y * new_width;
 
         for (int64_t x = 0; x < new_width; x++) {
             // Map destination x to source x
-            int64_t src_x = (x * p->width) / new_width;
-            if (src_x >= p->width)
-                src_x = p->width - 1;
+            int64_t src_x = pixels_map_index(x, p->width, new_width);
 
             dst_row[x] = src_row[src_x];
         }
@@ -465,12 +546,10 @@ void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height) {
 /// @brief Negate every RGB channel (255 - r, 255 - g, 255 - b). Alpha preserved.
 /// Returns a NEW Pixels.
 void *rt_pixels_invert(void *pixels) {
-    if (!pixels) {
-        rt_trap("Pixels.Invert: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.Invert: null pixels");
+    if (!p)
         return NULL;
-    }
 
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
     rt_pixels_impl *result = pixels_alloc(p->width, p->height);
     if (!result)
         return NULL;
@@ -493,12 +572,10 @@ void *rt_pixels_invert(void *pixels) {
 /// @brief Convert to grayscale using ITU-R BT.601 luma weights (0.299 R + 0.587 G + 0.114 B).
 /// Returns a NEW Pixels with the luma value replicated to R/G/B; alpha preserved.
 void *rt_pixels_grayscale(void *pixels) {
-    if (!pixels) {
-        rt_trap("Pixels.Grayscale: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.Grayscale: null pixels");
+    if (!p)
         return NULL;
-    }
 
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
     rt_pixels_impl *result = pixels_alloc(p->width, p->height);
     if (!result)
         return NULL;
@@ -524,12 +601,10 @@ void *rt_pixels_grayscale(void *pixels) {
 /// @brief Multiply each pixel by `color` (per-channel modulation, 8-bit normalized). Useful for
 /// hue shifts, color-coded variants. Alpha multiplied as well. Returns a NEW Pixels.
 void *rt_pixels_tint(void *pixels, int64_t color) {
-    if (!pixels) {
-        rt_trap("Pixels.Tint: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.Tint: null pixels");
+    if (!p)
         return NULL;
-    }
 
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
     rt_pixels_impl *result = pixels_alloc(p->width, p->height);
     if (!result)
         return NULL;
@@ -563,29 +638,35 @@ void *rt_pixels_tint(void *pixels, int64_t color) {
 /// @brief Box blur with a (2*radius+1)-wide kernel applied separately on X then Y for
 /// O(n*radius) cost. Larger radius = softer image; radius 0 returns a copy. Returns a NEW Pixels.
 void *rt_pixels_blur(void *pixels, int64_t radius) {
-    if (!pixels) {
-        rt_trap("Pixels.Blur: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.Blur: null pixels");
+    if (!p)
         return NULL;
-    }
 
     if (radius <= 0)
         return rt_pixels_clone(pixels);
     if (radius > 10)
         radius = 10;
 
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
-    rt_pixels_impl *result = pixels_alloc(p->width, p->height);
-    if (!result)
-        return NULL;
-
     int64_t w = p->width;
     int64_t h = p->height;
+    if (w <= 0 || h <= 0)
+        return pixels_alloc(w, h);
+    if (w > INT64_MAX / h || (uint64_t)(w * h) > SIZE_MAX / sizeof(uint32_t)) {
+        rt_trap("Pixels.Blur: dimensions too large");
+        return NULL;
+    }
 
     // Separable box blur: horizontal pass → temp, then vertical pass → result.
     // Reduces O(w×h×(2r+1)²) to O(w×h×(2r+1)×2).  Format: 0xRRGGBBAA.
     uint32_t *tmp = (uint32_t *)malloc((size_t)(w * h) * sizeof(uint32_t));
     if (!tmp)
-        return result;
+        return NULL;
+
+    rt_pixels_impl *result = pixels_alloc(p->width, p->height);
+    if (!result) {
+        free(tmp);
+        return NULL;
+    }
 
     // Horizontal pass: blur each row independently into tmp
     for (int64_t y = 0; y < h; y++) {
@@ -637,20 +718,17 @@ void *rt_pixels_blur(void *pixels, int64_t radius) {
     return result;
 }
 
-/// @brief Resize via nearest-neighbor sampling (preserves crisp pixel edges). Use `_scale` for
-/// bilinear smoothing when working with photographic images. Returns a NEW Pixels.
+/// @brief Resize via bilinear filtering. Use `_scale` for nearest-neighbor sampling when
+/// preserving hard pixel edges. Returns a NEW Pixels.
 void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height) {
-    if (!pixels) {
-        rt_trap("Pixels.Resize: null pixels");
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.Resize: null pixels");
+    if (!p)
         return NULL;
-    }
 
     if (new_width <= 0)
         new_width = 1;
     if (new_height <= 0)
         new_height = 1;
-
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
     // Handle empty source
     if (p->width <= 0 || p->height <= 0) {
@@ -664,7 +742,7 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height) {
     // Bilinear interpolation scaling
     for (int64_t y = 0; y < new_height; y++) {
         // Map destination y to source y (with fractional part)
-        int64_t src_y_256 = (y * p->height * 256) / new_height;
+        int64_t src_y_256 = pixels_map_fixed_256(y, p->height, new_height);
         int64_t src_y = src_y_256 >> 8;
         int64_t frac_y = src_y_256 & 0xFF;
 
@@ -678,7 +756,7 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height) {
 
         for (int64_t x = 0; x < new_width; x++) {
             // Map destination x to source x (with fractional part)
-            int64_t src_x_256 = (x * p->width * 256) / new_width;
+            int64_t src_x_256 = pixels_map_fixed_256(x, p->width, new_width);
             int64_t src_x = src_x_256 >> 8;
             int64_t frac_x = src_x_256 & 0xFF;
 

@@ -102,7 +102,9 @@ int8_t rt_inputmgr_key_held(rt_inputmgr mgr, int64_t key) {
     return rt_keyboard_is_down(key);
 }
 
-// Find or create a debounce slot for a key
+/// @brief Find the debounce slot index for `key`, creating a new slot if none exists.
+/// @details Returns -1 if the `MAX_DEBOUNCE_KEYS` table is full and no slot is available.
+///          Called before registering a new key debounce or querying an existing one.
 static int64_t find_or_create_debounce_slot(rt_inputmgr mgr, int64_t key) {
     // Look for existing slot
     for (int64_t i = 0; i < mgr->debounce_count; i++) {
@@ -224,11 +226,13 @@ int64_t rt_inputmgr_scroll_x(rt_inputmgr mgr) {
     return rt_mouse_wheel_x();
 }
 
+/// @brief Return the vertical scroll delta this frame as a float (positive = scroll up).
 double rt_inputmgr_scroll_yf(rt_inputmgr mgr) {
     (void)mgr;
     return rt_mouse_wheel_yf();
 }
 
+/// @brief Return the horizontal scroll delta this frame as a float (positive = scroll right).
 double rt_inputmgr_scroll_xf(rt_inputmgr mgr) {
     (void)mgr;
     return rt_mouse_wheel_xf();

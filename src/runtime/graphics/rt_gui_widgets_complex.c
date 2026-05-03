@@ -706,6 +706,12 @@ double rt_progressbar_get_value(void *progress) {
     return (double)vg_progressbar_get_value((vg_progressbar_t *)progress);
 }
 
+/// @brief Set the visual style of a progress bar (bar, circle, or indeterminate).
+/// @details Controls how progress is rendered: VG_PROGRESS_BAR for a standard
+///          horizontal fill, VG_PROGRESS_INDETERMINATE for a looping animation
+///          when the total duration is unknown. Out-of-range values default to bar.
+/// @param progress Progress bar widget handle.
+/// @param style    Style enum value (VG_PROGRESS_BAR, VG_PROGRESS_INDETERMINATE, etc.).
 void rt_progressbar_set_style(void *progress, int64_t style) {
     RT_ASSERT_MAIN_THREAD();
     if (!progress)
@@ -715,6 +721,9 @@ void rt_progressbar_set_style(void *progress, int64_t style) {
     vg_progressbar_set_style((vg_progressbar_t *)progress, (vg_progress_style_t)style);
 }
 
+/// @brief Show or hide the percentage text label on a progress bar.
+/// @param progress Progress bar widget handle.
+/// @param show     Non-zero to render the "XX%" label, zero to hide it.
 void rt_progressbar_show_percentage(void *progress, int64_t show) {
     RT_ASSERT_MAIN_THREAD();
     if (progress)
@@ -1016,6 +1025,16 @@ void *rt_image_new(void *parent) {
     return vg_image_create(rt_gui_widget_parent_from_handle(parent));
 }
 
+/// @brief Convert a Viper Pixels object to byte-order RGBA and upload to an image widget.
+/// @details Viper stores pixels as packed 0xAARRGGBB 32-bit integers; vg_image_set_pixels
+///          expects interleaved [R, G, B, A] bytes. This function allocates a temporary
+///          RGBA buffer, shuffles channels per-pixel, calls vg_image_set_pixels, then
+///          frees the buffer. width/height 0 defaults to the Pixels object dimensions.
+/// @param image  Image widget to update (may be NULL — no-op).
+/// @param pixels Viper Pixels object providing source pixel data (NULL clears the image).
+/// @param width  Crop width (0 = full Pixels width).
+/// @param height Crop height (0 = full Pixels height).
+/// @return 1 on success, 0 on failure (NULL image, zero dimensions, or OOM).
 static int rt_image_set_from_pixels_object(vg_image_t *image,
                                            void *pixels,
                                            int64_t width,
@@ -1192,11 +1211,13 @@ void rt_floatingpanel_add_child(void *panel, void *child) {
 // from the real implementations above by virtue of identical names.
 // ===========================================================================
 
+/// @brief Stub: graphics disabled — returns NULL; no tab bar widget is created.
 void *rt_tabbar_new(void *parent) {
     (void)parent;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no tab is added.
 void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable) {
     (void)tabbar;
     (void)title;
@@ -1234,6 +1255,7 @@ void rt_tab_set_modified(void *tab, int64_t modified) {
     (void)modified;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no active tab exists.
 void *rt_tabbar_get_active(void *tabbar) {
     (void)tabbar;
     return NULL;
@@ -1269,6 +1291,7 @@ int64_t rt_tabbar_get_close_clicked_index(void *tabbar) {
     return -1;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no tab exists at any index.
 void *rt_tabbar_get_tab_at(void *tabbar, int64_t index) {
     (void)tabbar;
     (void)index;
@@ -1281,6 +1304,7 @@ void rt_tabbar_set_auto_close(void *tabbar, int64_t auto_close) {
     (void)auto_close;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no split pane widget is created.
 void *rt_splitpane_new(void *parent, int64_t horizontal) {
     (void)parent;
     (void)horizontal;
@@ -1299,16 +1323,19 @@ double rt_splitpane_get_position(void *split) {
     return 0.5;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no first panel container exists.
 void *rt_splitpane_get_first(void *split) {
     (void)split;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no second panel container exists.
 void *rt_splitpane_get_second(void *split) {
     (void)split;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no code editor widget is created.
 void *rt_codeeditor_new(void *parent) {
     (void)parent;
     return NULL;
@@ -1392,10 +1419,12 @@ rt_string rt_theme_get_name(void) {
     return rt_string_from_bytes("dark", 4);
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no VBox container is created.
 void *rt_vbox_new(void) {
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no HBox container is created.
 void *rt_hbox_new(void) {
     return NULL;
 }
@@ -1454,6 +1483,7 @@ void rt_widget_set_position(void *widget, int64_t x, int64_t y) {
     (void)y;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no dropdown widget is created.
 void *rt_dropdown_new(void *parent) {
     (void)parent;
     return NULL;
@@ -1501,6 +1531,7 @@ void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder) {
     (void)placeholder;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no slider widget is created.
 void *rt_slider_new(void *parent, int64_t horizontal) {
     (void)parent;
     (void)horizontal;
@@ -1532,6 +1563,7 @@ void rt_slider_set_step(void *slider, double step) {
     (void)step;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no progress bar widget is created.
 void *rt_progressbar_new(void *parent) {
     (void)parent;
     return NULL;
@@ -1549,11 +1581,13 @@ double rt_progressbar_get_value(void *progress) {
     return 0.0;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no list box widget is created.
 void *rt_listbox_new(void *parent) {
     (void)parent;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no list item is added.
 void *rt_listbox_add_item(void *listbox, rt_string text) {
     (void)listbox;
     (void)text;
@@ -1577,6 +1611,7 @@ void rt_listbox_select(void *listbox, void *item) {
     (void)item;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no selection exists without a list box.
 void *rt_listbox_get_selected(void *listbox) {
     (void)listbox;
     return NULL;
@@ -1637,6 +1672,7 @@ void rt_listbox_set_font(void *listbox, void *font, double size) {
     (void)size;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no radio group is created.
 void *rt_radiogroup_new(void) {
     return NULL;
 }
@@ -1646,6 +1682,7 @@ void rt_radiogroup_destroy(void *group) {
     (void)group;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no radio button widget is created.
 void *rt_radiobutton_new(void *parent, rt_string text, void *group) {
     (void)parent;
     (void)text;
@@ -1665,6 +1702,7 @@ void rt_radiobutton_set_selected(void *radio, int64_t selected) {
     (void)selected;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no spinner widget is created.
 void *rt_spinner_new(void *parent) {
     (void)parent;
     return NULL;
@@ -1701,6 +1739,7 @@ void rt_spinner_set_decimals(void *spinner, int64_t decimals) {
     (void)decimals;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no image widget is created.
 void *rt_image_new(void *parent) {
     (void)parent;
     return NULL;
@@ -1738,6 +1777,7 @@ int64_t rt_image_load_file(void *image, void *path) {
     return 0;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no floating panel is created.
 void *rt_floatingpanel_new(void *root) {
     (void)root;
     return NULL;

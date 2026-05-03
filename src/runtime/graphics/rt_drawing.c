@@ -126,9 +126,10 @@ static int64_t rt_canvas_text_codepoint_width(rt_string text, int64_t scale) {
     int codepoint = 0;
     while (rt_canvas_next_codepoint(str, byte_len, &index, &codepoint))
         count++;
-    return count * 8 * scale;
+    return rtg_mul_sat64(rtg_mul_sat64(count, 8), scale);
 }
 
+/// @brief Round a long double to the nearest int64, saturating at INT64_MIN/MAX instead of overflowing.
 static int64_t rt_canvas_round_ld_to_i64_sat(long double value) {
     if (value >= (long double)INT64_MAX)
         return INT64_MAX;
@@ -137,6 +138,7 @@ static int64_t rt_canvas_round_ld_to_i64_sat(long double value) {
     return (int64_t)(value >= 0.0L ? floorl(value + 0.5L) : ceill(value - 0.5L));
 }
 
+/// @brief Floor a long double to int64, saturating at INT64_MIN/MAX instead of overflowing.
 static int64_t rt_canvas_floor_ld_to_i64_sat(long double value) {
     if (value >= (long double)INT64_MAX)
         return INT64_MAX;
@@ -145,6 +147,7 @@ static int64_t rt_canvas_floor_ld_to_i64_sat(long double value) {
     return (int64_t)floorl(value);
 }
 
+/// @brief Ceil a long double to int64, saturating at INT64_MIN/MAX instead of overflowing.
 static int64_t rt_canvas_ceil_ld_to_i64_sat(long double value) {
     if (value >= (long double)INT64_MAX)
         return INT64_MAX;
@@ -208,6 +211,7 @@ static int8_t rt_canvas_clip_line_to_logical(
            rtg_i64_fits_i32(*y2);
 }
 
+/// @brief Compute the last inclusive pixel of a rect span: start + max(length-1, 0), saturating.
 static int64_t rt_canvas_rect_last(int64_t start, int64_t length) {
     if (length <= 1)
         return start;
@@ -220,8 +224,8 @@ void rt_canvas_line(
     if (!canvas_ptr)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win) {
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (canvas && canvas->gfx_win) {
         rt_canvas_resync_window_state(canvas);
         if (!rt_canvas_clip_line_to_logical(canvas, &x1, &y1, &x2, &y2))
             return;
@@ -252,8 +256,8 @@ void rt_canvas_box(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h,
         ++trace_count;
     }
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win) {
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (canvas && canvas->gfx_win) {
         rt_canvas_resync_window_state(canvas);
         if (!rt_canvas_clip_intersect_logical(canvas, &x, &y, &w, &h))
             return;
@@ -267,8 +271,8 @@ void rt_canvas_frame(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t 
     if (!canvas_ptr)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win) {
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (canvas && canvas->gfx_win) {
         if (w <= 0 || h <= 0)
             return;
         int64_t x1 = rt_canvas_rect_last(x, w);
@@ -285,8 +289,8 @@ void rt_canvas_disc(void *canvas_ptr, int64_t cx, int64_t cy, int64_t radius, in
     if (!canvas_ptr)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win) {
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (canvas && canvas->gfx_win) {
         rt_canvas_resync_window_state(canvas);
         if (radius < 0 || !rtg_i64_fits_i32(cx) || !rtg_i64_fits_i32(cy) ||
             !rtg_i64_fits_i32(radius))
@@ -301,8 +305,8 @@ void rt_canvas_ring(void *canvas_ptr, int64_t cx, int64_t cy, int64_t radius, in
     if (!canvas_ptr)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win) {
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (canvas && canvas->gfx_win) {
         rt_canvas_resync_window_state(canvas);
         if (radius < 0 || !rtg_i64_fits_i32(cx) || !rtg_i64_fits_i32(cy) ||
             !rtg_i64_fits_i32(radius))
@@ -317,8 +321,8 @@ void rt_canvas_plot(void *canvas_ptr, int64_t x, int64_t y, int64_t color) {
     if (!canvas_ptr)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win) {
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (canvas && canvas->gfx_win) {
         rt_canvas_resync_window_state(canvas);
         int64_t w = 1;
         int64_t h = 1;
@@ -395,9 +399,7 @@ int64_t rt_color_rgba(int64_t r, int64_t g, int64_t b, int64_t a) {
     uint8_t a8 = (a < 0) ? 0 : (a > 255) ? 255 : (uint8_t)a;
     int64_t packed =
         (int64_t)(((uint32_t)a8 << 24) | ((uint32_t)r8 << 16) | ((uint32_t)g8 << 8) | (uint32_t)b8);
-    if (a8 == 0)
-        packed |= RT_COLOR_EXPLICIT_ALPHA_FLAG;
-    return packed;
+    return packed | RT_COLOR_EXPLICIT_ALPHA_FLAG;
 }
 
 //=============================================================================
@@ -409,8 +411,8 @@ void rt_canvas_text(void *canvas_ptr, int64_t x, int64_t y, rt_string text, int6
     if (!canvas_ptr || !text)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return;
     rt_canvas_resync_window_state(canvas);
 
@@ -433,7 +435,10 @@ void rt_canvas_text(void *canvas_ptr, int64_t x, int64_t y, rt_string text, int6
             uint8_t bits = glyph[row];
             for (int col_idx = 0; col_idx < 8; col_idx++) {
                 if (bits & (0x80 >> col_idx)) {
-                    vgfx_pset(canvas->gfx_win, (int32_t)(cx + col_idx), (int32_t)(y + row), col);
+                    vgfx_pset(canvas->gfx_win,
+                              rtg_clamp_i64_to_i32(rtg_add_sat64(cx, col_idx)),
+                              rtg_clamp_i64_to_i32(rtg_add_sat64(y, row)),
+                              col);
                 }
             }
         }
@@ -448,8 +453,8 @@ void rt_canvas_text_bg(
     if (!canvas_ptr || !text)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return;
     rt_canvas_resync_window_state(canvas);
 
@@ -473,8 +478,8 @@ void rt_canvas_text_bg(
             uint8_t bits = glyph[row];
             for (int col_idx = 0; col_idx < 8; col_idx++) {
                 vgfx_pset(canvas->gfx_win,
-                          (int32_t)(cx + col_idx),
-                          (int32_t)(y + row),
+                          rtg_clamp_i64_to_i32(rtg_add_sat64(cx, col_idx)),
+                          rtg_clamp_i64_to_i32(rtg_add_sat64(y, row)),
                           (bits & (0x80 >> col_idx)) ? fg_col : bg_col);
             }
         }
@@ -505,8 +510,8 @@ void rt_canvas_text_scaled(
     if (!canvas_ptr || !text || scale < 1)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return;
     rt_canvas_resync_window_state(canvas);
 
@@ -529,15 +534,17 @@ void rt_canvas_text_scaled(
             for (int col_idx = 0; col_idx < 8; col_idx++) {
                 if (bits & (0x80 >> col_idx)) {
                     vgfx_fill_rect(canvas->gfx_win,
-                                   (int32_t)(cx + col_idx * scale),
-                                   (int32_t)(y + row * scale),
-                                   (int32_t)scale,
-                                   (int32_t)scale,
+                                   rtg_clamp_i64_to_i32(
+                                       rtg_add_sat64(cx, rtg_mul_sat64(col_idx, scale))),
+                                   rtg_clamp_i64_to_i32(
+                                       rtg_add_sat64(y, rtg_mul_sat64(row, scale))),
+                                   rtg_clamp_i64_to_i32(scale),
+                                   rtg_clamp_i64_to_i32(scale),
                                    col);
                 }
             }
         }
-        cx += 8 * scale;
+        cx = rtg_add_sat64(cx, rtg_mul_sat64(8, scale));
     }
 }
 
@@ -547,8 +554,8 @@ void rt_canvas_text_scaled_bg(
     if (!canvas_ptr || !text || scale < 1)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return;
     rt_canvas_resync_window_state(canvas);
 
@@ -571,14 +578,15 @@ void rt_canvas_text_scaled_bg(
             uint8_t bits = glyph[row];
             for (int col_idx = 0; col_idx < 8; col_idx++) {
                 vgfx_fill_rect(canvas->gfx_win,
-                               (int32_t)(cx + col_idx * scale),
-                               (int32_t)(y + row * scale),
-                               (int32_t)scale,
-                               (int32_t)scale,
+                               rtg_clamp_i64_to_i32(
+                                   rtg_add_sat64(cx, rtg_mul_sat64(col_idx, scale))),
+                               rtg_clamp_i64_to_i32(rtg_add_sat64(y, rtg_mul_sat64(row, scale))),
+                               rtg_clamp_i64_to_i32(scale),
+                               rtg_clamp_i64_to_i32(scale),
                                (bits & (0x80 >> col_idx)) ? fg_col : bg_col);
             }
         }
-        cx += 8 * scale;
+        cx = rtg_add_sat64(cx, rtg_mul_sat64(8, scale));
     }
 }
 
@@ -636,9 +644,10 @@ void rt_canvas_box_alpha(
     if (!canvas_ptr || w <= 0 || h <= 0)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return;
+    rt_canvas_resync_window_state(canvas);
 
     if (alpha <= 0)
         return;
@@ -667,9 +676,10 @@ void rt_canvas_disc_alpha(
     if (!canvas_ptr || radius <= 0)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return;
+    rt_canvas_resync_window_state(canvas);
 
     if (alpha <= 0)
         return;
@@ -799,9 +809,9 @@ void rt_canvas_blit(void *canvas_ptr, int64_t x, int64_t y, void *pixels_ptr) {
     if (!canvas_ptr || !pixels_ptr)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    rt_pixels_impl *pixels = (rt_pixels_impl *)pixels_ptr;
-    if (!canvas->gfx_win || !pixels->data)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    rt_pixels_impl *pixels = rt_pixels_checked_impl(pixels_ptr, "Canvas.Blit: invalid pixels");
+    if (!canvas || !canvas->gfx_win || !pixels->data)
         return;
 
     rt_canvas_resync_window_state(canvas);
@@ -879,9 +889,9 @@ void rt_canvas_blit_region(void *canvas_ptr,
     if (!canvas_ptr || !pixels_ptr)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    rt_pixels_impl *pixels = (rt_pixels_impl *)pixels_ptr;
-    if (!canvas->gfx_win || !pixels->data)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    rt_pixels_impl *pixels = rt_pixels_checked_impl(pixels_ptr, "Canvas.BlitRegion: invalid pixels");
+    if (!canvas || !canvas->gfx_win || !pixels->data)
         return;
 
     rt_canvas_resync_window_state(canvas);
@@ -953,9 +963,9 @@ void rt_canvas_blit_alpha(void *canvas_ptr, int64_t x, int64_t y, void *pixels_p
     if (!canvas_ptr || !pixels_ptr)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    rt_pixels_impl *pixels = (rt_pixels_impl *)pixels_ptr;
-    if (!canvas->gfx_win || !pixels->data)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    rt_pixels_impl *pixels = rt_pixels_checked_impl(pixels_ptr, "Canvas.BlitAlpha: invalid pixels");
+    if (!canvas || !canvas->gfx_win || !pixels->data)
         return;
 
     rt_canvas_resync_window_state(canvas);
@@ -1097,7 +1107,9 @@ void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int
     // Sample the physical pixel at the logical pixel's scaled top-left corner.
     float scale = vgfx_window_get_scale(canvas->gfx_win);
 
-    rt_pixels_impl *pix = (rt_pixels_impl *)pixels;
+    rt_pixels_impl *pix = rt_pixels_checked_impl_or_null(pixels);
+    if (!pix || !pix->data)
+        return pixels;
 
     for (int64_t py = 0; py < h; py++) {
         int64_t src_y = rtg_scale_up_i64(rtg_add_sat64(y, py), scale);
@@ -1132,7 +1144,7 @@ void *rt_canvas_copy_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int
 ///          2. Delegate to `rt_pixels_save_bmp` for the actual file
 ///             write (handles BMP header, row alignment, alpha→24-bit
 ///             demotion).
-///          3. Let the GC reclaim the temporary Pixels.
+///          3. Release the temporary Pixels after the write completes.
 /// @return 1 on success, 0 on any failure (no canvas, write error, ...).
 int64_t rt_canvas_save_bmp(void *canvas_ptr, rt_string path) {
     if (!path)
@@ -1153,10 +1165,9 @@ int64_t rt_canvas_save_bmp(void *canvas_ptr, rt_string path) {
     if (!pixels)
         return 0;
 
-    // Save to BMP
     int64_t result = rt_pixels_save_bmp(pixels, path);
-
-    // Note: pixels is managed by runtime, will be GC'd
+    if (rt_obj_release_check0(pixels))
+        rt_obj_free(pixels);
 
     return result;
 }
@@ -1186,7 +1197,10 @@ int64_t rt_canvas_save_png(void *canvas_ptr, rt_string path) {
     if (!pixels)
         return 0;
 
-    return rt_pixels_save_png(pixels, path);
+    int64_t result = rt_pixels_save_png(pixels, path);
+    if (rt_obj_release_check0(pixels))
+        rt_obj_free(pixels);
+    return result;
 }
 
 #else

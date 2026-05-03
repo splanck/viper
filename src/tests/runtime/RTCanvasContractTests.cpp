@@ -282,6 +282,17 @@ extern "C" int64_t rt_pixels_save_png(void *, void *) {
     return 0;
 }
 
+extern "C" int32_t rt_obj_release_check0(void *) {
+    return 1;
+}
+
+extern "C" void rt_obj_free(void *obj) {
+    auto *pixels = static_cast<rt_pixels_impl *>(obj);
+    if (pixels)
+        std::free(pixels->data);
+    std::free(obj);
+}
+
 int main() {
     test_blit_region_respects_clip_and_fractional_scale();
     test_flood_fill_stays_inside_clip_rect();

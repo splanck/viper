@@ -30,14 +30,17 @@
  * Little-endian helpers
  *=========================================================================*/
 
+/// @brief Read a 32-bit little-endian unsigned integer from a byte pointer.
 static uint32_t read_le32(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
+/// @brief Read a 16-bit little-endian unsigned integer from a byte pointer.
 static uint16_t read_le16(const uint8_t *p) {
     return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
 }
 
+/// @brief Build a 32-bit FOURCC tag from four ASCII characters (packed little-endian).
 static uint32_t make_fourcc(char a, char b, char c, char d) {
     return (uint32_t)(uint8_t)a | ((uint32_t)(uint8_t)b << 8) | ((uint32_t)(uint8_t)c << 16) |
            ((uint32_t)(uint8_t)d << 24);

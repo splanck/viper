@@ -237,6 +237,55 @@ static void test_json_negative_anim_frame_normalizes(void) {
     PASS();
 }
 
+static void test_tile_anim_sequential_frames_saturate(void) {
+    TEST("Tile animation sequential defaults saturate near INT64_MAX");
+    void *tm = rt_tilemap_new(1, 1, 16, 16);
+    rt_tilemap_set_tile_anim(tm, INT64_MAX - 1, 3, 100);
+    assert(rt_tilemap_resolve_anim_tile(tm, INT64_MAX - 1) == INT64_MAX - 1);
+    rt_tilemap_update_anims(tm, 100);
+    assert(rt_tilemap_resolve_anim_tile(tm, INT64_MAX - 1) == INT64_MAX);
+    rt_tilemap_update_anims(tm, 100);
+    assert(rt_tilemap_resolve_anim_tile(tm, INT64_MAX - 1) == INT64_MAX);
+    PASS();
+}
+
+static void test_json_rejects_wrong_layer_tile_count(void) {
+    TEST("JSON load rejects wrong layer tile count");
+    const char *path = "/tmp/test_tilemap_wrong_tile_count.json";
+    FILE *f = fopen(path, "w");
+    assert(f != NULL);
+    fprintf(f,
+            "{"
+            "\"version\":1,\"width\":2,\"height\":2,\"tileWidth\":16,\"tileHeight\":16,"
+            "\"layers\":[{\"tiles\":[1,2,3],\"visible\":1,\"name\":\"base\"}],"
+            "\"collision\":{\"layer\":0,\"types\":[]},"
+            "\"tileProperties\":[],\"autotiles\":[],\"animations\":[]"
+            "}");
+    fclose(f);
+
+    assert(rt_tilemap_load_from_file(make_str(path)) == NULL);
+    PASS();
+}
+
+static void test_json_rejects_truncated_tileset_pixels(void) {
+    TEST("JSON load rejects truncated tileset pixels");
+    const char *path = "/tmp/test_tilemap_truncated_tileset.json";
+    FILE *f = fopen(path, "w");
+    assert(f != NULL);
+    fprintf(f,
+            "{"
+            "\"version\":1,\"width\":1,\"height\":1,\"tileWidth\":16,\"tileHeight\":16,"
+            "\"tileset\":{\"width\":2,\"height\":1,\"pixels\":[4278190335]},"
+            "\"layers\":[{\"tiles\":[7],\"visible\":1,\"name\":\"base\"}],"
+            "\"collision\":{\"layer\":0,\"types\":[]},"
+            "\"tileProperties\":[],\"autotiles\":[],\"animations\":[]"
+            "}");
+    fclose(f);
+
+    assert(rt_tilemap_load_from_file(make_str(path)) == NULL);
+    PASS();
+}
+
 static void test_json_excess_layers_are_ignored(void) {
     TEST("JSON load ignores layers beyond maximum");
     const char *path = "/tmp/test_tilemap_excess_layers.json";
@@ -297,6 +346,9 @@ int main() {
     test_csv_import();
     test_csv_import_clamps_overflow_values();
     test_json_negative_anim_frame_normalizes();
+    test_tile_anim_sequential_frames_saturate();
+    test_json_rejects_wrong_layer_tile_count();
+    test_json_rejects_truncated_tileset_pixels();
     test_json_excess_layers_are_ignored();
     test_load_nonexistent();
     test_clear_autotile();

@@ -30,6 +30,7 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+/// @brief Validate that an int64 canvas dimension is positive and fits in int32; traps otherwise.
 static int32_t rt_canvas_dimension_to_i32(int64_t value, const char *op) {
     if (value <= 0 || value > INT32_MAX) {
         rt_trap(op);
@@ -188,6 +189,7 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
     return canvas;
 }
 
+/// @brief Return 1 if `canvas_ptr` is a live canvas handle (magic sentinel check), 0 otherwise.
 int8_t rt_canvas_is_handle(void *canvas_ptr) {
     return rt_canvas_checked(canvas_ptr) != NULL ? 1 : 0;
 }
@@ -213,8 +215,8 @@ int64_t rt_canvas_width(void *canvas_ptr) {
     if (!canvas_ptr)
         return 0;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return 0;
 
     rt_canvas_resync_window_state(canvas);
@@ -231,8 +233,8 @@ int64_t rt_canvas_height(void *canvas_ptr) {
     if (!canvas_ptr)
         return 0;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return 0;
 
     rt_canvas_resync_window_state(canvas);
@@ -252,8 +254,8 @@ int64_t rt_canvas_should_close(void *canvas_ptr) {
     if (!canvas_ptr)
         return 1;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    return canvas->should_close;
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    return canvas ? canvas->should_close : 1;
 }
 
 /// @brief Present the back buffer to the screen and compute delta time.
@@ -272,8 +274,8 @@ void rt_canvas_flip(void *canvas_ptr) {
     if (!canvas_ptr)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return;
 
     rt_canvas_resync_window_state(canvas);
@@ -306,7 +308,9 @@ void rt_canvas_flip(void *canvas_ptr) {
 int64_t rt_canvas_get_delta_time(void *canvas_ptr) {
     if (!canvas_ptr)
         return 0;
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas)
+        return 0;
     int64_t dt = canvas->delta_time_ms;
     if (canvas->dt_max_ms > 0) {
         if (dt == 0)
@@ -328,8 +332,8 @@ void rt_canvas_clear(void *canvas_ptr, int64_t color) {
     if (!canvas_ptr)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win) {
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (canvas && canvas->gfx_win) {
         rt_canvas_resync_window_state(canvas);
         vgfx_cls(canvas->gfx_win, (vgfx_color_t)color);
     }
@@ -350,8 +354,8 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
     if (!canvas_ptr)
         return 0;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return 0;
 
     rt_canvas_resync_window_state(canvas);
@@ -409,7 +413,7 @@ int64_t rt_canvas_poll(void *canvas_ptr) {
     // cannot leave the frame using stale coordinates.
     int32_t mx = 0, my = 0;
     vgfx_mouse_pos(canvas->gfx_win, &mx, &my);
-    rt_mouse_update_pos((int64_t)mx, (int64_t)my);
+    rt_canvas_update_mouse_from_physical(canvas->gfx_win, mx, my);
 
     // Update action mapping state AFTER events are processed so that
     // Action.Pressed/Held/Released reflect this frame's input.
@@ -430,8 +434,8 @@ int64_t rt_canvas_key_held(void *canvas_ptr, int64_t key) {
     if (!canvas_ptr)
         return 0;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return 0;
 
     return (int64_t)vgfx_key_down(canvas->gfx_win, (vgfx_key_t)key);
@@ -451,13 +455,13 @@ int64_t rt_canvas_key_held(void *canvas_ptr, int64_t key) {
 /// @param w Width of clip region.
 /// @param h Height of clip region.
 void rt_canvas_set_clip_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h) {
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (canvas && canvas->gfx_win) {
         canvas->clip_enabled = 1;
         canvas->clip_x = x;
         canvas->clip_y = y;
-        canvas->clip_w = w;
-        canvas->clip_h = h;
+        canvas->clip_w = w > 0 ? w : 0;
+        canvas->clip_h = h > 0 ? h : 0;
         rt_canvas_resync_window_state(canvas);
     }
 }
@@ -465,7 +469,7 @@ void rt_canvas_set_clip_rect(void *canvas_ptr, int64_t x, int64_t y, int64_t w, 
 /// @brief Remove the clipping rectangle, restoring full-canvas drawing.
 /// @param canvas_ptr Canvas handle. NULL-safe.
 void rt_canvas_clear_clip_rect(void *canvas_ptr) {
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (canvas && canvas->gfx_win) {
         canvas->clip_enabled = 0;
         canvas->clip_x = 0;
@@ -482,7 +486,7 @@ void rt_canvas_clear_clip_rect(void *canvas_ptr) {
 /// @param canvas_ptr Canvas handle. NULL-safe.
 /// @param title New title string. NULL is ignored.
 void rt_canvas_set_title(void *canvas_ptr, rt_string title) {
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (canvas && canvas->gfx_win && title) {
         const char *cstr = rt_string_cstr(title);
         vgfx_set_title(canvas->gfx_win, cstr);
@@ -496,7 +500,7 @@ void rt_canvas_set_title(void *canvas_ptr, rt_string title) {
 /// @param canvas_ptr Canvas handle. Returns empty string if NULL.
 /// @return The cached title as an rt_string.
 rt_string rt_canvas_get_title(void *canvas_ptr) {
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (canvas && canvas->title)
         return rt_string_from_bytes(canvas->title, strlen(canvas->title));
     return rt_string_from_bytes("", 0);
@@ -507,7 +511,7 @@ rt_string rt_canvas_get_title(void *canvas_ptr) {
 /// @param width New width in logical pixels.
 /// @param height New height in logical pixels.
 void rt_canvas_resize(void *canvas_ptr, int64_t width, int64_t height) {
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (canvas && canvas->gfx_win) {
         int32_t win_width = rt_canvas_dimension_to_i32(width, "Canvas.Resize: invalid width");
         int32_t win_height = rt_canvas_dimension_to_i32(height, "Canvas.Resize: invalid height");
@@ -523,7 +527,7 @@ void rt_canvas_resize(void *canvas_ptr, int64_t width, int64_t height) {
 ///   call, all drawing operations become no-ops and ShouldClose returns true.
 /// @param canvas_ptr Canvas handle. NULL-safe.
 void rt_canvas_close(void *canvas_ptr) {
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (canvas && canvas->gfx_win) {
         rt_canvas_destroy_window(canvas);
         canvas->should_close = 1;
@@ -552,7 +556,7 @@ void *rt_canvas_screenshot(void *canvas_ptr) {
 /// @brief Switch the canvas window to fullscreen mode.
 /// @param canvas_ptr Canvas handle. NULL-safe.
 void rt_canvas_fullscreen(void *canvas_ptr) {
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (canvas && canvas->gfx_win) {
         vgfx_set_fullscreen(canvas->gfx_win, 1);
         rt_canvas_resync_window_state(canvas);
@@ -562,7 +566,7 @@ void rt_canvas_fullscreen(void *canvas_ptr) {
 /// @brief Switch the canvas window back to windowed mode from fullscreen.
 /// @param canvas_ptr Canvas handle. NULL-safe.
 void rt_canvas_windowed(void *canvas_ptr) {
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
     if (canvas && canvas->gfx_win) {
         vgfx_set_fullscreen(canvas->gfx_win, 0);
         rt_canvas_resync_window_state(canvas);
@@ -577,9 +581,12 @@ void rt_canvas_windowed(void *canvas_ptr) {
 void rt_canvas_set_fps(void *canvas_ptr, int64_t fps) {
     if (!canvas_ptr)
         return;
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win)
-        vgfx_set_fps(canvas->gfx_win, (int32_t)fps);
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (canvas && canvas->gfx_win) {
+        if (fps < -1)
+            fps = -1;
+        vgfx_set_fps(canvas->gfx_win, rtg_clamp_i64_to_i32(fps));
+    }
 }
 
 /// @brief Get the configured target frame rate.
@@ -588,8 +595,8 @@ void rt_canvas_set_fps(void *canvas_ptr, int64_t fps) {
 int64_t rt_canvas_get_fps(void *canvas_ptr) {
     if (!canvas_ptr)
         return -1;
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return -1;
     return (int64_t)vgfx_get_fps(canvas->gfx_win);
 }
@@ -603,7 +610,9 @@ int64_t rt_canvas_get_fps(void *canvas_ptr) {
 void rt_canvas_set_dt_max(void *canvas_ptr, int64_t max_ms) {
     if (!canvas_ptr)
         return;
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas)
+        return;
     canvas->dt_max_ms = max_ms > 0 ? max_ms : 0;
 }
 
@@ -632,8 +641,8 @@ int64_t rt_canvas_begin_frame(void *canvas_ptr) {
 double rt_canvas_get_scale(void *canvas_ptr) {
     if (!canvas_ptr)
         return 1.0;
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return 1.0;
     return (double)vgfx_window_get_scale(canvas->gfx_win);
 }
@@ -645,8 +654,8 @@ double rt_canvas_get_scale(void *canvas_ptr) {
 void rt_canvas_get_position(void *canvas_ptr, int64_t *out_x, int64_t *out_y) {
     if (!canvas_ptr)
         return;
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return;
     int32_t x = 0, y = 0;
     vgfx_get_position(canvas->gfx_win, &x, &y);
@@ -663,9 +672,9 @@ void rt_canvas_get_position(void *canvas_ptr, int64_t *out_x, int64_t *out_y) {
 void rt_canvas_set_position(void *canvas_ptr, int64_t x, int64_t y) {
     if (!canvas_ptr)
         return;
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win)
-        vgfx_set_position(canvas->gfx_win, (int32_t)x, (int32_t)y);
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (canvas && canvas->gfx_win)
+        vgfx_set_position(canvas->gfx_win, rtg_clamp_i64_to_i32(x), rtg_clamp_i64_to_i32(y));
 }
 
 /// @brief Check if the window is currently maximized.
@@ -674,8 +683,8 @@ void rt_canvas_set_position(void *canvas_ptr, int64_t x, int64_t y) {
 int8_t rt_canvas_is_maximized(void *canvas_ptr) {
     if (!canvas_ptr)
         return 0;
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return 0;
     return (int8_t)vgfx_is_maximized(canvas->gfx_win);
 }
@@ -685,8 +694,8 @@ int8_t rt_canvas_is_maximized(void *canvas_ptr) {
 void rt_canvas_maximize(void *canvas_ptr) {
     if (!canvas_ptr)
         return;
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (canvas && canvas->gfx_win)
         vgfx_maximize(canvas->gfx_win);
 }
 
@@ -696,8 +705,8 @@ void rt_canvas_maximize(void *canvas_ptr) {
 int8_t rt_canvas_is_minimized(void *canvas_ptr) {
     if (!canvas_ptr)
         return 0;
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return 0;
     return (int8_t)vgfx_is_minimized(canvas->gfx_win);
 }
@@ -707,8 +716,8 @@ int8_t rt_canvas_is_minimized(void *canvas_ptr) {
 void rt_canvas_minimize(void *canvas_ptr) {
     if (!canvas_ptr)
         return;
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (canvas && canvas->gfx_win)
         vgfx_minimize(canvas->gfx_win);
 }
 
@@ -717,8 +726,8 @@ void rt_canvas_minimize(void *canvas_ptr) {
 void rt_canvas_restore(void *canvas_ptr) {
     if (!canvas_ptr)
         return;
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (canvas && canvas->gfx_win)
         vgfx_restore(canvas->gfx_win);
 }
 
@@ -728,8 +737,8 @@ void rt_canvas_restore(void *canvas_ptr) {
 int8_t rt_canvas_is_focused(void *canvas_ptr) {
     if (!canvas_ptr)
         return 0;
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return 0;
     return (int8_t)vgfx_is_focused(canvas->gfx_win);
 }
@@ -739,8 +748,8 @@ int8_t rt_canvas_is_focused(void *canvas_ptr) {
 void rt_canvas_focus(void *canvas_ptr) {
     if (!canvas_ptr)
         return;
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (canvas && canvas->gfx_win)
         vgfx_focus(canvas->gfx_win);
 }
 
@@ -753,8 +762,8 @@ void rt_canvas_focus(void *canvas_ptr) {
 void rt_canvas_prevent_close(void *canvas_ptr, int64_t prevent) {
     if (!canvas_ptr)
         return;
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (canvas && canvas->gfx_win)
         vgfx_set_prevent_close(canvas->gfx_win, (int32_t)(prevent != 0));
 }
 
@@ -765,8 +774,8 @@ void rt_canvas_prevent_close(void *canvas_ptr, int64_t prevent) {
 void rt_canvas_get_monitor_size(void *canvas_ptr, int64_t *out_w, int64_t *out_h) {
     if (!canvas_ptr)
         return;
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return;
     int32_t w = 0, h = 0;
     vgfx_get_monitor_size(canvas->gfx_win, &w, &h);

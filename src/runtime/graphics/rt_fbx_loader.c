@@ -234,6 +234,7 @@ static int fbx_eof(const fbx_reader_t *r) {
     return r->pos >= r->len;
 }
 
+/// @brief Ensure `n` bytes remain in the stream; sets the error flag and seeks to EOF if not.
 static int fbx_require(fbx_reader_t *r, size_t n) {
     if (!r || r->error)
         return 0;
@@ -841,6 +842,7 @@ static void fbx_correct_zup(double *x, double *y, double *z) {
     *z = -tmp;
 }
 
+/// @brief Free the per-control-vertex index lists inside a single mesh remap entry.
 static void fbx_mesh_remap_free(fbx_mesh_remap_t *remap) {
     if (!remap)
         return;
@@ -854,6 +856,7 @@ static void fbx_mesh_remap_free(fbx_mesh_remap_t *remap) {
     remap->id = 0;
 }
 
+/// @brief Free an array of `count` mesh remap entries and the array itself.
 static void fbx_mesh_remaps_free(fbx_mesh_remap_t *remaps, int32_t count) {
     if (!remaps)
         return;
@@ -862,6 +865,7 @@ static void fbx_mesh_remaps_free(fbx_mesh_remap_t *remaps, int32_t count) {
     free(remaps);
 }
 
+/// @brief Allocate the per-control-vertex index arrays for a mesh remap entry; returns 0 on OOM.
 static int fbx_mesh_remap_init(fbx_mesh_remap_t *remap, int64_t id, int32_t control_count) {
     if (!remap)
         return 0;
@@ -875,6 +879,7 @@ static int fbx_mesh_remap_init(fbx_mesh_remap_t *remap, int64_t id, int32_t cont
     return remap->control_vertices != NULL;
 }
 
+/// @brief Append a new mesh vertex index to the list for a given control vertex (grows dynamically).
 static void fbx_mesh_remap_add_vertex(fbx_mesh_remap_t *remap,
                                       int32_t control_index,
                                       int32_t vertex_index) {
@@ -896,6 +901,7 @@ static void fbx_mesh_remap_add_vertex(fbx_mesh_remap_t *remap,
     list->vertices[list->count++] = vertex_index;
 }
 
+/// @brief Linear-search `remaps` for the entry with the given `id`; returns NULL if not found.
 static const fbx_mesh_remap_t *fbx_find_mesh_remap(const fbx_mesh_remap_t *remaps,
                                                     int32_t count,
                                                     int64_t id) {
@@ -1122,6 +1128,7 @@ static void *fbx_extract_material(fbx_node_t *mat_node) {
  * Scene graph extraction
  *=========================================================================*/
 
+/// @brief Release a GC-managed object held in `*slot` and NULL-out the slot.
 static void fbx_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -1664,7 +1671,12 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
 
 #define FBX_TIME_SECOND 46186158000LL
 
-/* Find all children of a given parent in the connection table */
+/// @brief Collect all direct children of @p parent_id from the FBX connection table.
+/// @details Scans every entry in @p ct and copies matching child IDs (and optional
+///          relationship property strings) into the caller-supplied output arrays up to
+///          @p max_out entries. Does not sort or deduplicate results.
+/// @param out_props May be NULL; when non-NULL receives the relationship prop string for each child.
+/// @return Number of children written to @p out_ids (capped at @p max_out).
 static int32_t fbx_find_children(const fbx_conn_table_t *ct,
                                  int64_t parent_id,
                                  int64_t *out_ids,
@@ -1682,7 +1694,11 @@ static int32_t fbx_find_children(const fbx_conn_table_t *ct,
     return count;
 }
 
-/* Find an Objects node by its FBX ID (first property) */
+/// @brief Find the direct child of the top-level Objects node whose first property matches @p id.
+/// @details FBX assigns every scene object a unique 64-bit ID stored as the first property on
+///          the node.  This linear scan is used for per-object resolution; call sites are bounded
+///          by the number of clusters / connections, not the total object count.
+/// @return Pointer into the @p objects children array, or NULL if no child carries that ID.
 static fbx_node_t *fbx_find_object_by_id(fbx_node_t *objects, int64_t id) {
     for (int32_t i = 0; i < objects->child_count; i++) {
         fbx_node_t *obj = &objects->children[i];
@@ -1692,7 +1708,10 @@ static fbx_node_t *fbx_find_object_by_id(fbx_node_t *objects, int64_t id) {
     return NULL;
 }
 
-/* Extract int64 array data from an FBX property */
+/// @brief Locate a child node named @p child_name and return its first property as an int64 array.
+/// @details Expects the property type byte to be `'l'` (FBX long-array).  Writes the element
+///          count to *count and returns a pointer into the already-decoded in-memory array.
+///          Returns NULL and leaves *count unchanged on a missing child or wrong property type.
 static const int64_t *fbx_get_i64_array(fbx_node_t *node, const char *child_name, uint32_t *count) {
     fbx_node_t *child = fbx_find_child(node, child_name);
     if (!child || child->prop_count < 1)
@@ -1705,6 +1724,9 @@ static const int64_t *fbx_get_i64_array(fbx_node_t *node, const char *child_name
     return NULL;
 }
 
+/// @brief Locate a child node named @p child_name and return its first property as an int32 array.
+/// @details Expects property type `'i'` (FBX int-array).  Used to read per-vertex indices such
+///          as cluster Indexes.  Returns NULL and leaves *count unchanged on type mismatch.
 static const int32_t *fbx_get_i32_array(fbx_node_t *node, const char *child_name, uint32_t *count) {
     fbx_node_t *child = fbx_find_child(node, child_name);
     if (!child || child->prop_count < 1)
@@ -1717,7 +1739,10 @@ static const int32_t *fbx_get_i32_array(fbx_node_t *node, const char *child_name
     return NULL;
 }
 
-/* Extract double array data from an FBX property */
+/// @brief Locate a child node named @p child_name and return its first property as a double array.
+/// @details Expects property type `'d'` (FBX double-array). When the property is type `'f'`
+///          (float-array), writes *count but returns NULL — callers should fall back to
+///          fbx_get_f32_array in that case. Used for animation curve values and blend weights.
 static const double *fbx_get_f64_array(fbx_node_t *node, const char *child_name, uint32_t *count) {
     fbx_node_t *child = fbx_find_child(node, child_name);
     if (!child || child->prop_count < 1)
@@ -1749,6 +1774,11 @@ static const float *fbx_get_f32_array(fbx_node_t *node, const char *child_name, 
     return NULL;
 }
 
+/// @brief Resolve an FBX Model node ID to its engine bone index in @p skeleton.
+/// @details Looks up the Model node by @p model_id, decodes its display name (stripping the
+///          FBX `"Name\x00\x01Type"` suffix), then asks the engine skeleton for the matching
+///          bone index via `rt_skeleton3d_find_bone`.
+/// @return Engine bone index in [0, bone_count), or -1 if the model is not found or not a bone.
 static int32_t fbx_find_bone_index_for_model(fbx_node_t *objects, void *skeleton, int64_t model_id) {
     fbx_node_t *model_node;
     char decoded_name[64];
@@ -1763,6 +1793,11 @@ static int32_t fbx_find_bone_index_for_model(fbx_node_t *objects, void *skeleton
     return (int32_t)rt_skeleton3d_find_bone(skeleton, rt_const_cstr(decoded_name));
 }
 
+/// @brief Find the Model node that owns the given Cluster deformer in the FBX connection table.
+/// @details A Cluster (sub-deformer) is connected child→parent to the Model node representing
+///          the bone it drives. This function walks the connection table for an entry whose
+///          child_id is @p cluster_id and whose parent is a "Model" node.
+/// @return FBX object ID of the owning Model, or 0 if not found.
 static int64_t fbx_find_cluster_bone_model(fbx_node_t *objects,
                                            const fbx_conn_table_t *ct,
                                            int64_t cluster_id) {
@@ -1910,6 +1945,14 @@ static void fbx_apply_skin_to_mesh(void *mesh_obj,
     }
 }
 
+/// @brief Apply all FBX Skin deformers to their target meshes, populating bone weights.
+/// @details Iterates every Skin Deformer in the Objects section. For each skin it resolves
+///          the target geometry (via `fbx_find_skin_geometry`), finds the engine mesh object
+///          (via @p mesh_bindings), allocates a per-control-point influence accumulator, then
+///          iterates all connected Cluster sub-deformers to accumulate (bone, weight) pairs.
+///          Finalization (renormalization, write to mesh) is done by `fbx_apply_skin_to_mesh`.
+///          Float and double weight arrays are both handled; the remap table is used when the
+///          mesh was deduplicated to map control-point indices back to the original FBX layout.
 static void fbx_apply_skinning(fbx_node_t *objects,
                                const fbx_conn_table_t *ct,
                                void *skeleton,
@@ -2010,6 +2053,12 @@ typedef struct {
     fbx_anim_curve_view_t curves[3][3]; /* trs, component */
 } fbx_anim_bone_builder_t;
 
+/// @brief Extract the local-space TRS components from an FBX Model node's Properties70 block.
+/// @details Scans the `Properties70` child for `"Lcl Translation"`, `"Lcl Rotation"`, and
+///          `"Lcl Scaling"` P-nodes and writes their XYZ values to the caller's arrays.
+///          NULL output pointers are silently skipped. Arrays are pre-zeroed (translation/rotation)
+///          or set to {1,1,1} (scale) before parsing so the caller gets sane defaults when a
+///          component is absent.
 static void fbx_extract_model_lcl_components(fbx_node_t *model_node,
                                              double *translation,
                                              double *rotation,
@@ -2050,10 +2099,17 @@ static void fbx_extract_model_lcl_components(fbx_node_t *model_node,
     }
 }
 
+/// @brief Return non-zero if @p curve contains at least one keyframe with usable value data.
 static int fbx_anim_curve_has_data(const fbx_anim_curve_view_t *curve) {
     return curve && curve->times && (curve->values64 || curve->values32) && curve->count > 0;
 }
 
+/// @brief Sample the animation curve at the given FBX tick time using linear interpolation.
+/// @details Times before the first keyframe return the first value; times after the last return
+///          the last value (no extrapolation).  FBX allows either double (`'d'`) or float (`'f'`)
+///          value arrays; both are handled by testing `values64` vs `values32`.  FBX time is in
+///          units of 1/46,186,158,000 second (see FBX_TIME_SECOND).
+/// @param fallback Value returned when the curve has no data.
 static double fbx_anim_curve_value(const fbx_anim_curve_view_t *curve,
                                    int64_t fbx_time,
                                    double fallback) {
@@ -2081,6 +2137,11 @@ static double fbx_anim_curve_value(const fbx_anim_curve_view_t *curve,
                            : (double)curve->values32[curve->count - 1];
 }
 
+/// @brief Insert @p value into a sorted, dynamically-grown int64 time array, deduplicating.
+/// @details Finds the insertion point with a linear scan, skips insertion if @p value already
+///          exists (returns 1 without modification), otherwise shifts elements right and inserts.
+///          The array is grown geometrically (starting at 16, doubling) via realloc.
+/// @return 1 on success (inserted or already present); 0 on allocation failure.
 static int fbx_anim_insert_time(int64_t **times,
                                 int32_t *count,
                                 int32_t *capacity,

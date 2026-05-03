@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_bytes.h"
+#include "rt_graphics.h"
 #include "rt_internal.h"
 #include "rt_pixels.h"
 #include "rt_string.h"
@@ -18,6 +19,7 @@
 #include "tests/common/PlatformSkip.h"
 #include "tests/common/PosixCompat.h"
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -68,6 +70,29 @@ static void test_get_set() {
     assert(rt_pixels_get(p, 5, 5) == red);
 
     printf("test_get_set: PASSED\n");
+}
+
+static void test_color_aware_setters_preserve_raw_rgba() {
+    void *p = rt_pixels_new(2, 2);
+
+    rt_pixels_set_color(p, 0, 0, rt_color_rgb(255, 0, 0));
+    assert(rt_pixels_get(p, 0, 0) == 0xFF0000FF);
+
+    rt_pixels_set_color(p, 1, 0, rt_color_rgba(0, 0, 255, 128));
+    assert(rt_pixels_get(p, 1, 0) == 0x0000FF80);
+
+    rt_pixels_set_rgba(p, 0, 1, 0x00000080);
+    assert(rt_pixels_get(p, 0, 1) == 0x00000080);
+
+    rt_pixels_fill_color(p, rt_color_rgba(1, 2, 3, 4));
+    for (int64_t y = 0; y < 2; y++)
+        for (int64_t x = 0; x < 2; x++)
+            assert(rt_pixels_get(p, x, y) == 0x01020304);
+
+    rt_pixels_fill_rgba(p, 0x00000080);
+    assert(rt_pixels_get(p, 1, 1) == 0x00000080);
+
+    printf("test_color_aware_setters_preserve_raw_rgba: PASSED\n");
 }
 
 static void test_get_out_of_bounds() {
@@ -979,6 +1004,26 @@ static void test_blur_zero_returns_exact_copy() {
     printf("test_blur_zero_returns_exact_copy: PASSED\n");
 }
 
+static void test_blur_empty_image_returns_empty_pixels() {
+    void *p = rt_pixels_new(0, 0);
+    void *blurred = rt_pixels_blur(p, 1);
+    assert(blurred != nullptr);
+    assert(rt_pixels_width(blurred) == 0);
+    assert(rt_pixels_height(blurred) == 0);
+    printf("test_blur_empty_image_returns_empty_pixels: PASSED\n");
+}
+
+static void test_rotate_nonfinite_returns_clone() {
+    void *p = rt_pixels_new(1, 1);
+    rt_pixels_set(p, 0, 0, 0x12345678);
+    void *rotated = rt_pixels_rotate(p, INFINITY);
+    assert(rotated != nullptr);
+    assert(rt_pixels_width(rotated) == 1);
+    assert(rt_pixels_height(rotated) == 1);
+    assert(rt_pixels_get(rotated, 0, 0) == 0x12345678);
+    printf("test_rotate_nonfinite_returns_clone: PASSED\n");
+}
+
 static void test_resize_rgba_channel_order() {
     void *p = rt_pixels_new(2, 2);
     int64_t p00 = 0x10305070;
@@ -1090,6 +1135,7 @@ int main() {
 
     // Pixel access
     test_get_set();
+    test_color_aware_setters_preserve_raw_rgba();
     test_get_out_of_bounds();
     test_set_out_of_bounds();
     test_corners();
@@ -1129,9 +1175,11 @@ int main() {
     test_rotate_ccw();
     test_rotate_180();
     test_rotate_positive_90_is_clockwise();
+    test_rotate_nonfinite_returns_clone();
     test_scale_up();
     test_scale_down();
     test_blur_zero_returns_exact_copy();
+    test_blur_empty_image_returns_empty_pixels();
     test_blur_rgba_channel_order();
     test_blur_alpha_aware_preserves_edge_color();
     test_resize_rgba_channel_order();

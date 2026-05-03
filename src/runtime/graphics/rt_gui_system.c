@@ -178,7 +178,16 @@ static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt
     return (*key != 0);
 }
 
-/// @brief Register the shortcuts.
+/// @brief Register (or update) a named keyboard shortcut on the active GUI app.
+/// @details If a shortcut with the same `id` is already registered its key
+///          binding and description are updated in-place and the pre-parsed
+///          modifier/key fields are recomputed.  If it is new, the shortcut
+///          table is grown as needed (doubling policy) before appending.
+///          All three strings are duplicated into the table and freed by
+///          `rt_shortcuts_clear` or `rt_shortcuts_unregister`.
+/// @param id       Unique string identifier used to poll and toggle the shortcut.
+/// @param keys     Human-readable key binding, e.g. "Ctrl+Shift+S".
+/// @param description Optional description shown in a help/shortcut dialog.
 void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
@@ -235,7 +244,10 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) 
     app->shortcut_count++;
 }
 
-/// @brief Unregister the shortcuts.
+/// @brief Remove a registered shortcut by id, freeing its stored strings.
+/// @details Scans the table linearly; on match frees id/keys/description,
+///          then shifts the tail of the array down to keep it contiguous.
+/// @param id Identifier passed to `rt_shortcuts_register`.
 void rt_shortcuts_unregister(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
@@ -304,8 +316,11 @@ int64_t rt_shortcuts_was_triggered(rt_string id) {
     return 0;
 }
 
-// Clear all shortcut triggered flags (call at start of each frame)
-/// @brief Clear the triggered of the shortcuts.
+/// @brief Reset all per-shortcut triggered flags and the cached triggered-id string.
+/// @details Called at the start of each frame (from `rt_gui_app_poll`) before
+///          processing new key events, so that `rt_shortcuts_was_triggered` reads
+///          reflect only events in the current frame.
+/// @param app App whose shortcut table is being reset; no-op if NULL.
 void rt_shortcuts_clear_triggered(rt_gui_app_t *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
@@ -373,7 +388,11 @@ int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
     return 0;
 }
 
-/// @brief Get the triggered of the shortcuts.
+/// @brief Return the id of the last shortcut triggered this frame, or an empty string.
+/// @details Reads `app->triggered_shortcut_id` which is set by `rt_shortcuts_check_key`
+///          when a key event matches a registered shortcut.  Valid only for the current
+///          frame; cleared at the start of the next poll by `rt_shortcuts_clear_triggered`.
+/// @return The shortcut id string, or an empty rt_string if no shortcut fired this frame.
 rt_string rt_shortcuts_get_triggered(void) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
@@ -424,7 +443,11 @@ int64_t rt_shortcuts_is_enabled(rt_string id) {
     return 0;
 }
 
-/// @brief Set the global enabled of the shortcuts.
+/// @brief Enable or disable all shortcut processing for the active app at once.
+/// @details When the global flag is false, `rt_shortcuts_check_key` returns 0
+///          without scanning the table, silencing all shortcuts (e.g. while a
+///          text input has focus so typing does not fire editor commands).
+/// @param enabled Non-zero to enable shortcut processing; 0 to suppress it.
 void rt_shortcuts_set_global_enabled(int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
@@ -432,7 +455,8 @@ void rt_shortcuts_set_global_enabled(int64_t enabled) {
         app->shortcuts_global_enabled = enabled != 0;
 }
 
-/// @brief Get the global enabled of the shortcuts.
+/// @brief Return whether global shortcut processing is currently active for the app.
+/// @return 1 if shortcuts are enabled globally, 0 if suppressed.
 int64_t rt_shortcuts_get_global_enabled(void) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
@@ -443,15 +467,27 @@ int64_t rt_shortcuts_get_global_enabled(void) {
 // Window Management (Phase 1)
 //=============================================================================
 
+/// @brief Validate `app` as a live app handle and return it, or NULL if invalid/destroyed.
+/// @details Thin wrapper around rt_gui_app_handle_checked that provides a
+///          concise name for the window-management helpers in this file.
 static rt_gui_app_t *rt_app_checked(void *app) {
     return rt_gui_app_handle_checked(app);
 }
 
+/// @brief Return the window's HiDPI scale factor, defaulting to 1.0 for NULL or non-finite results.
+/// @details Used by window-size helpers to convert between logical and physical
+///          pixels. Guards against zero/NaN scale values from unusual display
+///          configurations.
 static float rt_app_window_scale(rt_gui_app_t *app) {
     float scale = (app && app->window) ? vgfx_window_get_scale(app->window) : 1.0f;
     return (!isfinite(scale) || scale <= 0.0f) ? 1.0f : scale;
 }
 
+/// @brief Resize the platform window after clamping `w`/`h` to the valid vgfx range.
+/// @details Scales the maximum allowed size by the current HiDPI factor so
+///          the logical-pixel cap is respected even on high-DPI displays. Does
+///          NOT set a fixed size on the root widget — root sizing is driven by
+///          the layout engine in rt_gui_app_render().
 static void rt_app_set_window_size_checked(rt_gui_app_t *app, int64_t w, int64_t h) {
     if (!app || !app->window)
         return;
@@ -503,7 +539,10 @@ rt_string rt_app_get_title(void *app) {
     return rt_str_empty();
 }
 
-/// @brief Get a dimension of the app window (width, height, or scale factor).
+/// @brief Resize the app window to the requested logical-pixel dimensions.
+/// @param app    App handle.
+/// @param width  New window width in logical pixels.
+/// @param height New window height in logical pixels.
 void rt_app_set_size(void *app, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
     rt_app_set_window_size_checked(rt_app_checked(app), width, height);
@@ -547,7 +586,8 @@ void rt_app_set_position(void *app, int64_t x, int64_t y) {
                           rt_gui_clamp_i64_to_i32(y, INT32_MIN, INT32_MAX));
 }
 
-/// @brief Get the x of the app.
+/// @brief Return the x screen coordinate of the app window's top-left corner.
+/// @return X position in screen pixels, or 0 if the app or window is invalid.
 int64_t rt_app_get_x(void *app) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *gui_app = rt_app_checked(app);
@@ -560,7 +600,8 @@ int64_t rt_app_get_x(void *app) {
     return x;
 }
 
-/// @brief Get the y of the app.
+/// @brief Return the y screen coordinate of the app window's top-left corner.
+/// @return Y position in screen pixels, or 0 if the app or window is invalid.
 int64_t rt_app_get_y(void *app) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *gui_app = rt_app_checked(app);
@@ -621,7 +662,9 @@ int64_t rt_app_is_maximized(void *app) {
     return gui_app->window ? vgfx_is_maximized(gui_app->window) : 0;
 }
 
-/// @brief Set the fullscreen of the app.
+/// @brief Enter or exit fullscreen mode for the app window.
+/// @param app        App handle.
+/// @param fullscreen Non-zero to enter fullscreen, 0 to restore windowed mode.
 void rt_app_set_fullscreen(void *app, int64_t fullscreen) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *gui_app = rt_app_checked(app);
@@ -659,7 +702,12 @@ int64_t rt_app_is_focused(void *app) {
     return gui_app->window ? vgfx_is_focused(gui_app->window) : 0;
 }
 
-/// @brief Set the prevent close of the app.
+/// @brief Control whether the OS close button is allowed to close the window.
+/// @details When `prevent` is non-zero the platform close request is intercepted
+///          and `rt_app_was_close_requested` returns 1 instead, letting the app
+///          show a "Save before quitting?" dialog before deciding to exit.
+/// @param app     App handle.
+/// @param prevent Non-zero to block automatic close; 0 to allow it.
 void rt_app_set_prevent_close(void *app, int64_t prevent) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *gui_app = rt_app_checked(app);
@@ -706,13 +754,19 @@ int64_t rt_app_get_monitor_height(void *app) {
     return (int64_t)((double)h / (double)scale);
 }
 
-/// @brief Get a dimension of the app window (width, height, or scale factor).
+/// @brief Alias for `rt_app_set_size` — resize the app window in logical pixels.
+/// @param app App handle.
+/// @param w   New window width in logical pixels.
+/// @param h   New window height in logical pixels.
 void rt_app_set_window_size(void *app, int64_t w, int64_t h) {
     RT_ASSERT_MAIN_THREAD();
     rt_app_set_window_size_checked(rt_app_checked(app), w, h);
 }
 
-/// @brief Get a dimension of the app window (width, height, or scale factor).
+/// @brief Return the default font size for the app window in logical points.
+/// @details The stored value is in physical pixels (scaled by the HiDPI factor);
+///          this function divides by the current scale factor to return logical pt.
+/// @return Font size in logical points, defaulting to 14.0 if the app is invalid.
 double rt_app_get_font_size(void *app) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *gui_app = rt_app_checked(app);
@@ -723,7 +777,11 @@ double rt_app_get_font_size(void *app) {
     return (double)(gui_app->default_font_size / _s);
 }
 
-/// @brief Get a dimension of the app window (width, height, or scale factor).
+/// @brief Set the default font size for the app window in logical points.
+/// @details Clamps `size` to [6, 72] pt, then multiplies by the HiDPI scale
+///          factor before storing, so the physical-pixel value tracks display density.
+/// @param app  App handle.
+/// @param size Desired font size in logical points.
 void rt_app_set_font_size(void *app, double size) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *gui_app = rt_app_checked(app);
@@ -743,7 +801,8 @@ void rt_app_set_font_size(void *app, double size) {
 // Cursor Styles (Phase 1)
 //=============================================================================
 
-/// @brief Set a value in the cursor.
+/// @brief Change the mouse cursor shape for the active app window.
+/// @param type A `VGFX_CURSOR_*` constant (e.g. VGFX_CURSOR_DEFAULT, VGFX_CURSOR_HAND).
 void rt_cursor_set(int64_t type) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
@@ -751,7 +810,7 @@ void rt_cursor_set(int64_t type) {
         vgfx_set_cursor(app->window, (int32_t)type);
 }
 
-/// @brief Set a value in the cursor.
+/// @brief Restore the mouse cursor to the default arrow shape.
 void rt_cursor_reset(void) {
     RT_ASSERT_MAIN_THREAD();
     rt_cursor_set(0); /* VGFX_CURSOR_DEFAULT */
@@ -799,14 +858,14 @@ int64_t rt_clipboard_has_text(void) {
 /// @brief Remove all entries from the clipboard.
 void rt_clipboard_clear(void) {}
 
-/// @brief Register the shortcuts.
+/// @brief Stub: graphics disabled — no-op; shortcut registration is silently ignored.
 void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) {
     (void)id;
     (void)keys;
     (void)description;
 }
 
-/// @brief Unregister the shortcuts.
+/// @brief Stub: graphics disabled — no-op; no shortcut table exists to remove from.
 void rt_shortcuts_unregister(rt_string id) {
     (void)id;
 }
@@ -820,12 +879,12 @@ int64_t rt_shortcuts_was_triggered(rt_string id) {
     return 0;
 }
 
-/// @brief Clear the triggered of the shortcuts.
+/// @brief Stub: graphics disabled — no-op; no triggered shortcut state to clear.
 void rt_shortcuts_clear_triggered(rt_gui_app_t *app) {
     (void)app;
 }
 
-/// @brief Check the key of the shortcuts.
+/// @brief Stub: graphics disabled — returns 0; no shortcut can be triggered without graphics.
 int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
     (void)app;
     (void)key;
@@ -833,29 +892,29 @@ int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
     return 0;
 }
 
-/// @brief Get the triggered of the shortcuts.
+/// @brief Stub: graphics disabled — returns empty string; no shortcut was triggered.
 rt_string rt_shortcuts_get_triggered(void) {
     return rt_str_empty();
 }
 
-/// @brief Enable or disable global keyboard shortcut processing.
+/// @brief Stub: graphics disabled — no-op; no shortcut to enable or disable.
 void rt_shortcuts_set_enabled(rt_string id, int64_t enabled) {
     (void)id;
     (void)enabled;
 }
 
-/// @brief Check whether global keyboard shortcuts are currently enabled.
+/// @brief Stub: graphics disabled — returns 0; no shortcuts exist to query.
 int64_t rt_shortcuts_is_enabled(rt_string id) {
     (void)id;
     return 0;
 }
 
-/// @brief Set the global enabled of the shortcuts.
+/// @brief Stub: graphics disabled — no-op; global shortcut flag has no effect.
 void rt_shortcuts_set_global_enabled(int64_t enabled) {
     (void)enabled;
 }
 
-/// @brief Get the global enabled of the shortcuts.
+/// @brief Stub: graphics disabled — returns 0; global shortcuts are always inactive.
 int64_t rt_shortcuts_get_global_enabled(void) {
     return 0;
 }
@@ -872,7 +931,7 @@ rt_string rt_app_get_title(void *app) {
     return rt_str_empty();
 }
 
-/// @brief Get a dimension of the app window (width, height, or scale factor).
+/// @brief Stub: graphics disabled — no-op; no window exists to resize.
 void rt_app_set_size(void *app, int64_t width, int64_t height) {
     (void)app;
     (void)width;
@@ -898,13 +957,13 @@ void rt_app_set_position(void *app, int64_t x, int64_t y) {
     (void)y;
 }
 
-/// @brief Get the x of the app.
+/// @brief Stub: graphics disabled — returns 0; no window position exists.
 int64_t rt_app_get_x(void *app) {
     (void)app;
     return 0;
 }
 
-/// @brief Get the y of the app.
+/// @brief Stub: graphics disabled — returns 0; no window position exists.
 int64_t rt_app_get_y(void *app) {
     (void)app;
     return 0;
@@ -937,7 +996,7 @@ int64_t rt_app_is_maximized(void *app) {
     return 0;
 }
 
-/// @brief Set the fullscreen of the app.
+/// @brief Stub: graphics disabled — no-op; no window to enter or exit fullscreen.
 void rt_app_set_fullscreen(void *app, int64_t fullscreen) {
     (void)app;
     (void)fullscreen;
@@ -960,7 +1019,7 @@ int64_t rt_app_is_focused(void *app) {
     return 0;
 }
 
-/// @brief Set the prevent close of the app.
+/// @brief Stub: graphics disabled — no-op; no window close event can be intercepted.
 void rt_app_set_prevent_close(void *app, int64_t prevent) {
     (void)app;
     (void)prevent;
@@ -984,31 +1043,31 @@ int64_t rt_app_get_monitor_height(void *app) {
     return 0;
 }
 
-/// @brief Get a dimension of the app window (width, height, or scale factor).
+/// @brief Stub: graphics disabled — no-op; no window exists to resize.
 void rt_app_set_window_size(void *app, int64_t w, int64_t h) {
     (void)app;
     (void)w;
     (void)h;
 }
 
-/// @brief Get a dimension of the app window (width, height, or scale factor).
+/// @brief Stub: graphics disabled — returns default 14.0 pt; no real app window exists.
 double rt_app_get_font_size(void *app) {
     (void)app;
     return 14.0;
 }
 
-/// @brief Get a dimension of the app window (width, height, or scale factor).
+/// @brief Stub: graphics disabled — no-op; no app window font size to set.
 void rt_app_set_font_size(void *app, double size) {
     (void)app;
     (void)size;
 }
 
-/// @brief Set a value in the cursor.
+/// @brief Stub: graphics disabled — no-op; no window cursor to change.
 void rt_cursor_set(int64_t type) {
     (void)type;
 }
 
-/// @brief Set a value in the cursor.
+/// @brief Stub: graphics disabled — no-op; no window cursor to reset.
 void rt_cursor_reset(void) {}
 
 /// @brief Show or hide the mouse cursor.
@@ -1016,13 +1075,13 @@ void rt_cursor_set_visible(int64_t visible) {
     (void)visible;
 }
 
-/// @brief Set the cursor of the widget.
+/// @brief Stub: graphics disabled — no-op; no widget or cursor exists to change.
 void rt_widget_set_cursor(void *widget, int64_t type) {
     (void)widget;
     (void)type;
 }
 
-/// @brief Reset the cursor of the widget.
+/// @brief Stub: graphics disabled — no-op; no widget or cursor exists to reset.
 void rt_widget_reset_cursor(void *widget) {
     (void)widget;
 }

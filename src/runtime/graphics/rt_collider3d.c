@@ -91,10 +91,12 @@ static double clampd(double value, double lo, double hi) {
     return value;
 }
 
+/// @brief Return the absolute value of a finite double, or 0.0 for non-finite (NaN/inf) input.
 static double collider3d_extent_or_zero(double value) {
     return isfinite(value) ? fabs(value) : 0.0;
 }
 
+/// @brief Return the absolute value of a finite scale, clamped to 1.0 for near-zero or non-finite values.
 static double collider3d_scale_or_unit(double value) {
     if (!isfinite(value))
         return 1.0;
@@ -102,6 +104,7 @@ static double collider3d_scale_or_unit(double value) {
     return value > 1e-12 ? value : 1.0;
 }
 
+/// @brief Return `value` if finite, otherwise return `fallback`; used to sanitize transform fields read from Zia objects.
 static double collider3d_transform_component_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
@@ -117,6 +120,7 @@ static void quat_identity(double *q) {
     q[3] = 1.0;
 }
 
+/// @brief Normalize a quaternion in-place; replaces with identity if length is near-zero or non-finite.
 static void quat_normalize_local(double *q) {
     if (!q)
         return;
@@ -318,6 +322,7 @@ static void collider3d_set_from_transform(rt_collider3d_child *dst, void *transf
     }
 }
 
+/// @brief Recursively check whether `needle` appears anywhere in the compound collider tree rooted at `root`.
 static int collider3d_contains_child(rt_collider3d *root, rt_collider3d *needle) {
     if (!root || !needle || root->type != RT_COLLIDER3D_TYPE_COMPOUND)
         return 0;

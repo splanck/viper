@@ -50,6 +50,16 @@
 static _Thread_local void *mat4_pool_buf_[MAT4_POOL_CAPACITY];
 static _Thread_local int mat4_pool_top_ = 0;
 
+/// @brief GC finalizer / pool-return hook for Mat4 objects.
+/// @details When the GC is about to reclaim a Mat4 whose reference count has
+///   dropped to zero, this function intercepts the reclamation by calling
+///   rt_obj_resurrect to cancel the pending free, then re-registers itself as
+///   the finalizer so the next release will call it again.  The revived object
+///   is pushed onto the thread-local free-list (mat4_pool_buf_) up to
+///   MAT4_POOL_CAPACITY entries.  Once the pool is full the function simply
+///   returns without resurrecting, allowing the GC to complete the free.
+///   This avoids repeated heap allocation for short-lived intermediate matrices
+///   that arise in transform chains and animation blending.
 static void mat4_pool_return(void *p) {
     if (mat4_pool_top_ < MAT4_POOL_CAPACITY) {
         rt_obj_resurrect(p);

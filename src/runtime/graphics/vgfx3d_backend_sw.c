@@ -73,6 +73,14 @@ static inline void sw_compute_view_vector(const sw_context_t *ctx,
                                           float *out_vy,
                                           float *out_vz);
 
+/// @brief Sample the shadow map for @p slot at a world-space position and return a visibility factor.
+/// @details Transforms the world position into shadow NDC via the stored shadow VP matrix, then
+///          samples the shadow depth map with a 3×3 percentage-closer filter (PCF) to soften
+///          shadow edges. A slope-scaled depth bias (derived from the depth map gradient) is
+///          added to sd before comparison to reduce shadow acne on slanted surfaces.
+/// @return Visibility in [0, 1]: 1.0 = fully lit, ~0.15 = fully shadowed (with PCF blending).
+///         Returns 1.0 (fully lit) when the slot is invalid, outside the shadow frustum, or the
+///         context is null.
 static float sw_sample_shadow_visibility(const sw_context_t *ctx,
                                          int32_t slot,
                                          float wx,
@@ -556,6 +564,9 @@ static int setup_pixels_view(const void *pixels_obj, sw_pixels_view *out) {
     return (out->width > 0 && out->height > 0 && out->data != NULL);
 }
 
+/// @brief Wrap a continuous UV coordinate into [0, 1] according to the material wrap mode.
+/// @details CLAMP_TO_EDGE saturates to [0, 1]. MIRRORED_REPEAT folds across even/odd periods
+///          so the texture reads forward then backward. Default (repeat) uses fract().
 static float sw_wrap_coord(float value, int32_t mode) {
     if (mode == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE) {
         if (value < 0.0f)
@@ -577,6 +588,20 @@ static float sw_wrap_coord(float value, int32_t mode) {
     return value - floorf(value);
 }
 
+/// @brief Convert a potentially-out-of-range texel coordinate to a valid array index.
+/// @details Implements all three material wrap modes on integer texel indices after
+///   the continuous UV coordinate has been mapped to the texel grid:
+///     - `RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE`: saturates to `[0, size-1]`.
+///     - `RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT`: maps the index into `[0, size-1]`
+///       by folding across the period `2*size`; odd periods are mirrored so the
+///       sequence reads `0,1,...,size-1,size-1,...,1,0,1,...` etc.
+///     - Default (repeat): standard modulo with `((index % size) + size) % size`
+///       so negative indices wrap correctly (plain `%` can return negative values in C).
+///   Returns 0 immediately when @p size is zero or negative to prevent division by zero.
+/// @param index  Texel coordinate, possibly negative or beyond `size`.
+/// @param size   Texture dimension in texels along the relevant axis (must be > 0).
+/// @param mode   One of the `RT_MATERIAL3D_TEXTURE_WRAP_*` constants.
+/// @return Clamped/wrapped index in `[0, size-1]`.
 static int sw_wrap_index(int index, int size, int32_t mode) {
     if (size <= 0)
         return 0;
@@ -674,6 +699,19 @@ static void sample_texture_ex(const sw_pixels_view *tex,
          255.0f;
 }
 
+/// @brief Sample a texture with default repeat wrap and linear filter.
+/// @details Convenience wrapper around `sample_texture_ex` that supplies
+///   `RT_MATERIAL3D_TEXTURE_WRAP_REPEAT` for both axes and
+///   `RT_MATERIAL3D_TEXTURE_FILTER_LINEAR` as the filter mode. Used for
+///   internal texture lookups (e.g., environment cubemap faces) that are not
+///   driven by per-material draw command state.
+/// @param tex  Pixel view to sample.
+/// @param u    Horizontal texture coordinate (unnormalized; repeat wraps to [0,1)).
+/// @param v    Vertical texture coordinate.
+/// @param r    Output red channel in [0, 1].
+/// @param g    Output green channel in [0, 1].
+/// @param b    Output blue channel in [0, 1].
+/// @param a    Output alpha channel in [0, 1].
 static void sample_texture(
     const sw_pixels_view *tex, float u, float v, float *r, float *g, float *b, float *a) {
     sample_texture_ex(tex,
@@ -703,14 +741,17 @@ static float sw_srgb_to_linear(float value) {
     return powf((value + 0.055f) / 1.055f, 2.4f);
 }
 
+/// @brief Return the primary texture S-axis wrap mode from @p cmd, defaulting to REPEAT.
 static int32_t sw_cmd_wrap_s(const vgfx3d_draw_cmd_t *cmd) {
     return cmd ? cmd->texture_wrap_s : RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
 }
 
+/// @brief Return the primary texture T-axis wrap mode from @p cmd, defaulting to REPEAT.
 static int32_t sw_cmd_wrap_t(const vgfx3d_draw_cmd_t *cmd) {
     return cmd ? cmd->texture_wrap_t : RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
 }
 
+/// @brief Return the primary texture filter mode from @p cmd, defaulting to LINEAR.
 static int32_t sw_cmd_filter(const vgfx3d_draw_cmd_t *cmd) {
     return cmd ? cmd->texture_filter : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
 }
@@ -725,24 +766,48 @@ typedef struct screen_vert_t {
     float tx, ty, tz, tw; /* world tangent plus handedness sign (for TBN construction) */
 } screen_vert_t;
 
+/// @brief Return the S-axis wrap mode for a specific texture slot, falling back to the primary wrap when out of range.
 static int32_t sw_cmd_slot_wrap_s(const vgfx3d_draw_cmd_t *cmd, int32_t slot) {
     if (!cmd || slot < 0 || slot >= RT_MATERIAL3D_TEXTURE_SLOT_COUNT)
         return sw_cmd_wrap_s(cmd);
     return cmd->texture_slot_wrap_s[slot];
 }
 
+/// @brief Return the T-axis wrap mode for a specific texture slot, falling back to the primary wrap when out of range.
 static int32_t sw_cmd_slot_wrap_t(const vgfx3d_draw_cmd_t *cmd, int32_t slot) {
     if (!cmd || slot < 0 || slot >= RT_MATERIAL3D_TEXTURE_SLOT_COUNT)
         return sw_cmd_wrap_t(cmd);
     return cmd->texture_slot_wrap_t[slot];
 }
 
+/// @brief Return the filter mode for a specific texture slot, falling back to the primary filter when out of range.
 static int32_t sw_cmd_slot_filter(const vgfx3d_draw_cmd_t *cmd, int32_t slot) {
     if (!cmd || slot < 0 || slot >= RT_MATERIAL3D_TEXTURE_SLOT_COUNT)
         return sw_cmd_filter(cmd);
     return cmd->texture_slot_filter[slot];
 }
 
+/// @brief Perspective-correct UV interpolation with per-slot UV-set selection and transform.
+/// @details Performs perspective-correct barycentric UV interpolation by dividing the
+///   interpolated `u_over_w` / `v_over_w` quantities by the interpolated `inv_w`. This
+///   avoids the affine texture distortion visible on large triangles when using plain
+///   linear barycentric interpolation. The denominator guard (`fabsf(iw) <= 1e-7f`) skips
+///   degenerate near-zero-W fragments.
+///
+///   After interpolation, the UV is optionally transformed by the per-slot 2×3 affine
+///   matrix stored in `cmd->texture_slot_uv_transform[slot]` (column-major, elements
+///   [0..3] are the 2×2 rotation/scale, [4..5] are translation). This allows per-slot
+///   UV scroll, scale, and rotation without modifying geometry.
+///
+///   UV-set selection: when `cmd->texture_slot_uv_set[slot] > 0` the secondary UV channel
+///   (`u1_over_w` / `v1_over_w`) is used instead of the primary, matching the glTF
+///   `TEXCOORD_1` convention for lightmap or detail textures.
+/// @param cmd     Draw command containing per-slot UV-set and transform state.
+/// @param slot    Material texture slot index; negative or out-of-range disables per-slot overrides.
+/// @param b0,b1,b2  Barycentric weights for vertices v0, v1, v2 (must sum to 1).
+/// @param v0,v1,v2  Screen-space vertices holding `u_over_w`, `v_over_w`, `inv_w`, etc.
+/// @param out_u   Receives the perspective-corrected, transformed U coordinate.
+/// @param out_v   Receives the perspective-corrected, transformed V coordinate.
 static void sw_interpolate_uv_for_slot(const vgfx3d_draw_cmd_t *cmd,
                                        int32_t slot,
                                        float b0,
@@ -785,6 +850,22 @@ static void sw_interpolate_uv_for_slot(const vgfx3d_draw_cmd_t *cmd,
     }
 }
 
+/// @brief Sample a texture using the wrap and filter parameters from one material slot.
+/// @details Routes to `sample_texture_ex` using per-slot wrap/filter accessors
+///   (`sw_cmd_slot_wrap_s`, `sw_cmd_slot_wrap_t`, `sw_cmd_slot_filter`) that
+///   gracefully fall back to the command's global wrap/filter when @p slot is
+///   out of range or @p cmd is NULL. This ensures consistent sampling state
+///   regardless of whether the draw command has per-slot overrides.
+///   Does NOT apply sRGB linearisation — see `sample_texture_slot_srgb_ex` for that.
+/// @param tex   Pixel view to sample.
+/// @param cmd   Draw command carrying per-slot wrap/filter state; may be NULL.
+/// @param slot  Material texture slot index; out-of-range falls back to global fields.
+/// @param u     Texture U coordinate (will be wrapped per the slot's wrap_s mode).
+/// @param v     Texture V coordinate (will be wrapped per the slot's wrap_t mode).
+/// @param r     Output red channel in [0, 1].
+/// @param g     Output green channel in [0, 1].
+/// @param b     Output blue channel in [0, 1].
+/// @param a     Output alpha channel in [0, 1].
 static void sample_texture_slot_ex(const sw_pixels_view *tex,
                                    const vgfx3d_draw_cmd_t *cmd,
                                    int32_t slot,
@@ -806,6 +887,22 @@ static void sample_texture_slot_ex(const sw_pixels_view *tex,
                       a);
 }
 
+/// @brief Sample a texture and linearise the RGB channels from sRGB storage.
+/// @details Calls `sample_texture_slot_ex` to obtain raw [0,1] RGBA values, then
+///   applies `sw_srgb_to_linear` to each of the three colour channels. Alpha is
+///   intentionally left in its stored form (sRGB spec does not gamma-encode alpha).
+///   Used for base-colour / albedo textures whose pixel data was authored in sRGB
+///   space; lighting and PBR math must operate in linear light, so we undo the
+///   storage gamma here before those computations.
+/// @param tex   Pixel view to sample.
+/// @param cmd   Draw command carrying per-slot wrap/filter state; may be NULL.
+/// @param slot  Material texture slot index.
+/// @param u     Texture U coordinate.
+/// @param v     Texture V coordinate.
+/// @param r     Output linearised red channel in [0, 1].
+/// @param g     Output linearised green channel in [0, 1].
+/// @param b     Output linearised blue channel in [0, 1].
+/// @param a     Output alpha channel in [0, 1] (not linearised).
 static void sample_texture_slot_srgb_ex(const sw_pixels_view *tex,
                                         const vgfx3d_draw_cmd_t *cmd,
                                         int32_t slot,

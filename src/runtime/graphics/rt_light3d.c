@@ -79,6 +79,10 @@ static double sanitize_spot_angle(double value, double fallback) {
     return value;
 }
 
+/// @brief Clamp and mutually-validate inner and outer spot-light cone angles.
+/// @details Ensures `inner` < `outer` with at least a 0.01° gap, and both angles
+///          are in [0°, 89°]. When outer ≤ inner + eps the outer is widened; when
+///          either pointer is NULL, its angle defaults to 0° (inner) or inner+eps (outer).
 static void sanitize_spot_angles(double *inner_angle, double *outer_angle) {
     const double eps = 0.01;
     double inner = sanitize_spot_angle(inner_angle ? *inner_angle : 0.0, 0.0);

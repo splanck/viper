@@ -366,6 +366,10 @@ static void rt_animation3d_finalize(void *obj) {
     a->channels = NULL;
 }
 
+/// @brief Release the GC-managed object in @p slot and clear the pointer to NULL.
+/// @details Mirrors the `scene3d_release_ref` pattern used in rt_scene3d.c — kept
+///   as a local copy so this translation unit has no dependency on scene3d internals.
+///   Safe to call with a NULL slot or a slot already holding NULL.
 static void animation3d_release_ref(void **slot) {
     if (!slot || !*slot)
         return;
@@ -374,6 +378,12 @@ static void animation3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Atomically retain @p value and release the previous occupant of @p slot.
+/// @details Retain-before-release ordering is required: if @p value and @p *slot
+///   happen to be the same object the release would otherwise free it before the
+///   retain. The no-op early-return on equality also avoids the redundant
+///   retain/release pair for the common case where the caller re-assigns the same
+///   animation (e.g., restarting a clip without changing the reference).
 static void animation3d_assign_ref(void **slot, void *value) {
     if (!slot || *slot == value)
         return;
@@ -382,6 +392,14 @@ static void animation3d_assign_ref(void **slot, void *value) {
     *slot = value;
 }
 
+/// @brief Ensure a quaternion keyframe is unit-length; substitute identity on any
+///        degenerate or non-finite input so bone transforms stay numerically stable.
+/// @details Two separate guards: a NaN/Inf component check (which would make the
+///   magnitude computation itself non-finite) and a near-zero length check (which
+///   would produce NaN on division). The identity quaternion (0,0,0,1) is used as
+///   the fallback so a bad keyframe leaves the bone in its rest pose rather than
+///   producing a degenerate skinning matrix that collapses or inverts geometry.
+/// @param q float[4] quaternion in (x, y, z, w) order; modified in-place.
 static void sanitize_keyframe_quat(float *q) {
     if (!q)
         return;

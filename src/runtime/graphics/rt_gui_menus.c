@@ -116,6 +116,15 @@ static vg_icon_t rt_gui_icon_from_pixels(void *pixels) {
     return icon;
 }
 
+/// @brief Load a Pixels image from a file path and convert it to a `vg_icon_t`.
+/// @details Loads the file via `rt_pixels_load`, delegates conversion to
+///          `rt_gui_icon_from_pixels`, then immediately releases the Pixels
+///          object (the icon owns its own RGBA copy). An empty or NULL path,
+///          a missing file, or a zero-dimension image all produce a
+///          `VG_ICON_NONE` sentinel — callers treat a missing icon as
+///          decorative fallback.
+/// @param path Filesystem path to the image file (C string).
+/// @return Populated icon on success; `{0}` on any failure.
 static vg_icon_t rt_gui_icon_from_path_cstr(const char *path) {
     vg_icon_t icon = {0};
     if (!path || path[0] == '\0')
@@ -1339,6 +1348,7 @@ int64_t rt_toolbaritem_was_clicked(void *item) {
 // virtue of identical names — these stubs intentionally have no extra docs.
 // ===========================================================================
 
+/// @brief Stub: graphics disabled — returns NULL; no menu bar widget is created.
 void *rt_menubar_new(void *parent) {
     (void)parent;
     return NULL;
@@ -1349,6 +1359,7 @@ void rt_menubar_destroy(void *menubar) {
     (void)menubar;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no menu is added to the menu bar.
 void *rt_menubar_add_menu(void *menubar, rt_string title) {
     (void)menubar;
     (void)title;
@@ -1367,6 +1378,7 @@ int64_t rt_menubar_get_menu_count(void *menubar) {
     return 0;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no menu bar exists to retrieve from.
 void *rt_menubar_get_menu(void *menubar, int64_t index) {
     (void)menubar;
     (void)index;
@@ -1385,12 +1397,14 @@ int64_t rt_menubar_is_visible(void *menubar) {
     return 0;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no menu item is created.
 void *rt_menu_add_item(void *menu, rt_string text) {
     (void)menu;
     (void)text;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no menu item with shortcut is created.
 void *rt_menu_add_item_with_shortcut(void *menu, rt_string text, rt_string shortcut) {
     (void)menu;
     (void)text;
@@ -1398,11 +1412,13 @@ void *rt_menu_add_item_with_shortcut(void *menu, rt_string text, rt_string short
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no separator item is created.
 void *rt_menu_add_separator(void *menu) {
     (void)menu;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no submenu is created.
 void *rt_menu_add_submenu(void *menu, rt_string title) {
     (void)menu;
     (void)title;
@@ -1438,6 +1454,7 @@ int64_t rt_menu_get_item_count(void *menu) {
     return 0;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no menu exists to retrieve items from.
 void *rt_menu_get_item(void *menu, int64_t index) {
     (void)menu;
     (void)index;
@@ -1534,6 +1551,7 @@ int64_t rt_menuitem_was_clicked(void *item) {
     return 0;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no context menu is created.
 void *rt_contextmenu_new(void) {
     return NULL;
 }
@@ -1543,12 +1561,14 @@ void rt_contextmenu_destroy(void *menu) {
     (void)menu;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no context menu item is created.
 void *rt_contextmenu_add_item(void *menu, rt_string text) {
     (void)menu;
     (void)text;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no context menu item with shortcut is created.
 void *rt_contextmenu_add_item_with_shortcut(void *menu, rt_string text, rt_string shortcut) {
     (void)menu;
     (void)text;
@@ -1556,11 +1576,13 @@ void *rt_contextmenu_add_item_with_shortcut(void *menu, rt_string text, rt_strin
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no context menu separator is created.
 void *rt_contextmenu_add_separator(void *menu) {
     (void)menu;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no context menu submenu is created.
 void *rt_contextmenu_add_submenu(void *menu, rt_string title) {
     (void)menu;
     (void)title;
@@ -1590,11 +1612,13 @@ int64_t rt_contextmenu_is_visible(void *menu) {
     return 0;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no context menu item was clicked.
 void *rt_contextmenu_get_clicked_item(void *menu) {
     (void)menu;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no status bar widget is created.
 void *rt_statusbar_new(void *parent) {
     (void)parent;
     return NULL;
@@ -1641,6 +1665,7 @@ rt_string rt_statusbar_get_right_text(void *bar) {
     return rt_str_empty();
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no status bar text item is created.
 void *rt_statusbar_add_text(void *bar, rt_string text, int64_t zone) {
     (void)bar;
     (void)text;
@@ -1648,6 +1673,7 @@ void *rt_statusbar_add_text(void *bar, rt_string text, int64_t zone) {
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no status bar button item is created.
 void *rt_statusbar_add_button(void *bar, rt_string text, int64_t zone) {
     (void)bar;
     (void)text;
@@ -1655,18 +1681,21 @@ void *rt_statusbar_add_button(void *bar, rt_string text, int64_t zone) {
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no status bar progress item is created.
 void *rt_statusbar_add_progress(void *bar, int64_t zone) {
     (void)bar;
     (void)zone;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no status bar separator item is created.
 void *rt_statusbar_add_separator(void *bar, int64_t zone) {
     (void)bar;
     (void)zone;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no status bar spacer item is created.
 void *rt_statusbar_add_spacer(void *bar, int64_t zone) {
     (void)bar;
     (void)zone;
@@ -1744,11 +1773,13 @@ int64_t rt_statusbaritem_was_clicked(void *item) {
     return 0;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no horizontal toolbar widget is created.
 void *rt_toolbar_new(void *parent) {
     (void)parent;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no vertical toolbar widget is created.
 void *rt_toolbar_new_vertical(void *parent) {
     (void)parent;
     return NULL;
@@ -1759,6 +1790,7 @@ void rt_toolbar_destroy(void *toolbar) {
     (void)toolbar;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no toolbar button is created.
 void *rt_toolbar_add_button(void *toolbar, rt_string icon_path, rt_string tooltip) {
     (void)toolbar;
     (void)icon_path;
@@ -1766,6 +1798,7 @@ void *rt_toolbar_add_button(void *toolbar, rt_string icon_path, rt_string toolti
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no toolbar button with text label is created.
 void *rt_toolbar_add_button_with_text(void *toolbar,
                                       rt_string icon_path,
                                       rt_string text,
@@ -1777,6 +1810,7 @@ void *rt_toolbar_add_button_with_text(void *toolbar,
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no toolbar toggle button is created.
 void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string tooltip) {
     (void)toolbar;
     (void)icon_path;
@@ -1784,16 +1818,19 @@ void *rt_toolbar_add_toggle(void *toolbar, rt_string icon_path, rt_string toolti
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no toolbar separator item is created.
 void *rt_toolbar_add_separator(void *toolbar) {
     (void)toolbar;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no toolbar spacer item is created.
 void *rt_toolbar_add_spacer(void *toolbar) {
     (void)toolbar;
     return NULL;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no toolbar dropdown item is created.
 void *rt_toolbar_add_dropdown(void *toolbar, rt_string tooltip) {
     (void)toolbar;
     (void)tooltip;
@@ -1830,6 +1867,7 @@ int64_t rt_toolbar_get_item_count(void *toolbar) {
     return 0;
 }
 
+/// @brief Stub: graphics disabled — returns NULL; no toolbar exists to retrieve items from.
 void *rt_toolbar_get_item(void *toolbar, int64_t index) {
     (void)toolbar;
     (void)index;

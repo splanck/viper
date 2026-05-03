@@ -63,10 +63,16 @@ typedef struct {
 // Helpers
 //=============================================================================
 
+/// @brief Cast a generic atlas handle to the concrete `texatlas_impl` pointer.
 static texatlas_impl *get_impl(void *atlas) {
     return (texatlas_impl *)atlas;
 }
 
+/// @brief FNV-1a 32-bit hash of a region name string.
+/// @details FNV-1a (Fowler-Noll-Vo) is chosen for its good avalanche properties on
+///   short strings and its simplicity. The offset basis (2166136261) and prime
+///   (16777619) are the standard 32-bit FNV constants. Used to index the open-addressing
+///   hash table `region_slots` with linear probing.
 static uint32_t hash_name(const char *name) {
     uint32_t h = 2166136261u;
     while (*name) {
@@ -76,6 +82,13 @@ static uint32_t hash_name(const char *name) {
     return h;
 }
 
+/// @brief Look up a region by name in the open-addressing hash table.
+/// @details Linear-probes up to TEXATLAS_HASH_SIZE slots starting from `hash_name(name)
+///   & (TEXATLAS_HASH_SIZE - 1)`. A slot value of 0 means empty (sentinel); a non-zero
+///   entry is `region_index + 1` to distinguish "index 0" from "empty". Full-name
+///   strcmp confirms the match to handle collisions. If the maximum probe count is
+///   reached without finding a match or an empty slot, returns -1.
+/// @return Zero-based region index, or -1 if not found.
 static int find_region(texatlas_impl *impl, const char *name) {
     if (!impl || !name || !*name)
         return -1;
@@ -92,6 +105,13 @@ static int find_region(texatlas_impl *impl, const char *name) {
     return -1;
 }
 
+/// @brief Insert a region (by its zero-based index) into the open-addressing hash table.
+/// @details Probes from `hash_name(name) & (TEXATLAS_HASH_SIZE - 1)` using linear
+///   probing, storing `idx + 1` (to distinguish "index 0" from "empty slot = 0").
+///   If the same index is already in the slot (idempotent re-insert) it is accepted.
+///   Traps if no empty slot is found, which only occurs when the table is completely
+///   full — the number of regions is capped at TEXATLAS_MAX_REGIONS ≤ TEXATLAS_HASH_SIZE/2
+///   so a well-formed atlas never exhausts the table.
 static void bind_region_slot(texatlas_impl *impl, int idx) {
     const char *name = impl->regions[idx].name;
     uint32_t h = hash_name(name);
@@ -110,6 +130,11 @@ static void bind_region_slot(texatlas_impl *impl, int idx) {
 // Lifecycle
 //=============================================================================
 
+/// @brief GC finalizer for a TextureAtlas — releases the retained Pixels reference.
+/// @details Region metadata (name strings, coordinate arrays) are embedded in the
+///   fixed-size `regions` array inside the struct and require no separate free. Only
+///   the `pixels` object needs an explicit release because it was retained separately
+///   in `rt_texatlas_new` to extend the pixel data's lifetime to match the atlas.
 static void texatlas_finalize(void *obj) {
     texatlas_impl *impl = get_impl(obj);
     if (impl->pixels) {

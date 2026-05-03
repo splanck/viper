@@ -14,6 +14,7 @@
 #include "rt_internal.h"
 
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
 
 extern "C" void vm_trap(const char *msg) {
@@ -64,13 +65,17 @@ static void test_color_rgb_clamping() {
 }
 
 static void test_color_rgba_basic() {
+    const int64_t explicit_alpha_flag = INT64_C(1) << 56;
+
     // Red with full alpha
     int64_t red_opaque = rt_color_rgba(255, 0, 0, 255);
-    assert(red_opaque == (int64_t)0xFFFF0000);
+    assert((red_opaque & 0xFFFFFFFFLL) == (int64_t)0xFFFF0000);
+    assert((red_opaque & explicit_alpha_flag) != 0);
 
     // Green with half alpha
     int64_t green_half = rt_color_rgba(0, 255, 0, 128);
-    assert(green_half == (int64_t)0x8000FF00);
+    assert((green_half & 0xFFFFFFFFLL) == (int64_t)0x8000FF00);
+    assert((green_half & explicit_alpha_flag) != 0);
 
     // Blue with no alpha (transparent)
     int64_t blue_transparent = rt_color_rgba(0, 0, 255, 0);
@@ -84,11 +89,14 @@ static void test_color_rgba_basic() {
 }
 
 static void test_color_rgba_clamping() {
+    const int64_t explicit_alpha_flag = INT64_C(1) << 56;
+
     // Test clamping of out-of-range values including alpha
     int64_t clamped = rt_color_rgba(300, -10, 128, 400);
     // r=255, g=0, b=128, a=255 -> 0xFF00FF80 (but stored as 0xAARRGGBB)
     // Actually: 0xFFFF0080
-    assert(clamped == (int64_t)0xFFFF0080);
+    assert((clamped & 0xFFFFFFFFLL) == (int64_t)0xFFFF0080);
+    assert((clamped & explicit_alpha_flag) != 0);
 
     printf("test_color_rgba_clamping: PASSED\n");
 }

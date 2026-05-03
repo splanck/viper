@@ -73,6 +73,7 @@ static rt_canvas *make_fake_canvas() {
     rt_canvas *c = (rt_canvas *)calloc(1, sizeof(rt_canvas));
     assert(c != nullptr);
     c->vptr = nullptr;
+    c->magic = RT_CANVAS_MAGIC;
     c->gfx_win = nullptr;
     c->should_close = 0;
     c->last_flip_us = 0;

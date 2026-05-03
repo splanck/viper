@@ -100,15 +100,27 @@ typedef struct {
 
 static void videowidget_dispose(rt_videowidget *w, int destroy_widget_tree);
 
+/// @brief GC finalizer for a VideoWidget — disposes resources without destroying the
+///        widget tree, since the GUI tree has its own ownership chain.
+/// @details Passes `destroy_widget_tree = 0` because by the time the GC collects
+///   the VideoWidget the widget tree has already been torn down through the normal
+///   GUI destruction path. Destroying it a second time here would be a double-free.
 static void videowidget_finalizer(void *obj) {
     videowidget_dispose((rt_videowidget *)obj, 0);
 }
 
+/// @brief Release a GC-managed object if it exists, freeing it when the refcount drops to zero.
 static void release_gc_object(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
+/// @brief Release all resources held by a VideoWidget, optionally destroying the GUI tree.
+/// @details Clears all widget pointers (image, controls, buttons, slider) to prevent
+///   dangling references after disposal. When @p destroy_widget_tree is non-zero it
+///   also calls `rt_widget_destroy` on the root, which tears down the entire GUI
+///   subtree — used during explicit `VideoWidget.Destroy` calls. GC-driven cleanup
+///   uses `destroy_widget_tree = 0` since the tree is already gone.
 static void videowidget_dispose(rt_videowidget *w, int destroy_widget_tree) {
     if (!w)
         return;
@@ -131,6 +143,9 @@ static void videowidget_dispose(rt_videowidget *w, int destroy_widget_tree) {
     }
 }
 
+/// @brief Clamp a volume value to [0.0, 1.0] before passing it to the video player.
+/// @details Values outside [0, 1] are undefined behavior in most audio backends.
+///   Clamping here shields the player from invalid values supplied by user code.
 static double clamp_volume(double vol) {
     if (vol < 0.0)
         return 0.0;

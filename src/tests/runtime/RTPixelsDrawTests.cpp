@@ -70,7 +70,8 @@ static void test_color_rgba_packing_differs_from_pixels_storage() {
 
     rt_pixels_set(p, 0, 0, packed_pixels);
     assert(rt_pixels_get(p, 0, 0) == packed_pixels);
-    assert(packed_color == (int64_t)0x78123456);
+    assert((packed_color & 0xFFFFFFFFLL) == (int64_t)0x78123456);
+    assert((packed_color & (INT64_C(1) << 56)) != 0);
     assert(packed_color != packed_pixels);
 
     printf("test_color_rgba_packing_differs_from_pixels_storage: PASSED\n");
@@ -192,6 +193,21 @@ static void test_drawdisc_huge_radius_clips_to_buffer() {
         for (int64_t x = 0; x < 4; x++)
             assert(rt_pixels_get_rgb(p, x, y) == 0x102030);
     printf("test_drawdisc_huge_radius_clips_to_buffer: PASSED\n");
+}
+
+static void test_shape_generation_only_changes_on_write() {
+    void *p = rt_pixels_new(4, 4);
+    uint64_t gen = rt_pixels_generation(p);
+    rt_pixels_draw_disc(p, 100, 100, 5, 0xFFFFFF);
+    rt_pixels_draw_ring(p, 100, 100, 5, 0xFFFFFF);
+    rt_pixels_draw_ellipse(p, 100, 100, 5, 3, 0xFFFFFF);
+    rt_pixels_draw_ellipse_frame(p, 100, 100, 5, 3, 0xFFFFFF);
+    rt_pixels_draw_triangle(p, 100, 100, 110, 100, 100, 110, 0xFFFFFF);
+    rt_pixels_draw_bezier(p, 100, 100, 105, 110, 110, 100, 0xFFFFFF);
+    assert(rt_pixels_generation(p) == gen);
+    rt_pixels_draw_disc(p, 1, 1, 1, 0xFFFFFF);
+    assert(rt_pixels_generation(p) == gen + 1);
+    printf("test_shape_generation_only_changes_on_write: PASSED\n");
 }
 
 // ============================================================================
@@ -354,6 +370,7 @@ int main() {
     test_drawdisc_center_set();
     test_drawdisc_outside_clear();
     test_drawdisc_huge_radius_clips_to_buffer();
+    test_shape_generation_only_changes_on_write();
 
     // DrawRing
     test_drawring_outline_set_interior_clear();

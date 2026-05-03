@@ -362,6 +362,11 @@ void rt_material3d_set_texture(void *obj, void *pixels) {
     material_assign_ref(&((rt_material3d *)obj)->texture, pixels);
 }
 
+/// @brief Coerce an incoming texture-wrap mode to a known-valid enum value.
+/// @details Accepts CLAMP_TO_EDGE and MIRRORED_REPEAT; everything else (including
+///   unknown future modes or out-of-range values from importers) falls back to
+///   REPEAT, which is the safe default and matches the texture-slot init in
+///   material_init_texture_slots.
 static int32_t material_sanitize_wrap(int64_t value) {
     if (value == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE ||
         value == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT)
@@ -369,11 +374,19 @@ static int32_t material_sanitize_wrap(int64_t value) {
     return RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
 }
 
+/// @brief Coerce an incoming texture-filter mode to LINEAR or NEAREST.
+/// @details Only NEAREST is accepted as an explicit override; everything else
+///   maps to LINEAR so unknown future filter modes degrade gracefully rather
+///   than producing undefined backend behaviour.
 static int32_t material_sanitize_filter(int64_t value) {
     return value == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
                                                          : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
 }
 
+/// @brief Validate a texture-slot index and narrow it to int32_t.
+/// @details Returns -1 for any out-of-range value so that callers can perform a
+///   single negative-check before indexing the per-slot arrays, keeping bounds
+///   enforcement in one place rather than scattered across every importer hook.
 static int32_t material_sanitize_texture_slot(int64_t slot) {
     if (slot < 0 || slot >= RT_MATERIAL3D_TEXTURE_SLOT_COUNT)
         return -1;

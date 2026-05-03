@@ -13,7 +13,7 @@
 //
 // Key invariants:
 //   - This header is INTERNAL to the runtime — never include from public APIs.
-//   - Only rt_pixels*.c files should include this header.
+//   - Runtime graphics modules that need direct pixel access include this header.
 //   - The public API header (rt_pixels.h) remains the sole interface for callers.
 //   - Pixel format is 32-bit RGBA: 0xRRGGBBAA in row-major order.
 //
@@ -30,10 +30,14 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include "rt_object.h"
 #include "rt_pixels.h"
+#include "rt_trap.h"
 
 #include <limits.h>
 #include <stdint.h>
+
+#define RT_PIXELS_COLOR_EXPLICIT_ALPHA_FLAG (INT64_C(1) << 56)
 
 /// @brief Pixels implementation structure.
 typedef struct rt_pixels_impl {
@@ -44,16 +48,69 @@ typedef struct rt_pixels_impl {
     uint64_t cache_identity; ///< Stable cache key to survive allocator address reuse.
 } rt_pixels_impl;
 
+/// @brief Validate and cast an opaque handle to a Pixels implementation.
+static inline rt_pixels_impl *rt_pixels_checked_impl(void *pixels, const char *op) {
+    if (!pixels) {
+        rt_trap(op ? op : "Pixels: null pixels");
+        return NULL;
+    }
+    if (rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID) {
+        rt_trap(op ? op : "Pixels: invalid pixels");
+        return NULL;
+    }
+    return (rt_pixels_impl *)pixels;
+}
+
+/// @brief Nullable validation helper for optional Pixels handles.
+static inline rt_pixels_impl *rt_pixels_checked_impl_or_null(void *pixels) {
+    if (!pixels || rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
+        return NULL;
+    return (rt_pixels_impl *)pixels;
+}
+
 /// @brief Convert 0x00RRGGBB canvas color to 0xRRGGBBFF (fully-opaque RGBA).
 static inline uint32_t rgb_to_rgba(int64_t color) {
     uint32_t rgb = (uint32_t)((uint64_t)color & 0x00FFFFFFu);
     return (rgb << 8) | 0xFFu;
 }
 
+/// @brief Preserve a caller-supplied raw 0xRRGGBBAA value.
+static inline uint32_t rt_pixels_raw_rgba(int64_t rgba) {
+    return (uint32_t)((uint64_t)rgba & 0xFFFFFFFFu);
+}
+
+/// @brief Convert Canvas RGB or tagged Color.RGBA values into raw 0xRRGGBBAA.
+static inline uint32_t rt_pixels_color_to_rgba(int64_t color) {
+    uint64_t c = (uint64_t)color;
+    if ((c & (uint64_t)RT_PIXELS_COLOR_EXPLICIT_ALPHA_FLAG) != 0) {
+        uint32_t argb = (uint32_t)c;
+        uint32_t a = (argb >> 24) & 0xFFu;
+        uint32_t r = (argb >> 16) & 0xFFu;
+        uint32_t g = (argb >> 8) & 0xFFu;
+        uint32_t b = argb & 0xFFu;
+        return (r << 24) | (g << 16) | (b << 8) | a;
+    }
+    if (c <= 0x00FFFFFFu)
+        return rgb_to_rgba(color);
+    return rt_pixels_raw_rgba(color);
+}
+
+/// @brief Preserve raw RGBA unless the value is an explicitly tagged Color.RGBA.
+static inline uint32_t rt_pixels_rgba_or_tagged_color_to_rgba(int64_t color) {
+    uint64_t c = (uint64_t)color;
+    if ((c & (uint64_t)RT_PIXELS_COLOR_EXPLICIT_ALPHA_FLAG) == 0)
+        return rt_pixels_raw_rgba(color);
+    return rt_pixels_color_to_rgba(color);
+}
+
 /// @brief Write one pixel with bounds check (no null check — caller ensures p is valid).
-static inline void set_pixel_raw(rt_pixels_impl *p, int64_t x, int64_t y, uint32_t c) {
-    if (x >= 0 && x < p->width && y >= 0 && y < p->height)
+/// @return 1 if a pixel was written, 0 if the coordinate was outside the buffer.
+static inline int8_t set_pixel_raw(rt_pixels_impl *p, int64_t x, int64_t y, uint32_t c) {
+    if (x >= 0 && x < p->width && y >= 0 && y < p->height) {
         p->data[y * p->width + x] = c;
+        return 1;
+    }
+    return 0;
 }
 
 /// @brief Bump the image content generation after an in-place mutation.
@@ -69,6 +126,16 @@ static inline int64_t rt_pixels_add_sat64(int64_t a, int64_t b) {
     if (b < 0 && a < INT64_MIN - b)
         return INT64_MIN;
     return a + b;
+}
+
+/// @brief Saturating absolute difference for coordinate deltas.
+static inline int64_t rt_pixels_abs_diff_sat64(int64_t a, int64_t b) {
+    long double diff = (long double)a - (long double)b;
+    if (diff < 0.0L)
+        diff = -diff;
+    if (diff >= (long double)INT64_MAX)
+        return INT64_MAX;
+    return (int64_t)diff;
 }
 
 /// @brief Saturating subtract by a non-negative value.

@@ -67,14 +67,26 @@ typedef struct {
     int8_t dirty;
 } rt_transform3d;
 
+/// @brief Return @p value if finite, otherwise return @p fallback.
+/// @details Local copy of the pattern from rt_scene3d.c. Used to sanitize all
+///   incoming transform component values (position, scale) so NaN/Inf from
+///   caller errors cannot propagate into the TRS matrix.
 static double transform3d_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Return @p value if finite, or 1.0 as a safe identity scale.
+/// @details Specialisation for scale components where 0 or NaN would collapse
+///   the node to a point or produce a non-invertible matrix.
 static double transform3d_scale_or_unit(double value) {
     return isfinite(value) ? value : 1.0;
 }
 
+/// @brief Write the identity quaternion (0, 0, 0, 1) into @p q.
+/// @details Used as the fallback when `transform3d_quat_normalize` receives a
+///   degenerate input. The identity quaternion represents no rotation so a
+///   degenerate rotation leaves the transform's orientation unchanged.
+/// @param q double[4] output buffer in (x, y, z, w) order.
 static void transform3d_quat_identity(double *q) {
     q[0] = 0.0;
     q[1] = 0.0;
@@ -82,6 +94,14 @@ static void transform3d_quat_identity(double *q) {
     q[3] = 1.0;
 }
 
+/// @brief Normalize a double[4] quaternion in-place; substitute identity on any
+///        degenerate or non-finite input.
+/// @details Two guards: a component NaN/Inf check (which would make the magnitude
+///   non-finite) and a near-zero length-squared check (threshold 1e-24 to match
+///   the double-precision equivalent of the float 1e-8 threshold in the skeleton
+///   code). Falls back to identity rather than trapping so bad rotation inputs from
+///   external sources are silently corrected.
+/// @param q double[4] quaternion in (x, y, z, w) order; modified in-place.
 static void transform3d_quat_normalize(double *q) {
     if (!q)
         return;

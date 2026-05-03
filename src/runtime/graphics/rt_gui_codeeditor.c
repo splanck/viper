@@ -1535,6 +1535,11 @@ static int rt_codeeditor_visual_row_for_position(const vg_codeeditor_t *ce,
     return visual_row + row_index;
 }
 
+/// @brief Map a 0-based visual row index back to a logical `(line, row_in_line)` pair.
+/// @details Inverse of `rt_codeeditor_total_visual_row_for_position`. Walks the line
+///          array accumulating visual row counts (accounting for word-wrap) until the
+///          target visual row is consumed, then uses `rt_codeeditor_visual_offset_for_position`
+///          to find the exact sub-line offset within the found logical line.
 static void rt_codeeditor_locate_visual_row(const vg_codeeditor_t *ce,
                                             float content_width,
                                             int visual_row,
@@ -1780,21 +1785,25 @@ void rt_codeeditor_set_language(void *editor, rt_string language) {
     (void)language;
 }
 
+/// @brief Stub: `CodeEditor.SetTokenColor` is a no-op without graphics.
 void rt_codeeditor_set_token_color(void *editor, int64_t token_type, int64_t color) {
     (void)editor;
     (void)token_type;
     (void)color;
 }
 
+/// @brief Stub: `CodeEditor.SetCustomKeywords` is a no-op without graphics.
 void rt_codeeditor_set_custom_keywords(void *editor, rt_string keywords) {
     (void)editor;
     (void)keywords;
 }
 
+/// @brief Stub: `CodeEditor.ClearHighlights` is a no-op without graphics.
 void rt_codeeditor_clear_highlights(void *editor) {
     (void)editor;
 }
 
+/// @brief Stub: `CodeEditor.AddHighlight` is a no-op without graphics.
 void rt_codeeditor_add_highlight(void *editor,
                                  int64_t start_line,
                                  int64_t start_col,
@@ -1809,25 +1818,30 @@ void rt_codeeditor_add_highlight(void *editor,
     (void)color;
 }
 
+/// @brief Stub: `CodeEditor.RefreshHighlights` is a no-op without graphics.
 void rt_codeeditor_refresh_highlights(void *editor) {
     (void)editor;
 }
 
+/// @brief Stub: `CodeEditor.SetShowLineNumbers` is a no-op without graphics.
 void rt_codeeditor_set_show_line_numbers(void *editor, int64_t show) {
     (void)editor;
     (void)show;
 }
 
+/// @brief Stub: returns 0 (line numbers always hidden in headless builds).
 int64_t rt_codeeditor_get_show_line_numbers(void *editor) {
     (void)editor;
     return 0;
 }
 
+/// @brief Stub: `CodeEditor.SetLineNumberWidth` is a no-op without graphics.
 void rt_codeeditor_set_line_number_width(void *editor, int64_t width) {
     (void)editor;
     (void)width;
 }
 
+/// @brief Stub: `CodeEditor.SetGutterIcon` is a no-op without graphics.
 void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int64_t slot) {
     (void)editor;
     (void)line;
@@ -1835,135 +1849,162 @@ void rt_codeeditor_set_gutter_icon(void *editor, int64_t line, void *pixels, int
     (void)slot;
 }
 
+/// @brief Stub: `CodeEditor.ClearGutterIcon` is a no-op without graphics.
 void rt_codeeditor_clear_gutter_icon(void *editor, int64_t line, int64_t slot) {
     (void)editor;
     (void)line;
     (void)slot;
 }
 
+/// @brief Stub: `CodeEditor.ClearAllGutterIcons` is a no-op without graphics.
 void rt_codeeditor_clear_all_gutter_icons(void *editor, int64_t slot) {
     (void)editor;
     (void)slot;
 }
 
+/// @brief Stub: internal gutter-click injection is a no-op without graphics.
 void rt_gui_set_gutter_click(int64_t line, int64_t slot) {
     (void)line;
     (void)slot;
 }
 
+/// @brief Stub: internal gutter-click clear is a no-op without graphics.
 void rt_gui_clear_gutter_click(void) {}
 
+/// @brief Stub: returns 0 (no gutter can be clicked in headless builds).
 int64_t rt_codeeditor_was_gutter_clicked(void *editor) {
     (void)editor;
     return 0;
 }
 
+/// @brief Stub: returns -1 (no gutter click available in headless builds).
 int64_t rt_codeeditor_get_gutter_clicked_line(void *editor) {
     (void)editor;
     return -1;
 }
 
+/// @brief Stub: returns -1 (no gutter click available in headless builds).
 int64_t rt_codeeditor_get_gutter_clicked_slot(void *editor) {
     (void)editor;
     return -1;
 }
 
+/// @brief Stub: `CodeEditor.SetShowFoldGutter` is a no-op without graphics.
 void rt_codeeditor_set_show_fold_gutter(void *editor, int64_t show) {
     (void)editor;
     (void)show;
 }
 
+/// @brief Stub: `CodeEditor.AddFoldRegion` is a no-op without graphics.
 void rt_codeeditor_add_fold_region(void *editor, int64_t start_line, int64_t end_line) {
     (void)editor;
     (void)start_line;
     (void)end_line;
 }
 
+/// @brief Stub: `CodeEditor.RemoveFoldRegion` is a no-op without graphics.
 void rt_codeeditor_remove_fold_region(void *editor, int64_t start_line) {
     (void)editor;
     (void)start_line;
 }
 
+/// @brief Stub: `CodeEditor.ClearFoldRegions` is a no-op without graphics.
 void rt_codeeditor_clear_fold_regions(void *editor) {
     (void)editor;
 }
 
+/// @brief Stub: `CodeEditor.Fold` is a no-op without graphics.
 void rt_codeeditor_fold(void *editor, int64_t line) {
     (void)editor;
     (void)line;
 }
 
+/// @brief Stub: `CodeEditor.Unfold` is a no-op without graphics.
 void rt_codeeditor_unfold(void *editor, int64_t line) {
     (void)editor;
     (void)line;
 }
 
+/// @brief Stub: `CodeEditor.ToggleFold` is a no-op without graphics.
 void rt_codeeditor_toggle_fold(void *editor, int64_t line) {
     (void)editor;
     (void)line;
 }
 
+/// @brief Stub: returns 0 (no fold state exists in headless builds).
 int64_t rt_codeeditor_is_folded(void *editor, int64_t line) {
     (void)editor;
     (void)line;
     return 0;
 }
 
+/// @brief Stub: `CodeEditor.FoldAll` is a no-op without graphics.
 void rt_codeeditor_fold_all(void *editor) {
     (void)editor;
 }
 
+/// @brief Stub: `CodeEditor.UnfoldAll` is a no-op without graphics.
 void rt_codeeditor_unfold_all(void *editor) {
     (void)editor;
 }
 
+/// @brief Stub: `CodeEditor.SetAutoFoldDetection` is a no-op without graphics.
 void rt_codeeditor_set_auto_fold_detection(void *editor, int64_t enable) {
     (void)editor;
     (void)enable;
 }
 
+/// @brief Stub: returns 0 (no cursors exist in headless builds).
 int64_t rt_codeeditor_get_cursor_count(void *editor) {
     (void)editor;
     return 0;
 }
 
+/// @brief Stub: `CodeEditor.AddCursor` is a no-op without graphics.
 void rt_codeeditor_add_cursor(void *editor, int64_t line, int64_t col) {
     (void)editor;
     (void)line;
     (void)col;
 }
 
+/// @brief Stub: `CodeEditor.RemoveCursor` is a no-op without graphics.
 void rt_codeeditor_remove_cursor(void *editor, int64_t index) {
     (void)editor;
     (void)index;
 }
 
+/// @brief Stub: `CodeEditor.ClearExtraCursors` is a no-op without graphics.
 void rt_codeeditor_clear_extra_cursors(void *editor) {
     (void)editor;
 }
 
+/// @brief Stub: returns 0 (no cursor state in headless builds).
 int64_t rt_codeeditor_get_cursor_line_at(void *editor, int64_t index) {
     (void)editor;
     (void)index;
     return 0;
 }
 
+/// @brief Stub: returns 0 (no cursor state in headless builds).
 int64_t rt_codeeditor_get_cursor_col_at(void *editor, int64_t index) {
     (void)editor;
     (void)index;
     return 0;
 }
 
+/// @brief Stub: returns 0 (no cursor state in headless builds).
 int64_t rt_codeeditor_get_cursor_line(void *editor) {
     (void)editor;
     return 0;
 }
 
+/// @brief Stub: returns 0 (no cursor state in headless builds).
 int64_t rt_codeeditor_get_cursor_col(void *editor) {
     (void)editor;
     return 0;
 }
 
+/// @brief Stub: `CodeEditor.SetCursorPositionAt` is a no-op without graphics.
 void rt_codeeditor_set_cursor_position_at(void *editor, int64_t index, int64_t line, int64_t col) {
     (void)editor;
     (void)index;
@@ -1971,6 +2012,7 @@ void rt_codeeditor_set_cursor_position_at(void *editor, int64_t index, int64_t l
     (void)col;
 }
 
+/// @brief Stub: `CodeEditor.SetCursorSelection` is a no-op without graphics.
 void rt_codeeditor_set_cursor_selection(void *editor,
                                         int64_t index,
                                         int64_t start_line,
@@ -1985,85 +2027,102 @@ void rt_codeeditor_set_cursor_selection(void *editor,
     (void)end_col;
 }
 
+/// @brief Stub: returns 0 (no selection exists in headless builds).
 int64_t rt_codeeditor_cursor_has_selection(void *editor, int64_t index) {
     (void)editor;
     (void)index;
     return 0;
 }
 
+/// @brief Stub: `CodeEditor.Undo` is a no-op without graphics.
 void rt_codeeditor_undo(void *editor) {
     (void)editor;
 }
 
+/// @brief Stub: `CodeEditor.Redo` is a no-op without graphics.
 void rt_codeeditor_redo(void *editor) {
     (void)editor;
 }
 
+/// @brief Stub: returns 0 (no undo history in headless builds).
 int64_t rt_codeeditor_can_undo(void *editor) {
     (void)editor;
     return 0;
 }
 
+/// @brief Stub: returns 0 (no redo history in headless builds).
 int64_t rt_codeeditor_can_redo(void *editor) {
     (void)editor;
     return 0;
 }
 
+/// @brief Stub: returns 0 (clipboard unavailable without graphics).
 int64_t rt_codeeditor_copy(void *editor) {
     (void)editor;
     return 0;
 }
 
+/// @brief Stub: returns 0 (clipboard unavailable without graphics).
 int64_t rt_codeeditor_cut(void *editor) {
     (void)editor;
     return 0;
 }
 
+/// @brief Stub: returns 0 (clipboard unavailable without graphics).
 int64_t rt_codeeditor_paste(void *editor) {
     (void)editor;
     return 0;
 }
 
+/// @brief Stub: `CodeEditor.SelectAll` is a no-op without graphics.
 void rt_codeeditor_select_all(void *editor) {
     (void)editor;
 }
 
+/// @brief Stub: `CodeEditor.SetTabSize` is a no-op without graphics.
 void rt_codeeditor_set_tab_size(void *editor, int64_t size) {
     (void)editor;
     (void)size;
 }
 
+/// @brief Stub: returns 0 (no tab size state in headless builds).
 int64_t rt_codeeditor_get_tab_size(void *editor) {
     (void)editor;
     return 0;
 }
 
+/// @brief Stub: `CodeEditor.SetWordWrap` is a no-op without graphics.
 void rt_codeeditor_set_word_wrap(void *editor, int64_t enabled) {
     (void)editor;
     (void)enabled;
 }
 
+/// @brief Stub: returns 0 (no word-wrap state in headless builds).
 int64_t rt_codeeditor_get_word_wrap(void *editor) {
     (void)editor;
     return 0;
 }
 
+/// @brief Stub: returns 0 (no pixel cursor position without graphics).
 int64_t rt_codeeditor_get_cursor_pixel_x(void *editor) {
     (void)editor;
     return 0;
 }
 
+/// @brief Stub: returns 0 (no pixel cursor position without graphics).
 int64_t rt_codeeditor_get_cursor_pixel_y(void *editor) {
     (void)editor;
     return 0;
 }
 
+/// @brief Stub: returns -1 (no hit-testing without graphics).
 int64_t rt_codeeditor_get_line_at_pixel(void *editor, int64_t y) {
     (void)editor;
     (void)y;
     return -1;
 }
 
+/// @brief Stub: returns -1 (no hit-testing without graphics).
 int64_t rt_codeeditor_get_col_at_pixel(void *editor, int64_t x, int64_t y) {
     (void)editor;
     (void)x;
@@ -2071,21 +2130,25 @@ int64_t rt_codeeditor_get_col_at_pixel(void *editor, int64_t x, int64_t y) {
     return -1;
 }
 
+/// @brief Stub: `CodeEditor.InsertAtCursor` is a no-op without graphics.
 void rt_codeeditor_insert_at_cursor(void *editor, rt_string text) {
     (void)editor;
     (void)text;
 }
 
+/// @brief Stub: returns empty string (no word-at-cursor without graphics).
 rt_string rt_codeeditor_get_word_at_cursor(void *editor) {
     (void)editor;
     return rt_str_empty();
 }
 
+/// @brief Stub: `CodeEditor.ReplaceWordAtCursor` is a no-op without graphics.
 void rt_codeeditor_replace_word_at_cursor(void *editor, rt_string new_text) {
     (void)editor;
     (void)new_text;
 }
 
+/// @brief Stub: returns empty string (no line content without graphics).
 rt_string rt_codeeditor_get_line(void *editor, int64_t line_index) {
     (void)editor;
     (void)line_index;

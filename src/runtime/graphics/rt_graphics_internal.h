@@ -28,6 +28,7 @@
 #pragma once
 
 #include "rt_graphics.h"
+#include "rt_pixels_internal.h"
 #include "rt_string.h"
 #include "rt_trap.h"
 
@@ -45,6 +46,8 @@
 
 /// @brief Absolute value for int64_t.
 static inline int64_t rtg_abs64(int64_t x) {
+    if (x == INT64_MIN)
+        return INT64_MAX;
     return x < 0 ? -x : x;
 }
 
@@ -74,6 +77,16 @@ static inline int64_t rtg_sub_nonneg_sat64(int64_t a, int64_t b) {
     if (a < INT64_MIN + b)
         return INT64_MIN;
     return a - b;
+}
+
+/// @brief Saturating int64 multiplication for coordinate math.
+static inline int64_t rtg_mul_sat64(int64_t a, int64_t b) {
+    long double value = (long double)a * (long double)b;
+    if (value >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)value;
 }
 
 /// @brief Clamp an int64 to the int32 range accepted by ViperGFX.
@@ -153,44 +166,17 @@ static inline int8_t rtg_clip_copy_axis(
     return *len > 0;
 }
 
-/// @brief Simple sine approximation using a lookup table (degrees).
+/// @brief Sine in degrees as fixed-point Q10.
 /// @return sin(deg) * 1024 for fixed-point precision.
 static inline int64_t rtg_sin_deg_fp(int64_t deg) {
-    // Normalize to 0-359
     deg = deg % 360;
     if (deg < 0)
         deg += 360;
-
-    // sin values * 1024 for 0, 10, 20, ... 120 degrees
-    static const int64_t sin_table[13] = {
-        0, 176, 342, 500, 643, 766, 866, 940, 985, 1004, 992, 951, 883};
-
-    int64_t sign = 1;
-    if (deg >= 180) {
-        deg -= 180;
-        sign = -1;
-    }
-    if (deg > 90) {
-        deg = 180 - deg;
-    }
-
-    int64_t val;
-    if (deg <= 90) {
-        int64_t i = deg / 10;
-        if (i > 9)
-            i = 9;
-        val = sin_table[i];
-    } else {
-        int64_t i = (180 - deg) / 10;
-        if (i > 9)
-            i = 9;
-        val = sin_table[i];
-    }
-
-    return sign * val;
+    double radians = (double)deg * (3.14159265358979323846 / 180.0);
+    return (int64_t)llround(sin(radians) * 1024.0);
 }
 
-/// @brief Simple cosine approximation using sin_deg_fp(deg + 90).
+/// @brief Cosine in degrees as fixed-point Q10.
 /// @return cos(deg) * 1024 for fixed-point precision.
 static inline int64_t rtg_cos_deg_fp(int64_t deg) {
     return rtg_sin_deg_fp(deg + 90);
@@ -322,13 +308,6 @@ static inline rt_canvas *rt_canvas_checked(void *canvas_ptr) {
     rt_canvas *canvas = (rt_canvas *)canvas_ptr;
     return canvas->magic == RT_CANVAS_MAGIC ? canvas : NULL;
 }
-
-/// @brief Forward declaration for pixels internal access.
-typedef struct rt_pixels_impl {
-    int64_t width;
-    int64_t height;
-    uint32_t *data;
-} rt_pixels_impl;
 
 #define RT_COLOR_EXPLICIT_ALPHA_FLAG ((int64_t)1 << 56)
 

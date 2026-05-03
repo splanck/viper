@@ -202,6 +202,8 @@ void rt_tilemap_clear_autotile(void *tm, int64_t base_tile) {
     }
 }
 
+/// @brief Find the active autotile rule whose `base_tile` exactly matches `tile`.
+/// @return Pointer to the matching rule, or NULL if no rule is registered for this base tile.
 static autotile_rule *find_rule(rt_tilemap_impl *tilemap, int64_t tile) {
     for (int32_t i = 0; i < tilemap->autotile_count; i++) {
         if (tilemap->autotile_rules[i].active && tilemap->autotile_rules[i].base_tile == tile)
@@ -210,6 +212,13 @@ static autotile_rule *find_rule(rt_tilemap_impl *tilemap, int64_t tile) {
     return NULL;
 }
 
+/// @brief Test whether @p tile is the same autotile type as @p base — either an
+///        exact match or one of the 16 variants registered for @p base's rule.
+/// @details Used by the autotile neighbor scan to decide whether adjacent tiles should
+///   be counted as connected. Without variant checking, placing any variant (e.g., the
+///   corners or edge variants) next to another tile of the same type would break the
+///   connectivity mask because the neighbour would no longer equal `base` exactly.
+/// @return 1 if the tiles are considered the same autotile type, 0 otherwise.
 static int8_t is_same_base(rt_tilemap_impl *tilemap, int64_t tile, int64_t base) {
     if (tile == base)
         return 1;
@@ -224,39 +233,63 @@ static int8_t is_same_base(rt_tilemap_impl *tilemap, int64_t tile, int64_t base)
     return 0;
 }
 
+/// @brief Find the autotile rule for `tile`, checking both base tiles and all variant indices.
+/// @details First tries an exact base_tile match via find_rule; on failure scans all active
+///          rules' 16-slot variant arrays. Used when placing any variant of an autotile set,
+///          not just the canonical base tile.
+/// @return Pointer to the governing autotile rule, or NULL if tile belongs to no active set.
+static autotile_rule *find_rule_for_tile(rt_tilemap_impl *tilemap, int64_t tile) {
+    autotile_rule *rule = find_rule(tilemap, tile);
+    if (rule)
+        return rule;
+    for (int32_t r = 0; r < tilemap->autotile_count; r++) {
+        if (!tilemap->autotile_rules[r].active)
+            continue;
+        for (int v = 0; v < 16; v++) {
+            if (tilemap->autotile_rules[r].variants[v] == tile)
+                return &tilemap->autotile_rules[r];
+        }
+    }
+    return NULL;
+}
+
 /// @brief Apply the autotile region of the tilemap.
 void rt_tilemap_apply_autotile_region(void *tm, int64_t rx, int64_t ry, int64_t rw, int64_t rh) {
     if (!tm)
         return;
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tm;
-    if (tilemap->autotile_count == 0)
+    if (tilemap->autotile_count == 0 || rw <= 0 || rh <= 0)
         return;
 
     int64_t map_w = rt_tilemap_get_width(tm);
     int64_t map_h = rt_tilemap_get_height(tm);
+    int64_t rx_end = rt_pixels_add_sat64(rx, rw);
+    int64_t ry_end = rt_pixels_add_sat64(ry, rh);
+    int64_t start_x = rx < 0 ? 0 : rx;
+    int64_t start_y = ry < 0 ? 0 : ry;
+    int64_t end_x = rx_end > map_w ? map_w : rx_end;
+    int64_t end_y = ry_end > map_h ? map_h : ry_end;
+    if (end_x <= start_x || end_y <= start_y)
+        return;
 
-    for (int64_t y = ry; y < ry + rh; y++) {
-        for (int64_t x = rx; x < rx + rw; x++) {
-            if (x < 0 || x >= map_w || y < 0 || y >= map_h)
-                continue;
+    int64_t region_w = end_x - start_x;
+    int64_t region_h = end_y - start_y;
+    if (region_w > INT64_MAX / region_h)
+        return;
+    int64_t count = region_w * region_h;
+    if (count > INT64_MAX / (int64_t)sizeof(int64_t))
+        return;
+    int64_t *resolved = (int64_t *)malloc((size_t)count * sizeof(int64_t));
+    if (!resolved)
+        return;
 
+    for (int64_t y = start_y; y < end_y; y++) {
+        for (int64_t x = start_x; x < end_x; x++) {
             int64_t tile = rt_tilemap_get_tile(tm, x, y);
-            autotile_rule *rule = find_rule(tilemap, tile);
+            autotile_rule *rule = find_rule_for_tile(tilemap, tile);
             if (!rule) {
-                // Check if tile is a variant of some rule
-                for (int32_t r = 0; r < tilemap->autotile_count; r++) {
-                    if (!tilemap->autotile_rules[r].active)
-                        continue;
-                    for (int v = 0; v < 16; v++) {
-                        if (tilemap->autotile_rules[r].variants[v] == tile) {
-                            rule = &tilemap->autotile_rules[r];
-                            goto found_rule;
-                        }
-                    }
-                }
-            found_rule:
-                if (!rule)
-                    continue;
+                resolved[(y - start_y) * region_w + (x - start_x)] = tile;
+                continue;
             }
 
             // Compute 4-bit neighbor mask
@@ -275,9 +308,15 @@ void rt_tilemap_apply_autotile_region(void *tm, int64_t rx, int64_t ry, int64_t 
             if (x > 0 && is_same_base(tilemap, rt_tilemap_get_tile(tm, x - 1, y), base))
                 mask |= 8;
 
-            rt_tilemap_set_tile(tm, x, y, rule->variants[mask]);
+            resolved[(y - start_y) * region_w + (x - start_x)] = rule->variants[mask];
         }
     }
+
+    for (int64_t y = start_y; y < end_y; y++) {
+        for (int64_t x = start_x; x < end_x; x++)
+            rt_tilemap_set_tile(tm, x, y, resolved[(y - start_y) * region_w + (x - start_x)]);
+    }
+    free(resolved);
 }
 
 /// @brief Apply the autotile of the tilemap.
@@ -291,16 +330,28 @@ void rt_tilemap_apply_autotile(void *tm) {
 // JSON Save/Load
 //=============================================================================
 
+/// @brief Read a numeric value from a JSON map as int64_t via float coercion.
+/// @details JSON numbers are stored as float in the runtime map. The cast to int64_t
+///   is safe for the integral values used in tilemap serialization (dimensions, tile
+///   indices) because they are all within float's exact-integer range (≤ 2^53).
 static int64_t map_get_i64(void *map, const char *key) {
     return (int64_t)rt_map_get_float(map, rt_const_cstr(key));
 }
 
+/// @brief Create a Seq that owns its elements so they are released when the Seq
+///        is collected. Used for the per-serialized-object pixel data arrays so the
+///        boxed integer elements are freed along with the containing sequence.
 static void *seq_new_owned(void) {
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
     return seq;
 }
 
+/// @brief Store a C string in a runtime map under @p key, releasing the temporary
+///        rt_string after the map takes ownership of it.
+/// @details `rt_string_from_bytes` allocates a new rt_string; after `rt_map_set` retains
+///   it, the caller's reference is released via `release_check0/free`. An empty string
+///   is substituted when @p value is NULL so the map always contains a valid entry.
 static void map_set_string_copy(void *map, const char *key, const char *value) {
     rt_string copy = rt_string_from_bytes(value ? value : "", value ? strlen(value) : 0);
     if (!copy)
@@ -310,6 +361,12 @@ static void map_set_string_copy(void *map, const char *key, const char *value) {
         rt_obj_free(copy);
 }
 
+/// @brief Serialize a Pixels object to a JSON map blob with "width", "height", and a
+///        flat "pixels" Seq of uint32_t RGBA values encoded as boxed integers.
+/// @details Used during `rt_tilemap_save` to embed tileset image data directly in the
+///   JSON save file, making tilemap files self-contained. Each pixel is stored as an
+///   int64_t to stay within JSON's safe integer range. Returns NULL for NULL input or
+///   zero-dimension images.
 static void *serialize_pixels_blob(void *pixels) {
     if (!pixels)
         return NULL;
@@ -330,6 +387,12 @@ static void *serialize_pixels_blob(void *pixels) {
     return blob;
 }
 
+/// @brief Reconstruct a Pixels object from a serialized blob map (inverse of
+///        `serialize_pixels_blob`).
+/// @details Reads "width" and "height" from the blob, allocates a new Pixels, then
+///   copies each element of the "pixels" Seq by unboxing it as float64 and casting to
+///   uint32_t. If the Seq length does not match `width * height` the partially
+///   constructed Pixels is released and NULL is returned to signal a corrupt save file.
 static void *deserialize_pixels_blob(void *blob) {
     if (!blob)
         return NULL;
@@ -337,15 +400,20 @@ static void *deserialize_pixels_blob(void *blob) {
     int64_t height = map_get_i64(blob, "height");
     if (width <= 0 || height <= 0)
         return NULL;
+    if (width > INT64_MAX / height)
+        return NULL;
     void *pixels = rt_pixels_new(width, height);
     if (!pixels)
         return NULL;
     rt_pixels_impl *impl = (rt_pixels_impl *)pixels;
     uint32_t *dst = impl->data;
     void *data = rt_map_get(blob, rt_const_cstr("pixels"));
-    if (!data || rt_seq_len(data) < width * height)
-        return pixels;
-    for (int64_t i = 0; i < width * height; i++) {
+    int64_t expected = width * height;
+    if (!data || rt_seq_len(data) != expected) {
+        rt_heap_release(pixels);
+        return NULL;
+    }
+    for (int64_t i = 0; i < expected; i++) {
         void *boxed = rt_seq_get(data, i);
         if (boxed)
             dst[i] = (uint32_t)rt_unbox_f64(boxed);
@@ -353,6 +421,11 @@ static void *deserialize_pixels_blob(void *blob) {
     return pixels;
 }
 
+/// @brief Replace the tilemap's default tileset with @p pixels, releasing the old one
+///        and recomputing derived metrics (cols, rows, tile_count) and syncing layer 0.
+/// @details The tileset metrics (tileset_cols/rows, tile_count) are derived from the
+///   image dimensions divided by the tile size, so they must be recalculated whenever
+///   the tileset changes. Layer 0 mirrors the base tileset, so its copy is updated too.
 static void assign_base_tileset(rt_tilemap_impl *tm, void *pixels) {
     if (!tm)
         return;
@@ -367,6 +440,12 @@ static void assign_base_tileset(rt_tilemap_impl *tm, void *pixels) {
     tm->layers[0].tile_count = tm->tile_count;
 }
 
+/// @brief Replace a specific layer's tileset override with @p pixels, releasing the old
+///        one and recomputing that layer's cols/rows/tile_count.
+/// @details Per-layer tilesets allow different layers to use different tile graphics
+///   (e.g., background layer on a larger tileset, foreground on a smaller one).
+///   A NULL @p pixels clears the per-layer override so the layer reverts to the
+///   tilemap's default tileset during rendering.
 static void assign_layer_tileset(rt_tilemap_impl *tm, int64_t layer, void *pixels) {
     if (!tm || layer < 0 || layer >= tm->layer_count)
         return;
@@ -568,6 +647,9 @@ void *rt_tilemap_load_from_file(rt_string path) {
     int64_t th = (int64_t)rt_map_get_float(root, rt_const_cstr("tileHeight"));
     if (w <= 0 || h <= 0 || tw <= 0 || th <= 0)
         return NULL;
+    if (w > INT64_MAX / h)
+        return NULL;
+    int64_t expected_tiles = w * h;
 
     void *tm = rt_tilemap_new(w, h, tw, th);
     if (!tm)
@@ -577,8 +659,11 @@ void *rt_tilemap_load_from_file(rt_string path) {
     void *tileset_blob = rt_map_get(root, rt_const_cstr("tileset"));
     if (tileset_blob) {
         void *pixels = deserialize_pixels_blob(tileset_blob);
-        if (pixels)
-            assign_base_tileset(tilemap, pixels);
+        if (!pixels) {
+            rt_heap_release(tm);
+            return NULL;
+        }
+        assign_base_tileset(tilemap, pixels);
     }
 
     // Load layers
@@ -603,6 +688,10 @@ void *rt_tilemap_load_from_file(rt_string path) {
             void *tiles_arr = rt_map_get(layer_obj, rt_const_cstr("tiles"));
             if (tiles_arr) {
                 int64_t tcount = rt_seq_len(tiles_arr);
+                if (tcount != expected_tiles) {
+                    rt_heap_release(tm);
+                    return NULL;
+                }
                 for (int64_t ti = 0; ti < tcount; ti++) {
                     void *tval = rt_seq_get(tiles_arr, ti);
                     if (!tval)
@@ -632,8 +721,11 @@ void *rt_tilemap_load_from_file(rt_string path) {
                 void *layer_tileset = rt_map_get(layer_obj, rt_const_cstr("tileset"));
                 if (layer_tileset) {
                     void *pixels = deserialize_pixels_blob(layer_tileset);
-                    if (pixels)
-                        assign_layer_tileset(tilemap, layer_index, pixels);
+                    if (!pixels) {
+                        rt_heap_release(tm);
+                        return NULL;
+                    }
+                    assign_layer_tileset(tilemap, layer_index, pixels);
                 }
             }
         }

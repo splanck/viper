@@ -64,6 +64,11 @@ static int8_t shape_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double
 static int8_t swept_bounds_pair(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry);
 static void resolve_collision(rt_body_impl *a, rt_body_impl *b, double nx, double ny, double pen);
 
+/// @brief Append a contact record to the world's per-step contact list.
+/// @details Skips recording when the list is full (PH_MAX_CONTACTS) or when the
+///   manifold values are non-finite, so downstream queries always see a clean
+///   list even in degenerate numerical situations.  Penetration is clamped to
+///   [0, +inf) because negative depth would indicate separation, not contact.
 static void world_record_contact(
     rt_world_impl *w, rt_body_impl *a, rt_body_impl *b, double nx, double ny, double pen) {
     if (!w || !a || !b || w->contact_count >= PH_MAX_CONTACTS)
@@ -78,14 +83,20 @@ static void world_record_contact(
     w->contacts[idx].penetration = pen > 0.0 ? pen : 0.0;
 }
 
+/// @brief Return `value` if finite, otherwise `fallback`. Used for gravity and position setters.
 static double finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Return `value` if finite and strictly positive, otherwise `fallback`.
+/// @details Used for body dimensions (width, height) and mass to guarantee they
+///   are always valid physics inputs — a zero or NaN dimension would make AABB
+///   overlap tests degenerate.
 static double positive_or(double value, double fallback) {
     return (isfinite(value) && value > 0.0) ? value : fallback;
 }
 
+/// @brief Clamp `value` to [0, 1], returning 0 for NaN/Inf. Used for restitution and friction.
 static double clamp01(double value) {
     if (!isfinite(value))
         return 0.0;
@@ -96,6 +107,10 @@ static double clamp01(double value) {
     return value;
 }
 
+/// @brief Clamp `value` to [-limit, +limit], returning `fallback` for NaN/Inf.
+/// @details Used by sanitize_body_state to cap position, velocity, and force magnitudes
+///   to large but representable values, preventing IEEE infinity from propagating through
+///   the integrator and corrupting the broad-phase grid bounds.
 static double clamp_abs_finite(double value, double fallback, double limit) {
     if (!isfinite(value))
         return fallback;
@@ -106,6 +121,11 @@ static double clamp_abs_finite(double value, double fallback, double limit) {
     return value;
 }
 
+/// @brief Downcast a raw handle to rt_world_impl* after confirming its class ID.
+/// @details Calls rt_physics2d_is_world_handle to verify the GC class-ID tag before
+///   casting, trapping with `api` as the message on mismatch.  NULL input short-
+///   circuits immediately without a trap so callers can chain checked_world checks
+///   with early NULL guards.
 static rt_world_impl *checked_world(void *obj, const char *api) {
     if (!obj)
         return NULL;
@@ -116,6 +136,9 @@ static rt_world_impl *checked_world(void *obj, const char *api) {
     return (rt_world_impl *)obj;
 }
 
+/// @brief Downcast a raw handle to rt_body_impl* after confirming its class ID.
+/// @details Mirror of checked_world — verifies the GC class-ID is the physics-body
+///   sentinel before casting, trapping with `api` on mismatch.
 static rt_body_impl *checked_body(void *obj, const char *api) {
     if (!obj)
         return NULL;
@@ -126,6 +149,13 @@ static rt_body_impl *checked_body(void *obj, const char *api) {
     return (rt_body_impl *)obj;
 }
 
+/// @brief Clamp all body fields to safe, finite ranges and fix internal consistency.
+/// @details Called after every integration step and after each pair resolution to
+///   ensure NaN/Inf values and wildly out-of-range quantities from user code cannot
+///   propagate.  Enforces: positions clamped to ±1e12, dimensions in (0, 1e9],
+///   velocities/forces in ±1e9/±1e12, mass/inv_mass consistent (static bodies keep
+///   both at 0), restitution/friction in [0,1].  Circle bodies with radius ≤ 0 get
+///   a fallback radius of 1.0; box bodies have radius forced to 0.
 static void sanitize_body_state(rt_body_impl *b) {
     if (!b)
         return;
@@ -162,62 +192,80 @@ static void sanitize_body_state(rt_body_impl *b) {
         b->radius = 0.0;
 }
 
+/// @brief Left edge of this body's current AABB (works for both circle and box).
 static double body_min_x(rt_body_impl *b) {
     return b->is_circle ? b->x - b->radius : b->x;
 }
 
+/// @brief Bottom edge of this body's current AABB.
 static double body_min_y(rt_body_impl *b) {
     return b->is_circle ? b->y - b->radius : b->y;
 }
 
+/// @brief Right edge of this body's current AABB.
 static double body_max_x(rt_body_impl *b) {
     return b->is_circle ? b->x + b->radius : b->x + b->w;
 }
 
+/// @brief Top edge of this body's current AABB.
 static double body_max_y(rt_body_impl *b) {
     return b->is_circle ? b->y + b->radius : b->y + b->h;
 }
 
+/// @brief Left edge of this body's previous-frame AABB.
 static double body_prev_min_x(rt_body_impl *b) {
     return b->is_circle ? b->prev_x - b->radius : b->prev_x;
 }
 
+/// @brief Bottom edge of this body's previous-frame AABB.
 static double body_prev_min_y(rt_body_impl *b) {
     return b->is_circle ? b->prev_y - b->radius : b->prev_y;
 }
 
+/// @brief Right edge of this body's previous-frame AABB.
 static double body_prev_max_x(rt_body_impl *b) {
     return b->is_circle ? b->prev_x + b->radius : b->prev_x + b->w;
 }
 
+/// @brief Top edge of this body's previous-frame AABB.
 static double body_prev_max_y(rt_body_impl *b) {
     return b->is_circle ? b->prev_y + b->radius : b->prev_y + b->h;
 }
 
+/// @brief Minimum X of the union AABB spanning both previous and current positions.
+/// @details The swept bound is used by the broad-phase grid to catch fast-moving bodies
+///   that cross a grid cell boundary within a single time step.
 static double body_swept_min_x(rt_body_impl *b) {
     double now = body_min_x(b);
     double prev = body_prev_min_x(b);
     return now < prev ? now : prev;
 }
 
+/// @brief Minimum Y of the swept union AABB.
 static double body_swept_min_y(rt_body_impl *b) {
     double now = body_min_y(b);
     double prev = body_prev_min_y(b);
     return now < prev ? now : prev;
 }
 
+/// @brief Maximum X of the swept union AABB.
 static double body_swept_max_x(rt_body_impl *b) {
     double now = body_max_x(b);
     double prev = body_prev_max_x(b);
     return now > prev ? now : prev;
 }
 
+/// @brief Maximum Y of the swept union AABB.
 static double body_swept_max_y(rt_body_impl *b) {
     double now = body_max_y(b);
     double prev = body_prev_max_y(b);
     return now > prev ? now : prev;
 }
 
+/// @brief Remove and release the joint at `joint_index` in the world's joint array.
+/// @details Marks the joint inactive before releasing so any in-flight solver callbacks
+///   that still hold a pointer see it as dead.  Uses swap-with-tail compaction to keep
+///   the array packed without shifting.
 static void world_release_joint_at(rt_world_impl *w, int32_t joint_index) {
     if (!w || joint_index < 0 || joint_index >= w->joint_count)
         return;
@@ -233,6 +281,11 @@ static void world_release_joint_at(rt_world_impl *w, int32_t joint_index) {
     w->joints[w->joint_count] = NULL;
 }
 
+/// @brief Remove and release every joint that references `body` as either endpoint.
+/// @details Called just before a body is removed from the world to prevent dangling
+///   body pointers inside live joint objects.  Iterates in place using an index
+///   loop that does not advance when world_release_joint_at swaps the tail item
+///   into the current slot.
 static void world_remove_joints_for_body(rt_world_impl *w, rt_body_impl *body) {
     if (!w || !body)
         return;
@@ -247,6 +300,13 @@ static void world_remove_joints_for_body(rt_world_impl *w, rt_body_impl *body) {
     }
 }
 
+/// @brief Attempt narrow-phase collision detection and resolution for one body pair (ii, jj).
+/// @details Applies the bidirectional layer/mask filter first — only continues when
+///   (A.layer & B.mask) AND (B.layer & A.mask) are both nonzero.  Then tries exact
+///   shape_overlap; if that misses but the swept AABB test fires, the bodies tunnelled
+///   this step and the CCD path repositions them to the moment of first contact then
+///   applies the resolution impulse.  sanitize_body_state is called on both bodies
+///   afterward to clamp any divergent values produced by the impulse.
 static void maybe_resolve_pair(rt_world_impl *w, int ii, int jj, double dt) {
     if (!w || ii < 0 || jj < 0 || ii >= w->body_count || jj >= w->body_count)
         return;
@@ -326,6 +386,11 @@ static int8_t aabb_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double 
     return 1;
 }
 
+/// @brief Narrow-phase overlap test for two circle bodies.
+/// @details Computes the distance between centres; if less than the sum of radii the
+///   circles overlap.  Contact normal is the centre-to-centre direction; a degenerate
+///   case (centres coincident, dist < 1e-12) emits a default +X normal to avoid a
+///   division-by-zero.
 static int8_t circle_circle_overlap(
     rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *pen) {
     double dx = b->x - a->x;
@@ -350,6 +415,12 @@ static int8_t circle_circle_overlap(
     return 1;
 }
 
+/// @brief Narrow-phase overlap test for a circle body vs. an AABB body.
+/// @details Finds the closest point on the rectangle to the circle's centre, then
+///   checks whether the distance to that point is less than the circle's radius.
+///   When the circle centre is inside the rectangle (dist_sq ≈ 0), selects the
+///   nearest exit face using four edge distances and produces an inside-out normal
+///   with a penetration depth that moves the circle fully outside.
 static int8_t circle_aabb_overlap(
     rt_body_impl *circle, rt_body_impl *rect, double *nx, double *ny, double *pen) {
     double rx1 = rect->x;
@@ -405,6 +476,10 @@ static int8_t circle_aabb_overlap(
     return 1;
 }
 
+/// @brief Dispatch the correct narrow-phase overlap test based on each body's shape type.
+/// @details Handles the three possible pairings: circle/circle, circle/AABB, and AABB/AABB.
+///   For circle-vs-AABB where the circle is body B, the normal is negated after the call
+///   to restore the A-to-B direction convention.
 static int8_t shape_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *pen) {
     if (!a || !b || !nx || !ny || !pen)
         return 0;
@@ -427,6 +502,11 @@ static int8_t shape_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double
     return aabb_overlap(a, b, nx, ny, pen);
 }
 
+/// @brief Compute the entry and exit times for two 1D intervals moving with relative velocity `rel`.
+/// @details Part of the continuous collision detection (CCD) swept AABB test.  When `rel`
+///   is zero, the intervals are either always overlapping (returns 1, entry=-inf, exit=+inf)
+///   or always separated (returns 0).  Used by swept_bounds_pair to check each axis
+///   independently before combining via the max(entry)/min(exit) convention.
 static int8_t swept_axis(double a_min,
                          double a_max,
                          double b_min,
@@ -452,6 +532,14 @@ static int8_t swept_axis(double a_min,
     return 1;
 }
 
+/// @brief Swept AABB continuous collision test between two bodies.
+/// @details Computes the relative velocity (A's displacement minus B's displacement this frame),
+///   then calls swept_axis on both X and Y independently.  The overall entry time is
+///   max(x_entry, y_entry) and exit time is min(x_exit, y_exit); a collision occurred
+///   when entry < exit, 0 ≤ entry ≤ 1, and entry is finite.  On success, both bodies
+///   are rolled back to their positions at the entry time so the subsequent impulse
+///   resolution happens at the moment of contact rather than at full penetration depth.
+///   The dominant entry axis determines the contact normal direction.
 static int8_t swept_bounds_pair(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry_out) {
     if (!a || !b || !nx || !ny || !entry_out)
         return 0;
@@ -645,6 +733,12 @@ static void world_finalizer(void *obj) {
 // Public API — World
 //=============================================================================
 
+/// @brief Allocate a new physics world with the given constant gravity vector.
+/// @details Initialises all body/joint/contact slots to zero and registers a GC
+///   finalizer that will release retained body references when the world is collected.
+/// @param gravity_x World-space X acceleration (e.g. 0 for horizontal, ±g for side-scrollers).
+/// @param gravity_y World-space Y acceleration (positive = downward in screen coords).
+/// @return Opaque world handle, or NULL on allocation failure (after trapping).
 void *rt_physics2d_world_new(double gravity_x, double gravity_y) {
     rt_world_impl *w =
         (rt_world_impl *)rt_obj_new_i64(RT_PHYSICS2D_WORLD_CLASS_ID, (int64_t)sizeof(rt_world_impl));
@@ -958,6 +1052,10 @@ void rt_physics2d_world_set_gravity(void *obj, double gx, double gy) {
     w->gravity_y = finite_or(gy, 0.0);
 }
 
+/// @brief Number of contact pairs resolved during the most recent world step.
+/// @details The list is rebuilt fresh on every call to rt_physics2d_world_step and
+///   capped at PH_MAX_CONTACTS.  Query it between steps to drive game logic (e.g.
+///   damage on collision, sound effects).
 int64_t rt_physics2d_world_contact_count(void *obj) {
     if (!obj)
         return 0;
@@ -965,30 +1063,36 @@ int64_t rt_physics2d_world_contact_count(void *obj) {
     return w ? w->contact_count : 0;
 }
 
+/// @brief Guard for all contact-list accessors — returns 1 only when `index` is in range.
 static int8_t checked_contact(rt_world_impl *w, int64_t index) {
     return w && index >= 0 && index < w->contact_count;
 }
 
+/// @brief Return the first body in a contact pair (the "A" side) at the given contact index.
 void *rt_physics2d_world_contact_body_a(void *obj, int64_t index) {
     rt_world_impl *w = checked_world(obj, "Physics2D.World.ContactBodyA: expected Physics2D.World");
     return checked_contact(w, index) ? w->contacts[index].body_a : NULL;
 }
 
+/// @brief Return the second body in a contact pair (the "B" side) at the given contact index.
 void *rt_physics2d_world_contact_body_b(void *obj, int64_t index) {
     rt_world_impl *w = checked_world(obj, "Physics2D.World.ContactBodyB: expected Physics2D.World");
     return checked_contact(w, index) ? w->contacts[index].body_b : NULL;
 }
 
+/// @brief Contact normal X component (points from body A toward body B).
 double rt_physics2d_world_contact_nx(void *obj, int64_t index) {
     rt_world_impl *w = checked_world(obj, "Physics2D.World.ContactNX: expected Physics2D.World");
     return checked_contact(w, index) ? w->contacts[index].nx : 0.0;
 }
 
+/// @brief Contact normal Y component (points from body A toward body B).
 double rt_physics2d_world_contact_ny(void *obj, int64_t index) {
     rt_world_impl *w = checked_world(obj, "Physics2D.World.ContactNY: expected Physics2D.World");
     return checked_contact(w, index) ? w->contacts[index].ny : 0.0;
 }
 
+/// @brief Penetration depth at the contact point (0 for tunnelling contacts caught by CCD).
 double rt_physics2d_world_contact_depth(void *obj, int64_t index) {
     rt_world_impl *w = checked_world(obj, "Physics2D.World.ContactDepth: expected Physics2D.World");
     return checked_contact(w, index) ? w->contacts[index].penetration : 0.0;
@@ -1050,11 +1154,22 @@ double rt_physics2d_body_y(void *obj) {
     return b ? b->y : 0.0;
 }
 
+/// @brief X position at the start of the last step (before integration).
+/// @details Used by the swept CCD path; useful in game logic for computing per-frame
+///   displacement without storing a separate previous-position variable.
 double rt_physics2d_body_prev_x(void *obj) {
     rt_body_impl *b = checked_body(obj, "Physics2D.Body.PrevX: expected Physics2D.Body");
     return b ? b->prev_x : 0.0;
 }
 
+/// @brief Y position at the start of the last step (before integration).
+/// @details Mirror of rt_physics2d_body_prev_x for the vertical axis. Used by
+///   the swept CCD path to construct the previous-frame AABB, and is useful in
+///   game logic for computing per-frame vertical displacement without storing a
+///   separate previous-position variable.
+/// @param obj Physics2D.Body instance.
+/// @return Y coordinate recorded at the beginning of the most recent simulation
+///   step, or 0.0 if @p obj is not a valid body.
 double rt_physics2d_body_prev_y(void *obj) {
     rt_body_impl *b = checked_body(obj, "Physics2D.Body.PrevY: expected Physics2D.Body");
     return b ? b->prev_y : 0.0;

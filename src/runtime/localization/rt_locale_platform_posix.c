@@ -37,6 +37,12 @@
 
 #if !RT_PLATFORM_WINDOWS && !RT_PLATFORM_MACOS
 
+/// @brief Return 1 if @p s is a C/POSIX no-locale sentinel value.
+/// @details "C", "c", "POSIX", and "posix" are treated as "no real locale" so
+///          the caller falls back to the invariant locale. NULL and empty strings
+///          are also treated as no-locale.
+/// @param s Environment variable value to check; may be NULL.
+/// @return 1 if @p s is a no-locale sentinel; 0 otherwise.
 static int is_c_or_posix(const char *s) {
     if (!s || !*s)
         return 1;
@@ -72,6 +78,14 @@ static int clean_posix_tag(const char *src, char *out, size_t cap) {
     return 0;
 }
 
+/// @brief Detect the system locale on POSIX platforms via the standard env var cascade.
+/// @details Polls `LC_ALL`, then `LANG`, then `LC_MESSAGES` per IEEE Std 1003.1.
+///          LC_ALL and LC_MESSAGES are preferred over LC_NUMERIC/LC_COLLATE because
+///          the message/display locale is what users expect as "the system locale".
+///          Skips C/POSIX sentinels and cleans each candidate with `clean_posix_tag`.
+/// @param out  Caller-provided buffer to receive the BCP-47 tag.
+/// @param cap  Capacity of @p out in bytes (must be ≥ 2).
+/// @return 0 if a usable tag was written to @p out; -1 if detection failed.
 int rt_locale_platform_detect_system(char *out, size_t cap) {
     if (!out || cap < 2)
         return -1;

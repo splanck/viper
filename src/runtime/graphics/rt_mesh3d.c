@@ -71,6 +71,13 @@ static int mesh_validate_positive_finite(double value, const char *label) {
     return 0;
 }
 
+/// @brief Release and discard a partially-built mesh if its build_failed flag is set.
+/// @details Called at the end of every procedural generator (new_box, new_sphere,
+///   new_plane, new_cylinder) and after the OBJ/STL loaders.  If any intermediate
+///   add_vertex / add_triangle call trapped and set build_failed, this function
+///   releases the GC reference so the partially-constructed mesh is freed, and
+///   returns NULL to the caller.  NULL input and a clean mesh are both forwarded
+///   unchanged, so the generator can use this as a tail-call return.
 static void *mesh_return_null_if_build_failed(void *mesh) {
     if (!mesh || !((rt_mesh3d *)mesh)->build_failed)
         return mesh;
@@ -846,6 +853,14 @@ static int obj_parse_double(const char **p, double *out) {
     return 1;
 }
 
+/// @brief Double the capacity of a float accumulator array used during OBJ parsing.
+/// @details The OBJ parser pre-allocates small position/normal/UV arrays and
+///   grows them geometrically via this helper when the current capacity is
+///   exhausted.  The `components` parameter (2 for UV, 3 for positions/normals)
+///   is folded into the byte-count calculation so both array types share one
+///   growth path.  Guards against INT_MAX/2 overflow on the new-capacity
+///   integer and against SIZE_MAX overflow on the byte count before calling
+///   realloc.  Returns 0 on any overflow or allocation failure.
 static int obj_grow_float_array(float **array, int *capacity, int components) {
     if (!array || !capacity || components <= 0)
         return 0;

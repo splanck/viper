@@ -64,10 +64,25 @@ static void scene3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+/// @brief Return @p value if it is a finite number, otherwise return @p fallback.
+/// @details Used to sanitize every numeric input that comes from external data (glTF
+///   assets, caller-supplied transforms) before it can corrupt a matrix multiply or
+///   a length calculation with NaN / Inf. The indirection through this helper rather
+///   than an inline ternary makes the intent clear at each call site.
+/// @param value   Candidate double — may be NaN, +Inf, or -Inf.
+/// @param fallback Value to substitute when @p value is not finite.
+/// @return @p value when finite, @p fallback otherwise.
 static double scene3d_finite_or(double value, double fallback) {
     return isfinite(value) ? value : fallback;
 }
 
+/// @brief Return @p value if finite, or 1.0 as the identity scale factor.
+/// @details Specialisation of `scene3d_finite_or` for scale components where a
+///   zero-or-NaN value would collapse the node to a point or produce a degenerate
+///   inverse matrix. Returning 1.0 preserves the parent scale and keeps the node
+///   visible while the asset author fixes the bad data.
+/// @param value Scale factor candidate — may be NaN or Inf.
+/// @return @p value when finite, 1.0 otherwise.
 static double scene3d_scale_or_unit(double value) {
     return isfinite(value) ? value : 1.0;
 }
@@ -154,6 +169,18 @@ static int node_animation_reserve_channels(rt_node_animation3d *anim, int32_t ne
     return 1;
 }
 
+/// @brief Validate raw channel sample data before it is copied into a clip.
+/// @details Enforces the invariants that `node_animation_add_channel_impl` depends on:
+///   - `value_width` must match the path's dimensionality: 3 for TRANSLATION/SCALE,
+///     4 for ROTATION, at least 1 for WEIGHTS/other (morph weight count varies).
+///   - Every time sample must be finite and strictly increasing; glTF allows equal
+///     consecutive times only in STEP interpolation, but we reject them here to prevent
+///     division by zero in the linear and cubic interpolation paths.
+///   - key_count × value_width overflow is checked before iterating so the loop bound
+///     is always within size_t range.
+///   - All value samples (and, for CUBICSPLINE, both tangent sets) must be finite;
+///     non-finite values would produce NaN transforms that corrupt the scene graph.
+/// @return 1 if all data passes validation, 0 on any violation.
 static int node_animation_validate_channel_data(int64_t path,
                                                 int64_t key_count,
                                                 int64_t value_width,
@@ -276,6 +303,20 @@ static int64_t node_animation_add_channel_impl(void *obj,
     return anim->channel_count++;
 }
 
+/// @brief Add a STEP or LINEAR channel to an animation clip (no tangent data required).
+/// @details Thin wrapper around `node_animation_add_channel_impl` that passes NULL for
+///   both tangent arrays. Only CUBICSPLINE interpolation needs tangents; for STEP and
+///   LINEAR the tangent pointers are never read so passing NULL is safe and explicit.
+///   Callers that want CUBICSPLINE must use `rt_node_animation3d_add_cubic_channel`.
+/// @param obj           NodeAnimation3D clip handle.
+/// @param target_name   Name of the scene node that this channel drives.
+/// @param path          RT_NODE_ANIM_PATH_* constant (TRANSLATION/ROTATION/SCALE/WEIGHTS).
+/// @param interpolation RT_NODE_ANIM_INTERP_STEP or RT_NODE_ANIM_INTERP_LINEAR.
+/// @param key_count     Number of keyframes.
+/// @param value_width   Floats per keyframe (3 for vec3, 4 for quat, N for weights).
+/// @param times         Monotonically increasing time samples (seconds), length key_count.
+/// @param values        Flattened sample values, length key_count * value_width.
+/// @return Zero-based channel index on success, -1 on validation or allocation failure.
 int64_t rt_node_animation3d_add_channel(void *obj,
                                         rt_string target_name,
                                         int64_t path,
@@ -296,6 +337,23 @@ int64_t rt_node_animation3d_add_channel(void *obj,
                                            NULL);
 }
 
+/// @brief Add a CUBICSPLINE (Catmull-Rom / glTF cubic) channel to an animation clip.
+/// @details Thin wrapper that hard-wires RT_NODE_ANIM_INTERP_CUBICSPLINE and passes
+///   both tangent arrays through to `node_animation_add_channel_impl`. The tangent
+///   arrays must each have the same length as `values` (key_count * value_width floats).
+///   Validation inside the impl will reject NULL tangent pointers for cubic channels.
+///   This separation from `rt_node_animation3d_add_channel` keeps the non-cubic hot
+///   path free of tangent-buffer bookkeeping.
+/// @param obj           NodeAnimation3D clip handle.
+/// @param target_name   Name of the scene node driven by this channel.
+/// @param path          RT_NODE_ANIM_PATH_* constant.
+/// @param key_count     Number of keyframes.
+/// @param value_width   Floats per keyframe.
+/// @param times         Monotonically increasing time samples (seconds).
+/// @param values        Flattened output sample values.
+/// @param in_tangents   In-tangent per sample (same layout as @p values).
+/// @param out_tangents  Out-tangent per sample (same layout as @p values).
+/// @return Zero-based channel index on success, -1 on validation or allocation failure.
 int64_t rt_node_animation3d_add_cubic_channel(void *obj,
                                               rt_string target_name,
                                               int64_t path,
@@ -317,6 +375,13 @@ int64_t rt_node_animation3d_add_cubic_channel(void *obj,
                                            out_tangents);
 }
 
+/// @brief GC finalizer for a NodeAnimator3D — releases retained clip references
+///        and frees the animations pointer array.
+/// @details Each clip in `animations[]` was retained during construction via
+///   `rt_obj_retain_maybe`; the matching release here ensures clips are not freed
+///   while the animator is still alive, and are released precisely when the animator
+///   itself is collected. The root node pointer is NOT released — the animator borrows
+///   that reference from the scene, so releasing it here would cause a double-free.
 static void rt_node_animator3d_finalize(void *obj) {
     rt_node_animator3d *animator = (rt_node_animator3d *)obj;
     if (!animator)
@@ -329,6 +394,17 @@ static void rt_node_animator3d_finalize(void *obj) {
     animator->root = NULL;
 }
 
+/// @brief Allocate a NodeAnimator3D that owns a set of pre-loaded animation clips.
+/// @details Allocates the animator object and a contiguous pointer array sized exactly
+///   for @p clip_count entries. Each clip is retained so the animator keeps the clips
+///   alive independent of the caller's own references. Defaults to playing back clip 0
+///   at speed 1.0 with `playing = 1` — call rt_node_animator3d_set_speed /
+///   rt_node_animator3d_play_clip after construction to override. The `root` field is
+///   left NULL until the animator is bound to a scene node via
+///   `rt_scene_node3d_bind_node_animator`.
+/// @param clips      Array of NodeAnimation3D clip handles, must not be NULL.
+/// @param clip_count Number of clips; must be in [1, INT32_MAX].
+/// @return New animator handle, or NULL (with trap) on allocation failure.
 void *rt_node_animator3d_new_from_clips(void **clips, int64_t clip_count) {
     rt_node_animator3d *animator;
     if (!clips || clip_count <= 0 || clip_count > INT32_MAX)
@@ -672,8 +748,18 @@ static void mark_dirty(rt_scene_node3d *node) {
         mark_dirty(node->children[i]);
 }
 
+/// @brief Forward declaration for the recursive node-name search used by the animation
+///        channel applier before the function's full definition appears later in the file.
 static rt_scene_node3d *find_by_name(rt_scene_node3d *node, const char *target);
 
+/// @brief Normalize a float[4] quaternion in-place; substitute the identity quaternion
+///        if the magnitude is too small to normalize safely.
+/// @details A degenerate quaternion (all-zero or near-zero) would produce NaN after
+///   division. The identity quaternion (0, 0, 0, 1) is substituted instead so a bad
+///   asset frame leaves the node in its rest orientation rather than exploding the
+///   scene graph. The 1e-8 threshold is smaller than any numerically meaningful
+///   quaternion from a non-degenerate rotation.
+/// @param q float[4] quaternion in (x, y, z, w) order; modified in-place.
 static void node_anim_normalize_quat(float *q) {
     float len;
     if (!q)
@@ -692,6 +778,19 @@ static void node_anim_normalize_quat(float *q) {
     }
 }
 
+/// @brief Spherical-linear interpolation between two unit quaternions along the
+///        shortest arc on the 4-sphere.
+/// @details Both inputs are normalized before use so callers need not pre-normalize.
+///   The dot product is computed in double precision and the sign of @p b is flipped
+///   when `dot < 0` to guarantee the shortest-path interpolation (without this, a
+///   270° spin would be taken instead of a 90° spin for near-antipodal quaternions).
+///   When `dot > 0.9995` (quaternions nearly identical) the implementation falls back
+///   to normalized LERP to avoid the `acos(1.0)` domain-error that produces NaN at
+///   the identity separation angle.
+/// @param a     Source quaternion (x, y, z, w), must not be NULL.
+/// @param b     Target quaternion (x, y, z, w), must not be NULL.
+/// @param alpha Interpolation parameter in [0, 1]; 0 returns @p a, 1 returns @p b.
+/// @param out   float[4] output quaternion, must not be NULL.
 static void node_anim_slerp_quat(const float *a, const float *b, double alpha, float *out) {
     float q0[4];
     float q1[4];
@@ -728,6 +827,21 @@ static void node_anim_slerp_quat(const float *a, const float *b, double alpha, f
     }
 }
 
+/// @brief Sample an animation channel at the given time and write interpolated values
+///        to @p out_values, dispatching over STEP / LINEAR / CUBICSPLINE interpolation.
+/// @details The implementation binary-searches for the bracketing keyframe interval
+///   [lo, hi], then computes alpha = (time - t0) / (t1 - t0) clamped to [0, 1].
+///   Dispatch:
+///   - STEP: copies the `lo` keyframe values unchanged.
+///   - CUBICSPLINE: evaluates the glTF cubic Hermite spline using the precomputed
+///     h00/h10/h01/h11 basis polynomials, scaling tangents by the interval length dt.
+///     Rotation channels are re-normalized after cubic evaluation.
+///   - LINEAR (default): component-wise lerp, with SLERP for ROTATION channels to
+///     maintain unit-quaternion properties across the interval.
+///   Time clamping at the clip endpoints avoids out-of-range array access.
+/// @param channel    Fully validated channel with at least one keyframe.
+/// @param time       Playback time in seconds.
+/// @param out_values Caller-allocated buffer of at least channel->value_width floats.
 static void node_anim_sample_channel(const rt_node_anim_channel3d *channel,
                                      double time,
                                      float *out_values) {
@@ -805,6 +919,17 @@ static void node_anim_sample_channel(const rt_node_anim_channel3d *channel,
     }
 }
 
+/// @brief Propagate morph-target weights from a WEIGHTS channel through a node subtree.
+/// @details glTF WEIGHTS path targets a specific node but the weights are conceptually
+///   inherited by all mesh nodes in the subtree that share the same morph target set.
+///   This recursive walk sets weights on every mesh that has a morph-targets object,
+///   clamping the applied count to `min(shape_count, weight_count)` so a channel with
+///   fewer weights than shapes leaves the excess shapes at their current weights rather
+///   than clearing them, and a channel with more weights than shapes does not overrun
+///   the morph target array.
+/// @param node         Root of the subtree to drive.
+/// @param weights      Array of weight values from the sampled WEIGHTS channel.
+/// @param weight_count Number of values in @p weights.
 static void node_anim_apply_weights_recursive(rt_scene_node3d *node,
                                               const float *weights,
                                               int32_t weight_count) {
@@ -824,6 +949,21 @@ static void node_anim_apply_weights_recursive(rt_scene_node3d *node,
         node_anim_apply_weights_recursive(node->children[i], weights, weight_count);
 }
 
+/// @brief Resolve a channel's target node by name, sample the channel, and write the
+///        TRS or weight result onto the target.
+/// @details Resolution uses `find_by_name` on the animator root subtree at every call,
+///   which is an O(n) tree walk. For clips with many channels this is called once per
+///   channel per frame; the expectation is that scene graphs are small enough that the
+///   linear search dominates only for very large skeletal hierarchies, which in practice
+///   use the skeleton system rather than node animation.
+///   A stack buffer of 16 floats covers all standard TRS channels (max width 4 for
+///   quaternion); only WEIGHTS channels with more than 16 targets spill to a heap
+///   allocation. The heap buffer is always freed before returning.
+///   SCALE values are sanitised through `scene3d_scale_or_unit` to avoid degenerate
+///   inverse matrices when an asset provides a near-zero scale keyframe.
+/// @param root    Root of the scene subtree searched for the target node.
+/// @param channel Channel to sample; must have a valid target_name.
+/// @param time    Playback time in seconds.
 static void node_anim_apply_channel(rt_scene_node3d *root,
                                     const rt_node_anim_channel3d *channel,
                                     double time) {
@@ -887,6 +1027,19 @@ static void node_anim_apply_channel(rt_scene_node3d *root,
         free(values);
 }
 
+/// @brief Advance an animator's playback time and apply all channels of the current
+///        clip to the bound scene subtree.
+/// @details Time advance is: `time += dt * speed` clamped to finite values.
+///   After advance, looping clips wrap via `fmod` into [0, duration); one-shot clips
+///   clamp to `duration` and set `playing = 0` so callers can detect clip end.
+///   Out-of-range `current_animation` is reset to 0 defensively (can happen when the
+///   clip set is hot-swapped). A NULL `root` node is a fast-out — the animator must
+///   have been bound via `rt_scene_node3d_bind_node_animator` before updates have any
+///   effect. All channels are applied in index order with no blending; to blend two
+///   clips the caller must manage two animators and lerp the results at the scene node.
+/// @param animator Animator to advance; silently no-ops on NULL or non-playing state.
+/// @param dt       Delta time in seconds since the last update; non-finite values are
+///                 ignored so a stalled timer cannot corrupt the playback position.
 static void node_animator_update(rt_node_animator3d *animator, double dt) {
     rt_node_animation3d *clip;
     if (!animator || !animator->playing || animator->animation_count <= 0 || !animator->root)
@@ -1172,6 +1325,18 @@ static void scene_world_point(const double *world_matrix, const float local[3], 
                      world_matrix[10] * (double)local[2] + world_matrix[11]);
 }
 
+/// @brief Normalize a float[3] vector in-place, substituting a caller-supplied fallback
+///        direction when the vector is degenerate (zero-length or non-finite magnitude).
+/// @details Used to normalize light direction vectors that have been transformed into
+///   world space via the node's 3×3 rotation sub-matrix. A scale component in the
+///   matrix can inflate or shrink the transformed direction, so re-normalization is
+///   always required. The 1e-8 threshold guards against divide-by-near-zero; the
+///   (0, 0, -1) fallback used by the caller makes a degenerate light point forward
+///   rather than disappear.
+/// @param v          float[3] vector to normalize in-place; must not be NULL.
+/// @param fallback_x X component of the replacement direction on degenerate input.
+/// @param fallback_y Y component of the replacement direction on degenerate input.
+/// @param fallback_z Z component of the replacement direction on degenerate input.
 static void scene_normalize_f32_vec3(float v[3], float fallback_x, float fallback_y, float fallback_z) {
     float len;
     if (!v)
@@ -1220,6 +1385,19 @@ static void scene_transform_node_light(rt_scene_node3d *node, const rt_light3d *
     dst->direction[2] = world_dir[2];
 }
 
+/// @brief Recursively collect world-space lights from visible nodes into the draw snapshot.
+/// @details Traverses the subtree rooted at @p node, skipping invisible nodes entirely
+///   (their children are also skipped, consistent with visibility culling elsewhere).
+///   For each visible node that carries a light, `scene_transform_node_light` writes
+///   the world-space copy into @p storage[*io_count] and adds its address to
+///   @p out_lights[*io_count] before incrementing the counter. Collection stops when
+///   the hardware light limit `VGFX3D_MAX_LIGHTS` is reached; excess lights are silently
+///   dropped, which is the standard GPU behavior for too many dynamic lights.
+/// @param node       Root of the subtree to search.
+/// @param storage    Pre-allocated array of at least VGFX3D_MAX_LIGHTS rt_light3d structs
+///                   used as scratch space for world-space copies.
+/// @param out_lights Output pointer array; receives addresses into @p storage.
+/// @param io_count   In/out: current light count; incremented for each light found.
 static void scene_collect_node_lights(rt_scene_node3d *node,
                                       rt_light3d *storage,
                                       rt_light3d **out_lights,
@@ -1912,6 +2090,16 @@ void rt_scene_node3d_bind_animator(void *obj, void *controller) {
     node->bound_animator = controller;
 }
 
+/// @brief Bind a NodeAnimator3D to this scene node so its clip channels are applied
+///        each frame during `rt_scene3d_update`.
+/// @details Retains the new animator and releases the old one. Crucially, the old
+///   animator's `root` pointer is cleared to NULL before release so it cannot hold
+///   a dangling reference to this node after the swap. The new animator's `root` is
+///   set to this node immediately so `node_animator_update` can navigate the subtree
+///   on the very next update tick. Passing NULL detaches the current animator and is
+///   equivalent to calling `rt_scene_node3d_clear_node_animator_binding`.
+/// @param obj      Scene node to drive; no-op if NULL.
+/// @param animator NodeAnimator3D handle, or NULL to detach.
 void rt_scene_node3d_bind_node_animator(void *obj, void *animator) {
     rt_scene_node3d *node;
     rt_node_animator3d *node_animator;
@@ -2015,6 +2203,16 @@ static void mat4_d2f_local(const double *src, float *dst) {
         dst[i] = (float)src[i];
 }
 
+/// @brief Compute the actual output aspect ratio for projection matrix construction.
+/// @details Priority: render-target dimensions > canvas window dimensions > camera's
+///   stored aspect ratio. Using the render target's size when one is active ensures
+///   the projection matches an off-screen FBO rather than the window, which matters
+///   for shadow maps, reflection probes, and post-process passes that render at a
+///   different resolution than the display. Falls back to `cam->aspect` (set by the
+///   caller when no canvas is available) or 1.0 as the last resort.
+/// @param canvas Active canvas, may be NULL.
+/// @param cam    Active camera, may be NULL.
+/// @return Width / height aspect ratio, always positive.
 static double scene3d_active_output_aspect(const rt_canvas3d *canvas, const rt_camera3d *cam) {
     int32_t w = 0;
     int32_t h = 0;
@@ -2032,6 +2230,18 @@ static double scene3d_active_output_aspect(const rt_canvas3d *canvas, const rt_c
     return cam ? cam->aspect : 1.0;
 }
 
+/// @brief Build the view-projection matrix used for frustum-culling this frame.
+/// @details When the canvas is already inside a 3D frame, the VP matrix cached in
+///   `canvas->cached_vp` is reused to guarantee all visibility tests in the same
+///   frame use identical frustum planes, even when multiple scenes are drawn in one
+///   `Begin3D/End3D` block. Otherwise the matrix is computed fresh by multiplying
+///   the camera view matrix (double→float converted) by the perspective/ortho
+///   projection returned by `rt_camera3d_get_render_projection`, which uses the
+///   aspect ratio from `scene3d_active_output_aspect` to match the actual output.
+/// @param canvas Canvas in use; may be NULL (falls back to camera-only projection).
+/// @param cam    Camera providing view and projection parameters; may be NULL (produces
+///               an identity VP so no culling occurs).
+/// @param vp     float[16] output matrix in row-major order; must not be NULL.
 static void scene3d_build_culling_vp(rt_canvas3d *canvas, rt_camera3d *cam, float *vp) {
     float vf[16];
     float pf[16];

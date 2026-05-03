@@ -229,6 +229,7 @@ static int bf_next_codepoint(const char *str, size_t byte_len, size_t *index, in
     return 1;
 }
 
+/// @brief Decrement the refcount of a bitmap font and free it when it reaches zero.
 static void bf_release_font(rt_bitmapfont_impl *font) {
     if (!font)
         return;
@@ -709,7 +710,10 @@ static void bf_draw_glyph(vgfx_window_t win,
             int byte_idx = col / 8;
             int bit_idx = 7 - (col % 8);
             if (g->bitmap[row * rb + byte_idx] & (1 << bit_idx)) {
-                vgfx_pset(win, (int32_t)(draw_x + col), (int32_t)(draw_y + row), color);
+                vgfx_pset(win,
+                          rtg_clamp_i64_to_i32(rtg_add_sat64(draw_x, col)),
+                          rtg_clamp_i64_to_i32(rtg_add_sat64(draw_y, row)),
+                          color);
             }
         }
     }
@@ -736,10 +740,12 @@ static void bf_draw_glyph_scaled(vgfx_window_t win,
             int bit_idx = 7 - (col % 8);
             if (g->bitmap[row * rb + byte_idx] & (1 << bit_idx)) {
                 vgfx_fill_rect(win,
-                               (int32_t)(draw_x + col * scale),
-                               (int32_t)(draw_y + row * scale),
-                               (int32_t)scale,
-                               (int32_t)scale,
+                               rtg_clamp_i64_to_i32(
+                                   rtg_add_sat64(draw_x, rtg_mul_sat64(col, scale))),
+                               rtg_clamp_i64_to_i32(
+                                   rtg_add_sat64(draw_y, rtg_mul_sat64(row, scale))),
+                               rtg_clamp_i64_to_i32(scale),
+                               rtg_clamp_i64_to_i32(scale),
                                color);
             }
         }
@@ -771,7 +777,12 @@ static void bf_draw_glyph_bg(vgfx_window_t win,
 
         if (bg_right > bg_left) {
             vgfx_fill_rect(
-                win, (int32_t)bg_left, (int32_t)py, (int32_t)(bg_right - bg_left), (int32_t)line_h, bg);
+                win,
+                rtg_clamp_i64_to_i32(bg_left),
+                rtg_clamp_i64_to_i32(py),
+                rtg_clamp_i64_to_i32(bg_right - bg_left),
+                rtg_clamp_i64_to_i32(line_h),
+                bg);
         }
 
         int rb = bf_row_bytes(g->width);
@@ -781,13 +792,21 @@ static void bf_draw_glyph_bg(vgfx_window_t win,
                 int byte_idx = col / 8;
                 int bit_idx = 7 - (col % 8);
                 if (g->bitmap[row * rb + byte_idx] & (1 << bit_idx)) {
-                    vgfx_pset(win, (int32_t)(draw_x + col), (int32_t)(draw_y + row), fg);
+                    vgfx_pset(win,
+                              rtg_clamp_i64_to_i32(rtg_add_sat64(draw_x, col)),
+                              rtg_clamp_i64_to_i32(rtg_add_sat64(draw_y, row)),
+                              fg);
                 }
             }
         }
     } else if (bg_right > bg_left) {
         vgfx_fill_rect(
-            win, (int32_t)bg_left, (int32_t)py, (int32_t)(bg_right - bg_left), (int32_t)line_h, bg);
+            win,
+            rtg_clamp_i64_to_i32(bg_left),
+            rtg_clamp_i64_to_i32(py),
+            rtg_clamp_i64_to_i32(bg_right - bg_left),
+            rtg_clamp_i64_to_i32(line_h),
+            bg);
     }
 }
 
@@ -803,8 +822,8 @@ void rt_canvas_text_font(
     if (!canvas_ptr || !font_ptr || !text)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return;
     rt_canvas_resync_window_state(canvas);
 
@@ -842,8 +861,8 @@ void rt_canvas_text_font_bg(void *canvas_ptr,
     if (!canvas_ptr || !font_ptr || !text)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return;
     rt_canvas_resync_window_state(canvas);
 
@@ -866,10 +885,10 @@ void rt_canvas_text_font_bg(void *canvas_ptr,
             cx += g->advance;
         } else {
             vgfx_fill_rect(canvas->gfx_win,
-                           (int32_t)cx,
-                           (int32_t)y,
-                           (int32_t)font->max_width,
-                           (int32_t)font->line_height,
+                           rtg_clamp_i64_to_i32(cx),
+                           rtg_clamp_i64_to_i32(y),
+                           rtg_clamp_i64_to_i32(font->max_width),
+                           rtg_clamp_i64_to_i32(font->line_height),
                            bg);
             cx += font->max_width;
         }
@@ -888,8 +907,8 @@ void rt_canvas_text_font_scaled(void *canvas_ptr,
     if (!canvas_ptr || !font_ptr || !text || scale < 1)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return;
     rt_canvas_resync_window_state(canvas);
 
@@ -922,8 +941,8 @@ void rt_canvas_text_font_centered(
     if (!canvas_ptr || !font_ptr || !text)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return;
 
     int32_t win_w = 0, win_h = 0;
@@ -945,8 +964,8 @@ void rt_canvas_text_font_right(
     if (!canvas_ptr || !font_ptr || !text)
         return;
 
-    rt_canvas *canvas = (rt_canvas *)canvas_ptr;
-    if (!canvas->gfx_win)
+    rt_canvas *canvas = rt_canvas_checked(canvas_ptr);
+    if (!canvas || !canvas->gfx_win)
         return;
 
     int32_t win_w = 0, win_h = 0;
@@ -963,6 +982,7 @@ void rt_canvas_text_font_right(
 
 #else // !VIPER_ENABLE_GRAPHICS — stubs
 
+/// @brief Stub used when graphics are not compiled in; raises an InvalidOperation trap with the given message.
 static void rt_bitmapfont_canvas_unavailable_(const char *msg) {
     rt_trap_raise_kind(RT_TRAP_KIND_INVALID_OPERATION, Err_InvalidOperation, 0, msg);
 }
