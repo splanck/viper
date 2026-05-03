@@ -52,6 +52,10 @@
 
 static volatile int64_t g_next_pixels_cache_identity = 1;
 
+void viper_pixels_trap_invalid_handle(const char *op, const char *fallback) {
+    rt_trap(op ? op : fallback);
+}
+
 /// @brief Validate a Pixels layout and compute safe allocation sizes.
 /// @details Guards against three overflow scenarios:
 ///   1. Negative dimensions (early reject).

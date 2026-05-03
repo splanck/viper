@@ -1293,6 +1293,8 @@ function(viper_add_runtime_tests)
     viper_add_isolated_runtime_test(test_rt_sprite_contract
             ${VIPER_TESTS_DIR}/runtime/RTSpriteContractTests.cpp
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_sprite.c)
+    target_compile_definitions(test_rt_sprite_contract PRIVATE
+            RT_PIXELS_INTERNAL_ASSUME_STRUCT_HANDLE=1)
 
     viper_add_test(test_rt_listview ${VIPER_TESTS_DIR}/runtime/RTListViewTests.cpp)
     target_link_libraries(test_rt_listview PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
@@ -1316,7 +1318,9 @@ function(viper_add_runtime_tests)
             ${VIPER_TESTS_DIR}/runtime/RTCanvasContractTests.cpp
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_drawing.c
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_drawing_advanced.c)
-    target_compile_definitions(test_rt_canvas_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
+    target_compile_definitions(test_rt_canvas_contract PRIVATE
+            VIPER_ENABLE_GRAPHICS=1
+            RT_PIXELS_INTERNAL_ASSUME_STRUCT_HANDLE=1)
 
     viper_add_isolated_runtime_test(test_rt_canvas_state_contract
             ${VIPER_TESTS_DIR}/runtime/RTCanvasStateContractTests.cpp
