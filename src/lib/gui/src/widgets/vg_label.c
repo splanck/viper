@@ -50,6 +50,10 @@ vg_label_t *vg_label_create(vg_widget_t *parent, const char *text) {
 
     // Initialize label-specific fields
     label->text = text ? strdup(text) : strdup("");
+    if (!label->text) {
+        vg_widget_destroy(&label->base);
+        return NULL;
+    }
     vg_theme_t *theme = vg_theme_get_current();
     label->font = theme->typography.font_regular;
     label->font_size = theme->typography.size_normal;
@@ -263,21 +267,7 @@ static void label_measure(vg_widget_t *widget, float available_width, float avai
         widget->measured_height = metrics.height;
     }
 
-    // Apply constraints
-    if (widget->measured_width < widget->constraints.min_width) {
-        widget->measured_width = widget->constraints.min_width;
-    }
-    if (widget->measured_height < widget->constraints.min_height) {
-        widget->measured_height = widget->constraints.min_height;
-    }
-    if (widget->constraints.max_width > 0 &&
-        widget->measured_width > widget->constraints.max_width) {
-        widget->measured_width = widget->constraints.max_width;
-    }
-    if (widget->constraints.max_height > 0 &&
-        widget->measured_height > widget->constraints.max_height) {
-        widget->measured_height = widget->constraints.max_height;
-    }
+    vg_widget_apply_constraints(widget);
 }
 
 static void label_paint(vg_widget_t *widget, void *canvas) {
@@ -375,10 +365,12 @@ void vg_label_set_text(vg_label_t *label, const char *text) {
     if (!label)
         return;
 
-    if (label->text) {
-        free((void *)label->text);
-    }
-    label->text = text ? strdup(text) : strdup("");
+    char *copy = text ? strdup(text) : strdup("");
+    if (!copy)
+        return;
+
+    free((void *)label->text);
+    label->text = copy;
     label_free_wrap_cache(label); /* text changed — cache stale */
     label->base.needs_layout = true;
     label->base.needs_paint = true;

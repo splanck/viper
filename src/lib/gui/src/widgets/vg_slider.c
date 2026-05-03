@@ -82,6 +82,7 @@ static void slider_measure(vg_widget_t *widget, float available_width, float ava
         widget->measured_width = slider->thumb_size > 0 ? slider->thumb_size : 24.0f;
         widget->measured_height = 100.0f;
     }
+    vg_widget_apply_constraints(widget);
 }
 
 static void slider_arrange(vg_widget_t *widget, float x, float y, float w, float h) {

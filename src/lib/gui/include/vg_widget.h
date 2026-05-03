@@ -541,6 +541,16 @@ void vg_widget_set_preferred_size(vg_widget_t *widget, float width, float height
 /// @param height Fixed height in pixels.
 void vg_widget_set_fixed_size(vg_widget_t *widget, float width, float height);
 
+/// @brief Apply the widget's size constraints to its current measured size.
+///
+/// @details Custom widget measure implementations should compute their natural
+///          measured_width / measured_height, then call this helper so
+///          preferred, minimum, maximum, and non-finite size handling is
+///          consistent across widget classes.
+///
+/// @param widget The widget whose measured size should be clamped.
+void vg_widget_apply_constraints(vg_widget_t *widget);
+
 /// @brief Retrieve the bounding rectangle of a widget in its parent's coordinate space.
 ///
 /// @param widget The widget to query.

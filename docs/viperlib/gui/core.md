@@ -245,7 +245,9 @@ Common numeric setters clamp invalid input: negative sizes, margins, padding, fl
 | `SetEnabled(enabled)`         | `Void(Integer)`          | Set enabled state (1=enabled, 0=disabled)|
 | `SetFlex(flex)`               | `Void(Double)`           | Set flex factor for layout               |
 | `SetMargin(margin)`           | `Void(Integer)`          | Set uniform outer margin in pixels       |
+| `SetMaxSize(width, height)`   | `Void(Double, Double)`   | Set maximum layout size; use `0` to clear a maximum |
 | `SetPosition(x, y)`          | `Void(Integer, Integer)` | Set position in pixels                   |
+| `SetPreferredSize(width, height)` | `Void(Double, Double)` | Set preferred layout size while preserving min/max constraints |
 | `SetSize(width, height)`      | `Void(Integer, Integer)` | Set fixed size in pixels                 |
 | `SetTooltip(text)`            | `Void(String)`           | Set tooltip text for this widget         |
 | `SetTooltipRich(title, body)` | `Void(String, String)`   | Set rich tooltip with title and body     |

@@ -131,6 +131,10 @@ vg_button_t *vg_button_create(vg_widget_t *parent, const char *text) {
 
     // Initialize button-specific fields
     button->text = text ? strdup(text) : strdup("");
+    if (!button->text) {
+        vg_widget_destroy(&button->base);
+        return NULL;
+    }
     button->font = theme->typography.font_regular;
     button->font_size = theme->typography.size_normal;
     button->style = VG_BUTTON_STYLE_DEFAULT;
@@ -205,15 +209,7 @@ static void button_measure(vg_widget_t *widget, float available_width, float ava
     widget->measured_width = width;
     widget->measured_height = height;
 
-    // Apply constraints
-    if (widget->constraints.max_width > 0 &&
-        widget->measured_width > widget->constraints.max_width) {
-        widget->measured_width = widget->constraints.max_width;
-    }
-    if (widget->constraints.max_height > 0 &&
-        widget->measured_height > widget->constraints.max_height) {
-        widget->measured_height = widget->constraints.max_height;
-    }
+    vg_widget_apply_constraints(widget);
 }
 
 static void button_paint(vg_widget_t *widget, void *canvas) {
@@ -416,10 +412,12 @@ void vg_button_set_text(vg_button_t *button, const char *text) {
     if (!button)
         return;
 
-    if (button->text) {
-        free((void *)button->text);
-    }
-    button->text = text ? strdup(text) : strdup("");
+    char *copy = text ? strdup(text) : strdup("");
+    if (!copy)
+        return;
+
+    free((void *)button->text);
+    button->text = copy;
     button->base.needs_layout = true;
     button->base.needs_paint = true;
 }
@@ -494,8 +492,12 @@ void vg_button_set_icon(vg_button_t *button, const char *icon) {
     if (!button)
         return;
 
+    char *copy = icon ? strdup(icon) : NULL;
+    if (icon && !copy)
+        return;
+
     free(button->icon_text);
-    button->icon_text = icon ? strdup(icon) : NULL;
+    button->icon_text = copy;
     button->base.needs_layout = true;
     button->base.needs_paint = true;
 }

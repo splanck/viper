@@ -164,7 +164,7 @@ if (VIPER_BUILD_TESTING)
     add_test(NAME test_vg_tier3_fixes COMMAND test_vg_tier3_fixes)
     set_tests_properties(test_vg_tier3_fixes PROPERTIES LABELS "tui" TIMEOUT 15)
 
-    # Regression suite for the 13 GUI audit fixes (plan: do-an-in-depth-scalable-walrus.md).
+    # Regression suite for GUI audit fixes.
     add_executable(test_vg_audit_fixes tests/test_vg_audit_fixes.c)
     target_link_libraries(test_vg_audit_fixes vipergui)
     target_include_directories(test_vg_audit_fixes PRIVATE

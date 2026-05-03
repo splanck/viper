@@ -127,7 +127,9 @@ Checkbox labels also use the current GUI theme or app font by default, matching 
 | Method                        | Signature       | Description                                      |
 |-------------------------------|-----------------|--------------------------------------------------|
 | `IsChecked()`                 | `Boolean()`     | Get checked state                                |
+| `IsIndeterminate()`           | `Boolean()`     | Get indeterminate tri-state state                |
 | `SetChecked(checked)`         | `Void(Integer)` | Set checked state                                |
+| `SetIndeterminate(value)`     | `Void(Integer)` | Show or clear indeterminate state; setting it clears checked state |
 | `SetText(text)`               | `Void(String)`  | Set label text                                   |
 
 ```basic
@@ -285,6 +287,8 @@ Programmatic values are clamped to the `0.0` through `1.0` range, with non-finit
 | Method                     | Signature          | Description                                              |
 |----------------------------|--------------------|----------------------------------------------------------|
 | `SetValue(value)`          | `Void(Double)`     | Set progress (0.0-1.0)                                   |
+| `SetStyle(style)`          | `Void(Integer)`    | Set style: `0` bar, `1` circular, `2` indeterminate      |
+| `ShowPercentage(show)`     | `Void(Integer)`    | Show or hide percentage text                             |
 
 ```basic
 DIM progress AS Viper.GUI.ProgressBar

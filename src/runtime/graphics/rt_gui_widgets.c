@@ -175,6 +175,26 @@ void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
     }
 }
 
+void rt_widget_set_preferred_size(void *widget, double width, double height) {
+    RT_ASSERT_MAIN_THREAD();
+    if (widget) {
+        vg_widget_set_preferred_size((vg_widget_t *)widget,
+                                     rt_gui_sanitize_nonnegative_float(
+                                         width, RT_GUI_MAX_LAYOUT_VALUE),
+                                     rt_gui_sanitize_nonnegative_float(
+                                         height, RT_GUI_MAX_LAYOUT_VALUE));
+    }
+}
+
+void rt_widget_set_max_size(void *widget, double width, double height) {
+    RT_ASSERT_MAIN_THREAD();
+    if (widget) {
+        vg_widget_set_max_size((vg_widget_t *)widget,
+                               rt_gui_sanitize_nonnegative_float(width, RT_GUI_MAX_LAYOUT_VALUE),
+                               rt_gui_sanitize_nonnegative_float(height, RT_GUI_MAX_LAYOUT_VALUE));
+    }
+}
+
 /// @brief Set the flex-grow factor for a widget within a VBox/HBox container.
 /// @details The flex value determines how much of the remaining space (after
 ///          fixed-size and auto-sized widgets) this widget claims. A flex of 1.0
@@ -568,6 +588,19 @@ void rt_checkbox_set_text(void *checkbox, rt_string text) {
     char *ctext = rt_string_to_cstr(text);
     vg_checkbox_set_text((vg_checkbox_t *)checkbox, ctext);
     free(ctext);
+}
+
+void rt_checkbox_set_indeterminate(void *checkbox, int64_t indeterminate) {
+    RT_ASSERT_MAIN_THREAD();
+    if (checkbox)
+        vg_checkbox_set_indeterminate((vg_checkbox_t *)checkbox, indeterminate != 0);
+}
+
+int64_t rt_checkbox_is_indeterminate(void *checkbox) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!checkbox)
+        return 0;
+    return vg_checkbox_is_indeterminate((vg_checkbox_t *)checkbox) ? 1 : 0;
 }
 
 //=============================================================================

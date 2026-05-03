@@ -7,7 +7,7 @@
 //
 // File: src/lib/gui/tests/test_vg_audit_fixes.c
 // Purpose: Regression tests for GUI bugs identified in the
-//          Viper.GUI in-depth audit (plan: do-an-in-depth-scalable-walrus.md).
+//          Viper.GUI in-depth audits.
 // Key invariants:
 //   - Each TEST exercises ONE bug from the audit; the assertion holds only
 //     once the fix is applied.
@@ -2117,6 +2117,306 @@ TEST(widget_runtime_restore_rejects_destroyed_widget_pointer) {
 }
 
 //=============================================================================
+// Round 7 - Viper.GUI class correctness audit fixes
+//=============================================================================
+
+static int g_overlay_paint_count = 0;
+
+static void overlay_count_paint(vg_widget_t *widget, void *canvas) {
+    (void)widget;
+    (void)canvas;
+    g_overlay_paint_count++;
+}
+
+static vg_widget_vtable_t g_overlay_count_vtable = {
+    .paint_overlay = overlay_count_paint,
+};
+
+TEST(scrollview_internal_overlay_children_are_not_repainted_by_global_pass) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_SCROLLVIEW);
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_CUSTOM);
+    ASSERT_NOT_NULL(root);
+    ASSERT_NOT_NULL(child);
+    child->vtable = &g_overlay_count_vtable;
+    vg_widget_add_child(root, child);
+
+    g_overlay_paint_count = 0;
+    vg_widget_paint(root, (void *)0x1);
+    ASSERT_EQ(g_overlay_paint_count, 0);
+
+    vg_widget_destroy(root);
+}
+
+TEST(grid_placement_metadata_is_removed_when_child_detaches) {
+    vg_widget_t *grid = vg_grid_create(2, 1);
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_CUSTOM);
+    ASSERT_NOT_NULL(grid);
+    ASSERT_NOT_NULL(child);
+    child->vtable = &g_fixed_vtable;
+
+    vg_widget_add_child(grid, child);
+    vg_grid_place(grid, child, 1, 0, 1, 1);
+    vg_widget_measure(grid, 200.0f, 100.0f);
+    vg_widget_arrange(grid, 0.0f, 0.0f, 200.0f, 100.0f);
+    ASSERT(child->x > 90.0f);
+
+    vg_widget_remove_child(grid, child);
+    vg_widget_add_child(grid, child);
+    vg_widget_measure(grid, 200.0f, 100.0f);
+    vg_widget_arrange(grid, 0.0f, 0.0f, 200.0f, 100.0f);
+    ASSERT_NEAR(child->x, 0.0f, 0.001f);
+
+    vg_widget_destroy(grid);
+}
+
+TEST(dock_metadata_is_removed_when_child_detaches) {
+    vg_widget_t *dock = vg_dock_create();
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_CUSTOM);
+    ASSERT_NOT_NULL(dock);
+    ASSERT_NOT_NULL(child);
+    child->vtable = &g_fixed_vtable;
+
+    vg_dock_add(dock, child, VG_DOCK_LEFT);
+    vg_widget_measure(dock, 100.0f, 50.0f);
+    vg_widget_arrange(dock, 0.0f, 0.0f, 100.0f, 50.0f);
+    ASSERT(child->width < 100.0f);
+
+    vg_widget_remove_child(dock, child);
+    vg_widget_add_child(dock, child);
+    vg_widget_measure(dock, 100.0f, 50.0f);
+    vg_widget_arrange(dock, 0.0f, 0.0f, 100.0f, 50.0f);
+    ASSERT_NEAR(child->width, 100.0f, 0.001f);
+
+    vg_widget_destroy(dock);
+}
+
+static int g_radio_a_false = 0;
+static int g_radio_b_true = 0;
+static int g_radio_b_false = 0;
+
+static void radio_a_change(vg_widget_t *radio, bool selected, void *user_data) {
+    (void)radio;
+    (void)user_data;
+    if (!selected)
+        g_radio_a_false++;
+}
+
+static void radio_b_change(vg_widget_t *radio, bool selected, void *user_data) {
+    (void)radio;
+    (void)user_data;
+    if (selected)
+        g_radio_b_true++;
+    else
+        g_radio_b_false++;
+}
+
+TEST(radiobutton_group_selection_updates_callbacks_dirty_and_clear_state) {
+    vg_radiogroup_t *group = vg_radiogroup_create();
+    ASSERT_NOT_NULL(group);
+    vg_radiobutton_t *a = vg_radiobutton_create(NULL, "A", group);
+    vg_radiobutton_t *b = vg_radiobutton_create(NULL, "B", group);
+    ASSERT_NOT_NULL(a);
+    ASSERT_NOT_NULL(b);
+    a->on_change = radio_a_change;
+    b->on_change = radio_b_change;
+
+    vg_radiobutton_set_selected(a, true);
+    a->base.needs_paint = false;
+    b->base.needs_paint = false;
+    g_radio_a_false = 0;
+    g_radio_b_true = 0;
+    g_radio_b_false = 0;
+
+    vg_radiobutton_set_selected(b, true);
+    ASSERT_FALSE(vg_radiobutton_is_selected(a));
+    ASSERT_TRUE(vg_radiobutton_is_selected(b));
+    ASSERT_EQ(vg_radiogroup_get_selected(group), 1);
+    ASSERT_EQ(g_radio_a_false, 1);
+    ASSERT_EQ(g_radio_b_true, 1);
+    ASSERT_TRUE(a->base.needs_paint);
+    ASSERT_TRUE(b->base.needs_paint);
+
+    b->base.needs_paint = false;
+    vg_radiobutton_set_selected(b, false);
+    ASSERT_FALSE(vg_radiobutton_is_selected(b));
+    ASSERT_EQ(vg_radiogroup_get_selected(group), -1);
+    ASSERT_EQ(g_radio_b_false, 1);
+    ASSERT_TRUE(b->base.needs_paint);
+
+    vg_widget_destroy(&a->base);
+    vg_widget_destroy(&b->base);
+    vg_radiogroup_destroy(group);
+}
+
+static int g_checkbox_change_count = 0;
+static bool g_checkbox_last_checked = true;
+
+static void checkbox_change_counter(vg_widget_t *checkbox, bool checked, void *user_data) {
+    (void)checkbox;
+    (void)user_data;
+    g_checkbox_change_count++;
+    g_checkbox_last_checked = checked;
+}
+
+TEST(checkbox_indeterminate_clears_checked_state_and_style_flag) {
+    vg_checkbox_t *cb = vg_checkbox_create(NULL, "Tri");
+    ASSERT_NOT_NULL(cb);
+    vg_checkbox_set_on_change(cb, checkbox_change_counter, NULL);
+    vg_checkbox_set_checked(cb, true);
+
+    g_checkbox_change_count = 0;
+    g_checkbox_last_checked = true;
+    vg_checkbox_set_indeterminate(cb, true);
+
+    ASSERT_TRUE(vg_checkbox_is_indeterminate(cb));
+    ASSERT_FALSE(vg_checkbox_is_checked(cb));
+    ASSERT_FALSE((cb->base.state & VG_STATE_CHECKED) != 0);
+    ASSERT_EQ(g_checkbox_change_count, 1);
+    ASSERT_FALSE(g_checkbox_last_checked);
+
+    vg_checkbox_set_checked(cb, false);
+    ASSERT_FALSE(vg_checkbox_is_indeterminate(cb));
+
+    vg_widget_destroy(&cb->base);
+}
+
+static int g_textinput_change_count = 0;
+
+static void textinput_change_counter(vg_widget_t *widget, const char *text, void *user_data) {
+    (void)widget;
+    (void)text;
+    (void)user_data;
+    g_textinput_change_count++;
+}
+
+TEST(textinput_replacement_insert_emits_single_change) {
+    vg_textinput_t *input = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(input);
+    vg_textinput_set_text(input, "abc");
+    vg_textinput_set_on_change(input, textinput_change_counter, NULL);
+
+    g_textinput_change_count = 0;
+    vg_textinput_select(input, 1, 2);
+    vg_textinput_insert(input, "Z");
+
+    ASSERT_EQ(strcmp(vg_textinput_get_text(input), "aZc"), 0);
+    ASSERT_EQ(g_textinput_change_count, 1);
+
+    vg_widget_destroy(&input->base);
+}
+
+static void assert_preferred_measure(vg_widget_t *widget) {
+    ASSERT_NOT_NULL(widget);
+    vg_widget_set_preferred_size(widget, 180.0f, 48.0f);
+    vg_widget_measure(widget, 1000.0f, 1000.0f);
+    ASSERT_NEAR(widget->measured_width, 180.0f, 0.001f);
+    ASSERT_NEAR(widget->measured_height, 48.0f, 0.001f);
+}
+
+TEST(specialized_widgets_honor_preferred_size_constraints) {
+    vg_textinput_t *textinput = vg_textinput_create(NULL);
+    vg_scrollview_t *scrollview = vg_scrollview_create(NULL);
+    vg_slider_t *slider = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
+    vg_progressbar_t *progress = vg_progressbar_create(NULL);
+    vg_spinner_t *spinner = vg_spinner_create(NULL);
+    vg_listbox_t *listbox = vg_listbox_create(NULL);
+    vg_dropdown_t *dropdown = vg_dropdown_create(NULL);
+    vg_checkbox_t *checkbox = vg_checkbox_create(NULL, "check");
+    vg_radiogroup_t *group = vg_radiogroup_create();
+    ASSERT_NOT_NULL(group);
+    vg_radiobutton_t *radio = vg_radiobutton_create(NULL, "radio", group);
+
+    ASSERT_NOT_NULL(textinput);
+    ASSERT_NOT_NULL(scrollview);
+    ASSERT_NOT_NULL(slider);
+    ASSERT_NOT_NULL(progress);
+    ASSERT_NOT_NULL(spinner);
+    ASSERT_NOT_NULL(listbox);
+    ASSERT_NOT_NULL(dropdown);
+    ASSERT_NOT_NULL(checkbox);
+    ASSERT_NOT_NULL(radio);
+
+    assert_preferred_measure(&textinput->base);
+    assert_preferred_measure(&scrollview->base);
+    assert_preferred_measure(&slider->base);
+    assert_preferred_measure(&progress->base);
+    assert_preferred_measure(&spinner->base);
+    assert_preferred_measure(&listbox->base);
+    assert_preferred_measure(&dropdown->base);
+    assert_preferred_measure(&checkbox->base);
+    assert_preferred_measure(&radio->base);
+
+    vg_widget_destroy(&textinput->base);
+    vg_widget_destroy(&scrollview->base);
+    vg_widget_destroy(&slider->base);
+    vg_widget_destroy(&progress->base);
+    vg_widget_destroy(&spinner->base);
+    vg_widget_destroy(&listbox->base);
+    vg_widget_destroy(&dropdown->base);
+    vg_widget_destroy(&checkbox->base);
+    vg_widget_destroy(&radio->base);
+    vg_radiogroup_destroy(group);
+}
+
+TEST(specialized_widgets_honor_max_size_constraints) {
+    vg_slider_t *slider = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
+    ASSERT_NOT_NULL(slider);
+    vg_widget_set_preferred_size(&slider->base, 200.0f, 40.0f);
+    vg_widget_set_max_size(&slider->base, 120.0f, 24.0f);
+    vg_widget_measure(&slider->base, 1000.0f, 1000.0f);
+    ASSERT_NEAR(slider->base.measured_width, 120.0f, 0.001f);
+    ASSERT_NEAR(slider->base.measured_height, 24.0f, 0.001f);
+    vg_widget_destroy(&slider->base);
+}
+
+TEST(progressbar_sanitizes_nan_value_and_normalizes_phase) {
+    vg_progressbar_t *pb = vg_progressbar_create(NULL);
+    ASSERT_NOT_NULL(pb);
+
+    vg_progressbar_set_value(pb, strtof("nan", NULL));
+    ASSERT_NEAR(vg_progressbar_get_value(pb), 0.0f, 0.001f);
+
+    vg_progressbar_set_style(pb, VG_PROGRESS_INDETERMINATE);
+    vg_progressbar_tick(pb, 10.0f);
+    ASSERT(pb->animation_phase >= 0.0f && pb->animation_phase < 1.0f);
+    float phase = pb->animation_phase;
+    vg_progressbar_tick(pb, -1.0f);
+    ASSERT_NEAR(pb->animation_phase, phase, 0.001f);
+    vg_progressbar_tick(pb, strtof("nan", NULL));
+    ASSERT_NEAR(pb->animation_phase, phase, 0.001f);
+
+    vg_widget_destroy(&pb->base);
+}
+
+TEST(spinner_set_font_rejects_invalid_sizes) {
+    vg_spinner_t *spinner = vg_spinner_create(NULL);
+    ASSERT_NOT_NULL(spinner);
+
+    vg_spinner_set_font(spinner, NULL, -4.0f);
+    ASSERT(isfinite(spinner->font_size));
+    ASSERT(spinner->font_size > 0.0f);
+    float fallback = spinner->font_size;
+
+    vg_spinner_set_font(spinner, NULL, strtof("nan", NULL));
+    ASSERT_NEAR(spinner->font_size, fallback, 0.001f);
+
+    vg_widget_destroy(&spinner->base);
+}
+
+TEST(dropdown_placeholder_marks_layout_dirty) {
+    vg_dropdown_t *dd = vg_dropdown_create(NULL);
+    ASSERT_NOT_NULL(dd);
+    dd->base.needs_layout = false;
+    dd->base.needs_paint = false;
+
+    vg_dropdown_set_placeholder(dd, "A much wider placeholder");
+    ASSERT_TRUE(dd->base.needs_layout);
+    ASSERT_TRUE(dd->base.needs_paint);
+
+    vg_widget_destroy(&dd->base);
+}
+
+//=============================================================================
 // Main
 //=============================================================================
 
@@ -2230,6 +2530,19 @@ int main(void) {
     RUN(grid_auto_flow_creates_implicit_rows);
     RUN(grid_explicit_placement_extends_effective_rows);
     RUN(widget_runtime_restore_rejects_destroyed_widget_pointer);
+
+    printf("\nRound 7 - Viper.GUI class correctness audit fixes\n");
+    RUN(scrollview_internal_overlay_children_are_not_repainted_by_global_pass);
+    RUN(grid_placement_metadata_is_removed_when_child_detaches);
+    RUN(dock_metadata_is_removed_when_child_detaches);
+    RUN(radiobutton_group_selection_updates_callbacks_dirty_and_clear_state);
+    RUN(checkbox_indeterminate_clears_checked_state_and_style_flag);
+    RUN(textinput_replacement_insert_emits_single_change);
+    RUN(specialized_widgets_honor_preferred_size_constraints);
+    RUN(specialized_widgets_honor_max_size_constraints);
+    RUN(progressbar_sanitizes_nan_value_and_normalizes_phase);
+    RUN(spinner_set_font_rejects_invalid_sizes);
+    RUN(dropdown_placeholder_marks_layout_dirty);
 
     printf("\n=== Results: %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;

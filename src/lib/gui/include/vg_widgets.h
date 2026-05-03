@@ -414,6 +414,9 @@ void vg_checkbox_set_font(vg_checkbox_t *checkbox, vg_font_t *font, float size);
 /// @param indeterminate true to show dash (indeterminate); false to clear it.
 void vg_checkbox_set_indeterminate(vg_checkbox_t *checkbox, bool indeterminate);
 
+/// @brief Return true when the checkbox is currently in its indeterminate state.
+bool vg_checkbox_is_indeterminate(vg_checkbox_t *checkbox);
+
 //=============================================================================
 // ScrollView Widget
 //=============================================================================

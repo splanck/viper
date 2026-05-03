@@ -256,17 +256,9 @@ static void image_measure(vg_widget_t *widget, float available_width, float avai
         height = image->img_height > 0 ? (float)image->img_height : available_height;
     }
 
-    if (width < widget->constraints.min_width)
-        width = widget->constraints.min_width;
-    if (height < widget->constraints.min_height)
-        height = widget->constraints.min_height;
-    if (widget->constraints.max_width > 0.0f && width > widget->constraints.max_width)
-        width = widget->constraints.max_width;
-    if (widget->constraints.max_height > 0.0f && height > widget->constraints.max_height)
-        height = widget->constraints.max_height;
-
     widget->measured_width = width;
     widget->measured_height = height;
+    vg_widget_apply_constraints(widget);
 }
 
 static void image_paint(vg_widget_t *widget, void *canvas) {

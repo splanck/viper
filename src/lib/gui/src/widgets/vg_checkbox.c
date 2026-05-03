@@ -56,6 +56,10 @@ vg_checkbox_t *vg_checkbox_create(vg_widget_t *parent, const char *text) {
 
     // Initialize checkbox-specific fields
     checkbox->text = text ? strdup(text) : strdup("");
+    if (!checkbox->text) {
+        vg_widget_destroy(&checkbox->base);
+        return NULL;
+    }
     checkbox->font = theme->typography.font_regular;
     checkbox->font_size = theme->typography.size_normal;
     checkbox->checked = false;
@@ -114,13 +118,7 @@ static void checkbox_measure(vg_widget_t *widget, float available_width, float a
     widget->measured_width = width;
     widget->measured_height = height;
 
-    // Apply constraints
-    if (widget->measured_width < widget->constraints.min_width) {
-        widget->measured_width = widget->constraints.min_width;
-    }
-    if (widget->measured_height < widget->constraints.min_height) {
-        widget->measured_height = widget->constraints.min_height;
-    }
+    vg_widget_apply_constraints(widget);
 }
 
 static void checkbox_paint(vg_widget_t *widget, void *canvas) {
@@ -224,18 +222,21 @@ void vg_checkbox_set_checked(vg_checkbox_t *checkbox, bool checked) {
     if (!checkbox)
         return;
 
-    if (checkbox->checked != checked) {
-        checkbox->checked = checked;
-        checkbox->indeterminate = false;
+    bool old_checked = checkbox->checked;
+    bool old_indeterminate = checkbox->indeterminate;
+    checkbox->checked = checked;
+    checkbox->indeterminate = false;
+
+    if (checked) {
+        checkbox->base.state |= VG_STATE_CHECKED;
+    } else {
+        checkbox->base.state &= ~VG_STATE_CHECKED;
+    }
+
+    if (old_checked != checked || old_indeterminate) {
         checkbox->base.needs_paint = true;
 
-        if (checked) {
-            checkbox->base.state |= VG_STATE_CHECKED;
-        } else {
-            checkbox->base.state &= ~VG_STATE_CHECKED;
-        }
-
-        if (checkbox->on_change) {
+        if (old_checked != checked && checkbox->on_change) {
             checkbox->on_change(&checkbox->base, checked, checkbox->on_change_data);
         }
     }
@@ -257,8 +258,21 @@ void vg_checkbox_toggle(vg_checkbox_t *checkbox) {
 void vg_checkbox_set_indeterminate(vg_checkbox_t *checkbox, bool indeterminate) {
     if (!checkbox)
         return;
+
+    bool old_checked = checkbox->checked;
     checkbox->indeterminate = indeterminate;
+    if (indeterminate) {
+        checkbox->checked = false;
+        checkbox->base.state &= ~VG_STATE_CHECKED;
+    }
     checkbox->base.needs_paint = true;
+
+    if (old_checked != checkbox->checked && checkbox->on_change)
+        checkbox->on_change(&checkbox->base, checkbox->checked, checkbox->on_change_data);
+}
+
+bool vg_checkbox_is_indeterminate(vg_checkbox_t *checkbox) {
+    return checkbox ? checkbox->indeterminate : false;
 }
 
 /// @brief Checkbox set text.
@@ -266,10 +280,12 @@ void vg_checkbox_set_text(vg_checkbox_t *checkbox, const char *text) {
     if (!checkbox)
         return;
 
-    if (checkbox->text) {
-        free((void *)checkbox->text);
-    }
-    checkbox->text = text ? strdup(text) : strdup("");
+    char *copy = text ? strdup(text) : strdup("");
+    if (!copy)
+        return;
+
+    free((void *)checkbox->text);
+    checkbox->text = copy;
     checkbox->base.needs_layout = true;
     checkbox->base.needs_paint = true;
 }

@@ -78,27 +78,7 @@ static float layout_nonnegative(float value) {
 }
 
 static void layout_apply_constraints(vg_widget_t *widget) {
-    if (!widget)
-        return;
-
-    if (widget->constraints.preferred_width > 0.0f)
-        widget->measured_width = widget->constraints.preferred_width;
-    if (widget->constraints.preferred_height > 0.0f)
-        widget->measured_height = widget->constraints.preferred_height;
-    if (widget->constraints.min_width > 0.0f &&
-        widget->measured_width < widget->constraints.min_width)
-        widget->measured_width = widget->constraints.min_width;
-    if (widget->constraints.min_height > 0.0f &&
-        widget->measured_height < widget->constraints.min_height)
-        widget->measured_height = widget->constraints.min_height;
-    if (widget->constraints.max_width > 0.0f &&
-        widget->measured_width > widget->constraints.max_width)
-        widget->measured_width = widget->constraints.max_width;
-    if (widget->constraints.max_height > 0.0f &&
-        widget->measured_height > widget->constraints.max_height)
-        widget->measured_height = widget->constraints.max_height;
-    widget->measured_width = layout_nonnegative(widget->measured_width);
-    widget->measured_height = layout_nonnegative(widget->measured_height);
+    vg_widget_apply_constraints(widget);
 }
 
 static const vg_widget_vtable_t g_vbox_vtable = {
@@ -1093,6 +1073,24 @@ static grid_placement_t *grid_find_placement(grid_impl_t *g, vg_widget_t *child)
     return NULL;
 }
 
+static void grid_remove_placement(grid_impl_t *g, vg_widget_t *child) {
+    if (!g || !child)
+        return;
+    for (int i = 0; i < g->placement_count; i++) {
+        if (g->placements[i].child != child)
+            continue;
+        int remaining = g->placement_count - i - 1;
+        if (remaining > 0)
+            memmove(&g->placements[i],
+                    &g->placements[i + 1],
+                    (size_t)remaining * sizeof(grid_placement_t));
+        g->placement_count--;
+        if (g->placement_count >= 0)
+            memset(&g->placements[g->placement_count], 0, sizeof(grid_placement_t));
+        return;
+    }
+}
+
 static int grid_clamp_track_count(int count) {
     if (count < 1)
         return 1;
@@ -1661,8 +1659,12 @@ void vg_dock_add(vg_widget_t *dock, vg_widget_t *child, vg_dock_t position) {
 
     /* Grow array if needed */
     if (d->entry_count >= d->entry_capacity) {
+        if (d->entry_capacity > INT32_MAX / 2)
+            return;
         int new_cap = d->entry_capacity * 2;
-        dock_entry_t *new_e = realloc(d->entries, new_cap * sizeof(dock_entry_t));
+        if ((size_t)new_cap > SIZE_MAX / sizeof(dock_entry_t))
+            return;
+        dock_entry_t *new_e = realloc(d->entries, (size_t)new_cap * sizeof(dock_entry_t));
         if (!new_e)
             return;
         d->entries = new_e;
@@ -1676,6 +1678,35 @@ void vg_dock_add(vg_widget_t *dock, vg_widget_t *child, vg_dock_t position) {
     /* Also add as a widget child so the vtable can iterate it */
     vg_widget_add_child(dock, child);
     dock->needs_layout = true;
+}
+
+static void dock_remove_entry(dock_impl_t *d, vg_widget_t *child) {
+    if (!d || !child)
+        return;
+    for (int i = 0; i < d->entry_count; i++) {
+        if (d->entries[i].child != child)
+            continue;
+        int remaining = d->entry_count - i - 1;
+        if (remaining > 0)
+            memmove(&d->entries[i], &d->entries[i + 1], (size_t)remaining * sizeof(dock_entry_t));
+        d->entry_count--;
+        if (d->entry_count >= 0)
+            memset(&d->entries[d->entry_count], 0, sizeof(dock_entry_t));
+        return;
+    }
+}
+
+void vg_layout_on_child_detached(vg_widget_t *parent, vg_widget_t *child) {
+    if (!parent || !child || !parent->impl_data || !parent->vtable)
+        return;
+
+    if (parent->vtable == &g_grid_vtable) {
+        grid_remove_placement((grid_impl_t *)parent->impl_data, child);
+        parent->needs_layout = true;
+    } else if (parent->vtable == &g_dock_vtable) {
+        dock_remove_entry((dock_impl_t *)parent->impl_data, child);
+        parent->needs_layout = true;
+    }
 }
 
 //=============================================================================

@@ -138,6 +138,12 @@ void rt_widget_set_enabled(void *widget, int64_t enabled);
 /// @param height Height in pixels.
 void rt_widget_set_size(void *widget, int64_t width, int64_t height);
 
+/// @brief Set widget preferred size while leaving min/max constraints unchanged.
+void rt_widget_set_preferred_size(void *widget, double width, double height);
+
+/// @brief Set widget maximum size. Pass 0 for either dimension to clear that maximum.
+void rt_widget_set_max_size(void *widget, double width, double height);
+
 /// @brief Set the flex grow factor for VBox/HBox layout.
 /// @param widget Widget handle.
 /// @param flex Flex factor (0 = fixed size, >0 = expand proportionally).
@@ -315,6 +321,12 @@ int64_t rt_checkbox_is_checked(void *checkbox);
 /// @param checkbox Checkbox widget handle.
 /// @param text New text.
 void rt_checkbox_set_text(void *checkbox, rt_string text);
+
+/// @brief Set checkbox indeterminate state.
+void rt_checkbox_set_indeterminate(void *checkbox, int64_t indeterminate);
+
+/// @brief Get checkbox indeterminate state.
+int64_t rt_checkbox_is_indeterminate(void *checkbox);
 
 //=========================================================================
 // ScrollView Widget
@@ -683,6 +695,12 @@ void rt_progressbar_set_value(void *progress, double value);
 /// @param progress ProgressBar widget handle.
 /// @return Current value (0.0 to 1.0).
 double rt_progressbar_get_value(void *progress);
+
+/// @brief Set progress bar style: 0=bar, 1=circular, 2=indeterminate.
+void rt_progressbar_set_style(void *progress, int64_t style);
+
+/// @brief Enable or disable percentage text.
+void rt_progressbar_show_percentage(void *progress, int64_t show);
 
 //=========================================================================
 // ListBox Widget

@@ -81,6 +81,7 @@ static void dropdown_measure(vg_widget_t *widget, float avail_w, float avail_h) 
         width = 120.0f;
     widget->measured_width = width;
     widget->measured_height = dropdown_item_height((vg_dropdown_t *)widget);
+    vg_widget_apply_constraints(widget);
 }
 
 // Height of one item row in the dropdown panel
@@ -836,8 +837,12 @@ const char *vg_dropdown_get_selected_text(vg_dropdown_t *dropdown) {
 void vg_dropdown_set_placeholder(vg_dropdown_t *dropdown, const char *text) {
     if (!dropdown)
         return;
+    char *copy = text ? strdup(text) : NULL;
+    if (text && !copy)
+        return;
     free(dropdown->placeholder);
-    dropdown->placeholder = text ? strdup(text) : NULL;
+    dropdown->placeholder = copy;
+    dropdown->base.needs_layout = true;
     dropdown->base.needs_paint = true;
 }
 

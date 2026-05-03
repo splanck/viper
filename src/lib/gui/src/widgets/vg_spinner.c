@@ -127,6 +127,7 @@ static void spinner_measure(vg_widget_t *widget, float available_width, float av
 
     widget->measured_width = width;
     widget->measured_height = height;
+    vg_widget_apply_constraints(widget);
 }
 
 static void spinner_paint(vg_widget_t *widget, void *canvas) {
@@ -608,7 +609,8 @@ void vg_spinner_set_font(vg_spinner_t *spinner, vg_font_t *font, float size) {
     if (!spinner)
         return;
     spinner->font = font;
-    spinner->font_size = size;
+    spinner->font_size =
+        (isfinite(size) && size > 0.0f) ? size : vg_theme_get_current()->typography.size_normal;
     spinner->base.needs_layout = true;
     spinner->base.needs_paint = true;
 }

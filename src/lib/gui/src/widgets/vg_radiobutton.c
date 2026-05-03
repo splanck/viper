@@ -13,6 +13,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -26,6 +27,7 @@ static void radio_paint(vg_widget_t *widget, void *canvas);
 static bool radio_handle_event(vg_widget_t *widget, vg_event_t *event);
 static bool radio_can_focus(vg_widget_t *widget);
 static void radiogroup_unregister(vg_radiogroup_t *group, vg_radiobutton_t *radio);
+static void radio_apply_selected(vg_radiobutton_t *radio, bool selected, bool notify);
 
 //=============================================================================
 // RadioButton VTable
@@ -65,8 +67,7 @@ static void radio_measure(vg_widget_t *widget, float avail_w, float avail_h) {
 
     widget->measured_width = w;
     widget->measured_height = h;
-    if (widget->measured_height < widget->constraints.min_height)
-        widget->measured_height = widget->constraints.min_height;
+    vg_widget_apply_constraints(widget);
 }
 
 static void radio_paint(vg_widget_t *widget, void *canvas) {
@@ -139,6 +140,10 @@ vg_radiogroup_t *vg_radiogroup_create(void) {
 
     group->button_capacity = 8;
     group->buttons = calloc(group->button_capacity, sizeof(vg_radiobutton_t *));
+    if (!group->buttons) {
+        free(group);
+        return NULL;
+    }
     group->selected_index = -1;
 
     return group;
@@ -199,7 +204,11 @@ vg_radiobutton_t *vg_radiobutton_create(vg_widget_t *parent,
 
     vg_widget_init(&radio->base, VG_WIDGET_RADIO, &g_radio_vtable);
     radio->text = text ? strdup(text) : NULL;
-    radio->group = group;
+    if (text && !radio->text) {
+        vg_widget_destroy(&radio->base);
+        return NULL;
+    }
+    radio->group = NULL;
 
     // Default appearance
     radio->circle_size = 16;
@@ -212,21 +221,31 @@ vg_radiobutton_t *vg_radiobutton_create(vg_widget_t *parent,
 
     // Add to group
     if (group) {
-        if (!group->buttons && group->button_capacity > 0) {
-            group->buttons = calloc((size_t)group->button_capacity, sizeof(vg_radiobutton_t *));
+        if (!group->buttons || group->button_capacity <= 0) {
+            vg_widget_destroy(&radio->base);
+            return NULL;
         }
         if (group->button_count >= group->button_capacity) {
-            int new_cap = group->button_capacity * 2;
-            vg_radiobutton_t **new_btns =
-                realloc(group->buttons, new_cap * sizeof(vg_radiobutton_t *));
-            if (new_btns) {
-                group->buttons = new_btns;
-                group->button_capacity = new_cap;
+            if (group->button_capacity > INT32_MAX / 2) {
+                vg_widget_destroy(&radio->base);
+                return NULL;
             }
+            int new_cap = group->button_capacity * 2;
+            if ((size_t)new_cap > SIZE_MAX / sizeof(vg_radiobutton_t *)) {
+                vg_widget_destroy(&radio->base);
+                return NULL;
+            }
+            vg_radiobutton_t **new_btns =
+                realloc(group->buttons, (size_t)new_cap * sizeof(vg_radiobutton_t *));
+            if (!new_btns) {
+                vg_widget_destroy(&radio->base);
+                return NULL;
+            }
+            group->buttons = new_btns;
+            group->button_capacity = new_cap;
         }
-        if (group->button_count < group->button_capacity) {
-            group->buttons[group->button_count++] = radio;
-        }
+        group->buttons[group->button_count++] = radio;
+        radio->group = group;
     }
 
     if (parent) {
@@ -236,32 +255,60 @@ vg_radiobutton_t *vg_radiobutton_create(vg_widget_t *parent,
     return radio;
 }
 
+static void radio_apply_selected(vg_radiobutton_t *radio, bool selected, bool notify) {
+    if (!radio)
+        return;
+
+    bool old = radio->selected;
+    radio->selected = selected;
+    if (selected)
+        radio->base.state |= VG_STATE_CHECKED;
+    else
+        radio->base.state &= ~VG_STATE_CHECKED;
+
+    if (old != selected) {
+        radio->base.needs_paint = true;
+        if (notify && radio->on_change)
+            radio->on_change(&radio->base, selected, radio->on_change_data);
+    }
+}
+
 /// @brief Radiobutton set selected.
 void vg_radiobutton_set_selected(vg_radiobutton_t *radio, bool selected) {
     if (!radio)
         return;
 
     if (selected && radio->group) {
+        int own_index = -1;
         // Deselect all others in group
         for (int i = 0; i < radio->group->button_count; i++) {
-            if (radio->group->buttons[i] && radio->group->buttons[i] != radio) {
-                radio->group->buttons[i]->selected = false;
+            vg_radiobutton_t *member = radio->group->buttons[i];
+            if (!member)
+                continue;
+            if (member == radio) {
+                own_index = i;
+            } else {
+                radio_apply_selected(member, false, true);
             }
         }
-        // Update group selected index
-        for (int i = 0; i < radio->group->button_count; i++) {
-            if (radio->group->buttons[i] == radio) {
-                radio->group->selected_index = i;
-                break;
-            }
-        }
+        if (own_index >= 0)
+            radio->group->selected_index = own_index;
     }
 
-    bool old = radio->selected;
-    radio->selected = selected;
+    radio_apply_selected(radio, selected, true);
 
-    if (old != selected && radio->on_change) {
-        radio->on_change(&radio->base, selected, radio->on_change_data);
+    if (!selected && radio->group) {
+        int selected_index = radio->group->selected_index;
+        if (selected_index >= 0 && selected_index < radio->group->button_count &&
+            radio->group->buttons[selected_index] == radio) {
+            radio->group->selected_index = -1;
+            for (int i = 0; i < radio->group->button_count; i++) {
+                if (radio->group->buttons[i] && radio->group->buttons[i]->selected) {
+                    radio->group->selected_index = i;
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -276,7 +323,15 @@ int vg_radiogroup_get_selected(vg_radiogroup_t *group) {
 
 /// @brief Radiogroup set selected.
 void vg_radiogroup_set_selected(vg_radiogroup_t *group, int index) {
-    if (!group || index < 0 || index >= group->button_count)
+    if (!group)
+        return;
+    if (index < 0) {
+        for (int i = 0; i < group->button_count; i++)
+            radio_apply_selected(group->buttons[i], false, true);
+        group->selected_index = -1;
+        return;
+    }
+    if (index >= group->button_count)
         return;
     vg_radiobutton_set_selected(group->buttons[index], true);
 }

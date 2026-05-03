@@ -434,8 +434,9 @@ static float listbox_text_baseline(vg_listbox_t *lb, float item_y, float item_h)
 static void listbox_measure(vg_widget_t *widget, float avail_w, float avail_h) {
     vg_listbox_t *lb = (vg_listbox_t *)widget;
     (void)avail_h;
-    int count = lb->virtual_mode ? (int)lb->total_item_count : lb->item_count;
-    int visible = count > 0 ? (count < 5 ? count : 5) : 5;
+    size_t count = lb->virtual_mode ? lb->total_item_count
+                                    : (lb->item_count > 0 ? (size_t)lb->item_count : 0u);
+    size_t visible = count > 0 ? (count < 5u ? count : 5u) : 5u;
     float measured_width = 200.0f;
     if (lb->font && !lb->virtual_mode) {
         vg_text_metrics_t metrics = {0};
@@ -452,7 +453,8 @@ static void listbox_measure(vg_widget_t *widget, float avail_w, float avail_h) {
     if (avail_w > 0.0f && measured_width > avail_w)
         measured_width = avail_w;
     widget->measured_width = measured_width;
-    widget->measured_height = (float)(visible * (int)lb->item_height);
+    widget->measured_height = (float)visible * lb->item_height;
+    vg_widget_apply_constraints(widget);
 }
 
 static void listbox_arrange(vg_widget_t *widget, float x, float y, float w, float h) {

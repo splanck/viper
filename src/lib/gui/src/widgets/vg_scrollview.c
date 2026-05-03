@@ -268,19 +268,7 @@ static void scrollview_measure(vg_widget_t *widget, float available_width, float
     widget->measured_width = available_width > 0 ? available_width : 200;
     widget->measured_height = available_height > 0 ? available_height : 200;
 
-    // Apply constraints
-    if (widget->constraints.preferred_width > 0) {
-        widget->measured_width = widget->constraints.preferred_width;
-    }
-    if (widget->constraints.preferred_height > 0) {
-        widget->measured_height = widget->constraints.preferred_height;
-    }
-    if (widget->measured_width < widget->constraints.min_width) {
-        widget->measured_width = widget->constraints.min_width;
-    }
-    if (widget->measured_height < widget->constraints.min_height) {
-        widget->measured_height = widget->constraints.min_height;
-    }
+    vg_widget_apply_constraints(widget);
 }
 
 static void scrollview_arrange(vg_widget_t *widget, float x, float y, float width, float height) {

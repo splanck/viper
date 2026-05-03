@@ -706,6 +706,21 @@ double rt_progressbar_get_value(void *progress) {
     return (double)vg_progressbar_get_value((vg_progressbar_t *)progress);
 }
 
+void rt_progressbar_set_style(void *progress, int64_t style) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!progress)
+        return;
+    if (style < (int64_t)VG_PROGRESS_BAR || style > (int64_t)VG_PROGRESS_INDETERMINATE)
+        style = (int64_t)VG_PROGRESS_BAR;
+    vg_progressbar_set_style((vg_progressbar_t *)progress, (vg_progress_style_t)style);
+}
+
+void rt_progressbar_show_percentage(void *progress, int64_t show) {
+    RT_ASSERT_MAIN_THREAD();
+    if (progress)
+        vg_progressbar_show_percentage((vg_progressbar_t *)progress, show != 0);
+}
+
 //=============================================================================
 // ListBox Widget
 //=============================================================================

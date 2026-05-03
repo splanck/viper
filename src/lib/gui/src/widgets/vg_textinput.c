@@ -37,6 +37,7 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event);
 static bool textinput_can_focus(vg_widget_t *widget);
 static void textinput_on_focus(vg_widget_t *widget, bool gained);
 static void textinput_ensure_cursor_visible(vg_textinput_t *input);
+static void textinput_delete_selection_internal(vg_textinput_t *input, bool notify);
 
 // Forward declaration for clipboard support
 char *vg_textinput_get_selection(vg_textinput_t *input);
@@ -723,13 +724,7 @@ static void textinput_measure(vg_widget_t *widget, float available_width, float 
     widget->measured_width = width;
     widget->measured_height = height;
 
-    // Apply constraints
-    if (widget->measured_width < widget->constraints.min_width) {
-        widget->measured_width = widget->constraints.min_width;
-    }
-    if (widget->measured_height < widget->constraints.min_height) {
-        widget->measured_height = widget->constraints.min_height;
-    }
+    vg_widget_apply_constraints(widget);
 }
 
 static void textinput_paint(vg_widget_t *widget, void *canvas) {
@@ -1273,9 +1268,6 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         if (!input->read_only) {
                             char *text = vgfx_clipboard_get_text();
                             if (text) {
-                                if (input->selection_start != input->selection_end) {
-                                    vg_textinput_delete_selection(input);
-                                }
                                 vg_textinput_insert(input, text);
                                 textinput_push_undo(input);
                                 free(text);
@@ -1666,10 +1658,12 @@ void vg_textinput_set_placeholder(vg_textinput_t *input, const char *placeholder
     if (!input)
         return;
 
-    if (input->placeholder) {
-        free((void *)input->placeholder);
-    }
-    input->placeholder = placeholder ? strdup(placeholder) : NULL;
+    char *copy = placeholder ? strdup(placeholder) : NULL;
+    if (placeholder && !copy)
+        return;
+
+    free((void *)input->placeholder);
+    input->placeholder = copy;
     input->base.needs_paint = true;
 }
 
@@ -1746,7 +1740,7 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text) {
 
     // Delete selection first
     if (input->selection_start != input->selection_end) {
-        vg_textinput_delete_selection(input);
+        textinput_delete_selection_internal(input, false);
     }
 
     if (input->max_length > 0) {
@@ -1805,8 +1799,7 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text) {
     }
 }
 
-/// @brief Textinput delete selection.
-void vg_textinput_delete_selection(vg_textinput_t *input) {
+static void textinput_delete_selection_internal(vg_textinput_t *input, bool notify) {
     if (!input || input->read_only)
         return;
     if (input->selection_start == input->selection_end)
@@ -1832,9 +1825,14 @@ void vg_textinput_delete_selection(vg_textinput_t *input) {
         input->base.needs_layout = true;
     input->base.needs_paint = true;
 
-    if (input->on_change) {
+    if (notify && input->on_change) {
         input->on_change(&input->base, input->text, input->on_change_data);
     }
+}
+
+/// @brief Textinput delete selection.
+void vg_textinput_delete_selection(vg_textinput_t *input) {
+    textinput_delete_selection_internal(input, true);
 }
 
 /// @brief Textinput get selection.

@@ -12,6 +12,7 @@
 #include "../../include/vg_widget.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
+#include "../../include/vg_layout.h"
 #include "../../include/vg_widgets.h"
 #include <limits.h>
 #include <math.h>
@@ -151,6 +152,9 @@ static void paint_widget_overlay_tree(vg_widget_t *root, void *canvas) {
         if (widget_paints_children_internally(root))
             return;
     }
+
+    if (widget_paints_children_internally(root))
+        return;
 
     VG_FOREACH_CHILD(root, child) {
         paint_widget_overlay_tree(child, canvas);
@@ -689,6 +693,7 @@ void vg_widget_remove_child(vg_widget_t *parent, vg_widget_t *child) {
         return;
 
     clear_runtime_references_for_subtree(child, true);
+    vg_layout_on_child_detached(parent, child);
 
     if (child->prev_sibling) {
         child->prev_sibling->next_sibling = child->next_sibling;
@@ -719,6 +724,7 @@ void vg_widget_clear_children(vg_widget_t *parent) {
     while (child) {
         vg_widget_t *next = child->next_sibling;
         clear_runtime_references_for_subtree(child, true);
+        vg_layout_on_child_detached(parent, child);
         child->parent = NULL;
         child->prev_sibling = NULL;
         child->next_sibling = NULL;
@@ -832,6 +838,31 @@ void vg_widget_set_fixed_size(vg_widget_t *widget, float width, float height) {
     widget->constraints.max_height = height;
     widget->constraints.preferred_height = height;
     widget->needs_layout = true;
+}
+
+void vg_widget_apply_constraints(vg_widget_t *widget) {
+    if (!widget)
+        return;
+
+    if (widget->constraints.preferred_width > 0.0f)
+        widget->measured_width = widget->constraints.preferred_width;
+    if (widget->constraints.preferred_height > 0.0f)
+        widget->measured_height = widget->constraints.preferred_height;
+    if (widget->constraints.min_width > 0.0f &&
+        widget->measured_width < widget->constraints.min_width)
+        widget->measured_width = widget->constraints.min_width;
+    if (widget->constraints.min_height > 0.0f &&
+        widget->measured_height < widget->constraints.min_height)
+        widget->measured_height = widget->constraints.min_height;
+    if (widget->constraints.max_width > 0.0f &&
+        widget->measured_width > widget->constraints.max_width)
+        widget->measured_width = widget->constraints.max_width;
+    if (widget->constraints.max_height > 0.0f &&
+        widget->measured_height > widget->constraints.max_height)
+        widget->measured_height = widget->constraints.max_height;
+
+    widget->measured_width = widget_nonnegative_finite(widget->measured_width);
+    widget->measured_height = widget_nonnegative_finite(widget->measured_height);
 }
 
 /// @brief Widget get bounds.

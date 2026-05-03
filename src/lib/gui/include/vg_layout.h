@@ -459,6 +459,13 @@ void vg_layout_grid(vg_widget_t *container, float width, float height);
 /// @param height    Available height for the container.
 void vg_layout_dock(vg_widget_t *container, float width, float height);
 
+/// @brief Internal hook used by the widget tree when a child is detached.
+///
+/// @details Layout containers that keep side tables keyed by child pointer
+///          must clear those entries when the generic widget hierarchy removes
+///          the child. Application code should not call this directly.
+void vg_layout_on_child_detached(vg_widget_t *parent, vg_widget_t *child);
+
 #ifdef __cplusplus
 }
 #endif

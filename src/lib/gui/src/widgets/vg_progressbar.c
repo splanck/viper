@@ -12,6 +12,7 @@
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -64,6 +65,7 @@ static void progressbar_measure(vg_widget_t *widget, float avail_w, float avail_
     } else if (theme && theme->input.height * 0.32f > widget->measured_height) {
         widget->measured_height = theme->input.height * 0.32f;
     }
+    vg_widget_apply_constraints(widget);
 }
 
 static void progressbar_arrange(vg_widget_t *widget, float x, float y, float w, float h) {
@@ -185,6 +187,8 @@ vg_progressbar_t *vg_progressbar_create(vg_widget_t *parent) {
 void vg_progressbar_set_value(vg_progressbar_t *progress, float value) {
     if (!progress)
         return;
+    if (!isfinite(value))
+        value = 0.0f;
     if (value < 0)
         value = 0;
     if (value > 1)
@@ -202,6 +206,8 @@ float vg_progressbar_get_value(vg_progressbar_t *progress) {
 void vg_progressbar_set_style(vg_progressbar_t *progress, vg_progress_style_t style) {
     if (!progress)
         return;
+    if (style < VG_PROGRESS_BAR || style > VG_PROGRESS_INDETERMINATE)
+        style = VG_PROGRESS_BAR;
     progress->style = style;
     progress->base.needs_paint = true;
 }
@@ -220,10 +226,17 @@ void vg_progressbar_tick(vg_progressbar_t *progress, float dt) {
     if (!progress)
         return;
     if (progress->style == VG_PROGRESS_INDETERMINATE) {
+        if (!isfinite(dt) || dt <= 0.0f)
+            return;
         // Advance animation phase at a moderate speed; wrap at 1.0
         progress->animation_phase += dt * 0.7f;
-        if (progress->animation_phase >= 1.0f)
-            progress->animation_phase -= 1.0f;
+        if (!isfinite(progress->animation_phase)) {
+            progress->animation_phase = 0.0f;
+        } else {
+            progress->animation_phase = fmodf(progress->animation_phase, 1.0f);
+            if (progress->animation_phase < 0.0f)
+                progress->animation_phase += 1.0f;
+        }
         progress->base.needs_paint = true;
     }
 }
