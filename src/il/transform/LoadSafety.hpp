@@ -57,6 +57,15 @@ inline bool loadBaseWithinAlloca(const core::Instr &allocaInstr,
     return offset <= *allocSize && accessSize <= (*allocSize - offset);
 }
 
+inline bool allocaSizeKnownNonTrapping(const core::Instr &allocaInstr) {
+    if (allocaInstr.op != core::Opcode::Alloca || allocaInstr.operands.empty())
+        return false;
+    auto allocSize = constNonNegativeOffset(allocaInstr.operands[0]);
+    if (!allocSize)
+        return false;
+    return *allocSize == 0;
+}
+
 inline bool isPointerKnownDereferenceable(
     const core::Value &ptr,
     unsigned accessSize,
@@ -95,6 +104,11 @@ inline bool isPointerKnownDereferenceable(
 
 } // namespace detail
 
+/// @brief Return true when removing @p alloca cannot suppress an allocation trap.
+inline bool isAllocaKnownNonTrapping(const core::Instr &allocaInstr) {
+    return detail::allocaSizeKnownNonTrapping(allocaInstr);
+}
+
 /// @brief Return true when removing, reusing, or hoisting @p load cannot remove
 ///        a null, bounds, or alignment trap under the current IL semantics.
 inline bool isLoadKnownNonTrapping(const core::Function &fn, const core::Instr &load) {
@@ -108,6 +122,20 @@ inline bool isLoadKnownNonTrapping(const core::Function &fn, const core::Instr &
     auto defs = detail::buildTempDefMap(fn);
     std::unordered_set<unsigned> visiting;
     return detail::isPointerKnownDereferenceable(load.operands[0], *accessSize, defs, visiting);
+}
+
+/// @brief Return true when removing @p store cannot suppress a memory trap.
+inline bool isStoreKnownNonTrapping(const core::Function &fn, const core::Instr &store) {
+    if (store.op != core::Opcode::Store || store.operands.empty())
+        return false;
+
+    auto accessSize = viper::analysis::BasicAA::typeSizeBytes(store.type);
+    if (!accessSize)
+        return false;
+
+    auto defs = detail::buildTempDefMap(fn);
+    std::unordered_set<unsigned> visiting;
+    return detail::isPointerKnownDereferenceable(store.operands[0], *accessSize, defs, visiting);
 }
 
 } // namespace il::transform

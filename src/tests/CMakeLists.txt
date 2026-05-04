@@ -464,6 +464,14 @@ viper_add_test(test_rt_behavior
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestBehavior.cpp
         LIBS viper_runtime viper_test_common)
 
+viper_add_test(test_rt_typewriter
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestTypewriter.cpp
+        LIBS viper_runtime viper_test_common)
+
+viper_add_test(test_rt_lighting2d
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestLighting2D.cpp
+        LIBS viper_runtime viper_test_common)
+
 viper_add_test(test_rt_game_menu
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime/TestGameMenu.cpp
         LIBS viper_runtime viper_test_common)

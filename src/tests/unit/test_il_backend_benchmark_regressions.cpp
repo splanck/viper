@@ -24,8 +24,10 @@
 #include "il/transform/PassManager.hpp"
 #include "il/transform/ValueKey.hpp"
 #include "il/verify/Verifier.hpp"
+#include "support/diag_expected.hpp"
 
 #include <cassert>
+#include <iostream>
 #include <sstream>
 #include <string_view>
 
@@ -52,6 +54,8 @@ void runO2(Module &module) {
     const bool ok = pm.runPipeline(module, "O2");
     assert(ok && "O2 pipeline must run");
     auto verified = il::verify::Verifier::verify(module);
+    if (!verified)
+        il::support::printDiag(verified.error(), std::cerr);
     assert(verified && "O2 output must verify");
 }
 
@@ -85,7 +89,7 @@ void testConstStrOwnershipSemantics() {
     const auto &info = il::core::getOpcodeInfo(Opcode::ConstStr);
     assert(info.hasSideEffects);
     assert(il::core::hasMemoryRead(Opcode::ConstStr));
-    assert(il::core::hasMemoryWrite(Opcode::ConstStr));
+    assert(!il::core::hasMemoryWrite(Opcode::ConstStr));
 
     Instr instr;
     instr.op = Opcode::ConstStr;

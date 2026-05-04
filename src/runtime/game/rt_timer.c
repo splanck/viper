@@ -148,7 +148,7 @@ int8_t rt_timer_update(rt_timer timer) {
         return 0;
     }
 
-    timer->elapsed++;
+    timer->elapsed = timer_add_sat_i64(timer->elapsed, 1);
 
     if (timer->elapsed >= timer->duration) {
         if (timer->repeating) {

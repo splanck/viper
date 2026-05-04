@@ -25,6 +25,9 @@
 extern "C" {
 #endif
 
+/// Runtime class ID used to validate Behavior handles.
+#define RT_BEHAVIOR_CLASS_ID INT64_C(-0x510217)
+
 /// @brief Create an empty behavior bundle (no behaviors enabled yet).
 void *rt_behavior_new(void);
 /// @brief Enable horizontal patrol — moves at @p speed, reversing on edges/walls if those bits set.

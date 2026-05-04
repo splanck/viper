@@ -11,7 +11,7 @@
 //   no-path scenarios, start==goal, weighted costs, and NULL safety.
 //
 // Key invariants:
-//   - Paths are returned as List[Integer] of interleaved x,y pairs.
+//   - Paths are returned as List[Seq[Integer]], where each Seq is [x, y].
 //   - 4-way paths use Manhattan moves only.
 //   - 8-way paths may include diagonal moves.
 //   - Blocked paths return empty list with LastFound == false.
@@ -27,7 +27,9 @@
 #include "rt_box.h"
 #include "rt_internal.h"
 #include "rt_list.h"
+#include "rt_object.h"
 #include "rt_pathfinder.h"
+#include "rt_seq.h"
 #include "rt_tilemap.h"
 #include <cassert>
 #include <cstdint>
@@ -42,9 +44,14 @@ extern "C" void vm_trap(const char *msg) {
 // Helpers
 //=============================================================================
 
-/// @brief Get an integer from a boxed value in a list.
-static int64_t list_get_i64(void *list, int64_t index) {
-    void *elem = rt_list_get(list, index);
+/// @brief Get x/y from a path list entry.
+static int64_t path_get_i64(void *path, int64_t point_index, int64_t coord_index) {
+    void *pair = rt_list_get(path, point_index);
+    if (!pair)
+        return -999;
+    void *elem = rt_seq_get(pair, coord_index);
+    if (pair && rt_obj_release_check0(pair))
+        rt_obj_free(pair);
     if (!elem)
         return -999;
     return rt_unbox_i64(elem);
@@ -101,9 +108,9 @@ static void test_start_equals_goal(void) {
     void *pf = rt_pathfinder_new(5, 5);
     void *path = rt_pathfinder_find_path(pf, 2, 2, 2, 2);
     assert(path != NULL);
-    assert(rt_list_len(path) == 2); // [x, y] = 2 elements
-    assert(list_get_i64(path, 0) == 2);
-    assert(list_get_i64(path, 1) == 2);
+    assert(rt_list_len(path) == 1); // one [x, y] point
+    assert(path_get_i64(path, 0, 0) == 2);
+    assert(path_get_i64(path, 0, 1) == 2);
     assert(rt_pathfinder_get_last_found(pf) == 1);
     PASS();
 }
@@ -113,12 +120,12 @@ static void test_4way_straight_line(void) {
     void *pf = rt_pathfinder_new(5, 1);
     void *path = rt_pathfinder_find_path(pf, 0, 0, 4, 0);
     assert(path != NULL);
-    // Should be 5 waypoints: (0,0), (1,0), (2,0), (3,0), (4,0) = 10 elements
-    assert(rt_list_len(path) == 10);
-    assert(list_get_i64(path, 0) == 0); // start x
-    assert(list_get_i64(path, 1) == 0); // start y
-    assert(list_get_i64(path, 8) == 4); // goal x
-    assert(list_get_i64(path, 9) == 0); // goal y
+    // Should be 5 waypoints: (0,0), (1,0), (2,0), (3,0), (4,0)
+    assert(rt_list_len(path) == 5);
+    assert(path_get_i64(path, 0, 0) == 0); // start x
+    assert(path_get_i64(path, 0, 1) == 0); // start y
+    assert(path_get_i64(path, 4, 0) == 4); // goal x
+    assert(path_get_i64(path, 4, 1) == 0); // goal y
     assert(rt_pathfinder_get_last_found(pf) == 1);
     PASS();
 }
@@ -129,14 +136,14 @@ static void test_4way_manhattan(void) {
     // 4-way (default): path from (0,0) to (2,2) should have 4 moves = 5 waypoints
     void *path = rt_pathfinder_find_path(pf, 0, 0, 2, 2);
     assert(path != NULL);
-    assert(rt_list_len(path) == 10); // 5 waypoints × 2 coords
+    assert(rt_list_len(path) == 5);
 
     // Verify all moves are cardinal (dx+dy == 1)
-    for (int64_t i = 2; i < rt_list_len(path); i += 2) {
-        int64_t px = list_get_i64(path, i - 2);
-        int64_t py = list_get_i64(path, i - 1);
-        int64_t cx = list_get_i64(path, i);
-        int64_t cy = list_get_i64(path, i + 1);
+    for (int64_t i = 1; i < rt_list_len(path); i++) {
+        int64_t px = path_get_i64(path, i - 1, 0);
+        int64_t py = path_get_i64(path, i - 1, 1);
+        int64_t cx = path_get_i64(path, i, 0);
+        int64_t cy = path_get_i64(path, i, 1);
         int64_t dx = cx - px;
         int64_t dy = cy - py;
         if (dx < 0)
@@ -154,8 +161,8 @@ static void test_8way_diagonal(void) {
     rt_pathfinder_set_diagonal(pf, 1);
     void *path = rt_pathfinder_find_path(pf, 0, 0, 4, 4);
     assert(path != NULL);
-    // Diagonal: (0,0)→(1,1)→(2,2)→(3,3)→(4,4) = 5 waypoints = 10 elements
-    assert(rt_list_len(path) == 10);
+    // Diagonal: (0,0)→(1,1)→(2,2)→(3,3)→(4,4) = 5 waypoints
+    assert(rt_list_len(path) == 5);
     assert(rt_pathfinder_get_last_found(pf) == 1);
     PASS();
 }
@@ -173,9 +180,9 @@ static void test_wall_avoidance(void) {
     assert(rt_pathfinder_get_last_found(pf) == 1);
 
     // Verify no waypoint is on the wall
-    for (int64_t i = 0; i < rt_list_len(path); i += 2) {
-        int64_t x = list_get_i64(path, i);
-        int64_t y = list_get_i64(path, i + 1);
+    for (int64_t i = 0; i < rt_list_len(path); i++) {
+        int64_t x = path_get_i64(path, i, 0);
+        int64_t y = path_get_i64(path, i, 1);
         if (x == 2 && y < 4)
             assert(0 && "Path walked through wall!");
     }
@@ -218,17 +225,16 @@ static void test_out_of_bounds(void) {
 }
 
 static void test_path_length(void) {
-    TEST("FindPathLength returns correct cost");
+    TEST("FindPathLength returns correct step count");
     void *pf = rt_pathfinder_new(5, 1);
-    // 4 moves × 100 cost each = 400
-    int64_t cost = rt_pathfinder_find_path_length(pf, 0, 0, 4, 0);
-    assert(cost == 400);
+    int64_t steps = rt_pathfinder_find_path_length(pf, 0, 0, 4, 0);
+    assert(steps == 4);
     assert(rt_pathfinder_get_last_found(pf) == 1);
 
     // No path → returns -1
     rt_pathfinder_set_walkable(pf, 2, 0, 0);
-    cost = rt_pathfinder_find_path_length(pf, 0, 0, 4, 0);
-    assert(cost == -1);
+    steps = rt_pathfinder_find_path_length(pf, 0, 0, 4, 0);
+    assert(steps == -1);
     PASS();
 }
 
@@ -243,14 +249,21 @@ static void test_weighted_cost(void) {
     // 8-way so it can detour through top or bottom
     rt_pathfinder_set_diagonal(pf, 1);
 
-    int64_t direct_cost = rt_pathfinder_find_path_length(pf, 0, 1, 4, 1);
-    // Reset costs and measure straight path
+    void *weighted_path = rt_pathfinder_find_path(pf, 0, 1, 4, 1);
+    assert(weighted_path != NULL);
+    int8_t detoured = 0;
+    for (int64_t i = 0; i < rt_list_len(weighted_path); i++) {
+        if (path_get_i64(weighted_path, i, 1) != 1)
+            detoured = 1;
+    }
+    // Reset costs and measure straight path length
     for (int x = 0; x < 5; x++)
         rt_pathfinder_set_cost(pf, x, 1, 100);
-    int64_t normal_cost = rt_pathfinder_find_path_length(pf, 0, 1, 4, 1);
+    int64_t normal_steps = rt_pathfinder_find_path_length(pf, 0, 1, 4, 1);
 
-    // Detour should have been chosen (higher cost avoids expensive middle)
-    assert(direct_cost > normal_cost);
+    // Higher cost avoids expensive middle row, even if that means more steps.
+    assert(detoured == 1);
+    assert(normal_steps == 4);
     PASS();
 }
 
@@ -272,6 +285,8 @@ static void test_cost_get_set(void) {
     rt_pathfinder_set_cost(pf, 2, 3, 500);
     assert(rt_pathfinder_get_cost(pf, 2, 3) == 500);
     assert(rt_pathfinder_get_cost(pf, 0, 0) == 100); // default
+    rt_pathfinder_set_cost(pf, 1, 1, 0);
+    assert(rt_pathfinder_get_cost(pf, 1, 1) == 1);
     PASS();
 }
 
@@ -336,11 +351,11 @@ static void test_find_nearest_tile_value_returns_path(void) {
     assert(pf != NULL);
     void *path = rt_pathfinder_find_nearest(pf, 0, 1, 7);
     assert(path != NULL);
-    assert(rt_list_len(path) == 8);
-    assert(list_get_i64(path, 0) == 0);
-    assert(list_get_i64(path, 1) == 1);
-    assert(list_get_i64(path, 6) == 3);
-    assert(list_get_i64(path, 7) == 1);
+    assert(rt_list_len(path) == 4);
+    assert(path_get_i64(path, 0, 0) == 0);
+    assert(path_get_i64(path, 0, 1) == 1);
+    assert(path_get_i64(path, 3, 0) == 3);
+    assert(path_get_i64(path, 3, 1) == 1);
     assert(rt_pathfinder_get_last_found(pf) == 1);
     PASS();
 }

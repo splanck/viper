@@ -249,6 +249,8 @@ Expected<void> parseWithMetadata(Opcode opcode,
     std::istringstream ss(rest);
     const std::string original = rest;
     OperandParser operandParser{st, in};
+    OperandParseKind previousParsedKind = OperandParseKind::None;
+    TokenDelimiter previousDelimiter = TokenDelimiter::End;
 
     for (size_t idx = 0; idx < info.parse.size(); ++idx) {
         const auto &spec = info.parse[idx];
@@ -256,7 +258,8 @@ Expected<void> parseWithMetadata(Opcode opcode,
             case OperandParseKind::None:
                 break;
             case OperandParseKind::TypeImmediate: {
-                std::string token = readToken(ss);
+                TokenDelimiter delimiter = TokenDelimiter::End;
+                std::string token = readToken(ss, &delimiter);
                 if (token.empty()) {
                     std::ostringstream oss;
                     oss << "missing " << (spec.role ? spec.role : "type") << " for " << info.name;
@@ -267,10 +270,13 @@ Expected<void> parseWithMetadata(Opcode opcode,
                 auto parsedType = viper::il::io::parseTypeOperand(typeCursor, typeCtx);
                 if (!parsedType.ok())
                     return Expected<void>{parsedType.status.error()};
+                previousParsedKind = spec.kind;
+                previousDelimiter = delimiter;
                 break;
             }
             case OperandParseKind::Value: {
-                std::string token = readToken(ss);
+                TokenDelimiter delimiter = TokenDelimiter::End;
+                std::string token = readToken(ss, &delimiter);
                 if (token.empty()) {
                     if (in.operands.size() >= info.numOperandsMin) {
                         ss.clear();
@@ -282,17 +288,19 @@ Expected<void> parseWithMetadata(Opcode opcode,
                     return Expected<void>{
                         il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
                 }
-                if (opcode == Opcode::TrapKind) {
-                    long long trapValue = 0;
-                    if (parseTrapKindToken(token, trapValue)) {
-                        in.operands.push_back(Value::constInt(trapValue));
-                        break;
-                    }
+                if (previousParsedKind == OperandParseKind::Value &&
+                    previousDelimiter == TokenDelimiter::Whitespace) {
+                    std::ostringstream oss;
+                    oss << "missing comma before " << (spec.role ? spec.role : "operand");
+                    return Expected<void>{
+                        il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
                 }
                 auto value = operandParser.parseValueToken(token);
                 if (!value)
                     return Expected<void>{value.error()};
                 in.operands.push_back(std::move(value.value()));
+                previousParsedKind = spec.kind;
+                previousDelimiter = delimiter;
                 break;
             }
             case OperandParseKind::Call: {

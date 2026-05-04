@@ -27,6 +27,7 @@
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Type.hpp"
 #include "il/runtime/HelperEffects.hpp"
+#include "il/runtime/RuntimeOwnership.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/verify/ControlFlowChecker.hpp"
 #include "il/verify/DiagFormat.hpp"
@@ -102,21 +103,15 @@ bool isErrAccessOpcode(Opcode op) {
 bool isRuntimeArrayRelease(const Instr &instr) {
     if (instr.op != Opcode::Call)
         return false;
-    return instr.callee == "rt_str_release" || instr.callee == "rt_str_release_maybe" ||
-           instr.callee == "Viper.String.ReleaseMaybe" ||
-           instr.callee == "rt_arr_i32_release" || instr.callee == "rt_arr_i64_release" ||
-           instr.callee == "rt_arr_f64_release" || instr.callee == "rt_arr_str_release" ||
-           instr.callee == "rt_arr_obj_release";
+    const auto ownership = il::runtime::classifyRuntimeOwnership(instr.callee);
+    return (ownership.consumedArgMask & 0b1u) != 0;
 }
 
 bool isRuntimeArrayRetain(const Instr &instr) {
     if (instr.op != Opcode::Call)
         return false;
-    return instr.callee == "rt_str_retain" || instr.callee == "rt_str_retain_maybe" ||
-           instr.callee == "Viper.String.RetainMaybe" ||
-           instr.callee == "rt_arr_i32_retain" || instr.callee == "rt_arr_i64_retain" ||
-           instr.callee == "rt_arr_f64_retain" || instr.callee == "rt_obj_retain_maybe" ||
-           instr.callee == "rt_obj_retain_known";
+    const auto ownership = il::runtime::classifyRuntimeOwnership(instr.callee);
+    return (ownership.retainedArgMask & 0b1u) != 0;
 }
 
 bool isPureControlTerminator(Opcode op) {
@@ -156,6 +151,25 @@ bool opcodeMayThrowOrTrap(Opcode op) {
     }
 }
 
+bool isCheckedIntegerBinaryOpcode(Opcode op) {
+    switch (op) {
+        case Opcode::IAddOvf:
+        case Opcode::ISubOvf:
+        case Opcode::IMulOvf:
+        case Opcode::SDivChk0:
+        case Opcode::UDivChk0:
+        case Opcode::SRemChk0:
+        case Opcode::URemChk0:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool isSupportedIntegerWidth(Type::Kind kind) {
+    return kind == Type::Kind::I16 || kind == Type::Kind::I32 || kind == Type::Kind::I64;
+}
+
 struct EffectFacts {
     bool known = false;
     bool pure = false;
@@ -165,20 +179,39 @@ struct EffectFacts {
 
 EffectFacts directCalleeEffects(
     std::string_view callee,
-    const std::unordered_map<std::string, const Function *> &functionMap) {
+    const std::unordered_map<std::string, const Function *> &functionMap,
+    const FunctionVerifier::ExternMap &externMap) {
     if (const auto *runtimeSig = il::runtime::findRuntimeSignature(callee)) {
         return EffectFacts{true, runtimeSig->pure, runtimeSig->readonly, runtimeSig->nothrow};
     }
-
-    if (auto helper = il::runtime::classifyHelperEffects(callee); helper.known)
-        return EffectFacts{true, helper.pure, helper.readonly, helper.nothrow};
 
     if (auto it = functionMap.find(std::string(callee)); it != functionMap.end()) {
         const FunctionAttrs &attrs = it->second->attrs();
         return EffectFacts{true, attrs.pure, attrs.readonly, attrs.nothrow};
     }
 
+    if (auto it = externMap.find(std::string(callee)); it != externMap.end()) {
+        const auto &attrs = it->second->attrs();
+        if (attrs.pure || attrs.readonly || attrs.nothrow)
+            return EffectFacts{true, attrs.pure, attrs.readonly, attrs.nothrow};
+    }
+
+    if (auto helper = il::runtime::classifyHelperEffects(callee); helper.known)
+        return EffectFacts{true, helper.pure, helper.readonly, helper.nothrow};
+
     return {};
+}
+
+bool directCallCanBorrowStackPointer(
+    const Instr &instr,
+    const std::unordered_map<std::string, const Function *> &functionMap,
+    const FunctionVerifier::ExternMap &externMap) {
+    const EffectFacts effects = directCalleeEffects(instr.callee, functionMap, externMap);
+    if (!(effects.known && (effects.pure || effects.readonly)))
+        return false;
+    if (instr.result && instr.type.kind == Type::Kind::Ptr)
+        return false;
+    return true;
 }
 
 struct StackLocationKey {
@@ -525,6 +558,20 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     auto precollectedResultType = [&](const Instr &instr) {
         if (!instr.result)
             return instr.type;
+        if (isCheckedIntegerBinaryOpcode(instr.op) && instr.type.kind == Type::Kind::Void) {
+            std::optional<Type::Kind> inferred;
+            for (const Value &operand : instr.operands) {
+                if (operand.kind != Value::Kind::Temp)
+                    continue;
+                auto tempIt = temps.find(operand.id);
+                if (tempIt == temps.end() || !isSupportedIntegerWidth(tempIt->second.kind))
+                    return Type(Type::Kind::I64);
+                if (inferred && *inferred != tempIt->second.kind)
+                    return Type(Type::Kind::I64);
+                inferred = tempIt->second.kind;
+            }
+            return Type(inferred.value_or(Type::Kind::I64));
+        }
         if (instr.op == Opcode::Call) {
             if (auto extIt = externs_.find(instr.callee); extIt != externs_.end())
                 return extIt->second->retType;
@@ -621,7 +668,8 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                 };
 
                 if (instr.op == Opcode::Call) {
-                    const EffectFacts effects = directCalleeEffects(instr.callee, functionMap_);
+                    const EffectFacts effects =
+                        directCalleeEffects(instr.callee, functionMap_, externs_);
                     if (attrs.pure && !(effects.known && effects.pure))
                         return failAttr("pure function calls non-pure callee");
                     if (attrs.readonly &&
@@ -979,71 +1027,10 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     // Detect obvious alloca-derived pointer escapes. Returning a stack address,
     // storing one into non-stack storage, or passing one to an unknown/external
     // mutating call can leave dangling addresses after the function returns.
-    // Direct local calls and known runtime helpers are treated as checked
-    // borrows because frontends use stack-backed aggregate and out-parameters.
+    // Direct calls may borrow stack addresses only when callee metadata proves
+    // the call is read-only/pure and the result cannot carry the pointer away.
     {
-        std::unordered_set<unsigned> stackDerived;
-        std::unordered_map<unsigned, const Instr *> defs;
-        std::unordered_set<StackLocationKey, StackLocationKeyHash> stackPtrLocations;
-        for (const auto &blk : fn.blocks) {
-            for (const auto &instr : blk.instructions) {
-                if (instr.result)
-                    defs.emplace(*instr.result, &instr);
-                if (instr.op == Opcode::Alloca && instr.result)
-                    stackDerived.insert(*instr.result);
-            }
-        }
-
-        bool changed = true;
-        while (changed) {
-            changed = false;
-            for (const auto &blk : fn.blocks) {
-                for (const auto &instr : blk.instructions) {
-                    if (instr.op == Opcode::GEP && instr.result && !instr.operands.empty() &&
-                        instr.operands[0].kind == Value::Kind::Temp &&
-                        stackDerived.contains(instr.operands[0].id)) {
-                        changed |= stackDerived.insert(*instr.result).second;
-                    }
-
-                    if (instr.op == Opcode::Store && instr.operands.size() >= 2) {
-                        const Value &dst = instr.operands[0];
-                        const Value &stored = instr.operands[1];
-                        if (stored.kind == Value::Kind::Temp && stackDerived.contains(stored.id)) {
-                            if (auto key = stackLocationKey(dst, defs))
-                                changed |= stackPtrLocations.insert(*key).second;
-                        }
-                    }
-
-                    if (instr.op == Opcode::Load && instr.result && !instr.operands.empty() &&
-                        instr.type.kind == Type::Kind::Ptr) {
-                        if (auto key = stackLocationKey(instr.operands[0], defs);
-                            key && stackPtrLocations.contains(*key)) {
-                            changed |= stackDerived.insert(*instr.result).second;
-                        }
-                    }
-
-                    if (isTerminator(instr.op)) {
-                        for (size_t edge = 0;
-                             edge < instr.labels.size() && edge < instr.brArgs.size();
-                             ++edge) {
-                            auto targetIt = blockMap.find(instr.labels[edge]);
-                            if (targetIt == blockMap.end())
-                                continue;
-                            const BasicBlock *target = targetIt->second;
-                            const auto &args = instr.brArgs[edge];
-                            const size_t count = std::min(args.size(), target->params.size());
-                            for (size_t idx = 0; idx < count; ++idx) {
-                                const Value &arg = args[idx];
-                                if (arg.kind == Value::Kind::Temp &&
-                                    stackDerived.contains(arg.id)) {
-                                    changed |= stackDerived.insert(target->params[idx].id).second;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        const auto stackDerived = computeStackDerivedTemps(fn, blockMap);
 
         if (!stackDerived.empty()) {
             for (const auto &blk : fn.blocks) {
@@ -1076,10 +1063,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                     }
 
                     if (instr.op == Opcode::Call) {
-                        if (functionMap_.contains(instr.callee))
-                            continue;
-                        const EffectFacts effects = directCalleeEffects(instr.callee, functionMap_);
-                        if (effects.known)
+                        if (directCallCanBorrowStackPointer(instr, functionMap_, externs_))
                             continue;
                         for (const auto &op : instr.operands)
                             if (auto result = failEscape(op, "passing"); !result)

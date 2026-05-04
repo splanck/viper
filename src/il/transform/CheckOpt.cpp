@@ -67,6 +67,15 @@ bool isOverflowOpcode(Opcode op) {
     return op == Opcode::IAddOvf || op == Opcode::ISubOvf || op == Opcode::IMulOvf;
 }
 
+bool canDemoteToPlainI64(const Instr &instr) {
+    return instr.type.kind == Type::Kind::Void || instr.type.kind == Type::Kind::I64;
+}
+
+void stampPlainI64ResultType(Instr &instr) {
+    if (instr.result)
+        instr.type = Type(Type::Kind::I64);
+}
+
 /// @brief Return the plain arithmetic opcode corresponding to a checked op.
 std::optional<Opcode> plainOpcodeForOverflow(Opcode op) {
     switch (op) {
@@ -498,6 +507,8 @@ bool tryConstantFoldOverflow(Instr &instr) {
 bool tryDemoteCheckedDivRem(Instr &instr) {
     if (instr.operands.size() < 2 || instr.operands[1].kind != Value::Kind::ConstInt)
         return false;
+    if (!canDemoteToPlainI64(instr))
+        return false;
 
     const Value &lhs = instr.operands[0];
     const int64_t divisor = instr.operands[1].i64;
@@ -515,9 +526,11 @@ bool tryDemoteCheckedDivRem(Instr &instr) {
                 return false;
             }
             instr.op = Opcode::SDiv;
+            stampPlainI64ResultType(instr);
             return true;
         case Opcode::UDivChk0:
             instr.op = Opcode::UDiv;
+            stampPlainI64ResultType(instr);
             return true;
         case Opcode::SRemChk0:
             // MIN % -1 is defined as 0 for Viper's checked remainder semantics,
@@ -530,9 +543,11 @@ bool tryDemoteCheckedDivRem(Instr &instr) {
                 return false;
             }
             instr.op = Opcode::SRem;
+            stampPlainI64ResultType(instr);
             return true;
         case Opcode::URemChk0:
             instr.op = Opcode::URem;
+            stampPlainI64ResultType(instr);
             return true;
         default:
             return false;
@@ -575,7 +590,10 @@ bool tryDemoteSignBiasAdd(const BasicBlock &block, Instr &instr) {
 
     if (isSignBiasForDividend(block, instr, instr.operands[0], instr.operands[1]) ||
         isSignBiasForDividend(block, instr, instr.operands[1], instr.operands[0])) {
+        if (!canDemoteToPlainI64(instr))
+            return false;
         instr.op = Opcode::Add;
+        stampPlainI64ResultType(instr);
         return true;
     }
     return false;
@@ -714,14 +732,7 @@ BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &head
         if (!viper::il::isTerminated(block))
             continue;
         const Instr &term = block.instructions.back();
-        bool targetsHeader = false;
-        for (const auto &label : term.labels) {
-            if (label == header.label) {
-                targetsHeader = true;
-                break;
-            }
-        }
-        if (!targetsHeader)
+        if (term.op != Opcode::Br || term.labels.size() != 1 || term.labels.front() != header.label)
             continue;
         if (preheader && preheader != &block)
             return nullptr; // Multiple preheaders - not canonical form
@@ -953,7 +964,10 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
             // this is almost always safe.
             if (K >= 0 && lowerBound >= std::numeric_limits<int64_t>::min() + K) {
                 // x >= lowerBound, K >= 0 → x - K >= lowerBound - K >= INT64_MIN → safe
+                if (!canDemoteToPlainI64(instr))
+                    continue;
                 instr.op = Opcode::Sub;
+                stampPlainI64ResultType(instr);
                 changed = true;
             }
         }
@@ -975,8 +989,11 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
 
             if (resultRange) {
                 if (auto plainOp = plainOpcodeForOverflow(instr.op)) {
-                    instr.op = *plainOp;
-                    changed = true;
+                    if (canDemoteToPlainI64(instr)) {
+                        instr.op = *plainOp;
+                        stampPlainI64ResultType(instr);
+                        changed = true;
+                    }
                 }
                 if (instr.result)
                     ranges[*instr.result] = *resultRange;

@@ -35,6 +35,9 @@ extern "C" {
 #define RT_DEBUG_MAX_WATCHES 16
 #define RT_DEBUG_FPS_HISTORY 16
 
+/// Runtime class ID used to validate DebugOverlay handles.
+#define RT_DEBUGOVERLAY_CLASS_ID INT64_C(-0x510216)
+
 /// Opaque handle to a DebugOverlay instance.
 typedef struct rt_debugoverlay_impl *rt_debugoverlay;
 

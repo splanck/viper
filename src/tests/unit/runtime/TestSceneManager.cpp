@@ -68,6 +68,23 @@ TEST(SceneManager, TransitionProgress) {
     EXPECT_TRUE(p > 0.4 && p < 0.6);
 }
 
+TEST(SceneManager, NegativeDeltaDoesNotAdvanceTransition) {
+    void *mgr = rt_scenemanager_new();
+    rt_scenemanager_add(mgr, (void *)rt_const_cstr("a"));
+    rt_scenemanager_add(mgr, (void *)rt_const_cstr("b"));
+
+    rt_scenemanager_switch_transition(mgr, (void *)rt_const_cstr("b"), 100);
+    rt_scenemanager_update(mgr, -50);
+
+    EXPECT_TRUE(rt_scenemanager_is_transitioning(mgr));
+    EXPECT_EQ(rt_scenemanager_transition_progress(mgr), 0.0);
+
+    rt_scenemanager_update(mgr, 50);
+    EXPECT_TRUE(rt_scenemanager_is_transitioning(mgr));
+    double p = rt_scenemanager_transition_progress(mgr);
+    EXPECT_TRUE(p > 0.4 && p < 0.6);
+}
+
 TEST(SceneManager, TransitionProgressReachesOneOnCompletionTick) {
     void *mgr = rt_scenemanager_new();
     rt_scenemanager_add(mgr, (void *)rt_const_cstr("a"));

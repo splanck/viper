@@ -20,6 +20,9 @@
 extern "C" {
 #endif
 
+/// Runtime class ID used to validate LevelData handles.
+#define RT_LEVELDATA_CLASS_ID INT64_C(-0x510214)
+
 /// @brief Load level from JSON file. Returns LevelData object.
 void *rt_leveldata_load(void *path);
 

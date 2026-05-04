@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-04-09
+last-verified: 2026-05-04
 ---
 
 # Generated Files Guide
@@ -129,7 +129,8 @@ ctest --test-dir build -R runtime
 # When adding/modifying opcode verification rules:
 1. Update the InstructionSpec entry in SpecTables.cpp
 2. Ensure entry order matches Opcode enum
-3. Run tests: ctest --test-dir build -R il_verify
+3. Update focused strategy coverage in src/tests/il/OpcodeInfoTests.cpp when a strategy assignment changes
+4. Run tests: ctest --test-dir build -R "test_il_opcode_info|il_verify"
 ```
 
 ---

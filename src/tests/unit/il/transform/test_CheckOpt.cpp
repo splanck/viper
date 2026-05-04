@@ -394,6 +394,81 @@ void test_loop_invariant_hoisting() {
     }
 }
 
+void test_loop_invariant_not_hoisted_from_conditional_preheader() {
+    Module module;
+    Function fn;
+    fn.name = "test_loop_conditional_preheader";
+    fn.retType = Type(Type::Kind::I64);
+
+    unsigned nextId = 0;
+    Param idxParam{"idx", Type(Type::Kind::I64), nextId++};
+    Param condParam{"cond", Type(Type::Kind::I1), nextId++};
+    fn.params.push_back(idxParam);
+    fn.params.push_back(condParam);
+    fn.valueNames.resize(nextId);
+    fn.valueNames[idxParam.id] = idxParam.name;
+    fn.valueNames[condParam.id] = condParam.name;
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr entryBr;
+    entryBr.op = Opcode::CBr;
+    entryBr.type = Type(Type::Kind::Void);
+    entryBr.operands = {Value::temp(condParam.id)};
+    entryBr.labels = {"loop", "exit"};
+    entryBr.brArgs = {{}, {}};
+    entry.instructions = {entryBr};
+    entry.terminated = true;
+
+    BasicBlock loop;
+    loop.label = "loop";
+    Instr check;
+    check.result = nextId++;
+    check.op = Opcode::IdxChk;
+    check.type = Type(Type::Kind::I32);
+    check.operands = {Value::temp(idxParam.id), Value::constInt(0), Value::constInt(100)};
+    Instr latchBr;
+    latchBr.op = Opcode::Br;
+    latchBr.type = Type(Type::Kind::Void);
+    latchBr.labels = {"loop"};
+    latchBr.brArgs = {{}};
+    loop.instructions = {check, latchBr};
+    loop.terminated = true;
+
+    BasicBlock exit;
+    exit.label = "exit";
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::constInt(0)};
+    exit.instructions = {ret};
+    exit.terminated = true;
+
+    fn.blocks = {entry, loop, exit};
+    fn.valueNames.resize(nextId);
+    module.functions.push_back(std::move(fn));
+    Function &function = module.functions.back();
+
+    auto registry = createRegistry();
+    il::transform::AnalysisManager analysisManager(module, registry);
+    il::transform::CheckOpt checkOpt;
+    auto preserved = checkOpt.run(function, analysisManager);
+    (void)preserved;
+
+    BasicBlock *entryBlock = findBlock(function, "entry");
+    BasicBlock *loopBlock = findBlock(function, "loop");
+    assert(entryBlock);
+    assert(loopBlock);
+    for (const auto &instr : entryBlock->instructions)
+        assert(instr.op != Opcode::IdxChk && "idx.chk must not be hoisted before conditional entry");
+
+    bool checkStillInLoop = false;
+    for (const auto &instr : loopBlock->instructions)
+        if (instr.op == Opcode::IdxChk)
+            checkStillInLoop = true;
+    assert(checkStillInLoop && "idx.chk should remain guarded by loop entry branch");
+}
+
 void test_guard_demote_rejects_unproven_subtractions() {
     for (const auto [threshold, rhs] :
          {std::pair<long long, long long>{std::numeric_limits<long long>::max(), 1},
@@ -715,6 +790,7 @@ int main() {
     test_redundant_check_elimination();
     test_different_checks_not_eliminated();
     test_loop_invariant_hoisting();
+    test_loop_invariant_not_hoisted_from_conditional_preheader();
     test_guard_demote_rejects_unproven_subtractions();
     test_guard_demote_produces_verifiable_il();
     test_guard_demote_skips_multi_predecessor_target();

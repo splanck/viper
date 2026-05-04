@@ -30,7 +30,7 @@ struct TrapKindSymbol {
     long long value;
 };
 
-constexpr std::array<TrapKindSymbol, 10> kTrapKindSymbols = {{
+constexpr std::array<TrapKindSymbol, 12> kTrapKindSymbols = {{
     {"DivideByZero", 0},
     {"Overflow", 1},
     {"InvalidCast", 2},
@@ -41,6 +41,8 @@ constexpr std::array<TrapKindSymbol, 10> kTrapKindSymbols = {{
     {"IOError", 7},
     {"InvalidOperation", 8},
     {"RuntimeError", 9},
+    {"Interrupt", 10},
+    {"NetworkError", 11},
 }};
 } // namespace
 
@@ -112,7 +114,9 @@ std::string stripInlineComment(const std::string &text) {
 ///
 /// @param stream Backing stream positioned at the next token to extract.
 /// @return Token read from @p stream with any trailing comma stripped.
-std::string readToken(std::istringstream &stream) {
+std::string readToken(std::istringstream &stream, TokenDelimiter *delimiter) {
+    if (delimiter)
+        *delimiter = TokenDelimiter::End;
     stream >> std::ws;
     if (!stream.good()) {
         stream.setstate(std::ios::failbit);
@@ -141,8 +145,14 @@ std::string readToken(std::istringstream &stream) {
         }
 
         stream >> std::ws;
-        if (stream.peek() == ',')
+        if (stream.peek() == ',') {
             stream.get();
+            if (delimiter)
+                *delimiter = TokenDelimiter::Comma;
+        } else if (stream.peek() != std::char_traits<char>::eof()) {
+            if (delimiter)
+                *delimiter = TokenDelimiter::Whitespace;
+        }
         return token;
     }
 
@@ -153,8 +163,11 @@ std::string readToken(std::istringstream &stream) {
             stoppedOnWhitespace = true;
             break;
         }
-        if (c == ',')
+        if (c == ',') {
+            if (delimiter)
+                *delimiter = TokenDelimiter::Comma;
             break;
+        }
         token.push_back(c);
     }
     if (token.empty()) {
@@ -162,13 +175,23 @@ std::string readToken(std::istringstream &stream) {
     } else {
         if (stoppedOnWhitespace) {
             stream >> std::ws;
-            if (stream.peek() == ',')
+            if (stream.peek() == ',') {
                 stream.get();
+                if (delimiter)
+                    *delimiter = TokenDelimiter::Comma;
+            } else if (stream.peek() != std::char_traits<char>::eof()) {
+                if (delimiter)
+                    *delimiter = TokenDelimiter::Whitespace;
+            }
         }
         if (stream.eof())
             stream.clear(stream.rdstate() & ~std::ios::failbit);
     }
     return token;
+}
+
+std::string readToken(std::istringstream &stream) {
+    return readToken(stream, nullptr);
 }
 
 /// @brief Validate an IL identifier fragment after sigils are stripped.
@@ -230,47 +253,70 @@ std::string formatLineDiag(unsigned lineNo, std::string_view message) {
 /// @param value Output location for the parsed integer when parsing succeeds.
 /// @return True when @p token represents a valid signed integer literal.
 bool parseIntegerLiteral(const std::string &token, long long &value) {
-    // Recognise optional sign
-    size_t pos = 0;
-    bool negative = false;
-    if (pos < token.size() && (token[pos] == '+' || token[pos] == '-')) {
-        negative = (token[pos] == '-');
-        ++pos;
-    }
-
-    // Handle 0b/0B binary prefix explicitly for portability.
-    if (pos + 2 <= token.size() && token[pos] == '0' &&
-        (token[pos + 1] == 'b' || token[pos + 1] == 'B')) {
-        pos += 2;
-        if (pos >= token.size())
-            return false;
-        long long acc = 0;
-        for (; pos < token.size(); ++pos) {
-            char ch = token[pos];
-            if (ch == '_')
-                continue; // allow visual separators in the future (ignored)
-            if (ch != '0' && ch != '1')
-                return false;
-            int bit = (ch == '1') ? 1 : 0;
-            // Basic overflow-safe shift-add for signed range
-            if (acc > (std::numeric_limits<long long>::max() >> 1))
-                return false;
-            acc = (acc << 1) | bit;
-        }
-        value = negative ? -acc : acc;
-        return true;
-    }
-
-    try {
-        size_t idx = 0;
-        long long parsed = std::stoll(token, &idx, 0);
-        if (idx != token.size())
-            return false;
-        value = parsed;
-        return true;
-    } catch (const std::exception &) {
+    if (token.empty())
         return false;
+
+    size_t pos = 0;
+    const bool negative = token[pos] == '-';
+    if (token[pos] == '+' || token[pos] == '-')
+        ++pos;
+    if (pos >= token.size())
+        return false;
+
+    int base = 10;
+    if (token[pos] == '0') {
+        if (pos + 1 < token.size()) {
+            const char prefix = token[pos + 1];
+            if (prefix == 'b' || prefix == 'B') {
+                base = 2;
+                pos += 2;
+            } else if (prefix == 'x' || prefix == 'X') {
+                base = 16;
+                pos += 2;
+            } else {
+                base = 8;
+            }
+        }
     }
+
+    const auto maxSigned = static_cast<unsigned long long>(std::numeric_limits<long long>::max());
+    const unsigned long long limit = negative ? maxSigned + 1ULL : maxSigned;
+    unsigned long long acc = 0;
+    bool sawDigit = false;
+    for (; pos < token.size(); ++pos) {
+        const unsigned char ch = static_cast<unsigned char>(token[pos]);
+        if (ch == '_')
+            continue;
+
+        int digit = -1;
+        if (ch >= '0' && ch <= '9')
+            digit = ch - '0';
+        else if (ch >= 'a' && ch <= 'f')
+            digit = 10 + (ch - 'a');
+        else if (ch >= 'A' && ch <= 'F')
+            digit = 10 + (ch - 'A');
+        if (digit < 0 || digit >= base)
+            return false;
+
+        sawDigit = true;
+        const auto unsignedDigit = static_cast<unsigned long long>(digit);
+        if (acc > (limit - unsignedDigit) / static_cast<unsigned long long>(base))
+            return false;
+        acc = acc * static_cast<unsigned long long>(base) + unsignedDigit;
+    }
+    if (!sawDigit)
+        return false;
+
+    if (negative) {
+        if (acc == maxSigned + 1ULL) {
+            value = std::numeric_limits<long long>::min();
+        } else {
+            value = -static_cast<long long>(acc);
+        }
+    } else {
+        value = static_cast<long long>(acc);
+    }
+    return true;
 }
 
 /// @brief Parse a serializer-style temporary identifier name.

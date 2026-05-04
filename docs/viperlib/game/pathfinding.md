@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-23
+last-verified: 2026-05-04
 ---
 
 # Pathfinding
@@ -54,9 +54,9 @@ A* pathfinding on uniform-cost 2D grids. Supports 4-way (cardinal) and 8-way (ca
 | `IsWalkable(x, y)` | `Boolean(Integer, Integer)` | Check if cell is walkable |
 | `SetCost(x, y, cost)` | `void(Integer, Integer, Integer)` | Set movement cost (100 = normal) |
 | `GetCost(x, y)` | `Integer(Integer, Integer)` | Get movement cost |
-| `FindPath(sx, sy, gx, gy)` | `List[Integer](Integer×4)` | Find path (returns interleaved x,y pairs) |
-| `FindPathLength(sx, sy, gx, gy)` | `Integer(Integer×4)` | Get path cost (-1 if no path) |
-| `FindNearest(sx, sy, value)` | `List[Integer](Integer×3)` | Find a path to the nearest reachable cell with the stored tile/grid value |
+| `FindPath(sx, sy, gx, gy)` | `List[Seq[Integer]](Integer×4)` | Find path; each waypoint is `[x, y]` |
+| `FindPathLength(sx, sy, gx, gy)` | `Integer(Integer×4)` | Get cell-to-cell step count (-1 if no path) |
+| `FindNearest(sx, sy, value)` | `List[Seq[Integer]](Integer×3)` | Find path to nearest reachable cell with the stored tile/grid value |
 
 ---
 
@@ -84,9 +84,13 @@ Each cell has a movement cost multiplier (default 100 = 1x).
 | 100 | Normal terrain (1x) |
 | 200 | Difficult terrain (2x cost) |
 | 50 | Easy terrain (0.5x cost) |
-| 0 | Impassable (same as not walkable) |
+| 1 | Minimum walkable terrain cost (0.01x) |
 
 The actual movement cost for a step is: `base_cost × cell_cost / 100`
+
+`SetCost` clamps walkable costs to `[1, 30000]`. Use `SetWalkable(x, y, false)` to make a
+cell impassable. The A* heuristic scales to the lowest walkable cost in the grid, so costs
+below 100 still produce correct shortest paths.
 
 ---
 
@@ -118,7 +122,10 @@ var pf = Pathfinder.FromGrid2D(grid);
 
 ### FindNearest
 
-`FindNearest(sx, sy, value)` performs a breadth-first search from the start cell and returns the full path as interleaved `x,y` pairs. It returns an empty list and sets `LastFound` false if the start is outside the grid, blocked, the step budget is exhausted, or no reachable matching value exists.
+`FindNearest(sx, sy, value)` performs a breadth-first search from the start cell and returns
+the full path as `List[Seq[Integer]]`, with each waypoint stored as `[x, y]`. It returns an
+empty list and sets `LastFound` false if the start is outside the grid, blocked, the step
+budget is exhausted, or no reachable matching value exists.
 
 ---
 
@@ -135,15 +142,16 @@ pf.Diagonal = true; // Allow diagonal movement
 var path = pf.FindPath(enemyTileX, enemyTileY, playerTileX, playerTileY);
 
 if pf.LastFound {
-    // Path is List[Integer] of interleaved x,y pairs
+    // Path is List[Seq[Integer]], with each point as [x, y]
     // Feed to PathFollower for smooth movement
     var i = 0;
     while i < path.Length {
-        var wx = path.Get(i);
-        var wy = path.Get(i + 1);
+        var point = path.Get(i);
+        var wx = point.Get(0);
+        var wy = point.Get(1);
         pathFollower.AddPoint(wx * TILE_SIZE + TILE_SIZE / 2,
                               wy * TILE_SIZE + TILE_SIZE / 2);
-        i = i + 2;
+        i = i + 1;
     }
     pathFollower.Start();
 }
@@ -158,7 +166,7 @@ if pf.LastFound {
 | Max grid dimension | 4096 × 4096 |
 | Default step cost | 100 (fixed-point) |
 | Diagonal step cost | 141 (~sqrt(2) × 100) |
-| Cost range | 0–30000 |
+| Cost range | 1-30000 |
 | Max steps | 0 = unlimited |
 
 ---

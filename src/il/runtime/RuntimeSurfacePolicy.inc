@@ -511,6 +511,11 @@ RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.get_IsPlaying",
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Graphics.SpriteAnimator.get_Current",
                                 "rt_sprite_animator_get_current_str")
 
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Game.Physics2D.Body.get_PrevX",
+                                "rt_physics2d_body_prev_x")
+RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Game.Physics2D.Body.get_PrevY",
+                                "rt_physics2d_body_prev_y")
+
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Bag.FromSeq", "rt_seq_to_bag")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.Set.FromSeq", "rt_seq_to_set")
 RUNTIME_SURFACE_EXPECT_FUNCTION("Viper.Collections.List.FromSeq", "rt_seq_to_list")
@@ -570,6 +575,11 @@ RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.SpriteAnimator", "Update", "void(o
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Graphics.SpriteAnimator", "Destroy", "void()")
 RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.Graphics.SpriteAnimator", "IsPlaying", "i1")
 RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.Graphics.SpriteAnimator", "Current", "str")
+
+RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.Game.Physics2D.Body", "PrevX", "f64")
+RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.Game.Physics2D.Body", "PrevY", "f64")
+RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.Game.Physics2D.CircleBody", "PrevX", "f64")
+RUNTIME_SURFACE_EXPECT_PROPERTY("Viper.Game.Physics2D.CircleBody", "PrevY", "f64")
 
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.List", "New", "obj()")
 RUNTIME_SURFACE_EXPECT_METHOD("Viper.Collections.Bag", "FromSeq", "obj<Viper.Collections.Bag>(obj)")

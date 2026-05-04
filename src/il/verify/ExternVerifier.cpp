@@ -61,6 +61,29 @@ bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &ru
     return true;
 }
 
+bool isExternParamTypeSupported(Type::Kind kind) {
+    return kind != Type::Kind::Void && kind != Type::Kind::Error &&
+           kind != Type::Kind::ResumeTok;
+}
+
+bool attrsCompatibleWithRuntime(const Extern &decl,
+                                const il::runtime::RuntimeSignature &runtime,
+                                std::string &why) {
+    if (decl.attrs().pure && !runtime.pure) {
+        why = "pure";
+        return false;
+    }
+    if (decl.attrs().readonly && !(runtime.readonly || runtime.pure)) {
+        why = "readonly";
+        return false;
+    }
+    if (decl.attrs().nothrow && !runtime.nothrow) {
+        why = "nothrow";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 /// @brief Access the interned extern declaration map.
@@ -81,6 +104,14 @@ Expected<void> ExternVerifier::run(const Module &module, DiagSink &) {
     externs_.clear();
 
     for (const auto &ext : module.externs) {
+        for (const Type &param : ext.params) {
+            if (!isExternParamTypeSupported(param.kind)) {
+                return Expected<void>{makeError(
+                    {}, "extern @" + ext.name + " has unsupported parameter type " +
+                            param.toString())};
+            }
+        }
+
         auto [it, inserted] = externs_.emplace(ext.name, &ext);
         if (!inserted) {
             const Extern *prev = it->second;
@@ -94,6 +125,12 @@ Expected<void> ExternVerifier::run(const Module &module, DiagSink &) {
         if (const auto *runtimeSig = il::runtime::findRuntimeSignature(ext.name)) {
             if (!signaturesMatch(ext, *runtimeSig))
                 return Expected<void>{makeError({}, "extern @" + ext.name + " signature mismatch")};
+            std::string why;
+            if (!attrsCompatibleWithRuntime(ext, *runtimeSig, why)) {
+                return Expected<void>{makeError(
+                    {}, "extern @" + ext.name + " " + why +
+                            " attribute contradicts runtime metadata")};
+            }
         }
     }
 

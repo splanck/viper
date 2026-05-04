@@ -140,22 +140,15 @@ void printDefaultOperands(const Instr &instr, std::ostream &os, const SerializeC
     printValueList(os, instr.operands, ctx);
 }
 
-/// @brief Render the trap kind operand, mapping integers to tokens when possible.
+/// @brief Render the optional trap kind source error operand.
 /// @param instr Instruction containing the operand.
 /// @param os Stream receiving the textual operand.
 /// @param ctx Serialization context with value name mappings.
 void printTrapKindOperand(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
     if (instr.operands.empty())
         return;
-    const auto &operand = instr.operands.front();
-    if (operand.kind == Value::Kind::ConstInt) {
-        if (auto token = trapKindTokenFromValue(operand.i64)) {
-            os << ' ' << *token;
-            return;
-        }
-    }
     os << ' ';
-    printValue(os, operand, ctx);
+    printValue(os, instr.operands.front(), ctx);
 }
 
 /// @brief Emit operands for trap.from.err instructions.
@@ -224,8 +217,10 @@ void printFunctionAttrs(const FunctionAttrs &attrs, std::ostream &os) {
 /// @details Format: call.indirect %fnPtr(%arg1, %arg2, ...)
 ///          First operand is the function pointer, remaining are arguments.
 void printCallIndirectOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
-    if (instr.operands.empty())
+    if (instr.operands.empty()) {
+        os << " ; missing callee";
         return;
+    }
     os << ' ';
     if (instr.hasIndirectSignature) {
         os << '[' << instr.indirectRetType.toString() << '(';
@@ -335,8 +330,10 @@ void printCaretBranchTarget(const Instr &instr,
 /// @param os Stream receiving serialized output.
 /// @param ctx Serialization context with value name mappings.
 void printBrOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
-    if (instr.labels.empty())
+    if (instr.labels.empty()) {
+        os << " ; missing label";
         return;
+    }
     os << ' ';
     printBranchTarget(instr, 0, os, ctx);
 }
@@ -375,8 +372,14 @@ void printCBrOperands(const Instr &instr, std::ostream &os, const SerializeConte
 /// @param os Stream receiving serialized output.
 /// @param ctx Serialization context with value name mappings.
 void printSwitchI32Operands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
-    if (instr.operands.empty() || instr.labels.empty())
+    if (instr.operands.empty()) {
+        os << " ; missing scrutinee";
         return;
+    }
+    if (instr.labels.empty()) {
+        os << " ; missing label";
+        return;
+    }
 
     os << ' ';
     printValue(os, switchScrutinee(instr), ctx);
@@ -442,7 +445,9 @@ void printExtern(const Extern &e, std::ostream &os) {
             os << ", ";
         os << e.params[i].toString();
     }
-    os << ") -> " << e.retType.toString() << "\n";
+    os << ") -> " << e.retType.toString();
+    printFunctionAttrs(e.attrs(), os);
+    os << "\n";
 }
 
 /// @brief Determine the default result type kind for an opcode.
@@ -657,6 +662,7 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode) {
 
         // Import-linkage functions have no body (declaration only)
         if (f.linkage == Linkage::Import) {
+            printFunctionAttrs(f.attrs(), os);
             os << "\n";
             continue;
         }

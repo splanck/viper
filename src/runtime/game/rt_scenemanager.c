@@ -13,6 +13,7 @@
 #include "rt_scenemanager.h"
 #include "rt_object.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <string.h>
 
@@ -38,7 +39,13 @@ typedef struct {
     int8_t transition_completed;
 } scenemanager_impl;
 
-static scenemanager_impl *get(void *mgr) {
+static scenemanager_impl *checked_scenemanager(void *mgr, const char *api) {
+    if (!mgr)
+        return NULL;
+    if (rt_obj_class_id(mgr) != RT_SCENEMANAGER_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
     return (scenemanager_impl *)mgr;
 }
 
@@ -55,7 +62,8 @@ static int find_scene(scenemanager_impl *sm, const char *name) {
 ///          Supports instant switching and timed transitions with progress tracking.
 void *rt_scenemanager_new(void) {
     scenemanager_impl *sm =
-        (scenemanager_impl *)rt_obj_new_i64(0, (int64_t)sizeof(scenemanager_impl));
+        (scenemanager_impl *)rt_obj_new_i64(RT_SCENEMANAGER_CLASS_ID,
+                                            (int64_t)sizeof(scenemanager_impl));
     if (!sm)
         return NULL;
     memset(sm, 0, sizeof(scenemanager_impl));
@@ -67,9 +75,10 @@ void *rt_scenemanager_new(void) {
 
 /// @brief Register a named scene. The first scene added becomes the current scene.
 void rt_scenemanager_add(void *mgr, void *name) {
-    if (!mgr || !name)
+    scenemanager_impl *sm =
+        checked_scenemanager(mgr, "SceneManager.Add: expected Viper.Game.SceneManager");
+    if (!sm || !name)
         return;
-    scenemanager_impl *sm = get(mgr);
     if (sm->count >= SM_MAX_SCENES)
         return;
     const char *cname = rt_string_cstr((rt_string)name);
@@ -90,9 +99,10 @@ void rt_scenemanager_add(void *mgr, void *name) {
 
 /// @brief Instantly switch to a named scene (sets just_entered and just_exited flags).
 void rt_scenemanager_switch(void *mgr, void *name) {
-    if (!mgr || !name)
+    scenemanager_impl *sm =
+        checked_scenemanager(mgr, "SceneManager.Switch: expected Viper.Game.SceneManager");
+    if (!sm || !name)
         return;
-    scenemanager_impl *sm = get(mgr);
     const char *cname = rt_string_cstr((rt_string)name);
     int idx = find_scene(sm, cname);
     if (idx < 0 || idx == sm->current)
@@ -110,9 +120,10 @@ void rt_scenemanager_switch(void *mgr, void *name) {
 
 /// @brief Begin a timed transition to a new scene (completes after duration_ms).
 void rt_scenemanager_switch_transition(void *mgr, void *name, int64_t duration_ms) {
-    if (!mgr || !name)
+    scenemanager_impl *sm =
+        checked_scenemanager(mgr, "SceneManager.SwitchTransition: expected Viper.Game.SceneManager");
+    if (!sm || !name)
         return;
-    scenemanager_impl *sm = get(mgr);
     const char *cname = rt_string_cstr((rt_string)name);
     int idx = find_scene(sm, cname);
     if (idx < 0 || idx == sm->current || (sm->transitioning && idx == sm->next_scene))
@@ -127,14 +138,15 @@ void rt_scenemanager_switch_transition(void *mgr, void *name, int64_t duration_m
 /// @brief Advance the scene manager by dt milliseconds. Clears one-shot flags, completes
 /// transitions.
 void rt_scenemanager_update(void *mgr, int64_t dt) {
-    if (!mgr)
+    scenemanager_impl *sm =
+        checked_scenemanager(mgr, "SceneManager.Update: expected Viper.Game.SceneManager");
+    if (!sm)
         return;
-    scenemanager_impl *sm = get(mgr);
     sm->transition_completed = 0;
     sm->just_entered = 0;
     sm->just_exited = 0;
 
-    if (sm->transitioning) {
+    if (sm->transitioning && dt > 0) {
         sm->trans_timer -= dt;
         if (sm->trans_timer <= 0) {
             sm->transitioning = 0;
@@ -151,9 +163,10 @@ void rt_scenemanager_update(void *mgr, int64_t dt) {
 
 /// @brief Get the name of the currently active scene.
 void *rt_scenemanager_current(void *mgr) {
-    if (!mgr)
+    scenemanager_impl *sm =
+        checked_scenemanager(mgr, "SceneManager.Current: expected Viper.Game.SceneManager");
+    if (!sm)
         return (void *)rt_const_cstr("");
-    scenemanager_impl *sm = get(mgr);
     if (sm->current >= 0 && sm->current < sm->count)
         return (void *)rt_const_cstr(sm->scenes[sm->current].name);
     return (void *)rt_const_cstr("");
@@ -161,9 +174,10 @@ void *rt_scenemanager_current(void *mgr) {
 
 /// @brief Get the name of the previously active scene (before the last transition).
 void *rt_scenemanager_previous(void *mgr) {
-    if (!mgr)
+    scenemanager_impl *sm =
+        checked_scenemanager(mgr, "SceneManager.Previous: expected Viper.Game.SceneManager");
+    if (!sm)
         return (void *)rt_const_cstr("");
-    scenemanager_impl *sm = get(mgr);
     if (sm->previous >= 0 && sm->previous < sm->count)
         return (void *)rt_const_cstr(sm->scenes[sm->previous].name);
     return (void *)rt_const_cstr("");
@@ -171,9 +185,10 @@ void *rt_scenemanager_previous(void *mgr) {
 
 /// @brief Check whether the current scene matches the given name.
 int8_t rt_scenemanager_is_scene(void *mgr, void *name) {
-    if (!mgr || !name)
+    scenemanager_impl *sm =
+        checked_scenemanager(mgr, "SceneManager.IsScene: expected Viper.Game.SceneManager");
+    if (!sm || !name)
         return 0;
-    scenemanager_impl *sm = get(mgr);
     if (sm->current < 0)
         return 0;
     const char *cname = rt_string_cstr((rt_string)name);
@@ -182,24 +197,31 @@ int8_t rt_scenemanager_is_scene(void *mgr, void *name) {
 
 /// @brief Check whether a scene was entered this frame (one-shot, cleared on next update).
 int8_t rt_scenemanager_just_entered(void *mgr) {
-    return mgr ? get(mgr)->just_entered : 0;
+    scenemanager_impl *sm =
+        checked_scenemanager(mgr, "SceneManager.JustEntered: expected Viper.Game.SceneManager");
+    return sm ? sm->just_entered : 0;
 }
 
 /// @brief Check whether a scene was exited this frame (one-shot, cleared on next update).
 int8_t rt_scenemanager_just_exited(void *mgr) {
-    return mgr ? get(mgr)->just_exited : 0;
+    scenemanager_impl *sm =
+        checked_scenemanager(mgr, "SceneManager.JustExited: expected Viper.Game.SceneManager");
+    return sm ? sm->just_exited : 0;
 }
 
 /// @brief Check whether a timed scene transition is currently in progress.
 int8_t rt_scenemanager_is_transitioning(void *mgr) {
-    return mgr ? get(mgr)->transitioning : 0;
+    scenemanager_impl *sm =
+        checked_scenemanager(mgr, "SceneManager.IsTransitioning: expected Viper.Game.SceneManager");
+    return sm ? sm->transitioning : 0;
 }
 
 /// @brief Get the transition progress as a ratio (0.0 = start, 1.0 = complete).
 double rt_scenemanager_transition_progress(void *mgr) {
-    if (!mgr)
+    scenemanager_impl *sm =
+        checked_scenemanager(mgr, "SceneManager.TransitionProgress: expected Viper.Game.SceneManager");
+    if (!sm)
         return 0.0;
-    scenemanager_impl *sm = get(mgr);
     if (sm->transition_completed)
         return 1.0;
     if (!sm->transitioning || sm->trans_duration <= 0)

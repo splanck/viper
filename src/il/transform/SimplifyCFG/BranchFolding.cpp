@@ -127,7 +127,8 @@ bool foldTrivialConditionalBranches(SimplifyCFG::SimplifyCFGPassContext &ctx) {
 
             if (!instr.operands.empty()) {
                 const il::core::Value &cond = instr.operands.front();
-                if (cond.kind == il::core::Value::Kind::ConstInt && cond.isBool) {
+                if (cond.kind == il::core::Value::Kind::ConstInt &&
+                    (cond.i64 == 0 || cond.i64 == 1)) {
                     const bool takeTrue = cond.i64 != 0;
                     const size_t successorIndex = takeTrue ? 0 : 1;
                     if (successorIndex < instr.labels.size()) {

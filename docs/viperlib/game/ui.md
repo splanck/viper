@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-23
+last-verified: 2026-05-04
 ---
 
 # Game UI Widgets
@@ -262,6 +262,8 @@ and optional BitmapFont rendering.
 
 - Reveal timing counts UTF-8 codepoints, not bytes, so multi-byte characters are revealed as one character.
 - The dialogue box stores UTF-8 safely; oversized speaker/text inputs are truncated on codepoint boundaries.
+- Position and size setters clamp geometry to finite 32-bit pixel values; width and height stay at least 1.
+- Background alpha is clamped to 0-255, padding is non-negative, and non-positive update deltas are ignored.
 - One-way use case: `Advance()` behaves like a confirm button. If the line is mid-reveal it completes the line first; only the next call advances the queue.
 
 ---

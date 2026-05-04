@@ -218,7 +218,7 @@ MemoryEffects memoryEffects(Opcode op) noexcept {
             return MemoryEffects::None;
 
         case Opcode::ConstStr:
-            return MemoryEffects::ReadWrite;
+            return MemoryEffects::Read;
 
         default:
             return MemoryEffects::Unknown;

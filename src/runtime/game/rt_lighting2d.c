@@ -25,6 +25,7 @@
 #include "rt_lighting2d.h"
 #include "rt_graphics.h"
 #include "rt_object.h"
+#include "rt_trap.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -50,12 +51,31 @@ struct rt_lighting2d_impl {
     struct rt_dyn_light lights[MAX_DYN_LIGHTS_CAP];
 };
 
+static struct rt_lighting2d_impl *checked_lighting2d(rt_lighting2d lit, const char *api) {
+    if (!lit)
+        return NULL;
+    if (rt_obj_class_id(lit) != RT_LIGHTING2D_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return lit;
+}
+
+static int64_t clamp_i64(int64_t value, int64_t lo, int64_t hi) {
+    if (value < lo)
+        return lo;
+    if (value > hi)
+        return hi;
+    return value;
+}
+
 /// @brief Construct a Lighting2D system with `max_lights` dynamic-light slots (capped at MAX_DYN_LIGHTS_CAP=128).
 /// Defaults: darkness=0 (off), tint=near-black with blue cast, player radius=180, player color=0x303240.
 /// Returns a GC-managed handle; NULL on allocation failure.
 rt_lighting2d rt_lighting2d_new(int64_t max_lights) {
     struct rt_lighting2d_impl *lit =
-        (struct rt_lighting2d_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_lighting2d_impl));
+        (struct rt_lighting2d_impl *)rt_obj_new_i64(RT_LIGHTING2D_CLASS_ID,
+                                                    (int64_t)sizeof(struct rt_lighting2d_impl));
     if (!lit)
         return NULL;
 
@@ -64,7 +84,7 @@ rt_lighting2d rt_lighting2d_new(int64_t max_lights) {
     lit->player_radius = 180;
     lit->player_color = 0x303240;
     lit->player_pulse = 0;
-    lit->max_lights = (max_lights > MAX_DYN_LIGHTS_CAP) ? MAX_DYN_LIGHTS_CAP : max_lights;
+    lit->max_lights = clamp_i64(max_lights, 0, MAX_DYN_LIGHTS_CAP);
     lit->light_count = 0;
     memset(lit->lights, 0, sizeof(lit->lights));
 
@@ -73,52 +93,58 @@ rt_lighting2d rt_lighting2d_new(int64_t max_lights) {
 
 /// @brief Release a Lighting2D handle; frees the inline structure when the refcount drops to zero.
 void rt_lighting2d_destroy(rt_lighting2d lit) {
+    lit = checked_lighting2d(lit, "Lighting2D.Destroy: expected Viper.Game.Lighting2D");
     if (lit && rt_obj_release_check0(lit))
         rt_obj_free(lit);
 }
 
 /// @brief Set the full-screen darkness overlay alpha (0=off, 255=opaque). Clamped to [0,255].
 void rt_lighting2d_set_darkness(rt_lighting2d lit, int64_t alpha) {
+    lit = checked_lighting2d(lit, "Lighting2D.SetDarkness: expected Viper.Game.Lighting2D");
     if (!lit)
         return;
-    if (alpha < 0)
-        alpha = 0;
-    if (alpha > 255)
-        alpha = 255;
-    lit->darkness = alpha;
+    lit->darkness = clamp_i64(alpha, 0, 255);
 }
 
 /// @brief Read the current darkness overlay alpha; returns 0 for null handles.
 int64_t rt_lighting2d_get_darkness(rt_lighting2d lit) {
+    lit = checked_lighting2d(lit, "Lighting2D.GetDarkness: expected Viper.Game.Lighting2D");
     return lit ? lit->darkness : 0;
 }
 
 /// @brief Set the tint color (0xRRGGBB) used by the darkness overlay; alpha is supplied separately.
 void rt_lighting2d_set_tint_color(rt_lighting2d lit, int64_t color) {
+    lit = checked_lighting2d(lit, "Lighting2D.SetTintColor: expected Viper.Game.Lighting2D");
     if (lit)
-        lit->tint_color = color;
+        lit->tint_color = color & 0xFFFFFF;
 }
 
 /// @brief Read the darkness overlay tint color (0xRRGGBB).
 int64_t rt_lighting2d_get_tint_color(rt_lighting2d lit) {
+    lit = checked_lighting2d(lit, "Lighting2D.GetTintColor: expected Viper.Game.Lighting2D");
     return lit ? lit->tint_color : 0;
 }
 
 /// @brief Configure the always-on player light's base radius and color.
 /// Drawn at the screen-space player position passed to `draw()`; modulated by an internal pulse.
 void rt_lighting2d_set_player_light(rt_lighting2d lit, int64_t radius, int64_t color) {
+    lit = checked_lighting2d(lit, "Lighting2D.SetPlayerLight: expected Viper.Game.Lighting2D");
     if (!lit)
         return;
-    lit->player_radius = radius;
-    lit->player_color = color;
+    lit->player_radius = radius > 0 ? radius : 0;
+    lit->player_color = color & 0xFFFFFF;
 }
 
-/// @brief Spawn a time-limited dynamic light (explosion, bullet, pickup) at world coords (x, y).
-/// `lifetime` is in update ticks; alpha fades linearly to zero over that span. Silently dropped if
-/// the pool (sized at construction, ≤ MAX_DYN_LIGHTS_CAP) is full or `lifetime <= 0`.
+/// @brief Spawn a dynamic light (explosion, bullet, pickup) at world coords (x, y).
+/// `lifetime` is in update ticks; positive lifetimes fade linearly to zero, and 0 is permanent.
+/// Silently dropped if the pool (sized at construction, <= MAX_DYN_LIGHTS_CAP) is full, the radius
+/// is non-positive, or `lifetime` is negative.
 void rt_lighting2d_add_light(
     rt_lighting2d lit, int64_t x, int64_t y, int64_t radius, int64_t color, int64_t lifetime) {
-    if (!lit || lifetime <= 0)
+    lit = checked_lighting2d(lit, "Lighting2D.AddLight: expected Viper.Game.Lighting2D");
+    if (!lit || lifetime < 0)
+        return;
+    if (radius <= 0)
         return;
 
     // Find an inactive slot
@@ -127,7 +153,7 @@ void rt_lighting2d_add_light(
             lit->lights[i].x = x;
             lit->lights[i].y = y;
             lit->lights[i].radius = radius;
-            lit->lights[i].color = color;
+            lit->lights[i].color = color & 0xFFFFFF;
             lit->lights[i].life = lifetime;
             lit->lights[i].max_life = lifetime;
             lit->lights[i].active = 1;
@@ -151,6 +177,7 @@ void rt_lighting2d_add_tile_light(
 
 /// @brief Deactivate every dynamic light slot at once; useful between scenes/levels.
 void rt_lighting2d_clear_lights(rt_lighting2d lit) {
+    lit = checked_lighting2d(lit, "Lighting2D.ClearLights: expected Viper.Game.Lighting2D");
     if (!lit)
         return;
     for (int64_t i = 0; i < lit->max_lights; i++)
@@ -161,6 +188,7 @@ void rt_lighting2d_clear_lights(rt_lighting2d lit) {
 /// @brief Per-frame tick: advance the player-light pulse (mod 120) and decrement every active
 /// dynamic light's lifetime. Lights with `life <= 0` are returned to the pool.
 void rt_lighting2d_update(rt_lighting2d lit) {
+    lit = checked_lighting2d(lit, "Lighting2D.Update: expected Viper.Game.Lighting2D");
     if (!lit)
         return;
 
@@ -172,8 +200,9 @@ void rt_lighting2d_update(rt_lighting2d lit) {
     // Tick dynamic lights
     for (int64_t i = 0; i < lit->max_lights; i++) {
         if (lit->lights[i].active) {
-            lit->lights[i].life--;
-            if (lit->lights[i].life <= 0) {
+            if (lit->lights[i].max_life > 0)
+                lit->lights[i].life--;
+            if (lit->lights[i].max_life > 0 && lit->lights[i].life <= 0) {
                 lit->lights[i].active = 0;
                 lit->light_count--;
             }
@@ -194,6 +223,7 @@ void rt_lighting2d_draw(rt_lighting2d lit,
                         int64_t cam_y,
                         int64_t player_sx,
                         int64_t player_sy) {
+    lit = checked_lighting2d(lit, "Lighting2D.Draw: expected Viper.Game.Lighting2D");
     if (!lit || !canvas || lit->darkness <= 0)
         return;
 
@@ -211,6 +241,8 @@ void rt_lighting2d_draw(rt_lighting2d lit,
     else
         pulse = (120 - lit->player_pulse) / 6;
     int64_t radius = lit->player_radius + pulse;
+    if (radius < 0)
+        radius = 0;
 
     // Outer glow
     rt_canvas_disc_alpha(canvas, player_sx, player_sy, radius + 40, lit->player_color, 30);
@@ -234,6 +266,8 @@ void rt_lighting2d_draw(rt_lighting2d lit,
         int64_t ly = lit->lights[i].y - cam_y;
         int64_t lr = lit->lights[i].radius;
         int64_t lc = lit->lights[i].color;
+        if (lr <= 0)
+            continue;
 
         // Fade based on remaining life
         int64_t fade_alpha = dark;
@@ -249,5 +283,6 @@ void rt_lighting2d_draw(rt_lighting2d lit,
 
 /// @brief Number of currently active dynamic lights (excludes the always-on player light).
 int64_t rt_lighting2d_get_light_count(rt_lighting2d lit) {
+    lit = checked_lighting2d(lit, "Lighting2D.LightCount: expected Viper.Game.Lighting2D");
     return lit ? lit->light_count : 0;
 }

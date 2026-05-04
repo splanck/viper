@@ -2341,6 +2341,32 @@ RuntimeDescriptor buildDescriptor(const DescriptorRow &row) {
     return descriptor;
 }
 
+const char *runtimeTypeKindName(il::core::Type::Kind kind) {
+    switch (kind) {
+        case Kind::Void:
+            return "void";
+        case Kind::I1:
+            return "i1";
+        case Kind::I16:
+            return "i16";
+        case Kind::I32:
+            return "i32";
+        case Kind::I64:
+            return "i64";
+        case Kind::F64:
+            return "f64";
+        case Kind::Ptr:
+            return "ptr";
+        case Kind::Str:
+            return "str";
+        case Kind::Error:
+            return "error";
+        case Kind::ResumeTok:
+            return "resumetok";
+    }
+    return "unknown";
+}
+
 #ifndef NDEBUG
 /// @brief Convert a signature parameter kind into a printable name.
 /// @details Used exclusively in debug assertions to emit human-friendly
@@ -2739,11 +2765,41 @@ bool selfCheckRuntimeDescriptors() {
         }
 
         // Check 2: Parameter count consistency
-        // For each descriptor, verify the signature's parameter count is reasonable
-        // (non-negative and within expected bounds for runtime functions)
+        // For each descriptor, verify the signature is parseable, has a handler,
+        // and does not contain IL-only error/void parameter shapes.
         constexpr std::size_t kMaxReasonableParams = 16;
         for (std::size_t i = 0; i < descriptors.size(); ++i) {
             const auto &desc = descriptors[i];
+            if (!desc.handler) {
+                std::fprintf(stderr,
+                             "[FATAL] Runtime descriptor '%.*s' has no handler\n",
+                             static_cast<int>(desc.name.size()),
+                             desc.name.data());
+#ifndef NDEBUG
+                assert(false && "runtime descriptor missing handler");
+#endif
+                valid = false;
+            }
+            if (!desc.signature.valid) {
+                std::fprintf(stderr,
+                             "[FATAL] Runtime descriptor '%.*s' has an invalid signature\n",
+                             static_cast<int>(desc.name.size()),
+                             desc.name.data());
+#ifndef NDEBUG
+                assert(false && "runtime descriptor has invalid signature");
+#endif
+                valid = false;
+            }
+            if (desc.signature.retType.kind == il::core::Type::Kind::Error) {
+                std::fprintf(stderr,
+                             "[FATAL] Runtime descriptor '%.*s' returns unsupported error type\n",
+                             static_cast<int>(desc.name.size()),
+                             desc.name.data());
+#ifndef NDEBUG
+                assert(false && "runtime descriptor returns error type");
+#endif
+                valid = false;
+            }
             const std::size_t paramCount = desc.signature.paramTypes.size();
             if (paramCount > kMaxReasonableParams) {
                 std::fprintf(stderr,
@@ -2754,6 +2810,22 @@ bool selfCheckRuntimeDescriptors() {
                              kMaxReasonableParams);
 #ifndef NDEBUG
                 assert(false && "runtime descriptor has too many parameters");
+#endif
+                valid = false;
+            }
+            for (std::size_t paramIndex = 0; paramIndex < paramCount; ++paramIndex) {
+                const auto kind = desc.signature.paramTypes[paramIndex].kind;
+                if (kind != il::core::Type::Kind::Void && kind != il::core::Type::Kind::Error)
+                    continue;
+                std::fprintf(stderr,
+                             "[FATAL] Runtime descriptor '%.*s' parameter %zu has unsupported %s "
+                             "type\n",
+                             static_cast<int>(desc.name.size()),
+                             desc.name.data(),
+                             paramIndex,
+                             runtimeTypeKindName(kind));
+#ifndef NDEBUG
+                assert(false && "runtime descriptor has unsupported parameter type");
 #endif
                 valid = false;
             }

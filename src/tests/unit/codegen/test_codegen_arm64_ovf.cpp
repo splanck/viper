@@ -82,7 +82,7 @@ TEST(Arm64CLI, OverflowVariantsRR) {
     } cases[] = {
         {"iadd.ovf", "adds x0, x0, x1", "b.vs"},
         {"isub.ovf", "subs x0, x0, x1", "b.vs"},
-        {"imul.ovf", "mul x0, x0, x1", nullptr},
+        {"imul.ovf", "mul x11, x0, x1", "b.ne"},
     };
 
     for (const auto &c : cases) {

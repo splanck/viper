@@ -23,6 +23,7 @@
 
 #include "il/core/Global.hpp"
 #include "il/core/Module.hpp"
+#include "il/internal/io/ParserUtil.hpp"
 
 #include <cerrno>
 #include <charconv>
@@ -39,10 +40,7 @@ using il::support::Expected;
 using il::support::makeError;
 
 bool parseInteger(std::string_view text, long long &out) {
-    const char *begin = text.data();
-    const char *end = begin + text.size();
-    auto [ptr, ec] = std::from_chars(begin, end, out, 10);
-    return ec == std::errc{} && ptr == end;
+    return il::io::parseIntegerLiteral(std::string{text}, out);
 }
 
 bool parseFloat(std::string_view text, double &out) {
@@ -68,8 +66,12 @@ Expected<void> validateGlobal(const Global &global) {
             makeError({}, "import global @" + global.name + " must not have an initializer")};
     }
 
-    if (global.type.kind == Type::Kind::Str)
+    if (global.type.kind == Type::Kind::Str) {
+        if (global.linkage != Linkage::Import && !global.hasInitializer)
+            return Expected<void>{
+                makeError({}, "string global @" + global.name + " requires an initializer")};
         return {};
+    }
 
     if (global.init.empty())
         return {};

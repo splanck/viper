@@ -20,7 +20,10 @@
 
 #pragma once
 
+#include "il/core/Extern.hpp"
+#include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/RuntimeOwnership.hpp"
@@ -77,6 +80,45 @@ inline void applyRuntimeOwnership(CallEffects &effects,
     effects.mayAllocate = effects.mayAllocate || ownership.mayAllocate;
 }
 
+inline void applyEffectAttrs(CallEffects &effects, const il::core::EffectAttrs &attrs) {
+    effects.pure = attrs.pure;
+    effects.readonly = attrs.readonly;
+    effects.nothrow = attrs.nothrow;
+}
+
+inline void applyRuntimeSignature(CallEffects &effects,
+                                  const il::runtime::RuntimeSignature &signature,
+                                  std::string_view callee) {
+    effects.pure = signature.pure;
+    effects.readonly = signature.readonly;
+    effects.nothrow = signature.nothrow;
+    effects.consumedArgMask = signature.consumedArgMask;
+    effects.retainedArgMask = signature.retainedArgMask;
+    effects.returnsOwned = signature.returnsOwned;
+    effects.mayAllocate = signature.mayAllocate;
+    applyRuntimeOwnership(effects, il::runtime::classifyRuntimeOwnership(callee));
+}
+
+inline const il::core::Extern *findExternDecl(const il::core::Module *module,
+                                              std::string_view callee) {
+    if (!module)
+        return nullptr;
+    for (const auto &ext : module->externs)
+        if (ext.name == callee)
+            return &ext;
+    return nullptr;
+}
+
+inline const il::core::Function *findFunctionDecl(const il::core::Module *module,
+                                                  std::string_view callee) {
+    if (!module)
+        return nullptr;
+    for (const auto &fn : module->functions)
+        if (fn.name == callee)
+            return &fn;
+    return nullptr;
+}
+
 /// @brief Query side-effect metadata for a call instruction.
 /// @details Runtime metadata is authoritative when available. Unknown callees
 ///          are classified conservatively; the verifier rejects call-site
@@ -84,22 +126,23 @@ inline void applyRuntimeOwnership(CallEffects &effects,
 ///
 /// @param instr The call instruction to classify.
 /// @return Effect classification for the call.
-inline CallEffects classifyCallEffects(const il::core::Instr &instr) {
+inline CallEffects classifyCallEffects(const il::core::Instr &instr,
+                                       const il::core::Module *module = nullptr) {
     CallEffects effects;
 
     if (instr.op != il::core::Opcode::Call)
         return effects; // Conservative: unknown effect for non-call instructions
 
-    if (const auto *sig = il::runtime::findRuntimeSignature(instr.callee)) {
-        effects.pure = sig->pure;
-        effects.readonly = sig->readonly;
-        effects.nothrow = sig->nothrow;
-        effects.consumedArgMask = sig->consumedArgMask;
-        effects.retainedArgMask = sig->retainedArgMask;
-        effects.returnsOwned = sig->returnsOwned;
-        effects.mayAllocate = sig->mayAllocate;
-        applyRuntimeOwnership(effects, il::runtime::classifyRuntimeOwnership(instr.callee));
+    const auto *fn = findFunctionDecl(module, instr.callee);
+    if (fn && fn->linkage != il::core::Linkage::Import) {
+        applyEffectAttrs(effects, fn->attrs());
+    } else if (const auto *sig = il::runtime::findRuntimeSignature(instr.callee)) {
+        applyRuntimeSignature(effects, *sig, instr.callee);
         return effects;
+    } else if (const auto *ext = findExternDecl(module, instr.callee)) {
+        applyEffectAttrs(effects, ext->attrs());
+    } else if (fn) {
+        applyEffectAttrs(effects, fn->attrs());
     } else {
         const auto helperEffects = il::runtime::classifyHelperEffects(instr.callee);
         if (helperEffects.known) {
@@ -117,25 +160,28 @@ inline CallEffects classifyCallEffects(const il::core::Instr &instr) {
 /// @details Useful when the full instruction is not available.
 /// @param callee The callee name to classify.
 /// @return Effect classification for the callee.
-inline CallEffects classifyCalleeEffects(std::string_view callee) {
+inline CallEffects classifyCalleeEffects(std::string_view callee,
+                                         const il::core::Module *module = nullptr) {
     CallEffects effects;
 
-    if (const auto *sig = il::runtime::findRuntimeSignature(callee)) {
-        effects.pure = sig->pure;
-        effects.readonly = sig->readonly;
-        effects.nothrow = sig->nothrow;
-        effects.consumedArgMask = sig->consumedArgMask;
-        effects.retainedArgMask = sig->retainedArgMask;
-        effects.returnsOwned = sig->returnsOwned;
-        effects.mayAllocate = sig->mayAllocate;
-        applyRuntimeOwnership(effects, il::runtime::classifyRuntimeOwnership(callee));
+    const auto *fn = findFunctionDecl(module, callee);
+    if (fn && fn->linkage != il::core::Linkage::Import) {
+        applyEffectAttrs(effects, fn->attrs());
+    } else if (const auto *sig = il::runtime::findRuntimeSignature(callee)) {
+        applyRuntimeSignature(effects, *sig, callee);
         return effects;
+    } else if (const auto *ext = findExternDecl(module, callee)) {
+        applyEffectAttrs(effects, ext->attrs());
+    } else if (fn) {
+        applyEffectAttrs(effects, fn->attrs());
     }
 
-    const auto helperEffects = il::runtime::classifyHelperEffects(callee);
-    effects.pure = helperEffects.pure;
-    effects.readonly = helperEffects.readonly;
-    effects.nothrow = helperEffects.nothrow;
+    if (!findExternDecl(module, callee) && !findFunctionDecl(module, callee)) {
+        const auto helperEffects = il::runtime::classifyHelperEffects(callee);
+        effects.pure = helperEffects.pure;
+        effects.readonly = helperEffects.readonly;
+        effects.nothrow = helperEffects.nothrow;
+    }
     applyRuntimeOwnership(effects, il::runtime::classifyRuntimeOwnership(callee));
 
     return effects;

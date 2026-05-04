@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-29
+last-verified: 2026-05-04
 ---
 
 # Viper IL — Complete Guide
@@ -60,8 +60,8 @@ decouples frontends from backends:
 An IL module is plain text. Its top‑level layout is:
 
 1. **Version line** – `il 0.2.0` pins the expected IL grammar version.
-2. **Extern declarations** – `extern @name(signature) -> ret` describes functions provided by the runtime or other
-   modules.
+2. **Extern declarations** – `extern @name(signature) -> ret [attrs?]` describes functions provided by the runtime or
+   other modules.
 3. **Globals** – `global const str @.msg = "hi"` defines immutable strings; scalar storage globals use forms such as
    `global i64 @counter = 0`.
 4. **Functions** – `func @main() -> i64 { ... }` contains basic blocks and instructions.
@@ -155,6 +155,10 @@ entry:
 **What just happened?** `alloca` creates a stack slot, `store` writes to it, and `load` reads from it.
 
 **Gotcha:** All integers are 64-bit; mixing `i64` and `f64` requires explicit casts.
+
+Integer literals may be decimal, `0x` hexadecimal, `0b` binary, or leading-zero octal, with an optional sign and
+underscore digit separators. The same parser is used for instruction operands and scalar global initializers, so values
+such as `-0x2a` and `0b1010_0011` round-trip consistently.
 
 ### Locals, params, and calls
 
@@ -727,6 +731,7 @@ denotes round-to-even (IEEE 754 default). The `.chk` suffix indicates trap-on-ov
 allocations created by `alloca` are zero-initialized and live until the function returns. When a load/store address is
 statically derived from a constant-size `alloca`, the verifier checks the full access width, not just the pointer
 offset.
+Constant `gep` may form a one-past-the-end pointer for address arithmetic, but that pointer is not dereferenceable.
 
 ```text
 func @main() -> i64 {
@@ -753,10 +758,13 @@ permits only scalar, pointer, or string values after it.
 
 Direct calls may carry bracketed semantic hints after the argument list:
 `[nothrow]`, `[readonly]`, `[pure]`, or a comma-separated combination. Known
-runtime helpers and local functions remain authoritative; contradictory
-call-site attributes are rejected by the verifier. Calls to externs or unknown
-symbols cannot use these attributes unless the callee also has runtime or local
-function effect metadata.
+runtime helpers, extern declarations, imported prototypes, and local functions
+remain authoritative; contradictory call-site attributes are rejected by the
+verifier. Calls to unknown symbols cannot use these attributes.
+
+Function definitions, imported function prototypes, and extern declarations may
+also carry `[nothrow]`, `[readonly]`, and `[pure]`. The optimizer uses this
+metadata for DCE, alias analysis, and LICM after verifier validation.
 
 ```text
 call @f(%x, %y) [nothrow, readonly]
@@ -785,7 +793,7 @@ IL provides a structured error handling system with error values, handler stacks
 | `trap` | `trap` | Unconditional trap (abort) |
 | `trap.err` | `%e = trap.err %kind, %msg` | Create an error value from i32 kind + str message; returns `Error` |
 | `trap.from_err` | `trap.from_err i32 7` | Terminator: trap with the given i32 trap-kind code (the `i32` type prefix is required before a constant) |
-| `trap.kind` | `%k = trap.kind` | Read the current trap kind from the most recent error; returns `i64` |
+| `trap.kind` | `%k = trap.kind` or `%k = trap.kind %err` | Read the current trap kind, or the kind stored in an `Error`; returns `i64` |
 
 **Resume Operations:**
 | Instr | Form | Notes |
@@ -902,22 +910,25 @@ wired directly to runtime contracts. Passes can also observe the
   validates an instruction-declared result type.
 * Calls match callee arity and types. Runtime catalog parameters spelled `obj` may accept either object pointers or
   managed string handles; raw `ptr` parameters remain distinct from `str`.
-* Direct call attributes cannot contradict known runtime helper or local function metadata, and require such metadata.
+* Direct call attributes cannot contradict known runtime helper, extern, import, or local function metadata, and require
+  such metadata.
 * `call.indirect` requires a pointer-typed callee operand unless it names a known `globaladdr` callee; pointer callees
   require explicit `[ret(params)]` signatures, and non-void signatures require a result temp.
 * `addr_of` and `const_str` require a declared string global; `gaddr` requires a declared scalar storage global.
+  Generic `load`, `store`, and `gep` operands must use the materialized pointer, not a direct `@global` value.
 * `load`/`store` use `ptr` operands and non-void element types. Constant alloca-derived accesses must fit within the
   allocation after considering the access type's byte width.
 * `alloca` sizes are `i64`; constant operands must be non-negative. Constant `gep` offsets are signed byte offsets.
   When a constant `gep` derives from a constant-size `alloca`, the cumulative alloca-relative offset is
-  range-checked.
+  range-checked; one-past-the-end is allowed only as a pointer value, not as a dereferenced load/store address.
 * Temporaries are defined exactly once and every reachable cross-block use is dominated by its definition.
 * Function and block parameters have unique names/ids, non-void types, and each predecessor passes matching arguments.
 * Branch arguments must match each destination block's parameters and must reference defined, non-void values. Trailing empty successor bundles may be omitted.
-* Returning an `alloca`-derived pointer, including through `gep` or block parameters, is invalid. Calls and stores may borrow or stage stack addresses for frontend ABIs; alias analyses still treat those uses as escapes unless proven otherwise.
-* Runtime string and array release helpers (`rt_str_release`, `rt_str_release_maybe`, `rt_arr_i32_release`,
-  `rt_arr_i64_release`, `rt_arr_f64_release`, `rt_arr_str_release`, `rt_arr_obj_release`) reject double release and
-  dominated use-after-release.
+* Returning an `alloca`-derived pointer, including through `gep` or block parameters, is invalid. Direct calls may borrow
+  stack-derived pointers only when callee effect metadata proves the callee is non-mutating and does not return the
+  borrowed pointer; stores and unknown or mutating calls are treated as escapes.
+* Runtime ownership metadata drives retain/release checks. Helpers that consume a string, array, or object operand
+  reject double release and dominated use-after-release.
 * `cbr` takes an `i1` condition.
 
 Tooling can call `Verifier::verify()` for a single primary diagnostic with related verifier failures attached as notes, or `Verifier::verifyAll()` to collect a bounded list of independent verifier failures. Function-body verification continues across independent functions, so one bad function no longer hides later broken functions in the same module. Frontends and native build paths run verification before handing IL to an optimizer, VM, bytecode compiler, or native backend.
@@ -947,7 +958,7 @@ module      ::= "il" VERSION (target_decl)? decl*
 VERSION     ::= NUMBER "." NUMBER ("." NUMBER)?
 target_decl ::= "target" STRING
 decl        ::= extern | global | func
-extern      ::= "extern" SYMBOL "(" type_list? ")" "->" type
+extern      ::= "extern" SYMBOL "(" type_list? ")" "->" type func_attrs?
 global      ::= "global" linkage? ("const")? type SYMBOL ("=" ginit)?
 ginit       ::= STRING | INT | FLOAT | "null" | SYMBOL
 linkage     ::= "export" | "import"
@@ -992,7 +1003,7 @@ op          ::= "add" value "," value | "and" value "," value | "ashr" value ","
                 "shl" value "," value | "sitofp" value |
                 "srem" value "," value | "srem.chk0" value "," value |
                 "store" type "," value "," value | "sub" value "," value |
-                "trap.err" value "," value | "trap.kind" |
+                "trap.err" value "," value | "trap.kind" value? |
                 "trunc1" value |
                 "ucmp_ge" value "," value | "ucmp_gt" value "," value |
                 "ucmp_le" value "," value | "ucmp_lt" value "," value |

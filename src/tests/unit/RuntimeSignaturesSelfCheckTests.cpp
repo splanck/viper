@@ -13,6 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "il/runtime/RuntimeSignatureParser.hpp"
 #include "tests/TestHarness.hpp"
 
 #include <unordered_set>
@@ -106,6 +107,21 @@ TEST(RuntimeSignaturesSelfCheck, ReasonableParameterCounts) {
     for (const auto &desc : registry) {
         ASSERT_TRUE(desc.signature.paramTypes.size() <= kMaxReasonableParams);
     }
+}
+
+TEST(RuntimeSignaturesSelfCheck, ParserRejectsUnknownTypesWithoutErrorSentinel) {
+    auto parsed = il::runtime::parseSignatureSpec("void(missing_type)");
+    EXPECT_FALSE(parsed.valid);
+    EXPECT_TRUE(parsed.paramTypes.empty());
+}
+
+TEST(RuntimeSignaturesSelfCheck, ParserSplitsGenericTypeListsAtTopLevelOnly) {
+    auto parsed = il::runtime::parseSignatureSpec("void(obj<map<str,i64>>,seq<str>)");
+    ASSERT_TRUE(parsed.valid);
+    ASSERT_EQ(parsed.paramTypes.size(), 2u);
+    EXPECT_EQ(parsed.paramTypes[0].kind, il::core::Type::Kind::Ptr);
+    EXPECT_EQ(parsed.paramTypes[1].kind, il::core::Type::Kind::Ptr);
+    EXPECT_NE(parsed.objectParamMask & 0x1u, 0u);
 }
 
 int main(int argc, char **argv) {

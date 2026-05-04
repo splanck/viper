@@ -17,6 +17,7 @@
 #include "rt_jsonpath.h"
 #include "rt_object.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,7 +27,13 @@ typedef struct {
     void *json_root;
 } config_impl;
 
-static config_impl *get(void *cfg) {
+static config_impl *checked_config(void *cfg, const char *api) {
+    if (!cfg)
+        return NULL;
+    if (rt_obj_class_id(cfg) != RT_CONFIG_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
     return (config_impl *)cfg;
 }
 
@@ -57,7 +64,7 @@ void *rt_config_load(void *path) {
     if (!root)
         return NULL;
 
-    config_impl *cfg = (config_impl *)rt_obj_new_i64(0, (int64_t)sizeof(config_impl));
+    config_impl *cfg = (config_impl *)rt_obj_new_i64(RT_CONFIG_CLASS_ID, (int64_t)sizeof(config_impl));
     if (!cfg)
         return NULL;
     memset(cfg, 0, sizeof(config_impl));
@@ -73,7 +80,7 @@ void *rt_config_from_string(void *json_str) {
     if (!root)
         return NULL;
 
-    config_impl *cfg = (config_impl *)rt_obj_new_i64(0, (int64_t)sizeof(config_impl));
+    config_impl *cfg = (config_impl *)rt_obj_new_i64(RT_CONFIG_CLASS_ID, (int64_t)sizeof(config_impl));
     if (!cfg)
         return NULL;
     memset(cfg, 0, sizeof(config_impl));
@@ -85,7 +92,9 @@ void *rt_config_from_string(void *json_str) {
 int64_t rt_config_get_int(void *cfg, void *path, int64_t default_val) {
     if (!cfg || !path)
         return default_val;
-    config_impl *c = get(cfg);
+    config_impl *c = checked_config(cfg, "Config.GetInt: expected Viper.Game.Config");
+    if (!c)
+        return default_val;
     if (!c->json_root)
         return default_val;
     void *val = rt_jsonpath_get(c->json_root, (rt_string)path);
@@ -98,7 +107,9 @@ int64_t rt_config_get_int(void *cfg, void *path, int64_t default_val) {
 void *rt_config_get_str(void *cfg, void *path, void *default_val) {
     if (!cfg || !path)
         return default_val;
-    config_impl *c = get(cfg);
+    config_impl *c = checked_config(cfg, "Config.GetStr: expected Viper.Game.Config");
+    if (!c)
+        return default_val;
     if (!c->json_root)
         return default_val;
     void *val = rt_jsonpath_get_str(c->json_root, (rt_string)path);
@@ -111,7 +122,9 @@ void *rt_config_get_str(void *cfg, void *path, void *default_val) {
 int8_t rt_config_get_bool(void *cfg, void *path, int8_t default_val) {
     if (!cfg || !path)
         return default_val;
-    config_impl *c = get(cfg);
+    config_impl *c = checked_config(cfg, "Config.GetBool: expected Viper.Game.Config");
+    if (!c)
+        return default_val;
     if (!c->json_root)
         return default_val;
     void *val = rt_jsonpath_get(c->json_root, (rt_string)path);
@@ -124,7 +137,9 @@ int8_t rt_config_get_bool(void *cfg, void *path, int8_t default_val) {
 int8_t rt_config_has(void *cfg, void *path) {
     if (!cfg || !path)
         return 0;
-    config_impl *c = get(cfg);
+    config_impl *c = checked_config(cfg, "Config.Has: expected Viper.Game.Config");
+    if (!c)
+        return 0;
     if (!c->json_root)
         return 0;
     return rt_jsonpath_get(c->json_root, (rt_string)path) != NULL;

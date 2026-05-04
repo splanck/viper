@@ -28,6 +28,8 @@
 #include <cstdint>
 #include <iostream>
 #include <limits>
+#include <string>
+#include <vector>
 
 using namespace il::core;
 
@@ -84,6 +86,39 @@ Module buildConstFoldTest(Opcode op, Value lhs, Value rhs, Type ty = Type(Type::
     return module;
 }
 
+Module buildRuntimeCallConstFoldTest(const std::string &callee,
+                                     std::vector<Value> operands,
+                                     Type ty) {
+    Module module;
+    Function fn;
+    fn.name = "test";
+    fn.retType = ty;
+
+    BasicBlock entry;
+    entry.label = "entry";
+
+    Instr call;
+    call.op = Opcode::Call;
+    call.result = 0;
+    call.type = ty;
+    call.callee = callee;
+    call.operands = std::move(operands);
+    entry.instructions.push_back(std::move(call));
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands.push_back(Value::temp(0));
+    entry.instructions.push_back(ret);
+    entry.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.valueNames.resize(1);
+    fn.valueNames[0] = "result";
+    module.functions.push_back(std::move(fn));
+    return module;
+}
+
 /// Check if the Ret operand was folded to a specific integer constant.
 bool retFoldedToInt(const Module &module, int64_t expected) {
     const auto &ret = module.functions[0].blocks[0].instructions.back();
@@ -91,6 +126,14 @@ bool retFoldedToInt(const Module &module, int64_t expected) {
         return false;
     const auto &v = ret.operands[0];
     return v.kind == Value::Kind::ConstInt && v.i64 == expected;
+}
+
+bool retFoldedToFloat(const Module &module, double expected) {
+    const auto &ret = module.functions[0].blocks[0].instructions.back();
+    if (ret.op != Opcode::Ret || ret.operands.empty())
+        return false;
+    const auto &v = ret.operands[0];
+    return v.kind == Value::Kind::ConstFloat && v.f64 == expected;
 }
 
 /// Check if the Ret operand is still a temp reference (not folded).
@@ -302,6 +345,22 @@ TEST(ConstFoldEdge, SDivChk0_Normal) {
     auto module = buildConstFoldTest(Opcode::SDivChk0, Value::constInt(42), Value::constInt(7));
     il::transform::constFold(module);
     ASSERT_TRUE(retFoldedToInt(module, 6));
+}
+
+TEST(ConstFoldEdge, ClampI64_InvertedBounds) {
+    auto module = buildRuntimeCallConstFoldTest(
+        "rt_clamp_i64", {Value::constInt(5), Value::constInt(10), Value::constInt(0)},
+        Type(Type::Kind::I64));
+    il::transform::constFold(module);
+    ASSERT_TRUE(retFoldedToInt(module, 5));
+}
+
+TEST(ConstFoldEdge, ClampF64_InvertedBounds) {
+    auto module = buildRuntimeCallConstFoldTest(
+        "rt_clamp_f64", {Value::constFloat(-2.0), Value::constFloat(1.0), Value::constFloat(-1.0)},
+        Type(Type::Kind::F64));
+    il::transform::constFold(module);
+    ASSERT_TRUE(retFoldedToFloat(module, -1.0));
 }
 
 int main(int argc, char **argv) {

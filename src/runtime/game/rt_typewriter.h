@@ -12,6 +12,7 @@
 //   - Skip() instantly reveals all remaining text.
 //   - GetVisibleText() returns the currently revealed portion.
 //   - Update() returns 1 on the frame the full text is revealed.
+//   - Non-positive update deltas are ignored; reveal progress saturates.
 //
 // Ownership/Lifetime:
 //   - GC-managed via rt_obj_new_i64. Text is strdup'd.
@@ -29,6 +30,9 @@ extern "C" {
 #endif
 
 typedef struct rt_typewriter_impl *rt_typewriter;
+
+/// Runtime class ID used to validate Typewriter handles.
+#define RT_TYPEWRITER_CLASS_ID INT64_C(-0x51020F)
 
 /// @brief Create an empty typewriter (call `_say` to begin revealing text).
 rt_typewriter rt_typewriter_new(void);

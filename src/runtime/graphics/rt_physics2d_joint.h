@@ -113,7 +113,8 @@ int64_t rt_physics2d_world_joint_count(void *world);
 // Circle Bodies
 //=========================================================================
 
-/// @brief Create a circular dynamic body at (cx, cy) with the given radius and mass.
+/// @brief Create a circular dynamic body at (cx, cy). Any positive radius is preserved;
+/// non-positive or non-finite radius falls back to 1.0.
 void *rt_physics2d_circle_body_new(double cx, double cy, double radius, double mass);
 /// @brief Get the body's radius (0 for non-circle bodies).
 double rt_physics2d_body_radius(void *body);

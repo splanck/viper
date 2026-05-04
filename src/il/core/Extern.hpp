@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include "il/core/EffectAttrs.hpp"
 #include "il/core/Type.hpp"
 #include <string>
 #include <vector>
@@ -46,6 +47,17 @@ struct Extern {
     /// @ownership Vector and contained `Type` values are owned by this struct
     /// for the module's lifetime.
     std::vector<Type> params;
+
+    /// @brief Optional semantic effect metadata for optimizers and call validation.
+    EffectAttrs Attrs{};
+
+    [[nodiscard]] EffectAttrs &attrs() {
+        return Attrs;
+    }
+
+    [[nodiscard]] const EffectAttrs &attrs() const {
+        return Attrs;
+    }
 };
 
 } // namespace il::core

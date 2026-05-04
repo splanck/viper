@@ -38,6 +38,7 @@
 #include <algorithm>
 #include <cctype>
 #include <iomanip>
+#include <iterator>
 #include <sstream>
 #include <string_view>
 #include <utility>
@@ -56,6 +57,58 @@ using viper::parse::SourcePos;
 bool isIgnorableDirectiveTrailing(std::string_view text) {
     std::string trimmed = trim(std::string{text});
     return trimmed.empty() || trimmed.rfind("//", 0) == 0 || trimmed.front() == ';';
+}
+
+Expected<il::core::EffectAttrs> parseEffectAttrsSuffix(std::string_view text, unsigned lineNo) {
+    il::core::EffectAttrs attrs;
+    std::string trimmedText = trim(std::string{text});
+    if (trimmedText.empty())
+        return attrs;
+    if (trimmedText.front() != '[' || trimmedText.back() != ']')
+        return Expected<il::core::EffectAttrs>{
+            il::io::makeLineErrorDiag({}, lineNo, "malformed extern attributes")};
+
+    std::string body = trim(trimmedText.substr(1, trimmedText.size() - 2));
+    if (body.empty()) {
+        return Expected<il::core::EffectAttrs>{
+            il::io::makeLineErrorDiag({}, lineNo, "empty extern attribute list")};
+    }
+
+    for (char &ch : body)
+        if (ch == ',')
+            ch = ' ';
+
+    std::istringstream ss(body);
+    std::string attr;
+    while (ss >> attr) {
+        if (attr == "nothrow") {
+            attrs.nothrow = true;
+        } else if (attr == "readonly") {
+            attrs.readonly = true;
+        } else if (attr == "pure") {
+            attrs.pure = true;
+        } else {
+            std::ostringstream oss;
+            oss << "unknown extern attribute '" << attr << "'";
+            return Expected<il::core::EffectAttrs>{
+                il::io::makeLineErrorDiag({}, lineNo, oss.str())};
+        }
+    }
+    return attrs;
+}
+
+std::string stripDeclarationComment(std::string text) {
+    std::size_t comment = std::string::npos;
+    for (std::size_t candidate : {text.find('#'), text.find("//"), text.find(';')}) {
+        if (candidate != std::string::npos &&
+            (candidate == 0 ||
+             std::isspace(static_cast<unsigned char>(text[candidate - 1])))) {
+            comment = std::min(comment, candidate);
+        }
+    }
+    if (comment != std::string::npos)
+        text = trim(text.substr(0, comment));
+    return text;
 }
 
 std::string directiveKeyword(const std::string &line) {
@@ -121,14 +174,25 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st) {
                 oss << "unknown type '" << trimmed << "'";
                 return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, oss.str())};
             }
+            if (ty.kind == Type::Kind::Void || ty.kind == Type::Kind::Error ||
+                ty.kind == Type::Kind::ResumeTok) {
+                std::ostringstream oss;
+                oss << "unsupported extern parameter type '" << trimmed << "'";
+                return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, oss.str())};
+            }
             params.push_back(ty);
         }
     }
-    std::string retStr = trim(line.substr(arr + 2));
-    if (const size_t comment = retStr.find("//"); comment != std::string::npos)
-        retStr = trim(retStr.substr(0, comment));
-    if (const size_t semicolon = retStr.find(';'); semicolon != std::string::npos)
-        retStr = trim(retStr.substr(0, semicolon));
+    std::string retAndAttrs = stripDeclarationComment(trim(line.substr(arr + 2)));
+    std::string retStr = retAndAttrs;
+    il::core::EffectAttrs attrs;
+    if (const size_t attrStart = retAndAttrs.find('['); attrStart != std::string::npos) {
+        retStr = trim(retAndAttrs.substr(0, attrStart));
+        auto parsedAttrs = parseEffectAttrsSuffix(retAndAttrs.substr(attrStart), st.lineNo);
+        if (!parsedAttrs)
+            return Expected<void>{parsedAttrs.error()};
+        attrs = parsedAttrs.value();
+    }
     bool retOk = true;
     Type retTy = parseType(retStr, &retOk);
     if (!retOk) {
@@ -145,7 +209,9 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, oss.str())};
     }
 
-    st.m.externs.push_back({name, retTy, params});
+    il::core::Extern ext{name, retTy, params};
+    ext.attrs() = attrs;
+    st.m.externs.push_back(std::move(ext));
     return {};
 }
 
@@ -237,7 +303,11 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st) {
         auto trailingEnd = line.end();
         auto nonWs = std::find_if(
             trailingBegin, trailingEnd, [](unsigned char ch) { return !std::isspace(ch); });
-        if (nonWs != trailingEnd) {
+        const bool trailingIsComment =
+            nonWs != trailingEnd &&
+            (*nonWs == ';' ||
+             (*nonWs == '/' && std::next(nonWs) != trailingEnd && *std::next(nonWs) == '/'));
+        if (nonWs != trailingEnd && !trailingIsComment) {
             return Expected<void>{
                 il::io::makeLineErrorDiag({}, st.lineNo, "unexpected characters after closing '\"'")};
         }

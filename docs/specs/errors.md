@@ -38,7 +38,8 @@ The IL exposes structured primitives for raising and handling traps:
 
 - `trap` raises a trap (plain raise).
 - `trap.from_err <type>, <code>` raises a trap with the given type and code.
-- `trap.kind` reads the current trap kind (produces a value, does not raise).
+- `trap.kind` reads the current trap kind, or the kind stored in an optional `Error` operand (produces a value, does not
+  raise).
 - `trap.err` constructs an Error record from the current trap state (produces a value, does not raise).
 - `eh.push ^handler` activates the handler block referenced by label.
 - `eh.pop` removes the most recently pushed handler.

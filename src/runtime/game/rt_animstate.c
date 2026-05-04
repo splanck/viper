@@ -254,7 +254,8 @@ void rt_animstate_update(void *asm_) {
         return;
 
     // Advance state frame counter
-    a->frames_in_state++;
+    if (a->frames_in_state < INT64_MAX)
+        a->frames_in_state++;
 
     // Advance animation
     if (!a->playing || a->anim_finished || a->active_clip_idx < 0)

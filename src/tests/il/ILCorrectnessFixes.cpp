@@ -14,11 +14,13 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 #include "il/analysis/BasicAA.hpp"
+#include "il/internal/io/ParserUtil.hpp"
 #include "il/io/Parser.hpp"
 #include "il/io/Serializer.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/signatures/Registry.hpp"
 #include "il/transform/ConstFold.hpp"
+#include "il/transform/DCE.hpp"
 #include "il/transform/SimplifyCFG.hpp"
 #include "il/transform/SimplifyCFG/ParamCanonicalization.hpp"
 #include "il/transform/SimplifyCFG/ReachabilityCleanup.hpp"
@@ -46,6 +48,15 @@ Module parseModule(const char *text) {
     return module;
 }
 
+bool parseFailsWith(const char *text, const std::string &needle) {
+    Module module;
+    std::istringstream input{text};
+    auto parsed = il::io::Parser::parse(input, module);
+    if (parsed)
+        return false;
+    return parsed.error().message.find(needle) != std::string::npos;
+}
+
 bool verifyFailsWith(const Module &module, const std::string &needle) {
     auto result = il::verify::Verifier::verify(module);
     if (result)
@@ -67,6 +78,15 @@ bool hasBlockLabel(const Function &fn, const std::string &label) {
     return std::any_of(fn.blocks.begin(), fn.blocks.end(), [&](const BasicBlock &block) {
         return block.label == label;
     });
+}
+
+size_t countOpcode(const Function &fn, Opcode opcode) {
+    size_t count = 0;
+    for (const auto &block : fn.blocks)
+        for (const auto &instr : block.instructions)
+            if (instr.op == opcode)
+                ++count;
+    return count;
 }
 
 } // namespace
@@ -94,6 +114,36 @@ entry:
 
     const std::string text = il::io::Serializer::toString(module);
     EXPECT_CONTAINS(text, "global const i64 @.answer = 42");
+}
+
+TEST(ILCorrectness, ParserAcceptsImportAndStringGlobalTrailingComments) {
+    Module module = parseModule(R"(il 0.2.0
+func import @helper() -> i64 // imported from another module
+global const str @s = "hello"// string comment
+global const str @semi = "world"; semicolon comment
+)");
+
+    ASSERT_EQ(module.functions.size(), 1u);
+    EXPECT_EQ(module.functions.front().name, "helper");
+    EXPECT_EQ(module.functions.front().retType.kind, Type::Kind::I64);
+    ASSERT_EQ(module.globals.size(), 2u);
+    EXPECT_EQ(module.globals[0].init, "hello");
+    EXPECT_EQ(module.globals[1].init, "world");
+}
+
+TEST(ILCorrectness, ParserRejectsJunkBeforeCallCallee) {
+    EXPECT_TRUE(parseFailsWith(R"(il 0.2.0
+func @callee() -> void {
+entry:
+  ret
+}
+func @main() -> i64 {
+entry:
+  call junk @callee()
+  ret 0
+}
+)",
+                               "malformed call"));
 }
 
 TEST(ILCorrectness, VmInitializesScalarGlobals) {
@@ -142,6 +192,43 @@ entry:
 }
 )");
     EXPECT_TRUE(verifyFailsWith(stringGAddr, "gaddr requires a scalar storage global"));
+}
+
+TEST(ILCorrectness, DirectGlobalAddressRequiresAddressMaterializationForMemory) {
+    Module module = parseModule(R"(il 0.2.0
+global i64 @counter = 7
+func @main() -> i64 {
+entry:
+  %v = load i64, @counter
+  ret %v
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(module, "load requires a pointer value"));
+}
+
+TEST(ILCorrectness, TrapKindAcceptsErrorOperandAndRejectsLegacyMnemonicOperand) {
+    Module module = parseModule(R"(il 0.2.0
+global const str @msg = "boom"
+func @main(i32 %code) -> i64 {
+entry:
+  %msg = const_str @msg
+  %err:error = trap.err %code, %msg
+  %kind = trap.kind %err
+  ret %kind
+}
+)");
+    EXPECT_TRUE(il::verify::Verifier::verify(module).hasValue());
+    const std::string text = il::io::Serializer::toString(module);
+    EXPECT_CONTAINS(text, "trap.kind %err");
+
+    EXPECT_TRUE(parseFailsWith(R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  %kind = trap.kind DivideByZero
+  ret %kind
+}
+)",
+                               ""));
 }
 
 TEST(ILCorrectness, DominanceRejectsCrossComponentUses) {
@@ -307,6 +394,88 @@ TEST(ILCorrectness, ConstFoldMasksShiftCounts) {
     ASSERT_EQ(retInstr.operands.size(), 1u);
     ASSERT_EQ(retInstr.operands.front().kind, Value::Kind::ConstInt);
     EXPECT_EQ(retInstr.operands.front().i64, 2);
+}
+
+TEST(ILCorrectness, BranchFoldingAcceptsCanonicalIntegerBooleanConstants) {
+    Module module;
+    Function fn = makeMain();
+    BasicBlock &entry = fn.blocks.front();
+
+    Instr cbr;
+    cbr.op = Opcode::CBr;
+    cbr.type = Type(Type::Kind::Void);
+    cbr.operands = {Value::constInt(1)};
+    cbr.labels = {"yes", "no"};
+    cbr.brArgs = {{}, {}};
+    entry.instructions.push_back(std::move(cbr));
+    entry.terminated = true;
+
+    BasicBlock yes;
+    yes.label = "yes";
+    Instr yesRet;
+    yesRet.op = Opcode::Ret;
+    yesRet.type = Type(Type::Kind::Void);
+    yesRet.operands = {Value::constInt(1)};
+    yes.instructions.push_back(std::move(yesRet));
+    yes.terminated = true;
+
+    BasicBlock no;
+    no.label = "no";
+    Instr noRet;
+    noRet.op = Opcode::Ret;
+    noRet.type = Type(Type::Kind::Void);
+    noRet.operands = {Value::constInt(0)};
+    no.instructions.push_back(std::move(noRet));
+    no.terminated = true;
+
+    fn.blocks.push_back(std::move(yes));
+    fn.blocks.push_back(std::move(no));
+    module.functions.push_back(std::move(fn));
+
+    il::transform::SimplifyCFG pass(/*aggressive=*/true);
+    il::transform::SimplifyCFG::Stats stats;
+    pass.run(module.functions.front(), &stats);
+
+    const Instr &term = module.functions.front().blocks.front().instructions.back();
+    ASSERT_TRUE(term.op == Opcode::Br || term.op == Opcode::Ret);
+    if (term.op == Opcode::Br) {
+        ASSERT_EQ(term.labels.size(), 1u);
+        EXPECT_EQ(term.labels.front(), "yes");
+    } else {
+        ASSERT_EQ(term.operands.size(), 1u);
+        ASSERT_EQ(term.operands.front().kind, Value::Kind::ConstInt);
+        EXPECT_EQ(term.operands.front().i64, 1);
+    }
+}
+
+TEST(ILCorrectness, VerifierRejectsPartialFixedBranchArgumentBundles) {
+    Module module;
+    Function fn = makeMain();
+    BasicBlock &entry = fn.blocks.front();
+
+    Instr cbr;
+    cbr.op = Opcode::CBr;
+    cbr.type = Type(Type::Kind::Void);
+    cbr.operands = {Value::constBool(true)};
+    cbr.labels = {"yes", "no"};
+    cbr.brArgs = {{}}; // Partial bundle list is malformed for a fixed two-edge terminator.
+    entry.instructions.push_back(std::move(cbr));
+    entry.terminated = true;
+
+    for (const char *label : {"yes", "no"}) {
+        BasicBlock block;
+        block.label = label;
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        ret.operands = {Value::constInt(0)};
+        block.instructions.push_back(std::move(ret));
+        block.terminated = true;
+        fn.blocks.push_back(std::move(block));
+    }
+
+    module.functions.push_back(std::move(fn));
+    EXPECT_TRUE(verifyFailsWith(module, "expected 2 branch argument bundles, or none"));
 }
 
 TEST(ILCorrectness, FunctionAttributesRoundTripAndDriveCallMetadata) {
@@ -542,7 +711,7 @@ entry:
 )");
     EXPECT_TRUE(verifyFailsWith(negativeOutOfBounds, "gep offset outside alloca"));
 
-    Module outOfBounds = parseModule(R"(il 0.2.0
+    Module onePast = parseModule(R"(il 0.2.0
 func @main() -> i64 {
 entry:
   %p = alloca 8
@@ -550,7 +719,18 @@ entry:
   ret 0
 }
 )");
-    EXPECT_TRUE(verifyFailsWith(outOfBounds, "gep offset outside alloca"));
+    EXPECT_TRUE(il::verify::Verifier::verify(onePast).hasValue());
+
+    Module onePastLoad = parseModule(R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  %p = alloca 8
+  %q = gep %p, 8
+  %v = load i64, %q
+  ret %v
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(onePastLoad, "load exceeds alloca bounds"));
 }
 
 TEST(ILCorrectness, StackLoadStoreBoundsUseAccessWidth) {
@@ -731,6 +911,241 @@ TEST(ILCorrectness, ParamCanonicalizationSkipsMalformedEdgesWithoutAsserting) {
     EXPECT_TRUE(il::transform::simplify_cfg::canonicalizeParamsAndArgs(ctx));
     ASSERT_EQ(fn.blocks[1].params.size(), 1u);
     EXPECT_EQ(fn.blocks[1].params[0].id, 1u);
+}
+
+TEST(ILCorrectness, IntegerLiteralParsingIsConsistentAcrossOperandsAndGlobals) {
+    Module module = parseModule(R"(il 0.2.0
+global i64 @hex = 0x10
+global i64 @bin = 0b1010
+func @main() -> i64 {
+entry:
+  ret -0xfeed
+}
+)");
+    ASSERT_EQ(module.globals.size(), 2u);
+    EXPECT_TRUE(il::verify::Verifier::verify(module).hasValue());
+    EXPECT_EQ(module.functions.front().blocks.front().instructions.back().operands.front().i64,
+              -0xfeedLL);
+
+    long long minValue = 0;
+    EXPECT_TRUE(il::io::parseIntegerLiteral(
+        "-0b1000000000000000000000000000000000000000000000000000000000000000",
+        minValue));
+    EXPECT_EQ(minValue, std::numeric_limits<long long>::min());
+}
+
+TEST(ILCorrectness, ExternAndImportAttributesRoundTripAndValidateCalls) {
+    Module module = parseModule(R"(il 0.2.0
+extern @host_value() -> i64 [nothrow, readonly, pure]
+func import @foreign(ptr %p) -> void [nothrow, readonly]
+func @main(ptr %p) -> i64 {
+entry(%p:ptr):
+  %v = call @host_value() [nothrow, readonly, pure]
+  call @foreign(%p) [nothrow, readonly]
+  ret %v
+}
+)");
+    ASSERT_EQ(module.externs.size(), 1u);
+    EXPECT_TRUE(module.externs.front().attrs().pure);
+    ASSERT_EQ(module.functions.size(), 2u);
+    EXPECT_TRUE(module.functions.front().attrs().readonly);
+    EXPECT_TRUE(il::verify::Verifier::verify(module).hasValue());
+
+    const std::string text = il::io::Serializer::toString(module);
+    EXPECT_CONTAINS(text, "extern @host_value() -> i64 [nothrow, readonly, pure]");
+    EXPECT_CONTAINS(text, "func import @foreign(ptr %p) -> void [nothrow, readonly]");
+    Module reparsed = parseModule(text.c_str());
+    ASSERT_EQ(reparsed.externs.size(), 1u);
+    EXPECT_TRUE(reparsed.externs.front().attrs().pure);
+    EXPECT_TRUE(reparsed.functions.front().attrs().readonly);
+}
+
+TEST(ILCorrectness, ExternParametersRejectInternalOnlyTypes) {
+    EXPECT_TRUE(parseFailsWith(R"(il 0.2.0
+extern @bad(void) -> void
+)",
+                               "unsupported extern parameter type"));
+
+    Module programmatic;
+    programmatic.externs.push_back(
+        Extern{"bad", Type(Type::Kind::Void), {Type(Type::Kind::ResumeTok)}});
+    EXPECT_TRUE(verifyFailsWith(programmatic, "unsupported parameter type resume_tok"));
+}
+
+TEST(ILCorrectness, StringGlobalsRequireInitializersInVerifier) {
+    Module module;
+    module.globals.push_back(Global{"s", Type(Type::Kind::Str), ""});
+    EXPECT_TRUE(verifyFailsWith(module, "string global @s requires an initializer"));
+}
+
+TEST(ILCorrectness, LocalAndExternEffectsDriveOptimizationAndAA) {
+    Module module = parseModule(R"(il 0.2.0
+extern @read_host(ptr) -> i64 [nothrow, readonly]
+func @pure_local(i64 %x) -> i64 [nothrow, pure] {
+entry(%x:i64):
+  ret %x
+}
+func @main(ptr %p) -> i64 {
+entry(%p:ptr):
+  %dead = call @pure_local(7)
+  %v = call @read_host(%p)
+  ret %v
+}
+)");
+    EXPECT_TRUE(il::verify::Verifier::verify(module).hasValue());
+    viper::analysis::BasicAA aa(module, module.functions.back());
+    const Instr &readCall = module.functions.back().blocks.front().instructions[1];
+    EXPECT_EQ(aa.modRef(readCall), viper::analysis::ModRefResult::Ref);
+
+    il::transform::dce(module);
+    EXPECT_EQ(countOpcode(module.functions.back(), Opcode::Call), 1u);
+}
+
+TEST(ILCorrectness, StackPointersOnlyPassToBorrowOnlyDirectCalls) {
+    Module mutating = parseModule(R"(il 0.2.0
+func @sink(ptr %p) -> void {
+entry(%p:ptr):
+  ret
+}
+func @main() -> i64 {
+entry:
+  %p = alloca 8
+  call @sink(%p)
+  ret 0
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(mutating, "passing alloca-derived pointer"));
+
+    Module readonly = parseModule(R"(il 0.2.0
+func @inspect(ptr %p) -> i64 [nothrow, readonly] {
+entry(%p:ptr):
+  ret 1
+}
+func @main() -> i64 {
+entry:
+  %p = alloca 8
+  %v = call @inspect(%p)
+  ret %v
+}
+)");
+    EXPECT_TRUE(il::verify::Verifier::verify(readonly).hasValue());
+
+    Module returnsPtr = parseModule(R"(il 0.2.0
+func @identity(ptr %p) -> ptr [nothrow, pure] {
+entry(%p:ptr):
+  ret %p
+}
+func @main() -> i64 {
+entry:
+  %p = alloca 8
+  %q = call @identity(%p)
+  ret 0
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(returnsPtr, "passing alloca-derived pointer"));
+}
+
+TEST(ILCorrectness, ParserRejectsMissingCommasAndEmptyIndirectCallee) {
+    EXPECT_TRUE(parseFailsWith(R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  %v = iadd.ovf 1 2
+  ret %v
+}
+)",
+                               "missing comma"));
+
+    EXPECT_TRUE(parseFailsWith(R"(il 0.2.0
+func @main(i64 %x) -> i64 {
+entry(%x:i64):
+  %r = call.indirect [i64(i64)] (%x)
+  ret %r
+}
+)",
+                               "call.indirect missing callee"));
+}
+
+TEST(ILCorrectness, DirectCallsDoNotCoerceIntegerLiteralsToF64) {
+    Module module = parseModule(R"(il 0.2.0
+func @takes_f64(f64 %x) -> void {
+entry(%x:f64):
+  ret
+}
+func @main() -> i64 {
+entry:
+  call @takes_f64(1)
+  ret 0
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(module, "call arg type mismatch"));
+}
+
+TEST(ILCorrectness, SwitchI32AcceptsFittingIntegerLiterals) {
+    Module module = parseModule(R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  switch.i32 1, ^default, 1 -> ^one
+default:
+  ret 0
+one:
+  ret 1
+}
+)");
+    EXPECT_TRUE(il::verify::Verifier::verify(module).hasValue());
+}
+
+TEST(ILCorrectness, SerializerMarksMalformedOperands) {
+    Function fn = makeMain();
+    BasicBlock &entry = fn.blocks.front();
+    entry.instructions.clear();
+
+    Instr br;
+    br.op = Opcode::Br;
+    br.type = Type(Type::Kind::Void);
+    entry.instructions.push_back(std::move(br));
+
+    Instr sw;
+    sw.op = Opcode::SwitchI32;
+    sw.type = Type(Type::Kind::Void);
+    entry.instructions.push_back(std::move(sw));
+
+    Instr indirect;
+    indirect.op = Opcode::CallIndirect;
+    indirect.type = Type(Type::Kind::Void);
+    entry.instructions.push_back(std::move(indirect));
+    entry.terminated = true;
+
+    Module module;
+    module.functions.push_back(std::move(fn));
+    const std::string text = il::io::Serializer::toString(module);
+    EXPECT_CONTAINS(text, "br ; missing label");
+    EXPECT_CONTAINS(text, "switch.i32 ; missing scrutinee");
+    EXPECT_CONTAINS(text, "call.indirect ; missing callee");
+}
+
+TEST(ILCorrectness, RuntimeOwnershipMetadataDrivesReleaseChecks) {
+    Module module = parseModule(R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  %obj = call @rt_obj_new_i64(0, 8)
+  call @rt_obj_release_check0(%obj)
+  call @rt_obj_release_check0(%obj)
+  ret 0
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(module, "double release"));
+}
+
+TEST(ILCorrectness, DceKeepsPotentiallyTrappingAllocas) {
+    Module module = parseModule(R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  %p = alloca 8
+  ret 0
+}
+)");
+    il::transform::dce(module);
+    EXPECT_EQ(countOpcode(module.functions.front(), Opcode::Alloca), 1u);
 }
 
 int main(int argc, char **argv) {

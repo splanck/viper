@@ -27,6 +27,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/transform/LoadSafety.hpp"
 
 #include <algorithm>
 #include <string>
@@ -35,6 +36,67 @@
 
 namespace il::transform::simplify_cfg {
 namespace {
+
+bool isAlwaysNonTrappingSideEffectFree(il::core::Opcode op) {
+    using il::core::Opcode;
+    switch (op) {
+        case Opcode::And:
+        case Opcode::Or:
+        case Opcode::Xor:
+        case Opcode::Shl:
+        case Opcode::LShr:
+        case Opcode::AShr:
+        case Opcode::ICmpEq:
+        case Opcode::ICmpNe:
+        case Opcode::SCmpLT:
+        case Opcode::SCmpLE:
+        case Opcode::SCmpGT:
+        case Opcode::SCmpGE:
+        case Opcode::UCmpLT:
+        case Opcode::UCmpLE:
+        case Opcode::UCmpGT:
+        case Opcode::UCmpGE:
+        case Opcode::FAdd:
+        case Opcode::FSub:
+        case Opcode::FMul:
+        case Opcode::FDiv:
+        case Opcode::FCmpEQ:
+        case Opcode::FCmpNE:
+        case Opcode::FCmpLT:
+        case Opcode::FCmpLE:
+        case Opcode::FCmpGT:
+        case Opcode::FCmpGE:
+        case Opcode::Zext1:
+        case Opcode::Trunc1:
+        case Opcode::ConstF64:
+        case Opcode::ConstNull:
+        case Opcode::GAddr:
+        case Opcode::AddrOf:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool canEraseForwardingInstruction(const il::core::Function &function,
+                                   const il::core::Instr &instr) {
+    if (hasSideEffects(instr))
+        return false;
+    if (instr.op == il::core::Opcode::Load)
+        return isLoadKnownNonTrapping(function, instr);
+    return isAlwaysNonTrappingSideEffectFree(instr.op);
+}
+
+void clearIfAllBranchArgsEmpty(il::core::Instr &instr) {
+    if (instr.op == il::core::Opcode::SwitchI32)
+        return;
+    if (instr.brArgs.empty())
+        return;
+    for (const auto &args : instr.brArgs)
+        if (!args.empty())
+            return;
+    instr.brArgs.clear();
+}
 
 /// @brief Check whether a block is an EH-safe forwarding trampoline.
 ///
@@ -82,7 +144,7 @@ bool isEmptyForwardingBlock(SimplifyCFG::SimplifyCFGPassContext &ctx,
         if (&instr == terminator)
             break;
 
-        if (hasSideEffects(instr))
+        if (!canEraseForwardingInstruction(ctx.function, instr))
             return false;
     }
 
@@ -172,9 +234,12 @@ void redirectPredecessor(il::core::BasicBlock &pred,
         }
 
         predTerm->labels[idx] = succ.label;
-        if (predTerm->brArgs.size() <= idx)
-            predTerm->brArgs.resize(idx + 1);
-        predTerm->brArgs[idx] = std::move(newArgs);
+        if (deadArgs || !newArgs.empty() || !predTerm->brArgs.empty()) {
+            if (predTerm->brArgs.size() < predTerm->labels.size())
+                predTerm->brArgs.resize(predTerm->labels.size());
+            predTerm->brArgs[idx] = std::move(newArgs);
+            clearIfAllBranchArgsEmpty(*predTerm);
+        }
     }
 }
 

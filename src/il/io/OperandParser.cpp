@@ -387,6 +387,10 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text) {
         return Expected<void>{
             makeError(instr_.loc, formatLineDiag(state_.lineNo, "malformed call"))};
     }
+    if (!trim(text.substr(0, at)).empty()) {
+        return Expected<void>{
+            makeError(instr_.loc, formatLineDiag(state_.lineNo, "malformed call"))};
+    }
 
     auto parens = findTopLevelParenRange(state_, instr_, text, at + 1, "call");
     if (!parens)
@@ -407,39 +411,11 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text) {
     auto tokens = splitCommaSeparated(args, "call");
     if (!tokens)
         return Expected<void>{tokens.error()};
-    // Lookup expected parameter types from externs/functions for type-aware coercion.
-    std::vector<il::core::Type> expectedParams;
-    for (const auto &ext : state_.m.externs) {
-        if (ext.name == instr_.callee) {
-            expectedParams = ext.params;
-            break;
-        }
-    }
-    if (expectedParams.empty()) {
-        for (const auto &fn : state_.m.functions) {
-            if (fn.name == instr_.callee) {
-                expectedParams.clear();
-                for (const auto &p : fn.params)
-                    expectedParams.push_back(p.type);
-                break;
-            }
-        }
-    }
     for (const auto &token : tokens.value()) {
         auto argVal = parseValueToken(token);
         if (!argVal)
             return Expected<void>{argVal.error()};
-        il::core::Value val = std::move(argVal.value());
-        const std::size_t idx = instr_.operands.size();
-        if (idx < expectedParams.size()) {
-            const auto &expTy = expectedParams[idx];
-            // Coerce integer literals to floating when callee expects f64.
-            if (expTy.kind == il::core::Type::Kind::F64 &&
-                val.kind == il::core::Value::Kind::ConstInt) {
-                val = il::core::Value::constFloat(static_cast<double>(val.i64));
-            }
-        }
-        instr_.operands.push_back(std::move(val));
+        instr_.operands.push_back(std::move(argVal.value()));
     }
     // Calls carry a dynamic result type. Resolve any known direct callee now so
     // verifier precollection sees the same type that call checking will enforce.
@@ -517,12 +493,14 @@ Expected<void> OperandParser::parseCallIndirectOperands(const std::string &text)
 
     // Parse function pointer before the paren
     std::string fnTok = trim(work.substr(0, lp));
-    if (!fnTok.empty()) {
-        auto fnVal = parseValueToken(fnTok);
-        if (!fnVal)
-            return Expected<void>{fnVal.error()};
-        instr_.operands.push_back(std::move(fnVal.value()));
+    if (fnTok.empty()) {
+        return Expected<void>{
+            il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "call.indirect missing callee")};
     }
+    auto fnVal = parseValueToken(fnTok);
+    if (!fnVal)
+        return Expected<void>{fnVal.error()};
+    instr_.operands.push_back(std::move(fnVal.value()));
 
     // Parse comma-separated args inside parens
     std::string argsText = work.substr(lp + 1, rp - lp - 1);

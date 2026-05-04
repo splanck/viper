@@ -279,6 +279,25 @@ Expected<void> applyCastUiNarrowChk(const VerifyCtx &ctx, const InstructionSpec 
     return {};
 }
 
+Expected<void> validateIntegerBinaryOperand(const VerifyCtx &ctx,
+                                            size_t index,
+                                            il::core::Type::Kind expectedKind) {
+    const Value &operand = ctx.instr.operands[index];
+    if (operand.kind == Value::Kind::ConstInt) {
+        if (!detail::fitsInIntegerKind(operand.i64, expectedKind))
+            return fail(ctx, "integer binary constant operand out of range");
+        return {};
+    }
+
+    bool missing = false;
+    const Type actual = ctx.types.valueType(operand, &missing);
+    if (missing)
+        return fail(ctx, "integer binary operand type is unknown");
+    if (actual.kind != expectedKind)
+        return fail(ctx, "integer binary operands must match result type");
+    return {};
+}
+
 /// @brief Validate checked integer binary ops whose width comes from the instruction type.
 /// @details Structural checks already enforce operand arity and operand types against
 ///          the instruction type; this strategy rejects non-integer annotations
@@ -286,10 +305,38 @@ Expected<void> applyCastUiNarrowChk(const VerifyCtx &ctx, const InstructionSpec 
 /// @param ctx Verification context for the instruction.
 /// @return Success or diagnostic error.
 Expected<void> applyIntegerBinary(const VerifyCtx &ctx, const InstructionSpec &) {
-    const auto kind = ctx.instr.type.kind;
+    Type::Kind kind = ctx.instr.type.kind;
+    if (kind == Type::Kind::Void) {
+        std::optional<Type::Kind> inferred;
+        for (const Value &operand : ctx.instr.operands) {
+            if (operand.kind == Value::Kind::ConstInt)
+                continue;
+
+            bool missing = false;
+            const Type actual = ctx.types.valueType(operand, &missing);
+            if (missing)
+                return fail(ctx, "integer binary operand type is unknown");
+            if (!detail::isSupportedIntegerWidth(actual.kind)) {
+                return fail(ctx,
+                            "operand type mismatch: integer binary operands must be i16, i32, or "
+                            "i64");
+            }
+            if (inferred && *inferred != actual.kind) {
+                return fail(ctx,
+                            "operand type mismatch: integer binary operands must have matching "
+                            "widths");
+            }
+            inferred = actual.kind;
+        }
+        kind = inferred.value_or(Type::Kind::I64);
+    }
     if (!detail::isSupportedIntegerWidth(kind))
         return fail(ctx, "integer binary result must be i16, i32, or i64");
-    ctx.types.recordResult(ctx.instr, ctx.instr.type);
+    for (size_t index = 0; index < ctx.instr.operands.size(); ++index) {
+        if (auto result = validateIntegerBinaryOperand(ctx, index, kind); !result)
+            return result;
+    }
+    ctx.types.recordResult(ctx.instr, Type(kind));
     return {};
 }
 
@@ -1022,8 +1069,11 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
         if (!instr.brArgs.empty() && instr.brArgs.size() != instr.labels.size()) {
             return Expected<void>(makeError(
                 instr.loc,
-                formatInstrDiag(
-                    fn, bb, instr, "expected branch argument bundle per successor or none")));
+                formatInstrDiag(fn,
+                                bb,
+                                instr,
+                                "branch arg count mismatch: expected branch argument bundle per "
+                                "successor or none")));
         }
     } else {
         if (instr.brArgs.size() > spec.numSuccessors) {
@@ -1032,6 +1082,16 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
                                   " branch argument bundle";
             if (spec.numSuccessors != 1)
                 message += 's';
+            return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, message)));
+        }
+        if (!instr.brArgs.empty() && instr.brArgs.size() != spec.numSuccessors) {
+            std::string message = "expected " +
+                                  std::to_string(static_cast<unsigned>(spec.numSuccessors)) +
+                                  " branch argument bundle";
+            if (spec.numSuccessors != 1)
+                message += 's';
+            message += ", or none";
+            message = "branch arg count mismatch: " + message;
             return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, message)));
         }
     }

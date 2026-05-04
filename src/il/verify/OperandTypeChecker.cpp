@@ -89,6 +89,8 @@ Expected<void> OperandTypeChecker::run() const {
         il::core::Type::Kind expectedKind;
         if (category == TypeCategory::InstrType) {
             if (instr.type.kind == il::core::Type::Kind::Void) {
+                if (spec_.strategy == VerifyStrategy::IntegerBinary)
+                    continue;
                 return report("instruction type must be non-void");
             }
             expectedKind = instr.type.kind;

@@ -32,6 +32,7 @@
 #include "rt_grid2d.h"
 #include "rt_list.h"
 #include "rt_object.h"
+#include "rt_seq.h"
 #include "rt_tilemap.h"
 #include "rt_trap.h"
 
@@ -242,8 +243,8 @@ int8_t rt_pathfinder_is_walkable(void *ptr, int64_t x, int64_t y) {
     return pf->cells[pf_idx(pf, (int32_t)x, (int32_t)y)].walkable;
 }
 
-/// @brief Set per-cell traversal cost (additive penalty for routing through it). Clamped to
-/// [0, 30000]. Useful for terrain types — sand/swamp slow movement without blocking.
+/// @brief Set per-cell traversal cost multiplier. Walkable cells are clamped to [1, 30000].
+/// Use SetWalkable(x, y, 0) to block a cell.
 void rt_pathfinder_set_cost(void *ptr, int64_t x, int64_t y, int64_t cost) {
     rt_pathfinder_impl *pf =
         checked_pathfinder(ptr, "Pathfinder.SetCost: expected Viper.Game.Pathfinder");
@@ -251,14 +252,14 @@ void rt_pathfinder_set_cost(void *ptr, int64_t x, int64_t y, int64_t cost) {
         return;
     if (!pf_in_bounds_i64(pf, x, y))
         return;
-    if (cost < 0)
-        cost = 0;
+    if (cost < 1)
+        cost = 1;
     if (cost > 30000)
         cost = 30000;
     pf->cells[pf_idx(pf, (int32_t)x, (int32_t)y)].cost = (int16_t)cost;
 }
 
-/// @brief Read the additional cost of cell (x, y). 0 = no penalty.
+/// @brief Read the traversal cost multiplier for cell (x, y). Default is 100.
 int64_t rt_pathfinder_get_cost(void *ptr, int64_t x, int64_t y) {
     rt_pathfinder_impl *pf =
         checked_pathfinder(ptr, "Pathfinder.GetCost: expected Viper.Game.Pathfinder");
@@ -431,6 +432,13 @@ static int64_t pf_heuristic(int32_t ax, int32_t ay, int32_t bx, int32_t by, int8
     }
 }
 
+static int64_t pf_scaled_heuristic(
+    int32_t ax, int32_t ay, int32_t bx, int32_t by, int8_t diagonal, int64_t min_cost) {
+    if (min_cost < 1)
+        min_cost = 1;
+    return pf_heuristic(ax, ay, bx, by, diagonal) * min_cost / PF_COST_CARDINAL;
+}
+
 /// @brief 4-way direction offsets.
 static const int32_t dir4_dx[4] = {0, 1, 0, -1};
 static const int32_t dir4_dy[4] = {-1, 0, 1, 0};
@@ -439,7 +447,7 @@ static const int32_t dir4_dy[4] = {-1, 0, 1, 0};
 static const int32_t dir8_dx[8] = {0, 1, 0, -1, 1, 1, -1, -1};
 static const int32_t dir8_dy[8] = {-1, 0, 1, 0, -1, 1, 1, -1};
 
-/// @brief Build a List[Integer] of interleaved x,y pairs from the parent chain.
+/// @brief Build a List[Seq[Integer]] of x,y pairs from the parent chain.
 static void *pf_build_path(pf_node *nodes, int32_t goal_idx, int32_t width) {
     // Count path length
     int32_t len = 0;
@@ -463,18 +471,27 @@ static void *pf_build_path(pf_node *nodes, int32_t goal_idx, int32_t width) {
         idx = nodes[idx].parent;
     }
 
-    // Build List[Integer]
+    // Build List[Seq[Integer]], where each entry is [x, y].
     void *list = rt_list_new();
     for (int32_t i = 0; i < len; i++) {
+        void *pair = rt_seq_new();
+        if (!pair)
+            continue;
+        rt_seq_set_owns_elements(pair, 1);
+
         void *bx = rt_box_i64(coords[i * 2]);
-        rt_list_push(list, bx);
+        rt_seq_push(pair, bx);
         if (bx && rt_obj_release_check0(bx))
             rt_obj_free(bx);
 
         void *by = rt_box_i64(coords[i * 2 + 1]);
-        rt_list_push(list, by);
+        rt_seq_push(pair, by);
         if (by && rt_obj_release_check0(by))
             rt_obj_free(by);
+
+        rt_list_push(list, pair);
+        if (pair && rt_obj_release_check0(pair))
+            rt_obj_free(pair);
     }
 
     free(coords);
@@ -507,14 +524,21 @@ static void *pf_astar(rt_pathfinder_impl *pf,
         if (cost_only)
             return NULL;
         void *list = rt_list_new();
+        void *pair = rt_seq_new();
+        if (!pair)
+            return list;
+        rt_seq_set_owns_elements(pair, 1);
         void *bx = rt_box_i64(sx);
-        rt_list_push(list, bx);
+        rt_seq_push(pair, bx);
         if (bx && rt_obj_release_check0(bx))
             rt_obj_free(bx);
         void *by = rt_box_i64(sy);
-        rt_list_push(list, by);
+        rt_seq_push(pair, by);
         if (by && rt_obj_release_check0(by))
             rt_obj_free(by);
+        rt_list_push(list, pair);
+        if (pair && rt_obj_release_check0(pair))
+            rt_obj_free(pair);
         return list;
     }
 
@@ -525,6 +549,11 @@ static void *pf_astar(rt_pathfinder_impl *pf,
         return cost_only ? NULL : rt_list_new();
 
     int32_t total = pf->width * pf->height;
+    int64_t min_cost = PF_COST_CARDINAL;
+    for (int32_t i = 0; i < total; i++) {
+        if (pf->cells[i].walkable && pf->cells[i].cost > 0 && pf->cells[i].cost < min_cost)
+            min_cost = pf->cells[i].cost;
+    }
 
     // Allocate per-search arrays
     pf_node *nodes = (pf_node *)calloc((size_t)total, sizeof(pf_node));
@@ -559,7 +588,7 @@ static void *pf_astar(rt_pathfinder_impl *pf,
 
     // Initialize start node
     nodes[si].g = 0;
-    nodes[si].f = pf_heuristic(sx, sy, gx, gy, pf->allow_diagonal);
+    nodes[si].f = pf_scaled_heuristic(sx, sy, gx, gy, pf->allow_diagonal, min_cost);
     nodes[si].open = 1;
     heap_push(&heap, si);
 
@@ -631,7 +660,10 @@ static void *pf_astar(rt_pathfinder_impl *pf,
 
             if (tentative_g < nodes[ni].g) {
                 nodes[ni].g = tentative_g;
-                nodes[ni].f = tentative_g + pf_heuristic(nx, ny, gx, gy, pf->allow_diagonal);
+                int64_t heuristic =
+                    pf_scaled_heuristic(nx, ny, gx, gy, pf->allow_diagonal, min_cost);
+                nodes[ni].f =
+                    tentative_g > INT64_MAX - heuristic ? INT64_MAX : tentative_g + heuristic;
                 nodes[ni].parent = cur;
 
                 if (!nodes[ni].open) {
@@ -672,8 +704,8 @@ void *rt_pathfinder_find_path(void *ptr, int64_t sx, int64_t sy, int64_t gx, int
     return pf_astar(pf, (int32_t)sx, (int32_t)sy, (int32_t)gx, (int32_t)gy, 0, NULL);
 }
 
-/// @brief Compute just the path length (number of steps) from start to goal — faster than
-/// `_find_path` when you don't need the path itself. -1 if no path exists.
+/// @brief Compute just the path length (number of cell-to-cell steps) from start to goal.
+/// -1 if no path exists.
 int64_t rt_pathfinder_find_path_length(void *ptr, int64_t sx, int64_t sy, int64_t gx, int64_t gy) {
     rt_pathfinder_impl *pf =
         checked_pathfinder(ptr, "Pathfinder.FindPathLength: expected Viper.Game.Pathfinder");
@@ -684,9 +716,13 @@ int64_t rt_pathfinder_find_path_length(void *ptr, int64_t sx, int64_t sy, int64_
         pf->last_steps = 0;
         return -1;
     }
-    int64_t cost = -1;
-    pf_astar(pf, (int32_t)sx, (int32_t)sy, (int32_t)gx, (int32_t)gy, 1, &cost);
-    return cost;
+    void *path = pf_astar(pf, (int32_t)sx, (int32_t)sy, (int32_t)gx, (int32_t)gy, 0, NULL);
+    if (!path)
+        return -1;
+    int64_t count = rt_list_len(path);
+    if (rt_obj_release_check0(path))
+        rt_obj_free(path);
+    return pf->last_found ? (count > 0 ? count - 1 : 0) : -1;
 }
 
 /// @brief BFS-style search: walk outward from (sx, sy) and return the path to the closest

@@ -38,10 +38,19 @@ std::string trim(const std::string &text);
 /// @return Text before the first inline comment marker.
 std::string stripInlineComment(const std::string &text);
 
+enum class TokenDelimiter {
+    End,
+    Comma,
+    Whitespace,
+};
+
 /// @brief Extract the next comma or whitespace delimited token from a stream.
 /// @param stream Source stream backed by an instruction tail segment.
 /// @return Token without any trailing comma delimiter.
 std::string readToken(std::istringstream &stream);
+
+/// @brief Extract the next token and report how it was separated from following text.
+std::string readToken(std::istringstream &stream, TokenDelimiter *delimiter);
 
 /// @brief Validate an IL symbol/label fragment after removing sigils.
 /// @param text Candidate identifier text without leading @, %, or ^.

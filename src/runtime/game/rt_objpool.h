@@ -31,6 +31,9 @@ extern "C" {
 /// Maximum pool size.
 #define RT_OBJPOOL_MAX 4096
 
+/// Runtime class ID used to validate ObjectPool handles.
+#define RT_OBJPOOL_CLASS_ID INT64_C(-0x51020E)
+
 /// Opaque handle to an ObjectPool instance.
 typedef struct rt_objpool_impl *rt_objpool;
 
@@ -48,7 +51,7 @@ void rt_objpool_destroy(rt_objpool pool);
 /// @return Slot index (0 to capacity-1), or -1 if pool is full.
 int64_t rt_objpool_acquire(rt_objpool pool);
 
-/// @brief Release a slot back to the pool.
+/// @brief Release a slot back to the pool and clear its user data.
 /// @param pool The pool.
 /// @param slot Slot index to release.
 /// @return 1 on success, 0 if invalid slot.
@@ -107,10 +110,10 @@ int64_t rt_objpool_next_active(rt_objpool pool, int64_t after);
 /// @return 1 on success, 0 if invalid slot.
 int8_t rt_objpool_set_data(rt_objpool pool, int64_t slot, int64_t data);
 
-/// @brief Get user data associated with a slot.
+/// @brief Get user data associated with an active slot.
 /// @param pool The pool.
 /// @param slot Slot index.
-/// @return User data, or 0 if invalid slot.
+/// @return User data, or 0 if slot is inactive or invalid.
 int64_t rt_objpool_get_data(rt_objpool pool, int64_t slot);
 
 #ifdef __cplusplus

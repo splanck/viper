@@ -500,6 +500,25 @@ static void test_swept_circle_hits_thin_wall() {
     release_obj(world);
 }
 
+static void test_swept_circle_misses_near_diagonal_target() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *circle = rt_physics2d_circle_body_new(0.0, 0.0, 5.0, 1.0);
+    void *target = rt_physics2d_circle_body_new(60.0, 40.0, 5.0, 0.0);
+    rt_physics2d_body_set_vel(circle, 1000.0, 1000.0);
+
+    rt_physics2d_world_add(world, circle);
+    rt_physics2d_world_add(world, target);
+    rt_physics2d_world_step(world, 0.1);
+
+    ASSERT_NEAR(rt_physics2d_body_vx(circle), 1000.0, "swept circle miss leaves vx unchanged");
+    ASSERT_NEAR(rt_physics2d_body_vy(circle), 1000.0, "swept circle miss leaves vy unchanged");
+    ASSERT(rt_physics2d_world_contact_count(world) == 0, "swept circle miss records no contact");
+
+    release_obj(circle);
+    release_obj(target);
+    release_obj(world);
+}
+
 static void test_circle_inside_aabb_resolves_outward() {
     void *world = rt_physics2d_world_new(0.0, 0.0);
     void *circle = rt_physics2d_circle_body_new(1.0, 5.0, 2.0, 1.0);
@@ -511,6 +530,28 @@ static void test_circle_inside_aabb_resolves_outward() {
 
     ASSERT(rt_physics2d_body_x(circle) < 1.0,
            "circle center inside AABB resolves toward nearest exit side");
+
+    release_obj(circle);
+    release_obj(wall);
+    release_obj(world);
+}
+
+static void test_circle_radius_allows_subunit_values() {
+    void *circle = rt_physics2d_circle_body_new(0.0, 0.0, 0.25, 1.0);
+    ASSERT_NEAR(rt_physics2d_body_radius(circle), 0.25, "circle radius preserves subunit value");
+    release_obj(circle);
+}
+
+static void test_circle_aabb_tangent_is_not_overlap() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *circle = rt_physics2d_circle_body_new(0.0, 5.0, 5.0, 1.0);
+    void *wall = rt_physics2d_body_new(5.0, 0.0, 10.0, 10.0, 0.0);
+
+    rt_physics2d_world_add(world, circle);
+    rt_physics2d_world_add(world, wall);
+    rt_physics2d_world_step(world, 0.001);
+
+    ASSERT(rt_physics2d_world_contact_count(world) == 0, "circle-AABB tangency is not overlap");
 
     release_obj(circle);
     release_obj(wall);
@@ -536,6 +577,43 @@ static void test_world_records_step_contacts() {
     ASSERT(rt_physics2d_world_contact_body_a(world, -1) == NULL, "negative contact index is NULL");
     ASSERT(rt_physics2d_world_contact_body_b(world, 999) == NULL, "large contact index is NULL");
     ASSERT(rt_physics2d_world_contact_depth(world, 999) == 0.0, "invalid contact depth is zero");
+
+    release_obj(a);
+    release_obj(b);
+    release_obj(world);
+}
+
+static void test_world_clears_contacts_on_noop_step() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *a = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 1.0);
+    void *b = rt_physics2d_body_new(5.0, 0.0, 10.0, 10.0, 1.0);
+
+    rt_physics2d_world_add(world, a);
+    rt_physics2d_world_add(world, b);
+    rt_physics2d_world_step(world, 0.001);
+    ASSERT(rt_physics2d_world_contact_count(world) > 0, "setup records contact");
+
+    rt_physics2d_world_step(world, 0.0);
+    ASSERT(rt_physics2d_world_contact_count(world) == 0, "zero-dt step clears old contacts");
+
+    release_obj(a);
+    release_obj(b);
+    release_obj(world);
+}
+
+static void test_world_remove_clears_contacts() {
+    void *world = rt_physics2d_world_new(0.0, 0.0);
+    void *a = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 1.0);
+    void *b = rt_physics2d_body_new(5.0, 0.0, 10.0, 10.0, 1.0);
+
+    rt_physics2d_world_add(world, a);
+    rt_physics2d_world_add(world, b);
+    rt_physics2d_world_step(world, 0.001);
+    ASSERT(rt_physics2d_world_contact_count(world) > 0, "setup records removable contact");
+
+    rt_physics2d_world_remove(world, b);
+    ASSERT(rt_physics2d_world_contact_count(world) == 0, "remove clears old contacts");
+    ASSERT(rt_physics2d_world_contact_body_a(world, 0) == NULL, "removed contact body A hidden");
 
     release_obj(a);
     release_obj(b);
@@ -853,8 +931,13 @@ int main() {
     test_circle_body_collides_with_aabb();
     test_swept_aabb_hits_thin_wall();
     test_swept_circle_hits_thin_wall();
+    test_swept_circle_misses_near_diagonal_target();
     test_circle_inside_aabb_resolves_outward();
+    test_circle_radius_allows_subunit_values();
+    test_circle_aabb_tangent_is_not_overlap();
     test_world_records_step_contacts();
+    test_world_clears_contacts_on_noop_step();
+    test_world_remove_clears_contacts();
     test_extreme_forces_are_sanitized();
 
     // Safety tests

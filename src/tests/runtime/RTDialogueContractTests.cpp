@@ -9,17 +9,14 @@ extern "C" {
 #include "rt_dialogue.h"
 }
 
+#include "runtime/RTObjectContractHarness.hpp"
+
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 
 namespace {
-
-struct ObjHeader {
-    int32_t refcount;
-    void (*finalizer)(void *);
-};
 
 struct FakeFont {
     int32_t glyph_width;
@@ -30,10 +27,6 @@ int g_builtin_text_calls = 0;
 int g_font_text_calls = 0;
 int g_frame_calls = 0;
 int g_font_finalizer_calls = 0;
-
-ObjHeader *header_from_payload(void *obj) {
-    return reinterpret_cast<ObjHeader *>(obj) - 1;
-}
 
 int count_codepoints(const char *text) {
     if (!text)
@@ -67,44 +60,6 @@ void fake_font_finalizer(void *) {
 }
 
 } // namespace
-
-extern "C" void *rt_obj_new_i64(int64_t, int64_t byte_size) {
-    auto *header =
-        static_cast<ObjHeader *>(std::calloc(1, sizeof(ObjHeader) + static_cast<size_t>(byte_size)));
-    assert(header != nullptr);
-    header->refcount = 1;
-    return header + 1;
-}
-
-extern "C" void rt_obj_set_finalizer(void *obj, void (*finalizer)(void *)) {
-    if (!obj)
-        return;
-    header_from_payload(obj)->finalizer = finalizer;
-}
-
-extern "C" void rt_obj_retain_maybe(void *obj) {
-    if (!obj)
-        return;
-    header_from_payload(obj)->refcount++;
-}
-
-extern "C" int32_t rt_obj_release_check0(void *obj) {
-    if (!obj)
-        return 0;
-    ObjHeader *header = header_from_payload(obj);
-    assert(header->refcount > 0);
-    header->refcount--;
-    return header->refcount == 0;
-}
-
-extern "C" void rt_obj_free(void *obj) {
-    if (!obj)
-        return;
-    ObjHeader *header = header_from_payload(obj);
-    if (header->finalizer)
-        header->finalizer(obj);
-    std::free(header);
-}
 
 extern "C" rt_string rt_string_from_bytes(const char *bytes, size_t len) {
     char *copy = static_cast<char *>(std::malloc(len + 1));

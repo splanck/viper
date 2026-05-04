@@ -35,6 +35,7 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
 #include "il/utils/Utils.hpp"
@@ -68,11 +69,11 @@ enum class CallHoistKind {
     ReadOnly,     ///< Call only reads memory (safe if no aliasing stores).
 };
 
-CallHoistKind classifyCallForHoist(const Instr &instr) {
+CallHoistKind classifyCallForHoist(const Module &module, const Instr &instr) {
     if (instr.op != Opcode::Call)
         return CallHoistKind::NotHoistable;
 
-    const CallEffects effects = classifyCallEffects(instr);
+    const CallEffects effects = classifyCallEffects(instr, &module);
     if (!effects.nothrow)
         return CallHoistKind::NotHoistable;
 
@@ -125,6 +126,7 @@ bool isDerivedFromNonEscapingAlloca(const Function &function,
 ///                  instruction is a call.
 /// @return True if the instruction is safe to move to the preheader.
 bool isSafeToHoist(const Function &function,
+                   const Module &module,
                    const Instr &instr,
                    bool allowLoadHoist,
                    CallHoistKind &callHoist) {
@@ -136,7 +138,7 @@ bool isSafeToHoist(const Function &function,
     // Calls are marked side-effecting in opcode metadata by default, so classify
     // them before the generic side-effect rejection.
     if (instr.op == Opcode::Call) {
-        callHoist = classifyCallForHoist(instr);
+        callHoist = classifyCallForHoist(module, instr);
         if (callHoist == CallHoistKind::Pure)
             return true;
         if (callHoist == CallHoistKind::ReadOnly && allowLoadHoist)
@@ -399,7 +401,7 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis) {
                 }
 
                 CallHoistKind callHoist = CallHoistKind::NotHoistable;
-                if (!isSafeToHoist(function, instr, allowLoads, callHoist) ||
+                if (!isSafeToHoist(function, analysis.module(), instr, allowLoads, callHoist) ||
                     !operandsInvariant(instr, invariants)) {
                     ++idx;
                     continue;

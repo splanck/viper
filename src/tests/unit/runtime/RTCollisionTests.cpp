@@ -146,14 +146,27 @@ TEST(circles_overlap) {
 TEST(point_in_circle) {
     ASSERT(rt_collision_point_in_circle(50, 50, 50, 50, 10) == 1);  // Center
     ASSERT(rt_collision_point_in_circle(50, 50, 50, 50, 1) == 1);   // Center
+    ASSERT(rt_collision_point_in_circle(60, 50, 50, 50, 10) == 1);  // Boundary
     ASSERT(rt_collision_point_in_circle(100, 50, 50, 50, 10) == 0); // Outside
+    ASSERT(rt_collision_point_in_circle(50, 50, 50, 50, -1) == 0);  // Invalid radius
 }
 
 TEST(circle_rect) {
     // Circle at (50,50) radius 30, rect at (60,60) 40x40
     ASSERT(rt_collision_circle_rect(50, 50, 30, 60, 60, 40, 40) == 1);
+    ASSERT(rt_collision_circle_rect(50, 50, 10, 60, 50, 40, 40) == 1); // Tangent
     // Circle far from rect
     ASSERT(rt_collision_circle_rect(0, 0, 10, 100, 100, 20, 20) == 0);
+    ASSERT(rt_collision_circle_rect(0, 0, -1, 0, 0, 20, 20) == 0);
+}
+
+TEST(invalid_rect_values_sanitize) {
+    rt_collision_rect r = rt_collision_rect_new(NAN, INFINITY, -5.0, NAN);
+    ASSERT_NEAR(rt_collision_rect_x(r), 0.0, 0.001);
+    ASSERT_NEAR(rt_collision_rect_y(r), 0.0, 0.001);
+    ASSERT_NEAR(rt_collision_rect_width(r), 0.0, 0.001);
+    ASSERT_NEAR(rt_collision_rect_height(r), 0.0, 0.001);
+    rt_collision_rect_destroy(r);
 }
 
 TEST(distance) {
@@ -180,6 +193,7 @@ int main() {
     RUN_TEST(rect_overlaps);
     RUN_TEST(rect_overlap_depth);
     RUN_TEST(rect_expand);
+    RUN_TEST(invalid_rect_values_sanitize);
 
     printf(" Static Collision Helpers:\n");
     RUN_TEST(rects_overlap);

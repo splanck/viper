@@ -15,6 +15,7 @@
 //   - Text per line limited to DLG_MAX_TEXT_LEN (512) characters.
 //   - Speaker name limited to 63 characters.
 //   - Update(dt_ms) advances reveal; Advance() skips or moves to next line.
+//   - Non-positive update deltas are ignored; geometry and alpha setters clamp inputs.
 //
 // Ownership/Lifetime:
 //   - Dialogue objects are GC-managed (rt_obj_new_i64).
@@ -30,6 +31,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/// Runtime class ID used to validate Dialogue handles.
+#define RT_DIALOGUE_CLASS_ID INT64_C(-0x510213)
 
 // Construction
 /// @brief Create a dialogue box widget at (x, y) sized (width × height) with default styling.

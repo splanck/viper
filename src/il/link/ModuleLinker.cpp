@@ -148,13 +148,25 @@ std::string makeUniqueName(const std::string &base, std::unordered_set<std::stri
     }
 }
 
-void rewriteValue(il::core::Value &value,
-                  const std::unordered_map<std::string, std::string> &globalRenameMap) {
+void rewriteGlobalValue(il::core::Value &value,
+                        const std::unordered_map<std::string, std::string> &globalRenameMap) {
     if (value.kind != il::core::Value::Kind::GlobalAddr)
         return;
     auto it = globalRenameMap.find(value.str);
     if (it != globalRenameMap.end())
         value.str = it->second;
+}
+
+void rewriteSymbolValue(il::core::Value &value,
+                        const std::unordered_map<std::string, std::string> &functionRenameMap,
+                        const std::unordered_map<std::string, std::string> &globalRenameMap) {
+    if (value.kind != il::core::Value::Kind::GlobalAddr)
+        return;
+    if (auto fnIt = functionRenameMap.find(value.str); fnIt != functionRenameMap.end()) {
+        value.str = fnIt->second;
+        return;
+    }
+    rewriteGlobalValue(value, globalRenameMap);
 }
 
 /// @brief Rewrite function and global references inside one function.
@@ -169,10 +181,10 @@ void rewriteFunctionRefs(Function &fn,
                     instr.callee = it->second;
             }
             for (auto &operand : instr.operands)
-                rewriteValue(operand, globalRenameMap);
+                rewriteSymbolValue(operand, functionRenameMap, globalRenameMap);
             for (auto &args : instr.brArgs) {
                 for (auto &arg : args)
-                    rewriteValue(arg, globalRenameMap);
+                    rewriteSymbolValue(arg, functionRenameMap, globalRenameMap);
             }
         }
     }
@@ -311,6 +323,9 @@ LinkResult linkModules(std::vector<Module> modules) {
                 }
                 if (mismatch)
                     result.errors.push_back("extern parameter type mismatch for @" + ext.name);
+                it->second.attrs().nothrow = it->second.attrs().nothrow || ext.attrs().nothrow;
+                it->second.attrs().readonly = it->second.attrs().readonly || ext.attrs().readonly;
+                it->second.attrs().pure = it->second.attrs().pure || ext.attrs().pure;
             } else {
                 mergedExterns.emplace(ext.name, std::move(ext));
             }

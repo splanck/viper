@@ -24,6 +24,7 @@
 #include "il/core/Extern.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/verify/TypeInference.hpp"
 
@@ -81,6 +82,32 @@ enum class RuntimeArrayCallee {
     ResizeObj,
     ReleaseObj,
 };
+
+struct CalleeEffectMetadata {
+    bool known = false;
+    bool pure = false;
+    bool readonly = false;
+    bool nothrow = false;
+};
+
+CalleeEffectMetadata queryCalleeEffects(const Extern *externSig,
+                                        const Function *fnSig,
+                                        const il::runtime::RuntimeSignature *runtimeSig,
+                                        std::string_view calleeName) {
+    if (runtimeSig)
+        return CalleeEffectMetadata{true, runtimeSig->pure, runtimeSig->readonly, runtimeSig->nothrow};
+    if (fnSig)
+        return CalleeEffectMetadata{
+            true, fnSig->attrs().pure, fnSig->attrs().readonly, fnSig->attrs().nothrow};
+    if (externSig &&
+        (externSig->attrs().pure || externSig->attrs().readonly || externSig->attrs().nothrow)) {
+        return CalleeEffectMetadata{
+            true, externSig->attrs().pure, externSig->attrs().readonly, externSig->attrs().nothrow};
+    }
+    if (const auto helper = il::runtime::classifyHelperEffects(calleeName); helper.known)
+        return CalleeEffectMetadata{true, helper.pure, helper.readonly, helper.nothrow};
+    return {};
+}
 
 /// @brief Map a runtime helper name to its array-handling category.
 /// @details The runtime exposes a fixed set of array helpers with predictable
@@ -705,34 +732,20 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
     }
 
     if (ctx.instr.op == il::core::Opcode::Call) {
-        bool knownEffects = false;
-        bool calleePure = false;
-        bool calleeReadonly = false;
-        bool calleeNothrow = false;
+        const CalleeEffectMetadata effects =
+            queryCalleeEffects(externSig, fnSig, runtimeSig, calleeName);
 
-        if (runtimeSig) {
-            knownEffects = true;
-            calleePure = runtimeSig->pure;
-            calleeReadonly = runtimeSig->readonly;
-            calleeNothrow = runtimeSig->nothrow;
-        } else if (fnSig) {
-            knownEffects = true;
-            calleePure = fnSig->attrs().pure;
-            calleeReadonly = fnSig->attrs().readonly;
-            calleeNothrow = fnSig->attrs().nothrow;
-        }
-
-        if (!knownEffects &&
+        if (!effects.known &&
             (ctx.instr.CallAttr.pure || ctx.instr.CallAttr.readonly || ctx.instr.CallAttr.nothrow)) {
             return fail(ctx, "call attributes require callee effect metadata");
         }
 
-        if (knownEffects) {
-            if (ctx.instr.CallAttr.pure && !calleePure)
+        if (effects.known) {
+            if (ctx.instr.CallAttr.pure && !effects.pure)
                 return fail(ctx, "call pure attribute contradicts callee metadata");
-            if (ctx.instr.CallAttr.readonly && !(calleeReadonly || calleePure))
+            if (ctx.instr.CallAttr.readonly && !(effects.readonly || effects.pure))
                 return fail(ctx, "call readonly attribute contradicts callee metadata");
-            if (ctx.instr.CallAttr.nothrow && !calleeNothrow)
+            if (ctx.instr.CallAttr.nothrow && !effects.nothrow)
                 return fail(ctx, "call nothrow attribute contradicts callee metadata");
         }
     }
@@ -872,14 +885,22 @@ Expected<void> checkCall(const VerifyCtx &ctx) {
 }
 
 /// @brief Verify the @c trap.kind intrinsic.
-/// @details Ensures the instruction takes no operands and records the result
-///          type as @c i64 so subsequent instructions can reason about the
-///          produced trap code.
+/// @details Accepts an optional @c error operand naming the record to inspect
+///          and records the result type as @c i64 so subsequent instructions can
+///          reason about the produced trap code.
 /// @param ctx Verification context for the @c trap.kind instruction.
 /// @return Success when the instruction shape is valid; otherwise an error.
 Expected<void> checkTrapKind(const VerifyCtx &ctx) {
-    if (!ctx.instr.operands.empty())
-        return fail(ctx, "trap.kind takes no operands");
+    if (ctx.instr.operands.size() > 1)
+        return fail(ctx, "trap.kind takes at most one operand");
+    if (!ctx.instr.operands.empty()) {
+        bool missing = false;
+        const Type operandType = ctx.types.valueType(ctx.instr.operands.front(), &missing);
+        if (missing)
+            return fail(ctx, "trap.kind operand type is unknown");
+        if (operandType.kind != Type::Kind::Error)
+            return fail(ctx, "trap.kind operand must be error");
+    }
 
     ctx.types.recordResult(ctx.instr, Type(Type::Kind::I64));
     return {};

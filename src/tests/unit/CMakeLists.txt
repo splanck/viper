@@ -8,6 +8,10 @@ set(VIPER_RUNTIME_TEST_LIBS viper_runtime)
 set(VIPER_RUNTIME_TEST_LIBS ${VIPER_RUNTIME_TEST_LIBS} PARENT_SCOPE)
 
 function(viper_add_isolated_runtime_test target)
+    if (NOT TARGET runtime_contract_tests)
+        add_custom_target(runtime_contract_tests)
+    endif ()
+
     add_executable(${target} ${ARGN})
     target_include_directories(${target} PRIVATE
             ${VIPER_TESTS_DIR}
@@ -40,6 +44,8 @@ function(viper_add_isolated_runtime_test target)
         target_link_libraries(${target} PRIVATE m)
     endif ()
     viper_add_ctest(${target} $<TARGET_FILE:${target}>)
+    viper_add_test_labels(${target} runtime contract isolated)
+    add_dependencies(runtime_contract_tests ${target})
 endfunction()
 
 function(viper_add_unit_support_tests)
@@ -265,6 +271,8 @@ endif ()
 viper_add_ctest(test_runtime_surface_cli
         $<TARGET_FILE:rtgen>
         --audit
+        --strict-header-sync
+        --strict-unclassified
         --summary-only
         ${CMAKE_SOURCE_DIR}/src/il/runtime/runtime.def)
 

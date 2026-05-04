@@ -19,6 +19,7 @@
 #include "il/runtime/RuntimeSignatureParser.hpp"
 
 #include <cctype>
+#include <optional>
 
 namespace il::runtime {
 namespace {
@@ -34,8 +35,8 @@ constexpr bool isWhitespace(char ch) {
 /// @details Accepts the mnemonics emitted by the runtime generator and performs
 ///          a case-insensitive match for select aliases (e.g. `bool`).
 /// @param token Token to translate.
-/// @return Parsed kind or @ref il::core::Type::Kind::Error when unknown.
-il::core::Type::Kind parseKindToken(std::string_view token) {
+/// @return Parsed kind, or empty when unknown.
+std::optional<il::core::Type::Kind> parseKindToken(std::string_view token) {
     using Kind = il::core::Type::Kind;
     token = trim(token);
     // Optional types (trailing '?') map to Ptr at the IL level (nullable pointer)
@@ -65,7 +66,7 @@ il::core::Type::Kind parseKindToken(std::string_view token) {
         return Kind::Ptr;
     if (token == "resume" || token == "resume_tok")
         return Kind::ResumeTok;
-    return Kind::Error;
+    return std::nullopt;
 }
 
 bool isObjectParamToken(std::string_view token) {
@@ -97,6 +98,7 @@ std::vector<std::string_view> splitTypeList(std::string_view text) {
     std::vector<std::string_view> tokens;
     std::size_t start = 0;
     int depth = 0;
+    int angleDepth = 0;
     for (std::size_t i = 0; i < text.size(); ++i) {
         const char ch = text[i];
         if (ch == '(') {
@@ -104,7 +106,12 @@ std::vector<std::string_view> splitTypeList(std::string_view text) {
         } else if (ch == ')') {
             if (depth > 0)
                 --depth;
-        } else if (ch == ',' && depth == 0) {
+        } else if (ch == '<') {
+            ++angleDepth;
+        } else if (ch == '>') {
+            if (angleDepth > 0)
+                --angleDepth;
+        } else if (ch == ',' && depth == 0 && angleDepth == 0) {
             tokens.push_back(trim(text.substr(start, i - start)));
             start = i + 1;
         }
@@ -137,11 +144,19 @@ RuntimeSignature parseSignatureSpec(std::string_view spec) {
     spec = trim(spec);
     const auto open = spec.find('(');
     const auto close = spec.rfind(')');
-    if (open == std::string_view::npos || close == std::string_view::npos || close <= open)
+    if (open == std::string_view::npos || close == std::string_view::npos || close <= open ||
+        !trim(spec.substr(close + 1)).empty()) {
+        signature.valid = false;
         return signature;
+    }
 
     const auto retToken = trim(spec.substr(0, open));
-    signature.retType = il::core::Type(parseKindToken(retToken));
+    const auto retKind = parseKindToken(retToken);
+    if (!retKind) {
+        signature.valid = false;
+        return signature;
+    }
+    signature.retType = il::core::Type(*retKind);
 
     const auto paramsSlice = spec.substr(open + 1, close - open - 1);
     if (!paramsSlice.empty()) {
@@ -149,7 +164,14 @@ RuntimeSignature parseSignatureSpec(std::string_view spec) {
         signature.paramTypes.reserve(tokens.size());
         for (std::size_t index = 0; index < tokens.size(); ++index) {
             auto token = tokens[index];
-            signature.paramTypes.emplace_back(parseKindToken(token));
+            const auto kind = parseKindToken(token);
+            if (!kind) {
+                signature.valid = false;
+                signature.paramTypes.clear();
+                signature.objectParamMask = 0;
+                return signature;
+            }
+            signature.paramTypes.emplace_back(*kind);
             if (index < 64 && isObjectParamToken(token))
                 signature.objectParamMask |= std::uint64_t{1} << index;
         }

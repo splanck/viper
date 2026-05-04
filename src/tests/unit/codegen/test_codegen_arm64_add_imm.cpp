@@ -75,9 +75,7 @@ TEST(Arm64CLI, SubImmParam1) {
     const char *argv[] = {inP2.c_str(), "-S", outP2.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(outP2);
-    // Expect move param1 to x0 then sub immediate
-    EXPECT_NE(asmText.find("mov x0, x1"), std::string::npos);
-    EXPECT_NE(asmText.find("subs x0, x0, #3"), std::string::npos);
+    EXPECT_NE(asmText.find("subs x0, x1, #3"), std::string::npos);
 }
 
 int main(int argc, char **argv) {

@@ -58,6 +58,15 @@ size_t countOpcode(const Function &function, Opcode op) {
     return count;
 }
 
+Instr makeBr(const std::string &target) {
+    Instr instr;
+    instr.op = Opcode::Br;
+    instr.type = Type(Type::Kind::Void);
+    instr.labels.push_back(target);
+    instr.brArgs.emplace_back();
+    return instr;
+}
+
 il::transform::AnalysisRegistry createRegistry() {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
@@ -213,7 +222,83 @@ void test_dce_preserves_potentially_trapping_dead_load() {
     assert(countOpcode(function, Opcode::Load) == 1);
 }
 
-/// Test 4: Empty forwarding block elimination
+/// Test 4: DCE preserves dead stores whose pointer may trap.
+void test_dce_preserves_potentially_trapping_dead_store() {
+    Module module;
+    Function fn;
+    fn.name = "test_dead_param_store";
+    fn.retType = Type(Type::Kind::Void);
+    fn.params.push_back(Param{"p", Type(Type::Kind::Ptr), 0});
+    fn.valueNames.resize(1);
+    fn.valueNames[0] = "p";
+
+    BasicBlock entry;
+    entry.label = "entry";
+
+    Instr store;
+    store.op = Opcode::Store;
+    store.type = Type(Type::Kind::I64);
+    store.operands = {Value::temp(0), Value::constInt(7)};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+
+    entry.instructions.push_back(std::move(store));
+    entry.instructions.push_back(std::move(ret));
+    entry.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    module.functions.push_back(std::move(fn));
+    Function &function = module.functions.back();
+
+    il::transform::dce(module);
+
+    assert(countOpcode(function, Opcode::Store) == 1);
+}
+
+/// Test 5: DCE still removes dead stores when the stack slot is statically safe.
+void test_dce_removes_nontrapping_dead_store() {
+    Module module;
+    Function fn;
+    fn.name = "test_dead_alloca_store";
+    fn.retType = Type(Type::Kind::Void);
+
+    BasicBlock entry;
+    entry.label = "entry";
+
+    Instr alloca;
+    alloca.result = 0;
+    alloca.op = Opcode::Alloca;
+    alloca.type = Type(Type::Kind::Ptr);
+    alloca.operands = {Value::constInt(8)};
+
+    Instr store;
+    store.op = Opcode::Store;
+    store.type = Type(Type::Kind::I64);
+    store.operands = {Value::temp(0), Value::constInt(7)};
+
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+
+    entry.instructions.push_back(std::move(alloca));
+    entry.instructions.push_back(std::move(store));
+    entry.instructions.push_back(std::move(ret));
+    entry.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.valueNames.resize(1);
+    module.functions.push_back(std::move(fn));
+    Function &function = module.functions.back();
+
+    il::transform::dce(module);
+
+    assert(countOpcode(function, Opcode::Store) == 0);
+    assert(countOpcode(function, Opcode::Alloca) == 0);
+}
+
+/// Test 6: Empty forwarding block elimination
 /// A function with an empty block that just forwards to another.
 void test_simplifycfg_empty_forwarding_block() {
     Module module;
@@ -280,7 +365,54 @@ void test_simplifycfg_empty_forwarding_block() {
     assert(function.blocks.size() <= 2);
 }
 
-/// Test 4: LateCleanup pass integration test
+/// Test 7: Forwarding blocks with potentially trapping dead work are preserved.
+void test_simplifycfg_preserves_forwarding_block_with_trapping_load() {
+    Module module;
+    Function fn;
+    fn.name = "test_forward_trapping_load";
+    fn.retType = Type(Type::Kind::Void);
+    fn.params.push_back(Param{"p", Type(Type::Kind::Ptr), 0});
+    fn.valueNames.resize(2);
+    fn.valueNames[0] = "p";
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.instructions.push_back(makeBr("forward"));
+    entry.terminated = true;
+
+    BasicBlock forward;
+    forward.label = "forward";
+    Instr load;
+    load.result = 1;
+    load.op = Opcode::Load;
+    load.type = Type(Type::Kind::I64);
+    load.operands = {Value::temp(0)};
+    forward.instructions.push_back(std::move(load));
+    forward.instructions.push_back(makeBr("exit"));
+    forward.terminated = true;
+
+    BasicBlock exit;
+    exit.label = "exit";
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    exit.instructions.push_back(std::move(ret));
+    exit.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.blocks.push_back(std::move(forward));
+    fn.blocks.push_back(std::move(exit));
+    module.functions.push_back(std::move(fn));
+    Function &function = module.functions.back();
+
+    il::transform::SimplifyCFG cfgPass(/*aggressive=*/true);
+    il::transform::SimplifyCFG::Stats stats;
+    cfgPass.run(function, &stats);
+
+    assert(countOpcode(function, Opcode::Load) == 1);
+}
+
+/// Test 8: LateCleanup pass integration test
 /// This test uses the full pass manager integration without module verification.
 void test_late_cleanup_integration() {
     Module module;
@@ -355,7 +487,10 @@ int main() {
     test_simplifycfg_unreachable_block_removal();
     test_dce_dead_load_elimination();
     test_dce_preserves_potentially_trapping_dead_load();
+    test_dce_preserves_potentially_trapping_dead_store();
+    test_dce_removes_nontrapping_dead_store();
     test_simplifycfg_empty_forwarding_block();
+    test_simplifycfg_preserves_forwarding_block_with_trapping_load();
     test_late_cleanup_integration();
     return 0;
 }

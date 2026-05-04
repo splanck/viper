@@ -78,6 +78,16 @@ std::optional<long long> typeSizeBytes(Type::Kind kind) {
     return std::nullopt;
 }
 
+Expected<void> rejectDirectGlobalAddress(const VerifyCtx &ctx,
+                                         const Value &ptr,
+                                         std::string_view operation) {
+    if (ptr.kind == Value::Kind::GlobalAddr)
+        return fail(ctx,
+                    std::string(operation) +
+                        " requires a pointer value; use gaddr or addr_of for globals");
+    return {};
+}
+
 const il::core::Instr *findDef(const il::core::Function &fn, unsigned temp) {
     for (const auto &block : fn.blocks)
         for (const auto &instr : block.instructions)
@@ -169,6 +179,8 @@ Expected<void> checkAlloca(const VerifyCtx &ctx) {
 Expected<void> checkGEP(const VerifyCtx &ctx) {
     if (ctx.instr.operands.size() < 2)
         return fail(ctx, "invalid operand count");
+    if (auto result = rejectDirectGlobalAddress(ctx, ctx.instr.operands[0], "gep"); !result)
+        return result;
 
     bool baseMissing = false;
     if (ctx.types.valueType(ctx.instr.operands[0], &baseMissing).kind != Type::Kind::Ptr) {
@@ -189,7 +201,7 @@ Expected<void> checkGEP(const VerifyCtx &ctx) {
             if (addOverflows(bounds->offset, *offset))
                 return fail(ctx, "gep offset overflow");
             const long long absolute = bounds->offset + *offset;
-            if (absolute < 0 || absolute >= bounds->size)
+            if (absolute < 0 || absolute > bounds->size)
                 return fail(ctx, "gep offset outside alloca");
         }
     }
@@ -205,6 +217,8 @@ Expected<void> checkGEP(const VerifyCtx &ctx) {
 Expected<void> checkLoad(const VerifyCtx &ctx) {
     if (ctx.instr.operands.empty())
         return fail(ctx, "missing operand");
+    if (auto result = rejectDirectGlobalAddress(ctx, ctx.instr.operands[0], "load"); !result)
+        return result;
 
     if (ctx.types.valueType(ctx.instr.operands[0]).kind != Type::Kind::Ptr)
         return fail(ctx, "pointer type mismatch");
@@ -225,6 +239,8 @@ Expected<void> checkLoad(const VerifyCtx &ctx) {
 Expected<void> checkStore(const VerifyCtx &ctx) {
     if (ctx.instr.operands.size() < 2)
         return fail(ctx, "invalid operand count");
+    if (auto result = rejectDirectGlobalAddress(ctx, ctx.instr.operands[0], "store"); !result)
+        return result;
 
     bool pointerMissing = false;
     const Type pointerType = ctx.types.valueType(ctx.instr.operands[0], &pointerMissing);

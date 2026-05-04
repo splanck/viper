@@ -42,6 +42,7 @@
 
 #include "rt_objpool.h"
 #include "rt_object.h"
+#include "rt_trap.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -63,6 +64,16 @@ struct rt_objpool_impl {
     int64_t active_head;     ///< Head of active list (-1 if none). O(1) iteration.
 };
 
+static rt_objpool checked_objpool(rt_objpool pool, const char *api) {
+    if (!pool)
+        return NULL;
+    if (rt_obj_class_id(pool) != RT_OBJPOOL_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return pool;
+}
+
 static void objpool_finalizer(void *obj) {
     if (!obj)
         return;
@@ -78,7 +89,8 @@ rt_objpool rt_objpool_new(int64_t capacity) {
     if (capacity > RT_OBJPOOL_MAX)
         capacity = RT_OBJPOOL_MAX;
 
-    struct rt_objpool_impl *pool = rt_obj_new_i64(0, sizeof(struct rt_objpool_impl));
+    struct rt_objpool_impl *pool =
+        rt_obj_new_i64(RT_OBJPOOL_CLASS_ID, sizeof(struct rt_objpool_impl));
     if (!pool)
         return NULL;
 
@@ -108,12 +120,14 @@ rt_objpool rt_objpool_new(int64_t capacity) {
 
 /// @brief Release resources and destroy the objpool.
 void rt_objpool_destroy(rt_objpool pool) {
-    // Object is GC-managed; finalizer frees internal data.
-    (void)pool;
+    pool = checked_objpool(pool, "ObjectPool.Destroy: expected Viper.Game.ObjectPool");
+    if (pool && rt_obj_release_check0(pool))
+        rt_obj_free(pool);
 }
 
 /// @brief Acquire the objpool.
 int64_t rt_objpool_acquire(rt_objpool pool) {
+    pool = checked_objpool(pool, "ObjectPool.Acquire: expected Viper.Game.ObjectPool");
     if (!pool)
         return -1;
     if (pool->free_head < 0)
@@ -134,6 +148,7 @@ int64_t rt_objpool_acquire(rt_objpool pool) {
 
 /// @brief Release the objpool.
 int8_t rt_objpool_release(rt_objpool pool, int64_t slot) {
+    pool = checked_objpool(pool, "ObjectPool.Release: expected Viper.Game.ObjectPool");
     if (!pool)
         return 0;
     if (slot < 0 || slot >= pool->capacity)
@@ -164,6 +179,7 @@ int8_t rt_objpool_release(rt_objpool pool, int64_t slot) {
 
 /// @brief Check whether a slot is currently active (allocated, not free).
 int8_t rt_objpool_is_active(rt_objpool pool, int64_t slot) {
+    pool = checked_objpool(pool, "ObjectPool.IsActive: expected Viper.Game.ObjectPool");
     if (!pool)
         return 0;
     if (slot < 0 || slot >= pool->capacity)
@@ -173,31 +189,37 @@ int8_t rt_objpool_is_active(rt_objpool pool, int64_t slot) {
 
 /// @brief Get the number of currently active (allocated) slots.
 int64_t rt_objpool_active_count(rt_objpool pool) {
+    pool = checked_objpool(pool, "ObjectPool.ActiveCount: expected Viper.Game.ObjectPool");
     return pool ? pool->active_count : 0;
 }
 
 /// @brief Get the number of free (available) slots in the pool.
 int64_t rt_objpool_free_count(rt_objpool pool) {
+    pool = checked_objpool(pool, "ObjectPool.FreeCount: expected Viper.Game.ObjectPool");
     return pool ? pool->capacity - pool->active_count : 0;
 }
 
 /// @brief Return the total capacity (active + free slots) of the pool.
 int64_t rt_objpool_capacity(rt_objpool pool) {
+    pool = checked_objpool(pool, "ObjectPool.Capacity: expected Viper.Game.ObjectPool");
     return pool ? pool->capacity : 0;
 }
 
 /// @brief Check whether all slots in the pool are active (no free slots left).
 int8_t rt_objpool_is_full(rt_objpool pool) {
+    pool = checked_objpool(pool, "ObjectPool.IsFull: expected Viper.Game.ObjectPool");
     return pool ? (pool->active_count >= pool->capacity ? 1 : 0) : 1;
 }
 
 /// @brief Check whether the objpool has no entries.
 int8_t rt_objpool_is_empty(rt_objpool pool) {
+    pool = checked_objpool(pool, "ObjectPool.IsEmpty: expected Viper.Game.ObjectPool");
     return pool ? (pool->active_count == 0 ? 1 : 0) : 1;
 }
 
 /// @brief Remove all entries from the objpool.
 void rt_objpool_clear(rt_objpool pool) {
+    pool = checked_objpool(pool, "ObjectPool.Clear: expected Viper.Game.ObjectPool");
     if (!pool)
         return;
 
@@ -217,6 +239,7 @@ void rt_objpool_clear(rt_objpool pool) {
 /// @details O(1) — returns the head of the intrusive active-slot linked list.
 int64_t rt_objpool_first_active(rt_objpool pool) {
     // O(1): return head of the maintained active list
+    pool = checked_objpool(pool, "ObjectPool.FirstActive: expected Viper.Game.ObjectPool");
     return pool ? pool->active_head : -1;
 }
 
@@ -224,6 +247,7 @@ int64_t rt_objpool_first_active(rt_objpool pool) {
 /// @details O(1) — follows the intrusive next_active pointer in the slot.
 int64_t rt_objpool_next_active(rt_objpool pool, int64_t after) {
     // O(1): follow the intrusive next_active pointer
+    pool = checked_objpool(pool, "ObjectPool.NextActive: expected Viper.Game.ObjectPool");
     if (!pool || after < 0 || after >= pool->capacity)
         return -1;
     return pool->slots[after].next_active;
@@ -231,6 +255,7 @@ int64_t rt_objpool_next_active(rt_objpool pool, int64_t after) {
 
 /// @brief Store a user-defined integer value in an active slot's data field.
 int8_t rt_objpool_set_data(rt_objpool pool, int64_t slot, int64_t data) {
+    pool = checked_objpool(pool, "ObjectPool.SetData: expected Viper.Game.ObjectPool");
     if (!pool)
         return 0;
     if (slot < 0 || slot >= pool->capacity)
@@ -243,9 +268,12 @@ int8_t rt_objpool_set_data(rt_objpool pool, int64_t slot, int64_t data) {
 
 /// @brief Retrieve the user-defined integer value stored in a slot.
 int64_t rt_objpool_get_data(rt_objpool pool, int64_t slot) {
+    pool = checked_objpool(pool, "ObjectPool.GetData: expected Viper.Game.ObjectPool");
     if (!pool)
         return 0;
     if (slot < 0 || slot >= pool->capacity)
+        return 0;
+    if (!pool->slots[slot].active)
         return 0;
     return pool->slots[slot].data;
 }

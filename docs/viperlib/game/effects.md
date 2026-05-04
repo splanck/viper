@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-17
+last-verified: 2026-05-04
 ---
 
 # Visual Effects
@@ -169,6 +169,9 @@ Screen effects manager for camera shake, color flash, fade effects, and scene tr
 | `Dissolve(color, duration)`    | `Void(Integer,Integer)` | Bayer-dithered pixel dissolve            |
 | `Pixelate(maxBlock, duration)` | `Void(Integer,Integer)` | Increasing block size pixelation         |
 | `Draw(canvas, w, h)`           | `Void(Canvas,Int,Int)`  | Render transition overlays to canvas     |
+
+`Update(dt)` ignores non-positive `dt` values. Long-running effects use saturating progress
+math, so elapsed time clamps to completion instead of overflowing.
 
 ### Effect Types
 

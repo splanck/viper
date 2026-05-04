@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-29
+last-verified: 2026-05-04
 ---
 
 # Viper IL — Reference
@@ -44,6 +44,10 @@ Viper IL supports the following primitive types:
 
 > **Note:** The verifier validates type correctness. Use `il-verify` to check your IL code.
 
+Integer literals accept an optional sign, decimal, `0x` hex, `0b` binary, and leading-zero octal forms. Underscores may
+separate digits in any base and are ignored after validation. The parser range-checks signed 64-bit values consistently
+for instruction operands and scalar global initializers.
+
 ---
 
 ## Functions & Blocks
@@ -63,8 +67,8 @@ entry:
 - **Basic blocks**: Labeled with `label:` (no caret prefix)
 - **Terminators**: Every block must end with `ret`, `br`, `cbr`, `switch.i32`, `trap`, `trap.from_err`, or `resume.*`
 - **SSA form**: Values (`%vX`) are defined once and used multiple times
-- **Function attributes**: Definitions may use `[nothrow]`, `[readonly]`, and `[pure]`; the verifier checks the body
-  and call sites against those promises
+- **Function attributes**: Definitions and imported prototypes may use `[nothrow]`, `[readonly]`, and `[pure]`; the
+  verifier checks definitions, imports, extern declarations, and call sites against those promises
 - **Comments**: `#` and `//` start line comments when they appear outside quoted strings
 
 ---
@@ -294,9 +298,13 @@ keeps the dividend's sign. Matches BASIC `MOD`.
 store i64, %p, 1            # write 1 into the counter
 ```
 
+Use `addr_of`, `gaddr`, or `const_str` to materialize globals before passing them to generic memory
+instructions; direct `load`, `store`, and `gep` operands like `@.Counter` are rejected.
+
 **`gep`** — Get element pointer; compute address offset from base pointer (base + offset).
 Constant offsets are signed byte offsets. If the base is derived from a constant-size `alloca`, the verifier rejects
-cumulative static offsets outside the allocation.
+cumulative static offsets beyond the allocation. A one-past-the-end pointer may be formed, but any `load` or `store`
+through it is rejected because the full access width must fit inside the allocation.
 
 ```llvm
 %elem_ptr = gep %a0, %off
@@ -344,6 +352,9 @@ type-checked.
 %result = call.indirect %fn_ptr(%arg1, %arg2)
 %val = call.indirect [i64(ptr)] %callback(%data)
 ```
+
+The callee operand is required. Pointer-typed callees must use explicit signature metadata; global function addresses
+may be resolved directly by the verifier and linker.
 
 **`cbr`** — Conditional branch; takes a boolean condition and two target labels.
 
@@ -410,11 +421,11 @@ trap.from_err i32 7
 trap.from_err i32 6
 ```
 
-**`trap.kind`** — Read current trap kind from most recent error.
+**`trap.kind`** — Read the current trap kind, or the kind stored in a supplied `Error` value.
 
 ```llvm
 %kind = trap.kind
-%k0 = trap.kind
+%k0 = trap.kind %err
 ```
 
 ### Misc
@@ -531,7 +542,12 @@ Shift counts are masked modulo 64 for `shl`, `lshr`, and `ashr`.
 ```llvm
 extern @Viper.Terminal.PrintStr(str) -> void
 extern @Viper.Terminal.PrintI64(i64) -> void
+extern @Viper.Math.Abs(i64) -> i64 [nothrow, pure]
 ```
+
+Externs may use `[nothrow]`, `[readonly]`, and `[pure]`. These attributes are optimizer-visible effect metadata; they
+must not contradict generated runtime metadata for known runtime functions. Duplicate extern declarations with the same
+signature merge their effect attributes during module linking.
 
 Compatibility:
 
@@ -658,20 +674,23 @@ target "wasm32-unknown-unknown"
 The verifier enforces structural and type rules. Typical checks include:
 
 - Block must end with a terminator (`ret`, `br`, `cbr`, `switch.i32`, `trap`, `trap.from_err`, or `resume.*`).
-- Operand types must match instruction requirements (e.g., `iadd.ovf` takes two `i64` operands).
+- Operand types must match instruction requirements (e.g., checked integer arithmetic uses a consistent integer
+  instruction type such as `i16`, `i32`, or `i64`).
 - Plain integer arithmetic (`add`, `sub`, `mul`, `sdiv`, `udiv`, `srem`, `urem`) is rejected; use the `.ovf` and
   `.chk0` variants.
 - Block parameters must be passed correctly by all predecessor branches.
 - Branch targets must be valid labels in the same function.
 - Calls must match callee signature exactly.
-- Direct call attributes require runtime or local function effect metadata and cannot contradict it.
+- Direct call attributes require runtime, extern, import, or local function effect metadata and cannot contradict it.
 - `ptr` and `str` are distinct verifier types even though both occupy one machine word. The only relaxed direct-call
   path is a known runtime helper parameter spelled `obj` in the generated runtime catalog; raw `ptr` externs and
   indirect-call signatures still reject `str`.
 - Pointer-based `call.indirect` sites require `[ret(params)]` signatures; signatures must match their arguments and
   non-void signatures must bind a result temp.
 - `addr_of` and `const_str` require declared string globals; `gaddr` requires a declared scalar storage global.
-- Scalar global initializers must parse and fit the declared type; imported globals cannot define initial storage.
+  Generic memory instructions require the materialized pointer value, not a direct `@global` operand.
+- Scalar global initializers must parse and fit the declared type; string globals require quoted initializers; imported
+  globals cannot define initial storage.
 
 ## Tools
 

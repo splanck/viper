@@ -18,6 +18,9 @@
 extern "C" {
 #endif
 
+/// Runtime class ID used to validate Config handles.
+#define RT_CONFIG_CLASS_ID INT64_C(-0x510215)
+
 void *rt_config_load(void *path);
 void *rt_config_from_string(void *json_str);
 int64_t rt_config_get_int(void *cfg, void *path, int64_t default_val);

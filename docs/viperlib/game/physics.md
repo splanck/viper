@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-23
+last-verified: 2026-05-04
 ---
 
 # Physics & Collision
@@ -256,10 +256,14 @@ Static utility class for collision detection without creating objects. Useful fo
 | `RectsOverlap(x1,y1,w1,h1,x2,y2,w2,h2)` | `Boolean(8×Double)`          | Test rectangle overlap              |
 | `PointInRect(px,py,rx,ry,rw,rh)`    | `Boolean(6×Double)`              | Test if point in rectangle          |
 | `CirclesOverlap(x1,y1,r1,x2,y2,r2)` | `Boolean(6×Double)`              | Test circle overlap                 |
-| `PointInCircle(px,py,cx,cy,r)`      | `Boolean(5×Double)`              | Test if point in circle             |
-| `CircleRect(cx,cy,r,rx,ry,rw,rh)`   | `Boolean(7×Double)`              | Test circle-rectangle overlap       |
+| `PointInCircle(px,py,cx,cy,r)`      | `Boolean(5×Double)`              | Test if point is in or on circle    |
+| `CircleRect(cx,cy,r,rx,ry,rw,rh)`   | `Boolean(7×Double)`              | Test circle-rectangle overlap, including tangent contact |
 | `Distance(x1,y1,x2,y2)`             | `Double(4×Double)`               | Distance between two points         |
 | `DistanceSquared(x1,y1,x2,y2)`      | `Double(4×Double)`               | Squared distance (faster)           |
+
+Static helpers reject non-finite coordinates and non-positive circle radii for circle tests.
+`CollisionRect` constructors and setters sanitize non-finite coordinates to `0` and invalid
+sizes to `0`.
 
 ### Zia Example
 
@@ -289,7 +293,9 @@ END IF
 
 ## Viper.Game.Physics2D
 
-Simple 2D physics engine with rigid body dynamics, gravity, AABB/circle collision detection, and basic joints. Uses fixed-timestep Euler integration and impulse-based collision resolution.
+Simple 2D physics engine with rigid body dynamics, gravity, AABB/circle collision detection,
+shape-aware swept collision checks, and basic joints. Uses fixed-timestep Euler integration
+and impulse-based collision resolution.
 
 **Type:** Compound — `Physics2D.World`, `Physics2D.Body`, `Physics2D.CircleBody`, and joint classes
 
@@ -335,6 +341,8 @@ Simple 2D physics engine with rigid body dynamics, gravity, AABB/circle collisio
 |---------------|------------------------|------------------------------------------|
 | `X`           | `Double` (read-only)   | X position                               |
 | `Y`           | `Double` (read-only)   | Y position                               |
+| `PrevX`       | `Double` (read-only)   | X position at the start of the previous successful `Step` |
+| `PrevY`       | `Double` (read-only)   | Y position at the start of the previous successful `Step` |
 | `Width`       | `Double` (read-only)   | Body width                               |
 | `Height`      | `Double` (read-only)   | Body height                              |
 | `VX`          | `Double` (read-only)   | X velocity                               |
@@ -361,7 +369,7 @@ Simple 2D physics engine with rigid body dynamics, gravity, AABB/circle collisio
 
 | Class/Method | Signature | Description |
 |--------------|-----------|-------------|
-| `CircleBody.New(cx, cy, radius, mass)` | `Body(Double,Double,Double,Double)` | Create a circle body centered at `(cx, cy)` |
+| `CircleBody.New(cx, cy, radius, mass)` | `Body(Double,Double,Double,Double)` | Create a circle body centered at `(cx, cy)`; any positive radius is preserved |
 | `DistanceJoint.New(a, b, length)` | `DistanceJoint(Body,Body,Double)` | Keeps two bodies at a target distance |
 | `SpringJoint.New(a, b, rest, stiffness, damping)` | `SpringJoint(Body,Body,Double,Double,Double)` | Applies Hooke-style spring force |
 | `RopeJoint.New(a, b, maxLength)` | `RopeJoint(Body,Body,Double)` | Allows slack, constrains only beyond max length |
@@ -373,15 +381,16 @@ Joints retain their body handles. Add both bodies to the same world before calli
 
 - **Static bodies** (mass = 0) are immovable — use for floors, walls, platforms
 - **Dynamic bodies** (mass > 0) are affected by gravity, forces, and collisions
-- `ContactCount` and `Contact*` methods expose contacts from the latest successful `Step`; the list is cleared at the start of the next step
+- `ContactCount` and `Contact*` methods expose contacts from the latest step; the list is cleared at the start of every `Step` and when bodies are removed
 - `SetPos(x, y)` is a teleport: it updates the previous-position state too, so the next step does not treat the teleport as swept motion
-- `Step(dt)` performs integration, joint solving, AABB/circle collision detection, and swept-bound checks for fast AABB and circle bodies
+- `Step(dt)` performs integration, joint solving, AABB/circle collision detection, and shape-aware swept checks for fast AABB and circle bodies
 - Swept collisions resolve at time of impact, then advance the remaining part of the step using the post-collision velocity
-- `Step(dt)` is a no-op for `dt <= 0` and for non-finite values
+- `Step(dt)` clears previous contacts, then no-ops for `dt <= 0` and for non-finite values
 - Collision response uses impulse-based resolution with restitution and friction
 - `Restitution` and `Friction` are clamped to `[0, 1]`
 - Collision layers and masks are 64-bit bitmasks; new bodies default to `CollisionLayer = 1` and `CollisionMask = -1` (all 64 bits)
 - `Body.New` sanitizes non-finite coordinates to 0, invalid size to 1, and non-finite or non-positive mass to static
+- `CircleBody.New` preserves subunit positive radii; non-positive or non-finite radius falls back to `1.0`
 - Very large finite forces, impulses, positions, and velocities are clamped during stepping to keep the broad phase finite
 - `World.Add(body)` ignores duplicate body handles
 - Fixed timestep recommended (e.g., `Step(1.0 / 60.0)` for 60 FPS)

@@ -40,6 +40,7 @@
 
 #include "rt_collision.h"
 #include "rt_object.h"
+#include "rt_trap.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -52,102 +53,133 @@ struct rt_collision_rect_impl {
     double height; ///< Height.
 };
 
+static rt_collision_rect checked_collision_rect(rt_collision_rect rect, const char *api) {
+    if (!rect)
+        return NULL;
+    if (rt_obj_class_id(rect) != RT_COLLISION_RECT_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return rect;
+}
+
+static double finite_or_zero(double value) {
+    return isfinite(value) ? value : 0.0;
+}
+
+static double finite_nonnegative_or_zero(double value) {
+    return (isfinite(value) && value > 0.0) ? value : 0.0;
+}
+
 /// @brief Create a new axis-aligned collision rectangle.
 /// @details Allocates a GC-managed AABB with the given top-left position and dimensions.
 ///          Negative width/height are clamped to zero.
 rt_collision_rect rt_collision_rect_new(double x, double y, double width, double height) {
     struct rt_collision_rect_impl *rect = (struct rt_collision_rect_impl *)rt_obj_new_i64(
-        0, (int64_t)sizeof(struct rt_collision_rect_impl));
+        RT_COLLISION_RECT_CLASS_ID, (int64_t)sizeof(struct rt_collision_rect_impl));
     if (!rect)
         return NULL;
 
-    rect->x = x;
-    rect->y = y;
-    rect->width = width > 0 ? width : 0;
-    rect->height = height > 0 ? height : 0;
+    rect->x = finite_or_zero(x);
+    rect->y = finite_or_zero(y);
+    rect->width = finite_nonnegative_or_zero(width);
+    rect->height = finite_nonnegative_or_zero(height);
 
     return rect;
 }
 
 /// @brief Release a collision rectangle, decrementing its reference count.
 void rt_collision_rect_destroy(rt_collision_rect rect) {
+    rect = checked_collision_rect(rect, "CollisionRect.Destroy: expected Viper.Game.CollisionRect");
     if (rect && rt_obj_release_check0(rect))
         rt_obj_free(rect);
 }
 
 /// @brief Return the X coordinate (left edge) of the collision rectangle.
 double rt_collision_rect_x(rt_collision_rect rect) {
+    rect = checked_collision_rect(rect, "CollisionRect.X: expected Viper.Game.CollisionRect");
     return rect ? rect->x : 0.0;
 }
 
 /// @brief Return the Y coordinate (top edge) of the collision rectangle.
 double rt_collision_rect_y(rt_collision_rect rect) {
+    rect = checked_collision_rect(rect, "CollisionRect.Y: expected Viper.Game.CollisionRect");
     return rect ? rect->y : 0.0;
 }
 
 /// @brief Return the width of the collision rectangle.
 double rt_collision_rect_width(rt_collision_rect rect) {
+    rect = checked_collision_rect(rect, "CollisionRect.Width: expected Viper.Game.CollisionRect");
     return rect ? rect->width : 0.0;
 }
 
 /// @brief Return the height of the collision rectangle.
 double rt_collision_rect_height(rt_collision_rect rect) {
+    rect = checked_collision_rect(rect, "CollisionRect.Height: expected Viper.Game.CollisionRect");
     return rect ? rect->height : 0.0;
 }
 
 /// @brief Return the right edge (x + width) of the collision rectangle.
 double rt_collision_rect_right(rt_collision_rect rect) {
+    rect = checked_collision_rect(rect, "CollisionRect.Right: expected Viper.Game.CollisionRect");
     return rect ? rect->x + rect->width : 0.0;
 }
 
 /// @brief Return the bottom edge (y + height) of the collision rectangle.
 double rt_collision_rect_bottom(rt_collision_rect rect) {
+    rect = checked_collision_rect(rect, "CollisionRect.Bottom: expected Viper.Game.CollisionRect");
     return rect ? rect->y + rect->height : 0.0;
 }
 
 /// @brief Return the X coordinate of the rectangle's center point.
 double rt_collision_rect_center_x(rt_collision_rect rect) {
+    rect = checked_collision_rect(rect, "CollisionRect.CenterX: expected Viper.Game.CollisionRect");
     return rect ? rect->x + rect->width * 0.5 : 0.0;
 }
 
 /// @brief Return the Y coordinate of the rectangle's center point.
 double rt_collision_rect_center_y(rt_collision_rect rect) {
+    rect = checked_collision_rect(rect, "CollisionRect.CenterY: expected Viper.Game.CollisionRect");
     return rect ? rect->y + rect->height * 0.5 : 0.0;
 }
 
 /// @brief Move the rectangle to a new top-left position.
 void rt_collision_rect_set_position(rt_collision_rect rect, double x, double y) {
+    rect = checked_collision_rect(rect, "CollisionRect.SetPosition: expected Viper.Game.CollisionRect");
     if (!rect)
         return;
-    rect->x = x;
-    rect->y = y;
+    rect->x = finite_or_zero(x);
+    rect->y = finite_or_zero(y);
 }
 
 /// @brief Set the width and height of the collision rectangle.
 /// @details Negative dimensions are clamped to zero.
 void rt_collision_rect_set_size(rt_collision_rect rect, double width, double height) {
+    rect = checked_collision_rect(rect, "CollisionRect.SetSize: expected Viper.Game.CollisionRect");
     if (!rect)
         return;
-    rect->width = width > 0 ? width : 0;
-    rect->height = height > 0 ? height : 0;
+    rect->width = finite_nonnegative_or_zero(width);
+    rect->height = finite_nonnegative_or_zero(height);
 }
 
 /// @brief Set all four components (x, y, width, height) of the collision rectangle.
 /// @details Negative dimensions are clamped to zero.
 void rt_collision_rect_set(
     rt_collision_rect rect, double x, double y, double width, double height) {
+    rect = checked_collision_rect(rect, "CollisionRect.Set: expected Viper.Game.CollisionRect");
     if (!rect)
         return;
-    rect->x = x;
-    rect->y = y;
-    rect->width = width > 0 ? width : 0;
-    rect->height = height > 0 ? height : 0;
+    rect->x = finite_or_zero(x);
+    rect->y = finite_or_zero(y);
+    rect->width = finite_nonnegative_or_zero(width);
+    rect->height = finite_nonnegative_or_zero(height);
 }
 
 /// @brief Reposition the rectangle so its center is at (cx, cy).
 /// @details Computes new top-left from center minus half-dimensions.
 void rt_collision_rect_set_center(rt_collision_rect rect, double cx, double cy) {
-    if (!rect)
+    rect = checked_collision_rect(rect, "CollisionRect.SetCenter: expected Viper.Game.CollisionRect");
+    if (!rect || !isfinite(cx) || !isfinite(cy))
         return;
     rect->x = cx - rect->width * 0.5;
     rect->y = cy - rect->height * 0.5;
@@ -155,7 +187,8 @@ void rt_collision_rect_set_center(rt_collision_rect rect, double cx, double cy) 
 
 /// @brief Translate the rectangle by (dx, dy) relative to its current position.
 void rt_collision_rect_move(rt_collision_rect rect, double dx, double dy) {
-    if (!rect)
+    rect = checked_collision_rect(rect, "CollisionRect.Move: expected Viper.Game.CollisionRect");
+    if (!rect || !isfinite(dx) || !isfinite(dy))
         return;
     rect->x += dx;
     rect->y += dy;
@@ -164,6 +197,7 @@ void rt_collision_rect_move(rt_collision_rect rect, double dx, double dy) {
 /// @brief Test whether a point (px, py) lies inside the collision rectangle.
 /// @details Inclusive on left/top edges, exclusive on right/bottom edges.
 int8_t rt_collision_rect_contains_point(rt_collision_rect rect, double px, double py) {
+    rect = checked_collision_rect(rect, "CollisionRect.ContainsPoint: expected Viper.Game.CollisionRect");
     if (!rect)
         return 0;
     return px >= rect->x && px < rect->x + rect->width && py >= rect->y &&
@@ -174,6 +208,8 @@ int8_t rt_collision_rect_contains_point(rt_collision_rect rect, double px, doubl
 /// @details Uses the separating-axis theorem on both X and Y axes. Returns 1
 ///          if the rectangles share any interior area, 0 if separated.
 int8_t rt_collision_rect_overlaps(rt_collision_rect rect, rt_collision_rect other) {
+    rect = checked_collision_rect(rect, "CollisionRect.Overlaps: expected Viper.Game.CollisionRect");
+    other = checked_collision_rect(other, "CollisionRect.Overlaps: expected other Viper.Game.CollisionRect");
     if (!rect || !other)
         return 0;
     return rt_collision_rect_overlaps_rect(rect, other->x, other->y, other->width, other->height);
@@ -181,7 +217,12 @@ int8_t rt_collision_rect_overlaps(rt_collision_rect rect, rt_collision_rect othe
 
 int8_t rt_collision_rect_overlaps_rect(
     rt_collision_rect rect, double ox, double oy, double ow, double oh) {
+    rect = checked_collision_rect(rect, "CollisionRect.OverlapsRect: expected Viper.Game.CollisionRect");
     if (!rect)
+        return 0;
+    if (!isfinite(ox) || !isfinite(oy) || !isfinite(ow) || !isfinite(oh))
+        return 0;
+    if (ow <= 0.0 || oh <= 0.0)
         return 0;
 
     double r1_left = rect->x;
@@ -204,6 +245,8 @@ int8_t rt_collision_rect_overlaps_rect(
 /// @brief Compute the overlap distance along the X axis between two rectangles.
 /// @details Returns 0.0 if the rectangles do not overlap on the X axis.
 double rt_collision_rect_overlap_x(rt_collision_rect rect, rt_collision_rect other) {
+    rect = checked_collision_rect(rect, "CollisionRect.OverlapX: expected Viper.Game.CollisionRect");
+    other = checked_collision_rect(other, "CollisionRect.OverlapX: expected other Viper.Game.CollisionRect");
     if (!rect || !other)
         return 0.0;
 
@@ -226,6 +269,8 @@ double rt_collision_rect_overlap_x(rt_collision_rect rect, rt_collision_rect oth
 /// @brief Compute the overlap distance along the Y axis between two rectangles.
 /// @details Returns 0.0 if the rectangles do not overlap on the Y axis.
 double rt_collision_rect_overlap_y(rt_collision_rect rect, rt_collision_rect other) {
+    rect = checked_collision_rect(rect, "CollisionRect.OverlapY: expected Viper.Game.CollisionRect");
+    other = checked_collision_rect(other, "CollisionRect.OverlapY: expected other Viper.Game.CollisionRect");
     if (!rect || !other)
         return 0.0;
 
@@ -249,7 +294,8 @@ double rt_collision_rect_overlap_y(rt_collision_rect rect, rt_collision_rect oth
 /// @details The result is larger by 2*dx horizontally and 2*dy vertically,
 ///          centered on the same point as the original.
 void rt_collision_rect_expand(rt_collision_rect rect, double margin) {
-    if (!rect)
+    rect = checked_collision_rect(rect, "CollisionRect.Expand: expected Viper.Game.CollisionRect");
+    if (!rect || !isfinite(margin))
         return;
     rect->x -= margin;
     rect->y -= margin;
@@ -267,6 +313,8 @@ void rt_collision_rect_expand(rt_collision_rect rect, double margin) {
 /// @details Returns 1 if the other rectangle is entirely within the bounds
 ///          of this one (inclusive on all edges).
 int8_t rt_collision_rect_contains_rect(rt_collision_rect rect, rt_collision_rect other) {
+    rect = checked_collision_rect(rect, "CollisionRect.ContainsRect: expected Viper.Game.CollisionRect");
+    other = checked_collision_rect(other, "CollisionRect.ContainsRect: expected other Viper.Game.CollisionRect");
     if (!rect || !other)
         return 0;
 
@@ -281,6 +329,10 @@ int8_t rt_collision_rect_contains_rect(rt_collision_rect rect, rt_collision_rect
 
 int8_t rt_collision_rects_overlap(
     double x1, double y1, double w1, double h1, double x2, double y2, double w2, double h2) {
+    if (!isfinite(x1) || !isfinite(y1) || !isfinite(w1) || !isfinite(h1) || !isfinite(x2) ||
+        !isfinite(y2) || !isfinite(w2) || !isfinite(h2) || w1 <= 0.0 || h1 <= 0.0 ||
+        w2 <= 0.0 || h2 <= 0.0)
+        return 0;
     if (x1 + w1 <= x2 || x2 + w2 <= x1 || y1 + h1 <= y2 || y2 + h2 <= y1) {
         return 0;
     }
@@ -291,11 +343,17 @@ int8_t rt_collision_rects_overlap(
 /// @details Inclusive on left/top, exclusive on right/bottom.
 int8_t rt_collision_point_in_rect(
     double px, double py, double rx, double ry, double rw, double rh) {
+    if (!isfinite(px) || !isfinite(py) || !isfinite(rx) || !isfinite(ry) || !isfinite(rw) ||
+        !isfinite(rh) || rw <= 0.0 || rh <= 0.0)
+        return 0;
     return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
 }
 
 int8_t rt_collision_circles_overlap(
     double x1, double y1, double r1, double x2, double y2, double r2) {
+    if (!isfinite(x1) || !isfinite(y1) || !isfinite(r1) || !isfinite(x2) || !isfinite(y2) ||
+        !isfinite(r2) || r1 <= 0.0 || r2 <= 0.0)
+        return 0;
     double dx = x2 - x1;
     double dy = y2 - y1;
     double dist_sq = dx * dx + dy * dy;
@@ -306,13 +364,19 @@ int8_t rt_collision_circles_overlap(
 /// @brief Standalone function: test if point (px, py) is inside a circle.
 /// @details Uses distance-squared comparison to avoid sqrt.
 int8_t rt_collision_point_in_circle(double px, double py, double cx, double cy, double r) {
+    if (!isfinite(px) || !isfinite(py) || !isfinite(cx) || !isfinite(cy) || !isfinite(r) ||
+        r <= 0.0)
+        return 0;
     double dx = px - cx;
     double dy = py - cy;
-    return dx * dx + dy * dy < r * r;
+    return dx * dx + dy * dy <= r * r;
 }
 
 int8_t rt_collision_circle_rect(
     double cx, double cy, double r, double rx, double ry, double rw, double rh) {
+    if (!isfinite(cx) || !isfinite(cy) || !isfinite(r) || !isfinite(rx) || !isfinite(ry) ||
+        !isfinite(rw) || !isfinite(rh) || r <= 0.0 || rw <= 0.0 || rh <= 0.0)
+        return 0;
     // Find closest point on rectangle to circle center
     double closest_x = cx;
     double closest_y = cy;
@@ -330,11 +394,13 @@ int8_t rt_collision_circle_rect(
     // Check if closest point is within circle
     double dx = cx - closest_x;
     double dy = cy - closest_y;
-    return dx * dx + dy * dy < r * r;
+    return dx * dx + dy * dy <= r * r;
 }
 
 /// @brief Compute the Euclidean distance between two points.
 double rt_collision_distance(double x1, double y1, double x2, double y2) {
+    if (!isfinite(x1) || !isfinite(y1) || !isfinite(x2) || !isfinite(y2))
+        return 0.0;
     double dx = x2 - x1;
     double dy = y2 - y1;
     return sqrt(dx * dx + dy * dy);
@@ -343,6 +409,8 @@ double rt_collision_distance(double x1, double y1, double x2, double y2) {
 /// @brief Compute the squared Euclidean distance between two points.
 /// @details Avoids the sqrt call, useful for comparison-only scenarios.
 double rt_collision_distance_squared(double x1, double y1, double x2, double y2) {
+    if (!isfinite(x1) || !isfinite(y1) || !isfinite(x2) || !isfinite(y2))
+        return 0.0;
     double dx = x2 - x1;
     double dy = y2 - y1;
     return dx * dx + dy * dy;

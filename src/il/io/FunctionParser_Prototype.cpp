@@ -20,7 +20,9 @@
 
 #include "il/core/Linkage.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <sstream>
 #include <unordered_set>
 #include <utility>
@@ -168,14 +170,31 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false
             makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
 
     if (isImport) {
-        // Import declarations have no body — return type is the rest of the line.
-        std::string retRaw(trimView(cur.view().substr(cur.offset())));
+        // Import declarations have no body. The return type ends before optional
+        // attributes or a trailing declaration comment.
+        const std::size_t suffixBegin = cur.offset();
+        std::string_view suffix = cur.view().substr(suffixBegin);
+        const std::size_t hashComment = suffix.find('#');
+        const std::size_t slashComment = suffix.find("//");
+        const std::size_t semicolonComment = suffix.find(';');
+        std::size_t comment = std::string::npos;
+        for (std::size_t candidate : {hashComment, slashComment, semicolonComment}) {
+            if (candidate != std::string::npos &&
+                (candidate == 0 || std::isspace(static_cast<unsigned char>(suffix[candidate - 1])))) {
+                comment = std::min(comment, candidate);
+            }
+        }
+        const std::size_t contentEnd =
+            comment == std::string::npos ? suffix.size() : comment;
+        const std::size_t attrStart = suffix.substr(0, contentEnd).find('[');
+        const std::size_t retEnd = attrStart == std::string::npos ? contentEnd : attrStart;
+        std::string retRaw(trimView(suffix.substr(0, retEnd)));
         bool retOk = true;
         Type retTy = parseType(retRaw, &retOk);
         if (!retOk)
             return Expected<PrototypeParseResult>{
                 makeSyntaxError(cursorPos(cur), "unknown return type", {})};
-        cur.seek(cur.view().size());
+        cur.seek(suffixBegin + retEnd);
         return PrototypeParseResult{Prototype{retTy, std::move(params), isVarArg}, ccSegment};
     }
 
@@ -223,11 +242,14 @@ Expected<CallingConv> parseCallingConv(std::string_view segment, unsigned lineNo
     return lineError<CallingConv>(lineNo, oss.str());
 }
 
-/// @brief Parse function attributes before the opening brace.
-Expected<Attrs> parseAttributes(Cursor &cur) {
+/// @brief Parse function attributes before the opening brace or declaration end.
+Expected<Attrs> parseAttributes(Cursor &cur, bool requireBrace) {
     cur.skipWs();
-    if (cur.atEnd())
+    if (cur.atEnd()) {
+        if (!requireBrace)
+            return Attrs{};
         return Expected<Attrs>{makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
+    }
     Attrs attrs;
     if (cur.peek() == '[') {
         cur.consume('[');
@@ -262,6 +284,8 @@ Expected<Attrs> parseAttributes(Cursor &cur) {
         cur.seek(close + 1);
         cur.skipWs();
     }
+    if (!requireBrace)
+        return attrs;
     if (!cur.consume('{'))
         return Expected<Attrs>{makeSyntaxError(cursorPos(cur), "malformed function header", {})};
     return attrs;
@@ -332,8 +356,8 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st) {
             return Expected<void>{cc.error()};
         fh.cc = cc.value();
     }
-    if (!isImport) {
-        auto attrs = parseAttributes(cursor);
+    {
+        auto attrs = parseAttributes(cursor, !isImport);
         if (!attrs)
             return Expected<void>{attrs.error()};
         fh.attrs = attrs.value();

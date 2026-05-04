@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-09
+last-verified: 2026-05-04
 ---
 
 # Core Utilities
@@ -233,9 +233,10 @@ A finite state machine for managing game/application states like menus, gameplay
 
 ### Notes
 
-- State IDs are integers (0 to 31); use constants for readability
+- State IDs are integers in `[0, 255]`; use constants for readability
 - `JustEntered` and `JustExited` are true for one frame after transition
-- Call `Update()` once per frame to track `FramesInState`
+- Call `Update()` once per frame to track `FramesInState`; it saturates at the maximum
+  integer value instead of overflowing
 - Call `ClearFlags()` at end of frame if checking flags multiple times
 
 ### Zia Example
@@ -437,11 +438,14 @@ Efficient object pool for reusing slot indices, avoiding allocation churn for fr
 | `Acquire()`          | `Integer()`         | Get a free slot index (-1 if full)             |
 | `Clear()`            | `Void()`            | Release all slots                              |
 | `FirstActive()`      | `Integer()`         | Get first active slot (-1 if none)             |
-| `GetData(slot)`      | `Integer(Integer)`  | Get user data for slot                         |
+| `GetData(slot)`      | `Integer(Integer)`  | Get user data for active slot, or 0 if inactive |
 | `IsActive(slot)`     | `Boolean(Integer)`  | Check if slot is currently acquired            |
 | `NextActive(after)`  | `Integer(Integer)`  | Get next active slot after index               |
 | `Release(slot)`      | `Boolean(Integer)`  | Return slot to pool; false if invalid          |
 | `SetData(slot,data)` | `Boolean(Int,Int)`  | Associate user data with slot                  |
+
+Releasing or clearing a slot clears its user data. `GetData` returns `0` for inactive,
+released, or invalid slots.
 
 ### Zia Example
 

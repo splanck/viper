@@ -54,6 +54,26 @@ TEST(Behavior, AnimLoopAdvances) {
     EXPECT_EQ(rt_behavior_anim_frame(b), 2);
 }
 
+TEST(Behavior, InvalidAnimLoopConfigDoesNotDivideByZero) {
+    void *e = rt_entity_new(10000, 10000, 16, 16);
+    void *b = rt_behavior_new();
+    rt_behavior_add_anim_loop(b, 0, 0);
+
+    rt_behavior_update(b, e, nullptr, 0, 0, 10);
+    EXPECT_EQ(rt_behavior_anim_frame(b), 0);
+}
+
+TEST(Behavior, NegativeDeltaIsNoOp) {
+    void *e = rt_entity_new(10000, 10000, 16, 16);
+    rt_entity_set_dir(e, 1);
+    void *b = rt_behavior_new();
+    rt_behavior_add_patrol(b, 200);
+
+    rt_behavior_update(b, e, nullptr, 0, 0, -16);
+    EXPECT_EQ(rt_entity_get_x(e), 10000);
+    EXPECT_EQ(rt_entity_get_vx(e), 0);
+}
+
 TEST(Behavior, CombinedPatrolGravity) {
     void *e = rt_entity_new(10000, 10000, 16, 16);
     rt_entity_set_dir(e, 1);

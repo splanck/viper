@@ -150,7 +150,8 @@ a camera.
 ## Viper.Game.Physics2D
 
 A 2D rigid-body physics engine. Bodies can be static (immovable) or dynamic. Collision
-detection uses an axis-aligned broad phase followed by AABB narrow-phase resolution.
+detection uses an axis-aligned broad phase followed by AABB/circle narrow-phase and swept
+collision checks for fast bodies.
 
 **Type:** Instance (obj — world handle)
 **Constructor:** `Physics2D.World.New(gravityX, gravityY)`
@@ -167,16 +168,17 @@ detection uses an axis-aligned broad phase followed by AABB narrow-phase resolut
 | `ApplyForce(handle, fx, fy)` | `none(Integer, Integer, Integer)` | Apply impulse force |
 | `GetPosition(handle, x, y)` | `none(Integer, Integer*, Integer*)` | Read current position |
 | `GetVelocity(handle, vx, vy)` | `none(Integer, Integer*, Integer*)` | Read current velocity |
-| `SetCollisionLayer(handle, layer)` | `none(Integer, Integer)` | Set body's layer bit (0–31) |
+| `SetCollisionLayer(handle, layer)` | `none(Integer, Integer)` | Set body's layer bit (0-63) |
 | `SetCollisionMask(handle, mask)` | `none(Integer, Integer)` | Set layers this body collides with |
 
 ### Collision Layers and Masks
 
-Physics2D uses a 32-bit layer/mask bitfield system:
+Physics2D uses a 64-bit layer/mask bitfield system:
 
-- **`collision_layer`**: which bit (0–31) this body occupies. Default: 0.
-- **`collision_mask`**: bitmask of layers this body will collide with. Default: `0xFFFFFFFF`
-  (collides with all layers).
+- **`collision_layer`**: which bit (0-63) this body occupies. New object-style bodies
+  default to bit `1`.
+- **`collision_mask`**: bitmask of layers this body will collide with. New object-style
+  bodies default to `-1` (all 64 bits set).
 
 To create non-colliding groups:
 
@@ -189,8 +191,8 @@ world.SetCollisionLayer(enemyHandle, 1);
 world.SetCollisionMask(enemyHandle, 0b101);   // collides with player + terrain, not other enemies
 ```
 
-> **Layer 31 note:** The default mask is `0xFFFFFFFF` (all bits set, including bit 31). A body
-> placed on layer 31 will collide with any body whose default mask is used.
+> **Layer 63 note:** The default mask is `-1` (all 64 bits set). A body placed on layer 63
+> will collide with any body whose default mask is used.
 
 ### Current Limits
 
@@ -351,6 +353,9 @@ and transition validation. Traps if the state limit is exceeded.
 | `Update()` | `Void()` | Increment `FramesInState` counter (call once per frame) |
 | `ClearFlags()` | `Void()` | Clear `JustEntered` and `JustExited` flags |
 
+`FramesInState` saturates at the maximum integer value instead of overflowing during very
+long-running states.
+
 ### Example
 
 ```zia
@@ -388,8 +393,8 @@ if sm.IsState(0) {
 
 ## Viper.Game.ObjectPool
 
-A fixed-capacity pool for reusing objects. Acquire an object from the pool; release it when
-done. Iteration over active objects is O(1) using an intrusive linked list.
+A fixed-capacity pool for reusing integer slot IDs. Acquire a slot from the pool; release it
+when done. Iteration over active slots is O(capacity) and returns stable slot indices.
 
 **Type:** Instance (obj)
 **Constructor:** `ObjectPool.New(capacity)`
@@ -398,11 +403,15 @@ done. Iteration over active objects is O(1) using an intrusive linked list.
 
 | Method | Signature | Description |
 |---|---|---|
-| `Acquire()` | `obj()` | Get an inactive object (NULL if pool exhausted) |
-| `Release(obj)` | `none(obj)` | Return an object to the pool |
-| `FirstActive()` | `obj()` | First active object (O(1)) |
-| `NextActive(obj)` | `obj(obj)` | Next active object after `obj` (O(1)) |
-| `ActiveCount()` | `Integer()` | Number of active objects |
+| `Acquire()` | `Integer()` | Get an inactive slot (-1 if pool exhausted) |
+| `Release(slot)` | `Boolean(Integer)` | Return a slot to the pool |
+| `FirstActive()` | `Integer()` | First active slot (-1 if none) |
+| `NextActive(slot)` | `Integer(Integer)` | Next active slot after `slot` |
+| `ActiveCount()` | `Integer()` | Number of active slots |
+| `GetData(slot)` | `Integer(Integer)` | Get slot user data, or 0 if inactive or invalid |
+| `SetData(slot, data)` | `Boolean(Integer, Integer)` | Associate user data with an active slot |
+
+Releasing or clearing a slot clears its user data.
 
 ---
 
@@ -593,6 +602,9 @@ Post-process screen effects: camera shake, flash, fade-in, and fade-out.
 | `CancelAll()` | `none()` | Stop all effects immediately |
 | `CancelType(type)` | `none(Integer)` | Stop effects of a specific type |
 
+`Update(dt)` ignores non-positive `dt` values. Effect progress uses saturating arithmetic,
+so very large elapsed durations clamp to completion instead of overflowing.
+
 ### Shake Decay Model
 
 The `decay` parameter controls how quickly shake intensity falls off:
@@ -657,6 +669,9 @@ Static helpers for geometric overlap tests.
 | `CircleVsCircle(ax,ay,ar, bx,by,br)` | `Integer(...)` | 1 if two circles overlap |
 | `PointInAABB(px,py, ax,ay,aw,ah)` | `Integer(...)` | 1 if point inside AABB |
 
+Circle helpers reject non-positive or non-finite radii. Point-in-circle and circle-rectangle
+checks include boundary contact as a hit.
+
 ---
 
 ## Viper.Game.Grid2D
@@ -701,11 +716,14 @@ for cave, dungeon, and horror game atmospheres.
 | Method | Signature | Description |
 |---|---|---|
 | `SetPlayerLight(radius, color)` | `none(Integer, Integer)` | Configure the player's light radius and color |
-| `AddLight(x, y, radius, color, lifetime)` | `none(Integer, Integer, Integer, Integer, Integer)` | Add a dynamic light at world position with frame lifetime |
+| `AddLight(x, y, radius, color, lifetime)` | `none(Integer, Integer, Integer, Integer, Integer)` | Add a dynamic light; lifetime 0 is permanent |
 | `AddTileLight(screenX, screenY, radius, color)` | `none(Integer, Integer, Integer, Integer)` | Add a single-frame tile glow at screen position |
 | `ClearLights()` | `none()` | Remove all dynamic lights |
 | `Update()` | `none()` | Tick light lifetimes, advance player light pulse |
 | `Draw(canvas, camX, camY, playerScreenX, playerScreenY)` | `none(Canvas, Integer, Integer, Integer, Integer)` | Render darkness overlay + all lights |
+
+`maxDynamicLights` is clamped to 0-128. Non-positive light radii are ignored, darkness alpha
+is clamped to 0-255, and light colors are masked to `0xRRGGBB`.
 
 ---
 
@@ -812,6 +830,9 @@ interval. `Skip()` instantly reveals all remaining text.
 | `Update(dt)` | `Boolean(Integer)` | Advance reveal; returns true on completion |
 | `Skip()` | `none()` | Reveal all remaining text instantly |
 | `Reset()` | `none()` | Clear text and state |
+
+`Update(dt)` ignores non-positive `dt` values. Reveal progress is clamped to 0-100 and uses
+saturating arithmetic for long-running reveals.
 
 ---
 

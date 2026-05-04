@@ -560,7 +560,9 @@ enum class TrapKind {
     EOF,              // End of file
     IOError,          // Generic I/O failure
     InvalidOperation, // Invalid state transition
-    RuntimeError      // Catch-all
+    RuntimeError,     // Catch-all
+    Interrupt,        // Ctrl-C or requestInterrupt()
+    NetworkError      // Network I/O failure
 };
 ```
 

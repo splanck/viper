@@ -23,6 +23,8 @@
 
 #include "rt_typewriter.h"
 #include "rt_object.h"
+#include "rt_trap.h"
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -37,13 +39,34 @@ struct rt_typewriter_impl {
     int8_t complete;
 };
 
+static struct rt_typewriter_impl *checked_typewriter(void *tw, const char *api) {
+    if (!tw)
+        return NULL;
+    if (rt_obj_class_id(tw) != RT_TYPEWRITER_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (struct rt_typewriter_impl *)tw;
+}
+
+static void typewriter_finalizer(void *obj) {
+    struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)obj;
+    if (!t)
+        return;
+    free(t->full_text);
+    free(t->visible_buf);
+    t->full_text = NULL;
+    t->visible_buf = NULL;
+}
+
 /// @brief Create a new typewriter text-reveal effect.
 /// @details Reveals text one character at a time at a configurable rate, producing
 ///          the classic RPG dialogue effect. Use say() to load text, update() each
 ///          frame, and get_visible_text() to read the partially-revealed string.
 rt_typewriter rt_typewriter_new(void) {
     struct rt_typewriter_impl *t =
-        (struct rt_typewriter_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_typewriter_impl));
+        (struct rt_typewriter_impl *)rt_obj_new_i64(RT_TYPEWRITER_CLASS_ID,
+                                                    (int64_t)sizeof(struct rt_typewriter_impl));
     if (!t)
         return NULL;
 
@@ -55,36 +78,50 @@ rt_typewriter rt_typewriter_new(void) {
     t->accum = 0;
     t->active = 0;
     t->complete = 0;
+    rt_obj_set_finalizer(t, typewriter_finalizer);
 
     return t;
 }
 
 /// @brief Destroy a typewriter and free its text buffers.
 void rt_typewriter_destroy(void *tw) {
-    struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
-    if (!t)
-        return;
-    free(t->full_text);
-    free(t->visible_buf);
-    if (rt_obj_release_check0(t))
+    struct rt_typewriter_impl *t =
+        checked_typewriter(tw, "Typewriter.Destroy: expected Viper.Game.Typewriter");
+    if (t && rt_obj_release_check0(t))
         rt_obj_free(t);
 }
 
 /// @brief Load new text and begin the typewriter reveal at the given character rate.
 void rt_typewriter_say(void *tw, const char *text, int64_t rate_ms) {
-    struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
+    struct rt_typewriter_impl *t =
+        checked_typewriter(tw, "Typewriter.Say: expected Viper.Game.Typewriter");
     if (!t)
         return;
-
-    free(t->full_text);
-    free(t->visible_buf);
 
     if (!text)
         text = "";
 
-    t->full_text = strdup(text);
-    t->total_len = (int64_t)strlen(text);
-    t->visible_buf = (char *)calloc((size_t)(t->total_len + 1), 1);
+    size_t len = strlen(text);
+    if (len > (size_t)INT64_MAX) {
+        rt_trap("Typewriter.Say: text too large");
+        return;
+    }
+
+    char *full = (char *)malloc(len + 1);
+    char *visible = (char *)calloc(len + 1, 1);
+    if (!full || !visible) {
+        free(full);
+        free(visible);
+        rt_trap("Typewriter.Say: allocation failed");
+        return;
+    }
+    memcpy(full, text, len + 1);
+
+    free(t->full_text);
+    free(t->visible_buf);
+    t->full_text = full;
+    t->total_len = (int64_t)len;
+    t->visible_buf = visible;
     t->char_index = 0;
     t->rate_ms = (rate_ms > 0) ? rate_ms : 30;
     t->accum = 0;
@@ -94,11 +131,17 @@ void rt_typewriter_say(void *tw, const char *text, int64_t rate_ms) {
 
 /// @brief Advance the typewriter by dt milliseconds. Returns 1 if it just completed.
 int8_t rt_typewriter_update(void *tw, int64_t dt) {
-    struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
+    struct rt_typewriter_impl *t =
+        checked_typewriter(tw, "Typewriter.Update: expected Viper.Game.Typewriter");
     if (!t || !t->active || t->complete)
         return 0;
+    if (dt <= 0 || !t->visible_buf || !t->full_text)
+        return 0;
 
-    t->accum += dt;
+    if (t->accum > INT64_MAX - dt)
+        t->accum = INT64_MAX;
+    else
+        t->accum += dt;
 
     int8_t just_completed = 0;
     while (t->accum >= t->rate_ms && t->char_index < t->total_len) {
@@ -119,7 +162,8 @@ int8_t rt_typewriter_update(void *tw, int64_t dt) {
 
 /// @brief Instantly reveal all remaining text (skip the animation).
 void rt_typewriter_skip(void *tw) {
-    struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
+    struct rt_typewriter_impl *t =
+        checked_typewriter(tw, "Typewriter.Skip: expected Viper.Game.Typewriter");
     if (!t || !t->full_text)
         return;
 
@@ -134,7 +178,8 @@ void rt_typewriter_skip(void *tw) {
 
 /// @brief Clear all text and reset to the initial idle state.
 void rt_typewriter_reset(void *tw) {
-    struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
+    struct rt_typewriter_impl *t =
+        checked_typewriter(tw, "Typewriter.Reset: expected Viper.Game.Typewriter");
     if (!t)
         return;
     free(t->full_text);
@@ -150,7 +195,8 @@ void rt_typewriter_reset(void *tw) {
 
 /// @brief Get the currently revealed portion of the text.
 rt_string rt_typewriter_get_visible_text(void *tw) {
-    struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
+    struct rt_typewriter_impl *t =
+        checked_typewriter(tw, "Typewriter.GetVisibleText: expected Viper.Game.Typewriter");
     if (!t || !t->visible_buf)
         return rt_string_from_bytes("", 0);
     return rt_string_from_bytes(t->visible_buf, (int64_t)strlen(t->visible_buf));
@@ -158,7 +204,8 @@ rt_string rt_typewriter_get_visible_text(void *tw) {
 
 /// @brief Get the complete text that was loaded with say().
 rt_string rt_typewriter_get_full_text(void *tw) {
-    struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
+    struct rt_typewriter_impl *t =
+        checked_typewriter(tw, "Typewriter.GetFullText: expected Viper.Game.Typewriter");
     if (!t || !t->full_text)
         return rt_string_from_bytes("", 0);
     return rt_string_from_bytes(t->full_text, (int64_t)strlen(t->full_text));
@@ -166,32 +213,40 @@ rt_string rt_typewriter_get_full_text(void *tw) {
 
 /// @brief Check whether the typewriter is currently revealing text.
 int8_t rt_typewriter_is_active(void *tw) {
-    struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
+    struct rt_typewriter_impl *t =
+        checked_typewriter(tw, "Typewriter.IsActive: expected Viper.Game.Typewriter");
     return (t && t->active) ? 1 : 0;
 }
 
 /// @brief Check whether all text has been fully revealed.
 int8_t rt_typewriter_is_complete(void *tw) {
-    struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
+    struct rt_typewriter_impl *t =
+        checked_typewriter(tw, "Typewriter.IsComplete: expected Viper.Game.Typewriter");
     return (t && t->complete) ? 1 : 0;
 }
 
 /// @brief Get the reveal progress as a percentage (0–100).
 int64_t rt_typewriter_progress(void *tw) {
-    struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
+    struct rt_typewriter_impl *t =
+        checked_typewriter(tw, "Typewriter.Progress: expected Viper.Game.Typewriter");
     if (!t || t->total_len == 0)
         return 0;
-    return t->char_index * 100 / t->total_len;
+    long double pct = ((long double)t->char_index * 100.0L) / (long double)t->total_len;
+    if (pct >= 100.0L)
+        return 100;
+    return pct <= 0.0L ? 0 : (int64_t)pct;
 }
 
 /// @brief Get the number of characters revealed so far.
 int64_t rt_typewriter_char_count(void *tw) {
-    struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
+    struct rt_typewriter_impl *t =
+        checked_typewriter(tw, "Typewriter.CharCount: expected Viper.Game.Typewriter");
     return t ? t->char_index : 0;
 }
 
 /// @brief Get the total number of characters in the loaded text.
 int64_t rt_typewriter_total_chars(void *tw) {
-    struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
+    struct rt_typewriter_impl *t =
+        checked_typewriter(tw, "Typewriter.TotalChars: expected Viper.Game.Typewriter");
     return t ? t->total_len : 0;
 }

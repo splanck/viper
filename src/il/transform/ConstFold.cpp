@@ -38,6 +38,7 @@
 #include <limits>
 #include <optional>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 using namespace il::core;
@@ -356,6 +357,8 @@ static bool foldCall(const Instr &in, Value &out) {
         double val, lo, hi;
         if (getConstFloat(in.operands[0], val) && getConstFloat(in.operands[1], lo) &&
             getConstFloat(in.operands[2], hi)) {
+            if (lo > hi)
+                std::swap(lo, hi);
             if (val < lo)
                 out = Value::constFloat(lo);
             else if (val > hi)
@@ -370,6 +373,8 @@ static bool foldCall(const Instr &in, Value &out) {
         long long val, lo, hi;
         if (isConstInt(in.operands[0], val) && isConstInt(in.operands[1], lo) &&
             isConstInt(in.operands[2], hi)) {
+            if (lo > hi)
+                std::swap(lo, hi);
             if (val < lo)
                 out = Value::constInt(lo);
             else if (val > hi)

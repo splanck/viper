@@ -26,6 +26,7 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_tilemap.h"
+#include "rt_trap.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -59,8 +60,23 @@ typedef struct {
     char theme[32];
 } leveldata_impl;
 
-static leveldata_impl *get(void *level) {
+static leveldata_impl *checked_leveldata(void *level, const char *api) {
+    if (!level)
+        return NULL;
+    if (rt_obj_class_id(level) != RT_LEVELDATA_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
     return (leveldata_impl *)level;
+}
+
+static void leveldata_finalizer(void *obj) {
+    leveldata_impl *ld = (leveldata_impl *)obj;
+    if (!ld || !ld->tilemap)
+        return;
+    if (rt_obj_release_check0(ld->tilemap))
+        rt_obj_free(ld->tilemap);
+    ld->tilemap = NULL;
 }
 
 /// @brief Load a level from a JSON file, creating a tilemap and extracting objects.
@@ -95,10 +111,12 @@ void *rt_leveldata_load(void *path) {
         th = 32;
 
     // Create level data
-    leveldata_impl *ld = (leveldata_impl *)rt_obj_new_i64(0, (int64_t)sizeof(leveldata_impl));
+    leveldata_impl *ld =
+        (leveldata_impl *)rt_obj_new_i64(RT_LEVELDATA_CLASS_ID, (int64_t)sizeof(leveldata_impl));
     if (!ld)
         return NULL;
     memset(ld, 0, sizeof(leveldata_impl));
+    rt_obj_set_finalizer(ld, leveldata_finalizer);
 
     // Read properties
     void *props = rt_jsonpath_get(root, rt_const_cstr("properties"));
@@ -186,55 +204,73 @@ void *rt_leveldata_load(void *path) {
 
 /// @brief Get the tilemap created from the level's tile layers.
 void *rt_leveldata_get_tilemap(void *level) {
-    return level ? get(level)->tilemap : NULL;
+    leveldata_impl *ld =
+        checked_leveldata(level, "LevelData.GetTilemap: expected Viper.Game.LevelData");
+    return ld ? ld->tilemap : NULL;
 }
 
 /// @brief Get the number of objects (entity spawn points) in the level.
 int64_t rt_leveldata_object_count(void *level) {
-    return level ? get(level)->object_count : 0;
+    leveldata_impl *ld =
+        checked_leveldata(level, "LevelData.ObjectCount: expected Viper.Game.LevelData");
+    return ld ? ld->object_count : 0;
 }
 
 /// @brief Get the type string of an object at the given index (e.g., "enemy", "item").
 rt_string rt_leveldata_object_type(void *level, int64_t index) {
-    if (!level || index < 0 || index >= get(level)->object_count)
+    leveldata_impl *ld =
+        checked_leveldata(level, "LevelData.ObjectType: expected Viper.Game.LevelData");
+    if (!ld || index < 0 || index >= ld->object_count)
         return rt_const_cstr("");
-    return rt_const_cstr(get(level)->objects[index].type);
+    return rt_const_cstr(ld->objects[index].type);
 }
 
 /// @brief Get the ID string of an object at the given index.
 rt_string rt_leveldata_object_id(void *level, int64_t index) {
-    if (!level || index < 0 || index >= get(level)->object_count)
+    leveldata_impl *ld =
+        checked_leveldata(level, "LevelData.ObjectId: expected Viper.Game.LevelData");
+    if (!ld || index < 0 || index >= ld->object_count)
         return rt_const_cstr("");
-    return rt_const_cstr(get(level)->objects[index].id);
+    return rt_const_cstr(ld->objects[index].id);
 }
 
 /// @brief Get the X position of an object at the given index.
 int64_t rt_leveldata_object_x(void *level, int64_t index) {
-    if (!level || index < 0 || index >= get(level)->object_count)
+    leveldata_impl *ld =
+        checked_leveldata(level, "LevelData.ObjectX: expected Viper.Game.LevelData");
+    if (!ld || index < 0 || index >= ld->object_count)
         return 0;
-    return get(level)->objects[index].x;
+    return ld->objects[index].x;
 }
 
 /// @brief Get the Y position of an object at the given index.
 int64_t rt_leveldata_object_y(void *level, int64_t index) {
-    if (!level || index < 0 || index >= get(level)->object_count)
+    leveldata_impl *ld =
+        checked_leveldata(level, "LevelData.ObjectY: expected Viper.Game.LevelData");
+    if (!ld || index < 0 || index >= ld->object_count)
         return 0;
-    return get(level)->objects[index].y;
+    return ld->objects[index].y;
 }
 
 /// @brief Get the player's starting X position from the level properties.
 int64_t rt_leveldata_player_start_x(void *level) {
-    return level ? get(level)->player_start_x : 0;
+    leveldata_impl *ld =
+        checked_leveldata(level, "LevelData.PlayerStartX: expected Viper.Game.LevelData");
+    return ld ? ld->player_start_x : 0;
 }
 
 /// @brief Get the player's starting Y position from the level properties.
 int64_t rt_leveldata_player_start_y(void *level) {
-    return level ? get(level)->player_start_y : 0;
+    leveldata_impl *ld =
+        checked_leveldata(level, "LevelData.PlayerStartY: expected Viper.Game.LevelData");
+    return ld ? ld->player_start_y : 0;
 }
 
 /// @brief Get the theme name from the level properties (e.g., "forest", "cave").
 rt_string rt_leveldata_get_theme(void *level) {
-    if (!level)
+    leveldata_impl *ld =
+        checked_leveldata(level, "LevelData.Theme: expected Viper.Game.LevelData");
+    if (!ld)
         return rt_const_cstr("");
-    return rt_const_cstr(get(level)->theme);
+    return rt_const_cstr(ld->theme);
 }

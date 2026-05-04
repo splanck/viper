@@ -4,18 +4,18 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/game/rt_statemachine.h
-// Purpose: Finite state machine with up to RT_STATE_MAX (32) registered states, tracking current
+// Purpose: Finite state machine with up to RT_STATE_MAX registered states, tracking current
 // state, frame count, and one-frame enter/exit transition flags.
 //
 // Key invariants:
 //   - State IDs must be in [0, RT_STATE_MAX-1]; each ID may be registered once.
 //   - Transition flags (just_entered/just_exited) are set on transition and persist until cleared.
 //   - rt_statemachine_update must be called once per frame to advance the frame counter.
+//   - Frame counters saturate at INT64_MAX instead of overflowing.
 //   - Initial state must be set before the first update call.
 //
 // Ownership/Lifetime:
-//   - Caller owns the rt_statemachine handle; destroy with rt_statemachine_destroy.
-//   - No reference counting; explicit destruction is required.
+//   - GC-managed via rt_obj_new_i64; explicit destroy releases the caller's reference.
 //
 // Links: src/runtime/game/rt_statemachine.c (implementation)
 //
@@ -32,6 +32,9 @@ extern "C" {
 /// State IDs are used as direct indices, so this is also the maximum valid
 /// state_id + 1. Increase as needed for complex AI graphs.
 #define RT_STATE_MAX 256
+
+/// Runtime class ID used to validate StateMachine handles.
+#define RT_STATEMACHINE_CLASS_ID INT64_C(-0x51020D)
 
 /// Opaque handle to a StateMachine instance.
 typedef struct rt_statemachine_impl *rt_statemachine;

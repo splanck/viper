@@ -127,6 +127,8 @@ TEST(user_data) {
     int64_t slot = rt_objpool_acquire(pool);
     ASSERT(rt_objpool_set_data(pool, slot, 12345) == 1);
     ASSERT(rt_objpool_get_data(pool, slot) == 12345);
+    ASSERT(rt_objpool_release(pool, slot) == 1);
+    ASSERT(rt_objpool_get_data(pool, slot) == 0);
 
     // Invalid slot
     ASSERT(rt_objpool_set_data(pool, 99, 100) == 0);

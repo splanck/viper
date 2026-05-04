@@ -30,7 +30,9 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
+#include <limits.h>
 #include <string.h>
 
 // Helper: create a runtime string from a C string
@@ -59,9 +61,20 @@ struct rt_debugoverlay_impl {
     int64_t watch_count;
 };
 
+static rt_debugoverlay checked_debugoverlay(rt_debugoverlay dbg, const char *api) {
+    if (!dbg)
+        return NULL;
+    if (rt_obj_class_id(dbg) != RT_DEBUGOVERLAY_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return dbg;
+}
+
 /// @brief Create a new debugoverlay object.
 rt_debugoverlay rt_debugoverlay_new(void) {
-    struct rt_debugoverlay_impl *dbg = rt_obj_new_i64(0, sizeof(struct rt_debugoverlay_impl));
+    struct rt_debugoverlay_impl *dbg =
+        rt_obj_new_i64(RT_DEBUGOVERLAY_CLASS_ID, sizeof(struct rt_debugoverlay_impl));
     if (!dbg)
         return NULL;
 
@@ -78,12 +91,14 @@ rt_debugoverlay rt_debugoverlay_new(void) {
 
 /// @brief Release resources and destroy the debugoverlay.
 void rt_debugoverlay_destroy(rt_debugoverlay dbg) {
-    // GC-managed; no manual free needed.
-    (void)dbg;
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Destroy: expected Viper.Game.DebugOverlay");
+    if (dbg && rt_obj_release_check0(dbg))
+        rt_obj_free(dbg);
 }
 
 /// @brief Enable the debugoverlay.
 void rt_debugoverlay_enable(rt_debugoverlay dbg) {
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Enable: expected Viper.Game.DebugOverlay");
     if (!dbg)
         return;
     dbg->enabled = 1;
@@ -91,6 +106,7 @@ void rt_debugoverlay_enable(rt_debugoverlay dbg) {
 
 /// @brief Disable the debugoverlay.
 void rt_debugoverlay_disable(rt_debugoverlay dbg) {
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Disable: expected Viper.Game.DebugOverlay");
     if (!dbg)
         return;
     dbg->enabled = 0;
@@ -98,6 +114,7 @@ void rt_debugoverlay_disable(rt_debugoverlay dbg) {
 
 /// @brief Toggle the debugoverlay.
 void rt_debugoverlay_toggle(rt_debugoverlay dbg) {
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Toggle: expected Viper.Game.DebugOverlay");
     if (!dbg)
         return;
     dbg->enabled = dbg->enabled ? 0 : 1;
@@ -105,21 +122,24 @@ void rt_debugoverlay_toggle(rt_debugoverlay dbg) {
 
 /// @brief Check whether the debug overlay is currently visible.
 int8_t rt_debugoverlay_is_enabled(rt_debugoverlay dbg) {
-    if (!dbg)
-        return 0;
-    return dbg->enabled;
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.IsEnabled: expected Viper.Game.DebugOverlay");
+    return dbg ? dbg->enabled : 0;
 }
 
 /// @brief Update the debugoverlay state (called per frame/tick).
 void rt_debugoverlay_update(rt_debugoverlay dbg, int64_t dt_ms) {
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Update: expected Viper.Game.DebugOverlay");
     if (!dbg)
         return;
+    if (dt_ms < 0)
+        dt_ms = 0;
 
     dbg->frame_times[dbg->frame_index] = dt_ms;
     dbg->frame_index = (dbg->frame_index + 1) % RT_DEBUG_FPS_HISTORY;
     if (dbg->frame_count < RT_DEBUG_FPS_HISTORY)
         dbg->frame_count++;
-    dbg->total_frames++;
+    if (dbg->total_frames < INT64_MAX)
+        dbg->total_frames++;
 }
 
 /// Find a watch entry by name.
@@ -134,6 +154,7 @@ static int64_t find_watch(rt_debugoverlay dbg, const char *name) {
 
 /// @brief Watch the debugoverlay.
 void rt_debugoverlay_watch(rt_debugoverlay dbg, rt_string name, int64_t value) {
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Watch: expected Viper.Game.DebugOverlay");
     if (!dbg || !name)
         return;
 
@@ -167,6 +188,7 @@ void rt_debugoverlay_watch(rt_debugoverlay dbg, rt_string name, int64_t value) {
 
 /// @brief Unwatch the debugoverlay.
 int8_t rt_debugoverlay_unwatch(rt_debugoverlay dbg, rt_string name) {
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Unwatch: expected Viper.Game.DebugOverlay");
     if (!dbg || !name)
         return 0;
 
@@ -186,6 +208,7 @@ int8_t rt_debugoverlay_unwatch(rt_debugoverlay dbg, rt_string name) {
 
 /// @brief Remove all entries from the debugoverlay.
 void rt_debugoverlay_clear(rt_debugoverlay dbg) {
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Clear: expected Viper.Game.DebugOverlay");
     if (!dbg)
         return;
     for (int64_t i = 0; i < RT_DEBUG_MAX_WATCHES; i++) {
@@ -197,12 +220,13 @@ void rt_debugoverlay_clear(rt_debugoverlay dbg) {
 
 /// @brief Return the most recently computed frames-per-second value.
 int64_t rt_debugoverlay_get_fps(rt_debugoverlay dbg) {
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.FPS: expected Viper.Game.DebugOverlay");
     if (!dbg || dbg->frame_count == 0)
         return 0;
 
     int64_t sum = 0;
     for (int64_t i = 0; i < dbg->frame_count; i++)
-        sum += dbg->frame_times[i];
+        sum = sum > INT64_MAX - dbg->frame_times[i] ? INT64_MAX : sum + dbg->frame_times[i];
 
     if (sum <= 0)
         return 0;
@@ -249,6 +273,7 @@ static char *i64_to_str(int64_t val, char *buf, size_t bufsize) {
 
 /// @brief Draw the debugoverlay.
 void rt_debugoverlay_draw(rt_debugoverlay dbg, void *canvas_ptr) {
+    dbg = checked_debugoverlay(dbg, "DebugOverlay.Draw: expected Viper.Game.DebugOverlay");
     if (!dbg || !canvas_ptr || !dbg->enabled)
         return;
 

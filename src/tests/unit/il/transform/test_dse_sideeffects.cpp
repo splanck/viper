@@ -423,6 +423,39 @@ TEST(DSESideEffects, MultipleStoresWithInterleavedLoad) {
     EXPECT_EQ(countStores(module.functions.front()), 2U);
 }
 
+// ---------------------------------------------------------------------------
+// 9. StoresToUnknownPointerMayTrap
+//    A store through a pointer parameter can trap before a later overwrite, so
+//    DSE must preserve both stores even when BasicAA says the addresses match.
+// ---------------------------------------------------------------------------
+TEST(DSESideEffects, StoresToUnknownPointerMayTrap) {
+    Module module;
+    Function fn;
+    fn.name = "stores_to_unknown_pointer_may_trap";
+    fn.retType = Type(Type::Kind::I64);
+    fn.params.push_back(Param{"p", Type(Type::Kind::Ptr), 0});
+    fn.valueNames.resize(1);
+    fn.valueNames[0] = "p";
+
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.instructions.push_back(makeStore(Value::temp(0), Value::constInt(10)));
+    entry.instructions.push_back(makeStore(Value::temp(0), Value::constInt(20)));
+    entry.instructions.push_back(makeRet(Value::constInt(0)));
+    entry.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    module.functions.push_back(std::move(fn));
+
+    auto registry = makeDSERegistry();
+    il::transform::AnalysisManager am(module, registry);
+
+    const bool changed = il::transform::runDSE(module.functions.front(), am);
+
+    EXPECT_FALSE(changed);
+    EXPECT_EQ(countStores(module.functions.front()), 2U);
+}
+
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();

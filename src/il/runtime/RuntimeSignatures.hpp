@@ -185,6 +185,7 @@ struct RuntimeSignature {
     std::uint64_t retainedArgMask{0}; ///< IL-visible args whose reference count is retained.
     bool returnsOwned{false};         ///< Helper returns an owned reference/string handle.
     bool mayAllocate{false};          ///< Helper may allocate runtime-managed storage.
+    bool valid{true};                 ///< Parsed signature text was well-formed and supported.
 };
 
 /// @brief Aggregated descriptor covering signature, handler, and lowering metadata.

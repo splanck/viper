@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-05-01
+last-verified: 2026-05-04
 ---
 
 # IL Optimization Passes
@@ -50,26 +50,27 @@ last-verified: 2026-05-01
 - `typeSizeBytes` exposes conservative byte widths (i1/i16/i32/i64/f64/ptr/str/resumetok/error) for passes to thread
   sizes into `alias(...)`.
 - ModRef uses a priority cascade for call effect classification:
-  1. Module-level function attributes are authoritative when the callee is defined locally
+  1. Module-level attributes on locally defined functions are authoritative after verifier validation
   2. Runtime signature table is authoritative for known external helpers
-  3. Unknown callees remain conservative; raw instruction-level `CallAttr` flags are not trusted without verified
-     runtime or local function metadata
+  3. Import and extern attributes are used for declarations without runtime metadata
+  4. Unknown callees remain conservative; raw instruction-level `CallAttr` flags are not trusted without verified
+     runtime, function, import, or extern metadata
   `pure` -> `NoModRef`, `readonly` -> `Ref`, everything else -> `ModRef`.
 - Runtime signature lookup uses the generated runtime table directly for known helpers and treats unknown callees as
   `ModRef`.
 - Runtime signature metadata also records string/reference ownership effects and which parameters are runtime `obj`
   slots. Helpers such as `rt_str_concat` consume their string arguments and return an owned result; retain/release
   helpers are modeled explicitly so optimizers do not reorder or eliminate calls across ownership boundaries.
-- `const_str` materializes an owned runtime string handle. It is intentionally modeled as side-effecting and
-  read/write-memory, so LICM, GVN, EarlyCSE, and related passes cannot hoist or merge it until a retain-insertion pass
-  exists for duplicated uses.
+- `const_str` materializes an owned runtime string handle. It is modeled as a memory read with side effects, so
+  optimizers can distinguish it from writes while still avoiding hoists or merges that would duplicate ownership.
 
 ## SimplifyCFG
 
 The **SimplifyCFG** pass tidies the control-flow graph before and after SSA promotion:
 
 - Canonicalizes block parameters and the arguments supplied by branches.
-- Eliminates empty forwarding blocks that merely branch to their successor.
+- Eliminates forwarding blocks that merely branch to their successor, but only when any ignored instructions are proven
+  non-trapping as well as side-effect-free.
 - Folds trivial `cbr` instructions when their condition is constant or both edges converge.
 - Merges blocks that have a single predecessor with their unique successor when it preserves semantics.
 - Prunes blocks that have become unreachable.
@@ -183,6 +184,8 @@ rewrites expose direct calls, fewer runtime branches, and less reference-countin
 
 - End-of-pipeline polish pass: runs up to 4 iterations of `SimplifyCFG` (aggressive) followed by DCE, stopping early
   once no CFG or size changes are observed.
+- DCE deletes dead loads, stores, and allocas only after proving the removed memory operation cannot trap; potentially
+  null, out-of-bounds, or oversized operations are preserved even when their result is unused.
 - Tracks IL size (blocks/instructions) before/after each iteration via an optional `LateCleanupStats` sink so pipelines
   can see how much cleanup occurred.
 - Keeps work bounded; if nothing changes on an iteration, the pass exits without further scans.
@@ -270,7 +273,8 @@ Three-level dead store elimination:
 
 1. **Intra-block DSE** (`runDSE`): Backward scan within each basic block finds stores that are overwritten before being
    read. Uses BasicAA for alias disambiguation and is conservative about calls that may modify or reference memory.
-   Uses `size_t` loop counters for safe unsigned backward iteration.
+   Uses `size_t` loop counters for safe unsigned backward iteration. A store is removed only when the target pointer is
+   proven dereferenceable, so DSE does not erase a possible null or bounds trap.
 
 2. **Cross-block DSE** (`runCrossBlockDSE`): Recursive path analysis identifies stores to non-escaping allocas that are
    provably dead because they are overwritten on all paths before being read. Uses escape analysis for safety, treats
@@ -385,6 +389,9 @@ Unified API for querying call instruction side effects:
 
 - Runtime helper metadata overrides call-site hints for known helpers; the verifier rejects contradictory call
   attributes on known callees.
+- Function, import, and extern effect attributes feed the same classifier used by BasicAA, DCE, and LICM. This keeps
+  locally defined functions and foreign declarations consistent instead of requiring each pass to duplicate lookup
+  rules.
 - Instruction-level `CallAttr` flags are metadata assertions, not an optimizer proof by themselves; unknown callees stay
   conservative.
 - `canEliminateIfUnused()` requires both `pure` and `nothrow`; `canReorderWithMemory()` gates LICM and code motion.

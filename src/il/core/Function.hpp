@@ -26,6 +26,7 @@
 #pragma once
 
 #include "il/core/BasicBlock.hpp"
+#include "il/core/EffectAttrs.hpp"
 #include "il/core/Linkage.hpp"
 #include "il/core/Param.hpp"
 #include "il/core/Type.hpp"
@@ -33,21 +34,6 @@
 #include <vector>
 
 namespace il::core {
-
-/// @brief Container describing semantic attributes for a function.
-/// @details These attributes do not currently influence lowering but allow
-///          later optimisation passes to query summarised behaviour such as
-///          exception safety or memory side effects.
-struct FunctionAttrs {
-    /// @brief Function is guaranteed not to throw.
-    bool nothrow = false;
-
-    /// @brief Function may read memory but performs no writes.
-    bool readonly = false;
-
-    /// @brief Function is free of observable side effects and memory access.
-    bool pure = false;
-};
 
 /// @brief Definition of an IL function with parameters and basic blocks.
 /// @see docs/il-guide.md#reference

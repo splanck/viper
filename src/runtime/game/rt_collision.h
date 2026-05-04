@@ -31,6 +31,9 @@ extern "C" {
 /// Opaque handle to a CollisionRect instance.
 typedef struct rt_collision_rect_impl *rt_collision_rect;
 
+/// Runtime class ID used to validate CollisionRect handles.
+#define RT_COLLISION_RECT_CLASS_ID INT64_C(-0x510211)
+
 /// @brief Allocates and initializes a new axis-aligned collision rectangle.
 /// @param x X coordinate of the left edge in world units.
 /// @param y Y coordinate of the top edge in world units.

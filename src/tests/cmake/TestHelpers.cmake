@@ -9,12 +9,14 @@ set(_VIPER_TEST_LABEL_WHITELIST
         codegen
         comprehensive
         conformance
+        contract
         e2e
         golden
         graphics3d
         il
         ilopt
         installer
+        isolated
         namespace
         native_link
         native_run

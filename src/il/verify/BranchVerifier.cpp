@@ -210,7 +210,9 @@ Expected<void> verifySwitchI32_E(const Function &fn,
     }
 
     bool missingScrutinee = false;
-    if (types.valueType(switchScrutinee(instr), &missingScrutinee).kind != Type::Kind::I32) {
+    const Type actualScrutineeType = types.valueType(switchScrutinee(instr), &missingScrutinee);
+    if (!valueCompatibleWithType(
+            switchScrutinee(instr), actualScrutineeType, Type(Type::Kind::I32))) {
         if (missingScrutinee) {
             return Expected<void>{makeError(
                 instr.loc, formatInstrDiag(fn, bb, instr, "unknown switch.i32 scrutinee"))};
@@ -230,9 +232,7 @@ Expected<void> verifySwitchI32_E(const Function &fn,
             formatInstrDiag(fn, bb, instr, "switch.i32 branch argument vector count mismatch"))};
     }
 
-    const std::vector<Value> *defaultArgs = nullptr;
-    if (!instr.brArgs.empty())
-        defaultArgs = &instr.brArgs.front();
+    const std::vector<Value> *defaultArgs = &instr.brArgs.front();
 
     const size_t caseCount = switchCaseCount(instr);
     if (instr.operands.size() != caseCount + 1) {
@@ -272,9 +272,7 @@ Expected<void> verifySwitchI32_E(const Function &fn,
         auto it = blockMap.find(label);
         if (it == blockMap.end())
             continue;
-        const std::vector<Value> *caseArgs = nullptr;
-        if (!instr.brArgs.empty())
-            caseArgs = &instr.brArgs[idx + 1];
+        const std::vector<Value> *caseArgs = &instr.brArgs[idx + 1];
         if (auto result = verifyBranchArgs(fn, bb, instr, *it->second, caseArgs, label, types);
             !result)
             return result;

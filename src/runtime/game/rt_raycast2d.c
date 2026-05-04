@@ -18,6 +18,7 @@
 #include "rt_raycast2d.h"
 #include "rt_tilemap.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 
@@ -61,11 +62,16 @@ int8_t rt_collision_line_rect(
 /// @brief Test whether a line segment intersects a circle (quadratic formula).
 int8_t rt_collision_line_circle(
     double x1, double y1, double x2, double y2, double cx, double cy, double r) {
+    if (!isfinite(x1) || !isfinite(y1) || !isfinite(x2) || !isfinite(y2) || !isfinite(cx) ||
+        !isfinite(cy) || !isfinite(r) || r < 0.0)
+        return 0;
     double dx = x2 - x1;
     double dy = y2 - y1;
     double fx = x1 - cx;
     double fy = y1 - cy;
     double a = dx * dx + dy * dy;
+    if (a < 1e-24)
+        return (fx * fx + fy * fy) <= r * r;
     double b = 2.0 * (fx * dx + fy * dy);
     double c = fx * fx + fy * fy - r * r;
     double disc = b * b - 4.0 * a * c;
@@ -81,9 +87,45 @@ int8_t rt_collision_line_circle(
 // Tilemap Raycast (DDA)
 //=============================================================================
 
+static int64_t floor_div_i64(int64_t n, int64_t d) {
+    int64_t q = n / d;
+    int64_t r = n % d;
+    if (r != 0 && ((r < 0) != (d < 0)))
+        q--;
+    return q;
+}
+
+static int64_t clamp_ld_to_i64(long double value) {
+    if (!isfinite((double)value))
+        return 0;
+    if (value > (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value < (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)value;
+}
+
+static int8_t clip_axis(long double p, long double q, long double *t0, long double *t1) {
+    if (fabsl(p) < 1e-18L)
+        return q >= 0.0L;
+    long double r = q / p;
+    if (p < 0.0L) {
+        if (r > *t1)
+            return 0;
+        if (r > *t0)
+            *t0 = r;
+    } else {
+        if (r < *t0)
+            return 0;
+        if (r < *t1)
+            *t1 = r;
+    }
+    return 1;
+}
+
 /// @brief Cast a ray through a tilemap and return the first solid tile hit.
-/// @details Walks from (x1,y1) to (x2,y2) in pixel steps, checking tile
-///          solidity at each position. Capped at 2000 steps for safety.
+/// @details Clips the segment to the finite map bounds, then uses tile DDA so
+///          long rays traverse touched tiles rather than a capped pixel sample.
 /// @return 1 if a solid tile was hit (hit_x/hit_y set), 0 if clear.
 int8_t rt_raycast_tilemap(
     void *tilemap, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t *hit_x, int64_t *hit_y) {
@@ -94,25 +136,112 @@ int8_t rt_raycast_tilemap(
     int64_t th = rt_tilemap_get_tile_height(tilemap);
     if (tw <= 0 || th <= 0)
         return 0;
+    int64_t mw_tiles = rt_tilemap_get_width(tilemap);
+    int64_t mh_tiles = rt_tilemap_get_height(tilemap);
+    if (mw_tiles <= 0 || mh_tiles <= 0 || mw_tiles > INT64_MAX / tw || mh_tiles > INT64_MAX / th)
+        return 0;
 
-    // Bresenham-like stepping from (x1,y1) to (x2,y2) in tile coordinates
-    int64_t dx = x2 - x1;
-    int64_t dy = y2 - y1;
-    int64_t steps = abs((int)(dx)) > abs((int)(dy)) ? abs((int)(dx)) : abs((int)(dy));
-    if (steps == 0)
-        steps = 1;
-    // Step in pixels, check tile at each step
-    int64_t maxSteps = steps > 2000 ? 2000 : steps; // Safety cap
-    for (int64_t i = 0; i <= maxSteps; i++) {
-        int64_t px = x1 + dx * i / steps;
-        int64_t py = y1 + dy * i / steps;
-        if (rt_tilemap_is_solid_at(tilemap, px, py)) {
+    int64_t map_w = mw_tiles * tw;
+    int64_t map_h = mh_tiles * th;
+    long double dx = (long double)x2 - (long double)x1;
+    long double dy = (long double)y2 - (long double)y1;
+    long double t0 = 0.0L;
+    long double t1 = 1.0L;
+    if (!clip_axis(-dx, (long double)x1, &t0, &t1) ||
+        !clip_axis(dx, (long double)map_w - (long double)x1, &t0, &t1) ||
+        !clip_axis(-dy, (long double)y1, &t0, &t1) ||
+        !clip_axis(dy, (long double)map_h - (long double)y1, &t0, &t1))
+        return 0;
+
+    long double sx_ld = (long double)x1 + dx * t0;
+    long double sy_ld = (long double)y1 + dy * t0;
+    long double ex_ld = (long double)x1 + dx * t1;
+    long double ey_ld = (long double)y1 + dy * t1;
+    if (sx_ld >= (long double)map_w)
+        sx_ld = (long double)map_w - 1.0L;
+    if (sy_ld >= (long double)map_h)
+        sy_ld = (long double)map_h - 1.0L;
+    if (ex_ld >= (long double)map_w)
+        ex_ld = (long double)map_w - 1.0L;
+    if (ey_ld >= (long double)map_h)
+        ey_ld = (long double)map_h - 1.0L;
+    if (sx_ld < 0.0L)
+        sx_ld = 0.0L;
+    if (sy_ld < 0.0L)
+        sy_ld = 0.0L;
+    if (ex_ld < 0.0L)
+        ex_ld = 0.0L;
+    if (ey_ld < 0.0L)
+        ey_ld = 0.0L;
+
+    int64_t sx = clamp_ld_to_i64(sx_ld);
+    int64_t sy = clamp_ld_to_i64(sy_ld);
+    int64_t ex = clamp_ld_to_i64(ex_ld);
+    int64_t ey = clamp_ld_to_i64(ey_ld);
+    int64_t tile_x = floor_div_i64(sx, tw);
+    int64_t tile_y = floor_div_i64(sy, th);
+    int64_t end_tx = floor_div_i64(ex, tw);
+    int64_t end_ty = floor_div_i64(ey, th);
+
+    long double full_dx = (long double)x2 - (long double)x1;
+    long double full_dy = (long double)y2 - (long double)y1;
+    int step_x = full_dx > 0.0L ? 1 : (full_dx < 0.0L ? -1 : 0);
+    int step_y = full_dy > 0.0L ? 1 : (full_dy < 0.0L ? -1 : 0);
+    long double t_max_x = INFINITY;
+    long double t_max_y = INFINITY;
+    long double t_delta_x = INFINITY;
+    long double t_delta_y = INFINITY;
+    if (step_x != 0) {
+        long double next_x = step_x > 0 ? (long double)(tile_x + 1) * (long double)tw
+                                        : (long double)tile_x * (long double)tw;
+        t_max_x = ((next_x - (long double)x1) / full_dx);
+        t_delta_x = fabsl((long double)tw / full_dx);
+    }
+    if (step_y != 0) {
+        long double next_y = step_y > 0 ? (long double)(tile_y + 1) * (long double)th
+                                        : (long double)tile_y * (long double)th;
+        t_max_y = ((next_y - (long double)y1) / full_dy);
+        t_delta_y = fabsl((long double)th / full_dy);
+    }
+
+    long double current_t = t0;
+    while (tile_x >= 0 && tile_x < mw_tiles && tile_y >= 0 && tile_y < mh_tiles) {
+        int64_t sample_x = tile_x * tw;
+        int64_t sample_y = tile_y * th;
+        if (rt_tilemap_is_solid_at(tilemap, sample_x, sample_y)) {
+            int64_t hx = clamp_ld_to_i64((long double)x1 + full_dx * current_t);
+            int64_t hy = clamp_ld_to_i64((long double)y1 + full_dy * current_t);
+            int64_t min_x = tile_x * tw;
+            int64_t min_y = tile_y * th;
+            int64_t max_x = min_x + tw - 1;
+            int64_t max_y = min_y + th - 1;
+            if (hx < min_x)
+                hx = min_x;
+            if (hx > max_x)
+                hx = max_x;
+            if (hy < min_y)
+                hy = min_y;
+            if (hy > max_y)
+                hy = max_y;
             if (hit_x)
-                *hit_x = px;
+                *hit_x = hx;
             if (hit_y)
-                *hit_y = py;
+                *hit_y = hy;
             return 1;
         }
+        if (tile_x == end_tx && tile_y == end_ty)
+            break;
+        if (t_max_x < t_max_y) {
+            tile_x += step_x;
+            current_t = t_max_x;
+            t_max_x += t_delta_x;
+        } else {
+            tile_y += step_y;
+            current_t = t_max_y;
+            t_max_y += t_delta_y;
+        }
+        if (current_t > t1 + 1e-12L)
+            break;
     }
     return 0;
 }

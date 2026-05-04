@@ -8,7 +8,8 @@
 //
 // Key invariants:
 //   - Darkness alpha 0=fully lit, 255=pitch black.
-//   - Dynamic lights have a lifetime in frames; expired lights are recycled.
+//   - Dynamic lights have a lifetime in frames; lifetime 0 is permanent.
+//   - Non-positive light radii are ignored.
 //   - Player light pulses automatically via internal timer.
 //   - Draw() must be called AFTER all game entities are rendered (post-process).
 //
@@ -27,6 +28,9 @@ extern "C" {
 #endif
 
 typedef struct rt_lighting2d_impl *rt_lighting2d;
+
+/// Runtime class ID used to validate Lighting2D handles.
+#define RT_LIGHTING2D_CLASS_ID INT64_C(-0x510210)
 
 /// @brief Create a 2D darkness/lighting overlay sized for at most @p max_lights concurrent lights.
 rt_lighting2d rt_lighting2d_new(int64_t max_lights);

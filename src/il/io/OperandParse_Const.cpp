@@ -133,8 +133,11 @@ ParseResult parseNumericLiteral(const std::string &token, Context &ctx) {
     ParseResult result;
 
     const bool hasDecimalPoint = token.find('.') != std::string::npos;
-    const bool isHexLiteral =
-        token.size() >= 2 && token[0] == '0' && (token[1] == 'x' || token[1] == 'X');
+    size_t prefixPos = 0;
+    if (prefixPos < token.size() && (token[prefixPos] == '+' || token[prefixPos] == '-'))
+        ++prefixPos;
+    const bool isHexLiteral = token.size() >= prefixPos + 2 && token[prefixPos] == '0' &&
+                              (token[prefixPos + 1] == 'x' || token[prefixPos + 1] == 'X');
     const bool hasExponent = (!isHexLiteral) && (token.find('e') != std::string::npos ||
                                                  token.find('E') != std::string::npos);
 

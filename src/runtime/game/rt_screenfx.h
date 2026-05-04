@@ -12,11 +12,11 @@
 //   - Time values use fixed-point milliseconds; 1000 = 1 pixel for shake offsets.
 //   - Colors are packed as 0xRRGGBBAA.
 //   - rt_screenfx_update must be called once per frame with the elapsed delta time.
+//   - Non-positive update deltas are ignored; elapsed time saturates instead of overflowing.
 //   - Maximum concurrent effects is RT_SCREENFX_MAX_EFFECTS (8).
 //
 // Ownership/Lifetime:
-//   - Caller owns the rt_screenfx handle; destroy with rt_screenfx_destroy.
-//   - No reference counting; explicit destruction is required.
+//   - GC-managed via rt_obj_new_i64; explicit destroy releases the caller's reference.
 //
 // Links: src/runtime/game/rt_screenfx.c (implementation), src/runtime/graphics/rt_camera.h,
 // src/runtime/game/rt_particle.h
@@ -32,6 +32,9 @@ extern "C" {
 
 /// Maximum number of concurrent effects.
 #define RT_SCREENFX_MAX_EFFECTS 8
+
+/// Runtime class ID used to validate ScreenFX handles.
+#define RT_SCREENFX_CLASS_ID INT64_C(-0x510212)
 
 /// Effect types.
 typedef enum {

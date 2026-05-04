@@ -18,6 +18,9 @@
 extern "C" {
 #endif
 
+/// Runtime class ID used to validate SceneManager handles.
+#define RT_SCENEMANAGER_CLASS_ID INT64_C(-0x510218)
+
 /// @brief Create a multi-scene manager with no active scene.
 void *rt_scenemanager_new(void);
 /// @brief Register a named scene (pass any rt_string for name).

@@ -12,7 +12,8 @@
 // Key invariants:
 //   - Grid cells are indexed [0, width) × [0, height).
 //   - Walkability and cost are per-cell. Cost=100 is normal (1× multiplier).
-//   - FindPath returns a List[Integer] of interleaved x,y pairs (start to goal).
+//   - Walkable costs are clamped to [1, 30000]; use walkability for walls.
+//   - FindPath returns a List[Seq[Integer]] of x,y waypoint pairs (start to goal).
 //   - FindPath returns an empty list if no path exists.
 //   - Max steps prevents pathological searches from freezing the game.
 //
@@ -78,15 +79,15 @@ int8_t rt_pathfinder_get_last_found(void *pf);
 //=========================================================================
 
 /// @brief Find a path from (sx,sy) to (gx,gy).
-/// @return List[Integer] of interleaved x,y pairs, or empty list if no path.
+/// @return List[Seq[Integer]] of x,y waypoint pairs, or empty list if no path.
 void *rt_pathfinder_find_path(void *pf, int64_t sx, int64_t sy, int64_t gx, int64_t gy);
 
-/// @brief Find path cost from (sx,sy) to (gx,gy) without returning the path.
-/// @return Total path cost, or -1 if no path.
+/// @brief Find path length from (sx,sy) to (gx,gy) without returning the path.
+/// @return Cell-to-cell step count, or -1 if no path.
 int64_t rt_pathfinder_find_path_length(void *pf, int64_t sx, int64_t sy, int64_t gx, int64_t gy);
 
 /// @brief Find nearest reachable cell with the given source tile/grid value.
-/// @return List[Integer] of interleaved x,y pairs from start to target, or empty list.
+/// @return List[Seq[Integer]] of x,y waypoint pairs from start to target, or empty list.
 void *rt_pathfinder_find_nearest(void *pf, int64_t sx, int64_t sy, int64_t target_value);
 
 #ifdef __cplusplus

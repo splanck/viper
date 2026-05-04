@@ -29,7 +29,9 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
+#include <limits.h>
 #include <string.h>
 
 #define DLG_MAX_LINES 64
@@ -79,6 +81,40 @@ typedef struct {
     int8_t waiting_for_input;
     int8_t finished;
 } rt_dialogue_impl;
+
+static rt_dialogue_impl *checked_dialogue(void *dlg, const char *api) {
+    if (!dlg)
+        return NULL;
+    if (rt_obj_class_id(dlg) != RT_DIALOGUE_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
+    return (rt_dialogue_impl *)dlg;
+}
+
+static int32_t clamp_i64_to_i32(int64_t value) {
+    if (value < INT32_MIN)
+        return INT32_MIN;
+    if (value > INT32_MAX)
+        return INT32_MAX;
+    return (int32_t)value;
+}
+
+static int32_t clamp_positive_i64_to_i32(int64_t value, int32_t fallback) {
+    if (value <= 0)
+        return fallback;
+    if (value > INT32_MAX)
+        return INT32_MAX;
+    return (int32_t)value;
+}
+
+static int32_t clamp_alpha_i64(int64_t value) {
+    if (value < 0)
+        return 0;
+    if (value > 255)
+        return 255;
+    return (int32_t)value;
+}
 
 static void rt_dialogue_finalizer(void *obj) {
     rt_dialogue_impl *d = (rt_dialogue_impl *)obj;
@@ -311,14 +347,15 @@ static void dlg_draw_wrapped_revealed(
 /// @details The dialogue supports queued lines with typewriter text reveal,
 ///          speaker names, and configurable styling (font, colors, padding).
 void *rt_dialogue_new(int64_t x, int64_t y, int64_t width, int64_t height) {
-    rt_dialogue_impl *d = (rt_dialogue_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_dialogue_impl));
+    rt_dialogue_impl *d =
+        (rt_dialogue_impl *)rt_obj_new_i64(RT_DIALOGUE_CLASS_ID, (int64_t)sizeof(rt_dialogue_impl));
     if (!d)
         return NULL;
 
-    d->x = (int32_t)x;
-    d->y = (int32_t)y;
-    d->width = (int32_t)width;
-    d->height = (int32_t)height;
+    d->x = clamp_i64_to_i32(x);
+    d->y = clamp_i64_to_i32(y);
+    d->width = clamp_positive_i64_to_i32(width, 1);
+    d->height = clamp_positive_i64_to_i32(height, 1);
     d->padding = DLG_DEFAULT_PADDING;
     d->text_scale = DLG_DEFAULT_SCALE;
     d->text_color = 0xFFFFFF;    // white
@@ -347,17 +384,17 @@ void *rt_dialogue_new(int64_t x, int64_t y, int64_t width, int64_t height) {
 
 /// @brief Set the typewriter text reveal speed in characters per second (<= 0 = instant reveal).
 void rt_dialogue_set_speed(void *dlg, int64_t cps) {
-    if (!dlg)
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.SetSpeed: expected Viper.Game.Dialogue");
+    if (!d)
         return;
-    rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
-    d->chars_per_second = cps <= 0 ? 0 : (int32_t)cps;
+    d->chars_per_second = cps <= 0 ? 0 : clamp_positive_i64_to_i32(cps, DLG_DEFAULT_SPEED);
 }
 
 /// @brief Assign a BitmapFont for dialogue text; retains the new font and releases the old one.
 void rt_dialogue_set_font(void *dlg, void *font) {
-    if (!dlg)
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.SetFont: expected Viper.Game.Dialogue");
+    if (!d)
         return;
-    rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
     // Retain new font, release old to prevent dangling pointer
     if (font)
         rt_obj_retain_maybe(font);
@@ -368,66 +405,71 @@ void rt_dialogue_set_font(void *dlg, void *font) {
 
 /// @brief Set the text color of the dialogue.
 void rt_dialogue_set_text_color(void *dlg, int64_t color) {
-    if (!dlg)
-        return;
-    ((rt_dialogue_impl *)dlg)->text_color = (int32_t)color;
+    rt_dialogue_impl *d =
+        checked_dialogue(dlg, "Dialogue.SetTextColor: expected Viper.Game.Dialogue");
+    if (d)
+        d->text_color = clamp_i64_to_i32(color);
 }
 
 /// @brief Set the speaker color of the dialogue.
 void rt_dialogue_set_speaker_color(void *dlg, int64_t color) {
-    if (!dlg)
-        return;
-    ((rt_dialogue_impl *)dlg)->speaker_color = (int32_t)color;
+    rt_dialogue_impl *d =
+        checked_dialogue(dlg, "Dialogue.SetSpeakerColor: expected Viper.Game.Dialogue");
+    if (d)
+        d->speaker_color = clamp_i64_to_i32(color);
 }
 
 /// @brief Set the bg color of the dialogue.
 void rt_dialogue_set_bg_color(void *dlg, int64_t color, int64_t alpha) {
-    if (!dlg)
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.SetBgColor: expected Viper.Game.Dialogue");
+    if (!d)
         return;
-    rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
-    d->bg_color = (int32_t)color;
-    d->bg_alpha = (int32_t)alpha;
+    d->bg_color = clamp_i64_to_i32(color);
+    d->bg_alpha = clamp_alpha_i64(alpha);
 }
 
 /// @brief Set the border color of the dialogue.
 void rt_dialogue_set_border_color(void *dlg, int64_t color) {
-    if (!dlg)
-        return;
-    ((rt_dialogue_impl *)dlg)->border_color = (int32_t)color;
+    rt_dialogue_impl *d =
+        checked_dialogue(dlg, "Dialogue.SetBorderColor: expected Viper.Game.Dialogue");
+    if (d)
+        d->border_color = clamp_i64_to_i32(color);
 }
 
 /// @brief Set the inner padding (pixels) between the box edge and text.
 void rt_dialogue_set_padding(void *dlg, int64_t padding) {
-    if (!dlg)
-        return;
-    ((rt_dialogue_impl *)dlg)->padding = (int32_t)padding;
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.SetPadding: expected Viper.Game.Dialogue");
+    if (d)
+        d->padding = padding <= 0 ? 0 : clamp_i64_to_i32(padding);
 }
 
 /// @brief Set the text scale of the dialogue.
 void rt_dialogue_set_text_scale(void *dlg, int64_t scale) {
-    if (!dlg)
+    rt_dialogue_impl *d =
+        checked_dialogue(dlg, "Dialogue.SetTextScale: expected Viper.Game.Dialogue");
+    if (!d)
         return;
     if (scale < 1)
         scale = 1;
-    ((rt_dialogue_impl *)dlg)->text_scale = (int32_t)scale;
+    d->text_scale = clamp_positive_i64_to_i32(scale, 1);
 }
 
 /// @brief Reposition the dialogue box to screen coordinates (x, y).
 void rt_dialogue_set_pos(void *dlg, int64_t x, int64_t y) {
-    if (!dlg)
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.SetPos: expected Viper.Game.Dialogue");
+    if (!d)
         return;
-    rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
-    d->x = (int32_t)x;
-    d->y = (int32_t)y;
+    d->x = clamp_i64_to_i32(x);
+    d->y = clamp_i64_to_i32(y);
 }
 
 /// @brief Set the dialogue box width and height in pixels.
 void rt_dialogue_set_size(void *dlg, int64_t w, int64_t h) {
-    if (!dlg)
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.SetSize: expected Viper.Game.Dialogue");
+    if (!d)
         return;
-    rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
-    d->width = (int32_t)w;
-    d->height = (int32_t)h;
+    d->width = clamp_positive_i64_to_i32(w, d->width > 0 ? d->width : 1);
+    d->height = clamp_positive_i64_to_i32(h, d->height > 0 ? d->height : 1);
 }
 
 //=============================================================================
@@ -436,9 +478,9 @@ void rt_dialogue_set_size(void *dlg, int64_t w, int64_t h) {
 
 /// @brief Say the dialogue.
 void rt_dialogue_say(void *dlg, rt_string speaker, rt_string text) {
-    if (!dlg)
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Say: expected Viper.Game.Dialogue");
+    if (!d)
         return;
-    rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
 
     if (d->line_count >= DLG_MAX_LINES) {
         // Shift lines down, drop oldest
@@ -485,9 +527,9 @@ void rt_dialogue_say_text(void *dlg, rt_string text) {
 
 /// @brief Remove all entries from the dialogue.
 void rt_dialogue_clear(void *dlg) {
-    if (!dlg)
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Clear: expected Viper.Game.Dialogue");
+    if (!d)
         return;
-    rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
     d->line_count = 0;
     d->current_line = 0;
     d->revealed_chars = 0;
@@ -504,9 +546,9 @@ void rt_dialogue_clear(void *dlg) {
 
 /// @brief Update the dialogue state (called per frame/tick).
 void rt_dialogue_update(void *dlg, int64_t dt_ms) {
-    if (!dlg)
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Update: expected Viper.Game.Dialogue");
+    if (!d || dt_ms <= 0)
         return;
-    rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
     if (!d->active || d->waiting_for_input || d->line_complete)
         return;
     if (d->current_line >= d->line_count)
@@ -523,14 +565,19 @@ void rt_dialogue_update(void *dlg, int64_t dt_ms) {
     }
 
     // Accumulate microseconds
-    d->accumulator_us += (int64_t)(dt_ms * 1000);
+    int64_t delta_us = dt_ms > INT64_MAX / 1000 ? INT64_MAX : dt_ms * 1000;
+    d->accumulator_us =
+        d->accumulator_us > INT64_MAX - delta_us ? INT64_MAX : d->accumulator_us + delta_us;
     int64_t us_per_char = 1000000 / d->chars_per_second;
     if (us_per_char < 1)
         us_per_char = 1;
 
     int64_t chars_to_add = d->accumulator_us / us_per_char;
     d->accumulator_us %= us_per_char;
-    d->revealed_chars += (int32_t)chars_to_add;
+    if (chars_to_add > INT32_MAX - d->revealed_chars)
+        d->revealed_chars = INT32_MAX;
+    else
+        d->revealed_chars += (int32_t)chars_to_add;
 
     if (d->revealed_chars >= line->text_len_chars) {
         d->revealed_chars = line->text_len_chars;
@@ -541,9 +588,9 @@ void rt_dialogue_update(void *dlg, int64_t dt_ms) {
 
 /// @brief Advance the dialogue.
 void rt_dialogue_advance(void *dlg) {
-    if (!dlg)
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Advance: expected Viper.Game.Dialogue");
+    if (!d)
         return;
-    rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
     if (!d->active)
         return;
 
@@ -571,9 +618,9 @@ void rt_dialogue_advance(void *dlg) {
 
 /// @brief Skip the dialogue.
 void rt_dialogue_skip(void *dlg) {
-    if (!dlg)
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Skip: expected Viper.Game.Dialogue");
+    if (!d)
         return;
-    rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
     if (!d->active || d->current_line >= d->line_count)
         return;
     d->revealed_chars = d->lines[d->current_line].text_len_chars;
@@ -587,51 +634,49 @@ void rt_dialogue_skip(void *dlg) {
 
 /// @brief Check whether the dialogue box is currently visible and displaying text.
 int8_t rt_dialogue_is_active(void *dlg) {
-    if (!dlg)
-        return 0;
-    return ((rt_dialogue_impl *)dlg)->active;
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.IsActive: expected Viper.Game.Dialogue");
+    return d ? d->active : 0;
 }
 
 /// @brief Check whether the current line of dialogue has been fully displayed.
 int8_t rt_dialogue_is_line_complete(void *dlg) {
-    if (!dlg)
-        return 0;
-    return ((rt_dialogue_impl *)dlg)->line_complete;
+    rt_dialogue_impl *d =
+        checked_dialogue(dlg, "Dialogue.IsLineComplete: expected Viper.Game.Dialogue");
+    return d ? d->line_complete : 0;
 }
 
 /// @brief Check whether the typewriter effect has fully revealed all text.
 int8_t rt_dialogue_is_finished(void *dlg) {
-    if (!dlg)
-        return 0;
-    return ((rt_dialogue_impl *)dlg)->finished;
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.IsFinished: expected Viper.Game.Dialogue");
+    return d ? d->finished : 0;
 }
 
 /// @brief Check whether the dialogue is waiting for the player to dismiss it.
 int8_t rt_dialogue_is_waiting(void *dlg) {
-    if (!dlg)
-        return 0;
-    return ((rt_dialogue_impl *)dlg)->waiting_for_input;
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.IsWaiting: expected Viper.Game.Dialogue");
+    return d ? d->waiting_for_input : 0;
 }
 
 /// @brief Return the count of elements in the dialogue.
 int64_t rt_dialogue_get_line_count(void *dlg) {
-    if (!dlg)
-        return 0;
-    return ((rt_dialogue_impl *)dlg)->line_count;
+    rt_dialogue_impl *d =
+        checked_dialogue(dlg, "Dialogue.LineCount: expected Viper.Game.Dialogue");
+    return d ? d->line_count : 0;
 }
 
 /// @brief Get the current line of the dialogue.
 int64_t rt_dialogue_get_current_line(void *dlg) {
-    if (!dlg)
-        return 0;
-    return ((rt_dialogue_impl *)dlg)->current_line;
+    rt_dialogue_impl *d =
+        checked_dialogue(dlg, "Dialogue.CurrentLine: expected Viper.Game.Dialogue");
+    return d ? d->current_line : 0;
 }
 
 /// @brief Return the name of the current speaker, or empty string if none.
 rt_string rt_dialogue_get_speaker(void *dlg) {
-    if (!dlg)
+    rt_dialogue_impl *d =
+        checked_dialogue(dlg, "Dialogue.GetSpeaker: expected Viper.Game.Dialogue");
+    if (!d)
         return rt_const_cstr("");
-    rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
     if (d->current_line >= d->line_count)
         return rt_const_cstr("");
     return rt_const_cstr(d->lines[d->current_line].speaker);
@@ -643,9 +688,9 @@ rt_string rt_dialogue_get_speaker(void *dlg) {
 
 /// @brief Draw the dialogue.
 void rt_dialogue_draw(void *dlg, void *canvas) {
-    if (!dlg || !canvas)
+    rt_dialogue_impl *d = checked_dialogue(dlg, "Dialogue.Draw: expected Viper.Game.Dialogue");
+    if (!d || !canvas)
         return;
-    rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
     if (!d->active || d->current_line >= d->line_count)
         return;
 

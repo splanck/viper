@@ -39,6 +39,13 @@ namespace {
 
 bool opcodeHasStrategyValidatedResultType(il::core::Opcode op) {
     switch (op) {
+        case il::core::Opcode::IAddOvf:
+        case il::core::Opcode::ISubOvf:
+        case il::core::Opcode::IMulOvf:
+        case il::core::Opcode::SDivChk0:
+        case il::core::Opcode::UDivChk0:
+        case il::core::Opcode::SRemChk0:
+        case il::core::Opcode::URemChk0:
         case il::core::Opcode::CastFpToSiRteChk:
         case il::core::Opcode::CastFpToUiRteChk:
         case il::core::Opcode::CastSiNarrowChk:
@@ -99,7 +106,9 @@ Expected<void> ResultTypeChecker::run() const {
     }
 
     if (spec_.resultType == TypeCategory::InstrType) {
-        if (instr.op != il::core::Opcode::IdxChk && instr.type.kind == il::core::Type::Kind::Void) {
+        if (instr.op != il::core::Opcode::IdxChk &&
+            !opcodeHasStrategyValidatedResultType(instr.op) &&
+            instr.type.kind == il::core::Type::Kind::Void) {
             return report("instruction type must be non-void");
         }
     } else if (auto expectedKind = kindFromCategory(spec_.resultType)) {

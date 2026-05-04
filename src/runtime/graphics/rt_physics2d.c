@@ -64,6 +64,13 @@ static int8_t shape_overlap(rt_body_impl *a, rt_body_impl *b, double *nx, double
 static int8_t swept_bounds_pair(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry);
 static void resolve_collision(rt_body_impl *a, rt_body_impl *b, double nx, double ny, double pen);
 
+static void world_clear_contacts(rt_world_impl *w) {
+    if (!w)
+        return;
+    w->contact_count = 0;
+    memset(w->contacts, 0, sizeof(w->contacts));
+}
+
 /// @brief Append a contact record to the world's per-step contact list.
 /// @details Skips recording when the list is full (PH_MAX_CONTACTS) or when the
 ///   manifold values are non-finite, so downstream queries always see a clean
@@ -436,7 +443,7 @@ static int8_t circle_aabb_overlap(
     double dist_sq = dx * dx + dy * dy;
     double radius = circle->radius;
 
-    if (dist_sq > radius * radius)
+    if (dist_sq >= radius * radius)
         return 0;
 
     if (dist_sq > 1e-12) {
@@ -540,7 +547,178 @@ static int8_t swept_axis(double a_min,
 ///   are rolled back to their positions at the entry time so the subsequent impulse
 ///   resolution happens at the moment of contact rather than at full penetration depth.
 ///   The dominant entry axis determines the contact normal direction.
-static int8_t swept_bounds_pair(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry_out) {
+static int8_t swept_circle_circle_pair(
+    rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry_out) {
+    double adx = a->x - a->prev_x;
+    double ady = a->y - a->prev_y;
+    double bdx = b->x - b->prev_x;
+    double bdy = b->y - b->prev_y;
+    double px = a->prev_x - b->prev_x;
+    double py = a->prev_y - b->prev_y;
+    double vx = adx - bdx;
+    double vy = ady - bdy;
+    double radii = a->radius + b->radius;
+    double aa = vx * vx + vy * vy;
+    double bb = 2.0 * (px * vx + py * vy);
+    double cc = px * px + py * py - radii * radii;
+    if (aa < 1e-18 || !isfinite(aa) || !isfinite(bb) || !isfinite(cc) || cc < 0.0)
+        return 0;
+    double disc = bb * bb - 4.0 * aa * cc;
+    if (disc < 0.0 || !isfinite(disc))
+        return 0;
+    double t = (-bb - sqrt(disc)) / (2.0 * aa);
+    if (t < 0.0 || t > 1.0 || !isfinite(t))
+        return 0;
+
+    double ahx = a->prev_x + adx * t;
+    double ahy = a->prev_y + ady * t;
+    double bhx = b->prev_x + bdx * t;
+    double bhy = b->prev_y + bdy * t;
+    double hx = bhx - ahx;
+    double hy = bhy - ahy;
+    double len = sqrt(hx * hx + hy * hy);
+    if (len < 1e-12) {
+        *nx = 1.0;
+        *ny = 0.0;
+    } else {
+        *nx = hx / len;
+        *ny = hy / len;
+    }
+
+    if (a->inv_mass > 0.0) {
+        a->x = ahx;
+        a->y = ahy;
+    }
+    if (b->inv_mass > 0.0) {
+        b->x = bhx;
+        b->y = bhy;
+    }
+    *entry_out = t;
+    return 1;
+}
+
+static int8_t swept_point_aabb(double px,
+                               double py,
+                               double vx,
+                               double vy,
+                               double rx1,
+                               double ry1,
+                               double rx2,
+                               double ry2,
+                               double *nx,
+                               double *ny,
+                               double *entry_out) {
+    double x_entry, x_exit, y_entry, y_exit;
+    if (!swept_axis(px, px, rx1, rx2, vx, &x_entry, &x_exit) ||
+        !swept_axis(py, py, ry1, ry2, vy, &y_entry, &y_exit))
+        return 0;
+    double entry = x_entry > y_entry ? x_entry : y_entry;
+    double exit = x_exit < y_exit ? x_exit : y_exit;
+    if (entry > exit || entry < 0.0 || entry > 1.0 || !isfinite(entry))
+        return 0;
+    if (x_entry > y_entry) {
+        *nx = vx > 0.0 ? 1.0 : -1.0;
+        *ny = 0.0;
+    } else {
+        *nx = 0.0;
+        *ny = vy > 0.0 ? 1.0 : -1.0;
+    }
+    *entry_out = entry;
+    return 1;
+}
+
+static int8_t swept_circle_aabb_pair(
+    rt_body_impl *circle, rt_body_impl *rect, double *nx, double *ny, double *entry_out) {
+    double cdx = circle->x - circle->prev_x;
+    double cdy = circle->y - circle->prev_y;
+    double rdx = rect->x - rect->prev_x;
+    double rdy = rect->y - rect->prev_y;
+    double rvx = cdx - rdx;
+    double rvy = cdy - rdy;
+    if (fabs(rvx) < 1e-12 && fabs(rvy) < 1e-12)
+        return 0;
+
+    double best_entry = INFINITY;
+    double best_nx = 0.0;
+    double best_ny = 0.0;
+    double entry = 0.0;
+    double cand_nx = 0.0;
+    double cand_ny = 0.0;
+    double rx1 = rect->prev_x;
+    double ry1 = rect->prev_y;
+    double rx2 = rect->prev_x + rect->w;
+    double ry2 = rect->prev_y + rect->h;
+
+    if (swept_point_aabb(circle->prev_x,
+                         circle->prev_y,
+                         rvx,
+                         rvy,
+                         rx1 - circle->radius,
+                         ry1 - circle->radius,
+                         rx2 + circle->radius,
+                         ry2 + circle->radius,
+                         &cand_nx,
+                         &cand_ny,
+                         &entry)) {
+        double hx = circle->prev_x + rvx * entry;
+        double hy = circle->prev_y + rvy * entry;
+        double closest_x = hx < rx1 ? rx1 : (hx > rx2 ? rx2 : hx);
+        double closest_y = hy < ry1 ? ry1 : (hy > ry2 ? ry2 : hy);
+        double ddx = closest_x - hx;
+        double ddy = closest_y - hy;
+        if (ddx * ddx + ddy * ddy <= circle->radius * circle->radius + 1e-9) {
+            best_entry = entry;
+            best_nx = cand_nx;
+            best_ny = cand_ny;
+        }
+    }
+
+    double corners[4][2] = {{rx1, ry1}, {rx2, ry1}, {rx1, ry2}, {rx2, ry2}};
+    double aa = rvx * rvx + rvy * rvy;
+    if (aa > 1e-18 && isfinite(aa)) {
+        for (int i = 0; i < 4; i++) {
+            double px = circle->prev_x - corners[i][0];
+            double py = circle->prev_y - corners[i][1];
+            double bb = 2.0 * (px * rvx + py * rvy);
+            double cc = px * px + py * py - circle->radius * circle->radius;
+            double disc = bb * bb - 4.0 * aa * cc;
+            if (disc < 0.0 || !isfinite(disc))
+                continue;
+            double t = (-bb - sqrt(disc)) / (2.0 * aa);
+            if (t < 0.0 || t > 1.0 || t >= best_entry || !isfinite(t))
+                continue;
+            double hx = circle->prev_x + rvx * t;
+            double hy = circle->prev_y + rvy * t;
+            double nnx = corners[i][0] - hx;
+            double nny = corners[i][1] - hy;
+            double len = sqrt(nnx * nnx + nny * nny);
+            if (len < 1e-12)
+                continue;
+            best_entry = t;
+            best_nx = nnx / len;
+            best_ny = nny / len;
+        }
+    }
+
+    if (!isfinite(best_entry))
+        return 0;
+    entry = best_entry;
+    *nx = best_nx;
+    *ny = best_ny;
+
+    if (circle->inv_mass > 0.0) {
+        circle->x = circle->prev_x + cdx * entry;
+        circle->y = circle->prev_y + cdy * entry;
+    }
+    if (rect->inv_mass > 0.0) {
+        rect->x = rect->prev_x + rdx * entry;
+        rect->y = rect->prev_y + rdy * entry;
+    }
+    *entry_out = entry;
+    return 1;
+}
+
+static int8_t swept_aabb_pair(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry_out) {
     if (!a || !b || !nx || !ny || !entry_out)
         return 0;
 
@@ -596,6 +774,28 @@ static int8_t swept_bounds_pair(rt_body_impl *a, rt_body_impl *b, double *nx, do
     }
     *entry_out = entry;
     return 1;
+}
+
+static int8_t swept_bounds_pair(rt_body_impl *a, rt_body_impl *b, double *nx, double *ny, double *entry_out) {
+    if (!a || !b || !nx || !ny || !entry_out)
+        return 0;
+
+    if (a->is_circle && b->is_circle)
+        return swept_circle_circle_pair(a, b, nx, ny, entry_out);
+
+    if (a->is_circle && !b->is_circle)
+        return swept_circle_aabb_pair(a, b, nx, ny, entry_out);
+
+    if (!a->is_circle && b->is_circle) {
+        int8_t hit = swept_circle_aabb_pair(b, a, nx, ny, entry_out);
+        if (hit) {
+            *nx = -*nx;
+            *ny = -*ny;
+        }
+        return hit;
+    }
+
+    return swept_aabb_pair(a, b, nx, ny, entry_out);
 }
 
 /// @brief Resolves a collision between two bodies using impulse-based dynamics.
@@ -767,13 +967,14 @@ void *rt_physics2d_world_new(double gravity_x, double gravity_y) {
 void rt_physics2d_world_step(void *obj, double dt) {
     rt_world_impl *w;
     int64_t i;
-    if (!obj || dt <= 0.0 || !isfinite(dt))
+    if (!obj)
         return;
     w = checked_world(obj, "Physics2D.World.Step: expected Physics2D.World");
     if (!w)
         return;
-    w->contact_count = 0;
-    memset(w->contacts, 0, sizeof(w->contacts));
+    world_clear_contacts(w);
+    if (dt <= 0.0 || !isfinite(dt))
+        return;
 
     for (i = 0; i < w->body_count; i++) {
         rt_body_impl *b = w->bodies[i];
@@ -1022,6 +1223,7 @@ void rt_physics2d_world_remove(void *obj, void *body) {
     for (i = 0; i < w->body_count; i++) {
         if (w->bodies[i] == (rt_body_impl *)body) {
             world_remove_joints_for_body(w, w->bodies[i]);
+            world_clear_contacts(w);
             if (rt_obj_release_check0(w->bodies[i]))
                 rt_obj_free(w->bodies[i]);
             /* Swap with tail to maintain a compact, order-independent array */

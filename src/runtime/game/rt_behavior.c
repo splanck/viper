@@ -18,6 +18,7 @@
 #include "rt_behavior.h"
 #include "rt_entity.h"
 #include "rt_object.h"
+#include "rt_trap.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -63,7 +64,13 @@ typedef struct {
     int64_t anim_frame;
 } behavior_impl;
 
-static behavior_impl *get(void *bhv) {
+static behavior_impl *checked_behavior(void *bhv, const char *api) {
+    if (!bhv)
+        return NULL;
+    if (rt_obj_class_id(bhv) != RT_BEHAVIOR_CLASS_ID) {
+        rt_trap(api);
+        return NULL;
+    }
     return (behavior_impl *)bhv;
 }
 
@@ -73,7 +80,8 @@ static behavior_impl *get(void *bhv) {
 ///          in a fixed priority order: gravity → patrol → chase → sine float →
 ///          move+collide → wall/edge reverse → shoot cooldown → animation.
 void *rt_behavior_new(void) {
-    behavior_impl *b = (behavior_impl *)rt_obj_new_i64(0, (int64_t)sizeof(behavior_impl));
+    behavior_impl *b =
+        (behavior_impl *)rt_obj_new_i64(RT_BEHAVIOR_CLASS_ID, (int64_t)sizeof(behavior_impl));
     if (!b)
         return NULL;
     memset(b, 0, sizeof(behavior_impl));
@@ -82,28 +90,28 @@ void *rt_behavior_new(void) {
 
 /// @brief Add horizontal patrol behavior (entity walks left/right at given speed).
 void rt_behavior_add_patrol(void *bhv, int64_t speed) {
-    if (!bhv)
+    behavior_impl *b = checked_behavior(bhv, "Behavior.AddPatrol: expected Viper.Game.Behavior");
+    if (!b)
         return;
-    behavior_impl *b = get(bhv);
     b->flags |= BHV_PATROL;
     b->patrol_speed = speed;
 }
 
 /// @brief Add chase-target behavior (entity moves toward the target when within range).
 void rt_behavior_add_chase(void *bhv, int64_t speed, int64_t range) {
-    if (!bhv)
+    behavior_impl *b = checked_behavior(bhv, "Behavior.AddChase: expected Viper.Game.Behavior");
+    if (!b)
         return;
-    behavior_impl *b = get(bhv);
     b->flags |= BHV_CHASE;
     b->chase_speed = speed;
-    b->chase_range = range;
+    b->chase_range = range > 0 ? range : 0;
 }
 
 /// @brief Add gravity behavior (applies downward acceleration with a terminal velocity).
 void rt_behavior_add_gravity(void *bhv, int64_t gravity, int64_t max_fall) {
-    if (!bhv)
+    behavior_impl *b = checked_behavior(bhv, "Behavior.AddGravity: expected Viper.Game.Behavior");
+    if (!b)
         return;
-    behavior_impl *b = get(bhv);
     b->flags |= BHV_GRAVITY;
     b->gravity = gravity;
     b->max_fall = max_fall;
@@ -111,33 +119,36 @@ void rt_behavior_add_gravity(void *bhv, int64_t gravity, int64_t max_fall) {
 
 /// @brief Add edge-reverse behavior (entity turns around at platform edges).
 void rt_behavior_add_edge_reverse(void *bhv) {
-    if (!bhv)
-        return;
-    get(bhv)->flags |= BHV_EDGE_REVERSE;
+    behavior_impl *b =
+        checked_behavior(bhv, "Behavior.AddEdgeReverse: expected Viper.Game.Behavior");
+    if (b)
+        b->flags |= BHV_EDGE_REVERSE;
 }
 
 /// @brief Add wall-reverse behavior (entity turns around when hitting a wall).
 void rt_behavior_add_wall_reverse(void *bhv) {
-    if (!bhv)
-        return;
-    get(bhv)->flags |= BHV_WALL_REVERSE;
+    behavior_impl *b =
+        checked_behavior(bhv, "Behavior.AddWallReverse: expected Viper.Game.Behavior");
+    if (b)
+        b->flags |= BHV_WALL_REVERSE;
 }
 
 /// @brief Add shoot-on-cooldown behavior (shoot_ready flag sets after cooldown elapses).
 void rt_behavior_add_shoot(void *bhv, int64_t cooldown_ms) {
-    if (!bhv)
+    behavior_impl *b = checked_behavior(bhv, "Behavior.AddShoot: expected Viper.Game.Behavior");
+    if (!b)
         return;
-    behavior_impl *b = get(bhv);
     b->flags |= BHV_SHOOT;
-    b->shoot_cooldown_ms = cooldown_ms;
-    b->shoot_timer = cooldown_ms;
+    b->shoot_cooldown_ms = cooldown_ms > 0 ? cooldown_ms : 1;
+    b->shoot_timer = b->shoot_cooldown_ms;
 }
 
 /// @brief Add sine-wave floating behavior (vertical oscillation for hovering enemies).
 void rt_behavior_add_sine_float(void *bhv, int64_t amplitude, int64_t speed) {
-    if (!bhv)
+    behavior_impl *b =
+        checked_behavior(bhv, "Behavior.AddSineFloat: expected Viper.Game.Behavior");
+    if (!b)
         return;
-    behavior_impl *b = get(bhv);
     b->flags |= BHV_SINE_FLOAT;
     b->float_amplitude = amplitude;
     b->float_speed = speed;
@@ -145,12 +156,13 @@ void rt_behavior_add_sine_float(void *bhv, int64_t amplitude, int64_t speed) {
 
 /// @brief Add frame-based animation loop (cycles through frames at the given interval).
 void rt_behavior_add_anim_loop(void *bhv, int64_t frame_count, int64_t ms_per_frame) {
-    if (!bhv)
+    behavior_impl *b =
+        checked_behavior(bhv, "Behavior.AddAnimLoop: expected Viper.Game.Behavior");
+    if (!b)
         return;
-    behavior_impl *b = get(bhv);
     b->flags |= BHV_ANIM_LOOP;
-    b->anim_frames = frame_count;
-    b->anim_ms = ms_per_frame;
+    b->anim_frames = frame_count > 0 ? frame_count : 1;
+    b->anim_ms = ms_per_frame > 0 ? ms_per_frame : 1;
 }
 
 /// @brief Run all active behaviors on an entity for one tick.
@@ -159,9 +171,9 @@ void rt_behavior_add_anim_loop(void *bhv, int64_t frame_count, int64_t ms_per_fr
 ///          then animation loop. The target_x/target_y are the chase target position.
 void rt_behavior_update(
     void *bhv, void *entity, void *tilemap, int64_t target_x, int64_t target_y, int64_t dt) {
-    if (!bhv || !entity)
+    behavior_impl *b = checked_behavior(bhv, "Behavior.Update: expected Viper.Game.Behavior");
+    if (!b || !entity || dt <= 0)
         return;
-    behavior_impl *b = get(bhv);
     uint32_t f = b->flags;
 
     // 1. Gravity
@@ -228,7 +240,7 @@ void rt_behavior_update(
     }
 
     // 9. Animation loop
-    if (f & BHV_ANIM_LOOP) {
+    if ((f & BHV_ANIM_LOOP) && b->anim_ms > 0 && b->anim_frames > 0) {
         b->anim_timer += dt;
         if (b->anim_timer >= b->anim_ms) {
             b->anim_timer -= b->anim_ms;
@@ -239,9 +251,9 @@ void rt_behavior_update(
 
 /// @brief Check and consume the shoot-ready flag (returns 1 once, then resets).
 int8_t rt_behavior_shoot_ready(void *bhv) {
-    if (!bhv)
+    behavior_impl *b = checked_behavior(bhv, "Behavior.ShootReady: expected Viper.Game.Behavior");
+    if (!b)
         return 0;
-    behavior_impl *b = get(bhv);
     if (b->shoot_ready) {
         b->shoot_ready = 0;
         return 1;
@@ -251,5 +263,6 @@ int8_t rt_behavior_shoot_ready(void *bhv) {
 
 /// @brief Get the current animation frame index from the animation loop behavior.
 int64_t rt_behavior_anim_frame(void *bhv) {
-    return bhv ? get(bhv)->anim_frame : 0;
+    behavior_impl *b = checked_behavior(bhv, "Behavior.AnimFrame: expected Viper.Game.Behavior");
+    return b ? b->anim_frame : 0;
 }

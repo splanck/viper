@@ -24,6 +24,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/transform/AnalysisIDs.hpp"
+#include "il/transform/LoadSafety.hpp"
 #include "il/transform/analysis/Liveness.hpp"
 
 #include <algorithm>
@@ -169,7 +170,7 @@ bool runDSE(Function &F, AnalysisManager &AM) {
                     }
                 }
 
-                if (dead) {
+                if (dead && isStoreKnownNonTrapping(F, I)) {
                     B.instructions.erase(B.instructions.begin() + static_cast<std::size_t>(i));
                     changed = true;
                     // Note: do not advance i (the loop decrements i) — keep indices consistent
@@ -402,6 +403,8 @@ bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
                 continue;
 
             const Value &ptr = I.operands[0];
+            if (!isStoreKnownNonTrapping(F, I))
+                continue;
 
             // Only consider stores to allocas (stack allocations)
             auto allocaId = getAllocaId(ptr, defs);
@@ -558,7 +561,8 @@ bool runMemorySSADSE(Function &F, AnalysisManager &AM) {
 
     for (auto &B : F.blocks) {
         for (size_t i = 0; i < B.instructions.size(); ++i) {
-            if (B.instructions[i].op == Opcode::Store && mssa.isDeadStore(&B, i)) {
+            if (B.instructions[i].op == Opcode::Store && mssa.isDeadStore(&B, i) &&
+                isStoreKnownNonTrapping(F, B.instructions[i])) {
                 toRemove.emplace_back(&B, i);
             }
         }

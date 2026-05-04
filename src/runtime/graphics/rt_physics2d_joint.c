@@ -734,7 +734,7 @@ void rt_physics2d_solve_joints(void *world, double dt) {
 void *rt_physics2d_circle_body_new(double cx, double cy, double radius, double mass) {
     cx = finite_or(cx, 0.0);
     cy = finite_or(cy, 0.0);
-    if (!isfinite(radius) || radius < 1.0)
+    if (!isfinite(radius) || radius <= 0.0)
         radius = 1.0;
     mass = (isfinite(mass) && mass > 0.0) ? mass : 0.0;
 

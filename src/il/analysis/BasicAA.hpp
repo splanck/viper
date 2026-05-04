@@ -144,6 +144,8 @@ class BasicAA {
 
     [[nodiscard]] CallEffect queryFunctionEffect(const il::core::Function &fn) const;
 
+    [[nodiscard]] CallEffect queryExternEffect(std::string_view name) const;
+
     [[nodiscard]] CallEffect queryRuntimeEffect(std::string_view name) const;
 
     [[nodiscard]] CallEffect computeCalleeEffect(std::string_view name) const;
@@ -318,7 +320,7 @@ inline BasicAA::CallEffect BasicAA::queryFunctionEffect(const il::core::Function
     return effect;
 }
 
-inline BasicAA::CallEffect BasicAA::queryRuntimeEffect(std::string_view name) const {
+    inline BasicAA::CallEffect BasicAA::queryRuntimeEffect(std::string_view name) const {
     if (const auto *sig = il::runtime::findRuntimeSignature(name))
         return CallEffect{sig->pure, sig->readonly, true};
 
@@ -332,11 +334,27 @@ inline BasicAA::CallEffect BasicAA::queryRuntimeEffect(std::string_view name) co
     return {};
 }
 
+inline BasicAA::CallEffect BasicAA::queryExternEffect(std::string_view name) const {
+    if (!module_)
+        return {};
+    for (const auto &ext : module_->externs) {
+        if (ext.name != name)
+            continue;
+        if (ext.attrs().pure || ext.attrs().readonly || ext.attrs().nothrow)
+            return CallEffect{ext.attrs().pure, ext.attrs().readonly, true};
+        return {};
+    }
+    return {};
+}
+
 inline BasicAA::CallEffect BasicAA::computeCalleeEffect(std::string_view name) const {
     // Module-level analysis is authoritative when the callee is defined locally.
     // Fall back to the runtime signature table only for external functions.
     if (const auto *fn = findFunction(name))
         return queryFunctionEffect(*fn);
+
+    if (const auto effect = queryExternEffect(name); effect.known)
+        return effect;
 
     return queryRuntimeEffect(name);
 }

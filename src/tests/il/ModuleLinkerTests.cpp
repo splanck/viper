@@ -143,6 +143,12 @@ static size_t countFunctions(const Module &m) {
     return m.functions.size();
 }
 
+static const Function *findFunction(const Module &m, const std::string &name) {
+    auto it = std::find_if(
+        m.functions.begin(), m.functions.end(), [&](const Function &f) { return f.name == name; });
+    return it == m.functions.end() ? nullptr : &*it;
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -256,6 +262,30 @@ TEST(ModuleLinker, ExternsMergedAndDeduplicated) {
 
     // Should be deduplicated to one extern.
     EXPECT_EQ(result.module.externs.size(), 1u);
+}
+
+TEST(ModuleLinker, ExternEffectAttributesAreMerged) {
+    Module a;
+    a.functions.push_back(makeI64Func("main", Linkage::Internal));
+    Extern readonlyExtern{"Viper.Foo", Type(Type::Kind::I64), {Type(Type::Kind::Ptr)}};
+    readonlyExtern.attrs().readonly = true;
+    a.externs.push_back(readonlyExtern);
+
+    Module b;
+    b.functions.push_back(makeVoidFunc("lib", Linkage::Export));
+    Extern nothrowExtern{"Viper.Foo", Type(Type::Kind::I64), {Type(Type::Kind::Ptr)}};
+    nothrowExtern.attrs().nothrow = true;
+    b.externs.push_back(nothrowExtern);
+
+    std::vector<Module> modules;
+    modules.push_back(std::move(a));
+    modules.push_back(std::move(b));
+
+    auto result = il::link::linkModules(std::move(modules));
+    ASSERT_TRUE(result.succeeded());
+    ASSERT_EQ(result.module.externs.size(), 1u);
+    EXPECT_TRUE(result.module.externs.front().attrs().readonly);
+    EXPECT_TRUE(result.module.externs.front().attrs().nothrow);
 }
 
 TEST(ModuleLinker, ExternSignatureMismatchFails) {
@@ -449,6 +479,109 @@ TEST(ModuleLinker, InternalRenameIsModuleLocal) {
     ASSERT_FALSE(libIt->blocks.empty());
     ASSERT_FALSE(libIt->blocks.front().instructions.empty());
     EXPECT_EQ(libIt->blocks.front().instructions.front().callee, "m1$helper");
+}
+
+TEST(ModuleLinker, InternalRenameUpdatesIndirectFunctionAddresses) {
+    Module a;
+    a.functions.push_back(makeVoidFunc("main", Linkage::Internal));
+    a.functions.push_back(makeVoidFunc("helper", Linkage::Internal));
+
+    Module b;
+    Function lib;
+    lib.name = "lib";
+    lib.retType = Type(Type::Kind::Void);
+    lib.linkage = Linkage::Export;
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr indirect;
+    indirect.op = Opcode::CallIndirect;
+    indirect.type = Type(Type::Kind::Void);
+    indirect.operands = {Value::global("helper")};
+    entry.instructions.push_back(std::move(indirect));
+    Instr ret;
+    ret.op = Opcode::Ret;
+    entry.instructions.push_back(std::move(ret));
+    entry.terminated = true;
+    lib.blocks.push_back(std::move(entry));
+    b.functions.push_back(std::move(lib));
+    b.functions.push_back(makeVoidFunc("helper", Linkage::Internal));
+
+    std::vector<Module> modules;
+    modules.push_back(std::move(a));
+    modules.push_back(std::move(b));
+
+    auto result = il::link::linkModules(std::move(modules));
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_TRUE(hasFunction(result.module, "m1$helper"));
+
+    const Function *linkedLib = findFunction(result.module, "lib");
+    ASSERT_NE(linkedLib, nullptr);
+    ASSERT_FALSE(linkedLib->blocks.empty());
+    ASSERT_FALSE(linkedLib->blocks.front().instructions.empty());
+    const Instr &linkedCall = linkedLib->blocks.front().instructions.front();
+    ASSERT_EQ(linkedCall.op, Opcode::CallIndirect);
+    ASSERT_EQ(linkedCall.operands.size(), 1u);
+    ASSERT_EQ(linkedCall.operands.front().kind, Value::Kind::GlobalAddr);
+    EXPECT_EQ(linkedCall.operands.front().str, "m1$helper");
+}
+
+TEST(ModuleLinker, InternalRenameUpdatesFunctionAddressesInBranchArgs) {
+    Module a;
+    a.functions.push_back(makeVoidFunc("main", Linkage::Internal));
+    a.functions.push_back(makeVoidFunc("helper", Linkage::Internal));
+
+    Module b;
+    Function lib;
+    lib.name = "lib";
+    lib.retType = Type(Type::Kind::Void);
+    lib.linkage = Linkage::Export;
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr br;
+    br.op = Opcode::Br;
+    br.labels = {"next"};
+    br.brArgs = {{Value::global("helper")}};
+    entry.instructions.push_back(std::move(br));
+    entry.terminated = true;
+
+    BasicBlock next;
+    next.label = "next";
+    Param callee{"callee", Type(Type::Kind::Ptr), 0};
+    next.params.push_back(callee);
+    Instr indirect;
+    indirect.op = Opcode::CallIndirect;
+    indirect.type = Type(Type::Kind::Void);
+    indirect.operands = {Value::temp(callee.id)};
+    next.instructions.push_back(std::move(indirect));
+    Instr ret;
+    ret.op = Opcode::Ret;
+    next.instructions.push_back(std::move(ret));
+    next.terminated = true;
+
+    lib.blocks.push_back(std::move(entry));
+    lib.blocks.push_back(std::move(next));
+    b.functions.push_back(std::move(lib));
+    b.functions.push_back(makeVoidFunc("helper", Linkage::Internal));
+
+    std::vector<Module> modules;
+    modules.push_back(std::move(a));
+    modules.push_back(std::move(b));
+
+    auto result = il::link::linkModules(std::move(modules));
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_TRUE(hasFunction(result.module, "m1$helper"));
+
+    const Function *linkedLib = findFunction(result.module, "lib");
+    ASSERT_NE(linkedLib, nullptr);
+    ASSERT_GE(linkedLib->blocks.size(), 1u);
+    ASSERT_FALSE(linkedLib->blocks.front().instructions.empty());
+    const Instr &linkedBr = linkedLib->blocks.front().instructions.front();
+    ASSERT_EQ(linkedBr.op, Opcode::Br);
+    ASSERT_EQ(linkedBr.brArgs.size(), 1u);
+    ASSERT_EQ(linkedBr.brArgs.front().size(), 1u);
+    ASSERT_EQ(linkedBr.brArgs.front().front().kind, Value::Kind::GlobalAddr);
+    EXPECT_EQ(linkedBr.brArgs.front().front().str, "m1$helper");
 }
 
 int main() {

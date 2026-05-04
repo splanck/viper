@@ -113,8 +113,9 @@ static std::vector<size_t> countUses(Function &F) {
             (void)uses[p.id];
 
     auto touch = [&](unsigned id) {
-        if (id < uses.size())
-            uses[id]++;
+        if (id >= uses.size())
+            uses.resize(static_cast<size_t>(id) + 1, 0);
+        uses[id]++;
     };
 
     for (auto &B : F.blocks) {
@@ -139,10 +140,9 @@ static std::vector<size_t> countUses(Function &F) {
 ///   2. Records which @c alloca results are observed by @c load instructions to
 ///      distinguish genuine stack slots from those that only ever receive
 ///      stores.
-///   3. Deletes loads whose results have zero uses, stores that write to never
-///      loaded allocas, and allocas that are never read.  The instruction
-///      traversal keeps indices stable by only advancing when no erasure
-///      occurred.
+///   3. Deletes dead loads/stores/allocas only when a local proof shows the
+///      removed memory operation cannot trap. The instruction traversal keeps
+///      indices stable by only advancing when no erasure occurred.
 ///   4. Walks block parameters in reverse order, removing unused entries and
 ///      erasing the corresponding operands from predecessor branch argument
 ///      lists so SSA form remains consistent.
@@ -286,7 +286,7 @@ void dce(Module &M) {
                     if (I.op == Opcode::Store && !I.operands.empty() &&
                         I.operands[0].kind == Value::Kind::Temp &&
                         allocaObserved.find(I.operands[0].id) != allocaObserved.end() &&
-                        !allocaObserved[I.operands[0].id]) {
+                        !allocaObserved[I.operands[0].id] && isStoreKnownNonTrapping(F, I)) {
                         if (traceEnabled())
                             std::cerr << "[dce] removing dead store to %" << I.operands[0].id
                                       << " in " << F.name << ":" << B.label << "\n";
@@ -296,7 +296,8 @@ void dce(Module &M) {
                     }
                     if (I.op == Opcode::Alloca && I.result &&
                         allocaObserved.find(*I.result) != allocaObserved.end() &&
-                        !allocaObserved[*I.result]) {
+                        !allocaObserved[*I.result] && *I.result < uses.size() &&
+                        uses[*I.result] == 0 && isAllocaKnownNonTrapping(I)) {
                         if (traceEnabled())
                             std::cerr << "[dce] removing dead alloca %" << *I.result << " in "
                                       << F.name << ":" << B.label << "\n";
@@ -305,7 +306,7 @@ void dce(Module &M) {
                         continue;
                     }
                     if (I.op == Opcode::Call && I.result && uses[*I.result] == 0) {
-                        const CallEffects effects = classifyCallEffects(I);
+                        const CallEffects effects = classifyCallEffects(I, &M);
                         if (effects.canEliminateIfUnused()) {
                             if (traceEnabled())
                                 std::cerr << "[dce] removing pure call %" << *I.result << " = "

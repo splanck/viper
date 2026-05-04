@@ -9,6 +9,7 @@
 //
 // Key invariants:
 //   - Bodies are AABB or circle shapes; no rotational physics.
+//   - Fast bodies use shape-aware swept collision checks.
 //   - A world holds at most PH_MAX_BODIES (256) bodies; exceeding this traps.
 //   - Bodies with mass == 0.0 are static (immovable).
 //   - Collision filtering: bodies collide only when (A.layer & B.mask) != 0 AND (B.layer & A.mask)
@@ -25,6 +26,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include "rt_physics2d_joint.h"
 #include "rt_string.h"
 #include <stdint.h>
 
@@ -42,7 +44,8 @@ extern "C" {
 /// @return Opaque world handle.
 void *rt_physics2d_world_new(double gravity_x, double gravity_y);
 
-/// @brief Step the physics simulation forward. Non-finite and non-positive dt values are no-ops.
+/// @brief Step the physics simulation forward. Clears previous contacts first; non-finite and
+/// non-positive dt values then no-op.
 /// @param world World handle.
 /// @param dt Delta time in seconds.
 void rt_physics2d_world_step(void *world, double dt);
@@ -69,7 +72,7 @@ int64_t rt_physics2d_world_body_count(void *world);
 void rt_physics2d_world_set_gravity(void *world, double gx, double gy);
 
 /// @brief Number of contacts detected during the most recent world step.
-/// The contact list is cleared at the start of each successful Step().
+/// The contact list is cleared at the start of every Step() and when bodies are removed.
 int64_t rt_physics2d_world_contact_count(void *world);
 
 /// @brief Body A for a contact from the most recent world step, or NULL if index is invalid.
@@ -105,6 +108,12 @@ double rt_physics2d_body_x(void *body);
 
 /// @brief Get body Y position.
 double rt_physics2d_body_y(void *body);
+
+/// @brief Get body X position from the start of the last successful simulation step.
+double rt_physics2d_body_prev_x(void *body);
+
+/// @brief Get body Y position from the start of the last successful simulation step.
+double rt_physics2d_body_prev_y(void *body);
 
 /// @brief Get body width.
 double rt_physics2d_body_w(void *body);
