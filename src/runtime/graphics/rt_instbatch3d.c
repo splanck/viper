@@ -23,6 +23,7 @@
 #include "rt_instbatch3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_mat4.h"
 #include "vgfx3d_backend.h"
 
 #include <math.h>
@@ -191,6 +192,8 @@ static void instbatch_finalizer(void *obj) {
 ///                 it because it is reused across frames.
 /// @return Opaque batch handle, or NULL on failure.
 void *rt_instbatch3d_new(void *mesh, void *material) {
+    mesh = rt_g3d_checked_or_null(mesh, RT_G3D_MESH3D_CLASS_ID);
+    material = rt_g3d_checked_or_null(material, RT_G3D_MATERIAL3D_CLASS_ID);
     if (!mesh || !material)
         return NULL;
     rt_instbatch3d *b = (rt_instbatch3d *)rt_obj_new_i64(RT_G3D_INSTANCEBATCH3D_CLASS_ID, (int64_t)sizeof(rt_instbatch3d));
@@ -227,9 +230,10 @@ void *rt_instbatch3d_new(void *mesh, void *material) {
 /// @details Copies the Mat4 (double) into the float[16] transform buffer.
 ///          The array uses geometric growth to amortize allocation cost.
 void rt_instbatch3d_add(void *obj, void *transform) {
-    if (!obj || !transform)
+    rt_instbatch3d *b =
+        (rt_instbatch3d *)rt_g3d_checked_or_null(obj, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
+    if (!b || !transform || rt_obj_class_id(transform) != RT_MAT4_CLASS_ID)
         return;
-    rt_instbatch3d *b = (rt_instbatch3d *)obj;
 
     if (b->instance_count >= b->instance_capacity) {
         int32_t new_cap;
@@ -269,9 +273,10 @@ void rt_instbatch3d_add(void *obj, void *transform) {
 
 /// @brief Remove an instance by index (swap-removes with last for O(1) time).
 void rt_instbatch3d_remove(void *obj, int64_t index) {
-    if (!obj)
+    rt_instbatch3d *b =
+        (rt_instbatch3d *)rt_g3d_checked_or_null(obj, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
+    if (!b)
         return;
-    rt_instbatch3d *b = (rt_instbatch3d *)obj;
     int32_t last_idx;
     if (index < 0 || index >= b->instance_count)
         return;
@@ -302,9 +307,10 @@ void rt_instbatch3d_remove(void *obj, int64_t index) {
 
 /// @brief Update the transform of an existing instance at the given index.
 void rt_instbatch3d_set(void *obj, int64_t index, void *transform) {
-    if (!obj || !transform)
+    rt_instbatch3d *b =
+        (rt_instbatch3d *)rt_g3d_checked_or_null(obj, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
+    if (!b || !transform || rt_obj_class_id(transform) != RT_MAT4_CLASS_ID)
         return;
-    rt_instbatch3d *b = (rt_instbatch3d *)obj;
     if (index < 0 || index >= b->instance_count)
         return;
 
@@ -314,9 +320,10 @@ void rt_instbatch3d_set(void *obj, int64_t index, void *transform) {
 
 /// @brief Remove all instances from the batch, resetting count to zero.
 void rt_instbatch3d_clear(void *obj) {
-    if (!obj)
+    rt_instbatch3d *b =
+        (rt_instbatch3d *)rt_g3d_checked_or_null(obj, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
+    if (!b)
         return;
-    rt_instbatch3d *b = (rt_instbatch3d *)obj;
     b->instance_count = 0;
     b->motion_snapshot_count = 0;
     b->prev_count = 0;
@@ -325,16 +332,19 @@ void rt_instbatch3d_clear(void *obj) {
 
 /// @brief Get the current number of instances in the batch.
 int64_t rt_instbatch3d_count(void *obj) {
-    return obj ? ((rt_instbatch3d *)obj)->instance_count : 0;
+    rt_instbatch3d *b =
+        (rt_instbatch3d *)rt_g3d_checked_or_null(obj, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
+    return b ? b->instance_count : 0;
 }
 
 /// @brief Draw all visible instances. Falls back to N individual draw calls
 /// since the software backend doesn't have a native instanced path.
 void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
-    if (!canvas_obj || !batch_obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas_obj);
+    rt_instbatch3d *b =
+        (rt_instbatch3d *)rt_g3d_checked_or_null(batch_obj, RT_G3D_INSTANCEBATCH3D_CLASS_ID);
+    if (!c || !b)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)canvas_obj;
-    rt_instbatch3d *b = (rt_instbatch3d *)batch_obj;
     if (!c->in_frame || !c->backend || b->instance_count == 0)
         return;
     if ((size_t)b->instance_count > SIZE_MAX / (16u * sizeof(float))) {
@@ -342,7 +352,7 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
         return;
     }
 
-    rt_mesh3d *mesh = (rt_mesh3d *)b->mesh;
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_g3d_checked_or_null(b->mesh, RT_G3D_MESH3D_CLASS_ID);
     if (!mesh || mesh->vertex_count == 0 || mesh->index_count == 0)
         return;
     rt_mesh3d_refresh_bounds(mesh);
@@ -353,7 +363,10 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
     vgfx3d_frustum_extract(&frustum, c->cached_vp);
 
     /* Build draw command from batch mesh/material */
-    rt_material3d *mat = (rt_material3d *)b->material;
+    rt_material3d *mat =
+        (rt_material3d *)rt_g3d_checked_or_null(b->material, RT_G3D_MATERIAL3D_CLASS_ID);
+    if (!mat)
+        return;
 
     if (b->last_motion_frame != rt_canvas3d_get_frame_serial(canvas_obj)) {
         if (b->motion_snapshot_count > 0) {

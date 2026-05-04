@@ -94,6 +94,10 @@ int vgfx3d_unpack_pixels_rgba(const void *pixels_ptr,
     int32_t w = (int32_t)pv->w;
     int32_t h = (int32_t)pv->h;
     size_t pixel_count = (size_t)w * (size_t)h;
+    if ((size_t)w != 0 && pixel_count / (size_t)w != (size_t)h)
+        return -1;
+    if (pixel_count > SIZE_MAX / 4u)
+        return -1;
     uint8_t *rgba = (uint8_t *)malloc(pixel_count * 4);
     if (!rgba)
         return -1;

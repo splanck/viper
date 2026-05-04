@@ -30,6 +30,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_pixels.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -93,6 +94,33 @@ static void material_assign_ref(void **slot, void *value) {
     rt_obj_retain_maybe(value);
     material_release_ref(slot);
     *slot = value;
+}
+
+static rt_material3d *material_checked(void *obj) {
+    return (rt_material3d *)rt_g3d_checked_or_null(obj, RT_G3D_MATERIAL3D_CLASS_ID);
+}
+
+static int material_pixels_handle_valid(void *pixels) {
+    return pixels && rt_obj_class_id(pixels) == RT_PIXELS_CLASS_ID;
+}
+
+static int material_cubemap_handle_valid(void *cubemap) {
+    return cubemap && rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID);
+}
+
+static void material_assign_pixels_ref(void **slot, void *pixels) {
+    if (pixels && !material_pixels_handle_valid(pixels))
+        return;
+    material_assign_ref(slot, pixels);
+}
+
+void rt_material3d_assign_env_map_checked(void *obj, void *cubemap) {
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
+        return;
+    if (cubemap && !material_cubemap_handle_valid(cubemap))
+        return;
+    material_assign_ref(&mat->env_map, cubemap);
 }
 
 /// @brief Clamp into the closed `[0, 1]` range — the common normalized-parameter guard
@@ -218,7 +246,7 @@ static void material_promote_to_pbr(rt_material3d *mat) {
 /// data keeps GPU uploads cheap — callers who want independent textures clone them
 /// separately. Returns NULL if `rt_material3d_new` fails to allocate.
 static void *material_clone_like(void *obj) {
-    rt_material3d *src = (rt_material3d *)obj;
+    rt_material3d *src = material_checked(obj);
     rt_material3d *dst;
     if (!src)
         return NULL;
@@ -315,7 +343,7 @@ void *rt_material3d_new_textured(void *pixels) {
     rt_material3d *mat = (rt_material3d *)rt_material3d_new();
     if (!mat)
         return NULL;
-    material_assign_ref(&mat->texture, pixels);
+    material_assign_pixels_ref(&mat->texture, pixels);
     return mat;
 }
 
@@ -347,9 +375,9 @@ void *rt_material3d_make_instance(void *obj) {
 
 /// @brief Set the diffuse color of a material (overrides existing color, keeps texture).
 void rt_material3d_set_color(void *obj, double r, double g, double b) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
-    rt_material3d *mat = (rt_material3d *)obj;
     mat->diffuse[0] = sanitize_color(r);
     mat->diffuse[1] = sanitize_color(g);
     mat->diffuse[2] = sanitize_color(b);
@@ -357,9 +385,10 @@ void rt_material3d_set_color(void *obj, double r, double g, double b) {
 
 /// @brief Set or replace the diffuse texture map.
 void rt_material3d_set_texture(void *obj, void *pixels) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
-    material_assign_ref(&((rt_material3d *)obj)->texture, pixels);
+    material_assign_pixels_ref(&mat->texture, pixels);
 }
 
 /// @brief Coerce an incoming texture-wrap mode to a known-valid enum value.
@@ -398,7 +427,7 @@ void rt_material3d_set_import_sampler(void *obj,
                                       int64_t wrap_s,
                                       int64_t wrap_t,
                                       int64_t filter) {
-    rt_material3d *mat = (rt_material3d *)obj;
+    rt_material3d *mat = material_checked(obj);
     if (!mat)
         return;
     rt_material3d_set_import_texture_slot(obj,
@@ -427,7 +456,7 @@ void rt_material3d_set_import_texture_slot(void *obj,
                                            int64_t wrap_s,
                                            int64_t wrap_t,
                                            int64_t filter) {
-    rt_material3d *mat = (rt_material3d *)obj;
+    rt_material3d *mat = material_checked(obj);
     int32_t slot_index = material_sanitize_texture_slot(slot);
     double c;
     double s;
@@ -469,33 +498,37 @@ void rt_material3d_set_albedo_map(void *obj, void *pixels) {
 
 /// @brief Set the Phong specular shininess exponent (higher = tighter highlight).
 void rt_material3d_set_shininess(void *obj, double s) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
-    ((rt_material3d *)obj)->shininess = clamp_min(s, 0.0);
+    mat->shininess = clamp_min(s, 0.0);
 }
 
 /// @brief Enable or disable unlit mode (ignores scene lighting, renders flat color/texture).
 void rt_material3d_set_unlit(void *obj, int8_t unlit) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
-    ((rt_material3d *)obj)->unlit = unlit;
+    mat->unlit = unlit;
 }
 
 /// @brief Select the shading model (0=Phong, 1=Blinn-Phong, 2=flat, etc.).
 /// @details Model values outside [0,5] are clamped to 0 (Phong).
 void rt_material3d_set_shading_model(void *obj, int64_t model) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
     if (model < 0 || model > 5)
         model = 0;
-    ((rt_material3d *)obj)->shading_model = (int32_t)model;
+    mat->shading_model = (int32_t)model;
 }
 
 /// @brief Set a custom shader parameter by index (0–7) for advanced shading effects.
 void rt_material3d_set_custom_param(void *obj, int64_t index, double value) {
-    if (!obj || index < 0 || index >= 8)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat || index < 0 || index >= 8)
         return;
-    ((rt_material3d *)obj)->custom_params[index] = isfinite(value) ? value : 0.0;
+    mat->custom_params[index] = isfinite(value) ? value : 0.0;
 }
 
 /// @brief Set the transparency level (0.0 = invisible, 1.0 = fully opaque).
@@ -503,9 +536,9 @@ void rt_material3d_set_custom_param(void *obj, int64_t index, double value) {
 ///          opaque material to BLEND so the visible result matches the scalar.
 ///          Call SetAlphaMode afterwards when explicit MASK/OPAQUE behavior is needed.
 void rt_material3d_set_alpha(void *obj, double alpha) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
-    rt_material3d *mat = (rt_material3d *)obj;
     mat->alpha = clamp01(alpha);
     if (mat->alpha < 0.999 && mat->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE) {
         mat->alpha_mode = RT_MATERIAL3D_ALPHA_MODE_BLEND;
@@ -519,127 +552,131 @@ void rt_material3d_set_alpha(void *obj, double alpha) {
 
 /// @brief Get the current transparency level of the material.
 double rt_material3d_get_alpha(void *obj) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return 1.0;
-    return ((rt_material3d *)obj)->alpha;
+    return mat->alpha;
 }
 
 /// @brief Set PBR metallic factor [0, 1]. 0 = dielectric (plastic, wood), 1 = pure metal. Auto-
 /// promotes the material to PBR shading model on first use.
 void rt_material3d_set_metallic(void *obj, double value) {
-    rt_material3d *mat;
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
-    mat = (rt_material3d *)obj;
     material_promote_to_pbr(mat);
     mat->metallic = clamp01(value);
 }
 
 /// @brief Read the metallic factor (default 0).
 double rt_material3d_get_metallic(void *obj) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return 0.0;
-    return ((rt_material3d *)obj)->metallic;
+    return mat->metallic;
 }
 
 /// @brief Set PBR roughness [0, 1]. 0 = mirror smooth, 1 = fully diffuse. Auto-promotes to PBR.
 void rt_material3d_set_roughness(void *obj, double value) {
-    rt_material3d *mat;
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
-    mat = (rt_material3d *)obj;
     material_promote_to_pbr(mat);
     mat->roughness = clamp01(value);
 }
 
 /// @brief Read the roughness factor (default 0.5).
 double rt_material3d_get_roughness(void *obj) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return 0.5;
-    return ((rt_material3d *)obj)->roughness;
+    return mat->roughness;
 }
 
 /// @brief Set ambient-occlusion factor [0, 1]. 1 = no occlusion, 0 = fully shadowed in cavities.
 /// Multiplied into the indirect lighting. Auto-promotes to PBR.
 void rt_material3d_set_ao(void *obj, double value) {
-    rt_material3d *mat;
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
-    mat = (rt_material3d *)obj;
     material_promote_to_pbr(mat);
     mat->ao = clamp01(value);
 }
 
 /// @brief Read the AO factor (default 1.0 = no occlusion).
 double rt_material3d_get_ao(void *obj) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return 1.0;
-    return ((rt_material3d *)obj)->ao;
+    return mat->ao;
 }
 
 /// @brief Multiply the emissive output by `value` (≥ 0). Useful for HDR/bloom: values > 1 push
 /// emissive surfaces past clamping range.
 void rt_material3d_set_emissive_intensity(void *obj, double value) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
-    ((rt_material3d *)obj)->emissive_intensity = clamp_min(value, 0.0);
+    mat->emissive_intensity = clamp_min(value, 0.0);
 }
 
 /// @brief Read the emissive intensity multiplier (default 1.0).
 double rt_material3d_get_emissive_intensity(void *obj) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return 1.0;
-    return ((rt_material3d *)obj)->emissive_intensity;
+    return mat->emissive_intensity;
 }
 
 /// @brief Assign a normal map texture for per-pixel bump/detail lighting.
 void rt_material3d_set_normal_map(void *obj, void *pixels) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
-    material_assign_ref(&((rt_material3d *)obj)->normal_map, pixels);
+    material_assign_pixels_ref(&mat->normal_map, pixels);
 }
 
 /// @brief Assign a glTF-style metallic-roughness texture (B = metallic, G = roughness, R/A
 /// unused). Auto-promotes the material to PBR shading.
 void rt_material3d_set_metallic_roughness_map(void *obj, void *pixels) {
-    rt_material3d *mat;
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
-    mat = (rt_material3d *)obj;
     material_promote_to_pbr(mat);
-    material_assign_ref(&mat->metallic_roughness_map, pixels);
+    material_assign_pixels_ref(&mat->metallic_roughness_map, pixels);
 }
 
 /// @brief Assign an ambient-occlusion texture (R channel). Multiplied into indirect lighting.
 /// Auto-promotes the material to PBR shading.
 void rt_material3d_set_ao_map(void *obj, void *pixels) {
-    rt_material3d *mat;
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
-    mat = (rt_material3d *)obj;
     material_promote_to_pbr(mat);
-    material_assign_ref(&mat->ao_map, pixels);
+    material_assign_pixels_ref(&mat->ao_map, pixels);
 }
 
 /// @brief Assign a specular map texture to control per-pixel highlight intensity.
 void rt_material3d_set_specular_map(void *obj, void *pixels) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
-    material_assign_ref(&((rt_material3d *)obj)->specular_map, pixels);
+    material_assign_pixels_ref(&mat->specular_map, pixels);
 }
 
 /// @brief Assign an emissive map texture for self-illuminated surface regions.
 void rt_material3d_set_emissive_map(void *obj, void *pixels) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
-    material_assign_ref(&((rt_material3d *)obj)->emissive_map, pixels);
+    material_assign_pixels_ref(&mat->emissive_map, pixels);
 }
 
 /// @brief Set the emissive (self-illumination) color, independent of scene lights.
 void rt_material3d_set_emissive_color(void *obj, double r, double g, double b) {
-    if (!obj)
+    rt_material3d *m = material_checked(obj);
+    if (!m)
         return;
-    rt_material3d *m = (rt_material3d *)obj;
     m->emissive[0] = sanitize_color(r);
     m->emissive[1] = sanitize_color(g);
     m->emissive[2] = sanitize_color(b);
@@ -647,50 +684,56 @@ void rt_material3d_set_emissive_color(void *obj, double r, double g, double b) {
 
 /// @brief Set normal-map intensity (≥ 0). 1.0 = no scaling, > 1 amplifies bumps, < 1 flattens.
 void rt_material3d_set_normal_scale(void *obj, double value) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
-    ((rt_material3d *)obj)->normal_scale = clamp_min(value, 0.0);
+    mat->normal_scale = clamp_min(value, 0.0);
 }
 
 /// @brief Read the normal-map scale factor (default 1.0).
 double rt_material3d_get_normal_scale(void *obj) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return 1.0;
-    return ((rt_material3d *)obj)->normal_scale;
+    return mat->normal_scale;
 }
 
 /// @brief Set the alpha-handling mode (RT_MATERIAL3D_ALPHA_MODE_OPAQUE / MASK / BLEND).
 /// OPAQUE: ignore alpha. MASK: discard fragments below cutoff. BLEND: depth-sorted transparency.
 /// Out-of-range values are clamped to OPAQUE.
 void rt_material3d_set_alpha_mode(void *obj, int64_t mode) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
     if (mode < RT_MATERIAL3D_ALPHA_MODE_OPAQUE || mode > RT_MATERIAL3D_ALPHA_MODE_BLEND)
         mode = RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
-    ((rt_material3d *)obj)->alpha_mode = (int32_t)mode;
-    ((rt_material3d *)obj)->alpha_mode_auto = 0;
+    mat->alpha_mode = (int32_t)mode;
+    mat->alpha_mode_auto = 0;
 }
 
 /// @brief Read the alpha mode (default OPAQUE).
 int64_t rt_material3d_get_alpha_mode(void *obj) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
-    return ((rt_material3d *)obj)->alpha_mode;
+    return mat->alpha_mode;
 }
 
 /// @brief Toggle double-sided rendering. Disables backface culling for this material — useful
 /// for foliage, banners, anything that should look correct from both sides. Increases fillrate.
 void rt_material3d_set_double_sided(void *obj, int8_t enabled) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return;
-    ((rt_material3d *)obj)->double_sided = enabled ? 1 : 0;
+    mat->double_sided = enabled ? 1 : 0;
 }
 
 /// @brief Returns 1 if double-sided rendering is enabled, 0 otherwise.
 int8_t rt_material3d_get_double_sided(void *obj) {
-    if (!obj)
+    rt_material3d *mat = material_checked(obj);
+    if (!mat)
         return 0;
-    return ((rt_material3d *)obj)->double_sided ? 1 : 0;
+    return mat->double_sided ? 1 : 0;
 }
 
 #else

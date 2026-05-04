@@ -306,6 +306,8 @@ void rt_terrain3d_set_material(void *obj, void *material) {
         (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
     if (!t)
         return;
+    if (material && !rt_g3d_has_class(material, RT_G3D_MATERIAL3D_CLASS_ID))
+        return;
     if (t->material == material)
         return;
     terrain_assign_ref(&t->material, material);
@@ -676,11 +678,22 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
     float aabb_min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
     float aabb_max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
 
-    /* Vertices (with LOD step) */
-    int32_t vert_cols = 0, vert_rows = 0;
-    for (int32_t dz = 0; dz <= rows; dz += step) {
-        vert_cols = 0;
-        for (int32_t dx = 0; dx <= cols; dx += step) {
+    /* Vertices (with LOD step). Edge chunks can be smaller than the selected
+     * step, so force the final row/column to be present. */
+    int32_t vert_cols = cols / step + 1;
+    int32_t vert_rows = rows / step + 1;
+    if (cols % step != 0)
+        vert_cols++;
+    if (rows % step != 0)
+        vert_rows++;
+    for (int32_t rz = 0; rz < vert_rows; rz++) {
+        int32_t dz = rz * step;
+        if (dz > rows || rz == vert_rows - 1)
+            dz = rows;
+        for (int32_t rx = 0; rx < vert_cols; rx++) {
+            int32_t dx = rx * step;
+            if (dx > cols || rx == vert_cols - 1)
+                dx = cols;
             int32_t ix = x0 + dx, iz = z0 + dz;
             /* Clamp to terrain bounds */
             if (ix >= t->width)
@@ -705,10 +718,7 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
                 aabb_max[1] = (float)wy;
             if ((float)wz > aabb_max[2])
                 aabb_max[2] = (float)wz;
-
-            vert_cols++;
         }
-        vert_rows++;
     }
 
     /* Triangles (CCW winding) */
@@ -729,7 +739,10 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
 
         /* Top edge (z = z0) */
         for (int32_t rx = 0; rx < vert_cols; rx++) {
-            int32_t ix = x0 + rx * step;
+            int32_t sample_dx = rx * step;
+            if (sample_dx > cols || rx == vert_cols - 1)
+                sample_dx = cols;
+            int32_t ix = x0 + sample_dx;
             if (ix >= t->width)
                 ix = t->width - 1;
             double wx, wy, wz, nx, ny, nz_n, u, v;
@@ -747,7 +760,10 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
         /* Bottom edge (z = z0 + rows) */
         int64_t bottom_row_start = (int64_t)((vert_rows - 1) * vert_cols);
         for (int32_t rx = 0; rx < vert_cols; rx++) {
-            int32_t ix = x0 + rx * step;
+            int32_t sample_dx = rx * step;
+            if (sample_dx > cols || rx == vert_cols - 1)
+                sample_dx = cols;
+            int32_t ix = x0 + sample_dx;
             int32_t iz = z0 + rows;
             if (ix >= t->width)
                 ix = t->width - 1;
@@ -767,7 +783,10 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
 
         /* Left edge (x = x0) */
         for (int32_t rz = 0; rz < vert_rows; rz++) {
-            int32_t iz = z0 + rz * step;
+            int32_t sample_dz = rz * step;
+            if (sample_dz > rows || rz == vert_rows - 1)
+                sample_dz = rows;
+            int32_t iz = z0 + sample_dz;
             if (iz >= t->depth)
                 iz = t->depth - 1;
             double wx, wy, wz, nx, ny, nz_n, u, v;
@@ -785,7 +804,10 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
         /* Right edge (x = x0 + cols) */
         for (int32_t rz = 0; rz < vert_rows; rz++) {
             int32_t ix = x0 + cols;
-            int32_t iz = z0 + rz * step;
+            int32_t sample_dz = rz * step;
+            if (sample_dz > rows || rz == vert_rows - 1)
+                sample_dz = rows;
+            int32_t iz = z0 + sample_dz;
             if (ix >= t->width)
                 ix = t->width - 1;
             if (iz >= t->depth)
@@ -820,9 +842,14 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz, int32_t step, 
 /// between near and far they use step=2 (¼ triangles); beyond `far_dist` they use step=4
 /// (1/16 triangles). Lower distances trade visual quality for triangle count.
 void rt_terrain3d_set_lod_distances(void *obj, double near_dist, double far_dist) {
-    if (!obj)
+    rt_terrain3d *t =
+        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t)
         return;
-    rt_terrain3d *t = (rt_terrain3d *)obj;
+    if (!isfinite(near_dist) || near_dist < 0.0)
+        near_dist = 50.0;
+    if (!isfinite(far_dist) || far_dist <= near_dist)
+        far_dist = near_dist + 100.0;
     t->lod_dist1 = (float)near_dist;
     t->lod_dist2 = (float)far_dist;
 }
@@ -831,9 +858,14 @@ void rt_terrain3d_set_lod_distances(void *obj, double near_dist, double far_dist
 /// LOD>0 chunk edges. Skirts hide T-junction cracks where adjacent chunks render at different
 /// LODs. Set to 0 to disable. Invalidates cached chunks (skirts are baked into the mesh).
 void rt_terrain3d_set_skirt_depth(void *obj, double depth) {
-    if (!obj)
+    rt_terrain3d *t =
+        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t)
         return;
-    rt_terrain3d *t = (rt_terrain3d *)obj;
+    if (!isfinite(depth) || depth < 0.0)
+        depth = 0.0;
+    if (depth > 1000.0)
+        depth = 1000.0;
     t->skirt_depth = (float)depth;
     invalidate_all_chunks(t);
 }
@@ -843,10 +875,11 @@ void rt_terrain3d_set_skirt_depth(void *obj, double depth) {
 /// view-projection AABB; (Phase B) pick LOD by distance to camera (XZ); finally enqueue the
 /// chosen mesh with the terrain material. No-op outside a frame or with no material set.
 void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
-    if (!canvas_obj || !terrain_obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas_obj);
+    rt_terrain3d *t =
+        (rt_terrain3d *)rt_g3d_checked_or_null(terrain_obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!c || !t)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)canvas_obj;
-    rt_terrain3d *t = (rt_terrain3d *)terrain_obj;
     if (!c->in_frame || !c->backend || !t->material)
         return;
     if (c->frame_is_2d) {

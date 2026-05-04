@@ -521,6 +521,7 @@ Surface appearance for meshes, models, decals, and other 3D drawables.
 - Calling `SetMetallic`, `SetRoughness`, `SetAO`, `SetMetallicRoughnessMap`, or `SetAOMap` on a legacy material promotes it into the PBR workflow.
 - `Clone()` and `MakeInstance()` both return independent material objects. They eagerly copy scalar state and share the currently referenced texture/cubemap objects by pointer. After cloning, either material can replace its maps independently.
 - Color and scalar setters sanitize input at the runtime boundary: colors and PBR factors are clamped to valid ranges, non-finite custom parameters become `0`, and non-finite shadow/fog/material values fall back to deterministic safe defaults.
+- Texture map setters accept `Pixels` handles only, and `SetEnvMap` accepts `CubeMap3D` handles only. Invalid handle types are ignored instead of being retained into material state.
 - `AlphaMode` changes how texture alpha is interpreted for PBR materials:
   - `0`: opaque. Texture/material alpha does not enable blending, and surviving fragments write depth as opaque.
   - `1`: masked. Fragments below the cutoff are discarded; surviving fragments render as opaque coverage.
@@ -697,6 +698,7 @@ func start() {
 HDR targets created with `NewHdr()` keep their GPU color attachment in `RGBA16F`, but `AsPixels()` still returns standard `Pixels`. GPU readback keeps both a tonemapped RGBA8 mirror and a linear RGBA32F CPU mirror; render-target postfx consumes the linear HDR mirror for Bloom, Tonemap, FXAA, ColorGrade, and Vignette before final 8-bit conversion so highlights are not clamped before the chain runs.
 When a render target is bound, `Canvas3D.Width`, `Canvas3D.Height`, `Begin2D()`, debug overlays, and `Screenshot()` all operate in that target's pixel space instead of the window's.
 `Canvas3D.Begin()` also uses the target's aspect ratio for that frame's projection while the render target is bound, so switching between the window and RTT views does not stretch perspective or rewrite the camera's stored projection.
+`Canvas3D.SetRenderTarget()` accepts `RenderTarget3D` handles only and prepares the target's color/depth storage before handing it to the active backend, so a successful bind has a valid CPU mirror for software rendering and later readback.
 **PostFX:** If a render target is active when you call `Flip()`, the canvas applies the current CPU-supported `PostFX3D` chain to that render target instead of the window backbuffer. SSAO, DOF, and motion blur require GPU window postfx because they need scene depth/history/velocity buffers; on a render target or software CPU path they trap with a clear error instead of silently no-oping.
 
 ## CubeMap3D
@@ -1196,6 +1198,8 @@ func start() {
 - Shape storage grows on demand
 - Normal deltas optional (lazy-allocated on first `SetNormalDelta`)
 - Weights can be negative (reverse deformation)
+- `New(vertexCount)` bounds allocation size, deltas sanitize non-finite values to `0`, and non-finite weights become `0` before clamping to the supported range.
+- `Canvas3D.DrawMeshMorphed` requires a `Mat4` transform, a `Mesh3D`, and a matching `MorphTarget3D`; mismatched vertex counts or invalid handles skip the draw without dereferencing the wrong object type.
 - GPU-applied on Metal and on OpenGL/D3D11 while the active shape count fits backend shader limits; otherwise CPU-applied as `finalPos = basePos + sum(weight * delta)` per vertex
 
 ## FBX Loader
@@ -2408,7 +2412,7 @@ func start() {
 - LOD 1 (half): 8x8 quads per chunk (mid-range)
 - LOD 2 (quarter): 4x4 quads per chunk (distant)
 
-Configure with `SetLODDistances(nearDist, farDist)` — chunks closer than `nearDist` use LOD 0, between `nearDist` and `farDist` use LOD 1, beyond `farDist` use LOD 2. Default: 100/250. Chunks outside the camera frustum are culled entirely (not drawn). Skirt geometry (`SetSkirtDepth(depth)`) hides cracks at LOD transitions by extending chunk edges downward.
+Configure with `SetLODDistances(nearDist, farDist)` — chunks closer than `nearDist` use LOD 0, between `nearDist` and `farDist` use LOD 1, beyond `farDist` use LOD 2. Default: 100/250. Invalid distances are sanitized so `farDist` stays greater than `nearDist`. Chunks outside the camera frustum are culled entirely (not drawn). Skirt geometry (`SetSkirtDepth(depth)`) hides cracks at LOD transitions by extending chunk edges downward; invalid or negative skirt depths disable skirts. Edge chunks always include their far row/column endpoints at coarser LODs, so partial edge chunks still produce triangles.
 
 Draw via `Canvas3D.DrawTerrain(terrain)` during a normal 3D `Begin`/`End` pass. Terrain is not valid inside `Begin2D()`.
 
@@ -2506,6 +2510,8 @@ Navigation mesh with A* pathfinding for AI characters.
 | `IsWalkable(position)` | `i1(obj)` | Check if Vec3 position is on the navmesh |
 | `SetMaxSlope(degrees)` | `void(f64)` | Update walkability slope threshold |
 | `DebugDraw(canvas)` | `void(obj)` | Visualize navmesh wireframe on Canvas3D |
+
+`Build()` stores the source walkable geometry separately from the filtered navigation triangles. `SetMaxSlope()` therefore immediately refilters the existing mesh and rebuilds adjacency instead of requiring a full rebuild. Slope tests use upward-facing triangle planes, `SamplePosition()` snaps to the triangle plane height, and `FindPath()` works from the containing triangle rather than centroid height.
 
 ### Zia Example
 
@@ -2853,6 +2859,8 @@ Texture array for efficient multi-texture rendering.
 |--------|-----------|-------------|
 | `Add(pixels)` | `i64(obj)` | Add Pixels texture layer (returns layer index) |
 | `GetTexture()` | `obj()` | Export combined atlas as single Pixels |
+
+Each added layer is copied into the atlas with a duplicated 1-pixel edge/corner border. The padding prevents bilinear filtering from bleeding neighboring layers into each other when atlas UVs land near tile edges.
 
 ### Zia Example
 

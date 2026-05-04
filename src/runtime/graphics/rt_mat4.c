@@ -85,12 +85,22 @@ static mat4_impl *mat4_alloc(void) {
     if (mat4_pool_top_ > 0) {
         mat = (mat4_impl *)mat4_pool_buf_[--mat4_pool_top_];
     } else {
-        mat = (mat4_impl *)rt_obj_new_i64(0, sizeof(mat4_impl));
+        mat = (mat4_impl *)rt_obj_new_i64(RT_MAT4_CLASS_ID, sizeof(mat4_impl));
         if (!mat)
             return NULL;
         rt_obj_set_finalizer(mat, mat4_pool_return);
     }
     return mat;
+}
+
+static mat4_impl *mat4_checked(void *m) {
+#ifdef RT_MAT4_INTERNAL_ASSUME_STRUCT_HANDLE
+    return (mat4_impl *)m;
+#else
+    if (!m || rt_obj_class_id(m) != RT_MAT4_CLASS_ID)
+        return NULL;
+    return (mat4_impl *)m;
+#endif
 }
 
 //=============================================================================
@@ -366,7 +376,9 @@ double rt_mat4_get(void *m, int64_t row, int64_t col) {
     if (!m || row < 0 || row > 3 || col < 0 || col > 3)
         return 0.0;
 
-    mat4_impl *mat = (mat4_impl *)m;
+    mat4_impl *mat = mat4_checked(m);
+    if (!mat)
+        return 0.0;
     return M(mat, row, col);
 }
 
@@ -376,11 +388,10 @@ double rt_mat4_get(void *m, int64_t row, int64_t col) {
 
 /// @brief Element-wise addition (a + b). Returns identity for NULL inputs.
 void *rt_mat4_add(void *a, void *b) {
-    if (!a || !b)
+    mat4_impl *ma = mat4_checked(a);
+    mat4_impl *mb = mat4_checked(b);
+    if (!ma || !mb)
         return rt_mat4_zero();
-
-    mat4_impl *ma = (mat4_impl *)a;
-    mat4_impl *mb = (mat4_impl *)b;
 
     double r[16];
     for (int i = 0; i < 16; i++)
@@ -406,11 +417,10 @@ void *rt_mat4_add(void *a, void *b) {
 
 /// @brief Element-wise subtraction (a - b). Returns identity for NULL inputs.
 void *rt_mat4_sub(void *a, void *b) {
-    if (!a || !b)
+    mat4_impl *ma = mat4_checked(a);
+    mat4_impl *mb = mat4_checked(b);
+    if (!ma || !mb)
         return rt_mat4_zero();
-
-    mat4_impl *ma = (mat4_impl *)a;
-    mat4_impl *mb = (mat4_impl *)b;
 
     double r[16];
     for (int i = 0; i < 16; i++)
@@ -437,11 +447,10 @@ void *rt_mat4_sub(void *a, void *b) {
 /// @brief Standard matrix multiplication (a × b) — composes transforms in left-to-right order:
 /// `mul(A, B)` then applied to a point gives `A·B·p`. Returns identity for NULL inputs.
 void *rt_mat4_mul(void *a, void *b) {
-    if (!a || !b)
+    mat4_impl *ma = mat4_checked(a);
+    mat4_impl *mb = mat4_checked(b);
+    if (!ma || !mb)
         return rt_mat4_identity();
-
-    mat4_impl *ma = (mat4_impl *)a;
-    mat4_impl *mb = (mat4_impl *)b;
 
     double r[16];
     for (int i = 0; i < 4; i++) {
@@ -472,10 +481,9 @@ void *rt_mat4_mul(void *a, void *b) {
 
 /// @brief Multiply every entry of `m` by scalar `s`. Returns identity for NULL `m`.
 void *rt_mat4_mul_scalar(void *m, double s) {
-    if (!m)
+    mat4_impl *mat = mat4_checked(m);
+    if (!mat)
         return rt_mat4_zero();
-
-    mat4_impl *mat = (mat4_impl *)m;
 
     double r[16];
     for (int i = 0; i < 16; i++)
@@ -505,7 +513,9 @@ void *rt_mat4_transform_point(void *m, void *v) {
     if (!m || !v)
         return rt_vec3_zero();
 
-    mat4_impl *mat = (mat4_impl *)m;
+    mat4_impl *mat = mat4_checked(m);
+    if (!mat)
+        return rt_vec3_zero();
     double x = rt_vec3_x(v);
     double y = rt_vec3_y(v);
     double z = rt_vec3_z(v);
@@ -532,7 +542,9 @@ void *rt_mat4_transform_vec(void *m, void *v) {
     if (!m || !v)
         return rt_vec3_zero();
 
-    mat4_impl *mat = (mat4_impl *)m;
+    mat4_impl *mat = mat4_checked(m);
+    if (!mat)
+        return rt_vec3_zero();
     double x = rt_vec3_x(v);
     double y = rt_vec3_y(v);
     double z = rt_vec3_z(v);
@@ -552,10 +564,9 @@ void *rt_mat4_transform_vec(void *m, void *v) {
 /// @brief Return the transpose of `m` (rows become columns). Useful for converting between
 /// row-major and column-major matrix layouts when interfacing with other math libraries.
 void *rt_mat4_transpose(void *m) {
-    if (!m)
+    mat4_impl *mat = mat4_checked(m);
+    if (!mat)
         return rt_mat4_identity();
-
-    mat4_impl *mat = (mat4_impl *)m;
 
     return rt_mat4_new(mat->m[0],
                        mat->m[4],
@@ -578,10 +589,10 @@ void *rt_mat4_transpose(void *m) {
 /// @brief Compute the 4×4 determinant via cofactor expansion. Returns 0 for NULL input. A
 /// near-zero determinant indicates a singular matrix that has no well-defined inverse.
 double rt_mat4_det(void *m) {
-    if (!m)
+    mat4_impl *mat = mat4_checked(m);
+    if (!mat)
         return 0.0;
 
-    mat4_impl *mat = (mat4_impl *)m;
     double *a = mat->m;
 
     // Compute 2x2 determinants
@@ -606,10 +617,10 @@ double rt_mat4_det(void *m) {
 /// NULL input or a singular matrix (det ≈ 0). For affine-only transforms, often faster to
 /// invert the rotation+translation directly.
 void *rt_mat4_inverse(void *m) {
-    if (!m)
+    mat4_impl *mat = mat4_checked(m);
+    if (!mat)
         return rt_mat4_identity();
 
-    mat4_impl *mat = (mat4_impl *)m;
     double *a = mat->m;
 
     // Compute 2x2 determinants
@@ -629,7 +640,7 @@ void *rt_mat4_inverse(void *m) {
 
     double det = s0 * c5 - s1 * c4 + s2 * c3 + s3 * c2 - s4 * c1 + s5 * c0;
 
-    if (fabs(det) < 1e-15)
+    if (!isfinite(det) || fabs(det) < 1e-15)
         return rt_mat4_identity(); // Singular
 
     double invDet = 1.0 / det;
@@ -676,10 +687,9 @@ void *rt_mat4_inverse(void *m) {
 
 /// @brief Element-wise negation (-m). Returns identity for NULL input.
 void *rt_mat4_neg(void *m) {
-    if (!m)
+    mat4_impl *mat = mat4_checked(m);
+    if (!mat)
         return rt_mat4_zero();
-
-    mat4_impl *mat = (mat4_impl *)m;
 
     double r[16];
     for (int i = 0; i < 16; i++)
@@ -716,8 +726,10 @@ int8_t rt_mat4_eq(void *a, void *b, double epsilon) {
     if (epsilon <= 0.0)
         epsilon = 1e-9;
 
-    mat4_impl *ma = (mat4_impl *)a;
-    mat4_impl *mb = (mat4_impl *)b;
+    mat4_impl *ma = mat4_checked(a);
+    mat4_impl *mb = mat4_checked(b);
+    if (!ma || !mb)
+        return 0;
 
     for (int i = 0; i < 16; i++) {
         if (fabs(ma->m[i] - mb->m[i]) > epsilon)

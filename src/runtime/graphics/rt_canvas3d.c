@@ -30,6 +30,7 @@
 #include "rt_graphics_internal.h"
 #include "rt_heap.h"
 #include "rt_input.h"
+#include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
@@ -842,7 +843,11 @@ static int canvas3d_track_temp_object(rt_canvas3d *c, void *obj) {
     if (!c || !obj)
         return 0;
     if (c->temp_obj_count >= c->temp_obj_capacity) {
+        if (c->temp_obj_capacity > INT32_MAX / 2)
+            return 0;
         int32_t new_cap = c->temp_obj_capacity == 0 ? 8 : c->temp_obj_capacity * 2;
+        if ((size_t)new_cap > SIZE_MAX / sizeof(void *))
+            return 0;
         void **nb = (void **)realloc(c->temp_objects, (size_t)new_cap * sizeof(void *));
         if (!nb)
             return 0;
@@ -851,6 +856,43 @@ static int canvas3d_track_temp_object(rt_canvas3d *c, void *obj) {
     }
     rt_obj_retain_maybe(obj);
     c->temp_objects[c->temp_obj_count++] = obj;
+    return 1;
+}
+
+static int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
+                                           const rt_mesh3d *mesh,
+                                           vgfx3d_vertex_t **out_vertices,
+                                           uint32_t **out_indices) {
+    vgfx3d_vertex_t *vertices;
+    uint32_t *indices;
+    size_t vertex_bytes;
+    size_t index_bytes;
+    if (!c || !mesh || !out_vertices || !out_indices || !mesh->vertices || !mesh->indices ||
+        mesh->vertex_count == 0 || mesh->index_count == 0)
+        return 0;
+    if ((size_t)mesh->vertex_count > SIZE_MAX / sizeof(*vertices) ||
+        (size_t)mesh->index_count > SIZE_MAX / sizeof(*indices))
+        return 0;
+    vertex_bytes = (size_t)mesh->vertex_count * sizeof(*vertices);
+    index_bytes = (size_t)mesh->index_count * sizeof(*indices);
+    vertices = (vgfx3d_vertex_t *)malloc(vertex_bytes);
+    if (!vertices)
+        return 0;
+    memcpy(vertices, mesh->vertices, vertex_bytes);
+    if (!canvas3d_track_temp_buffer(c, vertices)) {
+        free(vertices);
+        return 0;
+    }
+    indices = (uint32_t *)malloc(index_bytes);
+    if (!indices)
+        return 0;
+    memcpy(indices, mesh->indices, index_bytes);
+    if (!canvas3d_track_temp_buffer(c, indices)) {
+        free(indices);
+        return 0;
+    }
+    *out_vertices = vertices;
+    *out_indices = indices;
     return 1;
 }
 
@@ -2320,9 +2362,9 @@ int canvas3d_queue_screen_line(rt_canvas3d *c,
 void rt_canvas3d_begin_2d(void *obj) {
     vgfx3d_camera_params_t params;
 
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->backend)
         return;
     if (c->in_frame) {
@@ -2548,10 +2590,10 @@ void rt_canvas3d_begin(void *obj, void *camera) {
     int32_t output_h = 0;
     double render_aspect = 0.0;
 
-    if (!obj || !camera)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(camera);
+    if (!c || !cam)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
-    rt_camera3d *cam = (rt_camera3d *)camera;
     if (!c->backend)
         return;
     if (c->in_frame) {
@@ -2629,7 +2671,8 @@ void rt_canvas3d_begin(void *obj, void *camera) {
 /// Resources keyed off `(canvas, serial)` know they're stale when
 /// their cached serial is older than the canvas's current value.
 int64_t rt_canvas3d_get_frame_serial(void *obj) {
-    return obj ? ((rt_canvas3d *)obj)->frame_serial : 0;
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->frame_serial : 0;
 }
 
 /// @brief Queue a 3D mesh draw with a model matrix and a sort key for transparency ordering.
@@ -2644,14 +2687,17 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
                                         const void *motion_key,
                                         const float *prev_bone_palette,
                                         const float *prev_morph_weights) {
-    if (!obj || !mesh_obj || !model_matrix || !material_obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    rt_mesh3d *mesh =
+        (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
+    rt_material3d *mat =
+        (rt_material3d *)rt_g3d_checked_or_null(material_obj, RT_G3D_MATERIAL3D_CLASS_ID);
+    if (!mesh && mesh_obj && !rt_heap_is_payload(mesh_obj))
+        mesh = (rt_mesh3d *)mesh_obj;
+    if (!c || !mesh || !model_matrix || !mat)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->in_frame || !c->gfx_win || !c->backend)
         return;
-
-    rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
-    rt_material3d *mat = (rt_material3d *)material_obj;
 
     if (mesh->morph_targets_ref && mesh->morph_deltas == NULL && mesh->morph_weights == NULL &&
         mesh->morph_shape_count == 0) {
@@ -2665,7 +2711,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     canvas3d_ensure_normal_map_tangents(mesh, mat);
     rt_mesh3d_refresh_bounds(mesh);
 
-    if (!canvas3d_track_temp_object(c, mesh_obj))
+    if (rt_heap_is_payload(mesh_obj) && !canvas3d_track_temp_object(c, mesh_obj))
         return;
     if (!canvas3d_track_temp_object(c, material_obj))
         return;
@@ -2676,13 +2722,18 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     dd->kind = DEFERRED_DRAW_MESH;
     dd->pass_kind = DEFERRED_PASS_MAIN;
 
+    vgfx3d_vertex_t *queued_vertices = NULL;
+    uint32_t *queued_indices = NULL;
+    if (!canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
+        return;
+
     /* Build draw command */
-    dd->cmd.vertices = mesh->vertices;
+    dd->cmd.vertices = queued_vertices;
     dd->cmd.vertex_count = mesh->vertex_count;
-    dd->cmd.indices = mesh->indices;
+    dd->cmd.indices = queued_indices;
     dd->cmd.index_count = mesh->index_count;
-    dd->cmd.geometry_key = rt_heap_is_payload(mesh_obj) ? mesh_obj : NULL;
-    dd->cmd.geometry_revision = mesh->geometry_revision;
+    dd->cmd.geometry_key = NULL;
+    dd->cmd.geometry_revision = 0;
     mat4_d2f(model_matrix, dd->cmd.model_matrix);
     canvas3d_resolve_previous_model(c,
                                     motion_key,
@@ -2762,7 +2813,7 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
 ///          back-to-front for correct alpha blending. The mesh, transform, and
 ///          material pointers are borrowed (not retained).
 void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void *material_obj) {
-    if (!transform_obj)
+    if (!transform_obj || rt_obj_class_id(transform_obj) != RT_MAT4_CLASS_ID)
         return;
     rt_canvas3d_draw_mesh_matrix_keyed(
         obj, mesh_obj, ((mat4_impl *)transform_obj)->m, material_obj, transform_obj, NULL, NULL);
@@ -2787,11 +2838,13 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     rt_material3d *mat;
     vgfx3d_draw_cmd_t base_cmd;
 
-    if (!canvas_obj || !mesh_obj || !material_obj || !instance_matrices || instance_count <= 0)
+    if (!instance_matrices || instance_count <= 0)
         return;
-    c = (rt_canvas3d *)canvas_obj;
-    mesh = (rt_mesh3d *)mesh_obj;
-    mat = (rt_material3d *)material_obj;
+    c = rt_canvas3d_checked_or_stack(canvas_obj);
+    mesh = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
+    mat = (rt_material3d *)rt_g3d_checked_or_null(material_obj, RT_G3D_MATERIAL3D_CLASS_ID);
+    if (!c || !mesh || !mat)
+        return;
     if (!c->in_frame || !c->backend || mesh->vertex_count == 0 || mesh->index_count == 0)
         return;
     if (!canvas3d_track_temp_object(c, mesh_obj))
@@ -2802,12 +2855,17 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     canvas3d_ensure_normal_map_tangents(mesh, mat);
     rt_mesh3d_refresh_bounds(mesh);
     memset(&base_cmd, 0, sizeof(base_cmd));
-    base_cmd.vertices = mesh->vertices;
+    vgfx3d_vertex_t *queued_vertices = NULL;
+    uint32_t *queued_indices = NULL;
+    if (!canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
+        return;
+
+    base_cmd.vertices = queued_vertices;
     base_cmd.vertex_count = mesh->vertex_count;
-    base_cmd.indices = mesh->indices;
+    base_cmd.indices = queued_indices;
     base_cmd.index_count = mesh->index_count;
-    base_cmd.geometry_key = rt_heap_is_payload(mesh_obj) ? mesh_obj : NULL;
-    base_cmd.geometry_revision = mesh->geometry_revision;
+    base_cmd.geometry_key = NULL;
+    base_cmd.geometry_revision = 0;
     base_cmd.model_matrix[0] = base_cmd.model_matrix[5] = base_cmd.model_matrix[10] =
         base_cmd.model_matrix[15] = 1.0f;
     canvas3d_fill_material_cmd(mat, &base_cmd);
@@ -2935,9 +2993,9 @@ void rt_canvas3d_end(void *obj) {
     int32_t main_count = 0;
     int32_t overlay_count = 0;
 
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->in_frame)
         return;
     if (!c->backend) {
@@ -3350,9 +3408,10 @@ void rt_canvas3d_set_backface_cull(void *obj, int8_t enabled) {
 /// per-draw vertex transforms — the canvas owns the lifetime
 /// until after the GPU has consumed the data on `end()`.
 int rt_canvas3d_add_temp_buffer(void *obj, void *buffer) {
-    if (!obj || !buffer)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !buffer)
         return 0;
-    return canvas3d_track_temp_buffer((rt_canvas3d *)obj, buffer);
+    return canvas3d_track_temp_buffer(c, buffer);
 }
 
 /// @brief Park a GC-managed object reference for end-of-frame release.
@@ -3361,9 +3420,10 @@ int rt_canvas3d_add_temp_buffer(void *obj, void *buffer) {
 /// that might otherwise be collected before the deferred queue
 /// flushes. The canvas drops the reference in `rt_canvas3d_end`.
 void rt_canvas3d_add_temp_object(void *obj, void *value) {
-    if (!obj || !value)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !value)
         return;
-    (void)canvas3d_track_temp_object((rt_canvas3d *)obj, value);
+    (void)canvas3d_track_temp_object(c, value);
 }
 
 /// @brief Get the current canvas width in pixels (updates on window resize).
@@ -3420,9 +3480,12 @@ void rt_canvas3d_set_dt_max(void *obj, int64_t max_ms) {
 /// @brief Assign a light to one of the per-canvas light slots.
 /// @details Slot index must be in [0, VGFX3D_MAX_LIGHTS). Pass NULL to clear a slot.
 void rt_canvas3d_set_light(void *obj, int64_t index, void *light) {
-    if (!obj || index < 0 || index >= VGFX3D_MAX_LIGHTS)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || index < 0 || index >= VGFX3D_MAX_LIGHTS)
         return;
-    canvas3d_assign_owned_ref((void **)&((rt_canvas3d *)obj)->lights[index], light);
+    if (light && !rt_g3d_has_class(light, RT_G3D_LIGHT3D_CLASS_ID))
+        return;
+    canvas3d_assign_owned_ref((void **)&c->lights[index], light);
 }
 
 /// @brief Set the global ambient light color for the canvas (applied to all surfaces).

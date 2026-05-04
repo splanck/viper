@@ -44,6 +44,7 @@ extern void *rt_mesh3d_new(void);
 extern void rt_mesh3d_add_vertex(
     void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 extern void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
+extern void rt_mesh3d_clear(void *m);
 extern void *rt_mat4_identity(void);
 extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, void *material);
 extern void *rt_material3d_new(void);
@@ -291,11 +292,8 @@ void rt_vegetation3d_set_blade_size(void *obj, double width, double height, doub
     v->blade_height = height;
     v->size_variation = variation;
     /* Rebuild blade mesh with new size */
-    if (v->blade_mesh) {
-        rt_mesh3d *m = (rt_mesh3d *)v->blade_mesh;
-        m->vertex_count = 0;
-        m->index_count = 0;
-    }
+    if (v->blade_mesh)
+        rt_mesh3d_clear(v->blade_mesh);
     build_blade_mesh(v->blade_mesh, width, height);
 }
 
@@ -544,7 +542,7 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
 void rt_canvas3d_draw_vegetation(void *canvas_obj, void *veg_obj) {
     if (!canvas_obj || !veg_obj)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)rt_g3d_checked_or_null(canvas_obj, RT_G3D_CANVAS3D_CLASS_ID);
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas_obj);
     rt_vegetation3d *v =
         (rt_vegetation3d *)rt_g3d_checked_or_null(veg_obj, RT_G3D_VEGETATION3D_CLASS_ID);
     if (!c || !v)

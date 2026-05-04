@@ -27,6 +27,8 @@
 #include "rt_mat4.h"
 #include "rt_object.h"
 #include "rt_quat.h"
+#include "rt_graphics3d_ids.h"
+#include "rt_mat4.h"
 #include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
 #include "rt_trap.h"
@@ -114,7 +116,7 @@ static int mat4f_invert(const float *m, float *out) {
               m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
 
     float det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
-    if (fabsf(det) < 1e-12f)
+    if (!isfinite(det) || fabsf(det) < 1e-12f)
         return -1;
     float inv_det = 1.0f / det;
     for (int i = 0; i < 16; i++)
@@ -213,9 +215,10 @@ void *rt_skeleton3d_new(void) {
 /// `rt_skeleton3d_compute_inverse_bind`.
 /// @return The newly-assigned bone index (0-based), or -1 on failure.
 int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, void *bind_mat4) {
-    if (!obj)
+    rt_skeleton3d *s =
+        (rt_skeleton3d *)rt_g3d_checked_or_null(obj, RT_G3D_SKELETON3D_CLASS_ID);
+    if (!s)
         return -1;
-    rt_skeleton3d *s = (rt_skeleton3d *)obj;
     if (s->bone_count >= VGFX3D_MAX_BONES) {
         rt_trap("Skeleton3D.AddBone: max 256 bones exceeded");
         return -1;
@@ -255,7 +258,7 @@ int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, 
     bone->parent_index = (int32_t)parent_index;
 
     /* Copy bind pose from Mat4 (double → float) */
-    if (bind_mat4) {
+    if (bind_mat4 && rt_obj_class_id(bind_mat4) == RT_MAT4_CLASS_ID) {
         for (int r = 0; r < 4; r++)
             for (int c = 0; c < 4; c++)
                 bone->bind_pose_local[r * 4 + c] = (float)rt_mat4_get(bind_mat4, r, c);
@@ -275,9 +278,10 @@ int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, 
 /// inverse-bind to displace each vertex from rest space into the
 /// animated pose. Call this once after all bones are added.
 void rt_skeleton3d_compute_inverse_bind(void *obj) {
-    if (!obj)
+    rt_skeleton3d *s =
+        (rt_skeleton3d *)rt_g3d_checked_or_null(obj, RT_G3D_SKELETON3D_CLASS_ID);
+    if (!s)
         return;
-    rt_skeleton3d *s = (rt_skeleton3d *)obj;
 
     /* Compute global bind pose for each bone, then invert it */
     float *globals = (float *)malloc((size_t)s->bone_count * 16 * sizeof(float));
@@ -292,7 +296,8 @@ void rt_skeleton3d_compute_inverse_bind(void *obj) {
         } else {
             memcpy(&globals[i * 16], s->bones[i].bind_pose_local, 16 * sizeof(float));
         }
-        mat4f_invert(&globals[i * 16], s->bones[i].inverse_bind);
+        if (mat4f_invert(&globals[i * 16], s->bones[i].inverse_bind) != 0)
+            mat4f_identity(s->bones[i].inverse_bind);
     }
 
     free(globals);
@@ -359,7 +364,10 @@ void *rt_skeleton3d_get_bone_bind_pose(void *obj, int64_t index) {
 
 /// @brief GC finalizer for Animation3D — releases all keyframe arrays and the name string.
 static void rt_animation3d_finalize(void *obj) {
-    rt_animation3d *a = (rt_animation3d *)obj;
+    rt_animation3d *a =
+        (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
+    if (!a)
+        return;
     for (int32_t i = 0; i < a->channel_count; i++)
         free(a->channels[i].keyframes);
     free(a->channels);
@@ -493,7 +501,11 @@ void rt_animation3d_add_keyframe(
 
     if (!ch) {
         if (a->channel_count >= a->channel_capacity) {
+            if (a->channel_capacity > INT32_MAX / 2)
+                return;
             int32_t new_cap = a->channel_capacity == 0 ? 8 : a->channel_capacity * 2;
+            if ((size_t)new_cap > SIZE_MAX / sizeof(vgfx3d_anim_channel_t))
+                return;
             vgfx3d_anim_channel_t *nc = (vgfx3d_anim_channel_t *)realloc(
                 a->channels, (size_t)new_cap * sizeof(vgfx3d_anim_channel_t));
             if (!nc)
@@ -507,7 +519,11 @@ void rt_animation3d_add_keyframe(
     }
 
     if (ch->keyframe_count >= ch->keyframe_capacity) {
+        if (ch->keyframe_capacity > INT32_MAX / 2)
+            return;
         int32_t new_cap = ch->keyframe_capacity == 0 ? 16 : ch->keyframe_capacity * 2;
+        if ((size_t)new_cap > SIZE_MAX / sizeof(vgfx3d_keyframe_t))
+            return;
         vgfx3d_keyframe_t *nk = (vgfx3d_keyframe_t *)realloc(
             ch->keyframes, (size_t)new_cap * sizeof(vgfx3d_keyframe_t));
         if (!nk)
@@ -687,11 +703,12 @@ static void rt_anim_player3d_finalize(void *obj) {
 /// fading-out clip, and a per-bone palette buffer (3-frame ring
 /// for motion-blur previous-pose lookup).
 void *rt_anim_player3d_new(void *skeleton) {
-    if (!skeleton) {
+    rt_skeleton3d *skel =
+        (rt_skeleton3d *)rt_g3d_checked_or_null(skeleton, RT_G3D_SKELETON3D_CLASS_ID);
+    if (!skel) {
         rt_trap("AnimPlayer3D.New: null skeleton");
         return NULL;
     }
-    rt_skeleton3d *skel = (rt_skeleton3d *)skeleton;
 
     rt_anim_player3d *p = (rt_anim_player3d *)rt_obj_new_i64(RT_G3D_ANIMPLAYER3D_CLASS_ID, (int64_t)sizeof(rt_anim_player3d));
     if (!p) {
@@ -957,8 +974,14 @@ void rt_anim_player3d_update(void *obj, double delta_time) {
     rt_anim_player3d *p = (rt_anim_player3d *)obj;
     if (!p->playing || !p->current)
         return;
+    if (!isfinite(delta_time))
+        return;
+    if (!isfinite(p->speed))
+        p->speed = 1.0f;
 
     p->current_time += (float)(delta_time * p->speed);
+    if (!isfinite(p->current_time))
+        p->current_time = 0.0f;
 
     /* Handle looping / end */
     if (anim_player_current_looping(p)) {
@@ -975,6 +998,10 @@ void rt_anim_player3d_update(void *obj, double delta_time) {
     if (p->crossfade_from) {
         p->crossfade_time += (float)delta_time;
         p->crossfade_from_time += (float)(delta_time * p->speed);
+        if (!isfinite(p->crossfade_time))
+            p->crossfade_time = 0.0f;
+        if (!isfinite(p->crossfade_from_time))
+            p->crossfade_from_time = 0.0f;
         if (p->crossfade_time >= p->crossfade_duration)
             animation3d_assign_ref((void **)&p->crossfade_from, NULL);
     }
@@ -984,8 +1011,11 @@ void rt_anim_player3d_update(void *obj, double delta_time) {
 
 /// @brief Time-scale factor applied per `update` call (1.0 = real time, 0.5 = slow-mo, etc.).
 void rt_anim_player3d_set_speed(void *obj, double speed) {
-    if (obj)
+    if (obj) {
+        if (!isfinite(speed))
+            speed = 1.0;
         ((rt_anim_player3d *)obj)->speed = (float)speed;
+    }
 }
 
 /// @brief Current speed multiplier (1.0 if `obj` is NULL).
@@ -1008,6 +1038,12 @@ double rt_anim_player3d_get_time(void *obj) {
 void rt_anim_player3d_set_time(void *obj, double time) {
     if (obj) {
         rt_anim_player3d *p = (rt_anim_player3d *)obj;
+        if (!isfinite(time))
+            time = 0.0;
+        if (time < 0.0)
+            time = 0.0;
+        if (p->current && p->current->duration > 0.0f && time > p->current->duration)
+            time = p->current->duration;
         p->current_time = (float)time;
         p->has_prev_motion_palette = 0;
         p->last_motion_frame = 0;
@@ -1149,7 +1185,9 @@ void rt_canvas3d_draw_mesh_matrix_skinned_keyed(void *canvas,
     if (mesh->vertex_count == 0)
         return;
 
-    c = (rt_canvas3d *)canvas;
+    c = rt_canvas3d_checked_or_stack(canvas);
+    if (!c)
+        return;
     if (c && c->backend && vgfx3d_backend_prefers_gpu_skinning(c->backend->name, bone_count)) {
         rt_mesh3d tmp = *mesh;
         tmp.bone_palette = bone_palette;
@@ -1187,8 +1225,14 @@ void rt_canvas3d_draw_mesh_skinned(
     const float *prev_palette;
     if (!canvas || !mesh || !transform || !material || !anim_player)
         return;
-    m = (rt_mesh3d *)mesh;
-    p = (rt_anim_player3d *)anim_player;
+    if (!rt_canvas3d_checked_or_stack(canvas))
+        return;
+    if (rt_obj_class_id(transform) != RT_MAT4_CLASS_ID)
+        return;
+    m = (rt_mesh3d *)rt_g3d_checked_or_null(mesh, RT_G3D_MESH3D_CLASS_ID);
+    p = (rt_anim_player3d *)rt_g3d_checked_or_null(anim_player, RT_G3D_ANIMPLAYER3D_CLASS_ID);
+    if (!m || !p)
+        return;
     if (m->vertex_count == 0 || !p->bone_palette)
         return;
     prev_palette = anim_player_prepare_prev_palette(p, rt_canvas3d_get_frame_serial(canvas));
@@ -1209,6 +1253,14 @@ void rt_canvas3d_draw_mesh_skinned(
 /// @brief GC finalizer for AnimBlend3D — releases per-state animation refs and the bone palette.
 static void anim_blend3d_finalizer(void *obj) {
     rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
+    for (int32_t i = 0; i < b->state_count; i++) {
+        if (b->states[i].animation && rt_obj_release_check0(b->states[i].animation))
+            rt_obj_free(b->states[i].animation);
+        b->states[i].animation = NULL;
+    }
+    if (b->skeleton && rt_obj_release_check0(b->skeleton))
+        rt_obj_free(b->skeleton);
+    b->skeleton = NULL;
     free(b->bone_palette);
     free(b->prev_bone_palette);
     free(b->motion_palette_snapshot);
@@ -1224,9 +1276,10 @@ static void anim_blend3d_finalizer(void *obj) {
 /// additive layering. Each registered "state" carries its own
 /// time, speed, and weight.
 void *rt_anim_blend3d_new(void *skel_obj) {
-    if (!skel_obj)
+    rt_skeleton3d *skel =
+        (rt_skeleton3d *)rt_g3d_checked_or_null(skel_obj, RT_G3D_SKELETON3D_CLASS_ID);
+    if (!skel)
         return NULL;
-    rt_skeleton3d *skel = (rt_skeleton3d *)skel_obj;
     rt_anim_blend3d *b = (rt_anim_blend3d *)rt_obj_new_i64(RT_G3D_ANIMBLEND3D_CLASS_ID, (int64_t)sizeof(rt_anim_blend3d));
     if (!b) {
         rt_trap("AnimBlend3D.New: allocation failed");
@@ -1234,6 +1287,7 @@ void *rt_anim_blend3d_new(void *skel_obj) {
     }
     b->vptr = NULL;
     b->skeleton = skel;
+    rt_obj_retain_maybe(skel);
     b->state_count = 0;
     memset(b->states, 0, sizeof(b->states));
     b->last_motion_frame = 0;
@@ -1248,6 +1302,8 @@ void *rt_anim_blend3d_new(void *skel_obj) {
     if (!b->bone_palette || !b->prev_bone_palette || !b->motion_palette_snapshot ||
         !b->local_transforms || !b->temp_state_local) {
         anim_blend3d_finalizer(b);
+        if (rt_obj_release_check0(b))
+            rt_obj_free(b);
         rt_trap("AnimBlend3D.New: allocation failed");
         return NULL;
     }
@@ -1265,9 +1321,12 @@ void *rt_anim_blend3d_new(void *skel_obj) {
 
 /// @brief Register a new blend state by name and animation; returns its index.
 int64_t rt_anim_blend3d_add_state(void *obj, rt_string name, void *anim_obj) {
-    if (!obj || !anim_obj)
+    rt_anim_blend3d *b =
+        (rt_anim_blend3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMBLEND3D_CLASS_ID);
+    rt_animation3d *anim =
+        (rt_animation3d *)rt_g3d_checked_or_null(anim_obj, RT_G3D_ANIMATION3D_CLASS_ID);
+    if (!b || !anim)
         return -1;
-    rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
     if (b->state_count >= RT_ANIM_BLEND3D_MAX_STATES)
         return -1;
 
@@ -1283,7 +1342,8 @@ int64_t rt_anim_blend3d_add_state(void *obj, rt_string name, void *anim_obj) {
             st->name[len] = '\0';
         }
     }
-    st->animation = (rt_animation3d *)anim_obj;
+    st->animation = anim;
+    rt_obj_retain_maybe(anim);
     st->weight = 0.0f;
     st->anim_time = 0.0f;
     st->speed = 1.0f;
@@ -1298,6 +1358,8 @@ void rt_anim_blend3d_set_weight(void *obj, int64_t state, double weight) {
     rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
     if (state < 0 || state >= b->state_count)
         return;
+    if (!isfinite(weight))
+        weight = 0.0;
     b->states[state].weight = (float)weight;
 }
 
@@ -1311,6 +1373,8 @@ void rt_anim_blend3d_set_weight_by_name(void *obj, rt_string name, double weight
         return;
     for (int32_t i = 0; i < b->state_count; i++) {
         if (strcmp(b->states[i].name, target) == 0) {
+            if (!isfinite(weight))
+                weight = 0.0;
             b->states[i].weight = (float)weight;
             return;
         }
@@ -1334,6 +1398,8 @@ void rt_anim_blend3d_set_speed(void *obj, int64_t state, double speed) {
     rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
     if (state < 0 || state >= b->state_count)
         return;
+    if (!isfinite(speed))
+        speed = 1.0;
     b->states[state].speed = (float)speed;
 }
 
@@ -1344,7 +1410,7 @@ void rt_anim_blend3d_set_speed(void *obj, int64_t state, double speed) {
 /// (positions / scales) and slerps (rotations) to produce the
 /// final pose. Output palette is then ready for skinning.
 void rt_anim_blend3d_update(void *obj, double dt) {
-    if (!obj || dt <= 0)
+    if (!obj || dt <= 0 || !isfinite(dt))
         return;
     rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
     rt_skeleton3d *skel = b->skeleton;
@@ -1357,7 +1423,11 @@ void rt_anim_blend3d_update(void *obj, double dt) {
         anim_blend_state_t *st = &b->states[s];
         if (!st->animation || st->weight < 1e-6f)
             continue;
+        if (!isfinite(st->speed))
+            st->speed = 1.0f;
         st->anim_time += (float)dt * st->speed;
+        if (!isfinite(st->anim_time))
+            st->anim_time = 0.0f;
         if (st->looping && st->animation->duration > 0)
             st->anim_time = fmodf(st->anim_time, st->animation->duration);
         else if (st->anim_time > st->animation->duration)
@@ -1448,12 +1518,21 @@ void rt_canvas3d_draw_mesh_blended(
     void *canvas, void *mesh_obj, void *transform, void *material, void *blend_obj) {
     if (!canvas || !mesh_obj || !transform || !material || !blend_obj)
         return;
-    rt_anim_blend3d *b = (rt_anim_blend3d *)blend_obj;
+    if (!rt_canvas3d_checked_or_stack(canvas))
+        return;
+    if (rt_obj_class_id(transform) != RT_MAT4_CLASS_ID)
+        return;
+    rt_anim_blend3d *b =
+        (rt_anim_blend3d *)rt_g3d_checked_or_null(blend_obj, RT_G3D_ANIMBLEND3D_CLASS_ID);
+    if (!b)
+        return;
     rt_skeleton3d *skel = b->skeleton;
     if (!skel || skel->bone_count == 0)
         return;
 
-    rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
+    if (!mesh)
+        return;
     if (mesh->vertex_count == 0)
         return;
 

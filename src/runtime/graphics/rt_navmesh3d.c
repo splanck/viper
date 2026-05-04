@@ -65,6 +65,8 @@ typedef struct {
     void *vptr;
     nav_vertex_t *vertices;
     int32_t vertex_count;
+    nav_triangle_t *source_triangles;
+    int32_t source_triangle_count;
     nav_triangle_t *triangles;
     int32_t triangle_count;
     double agent_radius;
@@ -79,8 +81,10 @@ typedef struct {
 static void navmesh3d_finalizer(void *obj) {
     rt_navmesh3d *nm = (rt_navmesh3d *)obj;
     free(nm->vertices);
+    free(nm->source_triangles);
     free(nm->triangles);
     nm->vertices = NULL;
+    nm->source_triangles = NULL;
     nm->triangles = NULL;
 }
 
@@ -95,6 +99,95 @@ static void navmesh3d_free_partial(rt_navmesh3d *nm) {
 static void navmesh3d_release_local(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
+}
+
+static double navmesh3d_sanitize_slope(double degrees) {
+    if (!isfinite(degrees))
+        degrees = 45.0;
+    if (degrees < 0.0)
+        degrees = 0.0;
+    if (degrees > 89.9)
+        degrees = 89.9;
+    return degrees;
+}
+
+static int navmesh3d_build_adjacency(rt_navmesh3d *nm) {
+    int32_t tc;
+    int32_t map_cap;
+    if (!nm)
+        return 0;
+    tc = nm->triangle_count;
+    for (int32_t i = 0; i < tc; i++)
+        nm->triangles[i].neighbors[0] = nm->triangles[i].neighbors[1] =
+            nm->triangles[i].neighbors[2] = -1;
+    if (tc <= 0)
+        return 1;
+    if (tc > INT32_MAX / 4)
+        return 0;
+    map_cap = tc * 4;
+    if (map_cap < 16)
+        map_cap = 16;
+
+    typedef struct {
+        int64_t key;
+        int32_t tri_idx;
+        int32_t edge_idx;
+        int8_t used;
+    } edge_entry_t;
+
+    if ((size_t)map_cap > SIZE_MAX / sizeof(edge_entry_t))
+        return 0;
+    edge_entry_t *emap = (edge_entry_t *)calloc((size_t)map_cap, sizeof(edge_entry_t));
+    if (!emap)
+        return 0;
+
+    for (int32_t i = 0; i < tc; i++) {
+        for (int e = 0; e < 3; e++) {
+            int32_t va = nm->triangles[i].v[e];
+            int32_t vb = nm->triangles[i].v[(e + 1) % 3];
+            int32_t lo = va < vb ? va : vb;
+            int32_t hi = va < vb ? vb : va;
+            int64_t key = ((int64_t)(uint32_t)lo << 32) | (uint32_t)hi;
+            uint32_t slot = (uint32_t)(key & 0x7FFFFFFF) % (uint32_t)map_cap;
+            for (int probe = 0; probe < map_cap; probe++) {
+                uint32_t idx = (slot + (uint32_t)probe) % (uint32_t)map_cap;
+                if (!emap[idx].used) {
+                    emap[idx].key = key;
+                    emap[idx].tri_idx = i;
+                    emap[idx].edge_idx = e;
+                    emap[idx].used = 1;
+                    break;
+                }
+                if (emap[idx].key == key) {
+                    int32_t j = emap[idx].tri_idx;
+                    nm->triangles[i].neighbors[e] = j;
+                    nm->triangles[j].neighbors[emap[idx].edge_idx] = i;
+                    break;
+                }
+            }
+        }
+    }
+    free(emap);
+    return 1;
+}
+
+static int navmesh3d_apply_slope_filter(rt_navmesh3d *nm) {
+    if (!nm || !nm->source_triangles || !nm->triangles)
+        return 0;
+    double max_slope_cos = cos(nm->max_slope * M_PI / 180.0);
+    nm->triangle_count = 0;
+    for (int32_t i = 0; i < nm->source_triangle_count; i++) {
+        nav_triangle_t tri = nm->source_triangles[i];
+        if (tri.normal[1] < (float)max_slope_cos)
+            continue;
+        tri.neighbors[0] = tri.neighbors[1] = tri.neighbors[2] = -1;
+        nm->triangles[nm->triangle_count++] = tri;
+    }
+    if (!navmesh3d_build_adjacency(nm)) {
+        rt_trap("NavMesh3D: adjacency allocation failed");
+        return 0;
+    }
+    return 1;
 }
 
 /// @brief Bake a navigation mesh from a triangle mesh. Filters out triangles whose normal
@@ -125,10 +218,8 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
     nm->vptr = NULL;
     nm->agent_radius = (isfinite(agent_radius) && agent_radius > 0.0) ? agent_radius : 0.4;
     nm->agent_height = (isfinite(agent_height) && agent_height > 0.0) ? agent_height : 1.8;
-    nm->max_slope = 45.0;
+    nm->max_slope = navmesh3d_sanitize_slope(45.0);
     rt_obj_set_finalizer(nm, navmesh3d_finalizer);
-
-    double max_slope_cos = cos(nm->max_slope * M_PI / 180.0);
 
     /* Phase 1: Copy vertices */
     nm->vertex_count = (int32_t)m->vertex_count;
@@ -144,14 +235,17 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
         nm->vertices[i].position[2] = m->vertices[i].pos[2];
     }
 
-    /* Phase 2: Filter triangles by slope */
+    /* Phase 2: Copy non-degenerate source triangles; walkable filtering is
+     * applied from this preserved set so SetMaxSlope can rebuild in-place. */
     int32_t tri_cap = (int32_t)(m->index_count / 3);
+    nm->source_triangles = (nav_triangle_t *)malloc((size_t)tri_cap * sizeof(nav_triangle_t));
     nm->triangles = (nav_triangle_t *)malloc((size_t)tri_cap * sizeof(nav_triangle_t));
-    if (!nm->triangles) {
+    if (!nm->source_triangles || !nm->triangles) {
         navmesh3d_free_partial(nm);
         rt_trap("NavMesh3D.Build: triangle allocation failed");
         return NULL;
     }
+    nm->source_triangle_count = 0;
     nm->triangle_count = 0;
 
     for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {
@@ -175,18 +269,16 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
         nx /= nlen;
         ny /= nlen;
         nz /= nlen;
-
-        /* Walkable if |normal.y| > cos(max_slope) — either side facing up */
-        if (fabsf(ny) < (float)max_slope_cos)
-            continue;
-        /* Ensure normal points upward for consistent orientation */
-        if (ny < 0) {
+        float authored_ny =
+            (m->vertices[i0].normal[1] + m->vertices[i1].normal[1] + m->vertices[i2].normal[1]) /
+            3.0f;
+        if (ny < 0.0f && authored_ny > 0.25f) {
             nx = -nx;
             ny = -ny;
             nz = -nz;
         }
 
-        nav_triangle_t *tri = &nm->triangles[nm->triangle_count++];
+        nav_triangle_t *tri = &nm->source_triangles[nm->source_triangle_count++];
         tri->v[0] = (int32_t)i0;
         tri->v[1] = (int32_t)i1;
         tri->v[2] = (int32_t)i2;
@@ -199,78 +291,9 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
         tri->neighbors[0] = tri->neighbors[1] = tri->neighbors[2] = -1;
     }
 
-    /* Phase 3: Build adjacency via edge hash map (O(n) instead of O(n²)).
-     * For each triangle, hash its 3 edges. If an edge is already in the table,
-     * the two triangles sharing that edge are adjacent. */
-    {
-        int32_t tc = nm->triangle_count;
-        int32_t map_cap;
-        if (tc > INT32_MAX / 4) {
-            navmesh3d_free_partial(nm);
-            rt_trap("NavMesh3D.Build: adjacency map too large");
-            return NULL;
-        }
-        map_cap = tc * 4; /* load factor ~0.75 for 3 edges per tri */
-        if (map_cap < 16)
-            map_cap = 16;
-
-        /* Edge hash table: key = packed edge (min_v * MAX + max_v), val = tri index */
-        typedef struct {
-            int64_t key;
-            int32_t tri_idx;
-            int32_t edge_idx; /* which edge of the triangle (0,1,2) */
-            int8_t used;
-        } edge_entry_t;
-
-        if ((size_t)map_cap > SIZE_MAX / sizeof(edge_entry_t)) {
-            navmesh3d_free_partial(nm);
-            rt_trap("NavMesh3D.Build: adjacency allocation overflow");
-            return NULL;
-        }
-        edge_entry_t *emap = (edge_entry_t *)calloc((size_t)map_cap, sizeof(edge_entry_t));
-        if (!emap) {
-            navmesh3d_free_partial(nm);
-            rt_trap("NavMesh3D.Build: adjacency allocation failed");
-            return NULL;
-        }
-
-        for (int32_t i = 0; i < tc; i++) {
-            for (int e = 0; e < 3; e++) {
-                int32_t va = nm->triangles[i].v[e];
-                int32_t vb = nm->triangles[i].v[(e + 1) % 3];
-                int32_t lo = va < vb ? va : vb;
-                int32_t hi = va < vb ? vb : va;
-                // Bit-packed edge key: upper 32 bits hold `lo`, lower 32 hold
-                // `hi`. This is a perfect hash for any 32-bit index pair.
-                // The previous formula `lo * 1000000 + hi` collided for large
-                // meshes (e.g. (1, 2000000) and (2, 1000000) both → 3000000),
-                // falsely marking unrelated triangles adjacent and silently
-                // breaking pathfinding.
-                int64_t key = ((int64_t)(uint32_t)lo << 32) | (uint32_t)hi;
-
-                /* Open-addressing linear probe */
-                uint32_t slot = (uint32_t)(key & 0x7FFFFFFF) % (uint32_t)map_cap;
-                for (int probe = 0; probe < map_cap; probe++) {
-                    uint32_t idx = (slot + (uint32_t)probe) % (uint32_t)map_cap;
-                    if (!emap[idx].used) {
-                        /* Empty slot — insert edge */
-                        emap[idx].key = key;
-                        emap[idx].tri_idx = i;
-                        emap[idx].edge_idx = e;
-                        emap[idx].used = 1;
-                        break;
-                    }
-                    if (emap[idx].key == key) {
-                        /* Matching edge — triangles are adjacent */
-                        int32_t j = emap[idx].tri_idx;
-                        nm->triangles[i].neighbors[e] = j;
-                        nm->triangles[j].neighbors[emap[idx].edge_idx] = i;
-                        break;
-                    }
-                }
-            }
-        }
-        free(emap);
+    if (!navmesh3d_apply_slope_filter(nm)) {
+        navmesh3d_free_partial(nm);
+        return NULL;
     }
 
     return nm;
@@ -291,6 +314,19 @@ static int point_in_tri_xz(float px, float pz, const float *v0, const float *v1,
     return (u >= 0.0f && v >= 0.0f && (u + v) <= 1.0f) ? 1 : 0;
 }
 
+static float triangle_y_at_xz(float px, float pz, const float *v0, const float *v1, const float *v2) {
+    float d1x = v1[0] - v0[0], d1z = v1[2] - v0[2];
+    float d2x = v2[0] - v0[0], d2z = v2[2] - v0[2];
+    float dpx = px - v0[0], dpz = pz - v0[2];
+    float det = d1x * d2z - d2x * d1z;
+    if (fabsf(det) < 1e-8f)
+        return (v0[1] + v1[1] + v2[1]) / 3.0f;
+    float inv = 1.0f / det;
+    float u = (dpx * d2z - d2x * dpz) * inv;
+    float v = (d1x * dpz - dpx * d1z) * inv;
+    return v0[1] + u * (v1[1] - v0[1]) + v * (v2[1] - v0[1]);
+}
+
 /// @brief Find triangle containing point (projected onto XZ).
 static int32_t find_tri(const rt_navmesh3d *nm, float px, float py, float pz) {
     float best_dy = FLT_MAX;
@@ -301,7 +337,8 @@ static int32_t find_tri(const rt_navmesh3d *nm, float px, float py, float pz) {
         const float *v1 = nm->vertices[t->v[1]].position;
         const float *v2 = nm->vertices[t->v[2]].position;
         if (point_in_tri_xz(px, pz, v0, v1, v2)) {
-            float dy = fabsf(py - t->centroid[1]);
+            float surface_y = triangle_y_at_xz(px, pz, v0, v1, v2);
+            float dy = fabsf(py - surface_y);
             if (dy < best_dy) {
                 best_dy = dy;
                 best = i;
@@ -413,8 +450,11 @@ int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, doubl
         points[3] = rt_vec3_x(to_v);
         points[4] = rt_vec3_y(to_v);
         points[5] = rt_vec3_z(to_v);
-        if (out_points_xyz)
+        if (out_points_xyz) {
             *out_points_xyz = points;
+        } else {
+            free(points);
+        }
         return 2;
     }
 
@@ -480,6 +520,13 @@ int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, doubl
             count++;
 
         int32_t *seq = (int32_t *)malloc((size_t)count * sizeof(int32_t));
+        if (!seq) {
+            free(g_cost);
+            free(parent);
+            free(closed);
+            free(heap);
+            return 0;
+        }
         int32_t idx = count - 1;
         for (int32_t c = goal; c != -1; c = parent[c])
             seq[idx--] = c;
@@ -625,8 +672,11 @@ void *rt_navmesh3d_sample_position(void *obj, void *point) {
 
     int32_t tri = find_tri(nm, px, py, pz);
     if (tri >= 0) {
-        /* Snap Y to triangle centroid height */
-        return rt_vec3_new(px, nm->triangles[tri].centroid[1], pz);
+        nav_triangle_t *t = &nm->triangles[tri];
+        const float *v0 = nm->vertices[t->v[0]].position;
+        const float *v1 = nm->vertices[t->v[1]].position;
+        const float *v2 = nm->vertices[t->v[2]].position;
+        return rt_vec3_new(px, triangle_y_at_xz(px, pz, v0, v1, v2), pz);
     }
 
     /* Find nearest centroid */
@@ -667,21 +717,15 @@ int64_t rt_navmesh3d_get_triangle_count(void *obj) {
     return nm ? nm->triangle_count : 0;
 }
 
-/// @brief Set the maximum slope angle (in degrees) considered walkable. Steeper triangles are
-/// excluded from path queries. Note: only takes effect on the *next* `_build` (this navmesh's
-/// triangle filter has already been applied).
+/// @brief Set the maximum slope angle (in degrees) considered walkable.
+/// Refilters the preserved source triangles and rebuilds adjacency immediately.
 void rt_navmesh3d_set_max_slope(void *obj, double degrees) {
     rt_navmesh3d *nm =
         (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm)
         return;
-    if (!isfinite(degrees))
-        degrees = 45.0;
-    if (degrees < 0.0)
-        degrees = 0.0;
-    if (degrees > 89.9)
-        degrees = 89.9;
-    nm->max_slope = degrees;
+    nm->max_slope = navmesh3d_sanitize_slope(degrees);
+    (void)navmesh3d_apply_slope_filter(nm);
 }
 
 /// @brief Render the navmesh as wireframe / outlined triangles to a Canvas3D for debugging.

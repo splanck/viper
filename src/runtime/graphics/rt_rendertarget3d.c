@@ -222,9 +222,9 @@ void *rt_rendertarget3d_as_pixels(void *obj) {
 /// calls render to the target instead of the window. The active backend
 /// (Metal, software, etc.) handles RTT natively — no backend switching needed.
 void rt_canvas3d_set_render_target(void *canvas, void *target) {
-    if (!canvas)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
+    if (!c)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)canvas;
     if (c->in_frame) {
         rt_trap("Canvas3D.SetRenderTarget: cannot change render targets during a frame");
         return;
@@ -233,7 +233,15 @@ void rt_canvas3d_set_render_target(void *canvas, void *target) {
         rt_canvas3d_reset_render_target(canvas);
         return;
     }
-    rt_rendertarget3d *rtd = (rt_rendertarget3d *)target;
+    rt_rendertarget3d *rtd =
+        (rt_rendertarget3d *)rt_g3d_checked_or_null(target, RT_G3D_RENDERTARGET3D_CLASS_ID);
+    if (!rtd || !rtd->target)
+        return;
+    if (!vgfx3d_rendertarget_ensure_color(rtd->target) ||
+        !vgfx3d_rendertarget_ensure_depth(rtd->target)) {
+        rt_trap("Canvas3D.SetRenderTarget: buffer allocation failed");
+        return;
+    }
     if (c->render_target_owner == rtd)
         return;
     rt_obj_retain_maybe(rtd);
@@ -248,9 +256,9 @@ void rt_canvas3d_set_render_target(void *canvas, void *target) {
 
 /// @brief Unbind the render target. Subsequent rendering goes to the window.
 void rt_canvas3d_reset_render_target(void *canvas) {
-    if (!canvas)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
+    if (!c)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)canvas;
     if (c->in_frame) {
         rt_trap("Canvas3D.ResetRenderTarget: cannot change render targets during a frame");
         return;

@@ -21,6 +21,7 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+#include "rt_heap.h"
 #include "rt_graphics3d_ids.h"
 #include "vgfx.h"
 #include "rt_postfx3d.h"
@@ -284,6 +285,8 @@ static inline int vgfx3d_rendertarget_ensure_color(vgfx3d_rendertarget_t *target
         return 1;
     if (target->width <= 0 || target->height <= 0 || target->stride <= 0)
         return 0;
+    if ((size_t)target->height > SIZE_MAX / (size_t)target->stride)
+        return 0;
     bytes = (size_t)target->height * (size_t)target->stride;
     target->color_buf = (uint8_t *)malloc(bytes);
     if (!target->color_buf)
@@ -320,6 +323,10 @@ static inline int vgfx3d_rendertarget_ensure_depth(vgfx3d_rendertarget_t *target
     if (target->width <= 0 || target->height <= 0)
         return 0;
     pixel_count = (size_t)target->width * (size_t)target->height;
+    if (target->width > 0 && pixel_count / (size_t)target->width != (size_t)target->height)
+        return 0;
+    if (pixel_count > SIZE_MAX / sizeof(float))
+        return 0;
     target->depth_buf = (float *)malloc(pixel_count * sizeof(float));
     if (!target->depth_buf)
         return 0;
@@ -465,6 +472,30 @@ typedef struct {
     int32_t motion_history_count;
     int32_t motion_history_capacity;
 } rt_canvas3d;
+
+/// @brief Validate a Canvas3D handle while preserving internal stack fixtures.
+/// @details Public/runtime handles must carry the Canvas3D class id. A handful
+///   of backend and unit-test paths construct plain stack rt_canvas3d structs to
+///   exercise renderer internals without opening a window; those are accepted
+///   only when the pointer is not a live runtime heap payload.
+static inline rt_canvas3d *rt_canvas3d_checked_or_stack(void *obj) {
+    rt_canvas3d *c = (rt_canvas3d *)rt_g3d_checked_or_null(obj, RT_G3D_CANVAS3D_CLASS_ID);
+    if (c)
+        return c;
+    if (obj && !rt_heap_is_payload(obj))
+        return (rt_canvas3d *)obj;
+    return NULL;
+}
+
+/// @brief Validate a Camera3D handle while preserving internal stack fixtures.
+static inline rt_camera3d *rt_camera3d_checked_or_stack(void *obj) {
+    rt_camera3d *cam = (rt_camera3d *)rt_g3d_checked_or_null(obj, RT_G3D_CAMERA3D_CLASS_ID);
+    if (cam)
+        return cam;
+    if (obj && !rt_heap_is_payload(obj))
+        return (rt_camera3d *)obj;
+    return NULL;
+}
 
 //=============================================================================
 // Mat4 internal access (matches rt_mat4.c layout)

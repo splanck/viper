@@ -237,7 +237,7 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     if (!canvas || !obj || !camera)
         return;
     rt_sprite3d *s = (rt_sprite3d *)rt_g3d_checked_or_null(obj, RT_G3D_SPRITE3D_CLASS_ID);
-    rt_camera3d *cam = (rt_camera3d *)rt_g3d_checked_or_null(camera, RT_G3D_CAMERA3D_CLASS_ID);
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(camera);
     if (!s || !cam)
         return;
 

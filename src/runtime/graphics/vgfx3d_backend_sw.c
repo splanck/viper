@@ -613,6 +613,8 @@ static int sw_wrap_index(int index, int size, int32_t mode) {
         return index;
     }
     if (mode == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT) {
+        if (size > INT32_MAX / 2)
+            return index < 0 ? 0 : (index >= size ? size - 1 : index);
         int period = size * 2;
         int wrapped = index % period;
         if (wrapped < 0)
@@ -2160,6 +2162,69 @@ static void shadow_raster_tri(
     }
 }
 
+typedef struct {
+    float clip[4];
+} shadow_clip_vertex_t;
+
+static float shadow_clip_distance(const shadow_clip_vertex_t *v, int plane) {
+    switch (plane) {
+    case 0:
+        return v->clip[0] + v->clip[3]; /* left */
+    case 1:
+        return v->clip[3] - v->clip[0]; /* right */
+    case 2:
+        return v->clip[1] + v->clip[3]; /* bottom */
+    case 3:
+        return v->clip[3] - v->clip[1]; /* top */
+    case 4:
+        return v->clip[2] + v->clip[3]; /* near */
+    default:
+        return v->clip[3] - v->clip[2]; /* far */
+    }
+}
+
+static shadow_clip_vertex_t shadow_clip_lerp(const shadow_clip_vertex_t *a,
+                                             const shadow_clip_vertex_t *b,
+                                             float t) {
+    shadow_clip_vertex_t out;
+    for (int i = 0; i < 4; i++)
+        out.clip[i] = a->clip[i] + (b->clip[i] - a->clip[i]) * t;
+    return out;
+}
+
+static int shadow_clip_polygon(shadow_clip_vertex_t *poly, int count) {
+    shadow_clip_vertex_t tmp[16];
+    for (int plane = 0; plane < 6; plane++) {
+        int out_count = 0;
+        if (count <= 0)
+            return 0;
+        shadow_clip_vertex_t prev = poly[count - 1];
+        float prev_d = shadow_clip_distance(&prev, plane);
+        int prev_inside = prev_d >= 0.0f;
+        for (int i = 0; i < count; i++) {
+            shadow_clip_vertex_t cur = poly[i];
+            float cur_d = shadow_clip_distance(&cur, plane);
+            int cur_inside = cur_d >= 0.0f;
+            if (cur_inside != prev_inside) {
+                float denom = prev_d - cur_d;
+                float t = fabsf(denom) > 1e-8f ? prev_d / denom : 0.0f;
+                if (out_count < (int)(sizeof(tmp) / sizeof(tmp[0])))
+                    tmp[out_count++] = shadow_clip_lerp(&prev, &cur, t);
+            }
+            if (cur_inside && out_count < (int)(sizeof(tmp) / sizeof(tmp[0])))
+                tmp[out_count++] = cur;
+            prev = cur;
+            prev_d = cur_d;
+            prev_inside = cur_inside;
+        }
+        if (out_count <= 0)
+            return 0;
+        memcpy(poly, tmp, (size_t)out_count * sizeof(*poly));
+        count = out_count;
+    }
+    return count;
+}
+
 /// @brief Backend `shadow_begin` op — allocate / clear the shadow depth buffer.
 ///
 /// Caller-provided depth buffer (so the canvas owns the storage and
@@ -2184,8 +2249,8 @@ static void sw_shadow_begin(
 ///
 /// Same vertex transform path as `submit_draw` (model matrix + light VP)
 /// but feeds each triangle to `shadow_raster_tri` instead of the full
-/// rasterizer. No clipping needed — out-of-bounds writes are bounds-
-/// checked per-pixel.
+/// rasterizer. Triangles are clipped in homogeneous light clip-space before
+/// perspective divide so near-plane crossings cannot poison the shadow map.
 static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     int32_t slot;
@@ -2210,33 +2275,48 @@ static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         if (i0 >= cmd->vertex_count || i1 >= cmd->vertex_count || i2 >= cmd->vertex_count)
             continue;
 
-        /* Transform 3 vertices by light MVP */
-        float screen_x[3], screen_y[3], screen_z[3];
-        int ok = 1;
+        shadow_clip_vertex_t clipped[16];
         for (int vi = 0; vi < 3; vi++) {
             const uint32_t idx[3] = {i0, i1, i2};
             const vgfx3d_vertex_t *v = &cmd->vertices[idx[vi]];
             float pos4[4] = {v->pos[0], v->pos[1], v->pos[2], 1.0f};
-            float clip[4];
-            mat4f_transform4(lmvp, pos4, clip);
-            if (fabsf(clip[3]) < 1e-7f) {
-                ok = 0;
-                break;
-            }
-            float iw = 1.0f / clip[3];
-            screen_x[vi] = (clip[0] * iw + 1.0f) * half_w;
-            screen_y[vi] = (1.0f - clip[1] * iw) * half_h;
-            screen_z[vi] = clip[2] * iw;
+            mat4f_transform4(lmvp, pos4, clipped[vi].clip);
         }
-        if (!ok)
+        int clipped_count = shadow_clip_polygon(clipped, 3);
+        if (clipped_count < 3)
             continue;
 
-        shadow_raster_tri(ctx->shadow_depth[slot],
-                          ctx->shadow_w[slot],
-                          ctx->shadow_h[slot],
-                          screen_x,
-                          screen_y,
-                          screen_z);
+        for (int tri = 1; tri + 1 < clipped_count; tri++) {
+            const shadow_clip_vertex_t *fan[3] = {&clipped[0], &clipped[tri], &clipped[tri + 1]};
+            float screen_x[3], screen_y[3], screen_z[3];
+            int ok = 1;
+            for (int vi = 0; vi < 3; vi++) {
+                float w = fan[vi]->clip[3];
+                if (fabsf(w) < 1e-7f) {
+                    ok = 0;
+                    break;
+                }
+                float iw = 1.0f / w;
+                float ndc_x = fan[vi]->clip[0] * iw;
+                float ndc_y = fan[vi]->clip[1] * iw;
+                float ndc_z = fan[vi]->clip[2] * iw;
+                if (!isfinite(ndc_x) || !isfinite(ndc_y) || !isfinite(ndc_z)) {
+                    ok = 0;
+                    break;
+                }
+                screen_x[vi] = (ndc_x + 1.0f) * half_w;
+                screen_y[vi] = (1.0f - ndc_y) * half_h;
+                screen_z[vi] = ndc_z * 0.5f + 0.5f;
+            }
+            if (!ok)
+                continue;
+            shadow_raster_tri(ctx->shadow_depth[slot],
+                              ctx->shadow_w[slot],
+                              ctx->shadow_h[slot],
+                              screen_x,
+                              screen_y,
+                              screen_z);
+        }
     }
 }
 
@@ -2307,6 +2387,8 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
 
     if (ctx->render_target) {
         vgfx3d_rendertarget_t *rt = ctx->render_target;
+        if (!vgfx3d_rendertarget_ensure_color(rt) || !vgfx3d_rendertarget_ensure_depth(rt))
+            return;
         for (int32_t y = 0; y < rt->height; y++)
             for (int32_t x = 0; x < rt->width; x++) {
                 uint8_t *px = &rt->color_buf[y * rt->stride + x * 4];
@@ -2396,6 +2478,8 @@ static void sw_submit_draw(void *ctx_ptr,
 
     if (ctx->render_target) {
         vgfx3d_rendertarget_t *rt = ctx->render_target;
+        if (!vgfx3d_rendertarget_ensure_color(rt) || !vgfx3d_rendertarget_ensure_depth(rt))
+            return;
         out_pixels = rt->color_buf;
         out_zbuf = rt->depth_buf;
         out_w = rt->width;

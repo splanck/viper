@@ -33,6 +33,7 @@ extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
+extern void rt_material3d_assign_env_map_checked(void *obj, void *cubemap);
 #include "rt_trap.h"
 
 extern int64_t rt_pixels_width(void *pixels);
@@ -321,6 +322,8 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
                        float *out_r,
                        float *out_g,
                        float *out_b) {
+    if (!out_r || !out_g || !out_b)
+        return;
     if (!cm) {
         *out_r = *out_g = *out_b = 0.0f;
         return;
@@ -345,6 +348,10 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
     }
     int64_t fw = rt_pixels_width(face_pixels);
     int64_t fh = rt_pixels_height(face_pixels);
+    if (fw <= 0 || fh <= 0) {
+        *out_r = *out_g = *out_b = 0.0f;
+        return;
+    }
 
     /* Bilinear interpolation for smooth cubemap sampling */
     float fx = u * (float)fw - 0.5f;
@@ -522,9 +529,11 @@ void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
 
 /// @brief Set a cube map as the canvas skybox (drawn behind all geometry).
 void rt_canvas3d_set_skybox(void *canvas, void *cubemap) {
-    if (!canvas)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
+    if (!c)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)canvas;
+    if (cubemap && !rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID))
+        return;
     if (c->skybox == (rt_cubemap3d *)cubemap)
         return;
     rt_obj_retain_maybe(cubemap);
@@ -536,9 +545,9 @@ void rt_canvas3d_set_skybox(void *canvas, void *cubemap) {
 
 /// @brief Remove the skybox from the canvas (reverts to solid clear color).
 void rt_canvas3d_clear_skybox(void *canvas) {
-    if (!canvas)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
+    if (!c)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)canvas;
     if (c->skybox && rt_obj_release_check0(c->skybox))
         rt_obj_free(c->skybox);
     c->skybox = NULL;
@@ -551,20 +560,14 @@ void rt_canvas3d_clear_skybox(void *canvas) {
 
 /// @brief Assign a cube map as the environment reflection map for a material.
 void rt_material3d_set_env_map(void *obj, void *cubemap) {
-    if (!obj)
-        return;
-    rt_material3d *mat = (rt_material3d *)obj;
-    if (mat->env_map == cubemap)
-        return;
-    rt_obj_retain_maybe(cubemap);
-    if (mat->env_map && rt_obj_release_check0(mat->env_map))
-        rt_obj_free(mat->env_map);
-    mat->env_map = cubemap;
+    rt_material3d_assign_env_map_checked(obj, cubemap);
 }
 
 /// @brief Set the environment reflection strength for a material (0.0–1.0).
 void rt_material3d_set_reflectivity(void *obj, double r) {
-    if (!obj)
+    rt_material3d *mat =
+        (rt_material3d *)rt_g3d_checked_or_null(obj, RT_G3D_MATERIAL3D_CLASS_ID);
+    if (!mat)
         return;
     if (!isfinite(r))
         r = 0.0;
@@ -572,14 +575,16 @@ void rt_material3d_set_reflectivity(void *obj, double r) {
         r = 0.0;
     if (r > 1.0)
         r = 1.0;
-    ((rt_material3d *)obj)->reflectivity = r;
+    mat->reflectivity = r;
 }
 
 /// @brief Get the current environment reflection strength of a material.
 double rt_material3d_get_reflectivity(void *obj) {
-    if (!obj)
+    rt_material3d *mat =
+        (rt_material3d *)rt_g3d_checked_or_null(obj, RT_G3D_MATERIAL3D_CLASS_ID);
+    if (!mat)
         return 0.0;
-    return ((rt_material3d *)obj)->reflectivity;
+    return mat->reflectivity;
 }
 
 #else

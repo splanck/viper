@@ -285,6 +285,8 @@ void *rt_particles3d_new(int64_t max_particles) {
     ps->vptr = NULL;
     ps->particles = (vgfx3d_particle_t *)calloc((size_t)max_particles, sizeof(vgfx3d_particle_t));
     if (!ps->particles) {
+        if (rt_obj_release_check0(ps))
+            rt_obj_free(ps);
         rt_trap("Particles3D.New: out of memory");
         return NULL;
     }
@@ -320,7 +322,9 @@ void *rt_particles3d_new(int64_t max_particles) {
     ps->texture = NULL;
     ps->emitter_shape = 0;
     ps->emitter_size[0] = ps->emitter_size[1] = ps->emitter_size[2] = 1.0;
-    ps->prng_state = (uint32_t)(uintptr_t)ps ^ 0x12345678; /* unique per instance */
+    ps->prng_state = (uint32_t)(uintptr_t)ps ^ 0x12345678u; /* unique per instance */
+    if (ps->prng_state == 0)
+        ps->prng_state = 0xA341316Cu;
     ps->cached_material = NULL;
 
     rt_obj_set_finalizer(ps, rt_particles3d_finalize);

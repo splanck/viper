@@ -88,8 +88,11 @@ rates, alpha, spread, shape, and update time. `InstanceBatch3D` stores only fini
 for culling and backend submission. `Light3D` clamps colors, intensities, attenuations, spot angles,
 and fallback directions before the light list is copied into backend parameters. `PostFX3D` bounds
 every effect parameter and exports the sanitized ordered chain, including bloom pass counts, to GPU
-backends. These guards are intentionally in the runtime classes instead of individual backends so
-software, Metal, D3D11, and OpenGL receive the same clean state.
+backends. `Mat4` operations validate matrix handles before reading storage and reject non-finite
+inverse determinants. `MorphTarget3D`, `Skeleton3D`, animation players, and animation blenders
+bound vertex counts, keyframe growth, blend times, speeds, and authored matrices before draw calls
+can copy them into backend commands. These guards are intentionally in the runtime classes instead
+of individual backends so software, Metal, D3D11, and OpenGL receive the same clean state.
 
 Graphics3D object handles use stable internal class IDs from `rt_graphics3d_ids.h`. Public APIs that
 store or dereference opaque Graphics3D handles validate those IDs before casting, which prevents a
@@ -97,7 +100,8 @@ Mesh3D/Path3D/Terrain3D-style handle mix-up from being interpreted as another ru
 IDs are negative and module-scoped so they do not collide with legacy class-id `0` objects.
 
 The advanced helpers follow the same numeric guard policy. `TextureAtlas3D` validates atlas and
-Pixels handles before copying image data and keeps dirty cached Pixels intact on rebuild failure.
+Pixels handles before copying image data, duplicates tile edge padding for bilinear correctness, and
+keeps dirty cached Pixels intact on rebuild failure.
 `Terrain3D`, `Sprite3D`, `Decal3D`, `Water3D`, `Vegetation3D`, `Path3D`, `NavMesh3D`, and
 `NavAgent3D` clamp or reject non-finite sizes, frame rectangles, normals, wave parameters, density
 maps, spline points, empty navigation meshes, and steering distances at the runtime boundary.
@@ -141,6 +145,7 @@ GPU backends now treat `RenderTarget3D` color buffers as lazily synchronized CPU
 - [`rt_rendertarget3d_as_pixels()`](/Users/stephen/git/viper/src/runtime/graphics/rt_rendertarget3d.c) and [`rt_canvas3d_screenshot()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d_overlay.c) call the backend-owned sync hook only when CPU pixels are actually requested
 - [`rt_canvas3d_begin()`](/Users/stephen/git/viper/src/runtime/graphics/rt_canvas3d.c) synchronizes the camera's effective projection aspect against the active output size before `begin_frame`, so window resizes and RTT passes share the correct frustum
 - while a render target is bound, Canvas3D overlay sizing, screenshots, and `Width`/`Height` queries follow the active target dimensions instead of the window dimensions
+- `SetRenderTarget` validates the Canvas3D and RenderTarget3D handles and ensures color/depth backing storage before changing canvas/backend state
 - `SetRenderTarget` and `ResetRenderTarget` are rejected while `Canvas3D` is inside `Begin`/`End`, so all queued draws in a frame flush to one consistent output
 - `RenderTarget3D.NewHdr()` keeps the GPU color attachment in `RGBA16F` on GPU backends; backend sync hooks now fill both a `Pixels`-compatible tonemapped RGBA8 mirror and a linear RGBA32F CPU mirror so CPU-supported render-target postfx can operate before final `AsPixels()` conversion
 - this avoids unconditional GPU stalls on RTT-heavy frames while preserving the `RenderTarget3D.AsPixels()` contract
@@ -191,7 +196,8 @@ Per sub-triangle:
 Shadow Pass (before main pass, when shadows enabled):
   For each opaque mesh:
     Transform vertices by light view-projection (orthographic)
-    Rasterize depth-only into shadow depth buffer (1024×1024)
+    Clip triangles against the homogeneous light frustum
+    Rasterize normalized [0,1] depth into shadow depth buffer (1024×1024)
     No lighting, no texturing, no color — depth writes only
   Main pass samples shadows through percentage-closer filtering to soften single-texel edges.
 ```
@@ -395,8 +401,9 @@ All Graphics3D objects are GC-managed via `rt_obj_new_i64`:
 
 Temporary Vec3/Mat4 objects created for debug drawing, audio node binding, path integration, and
 navigation path conversion must be released in the same call that creates them. Deferred Canvas3D
-draws keep their own queued values or frame-temp references; helper functions should not leak local
-objects just because the draw command is later consumed by the backend.
+draws keep their own queued values, frame-temp object references, and per-frame snapshots of mesh
+vertex/index data; helper functions should not leak local objects just because the draw command is
+later consumed by the backend.
 
 ## Threading Model
 

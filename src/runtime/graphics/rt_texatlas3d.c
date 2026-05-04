@@ -150,6 +150,24 @@ int64_t rt_texatlas3d_add(void *obj, void *pixels) {
         }
     }
 
+    for (int32_t x = 0; x < pw; x++) {
+        uint32_t top = pv->data[x];
+        uint32_t bottom = pv->data[(int64_t)(ph - 1) * pv->width + x];
+        a->data[(dy - 1) * a->width + (dx + x)] = top;
+        a->data[(dy + ph) * a->width + (dx + x)] = bottom;
+    }
+    for (int32_t y = 0; y < ph; y++) {
+        uint32_t left = pv->data[(int64_t)y * pv->width];
+        uint32_t right = pv->data[(int64_t)y * pv->width + (pw - 1)];
+        a->data[(dy + y) * a->width + (dx - 1)] = left;
+        a->data[(dy + y) * a->width + (dx + pw)] = right;
+    }
+    a->data[(dy - 1) * a->width + (dx - 1)] = pv->data[0];
+    a->data[(dy - 1) * a->width + (dx + pw)] = pv->data[pw - 1];
+    a->data[(dy + ph) * a->width + (dx - 1)] = pv->data[(int64_t)(ph - 1) * pv->width];
+    a->data[(dy + ph) * a->width + (dx + pw)] =
+        pv->data[(int64_t)(ph - 1) * pv->width + (pw - 1)];
+
     atlas_region_t *r = &a->regions[a->region_count];
     r->x = dx;
     r->y = dy;
