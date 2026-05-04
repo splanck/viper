@@ -155,6 +155,18 @@ struct ph3d_broadphase_entry {
     double max[3];
 };
 
+static rt_world3d *world3d_checked(void *obj) {
+    return (rt_world3d *)rt_g3d_checked_or_null(obj, RT_G3D_WORLD3D_CLASS_ID);
+}
+
+static rt_body3d *body3d_checked(void *obj) {
+    return (rt_body3d *)rt_g3d_checked_or_null(obj, RT_G3D_BODY3D_CLASS_ID);
+}
+
+static int ph3d_vec3_all_finite(const double v[3]) {
+    return v && isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
+}
+
 /// @brief Compute the next power-of-two capacity that covers `needed`, starting from
 ///        `current` (or `initial` if current is zero).
 /// @details Doubles until the result covers `needed`. Returns -1 if the next doubling
@@ -2513,7 +2525,7 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
     void *leaf_a = NULL;
     void *leaf_b = NULL;
 
-    if (!w || !a || !b)
+    if (!w || !a || !b || a == b)
         return 1;
     if (a->motion_mode != PH3D_MODE_DYNAMIC && b->motion_mode != PH3D_MODE_DYNAMIC)
         return 1;
@@ -3164,15 +3176,20 @@ int64_t rt_world3d_joint_count(void *obj) {
 ///
 /// Retains the body and stores it in the growable bodies array.
 void rt_world3d_add(void *obj, void *body) {
-    if (!obj || !body)
+    rt_world3d *w = world3d_checked(obj);
+    rt_body3d *b = body3d_checked(body);
+    if (!w || !b)
         return;
-    rt_world3d *w = (rt_world3d *)obj;
+    for (int32_t i = 0; i < w->body_count; i++) {
+        if (w->bodies[i] == b)
+            return;
+    }
     if (!world3d_reserve_body_capacity(w, w->body_count + 1)) {
         rt_trap("Physics3D: body storage allocation failed");
         return;
     }
     rt_obj_retain_maybe(body);
-    w->bodies[w->body_count++] = (rt_body3d *)body;
+    w->bodies[w->body_count++] = b;
 }
 
 /// @brief `World3D.Remove(body)` — unregister a body.
@@ -3180,11 +3197,12 @@ void rt_world3d_add(void *obj, void *body) {
 /// Same swap-with-last compaction as `RemoveJoint`. Releases the world's
 /// reference, which may free the body if no other holder remains.
 void rt_world3d_remove(void *obj, void *body) {
-    if (!obj || !body)
+    rt_world3d *w = world3d_checked(obj);
+    rt_body3d *b = body3d_checked(body);
+    if (!w || !b)
         return;
-    rt_world3d *w = (rt_world3d *)obj;
     for (int32_t i = 0; i < w->body_count; i++) {
-        if (w->bodies[i] == body) {
+        if (w->bodies[i] == b) {
             void *removed = w->bodies[i];
             w->bodies[i] = w->bodies[--w->body_count];
             w->bodies[w->body_count] = NULL;
@@ -3197,7 +3215,8 @@ void rt_world3d_remove(void *obj, void *body) {
 
 /// @brief `World3D.BodyCount` — number of registered bodies (0 for NULL).
 int64_t rt_world3d_body_count(void *obj) {
-    return obj ? ((rt_world3d *)obj)->body_count : 0;
+    rt_world3d *w = world3d_checked(obj);
+    return w ? w->body_count : 0;
 }
 
 /// @brief `World3D.SetGravity(gx, gy, gz)` — change the world gravity vector.
@@ -3738,17 +3757,19 @@ static int sweep_capsule_against_body(const double *a,
 /// `PH3D_MAX_QUERY_HITS` (256) hits as a `PhysicsHitList3D`. The
 /// transient collider is released before returning.
 void *rt_world3d_overlap_sphere(void *obj, void *center_obj, double radius, int64_t mask) {
-    rt_world3d *w = (rt_world3d *)obj;
+    rt_world3d *w = world3d_checked(obj);
     rt_query_hit3d hits[PH3D_MAX_QUERY_HITS];
     int32_t hit_count = 0;
     double center[3];
     rt_body3d query_body;
     void *sphere_collider;
-    if (!w || !center_obj || radius < 0.0)
+    if (!w || !center_obj || !isfinite(radius) || radius < 0.0)
         return NULL;
     center[0] = rt_vec3_x(center_obj);
     center[1] = rt_vec3_y(center_obj);
     center[2] = rt_vec3_z(center_obj);
+    if (!ph3d_vec3_all_finite(center))
+        return NULL;
     sphere_collider = rt_collider3d_new_sphere(radius);
     if (!sphere_collider)
         return NULL;
@@ -3773,7 +3794,7 @@ void *rt_world3d_overlap_sphere(void *obj, void *center_obj, double radius, int6
 /// sized from the (min, max) corners. The half-extents are derived
 /// from the corner spread; the center is the midpoint.
 void *rt_world3d_overlap_aabb(void *obj, void *min_obj, void *max_obj, int64_t mask) {
-    rt_world3d *w = (rt_world3d *)obj;
+    rt_world3d *w = world3d_checked(obj);
     rt_query_hit3d hits[PH3D_MAX_QUERY_HITS];
     int32_t hit_count = 0;
     double mn[3], mx[3], center[3], half[3];
@@ -3787,12 +3808,16 @@ void *rt_world3d_overlap_aabb(void *obj, void *min_obj, void *max_obj, int64_t m
     mx[0] = rt_vec3_x(max_obj);
     mx[1] = rt_vec3_y(max_obj);
     mx[2] = rt_vec3_z(max_obj);
+    if (!ph3d_vec3_all_finite(mn) || !ph3d_vec3_all_finite(mx))
+        return NULL;
     center[0] = (mn[0] + mx[0]) * 0.5;
     center[1] = (mn[1] + mx[1]) * 0.5;
     center[2] = (mn[2] + mx[2]) * 0.5;
     half[0] = fabs(mx[0] - mn[0]) * 0.5;
     half[1] = fabs(mx[1] - mn[1]) * 0.5;
     half[2] = fabs(mx[2] - mn[2]) * 0.5;
+    if (!ph3d_vec3_all_finite(center) || !ph3d_vec3_all_finite(half))
+        return NULL;
     box_collider = rt_collider3d_new_box(half[0], half[1], half[2]);
     if (!box_collider)
         return NULL;

@@ -358,7 +358,7 @@ static void camera_apply_shake_to_view(rt_camera3d *cam) {
     double forward[3];
     double eye[3];
     double target[3];
-    double up[3] = {0.0, 1.0, 0.0};
+    double up[3];
 
     if (!cam)
         return;
@@ -366,6 +366,9 @@ static void camera_apply_shake_to_view(rt_camera3d *cam) {
     forward[0] = finite_or(-cam->view[8], 0.0);
     forward[1] = finite_or(-cam->view[9], 0.0);
     forward[2] = finite_or(-cam->view[10], -1.0);
+    up[0] = finite_or(cam->view[4], 0.0);
+    up[1] = finite_or(cam->view[5], 1.0);
+    up[2] = finite_or(cam->view[6], 0.0);
     eye[0] = finite_or(cam->eye[0], 0.0) + finite_or(cam->shake_offset[0], 0.0);
     eye[1] = finite_or(cam->eye[1], 0.0) + finite_or(cam->shake_offset[1], 0.0);
     eye[2] = finite_or(cam->eye[2], 0.0) + finite_or(cam->shake_offset[2], 0.0);
@@ -494,7 +497,8 @@ void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double 
 ///          into private struct fields. Returns 0 for null obj or for
 ///          perspective cameras built via `rt_camera3d_new`.
 int8_t rt_camera3d_is_ortho(void *obj) {
-    return obj ? ((rt_camera3d *)obj)->is_ortho : 0;
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    return cam ? cam->is_ortho : 0;
 }
 
 /// @brief Position the camera and orient it to look at a target point.
@@ -504,7 +508,9 @@ int8_t rt_camera3d_is_ortho(void *obj) {
 void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v) {
     if (!obj || !eye_v || !target_v || !up_v)
         return;
-    rt_camera3d *cam = (rt_camera3d *)obj;
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam)
+        return;
 
     static const double fallback_eye[3] = {0.0, 0.0, 0.0};
     static const double fallback_target[3] = {0.0, 0.0, -1.0};
@@ -941,6 +947,12 @@ static void apply_shake(rt_camera3d *cam, double dt) {
         return;
     }
     cam->shake_duration -= dt;
+    if (cam->shake_duration <= 0.0) {
+        cam->shake_duration = 0.0;
+        cam->shake_intensity = 0.0;
+        cam->shake_offset[0] = cam->shake_offset[1] = cam->shake_offset[2] = 0.0;
+        return;
+    }
     cam->shake_intensity *= exp(-cam->shake_decay * dt);
 
     /* Xorshift PRNG for deterministic random offsets */
@@ -966,7 +978,7 @@ static void apply_shake(rt_camera3d *cam, double dt) {
 ///          new offset) so other call sites that mutate the view can
 ///          re-apply the shake without re-rolling the PRNG.
 void rt_camera3d_update_shake_for_frame(void *obj, double dt) {
-    rt_camera3d *cam = (rt_camera3d *)obj;
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
 
     if (!cam)
         return;
@@ -978,9 +990,9 @@ void rt_camera3d_update_shake_for_frame(void *obj, double dt) {
 /// @details The shake applies random XY offsets that decay over the given duration.
 ///          Used for explosions, impacts, and other feedback effects.
 void rt_camera3d_shake(void *obj, double intensity, double duration, double decay) {
-    if (!obj)
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam)
         return;
-    rt_camera3d *cam = (rt_camera3d *)obj;
     cam->shake_intensity = sanitize_nonnegative(intensity, 0.0);
     cam->shake_duration = sanitize_nonnegative(duration, 0.0);
     cam->shake_decay = isfinite(decay) && decay > 0.0 ? decay : 5.0;

@@ -174,7 +174,7 @@ content; bodies now own a collider instead of baking all shape state directly in
 |-------------|-----------|-------------|
 | `NewBox(hx, hy, hz)` | `Collider3D(Double, Double, Double)` | Box collider with half-extents |
 | `NewSphere(radius)` | `Collider3D(Double)` | Sphere collider |
-| `NewCapsule(radius, height)` | `Collider3D(Double, Double)` | Upright capsule collider |
+| `NewCapsule(radius, height)` | `Collider3D(Double, Double)` | Upright capsule collider; `height` is total height including caps, and values below `2*radius` collapse to a sphere-like capsule |
 | `NewConvexHull(mesh)` | `Collider3D(Object)` | Convex-hull collider sourced from a `Mesh3D` |
 | `NewMesh(mesh)` | `Collider3D(Object)` | Static triangle-mesh collider |
 | `NewHeightfield(heightmap, sx, sy, sz)` | `Collider3D(Object, Double, Double, Double)` | Static heightfield collider from `Pixels` |
@@ -216,7 +216,7 @@ sleeping, and optional CCD.
 | `New(mass)` | `Physics3DBody(Double)` | Create an empty body and assign a collider later |
 | `NewAABB(sx, sy, sz, mass)` | `Physics3DBody(Double, Double, Double, Double)` | Axis-aligned box body (`mass = 0` makes it static) |
 | `NewSphere(radius, mass)` | `Physics3DBody(Double, Double)` | Sphere body |
-| `NewCapsule(radius, height, mass)` | `Physics3DBody(Double, Double, Double)` | Capsule body |
+| `NewCapsule(radius, height, mass)` | `Physics3DBody(Double, Double, Double)` | Capsule body; `height` is total height including caps |
 
 ### Properties
 

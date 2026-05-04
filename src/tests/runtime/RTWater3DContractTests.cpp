@@ -68,6 +68,14 @@ extern "C" void *rt_obj_new_i64(int64_t, int64_t byte_size) {
     return std::calloc(1, static_cast<size_t>(byte_size));
 }
 
+extern "C" int64_t rt_obj_class_id(void *) {
+    return RT_G3D_WATER3D_CLASS_ID;
+}
+
+extern "C" int8_t rt_heap_is_payload(void *) {
+    return 0;
+}
+
 extern "C" void rt_obj_set_finalizer(void *, void (*)(void *)) {}
 
 extern "C" void rt_obj_retain_maybe(void *) {}

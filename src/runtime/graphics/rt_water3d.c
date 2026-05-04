@@ -84,6 +84,10 @@ typedef struct {
     int32_t resolution; /* grid resolution (default WATER_GRID) */
 } rt_water3d;
 
+static rt_water3d *water3d_checked(void *obj) {
+    return (rt_water3d *)rt_g3d_checked_or_null(obj, RT_G3D_WATER3D_CLASS_ID);
+}
+
 /// @brief Drop one reference and zero the slot. Idempotent on null/empty slots.
 static void water3d_release_ref(void **slot) {
     if (!slot || !*slot)
@@ -298,9 +302,9 @@ void rt_water3d_clear_waves(void *obj) {
 /// @param obj Opaque water handle from `rt_water3d_new` (no-op when NULL).
 /// @param dt Elapsed seconds since the previous update (must be > 0 to apply).
 void rt_water3d_update(void *obj, double dt) {
-    if (!obj || !isfinite(dt) || dt <= 0.0)
+    rt_water3d *w = water3d_checked(obj);
+    if (!w || !isfinite(dt) || dt <= 0.0)
         return;
-    rt_water3d *w = (rt_water3d *)obj;
     w->time += dt;
     if (!isfinite(w->time))
         w->time = 0.0;
@@ -373,6 +377,8 @@ void rt_water3d_update(void *obj, double dt) {
             rt_mesh3d_add_triangle(w->mesh, base + 1, base + row, base + row + 1);
         }
     }
+    if (((rt_mesh3d *)w->mesh)->build_failed)
+        return;
 
     /* Update material — create on first use, update properties every frame */
     if (!w->material) {
@@ -403,9 +409,10 @@ void rt_water3d_update(void *obj, double dt) {
 ///          if `canvas` / `obj` are NULL. The `camera` argument is accepted for API
 ///          symmetry with other draw functions but currently unused.
 void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
-    if (!canvas || !obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
+    rt_water3d *w = water3d_checked(obj);
+    if (!c || !w)
         return;
-    rt_water3d *w = (rt_water3d *)obj;
     (void)camera;
     if (!w->mesh || !w->material)
         return;
@@ -416,10 +423,10 @@ void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
         1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
         0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
     };
-    int8_t restore_backface_cull = ((rt_canvas3d *)canvas)->backface_cull;
-    rt_canvas3d_set_backface_cull(canvas, 0);
-    rt_canvas3d_draw_mesh_matrix(canvas, w->mesh, identity, w->material);
-    rt_canvas3d_set_backface_cull(canvas, restore_backface_cull);
+    int8_t restore_backface_cull = c->backface_cull;
+    rt_canvas3d_set_backface_cull(c, 0);
+    rt_canvas3d_draw_mesh_matrix(c, w->mesh, identity, w->material);
+    rt_canvas3d_set_backface_cull(c, restore_backface_cull);
 }
 
 #else

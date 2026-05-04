@@ -36,6 +36,9 @@
 #include <stdint.h>
 #include <string.h>
 
+#define MATERIAL3D_UV_TRANSFORM_ABS_MAX 1000000.0
+#define MATERIAL3D_TWO_PI 6.28318530717958647692
+
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern void rt_obj_retain_maybe(void *obj);
@@ -142,6 +145,16 @@ static double clamp_min(double value, double min_value) {
     if (!isfinite(value))
         return min_value;
     return value < min_value ? min_value : value;
+}
+
+static double material_clamp_uv_transform(double value, double fallback) {
+    if (!isfinite(value))
+        return fallback;
+    if (value > MATERIAL3D_UV_TRANSFORM_ABS_MAX)
+        return MATERIAL3D_UV_TRANSFORM_ABS_MAX;
+    if (value < -MATERIAL3D_UV_TRANSFORM_ABS_MAX)
+        return -MATERIAL3D_UV_TRANSFORM_ABS_MAX;
+    return value;
 }
 
 /// @brief Clamp a color component to the canonical `[0, 1]` range.
@@ -462,26 +475,28 @@ void rt_material3d_set_import_texture_slot(void *obj,
     double s;
     if (!mat || slot_index < 0)
         return;
-    if (!isfinite(offset_u))
-        offset_u = 0.0;
-    if (!isfinite(offset_v))
-        offset_v = 0.0;
-    if (!isfinite(scale_u))
-        scale_u = 1.0;
-    if (!isfinite(scale_v))
-        scale_v = 1.0;
+    offset_u = material_clamp_uv_transform(offset_u, 0.0);
+    offset_v = material_clamp_uv_transform(offset_v, 0.0);
+    scale_u = material_clamp_uv_transform(scale_u, 1.0);
+    scale_v = material_clamp_uv_transform(scale_v, 1.0);
     if (!isfinite(rotation))
         rotation = 0.0;
+    else
+        rotation = fmod(rotation, MATERIAL3D_TWO_PI);
     c = cos(rotation);
     s = sin(rotation);
     mat->texture_slot_wrap_s[slot_index] = material_sanitize_wrap(wrap_s);
     mat->texture_slot_wrap_t[slot_index] = material_sanitize_wrap(wrap_t);
     mat->texture_slot_filter[slot_index] = material_sanitize_filter(filter);
     mat->texture_slot_uv_set[slot_index] = uv_set > 0 ? 1 : 0;
-    mat->texture_slot_uv_transform[slot_index][0] = scale_u * c;
-    mat->texture_slot_uv_transform[slot_index][1] = -scale_v * s;
-    mat->texture_slot_uv_transform[slot_index][2] = scale_u * s;
-    mat->texture_slot_uv_transform[slot_index][3] = scale_v * c;
+    mat->texture_slot_uv_transform[slot_index][0] =
+        material_clamp_uv_transform(scale_u * c, 1.0);
+    mat->texture_slot_uv_transform[slot_index][1] =
+        material_clamp_uv_transform(-scale_v * s, 0.0);
+    mat->texture_slot_uv_transform[slot_index][2] =
+        material_clamp_uv_transform(scale_u * s, 0.0);
+    mat->texture_slot_uv_transform[slot_index][3] =
+        material_clamp_uv_transform(scale_v * c, 1.0);
     mat->texture_slot_uv_transform[slot_index][4] = offset_u;
     mat->texture_slot_uv_transform[slot_index][5] = offset_v;
     if (slot_index == RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR) {

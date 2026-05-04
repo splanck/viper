@@ -48,6 +48,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define CANVAS3D_MAX_FALLBACK_INSTANCES 65536
+
 /// @brief True when the active backend can apply GPU post-FX during present.
 ///
 /// Requires the backend to expose `present_postfx` AND the canvas
@@ -90,6 +92,17 @@ static float canvas3d_sanitize_nonnegative_f64(double value, float fallback) {
     if (value < 0.0)
         return 0.0f;
     return (float)value;
+}
+
+static void canvas3d_clear_pending_splat(rt_canvas3d *c) {
+    if (!c)
+        return;
+    c->pending_has_splat = 0;
+    c->pending_splat_map = NULL;
+    for (int i = 0; i < 4; i++) {
+        c->pending_splat_layers[i] = NULL;
+        c->pending_splat_layer_scales[i] = 0.0f;
+    }
 }
 
 /// @brief Push the current frame's post-FX enable flag + snapshot to the backend.
@@ -764,6 +777,8 @@ static int32_t canvas3d_select_shadow_directional_lights_from_draws(
                 }
             }
             if (duplicate)
+                continue;
+            if (count >= max_shadow_lights && score <= best_scores[max_shadow_lights - 1])
                 continue;
 
             insert_at = count;
@@ -2163,6 +2178,7 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     c->motion_history_capacity = 0;
     c->frame_is_2d = 0;
     c->has_last_scene_vp = 0;
+    c->dt_max_ms = 100;
 
     rt_keyboard_set_canvas(c->gfx_win);
     rt_mouse_set_canvas(c->gfx_win);
@@ -2179,9 +2195,9 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
 /// @details Must be called at the start of each frame before Begin. Fog and
 ///          ambient light persist until explicitly changed.
 void rt_canvas3d_clear(void *obj, double r, double g, double b) {
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->gfx_win || !c->backend)
         return;
     float cr = canvas3d_clamp01_f64(r);
@@ -2195,7 +2211,8 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b) {
      * stride-aligned rows instead of per-pixel loop (4x faster at 1080p). */
     if (c->backend != &vgfx3d_software_backend && !c->render_target) {
         vgfx_framebuffer_t fb;
-        if (vgfx_get_framebuffer(c->gfx_win, &fb)) {
+        if (vgfx_get_framebuffer(c->gfx_win, &fb) && fb.pixels && fb.width > 0 &&
+            fb.height > 0 && fb.stride >= fb.width * (int32_t)sizeof(uint32_t)) {
             uint32_t rgba = ((uint32_t)(uint8_t)(cr * 255.0f + 0.5f)) |
                             ((uint32_t)(uint8_t)(cg * 255.0f + 0.5f) << 8) |
                             ((uint32_t)(uint8_t)(cb * 255.0f + 0.5f) << 16) | 0xFF000000u;
@@ -2701,6 +2718,19 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
         (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
     rt_material3d *mat =
         (rt_material3d *)rt_g3d_checked_or_null(material_obj, RT_G3D_MATERIAL3D_CLASS_ID);
+    int pending_has_splat = 0;
+    const void *pending_splat_map = NULL;
+    const void *pending_splat_layers[4] = {NULL, NULL, NULL, NULL};
+    float pending_splat_layer_scales[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    if (c) {
+        pending_has_splat = c->pending_has_splat;
+        pending_splat_map = c->pending_splat_map;
+        for (int i = 0; i < 4; i++) {
+            pending_splat_layers[i] = c->pending_splat_layers[i];
+            pending_splat_layer_scales[i] = c->pending_splat_layer_scales[i];
+        }
+        canvas3d_clear_pending_splat(c);
+    }
     if (!mesh && mesh_obj && !rt_heap_is_payload(mesh_obj))
         mesh = (rt_mesh3d *)mesh_obj;
     if (!c || !mesh || !model_matrix || !mat)
@@ -2753,18 +2783,11 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     canvas3d_fill_material_cmd(mat, &dd->cmd);
 
     /* Consume pending terrain splat data (if set by terrain draw path) */
-    dd->cmd.has_splat = c->pending_has_splat;
-    dd->cmd.splat_map = c->pending_splat_map;
+    dd->cmd.has_splat = pending_has_splat;
+    dd->cmd.splat_map = pending_splat_map;
     for (int i = 0; i < 4; i++) {
-        dd->cmd.splat_layers[i] = c->pending_splat_layers[i];
-        dd->cmd.splat_layer_scales[i] = c->pending_splat_layer_scales[i];
-    }
-    /* Clear pending splat state (one-shot consumption) */
-    c->pending_has_splat = 0;
-    c->pending_splat_map = NULL;
-    for (int i = 0; i < 4; i++) {
-        c->pending_splat_layers[i] = NULL;
-        c->pending_splat_layer_scales[i] = 0.0f;
+        dd->cmd.splat_layers[i] = pending_splat_layers[i];
+        dd->cmd.splat_layer_scales[i] = pending_splat_layer_scales[i];
     }
 
     /* Pass through bone palette for GPU skinning (MTL-09) */
@@ -2894,6 +2917,10 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                   : 0;
 
     if (canvas3d_cmd_requires_blend(&base_cmd) || !c->backend->submit_draw_instanced) {
+        if (instance_count > CANVAS3D_MAX_FALLBACK_INSTANCES) {
+            rt_trap("Canvas3D.DrawMeshInstanced: fallback instance count exceeds limit");
+            return;
+        }
         for (int32_t i = 0; i < instance_count; i++) {
             vgfx3d_draw_cmd_t per_instance = base_cmd;
             memcpy(per_instance.model_matrix,
@@ -2907,23 +2934,27 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
             }
             per_instance.prev_instance_matrices = NULL;
             per_instance.has_prev_instance_matrices = 0;
-            (void)canvas3d_enqueue_draw(c,
-                                        &per_instance,
-                                        DEFERRED_DRAW_MESH,
-                                        DEFERRED_PASS_MAIN,
-                                        NULL,
-                                        0,
-                                        1,
-                                        c->wireframe,
-                                        canvas3d_material_backface_cull(c, mat),
-                                        canvas3d_compute_sort_key(c,
-                                                                  per_instance.model_matrix,
-                                                                  mesh->aabb_min,
-                                                                  mesh->aabb_max,
-                                                                  1,
-                                                                  canvas3d_cmd_requires_blend(&per_instance)),
-                                        mesh->aabb_min,
-                                        mesh->aabb_max);
+            if (!canvas3d_enqueue_draw(c,
+                                       &per_instance,
+                                       DEFERRED_DRAW_MESH,
+                                       DEFERRED_PASS_MAIN,
+                                       NULL,
+                                       0,
+                                       1,
+                                       c->wireframe,
+                                       canvas3d_material_backface_cull(c, mat),
+                                       canvas3d_compute_sort_key(
+                                           c,
+                                           per_instance.model_matrix,
+                                           mesh->aabb_min,
+                                           mesh->aabb_max,
+                                           1,
+                                           canvas3d_cmd_requires_blend(&per_instance)),
+                                       mesh->aabb_min,
+                                       mesh->aabb_max)) {
+                rt_trap("Canvas3D.DrawMeshInstanced: deferred draw queue allocation failed");
+                return;
+            }
         }
         return;
     }
@@ -3459,9 +3490,9 @@ int64_t rt_canvas3d_get_height(void *obj) {
 
 /// @brief Get the current frames-per-second (updated each Flip call).
 int64_t rt_canvas3d_get_fps(void *obj) {
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return 0;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     return c->delta_time_ms > 0 ? 1000 / c->delta_time_ms : 0;
 }
 
@@ -3469,9 +3500,9 @@ int64_t rt_canvas3d_get_fps(void *obj) {
 /// @details Clamped to dt_max (default 100ms) to prevent physics explosions
 ///          after long pauses (e.g., window drag, breakpoint, alt-tab).
 int64_t rt_canvas3d_get_delta_time(void *obj) {
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return 0;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     int64_t dt = c->delta_time_ms;
     if (c->dt_max_ms > 0) {
         if (dt <= 0)
@@ -3484,8 +3515,9 @@ int64_t rt_canvas3d_get_delta_time(void *obj) {
 
 /// @brief Cap the per-frame delta-time at `max_ms` milliseconds (prevents huge jumps after pauses).
 void rt_canvas3d_set_dt_max(void *obj, int64_t max_ms) {
-    if (obj)
-        ((rt_canvas3d *)obj)->dt_max_ms = max_ms;
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (c)
+        c->dt_max_ms = max_ms > 0 ? max_ms : 0;
 }
 
 /// @brief Assign a light to one of the per-canvas light slots.
@@ -3501,9 +3533,9 @@ void rt_canvas3d_set_light(void *obj, int64_t index, void *light) {
 
 /// @brief Set the global ambient light color for the canvas (applied to all surfaces).
 void rt_canvas3d_set_ambient(void *obj, double r, double g, double b) {
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     c->ambient[0] = canvas3d_clamp01_f64(r);
     c->ambient[1] = canvas3d_clamp01_f64(g);
     c->ambient[2] = canvas3d_clamp01_f64(b);

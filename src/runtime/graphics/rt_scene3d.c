@@ -55,6 +55,14 @@
 
 #define NODE_INIT_CHILDREN 4
 
+static rt_scene3d *scene3d_checked(void *obj) {
+    return (rt_scene3d *)rt_g3d_checked_or_null(obj, RT_G3D_SCENE3D_CLASS_ID);
+}
+
+static rt_scene_node3d *scene_node3d_checked(void *obj) {
+    return (rt_scene_node3d *)rt_g3d_checked_or_null(obj, RT_G3D_SCENENODE3D_CLASS_ID);
+}
+
 /// @brief Drop the GC reference in `*slot` and null the pointer (refcount-aware free).
 static void scene3d_release_ref(void **slot) {
     if (!slot || !*slot)
@@ -1805,10 +1813,10 @@ void *rt_scene_node3d_get_world_matrix(void *obj) {
 
 /// @brief Reparent `child` under `obj`. Detaches from previous parent first; rejects cycles.
 void rt_scene_node3d_add_child(void *obj, void *child_obj) {
-    if (!obj || !child_obj || obj == child_obj)
+    rt_scene_node3d *parent = scene_node3d_checked(obj);
+    rt_scene_node3d *child = scene_node3d_checked(child_obj);
+    if (!parent || !child || parent == child)
         return;
-    rt_scene_node3d *parent = (rt_scene_node3d *)obj;
-    rt_scene_node3d *child = (rt_scene_node3d *)child_obj;
 
     /* Reject cycle formation: parent may not already be inside child's subtree. */
     if (node_contains(child, parent))
@@ -1838,10 +1846,10 @@ void rt_scene_node3d_add_child(void *obj, void *child_obj) {
 
 /// @brief Detach `child` from `obj`. Decrements the GC refcount. No-op if not actually a child.
 void rt_scene_node3d_remove_child(void *obj, void *child_obj) {
-    if (!obj || !child_obj)
+    rt_scene_node3d *parent = scene_node3d_checked(obj);
+    rt_scene_node3d *child = scene_node3d_checked(child_obj);
+    if (!parent || !child)
         return;
-    rt_scene_node3d *parent = (rt_scene_node3d *)obj;
-    rt_scene_node3d *child = (rt_scene_node3d *)child_obj;
 
     for (int32_t i = 0; i < parent->child_count; i++) {
         if (parent->children[i] == child) {
@@ -1876,17 +1884,19 @@ void *rt_scene_node3d_get_child(void *obj, int64_t index) {
 
 /// @brief Parent node handle (NULL for root or detached nodes).
 void *rt_scene_node3d_get_parent(void *obj) {
-    return obj ? ((rt_scene_node3d *)obj)->parent : NULL;
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    return node ? node->parent : NULL;
 }
 
 /// @brief Recursive depth-first search of the subtree for a node with the given name.
 void *rt_scene_node3d_find(void *obj, rt_string name) {
-    if (!obj || !name)
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node || !name)
         return NULL;
     const char *s = rt_string_cstr(name);
     if (!s)
         return NULL;
-    return find_by_name((rt_scene_node3d *)obj, s);
+    return find_by_name(node, s);
 }
 
 /*==========================================================================
@@ -1896,9 +1906,11 @@ void *rt_scene_node3d_find(void *obj, rt_string name) {
 /// @brief Bind a mesh to this node (replaces previous; null clears).
 /// The mesh is referenced (not copied) so multiple nodes can share it.
 void rt_scene_node3d_set_mesh(void *obj, void *mesh) {
-    if (!obj)
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    if (!n)
         return;
-    rt_scene_node3d *n = (rt_scene_node3d *)obj;
+    if (mesh && !rt_g3d_has_class(mesh, RT_G3D_MESH3D_CLASS_ID))
+        return;
     if (n->mesh == mesh) {
         if (mesh)
             scene_mesh_bounds((rt_mesh3d *)mesh, n->aabb_min, n->aabb_max, &n->bsphere_radius);
@@ -1920,14 +1932,17 @@ void rt_scene_node3d_set_mesh(void *obj, void *mesh) {
 
 /// @brief Currently bound mesh handle (NULL if none).
 void *rt_scene_node3d_get_mesh(void *obj) {
-    return obj ? ((rt_scene_node3d *)obj)->mesh : NULL;
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    return node ? node->mesh : NULL;
 }
 
 /// @brief Bind a material to this node (replaces previous; null clears).
 void rt_scene_node3d_set_material(void *obj, void *material) {
-    if (!obj)
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
         return;
-    rt_scene_node3d *node = (rt_scene_node3d *)obj;
+    if (material && !rt_g3d_has_class(material, RT_G3D_MATERIAL3D_CLASS_ID))
+        return;
     if (node->material == material)
         return;
     rt_obj_retain_maybe(material);
@@ -1937,14 +1952,17 @@ void rt_scene_node3d_set_material(void *obj, void *material) {
 
 /// @brief Currently bound material handle (NULL if none).
 void *rt_scene_node3d_get_material(void *obj) {
-    return obj ? ((rt_scene_node3d *)obj)->material : NULL;
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    return node ? node->material : NULL;
 }
 
 /// @brief Attach a Light3D to this node; Scene3D.Draw transforms it by the node world pose.
 void rt_scene_node3d_set_light(void *obj, void *light) {
-    if (!obj)
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
         return;
-    rt_scene_node3d *node = (rt_scene_node3d *)obj;
+    if (light && !rt_g3d_has_class(light, RT_G3D_LIGHT3D_CLASS_ID))
+        return;
     if (node->light == light)
         return;
     rt_obj_retain_maybe(light);
@@ -1954,25 +1972,28 @@ void rt_scene_node3d_set_light(void *obj, void *light) {
 
 /// @brief Currently attached Light3D handle (NULL if this node has no imported/local light).
 void *rt_scene_node3d_get_light(void *obj) {
-    return obj ? ((rt_scene_node3d *)obj)->light : NULL;
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    return node ? node->light : NULL;
 }
 
 /// @brief Toggle whether this node participates in rendering.
 void rt_scene_node3d_set_visible(void *obj, int8_t visible) {
-    if (obj)
-        ((rt_scene_node3d *)obj)->visible = visible ? 1 : 0;
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (node)
+        node->visible = visible ? 1 : 0;
 }
 
 /// @brief Read the visibility flag (0 or 1; 0 if `obj` is NULL).
 int8_t rt_scene_node3d_get_visible(void *obj) {
-    return obj ? ((rt_scene_node3d *)obj)->visible : 0;
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    return node ? node->visible : 0;
 }
 
 /// @brief Set the node's identifier name (used by `rt_scene_node3d_find`).
 void rt_scene_node3d_set_name(void *obj, rt_string name) {
-    if (!obj)
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
         return;
-    rt_scene_node3d *node = (rt_scene_node3d *)obj;
     if (!name)
         name = rt_const_cstr("");
     if (node->name == name)
@@ -1984,8 +2005,9 @@ void rt_scene_node3d_set_name(void *obj, rt_string name) {
 
 /// @brief Read the node's name (empty string if unset or `obj` is NULL).
 rt_string rt_scene_node3d_get_name(void *obj) {
-    if (obj && ((rt_scene_node3d *)obj)->name)
-        return ((rt_scene_node3d *)obj)->name;
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (node && node->name)
+        return node->name;
     return rt_const_cstr("");
 }
 
@@ -2161,25 +2183,27 @@ void *rt_scene3d_new(void) {
 
 /// @brief Return the implicit root node — every other node lives somewhere in its subtree.
 void *rt_scene3d_get_root(void *obj) {
-    return obj ? ((rt_scene3d *)obj)->root : NULL;
+    rt_scene3d *s = scene3d_checked(obj);
+    return s ? s->root : NULL;
 }
 
 /// @brief Convenience: add `node` as a direct child of the scene's root node.
 void rt_scene3d_add(void *obj, void *node) {
-    if (!obj)
+    rt_scene3d *s = scene3d_checked(obj);
+    rt_scene_node3d *n = scene_node3d_checked(node);
+    if (!s || !n)
         return;
-    rt_scene3d *s = (rt_scene3d *)obj;
-    rt_scene_node3d_add_child(s->root, node);
+    rt_scene_node3d_add_child(s->root, n);
     s->node_count = count_subtree(s->root);
 }
 
 /// @brief Convenience: remove `node` from the scene root's children.
 void rt_scene3d_remove(void *obj, void *node) {
-    if (!obj || !node)
+    rt_scene3d *s = scene3d_checked(obj);
+    rt_scene_node3d *n = scene_node3d_checked(node);
+    if (!s || !n)
         return;
-    rt_scene3d *s = (rt_scene3d *)obj;
-    rt_scene_node3d *n = (rt_scene_node3d *)node;
-    if (n->parent)
+    if (node_contains(s->root, n) && n->parent)
         rt_scene_node3d_remove_child(n->parent, n);
     s->node_count = count_subtree(s->root);
 }
@@ -2188,12 +2212,12 @@ void rt_scene3d_remove(void *obj, void *node) {
 /// @return Pointer to the first matching node or NULL. Ownership is not
 ///   transferred — callers must not release the returned pointer directly.
 void *rt_scene3d_find(void *obj, rt_string name) {
-    if (!obj || !name)
+    rt_scene3d *s = scene3d_checked(obj);
+    if (!s || !name)
         return NULL;
     const char *str = rt_string_cstr(name);
     if (!str)
         return NULL;
-    rt_scene3d *s = (rt_scene3d *)obj;
     return find_by_name(s->root, str);
 }
 

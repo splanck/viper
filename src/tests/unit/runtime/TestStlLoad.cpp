@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 extern "C" {
 void *rt_mesh3d_from_stl(void *path);
@@ -116,6 +117,81 @@ TEST(StlLoadTest, AsciiOneTriangle) {
     EXPECT_EQ(rt_mesh3d_get_triangle_count(mesh), 1);
 
     free_mesh(mesh);
+    remove(path);
+}
+
+TEST(StlLoadTest, RejectMalformedAsciiVertexNumber) {
+    const char *ascii_stl = "solid bad\n"
+                            "  facet normal 0 1 0\n"
+                            "    outer loop\n"
+                            "      vertex 0 0 0\n"
+                            "      vertex 1 nope 0\n"
+                            "      vertex 0 0 1\n"
+                            "    endloop\n"
+                            "  endfacet\n"
+                            "endsolid bad\n";
+
+    const char *path = write_temp("bad_ascii_number.stl", ascii_stl, strlen(ascii_stl));
+    void *rts = rt_const_cstr(path);
+    void *mesh = rt_mesh3d_from_stl(rts);
+    EXPECT_EQ(mesh, nullptr);
+    remove(path);
+}
+
+TEST(StlLoadTest, RejectAsciiVertexTrailingGarbage) {
+    const char *ascii_stl = "solid bad\n"
+                            "  facet normal 0 1 0\n"
+                            "    outer loop\n"
+                            "      vertex 0 0 0\n"
+                            "      vertex 1 0 0junk\n"
+                            "      vertex 0 0 1\n"
+                            "    endloop\n"
+                            "  endfacet\n"
+                            "endsolid bad\n";
+
+    const char *path = write_temp("bad_ascii_trailing.stl", ascii_stl, strlen(ascii_stl));
+    void *rts = rt_const_cstr(path);
+    void *mesh = rt_mesh3d_from_stl(rts);
+    EXPECT_EQ(mesh, nullptr);
+    remove(path);
+}
+
+TEST(StlLoadTest, RejectIncompleteAsciiFacet) {
+    const char *ascii_stl = "solid bad\n"
+                            "  facet normal 0 1 0\n"
+                            "    outer loop\n"
+                            "      vertex 0 0 0\n"
+                            "      vertex 1 0 0\n"
+                            "    endloop\n"
+                            "  endfacet\n"
+                            "endsolid bad\n";
+
+    const char *path = write_temp("incomplete_ascii.stl", ascii_stl, strlen(ascii_stl));
+    void *rts = rt_const_cstr(path);
+    void *mesh = rt_mesh3d_from_stl(rts);
+    EXPECT_EQ(mesh, nullptr);
+    remove(path);
+}
+
+TEST(StlLoadTest, RejectBinaryWithNonFiniteVertex) {
+    uint8_t stl[134];
+    memset(stl, 0, sizeof(stl));
+    stl[80] = 1;
+
+    float normal[] = {0.0f, 1.0f, 0.0f};
+    float v1[] = {0.0f, 0.0f, 0.0f};
+    float v2[] = {std::numeric_limits<float>::quiet_NaN(), 0.0f, 0.0f};
+    float v3[] = {0.0f, 0.0f, 1.0f};
+
+    memcpy(stl + 84, normal, 12);
+    memcpy(stl + 96, v1, 12);
+    memcpy(stl + 108, v2, 12);
+    memcpy(stl + 120, v3, 12);
+
+    const char *path = write_temp("nan_binary.stl", stl, sizeof(stl));
+    void *rts = rt_const_cstr(path);
+    void *mesh = rt_mesh3d_from_stl(rts);
+    EXPECT_EQ(mesh, nullptr);
     remove(path);
 }
 

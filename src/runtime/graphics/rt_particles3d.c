@@ -28,6 +28,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 
+#include <float.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -84,6 +85,10 @@ typedef struct {
     uint32_t prng_state;   /* per-instance PRNG seed */
     void *cached_material; /* reused across frames (GFX-052) */
 } rt_particles3d;
+
+static rt_particles3d *particles3d_checked(void *obj) {
+    return (rt_particles3d *)rt_g3d_checked_or_null(obj, RT_G3D_PARTICLES3D_CLASS_ID);
+}
 
 /*==========================================================================
  * xorshift32 PRNG (per-instance, deterministic)
@@ -591,9 +596,14 @@ static void spawn_particle(rt_particles3d *ps) {
 /// @brief Spawn `count` particles immediately (in addition to any continuous emission). Useful
 /// for explosions, sparks, one-shot effects.
 void rt_particles3d_burst(void *o, int64_t count) {
-    if (!o || count <= 0)
+    rt_particles3d *ps = particles3d_checked(o);
+    if (!ps || count <= 0)
         return;
-    rt_particles3d *ps = (rt_particles3d *)o;
+    int64_t available = (int64_t)ps->max_particles - (int64_t)ps->count;
+    if (available <= 0)
+        return;
+    if (count > available)
+        count = available;
     for (int64_t i = 0; i < count; i++)
         spawn_particle(ps);
 }
@@ -606,10 +616,14 @@ void rt_particles3d_burst(void *o, int64_t count) {
 /// vel += gravity*dt), age-interpolate size/color/alpha, and reap dead ones via O(1) swap-with-
 /// last. Then accumulates and emits new particles from the rate while emission is enabled.
 void rt_particles3d_update(void *o, double delta_time) {
-    if (!o || !isfinite(delta_time) || delta_time <= 0.0)
+    rt_particles3d *ps = particles3d_checked(o);
+    if (!ps || !isfinite(delta_time) || delta_time <= 0.0)
         return;
-    rt_particles3d *ps = (rt_particles3d *)o;
+    if (delta_time > 1.0)
+        delta_time = 1.0;
     float dt = (float)delta_time;
+    if (!isfinite(dt) || dt <= 0.0f)
+        return;
 
     /* Update alive particles */
     for (int32_t i = 0; i < ps->count;) {

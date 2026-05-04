@@ -136,6 +136,23 @@ static void test_add_remove_child() {
     EXPECT_TRUE(rt_scene_node3d_get_parent(node) == nullptr, "Removed node has no parent");
 }
 
+static void test_scene_remove_ignores_nodes_from_other_scenes() {
+    void *scene_a = rt_scene3d_new();
+    void *scene_b = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+
+    rt_scene3d_add(scene_b, node);
+    EXPECT_TRUE(rt_scene_node3d_get_parent(node) == rt_scene3d_get_root(scene_b),
+                "Node starts parented in scene B");
+
+    rt_scene3d_remove(scene_a, node);
+
+    EXPECT_TRUE(rt_scene_node3d_get_parent(node) == rt_scene3d_get_root(scene_b),
+                "Scene3D.Remove ignores nodes outside the scene root subtree");
+    EXPECT_TRUE(rt_scene3d_get_node_count(scene_a) == 1, "Scene A count remains unchanged");
+    EXPECT_TRUE(rt_scene3d_get_node_count(scene_b) == 2, "Scene B keeps its node");
+}
+
 static void test_translation_propagation() {
     void *parent = rt_scene_node3d_new();
     void *child = rt_scene_node3d_new();
@@ -1330,6 +1347,7 @@ static void test_scene_roundtrip_preserves_node_lights() {
 int main() {
     test_create_scene_and_node();
     test_add_remove_child();
+    test_scene_remove_ignores_nodes_from_other_scenes();
     test_translation_propagation();
     test_rotation_propagation();
     test_scale_propagation();

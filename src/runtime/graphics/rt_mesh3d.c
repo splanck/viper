@@ -26,6 +26,7 @@
 
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_mat4.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_string.h"
@@ -51,10 +52,25 @@ extern const char *rt_string_cstr(rt_string s);
 #define MESH_INIT_IDXS 128
 #define MESH_MAX_SPHERE_SEGMENTS 512
 #define MESH_MAX_CYLINDER_SEGMENTS 8192
+#define MESH3D_FLOAT_ABS_MAX 3.40282346638528859812e38
 
 /// @brief Cheap wrapper around `isfinite` so attribute-validation call sites read declaratively.
 static int mesh_value_is_finite(double value) {
     return isfinite(value);
+}
+
+static rt_mesh3d *mesh3d_checked(void *obj) {
+    return (rt_mesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_MESH3D_CLASS_ID);
+}
+
+static mat4_impl *mesh3d_mat4_checked(void *obj) {
+    if (!obj || rt_obj_class_id(obj) != RT_MAT4_CLASS_ID)
+        return NULL;
+    return (mat4_impl *)obj;
+}
+
+static int mesh_value_fits_float(double value) {
+    return isfinite(value) && value >= -MESH3D_FLOAT_ABS_MAX && value <= MESH3D_FLOAT_ABS_MAX;
 }
 
 /// @brief Guard for procedural-generator dimensions — trap if `value` is NaN/inf or ≤ 0.
@@ -209,9 +225,9 @@ void *rt_mesh3d_new(void) {
 
 /// @brief Remove all vertices and indices from the mesh, resetting to empty.
 void rt_mesh3d_clear(void *obj) {
-    if (!obj)
+    rt_mesh3d *m = mesh3d_checked(obj);
+    if (!m)
         return;
-    rt_mesh3d *m = (rt_mesh3d *)obj;
     m->vertex_count = 0;
     m->index_count = 0;
     m->bone_palette = NULL;
@@ -235,16 +251,16 @@ void rt_mesh3d_clear(void *obj) {
 ///          (vgfx3d_vertex_t), converted from the double parameters.
 void rt_mesh3d_add_vertex(
     void *obj, double x, double y, double z, double nx, double ny, double nz, double u, double v) {
-    if (!obj)
+    rt_mesh3d *m = mesh3d_checked(obj);
+    if (!m)
         return;
-    rt_mesh3d *m = (rt_mesh3d *)obj;
     if (m->build_failed)
         return;
-    if (!mesh_value_is_finite(x) || !mesh_value_is_finite(y) || !mesh_value_is_finite(z) ||
-        !mesh_value_is_finite(nx) || !mesh_value_is_finite(ny) || !mesh_value_is_finite(nz) ||
-        !mesh_value_is_finite(u) || !mesh_value_is_finite(v)) {
+    if (!mesh_value_fits_float(x) || !mesh_value_fits_float(y) || !mesh_value_fits_float(z) ||
+        !mesh_value_fits_float(nx) || !mesh_value_fits_float(ny) || !mesh_value_fits_float(nz) ||
+        !mesh_value_fits_float(u) || !mesh_value_fits_float(v)) {
         mesh_mark_build_failed(m);
-        rt_trap("Mesh3D.AddVertex: vertex attributes must be finite");
+        rt_trap("Mesh3D.AddVertex: vertex attributes must be finite and fit float range");
         return;
     }
 
@@ -289,9 +305,9 @@ void rt_mesh3d_add_vertex(
 
 /// @brief Add a triangle defined by three vertex indices (CCW winding = front-facing).
 void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
-    if (!obj)
+    rt_mesh3d *m = mesh3d_checked(obj);
+    if (!m)
         return;
-    rt_mesh3d *m = (rt_mesh3d *)obj;
     if (m->build_failed)
         return;
 
@@ -338,23 +354,21 @@ void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
 
 /// @brief Get the number of vertices in the mesh.
 int64_t rt_mesh3d_get_vertex_count(void *obj) {
-    if (!obj)
-        return 0;
-    return (int64_t)((rt_mesh3d *)obj)->vertex_count;
+    rt_mesh3d *m = mesh3d_checked(obj);
+    return m ? (int64_t)m->vertex_count : 0;
 }
 
 /// @brief Get the number of triangles in the mesh (index_count / 3).
 int64_t rt_mesh3d_get_triangle_count(void *obj) {
-    if (!obj)
-        return 0;
-    return (int64_t)(((rt_mesh3d *)obj)->index_count / 3);
+    rt_mesh3d *m = mesh3d_checked(obj);
+    return m ? (int64_t)(m->index_count / 3) : 0;
 }
 
 /// @brief Recalculate smooth vertex normals by averaging face normals per-vertex.
 void rt_mesh3d_recalc_normals(void *obj) {
-    if (!obj)
+    rt_mesh3d *m = mesh3d_checked(obj);
+    if (!m)
         return;
-    rt_mesh3d *m = (rt_mesh3d *)obj;
 
     /* Zero all normals */
     for (uint32_t i = 0; i < m->vertex_count; i++) {
@@ -400,6 +414,10 @@ void rt_mesh3d_recalc_normals(void *obj) {
             n[0] /= len;
             n[1] /= len;
             n[2] /= len;
+        } else {
+            n[0] = 0.0f;
+            n[1] = 1.0f;
+            n[2] = 0.0f;
         }
     }
     rt_mesh3d_touch_geometry(m);
@@ -407,9 +425,9 @@ void rt_mesh3d_recalc_normals(void *obj) {
 
 /// @brief Create a deep copy of a mesh (independent vertex/index arrays).
 void *rt_mesh3d_clone(void *obj) {
-    if (!obj)
+    rt_mesh3d *src = mesh3d_checked(obj);
+    if (!src)
         return NULL;
-    rt_mesh3d *src = (rt_mesh3d *)obj;
     rt_mesh3d *dst = (rt_mesh3d *)rt_mesh3d_new();
     if (!dst)
         return NULL;
@@ -488,16 +506,21 @@ void *rt_mesh3d_clone(void *obj) {
 /// @param obj Target mesh (no-op when NULL).
 /// @param mat4_obj Mat4 handle (no-op when NULL).
 void rt_mesh3d_transform(void *obj, void *mat4_obj) {
-    if (!obj || !mat4_obj)
+    rt_mesh3d *m = mesh3d_checked(obj);
+    mat4_impl *xform = mesh3d_mat4_checked(mat4_obj);
+    if (!m || !xform)
         return;
-    rt_mesh3d *m = (rt_mesh3d *)obj;
-    mat4_impl *xform = (mat4_impl *)mat4_obj;
     float model_matrix[16];
     float normal_matrix[16];
     float handedness_sign = 1.0f;
 
-    for (int i = 0; i < 16; i++)
+    for (int i = 0; i < 16; i++) {
+        if (!mesh_value_fits_float(xform->m[i])) {
+            rt_trap("Mesh3D.Transform: matrix values must be finite and fit float range");
+            return;
+        }
         model_matrix[i] = (float)xform->m[i];
+    }
     vgfx3d_compute_normal_matrix4(model_matrix, normal_matrix);
     {
         float det = model_matrix[0] * (model_matrix[5] * model_matrix[10] -
@@ -1570,26 +1593,42 @@ static void *stl_load_binary(const uint8_t *data, size_t len) {
               v2z = stl_read_f32_le(tri + 32);
         float v3x = stl_read_f32_le(tri + 36), v3y = stl_read_f32_le(tri + 40),
               v3z = stl_read_f32_le(tri + 44);
+        if (!isfinite(v1x) || !isfinite(v1y) || !isfinite(v1z) || !isfinite(v2x) ||
+            !isfinite(v2y) || !isfinite(v2z) || !isfinite(v3x) || !isfinite(v3y) ||
+            !isfinite(v3z)) {
+            mesh_mark_build_failed((rt_mesh3d *)mesh);
+            break;
+        }
 
         int64_t base = (int64_t)((rt_mesh3d *)mesh)->vertex_count;
         rt_mesh3d_add_vertex(mesh, v1x, v1y, v1z, 0, 0, 0, 0, 0);
         rt_mesh3d_add_vertex(mesh, v2x, v2y, v2z, 0, 0, 0, 0, 0);
         rt_mesh3d_add_vertex(mesh, v3x, v3y, v3z, 0, 0, 0, 0, 0);
         rt_mesh3d_add_triangle(mesh, base, base + 1, base + 2);
+        if (((rt_mesh3d *)mesh)->build_failed)
+            break;
     }
 
+    if (((rt_mesh3d *)mesh)->build_failed)
+        return mesh_return_null_if_build_failed(mesh);
     rt_mesh3d_recalc_normals(mesh);
     return mesh;
 }
 
 /// @brief Parse a double from an ASCII STL stream, advancing the cursor past it.
-static double stl_parse_double(const char **pp) {
-    while (**pp == ' ' || **pp == '\t')
+static int stl_parse_double(const char **pp, const char *end, double *out) {
+    while (*pp < end && (**pp == ' ' || **pp == '\t'))
         (*pp)++;
-    char *end;
-    double val = strtod(*pp, &end);
-    *pp = end;
-    return val;
+    if (*pp >= end)
+        return 0;
+    errno = 0;
+    char *parse_end = NULL;
+    double val = strtod(*pp, &parse_end);
+    if (!parse_end || parse_end == *pp || parse_end > end || errno == ERANGE || !isfinite(val))
+        return 0;
+    *pp = parse_end;
+    *out = val;
+    return 1;
 }
 
 /// @brief Decode an ASCII-STL byte buffer into a Mesh3D.
@@ -1602,10 +1641,20 @@ static void *stl_load_ascii(const uint8_t *data, size_t len) {
     if (!mesh)
         return NULL;
 
-    const char *p = (const char *)data;
-    const char *end = p + len;
+    char *text = (char *)malloc(len + 1u);
+    if (!text) {
+        if (rt_obj_release_check0(mesh))
+            rt_obj_free(mesh);
+        return NULL;
+    }
+    memcpy(text, data, len);
+    text[len] = '\0';
+
+    const char *p = text;
+    const char *end = text + len;
     float verts[9]; // 3 vertices × 3 components
     int vert_idx = 0;
+    int parse_failed = 0;
 
     while (p < end) {
         // Skip whitespace
@@ -1614,11 +1663,25 @@ static void *stl_load_ascii(const uint8_t *data, size_t len) {
         if (p >= end)
             break;
 
-        if (strncmp(p, "vertex", 6) == 0 && (p[6] == ' ' || p[6] == '\t')) {
+        if ((size_t)(end - p) >= 7u && strncmp(p, "vertex", 6) == 0 &&
+            (p[6] == ' ' || p[6] == '\t')) {
             const char *vp = p + 6;
-            verts[vert_idx * 3 + 0] = (float)stl_parse_double(&vp);
-            verts[vert_idx * 3 + 1] = (float)stl_parse_double(&vp);
-            verts[vert_idx * 3 + 2] = (float)stl_parse_double(&vp);
+            double x, y, z;
+            if (!stl_parse_double(&vp, end, &x) || !stl_parse_double(&vp, end, &y) ||
+                !stl_parse_double(&vp, end, &z) || !mesh_value_fits_float(x) ||
+                !mesh_value_fits_float(y) || !mesh_value_fits_float(z)) {
+                parse_failed = 1;
+                break;
+            }
+            while (vp < end && (*vp == ' ' || *vp == '\t'))
+                vp++;
+            if (vp < end && *vp != '\r' && *vp != '\n') {
+                parse_failed = 1;
+                break;
+            }
+            verts[vert_idx * 3 + 0] = (float)x;
+            verts[vert_idx * 3 + 1] = (float)y;
+            verts[vert_idx * 3 + 2] = (float)z;
             vert_idx++;
 
             if (vert_idx == 3) {
@@ -1627,6 +1690,10 @@ static void *stl_load_ascii(const uint8_t *data, size_t len) {
                 rt_mesh3d_add_vertex(mesh, verts[3], verts[4], verts[5], 0, 0, 0, 0, 0);
                 rt_mesh3d_add_vertex(mesh, verts[6], verts[7], verts[8], 0, 0, 0, 0, 0);
                 rt_mesh3d_add_triangle(mesh, base, base + 1, base + 2);
+                if (((rt_mesh3d *)mesh)->build_failed) {
+                    parse_failed = 1;
+                    break;
+                }
                 vert_idx = 0;
             }
         }
@@ -1638,13 +1705,16 @@ static void *stl_load_ascii(const uint8_t *data, size_t len) {
             p++;
     }
 
-    if (((rt_mesh3d *)mesh)->vertex_count == 0) {
+    if (parse_failed || vert_idx != 0 || ((rt_mesh3d *)mesh)->vertex_count == 0 ||
+        ((rt_mesh3d *)mesh)->build_failed) {
         // No triangles found — free and return NULL
+        free(text);
         if (rt_obj_release_check0(mesh))
             rt_obj_free(mesh);
         return NULL;
     }
 
+    free(text);
     rt_mesh3d_recalc_normals(mesh);
     return mesh;
 }
@@ -1691,8 +1761,10 @@ void *rt_mesh3d_from_stl(rt_string path) {
     void *mesh = NULL;
     if ((size_t)file_len >= 84) {
         uint32_t tri_count = stl_read_u32_le(data + 80);
-        size_t expected_binary = 84 + (size_t)tri_count * 50;
-        if ((size_t)file_len == expected_binary && tri_count > 0) {
+        size_t expected_binary = 0;
+        if ((size_t)tri_count <= (SIZE_MAX - 84u) / 50u)
+            expected_binary = 84u + (size_t)tri_count * 50u;
+        if (expected_binary != 0 && (size_t)file_len == expected_binary && tri_count > 0) {
             mesh = stl_load_binary(data, (size_t)file_len);
         }
     }

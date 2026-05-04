@@ -40,6 +40,20 @@ void *rt_mesh3d_new(void);
 void rt_mesh3d_add_vertex(
     void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
+int64_t rt_mesh3d_get_vertex_count(void *m);
+void rt_mesh3d_transform(void *m, void *mat4);
+void *rt_material3d_new(void);
+void rt_material3d_set_import_texture_slot(void *obj,
+                                           int64_t slot,
+                                           int64_t uv_set,
+                                           double offset_u,
+                                           double offset_v,
+                                           double scale_u,
+                                           double scale_v,
+                                           double rotation,
+                                           int64_t wrap_s,
+                                           int64_t wrap_t,
+                                           int64_t filter);
 double rt_terrain3d_get_height_at(void *obj, double wx, double wz);
 int8_t rt_navmesh3d_is_walkable(void *obj, void *point);
 void rt_navmesh3d_set_max_slope(void *obj, double degrees);
@@ -84,6 +98,34 @@ struct MaterialView {
     double shininess;
     int32_t workflow;
     void *texture;
+    void *normal_map;
+    void *specular_map;
+    void *emissive_map;
+    void *metallic_roughness_map;
+    void *ao_map;
+    double emissive[3];
+    double metallic;
+    double roughness;
+    double ao;
+    double emissive_intensity;
+    double normal_scale;
+    double alpha;
+    double alpha_cutoff;
+    void *env_map;
+    double reflectivity;
+    int8_t unlit;
+    int8_t double_sided;
+    int8_t additive_blend;
+    int32_t alpha_mode;
+    int8_t alpha_mode_auto;
+    int32_t texture_wrap_s;
+    int32_t texture_wrap_t;
+    int32_t texture_filter;
+    int32_t texture_slot_wrap_s[6];
+    int32_t texture_slot_wrap_t[6];
+    int32_t texture_slot_filter[6];
+    int32_t texture_slot_uv_set[6];
+    double texture_slot_uv_transform[6][6];
 };
 
 static void test_graphics3d_class_ids_are_stable() {
@@ -147,6 +189,43 @@ static void test_material_rejects_non_pixels_texture_handles() {
     assert(mat->texture == pixels);
     rt_material3d_set_texture(mat_obj, fake);
     assert(mat->texture == pixels);
+}
+
+static void test_mesh_apis_reject_wrong_class_handles() {
+    void *fake = rt_obj_new_i64(0, 8);
+    void *mesh = rt_mesh3d_new();
+    void *bad_mat4 = rt_obj_new_i64(0, 8);
+
+    rt_mesh3d_add_vertex(fake, 1.0, 2.0, 3.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    assert(rt_mesh3d_get_vertex_count(fake) == 0);
+
+    rt_mesh3d_add_vertex(mesh, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    assert(rt_mesh3d_get_vertex_count(mesh) == 1);
+    rt_mesh3d_transform(mesh, bad_mat4);
+    assert(rt_mesh3d_get_vertex_count(mesh) == 1);
+}
+
+static void test_material_import_texture_transform_clamps_float_uniforms() {
+    auto *mat = static_cast<MaterialView *>(rt_material3d_new());
+    assert(mat != nullptr);
+
+    rt_material3d_set_import_texture_slot(mat,
+                                          0,
+                                          0,
+                                          1.0e300,
+                                          -1.0e300,
+                                          1.0e300,
+                                          -1.0e300,
+                                          1.0e300,
+                                          0,
+                                          0,
+                                          0);
+
+    for (int i = 0; i < 6; i++) {
+        double value = mat->texture_slot_uv_transform[0][i];
+        assert(std::isfinite(value));
+        assert(std::fabs(value) <= 1000000.0);
+    }
 }
 
 static void test_terrain_heightmap_and_scale_sanitize_inputs() {
@@ -280,6 +359,8 @@ int main() {
     test_graphics3d_class_ids_are_stable();
     test_texture_atlas_copies_pixels_and_reports_uvs();
     test_material_rejects_non_pixels_texture_handles();
+    test_mesh_apis_reject_wrong_class_handles();
+    test_material_import_texture_transform_clamps_float_uniforms();
     test_terrain_heightmap_and_scale_sanitize_inputs();
     test_sprite3d_clamps_frame_anchor_and_scale();
     test_decal3d_normal_and_lifetime_are_sanitized();

@@ -102,6 +102,10 @@ extern "C" void *rt_obj_new_i64(int64_t, int64_t byte_size) {
     return std::calloc(1, static_cast<size_t>(byte_size));
 }
 
+extern "C" int64_t rt_obj_class_id(void *) {
+    return RT_G3D_PARTICLES3D_CLASS_ID;
+}
+
 extern "C" void rt_obj_set_finalizer(void *, void (*)(void *)) {}
 
 extern "C" void rt_obj_retain_maybe(void *) {}
@@ -214,6 +218,17 @@ static void test_burst_and_clear() {
     assert(rt_particles3d_get_count(ps) == 0);
 }
 
+static void test_burst_caps_to_available_pool() {
+    void *ps = rt_particles3d_new(4);
+    assert(ps != nullptr);
+
+    rt_particles3d_burst(ps, 100);
+    assert(rt_particles3d_get_count(ps) == 4);
+
+    rt_particles3d_burst(ps, 100);
+    assert(rt_particles3d_get_count(ps) == 4);
+}
+
 static void test_start_stop_and_update_spawns_particles() {
     void *ps = rt_particles3d_new(8);
     assert(ps != nullptr);
@@ -242,6 +257,16 @@ static void test_particles_expire_after_lifetime() {
 
     rt_particles3d_update(ps, 0.2);
     assert(rt_particles3d_get_count(ps) == 0);
+}
+
+static void test_update_clamps_large_finite_delta_time() {
+    void *ps = rt_particles3d_new(8);
+    assert(ps != nullptr);
+
+    rt_particles3d_set_lifetime(ps, 10.0, 10.0);
+    rt_particles3d_burst(ps, 1);
+    rt_particles3d_update(ps, 1.0e300);
+    assert(rt_particles3d_get_count(ps) == 1);
 }
 
 static void test_setters_sanitize_nonfinite_ranges() {
@@ -364,8 +389,10 @@ static void test_draw_additive_batches_and_alpha_splits_per_particle() {
 int main() {
     expect_trap_on_invalid_capacity();
     test_burst_and_clear();
+    test_burst_caps_to_available_pool();
     test_start_stop_and_update_spawns_particles();
     test_particles_expire_after_lifetime();
+    test_update_clamps_large_finite_delta_time();
     test_setters_sanitize_nonfinite_ranges();
     test_draw_additive_batches_and_alpha_splits_per_particle();
     std::printf("RTParticles3DContractTests passed.\n");

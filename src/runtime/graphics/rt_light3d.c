@@ -34,6 +34,10 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 
+static rt_light3d *light3d_checked(void *obj) {
+    return (rt_light3d *)rt_g3d_checked_or_null(obj, RT_G3D_LIGHT3D_CLASS_ID);
+}
+
 /// @brief Clamp a value at zero from below — negatives collapse to zero.
 /// @details Used for physical quantities like intensity, radius, and
 ///   attenuation where negative values are nonsensical. Chosen over a
@@ -287,9 +291,10 @@ void *rt_light3d_new_spot(void *position,
 /// @param obj       Light handle.
 /// @param intensity Brightness multiplier (default 1.0).
 void rt_light3d_set_intensity(void *obj, double intensity) {
-    if (!obj)
+    rt_light3d *light = light3d_checked(obj);
+    if (!light)
         return;
-    ((rt_light3d *)obj)->intensity = clamp_min0(intensity);
+    light->intensity = clamp_min0(intensity);
 }
 
 /// @brief Change the RGB color of a light after creation.
@@ -298,9 +303,9 @@ void rt_light3d_set_intensity(void *obj, double intensity) {
 /// @param g   Green component [0.0–1.0].
 /// @param b   Blue component [0.0–1.0].
 void rt_light3d_set_color(void *obj, double r, double g, double b) {
-    if (!obj)
+    rt_light3d *l = light3d_checked(obj);
+    if (!l)
         return;
-    rt_light3d *l = (rt_light3d *)obj;
     l->color[0] = clamp01(r);
     l->color[1] = clamp01(g);
     l->color[2] = clamp01(b);

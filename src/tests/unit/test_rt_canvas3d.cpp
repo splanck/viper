@@ -989,6 +989,37 @@ static void test_camera_look_at_coincident_eye_preserves_translation() {
     PASS();
 }
 
+static void test_camera_look_at_preserves_custom_up_basis() {
+    TEST("Camera3D.LookAt preserves caller-supplied up basis");
+    void *cam_obj = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 0.0);
+    void *target = rt_vec3_new(0.0, 0.0, -1.0);
+    void *rolled_up = rt_vec3_new(1.0, 0.0, 0.0);
+    rt_camera3d *cam = (rt_camera3d *)cam_obj;
+
+    rt_camera3d_look_at(cam_obj, eye, target, rolled_up);
+
+    EXPECT_NEAR(cam->view[4], 1.0, 0.001);
+    EXPECT_NEAR(cam->view[5], 0.0, 0.001);
+    EXPECT_NEAR(cam->view[6], 0.0, 0.001);
+    PASS();
+}
+
+static void test_camera_shake_overshoot_clears_immediately() {
+    TEST("Camera3D.Shake clears during the frame that consumes remaining duration");
+    rt_camera3d *cam = (rt_camera3d *)rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    rt_camera3d_shake(cam, 1.0, 0.1, 1.0);
+
+    rt_camera3d_update_shake_for_frame(cam, 0.2);
+
+    EXPECT_NEAR(cam->shake_duration, 0.0, 0.0001);
+    EXPECT_NEAR(cam->shake_intensity, 0.0, 0.0001);
+    EXPECT_NEAR(cam->shake_offset[0], 0.0, 0.0001);
+    EXPECT_NEAR(cam->shake_offset[1], 0.0, 0.0001);
+    EXPECT_NEAR(cam->shake_offset[2], 0.0, 0.0001);
+    PASS();
+}
+
 static void test_camera_ortho_set_fov_preserves_projection() {
     TEST("Camera3D.SetFov leaves orthographic projections unchanged");
     rt_camera3d *cam = (rt_camera3d *)rt_camera3d_new_ortho(10.0, 16.0 / 9.0, 0.1, 100.0);
@@ -2251,6 +2282,39 @@ static void test_canvas_delta_time_preserves_first_zero() {
     PASS();
 }
 
+static void test_canvas_delta_time_cap_and_disable() {
+    TEST("Canvas3D.GetDeltaTime clamps to max and SetDTMax can disable the cap");
+    rt_canvas3d canvas;
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.dt_max_ms = 100;
+    canvas.delta_time_ms = 250;
+    EXPECT_EQ(rt_canvas3d_get_delta_time(&canvas), 100);
+
+    rt_canvas3d_set_dt_max(&canvas, -1);
+    EXPECT_EQ(rt_canvas3d_get_delta_time(&canvas), 250);
+    PASS();
+}
+
+static void test_canvas_draw_mesh_clears_pending_splat_on_failed_draw() {
+    TEST("Canvas3D.DrawMesh clears pending terrain splat state on failed draw");
+    rt_canvas3d canvas;
+    double model[16] = {0.0};
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.pending_has_splat = 1;
+    canvas.pending_splat_map = (void *)0x1;
+    canvas.pending_splat_layers[0] = (void *)0x2;
+    canvas.pending_splat_layer_scales[0] = 4.0f;
+    model[0] = model[5] = model[10] = model[15] = 1.0;
+
+    rt_canvas3d_draw_mesh_matrix(&canvas, NULL, model, NULL);
+
+    EXPECT_EQ(canvas.pending_has_splat, 0);
+    EXPECT_TRUE(canvas.pending_splat_map == NULL, "Pending splat map is cleared");
+    EXPECT_TRUE(canvas.pending_splat_layers[0] == NULL, "Pending splat layer is cleared");
+    EXPECT_NEAR(canvas.pending_splat_layer_scales[0], 0.0, 0.001);
+    PASS();
+}
+
 static void test_canvas_draw_terrain_rejects_2d_frame() {
     TEST("Canvas3D.DrawTerrain rejects Begin2D frames");
     rt_canvas3d canvas;
@@ -2494,6 +2558,20 @@ static void test_mesh_normals_recalc() {
     rt_mesh3d_add_triangle(m, 0, 1, 2);
     rt_mesh3d_recalc_normals(m);
     EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 3);
+    PASS();
+}
+
+static void test_mesh_recalc_normals_assigns_fallback_for_unreferenced_vertices() {
+    TEST("Mesh3D.RecalcNormals assigns finite fallback normals to unreferenced vertices");
+    rt_mesh3d *m = (rt_mesh3d *)rt_mesh3d_new();
+    assert(m != NULL);
+    rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 0, 0, 0, 0);
+
+    rt_mesh3d_recalc_normals(m);
+
+    EXPECT_NEAR(m->vertices[0].normal[0], 0.0, 0.001);
+    EXPECT_NEAR(m->vertices[0].normal[1], 1.0, 0.001);
+    EXPECT_NEAR(m->vertices[0].normal[2], 0.0, 0.001);
     PASS();
 }
 
@@ -2751,6 +2829,31 @@ static void test_canvas_legacy_translucent_batch_falls_back_from_instancing() {
     PASS();
 }
 
+static void test_canvas_instanced_fallback_caps_instance_count() {
+    TEST("Canvas3D caps per-instance fallback draws");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *mat = rt_material3d_new();
+    float instance[16] = {0.0f};
+
+    backend.name = "software";
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.in_frame = 1;
+    instance[0] = instance[5] = instance[10] = instance[15] = 1.0f;
+
+    EXPECT_TRUE(expect_trap_contains(
+                    [&]() {
+                        rt_canvas3d_queue_instanced_batch(
+                            &canvas, mesh, mat, instance, 65537, NULL, 0);
+                    },
+                    "fallback instance count exceeds limit"),
+                "Fallback instancing refuses unbounded per-instance draw expansion");
+    PASS();
+}
+
 static void test_metal_terrain_splat_for_gpu() {
     TEST("MTL-14: Terrain3D splat maps + 4 layers for GPU path");
     void *t = rt_terrain3d_new(8, 8);
@@ -2884,6 +2987,8 @@ int main() {
     test_camera_set_position_rebuilds_view();
     test_camera_set_yaw_pitch_rebuilds_view();
     test_camera_look_at_coincident_eye_preserves_translation();
+    test_camera_look_at_preserves_custom_up_basis();
+    test_camera_shake_overshoot_clears_immediately();
     test_camera_ortho_set_fov_preserves_projection();
     test_camera_ortho_screen_to_ray_parallel();
     test_camera_screen_to_ray_tracks_shaken_view();
@@ -2968,6 +3073,8 @@ int main() {
     test_canvas_light_retains_owned_reference();
     test_canvas_light_supports_last_slot();
     test_canvas_delta_time_preserves_first_zero();
+    test_canvas_delta_time_cap_and_disable();
+    test_canvas_draw_mesh_clears_pending_splat_on_failed_draw();
     test_canvas_draw_terrain_rejects_2d_frame();
 
     /* Terrain3D splat */
@@ -2985,6 +3092,7 @@ int main() {
     test_mesh_tangent_fallback_is_orthogonal_to_normal();
     test_canvas_draw_auto_generates_missing_normal_map_tangents();
     test_mesh_normals_recalc();
+    test_mesh_recalc_normals_assigns_fallback_for_unreferenced_vertices();
     test_terrain_splat_layer_count();
     test_terrain_splat_map_set();
 
@@ -3003,6 +3111,7 @@ int main() {
     test_instbatch_remove_preserves_unrelated_motion_history();
     test_canvas_opaque_alpha_mode_keeps_instanced_path();
     test_canvas_legacy_translucent_batch_falls_back_from_instancing();
+    test_canvas_instanced_fallback_caps_instance_count();
     test_metal_terrain_splat_for_gpu();
     test_metal_postfx_new();
     test_metal_postfx_grows_past_legacy_cap();

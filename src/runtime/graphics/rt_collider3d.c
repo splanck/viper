@@ -59,6 +59,10 @@ typedef struct {
     double bounds_max[3];
 } rt_collider3d;
 
+static rt_collider3d *collider3d_checked(void *obj) {
+    return (rt_collider3d *)rt_g3d_checked_or_null(obj, RT_G3D_COLLIDER3D_CLASS_ID);
+}
+
 typedef struct {
     void *vptr;
     double position[3];
@@ -472,8 +476,8 @@ void *rt_collider3d_new_sphere(double radius) {
     return collider;
 }
 
-/// @brief Construct a Y-axis capsule collider — cylinder of `height` with hemispherical caps of
-/// `radius`. Total bounding height is `height + 2*radius`. Common for character controllers.
+/// @brief Construct a Y-axis capsule collider with total `height` including hemispherical caps.
+/// Values below the capsule diameter collapse to a sphere-like capsule.
 void *rt_collider3d_new_capsule(double radius, double height) {
     rt_collider3d *collider = collider3d_alloc(RT_COLLIDER3D_TYPE_CAPSULE);
     if (!collider)
@@ -496,14 +500,15 @@ void *rt_collider3d_new_capsule(double radius, double height) {
 /// @return Retained collider pointer or NULL after `rt_trap` on missing mesh.
 static void *collider3d_new_mesh_like(void *mesh, int32_t type, int8_t static_only) {
     rt_collider3d *collider;
-    if (!mesh) {
+    rt_mesh3d *mesh_impl = (rt_mesh3d *)rt_g3d_checked_or_null(mesh, RT_G3D_MESH3D_CLASS_ID);
+    if (!mesh_impl) {
         rt_trap("Collider3D.NewMesh/NewConvexHull: mesh must be non-null");
         return NULL;
     }
     collider = collider3d_alloc(type);
     if (!collider)
         return NULL;
-    collider->mesh = (rt_mesh3d *)mesh;
+    collider->mesh = mesh_impl;
     collider->static_only = static_only;
     rt_obj_retain_maybe(mesh);
     collider3d_recompute_bounds(collider);
@@ -601,7 +606,8 @@ void *rt_collider3d_new_compound(void) {
 /// Children are retained for the compound's lifetime. Recomputes the compound's AABB to enclose
 /// the new child. Traps if the parent isn't compound, child is null, or self-reference is attempted.
 void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_transform) {
-    rt_collider3d *compound = (rt_collider3d *)compound_obj;
+    rt_collider3d *compound = collider3d_checked(compound_obj);
+    rt_collider3d *child = collider3d_checked(child_obj);
     int32_t new_capacity;
     if (!compound)
         return;
@@ -609,15 +615,19 @@ void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_tr
         rt_trap("Collider3D.AddChild: target collider is not compound");
         return;
     }
-    if (!child_obj) {
+    if (!child) {
         rt_trap("Collider3D.AddChild: child collider must be non-null");
         return;
     }
-    if (child_obj == compound_obj) {
+    if (local_transform && !rt_g3d_has_class(local_transform, RT_G3D_TRANSFORM3D_CLASS_ID)) {
+        rt_trap("Collider3D.AddChild: local_transform must be a Transform3D");
+        return;
+    }
+    if (child == compound) {
         rt_trap("Collider3D.AddChild: a collider cannot contain itself");
         return;
     }
-    if (collider3d_contains_child((rt_collider3d *)child_obj, compound)) {
+    if (collider3d_contains_child(child, compound)) {
         rt_trap("Collider3D.AddChild: adding this child would create a cycle");
         return;
     }
@@ -656,7 +666,7 @@ void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_tr
         compound->child_capacity = new_capacity;
     }
     rt_obj_retain_maybe(child_obj);
-    compound->children[compound->child_count] = child_obj;
+    compound->children[compound->child_count] = child;
     collider3d_set_from_transform(&compound->child_transforms[compound->child_count], local_transform);
     compound->child_count++;
     collider3d_recompute_bounds(compound);

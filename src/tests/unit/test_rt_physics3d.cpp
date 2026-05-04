@@ -384,6 +384,18 @@ static void test_world_add_remove() {
     EXPECT_TRUE(rt_world3d_body_count(w) == 0, "Body count = 0 after remove");
 }
 
+static void test_world_rejects_duplicate_body_adds() {
+    void *w = rt_world3d_new(0, 0, 0);
+    void *b = rt_body3d_new_sphere(0.5, 1.0);
+    rt_world3d_add(w, b);
+    rt_world3d_add(w, b);
+    EXPECT_TRUE(rt_world3d_body_count(w) == 1, "World ignores duplicate body registration");
+
+    rt_world3d_step(w, 1.0 / 60.0);
+    EXPECT_TRUE(rt_world3d_get_collision_count(w) == 0,
+                "Duplicate body registration cannot self-collide");
+}
+
 static void test_world_body_storage_grows_past_initial_capacity() {
     void *w = rt_world3d_new(0, 0, 0);
     for (int i = 0; i < 300; i++) {
@@ -959,6 +971,21 @@ static void test_world_overlap_queries_honor_mask() {
     }
 }
 
+static void test_world_overlap_queries_reject_nonfinite_inputs() {
+    void *world = rt_world3d_new(0, 0, 0);
+    void *center = rt_vec3_new(0.0, 0.0, 0.0);
+    void *bad_center = rt_vec3_new(NAN, 0.0, 0.0);
+    void *minv = rt_vec3_new(-1.0, -1.0, -1.0);
+    void *bad_maxv = rt_vec3_new(INFINITY, 1.0, 1.0);
+
+    EXPECT_TRUE(rt_world3d_overlap_sphere(world, center, NAN, 1) == nullptr,
+                "OverlapSphere rejects non-finite radius");
+    EXPECT_TRUE(rt_world3d_overlap_sphere(world, bad_center, 1.0, 1) == nullptr,
+                "OverlapSphere rejects non-finite center");
+    EXPECT_TRUE(rt_world3d_overlap_aabb(world, minv, bad_maxv, 1) == nullptr,
+                "OverlapAabb rejects non-finite bounds");
+}
+
 static void test_collision_events_enter_stay_exit() {
     void *world = rt_world3d_new(0, 0, 0);
     void *floor = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
@@ -1218,6 +1245,7 @@ int main() {
     /* World */
     test_world_create();
     test_world_add_remove();
+    test_world_rejects_duplicate_body_adds();
     test_world_body_storage_grows_past_initial_capacity();
     test_world_contact_storage_grows_past_initial_capacity();
     test_world_broadphase_rejects_separated_bodies();
@@ -1270,6 +1298,7 @@ int main() {
     test_world_raycast_all_sorted();
     test_world_sweep_sphere_reports_started_penetrating();
     test_world_overlap_queries_honor_mask();
+    test_world_overlap_queries_reject_nonfinite_inputs();
     test_collision_events_enter_stay_exit();
     test_collision_event_surface_and_trigger_flag();
 

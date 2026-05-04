@@ -162,7 +162,7 @@ The rendering surface. Creates a window and manages the render loop.
 | `Width` | Integer | read | Active output width in pixels (window, or current RenderTarget3D when bound) |
 | `Height` | Integer | read | Active output height in pixels (window, or current RenderTarget3D when bound) |
 | `Fps` | Integer | read | Frames per second |
-| `DeltaTime` | Integer | read | Milliseconds since last Flip (first frame = 0) |
+| `DeltaTime` | Integer | read | Milliseconds since last Flip (first frame = 0, capped to 100ms by default) |
 | `Backend` | String | read | Active renderer: "software", "metal", "d3d11", "opengl" |
 | `BackendCapabilities` | Integer | read | Bitmask of `Canvas3D` backend capabilities |
 | `Wireframe` | Boolean | write | Toggle wireframe rendering (default: off) |
@@ -219,7 +219,7 @@ The rendering surface. Creates a window and manages the render loop.
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `SetBackfaceCull(enabled)` | `void(i1)` | Toggle backface culling (default: on) |
-| `SetDTMax(ms)` | `void(i64)` | Cap DeltaTime to prevent spiral-of-death |
+| `SetDTMax(ms)` | `void(i64)` | Cap DeltaTime to prevent spiral-of-death (`ms <= 0` disables the cap; default cap is 100ms) |
 | `SetRenderTarget(target)` | `void(obj)` | Redirect rendering to offscreen RenderTarget3D |
 | `ResetRenderTarget()` | `void()` | Return to window rendering |
 | `SetPostFX(fx)` | `void(obj)` | Set PostFX3D chain applied in `Flip()` to the window or active render target; SSAO/DOF/motion blur require GPU window postfx |
@@ -1870,7 +1870,7 @@ wrappers for simple cases.
 |-------------|-----------|-------------|
 | `NewBox(hx, hy, hz)` | `obj(f64, f64, f64)` | Box collider with half-extents |
 | `NewSphere(radius)` | `obj(f64)` | Sphere collider |
-| `NewCapsule(radius, height)` | `obj(f64, f64)` | Capsule collider authored along local Y; body/collider rotation orients it in world space |
+| `NewCapsule(radius, height)` | `obj(f64, f64)` | Capsule collider authored along local Y; `height` is total height including caps, and values below `2*radius` collapse to a sphere-like capsule |
 | `NewConvexHull(mesh)` | `obj(obj)` | Convex-hull collider sourced from a `Mesh3D` |
 | `NewMesh(mesh)` | `obj(obj)` | Static triangle-mesh collider |
 | `NewHeightfield(heightmap, sx, sy, sz)` | `obj(obj, f64, f64, f64)` | Static heightfield collider from `Pixels` |
@@ -1900,7 +1900,7 @@ Notes:
 | `New(mass)` | `obj(f64)` | Create an empty body and assign a collider later |
 | `NewAABB(sx, sy, sz, mass)` | `obj(f64, f64, f64, f64)` | AABB box body (mass=0 for static) |
 | `NewSphere(radius, mass)` | `obj(f64, f64)` | Sphere body |
-| `NewCapsule(radius, height, mass)` | `obj(f64, f64, f64)` | Capsule body |
+| `NewCapsule(radius, height, mass)` | `obj(f64, f64, f64)` | Capsule body; `height` is total height including caps |
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
