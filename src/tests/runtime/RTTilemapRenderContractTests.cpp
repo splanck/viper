@@ -18,6 +18,7 @@ extern "C" {
 namespace {
 
 struct ObjHeader {
+    int64_t class_id;
     void (*finalizer)(void *);
 };
 
@@ -85,11 +86,16 @@ void destroy_rt_object(void *obj) {
 
 } // namespace
 
-extern "C" void *rt_obj_new_i64(int64_t, int64_t byte_size) {
+extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
     auto *header =
         static_cast<ObjHeader *>(std::calloc(1, sizeof(ObjHeader) + static_cast<size_t>(byte_size)));
     assert(header != nullptr);
+    header->class_id = class_id;
     return header + 1;
+}
+
+extern "C" int64_t rt_obj_class_id(void *obj) {
+    return obj ? header_from_payload(obj)->class_id : 0;
 }
 
 extern "C" void rt_obj_set_finalizer(void *obj, void (*finalizer)(void *)) {

@@ -23,9 +23,80 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
+}
+
+static uint32_t test_png_read_u32(const uint8_t *p) {
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) |
+           (uint32_t)p[3];
+}
+
+static void test_png_write_u32(std::vector<uint8_t> &out, uint32_t value) {
+    out.push_back((uint8_t)(value >> 24));
+    out.push_back((uint8_t)(value >> 16));
+    out.push_back((uint8_t)(value >> 8));
+    out.push_back((uint8_t)value);
+}
+
+static uint32_t test_png_crc32(const uint8_t *data, size_t len) {
+    uint32_t crc = 0xFFFFFFFFu;
+    for (size_t i = 0; i < len; i++) {
+        crc ^= data[i];
+        for (int bit = 0; bit < 8; bit++)
+            crc = (crc >> 1) ^ (0xEDB88320u & (uint32_t)-(int32_t)(crc & 1u));
+    }
+    return crc ^ 0xFFFFFFFFu;
+}
+
+static uint32_t test_png_adler32(const uint8_t *data, size_t len) {
+    uint32_t a = 1;
+    uint32_t b = 0;
+    for (size_t i = 0; i < len; i++) {
+        a = (a + data[i]) % 65521u;
+        b = (b + a) % 65521u;
+    }
+    return (b << 16) | a;
+}
+
+static void test_png_append_chunk(
+    std::vector<uint8_t> &out, const char type[4], const uint8_t *payload, size_t len) {
+    test_png_write_u32(out, (uint32_t)len);
+    size_t type_offset = out.size();
+    out.insert(out.end(), type, type + 4);
+    if (payload && len > 0)
+        out.insert(out.end(), payload, payload + len);
+    test_png_write_u32(out, test_png_crc32(out.data() + type_offset, len + 4));
+}
+
+static bool test_read_file(const char *path, std::vector<uint8_t> &data) {
+    FILE *f = fopen(path, "rb");
+    if (!f)
+        return false;
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return false;
+    }
+    long len = ftell(f);
+    if (len < 0 || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return false;
+    }
+    data.resize((size_t)len);
+    bool ok = data.empty() || fread(data.data(), 1, data.size(), f) == data.size();
+    fclose(f);
+    return ok;
+}
+
+static bool test_write_file(const char *path, const std::vector<uint8_t> &data) {
+    FILE *f = fopen(path, "wb");
+    if (!f)
+        return false;
+    bool ok = data.empty() || fwrite(data.data(), 1, data.size(), f) == data.size();
+    fclose(f);
+    return ok;
 }
 
 // ============================================================================
@@ -595,6 +666,109 @@ static void test_bmp_odd_dimensions() {
     printf("test_bmp_odd_dimensions: PASSED\n");
 }
 
+static void test_png_load_rejects_bad_chunk_crc() {
+    void *p = rt_pixels_new(1, 1);
+    assert(p != nullptr);
+    rt_pixels_set(p, 0, 0, 0xFF0000FF);
+
+    const char *pngpath = "/tmp/viper_test_bad_crc.png";
+    rt_string path = rt_string_from_bytes(pngpath, strlen(pngpath));
+    assert(rt_pixels_save_png(p, path) == 1);
+
+    std::vector<uint8_t> data;
+    assert(test_read_file(pngpath, data));
+    assert(data.size() > 33);
+    data[29] ^= 0x01u;
+    assert(test_write_file(pngpath, data));
+
+    void *loaded = rt_pixels_load_png(path);
+    assert(loaded == nullptr);
+    unlink(pngpath);
+    printf("test_png_load_rejects_bad_chunk_crc: PASSED\n");
+}
+
+static void test_png_load_rejects_bad_zlib_adler() {
+    void *p = rt_pixels_new(1, 1);
+    assert(p != nullptr);
+    rt_pixels_set(p, 0, 0, 0x00FF00FF);
+
+    const char *pngpath = "/tmp/viper_test_bad_adler.png";
+    rt_string path = rt_string_from_bytes(pngpath, strlen(pngpath));
+    assert(rt_pixels_save_png(p, path) == 1);
+
+    std::vector<uint8_t> data;
+    assert(test_read_file(pngpath, data));
+    size_t pos = 8;
+    bool patched = false;
+    while (pos + 12 <= data.size()) {
+        uint32_t len = test_png_read_u32(data.data() + pos);
+        if (pos + 12 + len > data.size())
+            break;
+        uint8_t *type = data.data() + pos + 4;
+        if (memcmp(type, "IDAT", 4) == 0 && len >= 6) {
+            size_t payload = pos + 8;
+            data[payload + len - 1] ^= 0x01u;
+            uint32_t crc = test_png_crc32(type, len + 4);
+            data[pos + 8 + len + 0] = (uint8_t)(crc >> 24);
+            data[pos + 8 + len + 1] = (uint8_t)(crc >> 16);
+            data[pos + 8 + len + 2] = (uint8_t)(crc >> 8);
+            data[pos + 8 + len + 3] = (uint8_t)crc;
+            patched = true;
+            break;
+        }
+        pos += 12 + len;
+    }
+    assert(patched);
+    assert(test_write_file(pngpath, data));
+
+    void *loaded = rt_pixels_load_png(path);
+    assert(loaded == nullptr);
+    unlink(pngpath);
+    printf("test_png_load_rejects_bad_zlib_adler: PASSED\n");
+}
+
+static void test_png_truecolor_trns_transparency() {
+    const char *pngpath = "/tmp/viper_test_truecolor_trns.png";
+    std::vector<uint8_t> png;
+    static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    png.insert(png.end(), signature, signature + 8);
+
+    uint8_t ihdr[13] = {0};
+    ihdr[3] = 1;
+    ihdr[7] = 1;
+    ihdr[8] = 8;
+    ihdr[9] = 2;
+    test_png_append_chunk(png, "IHDR", ihdr, sizeof(ihdr));
+
+    uint8_t trns[6] = {0x00, 0xFF, 0x00, 0x00, 0x00, 0x00};
+    test_png_append_chunk(png, "tRNS", trns, sizeof(trns));
+
+    uint8_t scanline[4] = {0, 255, 0, 0};
+    uint32_t adler = test_png_adler32(scanline, sizeof(scanline));
+    std::vector<uint8_t> idat;
+    idat.push_back(0x78);
+    idat.push_back(0x01);
+    idat.push_back(0x01);
+    idat.push_back(0x04);
+    idat.push_back(0x00);
+    idat.push_back(0xFB);
+    idat.push_back(0xFF);
+    idat.insert(idat.end(), scanline, scanline + sizeof(scanline));
+    test_png_write_u32(idat, adler);
+    test_png_append_chunk(png, "IDAT", idat.data(), idat.size());
+    test_png_append_chunk(png, "IEND", nullptr, 0);
+    assert(test_write_file(pngpath, png));
+
+    rt_string path = rt_string_from_bytes(pngpath, strlen(pngpath));
+    void *loaded = rt_pixels_load_png(path);
+    assert(loaded != nullptr);
+    assert(rt_pixels_width(loaded) == 1);
+    assert(rt_pixels_height(loaded) == 1);
+    assert(rt_pixels_get(loaded, 0, 0) == 0xFF000000);
+    unlink(pngpath);
+    printf("test_png_truecolor_trns_transparency: PASSED\n");
+}
+
 // ============================================================================
 // Transform Tests
 // ============================================================================
@@ -874,6 +1048,20 @@ static void test_scale_down() {
     printf("test_scale_down: PASSED\n");
 }
 
+static void test_scale_preserves_source_endpoints() {
+    void *p = rt_pixels_new(4, 1);
+    rt_pixels_set(p, 0, 0, 0x111111FF);
+    rt_pixels_set(p, 1, 0, 0x222222FF);
+    rt_pixels_set(p, 2, 0, 0x333333FF);
+    rt_pixels_set(p, 3, 0, 0x444444FF);
+
+    void *scaled = rt_pixels_scale(p, 2, 1);
+    assert(scaled != nullptr);
+    assert(rt_pixels_get(scaled, 0, 0) == 0x111111FF);
+    assert(rt_pixels_get(scaled, 1, 0) == 0x444444FF);
+    printf("test_scale_preserves_source_endpoints: PASSED\n");
+}
+
 static int64_t pack_rgba(int r, int g, int b, int a) {
     return ((int64_t)(r & 0xFF) << 24) | ((int64_t)(g & 0xFF) << 16) | ((int64_t)(b & 0xFF) << 8) |
            (int64_t)(a & 0xFF);
@@ -893,6 +1081,20 @@ static int channel_b(int64_t rgba) {
 
 static int channel_a(int64_t rgba) {
     return (int)(rgba & 0xFF);
+}
+
+static void test_tint_multiplies_tagged_alpha() {
+    void *p = rt_pixels_new(1, 1);
+    rt_pixels_set(p, 0, 0, pack_rgba(100, 150, 200, 255));
+
+    void *tinted = rt_pixels_tint(p, rt_color_rgba(255, 255, 255, 128));
+    assert(tinted != nullptr);
+    int64_t color = rt_pixels_get(tinted, 0, 0);
+    assert(channel_r(color) == 100);
+    assert(channel_g(color) == 150);
+    assert(channel_b(color) == 200);
+    assert(channel_a(color) >= 127 && channel_a(color) <= 128);
+    printf("test_tint_multiplies_tagged_alpha: PASSED\n");
 }
 
 static int64_t bilerp_rgba_premul(
@@ -1038,7 +1240,7 @@ static void test_resize_rgba_channel_order() {
 
     void *resized = rt_pixels_resize(p, 3, 3);
     assert(resized != nullptr);
-    assert(rt_pixels_get(resized, 1, 1) == bilerp_rgba_premul(p00, p10, p01, p11, 170, 170));
+    assert(rt_pixels_get(resized, 1, 1) == bilerp_rgba_premul(p00, p10, p01, p11, 128, 128));
 
     printf("test_resize_rgba_channel_order: PASSED\n");
 }
@@ -1055,9 +1257,23 @@ static void test_resize_alpha_aware_preserves_edge_color() {
     assert(channel_r(rgba) == 255);
     assert(channel_g(rgba) == 0);
     assert(channel_b(rgba) == 0);
-    assert(channel_a(rgba) >= 85 && channel_a(rgba) <= 86);
+    assert(channel_a(rgba) >= 127 && channel_a(rgba) <= 128);
 
     printf("test_resize_alpha_aware_preserves_edge_color: PASSED\n");
+}
+
+static void test_resize_preserves_source_endpoints() {
+    void *p = rt_pixels_new(4, 1);
+    rt_pixels_set(p, 0, 0, pack_rgba(10, 0, 0, 255));
+    rt_pixels_set(p, 1, 0, pack_rgba(80, 0, 0, 255));
+    rt_pixels_set(p, 2, 0, pack_rgba(160, 0, 0, 255));
+    rt_pixels_set(p, 3, 0, pack_rgba(250, 0, 0, 255));
+
+    void *resized = rt_pixels_resize(p, 2, 1);
+    assert(resized != nullptr);
+    assert(rt_pixels_get(resized, 0, 0) == pack_rgba(10, 0, 0, 255));
+    assert(rt_pixels_get(resized, 1, 0) == pack_rgba(250, 0, 0, 255));
+    printf("test_resize_preserves_source_endpoints: PASSED\n");
 }
 
 // ============================================================================
@@ -1167,6 +1383,9 @@ int main() {
     test_bmp_load_invalid_path();
     test_bmp_save_null_inputs();
     test_bmp_odd_dimensions();
+    test_png_load_rejects_bad_chunk_crc();
+    test_png_load_rejects_bad_zlib_adler();
+    test_png_truecolor_trns_transparency();
 
     // Transforms
     test_flip_h();
@@ -1178,12 +1397,15 @@ int main() {
     test_rotate_nonfinite_returns_clone();
     test_scale_up();
     test_scale_down();
+    test_scale_preserves_source_endpoints();
+    test_tint_multiplies_tagged_alpha();
     test_blur_zero_returns_exact_copy();
     test_blur_empty_image_returns_empty_pixels();
     test_blur_rgba_channel_order();
     test_blur_alpha_aware_preserves_edge_color();
     test_resize_rgba_channel_order();
     test_resize_alpha_aware_preserves_edge_color();
+    test_resize_preserves_source_endpoints();
 
     // BlendPixel
     test_blend_fully_opaque();

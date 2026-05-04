@@ -279,8 +279,13 @@ static void *sprite_clone_for_edit(void *transformed, void *frame) {
 /// chain operations: each step replaces the working buffer and the
 /// previous temp gets released — but never the original frame.
 static void *sprite_replace_pixels(void *replacement, void **slot, void *frame) {
-    if (!replacement)
-        return *slot;
+    if (!replacement) {
+        if (slot && *slot && *slot != frame)
+            rt_heap_release(*slot);
+        if (slot)
+            *slot = NULL;
+        return NULL;
+    }
     if (replacement == *slot)
         return *slot;
     if (*slot && *slot != frame)
@@ -318,10 +323,14 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
     if (sprite->flip_x) {
         void *flipped = rt_pixels_flip_h(transformed);
         transformed = sprite_replace_pixels(flipped, &transformed, frame);
+        if (!transformed)
+            return NULL;
     }
     if (sprite->flip_y) {
         void *flipped = rt_pixels_flip_v(transformed);
         transformed = sprite_replace_pixels(flipped, &transformed, frame);
+        if (!transformed)
+            return NULL;
     }
 
     if (!transformed)
@@ -336,6 +345,8 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
             new_h = 1;
         void *scaled = rt_pixels_scale(transformed, new_w, new_h);
         transformed = sprite_replace_pixels(scaled, &transformed, frame);
+        if (!transformed)
+            return NULL;
     }
 
     int64_t origin_x = sprite_scale_origin(sprite->origin_x, scale_x);
@@ -368,17 +379,23 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
                 return NULL;
             }
             void *padded = rt_pixels_new(half_w * 2, half_h * 2);
-            if (padded) {
-                rt_pixels_copy(
-                    padded, half_w - origin_x, half_h - origin_y, transformed, 0, 0, src_w, src_h);
-                transformed = sprite_replace_pixels(padded, &transformed, frame);
-                origin_x = half_w;
-                origin_y = half_h;
+            if (!padded) {
+                sprite_release_if_owned(transformed, frame);
+                return NULL;
             }
+            rt_pixels_copy(
+                padded, half_w - origin_x, half_h - origin_y, transformed, 0, 0, src_w, src_h);
+            transformed = sprite_replace_pixels(padded, &transformed, frame);
+            if (!transformed)
+                return NULL;
+            origin_x = half_w;
+            origin_y = half_h;
         }
 
         void *rotated = rt_pixels_rotate(transformed, (double)rotation);
         transformed = sprite_replace_pixels(rotated, &transformed, frame);
+        if (!transformed)
+            return NULL;
         origin_centered = 1;
     }
 
@@ -386,6 +403,8 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
     if (tint >= 0) {
         void *tinted = rt_pixels_tint(transformed, tint);
         transformed = sprite_replace_pixels(tinted, &transformed, frame);
+        if (!transformed)
+            return NULL;
     }
 
     if (alpha < 255) {
@@ -1048,12 +1067,18 @@ void rt_sprite_move(void *sprite_ptr, int64_t dx, int64_t dy) {
 // `MAX_ANIM_CLIPS` clips and plays at most one at a time.
 // ---------------------------------------------------------------------------
 
+static rt_sprite_animator_t *sprite_animator_checked(rt_sprite_animator_t *animator) {
+    if (!animator || rt_obj_class_id(animator) != RT_SPRITE_ANIMATOR_CLASS_ID)
+        return NULL;
+    return animator;
+}
+
 /// @brief Allocate a fresh animator with no clips and nothing playing.
 /// @brief Create a sprite animator that drives multi-clip frame-based animation.
 /// Bound to a sprite via `_animator_update`. Up to RT_ANIM_MAX_CLIPS named clips.
 rt_sprite_animator_t *rt_sprite_animator_new(void) {
-    rt_sprite_animator_t *anim =
-        (rt_sprite_animator_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sprite_animator_t));
+    rt_sprite_animator_t *anim = (rt_sprite_animator_t *)rt_obj_new_i64(
+        RT_SPRITE_ANIMATOR_CLASS_ID, (int64_t)sizeof(rt_sprite_animator_t));
     if (!anim)
         return NULL;
     memset(anim, 0, sizeof(rt_sprite_animator_t));
@@ -1064,6 +1089,7 @@ rt_sprite_animator_t *rt_sprite_animator_new(void) {
 
 /// @brief Free an animator and any clip-name strings it owns.
 void rt_sprite_animator_destroy(rt_sprite_animator_t *animator) {
+    animator = sprite_animator_checked(animator);
     if (!animator)
         return;
     if (rt_obj_release_check0(animator))
@@ -1072,8 +1098,8 @@ void rt_sprite_animator_destroy(rt_sprite_animator_t *animator) {
 
 /// @brief Register a named animation clip (frame range + per-frame delay + loop flag).
 ///
-/// Clip names are matched case-sensitively in `play`. Duplicate
-/// names are not detected — last write wins (in slot order).
+/// Clip names are matched case-sensitively in `play`. Adding a duplicate name
+/// replaces the existing clip in-place.
 /// @return 1 on success, 0 if the clip table is full or `name` is NULL.
 int rt_sprite_animator_add_clip(rt_sprite_animator_t *animator,
                                 const char *name,
@@ -1081,12 +1107,22 @@ int rt_sprite_animator_add_clip(rt_sprite_animator_t *animator,
                                 int64_t frame_count,
                                 int64_t frame_delay_ms,
                                 int loop) {
+    animator = sprite_animator_checked(animator);
     if (!animator || !name)
         return 0;
-    if (animator->clip_count >= RT_ANIM_MAX_CLIPS)
+
+    int existing = -1;
+    for (int i = 0; i < animator->clip_count; i++) {
+        if (strcmp(animator->clips[i].name, name) == 0) {
+            existing = i;
+            break;
+        }
+    }
+    if (existing < 0 && animator->clip_count >= RT_ANIM_MAX_CLIPS)
         return 0;
 
-    rt_anim_clip_t *clip = &animator->clips[animator->clip_count++];
+    rt_anim_clip_t *clip =
+        existing >= 0 ? &animator->clips[existing] : &animator->clips[animator->clip_count++];
     /* Safe string copy: name field is char[64], guarantee NUL termination */
     int i = 0;
     while (name[i] && i < 63) {
@@ -1107,6 +1143,7 @@ int rt_sprite_animator_add_clip(rt_sprite_animator_t *animator,
 /// `frame_delay_ms`. If the named clip doesn't exist, returns 0
 /// and leaves the previously-playing clip (if any) running.
 int8_t rt_sprite_animator_play(rt_sprite_animator_t *animator, const char *name) {
+    animator = sprite_animator_checked(animator);
     if (!animator || !name)
         return 0;
 
@@ -1124,13 +1161,10 @@ int8_t rt_sprite_animator_play(rt_sprite_animator_t *animator, const char *name)
             b++;
         }
         if (match) {
-            /* Start the clip only if it differs from the currently playing one */
-            if (animator->current_clip != i || !animator->playing) {
-                animator->current_clip = i;
-                animator->clip_frame = 0;
-                animator->last_update_ms = 0; /* reset on next update */
-                animator->playing = 1;
-            }
+            animator->current_clip = i;
+            animator->clip_frame = 0;
+            animator->last_update_ms = 0; /* reset on next update */
+            animator->playing = 1;
             return 1;
         }
     }
@@ -1139,6 +1173,7 @@ int8_t rt_sprite_animator_play(rt_sprite_animator_t *animator, const char *name)
 
 /// @brief Stop the active clip; subsequent `update` calls become no-ops until `play`.
 void rt_sprite_animator_stop(rt_sprite_animator_t *animator) {
+    animator = sprite_animator_checked(animator);
     if (!animator)
         return;
     animator->playing = 0;
@@ -1150,6 +1185,7 @@ void rt_sprite_animator_stop(rt_sprite_animator_t *animator) {
 /// transition. On reaching the end of a non-looping clip, holds
 /// the final frame and stops; looping clips wrap to `start_frame`.
 void rt_sprite_animator_update(rt_sprite_animator_t *animator, void *sprite_ptr) {
+    animator = sprite_animator_checked(animator);
     if (!animator || !animator->playing || animator->current_clip < 0 ||
         animator->current_clip >= animator->clip_count || !sprite_ptr)
         return;
@@ -1215,11 +1251,13 @@ void rt_sprite_animator_update(rt_sprite_animator_t *animator, void *sprite_ptr)
 
 /// @brief True if a clip is currently playing (was started and hasn't reached a non-loop end).
 int8_t rt_sprite_animator_is_playing(rt_sprite_animator_t *animator) {
+    animator = sprite_animator_checked(animator);
     return (animator && animator->playing) ? 1 : 0;
 }
 
 /// @brief Name of the active clip, or NULL when nothing is playing.
 const char *rt_sprite_animator_get_current(rt_sprite_animator_t *animator) {
+    animator = sprite_animator_checked(animator);
     if (!animator || !animator->playing || animator->current_clip < 0)
         return NULL;
     return animator->clips[animator->current_clip].name;

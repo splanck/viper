@@ -296,15 +296,17 @@ static void *apply_batch_color(void *pixels, int64_t tint_color, int64_t alpha) 
     void *result = pixels;
     if (tint_color >= 0) {
         void *tinted = rt_pixels_tint(result, tint_color);
-        if (tinted)
-            result = tinted;
+        if (!tinted)
+            return NULL;
+        result = tinted;
     }
 
     if (alpha < 255) {
         if (result == pixels) {
             void *cloned = rt_pixels_clone(result);
-            if (cloned)
-                result = cloned;
+            if (!cloned)
+                return NULL;
+            result = cloned;
         }
 
         spritebatch_pixels_view *impl = (spritebatch_pixels_view *)result;
@@ -380,15 +382,27 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
         int64_t new_w = spritebatch_saturating_scaled_dim(item->src_w, scale_x);
         int64_t new_h = spritebatch_saturating_scaled_dim(item->src_h, scale_y);
         void *scaled = rt_pixels_scale(transformed, new_w, new_h);
+        if (!scaled) {
+            spritebatch_release_temp(&transformed, item->source);
+            return;
+        }
         spritebatch_replace_temp(&transformed, scaled, item->source);
     }
 
     if (item->rotation != 0) {
         void *rotated = rt_pixels_rotate(transformed, (double)item->rotation);
+        if (!rotated) {
+            spritebatch_release_temp(&transformed, item->source);
+            return;
+        }
         spritebatch_replace_temp(&transformed, rotated, item->source);
     }
 
     void *colored = apply_batch_color(transformed, batch->tint_color, batch->alpha);
+    if (!colored) {
+        spritebatch_release_temp(&transformed, item->source);
+        return;
+    }
     spritebatch_replace_temp(&transformed, colored, item->source);
 
     rt_canvas_blit_alpha(canvas, item->x, item->y, transformed);
@@ -506,8 +520,10 @@ void rt_spritebatch_end(void *batch_ptr, void *canvas) {
                 if (item->source) {
                     void *draw_src =
                         apply_batch_color(item->source, batch->tint_color, batch->alpha);
-                    rt_canvas_blit_alpha(canvas, item->x, item->y, draw_src);
-                    spritebatch_release_temp(&draw_src, item->source);
+                    if (draw_src) {
+                        rt_canvas_blit_alpha(canvas, item->x, item->y, draw_src);
+                        spritebatch_release_temp(&draw_src, item->source);
+                    }
                 }
                 break;
 

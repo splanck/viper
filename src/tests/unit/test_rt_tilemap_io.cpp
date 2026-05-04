@@ -249,6 +249,21 @@ static void test_tile_anim_sequential_frames_saturate(void) {
     PASS();
 }
 
+static void test_tile_anim_duplicate_base_replaces(void) {
+    TEST("Tile animation duplicate base replaces existing animation");
+    void *tm = rt_tilemap_new(1, 1, 16, 16);
+    rt_tilemap_set_tile_anim(tm, 5, 2, 100);
+    rt_tilemap_set_tile_anim_frame(tm, 5, 1, 9);
+    rt_tilemap_update_anims(tm, 100);
+    assert(rt_tilemap_resolve_anim_tile(tm, 5) == 9);
+
+    rt_tilemap_set_tile_anim(tm, 5, 2, 100);
+    rt_tilemap_set_tile_anim_frame(tm, 5, 1, 12);
+    rt_tilemap_update_anims(tm, 100);
+    assert(rt_tilemap_resolve_anim_tile(tm, 5) == 12);
+    PASS();
+}
+
 static void test_json_rejects_wrong_layer_tile_count(void) {
     TEST("JSON load rejects wrong layer tile count");
     const char *path = "/tmp/test_tilemap_wrong_tile_count.json";
@@ -347,6 +362,7 @@ int main() {
     test_csv_import_clamps_overflow_values();
     test_json_negative_anim_frame_normalizes();
     test_tile_anim_sequential_frames_saturate();
+    test_tile_anim_duplicate_base_replaces();
     test_json_rejects_wrong_layer_tile_count();
     test_json_rejects_truncated_tileset_pixels();
     test_json_excess_layers_are_ignored();

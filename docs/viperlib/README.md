@@ -193,6 +193,7 @@ implemented in C and exposed through the IL runtime system.
 | [`ShapeRenderer2D`](graphics/shapes2d.md#classes)          | Instance | Lines, rectangles, circles, paths |
 | [`SdfFont`](graphics/shapes2d.md#classes)                  | Instance | SDF-ready bitmap font wrapper    |
 | [`Sprite`](graphics/README.md#vipergraphicssprite)         | Instance | 2D sprite with flip/animation    |
+| [`SpriteAnimator`](graphics/pixels.md#vipergraphicsspriteanimator) | Instance | Named sprite clip controller |
 | [`SpriteBatch`](graphics/README.md#vipergraphicsspritebatch)| Instance | Batched sprite rendering        |
 | [`SpriteSheet`](graphics/README.md#vipergraphicsspritesheet)| Instance | Sprite sheet/atlas with named region extraction |
 | [`TextRenderer2D`](graphics/shapes2d.md#classes)           | Instance | Text measurement and Canvas draw wrapper |

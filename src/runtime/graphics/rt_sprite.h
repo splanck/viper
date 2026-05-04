@@ -184,6 +184,9 @@ void rt_sprite_move(void *sprite, int64_t dx, int64_t dy);
 /// Maximum number of named animation clips per animator.
 #define RT_ANIM_MAX_CLIPS 32
 
+/// Runtime class tag for Viper.Graphics.SpriteAnimator handles.
+#define RT_SPRITE_ANIMATOR_CLASS_ID 0x5650475350414e49LL
+
 /// @brief A single named animation clip.
 typedef struct rt_anim_clip {
     char name[64];          ///< Clip name (NUL-terminated)

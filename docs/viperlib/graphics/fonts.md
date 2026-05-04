@@ -33,7 +33,7 @@ BMP codepoints `0-65535`; missing glyphs fall back to `?` (or space if `?` is un
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `LoadBDF(path)` | `BitmapFont(String)` | Load a BDF font file. Returns `null` on missing, truncated, or malformed input |
-| `LoadPSF(path)` | `BitmapFont(String)` | Load a PSF v1/v2 font file. Returns `null` on missing, truncated, or malformed input |
+| `LoadPSF(path)` | `BitmapFont(String)` | Load a PSF v1/v2 font file, including Unicode mapping tables when present. Returns `null` on missing, truncated, or malformed input |
 
 ### Properties
 

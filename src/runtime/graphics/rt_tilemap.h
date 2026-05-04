@@ -30,6 +30,8 @@
 extern "C" {
 #endif
 
+#define RT_TILEMAP_CLASS_ID 0x56504754494c4553LL /* "VPGTILES" */
+
 /// Tile collision type constants.
 typedef enum {
     RT_TILE_COLLISION_NONE = 0,       ///< No collision (passable).

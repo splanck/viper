@@ -49,7 +49,7 @@ rig.SetSmoothing(160)
 rig.Update()
 ```
 
-`CollisionMask2D.FromPixels` marks pixels solid when alpha is greater than or equal to the threshold.
+`CollisionMask2D.FromPixels` marks pixels solid when alpha is greater than or equal to the threshold. A threshold of `0` means "any non-zero alpha", so fully transparent pixels remain empty.
 `CameraRig2D` shake offsets and render coordinates use saturating integer arithmetic at the int64 limits.
 
 ## Notes

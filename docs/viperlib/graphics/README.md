@@ -19,7 +19,7 @@ The current 2D runtime includes clip-correct text/image rendering inside GUI sur
 |------|----------|
 | [Canvas & Color](canvas.md) | Canvas drawing surface and Color utilities |
 | [Fonts](fonts.md) | BitmapFont for custom BDF/PSF font rendering |
-| [Images & Sprites](pixels.md) | Pixels, Sprite, SpriteSheet, Tilemap |
+| [Images & Sprites](pixels.md) | Pixels, Sprite, SpriteAnimator, SpriteSheet, Tilemap |
 | [2D Rendering and Effects](rendering2d.md) | RenderTarget2D, Texture2D, Renderer2D, Material2D, Shader2D, PostProcess2D, Sampler2D, BlendState2D, SpriteRenderer2D, RenderPass2D, RenderGraph2D, Palette2D, Gradient2D |
 | [2D Tilemaps and Layers](tilemaps2d.md) | TileSet2D, TileLayer2D, ObjectLayer2D, AutoTile2D, TilemapRenderer2D, TileChunkCache2D, TexturePackerAtlas, AsepriteImporter, TiledMapLoader |
 | [2D Shapes, Text, and UI](shapes2d.md) | Path2D, ShapeRenderer2D, TextRenderer2D, TextLayout2D, SpriteFont, SdfFont, NineSlice2D, DebugDraw2D |

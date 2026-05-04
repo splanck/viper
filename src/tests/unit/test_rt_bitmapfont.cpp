@@ -183,6 +183,38 @@ static const char *create_test_psf(void) {
     return path;
 }
 
+static const char *create_unicode_psf(void) {
+    static char path[256];
+    snprintf(path, sizeof(path), "%s", "/tmp/viper_test_font_unicode.psf");
+    FILE *f = fopen(path, "wb");
+    if (!f)
+        return NULL;
+
+    uint8_t hdr[32];
+    memset(hdr, 0, 32);
+    hdr[0] = 0x72;
+    hdr[1] = 0xB5;
+    hdr[2] = 0x4A;
+    hdr[3] = 0x86;
+    hdr[8] = 32; // header size
+    hdr[12] = 1; // flags: Unicode table follows glyph bitmaps
+    hdr[16] = 2; // glyph count
+    hdr[20] = 8; // bytes per glyph
+    hdr[24] = 8; // height
+    hdr[28] = 8; // width
+    fwrite(hdr, 1, 32, f);
+
+    uint8_t glyph0[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    uint8_t glyph1[8] = {0x18, 0x24, 0x42, 0x7E, 0x42, 0x42, 0x42, 0x00};
+    fwrite(glyph0, 1, 8, f);
+    fwrite(glyph1, 1, 8, f);
+
+    uint8_t table[] = {' ', 0xFF, 'A', 0xFF};
+    fwrite(table, 1, sizeof(table), f);
+    fclose(f);
+    return path;
+}
+
 static const char *create_truncated_bdf(void) {
     static char path[256];
     snprintf(path, sizeof(path), "%s", "/tmp/viper_test_font_truncated.bdf");
@@ -379,6 +411,19 @@ static void test_psf_load_valid(void) {
     PASS();
 }
 
+static void test_psf_unicode_table_maps_codepoints(void) {
+    TEST("PSF Unicode table maps codepoints");
+    const char *path = create_unicode_psf();
+    assert(path);
+
+    rt_string rpath = rt_const_cstr(path);
+    void *font = rt_bitmapfont_load_psf(rpath);
+    assert(font != NULL);
+
+    assert(rt_bitmapfont_glyph_count(font) == 4);
+    PASS();
+}
+
 static void test_psf_load_invalid(void) {
     TEST("PSF load nonexistent file returns NULL");
     rt_string bad_path = rt_const_cstr("/tmp/nonexistent_font_xyz789.psf");
@@ -452,6 +497,7 @@ int main() {
     test_bdf_truncated_file_returns_null();
     test_bdf_null_input();
     test_psf_load_valid();
+    test_psf_unicode_table_maps_codepoints();
     test_psf_load_invalid();
     test_psf_load_bad_magic();
     test_psf_truncated_file_returns_null();

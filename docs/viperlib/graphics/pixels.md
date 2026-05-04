@@ -46,17 +46,17 @@ Creates a new pixel buffer initialized to transparent black (0x00000000). Negati
 | `Get(x, y)`                       | `Integer(Integer, Integer)`                                          | Get pixel color at (x, y) as packed RGBA (0xRRGGBBAA). Returns 0 if out of bounds |
 | `Grayscale()`                     | `Pixels()`                                                           | Return a grayscale copy of the image                                              |
 | `Invert()`                        | `Pixels()`                                                           | Return a copy with all colors inverted (255 minus each channel)                   |
-| `Resize(width, height)`           | `Pixels(Integer, Integer)`                                           | Return a scaled copy using alpha-aware bilinear interpolation (smoother than Scale) |
+| `Resize(width, height)`           | `Pixels(Integer, Integer)`                                           | Return an endpoint-preserving scaled copy using alpha-aware bilinear interpolation |
 | `Rotate180()`                     | `Pixels()`                                                           | Return a 180-degree rotated copy                                                  |
 | `RotateCCW()`                     | `Pixels()`                                                           | Return a 90-degree counter-clockwise rotated copy (swaps dimensions)              |
 | `RotateCW()`                      | `Pixels()`                                                           | Return a 90-degree clockwise rotated copy (swaps dimensions)                      |
 | `SaveBmp(path)`                   | `Integer(String)`                                                    | Save to a BMP file. Returns 1 on success, 0 on failure                            |
 | `SavePng(path)`                   | `Integer(String)`                                                    | Save to a PNG file. Returns 1 on success, 0 on failure                            |
-| `Scale(width, height)`            | `Pixels(Integer, Integer)`                                           | Return a scaled copy using nearest-neighbor interpolation                         |
+| `Scale(width, height)`            | `Pixels(Integer, Integer)`                                           | Return an endpoint-preserving scaled copy using nearest-neighbor interpolation    |
 | `Set(x, y, color)`                | `Void(Integer, Integer, Integer)`                                    | Set raw `0xRRGGBBAA` at (x, y). Silently ignores out of bounds                    |
 | `SetRGBA(x, y, color)`            | `Void(Integer, Integer, Integer)`                                    | Explicit raw `0xRRGGBBAA` set alias                                               |
 | `SetColor(x, y, color)`           | `Void(Integer, Integer, Integer)`                                    | Set from `Color.RGB()`, Canvas `0x00RRGGBB`, or `Color.RGBA()`                    |
-| `Tint(color)`                     | `Pixels(Integer)`                                                    | Return a copy with a color tint applied (0x00RRGGBB)                              |
+| `Tint(color)`                     | `Pixels(Integer)`                                                    | Return a copy with a color tint applied; `Color.RGBA` input also scales alpha     |
 | `ToBytes()`                       | `Bytes()`                                                            | Convert to raw bytes (RGBA, row-major)                                            |
 
 ### Static Methods
@@ -275,11 +275,12 @@ pixels.SavePng("output.png")
 - When loading BMP files, alpha is set to 255 (opaque) for all pixels
 - All transform operations (flip, rotate, scale) return new Pixels objects
 - RotateCW and RotateCCW swap width and height dimensions
-- Scale uses nearest-neighbor interpolation (fast, no blending)
-- Resize uses alpha-aware bilinear interpolation (smoother, better for non-integer scale factors)
+- Scale uses endpoint-preserving nearest-neighbor interpolation (fast, no blending)
+- Resize uses endpoint-preserving, alpha-aware bilinear interpolation (smoother, better for non-integer scale factors)
 - Image processing methods (Invert, Grayscale, Tint, Blur) return new Pixels objects
+- Tint multiplies RGB by the provided color and multiplies alpha when the color includes alpha
 - Blur uses alpha-aware averaging so transparent edges keep their original color instead of darkening
-- PNG support handles 8-bit RGB and RGBA files
+- PNG loading validates chunk CRCs and zlib checksums, and supports palette, grayscale, RGB, RGBA, and truecolor `tRNS` transparency
 
 ---
 
@@ -328,6 +329,7 @@ pixels.SavePng("output.png")
 
 Scaled sprite bounds used for `Contains()` and `Overlaps()` never collapse below `1x1`, even when
 very small scale values are provided. Movement, hit tests, and overlap checks saturate at the int64 coordinate limits instead of wrapping, so sprites at the extreme edge of the coordinate range keep consistent 1-pixel-inclusive bounds.
+Sprite drawing fails closed if an intermediate transform allocation fails, rather than drawing a partially transformed frame.
 
 ### Zia Example
 
@@ -431,6 +433,34 @@ IF player.Contains(mx, my) = 1 THEN
     PRINT "Mouse over player!"
 END IF
 ```
+
+---
+
+## Viper.Graphics.SpriteAnimator
+
+Named animation clip controller for `Sprite` frame playback.
+
+**Type:** Instance (obj)
+**Constructor:** `Viper.Graphics.SpriteAnimator.New()`
+
+### Properties
+
+| Property    | Type    | Access | Description                                  |
+|-------------|---------|--------|----------------------------------------------|
+| `Current`   | String  | Read   | Name of the current clip, or an empty string |
+| `IsPlaying`| Boolean | Read   | True when a clip is currently playing        |
+
+### Methods
+
+| Method                                      | Signature                                      | Description                                        |
+|---------------------------------------------|------------------------------------------------|----------------------------------------------------|
+| `AddClip(name, start, count, delayMs, loop)` | `Boolean(String, Integer, Integer, Integer, Integer)` | Add or replace a named clip                 |
+| `Play(name)`                                | `Boolean(String)`                              | Start the named clip from its first frame          |
+| `Stop()`                                    | `Void()`                                       | Stop playback                                     |
+| `Update(sprite)`                            | `Void(Sprite)`                                 | Advance the current clip and update sprite frame   |
+| `Destroy()`                                 | `Void()`                                       | Free the animator                                 |
+
+`AddClip` matches names case-sensitively. Adding a duplicate name replaces the existing clip in-place instead of consuming another clip slot. Calling `Play` on the current clip restarts it from the first frame.
 
 ---
 
@@ -600,7 +630,7 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 
 Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. Layer names are limited to the fixed runtime name slot (31 bytes); overlong names are rejected without adding a layer. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress. JSON loading ignores layers beyond the runtime layer cap, normalizes negative saved animation frames, and clamps CSV tile values that exceed the int64 range.
 
-Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type. Invalid collision types are ignored. Negative animation deltas are ignored; very large deltas advance in one modulo step instead of looping once per elapsed frame. Default sequential animation frame IDs saturate at the int64 limit instead of wrapping. `FillRect`, tile drawing, and tile-to-pixel conversion clip or saturate extreme coordinates rather than wrapping.
+Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type. Registering an animation for an existing base tile replaces the old animation. Invalid collision types are ignored. Negative animation deltas are ignored; very large deltas advance in one modulo step instead of looping once per elapsed frame. Default sequential animation frame IDs saturate at the int64 limit instead of wrapping. `FillRect`, tile drawing, and tile-to-pixel conversion clip or saturate extreme coordinates rather than wrapping.
 
 ### Zia Example
 

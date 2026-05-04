@@ -115,6 +115,36 @@ static void test_texture_renderer_material_and_effects() {
     rt_renderer2d_end(renderer, nullptr);
     assert(rt_renderer2d_count(renderer) == 0);
 
+    void *sample_src = rt_pixels_new(2, 1);
+    rt_pixels_set(sample_src, 0, 0, 0xFF0000FF);
+    rt_pixels_set(sample_src, 1, 0, 0x00FF00FF);
+    void *sample_texture = rt_texture2d_new(sample_src);
+    rt_texture2d_set_wrap(sample_texture, RT_GRAPHICS2D_WRAP_REPEAT);
+    rt_rendertarget2d_resize(target, 4, 1);
+    rt_rendertarget2d_clear(target, 0x00000000);
+    rt_renderer2d_begin(renderer);
+    rt_renderer2d_draw_texture_region(renderer, sample_texture, 0, 0, 0, 0, 4, 1);
+    rt_renderer2d_flush_to_target(renderer, target);
+    void *target_pixels = rt_rendertarget2d_get_pixels(target);
+    assert(rt_pixels_get(target_pixels, 0, 0) == 0xFF0000FF);
+    assert(rt_pixels_get(target_pixels, 1, 0) == 0x00FF00FF);
+    assert(rt_pixels_get(target_pixels, 2, 0) == 0xFF0000FF);
+    assert(rt_pixels_get(target_pixels, 3, 0) == 0x00FF00FF);
+    rt_renderer2d_end(renderer, nullptr);
+
+    rt_texture2d_set_filter(sample_texture, RT_GRAPHICS2D_FILTER_LINEAR);
+    rt_texture2d_set_wrap(sample_texture, RT_GRAPHICS2D_WRAP_CLAMP);
+    rt_rendertarget2d_resize(target, 3, 1);
+    rt_rendertarget2d_clear(target, 0x00000000);
+    rt_renderer2d_begin(renderer);
+    rt_renderer2d_draw_texture_scaled(renderer, sample_texture, 0, 0, 3, 1);
+    rt_renderer2d_flush_to_target(renderer, target);
+    target_pixels = rt_rendertarget2d_get_pixels(target);
+    int64_t middle = rt_pixels_get(target_pixels, 1, 0);
+    assert(red_of(middle) >= 126 && red_of(middle) <= 129);
+    assert(green_of(middle) >= 126 && green_of(middle) <= 129);
+    rt_renderer2d_end(renderer, nullptr);
+
     rt_rendertarget2d_clear(target, 0x101010FF);
     void *add_src = rt_pixels_new(1, 1);
     rt_pixels_set(add_src, 0, 0, 0x202000FF);
@@ -168,6 +198,15 @@ static void test_viewport_tiles_and_objects() {
     assert(rt_objectlayer2d_get_x(objects, 0) == 10);
     assert(rt_objectlayer2d_get_height(objects, 0) == 40);
     assert(rt_objectlayer2d_get_type(objects, 0) == 5);
+    int64_t normalized = rt_objectlayer2d_add_rect(objects, 40, 50, -10, -20, 6);
+    assert(normalized == 1);
+    assert(rt_objectlayer2d_get_x(objects, 1) == 30);
+    assert(rt_objectlayer2d_get_y(objects, 1) == 30);
+    assert(rt_objectlayer2d_get_width(objects, 1) == 10);
+    assert(rt_objectlayer2d_get_height(objects, 1) == 20);
+    assert(rt_objectlayer2d_add_rect(objects, 0, 0, 0, 1, 7) == -1);
+    assert(rt_objectlayer2d_add_rect(objects, 0, 0, INT64_MIN, 1, 7) == -1);
+    assert(rt_objectlayer2d_count(objects) == 2);
 
     void *autotile = rt_autotile2d_new();
     rt_autotile2d_set_variant(autotile, 5, 42);
@@ -318,6 +357,12 @@ static void test_animation_collision_palette_gradient_and_rig() {
     rt_collisionmask2d_set(mask_a, 1, 0, 1);
     rt_collisionmask2d_set(mask_b, 0, 0, 1);
     assert(rt_collisionmask2d_overlaps(mask_a, INT64_MAX - 1, 0, mask_b, INT64_MAX, 0) == 1);
+    void *alpha_pixels = rt_pixels_new(2, 1);
+    rt_pixels_set(alpha_pixels, 0, 0, 0xFFFFFFFF);
+    rt_pixels_set(alpha_pixels, 1, 0, 0xFFFFFF00);
+    void *alpha_mask = rt_collisionmask2d_from_pixels(alpha_pixels, 0);
+    assert(rt_collisionmask2d_get(alpha_mask, 0, 0) == 1);
+    assert(rt_collisionmask2d_get(alpha_mask, 1, 0) == 0);
 
     void *hit_a = rt_hitbox2d_new(0, 0, 10, 10);
     void *hit_b = rt_hitbox2d_new(5, 5, 2, 2);
@@ -339,11 +384,13 @@ static void test_animation_collision_palette_gradient_and_rig() {
     void *mapped_tagged = rt_palette2d_apply(palette, indexed);
     assert(rt_pixels_get(mapped_tagged, 0, 0) == 0x0000FF80);
     rt_pixels_set(indexed, 0, 0, 0x030000FF);
-    void *mapped_red_channel_unchanged = rt_palette2d_apply(palette, indexed);
-    assert(rt_pixels_get(mapped_red_channel_unchanged, 0, 0) == 0x030000FF);
+    void *mapped_red_channel = rt_palette2d_apply(palette, indexed);
+    assert(rt_pixels_get(mapped_red_channel, 0, 0) == 0xFF0000FF);
 
     void *gradient = rt_gradient2d_new(0x000000FF, 0xFFFFFFFF, 2);
     assert(rt_gradient2d_sample(gradient, 100) == 0xFFFFFFFF);
+    int64_t smooth_mid = rt_gradient2d_sample(gradient, 50);
+    assert(red_of(smooth_mid) >= 126 && red_of(smooth_mid) <= 128);
     void *stepped_gradient = rt_gradient2d_new(0x000000FF, 0xFFFFFFFF, 3);
     assert(rt_gradient2d_sample(stepped_gradient, 20) == 0x000000FF);
     assert(rt_gradient2d_sample(stepped_gradient, 50) == 0x7F7F7FFF);
@@ -366,6 +413,10 @@ static void test_animation_collision_palette_gradient_and_rig() {
     rt_camerarig2d_add_shake(rig, INT64_MAX, INT64_MIN);
     assert(rt_camerarig2d_get_render_x(rig) == INT64_MAX);
     assert(rt_camerarig2d_get_render_y(rig) <= rt_camera_get_y(camera));
+    assert(rt_material2d_get_alpha(alpha_pixels) == 255);
+    assert(rt_sampler2d_get_wrap(alpha_pixels) == RT_GRAPHICS2D_WRAP_CLAMP);
+    assert(rt_palette2d_apply(alpha_pixels, indexed) == nullptr);
+    assert(rt_collisionmask2d_get_width(alpha_pixels) == 0);
     printf("test_animation_collision_palette_gradient_and_rig: PASSED\n");
 }
 

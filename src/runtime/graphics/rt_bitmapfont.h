@@ -12,9 +12,8 @@
 // Key invariants:
 //   - BitmapFont objects are GC-managed via rt_obj_new_i64.
 //   - Glyph bitmaps are heap-allocated; freed in the GC finalizer.
-//   - Glyph tables cover codepoints 0-255 (Latin-1). UTF-8 text is decoded to
-//     codepoints during measurement/rendering, and missing glyphs use the
-//     fallback glyph.
+//   - Glyph tables cover BMP codepoints. UTF-8 text is decoded to codepoints
+//     during measurement/rendering, and missing glyphs use the fallback glyph.
 //   - All Canvas drawing functions are no-ops when canvas or font is NULL.
 //
 // Ownership/Lifetime:

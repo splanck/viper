@@ -216,6 +216,38 @@ static int8_t pixels_fill_span(rt_pixels_impl *p, int64_t y, int64_t x0, int64_t
     return 1;
 }
 
+static int8_t pixels_draw_line_raw(
+    rt_pixels_impl *p, int64_t x1, int64_t y1, int64_t x2, int64_t y2, uint32_t rgba) {
+    if (!pixels_clip_line_to_bounds(p, &x1, &y1, &x2, &y2))
+        return 0;
+
+    int64_t adx = rt_pixels_abs_diff_sat64(x2, x1);
+    int64_t ady = rt_pixels_abs_diff_sat64(y2, y1);
+    int64_t sx = x2 >= x1 ? 1 : -1;
+    int64_t sy = y2 >= y1 ? 1 : -1;
+
+    int64_t err = adx - ady;
+    int64_t x = x1;
+    int64_t y = y1;
+    int8_t wrote = 0;
+
+    for (;;) {
+        wrote |= set_pixel_raw(p, x, y, rgba);
+        if (x == x2 && y == y2)
+            break;
+        int64_t e2 = err > INT64_MAX / 2 ? INT64_MAX : err < INT64_MIN / 2 ? INT64_MIN : err * 2;
+        if (e2 > -ady) {
+            err -= ady;
+            x += sx;
+        }
+        if (e2 < adx) {
+            err += adx;
+            y += sy;
+        }
+    }
+    return wrote;
+}
+
 /// @brief Draw a 1-pixel-wide line between (x1,y1) and (x2,y2) using Bresenham.
 /// Color is 0x00RRGGBB. Out-of-bounds pixels along the line are clipped silently.
 void rt_pixels_draw_line(
@@ -229,34 +261,8 @@ void rt_pixels_draw_line(
         return;
     uint32_t rgba = rgb_to_rgba(color);
 
-    if (!pixels_clip_line_to_bounds(p, &x1, &y1, &x2, &y2))
-        return;
-
-    int64_t adx = rt_pixels_abs_diff_sat64(x2, x1);
-    int64_t ady = rt_pixels_abs_diff_sat64(y2, y1);
-    int64_t sx = x2 >= x1 ? 1 : -1;
-    int64_t sy = y2 >= y1 ? 1 : -1;
-
-    int64_t err = adx - ady;
-    int64_t x = x1;
-    int64_t y = y1;
-
-    pixels_touch(p);
-
-    for (;;) {
-        set_pixel_raw(p, x, y, rgba);
-        if (x == x2 && y == y2)
-            break;
-        int64_t e2 = err > INT64_MAX / 2 ? INT64_MAX : err < INT64_MIN / 2 ? INT64_MIN : err * 2;
-        if (e2 > -ady) {
-            err -= ady;
-            x += sx;
-        }
-        if (e2 < adx) {
-            err += adx;
-            y += sy;
-        }
-    }
+    if (pixels_draw_line_raw(p, x1, y1, x2, y2, rgba))
+        pixels_touch(p);
 }
 
 /// @brief Fill an axis-aligned rectangle with @p color (0x00RRGGBB).
@@ -518,7 +524,9 @@ void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color) {
     if (target == fill_c)
         return;
 
-    // Iterative scanline flood fill — no recursion, no stack overflow risk
+    // Iterative flood fill with one visit bit per pixel. Allocation happens
+    // before mutation, and each pixel is enqueued at most once, so the fixed
+    // worklist cannot overflow and leave a partially-filled region.
     typedef struct {
         int64_t x;
         int64_t y;
@@ -529,67 +537,46 @@ void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color) {
     int64_t cap = p->width * p->height;
     if ((uint64_t)cap > (uint64_t)SIZE_MAX / sizeof(FillSeed))
         return;
-    FillSeed *stack = (FillSeed *)malloc((size_t)cap * sizeof(FillSeed));
-    if (!stack)
+    if ((uint64_t)cap > (uint64_t)SIZE_MAX)
         return;
+    FillSeed *queue = (FillSeed *)malloc((size_t)cap * sizeof(FillSeed));
+    uint8_t *visited = (uint8_t *)calloc((size_t)cap, 1);
+    if (!queue || !visited) {
+        free(queue);
+        free(visited);
+        return;
+    }
 
     int8_t wrote = 0;
-    int64_t top = 0;
-    stack[top].x = x;
-    stack[top].y = y;
-    top++;
+    int64_t head = 0;
+    int64_t tail = 0;
+    queue[tail++] = (FillSeed){x, y};
+    visited[y * p->width + x] = 1;
 
-    while (top > 0) {
-        top--;
-        int64_t sx = stack[top].x;
-        int64_t sy = stack[top].y;
-
-        if (sy < 0 || sy >= p->height || sx < 0 || sx >= p->width)
-            continue;
-        if (p->data[sy * p->width + sx] != target)
+    while (head < tail) {
+        FillSeed seed = queue[head++];
+        int64_t idx = seed.y * p->width + seed.x;
+        if (p->data[idx] != target)
             continue;
 
-        // Scan left to find span start
-        int64_t lx = sx;
-        while (lx > 0 && p->data[sy * p->width + (lx - 1)] == target)
-            lx--;
+        p->data[idx] = fill_c;
+        wrote = 1;
 
-        // Scan right to find span end
-        int64_t rx = sx;
-        while (rx + 1 < p->width && p->data[sy * p->width + (rx + 1)] == target)
-            rx++;
-
-        // Fill the span
-        for (int64_t fx = lx; fx <= rx; fx++) {
-            p->data[sy * p->width + fx] = fill_c;
-            wrote = 1;
-        }
-
-        // Push seed pixels for rows above and below this span
-        for (int64_t row_off = -1; row_off <= 1; row_off += 2) {
-            int64_t ny = sy + row_off;
-            if (ny < 0 || ny >= p->height)
+        const int64_t nx[4] = {seed.x - 1, seed.x + 1, seed.x, seed.x};
+        const int64_t ny[4] = {seed.y, seed.y, seed.y - 1, seed.y + 1};
+        for (int i = 0; i < 4; i++) {
+            if (nx[i] < 0 || nx[i] >= p->width || ny[i] < 0 || ny[i] >= p->height)
                 continue;
-
-            int64_t in_span = 0;
-            for (int64_t fx = lx; fx <= rx; fx++) {
-                if (p->data[ny * p->width + fx] == target) {
-                    if (!in_span) {
-                        if (top >= cap)
-                            break;
-                        stack[top].x = fx;
-                        stack[top].y = ny;
-                        top++;
-                        in_span = 1;
-                    }
-                } else {
-                    in_span = 0;
-                }
+            int64_t nidx = ny[i] * p->width + nx[i];
+            if (!visited[nidx] && p->data[nidx] == target) {
+                visited[nidx] = 1;
+                queue[tail++] = (FillSeed){nx[i], ny[i]};
             }
         }
     }
 
-    free(stack);
+    free(queue);
+    free(visited);
     if (wrote)
         pixels_touch(p);
 }
@@ -788,6 +775,9 @@ void rt_pixels_draw_bezier(void *pixels,
         steps = 10000; // Cap to prevent excessive loops
 
     int8_t wrote = 0;
+    int64_t prev_x = 0;
+    int64_t prev_y = 0;
+    int8_t have_prev = 0;
     // Integer de Casteljau: P(t) via linear interpolation at t = i/steps
     for (int64_t i = 0; i <= steps; i++) {
         long double t = (long double)i / (long double)steps;
@@ -797,7 +787,13 @@ void rt_pixels_draw_bezier(void *pixels,
         long double ly1 = (long double)cy_ctrl + ((long double)y2 - (long double)cy_ctrl) * t;
         int64_t bx = pixels_round_ld_to_i64_sat(lx0 + (lx1 - lx0) * t);
         int64_t by = pixels_round_ld_to_i64_sat(ly0 + (ly1 - ly0) * t);
-        wrote |= set_pixel_raw(p, bx, by, rgba);
+        if (have_prev)
+            wrote |= pixels_draw_line_raw(p, prev_x, prev_y, bx, by, rgba);
+        else
+            wrote |= set_pixel_raw(p, bx, by, rgba);
+        prev_x = bx;
+        prev_y = by;
+        have_prev = 1;
     }
     if (wrote)
         pixels_touch(p);

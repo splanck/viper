@@ -200,7 +200,9 @@ static uint32_t pixels_average_rgba_premul(int64_t sum_premul_r,
 }
 
 /// @brief Map a destination pixel index to the corresponding nearest-neighbor source index.
-/// @details Computes floor(dst * src_size / dst_size), clamped to [0, src_size - 1].
+/// @details Computes floor(dst * (src_size - 1) / (dst_size - 1)), clamped to
+///   [0, src_size - 1], so the first and last destination pixels exactly sample
+///   the first and last source pixels.
 ///   Used by the nearest-neighbor scale pass (rt_pixels_scale).  Long double arithmetic
 ///   avoids integer rounding errors on large images.
 /// @param dst       Destination pixel coordinate (0-based).
@@ -210,16 +212,17 @@ static uint32_t pixels_average_rgba_premul(int64_t sum_premul_r,
 static int64_t pixels_map_index(int64_t dst, int64_t src_size, int64_t dst_size) {
     if (src_size <= 1 || dst_size <= 1)
         return 0;
-    long double mapped = ((long double)dst * (long double)src_size) / (long double)dst_size;
+    long double mapped =
+        ((long double)dst * (long double)(src_size - 1)) / (long double)(dst_size - 1);
     if (mapped >= (long double)(src_size - 1))
         return src_size - 1;
     if (mapped <= 0.0L)
         return 0;
-    return (int64_t)mapped;
+    return (int64_t)(mapped + 0.5L);
 }
 
 /// @brief Map a destination pixel index to a 8.8 fixed-point source position for bilinear resize.
-/// @details Returns dst * src_size * 256 / dst_size, i.e. the source coordinate expressed in
+/// @details Returns dst * (src_size - 1) * 256 / (dst_size - 1), i.e. the source coordinate expressed in
 ///   units of 1/256 of a pixel.  The caller shifts right by 8 to get the integer part and masks
 ///   with 0xFF to get the fractional weight for pixels_bilerp_rgba_premul_fixed.
 /// @param dst       Destination pixel coordinate (0-based).
@@ -229,8 +232,8 @@ static int64_t pixels_map_index(int64_t dst, int64_t src_size, int64_t dst_size)
 static int64_t pixels_map_fixed_256(int64_t dst, int64_t src_size, int64_t dst_size) {
     if (src_size <= 1 || dst_size <= 1)
         return 0;
-    long double mapped =
-        ((long double)dst * (long double)src_size * 256.0L) / (long double)dst_size;
+    long double mapped = ((long double)dst * (long double)(src_size - 1) * 256.0L) /
+                         (long double)(dst_size - 1);
     if (mapped >= (long double)INT64_MAX)
         return INT64_MAX;
     if (mapped <= 0.0L)
@@ -599,7 +602,8 @@ void *rt_pixels_grayscale(void *pixels) {
 }
 
 /// @brief Multiply each pixel by `color` (per-channel modulation, 8-bit normalized). Useful for
-/// hue shifts, color-coded variants. Alpha multiplied as well. Returns a NEW Pixels.
+/// hue shifts, color-coded variants. Alpha is multiplied when `color` carries an alpha channel.
+/// Returns a NEW Pixels.
 void *rt_pixels_tint(void *pixels, int64_t color) {
     rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.Tint: null pixels");
     if (!p)
@@ -609,10 +613,22 @@ void *rt_pixels_tint(void *pixels, int64_t color) {
     if (!result)
         return NULL;
 
-    // Extract tint color (0x00RRGGBB format)
-    int64_t tr = (color >> 16) & 0xFF;
-    int64_t tg = (color >> 8) & 0xFF;
-    int64_t tb = color & 0xFF;
+    int64_t tr = 0;
+    int64_t tg = 0;
+    int64_t tb = 0;
+    int64_t ta = 255;
+    uint64_t c = (uint64_t)color;
+    if ((c & (uint64_t)RT_PIXELS_COLOR_EXPLICIT_ALPHA_FLAG) != 0 || c > 0x00FFFFFFu) {
+        uint32_t tint_rgba = rt_pixels_rgba_or_tagged_color_to_rgba(color);
+        tr = (tint_rgba >> 24) & 0xFF;
+        tg = (tint_rgba >> 16) & 0xFF;
+        tb = (tint_rgba >> 8) & 0xFF;
+        ta = tint_rgba & 0xFF;
+    } else {
+        tr = (color >> 16) & 0xFF;
+        tg = (color >> 8) & 0xFF;
+        tb = color & 0xFF;
+    }
 
     int64_t count = p->width * p->height;
     for (int64_t i = 0; i < count; i++) {
@@ -621,15 +637,16 @@ void *rt_pixels_tint(void *pixels, int64_t color) {
         int64_t r = (px >> 24) & 0xFF;
         int64_t g = (px >> 16) & 0xFF;
         int64_t b = (px >> 8) & 0xFF;
-        uint8_t a = px & 0xFF;
+        int64_t a = px & 0xFF;
 
         // Multiply blend: result = (pixel * tint) / 255
         r = (r * tr) / 255;
         g = (g * tg) / 255;
         b = (b * tb) / 255;
+        a = (a * ta) / 255;
 
         result->data[i] = ((uint32_t)(r & 0xFF) << 24) | ((uint32_t)(g & 0xFF) << 16) |
-                          ((uint32_t)(b & 0xFF) << 8) | a;
+                          ((uint32_t)(b & 0xFF) << 8) | (uint32_t)(a & 0xFF);
     }
 
     return result;

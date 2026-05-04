@@ -65,6 +65,8 @@ typedef struct {
 
 /// @brief Cast a generic atlas handle to the concrete `texatlas_impl` pointer.
 static texatlas_impl *get_impl(void *atlas) {
+    if (!atlas || rt_obj_class_id(atlas) != RT_TEXATLAS_CLASS_ID)
+        return NULL;
     return (texatlas_impl *)atlas;
 }
 
@@ -137,6 +139,8 @@ static void bind_region_slot(texatlas_impl *impl, int idx) {
 ///   in `rt_texatlas_new` to extend the pixel data's lifetime to match the atlas.
 static void texatlas_finalize(void *obj) {
     texatlas_impl *impl = get_impl(obj);
+    if (!impl)
+        return;
     if (impl->pixels) {
         rt_heap_release(impl->pixels);
         impl->pixels = NULL;
@@ -152,7 +156,8 @@ void *rt_texatlas_new(void *pixels) {
         return NULL;
     }
 
-    texatlas_impl *impl = (texatlas_impl *)rt_obj_new_i64(0, (int64_t)sizeof(texatlas_impl));
+    texatlas_impl *impl =
+        (texatlas_impl *)rt_obj_new_i64(RT_TEXATLAS_CLASS_ID, (int64_t)sizeof(texatlas_impl));
     if (!impl)
         return NULL;
 
@@ -178,6 +183,8 @@ void *rt_texatlas_load_grid(void *pixels, int64_t frame_w, int64_t frame_h) {
         return NULL;
 
     texatlas_impl *impl = get_impl(atlas);
+    if (!impl)
+        return NULL;
     int64_t img_w = rt_pixels_width(pixels);
     int64_t img_h = rt_pixels_height(pixels);
     int64_t cols = img_w / frame_w;
@@ -210,6 +217,8 @@ void rt_texatlas_add(void *atlas, void *name, int64_t x, int64_t y, int64_t w, i
         return;
 
     texatlas_impl *impl = get_impl(atlas);
+    if (!impl)
+        return;
     const char *cname = rt_string_cstr(name);
     if (!cname)
         return;
@@ -256,6 +265,8 @@ int8_t rt_texatlas_has(void *atlas, void *name) {
     if (!atlas || !name)
         return 0;
     texatlas_impl *impl = get_impl(atlas);
+    if (!impl)
+        return 0;
     const char *cname = rt_string_cstr(name);
     if (!cname)
         return 0;
@@ -267,6 +278,8 @@ int64_t rt_texatlas_get_x(void *atlas, void *name) {
     if (!atlas || !name)
         return 0;
     texatlas_impl *impl = get_impl(atlas);
+    if (!impl)
+        return 0;
     const char *cname = rt_string_cstr(name);
     if (!cname)
         return 0;
@@ -279,6 +292,8 @@ int64_t rt_texatlas_get_y(void *atlas, void *name) {
     if (!atlas || !name)
         return 0;
     texatlas_impl *impl = get_impl(atlas);
+    if (!impl)
+        return 0;
     const char *cname = rt_string_cstr(name);
     if (!cname)
         return 0;
@@ -291,6 +306,8 @@ int64_t rt_texatlas_get_w(void *atlas, void *name) {
     if (!atlas || !name)
         return 0;
     texatlas_impl *impl = get_impl(atlas);
+    if (!impl)
+        return 0;
     const char *cname = rt_string_cstr(name);
     if (!cname)
         return 0;
@@ -303,6 +320,8 @@ int64_t rt_texatlas_get_h(void *atlas, void *name) {
     if (!atlas || !name)
         return 0;
     texatlas_impl *impl = get_impl(atlas);
+    if (!impl)
+        return 0;
     const char *cname = rt_string_cstr(name);
     if (!cname)
         return 0;
@@ -314,14 +333,16 @@ int64_t rt_texatlas_get_h(void *atlas, void *name) {
 void *rt_texatlas_get_pixels(void *atlas) {
     if (!atlas)
         return NULL;
-    return get_impl(atlas)->pixels;
+    texatlas_impl *impl = get_impl(atlas);
+    return impl ? impl->pixels : NULL;
 }
 
 /// @brief Return the count of elements in the texatlas.
 int64_t rt_texatlas_region_count(void *atlas) {
     if (!atlas)
         return 0;
-    return get_impl(atlas)->region_count;
+    texatlas_impl *impl = get_impl(atlas);
+    return impl ? impl->region_count : 0;
 }
 
 //=============================================================================
@@ -338,6 +359,8 @@ void rt_spritebatch_draw_atlas(void *batch, void *atlas, void *name, int64_t x, 
         return;
 
     texatlas_impl *impl = get_impl(atlas);
+    if (!impl)
+        return;
     const char *cname = rt_string_cstr(name);
     if (!cname)
         return;
@@ -357,6 +380,8 @@ void rt_spritebatch_draw_atlas_scaled(
         return;
 
     texatlas_impl *impl = get_impl(atlas);
+    if (!impl)
+        return;
     const char *cname = rt_string_cstr(name);
     if (!cname)
         return;
@@ -383,6 +408,8 @@ void rt_spritebatch_draw_atlas_ex(void *batch,
         return;
 
     texatlas_impl *impl = get_impl(atlas);
+    if (!impl)
+        return;
     const char *cname = rt_string_cstr(name);
     int idx = find_region(impl, cname);
     if (idx < 0)

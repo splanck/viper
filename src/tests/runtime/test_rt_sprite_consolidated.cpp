@@ -590,6 +590,46 @@ TEST(RTSprite, NullSafety) {
     ASSERT(rt_spritesheet_remove_region(NULL, name) == 0, "null remove = 0");
 }
 
+TEST(RTSprite, AnimatorDuplicateClipReplacesAndPlayRestarts) {
+    rt_sprite_animator_t *anim = rt_sprite_animator_new();
+    ASSERT_TRUE(anim != nullptr);
+
+    ASSERT_TRUE(rt_sprite_animator_add_clip(anim, "walk", 0, 4, 100, 1) == 1);
+    ASSERT_TRUE(rt_sprite_animator_add_clip(anim, "walk", 5, 2, 40, 0) == 1);
+    ASSERT_TRUE(anim->clip_count == 1);
+    ASSERT_TRUE(anim->clips[0].start_frame == 5);
+    ASSERT_TRUE(anim->clips[0].frame_count == 2);
+    ASSERT_TRUE(anim->clips[0].frame_delay_ms == 40);
+    ASSERT_TRUE(anim->clips[0].loop == 0);
+
+    ASSERT_TRUE(rt_sprite_animator_play(anim, "walk") == 1);
+    anim->clip_frame = 1;
+    anim->last_update_ms = 12345;
+    ASSERT_TRUE(rt_sprite_animator_play(anim, "walk") == 1);
+    ASSERT_TRUE(anim->current_clip == 0);
+    ASSERT_TRUE(anim->clip_frame == 0);
+    ASSERT_TRUE(anim->last_update_ms == 0);
+    ASSERT_TRUE(rt_sprite_animator_is_playing(anim) == 1);
+
+    rt_sprite_animator_destroy(anim);
+}
+
+TEST(RTSprite, AnimatorRejectsWrongHandleClass) {
+    void *pixels = rt_pixels_new(1, 1);
+    ASSERT_TRUE(pixels != nullptr);
+    rt_sprite_animator_t *wrong = (rt_sprite_animator_t *)pixels;
+
+    ASSERT_TRUE(rt_sprite_animator_add_clip(wrong, "idle", 0, 1, 100, 1) == 0);
+    ASSERT_TRUE(rt_sprite_animator_play(wrong, "idle") == 0);
+    rt_sprite_animator_stop(wrong);
+    rt_sprite_animator_update(wrong, nullptr);
+    ASSERT_TRUE(rt_sprite_animator_is_playing(wrong) == 0);
+    ASSERT_TRUE(rt_sprite_animator_get_current(wrong) == nullptr);
+    rt_sprite_animator_destroy(wrong);
+
+    rt_obj_release_check0(pixels);
+}
+
 /// @brief Main.
 int main(int argc, char **argv) {
     viper_test::init(&argc, argv);

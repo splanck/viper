@@ -12,7 +12,7 @@
 //
 // Key invariants:
 //   - BDF parser: line-by-line text parsing, hex bitmap decoding.
-//   - PSF parser: binary header + sequential raw glyph bitmaps.
+//   - PSF parser: binary header + sequential raw glyph bitmaps + optional Unicode tables.
 //   - Glyph bitmaps are packed 1-bit (MSB-left, row-major), same as rt_font.c.
 //   - Rendering uses vgfx_pset / vgfx_fill_rect, matching existing Canvas text.
 //
@@ -229,6 +229,89 @@ static int bf_next_codepoint(const char *str, size_t byte_len, size_t *index, in
     return 1;
 }
 
+static int bf_copy_glyph_to_codepoint(rt_bitmapfont_impl *font, int source_index, int codepoint) {
+    if (!font || source_index < 0 || source_index >= BF_MAX_GLYPHS || codepoint < 0 ||
+        codepoint >= BF_MAX_GLYPHS)
+        return 0;
+    rt_glyph *src = &font->glyphs[source_index];
+    rt_glyph *dst = &font->glyphs[codepoint];
+    if (!src->bitmap || dst->bitmap)
+        return 0;
+    int rb = bf_row_bytes(src->width);
+    int64_t byte_count = (int64_t)rb * src->height;
+    if (byte_count <= 0 || byte_count > 1024 * 1024)
+        return 0;
+    uint8_t *copy = (uint8_t *)malloc((size_t)byte_count);
+    if (!copy)
+        return 0;
+    memcpy(copy, src->bitmap, (size_t)byte_count);
+    *dst = *src;
+    dst->bitmap = copy;
+    font->glyph_count++;
+    return 1;
+}
+
+static void bf_apply_psf2_unicode_table(
+    rt_bitmapfont_impl *font, int glyph_count, const uint8_t *table, size_t table_len) {
+    if (!font || !table || table_len == 0)
+        return;
+    int glyph_index = 0;
+    int skipping_sequence = 0;
+    size_t index = 0;
+    while (glyph_index < glyph_count && index < table_len) {
+        uint8_t byte = table[index];
+        if (byte == 0xFFu) {
+            glyph_index++;
+            index++;
+            skipping_sequence = 0;
+            continue;
+        }
+        if (byte == 0xFEu) {
+            skipping_sequence = 1;
+            index++;
+            continue;
+        }
+        if (skipping_sequence) {
+            index++;
+            continue;
+        }
+
+        int codepoint = 0;
+        size_t before = index;
+        if (!bf_next_codepoint((const char *)table, table_len, &index, &codepoint) ||
+            index == before) {
+            index++;
+            continue;
+        }
+        if (codepoint >= 0 && codepoint < BF_MAX_GLYPHS)
+            bf_copy_glyph_to_codepoint(font, glyph_index, codepoint);
+    }
+}
+
+static void bf_apply_psf1_unicode_table(
+    rt_bitmapfont_impl *font, int glyph_count, const uint8_t *table, size_t table_len) {
+    if (!font || !table || table_len < 2)
+        return;
+    int glyph_index = 0;
+    int skipping_sequence = 0;
+    size_t index = 0;
+    while (glyph_index < glyph_count && index + 1 < table_len) {
+        uint16_t value = (uint16_t)table[index] | ((uint16_t)table[index + 1] << 8);
+        index += 2;
+        if (value == 0xFFFFu) {
+            glyph_index++;
+            skipping_sequence = 0;
+            continue;
+        }
+        if (value == 0xFFFEu) {
+            skipping_sequence = 1;
+            continue;
+        }
+        if (!skipping_sequence)
+            bf_copy_glyph_to_codepoint(font, glyph_index, (int)value);
+    }
+}
+
 /// @brief Decrement the refcount of a bitmap font and free it when it reaches zero.
 static void bf_release_font(rt_bitmapfont_impl *font) {
     if (!font)
@@ -428,6 +511,9 @@ void *rt_bitmapfont_load_bdf(rt_string path) {
 /// @brief PSF v1 magic bytes.
 #define PSF1_MAGIC0 0x36
 #define PSF1_MAGIC1 0x04
+#define PSF1_MODE512 0x01
+#define PSF1_MODEHASTAB 0x02
+#define PSF1_MODEHASSEQ 0x04
 
 /// @brief PSF v2 magic bytes.
 #define PSF2_MAGIC0 0x72
@@ -463,18 +549,23 @@ void *rt_bitmapfont_load_psf(rt_string path) {
     int glyph_width = 0;
     int glyph_byte_size = 0;
     long data_offset = 0;
+    int psf_version = 0;
+    int has_unicode_table = 0;
     int parse_failed = 0;
 
     if (magic[0] == PSF1_MAGIC0 && magic[1] == PSF1_MAGIC1) {
         // PSF v1: 4-byte header (magic[2] = mode, magic[3] = charsize)
+        psf_version = 1;
         glyph_byte_size = magic[3];
         glyph_height = glyph_byte_size; // PSF1: 1 byte per row, rows = charsize
         glyph_width = 8;                // Always 8 pixels wide
-        glyph_count = (magic[2] & 0x01) ? 512 : 256;
+        glyph_count = (magic[2] & PSF1_MODE512) ? 512 : 256;
+        has_unicode_table = (magic[2] & (PSF1_MODEHASTAB | PSF1_MODEHASSEQ)) != 0;
         data_offset = 4;
     } else if (magic[0] == PSF2_MAGIC0 && magic[1] == PSF2_MAGIC1 && magic[2] == PSF2_MAGIC2 &&
                magic[3] == PSF2_MAGIC3) {
         // PSF v2: 32-byte header
+        psf_version = 2;
         uint8_t hdr[28]; // Remaining 28 bytes of header
         if (fread(hdr, 1, 28, f) != 28) {
             fclose(f);
@@ -486,6 +577,8 @@ void *rt_bitmapfont_load_psf(rt_string path) {
         uint32_t header_size = (uint32_t)hdr[4] | ((uint32_t)hdr[5] << 8) |
                                ((uint32_t)hdr[6] << 16) | ((uint32_t)hdr[7] << 24);
         // offset 8: flags
+        uint32_t flags = (uint32_t)hdr[8] | ((uint32_t)hdr[9] << 8) | ((uint32_t)hdr[10] << 16) |
+                         ((uint32_t)hdr[11] << 24);
         uint32_t num_glyphs = (uint32_t)hdr[12] | ((uint32_t)hdr[13] << 8) |
                               ((uint32_t)hdr[14] << 16) | ((uint32_t)hdr[15] << 24);
         uint32_t bytes_per_glyph = (uint32_t)hdr[16] | ((uint32_t)hdr[17] << 8) |
@@ -500,6 +593,7 @@ void *rt_bitmapfont_load_psf(rt_string path) {
         glyph_width = (int)width;
         glyph_byte_size = (int)bytes_per_glyph;
         data_offset = (long)header_size;
+        has_unicode_table = (flags & 1u) != 0;
     } else {
         fclose(f);
         return NULL;
@@ -585,9 +679,32 @@ void *rt_bitmapfont_load_psf(rt_string path) {
         font->glyph_count++;
     }
 
+    if (!parse_failed && has_unicode_table) {
+        long table_start = ftell(f);
+        if (table_start >= 0 && fseek(f, 0, SEEK_END) == 0) {
+            long file_end = ftell(f);
+            if (file_end >= table_start) {
+                size_t table_len = (size_t)(file_end - table_start);
+                if (table_len > 0 && table_len <= 16 * 1024 * 1024) {
+                    uint8_t *table = (uint8_t *)malloc(table_len);
+                    if (table && fseek(f, table_start, SEEK_SET) == 0 &&
+                        fread(table, 1, table_len, f) == table_len) {
+                        if (psf_version == 2)
+                            bf_apply_psf2_unicode_table(font, glyph_count, table, table_len);
+                        else if (psf_version == 1)
+                            bf_apply_psf1_unicode_table(font, glyph_count, table, table_len);
+                    } else if (!table) {
+                        parse_failed = 1;
+                    }
+                    free(table);
+                }
+            }
+        }
+    }
+
     fclose(f);
 
-    if (parse_failed || font->glyph_count == 0 || font->glyph_count != glyph_count) {
+    if (parse_failed || font->glyph_count < glyph_count) {
         bf_release_font(font);
         return NULL;
     }

@@ -18,6 +18,11 @@ extern "C" {
 
 namespace {
 
+struct ObjHeader {
+    int64_t class_id;
+    void (*finalizer)(void *);
+};
+
 struct StubPixels {
     int64_t width;
     int64_t height;
@@ -47,6 +52,10 @@ static void reset_draw_state() {
     g_last_blit_y = 0;
     g_tint_call_count = 0;
     g_last_tint = -2;
+}
+
+static ObjHeader *header_from_payload(void *obj) {
+    return reinterpret_cast<ObjHeader *>(obj) - 1;
 }
 
 static void test_flip_x_uses_returned_pixels_buffer() {
@@ -143,18 +152,32 @@ static void test_transformed_tint_zero_is_black_and_negative_is_no_tint() {
 
 } // namespace
 
-extern "C" void *rt_obj_new_i64(int64_t, int64_t byte_size) {
-    return std::calloc(1, static_cast<size_t>(byte_size));
+extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
+    auto *header =
+        static_cast<ObjHeader *>(std::calloc(1, sizeof(ObjHeader) + static_cast<size_t>(byte_size)));
+    assert(header != nullptr);
+    header->class_id = class_id;
+    return header + 1;
 }
 
-extern "C" void rt_obj_set_finalizer(void *, void (*)(void *)) {}
+extern "C" int64_t rt_obj_class_id(void *obj) {
+    return obj ? header_from_payload(obj)->class_id : 0;
+}
+
+extern "C" void rt_obj_set_finalizer(void *obj, void (*finalizer)(void *)) {
+    if (!obj)
+        return;
+    header_from_payload(obj)->finalizer = finalizer;
+}
 
 extern "C" int32_t rt_obj_release_check0(void *) {
     return 1;
 }
 
 extern "C" void rt_obj_free(void *obj) {
-    std::free(obj);
+    if (!obj)
+        return;
+    std::free(header_from_payload(obj));
 }
 
 extern "C" void rt_trap(const char *) {

@@ -266,7 +266,9 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path) {
     if (!pixels || !path)
         return 0;
 
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels;
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels, "Pixels.SaveBmp: invalid pixels");
+    if (!p)
+        return 0;
     const char *filepath = rt_string_cstr((rt_string)path);
     if (!filepath)
         return 0;
@@ -374,6 +376,35 @@ static uint32_t png_read_u32(const uint8_t *p) {
     return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
 }
 
+static uint32_t png_adler32(const uint8_t *data, size_t len) {
+    uint32_t a = 1;
+    uint32_t b = 0;
+    for (size_t i = 0; i < len; i++) {
+        a += data[i];
+        if (a >= 65521u)
+            a -= 65521u;
+        b += a;
+        b %= 65521u;
+    }
+    return (b << 16) | a;
+}
+
+static int png_validate_zlib_header(const uint8_t *data, size_t len) {
+    if (!data || len < 6)
+        return 0;
+    uint8_t cmf = data[0];
+    uint8_t flg = data[1];
+    if ((cmf & 0x0Fu) != 8u)
+        return 0;
+    if ((cmf >> 4) > 7u)
+        return 0;
+    if ((((uint16_t)cmf << 8) | flg) % 31u != 0u)
+        return 0;
+    if ((flg & 0x20u) != 0u)
+        return 0;
+    return 1;
+}
+
 // Paeth predictor as defined by the PNG spec
 /// @brief PNG Paeth filter predictor (RFC 2083 §6.6).
 ///
@@ -459,14 +490,26 @@ void *rt_pixels_load_png(void *path) {
     int trns_count = 0;
     uint16_t trns_gray = 0; // key color for grayscale
     int has_trns_gray = 0;
+    uint16_t trns_rgb[3] = {0, 0, 0}; // key color for truecolor RGB
+    int has_trns_rgb = 0;
 
     while (pos + 12 <= (size_t)file_len) {
         uint32_t chunk_len = png_read_u32(file_data + pos);
         const uint8_t *chunk_type = file_data + pos + 4;
         const uint8_t *chunk_data = file_data + pos + 8;
 
-        if (pos + 12 + chunk_len > (size_t)file_len)
-            break;
+        if (pos + 12 + chunk_len > (size_t)file_len) {
+            free(file_data);
+            free(idat_buf);
+            return NULL;
+        }
+        uint32_t expected_crc = png_read_u32(file_data + pos + 8 + chunk_len);
+        uint32_t actual_crc = rt_crc32_compute(chunk_type, (size_t)chunk_len + 4u);
+        if (actual_crc != expected_crc) {
+            free(file_data);
+            free(idat_buf);
+            return NULL;
+        }
 
         if (memcmp(chunk_type, "IHDR", 4) == 0 && chunk_len >= 13) {
             width = png_read_u32(chunk_data);
@@ -509,6 +552,12 @@ void *rt_pixels_load_png(void *path) {
                 // Grayscale key color (16-bit, even for 8-bit images)
                 trns_gray = (uint16_t)((chunk_data[0] << 8) | chunk_data[1]);
                 has_trns_gray = 1;
+            } else if (color_type == 2 && chunk_len >= 6) {
+                // Truecolor key color (16-bit samples, even for 8-bit images)
+                trns_rgb[0] = (uint16_t)((chunk_data[0] << 8) | chunk_data[1]);
+                trns_rgb[1] = (uint16_t)((chunk_data[2] << 8) | chunk_data[3]);
+                trns_rgb[2] = (uint16_t)((chunk_data[4] << 8) | chunk_data[5]);
+                has_trns_rgb = 1;
             }
         } else if (memcmp(chunk_type, "IDAT", 4) == 0) {
             // Accumulate IDAT data
@@ -556,14 +605,13 @@ void *rt_pixels_load_png(void *path) {
         return NULL;
     }
 
-    // IDAT data is a zlib stream: 2-byte header + DEFLATE data + 4-byte Adler32
-    // Skip the 2-byte zlib header and use our DEFLATE decompressor
-    size_t deflate_len = idat_len - 2; // skip zlib header, ignore trailing adler32
-    if (deflate_len <= 4) {
+    // IDAT data is a zlib stream: 2-byte header + DEFLATE data + 4-byte Adler32.
+    if (!png_validate_zlib_header(idat_buf, idat_len)) {
         free(idat_buf);
         return NULL;
     }
-    deflate_len -= 4; // strip adler32 checksum
+    size_t deflate_len = idat_len - 6; // strip 2-byte zlib header and 4-byte Adler32.
+    uint32_t expected_adler = png_read_u32(idat_buf + idat_len - 4);
 
     // Create a Bytes object with the raw DEFLATE data for rt_compress_inflate
     void *comp_bytes = rt_bytes_new((int64_t)deflate_len);
@@ -602,6 +650,8 @@ void *rt_pixels_load_png(void *path) {
 
     bytes_t *raw = (bytes_t *)raw_bytes;
     if (raw->len < 0)
+        goto cleanup;
+    if (png_adler32(raw->data, (size_t)raw->len) != expected_adler)
         goto cleanup;
 
     // Compute bytes-per-pixel at the filter level (before sub-byte unpacking).
@@ -675,10 +725,12 @@ void *rt_pixels_load_png(void *path) {
         const uint8_t *src_end = raw->data + raw->len;
 
         for (int pass = 0; pass < 7; pass++) {
-            uint32_t sub_w =
-                (width + (uint32_t)a7_dx[pass] - 1 - (uint32_t)a7_x0[pass]) / (uint32_t)a7_dx[pass];
-            uint32_t sub_h = (height + (uint32_t)a7_dy[pass] - 1 - (uint32_t)a7_y0[pass]) /
-                             (uint32_t)a7_dy[pass];
+            uint32_t x0 = (uint32_t)a7_x0[pass];
+            uint32_t y0 = (uint32_t)a7_y0[pass];
+            uint32_t dx_step = (uint32_t)a7_dx[pass];
+            uint32_t dy_step = (uint32_t)a7_dy[pass];
+            uint32_t sub_w = width > x0 ? (width - x0 + dx_step - 1u) / dx_step : 0;
+            uint32_t sub_h = height > y0 ? (height - y0 + dy_step - 1u) / dy_step : 0;
             if (sub_w == 0 || sub_h == 0)
                 continue;
 
@@ -806,13 +858,23 @@ void *rt_pixels_load_png(void *path) {
                 }
                 case 2: { // RGB
                     if (bit_depth == 16) {
-                        r = PNG_DOWN16(row + x * 6);
-                        g = PNG_DOWN16(row + x * 6 + 2);
-                        b_ch = PNG_DOWN16(row + x * 6 + 4);
+                        const uint8_t *sp = row + x * 6;
+                        uint16_t r16 = (uint16_t)(((uint16_t)sp[0] << 8) | sp[1]);
+                        uint16_t g16 = (uint16_t)(((uint16_t)sp[2] << 8) | sp[3]);
+                        uint16_t b16 = (uint16_t)(((uint16_t)sp[4] << 8) | sp[5]);
+                        r = PNG_DOWN16(sp);
+                        g = PNG_DOWN16(sp + 2);
+                        b_ch = PNG_DOWN16(sp + 4);
+                        if (has_trns_rgb && r16 == trns_rgb[0] && g16 == trns_rgb[1] &&
+                            b16 == trns_rgb[2])
+                            alpha = 0;
                     } else {
                         r = row[x * 3];
                         g = row[x * 3 + 1];
                         b_ch = row[x * 3 + 2];
+                        if (has_trns_rgb && (uint16_t)r == trns_rgb[0] &&
+                            (uint16_t)g == trns_rgb[1] && (uint16_t)b_ch == trns_rgb[2])
+                            alpha = 0;
                     }
                     break;
                 }
@@ -894,7 +956,9 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
     if (!pixels_ptr || !path)
         return 0;
 
-    rt_pixels_impl *p = (rt_pixels_impl *)pixels_ptr;
+    rt_pixels_impl *p = rt_pixels_checked_impl(pixels_ptr, "Pixels.SavePng: invalid pixels");
+    if (!p)
+        return 0;
     const char *filepath = rt_string_cstr((rt_string)path);
     if (!filepath || p->width <= 0 || p->height <= 0 ||
         p->width > UINT32_MAX || p->height > UINT32_MAX)

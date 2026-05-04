@@ -341,6 +341,18 @@ static void test_drawbezier_endpoints() {
     printf("test_drawbezier_endpoints: PASSED\n");
 }
 
+static void test_drawbezier_connects_sparse_samples() {
+    void *p = rt_pixels_new(12050, 1);
+    assert(p != nullptr);
+    rt_pixels_draw_bezier(p, 0, 0, 6025, 0, 12049, 0, 0x00CCFF);
+    assert(rt_pixels_get_rgb(p, 0, 0) == 0x00CCFF);
+    assert(rt_pixels_get_rgb(p, 12049, 0) == 0x00CCFF);
+    assert(rt_pixels_get_rgb(p, 6025, 0) == 0x00CCFF);
+    for (int64_t x = 0; x < 12050; x += 137)
+        assert(rt_pixels_get_rgb(p, x, 0) == 0x00CCFF);
+    printf("test_drawbezier_connects_sparse_samples: PASSED\n");
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -394,6 +406,7 @@ int main() {
 
     // DrawBezier
     test_drawbezier_endpoints();
+    test_drawbezier_connects_sparse_samples();
 
     printf("\nAll tests passed!\n");
     return 0;

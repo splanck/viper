@@ -51,12 +51,13 @@ var renderer = Renderer2D.New(256)
 renderer.Begin()
 renderer.SetAlpha(255)
 renderer.DrawTexture(texture, 32, 48)
+renderer.DrawTextureScaled(texture, 96, 48, 64, 64)
 renderer.FlushToTarget(target)
 
 canvas.BlitAlpha(0, 0, target.Pixels)
 ```
 
-`Renderer2D` keeps retained references to queued sources, so textures and pixels can be queued safely during a frame. Calling `Begin` clears the previous command list. `FlushToTarget(target)` draws to an offscreen target without ending the batch; `End(canvas)` draws to a Canvas with the queued blend modes, clears queued commands, and makes repeated `End` calls a no-op until the next `Begin`.
+`Renderer2D` keeps retained references to queued sources, so textures and pixels can be queued safely during a frame. Calling `Begin` clears the previous command list. `FlushToTarget(target)` draws to an offscreen target without ending the batch; `End(canvas)` draws to a Canvas with the queued blend modes, clears queued commands, and makes repeated `End` calls a no-op until the next `Begin`. `DrawTextureScaled(texture, x, y, width, height)` uses the texture's nearest or linear filter. `DrawTextureRegion(texture, x, y, sx, sy, width, height)` samples out-of-bounds source texels through the texture's clamp or repeat wrap mode.
 
 `SpriteRenderer2D` snapshots `Sampler2D` state when queuing a texture draw. It does not mutate the `Texture2D`; call `Sampler2D.ApplyToTexture(texture)` only when you explicitly want to change the texture's stored filter and wrap properties.
 
@@ -72,9 +73,9 @@ var gradient = Gradient2D.New(0x000000FF, Color.RGBA(255, 255, 255, 192), 16)
 gradient.FillHorizontal(pixels)
 ```
 
-`Palette2D.Apply` treats the source pixel alpha byte (the low byte in raw `0xRRGGBBAA` storage) as the palette index and writes `0xRRGGBBAA` colors to a new buffer. Pixels whose alpha index is beyond the palette count are copied unchanged.
+`Palette2D.Apply` treats the source pixel red byte as the palette index and writes `0xRRGGBBAA` colors to a new buffer. Fully transparent legacy index pixels in `0x000000II` form are still accepted. Pixels whose index is beyond the palette count are copied unchanged.
 
-`Gradient2D` uses `Steps` as the number of discrete levels, including both endpoints. For example, a three-step gradient samples start, midpoint, and end colors; horizontal and vertical fills use the same stepped sampling as `Sample`.
+`Gradient2D` uses `Steps <= 2` as smooth interpolation. Larger `Steps` values quantize into that many discrete levels, including both endpoints. For example, a three-step gradient samples start, midpoint, and end colors; horizontal and vertical fills use the same sampling as `Sample`.
 
 ## Notes
 
