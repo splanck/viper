@@ -115,7 +115,7 @@ static void rt_model3d_finalize(void *obj) {
 /// scene node attached. Traps with a user-visible message on either allocation failure;
 /// returns NULL only after trapping so the caller's `goto fail` paths can still run.
 static rt_model3d *model_new(void) {
-    rt_model3d *model = (rt_model3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_model3d));
+    rt_model3d *model = (rt_model3d *)rt_obj_new_i64(RT_G3D_MODEL3D_CLASS_ID, (int64_t)sizeof(rt_model3d));
     if (!model) {
         rt_trap("Model3D.Load: allocation failed");
         return NULL;

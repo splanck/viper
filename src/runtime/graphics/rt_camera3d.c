@@ -386,7 +386,7 @@ static void camera_apply_shake_to_view(rt_camera3d *cam) {
 /// @param far_val  Far clipping plane distance.
 /// @return Opaque camera handle, or NULL on failure.
 void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val) {
-    rt_camera3d *cam = (rt_camera3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_camera3d));
+    rt_camera3d *cam = (rt_camera3d *)rt_obj_new_i64(RT_G3D_CAMERA3D_CLASS_ID, (int64_t)sizeof(rt_camera3d));
     if (!cam) {
         rt_trap("Camera3D.New: memory allocation failed");
         return NULL;
@@ -460,7 +460,7 @@ static void build_ortho(double *m,
 /// @param far_val  Far clipping plane distance.
 /// @return Opaque camera handle, or NULL on failure.
 void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double far_val) {
-    rt_camera3d *cam = (rt_camera3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_camera3d));
+    rt_camera3d *cam = (rt_camera3d *)rt_obj_new_i64(RT_G3D_CAMERA3D_CLASS_ID, (int64_t)sizeof(rt_camera3d));
     if (!cam) {
         rt_trap("Camera3D.NewOrtho: memory allocation failed");
         return NULL;

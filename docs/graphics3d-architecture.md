@@ -91,6 +91,17 @@ every effect parameter and exports the sanitized ordered chain, including bloom 
 backends. These guards are intentionally in the runtime classes instead of individual backends so
 software, Metal, D3D11, and OpenGL receive the same clean state.
 
+Graphics3D object handles use stable internal class IDs from `rt_graphics3d_ids.h`. Public APIs that
+store or dereference opaque Graphics3D handles validate those IDs before casting, which prevents a
+Mesh3D/Path3D/Terrain3D-style handle mix-up from being interpreted as another runtime struct. The
+IDs are negative and module-scoped so they do not collide with legacy class-id `0` objects.
+
+The advanced helpers follow the same numeric guard policy. `TextureAtlas3D` validates atlas and
+Pixels handles before copying image data and keeps dirty cached Pixels intact on rebuild failure.
+`Terrain3D`, `Sprite3D`, `Decal3D`, `Water3D`, `Vegetation3D`, `Path3D`, `NavMesh3D`, and
+`NavAgent3D` clamp or reject non-finite sizes, frame rectangles, normals, wave parameters, density
+maps, spline points, empty navigation meshes, and steering distances at the runtime boundary.
+
 ### Metal Window Presentation Model
 
 The Metal backend now follows the same split as the other GPU runtimes:
@@ -245,6 +256,7 @@ src/runtime/graphics/
 ├── Core Rendering
 │   ├── rt_canvas3d.h/c            Canvas3D lifecycle + vtable dispatch
 │   ├── rt_canvas3d_internal.h     Internal struct definitions
+│   ├── rt_graphics3d_ids.h        Stable class IDs and handle-validation helpers
 │   ├── rt_mesh3d.c                Mesh3D (construction, generators, OBJ loader, Clear)
 │   ├── rt_camera3d.c              Camera3D (projection, view, orbit, FPS, ray cast)
 │   ├── rt_material3d.c            Material3D (legacy + PBR surface state, maps, clone/instance)
@@ -371,6 +383,20 @@ All Graphics3D objects are GC-managed via `rt_obj_new_i64`:
 | Camera3D | No | Scalar fields only |
 | Material3D | No | Scalar fields + object reference (GC-managed) |
 | Light3D | No | Scalar fields only |
+| Terrain3D | Yes | Height data, chunk mesh caches, splat textures |
+| TextureAtlas3D | Yes | Atlas pixel buffer + cached Pixels copy |
+| Vegetation3D | Yes | Instance buffers, density map, blade mesh/material |
+| Sprite3D | Yes | Texture ref, cached billboard mesh/material |
+| Decal3D | Yes | Texture ref, lazy mesh/material |
+| Water3D | Yes | Texture refs, mesh, material |
+| NavMesh3D | Yes | Baked vertex/triangle arrays |
+| NavAgent3D | Yes | Path point buffer and bound nav/scene references |
+| AudioListener3D / AudioSource3D | Yes | Bound node/camera/sound references and global-list links |
+
+Temporary Vec3/Mat4 objects created for debug drawing, audio node binding, path integration, and
+navigation path conversion must be released in the same call that creates them. Deferred Canvas3D
+draws keep their own queued values or frame-temp references; helper functions should not leak local
+objects just because the draw command is later consumed by the backend.
 
 ## Threading Model
 

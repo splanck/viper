@@ -26,6 +26,7 @@
 #include "rt_vegetation3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_pixels_internal.h"
 #include "vgfx3d_backend.h"
 
 #include <math.h>
@@ -35,6 +36,9 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern void rt_obj_retain_maybe(void *obj);
+extern int32_t rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 #include "rt_trap.h"
 extern void *rt_mesh3d_new(void);
 extern void rt_mesh3d_add_vertex(
@@ -46,9 +50,6 @@ extern void *rt_material3d_new(void);
 extern void rt_material3d_set_texture(void *m, void *tex);
 extern void rt_material3d_set_unlit(void *m, int8_t u);
 extern double rt_terrain3d_get_height_at(void *terrain, double x, double z);
-extern int64_t rt_pixels_width(void *pixels);
-extern int64_t rt_pixels_height(void *pixels);
-extern int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y);
 
 typedef struct {
     void *vptr;
@@ -78,7 +79,27 @@ typedef struct {
     int32_t visible_capacity;
 } rt_vegetation3d;
 
-/// @brief GC finalizer — release the three flat arrays that hold the blade instances.
+static double vegetation_finite_or(double value, double fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
+static void vegetation3d_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+static void vegetation3d_assign_ref(void **slot, void *value) {
+    if (!slot || *slot == value)
+        return;
+    rt_obj_retain_maybe(value);
+    vegetation3d_release_ref(slot);
+    *slot = value;
+}
+
+/// @brief GC finalizer — release owned blade resources and instance arrays.
 /// @details The vegetation system stores per-instance data in three
 ///   independent flat buffers: `base_transforms` (original 4x4 matrices),
 ///   `positions` (vec3 source points kept for wind resimulation), and
@@ -93,10 +114,15 @@ static void vegetation3d_finalizer(void *obj) {
     v->base_transforms = NULL;
     v->positions = NULL;
     v->visible_transforms = NULL;
+    vegetation3d_release_ref(&v->density_map);
+    vegetation3d_release_ref(&v->blade_mesh);
+    vegetation3d_release_ref(&v->blade_material);
 }
 
 /// @brief Build the cross-billboard blade mesh (2 perpendicular quads).
 static void build_blade_mesh(void *mesh, double w, double h) {
+    if (!mesh)
+        return;
     double hw = w * 0.5;
     /* Quad 1: X-aligned */
     rt_mesh3d_add_vertex(mesh, -hw, 0, 0, 0, 0, 1, 0, 1);
@@ -130,7 +156,9 @@ static uint32_t lcg_next(uint32_t *state) {
 /// Defaults: 0.4×1.2 blades with 30% size variation, wind speed 2.0 / strength 0.15 / turbulence
 /// 0.5, LOD near=40 / far=100 world units. Traps on allocation failure.
 void *rt_vegetation3d_new(void *blade_texture) {
-    rt_vegetation3d *v = (rt_vegetation3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_vegetation3d));
+    rt_vegetation3d *v =
+        (rt_vegetation3d *)rt_obj_new_i64(RT_G3D_VEGETATION3D_CLASS_ID,
+                                          (int64_t)sizeof(rt_vegetation3d));
     if (!v) {
         rt_trap("Vegetation3D.New: allocation failed");
         return NULL;
@@ -156,10 +184,23 @@ void *rt_vegetation3d_new(void *blade_texture) {
 
     /* Build blade mesh */
     v->blade_mesh = rt_mesh3d_new();
+    if (!v->blade_mesh) {
+        if (rt_obj_release_check0(v))
+            rt_obj_free(v);
+        rt_trap("Vegetation3D.New: blade mesh allocation failed");
+        return NULL;
+    }
     build_blade_mesh(v->blade_mesh, v->blade_width, v->blade_height);
 
     /* Build material */
     v->blade_material = rt_material3d_new();
+    if (!v->blade_material) {
+        vegetation3d_release_ref(&v->blade_mesh);
+        if (rt_obj_release_check0(v))
+            rt_obj_free(v);
+        rt_trap("Vegetation3D.New: material allocation failed");
+        return NULL;
+    }
     if (blade_texture)
         rt_material3d_set_texture(v->blade_material, blade_texture);
     rt_material3d_set_unlit(v->blade_material, 1);
@@ -171,8 +212,19 @@ void *rt_vegetation3d_new(void *blade_texture) {
 /// @brief Attach a Pixels density map. During `_populate`, each candidate blade rolls against the
 /// red channel of the corresponding pixel — higher R = denser vegetation. NULL = uniform density.
 void rt_vegetation3d_set_density_map(void *obj, void *pixels) {
-    if (obj)
-        ((rt_vegetation3d *)obj)->density_map = pixels;
+    rt_vegetation3d *v =
+        (rt_vegetation3d *)rt_g3d_checked_or_null(obj, RT_G3D_VEGETATION3D_CLASS_ID);
+    if (!v)
+        return;
+    if (pixels) {
+        rt_pixels_impl *p =
+            rt_pixels_checked_impl(pixels, "Vegetation3D.SetDensityMap: expected Pixels");
+        if (!p || p->width <= 0 || p->height <= 0 || !p->data) {
+            rt_trap("Vegetation3D.SetDensityMap: density map must be non-empty Pixels");
+            return;
+        }
+    }
+    vegetation3d_assign_ref(&v->density_map, pixels);
 }
 
 /// @brief Configure wind animation. `speed` scales time, `strength` is the maximum top-of-blade
@@ -181,10 +233,17 @@ void rt_vegetation3d_set_density_map(void *obj, void *pixels) {
 void rt_vegetation3d_set_wind_params(void *obj, double speed, double strength, double turbulence) {
     if (!obj)
         return;
-    rt_vegetation3d *v = (rt_vegetation3d *)obj;
-    v->wind_speed = speed;
-    v->wind_strength = strength;
-    v->wind_turbulence = turbulence;
+    rt_vegetation3d *v =
+        (rt_vegetation3d *)rt_g3d_checked_or_null(obj, RT_G3D_VEGETATION3D_CLASS_ID);
+    if (!v)
+        return;
+    v->wind_speed = vegetation_finite_or(speed, 0.0);
+    v->wind_strength = vegetation_finite_or(strength, 0.0);
+    if (v->wind_strength < 0.0)
+        v->wind_strength = 0.0;
+    v->wind_turbulence = vegetation_finite_or(turbulence, 0.0);
+    if (v->wind_turbulence < 0.0)
+        v->wind_turbulence = 0.0;
 }
 
 /// @brief Set LOD thresholds. Within `near_dist` all blades render; between near and far they
@@ -193,7 +252,16 @@ void rt_vegetation3d_set_wind_params(void *obj, double speed, double strength, d
 void rt_vegetation3d_set_lod_distances(void *obj, double near_dist, double far_dist) {
     if (!obj)
         return;
-    rt_vegetation3d *v = (rt_vegetation3d *)obj;
+    rt_vegetation3d *v =
+        (rt_vegetation3d *)rt_g3d_checked_or_null(obj, RT_G3D_VEGETATION3D_CLASS_ID);
+    if (!v)
+        return;
+    near_dist = vegetation_finite_or(near_dist, 40.0);
+    far_dist = vegetation_finite_or(far_dist, 100.0);
+    if (near_dist < 0.0)
+        near_dist = 0.0;
+    if (far_dist <= near_dist + 1e-6)
+        far_dist = near_dist + 1.0;
     v->lod_near = (float)near_dist;
     v->lod_far = (float)far_dist;
 }
@@ -204,7 +272,21 @@ void rt_vegetation3d_set_lod_distances(void *obj, double near_dist, double far_d
 void rt_vegetation3d_set_blade_size(void *obj, double width, double height, double variation) {
     if (!obj)
         return;
-    rt_vegetation3d *v = (rt_vegetation3d *)obj;
+    rt_vegetation3d *v =
+        (rt_vegetation3d *)rt_g3d_checked_or_null(obj, RT_G3D_VEGETATION3D_CLASS_ID);
+    if (!v)
+        return;
+    width = vegetation_finite_or(width, 0.4);
+    height = vegetation_finite_or(height, 1.2);
+    variation = vegetation_finite_or(variation, 0.0);
+    if (width <= 0.0)
+        width = 0.4;
+    if (height <= 0.0)
+        height = 1.2;
+    if (variation < 0.0)
+        variation = 0.0;
+    if (variation > 1.0)
+        variation = 1.0;
     v->blade_width = width;
     v->blade_height = height;
     v->size_variation = variation;
@@ -243,9 +325,19 @@ static void build_transform(float *out, double x, double y, double z, double ang
 /// snapped to terrain height. Each blade gets a random Y rotation and per-blade scale variation
 /// (±size_variation). Reallocates the transform/position buffers and resets `total_count`.
 void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
-    if (!obj || !terrain || count <= 0)
+    rt_vegetation3d *v =
+        (rt_vegetation3d *)rt_g3d_checked_or_null(obj, RT_G3D_VEGETATION3D_CLASS_ID);
+    if (!v)
         return;
-    rt_vegetation3d *v = (rt_vegetation3d *)obj;
+    if (count <= 0) {
+        v->total_count = 0;
+        v->visible_count = 0;
+        return;
+    }
+    if (count > INT32_MAX) {
+        rt_trap("Vegetation3D.Populate: count exceeds supported range");
+        return;
+    }
 
     /* Get terrain dimensions for scatter bounds */
     typedef struct {
@@ -255,33 +347,88 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
         double scale[3];
     } terrain_view;
 
-    terrain_view *tv = (terrain_view *)terrain;
-    double tw = tv->width * tv->scale[0];
-    double td = tv->depth * tv->scale[2];
+    terrain_view *tv =
+        (terrain_view *)rt_g3d_checked_or_null(terrain, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!tv || tv->width <= 0 || tv->depth <= 0)
+        return;
+
+    double sx = vegetation_finite_or(tv->scale[0], 1.0);
+    double sz = vegetation_finite_or(tv->scale[2], 1.0);
+    if (sx <= 0.0)
+        sx = 1.0;
+    if (sz <= 0.0)
+        sz = 1.0;
+    double tw = (double)tv->width * sx;
+    double td = (double)tv->depth * sz;
+    if (!isfinite(tw) || !isfinite(td) || tw <= 0.0 || td <= 0.0) {
+        rt_trap("Vegetation3D.Populate: invalid terrain extents");
+        return;
+    }
 
     /* Allocate storage */
     int32_t cap = (int32_t)count;
-    v->base_transforms = (float *)realloc(v->base_transforms, (size_t)cap * 16 * sizeof(float));
-    v->positions = (float *)realloc(v->positions, (size_t)cap * 3 * sizeof(float));
+    size_t base_count = (size_t)cap * 16u;
+    size_t pos_count = (size_t)cap * 3u;
+    if ((size_t)cap > SIZE_MAX / (16u * sizeof(float)) ||
+        (size_t)cap > SIZE_MAX / (3u * sizeof(float))) {
+        rt_trap("Vegetation3D.Populate: allocation size overflow");
+        return;
+    }
+    float *new_base_transforms = (float *)malloc(base_count * sizeof(float));
+    float *new_positions = (float *)malloc(pos_count * sizeof(float));
+    if (!new_base_transforms || !new_positions) {
+        free(new_base_transforms);
+        free(new_positions);
+        rt_trap("Vegetation3D.Populate: allocation failed");
+        return;
+    }
+
+    rt_pixels_impl *density_map = NULL;
+    if (v->density_map) {
+        density_map = rt_pixels_checked_impl_or_null(v->density_map);
+        if (!density_map || density_map->width <= 0 || density_map->height <= 0 ||
+            !density_map->data) {
+            free(new_base_transforms);
+            free(new_positions);
+            rt_trap("Vegetation3D.Populate: density map is invalid");
+            return;
+        }
+    }
+
+    free(v->base_transforms);
+    free(v->positions);
+    v->base_transforms = new_base_transforms;
+    v->positions = new_positions;
     v->capacity = cap;
     v->total_count = 0;
+    v->visible_count = 0;
 
     uint32_t rng = 42;
+    double min_x = tw >= 4.0 ? 2.0 : 0.0;
+    double max_x = tw >= 4.0 ? tw - 2.0 : tw;
+    double min_z = td >= 4.0 ? 2.0 : 0.0;
+    double max_z = td >= 4.0 ? td - 2.0 : td;
 
     for (int64_t i = 0; i < count; i++) {
         /* Random position within terrain bounds (margin of 2 units) */
         double fx = (double)(lcg_next(&rng) & 0xFFFF) / 65535.0;
         double fz = (double)(lcg_next(&rng) & 0xFFFF) / 65535.0;
-        double wx = 2.0 + fx * (tw - 4.0);
-        double wz = 2.0 + fz * (td - 4.0);
+        double wx = min_x + fx * (max_x - min_x);
+        double wz = min_z + fz * (max_z - min_z);
 
         /* Density map check */
-        if (v->density_map) {
-            int64_t pw = rt_pixels_width(v->density_map);
-            int64_t ph = rt_pixels_height(v->density_map);
-            int64_t px = (int64_t)(fx * (pw - 1));
-            int64_t pz = (int64_t)(fz * (ph - 1));
-            int64_t pixel = rt_pixels_get(v->density_map, px, pz);
+        if (density_map) {
+            int64_t px = (int64_t)(fx * (double)(density_map->width - 1));
+            int64_t pz = (int64_t)(fz * (double)(density_map->height - 1));
+            if (px < 0)
+                px = 0;
+            if (pz < 0)
+                pz = 0;
+            if (px >= density_map->width)
+                px = density_map->width - 1;
+            if (pz >= density_map->height)
+                pz = density_map->height - 1;
+            uint32_t pixel = density_map->data[pz * density_map->width + px];
             int32_t density = (int32_t)((pixel >> 24) & 0xFF); /* R channel */
             uint32_t roll = lcg_next(&rng) & 0xFF;
             if ((int32_t)roll > density)
@@ -289,11 +436,14 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
         }
 
         double wy = rt_terrain3d_get_height_at(terrain, wx, wz);
+        wy = vegetation_finite_or(wy, 0.0);
 
         /* Random Y rotation + scale variation */
         double angle = ((double)(lcg_next(&rng) & 0xFFFF) / 65535.0) * 6.283185307;
         double scale_var =
             1.0 + (((double)(lcg_next(&rng) & 0xFFFF) / 65535.0) - 0.5) * 2.0 * v->size_variation;
+        if (!isfinite(scale_var) || scale_var < 0.01)
+            scale_var = 0.01;
 
         int32_t idx = v->total_count;
         build_transform(&v->base_transforms[idx * 16], wx, wy, wz, angle, scale_var);
@@ -309,16 +459,38 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
 /// `lod_near` and `lod_far` (skip stride 1..5), and apply per-blade wind shear to columns 1 and 9
 /// of the transform (bending blade tops). `camY` is unused — culling is XZ-only.
 void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, double camZ) {
-    if (!obj || dt <= 0)
+    (void)camY;
+    rt_vegetation3d *v =
+        (rt_vegetation3d *)rt_g3d_checked_or_null(obj, RT_G3D_VEGETATION3D_CLASS_ID);
+    if (!v || !isfinite(dt) || dt <= 0.0)
         return;
-    rt_vegetation3d *v = (rt_vegetation3d *)obj;
+    camX = vegetation_finite_or(camX, 0.0);
+    camZ = vegetation_finite_or(camZ, 0.0);
     v->time += dt;
+    if (!isfinite(v->time))
+        v->time = 0.0;
+
+    if (v->total_count <= 0 || !v->base_transforms || !v->positions) {
+        v->visible_count = 0;
+        return;
+    }
 
     /* Ensure visible buffer is large enough */
     if (v->visible_capacity < v->total_count) {
+        if ((size_t)v->total_count > SIZE_MAX / (16u * sizeof(float))) {
+            v->visible_count = 0;
+            rt_trap("Vegetation3D.Update: visible buffer size overflow");
+            return;
+        }
+        float *new_visible =
+            (float *)realloc(v->visible_transforms, (size_t)v->total_count * 16u * sizeof(float));
+        if (!new_visible) {
+            v->visible_count = 0;
+            rt_trap("Vegetation3D.Update: visible buffer allocation failed");
+            return;
+        }
+        v->visible_transforms = new_visible;
         v->visible_capacity = v->total_count;
-        v->visible_transforms = (float *)realloc(v->visible_transforms,
-                                                 (size_t)v->visible_capacity * 16 * sizeof(float));
     }
     v->visible_count = 0;
 
@@ -337,8 +509,15 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
 
         /* Progressive thinning between near and far */
         if (dist > v->lod_near) {
-            float t = (dist - v->lod_near) / (v->lod_far - v->lod_near);
+            float denom = v->lod_far - v->lod_near;
+            float t = denom > 1e-6f ? (dist - v->lod_near) / denom : 1.0f;
+            if (t < 0.0f)
+                t = 0.0f;
+            if (t > 1.0f)
+                t = 1.0f;
             int skip = 1 + (int)(t * 4.0f);
+            if (skip < 1)
+                skip = 1;
             if ((i % skip) != 0)
                 continue;
         }
@@ -365,8 +544,11 @@ void rt_vegetation3d_update(void *obj, double dt, double camX, double camY, doub
 void rt_canvas3d_draw_vegetation(void *canvas_obj, void *veg_obj) {
     if (!canvas_obj || !veg_obj)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)canvas_obj;
-    rt_vegetation3d *v = (rt_vegetation3d *)veg_obj;
+    rt_canvas3d *c = (rt_canvas3d *)rt_g3d_checked_or_null(canvas_obj, RT_G3D_CANVAS3D_CLASS_ID);
+    rt_vegetation3d *v =
+        (rt_vegetation3d *)rt_g3d_checked_or_null(veg_obj, RT_G3D_VEGETATION3D_CLASS_ID);
+    if (!c || !v)
+        return;
     if (!c->in_frame || !c->backend || v->visible_count == 0)
         return;
 

@@ -172,7 +172,7 @@ static void rt_mesh3d_finalize(void *obj) {
 ///          (new_box, new_sphere, new_plane, new_cylinder). GC finalizer frees arrays.
 /// @return Opaque mesh handle, or NULL on allocation failure.
 void *rt_mesh3d_new(void) {
-    rt_mesh3d *m = (rt_mesh3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_mesh3d));
+    rt_mesh3d *m = (rt_mesh3d *)rt_obj_new_i64(RT_G3D_MESH3D_CLASS_ID, (int64_t)sizeof(rt_mesh3d));
     if (!m) {
         rt_trap("Mesh3D.New: memory allocation failed");
         return NULL;

@@ -1717,7 +1717,7 @@ static void *gltf_new_punctual_light(void *light_json) {
     rt_light3d *light;
     if (!type)
         return NULL;
-    light = (rt_light3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_light3d));
+    light = (rt_light3d *)rt_obj_new_i64(RT_G3D_LIGHT3D_CLASS_ID, (int64_t)sizeof(rt_light3d));
     if (!light)
         return NULL;
     memset(light, 0, sizeof(*light));
@@ -3348,7 +3348,7 @@ void *rt_gltf_load(rt_string path) {
     }
 
     // Create asset
-    rt_gltf_asset *asset = (rt_gltf_asset *)rt_obj_new_i64(0, (int64_t)sizeof(rt_gltf_asset));
+    rt_gltf_asset *asset = (rt_gltf_asset *)rt_obj_new_i64(RT_G3D_GLTF_ASSET_CLASS_ID, (int64_t)sizeof(rt_gltf_asset));
     if (!asset) {
         for (int i = 0; i < buf_count; i++) {
             if (buffers[i].data != bin_chunk)

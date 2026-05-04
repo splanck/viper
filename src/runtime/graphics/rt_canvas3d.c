@@ -2035,7 +2035,7 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
         return NULL;
     }
 
-    rt_canvas3d *c = (rt_canvas3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_canvas3d));
+    rt_canvas3d *c = (rt_canvas3d *)rt_obj_new_i64(RT_G3D_CANVAS3D_CLASS_ID, (int64_t)sizeof(rt_canvas3d));
     if (!c) {
         rt_trap("Canvas3D.New: memory allocation failed");
         return NULL;

@@ -2607,7 +2607,7 @@ void *rt_fbx_load(rt_string path) {
     int z_up = fbx_is_z_up(&root);
 
     /* Extract assets */
-    rt_fbx_asset *asset = (rt_fbx_asset *)rt_obj_new_i64(0, (int64_t)sizeof(rt_fbx_asset));
+    rt_fbx_asset *asset = (rt_fbx_asset *)rt_obj_new_i64(RT_G3D_FBX_ASSET_CLASS_ID, (int64_t)sizeof(rt_fbx_asset));
     if (!asset) {
         free(mesh_bindings);
         fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);

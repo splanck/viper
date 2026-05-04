@@ -20,6 +20,7 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+#include "rt_graphics3d_ids.h"
 #include "rt_path3d.h"
 
 #include <math.h>
@@ -29,6 +30,8 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern int32_t rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 #include "rt_trap.h"
 extern void *rt_vec3_new(double x, double y, double z);
 extern double rt_vec3_x(void *v);
@@ -64,6 +67,51 @@ static void path3d_finalizer(void *obj) {
     p->point_count = p->point_capacity = 0;
 }
 
+static void path3d_release_local(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static int path3d_reserve(rt_path3d *p, int32_t min_capacity) {
+    if (!p || min_capacity <= p->point_capacity)
+        return 1;
+    int32_t new_cap = p->point_capacity > 0 ? p->point_capacity : PATH3D_INIT_CAP;
+    while (new_cap < min_capacity) {
+        if (new_cap > INT32_MAX / 2) {
+            rt_trap("Path3D.AddPoint: too many points");
+            return 0;
+        }
+        new_cap *= 2;
+    }
+    if ((size_t)new_cap > SIZE_MAX / sizeof(double)) {
+        rt_trap("Path3D.AddPoint: allocation size overflow");
+        return 0;
+    }
+    double *new_xs = (double *)malloc((size_t)new_cap * sizeof(double));
+    double *new_ys = (double *)malloc((size_t)new_cap * sizeof(double));
+    double *new_zs = (double *)malloc((size_t)new_cap * sizeof(double));
+    if (!new_xs || !new_ys || !new_zs) {
+        free(new_xs);
+        free(new_ys);
+        free(new_zs);
+        rt_trap("Path3D.AddPoint: allocation failed");
+        return 0;
+    }
+    if (p->point_count > 0) {
+        memcpy(new_xs, p->xs, (size_t)p->point_count * sizeof(double));
+        memcpy(new_ys, p->ys, (size_t)p->point_count * sizeof(double));
+        memcpy(new_zs, p->zs, (size_t)p->point_count * sizeof(double));
+    }
+    free(p->xs);
+    free(p->ys);
+    free(p->zs);
+    p->xs = new_xs;
+    p->ys = new_ys;
+    p->zs = new_zs;
+    p->point_capacity = new_cap;
+    return 1;
+}
+
 /// @brief Create a new empty 3D Catmull-Rom spline path.
 /// @details Paths are used for camera dollies, patrol routes, missile trajectories,
 ///          and similar smooth 3D curves. Points are added with add_point; the
@@ -71,7 +119,7 @@ static void path3d_finalizer(void *obj) {
 ///          arc length is cached and recomputed lazily when points change.
 /// @return Opaque path handle, or NULL on allocation failure.
 void *rt_path3d_new(void) {
-    rt_path3d *p = (rt_path3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_path3d));
+    rt_path3d *p = (rt_path3d *)rt_obj_new_i64(RT_G3D_PATH3D_CLASS_ID, (int64_t)sizeof(rt_path3d));
     if (!p) {
         rt_trap("Path3D.New: allocation failed");
         return NULL;
@@ -80,6 +128,13 @@ void *rt_path3d_new(void) {
     p->xs = (double *)calloc(PATH3D_INIT_CAP, sizeof(double));
     p->ys = (double *)calloc(PATH3D_INIT_CAP, sizeof(double));
     p->zs = (double *)calloc(PATH3D_INIT_CAP, sizeof(double));
+    if (!p->xs || !p->ys || !p->zs) {
+        path3d_finalizer(p);
+        if (rt_obj_release_check0(p))
+            rt_obj_free(p);
+        rt_trap("Path3D.New: allocation failed");
+        return NULL;
+    }
     p->point_count = 0;
     p->point_capacity = PATH3D_INIT_CAP;
     p->looping = 0;
@@ -93,19 +148,19 @@ void *rt_path3d_new(void) {
 void rt_path3d_add_point(void *obj, void *pos) {
     if (!obj || !pos)
         return;
-    rt_path3d *p = (rt_path3d *)obj;
+    rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
+    if (!p)
+        return;
 
-    if (p->point_count >= p->point_capacity) {
-        int32_t new_cap = p->point_capacity * 2;
-        p->xs = (double *)realloc(p->xs, (size_t)new_cap * sizeof(double));
-        p->ys = (double *)realloc(p->ys, (size_t)new_cap * sizeof(double));
-        p->zs = (double *)realloc(p->zs, (size_t)new_cap * sizeof(double));
-        p->point_capacity = new_cap;
-    }
+    if (p->point_count == INT32_MAX || !path3d_reserve(p, p->point_count + 1))
+        return;
 
-    p->xs[p->point_count] = rt_vec3_x(pos);
-    p->ys[p->point_count] = rt_vec3_y(pos);
-    p->zs[p->point_count] = rt_vec3_z(pos);
+    double x = rt_vec3_x(pos);
+    double y = rt_vec3_y(pos);
+    double z = rt_vec3_z(pos);
+    p->xs[p->point_count] = isfinite(x) ? x : 0.0;
+    p->ys[p->point_count] = isfinite(y) ? y : 0.0;
+    p->zs[p->point_count] = isfinite(z) ? z : 0.0;
     p->point_count++;
     p->length_dirty = 1;
 }
@@ -155,9 +210,11 @@ static int32_t path_idx(const rt_path3d *p, int32_t i) {
 /// @param t   Parameter along the path (0 = start, 1 = end).
 /// @return New Vec3 at the interpolated position.
 void *rt_path3d_get_position_at(void *obj, double t) {
-    if (!obj)
+    rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
+    if (!p)
         return rt_vec3_new(0, 0, 0);
-    rt_path3d *p = (rt_path3d *)obj;
+    if (!isfinite(t))
+        t = 0.0;
     if (p->point_count < 2) {
         if (p->point_count == 1)
             return rt_vec3_new(p->xs[0], p->ys[0], p->zs[0]);
@@ -217,6 +274,11 @@ void *rt_path3d_get_direction_at(void *obj, double t) {
     double eps = 0.001;
     void *p0 = rt_path3d_get_position_at(obj, t - eps);
     void *p1 = rt_path3d_get_position_at(obj, t + eps);
+    if (!p0 || !p1) {
+        path3d_release_local(p0);
+        path3d_release_local(p1);
+        return rt_vec3_new(0, 0, 0);
+    }
     double dx = rt_vec3_x(p1) - rt_vec3_x(p0);
     double dy = rt_vec3_y(p1) - rt_vec3_y(p0);
     double dz = rt_vec3_z(p1) - rt_vec3_z(p0);
@@ -226,6 +288,8 @@ void *rt_path3d_get_direction_at(void *obj, double t) {
         dy /= len;
         dz /= len;
     }
+    path3d_release_local(p0);
+    path3d_release_local(p1);
     return rt_vec3_new(dx, dy, dz);
 }
 
@@ -233,9 +297,9 @@ void *rt_path3d_get_direction_at(void *obj, double t) {
 /// @details Numerically integrates distance along the spline using 20 samples
 ///          per control point. The result is cached until points are added/removed.
 double rt_path3d_get_length(void *obj) {
-    if (!obj)
+    rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
+    if (!p)
         return 0.0;
-    rt_path3d *p = (rt_path3d *)obj;
     if (p->point_count < 2)
         return 0.0;
     if (!p->length_dirty)
@@ -246,6 +310,8 @@ double rt_path3d_get_length(void *obj) {
     for (int i = 0; i <= steps; i++) {
         double t = (double)i / (double)steps;
         void *pt = rt_path3d_get_position_at(obj, t);
+        if (!pt)
+            continue;
         double x = rt_vec3_x(pt), y = rt_vec3_y(pt), z = rt_vec3_z(pt);
         if (i > 0) {
             double dx = x - prev_x, dy = y - prev_y, dz = z - prev_z;
@@ -254,6 +320,7 @@ double rt_path3d_get_length(void *obj) {
         prev_x = x;
         prev_y = y;
         prev_z = z;
+        path3d_release_local(pt);
     }
     p->cached_length = total;
     p->length_dirty = 0;
@@ -262,23 +329,24 @@ double rt_path3d_get_length(void *obj) {
 
 /// @brief Get the number of control points in the path.
 int64_t rt_path3d_get_point_count(void *obj) {
-    return obj ? ((rt_path3d *)obj)->point_count : 0;
+    rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
+    return p ? p->point_count : 0;
 }
 
 /// @brief Enable or disable looping (t wraps around instead of clamping).
 void rt_path3d_set_looping(void *obj, int8_t loop) {
-    if (!obj)
+    rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
+    if (!p)
         return;
-    rt_path3d *p = (rt_path3d *)obj;
     p->looping = loop;
     p->length_dirty = 1;
 }
 
 /// @brief Remove all control points, resetting the path to empty.
 void rt_path3d_clear(void *obj) {
-    if (!obj)
+    rt_path3d *p = (rt_path3d *)rt_g3d_checked_or_null(obj, RT_G3D_PATH3D_CLASS_ID);
+    if (!p)
         return;
-    rt_path3d *p = (rt_path3d *)obj;
     p->point_count = 0;
     p->length_dirty = 1;
 }

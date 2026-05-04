@@ -24,6 +24,7 @@
 #include "rt_terrain3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_pixels_internal.h"
 
 #include "vgfx3d_frustum.h"
 
@@ -182,7 +183,8 @@ void *rt_terrain3d_new(int64_t width, int64_t depth) {
         rt_trap("Terrain3D.New: dimensions must be 2-4096");
         return NULL;
     }
-    rt_terrain3d *t = (rt_terrain3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_terrain3d));
+    rt_terrain3d *t =
+        (rt_terrain3d *)rt_obj_new_i64(RT_G3D_TERRAIN3D_CLASS_ID, (int64_t)sizeof(rt_terrain3d));
     if (!t) {
         rt_trap("Terrain3D.New: allocation failed");
         return NULL;
@@ -261,20 +263,20 @@ void rt_terrain3d_generate_perlin(
 void rt_terrain3d_set_heightmap(void *obj, void *pixels) {
     if (!obj || !pixels)
         return;
-    rt_terrain3d *t = (rt_terrain3d *)obj;
-
-    /* Access Pixels internal layout */
-    typedef struct {
-        int64_t w;
-        int64_t h;
-        uint32_t *data;
-    } px_view;
-
-    px_view *pv = (px_view *)pixels;
-    if (!pv->data)
+    rt_terrain3d *t =
+        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t)
         return;
 
-    int32_t sw = (int32_t)pv->w, sh = (int32_t)pv->h;
+    rt_pixels_impl *pv =
+        rt_pixels_checked_impl(pixels, "Terrain3D.SetHeightmap: expected Pixels");
+    if (!pv || !pv->data || pv->width <= 0 || pv->height <= 0 || pv->width > INT32_MAX ||
+        pv->height > INT32_MAX) {
+        rt_trap("Terrain3D.SetHeightmap: heightmap must be non-empty Pixels");
+        return;
+    }
+
+    int32_t sw = (int32_t)pv->width, sh = (int32_t)pv->height;
     for (int32_t z = 0; z < t->depth; z++) {
         for (int32_t x = 0; x < t->width; x++) {
             int sx = x * sw / t->width;
@@ -283,7 +285,7 @@ void rt_terrain3d_set_heightmap(void *obj, void *pixels) {
                 sx = sw - 1;
             if (sz >= sh)
                 sz = sh - 1;
-            uint32_t pixel = pv->data[sz * sw + sx]; /* 0xRRGGBBAA */
+            uint32_t pixel = pv->data[(int64_t)sz * sw + sx]; /* 0xRRGGBBAA */
             /* 16-bit height from R (high byte) + G (low byte) for smooth terrain */
             uint32_t hi = (pixel >> 24) & 0xFF;
             uint32_t lo = (pixel >> 16) & 0xFF;
@@ -300,7 +302,10 @@ void rt_terrain3d_set_heightmap(void *obj, void *pixels) {
 void rt_terrain3d_set_material(void *obj, void *material) {
     if (!obj)
         return;
-    rt_terrain3d *t = (rt_terrain3d *)obj;
+    rt_terrain3d *t =
+        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t)
+        return;
     if (t->material == material)
         return;
     terrain_assign_ref(&t->material, material);
@@ -315,7 +320,16 @@ void rt_terrain3d_set_material(void *obj, void *material) {
 void rt_terrain3d_set_scale(void *obj, double sx, double sy, double sz) {
     if (!obj)
         return;
-    rt_terrain3d *t = (rt_terrain3d *)obj;
+    rt_terrain3d *t =
+        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t)
+        return;
+    if (!isfinite(sx) || sx <= 0.0)
+        sx = 1.0;
+    if (!isfinite(sy))
+        sy = 1.0;
+    if (!isfinite(sz) || sz <= 0.0)
+        sz = 1.0;
     t->scale[0] = sx;
     t->scale[1] = sy;
     t->scale[2] = sz;
@@ -328,7 +342,18 @@ void rt_terrain3d_set_scale(void *obj, double sx, double sy, double sz) {
 void rt_terrain3d_set_splat_map(void *obj, void *pixels) {
     if (!obj)
         return;
-    rt_terrain3d *t = (rt_terrain3d *)obj;
+    rt_terrain3d *t =
+        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t)
+        return;
+    if (pixels) {
+        rt_pixels_impl *p =
+            rt_pixels_checked_impl(pixels, "Terrain3D.SetSplatMap: expected Pixels");
+        if (!p || p->width <= 0 || p->height <= 0 || !p->data) {
+            rt_trap("Terrain3D.SetSplatMap: splat map must be non-empty Pixels");
+            return;
+        }
+    }
     terrain_assign_ref(&t->splat_map, pixels);
     if (!pixels) {
         if (t->material)
@@ -346,7 +371,18 @@ void rt_terrain3d_set_splat_map(void *obj, void *pixels) {
 void rt_terrain3d_set_layer_texture(void *obj, int64_t layer, void *pixels) {
     if (!obj || layer < 0 || layer >= TERRAIN_MAX_SPLAT_LAYERS)
         return;
-    rt_terrain3d *t = (rt_terrain3d *)obj;
+    rt_terrain3d *t =
+        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t)
+        return;
+    if (pixels) {
+        rt_pixels_impl *p =
+            rt_pixels_checked_impl(pixels, "Terrain3D.SetLayerTexture: expected Pixels");
+        if (!p || p->width <= 0 || p->height <= 0 || !p->data) {
+            rt_trap("Terrain3D.SetLayerTexture: layer texture must be non-empty Pixels");
+            return;
+        }
+    }
     terrain_assign_ref(&t->layer_textures[layer], pixels);
     t->splat_dirty = 1;
     invalidate_all_chunks(t);
@@ -358,7 +394,12 @@ void rt_terrain3d_set_layer_texture(void *obj, int64_t layer, void *pixels) {
 void rt_terrain3d_set_layer_scale(void *obj, int64_t layer, double scale) {
     if (!obj || layer < 0 || layer >= TERRAIN_MAX_SPLAT_LAYERS)
         return;
-    rt_terrain3d *t = (rt_terrain3d *)obj;
+    rt_terrain3d *t =
+        (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!t)
+        return;
+    if (!isfinite(scale) || scale <= 0.0)
+        scale = 1.0;
     t->layer_scales[layer] = scale;
     t->splat_dirty = 1;
     invalidate_all_chunks(t);
@@ -369,24 +410,19 @@ static uint32_t sample_pixels_uv(void *pixels, double u, double v) {
     if (!pixels)
         return 0xFFFFFFFF;
 
-    typedef struct {
-        int64_t w, h;
-        uint32_t *data;
-    } px_view;
-
-    px_view *pv = (px_view *)pixels;
-    if (!pv->data || pv->w == 0 || pv->h == 0)
+    rt_pixels_impl *pv = rt_pixels_checked_impl_or_null(pixels);
+    if (!pv || !pv->data || pv->width <= 0 || pv->height <= 0)
         return 0xFFFFFFFF;
     /* Wrap UV */
     u = u - floor(u);
     v = v - floor(v);
-    int32_t px = (int32_t)(u * pv->w);
-    int32_t py = (int32_t)(v * pv->h);
-    if (px >= pv->w)
-        px = (int32_t)(pv->w - 1);
-    if (py >= pv->h)
-        py = (int32_t)(pv->h - 1);
-    return pv->data[py * pv->w + px];
+    int64_t px = (int64_t)(u * (double)pv->width);
+    int64_t py = (int64_t)(v * (double)pv->height);
+    if (px >= pv->width)
+        px = pv->width - 1;
+    if (py >= pv->height)
+        py = pv->height - 1;
+    return pv->data[py * pv->width + px];
 }
 
 /// @brief Sample height at grid coordinates (clamped).
@@ -503,17 +539,13 @@ static void bake_splat_texture(rt_terrain3d *t) {
     if (!t->splat_map || !t->material)
         return;
 
-    typedef struct {
-        int64_t w, h;
-        uint32_t *data;
-    } px_view;
-
-    px_view *splat = (px_view *)t->splat_map;
-    if (!splat->data || splat->w == 0 || splat->h == 0)
+    rt_pixels_impl *splat = rt_pixels_checked_impl_or_null(t->splat_map);
+    if (!splat || !splat->data || splat->width <= 0 || splat->height <= 0 ||
+        splat->width > INT32_MAX || splat->height > INT32_MAX)
         return;
 
     /* Generate a blended texture at splat map resolution */
-    int32_t tw = (int32_t)splat->w, th = (int32_t)splat->h;
+    int32_t tw = (int32_t)splat->width, th = (int32_t)splat->height;
     void *baked = rt_pixels_new(tw, th);
     if (!baked)
         return;
@@ -530,7 +562,7 @@ static void bake_splat_texture(rt_terrain3d *t) {
             double v = th > 1 ? (double)y / (double)(th - 1) : 0.0;
 
             /* Sample splat weights (RGBA → 4 layer weights) */
-            uint32_t sp = splat->data[y * tw + x];
+            uint32_t sp = splat->data[(int64_t)y * tw + x];
             double w0 = (double)((sp >> 24) & 0xFF) / 255.0;
             double w1 = (double)((sp >> 16) & 0xFF) / 255.0;
             double w2 = (double)((sp >> 8) & 0xFF) / 255.0;

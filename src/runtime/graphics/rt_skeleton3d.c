@@ -193,7 +193,7 @@ static void rt_skeleton3d_finalize(void *obj) {
 
 /// @brief Allocate an empty Skeleton3D — no bones until `add_bone` is called.
 void *rt_skeleton3d_new(void) {
-    rt_skeleton3d *s = (rt_skeleton3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_skeleton3d));
+    rt_skeleton3d *s = (rt_skeleton3d *)rt_obj_new_i64(RT_G3D_SKELETON3D_CLASS_ID, (int64_t)sizeof(rt_skeleton3d));
     if (!s) {
         rt_trap("Skeleton3D.New: memory allocation failed");
         return NULL;
@@ -422,7 +422,7 @@ static void sanitize_keyframe_quat(float *q) {
 
 /// @brief Create a new empty animation clip with the given identifier and duration (seconds).
 void *rt_animation3d_new(rt_string name, double duration) {
-    rt_animation3d *a = (rt_animation3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_animation3d));
+    rt_animation3d *a = (rt_animation3d *)rt_obj_new_i64(RT_G3D_ANIMATION3D_CLASS_ID, (int64_t)sizeof(rt_animation3d));
     if (!a) {
         rt_trap("Animation3D.New: memory allocation failed");
         return NULL;
@@ -693,7 +693,7 @@ void *rt_anim_player3d_new(void *skeleton) {
     }
     rt_skeleton3d *skel = (rt_skeleton3d *)skeleton;
 
-    rt_anim_player3d *p = (rt_anim_player3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_anim_player3d));
+    rt_anim_player3d *p = (rt_anim_player3d *)rt_obj_new_i64(RT_G3D_ANIMPLAYER3D_CLASS_ID, (int64_t)sizeof(rt_anim_player3d));
     if (!p) {
         rt_trap("AnimPlayer3D.New: memory allocation failed");
         return NULL;
@@ -1227,7 +1227,7 @@ void *rt_anim_blend3d_new(void *skel_obj) {
     if (!skel_obj)
         return NULL;
     rt_skeleton3d *skel = (rt_skeleton3d *)skel_obj;
-    rt_anim_blend3d *b = (rt_anim_blend3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_anim_blend3d));
+    rt_anim_blend3d *b = (rt_anim_blend3d *)rt_obj_new_i64(RT_G3D_ANIMBLEND3D_CLASS_ID, (int64_t)sizeof(rt_anim_blend3d));
     if (!b) {
         rt_trap("AnimBlend3D.New: allocation failed");
         return NULL;

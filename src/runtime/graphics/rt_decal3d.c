@@ -71,6 +71,29 @@ static void decal3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+static double decal3d_finite_or(double value, double fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
+static void decal3d_normalize_or_default(double *x, double *y, double *z) {
+    double len;
+    if (!x || !y || !z)
+        return;
+    *x = decal3d_finite_or(*x, 0.0);
+    *y = decal3d_finite_or(*y, 1.0);
+    *z = decal3d_finite_or(*z, 0.0);
+    len = sqrt((*x) * (*x) + (*y) * (*y) + (*z) * (*z));
+    if (len <= 1e-8) {
+        *x = 0.0;
+        *y = 1.0;
+        *z = 0.0;
+        return;
+    }
+    *x /= len;
+    *y /= len;
+    *z /= len;
+}
+
 /// @brief GC finalizer: release the decal's texture, lazily-built mesh, and material.
 /// @details Note the lazy-build pattern: `mesh` and `material` are null
 ///          until the first `draw_decal`. Releasing them here is safe
@@ -99,19 +122,21 @@ static void decal3d_finalizer(void *obj) {
 void *rt_decal3d_new(void *pos_v, void *normal_v, double size, void *texture) {
     if (!pos_v || !normal_v)
         return NULL;
-    rt_decal3d *d = (rt_decal3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_decal3d));
+    rt_decal3d *d =
+        (rt_decal3d *)rt_obj_new_i64(RT_G3D_DECAL3D_CLASS_ID, (int64_t)sizeof(rt_decal3d));
     if (!d) {
         rt_trap("Decal3D.New: allocation failed");
         return NULL;
     }
     d->vptr = NULL;
-    d->position[0] = rt_vec3_x(pos_v);
-    d->position[1] = rt_vec3_y(pos_v);
-    d->position[2] = rt_vec3_z(pos_v);
+    d->position[0] = decal3d_finite_or(rt_vec3_x(pos_v), 0.0);
+    d->position[1] = decal3d_finite_or(rt_vec3_y(pos_v), 0.0);
+    d->position[2] = decal3d_finite_or(rt_vec3_z(pos_v), 0.0);
     d->normal[0] = rt_vec3_x(normal_v);
     d->normal[1] = rt_vec3_y(normal_v);
     d->normal[2] = rt_vec3_z(normal_v);
-    d->size = size;
+    decal3d_normalize_or_default(&d->normal[0], &d->normal[1], &d->normal[2]);
+    d->size = (isfinite(size) && size > 0.0) ? size : 1.0;
     d->texture = texture;
     rt_obj_retain_maybe(texture);
     d->lifetime = -1.0; /* permanent by default */
@@ -125,18 +150,21 @@ void *rt_decal3d_new(void *pos_v, void *normal_v, double size, void *texture) {
 
 /// @brief Set how long the decal should live before expiring (< 0 = permanent).
 void rt_decal3d_set_lifetime(void *obj, double seconds) {
-    if (!obj)
+    rt_decal3d *d = (rt_decal3d *)rt_g3d_checked_or_null(obj, RT_G3D_DECAL3D_CLASS_ID);
+    if (!d)
         return;
-    rt_decal3d *d = (rt_decal3d *)obj;
+    if (!isfinite(seconds))
+        seconds = -1.0;
     d->lifetime = seconds;
     d->max_lifetime = seconds;
+    d->alpha = seconds == 0.0 ? 0.0 : 1.0;
 }
 
 /// @brief Advance the decal's lifetime timer and apply fade-out in the last 20%.
 void rt_decal3d_update(void *obj, double dt) {
-    if (!obj || dt <= 0)
+    rt_decal3d *d = (rt_decal3d *)rt_g3d_checked_or_null(obj, RT_G3D_DECAL3D_CLASS_ID);
+    if (!d || !isfinite(dt) || dt <= 0.0)
         return;
-    rt_decal3d *d = (rt_decal3d *)obj;
     if (d->lifetime < 0)
         return; /* permanent */
     d->lifetime -= dt;
@@ -145,14 +173,16 @@ void rt_decal3d_update(void *obj, double dt) {
         d->alpha = d->lifetime / (d->max_lifetime * 0.2);
         if (d->alpha < 0.0)
             d->alpha = 0.0;
+        if (d->alpha > 1.0)
+            d->alpha = 1.0;
     }
 }
 
 /// @brief Check if the decal's lifetime has elapsed (permanent decals never expire).
 int8_t rt_decal3d_is_expired(void *obj) {
-    if (!obj)
+    rt_decal3d *d = (rt_decal3d *)rt_g3d_checked_or_null(obj, RT_G3D_DECAL3D_CLASS_ID);
+    if (!d)
         return 1;
-    rt_decal3d *d = (rt_decal3d *)obj;
     if (d->lifetime < 0)
         return 0; /* permanent */
     return d->lifetime <= 0 ? 1 : 0;
@@ -194,7 +224,11 @@ static void ensure_decal_mesh(rt_decal3d *d) {
     double ry = uz * nx - ux * nz;
     double rz = ux * ny - uy * nx;
     double rlen = sqrt(rx * rx + ry * ry + rz * rz);
-    if (rlen > 1e-8) {
+    if (rlen <= 1e-8) {
+        rx = 1.0;
+        ry = 0.0;
+        rz = 0.0;
+    } else {
         rx /= rlen;
         ry /= rlen;
         rz /= rlen;
@@ -212,6 +246,8 @@ static void ensure_decal_mesh(rt_decal3d *d) {
     double cz = d->position[2] + nz * off;
 
     d->mesh = rt_mesh3d_new();
+    if (!d->mesh)
+        return;
     rt_mesh3d_add_vertex(d->mesh,
                          cx - rx * hs - tux * hs,
                          cy - ry * hs - tuy * hs,
@@ -257,6 +293,8 @@ static void ensure_decal_mesh(rt_decal3d *d) {
     extern void rt_material3d_set_alpha(void *m, double a);
     extern void rt_material3d_set_unlit(void *m, int8_t u);
     d->material = rt_material3d_new();
+    if (!d->material)
+        return;
     if (d->texture)
         rt_material3d_set_texture(d->material, d->texture);
     rt_material3d_set_alpha(d->material, d->alpha);
@@ -269,7 +307,9 @@ static void ensure_decal_mesh(rt_decal3d *d) {
 void rt_canvas3d_draw_decal(void *canvas, void *obj) {
     if (!canvas || !obj)
         return;
-    rt_decal3d *d = (rt_decal3d *)obj;
+    rt_decal3d *d = (rt_decal3d *)rt_g3d_checked_or_null(obj, RT_G3D_DECAL3D_CLASS_ID);
+    if (!d)
+        return;
     if (d->lifetime >= 0 && d->lifetime <= 0)
         return; /* expired */
 

@@ -17,6 +17,7 @@
 #include "rt_audiolistener3d.h"
 #include "rt_audiosource3d.h"
 #include "rt_canvas3d.h"
+#include "rt_graphics3d_ids.h"
 #include "rt_mat4.h"
 #include "rt_scene3d.h"
 
@@ -83,6 +84,11 @@ static void audio3d_release_ref(void **slot) {
     if (rt_obj_release_check0(*slot))
         rt_obj_free(*slot);
     *slot = NULL;
+}
+
+static void audio3d_release_local(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
 }
 
 /// @brief Translation-unit-local copy of `rt_audio3d.c::audio3d_copy3`.
@@ -229,6 +235,7 @@ static void audio3d_source_list_remove(rt_audiosource3d *source) {
 static void audio3d_get_node_world_position(void *node, double *out_position) {
     void *world_matrix;
     void *world_position;
+    void *origin;
     if (!out_position)
         return;
     if (!node) {
@@ -239,11 +246,17 @@ static void audio3d_get_node_world_position(void *node, double *out_position) {
     }
     world_matrix = rt_scene_node3d_get_world_matrix(node);
     if (!world_matrix) {
-        audio3d_vec_from_obj(rt_scene_node3d_get_position(node), out_position);
+        void *local_position = rt_scene_node3d_get_position(node);
+        audio3d_vec_from_obj(local_position, out_position);
+        audio3d_release_local(local_position);
         return;
     }
-    world_position = rt_mat4_transform_point(world_matrix, rt_vec3_new(0.0, 0.0, 0.0));
+    origin = rt_vec3_new(0.0, 0.0, 0.0);
+    world_position = rt_mat4_transform_point(world_matrix, origin);
     audio3d_vec_from_obj(world_position, out_position);
+    audio3d_release_local(origin);
+    audio3d_release_local(world_position);
+    audio3d_release_local(world_matrix);
 }
 
 /// @brief Resolve a SceneNode3D's world-space forward direction.
@@ -256,6 +269,8 @@ static void audio3d_get_node_world_position(void *node, double *out_position) {
 ///          per-frame-per-pixel.
 static void audio3d_get_node_world_forward(void *node, double *out_forward) {
     void *world_matrix;
+    void *origin_vec;
+    void *ahead_vec;
     void *origin;
     void *ahead;
     double origin_xyz[3];
@@ -276,10 +291,17 @@ static void audio3d_get_node_world_forward(void *node, double *out_forward) {
         out_forward[2] = -1.0;
         return;
     }
-    origin = rt_mat4_transform_point(world_matrix, rt_vec3_new(0.0, 0.0, 0.0));
-    ahead = rt_mat4_transform_point(world_matrix, rt_vec3_new(0.0, 0.0, -1.0));
+    origin_vec = rt_vec3_new(0.0, 0.0, 0.0);
+    ahead_vec = rt_vec3_new(0.0, 0.0, -1.0);
+    origin = rt_mat4_transform_point(world_matrix, origin_vec);
+    ahead = rt_mat4_transform_point(world_matrix, ahead_vec);
     audio3d_vec_from_obj(origin, origin_xyz);
     audio3d_vec_from_obj(ahead, ahead_xyz);
+    audio3d_release_local(origin_vec);
+    audio3d_release_local(ahead_vec);
+    audio3d_release_local(origin);
+    audio3d_release_local(ahead);
+    audio3d_release_local(world_matrix);
     out_forward[0] = ahead_xyz[0] - origin_xyz[0];
     out_forward[1] = ahead_xyz[1] - origin_xyz[1];
     out_forward[2] = ahead_xyz[2] - origin_xyz[2];
@@ -480,7 +502,7 @@ void rt_audio3d_sync_bindings(double dt) {
 /// one automatically; subsequent ones must be activated with `_set_is_active`.
 void *rt_audiolistener3d_new(void) {
     rt_audiolistener3d *listener =
-        (rt_audiolistener3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_audiolistener3d));
+        (rt_audiolistener3d *)rt_obj_new_i64(RT_G3D_AUDIOLISTENER3D_CLASS_ID, (int64_t)sizeof(rt_audiolistener3d));
     if (!listener)
         return NULL;
     memset(listener, 0, sizeof(*listener));
@@ -519,7 +541,9 @@ void rt_audiolistener3d_set_position(void *obj, void *position) {
 
 /// @brief Convenience overload of `_set_position` taking three doubles instead of a Vec3.
 void rt_audiolistener3d_set_position_vec(void *obj, double x, double y, double z) {
-    rt_audiolistener3d_set_position(obj, rt_vec3_new(x, y, z));
+    void *position = rt_vec3_new(x, y, z);
+    rt_audiolistener3d_set_position(obj, position);
+    audio3d_release_local(position);
 }
 
 /// @brief Read the listener's world-space forward (look-at) vector. Re-syncs binding first
@@ -647,7 +671,7 @@ void rt_audiolistener3d_clear_camera_binding(void *obj) {
 /// per-frame from the active listener once playback starts via `_play`.
 void *rt_audiosource3d_new(void *sound) {
     rt_audiosource3d *source =
-        (rt_audiosource3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_audiosource3d));
+        (rt_audiosource3d *)rt_obj_new_i64(RT_G3D_AUDIOSOURCE3D_CLASS_ID, (int64_t)sizeof(rt_audiosource3d));
     if (!source)
         return NULL;
     memset(source, 0, sizeof(*source));
@@ -686,7 +710,9 @@ void rt_audiosource3d_set_position(void *obj, void *position) {
 
 /// @brief Convenience overload of `_set_position` taking three doubles instead of a Vec3.
 void rt_audiosource3d_set_position_vec(void *obj, double x, double y, double z) {
-    rt_audiosource3d_set_position(obj, rt_vec3_new(x, y, z));
+    void *position = rt_vec3_new(x, y, z);
+    rt_audiosource3d_set_position(obj, position);
+    audio3d_release_local(position);
 }
 
 /// @brief Read the source's velocity (Doppler input). Re-syncs binding before returning.

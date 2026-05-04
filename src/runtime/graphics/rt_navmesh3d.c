@@ -92,6 +92,11 @@ static void navmesh3d_free_partial(rt_navmesh3d *nm) {
         rt_obj_free(nm);
 }
 
+static void navmesh3d_release_local(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 /// @brief Bake a navigation mesh from a triangle mesh. Filters out triangles whose normal
 /// exceeds the default 45° slope (re-configurable via `_set_max_slope`). Stores agent radius/
 /// height for later edge-pull-in safety. Returns the navmesh handle, or NULL on alloc failure
@@ -99,7 +104,9 @@ static void navmesh3d_free_partial(rt_navmesh3d *nm) {
 void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_height) {
     if (!mesh_obj)
         return NULL;
-    rt_mesh3d *m = (rt_mesh3d *)mesh_obj;
+    rt_mesh3d *m = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
+    if (!m)
+        return NULL;
     if (m->vertex_count == 0 || m->index_count < 3)
         return NULL;
     if (m->vertex_count > INT32_MAX || m->index_count > INT32_MAX ||
@@ -108,14 +115,16 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
         return NULL;
     }
 
-    rt_navmesh3d *nm = (rt_navmesh3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_navmesh3d));
+    rt_navmesh3d *nm =
+        (rt_navmesh3d *)rt_obj_new_i64(RT_G3D_NAVMESH3D_CLASS_ID, (int64_t)sizeof(rt_navmesh3d));
     if (!nm) {
         rt_trap("NavMesh3D.Build: allocation failed");
         return NULL;
     }
+    memset(nm, 0, sizeof(*nm));
     nm->vptr = NULL;
-    nm->agent_radius = agent_radius;
-    nm->agent_height = agent_height;
+    nm->agent_radius = (isfinite(agent_radius) && agent_radius > 0.0) ? agent_radius : 0.4;
+    nm->agent_height = (isfinite(agent_height) && agent_height > 0.0) ? agent_height : 1.8;
     nm->max_slope = 45.0;
     rt_obj_set_finalizer(nm, navmesh3d_finalizer);
 
@@ -377,13 +386,17 @@ int64_t rt_navmesh3d_copy_path_points(void *obj, void *from_v, void *to_v, doubl
         return 0;
     if (out_points_xyz)
         *out_points_xyz = NULL;
-    rt_navmesh3d *nm = (rt_navmesh3d *)obj;
-    if (nm->triangle_count == 0)
+    rt_navmesh3d *nm =
+        (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    if (!nm || nm->triangle_count == 0 || !nm->triangles || !nm->vertices)
         return 0;
 
     float fx = (float)rt_vec3_x(from_v), fy = (float)rt_vec3_y(from_v),
           fz = (float)rt_vec3_z(from_v);
     float tx = (float)rt_vec3_x(to_v), ty = (float)rt_vec3_y(to_v), tz = (float)rt_vec3_z(to_v);
+    if (!isfinite(fx) || !isfinite(fy) || !isfinite(fz) || !isfinite(tx) ||
+        !isfinite(ty) || !isfinite(tz))
+        return 0;
 
     int32_t start = find_tri(nm, fx, fy, fz);
     int32_t goal = find_tri(nm, tx, ty, tz);
@@ -584,8 +597,10 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
         return NULL;
     }
     for (int64_t i = 0; i < point_count; i++) {
-        rt_path3d_add_point(path,
-                            rt_vec3_new(points[i * 3 + 0], points[i * 3 + 1], points[i * 3 + 2]));
+        void *point =
+            rt_vec3_new(points[i * 3 + 0], points[i * 3 + 1], points[i * 3 + 2]);
+        rt_path3d_add_point(path, point);
+        navmesh3d_release_local(point);
     }
     free(points);
     return path;
@@ -597,8 +612,16 @@ void *rt_navmesh3d_find_path(void *obj, void *from_v, void *to_v) {
 void *rt_navmesh3d_sample_position(void *obj, void *point) {
     if (!obj || !point)
         return rt_vec3_new(0, 0, 0);
-    rt_navmesh3d *nm = (rt_navmesh3d *)obj;
-    float px = (float)rt_vec3_x(point), py = (float)rt_vec3_y(point), pz = (float)rt_vec3_z(point);
+    rt_navmesh3d *nm =
+        (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    if (!nm)
+        return rt_vec3_new(0, 0, 0);
+    double pdx = rt_vec3_x(point), pdy = rt_vec3_y(point), pdz = rt_vec3_z(point);
+    if (!isfinite(pdx) || !isfinite(pdy) || !isfinite(pdz))
+        return rt_vec3_new(0, 0, 0);
+    float px = (float)pdx, py = (float)pdy, pz = (float)pdz;
+    if (nm->triangle_count <= 0 || !nm->triangles || !nm->vertices)
+        return rt_vec3_new(px, py, pz);
 
     int32_t tri = find_tri(nm, px, py, pz);
     if (tri >= 0) {
@@ -626,22 +649,39 @@ void *rt_navmesh3d_sample_position(void *obj, void *point) {
 int8_t rt_navmesh3d_is_walkable(void *obj, void *point) {
     if (!obj || !point)
         return 0;
-    rt_navmesh3d *nm = (rt_navmesh3d *)obj;
-    float px = (float)rt_vec3_x(point), py = (float)rt_vec3_y(point), pz = (float)rt_vec3_z(point);
+    rt_navmesh3d *nm =
+        (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    if (!nm || nm->triangle_count <= 0 || !nm->triangles || !nm->vertices)
+        return 0;
+    double pdx = rt_vec3_x(point), pdy = rt_vec3_y(point), pdz = rt_vec3_z(point);
+    if (!isfinite(pdx) || !isfinite(pdy) || !isfinite(pdz))
+        return 0;
+    float px = (float)pdx, py = (float)pdy, pz = (float)pdz;
     return find_tri(nm, px, py, pz) >= 0 ? 1 : 0;
 }
 
 /// @brief Number of walkable triangles in the baked navmesh.
 int64_t rt_navmesh3d_get_triangle_count(void *obj) {
-    return obj ? ((rt_navmesh3d *)obj)->triangle_count : 0;
+    rt_navmesh3d *nm =
+        (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    return nm ? nm->triangle_count : 0;
 }
 
 /// @brief Set the maximum slope angle (in degrees) considered walkable. Steeper triangles are
 /// excluded from path queries. Note: only takes effect on the *next* `_build` (this navmesh's
 /// triangle filter has already been applied).
 void rt_navmesh3d_set_max_slope(void *obj, double degrees) {
-    if (obj)
-        ((rt_navmesh3d *)obj)->max_slope = degrees;
+    rt_navmesh3d *nm =
+        (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    if (!nm)
+        return;
+    if (!isfinite(degrees))
+        degrees = 45.0;
+    if (degrees < 0.0)
+        degrees = 0.0;
+    if (degrees > 89.9)
+        degrees = 89.9;
+    nm->max_slope = degrees;
 }
 
 /// @brief Render the navmesh as wireframe / outlined triangles to a Canvas3D for debugging.
@@ -649,7 +689,10 @@ void rt_navmesh3d_set_max_slope(void *obj, double degrees) {
 void rt_navmesh3d_debug_draw(void *obj, void *canvas) {
     if (!obj || !canvas)
         return;
-    rt_navmesh3d *nm = (rt_navmesh3d *)obj;
+    rt_navmesh3d *nm =
+        (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    if (!nm || nm->triangle_count <= 0 || !nm->vertices || !nm->triangles)
+        return;
     int64_t color = 0x00FF44; /* green */
 
     for (int32_t i = 0; i < nm->triangle_count; i++) {
@@ -665,6 +708,9 @@ void rt_navmesh3d_debug_draw(void *obj, void *canvas) {
         rt_canvas3d_draw_line3d(canvas, a, b, color);
         rt_canvas3d_draw_line3d(canvas, b, c, color);
         rt_canvas3d_draw_line3d(canvas, c, a, color);
+        navmesh3d_release_local(a);
+        navmesh3d_release_local(b);
+        navmesh3d_release_local(c);
     }
 }
 

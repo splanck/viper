@@ -107,7 +107,7 @@ static void *rt_rendertarget3d_new_with_format(int64_t width,
     }
 
     rt_rendertarget3d *rtd =
-        (rt_rendertarget3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_rendertarget3d));
+        (rt_rendertarget3d *)rt_obj_new_i64(RT_G3D_RENDERTARGET3D_CLASS_ID, (int64_t)sizeof(rt_rendertarget3d));
     if (!rtd) {
         rt_trap("RenderTarget3D: memory allocation failed");
         return NULL;

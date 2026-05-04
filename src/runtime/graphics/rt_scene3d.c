@@ -125,7 +125,7 @@ static void rt_node_animation3d_finalize(void *obj) {
 /// @return Opaque clip handle, or NULL and traps on allocation failure.
 void *rt_node_animation3d_new(rt_string name, double duration) {
     rt_node_animation3d *anim =
-        (rt_node_animation3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_node_animation3d));
+        (rt_node_animation3d *)rt_obj_new_i64(RT_G3D_NODEANIMATION3D_CLASS_ID, (int64_t)sizeof(rt_node_animation3d));
     if (!anim) {
         rt_trap("NodeAnimation3D.New: allocation failed");
         return NULL;
@@ -409,7 +409,7 @@ void *rt_node_animator3d_new_from_clips(void **clips, int64_t clip_count) {
     rt_node_animator3d *animator;
     if (!clips || clip_count <= 0 || clip_count > INT32_MAX)
         return NULL;
-    animator = (rt_node_animator3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_node_animator3d));
+    animator = (rt_node_animator3d *)rt_obj_new_i64(RT_G3D_NODEANIMATOR3D_CLASS_ID, (int64_t)sizeof(rt_node_animator3d));
     if (!animator) {
         rt_trap("NodeAnimator3D.New: allocation failed");
         return NULL;
@@ -1667,7 +1667,7 @@ static void rt_scene_node3d_finalize(void *obj) {
 
 /// @brief Create an empty SceneNode at the origin (identity rotation, scale 1).
 void *rt_scene_node3d_new(void) {
-    rt_scene_node3d *node = (rt_scene_node3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_scene_node3d));
+    rt_scene_node3d *node = (rt_scene_node3d *)rt_obj_new_i64(RT_G3D_SCENENODE3D_CLASS_ID, (int64_t)sizeof(rt_scene_node3d));
     if (!node) {
         rt_trap("SceneNode3D.New: memory allocation failed");
         return NULL;
@@ -2146,7 +2146,7 @@ static void rt_scene3d_finalize(void *obj) {
 
 /// @brief Allocate a fresh Scene3D with an empty root node and no lights or skybox.
 void *rt_scene3d_new(void) {
-    rt_scene3d *s = (rt_scene3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_scene3d));
+    rt_scene3d *s = (rt_scene3d *)rt_obj_new_i64(RT_G3D_SCENE3D_CLASS_ID, (int64_t)sizeof(rt_scene3d));
     if (!s) {
         rt_trap("Scene3D.New: memory allocation failed");
         return NULL;

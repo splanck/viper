@@ -276,7 +276,7 @@ void *rt_particles3d_new(int64_t max_particles) {
         rt_trap("Particles3D.New: max_particles must be 1-100000");
         return NULL;
     }
-    rt_particles3d *ps = (rt_particles3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_particles3d));
+    rt_particles3d *ps = (rt_particles3d *)rt_obj_new_i64(RT_G3D_PARTICLES3D_CLASS_ID, (int64_t)sizeof(rt_particles3d));
     if (!ps) {
         rt_trap("Particles3D.New: memory allocation failed");
         return NULL;

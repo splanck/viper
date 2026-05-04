@@ -21,6 +21,7 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+#include "rt_graphics3d_ids.h"
 #include "vgfx.h"
 #include "rt_postfx3d.h"
 #include "vgfx3d_frustum.h"

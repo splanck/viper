@@ -146,7 +146,7 @@ void *rt_light3d_new_directional(void *direction, double r, double g, double b) 
         rt_trap("Light3D.NewDirectional: direction must not be null");
         return NULL;
     }
-    rt_light3d *light = (rt_light3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_light3d));
+    rt_light3d *light = (rt_light3d *)rt_obj_new_i64(RT_G3D_LIGHT3D_CLASS_ID, (int64_t)sizeof(rt_light3d));
     if (!light) {
         rt_trap("Light3D.NewDirectional: memory allocation failed");
         return NULL;
@@ -181,7 +181,7 @@ void *rt_light3d_new_point(void *position, double r, double g, double b, double 
         rt_trap("Light3D.NewPoint: position must not be null");
         return NULL;
     }
-    rt_light3d *light = (rt_light3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_light3d));
+    rt_light3d *light = (rt_light3d *)rt_obj_new_i64(RT_G3D_LIGHT3D_CLASS_ID, (int64_t)sizeof(rt_light3d));
     if (!light) {
         rt_trap("Light3D.NewPoint: memory allocation failed");
         return NULL;
@@ -209,7 +209,7 @@ void *rt_light3d_new_point(void *position, double r, double g, double b, double 
 /// @param b Blue color component [0.0–1.0].
 /// @return Opaque light handle, or NULL on failure.
 void *rt_light3d_new_ambient(double r, double g, double b) {
-    rt_light3d *light = (rt_light3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_light3d));
+    rt_light3d *light = (rt_light3d *)rt_obj_new_i64(RT_G3D_LIGHT3D_CLASS_ID, (int64_t)sizeof(rt_light3d));
     if (!light) {
         rt_trap("Light3D.NewAmbient: memory allocation failed");
         return NULL;
@@ -253,7 +253,7 @@ void *rt_light3d_new_spot(void *position,
         rt_trap("Light3D.NewSpot: position and direction must not be null");
         return NULL;
     }
-    rt_light3d *light = (rt_light3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_light3d));
+    rt_light3d *light = (rt_light3d *)rt_obj_new_i64(RT_G3D_LIGHT3D_CLASS_ID, (int64_t)sizeof(rt_light3d));
     if (!light) {
         rt_trap("Light3D.NewSpot: memory allocation failed");
         return NULL;

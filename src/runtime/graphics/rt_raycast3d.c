@@ -522,7 +522,7 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
             return NULL;
 
         {
-            rt_rayhit3d *hit = (rt_rayhit3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_rayhit3d));
+            rt_rayhit3d *hit = (rt_rayhit3d *)rt_obj_new_i64(RT_G3D_RAYHIT3D_CLASS_ID, (int64_t)sizeof(rt_rayhit3d));
             double best_normal[3];
             if (!hit)
                 return NULL;

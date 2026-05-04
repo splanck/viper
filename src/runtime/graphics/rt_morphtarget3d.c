@@ -270,7 +270,7 @@ void *rt_morphtarget3d_new(int64_t vertex_count) {
         rt_trap("MorphTarget3D.New: vertex_count must be > 0");
         return NULL;
     }
-    rt_morphtarget3d *mt = (rt_morphtarget3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_morphtarget3d));
+    rt_morphtarget3d *mt = (rt_morphtarget3d *)rt_obj_new_i64(RT_G3D_MORPHTARGET3D_CLASS_ID, (int64_t)sizeof(rt_morphtarget3d));
     if (!mt) {
         rt_trap("MorphTarget3D.New: memory allocation failed");
         return NULL;

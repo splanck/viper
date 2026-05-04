@@ -1242,7 +1242,7 @@ static rt_light3d *vscn_parse_light(void *light_obj) {
     void *arr;
     if (!light_obj)
         return NULL;
-    light = (rt_light3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_light3d));
+    light = (rt_light3d *)rt_obj_new_i64(RT_G3D_LIGHT3D_CLASS_ID, (int64_t)sizeof(rt_light3d));
     if (!light)
         return NULL;
     memset(light, 0, sizeof(*light));

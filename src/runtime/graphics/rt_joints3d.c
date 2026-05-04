@@ -23,6 +23,7 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+#include "rt_graphics3d_ids.h"
 #include "rt_joints3d.h"
 #include "rt_physics3d.h"
 
@@ -81,7 +82,7 @@ void *rt_distance_joint3d_new(void *body_a, void *body_b, double distance) {
         return NULL;
     }
     rt_distance_joint3d *j =
-        (rt_distance_joint3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_distance_joint3d));
+        (rt_distance_joint3d *)rt_obj_new_i64(RT_G3D_DISTANCEJOINT3D_CLASS_ID, (int64_t)sizeof(rt_distance_joint3d));
     if (!j) {
         rt_trap("DistanceJoint3D.New: allocation failed");
         return NULL;
@@ -204,7 +205,7 @@ void *rt_spring_joint3d_new(
         return NULL;
     }
     rt_spring_joint3d *j =
-        (rt_spring_joint3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_spring_joint3d));
+        (rt_spring_joint3d *)rt_obj_new_i64(RT_G3D_SPRINGJOINT3D_CLASS_ID, (int64_t)sizeof(rt_spring_joint3d));
     if (!j) {
         rt_trap("SpringJoint3D.New: allocation failed");
         return NULL;

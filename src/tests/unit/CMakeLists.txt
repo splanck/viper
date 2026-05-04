@@ -1209,6 +1209,11 @@ function(viper_add_runtime_tests)
             ${CMAKE_SOURCE_DIR}/src/runtime/graphics/rt_water3d.c)
     target_compile_definitions(test_rt_water3d_contract PRIVATE VIPER_ENABLE_GRAPHICS=1)
 
+    viper_add_test(test_rt_graphics3d_robustness
+            ${VIPER_TESTS_DIR}/runtime/RTGraphics3DRobustnessTests.cpp)
+    target_link_libraries(test_rt_graphics3d_robustness PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_graphics3d_robustness test_rt_graphics3d_robustness)
+
     viper_add_test(test_rt_file_exhaustion ${VIPER_TESTS_DIR}/runtime/RTFileExhaustionTests.cpp)
     target_link_libraries(test_rt_file_exhaustion PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_file_exhaustion test_rt_file_exhaustion)

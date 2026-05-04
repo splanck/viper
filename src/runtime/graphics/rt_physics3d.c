@@ -2682,7 +2682,7 @@ static void collision_event3d_finalizer(void *obj) {
 /// hit object can outlive the originating query call.
 static void *physics_hit3d_new(const rt_query_hit3d *src) {
     rt_physics_hit3d_obj *hit =
-        (rt_physics_hit3d_obj *)rt_obj_new_i64(0, (int64_t)sizeof(rt_physics_hit3d_obj));
+        (rt_physics_hit3d_obj *)rt_obj_new_i64(RT_G3D_PHYSICSHIT3D_CLASS_ID, (int64_t)sizeof(rt_physics_hit3d_obj));
     if (!hit) {
         rt_trap("PhysicsHit3D: allocation failed");
         return NULL;
@@ -2716,7 +2716,7 @@ static void *physics_hit_list3d_new(const rt_query_hit3d *hits, int32_t count) {
     rt_physics_hit_list3d_obj *list;
     if (count <= 0)
         return NULL;
-    list = (rt_physics_hit_list3d_obj *)rt_obj_new_i64(0, (int64_t)sizeof(*list));
+    list = (rt_physics_hit_list3d_obj *)rt_obj_new_i64(RT_G3D_PHYSICSHITLIST3D_CLASS_ID, (int64_t)sizeof(*list));
     if (!list) {
         rt_trap("PhysicsHitList3D: allocation failed");
         return NULL;
@@ -2743,7 +2743,7 @@ static void *contact_point3d_new_from_contact(const rt_contact3d *contact) {
     rt_contact_point3d_obj *point;
     if (!contact)
         return NULL;
-    point = (rt_contact_point3d_obj *)rt_obj_new_i64(0, (int64_t)sizeof(*point));
+    point = (rt_contact_point3d_obj *)rt_obj_new_i64(RT_G3D_CONTACTPOINT3D_CLASS_ID, (int64_t)sizeof(*point));
     if (!point) {
         rt_trap("ContactPoint3D: allocation failed");
         return NULL;
@@ -2765,7 +2765,7 @@ static void *collision_event3d_new_from_contact(const rt_contact3d *contact) {
     rt_collision_event3d_obj *event;
     if (!contact)
         return NULL;
-    event = (rt_collision_event3d_obj *)rt_obj_new_i64(0, (int64_t)sizeof(*event));
+    event = (rt_collision_event3d_obj *)rt_obj_new_i64(RT_G3D_COLLISIONEVENT3D_CLASS_ID, (int64_t)sizeof(*event));
     if (!event) {
         rt_trap("CollisionEvent3D: allocation failed");
         return NULL;
@@ -2921,7 +2921,7 @@ static void world3d_finalizer(void *obj) {
 /// @param gx,gy,gz Initial world gravity acceleration (m/s²).
 /// @return Owned `World3D` handle.
 void *rt_world3d_new(double gx, double gy, double gz) {
-    rt_world3d *w = (rt_world3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_world3d));
+    rt_world3d *w = (rt_world3d *)rt_obj_new_i64(RT_G3D_WORLD3D_CLASS_ID, (int64_t)sizeof(rt_world3d));
     if (!w) {
         rt_trap("Physics3D.World.New: allocation failed");
         return NULL;
@@ -3909,6 +3909,8 @@ void *rt_world3d_raycast(void *obj, void *origin_obj, void *direction_obj, doubl
         return NULL;
     delta = rt_vec3_new(dir[0] * max_distance, dir[1] * max_distance, dir[2] * max_distance);
     hit = rt_world3d_sweep_sphere(obj, origin_obj, 1e-3, delta, mask);
+    if (delta && rt_obj_release_check0(delta))
+        rt_obj_free(delta);
     return hit;
 }
 
@@ -4008,7 +4010,7 @@ static int body3d_assign_collider(rt_body3d *body, void *collider, const char *a
 /// The collider is left NULL for the caller to assign via
 /// `body3d_assign_collider`.
 static void *make_body(double mass) {
-    rt_body3d *b = (rt_body3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_body3d));
+    rt_body3d *b = (rt_body3d *)rt_obj_new_i64(RT_G3D_BODY3D_CLASS_ID, (int64_t)sizeof(rt_body3d));
     if (!b) {
         rt_trap("Physics3D.Body.New: allocation failed");
         return NULL;
@@ -4853,7 +4855,7 @@ static void character3d_finalizer(void *obj) {
 /// added to a world automatically — call `SetWorld` before using
 /// `Move`.
 void *rt_character3d_new(double radius, double height, double mass) {
-    rt_character3d *c = (rt_character3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_character3d));
+    rt_character3d *c = (rt_character3d *)rt_obj_new_i64(RT_G3D_CHARACTER3D_CLASS_ID, (int64_t)sizeof(rt_character3d));
     if (!c) {
         rt_trap("Physics3D.Character.New: allocation failed");
         return NULL;
@@ -5019,7 +5021,7 @@ static void trigger3d_finalizer(void *obj) {
 /// Auto-orders the corners so caller can pass them in any order. Up to
 /// 64 bodies are tracked for enter/exit edge detection.
 void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, double z1) {
-    rt_trigger3d *t = (rt_trigger3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_trigger3d));
+    rt_trigger3d *t = (rt_trigger3d *)rt_obj_new_i64(RT_G3D_TRIGGER3D_CLASS_ID, (int64_t)sizeof(rt_trigger3d));
     if (!t) {
         rt_trap("Trigger3D.New: allocation failed");
         return NULL;

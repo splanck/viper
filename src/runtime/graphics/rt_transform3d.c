@@ -19,6 +19,7 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+#include "rt_graphics3d_ids.h"
 #include "rt_transform3d.h"
 
 #include <math.h>
@@ -184,7 +185,7 @@ static void ensure_matrix(rt_transform3d *xf) {
 ///          local-space transformation, typically passed to Canvas3D.DrawMesh.
 /// @return Opaque transform handle, or NULL on allocation failure.
 void *rt_transform3d_new(void) {
-    rt_transform3d *xf = (rt_transform3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_transform3d));
+    rt_transform3d *xf = (rt_transform3d *)rt_obj_new_i64(RT_G3D_TRANSFORM3D_CLASS_ID, (int64_t)sizeof(rt_transform3d));
     if (!xf) {
         rt_trap("Transform3D.New: allocation failed");
         return NULL;

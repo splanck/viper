@@ -11,6 +11,7 @@ extern "C" {
 }
 
 #include <cassert>
+#include <cmath>
 #include <cstring>
 #include <cstdint>
 #include <cstdio>
@@ -225,10 +226,38 @@ static void test_draw_restores_backface_cull_state() {
     assert(canvas.backface_cull == 0);
 }
 
+static void test_numeric_inputs_are_sanitized() {
+    const double nan = std::nan("");
+    void *water = rt_water3d_new(nan, -8.0);
+    auto *view = static_cast<WaterView *>(water);
+    assert(view->width == 1.0);
+    assert(view->depth == 1.0);
+
+    rt_water3d_set_height(water, nan);
+    assert(view->height == 0.0);
+
+    rt_water3d_set_wave_params(water, nan, -1.0, nan);
+    assert(view->wave_speed == 0.0);
+    assert(view->wave_amplitude == 0.0);
+    assert(view->wave_frequency == 0.0);
+
+    rt_water3d_set_color(water, nan, 2.0, -4.0, nan);
+    assert(view->color[0] == 0.0);
+    assert(view->color[1] == 1.0);
+    assert(view->color[2] == 0.0);
+    assert(view->alpha == 0.0);
+
+    rt_water3d_add_wave(water, nan, 0.0, 1.0, 0.5, 4.0);
+    assert(view->wave_count == 0);
+    rt_water3d_add_wave(water, 1.0, 0.0, 2.0, 0.5, 4.0);
+    assert(view->wave_count == 1);
+}
+
 int main() {
     test_resolution_clamp_drives_mesh_size();
     test_material_wiring_and_reflectivity();
     test_draw_restores_backface_cull_state();
+    test_numeric_inputs_are_sanitized();
     std::printf("RTWater3DContractTests passed.\n");
     return 0;
 }

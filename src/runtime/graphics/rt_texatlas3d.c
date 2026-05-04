@@ -19,6 +19,8 @@
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
+#include "rt_graphics3d_ids.h"
+#include "rt_pixels_internal.h"
 #include "rt_texatlas3d.h"
 
 #include <stdint.h>
@@ -27,6 +29,8 @@
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
+extern int rt_obj_release_check0(void *obj);
+extern void rt_obj_free(void *obj);
 #include "rt_trap.h"
 extern void *rt_pixels_new(int64_t w, int64_t h);
 
@@ -47,15 +51,22 @@ typedef struct {
     int8_t dirty;
 } rt_texatlas3d;
 
-/// @brief GC finalizer — free the atlas backing pixel buffer.
-/// @details The atlas owns its `data` buffer directly (a flat RGBA byte
-///   array sized for `width * height * 4`). `cached_pixels` is not
-///   released here because it's a weak view into this atlas rather than
-///   a separately-owned object — releasing it would double-free.
+static void texatlas3d_release_ref(void **slot) {
+    if (!slot || !*slot)
+        return;
+    if (rt_obj_release_check0(*slot))
+        rt_obj_free(*slot);
+    *slot = NULL;
+}
+
+/// @brief GC finalizer — free the atlas backing pixel buffer and cached Pixels copy.
+/// @details The atlas owns its `data` buffer directly and owns `cached_pixels`
+///   as a separate Pixels object rebuilt from the backing buffer.
 static void texatlas3d_finalizer(void *obj) {
     rt_texatlas3d *a = (rt_texatlas3d *)obj;
     free(a->data);
     a->data = NULL;
+    texatlas3d_release_ref(&a->cached_pixels);
 }
 
 /// @brief Construct a 3D texture atlas with `width × height` blank pixels (zero-initialized).
@@ -66,7 +77,9 @@ void *rt_texatlas3d_new(int64_t width, int64_t height) {
         rt_trap("TextureAtlas3D.New: dimensions must be 16-8192");
         return NULL;
     }
-    rt_texatlas3d *a = (rt_texatlas3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_texatlas3d));
+    rt_texatlas3d *a =
+        (rt_texatlas3d *)rt_obj_new_i64(RT_G3D_TEXTUREATLAS3D_CLASS_ID,
+                                        (int64_t)sizeof(rt_texatlas3d));
     if (!a) {
         rt_trap("TextureAtlas3D.New: allocation failed");
         return NULL;
@@ -75,6 +88,12 @@ void *rt_texatlas3d_new(int64_t width, int64_t height) {
     a->width = (int32_t)width;
     a->height = (int32_t)height;
     a->data = (uint32_t *)calloc((size_t)(width * height), sizeof(uint32_t));
+    if (!a->data) {
+        if (rt_obj_release_check0(a))
+            rt_obj_free(a);
+        rt_trap("TextureAtlas3D.New: allocation failed");
+        return NULL;
+    }
     a->region_count = 0;
     a->shelf_x = 0;
     a->shelf_y = 0;
@@ -92,22 +111,22 @@ void *rt_texatlas3d_new(int64_t width, int64_t height) {
 int64_t rt_texatlas3d_add(void *obj, void *pixels) {
     if (!obj || !pixels)
         return -1;
-    rt_texatlas3d *a = (rt_texatlas3d *)obj;
+    rt_texatlas3d *a =
+        (rt_texatlas3d *)rt_g3d_checked_or_null(obj, RT_G3D_TEXTUREATLAS3D_CLASS_ID);
+    if (!a)
+        return -1;
     if (a->region_count >= ATLAS_MAX_REGIONS)
         return -1;
 
-    typedef struct {
-        int64_t w;
-        int64_t h;
-        uint32_t *data;
-    } px_view;
-
-    px_view *pv = (px_view *)pixels;
-    if (!pv->data)
+    rt_pixels_impl *pv = rt_pixels_checked_impl(pixels, "TextureAtlas3D.Add: expected Pixels");
+    if (!pv || !pv->data || pv->width <= 0 || pv->height <= 0 || pv->width > INT32_MAX - 2 ||
+        pv->height > INT32_MAX - 2)
         return -1;
 
-    int32_t tw = (int32_t)pv->w + 2; /* +2 for 1px border padding */
-    int32_t th = (int32_t)pv->h + 2;
+    int32_t pw = (int32_t)pv->width;
+    int32_t ph = (int32_t)pv->height;
+    int32_t tw = pw + 2; /* +2 for 1px border padding */
+    int32_t th = ph + 2;
 
     /* Try to fit on current shelf */
     if (a->shelf_x + tw > a->width) {
@@ -123,19 +142,19 @@ int64_t rt_texatlas3d_add(void *obj, void *pixels) {
     int32_t dx = a->shelf_x + 1;
     int32_t dy = a->shelf_y + 1;
 
-    for (int32_t y = 0; y < (int32_t)pv->h; y++) {
-        for (int32_t x = 0; x < (int32_t)pv->w; x++) {
+    for (int32_t y = 0; y < ph; y++) {
+        for (int32_t x = 0; x < pw; x++) {
             int32_t ax = dx + x, ay = dy + y;
             if (ax < a->width && ay < a->height)
-                a->data[ay * a->width + ax] = pv->data[y * pv->w + x];
+                a->data[ay * a->width + ax] = pv->data[(int64_t)y * pv->width + x];
         }
     }
 
     atlas_region_t *r = &a->regions[a->region_count];
     r->x = dx;
     r->y = dy;
-    r->w = (int32_t)pv->w;
-    r->h = (int32_t)pv->h;
+    r->w = pw;
+    r->h = ph;
 
     a->shelf_x += tw;
     if (th > a->shelf_h)
@@ -151,21 +170,26 @@ int64_t rt_texatlas3d_add(void *obj, void *pixels) {
 void *rt_texatlas3d_get_texture(void *obj) {
     if (!obj)
         return NULL;
-    rt_texatlas3d *a = (rt_texatlas3d *)obj;
+    rt_texatlas3d *a =
+        (rt_texatlas3d *)rt_g3d_checked_or_null(obj, RT_G3D_TEXTUREATLAS3D_CLASS_ID);
+    if (!a)
+        return NULL;
 
     if (a->dirty || !a->cached_pixels) {
         /* Create a Pixels object from atlas data */
-        a->cached_pixels = rt_pixels_new(a->width, a->height);
-        if (a->cached_pixels) {
-            typedef struct {
-                int64_t w;
-                int64_t h;
-                uint32_t *data;
-            } px_view;
-
-            px_view *pv = (px_view *)a->cached_pixels;
-            memcpy(pv->data, a->data, (size_t)(a->width * a->height) * sizeof(uint32_t));
+        void *new_pixels = rt_pixels_new(a->width, a->height);
+        if (!new_pixels)
+            return NULL;
+        rt_pixels_impl *pv =
+            rt_pixels_checked_impl(new_pixels, "TextureAtlas3D.GetTexture: expected Pixels");
+        if (!pv || !pv->data) {
+            if (rt_obj_release_check0(new_pixels))
+                rt_obj_free(new_pixels);
+            return NULL;
         }
+        memcpy(pv->data, a->data, (size_t)(a->width * a->height) * sizeof(uint32_t));
+        texatlas3d_release_ref(&a->cached_pixels);
+        a->cached_pixels = new_pixels;
         a->dirty = 0;
     }
     return a->cached_pixels;
@@ -178,7 +202,10 @@ void rt_texatlas3d_get_uv_rect(
     void *obj, int64_t id, double *u0, double *v0, double *u1, double *v1) {
     if (!obj || !u0 || !v0 || !u1 || !v1)
         return;
-    rt_texatlas3d *a = (rt_texatlas3d *)obj;
+    rt_texatlas3d *a =
+        (rt_texatlas3d *)rt_g3d_checked_or_null(obj, RT_G3D_TEXTUREATLAS3D_CLASS_ID);
+    if (!a)
+        return;
     if (id < 0 || id >= a->region_count) {
         *u0 = *v0 = 0.0;
         *u1 = *v1 = 1.0;

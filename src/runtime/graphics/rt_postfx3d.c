@@ -766,7 +766,7 @@ static void rt_postfx3d_finalize(void *obj) {
 /// allocated on the first append, so a never-used chain pays zero extra memory
 /// beyond the wrapper struct.
 void *rt_postfx3d_new(void) {
-    rt_postfx3d *fx = (rt_postfx3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_postfx3d));
+    rt_postfx3d *fx = (rt_postfx3d *)rt_obj_new_i64(RT_G3D_POSTFX3D_CLASS_ID, (int64_t)sizeof(rt_postfx3d));
     if (!fx) {
         rt_trap("PostFX3D.New: memory allocation failed");
         return NULL;

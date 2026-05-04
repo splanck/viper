@@ -91,6 +91,11 @@ static int overlay_output_size(const rt_canvas3d *c, int32_t *out_w, int32_t *ou
     return fb.width > 0 && fb.height > 0;
 }
 
+static void canvas3d_release_local(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 /// @brief Draw a 3D world-space line between two Vec3 endpoints in `color`. Useful for debug
 /// visualizers, motion trails, gizmos. Color is 0xRRGGBBAA. Auto-projects to screen space.
 void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
@@ -445,12 +450,14 @@ void rt_canvas3d_draw_aabb_wire(void *obj, void *min_v, void *max_v, int64_t col
                                      {3, 7}};
     for (int e = 0; e < 12; e++)
         rt_canvas3d_draw_line3d(obj, corners[edges[e][0]], corners[edges[e][1]], color);
+    for (int i = 0; i < 8; i++)
+        canvas3d_release_local(corners[i]);
 }
 
 /// @brief Draw three orthogonal great circles approximating a sphere (XY, XZ, YZ planes) at
 /// `center` with `radius`. Cheaper than tessellating a real sphere for debug viz.
 void rt_canvas3d_draw_sphere_wire(void *obj, void *center, double radius, int64_t color) {
-    if (!obj || !center)
+    if (!obj || !center || !isfinite(radius) || radius <= 0.0)
         return;
     const double cx = rt_vec3_x(center);
     const double cy = rt_vec3_y(center);
@@ -466,45 +473,55 @@ void rt_canvas3d_draw_sphere_wire(void *obj, void *center, double radius, int64_
         const double c1 = cos(a1);
         const double s1 = sin(a1);
 
-        rt_canvas3d_draw_line3d(obj,
-                                rt_vec3_new(cx + c0 * radius, cy + s0 * radius, cz),
-                                rt_vec3_new(cx + c1 * radius, cy + s1 * radius, cz),
-                                color);
-        rt_canvas3d_draw_line3d(obj,
-                                rt_vec3_new(cx + c0 * radius, cy, cz + s0 * radius),
-                                rt_vec3_new(cx + c1 * radius, cy, cz + s1 * radius),
-                                color);
-        rt_canvas3d_draw_line3d(obj,
-                                rt_vec3_new(cx, cy + c0 * radius, cz + s0 * radius),
-                                rt_vec3_new(cx, cy + c1 * radius, cz + s1 * radius),
-                                color);
+        void *a = rt_vec3_new(cx + c0 * radius, cy + s0 * radius, cz);
+        void *b = rt_vec3_new(cx + c1 * radius, cy + s1 * radius, cz);
+        rt_canvas3d_draw_line3d(obj, a, b, color);
+        canvas3d_release_local(a);
+        canvas3d_release_local(b);
+
+        a = rt_vec3_new(cx + c0 * radius, cy, cz + s0 * radius);
+        b = rt_vec3_new(cx + c1 * radius, cy, cz + s1 * radius);
+        rt_canvas3d_draw_line3d(obj, a, b, color);
+        canvas3d_release_local(a);
+        canvas3d_release_local(b);
+
+        a = rt_vec3_new(cx, cy + c0 * radius, cz + s0 * radius);
+        b = rt_vec3_new(cx, cy + c1 * radius, cz + s1 * radius);
+        rt_canvas3d_draw_line3d(obj, a, b, color);
+        canvas3d_release_local(a);
+        canvas3d_release_local(b);
     }
 }
 
 /// @brief Draw a ray from `origin` along `dir` (Vec3, normalized internally) for `length`
 /// world units. Useful for visualizing physics raycasts and AI line-of-sight.
 void rt_canvas3d_draw_debug_ray(void *obj, void *origin, void *dir, double length, int64_t color) {
-    if (!obj || !origin || !dir)
+    if (!obj || !origin || !dir || !isfinite(length))
         return;
-    rt_canvas3d_draw_line3d(obj,
-                            origin,
-                            rt_vec3_new(rt_vec3_x(origin) + rt_vec3_x(dir) * length,
-                                        rt_vec3_y(origin) + rt_vec3_y(dir) * length,
-                                        rt_vec3_z(origin) + rt_vec3_z(dir) * length),
-                            color);
+    void *end = rt_vec3_new(rt_vec3_x(origin) + rt_vec3_x(dir) * length,
+                            rt_vec3_y(origin) + rt_vec3_y(dir) * length,
+                            rt_vec3_z(origin) + rt_vec3_z(dir) * length);
+    rt_canvas3d_draw_line3d(obj, origin, end, color);
+    canvas3d_release_local(end);
 }
 
 /// @brief Draw an XYZ axis gizmo at `origin` with arms of length `scale`. Standard color
 /// convention: red=X, green=Y, blue=Z. Useful for visualizing world / object orientation.
 void rt_canvas3d_draw_axis(void *obj, void *origin, double scale) {
-    if (!obj || !origin)
+    if (!obj || !origin || !isfinite(scale))
         return;
     const double ox = rt_vec3_x(origin);
     const double oy = rt_vec3_y(origin);
     const double oz = rt_vec3_z(origin);
-    rt_canvas3d_draw_line3d(obj, origin, rt_vec3_new(ox + scale, oy, oz), 0xFF0000);
-    rt_canvas3d_draw_line3d(obj, origin, rt_vec3_new(ox, oy + scale, oz), 0x00FF00);
-    rt_canvas3d_draw_line3d(obj, origin, rt_vec3_new(ox, oy, oz + scale), 0x0000FF);
+    void *end = rt_vec3_new(ox + scale, oy, oz);
+    rt_canvas3d_draw_line3d(obj, origin, end, 0xFF0000);
+    canvas3d_release_local(end);
+    end = rt_vec3_new(ox, oy + scale, oz);
+    rt_canvas3d_draw_line3d(obj, origin, end, 0x00FF00);
+    canvas3d_release_local(end);
+    end = rt_vec3_new(ox, oy, oz + scale);
+    rt_canvas3d_draw_line3d(obj, origin, end, 0x0000FF);
+    canvas3d_release_local(end);
 }
 
 #else

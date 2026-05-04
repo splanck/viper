@@ -193,7 +193,7 @@ static void instbatch_finalizer(void *obj) {
 void *rt_instbatch3d_new(void *mesh, void *material) {
     if (!mesh || !material)
         return NULL;
-    rt_instbatch3d *b = (rt_instbatch3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_instbatch3d));
+    rt_instbatch3d *b = (rt_instbatch3d *)rt_obj_new_i64(RT_G3D_INSTANCEBATCH3D_CLASS_ID, (int64_t)sizeof(rt_instbatch3d));
     if (!b) {
         rt_trap("InstanceBatch3D.New: allocation failed");
         return NULL;

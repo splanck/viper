@@ -15,6 +15,7 @@
 
 #include "rt_navagent3d.h"
 
+#include "rt_graphics3d_ids.h"
 #include "rt_mat4.h"
 #include "rt_navmesh3d.h"
 #include "rt_physics3d.h"
@@ -400,13 +401,13 @@ static void navagent_finalize(void *obj) {
 /// the navmesh on construction).
 void *rt_navagent3d_new(void *navmesh, double radius, double height) {
     rt_navagent3d *agent =
-        (rt_navagent3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_navagent3d));
+        (rt_navagent3d *)rt_obj_new_i64(RT_G3D_NAVAGENT3D_CLASS_ID, (int64_t)sizeof(rt_navagent3d));
     if (!agent)
         return NULL;
     memset(agent, 0, sizeof(*agent));
     agent->vptr = NULL;
-    agent->radius = radius > 0.0 ? radius : 0.4;
-    agent->height = height > 0.0 ? height : 1.8;
+    agent->radius = (isfinite(radius) && radius > 0.0) ? radius : 0.4;
+    agent->height = (isfinite(height) && height > 0.0) ? height : 1.8;
     agent->stopping_distance = agent->radius > 0.0 ? agent->radius : 0.25;
     agent->desired_speed = 4.0;
     agent->repath_interval = 0.25;
@@ -456,7 +457,7 @@ void rt_navagent3d_update(void *obj, double dt) {
     rt_navagent3d *agent = (rt_navagent3d *)obj;
     double prev_pos[3];
     double target_dist;
-    if (!agent || dt <= 0.0)
+    if (!agent || !isfinite(dt) || dt <= 0.0)
         return;
 
     navagent_sync_position_from_bindings(agent);
@@ -496,7 +497,7 @@ void rt_navagent3d_update(void *obj, double dt) {
             agent->remaining_distance = navagent_compute_remaining_distance(agent);
             return;
         }
-        if (speed < 0.0)
+        if (!isfinite(speed) || speed < 0.0)
             speed = 0.0;
         if (dt > 0.0) {
             double clamp_speed = dist / dt;
@@ -610,7 +611,8 @@ double rt_navagent3d_get_stopping_distance(void *obj) {
 void rt_navagent3d_set_stopping_distance(void *obj, double distance) {
     if (!obj)
         return;
-    ((rt_navagent3d *)obj)->stopping_distance = distance >= 0.0 ? distance : 0.0;
+    ((rt_navagent3d *)obj)->stopping_distance =
+        (isfinite(distance) && distance >= 0.0) ? distance : 0.0;
 }
 
 /// @brief Maximum movement speed in world units per second (default 4).
@@ -622,7 +624,7 @@ double rt_navagent3d_get_desired_speed(void *obj) {
 void rt_navagent3d_set_desired_speed(void *obj, double speed) {
     if (!obj)
         return;
-    ((rt_navagent3d *)obj)->desired_speed = speed >= 0.0 ? speed : 0.0;
+    ((rt_navagent3d *)obj)->desired_speed = (isfinite(speed) && speed >= 0.0) ? speed : 0.0;
 }
 
 /// @brief Returns 1 if the agent automatically rebuilds its path on the repath interval. When

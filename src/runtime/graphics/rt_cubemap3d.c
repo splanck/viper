@@ -281,7 +281,7 @@ void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *n
         }
     }
 
-    rt_cubemap3d *cm = (rt_cubemap3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_cubemap3d));
+    rt_cubemap3d *cm = (rt_cubemap3d *)rt_obj_new_i64(RT_G3D_CUBEMAP3D_CLASS_ID, (int64_t)sizeof(rt_cubemap3d));
     if (!cm) {
         rt_trap("CubeMap3D.New: memory allocation failed");
         return NULL;

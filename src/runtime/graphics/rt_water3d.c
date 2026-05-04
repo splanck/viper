@@ -107,6 +107,8 @@ static void water3d_assign_ref(void **slot, void *value) {
 /// @brief Clamp a double to the `[0, 1]` range — used for water knobs like transparency,
 ///   reflectivity, and wave amplitude that are physical [0, 1] scalars.
 static double water3d_clamp01(double value) {
+    if (!isfinite(value))
+        return 0.0;
     if (value < 0.0)
         return 0.0;
     if (value > 1.0)
@@ -133,7 +135,12 @@ static void water3d_finalizer(void *obj) {
 /// @param depth World-space depth of the water plane (Z axis).
 /// @return Opaque water handle, or NULL on failure.
 void *rt_water3d_new(double width, double depth) {
-    rt_water3d *w = (rt_water3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_water3d));
+    if (!isfinite(width) || width <= 0.0)
+        width = 1.0;
+    if (!isfinite(depth) || depth <= 0.0)
+        depth = 1.0;
+    rt_water3d *w =
+        (rt_water3d *)rt_obj_new_i64(RT_G3D_WATER3D_CLASS_ID, (int64_t)sizeof(rt_water3d));
     if (!w) {
         rt_trap("Water3D.New: allocation failed");
         return NULL;
@@ -164,7 +171,7 @@ void *rt_water3d_new(double width, double depth) {
 
 /// @brief Set the base Y-coordinate (world height) of the water plane.
 void rt_water3d_set_height(void *obj, double y) {
-    if (obj)
+    if (obj && isfinite(y))
         ((rt_water3d *)obj)->height = y;
 }
 
@@ -173,9 +180,9 @@ void rt_water3d_set_wave_params(void *obj, double speed, double amplitude, doubl
     if (!obj)
         return;
     rt_water3d *w = (rt_water3d *)obj;
-    w->wave_speed = speed;
-    w->wave_amplitude = amplitude;
-    w->wave_frequency = frequency;
+    w->wave_speed = isfinite(speed) ? speed : 0.0;
+    w->wave_amplitude = (isfinite(amplitude) && amplitude >= 0.0) ? amplitude : 0.0;
+    w->wave_frequency = isfinite(frequency) ? frequency : 0.0;
 }
 
 /// @brief Set the base tint color and transparency of the water surface.
@@ -183,9 +190,9 @@ void rt_water3d_set_color(void *obj, double r, double g, double b, double a) {
     if (!obj)
         return;
     rt_water3d *w = (rt_water3d *)obj;
-    w->color[0] = r;
-    w->color[1] = g;
-    w->color[2] = b;
+    w->color[0] = water3d_clamp01(r);
+    w->color[1] = water3d_clamp01(g);
+    w->color[2] = water3d_clamp01(b);
     w->alpha = water3d_clamp01(a);
 }
 
@@ -249,6 +256,9 @@ void rt_water3d_add_wave(
     rt_water3d *w = (rt_water3d *)obj;
     if (w->wave_count >= WATER_MAX_WAVES)
         return;
+    if (!isfinite(dirX) || !isfinite(dirZ) || !isfinite(speed) || !isfinite(amplitude) ||
+        !isfinite(wavelength) || amplitude < 0.0 || wavelength <= 1e-6)
+        return;
     /* Normalize direction */
     double len = sqrt(dirX * dirX + dirZ * dirZ);
     if (len < 1e-8)
@@ -288,16 +298,20 @@ void rt_water3d_clear_waves(void *obj) {
 /// @param obj Opaque water handle from `rt_water3d_new` (no-op when NULL).
 /// @param dt Elapsed seconds since the previous update (must be > 0 to apply).
 void rt_water3d_update(void *obj, double dt) {
-    if (!obj || dt <= 0)
+    if (!obj || !isfinite(dt) || dt <= 0.0)
         return;
     rt_water3d *w = (rt_water3d *)obj;
     w->time += dt;
+    if (!isfinite(w->time))
+        w->time = 0.0;
 
     /* Regenerate mesh with new wave positions (reuse allocation to avoid GC pressure) */
     if (!w->mesh)
         w->mesh = rt_mesh3d_new();
     else
         rt_mesh3d_clear(w->mesh);
+    if (!w->mesh)
+        return;
     int32_t grid = w->resolution;
     double hx = w->width * 0.5, hz = w->depth * 0.5;
     double step_x = w->width / grid;
@@ -363,6 +377,8 @@ void rt_water3d_update(void *obj, double dt) {
     /* Update material — create on first use, update properties every frame */
     if (!w->material) {
         w->material = rt_material3d_new_color(w->color[0], w->color[1], w->color[2]);
+        if (!w->material)
+            return;
         rt_material3d_set_shininess(w->material, 128.0);
     } else {
         rt_material3d_set_color(w->material, w->color[0], w->color[1], w->color[2]);

@@ -280,7 +280,7 @@ static void collider3d_finalizer(void *obj) {
 ///          AABB; each shape's constructor fills them in via
 ///          `recompute_bounds`.
 static rt_collider3d *collider3d_alloc(int32_t type) {
-    rt_collider3d *collider = (rt_collider3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_collider3d));
+    rt_collider3d *collider = (rt_collider3d *)rt_obj_new_i64(RT_G3D_COLLIDER3D_CLASS_ID, (int64_t)sizeof(rt_collider3d));
     if (!collider) {
         rt_trap("Collider3D.New: allocation failed");
         return NULL;

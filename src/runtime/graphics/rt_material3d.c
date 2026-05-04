@@ -281,7 +281,7 @@ static void *material_clone_like(void *obj) {
 ///          are retained so they stay alive with the material.
 /// @return Opaque material handle, or NULL on allocation failure.
 void *rt_material3d_new(void) {
-    rt_material3d *mat = (rt_material3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_material3d));
+    rt_material3d *mat = (rt_material3d *)rt_obj_new_i64(RT_G3D_MATERIAL3D_CLASS_ID, (int64_t)sizeof(rt_material3d));
     if (!mat) {
         rt_trap("Material3D.New: memory allocation failed");
         return NULL;

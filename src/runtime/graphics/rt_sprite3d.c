@@ -22,6 +22,7 @@
 #include "rt_sprite3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_pixels_internal.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -43,8 +44,6 @@ extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, voi
 extern void rt_canvas3d_draw_mesh_matrix(
     void *canvas, void *mesh, const double *transform, void *material);
 extern void rt_canvas3d_add_temp_object(void *canvas, void *value);
-extern int64_t rt_pixels_width(void *pixels);
-extern int64_t rt_pixels_height(void *pixels);
 extern void *rt_material3d_new(void);
 extern void rt_material3d_set_texture(void *m, void *tex);
 extern void rt_material3d_set_unlit(void *m, int8_t u);
@@ -74,6 +73,20 @@ static void sprite3d_release_ref(void **slot) {
     *slot = NULL;
 }
 
+static double sprite3d_finite_or(double value, double fallback) {
+    return isfinite(value) ? value : fallback;
+}
+
+static double sprite3d_clamp01(double value) {
+    if (!isfinite(value))
+        return 0.5;
+    if (value < 0.0)
+        return 0.0;
+    if (value > 1.0)
+        return 1.0;
+    return value;
+}
+
 /// @brief GC finalizer — release the texture, billboard mesh, and cached material.
 /// @details Sprite3D lazily caches three dependent objects: the billboard
 ///   mesh (regenerated per frame to face the camera), the material
@@ -101,7 +114,8 @@ static void sprite3d_finalizer(void *obj) {
 ///        lazy billboard material creation stays valid across frames.
 /// @return Opaque sprite handle, or NULL on failure.
 void *rt_sprite3d_new(void *texture) {
-    rt_sprite3d *s = (rt_sprite3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sprite3d));
+    rt_sprite3d *s =
+        (rt_sprite3d *)rt_obj_new_i64(RT_G3D_SPRITE3D_CLASS_ID, (int64_t)sizeof(rt_sprite3d));
     if (!s) {
         rt_trap("Sprite3D.New: allocation failed");
         return NULL;
@@ -126,8 +140,18 @@ void *rt_sprite3d_new(void *texture) {
 
     /* Try to get texture dimensions */
     if (texture) {
-        s->tex_w = (int32_t)rt_pixels_width(texture);
-        s->tex_h = (int32_t)rt_pixels_height(texture);
+        rt_pixels_impl *pixels =
+            rt_pixels_checked_impl(texture, "Sprite3D.New: expected Pixels texture");
+        if (!pixels || pixels->width <= 0 || pixels->height <= 0 || pixels->width > INT32_MAX ||
+            pixels->height > INT32_MAX) {
+            sprite3d_release_ref(&s->texture);
+            if (rt_obj_release_check0(s))
+                rt_obj_free(s);
+            rt_trap("Sprite3D.New: texture must be non-empty Pixels");
+            return NULL;
+        }
+        s->tex_w = (int32_t)pixels->width;
+        s->tex_h = (int32_t)pixels->height;
         s->frame_w = s->tex_w;
         s->frame_h = s->tex_h;
     }
@@ -138,37 +162,67 @@ void *rt_sprite3d_new(void *texture) {
 
 /// @brief Set the world-space position where the sprite is rendered.
 void rt_sprite3d_set_position(void *obj, double x, double y, double z) {
-    if (!obj)
+    rt_sprite3d *s = (rt_sprite3d *)rt_g3d_checked_or_null(obj, RT_G3D_SPRITE3D_CLASS_ID);
+    if (!s)
         return;
-    rt_sprite3d *s = (rt_sprite3d *)obj;
-    s->position[0] = x;
-    s->position[1] = y;
-    s->position[2] = z;
+    s->position[0] = sprite3d_finite_or(x, 0.0);
+    s->position[1] = sprite3d_finite_or(y, 0.0);
+    s->position[2] = sprite3d_finite_or(z, 0.0);
 }
 
 /// @brief Set the width and height scale of the sprite in world units.
 void rt_sprite3d_set_scale(void *obj, double w, double h) {
-    if (!obj)
+    rt_sprite3d *s = (rt_sprite3d *)rt_g3d_checked_or_null(obj, RT_G3D_SPRITE3D_CLASS_ID);
+    if (!s)
         return;
-    rt_sprite3d *s = (rt_sprite3d *)obj;
-    s->scale_wh[0] = w;
-    s->scale_wh[1] = h;
+    w = sprite3d_finite_or(w, 1.0);
+    h = sprite3d_finite_or(h, 1.0);
+    s->scale_wh[0] = w > 0.0 ? w : 1.0;
+    s->scale_wh[1] = h > 0.0 ? h : 1.0;
 }
 
 /// @brief Set the anchor point (0,0 = bottom-left, 0.5,0.5 = center, 1,1 = top-right).
 void rt_sprite3d_set_anchor(void *obj, double ax, double ay) {
-    if (!obj)
+    rt_sprite3d *s = (rt_sprite3d *)rt_g3d_checked_or_null(obj, RT_G3D_SPRITE3D_CLASS_ID);
+    if (!s)
         return;
-    rt_sprite3d *s = (rt_sprite3d *)obj;
-    s->anchor[0] = ax;
-    s->anchor[1] = ay;
+    s->anchor[0] = sprite3d_clamp01(ax);
+    s->anchor[1] = sprite3d_clamp01(ay);
 }
 
 /// @brief Set the spritesheet sub-rectangle to display (for animated sprites).
 void rt_sprite3d_set_frame(void *obj, int64_t fx, int64_t fy, int64_t fw, int64_t fh) {
-    if (!obj)
+    rt_sprite3d *s = (rt_sprite3d *)rt_g3d_checked_or_null(obj, RT_G3D_SPRITE3D_CLASS_ID);
+    if (!s)
         return;
-    rt_sprite3d *s = (rt_sprite3d *)obj;
+    if (fx < 0)
+        fx = 0;
+    if (fy < 0)
+        fy = 0;
+    if (fw <= 0)
+        fw = s->tex_w > 0 ? s->tex_w : 1;
+    if (fh <= 0)
+        fh = s->tex_h > 0 ? s->tex_h : 1;
+    if (fx > INT32_MAX)
+        fx = INT32_MAX;
+    if (fy > INT32_MAX)
+        fy = INT32_MAX;
+    if (fw > INT32_MAX)
+        fw = INT32_MAX;
+    if (fh > INT32_MAX)
+        fh = INT32_MAX;
+    if (s->tex_w > 0) {
+        if (fx >= s->tex_w)
+            fx = s->tex_w - 1;
+        if (fw > s->tex_w - fx)
+            fw = s->tex_w - fx;
+    }
+    if (s->tex_h > 0) {
+        if (fy >= s->tex_h)
+            fy = s->tex_h - 1;
+        if (fh > s->tex_h - fy)
+            fh = s->tex_h - fy;
+    }
     s->frame_x = (int32_t)fx;
     s->frame_y = (int32_t)fy;
     s->frame_w = (int32_t)fw;
@@ -182,8 +236,10 @@ void rt_sprite3d_set_frame(void *obj, int64_t fx, int64_t fy, int64_t fw, int64_
 void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     if (!canvas || !obj || !camera)
         return;
-    rt_sprite3d *s = (rt_sprite3d *)obj;
-    rt_camera3d *cam = (rt_camera3d *)camera;
+    rt_sprite3d *s = (rt_sprite3d *)rt_g3d_checked_or_null(obj, RT_G3D_SPRITE3D_CLASS_ID);
+    rt_camera3d *cam = (rt_camera3d *)rt_g3d_checked_or_null(camera, RT_G3D_CAMERA3D_CLASS_ID);
+    if (!s || !cam)
+        return;
 
     /* Extract right and up vectors from camera view matrix (row-major) */
     double rx = cam->view[0], ry = cam->view[1], rz = cam->view[2];
@@ -211,9 +267,15 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     /* Lazily create cached mesh and material (once, reused every frame) */
     if (!s->cached_mesh)
         s->cached_mesh = rt_mesh3d_new();
+    if (!s->cached_mesh)
+        return;
     if (!s->cached_material || s->cached_texture != s->texture) {
         sprite3d_release_ref(&s->cached_material);
         s->cached_material = rt_material3d_new();
+        if (!s->cached_material) {
+            s->cached_texture = NULL;
+            return;
+        }
         if (s->texture)
             rt_material3d_set_texture(s->cached_material, s->texture);
         rt_material3d_set_unlit(s->cached_material, 1);

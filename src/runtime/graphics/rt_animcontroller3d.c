@@ -15,6 +15,7 @@
 
 #include "rt_animcontroller3d.h"
 
+#include "rt_graphics3d_ids.h"
 #include "rt_mat4.h"
 #include "rt_object.h"
 #include "rt_quat.h"
@@ -670,7 +671,7 @@ void *rt_anim_controller3d_new(void *skeleton) {
         return NULL;
     }
     controller =
-        (rt_anim_controller3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_anim_controller3d));
+        (rt_anim_controller3d *)rt_obj_new_i64(RT_G3D_ANIMCONTROLLER3D_CLASS_ID, (int64_t)sizeof(rt_anim_controller3d));
     if (!controller) {
         rt_trap("AnimController3D.New: allocation failed");
         return NULL;
