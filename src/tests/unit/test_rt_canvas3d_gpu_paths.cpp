@@ -992,6 +992,10 @@ static void test_static_mesh_geometry_identity_forwarded(void) {
                 "Static mesh draw forwards a stable geometry identity for backend caches");
     EXPECT_TRUE(draws[0].cmd.geometry_revision == mesh_view->geometry_revision,
                 "Static mesh draw forwards the current geometry revision");
+    EXPECT_TRUE(draws[0].cmd.vertices != mesh_view->vertices,
+                "Static mesh draw snapshots vertex data for deferred submission");
+    EXPECT_TRUE(draws[0].cmd.indices != mesh_view->indices,
+                "Static mesh draw snapshots index data for deferred submission");
 
     cleanup_fake_canvas(&canvas);
 }

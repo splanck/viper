@@ -896,6 +896,15 @@ static int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
     return 1;
 }
 
+static int canvas3d_should_snapshot_heap_geometry(const rt_mesh3d *mesh, void *mesh_obj) {
+    if (!mesh || !mesh_obj || !rt_heap_is_payload(mesh_obj))
+        return 0;
+    if (mesh->bone_palette || mesh->morph_deltas || mesh->morph_weights ||
+        mesh->morph_shape_count > 0)
+        return 0;
+    return 1;
+}
+
 /// @brief Free every tracked transient buffer (called at end of frame).
 static void canvas3d_clear_temp_buffers(rt_canvas3d *c) {
     if (!c)
@@ -2722,9 +2731,10 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     dd->kind = DEFERRED_DRAW_MESH;
     dd->pass_kind = DEFERRED_PASS_MAIN;
 
-    vgfx3d_vertex_t *queued_vertices = NULL;
-    uint32_t *queued_indices = NULL;
-    if (!canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
+    vgfx3d_vertex_t *queued_vertices = mesh->vertices;
+    uint32_t *queued_indices = mesh->indices;
+    if (canvas3d_should_snapshot_heap_geometry(mesh, mesh_obj) &&
+        !canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
         return;
 
     /* Build draw command */
@@ -2732,8 +2742,8 @@ void rt_canvas3d_draw_mesh_matrix_keyed(void *obj,
     dd->cmd.vertex_count = mesh->vertex_count;
     dd->cmd.indices = queued_indices;
     dd->cmd.index_count = mesh->index_count;
-    dd->cmd.geometry_key = NULL;
-    dd->cmd.geometry_revision = 0;
+    dd->cmd.geometry_key = rt_heap_is_payload(mesh_obj) ? mesh_obj : NULL;
+    dd->cmd.geometry_revision = dd->cmd.geometry_key ? mesh->geometry_revision : 0;
     mat4_d2f(model_matrix, dd->cmd.model_matrix);
     canvas3d_resolve_previous_model(c,
                                     motion_key,
@@ -2855,17 +2865,18 @@ void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
     canvas3d_ensure_normal_map_tangents(mesh, mat);
     rt_mesh3d_refresh_bounds(mesh);
     memset(&base_cmd, 0, sizeof(base_cmd));
-    vgfx3d_vertex_t *queued_vertices = NULL;
-    uint32_t *queued_indices = NULL;
-    if (!canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
+    vgfx3d_vertex_t *queued_vertices = mesh->vertices;
+    uint32_t *queued_indices = mesh->indices;
+    if (canvas3d_should_snapshot_heap_geometry(mesh, mesh_obj) &&
+        !canvas3d_snapshot_mesh_geometry(c, mesh, &queued_vertices, &queued_indices))
         return;
 
     base_cmd.vertices = queued_vertices;
     base_cmd.vertex_count = mesh->vertex_count;
     base_cmd.indices = queued_indices;
     base_cmd.index_count = mesh->index_count;
-    base_cmd.geometry_key = NULL;
-    base_cmd.geometry_revision = 0;
+    base_cmd.geometry_key = rt_heap_is_payload(mesh_obj) ? mesh_obj : NULL;
+    base_cmd.geometry_revision = base_cmd.geometry_key ? mesh->geometry_revision : 0;
     base_cmd.model_matrix[0] = base_cmd.model_matrix[5] = base_cmd.model_matrix[10] =
         base_cmd.model_matrix[15] = 1.0f;
     canvas3d_fill_material_cmd(mat, &base_cmd);
