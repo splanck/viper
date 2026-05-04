@@ -185,7 +185,7 @@ rewrites expose direct calls, fewer runtime branches, and less reference-countin
 - End-of-pipeline polish pass: runs up to 4 iterations of `SimplifyCFG` (aggressive) followed by DCE, stopping early
   once no CFG or size changes are observed.
 - DCE deletes dead loads, stores, and allocas only after proving the removed memory operation cannot trap; potentially
-  null, out-of-bounds, or oversized operations are preserved even when their result is unused.
+  null, out-of-bounds, or dynamically sized allocations are preserved even when their result is unused.
 - Tracks IL size (blocks/instructions) before/after each iteration via an optional `LateCleanupStats` sink so pipelines
   can see how much cleanup occurred.
 - Keeps work bounded; if nothing changes on an iteration, the pass exits without further scans.

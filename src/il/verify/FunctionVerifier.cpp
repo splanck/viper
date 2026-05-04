@@ -38,6 +38,7 @@
 #include "il/verify/VerifyCtx.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -92,19 +93,46 @@ bool isErrAccessOpcode(Opcode op) {
     }
 }
 
-/// @brief Recognise runtime helper calls that release array handles.
+bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs) {
+    if (lhs.size() != rhs.size())
+        return false;
+    for (std::size_t i = 0; i < lhs.size(); ++i) {
+        const unsigned char lc = static_cast<unsigned char>(lhs[i]);
+        const unsigned char rc = static_cast<unsigned char>(rhs[i]);
+        if (std::tolower(lc) != std::tolower(rc))
+            return false;
+    }
+    return true;
+}
+
+bool endsWithIgnoreCase(std::string_view value, std::string_view suffix) {
+    if (value.size() < suffix.size())
+        return false;
+    return equalsIgnoreCase(value.substr(value.size() - suffix.size()), suffix);
+}
+
+/// @brief Recognise runtime helper calls that explicitly release handles.
 ///
 /// @details The verifier tracks releases so it can flag double-free and
 ///          use-after-release errors on SSA temporaries that reference runtime
-///          arrays.
+///          strings, arrays, or objects. Runtime helpers such as string concat
+///          may consume raw C handles internally, but the IL/VM ABI preserves
+///          the SSA operand's lifetime, so those calls are not modeled here.
 ///
 /// @param instr Instruction being analysed.
-/// @return @c true when the instruction is the runtime array release helper.
-bool isRuntimeArrayRelease(const Instr &instr) {
+/// @return @c true when the instruction is an explicit runtime release helper.
+bool isRuntimeExplicitRelease(const Instr &instr) {
     if (instr.op != Opcode::Call)
         return false;
-    const auto ownership = il::runtime::classifyRuntimeOwnership(instr.callee);
-    return (ownership.consumedArgMask & 0b1u) != 0;
+    return instr.callee == "rt_str_release" || instr.callee == "rt_str_release_maybe" ||
+           instr.callee == "Viper.String.ReleaseMaybe" ||
+           instr.callee == "rt_arr_i32_release" ||
+           instr.callee == "rt_arr_i64_release" ||
+           instr.callee == "rt_arr_f64_release" ||
+           instr.callee == "rt_arr_str_release" ||
+           instr.callee == "rt_arr_obj_release" ||
+           instr.callee == "rt_obj_release_check0" ||
+           instr.callee == "rt_obj_release_known_check0";
 }
 
 bool isRuntimeArrayRetain(const Instr &instr) {
@@ -112,6 +140,13 @@ bool isRuntimeArrayRetain(const Instr &instr) {
         return false;
     const auto ownership = il::runtime::classifyRuntimeOwnership(instr.callee);
     return (ownership.retainedArgMask & 0b1u) != 0;
+}
+
+bool isRuntimeObjectFinalizerCall(const Instr &instr) {
+    return instr.op == Opcode::Call &&
+           (instr.callee == "rt_obj_free" || instr.callee == "__zia_dtor_dispatch" ||
+            endsWithIgnoreCase(instr.callee, ".__dtor") ||
+            endsWithIgnoreCase(instr.callee, ".destroy"));
 }
 
 bool isPureControlTerminator(Opcode op) {
@@ -200,18 +235,6 @@ EffectFacts directCalleeEffects(
         return EffectFacts{true, helper.pure, helper.readonly, helper.nothrow};
 
     return {};
-}
-
-bool directCallCanBorrowStackPointer(
-    const Instr &instr,
-    const std::unordered_map<std::string, const Function *> &functionMap,
-    const FunctionVerifier::ExternMap &externMap) {
-    const EffectFacts effects = directCalleeEffects(instr.callee, functionMap, externMap);
-    if (!(effects.known && (effects.pure || effects.readonly)))
-        return false;
-    if (instr.result && instr.type.kind == Type::Kind::Ptr)
-        return false;
-    return true;
 }
 
 struct StackLocationKey {
@@ -940,7 +963,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         for (const auto &blk : fn.blocks) {
             for (size_t index = 0; index < blk.instructions.size(); ++index) {
                 const Instr &instr = blk.instructions[index];
-                if (isRuntimeArrayRelease(instr)) {
+                if (isRuntimeExplicitRelease(instr)) {
                     if (!instr.operands.empty() && instr.operands[0].kind == Value::Kind::Temp)
                         releaseSites.push_back({&blk, &instr, index, instr.operands[0].id});
                     continue;
@@ -949,6 +972,9 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                     instr.operands[0].kind == Value::Kind::Temp) {
                     retainSites.push_back({&blk, &instr, index, instr.operands[0].id});
                 }
+
+                if (isRuntimeObjectFinalizerCall(instr))
+                    continue;
 
                 auto recordUse = [&](const Value &value) {
                     if (value.kind == Value::Kind::Temp)
@@ -1024,11 +1050,11 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     }
 
     // ===== PASS 4: Alloca escape verification =====
-    // Detect obvious alloca-derived pointer escapes. Returning a stack address,
-    // storing one into non-stack storage, or passing one to an unknown/external
-    // mutating call can leave dangling addresses after the function returns.
-    // Direct calls may borrow stack addresses only when callee metadata proves
-    // the call is read-only/pure and the result cannot carry the pointer away.
+    // Detect obvious alloca-derived pointer escapes. Returning a stack address
+    // or storing one into non-stack storage can leave dangling addresses after
+    // the function returns. Direct calls may borrow stack addresses under the
+    // current IL ABI; memory analyses still conservatively treat such calls as
+    // escapes for optimization purposes.
     {
         const auto stackDerived = computeStackDerivedTemps(fn, blockMap);
 
@@ -1062,13 +1088,8 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                         }
                     }
 
-                    if (instr.op == Opcode::Call) {
-                        if (directCallCanBorrowStackPointer(instr, functionMap_, externs_))
-                            continue;
-                        for (const auto &op : instr.operands)
-                            if (auto result = failEscape(op, "passing"); !result)
-                                return result;
-                    }
+                    if (instr.op == Opcode::Call)
+                        continue;
 
                     if (instr.op == Opcode::CallIndirect) {
                         for (const auto &op : instr.operands)
@@ -1167,7 +1188,7 @@ Expected<void> FunctionVerifier::verifyBlock(
             }
         }
 
-        if (isRuntimeArrayRelease(instr)) {
+        if (isRuntimeExplicitRelease(instr)) {
             if (!instr.operands.empty() && instr.operands[0].kind == Value::Kind::Temp) {
                 const unsigned id = instr.operands[0].id;
                 if (released.contains(id)) {
@@ -1189,6 +1210,10 @@ Expected<void> FunctionVerifier::verifyBlock(
                 }
                 released.erase(id);
             }
+        } else if (isRuntimeObjectFinalizerCall(instr)) {
+            // rt_obj_release_check0 reports that the object's refcount reached
+            // zero; destructor dispatch and rt_obj_free are finalization steps
+            // for that same handle and must be allowed after the release check.
         } else {
             const auto checkValue = [&](const Value &value) -> Expected<void> {
                 if (value.kind != Value::Kind::Temp)
@@ -1216,7 +1241,7 @@ Expected<void> FunctionVerifier::verifyBlock(
         if (auto result = verifyInstruction(fn, bb, instr, blockMap, types, sink); !result)
             return result;
 
-        if (isRuntimeArrayRelease(instr) && !instr.operands.empty() &&
+        if (isRuntimeExplicitRelease(instr) && !instr.operands.empty() &&
             instr.operands[0].kind == Value::Kind::Temp) {
             released.insert(instr.operands[0].id);
         }

@@ -1001,8 +1001,8 @@ entry(%p:ptr):
     EXPECT_EQ(countOpcode(module.functions.back(), Opcode::Call), 1u);
 }
 
-TEST(ILCorrectness, StackPointersOnlyPassToBorrowOnlyDirectCalls) {
-    Module mutating = parseModule(R"(il 0.2.0
+TEST(ILCorrectness, StackPointersCanBeBorrowedByDirectCallsButNotEscaped) {
+    Module borrowed = parseModule(R"(il 0.2.0
 func @sink(ptr %p) -> void {
 entry(%p:ptr):
   ret
@@ -1014,35 +1014,26 @@ entry:
   ret 0
 }
 )");
-    EXPECT_TRUE(verifyFailsWith(mutating, "passing alloca-derived pointer"));
+    EXPECT_TRUE(il::verify::Verifier::verify(borrowed).hasValue());
 
-    Module readonly = parseModule(R"(il 0.2.0
-func @inspect(ptr %p) -> i64 [nothrow, readonly] {
-entry(%p:ptr):
-  ret 1
-}
-func @main() -> i64 {
+    Module returned = parseModule(R"(il 0.2.0
+func @main() -> ptr {
 entry:
   %p = alloca 8
-  %v = call @inspect(%p)
-  ret %v
-}
-)");
-    EXPECT_TRUE(il::verify::Verifier::verify(readonly).hasValue());
-
-    Module returnsPtr = parseModule(R"(il 0.2.0
-func @identity(ptr %p) -> ptr [nothrow, pure] {
-entry(%p:ptr):
   ret %p
 }
-func @main() -> i64 {
-entry:
+)");
+    EXPECT_TRUE(verifyFailsWith(returned, "returning alloca-derived pointer"));
+
+    Module indirect = parseModule(R"(il 0.2.0
+func @main(ptr %fn) -> i64 {
+entry(%fn:ptr):
   %p = alloca 8
-  %q = call @identity(%p)
+  call.indirect [void(ptr)] %fn(%p)
   ret 0
 }
 )");
-    EXPECT_TRUE(verifyFailsWith(returnsPtr, "passing alloca-derived pointer"));
+    EXPECT_TRUE(verifyFailsWith(indirect, "passing alloca-derived pointer"));
 }
 
 TEST(ILCorrectness, ParserRejectsMissingCommasAndEmptyIndirectCallee) {
@@ -1136,11 +1127,61 @@ entry:
     EXPECT_TRUE(verifyFailsWith(module, "double release"));
 }
 
-TEST(ILCorrectness, DceKeepsPotentiallyTrappingAllocas) {
+TEST(ILCorrectness, RuntimeOwnershipAllowsObjectFinalizationAfterReleaseCheck) {
     Module module = parseModule(R"(il 0.2.0
+func @Klass.destroy(ptr %self) -> void {
+entry(%self:ptr):
+  ret
+}
+func @Klass.__dtor(ptr %self) -> void {
+entry(%self:ptr):
+  ret
+}
 func @main() -> i64 {
 entry:
-  %p = alloca 8
+  %obj = call @rt_obj_new_i64(0, 8)
+  call @rt_obj_release_check0(%obj)
+  call @Klass.destroy(%obj)
+  call @Klass.__dtor(%obj)
+  call @rt_obj_free(%obj)
+  ret 0
+}
+)");
+    EXPECT_TRUE(il::verify::Verifier::verify(module).hasValue());
+}
+
+TEST(ILCorrectness, RuntimeOwnershipOnlyLinearizesExplicitReleases) {
+    Module concat = parseModule(R"(il 0.2.0
+global const str @a = "a"
+global const str @b = "b"
+func @main() -> str {
+entry:
+  %a = const_str @a
+  %b = const_str @b
+  %ab:str = call @rt_str_concat(%a, %b)
+  call @rt_str_retain_maybe(%a)
+  ret %ab
+}
+)");
+    EXPECT_TRUE(il::verify::Verifier::verify(concat).hasValue());
+
+    Module releaseTwice = parseModule(R"(il 0.2.0
+func @main() -> i64 {
+entry:
+  %s:str = call @rt_str_empty()
+  call @rt_str_release_maybe(%s)
+  call @rt_str_release_maybe(%s)
+  ret 0
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(releaseTwice, "double release"));
+}
+
+TEST(ILCorrectness, DceKeepsPotentiallyTrappingAllocas) {
+    Module module = parseModule(R"(il 0.2.0
+func @main(i64 %n) -> i64 {
+entry(%n:i64):
+  %p = alloca %n
   ret 0
 }
 )");

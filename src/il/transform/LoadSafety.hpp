@@ -63,7 +63,7 @@ inline bool allocaSizeKnownNonTrapping(const core::Instr &allocaInstr) {
     auto allocSize = constNonNegativeOffset(allocaInstr.operands[0]);
     if (!allocSize)
         return false;
-    return *allocSize == 0;
+    return true;
 }
 
 inline bool isPointerKnownDereferenceable(

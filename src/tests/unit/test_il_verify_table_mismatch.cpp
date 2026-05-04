@@ -759,7 +759,7 @@ int main() {
         module.externs.push_back({"sink", Type(Type::Kind::Void), {Type(Type::Kind::Ptr)}});
 
         Function fn;
-        fn.name = "alloca_call_escape";
+        fn.name = "alloca_direct_call_borrow";
         fn.retType = Type(Type::Kind::Void);
 
         BasicBlock entry;
@@ -774,6 +774,41 @@ int main() {
         call.type = Type(Type::Kind::Void);
         call.callee = "sink";
         call.operands = {Value::temp(0)};
+        Instr ret;
+        ret.op = Opcode::Ret;
+        ret.type = Type(Type::Kind::Void);
+        entry.instructions = {allocPtr, call, ret};
+        entry.terminated = true;
+
+        fn.blocks.push_back(entry);
+        module.functions.push_back(fn);
+
+        verifySucceeds(module);
+    }
+
+    {
+        Module module;
+
+        Function fn;
+        fn.name = "alloca_indirect_call_escape";
+        fn.retType = Type(Type::Kind::Void);
+        fn.params.push_back(Param{"fnptr", Type(Type::Kind::Ptr), 10});
+
+        BasicBlock entry;
+        entry.label = "entry";
+        entry.params.push_back(Param{"fnptr", Type(Type::Kind::Ptr), 10});
+        Instr allocPtr;
+        allocPtr.result = 0;
+        allocPtr.op = Opcode::Alloca;
+        allocPtr.type = Type(Type::Kind::Ptr);
+        allocPtr.operands.push_back(Value::constInt(8));
+        Instr call;
+        call.op = Opcode::CallIndirect;
+        call.type = Type(Type::Kind::Void);
+        call.hasIndirectSignature = true;
+        call.indirectRetType = Type(Type::Kind::Void);
+        call.indirectParamTypes = {Type(Type::Kind::Ptr)};
+        call.operands = {Value::temp(10), Value::temp(0)};
         Instr ret;
         ret.op = Opcode::Ret;
         ret.type = Type(Type::Kind::Void);

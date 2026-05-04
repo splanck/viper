@@ -24,10 +24,10 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator.
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 131 | +131 |
-| Source files | 2,869 | 2,991 | +122 |
-| Production SLOC | 450K | 540K | +90K |
-| Test SLOC | 183K | 224K | +41K |
+| Commits | — | 127 | +127 |
+| Source files | 2,869 | 2,995 | +126 |
+| Production SLOC | 450K | 542K | +92K |
+| Test SLOC | 183K | 226K | +43K |
 | Demo SLOC | 177K | 188K | +11K |
 
 Counts via `scripts/count_sloc.sh`.
@@ -91,6 +91,8 @@ Seven rounds of widget audits plus an app-registry overhaul.
 - Async UAF fix: worker VMs retain the Future payload past worker unwind, pinned by a 25× regression loop.
 - Dialogue rewritten against real BitmapFont measurement with proper UTF-8 wrap and codepoint boundaries.
 - RNG debiasing via rejection sampling eliminates modulo bias in `rt_rand_int`/`rt_rand_range`.
+- **2D game runtime class-ID guard pass** — All 16 remaining 2D game modules received the same handle-guard treatment previously applied to the 2D graphics and 3D subsystems. `rt_behavior`, `rt_collision`, `rt_config`, `rt_debugoverlay`, `rt_dialogue`, `rt_leveldata`, `rt_lighting2d`, `rt_objpool`, `rt_pathfinder`, `rt_raycast2d`, `rt_scenemanager`, `rt_screenfx`, `rt_statemachine`, `rt_timer`, `rt_typewriter`, and `rt_animstate` now allocate objects with stable class IDs and validate every incoming handle before dereferencing. NULL, stack-pointer, and wrong-type handles return safe defaults or no-ops instead of crashing.
+- **Physics2D robustness** — `rt_physics2d` and `rt_physics2d_joint` received input validation, expanded API surface, and internal header cleanup.
 
 ### Collections runtime
 
@@ -160,6 +162,11 @@ Eleven-class `Viper.Localization.*` namespace. Zero external dependencies; en-US
 - `computeStackDerivedTemps` fixpoint traces alloca → GEP chains → brArgs to find all stack-derived temporaries and correctly exempt them from pure/readonly/nothrow violations.
 - `Verifier::verifyAll` replaces single-error-stop; GEP bounds-checking; array retain/release tracking; `GlobalVerifier` validates type/linkage/initializer syntax.
 - Parallel-edge correctness: CFG predecessor/successor caches preserve duplicate edges for `cbr`/`switch` targeting the same block twice.
+- **`ExternVerifier`** (new pass) — dedicated validation pass for extern declarations; validates linkage, type consistency, and calling-convention annotations on all extern function and global entries.
+- **`FunctionVerifier` restructured** — verification logic split into focused sub-checks; opcode metadata (`Opcode.def`, `OpcodeInfo.cpp`) corrected to keep the spec tables coherent; `SpecTables.cpp` regenerated.
+- **`EffectAttrs.hpp`** (new) — call-effect attribute infrastructure for the IL; enables optimizer passes to query and set memory/side-effect contracts on call instructions without encoding rules directly in each pass.
+- **`InstructionChecker`, `LoadSafety`, `CallEffects` expanded** — instruction-level checks cover additional instruction classes; load-safety analysis tightened for alias cases; call-effect modelling updated to match the new `EffectAttrs` contract.
+- **`RuntimeSignatures`** — self-check tests cover the full runtime signature surface; `RuntimeSurfacePolicy` updated to align with new runtime entries in `runtime.def`.
 
 **IL optimizer**
 - Four new O2 passes: `Devirtualize` (indirect→direct call via vtable/alloca tracing), `OwnershipOpt` (removes provably redundant retain/release pairs), `ArrayFastPathOpt` (replaces bounds-checked array ops after static elimination), `RuntimeFastPathOpt` (bypasses dynamic kind dispatch for proven heap objects).
@@ -201,15 +208,18 @@ Eleven-class `Viper.Localization.*` namespace. Zero external dependencies; en-US
 - **3D robustness contract suites** — `RTGraphics3DRobustnessTests`: wrong-class-handle rejection for Mesh3D mutation APIs, Camera3D projection/ray layout, degenerate-free sphere generation, long-line OBJ loading, scene LOD/resource binding checks, cubemap input sanitization, render-target safe defaults, and Trigger3D removal exits. `RTParticles3DContractTests`: burst-cap-to-pool, delta-time-clamp. `RTWater3DContractTests`: build-failed mesh guard. `TestStlLoad`: binary STL with NaN/inf vertices rejected, ASCII STL with non-finite and out-of-float-range coordinates rejected. `test_rt_canvas3d`: DeltaTime cap and disable, pending-splat cleared on early-return draw. `test_rt_physics3d`: overlap sphere/AABB with non-finite inputs. `test_rt_scene3d`: node handle rejection.
 - GUI: 40+ new regression tests in `test_vg_audit_fixes.c` covering rounds 3–7 (layout constraints, image loading, widget lifecycle, regex search, modal routing, textinput undo, font bounds, composite glyphs, grid/dock metadata cleanup, radiobutton callbacks, checkbox indeterminate state, textinput single-change paste).
 - IL, compiler, and audio: optimizer unit tests for DSE/LICM/LoopRotate/LoopUnroll/IndVarSimplify/MemorySSA/ValueKey; verifier golden fixtures for alloca-load/store escape; PCM overflow, ALSA simulation, and WAV format tests; Localization fuzzing harnesses (gated on `VIPER_ENABLE_FUZZ`).
+- **New IL test files** — `ModuleLinkerTests.cpp` covers linker correctness scenarios; `OpcodeInfoTests.cpp` validates opcode metadata consistency; `ILCorrectnessFixes.cpp` expanded by 419 lines covering additional verifier, optimizer, and instruction-check paths; `test_CheckOpt.cpp`, `test_LateCleanup.cpp`, `test_constfold_edgecases.cpp`, `test_dse_sideeffects.cpp` expanded with IL transform edge cases.
+- **New game runtime test files** — `TestLighting2D.cpp` and `TestTypewriter.cpp` are new dedicated suites; `RTObjectContractHarness.hpp` is a new shared harness enabling consistent wrong-class-handle contract testing across all game runtime modules; `RTPhysics2DTests.cpp`, `RTCollisionTests`, `RTObjPoolTests`, `RTScreenFXTests`, `TestBehavior`, `TestRaycast2D`, `TestSceneManager`, and `test_rt_pathfinder` all received expanded coverage aligned with the class-ID guard pass.
+- **Runtime signatures self-check** — `RuntimeSignaturesSelfCheckTests.cpp` expanded; AArch64 codegen tests corrected for `add_imm`, overflow, and wide-param calling conventions.
 
 ### Demos & docs
 
-Demos: human-manager baseball franchise simulator (new), Crackman rewrite, two new 3D demos, Paint gains layers + undo, ViperIDE file-watcher and context-menu fixes, XENOSCAPE boss/player fixes, Chess drag-vs-click detection fix, three localization examples, Windows ARM64 coverage for 3D demos. Docs: `viperlib/` sweep across all subsystems, split 2D graphics docs for rendering/effects, tilemaps/layers, shapes/text/UI, and animation/collision/camera helpers, new `viperlib/localization/` docs, IL Optimizer Correctness Contract, GUI viperlib updated through round-7 APIs, Doxygen pass across ~100 runtime files including the full Viper.Localization.* namespace.
+Demos: human-manager baseball franchise simulator (new), Crackman rewrite, two new 3D demos, Paint gains layers + undo, ViperIDE file-watcher and context-menu fixes, XENOSCAPE boss/player fixes, Chess drag-vs-click detection fix, three localization examples, Windows ARM64 coverage for 3D demos. Docs: `viperlib/` sweep across all subsystems, split 2D graphics docs for rendering/effects, tilemaps/layers, shapes/text/UI, and animation/collision/camera helpers, new `viperlib/localization/` docs, IL Optimizer Correctness Contract, GUI viperlib updated through round-7 APIs, Doxygen pass across ~100 runtime files including the full Viper.Localization.* namespace; `misc/plans/marketing/why_viper.md` — comprehensive internal overview covering the technical foundation, competitive positioning, and business strategy for the platform.
 
 ---
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 131-commit history.
+See `git log a91d388db..HEAD -- .` for the full 127-commit history.
 
 <!-- END DRAFT -->

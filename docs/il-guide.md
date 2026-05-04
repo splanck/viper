@@ -925,10 +925,11 @@ wired directly to runtime contracts. Passes can also observe the
 * Function and block parameters have unique names/ids, non-void types, and each predecessor passes matching arguments.
 * Branch arguments must match each destination block's parameters and must reference defined, non-void values. Trailing empty successor bundles may be omitted.
 * Returning an `alloca`-derived pointer, including through `gep` or block parameters, is invalid. Direct calls may borrow
-  stack-derived pointers only when callee effect metadata proves the callee is non-mutating and does not return the
-  borrowed pointer; stores and unknown or mutating calls are treated as escapes.
-* Runtime ownership metadata drives retain/release checks. Helpers that consume a string, array, or object operand
-  reject double release and dominated use-after-release.
+  stack-derived pointers under the current IL ABI; stores into non-stack storage and pointer-based indirect calls are
+  treated as escapes.
+* Runtime ownership metadata drives retain/release checks. Explicit string, array, and object release helpers reject
+  double release and dominated use-after-release, while object `DESTROY`, destructor dispatch, and `rt_obj_free` are
+  allowed as finalization steps after `rt_obj_release_check0`.
 * `cbr` takes an `i1` condition.
 
 Tooling can call `Verifier::verify()` for a single primary diagnostic with related verifier failures attached as notes, or `Verifier::verifyAll()` to collect a bounded list of independent verifier failures. Function-body verification continues across independent functions, so one bad function no longer hides later broken functions in the same module. Frontends and native build paths run verification before handing IL to an optimizer, VM, bytecode compiler, or native backend.
