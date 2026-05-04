@@ -280,10 +280,13 @@ static double mesh_triangle_area_sq(const rt_mesh3d *mesh, uint32_t tri) {
 
 static void test_mesh_sphere() {
     TEST("Mesh3D.NewSphere — correct non-degenerate geometry");
-    void *m = rt_mesh3d_new_sphere(1.0, 8);
+    const int64_t segments = 8;
+    const int64_t slices = segments * 2;
+    const int64_t expected_vertices = 2 + (segments - 1) * (slices + 1);
+    void *m = rt_mesh3d_new_sphere(1.0, segments);
     assert(m);
-    // rings=8, slices=16 → (8+1)*(16+1) = 153 verts
-    EXPECT_EQ(rt_mesh3d_get_vertex_count(m), 153);
+    // One vertex for each pole, with seam-duplicated interior rings for UVs.
+    EXPECT_EQ(rt_mesh3d_get_vertex_count(m), expected_vertices);
     // Top and bottom caps use one triangle per slice to avoid zero-area pole faces.
     EXPECT_EQ(rt_mesh3d_get_triangle_count(m), 224);
     rt_mesh3d *mesh = (rt_mesh3d *)m;

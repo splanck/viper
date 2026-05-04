@@ -89,6 +89,10 @@ static void rt_rendertarget3d_finalize(void *obj) {
     }
 }
 
+static rt_rendertarget3d *rendertarget3d_checked(void *obj) {
+    return (rt_rendertarget3d *)rt_g3d_checked_or_null(obj, RT_G3D_RENDERTARGET3D_CLASS_ID);
+}
+
 /// @brief Create an offscreen render target for render-to-texture effects.
 /// @details Allocates a software framebuffer at the specified resolution. Once
 ///          bound to a Canvas3D via rt_canvas3d_bind_render_target, all subsequent
@@ -153,17 +157,19 @@ void *rt_rendertarget3d_new_hdr(int64_t width, int64_t height) {
 
 /// @brief Get the width of the render target in pixels.
 int64_t rt_rendertarget3d_get_width(void *obj) {
-    return obj ? ((rt_rendertarget3d *)obj)->width : 0;
+    rt_rendertarget3d *rtd = rendertarget3d_checked(obj);
+    return rtd ? rtd->width : 0;
 }
 
 /// @brief Get the height of the render target in pixels.
 int64_t rt_rendertarget3d_get_height(void *obj) {
-    return obj ? ((rt_rendertarget3d *)obj)->height : 0;
+    rt_rendertarget3d *rtd = rendertarget3d_checked(obj);
+    return rtd ? rtd->height : 0;
 }
 
 /// @brief Return whether the target stores HDR color on the GPU path.
 int32_t rt_rendertarget3d_get_is_hdr(void *obj) {
-    const rt_rendertarget3d *rtd = (const rt_rendertarget3d *)obj;
+    const rt_rendertarget3d *rtd = rendertarget3d_checked(obj);
     return (rtd && vgfx3d_rendertarget_is_hdr(rtd->target)) ? 1 : 0;
 }
 
@@ -176,9 +182,9 @@ int32_t rt_rendertarget3d_get_is_hdr(void *obj) {
 /// @param obj Render target handle.
 /// @return New Pixels handle with the framebuffer contents, or NULL on failure.
 void *rt_rendertarget3d_as_pixels(void *obj) {
-    if (!obj)
+    rt_rendertarget3d *rtd = rendertarget3d_checked(obj);
+    if (!rtd)
         return NULL;
-    rt_rendertarget3d *rtd = (rt_rendertarget3d *)obj;
     if (!rtd->target)
         return NULL;
     if (!vgfx3d_rendertarget_ensure_color(rtd->target))
@@ -186,7 +192,15 @@ void *rt_rendertarget3d_as_pixels(void *obj) {
     if (!vgfx3d_rendertarget_sync_color_if_needed(rtd->target))
         return NULL;
 
-    void *pixels = rt_pixels_new(rtd->width, rtd->height);
+    int32_t w = rtd->target->width;
+    int32_t h = rtd->target->height;
+    int32_t stride = rtd->target->stride;
+    if (w <= 0 || h <= 0 || stride < w * 4 || !rtd->target->color_buf)
+        return NULL;
+    if ((int64_t)w != rtd->width || (int64_t)h != rtd->height)
+        return NULL;
+
+    void *pixels = rt_pixels_new((int64_t)w, (int64_t)h);
     if (!pixels)
         return NULL;
 
@@ -198,10 +212,6 @@ void *rt_rendertarget3d_as_pixels(void *obj) {
     } px_view;
 
     px_view *pv = (px_view *)pixels;
-
-    int32_t w = rtd->target->width;
-    int32_t h = rtd->target->height;
-    int32_t stride = rtd->target->stride;
 
     for (int32_t y = 0; y < h; y++) {
         for (int32_t x = 0; x < w; x++) {

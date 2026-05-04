@@ -70,9 +70,10 @@ static uint32_t pixels_pack_rgba_pm(int64_t premul_r,
     if (a8 == 0)
         return 0;
 
-    int64_t r = (premul_r + a / 2) / a;
-    int64_t g = (premul_g + a / 2) / a;
-    int64_t b = (premul_b + a / 2) / a;
+    int64_t alpha = a8;
+    int64_t r = (premul_r + alpha / 2) / alpha;
+    int64_t g = (premul_g + alpha / 2) / alpha;
+    int64_t b = (premul_b + alpha / 2) / alpha;
     return ((uint32_t)pixels_clamp_u8_i64(r) << 24) | ((uint32_t)pixels_clamp_u8_i64(g) << 16) |
            ((uint32_t)pixels_clamp_u8_i64(b) << 8) | (uint32_t)a8;
 }
@@ -769,7 +770,7 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height) {
             src_y = 0;
         int64_t sy1 = (src_y + 1 < p->height) ? src_y + 1 : src_y;
         if (src_y >= p->height - 1)
-            frac_y = 255;
+            frac_y = 0;
 
         for (int64_t x = 0; x < new_width; x++) {
             // Map destination x to source x (with fractional part)
@@ -783,7 +784,7 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height) {
                 src_x = 0;
             int64_t sx1 = (src_x + 1 < p->width) ? src_x + 1 : src_x;
             if (src_x >= p->width - 1)
-                frac_x = 255;
+                frac_x = 0;
 
             // Get four neighboring pixels
             uint32_t p00 = p->data[src_y * p->width + src_x];

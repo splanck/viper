@@ -29,6 +29,8 @@
 extern "C" {
 #endif
 
+#define RT_SPRITESHEET_CLASS_ID INT64_C(-0x520102)
+
 /// @brief Create a new sprite sheet from an atlas Pixels buffer.
 /// @param atlas_pixels Pixels object containing the full atlas.
 /// @return Opaque sprite sheet handle.

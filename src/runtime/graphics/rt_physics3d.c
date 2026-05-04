@@ -163,6 +163,16 @@ static rt_body3d *body3d_checked(void *obj) {
     return (rt_body3d *)rt_g3d_checked_or_null(obj, RT_G3D_BODY3D_CLASS_ID);
 }
 
+static int joint3d_matches_type(void *joint, int64_t joint_type) {
+    if (!joint)
+        return 0;
+    if (joint_type == RT_JOINT_DISTANCE)
+        return rt_g3d_has_class(joint, RT_G3D_DISTANCEJOINT3D_CLASS_ID);
+    if (joint_type == RT_JOINT_SPRING)
+        return rt_g3d_has_class(joint, RT_G3D_SPRINGJOINT3D_CLASS_ID);
+    return 0;
+}
+
 static int ph3d_vec3_all_finite(const double v[3]) {
     return v && isfinite(v[0]) && isfinite(v[1]) && isfinite(v[2]);
 }
@@ -415,6 +425,26 @@ typedef struct {
     double normal[3];
     double separation;
 } rt_contact_point3d_obj;
+
+static rt_physics_hit3d_obj *physics_hit3d_checked(void *obj) {
+    return (rt_physics_hit3d_obj *)rt_g3d_checked_or_null(obj, RT_G3D_PHYSICSHIT3D_CLASS_ID);
+}
+
+static rt_physics_hit_list3d_obj *physics_hit_list3d_checked(void *obj) {
+    return (rt_physics_hit_list3d_obj *)rt_g3d_checked_or_null(obj, RT_G3D_PHYSICSHITLIST3D_CLASS_ID);
+}
+
+static rt_collision_event3d_obj *collision_event3d_checked(void *obj) {
+    return (rt_collision_event3d_obj *)rt_g3d_checked_or_null(obj, RT_G3D_COLLISIONEVENT3D_CLASS_ID);
+}
+
+static rt_contact_point3d_obj *contact_point3d_checked(void *obj) {
+    return (rt_contact_point3d_obj *)rt_g3d_checked_or_null(obj, RT_G3D_CONTACTPOINT3D_CLASS_ID);
+}
+
+static rt_character3d *character3d_checked(void *obj) {
+    return (rt_character3d *)rt_g3d_checked_or_null(obj, RT_G3D_CHARACTER3D_CLASS_ID);
+}
 
 // Forward declarations for functions defined later in this translation unit.
 // They are referenced from helpers above that must be inlined by the compiler
@@ -3041,9 +3071,9 @@ static int world3d_compute_substeps(const rt_world3d *w, double dt) {
 /// @param obj `World3D` handle.
 /// @param dt  Step duration (seconds). No-op for `dt <= 0`.
 void rt_world3d_step(void *obj, double dt) {
-    if (!obj || !isfinite(dt) || dt <= 0)
+    rt_world3d *w = world3d_checked(obj);
+    if (!w || !isfinite(dt) || dt <= 0)
         return;
-    rt_world3d *w = (rt_world3d *)obj;
     int substeps = world3d_compute_substeps(w, dt);
     double sub_dt = dt / (double)substeps;
 
@@ -3133,9 +3163,13 @@ void rt_world3d_step(void *obj, double dt) {
 /// Retains the joint and stores its type tag so `rt_joint3d_solve` can
 /// dispatch correctly. Storage grows on demand.
 void rt_world3d_add_joint(void *obj, void *joint, int64_t joint_type) {
-    if (!obj || !joint)
+    rt_world3d *w = world3d_checked(obj);
+    if (!w || !joint)
         return;
-    rt_world3d *w = (rt_world3d *)obj;
+    if (!joint3d_matches_type(joint, joint_type)) {
+        rt_trap("Physics3D.World.AddJoint: joint object does not match joint type");
+        return;
+    }
     if (!world3d_reserve_joint_capacity(w, w->joint_count + 1)) {
         rt_trap("Physics3D: joint storage allocation failed");
         return;
@@ -3151,9 +3185,9 @@ void rt_world3d_add_joint(void *obj, void *joint, int64_t joint_type) {
 /// Linear scan; on hit, swaps in the last entry to compact the array
 /// and releases the world's reference. Silent no-op when not found.
 void rt_world3d_remove_joint(void *obj, void *joint) {
-    if (!obj || !joint)
+    rt_world3d *w = world3d_checked(obj);
+    if (!w || !joint)
         return;
-    rt_world3d *w = (rt_world3d *)obj;
     for (int32_t i = 0; i < w->joint_count; i++) {
         if (w->joints[i] == joint) {
             void *removed = w->joints[i];
@@ -3169,7 +3203,8 @@ void rt_world3d_remove_joint(void *obj, void *joint) {
 
 /// @brief `World3D.JointCount` — number of registered joints (0 for NULL).
 int64_t rt_world3d_joint_count(void *obj) {
-    return obj ? ((rt_world3d *)obj)->joint_count : 0;
+    rt_world3d *w = world3d_checked(obj);
+    return w ? w->joint_count : 0;
 }
 
 /// @brief `World3D.Add(body)` — register a body.
@@ -3224,9 +3259,9 @@ int64_t rt_world3d_body_count(void *obj) {
 /// Takes effect on the next `Step`. Existing in-flight velocities are
 /// not modified.
 void rt_world3d_set_gravity(void *obj, double gx, double gy, double gz) {
-    if (!obj)
+    rt_world3d *w = world3d_checked(obj);
+    if (!w)
         return;
-    rt_world3d *w = (rt_world3d *)obj;
     ph3d_vec3_set_finite(w->gravity, gx, gy, gz);
 }
 
@@ -3241,14 +3276,15 @@ void rt_world3d_set_gravity(void *obj, double gx, double gy, double gz) {
 
 /// @brief `World3D.CollisionCount` — number of contacts this frame.
 int64_t rt_world3d_get_collision_count(void *obj) {
-    return obj ? ((rt_world3d *)obj)->contact_count : 0;
+    rt_world3d *w = world3d_checked(obj);
+    return w ? w->contact_count : 0;
 }
 
 /// @brief `World3D.CollisionBodyA(i)` — borrowed reference to body A in contact `i`.
 void *rt_world3d_get_collision_body_a(void *obj, int64_t index) {
-    if (!obj)
+    rt_world3d *w = world3d_checked(obj);
+    if (!w)
         return NULL;
-    rt_world3d *w = (rt_world3d *)obj;
     if (index < 0 || index >= w->contact_count)
         return NULL;
     return w->contacts[index].body_a;
@@ -3256,9 +3292,9 @@ void *rt_world3d_get_collision_body_a(void *obj, int64_t index) {
 
 /// @brief `World3D.CollisionBodyB(i)` — borrowed reference to body B in contact `i`.
 void *rt_world3d_get_collision_body_b(void *obj, int64_t index) {
-    if (!obj)
+    rt_world3d *w = world3d_checked(obj);
+    if (!w)
         return NULL;
-    rt_world3d *w = (rt_world3d *)obj;
     if (index < 0 || index >= w->contact_count)
         return NULL;
     return w->contacts[index].body_b;
@@ -3266,9 +3302,9 @@ void *rt_world3d_get_collision_body_b(void *obj, int64_t index) {
 
 /// @brief `World3D.CollisionNormal(i)` — fresh `Vec3` of the contact normal.
 void *rt_world3d_get_collision_normal(void *obj, int64_t index) {
-    if (!obj)
+    rt_world3d *w = world3d_checked(obj);
+    if (!w)
         return rt_vec3_new(0, 0, 0);
-    rt_world3d *w = (rt_world3d *)obj;
     if (index < 0 || index >= w->contact_count)
         return rt_vec3_new(0, 0, 0);
     return rt_vec3_new(
@@ -3280,9 +3316,9 @@ void *rt_world3d_get_collision_normal(void *obj, int64_t index) {
 /// Returned as a positive value (the internal `separation` is stored
 /// negative; this flips it back).
 double rt_world3d_get_collision_depth(void *obj, int64_t index) {
-    if (!obj)
+    rt_world3d *w = world3d_checked(obj);
+    if (!w)
         return 0;
-    rt_world3d *w = (rt_world3d *)obj;
     if (index < 0 || index >= w->contact_count)
         return 0;
     return -w->contacts[index].separation;
@@ -3294,7 +3330,8 @@ double rt_world3d_get_collision_depth(void *obj, int64_t index) {
 /// as a separate accessor in case the engine ever splits "live contacts"
 /// from "events emitted this step".
 int64_t rt_world3d_get_collision_event_count(void *obj) {
-    return obj ? ((rt_world3d *)obj)->contact_count : 0;
+    rt_world3d *w = world3d_checked(obj);
+    return w ? w->contact_count : 0;
 }
 
 /// @brief `World3D.CollisionEvent(i)` — boxed `CollisionEvent3D` for contact `i`.
@@ -3302,7 +3339,7 @@ int64_t rt_world3d_get_collision_event_count(void *obj) {
 /// Returns NULL on out-of-range. The returned event is owned by the
 /// caller (unlike the borrowed-reference body accessors).
 void *rt_world3d_get_collision_event(void *obj, int64_t index) {
-    rt_world3d *w = (rt_world3d *)obj;
+    rt_world3d *w = world3d_checked(obj);
     if (!w || index < 0 || index >= w->contact_count)
         return NULL;
     return collision_event3d_new_from_contact(&w->contacts[index]);
@@ -3315,12 +3352,13 @@ void *rt_world3d_get_collision_event(void *obj, int64_t index) {
 
 /// @brief `World3D.EnterEventCount` — contacts that began this frame.
 int64_t rt_world3d_get_enter_event_count(void *obj) {
-    return obj ? ((rt_world3d *)obj)->enter_event_count : 0;
+    rt_world3d *w = world3d_checked(obj);
+    return w ? w->enter_event_count : 0;
 }
 
 /// @brief `World3D.EnterEvent(i)` — boxed event for the i-th new contact.
 void *rt_world3d_get_enter_event(void *obj, int64_t index) {
-    rt_world3d *w = (rt_world3d *)obj;
+    rt_world3d *w = world3d_checked(obj);
     if (!w || index < 0 || index >= w->enter_event_count)
         return NULL;
     return collision_event3d_new_from_contact(&w->enter_events[index]);
@@ -3328,12 +3366,13 @@ void *rt_world3d_get_enter_event(void *obj, int64_t index) {
 
 /// @brief `World3D.StayEventCount` — contacts that persisted from the previous frame.
 int64_t rt_world3d_get_stay_event_count(void *obj) {
-    return obj ? ((rt_world3d *)obj)->stay_event_count : 0;
+    rt_world3d *w = world3d_checked(obj);
+    return w ? w->stay_event_count : 0;
 }
 
 /// @brief `World3D.StayEvent(i)` — boxed event for the i-th continuing contact.
 void *rt_world3d_get_stay_event(void *obj, int64_t index) {
-    rt_world3d *w = (rt_world3d *)obj;
+    rt_world3d *w = world3d_checked(obj);
     if (!w || index < 0 || index >= w->stay_event_count)
         return NULL;
     return collision_event3d_new_from_contact(&w->stay_events[index]);
@@ -3341,12 +3380,13 @@ void *rt_world3d_get_stay_event(void *obj, int64_t index) {
 
 /// @brief `World3D.ExitEventCount` — contacts that ended this frame.
 int64_t rt_world3d_get_exit_event_count(void *obj) {
-    return obj ? ((rt_world3d *)obj)->exit_event_count : 0;
+    rt_world3d *w = world3d_checked(obj);
+    return w ? w->exit_event_count : 0;
 }
 
 /// @brief `World3D.ExitEvent(i)` — boxed event for the i-th newly-ended contact.
 void *rt_world3d_get_exit_event(void *obj, int64_t index) {
-    rt_world3d *w = (rt_world3d *)obj;
+    rt_world3d *w = world3d_checked(obj);
     if (!w || index < 0 || index >= w->exit_event_count)
         return NULL;
     return collision_event3d_new_from_contact(&w->exit_events[index]);
@@ -3358,27 +3398,32 @@ void *rt_world3d_get_exit_event(void *obj, int64_t index) {
 
 /// @brief `CollisionEvent3D.BodyA` — first body in the collision pair.
 void *rt_collision_event3d_get_body_a(void *obj) {
-    return obj ? ((rt_collision_event3d_obj *)obj)->body_a : NULL;
+    rt_collision_event3d_obj *event = collision_event3d_checked(obj);
+    return event ? event->body_a : NULL;
 }
 
 /// @brief `CollisionEvent3D.BodyB` — second body in the collision pair.
 void *rt_collision_event3d_get_body_b(void *obj) {
-    return obj ? ((rt_collision_event3d_obj *)obj)->body_b : NULL;
+    rt_collision_event3d_obj *event = collision_event3d_checked(obj);
+    return event ? event->body_b : NULL;
 }
 
 /// @brief `CollisionEvent3D.ColliderA` — leaf collider on body A (for compounds).
 void *rt_collision_event3d_get_collider_a(void *obj) {
-    return obj ? ((rt_collision_event3d_obj *)obj)->collider_a : NULL;
+    rt_collision_event3d_obj *event = collision_event3d_checked(obj);
+    return event ? event->collider_a : NULL;
 }
 
 /// @brief `CollisionEvent3D.ColliderB` — leaf collider on body B (for compounds).
 void *rt_collision_event3d_get_collider_b(void *obj) {
-    return obj ? ((rt_collision_event3d_obj *)obj)->collider_b : NULL;
+    rt_collision_event3d_obj *event = collision_event3d_checked(obj);
+    return event ? event->collider_b : NULL;
 }
 
 /// @brief `CollisionEvent3D.IsTrigger` — whether either party is a trigger.
 int8_t rt_collision_event3d_get_is_trigger(void *obj) {
-    return obj ? ((rt_collision_event3d_obj *)obj)->is_trigger : 0;
+    rt_collision_event3d_obj *event = collision_event3d_checked(obj);
+    return event ? event->is_trigger : 0;
 }
 
 /// @brief `CollisionEvent3D.ContactCount` — currently 1 per event (single-point contacts).
@@ -3386,12 +3431,13 @@ int8_t rt_collision_event3d_get_is_trigger(void *obj) {
 /// Reserved for future multi-point contact manifolds; today every event
 /// carries exactly one representative contact point.
 int64_t rt_collision_event3d_get_contact_count(void *obj) {
-    return obj ? 1 : 0;
+    return collision_event3d_checked(obj) ? 1 : 0;
 }
 
 /// @brief `CollisionEvent3D.RelativeSpeed` — closing speed along the contact normal.
 double rt_collision_event3d_get_relative_speed(void *obj) {
-    return obj ? ((rt_collision_event3d_obj *)obj)->relative_speed : 0.0;
+    rt_collision_event3d_obj *event = collision_event3d_checked(obj);
+    return event ? event->relative_speed : 0.0;
 }
 
 /// @brief `CollisionEvent3D.NormalImpulse` — magnitude of the resolved normal impulse.
@@ -3399,7 +3445,8 @@ double rt_collision_event3d_get_relative_speed(void *obj) {
 /// Useful for damage models or audio: louder/heavier sound on bigger
 /// impulses. Always 0 for trigger events (no impulse is applied).
 double rt_collision_event3d_get_normal_impulse(void *obj) {
-    return obj ? ((rt_collision_event3d_obj *)obj)->normal_impulse : 0.0;
+    rt_collision_event3d_obj *event = collision_event3d_checked(obj);
+    return event ? event->normal_impulse : 0.0;
 }
 
 /// @brief `CollisionEvent3D.Contact(i)` — boxed contact-point sub-object.
@@ -3408,7 +3455,7 @@ double rt_collision_event3d_get_normal_impulse(void *obj) {
 /// a transient `rt_contact3d` from the event's stored fields and boxes
 /// it via `contact_point3d_new_from_contact`.
 void *rt_collision_event3d_get_contact(void *obj, int64_t index) {
-    rt_collision_event3d_obj *event = (rt_collision_event3d_obj *)obj;
+    rt_collision_event3d_obj *event = collision_event3d_checked(obj);
     rt_contact3d contact;
     if (!event || index != 0)
         return NULL;
@@ -3425,7 +3472,7 @@ void *rt_collision_event3d_get_contact(void *obj, int64_t index) {
 
 /// @brief `CollisionEvent3D.ContactPoint(i)` — fresh `Vec3` for the contact point.
 void *rt_collision_event3d_get_contact_point(void *obj, int64_t index) {
-    rt_collision_event3d_obj *event = (rt_collision_event3d_obj *)obj;
+    rt_collision_event3d_obj *event = collision_event3d_checked(obj);
     if (!event || index != 0)
         return rt_vec3_new(0.0, 0.0, 0.0);
     return rt_vec3_new(event->point[0], event->point[1], event->point[2]);
@@ -3433,7 +3480,7 @@ void *rt_collision_event3d_get_contact_point(void *obj, int64_t index) {
 
 /// @brief `CollisionEvent3D.ContactNormal(i)` — fresh `Vec3` for the contact normal.
 void *rt_collision_event3d_get_contact_normal(void *obj, int64_t index) {
-    rt_collision_event3d_obj *event = (rt_collision_event3d_obj *)obj;
+    rt_collision_event3d_obj *event = collision_event3d_checked(obj);
     if (!event || index != 0)
         return rt_vec3_new(0.0, 1.0, 0.0);
     return rt_vec3_new(event->normal[0], event->normal[1], event->normal[2]);
@@ -3443,7 +3490,7 @@ void *rt_collision_event3d_get_contact_normal(void *obj, int64_t index) {
 ///
 /// Negative means penetration; zero or positive means touching/just-separated.
 double rt_collision_event3d_get_contact_separation(void *obj, int64_t index) {
-    rt_collision_event3d_obj *event = (rt_collision_event3d_obj *)obj;
+    rt_collision_event3d_obj *event = collision_event3d_checked(obj);
     if (!event || index != 0)
         return 0.0;
     return event->separation;
@@ -3451,7 +3498,7 @@ double rt_collision_event3d_get_contact_separation(void *obj, int64_t index) {
 
 /// @brief `ContactPoint3D.Point` — world-space contact location.
 void *rt_contact_point3d_get_point(void *obj) {
-    rt_contact_point3d_obj *contact = (rt_contact_point3d_obj *)obj;
+    rt_contact_point3d_obj *contact = contact_point3d_checked(obj);
     if (!contact)
         return rt_vec3_new(0.0, 0.0, 0.0);
     return rt_vec3_new(contact->point[0], contact->point[1], contact->point[2]);
@@ -3459,7 +3506,7 @@ void *rt_contact_point3d_get_point(void *obj) {
 
 /// @brief `ContactPoint3D.Normal` — world-space contact normal (A→B).
 void *rt_contact_point3d_get_normal(void *obj) {
-    rt_contact_point3d_obj *contact = (rt_contact_point3d_obj *)obj;
+    rt_contact_point3d_obj *contact = contact_point3d_checked(obj);
     if (!contact)
         return rt_vec3_new(0.0, 1.0, 0.0);
     return rt_vec3_new(contact->normal[0], contact->normal[1], contact->normal[2]);
@@ -3467,7 +3514,8 @@ void *rt_contact_point3d_get_normal(void *obj) {
 
 /// @brief `ContactPoint3D.Separation` — signed gap (negative = penetrating).
 double rt_contact_point3d_get_separation(void *obj) {
-    return obj ? ((rt_contact_point3d_obj *)obj)->separation : 0.0;
+    rt_contact_point3d_obj *contact = contact_point3d_checked(obj);
+    return contact ? contact->separation : 0.0;
 }
 
 // PhysicsHit3D field accessors — exposed as Zia properties on the
@@ -3475,22 +3523,25 @@ double rt_contact_point3d_get_separation(void *obj) {
 
 /// @brief `PhysicsHit3D.Distance` — world-space distance from query origin.
 double rt_physics_hit3d_get_distance(void *obj) {
-    return obj ? ((rt_physics_hit3d_obj *)obj)->distance : 0.0;
+    rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
+    return hit ? hit->distance : 0.0;
 }
 
 /// @brief `PhysicsHit3D.Body` — the body that was hit.
 void *rt_physics_hit3d_get_body(void *obj) {
-    return obj ? ((rt_physics_hit3d_obj *)obj)->body : NULL;
+    rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
+    return hit ? hit->body : NULL;
 }
 
 /// @brief `PhysicsHit3D.Collider` — the leaf collider that was hit.
 void *rt_physics_hit3d_get_collider(void *obj) {
-    return obj ? ((rt_physics_hit3d_obj *)obj)->collider : NULL;
+    rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
+    return hit ? hit->collider : NULL;
 }
 
 /// @brief `PhysicsHit3D.Point` — world-space hit location.
 void *rt_physics_hit3d_get_point(void *obj) {
-    rt_physics_hit3d_obj *hit = (rt_physics_hit3d_obj *)obj;
+    rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
     if (!hit)
         return rt_vec3_new(0.0, 0.0, 0.0);
     return rt_vec3_new(hit->point[0], hit->point[1], hit->point[2]);
@@ -3498,7 +3549,7 @@ void *rt_physics_hit3d_get_point(void *obj) {
 
 /// @brief `PhysicsHit3D.Normal` — world-space surface normal at the hit.
 void *rt_physics_hit3d_get_normal(void *obj) {
-    rt_physics_hit3d_obj *hit = (rt_physics_hit3d_obj *)obj;
+    rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
     if (!hit)
         return rt_vec3_new(0.0, 1.0, 0.0);
     return rt_vec3_new(hit->normal[0], hit->normal[1], hit->normal[2]);
@@ -3506,27 +3557,31 @@ void *rt_physics_hit3d_get_normal(void *obj) {
 
 /// @brief `PhysicsHit3D.Fraction` — t along the swept path (0..1).
 double rt_physics_hit3d_get_fraction(void *obj) {
-    return obj ? ((rt_physics_hit3d_obj *)obj)->fraction : 0.0;
+    rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
+    return hit ? hit->fraction : 0.0;
 }
 
 /// @brief `PhysicsHit3D.StartedPenetrating` — true if the query started inside the collider.
 int8_t rt_physics_hit3d_get_started_penetrating(void *obj) {
-    return obj ? ((rt_physics_hit3d_obj *)obj)->started_penetrating : 0;
+    rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
+    return hit ? hit->started_penetrating : 0;
 }
 
 /// @brief `PhysicsHit3D.IsTrigger` — true if the hit collider belongs to a trigger body.
 int8_t rt_physics_hit3d_get_is_trigger(void *obj) {
-    return obj ? ((rt_physics_hit3d_obj *)obj)->is_trigger : 0;
+    rt_physics_hit3d_obj *hit = physics_hit3d_checked(obj);
+    return hit ? hit->is_trigger : 0;
 }
 
 /// @brief `PhysicsHitList3D.Count` — number of hits in the list.
 int64_t rt_physics_hit_list3d_get_count(void *obj) {
-    return obj ? ((rt_physics_hit_list3d_obj *)obj)->count : 0;
+    rt_physics_hit_list3d_obj *list = physics_hit_list3d_checked(obj);
+    return list ? list->count : 0;
 }
 
 /// @brief `PhysicsHitList3D[i]` — borrowed `PhysicsHit3D` reference.
 void *rt_physics_hit_list3d_get(void *obj, int64_t index) {
-    rt_physics_hit_list3d_obj *list = (rt_physics_hit_list3d_obj *)obj;
+    rt_physics_hit_list3d_obj *list = physics_hit_list3d_checked(obj);
     if (!list || index < 0 || index >= list->count)
         return NULL;
     return list->items[index];
@@ -3842,7 +3897,7 @@ void *rt_world3d_overlap_aabb(void *obj, void *min_obj, void *max_obj, int64_t m
 /// reaches `delta` without contact. Used for trajectory predictions
 /// and projectile collision.
 void *rt_world3d_sweep_sphere(void *obj, void *center_obj, double radius, void *delta_obj, int64_t mask) {
-    rt_world3d *w = (rt_world3d *)obj;
+    rt_world3d *w = world3d_checked(obj);
     rt_query_hit3d best_hit;
     int found = 0;
     double center[3], delta[3];
@@ -3850,8 +3905,14 @@ void *rt_world3d_sweep_sphere(void *obj, void *center_obj, double radius, void *
     void *sphere_collider;
     if (!w || !center_obj || !delta_obj || !isfinite(radius) || radius < 0.0)
         return NULL;
-    ph3d_vec3_set_finite(center, rt_vec3_x(center_obj), rt_vec3_y(center_obj), rt_vec3_z(center_obj));
-    ph3d_vec3_set_finite(delta, rt_vec3_x(delta_obj), rt_vec3_y(delta_obj), rt_vec3_z(delta_obj));
+    center[0] = rt_vec3_x(center_obj);
+    center[1] = rt_vec3_y(center_obj);
+    center[2] = rt_vec3_z(center_obj);
+    delta[0] = rt_vec3_x(delta_obj);
+    delta[1] = rt_vec3_y(delta_obj);
+    delta[2] = rt_vec3_z(delta_obj);
+    if (!ph3d_vec3_all_finite(center) || !ph3d_vec3_all_finite(delta))
+        return NULL;
     max_distance = vec3_len(delta);
     if (!isfinite(max_distance))
         return NULL;
@@ -3885,16 +3946,25 @@ void *rt_world3d_sweep_capsule(void *obj,
                                double radius,
                                void *delta_obj,
                                int64_t mask) {
-    rt_world3d *w = (rt_world3d *)obj;
+    rt_world3d *w = world3d_checked(obj);
     rt_query_hit3d best_hit;
     int found = 0;
     double a[3], b[3], delta[3];
     double max_distance;
     if (!w || !a_obj || !b_obj || !delta_obj || !isfinite(radius) || radius < 0.0)
         return NULL;
-    ph3d_vec3_set_finite(a, rt_vec3_x(a_obj), rt_vec3_y(a_obj), rt_vec3_z(a_obj));
-    ph3d_vec3_set_finite(b, rt_vec3_x(b_obj), rt_vec3_y(b_obj), rt_vec3_z(b_obj));
-    ph3d_vec3_set_finite(delta, rt_vec3_x(delta_obj), rt_vec3_y(delta_obj), rt_vec3_z(delta_obj));
+    a[0] = rt_vec3_x(a_obj);
+    a[1] = rt_vec3_y(a_obj);
+    a[2] = rt_vec3_z(a_obj);
+    b[0] = rt_vec3_x(b_obj);
+    b[1] = rt_vec3_y(b_obj);
+    b[2] = rt_vec3_z(b_obj);
+    delta[0] = rt_vec3_x(delta_obj);
+    delta[1] = rt_vec3_y(delta_obj);
+    delta[2] = rt_vec3_z(delta_obj);
+    if (!ph3d_vec3_all_finite(a) || !ph3d_vec3_all_finite(b) ||
+        !ph3d_vec3_all_finite(delta))
+        return NULL;
     max_distance = vec3_len(delta);
     if (!isfinite(max_distance))
         return NULL;
@@ -3923,7 +3993,8 @@ void *rt_world3d_raycast(void *obj, void *origin_obj, void *direction_obj, doubl
     double dir[3];
     void *delta;
     void *hit;
-    if (!origin_obj || !direction_obj || !isfinite(max_distance) || max_distance <= 0.0)
+    if (!world3d_checked(obj) || !origin_obj || !direction_obj || !isfinite(max_distance) ||
+        max_distance <= 0.0)
         return NULL;
     dir[0] = rt_vec3_x(direction_obj);
     dir[1] = rt_vec3_y(direction_obj);
@@ -3949,14 +4020,18 @@ void *rt_world3d_raycast_all(void *obj,
                              void *direction_obj,
                              double max_distance,
                              int64_t mask) {
-    rt_world3d *w = (rt_world3d *)obj;
+    rt_world3d *w = world3d_checked(obj);
     rt_query_hit3d hits[PH3D_MAX_QUERY_HITS];
     double origin[3], dir[3], delta[3];
     int32_t hit_count = 0;
     void *sphere_collider;
     if (!w || !origin_obj || !direction_obj || !isfinite(max_distance) || max_distance <= 0.0)
         return NULL;
-    ph3d_vec3_set_finite(origin, rt_vec3_x(origin_obj), rt_vec3_y(origin_obj), rt_vec3_z(origin_obj));
+    origin[0] = rt_vec3_x(origin_obj);
+    origin[1] = rt_vec3_y(origin_obj);
+    origin[2] = rt_vec3_z(origin_obj);
+    if (!ph3d_vec3_all_finite(origin))
+        return NULL;
     dir[0] = rt_vec3_x(direction_obj);
     dir[1] = rt_vec3_y(direction_obj);
     dir[2] = rt_vec3_z(direction_obj);
@@ -4011,6 +4086,10 @@ static void body3d_finalizer(void *obj) {
 static int body3d_assign_collider(rt_body3d *body, void *collider, const char *api_name) {
     if (!body)
         return 0;
+    if (collider && !rt_g3d_has_class(collider, RT_G3D_COLLIDER3D_CLASS_ID)) {
+        rt_trap("Physics3DBody.SetCollider: collider must be a Collider3D");
+        return 0;
+    }
     if (collider == body->collider)
         return 1;
     if (!body3d_motion_mode_allowed(
@@ -4125,15 +4204,17 @@ void *rt_body3d_new_capsule(double radius, double height, double mass) {
 /// Traps if the collider requires a static-only body but the body is
 /// dynamic/kinematic (e.g., concave triangle meshes).
 void rt_body3d_set_collider(void *o, void *collider) {
-    if (!o)
+    rt_body3d *b = body3d_checked(o);
+    if (!b)
         return;
     body3d_assign_collider(
-        (rt_body3d *)o, collider, "Physics3DBody.SetCollider: collider requires a static body");
+        b, collider, "Physics3DBody.SetCollider: collider requires a static body");
 }
 
 /// @brief `Body3D.GetCollider` — borrowed reference to the body's collider.
 void *rt_body3d_get_collider(void *o) {
-    return o ? ((rt_body3d *)o)->collider : NULL;
+    rt_body3d *b = body3d_checked(o);
+    return b ? b->collider : NULL;
 }
 
 /// @brief `Body3D.SetPosition(x, y, z)` — teleport (also wakes if dynamic).
@@ -4141,8 +4222,8 @@ void *rt_body3d_get_collider(void *o) {
 /// Bypasses collision response, so use sparingly during simulation
 /// (per-step adjustments are usually better via velocity).
 void rt_body3d_set_position(void *o, double x, double y, double z) {
-    if (o) {
-        rt_body3d *b = (rt_body3d *)o;
+    rt_body3d *b = body3d_checked(o);
+    if (b) {
         ph3d_vec3_set_finite(b->position, x, y, z);
         body3d_wake_if_dynamic(b);
     }
@@ -4150,9 +4231,9 @@ void rt_body3d_set_position(void *o, double x, double y, double z) {
 
 /// @brief `Body3D.GetPosition` — fresh `Vec3` of the body's world position.
 void *rt_body3d_get_position(void *o) {
-    if (!o)
+    rt_body3d *b = body3d_checked(o);
+    if (!b)
         return rt_vec3_new(0, 0, 0);
-    rt_body3d *b = (rt_body3d *)o;
     return rt_vec3_new(b->position[0], b->position[1], b->position[2]);
 }
 
@@ -4161,40 +4242,36 @@ void *rt_body3d_get_position(void *o) {
 /// NULL `quat` resets to identity. Always normalizes to defend against
 /// caller-passed unnormalized quaternions.
 void rt_body3d_set_orientation(void *o, void *quat) {
-    if (!o)
+    rt_body3d *b = body3d_checked(o);
+    if (!b)
         return;
-    {
-        rt_body3d *b = (rt_body3d *)o;
-        if (!quat) {
-            quat_identity(b->orientation);
-        } else {
-            b->orientation[0] = rt_quat_x(quat);
-            b->orientation[1] = rt_quat_y(quat);
-            b->orientation[2] = rt_quat_z(quat);
-            b->orientation[3] = rt_quat_w(quat);
-            quat_normalize(b->orientation);
-        }
-        body3d_wake_if_dynamic(b);
+    if (!quat) {
+        quat_identity(b->orientation);
+    } else {
+        b->orientation[0] = rt_quat_x(quat);
+        b->orientation[1] = rt_quat_y(quat);
+        b->orientation[2] = rt_quat_z(quat);
+        b->orientation[3] = rt_quat_w(quat);
+        quat_normalize(b->orientation);
     }
+    body3d_wake_if_dynamic(b);
 }
 
 /// @brief `Body3D.GetOrientation` — fresh `Quat` of the body's orientation.
 void *rt_body3d_get_orientation(void *o) {
-    if (!o)
+    rt_body3d *b = body3d_checked(o);
+    if (!b)
         return rt_quat_new(0.0, 0.0, 0.0, 1.0);
-    {
-        rt_body3d *b = (rt_body3d *)o;
-        return rt_quat_new(
-            b->orientation[0], b->orientation[1], b->orientation[2], b->orientation[3]);
-    }
+    return rt_quat_new(
+        b->orientation[0], b->orientation[1], b->orientation[2], b->orientation[3]);
 }
 
 /// @brief `Body3D.SetVelocity(x, y, z)` — set linear velocity (m/s).
 ///
 /// Wakes the body if dynamic and the new velocity is non-zero.
 void rt_body3d_set_velocity(void *o, double x, double y, double z) {
-    if (o) {
-        rt_body3d *b = (rt_body3d *)o;
+    rt_body3d *b = body3d_checked(o);
+    if (b) {
         ph3d_vec3_set_finite(b->velocity, x, y, z);
         if (vec3_len_sq(b->velocity) > 1e-12)
             body3d_wake_if_dynamic(b);
@@ -4203,9 +4280,9 @@ void rt_body3d_set_velocity(void *o, double x, double y, double z) {
 
 /// @brief `Body3D.GetVelocity` — fresh `Vec3` of linear velocity.
 void *rt_body3d_get_velocity(void *o) {
-    if (!o)
+    rt_body3d *b = body3d_checked(o);
+    if (!b)
         return rt_vec3_new(0, 0, 0);
-    rt_body3d *b = (rt_body3d *)o;
     return rt_vec3_new(b->velocity[0], b->velocity[1], b->velocity[2]);
 }
 
@@ -4215,8 +4292,8 @@ void *rt_body3d_get_velocity(void *o) {
 
 /// @brief `Body3D.SetAngularVelocity(x, y, z)` — set angular velocity (radians/sec).
 void rt_body3d_set_angular_velocity(void *o, double x, double y, double z) {
-    if (o) {
-        rt_body3d *b = (rt_body3d *)o;
+    rt_body3d *b = body3d_checked(o);
+    if (b) {
         ph3d_vec3_set_finite(b->angular_velocity, x, y, z);
         if (vec3_len_sq(b->angular_velocity) > 1e-12)
             body3d_wake_if_dynamic(b);
@@ -4225,13 +4302,11 @@ void rt_body3d_set_angular_velocity(void *o, double x, double y, double z) {
 
 /// @brief `Body3D.GetAngularVelocity` — fresh `Vec3` of angular velocity.
 void *rt_body3d_get_angular_velocity(void *o) {
-    if (!o)
+    rt_body3d *b = body3d_checked(o);
+    if (!b)
         return rt_vec3_new(0, 0, 0);
-    {
-        rt_body3d *b = (rt_body3d *)o;
-        return rt_vec3_new(
-            b->angular_velocity[0], b->angular_velocity[1], b->angular_velocity[2]);
-    }
+    return rt_vec3_new(
+        b->angular_velocity[0], b->angular_velocity[1], b->angular_velocity[2]);
 }
 
 /// @brief `Body3D.ApplyForce(fx, fy, fz)` — accumulate a continuous force (N).
@@ -4240,8 +4315,8 @@ void *rt_body3d_get_angular_velocity(void *o) {
 /// of step. Apply once per frame for sustained force, every frame for
 /// sustained acceleration. No-op for non-dynamic bodies.
 void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
-    if (o) {
-        rt_body3d *b = (rt_body3d *)o;
+    rt_body3d *b = body3d_checked(o);
+    if (b) {
         if (b->motion_mode != PH3D_MODE_DYNAMIC)
             return;
         fx = ph3d_finite_or(fx, 0.0);
@@ -4260,8 +4335,8 @@ void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
 /// Equivalent to `Δv = impulse / mass`. Applied immediately, not at
 /// step time — use for jumps, hits, explosions. No-op for non-dynamic.
 void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz) {
-    if (o) {
-        rt_body3d *b = (rt_body3d *)o;
+    rt_body3d *b = body3d_checked(o);
+    if (b) {
         if (b->motion_mode != PH3D_MODE_DYNAMIC)
             return;
         ix = ph3d_finite_or(ix, 0.0);
@@ -4279,8 +4354,8 @@ void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz) {
 ///
 /// Same lifecycle as `ApplyForce`: consumed and reset by the next step.
 void rt_body3d_apply_torque(void *o, double tx, double ty, double tz) {
-    if (o) {
-        rt_body3d *b = (rt_body3d *)o;
+    rt_body3d *b = body3d_checked(o);
+    if (b) {
         if (b->motion_mode != PH3D_MODE_DYNAMIC)
             return;
         tx = ph3d_finite_or(tx, 0.0);
@@ -4298,8 +4373,8 @@ void rt_body3d_apply_torque(void *o, double tx, double ty, double tz) {
 ///
 /// Δω = impulse · I⁻¹ (per axis, since the inertia tensor is diagonal).
 void rt_body3d_apply_angular_impulse(void *o, double ix, double iy, double iz) {
-    if (o) {
-        rt_body3d *b = (rt_body3d *)o;
+    rt_body3d *b = body3d_checked(o);
+    if (b) {
         if (b->motion_mode != PH3D_MODE_DYNAMIC)
             return;
         ix = ph3d_finite_or(ix, 0.0);
@@ -4318,15 +4393,17 @@ void rt_body3d_apply_angular_impulse(void *o, double ix, double iy, double iz) {
 
 /// @brief `Body3D.SetRestitution(r)` — set bounciness (0=no bounce, 1=elastic).
 void rt_body3d_set_restitution(void *o, double r) {
-    if (o) {
+    rt_body3d *b = body3d_checked(o);
+    if (b) {
         double value = ph3d_clamp_nonnegative_finite(r, 0.0);
-        ((rt_body3d *)o)->restitution = value > 1.0 ? 1.0 : value;
+        b->restitution = value > 1.0 ? 1.0 : value;
     }
 }
 
 /// @brief `Body3D.GetRestitution` — read bounciness.
 double rt_body3d_get_restitution(void *o) {
-    return o ? ((rt_body3d *)o)->restitution : 0;
+    rt_body3d *b = body3d_checked(o);
+    return b ? b->restitution : 0;
 }
 
 /// @brief `Body3D.SetFriction(f)` — set friction coefficient.
@@ -4334,13 +4411,15 @@ double rt_body3d_get_restitution(void *o) {
 /// Pair friction is `sqrt(a.friction * b.friction)` — geometric mean
 /// matches typical material-interaction tables.
 void rt_body3d_set_friction(void *o, double f) {
-    if (o)
-        ((rt_body3d *)o)->friction = ph3d_clamp_nonnegative_finite(f, 0.0);
+    rt_body3d *b = body3d_checked(o);
+    if (b)
+        b->friction = ph3d_clamp_nonnegative_finite(f, 0.0);
 }
 
 /// @brief `Body3D.GetFriction` — read friction coefficient.
 double rt_body3d_get_friction(void *o) {
-    return o ? ((rt_body3d *)o)->friction : 0;
+    rt_body3d *b = body3d_checked(o);
+    return b ? b->friction : 0;
 }
 
 /// @brief `Body3D.SetLinearDamping(d)` — per-second linear velocity decay.
@@ -4348,46 +4427,54 @@ double rt_body3d_get_friction(void *o) {
 /// Each step scales velocity by `max(0, 1 - d*dt)`. Useful as a soft
 /// air-resistance proxy. Negative values clamp to 0.
 void rt_body3d_set_linear_damping(void *o, double d) {
-    if (o)
-        ((rt_body3d *)o)->linear_damping = ph3d_clamp_nonnegative_finite(d, 0.0);
+    rt_body3d *b = body3d_checked(o);
+    if (b)
+        b->linear_damping = ph3d_clamp_nonnegative_finite(d, 0.0);
 }
 
 /// @brief `Body3D.GetLinearDamping` — read linear damping coefficient.
 double rt_body3d_get_linear_damping(void *o) {
-    return o ? ((rt_body3d *)o)->linear_damping : 0.0;
+    rt_body3d *b = body3d_checked(o);
+    return b ? b->linear_damping : 0.0;
 }
 
 /// @brief `Body3D.SetAngularDamping(d)` — per-second angular velocity decay.
 void rt_body3d_set_angular_damping(void *o, double d) {
-    if (o)
-        ((rt_body3d *)o)->angular_damping = ph3d_clamp_nonnegative_finite(d, 0.0);
+    rt_body3d *b = body3d_checked(o);
+    if (b)
+        b->angular_damping = ph3d_clamp_nonnegative_finite(d, 0.0);
 }
 
 /// @brief `Body3D.GetAngularDamping` — read angular damping coefficient.
 double rt_body3d_get_angular_damping(void *o) {
-    return o ? ((rt_body3d *)o)->angular_damping : 0.0;
+    rt_body3d *b = body3d_checked(o);
+    return b ? b->angular_damping : 0.0;
 }
 
 /// @brief `Body3D.SetCollisionLayer(l)` — bitmask labeling this body's category.
 void rt_body3d_set_collision_layer(void *o, int64_t l) {
-    if (o)
-        ((rt_body3d *)o)->collision_layer = l;
+    rt_body3d *b = body3d_checked(o);
+    if (b)
+        b->collision_layer = l;
 }
 
 /// @brief `Body3D.GetCollisionLayer` — read this body's layer bitmask.
 int64_t rt_body3d_get_collision_layer(void *o) {
-    return o ? ((rt_body3d *)o)->collision_layer : 0;
+    rt_body3d *b = body3d_checked(o);
+    return b ? b->collision_layer : 0;
 }
 
 /// @brief `Body3D.SetCollisionMask(m)` — bitmask of layers this body collides with.
 void rt_body3d_set_collision_mask(void *o, int64_t m) {
-    if (o)
-        ((rt_body3d *)o)->collision_mask = m;
+    rt_body3d *b = body3d_checked(o);
+    if (b)
+        b->collision_mask = m;
 }
 
 /// @brief `Body3D.GetCollisionMask` — read this body's collision mask.
 int64_t rt_body3d_get_collision_mask(void *o) {
-    return o ? ((rt_body3d *)o)->collision_mask : 0;
+    rt_body3d *b = body3d_checked(o);
+    return b ? b->collision_mask : 0;
 }
 
 /// @brief `Body3D.SetStatic(s)` — toggle static motion mode.
@@ -4396,8 +4483,8 @@ int64_t rt_body3d_get_collision_mask(void *o) {
 /// mode (e.g., switching a triangle-mesh-collider body to dynamic).
 /// Refreshes derived state (inv_mass, inv_inertia) on success.
 void rt_body3d_set_static(void *o, int8_t s) {
-    if (o) {
-        rt_body3d *b = (rt_body3d *)o;
+    rt_body3d *b = body3d_checked(o);
+    if (b) {
         int32_t desired_mode = s ? PH3D_MODE_STATIC : PH3D_MODE_DYNAMIC;
         if (!body3d_motion_mode_allowed(
                 b,
@@ -4412,7 +4499,8 @@ void rt_body3d_set_static(void *o, int8_t s) {
 
 /// @brief `Body3D.IsStatic` — true if the body is in static motion mode.
 int8_t rt_body3d_is_static(void *o) {
-    return o ? ((rt_body3d *)o)->is_static : 0;
+    rt_body3d *b = body3d_checked(o);
+    return b ? b->is_static : 0;
 }
 
 /// @brief `Body3D.SetKinematic(k)` — toggle kinematic motion mode.
@@ -4421,8 +4509,8 @@ int8_t rt_body3d_is_static(void *o) {
 /// directly) but are treated as infinitely massive by the impulse
 /// solver — they push dynamic bodies but aren't pushed in return.
 void rt_body3d_set_kinematic(void *o, int8_t k) {
-    if (o) {
-        rt_body3d *b = (rt_body3d *)o;
+    rt_body3d *b = body3d_checked(o);
+    if (b) {
         int32_t desired_mode = k ? PH3D_MODE_KINEMATIC : PH3D_MODE_DYNAMIC;
         if (!body3d_motion_mode_allowed(
                 b,
@@ -4437,7 +4525,8 @@ void rt_body3d_set_kinematic(void *o, int8_t k) {
 
 /// @brief `Body3D.IsKinematic` — true if the body is in kinematic motion mode.
 int8_t rt_body3d_is_kinematic(void *o) {
-    return o ? ((rt_body3d *)o)->is_kinematic : 0;
+    rt_body3d *b = body3d_checked(o);
+    return b ? b->is_kinematic : 0;
 }
 
 /// @brief `Body3D.SetTrigger(t)` — toggle "report contacts but don't physically respond".
@@ -4445,13 +4534,15 @@ int8_t rt_body3d_is_kinematic(void *o) {
 /// Trigger bodies fire collision events but don't apply impulses or
 /// positional correction — useful for damage volumes, pickup zones, etc.
 void rt_body3d_set_trigger(void *o, int8_t t) {
-    if (o)
-        ((rt_body3d *)o)->is_trigger = t;
+    rt_body3d *b = body3d_checked(o);
+    if (b)
+        b->is_trigger = t;
 }
 
 /// @brief `Body3D.IsTrigger` — true if the body is in trigger-only mode.
 int8_t rt_body3d_is_trigger(void *o) {
-    return o ? ((rt_body3d *)o)->is_trigger : 0;
+    rt_body3d *b = body3d_checked(o);
+    return b ? b->is_trigger : 0;
 }
 
 /// @brief `Body3D.SetCanSleep(canSleep)` — toggle automatic sleep eligibility.
@@ -4460,8 +4551,8 @@ int8_t rt_body3d_is_trigger(void *o) {
 /// Disabling sleep on a quiet body wakes it immediately so the next
 /// step processes it normally.
 void rt_body3d_set_can_sleep(void *o, int8_t can_sleep) {
-    if (o) {
-        rt_body3d *b = (rt_body3d *)o;
+    rt_body3d *b = body3d_checked(o);
+    if (b) {
         b->can_sleep = can_sleep ? 1 : 0;
         if (!b->can_sleep) {
             b->is_sleeping = 0;
@@ -4472,18 +4563,21 @@ void rt_body3d_set_can_sleep(void *o, int8_t can_sleep) {
 
 /// @brief `Body3D.CanSleep` — read sleep eligibility flag.
 int8_t rt_body3d_can_sleep(void *o) {
-    return o ? ((rt_body3d *)o)->can_sleep : 0;
+    rt_body3d *b = body3d_checked(o);
+    return b ? b->can_sleep : 0;
 }
 
 /// @brief `Body3D.IsSleeping` — true when the body is currently quiescent.
 int8_t rt_body3d_is_sleeping(void *o) {
-    return o ? ((rt_body3d *)o)->is_sleeping : 0;
+    rt_body3d *b = body3d_checked(o);
+    return b ? b->is_sleeping : 0;
 }
 
 /// @brief `Body3D.Wake` — force the body awake (no-op for non-dynamic).
 void rt_body3d_wake(void *o) {
-    if (o)
-        body3d_wake_if_dynamic((rt_body3d *)o);
+    rt_body3d *b = body3d_checked(o);
+    if (b)
+        body3d_wake_if_dynamic(b);
 }
 
 /// @brief `Body3D.Sleep` — manually put the body to sleep.
@@ -4492,19 +4586,17 @@ void rt_body3d_wake(void *o) {
 /// when the body can't sleep or isn't dynamic. Bypasses the normal
 /// sleep-delay countdown.
 void rt_body3d_sleep(void *o) {
-    if (!o)
+    rt_body3d *b = body3d_checked(o);
+    if (!b)
         return;
-    {
-        rt_body3d *b = (rt_body3d *)o;
-        if (b->motion_mode != PH3D_MODE_DYNAMIC || !b->can_sleep)
-            return;
-        b->is_sleeping = 1;
-        b->sleep_time = PH3D_SLEEP_DELAY;
-        vec3_set(b->velocity, 0.0, 0.0, 0.0);
-        vec3_set(b->angular_velocity, 0.0, 0.0, 0.0);
-        vec3_set(b->force, 0.0, 0.0, 0.0);
-        vec3_set(b->torque, 0.0, 0.0, 0.0);
-    }
+    if (b->motion_mode != PH3D_MODE_DYNAMIC || !b->can_sleep)
+        return;
+    b->is_sleeping = 1;
+    b->sleep_time = PH3D_SLEEP_DELAY;
+    vec3_set(b->velocity, 0.0, 0.0, 0.0);
+    vec3_set(b->angular_velocity, 0.0, 0.0, 0.0);
+    vec3_set(b->force, 0.0, 0.0, 0.0);
+    vec3_set(b->torque, 0.0, 0.0, 0.0);
 }
 
 /// @brief `Body3D.SetUseCcd(useCcd)` — opt this body into CCD substeps.
@@ -4513,13 +4605,15 @@ void rt_body3d_sleep(void *o) {
 /// geometry. Enable for fast-moving bodies (bullets, balls); leave off
 /// otherwise to save CPU.
 void rt_body3d_set_use_ccd(void *o, int8_t use_ccd) {
-    if (o)
-        ((rt_body3d *)o)->use_ccd = use_ccd ? 1 : 0;
+    rt_body3d *b = body3d_checked(o);
+    if (b)
+        b->use_ccd = use_ccd ? 1 : 0;
 }
 
 /// @brief `Body3D.GetUseCcd` — read CCD opt-in flag.
 int8_t rt_body3d_get_use_ccd(void *o) {
-    return o ? ((rt_body3d *)o)->use_ccd : 0;
+    rt_body3d *b = body3d_checked(o);
+    return b ? b->use_ccd : 0;
 }
 
 /// @brief `Body3D.IsGrounded` — true when the body has an upward contact this frame.
@@ -4527,22 +4621,24 @@ int8_t rt_body3d_get_use_ccd(void *o) {
 /// "Upward" = contact normal Y > 0.7 (~45° max slope). Set/cleared by
 /// `World3D.Step`; queryable from frame to frame.
 int8_t rt_body3d_is_grounded(void *o) {
-    return o ? ((rt_body3d *)o)->is_grounded : 0;
+    rt_body3d *b = body3d_checked(o);
+    return b ? b->is_grounded : 0;
 }
 
 /// @brief `Body3D.GroundNormal` — fresh `Vec3` of the latest ground normal.
 ///
 /// Defaults to +Y when not grounded.
 void *rt_body3d_get_ground_normal(void *o) {
-    if (!o)
+    rt_body3d *b = body3d_checked(o);
+    if (!b)
         return rt_vec3_new(0, 1, 0);
-    rt_body3d *b = (rt_body3d *)o;
     return rt_vec3_new(b->ground_normal[0], b->ground_normal[1], b->ground_normal[2]);
 }
 
 /// @brief `Body3D.Mass` — read the body's mass (zero for static).
 double rt_body3d_get_mass(void *o) {
-    return o ? ((rt_body3d *)o)->mass : 0;
+    rt_body3d *b = body3d_checked(o);
+    return b ? b->mass : 0;
 }
 
 /*==========================================================================
@@ -4887,6 +4983,11 @@ void *rt_character3d_new(double radius, double height, double mass) {
     }
     c->vptr = NULL;
     c->body = (rt_body3d *)rt_body3d_new_capsule(radius, height, mass);
+    if (!c->body) {
+        if (rt_obj_release_check0(c))
+            rt_obj_free(c);
+        return NULL;
+    }
     c->world = NULL;
     c->step_height = 0.3;
     c->slope_limit_cos = cos(45.0 * 3.14159265358979323846 / 180.0);
@@ -4904,9 +5005,9 @@ void *rt_character3d_new(double radius, double height, double mass) {
 /// actual achieved displacement / dt — useful for animation systems
 /// that read velocity off the controller.
 void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
-    if (!obj || !velocity_vec || !isfinite(dt) || dt <= 0)
+    rt_character3d *ctrl = character3d_checked(obj);
+    if (!ctrl || !velocity_vec || !isfinite(dt) || dt <= 0)
         return;
-    rt_character3d *ctrl = (rt_character3d *)obj;
     rt_body3d *body = ctrl->body;
     if (!body)
         return;
@@ -4938,13 +5039,15 @@ void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
 
 /// @brief `Character3D.SetStepHeight(h)` — max obstacle height the controller can step over.
 void rt_character3d_set_step_height(void *o, double h) {
-    if (o)
-        ((rt_character3d *)o)->step_height = ph3d_clamp_nonnegative_finite(h, 0.0);
+    rt_character3d *c = character3d_checked(o);
+    if (c)
+        c->step_height = ph3d_clamp_nonnegative_finite(h, 0.0);
 }
 
 /// @brief `Character3D.GetStepHeight` — read the configured step height.
 double rt_character3d_get_step_height(void *o) {
-    return o ? ((rt_character3d *)o)->step_height : 0.3;
+    rt_character3d *c = character3d_checked(o);
+    return c ? c->step_height : 0.3;
 }
 
 /// @brief `Character3D.SetSlopeLimit(degrees)` — max walkable slope angle.
@@ -4952,10 +5055,11 @@ double rt_character3d_get_step_height(void *o) {
 /// Stored as `cos(angle)` to make the per-step "is this surface walkable"
 /// test a single comparison (no trig in the hot path).
 void rt_character3d_set_slope_limit(void *o, double degrees) {
-    if (o) {
+    rt_character3d *c = character3d_checked(o);
+    if (c) {
         degrees = ph3d_finite_or(degrees, 45.0);
         degrees = clampd(degrees, 0.0, 89.9);
-        ((rt_character3d *)o)->slope_limit_cos = cos(degrees * 3.14159265358979323846 / 180.0);
+        c->slope_limit_cos = cos(degrees * 3.14159265358979323846 / 180.0);
     }
 }
 
@@ -4964,26 +5068,31 @@ void rt_character3d_set_slope_limit(void *o, double degrees) {
 /// Required before `Move` will collide against anything. Releases any
 /// previous world reference and retains the new one. NULL detaches.
 void rt_character3d_set_world(void *o, void *world) {
-    if (!o)
+    rt_character3d *ctrl = character3d_checked(o);
+    rt_world3d *w = world3d_checked(world);
+    if (!ctrl)
         return;
-    rt_character3d *ctrl = (rt_character3d *)o;
-    if (ctrl->world == world)
+    if (world && !w)
         return;
-    if (world)
-        rt_obj_retain_maybe(world);
+    if (ctrl->world == w)
+        return;
+    if (w)
+        rt_obj_retain_maybe(w);
     if (ctrl->world && rt_obj_release_check0(ctrl->world))
         rt_obj_free(ctrl->world);
-    ctrl->world = (rt_world3d *)world;
+    ctrl->world = w;
 }
 
 /// @brief `Character3D.GetWorld` — borrowed reference to the bound world.
 void *rt_character3d_get_world(void *o) {
-    return o ? ((rt_character3d *)o)->world : NULL;
+    rt_character3d *c = character3d_checked(o);
+    return c ? c->world : NULL;
 }
 
 /// @brief `Character3D.IsGrounded` — true when standing on a walkable surface.
 int8_t rt_character3d_is_grounded(void *o) {
-    return o ? ((rt_character3d *)o)->is_grounded : 0;
+    rt_character3d *c = character3d_checked(o);
+    return c ? c->is_grounded : 0;
 }
 
 /// @brief `Character3D.JustLanded` — edge-detect: true on the first frame after landing.
@@ -4991,17 +5100,18 @@ int8_t rt_character3d_is_grounded(void *o) {
 /// Compares this frame's grounded state to the previous frame's. Useful
 /// for landing animations, fall-damage triggers, dust puffs, etc.
 int8_t rt_character3d_just_landed(void *o) {
-    if (!o)
+    rt_character3d *c = character3d_checked(o);
+    if (!c)
         return 0;
-    rt_character3d *c = (rt_character3d *)o;
     return c->is_grounded && !c->was_grounded;
 }
 
 /// @brief `Character3D.GetPosition` — fresh `Vec3` of the body's position.
 void *rt_character3d_get_position(void *o) {
-    if (!o)
+    rt_character3d *c = character3d_checked(o);
+    if (!c)
         return rt_vec3_new(0, 0, 0);
-    return rt_body3d_get_position(((rt_character3d *)o)->body);
+    return rt_body3d_get_position(c->body);
 }
 
 /// @brief `Character3D.SetPosition(x, y, z)` — teleport the controller.
@@ -5009,8 +5119,9 @@ void *rt_character3d_get_position(void *o) {
 /// Direct delegation to the underlying body. Caller is responsible for
 /// avoiding teleports into geometry.
 void rt_character3d_set_position(void *o, double x, double y, double z) {
-    if (o)
-        rt_body3d_set_position(((rt_character3d *)o)->body, x, y, z);
+    rt_character3d *c = character3d_checked(o);
+    if (c)
+        rt_body3d_set_position(c->body, x, y, z);
 }
 
 /*==========================================================================
@@ -5030,6 +5141,10 @@ typedef struct {
     int32_t enter_count;
     int32_t exit_count;
 } rt_trigger3d;
+
+static rt_trigger3d *trigger3d_checked(void *obj) {
+    return (rt_trigger3d *)rt_g3d_checked_or_null(obj, RT_G3D_TRIGGER3D_CLASS_ID);
+}
 
 /// @brief GC finalizer for `Trigger3D` — no-op (tracked-body refs are weak).
 ///
@@ -5052,6 +5167,12 @@ void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, do
         return NULL;
     }
     memset(t, 0, sizeof(rt_trigger3d));
+    x0 = ph3d_finite_or(x0, 0.0);
+    y0 = ph3d_finite_or(y0, 0.0);
+    z0 = ph3d_finite_or(z0, 0.0);
+    x1 = ph3d_finite_or(x1, 0.0);
+    y1 = ph3d_finite_or(y1, 0.0);
+    z1 = ph3d_finite_or(z1, 0.0);
     t->bounds_min[0] = x0 < x1 ? x0 : x1;
     t->bounds_min[1] = y0 < y1 ? y0 : y1;
     t->bounds_min[2] = z0 < z1 ? z0 : z1;
@@ -5068,10 +5189,12 @@ void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, do
 /// ad-hoc "is the player in the safe zone" checks; use `Update` +
 /// `EnterCount`/`ExitCount` for transition-based logic.
 int8_t rt_trigger3d_contains(void *obj, void *point) {
-    if (!obj || !point)
+    rt_trigger3d *t = trigger3d_checked(obj);
+    if (!t || !point)
         return 0;
-    rt_trigger3d *t = (rt_trigger3d *)obj;
     double px = rt_vec3_x(point), py = rt_vec3_y(point), pz = rt_vec3_z(point);
+    if (!isfinite(px) || !isfinite(py) || !isfinite(pz))
+        return 0;
     return (px >= t->bounds_min[0] && px <= t->bounds_max[0] && py >= t->bounds_min[1] &&
             py <= t->bounds_max[1] && pz >= t->bounds_min[2] && pz <= t->bounds_max[2])
                ? 1
@@ -5103,10 +5226,12 @@ static int32_t trigger3d_find_or_add(rt_trigger3d *t, void *body) {
 /// are stored, so callers learn "how many entered" but not "which".
 /// Run once per frame after `World3D.Step`.
 void rt_trigger3d_update(void *obj, void *world_obj) {
-    if (!obj || !world_obj)
+    rt_trigger3d *t = trigger3d_checked(obj);
+    rt_world3d *w = world3d_checked(world_obj);
+    int8_t seen[TRG3D_MAX_TRACKED];
+    if (!t || !w)
         return;
-    rt_trigger3d *t = (rt_trigger3d *)obj;
-    rt_world3d *w = (rt_world3d *)world_obj;
+    memset(seen, 0, sizeof(seen));
 
     /* Swap current → previous */
     for (int32_t i = 0; i < t->tracked_count; i++) {
@@ -5133,22 +5258,47 @@ void rt_trigger3d_update(void *obj, void *world_obj) {
         if (idx < 0)
             continue; /* tracking full */
 
+        seen[idx] = 1;
         t->is_inside[idx] = inside;
         if (inside && !t->was_inside[idx])
             t->enter_count++;
         if (!inside && t->was_inside[idx])
             t->exit_count++;
     }
+
+    /* Weakly tracked bodies absent from the world left the trigger/world.
+     * Emit exit once for bodies that were previously inside, then forget them. */
+    for (int32_t i = 0; i < t->tracked_count;) {
+        if (seen[i]) {
+            i++;
+            continue;
+        }
+        if (t->was_inside[i])
+            t->exit_count++;
+        for (int32_t j = i; j < t->tracked_count - 1; j++) {
+            t->tracked_bodies[j] = t->tracked_bodies[j + 1];
+            t->was_inside[j] = t->was_inside[j + 1];
+            t->is_inside[j] = t->is_inside[j + 1];
+            seen[j] = seen[j + 1];
+        }
+        t->tracked_count--;
+        t->tracked_bodies[t->tracked_count] = NULL;
+        t->was_inside[t->tracked_count] = 0;
+        t->is_inside[t->tracked_count] = 0;
+        seen[t->tracked_count] = 0;
+    }
 }
 
 /// @brief `Trigger3D.EnterCount` — bodies that entered this trigger this frame.
 int64_t rt_trigger3d_get_enter_count(void *obj) {
-    return obj ? ((rt_trigger3d *)obj)->enter_count : 0;
+    rt_trigger3d *t = trigger3d_checked(obj);
+    return t ? t->enter_count : 0;
 }
 
 /// @brief `Trigger3D.ExitCount` — bodies that left this trigger this frame.
 int64_t rt_trigger3d_get_exit_count(void *obj) {
-    return obj ? ((rt_trigger3d *)obj)->exit_count : 0;
+    rt_trigger3d *t = trigger3d_checked(obj);
+    return t ? t->exit_count : 0;
 }
 
 /// @brief `Trigger3D.SetBounds(x0..z1)` — replace the trigger's AABB.
@@ -5158,9 +5308,15 @@ int64_t rt_trigger3d_get_exit_count(void *obj) {
 /// the new box remains "in" without firing an enter event.
 void rt_trigger3d_set_bounds(
     void *obj, double x0, double y0, double z0, double x1, double y1, double z1) {
-    if (!obj)
+    rt_trigger3d *t = trigger3d_checked(obj);
+    if (!t)
         return;
-    rt_trigger3d *t = (rt_trigger3d *)obj;
+    x0 = ph3d_finite_or(x0, 0.0);
+    y0 = ph3d_finite_or(y0, 0.0);
+    z0 = ph3d_finite_or(z0, 0.0);
+    x1 = ph3d_finite_or(x1, 0.0);
+    y1 = ph3d_finite_or(y1, 0.0);
+    z1 = ph3d_finite_or(z1, 0.0);
     t->bounds_min[0] = x0 < x1 ? x0 : x1;
     t->bounds_min[1] = y0 < y1 ? y0 : y1;
     t->bounds_min[2] = z0 < z1 ? z0 : z1;

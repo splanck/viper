@@ -54,11 +54,6 @@ extern const char *rt_string_cstr(rt_string s);
 #define MESH_MAX_CYLINDER_SEGMENTS 8192
 #define MESH3D_FLOAT_ABS_MAX 3.40282346638528859812e38
 
-/// @brief Cheap wrapper around `isfinite` so attribute-validation call sites read declaratively.
-static int mesh_value_is_finite(double value) {
-    return isfinite(value);
-}
-
 static rt_mesh3d *mesh3d_checked(void *obj) {
     return (rt_mesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_MESH3D_CLASS_ID);
 }
@@ -80,9 +75,9 @@ static int mesh_value_fits_float(double value) {
 ///   (e.g. "Mesh3D.NewBox: sx") is identifiable in the user-facing error.
 static int mesh_validate_positive_finite(double value, const char *label) {
     char msg[128];
-    if (mesh_value_is_finite(value) && value > 0.0)
+    if (mesh_value_fits_float(value) && value > 0.0)
         return 1;
-    snprintf(msg, sizeof(msg), "%s must be finite and greater than zero", label);
+    snprintf(msg, sizeof(msg), "%s must be finite, fit float range, and be greater than zero", label);
     rt_trap(msg);
     return 0;
 }
@@ -534,6 +529,19 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj) {
     }
 
     for (uint32_t i = 0; i < m->vertex_count; i++) {
+        const float *p = m->vertices[i].pos;
+        double x = p[0], y = p[1], z = p[2];
+        double tx = xform->m[0] * x + xform->m[1] * y + xform->m[2] * z + xform->m[3];
+        double ty = xform->m[4] * x + xform->m[5] * y + xform->m[6] * z + xform->m[7];
+        double tz = xform->m[8] * x + xform->m[9] * y + xform->m[10] * z + xform->m[11];
+        if (!mesh_value_fits_float(tx) || !mesh_value_fits_float(ty) ||
+            !mesh_value_fits_float(tz)) {
+            rt_trap("Mesh3D.Transform: transformed vertex position must be finite and fit float range");
+            return;
+        }
+    }
+
+    for (uint32_t i = 0; i < m->vertex_count; i++) {
         float *p = m->vertices[i].pos;
         double x = p[0], y = p[1], z = p[2];
         p[0] = (float)(xform->m[0] * x + xform->m[1] * y + xform->m[2] * z + xform->m[3]);
@@ -658,9 +666,15 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments) {
     int64_t rings = segments;
     int64_t slices = segments * 2;
     float r = (float)radius;
+    int64_t top_index = 0;
+    int64_t first_ring = 1;
+    int64_t ring_stride = slices + 1;
+    int64_t bottom_index;
 
-    /* Generate vertices */
-    for (int64_t ring = 0; ring <= rings; ring++) {
+    /* Generate a single pole vertex at each end, and seam-duplicated body rings.
+     * This keeps UV seams intact without emitting zero-area cap triangles. */
+    rt_mesh3d_add_vertex(m, 0.0, r, 0.0, 0.0, 1.0, 0.0, 0.5, 0.0);
+    for (int64_t ring = 1; ring < rings; ring++) {
         float phi = (float)M_PI * (float)ring / (float)rings;
         float sp = sinf(phi), cp = cosf(phi);
 
@@ -674,20 +688,29 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments) {
             rt_mesh3d_add_vertex(m, nx * r, ny * r, nz * r, nx, ny, nz, u, v);
         }
     }
+    bottom_index = (int64_t)((rt_mesh3d *)m)->vertex_count;
+    rt_mesh3d_add_vertex(m, 0.0, -r, 0.0, 0.0, -1.0, 0.0, 0.5, 1.0);
 
     /* Generate indices (CCW) */
-    for (int64_t ring = 0; ring < rings; ring++) {
+    for (int64_t slice = 0; slice < slices; slice++) {
+        int64_t b = first_ring + slice;
+        rt_mesh3d_add_triangle(m, top_index, b, b + 1);
+    }
+    for (int64_t ring = 1; ring < rings - 1; ring++) {
+        int64_t a_base = first_ring + (ring - 1) * ring_stride;
+        int64_t b_base = a_base + ring_stride;
         for (int64_t slice = 0; slice < slices; slice++) {
-            int64_t a = ring * (slices + 1) + slice;
-            int64_t b = a + slices + 1;
-            if (ring == 0) {
-                rt_mesh3d_add_triangle(m, a + 1, b, b + 1);
-            } else if (ring == rings - 1) {
-                rt_mesh3d_add_triangle(m, a, b, a + 1);
-            } else {
-                rt_mesh3d_add_triangle(m, a, b, a + 1);
-                rt_mesh3d_add_triangle(m, a + 1, b, b + 1);
-            }
+            int64_t a = a_base + slice;
+            int64_t b = b_base + slice;
+            rt_mesh3d_add_triangle(m, a, b, a + 1);
+            rt_mesh3d_add_triangle(m, a + 1, b, b + 1);
+        }
+    }
+    {
+        int64_t last_ring = first_ring + (rings - 2) * ring_stride;
+        for (int64_t slice = 0; slice < slices; slice++) {
+            int64_t a = last_ring + slice;
+            rt_mesh3d_add_triangle(m, a, bottom_index, a + 1);
         }
     }
 
@@ -1166,14 +1189,19 @@ static int obj_get_or_add_mesh_vertex(void *mesh,
 ///          vertex count; both are freed before returning. No-op on empty meshes.
 /// @param obj Mesh whose `tangent[4]` slot on every vertex gets written in place.
 void rt_mesh3d_calc_tangents(void *obj) {
-    if (!obj)
+    rt_mesh3d *m = mesh3d_checked(obj);
+    if (!m)
         return;
-    rt_mesh3d *m = (rt_mesh3d *)obj;
     if (m->vertex_count == 0 || m->index_count == 0)
         return;
 
-    float *tan1 = (float *)calloc((size_t)m->vertex_count * 3u, sizeof(float));
-    float *tan2 = (float *)calloc((size_t)m->vertex_count * 3u, sizeof(float));
+    if ((size_t)m->vertex_count > SIZE_MAX / 3u / sizeof(float)) {
+        rt_trap("Mesh3D.CalcTangents: tangent allocation overflow");
+        return;
+    }
+    size_t tangent_floats = (size_t)m->vertex_count * 3u;
+    float *tan1 = (float *)calloc(tangent_floats, sizeof(float));
+    float *tan2 = (float *)calloc(tangent_floats, sizeof(float));
     if (!tan1 || !tan2) {
         free(tan1);
         free(tan2);
@@ -1272,6 +1300,42 @@ void rt_mesh3d_calc_tangents(void *obj) {
 // OBJ Loading (Wavefront)
 //=============================================================================
 
+static int obj_read_line(FILE *f, char **line, size_t *cap) {
+    size_t len = 0;
+    int ch;
+    if (!f || !line || !cap)
+        return -1;
+    if (!*line || *cap == 0) {
+        *cap = 256;
+        *line = (char *)malloc(*cap);
+        if (!*line) {
+            *cap = 0;
+            return -1;
+        }
+    }
+    while ((ch = fgetc(f)) != EOF) {
+        if (len + 1 >= *cap) {
+            size_t new_cap;
+            char *tmp;
+            if (*cap > SIZE_MAX / 2u)
+                return -1;
+            new_cap = *cap * 2u;
+            tmp = (char *)realloc(*line, new_cap);
+            if (!tmp)
+                return -1;
+            *line = tmp;
+            *cap = new_cap;
+        }
+        (*line)[len++] = (char)ch;
+        if (ch == '\n')
+            break;
+    }
+    if (ch == EOF && len == 0)
+        return 0;
+    (*line)[len] = '\0';
+    return 1;
+}
+
 /// @brief Load a mesh from a Wavefront OBJ file (positions, normals, UVs, faces).
 /// @details Parses v/vn/vt/f lines from the OBJ text format. Supports
 ///          triangulated and quad faces (quads are split into two triangles).
@@ -1316,8 +1380,10 @@ void *rt_mesh3d_from_obj(rt_string path) {
         return NULL;
     }
 
-    char line[4096];
-    while (fgets(line, sizeof(line), f)) {
+    char *line = NULL;
+    size_t line_cap = 0;
+    int line_status;
+    while ((line_status = obj_read_line(f, &line, &line_cap)) > 0) {
         const char *p = line;
         while (*p == ' ' || *p == '\t')
             p++;
@@ -1338,6 +1404,11 @@ void *rt_mesh3d_from_obj(rt_string path) {
                 double x, y, z;
                 if (!obj_parse_double(&p, &x) || !obj_parse_double(&p, &y) ||
                     !obj_parse_double(&p, &z)) {
+                    parse_failed = 1;
+                    break;
+                }
+                if (!mesh_value_fits_float(x) || !mesh_value_fits_float(y) ||
+                    !mesh_value_fits_float(z)) {
                     parse_failed = 1;
                     break;
                 }
@@ -1362,6 +1433,11 @@ void *rt_mesh3d_from_obj(rt_string path) {
                     parse_failed = 1;
                     break;
                 }
+                if (!mesh_value_fits_float(x) || !mesh_value_fits_float(y) ||
+                    !mesh_value_fits_float(z)) {
+                    parse_failed = 1;
+                    break;
+                }
                 normals[cnt_n * 3 + 0] = (float)x;
                 normals[cnt_n * 3 + 1] = (float)y;
                 normals[cnt_n * 3 + 2] = (float)z;
@@ -1379,6 +1455,10 @@ void *rt_mesh3d_from_obj(rt_string path) {
             {
                 double u, v;
                 if (!obj_parse_double(&p, &u) || !obj_parse_double(&p, &v)) {
+                    parse_failed = 1;
+                    break;
+                }
+                if (!mesh_value_fits_float(u) || !mesh_value_fits_float(v)) {
                     parse_failed = 1;
                     break;
                 }
@@ -1519,8 +1599,11 @@ void *rt_mesh3d_from_obj(rt_string path) {
         }
         /* Ignore: s and other non-geometry directives. */
     }
+    if (line_status < 0)
+        parse_failed = 1;
 
     fclose(f);
+    free(line);
     free(positions);
     free(normals);
     free(texcoords);

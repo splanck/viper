@@ -2442,11 +2442,11 @@ void rt_canvas3d_draw_rect_3d(
     float g;
     float b;
 
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return;
     if (w <= 0 || h <= 0)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->in_frame || !c->backend)
         return;
     r = (float)((color >> 16) & 0xFF) / 255.0f;
@@ -2458,9 +2458,9 @@ void rt_canvas3d_draw_rect_3d(
 /// @brief Draw text through the 3D pipeline using the 5×7 bitmap font.
 /// Each character's "on" pixels are rendered as 2×2 quads batched into one mesh.
 void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, int64_t color) {
-    if (!obj || !text)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !text)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->in_frame || !c->backend)
         return;
 
@@ -3273,9 +3273,9 @@ void rt_canvas3d_end(void *obj) {
 ///          framebuffer via the backend's present function. Updates the FPS
 ///          counter and delta-time calculation for the next frame.
 void rt_canvas3d_flip(void *obj) {
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->gfx_win)
         return;
 
@@ -3341,9 +3341,9 @@ static void rt_canvas3d_update_mouse_from_physical(vgfx_window_t gfx_win, int32_
 /// dispatches resize / focus / close events.
 /// @return 1 if the window remains open, 0 if the user requested close.
 int64_t rt_canvas3d_poll(void *obj) {
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return 0;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->gfx_win)
         return 0;
 
@@ -3355,8 +3355,11 @@ int64_t rt_canvas3d_poll(void *obj) {
     rt_pad_begin_frame();
     rt_pad_poll();
 
-    if (!vgfx_pump_events(c->gfx_win))
+    if (!vgfx_pump_events(c->gfx_win)) {
         c->should_close = 1;
+        rt_action_update();
+        return VGFX_EVENT_NONE;
+    }
 
     /* Read current platform mouse position */
     int32_t mx, my;
@@ -3429,19 +3432,22 @@ int64_t rt_canvas3d_poll(void *obj) {
 
 /// @brief Check if the canvas window received a close request.
 int8_t rt_canvas3d_should_close(void *obj) {
-    return obj ? ((rt_canvas3d *)obj)->should_close : 0;
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c ? c->should_close : 0;
 }
 
 /// @brief Enable or disable wireframe rendering mode.
 void rt_canvas3d_set_wireframe(void *obj, int8_t enabled) {
-    if (obj)
-        ((rt_canvas3d *)obj)->wireframe = enabled;
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (c)
+        c->wireframe = enabled;
 }
 
 /// @brief Enable or disable backface culling (CCW winding = front face).
 void rt_canvas3d_set_backface_cull(void *obj, int8_t enabled) {
-    if (obj)
-        ((rt_canvas3d *)obj)->backface_cull = enabled;
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (c)
+        c->backface_cull = enabled;
 }
 
 /// @brief Park a `malloc`'d buffer for end-of-frame disposal.
@@ -3470,9 +3476,9 @@ void rt_canvas3d_add_temp_object(void *obj, void *value) {
 
 /// @brief Get the current canvas width in pixels (updates on window resize).
 int64_t rt_canvas3d_get_width(void *obj) {
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return 0;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     int32_t out_w = 0;
     canvas3d_active_output_size(c, &out_w, NULL);
     return out_w;
@@ -3480,9 +3486,9 @@ int64_t rt_canvas3d_get_width(void *obj) {
 
 /// @brief Get the current canvas height in pixels (updates on window resize).
 int64_t rt_canvas3d_get_height(void *obj) {
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return 0;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     int32_t out_h = 0;
     canvas3d_active_output_size(c, NULL, &out_h);
     return out_h;
@@ -3556,9 +3562,9 @@ void rt_canvas3d_set_ambient(void *obj, double r, double g, double b) {
 /// changing the queued draws.
 void rt_canvas3d_set_fog(
     void *obj, double near_dist, double far_dist, double r, double g, double b) {
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     float sanitized_near = canvas3d_sanitize_nonnegative_f64(near_dist, 0.0f);
     float sanitized_far = canvas3d_sanitize_nonnegative_f64(far_dist, sanitized_near + 1.0f);
     if (sanitized_far <= sanitized_near + 1e-4f)
@@ -3573,9 +3579,10 @@ void rt_canvas3d_set_fog(
 
 /// @brief Disable distance fog on the canvas.
 void rt_canvas3d_clear_fog(void *obj) {
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return;
-    ((rt_canvas3d *)obj)->fog_enabled = 0;
+    c->fog_enabled = 0;
 }
 
 /*==========================================================================
@@ -3589,9 +3596,9 @@ void rt_canvas3d_clear_fog(void *obj) {
 void rt_canvas3d_enable_shadows(void *obj, int64_t resolution) {
     int ok;
 
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     if (resolution < 64)
         resolution = 64;
     if (resolution > 4096)
@@ -3606,25 +3613,27 @@ void rt_canvas3d_enable_shadows(void *obj, int64_t resolution) {
 
 /// @brief Disable shadow mapping and free the shadow depth buffer.
 void rt_canvas3d_disable_shadows(void *obj) {
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     c->shadows_enabled = 0;
     canvas3d_release_shadow_targets(c);
 }
 
 /// @brief Set the shadow map depth bias to reduce shadow acne artifacts.
 void rt_canvas3d_set_shadow_bias(void *obj, double bias) {
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return;
-    ((rt_canvas3d *)obj)->shadow_bias = canvas3d_sanitize_nonnegative_f64(bias, 0.005f);
+    c->shadow_bias = canvas3d_sanitize_nonnegative_f64(bias, 0.005f);
 }
 
 /// @brief Enable or disable coarse CPU frustum culling for draw submission.
 void rt_canvas3d_set_frustum_culling(void *obj, int8_t enabled) {
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return;
-    ((rt_canvas3d *)obj)->occlusion_culling = enabled ? 1 : 0;
+    c->occlusion_culling = enabled ? 1 : 0;
 }
 
 /// @brief Backwards-compatible alias for rt_canvas3d_set_frustum_culling().

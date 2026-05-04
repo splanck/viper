@@ -98,6 +98,12 @@ Graphics3D object handles use stable internal class IDs from `rt_graphics3d_ids.
 store or dereference opaque Graphics3D handles validate those IDs before casting, which prevents a
 Mesh3D/Path3D/Terrain3D-style handle mix-up from being interpreted as another runtime struct. The
 IDs are negative and module-scoped so they do not collide with legacy class-id `0` objects.
+The handle guard policy covers render targets, cubemaps, scene nodes, physics worlds/bodies/joints,
+colliders, particles, and water resources: wrong-class handles no-op or return safe defaults before
+any retained reference or struct dereference happens. Resource setters such as `Particles3D.Texture`
+and `Water3D.Texture`/`NormalMap`/`EnvMap` keep the previous valid binding when given a foreign
+object. Physics triggers also treat tracked bodies as weak world membership: a body removed from the
+world emits one exit transition and is then forgotten.
 
 The advanced helpers follow the same numeric guard policy. `TextureAtlas3D` validates atlas and
 Pixels handles before copying image data, duplicates tile edge padding for bilinear correctness, and

@@ -7,6 +7,7 @@
 
 extern "C" {
 #include "rt_canvas3d_internal.h"
+#include "rt_pixels.h"
 #include "rt_water3d.h"
 }
 
@@ -32,6 +33,9 @@ int g_backface_cull_off = 0;
 int g_backface_cull_on = 0;
 int g_backface_cull_values[8] = {0};
 int g_backface_cull_call_count = 0;
+int g_dummy_texture = 1;
+int g_dummy_normal = 2;
+int g_dummy_env = 3;
 
 struct WaterWaveView {
     double dir[2];
@@ -68,7 +72,11 @@ extern "C" void *rt_obj_new_i64(int64_t, int64_t byte_size) {
     return std::calloc(1, static_cast<size_t>(byte_size));
 }
 
-extern "C" int64_t rt_obj_class_id(void *) {
+extern "C" int64_t rt_obj_class_id(void *obj) {
+    if (obj == &g_dummy_texture || obj == &g_dummy_normal)
+        return RT_PIXELS_CLASS_ID;
+    if (obj == &g_dummy_env)
+        return RT_G3D_CUBEMAP3D_CLASS_ID;
     return RT_G3D_WATER3D_CLASS_ID;
 }
 
@@ -187,24 +195,21 @@ static void test_resolution_clamp_drives_mesh_size() {
 
 static void test_material_wiring_and_reflectivity() {
     void *water = rt_water3d_new(8.0, 8.0);
-    int dummy_texture = 1;
-    int dummy_normal = 2;
-    int dummy_env = 3;
 
-    rt_water3d_set_texture(water, &dummy_texture);
-    rt_water3d_set_normal_map(water, &dummy_normal);
+    rt_water3d_set_texture(water, &g_dummy_texture);
+    rt_water3d_set_normal_map(water, &g_dummy_normal);
     rt_water3d_set_reflectivity(water, 0.75);
     rt_water3d_update(water, 0.1);
 
     auto *material = static_cast<StubMaterial *>(static_cast<WaterView *>(water)->material);
     assert(material != nullptr);
-    assert(material->texture == &dummy_texture);
-    assert(material->normal_map == &dummy_normal);
+    assert(material->texture == &g_dummy_texture);
+    assert(material->normal_map == &g_dummy_normal);
     assert(material->reflectivity == 0.0);
 
-    rt_water3d_set_env_map(water, &dummy_env);
+    rt_water3d_set_env_map(water, &g_dummy_env);
     rt_water3d_update(water, 0.1);
-    assert(material->env_map == &dummy_env);
+    assert(material->env_map == &g_dummy_env);
     assert(material->reflectivity == 0.75);
 
     rt_water3d_set_reflectivity(water, 5.0);

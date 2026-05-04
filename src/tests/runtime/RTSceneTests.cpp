@@ -11,10 +11,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_scene.h"
+#include "rt_object.h"
 #include "rt_string.h"
 #include "tests/common/PosixCompat.h"
 
 #include <cassert>
+#include <climits>
+#include <cstdint>
 #include <cstdio>
 
 // Stub for rt_abort that's used by runtime
@@ -31,6 +34,7 @@ extern "C" void vm_trap(const char *msg) {
 static void test_scene_node_new() {
     void *node = rt_scene_node_new();
     assert(node != nullptr);
+    assert(rt_obj_class_id(node) == RT_SCENE_NODE_CLASS_ID);
 
     // Check default values
     assert(rt_scene_node_get_x(node) == 0);
@@ -42,6 +46,15 @@ static void test_scene_node_new() {
     assert(rt_scene_node_get_depth(node) == 0);
 
     printf("test_scene_node_new: PASSED\n");
+}
+
+static void test_scene_new_has_class_id() {
+    void *scene = rt_scene_new();
+    assert(scene != nullptr);
+    assert(rt_obj_class_id(scene) == RT_SCENE_CLASS_ID);
+    assert(rt_obj_class_id(rt_scene_get_root(scene)) == RT_SCENE_NODE_CLASS_ID);
+
+    printf("test_scene_new_has_class_id: PASSED\n");
 }
 
 // ============================================================================
@@ -166,6 +179,22 @@ static void test_scene_node_rotation_inheritance() {
     printf("test_scene_node_rotation_inheritance: PASSED\n");
 }
 
+static void test_scene_node_transform_overflow_saturates() {
+    void *parent = rt_scene_node_new();
+    void *child = rt_scene_node_new();
+
+    rt_scene_node_set_x(parent, INT64_MAX - 5);
+    rt_scene_node_set_x(child, 100);
+    rt_scene_node_add_child(parent, child);
+    assert(rt_scene_node_get_world_x(child) == INT64_MAX);
+
+    rt_scene_node_set_scale_x(parent, INT64_MAX);
+    rt_scene_node_set_scale_x(child, INT64_MAX);
+    assert(rt_scene_node_get_world_scale_x(child) == INT64_MAX);
+
+    printf("test_scene_node_transform_overflow_saturates: PASSED\n");
+}
+
 // ============================================================================
 // SceneNode Name/Find Tests
 // ============================================================================
@@ -197,6 +226,7 @@ static void test_scene_node_find() {
 
     found = rt_scene_node_find(root, rt_const_cstr("notfound"));
     assert(found == nullptr);
+    assert(rt_scene_node_find(root, nullptr) == nullptr);
 
     printf("test_scene_node_find: PASSED\n");
 }
@@ -214,6 +244,10 @@ static void test_scene_node_move() {
 
     assert(rt_scene_node_get_x(node) == 15);
     assert(rt_scene_node_get_y(node) == 10);
+
+    rt_scene_node_set_x(node, INT64_MAX - 1);
+    rt_scene_node_move(node, 100, 0);
+    assert(rt_scene_node_get_x(node) == INT64_MAX);
 
     printf("test_scene_node_move: PASSED\n");
 }
@@ -362,6 +396,7 @@ int main() {
 
     // SceneNode creation
     test_scene_node_new();
+    test_scene_new_has_class_id();
 
     // SceneNode transforms
     test_scene_node_position();
@@ -373,6 +408,7 @@ int main() {
     test_scene_node_transform_inheritance();
     test_scene_node_scale_inheritance();
     test_scene_node_rotation_inheritance();
+    test_scene_node_transform_overflow_saturates();
 
     // SceneNode name/find
     test_scene_node_name();

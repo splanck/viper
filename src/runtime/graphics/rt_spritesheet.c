@@ -65,6 +65,16 @@ typedef struct {
 
 #define SS_INITIAL_CAP 16
 
+static rt_spritesheet_impl *spritesheet_checked_or_null(void *obj) {
+    if (!obj || rt_obj_class_id(obj) != RT_SPRITESHEET_CLASS_ID)
+        return NULL;
+    return (rt_spritesheet_impl *)obj;
+}
+
+static int8_t spritesheet_is_valid_pixels(void *pixels) {
+    return pixels && rt_obj_class_id(pixels) == RT_PIXELS_CLASS_ID;
+}
+
 /// @brief GC finalizer for a SpriteSheet — frees the name strings, region/name arrays,
 ///        and releases the retained atlas Pixels reference.
 /// @details Name strings are heap-allocated via `strdup` and must be freed one by one.
@@ -72,7 +82,7 @@ typedef struct {
 ///   `free()`. The atlas Pixels is GC-managed so it gets a proper `release_check0`/
 ///   `free` pair rather than a raw `free`.
 static void ss_finalizer(void *obj) {
-    rt_spritesheet_impl *ss = (rt_spritesheet_impl *)obj;
+    rt_spritesheet_impl *ss = spritesheet_checked_or_null(obj);
     if (ss) {
         int64_t i;
         for (i = 0; i < ss->count; i++) {
@@ -174,10 +184,11 @@ static int8_t ensure_cap(rt_spritesheet_impl *ss) {
 /// is NULL or on allocation failure (which also traps).
 void *rt_spritesheet_new(void *atlas_pixels) {
     rt_spritesheet_impl *ss;
-    if (!atlas_pixels)
+    if (!spritesheet_is_valid_pixels(atlas_pixels))
         return NULL;
 
-    ss = (rt_spritesheet_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_spritesheet_impl));
+    ss = (rt_spritesheet_impl *)rt_obj_new_i64(RT_SPRITESHEET_CLASS_ID,
+                                               (int64_t)sizeof(rt_spritesheet_impl));
     if (!ss) {
         rt_trap("SpriteSheet: memory allocation failed");
         return NULL;
@@ -214,7 +225,7 @@ void *rt_spritesheet_new(void *atlas_pixels) {
 void *rt_spritesheet_from_grid(void *atlas_pixels, int64_t frame_w, int64_t frame_h) {
     void *sheet;
     int64_t atlas_w, atlas_h, cols, rows, idx, iy, ix;
-    if (!atlas_pixels || frame_w <= 0 || frame_h <= 0)
+    if (!spritesheet_is_valid_pixels(atlas_pixels) || frame_w <= 0 || frame_h <= 0)
         return NULL;
 
     atlas_w = rt_pixels_width(atlas_pixels);
@@ -255,7 +266,9 @@ void rt_spritesheet_set_region(
     int64_t idx;
     if (!obj || !name)
         return;
-    ss = (rt_spritesheet_impl *)obj;
+    ss = spritesheet_checked_or_null(obj);
+    if (!ss)
+        return;
     cstr = rt_string_cstr(name);
     if (!cstr)
         return;
@@ -300,7 +313,9 @@ void *rt_spritesheet_get_region(void *obj, rt_string name) {
     void *dst;
     if (!obj || !name)
         return NULL;
-    ss = (rt_spritesheet_impl *)obj;
+    ss = spritesheet_checked_or_null(obj);
+    if (!ss)
+        return NULL;
     cstr = rt_string_cstr(name);
     if (!cstr)
         return NULL;
@@ -324,7 +339,9 @@ int8_t rt_spritesheet_has_region(void *obj, rt_string name) {
     const char *cstr;
     if (!obj || !name)
         return 0;
-    ss = (rt_spritesheet_impl *)obj;
+    ss = spritesheet_checked_or_null(obj);
+    if (!ss)
+        return 0;
     cstr = rt_string_cstr(name);
     if (!cstr)
         return 0;
@@ -333,23 +350,26 @@ int8_t rt_spritesheet_has_region(void *obj, rt_string name) {
 
 /// @brief Return the count of elements in the spritesheet.
 int64_t rt_spritesheet_region_count(void *obj) {
-    if (!obj)
+    rt_spritesheet_impl *ss = spritesheet_checked_or_null(obj);
+    if (!ss)
         return 0;
-    return ((rt_spritesheet_impl *)obj)->count;
+    return ss->count;
 }
 
 /// @brief Width the spritesheet.
 int64_t rt_spritesheet_width(void *obj) {
-    if (!obj)
+    rt_spritesheet_impl *ss = spritesheet_checked_or_null(obj);
+    if (!ss)
         return 0;
-    return rt_pixels_width(((rt_spritesheet_impl *)obj)->atlas);
+    return rt_pixels_width(ss->atlas);
 }
 
 /// @brief Height the spritesheet.
 int64_t rt_spritesheet_height(void *obj) {
-    if (!obj)
+    rt_spritesheet_impl *ss = spritesheet_checked_or_null(obj);
+    if (!ss)
         return 0;
-    return rt_pixels_height(((rt_spritesheet_impl *)obj)->atlas);
+    return rt_pixels_height(ss->atlas);
 }
 
 /// @brief Return a Seq of all defined region names (as rt_strings) in insertion order. Empty
@@ -360,7 +380,9 @@ void *rt_spritesheet_region_names(void *obj) {
     int64_t i;
     if (!obj)
         return rt_seq_new();
-    ss = (rt_spritesheet_impl *)obj;
+    ss = spritesheet_checked_or_null(obj);
+    if (!ss)
+        return rt_seq_new();
     seq = rt_seq_new();
     for (i = 0; i < ss->count; i++) {
         rt_string s = rt_const_cstr(ss->names[i]);
@@ -376,7 +398,9 @@ int8_t rt_spritesheet_remove_region(void *obj, rt_string name) {
     int64_t idx, j;
     if (!obj || !name)
         return 0;
-    ss = (rt_spritesheet_impl *)obj;
+    ss = spritesheet_checked_or_null(obj);
+    if (!ss)
+        return 0;
     cstr = rt_string_cstr(name);
     if (!cstr)
         return 0;

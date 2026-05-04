@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-17
+last-verified: 2026-05-04
 ---
 
 # Animation & Movement
@@ -377,6 +377,8 @@ Sprite sheet/atlas for named region extraction from a single texture. Defines na
 |---------------------------------|-----------------------------------|-------------------------------------------------|
 | `New(atlas)`                    | `SpriteSheet(Pixels)`             | Create from atlas Pixels buffer                 |
 | `FromGrid(atlas, frameW, frameH)` | `SpriteSheet(Pixels, Int, Int)` | Create with uniform grid (auto-named "0", "1", ...) |
+
+Both constructors require a real `Pixels` atlas handle. Invalid or wrong-class atlas handles return `NULL` instead of being retained as a corrupt sheet.
 
 ### Properties
 

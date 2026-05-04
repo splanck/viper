@@ -95,6 +95,12 @@ typedef struct {
     uint32_t *data;
 } spritebatch_pixels_view;
 
+static spritebatch_impl *spritebatch_checked_or_null(void *batch_ptr) {
+    if (!batch_ptr || rt_obj_class_id(batch_ptr) != RT_SPRITEBATCH_CLASS_ID)
+        return NULL;
+    return (spritebatch_impl *)batch_ptr;
+}
+
 /// @brief Clamp a scale percentage to a minimum of 1 — prevents division by zero in
 ///        `spritebatch_saturating_scaled_dim` and ensures the sprite remains visible.
 static int64_t spritebatch_normalize_scale(int64_t scale) {
@@ -419,7 +425,9 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
 ///   `items` array itself is freed here because it is a plain heap allocation outside
 ///   the GC pool.
 static void spritebatch_finalize(void *obj) {
-    spritebatch_impl *batch = (spritebatch_impl *)obj;
+    spritebatch_impl *batch = spritebatch_checked_or_null(obj);
+    if (!batch)
+        return;
     spritebatch_clear_items(batch);
     free(batch->items);
     batch->items = NULL;
@@ -430,7 +438,8 @@ static void spritebatch_finalize(void *obj) {
 /// `_begin` / draw calls / `_end` to submit batched draws to a Canvas in one pass.
 void *rt_spritebatch_new(int64_t capacity) {
     spritebatch_impl *batch =
-        (spritebatch_impl *)rt_obj_new_i64(0, (int64_t)sizeof(spritebatch_impl));
+        (spritebatch_impl *)rt_obj_new_i64(RT_SPRITEBATCH_CLASS_ID,
+                                           (int64_t)sizeof(spritebatch_impl));
     if (!batch)
         return NULL;
     memset(batch, 0, sizeof(spritebatch_impl));
@@ -472,7 +481,9 @@ void rt_spritebatch_begin(void *batch_ptr) {
     if (!batch_ptr)
         return;
 
-    spritebatch_impl *batch = (spritebatch_impl *)batch_ptr;
+    spritebatch_impl *batch = spritebatch_checked_or_null(batch_ptr);
+    if (!batch)
+        return;
     spritebatch_clear_items(batch);
     batch->active = 1;
     batch->next_submission_order = 0;
@@ -483,7 +494,9 @@ void rt_spritebatch_end(void *batch_ptr, void *canvas) {
     if (!batch_ptr)
         return;
 
-    spritebatch_impl *batch = (spritebatch_impl *)batch_ptr;
+    spritebatch_impl *batch = spritebatch_checked_or_null(batch_ptr);
+    if (!batch)
+        return;
     if (!batch->active)
         return;
     if (!canvas) {
@@ -561,7 +574,9 @@ void rt_spritebatch_draw_ex(void *batch_ptr,
     if (!batch_ptr || !sprite)
         return;
 
-    spritebatch_impl *batch = (spritebatch_impl *)batch_ptr;
+    spritebatch_impl *batch = spritebatch_checked_or_null(batch_ptr);
+    if (!batch)
+        return;
     if (!batch->active)
         return;
 
@@ -583,7 +598,9 @@ void rt_spritebatch_draw_pixels(void *batch_ptr, void *pixels, int64_t x, int64_
     if (!batch_ptr || !pixels)
         return;
 
-    spritebatch_impl *batch = (spritebatch_impl *)batch_ptr;
+    spritebatch_impl *batch = spritebatch_checked_or_null(batch_ptr);
+    if (!batch)
+        return;
     if (!batch->active)
         return;
 
@@ -631,7 +648,9 @@ void rt_spritebatch_draw_region_ex(void *batch_ptr,
     if (!batch_ptr || !pixels)
         return;
 
-    spritebatch_impl *batch = (spritebatch_impl *)batch_ptr;
+    spritebatch_impl *batch = spritebatch_checked_or_null(batch_ptr);
+    if (!batch)
+        return;
     if (!batch->active)
         return;
 
@@ -658,23 +677,26 @@ void rt_spritebatch_draw_region_ex(void *batch_ptr,
 
 /// @brief Return the count of elements in the spritebatch.
 int64_t rt_spritebatch_count(void *batch_ptr) {
-    if (!batch_ptr)
+    spritebatch_impl *batch = spritebatch_checked_or_null(batch_ptr);
+    if (!batch)
         return 0;
-    return ((spritebatch_impl *)batch_ptr)->count;
+    return batch->count;
 }
 
 /// @brief Capacity the spritebatch.
 int64_t rt_spritebatch_capacity(void *batch_ptr) {
-    if (!batch_ptr)
+    spritebatch_impl *batch = spritebatch_checked_or_null(batch_ptr);
+    if (!batch)
         return 0;
-    return ((spritebatch_impl *)batch_ptr)->capacity;
+    return batch->capacity;
 }
 
 /// @brief Is the active of the spritebatch.
 int8_t rt_spritebatch_is_active(void *batch_ptr) {
-    if (!batch_ptr)
+    spritebatch_impl *batch = spritebatch_checked_or_null(batch_ptr);
+    if (!batch)
         return 0;
-    return ((spritebatch_impl *)batch_ptr)->active;
+    return batch->active;
 }
 
 //=============================================================================
@@ -683,34 +705,37 @@ int8_t rt_spritebatch_is_active(void *batch_ptr) {
 
 /// @brief Set the sort by depth of the spritebatch.
 void rt_spritebatch_set_sort_by_depth(void *batch_ptr, int8_t enabled) {
-    if (!batch_ptr)
+    spritebatch_impl *batch = spritebatch_checked_or_null(batch_ptr);
+    if (!batch)
         return;
-    ((spritebatch_impl *)batch_ptr)->sort_by_depth = enabled ? 1 : 0;
+    batch->sort_by_depth = enabled ? 1 : 0;
 }
 
 /// @brief Set the tint of the spritebatch.
 void rt_spritebatch_set_tint(void *batch_ptr, int64_t color) {
-    if (!batch_ptr)
+    spritebatch_impl *batch = spritebatch_checked_or_null(batch_ptr);
+    if (!batch)
         return;
-    ((spritebatch_impl *)batch_ptr)->tint_color = spritebatch_normalize_tint(color);
+    batch->tint_color = spritebatch_normalize_tint(color);
 }
 
 /// @brief Set the alpha of the spritebatch.
 void rt_spritebatch_set_alpha(void *batch_ptr, int64_t alpha) {
-    if (!batch_ptr)
+    spritebatch_impl *batch = spritebatch_checked_or_null(batch_ptr);
+    if (!batch)
         return;
     if (alpha < 0)
         alpha = 0;
     if (alpha > 255)
         alpha = 255;
-    ((spritebatch_impl *)batch_ptr)->alpha = alpha;
+    batch->alpha = alpha;
 }
 
 /// @brief Reset the settings of the spritebatch.
 void rt_spritebatch_reset_settings(void *batch_ptr) {
-    if (!batch_ptr)
+    spritebatch_impl *batch = spritebatch_checked_or_null(batch_ptr);
+    if (!batch)
         return;
-    spritebatch_impl *batch = (spritebatch_impl *)batch_ptr;
     batch->sort_by_depth = 0;
     batch->tint_color = -1;
     batch->alpha = 255;

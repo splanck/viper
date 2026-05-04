@@ -23,6 +23,7 @@
 #include "rt_water3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_pixels.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -175,15 +176,16 @@ void *rt_water3d_new(double width, double depth) {
 
 /// @brief Set the base Y-coordinate (world height) of the water plane.
 void rt_water3d_set_height(void *obj, double y) {
-    if (obj && isfinite(y))
-        ((rt_water3d *)obj)->height = y;
+    rt_water3d *w = water3d_checked(obj);
+    if (w && isfinite(y))
+        w->height = y;
 }
 
 /// @brief Configure the sinusoidal wave animation parameters.
 void rt_water3d_set_wave_params(void *obj, double speed, double amplitude, double frequency) {
-    if (!obj)
+    rt_water3d *w = water3d_checked(obj);
+    if (!w)
         return;
-    rt_water3d *w = (rt_water3d *)obj;
     w->wave_speed = isfinite(speed) ? speed : 0.0;
     w->wave_amplitude = (isfinite(amplitude) && amplitude >= 0.0) ? amplitude : 0.0;
     w->wave_frequency = isfinite(frequency) ? frequency : 0.0;
@@ -191,9 +193,9 @@ void rt_water3d_set_wave_params(void *obj, double speed, double amplitude, doubl
 
 /// @brief Set the base tint color and transparency of the water surface.
 void rt_water3d_set_color(void *obj, double r, double g, double b, double a) {
-    if (!obj)
+    rt_water3d *w = water3d_checked(obj);
+    if (!w)
         return;
-    rt_water3d *w = (rt_water3d *)obj;
     w->color[0] = water3d_clamp01(r);
     w->color[1] = water3d_clamp01(g);
     w->color[2] = water3d_clamp01(b);
@@ -202,9 +204,11 @@ void rt_water3d_set_color(void *obj, double r, double g, double b, double a) {
 
 /// @brief Set surface texture for water.
 void rt_water3d_set_texture(void *obj, void *pixels) {
-    if (!obj)
+    rt_water3d *w = water3d_checked(obj);
+    if (!w)
         return;
-    rt_water3d *w = (rt_water3d *)obj;
+    if (pixels && rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
+        return;
     water3d_assign_ref(&w->texture, pixels);
     if (w->material)
         rt_material3d_set_texture(w->material, pixels);
@@ -212,9 +216,11 @@ void rt_water3d_set_texture(void *obj, void *pixels) {
 
 /// @brief Set normal map for wave detail.
 void rt_water3d_set_normal_map(void *obj, void *pixels) {
-    if (!obj)
+    rt_water3d *w = water3d_checked(obj);
+    if (!w)
         return;
-    rt_water3d *w = (rt_water3d *)obj;
+    if (pixels && rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID)
+        return;
     water3d_assign_ref(&w->normal_map, pixels);
     if (w->material)
         rt_material3d_set_normal_map(w->material, pixels);
@@ -222,9 +228,11 @@ void rt_water3d_set_normal_map(void *obj, void *pixels) {
 
 /// @brief Set environment cubemap for reflections.
 void rt_water3d_set_env_map(void *obj, void *cubemap) {
-    if (!obj)
+    rt_water3d *w = water3d_checked(obj);
+    if (!w)
         return;
-    rt_water3d *w = (rt_water3d *)obj;
+    if (cubemap && !rt_g3d_has_class(cubemap, RT_G3D_CUBEMAP3D_CLASS_ID))
+        return;
     water3d_assign_ref(&w->env_map, cubemap);
     if (w->material)
         rt_material3d_set_env_map(w->material, cubemap);
@@ -232,9 +240,9 @@ void rt_water3d_set_env_map(void *obj, void *cubemap) {
 
 /// @brief Set reflectivity [0.0-1.0] for environment mapping.
 void rt_water3d_set_reflectivity(void *obj, double r) {
-    if (!obj)
+    rt_water3d *w = water3d_checked(obj);
+    if (!w)
         return;
-    rt_water3d *w = (rt_water3d *)obj;
     w->reflectivity = water3d_clamp01(r);
     if (w->material)
         rt_material3d_set_reflectivity(w->material, w->env_map ? w->reflectivity : 0.0);
@@ -242,9 +250,9 @@ void rt_water3d_set_reflectivity(void *obj, double r) {
 
 /// @brief Set grid resolution (clamped to [8, 256]).
 void rt_water3d_set_resolution(void *obj, int64_t res) {
-    if (!obj)
+    rt_water3d *w = water3d_checked(obj);
+    if (!w)
         return;
-    rt_water3d *w = (rt_water3d *)obj;
     if (res < 8)
         res = 8;
     if (res > 256)
@@ -255,9 +263,9 @@ void rt_water3d_set_resolution(void *obj, int64_t res) {
 /// @brief Add a Gerstner wave to the water.
 void rt_water3d_add_wave(
     void *obj, double dirX, double dirZ, double speed, double amplitude, double wavelength) {
-    if (!obj)
+    rt_water3d *w = water3d_checked(obj);
+    if (!w)
         return;
-    rt_water3d *w = (rt_water3d *)obj;
     if (w->wave_count >= WATER_MAX_WAVES)
         return;
     if (!isfinite(dirX) || !isfinite(dirZ) || !isfinite(speed) || !isfinite(amplitude) ||
@@ -278,8 +286,9 @@ void rt_water3d_add_wave(
 
 /// @brief Remove all Gerstner waves.
 void rt_water3d_clear_waves(void *obj) {
-    if (obj)
-        ((rt_water3d *)obj)->wave_count = 0;
+    rt_water3d *w = water3d_checked(obj);
+    if (w)
+        w->wave_count = 0;
 }
 
 /// @brief Advance the water simulation by `dt` seconds and regenerate the surface mesh.

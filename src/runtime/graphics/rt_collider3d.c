@@ -541,6 +541,10 @@ void *rt_collider3d_new_heightfield(
         rt_trap("Collider3D.NewHeightfield: heightmap must be non-null");
         return NULL;
     }
+    if (rt_obj_class_id(heightmap) != RT_PIXELS_CLASS_ID) {
+        rt_trap("Collider3D.NewHeightfield: heightmap must be a valid Pixels object");
+        return NULL;
+    }
     width = rt_pixels_width(heightmap);
     height = rt_pixels_height(heightmap);
     raw = rt_pixels_raw_buffer(heightmap);
@@ -674,13 +678,14 @@ void rt_collider3d_add_child(void *compound_obj, void *child_obj, void *local_tr
 
 /// @brief Return the collider's discriminator (RT_COLLIDER3D_TYPE_BOX, _SPHERE, ...). -1 if NULL.
 int64_t rt_collider3d_get_type(void *collider) {
-    return collider ? ((rt_collider3d *)collider)->type : -1;
+    rt_collider3d *shape = collider3d_checked(collider);
+    return shape ? shape->type : -1;
 }
 
 /// @brief Return the AABB minimum corner in *local* space as a fresh Vec3. Returns origin
 /// for a NULL handle. Re-derives the bounds from the underlying shape data first.
 void *rt_collider3d_get_local_bounds_min(void *collider) {
-    rt_collider3d *shape = (rt_collider3d *)collider;
+    rt_collider3d *shape = collider3d_checked(collider);
     if (!shape)
         return rt_vec3_new(0.0, 0.0, 0.0);
     collider3d_recompute_bounds(shape);
@@ -689,7 +694,7 @@ void *rt_collider3d_get_local_bounds_min(void *collider) {
 
 /// @brief Return the AABB maximum corner in *local* space as a fresh Vec3.
 void *rt_collider3d_get_local_bounds_max(void *collider) {
-    rt_collider3d *shape = (rt_collider3d *)collider;
+    rt_collider3d *shape = collider3d_checked(collider);
     if (!shape)
         return rt_vec3_new(0.0, 0.0, 0.0);
     collider3d_recompute_bounds(shape);
@@ -699,7 +704,7 @@ void *rt_collider3d_get_local_bounds_max(void *collider) {
 /// @brief Internal: write the local AABB into the two raw double[3] arrays. Faster than the
 /// Vec3-returning getters when the physics core needs the bounds many times per frame.
 void rt_collider3d_get_local_bounds_raw(void *collider, double *min_out, double *max_out) {
-    rt_collider3d *shape = (rt_collider3d *)collider;
+    rt_collider3d *shape = collider3d_checked(collider);
     if (!min_out || !max_out) {
         return;
     }
@@ -753,12 +758,13 @@ void rt_collider3d_compute_world_aabb_raw(void *collider,
 
 /// @brief Internal: 1 if the collider can only be used on static bodies (mesh, heightfield).
 int8_t rt_collider3d_is_static_only_raw(void *collider) {
-    return collider ? ((rt_collider3d *)collider)->static_only : 0;
+    rt_collider3d *shape = collider3d_checked(collider);
+    return shape ? shape->static_only : 0;
 }
 
 /// @brief Internal: fill `half_extents_out[3]` with the box's half-extents. Zeros for non-box.
 void rt_collider3d_get_box_half_extents_raw(void *collider, double *half_extents_out) {
-    rt_collider3d *shape = (rt_collider3d *)collider;
+    rt_collider3d *shape = collider3d_checked(collider);
     if (!half_extents_out) {
         return;
     }
@@ -771,7 +777,7 @@ void rt_collider3d_get_box_half_extents_raw(void *collider, double *half_extents
 
 /// @brief Internal: sphere/capsule radius. Returns 0 for unsupported shapes.
 double rt_collider3d_get_radius_raw(void *collider) {
-    rt_collider3d *shape = (rt_collider3d *)collider;
+    rt_collider3d *shape = collider3d_checked(collider);
     if (!shape)
         return 0.0;
     return shape->radius;
@@ -779,7 +785,7 @@ double rt_collider3d_get_radius_raw(void *collider) {
 
 /// @brief Internal: capsule cylindrical height (excludes hemispherical caps). 0 for non-capsule.
 double rt_collider3d_get_height_raw(void *collider) {
-    rt_collider3d *shape = (rt_collider3d *)collider;
+    rt_collider3d *shape = collider3d_checked(collider);
     if (!shape)
         return 0.0;
     return shape->height;
@@ -788,7 +794,7 @@ double rt_collider3d_get_height_raw(void *collider) {
 /// @brief Internal: borrow the underlying Mesh3D for convex-hull / triangle-mesh colliders.
 /// Returns NULL for primitive shapes. Caller must NOT release — collider retains ownership.
 void *rt_collider3d_get_mesh_raw(void *collider) {
-    rt_collider3d *shape = (rt_collider3d *)collider;
+    rt_collider3d *shape = collider3d_checked(collider);
     if (!shape)
         return NULL;
     if (shape->type != RT_COLLIDER3D_TYPE_CONVEX_HULL && shape->type != RT_COLLIDER3D_TYPE_MESH)
@@ -798,7 +804,7 @@ void *rt_collider3d_get_mesh_raw(void *collider) {
 
 /// @brief Internal: number of child colliders in a compound. 0 for non-compound shapes.
 int64_t rt_collider3d_get_child_count_raw(void *collider) {
-    rt_collider3d *shape = (rt_collider3d *)collider;
+    rt_collider3d *shape = collider3d_checked(collider);
     if (!shape || shape->type != RT_COLLIDER3D_TYPE_COMPOUND)
         return 0;
     return shape->child_count;
@@ -806,7 +812,7 @@ int64_t rt_collider3d_get_child_count_raw(void *collider) {
 
 /// @brief Internal: borrow the i-th child collider from a compound. NULL if out of range.
 void *rt_collider3d_get_child_raw(void *collider, int64_t index) {
-    rt_collider3d *shape = (rt_collider3d *)collider;
+    rt_collider3d *shape = collider3d_checked(collider);
     if (!shape || shape->type != RT_COLLIDER3D_TYPE_COMPOUND)
         return NULL;
     if (index < 0 || index >= shape->child_count)
@@ -821,7 +827,7 @@ void rt_collider3d_get_child_transform_raw(void *compound,
                                            double *position_out,
                                            double *rotation_out,
                                            double *scale_out) {
-    rt_collider3d *shape = (rt_collider3d *)compound;
+    rt_collider3d *shape = collider3d_checked(compound);
     if (position_out)
         vec3_set(position_out, 0.0, 0.0, 0.0);
     if (rotation_out)
@@ -872,7 +878,7 @@ int8_t rt_collider3d_sample_heightfield_raw(void *collider,
                                             double local_z,
                                             double *height_out,
                                             double *normal_out) {
-    rt_collider3d *shape = (rt_collider3d *)collider;
+    rt_collider3d *shape = collider3d_checked(collider);
     double half_width;
     double half_depth;
     double grid_x;

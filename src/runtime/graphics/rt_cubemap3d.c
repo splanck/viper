@@ -23,6 +23,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_platform.h"
+#include "rt_pixels.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -39,6 +40,10 @@ extern void rt_material3d_assign_env_map_checked(void *obj, void *cubemap);
 extern int64_t rt_pixels_width(void *pixels);
 extern int64_t rt_pixels_height(void *pixels);
 extern int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y);
+
+static int cubemap_pixels_valid(void *pixels) {
+    return pixels && rt_obj_class_id(pixels) == RT_PIXELS_CLASS_ID;
+}
 
 static volatile int64_t g_next_cubemap_cache_identity = 1;
 
@@ -260,10 +265,10 @@ static uint32_t cubemap_sample_nearest_rgba(const rt_cubemap3d *cm, float dx, fl
 void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *nz) {
     void *faces[6] = {px, nx, py, ny, pz, nz};
 
-    /* Validate: all faces must be non-null */
+    /* Validate: all faces must be Pixels handles */
     for (int i = 0; i < 6; i++) {
-        if (!faces[i]) {
-            rt_trap("CubeMap3D.New: all 6 faces must be non-null");
+        if (!cubemap_pixels_valid(faces[i])) {
+            rt_trap("CubeMap3D.New: all 6 faces must be valid Pixels objects");
             return NULL;
         }
     }
@@ -329,8 +334,9 @@ void rt_cubemap_sample(const rt_cubemap3d *cm,
         return;
     }
 
-    /* Guard against zero-length direction (undefined ray) */
-    if (fabsf(dx) < 1e-10f && fabsf(dy) < 1e-10f && fabsf(dz) < 1e-10f) {
+    /* Guard against invalid or zero-length directions (undefined ray). */
+    if (!isfinite(dx) || !isfinite(dy) || !isfinite(dz) ||
+        (fabsf(dx) < 1e-10f && fabsf(dy) < 1e-10f && fabsf(dz) < 1e-10f)) {
         *out_r = *out_g = *out_b = 0.0f;
         return;
     }
@@ -452,6 +458,15 @@ void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
         return;
     }
     if (!cm) {
+        *out_r = *out_g = *out_b = 0.0f;
+        return;
+    }
+
+    if (!isfinite(roughness) || roughness < 0.0f)
+        roughness = 0.0f;
+    if (roughness > 1.0f)
+        roughness = 1.0f;
+    if (!isfinite(dx) || !isfinite(dy) || !isfinite(dz)) {
         *out_r = *out_g = *out_b = 0.0f;
         return;
     }

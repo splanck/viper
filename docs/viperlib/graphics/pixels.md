@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-21
+last-verified: 2026-05-04
 ---
 
 # Images & Sprites
@@ -69,6 +69,8 @@ Creates a new pixel buffer initialized to transparent black (0x00000000). Negati
 | `LoadJpeg(path)`                  | `Pixels(String)`                  | Load from a JPEG file. Returns null on failure         |
 | `LoadGif(path)`                   | `Pixels(String)`                  | Load first frame from a GIF file. Returns null on failure |
 | `Load(path)`                      | `Pixels(String)`                  | Auto-detect format (PNG/JPEG/BMP/GIF) and load. Returns null on failure |
+
+`LoadPng` rejects malformed chunk order, invalid IHDR compression/filter/interlace methods, indexed images without a palette, palette transparency entries that exceed the palette size, and PNG files without IEND. Sub-byte grayscale transparency compares the raw sample value from `tRNS`. `LoadBmp` uses checked file offsets when seeking to pixel data.
 
 ### Drawing Primitives
 
@@ -628,9 +630,9 @@ Efficient tile-based 2D map rendering for platformers, RPGs, and strategy games.
 | `ToTileX(pixelX)`                              | `Integer(Integer)`                           | Convert pixel X to tile X                             |
 | `ToTileY(pixelY)`                              | `Integer(Integer)`                           | Convert pixel Y to tile Y                             |
 
-Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. Layer names are limited to the fixed runtime name slot (31 bytes); overlong names are rejected without adding a layer. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress. JSON loading ignores layers beyond the runtime layer cap, normalizes negative saved animation frames, and clamps CSV tile values that exceed the int64 range.
+Advanced runtime support also includes multi-layer tilemaps, per-layer tilesets, JSON save/load, auto-tiling rules, per-tile properties, and tile animation state. Layer names are limited to the fixed runtime name slot (31 bytes); overlong names are rejected without adding a layer. `SaveToFile` / `LoadFromFile` preserve layer visibility, collision-layer selection, collision types, tile properties, auto-tile rules, and animation progress. JSON loading ignores layers beyond the runtime layer cap, normalizes negative saved animation frames, clamps CSV tile values that exceed the int64 range, and applies duplicate animation records to the matching base tile instead of the last parsed animation.
 
-Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type. Registering an animation for an existing base tile replaces the old animation. Invalid collision types are ignored. Negative animation deltas are ignored; very large deltas advance in one modulo step instead of looping once per elapsed frame. Default sequential animation frame IDs saturate at the int64 limit instead of wrapping. `FillRect`, tile drawing, and tile-to-pixel conversion clip or saturate extreme coordinates rather than wrapping.
+Animated tiles keep collision from the base tile ID stored in the map. Changing the visual animation frame does not change solidity or one-way behavior unless you also change the base tile's collision type. Registering an animation for an existing base tile replaces the old animation. Autotile variants omitted from a partial rule resolve to the rule's base tile. Invalid collision types are ignored. Negative animation deltas are ignored; very large deltas advance in one modulo step instead of looping once per elapsed frame. Default sequential animation frame IDs saturate at the int64 limit instead of wrapping. `FillRect`, tile drawing, file offsets, and tile-to-pixel conversion clip or saturate extreme coordinates rather than wrapping.
 
 ### Zia Example
 

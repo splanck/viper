@@ -75,6 +75,24 @@ typedef struct rt_sprite_impl {
     void *frames[MAX_SPRITE_FRAMES]; ///< Frame pixel buffers
 } rt_sprite_impl;
 
+static rt_sprite_impl *sprite_checked(void *sprite_ptr, const char *op) {
+    if (!sprite_ptr) {
+        rt_trap(op ? op : "Sprite: null sprite");
+        return NULL;
+    }
+    if (rt_obj_class_id(sprite_ptr) != RT_SPRITE_CLASS_ID) {
+        rt_trap(op ? op : "Sprite: invalid sprite");
+        return NULL;
+    }
+    return (rt_sprite_impl *)sprite_ptr;
+}
+
+static rt_sprite_impl *sprite_checked_or_null(void *sprite_ptr) {
+    if (!sprite_ptr || rt_obj_class_id(sprite_ptr) != RT_SPRITE_CLASS_ID)
+        return NULL;
+    return (rt_sprite_impl *)sprite_ptr;
+}
+
 /// @brief Return the active frame's Pixels object, or NULL if none / out-of-range.
 static void *sprite_get_current_frame_ptr(rt_sprite_impl *sprite) {
     if (!sprite || sprite->frame_count <= 0 || sprite->current_frame < 0 ||
@@ -425,7 +443,9 @@ static void *sprite_prepare_pixels(rt_sprite_impl *sprite,
 
 /// @brief GC finalizer — release every owned frame buffer.
 static void sprite_finalize(void *obj) {
-    rt_sprite_impl *sprite = (rt_sprite_impl *)obj;
+    rt_sprite_impl *sprite = sprite_checked_or_null(obj);
+    if (!sprite)
+        return;
     for (int i = 0; i < MAX_SPRITE_FRAMES; i++) {
         if (sprite->frames[i])
             rt_heap_release(sprite->frames[i]);
@@ -434,7 +454,8 @@ static void sprite_finalize(void *obj) {
 
 /// @brief Allocate a new sprite.
 static rt_sprite_impl *sprite_alloc(void) {
-    rt_sprite_impl *sprite = (rt_sprite_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sprite_impl));
+    rt_sprite_impl *sprite =
+        (rt_sprite_impl *)rt_obj_new_i64(RT_SPRITE_CLASS_ID, (int64_t)sizeof(rt_sprite_impl));
     if (!sprite)
         return NULL;
 
@@ -533,6 +554,10 @@ void *rt_sprite_from_file(void *path) {
         int gif_count = 0, gif_w = 0, gif_h = 0;
         if (gif_decode_file(filepath, &gif_frames, &gif_count, &gif_w, &gif_h) <= 0)
             return NULL;
+        if (!gif_frames || gif_count <= 0) {
+            sprite_release_gif_frames(gif_frames, gif_count);
+            return NULL;
+        }
 
         rt_sprite_impl *sprite = sprite_alloc();
         if (!sprite) {
@@ -540,6 +565,20 @@ void *rt_sprite_from_file(void *path) {
             return NULL;
         }
         int n = gif_count < MAX_SPRITE_FRAMES ? gif_count : MAX_SPRITE_FRAMES;
+        if (n <= 0) {
+            sprite_release_gif_frames(gif_frames, gif_count);
+            if (rt_obj_release_check0(sprite))
+                rt_obj_free(sprite);
+            return NULL;
+        }
+        for (int i = 0; i < n; i++) {
+            if (!gif_frames[i].pixels) {
+                sprite_release_gif_frames(gif_frames, gif_count);
+                if (rt_obj_release_check0(sprite))
+                    rt_obj_free(sprite);
+                return NULL;
+            }
+        }
         for (int i = 0; i < n; i++) {
             sprite->frames[i] = gif_frames[i].pixels;
             gif_frames[i].pixels = NULL; // Transfer ownership from the decoder result array.
@@ -598,47 +637,41 @@ void *rt_sprite_from_file(void *path) {
 
 /// @brief Get the sprite's x-coordinate. 0 for null.
 int64_t rt_sprite_get_x(void *sprite_ptr) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.X: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.X: invalid sprite");
+    if (!sprite)
         return 0;
-    }
-    return ((rt_sprite_impl *)sprite_ptr)->x;
+    return sprite->x;
 }
 
 /// @brief Set the sprite's x-coordinate. Traps on null.
 void rt_sprite_set_x(void *sprite_ptr, int64_t x) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.X: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.X: invalid sprite");
+    if (!sprite)
         return;
-    }
-    ((rt_sprite_impl *)sprite_ptr)->x = x;
+    sprite->x = x;
 }
 
 /// @brief Get the sprite's y-coordinate. 0 for null.
 int64_t rt_sprite_get_y(void *sprite_ptr) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.Y: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.Y: invalid sprite");
+    if (!sprite)
         return 0;
-    }
-    return ((rt_sprite_impl *)sprite_ptr)->y;
+    return sprite->y;
 }
 
 /// @brief Set the sprite's y-coordinate. Traps on null.
 void rt_sprite_set_y(void *sprite_ptr, int64_t y) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.Y: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.Y: invalid sprite");
+    if (!sprite)
         return;
-    }
-    ((rt_sprite_impl *)sprite_ptr)->y = y;
+    sprite->y = y;
 }
 
 /// @brief Width in pixels of the current frame (0 if no frames). Traps on null.
 int64_t rt_sprite_get_width(void *sprite_ptr) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.Width: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.Width: invalid sprite");
+    if (!sprite)
         return 0;
-    }
-    rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
     void *frame = sprite_get_current_frame_ptr(sprite);
     if (!frame)
         return 0;
@@ -647,11 +680,9 @@ int64_t rt_sprite_get_width(void *sprite_ptr) {
 
 /// @brief Height in pixels of the current frame (0 if no frames). Traps on null.
 int64_t rt_sprite_get_height(void *sprite_ptr) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.Height: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.Height: invalid sprite");
+    if (!sprite)
         return 0;
-    }
-    rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
     void *frame = sprite_get_current_frame_ptr(sprite);
     if (!frame)
         return 0;
@@ -660,111 +691,98 @@ int64_t rt_sprite_get_height(void *sprite_ptr) {
 
 /// @brief Horizontal scale percent (100 = unscaled). Default 100 when null (with trap).
 int64_t rt_sprite_get_scale_x(void *sprite_ptr) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.ScaleX: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.ScaleX: invalid sprite");
+    if (!sprite)
         return 100;
-    }
-    return ((rt_sprite_impl *)sprite_ptr)->scale_x;
+    return sprite->scale_x;
 }
 
 /// @brief Set horizontal scale percent (100 = unscaled, 200 = 2x wider).
 void rt_sprite_set_scale_x(void *sprite_ptr, int64_t scale) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.ScaleX: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.ScaleX: invalid sprite");
+    if (!sprite)
         return;
-    }
-    ((rt_sprite_impl *)sprite_ptr)->scale_x = sprite_normalize_scale(scale);
+    sprite->scale_x = sprite_normalize_scale(scale);
 }
 
 /// @brief Vertical scale percent (100 = unscaled). Default 100 when null (with trap).
 int64_t rt_sprite_get_scale_y(void *sprite_ptr) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.ScaleY: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.ScaleY: invalid sprite");
+    if (!sprite)
         return 100;
-    }
-    return ((rt_sprite_impl *)sprite_ptr)->scale_y;
+    return sprite->scale_y;
 }
 
 /// @brief Set vertical scale percent.
 void rt_sprite_set_scale_y(void *sprite_ptr, int64_t scale) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.ScaleY: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.ScaleY: invalid sprite");
+    if (!sprite)
         return;
-    }
-    ((rt_sprite_impl *)sprite_ptr)->scale_y = sprite_normalize_scale(scale);
+    sprite->scale_y = sprite_normalize_scale(scale);
 }
 
 /// @brief Rotation in degrees clockwise (0..360 typical, but unconstrained). Traps on null.
 int64_t rt_sprite_get_rotation(void *sprite_ptr) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.Rotation: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.Rotation: invalid sprite");
+    if (!sprite)
         return 0;
-    }
-    return ((rt_sprite_impl *)sprite_ptr)->rotation;
+    return sprite->rotation;
 }
 
 /// @brief Set rotation in degrees clockwise.
 void rt_sprite_set_rotation(void *sprite_ptr, int64_t degrees) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.Rotation: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.Rotation: invalid sprite");
+    if (!sprite)
         return;
-    }
-    ((rt_sprite_impl *)sprite_ptr)->rotation = degrees;
+    sprite->rotation = degrees;
 }
 
 /// @brief Z-order depth used for back-to-front rendering (lower = behind). Traps on null.
 int64_t rt_sprite_get_depth(void *sprite_ptr) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.Depth: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.Depth: invalid sprite");
+    if (!sprite)
         return 0;
-    }
-    return ((rt_sprite_impl *)sprite_ptr)->depth;
+    return sprite->depth;
 }
 
 /// @brief Set the Z-order depth for back-to-front rendering.
 void rt_sprite_set_depth(void *sprite_ptr, int64_t depth) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.Depth: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.Depth: invalid sprite");
+    if (!sprite)
         return;
-    }
-    ((rt_sprite_impl *)sprite_ptr)->depth = depth;
+    sprite->depth = depth;
 }
 
 /// @brief Visibility flag (1 = drawn, 0 = skipped). Traps on null.
 int64_t rt_sprite_get_visible(void *sprite_ptr) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.Visible: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.Visible: invalid sprite");
+    if (!sprite)
         return 0;
-    }
-    return ((rt_sprite_impl *)sprite_ptr)->visible;
+    return sprite->visible;
 }
 
 /// @brief Toggle visibility (any non-zero = visible).
 void rt_sprite_set_visible(void *sprite_ptr, int64_t visible) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.Visible: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.Visible: invalid sprite");
+    if (!sprite)
         return;
-    }
-    ((rt_sprite_impl *)sprite_ptr)->visible = visible ? 1 : 0;
+    sprite->visible = visible ? 1 : 0;
 }
 
 /// @brief Index of the currently displayed animation frame.
 int64_t rt_sprite_get_frame(void *sprite_ptr) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.Frame: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.Frame: invalid sprite");
+    if (!sprite)
         return 0;
-    }
-    return ((rt_sprite_impl *)sprite_ptr)->current_frame;
+    return sprite->current_frame;
 }
 
 /// @brief Jump to the given frame index. Out-of-range indices are silently ignored;
 /// the auto-advance timer is reset so animation continues cleanly from this frame.
 void rt_sprite_set_frame(void *sprite_ptr, int64_t frame) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.Frame: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.Frame: invalid sprite");
+    if (!sprite)
         return;
-    }
-    rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
     if (frame >= 0 && frame < sprite->frame_count) {
         sprite->current_frame = frame;
         sprite->last_frame_time = 0; // Reset timer so animation resumes cleanly
@@ -773,47 +791,42 @@ void rt_sprite_set_frame(void *sprite_ptr, int64_t frame) {
 
 /// @brief Total number of frames added via `_add_frame` (0 if uninitialized).
 int64_t rt_sprite_get_frame_count(void *sprite_ptr) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.FrameCount: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.FrameCount: invalid sprite");
+    if (!sprite)
         return 0;
-    }
-    return ((rt_sprite_impl *)sprite_ptr)->frame_count;
+    return sprite->frame_count;
 }
 
 /// @brief Horizontal flip flag (1 = mirrored, 0 = normal).
 int64_t rt_sprite_get_flip_x(void *sprite_ptr) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.FlipX: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.FlipX: invalid sprite");
+    if (!sprite)
         return 0;
-    }
-    return ((rt_sprite_impl *)sprite_ptr)->flip_x;
+    return sprite->flip_x;
 }
 
 /// @brief Toggle horizontal mirror.
 void rt_sprite_set_flip_x(void *sprite_ptr, int64_t flip) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.FlipX: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.FlipX: invalid sprite");
+    if (!sprite)
         return;
-    }
-    ((rt_sprite_impl *)sprite_ptr)->flip_x = flip ? 1 : 0;
+    sprite->flip_x = flip ? 1 : 0;
 }
 
 /// @brief Vertical flip flag (1 = upside-down, 0 = normal).
 int64_t rt_sprite_get_flip_y(void *sprite_ptr) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.FlipY: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.FlipY: invalid sprite");
+    if (!sprite)
         return 0;
-    }
-    return ((rt_sprite_impl *)sprite_ptr)->flip_y;
+    return sprite->flip_y;
 }
 
 /// @brief Toggle vertical flip.
 void rt_sprite_set_flip_y(void *sprite_ptr, int64_t flip) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.FlipY: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.FlipY: invalid sprite");
+    if (!sprite)
         return;
-    }
-    ((rt_sprite_impl *)sprite_ptr)->flip_y = flip ? 1 : 0;
+    sprite->flip_y = flip ? 1 : 0;
 }
 
 //=============================================================================
@@ -839,7 +852,9 @@ void rt_sprite_draw_transformed(void *sprite_ptr,
     if (!sprite_ptr || !canvas_ptr)
         return;
 
-    rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
+    rt_sprite_impl *sprite = sprite_checked_or_null(sprite_ptr);
+    if (!sprite)
+        return;
 
     // Don't draw if not visible
     if (!sprite->visible)
@@ -890,7 +905,9 @@ void rt_sprite_draw_transformed(void *sprite_ptr,
 void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr) {
     if (!sprite_ptr)
         return;
-    rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
+    rt_sprite_impl *sprite = sprite_checked_or_null(sprite_ptr);
+    if (!sprite)
+        return;
     rt_sprite_draw_transformed(sprite_ptr,
                                canvas_ptr,
                                sprite->x,
@@ -907,11 +924,9 @@ void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr) {
 /// Coordinates are in sprite-local pixels at 100% scale and get
 /// scaled by the active scale factor at draw time.
 void rt_sprite_set_origin(void *sprite_ptr, int64_t x, int64_t y) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.SetOrigin: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.SetOrigin: invalid sprite");
+    if (!sprite)
         return;
-    }
-    rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
     sprite->origin_x = x;
     sprite->origin_y = y;
 }
@@ -927,7 +942,9 @@ void rt_sprite_add_frame(void *sprite_ptr, void *pixels) {
         return;
     }
 
-    rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.AddFrame: invalid sprite");
+    if (!sprite)
+        return;
     if (sprite->frame_count >= MAX_SPRITE_FRAMES)
         return;
 
@@ -940,13 +957,12 @@ void rt_sprite_add_frame(void *sprite_ptr, void *pixels) {
 
 /// @brief Set the per-frame display duration in milliseconds (used by `rt_sprite_update`).
 void rt_sprite_set_frame_delay(void *sprite_ptr, int64_t ms) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.SetFrameDelay: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.SetFrameDelay: invalid sprite");
+    if (!sprite)
         return;
-    }
     if (ms < 1)
         ms = 1;
-    ((rt_sprite_impl *)sprite_ptr)->frame_delay_ms = ms;
+    sprite->frame_delay_ms = ms;
 }
 
 /// @brief Tick the sprite's animation: advance to the next frame if the delay elapsed.
@@ -958,7 +974,9 @@ void rt_sprite_update(void *sprite_ptr) {
     if (!sprite_ptr)
         return;
 
-    rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
+    rt_sprite_impl *sprite = sprite_checked_or_null(sprite_ptr);
+    if (!sprite)
+        return;
     if (sprite->frame_count <= 1)
         return;
 
@@ -994,8 +1012,10 @@ int8_t rt_sprite_overlaps(void *sprite_ptr, void *other_ptr) {
     if (!sprite_ptr || !other_ptr)
         return false;
 
-    rt_sprite_impl *s1 = (rt_sprite_impl *)sprite_ptr;
-    rt_sprite_impl *s2 = (rt_sprite_impl *)other_ptr;
+    rt_sprite_impl *s1 = sprite_checked_or_null(sprite_ptr);
+    rt_sprite_impl *s2 = sprite_checked_or_null(other_ptr);
+    if (!s1 || !s2)
+        return false;
 
     if (!s1->visible || !s2->visible)
         return false;
@@ -1027,7 +1047,9 @@ int8_t rt_sprite_contains(void *sprite_ptr, int64_t px, int64_t py) {
     if (!sprite_ptr)
         return false;
 
-    rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
+    rt_sprite_impl *sprite = sprite_checked_or_null(sprite_ptr);
+    if (!sprite)
+        return false;
     if (!sprite->visible)
         return false;
 
@@ -1047,11 +1069,9 @@ int8_t rt_sprite_contains(void *sprite_ptr, int64_t px, int64_t py) {
 
 /// @brief Translate the sprite by `(dx, dy)` pixels.
 void rt_sprite_move(void *sprite_ptr, int64_t dx, int64_t dy) {
-    if (!sprite_ptr) {
-        rt_trap("Sprite.Move: null sprite");
+    rt_sprite_impl *sprite = sprite_checked(sprite_ptr, "Sprite.Move: invalid sprite");
+    if (!sprite)
         return;
-    }
-    rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
     sprite->x = sprite_add_saturating(sprite->x, dx);
     sprite->y = sprite_add_saturating(sprite->y, dy);
 }
@@ -1258,7 +1278,8 @@ int8_t rt_sprite_animator_is_playing(rt_sprite_animator_t *animator) {
 /// @brief Name of the active clip, or NULL when nothing is playing.
 const char *rt_sprite_animator_get_current(rt_sprite_animator_t *animator) {
     animator = sprite_animator_checked(animator);
-    if (!animator || !animator->playing || animator->current_clip < 0)
+    if (!animator || !animator->playing || animator->current_clip < 0 ||
+        animator->current_clip >= animator->clip_count)
         return NULL;
     return animator->clips[animator->current_clip].name;
 }

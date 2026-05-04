@@ -221,7 +221,7 @@ void *rt_pixels_load_bmp(void *path) {
         goto bmp_cleanup;
 
     // Seek to pixel data
-    if (fseek(f, (long)file_hdr.data_offset, SEEK_SET) != 0)
+    if (px_fseek(f, (int64_t)file_hdr.data_offset, SEEK_SET) != 0)
         goto bmp_cleanup;
 
     // Read pixel data
@@ -492,6 +492,9 @@ void *rt_pixels_load_png(void *path) {
     int has_trns_gray = 0;
     uint16_t trns_rgb[3] = {0, 0, 0}; // key color for truecolor RGB
     int has_trns_rgb = 0;
+    int ihdr_seen = 0;
+    int idat_seen = 0;
+    int iend_seen = 0;
 
     while (pos + 12 <= (size_t)file_len) {
         uint32_t chunk_len = png_read_u32(file_data + pos);
@@ -511,11 +514,24 @@ void *rt_pixels_load_png(void *path) {
             return NULL;
         }
 
-        if (memcmp(chunk_type, "IHDR", 4) == 0 && chunk_len >= 13) {
+        if (!ihdr_seen && memcmp(chunk_type, "IHDR", 4) != 0) {
+            free(file_data);
+            free(idat_buf);
+            return NULL;
+        }
+
+        if (memcmp(chunk_type, "IHDR", 4) == 0) {
+            if (ihdr_seen || chunk_len != 13) {
+                free(file_data);
+                free(idat_buf);
+                return NULL;
+            }
             width = png_read_u32(chunk_data);
             height = png_read_u32(chunk_data + 4);
             bit_depth = chunk_data[8];
             color_type = chunk_data[9];
+            uint8_t compression_method = chunk_data[10];
+            uint8_t filter_method = chunk_data[11];
             interlace = chunk_data[12];
             // Validate per PNG spec: valid color_type + bit_depth combinations
             int valid = 0;
@@ -530,19 +546,36 @@ void *rt_pixels_load_png(void *path) {
                 valid = (bit_depth == 8 || bit_depth == 16);
             else if (color_type == 6) // RGBA: 8,16
                 valid = (bit_depth == 8 || bit_depth == 16);
-            if (!valid) {
+            if (!valid || width == 0 || height == 0 || compression_method != 0 ||
+                filter_method != 0 || (interlace != 0 && interlace != 1)) {
                 free(file_data);
                 if (idat_buf)
                     free(idat_buf);
                 return NULL;
             }
+            ihdr_seen = 1;
         } else if (memcmp(chunk_type, "PLTE", 4) == 0) {
+            if (idat_seen || chunk_len == 0 || (chunk_len % 3u) != 0u || chunk_len > 768u) {
+                free(file_data);
+                free(idat_buf);
+                return NULL;
+            }
             palette_count = (int)(chunk_len / 3);
             if (palette_count > 256)
                 palette_count = 256;
             memcpy(palette, chunk_data, (size_t)palette_count * 3);
         } else if (memcmp(chunk_type, "tRNS", 4) == 0) {
+            if (idat_seen) {
+                free(file_data);
+                free(idat_buf);
+                return NULL;
+            }
             if (color_type == 3) {
+                if (palette_count <= 0 || chunk_len > (uint32_t)palette_count) {
+                    free(file_data);
+                    free(idat_buf);
+                    return NULL;
+                }
                 // Per-palette-entry alpha values
                 trns_count = (int)chunk_len;
                 if (trns_count > 256)
@@ -560,6 +593,12 @@ void *rt_pixels_load_png(void *path) {
                 has_trns_rgb = 1;
             }
         } else if (memcmp(chunk_type, "IDAT", 4) == 0) {
+            if (color_type == 3 && palette_count <= 0) {
+                free(file_data);
+                free(idat_buf);
+                return NULL;
+            }
+            idat_seen = 1;
             // Accumulate IDAT data
             if (chunk_len > SIZE_MAX - idat_len) // overflow guard
             {
@@ -591,6 +630,7 @@ void *rt_pixels_load_png(void *path) {
             memcpy(idat_buf + idat_len, chunk_data, chunk_len);
             idat_len += chunk_len;
         } else if (memcmp(chunk_type, "IEND", 4) == 0) {
+            iend_seen = 1;
             break;
         }
 
@@ -599,7 +639,8 @@ void *rt_pixels_load_png(void *path) {
 
     free(file_data);
 
-    if (width == 0 || height == 0 || !idat_buf || idat_len < 2) {
+    if (!ihdr_seen || !iend_seen || width == 0 || height == 0 || !idat_buf || idat_len < 2 ||
+        (color_type == 3 && palette_count <= 0)) {
         if (idat_buf)
             free(idat_buf);
         return NULL;
@@ -833,9 +874,12 @@ void *rt_pixels_load_png(void *path) {
             switch (color_type) {
                 case 0: { // Grayscale
                     uint8_t gray;
+                    uint16_t gray_sample = 0;
                     if (bit_depth == 16) {
+                        gray_sample = (uint16_t)(((uint16_t)row[x * 2] << 8) | row[x * 2 + 1]);
                         gray = PNG_DOWN16(row + x * 2);
                     } else if (bit_depth == 8) {
+                        gray_sample = row[x];
                         gray = row[x];
                     } else {
                         // Sub-byte: unpack from packed row
@@ -844,14 +888,13 @@ void *rt_pixels_load_png(void *path) {
                         int bit_offset = (pixels_per_byte - 1 - (x % pixels_per_byte)) * bit_depth;
                         uint8_t mask = (uint8_t)((1 << bit_depth) - 1);
                         uint8_t val = (row[byte_idx] >> bit_offset) & mask;
+                        gray_sample = val;
                         // Scale to 8-bit: e.g., 4-bit 0xF -> 0xFF
                         gray = (uint8_t)(val * 255 / ((1 << bit_depth) - 1));
                     }
                     r = g = b_ch = gray;
                     if (has_trns_gray) {
-                        uint8_t key =
-                            (bit_depth == 16) ? (uint8_t)(trns_gray >> 8) : (uint8_t)trns_gray;
-                        if (gray == key)
+                        if (gray_sample == trns_gray)
                             alpha = 0;
                     }
                     break;
@@ -889,11 +932,11 @@ void *rt_pixels_load_png(void *path) {
                         uint8_t mask = (uint8_t)((1 << bit_depth) - 1);
                         idx = (row[byte_idx] >> bit_offset) & mask;
                     }
-                    if (idx < palette_count) {
-                        r = palette[idx * 3];
-                        g = palette[idx * 3 + 1];
-                        b_ch = palette[idx * 3 + 2];
-                    }
+                    if (idx < 0 || idx >= palette_count)
+                        goto cleanup;
+                    r = palette[idx * 3];
+                    g = palette[idx * 3 + 1];
+                    b_ch = palette[idx * 3 + 2];
                     alpha = (idx < trns_count) ? trns_alpha[idx] : 0xFF;
                     break;
                 }

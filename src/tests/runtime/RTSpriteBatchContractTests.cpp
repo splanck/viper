@@ -17,6 +17,10 @@ extern "C" {
 
 namespace {
 
+struct ObjHeader {
+    int64_t class_id;
+};
+
 struct StubPixels {
     int64_t width;
     int64_t height;
@@ -47,8 +51,20 @@ void reset_draw_calls() {
 
 } // namespace
 
-extern "C" void *rt_obj_new_i64(int64_t, int64_t byte_size) {
-    return std::calloc(1, static_cast<size_t>(byte_size));
+static ObjHeader *header_from_payload(void *obj) {
+    return reinterpret_cast<ObjHeader *>(obj) - 1;
+}
+
+extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
+    auto *header =
+        static_cast<ObjHeader *>(std::calloc(1, sizeof(ObjHeader) + static_cast<size_t>(byte_size)));
+    assert(header != nullptr);
+    header->class_id = class_id;
+    return header + 1;
+}
+
+extern "C" int64_t rt_obj_class_id(void *obj) {
+    return obj ? header_from_payload(obj)->class_id : 0;
 }
 
 extern "C" void rt_obj_set_finalizer(void *, void (*)(void *)) {}
@@ -62,7 +78,7 @@ extern "C" int32_t rt_obj_release_check0(void *) {
 }
 
 extern "C" void rt_obj_free(void *obj) {
-    std::free(obj);
+    std::free(header_from_payload(obj));
 }
 
 extern "C" void rt_obj_retain_maybe(void *) {}
@@ -135,6 +151,7 @@ static void test_equal_depth_pixels_preserve_submission_order() {
 
     void *batch = rt_spritebatch_new(0);
     assert(batch != nullptr);
+    assert(rt_obj_class_id(batch) == RT_SPRITEBATCH_CLASS_ID);
     rt_spritebatch_set_sort_by_depth(batch, 1);
     rt_spritebatch_begin(batch);
     rt_spritebatch_draw_pixels(batch, &first, 10, 20);

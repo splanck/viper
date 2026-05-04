@@ -43,6 +43,7 @@
 #include "rt_seq.h"
 #include "rt_sprite.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -85,6 +86,44 @@ typedef struct scene_impl {
     scene_node_impl *root;
 } scene_impl;
 
+static scene_node_impl *scene_node_checked_or_null(void *node_ptr) {
+    if (!node_ptr || rt_obj_class_id(node_ptr) != RT_SCENE_NODE_CLASS_ID)
+        return NULL;
+    return (scene_node_impl *)node_ptr;
+}
+
+static scene_impl *scene_checked_or_null(void *scene_ptr) {
+    if (!scene_ptr || rt_obj_class_id(scene_ptr) != RT_SCENE_CLASS_ID)
+        return NULL;
+    return (scene_impl *)scene_ptr;
+}
+
+static int64_t scene_add_saturating(int64_t a, int64_t b) {
+    if (b > 0 && a > INT64_MAX - b)
+        return INT64_MAX;
+    if (b < 0 && a < INT64_MIN - b)
+        return INT64_MIN;
+    return a + b;
+}
+
+static int64_t scene_ld_to_i64_sat(long double value) {
+    if (value >= (long double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (long double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)(value >= 0.0L ? value + 0.5L : value - 0.5L);
+}
+
+static int64_t scene_mul_div_saturating(int64_t value, int64_t mul, int64_t div) {
+    if (div == 0)
+        return 0;
+    return scene_ld_to_i64_sat(((long double)value * (long double)mul) / (long double)div);
+}
+
+static int64_t scene_sub_saturating(int64_t a, int64_t b) {
+    return scene_ld_to_i64_sat((long double)a - (long double)b);
+}
+
 // Forward declarations
 static void mark_transform_dirty(scene_node_impl *node);
 static void update_world_transform(scene_node_impl *node);
@@ -111,7 +150,7 @@ static void release_owned_ref(void **slot) {
 ///   remove_child back on this node.  Called automatically when the node's
 ///   reference count reaches zero.
 static void scene_node_finalize(void *obj) {
-    scene_node_impl *node = (scene_node_impl *)obj;
+    scene_node_impl *node = scene_node_checked_or_null(obj);
     if (!node)
         return;
 
@@ -134,7 +173,7 @@ static void scene_node_finalize(void *obj) {
 ///   try to call remove_child on a now-dead parent.  Releasing root triggers
 ///   a cascade release of the whole node tree.
 static void scene_finalize(void *obj) {
-    scene_impl *scene = (scene_impl *)obj;
+    scene_impl *scene = scene_checked_or_null(obj);
     if (!scene)
         return;
     if (scene->root)
@@ -149,7 +188,9 @@ static void scene_finalize(void *obj) {
 /// @brief Create an empty 2D scene node positioned at the origin with identity transform.
 /// Scale is stored as a percentage (100 = 1.0x). Children list owns its elements.
 void *rt_scene_node_new(void) {
-    scene_node_impl *node = (scene_node_impl *)rt_obj_new_i64(0, (int64_t)sizeof(scene_node_impl));
+    scene_node_impl *node =
+        (scene_node_impl *)rt_obj_new_i64(RT_SCENE_NODE_CLASS_ID,
+                                          (int64_t)sizeof(scene_node_impl));
     if (!node) {
         rt_trap("SceneNode: allocation failed");
         return NULL;
@@ -222,23 +263,27 @@ static void mark_transform_dirty(scene_node_impl *node) {
 ///          the world transform equals the local transform directly. Clears `transform_dirty`.
 static void apply_node_transform(scene_node_impl *node) {
     if (node->parent) {
-        node->world_scale_x = (node->parent->world_scale_x * node->scale_x) / 100;
-        node->world_scale_y = (node->parent->world_scale_y * node->scale_y) / 100;
-        node->world_rotation = node->parent->world_rotation + node->rotation;
+        node->world_scale_x = scene_mul_div_saturating(node->parent->world_scale_x, node->scale_x, 100);
+        node->world_scale_y = scene_mul_div_saturating(node->parent->world_scale_y, node->scale_y, 100);
+        node->world_rotation = scene_add_saturating(node->parent->world_rotation, node->rotation);
 
-        int64_t scaled_x = (node->x * node->parent->world_scale_x) / 100;
-        int64_t scaled_y = (node->y * node->parent->world_scale_y) / 100;
+        int64_t scaled_x = scene_mul_div_saturating(node->x, node->parent->world_scale_x, 100);
+        int64_t scaled_y = scene_mul_div_saturating(node->y, node->parent->world_scale_y, 100);
 
         if (node->parent->world_rotation == 0) {
-            node->world_x = node->parent->world_x + scaled_x;
-            node->world_y = node->parent->world_y + scaled_y;
+            node->world_x = scene_add_saturating(node->parent->world_x, scaled_x);
+            node->world_y = scene_add_saturating(node->parent->world_y, scaled_y);
         } else {
             double rad = node->parent->world_rotation * 3.14159265359 / 180.0;
             double cos_r = cos(rad);
             double sin_r = sin(rad);
 
-            node->world_x = node->parent->world_x + (int64_t)(scaled_x * cos_r - scaled_y * sin_r);
-            node->world_y = node->parent->world_y + (int64_t)(scaled_x * sin_r + scaled_y * cos_r);
+            int64_t rx = scene_ld_to_i64_sat((long double)scaled_x * (long double)cos_r -
+                                             (long double)scaled_y * (long double)sin_r);
+            int64_t ry = scene_ld_to_i64_sat((long double)scaled_x * (long double)sin_r +
+                                             (long double)scaled_y * (long double)cos_r);
+            node->world_x = scene_add_saturating(node->parent->world_x, rx);
+            node->world_y = scene_add_saturating(node->parent->world_y, ry);
         }
     } else {
         node->world_x = node->x;
@@ -301,50 +346,52 @@ static void update_world_transform(scene_node_impl *node) {
 
 /// @brief Return the node's local X position relative to its parent (or world origin if root).
 int64_t rt_scene_node_get_x(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return 0;
-    return ((scene_node_impl *)node_ptr)->x;
+    return node->x;
 }
 
 /// @brief Set the node's local X position and mark the subtree's world transforms dirty.
 void rt_scene_node_set_x(void *node_ptr, int64_t x) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     node->x = x;
     mark_transform_dirty(node);
 }
 
 /// @brief Return the node's local Y position relative to its parent (or world origin if root).
 int64_t rt_scene_node_get_y(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return 0;
-    return ((scene_node_impl *)node_ptr)->y;
+    return node->y;
 }
 
 /// @brief Set the node's local Y position and mark the subtree's world transforms dirty.
 void rt_scene_node_set_y(void *node_ptr, int64_t y) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     node->y = y;
     mark_transform_dirty(node);
 }
 
 /// @brief Return the node's computed world-space X position, updating dirty transforms first.
 int64_t rt_scene_node_get_world_x(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return 0;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     update_world_transform(node);
     return node->world_x;
 }
 
 /// @brief Return the node's computed world-space Y position, updating dirty transforms first.
 int64_t rt_scene_node_get_world_y(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return 0;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     update_world_transform(node);
     return node->world_y;
 }
@@ -355,50 +402,52 @@ int64_t rt_scene_node_get_world_y(void *node_ptr) {
 
 /// @brief Return the node's local X scale as a percentage (100 = 1.0×).
 int64_t rt_scene_node_get_scale_x(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return 100;
-    return ((scene_node_impl *)node_ptr)->scale_x;
+    return node->scale_x;
 }
 
 /// @brief Set the node's local X scale (percentage) and mark the subtree's transforms dirty.
 void rt_scene_node_set_scale_x(void *node_ptr, int64_t scale) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     node->scale_x = scale;
     mark_transform_dirty(node);
 }
 
 /// @brief Return the node's local Y scale as a percentage (100 = 1.0×).
 int64_t rt_scene_node_get_scale_y(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return 100;
-    return ((scene_node_impl *)node_ptr)->scale_y;
+    return node->scale_y;
 }
 
 /// @brief Set the node's local Y scale (percentage) and mark the subtree's transforms dirty.
 void rt_scene_node_set_scale_y(void *node_ptr, int64_t scale) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     node->scale_y = scale;
     mark_transform_dirty(node);
 }
 
 /// @brief Return the node's accumulated world-space X scale (parent scales multiplied in).
 int64_t rt_scene_node_get_world_scale_x(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return 100;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     update_world_transform(node);
     return node->world_scale_x;
 }
 
 /// @brief Return the node's accumulated world-space Y scale (parent scales multiplied in).
 int64_t rt_scene_node_get_world_scale_y(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return 100;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     update_world_transform(node);
     return node->world_scale_y;
 }
@@ -409,25 +458,26 @@ int64_t rt_scene_node_get_world_scale_y(void *node_ptr) {
 
 /// @brief Return the node's local rotation in whole degrees.
 int64_t rt_scene_node_get_rotation(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return 0;
-    return ((scene_node_impl *)node_ptr)->rotation;
+    return node->rotation;
 }
 
 /// @brief Set the node's local rotation in whole degrees and mark the subtree's transforms dirty.
 void rt_scene_node_set_rotation(void *node_ptr, int64_t degrees) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     node->rotation = degrees;
     mark_transform_dirty(node);
 }
 
 /// @brief Return the node's accumulated world-space rotation (sum of all ancestor rotations).
 int64_t rt_scene_node_get_world_rotation(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return 0;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     update_world_transform(node);
     return node->world_rotation;
 }
@@ -440,34 +490,38 @@ int64_t rt_scene_node_get_world_rotation(void *node_ptr) {
 /// @details A node whose visible flag is 0 is skipped entirely during draw traversal,
 ///   including all of its descendants.
 int8_t rt_scene_node_get_visible(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return 0;
-    return ((scene_node_impl *)node_ptr)->visible;
+    return node->visible;
 }
 
 /// @brief Show or hide the node and its entire subtree.
 /// @details Setting visible to 0 prevents the node from being collected during
 ///   draw traversal — equivalent to removing it from the scene without detaching.
 void rt_scene_node_set_visible(void *node_ptr, int8_t visible) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return;
-    ((scene_node_impl *)node_ptr)->visible = visible ? 1 : 0;
+    node->visible = visible ? 1 : 0;
 }
 
 /// @brief Return the node's Z-order depth used for depth-sorted rendering.
 /// @details Higher values render on top of lower values.  Siblings with equal depth
 ///   are drawn in traversal order.
 int64_t rt_scene_node_get_depth(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return 0;
-    return ((scene_node_impl *)node_ptr)->depth;
+    return node->depth;
 }
 
 /// @brief Set the node's Z-order depth for depth-sorted rendering.
 void rt_scene_node_set_depth(void *node_ptr, int64_t depth) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return;
-    ((scene_node_impl *)node_ptr)->depth = depth;
+    node->depth = depth;
 }
 
 //=============================================================================
@@ -476,9 +530,10 @@ void rt_scene_node_set_depth(void *node_ptr, int64_t depth) {
 
 /// @brief Return the node's name string (borrowed — do not release the returned value).
 rt_string rt_scene_node_get_name(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return rt_const_cstr("");
-    return ((scene_node_impl *)node_ptr)->name;
+    return node->name;
 }
 
 /// @brief Set the node's name string, retaining the new value and releasing the old.
@@ -486,9 +541,9 @@ rt_string rt_scene_node_get_name(void *node_ptr) {
 ///   when the old and new strings happen to be the same object.  Empty string is
 ///   substituted when @p name is NULL.
 void rt_scene_node_set_name(void *node_ptr, rt_string name) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     if (!name)
         name = rt_const_cstr("");
     if (node->name == name)
@@ -502,18 +557,19 @@ void rt_scene_node_set_name(void *node_ptr, rt_string name) {
 /// @details Returns NULL if no sprite has been set.  The sprite is retained by the
 ///   node; callers that need to hold a long-lived reference must retain it themselves.
 void *rt_scene_node_get_sprite(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return NULL;
-    return ((scene_node_impl *)node_ptr)->sprite;
+    return node->sprite;
 }
 
 /// @brief Attach a sprite to the node, retaining it and releasing the previous sprite.
 /// @details The node takes ownership: the sprite is retained on assignment and
 ///   released when the node is finalized or a new sprite is set.
 void rt_scene_node_set_sprite(void *node_ptr, void *sprite) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     if (node->sprite == sprite)
         return;
     rt_obj_retain_maybe(sprite);
@@ -533,8 +589,10 @@ void rt_scene_node_add_child(void *node_ptr, void *child_ptr) {
     if (!node_ptr || !child_ptr)
         return;
 
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
-    scene_node_impl *child = (scene_node_impl *)child_ptr;
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    scene_node_impl *child = scene_node_checked_or_null(child_ptr);
+    if (!node || !child)
+        return;
 
     // Guard against cycles: walk node's ancestor chain and reject if child is found
     for (scene_node_impl *anc = node; anc; anc = anc->parent) {
@@ -560,8 +618,10 @@ void rt_scene_node_remove_child(void *node_ptr, void *child_ptr) {
     if (!node_ptr || !child_ptr)
         return;
 
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
-    scene_node_impl *child = (scene_node_impl *)child_ptr;
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    scene_node_impl *child = scene_node_checked_or_null(child_ptr);
+    if (!node || !child)
+        return;
 
     int64_t count = rt_seq_len(node->children);
     for (int64_t i = 0; i < count; i++) {
@@ -578,16 +638,17 @@ void rt_scene_node_remove_child(void *node_ptr, void *child_ptr) {
 
 /// @brief Return the number of direct children attached to @p node_ptr.
 int64_t rt_scene_node_child_count(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return 0;
-    return rt_seq_len(((scene_node_impl *)node_ptr)->children);
+    return rt_seq_len(node->children);
 }
 
 /// @brief Get the child at @p index in the node's child list (NULL if out of range).
 void *rt_scene_node_get_child(void *node_ptr, int64_t index) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return NULL;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     if (index < 0 || index >= rt_seq_len(node->children))
         return NULL;
     return rt_seq_get(node->children, index);
@@ -595,18 +656,19 @@ void *rt_scene_node_get_child(void *node_ptr, int64_t index) {
 
 /// @brief Return the node's parent in the scene tree (NULL for unparented or root).
 void *rt_scene_node_get_parent(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return NULL;
-    return ((scene_node_impl *)node_ptr)->parent;
+    return node->parent;
 }
 
 /// @brief Recursive depth-first search for a node with @p name beneath @p node_ptr.
 /// Returns the first match (including the start node itself). NULL on no match.
 void *rt_scene_node_find(void *node_ptr, rt_string name) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node || !name)
         return NULL;
 
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     const char *search = rt_string_cstr(name);
     const char *node_name = rt_string_cstr(node->name);
 
@@ -629,9 +691,9 @@ void *rt_scene_node_find(void *node_ptr, rt_string name) {
 /// @details Convenience wrapper that calls remove_child on the node's current parent.
 ///   No-op for root or unparented nodes.
 void rt_scene_node_detach(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     if (node->parent) {
         rt_scene_node_remove_child(node->parent, node);
     }
@@ -649,7 +711,9 @@ void rt_scene_node_draw(void *node_ptr, void *canvas) {
     if (!node_ptr || !canvas)
         return;
 
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
+        return;
 
     if (!node->visible)
         return;
@@ -681,7 +745,9 @@ void rt_scene_node_draw_with_camera(void *node_ptr, void *canvas, void *camera) 
     if (!node_ptr || !canvas)
         return;
 
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
+        return;
 
     if (!node->visible)
         return;
@@ -698,9 +764,9 @@ void rt_scene_node_draw_with_camera(void *node_ptr, void *canvas, void *camera) 
         if (camera) {
             rt_camera_world_to_screen(camera, node->world_x, node->world_y, &screen_x, &screen_y);
             int64_t zoom = rt_camera_get_zoom(camera);
-            scale_x = (node->world_scale_x * zoom) / 100;
-            scale_y = (node->world_scale_y * zoom) / 100;
-            rotation -= rt_camera_get_rotation(camera);
+            scale_x = scene_mul_div_saturating(node->world_scale_x, zoom, 100);
+            scale_y = scene_mul_div_saturating(node->world_scale_y, zoom, 100);
+            rotation = scene_sub_saturating(rotation, rt_camera_get_rotation(camera));
         }
 
         rt_sprite_draw_transformed(
@@ -718,10 +784,9 @@ void rt_scene_node_draw_with_camera(void *node_ptr, void *canvas, void *camera) 
 /// @details Calls rt_sprite_update on any attached sprite to advance its frame animation,
 ///   then propagates the update to all children.
 void rt_scene_node_update(void *node_ptr) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return;
-
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
 
     // Update sprite animation if any
     if (node->sprite) {
@@ -737,19 +802,19 @@ void rt_scene_node_update(void *node_ptr) {
 
 /// @brief Translate the node by (dx, dy) relative to its current local position.
 void rt_scene_node_move(void *node_ptr, int64_t dx, int64_t dy) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
-    node->x += dx;
-    node->y += dy;
+    node->x = scene_add_saturating(node->x, dx);
+    node->y = scene_add_saturating(node->y, dy);
     mark_transform_dirty(node);
 }
 
 /// @brief Set the position of the node.
 void rt_scene_node_set_position(void *node_ptr, int64_t x, int64_t y) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     node->x = x;
     node->y = y;
     mark_transform_dirty(node);
@@ -757,9 +822,9 @@ void rt_scene_node_set_position(void *node_ptr, int64_t x, int64_t y) {
 
 /// @brief Set the scale of the node.
 void rt_scene_node_set_scale(void *node_ptr, int64_t scale) {
-    if (!node_ptr)
+    scene_node_impl *node = scene_node_checked_or_null(node_ptr);
+    if (!node)
         return;
-    scene_node_impl *node = (scene_node_impl *)node_ptr;
     node->scale_x = scale;
     node->scale_y = scale;
     mark_transform_dirty(node);
@@ -772,7 +837,8 @@ void rt_scene_node_set_scale(void *node_ptr, int64_t scale) {
 /// @brief Create an empty 2D scene with a single root node named "root".
 /// All user nodes attach beneath this root for global transform inheritance.
 void *rt_scene_new(void) {
-    scene_impl *scene = (scene_impl *)rt_obj_new_i64(0, (int64_t)sizeof(scene_impl));
+    scene_impl *scene =
+        (scene_impl *)rt_obj_new_i64(RT_SCENE_CLASS_ID, (int64_t)sizeof(scene_impl));
     if (!scene) {
         rt_trap("Scene: allocation failed");
         return NULL;
@@ -788,9 +854,10 @@ void *rt_scene_new(void) {
 
 /// @brief Return the implicit root node so callers can attach children directly.
 void *rt_scene_get_root(void *scene_ptr) {
-    if (!scene_ptr)
+    scene_impl *scene = scene_checked_or_null(scene_ptr);
+    if (!scene)
         return NULL;
-    return ((scene_impl *)scene_ptr)->root;
+    return scene->root;
 }
 
 /// @brief Add a top-level node to the scene by attaching it as a child of the root.
@@ -801,7 +868,9 @@ void *rt_scene_get_root(void *scene_ptr) {
 void rt_scene_add(void *scene_ptr, void *node_ptr) {
     if (!scene_ptr || !node_ptr)
         return;
-    scene_impl *scene = (scene_impl *)scene_ptr;
+    scene_impl *scene = scene_checked_or_null(scene_ptr);
+    if (!scene)
+        return;
     rt_scene_node_add_child(scene->root, node_ptr);
 }
 
@@ -813,7 +882,9 @@ void rt_scene_add(void *scene_ptr, void *node_ptr) {
 void rt_scene_remove(void *scene_ptr, void *node_ptr) {
     if (!scene_ptr || !node_ptr)
         return;
-    scene_impl *scene = (scene_impl *)scene_ptr;
+    scene_impl *scene = scene_checked_or_null(scene_ptr);
+    if (!scene)
+        return;
     rt_scene_node_remove_child(scene->root, node_ptr);
 }
 
@@ -822,7 +893,9 @@ void rt_scene_remove(void *scene_ptr, void *node_ptr) {
 void *rt_scene_find(void *scene_ptr, rt_string name) {
     if (!scene_ptr)
         return NULL;
-    scene_impl *scene = (scene_impl *)scene_ptr;
+    scene_impl *scene = scene_checked_or_null(scene_ptr);
+    if (!scene)
+        return NULL;
     return rt_scene_node_find(scene->root, name);
 }
 
@@ -885,7 +958,9 @@ void rt_scene_draw(void *scene_ptr, void *canvas) {
     if (!scene_ptr || !canvas)
         return;
 
-    scene_impl *scene = (scene_impl *)scene_ptr;
+    scene_impl *scene = scene_checked_or_null(scene_ptr);
+    if (!scene)
+        return;
 
     // Collect all visible nodes
     void *nodes = rt_seq_new();
@@ -948,7 +1023,9 @@ void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera) {
     if (!scene_ptr || !canvas)
         return;
 
-    scene_impl *scene = (scene_impl *)scene_ptr;
+    scene_impl *scene = scene_checked_or_null(scene_ptr);
+    if (!scene)
+        return;
 
     // Collect all visible nodes
     void *nodes = rt_seq_new();
@@ -993,9 +1070,9 @@ void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera) {
                 rt_camera_world_to_screen(
                     camera, node->world_x, node->world_y, &screen_x, &screen_y);
                 int64_t zoom = rt_camera_get_zoom(camera);
-                final_sx = (node->world_scale_x * zoom) / 100;
-                final_sy = (node->world_scale_y * zoom) / 100;
-                rotation -= rt_camera_get_rotation(camera);
+                final_sx = scene_mul_div_saturating(node->world_scale_x, zoom, 100);
+                final_sy = scene_mul_div_saturating(node->world_scale_y, zoom, 100);
+                rotation = scene_sub_saturating(rotation, rt_camera_get_rotation(camera));
             }
 
             rt_sprite_draw_transformed(
@@ -1013,9 +1090,9 @@ void rt_scene_draw_with_camera(void *scene_ptr, void *canvas, void *camera) {
 ///   every child, advancing sprite frame animations and any per-node update logic.
 /// @param scene_ptr  Scene handle.
 void rt_scene_update(void *scene_ptr) {
-    if (!scene_ptr)
+    scene_impl *scene = scene_checked_or_null(scene_ptr);
+    if (!scene)
         return;
-    scene_impl *scene = (scene_impl *)scene_ptr;
     rt_scene_node_update(scene->root);
 }
 
@@ -1023,9 +1100,9 @@ void rt_scene_update(void *scene_ptr) {
 /// @details Only counts immediate children of the root node, not the entire tree.
 ///   Returns 0 for a NULL or invalid scene.
 int64_t rt_scene_node_count(void *scene_ptr) {
-    if (!scene_ptr)
+    scene_impl *scene = scene_checked_or_null(scene_ptr);
+    if (!scene)
         return 0;
-    scene_impl *scene = (scene_impl *)scene_ptr;
     return scene && scene->root ? rt_seq_len(scene->root->children) : 0;
 }
 
@@ -1035,9 +1112,9 @@ int64_t rt_scene_node_count(void *scene_ptr) {
 ///   freed transitively as their parent nodes lose their last reference.
 /// @param scene_ptr  Scene handle.
 void rt_scene_clear(void *scene_ptr) {
-    if (!scene_ptr)
+    scene_impl *scene = scene_checked_or_null(scene_ptr);
+    if (!scene)
         return;
-    scene_impl *scene = (scene_impl *)scene_ptr;
 
     // Clear parent pointers before removing children to avoid stale references
     int64_t n = rt_seq_len(scene->root->children);

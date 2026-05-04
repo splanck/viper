@@ -77,7 +77,8 @@ static void distance_joint_finalizer(void *obj) {
 /// @param distance Target separation distance in world units.
 /// @return Opaque joint handle, or NULL on failure.
 void *rt_distance_joint3d_new(void *body_a, void *body_b, double distance) {
-    if (!body_a || !body_b) {
+    if (!rt_g3d_has_class(body_a, RT_G3D_BODY3D_CLASS_ID) ||
+        !rt_g3d_has_class(body_b, RT_G3D_BODY3D_CLASS_ID)) {
         rt_trap("DistanceJoint3D.New: both bodies must be non-null");
         return NULL;
     }
@@ -90,20 +91,24 @@ void *rt_distance_joint3d_new(void *body_a, void *body_b, double distance) {
     j->vptr = NULL;
     j->body_a = (rt_body3d_view *)body_a;
     j->body_b = (rt_body3d_view *)body_b;
-    j->target_distance = distance;
+    j->target_distance = (isfinite(distance) && distance >= 0.0) ? distance : 0.0;
     rt_obj_set_finalizer(j, distance_joint_finalizer);
     return j;
 }
 
 /// @brief Get the target distance of a distance joint.
 double rt_distance_joint3d_get_distance(void *joint) {
-    return joint ? ((rt_distance_joint3d *)joint)->target_distance : 0;
+    rt_distance_joint3d *j =
+        (rt_distance_joint3d *)rt_g3d_checked_or_null(joint, RT_G3D_DISTANCEJOINT3D_CLASS_ID);
+    return j ? j->target_distance : 0;
 }
 
 /// @brief Change the target distance of a distance joint at runtime.
 void rt_distance_joint3d_set_distance(void *joint, double distance) {
-    if (joint)
-        ((rt_distance_joint3d *)joint)->target_distance = distance;
+    rt_distance_joint3d *j =
+        (rt_distance_joint3d *)rt_g3d_checked_or_null(joint, RT_G3D_DISTANCEJOINT3D_CLASS_ID);
+    if (j)
+        j->target_distance = (isfinite(distance) && distance >= 0.0) ? distance : 0.0;
 }
 
 /// @brief Enforce a rigid distance constraint between two bodies for one step.
@@ -200,7 +205,8 @@ static void spring_joint_finalizer(void *obj) {
 /// @return Opaque joint handle, or NULL on failure.
 void *rt_spring_joint3d_new(
     void *body_a, void *body_b, double rest_length, double stiffness, double damping) {
-    if (!body_a || !body_b) {
+    if (!rt_g3d_has_class(body_a, RT_G3D_BODY3D_CLASS_ID) ||
+        !rt_g3d_has_class(body_b, RT_G3D_BODY3D_CLASS_ID)) {
         rt_trap("SpringJoint3D.New: both bodies must be non-null");
         return NULL;
     }
@@ -213,38 +219,48 @@ void *rt_spring_joint3d_new(
     j->vptr = NULL;
     j->body_a = (rt_body3d_view *)body_a;
     j->body_b = (rt_body3d_view *)body_b;
-    j->rest_length = rest_length;
-    j->stiffness = stiffness;
-    j->damping = damping;
+    j->rest_length = (isfinite(rest_length) && rest_length >= 0.0) ? rest_length : 0.0;
+    j->stiffness = (isfinite(stiffness) && stiffness >= 0.0) ? stiffness : 0.0;
+    j->damping = (isfinite(damping) && damping >= 0.0) ? damping : 0.0;
     rt_obj_set_finalizer(j, spring_joint_finalizer);
     return j;
 }
 
 /// @brief Get the spring constant k.
 double rt_spring_joint3d_get_stiffness(void *joint) {
-    return joint ? ((rt_spring_joint3d *)joint)->stiffness : 0;
+    rt_spring_joint3d *j =
+        (rt_spring_joint3d *)rt_g3d_checked_or_null(joint, RT_G3D_SPRINGJOINT3D_CLASS_ID);
+    return j ? j->stiffness : 0;
 }
 
 /// @brief Set the spring constant k at runtime.
 void rt_spring_joint3d_set_stiffness(void *joint, double stiffness) {
-    if (joint)
-        ((rt_spring_joint3d *)joint)->stiffness = stiffness;
+    rt_spring_joint3d *j =
+        (rt_spring_joint3d *)rt_g3d_checked_or_null(joint, RT_G3D_SPRINGJOINT3D_CLASS_ID);
+    if (j)
+        j->stiffness = (isfinite(stiffness) && stiffness >= 0.0) ? stiffness : 0.0;
 }
 
 /// @brief Get the velocity damping coefficient.
 double rt_spring_joint3d_get_damping(void *joint) {
-    return joint ? ((rt_spring_joint3d *)joint)->damping : 0;
+    rt_spring_joint3d *j =
+        (rt_spring_joint3d *)rt_g3d_checked_or_null(joint, RT_G3D_SPRINGJOINT3D_CLASS_ID);
+    return j ? j->damping : 0;
 }
 
 /// @brief Set the velocity damping coefficient at runtime.
 void rt_spring_joint3d_set_damping(void *joint, double damping) {
-    if (joint)
-        ((rt_spring_joint3d *)joint)->damping = damping;
+    rt_spring_joint3d *j =
+        (rt_spring_joint3d *)rt_g3d_checked_or_null(joint, RT_G3D_SPRINGJOINT3D_CLASS_ID);
+    if (j)
+        j->damping = (isfinite(damping) && damping >= 0.0) ? damping : 0.0;
 }
 
 /// @brief Get the spring's natural (zero-force) length.
 double rt_spring_joint3d_get_rest_length(void *joint) {
-    return joint ? ((rt_spring_joint3d *)joint)->rest_length : 0;
+    rt_spring_joint3d *j =
+        (rt_spring_joint3d *)rt_g3d_checked_or_null(joint, RT_G3D_SPRINGJOINT3D_CLASS_ID);
+    return j ? j->rest_length : 0;
 }
 
 /// @brief Integrate spring + damping forces into both bodies' velocities.
@@ -314,9 +330,11 @@ static void solve_spring(rt_spring_joint3d *j, double dt) {
 void rt_joint3d_solve(void *joint, int32_t joint_type, double dt) {
     if (!joint)
         return;
-    if (joint_type == RT_JOINT_DISTANCE)
+    if (joint_type == RT_JOINT_DISTANCE &&
+        rt_g3d_has_class(joint, RT_G3D_DISTANCEJOINT3D_CLASS_ID))
         solve_distance((rt_distance_joint3d *)joint, dt);
-    else if (joint_type == RT_JOINT_SPRING)
+    else if (joint_type == RT_JOINT_SPRING &&
+             rt_g3d_has_class(joint, RT_G3D_SPRINGJOINT3D_CLASS_ID))
         solve_spring((rt_spring_joint3d *)joint, dt);
 }
 

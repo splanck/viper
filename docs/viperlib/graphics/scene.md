@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-21
+last-verified: 2026-05-04
 ---
 
 # Scene Graph
@@ -15,6 +15,7 @@ last-verified: 2026-04-21
 
 2D camera for viewport management, scrolling, and coordinate transformation.
 Camera movement, bounds clamping, world/screen conversion, and parallax scrolling use saturating integer arithmetic at the int64 limits.
+Camera methods validate their receiver as a real `Camera` object; invalid handles return safe defaults or no-op.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Graphics.Camera(width, height)`
@@ -168,6 +169,7 @@ Hierarchical scene node for building scene graphs with transform inheritance.
 **Constructor:** `NEW Viper.Graphics.SceneNode()` (empty node) or `Viper.Graphics.SceneNode.FromSprite(sprite)` (with sprite)
 
 Creates a scene node. Scene nodes support parent-child hierarchies where child transforms are relative to their parent.
+Scene nodes validate their receiver and child arguments before mutating hierarchy state. Local/world transform composition uses saturating integer arithmetic, so extreme coordinates clamp instead of wrapping.
 
 ### Static Methods
 
@@ -310,6 +312,7 @@ arm.Detach()
 
 Root container for a scene graph. Manages rendering order and provides scene-level operations.
 Scene draws are depth-sorted, and nodes with equal depth preserve traversal order.
+Scene APIs validate `Scene`, `SceneNode`, and `Camera` handles before traversal or drawing.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Viper.Graphics.Scene()`
@@ -466,6 +469,7 @@ Batched sprite rendering for improved performance when drawing many sprites.
 **Constructor:** `NEW Viper.Graphics.SpriteBatch(capacity)`
 
 Creates a sprite batch with the given initial capacity (use 0 for default). SpriteBatch records draw calls, optionally sorts them by depth, applies shared tint/alpha state, and flushes them during `End(canvas)`. `End(canvas)` also clears the recorded batch so the same instance can be reused next frame. Use `Draw`/`DrawEx` for `Sprite` objects and `DrawPixels`/`DrawRegion` for raw `Pixels` buffers. `DrawPixels` preserves per-pixel alpha, so transparent sprites and overlays blend like `Canvas.BlitAlpha`. `DrawRegion` draws its extracted region at the requested destination top-left; any temporary transform or color copy does not recenter the final blit. When depth sorting is enabled, items with the same depth still preserve their original submission order. Scale values below `1` clamp to `1` for both sprite and raw-pixels batch entries.
+SpriteBatch methods validate the batch receiver before recording or flushing; invalid handles are treated as empty/inactive batches or no-ops.
 
 ### Properties
 

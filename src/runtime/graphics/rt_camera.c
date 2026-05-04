@@ -85,6 +85,12 @@ typedef struct rt_camera_impl {
     int64_t parallax_count;                             ///< Number of active layers
 } rt_camera_impl;
 
+static rt_camera_impl *camera_checked_or_null(void *camera_ptr) {
+    if (!camera_ptr || rt_obj_class_id(camera_ptr) != RT_CAMERA_CLASS_ID)
+        return NULL;
+    return (rt_camera_impl *)camera_ptr;
+}
+
 /// @brief Release a GC-managed object held in `*slot` and NULL-out the slot.
 static void camera_release_ref(void **slot) {
     if (!slot || !*slot)
@@ -401,7 +407,7 @@ static void camera_release_parallax_layer(rt_parallax_layer *layer) {
 
 /// @brief GC finalizer: release all parallax layers before the camera allocation is freed.
 static void camera_finalize(void *obj) {
-    rt_camera_impl *camera = (rt_camera_impl *)obj;
+    rt_camera_impl *camera = camera_checked_or_null(obj);
     if (!camera)
         return;
     for (int i = 0; i < RT_CAMERA_MAX_PARALLAX; i++)
@@ -447,7 +453,8 @@ void *rt_camera_new(int64_t width, int64_t height) {
     if (height <= 0)
         height = 1;
 
-    rt_camera_impl *camera = (rt_camera_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_camera_impl));
+    rt_camera_impl *camera =
+        (rt_camera_impl *)rt_obj_new_i64(RT_CAMERA_CLASS_ID, (int64_t)sizeof(rt_camera_impl));
     if (!camera)
         return NULL;
 
@@ -476,21 +483,22 @@ void *rt_camera_new(int64_t width, int64_t height) {
 
 /// @brief Read the camera's world-space X coordinate (the point centered on screen). Traps on null.
 int64_t rt_camera_get_x(void *camera_ptr) {
-    if (!camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
         rt_trap("Camera.X: null camera");
         return 0;
     }
-    return ((rt_camera_impl *)camera_ptr)->x;
+    return camera->x;
 }
 
 /// @brief Set the camera's world-space X (clamped to active bounds, if any). Marks the
 /// view-transform dirty so the next render recomputes derived state.
 void rt_camera_set_x(void *camera_ptr, int64_t x) {
-    if (!camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
         rt_trap("Camera.X: null camera");
         return;
     }
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     camera->x = x;
     camera->dirty = 1;
     camera_clamp_bounds(camera);
@@ -498,20 +506,21 @@ void rt_camera_set_x(void *camera_ptr, int64_t x) {
 
 /// @brief Read the camera's world-space Y coordinate. Traps on null.
 int64_t rt_camera_get_y(void *camera_ptr) {
-    if (!camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
         rt_trap("Camera.Y: null camera");
         return 0;
     }
-    return ((rt_camera_impl *)camera_ptr)->y;
+    return camera->y;
 }
 
 /// @brief Set the camera's world-space Y (clamped to active bounds, if any).
 void rt_camera_set_y(void *camera_ptr, int64_t y) {
-    if (!camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
         rt_trap("Camera.Y: null camera");
         return;
     }
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     camera->y = y;
     camera->dirty = 1;
     camera_clamp_bounds(camera);
@@ -519,16 +528,18 @@ void rt_camera_set_y(void *camera_ptr, int64_t y) {
 
 /// @brief Read the zoom level (100 = 1.0×, 200 = 2.0× zoom-in, 50 = 0.5× zoom-out).
 int64_t rt_camera_get_zoom(void *camera_ptr) {
-    if (!camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
         rt_trap("Camera.Zoom: null camera");
         return 100;
     }
-    return ((rt_camera_impl *)camera_ptr)->zoom;
+    return camera->zoom;
 }
 
 /// @brief Set zoom level (clamped to [10, 1000] = 0.1×–10×). Marks dirty and re-clamps to bounds.
 void rt_camera_set_zoom(void *camera_ptr, int64_t zoom) {
-    if (!camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
         rt_trap("Camera.Zoom: null camera");
         return;
     }
@@ -536,7 +547,6 @@ void rt_camera_set_zoom(void *camera_ptr, int64_t zoom) {
         zoom = 10;
     if (zoom > 1000)
         zoom = 1000;
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     camera->zoom = zoom;
     camera->dirty = 1;
     camera_clamp_bounds(camera);
@@ -544,40 +554,43 @@ void rt_camera_set_zoom(void *camera_ptr, int64_t zoom) {
 
 /// @brief Read the camera's rotation in degrees (positive = counter-clockwise).
 int64_t rt_camera_get_rotation(void *camera_ptr) {
-    if (!camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
         rt_trap("Camera.Rotation: null camera");
         return 0;
     }
-    return ((rt_camera_impl *)camera_ptr)->rotation;
+    return camera->rotation;
 }
 
 /// @brief Set rotation in degrees. No clamping (full ±360+ range allowed; renders modulo 360).
 void rt_camera_set_rotation(void *camera_ptr, int64_t degrees) {
-    if (!camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
         rt_trap("Camera.Rotation: null camera");
         return;
     }
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     camera->rotation = degrees;
     camera->dirty = 1;
 }
 
 /// @brief Read the camera viewport width in pixels (set on construction).
 int64_t rt_camera_get_width(void *camera_ptr) {
-    if (!camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
         rt_trap("Camera.Width: null camera");
         return 0;
     }
-    return ((rt_camera_impl *)camera_ptr)->width;
+    return camera->width;
 }
 
 /// @brief Read the camera viewport height in pixels (set on construction).
 int64_t rt_camera_get_height(void *camera_ptr) {
-    if (!camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
         rt_trap("Camera.Height: null camera");
         return 0;
     }
-    return ((rt_camera_impl *)camera_ptr)->height;
+    return camera->height;
 }
 
 //=============================================================================
@@ -587,11 +600,11 @@ int64_t rt_camera_get_height(void *camera_ptr) {
 /// @brief Snap the camera so (x, y) is at the viewport center. Re-clamps to bounds, marks dirty.
 /// Use `_smooth_follow` for non-jarring tracking.
 void rt_camera_follow(void *camera_ptr, int64_t x, int64_t y) {
-    if (!camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
         rt_trap("Camera.Follow: null camera");
         return;
     }
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
 
     // Center the camera on the given position
     camera->x = camera_sub_saturating(x, camera_world_width(camera) / 2);
@@ -607,11 +620,11 @@ void rt_camera_smooth_follow(void *camera_ptr,
                              int64_t target_x,
                              int64_t target_y,
                              int64_t lerp_pct) {
-    if (!camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
         rt_trap("Camera.SmoothFollow: null camera");
         return;
     }
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
 
     // Desired camera position (center target in viewport)
     int64_t desired_x = camera_sub_saturating(target_x, camera_world_width(camera) / 2);
@@ -647,9 +660,9 @@ void rt_camera_smooth_follow(void *camera_ptr,
 /// @brief Set the rectangular deadzone (centered on current position) in which `_smooth_follow`
 /// is a no-op. Negative values are clamped to 0 (deadzone disabled).
 void rt_camera_set_deadzone(void *camera_ptr, int64_t w, int64_t h) {
-    if (!camera_ptr)
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera)
         return;
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     camera->deadzone_w = w > 0 ? w : 0;
     camera->deadzone_h = h > 0 ? h : 0;
 }
@@ -662,7 +675,9 @@ void rt_camera_world_to_screen(
     if (!camera_ptr || !screen_x || !screen_y)
         return;
 
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera)
+        return;
     double sx = 0.0, sy = 0.0;
     camera_apply_transform(camera, (double)world_x, (double)world_y, &sx, &sy);
     *screen_x = camera_ld_to_i64_sat((long double)sx);
@@ -674,7 +689,9 @@ void rt_camera_world_to_screen(
 int64_t rt_camera_to_screen_x(void *camera_ptr, int64_t world_x) {
     if (!camera_ptr)
         return world_x;
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera)
+        return world_x;
     double sx = 0.0;
     camera_apply_transform(camera, (double)world_x, camera_center_y(camera), &sx, NULL);
     return camera_ld_to_i64_sat((long double)sx);
@@ -684,7 +701,9 @@ int64_t rt_camera_to_screen_x(void *camera_ptr, int64_t world_x) {
 int64_t rt_camera_to_screen_y(void *camera_ptr, int64_t world_y) {
     if (!camera_ptr)
         return world_y;
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera)
+        return world_y;
     double sy = 0.0;
     camera_apply_transform(camera, camera_center_x(camera), (double)world_y, NULL, &sy);
     return camera_ld_to_i64_sat((long double)sy);
@@ -697,7 +716,9 @@ void rt_camera_screen_to_world(
     if (!camera_ptr || !world_x || !world_y)
         return;
 
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera)
+        return;
     double wx = 0.0, wy = 0.0;
     camera_apply_inverse_transform(camera, (double)screen_x, (double)screen_y, &wx, &wy);
     *world_x = camera_ld_to_i64_sat((long double)wx);
@@ -708,7 +729,9 @@ void rt_camera_screen_to_world(
 int64_t rt_camera_to_world_x(void *camera_ptr, int64_t screen_x) {
     if (!camera_ptr)
         return screen_x;
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera)
+        return screen_x;
     double wx = 0.0;
     camera_apply_inverse_transform(
         camera, (double)screen_x, (double)camera->height * 0.5, &wx, NULL);
@@ -719,7 +742,9 @@ int64_t rt_camera_to_world_x(void *camera_ptr, int64_t screen_x) {
 int64_t rt_camera_to_world_y(void *camera_ptr, int64_t screen_y) {
     if (!camera_ptr)
         return screen_y;
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera)
+        return screen_y;
     double wy = 0.0;
     camera_apply_inverse_transform(
         camera, (double)camera->width * 0.5, (double)screen_y, NULL, &wy);
@@ -728,11 +753,11 @@ int64_t rt_camera_to_world_y(void *camera_ptr, int64_t screen_y) {
 
 /// @brief Translate the camera by (dx, dy) world units. Re-clamps to bounds; marks dirty.
 void rt_camera_move(void *camera_ptr, int64_t dx, int64_t dy) {
-    if (!camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
         rt_trap("Camera.Move: null camera");
         return;
     }
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     camera->x = camera_add_saturating(camera->x, dx);
     camera->y = camera_add_saturating(camera->y, dy);
     camera->dirty = 1;
@@ -744,11 +769,11 @@ void rt_camera_move(void *camera_ptr, int64_t dx, int64_t dy) {
 /// "outside the level".
 void rt_camera_set_bounds(
     void *camera_ptr, int64_t min_x, int64_t min_y, int64_t max_x, int64_t max_y) {
-    if (!camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
         rt_trap("Camera.SetBounds: null camera");
         return;
     }
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     camera->has_bounds = 1;
     camera->min_x = min_x;
     camera->min_y = min_y;
@@ -763,11 +788,12 @@ void rt_camera_set_bounds(
 
 /// @brief Disable bounds clamping. Camera can be moved freely afterwards.
 void rt_camera_clear_bounds(void *camera_ptr) {
-    if (!camera_ptr) {
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera) {
         rt_trap("Camera.ClearBounds: null camera");
         return;
     }
-    ((rt_camera_impl *)camera_ptr)->has_bounds = 0;
+    camera->has_bounds = 0;
 }
 
 //=============================================================================
@@ -780,7 +806,9 @@ void rt_camera_clear_bounds(void *camera_ptr) {
 int64_t rt_camera_is_visible(void *camera_ptr, int64_t x, int64_t y, int64_t w, int64_t h) {
     if (!camera_ptr)
         return 1; // Null camera — conservatively treat as visible
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera)
+        return 0;
 
     double sx[4];
     double sy[4];
@@ -821,16 +849,18 @@ int64_t rt_camera_is_visible(void *camera_ptr, int64_t x, int64_t y, int64_t w, 
 /// @brief Returns 1 if the camera's transform has changed since the last `_clear_dirty`. Lets
 /// callers skip costly re-renders when the view is stationary.
 int64_t rt_camera_is_dirty(void *camera_ptr) {
-    if (!camera_ptr)
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera)
         return 0;
-    return ((rt_camera_impl *)camera_ptr)->dirty;
+    return camera->dirty;
 }
 
 /// @brief Reset the dirty flag — call after rendering to acknowledge the latest transform.
 void rt_camera_clear_dirty(void *camera_ptr) {
-    if (!camera_ptr)
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera)
         return;
-    ((rt_camera_impl *)camera_ptr)->dirty = 0;
+    camera->dirty = 0;
 }
 
 //=============================================================================
@@ -846,7 +876,9 @@ int64_t rt_camera_add_parallax(void *camera_ptr,
                                int64_t scroll_y_pct) {
     if (!camera_ptr || !pixels)
         return -1;
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera)
+        return -1;
     if (camera->parallax_count >= RT_CAMERA_MAX_PARALLAX)
         return -1;
 
@@ -870,7 +902,9 @@ int64_t rt_camera_add_parallax(void *camera_ptr,
 void rt_camera_remove_parallax(void *camera_ptr, int64_t index) {
     if (!camera_ptr)
         return;
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera)
+        return;
     if (index < 0 || index >= RT_CAMERA_MAX_PARALLAX)
         return;
     if (camera->parallax[index].active) {
@@ -883,7 +917,9 @@ void rt_camera_remove_parallax(void *camera_ptr, int64_t index) {
 void rt_camera_clear_parallax(void *camera_ptr) {
     if (!camera_ptr)
         return;
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera)
+        return;
     for (int i = 0; i < RT_CAMERA_MAX_PARALLAX; i++)
         camera_release_parallax_layer(&camera->parallax[i]);
     camera->parallax_count = 0;
@@ -891,9 +927,10 @@ void rt_camera_clear_parallax(void *camera_ptr) {
 
 /// @brief Number of currently-active parallax layers.
 int64_t rt_camera_parallax_count(void *camera_ptr) {
-    if (!camera_ptr)
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera)
         return 0;
-    return ((rt_camera_impl *)camera_ptr)->parallax_count;
+    return camera->parallax_count;
 }
 
 /// @brief Render every active parallax layer to `canvas` at offsets computed from the camera's
@@ -901,7 +938,9 @@ int64_t rt_camera_parallax_count(void *camera_ptr) {
 int64_t rt_camera_draw_parallax(void *camera_ptr, void *canvas) {
     if (!camera_ptr || !canvas)
         return 0;
-    rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
+    rt_camera_impl *camera = camera_checked_or_null(camera_ptr);
+    if (!camera)
+        return 0;
 
     int64_t layers_drawn = 0;
 

@@ -769,6 +769,96 @@ static void test_png_truecolor_trns_transparency() {
     printf("test_png_truecolor_trns_transparency: PASSED\n");
 }
 
+static std::vector<uint8_t> test_png_stored_idat(const uint8_t *scanline, size_t len) {
+    std::vector<uint8_t> idat;
+    assert(len <= 65535);
+    idat.push_back(0x78);
+    idat.push_back(0x01);
+    idat.push_back(0x01);
+    idat.push_back((uint8_t)(len & 0xFFu));
+    idat.push_back((uint8_t)(len >> 8));
+    uint16_t nlen = (uint16_t)~(uint16_t)len;
+    idat.push_back((uint8_t)(nlen & 0xFFu));
+    idat.push_back((uint8_t)(nlen >> 8));
+    idat.insert(idat.end(), scanline, scanline + len);
+    test_png_write_u32(idat, test_png_adler32(scanline, len));
+    return idat;
+}
+
+static void test_png_rejects_invalid_ihdr_methods() {
+    const char *pngpath = "/tmp/viper_test_invalid_ihdr_methods.png";
+    std::vector<uint8_t> png;
+    static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    png.insert(png.end(), signature, signature + 8);
+
+    uint8_t ihdr[13] = {0};
+    ihdr[3] = 1;
+    ihdr[7] = 1;
+    ihdr[8] = 8;
+    ihdr[9] = 6;
+    ihdr[11] = 1; // invalid PNG filter method
+    test_png_append_chunk(png, "IHDR", ihdr, sizeof(ihdr));
+    test_png_append_chunk(png, "IEND", nullptr, 0);
+    assert(test_write_file(pngpath, png));
+
+    rt_string path = rt_string_from_bytes(pngpath, strlen(pngpath));
+    assert(rt_pixels_load_png(path) == nullptr);
+    unlink(pngpath);
+    printf("test_png_rejects_invalid_ihdr_methods: PASSED\n");
+}
+
+static void test_png_indexed_requires_palette() {
+    const char *pngpath = "/tmp/viper_test_indexed_no_plte.png";
+    std::vector<uint8_t> png;
+    static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    png.insert(png.end(), signature, signature + 8);
+
+    uint8_t ihdr[13] = {0};
+    ihdr[3] = 1;
+    ihdr[7] = 1;
+    ihdr[8] = 8;
+    ihdr[9] = 3;
+    test_png_append_chunk(png, "IHDR", ihdr, sizeof(ihdr));
+    uint8_t scanline[2] = {0, 0};
+    std::vector<uint8_t> idat = test_png_stored_idat(scanline, sizeof(scanline));
+    test_png_append_chunk(png, "IDAT", idat.data(), idat.size());
+    test_png_append_chunk(png, "IEND", nullptr, 0);
+    assert(test_write_file(pngpath, png));
+
+    rt_string path = rt_string_from_bytes(pngpath, strlen(pngpath));
+    assert(rt_pixels_load_png(path) == nullptr);
+    unlink(pngpath);
+    printf("test_png_indexed_requires_palette: PASSED\n");
+}
+
+static void test_png_subbyte_grayscale_trns_uses_raw_sample() {
+    const char *pngpath = "/tmp/viper_test_gray1_trns.png";
+    std::vector<uint8_t> png;
+    static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+    png.insert(png.end(), signature, signature + 8);
+
+    uint8_t ihdr[13] = {0};
+    ihdr[3] = 1;
+    ihdr[7] = 1;
+    ihdr[8] = 1;
+    ihdr[9] = 0;
+    test_png_append_chunk(png, "IHDR", ihdr, sizeof(ihdr));
+    uint8_t trns[2] = {0x00, 0x01};
+    test_png_append_chunk(png, "tRNS", trns, sizeof(trns));
+    uint8_t scanline[2] = {0, 0x80};
+    std::vector<uint8_t> idat = test_png_stored_idat(scanline, sizeof(scanline));
+    test_png_append_chunk(png, "IDAT", idat.data(), idat.size());
+    test_png_append_chunk(png, "IEND", nullptr, 0);
+    assert(test_write_file(pngpath, png));
+
+    rt_string path = rt_string_from_bytes(pngpath, strlen(pngpath));
+    void *loaded = rt_pixels_load_png(path);
+    assert(loaded != nullptr);
+    assert(rt_pixels_get(loaded, 0, 0) == 0xFFFFFF00);
+    unlink(pngpath);
+    printf("test_png_subbyte_grayscale_trns_uses_raw_sample: PASSED\n");
+}
+
 // ============================================================================
 // Transform Tests
 // ============================================================================
@@ -1386,6 +1476,9 @@ int main() {
     test_png_load_rejects_bad_chunk_crc();
     test_png_load_rejects_bad_zlib_adler();
     test_png_truecolor_trns_transparency();
+    test_png_rejects_invalid_ihdr_methods();
+    test_png_indexed_requires_palette();
+    test_png_subbyte_grayscale_trns_uses_raw_sample();
 
     // Transforms
     test_flip_h();

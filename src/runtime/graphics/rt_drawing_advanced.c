@@ -76,24 +76,42 @@ static void rt_canvas_plot_quarter_circle(rt_canvas *canvas,
     if (!canvas || !canvas->gfx_win)
         return;
 
+    int64_t clip_x = 0;
+    int64_t clip_y = 0;
+    int64_t clip_w = 0;
+    int64_t clip_h = 0;
+    if (!rt_canvas_get_logical_clip_bounds(canvas, &clip_x, &clip_y, &clip_w, &clip_h))
+        return;
+    int64_t clip_x1 = rtg_add_sat64(clip_x, clip_w);
+    int64_t clip_y1 = rtg_add_sat64(clip_y, clip_h);
+#define RT_CANVAS_PLOT_CLIPPED(px, py)                                                            \
+    do {                                                                                           \
+        int64_t qx = (px);                                                                         \
+        int64_t qy = (py);                                                                         \
+        if (qx >= clip_x && qx < clip_x1 && qy >= clip_y && qy < clip_y1 &&                       \
+            rtg_i64_fits_i32(qx) && rtg_i64_fits_i32(qy))                                          \
+            vgfx_pset(canvas->gfx_win, (int32_t)qx, (int32_t)qy, color);                           \
+    } while (0)
+
     switch (corner) {
         case RTG_CORNER_TOP_LEFT:
-            vgfx_pset(canvas->gfx_win, (int32_t)(cx - x), (int32_t)(cy - y), color);
-            vgfx_pset(canvas->gfx_win, (int32_t)(cx - y), (int32_t)(cy - x), color);
+            RT_CANVAS_PLOT_CLIPPED(rtg_add_sat64(cx, -x), rtg_add_sat64(cy, -y));
+            RT_CANVAS_PLOT_CLIPPED(rtg_add_sat64(cx, -y), rtg_add_sat64(cy, -x));
             break;
         case RTG_CORNER_TOP_RIGHT:
-            vgfx_pset(canvas->gfx_win, (int32_t)(cx + x), (int32_t)(cy - y), color);
-            vgfx_pset(canvas->gfx_win, (int32_t)(cx + y), (int32_t)(cy - x), color);
+            RT_CANVAS_PLOT_CLIPPED(rtg_add_sat64(cx, x), rtg_add_sat64(cy, -y));
+            RT_CANVAS_PLOT_CLIPPED(rtg_add_sat64(cx, y), rtg_add_sat64(cy, -x));
             break;
         case RTG_CORNER_BOTTOM_LEFT:
-            vgfx_pset(canvas->gfx_win, (int32_t)(cx - x), (int32_t)(cy + y), color);
-            vgfx_pset(canvas->gfx_win, (int32_t)(cx - y), (int32_t)(cy + x), color);
+            RT_CANVAS_PLOT_CLIPPED(rtg_add_sat64(cx, -x), rtg_add_sat64(cy, y));
+            RT_CANVAS_PLOT_CLIPPED(rtg_add_sat64(cx, -y), rtg_add_sat64(cy, x));
             break;
         case RTG_CORNER_BOTTOM_RIGHT:
-            vgfx_pset(canvas->gfx_win, (int32_t)(cx + x), (int32_t)(cy + y), color);
-            vgfx_pset(canvas->gfx_win, (int32_t)(cx + y), (int32_t)(cy + x), color);
+            RT_CANVAS_PLOT_CLIPPED(rtg_add_sat64(cx, x), rtg_add_sat64(cy, y));
+            RT_CANVAS_PLOT_CLIPPED(rtg_add_sat64(cx, y), rtg_add_sat64(cy, x));
             break;
     }
+#undef RT_CANVAS_PLOT_CLIPPED
 }
 
 static void rt_canvas_draw_quarter_circle(
@@ -102,7 +120,7 @@ static void rt_canvas_draw_quarter_circle(
         return;
 
     if (radius == 0) {
-        vgfx_pset(canvas->gfx_win, (int32_t)cx, (int32_t)cy, color);
+        rt_canvas_plot(canvas, cx, cy, (int64_t)color);
         return;
     }
 
@@ -172,13 +190,7 @@ void rt_canvas_thick_line(void *canvas_ptr,
     vgfx_color_t col = (vgfx_color_t)color;
 
     if (thickness == 1) {
-        // Use standard line drawing
-        vgfx_line(canvas->gfx_win,
-                  rtg_clamp_i64_to_i32(x1),
-                  rtg_clamp_i64_to_i32(y1),
-                  rtg_clamp_i64_to_i32(x2),
-                  rtg_clamp_i64_to_i32(y2),
-                  col);
+        rt_canvas_line(canvas, x1, y1, x2, y2, color);
         return;
     }
 
@@ -188,11 +200,7 @@ void rt_canvas_thick_line(void *canvas_ptr,
     int64_t half = thickness / 2;
 
     if (x1 == x2 && y1 == y2) {
-        vgfx_fill_circle(canvas->gfx_win,
-                         rtg_clamp_i64_to_i32(x1),
-                         rtg_clamp_i64_to_i32(y1),
-                         rtg_clamp_i64_to_i32(half),
-                         col);
+        rt_canvas_disc(canvas, x1, y1, half, color);
         return;
     }
 
@@ -316,13 +324,7 @@ void rt_canvas_round_box(
         radius = 0;
 
     if (radius == 0) {
-        // Just draw a regular filled rectangle
-        vgfx_fill_rect(canvas->gfx_win,
-                       rtg_clamp_i64_to_i32(x),
-                       rtg_clamp_i64_to_i32(y),
-                       rtg_clamp_i64_to_i32(w),
-                       rtg_clamp_i64_to_i32(h),
-                       col);
+        rt_canvas_box(canvas, x, y, w, h, color);
         return;
     }
 
@@ -393,31 +395,7 @@ void rt_canvas_round_frame(
         radius = 0;
 
     if (radius == 0) {
-        // Draw regular rectangle outline
-        vgfx_line(canvas->gfx_win,
-                  rtg_clamp_i64_to_i32(x),
-                  rtg_clamp_i64_to_i32(y),
-                  rtg_clamp_i64_to_i32(rtg_add_sat64(x, w - 1)),
-                  rtg_clamp_i64_to_i32(y),
-                  col);
-        vgfx_line(canvas->gfx_win,
-                  rtg_clamp_i64_to_i32(x),
-                  rtg_clamp_i64_to_i32(rtg_add_sat64(y, h - 1)),
-                  rtg_clamp_i64_to_i32(rtg_add_sat64(x, w - 1)),
-                  rtg_clamp_i64_to_i32(rtg_add_sat64(y, h - 1)),
-                  col);
-        vgfx_line(canvas->gfx_win,
-                  rtg_clamp_i64_to_i32(x),
-                  rtg_clamp_i64_to_i32(y),
-                  rtg_clamp_i64_to_i32(x),
-                  rtg_clamp_i64_to_i32(rtg_add_sat64(y, h - 1)),
-                  col);
-        vgfx_line(canvas->gfx_win,
-                  rtg_clamp_i64_to_i32(rtg_add_sat64(x, w - 1)),
-                  rtg_clamp_i64_to_i32(y),
-                  rtg_clamp_i64_to_i32(rtg_add_sat64(x, w - 1)),
-                  rtg_clamp_i64_to_i32(rtg_add_sat64(y, h - 1)),
-                  col);
+        rt_canvas_frame(canvas, x, y, w, h, color);
         return;
     }
 

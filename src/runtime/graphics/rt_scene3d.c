@@ -1658,6 +1658,8 @@ static void rt_scene_node3d_finalize(void *obj) {
     scene3d_release_ref(&node->light);
     scene3d_release_ref(&node->bound_body);
     scene3d_release_ref(&node->bound_animator);
+    if (node->bound_node_animator)
+        ((rt_node_animator3d *)node->bound_node_animator)->root = NULL;
     scene3d_release_ref(&node->bound_node_animator);
     scene3d_release_ref((void **)&node->name);
 }
@@ -1725,9 +1727,9 @@ void *rt_scene_node3d_new(void) {
 
 /// @brief Set the local-space position component of the node's TRS.
 void rt_scene_node3d_set_position(void *obj, double x, double y, double z) {
-    if (!obj)
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    if (!n)
         return;
-    rt_scene_node3d *n = (rt_scene_node3d *)obj;
     n->position[0] = scene3d_finite_or(x, 0.0);
     n->position[1] = scene3d_finite_or(y, 0.0);
     n->position[2] = scene3d_finite_or(z, 0.0);
@@ -1736,17 +1738,17 @@ void rt_scene_node3d_set_position(void *obj, double x, double y, double z) {
 
 /// @brief Read the local position as a Vec3 (origin if `obj` is NULL).
 void *rt_scene_node3d_get_position(void *obj) {
-    if (!obj)
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    if (!n)
         return rt_vec3_new(0, 0, 0);
-    rt_scene_node3d *n = (rt_scene_node3d *)obj;
     return rt_vec3_new(n->position[0], n->position[1], n->position[2]);
 }
 
 /// @brief Replace the local rotation with the given Quat (re-normalised on store).
 void rt_scene_node3d_set_rotation(void *obj, void *quat) {
-    if (!obj || !quat)
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    if (!n || !quat)
         return;
-    rt_scene_node3d *n = (rt_scene_node3d *)obj;
     n->rotation[0] = rt_quat_x(quat);
     n->rotation[1] = rt_quat_y(quat);
     n->rotation[2] = rt_quat_z(quat);
@@ -1757,17 +1759,17 @@ void rt_scene_node3d_set_rotation(void *obj, void *quat) {
 
 /// @brief Read the local rotation as a Quat (identity if `obj` is NULL).
 void *rt_scene_node3d_get_rotation(void *obj) {
-    if (!obj)
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    if (!n)
         return rt_quat_new(0, 0, 0, 1);
-    rt_scene_node3d *n = (rt_scene_node3d *)obj;
     return rt_quat_new(n->rotation[0], n->rotation[1], n->rotation[2], n->rotation[3]);
 }
 
 /// @brief Set the per-axis scale (uniform or non-uniform).
 void rt_scene_node3d_set_scale(void *obj, double x, double y, double z) {
-    if (!obj)
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    if (!n)
         return;
-    rt_scene_node3d *n = (rt_scene_node3d *)obj;
     n->scale_xyz[0] = scene3d_scale_or_unit(x);
     n->scale_xyz[1] = scene3d_scale_or_unit(y);
     n->scale_xyz[2] = scene3d_scale_or_unit(z);
@@ -1776,17 +1778,17 @@ void rt_scene_node3d_set_scale(void *obj, double x, double y, double z) {
 
 /// @brief Read the local scale as a Vec3 (1,1,1 if `obj` is NULL).
 void *rt_scene_node3d_get_scale(void *obj) {
-    if (!obj)
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    if (!n)
         return rt_vec3_new(1, 1, 1);
-    rt_scene_node3d *n = (rt_scene_node3d *)obj;
     return rt_vec3_new(n->scale_xyz[0], n->scale_xyz[1], n->scale_xyz[2]);
 }
 
 /// @brief Compose this node's local TRS with all ancestors and return the world matrix as a Mat4.
 void *rt_scene_node3d_get_world_matrix(void *obj) {
-    if (!obj)
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    if (!n)
         return NULL;
-    rt_scene_node3d *n = (rt_scene_node3d *)obj;
     recompute_world_matrix(n);
     const double *m = n->world_matrix;
     return rt_mat4_new(m[0],
@@ -1869,14 +1871,15 @@ void rt_scene_node3d_remove_child(void *obj, void *child_obj) {
 
 /// @brief Number of immediate (non-recursive) children attached to this node.
 int64_t rt_scene_node3d_child_count(void *obj) {
-    return obj ? ((rt_scene_node3d *)obj)->child_count : 0;
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    return node ? node->child_count : 0;
 }
 
 /// @brief Return the `index`-th child handle (NULL on out-of-range or NULL `obj`).
 void *rt_scene_node3d_get_child(void *obj, int64_t index) {
-    if (!obj)
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    if (!n)
         return NULL;
-    rt_scene_node3d *n = (rt_scene_node3d *)obj;
     if (index < 0 || index >= n->child_count)
         return NULL;
     return n->children[index];
@@ -2015,9 +2018,9 @@ rt_string rt_scene_node3d_get_name(void *obj) {
 void *rt_scene_node3d_get_aabb_min(void *obj) {
     double identity[16];
     int has_bounds;
-    if (!obj)
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    if (!n)
         return rt_vec3_new(0, 0, 0);
-    rt_scene_node3d *n = (rt_scene_node3d *)obj;
     scene_bounds_reset(n->aabb_min, n->aabb_max);
     mat4d_identity(identity);
     has_bounds = scene_node_collect_subtree_bounds(n, identity, n->aabb_min, n->aabb_max);
@@ -2032,9 +2035,9 @@ void *rt_scene_node3d_get_aabb_min(void *obj) {
 void *rt_scene_node3d_get_aabb_max(void *obj) {
     double identity[16];
     int has_bounds;
-    if (!obj)
+    rt_scene_node3d *n = scene_node3d_checked(obj);
+    if (!n)
         return rt_vec3_new(0, 0, 0);
-    rt_scene_node3d *n = (rt_scene_node3d *)obj;
     scene_bounds_reset(n->aabb_min, n->aabb_max);
     mat4d_identity(identity);
     has_bounds = scene_node_collect_subtree_bounds(n, identity, n->aabb_min, n->aabb_max);
@@ -2047,10 +2050,11 @@ void *rt_scene_node3d_get_aabb_max(void *obj) {
 
 /// @brief Link a physics rigid body to this node so transforms stay in sync (see `set_sync_mode`).
 void rt_scene_node3d_bind_body(void *obj, void *body) {
-    rt_scene_node3d *node;
-    if (!obj)
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
         return;
-    node = (rt_scene_node3d *)obj;
+    if (body && !rt_g3d_has_class(body, RT_G3D_BODY3D_CLASS_ID))
+        return;
     if (node->bound_body == body)
         return;
     rt_obj_retain_maybe(body);
@@ -2060,14 +2064,16 @@ void rt_scene_node3d_bind_body(void *obj, void *body) {
 
 /// @brief Detach any bound rigid body. Subsequent `sync` calls on this node become no-ops.
 void rt_scene_node3d_clear_body_binding(void *obj) {
-    if (!obj)
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
         return;
-    scene3d_release_ref(&((rt_scene_node3d *)obj)->bound_body);
+    scene3d_release_ref(&node->bound_body);
 }
 
 /// @brief Currently bound rigid body handle (NULL if none).
 void *rt_scene_node3d_get_body(void *obj) {
-    return obj ? ((rt_scene_node3d *)obj)->bound_body : NULL;
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    return node ? node->bound_body : NULL;
 }
 
 /// @brief Choose how this node and its bound body stay in sync each frame.
@@ -2077,10 +2083,9 @@ void *rt_scene_node3d_get_body(void *obj) {
 /// `NODE_FROM_ANIMATOR_ROOT_MOTION` (root-motion driven), or
 /// `TWO_WAY_KINEMATIC` (sync both directions per frame).
 void rt_scene_node3d_set_sync_mode(void *obj, int64_t sync_mode) {
-    rt_scene_node3d *node;
-    if (!obj)
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
         return;
-    node = (rt_scene_node3d *)obj;
     switch (sync_mode) {
     case RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY:
     case RT_SCENE_NODE3D_SYNC_BODY_FROM_NODE:
@@ -2096,15 +2101,17 @@ void rt_scene_node3d_set_sync_mode(void *obj, int64_t sync_mode) {
 
 /// @brief Current node/body sync mode (`NODE_FROM_BODY` if `obj` is NULL).
 int64_t rt_scene_node3d_get_sync_mode(void *obj) {
-    return obj ? ((rt_scene_node3d *)obj)->sync_mode : RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY;
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    return node ? node->sync_mode : RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY;
 }
 
 /// @brief Bind an animation controller to drive this node's transform / skeleton.
 void rt_scene_node3d_bind_animator(void *obj, void *controller) {
-    rt_scene_node3d *node;
-    if (!obj)
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
         return;
-    node = (rt_scene_node3d *)obj;
+    if (controller && !rt_g3d_has_class(controller, RT_G3D_ANIMCONTROLLER3D_CLASS_ID))
+        return;
     if (node->bound_animator == controller)
         return;
     rt_obj_retain_maybe(controller);
@@ -2123,11 +2130,12 @@ void rt_scene_node3d_bind_animator(void *obj, void *controller) {
 /// @param obj      Scene node to drive; no-op if NULL.
 /// @param animator NodeAnimator3D handle, or NULL to detach.
 void rt_scene_node3d_bind_node_animator(void *obj, void *animator) {
-    rt_scene_node3d *node;
+    rt_scene_node3d *node = scene_node3d_checked(obj);
     rt_node_animator3d *node_animator;
-    if (!obj)
+    if (!node)
         return;
-    node = (rt_scene_node3d *)obj;
+    if (animator && !rt_g3d_has_class(animator, RT_G3D_NODEANIMATOR3D_CLASS_ID))
+        return;
     if (node->bound_node_animator == animator)
         return;
     rt_obj_retain_maybe(animator);
@@ -2142,14 +2150,16 @@ void rt_scene_node3d_bind_node_animator(void *obj, void *animator) {
 
 /// @brief Detach any bound animator. Subsequent frames stop applying its motion.
 void rt_scene_node3d_clear_animator_binding(void *obj) {
-    if (!obj)
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
         return;
-    scene3d_release_ref(&((rt_scene_node3d *)obj)->bound_animator);
+    scene3d_release_ref(&node->bound_animator);
 }
 
 /// @brief Currently bound animation controller handle (NULL if none).
 void *rt_scene_node3d_get_animator(void *obj) {
-    return obj ? ((rt_scene_node3d *)obj)->bound_animator : NULL;
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    return node ? node->bound_animator : NULL;
 }
 
 /*==========================================================================
@@ -2299,11 +2309,9 @@ static void scene3d_build_culling_vp(rt_canvas3d *canvas, rt_camera3d *cam, floa
 ///   inside a Begin2D/End block because 2D and 3D passes use incompatible
 ///   pipeline state.
 void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
-    if (!obj || !canvas3d || !camera)
-        return;
-    rt_scene3d *s = (rt_scene3d *)obj;
-    rt_canvas3d *canvas = (rt_canvas3d *)canvas3d;
-    rt_camera3d *cam = (rt_camera3d *)camera;
+    rt_scene3d *s = scene3d_checked(obj);
+    rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(canvas3d);
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(camera);
     int8_t started_frame = 0;
     rt_light3d scene_light_storage[VGFX3D_MAX_LIGHTS];
     rt_light3d *scene_light_ptrs[VGFX3D_MAX_LIGHTS];
@@ -2314,6 +2322,8 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     vgfx3d_frustum_t frustum;
     int32_t culled = 0;
 
+    if (!s || !canvas || !cam)
+        return;
     if (canvas->in_frame) {
         if (canvas->frame_is_2d) {
             rt_trap("Scene3D.Draw: cannot draw a 3D scene during Begin2D/End");
@@ -2321,6 +2331,8 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
         }
     } else {
         rt_canvas3d_begin(canvas3d, camera);
+        if (!canvas->in_frame || canvas->frame_is_2d)
+            return;
         started_frame = 1;
     }
     scene3d_build_culling_vp(canvas, cam, vp);
@@ -2348,9 +2360,9 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
 ///   subtree's retain count is decremented; subtrees held by other strong
 ///   refs outside the scene graph survive and remain usable.
 void rt_scene3d_clear(void *obj) {
-    if (!obj)
+    rt_scene3d *s = scene3d_checked(obj);
+    if (!s)
         return;
-    rt_scene3d *s = (rt_scene3d *)obj;
     /* Detach all children from root */
     for (int32_t i = 0; i < s->root->child_count; i++) {
         s->root->children[i]->parent = NULL;
@@ -2367,7 +2379,7 @@ void rt_scene3d_clear(void *obj) {
 ///   the scene's own integration timestep. Callers typically invoke this once
 ///   per simulation step, before submitting the scene for drawing.
 void rt_scene3d_sync_bindings(void *obj, double dt) {
-    rt_scene3d *scene = (rt_scene3d *)obj;
+    rt_scene3d *scene = scene3d_checked(obj);
     if (!scene || !scene->root)
         return;
     scene_node_sync_recursive(scene->root, dt);
@@ -2379,9 +2391,9 @@ void rt_scene3d_sync_bindings(void *obj, double dt) {
 ///   stays correct after direct child-list mutation. The cached `node_count`
 ///   field is refreshed as a side effect.
 int64_t rt_scene3d_get_node_count(void *obj) {
-    if (!obj)
+    rt_scene3d *scene = scene3d_checked(obj);
+    if (!scene)
         return 0;
-    rt_scene3d *scene = (rt_scene3d *)obj;
     scene->node_count = count_subtree(scene->root);
     return scene->node_count;
 }
@@ -2390,7 +2402,8 @@ int64_t rt_scene3d_get_node_count(void *obj) {
 /// @details Zero until the first draw. Useful as a coarse telemetry signal to
 ///   verify that culling is actually rejecting off-screen geometry.
 int64_t rt_scene3d_get_culled_count(void *obj) {
-    return obj ? ((rt_scene3d *)obj)->last_culled_count : 0;
+    rt_scene3d *scene = scene3d_checked(obj);
+    return scene ? scene->last_culled_count : 0;
 }
 
 /*==========================================================================
@@ -2404,9 +2417,11 @@ int64_t rt_scene3d_get_culled_count(void *obj) {
 ///   mesh is retained here and released by `rt_scene_node3d_clear_lod` so
 ///   callers may drop their local reference immediately after adding.
 void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh) {
-    if (!obj || !mesh)
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node || !mesh)
         return;
-    rt_scene_node3d *node = (rt_scene_node3d *)obj;
+    if (!rt_g3d_has_class(mesh, RT_G3D_MESH3D_CLASS_ID))
+        return;
     distance = scene3d_finite_or(distance, 0.0);
     if (distance < 0.0)
         distance = 0.0;
@@ -2450,9 +2465,9 @@ void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh) {
 /// @details Preserves the underlying `lod_levels` allocation so subsequent
 ///   `add_lod` calls can reuse it without reallocating.
 void rt_scene_node3d_clear_lod(void *obj) {
-    if (!obj)
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
         return;
-    rt_scene_node3d *node = (rt_scene_node3d *)obj;
     for (int32_t i = 0; i < node->lod_count; i++)
         scene3d_release_ref(&node->lod_levels[i].mesh);
     node->lod_count = 0;
@@ -2460,7 +2475,8 @@ void rt_scene_node3d_clear_lod(void *obj) {
 
 /// @brief Number of LOD levels currently registered on this node.
 int64_t rt_scene_node3d_get_lod_count(void *obj) {
-    return obj ? ((rt_scene_node3d *)obj)->lod_count : 0;
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    return node ? node->lod_count : 0;
 }
 
 /// @brief Distance threshold (in world units) for the LOD at `index`.
@@ -2468,9 +2484,9 @@ int64_t rt_scene_node3d_get_lod_count(void *obj) {
 ///   null node; 0.0 is a safe sentinel because LOD 0 (if present) would
 ///   normally specify a non-zero distance anyway.
 double rt_scene_node3d_get_lod_distance(void *obj, int64_t index) {
-    if (!obj)
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
         return 0.0;
-    rt_scene_node3d *node = (rt_scene_node3d *)obj;
     if (index < 0 || index >= node->lod_count)
         return 0.0;
     return node->lod_levels[index].distance;
@@ -2479,9 +2495,9 @@ double rt_scene_node3d_get_lod_distance(void *obj, int64_t index) {
 /// @brief Borrowed pointer to the mesh registered at LOD `index`.
 /// @return The mesh or NULL; ownership stays with the scene node.
 void *rt_scene_node3d_get_lod_mesh(void *obj, int64_t index) {
-    if (!obj)
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
         return NULL;
-    rt_scene_node3d *node = (rt_scene_node3d *)obj;
     if (index < 0 || index >= node->lod_count)
         return NULL;
     return node->lod_levels[index].mesh;

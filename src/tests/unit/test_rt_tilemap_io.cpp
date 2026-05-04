@@ -119,6 +119,20 @@ static void test_autotile_isolated(void) {
     PASS();
 }
 
+static void test_autotile_partial_rule_falls_back_to_base(void) {
+    TEST("Auto-tiling partial rule falls back to base tile");
+    void *tm = rt_tilemap_new(2, 1, 16, 16);
+    rt_tilemap_set_tile(tm, 0, 0, 1);
+    rt_tilemap_set_tile(tm, 1, 0, 1);
+
+    rt_tilemap_set_autotile_lo(tm, 1, 100, 101, 102, 103, 104, 105, 106, 107);
+    rt_tilemap_apply_autotile(tm);
+
+    assert(rt_tilemap_get_tile(tm, 0, 0) == 102);
+    assert(rt_tilemap_get_tile(tm, 1, 0) == 1);
+    PASS();
+}
+
 static void test_json_save_load(void) {
     TEST("JSON save/load round-trip");
     void *tm = rt_tilemap_new(3, 3, 16, 16);
@@ -234,6 +248,35 @@ static void test_json_negative_anim_frame_normalizes(void) {
     void *tm = rt_tilemap_load_from_file(make_str(path));
     assert(tm != NULL);
     assert(rt_tilemap_resolve_anim_tile(tm, 7) == 8);
+    PASS();
+}
+
+static void test_json_duplicate_animation_state_applies_to_replaced_base(void) {
+    TEST("JSON duplicate animation state applies to replaced base");
+    const char *path = "/tmp/test_tilemap_duplicate_anim_state.json";
+    FILE *f = fopen(path, "w");
+    assert(f != NULL);
+    fprintf(f,
+            "{"
+            "\"version\":1,\"width\":1,\"height\":1,\"tileWidth\":16,\"tileHeight\":16,"
+            "\"layers\":[{\"tiles\":[5],\"visible\":1,\"name\":\"base\"}],"
+            "\"collision\":{\"layer\":0,\"types\":[]},"
+            "\"tileProperties\":[],\"autotiles\":[],"
+            "\"animations\":["
+            "{\"baseTile\":5,\"frameCount\":2,\"msPerFrame\":100,"
+            "\"timer\":0,\"currentFrame\":0,\"frames\":[5,6]},"
+            "{\"baseTile\":6,\"frameCount\":2,\"msPerFrame\":100,"
+            "\"timer\":0,\"currentFrame\":0,\"frames\":[60,61]},"
+            "{\"baseTile\":5,\"frameCount\":2,\"msPerFrame\":100,"
+            "\"timer\":0,\"currentFrame\":1,\"frames\":[50,51]}"
+            "]"
+            "}");
+    fclose(f);
+
+    void *tm = rt_tilemap_load_from_file(make_str(path));
+    assert(tm != NULL);
+    assert(rt_tilemap_resolve_anim_tile(tm, 5) == 51);
+    assert(rt_tilemap_resolve_anim_tile(tm, 6) == 60);
     PASS();
 }
 
@@ -356,11 +399,13 @@ int main() {
     test_tile_property_update();
     test_autotile_basic();
     test_autotile_isolated();
+    test_autotile_partial_rule_falls_back_to_base();
     test_json_save_load();
     test_json_save_load_preserves_extended_state();
     test_csv_import();
     test_csv_import_clamps_overflow_values();
     test_json_negative_anim_frame_normalizes();
+    test_json_duplicate_animation_state_applies_to_replaced_base();
     test_tile_anim_sequential_frames_saturate();
     test_tile_anim_duplicate_base_replaces();
     test_json_rejects_wrong_layer_tile_count();

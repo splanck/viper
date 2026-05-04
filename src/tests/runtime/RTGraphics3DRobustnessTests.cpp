@@ -11,18 +11,28 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifndef VIPER_ENABLE_GRAPHICS
+#define VIPER_ENABLE_GRAPHICS 1
+#endif
+
 extern "C" {
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_decal3d.h"
+#include "rt_collider3d.h"
 #include "rt_graphics3d_ids.h"
+#include "rt_joints3d.h"
 #include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
 #include "rt_navmesh3d.h"
 #include "rt_object.h"
 #include "rt_path3d.h"
+#include "rt_particles3d.h"
 #include "rt_pixels.h"
+#include "rt_physics3d.h"
+#include "rt_scene3d.h"
 #include "rt_sprite3d.h"
+#include "rt_string.h"
 #include "rt_terrain3d.h"
 #include "rt_texatlas3d.h"
 #include "rt_vec3.h"
@@ -33,7 +43,10 @@ extern "C" {
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <fstream>
 #include <limits>
+#include <string>
 
 extern "C" {
 void *rt_mesh3d_new(void);
@@ -41,7 +54,9 @@ void rt_mesh3d_add_vertex(
     void *m, double x, double y, double z, double nx, double ny, double nz, double u, double v);
 void rt_mesh3d_add_triangle(void *m, int64_t v0, int64_t v1, int64_t v2);
 int64_t rt_mesh3d_get_vertex_count(void *m);
+int64_t rt_mesh3d_get_triangle_count(void *m);
 void rt_mesh3d_transform(void *m, void *mat4);
+void rt_mesh3d_calc_tangents(void *m);
 void *rt_material3d_new(void);
 void rt_material3d_set_import_texture_slot(void *obj,
                                            int64_t slot,
@@ -128,6 +143,65 @@ struct MaterialView {
     double texture_slot_uv_transform[6][6];
 };
 
+struct ParticleView {
+    void *vptr;
+    void *particles;
+    int32_t count;
+    int32_t max_particles;
+    double position[3];
+    double emit_dir[3];
+    double emit_spread;
+    double speed_min;
+    double speed_max;
+    double life_min;
+    double life_max;
+    double size_start;
+    double size_end;
+    double gravity[3];
+    float color_start[3];
+    float color_end[3];
+    double alpha_start;
+    double alpha_end;
+    double rate;
+    double accumulator;
+    int8_t emitting;
+    int8_t additive_blend;
+    void *texture;
+};
+
+struct WaterView {
+    void *vptr;
+    double width;
+    double depth;
+    double height;
+    double wave_speed;
+    double wave_amplitude;
+    double wave_frequency;
+    double color[3];
+    double alpha;
+    double time;
+    void *mesh;
+    void *material;
+    void *texture;
+    void *normal_map;
+    void *env_map;
+    double reflectivity;
+};
+
+static double triangle_area_sq(const rt_mesh3d *mesh, uint32_t i0, uint32_t i1, uint32_t i2) {
+    const float *a = mesh->vertices[i0].pos;
+    const float *b = mesh->vertices[i1].pos;
+    const float *c = mesh->vertices[i2].pos;
+    double ab[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+    double ac[3] = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+    double cross[3] = {
+        ab[1] * ac[2] - ab[2] * ac[1],
+        ab[2] * ac[0] - ab[0] * ac[2],
+        ab[0] * ac[1] - ab[1] * ac[0],
+    };
+    return cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2];
+}
+
 static void test_graphics3d_class_ids_are_stable() {
     void *atlas = rt_texatlas3d_new(16, 16);
     void *path = rt_path3d_new();
@@ -203,6 +277,142 @@ static void test_mesh_apis_reject_wrong_class_handles() {
     assert(rt_mesh3d_get_vertex_count(mesh) == 1);
     rt_mesh3d_transform(mesh, bad_mat4);
     assert(rt_mesh3d_get_vertex_count(mesh) == 1);
+}
+
+static void test_camera_center_ray_and_projection_layout() {
+    void *camera = rt_camera3d_new(90.0, 1.0, 0.1, 100.0);
+    void *center_ray = rt_camera3d_screen_to_ray(camera, 50, 50, 100, 100);
+    assert(std::fabs(rt_vec3_x(center_ray)) < 1e-6);
+    assert(std::fabs(rt_vec3_y(center_ray)) < 1e-6);
+    assert(std::fabs(rt_vec3_z(center_ray) + 1.0) < 1e-6);
+
+    float projection[16] = {};
+    rt_camera3d_get_render_projection(camera, 1.0, projection);
+    assert(std::isfinite(projection[10]));
+    assert(std::isfinite(projection[11]));
+    assert(projection[14] == -1.0f);
+}
+
+static void test_generated_sphere_has_no_degenerate_triangles() {
+    auto *mesh = static_cast<rt_mesh3d *>(rt_mesh3d_new_sphere(1.0, 8));
+    assert(mesh != nullptr);
+    assert(rt_mesh3d_get_triangle_count(mesh) > 0);
+    for (uint32_t i = 0; i + 2 < mesh->index_count; i += 3) {
+        assert(triangle_area_sq(mesh, mesh->indices[i], mesh->indices[i + 1], mesh->indices[i + 2]) >
+               1e-12);
+    }
+}
+
+static void test_obj_loader_handles_long_lines() {
+    const std::string path = "/tmp/viper_rt_graphics3d_long_line.obj";
+    {
+        std::ofstream out(path);
+        out << '#';
+        out << std::string(6000, 'x') << "\n";
+        out << "v 0 0 0\n";
+        out << "v 1 0 0\n";
+        out << "v 0 1 0\n";
+        out << "f 1 2 3\n";
+    }
+
+    rt_string path_string = rt_string_from_bytes(path.c_str(), static_cast<int64_t>(path.size()));
+    void *mesh = rt_mesh3d_from_obj(path_string);
+    assert(mesh != nullptr);
+    assert(rt_mesh3d_get_triangle_count(mesh) == 1);
+    std::remove(path.c_str());
+}
+
+static void test_scene_particles_water_and_render_targets_reject_wrong_handles() {
+    void *fake = rt_obj_new_i64(0, 8);
+    void *node = rt_scene_node3d_new();
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    rt_scene_node3d_add_lod(node, 4.0, fake);
+    assert(rt_scene_node3d_get_lod_count(node) == 0);
+    rt_scene_node3d_add_lod(node, 4.0, mesh);
+    assert(rt_scene_node3d_get_lod_count(node) == 1);
+    assert(rt_scene_node3d_get_lod_mesh(node, 0) == mesh);
+
+    void *particles_obj = rt_particles3d_new(4);
+    auto *particles = static_cast<ParticleView *>(particles_obj);
+    void *pixels = rt_pixels_new(1, 1);
+    rt_particles3d_set_texture(particles_obj, pixels);
+    assert(particles->texture == pixels);
+    rt_particles3d_set_texture(particles_obj, fake);
+    assert(particles->texture == pixels);
+
+    void *water_obj = rt_water3d_new(2.0, 2.0);
+    auto *water = static_cast<WaterView *>(water_obj);
+    rt_water3d_set_texture(water_obj, pixels);
+    rt_water3d_set_normal_map(water_obj, pixels);
+    assert(water->texture == pixels);
+    assert(water->normal_map == pixels);
+    rt_water3d_set_texture(water_obj, fake);
+    rt_water3d_set_normal_map(water_obj, fake);
+    assert(water->texture == pixels);
+    assert(water->normal_map == pixels);
+
+    void *cubemap = rt_cubemap3d_new(pixels, pixels, pixels, pixels, pixels, pixels);
+    rt_water3d_set_env_map(water_obj, cubemap);
+    assert(water->env_map == cubemap);
+    rt_water3d_set_env_map(water_obj, fake);
+    assert(water->env_map == cubemap);
+
+    assert(rt_rendertarget3d_get_width(fake) == 0);
+    assert(rt_rendertarget3d_get_height(fake) == 0);
+    assert(rt_rendertarget3d_as_pixels(fake) == nullptr);
+}
+
+static void test_cubemap_sampling_sanitizes_inputs() {
+    void *px = rt_pixels_new(1, 1);
+    void *face = rt_pixels_new(1, 1);
+    rt_pixels_set(px, 0, 0, (int64_t)0xFF0000FF);
+    rt_pixels_set(face, 0, 0, (int64_t)0x000000FF);
+    auto *cubemap = static_cast<rt_cubemap3d *>(rt_cubemap3d_new(px, face, face, face, face, face));
+    assert(cubemap != nullptr);
+
+    float out[3] = {1.0f, 1.0f, 1.0f};
+    rt_cubemap_sample(
+        cubemap, std::numeric_limits<float>::quiet_NaN(), 0.0f, 1.0f, &out[0], &out[1], &out[2]);
+    assert(out[0] == 0.0f && out[1] == 0.0f && out[2] == 0.0f);
+
+    rt_cubemap_sample_roughness(cubemap,
+                                1.0f,
+                                0.0f,
+                                0.0f,
+                                std::numeric_limits<float>::quiet_NaN(),
+                                &out[0],
+                                &out[1],
+                                &out[2]);
+    assert(std::isfinite(out[0]) && std::isfinite(out[1]) && std::isfinite(out[2]));
+    assert(out[0] > 0.9f);
+}
+
+static void test_physics_checked_handles_and_trigger_removal_exit() {
+    void *fake = rt_obj_new_i64(0, 8);
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *body = rt_body3d_new_sphere(0.5, 1.0);
+    rt_body3d_set_position(body, 0.0, 0.0, 0.0);
+
+    rt_world3d_add(fake, body);
+    assert(rt_world3d_body_count(fake) == 0);
+    rt_world3d_add(world, body);
+    assert(rt_world3d_body_count(world) == 1);
+
+    void *bad_pos = rt_body3d_get_position(fake);
+    assert(rt_vec3_x(bad_pos) == 0.0 && rt_vec3_y(bad_pos) == 0.0 && rt_vec3_z(bad_pos) == 0.0);
+    assert(rt_physics_hit3d_get_body(fake) == nullptr);
+    assert(rt_physics_hit_list3d_get_count(fake) == 0);
+    assert(rt_collision_event3d_get_body_a(fake) == nullptr);
+
+    void *trigger = rt_trigger3d_new(-1.0, -1.0, -1.0, 1.0, 1.0, 1.0);
+    rt_trigger3d_update(trigger, world);
+    assert(rt_trigger3d_get_enter_count(trigger) == 1);
+    assert(rt_trigger3d_get_exit_count(trigger) == 0);
+
+    rt_world3d_remove(world, body);
+    rt_trigger3d_update(trigger, world);
+    assert(rt_trigger3d_get_enter_count(trigger) == 0);
+    assert(rt_trigger3d_get_exit_count(trigger) == 1);
 }
 
 static void test_material_import_texture_transform_clamps_float_uniforms() {
@@ -360,6 +570,12 @@ int main() {
     test_texture_atlas_copies_pixels_and_reports_uvs();
     test_material_rejects_non_pixels_texture_handles();
     test_mesh_apis_reject_wrong_class_handles();
+    test_camera_center_ray_and_projection_layout();
+    test_generated_sphere_has_no_degenerate_triangles();
+    test_obj_loader_handles_long_lines();
+    test_scene_particles_water_and_render_targets_reject_wrong_handles();
+    test_cubemap_sampling_sanitizes_inputs();
+    test_physics_checked_handles_and_trigger_removal_exit();
     test_material_import_texture_transform_clamps_float_uniforms();
     test_terrain_heightmap_and_scale_sanitize_inputs();
     test_sprite3d_clamps_frame_anchor_and_scale();

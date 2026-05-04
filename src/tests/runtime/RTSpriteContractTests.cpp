@@ -7,12 +7,14 @@
 
 extern "C" {
 #include "rt_gif.h"
+#include "rt_object.h"
 #include "rt_sprite.h"
 }
 
 #include <cassert>
 #include <climits>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -36,6 +38,7 @@ static int64_t g_last_blit_y = 0;
 static int g_tint_call_count = 0;
 static int64_t g_last_tint = -2;
 static bool g_clone_returns_null = false;
+static bool g_gif_decode_zero_success = false;
 
 static StubPixels *make_pixels(int64_t width, int64_t height, int64_t id) {
     auto *pixels = static_cast<StubPixels *>(std::calloc(1, sizeof(StubPixels)));
@@ -62,6 +65,7 @@ static void test_flip_x_uses_returned_pixels_buffer() {
     StubPixels source{8, 6, 10};
     void *sprite = rt_sprite_new(&source);
     assert(sprite != nullptr);
+    assert(rt_obj_class_id(sprite) == RT_SPRITE_CLASS_ID);
 
     rt_sprite_set_flip_x(sprite, 1);
     rt_sprite_draw(sprite, reinterpret_cast<void *>(1));
@@ -133,6 +137,30 @@ static void test_sprite_new_fails_when_initial_clone_fails() {
     assert(sprite == nullptr);
 }
 
+static void test_sprite_from_file_rejects_zero_frame_gif_success() {
+    const char *path = "/tmp/viper_sprite_zero_frame.gif";
+    std::FILE *f = std::fopen(path, "wb");
+    assert(f != nullptr);
+    const unsigned char header[6] = {'G', 'I', 'F', '8', '9', 'a'};
+    assert(std::fwrite(header, 1, sizeof(header), f) == sizeof(header));
+    std::fclose(f);
+
+    g_gif_decode_zero_success = true;
+    void *sprite = rt_sprite_from_file(reinterpret_cast<void *>(1));
+    g_gif_decode_zero_success = false;
+    assert(sprite == nullptr);
+    std::remove(path);
+}
+
+static void test_animator_get_current_rejects_corrupt_clip_index() {
+    rt_sprite_animator_t *anim = rt_sprite_animator_new();
+    assert(anim != nullptr);
+    assert(rt_sprite_animator_add_clip(anim, "walk", 0, 1, 100, 1) == 1);
+    assert(rt_sprite_animator_play(anim, "walk") == 1);
+    anim->current_clip = anim->clip_count;
+    assert(rt_sprite_animator_get_current(anim) == nullptr);
+}
+
 static void test_transformed_tint_zero_is_black_and_negative_is_no_tint() {
     StubPixels source{6, 6, 50};
     void *sprite = rt_sprite_new(&source);
@@ -193,7 +221,7 @@ extern "C" int64_t rt_timer_ms(void) {
 }
 
 extern "C" const char *rt_string_cstr(rt_string) {
-    return "";
+    return "/tmp/viper_sprite_zero_frame.gif";
 }
 
 extern "C" rt_string rt_string_from_bytes(const char *, size_t) {
@@ -214,7 +242,7 @@ extern "C" int gif_decode_file(
         *out_width = 0;
     if (out_height)
         *out_height = 0;
-    return 0;
+    return g_gif_decode_zero_success ? 1 : 0;
 }
 
 extern "C" void *rt_pixels_clone(void *pixels) {
@@ -301,6 +329,8 @@ int main() {
     test_tiny_positive_scale_still_has_nonzero_collision_bounds();
     test_extreme_collision_bounds_do_not_wrap();
     test_sprite_new_fails_when_initial_clone_fails();
+    test_sprite_from_file_rejects_zero_frame_gif_success();
     test_transformed_tint_zero_is_black_and_negative_is_no_tint();
+    test_animator_get_current_rejects_corrupt_clip_index();
     return 0;
 }

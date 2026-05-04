@@ -27,6 +27,7 @@
 #include "rt_particles3d.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
+#include "rt_pixels.h"
 
 #include <float.h>
 #include <math.h>
@@ -343,9 +344,9 @@ void *rt_particles3d_new(int64_t max_particles) {
 /// @brief Set the emitter origin in world space. New particles spawn at this point (offset by
 /// the emitter shape if non-point).
 void rt_particles3d_set_position(void *o, double x, double y, double z) {
-    if (!o)
+    rt_particles3d *p = particles3d_checked(o);
+    if (!p)
         return;
-    rt_particles3d *p = (rt_particles3d *)o;
     p->position[0] = particles_finite_or(x, 0.0);
     p->position[1] = particles_finite_or(y, 0.0);
     p->position[2] = particles_finite_or(z, 0.0);
@@ -354,9 +355,9 @@ void rt_particles3d_set_position(void *o, double x, double y, double z) {
 /// @brief Set the average emit direction (normalized internally) and the cone half-angle
 /// `spread` in radians. spread=0 means perfectly aligned, spread=π means full sphere.
 void rt_particles3d_set_direction(void *o, double dx, double dy, double dz, double spread) {
-    if (!o)
+    rt_particles3d *p = particles3d_checked(o);
+    if (!p)
         return;
-    rt_particles3d *p = (rt_particles3d *)o;
     dx = particles_finite_or(dx, 0.0);
     dy = particles_finite_or(dy, 1.0);
     dz = particles_finite_or(dz, 0.0);
@@ -375,9 +376,9 @@ void rt_particles3d_set_direction(void *o, double dx, double dy, double dz, doub
 
 /// @brief Set the per-particle initial speed range [mn, mx] in world-units/sec (uniform random).
 void rt_particles3d_set_speed(void *o, double mn, double mx) {
-    if (!o)
+    rt_particles3d *p = particles3d_checked(o);
+    if (!p)
         return;
-    rt_particles3d *p = (rt_particles3d *)o;
     mn = particles_nonnegative_or_zero(mn);
     mx = particles_nonnegative_or_zero(mx);
     if (mx < mn) {
@@ -391,9 +392,9 @@ void rt_particles3d_set_speed(void *o, double mn, double mx) {
 
 /// @brief Set the per-particle lifetime range [mn, mx] in seconds (uniform random per spawn).
 void rt_particles3d_set_lifetime(void *o, double mn, double mx) {
-    if (!o)
+    rt_particles3d *p = particles3d_checked(o);
+    if (!p)
         return;
-    rt_particles3d *p = (rt_particles3d *)o;
     mn = particles_finite_or(mn, 0.01);
     mx = particles_finite_or(mx, mn);
     if (mn < 0.01)
@@ -411,18 +412,18 @@ void rt_particles3d_set_lifetime(void *o, double mn, double mx) {
 
 /// @brief Set the start and end size (interpolated by age) for each particle.
 void rt_particles3d_set_size(void *o, double s, double e) {
-    if (!o)
+    rt_particles3d *p = particles3d_checked(o);
+    if (!p)
         return;
-    rt_particles3d *p = (rt_particles3d *)o;
     p->size_start = particles_nonnegative_or_zero(s);
     p->size_end = particles_nonnegative_or_zero(e);
 }
 
 /// @brief Set the constant acceleration applied to every particle each frame (typical: (0,-9.8,0)).
 void rt_particles3d_set_gravity(void *o, double gx, double gy, double gz) {
-    if (!o)
+    rt_particles3d *p = particles3d_checked(o);
+    if (!p)
         return;
-    rt_particles3d *p = (rt_particles3d *)o;
     p->gravity[0] = particles_finite_or(gx, 0.0);
     p->gravity[1] = particles_finite_or(gy, 0.0);
     p->gravity[2] = particles_finite_or(gz, 0.0);
@@ -431,18 +432,18 @@ void rt_particles3d_set_gravity(void *o, double gx, double gy, double gz) {
 /// @brief Set start (`sc`) and end (`ec`) colors as packed 0xRRGGBBAA. Each particle linearly
 /// interpolates between them based on age ratio. Alpha component is set separately via `_set_alpha`.
 void rt_particles3d_set_color(void *o, int64_t sc, int64_t ec) {
-    if (!o)
+    rt_particles3d *p = particles3d_checked(o);
+    if (!p)
         return;
-    rt_particles3d *p = (rt_particles3d *)o;
     unpack_color(sc, p->color_start);
     unpack_color(ec, p->color_end);
 }
 
 /// @brief Set start (`sa`) and end (`ea`) alpha values [0, 1]. Common pattern: 1.0→0.0 for fade-out.
 void rt_particles3d_set_alpha(void *o, double sa, double ea) {
-    if (!o)
+    rt_particles3d *p = particles3d_checked(o);
+    if (!p)
         return;
-    rt_particles3d *p = (rt_particles3d *)o;
     p->alpha_start = particles_clamp(sa, 0.0, 1.0);
     p->alpha_end = particles_clamp(ea, 0.0, 1.0);
 }
@@ -450,24 +451,28 @@ void rt_particles3d_set_alpha(void *o, double sa, double ea) {
 /// @brief Set the spawn rate in particles per second. The accumulator pattern emits whole
 /// particles when ≥1 worth has accumulated, preserving fractional rates across frames.
 void rt_particles3d_set_rate(void *o, double r) {
-    if (!o)
+    rt_particles3d *p = particles3d_checked(o);
+    if (!p)
         return;
-    ((rt_particles3d *)o)->rate = particles_nonnegative_or_zero(r);
+    p->rate = particles_nonnegative_or_zero(r);
 }
 
 /// @brief Toggle additive blend mode (1 = additive for fire/glow, 0 = alpha blend for smoke).
 /// Additive skips the back-to-front sort since order doesn't affect the result.
 void rt_particles3d_set_additive(void *o, int8_t a) {
-    if (!o)
+    rt_particles3d *p = particles3d_checked(o);
+    if (!p)
         return;
-    ((rt_particles3d *)o)->additive_blend = a ? 1 : 0;
+    p->additive_blend = a ? 1 : 0;
 }
 
 /// @brief Set the per-particle billboard texture. NULL produces solid color quads.
 void rt_particles3d_set_texture(void *o, void *tex) {
-    if (!o)
+    rt_particles3d *ps = particles3d_checked(o);
+    if (!ps)
         return;
-    rt_particles3d *ps = (rt_particles3d *)o;
+    if (tex && rt_obj_class_id(tex) != RT_PIXELS_CLASS_ID)
+        return;
     if (ps->texture == tex)
         return;
     rt_obj_retain_maybe(tex);
@@ -479,21 +484,22 @@ void rt_particles3d_set_texture(void *o, void *tex) {
 /// @brief Select the emitter volume: 0 = point (default), 1 = sphere (uniform interior),
 /// 2 = box. Combined with `_set_emitter_size` to control the spawn region.
 void rt_particles3d_set_emitter_shape(void *o, int64_t s) {
-    if (!o)
+    rt_particles3d *p = particles3d_checked(o);
+    if (!p)
         return;
     if (s < 0)
         s = 0;
     if (s > 2)
         s = 2;
-    ((rt_particles3d *)o)->emitter_shape = (int32_t)s;
+    p->emitter_shape = (int32_t)s;
 }
 
 /// @brief Set the emitter shape's extent. For sphere: only sx is used (radius); for box: full
 /// half-extents per axis. Ignored for point emitter.
 void rt_particles3d_set_emitter_size(void *o, double sx, double sy, double sz) {
-    if (!o)
+    rt_particles3d *p = particles3d_checked(o);
+    if (!p)
         return;
-    rt_particles3d *p = (rt_particles3d *)o;
     p->emitter_size[0] = fabs(particles_finite_or(sx, 0.0));
     p->emitter_size[1] = fabs(particles_finite_or(sy, 0.0));
     p->emitter_size[2] = fabs(particles_finite_or(sz, 0.0));
@@ -506,33 +512,38 @@ void rt_particles3d_set_emitter_size(void *o, double sx, double sy, double sz) {
 /// @brief Begin emitting (continuous spawn at the configured rate). Existing live particles
 /// continue to update regardless of the emit flag.
 void rt_particles3d_start(void *o) {
-    if (o)
-        ((rt_particles3d *)o)->emitting = 1;
+    rt_particles3d *p = particles3d_checked(o);
+    if (p)
+        p->emitting = 1;
 }
 
 /// @brief Stop continuous emission. Existing particles run to natural lifetime; for instant
 /// removal use `_clear`.
 void rt_particles3d_stop(void *o) {
-    if (o)
-        ((rt_particles3d *)o)->emitting = 0;
+    rt_particles3d *p = particles3d_checked(o);
+    if (p)
+        p->emitting = 0;
 }
 
 /// @brief Kill every live particle and reset the spawn accumulator. Doesn't change emit state.
 void rt_particles3d_clear(void *o) {
-    if (!o)
+    rt_particles3d *p = particles3d_checked(o);
+    if (!p)
         return;
-    ((rt_particles3d *)o)->count = 0;
-    ((rt_particles3d *)o)->accumulator = 0.0;
+    p->count = 0;
+    p->accumulator = 0.0;
 }
 
 /// @brief Number of particles currently alive.
 int64_t rt_particles3d_get_count(void *o) {
-    return o ? ((rt_particles3d *)o)->count : 0;
+    rt_particles3d *p = particles3d_checked(o);
+    return p ? p->count : 0;
 }
 
 /// @brief Returns 1 if continuous emission is enabled (`_start` called, no subsequent `_stop`).
 int8_t rt_particles3d_get_emitting(void *o) {
-    return o ? ((rt_particles3d *)o)->emitting : 0;
+    rt_particles3d *p = particles3d_checked(o);
+    return p ? p->emitting : 0;
 }
 
 /*==========================================================================
@@ -691,14 +702,15 @@ extern void rt_material3d_set_texture(void *m, void *tex);
 /// sort when in additive mode (order-independent). Additive mode stays batched; alpha mode emits
 /// one keyed quad draw per particle so it can sort correctly against the rest of the scene.
 void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
-    if (!o || !canvas3d || !camera)
+    rt_particles3d *ps = particles3d_checked(o);
+    rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(canvas3d);
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(camera);
+    if (!ps || !canvas || !cam)
         return;
-    rt_particles3d *ps = (rt_particles3d *)o;
     if (ps->count == 0)
         return;
 
-    (void)canvas3d; /* used via extern draw calls below */
-    rt_camera3d *cam = (rt_camera3d *)camera;
+    (void)canvas; /* validated above; draw calls use the original handle below */
 
     /* Extract camera right and up vectors from view matrix (row-major).
      * Row 0 = right, Row 1 = up (before translation). */

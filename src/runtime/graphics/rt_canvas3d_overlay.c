@@ -101,9 +101,9 @@ static void canvas3d_release_local(void *obj) {
 void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
     int8_t started_temp_frame = 0;
 
-    if (!obj || !from || !to)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !from || !to)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     int32_t out_w = 0;
     int32_t out_h = 0;
     if (!overlay_output_size(c, &out_w, &out_h))
@@ -145,9 +145,9 @@ void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
 void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size) {
     int8_t started_temp_frame = 0;
 
-    if (!obj || !pos)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !pos)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     int32_t out_w = 0;
     int32_t out_h = 0;
     if (!overlay_output_size(c, &out_w, &out_h))
@@ -187,9 +187,9 @@ void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size)
 void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
     int8_t started_temp_frame = 0;
 
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     if (w <= 0 || h <= 0)
         return;
     if (!c->in_frame) {
@@ -206,9 +206,9 @@ void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t
 void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size) {
     int8_t started_temp_frame = 0;
 
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     int32_t out_w = 0;
     int32_t out_h = 0;
     if (!overlay_output_size(c, &out_w, &out_h))
@@ -240,9 +240,9 @@ void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size) {
 void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y, rt_string text, int64_t color) {
     int8_t started_temp_frame = 0;
 
-    if (!obj || !text)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c || !text)
         return;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->in_frame) {
         if (!canvas3d_begin_overlay_frame(c, 1))
             return;
@@ -256,9 +256,9 @@ void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y, rt_string text, in
 /// @brief Return the active backend name as a string ("metal", "d3d11", "opengl", ...).
 /// Useful for backend-specific debug output / feature gating.
 rt_string rt_canvas3d_get_backend(void *obj) {
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return rt_const_cstr("unknown");
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     return rt_const_cstr(c->backend ? c->backend->name : "unknown");
 }
 
@@ -269,9 +269,9 @@ rt_string rt_canvas3d_get_backend(void *obj) {
 int64_t rt_canvas3d_get_backend_capabilities(void *obj) {
     int64_t caps = 0;
 
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return 0;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
     const vgfx3d_backend_t *backend = c->backend;
     if (!backend)
         return 0;
@@ -362,9 +362,9 @@ void *rt_canvas3d_screenshot(void *obj) {
         uint32_t *data;
     } px_view;
 
-    if (!obj)
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
         return NULL;
-    rt_canvas3d *c = (rt_canvas3d *)obj;
 
     const int32_t shot_w = c->render_target ? c->render_target->width : c->width;
     const int32_t shot_h = c->render_target ? c->render_target->height : c->height;
@@ -411,14 +411,22 @@ void *rt_canvas3d_screenshot(void *obj) {
 
     if (c->gfx_win) {
         vgfx_framebuffer_t fb;
-        if (!vgfx_get_framebuffer(c->gfx_win, &fb))
-            return pixels;
+        if (!vgfx_get_framebuffer(c->gfx_win, &fb) || !fb.pixels || fb.width <= 0 ||
+            fb.height <= 0 || fb.stride < fb.width * 4) {
+            if (rt_obj_release_check0(pixels))
+                rt_obj_free(pixels);
+            return NULL;
+        }
         for (int32_t y = 0; y < fb.height && y < shot_h; y++)
             for (int32_t x = 0; x < fb.width && x < shot_w; x++) {
                 const uint8_t *src = &fb.pixels[y * fb.stride + x * 4];
                 pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
                                           ((uint32_t)src[2] << 8) | (uint32_t)src[3];
             }
+    } else {
+        if (rt_obj_release_check0(pixels))
+            rt_obj_free(pixels);
+        return NULL;
     }
     return pixels;
 }

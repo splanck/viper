@@ -24,10 +24,10 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator.
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 118 | +118 |
-| Source files | 2,869 | 2,989 | +120 |
-| Production SLOC | 450K | 537K | +87K |
-| Test SLOC | 183K | 222K | +39K |
+| Commits | — | 131 | +131 |
+| Source files | 2,869 | 2,991 | +122 |
+| Production SLOC | 450K | 540K | +90K |
+| Test SLOC | 183K | 224K | +41K |
 | Demo SLOC | 177K | 188K | +11K |
 
 Counts via `scripts/count_sloc.sh`.
@@ -54,14 +54,36 @@ Seven rounds of widget audits plus an app-registry overhaul.
 ### Graphics runtime (2D)
 
 - **2D graphics class expansion** — CPU-backed rendering, effects, tilemap/layer, shape/text/UI, viewport, animation, collision, and import-helper classes including RenderTarget2D, Texture2D, Renderer2D, Shader2D, PostProcess2D, TileSet2D/TileLayer2D, Path2D, TextRenderer2D, NineSlice2D, Viewport2D, and Aseprite/TexturePacker/TiledMap helpers.
+- **Renderer2D texture APIs** — `DrawTextureScaled(texture, x, y, w, h)` and `DrawTextureRegion(texture, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH)` added with a CPU software sampler (nearest-neighbour and bilinear filter paths sharing a shared `sample_pixels` dispatcher). These provide GPU-independent texture rendering for the software 2D path.
+- **BitmapFont PSF Unicode tables** — PSF1 and PSF2 Unicode table sections now parsed and applied; `bf_apply_psf1_unicode_table` / `bf_apply_psf2_unicode_table` build the codepoint→glyph index map so non-Latin characters in PSF fonts render correctly.
+- **Pixels.DrawLine** — Bresenham integer line draw (`pixels_draw_line_raw` / `rt_pixels_draw_line`) added to the pixels runtime.
+- **PNG validation** — ZLIB header and Adler-32 checksum validated on decode; malformed deflate streams caught before the pixel buffer is touched.
+- **2D graphics correctness pass** — Sprite, SpriteSheet, SpriteBatch, Camera, Scene, and SceneNode now carry runtime class IDs and reject wrong-class handles before casting. Scene transform composition and camera-scaled scene draws use saturating arithmetic at int64 limits. PNG loading now enforces IHDR/chunk-order/palette invariants, BMP and tilemap loaders use checked file offsets, GIF-backed sprites reject successful decodes with no frames, partial autotile rules fall back to the base tile, duplicate tile-animation JSON entries update the matching base tile, and alpha-aware resize preserves exact source endpoints.
 - Overflow hardening across pixel/tile allocation, PNG/BMP stride math, blit/draw coordinates, flood-fill, and blend compositing.
 
 ### Graphics3D
 
-- glTF/FBX import with real skeletons, per-vertex skinning, sparse-accessor morph deltas, and full KHR extension suite (texture transform, emissive strength, unlit, punctual lights).
-- Material3D: 6 independent texture slots with UV-set/UV-transform; TEXCOORD_1 end-to-end; HDR `RenderTarget3D`; backend capability introspection; dynamic-light cap 8→16; bone limit 128→256.
-- Physics3D: bodies/contacts/joints grow on demand; CCD substeps 8→64; broadphase moves toward O(N log N).
-- Correctness: animation keyframes sorted; spot-light inner/outer cones enforced; mid-frame render-target rebinding rejected; NaN/inf sanitized on Camera3D/Light3D/PostFX3D setters.
+- **glTF/FBX asset pipeline** — Import with real skeletons, per-vertex skinning, sparse-accessor morph deltas, and full KHR extension suite (texture transform, emissive strength, unlit, punctual lights).
+- **Material3D** — 6 independent texture slots with UV-set/UV-transform; TEXCOORD_1 end-to-end; HDR `RenderTarget3D`; backend capability introspection; dynamic-light cap 8→16; bone limit 128→256.
+- **Physics3D** — Bodies/contacts/joints grow on demand; CCD substeps 8→64; broadphase moves toward O(N log N).
+- **Class-ID registry** — `rt_graphics3d_ids.h` centralises all 47 `RT_G3D_*_CLASS_ID` constants and the `rt_g3d_has_class` / `rt_g3d_checked_or_null` inline helpers. All public 3D APIs now reject wrong-class handles via the class-ID check rather than raw-casting `void*`.
+- **Comprehensive handle-guard pass** — All public functions across `rt_mesh3d`, `rt_scene3d`, `rt_canvas3d`, `rt_camera3d`, `rt_collider3d`, `rt_light3d`, `rt_material3d`, `rt_particles3d`, `rt_physics3d`, and `rt_water3d` replaced raw casts with typed guard helpers. Functions that receive a foreign handle (wrong class ID, stack pointer, or NULL) now return a safe default or no-op rather than dereferencing garbage.
+- **Mesh3D hardening** — Vertex attributes validated against float representable range (not just `isfinite`) so `double` values larger than `FLT_MAX` are caught before promotion. `RecalcNormals` emits a canonical `(0, 1, 0)` fallback for degenerate triangles instead of leaving garbage normals. `Transform` validates all 16 matrix elements fit float range before use.
+- **STL loader hardening** — Binary path: NaN/inf check on each of the 9 per-triangle vertex floats before `AddVertex`; early-exit on `build_failed` inside the loop; overflow-safe `tri_count × 50` size check using `SIZE_MAX` bounds. ASCII path: `stl_parse_double` rewritten to return success/fail with a bounds-checked end pointer, float-range validation, and trailing-character checks; `parse_failed` flag and partial-triangle detection (`vert_idx != 0` at end of stream) make the loader reject every category of malformed input; input copied to a NUL-terminated buffer for safe `strtod`.
+- **Geometry-key caching** — `rt_canvas3d_draw_mesh_matrix_keyed` and `rt_canvas3d_queue_instanced_batch` now initialise geometry pointers from `mesh->vertices` / `mesh->indices` before the conditional snapshot, so non-snapshotted draws (stack fixtures, animated meshes) still have valid geometry. `geometry_key` and `geometry_revision` are now wired from the mesh object and its revision counter, enabling GPU backend deduplication for stable static meshes.
+- **Software backend shadow clipper** — Sutherland-Hodgman polygon clipper in homogeneous clip space (6-plane pass, no heap allocation on hot path) for shadow polygon projection.
+- **NavMesh3D** — Slope sanitization, adjacency-list building, retroactive `navmesh3d_apply_slope_filter` after `SetMaxSlope` (no full rebuild required), `triangle_y_at_xz` height projection.
+- **MorphTarget3D** — `morphtarget_sanitize_delta` clamps per-vertex deltas and rejects NaN/inf before GPU upload; overflow-safe delta storage byte count.
+- **Material3D UV transform** — Scale/offset values clamped to ±1,000,000 (finite-but-extreme doubles overflow float UV coords at the shader); rotation normalised via `fmod(angle, 2π)` before `cos`/`sin` to avoid precision loss from large angles; resulting matrix elements also clamped.
+- **Physics3D query hardening** — `World3D.Add` deduplicates bodies (linear scan prevents double-add); `world3d_process_collision_pair` guards `a == b` (self-collision); `OverlapSphere` / `OverlapAABB` validate `isfinite(radius)` and all vec3 inputs before constructing transient colliders.
+- **Particles3D** — `Burst` clamps count to available pool capacity; `Update` clamps `delta_time` to 1.0 s maximum to prevent physics explosions on multi-second hitches.
+- **Camera3D shake** — Up-vector extracted from view matrix rows instead of the previous hard-coded `(0, 1, 0)`, so rolled/pitched cameras apply shake in the correct camera-space directions. Shake expiry immediately zeros intensity and offset instead of leaving a one-frame residual.
+- **Scene3D type checking** — `SceneNode3D.SetMesh`, `SetMaterial`, and `SetLight` validate the assigned object's class ID; `Scene3D.Remove` confirms the node is within the scene's own subtree before removing.
+- **Water3D** — `build_failed` flag checked after mesh reconstruction before proceeding to material setup; `DrawWater` canvas reference uses the typed pointer for backface-cull save/restore; texture, normal-map, and env-map setters reject wrong-class handles without dropping the previous valid binding.
+- **OBJ/cubemap/render-target correctness** — OBJ loading now reads arbitrary-length lines and rejects out-of-float-range parsed attributes; cubemap sampling rejects NaN directions and clamps non-finite roughness; `RenderTarget3D.AsPixels()` rejects mismatched or invalid backing dimensions instead of returning a corrupt Pixels view.
+- **Physics3D binding correctness** — `Body3D.SetCollider`, `World3D.AddJoint`, scene body/animator bindings, and hit/event/contact accessors validate receiver and argument class IDs; `Trigger3D.Update` emits one exit when a weakly tracked body is removed from the world and then forgets that body.
+- **Canvas3D fixes** — `dt_max_ms` initialised to 100 in `New` (was zero-initialised, disabling the cap on the first frame); framebuffer clear validates `pixels != NULL`, non-zero dimensions, and `stride >= width × 4` before the row-blit; pending splat state captured into locals before the early-return guard to prevent one-shot state being abandoned mid-draw; fallback instancing loop capped at 65,536 instances with `canvas3d_enqueue_draw` return checked.
+- **Correctness (earlier)** — Animation keyframes sorted; spot-light inner/outer cones enforced; mid-frame render-target rebinding rejected; NaN/inf sanitized on Camera3D/Light3D/PostFX3D setters.
 
 ### Game runtime
 
@@ -174,18 +196,20 @@ Eleven-class `Viper.Localization.*` namespace. Zero external dependencies; en-US
 
 ### Tests
 
-- ~20K new lines of test coverage: Canvas3D production harness, async 25-iteration race loop, 2D-graphics contract suites, overflow-boundary tests for every hardened parser, and human-manager baseball probes.
+- ~22K new lines of test coverage: Canvas3D production harness, async 25-iteration race loop, 2D-graphics contract suites, overflow-boundary tests for every hardened parser, and human-manager baseball probes.
+- 2D graphics regression coverage now includes wrong-class handle contracts for Sprite/SpriteSheet/SpriteBatch/Camera/Scene, PNG ordering and palette validation, sub-byte grayscale transparency, zero-frame GIF rejection, scene transform saturation, tilemap autotile fallback, and tile-animation JSON replacement.
+- **3D robustness contract suites** — `RTGraphics3DRobustnessTests`: wrong-class-handle rejection for Mesh3D mutation APIs, Camera3D projection/ray layout, degenerate-free sphere generation, long-line OBJ loading, scene LOD/resource binding checks, cubemap input sanitization, render-target safe defaults, and Trigger3D removal exits. `RTParticles3DContractTests`: burst-cap-to-pool, delta-time-clamp. `RTWater3DContractTests`: build-failed mesh guard. `TestStlLoad`: binary STL with NaN/inf vertices rejected, ASCII STL with non-finite and out-of-float-range coordinates rejected. `test_rt_canvas3d`: DeltaTime cap and disable, pending-splat cleared on early-return draw. `test_rt_physics3d`: overlap sphere/AABB with non-finite inputs. `test_rt_scene3d`: node handle rejection.
 - GUI: 40+ new regression tests in `test_vg_audit_fixes.c` covering rounds 3–7 (layout constraints, image loading, widget lifecycle, regex search, modal routing, textinput undo, font bounds, composite glyphs, grid/dock metadata cleanup, radiobutton callbacks, checkbox indeterminate state, textinput single-change paste).
 - IL, compiler, and audio: optimizer unit tests for DSE/LICM/LoopRotate/LoopUnroll/IndVarSimplify/MemorySSA/ValueKey; verifier golden fixtures for alloca-load/store escape; PCM overflow, ALSA simulation, and WAV format tests; Localization fuzzing harnesses (gated on `VIPER_ENABLE_FUZZ`).
 
 ### Demos & docs
 
-Demos: human-manager baseball franchise simulator (new), Crackman rewrite, two new 3D demos, Paint gains layers + undo, ViperIDE file-watcher and context-menu fixes, XENOSCAPE boss/player fixes, Chess drag-vs-click detection fix, three localization examples, Windows ARM64 coverage for 3D demos. Docs: `viperlib/` sweep across all subsystems, split 2D graphics docs for rendering/effects, tilemaps/layers, shapes/text/UI, and animation/collision/camera helpers, plus new `viperlib/localization/` docs, IL Optimizer Correctness Contract, GUI viperlib updated through round-7 APIs, Doxygen pass across ~100 runtime files.
+Demos: human-manager baseball franchise simulator (new), Crackman rewrite, two new 3D demos, Paint gains layers + undo, ViperIDE file-watcher and context-menu fixes, XENOSCAPE boss/player fixes, Chess drag-vs-click detection fix, three localization examples, Windows ARM64 coverage for 3D demos. Docs: `viperlib/` sweep across all subsystems, split 2D graphics docs for rendering/effects, tilemaps/layers, shapes/text/UI, and animation/collision/camera helpers, new `viperlib/localization/` docs, IL Optimizer Correctness Contract, GUI viperlib updated through round-7 APIs, Doxygen pass across ~100 runtime files including the full Viper.Localization.* namespace.
 
 ---
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 118-commit history.
+See `git log a91d388db..HEAD -- .` for the full 131-commit history.
 
 <!-- END DRAFT -->

@@ -371,6 +371,7 @@ TEST(RTSprite, NewBasic) {
     void *atlas = make_test_atlas(64, 64);
     void *sheet = rt_spritesheet_new(atlas);
     ASSERT(sheet != NULL, "spritesheet_new should return non-null");
+    ASSERT(rt_obj_class_id(sheet) == RT_SPRITESHEET_CLASS_ID, "sheet has class id");
     ASSERT(rt_spritesheet_region_count(sheet) == 0, "new sheet has 0 regions");
     ASSERT(rt_spritesheet_width(sheet) == 64, "width matches atlas");
     ASSERT(rt_spritesheet_height(sheet) == 64, "height matches atlas");
@@ -381,6 +382,13 @@ TEST(RTSprite, NewBasic) {
 TEST(RTSprite, NewNullAtlas) {
     void *sheet = rt_spritesheet_new(NULL);
     ASSERT(sheet == NULL, "null atlas returns null sheet");
+}
+
+TEST(RTSprite, NewRejectsWrongAtlasHandle) {
+    void *not_pixels = rt_obj_new_i64(0, 8);
+    void *sheet = rt_spritesheet_new(not_pixels);
+    ASSERT(sheet == NULL, "wrong atlas handle returns null sheet");
+    rt_obj_release_check0(not_pixels);
 }
 
 TEST(RTSprite, SetAndGetRegion) {

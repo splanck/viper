@@ -112,10 +112,10 @@ static double sanitize_ortho_size(double size) {
     return isfinite(size) && size > 1e-6 ? size : 1.0;
 }
 
-/// @brief Build an OpenGL-style perspective projection matrix into `m` (column-major).
+/// @brief Build an OpenGL-style perspective projection matrix into `m` (row-major).
 /// `f = 1 / tan(fov/2)` sets vertical scale; horizontal divides by aspect. Writes depth
-/// in the `[-1, 1]` NDC convention with a reverse-Z mapping (`m[14] = -1` signals
-/// perspective division from the w-channel). Zeroes the matrix first so unused slots
+/// in the `[-1, 1]` NDC convention. With Viper's row-major, column-vector transform
+/// path, `m[14] = -1` makes clip.w = -view.z for perspective division. Zeroes the matrix first so unused slots
 /// stay at 0 — callers can assume a fully initialised 4×4.
 static void build_perspective(double *m, double fov_deg, double aspect, double near, double far) {
     memset(m, 0, 16 * sizeof(double));
@@ -252,7 +252,7 @@ static void rebuild_projection(rt_camera3d *cam) {
 ///          repeated calls with the same dimensions don't churn the
 ///          projection matrix.
 void rt_camera3d_sync_render_aspect(void *obj, double aspect) {
-    rt_camera3d *cam = (rt_camera3d *)obj;
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
     double sanitized_aspect;
 
     if (!cam)
@@ -270,7 +270,7 @@ void rt_camera3d_sync_render_aspect(void *obj, double aspect) {
 ///          across outputs with different aspect ratios without permanently
 ///          rewriting `cam->aspect` / `cam->projection`.
 void rt_camera3d_get_render_projection(void *obj, double aspect_override, float *out_projection) {
-    rt_camera3d *cam = (rt_camera3d *)obj;
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
     double projection[16];
     double aspect;
     double near_plane;
@@ -537,9 +537,9 @@ void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v) {
 ///          relative to the target, then builds a look-at view matrix. Useful for
 ///          third-person cameras and object inspection views.
 void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, double pitch) {
-    if (!obj || !target_v)
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam || !target_v)
         return;
-    rt_camera3d *cam = (rt_camera3d *)obj;
 
     double tx = finite_or(rt_vec3_x(target_v), 0.0);
     double ty = finite_or(rt_vec3_y(target_v), 0.0);
@@ -580,16 +580,15 @@ void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, d
 
 /// @brief Get the vertical field of view in degrees.
 double rt_camera3d_get_fov(void *obj) {
-    if (!obj)
-        return 0.0;
-    return ((rt_camera3d *)obj)->fov;
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    return cam ? cam->fov : 0.0;
 }
 
 /// @brief Change the field of view and rebuild the projection matrix.
 void rt_camera3d_set_fov(void *obj, double fov) {
-    if (!obj)
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam)
         return;
-    rt_camera3d *cam = (rt_camera3d *)obj;
     if (cam->is_ortho)
         return;
     cam->fov = sanitize_fov(fov);
@@ -602,9 +601,9 @@ void rt_camera3d_set_fov(void *obj, double fov) {
 ///          so callers see the logical camera location (good for HUDs,
 ///          attaching audio listeners, raycasts from the player).
 void *rt_camera3d_get_position(void *obj) {
-    if (!obj)
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam)
         return NULL;
-    rt_camera3d *cam = (rt_camera3d *)obj;
     return rt_vec3_new(finite_or(cam->eye[0], 0.0),
                        finite_or(cam->eye[1], 0.0),
                        finite_or(cam->eye[2], 0.0));
@@ -616,9 +615,9 @@ void rt_camera3d_set_position(void *obj, void *pos) {
     double up[3];
     double target[3];
 
-    if (!obj || !pos)
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam || !pos)
         return;
-    rt_camera3d *cam = (rt_camera3d *)obj;
     forward[0] = finite_or(-cam->view[8], 0.0);
     forward[1] = finite_or(-cam->view[9], 0.0);
     forward[2] = finite_or(-cam->view[10], -1.0);
@@ -641,9 +640,9 @@ void rt_camera3d_set_position(void *obj, void *pos) {
 /// the camera" behaviors and for gameplay that needs the camera facing independent of
 /// its `look_at` target.
 void *rt_camera3d_get_forward(void *obj) {
-    if (!obj)
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam)
         return NULL;
-    rt_camera3d *cam = (rt_camera3d *)obj;
     /* Forward = -row2 of view matrix (negated because view looks along -Z) */
     return rt_vec3_new(finite_or(-cam->view[8], 0.0),
                        finite_or(-cam->view[9], 0.0),
@@ -655,9 +654,9 @@ void *rt_camera3d_get_forward(void *obj) {
 /// to build camera-relative movement (strafing, mouse-look yaw, etc.). Caller owns the
 /// returned Vec3.
 void *rt_camera3d_get_right(void *obj) {
-    if (!obj)
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam)
         return NULL;
-    rt_camera3d *cam = (rt_camera3d *)obj;
     /* Right = row0 of view matrix */
     return rt_vec3_new(finite_or(cam->view[0], 1.0),
                        finite_or(cam->view[1], 0.0),
@@ -730,10 +729,9 @@ static int mat4d_invert(const double *m, double *out) {
 ///          the normalized forward axis is returned directly.
 ///          Returns (0,0,-1) on degenerate inputs (zero size, singular VP).
 void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, int64_t sh) {
-    if (!obj || sw <= 0 || sh <= 0)
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam || sw <= 0 || sh <= 0)
         return rt_vec3_new(0.0, 0.0, -1.0);
-
-    rt_camera3d *cam = (rt_camera3d *)obj;
 
     if (cam->is_ortho) {
         double fx = -cam->view[8];
@@ -810,9 +808,10 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, i
 
 /// @brief Initialize FPS-style camera state (yaw/pitch from current orientation).
 void rt_camera3d_fps_init(void *obj) {
-    if (!obj)
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam)
         return;
-    camera_sync_fps_angles_from_view((rt_camera3d *)obj);
+    camera_sync_fps_angles_from_view(cam);
 }
 
 /// @brief Update FPS camera from mouse look (dx/dy) and WASD movement (fwd/right/up).
@@ -827,9 +826,9 @@ void rt_camera3d_fps_update(void *obj,
                             double move_up,
                             double speed,
                             double dt) {
-    if (!obj)
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam)
         return;
-    rt_camera3d *cam = (rt_camera3d *)obj;
 
     yaw_delta = finite_or(yaw_delta, 0.0);
     pitch_delta = finite_or(pitch_delta, 0.0);
@@ -877,12 +876,14 @@ void rt_camera3d_fps_update(void *obj,
 
 /// @brief Return the FPS-controller yaw in degrees (heading around world Y).
 double rt_camera3d_get_yaw(void *obj) {
-    return obj ? ((rt_camera3d *)obj)->fps_yaw : 0.0;
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    return cam ? cam->fps_yaw : 0.0;
 }
 
 /// @brief Return the FPS-controller pitch in degrees (look up/down).
 double rt_camera3d_get_pitch(void *obj) {
-    return obj ? ((rt_camera3d *)obj)->fps_pitch : 0.0;
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    return cam ? cam->fps_pitch : 0.0;
 }
 
 /// @brief Set yaw absolutely and rebuild the view (and shake) to match.
@@ -891,20 +892,21 @@ double rt_camera3d_get_pitch(void *obj) {
 ///          respawn). Caller is responsible for normalizing the angle
 ///          if they care about the stored value range.
 void rt_camera3d_set_yaw(void *obj, double yaw) {
-    if (!obj)
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam)
         return;
-    ((rt_camera3d *)obj)->fps_yaw = finite_or(yaw, 0.0);
-    camera_rebuild_fps_view((rt_camera3d *)obj);
-    camera_apply_shake_to_view((rt_camera3d *)obj);
+    cam->fps_yaw = finite_or(yaw, 0.0);
+    camera_rebuild_fps_view(cam);
+    camera_apply_shake_to_view(cam);
 }
 
 /// @brief Set pitch absolutely (clamped to ±89°) and rebuild the view.
 /// @details The clamp matches `fps_update` so manual pitch overrides
 ///          can never produce a degenerate look-at direction.
 void rt_camera3d_set_pitch(void *obj, double pitch) {
-    if (!obj)
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam)
         return;
-    rt_camera3d *cam = (rt_camera3d *)obj;
     cam->fps_pitch = finite_or(pitch, 0.0);
     if (cam->fps_pitch > 89.0)
         cam->fps_pitch = 89.0;
@@ -1009,9 +1011,9 @@ void rt_camera3d_shake(void *obj, double intensity, double duration, double deca
 ///          The camera maintains a configurable offset from the target.
 void rt_camera3d_smooth_follow(
     void *obj, void *target_pos, double distance, double height, double speed, double dt) {
-    if (!obj || !target_pos)
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam || !target_pos)
         return;
-    rt_camera3d *cam = (rt_camera3d *)obj;
 
     height = finite_or(height, 0.0);
     double tx = finite_or(rt_vec3_x(target_pos), 0.0);
@@ -1048,9 +1050,9 @@ void rt_camera3d_smooth_follow(
 
 /// @brief Smoothly rotate the camera toward a look-at target over time.
 void rt_camera3d_smooth_look_at(void *obj, void *target, double speed, double dt) {
-    if (!obj || !target)
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam || !target)
         return;
-    rt_camera3d *cam = (rt_camera3d *)obj;
 
     /* Current forward from view matrix */
     double cur_fwd[3] = {finite_or(-cam->view[8], 0.0),

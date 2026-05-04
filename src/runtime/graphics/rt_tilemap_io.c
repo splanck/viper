@@ -43,11 +43,26 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Keep tilemap file loading large-file safe on platforms where long is 32-bit.
+#if defined(_WIN32)
+#define tmio_fseek(fp, off, whence) _fseeki64((fp), (off), (whence))
+#define tmio_ftell(fp) _ftelli64((fp))
+#else
+#define tmio_fseek(fp, off, whence) fseeko((fp), (off_t)(off), (whence))
+#define tmio_ftell(fp) ftello((fp))
+#endif
+
+static rt_tilemap_impl *tilemap_io_checked(void *tm) {
+    if (!tm || rt_obj_class_id(tm) != RT_TILEMAP_CLASS_ID)
+        return NULL;
+    return (rt_tilemap_impl *)tm;
+}
+
 /// @brief Set the tile property of the tilemap.
 void rt_tilemap_set_tile_property(void *tm, int64_t tile_index, rt_string key, int64_t value) {
-    if (!tm || tile_index < 0 || tile_index >= MAX_TILE_PROPS || !key)
+    rt_tilemap_impl *tilemap = tilemap_io_checked(tm);
+    if (!tilemap || tile_index < 0 || tile_index >= MAX_TILE_PROPS || !key)
         return;
-    rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tm;
     const char *ckey = rt_string_cstr(key);
     if (!ckey)
         return;
@@ -79,9 +94,9 @@ int64_t rt_tilemap_get_tile_property(void *tm,
                                      int64_t tile_index,
                                      rt_string key,
                                      int64_t default_val) {
-    if (!tm || tile_index < 0 || tile_index >= MAX_TILE_PROPS || !key)
+    rt_tilemap_impl *tilemap = tilemap_io_checked(tm);
+    if (!tilemap || tile_index < 0 || tile_index >= MAX_TILE_PROPS || !key)
         return default_val;
-    rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tm;
     const char *ckey = rt_string_cstr(key);
     if (!ckey)
         return default_val;
@@ -96,9 +111,9 @@ int64_t rt_tilemap_get_tile_property(void *tm,
 
 /// @brief Has the tile property of the tilemap.
 int8_t rt_tilemap_has_tile_property(void *tm, int64_t tile_index, rt_string key) {
-    if (!tm || tile_index < 0 || tile_index >= MAX_TILE_PROPS || !key)
+    rt_tilemap_impl *tilemap = tilemap_io_checked(tm);
+    if (!tilemap || tile_index < 0 || tile_index >= MAX_TILE_PROPS || !key)
         return 0;
-    rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tm;
     const char *ckey = rt_string_cstr(key);
     if (!ckey)
         return 0;
@@ -126,6 +141,8 @@ static autotile_rule *find_or_create_rule(rt_tilemap_impl *tilemap, int64_t base
     autotile_rule *r = &tilemap->autotile_rules[tilemap->autotile_count++];
     memset(r, 0, sizeof(autotile_rule));
     r->base_tile = base_tile;
+    for (int i = 0; i < 16; i++)
+        r->variants[i] = base_tile;
     r->active = 1;
     return r;
 }
@@ -144,9 +161,10 @@ void rt_tilemap_set_autotile_lo(void *tm,
                                 int64_t v5,
                                 int64_t v6,
                                 int64_t v7) {
-    if (!tm)
+    rt_tilemap_impl *tilemap = tilemap_io_checked(tm);
+    if (!tilemap)
         return;
-    autotile_rule *r = find_or_create_rule((rt_tilemap_impl *)tm, base_tile);
+    autotile_rule *r = find_or_create_rule(tilemap, base_tile);
     if (!r)
         return;
     r->variants[0] = v0;
@@ -173,9 +191,10 @@ void rt_tilemap_set_autotile_hi(void *tm,
                                 int64_t v13,
                                 int64_t v14,
                                 int64_t v15) {
-    if (!tm)
+    rt_tilemap_impl *tilemap = tilemap_io_checked(tm);
+    if (!tilemap)
         return;
-    autotile_rule *r = find_or_create_rule((rt_tilemap_impl *)tm, base_tile);
+    autotile_rule *r = find_or_create_rule(tilemap, base_tile);
     if (!r)
         return;
     r->variants[8] = v8;
@@ -191,9 +210,9 @@ void rt_tilemap_set_autotile_hi(void *tm,
 
 /// @brief Clear the autotile of the tilemap.
 void rt_tilemap_clear_autotile(void *tm, int64_t base_tile) {
-    if (!tm)
+    rt_tilemap_impl *tilemap = tilemap_io_checked(tm);
+    if (!tilemap)
         return;
-    rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tm;
     for (int32_t i = 0; i < tilemap->autotile_count; i++) {
         if (tilemap->autotile_rules[i].base_tile == base_tile) {
             tilemap->autotile_rules[i].active = 0;
@@ -255,9 +274,9 @@ static autotile_rule *find_rule_for_tile(rt_tilemap_impl *tilemap, int64_t tile)
 
 /// @brief Apply the autotile region of the tilemap.
 void rt_tilemap_apply_autotile_region(void *tm, int64_t rx, int64_t ry, int64_t rw, int64_t rh) {
-    if (!tm)
+    rt_tilemap_impl *tilemap = tilemap_io_checked(tm);
+    if (!tilemap)
         return;
-    rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tm;
     if (tilemap->autotile_count == 0 || rw <= 0 || rh <= 0)
         return;
 
@@ -458,11 +477,22 @@ static void assign_layer_tileset(rt_tilemap_impl *tm, int64_t layer, void *pixel
     lyr->tile_count = lyr->tileset_cols * lyr->tileset_rows;
 }
 
+static tm_tile_anim *find_tile_anim(rt_tilemap_impl *tm, int64_t base_tile) {
+    if (!tm)
+        return NULL;
+    for (int32_t i = 0; i < tm->tile_anim_count; i++) {
+        if (tm->tile_anims[i].base_tile_id == base_tile)
+            return &tm->tile_anims[i];
+    }
+    return NULL;
+}
+
 /// @brief Serialize the tilemap to a JSON file at `path`. Includes version (1), dimensions,
 /// tile size, every layer's data + tileset reference, tile properties, and autotile rules.
 /// Returns 1 on success, 0 on null inputs / missing path / I/O error.
 int8_t rt_tilemap_save_to_file(void *tm, rt_string path) {
-    if (!tm || !path)
+    rt_tilemap_impl *tilemap = tilemap_io_checked(tm);
+    if (!tilemap || !path)
         return 0;
     const char *cpath = rt_string_cstr(path);
     if (!cpath)
@@ -481,7 +511,6 @@ int8_t rt_tilemap_save_to_file(void *tm, rt_string path) {
     rt_map_set_int(root, rt_const_cstr("height"), h);
     rt_map_set_int(root, rt_const_cstr("tileWidth"), tw);
     rt_map_set_int(root, rt_const_cstr("tileHeight"), th);
-    rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tm;
     if (tilemap->tileset) {
         void *tileset_obj = serialize_pixels_blob(tilemap->tileset);
         if (tileset_obj)
@@ -614,10 +643,20 @@ void *rt_tilemap_load_from_file(rt_string path) {
     FILE *f = fopen(cpath, "r");
     if (!f)
         return NULL;
-    fseek(f, 0, SEEK_END);
-    long file_size = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    if (tmio_fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return NULL;
+    }
+    int64_t file_size = (int64_t)tmio_ftell(f);
+    if (tmio_fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return NULL;
+    }
     if (file_size <= 0) {
+        fclose(f);
+        return NULL;
+    }
+    if ((uint64_t)file_size > SIZE_MAX - 1u) {
         fclose(f);
         return NULL;
     }
@@ -629,6 +668,10 @@ void *rt_tilemap_load_from_file(rt_string path) {
     }
     size_t read = fread(buf, 1, (size_t)file_size, f);
     fclose(f);
+    if (read != (size_t)file_size) {
+        free(buf);
+        return NULL;
+    }
     buf[read] = '\0';
 
     rt_string json_str = rt_string_from_bytes(buf, read);
@@ -813,14 +856,18 @@ void *rt_tilemap_load_from_file(rt_string path) {
             void *frames = rt_map_get(anim_obj, rt_const_cstr("frames"));
             if (!frames || frame_count <= 0 || frame_count > TM_MAX_ANIM_FRAMES)
                 continue;
+            if (rt_seq_len(frames) < frame_count)
+                continue;
             rt_tilemap_set_tile_anim(tm, base_tile, frame_count, ms_per_frame);
             for (int64_t fi = 0; fi < frame_count; fi++) {
                 void *boxed = rt_seq_get(frames, fi);
                 if (boxed)
                     rt_tilemap_set_tile_anim_frame(tm, base_tile, fi, (int64_t)rt_unbox_f64(boxed));
             }
-            if (tilemap->tile_anim_count > 0) {
-                tm_tile_anim *anim = &tilemap->tile_anims[tilemap->tile_anim_count - 1];
+            {
+                tm_tile_anim *anim = find_tile_anim(tilemap, base_tile);
+                if (!anim)
+                    continue;
                 anim->timer = map_get_i64(anim_obj, "timer");
                 int64_t current = map_get_i64(anim_obj, "currentFrame");
                 if (anim->frame_count > 0) {
