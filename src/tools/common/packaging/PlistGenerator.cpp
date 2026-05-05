@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "PlistGenerator.hpp"
+#include "PkgUtils.hpp"
 
 #include <sstream>
 
@@ -52,6 +53,7 @@ static std::string xmlEscape(const std::string &s) {
 }
 
 std::string generatePlist(const PlistParams &params) {
+    validatePackageFileAssociations(params.fileAssociations);
     std::ostringstream os;
 
     os << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"

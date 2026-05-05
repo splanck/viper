@@ -196,6 +196,13 @@ void InstallerStubGen::subRegImm32(X64Reg dst, uint32_t imm) {
     emit32(imm);
 }
 
+void InstallerStubGen::subRegReg(X64Reg dst, X64Reg src) {
+    // REX.W + 29 /r (sub r/m64, r64)
+    emitREX(true, src, dst);
+    emit(0x29);
+    emitModRM(3, regBits(src), regBits(dst));
+}
+
 void InstallerStubGen::addRegImm32(X64Reg dst, uint32_t imm) {
     // REX.W + 81 /0 id
     emitREX(true, X64Reg::RAX, dst);

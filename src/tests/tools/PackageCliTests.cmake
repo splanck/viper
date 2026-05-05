@@ -121,6 +121,30 @@ if (NOT _bad_assoc_err MATCHES "dotted extension")
     message(FATAL_ERROR "bad association diagnostic did not mention dotted extension\nstdout:\n${_bad_assoc_out}\nstderr:\n${_bad_assoc_err}")
 endif ()
 
+set(_dup_assoc_project "${TEST_WORK_DIR}/dup-assoc-project")
+file(MAKE_DIRECTORY "${_dup_assoc_project}")
+file(WRITE "${_dup_assoc_project}/main.zia" "func start() {}\n")
+file(WRITE "${_dup_assoc_project}/viper.project"
+"project dupassoc
+version 1.0.0
+lang zia
+entry main.zia
+file-assoc .zia \"Zia Source\" text/x-zia
+file-assoc .ZIA \"Zia Source 2\" text/x-zia-2
+")
+
+execute_process(
+        COMMAND "${VIPER_BIN}" package "${_dup_assoc_project}" --target linux --dry-run
+        RESULT_VARIABLE _dup_assoc_rv
+        OUTPUT_VARIABLE _dup_assoc_out
+        ERROR_VARIABLE _dup_assoc_err)
+if (_dup_assoc_rv EQUAL 0)
+    message(FATAL_ERROR "dry-run with duplicate file associations should fail")
+endif ()
+if (NOT _dup_assoc_err MATCHES "duplicate file association")
+    message(FATAL_ERROR "duplicate association diagnostic did not mention duplicates\nstdout:\n${_dup_assoc_out}\nstderr:\n${_dup_assoc_err}")
+endif ()
+
 set(_bad_scalar_project "${TEST_WORK_DIR}/bad-scalar-project")
 file(MAKE_DIRECTORY "${_bad_scalar_project}")
 file(WRITE "${_bad_scalar_project}/main.zia" "func start() {}\n")
@@ -231,6 +255,30 @@ if (_bad_macos_sign_rv EQUAL 0)
 endif ()
 if (NOT _bad_macos_sign_err MATCHES "sign mode")
     message(FATAL_ERROR "bad macOS sign mode diagnostic did not mention sign mode\nstdout:\n${_bad_macos_sign_out}\nstderr:\n${_bad_macos_sign_err}")
+endif ()
+
+set(_bad_macos_notary_project "${TEST_WORK_DIR}/bad-macos-notary-project")
+file(MAKE_DIRECTORY "${_bad_macos_notary_project}")
+file(WRITE "${_bad_macos_notary_project}/main.zia" "func start() {}\n")
+file(WRITE "${_bad_macos_notary_project}/viper.project"
+"project badmacnotary
+version 1.0.0
+lang zia
+entry main.zia
+macos-sign-mode adhoc
+macos-notary-profile profile
+")
+
+execute_process(
+        COMMAND "${VIPER_BIN}" package "${_bad_macos_notary_project}" --target macos --dry-run
+        RESULT_VARIABLE _bad_macos_notary_rv
+        OUTPUT_VARIABLE _bad_macos_notary_out
+        ERROR_VARIABLE _bad_macos_notary_err)
+if (_bad_macos_notary_rv EQUAL 0)
+    message(FATAL_ERROR "dry-run with macOS notarization outside Developer ID mode should fail")
+endif ()
+if (NOT _bad_macos_notary_err MATCHES "developer-id")
+    message(FATAL_ERROR "bad macOS notarization diagnostic did not mention developer-id\nstdout:\n${_bad_macos_notary_out}\nstderr:\n${_bad_macos_notary_err}")
 endif ()
 
 set(_macos_sign_project "${TEST_WORK_DIR}/macos-sign-project")

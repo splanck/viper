@@ -420,6 +420,7 @@ bool verifyDebInternal(const std::vector<uint8_t> &data,
     bool foundData = false;
     size_t pos = 8; // after ar magic
     size_t memberIndex = 0;
+    const char *expectedMembers[] = {"debian-binary", "control.tar.gz", "data.tar.gz"};
     while (pos + 60 <= data.size()) {
         // Check header terminator
         if (data[pos + 58] != '`' || data[pos + 59] != '\n') {
@@ -446,25 +447,30 @@ bool verifyDebInternal(const std::vector<uint8_t> &data,
             err << "DEB: member '" << name << "' content truncated\n";
             return false;
         }
+        if (memberIndex >= 3) {
+            err << "DEB: unexpected extra ar member '" << name << "'\n";
+            return false;
+        }
+        if (name != expectedMembers[memberIndex]) {
+            err << "DEB: member " << memberIndex << " is '" << name << "', expected '"
+                << expectedMembers[memberIndex] << "'\n";
+            return false;
+        }
 
         const uint8_t *content = data.data() + contentOff;
         if (memberIndex == 0) {
-            if (name != "debian-binary") {
-                err << "DEB: first member is not 'debian-binary'\n";
-                return false;
-            }
             if (sz != 4 || std::memcmp(content, "2.0\n", 4) != 0) {
                 err << "DEB: debian-binary content is not exactly '2.0\\n'\n";
                 return false;
             }
-        } else if (name == "control.tar.gz") {
+        } else if (memberIndex == 1) {
             if (foundControl) {
                 err << "DEB: duplicate control.tar.gz member\n";
                 return false;
             }
             foundControl = true;
             controlTarGz.assign(content, content + sz);
-        } else if (name == "data.tar.gz") {
+        } else if (memberIndex == 2) {
             if (foundData) {
                 err << "DEB: duplicate data.tar.gz member\n";
                 return false;
@@ -491,6 +497,10 @@ bool verifyDebInternal(const std::vector<uint8_t> &data,
 
     if (pos != data.size()) {
         err << "DEB: trailing or truncated ar member data\n";
+        return false;
+    }
+    if (memberIndex != 3) {
+        err << "DEB: expected exactly debian-binary, control.tar.gz, and data.tar.gz members\n";
         return false;
     }
     if (!foundControl) {

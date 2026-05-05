@@ -10,6 +10,7 @@
 #include "common/RunProcess.hpp"
 #include "tools/common/packaging/LinuxPackageBuilder.hpp"
 #include "tools/common/packaging/MacOSPackageBuilder.hpp"
+#include "tools/common/packaging/PkgDeflate.hpp"
 #include "tools/common/packaging/PkgUtils.hpp"
 #include "tools/common/packaging/PkgVerify.hpp"
 #include "tools/common/packaging/ToolchainInstallManifest.hpp"
@@ -98,6 +99,16 @@ uint16_t readBE16(const std::vector<uint8_t> &data, size_t off) {
     return static_cast<uint16_t>((data[off] << 8) | data[off + 1]);
 }
 
+uint16_t readLE16(const std::vector<uint8_t> &data, size_t off) {
+    return static_cast<uint16_t>(data[off] | (data[off + 1] << 8));
+}
+
+uint32_t readLE32(const std::vector<uint8_t> &data, size_t off) {
+    return static_cast<uint32_t>(data[off]) | (static_cast<uint32_t>(data[off + 1]) << 8) |
+           (static_cast<uint32_t>(data[off + 2]) << 16) |
+           (static_cast<uint32_t>(data[off + 3]) << 24);
+}
+
 uint32_t readBE32(const std::vector<uint8_t> &data, size_t off) {
     return (static_cast<uint32_t>(data[off]) << 24) |
            (static_cast<uint32_t>(data[off + 1]) << 16) |
@@ -108,10 +119,128 @@ uint64_t readBE64(const std::vector<uint8_t> &data, size_t off) {
     return (static_cast<uint64_t>(readBE32(data, off)) << 32) | readBE32(data, off + 4);
 }
 
+uint32_t readBE32Ptr(const uint8_t *data) {
+    return (static_cast<uint32_t>(data[0]) << 24) | (static_cast<uint32_t>(data[1]) << 16) |
+           (static_cast<uint32_t>(data[2]) << 8) | static_cast<uint32_t>(data[3]);
+}
+
+uint32_t adler32(const uint8_t *data, size_t len) {
+    uint32_t a = 1;
+    uint32_t b = 0;
+    for (size_t i = 0; i < len; ++i) {
+        a = (a + data[i]) % 65521u;
+        b = (b + a) % 65521u;
+    }
+    return (b << 16) | a;
+}
+
+std::vector<uint8_t> inflateZlibPayload(const uint8_t *data, size_t len, size_t expectedSize) {
+    if (len < 6)
+        throw std::runtime_error("zlib stream is too small");
+    const uint8_t cmf = data[0];
+    const uint8_t flg = data[1];
+    if ((cmf & 0x0Fu) != 8u || ((static_cast<uint16_t>(cmf) << 8) + flg) % 31u != 0)
+        throw std::runtime_error("zlib header is invalid");
+    if ((flg & 0x20u) != 0)
+        throw std::runtime_error("zlib preset dictionaries are not supported");
+    const size_t deflateLen = len - 6;
+    auto out = viper::pkg::inflate(data + 2, deflateLen, expectedSize);
+    const uint32_t expectedAdler = readBE32Ptr(data + len - 4);
+    const uint32_t actualAdler = adler32(out.data(), out.size());
+    if (expectedAdler != actualAdler)
+        throw std::runtime_error("zlib Adler-32 mismatch");
+    if (out.size() != expectedSize)
+        throw std::runtime_error("zlib uncompressed size mismatch");
+    return out;
+}
+
 std::string lowerAscii(std::string text) {
     for (char &c : text)
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return text;
+}
+
+std::string binaryBaseName(std::string filename) {
+    filename = lowerAscii(std::move(filename));
+    if (filename.size() > 4 && filename.substr(filename.size() - 4) == ".exe")
+        filename.resize(filename.size() - 4);
+    return filename;
+}
+
+std::optional<std::string> detectNativeExecutableArch(const fs::path &path) {
+    const auto data = viper::pkg::readFile(path.string());
+    if (data.size() < 20)
+        return std::nullopt;
+
+    if (data[0] == 0x7F && data[1] == 'E' && data[2] == 'L' && data[3] == 'F') {
+        if (data[4] != 2 || data[5] != 1)
+            return std::nullopt;
+        const uint16_t machine = readLE16(data, 18);
+        if (machine == 62)
+            return "x64";
+        if (machine == 183)
+            return "arm64";
+        return std::nullopt;
+    }
+
+    if (data[0] == 'M' && data[1] == 'Z') {
+        if (data.size() < 64)
+            return std::nullopt;
+        const size_t peOff = readLE32(data, 60);
+        if (peOff > data.size() || data.size() - peOff < 24 || data[peOff] != 'P' ||
+            data[peOff + 1] != 'E' || data[peOff + 2] != 0 || data[peOff + 3] != 0)
+            return std::nullopt;
+        const uint16_t machine = readLE16(data, peOff + 4);
+        if (machine == 0x8664)
+            return "x64";
+        if (machine == 0xAA64)
+            return "arm64";
+        return std::nullopt;
+    }
+
+    const uint32_t magicBE = readBE32(data, 0);
+    const uint32_t magicLE = readLE32(data, 0);
+    if (magicLE == 0xFEEDFACF || magicBE == 0xFEEDFACF) {
+        const bool little = magicLE == 0xFEEDFACF;
+        const uint32_t cputype = little ? readLE32(data, 4) : readBE32(data, 4);
+        if (cputype == 0x01000007u)
+            return "x64";
+        if (cputype == 0x0100000Cu)
+            return "arm64";
+        return std::nullopt;
+    }
+    if (magicBE == 0xCAFEBABEu && data.size() >= 8) {
+        const uint32_t count = readBE32(data, 4);
+        if (count == 0 || count > 64 || data.size() < 8 + static_cast<size_t>(count) * 20)
+            return std::nullopt;
+        bool hasX64 = false;
+        bool hasArm64 = false;
+        for (uint32_t i = 0; i < count; ++i) {
+            const size_t off = 8 + static_cast<size_t>(i) * 20;
+            const uint32_t cputype = readBE32(data, off);
+            hasX64 = hasX64 || cputype == 0x01000007u;
+            hasArm64 = hasArm64 || cputype == 0x0100000Cu;
+        }
+        if (hasX64 && hasArm64)
+            return "universal";
+        if (hasX64)
+            return "x64";
+        if (hasArm64)
+            return "arm64";
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> detectManifestToolchainArch(
+    const viper::pkg::ToolchainInstallManifest &manifest) {
+    for (const auto &file : manifest.files) {
+        if (file.kind != viper::pkg::ToolchainFileKind::Binary)
+            continue;
+        if (binaryBaseName(file.stagedAbsolutePath.filename().string()) != "viper")
+            continue;
+        return detectNativeExecutableArch(file.stagedAbsolutePath);
+    }
+    return std::nullopt;
 }
 
 bool parseTarget(const std::string &text, InstallPackageTarget &out) {
@@ -209,14 +338,73 @@ std::string targetFileName(InstallPackageTarget target,
     }
 }
 
-bool verifyArtifact(const fs::path &artifact, InstallPackageTarget target, std::ostream &err) {
+std::vector<std::string> requiredPayloadPaths(
+    InstallPackageTarget target,
+    const viper::pkg::ToolchainInstallManifest &manifest) {
+    std::vector<std::string> paths;
+    paths.reserve(manifest.files.size() + 1);
+    switch (target) {
+        case InstallPackageTarget::Windows:
+            for (const auto &file : manifest.files) {
+                paths.push_back("app/" + viper::pkg::sanitizePackageRelativePath(
+                                             file.stagedRelativePath, "windows toolchain path"));
+            }
+            paths.push_back("app/uninstall.exe");
+            break;
+        case InstallPackageTarget::LinuxDeb:
+            for (const auto &file : manifest.files) {
+                const std::string installPath =
+                    viper::pkg::mapInstallPath(file, viper::pkg::InstallPathPolicy::LinuxUsrRoot);
+                paths.push_back(viper::pkg::sanitizePackageRelativePath(
+                    installPath.size() > 1 ? installPath.substr(1) : installPath,
+                    "linux install path"));
+            }
+            break;
+        case InstallPackageTarget::Tarball: {
+            const std::string version = manifest.version.empty() ? "0.0.0" : manifest.version;
+            const std::string packageName = "viper";
+            const std::string topDir =
+                viper::pkg::sanitizePackageRelativePath(packageName + "-" + version + "-" +
+                                                            hostPlatformName() + "-" + manifest.arch,
+                                                        "toolchain tarball top-level directory");
+            for (const auto &file : manifest.files) {
+                paths.push_back(topDir + "/" +
+                                viper::pkg::mapInstallPath(
+                                    file, viper::pkg::InstallPathPolicy::PortableArchive));
+            }
+            break;
+        }
+        case InstallPackageTarget::MacOS:
+        case InstallPackageTarget::LinuxRpm:
+        case InstallPackageTarget::All:
+            break;
+    }
+    return paths;
+}
+
+bool verifyArtifact(const fs::path &artifact,
+                    InstallPackageTarget target,
+                    std::ostream &err,
+                    const viper::pkg::ToolchainInstallManifest *manifest = nullptr) {
     const auto data = viper::pkg::readFile(artifact.string());
     switch (target) {
         case InstallPackageTarget::Windows:
+            if (manifest) {
+                return viper::pkg::verifyPEZipOverlayPayload(
+                    data, requiredPayloadPaths(target, *manifest), err);
+            }
             return viper::pkg::verifyPEZipOverlay(data, err);
         case InstallPackageTarget::LinuxDeb:
+            if (manifest) {
+                return viper::pkg::verifyDebPayload(
+                    data, requiredPayloadPaths(target, *manifest), err);
+            }
             return viper::pkg::verifyDeb(data, err);
         case InstallPackageTarget::Tarball:
+            if (manifest) {
+                return viper::pkg::verifyTarGzPayload(
+                    data, requiredPayloadPaths(target, *manifest), err);
+            }
             return viper::pkg::verifyTarGz(data, err);
         case InstallPackageTarget::MacOS:
             if (data.size() < 28 || data[0] != 'x' || data[1] != 'a' || data[2] != 'r' ||
@@ -240,6 +428,25 @@ bool verifyArtifact(const fs::path &artifact, InstallPackageTarget target, std::
                 if (tocCompressed == 0 || tocUncompressed == 0 ||
                     tocCompressed > data.size() - headerSize) {
                     err << "macos: xar TOC length is invalid\n";
+                    return false;
+                }
+                if (tocUncompressed > 64ull * 1024ull * 1024ull) {
+                    err << "macos: xar TOC is unreasonably large\n";
+                    return false;
+                }
+                try {
+                    const auto toc = inflateZlibPayload(data.data() + headerSize,
+                                                        static_cast<size_t>(tocCompressed),
+                                                        static_cast<size_t>(tocUncompressed));
+                    const std::string tocText(toc.begin(), toc.end());
+                    if (tocText.find("<xar") == std::string::npos ||
+                        tocText.find("</xar>") == std::string::npos ||
+                        tocText.find("<name>Payload</name>") == std::string::npos) {
+                        err << "macos: xar TOC does not describe a package payload\n";
+                        return false;
+                    }
+                } catch (const std::exception &ex) {
+                    err << "macos: cannot inflate xar TOC: " << ex.what() << "\n";
                     return false;
                 }
             }
@@ -289,6 +496,21 @@ bool verifyArtifact(const fs::path &artifact, InstallPackageTarget target, std::
                                          mainStoreSize;
                 if (mainEnd > data.size()) {
                     err << "rpm: main header extends past end of file\n";
+                    return false;
+                }
+                if (mainEnd == data.size()) {
+                    err << "rpm: package has no payload after main header\n";
+                    return false;
+                }
+                bool sawPayloadByte = false;
+                for (size_t i = static_cast<size_t>(mainEnd); i < data.size(); ++i) {
+                    if (data[i] != 0) {
+                        sawPayloadByte = true;
+                        break;
+                    }
+                }
+                if (!sawPayloadByte) {
+                    err << "rpm: package payload is empty\n";
                     return false;
                 }
             }
@@ -429,8 +651,18 @@ int cmdInstallPackage(int argc, char **argv) {
     AutoStageCleanup stageCleanup(stageDir, args.stageDir.empty() && !args.keepStageDir);
     viper::pkg::ToolchainInstallManifest manifest =
         viper::pkg::gatherToolchainInstallManifest(stageDir);
-    if (!args.archOverride.empty())
+    const auto detectedArch = detectManifestToolchainArch(manifest);
+    if (!args.archOverride.empty()) {
+        if (detectedArch && *detectedArch != "universal" && *detectedArch != args.archOverride) {
+            std::cerr << "error: --arch " << args.archOverride
+                      << " does not match staged viper binary architecture " << *detectedArch
+                      << "\n";
+            return 1;
+        }
         manifest.arch = args.archOverride;
+    } else if (detectedArch && *detectedArch != "universal") {
+        manifest.arch = *detectedArch;
+    }
     viper::pkg::validateToolchainInstallManifest(manifest);
 
     if (args.verbose) {
@@ -498,7 +730,7 @@ int cmdInstallPackage(int argc, char **argv) {
 
         if (!args.noVerify) {
             std::ostringstream err;
-            if (!verifyArtifact(artifactPath, target, err)) {
+            if (!verifyArtifact(artifactPath, target, err, &manifest)) {
                 std::cerr << "error: verification failed for " << artifactPath.string() << "\n"
                           << err.str();
                 std::error_code removeEc;

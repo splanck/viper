@@ -54,6 +54,8 @@ constexpr uint32_t kRegSz = 1u;
 constexpr uint32_t kErrorFileNotFound = 2u;
 constexpr uint32_t kErrorPathNotFound = 3u;
 constexpr uint32_t kErrorAlreadyExists = 183u;
+constexpr uint32_t kErrorMoreData = 234u;
+constexpr uint32_t kInstallerCopyChunkBytes = 1024u * 1024u;
 constexpr uint64_t kHkeyLocalMachine = 0x80000002ull;
 
 constexpr uint32_t kCsidlProgramFiles = 0x0026u;
@@ -73,7 +75,11 @@ constexpr int32_t kPFileBufOff = -0x60018;
 constexpr int32_t kBytesReadOff = -0x60020;
 constexpr int32_t kBytesWrittenOff = -0x60028;
 constexpr int32_t kRegKeyOff = -0x60030;
-constexpr uint32_t kFrameSize = 0x60050;
+constexpr int32_t kRemainingBytesOff = -0x60038;
+constexpr int32_t kCurrentFileOffsetOff = -0x60040;
+constexpr int32_t kCurrentChunkBytesOff = -0x60048;
+constexpr int32_t kCrcOff = -0x60050;
+constexpr uint32_t kFrameSize = 0x60080;
 
 enum InstallerIAT : uint32_t {
     kI_ExitProcess = 0,
@@ -91,16 +97,18 @@ enum InstallerIAT : uint32_t {
     kI_lstrcpyW = 12,
     kI_lstrcatW = 13,
     kI_lstrlenW = 14,
-    kI_GetLastError = 15,
-    kI_SHGetFolderPathW = 16,
-    kI_RegCreateKeyW = 17,
-    kI_RegSetValueExW = 18,
-    kI_RegCloseKey = 19,
-    kI_RegOpenKeyW = 20,
-    kI_RegDeleteValueW = 21,
-    kI_RegDeleteKeyW = 22,
-    kI_MessageBoxW = 23,
-    kI_RtlComputeCrc32 = 24,
+    kI_lstrcmpW = 15,
+    kI_GetLastError = 16,
+    kI_SHGetFolderPathW = 17,
+    kI_RegCreateKeyW = 18,
+    kI_RegSetValueExW = 19,
+    kI_RegCloseKey = 20,
+    kI_RegOpenKeyW = 21,
+    kI_RegQueryValueExW = 22,
+    kI_RegDeleteValueW = 23,
+    kI_RegDeleteKeyW = 24,
+    kI_MessageBoxW = 25,
+    kI_RtlComputeCrc32 = 26,
 };
 
 enum UninstallerIAT : uint32_t {
@@ -112,13 +120,15 @@ enum UninstallerIAT : uint32_t {
     kU_lstrcpyW = 5,
     kU_lstrcatW = 6,
     kU_lstrlenW = 7,
-    kU_GetLastError = 8,
-    kU_SHGetFolderPathW = 9,
-    kU_RegOpenKeyW = 10,
-    kU_RegCloseKey = 11,
-    kU_RegDeleteValueW = 12,
-    kU_RegDeleteKeyW = 13,
-    kU_MessageBoxW = 14,
+    kU_lstrcmpW = 8,
+    kU_GetLastError = 9,
+    kU_SHGetFolderPathW = 10,
+    kU_RegOpenKeyW = 11,
+    kU_RegCloseKey = 12,
+    kU_RegQueryValueExW = 13,
+    kU_RegDeleteValueW = 14,
+    kU_RegDeleteKeyW = 15,
+    kU_MessageBoxW = 16,
 };
 
 std::vector<PEImport> installerImports() {
@@ -139,6 +149,7 @@ std::vector<PEImport> installerImports() {
           "lstrcpyW",
           "lstrcatW",
           "lstrlenW",
+          "lstrcmpW",
           "GetLastError"}},
         {"shell32.dll", {"SHGetFolderPathW"}},
         {"advapi32.dll",
@@ -146,6 +157,7 @@ std::vector<PEImport> installerImports() {
           "RegSetValueExW",
           "RegCloseKey",
           "RegOpenKeyW",
+          "RegQueryValueExW",
           "RegDeleteValueW",
           "RegDeleteKeyW"}},
         {"user32.dll", {"MessageBoxW"}},
@@ -164,9 +176,15 @@ std::vector<PEImport> uninstallerImports() {
           "lstrcpyW",
           "lstrcatW",
           "lstrlenW",
+          "lstrcmpW",
           "GetLastError"}},
         {"shell32.dll", {"SHGetFolderPathW"}},
-        {"advapi32.dll", {"RegOpenKeyW", "RegCloseKey", "RegDeleteValueW", "RegDeleteKeyW"}},
+        {"advapi32.dll",
+         {"RegOpenKeyW",
+          "RegCloseKey",
+          "RegQueryValueExW",
+          "RegDeleteValueW",
+          "RegDeleteKeyW"}},
         {"user32.dll", {"MessageBoxW"}},
     };
 }
@@ -351,6 +369,31 @@ void emitCheckedCatEmbedded(InstallerStubGen &gen,
                             uint32_t strlenSlot,
                             uint32_t errorLabel) {
     gen.leaRipData(X64Reg::RAX, srcDataOff);
+    gen.movMemReg(X64Reg::RBP, kBytesWrittenOff, X64Reg::RAX);
+
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, destOff);
+    gen.callIATSlot(strlenSlot);
+    gen.movMemReg(X64Reg::RBP, kBytesReadOff, X64Reg::RAX);
+
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kBytesWrittenOff);
+    gen.callIATSlot(strlenSlot);
+    gen.movRegMem(X64Reg::RDX, X64Reg::RBP, kBytesReadOff);
+    gen.addRegReg(X64Reg::RAX, X64Reg::RDX);
+    gen.cmpRegImm32(X64Reg::RAX, kMaxPathChars - 1);
+    gen.ja(errorLabel);
+
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, destOff);
+    gen.movRegMem(X64Reg::RDX, X64Reg::RBP, kBytesWrittenOff);
+    gen.callIATSlot(catSlot);
+}
+
+void emitCheckedCatStack(InstallerStubGen &gen,
+                         int32_t destOff,
+                         int32_t srcOff,
+                         uint32_t catSlot,
+                         uint32_t strlenSlot,
+                         uint32_t errorLabel) {
+    gen.leaRegMem(X64Reg::RAX, X64Reg::RBP, srcOff);
     gen.movMemReg(X64Reg::RBP, kBytesWrittenOff, X64Reg::RAX);
 
     gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, destOff);
@@ -597,28 +640,95 @@ void emitRegDeleteNamedValueIfPresent(InstallerStubGen &gen,
     gen.bindLabel(lblDone);
 }
 
+void emitRegQueryConstStringEquals(InstallerStubGen &gen,
+                                   uint32_t querySlot,
+                                   uint32_t strcmpSlot,
+                                   uint32_t valueNameOff,
+                                   uint32_t expectedValueOff,
+                                   uint32_t expectedBytes,
+                                   uint32_t notEqualLabel) {
+    zeroLocalQword(gen, kBytesReadOff);
+    zeroLocalQword(gen, kBytesWrittenOff);
+    gen.movMemImm32(X64Reg::RBP, kBytesReadOff, expectedBytes);
+
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kRegKeyOff);
+    gen.leaRipData(X64Reg::RDX, valueNameOff);
+    gen.xorRegReg(X64Reg::R8, X64Reg::R8);
+    gen.leaRegMem(X64Reg::R9, X64Reg::RBP, kBytesWrittenOff);
+    gen.leaRegMem(X64Reg::RAX, X64Reg::RBP, kTempPathOff);
+    gen.movMemReg(X64Reg::RSP, 0x20, X64Reg::RAX);
+    gen.leaRegMem(X64Reg::RAX, X64Reg::RBP, kBytesReadOff);
+    gen.movMemReg(X64Reg::RSP, 0x28, X64Reg::RAX);
+    gen.callIATSlot(querySlot);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jnz(notEqualLabel);
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kBytesReadOff);
+    emitCmpRegU32(gen, X64Reg::RAX, expectedBytes);
+    gen.jnz(notEqualLabel);
+    gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
+    gen.leaRipData(X64Reg::RDX, expectedValueOff);
+    gen.callIATSlot(strcmpSlot);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jnz(notEqualLabel);
+}
+
+void emitRegQueryValueExists(InstallerStubGen &gen,
+                             uint32_t querySlot,
+                             uint32_t valueNameOff,
+                             uint32_t existsLabel) {
+    zeroLocalQword(gen, kBytesReadOff);
+    zeroLocalQword(gen, kBytesWrittenOff);
+    gen.movMemImm32(X64Reg::RBP, kBytesReadOff, kMaxPathChars * 2u);
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kRegKeyOff);
+    gen.leaRipData(X64Reg::RDX, valueNameOff);
+    gen.xorRegReg(X64Reg::R8, X64Reg::R8);
+    gen.leaRegMem(X64Reg::R9, X64Reg::RBP, kBytesWrittenOff);
+    gen.leaRegMem(X64Reg::RAX, X64Reg::RBP, kTempPathOff);
+    gen.movMemReg(X64Reg::RSP, 0x20, X64Reg::RAX);
+    gen.leaRegMem(X64Reg::RAX, X64Reg::RBP, kBytesReadOff);
+    gen.movMemReg(X64Reg::RSP, 0x28, X64Reg::RAX);
+    gen.callIATSlot(querySlot);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jz(existsLabel);
+    gen.cmpRegImm32(X64Reg::RAX, kErrorMoreData);
+    gen.jz(existsLabel);
+}
+
 void emitDeleteProgIdTreeIfOwned(InstallerStubGen &gen,
                                  uint32_t openSlot,
                                  uint32_t closeSlot,
+                                 uint32_t querySlot,
+                                 uint32_t strcmpSlot,
                                  uint32_t deleteValueSlot,
                                  uint32_t deleteSlot,
                                  uint32_t progKeyOff,
                                  uint32_t markerNameOff,
+                                 uint32_t markerValueOff,
+                                 uint32_t markerValueBytes,
                                  uint32_t commandKeyOff,
                                  uint32_t openKeyOff,
                                  uint32_t shellKeyOff) {
     const auto lblSkip = gen.newLabel();
+    const auto lblNotOwned = gen.newLabel();
     emitRegOpenConstKeyIfExists(gen, openSlot, closeSlot, progKeyOff, lblSkip);
+    emitRegQueryConstStringEquals(gen,
+                                  querySlot,
+                                  strcmpSlot,
+                                  markerNameOff,
+                                  markerValueOff,
+                                  markerValueBytes,
+                                  lblNotOwned);
     gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kRegKeyOff);
     gen.leaRipData(X64Reg::RDX, markerNameOff);
     gen.callIATSlot(deleteValueSlot);
     emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
-    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
-    gen.jnz(lblSkip);
     emitRegDeleteConstKey(gen, deleteSlot, commandKeyOff);
     emitRegDeleteConstKey(gen, deleteSlot, openKeyOff);
     emitRegDeleteConstKey(gen, deleteSlot, shellKeyOff);
     emitRegDeleteConstKey(gen, deleteSlot, progKeyOff);
+    gen.jmp(lblSkip);
+    gen.bindLabel(lblNotOwned);
+    emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
     gen.bindLabel(lblSkip);
 }
 
@@ -629,16 +739,23 @@ void emitRegisterFileAssociations(InstallerStubGen &gen,
                                   uint32_t catSlot,
                                   uint32_t createSlot,
                                   uint32_t setValueSlot,
+                                  uint32_t querySlot,
+                                  uint32_t strcmpSlot,
                                   uint32_t closeSlot,
                                   uint32_t strlenSlot,
                                   uint32_t errorLabel) {
     if (layout.fileAssociations.empty())
         return;
+    (void)strcmpSlot;
 
     const uint32_t regContentTypeOff = gen.embedStringW("Content Type");
+    const uint32_t regContentTypeOwnerOff = gen.embedStringW("VAPSContentTypeOwner");
     const uint32_t regOwnerMarkerOff = gen.embedStringW("VAPSOwner");
     const std::string ownerMarker =
         layout.identifier.empty() ? layout.displayName : layout.identifier;
+    const uint32_t ownerMarkerBytes = wideBytesFor(ownerMarker);
+    if (ownerMarkerBytes > kMaxPathChars * 2u)
+        throw std::runtime_error("Windows registry owner marker is too long");
     const uint32_t ownerMarkerValueOff = gen.embedStringW(ownerMarker);
     const uint32_t exeNameOff = gen.embedStringW(layout.executableName);
     const uint32_t quoteOff = gen.embedStringW("\"");
@@ -649,13 +766,25 @@ void emitRegisterFileAssociations(InstallerStubGen &gen,
         const uint32_t progIdOff = gen.embedStringW(assoc.progId);
         emitRegCreateConstKey(gen, createSlot, extKeyOff, errorLabel);
         if (!assoc.mimeType.empty()) {
+            const auto lblContentTypeExists = gen.newLabel();
+            const auto lblContentTypeDone = gen.newLabel();
             const uint32_t mimeOff = gen.embedStringW(assoc.mimeType);
+            emitRegQueryValueExists(gen, querySlot, regContentTypeOff, lblContentTypeExists);
             emitRegSetConstString(gen,
                                   setValueSlot,
                                   regContentTypeOff,
                                   mimeOff,
                                   wideBytesFor(assoc.mimeType),
                                   errorLabel);
+            emitRegSetConstString(gen,
+                                  setValueSlot,
+                                  regContentTypeOwnerOff,
+                                  ownerMarkerValueOff,
+                                  ownerMarkerBytes,
+                                  errorLabel);
+            gen.jmp(lblContentTypeDone);
+            gen.bindLabel(lblContentTypeExists);
+            gen.bindLabel(lblContentTypeDone);
         }
         emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
 
@@ -673,7 +802,7 @@ void emitRegisterFileAssociations(InstallerStubGen &gen,
                               setValueSlot,
                               regOwnerMarkerOff,
                               ownerMarkerValueOff,
-                              wideBytesFor(ownerMarker),
+                              ownerMarkerBytes,
                               errorLabel);
         emitRegSetDefaultConstString(
             gen, setValueSlot, descriptionOff, wideBytesFor(description), errorLabel);
@@ -685,18 +814,10 @@ void emitRegisterFileAssociations(InstallerStubGen &gen,
         gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
         gen.leaRipData(X64Reg::RDX, quoteOff);
         gen.callIATSlot(copySlot);
-        gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
-        gen.leaRegMem(X64Reg::RDX, X64Reg::RBP, kInstallPathOff);
-        gen.callIATSlot(catSlot);
-        gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
-        gen.leaRipData(X64Reg::RDX, slashOff);
-        gen.callIATSlot(catSlot);
-        gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
-        gen.leaRipData(X64Reg::RDX, exeNameOff);
-        gen.callIATSlot(catSlot);
-        gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
-        gen.leaRipData(X64Reg::RDX, quotedArgOff);
-        gen.callIATSlot(catSlot);
+        emitCheckedCatStack(gen, kTempPathOff, kInstallPathOff, catSlot, strlenSlot, errorLabel);
+        emitCheckedCatEmbedded(gen, kTempPathOff, slashOff, catSlot, strlenSlot, errorLabel);
+        emitCheckedCatEmbedded(gen, kTempPathOff, exeNameOff, catSlot, strlenSlot, errorLabel);
+        emitCheckedCatEmbedded(gen, kTempPathOff, quotedArgOff, catSlot, strlenSlot, errorLabel);
         emitRegSetDefaultStackString(gen, setValueSlot, strlenSlot, kTempPathOff, errorLabel);
         emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
     }
@@ -706,9 +827,18 @@ void emitUnregisterFileAssociations(InstallerStubGen &gen,
                                     const WindowsPackageLayout &layout,
                                     uint32_t openSlot,
                                     uint32_t closeSlot,
+                                    uint32_t querySlot,
+                                    uint32_t strcmpSlot,
                                     uint32_t deleteValueSlot,
                                     uint32_t deleteSlot) {
     const uint32_t ownerMarkerOff = gen.embedStringW("VAPSOwner");
+    const uint32_t contentTypeOwnerOff = gen.embedStringW("VAPSContentTypeOwner");
+    const std::string ownerMarker =
+        layout.identifier.empty() ? layout.displayName : layout.identifier;
+    const uint32_t ownerMarkerValueOff = gen.embedStringW(ownerMarker);
+    const uint32_t ownerMarkerValueBytes = wideBytesFor(ownerMarker);
+    if (ownerMarkerValueBytes > kMaxPathChars * 2u)
+        throw std::runtime_error("Windows registry owner marker is too long");
     for (const auto &assoc : layout.fileAssociations) {
         emitRegDeleteNamedValueIfPresent(gen,
                                          openSlot,
@@ -717,21 +847,41 @@ void emitUnregisterFileAssociations(InstallerStubGen &gen,
                                          gen.embedStringW(openWithProgIdsKeyFor(assoc)),
                                          gen.embedStringW(assoc.progId));
         if (!assoc.mimeType.empty()) {
-            emitRegDeleteNamedValueIfPresent(gen,
-                                             openSlot,
-                                             closeSlot,
-                                             deleteValueSlot,
-                                             gen.embedStringW(extensionKeyFor(assoc)),
-                                             gen.embedStringW("Content Type"));
+            const auto lblContentDone = gen.newLabel();
+            const auto lblContentNotOwned = gen.newLabel();
+            emitRegOpenConstKeyIfExists(
+                gen, openSlot, closeSlot, gen.embedStringW(extensionKeyFor(assoc)), lblContentDone);
+            emitRegQueryConstStringEquals(gen,
+                                          querySlot,
+                                          strcmpSlot,
+                                          contentTypeOwnerOff,
+                                          ownerMarkerValueOff,
+                                          ownerMarkerValueBytes,
+                                          lblContentNotOwned);
+            gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kRegKeyOff);
+            gen.leaRipData(X64Reg::RDX, gen.embedStringW("Content Type"));
+            gen.callIATSlot(deleteValueSlot);
+            gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kRegKeyOff);
+            gen.leaRipData(X64Reg::RDX, contentTypeOwnerOff);
+            gen.callIATSlot(deleteValueSlot);
+            emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
+            gen.jmp(lblContentDone);
+            gen.bindLabel(lblContentNotOwned);
+            emitRegCloseIfSet(gen, kRegKeyOff, closeSlot);
+            gen.bindLabel(lblContentDone);
         }
         emitDeleteProgIdTreeIfOwned(
             gen,
             openSlot,
             closeSlot,
+            querySlot,
+            strcmpSlot,
             deleteValueSlot,
             deleteSlot,
             gen.embedStringW(progIdKeyFor(assoc)),
             ownerMarkerOff,
+            ownerMarkerValueOff,
+            ownerMarkerValueBytes,
             gen.embedStringW(progIdKeyFor(assoc) + "\\shell\\open\\command"),
             gen.embedStringW(progIdKeyFor(assoc) + "\\shell\\open"),
             gen.embedStringW(progIdKeyFor(assoc) + "\\shell"));
@@ -829,6 +979,9 @@ void emitExtractFile(InstallerStubGen &gen,
     if (entrySize != 0 && entryOffset == UINT32_MAX)
         throw std::runtime_error("Windows installer overlay offset is ambiguous for SetFilePointer: " +
                                  entry.relativePath);
+    if (entrySize != 0 && entryOffset > UINT32_MAX - entrySize)
+        throw std::runtime_error("Windows installer overlay range is too large: " +
+                                 entry.relativePath);
     const uint32_t relPathOff = gen.embedStringW(entry.relativePath);
 
     if (entrySize == 0) {
@@ -850,41 +1003,12 @@ void emitExtractFile(InstallerStubGen &gen,
         return;
     }
 
-    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kHFileOff);
-    gen.movRegImm32(X64Reg::RDX, entryOffset);
-    zeroLocalQword(gen, kBytesWrittenOff);
-    gen.leaRegMem(X64Reg::R8, X64Reg::RBP, kBytesWrittenOff);
-    gen.xorRegReg(X64Reg::R9, X64Reg::R9);
-    gen.callIATSlot(setFilePointerSlot);
-    emitCmpRegU32(gen, X64Reg::RAX, entryOffset);
-    gen.jnz(errorLabel);
-
     gen.xorRegReg(X64Reg::RCX, X64Reg::RCX);
-    gen.movRegImm32(X64Reg::RDX, entrySize);
+    gen.movRegImm32(X64Reg::RDX, std::min(entrySize, kInstallerCopyChunkBytes));
     gen.callIATSlot(allocSlot);
     gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
     gen.jz(errorLabel);
     gen.movMemReg(X64Reg::RBP, kPFileBufOff, X64Reg::RAX);
-
-    zeroLocalQword(gen, kBytesReadOff);
-    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kHFileOff);
-    gen.movRegMem(X64Reg::RDX, X64Reg::RBP, kPFileBufOff);
-    gen.movRegImm32(X64Reg::R8, entrySize);
-    gen.leaRegMem(X64Reg::R9, X64Reg::RBP, kBytesReadOff);
-    storeStackImm64(gen, 0x20, 0);
-    gen.callIATSlot(readSlot);
-    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
-    gen.jz(errorLabel);
-    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kBytesReadOff);
-    emitCmpRegU32(gen, X64Reg::RAX, entrySize);
-    gen.jnz(errorLabel);
-
-    gen.xorRegReg(X64Reg::RCX, X64Reg::RCX);
-    gen.movRegMem(X64Reg::RDX, X64Reg::RBP, kPFileBufOff);
-    gen.movRegImm32(X64Reg::R8, entrySize);
-    gen.callIATSlot(crcSlot);
-    emitCmpRegU32(gen, X64Reg::RAX, entry.crc32);
-    gen.jnz(errorLabel);
 
     emitComposePath(
         gen, entry.root, kTempPathOff, slashOff, relPathOff, copySlot, catSlot, strlenSlot, errorLabel);
@@ -901,17 +1025,87 @@ void emitExtractFile(InstallerStubGen &gen,
     gen.jz(errorLabel);
     gen.movMemReg(X64Reg::RBP, kHOutOff, X64Reg::RAX);
 
+    gen.movRegImm32(X64Reg::RAX, entrySize);
+    gen.movMemReg(X64Reg::RBP, kRemainingBytesOff, X64Reg::RAX);
+    gen.movRegImm32(X64Reg::RAX, entryOffset);
+    gen.movMemReg(X64Reg::RBP, kCurrentFileOffsetOff, X64Reg::RAX);
+    zeroLocalQword(gen, kCrcOff);
+
+    const auto lblLoop = gen.newLabel();
+    const auto lblUseMaxChunk = gen.newLabel();
+    const auto lblHaveChunk = gen.newLabel();
+    const auto lblDone = gen.newLabel();
+
+    gen.bindLabel(lblLoop);
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kRemainingBytesOff);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jz(lblDone);
+    gen.cmpRegImm32(X64Reg::RAX, kInstallerCopyChunkBytes);
+    gen.ja(lblUseMaxChunk);
+    gen.movMemReg(X64Reg::RBP, kCurrentChunkBytesOff, X64Reg::RAX);
+    gen.jmp(lblHaveChunk);
+    gen.bindLabel(lblUseMaxChunk);
+    gen.movRegImm32(X64Reg::RAX, kInstallerCopyChunkBytes);
+    gen.movMemReg(X64Reg::RBP, kCurrentChunkBytesOff, X64Reg::RAX);
+    gen.bindLabel(lblHaveChunk);
+
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kHFileOff);
+    gen.movRegMem(X64Reg::RDX, X64Reg::RBP, kCurrentFileOffsetOff);
     zeroLocalQword(gen, kBytesWrittenOff);
-    gen.movRegReg(X64Reg::RCX, X64Reg::RAX);
+    gen.leaRegMem(X64Reg::R8, X64Reg::RBP, kBytesWrittenOff);
+    gen.xorRegReg(X64Reg::R9, X64Reg::R9);
+    gen.callIATSlot(setFilePointerSlot);
+    gen.movRegMem(X64Reg::R10, X64Reg::RBP, kCurrentFileOffsetOff);
+    gen.cmpRegReg(X64Reg::RAX, X64Reg::R10);
+    gen.jnz(errorLabel);
+
+    zeroLocalQword(gen, kBytesReadOff);
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kHFileOff);
     gen.movRegMem(X64Reg::RDX, X64Reg::RBP, kPFileBufOff);
-    gen.movRegImm32(X64Reg::R8, entrySize);
+    gen.movRegMem(X64Reg::R8, X64Reg::RBP, kCurrentChunkBytesOff);
+    gen.leaRegMem(X64Reg::R9, X64Reg::RBP, kBytesReadOff);
+    storeStackImm64(gen, 0x20, 0);
+    gen.callIATSlot(readSlot);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jz(errorLabel);
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kBytesReadOff);
+    gen.movRegMem(X64Reg::R10, X64Reg::RBP, kCurrentChunkBytesOff);
+    gen.cmpRegReg(X64Reg::RAX, X64Reg::R10);
+    gen.jnz(errorLabel);
+
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kCrcOff);
+    gen.movRegMem(X64Reg::RDX, X64Reg::RBP, kPFileBufOff);
+    gen.movRegMem(X64Reg::R8, X64Reg::RBP, kCurrentChunkBytesOff);
+    gen.callIATSlot(crcSlot);
+    gen.movMemReg(X64Reg::RBP, kCrcOff, X64Reg::RAX);
+
+    zeroLocalQword(gen, kBytesWrittenOff);
+    gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kHOutOff);
+    gen.movRegMem(X64Reg::RDX, X64Reg::RBP, kPFileBufOff);
+    gen.movRegMem(X64Reg::R8, X64Reg::RBP, kCurrentChunkBytesOff);
     gen.leaRegMem(X64Reg::R9, X64Reg::RBP, kBytesWrittenOff);
     storeStackImm64(gen, 0x20, 0);
     gen.callIATSlot(writeSlot);
     gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
     gen.jz(errorLabel);
     gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kBytesWrittenOff);
-    emitCmpRegU32(gen, X64Reg::RAX, entrySize);
+    gen.movRegMem(X64Reg::R10, X64Reg::RBP, kCurrentChunkBytesOff);
+    gen.cmpRegReg(X64Reg::RAX, X64Reg::R10);
+    gen.jnz(errorLabel);
+
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kCurrentFileOffsetOff);
+    gen.movRegMem(X64Reg::R10, X64Reg::RBP, kCurrentChunkBytesOff);
+    gen.addRegReg(X64Reg::RAX, X64Reg::R10);
+    gen.movMemReg(X64Reg::RBP, kCurrentFileOffsetOff, X64Reg::RAX);
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kRemainingBytesOff);
+    gen.movRegMem(X64Reg::R10, X64Reg::RBP, kCurrentChunkBytesOff);
+    gen.subRegReg(X64Reg::RAX, X64Reg::R10);
+    gen.movMemReg(X64Reg::RBP, kRemainingBytesOff, X64Reg::RAX);
+    gen.jmp(lblLoop);
+
+    gen.bindLabel(lblDone);
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kCrcOff);
+    emitCmpRegU32(gen, X64Reg::RAX, entry.crc32);
     gen.jnz(errorLabel);
 
     emitCloseLocalHandleIfSet(gen, kHOutOff, closeSlot);
@@ -1142,6 +1336,8 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
                                  kI_lstrcatW,
                                  kI_RegCreateKeyW,
                                  kI_RegSetValueExW,
+                                 kI_RegQueryValueExW,
+                                 kI_lstrcmpW,
                                  kI_RegCloseKey,
                                  kI_lstrlenW,
                                  lblRollbackError);
@@ -1216,6 +1412,8 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
                                    layout,
                                    kI_RegOpenKeyW,
                                    kI_RegCloseKey,
+                                   kI_RegQueryValueExW,
+                                   kI_lstrcmpW,
                                    kI_RegDeleteValueW,
                                    kI_RegDeleteKeyW);
     emitRegDeleteConstKey(gen, kI_RegDeleteKeyW, uninstallKeyOff);
@@ -1345,6 +1543,8 @@ StubResult buildUninstallerStub(const WindowsPackageLayout &layout, const std::s
                                    layout,
                                    kU_RegOpenKeyW,
                                    kU_RegCloseKey,
+                                   kU_RegQueryValueExW,
+                                   kU_lstrcmpW,
                                    kU_RegDeleteValueW,
                                    kU_RegDeleteKeyW);
 

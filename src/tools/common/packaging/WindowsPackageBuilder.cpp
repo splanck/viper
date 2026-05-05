@@ -190,8 +190,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     validateSingleLineField(pkg.author, "Windows package author");
     validateSingleLineField(pkg.description, "Windows package description");
     validatePackageUrl(pkg.homepage, "package homepage");
-    for (const auto &assoc : pkg.fileAssociations)
-        validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
+    validatePackageFileAssociations(pkg.fileAssociations);
     if (!fs::is_regular_file(params.executablePath))
         throw std::runtime_error("Windows package executable is not a regular file: " +
                                  params.executablePath);
@@ -268,8 +267,8 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
             safeDirectoryIterate(
                 srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
                     const auto relPath = sanitizePackageRelativePath(
-                        fs::relative(entry.path(), srcPath).generic_string(), "asset path");
-                    if (entry.is_directory()) {
+                        entry.path().lexically_relative(srcPath).generic_string(), "asset path");
+                    if (fs::is_directory(entry.path())) {
                         const std::string relInstall =
                             joinPackageRelativePath(targetDir, relPath, "asset path");
                         addUniqueDir(layout.installDirectories,
@@ -278,7 +277,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                                      relInstall);
                         return;
                     }
-                    if (!entry.is_regular_file())
+                    if (!fs::is_regular_file(entry.path()))
                         return;
 
                     const std::string relInstall =

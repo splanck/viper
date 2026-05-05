@@ -272,15 +272,24 @@ ToolchainFileEntry makeEntry(const fs::path &stagePrefix, const fs::path &filePa
     entry.symlink = fs::is_symlink(filePath, ec);
     ec.clear();
     if (entry.symlink) {
+        const fs::path rawTarget = fs::read_symlink(filePath, ec);
+        if (ec)
+            throw std::runtime_error("cannot read staged symlink target: " + filePath.string());
         const fs::path resolved = fs::canonical(filePath, ec);
         if (ec)
             throw std::runtime_error("cannot resolve staged symlink: " + filePath.string());
         const fs::path parent = fs::canonical(filePath.parent_path(), ec);
         if (ec)
             throw std::runtime_error("cannot resolve staged symlink parent: " + filePath.string());
-        entry.symlinkTarget = toForwardSlashes(fs::relative(resolved, parent, ec).generic_string());
-        if (ec)
-            throw std::runtime_error("cannot compute staged symlink target: " + filePath.string());
+        if (rawTarget.is_absolute()) {
+            entry.symlinkTarget =
+                toForwardSlashes(fs::relative(resolved, parent, ec).generic_string());
+            if (ec)
+                throw std::runtime_error("cannot compute staged symlink target: " +
+                                         filePath.string());
+        } else {
+            entry.symlinkTarget = toForwardSlashes(rawTarget.generic_string());
+        }
         validateSingleLineField(entry.symlinkTarget, "staged symlink target");
         if (entry.symlinkTarget.empty() || entry.symlinkTarget.front() == '/' ||
             (entry.symlinkTarget.size() >= 2 &&
@@ -386,6 +395,7 @@ ToolchainInstallManifest gatherToolchainInstallManifest(
 
 void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest) {
     validateToolchainArchitecture(manifest.arch);
+    validatePackageFileAssociations(manifest.fileAssociations);
 
     auto hasBinary = [&](const char *nameNoExt) {
         return std::any_of(manifest.files.begin(), manifest.files.end(), [&](const ToolchainFileEntry &entry) {

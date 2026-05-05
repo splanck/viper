@@ -24,7 +24,7 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator.
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 135 | +135 |
+| Commits | — | 136 | +136 |
 | Source files | 2,869 | 2,995 | +126 |
 | Production SLOC | 450K | 548K | +98K |
 | Test SLOC | 183K | 227K | +44K |
@@ -39,6 +39,7 @@ Counts via `scripts/count_sloc.sh`.
 - WAV decoder expanded to 8/16/24/32-bit PCM and float32; all resample-and-alloc sites guard against overflow and zero/negative frame counts.
 - ALSA write loop handles partial writes and underrun recovery; Linux shutdown no longer hangs waiting on a blocking write; mixer callbacks use a blocking mutex lock (was trylock, causing audible silence during seek/load).
 - Platform audio clocks use widened arithmetic to prevent long-uptime overflow; streaming buffers preserve the old allocation before growing; `Music.Seek` stops and clears the stream on source failure instead of leaving stale audio buffered.
+- The music-scan mutex is now held across the entire per-frame scan rather than acquired and released per candidate, closing a TOCTOU window where a concurrent `Music.Free` could free a track between selection and finalization.
 
 ### GUI Library
 
@@ -46,7 +47,7 @@ Seven rounds of widget audits plus an app-registry overhaul.
 
 - **New capabilities** — BMP image loading (pure-C, no deps); macOS PNG/JPEG/TIFF via CoreGraphics/ImageIO; POSIX regex search in FindReplaceBar; keyboard nav, undo/redo, multi-select, and typeahead across all interactive widgets.
 - **Widget lifetime** — TreeView nodes, ListBox items, and all widget handles are now tombstoned on removal; accessing a stale handle is detected and treated as a no-op rather than a crash. Focused, captured, and hovered widget pointers are cleared when a subtree is detached. Drag-and-drop strings are freed on destroy. Widget IDs are now 64-bit, preventing ID wrap in long-running sessions.
-- **Event correctness** — `CLICK`/`DOUBLE_CLICK` fires after the widget's own `MOUSE_UP` handler; `WasClicked()` reports the click-receiving widget, not the hit-test target; modal input capture releases when a captured widget is outside the active modal; dynamic focus list replaces the 512-entry fixed cap.
+- **Event correctness** — `CLICK`/`DOUBLE_CLICK` fires after the widget's own `MOUSE_UP` handler; `WasClicked()` reports the click-receiving widget, not the hit-test target; modal input capture releases when a captured widget is outside the active modal; dynamic focus list replaces the 512-entry fixed cap. The internal event root-state slot table now grows dynamically, removing the previous hard cap of 16 simultaneous root states.
 - **TrueType rendering** — All table reads bounds-checked; composite glyph point-index alignment implemented; per-contour edge wrapping fixed (was producing phantom fill regions in glyphs like 'O' and '8'); UTF-8 decoder rejects overlong, surrogate, and out-of-range sequences.
 - **Layout & constraints** — NaN/inf rejected on all constraint, margin, padding, flex, spacing, and grid-track setters. Grid and Dock containers purge stale placement metadata when a child is removed, so re-adding a widget does not inherit its old position. Constraint application is now unified across all widget measure functions.
 - **Widget state fixes** — Checkbox `set_indeterminate()` getter+setter; RadioButton group `selected_index` accuracy and deselect callbacks; ProgressBar `set_style()`/`show_percentage()` new APIs and NaN guards; TextInput paste emits a single `on_change`; strdup OOM guards (copy-then-free) across all text-setting paths; Spinner font-size NaN guard.
@@ -185,7 +186,7 @@ Eleven-class `Viper.Localization.*` namespace. Zero external dependencies; en-US
 
 ### Platform
 
-- macOS: premultiplied RGBA from CoreGraphics correctly unpremultiplied before storage; bare arrow keys no longer map to PageUp/Down/Home/End; `mach_absolute_time` conversion widened to prevent long-uptime overflow.
+- macOS: premultiplied RGBA from CoreGraphics correctly unpremultiplied before storage; bare arrow keys no longer map to PageUp/Down/Home/End; `mach_absolute_time` conversion widened to prevent long-uptime overflow. Keyboard input state is now cleared when the window loses focus, preventing stuck keys after Cmd+Tab. Text-input events correctly emit one event per Unicode codepoint, including characters that require UTF-16 surrogate pairs.
 - Linux: X11 clipboard upgraded to full ICCCM CLIPBOARD selection protocol; UTF-8 text input validates every codepoint; XDND URI parsing enforces byte-length bounds; RGBA swizzle reads channel masks from the active X11 Visual instead of assuming layout.
 - All platforms: `vgfx_cls()` fill and framebuffer presentation rewritten as byte-wise writes (eliminates strict-aliasing UB); Cohen-Sutherland line clipper pre-clips extreme off-screen coordinates; Bresenham error accumulator widened to int64; event queue protected by atomic spinlock.
 
@@ -224,6 +225,6 @@ Three-pass hardening of the `viper install` and `viper package` subsystems.
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 135-commit history.
+See `git log a91d388db..HEAD -- .` for the full 136-commit history.
 
 <!-- END DRAFT -->

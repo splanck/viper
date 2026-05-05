@@ -100,6 +100,7 @@ class InstallerStubGen {
     // ─── Arithmetic ───────────────────────────────────────────────────
 
     void subRegImm32(X64Reg dst, uint32_t imm);
+    void subRegReg(X64Reg dst, X64Reg src);
     void addRegImm32(X64Reg dst, uint32_t imm);
     void addRegReg(X64Reg dst, X64Reg src);
     void xorRegReg(X64Reg dst, X64Reg src);

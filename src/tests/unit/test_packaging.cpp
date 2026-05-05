@@ -1298,6 +1298,31 @@ TEST(Verify, DebPayloadRequiresExpectedPath) {
     EXPECT_CONTAINS(missingErr.str(), "missing required payload path");
 }
 
+TEST(Verify, DebRejectsMisorderedMembers) {
+    ArWriter ar;
+    ar.addMemberString("debian-binary", "2.0\n");
+    ar.addMemberVec("data.tar.gz", makeTarGz({{"./usr/bin/test", "data"}}));
+    ar.addMemberVec("control.tar.gz", makeTarGz({{"./control", "Package: test\n"}}));
+    auto data = ar.finish();
+
+    std::ostringstream err;
+    EXPECT_FALSE(verifyDeb(data, err));
+    EXPECT_CONTAINS(err.str(), "expected 'control.tar.gz'");
+}
+
+TEST(Verify, DebRejectsExtraMembers) {
+    ArWriter ar;
+    ar.addMemberString("debian-binary", "2.0\n");
+    ar.addMemberVec("control.tar.gz", makeTarGz({{"./control", "Package: test\n"}}));
+    ar.addMemberVec("data.tar.gz", makeTarGz({{"./usr/bin/test", "data"}}));
+    ar.addMemberString("extra", "unexpected");
+    auto data = ar.finish();
+
+    std::ostringstream err;
+    EXPECT_FALSE(verifyDeb(data, err));
+    EXPECT_CONTAINS(err.str(), "unexpected extra ar member");
+}
+
 TEST(Verify, DebRejectsUngzippedMembers) {
     ArWriter ar;
     ar.addMemberString("debian-binary", "2.0\n");
@@ -1448,6 +1473,60 @@ TEST(PackageUtils, RejectsInvalidFileAssociations) {
     EXPECT_THROWS(validateFileAssociation(".bad", "Bad", "text/with space"), std::runtime_error);
     EXPECT_THROWS(validateFileAssociation("../bad", "Bad", "text/plain"), std::runtime_error);
 }
+
+TEST(PackageUtils, RejectsDuplicateFileAssociationExtensions) {
+    std::vector<FileAssoc> assocs = {
+        {".zia", "Zia Source", "text/x-zia"},
+        {".ZIA", "Zia Source 2", "text/x-zia-2"},
+    };
+    EXPECT_THROWS(validatePackageFileAssociations(assocs), std::runtime_error);
+}
+
+TEST(PackageUtils, ValidatesMacOSSigningSemantics) {
+    PackageConfig pkg;
+    pkg.macosSignMode = "developer-id";
+    EXPECT_THROWS(validateMacOSSigningConfig(pkg), std::runtime_error);
+    pkg.macosSignIdentity = "Developer ID Application: Example";
+    EXPECT_NO_THROW(validateMacOSSigningConfig(pkg));
+    pkg.macosNotaryProfile = "notary-profile";
+    EXPECT_NO_THROW(validateMacOSSigningConfig(pkg));
+    pkg.macosStaple = true;
+    EXPECT_NO_THROW(validateMacOSSigningConfig(pkg));
+
+    pkg.macosSignMode = "adhoc";
+    EXPECT_THROWS(validateMacOSSigningConfig(pkg), std::runtime_error);
+    pkg.macosNotaryProfile.clear();
+    EXPECT_THROWS(validateMacOSSigningConfig(pkg), std::runtime_error);
+}
+
+#if !defined(_WIN32)
+TEST(PackageUtils, SafeDirectoryIterateFollowsInternalSymlinkDirectories) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_safe_iter_symlink_dir";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot / "project" / "assets");
+    fs::create_directories(tmpRoot / "project" / "shared");
+    {
+        std::ofstream out(tmpRoot / "project" / "shared" / "data.txt");
+        out << "data";
+    }
+    fs::create_directory_symlink("../shared", tmpRoot / "project" / "assets" / "linked");
+
+    bool sawLinkedFile = false;
+    safeDirectoryIterate(tmpRoot / "project" / "assets",
+                         tmpRoot / "project",
+                         [&](const fs::directory_entry &entry) {
+                             if (fs::is_regular_file(entry.path()) &&
+                                 entry.path()
+                                         .lexically_relative(tmpRoot / "project" / "assets")
+                                         .generic_string() == "linked/data.txt") {
+                                 sawLinkedFile = true;
+                             }
+                         });
+    EXPECT_TRUE(sawLinkedFile);
+    fs::remove_all(tmpRoot);
+}
+#endif
 
 TEST(PackageUtils, ValidatesPackageUrls) {
     EXPECT_NO_THROW(validatePackageUrl("https://example.com/app", "homepage"));
@@ -1751,6 +1830,35 @@ TEST(InstallerStub, ImportsRuntimeCrcForOverlayIntegrity) {
         }
     }
     EXPECT_TRUE(found);
+}
+
+TEST(InstallerStub, ImportsRegistryQueryForOwnedFileAssociationCleanup) {
+    WindowsPackageLayout layout;
+    layout.displayName = "TestApp";
+    layout.installDirName = "TestApp";
+    layout.executableName = "testapp.exe";
+    layout.identifier = "org.viper.testapp";
+    layout.overlayFileOffset = 0x400;
+    layout.fileAssociations.push_back(
+        {".zia", "Zia Source", "text/x-zia", "org.viper.testapp.zia"});
+
+    auto installer = buildInstallerStub(layout, "x64");
+    auto uninstaller = buildUninstallerStub(layout, "x64");
+
+    auto hasImport = [](const StubResult &stub, const std::string &dll, const std::string &fn) {
+        return std::any_of(stub.imports.begin(), stub.imports.end(), [&](const PEImport &imp) {
+            return imp.dllName == dll &&
+                   std::find(imp.functions.begin(), imp.functions.end(), fn) !=
+                       imp.functions.end();
+        });
+    };
+
+    EXPECT_TRUE(hasImport(installer, "advapi32.dll", "RegQueryValueExW"));
+    EXPECT_TRUE(hasImport(installer, "kernel32.dll", "lstrcmpW"));
+    EXPECT_TRUE(hasImport(uninstaller, "advapi32.dll", "RegQueryValueExW"));
+    EXPECT_TRUE(hasImport(uninstaller, "kernel32.dll", "lstrcmpW"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "VAPSContentTypeOwner"));
+    EXPECT_TRUE(containsUtf16LE(uninstaller.stubData, "VAPSContentTypeOwner"));
 }
 
 TEST(InstallerStub, ImportsPathAndDirectoryFailureChecks) {

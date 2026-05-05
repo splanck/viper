@@ -131,11 +131,11 @@ void copyPackageAssetToResources(const fs::path &srcPath,
         safeDirectoryIterate(
             srcPath, projectRoot, [&](const fs::directory_entry &entry) {
                 const auto relPath = sanitizePackageRelativePath(
-                    fs::relative(entry.path(), srcPath).generic_string(), "asset path");
+                    entry.path().lexically_relative(srcPath).generic_string(), "asset path");
                 const fs::path dst = targetRoot / fs::path(relPath);
-                if (entry.is_directory()) {
+                if (fs::is_directory(entry.path())) {
                     fs::create_directories(dst);
-                } else if (entry.is_regular_file()) {
+                } else if (fs::is_regular_file(entry.path())) {
                     writeFileBytes(dst,
                                    readFile(entry.path().string()),
                                    fs::perms::owner_read | fs::perms::owner_write |
@@ -150,20 +150,6 @@ void copyPackageAssetToResources(const fs::path &srcPath,
     } else {
         throw std::runtime_error("asset is not a regular file or directory: " + sourceText);
     }
-}
-
-std::string resolvedMacOSSignMode(const PackageConfig &pkg) {
-    if (!pkg.macosSignMode.empty())
-        return pkg.macosSignMode;
-#if defined(__APPLE__)
-    return "adhoc";
-#else
-    return "preserve";
-#endif
-}
-
-bool validMacOSSignMode(const std::string &mode) {
-    return mode == "none" || mode == "preserve" || mode == "adhoc" || mode == "developer-id";
 }
 
 void runChecked(const std::vector<std::string> &args, const std::string &what) {
@@ -207,10 +193,8 @@ void signMacOSBundle(const fs::path &stageRoot,
                      const fs::path &execPath,
                      const fs::path &projectRoot,
                      const PackageConfig &pkg) {
-    const std::string mode = resolvedMacOSSignMode(pkg);
-    if (!validMacOSSignMode(mode))
-        throw std::runtime_error(
-            "macOS sign mode must be none, preserve, adhoc, or developer-id: " + mode);
+    validateMacOSSigningConfig(pkg);
+    const std::string mode = resolveMacOSSignModeForHost(pkg);
     if (mode == "none" || mode == "preserve")
         return;
 
@@ -281,8 +265,8 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
     validateDottedNumericVersion(version, "macOS package version");
     if (!pkg.minOsMacos.empty())
         validateDottedNumericVersion(pkg.minOsMacos, "minimum macOS version");
-    for (const auto &assoc : pkg.fileAssociations)
-        validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
+    validatePackageFileAssociations(pkg.fileAssociations);
+    validateMacOSSigningConfig(pkg);
     if (!fs::is_regular_file(params.executablePath))
         throw std::runtime_error("macOS package executable is not a regular file: " +
                                  params.executablePath);

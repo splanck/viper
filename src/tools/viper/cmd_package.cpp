@@ -227,14 +227,7 @@ std::string hexU16(uint16_t value) {
     return os.str();
 }
 
-bool isValidMacOSSignMode(const std::string &mode) {
-    return mode.empty() || mode == "none" || mode == "preserve" || mode == "adhoc" ||
-           mode == "developer-id";
-}
-
 ExecutableFormat expectedExecutableFormat(PackageTarget target) {
-    if (target == PackageTarget::Tarball)
-        target = detectHostPlatform();
     switch (target) {
         case PackageTarget::MacOS:
             return ExecutableFormat::MachO;
@@ -325,11 +318,13 @@ void validateExecutableForPackageTarget(const std::string &path,
                                         PackageTarget target,
                                         const std::string &archStr) {
     const ExecutableInfo info = inspectExecutable(path);
-    const ExecutableFormat expected = expectedExecutableFormat(target);
-    if (info.format != expected) {
-        throw std::runtime_error("executable format " + formatName(info.format) +
-                                 " does not match package target " + platformName(target) +
-                                 " (expected " + formatName(expected) + ")");
+    if (target != PackageTarget::Tarball) {
+        const ExecutableFormat expected = expectedExecutableFormat(target);
+        if (info.format != expected) {
+            throw std::runtime_error("executable format " + formatName(info.format) +
+                                     " does not match package target " + platformName(target) +
+                                     " (expected " + formatName(expected) + ")");
+        }
     }
     if (info.arch != "universal" && info.arch != archStr) {
         throw std::runtime_error("executable architecture '" + info.arch +
@@ -475,8 +470,7 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
         viper::pkg::validateSingleLineField(pkg.description, "package description");
         viper::pkg::validateSingleLineField(pkg.license, "package license");
         viper::pkg::validatePackageUrl(pkg.homepage, "package homepage");
-        for (const auto &assoc : pkg.fileAssociations)
-            viper::pkg::validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
+        viper::pkg::validatePackageFileAssociations(pkg.fileAssociations);
         for (const auto &asset : pkg.assets) {
             (void)viper::pkg::sanitizePackageRelativePath(asset.targetPath, "asset target path");
             if (!validatePackageSourcePathExists(proj, asset.sourcePath, "asset source path"))
@@ -501,23 +495,11 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                 if (!pkg.minOsMacos.empty())
                     viper::pkg::validateDottedNumericVersion(pkg.minOsMacos,
                                                              "minimum macOS version");
-                if (!isValidMacOSSignMode(pkg.macosSignMode)) {
-                    throw std::runtime_error(
-                        "macOS sign mode must be none, preserve, adhoc, or developer-id: " +
-                        pkg.macosSignMode);
-                }
-                if (pkg.macosSignMode == "developer-id" && pkg.macosSignIdentity.empty()) {
-                    throw std::runtime_error(
-                        "macOS Developer ID signing requires macos-sign-identity");
-                }
+                viper::pkg::validateMacOSSigningConfig(pkg);
                 if (!pkg.macosEntitlements.empty() &&
                     !validatePackageSourcePathExists(
                         proj, pkg.macosEntitlements, "macOS entitlements", false)) {
                     return false;
-                }
-                if (pkg.macosStaple && pkg.macosNotaryProfile.empty()) {
-                    throw std::runtime_error(
-                        "macos-staple requires macos-notary-profile for this package build");
                 }
                 break;
             case PackageTarget::Linux: {
@@ -691,7 +673,7 @@ int cmdPackage(int argc, char **argv) {
         }
         if (args.platformTarget == PackageTarget::MacOS) {
             const std::string signMode =
-                proj.packageConfig.macosSignMode.empty() ? "adhoc" : proj.packageConfig.macosSignMode;
+                viper::pkg::resolveMacOSSignModeForHost(proj.packageConfig);
             std::cerr << "  macOS signing: " << signMode << "\n";
             if (!proj.packageConfig.macosSignIdentity.empty())
                 std::cerr << "  macOS signing identity: "
@@ -722,7 +704,7 @@ int cmdPackage(int argc, char **argv) {
                 size_t count = 0;
                 viper::pkg::safeDirectoryIterate(
                     assetPath, proj.rootDir, [&](const fs::directory_entry &e) {
-                        if (e.is_regular_file())
+                        if (fs::is_regular_file(e.path()))
                             ++count;
                     });
                 std::cerr << " (" << count << " files)";

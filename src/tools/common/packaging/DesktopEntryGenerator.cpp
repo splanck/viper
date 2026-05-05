@@ -70,8 +70,7 @@ std::string xmlEscape(const std::string &s) {
 }
 
 void validateAssociations(const std::vector<FileAssoc> &assocs) {
-    for (const auto &assoc : assocs)
-        validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
+    validatePackageFileAssociations(assocs);
 }
 
 } // namespace

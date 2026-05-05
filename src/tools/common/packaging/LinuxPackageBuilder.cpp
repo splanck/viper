@@ -175,8 +175,7 @@ void validateDebMetadata(const PackageConfig &pkg,
     validateDesktopCategories(pkg.category);
     for (const auto &dep : pkg.depends)
         validateDebDependency(dep);
-    for (const auto &assoc : pkg.fileAssociations)
-        validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
+    validatePackageFileAssociations(pkg.fileAssociations);
 }
 
 void validatePortableMetadata(const PackageConfig &pkg,
@@ -213,13 +212,44 @@ void validateDataFilePaths(const std::vector<DataFile> &dataFiles) {
     }
 }
 
-void validateRpmSpecPath(const std::string &path) {
+void validatePortableArchivePath(const std::string &path, const char *fieldName) {
+    const std::string clean = sanitizePackageRelativePath(path, fieldName);
+    if (clean != path)
+        throw std::runtime_error(std::string(fieldName) + " was not normalized: " + path);
+}
+
+std::string rpmSpecFilePath(const std::string &path) {
     const std::string clean = sanitizePackageRelativePath(path, "rpm payload path");
     if (clean != path)
         throw std::runtime_error("rpm payload path was not normalized: " + path);
+
+    std::string escaped = "/usr/" + path;
+    bool needsQuotes = false;
+    std::string out;
+    out.reserve(escaped.size() + 8);
+    for (char c : escaped) {
+        if (c == ' ' || c == '\t')
+            needsQuotes = true;
+        if (c == '%') {
+            out += "%%";
+        } else if (c == '"' || c == '\\') {
+            out.push_back('\\');
+            out.push_back(c);
+            needsQuotes = true;
+        } else {
+            out.push_back(c);
+        }
+    }
+    if (!needsQuotes)
+        return out;
+    return "\"" + out + "\"";
+}
+
+void validateRpmSpecPath(const std::string &path) {
+    (void)rpmSpecFilePath(path);
     for (char c : path) {
-        if (c == '%')
-            throw std::runtime_error("rpm payload path must not contain '%': " + path);
+        if (c == '\n' || c == '\r')
+            throw std::runtime_error("rpm payload path must not contain line breaks: " + path);
     }
 }
 
@@ -298,11 +328,11 @@ void buildDebPackage(const LinuxBuildParams &params) {
             safeDirectoryIterate(
                 srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
                     auto relPath = sanitizePackageRelativePath(
-                        fs::relative(entry.path(), srcPath).generic_string(), "asset path");
-                    if (entry.is_directory()) {
+                        entry.path().lexically_relative(srcPath).generic_string(), "asset path");
+                    if (fs::is_directory(entry.path())) {
                         dataFiles.push_back(DataFile::dir(
                             joinPackageRelativePath(sharePrefix, relPath, "asset path")));
-                    } else if (entry.is_regular_file()) {
+                    } else if (fs::is_regular_file(entry.path())) {
                         auto fileData = readFile(entry.path().string());
                         dataFiles.push_back(
                             {joinPackageRelativePath(sharePrefix, relPath, "asset path"),
@@ -587,14 +617,14 @@ void buildTarball(const LinuxBuildParams &params) {
                 tar.addDirectory(prefix, 0755);
             safeDirectoryIterate(
                 srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
-                    if (entry.is_directory()) {
+                    if (fs::is_directory(entry.path())) {
                         auto relPath = sanitizePackageRelativePath(
-                            fs::relative(entry.path(), srcPath).generic_string(), "asset path");
+                            entry.path().lexically_relative(srcPath).generic_string(), "asset path");
                         tar.addDirectory(joinPackageRelativePath(prefix, relPath, "asset path"),
                                          0755);
-                    } else if (entry.is_regular_file()) {
+                    } else if (fs::is_regular_file(entry.path())) {
                         auto relPath = sanitizePackageRelativePath(
-                            fs::relative(entry.path(), srcPath).generic_string(), "asset path");
+                            entry.path().lexically_relative(srcPath).generic_string(), "asset path");
                         auto fileData = readFile(entry.path().string());
                         tar.addFile(joinPackageRelativePath(prefix, relPath, "asset path"),
                                     fileData.data(),
@@ -712,7 +742,7 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
     tar.addDirectory(topDir, 0755);
     for (const auto &file : manifest.files) {
         const std::string relPath = mapInstallPath(file, InstallPathPolicy::PortableArchive);
-        validateRpmSpecPath(relPath);
+        validatePortableArchivePath(relPath, "toolchain tarball path");
         if (file.symlink) {
             tar.addSymlink(topDir + relPath, file.symlinkTarget);
         } else {
@@ -799,7 +829,7 @@ void buildToolchainRpmPackage(const LinuxToolchainBuildParams &params) {
     spec << "%files\n";
     for (const auto &file : manifest.files) {
         validateRpmSpecPath(file.stagedRelativePath);
-        spec << "/usr/" << file.stagedRelativePath << "\n";
+        spec << rpmSpecFilePath(file.stagedRelativePath) << "\n";
     }
 
     const fs::path specPath = tmpRoot / "SPECS" / (packageName + ".spec");

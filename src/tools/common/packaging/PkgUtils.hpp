@@ -30,10 +30,13 @@
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include "PackageConfig.hpp"
 
 namespace viper::pkg {
 
@@ -118,6 +121,13 @@ inline std::string trimAsciiWhitespace(std::string value) {
         return {};
     const std::size_t end = value.find_last_not_of(" \t\r\n");
     return value.substr(start, end - start + 1);
+}
+
+inline std::string lowerAsciiCopy(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
 }
 
 inline void rejectControlChars(const std::string &value, const char *fieldName) {
@@ -598,6 +608,56 @@ inline void validateFileAssociation(const std::string &extension,
     }
 }
 
+inline void validatePackageFileAssociations(const std::vector<FileAssoc> &associations) {
+    std::set<std::string> seenExtensions;
+    for (const auto &assoc : associations) {
+        validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
+        const std::string key = lowerAsciiCopy(assoc.extension);
+        if (!seenExtensions.insert(key).second) {
+            throw std::runtime_error("duplicate file association extension: '" + assoc.extension +
+                                     "'");
+        }
+    }
+}
+
+inline bool isValidMacOSSignModeText(const std::string &mode) {
+    return mode.empty() || mode == "none" || mode == "preserve" || mode == "adhoc" ||
+           mode == "developer-id";
+}
+
+inline std::string resolveMacOSSignModeForHost(const PackageConfig &pkg) {
+    if (!pkg.macosSignMode.empty())
+        return pkg.macosSignMode;
+#if defined(__APPLE__)
+    return "adhoc";
+#else
+    return "preserve";
+#endif
+}
+
+inline void validateMacOSSigningConfig(const PackageConfig &pkg) {
+    if (!isValidMacOSSignModeText(pkg.macosSignMode)) {
+        throw std::runtime_error("macOS sign mode must be none, preserve, adhoc, or "
+                                 "developer-id: " +
+                                 pkg.macosSignMode);
+    }
+
+    const std::string mode = resolveMacOSSignModeForHost(pkg);
+    if (mode == "developer-id" && pkg.macosSignIdentity.empty()) {
+        throw std::runtime_error("macOS Developer ID signing requires macos-sign-identity");
+    }
+    if (!pkg.macosNotaryProfile.empty() && mode != "developer-id") {
+        throw std::runtime_error("macOS notarization requires macos-sign-mode developer-id");
+    }
+    if (pkg.macosStaple) {
+        if (mode != "developer-id")
+            throw std::runtime_error("macos-staple requires macos-sign-mode developer-id");
+        if (pkg.macosNotaryProfile.empty())
+            throw std::runtime_error(
+                "macos-staple requires macos-notary-profile for this package build");
+    }
+}
+
 inline void validatePackageUrl(const std::string &url, const char *fieldName) {
     if (url.empty())
         return;
@@ -949,8 +1009,8 @@ inline std::vector<uint8_t> utf8ToUtf16LEBytes(const std::string &text, bool nul
     return bytes;
 }
 
-/// @brief Safely iterate a directory tree, skipping symlinks that escape the
-///        project root and handling permission errors gracefully.
+/// @brief Safely iterate a directory tree, following only symlinks that remain
+///        inside the project root and handling permission errors gracefully.
 ///
 /// The callback receives each directory_entry that is either a regular file
 /// or a directory (symlinks are resolved and checked).
@@ -968,54 +1028,85 @@ inline void safeDirectoryIterate(
     fs::path canonicalRoot = fs::canonical(projectRoot, ec);
     if (ec)
         canonicalRoot = projectRoot; // Fallback if canonical fails
+    ec.clear();
 
-    auto it = fs::recursive_directory_iterator(root, fs::directory_options::skip_permission_denied, ec);
-    if (ec) {
-        std::cerr << "warning: cannot access '" << root.string() << "', skipping: " << ec.message()
-                  << "\n";
-        return;
-    }
-    const auto end = fs::recursive_directory_iterator();
-    while (it != end) {
-        if (ec) {
-            std::cerr << "warning: cannot access directory entry, skipping: " << ec.message()
-                      << "\n";
-            ec.clear();
-            it.increment(ec);
-            continue;
-        }
+    fs::path canonicalIterRoot = fs::canonical(root, ec);
+    if (ec)
+        canonicalIterRoot = root;
+    ec.clear();
+    std::set<fs::path> visitedDirectories;
+    visitedDirectories.insert(canonicalIterRoot);
 
-        const auto &entry = *it;
-        const fs::path entryPath = entry.path();
-
-        // Check for symlinks escaping the project root
-        std::error_code entryEc;
-        bool skipEntry = false;
-        if (entry.is_symlink(entryEc)) {
-            fs::path resolved = fs::canonical(entryPath, ec);
+    std::function<void(const fs::path &, const fs::path &)> walk =
+        [&](const fs::path &physicalDir, const fs::path &logicalDir) {
+            auto it =
+                fs::directory_iterator(physicalDir, fs::directory_options::skip_permission_denied, ec);
             if (ec) {
-                std::cerr << "warning: cannot resolve symlink '" << entryPath.string()
-                          << "', skipping\n";
+                std::cerr << "warning: cannot access '" << logicalDir.string()
+                          << "', skipping: " << ec.message() << "\n";
                 ec.clear();
-                skipEntry = true;
+                return;
             }
-            // Check if resolved path is within project root.
-            if (!skipEntry && !isPathWithin(canonicalRoot, resolved)) {
-                std::cerr << "warning: symlink '" << entryPath.string()
-                          << "' escapes project root, skipping\n";
-                skipEntry = true;
-            }
-        }
+            const auto end = fs::directory_iterator();
+            while (it != end) {
+                const fs::path entryPath = logicalDir / it->path().filename();
+                const fs::directory_entry entry(entryPath);
+                bool skipEntry = false;
+                bool isDirectory = false;
+                bool hasResolvedSymlink = false;
+                fs::path resolvedSymlink;
 
-        if (!skipEntry)
-            callback(entry);
-        it.increment(ec);
-        if (ec) {
-            std::cerr << "warning: cannot advance directory iterator from '" << entryPath.string()
-                      << "': " << ec.message() << "\n";
-            ec.clear();
-        }
-    }
+                std::error_code entryEc;
+                if (entry.is_symlink(entryEc)) {
+                    fs::path resolved = fs::canonical(entryPath, entryEc);
+                    if (entryEc) {
+                        std::cerr << "warning: cannot resolve symlink '" << entryPath.string()
+                                  << "', skipping\n";
+                        skipEntry = true;
+                    } else if (!isPathWithin(canonicalRoot, resolved)) {
+                        std::cerr << "warning: symlink '" << entryPath.string()
+                                  << "' escapes project root, skipping\n";
+                        skipEntry = true;
+                    } else {
+                        resolvedSymlink = resolved;
+                        hasResolvedSymlink = true;
+                    }
+                }
+
+                entryEc.clear();
+                if (!skipEntry) {
+                    isDirectory = hasResolvedSymlink ? fs::is_directory(resolvedSymlink, entryEc)
+                                                     : fs::is_directory(entryPath, entryEc);
+                }
+                if (entryEc) {
+                    std::cerr << "warning: cannot stat directory entry '" << entryPath.string()
+                              << "', skipping: " << entryEc.message() << "\n";
+                    skipEntry = true;
+                }
+
+                if (!skipEntry)
+                    callback(entry);
+
+                if (!skipEntry && isDirectory) {
+                    fs::path resolvedDir =
+                        hasResolvedSymlink ? resolvedSymlink : fs::canonical(entryPath, entryEc);
+                    if (entryEc) {
+                        std::cerr << "warning: cannot resolve directory '" << entryPath.string()
+                                  << "', skipping recursion\n";
+                    } else if (visitedDirectories.insert(resolvedDir).second) {
+                        walk(resolvedDir, entryPath);
+                    }
+                }
+
+                it.increment(ec);
+                if (ec) {
+                    std::cerr << "warning: cannot advance directory iterator from '"
+                              << entryPath.string() << "': " << ec.message() << "\n";
+                    ec.clear();
+                }
+            }
+        };
+    walk(canonicalIterRoot, root);
 }
 
 } // namespace viper::pkg
