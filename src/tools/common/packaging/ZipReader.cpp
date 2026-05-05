@@ -185,7 +185,9 @@ std::vector<uint8_t> ZipReader::extract(const ZipEntry &entry) const {
         result.assign(data_ + dataOff, data_ + dataOff + entry.compressedSize);
     } else if (entry.method == 8) {
         // DEFLATE
-        result = inflate(data_ + dataOff, entry.compressedSize);
+        result = inflate(data_ + dataOff,
+                         entry.compressedSize,
+                         static_cast<size_t>(entry.uncompressedSize));
     } else {
         throw ZipReadError("ZIP: unsupported compression method " + std::to_string(entry.method));
     }

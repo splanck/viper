@@ -78,6 +78,7 @@ void validateAssociations(const std::vector<FileAssoc> &assocs) {
 
 std::string generateDesktopEntry(const DesktopEntryParams &params) {
     validateAssociations(params.fileAssociations);
+    const std::string categories = normalizeDesktopCategories(params.categories);
     std::ostringstream os;
     os << "[Desktop Entry]\n";
     os << "Type=Application\n";
@@ -85,11 +86,14 @@ std::string generateDesktopEntry(const DesktopEntryParams &params) {
     if (!params.comment.empty())
         os << "Comment=" << desktopEscape(params.comment) << "\n";
     validateSingleLineField(params.execPath, "desktop Exec path");
-    os << "Exec=" << params.execPath << "\n";
+    os << "Exec=" << params.execPath;
+    if (params.acceptsFileArgument || !params.fileAssociations.empty())
+        os << " %f";
+    os << "\n";
     if (!params.iconName.empty())
         os << "Icon=" << desktopEscape(params.iconName) << "\n";
-    if (!params.categories.empty())
-        os << "Categories=" << desktopEscape(params.categories) << "\n";
+    if (!categories.empty())
+        os << "Categories=" << desktopEscape(categories) << "\n";
     if (!params.workingDir.empty())
         os << "Path=" << desktopEscape(params.workingDir) << "\n";
     os << "Terminal=" << (params.terminal ? "true" : "false") << "\n";

@@ -48,6 +48,7 @@
 #include "viper/platform/Capabilities.hpp"
 #include "viper/runtime/RuntimeComponentManifest.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -73,6 +74,11 @@ static uint32_t readLE32(const uint8_t *p) {
 static uint32_t readBE32(const uint8_t *p) {
     return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
            (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
+}
+
+static bool containsUtf16LE(const std::vector<uint8_t> &data, const std::string &text) {
+    const auto needle = utf8ToUtf16LEBytes(text, true);
+    return std::search(data.begin(), data.end(), needle.begin(), needle.end()) != data.end();
 }
 
 static std::vector<uint8_t> inflateGzipPayload(const std::vector<uint8_t> &gzipData) {
@@ -238,6 +244,13 @@ TEST(Deflate, TruncatedInputThrows) {
     EXPECT_THROWS(inflate(compressed.data(), compressed.size()), DeflateError);
 }
 
+TEST(Deflate, RejectsTrailingCompressedData) {
+    const char *msg = "trailing deflate stream";
+    auto compressed = deflate(reinterpret_cast<const uint8_t *>(msg), std::strlen(msg));
+    compressed.push_back(0);
+    EXPECT_THROWS(inflate(compressed.data(), compressed.size()), DeflateError);
+}
+
 TEST(Deflate, ExplicitOutputLimit) {
     const char *msg = "bounded inflate";
     const size_t len = std::strlen(msg);
@@ -357,6 +370,22 @@ TEST(Zip, WriterRejectsTraversalNames) {
     EXPECT_THROWS(zip.addDirectory("/absolute"), std::runtime_error);
 }
 
+TEST(Zip, NormalizesBackslashEntryNames) {
+    ZipWriter zip;
+    zip.addFileString("assets\\config.txt", "x");
+    auto data = zip.finishToVector();
+
+    ZipReader reader(data.data(), data.size());
+    EXPECT_TRUE(reader.find("assets/config.txt") != nullptr);
+    EXPECT_TRUE(reader.find("assets\\config.txt") == nullptr);
+}
+
+TEST(Zip, WriterRejectsDuplicateEntryNamesAfterNormalization) {
+    ZipWriter zip;
+    zip.addFileString("assets/config.txt", "x");
+    EXPECT_THROWS(zip.addFileString("assets\\config.txt", "y"), std::runtime_error);
+}
+
 // ============================================================================
 // Tar Tests
 // ============================================================================
@@ -393,7 +422,7 @@ TEST(Tar, FileNameInHeader) {
     auto data = tar.finish();
 
     // Name field at offset 0, 100 bytes
-    EXPECT_TRUE(std::memcmp(data.data(), "./usr/bin/test", 14) == 0);
+    EXPECT_TRUE(std::memcmp(data.data(), "usr/bin/test", 12) == 0);
 }
 
 TEST(Tar, FileModeField) {
@@ -435,6 +464,47 @@ TEST(Tar, RejectsOversizedPath) {
 TEST(Tar, RejectsUnsafePath) {
     TarWriter tar;
     EXPECT_THROWS(tar.addFileString("../escape", "data"), std::runtime_error);
+}
+
+TEST(Tar, RejectsDuplicateEntryPath) {
+    TarWriter tar;
+    tar.addFileString("./dup.txt", "one");
+    EXPECT_THROWS(tar.addFileString("dup.txt", "two"), std::runtime_error);
+}
+
+TEST(Tar, AllowsInternalRelativeSymlinkTarget) {
+    TarWriter tar;
+    tar.addDirectory("./bin", 0755);
+    tar.addDirectory("./lib", 0755);
+    tar.addFileString("./lib/tool-real", "x", 0755);
+    tar.addSymlink("./bin/tool", "../lib/tool-real");
+    auto data = tar.finish();
+
+    std::ostringstream err;
+    auto gz = gzip(data.data(), data.size());
+    EXPECT_TRUE(verifyTarGz(gz, err));
+}
+
+TEST(Tar, RejectsEscapingSymlinkTarget) {
+    TarWriter tar;
+    EXPECT_THROWS(tar.addSymlink("./bin/tool", "../../outside"), std::runtime_error);
+}
+
+TEST(Tar, VerifierRejectsDuplicateEntryPath) {
+    TarWriter tar;
+    tar.addFileString("./dup.txt", "x");
+    auto one = tar.finish();
+    ASSERT_GE(one.size(), static_cast<size_t>(2048));
+
+    std::vector<uint8_t> dup;
+    dup.insert(dup.end(), one.begin(), one.begin() + 1024);
+    dup.insert(dup.end(), one.begin(), one.begin() + 1024);
+    dup.insert(dup.end(), one.end() - 1024, one.end());
+    auto gz = gzip(dup.data(), dup.size());
+
+    std::ostringstream err;
+    EXPECT_FALSE(verifyTarGz(gz, err));
+    EXPECT_CONTAINS(err.str(), "duplicate entry");
 }
 
 // ============================================================================
@@ -558,6 +628,17 @@ TEST(PE, OverlayAppended) {
     EXPECT_EQ(pe[pe.size() - 1], 'Y');
 }
 
+TEST(PE, DefaultDllCharacteristicsDoNotClaimRelocationAslr) {
+    PEBuildParams params;
+    params.textSection = {0xC3};
+    auto pe = buildPE(params);
+
+    const uint16_t dllChars = readLE16(pe.data() + 0x98 + 70);
+    EXPECT_EQ(dllChars, static_cast<uint16_t>(0x8100));
+    EXPECT_TRUE((dllChars & 0x0040) == 0); // DYNAMIC_BASE
+    EXPECT_TRUE((dllChars & 0x0020) == 0); // HIGH_ENTROPY_VA
+}
+
 // ============================================================================
 // LNK Tests
 // ============================================================================
@@ -647,6 +728,14 @@ TEST(Lnk, Utf8StringDataUsesUtf16) {
         }
     }
     EXPECT_TRUE(foundEAcute);
+}
+
+TEST(Lnk, EndsWithExtraDataTerminalBlock) {
+    LnkParams params;
+    params.targetPath = "C:\\test.exe";
+    auto data = generateLnk(params);
+    ASSERT_GE(data.size(), static_cast<size_t>(4));
+    EXPECT_EQ(readLE32(data.data() + data.size() - 4), static_cast<uint32_t>(0));
 }
 
 // ============================================================================
@@ -744,12 +833,34 @@ TEST(PNG, RejectsBadChunkCrc) {
     EXPECT_THROWS(pngReadMemory(png.data(), png.size()), PNGError);
 }
 
+TEST(PNG, RejectsNullInputBuffer) {
+    EXPECT_THROWS(pngReadMemory(nullptr, 8), PNGError);
+}
+
 TEST(PNG, RejectsMismatchedPixelBuffer) {
     PkgImage img;
     img.width = 2;
     img.height = 2;
     img.pixels.resize(4);
     EXPECT_THROWS(pngEncode(img), PNGError);
+}
+
+TEST(PNG, RejectsTrailingBytesAfterIEND) {
+    PkgImage img;
+    img.width = 1;
+    img.height = 1;
+    img.pixels = {0, 0, 0, 255};
+    auto png = pngEncode(img);
+    png.push_back(0);
+    EXPECT_THROWS(pngReadMemory(png.data(), png.size()), PNGError);
+}
+
+TEST(PNG, ResizeRejectsOverflowDimensions) {
+    PkgImage img;
+    img.width = 1;
+    img.height = 1;
+    img.pixels = {0, 0, 0, 255};
+    EXPECT_THROWS(imageResize(img, 0xFFFFFFFFu, 2), PNGError);
 }
 
 // ============================================================================
@@ -841,6 +952,21 @@ TEST(DesktopEntry, MimeTypeField) {
     EXPECT_CONTAINS(content, "MimeType=text/x-zia;");
 }
 
+TEST(DesktopEntry, FileAssociationExecAcceptsFileArgument) {
+    DesktopEntryParams params;
+    params.name = "Editor";
+    params.execPath = "/usr/bin/editor";
+    params.iconName = "editor";
+    FileAssoc assoc;
+    assoc.extension = ".zia";
+    assoc.description = "Zia Source";
+    assoc.mimeType = "text/x-zia";
+    params.fileAssociations.push_back(assoc);
+
+    auto content = generateDesktopEntry(params);
+    EXPECT_CONTAINS(content, "Exec=/usr/bin/editor %f");
+}
+
 TEST(DesktopEntry, CategoryField) {
     DesktopEntryParams params;
     params.name = "Game";
@@ -850,6 +976,35 @@ TEST(DesktopEntry, CategoryField) {
 
     auto content = generateDesktopEntry(params);
     EXPECT_CONTAINS(content, "Categories=Game;ArcadeGame;");
+}
+
+TEST(DesktopEntry, NormalizesSingleCategoryWithTerminatingSemicolon) {
+    DesktopEntryParams params;
+    params.name = "Game";
+    params.execPath = "/usr/bin/game";
+    params.iconName = "game";
+    params.categories = "Game";
+
+    auto content = generateDesktopEntry(params);
+    EXPECT_CONTAINS(content, "Categories=Game;");
+}
+
+TEST(DesktopEntry, RejectsUnknownCategory) {
+    DesktopEntryParams params;
+    params.name = "Mystery";
+    params.execPath = "/usr/bin/mystery";
+    params.iconName = "mystery";
+    params.categories = "DefinitelyNotARegisteredCategory";
+    EXPECT_THROWS(generateDesktopEntry(params), std::runtime_error);
+}
+
+TEST(DesktopEntry, RejectsInvalidCategoryInjection) {
+    DesktopEntryParams params;
+    params.name = "Game";
+    params.execPath = "/usr/bin/game";
+    params.iconName = "game";
+    params.categories = "Game;\nExec=bad";
+    EXPECT_THROWS(generateDesktopEntry(params), std::runtime_error);
 }
 
 TEST(DesktopEntry, RejectsLineBreakInjection) {
@@ -958,6 +1113,19 @@ TEST(Verify, ZipRejectsCrcMismatch) {
     EXPECT_CONTAINS(err.str(), "CRC");
 }
 
+TEST(Verify, MacOSAppZipRequiresBundlePayload) {
+    ZipWriter zip;
+    zip.addFileString("App.app/Contents/Info.plist", "<plist/>");
+    zip.addFileString("App.app/Contents/PkgInfo", "APPL????");
+    zip.addFileString("App.app/Contents/MacOS/app", "bin");
+    auto data = zip.finishToVector();
+
+    std::ostringstream err;
+    EXPECT_TRUE(verifyMacOSAppZip(data, "App.app", "app", err));
+    std::ostringstream missingErr;
+    EXPECT_FALSE(verifyMacOSAppZip(data, "App.app", "missing", missingErr));
+}
+
 TEST(Verify, DebValid) {
     ArWriter ar;
     ar.addMemberString("debian-binary", "2.0\n");
@@ -970,6 +1138,20 @@ TEST(Verify, DebValid) {
     if (!ok)
         std::cerr << err.str();
     EXPECT_TRUE(ok);
+}
+
+TEST(Verify, DebPayloadRequiresExpectedPath) {
+    ArWriter ar;
+    ar.addMemberString("debian-binary", "2.0\n");
+    ar.addMemberVec("control.tar.gz", makeTarGz({{"./control", "Package: test\n"}}));
+    ar.addMemberVec("data.tar.gz", makeTarGz({{"./usr/bin/test", "data"}}));
+    auto data = ar.finish();
+
+    std::ostringstream err;
+    EXPECT_TRUE(verifyDebPayload(data, {"usr/bin/test"}, err));
+    std::ostringstream missingErr;
+    EXPECT_FALSE(verifyDebPayload(data, {"usr/bin/missing"}, missingErr));
+    EXPECT_CONTAINS(missingErr.str(), "missing required payload path");
 }
 
 TEST(Verify, DebRejectsUngzippedMembers) {
@@ -988,6 +1170,14 @@ TEST(Verify, TarGzValid) {
     auto tarGz = makeTarGz({{"./hello.txt", "hello"}});
     std::ostringstream err;
     EXPECT_TRUE(verifyTarGz(tarGz, err));
+}
+
+TEST(Verify, TarGzPayloadRequiresExpectedPath) {
+    auto tarGz = makeTarGz({{"./hello.txt", "hello"}});
+    std::ostringstream err;
+    EXPECT_TRUE(verifyTarGzPayload(tarGz, {"hello.txt"}, err));
+    std::ostringstream missingErr;
+    EXPECT_FALSE(verifyTarGzPayload(tarGz, {"missing.txt"}, missingErr));
 }
 
 TEST(Verify, DebMissingMagic) {
@@ -1014,6 +1204,20 @@ TEST(Verify, PEInvalidMagic) {
     EXPECT_CONTAINS(err.str(), "MZ");
 }
 
+TEST(Verify, PERejectsOverflowingELfanew) {
+    std::vector<uint8_t> data(128, 0);
+    data[0] = 'M';
+    data[1] = 'Z';
+    data[60] = 0xFF;
+    data[61] = 0xFF;
+    data[62] = 0xFF;
+    data[63] = 0xFF;
+
+    std::ostringstream err;
+    EXPECT_FALSE(verifyPE(data, err));
+    EXPECT_CONTAINS(err.str(), "points past end");
+}
+
 TEST(Verify, PEZipOverlayValid) {
     ZipWriter zip;
     zip.addFileString("hello.txt", "Hello");
@@ -1025,6 +1229,22 @@ TEST(Verify, PEZipOverlayValid) {
 
     std::ostringstream err;
     EXPECT_TRUE(verifyPEZipOverlay(pe, err));
+}
+
+TEST(Verify, PEZipOverlayPayloadRequiresExpectedEntry) {
+    ZipWriter zip;
+    zip.addFileString("app/app.exe", "MZ");
+    zip.addFileString("app/uninstall.exe", "MZ");
+
+    PEBuildParams params;
+    params.textSection = {0xC3};
+    params.overlay = zip.finishToVector();
+    auto pe = buildPE(params);
+
+    std::ostringstream err;
+    EXPECT_TRUE(verifyPEZipOverlayPayload(pe, {"app/app.exe", "app/uninstall.exe"}, err));
+    std::ostringstream missingErr;
+    EXPECT_FALSE(verifyPEZipOverlayPayload(pe, {"app/missing.exe"}, missingErr));
 }
 
 TEST(Verify, PEZipOverlayMissing) {
@@ -1067,6 +1287,8 @@ TEST(PackageUtils, RejectsArchiveEscapes) {
     EXPECT_THROWS(sanitizePackageRelativePath("../escape"), std::runtime_error);
     EXPECT_THROWS(sanitizePackageRelativePath("/absolute"), std::runtime_error);
     EXPECT_THROWS(sanitizePackageRelativePath("C:/drive"), std::runtime_error);
+    EXPECT_THROWS(sanitizePackageRelativePath(std::string("bad") + static_cast<char>(0x7F)),
+                  std::runtime_error);
 }
 
 TEST(PackageUtils, RejectsInvalidPackageNames) {
@@ -1076,8 +1298,44 @@ TEST(PackageUtils, RejectsInvalidPackageNames) {
 }
 
 TEST(PackageUtils, RejectsInvalidFileAssociations) {
+    EXPECT_NO_THROW(validateFileAssociation(".zia", "Zia Source", "text/x-zia"));
+    EXPECT_THROWS(validateFileAssociation(".", "Bad", "text/plain"), std::runtime_error);
+    EXPECT_THROWS(validateFileAssociation("zia", "Bad", "text/plain"), std::runtime_error);
     EXPECT_THROWS(validateFileAssociation(".bad", "Bad", "text/with space"), std::runtime_error);
     EXPECT_THROWS(validateFileAssociation("../bad", "Bad", "text/plain"), std::runtime_error);
+}
+
+TEST(PackageUtils, ValidatesPackageUrls) {
+    EXPECT_NO_THROW(validatePackageUrl("https://example.com/app", "homepage"));
+    EXPECT_NO_THROW(validatePackageUrl("http://localhost:8080", "homepage"));
+    EXPECT_THROWS(validatePackageUrl("https:///missing-host", "homepage"), std::runtime_error);
+    EXPECT_THROWS(validatePackageUrl("https://bad host.example", "homepage"), std::runtime_error);
+    EXPECT_THROWS(validatePackageUrl("1https://example.com", "homepage"), std::runtime_error);
+    EXPECT_THROWS(validatePackageUrl("https://example.com:", "homepage"), std::runtime_error);
+}
+
+TEST(PackageUtils, ValidatesToolchainArchitecture) {
+    EXPECT_NO_THROW(validateToolchainArchitecture("x64"));
+    EXPECT_NO_THROW(validateToolchainArchitecture("arm64"));
+    EXPECT_THROWS(validateToolchainArchitecture("amd64"), std::runtime_error);
+    EXPECT_THROWS(validateToolchainArchitecture(""), std::runtime_error);
+}
+
+TEST(PackageUtils, ValidatesDebDependencyGrammar) {
+    EXPECT_NO_THROW(validateDebDependency("libc6 (>= 2.34)"));
+    EXPECT_NO_THROW(validateDebDependency("libstdc++6 | libc++1"));
+    EXPECT_NO_THROW(validateDebDependency("python3:any"));
+    EXPECT_THROWS(validateDebDependency("BadPackage"), std::runtime_error);
+    EXPECT_THROWS(validateDebDependency("libc6 (> 2.34)"), std::runtime_error);
+    EXPECT_THROWS(validateDebDependency("libc6 | "), std::runtime_error);
+}
+
+TEST(PackageUtils, ValidatesDottedVersionComponentCountAndRange) {
+    EXPECT_NO_THROW(validateDottedNumericVersion("10.0", "version"));
+    EXPECT_NO_THROW(validateDottedNumericVersion("1.2.3.4", "version"));
+    EXPECT_THROWS(validateDottedNumericVersion("1", "version"), std::runtime_error);
+    EXPECT_THROWS(validateDottedNumericVersion("1.2.3.4.5", "version"), std::runtime_error);
+    EXPECT_THROWS(validateDottedNumericVersion("1.70000", "version"), std::runtime_error);
 }
 
 TEST(PackageUtils, RejectsSourcePathEscape) {
@@ -1126,6 +1384,33 @@ TEST(ZipReader, RoundTripStoredEntries) {
     ASSERT_TRUE(nested != nullptr);
     auto nestedData = reader.extract(*nested);
     EXPECT_EQ(std::string(nestedData.begin(), nestedData.end()), std::string("Nested content"));
+}
+
+TEST(ZipReader, DeflateExtractionHonorsDeclaredOutputLimit) {
+    ZipWriter writer;
+    writer.addFileString("big.txt", std::string(4096, 'A'));
+    auto zipData = writer.finishToVector();
+
+    size_t cdOff = 0;
+    for (size_t i = 0; i + 4 <= zipData.size(); ++i) {
+        if (readLE32(zipData.data() + i) == 0x02014B50) {
+            cdOff = i;
+            break;
+        }
+    }
+    ASSERT_TRUE(cdOff > 0);
+    ASSERT_EQ(readLE16(zipData.data() + cdOff + 10), static_cast<uint16_t>(8));
+
+    // Central-directory uncompressed size drives ZipReader's inflate cap.
+    zipData[cdOff + 24] = 1;
+    zipData[cdOff + 25] = 0;
+    zipData[cdOff + 26] = 0;
+    zipData[cdOff + 27] = 0;
+
+    ZipReader reader(zipData.data(), zipData.size());
+    const ZipEntry *entry = reader.find("big.txt");
+    ASSERT_TRUE(entry != nullptr);
+    EXPECT_THROWS(reader.extract(*entry), DeflateError);
 }
 
 TEST(ZipReader, FindMissingEntry) {
@@ -1283,6 +1568,58 @@ TEST(InstallerStub, GeneratesValidPE) {
     EXPECT_TRUE(verifyPE(peBytes, err));
 }
 
+TEST(InstallerStub, ImportsRuntimeCrcForOverlayIntegrity) {
+    WindowsPackageLayout layout;
+    layout.displayName = "TestApp";
+    layout.installDirName = "TestApp";
+    layout.executableName = "testapp.exe";
+    layout.overlayFileOffset = 0x400;
+    layout.installFiles.push_back({WindowsInstallRoot::InstallDir, "testapp.exe", 0x80, 16, 0x12345678});
+    auto stub = buildInstallerStub(layout, "x64");
+
+    bool found = false;
+    for (const auto &imp : stub.imports) {
+        if (imp.dllName == "ntdll.dll" &&
+            std::find(imp.functions.begin(), imp.functions.end(), "RtlComputeCrc32") !=
+                imp.functions.end()) {
+            found = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(found);
+}
+
+TEST(InstallerStub, ImportsPathAndDirectoryFailureChecks) {
+    WindowsPackageLayout layout;
+    layout.displayName = "TestApp";
+    layout.installDirName = "TestApp";
+    layout.executableName = "testapp.exe";
+    layout.overlayFileOffset = 0x400;
+    layout.installDirectories.push_back({WindowsInstallRoot::InstallDir, "data"});
+    auto stub = buildInstallerStub(layout, "x64");
+
+    bool foundGetLastError = false;
+    bool foundLstrlen = false;
+    for (const auto &imp : stub.imports) {
+        if (imp.dllName != "kernel32.dll")
+            continue;
+        foundGetLastError =
+            std::find(imp.functions.begin(), imp.functions.end(), "GetLastError") !=
+            imp.functions.end();
+        foundLstrlen = std::find(imp.functions.begin(), imp.functions.end(), "lstrlenW") !=
+                       imp.functions.end();
+    }
+    EXPECT_TRUE(foundGetLastError);
+    EXPECT_TRUE(foundLstrlen);
+}
+
+TEST(InstallerStubGen, RejectsOutOfRangeIATSlotFixup) {
+    InstallerStubGen gen;
+    gen.callIATSlot(1);
+    std::vector<PEImport> imports = {{"kernel32.dll", {"ExitProcess"}}};
+    EXPECT_THROWS(gen.finishText(0x1000, 0x2000, imports, 0x3000), std::runtime_error);
+}
+
 TEST(InstallerStub, UninstallerGeneratesValidPE) {
     WindowsPackageLayout layout;
     layout.displayName = "TestApp";
@@ -1352,6 +1689,7 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithStoredZipOverlay) {
     pkg.shortcutDesktop = true;
     pkg.shortcutMenu = true;
     pkg.assets.push_back({"assets", "data"});
+    pkg.fileAssociations.push_back({".zia", "Zia Source", "text/x-zia"});
 
     const fs::path outPath = tmpRoot / "test_setup.exe";
     WindowsBuildParams params;
@@ -1367,7 +1705,15 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithStoredZipOverlay) {
 
     auto pe = readFile(outPath.string());
     std::ostringstream err;
-    EXPECT_TRUE(verifyPEZipOverlay(pe, err));
+    EXPECT_TRUE(verifyPEZipOverlayPayload(pe, {"app/testapp.exe", "app/uninstall.exe"}, err));
+    EXPECT_TRUE(containsUtf16LE(pe, "Software\\Classes\\.zia"));
+    EXPECT_TRUE(containsUtf16LE(pe, "Software\\Classes\\.zia\\OpenWithProgids"));
+    EXPECT_TRUE(containsUtf16LE(pe, "org.viper.testapp.zia"));
+    const std::string deleteValueImport = "RegDeleteValueW";
+    EXPECT_TRUE(std::search(pe.begin(),
+                            pe.end(),
+                            deleteValueImport.begin(),
+                            deleteValueImport.end()) != pe.end());
 
     fs::remove_all(tmpRoot);
 }
@@ -1430,6 +1776,101 @@ TEST(WindowsPackageBuilder, RejectsUnsafeDisplayName) {
     fs::remove_all(tmpRoot);
 }
 
+TEST(WindowsPackageBuilder, RejectsMissingAsset) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_windows_missing_asset_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+    {
+        std::ofstream exe(tmpRoot / "app.exe", std::ios::binary);
+        exe.write("MZstub", 6);
+    }
+
+    PackageConfig pkg;
+    pkg.displayName = "Test App";
+    pkg.assets.push_back({"missing", "data"});
+
+    WindowsBuildParams params;
+    params.projectName = "testapp";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app.exe").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "bad.exe").string();
+    params.archStr = "x64";
+
+    EXPECT_THROWS(buildWindowsPackage(params), std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
+
+TEST(LinuxPackageBuilder, TarballDoesNotValidateDebianOnlyMetadata) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_tarball_metadata_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+    {
+        std::ofstream exe(tmpRoot / "app", std::ios::binary);
+        exe << "stub";
+    }
+
+    PackageConfig pkg;
+    pkg.displayName = "Portable App";
+    pkg.category = "DefinitelyNotARegisteredCategory";
+    pkg.depends.push_back("BadPackage (> 1)");
+
+    LinuxBuildParams params;
+    params.projectName = "portableapp";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "portableapp.tar.gz").string();
+    params.archStr = "not-a-deb-arch";
+
+    buildTarball(params);
+    const auto tarGz = readFile(params.outputPath);
+    std::ostringstream err;
+    EXPECT_TRUE(verifyTarGzPayload(tarGz, {"portableapp-1.0.0/portableapp"}, err));
+    fs::remove_all(tmpRoot);
+}
+
+TEST(LinuxPackageBuilder, TarballRejectsDuplicateAssetOutputPath) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_tarball_dup_asset_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot / "a");
+    fs::create_directories(tmpRoot / "b");
+    {
+        std::ofstream exe(tmpRoot / "app", std::ios::binary);
+        exe << "stub";
+    }
+    {
+        std::ofstream file(tmpRoot / "a" / "config.txt");
+        file << "one";
+    }
+    {
+        std::ofstream file(tmpRoot / "b" / "config.txt");
+        file << "two";
+    }
+
+    PackageConfig pkg;
+    pkg.displayName = "Portable App";
+    pkg.assets.push_back({"a/config.txt", "data"});
+    pkg.assets.push_back({"b/config.txt", "data"});
+
+    LinuxBuildParams params;
+    params.projectName = "portableapp";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "portableapp.tar.gz").string();
+    params.archStr = "x64";
+
+    EXPECT_THROWS(buildTarball(params), std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
+
 TEST(ToolchainInstallManifest, GatherAndValidateMockStage) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_stage";
@@ -1465,6 +1906,56 @@ TEST(ToolchainInstallManifest, InstallPathMappingPreservesRelativeLayout) {
     EXPECT_EQ(mapInstallPath(file, InstallPathPolicy::WindowsProgramFilesRoot),
               std::string("C:\\Program Files\\Viper\\lib\\cmake\\Viper\\ViperConfig.cmake"));
 }
+
+TEST(ToolchainInstallManifest, RejectsInvalidArchitecture) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_bad_arch";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.arch = "amd64";
+
+    EXPECT_THROWS(validateToolchainInstallManifest(manifest), std::runtime_error);
+    LinuxToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "bad.deb").string();
+    EXPECT_THROWS(buildToolchainDebPackage(params), std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
+
+#if !defined(_WIN32)
+TEST(ToolchainInstallManifest, RejectsSymlinkEscapingStage) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_symlink_escape";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    {
+        std::ofstream outside(tmpRoot / "outside.txt");
+        outside << "outside";
+    }
+    fs::create_symlink(tmpRoot / "outside.txt", stage / "share" / "doc" / "viper" / "escape.txt");
+
+    EXPECT_THROWS(gatherToolchainInstallManifest(stage), std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainInstallManifest, PreservesInternalSymlinkTargets) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_symlink_internal";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    fs::create_symlink("../share/doc/viper/README.md", stage / "bin" / "viper-readme");
+
+    const auto manifest = gatherToolchainInstallManifest(stage);
+    auto it = std::find_if(manifest.files.begin(), manifest.files.end(), [](const ToolchainFileEntry &entry) {
+        return entry.stagedRelativePath == "bin/viper-readme";
+    });
+    ASSERT_TRUE(it != manifest.files.end());
+    EXPECT_TRUE(it->symlink);
+    EXPECT_EQ(it->symlinkTarget, std::string("../share/doc/viper/README.md"));
+    fs::remove_all(tmpRoot);
+}
+#endif
 
 TEST(ToolchainLinuxPackageBuilder, BuildsDebFromManifest) {
     namespace fs = std::filesystem;

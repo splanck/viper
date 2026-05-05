@@ -49,6 +49,8 @@ struct ToolchainFileEntry {
     uint64_t sizeBytes{0};
     uint32_t unixMode{0};
     bool executable{false};
+    bool symlink{false};
+    std::string symlinkTarget;
 };
 
 struct ToolchainInstallManifest {

@@ -25,6 +25,7 @@
 
 #include "PkgPNG.hpp"
 #include "PkgDeflate.hpp"
+#include "PkgUtils.hpp"
 
 #include <cstdlib>
 #include <cstring>
@@ -94,6 +95,8 @@ static constexpr size_t kMaxDecodedPngBytes = 256u * 1024u * 1024u;
 //=============================================================================
 
 PkgImage pngReadMemory(const uint8_t *data, size_t len) {
+    if (!data)
+        throw PNGError("PNG: null input buffer");
     if (len < 8 || std::memcmp(data, kPNGSignature, 8) != 0)
         throw PNGError("PNG: invalid signature");
 
@@ -155,6 +158,8 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
         throw PNGError("PNG: missing IHDR or IDAT");
     if (!seenIEND)
         throw PNGError("PNG: missing IEND");
+    if (pos != len)
+        throw PNGError("PNG: trailing data after IEND");
 
     const uint8_t cmf = idatBuf[0];
     const uint8_t flg = idatBuf[1];
@@ -243,18 +248,14 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
 }
 
 PkgImage pngRead(const std::string &path) {
-    std::ifstream f(path, std::ios::binary | std::ios::ate);
-    if (!f)
-        throw PNGError("PNG: cannot open " + path);
-
-    auto size = f.tellg();
-    f.seekg(0);
-    std::vector<uint8_t> data(static_cast<size_t>(size));
-    f.read(reinterpret_cast<char *>(data.data()), size);
-    if (!f)
-        throw PNGError("PNG: failed to read " + path);
-
-    return pngReadMemory(data.data(), data.size());
+    try {
+        auto data = readFile(path);
+        return pngReadMemory(data.data(), data.size());
+    } catch (const PNGError &) {
+        throw;
+    } catch (const std::exception &ex) {
+        throw PNGError(std::string("PNG: ") + ex.what());
+    }
 }
 
 //=============================================================================
@@ -374,12 +375,19 @@ PkgImage imageResize(const PkgImage &src, uint32_t newWidth, uint32_t newHeight)
     PkgImage result;
     result.width = newWidth;
     result.height = newHeight;
-    result.pixels.resize(newWidth * newHeight * 4);
+    if (newWidth > kMaxDecodedPngBytes / 4 ||
+        newHeight > kMaxDecodedPngBytes / (static_cast<size_t>(newWidth) * 4))
+        throw PNGError("PNG: resized image dimensions are too large");
+    result.pixels.resize(static_cast<size_t>(newWidth) * newHeight * 4);
 
     if (src.width == 0 || src.height == 0) {
         std::memset(result.pixels.data(), 0, result.pixels.size());
         return result;
     }
+    if (src.width > kMaxDecodedPngBytes / 4 ||
+        src.height > kMaxDecodedPngBytes / (static_cast<size_t>(src.width) * 4) ||
+        src.pixels.size() != static_cast<size_t>(src.width) * src.height * 4)
+        throw PNGError("PNG: source RGBA pixel buffer size does not match dimensions");
 
     for (uint32_t y = 0; y < newHeight; y++) {
         // Map dest y to source y with 8-bit fractional part

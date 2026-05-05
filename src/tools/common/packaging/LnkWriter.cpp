@@ -245,6 +245,9 @@ std::vector<uint8_t> generateLnk(const LnkParams &params) {
     if (hasIcon)
         appendStringData(buf, params.iconPath);
 
+    // ExtraData terminal block: four zero bytes terminate the Shell Link stream.
+    appendLE32(buf, 0);
+
     return buf;
 }
 

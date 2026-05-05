@@ -82,10 +82,12 @@ std::string hostPlatformName() {
 }
 
 std::string debArchFor(const std::string &arch) {
+    viper::pkg::validateToolchainArchitecture(arch);
     return arch == "arm64" ? "arm64" : "amd64";
 }
 
 std::string rpmArchFor(const std::string &arch) {
+    viper::pkg::validateToolchainArchitecture(arch);
     return arch == "arm64" ? "aarch64" : "x86_64";
 }
 
@@ -320,6 +322,7 @@ int cmdInstallPackage(int argc, char **argv) {
         viper::pkg::gatherToolchainInstallManifest(stageDir);
     if (!args.archOverride.empty())
         manifest.arch = args.archOverride;
+    viper::pkg::validateToolchainInstallManifest(manifest);
 
     if (args.verbose) {
         std::cout << "Stage: " << stageDir.string() << "\n";
@@ -389,6 +392,8 @@ int cmdInstallPackage(int argc, char **argv) {
             if (!verifyArtifact(artifactPath, target, err)) {
                 std::cerr << "error: verification failed for " << artifactPath.string() << "\n"
                           << err.str();
+                std::error_code removeEc;
+                fs::remove(artifactPath, removeEc);
                 return 1;
             }
         }

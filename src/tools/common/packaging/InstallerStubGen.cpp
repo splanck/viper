@@ -264,6 +264,14 @@ void InstallerStubGen::jnz(uint32_t labelId) {
     emit32(0); // placeholder
 }
 
+void InstallerStubGen::ja(uint32_t labelId) {
+    // 0F 87 cd (ja rel32) — unsigned above.
+    emit(0x0F);
+    emit(0x87);
+    fixups_.push_back({static_cast<uint32_t>(code_.size()), labelId, FixupKind::Rel32});
+    emit32(0);
+}
+
 void InstallerStubGen::jmp(uint32_t labelId) {
     // E9 cd (jmp rel32)
     emit(0xE9);
@@ -329,7 +337,7 @@ static uint32_t computeIATSlotRVA(const std::vector<PEImport> &imports,
         }
         offset += 8; // null terminator after each DLL's entries
     }
-    return iatBaseRVA + offset;
+    throw std::runtime_error("InstallerStubGen: IAT slot index out of range");
 }
 
 static void patchLE32(std::vector<uint8_t> &buf, uint32_t off, int32_t val) {

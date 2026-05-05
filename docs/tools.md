@@ -283,14 +283,18 @@ viper package . --dry-run --verbose
 | `--arch x64|arm64` | Select payload architecture |
 | `--executable <path>` | Package a prebuilt native executable; required for non-host installer targets |
 | `-o <path>` | Output artifact path |
-| `--dry-run` | Print resolved package contents without building |
+| `--dry-run` | Validate metadata and print resolved package contents without building |
 | `--verbose` | Print binary, output, asset, and verification details |
 
-Packaging manifest paths are project-relative. `package-icon` and `asset` sources are resolved inside the canonical project root, reject absolute paths and `..` traversal, and skip symlinks that resolve outside the project. Archive entry paths are normalized to forward slashes and must remain relative.
+Packaging manifest paths are project-relative. Scalar package fields such as `package-name`, `package-author`, `package-homepage`, `package-license`, platform minimum versions, and `package-category` must be one manifest token; quote values that contain spaces. `package-icon`, `asset`, `post-install`, and `pre-uninstall` paths may also be quoted when they contain spaces. Sources are resolved inside the canonical project root, reject absolute paths and `..` traversal, and skip symlinks that resolve outside the project. Missing icons/assets, non-file icons, and assets that are neither files nor directories are fatal. Archive entry paths are normalized to forward slashes, must remain relative, and must be unique after normalization.
 
-Package names, executable names, Windows shortcut names, bundle identifiers, file associations, MIME types, Debian versions, RPM versions, and single-line metadata fields are validated before writing artifacts. Invalid metadata fails the package command instead of producing malformed `.desktop`, plist, control, spec, shortcut, tar, ZIP, or installer data.
+Package names, executable names, Windows shortcut names, bundle identifiers, dotted file-association extensions, MIME types, Debian dependency expressions, freedesktop desktop categories, Debian versions, platform dotted versions, URLs with non-empty hosts, and single-line metadata fields are validated before writing artifacts. Desktop categories are normalized to semicolon-terminated freedesktop category lists. Duplicate scalar package directives are rejected. Invalid metadata fails the package command instead of producing malformed `.desktop`, plist, control, spec, shortcut, tar, ZIP, or installer data. Portable tarballs do not validate Debian-only fields such as `.deb` dependencies or desktop categories because they are not emitted into the tarball.
 
-Built artifacts are structurally verified by default: ZIP payloads are parsed and CRC-checked, `.deb` members are decompressed and their tar contents checked, Windows installers verify the PE structure and ZIP overlay, and tarballs verify gzip framing plus USTAR headers. Failed verification removes the generated artifact.
+Linux `.deb` packages embed `post-install` and `pre-uninstall` script file contents as maintainer scripts. Linux desktop shortcuts install a normal application entry and, when `shortcut-desktop on` is set, copy it to existing user Desktop directories during `postinst` and remove it during `prerm`. File associations add MIME XML and `.desktop` `%f` handling.
+
+Windows installers register ProgIDs under `HKLM\Software\Classes` and advertise them through `OpenWithProgids` without overwriting the existing default handler for an extension. They write uninstall metadata, bounds-check generated path appends, verify overlay seek/read/write counts and each stored overlay file with CRC-32 before writing it, and roll back installed files and owned registry keys if extraction or registration fails. Desktop shortcuts are created under the common desktop for elevated all-user installs. Windows installers and uninstallers request elevation; `min-os-windows` adds supported-OS compatibility manifest entries. Generated installer stubs reserve long-path buffers, but packaged paths are still validated before emission.
+
+Built artifacts are structurally and payload-verified by default: macOS ZIPs must contain the `.app` Info.plist and executable, `.deb` packages must contain the expected `usr/bin` payload, Windows installers verify the PE structure plus required ZIP overlay entries, and tarballs verify gzip framing, USTAR headers, duplicate-free paths, and the expected executable. ZIP verification caps DEFLATE extraction at the declared uncompressed size. Failed verification removes the generated artifact.
 
 ### viper install-package
 
@@ -327,6 +331,8 @@ Developer wrappers:
 
 - `scripts/build_installer.sh`
 - `scripts/build_installer.cmd`
+
+Staged toolchain packaging accepts only `x64` and `arm64` architecture names. Linux `.deb` output maps them to `amd64` and `arm64`; RPM output maps them to `x86_64` and `aarch64`. Staged toolchain packaging rejects symlinks whose resolved targets leave the staged prefix. Internal symlinks are preserved in tar-based artifacts and in macOS package roots, and are dereferenced only for target formats that do not carry POSIX symlink metadata.
 
 ---
 

@@ -90,9 +90,23 @@ void ZipWriter::validateArchiveLimit(size_t value, size_t maxValue, const char *
     }
 }
 
-void ZipWriter::validateEntryName(const std::string &name) const {
+std::string ZipWriter::normalizeEntryName(const std::string &name) const {
     validateArchiveLimit(name.size(), 0xFFFFu, "entry names longer than 65535 bytes");
-    (void)sanitizePackageRelativePath(name, "zip entry name");
+    std::string normalized = name;
+    const bool isDirectory = !normalized.empty() && normalized.back() == '/';
+    for (char &c : normalized) {
+        if (c == '\\')
+            c = '/';
+    }
+    while (!normalized.empty() && normalized.back() == '/')
+        normalized.pop_back();
+    normalized = sanitizePackageRelativePath(normalized, "zip entry name");
+    if (normalized.empty() && !isDirectory)
+        throw std::runtime_error("ZipWriter: entry name must not be empty");
+    if (isDirectory && !normalized.empty())
+        normalized.push_back('/');
+    validateArchiveLimit(normalized.size(), 0xFFFFu, "entry names longer than 65535 bytes");
+    return normalized;
 }
 
 void ZipWriter::writeBytes(const uint8_t *data, size_t len) {
@@ -127,7 +141,9 @@ void ZipWriter::addFile(const std::string &name,
                         const uint8_t *data,
                         size_t len,
                         uint32_t unixMode) {
-    validateEntryName(name);
+    const std::string entryName = normalizeEntryName(name);
+    if (!seenNames_.insert(entryName).second)
+        throw std::runtime_error("ZipWriter: duplicate entry name: " + entryName);
     validateArchiveLimit(len, 0xFFFFFFFFu, "files larger than 4 GiB");
     validateArchiveLimit(entries_.size() + 1, 0xFFFFu, "more than 65535 entries");
     validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
@@ -152,7 +168,7 @@ void ZipWriter::addFile(const std::string &name,
 
     // Record entry
     Entry e;
-    e.name = name;
+    e.name = entryName;
     e.crc32 = crc;
     e.compressedSize = static_cast<uint32_t>(writeLen);
     e.uncompressedSize = static_cast<uint32_t>(len);
@@ -173,20 +189,21 @@ void ZipWriter::addFile(const std::string &name,
     putU32(lh + 14, crc);
     putU32(lh + 18, static_cast<uint32_t>(writeLen));
     putU32(lh + 22, static_cast<uint32_t>(len));
-    putU16(lh + 26, static_cast<uint16_t>(name.size()));
+    putU16(lh + 26, static_cast<uint16_t>(entryName.size()));
     putU16(lh + 28, 0); // Extra field length
 
     writeBytes(lh, kLocalHeaderSize);
-    writeBytes(reinterpret_cast<const uint8_t *>(name.data()), name.size());
+    writeBytes(reinterpret_cast<const uint8_t *>(entryName.data()), entryName.size());
     writeBytes(writeData, writeLen);
 
     entries_.push_back(std::move(e));
     layoutEntries_.push_back(LayoutEntry{
-        name,
+        entryName,
         entries_.back().localOffset,
-        static_cast<uint32_t>(entries_.back().localOffset + kLocalHeaderSize + name.size()),
+        static_cast<uint32_t>(entries_.back().localOffset + kLocalHeaderSize + entryName.size()),
         entries_.back().compressedSize,
         entries_.back().uncompressedSize,
+        entries_.back().crc32,
         entries_.back().method,
         false});
 }
@@ -201,7 +218,12 @@ void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode) {
     std::string dirName = name;
     if (dirName.empty() || dirName.back() != '/')
         dirName += '/';
-    validateEntryName(dirName);
+    dirName = normalizeEntryName(dirName);
+    const std::string key =
+        (!dirName.empty() && dirName.back() == '/') ? dirName.substr(0, dirName.size() - 1)
+                                                    : dirName;
+    if (!key.empty() && !seenNames_.insert(key).second)
+        throw std::runtime_error("ZipWriter: duplicate entry name: " + key);
     validateArchiveLimit(entries_.size() + 1, 0xFFFFu, "more than 65535 entries");
     validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
 
@@ -239,12 +261,16 @@ void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode) {
         static_cast<uint32_t>(entries_.back().localOffset + kLocalHeaderSize + dirName.size()),
         0,
         0,
+        0,
         entries_.back().method,
         true});
 }
 
 void ZipWriter::addSymlink(const std::string &name, const std::string &target) {
-    validateEntryName(name);
+    const std::string entryName = normalizeEntryName(name);
+    if (!seenNames_.insert(entryName).second)
+        throw std::runtime_error("ZipWriter: duplicate entry name: " + entryName);
+    validateSingleLineField(target, "zip symlink target");
     validateArchiveLimit(target.size(), 0xFFFFFFFFu, "symlinks larger than 4 GiB");
     validateArchiveLimit(entries_.size() + 1, 0xFFFFu, "more than 65535 entries");
     validateArchiveLimit(buffer_.size(), 0xFFFFFFFFu, "archives larger than 4 GiB");
@@ -255,7 +281,7 @@ void ZipWriter::addSymlink(const std::string &name, const std::string &target) {
     uint32_t crc = rt_crc32_compute(data, len);
 
     Entry e;
-    e.name = name;
+    e.name = entryName;
     e.crc32 = crc;
     e.compressedSize = static_cast<uint32_t>(len);
     e.uncompressedSize = static_cast<uint32_t>(len);
@@ -275,20 +301,21 @@ void ZipWriter::addSymlink(const std::string &name, const std::string &target) {
     putU32(lh + 14, crc);
     putU32(lh + 18, static_cast<uint32_t>(len));
     putU32(lh + 22, static_cast<uint32_t>(len));
-    putU16(lh + 26, static_cast<uint16_t>(name.size()));
+    putU16(lh + 26, static_cast<uint16_t>(entryName.size()));
     putU16(lh + 28, 0);
 
     writeBytes(lh, kLocalHeaderSize);
-    writeBytes(reinterpret_cast<const uint8_t *>(name.data()), name.size());
+    writeBytes(reinterpret_cast<const uint8_t *>(entryName.data()), entryName.size());
     writeBytes(data, len);
 
     entries_.push_back(std::move(e));
     layoutEntries_.push_back(LayoutEntry{
-        name,
+        entryName,
         entries_.back().localOffset,
-        static_cast<uint32_t>(entries_.back().localOffset + kLocalHeaderSize + name.size()),
+        static_cast<uint32_t>(entries_.back().localOffset + kLocalHeaderSize + entryName.size()),
         entries_.back().compressedSize,
         entries_.back().uncompressedSize,
+        entries_.back().crc32,
         entries_.back().method,
         false});
 }
@@ -300,7 +327,7 @@ void ZipWriter::writeCentralDirectory() {
     uint32_t cdOffset = static_cast<uint32_t>(buffer_.size());
 
     for (const auto &e : entries_) {
-        validateEntryName(e.name);
+        (void)normalizeEntryName(e.name);
         uint8_t ch[kCentralHeaderSize];
         putU32(ch + 0, kCentralHeaderSig);
         putU16(ch + 4, kVersionMadeBy);

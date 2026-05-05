@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <filesystem>
 #include <set>
 #include <sstream>
 
@@ -41,6 +42,10 @@ uint16_t rdLE16(const uint8_t *p) {
 uint32_t rdLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+}
+
+bool hasRange(size_t offset, size_t length, size_t size) {
+    return offset <= size && length <= size - offset;
 }
 
 bool isAllZeroBlock(const uint8_t *p) {
@@ -119,6 +124,7 @@ bool verifyTarBytes(const std::vector<uint8_t> &data,
 
     size_t pos = 0;
     bool sawEnd = false;
+    std::set<std::string> seenNames;
     while (pos + 512 <= data.size()) {
         const uint8_t *hdr = data.data() + pos;
         if (isAllZeroBlock(hdr)) {
@@ -172,6 +178,10 @@ bool verifyTarBytes(const std::vector<uint8_t> &data,
                     err << "TAR: empty file path at offset " << pos << "\n";
                     return false;
                 }
+                if (!clean.empty() && !seenNames.insert(clean).second) {
+                    err << "TAR: duplicate entry '" << clean << "' at offset " << pos << "\n";
+                    return false;
+                }
                 if (outNames)
                     outNames->insert(clean);
             } catch (const std::exception &ex) {
@@ -190,13 +200,32 @@ bool verifyTarBytes(const std::vector<uint8_t> &data,
             return false;
         }
         if (type == '2') {
-            const std::string target = tarFieldString(hdr + 157, 100);
+            std::string target = tarFieldString(hdr + 157, 100);
             if (target.empty()) {
                 err << "TAR: empty symlink target at offset " << pos << "\n";
                 return false;
             }
             try {
-                (void)sanitizePackageRelativePath(target, "tar symlink target");
+                validateSingleLineField(target, "tar symlink target");
+                for (char &c : target) {
+                    if (c == '\\')
+                        c = '/';
+                }
+                if (target.front() == '/' ||
+                    (target.size() >= 2 &&
+                     std::isalpha(static_cast<unsigned char>(target[0])) && target[1] == ':')) {
+                    err << "TAR: absolute symlink target '" << target << "' at offset " << pos
+                        << "\n";
+                    return false;
+                }
+                const std::filesystem::path resolved =
+                    (std::filesystem::path(name).parent_path() / target).lexically_normal();
+                const std::string resolvedText = resolved.generic_string();
+                if (resolvedText.empty() || resolvedText == "." ||
+                    resolvedText.rfind("../", 0) == 0 || resolvedText == "..") {
+                    err << "TAR: symlink target escapes archive root at offset " << pos << "\n";
+                    return false;
+                }
             } catch (const std::exception &ex) {
                 err << "TAR: unsafe symlink target '" << target << "': " << ex.what() << "\n";
                 return false;
@@ -234,8 +263,8 @@ bool parsePeOverlayOffset(const std::vector<uint8_t> &data, size_t &overlayOff, 
         return false;
     }
 
-    uint32_t peOff = rdLE32(data.data() + 60);
-    if (peOff + 4 > data.size()) {
+    const size_t peOff = static_cast<size_t>(rdLE32(data.data() + 60));
+    if (!hasRange(peOff, 4, data.size())) {
         err << "PE: e_lfanew (" << peOff << ") points past end of file\n";
         return false;
     }
@@ -245,16 +274,16 @@ bool parsePeOverlayOffset(const std::vector<uint8_t> &data, size_t &overlayOff, 
         return false;
     }
 
-    uint32_t coffOff = peOff + 4;
-    if (coffOff + 20 > data.size()) {
+    const size_t coffOff = peOff + 4;
+    if (!hasRange(coffOff, 20, data.size())) {
         err << "PE: COFF header truncated\n";
         return false;
     }
 
     uint16_t numSections = rdLE16(data.data() + coffOff + 2);
     uint16_t optHdrSize = rdLE16(data.data() + coffOff + 16);
-    uint32_t secTableOff = coffOff + 20 + optHdrSize;
-    if (secTableOff + static_cast<size_t>(numSections) * 40 > data.size()) {
+    const size_t secTableOff = coffOff + 20 + static_cast<size_t>(optHdrSize);
+    if (!hasRange(secTableOff, static_cast<size_t>(numSections) * 40u, data.size())) {
         err << "PE: section table truncated\n";
         return false;
     }
@@ -276,6 +305,48 @@ bool parsePeOverlayOffset(const std::vector<uint8_t> &data, size_t &overlayOff, 
 
     overlayOff = maxRawEnd;
     return true;
+}
+
+bool requireArchivePaths(const std::set<std::string> &names,
+                         const std::vector<std::string> &requiredPaths,
+                         const char *kind,
+                         std::ostream &err) {
+    for (const auto &required : requiredPaths) {
+        std::string clean;
+        try {
+            clean = sanitizePackageRelativePath(required, kind);
+        } catch (const std::exception &ex) {
+            err << kind << ": invalid required path '" << required << "': " << ex.what() << "\n";
+            return false;
+        }
+        if (clean.empty()) {
+            err << kind << ": required path must not be empty\n";
+            return false;
+        }
+        if (names.find(clean) == names.end()) {
+            err << kind << ": missing required payload path '" << clean << "'\n";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool verifyZipPayload(const std::vector<uint8_t> &data,
+                      const std::vector<std::string> &requiredEntries,
+                      const char *kind,
+                      std::ostream &err) {
+    if (!verifyZip(data, err))
+        return false;
+    try {
+        ZipReader reader(data.data(), data.size());
+        std::set<std::string> names;
+        for (const auto &entry : reader.entries())
+            names.insert(sanitizePackageRelativePath(entry.name, kind));
+        return requireArchivePaths(names, requiredEntries, kind, err);
+    } catch (const std::exception &ex) {
+        err << kind << ": " << ex.what() << "\n";
+        return false;
+    }
 }
 
 } // namespace
@@ -308,11 +379,25 @@ bool verifyZip(const std::vector<uint8_t> &data, std::ostream &err) {
     return true;
 }
 
+bool verifyMacOSAppZip(const std::vector<uint8_t> &data,
+                       const std::string &appBundleName,
+                       const std::string &executableName,
+                       std::ostream &err) {
+    return verifyZipPayload(data,
+                            {appBundleName + "/Contents/Info.plist",
+                             appBundleName + "/Contents/PkgInfo",
+                             appBundleName + "/Contents/MacOS/" + executableName},
+                            "macOS app ZIP",
+                            err);
+}
+
 // ============================================================================
 // .deb (ar) Verification
 // ============================================================================
 
-bool verifyDeb(const std::vector<uint8_t> &data, std::ostream &err) {
+bool verifyDebInternal(const std::vector<uint8_t> &data,
+                       std::ostream &err,
+                       std::set<std::string> *outDataNames) {
     // Check ar magic
     if (data.size() < 8) {
         err << "DEB: file too small (" << data.size() << " bytes)\n";
@@ -423,7 +508,7 @@ bool verifyDeb(const std::vector<uint8_t> &data, std::ostream &err) {
         }
 
         const auto dataTar = gunzip(dataTarGz.data(), dataTarGz.size());
-        if (!verifyTarBytes(dataTar, err))
+        if (!verifyTarBytes(dataTar, err, outDataNames))
             return false;
     } catch (const std::exception &ex) {
         err << "DEB: compressed tar verification failed: " << ex.what() << "\n";
@@ -433,10 +518,38 @@ bool verifyDeb(const std::vector<uint8_t> &data, std::ostream &err) {
     return true;
 }
 
+bool verifyDeb(const std::vector<uint8_t> &data, std::ostream &err) {
+    return verifyDebInternal(data, err, nullptr);
+}
+
+bool verifyDebPayload(const std::vector<uint8_t> &data,
+                      const std::vector<std::string> &requiredPaths,
+                      std::ostream &err) {
+    std::set<std::string> dataNames;
+    if (!verifyDebInternal(data, err, &dataNames))
+        return false;
+    return requireArchivePaths(dataNames, requiredPaths, "DEB", err);
+}
+
 bool verifyTarGz(const std::vector<uint8_t> &data, std::ostream &err) {
     try {
         const auto tarBytes = gunzip(data.data(), data.size());
         return verifyTarBytes(tarBytes, err);
+    } catch (const std::exception &ex) {
+        err << "TAR.GZ: " << ex.what() << "\n";
+        return false;
+    }
+}
+
+bool verifyTarGzPayload(const std::vector<uint8_t> &data,
+                        const std::vector<std::string> &requiredPaths,
+                        std::ostream &err) {
+    try {
+        std::set<std::string> names;
+        const auto tarBytes = gunzip(data.data(), data.size());
+        if (!verifyTarBytes(tarBytes, err, &names))
+            return false;
+        return requireArchivePaths(names, requiredPaths, "TAR.GZ", err);
     } catch (const std::exception &ex) {
         err << "TAR.GZ: " << ex.what() << "\n";
         return false;
@@ -460,8 +573,8 @@ bool verifyPE(const std::vector<uint8_t> &data, std::ostream &err) {
     }
 
     // e_lfanew at offset 60: pointer to PE signature
-    uint32_t peOff = rdLE32(data.data() + 60);
-    if (peOff + 4 > data.size()) {
+    const size_t peOff = static_cast<size_t>(rdLE32(data.data() + 60));
+    if (!hasRange(peOff, 4, data.size())) {
         err << "PE: e_lfanew (" << peOff << ") points past end of file\n";
         return false;
     }
@@ -474,8 +587,8 @@ bool verifyPE(const std::vector<uint8_t> &data, std::ostream &err) {
     }
 
     // COFF header at peOff+4
-    uint32_t coffOff = peOff + 4;
-    if (coffOff + 20 > data.size()) {
+    const size_t coffOff = peOff + 4;
+    if (!hasRange(coffOff, 20, data.size())) {
         err << "PE: COFF header truncated\n";
         return false;
     }
@@ -490,8 +603,8 @@ bool verifyPE(const std::vector<uint8_t> &data, std::ostream &err) {
     uint16_t optHdrSize = rdLE16(data.data() + coffOff + 16);
 
     // Optional header
-    uint32_t optOff = coffOff + 20;
-    if (optOff + optHdrSize > data.size()) {
+    const size_t optOff = coffOff + 20;
+    if (!hasRange(optOff, optHdrSize, data.size())) {
         err << "PE: optional header truncated\n";
         return false;
     }
@@ -505,7 +618,7 @@ bool verifyPE(const std::vector<uint8_t> &data, std::ostream &err) {
     }
 
     // Verify section headers don't overlap
-    uint32_t secTableOff = optOff + optHdrSize;
+    const size_t secTableOff = optOff + static_cast<size_t>(optHdrSize);
 
     struct SecInfo {
         uint32_t rawOff;
@@ -515,8 +628,8 @@ bool verifyPE(const std::vector<uint8_t> &data, std::ostream &err) {
     std::vector<SecInfo> sections;
 
     for (uint16_t i = 0; i < numSections; ++i) {
-        uint32_t hdrOff = secTableOff + i * 40;
-        if (hdrOff + 40 > data.size()) {
+        const size_t hdrOff = secTableOff + static_cast<size_t>(i) * 40u;
+        if (!hasRange(hdrOff, 40, data.size())) {
             err << "PE: section header " << i << " truncated\n";
             return false;
         }
@@ -564,6 +677,30 @@ bool verifyPEZipOverlay(const std::vector<uint8_t> &data, std::ostream &err) {
 
     std::vector<uint8_t> overlay(data.begin() + overlayOff, data.end());
     if (!verifyZip(overlay, err)) {
+        err << "PE: ZIP overlay verification failed\n";
+        return false;
+    }
+
+    return true;
+}
+
+bool verifyPEZipOverlayPayload(const std::vector<uint8_t> &data,
+                               const std::vector<std::string> &requiredEntries,
+                               std::ostream &err) {
+    if (!verifyPE(data, err))
+        return false;
+
+    size_t overlayOff = 0;
+    if (!parsePeOverlayOffset(data, overlayOff, err))
+        return false;
+
+    if (overlayOff >= data.size()) {
+        err << "PE: expected ZIP overlay after sections, but no overlay bytes were found\n";
+        return false;
+    }
+
+    std::vector<uint8_t> overlay(data.begin() + overlayOff, data.end());
+    if (!verifyZipPayload(overlay, requiredEntries, "PE ZIP overlay", err)) {
         err << "PE: ZIP overlay verification failed\n";
         return false;
     }

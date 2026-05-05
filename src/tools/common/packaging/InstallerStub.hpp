@@ -52,6 +52,14 @@ struct WindowsPackageFileEntry {
     std::string relativePath;
     uint64_t overlayDataOffset{0};
     uint64_t sizeBytes{0};
+    uint32_t crc32{0};
+};
+
+struct WindowsFileAssociationEntry {
+    std::string extension;
+    std::string description;
+    std::string mimeType;
+    std::string progId;
 };
 
 struct WindowsPackageLayout {
@@ -68,6 +76,7 @@ struct WindowsPackageLayout {
     std::vector<WindowsPackageDirEntry> uninstallDirectories;
     std::vector<WindowsPackageFileEntry> installFiles;
     std::vector<WindowsPackageFileEntry> uninstallFiles;
+    std::vector<WindowsFileAssociationEntry> fileAssociations;
 };
 
 /// @brief Result of building an installer/uninstaller stub.

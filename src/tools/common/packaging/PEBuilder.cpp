@@ -26,11 +26,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "PEBuilder.hpp"
+#include "PkgUtils.hpp"
 
 #include <algorithm>
 #include <cstring>
 #include <fstream>
+#include <initializer_list>
+#include <limits>
 #include <stdexcept>
+#include <string_view>
 
 namespace viper::pkg {
 
@@ -52,7 +56,28 @@ constexpr uint32_t kNumDataDirectories = 16;
 
 /// @brief Round up to alignment boundary.
 uint32_t alignUp(uint32_t value, uint32_t alignment) {
-    return (value + alignment - 1) & ~(alignment - 1);
+    if (alignment == 0 || (alignment & (alignment - 1)) != 0)
+        throw std::runtime_error("PEBuilder: alignment must be a non-zero power of two");
+    const uint32_t mask = alignment - 1;
+    if ((value & mask) == 0)
+        return value;
+    if (value > std::numeric_limits<uint32_t>::max() - mask)
+        throw std::runtime_error("PEBuilder: aligned size overflows 32-bit PE fields");
+    return (value + mask) & ~mask;
+}
+
+uint32_t checkedU32Size(size_t value, const char *what) {
+    if (value > std::numeric_limits<uint32_t>::max())
+        throw std::runtime_error(std::string("PEBuilder: ") + what +
+                                 " exceeds 32-bit PE field limits");
+    return static_cast<uint32_t>(value);
+}
+
+uint32_t checkedAddU32(uint32_t lhs, uint32_t rhs, const char *what) {
+    if (lhs > std::numeric_limits<uint32_t>::max() - rhs)
+        throw std::runtime_error(std::string("PEBuilder: ") + what +
+                                 " overflows 32-bit PE field limits");
+    return lhs + rhs;
 }
 
 /// @brief Write a little-endian uint16_t to a buffer at given offset.
@@ -91,7 +116,7 @@ void appendLE32(std::vector<uint8_t> &buf, uint32_t val) {
 
 /// @brief Pad buffer to alignment boundary with zeros.
 void padTo(std::vector<uint8_t> &buf, uint32_t alignment) {
-    size_t aligned = alignUp(static_cast<uint32_t>(buf.size()), alignment);
+    size_t aligned = alignUp(checkedU32Size(buf.size(), "buffer size"), alignment);
     buf.resize(aligned, 0);
 }
 
@@ -148,7 +173,10 @@ ImportResult buildImportTables(const std::vector<PEImport> &imports, uint32_t rd
     uint32_t hintNameSize = 0;
     for (const auto &imp : imports)
         for (const auto &fn : imp.functions)
-            hintNameSize += alignUp(static_cast<uint32_t>(2 + fn.size() + 1), 2);
+            hintNameSize = checkedAddU32(
+                hintNameSize,
+                alignUp(checkedU32Size(2 + fn.size() + 1, "import hint/name entry"), 2),
+                "import hint/name table size");
 
     // DLL name strings
     uint32_t dllNameSize = 0;
@@ -197,7 +225,8 @@ ImportResult buildImportTables(const std::vector<PEImport> &imports, uint32_t rd
             uint32_t hintNameRVA = rdataRVA + curHintOff;
             putLE16(buf, curHintOff, 0); // Hint = 0 (lookup by name)
             std::memcpy(buf.data() + curHintOff + 2, fn.c_str(), fn.size() + 1);
-            uint32_t entryLen = alignUp(static_cast<uint32_t>(2 + fn.size() + 1), 2);
+            uint32_t entryLen =
+                alignUp(checkedU32Size(2 + fn.size() + 1, "import hint/name entry"), 2);
             curHintOff += entryLen;
 
             // ILT entry (8 bytes): bit 63 = 0 (import by name), bits 30:0 = HintName RVA
@@ -369,7 +398,10 @@ ResourceResult buildResourceSection(const std::string &manifest,
     // Calculate total data size
     uint32_t dataSize = 0;
     for (const auto &item : items)
-        dataSize += alignUp(static_cast<uint32_t>(item.data.size()), 4);
+        dataSize = checkedAddU32(
+            dataSize,
+            alignUp(checkedU32Size(item.data.size(), "resource data item"), 4),
+            "resource data size");
 
     uint32_t totalSize = dirTreeSize + dataSize;
     auto &buf = result.data;
@@ -460,11 +492,14 @@ ResourceResult buildResourceSection(const std::string &manifest,
                     size_t ii = types[t].itemIndices[n];
                     uint32_t deOff = dataEntryBaseOff + i * 16;
                     putLE32(buf, deOff + 0, rsrcRVA + curBlobOff); // RVA
-                    putLE32(buf, deOff + 4, static_cast<uint32_t>(items[ii].data.size()));
+                    putLE32(buf, deOff + 4, checkedU32Size(items[ii].data.size(), "resource data item"));
                     // Copy data
                     std::memcpy(
                         buf.data() + curBlobOff, items[ii].data.data(), items[ii].data.size());
-                    curBlobOff += alignUp(static_cast<uint32_t>(items[ii].data.size()), 4);
+                    curBlobOff = checkedAddU32(
+                        curBlobOff,
+                        alignUp(checkedU32Size(items[ii].data.size(), "resource data item"), 4),
+                        "resource blob offset");
                     goto nextItem;
                 }
                 flatIdx++;
@@ -506,7 +541,7 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params) {
         SectionLayout s{};
         std::memcpy(s.name, ".text\0\0\0", 8);
         s.data = params.textSection;
-        s.virtualSize = static_cast<uint32_t>(s.data.size());
+        s.virtualSize = checkedU32Size(s.data.size(), ".text section size");
         s.rawDataSize = alignUp(s.virtualSize, kFileAlignment);
         s.characteristics = 0x60000020; // CODE | EXECUTE | READ
         sections.push_back(std::move(s));
@@ -532,7 +567,7 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params) {
         if (!params.rdataSection.empty()) {
             s.data.insert(s.data.end(), params.rdataSection.begin(), params.rdataSection.end());
         }
-        s.virtualSize = static_cast<uint32_t>(s.data.size());
+        s.virtualSize = checkedU32Size(s.data.size(), ".rdata section size");
         s.rawDataSize = alignUp(s.virtualSize, kFileAlignment);
         s.characteristics = 0x40000040; // INITIALIZED_DATA | READ
         sections.push_back(std::move(s));
@@ -553,7 +588,7 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params) {
 
         rsrcResult = buildResourceSection(params.manifest, params.iconData, rsrcVA);
         s.data = rsrcResult.data;
-        s.virtualSize = static_cast<uint32_t>(s.data.size());
+        s.virtualSize = checkedU32Size(s.data.size(), ".rsrc section size");
         s.rawDataSize = alignUp(s.virtualSize, kFileAlignment);
         s.characteristics = 0x40000040; // INITIALIZED_DATA | READ
         sections.push_back(std::move(s));
@@ -565,8 +600,8 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params) {
     for (auto &s : sections) {
         s.virtualAddress = nextVA;
         s.rawDataOffset = nextFileOff;
-        nextVA += alignUp(s.virtualSize, kSectionAlignment);
-        nextFileOff += s.rawDataSize;
+        nextVA = checkedAddU32(nextVA, alignUp(s.virtualSize, kSectionAlignment), "image size");
+        nextFileOff = checkedAddU32(nextFileOff, s.rawDataSize, "file size");
     }
 
     uint32_t sizeOfImage = nextVA;
@@ -718,30 +753,87 @@ void writePEToFile(const std::vector<uint8_t> &pe, const std::string &path) {
         throw std::runtime_error("failed to write PE: " + path);
 }
 
-std::string generateUacManifest() {
+namespace {
+
+std::vector<unsigned> parseDottedVersion(const std::string &version) {
+    const auto parsed =
+        parseDottedNumericVersionParts(version, "Windows compatibility manifest version");
+    if (parsed.size() < 2 || parsed.size() > 4)
+        throw std::runtime_error(
+            "Windows compatibility manifest version must have 2 to 4 numeric components: " +
+            version);
+    std::vector<unsigned> parts(parsed.begin(), parsed.end());
+    return parts;
+}
+
+int compareDottedVersion(const std::string &lhs, std::initializer_list<unsigned> rhs) {
+    const auto left = parseDottedVersion(lhs);
+    const size_t n = std::max(left.size(), rhs.size());
+    auto rhsIt = rhs.begin();
+    for (size_t i = 0; i < n; ++i) {
+        const unsigned l = i < left.size() ? left[i] : 0;
+        const unsigned r = rhsIt != rhs.end() ? *rhsIt++ : 0;
+        if (l < r)
+            return -1;
+        if (l > r)
+            return 1;
+    }
+    return 0;
+}
+
+std::string windowsCompatibilityXml(const std::string &minOsWindows) {
+    if (minOsWindows.empty())
+        return {};
+    std::string ids;
+    auto add = [&](std::string_view id) {
+        ids += "      <supportedOS Id=\"";
+        ids += id;
+        ids += "\"/>\n";
+    };
+    if (compareDottedVersion(minOsWindows, {6, 0}) <= 0)
+        add("{e2011457-1546-43c5-a5fe-008deee3d3f0}"); // Vista
+    if (compareDottedVersion(minOsWindows, {6, 1}) <= 0)
+        add("{35138b9a-5d96-4fbd-8e2d-a2440225f93a}"); // Windows 7
+    if (compareDottedVersion(minOsWindows, {6, 2}) <= 0)
+        add("{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}"); // Windows 8
+    if (compareDottedVersion(minOsWindows, {6, 3}) <= 0)
+        add("{1f676c76-80e1-4239-95bb-83d0f6d0da78}"); // Windows 8.1
+    add("{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}");     // Windows 10/11
+    return "  <compatibility xmlns=\"urn:schemas-microsoft-com:compatibility.v1\">\n"
+           "    <application>\n" +
+           ids +
+           "    </application>\n"
+           "  </compatibility>\n";
+}
+
+std::string generateManifestWithExecutionLevel(const std::string &level,
+                                               const std::string &minOsWindows) {
     return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
            "<assembly xmlns=\"urn:schemas-microsoft-com:asm.v1\" "
            "manifestVersion=\"1.0\">\n"
            "  <trustInfo xmlns=\"urn:schemas-microsoft-com:asm.v3\">\n"
            "    <security><requestedPrivileges>\n"
-           "      <requestedExecutionLevel level=\"requireAdministrator\" "
-           "uiAccess=\"false\"/>\n"
+           "      <requestedExecutionLevel level=\"" +
+           level +
+           "\" uiAccess=\"false\"/>\n"
            "    </requestedPrivileges></security>\n"
            "  </trustInfo>\n"
+           + windowsCompatibilityXml(minOsWindows) +
            "</assembly>\n";
 }
 
+} // namespace
+
+std::string generateUacManifest() {
+    return generateManifestWithExecutionLevel("requireAdministrator", {});
+}
+
+std::string generateUacManifest(const std::string &minOsWindows) {
+    return generateManifestWithExecutionLevel("requireAdministrator", minOsWindows);
+}
+
 std::string generateAsInvokerManifest() {
-    return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-           "<assembly xmlns=\"urn:schemas-microsoft-com:asm.v1\" "
-           "manifestVersion=\"1.0\">\n"
-           "  <trustInfo xmlns=\"urn:schemas-microsoft-com:asm.v3\">\n"
-           "    <security><requestedPrivileges>\n"
-           "      <requestedExecutionLevel level=\"asInvoker\" "
-           "uiAccess=\"false\"/>\n"
-           "    </requestedPrivileges></security>\n"
-           "  </trustInfo>\n"
-           "</assembly>\n";
+    return generateManifestWithExecutionLevel("asInvoker", {});
 }
 
 } // namespace viper::pkg

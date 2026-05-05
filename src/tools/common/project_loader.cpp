@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "tools/common/project_loader.hpp"
+#include "tools/common/packaging/PkgUtils.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -19,6 +20,7 @@
 #include <fstream>
 #include <initializer_list>
 #include <mutex>
+#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -383,6 +385,99 @@ il::support::Expected<std::string> optimizeForBuildProfile(const std::string &pr
                                "'; expected debug, balanced, or release");
 }
 
+il::support::Expected<std::vector<std::string>>
+tokenizeManifestValue(const std::string &value,
+                      const std::string &manifestPath,
+                      int line,
+                      const std::string &directive) {
+    std::vector<std::string> tokens;
+    std::string cur;
+    bool inQuote = false;
+    bool escaping = false;
+
+    for (char c : value) {
+        if (escaping) {
+            switch (c) {
+                case '"':
+                case '\\':
+                    cur.push_back(c);
+                    break;
+                case 'n':
+                    cur.push_back('\n');
+                    break;
+                case 't':
+                    cur.push_back('\t');
+                    break;
+                default:
+                    cur.push_back(c);
+                    break;
+            }
+            escaping = false;
+            continue;
+        }
+        if (c == '\\' && inQuote) {
+            escaping = true;
+            continue;
+        }
+        if (c == '"') {
+            inQuote = !inQuote;
+            continue;
+        }
+        if (!inQuote && (c == ' ' || c == '\t')) {
+            if (!cur.empty()) {
+                tokens.push_back(std::move(cur));
+                cur.clear();
+            }
+            continue;
+        }
+        cur.push_back(c);
+    }
+
+    if (escaping)
+        cur.push_back('\\');
+    if (inQuote)
+        return makeManifestErr(manifestPath, line, "unterminated quote in " + directive);
+    if (!cur.empty())
+        tokens.push_back(std::move(cur));
+    return tokens;
+}
+
+il::support::Expected<std::string> readManifestScriptHook(const fs::path &manifestDir,
+                                                          const std::string &value,
+                                                          const std::string &manifestPath,
+                                                          int line,
+                                                          const std::string &directive) {
+    auto tokens = tokenizeManifestValue(value, manifestPath, line, directive);
+    if (!tokens)
+        return il::support::Expected<std::string>(tokens.error());
+    if (tokens.value().size() != 1)
+        return makeManifestErr(manifestPath,
+                               line,
+                               directive + " requires exactly one project-relative script path");
+
+    fs::path scriptPath;
+    try {
+        scriptPath =
+            viper::pkg::resolvePackageSourcePath(manifestDir, tokens.value()[0], directive.c_str());
+    } catch (const std::exception &ex) {
+        return makeManifestErr(manifestPath, line, ex.what());
+    }
+    if (!fs::is_regular_file(scriptPath))
+        return makeManifestErr(
+            manifestPath, line, directive + " script is not a regular file: " + tokens.value()[0]);
+
+    std::ifstream in(scriptPath, std::ios::binary);
+    if (!in)
+        return makeManifestErr(
+            manifestPath, line, "cannot read " + directive + " script: " + scriptPath.string());
+    std::ostringstream contents;
+    contents << in.rdbuf();
+    if (!in.good() && !in.eof())
+        return makeManifestErr(
+            manifestPath, line, "failed while reading " + directive + " script: " + scriptPath.string());
+    return contents.str();
+}
+
 } // anonymous namespace
 
 il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPath) {
@@ -410,6 +505,30 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
     bool hasBoundsChecks = false;
     bool hasOverflowChecks = false;
     bool hasNullChecks = false;
+    std::set<std::string> packageScalarDirectives;
+
+    auto markPackageScalar = [&](const std::string &name, int line) -> il::support::Expected<bool> {
+        if (!packageScalarDirectives.insert(name).second)
+            return makeManifestErr(manifestPath, line, "duplicate directive '" + name + "'");
+        return true;
+    };
+    auto parsePackageScalar =
+        [&](const std::string &name,
+            const std::string &value,
+            int line) -> il::support::Expected<std::string> {
+        auto ok = markPackageScalar(name, line);
+        if (!ok)
+            return il::support::Expected<std::string>(ok.error());
+        auto tokens = tokenizeManifestValue(value, manifestPath, line, name);
+        if (!tokens)
+            return il::support::Expected<std::string>(tokens.error());
+        if (tokens.value().size() != 1)
+            return makeManifestErr(manifestPath,
+                                   line,
+                                   name + " requires exactly one scalar value; quote values that "
+                                          "contain spaces");
+        return tokens.value()[0];
+    };
 
     std::string line;
     int lineNum = 0;
@@ -436,7 +555,11 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
                 manifestPath, lineNum, "directive missing value: '" + line + "'");
 
         std::string directive = line.substr(0, spacePos);
-        std::string value = line.substr(line.find_first_not_of(" \t", spacePos));
+        auto valueStart = line.find_first_not_of(" \t", spacePos);
+        if (valueStart == std::string::npos)
+            return makeManifestErr(
+                manifestPath, lineNum, "directive missing value: '" + directive + "'");
+        std::string value = line.substr(valueStart);
 
         if (directive == "project") {
             if (hasProject)
@@ -525,33 +648,49 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         // Package directives (new for VAPS)
         //=================================================================
         else if (directive == "package-name") {
-            config.packageConfig.displayName = value;
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.displayName = scalar.value();
         } else if (directive == "package-author") {
-            // Value may be quoted
-            if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
-                value = value.substr(1, value.size() - 2);
-            config.packageConfig.author = value;
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.author = scalar.value();
         } else if (directive == "package-description") {
-            if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
-                value = value.substr(1, value.size() - 2);
-            config.packageConfig.description = value;
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.description = scalar.value();
         } else if (directive == "package-homepage") {
-            config.packageConfig.homepage = value;
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.homepage = scalar.value();
         } else if (directive == "package-license") {
-            config.packageConfig.license = value;
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.license = scalar.value();
         } else if (directive == "package-identifier") {
-            config.packageConfig.identifier = value;
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.identifier = scalar.value();
         } else if (directive == "package-icon") {
-            config.packageConfig.iconPath = value;
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.iconPath = scalar.value();
         } else if (directive == "asset") {
             // Format: asset <source-path> <target-relative-dir>
-            auto sp = value.find_first_of(" \t");
-            if (sp == std::string::npos)
+            auto tokens = tokenizeManifestValue(value, manifestPath, lineNum, directive);
+            if (!tokens)
+                return il::support::Expected<ProjectConfig>(tokens.error());
+            if (tokens.value().size() != 2)
                 return makeManifestErr(
                     manifestPath, lineNum, "asset requires <source> <target>; got '" + value + "'");
-            std::string src = value.substr(0, sp);
-            std::string tgt = value.substr(value.find_first_not_of(" \t", sp));
-            config.packageConfig.assets.push_back({src, tgt});
+            config.packageConfig.assets.push_back({tokens.value()[0], tokens.value()[1]});
         } else if (directive == "embed") {
             // Format: embed <source-path>
             if (value.empty())
@@ -586,46 +725,42 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
 
         } else if (directive == "file-assoc") {
             // Format: file-assoc <extension> <description> <mime-type>
-            // Extension is first token, description is quoted, mime is last
-            auto sp1 = value.find_first_of(" \t");
-            if (sp1 == std::string::npos)
+            auto tokens = tokenizeManifestValue(value, manifestPath, lineNum, directive);
+            if (!tokens)
+                return il::support::Expected<ProjectConfig>(tokens.error());
+            if (tokens.value().size() != 3)
                 return makeManifestErr(manifestPath,
                                        lineNum,
                                        "file-assoc requires <ext> <description> <mime>; got '" +
                                            value + "'");
-            std::string ext = value.substr(0, sp1);
-            std::string rest = value.substr(value.find_first_not_of(" \t", sp1));
-            // Description may be quoted
-            std::string desc, mime;
-            if (rest.front() == '"') {
-                auto closeQuote = rest.find('"', 1);
-                if (closeQuote == std::string::npos)
-                    return makeManifestErr(
-                        manifestPath, lineNum, "unterminated quote in file-assoc description");
-                desc = rest.substr(1, closeQuote - 1);
-                auto mimeStart = rest.find_first_not_of(" \t", closeQuote + 1);
-                mime = (mimeStart != std::string::npos) ? rest.substr(mimeStart) : "";
-            } else {
-                auto sp2 = rest.find_first_of(" \t");
-                desc = rest.substr(0, sp2);
-                if (sp2 != std::string::npos)
-                    mime = rest.substr(rest.find_first_not_of(" \t", sp2));
-            }
-            config.packageConfig.fileAssociations.push_back({ext, desc, mime});
+            config.packageConfig.fileAssociations.push_back(
+                {tokens.value()[0], tokens.value()[1], tokens.value()[2]});
         } else if (directive == "shortcut-desktop") {
+            auto seen = markPackageScalar(directive, lineNum);
+            if (!seen)
+                return il::support::Expected<ProjectConfig>(seen.error());
             auto b = parseBool(value, manifestPath, lineNum, "shortcut-desktop");
             if (!b)
                 return il::support::Expected<ProjectConfig>(b.error());
             config.packageConfig.shortcutDesktop = b.value();
         } else if (directive == "shortcut-menu") {
+            auto seen = markPackageScalar(directive, lineNum);
+            if (!seen)
+                return il::support::Expected<ProjectConfig>(seen.error());
             auto b = parseBool(value, manifestPath, lineNum, "shortcut-menu");
             if (!b)
                 return il::support::Expected<ProjectConfig>(b.error());
             config.packageConfig.shortcutMenu = b.value();
         } else if (directive == "min-os-windows") {
-            config.packageConfig.minOsWindows = value;
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.minOsWindows = scalar.value();
         } else if (directive == "min-os-macos") {
-            config.packageConfig.minOsMacos = value;
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.minOsMacos = scalar.value();
         } else if (directive == "target-arch") {
             if (value != "x64" && value != "arm64")
                 return makeManifestErr(manifestPath,
@@ -634,15 +769,18 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
                                            "'; expected 'x64' or 'arm64'");
             config.packageConfig.targetArchitectures.push_back(value);
         } else if (directive == "package-category") {
-            config.packageConfig.category = value;
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.category = scalar.value();
         } else if (directive == "package-depends") {
             // Comma-separated list: "libc6, libx11-6, libssl3"
             std::string depToken;
             for (char c : value) {
                 if (c == ',') {
                     // Trim whitespace
-                    size_t ds = depToken.find_first_not_of(' ');
-                    size_t de = depToken.find_last_not_of(' ');
+                    size_t ds = depToken.find_first_not_of(" \t");
+                    size_t de = depToken.find_last_not_of(" \t");
                     if (ds != std::string::npos)
                         config.packageConfig.depends.push_back(depToken.substr(ds, de - ds + 1));
                     depToken.clear();
@@ -651,14 +789,28 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
                 }
             }
             // Last element
-            size_t ds = depToken.find_first_not_of(' ');
-            size_t de = depToken.find_last_not_of(' ');
+            size_t ds = depToken.find_first_not_of(" \t");
+            size_t de = depToken.find_last_not_of(" \t");
             if (ds != std::string::npos)
                 config.packageConfig.depends.push_back(depToken.substr(ds, de - ds + 1));
         } else if (directive == "post-install") {
-            config.packageConfig.postInstallScript = value;
+            auto seen = markPackageScalar(directive, lineNum);
+            if (!seen)
+                return il::support::Expected<ProjectConfig>(seen.error());
+            auto script = readManifestScriptHook(
+                manifestDir, value, manifestPath, lineNum, directive);
+            if (!script)
+                return il::support::Expected<ProjectConfig>(script.error());
+            config.packageConfig.postInstallScript = script.value();
         } else if (directive == "pre-uninstall") {
-            config.packageConfig.preUninstallScript = value;
+            auto seen = markPackageScalar(directive, lineNum);
+            if (!seen)
+                return il::support::Expected<ProjectConfig>(seen.error());
+            auto script = readManifestScriptHook(
+                manifestDir, value, manifestPath, lineNum, directive);
+            if (!script)
+                return il::support::Expected<ProjectConfig>(script.error());
+            config.packageConfig.preUninstallScript = script.value();
         } else {
             return makeManifestErr(manifestPath, lineNum, "unknown directive '" + directive + "'");
         }

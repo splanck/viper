@@ -42,6 +42,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 // Forward declarations of compile functions (defined in cmd_run.cpp)
 namespace {
@@ -115,6 +116,7 @@ struct PackageArgs {
     std::string executablePath;
     bool dryRun{false};
     bool verbose{false};
+    bool help{false};
 };
 
 PackageTarget detectHostPlatform() {
@@ -162,7 +164,11 @@ std::string platformExtension(PackageTarget t) {
 bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
     for (int i = 0; i < argc; i++) {
         std::string arg = argv[i];
-        if (arg == "--target" && i + 1 < argc) {
+        if (arg == "--target") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --target requires a value\n";
+                return false;
+            }
             std::string val = argv[++i];
             if (val == "macos")
                 args.platformTarget = PackageTarget::MacOS;
@@ -177,16 +183,28 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
                           << "'; expected macos, linux, windows, or tarball\n";
                 return false;
             }
-        } else if (arg == "--arch" && i + 1 < argc) {
+        } else if (arg == "--arch") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --arch requires a value\n";
+                return false;
+            }
             args.archOverride = argv[++i];
             if (args.archOverride != "x64" && args.archOverride != "arm64") {
                 std::cerr << "error: unknown arch '" << args.archOverride
                           << "'; expected x64 or arm64\n";
                 return false;
             }
-        } else if (arg == "--executable" && i + 1 < argc) {
+        } else if (arg == "--executable") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --executable requires a path\n";
+                return false;
+            }
             args.executablePath = argv[++i];
-        } else if (arg == "-o" && i + 1 < argc) {
+        } else if (arg == "-o") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: -o requires a path\n";
+                return false;
+            }
             args.outputPath = argv[++i];
         } else if (arg == "--dry-run") {
             args.dryRun = true;
@@ -194,7 +212,8 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
             args.verbose = true;
         } else if (arg == "--help" || arg == "-h") {
             packageUsage();
-            return false;
+            args.help = true;
+            return true;
         } else if (arg[0] == '-') {
             std::cerr << "error: unknown option '" << arg << "'\n";
             packageUsage();
@@ -216,6 +235,104 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
     return true;
 }
 
+bool validatePackageSourcePathExists(const ProjectConfig &proj,
+                                     const std::string &path,
+                                     const char *fieldName,
+                                     bool allowDirectory = true) {
+    fs::path resolved = viper::pkg::resolvePackageSourcePath(proj.rootDir, path, fieldName);
+    if (!fs::exists(resolved)) {
+        std::cerr << "error: " << fieldName << " not found: " << path << "\n";
+        return false;
+    }
+    if (!fs::is_regular_file(resolved) && !(allowDirectory && fs::is_directory(resolved))) {
+        std::cerr << "error: " << fieldName
+                  << (allowDirectory ? " is not a regular file or directory: "
+                                     : " is not a regular file: ")
+                  << path << "\n";
+        return false;
+    }
+    return true;
+}
+
+bool validatePackageConfigForTarget(const ProjectConfig &proj,
+                                    PackageTarget target,
+                                    const std::string &archStr,
+                                    std::ostream &err) {
+    const auto &pkg = proj.packageConfig;
+    const std::string displayName = pkg.displayName.empty() ? proj.name : pkg.displayName;
+    const std::string version = proj.version.empty() ? "0.0.0" : proj.version;
+
+    try {
+        viper::pkg::validateSingleLineField(displayName, "package display name");
+        viper::pkg::validateSingleLineField(pkg.author, "package author");
+        viper::pkg::validateSingleLineField(pkg.description, "package description");
+        viper::pkg::validateSingleLineField(pkg.license, "package license");
+        viper::pkg::validatePackageIdentifier(pkg.identifier);
+        viper::pkg::validatePackageUrl(pkg.homepage, "package homepage");
+        for (const auto &assoc : pkg.fileAssociations)
+            viper::pkg::validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
+        for (const auto &asset : pkg.assets) {
+            (void)viper::pkg::sanitizePackageRelativePath(asset.targetPath, "asset target path");
+            if (!validatePackageSourcePathExists(proj, asset.sourcePath, "asset source path"))
+                return false;
+        }
+        if (!pkg.iconPath.empty() &&
+            !validatePackageSourcePathExists(proj, pkg.iconPath, "package icon", false))
+            return false;
+
+        switch (target) {
+            case PackageTarget::MacOS:
+                if (displayName.empty() || displayName.find('/') != std::string::npos ||
+                    displayName.find('\\') != std::string::npos ||
+                    displayName.find(':') != std::string::npos) {
+                    throw std::runtime_error(
+                        "macOS bundle display name must not be empty or contain path separators");
+                }
+                viper::pkg::validateWindowsFileName(displayName, "macOS bundle display name");
+                viper::pkg::validateDottedNumericVersion(version, "macOS package version");
+                if (!pkg.minOsMacos.empty())
+                    viper::pkg::validateDottedNumericVersion(pkg.minOsMacos,
+                                                             "minimum macOS version");
+                break;
+            case PackageTarget::Linux: {
+                const std::string debArch = archStr == "x64" ? "amd64" : archStr;
+                if (debArch != "amd64" && debArch != "arm64" && debArch != "all") {
+                    throw std::runtime_error(
+                        "Debian package architecture must be amd64, arm64, or all: " + debArch);
+                }
+                viper::pkg::validateDebVersion(version, "package version");
+                viper::pkg::validateDesktopCategories(pkg.category);
+                for (const auto &dep : pkg.depends)
+                    viper::pkg::validateDebDependency(dep);
+                (void)viper::pkg::normalizeDebName(proj.name);
+                (void)viper::pkg::normalizeExecName(proj.name);
+                break;
+            }
+            case PackageTarget::Windows:
+                viper::pkg::validateWindowsFileName(displayName, "Windows display name");
+                viper::pkg::validateDottedNumericVersion(version, "Windows package version");
+                if (!pkg.minOsWindows.empty())
+                    viper::pkg::validateDottedNumericVersion(pkg.minOsWindows,
+                                                             "minimum Windows version");
+                (void)viper::pkg::normalizeExecName(proj.name);
+                break;
+            case PackageTarget::Tarball:
+                viper::pkg::validateDebVersion(version, "package version");
+                (void)viper::pkg::sanitizePackageRelativePath(
+                    viper::pkg::normalizeDebName(proj.name) + "-" + version,
+                    "tarball top-level directory");
+                (void)viper::pkg::normalizeExecName(proj.name);
+                break;
+            case PackageTarget::Auto:
+                break;
+        }
+    } catch (const std::exception &ex) {
+        err << "error: package metadata invalid: " << ex.what() << "\n";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 // The compile functions are in cmd_run.cpp — we need to expose them or
@@ -229,6 +346,8 @@ int cmdPackage(int argc, char **argv) {
     PackageArgs args;
     if (!parsePackageArgs(argc, argv, args))
         return 1;
+    if (args.help)
+        return 0;
 
     // Resolve project
     auto project = resolveProject(args.target);
@@ -297,6 +416,9 @@ int cmdPackage(int argc, char **argv) {
         args.outputPath = proj.name + "-" + proj.version + "-" + platformName(args.platformTarget) +
                           "-" + archStr + platformExtension(args.platformTarget);
     }
+
+    if (!validatePackageConfigForTarget(proj, args.platformTarget, archStr, std::cerr))
+        return 1;
 
     // Dry-run mode: list what would be packaged, then exit
     if (args.dryRun) {
@@ -407,6 +529,8 @@ int cmdPackage(int argc, char **argv) {
 #ifdef _WIN32
         tempBinaryPath += ".exe";
 #endif
+        packageBinaryPath = tempBinaryPath;
+        cleanupPackagedBinary = true;
 
         // Build the native binary using cmdBuild directly (same binary)
         {
@@ -420,17 +544,18 @@ int cmdPackage(int argc, char **argv) {
             int rc = cmdBuild(static_cast<int>(buildArgv.size()), buildArgv.data());
             if (rc != 0) {
                 std::cerr << "error: compilation failed\n";
+                std::error_code ec;
+                fs::remove(packageBinaryPath, ec);
                 return 1;
             }
         }
 
-        if (!fs::exists(tempBinaryPath)) {
-            std::cerr << "error: compiled binary not found at " << tempBinaryPath << "\n";
+        if (!fs::exists(packageBinaryPath)) {
+            std::cerr << "error: compiled binary not found at " << packageBinaryPath << "\n";
+            std::error_code ec;
+            fs::remove(packageBinaryPath, ec);
             return 1;
         }
-
-        packageBinaryPath = std::move(tempBinaryPath);
-        cleanupPackagedBinary = true;
     }
 
     // Step 3: Package
@@ -510,44 +635,59 @@ int cmdPackage(int argc, char **argv) {
 
     // Step 4: Verify the generated package
     std::error_code ec;
-    if (fs::exists(args.outputPath)) {
-        std::ifstream pkgFile(args.outputPath, std::ios::binary | std::ios::ate);
-        if (pkgFile) {
-            auto pkgSize = pkgFile.tellg();
-            pkgFile.seekg(0);
-            std::vector<uint8_t> pkgData(static_cast<size_t>(pkgSize));
-            pkgFile.read(reinterpret_cast<char *>(pkgData.data()), pkgSize);
-            pkgFile.close();
-
-            std::ostringstream verifyErr;
-            bool valid = true;
-            switch (args.platformTarget) {
-                case PackageTarget::MacOS:
-                    valid = viper::pkg::verifyZip(pkgData, verifyErr);
-                    break;
-                case PackageTarget::Linux:
-                    valid = viper::pkg::verifyDeb(pkgData, verifyErr);
-                    break;
-                case PackageTarget::Windows:
-                    valid = viper::pkg::verifyPEZipOverlay(pkgData, verifyErr);
-                    break;
-                case PackageTarget::Tarball:
-                    valid = viper::pkg::verifyTarGz(pkgData, verifyErr);
-                    break;
-                default:
-                    break;
-            }
-            if (!valid) {
-                std::cerr << "error: package verification failed:\n" << verifyErr.str();
-                fs::remove(args.outputPath, ec);
-                if (cleanupPackagedBinary)
-                    fs::remove(packageBinaryPath, ec);
-                return 1;
-            }
-            if (args.verbose)
-                std::cerr << "  Verification: passed\n";
-        }
+    if (!fs::exists(args.outputPath)) {
+        std::cerr << "error: package builder did not create output file: " << args.outputPath
+                  << "\n";
+        if (cleanupPackagedBinary)
+            fs::remove(packageBinaryPath, ec);
+        return 1;
     }
+
+    std::vector<uint8_t> pkgData;
+    try {
+        pkgData = viper::pkg::readFile(args.outputPath);
+    } catch (const std::exception &ex) {
+        std::cerr << "error: cannot read generated package for verification: " << ex.what()
+                  << "\n";
+        if (cleanupPackagedBinary)
+            fs::remove(packageBinaryPath, ec);
+        return 1;
+    }
+
+    std::ostringstream verifyErr;
+    bool valid = true;
+    const std::string execName = viper::pkg::normalizeExecName(proj.name);
+    switch (args.platformTarget) {
+        case PackageTarget::MacOS:
+            valid = viper::pkg::verifyMacOSAppZip(
+                pkgData, displayName + ".app", execName, verifyErr);
+            break;
+        case PackageTarget::Linux:
+            valid = viper::pkg::verifyDebPayload(pkgData, {"usr/bin/" + execName}, verifyErr);
+            break;
+        case PackageTarget::Windows:
+            valid = viper::pkg::verifyPEZipOverlayPayload(
+                pkgData, {"app/" + execName + ".exe", "app/uninstall.exe"}, verifyErr);
+            break;
+        case PackageTarget::Tarball: {
+            const std::string version = proj.version.empty() ? "0.0.0" : proj.version;
+            const std::string topDir = viper::pkg::normalizeDebName(proj.name) + "-" + version;
+            valid = viper::pkg::verifyTarGzPayload(
+                pkgData, {topDir + "/" + execName}, verifyErr);
+            break;
+        }
+        default:
+            break;
+    }
+    if (!valid) {
+        std::cerr << "error: package verification failed:\n" << verifyErr.str();
+        fs::remove(args.outputPath, ec);
+        if (cleanupPackagedBinary)
+            fs::remove(packageBinaryPath, ec);
+        return 1;
+    }
+    if (args.verbose)
+        std::cerr << "  Verification: passed\n";
 
     // Cleanup temp binary
     if (cleanupPackagedBinary)
@@ -555,8 +695,8 @@ int cmdPackage(int argc, char **argv) {
 
     std::cerr << "Package created: " << args.outputPath;
     if (args.verbose && fs::exists(args.outputPath)) {
-        auto pkgSize = fs::file_size(args.outputPath);
-        std::cerr << " (" << pkgSize << " bytes)";
+        auto finalPackageSize = fs::file_size(args.outputPath);
+        std::cerr << " (" << finalPackageSize << " bytes)";
     }
     std::cerr << "\n";
     return 0;

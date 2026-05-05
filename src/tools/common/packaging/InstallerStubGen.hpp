@@ -114,6 +114,7 @@ class InstallerStubGen {
 
     void jz(uint32_t labelId);
     void jnz(uint32_t labelId);
+    void ja(uint32_t labelId);
     void jmp(uint32_t labelId);
 
     // ─── Call ─────────────────────────────────────────────────────────

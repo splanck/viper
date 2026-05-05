@@ -41,6 +41,12 @@ namespace viper::pkg {
 /// @return true if the ZIP is structurally valid.
 bool verifyZip(const std::vector<uint8_t> &data, std::ostream &err);
 
+/// @brief Verify a macOS .app ZIP contains the required app payload files.
+bool verifyMacOSAppZip(const std::vector<uint8_t> &data,
+                       const std::string &appBundleName,
+                       const std::string &executableName,
+                       std::ostream &err);
+
 /// @brief Verify structural correctness of a .deb (ar) archive.
 ///
 /// Checks:
@@ -53,6 +59,11 @@ bool verifyZip(const std::vector<uint8_t> &data, std::ostream &err);
 /// @return true if the .deb is structurally valid.
 bool verifyDeb(const std::vector<uint8_t> &data, std::ostream &err);
 
+/// @brief Verify a .deb archive and assert required data.tar payload paths.
+bool verifyDebPayload(const std::vector<uint8_t> &data,
+                      const std::vector<std::string> &requiredPaths,
+                      std::ostream &err);
+
 /// @brief Verify a gzip-compressed USTAR tarball.
 ///
 /// Checks:
@@ -63,6 +74,11 @@ bool verifyDeb(const std::vector<uint8_t> &data, std::ostream &err);
 /// @param err  Stream for error messages.
 /// @return true if the tarball is structurally valid.
 bool verifyTarGz(const std::vector<uint8_t> &data, std::ostream &err);
+
+/// @brief Verify a .tar.gz archive and assert required payload paths.
+bool verifyTarGzPayload(const std::vector<uint8_t> &data,
+                        const std::vector<std::string> &requiredPaths,
+                        std::ostream &err);
 
 /// @brief Verify structural correctness of a PE32+ executable.
 ///
@@ -87,5 +103,10 @@ bool verifyPE(const std::vector<uint8_t> &data, std::ostream &err);
 /// @param err  Stream for error messages.
 /// @return true if the PE and its ZIP overlay are structurally valid.
 bool verifyPEZipOverlay(const std::vector<uint8_t> &data, std::ostream &err);
+
+/// @brief Verify a PE ZIP overlay and assert required ZIP entries.
+bool verifyPEZipOverlayPayload(const std::vector<uint8_t> &data,
+                               const std::vector<std::string> &requiredEntries,
+                               std::ostream &err);
 
 } // namespace viper::pkg

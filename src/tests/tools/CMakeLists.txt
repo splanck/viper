@@ -54,6 +54,13 @@ function(viper_add_tools_tests)
             -P ${_VIPER_TOOLS_DIR}/RunBuildPerformanceFlagTests.cmake)
     viper_add_test_labels(run_build_performance_flags tools zia)
 
+    viper_add_ctest(package_cli
+            ${CMAKE_COMMAND}
+            -DVIPER_BIN=$<TARGET_FILE:viper>
+            -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/package_cli
+            -P ${_VIPER_TOOLS_DIR}/PackageCliTests.cmake)
+    viper_add_test_labels(package_cli tools installer)
+
     viper_add_test(test_cli_run_missing_main
             ${VIPER_TESTS_DIR}/unit/test_cli_run_missing_main.cpp
             ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp

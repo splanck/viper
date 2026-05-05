@@ -62,6 +62,40 @@ bool isSupportLibraryBaseName(const std::string &base) {
     return base == "vipergfx" || base == "vipergui" || base == "viperaud";
 }
 
+bool pathWithinStage(const fs::path &stage, const fs::path &path) {
+    return isPathWithin(stage, path);
+}
+
+void validateStagedPathDoesNotEscape(const fs::path &stagePrefix, const fs::path &path) {
+    std::error_code ec;
+    if (fs::is_symlink(path, ec)) {
+        const fs::path resolved = fs::canonical(path, ec);
+        if (ec)
+            throw std::runtime_error("cannot resolve staged symlink: " + path.string());
+        if (!pathWithinStage(stagePrefix, resolved))
+            throw std::runtime_error("staged symlink escapes install prefix: " + path.string());
+        return;
+    }
+
+    const fs::path resolved = fs::canonical(path, ec);
+    if (ec)
+        throw std::runtime_error("cannot resolve staged file: " + path.string());
+    if (!pathWithinStage(stagePrefix, resolved))
+        throw std::runtime_error("staged file escapes install prefix: " + path.string());
+}
+
+fs::path stagedLexicalRelativePath(const fs::path &stagePrefix, const fs::path &path) {
+    const fs::path normalizedStage = stagePrefix.lexically_normal();
+    const fs::path normalizedPath = path.lexically_normal();
+    const fs::path rel = normalizedPath.lexically_relative(normalizedStage);
+    if (rel.empty() || rel == fs::path("."))
+        throw std::runtime_error("failed to compute staged relative path for " + path.string());
+    auto relIt = rel.begin();
+    if (relIt == rel.end() || *relIt == fs::path(".."))
+        throw std::runtime_error("staged path escapes install prefix: " + path.string());
+    return rel;
+}
+
 uint32_t unixModeFor(const fs::path &path, bool executable) {
     std::error_code ec;
     const fs::file_status status = fs::status(path, ec);
@@ -178,21 +212,23 @@ std::vector<fs::path> gatherFromInstallManifest(const fs::path &stagePrefix, con
         if (line.empty())
             continue;
         fs::path filePath = fs::path(line);
+        if (filePath.is_relative())
+            filePath = normalizedStage / filePath;
+        filePath = filePath.lexically_normal();
         std::error_code ec;
-        const fs::path normalized = fs::weakly_canonical(filePath, ec);
-        const fs::path effective = ec ? filePath.lexically_normal() : normalized;
-        if (!fs::is_regular_file(effective, ec) && !fs::is_symlink(effective, ec))
+        if (!fs::is_regular_file(filePath, ec) && !fs::is_symlink(filePath, ec))
             continue;
-        fs::path rel = fs::relative(effective, normalizedStage, ec);
-        if (ec || rel.empty())
+        validateStagedPathDoesNotEscape(normalizedStage, filePath);
+        fs::path rel;
+        try {
+            rel = stagedLexicalRelativePath(normalizedStage, filePath);
+        } catch (const std::runtime_error &) {
             continue;
-        auto relIt = rel.begin();
-        if (relIt != rel.end() && *relIt == fs::path(".."))
-            continue;
+        }
         const std::string relKey = sanitizePackageRelativePath(toForwardSlashes(rel.generic_string()),
                                                                "staged install path");
         if (seen.insert(relKey).second)
-            files.push_back(effective);
+            files.push_back(filePath);
     }
     return files;
 }
@@ -201,6 +237,7 @@ std::vector<fs::path> gatherFromStageWalk(const fs::path &stagePrefix) {
     std::vector<fs::path> files;
     std::set<std::string> seen;
     std::error_code ec;
+    const fs::path normalizedStage = fs::weakly_canonical(stagePrefix);
     for (fs::recursive_directory_iterator it(stagePrefix, fs::directory_options::skip_permission_denied, ec);
          it != fs::recursive_directory_iterator(); it.increment(ec)) {
         if (ec) {
@@ -209,9 +246,13 @@ std::vector<fs::path> gatherFromStageWalk(const fs::path &stagePrefix) {
         }
         if (!it->is_regular_file() && !it->is_symlink())
             continue;
-        fs::path rel = fs::relative(it->path(), stagePrefix, ec);
-        if (ec)
+        validateStagedPathDoesNotEscape(normalizedStage, it->path());
+        fs::path rel;
+        try {
+            rel = stagedLexicalRelativePath(normalizedStage, it->path());
+        } catch (const std::runtime_error &) {
             continue;
+        }
         const std::string relKey = sanitizePackageRelativePath(toForwardSlashes(rel.generic_string()),
                                                                "staged install path");
         if (seen.insert(relKey).second)
@@ -222,22 +263,43 @@ std::vector<fs::path> gatherFromStageWalk(const fs::path &stagePrefix) {
 
 ToolchainFileEntry makeEntry(const fs::path &stagePrefix, const fs::path &filePath) {
     std::error_code ec;
-    const fs::path rel = fs::relative(filePath, stagePrefix, ec);
-    if (ec || rel.empty())
-        throw std::runtime_error("failed to compute staged relative path for " + filePath.string());
+    const fs::path rel = stagedLexicalRelativePath(stagePrefix, filePath);
 
     ToolchainFileEntry entry;
     entry.stagedAbsolutePath = filePath;
     entry.stagedRelativePath =
         sanitizePackageRelativePath(toForwardSlashes(rel.generic_string()), "staged install path");
     entry.kind = classifyFileKind(entry.stagedRelativePath);
-    entry.sizeBytes = static_cast<uint64_t>(fs::file_size(filePath, ec));
-    if (ec)
+    entry.symlink = fs::is_symlink(filePath, ec);
+    ec.clear();
+    if (entry.symlink) {
+        const fs::path resolved = fs::canonical(filePath, ec);
+        if (ec)
+            throw std::runtime_error("cannot resolve staged symlink: " + filePath.string());
+        const fs::path parent = fs::canonical(filePath.parent_path(), ec);
+        if (ec)
+            throw std::runtime_error("cannot resolve staged symlink parent: " + filePath.string());
+        entry.symlinkTarget = toForwardSlashes(fs::relative(resolved, parent, ec).generic_string());
+        if (ec)
+            throw std::runtime_error("cannot compute staged symlink target: " + filePath.string());
+        validateSingleLineField(entry.symlinkTarget, "staged symlink target");
+        if (entry.symlinkTarget.empty() || entry.symlinkTarget.front() == '/' ||
+            (entry.symlinkTarget.size() >= 2 &&
+             std::isalpha(static_cast<unsigned char>(entry.symlinkTarget[0])) &&
+             entry.symlinkTarget[1] == ':')) {
+            throw std::runtime_error("staged symlink target must be relative: " +
+                                     filePath.string());
+        }
         entry.sizeBytes = 0;
+    } else {
+        entry.sizeBytes = static_cast<uint64_t>(fs::file_size(filePath, ec));
+        if (ec)
+            entry.sizeBytes = 0;
+    }
     const std::string lower = lowerCopy(entry.stagedRelativePath);
     entry.executable = entry.kind == ToolchainFileKind::Binary ||
                        (lower.size() > 4 && lower.substr(lower.size() - 4) == ".exe");
-    entry.unixMode = unixModeFor(filePath, entry.executable);
+    entry.unixMode = entry.symlink ? 0120777u : unixModeFor(filePath, entry.executable);
     return entry;
 }
 
@@ -308,6 +370,8 @@ ToolchainInstallManifest gatherToolchainInstallManifest(
 }
 
 void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest) {
+    validateToolchainArchitecture(manifest.arch);
+
     auto hasBinary = [&](const char *nameNoExt) {
         return std::any_of(manifest.files.begin(), manifest.files.end(), [&](const ToolchainFileEntry &entry) {
             if (entry.kind != ToolchainFileKind::Binary)

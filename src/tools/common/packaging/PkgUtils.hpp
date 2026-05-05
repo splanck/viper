@@ -37,6 +37,8 @@
 
 namespace viper::pkg {
 
+inline constexpr uint64_t kMaxPackageFileBytes = 0xFFFFFFFFull;
+
 /// @brief Read a file into a byte vector.
 /// @throws std::runtime_error on open or read failure.
 inline std::vector<uint8_t> readFile(const std::string &path) {
@@ -44,10 +46,19 @@ inline std::vector<uint8_t> readFile(const std::string &path) {
     if (!f)
         throw std::runtime_error("cannot read file: " + path);
     auto size = f.tellg();
+    if (size < 0)
+        throw std::runtime_error("cannot determine file size: " + path);
+    const auto size64 = static_cast<uint64_t>(size);
+    if (size64 > kMaxPackageFileBytes)
+        throw std::runtime_error("file is too large for VAPS package formats: " + path);
+    if (size64 > static_cast<uint64_t>(std::vector<uint8_t>().max_size()))
+        throw std::runtime_error("file is too large to read into memory: " + path);
     f.seekg(0);
-    std::vector<uint8_t> data(static_cast<size_t>(size));
-    f.read(reinterpret_cast<char *>(data.data()), size);
-    if (!f || f.gcount() != size)
+    if (!f)
+        throw std::runtime_error("cannot seek file: " + path);
+    std::vector<uint8_t> data(static_cast<size_t>(size64));
+    f.read(reinterpret_cast<char *>(data.data()), static_cast<std::streamsize>(data.size()));
+    if (!f || f.gcount() != static_cast<std::streamsize>(data.size()))
         throw std::runtime_error("incomplete read of: " + path);
     return data;
 }
@@ -95,7 +106,18 @@ inline std::string normalizeDebName(const std::string &name) {
         throw std::runtime_error("Debian package name must start with an alphanumeric character "
                                  "and contain at least two characters: '" +
                                  name + "'");
+    if (result.back() == '-' || result.back() == '.')
+        throw std::runtime_error("Debian package name must not end with '-' or '.': '" + name +
+                                 "'");
     return result;
+}
+
+inline std::string trimAsciiWhitespace(std::string value) {
+    const std::size_t start = value.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos)
+        return {};
+    const std::size_t end = value.find_last_not_of(" \t\r\n");
+    return value.substr(start, end - start + 1);
 }
 
 inline void rejectControlChars(const std::string &value, const char *fieldName) {
@@ -114,6 +136,18 @@ inline void rejectLineBreaks(const std::string &value, const char *fieldName) {
     }
 }
 
+inline void validateSingleLineField(const std::string &value, const char *fieldName) {
+    rejectLineBreaks(value, fieldName);
+    rejectControlChars(value, fieldName);
+}
+
+inline void validateToolchainArchitecture(const std::string &arch,
+                                          const char *fieldName = "toolchain architecture") {
+    validateSingleLineField(arch, fieldName);
+    if (arch != "x64" && arch != "arm64")
+        throw std::runtime_error(std::string(fieldName) + " must be x64 or arm64: '" + arch + "'");
+}
+
 inline void validateDebVersion(const std::string &version, const char *fieldName = "version") {
     if (version.empty())
         throw std::runtime_error(std::string(fieldName) + " must not be empty");
@@ -127,6 +161,240 @@ inline void validateDebVersion(const std::string &version, const char *fieldName
     }
 }
 
+inline std::vector<uint32_t> parseDottedNumericVersionParts(const std::string &version,
+                                                            const char *fieldName) {
+    if (version.empty())
+        throw std::runtime_error(std::string(fieldName) + " must not be empty");
+    std::vector<uint32_t> parts;
+    uint32_t current = 0;
+    bool sawDigit = false;
+    for (char c : version) {
+        unsigned char uc = static_cast<unsigned char>(c);
+        if (std::isdigit(uc)) {
+            sawDigit = true;
+            const uint32_t digit = static_cast<uint32_t>(c - '0');
+            if (current > (65535u - digit) / 10u)
+                throw std::runtime_error(std::string(fieldName) +
+                                         " component exceeds 65535: '" + version + "'");
+            current = current * 10u + digit;
+            continue;
+        }
+        if (c == '.' && sawDigit) {
+            parts.push_back(current);
+            current = 0;
+            sawDigit = false;
+            continue;
+        }
+        throw std::runtime_error(std::string(fieldName) +
+                                 " must be a dotted numeric version: '" + version + "'");
+    }
+    if (!sawDigit)
+        throw std::runtime_error(std::string(fieldName) +
+                                 " must be a dotted numeric version: '" + version + "'");
+    parts.push_back(current);
+    return parts;
+}
+
+inline void validateDottedNumericVersion(const std::string &version, const char *fieldName) {
+    const auto parts = parseDottedNumericVersionParts(version, fieldName);
+    if (parts.size() < 2 || parts.size() > 4)
+        throw std::runtime_error(std::string(fieldName) +
+                                 " must have 2 to 4 numeric components: '" + version + "'");
+}
+
+inline void validateDebDependency(const std::string &dependency) {
+    const std::string dep = trimAsciiWhitespace(dependency);
+    if (dep.empty())
+        throw std::runtime_error("package dependency must not be empty");
+    validateSingleLineField(dep, "package dependency");
+
+    auto isPkgChar = [](char c) {
+        unsigned char uc = static_cast<unsigned char>(c);
+        return std::islower(uc) || std::isdigit(uc) || c == '+' || c == '-' || c == '.';
+    };
+    auto isArchChar = [](char c) {
+        unsigned char uc = static_cast<unsigned char>(c);
+        return std::islower(uc) || std::isdigit(uc) || c == '-';
+    };
+    auto skipSpaces = [&](size_t &pos) {
+        while (pos < dep.size() && (dep[pos] == ' ' || dep[pos] == '\t'))
+            ++pos;
+    };
+    auto parseName = [&](size_t &pos) {
+        const size_t start = pos;
+        if (pos >= dep.size() ||
+            (!std::islower(static_cast<unsigned char>(dep[pos])) &&
+             !std::isdigit(static_cast<unsigned char>(dep[pos]))))
+            throw std::runtime_error("package dependency has invalid package name: '" + dep + "'");
+        while (pos < dep.size() && isPkgChar(dep[pos]))
+            ++pos;
+        if (pos - start < 2)
+            throw std::runtime_error("package dependency package name is too short: '" + dep + "'");
+        if (dep[pos - 1] == '-' || dep[pos - 1] == '.')
+            throw std::runtime_error("package dependency package name has invalid suffix: '" + dep + "'");
+    };
+    auto parseArchQualifier = [&](size_t &pos) {
+        if (pos >= dep.size() || dep[pos] != ':')
+            return;
+        ++pos;
+        const size_t start = pos;
+        while (pos < dep.size() && isArchChar(dep[pos]))
+            ++pos;
+        if (start == pos)
+            throw std::runtime_error("package dependency has empty architecture qualifier: '" + dep +
+                                     "'");
+    };
+    auto parseVersionConstraint = [&](size_t &pos) {
+        skipSpaces(pos);
+        if (pos >= dep.size() || dep[pos] != '(')
+            return;
+        ++pos;
+        skipSpaces(pos);
+        const char *ops[] = {"<<", "<=", "=", ">=", ">>"};
+        bool matched = false;
+        for (const char *op : ops) {
+            const size_t len = std::char_traits<char>::length(op);
+            if (dep.compare(pos, len, op) == 0) {
+                pos += len;
+                matched = true;
+                break;
+            }
+        }
+        if (!matched)
+            throw std::runtime_error("package dependency has invalid version relation: '" + dep + "'");
+        skipSpaces(pos);
+        const size_t versionStart = pos;
+        while (pos < dep.size() && dep[pos] != ')') {
+            unsigned char uc = static_cast<unsigned char>(dep[pos]);
+            if (!std::isalnum(uc) && dep[pos] != '.' && dep[pos] != '+' && dep[pos] != '~' &&
+                dep[pos] != '-' && dep[pos] != ':')
+                throw std::runtime_error("package dependency has invalid version: '" + dep + "'");
+            ++pos;
+        }
+        if (versionStart == pos || pos >= dep.size() || dep[pos] != ')')
+            throw std::runtime_error("package dependency has unterminated version constraint: '" +
+                                     dep + "'");
+        ++pos;
+    };
+    auto parseBracketList = [&](size_t &pos, char open, char close, const char *what) {
+        skipSpaces(pos);
+        if (pos >= dep.size() || dep[pos] != open)
+            return;
+        ++pos;
+        bool sawToken = false;
+        while (pos < dep.size() && dep[pos] != close) {
+            unsigned char uc = static_cast<unsigned char>(dep[pos]);
+            if (std::islower(uc) || std::isdigit(uc) || dep[pos] == '-' || dep[pos] == '!' ||
+                dep[pos] == ' ' || dep[pos] == '\t') {
+                if (std::islower(uc) || std::isdigit(uc))
+                    sawToken = true;
+                ++pos;
+                continue;
+            }
+            throw std::runtime_error(std::string("package dependency has invalid ") + what +
+                                     ": '" + dep + "'");
+        }
+        if (!sawToken || pos >= dep.size() || dep[pos] != close)
+            throw std::runtime_error(std::string("package dependency has unterminated ") + what +
+                                     ": '" + dep + "'");
+        ++pos;
+    };
+
+    size_t pos = 0;
+    bool expectAlternative = true;
+    while (pos < dep.size()) {
+        skipSpaces(pos);
+        if (pos >= dep.size())
+            break;
+        if (!expectAlternative && dep[pos] == '|') {
+            expectAlternative = true;
+            ++pos;
+            continue;
+        }
+        if (!expectAlternative)
+            throw std::runtime_error("package dependency alternatives must be separated by '|': '" +
+                                     dep + "'");
+        parseName(pos);
+        parseArchQualifier(pos);
+        parseVersionConstraint(pos);
+        parseBracketList(pos, '[', ']', "architecture restriction");
+        parseBracketList(pos, '<', '>', "build profile restriction");
+        expectAlternative = false;
+        skipSpaces(pos);
+        if (pos < dep.size() && dep[pos] != '|')
+            throw std::runtime_error("package dependency contains trailing invalid syntax: '" + dep +
+                                     "'");
+    }
+    if (expectAlternative)
+        throw std::runtime_error("package dependency has empty alternative: '" + dep + "'");
+}
+
+inline bool isKnownDesktopCategory(std::string_view category) {
+    static constexpr std::string_view known[] = {
+        "AudioVideo", "Audio", "Video", "Development", "Education", "Game", "Graphics",
+        "Network", "Office", "Science", "Settings", "System", "Utility", "Building",
+        "Debugger", "IDE", "GUIDesigner", "Profiling", "RevisionControl", "Translation",
+        "Calendar", "ContactManagement", "Database", "Dictionary", "Chart", "Email",
+        "Finance", "FlowChart", "PDA", "ProjectManagement", "Presentation", "Spreadsheet",
+        "WordProcessor", "2DGraphics", "VectorGraphics", "RasterGraphics", "3DGraphics",
+        "Scanning", "OCR", "Photography", "Publishing", "Viewer", "TextTools",
+        "DesktopSettings", "HardwareSettings", "Printing", "PackageManager", "Dialup",
+        "InstantMessaging", "Chat", "IRCClient", "Feed", "FileTransfer", "HamRadio",
+        "News", "P2P", "RemoteAccess", "Telephony", "TelephonyTools", "VideoConference",
+        "WebBrowser", "WebDevelopment", "Midi", "Mixer", "Sequencer", "Tuner", "TV",
+        "AudioVideoEditing", "Player", "Recorder", "DiscBurning", "ActionGame",
+        "AdventureGame", "ArcadeGame", "BoardGame", "BlocksGame", "CardGame", "KidsGame",
+        "LogicGame", "RolePlaying", "Shooter", "Simulation", "SportsGame",
+        "StrategyGame", "Art", "Construction", "Music", "Languages",
+        "ArtificialIntelligence", "Astronomy", "Biology", "Chemistry", "ComputerScience",
+        "DataVisualization", "Economy", "Electricity", "Geography", "Geology",
+        "Geoscience", "History", "Humanities", "ImageProcessing", "Literature", "Maps",
+        "Math", "NumericalAnalysis", "MedicalSoftware", "Physics", "Robotics",
+        "Spirituality", "Sports", "ParallelComputing", "Amusement", "Archiving",
+        "Compression", "Electronics", "Emulator", "Engineering", "FileTools",
+        "FileManager", "TerminalEmulator", "Filesystem", "Monitor", "Security",
+        "Accessibility", "Calculator", "Clock", "TextEditor", "Documentation", "Adult",
+        "Core", "KDE", "GNOME", "XFCE", "GTK", "Qt", "ConsoleOnly"};
+    for (std::string_view item : known) {
+        if (item == category)
+            return true;
+    }
+    return false;
+}
+
+inline std::string normalizeDesktopCategories(const std::string &categories) {
+    if (categories.empty())
+        return {};
+    validateSingleLineField(categories, "desktop categories");
+    std::string out;
+    size_t pos = 0;
+    while (pos <= categories.size()) {
+        const size_t next = categories.find(';', pos);
+        std::string token = trimAsciiWhitespace(
+            next == std::string::npos ? categories.substr(pos) : categories.substr(pos, next - pos));
+        if (!token.empty()) {
+            for (char c : token) {
+                unsigned char uc = static_cast<unsigned char>(c);
+                if (!std::isalnum(uc) && c != '-' && c != '_' && c != '.')
+                    throw std::runtime_error("desktop categories contain an invalid character: '" +
+                                             categories + "'");
+            }
+            if (!isKnownDesktopCategory(token))
+                throw std::runtime_error("unknown freedesktop desktop category: '" + token + "'");
+            out += token;
+            out.push_back(';');
+        }
+        if (next == std::string::npos)
+            break;
+        pos = next + 1;
+    }
+    return out;
+}
+
+inline void validateDesktopCategories(const std::string &categories) {
+    (void)normalizeDesktopCategories(categories);
+}
+
 inline void validateRpmVersion(const std::string &version, const char *fieldName = "version") {
     if (version.empty())
         throw std::runtime_error(std::string(fieldName) + " must not be empty");
@@ -138,11 +406,6 @@ inline void validateRpmVersion(const std::string &version, const char *fieldName
                                      version + "'");
         }
     }
-}
-
-inline void validateSingleLineField(const std::string &value, const char *fieldName) {
-    rejectLineBreaks(value, fieldName);
-    rejectControlChars(value, fieldName);
 }
 
 inline void validatePackageIdentifier(const std::string &identifier,
@@ -174,14 +437,25 @@ inline void validateFileAssociation(const std::string &extension,
                                     const std::string &mimeType) {
     if (extension.empty())
         throw std::runtime_error("file association extension must not be empty");
+    if (extension.front() != '.' || extension.size() < 2 || extension.back() == '.')
+        throw std::runtime_error("file association extension must be a dotted extension such as "
+                                 "'.zia': '" +
+                                 extension + "'");
     validateSingleLineField(description, "file association description");
     validateSingleLineField(mimeType, "file association MIME type");
+    bool sawExtensionChar = false;
     for (char c : extension) {
         unsigned char uc = static_cast<unsigned char>(c);
         if (!std::isalnum(uc) && c != '.' && c != '_' && c != '-' && c != '+')
             throw std::runtime_error("file association extension contains an invalid character: '" +
                                      extension + "'");
+        if (std::isalnum(uc) || c == '_' || c == '-' || c == '+')
+            sawExtensionChar = true;
     }
+    if (!sawExtensionChar)
+        throw std::runtime_error("file association extension must contain at least one extension "
+                                 "character: '" +
+                                 extension + "'");
     const std::size_t slash = mimeType.find('/');
     if (slash == std::string::npos || slash == 0 || slash + 1 >= mimeType.size())
         throw std::runtime_error("file association MIME type must be type/subtype: '" +
@@ -199,6 +473,122 @@ inline void validateFileAssociation(const std::string &extension,
     }
 }
 
+inline void validatePackageUrl(const std::string &url, const char *fieldName) {
+    if (url.empty())
+        return;
+    validateSingleLineField(url, fieldName);
+    for (char c : url) {
+        if (std::isspace(static_cast<unsigned char>(c)))
+            throw std::runtime_error(std::string(fieldName) +
+                                     " must not contain whitespace: '" + url + "'");
+    }
+    const auto schemePos = url.find("://");
+    if (schemePos == std::string::npos || schemePos == 0 || schemePos + 3 >= url.size())
+        throw std::runtime_error(std::string(fieldName) +
+                                 " must include a URL scheme and host/path: '" + url + "'");
+    if (!std::isalpha(static_cast<unsigned char>(url[0])))
+        throw std::runtime_error(std::string(fieldName) +
+                                 " URL scheme must start with a letter: '" + url + "'");
+    for (std::size_t i = 0; i < schemePos; ++i) {
+        unsigned char uc = static_cast<unsigned char>(url[i]);
+        if (!std::isalpha(uc) && !std::isdigit(uc) && url[i] != '+' && url[i] != '-' &&
+            url[i] != '.')
+            throw std::runtime_error(std::string(fieldName) +
+                                     " contains an invalid URL scheme: '" + url + "'");
+    }
+
+    const std::size_t authorityStart = schemePos + 3;
+    const std::size_t authorityEnd = url.find_first_of("/?#", authorityStart);
+    const std::string authority =
+        authorityEnd == std::string::npos
+            ? url.substr(authorityStart)
+            : url.substr(authorityStart, authorityEnd - authorityStart);
+    if (authority.empty())
+        throw std::runtime_error(std::string(fieldName) + " URL host must not be empty: '" + url +
+                                 "'");
+    if (authority.find('@') != std::string::npos)
+        throw std::runtime_error(std::string(fieldName) +
+                                 " URL userinfo is not supported: '" + url + "'");
+
+    std::string host;
+    std::string port;
+    if (!authority.empty() && authority.front() == '[') {
+        const std::size_t close = authority.find(']');
+        if (close == std::string::npos || close == 1)
+            throw std::runtime_error(std::string(fieldName) +
+                                     " URL IPv6 host is malformed: '" + url + "'");
+        host = authority.substr(1, close - 1);
+        if (close + 1 < authority.size()) {
+            if (authority[close + 1] != ':')
+                throw std::runtime_error(std::string(fieldName) +
+                                         " URL host has invalid suffix: '" + url + "'");
+            port = authority.substr(close + 2);
+        }
+        bool sawHex = false;
+        for (char c : host) {
+            if (std::isxdigit(static_cast<unsigned char>(c))) {
+                sawHex = true;
+                continue;
+            }
+            if (c != ':')
+                throw std::runtime_error(std::string(fieldName) +
+                                         " URL IPv6 host contains an invalid character: '" + url +
+                                         "'");
+        }
+        if (!sawHex)
+            throw std::runtime_error(std::string(fieldName) +
+                                     " URL IPv6 host must contain address digits: '" + url + "'");
+    } else {
+        const std::size_t colon = authority.rfind(':');
+        if (colon != std::string::npos) {
+            host = authority.substr(0, colon);
+            port = authority.substr(colon + 1);
+        } else {
+            host = authority;
+        }
+        if (host.empty() || host.front() == '.' || host.back() == '.' || host.front() == '-' ||
+            host.back() == '-')
+            throw std::runtime_error(std::string(fieldName) +
+                                     " URL host is malformed: '" + url + "'");
+        bool sawHostChar = false;
+        bool lastWasDot = false;
+        for (char c : host) {
+            unsigned char uc = static_cast<unsigned char>(c);
+            if (std::isalnum(uc)) {
+                sawHostChar = true;
+                lastWasDot = false;
+                continue;
+            }
+            if (c == '-') {
+                lastWasDot = false;
+                continue;
+            }
+            if (c == '.') {
+                if (lastWasDot)
+                    throw std::runtime_error(std::string(fieldName) +
+                                             " URL host has an empty label: '" + url + "'");
+                lastWasDot = true;
+                continue;
+            }
+            throw std::runtime_error(std::string(fieldName) +
+                                     " URL host contains an invalid character: '" + url + "'");
+        }
+        if (!sawHostChar)
+            throw std::runtime_error(std::string(fieldName) +
+                                     " URL host must contain letters or digits: '" + url + "'");
+    }
+    if (!port.empty()) {
+        for (char c : port) {
+            if (!std::isdigit(static_cast<unsigned char>(c)))
+                throw std::runtime_error(std::string(fieldName) +
+                                         " URL port must be numeric: '" + url + "'");
+        }
+    } else if (!authority.empty() && authority.back() == ':') {
+        throw std::runtime_error(std::string(fieldName) + " URL port must not be empty: '" + url +
+                                 "'");
+    }
+}
+
 inline void validateWindowsFileName(const std::string &name, const char *fieldName) {
     if (name.empty())
         throw std::runtime_error(std::string(fieldName) + " must not be empty");
@@ -207,7 +597,7 @@ inline void validateWindowsFileName(const std::string &name, const char *fieldNa
                                  name + "'");
     for (char c : name) {
         unsigned char uc = static_cast<unsigned char>(c);
-        if (uc < 0x20 || c == '<' || c == '>' || c == ':' || c == '"' || c == '/' ||
+        if (uc < 0x20 || uc == 0x7F || c == '<' || c == '>' || c == ':' || c == '"' || c == '/' ||
             c == '\\' || c == '|' || c == '?' || c == '*') {
             throw std::runtime_error(std::string(fieldName) +
                                      " contains a character invalid on Windows: '" + name + "'");
@@ -300,7 +690,7 @@ inline std::string sanitizePackageRelativePath(const std::string &raw,
 
         for (char c : segment) {
             unsigned char uc = static_cast<unsigned char>(c);
-            if (uc < 0x20 || c == ':') {
+            if (uc < 0x20 || uc == 0x7F || c == ':') {
                 throw std::runtime_error(std::string(fieldName) +
                                          " contains an invalid character: '" + raw + "'");
             }
@@ -454,41 +844,52 @@ inline void safeDirectoryIterate(
     if (ec)
         canonicalRoot = projectRoot; // Fallback if canonical fails
 
-    for (auto it = fs::recursive_directory_iterator(
-             root, fs::directory_options::skip_permission_denied, ec);
-         it != fs::recursive_directory_iterator();
-         it.increment(ec)) {
+    auto it = fs::recursive_directory_iterator(root, fs::directory_options::skip_permission_denied, ec);
+    if (ec) {
+        std::cerr << "warning: cannot access '" << root.string() << "', skipping: " << ec.message()
+                  << "\n";
+        return;
+    }
+    const auto end = fs::recursive_directory_iterator();
+    while (it != end) {
         if (ec) {
-            std::cerr << "warning: cannot access '" << it->path().string()
-                      << "', skipping: " << ec.message() << "\n";
+            std::cerr << "warning: cannot access directory entry, skipping: " << ec.message()
+                      << "\n";
             ec.clear();
+            it.increment(ec);
             continue;
         }
 
         const auto &entry = *it;
+        const fs::path entryPath = entry.path();
 
         // Check for symlinks escaping the project root
-        if (entry.is_symlink()) {
-            fs::path resolved = fs::canonical(entry.path(), ec);
+        std::error_code entryEc;
+        bool skipEntry = false;
+        if (entry.is_symlink(entryEc)) {
+            fs::path resolved = fs::canonical(entryPath, ec);
             if (ec) {
-                std::cerr << "warning: cannot resolve symlink '" << entry.path().string()
+                std::cerr << "warning: cannot resolve symlink '" << entryPath.string()
                           << "', skipping\n";
                 ec.clear();
-                if (entry.is_directory())
-                    it.disable_recursion_pending();
-                continue;
+                skipEntry = true;
             }
             // Check if resolved path is within project root.
-            if (!isPathWithin(canonicalRoot, resolved)) {
-                std::cerr << "warning: symlink '" << entry.path().string()
+            if (!skipEntry && !isPathWithin(canonicalRoot, resolved)) {
+                std::cerr << "warning: symlink '" << entryPath.string()
                           << "' escapes project root, skipping\n";
-                if (entry.is_directory())
-                    it.disable_recursion_pending();
-                continue;
+                skipEntry = true;
             }
         }
 
-        callback(entry);
+        if (!skipEntry)
+            callback(entry);
+        it.increment(ec);
+        if (ec) {
+            std::cerr << "warning: cannot advance directory iterator from '" << entryPath.string()
+                      << "': " << ec.message() << "\n";
+            ec.clear();
+        }
     }
 }
 

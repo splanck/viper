@@ -42,6 +42,8 @@ namespace viper::pkg {
 
 namespace {
 
+constexpr size_t kInstallerStubPathCharLimit = 32768;
+
 void addUniqueDir(std::vector<WindowsPackageDirEntry> &out,
                   std::set<std::string> &seen,
                   WindowsInstallRoot root,
@@ -70,9 +72,9 @@ void validateWindowsRelativePath(const std::string &relativePath, const char *fi
 }
 
 void validateStubPathFits(const std::string &path, const char *fieldName) {
-    if (utf16CodeUnitCountFromUtf8(path) + 1 > 260)
+    if (utf16CodeUnitCountFromUtf8(path) + 1 > kInstallerStubPathCharLimit)
         throw std::runtime_error(std::string(fieldName) +
-                                 " exceeds the Windows installer MAX_PATH stub limit: " + path);
+                                 " exceeds the Windows installer long-path stub limit: " + path);
 }
 
 void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
@@ -98,6 +100,18 @@ std::string lowerAscii(std::string text) {
     for (char &c : text)
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return text;
+}
+
+std::string windowsProgIdFor(const PackageConfig &pkg,
+                             const std::string &exec,
+                             const FileAssoc &assoc) {
+    std::string ext = assoc.extension;
+    if (!ext.empty() && ext.front() == '.')
+        ext.erase(ext.begin());
+    std::string base = pkg.identifier.empty() ? ("viper." + exec) : pkg.identifier;
+    validatePackageIdentifier(base, "Windows file association ProgID base");
+    validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
+    return base + "." + ext;
 }
 
 void addParentDirs(std::vector<WindowsPackageDirEntry> &out,
@@ -131,10 +145,10 @@ void addOverlayFile(ZipWriter &zip,
     zip.addFile(overlayName, data, len, unixMode);
     const auto &entry = zip.layoutEntries().back();
     layout.installFiles.push_back(WindowsPackageFileEntry{
-        root, installRelativePath, entry.localDataOffset, entry.uncompressedSize});
+        root, installRelativePath, entry.localDataOffset, entry.uncompressedSize, entry.crc32});
     if (deleteOnUninstall) {
         layout.uninstallFiles.push_back(
-            WindowsPackageFileEntry{root, installRelativePath, 0, entry.uncompressedSize});
+            WindowsPackageFileEntry{root, installRelativePath, 0, entry.uncompressedSize, 0});
     }
 }
 
@@ -163,8 +177,15 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     const std::string installDir = displayName;
     validateWindowsFileName(displayName, "Windows display name");
     validatePackageIdentifier(pkg.identifier);
-    validateSingleLineField(params.version, "Windows package version");
+    validateDottedNumericVersion(params.version.empty() ? "0.0.0" : params.version,
+                                 "Windows package version");
+    if (!pkg.minOsWindows.empty())
+        validateDottedNumericVersion(pkg.minOsWindows, "minimum Windows version");
     validateSingleLineField(pkg.author, "Windows package author");
+    validateSingleLineField(pkg.description, "Windows package description");
+    validatePackageUrl(pkg.homepage, "package homepage");
+    for (const auto &assoc : pkg.fileAssociations)
+        validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
     if (!fs::is_regular_file(params.executablePath))
         throw std::runtime_error("Windows package executable is not a regular file: " +
                                  params.executablePath);
@@ -178,6 +199,10 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     layout.executableName = exec + ".exe";
     layout.createDesktopShortcut = pkg.shortcutDesktop;
     layout.createStartMenuShortcut = pkg.shortcutMenu;
+    for (const auto &assoc : pkg.fileAssociations) {
+        layout.fileAssociations.push_back(
+            {assoc.extension, assoc.description, assoc.mimeType, windowsProgIdFor(pkg, exec, assoc)});
+    }
 
     std::set<std::string> installDirSet;
 
@@ -189,13 +214,10 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     std::vector<uint8_t> icoData;
     if (!pkg.iconPath.empty()) {
         fs::path iconSrc = resolvePackageSourcePath(params.projectRoot, pkg.iconPath, "package icon");
-        if (fs::exists(iconSrc)) {
-            auto srcImage = pngRead(iconSrc.string());
-            icoData = generateIco(srcImage);
-        } else {
-            std::cerr << "warning: package-icon '" << pkg.iconPath
-                      << "' not found, skipping icon generation\n";
-        }
+        if (!fs::is_regular_file(iconSrc))
+            throw std::runtime_error("package icon not found: " + pkg.iconPath);
+        auto srcImage = pngRead(iconSrc.string());
+        icoData = generateIco(srcImage);
     }
 
     const auto execData = readFile(params.executablePath);
@@ -215,10 +237,8 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
             sanitizePackageRelativePath(asset.targetPath, "asset target path");
         validateWindowsRelativePath(targetDir, "asset target path");
 
-        if (!fs::exists(srcPath)) {
-            std::cerr << "warning: asset '" << asset.sourcePath << "' not found, skipping\n";
-            continue;
-        }
+        if (!fs::exists(srcPath))
+            throw std::runtime_error("asset not found: " + asset.sourcePath);
 
         if (fs::is_directory(srcPath)) {
             safeDirectoryIterate(
@@ -271,6 +291,9 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                            WindowsInstallRoot::InstallDir,
                            relInstall,
                            true);
+        } else {
+            throw std::runtime_error("asset is not a regular file or directory: " +
+                                     asset.sourcePath);
         }
     }
 
@@ -321,7 +344,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     uninstPe.textSection = uninstStub.textSection;
     uninstPe.rdataSection = uninstStub.stubData;
     uninstPe.imports = uninstStub.imports;
-    uninstPe.manifest = generateAsInvokerManifest();
+    uninstPe.manifest = generateUacManifest(pkg.minOsWindows);
     uninstPe.iconData = icoData;
     auto uninstBytes = buildPE(uninstPe);
     addOverlayFile(zip,
@@ -343,7 +366,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     provisionalPe.textSection = provisionalStub.textSection;
     provisionalPe.rdataSection = provisionalStub.stubData;
     provisionalPe.imports = provisionalStub.imports;
-    provisionalPe.manifest = generateUacManifest();
+    provisionalPe.manifest = generateUacManifest(pkg.minOsWindows);
     provisionalPe.iconData = icoData;
     provisionalPe.overlay = zipPayload;
     const auto provisionalBytes = buildPE(provisionalPe);
@@ -355,7 +378,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     pe.textSection = instStub.textSection;
     pe.rdataSection = instStub.stubData;
     pe.imports = instStub.imports;
-    pe.manifest = generateUacManifest();
+    pe.manifest = generateUacManifest(pkg.minOsWindows);
     pe.iconData = icoData;
     pe.overlay = zipPayload;
 
@@ -421,7 +444,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     uninstPe.textSection = uninstStub.textSection;
     uninstPe.rdataSection = uninstStub.stubData;
     uninstPe.imports = uninstStub.imports;
-    uninstPe.manifest = generateAsInvokerManifest();
+    uninstPe.manifest = generateUacManifest();
     const auto uninstBytes = buildPE(uninstPe);
     addOverlayFile(zip,
                    "app/uninstall.exe",

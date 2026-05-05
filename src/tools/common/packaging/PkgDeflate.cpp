@@ -217,16 +217,26 @@ struct HuffmanTree {
 
     bool build(const uint8_t *lengths, int numCodes) {
         int blCount[kMaxBits + 1] = {};
+        int nonZero = 0;
         for (int i = 0; i < numCodes; i++) {
             if (lengths[i] > kMaxBits)
                 return false;
             blCount[lengths[i]]++;
+            if (lengths[i] != 0)
+                ++nonZero;
         }
+        if (nonZero == 0)
+            return false;
         blCount[0] = 0;
 
         uint16_t nextCode[kMaxBits + 1];
         uint16_t code = 0;
+        int left = 1;
         for (int bits = 1; bits <= kMaxBits; bits++) {
+            left <<= 1;
+            left -= blCount[bits];
+            if (left < 0)
+                return false;
             code = (code + blCount[bits - 1]) << 1;
             nextCode[bits] = code;
         }
@@ -505,15 +515,21 @@ static bool inflateDynamic(BitReader &br, OutputBuffer &out) {
             if (i == 0)
                 return false;
             int repeat = br.read(2) + 3;
+            if (i + repeat > totalCodes)
+                return false;
             uint8_t prev = lengths[i - 1];
             while (repeat-- > 0 && i < totalCodes)
                 lengths[i++] = prev;
         } else if (sym == 17) {
             int repeat = br.read(3) + 3;
+            if (i + repeat > totalCodes)
+                return false;
             while (repeat-- > 0 && i < totalCodes)
                 lengths[i++] = 0;
         } else if (sym == 18) {
             int repeat = br.read(7) + 11;
+            if (i + repeat > totalCodes)
+                return false;
             while (repeat-- > 0 && i < totalCodes)
                 lengths[i++] = 0;
         } else {
@@ -521,9 +537,31 @@ static bool inflateDynamic(BitReader &br, OutputBuffer &out) {
         }
     }
 
+    if (lengths[256] == 0)
+        return false;
+
+    bool hasLengthCode = false;
+    for (int code = 257; code <= 285 && code < hlit; ++code) {
+        if (lengths[code] != 0) {
+            hasLengthCode = true;
+            break;
+        }
+    }
+    bool hasDistanceCode = false;
+    for (int code = 0; code < hdist; ++code) {
+        if (lengths[hlit + code] != 0) {
+            hasDistanceCode = true;
+            break;
+        }
+    }
+    if (hasLengthCode && !hasDistanceCode)
+        return false;
+
     HuffmanTree litTree, distTree;
     if (!litTree.build(lengths, hlit))
         return false;
+    if (!hasDistanceCode)
+        return inflateHuffman(br, out, litTree, *sFixedDistTree);
     if (!distTree.build(lengths + hlit, hdist))
         return false;
 
@@ -573,6 +611,11 @@ static std::vector<uint8_t> inflateData(const uint8_t *data, size_t len, size_t 
         }
     }
 
+    if ((br.bitsInBuf > 0 && br.buffer != 0) || br.pos != br.len) {
+        out.free();
+        throw DeflateError("inflate: trailing data after final block");
+    }
+
     return out.toVector();
 }
 
@@ -598,6 +641,13 @@ struct LZ77State {
     void init() {
         head = static_cast<int *>(std::malloc(kHashSize * sizeof(int)));
         prev = static_cast<int *>(std::malloc(kWindowSize * sizeof(int)));
+        if (!head || !prev) {
+            std::free(head);
+            std::free(prev);
+            head = nullptr;
+            prev = nullptr;
+            throw DeflateError("deflate: memory allocation failed");
+        }
         for (int i = 0; i < kHashSize; i++)
             head[i] = kNil;
         for (int i = 0; i < kWindowSize; i++)
@@ -796,7 +846,12 @@ static std::vector<uint8_t> deflateData(const uint8_t *data, size_t len, int lev
     BitWriter bw;
     bw.init(len);
 
-    if (len <= 64 || level == 1)
+    if (len > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        // The LZ77 accelerator stores window positions in int slots. Very large
+        // inputs remain packageable by falling back to standards-compliant
+        // stored blocks instead of truncating match positions.
+        deflateStored(bw, data, len);
+    } else if (len <= 64 || level == 1)
         deflateStored(bw, data, len);
     else
         deflateFixed(bw, data, len, level);

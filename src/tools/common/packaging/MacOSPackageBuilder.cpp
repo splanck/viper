@@ -91,9 +91,11 @@ void validateBundleDisplayName(const std::string &name) {
     if (name.empty())
         throw std::runtime_error("macOS bundle display name must not be empty");
     validateSingleLineField(name, "macOS bundle display name");
-    if (name.find('/') != std::string::npos || name.find(':') != std::string::npos)
+    if (name.find('/') != std::string::npos || name.find('\\') != std::string::npos ||
+        name.find(':') != std::string::npos)
         throw std::runtime_error("macOS bundle display name must not contain path separators: " +
                                  name);
+    validateWindowsFileName(name, "macOS bundle display name");
 }
 
 } // namespace
@@ -108,7 +110,9 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
     const std::string version = params.version.empty() ? "0.0.0" : params.version;
     validateBundleDisplayName(displayName);
     validatePackageIdentifier(pkg.identifier);
-    validateSingleLineField(version, "macOS package version");
+    validateDottedNumericVersion(version, "macOS package version");
+    if (!pkg.minOsMacos.empty())
+        validateDottedNumericVersion(pkg.minOsMacos, "minimum macOS version");
     for (const auto &assoc : pkg.fileAssociations)
         validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
     if (!fs::is_regular_file(params.executablePath))
@@ -144,15 +148,12 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
     std::string iconFileName;
     if (!pkg.iconPath.empty()) {
         fs::path iconSrc = resolvePackageSourcePath(params.projectRoot, pkg.iconPath, "package icon");
-        if (fs::exists(iconSrc)) {
-            auto srcImage = pngRead(iconSrc.string());
-            auto icnsData = generateIcns(srcImage);
-            iconFileName = execName;
-            zip.addFile(resourcesPrefix + execName + ".icns", icnsData.data(), icnsData.size());
-        } else {
-            std::cerr << "warning: package-icon '" << pkg.iconPath
-                      << "' not found, skipping icon generation\n";
-        }
+        if (!fs::is_regular_file(iconSrc))
+            throw std::runtime_error("package icon not found: " + pkg.iconPath);
+        auto srcImage = pngRead(iconSrc.string());
+        auto icnsData = generateIcns(srcImage);
+        iconFileName = execName;
+        zip.addFile(resourcesPrefix + execName + ".icns", icnsData.data(), icnsData.size());
     }
 
     // Info.plist
@@ -171,10 +172,8 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
         fs::path srcPath = resolvePackageSourcePath(params.projectRoot, asset.sourcePath, "asset source path");
         std::string targetDir = sanitizePackageRelativePath(asset.targetPath, "asset target path");
 
-        if (!fs::exists(srcPath)) {
-            std::cerr << "warning: asset '" << asset.sourcePath << "' not found, skipping\n";
-            continue;
-        }
+        if (!fs::exists(srcPath))
+            throw std::runtime_error("asset not found: " + asset.sourcePath);
 
         if (fs::is_directory(srcPath)) {
             // Recurse directory (symlink-safe)
@@ -200,6 +199,9 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
             std::string zipPath = joinPackageRelativePath(
                 assetBase, srcPath.filename().generic_string(), "asset path");
             zip.addFile(zipPath, data.data(), data.size());
+        } else {
+            throw std::runtime_error("asset is not a regular file or directory: " +
+                                     asset.sourcePath);
         }
     }
 
@@ -223,6 +225,16 @@ void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
     for (const auto &file : params.manifest.files) {
         const fs::path dst = installRoot / fs::path(file.stagedRelativePath);
         fs::create_directories(dst.parent_path());
+        if (file.symlink) {
+            std::error_code ec;
+            fs::remove(dst, ec);
+            ec.clear();
+            fs::create_symlink(fs::path(file.symlinkTarget), dst, ec);
+            if (ec)
+                throw std::runtime_error("cannot create package symlink '" + dst.string() +
+                                         "' -> '" + file.symlinkTarget + "': " + ec.message());
+            continue;
+        }
         fs::copy_file(file.stagedAbsolutePath, dst, fs::copy_options::overwrite_existing);
         if (file.executable) {
             fs::permissions(dst,

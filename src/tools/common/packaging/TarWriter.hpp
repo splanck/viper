@@ -24,6 +24,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -83,6 +84,7 @@ class TarWriter {
     };
 
     std::vector<Entry> entries_;
+    std::set<std::string> seenPaths_;
 };
 
 } // namespace viper::pkg

@@ -25,31 +25,68 @@
 #include "TarWriter.hpp"
 #include "PkgUtils.hpp"
 
+#include <cctype>
 #include <cstring>
+#include <filesystem>
 #include <stdexcept>
 
 namespace viper::pkg {
 
 namespace {
 
-void validateTarEntryPath(const std::string &path, const char *fieldName) {
+std::string normalizeTarEntryPath(const std::string &path,
+                                  bool directory,
+                                  const char *fieldName) {
     std::string clean = path;
     if (clean.rfind("./", 0) == 0)
         clean = clean.substr(2);
     while (!clean.empty() && clean.back() == '/')
         clean.pop_back();
     if (clean.empty())
-        return;
-    (void)sanitizePackageRelativePath(clean, fieldName);
+        return directory ? std::string() : sanitizePackageRelativePath(clean, fieldName);
+    clean = sanitizePackageRelativePath(clean, fieldName);
+    if (directory && !clean.empty())
+        clean.push_back('/');
+    return clean;
+}
+
+void validateTarSymlinkTarget(const std::string &linkPath, const std::string &target) {
+    if (target.empty())
+        throw std::runtime_error("tar symlink target must not be empty");
+    validateSingleLineField(target, "tar symlink target");
+    std::string normalizedTarget = target;
+    for (char &c : normalizedTarget) {
+        if (c == '\\')
+            c = '/';
+    }
+    if (normalizedTarget.front() == '/' ||
+        (normalizedTarget.size() >= 2 &&
+         std::isalpha(static_cast<unsigned char>(normalizedTarget[0])) &&
+         normalizedTarget[1] == ':')) {
+        throw std::runtime_error("tar symlink target must be relative: " + target);
+    }
+
+    std::string cleanLink = normalizeTarEntryPath(linkPath, false, "tar symlink path");
+    const std::filesystem::path resolved =
+        (std::filesystem::path(cleanLink).parent_path() / normalizedTarget).lexically_normal();
+    const std::string resolvedText = resolved.generic_string();
+    if (resolvedText.empty() || resolvedText == "." || resolvedText.rfind("../", 0) == 0 ||
+        resolvedText == "..") {
+        throw std::runtime_error("tar symlink target escapes archive root: " + target);
+    }
 }
 
 } // namespace
 
 void TarWriter::addFile(
     const std::string &path, const uint8_t *data, size_t size, uint32_t mode, uint32_t mtime) {
-    validateTarEntryPath(path, "tar file path");
+    const std::string cleanPath = normalizeTarEntryPath(path, false, "tar file path");
+    if (cleanPath.empty())
+        throw std::runtime_error("tar file path must not be empty");
+    if (!seenPaths_.insert(cleanPath).second)
+        throw std::runtime_error("duplicate tar entry path: " + cleanPath);
     Entry e;
-    e.path = path;
+    e.path = cleanPath;
     e.data.assign(data, data + size);
     e.mode = mode;
     e.mtime = mtime;
@@ -72,11 +109,15 @@ void TarWriter::addFileVec(const std::string &path,
 }
 
 void TarWriter::addDirectory(const std::string &path, uint32_t mode, uint32_t mtime) {
-    validateTarEntryPath(path, "tar directory path");
+    const std::string cleanPath = normalizeTarEntryPath(path, true, "tar directory path");
+    if (!cleanPath.empty()) {
+        std::string key = cleanPath;
+        key.pop_back();
+        if (!seenPaths_.insert(key).second)
+            throw std::runtime_error("duplicate tar entry path: " + key);
+    }
     Entry e;
-    e.path = path;
-    if (!e.path.empty() && e.path.back() != '/')
-        e.path.push_back('/');
+    e.path = cleanPath.empty() ? std::string("./") : cleanPath;
     e.mode = mode;
     e.mtime = mtime;
     e.typeflag = '5';
@@ -84,12 +125,14 @@ void TarWriter::addDirectory(const std::string &path, uint32_t mode, uint32_t mt
 }
 
 void TarWriter::addSymlink(const std::string &path, const std::string &target, uint32_t mtime) {
-    validateTarEntryPath(path, "tar symlink path");
-    if (target.empty())
-        throw std::runtime_error("tar symlink target must not be empty");
-    validateTarEntryPath(target, "tar symlink target");
+    const std::string cleanPath = normalizeTarEntryPath(path, false, "tar symlink path");
+    if (cleanPath.empty())
+        throw std::runtime_error("tar symlink path must not be empty");
+    if (!seenPaths_.insert(cleanPath).second)
+        throw std::runtime_error("duplicate tar entry path: " + cleanPath);
+    validateTarSymlinkTarget(cleanPath, target);
     Entry e;
-    e.path = path;
+    e.path = cleanPath;
     e.linkTarget = target;
     e.mode = 0777;
     e.mtime = mtime;

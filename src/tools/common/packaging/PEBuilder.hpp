@@ -73,8 +73,10 @@ struct PEBuildParams {
     uint16_t subsystem{2};
 
     /// DLL characteristics flags.
-    uint16_t dllCharacteristics{0x8160}; // HIGH_ENTROPY_VA | DYNAMIC_BASE |
-                                         // NX_COMPAT | TERMINAL_SERVER_AWARE
+    uint16_t dllCharacteristics{0x8100}; // NX_COMPAT | TERMINAL_SERVER_AWARE.
+                                         // Relocation-dependent ASLR flags are
+                                         // left clear because VAPS-generated PE
+                                         // files do not emit a .reloc directory.
 
     /// Stack/heap sizes.
     uint64_t stackReserve{0x100000};
@@ -99,6 +101,9 @@ void writePEToFile(const std::vector<uint8_t> &pe, const std::string &path);
 
 /// @brief Generate a basic UAC manifest requesting admin elevation.
 std::string generateUacManifest();
+
+/// @brief Generate UAC manifest with optional Windows compatibility metadata.
+std::string generateUacManifest(const std::string &minOsWindows);
 
 /// @brief Generate a UAC manifest requesting asInvoker (no elevation).
 std::string generateAsInvokerManifest();

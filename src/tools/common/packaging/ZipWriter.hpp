@@ -28,6 +28,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,7 @@ class ZipWriter {
         uint32_t localDataOffset{0};
         uint32_t compressedSize{0};
         uint32_t uncompressedSize{0};
+        uint32_t crc32{0};
         uint16_t method{0};
         bool isDirectory{false};
     };
@@ -110,9 +112,10 @@ class ZipWriter {
     std::vector<uint8_t> buffer_;
     std::vector<Entry> entries_;
     std::vector<LayoutEntry> layoutEntries_;
+    std::set<std::string> seenNames_;
     bool compressionEnabled_{true};
 
-    void validateEntryName(const std::string &name) const;
+    std::string normalizeEntryName(const std::string &name) const;
     void validateArchiveLimit(size_t value, size_t maxValue, const char *what) const;
     void writeBytes(const uint8_t *data, size_t len);
     void writeU16(uint16_t v);
