@@ -457,6 +457,125 @@ static void test_mp3_music_allows_unknown_total_samples(void) {
     vaud_destroy(ctx);
 }
 
+static void test_buffered_stream_read_rejects_partial_frame(void) {
+    FILE *f = tmpfile();
+    EXPECT_TRUE(f != NULL);
+    uint8_t bytes[3] = {0x00, 0x00, 0x00};
+    EXPECT_TRUE(fwrite(bytes, 1, sizeof(bytes), f) == sizeof(bytes));
+    rewind(f);
+
+    uint8_t scratch[4];
+    int16_t out[2] = {123, 456};
+    int32_t frames =
+        vaud_wav_read_frames_buffered(f, out, 1, 2, 16, 1, scratch, sizeof(scratch));
+    EXPECT_TRUE(frames == 0);
+    EXPECT_TRUE(out[0] == 123 && out[1] == 456);
+    fclose(f);
+}
+
+static void test_mixer_does_not_decode_empty_music_buffers(void) {
+    vaud_context_t ctx = vaud_create();
+    EXPECT_TRUE(ctx != NULL);
+
+    struct vaud_music music;
+    memset(&music, 0, sizeof(music));
+    music.ctx = ctx;
+    music.state = VAUD_MUSIC_PLAYING;
+    music.loop = 0;
+    music.stream_eof = 0;
+
+    vaud_mutex_lock(&ctx->mutex);
+    ctx->active_music[0] = &music;
+    ctx->music_count = 1;
+    vaud_mutex_unlock(&ctx->mutex);
+
+    int16_t out[VAUD_CHANNELS * 8];
+    memset(out, 0x7F, sizeof(out));
+    vaud_mixer_render(ctx, out, 8);
+
+    EXPECT_TRUE(music.stream_eof == 0);
+    EXPECT_TRUE(music.state == VAUD_MUSIC_PLAYING);
+
+    vaud_mutex_lock(&ctx->mutex);
+    ctx->active_music[0] = NULL;
+    ctx->music_count = 0;
+    vaud_mutex_unlock(&ctx->mutex);
+    vaud_destroy(ctx);
+}
+
+static void test_mixer_renders_oversized_requests_in_chunks(void) {
+    vaud_context_t ctx = vaud_create();
+    EXPECT_TRUE(ctx != NULL);
+
+    int32_t frames = VAUD_BUFFER_FRAMES + 8;
+    int16_t *samples = (int16_t *)calloc((size_t)frames * VAUD_CHANNELS, sizeof(int16_t));
+    int16_t *out = (int16_t *)calloc((size_t)frames * VAUD_CHANNELS, sizeof(int16_t));
+    EXPECT_TRUE(samples != NULL && out != NULL);
+    for (int32_t i = 0; i < frames; i++) {
+        samples[i * 2] = 4000;
+        samples[i * 2 + 1] = -4000;
+    }
+
+    struct vaud_sound sound;
+    memset(&sound, 0, sizeof(sound));
+    sound.ctx = ctx;
+    sound.samples = samples;
+    sound.frame_count = frames;
+    sound.sample_rate = VAUD_SAMPLE_RATE;
+    sound.channels = VAUD_CHANNELS;
+    sound.source_channels = VAUD_CHANNELS;
+
+    vaud_mutex_lock(&ctx->mutex);
+    ctx->voices[0].state = VAUD_VOICE_PLAYING;
+    ctx->voices[0].sound = &sound;
+    ctx->voices[0].position = 0;
+    ctx->voices[0].volume = 1.0f;
+    ctx->voices[0].pan = 0.0f;
+    ctx->voices[0].loop = 0;
+    vaud_mutex_unlock(&ctx->mutex);
+
+    vaud_mixer_render(ctx, out, frames);
+    EXPECT_TRUE(out[0] != 0);
+    EXPECT_TRUE(out[(size_t)VAUD_BUFFER_FRAMES * VAUD_CHANNELS] != 0);
+
+    free(out);
+    free(samples);
+    vaud_destroy(ctx);
+}
+
+static void test_refill_in_progress_makes_mixer_skip_music_buffer_mutation(void) {
+    vaud_context_t ctx = vaud_create();
+    EXPECT_TRUE(ctx != NULL);
+
+    struct vaud_music music;
+    memset(&music, 0, sizeof(music));
+    music.ctx = ctx;
+    music.state = VAUD_MUSIC_PLAYING;
+    music.refill_in_progress = 1;
+    music.buffer_frames[0] = 1;
+    music.buffers[0] = (int16_t *)calloc(2, sizeof(int16_t));
+    EXPECT_TRUE(music.buffers[0] != NULL);
+    music.buffers[0][0] = 1234;
+    music.buffers[0][1] = 1234;
+
+    vaud_mutex_lock(&ctx->mutex);
+    ctx->active_music[0] = &music;
+    ctx->music_count = 1;
+    vaud_mutex_unlock(&ctx->mutex);
+
+    int16_t out[VAUD_CHANNELS] = {0, 0};
+    vaud_mixer_render(ctx, out, 1);
+    EXPECT_TRUE(out[0] == 0 && out[1] == 0);
+    EXPECT_TRUE(music.buffer_position == 0);
+
+    vaud_mutex_lock(&ctx->mutex);
+    ctx->active_music[0] = NULL;
+    ctx->music_count = 0;
+    vaud_mutex_unlock(&ctx->mutex);
+    free(music.buffers[0]);
+    vaud_destroy(ctx);
+}
+
 int main(void) {
     srand(1);
     test_destroy_detaches_loaded_sounds();
@@ -468,6 +587,10 @@ int main(void) {
     test_wav_rejects_partial_pcm_frame();
     test_streaming_resample_preserves_total_frame_count();
     test_mp3_music_allows_unknown_total_samples();
+    test_buffered_stream_read_rejects_partial_frame();
+    test_mixer_does_not_decode_empty_music_buffers();
+    test_mixer_renders_oversized_requests_in_chunks();
+    test_refill_in_progress_makes_mixer_skip_music_buffer_mutation();
 
     if (tests_failed != 0)
         return 1;

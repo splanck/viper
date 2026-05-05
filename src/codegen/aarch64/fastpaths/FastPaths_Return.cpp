@@ -3,20 +3,18 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: codegen/aarch64/fastpaths/FastPaths_Return.cpp
 // Purpose: Fast-path pattern matching for return-related patterns.
-//
-// Summary:
-//   Handles fast-path lowering for simple return patterns:
-//   - ret %paramN: Return a parameter directly
-//   - ret const i64: Return an integer constant
-//   - ret const f64: Return a float constant
-//   - ret const_str: Return a runtime string handle for a pooled literal
-//   - ret addr_of: Return a symbol address
-//
-// Invariants:
-//   - Single-block functions with no side effects
-//   - Return value must be directly available (no computation needed)
+//          Handles ret %paramN, ret const i64, ret const f64, ret const_str,
+//          and ret addr_of — all single-block functions with no computation.
+// Key invariants:
+//   - Single-block functions with no side effects.
+//   - Return value must be directly available (no computation needed).
+// Ownership/Lifetime:
+//   - Stateless free functions; FastPathContext is borrowed for the call duration.
+// Links: codegen/aarch64/fastpaths/FastPathsInternal.hpp
 //
 //===----------------------------------------------------------------------===//
 

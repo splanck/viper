@@ -86,13 +86,21 @@ typedef struct {
     Atom clipboard_atom;          ///< CLIPBOARD selection atom
     Atom utf8_string_atom;        ///< UTF8_STRING target atom
     Atom targets_atom;            ///< TARGETS target atom
+    Atom incr_atom;               ///< INCR target/property atom
     Atom clipboard_property_atom; ///< Property used for selection conversion
     char *clipboard_text;         ///< Owned text while this window owns CLIPBOARD
     XIM xim;             ///< Input method for UTF-8 text input
     XIC xic;             ///< Input context for UTF-8 text input
+    int cursor_type;     ///< Last requested cursor type
+    int cursor_visible;  ///< 1 if cursor should be visible
+    Cursor blank_cursor; ///< Cached invisible cursor
+    struct vgfx_window *owner_window; ///< Backlink for multi-window global services
+    struct vgfx_window *next_window;  ///< Intrusive list of live X11 windows
 } vgfx_x11_data;
 
 static struct vgfx_window *g_vgfx_cursor_window = NULL;
+static struct vgfx_window *g_vgfx_clipboard_window = NULL;
+static struct vgfx_window *g_vgfx_x11_windows = NULL;
 
 static int hex_value(unsigned char c) {
     if (c >= '0' && c <= '9')
@@ -341,55 +349,153 @@ static int32_t x11_logical_to_physical(const struct vgfx_window *win, int32_t lo
     return vgfx_internal_scale_up_i32(logical, scale);
 }
 
+static int x11_window_usable(const struct vgfx_window *win) {
+    if (!win || !win->platform_data)
+        return 0;
+    const vgfx_x11_data *x11 = (const vgfx_x11_data *)win->platform_data;
+    return x11 && x11->display && x11->window;
+}
+
+static void x11_register_window(struct vgfx_window *win) {
+    if (!win || !win->platform_data)
+        return;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    x11->owner_window = win;
+    x11->next_window = g_vgfx_x11_windows;
+    g_vgfx_x11_windows = win;
+    if (!g_vgfx_cursor_window)
+        g_vgfx_cursor_window = win;
+    if (!g_vgfx_clipboard_window)
+        g_vgfx_clipboard_window = win;
+}
+
+static void x11_unregister_window(struct vgfx_window *win) {
+    struct vgfx_window **cursor = &g_vgfx_x11_windows;
+    while (*cursor) {
+        vgfx_x11_data *x11 = (vgfx_x11_data *)(*cursor)->platform_data;
+        if (*cursor == win) {
+            *cursor = x11 ? x11->next_window : NULL;
+            break;
+        }
+        if (!x11)
+            break;
+        cursor = &x11->next_window;
+    }
+    if (g_vgfx_cursor_window == win)
+        g_vgfx_cursor_window = g_vgfx_x11_windows;
+    if (g_vgfx_clipboard_window == win)
+        g_vgfx_clipboard_window = g_vgfx_x11_windows;
+}
+
+static struct vgfx_window *x11_clipboard_window(void) {
+    if (x11_window_usable(g_vgfx_clipboard_window))
+        return g_vgfx_clipboard_window;
+
+    for (struct vgfx_window *win = g_vgfx_x11_windows; win;) {
+        vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+        struct vgfx_window *next = x11 ? x11->next_window : NULL;
+        if (x11_window_usable(win) && win->is_focused) {
+            g_vgfx_clipboard_window = win;
+            return win;
+        }
+        win = next;
+    }
+
+    if (x11_window_usable(g_vgfx_cursor_window)) {
+        g_vgfx_clipboard_window = g_vgfx_cursor_window;
+        return g_vgfx_clipboard_window;
+    }
+    if (x11_window_usable(g_vgfx_x11_windows)) {
+        g_vgfx_clipboard_window = g_vgfx_x11_windows;
+        return g_vgfx_clipboard_window;
+    }
+
+    g_vgfx_clipboard_window = NULL;
+    return NULL;
+}
+
+static int x11_create_ximage_resources(vgfx_x11_data *x11,
+                                       int32_t width,
+                                       int32_t height,
+                                       int32_t stride,
+                                       XImage **out_image,
+                                       uint8_t **out_buf,
+                                       size_t *out_size) {
+    if (!x11 || !out_image || !out_buf || !out_size)
+        return 0;
+
+    *out_image = NULL;
+    *out_buf = NULL;
+    *out_size = 0;
+
+    if (!x11->display)
+        return 0;
+
+    if (height <= 0 || stride <= 0 || (size_t)height > SIZE_MAX / (size_t)stride) {
+        vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM, "Invalid XImage buffer dimensions");
+        return 0;
+    }
+    size_t buf_size = (size_t)height * (size_t)stride;
+    uint8_t *buf = (uint8_t *)calloc(1, buf_size);
+    if (!buf) {
+        vgfx_internal_set_error(VGFX_ERR_ALLOC, "Failed to allocate XImage buffer");
+        return 0;
+    }
+
+    XImage *image = XCreateImage(x11->display,
+                                 x11->visual,
+                                 x11->depth,
+                                 ZPixmap,
+                                 0,
+                                 (char *)buf,
+                                 width,
+                                 height,
+                                 32,
+                                 stride);
+    if (!image) {
+        free(buf);
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to create XImage");
+        return 0;
+    }
+
+    image->byte_order = LSBFirst;
+    *out_image = image;
+    *out_buf = buf;
+    *out_size = buf_size;
+    return 1;
+}
+
+static void x11_replace_ximage(vgfx_x11_data *x11,
+                               XImage *new_image,
+                               uint8_t *new_buf,
+                               size_t new_size) {
+    if (!x11)
+        return;
+
+    if (x11->ximage) {
+        x11->ximage->data = NULL;
+        XDestroyImage(x11->ximage);
+    }
+    free(x11->ximage_buf);
+    x11->ximage = new_image;
+    x11->ximage_buf = new_buf;
+    x11->ximage_buf_size = new_size;
+}
+
 static int x11_recreate_ximage(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;
 
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
-    if (!x11->display)
-        return 0;
-
-    if (x11->ximage) {
-        x11->ximage->data = NULL;
-        XDestroyImage(x11->ximage);
-        x11->ximage = NULL;
-    }
-
-    free(x11->ximage_buf);
-    if (win->height <= 0 || win->stride <= 0 ||
-        (size_t)win->height > SIZE_MAX / (size_t)win->stride) {
-        x11->ximage_buf = NULL;
-        x11->ximage_buf_size = 0;
-        vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM, "Invalid XImage buffer dimensions");
-        return 0;
-    }
-    x11->ximage_buf_size = (size_t)win->height * (size_t)win->stride;
-    x11->ximage_buf = (uint8_t *)calloc(1, x11->ximage_buf_size);
-    if (!x11->ximage_buf) {
-        x11->ximage_buf_size = 0;
-        vgfx_internal_set_error(VGFX_ERR_ALLOC, "Failed to allocate XImage buffer");
+    XImage *new_image = NULL;
+    uint8_t *new_buf = NULL;
+    size_t new_size = 0;
+    if (!x11_create_ximage_resources(
+            x11, win->width, win->height, win->stride, &new_image, &new_buf, &new_size)) {
         return 0;
     }
 
-    x11->ximage = XCreateImage(x11->display,
-                               x11->visual,
-                               x11->depth,
-                               ZPixmap,
-                               0,
-                               (char *)x11->ximage_buf,
-                               win->width,
-                               win->height,
-                               32,
-                               win->stride);
-    if (!x11->ximage) {
-        free(x11->ximage_buf);
-        x11->ximage_buf = NULL;
-        x11->ximage_buf_size = 0;
-        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to create XImage");
-        return 0;
-    }
-
-    x11->ximage->byte_order = LSBFirst;
+    x11_replace_ximage(x11, new_image, new_buf, new_size);
     x11->width = win->width;
     x11->height = win->height;
     return 1;
@@ -399,8 +505,7 @@ static void x11_cleanup_platform(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
 
-    if (g_vgfx_cursor_window == win)
-        g_vgfx_cursor_window = NULL;
+    x11_unregister_window(win);
 
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
 
@@ -421,6 +526,10 @@ static void x11_cleanup_platform(struct vgfx_window *win) {
         if (x11->gc) {
             XFreeGC(x11->display, x11->gc);
             x11->gc = NULL;
+        }
+        if (x11->blank_cursor) {
+            XFreeCursor(x11->display, x11->blank_cursor);
+            x11->blank_cursor = 0;
         }
         if (x11->xic) {
             XDestroyIC(x11->xic);
@@ -544,8 +653,10 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     }
 
     win->platform_data = x11;
-    g_vgfx_cursor_window = win;
+    x11_register_window(win);
     x11->close_requested = 0;
+    x11->cursor_type = 0;
+    x11->cursor_visible = 1;
     x11->width = win->width;
     x11->height = win->height;
 
@@ -580,7 +691,8 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     attrs.border_pixel = 0;
     attrs.colormap = x11->colormap;
     attrs.event_mask = KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask |
-                       PointerMotionMask | ExposureMask | FocusChangeMask | StructureNotifyMask;
+                       PointerMotionMask | ExposureMask | FocusChangeMask | StructureNotifyMask |
+                       PropertyChangeMask;
 
     x11->window = XCreateWindow(x11->display,
                                 root,
@@ -648,6 +760,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     x11->clipboard_atom = XInternAtom(x11->display, "CLIPBOARD", False);
     x11->utf8_string_atom = XInternAtom(x11->display, "UTF8_STRING", False);
     x11->targets_atom = XInternAtom(x11->display, "TARGETS", False);
+    x11->incr_atom = XInternAtom(x11->display, "INCR", False);
     x11->clipboard_property_atom = XInternAtom(x11->display, "VIPERGFX_CLIPBOARD", False);
     x11->xdnd_source = 0;
     {
@@ -765,6 +878,215 @@ static Bool x11_clipboard_selection_notify_predicate(Display *display,
     return x11 && event && event->type == SelectionNotify &&
            event->xselection.requestor == x11->window &&
            event->xselection.selection == x11->clipboard_atom;
+}
+
+typedef struct {
+    vgfx_x11_data *x11;
+    Atom property;
+} x11_property_wait_t;
+
+static Bool x11_property_new_value_predicate(Display *display, XEvent *event, XPointer arg) {
+    (void)display;
+    x11_property_wait_t *wait = (x11_property_wait_t *)arg;
+    return wait && wait->x11 && event && event->type == PropertyNotify &&
+           event->xproperty.window == wait->x11->window &&
+           event->xproperty.atom == wait->property &&
+           event->xproperty.state == PropertyNewValue;
+}
+
+static int x11_append_bytes(char **result,
+                            size_t *len,
+                            size_t *cap,
+                            const unsigned char *data,
+                            size_t nitems) {
+    if (!result || !len || !cap)
+        return 0;
+    if (nitems == 0)
+        return 1;
+    if (nitems > SIZE_MAX - *len - 1u)
+        return 0;
+    size_t needed = *len + nitems + 1u;
+    if (needed > *cap) {
+        size_t new_cap = *cap ? *cap : 4096u;
+        while (new_cap < needed) {
+            if (new_cap > SIZE_MAX / 2u) {
+                new_cap = needed;
+                break;
+            }
+            new_cap *= 2u;
+        }
+        char *next = (char *)realloc(*result, new_cap);
+        if (!next)
+            return 0;
+        *result = next;
+        *cap = new_cap;
+    }
+    memcpy(*result + *len, data, nitems);
+    *len += nitems;
+    (*result)[*len] = '\0';
+    return 1;
+}
+
+static char *x11_read_incr_text_property(vgfx_x11_data *x11,
+                                         Atom property,
+                                         Atom requested_target) {
+    if (!x11 || !x11->display || property == None)
+        return NULL;
+
+    XDeleteProperty(x11->display, x11->window, property);
+    XFlush(x11->display);
+
+    char *result = NULL;
+    size_t len = 0;
+    size_t cap = 0;
+    int64_t start = vgfx_platform_now_ms();
+    x11_property_wait_t wait = {x11, property};
+
+    while (vgfx_platform_now_ms() - start < 1000) {
+        XEvent prop_event;
+        if (!XCheckIfEvent(x11->display,
+                           &prop_event,
+                           x11_property_new_value_predicate,
+                           (XPointer)&wait)) {
+            usleep(1000);
+            continue;
+        }
+
+        Atom actual_type = None;
+        int actual_format = 0;
+        unsigned long nitems = 0;
+        unsigned long bytes_after = 0;
+        unsigned char *data = NULL;
+        int status = XGetWindowProperty(x11->display,
+                                        x11->window,
+                                        property,
+                                        0,
+                                        262144,
+                                        True,
+                                        AnyPropertyType,
+                                        &actual_type,
+                                        &actual_format,
+                                        &nitems,
+                                        &bytes_after,
+                                        &data);
+        if (status != Success) {
+            if (data)
+                XFree(data);
+            free(result);
+            return NULL;
+        }
+
+        if (nitems == 0 && bytes_after == 0) {
+            if (data)
+                XFree(data);
+            if (!result) {
+                result = (char *)malloc(1u);
+                if (result)
+                    result[0] = '\0';
+            }
+            return result;
+        }
+
+        if (actual_format != 8 ||
+            !(actual_type == requested_target || actual_type == x11->utf8_string_atom ||
+              actual_type == XA_STRING)) {
+            if (data)
+                XFree(data);
+            free(result);
+            return NULL;
+        }
+
+        if (!x11_append_bytes(&result, &len, &cap, data, (size_t)nitems)) {
+            if (data)
+                XFree(data);
+            free(result);
+            return NULL;
+        }
+        if (data)
+            XFree(data);
+        start = vgfx_platform_now_ms();
+    }
+
+    free(result);
+    return NULL;
+}
+
+static char *x11_read_text_property(vgfx_x11_data *x11, Atom property, Atom requested_target) {
+    if (!x11 || !x11->display || !x11->window || property == None)
+        return NULL;
+
+    char *result = NULL;
+    size_t len = 0;
+    size_t cap = 0;
+    long offset = 0;
+    unsigned long bytes_after = 0;
+
+    do {
+        Atom actual_type = None;
+        int actual_format = 0;
+        unsigned long nitems = 0;
+        unsigned char *data = NULL;
+        int status = XGetWindowProperty(x11->display,
+                                        x11->window,
+                                        property,
+                                        offset,
+                                        262144,
+                                        False,
+                                        AnyPropertyType,
+                                        &actual_type,
+                                        &actual_format,
+                                        &nitems,
+                                        &bytes_after,
+                                        &data);
+
+        if (status != Success) {
+            if (data)
+                XFree(data);
+            free(result);
+            XDeleteProperty(x11->display, x11->window, property);
+            return NULL;
+        }
+
+        if (actual_type == x11->incr_atom) {
+            if (data)
+                XFree(data);
+            free(result);
+            return x11_read_incr_text_property(x11, property, requested_target);
+        }
+
+        if (actual_format != 8 ||
+            !(actual_type == requested_target || actual_type == x11->utf8_string_atom ||
+              actual_type == XA_STRING)) {
+            if (data)
+                XFree(data);
+            free(result);
+            XDeleteProperty(x11->display, x11->window, property);
+            return NULL;
+        }
+
+        if (nitems > 0) {
+            if (!x11_append_bytes(&result, &len, &cap, data, (size_t)nitems)) {
+                if (data)
+                    XFree(data);
+                free(result);
+                XDeleteProperty(x11->display, x11->window, property);
+                return NULL;
+            }
+        }
+
+        if (data)
+            XFree(data);
+        offset += (long)((nitems + 3ul) / 4ul);
+    } while (bytes_after > 0);
+
+    XDeleteProperty(x11->display, x11->window, property);
+
+    if (!result) {
+        result = (char *)malloc(1u);
+        if (result)
+            result[0] = '\0';
+    }
+    return result;
 }
 
 /// @brief Process pending X11 events and translate to ViperGFX events.
@@ -1022,29 +1344,11 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             case SelectionNotify: {
                 /* XDND: received selection data (file paths as text/uri-list) */
                 if (event.xselection.property == x11->xdnd_selection) {
-                    Atom actual_type;
-                    int actual_format;
-                    unsigned long nitems, bytes_after;
-                    unsigned char *data = NULL;
-                    int prop_status = XGetWindowProperty(x11->display,
-                                                         x11->window,
-                                                         x11->xdnd_selection,
-                                                         0,
-                                                         65536,
-                                                         True,
-                                                         AnyPropertyType,
-                                                         &actual_type,
-                                                         &actual_format,
-                                                         &nitems,
-                                                         &bytes_after,
-                                                         &data);
-                    (void)bytes_after;
-                    if (prop_status == Success && data && nitems > 0 && actual_format == 8 &&
-                        actual_type == x11->text_uri_list) {
-                        parse_xdnd_uri_list(win, timestamp, data, (size_t)nitems);
-                    }
-                    if (data)
-                        XFree(data);
+                    char *data = x11_read_text_property(
+                        x11, x11->xdnd_selection, x11->text_uri_list);
+                    if (data && data[0] != '\0')
+                        parse_xdnd_uri_list(win, timestamp, (const unsigned char *)data, strlen(data));
+                    free(data);
 
                     /* Send XdndFinished to complete the protocol */
                     XEvent reply = {0};
@@ -1078,6 +1382,8 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 if (x11->xic)
                     XSetICFocus(x11->xic);
                 win->is_focused = 1;
+                g_vgfx_cursor_window = win;
+                g_vgfx_clipboard_window = win;
                 vgfx_event_t vgfx_event = {.type = VGFX_EVENT_FOCUS_GAINED, .time_ms = timestamp};
                 vgfx_internal_enqueue_event(win, &vgfx_event);
                 break;
@@ -1096,15 +1402,30 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 if (event.xconfigure.width > 0 && event.xconfigure.height > 0 &&
                     (event.xconfigure.width != x11->width ||
                      event.xconfigure.height != x11->height)) {
-                    if (vgfx_internal_resize_framebuffer(
-                            win, event.xconfigure.width, event.xconfigure.height) &&
-                        x11_recreate_ximage(win)) {
+                    int32_t new_w = event.xconfigure.width;
+                    int32_t new_h = event.xconfigure.height;
+                    if (new_w > INT32_MAX / 4)
+                        break;
+                    int32_t new_stride = new_w * 4;
+                    XImage *new_image = NULL;
+                    uint8_t *new_buf = NULL;
+                    size_t new_size = 0;
+                    if (x11_create_ximage_resources(
+                            x11, new_w, new_h, new_stride, &new_image, &new_buf, &new_size) &&
+                        vgfx_internal_resize_framebuffer(win, new_w, new_h)) {
+                        x11_replace_ximage(x11, new_image, new_buf, new_size);
                         x11->width = event.xconfigure.width;
                         x11->height = event.xconfigure.height;
                         vgfx_event_t vgfx_event = {0};
                         vgfx_internal_init_resize_event(
                             &vgfx_event, win, timestamp, event.xconfigure.width, event.xconfigure.height);
                         vgfx_internal_enqueue_event(win, &vgfx_event);
+                    } else {
+                        if (new_image) {
+                            new_image->data = NULL;
+                            XDestroyImage(new_image);
+                        }
+                        free(new_buf);
                     }
                 }
                 break;
@@ -1475,6 +1796,7 @@ int32_t vgfx_platform_is_maximized(struct vgfx_window *win) {
         return 0;
     Atom wm_state_atom = XInternAtom(x11->display, "_NET_WM_STATE", False);
     Atom hz = XInternAtom(x11->display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+    Atom vt = XInternAtom(x11->display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
     Atom actual_type;
     int actual_format;
     unsigned long nitems, bytes_after;
@@ -1493,16 +1815,17 @@ int32_t vgfx_platform_is_maximized(struct vgfx_window *win) {
                                     &data);
     if (status != Success || !data)
         return 0;
-    int found = 0;
+    int found_hz = 0;
+    int found_vt = 0;
     Atom *atoms = (Atom *)data;
     for (unsigned long i = 0; i < nitems; i++) {
-        if (atoms[i] == hz) {
-            found = 1;
-            break;
-        }
+        if (atoms[i] == hz)
+            found_hz = 1;
+        else if (atoms[i] == vt)
+            found_vt = 1;
     }
     XFree(data);
-    return found;
+    return found_hz && found_vt;
 }
 
 void vgfx_platform_get_position(struct vgfx_window *win, int32_t *out_x, int32_t *out_y) {
@@ -1558,6 +1881,33 @@ void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent) {
         win->prevent_close = prevent;
 }
 
+static unsigned int x11_cursor_shape_for_type(int32_t cursor_type) {
+    switch (cursor_type) {
+        case 1:
+            return 58; // XC_hand2
+        case 2:
+            return 152; // XC_xterm
+        case 3:
+            return 108; // XC_sb_h_double_arrow
+        case 4:
+            return 116; // XC_sb_v_double_arrow
+        case 5:
+            return 150; // XC_watch
+        default:
+            return 68; // XC_left_ptr (default arrow)
+    }
+}
+
+static void x11_apply_visible_cursor(vgfx_x11_data *x11) {
+    if (!x11 || !x11->display || !x11->window)
+        return;
+    Cursor cursor = XCreateFontCursor(x11->display, x11_cursor_shape_for_type(x11->cursor_type));
+    if (!cursor)
+        return;
+    XDefineCursor(x11->display, x11->window, cursor);
+    XFreeCursor(x11->display, cursor);
+}
+
 void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type) {
     if (!win || !win->platform_data)
         return;
@@ -1565,32 +1915,28 @@ void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type) {
     if (!x11->display || !x11->window)
         return;
 
-    // Map cursor type to X11 cursor font constant
-    unsigned int shape;
-    switch (cursor_type) {
-        case 1:
-            shape = 58;
-            break; // XC_hand2
-        case 2:
-            shape = 152;
-            break; // XC_xterm
-        case 3:
-            shape = 108;
-            break; // XC_sb_h_double_arrow
-        case 4:
-            shape = 116;
-            break; // XC_sb_v_double_arrow
-        case 5:
-            shape = 150;
-            break; // XC_watch
-        default:
-            shape = 68;
-            break; // XC_left_ptr (default arrow)
-    }
-    Cursor cursor = XCreateFontCursor(x11->display, shape);
-    XDefineCursor(x11->display, x11->window, cursor);
-    XFreeCursor(x11->display, cursor);
+    x11->cursor_type = cursor_type;
+    if (!x11->cursor_visible)
+        return;
+
+    x11_apply_visible_cursor(x11);
     XFlush(x11->display);
+}
+
+static Cursor x11_blank_cursor(vgfx_x11_data *x11) {
+    if (!x11 || !x11->display || !x11->window)
+        return 0;
+    if (x11->blank_cursor)
+        return x11->blank_cursor;
+
+    Pixmap blank = XCreatePixmap(x11->display, x11->window, 1, 1, 1);
+    if (!blank)
+        return 0;
+    XColor dummy;
+    memset(&dummy, 0, sizeof(dummy));
+    x11->blank_cursor = XCreatePixmapCursor(x11->display, blank, blank, &dummy, &dummy, 0, 0);
+    XFreePixmap(x11->display, blank);
+    return x11->blank_cursor;
 }
 
 void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible) {
@@ -1600,18 +1946,14 @@ void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible) 
     if (!x11->display || !x11->window)
         return;
 
+    x11->cursor_visible = visible ? 1 : 0;
     if (visible) {
-        // Restore default cursor
-        XUndefineCursor(x11->display, x11->window);
+        x11_apply_visible_cursor(x11);
     } else {
-        // Create invisible blank cursor
-        Pixmap blank = XCreatePixmap(x11->display, x11->window, 1, 1, 1);
-        XColor dummy;
-        memset(&dummy, 0, sizeof(dummy));
-        Cursor invisible = XCreatePixmapCursor(x11->display, blank, blank, &dummy, &dummy, 0, 0);
+        Cursor invisible = x11_blank_cursor(x11);
+        if (!invisible)
+            return;
         XDefineCursor(x11->display, x11->window, invisible);
-        XFreeCursor(x11->display, invisible);
-        XFreePixmap(x11->display, blank);
     }
     XFlush(x11->display);
 }
@@ -1690,10 +2032,11 @@ int vgfx_clipboard_has_format(vgfx_clipboard_format_t format) {
 char *vgfx_clipboard_get_text(void) {
     vgfx_x11_data *x11 = NULL;
 
-    if (!g_vgfx_cursor_window || !g_vgfx_cursor_window->platform_data)
+    struct vgfx_window *owner = x11_clipboard_window();
+    if (!owner || !owner->platform_data)
         return NULL;
 
-    x11 = (vgfx_x11_data *)g_vgfx_cursor_window->platform_data;
+    x11 = (vgfx_x11_data *)owner->platform_data;
     if (!x11 || !x11->display || !x11->window)
         return NULL;
 
@@ -1725,37 +2068,9 @@ char *vgfx_clipboard_get_text(void) {
                     continue;
                 }
 
-                Atom actual_type = None;
-                int actual_format = 0;
-                unsigned long nitems = 0;
-                unsigned long bytes_after = 0;
-                unsigned char *data = NULL;
-                int status = XGetWindowProperty(x11->display,
-                                                x11->window,
-                                                x11->clipboard_property_atom,
-                                                0,
-                                                262144,
-                                                True,
-                                                AnyPropertyType,
-                                                &actual_type,
-                                                &actual_format,
-                                                &nitems,
-                                                &bytes_after,
-                                                &data);
-                (void)bytes_after;
-                if (status == Success && data && actual_format == 8 &&
-                    (actual_type == target || actual_type == x11->utf8_string_atom ||
-                     actual_type == XA_STRING)) {
-                    char *copy = (char *)malloc((size_t)nitems + 1u);
-                    if (copy) {
-                        memcpy(copy, data, (size_t)nitems);
-                        copy[nitems] = '\0';
-                    }
-                    XFree(data);
+                char *copy = x11_read_text_property(x11, x11->clipboard_property_atom, target);
+                if (copy)
                     return copy;
-                }
-                if (data)
-                    XFree(data);
                 target_done = 1;
             } else {
                 usleep(1000);
@@ -1769,10 +2084,11 @@ char *vgfx_clipboard_get_text(void) {
 void vgfx_clipboard_set_text(const char *text) {
     vgfx_x11_data *x11 = NULL;
 
-    if (!g_vgfx_cursor_window || !g_vgfx_cursor_window->platform_data)
+    struct vgfx_window *owner = x11_clipboard_window();
+    if (!owner || !owner->platform_data)
         return;
 
-    x11 = (vgfx_x11_data *)g_vgfx_cursor_window->platform_data;
+    x11 = (vgfx_x11_data *)owner->platform_data;
     if (!x11 || !x11->display || !x11->window)
         return;
 

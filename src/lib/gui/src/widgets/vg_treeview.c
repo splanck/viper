@@ -5,10 +5,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_treeview.c
+// File: lib/gui/src/widgets/vg_treeview.c
+// Purpose: Hierarchical tree-view widget with lazy loading, drag-and-drop
+//          reordering, icon support, keyboard navigation, and alternating row
+//          backgrounds.
+// Key invariants:
+//   - Every live node carries VG_TREE_NODE_MAGIC and a non-NULL owner pointer.
+//     Retired nodes carry VG_TREE_NODE_RETIRED_MAGIC with owner == NULL so that
+//     stale external handles fail vg_tree_node_is_live() safely.
+//   - Removed nodes are not freed immediately; they are placed on retired_nodes
+//     (via retired_next) and freed lazily in free_retired_nodes, which runs on
+//     vg_treeview_clear and in the vtable destroy.
+//   - scroll_y is always re-clamped after collapse and selection changes to
+//     prevent blank space at the bottom of the visible area.
+//   - drag-and-drop: drop position is classified as BEFORE/INTO/AFTER based on
+//     where in the target row's height (< 30% → BEFORE, > 70% → AFTER, else
+//     INTO); drops are vetoed by treeview_drop_is_valid.
+// Ownership/Lifetime:
+//   - vg_tree_node_t instances are allocated by vg_treeview_add_node and owned
+//     by the tree. Callers must not free nodes directly.
+//   - node->user_data is freed on retire only if owns_user_data is true.
+// Links: lib/gui/include/vg_ide_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_treeview.c - TreeView widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -72,6 +93,7 @@ static vg_widget_vtable_t g_treeview_vtable = {.destroy = treeview_destroy,
 // Helper Functions
 //=============================================================================
 
+/// @brief Recursively free a node subtree, its text, and optionally its user_data.
 static void free_node(vg_tree_node_t *node) {
     if (!node)
         return;
@@ -94,6 +116,7 @@ static void free_node(vg_tree_node_t *node) {
     free(node);
 }
 
+/// @brief Recursively stamp VG_TREE_NODE_RETIRED_MAGIC and clear all payload fields on a subtree.
 static void mark_node_subtree_retired(vg_tree_node_t *node) {
     if (!node)
         return;
@@ -114,6 +137,7 @@ static void mark_node_subtree_retired(vg_tree_node_t *node) {
     node->magic = VG_TREE_NODE_RETIRED_MAGIC;
 }
 
+/// @brief Mark node and its subtree retired and prepend them to tree->retired_nodes for deferred free.
 static void retire_node_subtree(vg_treeview_t *tree, vg_tree_node_t *node) {
     if (!tree || !node)
         return;
@@ -125,6 +149,7 @@ static void retire_node_subtree(vg_treeview_t *tree, vg_tree_node_t *node) {
     tree->retired_nodes = node;
 }
 
+/// @brief Walk tree->retired_nodes and free each retired subtree via free_node.
 static void free_retired_nodes(vg_treeview_t *tree) {
     if (!tree)
         return;
@@ -142,6 +167,7 @@ bool vg_tree_node_is_live(const vg_tree_node_t *node) {
     return node && node->magic == VG_TREE_NODE_MAGIC && node->owner != NULL;
 }
 
+/// @brief Count the total number of currently-visible (expanded) rows under node.
 static int count_visible_nodes(vg_tree_node_t *node) {
     if (!node)
         return 0;
@@ -156,6 +182,7 @@ static int count_visible_nodes(vg_tree_node_t *node) {
     return count;
 }
 
+/// @brief Return the visible node at the given 0-based display index, or NULL if out of range.
 static vg_tree_node_t *get_node_at_index(vg_tree_node_t *root, int target_index, int *current) {
     for (vg_tree_node_t *child = root->first_child; child; child = child->next_sibling) {
         if (*current == target_index) {
@@ -172,6 +199,7 @@ static vg_tree_node_t *get_node_at_index(vg_tree_node_t *root, int target_index,
     return NULL;
 }
 
+/// @brief Return the 0-based display index of target in the visible tree, or -1 if not found.
 static int get_node_index(vg_tree_node_t *root, vg_tree_node_t *target, int *current) {
     for (vg_tree_node_t *child = root->first_child; child; child = child->next_sibling) {
         if (child == target) {
@@ -188,6 +216,7 @@ static int get_node_index(vg_tree_node_t *root, vg_tree_node_t *target, int *cur
     return -1;
 }
 
+/// @brief Return true if candidate is root or any ancestor of candidate is root.
 static bool node_in_subtree(const vg_tree_node_t *root, const vg_tree_node_t *candidate) {
     if (!root || !candidate)
         return false;
@@ -199,6 +228,7 @@ static bool node_in_subtree(const vg_tree_node_t *root, const vg_tree_node_t *ca
     return false;
 }
 
+/// @brief Clamp tree->scroll_y to [0, max_scroll] where max_scroll = visible_rows * row_height - height.
 static void treeview_clamp_scroll(vg_treeview_t *tree) {
     if (!tree)
         return;
@@ -214,15 +244,18 @@ static void treeview_clamp_scroll(vg_treeview_t *tree) {
         tree->scroll_y = max_scroll;
 }
 
+/// @brief Return the current UI scale factor from the theme, defaulting to 1.0.
 static float treeview_scale(void) {
     vg_theme_t *theme = vg_theme_get_current();
     return (theme && theme->ui_scale > 0.0f) ? theme->ui_scale : 1.0f;
 }
 
+/// @brief Return scaled outer horizontal padding (10 px * ui_scale).
 static float treeview_outer_padding(void) {
     return 10.0f * treeview_scale();
 }
 
+/// @brief Recompute indent_size, icon_size, icon_gap, and row_height from current scale and font.
 static void treeview_sync_metrics(vg_treeview_t *tree) {
     if (!tree)
         return;
@@ -243,6 +276,7 @@ static void treeview_sync_metrics(vg_treeview_t *tree) {
     tree->row_height = row_height;
 }
 
+/// @brief Return the Y coordinate of the text baseline that vertically centres text in a row.
 static float treeview_text_baseline(vg_treeview_t *tree, float row_y) {
     if (!tree || !tree->font)
         return row_y;
@@ -252,6 +286,7 @@ static float treeview_text_baseline(vg_treeview_t *tree, float row_y) {
     return row_y + (tree->row_height + (float)metrics.ascent + (float)metrics.descent) / 2.0f;
 }
 
+/// @brief Return a heap-allocated copy of text, truncated with '...' if it exceeds max_width pixels.
 static char *treeview_fit_text(vg_treeview_t *tree, const char *text, float max_width) {
     if (!text)
         return strdup("");
@@ -286,6 +321,7 @@ static char *treeview_fit_text(vg_treeview_t *tree, const char *text, float max_
     return buf;
 }
 
+/// @brief Encode a Unicode codepoint into a NUL-terminated UTF-8 sequence (out must be 8 bytes).
 static void treeview_encode_glyph(uint32_t codepoint, char out[8]) {
     if (!out)
         return;
@@ -308,6 +344,7 @@ static void treeview_encode_glyph(uint32_t codepoint, char out[8]) {
     }
 }
 
+/// @brief Draw a node's icon (or loading dots) centred vertically in the icon slot.
 static void treeview_paint_icon(vg_treeview_t *tree,
                                 void *canvas,
                                 vg_tree_node_t *node,
@@ -363,6 +400,14 @@ static void treeview_paint_icon(vg_treeview_t *tree,
 // TreeView Implementation
 //=============================================================================
 
+/// @brief Create a tree view widget, optionally as a child of parent.
+///
+/// @details Allocates a vg_treeview_t, initialises a hidden sentinel root node
+///          (depth = -1, always expanded), seeds metrics from the current theme,
+///          and adds the widget to parent if non-NULL.
+///
+/// @param parent Optional parent widget to attach to; may be NULL.
+/// @return       Heap-allocated tree view, or NULL on allocation failure.
 vg_treeview_t *vg_treeview_create(vg_widget_t *parent) {
     vg_treeview_t *tree = calloc(1, sizeof(vg_treeview_t));
     if (!tree)
@@ -424,6 +469,7 @@ vg_treeview_t *vg_treeview_create(vg_widget_t *parent) {
     return tree;
 }
 
+/// @brief vtable destroy — frees the root node tree and all retired nodes.
 static void treeview_destroy(vg_widget_t *widget) {
     vg_treeview_t *tree = (vg_treeview_t *)widget;
 
@@ -434,6 +480,7 @@ static void treeview_destroy(vg_widget_t *widget) {
     free_retired_nodes(tree);
 }
 
+/// @brief vtable measure — measured_width fills available_width; measured_height is total content height.
 static void treeview_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_treeview_t *tree = (vg_treeview_t *)widget;
 
@@ -456,6 +503,7 @@ static void treeview_measure(vg_widget_t *widget, float available_width, float a
     }
 }
 
+/// @brief Recursively paint all visible child rows of node, advancing *y by row_height each step.
 static void paint_node(
     vg_treeview_t *tree, void *canvas, vg_tree_node_t *node, float x, float *y, float width) {
     vg_theme_t *theme = vg_theme_get_current();
@@ -609,6 +657,7 @@ static void paint_node(
     }
 }
 
+/// @brief vtable paint — fills background, clips, then recursively paints all nodes.
 static void treeview_paint(vg_widget_t *widget, void *canvas) {
     vg_treeview_t *tree = (vg_treeview_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -642,6 +691,7 @@ static void treeview_paint(vg_widget_t *widget, void *canvas) {
                                                  : theme->colors.border_primary);
 }
 
+/// @brief Find the visible node whose row covers content-space Y coordinate target_y.
 static vg_tree_node_t *find_node_at_y(vg_treeview_t *tree,
                                       vg_tree_node_t *node,
                                       float target_y,
@@ -665,6 +715,7 @@ static vg_tree_node_t *find_node_at_y(vg_treeview_t *tree,
     return NULL;
 }
 
+/// @brief Return true if dropping source onto target at position is allowed by the can_drop callback.
 static bool treeview_drop_is_valid(vg_treeview_t *tree,
                                    vg_tree_node_t *source,
                                    vg_tree_node_t *target,
@@ -678,6 +729,7 @@ static bool treeview_drop_is_valid(vg_treeview_t *tree,
     return true;
 }
 
+/// @brief Recompute drop_target and drop_position based on the cursor's local Y in a drag operation.
 static void treeview_update_drop_target(vg_treeview_t *tree, float local_y) {
     if (!tree || !tree->is_dragging || !tree->drag_node) {
         if (tree) {
@@ -713,6 +765,7 @@ static void treeview_update_drop_target(vg_treeview_t *tree, float local_y) {
     tree->drop_position = position;
 }
 
+/// @brief vtable handle_event — routes mouse, scroll, keyboard, and drag-drop events.
 static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_treeview_t *tree = (vg_treeview_t *)widget;
 
@@ -897,6 +950,7 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
     return false;
 }
 
+/// @brief vtable can_focus — returns true when the widget is both enabled and visible.
 static bool treeview_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
@@ -905,10 +959,25 @@ static bool treeview_can_focus(vg_widget_t *widget) {
 // TreeView API
 //=============================================================================
 
+/// @brief Return the hidden sentinel root node of the tree.
+///
+/// @param tree The tree view to query; may be NULL (returns NULL).
+/// @return     Internal root node; pass as parent to vg_treeview_add_node for top-level items.
 vg_tree_node_t *vg_treeview_get_root(vg_treeview_t *tree) {
     return tree ? tree->root : NULL;
 }
 
+/// @brief Add a new text node as the last child of parent (or of root if parent is NULL).
+///
+/// @details Allocates a vg_tree_node_t, stamps VG_TREE_NODE_MAGIC, copies text,
+///          links the node into parent's child list, and triggers layout/paint.
+///          parent must be live and belong to tree; an invalid parent causes the
+///          new node to be freed and NULL returned.
+///
+/// @param tree   The tree view that will own the node; may be NULL (returns NULL).
+/// @param parent Parent node, or NULL to append at the root level.
+/// @param text   Display text; copied internally.
+/// @return       New node handle, or NULL on allocation failure or invalid parent.
 vg_tree_node_t *vg_treeview_add_node(vg_treeview_t *tree,
                                      vg_tree_node_t *parent,
                                      const char *text) {
@@ -956,7 +1025,14 @@ vg_tree_node_t *vg_treeview_add_node(vg_treeview_t *tree,
     return node;
 }
 
-/// @brief Treeview remove node.
+/// @brief Remove a node and its entire subtree from the tree, retiring them for deferred free.
+///
+/// @details Clears selection, hovered, drag, and drop references that point into the
+///          removed subtree. Unlinks node from its parent's child list and retires the
+///          subtree; the freed memory is deferred until free_retired_nodes runs.
+///
+/// @param tree The owning tree view; may be NULL (no-op).
+/// @param node The node to remove; must be live, owned by tree, and not the root.
 void vg_treeview_remove_node(vg_treeview_t *tree, vg_tree_node_t *node) {
     if (!tree || !vg_tree_node_is_live(node) || node->owner != tree || node == tree->root)
         return;
@@ -999,7 +1075,13 @@ void vg_treeview_remove_node(vg_treeview_t *tree, vg_tree_node_t *node) {
     tree->base.needs_paint = true;
 }
 
-/// @brief Treeview clear.
+/// @brief Remove all nodes from the tree, retiring them for deferred free.
+///
+/// @details All children of root are retired (stale external handles become
+///          safely inert via the magic-field check). Selection, hover, and
+///          scroll state are reset to zero.
+///
+/// @param tree The tree view to clear; may be NULL.
 void vg_treeview_clear(vg_treeview_t *tree) {
     if (!tree)
         return;
@@ -1026,7 +1108,14 @@ void vg_treeview_clear(vg_treeview_t *tree) {
     tree->base.needs_paint = true;
 }
 
-/// @brief Treeview expand.
+/// @brief Expand node to show its children, triggering lazy load if needed.
+///
+/// @details If node has has_children set but no actual child nodes, fires
+///          on_load_children to populate them and sets node->loading = true
+///          until the callback completes. Always fires on_expand(true) if set.
+///
+/// @param tree The owning tree view; may be NULL.
+/// @param node The node to expand; must be live and owned by tree.
 void vg_treeview_expand(vg_treeview_t *tree, vg_tree_node_t *node) {
     if (!tree || !vg_tree_node_is_live(node) || node->owner != tree)
         return;
@@ -1049,7 +1138,13 @@ void vg_treeview_expand(vg_treeview_t *tree, vg_tree_node_t *node) {
     }
 }
 
-/// @brief Treeview collapse.
+/// @brief Collapse node to hide its children, re-clamping scroll_y.
+///
+/// @details Calls treeview_clamp_scroll after collapsing so blank space at the
+///          bottom of the view is eliminated. Fires on_expand(false) if set.
+///
+/// @param tree The owning tree view; may be NULL.
+/// @param node The node to collapse; must be live and owned by tree.
 void vg_treeview_collapse(vg_treeview_t *tree, vg_tree_node_t *node) {
     if (!tree || !vg_tree_node_is_live(node) || node->owner != tree)
         return;
@@ -1070,7 +1165,10 @@ void vg_treeview_collapse(vg_treeview_t *tree, vg_tree_node_t *node) {
     }
 }
 
-/// @brief Treeview toggle.
+/// @brief Toggle a node's expanded state — expands if collapsed, collapses if expanded.
+///
+/// @param tree The owning tree view; may be NULL.
+/// @param node The node to toggle; must be live and owned by tree.
 void vg_treeview_toggle(vg_treeview_t *tree, vg_tree_node_t *node) {
     if (!tree || !vg_tree_node_is_live(node) || node->owner != tree)
         return;
@@ -1082,7 +1180,14 @@ void vg_treeview_toggle(vg_treeview_t *tree, vg_tree_node_t *node) {
     }
 }
 
-/// @brief Treeview select.
+/// @brief Select a node, updating visual state and firing the on_select callback.
+///
+/// @details Deselects the previously-selected node, selects node (or clears
+///          selection if NULL), scrolls to keep the node visible, and fires
+///          on_select if the selection changed. Passing NULL clears the selection.
+///
+/// @param tree The owning tree view; may be NULL.
+/// @param node Node to select; must be live and owned by tree, or NULL to deselect.
 void vg_treeview_select(vg_treeview_t *tree, vg_tree_node_t *node) {
     if (!tree)
         return;
@@ -1108,7 +1213,14 @@ void vg_treeview_select(vg_treeview_t *tree, vg_tree_node_t *node) {
     }
 }
 
-/// @brief Treeview scroll to.
+/// @brief Scroll the view so node is visible, adjusting scroll_y minimally.
+///
+/// @details If node's row top is above the viewport, scrolls up to it. If the
+///          row bottom is below the viewport, scrolls down to show it. Does nothing
+///          if node is already fully visible.
+///
+/// @param tree The owning tree view; may be NULL.
+/// @param node The node to bring into view; must be live and owned by tree.
 void vg_treeview_scroll_to(vg_treeview_t *tree, vg_tree_node_t *node) {
     if (!tree || !vg_tree_node_is_live(node) || node->owner != tree)
         return;
@@ -1132,7 +1244,13 @@ void vg_treeview_scroll_to(vg_treeview_t *tree, vg_tree_node_t *node) {
     tree->base.needs_paint = true;
 }
 
-/// @brief Tree node set data.
+/// @brief Associate arbitrary user data with a node (not owned — caller manages lifetime).
+///
+/// @details Frees any previously set user data if owns_user_data was true, then
+///          stores data with owns_user_data = false so the caller retains ownership.
+///
+/// @param node The node to update; must be live.
+/// @param data Caller-owned pointer; not freed on retire.
 void vg_tree_node_set_data(vg_tree_node_t *node, void *data) {
     if (!vg_tree_node_is_live(node))
         return;
@@ -1144,7 +1262,11 @@ void vg_tree_node_set_data(vg_tree_node_t *node, void *data) {
     node->owns_user_data = false;
 }
 
-/// @brief Treeview set font.
+/// @brief Set the font and size for all node labels, then resync layout metrics.
+///
+/// @param tree The tree view to configure; may be NULL.
+/// @param font Font to use for labels; NULL resets to default.
+/// @param size Font size in points; if <= 0, the theme's normal size is used.
 void vg_treeview_set_font(vg_treeview_t *tree, vg_font_t *font, float size) {
     if (!tree)
         return;
@@ -1156,7 +1278,11 @@ void vg_treeview_set_font(vg_treeview_t *tree, vg_font_t *font, float size) {
     tree->base.needs_paint = true;
 }
 
-/// @brief Treeview set on select.
+/// @brief Register the callback fired when the selected node changes.
+///
+/// @param tree      The tree view to configure; may be NULL.
+/// @param callback  Called with (widget, node, user_data) on selection change; NULL to clear.
+/// @param user_data Opaque pointer forwarded to the callback.
 void vg_treeview_set_on_select(vg_treeview_t *tree,
                                vg_tree_select_callback_t callback,
                                void *user_data) {
@@ -1167,7 +1293,11 @@ void vg_treeview_set_on_select(vg_treeview_t *tree,
     tree->on_select_data = user_data;
 }
 
-/// @brief Treeview set on expand.
+/// @brief Register the callback fired when a node is expanded or collapsed.
+///
+/// @param tree      The tree view to configure; may be NULL.
+/// @param callback  Called with (widget, node, expanded, user_data); NULL to clear.
+/// @param user_data Opaque pointer forwarded to the callback.
 void vg_treeview_set_on_expand(vg_treeview_t *tree,
                                vg_tree_expand_callback_t callback,
                                void *user_data) {
@@ -1178,7 +1308,11 @@ void vg_treeview_set_on_expand(vg_treeview_t *tree,
     tree->on_expand_data = user_data;
 }
 
-/// @brief Treeview set on activate.
+/// @brief Register the callback fired when a node is double-clicked or Enter is pressed.
+///
+/// @param tree      The tree view to configure; may be NULL.
+/// @param callback  Called with (widget, node, user_data) on activation; NULL to clear.
+/// @param user_data Opaque pointer forwarded to the callback.
 void vg_treeview_set_on_activate(vg_treeview_t *tree,
                                  vg_tree_activate_callback_t callback,
                                  void *user_data) {
@@ -1193,13 +1327,20 @@ void vg_treeview_set_on_activate(vg_treeview_t *tree,
 // Icon Support
 //=============================================================================
 
+/// @brief Set the icon displayed when the node is collapsed (or always, if no expanded_icon is set).
+///
+/// @param node The node to update; must be live.
+/// @param icon Icon value; VG_ICON_NONE removes the icon.
 void vg_tree_node_set_icon(vg_tree_node_t *node, vg_icon_t icon) {
     if (!vg_tree_node_is_live(node))
         return;
     node->icon = icon;
 }
 
-/// @brief Tree node set expanded icon.
+/// @brief Set the icon displayed when the node is expanded; overrides the base icon when visible.
+///
+/// @param node The node to update; must be live.
+/// @param icon Icon shown when node->expanded is true; VG_ICON_NONE falls back to the base icon.
 void vg_tree_node_set_expanded_icon(vg_tree_node_t *node, vg_icon_t icon) {
     if (!vg_tree_node_is_live(node))
         return;
@@ -1210,13 +1351,23 @@ void vg_tree_node_set_expanded_icon(vg_tree_node_t *node, vg_icon_t icon) {
 // Drag and Drop
 //=============================================================================
 
+/// @brief Enable or disable drag-and-drop reordering in the tree view.
+///
+/// @param tree    The tree view to configure; may be NULL.
+/// @param enabled true to allow node dragging (requires drag callbacks to be set).
 void vg_treeview_set_drag_enabled(vg_treeview_t *tree, bool enabled) {
     if (!tree)
         return;
     tree->drag_enabled = enabled;
 }
 
-/// @brief Treeview set drag callbacks.
+/// @brief Set all drag-and-drop callbacks and user data in one call.
+///
+/// @param tree      The tree view to configure; may be NULL.
+/// @param can_drag  Predicate: return true if a node is draggable; NULL allows all.
+/// @param can_drop  Predicate: return true if (source, target, position) is a valid drop; NULL allows all.
+/// @param on_drop   Called when a drop is confirmed with (source, target, position, user_data).
+/// @param user_data Opaque pointer forwarded to all three callbacks.
 void vg_treeview_set_drag_callbacks(vg_treeview_t *tree,
                                     vg_tree_can_drag_callback_t can_drag,
                                     vg_tree_can_drop_callback_t can_drop,
@@ -1235,6 +1386,14 @@ void vg_treeview_set_drag_callbacks(vg_treeview_t *tree,
 // Lazy Loading
 //=============================================================================
 
+/// @brief Register the callback invoked when an unexpanded node with has_children is expanded.
+///
+/// @details The callback should call vg_treeview_add_node to populate children and then
+///          set node->loading = false and trigger a repaint.
+///
+/// @param tree      The tree view to configure; may be NULL.
+/// @param callback  Called with (tree, node, user_data) on lazy-expand; NULL to disable.
+/// @param user_data Opaque pointer forwarded to the callback.
 void vg_treeview_set_on_load_children(vg_treeview_t *tree,
                                       vg_tree_load_children_callback_t callback,
                                       void *user_data) {
@@ -1245,14 +1404,26 @@ void vg_treeview_set_on_load_children(vg_treeview_t *tree,
     tree->on_load_children_data = user_data;
 }
 
-/// @brief Tree node set has children.
+/// @brief Mark a node as having children without actually adding any, enabling the expand arrow.
+///
+/// @details When has_children is true and the node is expanded, the lazy-load
+///          callback fires if no children have been added yet.
+///
+/// @param node        The node to update; must be live.
+/// @param has_children true to show the expand arrow even if child_count is zero.
 void vg_tree_node_set_has_children(vg_tree_node_t *node, bool has_children) {
     if (!vg_tree_node_is_live(node))
         return;
     node->has_children = has_children;
 }
 
-/// @brief Tree node set loading.
+/// @brief Set the loading animation state for a node.
+///
+/// @details When true, the node's icon slot shows three animated dots instead of
+///          the normal icon, indicating an async child-load is in progress.
+///
+/// @param node    The node to update; must be live.
+/// @param loading true to show the loading animation; false when children are ready.
 void vg_tree_node_set_loading(vg_tree_node_t *node, bool loading) {
     if (!vg_tree_node_is_live(node))
         return;

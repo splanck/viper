@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/peephole/BranchOpt.cpp
+// File: codegen/aarch64/peephole/BranchOpt.cpp
 // Purpose: Branch optimizations for the AArch64 peephole optimizer: CBZ/CBNZ
 //          fusion, cset branch fusion, block reordering, and condition
 //          inversion.
@@ -17,7 +17,7 @@
 // Ownership/Lifetime:
 //   - Operates on mutable MFunction/instruction vectors owned by the caller.
 //
-// Links: src/codegen/aarch64/Peephole.hpp
+// Links: codegen/aarch64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 

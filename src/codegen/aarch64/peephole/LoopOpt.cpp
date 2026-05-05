@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/peephole/LoopOpt.cpp
+// File: codegen/aarch64/peephole/LoopOpt.cpp
 // Purpose: Loop-invariant constant hoisting for the AArch64 peephole optimizer.
 //
 // Key invariants:
@@ -16,7 +16,7 @@
 // Ownership/Lifetime:
 //   - Operates on mutable MFunction owned by the caller.
 //
-// Links: src/codegen/aarch64/Peephole.hpp
+// Links: codegen/aarch64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -38,13 +38,23 @@ namespace {
            phys <= static_cast<uint32_t>(PhysReg::X28);
 }
 
+/// @brief A single register-to-register copy to be inserted on a loop back-edge
+///        in place of a removed phi-slot store+load round-trip.
 struct EdgeMove {
-    std::size_t storeInstrIdx;
-    MOperand srcReg;
-    MOperand dstReg;
-    RegClass cls;
+    std::size_t storeInstrIdx; ///< Index of the phi store instruction being removed.
+    MOperand srcReg;           ///< Source physical register (the store's source).
+    MOperand dstReg;           ///< Destination physical register (the load's destination).
+    RegClass cls;              ///< GPR or FPR — selects MovRR vs FMovRR opcode.
 };
 
+/// @brief Order a set of parallel register moves so that no destination is overwritten
+///        before its value has been read as a source.
+/// @details Implements a greedy topological sort: each iteration picks a move whose
+///          destination is not used as a source by any remaining move. Returns false
+///          if the move set contains a cycle (which would require a scratch register).
+/// @param moves   Unordered set of parallel edge moves to sequence.
+/// @param ordered Output: moves in safe emission order (cleared on entry).
+/// @return true if a safe ordering was found; false if a register cycle was detected.
 [[nodiscard]] bool orderEdgeMoves(const std::vector<EdgeMove> &moves,
                                   std::vector<EdgeMove> &ordered) {
     ordered.clear();

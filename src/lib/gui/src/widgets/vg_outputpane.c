@@ -5,10 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_outputpane.c
+// File: lib/gui/src/widgets/vg_outputpane.c
+// Purpose: Output pane widget — an append-only, ANSI-aware terminal-style log
+//          view with styled segments, selection, and auto-scroll behaviour.
+// Key invariants:
+//   - lines[] is a flat ring buffer capped at max_lines; when full, the oldest
+//     entry is evicted via memmove and selection coordinates are adjusted.
+//   - Each vg_output_line_t holds a dynamic array of vg_styled_segment_t, each
+//     owning its text via strdup/malloc; freed in free_output_line.
+//   - ANSI escape state (in_escape, escape_buf, current_fg/bg, ansi_bold) is
+//     preserved across append calls so multi-chunk writes render correctly.
+//   - scroll_locked is set when the user scrolls up; auto_scroll is suppressed
+//     until scroll_locked is cleared by vg_outputpane_scroll_to_bottom.
+//   - sel_start/end coordinates are absolute line indices into lines[]; they are
+//     decremented by outputpane_note_evicted_first_line on each eviction.
+// Ownership/Lifetime:
+//   - pane->lines and every segment text pointer are heap-allocated and freed in
+//     outputpane_destroy / vg_outputpane_clear.
+//   - The widget does not own the linked vg_font_t.
+// Links: lib/gui/include/vg_ide_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_outputpane.c - Output Pane widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -67,6 +86,7 @@ static const uint32_t g_ansi_bright_colors[] = {
     0xFFFFFFFF, // Bright White
 };
 
+/// @brief Map an ANSI SGR color code to a packed AARRGGBB value.
 static uint32_t ansi_code_to_color(int code) {
     if (code >= 30 && code <= 37) {
         return g_ansi_colors[code - 30];
@@ -76,12 +96,14 @@ static uint32_t ansi_code_to_color(int code) {
     return 0xFFCCCCCC; // Default
 }
 
+/// @brief VTable set_font trampoline — forwards to vg_outputpane_set_font.
 static void outputpane_set_font_widget(vg_widget_t *widget, void *font, float size) {
     if (!widget || !font)
         return;
     vg_outputpane_set_font((vg_outputpane_t *)widget, (vg_font_t *)font, size);
 }
 
+/// @brief Return the total character count across all segments of a line.
 static size_t outputpane_line_length(const vg_output_line_t *line) {
     size_t len = 0;
     if (!line)
@@ -93,6 +115,7 @@ static size_t outputpane_line_length(const vg_output_line_t *line) {
     return len;
 }
 
+/// @brief Measure the pixel width of the text in a line up to target_col characters.
 static float outputpane_prefix_width(vg_outputpane_t *pane,
                                      const vg_output_line_t *line,
                                      uint32_t target_col) {
@@ -138,6 +161,7 @@ static float outputpane_prefix_width(vg_outputpane_t *pane,
 // Output Line Management
 //=============================================================================
 
+/// @brief Free all segment text buffers and the segments array owned by line.
 static void free_output_line(vg_output_line_t *line) {
     if (!line)
         return;
@@ -148,6 +172,30 @@ static void free_output_line(vg_output_line_t *line) {
     free(line->segments);
 }
 
+/// @brief Reset all selection state fields to the unselected state.
+static void outputpane_clear_selection(vg_outputpane_t *pane) {
+    if (!pane)
+        return;
+    pane->has_selection = false;
+    pane->sel_start_line = 0;
+    pane->sel_start_col = 0;
+    pane->sel_end_line = 0;
+    pane->sel_end_col = 0;
+}
+
+/// @brief Adjust or clear selection coordinates after the first line is evicted.
+static void outputpane_note_evicted_first_line(vg_outputpane_t *pane) {
+    if (!pane || !pane->has_selection)
+        return;
+    if (pane->sel_start_line == 0 || pane->sel_end_line == 0) {
+        outputpane_clear_selection(pane);
+        return;
+    }
+    pane->sel_start_line--;
+    pane->sel_end_line--;
+}
+
+/// @brief Append and return a zeroed segment slot to line, growing the array if needed.
 static vg_styled_segment_t *add_segment(vg_output_line_t *line) {
     if (line->segment_count >= line->segment_capacity) {
         size_t new_cap = line->segment_capacity * 2;
@@ -166,11 +214,16 @@ static vg_styled_segment_t *add_segment(vg_output_line_t *line) {
     return seg;
 }
 
+/// @brief Append a new empty line to pane, evicting the oldest if the ring buffer is full.
 static vg_output_line_t *add_line(vg_outputpane_t *pane) {
+    if (!pane || pane->max_lines == 0)
+        return NULL;
+
     // Check if we need to wrap around (ring buffer)
     if (pane->line_count >= pane->max_lines) {
         // Free oldest line
         free_output_line(&pane->lines[0]);
+        outputpane_note_evicted_first_line(pane);
         // Shift all lines down
         memmove(
             &pane->lines[0], &pane->lines[1], (pane->line_count - 1) * sizeof(vg_output_line_t));
@@ -200,6 +253,7 @@ static vg_output_line_t *add_line(vg_outputpane_t *pane) {
 // ANSI Parser
 //=============================================================================
 
+/// @brief Apply the buffered ANSI SGR escape sequence to pane's current color/bold state.
 static void process_ansi_escape(vg_outputpane_t *pane) {
     // Parse escape sequence: ESC[<params>m
     // Common codes:
@@ -260,6 +314,13 @@ static void process_ansi_escape(vg_outputpane_t *pane) {
 // OutputPane Implementation
 //=============================================================================
 
+/// @brief Create an output pane widget with default colours and a 10 000-line ring buffer.
+///
+/// @details Default background is dark grey (0xFF1E1E1E) and foreground is light grey
+///          (0xFFCCCCCC).  auto_scroll is enabled.  Attach a font with
+///          vg_outputpane_set_font before appending any text.
+///
+/// @return Newly allocated vg_outputpane_t, or NULL on allocation failure.
 vg_outputpane_t *vg_outputpane_create(void) {
     vg_outputpane_t *pane = calloc(1, sizeof(vg_outputpane_t));
     if (!pane)
@@ -291,7 +352,9 @@ static void outputpane_destroy(vg_widget_t *widget) {
     free(pane->lines);
 }
 
-/// @brief Outputpane destroy.
+/// @brief Destroy the output pane widget, freeing all lines and segment text buffers.
+///
+/// @param pane The output pane to destroy; may be NULL.
 void vg_outputpane_destroy(vg_outputpane_t *pane) {
     if (!pane)
         return;
@@ -453,7 +516,15 @@ static bool outputpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
     return false;
 }
 
-/// @brief Outputpane append.
+/// @brief Append a UTF-8 string to the output pane, interpreting ANSI SGR escape sequences.
+///
+/// @details Newlines split the current line and begin a new one.  Escape sequences update
+///          the current foreground/background/bold state carried into subsequent segments.
+///          ANSI state is preserved across calls, so multi-chunk appends render correctly.
+///          Auto-scrolls to the bottom unless scroll_locked is set.
+///
+/// @param pane The output pane to append to.
+/// @param text UTF-8 text to append; may be NULL (no-op).
 void vg_outputpane_append(vg_outputpane_t *pane, const char *text) {
     if (!pane || !text)
         return;
@@ -560,31 +631,49 @@ void vg_outputpane_append(vg_outputpane_t *pane, const char *text) {
     pane->base.needs_paint = true;
 }
 
-/// @brief Outputpane append line.
+/// @brief Append text as a complete new line, ensuring it lands on its own row.
+///
+/// @details If the last line already contains content a new blank line is inserted
+///          first, then text is appended via vg_outputpane_append.  A trailing
+///          blank line is also added after the content so subsequent appends begin
+///          on a fresh line.
+///
+/// @param pane The output pane to append to.
+/// @param text Text to append as a new line; NULL appends an empty line.
 void vg_outputpane_append_line(vg_outputpane_t *pane, const char *text) {
     if (!pane)
         return;
 
-    // Always create new line
-    vg_output_line_t *line = add_line(pane);
-    if (!line)
-        return;
-
-    if (text && *text) {
-        // Use append to handle ANSI codes
-        size_t len = strlen(text);
-        char *with_newline = malloc(len + 2);
-        if (with_newline) {
-            memcpy(with_newline, text, len);
-            with_newline[len] = '\n';
-            with_newline[len + 1] = '\0';
-            vg_outputpane_append(pane, with_newline);
-            free(with_newline);
-        }
+    if (pane->line_count == 0) {
+        if (!add_line(pane))
+            return;
+    } else if (outputpane_line_length(&pane->lines[pane->line_count - 1]) > 0) {
+        if (!add_line(pane))
+            return;
     }
+
+    if (text && *text)
+        vg_outputpane_append(pane, text);
+
+    if (pane->max_lines > 1)
+        (void)add_line(pane);
+
+    if (pane->auto_scroll && !pane->scroll_locked)
+        vg_outputpane_scroll_to_bottom(pane);
+    pane->base.needs_paint = true;
 }
 
-/// @brief Outputpane append styled.
+/// @brief Append a pre-styled text segment without ANSI parsing.
+///
+/// @details The entire text string is added as a single styled segment with the
+///          given colours and bold flag.  No newline splitting or ANSI processing
+///          is performed — use vg_outputpane_append for that.
+///
+/// @param pane The output pane to append to.
+/// @param text Text to append; may be NULL (no-op).
+/// @param fg   Foreground colour as AARRGGBB.
+/// @param bg   Background colour as AARRGGBB (0 = transparent).
+/// @param bold true to render the segment in bold.
 void vg_outputpane_append_styled(
     vg_outputpane_t *pane, const char *text, uint32_t fg, uint32_t bg, bool bold) {
     if (!pane || !text)
@@ -616,7 +705,9 @@ void vg_outputpane_append_styled(
     pane->base.needs_paint = true;
 }
 
-/// @brief Outputpane clear.
+/// @brief Remove all lines, reset ANSI state, and scroll back to the top.
+///
+/// @param pane The output pane to clear; may be NULL.
 void vg_outputpane_clear(vg_outputpane_t *pane) {
     if (!pane)
         return;
@@ -636,11 +727,14 @@ void vg_outputpane_clear(vg_outputpane_t *pane) {
     // Reset scroll
     pane->scroll_y = 0;
     pane->scroll_locked = false;
+    outputpane_clear_selection(pane);
 
     pane->base.needs_paint = true;
 }
 
-/// @brief Outputpane scroll to bottom.
+/// @brief Scroll the output pane to the last line and clear scroll_locked.
+///
+/// @param pane The output pane to scroll; may be NULL.
 void vg_outputpane_scroll_to_bottom(vg_outputpane_t *pane) {
     if (!pane)
         return;
@@ -655,7 +749,9 @@ void vg_outputpane_scroll_to_bottom(vg_outputpane_t *pane) {
     pane->base.needs_paint = true;
 }
 
-/// @brief Outputpane scroll to top.
+/// @brief Scroll the output pane to the first line and set scroll_locked.
+///
+/// @param pane The output pane to scroll; may be NULL.
 void vg_outputpane_scroll_to_top(vg_outputpane_t *pane) {
     if (!pane)
         return;
@@ -665,14 +761,24 @@ void vg_outputpane_scroll_to_top(vg_outputpane_t *pane) {
     pane->base.needs_paint = true;
 }
 
-/// @brief Outputpane set auto scroll.
+/// @brief Enable or disable automatic scrolling to the bottom on new content.
+///
+/// @param pane        The output pane to configure; may be NULL.
+/// @param auto_scroll true to auto-scroll on append; false to keep the current position.
 void vg_outputpane_set_auto_scroll(vg_outputpane_t *pane, bool auto_scroll) {
     if (!pane)
         return;
     pane->auto_scroll = auto_scroll;
 }
 
-/// @brief Outputpane get selection.
+/// @brief Return a heap-allocated string containing the currently selected text.
+///
+/// @details Lines in the selection are joined with newline characters.  The
+///          caller is responsible for freeing the returned string.
+///
+/// @param pane The output pane to query.
+/// @return Heap-allocated UTF-8 string, or NULL if there is no selection or on
+///         allocation failure.
 char *vg_outputpane_get_selection(vg_outputpane_t *pane) {
     if (!pane || !pane->has_selection || pane->line_count == 0)
         return NULL;
@@ -751,7 +857,9 @@ char *vg_outputpane_get_selection(vg_outputpane_t *pane) {
     return buf;
 }
 
-/// @brief Outputpane select all.
+/// @brief Select all text in the output pane from the first to the last line.
+///
+/// @param pane The output pane to update; may be NULL.
 void vg_outputpane_select_all(vg_outputpane_t *pane) {
     if (!pane || pane->line_count == 0)
         return;
@@ -765,14 +873,36 @@ void vg_outputpane_select_all(vg_outputpane_t *pane) {
     pane->base.needs_paint = true;
 }
 
-/// @brief Outputpane set max lines.
+/// @brief Set the maximum number of lines retained in the ring buffer.
+///
+/// @details If the current line count exceeds max, the oldest lines are evicted
+///          immediately.  Minimum effective value is 1.
+///
+/// @param pane The output pane to configure; may be NULL.
+/// @param max  Maximum number of lines to retain; 0 is clamped to 1.
 void vg_outputpane_set_max_lines(vg_outputpane_t *pane, size_t max) {
     if (!pane)
         return;
+    if (max == 0)
+        max = 1;
     pane->max_lines = max;
+    while (pane->line_count > pane->max_lines) {
+        free_output_line(&pane->lines[0]);
+        outputpane_note_evicted_first_line(pane);
+        memmove(
+            &pane->lines[0], &pane->lines[1], (pane->line_count - 1) * sizeof(vg_output_line_t));
+        pane->line_count--;
+    }
+    if (pane->line_capacity > pane->max_lines)
+        pane->line_capacity = pane->max_lines;
+    pane->base.needs_paint = true;
 }
 
-/// @brief Outputpane set font.
+/// @brief Set the font used to measure and render text in the output pane.
+///
+/// @param pane The output pane to configure; may be NULL.
+/// @param font The font to use; must outlive the pane.
+/// @param size Point size for text rendering.
 void vg_outputpane_set_font(vg_outputpane_t *pane, vg_font_t *font, float size) {
     if (!pane)
         return;

@@ -7,12 +7,16 @@
 //
 // File: codegen/x86_64/MachineIR.hpp
 // Purpose: Declare the minimal Machine IR representation for x86-64 codegen.
-// Key invariants: Operand lists preserve emission order; virtual registers are
-//                 unique per function (ids start at 1); physical registers use
-//                 PhysReg enum values; block labels are unique within a function.
-// Ownership/Lifetime: All IR nodes own their contained data outright via value
-//                     semantics (vectors, strings); no external resource ownership.
-// Links: docs/architecture.md
+// Key invariants:
+//   - Operand lists preserve emission order.
+//   - Virtual register IDs are unique per function, starting at 1.
+//   - Physical registers use PhysReg enum values.
+//   - Block labels are unique within a function.
+// Ownership/Lifetime:
+//   - All IR nodes own their contained data via value semantics (vectors,
+//     strings); no external resource ownership.
+// Links: codegen/x86_64/MachineIR.cpp,
+//        codegen/x86_64/TargetX64.hpp
 //
 //===----------------------------------------------------------------------===//
 

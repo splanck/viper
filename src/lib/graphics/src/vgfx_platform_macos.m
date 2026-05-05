@@ -42,6 +42,8 @@
 #include <mach/mach_time.h>
 #include <time.h>
 
+static int g_vgfx_macos_cursor_hidden = 0;
+
 //===----------------------------------------------------------------------===//
 // Forward Declarations
 //===----------------------------------------------------------------------===//
@@ -123,21 +125,8 @@ static void macos_event_location_to_physical(struct vgfx_window *win,
                                              int32_t *out_x,
                                              int32_t *out_y) {
     float sf = (win && win->scale_factor > 0.0f) ? win->scale_factor : 1.0f;
-    int32_t width = vgfx_internal_round_scaled((float)content_rect.size.width * sf);
-    int32_t height = vgfx_internal_round_scaled((float)content_rect.size.height * sf);
-    int32_t max_x = width > 0 ? width - 1 : 0;
-    int32_t max_y = height > 0 ? height - 1 : 0;
-
     int32_t x = vgfx_internal_round_scaled((float)location.x * sf);
     int32_t y = vgfx_internal_round_scaled((float)(content_rect.size.height - location.y) * sf) - 1;
-    if (x < 0)
-        x = 0;
-    else if (x > max_x)
-        x = max_x;
-    if (y < 0)
-        y = 0;
-    else if (y > max_y)
-        y = max_y;
 
     if (out_x)
         *out_x = x;
@@ -1007,7 +996,10 @@ static uint32_t macos_first_codepoint(NSString *string) {
         if (low >= 0xDC00 && low <= 0xDFFF) {
             return 0x10000 + ((((uint32_t)high - 0xD800) << 10) | ((uint32_t)low - 0xDC00));
         }
+        return 0xFFFD;
     }
+    if (high >= 0xD800 && high <= 0xDFFF)
+        return 0xFFFD;
     return (uint32_t)high;
 }
 
@@ -1670,11 +1662,17 @@ void vgfx_platform_warp_cursor(struct vgfx_window *win, int32_t x, int32_t y) {
 }
 
 void vgfx_platform_hide_cursor(void) {
-    [NSCursor hide];
+    if (!g_vgfx_macos_cursor_hidden) {
+        [NSCursor hide];
+        g_vgfx_macos_cursor_hidden = 1;
+    }
 }
 
 void vgfx_platform_show_cursor(void) {
-    [NSCursor unhide];
+    if (g_vgfx_macos_cursor_hidden) {
+        [NSCursor unhide];
+        g_vgfx_macos_cursor_hidden = 0;
+    }
 }
 
 #endif /* __APPLE__ */

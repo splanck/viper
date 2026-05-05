@@ -36,6 +36,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 //===----------------------------------------------------------------------===//
 // Platform-Specific Headers for Aligned Allocation
@@ -289,14 +290,16 @@ int vgfx_internal_enqueue_event(struct vgfx_window *win, const vgfx_event_t *eve
                 return 0;
             } else {
                 /* New event is regular - drop it to preserve CLOSE */
-                win->event_overflow++;
+                if (win->event_overflow < INT32_MAX)
+                    win->event_overflow++;
                 vgfx_internal_event_unlock(win);
                 return 0;
             }
         } else {
             /* Oldest event is not CLOSE - drop it to make room for new event */
             win->event_tail = (win->event_tail + 1) % VGFX_INTERNAL_EVENT_QUEUE_SLOTS;
-            win->event_overflow++;
+            if (win->event_overflow < INT32_MAX)
+                win->event_overflow++;
         }
     }
 

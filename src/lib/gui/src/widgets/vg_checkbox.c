@@ -5,10 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_checkbox.c
+// File: lib/gui/src/widgets/vg_checkbox.c
+// Purpose: Checkbox widget implementation — tri-state (checked/unchecked/
+//          indeterminate) with label text, click-toggle, and change callbacks.
+// Key invariants:
+//   - checkbox->text is always a valid heap-allocated string (never NULL).
+//   - Setting indeterminate clears checked and fires on_change if it was set.
+//   - VG_STATE_CHECKED in base.state mirrors checkbox->checked at all times.
+// Ownership/Lifetime:
+//   - vg_checkbox_create copies the text string; checkbox_destroy frees it.
+// Links: lib/gui/include/vg_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_checkbox.c - Checkbox widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
@@ -42,6 +52,11 @@ static vg_widget_vtable_t g_checkbox_vtable = {.destroy = checkbox_destroy,
 // Checkbox Implementation
 //=============================================================================
 
+/// @brief Create a checkbox widget.
+///
+/// @param parent Widget to attach to as a child (may be NULL).
+/// @param text   Label text displayed to the right of the box (copied).
+/// @return Newly allocated vg_checkbox_t, or NULL on allocation failure.
 vg_checkbox_t *vg_checkbox_create(vg_widget_t *parent, const char *text) {
     vg_checkbox_t *checkbox = calloc(1, sizeof(vg_checkbox_t));
     if (!checkbox)
@@ -89,6 +104,7 @@ vg_checkbox_t *vg_checkbox_create(vg_widget_t *parent, const char *text) {
     return checkbox;
 }
 
+/// @brief VTable destroy: frees the checkbox label text string.
 static void checkbox_destroy(vg_widget_t *widget) {
     vg_checkbox_t *checkbox = (vg_checkbox_t *)widget;
     if (checkbox->text) {
@@ -97,6 +113,7 @@ static void checkbox_destroy(vg_widget_t *widget) {
     }
 }
 
+/// @brief VTable measure: sizes the widget to the box square plus gap and optional text extent.
 static void checkbox_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_checkbox_t *checkbox = (vg_checkbox_t *)widget;
     (void)available_width;
@@ -121,6 +138,7 @@ static void checkbox_measure(vg_widget_t *widget, float available_width, float a
     vg_widget_apply_constraints(widget);
 }
 
+/// @brief VTable paint: draws the box border, fill/check-mark when checked, focus ring, and label text.
 static void checkbox_paint(vg_widget_t *widget, void *canvas) {
     vg_checkbox_t *checkbox = (vg_checkbox_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -188,6 +206,7 @@ static void checkbox_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief VTable handle_event: toggles checked state on click or Space key and fires on_change.
 static bool checkbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_checkbox_t *checkbox = (vg_checkbox_t *)widget;
 
@@ -210,6 +229,7 @@ static bool checkbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
     return false;
 }
 
+/// @brief VTable can_focus: returns true when the widget is both enabled and visible.
 static bool checkbox_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
@@ -218,6 +238,10 @@ static bool checkbox_can_focus(vg_widget_t *widget) {
 // Checkbox API
 //=============================================================================
 
+/// @brief Set the checkbox's checked state; clears indeterminate and fires on_change.
+///
+/// @param checkbox The checkbox to update.
+/// @param checked  true to check; false to uncheck.
 void vg_checkbox_set_checked(vg_checkbox_t *checkbox, bool checked) {
     if (!checkbox)
         return;
@@ -242,11 +266,17 @@ void vg_checkbox_set_checked(vg_checkbox_t *checkbox, bool checked) {
     }
 }
 
+/// @brief Return true if the checkbox is currently checked.
+///
+/// @param checkbox The checkbox to query.
+/// @return The checked state, or false if checkbox is NULL.
 bool vg_checkbox_is_checked(vg_checkbox_t *checkbox) {
     return checkbox ? checkbox->checked : false;
 }
 
-/// @brief Checkbox toggle.
+/// @brief Toggle the checkbox between checked and unchecked.
+///
+/// @param checkbox The checkbox to toggle.
 void vg_checkbox_toggle(vg_checkbox_t *checkbox) {
     if (!checkbox)
         return;
@@ -254,7 +284,11 @@ void vg_checkbox_toggle(vg_checkbox_t *checkbox) {
     vg_checkbox_set_checked(checkbox, !checkbox->checked);
 }
 
-/// @brief Checkbox set indeterminate.
+/// @brief Set the checkbox's indeterminate (mixed) state.
+///
+/// @param checkbox       The checkbox to update.
+/// @param indeterminate  true to enter indeterminate state (clears checked);
+///                       false to leave it.
 void vg_checkbox_set_indeterminate(vg_checkbox_t *checkbox, bool indeterminate) {
     if (!checkbox)
         return;
@@ -271,11 +305,18 @@ void vg_checkbox_set_indeterminate(vg_checkbox_t *checkbox, bool indeterminate) 
         checkbox->on_change(&checkbox->base, checkbox->checked, checkbox->on_change_data);
 }
 
+/// @brief Return true if the checkbox is in the indeterminate state.
+///
+/// @param checkbox The checkbox to query.
+/// @return The indeterminate state, or false if checkbox is NULL.
 bool vg_checkbox_is_indeterminate(vg_checkbox_t *checkbox) {
     return checkbox ? checkbox->indeterminate : false;
 }
 
-/// @brief Checkbox set text.
+/// @brief Replace the checkbox label text.
+///
+/// @param checkbox The checkbox to update.
+/// @param text     New label (copied); NULL is treated as an empty string.
 void vg_checkbox_set_text(vg_checkbox_t *checkbox, const char *text) {
     if (!checkbox)
         return;
@@ -290,7 +331,11 @@ void vg_checkbox_set_text(vg_checkbox_t *checkbox, const char *text) {
     checkbox->base.needs_paint = true;
 }
 
-/// @brief Checkbox set on change.
+/// @brief Set the change callback invoked when the checked state changes.
+///
+/// @param checkbox  The checkbox to configure.
+/// @param callback  Function called with (widget, new_checked, user_data).
+/// @param user_data Opaque pointer passed to @p callback.
 void vg_checkbox_set_on_change(vg_checkbox_t *checkbox,
                                vg_checkbox_callback_t callback,
                                void *user_data) {
@@ -301,6 +346,11 @@ void vg_checkbox_set_on_change(vg_checkbox_t *checkbox,
     checkbox->on_change_data = user_data;
 }
 
+/// @brief Override the checkbox label font and size.
+///
+/// @param checkbox The checkbox to configure.
+/// @param font     Font to use; NULL keeps the existing font.
+/// @param size     Font size in pixels; <= 0 falls back to the theme normal size.
 void vg_checkbox_set_font(vg_checkbox_t *checkbox, vg_font_t *font, float size) {
     if (!checkbox)
         return;

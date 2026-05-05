@@ -6,28 +6,20 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/passes/SchedulerPass.cpp
-// Purpose: Post-RA list scheduler for the AArch64 modular pipeline.
-//
-// Algorithm:
-//   For each basic block in each MIR function:
-//   1. Partition instructions into non-terminator body segments separated by
-//      calls and mid-block guard branches, plus the final terminator group.
-//   2. Build a data-dependency DAG from physical-register def/use chains.
-//      Memory dependencies are tracked precisely only for explicit FP/SP-derived
-//      stack addresses. Base-register heap/object accesses are conservatively
-//      treated as may-alias because different registers or spill slots can hold
-//      the same runtime object/list pointer.
-//   3. Assign latencies to each dependency edge using a simplified Apple M1
-//      latency model (loads: 4 cycles, multiplies: 3 cycles, FP: 3 cycles,
-//      all other: 1 cycle).
-//   4. Compute the critical-path length of each node (backward sum of latencies).
-//   5. Greedy list scheduling: maintain a ready-list (all predecessors scheduled)
-//      and repeatedly select the ready instruction with the highest critical-path
-//      priority.  On tie, prefer the original program order.
-//   6. Append terminators in their original relative order.
-//
-// Invariant: the reordered block contains the same multiset of instructions;
-//            no instructions are added or removed.
+// Purpose: Post-RA critical-path list scheduler for the AArch64 modular pipeline.
+//          Each basic block is partitioned into segments at call/guard-branch
+//          boundaries; each segment is scheduled independently using a DAG with
+//          Apple M1 latencies (loads 4, mul 3, fdiv 10, all else 1).
+// Key invariants:
+//   - Memory dependency analysis is precise for FP/SP-relative addresses and
+//     conservative (may-alias) for base-register accesses.
+//   - The reordered block is a permutation — no instructions are added/removed.
+//   - Terminators always remain at the end of their block in original order.
+//   - Calls act as full memory barriers and clobber all caller-saved registers.
+// Ownership/Lifetime:
+//   - Stateless pass; mutates MFunction::blocks in place.
+// Links: codegen/aarch64/passes/SchedulerPass.hpp,
+//        codegen/aarch64/ra/OperandRoles.hpp (def/use role queries)
 //
 //===----------------------------------------------------------------------===//
 
@@ -109,6 +101,7 @@ static unsigned instrLatency(MOpcode opc) noexcept {
 // Memory classification helpers
 // ---------------------------------------------------------------------------
 
+/// @brief Return true if @p opc is any load instruction (LDR/LDP variants).
 static bool isLoad(MOpcode opc) noexcept {
     switch (opc) {
         case MOpcode::LdrRegFpImm:
@@ -123,6 +116,7 @@ static bool isLoad(MOpcode opc) noexcept {
     }
 }
 
+/// @brief Return true if @p opc is any store instruction (STR/STP variants).
 static bool isStore(MOpcode opc) noexcept {
     switch (opc) {
         case MOpcode::StrRegFpImm:
@@ -139,31 +133,35 @@ static bool isStore(MOpcode opc) noexcept {
     }
 }
 
+/// @brief Classifies the base register of a tracked memory address.
 enum class MemBaseKind : uint8_t {
-    FramePointer,
-    StackPointer,
-    BaseRegister,
+    FramePointer, ///< FP-relative (alloca / spill slots).
+    StackPointer, ///< SP-relative (outgoing arg area).
+    BaseRegister, ///< Arbitrary base register (heap / object fields; may-alias).
 };
 
+/// @brief Symbolic representation of a trackable base-plus-offset address.
 struct AddressValue {
     MemBaseKind baseKind{MemBaseKind::BaseRegister};
-    long long baseTag{0};
-    long long offset{0};
+    long long baseTag{0};   ///< Distinguishes different tracked base registers (unused for FP/SP).
+    long long offset{0};    ///< Byte offset from the base.
 };
 
+/// @brief Resolved memory access region used for alias analysis.
 struct MemoryAccessClass {
     MemBaseKind baseKind{MemBaseKind::FramePointer};
     long long baseTag{0};
-    long long offset{0};
-    unsigned size{0};
+    long long offset{0}; ///< Byte offset from base.
+    unsigned size{0};    ///< Access size in bytes.
 };
 
+/// @brief One entry in the per-block memory history used for dependency building.
 struct MemoryHistoryEntry {
-    std::size_t instrIdx{0};
-    bool isLoad{false};
-    bool isStore{false};
-    bool isBarrier{false};
-    std::optional<MemoryAccessClass> accessClass;
+    std::size_t instrIdx{0};                    ///< Index into the body instruction array.
+    bool isLoad{false};                         ///< True if this entry is a load.
+    bool isStore{false};                        ///< True if this entry is a store.
+    bool isBarrier{false};                      ///< True if this entry is a call (full barrier).
+    std::optional<MemoryAccessClass> accessClass; ///< Resolved address region, if known.
 };
 
 /// Total number of AArch64 physical registers (X0..X30, SP, V0..V31 = 64).
@@ -182,11 +180,13 @@ static std::size_t regIdx(uint32_t reg) noexcept {
     return static_cast<std::size_t>(reg);
 }
 
+/// @brief Construct a MemoryAccessClass by combining @p base with an instruction-level offset.
 static std::optional<MemoryAccessClass>
 makeResolvedAccessClass(const AddressValue &base, long long accessOffset, unsigned size) noexcept {
     return MemoryAccessClass{base.baseKind, base.baseTag, base.offset + accessOffset, size};
 }
 
+/// @brief Look up the tracked address value for physical register @p reg, or nullopt.
 static std::optional<AddressValue>
 getTrackedAddressValue(const std::array<std::optional<AddressValue>, kNumPhysRegs> &tracked,
                        uint32_t reg) noexcept {
@@ -196,6 +196,8 @@ getTrackedAddressValue(const std::array<std::optional<AddressValue>, kNumPhysReg
     return tracked[idx];
 }
 
+/// @brief Classify the memory address of a load/store instruction.
+/// @return A resolved MemoryAccessClass if the base is FP/SP/tracked-GPR; nullopt otherwise.
 static std::optional<MemoryAccessClass>
 classifyMemoryAccess(const MInstr &mi,
                      const std::array<std::optional<AddressValue>, kNumPhysRegs> &trackedAddrs)
@@ -241,6 +243,10 @@ classifyMemoryAccess(const MInstr &mi,
     }
 }
 
+/// @brief Return true if two memory accesses may overlap.
+/// @details Returns true conservatively when either access class is unknown.
+///          Two known accesses with different base kinds cannot alias.
+///          Two known FP/SP accesses with non-overlapping ranges do not alias.
 static bool mayAliasMemory(const std::optional<MemoryAccessClass> &lhs,
                            const std::optional<MemoryAccessClass> &rhs) noexcept {
     if (!lhs || !rhs)
@@ -254,6 +260,9 @@ static bool mayAliasMemory(const std::optional<MemoryAccessClass> &lhs,
     return !(lhsEnd <= rhs->offset || rhsEnd <= lhs->offset);
 }
 
+/// @brief Derive a symbolic AddressValue for the destination of @p mi if trackable.
+/// @details Handles MovRR (copy), AddRI/SubRI (offset arithmetic), and AddFpImm.
+///          Returns nullopt for instructions whose result cannot be statically analysed.
 static std::optional<AddressValue>
 deriveTrackedAddressValue(const MInstr &mi,
                           const std::array<std::optional<AddressValue>, kNumPhysRegs> &trackedAddrs)
@@ -294,6 +303,7 @@ deriveTrackedAddressValue(const MInstr &mi,
     }
 }
 
+/// @brief Return true if @p opc terminates a basic block (Ret/Br/BCond/Cbz/Cbnz).
 static bool isTerminator(MOpcode opc) noexcept {
     switch (opc) {
         case MOpcode::Ret:
@@ -384,6 +394,10 @@ struct DepNode {
 // Block scheduler
 // ---------------------------------------------------------------------------
 
+/// @brief Reorder the instructions in @p body using critical-path list scheduling.
+/// @param body Instructions to schedule (terminators excluded by caller).
+/// @param target Target info providing caller-saved register lists for ABI-correct barriers.
+/// @return Reordered instruction vector (same multiset, different order).
 static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetInfo &target) {
     const std::size_t N = body.size();
     if (N <= 1)
@@ -688,6 +702,9 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body, const TargetI
 // Per-function entry point
 // ---------------------------------------------------------------------------
 
+/// @brief Apply list scheduling to every basic block in @p fn.
+/// @details Partitions each block into schedulable body segments at call/guard-branch
+///          boundaries; terminators are always appended in original relative order.
 static void scheduleFunction(MFunction &fn, const TargetInfo &target) {
     for (auto &bb : fn.blocks) {
         if (bb.instrs.size() <= 1)

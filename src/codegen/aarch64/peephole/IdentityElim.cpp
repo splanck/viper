@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/peephole/IdentityElim.cpp
+// File: codegen/aarch64/peephole/IdentityElim.cpp
 // Purpose: Identity move elimination and consecutive move folding for
 //          the AArch64 peephole optimizer.
 //
@@ -16,7 +16,7 @@
 // Ownership/Lifetime:
 //   - Operates on mutable instruction vectors owned by the caller.
 //
-// Links: src/codegen/aarch64/Peephole.hpp
+// Links: codegen/aarch64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 

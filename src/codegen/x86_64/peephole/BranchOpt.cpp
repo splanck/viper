@@ -5,21 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/peephole/BranchOpt.cpp
+// File: codegen/x86_64/peephole/BranchOpt.cpp
 // Purpose: Branch optimization peephole sub-passes for the x86-64 backend.
 //          Implements greedy trace block layout, cold block reordering,
 //          branch chain elimination, conditional branch inversion, and
 //          fallthrough jump removal.
-//
 // Key invariants:
 //   - Entry block always stays first in the layout.
 //   - Branch chain resolution limits hops to 8 to avoid cycles.
 //   - All control-flow rewrites preserve semantic equivalence.
-//
 // Ownership/Lifetime:
 //   - Stateless; all state is owned by the caller.
-//
-// Links: src/codegen/x86_64/Peephole.hpp
+// Links: codegen/x86_64/peephole/BranchOpt.hpp,
+//        codegen/x86_64/peephole/PeepholeCommon.hpp
 //
 //===----------------------------------------------------------------------===//
 

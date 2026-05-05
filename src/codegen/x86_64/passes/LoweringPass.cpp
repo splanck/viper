@@ -5,22 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/passes/LoweringPass.cpp
-// Purpose: Implement the IL lowering pass that adapts front-end IL into the backend's
-//          intermediate representation.
-// Key invariants: Value kinds are inferred deterministically and stored alongside SSA ids.
-// Ownership/Lifetime: Pass mutates the supplied Module in place without owning external state.
-// Links: docs/codemap.md, src/codegen/x86_64/CodegenPipeline.cpp
+// File: codegen/x86_64/passes/LoweringPass.cpp
+// Purpose: Implement the IL lowering pass that adapts front-end IL into the
+//          backend's intermediate representation.
+// Key invariants:
+//   - Value kinds are inferred deterministically and stored alongside SSA IDs.
+// Ownership/Lifetime:
+//   - Pass mutates the supplied Module in place without owning external state.
+// Links: codegen/x86_64/passes/LoweringPass.hpp,
+//        codegen/x86_64/LowerILToMIR.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Phase A lowering pass translating IL into backend-friendly IR.
-/// @details Contains the bulk of the adapter logic that maps IL types,
-///          opcodes, and SSA values into the simplified structures consumed by
-///          the x86-64 code generator. The helpers emit detailed diagnostics
-///          when unsupported features are encountered so future backend
-///          expansions have a clear starting point.
 
 #include "codegen/x86_64/passes/LoweringPass.hpp"
 

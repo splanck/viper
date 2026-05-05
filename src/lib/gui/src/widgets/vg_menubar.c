@@ -5,10 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_menubar.c
+// File: lib/gui/src/widgets/vg_menubar.c
+// Purpose: Horizontal menu bar widget with drop-down menus, keyboard navigation,
+//          and a parsed accelerator table for global shortcut dispatch.
+// Key invariants:
+//   - Menus and items are stored as doubly-linked lists (first/last + prev/next
+//     pointers); free_menu and free_menu_item are recursive to handle submenus.
+//   - accel_table is a singly-linked list of vg_accel_entry_t built from
+//     shortcut strings at item-creation time; vg_menubar_rebuild_accelerators
+//     tears it down and rebuilds from the live menu tree.
+//   - Ctrl and Super (⌘) modifiers are treated as interchangeable in
+//     vg_menubar_handle_accelerator so a single registration works on both
+//     macOS and other platforms.
+//   - open_menu tracks the currently expanded drop-down; NULL when closed.
+//     menubar_get_open_dropdown_bounds computes its geometry on demand.
+// Ownership/Lifetime:
+//   - All vg_menu_t and vg_menu_item_t instances are owned by the menubar and
+//     freed in menubar_destroy via free_menu/free_menu_item.
+//   - Item text, shortcut strings, and submenu titles are strdup'd internally.
+// Links: lib/gui/include/vg_ide_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_menubar.c - MenuBar widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -56,6 +75,7 @@ static vg_widget_vtable_t g_menubar_vtable = {.destroy = menubar_destroy,
 // Helper Functions
 //=============================================================================
 
+/// @brief Recursively free an item's text, shortcut, icon, submenu tree, and the item itself.
 static void free_menu_item(vg_menu_item_t *item) {
     if (!item)
         return;
@@ -82,6 +102,7 @@ static void free_menu_item(vg_menu_item_t *item) {
     free(item);
 }
 
+/// @brief Free all items in a menu list and the menu struct itself.
 static void free_menu(vg_menu_t *menu) {
     if (!menu)
         return;
@@ -98,6 +119,7 @@ static void free_menu(vg_menu_t *menu) {
     free(menu);
 }
 
+/// @brief Compute the screen bounds and per-item height for the currently open drop-down.
 static void menubar_get_open_dropdown_bounds(vg_menubar_t *menubar,
                                              float *out_x,
                                              float *out_y,
@@ -174,6 +196,14 @@ static void menubar_get_open_dropdown_bounds(vg_menubar_t *menubar,
 // MenuBar Implementation
 //=============================================================================
 
+/// @brief Create a menu bar widget, optionally as a child of parent.
+///
+/// @details Allocates and initialises a vg_menubar_t with an empty menu list,
+///          default theme colours, and no open drop-down. The bar is designed to
+///          be placed at the top of a container.
+///
+/// @param parent Optional parent widget to attach to; may be NULL.
+/// @return       Heap-allocated menu bar, or NULL on allocation failure.
 vg_menubar_t *vg_menubar_create(vg_widget_t *parent) {
     vg_menubar_t *menubar = calloc(1, sizeof(vg_menubar_t));
     if (!menubar)
@@ -223,6 +253,7 @@ vg_menubar_t *vg_menubar_create(vg_widget_t *parent) {
     return menubar;
 }
 
+/// @brief vtable destroy — releases input capture, frees all menus and the accelerator table.
 static void menubar_destroy(vg_widget_t *widget) {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
 
@@ -246,6 +277,7 @@ static void menubar_destroy(vg_widget_t *widget) {
     menubar->accel_table = NULL;
 }
 
+/// @brief vtable measure — width fills available_width; height is the theme bar height.
 static void menubar_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
     (void)available_height;
@@ -257,6 +289,7 @@ static void menubar_measure(vg_widget_t *widget, float available_width, float av
     widget->measured_height = target_height;
 }
 
+/// @brief vtable paint — draws the bar background and menu title buttons.
 static void menubar_paint(vg_widget_t *widget, void *canvas) {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
     if (menubar->native_main_menu)
@@ -319,6 +352,7 @@ static void menubar_paint(vg_widget_t *widget, void *canvas) {
 }
 
 // Paint overlay - called after all widgets are painted to draw popups on top
+/// @brief vtable paint_overlay — draws the open drop-down panel and its items on top of other widgets.
 static void menubar_paint_overlay(vg_widget_t *widget, void *canvas) {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
     if (menubar->native_main_menu)
@@ -467,6 +501,7 @@ static void menubar_paint_overlay(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief Return the top-level menu whose title button contains screen X, or NULL.
 static vg_menu_t *find_menu_at_x(vg_menubar_t *menubar, float x) {
     if (!menubar->font)
         return NULL;
@@ -489,6 +524,7 @@ static vg_menu_t *find_menu_at_x(vg_menubar_t *menubar, float x) {
     return NULL;
 }
 
+/// @brief Return the next enabled sibling menu after menu, or NULL if none.
 static vg_menu_t *find_next_enabled_menu(vg_menu_t *menu) {
     for (vg_menu_t *it = menu ? menu->next : NULL; it; it = it->next) {
         if (it->enabled)
@@ -497,6 +533,7 @@ static vg_menu_t *find_next_enabled_menu(vg_menu_t *menu) {
     return NULL;
 }
 
+/// @brief Return the previous enabled sibling menu before menu, or NULL if none.
 static vg_menu_t *find_prev_enabled_menu(vg_menu_t *menu) {
     for (vg_menu_t *it = menu ? menu->prev : NULL; it; it = it->prev) {
         if (it->enabled)
@@ -505,6 +542,7 @@ static vg_menu_t *find_prev_enabled_menu(vg_menu_t *menu) {
     return NULL;
 }
 
+/// @brief Return the first non-separator enabled item in menu, or NULL.
 static vg_menu_item_t *find_first_enabled_item(vg_menu_t *menu) {
     for (vg_menu_item_t *item = menu ? menu->first_item : NULL; item; item = item->next) {
         if (!item->separator && item->enabled)
@@ -513,6 +551,7 @@ static vg_menu_item_t *find_first_enabled_item(vg_menu_t *menu) {
     return NULL;
 }
 
+/// @brief Return the next non-separator enabled item after item, or NULL.
 static vg_menu_item_t *find_next_enabled_item(vg_menu_item_t *item) {
     for (vg_menu_item_t *it = item ? item->next : NULL; it; it = it->next) {
         if (!it->separator && it->enabled)
@@ -521,6 +560,7 @@ static vg_menu_item_t *find_next_enabled_item(vg_menu_item_t *item) {
     return NULL;
 }
 
+/// @brief Return the previous non-separator enabled item before item, or NULL.
 static vg_menu_item_t *find_prev_enabled_item(vg_menu_item_t *item) {
     for (vg_menu_item_t *it = item ? item->prev : NULL; it; it = it->prev) {
         if (!it->separator && it->enabled)
@@ -529,6 +569,7 @@ static vg_menu_item_t *find_prev_enabled_item(vg_menu_item_t *item) {
     return NULL;
 }
 
+/// @brief vtable handle_event — routes mouse, keyboard, and Escape for the bar and its drop-down.
 static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
     if (menubar->native_main_menu)
@@ -754,6 +795,15 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event) {
 // MenuBar API
 //=============================================================================
 
+/// @brief Append a top-level menu with the given title to the menu bar.
+///
+/// @details Allocates a vg_menu_t, copies the title, links it to the bar's
+///          doubly-linked menu list, and triggers a repaint. Items are added
+///          via vg_menu_add_item on the returned handle.
+///
+/// @param menubar The menu bar to append to; may be NULL (returns NULL).
+/// @param title   Display text shown in the bar; copied internally.
+/// @return        New menu handle, or NULL on allocation failure.
 vg_menu_t *vg_menubar_add_menu(vg_menubar_t *menubar, const char *title) {
     if (!menubar)
         return NULL;
@@ -790,6 +840,18 @@ vg_menu_t *vg_menubar_add_menu(vg_menubar_t *menubar, const char *title) {
     return menu;
 }
 
+/// @brief Append a labelled item to a drop-down menu.
+///
+/// @details Both text and shortcut are copied internally. The item is initialised
+///          as enabled, unchecked, and non-separator. action is invoked with data
+///          when the item is clicked; NULL action is allowed.
+///
+/// @param menu     The menu to append to; may be NULL (returns NULL).
+/// @param text     Display label; copied internally, may be NULL.
+/// @param shortcut Keyboard hint shown on the right (e.g., "Ctrl+S"); may be NULL.
+/// @param action   Callback invoked on activation, or NULL.
+/// @param data     Opaque pointer forwarded to action.
+/// @return         New item handle, or NULL on allocation failure.
 vg_menu_item_t *vg_menu_add_item(
     vg_menu_t *menu, const char *text, const char *shortcut, void (*action)(void *), void *data) {
     if (!menu)
@@ -834,6 +896,10 @@ vg_menu_item_t *vg_menu_add_item(
     return item;
 }
 
+/// @brief Append a horizontal separator line to a drop-down menu.
+///
+/// @param menu The menu to append to; may be NULL (returns NULL).
+/// @return     New separator item handle, or NULL on allocation failure.
 vg_menu_item_t *vg_menu_add_separator(vg_menu_t *menu) {
     if (!menu)
         return NULL;
@@ -860,6 +926,15 @@ vg_menu_item_t *vg_menu_add_separator(vg_menu_t *menu) {
     return item;
 }
 
+/// @brief Append a labelled item that opens a nested sub-menu, and return the sub-menu handle.
+///
+/// @details Creates a parent item via vg_menu_add_item, then allocates a vg_menu_t
+///          struct stored in item->submenu. The sub-menu is owned by the item and
+///          freed recursively when the parent is freed.
+///
+/// @param menu  The menu to append to; may be NULL (returns NULL).
+/// @param title Label for the parent item and title for the sub-menu; copied internally.
+/// @return      New sub-menu handle, or NULL on allocation failure.
 vg_menu_t *vg_menu_add_submenu(vg_menu_t *menu, const char *title) {
     if (!menu)
         return NULL;
@@ -887,21 +962,33 @@ vg_menu_t *vg_menu_add_submenu(vg_menu_t *menu, const char *title) {
     return item->submenu;
 }
 
-/// @brief Menu item set enabled.
+/// @brief Enable or disable a menu item (disabled items are greyed out and non-clickable).
+///
+/// @param item    The item to modify; may be NULL.
+/// @param enabled false to grey out and ignore clicks.
 void vg_menu_item_set_enabled(vg_menu_item_t *item, bool enabled) {
     if (item) {
         item->enabled = enabled;
     }
 }
 
-/// @brief Menu item set checked.
+/// @brief Set the checked state of a menu item, showing or hiding the checkmark indicator.
+///
+/// @param item    The item to modify; may be NULL.
+/// @param checked true to show a checkmark next to the item label.
 void vg_menu_item_set_checked(vg_menu_item_t *item, bool checked) {
     if (item) {
         item->checked = checked;
     }
 }
 
-/// @brief Menu remove item.
+/// @brief Remove and free a specific item from its parent menu.
+///
+/// @details Verifies item->parent_menu == menu and that item is in the list
+///          before unlinking and freeing it. No-op if item does not belong to menu.
+///
+/// @param menu The menu that owns item; may be NULL (no-op).
+/// @param item The item to remove and free; may be NULL (no-op).
 void vg_menu_remove_item(vg_menu_t *menu, vg_menu_item_t *item) {
     if (!menu || !item)
         return;
@@ -932,7 +1019,9 @@ void vg_menu_remove_item(vg_menu_t *menu, vg_menu_item_t *item) {
     free_menu_item(item);
 }
 
-/// @brief Menu clear.
+/// @brief Remove and free all items from a menu, leaving the menu itself intact.
+///
+/// @param menu The menu to clear; may be NULL.
 void vg_menu_clear(vg_menu_t *menu) {
     if (!menu)
         return;
@@ -948,7 +1037,13 @@ void vg_menu_clear(vg_menu_t *menu) {
     menu->item_count = 0;
 }
 
-/// @brief Menubar remove menu.
+/// @brief Remove and free a top-level menu from the menu bar.
+///
+/// @details Verifies menu->owner_menubar == menubar before unlinking. Closes the
+///          open drop-down if it refers to the removed menu. Triggers a repaint.
+///
+/// @param menubar The menu bar that owns menu; may be NULL (no-op).
+/// @param menu    The menu to remove and free; may be NULL (no-op).
 void vg_menubar_remove_menu(vg_menubar_t *menubar, vg_menu_t *menu) {
     if (!menubar || !menu)
         return;
@@ -984,7 +1079,11 @@ void vg_menubar_remove_menu(vg_menubar_t *menubar, vg_menu_t *menu) {
     menubar->base.needs_paint = true;
 }
 
-/// @brief Menubar set font.
+/// @brief Set the font and size for all menu bar labels and drop-down items.
+///
+/// @param menubar The menu bar to configure; may be NULL.
+/// @param font    Font to use; NULL retains the current font.
+/// @param size    Font size in points; if <= 0 the theme's normal size is used.
 void vg_menubar_set_font(vg_menubar_t *menubar, vg_font_t *font, float size) {
     if (!menubar)
         return;
@@ -1092,6 +1191,7 @@ static const key_mapping_t g_key_mappings[] = {
     {"`", VG_KEY_GRAVE},
     {NULL, 0}};
 
+/// @brief Look up a key name string in g_key_mappings and return its VG_KEY_* code.
 static int lookup_key(const char *name) {
     for (const key_mapping_t *m = g_key_mappings; m->name; m++) {
         if (strcasecmp(name, m->name) == 0) {
@@ -1101,6 +1201,15 @@ static int lookup_key(const char *name) {
     return VG_KEY_UNKNOWN;
 }
 
+/// @brief Parse a "Ctrl+Shift+S"-style shortcut string into a vg_accelerator_t.
+///
+/// @details Tokenises on '+', recognises Ctrl/Control, Cmd/Command/Meta/Super,
+///          Shift, and Alt/Option as modifier tokens, and looks up the final token
+///          as a key name. Returns false if no valid key is found.
+///
+/// @param shortcut Shortcut string (e.g., "Ctrl+S", "Cmd+Shift+Z"); may not be NULL.
+/// @param accel    Out-parameter receiving the parsed key and modifier mask; may not be NULL.
+/// @return         true on success; false if shortcut is empty or the key is unrecognised.
 bool vg_parse_accelerator(const char *shortcut, vg_accelerator_t *accel) {
     if (!shortcut || !accel)
         return false;
@@ -1146,7 +1255,15 @@ bool vg_parse_accelerator(const char *shortcut, vg_accelerator_t *accel) {
     return accel->key != VG_KEY_UNKNOWN;
 }
 
-/// @brief Menubar register accelerator.
+/// @brief Parse shortcut and register it as a global keyboard accelerator for item.
+///
+/// @details Calls vg_parse_accelerator; if parsing succeeds, stores the parsed
+///          vg_accelerator_t in item->accel and prepends a vg_accel_entry_t to
+///          menubar->accel_table. Does nothing if parsing fails.
+///
+/// @param menubar  The menu bar to register with; may be NULL (no-op).
+/// @param item     The menu item to trigger on shortcut match; may be NULL (no-op).
+/// @param shortcut Shortcut string (e.g., "Ctrl+S"); may be NULL (no-op).
 void vg_menubar_register_accelerator(vg_menubar_t *menubar,
                                      vg_menu_item_t *item,
                                      const char *shortcut) {
@@ -1171,6 +1288,7 @@ void vg_menubar_register_accelerator(vg_menubar_t *menubar,
     menubar->accel_table = entry;
 }
 
+/// @brief Recursively register accelerators for all items in menu and its submenus.
 static void rebuild_accels_for_menu(vg_menubar_t *menubar, vg_menu_t *menu) {
     for (vg_menu_item_t *item = menu->first_item; item; item = item->next) {
         if (item->shortcut) {
@@ -1182,7 +1300,13 @@ static void rebuild_accels_for_menu(vg_menubar_t *menubar, vg_menu_t *menu) {
     }
 }
 
-/// @brief Menubar rebuild accelerators.
+/// @brief Tear down and rebuild the entire accelerator table from the current menu tree.
+///
+/// @details Frees all existing vg_accel_entry_t nodes, then walks every top-level
+///          menu and all nested submenus via rebuild_accels_for_menu. Call this after
+///          bulk item modifications when re-registering individually would be verbose.
+///
+/// @param menubar The menu bar to rebuild for; may be NULL.
 void vg_menubar_rebuild_accelerators(vg_menubar_t *menubar) {
     if (!menubar)
         return;
@@ -1202,6 +1326,15 @@ void vg_menubar_rebuild_accelerators(vg_menubar_t *menubar) {
     }
 }
 
+/// @brief Dispatch a key event against the accelerator table, invoking the matching item's action.
+///
+/// @details Ctrl and Super are treated as equivalent so a single registration fires
+///          on both platforms. Only dispatches to enabled items with a non-NULL action.
+///
+/// @param menubar   The menu bar whose accelerator table to search; may be NULL (returns false).
+/// @param key       VG_KEY_* code from the key-down event.
+/// @param modifiers Modifier bitmask (VG_MOD_CTRL | VG_MOD_SHIFT | VG_MOD_ALT | VG_MOD_SUPER).
+/// @return          true if a matching accelerator was found and its action was invoked.
 bool vg_menubar_handle_accelerator(vg_menubar_t *menubar, int key, uint32_t modifiers) {
     if (!menubar)
         return false;

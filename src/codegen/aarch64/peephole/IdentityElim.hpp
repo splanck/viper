@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/peephole/IdentityElim.hpp
+// File: codegen/aarch64/peephole/IdentityElim.hpp
 // Purpose: Declarations for identity move elimination and consecutive move
 //          folding peephole sub-passes.
 //
@@ -16,7 +16,7 @@
 // Ownership/Lifetime:
 //   - Operates on mutable instruction vectors owned by the caller.
 //
-// Links: src/codegen/aarch64/Peephole.hpp
+// Links: codegen/aarch64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 

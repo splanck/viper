@@ -5,14 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/font/vg_cache.c
+// File: lib/gui/src/font/vg_cache.c
+// Purpose: Glyph cache implementation — hash-table with LRU eviction for
+//          rasterised glyph bitmaps, keyed by (size, codepoint) pairs.
+// Key invariants:
+//   - Cache keys encode both float size (as raw bits) and codepoint to avoid
+//     floating-point comparison across distinct size values.
+//   - The LRU eviction discards the 25% least-recently-used entries when
+//     VG_CACHE_MAX_MEMORY is exceeded, retaining hot glyphs under load.
+//   - g_cache_tick is a monotonic uint64_t to avoid wrap-around on long-running
+//     applications; every cache hit increments it.
+// Ownership/Lifetime:
+//   - Each cache entry owns its glyph.bitmap; freed on eviction or destroy.
+//   - The cache struct owns its bucket array; freed in vg_cache_destroy.
+// Links: lib/gui/src/font/vg_ttf_internal.h,
+//        lib/gui/src/font/vg_raster.c
 //
 //===----------------------------------------------------------------------===//
-// vg_cache.c - Glyph cache implementation
 #include "vg_ttf_internal.h"
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Compute the byte size of a glyph bitmap; returns false on overflow.
 static int glyph_bitmap_size(const vg_glyph_t *glyph, size_t *out_size) {
     if (!glyph || !out_size || glyph->width <= 0 || glyph->height <= 0) {
         if (out_size)
@@ -35,6 +49,7 @@ static uint64_t g_cache_tick = 0;
 // Hash Function
 //=============================================================================
 
+/// @brief Pack float size (as raw bits) and codepoint into a single uint64_t key.
 static uint64_t make_cache_key(float size, uint32_t codepoint) {
     // Quantize size to avoid floating point comparison issues
     uint32_t size_bits;
@@ -42,6 +57,7 @@ static uint64_t make_cache_key(float size, uint32_t codepoint) {
     return ((uint64_t)size_bits << 32) | codepoint;
 }
 
+/// @brief Hash a cache key to a bucket index using FNV-1a-style mixing.
 static size_t hash_key(uint64_t key, size_t bucket_count) {
     // FNV-1a style mixing
     key ^= key >> 33;
@@ -71,6 +87,7 @@ vg_glyph_cache_t *vg_cache_create(void) {
     return cache;
 }
 
+/// @brief Free a single cache entry and its bitmap.
 static void free_entry(vg_cache_entry_t *entry) {
     if (entry->glyph.bitmap) {
         free(entry->glyph.bitmap);
@@ -78,7 +95,6 @@ static void free_entry(vg_cache_entry_t *entry) {
     free(entry);
 }
 
-/// @brief Cache destroy.
 void vg_cache_destroy(vg_glyph_cache_t *cache) {
     if (!cache)
         return;
@@ -123,6 +139,7 @@ void vg_cache_clear(vg_glyph_cache_t *cache) {
 // Cache Resize
 //=============================================================================
 
+/// @brief Double the bucket array and rehash all entries; caps at VG_CACHE_MAX_SIZE.
 static bool cache_resize(vg_glyph_cache_t *cache) {
     size_t new_count = cache->bucket_count * 2;
     if (new_count > VG_CACHE_MAX_SIZE) {
@@ -161,12 +178,14 @@ static bool cache_resize(vg_glyph_cache_t *cache) {
 // so they are the first candidates if they are never hit.
 //=============================================================================
 
+/// @brief qsort comparator: ascending by access_tick (oldest first).
 static int compare_ticks(const void *a, const void *b) {
     uint64_t ta = (*(const vg_cache_entry_t **)a)->access_tick;
     uint64_t tb = (*(const vg_cache_entry_t **)b)->access_tick;
     return (ta < tb) ? -1 : (ta > tb) ? 1 : 0;
 }
 
+/// @brief Evict the 25% least-recently-used entries to reclaim bitmap memory.
 static void cache_evict_some(vg_glyph_cache_t *cache) {
     size_t count = cache->entry_count;
     if (count == 0)

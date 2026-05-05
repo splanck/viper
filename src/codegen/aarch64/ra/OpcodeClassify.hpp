@@ -5,15 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/ra/OpcodeClassify.hpp
+// File: codegen/aarch64/ra/OpcodeClassify.hpp
 // Purpose: MOpcode classification predicates used by the AArch64 register
 //          allocator to determine operand roles and instruction categories.
+//
 // Key invariants:
 //   - Each predicate is a pure function of MOpcode with no side effects.
 //   - Classification must stay in sync with MachineIR.hpp opcode definitions.
+//
 // Ownership/Lifetime:
 //   - Stateless free functions; no ownership.
-// Links: docs/codemap.md
+//
+// Links: codegen/aarch64/ra/Allocator.cpp,
+//        codegen/aarch64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
 

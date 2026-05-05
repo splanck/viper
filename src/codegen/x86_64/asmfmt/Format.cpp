@@ -3,13 +3,16 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/codegen/x86_64/asmfmt/Format.cpp
+// File: codegen/x86_64/asmfmt/Format.cpp
 // Purpose: Format operands and data blobs for x86-64 assembly emission.
-// Key invariants: Helpers are side-effect free and avoid relying on global
-//                 state so emitters can reuse them across passes.
-// Ownership/Lifetime: Operates solely on caller-provided views and returns
-//                     newly constructed strings.
-// Links: src/codegen/x86_64/TargetX64.hpp
+// Key invariants:
+//   - Helpers are side-effect free and avoid relying on global state so
+//     emitters can reuse them across passes.
+// Ownership/Lifetime:
+//   - Operates solely on caller-provided views and returns newly constructed
+//     strings; no persistent state.
+// Links: codegen/x86_64/asmfmt/Format.hpp,
+//        codegen/x86_64/TargetX64.hpp
 //
 //===----------------------------------------------------------------------===//
 

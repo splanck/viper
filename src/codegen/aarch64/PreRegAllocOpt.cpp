@@ -5,8 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/PreRegAllocOpt.cpp
-// Purpose: Implement conservative AArch64 MIR cleanup before register allocation.
+// File: codegen/aarch64/PreRegAllocOpt.cpp
+// Purpose: Conservative AArch64 MIR cleanup before register allocation:
+//          identity-copy removal, single-use copy forwarding.
+//
+// Key invariants:
+//   - Operates on virtual registers only; no physical register assignment.
+//   - Only eliminates copies that are provably safe (single use, no call crosses,
+//     no aliasing in the def/use chain).
+//
+// Ownership/Lifetime:
+//   - Borrows MFunction for the duration of the call; no persistent state.
+//
+// Links: codegen/aarch64/PreRegAllocOpt.hpp,
+//        codegen/aarch64/passes/PreRegAllocOptPass.cpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,19 +32,24 @@
 namespace viper::codegen::aarch64 {
 namespace {
 
+/// @brief Location of a single register use within a basic block.
 struct UseSite {
-    std::size_t instrIndex{0};
-    std::size_t operandIndex{0};
+    std::size_t instrIndex{0};   ///< Index of the instruction that uses the register.
+    std::size_t operandIndex{0}; ///< Operand slot index of the use within that instruction.
 };
 
+/// @brief Return true if @p lhs and @p rhs refer to the same physical or virtual register.
 [[nodiscard]] bool sameReg(const MReg &lhs, const MReg &rhs) noexcept {
     return lhs.isPhys == rhs.isPhys && lhs.cls == rhs.cls && lhs.idOrPhys == rhs.idOrPhys;
 }
 
+/// @brief Return true if @p opcode is a register-to-register copy (MovRR or FMovRR).
 [[nodiscard]] bool isCopyOpcode(MOpcode opcode) noexcept {
     return opcode == MOpcode::MovRR || opcode == MOpcode::FMovRR;
 }
 
+/// @brief Return true if @p opcode is a control-flow instruction that ends or suspends
+///        sequential flow within a basic block (branches, calls, return).
 [[nodiscard]] bool isBlockBoundary(MOpcode opcode) noexcept {
     switch (opcode) {
         case MOpcode::Br:
@@ -48,6 +65,7 @@ struct UseSite {
     }
 }
 
+/// @brief Return true if @p opcode writes its result into the first operand slot (ops[0]).
 [[nodiscard]] bool definesFirstOperand(MOpcode opcode) noexcept {
     switch (opcode) {
         case MOpcode::MovRR:
@@ -111,10 +129,12 @@ struct UseSite {
     }
 }
 
+/// @brief Return true if @p operand is a register operand naming the same register as @p reg.
 [[nodiscard]] bool operandIsReg(const MOperand &operand, const MReg &reg) noexcept {
     return operand.kind == MOperand::Kind::Reg && sameReg(operand.reg, reg);
 }
 
+/// @brief Return true if operand at @p operandIndex in @p instr is a register use (not a def).
 [[nodiscard]] bool operandIsUse(const MInstr &instr, std::size_t operandIndex) noexcept {
     if (instr.ops[operandIndex].kind != MOperand::Kind::Reg)
         return false;
@@ -127,6 +147,7 @@ struct UseSite {
     return true;
 }
 
+/// @brief Return true if @p instr writes to @p reg (covers both scalar and LDP pair defs).
 [[nodiscard]] bool definesReg(const MInstr &instr, const MReg &reg) noexcept {
     if (definesFirstOperand(instr.opc) && !instr.ops.empty() && operandIsReg(instr.ops[0], reg))
         return true;
@@ -137,6 +158,7 @@ struct UseSite {
     return false;
 }
 
+/// @brief Return true if @p instr is a copy where source and destination are the same register.
 [[nodiscard]] bool isIdentityCopy(const MInstr &instr) noexcept {
     if (!isCopyOpcode(instr.opc) || instr.ops.size() != 2)
         return false;
@@ -145,6 +167,14 @@ struct UseSite {
     return sameReg(instr.ops[0].reg, instr.ops[1].reg);
 }
 
+/// @brief Find the single use of @p dst after the copy at @p copyIndex, if one exists.
+/// @details Returns nullopt if dst is used more than once, used across a call boundary
+///          where the source is also live, or if the use is itself a def.
+/// @param block      The basic block containing the copy and its potential uses.
+/// @param copyIndex  Index of the copy instruction whose destination we are tracking.
+/// @param dst        The register defined by the copy (to track uses of).
+/// @param src        The source register of the copy (to check for re-definition).
+/// @return The single use site if exactly one safe forwarding candidate exists; nullopt otherwise.
 [[nodiscard]] std::optional<UseSite> findSingleDirectUse(const MBasicBlock &block,
                                                          std::size_t copyIndex,
                                                          const MReg &dst,
@@ -190,6 +220,10 @@ struct UseSite {
     return site;
 }
 
+/// @brief Eliminate single-use virtual register copies by forwarding the source directly.
+/// @details For each copy `dst = src`, if dst has exactly one use before it is
+///          redefined, the use is replaced with src and the copy is erased.
+/// @return Number of copy instructions removed.
 std::size_t rewriteSingleUseCopies(MBasicBlock &block) {
     std::vector<bool> erase(block.instrs.size(), false);
     std::size_t removed = 0;

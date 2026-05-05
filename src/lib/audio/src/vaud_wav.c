@@ -100,7 +100,7 @@ static inline uint32_t read_u32_le(const uint8_t *p) {
 
 /// @brief Convert 8-bit unsigned sample to 16-bit signed.
 static inline int16_t u8_to_s16(uint8_t sample) {
-    return (int16_t)((sample - 128) << 8);
+    return (int16_t)(((int32_t)sample - 128) * 256);
 }
 
 /// @brief Convert 24-bit signed little-endian sample to 16-bit signed.
@@ -776,6 +776,10 @@ int32_t vaud_wav_read_frames_buffered(void *file,
 
     FILE *f = (FILE *)file;
     size_t bytes_read = fread(temp, 1, buffer_size, f);
+    if ((bytes_read % (size_t)bytes_per_frame) != 0) {
+        vaud_set_error(VAUD_ERR_FORMAT, "Truncated WAV frame in stream");
+        return 0;
+    }
     int32_t frames_read = (int32_t)(bytes_read / (size_t)bytes_per_frame);
 
     /* Convert to 16-bit stereo */

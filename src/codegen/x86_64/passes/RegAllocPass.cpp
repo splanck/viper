@@ -5,19 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/passes/RegAllocPass.cpp
+// File: codegen/x86_64/passes/RegAllocPass.cpp
 // Purpose: Implement the register allocation stage for the x86-64 pipeline.
-// Key invariants: Register allocation is only considered complete when legalisation has run
-//                 and the module carries legalized machine IR.
-// Ownership/Lifetime: Stateless transformation mutating Module MIR in place.
-// Links: docs/codemap.md
+// Key invariants:
+//   - Register allocation is only complete when legalisation has run and the
+//     module carries legalised MIR.
+// Ownership/Lifetime:
+//   - Stateless transformation; mutates Module::mir in place.
+// Links: codegen/x86_64/passes/RegAllocPass.hpp,
+//        codegen/x86_64/RegAllocLinear.hpp,
+//        codegen/x86_64/Backend.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Register allocation pass for the x86-64 code generator.
-/// @details Validates pipeline ordering, runs allocation/frame lowering on the
-///          legalized machine IR, and records diagnostics on failure.
 
 #include "codegen/x86_64/passes/RegAllocPass.hpp"
 

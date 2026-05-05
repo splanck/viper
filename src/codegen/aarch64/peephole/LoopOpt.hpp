@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/peephole/LoopOpt.hpp
+// File: codegen/aarch64/peephole/LoopOpt.hpp
 // Purpose: Declarations for loop-invariant constant hoisting peephole sub-pass.
 //
 // Key invariants:
@@ -16,7 +16,7 @@
 // Ownership/Lifetime:
 //   - Operates on mutable MFunction owned by the caller.
 //
-// Links: src/codegen/aarch64/Peephole.hpp
+// Links: codegen/aarch64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 

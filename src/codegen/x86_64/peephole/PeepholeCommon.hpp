@@ -5,18 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/peephole/PeepholeCommon.hpp
+// File: codegen/x86_64/peephole/PeepholeCommon.hpp
 // Purpose: Shared utility functions and types for x86-64 peephole sub-passes.
-//
 // Key invariants:
-//   - All helpers are pure queries or in-place rewrites; they never allocate
-//     persistent state.
+//   - All helpers are pure queries or in-place rewrites; no persistent state allocated.
 //   - Register classification must stay in sync with MachineIR opcode additions.
-//
 // Ownership/Lifetime:
 //   - Header-only; no dynamic state.
-//
-// Links: src/codegen/x86_64/Peephole.hpp, docs/architecture.md
+// Links: codegen/x86_64/Peephole.hpp,
+//        codegen/x86_64/MachineIR.hpp,
+//        codegen/common/PeepholeUtil.hpp
 //
 //===----------------------------------------------------------------------===//
 

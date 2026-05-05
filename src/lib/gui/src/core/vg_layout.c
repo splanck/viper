@@ -5,10 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/core/vg_layout.c
+// File: lib/gui/src/core/vg_layout.c
+// Purpose: Layout system implementation — VBox, HBox, Stack, Grid, and
+//          Absolute layout containers with measure/arrange two-pass engine.
+// Key invariants:
+//   - Measure must complete before arrange; arrange uses the measured sizes.
+//   - Grow factors distribute remaining space proportionally across children.
+// Ownership/Lifetime:
+//   - Layout vtable functions operate on caller-owned widget trees.
+// Links: lib/gui/include/vg_layout.h,
+//        lib/gui/include/vg_widget.h
 //
 //===----------------------------------------------------------------------===//
-// vg_layout.c - Layout system implementation
 #include "../../include/vg_layout.h"
 #include "../../include/vg_widget.h"
 #include <math.h>
@@ -27,6 +35,7 @@ static void hbox_arrange(vg_widget_t *self, float x, float y, float width, float
 static void flex_measure(vg_widget_t *self, float available_width, float available_height);
 static void flex_arrange(vg_widget_t *self, float x, float y, float width, float height);
 
+/// @brief Computes the initial @p out_offset and per-item @p out_gap_add for a justify-content distribution over @p extra_space.
 static void compute_justify_distribution(vg_justify_t justify,
                                          int visible_count,
                                          float extra_space,
@@ -73,10 +82,12 @@ static void compute_justify_distribution(vg_justify_t justify,
         *out_gap_add = gap_add;
 }
 
+/// @brief Returns @p value if it is finite and positive, otherwise 0.
 static float layout_nonnegative(float value) {
     return (isfinite(value) && value > 0.0f) ? value : 0.0f;
 }
 
+/// @brief Applies min/max size constraints to @p widget's measured_width/height after measure.
 static void layout_apply_constraints(vg_widget_t *widget) {
     vg_widget_apply_constraints(widget);
 }
@@ -100,6 +111,7 @@ static const vg_widget_vtable_t g_flex_vtable = {
 // VBox Implementation
 //=============================================================================
 
+/// @brief Creates a VBox layout container with the given child spacing; returns NULL on allocation failure.
 vg_widget_t *vg_vbox_create(float spacing) {
     vg_widget_t *widget = vg_widget_create(VG_WIDGET_CONTAINER);
     if (!widget)
@@ -122,6 +134,7 @@ vg_widget_t *vg_vbox_create(float spacing) {
     return widget;
 }
 
+/// @brief Sets the gap between VBox children in pixels and marks the layout dirty.
 void vg_vbox_set_spacing(vg_widget_t *vbox, float spacing) {
     if (!vbox || !vbox->impl_data)
         return;
@@ -130,6 +143,7 @@ void vg_vbox_set_spacing(vg_widget_t *vbox, float spacing) {
     vbox->needs_layout = true;
 }
 
+/// @brief Sets the cross-axis alignment for VBox children (START, CENTER, END, or STRETCH).
 void vg_vbox_set_align(vg_widget_t *vbox, vg_align_t align) {
     if (!vbox || !vbox->impl_data)
         return;
@@ -138,6 +152,7 @@ void vg_vbox_set_align(vg_widget_t *vbox, vg_align_t align) {
     vbox->needs_layout = true;
 }
 
+/// @brief Sets the main-axis content justification for VBox children (START, CENTER, END, SPACE_BETWEEN, etc.).
 void vg_vbox_set_justify(vg_widget_t *vbox, vg_justify_t justify) {
     if (!vbox || !vbox->impl_data)
         return;
@@ -146,6 +161,7 @@ void vg_vbox_set_justify(vg_widget_t *vbox, vg_justify_t justify) {
     vbox->needs_layout = true;
 }
 
+/// @brief Measures the VBox by summing children heights plus spacing and taking the max child width.
 static void vbox_measure(vg_widget_t *self, float available_width, float available_height) {
     if (!self || !self->impl_data)
         return;
@@ -186,6 +202,7 @@ static void vbox_measure(vg_widget_t *self, float available_width, float availab
     layout_apply_constraints(self);
 }
 
+/// @brief Arranges VBox children vertically, distributing flex space and applying justify/align offsets.
 static void vbox_arrange(vg_widget_t *self, float x, float y, float width, float height) {
     if (!self || !self->impl_data)
         return;
@@ -281,6 +298,7 @@ static void vbox_arrange(vg_widget_t *self, float x, float y, float width, float
 // HBox Implementation
 //=============================================================================
 
+/// @brief Creates an HBox layout container with the given child spacing; returns NULL on allocation failure.
 vg_widget_t *vg_hbox_create(float spacing) {
     vg_widget_t *widget = vg_widget_create(VG_WIDGET_CONTAINER);
     if (!widget)
@@ -302,6 +320,7 @@ vg_widget_t *vg_hbox_create(float spacing) {
     return widget;
 }
 
+/// @brief Sets the gap between HBox children in pixels and marks the layout dirty.
 void vg_hbox_set_spacing(vg_widget_t *hbox, float spacing) {
     if (!hbox || !hbox->impl_data)
         return;
@@ -310,6 +329,7 @@ void vg_hbox_set_spacing(vg_widget_t *hbox, float spacing) {
     hbox->needs_layout = true;
 }
 
+/// @brief Sets the cross-axis alignment for HBox children (START, CENTER, END, or STRETCH).
 void vg_hbox_set_align(vg_widget_t *hbox, vg_align_t align) {
     if (!hbox || !hbox->impl_data)
         return;
@@ -318,6 +338,7 @@ void vg_hbox_set_align(vg_widget_t *hbox, vg_align_t align) {
     hbox->needs_layout = true;
 }
 
+/// @brief Sets the main-axis content justification for HBox children (START, CENTER, END, SPACE_BETWEEN, etc.).
 void vg_hbox_set_justify(vg_widget_t *hbox, vg_justify_t justify) {
     if (!hbox || !hbox->impl_data)
         return;
@@ -326,6 +347,7 @@ void vg_hbox_set_justify(vg_widget_t *hbox, vg_justify_t justify) {
     hbox->needs_layout = true;
 }
 
+/// @brief Measures the HBox by summing children widths plus spacing and taking the max child height.
 static void hbox_measure(vg_widget_t *self, float available_width, float available_height) {
     if (!self || !self->impl_data)
         return;
@@ -364,6 +386,7 @@ static void hbox_measure(vg_widget_t *self, float available_width, float availab
     layout_apply_constraints(self);
 }
 
+/// @brief Arranges HBox children horizontally, distributing flex space and applying justify/align offsets.
 static void hbox_arrange(vg_widget_t *self, float x, float y, float width, float height) {
     if (!self || !self->impl_data)
         return;
@@ -455,6 +478,7 @@ static void hbox_arrange(vg_widget_t *self, float x, float y, float width, float
 // Flex Layout Implementation
 //=============================================================================
 
+/// @brief Creates a Flex layout container with default row direction, stretch alignment, and no wrapping.
 vg_widget_t *vg_flex_create(void) {
     vg_widget_t *widget = vg_widget_create(VG_WIDGET_CONTAINER);
     if (!widget)
@@ -479,6 +503,7 @@ vg_widget_t *vg_flex_create(void) {
     return widget;
 }
 
+/// @brief Sets the flex main-axis direction (ROW, COLUMN, ROW_REVERSE, or COLUMN_REVERSE).
 void vg_flex_set_direction(vg_widget_t *flex, vg_direction_t direction) {
     if (!flex || !flex->impl_data)
         return;
@@ -487,6 +512,7 @@ void vg_flex_set_direction(vg_widget_t *flex, vg_direction_t direction) {
     flex->needs_layout = true;
 }
 
+/// @brief Sets the cross-axis alignment applied to all children in a flex line.
 void vg_flex_set_align_items(vg_widget_t *flex, vg_align_t align) {
     if (!flex || !flex->impl_data)
         return;
@@ -495,6 +521,7 @@ void vg_flex_set_align_items(vg_widget_t *flex, vg_align_t align) {
     flex->needs_layout = true;
 }
 
+/// @brief Sets how children are distributed along the main axis within each flex line.
 void vg_flex_set_justify_content(vg_widget_t *flex, vg_justify_t justify) {
     if (!flex || !flex->impl_data)
         return;
@@ -503,6 +530,7 @@ void vg_flex_set_justify_content(vg_widget_t *flex, vg_justify_t justify) {
     flex->needs_layout = true;
 }
 
+/// @brief Sets the gap between children on the main axis (and between flex lines when wrapping).
 void vg_flex_set_gap(vg_widget_t *flex, float gap) {
     if (!flex || !flex->impl_data)
         return;
@@ -511,6 +539,7 @@ void vg_flex_set_gap(vg_widget_t *flex, float gap) {
     flex->needs_layout = true;
 }
 
+/// @brief Polymorphic spacing setter — dispatches to vg_vbox_set_spacing, vg_hbox_set_spacing, or vg_flex_set_gap.
 void vg_container_set_spacing(vg_widget_t *container, float spacing) {
     if (!container || !container->impl_data || !container->vtable)
         return;
@@ -528,6 +557,7 @@ void vg_container_set_spacing(vg_widget_t *container, float spacing) {
     }
 }
 
+/// @brief Enables or disables line wrapping; when enabled, overflow children start a new flex line.
 void vg_flex_set_wrap(vg_widget_t *flex, bool wrap) {
     if (!flex || !flex->impl_data)
         return;
@@ -544,18 +574,21 @@ typedef struct flex_line {
     float total_flex;
 } flex_line_t;
 
+/// @brief Returns the child's measured size on the main axis (width for row, height for column).
 static float flex_child_main_size(vg_widget_t *child, bool is_row) {
     if (!child)
         return 0.0f;
     return is_row ? child->measured_width : child->measured_height;
 }
 
+/// @brief Returns the child's measured size on the cross axis (height for row, width for column).
 static float flex_child_cross_size(vg_widget_t *child, bool is_row) {
     if (!child)
         return 0.0f;
     return is_row ? child->measured_height : child->measured_width;
 }
 
+/// @brief Returns the child's main-axis measured size plus its surrounding margins.
 static float flex_child_main_outer(vg_widget_t *child, bool is_row) {
     if (!child)
         return 0.0f;
@@ -564,6 +597,7 @@ static float flex_child_main_outer(vg_widget_t *child, bool is_row) {
                    : child->layout.margin_top + child->layout.margin_bottom);
 }
 
+/// @brief Returns the child's cross-axis measured size plus its surrounding margins.
 static float flex_child_cross_outer(vg_widget_t *child, bool is_row) {
     if (!child)
         return 0.0f;
@@ -572,6 +606,7 @@ static float flex_child_cross_outer(vg_widget_t *child, bool is_row) {
                    : child->layout.margin_left + child->layout.margin_right);
 }
 
+/// @brief Counts and optionally heap-allocates a flat array of all visible children of @p self.
 static int flex_collect_visible_children(vg_widget_t *self, vg_widget_t ***out_children) {
     int count = 0;
     VG_FOREACH_VISIBLE_CHILD(self, child) {
@@ -596,6 +631,7 @@ static int flex_collect_visible_children(vg_widget_t *self, vg_widget_t ***out_c
     return count;
 }
 
+/// @brief Partitions @p children into wrap lines based on main-axis size; returns the number of lines.
 static int flex_build_lines(vg_widget_t *self,
                             vg_flex_layout_t *layout,
                             bool is_row,
@@ -645,6 +681,7 @@ static int flex_build_lines(vg_widget_t *self,
     return line_count;
 }
 
+/// @brief Measures the flex container by summing child main sizes and taking the max cross size, accounting for wrap lines.
 static void flex_measure(vg_widget_t *self, float available_width, float available_height) {
     if (!self || !self->impl_data)
         return;
@@ -725,6 +762,7 @@ static void flex_measure(vg_widget_t *self, float available_width, float availab
     layout_apply_constraints(self);
 }
 
+/// @brief Arranges flex children along the main axis with flex-grow resolution, justify-content, and align-items; handles wrap and reverse directions.
 static void flex_arrange(vg_widget_t *self, float x, float y, float width, float height) {
     if (!self || !self->impl_data)
         return;
@@ -1055,6 +1093,7 @@ typedef struct grid_impl {
     int placement_capacity;
 } grid_impl_t;
 
+/// @brief Frees the grid's column_widths, row_heights, and placements arrays and then the impl struct.
 static void grid_destroy(vg_widget_t *self) {
     if (!self || !self->impl_data)
         return;
@@ -1065,6 +1104,7 @@ static void grid_destroy(vg_widget_t *self) {
     free(g);
 }
 
+/// @brief Finds and returns the placement record for @p child, or NULL if none exists.
 static grid_placement_t *grid_find_placement(grid_impl_t *g, vg_widget_t *child) {
     for (int i = 0; i < g->placement_count; i++) {
         if (g->placements[i].child == child)
@@ -1073,6 +1113,7 @@ static grid_placement_t *grid_find_placement(grid_impl_t *g, vg_widget_t *child)
     return NULL;
 }
 
+/// @brief Removes the placement record for @p child from the grid, shifting the array to fill the gap.
 static void grid_remove_placement(grid_impl_t *g, vg_widget_t *child) {
     if (!g || !child)
         return;
@@ -1091,6 +1132,7 @@ static void grid_remove_placement(grid_impl_t *g, vg_widget_t *child) {
     }
 }
 
+/// @brief Clamps a track count to [1, VG_GRID_MAX_TRACKS].
 static int grid_clamp_track_count(int count) {
     if (count < 1)
         return 1;
@@ -1099,6 +1141,7 @@ static int grid_clamp_track_count(int count) {
     return count;
 }
 
+/// @brief Clamps a track index to [0, VG_GRID_MAX_TRACKS - 1].
 static int grid_clamp_track_index(int index) {
     if (index < 0)
         return 0;
@@ -1107,6 +1150,7 @@ static int grid_clamp_track_index(int index) {
     return index;
 }
 
+/// @brief Clamps a column or row span to [1, VG_GRID_MAX_TRACKS].
 static int grid_clamp_span(int span) {
     if (span < 1)
         return 1;
@@ -1115,6 +1159,7 @@ static int grid_clamp_span(int span) {
     return span;
 }
 
+/// @brief Computes the effective row count: max of declared rows, auto-flow rows needed, and explicit row+span extents.
 static int grid_effective_rows(grid_impl_t *g, vg_widget_t *self, int cols) {
     int rows = grid_clamp_track_count(g->layout.rows);
     int auto_count = 0;
@@ -1141,6 +1186,7 @@ static int grid_effective_rows(grid_impl_t *g, vg_widget_t *self, int cols) {
     return grid_clamp_track_count(rows);
 }
 
+/// @brief Allocates or reallocates @p tracks to @p new_count entries, zero-filling any newly added slots.
 static bool grid_resize_track_array(float **tracks, int old_count, int new_count) {
     if (!tracks || new_count <= 0)
         return false;
@@ -1160,6 +1206,7 @@ static bool grid_resize_track_array(float **tracks, int old_count, int new_count
     return true;
 }
 
+/// @brief Measures the grid by distributing available space across columns/rows and measuring each child in its cell.
 static void grid_measure(vg_widget_t *self, float available_width, float available_height) {
     if (!self || !self->impl_data)
         return;
@@ -1232,6 +1279,7 @@ static void grid_measure(vg_widget_t *self, float available_width, float availab
     layout_apply_constraints(self);
 }
 
+/// @brief Arranges each child in its grid cell, supporting explicit placement, column/row spanning, and auto-flow.
 static void grid_arrange(vg_widget_t *self, float x, float y, float width, float height) {
     if (!self || !self->impl_data)
         return;
@@ -1356,6 +1404,7 @@ static const vg_widget_vtable_t g_grid_vtable = {
     .arrange = grid_arrange,
 };
 
+/// @brief Creates a grid layout container with the specified column and row counts; returns NULL on allocation failure.
 vg_widget_t *vg_grid_create(int columns, int rows) {
     columns = grid_clamp_track_count(columns);
     rows = grid_clamp_track_count(rows);
@@ -1391,6 +1440,7 @@ vg_widget_t *vg_grid_create(int columns, int rows) {
     return widget;
 }
 
+/// @brief Sets the grid's column count, resizing the column_widths array if it exists.
 void vg_grid_set_columns(vg_widget_t *grid, int columns) {
     if (!grid || !grid->impl_data)
         return;
@@ -1404,6 +1454,7 @@ void vg_grid_set_columns(vg_widget_t *grid, int columns) {
     grid->needs_layout = true;
 }
 
+/// @brief Sets the grid's row count, resizing the row_heights array if it exists.
 void vg_grid_set_rows(vg_widget_t *grid, int rows) {
     if (!grid || !grid->impl_data)
         return;
@@ -1416,6 +1467,7 @@ void vg_grid_set_rows(vg_widget_t *grid, int rows) {
     grid->needs_layout = true;
 }
 
+/// @brief Sets the column and row gap sizes for the grid layout.
 void vg_grid_set_gap(vg_widget_t *grid, float column_gap, float row_gap) {
     if (!grid || !grid->impl_data)
         return;
@@ -1425,6 +1477,7 @@ void vg_grid_set_gap(vg_widget_t *grid, float column_gap, float row_gap) {
     grid->needs_layout = true;
 }
 
+/// @brief Sets an explicit pixel width for the given column index, allocating the widths array if necessary.
 void vg_grid_set_column_width(vg_widget_t *grid, int column, float width) {
     if (!grid || !grid->impl_data || column < 0)
         return;
@@ -1438,6 +1491,7 @@ void vg_grid_set_column_width(vg_widget_t *grid, int column, float width) {
     grid->needs_layout = true;
 }
 
+/// @brief Sets an explicit pixel height for the given row index, allocating the heights array if necessary.
 void vg_grid_set_row_height(vg_widget_t *grid, int row, float height) {
     if (!grid || !grid->impl_data || row < 0)
         return;
@@ -1451,6 +1505,7 @@ void vg_grid_set_row_height(vg_widget_t *grid, int row, float height) {
     grid->needs_layout = true;
 }
 
+/// @brief Explicitly places @p child in the grid at (@p column, @p row) with the given column and row spans; updates existing placement if any.
 void vg_grid_place(
     vg_widget_t *grid, vg_widget_t *child, int column, int row, int col_span, int row_span) {
     if (!grid || !grid->impl_data || !child)
@@ -1509,6 +1564,7 @@ typedef struct dock_impl {
     int entry_capacity;
 } dock_impl_t;
 
+/// @brief Frees the dock's entry array and impl struct.
 static void dock_destroy(vg_widget_t *self) {
     if (!self || !self->impl_data)
         return;
@@ -1517,6 +1573,7 @@ static void dock_destroy(vg_widget_t *self) {
     free(d);
 }
 
+/// @brief Measures the dock container to fill the full available area (children determine content, not the container).
 static void dock_measure(vg_widget_t *self, float available_width, float available_height) {
     if (!self || !self->impl_data)
         return;
@@ -1527,6 +1584,7 @@ static void dock_measure(vg_widget_t *self, float available_width, float availab
     layout_apply_constraints(self);
 }
 
+/// @brief Arranges docked children in order; each child claims its edge (TOP/BOTTOM/LEFT/RIGHT) from the remaining rect; FILL children get the remainder.
 static void dock_arrange(vg_widget_t *self, float x, float y, float width, float height) {
     if (!self || !self->impl_data)
         return;
@@ -1617,6 +1675,7 @@ static const vg_widget_vtable_t g_dock_vtable = {
     .arrange = dock_arrange,
 };
 
+/// @brief Creates a dock layout container with an initial 8-entry dock registry; returns NULL on allocation failure.
 vg_widget_t *vg_dock_create(void) {
     vg_widget_t *widget = vg_widget_create(VG_WIDGET_CONTAINER);
     if (!widget)
@@ -1642,6 +1701,7 @@ vg_widget_t *vg_dock_create(void) {
     return widget;
 }
 
+/// @brief Adds @p child to @p dock with the given edge position, registering it as a widget child and growing the entry array as needed.
 void vg_dock_add(vg_widget_t *dock, vg_widget_t *child, vg_dock_t position) {
     if (!dock || !dock->impl_data || !child)
         return;
@@ -1680,6 +1740,7 @@ void vg_dock_add(vg_widget_t *dock, vg_widget_t *child, vg_dock_t position) {
     dock->needs_layout = true;
 }
 
+/// @brief Removes the dock entry for @p child, shifting remaining entries to fill the gap.
 static void dock_remove_entry(dock_impl_t *d, vg_widget_t *child) {
     if (!d || !child)
         return;
@@ -1696,6 +1757,7 @@ static void dock_remove_entry(dock_impl_t *d, vg_widget_t *child) {
     }
 }
 
+/// @brief Called when a child is detached from a layout container; removes grid/dock metadata so stale entries don't survive re-parenting.
 void vg_layout_on_child_detached(vg_widget_t *parent, vg_widget_t *child) {
     if (!parent || !child || !parent->impl_data || !parent->vtable)
         return;
@@ -1713,22 +1775,27 @@ void vg_layout_on_child_detached(vg_widget_t *parent, vg_widget_t *child) {
 // Layout Engine Entry Points
 //=============================================================================
 
+/// @brief Entry-point: arranges @p container as a VBox at its current position with the given dimensions.
 void vg_layout_vbox(vg_widget_t *container, float width, float height) {
     vbox_arrange(container, container->x, container->y, width, height);
 }
 
+/// @brief Entry-point: arranges @p container as an HBox at its current position with the given dimensions.
 void vg_layout_hbox(vg_widget_t *container, float width, float height) {
     hbox_arrange(container, container->x, container->y, width, height);
 }
 
+/// @brief Entry-point: arranges @p container as a Flex layout at its current position with the given dimensions.
 void vg_layout_flex(vg_widget_t *container, float width, float height) {
     flex_arrange(container, container->x, container->y, width, height);
 }
 
+/// @brief Entry-point: arranges @p container as a Grid layout at its current position with the given dimensions.
 void vg_layout_grid(vg_widget_t *container, float width, float height) {
     grid_arrange(container, container->x, container->y, width, height);
 }
 
+/// @brief Entry-point: arranges @p container as a Dock layout at its current position with the given dimensions.
 void vg_layout_dock(vg_widget_t *container, float width, float height) {
     dock_arrange(container, container->x, container->y, width, height);
 }

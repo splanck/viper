@@ -4,83 +4,24 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file InstrLowering.cpp
-/// @brief Opcode-specific lowering handlers for IL to MIR conversion.
-///
-/// This file implements the instruction lowering logic that converts individual
-/// IL instructions into sequences of AArch64 MIR instructions. Each IL opcode
-/// has a corresponding handler that emits the appropriate machine instructions.
-///
-/// **What is Instruction Lowering?**
-/// Instruction lowering translates high-level IL operations into low-level
-/// machine operations. A single IL instruction may expand to multiple MIR
-/// instructions depending on the operation complexity and available hardware.
-///
-/// **Lowering Examples:**
-/// ```
-/// IL: %1 = add.i64 %0, 42
-/// MIR: v1 = MovRI #42        ; materialize constant
-///      v2 = AddRRR v0, v1    ; actual addition
-///
-/// IL: %1 = mul.i64 %0, 8
-/// MIR: v1 = LslRI v0, #3     ; strength reduce: x * 8 = x << 3
-///
-/// IL: %1 = srem.i64 %0, %2
-/// MIR: v3 = SDivRRR v0, v2   ; quotient = a / b
-///      v1 = MSubRRRR v0, v3, v2  ; remainder = a - (quotient * b)
-/// ```
-///
-/// **Value Materialization:**
-/// Before an IL value can be used as an MIR operand, it must be "materialized"
-/// into a virtual register:
-///
-/// | IL Value Kind | Materialization                                |
-/// |---------------|------------------------------------------------|
-/// | Temp          | Look up in tempVReg map or reload from spill  |
-/// | ConstInt      | MovRI (immediate to register)                  |
-/// | ConstFloat    | Load from rodata pool via AdrPage + LdrFprBaseImm |
-/// | GlobalAddr    | AdrPage + AddPageOff (PC-relative addressing)  |
-/// | NullPtr       | MovRI #0                                       |
-///
-/// **Register Class Selection:**
-/// Operands are classified by their IL type:
-/// | IL Type | Register Class | Physical Registers |
-/// |---------|----------------|-------------------|
-/// | i1-i64  | GPR            | x0-x28            |
-/// | ptr     | GPR            | x0-x28            |
-/// | f64     | FPR            | d0-d31            |
-///
-/// **Comparison Lowering:**
-/// IL comparison opcodes (icmp_*, fcmp_*) lower to:
-/// 1. CmpRR/FCmpRR - set condition flags
-/// 2. Cset - materialize flag as 0/1 in result register
-///
-/// **Condition Codes:**
-/// | IL Opcode  | AArch64 Condition |
-/// |------------|-------------------|
-/// | ICmpEQ     | eq                |
-/// | ICmpNE     | ne                |
-/// | ICmpSLT    | lt                |
-/// | ICmpSLE    | le                |
-/// | ICmpSGT    | gt                |
-/// | ICmpSGE    | ge                |
-/// | ICmpULT    | lo                |
-/// | ICmpUGT    | hi                |
-///
-/// **Handler Organization:**
-/// Handlers are grouped by category:
-/// - Arithmetic: add, sub, mul, div, rem
-/// - Bitwise: and, or, xor, shl, shr
-/// - Comparison: icmp_*, fcmp_*
-/// - Conversion: sext, zext, trunc, sitofp, fptosi
-/// - Memory: load, store, alloca
-/// - Call: call instruction lowering
-///
-/// @see LowerILToMIR.cpp For main lowering orchestration
-/// @see OpcodeDispatch.cpp For opcode-to-handler dispatch
-/// @see OpcodeMappings.hpp For opcode-to-condition tables
-///
+//
+// File: codegen/aarch64/InstrLowering.cpp
+// Purpose: Opcode-specific IL→MIR lowering handlers for AArch64.
+//          Each IL opcode category (arithmetic, bitwise, comparison, conversion,
+//          memory, call/ret) has a dedicated handler that appends AArch64 MIR
+//          instructions to the output block. Value materialization helpers handle
+//          constant immediates, float literals, global addresses, and frame slots.
+// Key invariants:
+//   - Every handler appends in program order; never inserts before existing instrs.
+//   - Virtual register IDs are allocated monotonically via ctx.nextVRegId.
+//   - Handlers return false only on unrecoverable lowering errors.
+// Ownership/Lifetime:
+//   - Stateless free functions; all mutable state flows through LoweringContext&.
+// Links: codegen/aarch64/InstrLowering.hpp,
+//        codegen/aarch64/LowerILToMIR.cpp (orchestration),
+//        codegen/aarch64/OpcodeDispatch.cpp (dispatch table),
+//        codegen/aarch64/OpcodeMappings.hpp (opcode→condition tables)
+//
 //===----------------------------------------------------------------------===//
 
 #include "InstrLowering.hpp"
@@ -105,10 +46,22 @@ namespace viper::codegen::aarch64 {
 // Helper: Get condition code for comparison opcodes
 //===----------------------------------------------------------------------===//
 
+/// @brief Return the AArch64 condition-code string for an IL comparison opcode.
+/// @details Delegates to lookupAnyCondition() from OpcodeMappings.hpp which covers
+///          both integer (icmp_*) and float (fcmp_*) comparisons.
 static const char *condForOpcode(il::core::Opcode op) {
     return lookupAnyCondition(op);
 }
 
+/// @brief Recursively resolve whether @p value is a frame-relative address.
+/// @details Checks if @p value is a temp with a known frame offset, or an AddrOf/GEP
+///          whose base ultimately resolves to a frame slot. On success, @p offsetOut is
+///          incremented by the computed FP-relative byte offset.
+/// @param value     IL value to resolve.
+/// @param fn        Enclosing IL function (for producer lookups).
+/// @param fb        Frame builder holding local slot assignments.
+/// @param offsetOut Accumulated FP-relative offset; updated on success.
+/// @return True if @p value resolves to a frame address, false otherwise.
 static bool resolveFrameAddress(const il::core::Value &value,
                                 const il::core::Function &fn,
                                 FrameBuilder &fb,
@@ -150,6 +103,10 @@ static bool resolveFrameAddress(const il::core::Value &value,
     }
 }
 
+/// @brief Return the AArch64 condition-code string for a floating-point comparison opcode.
+/// @details The FCMP instruction on AArch64 sets the NZCV flags differently from integer CMP:
+///          unordered comparisons (NaN inputs) set the V flag, which the "vs"/"vc" conditions test.
+///          FCmpEQ and FCmpNE need special AND/OR sequences (handled by emitOrderedFpCompareResult).
 static const char *fpCondCode(il::core::Opcode op) {
     switch (op) {
         case il::core::Opcode::FCmpEQ:
@@ -173,6 +130,14 @@ static const char *fpCondCode(il::core::Opcode op) {
     }
 }
 
+/// @brief Emit the CSET sequence that materializes an ordered FP comparison result into @p dst.
+/// @details FCmpEQ requires AND(eq, vc) to filter out NaN; FCmpNE requires OR(ne, vs).
+///          Other ordered comparisons (LT, LE, GT, GE, Ord, Uno) use a single CSET.
+///          FCMP must have already been emitted before this call.
+/// @param out        Output MIR block; new CSET/AND/OR instructions are appended.
+/// @param op         The IL FCmp opcode determining which condition to materialize.
+/// @param dst        Vreg that will hold the boolean 0/1 result.
+/// @param nextVRegId Vreg ID counter; incremented for any temporaries created.
 static void emitOrderedFpCompareResult(MBasicBlock &out,
                                        il::core::Opcode op,
                                        uint16_t dst,
@@ -1172,6 +1137,7 @@ bool lowerURemChk0(const il::core::Instr &ins,
 // Index Bounds Check (idx.chk)
 //===----------------------------------------------------------------------===//
 
+/// @brief Return the bit-width of an integer IL type (I1→1, I16→16, I32→32, else 64).
 static int integerTypeBits(il::core::Type::Kind kind) {
     switch (kind) {
         case il::core::Type::Kind::I1:
@@ -1185,6 +1151,14 @@ static int integerTypeBits(il::core::Type::Kind kind) {
     }
 }
 
+/// @brief Emit a sign-extension sequence and return the destination vreg.
+/// @details Emits LSL #(64-bits) / ASR #(64-bits) to sign-extend @p src from @p bits to 64 bits.
+///          Returns @p src unchanged when @p bits >= 64 (no-op).
+/// @param src  Source vreg (GPR) containing the value to sign-extend.
+/// @param bits Target signed width in bits (e.g. 16 for I16 → I64).
+/// @param ctx  Lowering context for vreg allocation.
+/// @param out  Output MIR block; LSL+ASR instructions are appended.
+/// @return Vreg holding the sign-extended result (may equal @p src if bits >= 64).
 static uint16_t signExtendVRegToWidth(uint16_t src,
                                       int bits,
                                       LoweringContext &ctx,
@@ -1432,6 +1406,15 @@ bool lowerURem(const il::core::Instr &ins,
 // FP Arithmetic (fadd, fsub, fmul, fdiv)
 //===----------------------------------------------------------------------===//
 
+/// @brief Ensure @p vreg is in an FPR; emit SCvtF if it is currently a GPR integer.
+/// @details When an integer operand feeds an FP operation (e.g. sitofp implicit conversion),
+///          this helper emits a SCvtF (signed int → double) instruction and returns the new
+///          FPR vreg. If @p vreg is already an FPR, returns it unchanged.
+/// @param vreg Source vreg; may be GPR or FPR.
+/// @param cls  Register class of @p vreg; updated to FPR on conversion.
+/// @param ctx  Lowering context for vreg allocation.
+/// @param out  Output MIR block; SCvtF is appended if conversion is needed.
+/// @return Vreg in FPR class holding the (possibly converted) value.
 static uint16_t ensureFpr(uint16_t vreg, RegClass &cls, LoweringContext &ctx, MBasicBlock &out) {
     if (cls != RegClass::GPR)
         return vreg;

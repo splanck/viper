@@ -5,23 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/Lowering.Bitwise.cpp
-// Purpose: Implement bitwise opcode lowering rules for the provisional IL
-//          dialect.  The emitters rely on EmitCommon to manage register
-//          materialisation and operand cloning.
-// Key invariants: Emitters only trigger when operands are valid and ensure the
-//                 resulting machine instructions operate on GPR registers.
-// Ownership/Lifetime: Borrowed IL instructions and MIR builders; no ownership
-//                     transfer occurs.
+// File: codegen/x86_64/Lowering.Bitwise.cpp
+// Purpose: Implement bitwise opcode lowering rules for the x86-64 backend.
+//          Emitters rely on EmitCommon to manage register materialisation and
+//          operand cloning.
+// Key invariants:
+//   - Emitters only trigger when operands are valid.
+//   - Resulting machine instructions operate on GPR registers only.
+// Ownership/Lifetime:
+//   - Operates on borrowed IL instructions and MIR builders; no ownership transfer.
+// Links: codegen/x86_64/LoweringRules.hpp,
+//        codegen/x86_64/Lowering.EmitCommon.hpp,
+//        codegen/x86_64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Bitwise lowering rules for the x86-64 Machine IR pipeline.
-/// @details Defines the lowering thunks that convert IL bitwise operators into
-///          Machine IR instructions, delegating register management to
-///          @ref viper::codegen::x64::EmitCommon while enforcing that only
-///          general-purpose registers participate in the resulting instructions.
 
 #include "LoweringRuleTable.hpp"
 

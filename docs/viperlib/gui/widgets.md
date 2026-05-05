@@ -82,6 +82,8 @@ Long single-line values stay clipped to the field bounds, the caret auto-scrolls
 When the widget is configured for multiline mode it now paints real per-line text, selection, and caret state, supports `Enter` for newline insertion, `Up` / `Down` for line navigation, line-local `Home` / `End`, drag selection, and mouse-wheel vertical scrolling.
 `Ctrl+Left` / `Ctrl+Right` now stop on punctuation and whitespace boundaries instead of treating only ASCII spaces as word breaks. `Ctrl/Cmd+Shift+Z` redoes the last undone edit, `Shift+Click` extends the current selection, and double-click selects the word under the pointer.
 Text insertion rejects invalid Unicode scalar values such as surrogate codepoints or values above `U+10FFFF`; public text replacement and insertion also skip malformed UTF-8 byte sequences before storing text. Valid input remains UTF-8 encoded in the widget buffer, and `max_length` is enforced by codepoint count rather than raw bytes.
+Replacing a selection validates and allocates the full edit before mutating the
+buffer, so a rejected insertion does not delete the previous selection.
 
 **Constructor:** `NEW Viper.GUI.TextInput(parent)`
 
@@ -369,6 +371,9 @@ Item text is clipped to the viewport and item add/remove/clear/select operations
 Virtual list cache invalidation refreshes visible rows on the next paint even when the visible range has not changed.
 `SelectIndex(index)` leaves the current selection unchanged when `index` is outside the non-virtual item range, and `ItemSetText()` preserves the old text if allocation fails.
 `ItemSetData()` stores runtime strings with their explicit length, so embedded NUL bytes round-trip through `ItemGetData()`. Runtime-owned item data is freed automatically by `RemoveItem()` and `Clear()`.
+Virtual list selection and cache growth now fail closed if allocation or size
+checks fail; the widget does not publish a larger virtual item count until its
+selection bitmap can represent that range.
 
 **Constructor:** `NEW Viper.GUI.ListBox(parent)`
 

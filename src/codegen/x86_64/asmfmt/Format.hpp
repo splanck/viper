@@ -7,12 +7,15 @@
 //
 // File: codegen/x86_64/asmfmt/Format.hpp
 // Purpose: Provide reusable helpers for formatting x86-64 assembly operands.
-// Key invariants: Helpers are side-effect free and produce AT&T syntax; negative
-//                 register ids denote virtual registers formatted as "%vN";
-//                 escape_ascii handles embedded quotes and backslashes.
-// Ownership/Lifetime: Functions allocate and return std::string values by copy. Callers
-//                     own the returned strings.
-// Links: docs/architecture.md
+// Key invariants:
+//   - Helpers are side-effect free and produce AT&T syntax.
+//   - Negative register IDs denote virtual registers formatted as "%vN".
+//   - escape_ascii handles embedded quotes and backslashes.
+// Ownership/Lifetime:
+//   - Functions allocate and return std::string values by copy; callers own
+//     the returned strings.
+// Links: codegen/x86_64/asmfmt/Format.cpp,
+//        codegen/x86_64/AsmEmitter.hpp
 //
 //===----------------------------------------------------------------------===//
 

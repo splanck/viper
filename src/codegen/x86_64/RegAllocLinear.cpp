@@ -5,32 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/RegAllocLinear.cpp
+// File: codegen/x86_64/RegAllocLinear.cpp
 // Purpose: Tie together the linear-scan register allocation pipeline that turns
 //          Machine IR with virtual registers into a form annotated with
 //          physical register assignments and spill slots.
-// Key invariants: Phases execute in a deterministic order — live interval
-//                 analysis is computed prior to allocation so every virtual
-//                 register has a defined lifetime, the allocator consumes the
-//                 immutable analysis snapshot, and the summary returned from the
-//                 pass precisely describes spill usage for later lowering
-//                 passes.
-// Ownership/Lifetime: Mutates the supplied Machine IR in place, retaining
-//                     ownership of the function with the caller while the
-//                     AllocationResult returned by this translation unit is a
-//                     lightweight summary consumed by downstream passes.
-// Links: src/codegen/x86_64/ra/LiveIntervals.hpp,
-//        src/codegen/x86_64/ra/Allocator.hpp,
-//        docs/architecture.md#codegen
+// Key invariants:
+//   - Phases execute in deterministic order: liveness → coalescer → allocator.
+//   - Live interval analysis is computed before allocation so every vreg has a defined lifetime.
+// Ownership/Lifetime:
+//   - Mutates MIR in place; AllocationResult is a lightweight summary for downstream passes.
+// Links: codegen/x86_64/RegAllocLinear.hpp,
+//        codegen/x86_64/ra/LiveIntervals.hpp,
+//        codegen/x86_64/ra/Allocator.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Entry point that orchestrates linear-scan register allocation.
-/// @details Exposes @ref allocate, the façade that threads together live
-///          interval analysis and the allocator implementation so callers can
-///          request register assignment for a machine function with a single
-///          call.
 
 #include "RegAllocLinear.hpp"
 

@@ -7,13 +7,15 @@
 //
 // File: codegen/aarch64/InstrLowering.hpp
 // Purpose: Opcode-specific lowering handlers for IL->MIR conversion.
-// Key invariants: Each handler returns true on success and false on
-//                 unrecoverable error; all emitted MIR is appended to the
-//                 output block in program order; virtual register IDs are
-//                 allocated monotonically via LoweringContext::nextVRegId.
-// Ownership/Lifetime: Handlers are stateless free functions; mutable state
-//                     is accessed solely through the LoweringContext reference.
-// Links: docs/architecture.md, codegen/aarch64/LoweringContext.hpp
+// Key invariants:
+//   - Each handler returns true on success and false on unrecoverable error.
+//   - All emitted MIR is appended to the output block in program order.
+//   - Virtual register IDs are allocated monotonically via nextVRegId.
+// Ownership/Lifetime:
+//   - Handlers are stateless free functions; mutable state is accessed
+//     solely through the LoweringContext reference.
+// Links: codegen/aarch64/InstrLowering.cpp,
+//        codegen/aarch64/LoweringContext.hpp
 //
 //===----------------------------------------------------------------------===//
 

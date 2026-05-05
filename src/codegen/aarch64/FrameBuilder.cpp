@@ -4,86 +4,32 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file FrameBuilder.cpp
-/// @brief Stack frame layout construction for AArch64 code generation.
-///
-/// This file implements the FrameBuilder class which manages the layout of
-/// a function's stack frame during MIR lowering. It assigns offsets to local
-/// variables (allocas), spill slots, and tracks outgoing argument areas.
-///
-/// **What is a Stack Frame?**
-/// A stack frame is the region of memory allocated on the stack for a single
-/// function invocation. It contains:
-/// - Saved registers (FP, LR, callee-saved registers)
-/// - Local variables declared in the function
-/// - Spill slots for register allocator overflow
-/// - Outgoing argument area for function calls
-///
-/// **AAPCS64 Stack Frame Layout:**
-/// ```
-/// Higher addresses (caller's frame)
-/// ┌────────────────────────────────────────┐
-/// │ Caller's outgoing args (if any)        │
-/// ├────────────────────────────────────────┤ ← Old SP (before call)
-/// │ Return address (x30/LR)                │ ← Saved by STP x29, x30
-/// │ Previous frame pointer (x29/FP)        │
-/// ├────────────────────────────────────────┤ ← Current FP (x29)
-/// │ Callee-saved registers (x19-x28, etc.) │ ← Saved by prologue
-/// ├────────────────────────────────────────┤
-/// │ Local variables (alloca slots)         │ ← Managed by FrameBuilder
-/// ├────────────────────────────────────────┤
-/// │ Spill slots (reg alloc overflow)       │ ← Managed by FrameBuilder
-/// ├────────────────────────────────────────┤
-/// │ Outgoing argument area                 │ ← For calls with stack args
-/// ├────────────────────────────────────────┤ ← Current SP
-/// Lower addresses (grows downward)
-/// ```
-///
-/// **Frame Pointer Relative Addressing:**
-/// All locals and spills use negative offsets from the frame pointer:
-/// ```
-/// [fp, #-8]   ← First local (offset = -8)
-/// [fp, #-16]  ← Second local (offset = -16)
-/// [fp, #-24]  ← First spill slot
-/// ...
-/// ```
-///
-/// **Alignment Requirements:**
-/// - Stack pointer must be 16-byte aligned at all times
-/// - Individual slots are aligned to their natural alignment
-/// - The frame builder rounds up the total frame size to 16 bytes
-///
-/// **Slot Assignment Algorithm:**
-/// 1. Start at offset -8 (first available slot below FP)
-/// 2. For each slot request:
-///    a. Align the current offset downward to the required alignment
-///    b. Subtract the slot size
-///    c. Record the offset and update the cursor
-/// 3. After all slots assigned, round total frame size to 16-byte boundary
-///
-/// **Usage Example:**
-/// ```cpp
-/// FrameBuilder fb{mf};
-///
-/// // Add local variable slots (from alloca instructions)
-/// fb.addLocal(tempId, 8, 8);    // 8-byte slot, 8-byte aligned
-///
-/// // Add spill slots (from register allocator)
-/// int spillOffset = fb.ensureSpill(vreg, 8, 8);
-///
-/// // Track outgoing argument area
-/// fb.setMaxOutgoingBytes(32);   // Space for 4 stack arguments
-///
-/// // Finalize and compute total frame size
-/// fb.finalize();
-/// // Now mf.frame.totalBytes is set
-/// ```
-///
-/// @see MachineIR.hpp For MFunction::Frame and related types
-/// @see RegAllocLinear.cpp For spill slot usage
-/// @see AsmEmitter.cpp For prologue/epilogue generation
-///
+//
+// File: codegen/aarch64/FrameBuilder.cpp
+// Purpose: AArch64 AAPCS64 stack-frame layout construction.
+//          Implements FrameBuilder: assigns FP-relative negative offsets to
+//          local variables (allocas), register spill slots, and outgoing
+//          argument areas. finalize() rounds the total up to 16-byte alignment
+//          and writes MFunction::localFrameSize.
+//
+// AAPCS64 frame layout (high → low):
+//   [FP+8]  saved LR        (paired STP x29,x30)
+//   [FP+0]  saved FP
+//   [FP-8]  first local/spill slot
+//   ...     more locals / spill slots
+//   [SP]    base of outgoing arg area
+//
+// Key invariants:
+//   - All slot offsets are negative (below the frame pointer).
+//   - Slots are 8-byte aligned minimum; total frame is 16-byte aligned.
+//   - addLocal()/ensureSpill() must precede finalize().
+//   - finalize() is idempotent but should be called exactly once.
+// Ownership/Lifetime:
+//   - Borrows MFunction*; the MFunction must outlive the FrameBuilder.
+// Links: codegen/aarch64/FrameBuilder.hpp,
+//        codegen/aarch64/RegAllocLinear.cpp (spill usage),
+//        codegen/aarch64/AsmEmitter.cpp (prologue/epilogue)
+//
 //===----------------------------------------------------------------------===//
 
 #include "FrameBuilder.hpp"

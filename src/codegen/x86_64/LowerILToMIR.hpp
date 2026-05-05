@@ -7,12 +7,16 @@
 //
 // File: codegen/x86_64/LowerILToMIR.hpp
 // Purpose: Declare a bridge that adapts front-end IL to Machine IR.
-// Key invariants: SSA identities are preserved during lowering; virtual register
-//                 ids are assigned deterministically starting from 1; block
-//                 parameter copies are emitted as parallel copy pseudo-ops.
-// Ownership/Lifetime: The adapter borrows IL inputs, constructs fresh MIR graphs by
-//                     value, and records call plans for later frame lowering.
-// Links: docs/architecture.md
+// Key invariants:
+//   - SSA identities are preserved during lowering.
+//   - Virtual register IDs are assigned deterministically starting from 1.
+//   - Block parameter copies are emitted as parallel copy pseudo-ops.
+// Ownership/Lifetime:
+//   - The adapter borrows IL inputs, constructs fresh MIR graphs by value,
+//     and records call plans for later frame lowering.
+// Links: codegen/x86_64/LowerILToMIR.cpp,
+//        codegen/x86_64/MachineIR.hpp,
+//        codegen/x86_64/LoweringRules.hpp
 //
 //===----------------------------------------------------------------------===//
 

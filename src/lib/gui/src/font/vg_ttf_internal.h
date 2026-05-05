@@ -4,56 +4,27 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file vg_ttf_internal.h
-/// @brief Internal TrueType font parsing structures, byte-reading utilities,
-///        glyph cache, and rasterization declarations.
-///
-/// @details This private header defines the internal data structures used by
-///          the Viper GUI font engine to parse and render TrueType fonts. It
-///          exposes the concrete layout of the opaque @c vg_font_t handle, the
-///          parsed representations of critical TTF tables (head, hhea, maxp,
-///          hmtx, kern), the hash-map-based glyph cache, and a suite of
-///          big-endian byte-reading helper functions required because TTF files
-///          store all integers in network byte order.
-///
-///          The parsing pipeline works as follows:
-///            1. @c vg_font_load / @c vg_font_load_file reads raw TTF bytes.
-///            2. @c ttf_parse_tables walks the table directory and dispatches
-///               to per-table parsers (ttf_parse_head, ttf_parse_hhea, etc.).
-///            3. Character-to-glyph mapping uses CMAP format 4 (BMP) or
-///               format 12 (full Unicode) depending on what the font provides.
-///            4. On-demand rasterization via @c vg_rasterize_glyph converts
-///               glyph outlines to alpha-coverage bitmaps and stores them in
-///               the glyph cache for reuse.
-///
-///          This header is internal to the font subsystem and must not be
-///          included by code outside of @c src/lib/gui/src/font/.
-///
-/// Key invariants:
-///   - All multi-byte integers in TTF data are big-endian; the ttf_read_*
-///     family of functions handles byte-order conversion.
-///   - The glyph cache uses open-addressing with collision chaining and will
-///     automatically evict entries when VG_CACHE_MAX_MEMORY is exceeded.
-///   - The vg_font struct owns its data buffer when owns_data is true; the
-///     buffer must be freed in vg_font_destroy.
-///   - CMAP format 4 arrays (end_codes, start_codes, id_deltas,
-///     id_range_offsets, glyph_ids) are heap-allocated and freed on destroy.
-///   - CMAP format 12 arrays are heap-allocated and freed on destroy.
-///
-/// Ownership/Lifetime:
-///   - struct vg_font owns all heap-allocated sub-arrays and the glyph cache.
-///   - vg_cache_entry_t nodes are heap-allocated; the cache owns them.
-///   - Glyph bitmaps inside cache entries are heap-allocated; the cache owns
-///     them and frees them on eviction or cache destruction.
-///
-/// Links:
-///   - vg_font.h        -- public opaque font API
-///   - vg_font.c        -- public API implementation
-///   - vg_ttf_parse.c   -- TTF table parsing implementation
-///   - vg_glyph_cache.c -- glyph cache implementation
-///   - vg_rasterize.c   -- glyph rasterization implementation
-///
+//
+// File: lib/gui/src/font/vg_ttf_internal.h
+// Purpose: Internal TrueType font parsing structures, big-endian byte-reading
+//          helpers, glyph cache, and rasterization declarations. Private to the
+//          font subsystem — must not be included outside lib/gui/src/font/.
+// Key invariants:
+//   - All multi-byte integers in TTF data are big-endian; the ttf_read_*
+//     family handles byte-order conversion.
+//   - The glyph cache evicts entries automatically when VG_CACHE_MAX_MEMORY
+//     is exceeded.
+//   - vg_font owns its data buffer when owns_data is true; freed in destroy.
+//   - CMAP format 4 and format 12 arrays are heap-allocated and freed on destroy.
+// Ownership/Lifetime:
+//   - struct vg_font owns all heap-allocated sub-arrays and the glyph cache.
+//   - vg_cache_entry_t nodes and their bitmaps are owned by the cache.
+// Links: lib/gui/include/vg_font.h,
+//        lib/gui/src/font/vg_font.c,
+//        lib/gui/src/font/vg_ttf.c,
+//        lib/gui/src/font/vg_cache.c,
+//        lib/gui/src/font/vg_raster.c
+//
 //===----------------------------------------------------------------------===//
 #pragma once
 

@@ -5,8 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/passes/PreRegAllocOptPass.cpp
+// File: codegen/x86_64/passes/PreRegAllocOptPass.cpp
 // Purpose: Run x86-64 pre-register-allocation MIR cleanup in the modular pipeline.
+// Key invariants:
+//   - Skipped entirely when optimizeLevel < 1.
+// Ownership/Lifetime:
+//   - Stateless; mutates Module::mir in place via PreRegAllocOpt utilities.
+// Links: codegen/x86_64/passes/PreRegAllocOptPass.hpp,
+//        codegen/x86_64/PreRegAllocOpt.hpp
 //
 //===----------------------------------------------------------------------===//
 

@@ -5,15 +5,22 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/ra/Allocator.hpp
+// File: codegen/x86_64/ra/Allocator.hpp
 // Purpose: Declare the linear-scan allocator phase that orchestrates register
 //          assignment, spill insertion, and PX_COPY lowering across Machine IR
 //          blocks.
-// Key invariants: Allocation proceeds in block order using deterministic
-//                 register pools sourced from the target description.
-// Ownership/Lifetime: The allocator mutates the provided Machine IR function in
-//                     place and records the resulting allocation summary.
-// Links: src/codegen/x86_64/RegAllocLinear.hpp, src/codegen/x86_64/ra/Spiller.hpp
+// Key invariants:
+//   - Allocation proceeds in block order using deterministic register pools.
+//   - Physical argument registers are reserved during call setup to prevent
+//     spill reloads from overwriting them.
+// Ownership/Lifetime:
+//   - Mutates the provided MFunction in place; caller owns the function.
+//   - LiveIntervals reference must outlive the allocator.
+// Links: codegen/x86_64/ra/Allocator.cpp,
+//        codegen/x86_64/RegAllocLinear.hpp,
+//        codegen/x86_64/ra/Spiller.hpp,
+//        codegen/x86_64/ra/Liveness.hpp,
+//        codegen/x86_64/ra/LiveIntervals.hpp
 //
 //===----------------------------------------------------------------------===//
 

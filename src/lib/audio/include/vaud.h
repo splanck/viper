@@ -28,8 +28,9 @@
 /// @file
 /// @brief Cross-platform audio library public API.
 /// @details Exposes audio context management, sound effect loading and playback,
-///          music streaming, and volume control. All functions are thread-safe
-///          and can be called from any thread.
+///          music streaming, and volume control. Playback/control operations are
+///          synchronized internally; context/handle destruction must not run
+///          concurrently with other operations on the same context or handle.
 
 #pragma once
 
@@ -124,6 +125,8 @@ vaud_context_t vaud_create(void);
 /// @details Stops all playback, shuts down the audio thread, releases platform
 ///          resources, and detaches caller-owned sound/music handles so they can
 ///          still be freed safely after the context is gone. Safe to pass NULL.
+///          The caller must ensure no other thread is using @p ctx while this
+///          function runs.
 /// @param ctx Audio context to destroy (may be NULL).
 void vaud_destroy(vaud_context_t ctx);
 
@@ -180,7 +183,8 @@ vaud_sound_t vaud_load_sound_mem(vaud_context_t ctx, const void *data, size_t si
 
 /// @brief Free a loaded sound effect.
 /// @details Releases the memory used by the sound. Any voices currently playing
-///          this sound will be stopped. Safe to pass NULL.
+///          this sound will be stopped. Safe to pass NULL. The caller must
+///          ensure no other thread is using @p sound while this function runs.
 /// @param sound Sound to free (may be NULL).
 void vaud_free_sound(vaud_sound_t sound);
 
@@ -272,12 +276,16 @@ vaud_music_t vaud_load_music_mp3(vaud_context_t ctx, const char *path);
 /// @brief Service streaming music buffers outside the audio render callback.
 /// @details Decodes/refills empty music buffers and processes pending loop rewinds.
 ///          Applications using the high-level Viper runtime should call
-///          `Viper.Sound.Audio.Update()` each frame; it forwards here.
+///          `Viper.Sound.Audio.Update()` each frame; it forwards here. The
+///          realtime mixer consumes decoded buffers and never performs file I/O
+///          or codec decode work.
 /// @param ctx Audio context.
 void vaud_update(vaud_context_t ctx);
 
 /// @brief Free a loaded music stream.
 /// @details Stops playback if playing, closes the file, and frees resources.
+///          The caller must ensure no other thread is using @p music while this
+///          function runs.
 /// @param music Music to free (may be NULL).
 void vaud_free_music(vaud_music_t music);
 

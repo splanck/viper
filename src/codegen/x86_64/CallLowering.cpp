@@ -5,26 +5,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the call-lowering phase for the x86-64 backend.  The translation
-// unit maps abstract call plans into concrete Machine IR that abides by the
-// SysV AMD64 ABI, ensuring registers and stack slots are populated in the
-// required order while updating frame metadata so later passes can reserve
-// stack space correctly.
-//
-// The lowering logic operates directly on the caller's Machine IR, threading in
-// scratch registers when values must be moved through temporaries and aligning
-// outgoing argument areas to eight-byte boundaries.  Plans produced by
-// @ref CallLoweringPlan guide the transformation so the implementation stays
-// decoupled from IL-level call semantics.
+// File: codegen/x86_64/CallLowering.cpp
+// Purpose: Implements the call-lowering phase for the x86-64 backend, mapping
+//          abstract call plans into concrete MIR that abides by SysV AMD64 ABI.
+// Key invariants:
+//   - Argument registers are populated in ABI order before the CALL instruction.
+//   - Outgoing argument stack areas are 8-byte aligned.
+//   - Frame metadata is updated with new stack argument slots.
+// Ownership/Lifetime:
+//   - Mutates the caller-provided MBasicBlock and FrameInfo in-place; does not
+//     retain references after lowerCall() returns.
+// Links: codegen/x86_64/CallLowering.hpp,
+//        codegen/x86_64/FrameLowering.hpp,
+//        codegen/x86_64/TargetX64.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief x86-64 call lowering routines that translate abstract plans into MIR.
-/// @details Provides helpers that materialise physical register operands,
-///          detect SSA values that already carry boolean semantics, and arrange
-///          stack arguments for calls.  The main @ref lowerCall entry point is
-///          invoked by the backend once per call site.
 
 #include "CallLowering.hpp"
 

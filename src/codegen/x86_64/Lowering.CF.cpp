@@ -5,20 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/Lowering.CF.cpp
-// Purpose: Implement control-flow lowering rules for the provisional IL
-//          dialect, covering branches, selects, and returns.
-// Key invariants: Emitters rely on EmitCommon for operand preparation and obey
-//                 the register classes dictated by MIRBuilder.
-// Ownership/Lifetime: Works with borrowed MIRBuilder and IL instruction data.
+// File: codegen/x86_64/Lowering.CF.cpp
+// Purpose: Implement control-flow lowering rules for the x86-64 backend,
+//          covering branches, selects, and returns.
+// Key invariants:
+//   - Emitters rely on EmitCommon for operand preparation.
+//   - Register classes are dictated by MIRBuilder.
+// Ownership/Lifetime:
+//   - Works with borrowed MIRBuilder and IL instruction data; no persistent state.
+// Links: codegen/x86_64/LoweringRules.hpp,
+//        codegen/x86_64/Lowering.EmitCommon.hpp,
+//        codegen/x86_64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Control-flow lowering hooks for the x86-64 backend.
-/// @details Provides thin wrappers that forward branch, select, and return IL
-///          instructions to @ref viper::codegen::x64::EmitCommon, ensuring a
-///          consistent emission strategy regardless of the caller.
 
 #include "LoweringRuleTable.hpp"
 

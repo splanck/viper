@@ -37,6 +37,8 @@ namespace viper::codegen::aarch64::passes {
 
 namespace {
 
+/// @brief Register the source file for every file_id referenced across all functions.
+/// @param debugSourcePath Path to the original source; "<source>" if empty.
 void seedDebugFiles(DebugLineTable &table,
                     const std::vector<MFunction> &mir,
                     std::string_view debugSourcePath) {
@@ -60,6 +62,8 @@ void seedDebugFiles(DebugLineTable &table,
         table.addFileSlot(filePath);
 }
 
+/// @brief Register the source file for every file_id referenced in a single function.
+/// @param debugSourcePath Path to the original source; "<source>" if empty.
 void seedDebugFiles(DebugLineTable &table,
                     const MFunction &fn,
                     std::string_view debugSourcePath) {

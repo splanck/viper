@@ -9,9 +9,16 @@
 // Purpose: Implements the modular AArch64 code-generation pipeline by wiring
 //          all AArch64 passes through the PassManager in the correct order and
 //          providing a reusable end-to-end pipeline for the CLI.
-// Cross-platform touchpoints: host/native-link availability, runtime archive
-//                             composition, and system tool invocation for
-//                             fallback flows.
+// Key invariants:
+//   - Pass order: Lowering → PreRegAllocOpt → Legalize → RegAlloc →
+//     BlockLayout → Peephole → Scheduler → Peephole → Emit.
+//   - Host/native-link availability, runtime archive composition, and system
+//     tool invocation are selected at runtime based on TargetPlatform.
+// Ownership/Lifetime:
+//   - CodegenPipeline owns the Options struct; all other objects are
+//     stack-local or owned by the caller-supplied AArch64Module.
+// Links: codegen/aarch64/CodegenPipeline.hpp,
+//        codegen/aarch64/passes/PassManager.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -60,6 +67,7 @@ static void dumpMir(const passes::AArch64Module &module, const char *tag, std::o
     }
 }
 
+/// @brief Map a TargetPlatform to the object-file format used by that OS.
 static objfile::ObjFormat targetObjectFormat(TargetPlatform platform) {
     switch (platform) {
         case TargetPlatform::Darwin:
@@ -74,6 +82,7 @@ static objfile::ObjFormat targetObjectFormat(TargetPlatform platform) {
     return objfile::detectHostFormat();
 }
 
+/// @brief Map a TargetPlatform to the linker's LinkPlatform enum.
 static linker::LinkPlatform targetLinkPlatform(TargetPlatform platform) {
     switch (platform) {
         case TargetPlatform::Darwin:
@@ -88,6 +97,9 @@ static linker::LinkPlatform targetLinkPlatform(TargetPlatform platform) {
     return linker::detectLinkPlatform();
 }
 
+/// @brief Return the system assembler command-line prefix for a given target platform.
+/// On Darwin builds a `cc -arch arm64` invocation; on cross-compile hosts uses
+/// the clang `--target=` triple matching the AArch64 ABI of the target OS.
 static std::vector<std::string> systemAssemblerArgs(TargetPlatform platform) {
     switch (platform) {
         case TargetPlatform::Darwin:
@@ -111,11 +123,13 @@ static std::vector<std::string> systemAssemblerArgs(TargetPlatform platform) {
     return {"clang", "--target=aarch64-unknown-linux-gnu"};
 }
 
+/// @brief Return true if @p path has a .o or .obj extension (object file output).
 static bool isObjectOutputPath(const std::string &path) {
     const std::string ext = std::filesystem::path(path).extension().string();
     return ext == ".o" || ext == ".obj";
 }
 
+/// @brief Forward declaration; defined later after collectNativeLinkArchives.
 static int linkObjToExe(const std::string &objPath,
                         const std::string &exePath,
                         const LinkContext &ctx,
@@ -126,6 +140,8 @@ static int linkObjToExe(const std::string &objPath,
                         std::ostream &out,
                         std::ostream &err);
 
+/// @brief Assemble @p asmPath to a temporary .o, then link to @p exePath via
+///        the system assembler. Cleans up the temporary object file on return.
 static int linkToExe(const std::string &asmPath,
                      const std::string &exePath,
                      TargetPlatform targetPlatform,
@@ -153,6 +169,13 @@ static int linkToExe(const std::string &asmPath,
     return lrc;
 }
 
+/// @brief Populate @p archives with all runtime archive paths required for linking.
+/// @details Deduplicates by absolute path. On Windows, always pulls in Oop/Arrays/Collections/
+///          Threads/Text/IoFs alongside the Base archive because the Windows CRT startup expects
+///          them to be present. Graphics and Audio support libraries are appended when the link
+///          context declares those components.
+/// @param ctx     Link context produced by prepareLinkContext/prepareLinkContextFromSymbols.
+/// @param archives Output list; entries are absolute paths appended in dependency order.
 static void collectNativeLinkArchives(const common::LinkContext &ctx,
                                       std::vector<std::string> &archives) {
     std::unordered_set<std::string> seenArchives;
@@ -192,6 +215,20 @@ static void collectNativeLinkArchives(const common::LinkContext &ctx,
         appendIfExists(common::supportLibraryPath(ctx.buildDir, "viperaud"));
 }
 
+/// @brief Link a single .o file into a native executable using the Viper native linker.
+/// @details Fills a NativeLinkerOptions struct from the link context (runtime archives,
+///          extra objects, stack size) and dispatches to nativeLink(). AArch64 arch is always
+///          used; platform is mapped from the TargetPlatform enum.
+/// @param objPath       Path to the compiled object file.
+/// @param exePath       Destination path for the output executable.
+/// @param ctx           Link context (runtime archive set, build dir, etc.).
+/// @param targetPlatform Target OS; determines symbol mangling and ABI format.
+/// @param stackSize     Requested thread stack size in bytes; 0 means platform default.
+/// @param extraObjects  Additional .o files to include in the link (e.g. runtime stubs).
+/// @param fastLink      Skip non-essential size-reduction passes in the linker.
+/// @param out           Stream for linker stdout diagnostics.
+/// @param err           Stream for linker stderr diagnostics.
+/// @return 0 on success, non-zero on link failure.
 static int linkObjToExe(const std::string &objPath,
                         const std::string &exePath,
                         const LinkContext &ctx,
@@ -219,6 +256,13 @@ static int linkObjToExe(const std::string &objPath,
     return viper::codegen::linker::nativeLink(linkOpts, out, err);
 }
 
+/// @brief Run IL-level optimization passes on @p mod before machine-code lowering.
+/// @details Skips all work when optimizeLevel < 1. At O1 the "O1" preset is used;
+///          at O2+ the "O2" preset is used. The IL PassManager applies DCE, inlining,
+///          constant folding, and SimplifyCFG in the selected order.
+/// @param mod           Module to optimize in place.
+/// @param optimizeLevel 0 = no optimization; 1 = O1; 2+ = O2.
+/// @return true on success, false if any IL optimizer pass returns an error.
 static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel) {
     if (optimizeLevel < 1)
         return true;
@@ -227,6 +271,11 @@ static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel) {
     return ilpm.runPipeline(mod, optimizeLevel >= 2 ? "O2" : "O1");
 }
 
+/// @brief Return the AArch64 TargetInfo for the host OS detected at compile time.
+/// @details Compile-time dispatch: _WIN32 → Windows AAPCS64/COFF, __APPLE__ → Darwin
+///          AAPCS64/Mach-O with BTI+PAC, otherwise Linux AAPCS64/ELF.
+/// @return Reference to the appropriate singleton target; lifetime is static.
+/// @brief Return the AArch64 TargetInfo for the host OS at compile time.
 static const TargetInfo &hostAArch64Target() {
 #if defined(_WIN32)
     return windowsTarget();
@@ -237,6 +286,9 @@ static const TargetInfo &hostAArch64Target() {
 #endif
 }
 
+/// @brief Map a TargetPlatform enum value to the corresponding AArch64 TargetInfo singleton.
+/// @param platform Darwin, Linux, Windows, or Host (auto-detected via hostAArch64Target()).
+/// @return Const reference to the selected singleton; lifetime is static.
 static const TargetInfo &selectAArch64Target(CodegenPipeline::TargetPlatform platform) {
     switch (platform) {
         case CodegenPipeline::TargetPlatform::Darwin:
@@ -325,8 +377,14 @@ bool runCodegenPipeline(passes::AArch64Module &module,
     return true;
 }
 
+/// @brief Construct a CodegenPipeline, capturing all options by value.
+/// @param opts Full pipeline configuration; moved into opts_ to avoid a copy.
 CodegenPipeline::CodegenPipeline(Options opts) : opts_(std::move(opts)) {}
 
+/// @brief Run the pipeline reading the IL module from Options::input_il_path.
+/// @details Loads and verifies the module from disk, then delegates to runWithModule()
+///          with moduleAlreadyVerified = true to avoid a redundant verification pass.
+/// @return PipelineResult with exit_code 0 on success; stderr_text holds any diagnostics.
 PipelineResult CodegenPipeline::run() {
     PipelineResult result{};
     std::ostringstream out;
@@ -350,6 +408,17 @@ PipelineResult CodegenPipeline::run() {
     return runWithModule(std::move(mod), opts_.input_il_path, true);
 }
 
+/// @brief Run the pipeline using an already-loaded IL module.
+/// @details Entry point used by both run() and by callers that own the module (e.g. the
+///          REPL or test harness). Steps: optional re-verification → EH lowering →
+///          IL optimization → target selection → MIR codegen → assembly/object emission →
+///          optional native linking → optional execution.
+/// @param mod                    IL module to compile; consumed/moved into the pipeline.
+/// @param debugSourcePath        Source path embedded in debug line-number directives.
+///                               Falls back to opts_.input_il_path when empty.
+/// @param moduleAlreadyVerified  When true, skips the IL verifier pass at entry
+///                               (saves a redundant O(n) traversal when run() already verified).
+/// @return PipelineResult with exit_code 0 on success; stderr_text holds any diagnostics.
 PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
                                               std::string debugSourcePath,
                                               bool moduleAlreadyVerified) {

@@ -3,20 +3,21 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: codegen/aarch64/fastpaths/FastPaths_Memory.cpp
 // Purpose: Fast-path pattern matching for memory operations.
-//
-// Summary:
-//   Handles fast-path lowering for memory access patterns:
-//   - alloca/store/load/ret pattern: Simple local variable round-trip
-//   - load-from-param/ret pattern: Load from pointer param and return
-//   - gep+load/ret pattern: Field access via GEP then load and return
-//
-// Invariants:
-//   - Single-block functions
-//   - Alloca must have been assigned a frame offset
-//   - Store/load must target the same alloca
-//   - Return value must come from the load
+//          Handles alloca/store/load/ret, load-from-pointer-param/ret, and
+//          gep+load/ret patterns — common accessor shapes that map to 1-3 MIR
+//          instructions without going through the generic lowering path.
+// Key invariants:
+//   - Single-block functions only.
+//   - Alloca must have been assigned a frame offset by FrameBuilder.
+//   - Store/load must target the same alloca for the round-trip pattern.
+//   - Return value must come from the load result.
+// Ownership/Lifetime:
+//   - Stateless free functions; FastPathContext is borrowed for the call duration.
+// Links: codegen/aarch64/fastpaths/FastPathsInternal.hpp
 //
 //===----------------------------------------------------------------------===//
 

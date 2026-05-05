@@ -7,9 +7,13 @@
 //
 // File: codegen/aarch64/FramePlan.hpp
 // Purpose: Describe a minimal frame save/restore plan for AArch64 functions.
-// Key invariants: Frame sizes are always 16-byte aligned per AArch64 ABI.
-// Ownership/Lifetime: FramePlan is computed per-function during prologue/epilogue generation.
-// Links: docs/architecture.md
+// Key invariants:
+//   - Frame sizes are always 16-byte aligned per AArch64 ABI.
+//   - saveGPRs/saveFPRs do not include X29/X30; those are handled in prologue.
+// Ownership/Lifetime:
+//   - FramePlan is a plain data aggregate; no dynamic allocation or ownership.
+// Links: codegen/aarch64/AsmEmitter.hpp,
+//        codegen/aarch64/binenc/A64BinaryEncoder.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,7 +23,6 @@
 
 #include "codegen/aarch64/TargetAArch64.hpp"
 
-/// @brief AArch64 code generation components for the Viper compiler.
 namespace viper::codegen::aarch64 {
 
 /// @brief Describes the stack frame layout and callee-saved register plan for a function.

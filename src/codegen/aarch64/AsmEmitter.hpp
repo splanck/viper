@@ -23,15 +23,18 @@
 // and symbol/label emission following the target platform's conventions.
 //
 // Key invariants:
-// - All physical registers must be valid AArch64 registers.
-// - Immediate values must fit within AArch64 instruction encoding constraints.
-// - Frame plan must be consistent with the MFunction's callee-saved registers.
+//   - All physical registers must be valid AArch64 registers.
+//   - Immediate values must fit within AArch64 instruction encoding constraints.
+//   - Frame plan must be consistent with the MFunction's callee-saved registers.
 //
 // Ownership/Lifetime:
-// - Emitter is stateless between function emissions (except during a single call).
-// - TargetInfo reference must remain valid for the emitter's lifetime.
+//   - Emitter is stateless between function emissions (except during a single call).
+//   - TargetInfo reference must remain valid for the emitter's lifetime.
 //
-// Links: docs/architecture.md
+// Links: codegen/aarch64/AsmEmitter.cpp,
+//        codegen/aarch64/MachineIR.hpp,
+//        codegen/aarch64/FrameBuilder.hpp,
+//        codegen/aarch64/TargetAArch64.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -568,6 +571,10 @@ class AsmEmitter {
     }
 
     /// @brief Print a floating-point register using the dN (64-bit scalar) notation.
+    /// @details Maps internal "vN" names to "dN" for assembly output; AArch64
+    ///          scalar FP instructions use the D-register view of the V-register file.
+    /// @param os Output stream to receive the register name.
+    /// @param r  Physical FP register to print (V0-V31).
     static void printD(std::ostream &os, PhysReg r) {
         // Map Vn -> dn
         const char *name = regName(r); // e.g., "v8"

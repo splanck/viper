@@ -3,29 +3,24 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// Purpose: Tier 1 GUI widget fix validation tests — button, checkbox, dropdown, slider, scrollview,
-// textinput regression tests.
-//
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/tests/test_vg_tier1_fixes.c
+// File: lib/gui/tests/test_vg_tier1_fixes.c
+// Purpose: Tier 1 GUI widget fix validation tests — button keyboard activation,
+//          slider keyboard navigation, listbox keyboard/mouse/virtual-mode,
+//          textinput Shift+select, Ctrl+word-jump, and UTF-8 editing.
+// Key invariants:
+//   - BUG-GUI-003: Space/Enter activate a focused button
+//   - BUG-GUI-004: Arrow/Home/End keys drive slider value with step clamping
+//   - BUG-GUI-005: Arrow/Home/End keys drive listbox selection
+//   - BUG-GUI-007: TextInput Shift+select and Ctrl+word-jump behave correctly
+//   - BUG-GUI-001: label word_wrap field exists and defaults to false
+// Ownership/Lifetime:
+//   - Each test creates and destroys its own widgets
+// Links: lib/gui/include/vg_widget.h, lib/gui/include/vg_widgets.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// test_vg_tier1_fixes.c — Unit tests for Tier 1 GUI bug fixes
-//
-// Tests:
-//   BUG-GUI-003: Button keyboard activation (Space/Enter)
-//   BUG-GUI-004: Slider focus + arrow key navigation
-//   BUG-GUI-005: ListBox focus + keyboard navigation
-//   BUG-GUI-007: TextInput Shift+select, Ctrl+word-jump
-//   PERF-001:    vgfx_cls() pixel correctness (32-bit write path)
-//   FEAT-004:    Focus ring via border_focus color
-//
-// Note: vg_label word-wrap (BUG-GUI-001) requires a real font for measurement;
-// that is validated by a build-level smoke test in test_vg_label_wordwrap.c.
-// macOS resize alignment (BUG-GUI-009) is a platform API contract fix that does
-// not require a test executable.
-//
 #include "vg_event.h"
 #include "vg_ide_widgets.h"
 #include "vg_widget.h"
@@ -74,6 +69,7 @@ static int g_failed = 0;
 // Helper: build a key-down event
 //=============================================================================
 
+/// @brief Build a VG_EVENT_KEY_DOWN event for the given key and modifier mask.
 static vg_event_t make_key_down(vg_key_t key, uint32_t mods) {
     vg_event_t ev;
     memset(&ev, 0, sizeof(ev));
@@ -83,6 +79,7 @@ static vg_event_t make_key_down(vg_key_t key, uint32_t mods) {
     return ev;
 }
 
+/// @brief Build a VG_EVENT_KEY_CHAR event carrying the given Unicode codepoint.
 static vg_event_t make_key_char(uint32_t codepoint) {
     vg_event_t ev;
     memset(&ev, 0, sizeof(ev));
@@ -91,6 +88,7 @@ static vg_event_t make_key_char(uint32_t codepoint) {
     return ev;
 }
 
+/// @brief Build a synthetic VG_EVENT_CLICK event.
 static vg_event_t make_click(void) {
     vg_event_t ev;
     memset(&ev, 0, sizeof(ev));
@@ -98,6 +96,7 @@ static vg_event_t make_click(void) {
     return ev;
 }
 
+/// @brief Build a VG_EVENT_MOUSE_DOWN event at the given screen coordinates.
 static vg_event_t make_mouse_down(float screen_x, float screen_y) {
     vg_event_t ev;
     memset(&ev, 0, sizeof(ev));
@@ -107,6 +106,7 @@ static vg_event_t make_mouse_down(float screen_x, float screen_y) {
     return ev;
 }
 
+/// @brief Build a VG_EVENT_MOUSE_WHEEL event with the given vertical delta.
 static vg_event_t make_mouse_wheel(float delta_y) {
     vg_event_t ev;
     memset(&ev, 0, sizeof(ev));
@@ -121,12 +121,14 @@ static vg_event_t make_mouse_wheel(float delta_y) {
 
 static int g_button_clicked = 0;
 
+/// @brief on_click callback that increments g_button_clicked to confirm activation.
 static void button_click_cb(vg_widget_t *w, void *data) {
     (void)w;
     (void)data;
     g_button_clicked++;
 }
 
+/// @brief BUG-GUI-003 — button vtable exposes can_focus and returns true.
 TEST(button_can_focus) {
     vg_button_t *btn = vg_button_create(NULL, "OK");
     ASSERT_NOT_NULL(btn);
@@ -135,6 +137,7 @@ TEST(button_can_focus) {
     vg_widget_destroy(&btn->base);
 }
 
+/// @brief BUG-GUI-003 — Space key fires the on_click callback.
 TEST(button_space_activates) {
     vg_button_t *btn = vg_button_create(NULL, "OK");
     ASSERT_NOT_NULL(btn);
@@ -149,6 +152,7 @@ TEST(button_space_activates) {
     vg_widget_destroy(&btn->base);
 }
 
+/// @brief BUG-GUI-003 — Enter key fires the on_click callback.
 TEST(button_enter_activates) {
     vg_button_t *btn = vg_button_create(NULL, "OK");
     ASSERT_NOT_NULL(btn);
@@ -163,6 +167,7 @@ TEST(button_enter_activates) {
     vg_widget_destroy(&btn->base);
 }
 
+/// @brief BUG-GUI-003 — an unrelated key (e.g. A) does not invoke the on_click callback.
 TEST(button_other_key_does_nothing) {
     vg_button_t *btn = vg_button_create(NULL, "OK");
     ASSERT_NOT_NULL(btn);
@@ -176,6 +181,7 @@ TEST(button_other_key_does_nothing) {
     vg_widget_destroy(&btn->base);
 }
 
+/// @brief BUG-GUI-003 — direct CLICK event still fires the callback (regression guard).
 TEST(button_click_still_works) {
     vg_button_t *btn = vg_button_create(NULL, "OK");
     ASSERT_NOT_NULL(btn);
@@ -194,6 +200,7 @@ TEST(button_click_still_works) {
 // BUG-GUI-004 — Slider focus + keyboard navigation
 //=============================================================================
 
+/// @brief BUG-GUI-004 — horizontal slider vtable exposes can_focus and returns true.
 TEST(slider_can_focus) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
@@ -202,6 +209,7 @@ TEST(slider_can_focus) {
     vg_widget_destroy(&s->base);
 }
 
+/// @brief BUG-GUI-004 — Right arrow key increases the slider value above its starting point.
 TEST(slider_right_key_increases_value) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
@@ -216,6 +224,7 @@ TEST(slider_right_key_increases_value) {
     vg_widget_destroy(&s->base);
 }
 
+/// @brief BUG-GUI-004 — Left arrow key decreases the slider value below its starting point.
 TEST(slider_left_key_decreases_value) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
@@ -229,6 +238,7 @@ TEST(slider_left_key_decreases_value) {
     vg_widget_destroy(&s->base);
 }
 
+/// @brief BUG-GUI-004 — Home key jumps the slider to its minimum value.
 TEST(slider_home_jumps_to_min) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
@@ -242,6 +252,7 @@ TEST(slider_home_jumps_to_min) {
     vg_widget_destroy(&s->base);
 }
 
+/// @brief BUG-GUI-004 — End key jumps the slider to its maximum value.
 TEST(slider_end_jumps_to_max) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
@@ -255,6 +266,7 @@ TEST(slider_end_jumps_to_max) {
     vg_widget_destroy(&s->base);
 }
 
+/// @brief BUG-GUI-004 — Right arrow increments by step (5) when a step size is configured.
 TEST(slider_key_respects_step) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
@@ -269,6 +281,7 @@ TEST(slider_key_respects_step) {
     vg_widget_destroy(&s->base);
 }
 
+/// @brief BUG-GUI-004 — Right arrow at maximum does not push value beyond the upper bound.
 TEST(slider_clamps_at_max) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
@@ -286,6 +299,7 @@ TEST(slider_clamps_at_max) {
 // BUG-GUI-005 — ListBox focus + keyboard navigation
 //=============================================================================
 
+/// @brief BUG-GUI-005 — listbox vtable exposes can_focus and returns true.
 TEST(listbox_can_focus) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
@@ -294,6 +308,7 @@ TEST(listbox_can_focus) {
     vg_widget_destroy(&lb->base);
 }
 
+/// @brief BUG-GUI-005 — Down arrow moves selection from index 0 to index 1.
 TEST(listbox_down_key_selects_next) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
@@ -316,6 +331,7 @@ TEST(listbox_down_key_selects_next) {
     vg_widget_destroy(&lb->base);
 }
 
+/// @brief BUG-GUI-005 — Up arrow moves selection from index 2 to index 1.
 TEST(listbox_up_key_selects_prev) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
@@ -334,6 +350,7 @@ TEST(listbox_up_key_selects_prev) {
     vg_widget_destroy(&lb->base);
 }
 
+/// @brief BUG-GUI-005 — Home key selects index 0 regardless of current selection.
 TEST(listbox_home_key_selects_first) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
@@ -352,6 +369,7 @@ TEST(listbox_home_key_selects_first) {
     vg_widget_destroy(&lb->base);
 }
 
+/// @brief BUG-GUI-005 — End key selects the last index regardless of current selection.
 TEST(listbox_end_key_selects_last) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
@@ -370,6 +388,7 @@ TEST(listbox_end_key_selects_last) {
     vg_widget_destroy(&lb->base);
 }
 
+/// @brief BUG-GUI-005 — Up from index 0 and Down from the last index both clamp to avoid out-of-bounds.
 TEST(listbox_clamps_at_ends) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
@@ -396,6 +415,7 @@ TEST(listbox_clamps_at_ends) {
 // BUG-GUI-007 — TextInput Shift+select and Ctrl+word-jump
 //=============================================================================
 
+/// @brief BUG-GUI-007 — Shift+Left moves the cursor left and extends the selection anchor rightward.
 TEST(textinput_shift_left_extends_selection) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -418,6 +438,7 @@ TEST(textinput_shift_left_extends_selection) {
     vg_widget_destroy(&ti->base);
 }
 
+/// @brief BUG-GUI-007 — Shift+Right moves the cursor right and extends the selection forward.
 TEST(textinput_shift_right_extends_selection) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -436,6 +457,7 @@ TEST(textinput_shift_right_extends_selection) {
     vg_widget_destroy(&ti->base);
 }
 
+/// @brief BUG-GUI-007 — Shift+Home selects from the current position back to column 0.
 TEST(textinput_shift_home_selects_to_start) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -454,6 +476,7 @@ TEST(textinput_shift_home_selects_to_start) {
     vg_widget_destroy(&ti->base);
 }
 
+/// @brief BUG-GUI-007 — Shift+End selects from the current position forward to the last character.
 TEST(textinput_shift_end_selects_to_end) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -472,6 +495,7 @@ TEST(textinput_shift_end_selects_to_end) {
     vg_widget_destroy(&ti->base);
 }
 
+/// @brief BUG-GUI-007 — Ctrl+Right skips the current word and lands at the start of the next word.
 TEST(textinput_ctrl_right_jumps_word) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -494,6 +518,7 @@ TEST(textinput_ctrl_right_jumps_word) {
     vg_widget_destroy(&ti->base);
 }
 
+/// @brief BUG-GUI-007 — Ctrl+Left skips backward over the current word and lands at its start.
 TEST(textinput_ctrl_left_jumps_word) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -513,6 +538,7 @@ TEST(textinput_ctrl_left_jumps_word) {
     vg_widget_destroy(&ti->base);
 }
 
+/// @brief BUG-GUI-007 — Plain Left with an active selection collapses to the selection start without moving further.
 TEST(textinput_plain_left_collapses_selection) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -532,6 +558,7 @@ TEST(textinput_plain_left_collapses_selection) {
     vg_widget_destroy(&ti->base);
 }
 
+/// @brief BUG-GUI-007 — Backspace removes the full multi-byte UTF-8 codepoint (€ = 3 bytes), not just one byte.
 TEST(textinput_utf8_backspace_removes_whole_codepoint) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -551,6 +578,7 @@ TEST(textinput_utf8_backspace_removes_whole_codepoint) {
     vg_widget_destroy(&ti->base);
 }
 
+/// @brief BUG-GUI-007 — get_selection on a codepoint-indexed range returns the full UTF-8 byte sequence.
 TEST(textinput_utf8_selection_extracts_full_character) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -567,6 +595,7 @@ TEST(textinput_utf8_selection_extracts_full_character) {
     vg_widget_destroy(&ti->base);
 }
 
+/// @brief BUG-GUI-007 — a single-line textinput discards '\n' KEY_CHAR events without modifying text.
 TEST(textinput_single_line_ignores_newline_char_input) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -579,6 +608,7 @@ TEST(textinput_single_line_ignores_newline_char_input) {
     vg_widget_destroy(&ti->base);
 }
 
+/// @brief BUG-GUI-007 — max_length counts Unicode codepoints; 3-byte €-characters count as 1 each.
 TEST(textinput_max_length_counts_utf8_codepoints) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -591,6 +621,7 @@ TEST(textinput_max_length_counts_utf8_codepoints) {
     vg_widget_destroy(&ti->base);
 }
 
+/// @brief BUG-GUI-007 — read-only textinput allows Left to collapse an active selection without modifying text.
 TEST(textinput_readonly_navigation_collapses_selection) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
@@ -609,6 +640,7 @@ TEST(textinput_readonly_navigation_collapses_selection) {
     vg_widget_destroy(&ti->base);
 }
 
+/// @brief Virtual-mode listbox: MOUSE_DOWN at local y=45 with item_height=20 selects index 2.
 TEST(listbox_virtual_mouse_selects_index) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
@@ -627,6 +659,7 @@ TEST(listbox_virtual_mouse_selects_index) {
     vg_widget_destroy(&lb->base);
 }
 
+/// @brief Virtual-mode listbox: large wheel delta is clamped to the maximum scroll_y for the item count.
 TEST(listbox_virtual_wheel_clamps_using_total_count) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
@@ -647,6 +680,7 @@ TEST(listbox_virtual_wheel_clamps_using_total_count) {
 // Label word_wrap struct fields accessible (BUG-GUI-001 compile check)
 //=============================================================================
 
+/// @brief BUG-GUI-001 — label struct exposes word_wrap (default false) and max_lines (default 0).
 TEST(label_wordwrap_fields_accessible) {
     vg_label_t *lbl = vg_label_create(NULL, "Hello world this is a test");
     ASSERT_NOT_NULL(lbl);
@@ -667,6 +701,7 @@ TEST(label_wordwrap_fields_accessible) {
 // main
 //=============================================================================
 
+/// @brief Run all Tier 1 GUI fix regression tests and report pass/fail counts.
 int main(void) {
     printf("=== Tier 1 GUI Fix Tests ===\n");
 

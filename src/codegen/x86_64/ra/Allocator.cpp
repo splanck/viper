@@ -5,17 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/ra/Allocator.cpp
+// File: codegen/x86_64/ra/Allocator.cpp
 // Purpose: Implement the linear-scan allocation phase which assigns physical
 //          registers, inserts spill code, and lowers PX_COPY bundles for the
 //          x86-64 backend.
-// Key invariants: Register pools are deterministically populated from the
-//                 target ABI, and allocation proceeds in block order releasing
-//                 all live values at block boundaries.
-// Ownership/Lifetime: Mutates Machine IR blocks in place and returns an
-//                     AllocationResult summarising register assignments and
-//                     spill slot counts.
-// Links: src/codegen/x86_64/ra/Allocator.hpp
+// Key invariants:
+//   - Register pools are deterministically populated from the target ABI.
+//   - Allocation proceeds in block order, releasing all live values at boundaries.
+// Ownership/Lifetime:
+//   - Mutates MIR blocks in place; returns AllocationResult to the caller.
+// Links: codegen/x86_64/ra/Allocator.hpp,
+//        codegen/x86_64/ra/Coalescer.hpp,
+//        codegen/x86_64/OperandRoles.hpp
 //
 //===----------------------------------------------------------------------===//
 

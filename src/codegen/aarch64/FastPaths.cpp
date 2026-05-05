@@ -3,23 +3,21 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: codegen/aarch64/FastPaths.cpp
 // Purpose: Fast-path pattern matching dispatcher for common IL patterns.
-//
-// Summary:
-//   This file contains the main entry point for fast-path pattern matching.
-//   It delegates to specialized fast-path handlers organized by category:
-//   - FastPaths_Memory.cpp: Memory load/store patterns
-//   - FastPaths_Return.cpp: Simple return patterns
-//   - FastPaths_Arithmetic.cpp: Integer/FP arithmetic operations
-//   - FastPaths_Cast.cpp: Type conversion operations
-//   - FastPaths_Call.cpp: Call instruction lowering
-//
-// Fast-path invariants:
-//   - Fast paths are tried in order; first match wins
-//   - Each fast-path returns the lowered MFunction if matched, nullopt otherwise
-//   - The order of fast-path attempts affects which patterns match first
-//   - More specific patterns should be tried before more general ones
+//          Routes the function to a specialized handler (memory, cast, arithmetic,
+//          call, or return) that returns a fully-lowered MFunction without going
+//          through the generic InstrLowering pass.
+// Key invariants:
+//   - Fast paths are tried in order of specificity; first match wins.
+//   - Each attempt operates on a scratch MFunction copy so failures are side-effect free.
+//   - Fast-path output must be semantically identical to generic lowering.
+// Ownership/Lifetime:
+//   - Borrows the caller's MFunction as a seed; returns an owned copy on success.
+// Links: codegen/aarch64/FastPaths.hpp,
+//        codegen/aarch64/fastpaths/FastPathsInternal.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -29,6 +27,18 @@
 namespace viper::codegen::aarch64 {
 namespace {
 
+/// @brief Try a single fast-path category on a temporary scratch copy of the MFunction.
+/// @details Creates a fresh copy of @p seedMf and a matching FrameBuilder, invokes
+///          @p attempt, and returns the result. The scratch copy ensures that a
+///          failed attempt leaves the caller's MFunction unmodified.
+/// @tparam AttemptFn Callable `std::optional<MFunction>(FastPathContext&)`.
+/// @param fn                         IL function being compiled.
+/// @param ti                         Target calling-convention and register info.
+/// @param seedMf                     Template MFunction state (name, params, etc.).
+/// @param stringLiteralByteLengths   Optional map of string-literal sizes.
+/// @param knownVarArgNamedArgCounts  Optional map of variadic arg counts.
+/// @param attempt                    Fast-path probe called with the scratch context.
+/// @return The lowered MFunction if the probe matched, nullopt otherwise.
 template <typename AttemptFn>
 std::optional<MFunction> tryFastPathAttempt(const il::core::Function &fn,
                                             const TargetInfo &ti,

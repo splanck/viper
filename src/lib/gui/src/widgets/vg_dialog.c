@@ -5,10 +5,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_dialog.c
+// File: lib/gui/src/widgets/vg_dialog.c
+// Purpose: Modal/non-modal dialog widget with title bar, icon, word-wrapped
+//          message, optional custom content widget, and a configurable button bar.
+// Key invariants:
+//   - closing_in_progress guards against re-entrant vg_dialog_close calls;
+//     callbacks are snapshotted to locals before invocation so a callback that
+//     calls set_on_close mid-fire cannot swap the handler under us.
+//   - Callbacks (on_result, on_close) MUST NOT free the dialog; schedule
+//     destruction after close returns to avoid use-after-free.
+//   - dialog_wrap_text returns at least 1 line even for an empty string.
+//   - When modal == true the widget registers itself as the modal root on show,
+//     blocking event dispatch to all other widgets until close.
+//   - All dimension helpers (dialog_title_height, etc.) scale with ui_scale so
+//     dialogs remain usable at any HiDPI factor.
+// Ownership/Lifetime:
+//   - title and message are heap-allocated and freed in dialog_destroy.
+//   - custom_buttons labels are strdup'd and freed on replacement or destroy.
+//   - content widget is adopted as a child widget; the dialog does NOT destroy it
+//     separately — the base widget cleanup handles it.
+// Links: lib/gui/include/vg_ide_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h,
+//        lib/gui/include/vg_widget.h
 //
 //===----------------------------------------------------------------------===//
-// vg_dialog.c - Dialog widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -91,11 +112,13 @@ static const preset_button_t g_retry_cancel_buttons[] = {
     {"Retry", VG_DIALOG_RESULT_RETRY, true, false},
     {"Cancel", VG_DIALOG_RESULT_CANCEL, false, true}};
 
+/// @brief Return the current UI scale factor, defaulting to 1.0 when no theme is loaded.
 static float dialog_ui_scale(void) {
     vg_theme_t *theme = vg_theme_get_current();
     return (theme && theme->ui_scale > 0.0f) ? theme->ui_scale : 1.0f;
 }
 
+/// @brief Return the content area padding derived from the theme's large spacing value.
 static float dialog_outer_padding(void) {
     vg_theme_t *theme = vg_theme_get_current();
     float s = dialog_ui_scale();
@@ -103,6 +126,7 @@ static float dialog_outer_padding(void) {
     return theme_pad > 0.0f ? theme_pad : (float)DIALOG_CONTENT_PADDING * s;
 }
 
+/// @brief Return the gap between content sections (message, content widget, buttons).
 static float dialog_section_gap(void) {
     vg_theme_t *theme = vg_theme_get_current();
     float s = dialog_ui_scale();
@@ -110,29 +134,35 @@ static float dialog_section_gap(void) {
     return gap > 0.0f ? gap : (float)DIALOG_BUTTON_PADDING * s;
 }
 
+/// @brief Return the scaled pixel height of the title bar area.
 static float dialog_title_height(void) {
     float s = dialog_ui_scale();
     return (float)DIALOG_TITLE_BAR_HEIGHT * s + 6.0f * s;
 }
 
+/// @brief Return the scaled pixel height of the button bar area at the bottom.
 static float dialog_button_bar_height(void) {
     float s = dialog_ui_scale();
     return (float)DIALOG_BUTTON_BAR_HEIGHT * s + 6.0f * s;
 }
 
+/// @brief Return the scaled pixel height of a single button.
 static float dialog_button_height(void) {
     float s = dialog_ui_scale();
     return (float)DIALOG_BUTTON_HEIGHT * s + 4.0f * s;
 }
 
+/// @brief Return the scaled pixel size (width = height) of the close button.
 static float dialog_close_size(void) {
     return (float)DIALOG_CLOSE_BUTTON_SIZE * dialog_ui_scale();
 }
 
+/// @brief Return the scaled pixel size of the icon badge in the content area.
 static float dialog_icon_size(void) {
     return (float)DIALOG_ICON_SIZE * dialog_ui_scale();
 }
 
+/// @brief Return the scaled corner radius used for the dialog panel and buttons.
 static int dialog_corner_radius(void) {
     float s = dialog_ui_scale();
     int radius = (int)(8.0f * s);
@@ -141,6 +171,7 @@ static int dialog_corner_radius(void) {
     return radius;
 }
 
+/// @brief Fill a rounded rectangle using four corner circles and three fill rects.
 static void dialog_fill_round_rect(vgfx_window_t win,
                                    int32_t x,
                                    int32_t y,
@@ -175,6 +206,7 @@ static void dialog_fill_round_rect(vgfx_window_t win,
     vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
+/// @brief Stroke a rounded rectangle outline using four edge lines and four corner circles.
 static void dialog_stroke_round_rect(vgfx_window_t win,
                                      int32_t x,
                                      int32_t y,
@@ -210,6 +242,7 @@ static void dialog_stroke_round_rect(vgfx_window_t win,
     vgfx_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
+/// @brief Heap-allocate a NUL-terminated copy of the first len bytes of text.
 static char *dialog_dup_range(const char *text, size_t len) {
     char *copy = (char *)malloc(len + 1);
     if (!copy)
@@ -219,6 +252,7 @@ static char *dialog_dup_range(const char *text, size_t len) {
     return copy;
 }
 
+/// @brief Free all line strings and the lines array produced by dialog_wrap_text.
 static void dialog_free_wrapped_lines(char **lines, int line_count) {
     if (!lines)
         return;
@@ -228,6 +262,7 @@ static void dialog_free_wrapped_lines(char **lines, int line_count) {
     free(lines);
 }
 
+/// @brief Word-wrap text to fit max_width, optionally filling out_lines with heap strings.
 static int dialog_wrap_text(vg_dialog_t *dlg,
                             const char *text,
                             float max_width,
@@ -361,6 +396,7 @@ static int dialog_wrap_text(vg_dialog_t *dlg,
     return count > 0 ? count : 1;
 }
 
+/// @brief Measure the pixel dimensions of the word-wrapped message block.
 static void dialog_measure_message_block(vg_dialog_t *dlg,
                                          float max_width,
                                          float *out_width,
@@ -396,6 +432,7 @@ static void dialog_measure_message_block(vg_dialog_t *dlg,
         *out_line_count = line_count;
 }
 
+/// @brief Return the total pixel width of all buttons plus inter-button gaps.
 static float dialog_measure_buttons_width(vg_dialog_t *dlg) {
     float total_width = 0.0f;
     float gap = dialog_section_gap();
@@ -420,6 +457,7 @@ static float dialog_measure_buttons_width(vg_dialog_t *dlg) {
     return total_width;
 }
 
+/// @brief Compute the effective maximum dialog width clamped to available_width minus margins.
 static float dialog_available_width_limit(vg_dialog_t *dlg, float available_width) {
     float max_width = (float)dlg->max_width;
     if (available_width > 0.0f) {
@@ -434,6 +472,7 @@ static float dialog_available_width_limit(vg_dialog_t *dlg, float available_widt
     return max_width;
 }
 
+/// @brief Compute the effective maximum dialog height clamped to available_height minus margins.
 static float dialog_available_height_limit(vg_dialog_t *dlg, float available_height) {
     float max_height = (float)dlg->max_height;
     if (available_height > 0.0f) {
@@ -448,6 +487,7 @@ static float dialog_available_height_limit(vg_dialog_t *dlg, float available_hei
     return max_height;
 }
 
+/// @brief Resolve a preset button enum to its static button definitions array.
 static void get_preset_buttons(vg_dialog_buttons_t preset,
                                const preset_button_t **buttons,
                                size_t *count) {
@@ -479,6 +519,7 @@ static void get_preset_buttons(vg_dialog_buttons_t preset,
     }
 }
 
+/// @brief Return the pixel width for a button, clamped to DIALOG_BUTTON_MIN_WIDTH.
 static float get_button_width(vg_dialog_t *dlg, const char *label) {
     float width = (float)DIALOG_BUTTON_MIN_WIDTH * dialog_ui_scale();
     if (dlg->font && label) {
@@ -492,6 +533,7 @@ static float get_button_width(vg_dialog_t *dlg, const char *label) {
     return width;
 }
 
+/// @brief Return the Unicode glyph string for a standard dialog icon, or NULL for NONE.
 static const char *get_icon_glyph(vg_dialog_icon_t icon) {
     switch (icon) {
         case VG_DIALOG_ICON_INFO:
@@ -507,6 +549,7 @@ static const char *get_icon_glyph(vg_dialog_icon_t icon) {
     }
 }
 
+/// @brief Fill (x, y) with the screen-space origin of widget's parent, or (0, 0) if none.
 static void get_parent_screen_origin(vg_widget_t *widget, float *x, float *y) {
     float sx = 0.0f;
     float sy = 0.0f;
@@ -523,6 +566,14 @@ static void get_parent_screen_origin(vg_widget_t *widget, float *x, float *y) {
 // Dialog Implementation
 //=============================================================================
 
+/// @brief Create a modal dialog with an OK button preset and default theme colours.
+///
+/// @details The dialog is created in a closed state; call vg_dialog_show or
+///          vg_dialog_show_centered to display it.  Attach a font with
+///          vg_dialog_set_font; without a font, text will not be rendered.
+///
+/// @param title Title bar text; copied internally.  NULL produces no title.
+/// @return Newly allocated vg_dialog_t, or NULL on allocation failure.
 vg_dialog_t *vg_dialog_create(const char *title) {
     vg_dialog_t *dlg = calloc(1, sizeof(vg_dialog_t));
     if (!dlg)
@@ -598,6 +649,7 @@ vg_dialog_t *vg_dialog_create(const char *title) {
     return dlg;
 }
 
+/// @brief VTable destroy: releases input capture and modal root if held, then frees title, message, custom icon, and custom button labels.
 static void dialog_destroy(vg_widget_t *widget) {
     vg_dialog_t *dlg = (vg_dialog_t *)widget;
 
@@ -618,6 +670,7 @@ static void dialog_destroy(vg_widget_t *widget) {
     }
 }
 
+/// @brief VTable measure: computes total dialog size from title bar, button bar, message block, optional icon, and embedded content widget, clamped to available limits.
 static void dialog_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_dialog_t *dlg = (vg_dialog_t *)widget;
     float title_h = dialog_title_height();
@@ -692,6 +745,7 @@ static void dialog_measure(vg_widget_t *widget, float available_width, float ava
     widget->measured_height = total_height;
 }
 
+/// @brief VTable arrange: positions the dialog, then lays out its icon, message, embedded content, and button bar within the padded body region.
 static void dialog_arrange(vg_widget_t *widget, float x, float y, float width, float height) {
     vg_dialog_t *dlg = (vg_dialog_t *)widget;
     float title_h = dialog_title_height();
@@ -738,6 +792,7 @@ static void dialog_arrange(vg_widget_t *widget, float x, float y, float width, f
     }
 }
 
+/// @brief VTable paint: draws the modal backdrop, dialog chrome (title bar, close button, icon, message, buttons), and calls vg_widget_paint on the embedded content.
 static void dialog_paint(vg_widget_t *widget, void *canvas) {
     vg_dialog_t *dlg = (vg_dialog_t *)widget;
 
@@ -1018,6 +1073,7 @@ static void dialog_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief Return the zero-based button index under local pixel (px, py), or -1 if none.
 static int find_button_at(vg_dialog_t *dlg, float px, float py) {
     float w = dlg->base.width;
     float h = dlg->base.height;
@@ -1064,10 +1120,12 @@ static int find_button_at(vg_dialog_t *dlg, float px, float py) {
     return -1;
 }
 
+/// @brief Return true if local coordinates (px, py) fall within the title bar area.
 static bool is_in_title_bar(vg_dialog_t *dlg, float px, float py) {
     return px >= 0.0f && px < dlg->base.width && py >= 0.0f && py < dialog_title_height();
 }
 
+/// @brief Return true if local coordinates (px, py) fall within the close button.
 static bool is_on_close_button(vg_dialog_t *dlg, float px, float py) {
     if (!dlg->show_close_button)
         return false;
@@ -1080,6 +1138,7 @@ static bool is_on_close_button(vg_dialog_t *dlg, float px, float py) {
     return px >= x && px < x + size && py >= y && py < y + size;
 }
 
+/// @brief Resolve the result for button_index and call vg_dialog_close with it.
 static void trigger_button_click(vg_dialog_t *dlg, int button_index) {
     vg_dialog_result_t result = VG_DIALOG_RESULT_NONE;
 
@@ -1101,6 +1160,7 @@ static void trigger_button_click(vg_dialog_t *dlg, int button_index) {
     }
 }
 
+/// @brief VTable handle_event: intercepts mouse move/down for title-drag and close-button hover, key-down for Escape/Enter dismissal, and propagates remaining events to child widgets.
 static bool dialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_dialog_t *dlg = (vg_dialog_t *)widget;
 
@@ -1248,6 +1308,10 @@ static bool dialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
 // Dialog API
 //=============================================================================
 
+/// @brief Replace the dialog's title bar text.
+///
+/// @param dialog The dialog to update; may be NULL.
+/// @param title  New title text; copied internally.  NULL removes the title.
 void vg_dialog_set_title(vg_dialog_t *dialog, const char *title) {
     if (!dialog)
         return;
@@ -1257,7 +1321,13 @@ void vg_dialog_set_title(vg_dialog_t *dialog, const char *title) {
     dialog->base.needs_paint = true;
 }
 
-/// @brief Dialog set content.
+/// @brief Set an optional custom widget displayed in the dialog body below the message.
+///
+/// @details The dialog adopts content as a child widget.  Passing a new content
+///          widget removes the previous one from the child list first.
+///
+/// @param dialog  The dialog to update; may be NULL.
+/// @param content Custom widget to embed in the body; may be NULL to remove.
 void vg_dialog_set_content(vg_dialog_t *dialog, vg_widget_t *content) {
     if (!dialog)
         return;
@@ -1274,7 +1344,10 @@ void vg_dialog_set_content(vg_dialog_t *dialog, vg_widget_t *content) {
     dialog->base.needs_paint = true;
 }
 
-/// @brief Dialog set message.
+/// @brief Set the word-wrapped message text shown in the dialog body.
+///
+/// @param dialog  The dialog to update; may be NULL.
+/// @param message Message text; copied internally.  NULL removes the message.
 void vg_dialog_set_message(vg_dialog_t *dialog, const char *message) {
     if (!dialog)
         return;
@@ -1284,7 +1357,10 @@ void vg_dialog_set_message(vg_dialog_t *dialog, const char *message) {
     dialog->base.needs_paint = true;
 }
 
-/// @brief Dialog set icon.
+/// @brief Set the standard icon badge shown to the left of the message.
+///
+/// @param dialog The dialog to update; may be NULL.
+/// @param icon   One of VG_DIALOG_ICON_INFO/WARNING/ERROR/QUESTION/NONE.
 void vg_dialog_set_icon(vg_dialog_t *dialog, vg_dialog_icon_t icon) {
     if (!dialog)
         return;
@@ -1293,7 +1369,10 @@ void vg_dialog_set_icon(vg_dialog_t *dialog, vg_dialog_icon_t icon) {
     dialog->base.needs_paint = true;
 }
 
-/// @brief Dialog set custom icon.
+/// @brief Set a custom vg_icon_t badge, overriding the standard icon preset.
+///
+/// @param dialog The dialog to update; may be NULL.
+/// @param icon   Custom icon value; the dialog takes ownership via vg_icon_destroy.
 void vg_dialog_set_custom_icon(vg_dialog_t *dialog, vg_icon_t icon) {
     if (!dialog)
         return;
@@ -1303,7 +1382,11 @@ void vg_dialog_set_custom_icon(vg_dialog_t *dialog, vg_icon_t icon) {
     dialog->base.needs_paint = true;
 }
 
-/// @brief Dialog set buttons.
+/// @brief Select a preset button set (OK, OK/Cancel, Yes/No, etc.).
+///
+/// @param dialog  The dialog to update; may be NULL.
+/// @param buttons Preset identifier; VG_DIALOG_BUTTONS_CUSTOM is set implicitly by
+///                vg_dialog_set_custom_buttons.
 void vg_dialog_set_buttons(vg_dialog_t *dialog, vg_dialog_buttons_t buttons) {
     if (!dialog)
         return;
@@ -1312,7 +1395,14 @@ void vg_dialog_set_buttons(vg_dialog_t *dialog, vg_dialog_buttons_t buttons) {
     dialog->base.needs_paint = true;
 }
 
-/// @brief Dialog set custom buttons.
+/// @brief Replace the button set with fully custom button definitions.
+///
+/// @details Copies the provided definitions and sets button_preset to
+///          VG_DIALOG_BUTTONS_CUSTOM.  Labels are strdup'd.
+///
+/// @param dialog  The dialog to update; may be NULL.
+/// @param buttons Array of custom button definitions to copy.
+/// @param count   Number of entries in buttons.
 void vg_dialog_set_custom_buttons(vg_dialog_t *dialog,
                                   vg_dialog_button_def_t *buttons,
                                   size_t count) {
@@ -1344,7 +1434,10 @@ void vg_dialog_set_custom_buttons(vg_dialog_t *dialog,
     dialog->base.needs_paint = true;
 }
 
-/// @brief Dialog set resizable.
+/// @brief Enable or disable user resizing of the dialog window.
+///
+/// @param dialog    The dialog to configure; may be NULL.
+/// @param resizable true to allow drag-resize; false (default) for fixed size.
 void vg_dialog_set_resizable(vg_dialog_t *dialog, bool resizable) {
     if (!dialog)
         return;
@@ -1352,7 +1445,13 @@ void vg_dialog_set_resizable(vg_dialog_t *dialog, bool resizable) {
     dialog->base.needs_paint = true;
 }
 
-/// @brief Dialog set size constraints.
+/// @brief Set the minimum and maximum pixel size of the dialog.
+///
+/// @param dialog The dialog to configure; may be NULL.
+/// @param min_w  Minimum width in logical pixels.
+/// @param min_h  Minimum height in logical pixels.
+/// @param max_w  Maximum width in logical pixels.
+/// @param max_h  Maximum height in logical pixels.
 void vg_dialog_set_size_constraints(
     vg_dialog_t *dialog, uint32_t min_w, uint32_t min_h, uint32_t max_w, uint32_t max_h) {
     if (!dialog)
@@ -1367,7 +1466,14 @@ void vg_dialog_set_size_constraints(
     dialog->base.needs_paint = true;
 }
 
-/// @brief Dialog set modal.
+/// @brief Configure whether the dialog is modal and which widget it is modal over.
+///
+/// @details When modal is true the dialog blocks input to all other widgets by
+///          registering itself as the modal root on vg_dialog_show.
+///
+/// @param dialog The dialog to configure; may be NULL.
+/// @param modal  true for modal (default); false for non-modal.
+/// @param parent Widget to use as the clamp region for centering; may be NULL.
 void vg_dialog_set_modal(vg_dialog_t *dialog, bool modal, vg_widget_t *parent) {
     if (!dialog)
         return;
@@ -1376,7 +1482,12 @@ void vg_dialog_set_modal(vg_dialog_t *dialog, bool modal, vg_widget_t *parent) {
     dialog->base.needs_paint = true;
 }
 
-/// @brief Dialog show.
+/// @brief Mark the dialog as open and register it as the modal root if modal.
+///
+/// @details Resets result to VG_DIALOG_RESULT_NONE.  Use vg_dialog_show_centered
+///          to also position the dialog before showing it.
+///
+/// @param dialog The dialog to show; may be NULL.
 void vg_dialog_show(vg_dialog_t *dialog) {
     if (!dialog)
         return;
@@ -1390,7 +1501,13 @@ void vg_dialog_show(vg_dialog_t *dialog) {
         vg_widget_set_modal_root(&dialog->base);
 }
 
-/// @brief Dialog show centered.
+/// @brief Show the dialog and centre it over relative_to (or the modal parent).
+///
+/// @details Measures the dialog, computes the centred position, clamps to the
+///          clamp region with DIALOG_SCREEN_MARGIN border, then arranges.
+///
+/// @param dialog      The dialog to show; may be NULL.
+/// @param relative_to Widget to centre over; NULL centres over the modal parent.
 void vg_dialog_show_centered(vg_dialog_t *dialog, vg_widget_t *relative_to) {
     if (!dialog)
         return;
@@ -1476,7 +1593,9 @@ void vg_dialog_show_centered(vg_dialog_t *dialog, vg_widget_t *relative_to) {
                       dialog->base.measured_height);
 }
 
-/// @brief Dialog hide.
+/// @brief Hide the dialog without firing any result or close callbacks.
+///
+/// @param dialog The dialog to hide; may be NULL.
 void vg_dialog_hide(vg_dialog_t *dialog) {
     if (!dialog)
         return;
@@ -1490,15 +1609,16 @@ void vg_dialog_hide(vg_dialog_t *dialog) {
         vg_widget_set_modal_root(NULL);
 }
 
-/// @brief Dialog close.
+/// @brief Close the dialog with a result code, firing on_result then on_close callbacks.
 ///
-/// Re-entrancy: closing_in_progress prevents a callback that calls vg_dialog_close
-/// again from re-firing the result/close handlers. Callbacks are snapshotted into
-/// locals so a re-entrant set_on_close cannot swap the close handler mid-fire.
+/// @details closing_in_progress prevents a callback that calls vg_dialog_close again
+///          from re-firing the result/close handlers.  Callbacks are snapshotted into
+///          locals so a re-entrant set_on_close cannot swap the close handler mid-fire.
+///          Callbacks MUST NOT free the dialog — schedule destruction after close returns;
+///          freeing inside on_result would cause use-after-free when on_close fires.
 ///
-/// Lifetime contract: callbacks MUST NOT free the dialog. To release the dialog,
-/// schedule destruction after the close routine returns. Freeing inside on_result
-/// would cause use-after-free when on_close fires.
+/// @param dialog The dialog to close; may be NULL.
+/// @param result The outcome to record and pass to on_result.
 void vg_dialog_close(vg_dialog_t *dialog, vg_dialog_result_t result) {
     if (!dialog || dialog->closing_in_progress)
         return;
@@ -1531,19 +1651,31 @@ void vg_dialog_close(vg_dialog_t *dialog, vg_dialog_result_t result) {
     dialog->closing_in_progress = false;
 }
 
+/// @brief Return the result recorded by the most recent vg_dialog_close call.
+///
+/// @param dialog The dialog to query.
+/// @return The last close result, or VG_DIALOG_RESULT_NONE if dialog is NULL or still open.
 vg_dialog_result_t vg_dialog_get_result(vg_dialog_t *dialog) {
     if (!dialog)
         return VG_DIALOG_RESULT_NONE;
     return dialog->result;
 }
 
+/// @brief Return whether the dialog is currently visible.
+///
+/// @param dialog The dialog to query.
+/// @return true if the dialog is open; false if closed or dialog is NULL.
 bool vg_dialog_is_open(vg_dialog_t *dialog) {
     if (!dialog)
         return false;
     return dialog->is_open;
 }
 
-/// @brief Dialog set on result.
+/// @brief Register a callback fired with the result code when the dialog closes.
+///
+/// @param dialog    The dialog to configure; may be NULL.
+/// @param callback  Called with (dialog, result, user_data); NULL to unregister.
+/// @param user_data Opaque pointer forwarded to callback and stored in user_data.
 void vg_dialog_set_on_result(vg_dialog_t *dialog,
                              void (*callback)(vg_dialog_t *, vg_dialog_result_t, void *),
                              void *user_data) {
@@ -1554,7 +1686,14 @@ void vg_dialog_set_on_result(vg_dialog_t *dialog,
     dialog->user_data = user_data; // legacy alias
 }
 
-/// @brief Dialog set on close.
+/// @brief Register a callback fired after on_result when the dialog closes.
+///
+/// @details When no on_result is registered, on_close's user_data also populates
+///          the legacy combined user_data slot for historical compatibility.
+///
+/// @param dialog    The dialog to configure; may be NULL.
+/// @param callback  Called with (dialog, user_data); NULL to unregister.
+/// @param user_data Opaque pointer forwarded to callback.
 void vg_dialog_set_on_close(vg_dialog_t *dialog,
                             void (*callback)(vg_dialog_t *, void *),
                             void *user_data) {
@@ -1569,7 +1708,13 @@ void vg_dialog_set_on_close(vg_dialog_t *dialog,
     }
 }
 
-/// @brief Dialog set font.
+/// @brief Set the font used for both body text and the title bar.
+///
+/// @details title_font_size is derived as size + ui_scale.
+///
+/// @param dialog The dialog to configure; may be NULL.
+/// @param font   The font to use; must outlive the dialog.
+/// @param size   Body text point size; ≤ 0 falls back to the theme's normal size.
 void vg_dialog_set_font(vg_dialog_t *dialog, vg_font_t *font, float size) {
     if (!dialog)
         return;
@@ -1584,6 +1729,13 @@ void vg_dialog_set_font(vg_dialog_t *dialog, vg_font_t *font, float size) {
 // Convenience Constructors
 //=============================================================================
 
+/// @brief Convenience constructor — create a pre-configured message dialog.
+///
+/// @param title   Title bar text.
+/// @param message Body message text.
+/// @param icon    Status icon to display.
+/// @param buttons Button preset for the dialog.
+/// @return Newly allocated vg_dialog_t, or NULL on allocation failure.
 vg_dialog_t *vg_dialog_message(const char *title,
                                const char *message,
                                vg_dialog_icon_t icon,
@@ -1604,6 +1756,7 @@ typedef struct {
     void *user_data;
 } confirm_data_t;
 
+/// @brief Internal on_result callback for vg_dialog_confirm — fires user callback on YES.
 static void confirm_result_handler(vg_dialog_t *dialog, vg_dialog_result_t result, void *data) {
     confirm_data_t *cd = (confirm_data_t *)data;
     if (result == VG_DIALOG_RESULT_YES && cd && cd->callback) {
@@ -1613,6 +1766,17 @@ static void confirm_result_handler(vg_dialog_t *dialog, vg_dialog_result_t resul
     (void)dialog;
 }
 
+/// @brief Convenience constructor — create a Yes/No confirmation dialog.
+///
+/// @details on_confirm is called only when the user selects Yes.  The
+///          confirm_data_t wrapper is heap-allocated and freed by the
+///          confirm_result_handler after the callback fires.
+///
+/// @param title      Title bar text.
+/// @param message    Confirmation question text.
+/// @param on_confirm Callback fired when the user clicks Yes; may be NULL.
+/// @param user_data  Forwarded to on_confirm.
+/// @return Newly allocated vg_dialog_t, or NULL on allocation failure.
 vg_dialog_t *vg_dialog_confirm(const char *title,
                                const char *message,
                                void (*on_confirm)(void *),

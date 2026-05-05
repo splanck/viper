@@ -7,6 +7,13 @@
 //
 // File: codegen/x86_64/passes/PeepholePass.hpp
 // Purpose: Declare the explicit post-RA peephole pass for the x86-64 pipeline.
+// Key invariants:
+//   - Runs after register allocation; operates on physical-register MIR.
+// Ownership/Lifetime:
+//   - Stateless pass; mutates Module::mir in place.
+// Links: codegen/x86_64/passes/PeepholePass.cpp,
+//        codegen/x86_64/passes/PassManager.hpp,
+//        codegen/x86_64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -16,6 +23,7 @@
 
 namespace viper::codegen::x64::passes {
 
+/// @brief Post-RA peephole optimization pass for the x86-64 codegen pipeline.
 class PeepholePass final : public Pass {
   public:
     bool run(Module &module, Diagnostics &diags) override;

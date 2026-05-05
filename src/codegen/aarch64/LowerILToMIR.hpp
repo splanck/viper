@@ -7,10 +7,14 @@
 //
 // File: codegen/aarch64/LowerILToMIR.hpp
 // Purpose: Minimal IL→MIR lowering adapter for AArch64 (Phase A).
-// Key invariants: Stateless between lowerFunction() calls; all per-function
-//   state is cleared at the start of each call. TargetInfo must outlive this object.
-// Ownership/Lifetime: Non-owning; holds a pointer to an externally-owned TargetInfo.
-// Links: docs/architecture.md
+// Key invariants:
+//   - Stateless between lowerFunction() calls; per-function state is reset.
+//   - TargetInfo must outlive this object.
+// Ownership/Lifetime:
+//   - Non-owning; holds a non-owning pointer to an externally-owned TargetInfo.
+// Links: codegen/aarch64/LowerILToMIR.cpp,
+//        codegen/aarch64/InstrLowering.hpp,
+//        codegen/aarch64/LoweringContext.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -45,11 +49,17 @@ class LowerILToMIR {
         const std::unordered_map<std::string, std::size_t> *stringLiteralByteLengths = nullptr) noexcept
         : ti_(&ti), stringLiteralByteLengths_(stringLiteralByteLengths) {}
 
+    /// @brief Register known named-argument counts for variadic callees.
+    /// @details The lowerer uses this table to emit the correct argument count for
+    ///          runtime variadic-call conventions when calling known vararg functions.
+    /// @param knownVarArgNamedArgCounts Map from callee name to named-arg count.
     void setKnownVarArgCallees(
         std::unordered_map<std::string, std::size_t> knownVarArgNamedArgCounts) {
         knownVarArgNamedArgCounts_ = std::move(knownVarArgNamedArgCounts);
     }
 
+    /// @brief Look up the known named-argument count for @p callee, if registered.
+    /// @return The named-arg count, or nullopt if @p callee is not a known vararg callee.
     [[nodiscard]] std::optional<std::size_t> knownVarArgNamedArgs(std::string_view callee) const;
 
     /// @brief Lower an IL function to MIR.

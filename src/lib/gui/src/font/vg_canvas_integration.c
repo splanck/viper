@@ -3,14 +3,23 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// Purpose: Font-to-canvas integration — renders rasterized glyphs onto ViperGFX canvas surfaces.
-//
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/font/vg_canvas_integration.c
+// File: lib/gui/src/font/vg_canvas_integration.c
+// Purpose: Font-to-canvas integration — renders rasterised glyph alpha bitmaps
+//          onto ViperGFX canvas surfaces using per-pixel alpha blending.
+// Key invariants:
+//   - vg_canvas_draw_glyph uses direct framebuffer access; it respects the
+//     window's active clip rectangle when internal->clip_enabled is set.
+//   - vg_canvas_draw_glyph_pset is a slower fallback for contexts where
+//     framebuffer access is unavailable; it uses simple alpha threshold blending.
+//   - Both functions treat the canvas parameter as a vgfx_window_t handle.
+// Ownership/Lifetime:
+//   - Neither function takes ownership of any parameter.
+// Links: lib/gui/include/vg_font.h,
+//        lib/gui/src/font/vg_raster.c
 //
 //===----------------------------------------------------------------------===//
-// vg_canvas_integration.c - Integration with vgfx canvas
 #include "../../include/vg_font.h"
 #include "../../../graphics/src/vgfx_internal.h"
 #include "vgfx.h"
@@ -19,12 +28,23 @@
 
 //=============================================================================
 // Canvas Glyph Drawing
-//
-// This function draws a glyph bitmap to the canvas using alpha blending.
-// The glyph bitmap contains 8-bit alpha values where 255 = fully opaque.
-// The canvas parameter is a vgfx_window_t handle.
 //=============================================================================
 
+/// @brief Draw a glyph alpha bitmap onto a vgfx canvas using per-pixel alpha
+///        blending with direct framebuffer access.
+///
+/// @details Respects the window's active clip rectangle when clip_enabled is
+///          set. Pixels with alpha == 0 are skipped entirely; pixels with
+///          alpha == 255 are written without blending. Colors are in 0xRRGGBB
+///          format; alpha is sourced from the bitmap.
+///
+/// @param canvas  vgfx_window_t handle to draw into.
+/// @param x       Left edge of the glyph in canvas coordinates.
+/// @param y       Top edge of the glyph in canvas coordinates.
+/// @param bitmap  8-bit alpha coverage bitmap (width × height bytes).
+/// @param width   Width of the bitmap in pixels.
+/// @param height  Height of the bitmap in pixels.
+/// @param color   Glyph foreground colour in 0xRRGGBB format.
 void vg_canvas_draw_glyph(
     void *canvas, int x, int y, const uint8_t *bitmap, int width, int height, uint32_t color) {
     if (!canvas || !bitmap || width <= 0 || height <= 0)
@@ -119,9 +139,23 @@ void vg_canvas_draw_glyph(
 }
 
 //=============================================================================
-// Alternative: Draw using vgfx_pset (slower but doesn't need framebuffer access)
+// Alternative: Draw using vgfx_pset
 //=============================================================================
 
+/// @brief Draw a glyph bitmap via vgfx_pset — slower fallback that does not
+///        require direct framebuffer access.
+///
+/// @details Uses a simple alpha-threshold (>= 128 = draw) instead of full
+///          per-pixel blending. Suitable for contexts where the framebuffer
+///          pointer is unavailable.
+///
+/// @param canvas  vgfx_window_t handle to draw into.
+/// @param x       Left edge of the glyph in canvas coordinates.
+/// @param y       Top edge of the glyph in canvas coordinates.
+/// @param bitmap  8-bit alpha coverage bitmap (width × height bytes).
+/// @param width   Width of the bitmap in pixels.
+/// @param height  Height of the bitmap in pixels.
+/// @param color   Glyph foreground colour in 0xRRGGBB format.
 void vg_canvas_draw_glyph_pset(
     void *canvas, int x, int y, const uint8_t *bitmap, int width, int height, uint32_t color) {
     if (!canvas || !bitmap || width <= 0 || height <= 0)

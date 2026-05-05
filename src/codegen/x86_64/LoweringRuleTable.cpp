@@ -3,14 +3,19 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE in the project root for license information.
 //
-// File: src/codegen/x86_64/LoweringRuleTable.cpp
-// Purpose: Translate declarative lowering rules into efficient opcode
-//          dispatch queries for the x86-64 backend.
-// Key invariants: Operand classifications must match the IL operand encodings
-//                 and dispatch tables remain immutable after initialisation.
-// Ownership/Lifetime: Dispatch tables are computed on first use and cached for
-//                     the lifetime of the process.
-// Links: docs/codemap.md, src/codegen/x86_64/LoweringRules.cpp
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/LoweringRuleTable.cpp
+// Purpose: Translate declarative lowering rules into efficient opcode dispatch
+//          queries for the x86-64 backend.
+// Key invariants:
+//   - Operand classifications must match the IL operand encodings.
+//   - Dispatch tables remain immutable after initialisation.
+// Ownership/Lifetime:
+//   - Dispatch tables are computed on first use and cached for the lifetime
+//     of the process.
+// Links: codegen/x86_64/LoweringRuleTable.hpp,
+//        codegen/x86_64/LoweringRules.cpp
 //
 //===----------------------------------------------------------------------===//
 

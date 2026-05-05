@@ -13,9 +13,10 @@
 //   - hwEncode() is constexpr and covers all 32 PhysReg values
 //   - x86CC nibble values match Intel SDM Table B-1 (JCC/SETcc second opcode byte)
 //   - SSE mandatory prefixes (F2/66) are emitted BEFORE REX, then 0F + opcode
-// Ownership/Lifetime: Stateless; helpers are constexpr where invalid input
-// cannot occur, otherwise checked inline functions.
-// Links: codegen/x86_64/TargetX64.hpp
+// Ownership/Lifetime:
+//   - Stateless; helpers are constexpr where invalid input cannot occur,
+//     otherwise checked inline functions.
+// Links: codegen/x86_64/TargetX64.hpp,
 //        codegen/x86_64/binenc/X64BinaryEncoder.hpp
 //
 //===----------------------------------------------------------------------===//

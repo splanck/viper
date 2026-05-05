@@ -5,10 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_label.c
+// File: lib/gui/src/widgets/vg_label.c
+// Purpose: Label widget implementation — single/multi-line text display with
+//          word-wrap, horizontal/vertical alignment, and optional font override.
+// Key invariants:
+//   - label->text is always a valid heap-allocated string (never NULL).
+//   - The word-wrap line cache is invalidated whenever text or font changes.
+// Ownership/Lifetime:
+//   - vg_label_create copies the text string; label_destroy frees it.
+//   - The line cache is heap-allocated per-layout and freed on text/font change.
+// Links: lib/gui/include/vg_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_font.h
 //
 //===----------------------------------------------------------------------===//
-// vg_label.c - Label widget implementation
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <ctype.h>
@@ -40,6 +50,11 @@ static vg_widget_vtable_t g_label_vtable = {.destroy = label_destroy,
 // Label Implementation
 //=============================================================================
 
+/// @brief Create a label widget with the given text.
+///
+/// @param parent Widget to attach to as a child (may be NULL).
+/// @param text   Display text; copied internally. An empty string is used if NULL.
+/// @return Newly allocated vg_label_t, or NULL on allocation failure.
 vg_label_t *vg_label_create(vg_widget_t *parent, const char *text) {
     vg_label_t *label = calloc(1, sizeof(vg_label_t));
     if (!label)
@@ -86,6 +101,7 @@ static void label_free_wrap_cache(vg_label_t *label) {
     label->wrap_cached_w = -1.0f;
 }
 
+/// @brief VTable destroy: frees the label text string and the word-wrap line cache.
 static void label_destroy(vg_widget_t *widget) {
     vg_label_t *label = (vg_label_t *)widget;
     if (label->text) {
@@ -234,6 +250,7 @@ wrap_oom:
     return 1;
 }
 
+/// @brief VTable measure: measures text using the word-wrap cache (when enabled) or a single-line font measurement, then applies constraints.
 static void label_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_label_t *label = (vg_label_t *)widget;
     (void)available_height;
@@ -270,6 +287,7 @@ static void label_measure(vg_widget_t *widget, float available_width, float avai
     vg_widget_apply_constraints(widget);
 }
 
+/// @brief VTable paint: renders the label text aligned within the widget bounds, handling word-wrap by drawing each cached line individually.
 static void label_paint(vg_widget_t *widget, void *canvas) {
     vg_label_t *label = (vg_label_t *)widget;
 
@@ -361,6 +379,10 @@ static void label_paint(vg_widget_t *widget, void *canvas) {
 // Label API
 //=============================================================================
 
+/// @brief Replace the label's display text and invalidate the wrap cache.
+///
+/// @param label The label to update.
+/// @param text  New text (copied); NULL is treated as an empty string.
 void vg_label_set_text(vg_label_t *label, const char *text) {
     if (!label)
         return;
@@ -376,10 +398,19 @@ void vg_label_set_text(vg_label_t *label, const char *text) {
     label->base.needs_paint = true;
 }
 
+/// @brief Return the label's current display text.
+///
+/// @param label The label to query.
+/// @return Internal string pointer, or NULL if label is NULL.
 const char *vg_label_get_text(vg_label_t *label) {
     return label ? label->text : NULL;
 }
 
+/// @brief Override the label's font and size; invalidates the wrap cache.
+///
+/// @param label The label to configure.
+/// @param font  Font to use; NULL keeps the existing font.
+/// @param size  Font size in pixels; <= 0 defaults to 13.0.
 void vg_label_set_font(vg_label_t *label, vg_font_t *font, float size) {
     if (!label)
         return;
@@ -391,6 +422,10 @@ void vg_label_set_font(vg_label_t *label, vg_font_t *font, float size) {
     label->base.needs_paint = true;
 }
 
+/// @brief Set the label's text colour.
+///
+/// @param label The label to configure.
+/// @param color Text colour in 0xRRGGBB format.
 void vg_label_set_color(vg_label_t *label, uint32_t color) {
     if (!label)
         return;
@@ -399,6 +434,11 @@ void vg_label_set_color(vg_label_t *label, uint32_t color) {
     label->base.needs_paint = true;
 }
 
+/// @brief Set the label's text alignment within its bounding box.
+///
+/// @param label   The label to configure.
+/// @param h_align Horizontal alignment (VG_ALIGN_LEFT, CENTER, or RIGHT).
+/// @param v_align Vertical alignment (VG_ALIGN_TOP, MIDDLE, or BOTTOM).
 void vg_label_set_alignment(vg_label_t *label, vg_h_align_t h_align, vg_v_align_t v_align) {
     if (!label)
         return;

@@ -5,17 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/ra/Liveness.cpp
+// File: codegen/aarch64/ra/Liveness.cpp
 // Purpose: Implementation of CFG-aware liveness analysis for AArch64 regalloc.
 //          Computes per-block liveIn/liveOut sets using the shared backward
 //          dataflow solver, with gen/kill split by register class (GPR/FPR).
+//
 // Key invariants:
 //   - gen[B] = vregs used in B before being defined
 //   - kill[B] = vregs defined in B
 //   - GPR and FPR solved independently via shared solver
 //   - CFG edges extracted from Br, BCond, Cbz terminators
-// Links: src/codegen/common/ra/DataflowLiveness.hpp,
-//        src/codegen/aarch64/ra/Liveness.hpp
+//
+// Ownership/Lifetime:
+//   - State owned by the LivenessAnalysis object; valid until run() is called again.
+//
+// Links: codegen/common/ra/DataflowLiveness.hpp,
+//        codegen/aarch64/ra/Liveness.hpp,
+//        codegen/aarch64/ra/OperandRoles.hpp
 //
 //===----------------------------------------------------------------------===//
 

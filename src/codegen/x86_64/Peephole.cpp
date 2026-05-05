@@ -5,29 +5,25 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/Peephole.cpp
+// File: codegen/x86_64/Peephole.cpp
 // Purpose: Driver for conservative peephole optimizations over Machine IR for
 //          the x86-64 backend. Delegates to modular sub-passes under
-//          peephole/*.cpp for each optimization category.
-//
+//          peephole/ for each optimization category.
 // Key invariants:
-// - Rewrites preserve instruction ordering and only substitute encodings that
-//   are provably equivalent under the Machine IR conventions.
-// - Must be called after register allocation when physical registers are known.
-//
+//   - Rewrites preserve instruction ordering and semantics.
+//   - Must be called after register allocation when physical registers are known.
+//   - Block rewrites iterate to a fixed point bounded by kMaxIterations.
 // Ownership/Lifetime:
-// - Mutates Machine IR graphs owned by the caller without retaining references
-//   to transient operands.
-//
-// Links: docs/architecture.md
+//   - Mutates MIR owned by the caller; no references to transient operands retained.
+// Links: codegen/x86_64/Peephole.hpp,
+//        codegen/x86_64/peephole/PeepholeCommon.hpp,
+//        codegen/x86_64/peephole/ArithSimplify.hpp,
+//        codegen/x86_64/peephole/BranchOpt.hpp,
+//        codegen/x86_64/peephole/DCE.hpp,
+//        codegen/x86_64/peephole/MemoryOpt.hpp,
+//        codegen/x86_64/peephole/MovFolding.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Peephole optimization pass driver for the x86-64 code generator.
-/// @details Orchestrates modular sub-passes that eliminate redundant moves,
-///          fold consecutive register-to-register operations, apply strength
-///          reduction, eliminate dead code, and optimize branch layout.
 
 #include "Peephole.hpp"
 

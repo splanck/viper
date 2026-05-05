@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/peephole/MemoryOpt.cpp
+// File: codegen/aarch64/peephole/MemoryOpt.cpp
 // Purpose: Memory optimizations for the AArch64 peephole optimizer: LDP/STP
 //          merging, store-load forwarding, and MADD fusion.
 //
@@ -17,7 +17,7 @@
 // Ownership/Lifetime:
 //   - Operates on mutable instruction vectors owned by the caller.
 //
-// Links: src/codegen/aarch64/Peephole.hpp
+// Links: codegen/aarch64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 

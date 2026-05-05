@@ -5,17 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/TargetX64.cpp
+// File: codegen/x86_64/TargetX64.cpp
 // Purpose: Materialise the SysV AMD64 target description used by the Viper
 //          Machine IR pipeline and surface helper queries about register
 //          classes and names.
-// Key invariants: The singleton target descriptor is initialised once with
-//                 ABI-compliant register sets and thereafter treated as
-//                 immutable global data.
-// Ownership/Lifetime: All resources live in static storage, meaning callers do
-//                     not own or free any structures retrieved from this
-//                     translation unit.
-// Links: docs/architecture.md#cpp-overview
+// Key invariants:
+//   - The singleton target descriptor is initialised once with ABI-compliant register sets.
+//   - All sets and argument orders are immutable after initialisation.
+// Ownership/Lifetime:
+//   - All resources live in static storage; callers do not own or free them.
+// Links: codegen/x86_64/TargetX64.hpp,
+//        codegen/common/TargetInfoBase.hpp
 //
 //===----------------------------------------------------------------------===//
 

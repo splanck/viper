@@ -4,38 +4,23 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file vg_font.h
-/// @brief Viper GUI Font Engine -- TTF loading, glyph rasterization, and text
-///        rendering.
-///
-/// @details This header exposes the public API for the Viper GUI font subsystem.
-///          It supports loading TrueType fonts from memory or files, querying
-///          font metrics and per-glyph data, measuring and hit-testing text
-///          strings, and rendering text onto an opaque canvas surface.
-///
-///          Internally, glyphs are rasterised on demand and stored in a
-///          size-keyed LRU cache so that repeated draws of the same character at
-///          the same pixel size avoid redundant work. All text is expected to be
-///          encoded as UTF-8; convenience functions for decoding codepoints and
-///          computing byte offsets are included.
-///
-/// Key invariants:
-///   - Font handles are opaque and must be destroyed with vg_font_destroy.
-///   - Glyph pointers returned by vg_font_get_glyph remain valid only as long
-///     as the font handle is alive and the cache has not been evicted.
-///   - Text parameters are always UTF-8 encoded, null-terminated C strings.
-///
-/// Ownership/Lifetime:
-///   - vg_font_load copies the data buffer; the caller may free it afterwards.
-///   - vg_font_load_file reads and owns the file data internally.
-///   - vg_font_destroy frees the font and all cached glyph bitmaps.
-///
-/// Links:
-///   - vg_ttf_internal.h -- internal TTF parsing and caching structures
-///   - vg_theme.h        -- typography presets that reference vg_font_t
-///   - vg_widgets.h      -- widgets that render text via this API
-///
+//
+// File: lib/gui/include/vg_font.h
+// Purpose: Public API for the Viper GUI font subsystem — TTF loading, glyph
+//          rasterization, text measurement, hit-testing, and rendering.
+// Key invariants:
+//   - Font handles are opaque and must be destroyed with vg_font_destroy.
+//   - Glyph pointers from vg_font_get_glyph are valid only while the font
+//     handle is alive and the cache entry has not been evicted.
+//   - All text parameters are UTF-8 encoded, null-terminated C strings.
+// Ownership/Lifetime:
+//   - vg_font_load copies the data buffer; the caller may free it afterwards.
+//   - vg_font_load_file reads and owns the file data internally.
+//   - vg_font_destroy frees the font handle and all cached glyph bitmaps.
+// Links: lib/gui/src/font/vg_font.c,
+//        lib/gui/src/font/vg_ttf_internal.h,
+//        lib/gui/include/vg_theme.h
+//
 //===----------------------------------------------------------------------===//
 #pragma once
 

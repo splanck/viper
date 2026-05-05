@@ -5,15 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/ra/RegClassify.hpp
+// File: codegen/aarch64/ra/RegClassify.hpp
 // Purpose: Register classification predicates for the AArch64 register
 //          allocator (allocatable GPR test, argument register test).
+//
 // Key invariants:
 //   - isAllocatableGPR excludes X29, X30, SP, X18, X9, and X16 (scratch).
 //   - isArgRegister checks both integer and FP argument orders.
+//
 // Ownership/Lifetime:
 //   - Stateless free functions; no ownership.
-// Links: docs/codemap.md
+//
+// Links: codegen/aarch64/ra/RegPools.cpp,
+//        codegen/aarch64/TargetAArch64.hpp
 //
 //===----------------------------------------------------------------------===//
 

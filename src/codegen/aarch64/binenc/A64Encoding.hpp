@@ -16,8 +16,9 @@
 //   - Condition codes are 4-bit values; inversion flips the LSB
 // Ownership/Lifetime:
 //   - All functions are constexpr/inline; no runtime state
-// Links: codegen/aarch64/TargetAArch64.hpp
-//        plans/03-aarch64-binary-encoder.md
+// Links: codegen/aarch64/TargetAArch64.hpp,
+//        codegen/aarch64/binenc/A64BinaryEncoder.hpp,
+//        codegen/aarch64/binenc/A64BinaryEncoder.cpp
 //
 //===----------------------------------------------------------------------===//
 

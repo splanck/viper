@@ -4,45 +4,24 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file vg_widget.h
-/// @brief Widget base class, hierarchy management, and core widget operations.
-///
-/// @details This header defines the foundational widget abstraction for the
-///          Viper GUI toolkit. Every visible UI element in the system derives
-///          from the vg_widget base structure, which provides a tree-based
-///          hierarchy (parent/child/sibling links), a two-pass layout engine
-///          (measure then arrange), virtual-dispatch for rendering and events,
-///          state flags, size constraints, and hit-testing.
-///
-///          The widget tree is the single authoritative representation of the
-///          UI at any point in time. Layout is performed top-down in two passes:
-///          a measure pass that computes desired sizes, followed by an arrange
-///          pass that assigns final positions. Painting traverses the tree in
-///          depth-first order so that children paint on top of their parents.
-///
-/// Key invariants:
-///   - A widget has at most one parent; adding it to a new parent detaches it
-///     from any previous parent automatically.
-///   - Widget IDs are unique and monotonically increasing within a session.
-///   - The vtable pointer must remain valid for the lifetime of the widget.
-///
-/// Ownership/Lifetime:
-///   - vg_widget_destroy recursively destroys all children.
-///   - vg_widget_remove_child detaches without destroying; the caller assumes
-///     ownership and must destroy the child eventually. Detaching a subtree
-///     clears focus, capture, modal, hover, and click runtime references inside it.
-///   - The `name` string is owned by the widget and freed on destroy.
-///   - The base widget owns `impl_data` by default and frees it after the
-///     vtable destroy hook returns. A type-specific destroy hook that frees
-///     or transfers this pointer must call vg_widget_take_impl_data().
-///
-/// Links:
-///   - vg_layout.h  -- layout containers (VBox, HBox, Flex, Grid, Dock)
-///   - vg_event.h   -- event creation and dispatch
-///   - vg_theme.h   -- theming and color scheme
-///   - vg_widgets.h -- concrete widget implementations (Label, Button, etc.)
-///
+//
+// File: lib/gui/include/vg_widget.h
+// Purpose: Widget base type, hierarchy management, two-pass layout engine,
+//          hit-testing, focus, input capture, and modal-root API.
+// Key invariants:
+//   - A widget has at most one parent; re-parenting detaches it automatically.
+//   - Widget IDs are unique and monotonically increasing within a session.
+//   - The vtable pointer must remain valid for the lifetime of the widget.
+//   - vg_widget_destroy recursively destroys all children.
+// Ownership/Lifetime:
+//   - vg_widget_remove_child detaches without destroying; caller takes ownership.
+//   - The `name` string and `impl_data` are owned by the base widget by default.
+//   - vg_widget_take_impl_data() transfers impl_data ownership to the caller.
+// Links: lib/gui/src/core/vg_widget.c,
+//        lib/gui/include/vg_layout.h,
+//        lib/gui/include/vg_event.h,
+//        lib/gui/include/vg_theme.h
+//
 //===----------------------------------------------------------------------===//
 #pragma once
 
@@ -66,18 +45,27 @@ typedef struct vg_theme vg_theme_t;
 ///
 /// @details The GUI runtime can save and restore this state when switching
 ///          between multiple app windows so focus, modal roots, input capture,
-///          and hover tracking do not bleed across apps.
+///          and hover tracking do not bleed across apps. `vg_event_dispatch`
+///          automatically keeps separate snapshots for recently dispatched root
+///          widgets; these functions remain available for embedders that need
+///          explicit save/restore.
 typedef struct vg_widget_runtime_state {
     vg_widget_t *focused_widget;
+    uint64_t focused_widget_id;
     vg_widget_t *input_capture_widget;
+    uint64_t input_capture_widget_id;
     vg_widget_t *modal_root;
+    uint64_t modal_root_id;
     vg_widget_t *hovered_widget;
+    uint64_t hovered_widget_id;
     vg_widget_t *last_click_widget;
+    uint64_t last_click_widget_id;
     uint64_t last_click_time_ms;
     int32_t last_click_button;
     float last_click_screen_x;
     float last_click_screen_y;
     vg_widget_t *reported_click_widget;
+    uint64_t reported_click_widget_id;
     uint64_t reported_click_time_ms;
 } vg_widget_runtime_state_t;
 
@@ -222,6 +210,9 @@ typedef struct vg_widget_vtable {
     // Rendering
 
     /// @brief Primary paint -- render the widget onto the canvas.
+    /// @details Paint callbacks receive self->x/self->y in screen coordinates
+    ///          for compatibility with direct ViperGFX drawing. Use
+    ///          vg_widget_get_bounds() to query parent-local layout coordinates.
     /// @param self   The widget to paint.
     /// @param canvas Opaque canvas handle (platform-specific renderer).
     void (*paint)(vg_widget_t *self, void *canvas);

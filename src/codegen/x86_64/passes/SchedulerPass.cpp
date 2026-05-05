@@ -5,8 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/passes/SchedulerPass.cpp
-// Purpose: Implement the x86-64 post-RA scheduling pass.
+// File: codegen/x86_64/passes/SchedulerPass.cpp
+// Purpose: Implement the x86-64 post-RA instruction scheduling pass.
+// Key invariants:
+//   - Runs after register allocation on physical-register MIR.
+//   - Skipped when optimizeLevel < 1.
+// Ownership/Lifetime:
+//   - Stateless pass; mutates Module::mir in place via Scheduler utilities.
+// Links: codegen/x86_64/passes/SchedulerPass.hpp,
+//        codegen/x86_64/Scheduler.hpp
 //
 //===----------------------------------------------------------------------===//
 

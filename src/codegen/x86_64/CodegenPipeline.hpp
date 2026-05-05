@@ -7,13 +7,16 @@
 //
 // File: codegen/x86_64/CodegenPipeline.hpp
 // Purpose: Declare a reusable pipeline that lowers IL modules to native code.
-// Key invariants: Passes execute sequentially with early exit on failure; assembly
-//                 is written before linking when emit_asm is set; run() returns
-//                 a zero exit_code only when all stages succeed; optimize level
-//                 controls backend optimization passes (0=none, 1+=scheduler+peephole).
-// Ownership/Lifetime: Callers retain ownership of file paths and do not transfer
-//                     resource management; pipeline state is local to each run().
-// Links: docs/codemap.md, src/codegen/x86_64/Backend.hpp
+// Key invariants:
+//   - Passes execute sequentially with early exit on failure.
+//   - Assembly is written before linking when emit_asm is set.
+//   - run() returns a zero exit_code only when all stages succeed.
+//   - optimize level controls backend optimization passes (0=none, 1+=scheduler+peephole).
+// Ownership/Lifetime:
+//   - Callers retain ownership of file paths; pipeline state is local to each run().
+// Links: codegen/x86_64/CodegenPipeline.cpp,
+//        codegen/x86_64/Backend.hpp,
+//        codegen/x86_64/passes/PassManager.hpp
 //
 //===----------------------------------------------------------------------===//
 

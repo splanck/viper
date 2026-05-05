@@ -3,22 +3,25 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: codegen/aarch64/fastpaths/FastPathsInternal.hpp
 // Purpose: Internal shared declarations for fast-path pattern matching.
-// Key invariants: Fast paths match simple, common IL patterns for optimized
-//                 lowering; each fast-path returns the lowered MFunction if
-//                 matched, nullopt otherwise; output must be semantically
-//                 identical to generic lowering; parameter registers are
-//                 accessed via ABI-defined argument order.
-// Ownership/Lifetime: FastPathContext borrows references to externally-owned
-//                     state for the duration of a single fast-path attempt;
-//                     it does not retain or manage any lifetimes.
-// Links: codegen/aarch64/FastPaths.hpp, codegen/aarch64/LoweringContext.hpp,
-//        docs/architecture.md
+// Key invariants:
+//   - Each fast-path returns the lowered MFunction if matched, nullopt otherwise.
+//   - Fast-path output must be semantically identical to generic lowering.
+//   - Parameter registers are accessed via ABI-defined argument order.
+// Ownership/Lifetime:
+//   - FastPathContext borrows references to externally-owned state for the
+//     duration of a single fast-path attempt; does not retain any lifetimes.
+// Links: codegen/aarch64/FastPaths.hpp,
+//        codegen/aarch64/fastpaths/FastPaths_Arithmetic.cpp,
+//        codegen/aarch64/fastpaths/FastPaths_Call.cpp,
+//        codegen/aarch64/fastpaths/FastPaths_Cast.cpp,
+//        codegen/aarch64/fastpaths/FastPaths_Memory.cpp,
+//        codegen/aarch64/fastpaths/FastPaths_Return.cpp
 //
-// This header contains shared helper functions, constants, and types used
-// across the fast-path translation units. It is NOT part of the public API
-// and should only be included by FastPaths_*.cpp files.
+// This header is NOT part of the public API; include only from FastPaths_*.cpp.
 //
 //===----------------------------------------------------------------------===//
 

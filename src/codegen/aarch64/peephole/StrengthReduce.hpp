@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/peephole/StrengthReduce.hpp
+// File: codegen/aarch64/peephole/StrengthReduce.hpp
 // Purpose: Declarations for arithmetic identity elimination, strength reduction,
 //          division/modulo optimization, and immediate folding peephole sub-passes.
 //
@@ -18,7 +18,7 @@
 // Ownership/Lifetime:
 //   - Operates on mutable instructions owned by the caller.
 //
-// Links: src/codegen/aarch64/Peephole.hpp
+// Links: codegen/aarch64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 

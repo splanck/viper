@@ -7,11 +7,15 @@
 //
 // File: codegen/x86_64/LoweringRuleTable.hpp
 // Purpose: Describe declarative lowering rules for x86-64 emission.
-// Key invariants: Rule table entries are immutable and indexed by opcode prefix;
-//                 operand patterns must align with IL operand encodings; emit
-//                 callbacks may only append to the MIRBuilder, never remove.
-// Ownership/Lifetime: Shared across lowering translation units via inline constexpr data.
-// Links: docs/architecture.md
+// Key invariants:
+//   - Rule table entries are immutable and indexed by opcode prefix.
+//   - Operand patterns must align with IL operand encodings.
+//   - Emit callbacks may only append to the MIRBuilder, never remove.
+// Ownership/Lifetime:
+//   - Shared across lowering translation units via inline constexpr data.
+// Links: codegen/x86_64/LoweringRuleTable.cpp,
+//        codegen/x86_64/LoweringRules.hpp,
+//        codegen/x86_64/LowerILToMIR.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -23,44 +27,11 @@
 #include <limits>
 #include <string_view>
 
-/// @brief x86-64 code generation components for the Viper compiler.
-///
-/// This namespace contains all x86-64 specific code generation infrastructure,
-/// including instruction lowering, register allocation, and assembly emission.
-/// The code generator follows the System V AMD64 ABI for Unix-like systems.
 namespace viper::codegen::x64 {
 
 struct ILInstr;
 class MIRBuilder;
 
-/// @brief Instruction lowering functions and rule tables for x86-64 code generation.
-///
-/// This namespace contains the table-driven instruction selection mechanism that
-/// transforms IL (Intermediate Language) instructions into x86-64 MIR (Machine IR).
-/// The lowering process uses a declarative rule table where each entry specifies:
-/// - The IL opcode pattern to match (exact or prefix-based)
-/// - Required operand shapes (arity and kind constraints)
-/// - The emit callback function that generates the x86-64 MIR
-///
-/// ## Lowering Pipeline Overview
-///
-/// ```
-/// IL Instruction -> lookupRuleSpec() -> RuleSpec -> emit callback -> MIR Instructions
-/// ```
-///
-/// The lowering pass iterates over IL instructions, looks up matching rules, and
-/// invokes the corresponding emit callback to append MIR instructions to the builder.
-///
-/// ## Emit Callback Contract
-///
-/// All emit functions must:
-/// 1. Read the IL instruction operands without modification
-/// 2. Append zero or more MIR instructions to the builder
-/// 3. Never remove existing MIR instructions from the builder
-/// 4. Handle all valid operand combinations for the matched opcode
-///
-/// @see kLoweringRuleTable for the complete set of lowering rules
-/// @see MIRBuilder for the MIR construction interface
 namespace lowering {
 
 /// @brief Emits x86-64 MIR for IL `add` instruction (integer addition).

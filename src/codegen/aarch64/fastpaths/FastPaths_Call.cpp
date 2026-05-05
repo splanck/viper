@@ -3,21 +3,21 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: codegen/aarch64/fastpaths/FastPaths_Call.cpp
 // Purpose: Fast-path pattern matching for call operations.
-//
-// Summary:
-//   Handles fast-path lowering for call patterns:
-//   - call @callee(args...) feeding ret
-//   - Register argument marshalling
-//   - Stack argument handling
-//   - Temporary computation into scratch registers
-//
-// Invariants:
-//   - Call result must flow directly to a ret instruction
-//   - Arguments must be entry params, constants, or simple computations
-//   - Uses scratch registers for intermediate computations
-//   - Cycle detection and breaking for register moves
+//          Handles call @callee(args...) → ret patterns with register and stack
+//          argument marshalling, cycle detection/breaking for register moves,
+//          and temporary computation into scratch registers.
+// Key invariants:
+//   - Call result must flow directly to a ret instruction.
+//   - Arguments must be entry params, constants, or simple computations.
+//   - Uses scratch registers for intermediate computations.
+// Ownership/Lifetime:
+//   - Stateless free functions; FastPathContext is borrowed for the call duration.
+// Links: codegen/aarch64/fastpaths/FastPathsInternal.hpp,
+//        codegen/aarch64/LoweringContext.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -61,6 +61,10 @@ bool isParamTemp(const il::core::BasicBlock &bb,
     return false;
 }
 
+/// @brief Build a map from parameter temp ID to the alloca temp that stores it.
+/// @details Scans for store(alloca_result, param_temp) pairs; result maps param_id → alloca_id.
+/// @param bb The block to scan.
+/// @return Map from param vreg ID to its home alloca vreg ID.
 std::unordered_map<unsigned, unsigned> buildParamHomeAllocaMap(const il::core::BasicBlock &bb) {
     std::unordered_set<unsigned> localAllocas;
     for (const auto &instr : bb.instructions) {

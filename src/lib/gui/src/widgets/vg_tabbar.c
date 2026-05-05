@@ -5,10 +5,27 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_tabbar.c
+// File: lib/gui/src/widgets/vg_tabbar.c
+// Purpose: Tab bar widget — a horizontal strip of draggable, closable tabs with
+//          overflow scrolling, modified-indicator dots, and drag-to-reorder support.
+// Key invariants:
+//   - Tabs are maintained in a doubly-linked list (first_tab … last_tab);
+//     tab_count shadows the list length for O(1) access.
+//   - active_tab is never a dangling pointer; vg_tabbar_remove_tab updates it
+//     before freeing the removed tab.
+//   - active_change_version is a monotonic counter incremented whenever
+//     active_tab changes; used to detect stale references externally.
+//   - scroll_offset tracks horizontal scroll in pixels when tabs overflow.
+//   - dragging / drag_tab tracks an in-progress drag-to-reorder gesture.
+// Ownership/Lifetime:
+//   - Each vg_tab_t owns its title and tooltip strings; freed in
+//     vg_tabbar_remove_tab.
+//   - The tabbar does not own any external user_data pointers stored on tabs.
+// Links: lib/gui/include/vg_ide_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_tabbar.c - TabBar widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -56,6 +73,7 @@ static vg_widget_vtable_t g_tabbar_vtable = {.destroy = tabbar_destroy,
 // Helper Functions
 //=============================================================================
 
+/// @brief Returns the pixel width of @p tab's button including title text, padding, and optional close-button gutter; clamped to max_tab_width.
 static float get_tab_width(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     if (!tabbar->font || !tab->title) {
         return tabbar->max_tab_width > 0.0f ? tabbar->max_tab_width : 100.0f;
@@ -83,6 +101,7 @@ static float get_tab_width(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     return width;
 }
 
+/// @brief Returns a heap-allocated copy of the tab title, appending " *" when the tab is marked modified; caller must free.
 static char *make_tab_title(const vg_tab_t *tab) {
     if (!tab || !tab->title)
         return strdup("");
@@ -101,6 +120,7 @@ static char *make_tab_title(const vg_tab_t *tab) {
     return title;
 }
 
+/// @brief Returns a heap-allocated copy of @p title truncated with "..." to fit within @p max_width pixels; caller must free.
 static char *fit_tab_title(vg_tabbar_t *tabbar, const char *title, float max_width) {
     if (!title)
         return strdup("");
@@ -135,6 +155,7 @@ static char *fit_tab_title(vg_tabbar_t *tabbar, const char *title, float max_wid
     return buf;
 }
 
+/// @brief Returns the tab whose button spans widget-local @p x (accounting for scroll_x), or NULL if no tab covers that coordinate.
 static vg_tab_t *find_tab_at_x(vg_tabbar_t *tabbar, float x) {
     float tab_x = -tabbar->scroll_x;
 
@@ -148,6 +169,7 @@ static vg_tab_t *find_tab_at_x(vg_tabbar_t *tabbar, float x) {
     return NULL;
 }
 
+/// @brief Returns the absolute X offset (before scroll) of @p target's left edge within the tab strip.
 static float get_tab_x(vg_tabbar_t *tabbar, vg_tab_t *target) {
     float x = 0;
     for (vg_tab_t *tab = tabbar->first_tab; tab && tab != target; tab = tab->next) {
@@ -156,6 +178,7 @@ static float get_tab_x(vg_tabbar_t *tabbar, vg_tab_t *target) {
     return x;
 }
 
+/// @brief Returns the insertion index (0-based) at which a dragged tab should be dropped based on @p local_x position.
 static int tabbar_target_index_from_x(vg_tabbar_t *tabbar, float local_x) {
     if (!tabbar || tabbar->tab_count <= 1)
         return 0;
@@ -171,6 +194,7 @@ static int tabbar_target_index_from_x(vg_tabbar_t *tabbar, float local_x) {
     return tabbar->tab_count - 1;
 }
 
+/// @brief Moves @p tab to @p new_index in the doubly-linked list, updating first_tab/last_tab; returns true if the order changed.
 static bool tabbar_move_tab_to_index(vg_tabbar_t *tabbar, vg_tab_t *tab, int new_index) {
     if (!tabbar || !tab || tabbar->tab_count < 2)
         return false;
@@ -232,6 +256,7 @@ static bool tabbar_move_tab_to_index(vg_tabbar_t *tabbar, vg_tab_t *tab, int new
     return true;
 }
 
+/// @brief Returns true if @p local_x/local_y falls within @p tab's close button rectangle (only when the tab is closable).
 static bool tab_close_button_hit(vg_tabbar_t *tabbar, vg_tab_t *tab, float local_x, float local_y) {
     if (!tabbar || !tab || !tab->closable)
         return false;
@@ -247,6 +272,7 @@ static bool tab_close_button_hit(vg_tabbar_t *tabbar, vg_tab_t *tab, float local
            local_y < close_y + close_h;
 }
 
+/// @brief Updates the widget tooltip to show the hovered tab's tooltip, saving and restoring the global tooltip when hover changes.
 static void tabbar_sync_hover_tooltip(vg_tabbar_t *tabbar) {
     if (!tabbar)
         return;
@@ -276,10 +302,12 @@ static void tabbar_sync_hover_tooltip(vg_tabbar_t *tabbar) {
     }
 }
 
+/// @brief VTable can_focus: returns true when the widget is both enabled and visible.
 static bool tabbar_can_focus(vg_widget_t *widget) {
     return widget && widget->enabled && widget->visible;
 }
 
+/// @brief Adjusts scroll_x so that @p tab's button is fully visible within the current widget width.
 static void tabbar_ensure_tab_visible(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     if (!tabbar || !tab)
         return;
@@ -309,6 +337,13 @@ static void tabbar_ensure_tab_visible(vg_tabbar_t *tabbar, vg_tab_t *tab) {
 // TabBar Implementation
 //=============================================================================
 
+/// @brief Create an empty tab bar widget.
+///
+/// @details Default appearance is taken from the current theme.  No tabs are
+///          created; add them with vg_tabbar_add_tab.
+///
+/// @param parent Widget to attach to as a child (may be NULL).
+/// @return Newly allocated vg_tabbar_t, or NULL on allocation failure.
 vg_tabbar_t *vg_tabbar_create(vg_widget_t *parent) {
     vg_tabbar_t *tabbar = calloc(1, sizeof(vg_tabbar_t));
     if (!tabbar)
@@ -382,6 +417,7 @@ vg_tabbar_t *vg_tabbar_create(vg_widget_t *parent) {
     return tabbar;
 }
 
+/// @brief VTable destroy: releases input capture if held, frees all tab nodes (title, tooltip, struct), and saved tooltip text.
 static void tabbar_destroy(vg_widget_t *widget) {
     vg_tabbar_t *tabbar = (vg_tabbar_t *)widget;
 
@@ -402,6 +438,7 @@ static void tabbar_destroy(vg_widget_t *widget) {
     free(tabbar->saved_tooltip_text);
 }
 
+/// @brief VTable measure: sums all tab widths into total_width, claims available_width, and re-clamps scroll_x to prevent over-scroll after tab removal.
 static void tabbar_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_tabbar_t *tabbar = (vg_tabbar_t *)widget;
     (void)available_height;
@@ -428,6 +465,7 @@ static void tabbar_measure(vg_widget_t *widget, float available_width, float ava
         tabbar->scroll_x = 0.0f;
 }
 
+/// @brief VTable paint: renders the bar background, clips tabs, draws each tab with background, active accent bar, truncated title, modified dot, and close button.
 static void tabbar_paint(vg_widget_t *widget, void *canvas) {
     vg_tabbar_t *tabbar = (vg_tabbar_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -564,6 +602,7 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas) {
     vgfx_clear_clip(win);
 }
 
+/// @brief VTable handle_event: handles tab click/select, close-button click, drag-to-reorder gesture, hover tracking, mouse-wheel scroll, and left/right arrow key navigation.
 static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_tabbar_t *tabbar = (vg_tabbar_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -786,6 +825,15 @@ static bool tabbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
 // TabBar API
 //=============================================================================
 
+/// @brief Append a new tab to the end of the tab bar.
+///
+/// @details The new tab becomes the active tab if no tab is currently active.
+///
+/// @param tabbar   The tab bar to add to.
+/// @param title    Null-terminated display title (copied internally); NULL
+///                 defaults to "Untitled".
+/// @param closable true to show a close button on the tab.
+/// @return Newly allocated vg_tab_t owned by the tabbar, or NULL on failure.
 vg_tab_t *vg_tabbar_add_tab(vg_tabbar_t *tabbar, const char *title, bool closable) {
     if (!tabbar)
         return NULL;
@@ -824,7 +872,14 @@ vg_tab_t *vg_tabbar_add_tab(vg_tabbar_t *tabbar, const char *title, bool closabl
     return tab;
 }
 
-/// @brief Tabbar remove tab.
+/// @brief Remove and free a tab, updating the active tab if necessary.
+///
+/// @details If the removed tab was active, the next sibling is activated; if
+///          none exists, the previous sibling; if none exists, active_tab is
+///          set to NULL.
+///
+/// @param tabbar The tab bar that owns the tab.
+/// @param tab    The tab to remove and free.
 void vg_tabbar_remove_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     if (!tabbar || !tab)
         return;
@@ -887,7 +942,12 @@ void vg_tabbar_remove_tab(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     tabbar->base.needs_paint = true;
 }
 
-/// @brief Tabbar set active.
+/// @brief Set the active tab and fire the on_select callback.
+///
+/// @details No-op if tab is already the active tab.  Scrolls the tab into view.
+///
+/// @param tabbar The tab bar to update.
+/// @param tab    The tab to activate; must belong to this tabbar.
 void vg_tabbar_set_active(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     if (!tabbar || tabbar->active_tab == tab)
         return;
@@ -903,11 +963,19 @@ void vg_tabbar_set_active(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     }
 }
 
+/// @brief Return the currently active tab.
+///
+/// @param tabbar The tab bar to query.
+/// @return Active vg_tab_t pointer, or NULL if no tab is active or tabbar is NULL.
 vg_tab_t *vg_tabbar_get_active(vg_tabbar_t *tabbar) {
     return tabbar ? tabbar->active_tab : NULL;
 }
 
-/// @brief Tabbar get tab index.
+/// @brief Return the zero-based index of a tab within the tab bar.
+///
+/// @param tabbar The tab bar to search.
+/// @param tab    The tab to look up.
+/// @return Zero-based index, or -1 if the tab is not found or either arg is NULL.
 int vg_tabbar_get_tab_index(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     if (!tabbar || !tab)
         return -1;
@@ -920,6 +988,11 @@ int vg_tabbar_get_tab_index(vg_tabbar_t *tabbar, vg_tab_t *tab) {
     return -1;
 }
 
+/// @brief Return the tab at the given zero-based index, or NULL if out of range.
+///
+/// @param tabbar The tab bar to query.
+/// @param index  Zero-based tab index.
+/// @return Corresponding vg_tab_t pointer, or NULL.
 vg_tab_t *vg_tabbar_get_tab_at(vg_tabbar_t *tabbar, int index) {
     if (!tabbar || index < 0)
         return NULL;
@@ -932,7 +1005,14 @@ vg_tab_t *vg_tabbar_get_tab_at(vg_tabbar_t *tabbar, int index) {
     return NULL;
 }
 
-/// @brief Tab set title.
+/// @brief Set the display title of a tab.
+///
+/// @details The old title is freed.  If the tab had no explicit tooltip, or if
+///          its tooltip was identical to the old title, the tooltip is updated to
+///          match the new title.
+///
+/// @param tab   The tab to update.
+/// @param title New null-terminated title string; NULL defaults to "Untitled".
 void vg_tab_set_title(vg_tab_t *tab, const char *title) {
     if (!tab)
         return;
@@ -965,7 +1045,10 @@ void vg_tab_set_title(vg_tab_t *tab, const char *title) {
     }
 }
 
-/// @brief Tab set modified.
+/// @brief Set the modified indicator on the tab (dot shown next to the title).
+///
+/// @param tab      The tab to update.
+/// @param modified true to show the modified dot; false to hide it.
 void vg_tab_set_modified(vg_tab_t *tab, bool modified) {
     if (tab) {
         tab->modified = modified;
@@ -976,7 +1059,10 @@ void vg_tab_set_modified(vg_tab_t *tab, bool modified) {
     }
 }
 
-/// @brief Tab set tooltip.
+/// @brief Set the hover tooltip text for a tab (independent of the title).
+///
+/// @param tab     The tab to update.
+/// @param tooltip Null-terminated tooltip string; NULL clears the tooltip.
 void vg_tab_set_tooltip(vg_tab_t *tab, const char *tooltip) {
     if (!tab)
         return;
@@ -991,14 +1077,22 @@ void vg_tab_set_tooltip(vg_tab_t *tab, const char *tooltip) {
     }
 }
 
-/// @brief Tab set data.
+/// @brief Set an opaque user-data pointer on the tab for caller use.
+///
+/// @param tab  The tab to update.
+/// @param data Arbitrary pointer stored on the tab; not owned or freed by the tabbar.
 void vg_tab_set_data(vg_tab_t *tab, void *data) {
     if (tab) {
         tab->user_data = data;
     }
 }
 
-/// @brief Tabbar set font.
+/// @brief Set the font and size used to render all tab titles.
+///
+/// @param tabbar The tab bar to configure.
+/// @param font   Font to use; may be NULL.
+/// @param size   Font size in logical pixels; values ≤ 0 default to the theme's
+///               normal text size.
 void vg_tabbar_set_font(vg_tabbar_t *tabbar, vg_font_t *font, float size) {
     if (!tabbar)
         return;
@@ -1009,7 +1103,11 @@ void vg_tabbar_set_font(vg_tabbar_t *tabbar, vg_font_t *font, float size) {
     tabbar->base.needs_paint = true;
 }
 
-/// @brief Tabbar set on select.
+/// @brief Register a callback invoked when the active tab changes.
+///
+/// @param tabbar    The tab bar to configure.
+/// @param callback  Function called with (widget, tab, user_data).  May be NULL.
+/// @param user_data Opaque pointer forwarded unchanged to the callback.
 void vg_tabbar_set_on_select(vg_tabbar_t *tabbar,
                              vg_tab_select_callback_t callback,
                              void *user_data) {
@@ -1019,7 +1117,13 @@ void vg_tabbar_set_on_select(vg_tabbar_t *tabbar,
     tabbar->on_select_data = user_data;
 }
 
-/// @brief Tabbar set on close.
+/// @brief Register a callback invoked when a tab's close button is clicked.
+///
+/// @details The callback is responsible for actually removing the tab if desired.
+///
+/// @param tabbar    The tab bar to configure.
+/// @param callback  Function called with (widget, tab, user_data).  May be NULL.
+/// @param user_data Opaque pointer forwarded unchanged to the callback.
 void vg_tabbar_set_on_close(vg_tabbar_t *tabbar,
                             vg_tab_close_callback_t callback,
                             void *user_data) {
@@ -1029,7 +1133,12 @@ void vg_tabbar_set_on_close(vg_tabbar_t *tabbar,
     tabbar->on_close_data = user_data;
 }
 
-/// @brief Tabbar set on reorder.
+/// @brief Register a callback invoked after a drag-to-reorder operation completes.
+///
+/// @param tabbar    The tab bar to configure.
+/// @param callback  Function called with (widget, tab, new_index, user_data).
+///                  May be NULL.
+/// @param user_data Opaque pointer forwarded unchanged to the callback.
 void vg_tabbar_set_on_reorder(vg_tabbar_t *tabbar,
                               vg_tab_reorder_callback_t callback,
                               void *user_data) {

@@ -7,6 +7,13 @@
 //
 // File: codegen/x86_64/Scheduler.hpp
 // Purpose: Declare the post-RA x86-64 instruction scheduler.
+// Key invariants:
+//   - Must be called after register allocation when physical registers are known.
+//   - Reordering preserves data dependences and control-flow semantics.
+// Ownership/Lifetime:
+//   - Stateless; mutates caller-owned MFunction/MIR vectors in place.
+// Links: codegen/x86_64/Scheduler.cpp,
+//        codegen/x86_64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,11 +26,14 @@
 
 namespace viper::codegen::x64 {
 
-/// \brief Run conservative post-register-allocation scheduling for one function.
-/// \return Number of basic-block segments whose instruction order changed.
+/// @brief Run conservative post-RA scheduling for a single function.
+/// @param fn Machine function whose basic blocks are reordered in place.
+/// @return Number of basic-block segments whose instruction order changed.
 std::size_t scheduleFunction(MFunction &fn);
 
-/// \brief Run post-register-allocation scheduling for a MIR module.
+/// @brief Run post-RA scheduling for an entire MIR module.
+/// @param mir Module's vector of machine functions to schedule.
+/// @return Total number of reordered segments across all functions.
 std::size_t scheduleModule(std::vector<MFunction> &mir);
 
 } // namespace viper::codegen::x64

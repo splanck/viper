@@ -15,7 +15,9 @@
 //   - Must run before register allocation (all operands still virtual).
 // Ownership/Lifetime:
 //   - Modifies MFunction in place; caller owns the MFunction.
-// Links: codegen/aarch64/MachineIR.hpp, codegen/aarch64/RegAllocLinear.hpp
+// Links: codegen/aarch64/Coalescer.cpp,
+//        codegen/aarch64/MachineIR.hpp,
+//        codegen/aarch64/RegAllocLinear.hpp
 //
 //===----------------------------------------------------------------------===//
 

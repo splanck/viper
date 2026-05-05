@@ -6,17 +6,19 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/passes/LoweringPass.cpp
-// Purpose: IL→MIR lowering pass for the AArch64 modular pipeline.
-//
-// Responsibilities:
-//   1. Build the per-module RodataPool from string globals.
-//   2. For each IL function, lower it to MIR via LowerILToMIR.
-//   3. Sanitize basic-block labels (hyphens → underscores, uniquify across
-//      multi-function modules to prevent label collisions in the assembler).
-//   4. Remap AdrPage/AddPageOff label operands to pooled rodata labels.
-//
-// Pre-RA target legalization such as overflow pseudo expansion and runtime
-// entry sequencing is handled by LegalizePass.
+// Purpose: IL→MIR lowering for the AArch64 modular pipeline. Builds the
+//          RodataPool from string globals, lowers each IL function in parallel,
+//          sanitizes block labels, and remaps AdrPage/AddPageOff rodata refs.
+// Key invariants:
+//   - LowerILToMIR instances are created per-function and are thread-safe.
+//   - Block labels gain a function-name suffix when the module has >1 function
+//     to prevent assembler label collisions across function bodies.
+//   - All block labels are prefixed with "L" for Mach-O local-label semantics.
+// Ownership/Lifetime:
+//   - Stateless pass; mutates AArch64Module::mir and ::rodataPool.
+// Links: codegen/aarch64/passes/LoweringPass.hpp,
+//        codegen/aarch64/LowerILToMIR.hpp,
+//        codegen/aarch64/passes/LegalizePass.cpp (downstream)
 //
 //===----------------------------------------------------------------------===//
 

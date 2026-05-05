@@ -5,10 +5,25 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_spinner.c
+// File: lib/gui/src/widgets/vg_spinner.c
+// Purpose: Spinner (numeric input) widget — displays a numeric value with up/down
+//          arrow buttons for increment/decrement and an optional inline text-edit
+//          mode for direct keyboard entry.
+// Key invariants:
+//   - value is always clamped to [min_value, max_value] after every change.
+//   - editing==true means the user is typing directly; text_buffer is a live
+//     edit buffer that may not yet represent a valid number.
+//   - spinner_commit_edit parses text_buffer via strtod and calls set_value;
+//     spinner_cancel_edit restores text_buffer from the committed value.
+//   - step must be a positive finite number; non-positive or non-finite values
+//     are silently normalised to 1.
+// Ownership/Lifetime:
+//   - spinner->text_buffer is heap-allocated and freed in spinner_destroy.
+// Links: lib/gui/include/vg_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_spinner.c - Spinner/NumberInput widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
@@ -40,27 +55,39 @@ static vg_widget_vtable_t g_spinner_vtable = {.destroy = spinner_destroy,
                                               .can_focus = spinner_can_focus,
                                               .on_focus = NULL};
 
+/// @brief Add delta to the spinner's current value and clamp the result.
 static void spinner_adjust_value(vg_spinner_t *spinner, double delta) {
     if (!spinner)
         return;
     vg_spinner_set_value(spinner, spinner->value + delta);
 }
 
+/// @brief Return true if local coordinates (x,y) fall within the up-arrow button.
 static bool spinner_point_in_up_button(const vg_spinner_t *spinner, float x, float y) {
     return x >= spinner->base.width - spinner->button_width && x < spinner->base.width && y >= 0.0f &&
            y < spinner->base.height * 0.5f;
 }
 
+/// @brief Return true if local coordinates (x,y) fall within the down-arrow button.
 static bool spinner_point_in_down_button(const vg_spinner_t *spinner, float x, float y) {
     return x >= spinner->base.width - spinner->button_width && x < spinner->base.width &&
            y >= spinner->base.height * 0.5f && y < spinner->base.height;
 }
 
+/// @brief Return true if local coordinates (x,y) fall within the text display area.
 static bool spinner_point_in_text_area(const vg_spinner_t *spinner, float x, float y) {
     return x >= 0.0f && x < spinner->base.width - spinner->button_width && y >= 0.0f &&
            y < spinner->base.height;
 }
 
+/// @brief Create a spinner widget with default range [0, 100] and step 1.
+///
+/// @details Default appearance values are taken from the current theme.  The
+///          widget's minimum width is 80 logical pixels and minimum height
+///          follows theme->input.height.
+///
+/// @param parent Widget to attach to as a child (may be NULL).
+/// @return Newly allocated vg_spinner_t, or NULL on allocation failure.
 vg_spinner_t *vg_spinner_create(vg_widget_t *parent) {
     vg_spinner_t *spinner = calloc(1, sizeof(vg_spinner_t));
     if (!spinner)
@@ -97,6 +124,7 @@ vg_spinner_t *vg_spinner_create(vg_widget_t *parent) {
     return spinner;
 }
 
+/// @brief VTable destroy: releases input capture if held; no heap fields beyond the widget struct.
 static void spinner_destroy(vg_widget_t *widget) {
     vg_spinner_t *spinner = (vg_spinner_t *)widget;
     free(spinner->text_buffer);
@@ -105,6 +133,7 @@ static void spinner_destroy(vg_widget_t *widget) {
         vg_widget_release_input_capture();
 }
 
+/// @brief VTable measure: sizes the spinner from text extent plus up/down button gutter and input padding.
 static void spinner_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_spinner_t *spinner = (vg_spinner_t *)widget;
     (void)available_width;
@@ -130,6 +159,7 @@ static void spinner_measure(vg_widget_t *widget, float available_width, float av
     vg_widget_apply_constraints(widget);
 }
 
+/// @brief VTable paint: draws the input field background, current value text, up/down arrow buttons with hover/press tints, border, and focus ring.
 static void spinner_paint(vg_widget_t *widget, void *canvas) {
     vg_spinner_t *spinner = (vg_spinner_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -263,6 +293,7 @@ static void spinner_paint(vg_widget_t *widget, void *canvas) {
               glyph);
 }
 
+/// @brief VTable handle_event: handles click on up/down arrow buttons, mouse-wheel increment/decrement, arrow/Home/End keys, and inline text editing.
 static bool spinner_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_spinner_t *spinner = (vg_spinner_t *)widget;
     if (widget->state & VG_STATE_DISABLED)
@@ -439,10 +470,12 @@ static bool spinner_handle_event(vg_widget_t *widget, vg_event_t *event) {
     }
 }
 
+/// @brief VTable can_focus: returns true when the widget is both enabled and visible.
 static bool spinner_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
 
+/// @brief Reformat spinner->value into text_buffer using the current decimal_places setting.
 static void update_text_buffer(vg_spinner_t *spinner) {
     if (!spinner)
         return;
@@ -469,6 +502,7 @@ static void update_text_buffer(vg_spinner_t *spinner) {
     spinner->cursor_pos = strlen(spinner->text_buffer);
 }
 
+/// @brief Enter inline edit mode, placing the cursor at end of text.
 static void spinner_begin_edit(vg_spinner_t *spinner) {
     if (!spinner)
         return;
@@ -478,6 +512,7 @@ static void spinner_begin_edit(vg_spinner_t *spinner) {
     spinner->cursor_pos = strlen(spinner->text_buffer);
 }
 
+/// @brief Abandon inline edit and restore text_buffer from the committed value.
 static void spinner_cancel_edit(vg_spinner_t *spinner) {
     if (!spinner)
         return;
@@ -485,6 +520,7 @@ static void spinner_cancel_edit(vg_spinner_t *spinner) {
     update_text_buffer(spinner);
 }
 
+/// @brief Parse text_buffer and commit it as the new value; cancels on invalid input.
 static bool spinner_commit_edit(vg_spinner_t *spinner) {
     if (!spinner || !spinner->editing || !spinner->text_buffer)
         return false;
@@ -506,6 +542,7 @@ static bool spinner_commit_edit(vg_spinner_t *spinner) {
     return true;
 }
 
+/// @brief Insert a character at the cursor position if it is numerically valid.
 static void spinner_insert_char(vg_spinner_t *spinner, char ch) {
     if (!spinner || !spinner->text_buffer)
         return;
@@ -537,7 +574,13 @@ static void spinner_insert_char(vg_spinner_t *spinner, char ch) {
     spinner->text_buffer[spinner->cursor_pos++] = ch;
 }
 
-/// @brief Spinner set value.
+/// @brief Set the spinner's numeric value; clamps to [min_value, max_value].
+///
+/// @details Non-finite values are clamped to min_value.  Fires on_change if
+///          the value differs from the previous one.
+///
+/// @param spinner The spinner widget to update.
+/// @param value   The new numeric value; clamped to the configured range.
 void vg_spinner_set_value(vg_spinner_t *spinner, double value) {
     if (!spinner)
         return;
@@ -561,12 +604,23 @@ void vg_spinner_set_value(vg_spinner_t *spinner, double value) {
     }
 }
 
-/// @brief Spinner get value.
+/// @brief Return the spinner's current committed numeric value.
+///
+/// @param spinner The spinner widget to query.
+/// @return Current value, or 0 if spinner is NULL.
 double vg_spinner_get_value(vg_spinner_t *spinner) {
     return spinner ? spinner->value : 0;
 }
 
-/// @brief Spinner set range.
+/// @brief Set the minimum and maximum bounds for the spinner value.
+///
+/// @details Non-finite bounds are silently ignored.  If min_val > max_val the
+///          arguments are swapped.  The current value is re-clamped to the new
+///          range.
+///
+/// @param spinner  The spinner widget to configure.
+/// @param min_val  Lower bound (inclusive).
+/// @param max_val  Upper bound (inclusive).
 void vg_spinner_set_range(vg_spinner_t *spinner, double min_val, double max_val) {
     if (!spinner)
         return;
@@ -582,7 +636,11 @@ void vg_spinner_set_range(vg_spinner_t *spinner, double min_val, double max_val)
     vg_spinner_set_value(spinner, spinner->value);
 }
 
-/// @brief Spinner set step.
+/// @brief Set the amount added or subtracted by each arrow-button click or key press.
+///
+/// @param spinner The spinner widget to configure.
+/// @param step    Positive increment amount; non-positive or non-finite values
+///                are normalised to 1.
 void vg_spinner_set_step(vg_spinner_t *spinner, double step) {
     if (!spinner)
         return;
@@ -590,7 +648,14 @@ void vg_spinner_set_step(vg_spinner_t *spinner, double step) {
     spinner->base.needs_paint = true;
 }
 
-/// @brief Spinner set decimals.
+/// @brief Set the number of decimal places shown and accepted during text edit.
+///
+/// @details 0 formats the value as an integer.  The text buffer is immediately
+///          reformatted and the widget re-laid-out.  Clamped to
+///          [0, VG_SPINNER_MAX_DECIMALS].
+///
+/// @param spinner  The spinner widget to configure.
+/// @param decimals Number of decimal places; negative values are clamped to 0.
 void vg_spinner_set_decimals(vg_spinner_t *spinner, int decimals) {
     if (!spinner)
         return;
@@ -604,7 +669,12 @@ void vg_spinner_set_decimals(vg_spinner_t *spinner, int decimals) {
     spinner->base.needs_paint = true;
 }
 
-/// @brief Spinner set font.
+/// @brief Set the font and size used to render the spinner's numeric text.
+///
+/// @param spinner The spinner widget to configure.
+/// @param font    Font to use for the numeric label; NULL leaves the font unchanged.
+/// @param size    Font size in logical pixels; non-positive or non-finite values
+///                default to the theme's normal text size.
 void vg_spinner_set_font(vg_spinner_t *spinner, vg_font_t *font, float size) {
     if (!spinner)
         return;
@@ -615,7 +685,12 @@ void vg_spinner_set_font(vg_spinner_t *spinner, vg_font_t *font, float size) {
     spinner->base.needs_paint = true;
 }
 
-/// @brief Spinner set on change.
+/// @brief Register a callback invoked whenever the committed value changes.
+///
+/// @param spinner   The spinner widget to configure.
+/// @param callback  Function called with (widget, new_value, user_data) on each
+///                  committed value change.  May be NULL to unregister.
+/// @param user_data Opaque pointer forwarded unchanged to the callback.
 void vg_spinner_set_on_change(vg_spinner_t *spinner,
                               vg_spinner_callback_t callback,
                               void *user_data) {

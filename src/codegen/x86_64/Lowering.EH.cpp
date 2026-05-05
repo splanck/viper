@@ -5,12 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/Lowering.EH.cpp
+// File: codegen/x86_64/Lowering.EH.cpp
 // Purpose: x86-64 MIR lowering for residual EH markers and trap instructions.
-//          Structured native EH is rewritten earlier by NativeEHLowering; the
-//          marker emitters here exist only as inert fallbacks if raw EH slips
-//          past the shared rewrite. trap emits a call to rt_trap which performs
-//          longjmp if a thread-local recovery point is set, or aborts.
+//          Structured native EH is rewritten earlier by NativeEHLowering; marker
+//          emitters here are inert fallbacks for any EH that slips through.
+// Key invariants:
+//   - Trap emitters call rt_trap which performs longjmp or aborts.
+//   - EH marker emitters are no-ops when structured EH has already been lowered.
+// Ownership/Lifetime:
+//   - Operates on borrowed MIR builders; no persistent state.
+// Links: codegen/x86_64/LoweringRules.hpp,
+//        codegen/x86_64/Lowering.EmitCommon.hpp,
+//        codegen/x86_64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
 

@@ -5,15 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/ra/Spiller.hpp
+// File: codegen/x86_64/ra/Spiller.hpp
 // Purpose: Declare helper utilities responsible for spill slot management and
 //          load/store emission during linear-scan register allocation.
-// Key invariants: Spill slot indices grow monotonically per register class and
-//                 refer to 8-byte stack slots. Helper routines do not mutate
-//                 Machine IR directly; they return instructions for insertion.
-// Ownership/Lifetime: Spiller instances own their slot counters; callers manage
-//                     the produced instruction sequences.
-// Links: src/codegen/x86_64/ra/Allocator.hpp
+// Key invariants:
+//   - Spill slot indices grow monotonically per register class.
+//   - Helper routines return instructions for insertion; they do not mutate MIR directly.
+//   - Slots with non-overlapping lifetimes can be reused to reduce stack frame size.
+// Ownership/Lifetime:
+//   - Spiller instances own their slot counters; callers manage produced instruction sequences.
+// Links: codegen/x86_64/ra/Spiller.cpp,
+//        codegen/x86_64/ra/Allocator.hpp,
+//        codegen/x86_64/TargetX64.hpp
 //
 //===----------------------------------------------------------------------===//
 

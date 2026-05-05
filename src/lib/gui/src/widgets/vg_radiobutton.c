@@ -5,10 +5,24 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_radiobutton.c
+// File: lib/gui/src/widgets/vg_radiobutton.c
+// Purpose: RadioButton widget implementation — mutually-exclusive buttons linked
+//          through a shared vg_radiogroup_t, with per-button change callbacks.
+// Key invariants:
+//   - Selecting a button automatically deselects all other members of its group.
+//   - group->selected_index tracks the index of the selected button within
+//     group->buttons[]; -1 means none selected.
+//   - Destroying a group nulls each member's group pointer but does not destroy
+//     the buttons themselves.
+// Ownership/Lifetime:
+//   - vg_radiogroup_t is allocated and freed by the caller (vg_radiogroup_create
+//     / vg_radiogroup_destroy); buttons outlive the group and gain group==NULL.
+//   - radio->text is heap-allocated and freed in radio_destroy.
+// Links: lib/gui/include/vg_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_radiobutton.c - RadioButton widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
@@ -41,6 +55,7 @@ static vg_widget_vtable_t g_radio_vtable = {.destroy = radio_destroy,
                                             .can_focus = radio_can_focus,
                                             .on_focus = NULL};
 
+/// @brief VTable destroy: unregisters the button from its group (if any) and frees the label text.
 static void radio_destroy(vg_widget_t *widget) {
     vg_radiobutton_t *radio = (vg_radiobutton_t *)widget;
     if (radio->group)
@@ -49,6 +64,7 @@ static void radio_destroy(vg_widget_t *widget) {
     radio->text = NULL;
 }
 
+/// @brief VTable measure: sizes the widget to the circle diameter plus optional text extent.
 static void radio_measure(vg_widget_t *widget, float avail_w, float avail_h) {
     vg_radiobutton_t *radio = (vg_radiobutton_t *)widget;
     (void)avail_w;
@@ -70,6 +86,7 @@ static void radio_measure(vg_widget_t *widget, float avail_w, float avail_h) {
     vg_widget_apply_constraints(widget);
 }
 
+/// @brief VTable paint: draws the outer border circle, inner background, optional fill dot (selected), focus ring, and label text.
 static void radio_paint(vg_widget_t *widget, void *canvas) {
     vg_radiobutton_t *radio = (vg_radiobutton_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -106,6 +123,7 @@ static void radio_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief VTable handle_event: selects this button on click or Space key; deselection of siblings is handled inside vg_radiobutton_set_selected.
 static bool radio_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_radiobutton_t *radio = (vg_radiobutton_t *)widget;
 
@@ -129,10 +147,14 @@ static bool radio_handle_event(vg_widget_t *widget, vg_event_t *event) {
     return false;
 }
 
+/// @brief VTable can_focus: returns true when the widget is both enabled and visible.
 static bool radio_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
 
+/// @brief Create an empty radio group.
+///
+/// @return Newly allocated vg_radiogroup_t, or NULL on allocation failure.
 vg_radiogroup_t *vg_radiogroup_create(void) {
     vg_radiogroup_t *group = calloc(1, sizeof(vg_radiogroup_t));
     if (!group)
@@ -149,6 +171,7 @@ vg_radiogroup_t *vg_radiogroup_create(void) {
     return group;
 }
 
+/// @brief Removes @p radio from @p group's button array, compacts the array, and updates selected_index accordingly.
 static void radiogroup_unregister(vg_radiogroup_t *group, vg_radiobutton_t *radio) {
     if (!group || !radio)
         return;
@@ -183,7 +206,9 @@ static void radiogroup_unregister(vg_radiogroup_t *group, vg_radiobutton_t *radi
     }
 }
 
-/// @brief Radiogroup destroy.
+/// @brief Destroy a radio group, nulling the group pointer of all member buttons.
+///
+/// @param group The group to destroy; buttons remain valid after this call.
 void vg_radiogroup_destroy(vg_radiogroup_t *group) {
     if (!group)
         return;
@@ -195,6 +220,12 @@ void vg_radiogroup_destroy(vg_radiogroup_t *group) {
     free(group);
 }
 
+/// @brief Create a radio button and register it with an optional group.
+///
+/// @param parent Widget to attach to as a child (may be NULL).
+/// @param text   Label text displayed beside the button (copied internally).
+/// @param group  Group to register with (may be NULL for an ungrouped button).
+/// @return Newly allocated vg_radiobutton_t, or NULL on allocation failure.
 vg_radiobutton_t *vg_radiobutton_create(vg_widget_t *parent,
                                         const char *text,
                                         vg_radiogroup_t *group) {
@@ -255,6 +286,7 @@ vg_radiobutton_t *vg_radiobutton_create(vg_widget_t *parent,
     return radio;
 }
 
+/// @brief Directly updates @p radio's selected state and VG_STATE_CHECKED flag, firing on_change if @p notify is true and the state changed.
 static void radio_apply_selected(vg_radiobutton_t *radio, bool selected, bool notify) {
     if (!radio)
         return;
@@ -273,7 +305,10 @@ static void radio_apply_selected(vg_radiobutton_t *radio, bool selected, bool no
     }
 }
 
-/// @brief Radiobutton set selected.
+/// @brief Set this button's selected state; deselects all siblings in its group.
+///
+/// @param radio    The radio button to update.
+/// @param selected true to select; false to deselect.
 void vg_radiobutton_set_selected(vg_radiobutton_t *radio, bool selected) {
     if (!radio)
         return;
@@ -312,16 +347,32 @@ void vg_radiobutton_set_selected(vg_radiobutton_t *radio, bool selected) {
     }
 }
 
+/// @brief Return true if this radio button is currently selected.
+///
+/// @param radio The radio button to query.
+/// @return The selected state, or false if radio is NULL.
 bool vg_radiobutton_is_selected(vg_radiobutton_t *radio) {
     return radio ? radio->selected : false;
 }
 
-/// @brief Radiogroup get selected.
+/// @brief Return the index of the currently selected button within a group.
+///
+/// @param group The radio group to query.
+/// @return Zero-based index of the selected button, or -1 if none is selected
+///         or if group is NULL.
 int vg_radiogroup_get_selected(vg_radiogroup_t *group) {
     return group ? group->selected_index : -1;
 }
 
-/// @brief Radiogroup set selected.
+/// @brief Select a button in the group by zero-based index.
+///
+/// @details Passing a negative index deselects all buttons without selecting
+///          any (group->selected_index is set to -1). Passing an out-of-range
+///          positive index is a no-op.
+///
+/// @param group The radio group to update.
+/// @param index Zero-based index of the button to select, or a negative value
+///              to clear the selection entirely.
 void vg_radiogroup_set_selected(vg_radiogroup_t *group, int index) {
     if (!group)
         return;

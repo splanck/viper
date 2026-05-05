@@ -5,10 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_findreplacebar.c
+// File: lib/gui/src/widgets/vg_findreplacebar.c
+// Purpose: Find/Replace bar widget — a toolbar that drives text search and
+//          optional replacement across a linked vg_codeeditor_t target.
+// Key invariants:
+//   - matches[] is a heap-allocated array of vg_search_match_t; grown on demand
+//     and freed in findreplacebar_destroy.
+//   - current_match is always a valid index into matches[] when match_count > 0.
+//   - perform_search rebuilds matches[] from scratch on every query or option
+//     change; highlight_current_match applies the current match as an editor
+//     selection and scrolls it into view.
+//   - Replace-all iterates matches in reverse document order to preserve column
+//     positions after each replacement.
+//   - On non-Windows platforms, regex search uses POSIX regcomp/regexec.
+//     On Windows, regex is not available and use_regex is a no-op stub.
+// Ownership/Lifetime:
+//   - Child widgets are owned by the widget hierarchy and freed automatically.
+//   - bar->matches is owned by the bar; freed in findreplacebar_destroy.
+// Links: lib/gui/include/vg_ide_widgets.h,
+//        lib/gui/include/vg_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_findreplacebar.c - Find/Replace bar widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -90,6 +109,7 @@ static vg_widget_vtable_t g_findreplacebar_vtable = {.destroy = findreplacebar_d
 // Helper Functions - Case Insensitive String Search
 //=============================================================================
 
+/// @brief Portable case-insensitive substring search; returns first match or NULL.
 static const char *strcasestr_custom(const char *haystack, const char *needle) {
     if (!*needle)
         return haystack;
@@ -109,16 +129,19 @@ static const char *strcasestr_custom(const char *haystack, const char *needle) {
     return NULL;
 }
 
+/// @brief VTable set_font trampoline — propagates a font change to all text inputs and buttons in the bar.
 static void findreplacebar_set_font_widget(vg_widget_t *widget, void *font, float size) {
     if (!widget || !font)
         return;
     vg_findreplacebar_set_font((vg_findreplacebar_t *)widget, (vg_font_t *)font, size);
 }
 
+/// @brief Return true if c is a word-boundary character (non-alphanumeric and not '_').
 static bool is_word_boundary(char c) {
     return !isalnum((unsigned char)c) && c != '_';
 }
 
+/// @brief Return true if the match at `match` is surrounded by word-boundary characters.
 static bool check_whole_word(const char *text, const char *match, size_t match_len) {
     // Check character before match
     if (match > text && !is_word_boundary(match[-1])) {
@@ -208,6 +231,7 @@ static const char *find_regex_in_line(const char *text,
 }
 #endif
 
+/// @brief Append a match record to bar->matches[], growing the array if needed.
 static void add_match(vg_findreplacebar_t *bar, uint32_t line, uint32_t start, uint32_t end) {
     // Grow array if needed
     if (bar->match_count >= bar->match_capacity) {
@@ -229,12 +253,14 @@ static void add_match(vg_findreplacebar_t *bar, uint32_t line, uint32_t start, u
     bar->match_count++;
 }
 
+/// @brief Reset match_count and current_match to 0 and clear the result text.
 static void clear_matches(vg_findreplacebar_t *bar) {
     bar->match_count = 0;
     bar->current_match = 0;
     snprintf(bar->result_text, sizeof(bar->result_text), "");
 }
 
+/// @brief Re-scan the target editor for all matches of the current query and options.
 static void perform_search(vg_findreplacebar_t *bar) {
     clear_matches(bar);
 
@@ -316,6 +342,7 @@ static void perform_search(vg_findreplacebar_t *bar) {
     }
 }
 
+/// @brief Update bar->result_text to show "N of M" or "No results" based on match state.
 static void update_result_text(vg_findreplacebar_t *bar) {
     if (bar->match_count == 0) {
         vg_textinput_t *find_input = (vg_textinput_t *)bar->find_input;
@@ -334,6 +361,7 @@ static void update_result_text(vg_findreplacebar_t *bar) {
     }
 }
 
+/// @brief Show or hide the replace-row widgets based on bar->show_replace.
 static void findreplacebar_apply_replace_visibility(vg_findreplacebar_t *bar) {
     if (!bar)
         return;
@@ -345,6 +373,7 @@ static void findreplacebar_apply_replace_visibility(vg_findreplacebar_t *bar) {
         vg_widget_set_visible((vg_widget_t *)bar->replace_all_btn, bar->show_replace);
 }
 
+/// @brief Select the current match in the target editor and scroll it into view.
 static void highlight_current_match(vg_findreplacebar_t *bar) {
     if (bar->match_count == 0 || !bar->target_editor)
         return;
@@ -364,30 +393,35 @@ static void highlight_current_match(vg_findreplacebar_t *bar) {
 // Button Callbacks
 //=============================================================================
 
+/// @brief Button callback: invokes find-previous on the linked editor.
 static void on_find_prev_click(vg_widget_t *btn, void *user_data) {
     (void)btn;
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)user_data;
     vg_findreplacebar_find_prev(bar);
 }
 
+/// @brief Button callback: invokes find-next on the linked editor.
 static void on_find_next_click(vg_widget_t *btn, void *user_data) {
     (void)btn;
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)user_data;
     vg_findreplacebar_find_next(bar);
 }
 
+/// @brief Button callback: replaces the current match with the replacement text in the linked editor.
 static void on_replace_click(vg_widget_t *btn, void *user_data) {
     (void)btn;
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)user_data;
     vg_findreplacebar_replace_current(bar);
 }
 
+/// @brief Button callback: replaces all matches in the linked editor.
 static void on_replace_all_click(vg_widget_t *btn, void *user_data) {
     (void)btn;
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)user_data;
     vg_findreplacebar_replace_all(bar);
 }
 
+/// @brief Button callback: hides the find/replace bar when the close button is clicked.
 static void on_close_click(vg_widget_t *btn, void *user_data) {
     (void)btn;
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)user_data;
@@ -398,6 +432,7 @@ static void on_close_click(vg_widget_t *btn, void *user_data) {
     }
 }
 
+/// @brief Checkbox callback: re-runs the current search when a match option (case, whole-word, regex) changes.
 static void on_option_change(vg_widget_t *cb, bool checked, void *user_data) {
     (void)checked;
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)user_data;
@@ -421,6 +456,7 @@ static void on_option_change(vg_widget_t *cb, bool checked, void *user_data) {
     perform_search(bar);
 }
 
+/// @brief Text-input callback: triggers a live search in the linked editor as the find query text changes.
 static void on_find_text_change(vg_widget_t *input, const char *text, void *user_data) {
     (void)input;
     (void)text;
@@ -432,6 +468,14 @@ static void on_find_text_change(vg_widget_t *input, const char *text, void *user
 // Widget Implementation
 //=============================================================================
 
+/// @brief Create a find/replace bar with all child widgets pre-initialised.
+///
+/// @details The bar is created hidden (visible=false); call vg_widget_set_visible
+///          to show it.  The replace row is hidden by default; toggle with
+///          vg_findreplacebar_set_show_replace.  No target editor is associated
+///          until vg_findreplacebar_set_target is called.
+///
+/// @return Newly allocated vg_findreplacebar_t, or NULL on allocation failure.
 vg_findreplacebar_t *vg_findreplacebar_create(void) {
     vg_findreplacebar_t *bar = calloc(1, sizeof(vg_findreplacebar_t));
     if (!bar)
@@ -510,6 +554,7 @@ vg_findreplacebar_t *vg_findreplacebar_create(void) {
     return bar;
 }
 
+/// @brief VTable destroy: releases input capture if held; child widgets freed by base widget hierarchy.
 static void findreplacebar_destroy(vg_widget_t *widget) {
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)widget;
 
@@ -519,6 +564,7 @@ static void findreplacebar_destroy(vg_widget_t *widget) {
     // Child widgets are destroyed by parent destruction
 }
 
+/// @brief VTable measure: determines bar height from single vs. double row (show_replace), then claims available width.
 static void findreplacebar_measure(vg_widget_t *widget,
                                    float available_width,
                                    float available_height) {
@@ -530,6 +576,7 @@ static void findreplacebar_measure(vg_widget_t *widget,
         bar->show_replace ? FINDREPLACEBAR_HEIGHT_REPLACE : FINDREPLACEBAR_HEIGHT;
 }
 
+/// @brief VTable arrange: lays out find/replace rows, option checkboxes, and navigation buttons within the bar bounds.
 static void findreplacebar_arrange(
     vg_widget_t *widget, float x, float y, float width, float height) {
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)widget;
@@ -622,6 +669,7 @@ static void findreplacebar_arrange(
     findreplacebar_apply_replace_visibility(bar);
 }
 
+/// @brief VTable paint: draws the bar background, separator line, and match-count label; child widgets paint themselves.
 static void findreplacebar_paint(vg_widget_t *widget, void *canvas) {
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -676,6 +724,7 @@ static void findreplacebar_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief VTable handle_event: handles Escape to close the bar and Tab/Shift-Tab to cycle focus between find/replace inputs.
 static bool findreplacebar_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_findreplacebar_t *bar = (vg_findreplacebar_t *)widget;
 
@@ -733,13 +782,19 @@ static bool findreplacebar_handle_event(vg_widget_t *widget, vg_event_t *event) 
 // Public API
 //=============================================================================
 
+/// @brief Destroy the find/replace bar and all its child widgets.
+///
+/// @param bar The bar to destroy; may be NULL.
 void vg_findreplacebar_destroy(vg_findreplacebar_t *bar) {
     if (!bar)
         return;
     vg_widget_destroy(&bar->base);
 }
 
-/// @brief Findreplacebar set target.
+/// @brief Associate a code editor with this bar and immediately re-run the search.
+///
+/// @param bar    The find/replace bar to configure.
+/// @param editor The code editor to search; may be NULL to detach.
 void vg_findreplacebar_set_target(vg_findreplacebar_t *bar, struct vg_codeeditor *editor) {
     if (!bar)
         return;
@@ -749,7 +804,10 @@ void vg_findreplacebar_set_target(vg_findreplacebar_t *bar, struct vg_codeeditor
     perform_search(bar);
 }
 
-/// @brief Findreplacebar set show replace.
+/// @brief Show or hide the replace row (replace input, Replace, and Replace All buttons).
+///
+/// @param bar  The find/replace bar to configure.
+/// @param show true to show the replace row; false to hide it.
 void vg_findreplacebar_set_show_replace(vg_findreplacebar_t *bar, bool show) {
     if (!bar)
         return;
@@ -758,7 +816,12 @@ void vg_findreplacebar_set_show_replace(vg_findreplacebar_t *bar, bool show) {
     vg_widget_invalidate(&bar->base);
 }
 
-/// @brief Findreplacebar set options.
+/// @brief Apply a complete set of search options and re-run the search.
+///
+/// @details Updates the option checkboxes to reflect the new state.
+///
+/// @param bar     The find/replace bar to configure.
+/// @param options New option values; may not be NULL.
 void vg_findreplacebar_set_options(vg_findreplacebar_t *bar, vg_search_options_t *options) {
     if (!bar || !options)
         return;
@@ -778,7 +841,10 @@ void vg_findreplacebar_set_options(vg_findreplacebar_t *bar, vg_search_options_t
     perform_search(bar);
 }
 
-/// @brief Findreplacebar find.
+/// @brief Set the search query text and immediately run a new search.
+///
+/// @param bar   The find/replace bar to update.
+/// @param query Null-terminated search string; NULL is silently ignored.
 void vg_findreplacebar_find(vg_findreplacebar_t *bar, const char *query) {
     if (!bar)
         return;
@@ -790,7 +856,12 @@ void vg_findreplacebar_find(vg_findreplacebar_t *bar, const char *query) {
     perform_search(bar);
 }
 
-/// @brief Findreplacebar find next.
+/// @brief Advance to the next match and highlight it in the target editor.
+///
+/// @details Wraps to the first match when wrap_around is enabled and the last
+///          match is already current.
+///
+/// @param bar The find/replace bar to advance.
 void vg_findreplacebar_find_next(vg_findreplacebar_t *bar) {
     if (!bar || bar->match_count == 0)
         return;
@@ -809,7 +880,12 @@ void vg_findreplacebar_find_next(vg_findreplacebar_t *bar) {
     vg_widget_invalidate(&bar->base);
 }
 
-/// @brief Findreplacebar find prev.
+/// @brief Move to the previous match and highlight it in the target editor.
+///
+/// @details Wraps to the last match when wrap_around is enabled and the first
+///          match is already current.
+///
+/// @param bar The find/replace bar to advance backwards.
 void vg_findreplacebar_find_prev(vg_findreplacebar_t *bar) {
     if (!bar || bar->match_count == 0)
         return;
@@ -827,7 +903,11 @@ void vg_findreplacebar_find_prev(vg_findreplacebar_t *bar) {
     vg_widget_invalidate(&bar->base);
 }
 
-/// @brief Findreplacebar replace current.
+/// @brief Replace the currently highlighted match with the replace-input text.
+///
+/// @details After replacement the search is re-run to update the match list.
+///
+/// @param bar The find/replace bar to use.
 void vg_findreplacebar_replace_current(vg_findreplacebar_t *bar) {
     if (!bar || bar->match_count == 0 || !bar->target_editor)
         return;
@@ -857,7 +937,12 @@ void vg_findreplacebar_replace_current(vg_findreplacebar_t *bar) {
     perform_search(bar);
 }
 
-/// @brief Findreplacebar replace all.
+/// @brief Replace every match with the replace-input text in a single pass.
+///
+/// @details Applies replacements from end to beginning to preserve earlier
+///          column positions.  The search is re-run after all replacements.
+///
+/// @param bar The find/replace bar to use.
 void vg_findreplacebar_replace_all(vg_findreplacebar_t *bar) {
     if (!bar || bar->match_count == 0 || !bar->target_editor)
         return;
@@ -896,24 +981,35 @@ void vg_findreplacebar_replace_all(vg_findreplacebar_t *bar) {
     perform_search(bar);
 }
 
-/// @brief Findreplacebar get match count.
+/// @brief Return the number of matches found in the last search.
+///
+/// @param bar The find/replace bar to query.
+/// @return Total match count, or 0 if bar is NULL.
 size_t vg_findreplacebar_get_match_count(vg_findreplacebar_t *bar) {
     return bar ? bar->match_count : 0;
 }
 
-/// @brief Findreplacebar get current match.
+/// @brief Return the zero-based index of the currently highlighted match.
+///
+/// @param bar The find/replace bar to query.
+/// @return Current match index, or 0 if bar is NULL.
 size_t vg_findreplacebar_get_current_match(vg_findreplacebar_t *bar) {
     return bar ? bar->current_match : 0;
 }
 
-/// @brief Findreplacebar focus.
+/// @brief Move keyboard focus into the find-text input field.
+///
+/// @param bar The find/replace bar to focus.
 void vg_findreplacebar_focus(vg_findreplacebar_t *bar) {
     if (!bar || !bar->find_input)
         return;
     vg_widget_set_focus((vg_widget_t *)bar->find_input);
 }
 
-/// @brief Findreplacebar set find text.
+/// @brief Set the find-input text programmatically and re-run the search.
+///
+/// @param bar  The find/replace bar to update.
+/// @param text Null-terminated search string to set in the find input.
 void vg_findreplacebar_set_find_text(vg_findreplacebar_t *bar, const char *text) {
     if (!bar || !bar->find_input)
         return;
@@ -921,7 +1017,11 @@ void vg_findreplacebar_set_find_text(vg_findreplacebar_t *bar, const char *text)
     perform_search(bar);
 }
 
-/// @brief Findreplacebar set on close.
+/// @brief Register a callback invoked when the bar's close button is clicked.
+///
+/// @param bar       The find/replace bar to configure.
+/// @param callback  Function called with (bar, user_data) on close.  May be NULL.
+/// @param user_data Opaque pointer forwarded unchanged to the callback.
 void vg_findreplacebar_set_on_close(vg_findreplacebar_t *bar,
                                     void (*callback)(vg_findreplacebar_t *, void *),
                                     void *user_data) {
@@ -931,7 +1031,11 @@ void vg_findreplacebar_set_on_close(vg_findreplacebar_t *bar,
     bar->user_data = user_data;
 }
 
-/// @brief Findreplacebar set font.
+/// @brief Set the font and size for result text and propagate it to child inputs.
+///
+/// @param bar  The find/replace bar to configure.
+/// @param font Font to use; may be NULL.
+/// @param size Font size in logical pixels.
 void vg_findreplacebar_set_font(vg_findreplacebar_t *bar, vg_font_t *font, float size) {
     if (!bar)
         return;

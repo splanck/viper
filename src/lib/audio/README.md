@@ -222,6 +222,12 @@ or infinity and clamps finite offsets to the known stream duration. Calling
 `vaud_music_play` on a stopped stream restarts from the beginning, including
 after the stream has reached EOF.
 
+Applications that use streaming music should call `vaud_update(ctx)` regularly
+from the control/update thread, typically once per frame. `vaud_update` refills
+empty stream buffers and processes loop rewinds. The realtime mixer consumes
+already-decoded buffers only; it does not perform file I/O or codec decode work
+inside the audio callback.
+
 ### Error Handling
 
 ```c
@@ -251,11 +257,19 @@ void vaud_clear_error(void);
 
 ## Threading Model
 
-ViperAUD is **thread-safe** and uses a dedicated audio thread:
+ViperAUD is designed for thread-safe playback control and uses a dedicated
+audio thread:
 
-- All API functions can be called from any thread
+- Playback, pause/resume, volume, pan, and query functions can be called from
+  any non-destroying context thread
 - Audio mixing runs on a dedicated background thread
 - Voice allocations and music state changes are protected by mutex
+- Streaming decode, seek, and loop-refill work is prepared outside the
+  realtime mixer lock; while a stream is being refilled the mixer skips that
+  stream for the current callback instead of blocking behind file I/O
+- Do not call `vaud_destroy`, `vaud_free_sound`, or `vaud_free_music`
+  concurrently with other operations on the same context or handle. Stop worker
+  activity first, then destroy/free handles.
 
 **Correct usage:**
 
@@ -285,6 +299,8 @@ The mixer combines up to 32 simultaneous voices plus active music streams:
 3. Soft limiting algorithm prevents harsh distortion
 4. Constant-power pan law for natural stereo imaging
 5. Non-finite voice/music/master volumes and pans are normalized before mixing
+6. Backend periods larger than the fixed accumulator are rendered in bounded
+   chunks instead of being replaced with silence
 
 ### Voice Management
 
@@ -299,8 +315,12 @@ When all voices are in use:
 Music uses triple-buffering for gapless playback:
 
 1. Only a small portion is in memory at any time (~50ms buffer)
-2. Background refills as buffers are consumed
+2. `vaud_update` refills buffers outside the realtime mixer callback
 3. Seamless looping with no audible gap
+
+On Windows, the WASAPI backend negotiates the shared-mode render format and
+converts the internal 44.1 kHz stereo S16 mixer output to common PCM or float
+endpoint formats before releasing the render buffer.
 
 ## Directory Structure
 

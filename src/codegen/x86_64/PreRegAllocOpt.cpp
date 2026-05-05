@@ -5,8 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/PreRegAllocOpt.cpp
+// File: codegen/x86_64/PreRegAllocOpt.cpp
 // Purpose: Implement conservative x86-64 MIR cleanup before register allocation.
+// Key invariants:
+//   - Operates on virtual-register MIR only; physical sources are not forwarded.
+//   - Single-use copy elimination does not cross block boundaries.
+// Ownership/Lifetime:
+//   - Stateless; mutates caller-owned MFunction in place.
+// Links: codegen/x86_64/PreRegAllocOpt.hpp,
+//        codegen/x86_64/OperandRoles.hpp
 //
 //===----------------------------------------------------------------------===//
 

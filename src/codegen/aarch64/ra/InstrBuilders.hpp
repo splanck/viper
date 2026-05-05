@@ -5,14 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/ra/InstrBuilders.hpp
+// File: codegen/aarch64/ra/InstrBuilders.hpp
 // Purpose: Convenience factories for common MIR instructions emitted by
 //          the AArch64 register allocator (MovRR, LdrFp, StrFp).
+//
 // Key invariants:
 //   - Each builder returns a fully formed MInstr with correct opcode/operands.
+//
 // Ownership/Lifetime:
 //   - Stateless free functions; returned MInstr is owned by caller.
-// Links: docs/codemap.md
+//
+// Links: codegen/aarch64/ra/Allocator.cpp,
+//        codegen/aarch64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,14 +26,17 @@
 
 namespace viper::codegen::aarch64::ra {
 
+/// @brief Build a GPR-to-GPR register move: `mov dst, src`.
 inline MInstr makeMovRR(PhysReg dst, PhysReg src) {
     return MInstr{MOpcode::MovRR, {MOperand::regOp(dst), MOperand::regOp(src)}};
 }
 
+/// @brief Build a GPR load from a frame-pointer-relative slot: `ldr dst, [fp, #offset]`.
 inline MInstr makeLdrFp(PhysReg dst, int offset) {
     return MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(dst), MOperand::immOp(offset)}};
 }
 
+/// @brief Build a GPR store to a frame-pointer-relative slot: `str src, [fp, #offset]`.
 inline MInstr makeStrFp(PhysReg src, int offset) {
     return MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(src), MOperand::immOp(offset)}};
 }

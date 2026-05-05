@@ -3,22 +3,20 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: codegen/aarch64/fastpaths/FastPaths_Arithmetic.cpp
 // Purpose: Fast-path pattern matching for arithmetic operations.
-//
-// Summary:
-//   Handles fast-path lowering for arithmetic patterns:
-//   - Integer RR ops: add/sub/mul/and/or/xor on entry params feeding ret
-//   - Integer RI ops: add/sub/shl/lshr/ashr with immediate operands
-//   - Integer comparisons: icmp.eq/ne, scmp.lt/le/gt/ge, ucmp.lt/le/gt/ge
-//   - Division/Remainder: sdiv/udiv/srem/urem on entry params
-//   - Negation: sub 0, %param -> negate a value
-//   - Two-op chain: %t1 = op %p0, %p1; %t2 = op %t1, %p2; ret %t2
-//
-// Invariants:
-//   - Operands must be entry parameters or constant immediates
-//   - Result must flow directly to a ret instruction
-//   - Parameters must fit within the ABI register argument limit
+//          Handles integer RR ops, integer RI ops, comparisons, division/modulo,
+//          negation, and two-op chains where operands are entry parameters or
+//          constants and results flow directly to a ret.
+// Key invariants:
+//   - Operands must be entry parameters or constant immediates.
+//   - Result must flow directly to a ret instruction.
+//   - Parameters must fit within the ABI register argument limit.
+// Ownership/Lifetime:
+//   - Stateless free functions; FastPathContext is borrowed for the call duration.
+// Links: codegen/aarch64/fastpaths/FastPathsInternal.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -29,10 +27,15 @@ namespace viper::codegen::aarch64::fastpaths {
 
 using il::core::Opcode;
 
+/// @brief Return true if @p op is a checked-overflow arithmetic opcode (IAddOvf/ISubOvf/IMulOvf).
 static bool isCheckedOverflowOp(Opcode op) {
     return op == Opcode::IAddOvf || op == Opcode::ISubOvf || op == Opcode::IMulOvf;
 }
 
+/// @brief Return true if @p instr is a checked-overflow op on a sub-64-bit type.
+/// @details Sub-width overflow ops (e.g. I32 IAddOvf) require extra sign/zero-extension
+///          sequences that the arithmetic fast-path does not handle; they are rejected here
+///          so the generic lowering path handles them correctly.
 static bool isSubWidthCheckedOverflow(const il::core::Instr &instr) {
     return isCheckedOverflowOp(instr.op) && instr.type.kind != il::core::Type::Kind::I64;
 }

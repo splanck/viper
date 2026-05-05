@@ -5,15 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/ra/Coalescer.cpp
+// File: codegen/x86_64/ra/Coalescer.cpp
 // Purpose: Lower PX_COPY bundles into executable move sequences while
 //          respecting spill state managed by the linear-scan allocator.
-// Key invariants: Scratch registers allocated to break cycles are released back
-//                 to the allocator after use; generated code preserves the
-//                 semantics of the original parallel copy.
-// Ownership/Lifetime: Operates on Machine IR provided by the allocator without
-//                     taking ownership.
-// Links: src/codegen/x86_64/ra/Coalescer.hpp
+// Key invariants:
+//   - Scratch registers allocated to break cycles are released after use.
+//   - Generated code preserves the semantics of the original parallel copy.
+// Ownership/Lifetime:
+//   - Operates on MIR provided by the allocator; no ownership taken.
+// Links: codegen/x86_64/ra/Coalescer.hpp,
+//        codegen/x86_64/ra/Allocator.hpp,
+//        codegen/x86_64/ra/Spiller.hpp
 //
 //===----------------------------------------------------------------------===//
 

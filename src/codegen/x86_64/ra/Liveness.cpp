@@ -5,17 +5,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/ra/Liveness.cpp
+// File: codegen/x86_64/ra/Liveness.cpp
 // Purpose: Implementation of CFG-aware liveness analysis for x86-64 regalloc.
 //          Computes per-block liveIn/liveOut sets using standard backward
 //          dataflow equations over the machine IR control-flow graph.
 // Key invariants:
-//   - gen[B] = vregs used in B before being defined
-//   - kill[B] = vregs defined in B
-//   - liveOut[B] = union of liveIn[S] for all successors S
-//   - liveIn[B] = gen[B] union (liveOut[B] - kill[B])
-//   - Iteration terminates when no set changes (monotone lattice)
-// Links: src/codegen/x86_64/ra/Liveness.hpp
+//   - gen[B] = vregs used in B before being defined.
+//   - kill[B] = vregs defined in B.
+//   - liveOut[B] = union of liveIn[S] for all successors S.
+//   - liveIn[B] = gen[B] union (liveOut[B] - kill[B]).
+//   - Iteration terminates when no set changes (monotone lattice).
+// Ownership/Lifetime:
+//   - Operates on const MIR reference; results stored on the analysis instance.
+// Links: codegen/x86_64/ra/Liveness.hpp,
+//        codegen/x86_64/OperandRoles.hpp,
+//        codegen/common/ra/DataflowLiveness.hpp
 //
 //===----------------------------------------------------------------------===//
 

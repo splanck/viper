@@ -5,17 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/ra/Allocator.cpp
+// File: codegen/aarch64/ra/Allocator.cpp
 // Purpose: Core linear-scan register allocator implementation for AArch64.
 //          Contains CFG construction, liveness analysis, spill logic,
 //          register materialization, and per-block allocation.
+//
 // Key invariants:
 //   - All virtual registers are resolved to physical registers after run().
 //   - Spill/reload code is inserted in-place via prefix/suffix vectors.
 //   - Cross-block persistence uses single-predecessor exit states.
+//
 // Ownership/Lifetime:
 //   - See Allocator.hpp.
-// Links: docs/codemap.md
+//
+// Links: codegen/aarch64/ra/Allocator.hpp,
+//        codegen/aarch64/ra/InstrBuilders.hpp,
+//        codegen/aarch64/ra/OpcodeClassify.hpp,
+//        codegen/aarch64/ra/OperandRoles.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -35,15 +41,22 @@ namespace viper::codegen::aarch64::ra {
 
 namespace {
 
+/// @brief Return true if @p pr is one of the reserved emergency scratch registers
+///        (kScratchGPR/GPR2/GPR3 or kScratchFPR/FPR2) that must not be released to the pool.
 bool isReservedScratch(PhysReg pr) {
     return pr == kScratchGPR || pr == kScratchGPR2 || pr == kScratchGPR3 ||
            pr == kScratchFPR || pr == kScratchFPR2;
 }
 
+/// @brief Return true if @p pr already appears in the @p scratch list (already acquired).
 bool scratchAlreadyUsed(const std::vector<PhysReg> &scratch, PhysReg pr) {
     return std::find(scratch.begin(), scratch.end(), pr) != scratch.end();
 }
 
+/// @brief Pick the first available scratch register from @p candidates.
+/// @details If @p canReuseDefScratch is true, prefers a register already in @p scratch
+///          (safe when the use and def are the same operand slot). Otherwise picks one
+///          not yet in @p scratch. Throws if all candidates conflict.
 PhysReg chooseFromScratchSet(std::initializer_list<PhysReg> candidates,
                              bool canReuseDefScratch,
                              const std::vector<PhysReg> &scratch) {
@@ -63,6 +76,11 @@ PhysReg chooseFromScratchSet(std::initializer_list<PhysReg> candidates,
                              "available for spilled operand reload");
 }
 
+/// @brief Select an emergency scratch register when the normal pool is exhausted.
+/// @param isFPR            True to pick an FPR scratch; false for GPR.
+/// @param canReuseDefScratch True when the spilled operand is def-only (safe to reuse).
+/// @param scratch          Registers already acquired this instruction.
+/// @return A reserved scratch register suitable for the operand class.
 PhysReg chooseEmergencyScratch(bool isFPR,
                                bool canReuseDefScratch,
                                const std::vector<PhysReg> &scratch) {

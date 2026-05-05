@@ -5,10 +5,24 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_textinput.c
+// File: lib/gui/src/widgets/vg_textinput.c
+// Purpose: Text input widget implementation — single/multi-line editable field
+//          with UTF-8 text, cursor, selection, undo/redo, scrolling, placeholder,
+//          max_length, read-only mode, and password masking.
+// Key invariants:
+//   - input->text is always a valid null-terminated UTF-8 string.
+//   - All character positions (cursor_pos, selection_start/end) are in codepoints,
+//     not bytes; textinput_byte_offset converts to bytes when needed.
+//   - textinput_sanitize_utf8_copy ensures only well-formed UTF-8 enters the buffer.
+//   - Undo history is reset on vg_textinput_set_text (programmatic replacement).
+// Ownership/Lifetime:
+//   - input->text and input->placeholder are heap-allocated; freed in destroy.
+//   - The undo history ring buffer is owned by the widget.
+// Links: lib/gui/include/vg_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_textinput.c - Text input widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
@@ -58,6 +72,7 @@ static vg_widget_vtable_t g_textinput_vtable = {.destroy = textinput_destroy,
 // Helper Functions
 //=============================================================================
 
+/// @brief Grows input->text to hold at least @p needed bytes, doubling from TEXTINPUT_INITIAL_CAPACITY.
 static bool ensure_capacity(vg_textinput_t *input, size_t needed) {
     if (needed <= input->text_capacity)
         return true;
@@ -78,19 +93,23 @@ static bool ensure_capacity(vg_textinput_t *input, size_t needed) {
     return true;
 }
 
+/// @brief Returns the number of UTF-8 codepoints in the input's text buffer.
 static size_t textinput_char_count(const vg_textinput_t *input) {
     return input && input->text ? (size_t)vg_utf8_strlen(input->text) : 0;
 }
 
+/// @brief Clamps @p pos to [0, char_count] so it is always a valid codepoint index.
 static size_t textinput_clamp_char_pos(const vg_textinput_t *input, size_t pos) {
     size_t chars = textinput_char_count(input);
     return pos > chars ? chars : pos;
 }
 
+/// @brief Returns the byte offset of codepoint @p char_pos within input->text.
 static size_t textinput_byte_offset(const vg_textinput_t *input, size_t char_pos) {
     return (size_t)vg_utf8_offset(input->text, (int)textinput_clamp_char_pos(input, char_pos));
 }
 
+/// @brief Advances @p *cursor past one well-formed UTF-8 sequence within [cursor, limit); returns false on error.
 static bool textinput_utf8_advance_bounded(const char **cursor, const char *limit) {
     if (!cursor || !*cursor || *cursor >= limit || **cursor == '\0')
         return false;
@@ -136,6 +155,7 @@ static bool textinput_utf8_advance_bounded(const char **cursor, const char *limi
     return false;
 }
 
+/// @brief Returns the codepoint index corresponding to @p byte_offset bytes into @p text.
 static size_t textinput_char_index_from_byte_offset(const char *text, size_t byte_offset) {
     if (!text)
         return 0;
@@ -150,6 +170,7 @@ static size_t textinput_char_index_from_byte_offset(const char *text, size_t byt
     return chars;
 }
 
+/// @brief Counts the number of well-formed UTF-8 codepoints in the first @p byte_len bytes of @p text.
 static size_t textinput_codepoint_count_in_prefix(const char *text, size_t byte_len) {
     if (!text)
         return 0;
@@ -168,6 +189,7 @@ static size_t textinput_codepoint_count_in_prefix(const char *text, size_t byte_
     return chars;
 }
 
+/// @brief Returns the byte length of the shortest prefix of @p text containing exactly @p max_chars codepoints.
 static size_t textinput_prefix_for_codepoints(const char *text, size_t max_chars) {
     if (!text)
         return 0;
@@ -184,6 +206,7 @@ static size_t textinput_prefix_for_codepoints(const char *text, size_t max_chars
     return (size_t)(cursor - text);
 }
 
+/// @brief Returns the byte length of the longest well-formed UTF-8 prefix of @p text within @p max_bytes.
 static size_t textinput_valid_utf8_prefix(const char *text, size_t max_bytes) {
     if (!text)
         return 0;
@@ -200,6 +223,7 @@ static size_t textinput_valid_utf8_prefix(const char *text, size_t max_bytes) {
     return (size_t)(cursor - text);
 }
 
+/// @brief Returns a heap-allocated copy of @p text with invalid UTF-8 bytes silently skipped.
 static char *textinput_sanitize_utf8_copy(const char *text,
                                           size_t input_len,
                                           size_t *out_len,
@@ -241,12 +265,14 @@ static char *textinput_sanitize_utf8_copy(const char *text,
     return clean;
 }
 
+/// @brief Returns true if @p ch is a whitespace or punctuation character used as a Ctrl+Arrow word boundary.
 static bool textinput_is_word_separator(unsigned char ch) {
     if (ch <= ' ')
         return true;
     return strchr(".,;:!?()[]{}<>/\\|+-*=~`'\"@", (int)ch) != NULL;
 }
 
+/// @brief Returns true if the codepoint at @p char_pos in the input's text is a word boundary character.
 static bool textinput_char_is_word_separator_at(const vg_textinput_t *input, size_t char_pos) {
     size_t char_count = textinput_char_count(input);
     if (!input || char_pos >= char_count)
@@ -255,6 +281,7 @@ static bool textinput_char_is_word_separator_at(const vg_textinput_t *input, siz
     return textinput_is_word_separator((unsigned char)input->text[byte_pos]);
 }
 
+/// @brief Resets the cursor blink timer to zero and makes the cursor immediately visible.
 static void textinput_reset_cursor_blink(vg_textinput_t *input) {
     if (!input)
         return;
@@ -262,6 +289,7 @@ static void textinput_reset_cursor_blink(vg_textinput_t *input) {
     input->cursor_visible = true;
 }
 
+/// @brief Clears all undo/redo slots and seeds the initial state with the current text and cursor.
 static void textinput_reset_undo_history(vg_textinput_t *input) {
     if (!input)
         return;
@@ -276,6 +304,7 @@ static void textinput_reset_undo_history(vg_textinput_t *input) {
     input->undo_pos = 0;
 }
 
+/// @brief Clamps and sets cursor_pos, selection_start, and selection_end all to @p pos (collapses selection).
 static void textinput_set_cursor_internal(vg_textinput_t *input, size_t pos) {
     size_t clamped = textinput_clamp_char_pos(input, pos);
     input->cursor_pos = clamped;
@@ -283,6 +312,7 @@ static void textinput_set_cursor_internal(vg_textinput_t *input, size_t pos) {
     input->selection_end = clamped;
 }
 
+/// @brief Selects the word (or run of separators) surrounding @p char_pos, used on double-click.
 static void textinput_select_word_at(vg_textinput_t *input, size_t char_pos) {
     if (!input)
         return;
@@ -312,6 +342,7 @@ static void textinput_select_word_at(vg_textinput_t *input, size_t char_pos) {
     input->base.needs_paint = true;
 }
 
+/// @brief Returns the line height from font metrics, or font_size+4 if metrics are unavailable.
 static float textinput_line_height(const vg_textinput_t *input) {
     vg_font_metrics_t metrics = {0};
     if (!input || !input->font)
@@ -320,6 +351,7 @@ static float textinput_line_height(const vg_textinput_t *input) {
     return metrics.line_height > 0 ? (float)metrics.line_height : (input->font_size + 4.0f);
 }
 
+/// @brief Counts the number of newline-separated logical lines in the input (always ≥ 1).
 static size_t textinput_line_count(const vg_textinput_t *input) {
     if (!input)
         return 1;
@@ -331,6 +363,7 @@ static size_t textinput_line_count(const vg_textinput_t *input) {
     return lines;
 }
 
+/// @brief Returns a heap-allocated copy of text[start_byte..end_byte), NUL-terminated.
 static char *textinput_dup_range(const char *text, size_t start_byte, size_t end_byte) {
     if (!text || end_byte < start_byte)
         return NULL;
@@ -343,6 +376,7 @@ static char *textinput_dup_range(const char *text, size_t start_byte, size_t end
     return copy;
 }
 
+/// @brief Finds the byte range and char offset of the @p target_line'th newline-delimited line.
 static void textinput_get_line_at_index(const vg_textinput_t *input,
                                         size_t target_line,
                                         size_t *out_start_byte,
@@ -375,6 +409,7 @@ static void textinput_get_line_at_index(const vg_textinput_t *input,
     }
 }
 
+/// @brief Returns the line index and byte/char range for the logical line that contains codepoint @p char_pos.
 static void textinput_get_line_for_char_pos(const vg_textinput_t *input,
                                             size_t char_pos,
                                             size_t *out_line_index,
@@ -411,6 +446,7 @@ static void textinput_get_line_for_char_pos(const vg_textinput_t *input,
     }
 }
 
+/// @brief Returns the codepoint index of the character nearest to @p local_x within @p line_index.
 static size_t textinput_hit_test_line_x(const vg_textinput_t *input, size_t line_index, float local_x) {
     size_t start_byte = 0;
     size_t end_byte = 0;
@@ -429,6 +465,7 @@ static size_t textinput_hit_test_line_x(const vg_textinput_t *input, size_t line
     return start_char + (size_t)hit;
 }
 
+/// @brief Converts a local (x,y) click point to a codepoint index across all lines using line_height.
 static size_t textinput_hit_test_multiline(const vg_textinput_t *input, float local_x, float local_y) {
     if (!input || !input->font)
         return textinput_char_count(input);
@@ -444,6 +481,7 @@ static size_t textinput_hit_test_multiline(const vg_textinput_t *input, float lo
     return textinput_hit_test_line_x(input, line_index, local_x);
 }
 
+/// @brief Returns the pixel X offset of the cursor at @p cursor_pos within its containing line.
 static float textinput_multiline_cursor_x(const vg_textinput_t *input, size_t cursor_pos) {
     if (!input || !input->font)
         return 0.0f;
@@ -464,6 +502,7 @@ static float textinput_multiline_cursor_x(const vg_textinput_t *input, size_t cu
     return cursor_x;
 }
 
+/// @brief Moves @p cursor_pos up (direction < 0) or down (direction > 0) one line, preserving the column offset.
 static size_t textinput_move_vertical_cursor(const vg_textinput_t *input, size_t cursor_pos, int direction) {
     size_t line_index = 0;
     size_t line_start_byte = 0;
@@ -497,6 +536,7 @@ static size_t textinput_move_vertical_cursor(const vg_textinput_t *input, size_t
     return target_start_char + column;
 }
 
+/// @brief Returns the codepoint index of the start (@p to_end=false) or end (@p to_end=true) of the current line.
 static size_t textinput_line_boundary(const vg_textinput_t *input, size_t cursor_pos, bool to_end) {
     size_t line_start_byte = 0;
     size_t line_end_byte = 0;
@@ -508,6 +548,7 @@ static size_t textinput_line_boundary(const vg_textinput_t *input, size_t cursor
     return to_end ? (line_start_char + line_chars) : line_start_char;
 }
 
+/// @brief Adjusts scroll_x and scroll_y so the cursor is within the visible text viewport.
 static void textinput_ensure_cursor_visible(vg_textinput_t *input) {
     if (!input || !input->font)
         return;
@@ -605,6 +646,10 @@ static void textinput_ensure_cursor_visible(vg_textinput_t *input) {
 // TextInput Implementation
 //=============================================================================
 
+/// @brief Create a text input widget.
+///
+/// @param parent Widget to attach to as a child (may be NULL).
+/// @return Newly allocated vg_textinput_t, or NULL on allocation failure.
 vg_textinput_t *vg_textinput_create(vg_widget_t *parent) {
     vg_textinput_t *input = calloc(1, sizeof(vg_textinput_t));
     if (!input)
@@ -678,6 +723,7 @@ vg_textinput_t *vg_textinput_create(vg_widget_t *parent) {
     return input;
 }
 
+/// @brief VTable destroy: frees the text buffer, placeholder string, and all undo ring-buffer snapshots.
 static void textinput_destroy(vg_widget_t *widget) {
     vg_textinput_t *input = (vg_textinput_t *)widget;
 
@@ -697,6 +743,7 @@ static void textinput_destroy(vg_widget_t *widget) {
     }
 }
 
+/// @brief VTable measure: sizes to theme height (single-line) or line_height×lines+12 (multiline).
 static void textinput_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_textinput_t *input = (vg_textinput_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -727,6 +774,7 @@ static void textinput_measure(vg_widget_t *widget, float available_width, float 
     vg_widget_apply_constraints(widget);
 }
 
+/// @brief VTable paint: draws background, border, placeholder/text with selection highlight, and blinking cursor.
 static void textinput_paint(vg_widget_t *widget, void *canvas) {
     vg_textinput_t *input = (vg_textinput_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -1007,17 +1055,7 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
 // Undo / Redo — ring buffer of text snapshots
 //=============================================================================
 
-// textinput_push_undo — call AFTER each edit to record the new state.
-//
-// Design (linear array, push-after semantics):
-//   undo_stack[0]           = initial empty string (set at creation)
-//   undo_stack[1..undo_pos] = states after successive edits
-//   undo_pos                = index of the currently-displayed state (0-based)
-//   undo_count              = total valid entries (undo_pos + 1 after any push)
-//
-// Undo: undo_pos-- and restore undo_stack[undo_pos].
-// Redo: undo_pos++ and restore undo_stack[undo_pos].
-// New edit while redos are available: truncate entries above undo_pos, then push.
+/// @brief Records the current text and cursor as a new undo snapshot; truncates any redo tail first.
 static void textinput_push_undo(vg_textinput_t *input) {
     if (!input)
         return;
@@ -1071,6 +1109,7 @@ static void textinput_push_undo(vg_textinput_t *input) {
     input->undo_cursors[input->undo_pos] = input->cursor_pos;
 }
 
+/// @brief Restores the previous undo snapshot, moving undo_pos back one step and firing on_change.
 static void textinput_undo(vg_textinput_t *input) {
     if (!input || input->undo_pos <= 0)
         return; // Already at the oldest snapshot
@@ -1096,6 +1135,7 @@ static void textinput_undo(vg_textinput_t *input) {
     input->base.needs_paint = true;
 }
 
+/// @brief Re-applies the next undo snapshot, advancing undo_pos and firing on_change.
 static void textinput_redo(vg_textinput_t *input) {
     if (!input || input->undo_pos >= input->undo_count - 1)
         return; // Already at the newest snapshot
@@ -1121,6 +1161,7 @@ static void textinput_redo(vg_textinput_t *input) {
     input->base.needs_paint = true;
 }
 
+/// @brief VTable handle_event: dispatches mouse (click/drag/scroll) and keyboard events to editing actions.
 static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_textinput_t *input = (vg_textinput_t *)widget;
 
@@ -1593,10 +1634,12 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
     return false;
 }
 
+/// @brief VTable can_focus: returns true when the input is both enabled and visible.
 static bool textinput_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
 
+/// @brief VTable on_focus: resets the cursor blink state when focus is gained.
 static void textinput_on_focus(vg_widget_t *widget, bool gained) {
     vg_textinput_t *input = (vg_textinput_t *)widget;
 
@@ -1609,6 +1652,13 @@ static void textinput_on_focus(vg_widget_t *widget, bool gained) {
 // TextInput API
 //=============================================================================
 
+/// @brief Programmatically set the input's text content.
+///
+/// @details Sanitises the UTF-8 input, enforces max_length if set, resets scroll
+///          and undo history, and fires on_change if the content changed.
+///
+/// @param input The text input to update.
+/// @param text  New text (sanitised copy stored internally); NULL becomes empty.
 void vg_textinput_set_text(vg_textinput_t *input, const char *text) {
     if (!input)
         return;
@@ -1649,11 +1699,18 @@ void vg_textinput_set_text(vg_textinput_t *input, const char *text) {
         input->on_change(&input->base, input->text, input->on_change_data);
 }
 
+/// @brief Return a pointer to the input's current text content.
+///
+/// @param input The text input to query.
+/// @return Internal null-terminated UTF-8 string, or NULL if input is NULL.
 const char *vg_textinput_get_text(vg_textinput_t *input) {
     return input ? input->text : NULL;
 }
 
-/// @brief Textinput set placeholder.
+/// @brief Set the placeholder text shown when the input is empty and unfocused.
+///
+/// @param input       The text input to configure.
+/// @param placeholder Placeholder string (copied); NULL removes the placeholder.
 void vg_textinput_set_placeholder(vg_textinput_t *input, const char *placeholder) {
     if (!input)
         return;
@@ -1667,7 +1724,11 @@ void vg_textinput_set_placeholder(vg_textinput_t *input, const char *placeholder
     input->base.needs_paint = true;
 }
 
-/// @brief Textinput set on change.
+/// @brief Set the change callback invoked whenever the text content changes.
+///
+/// @param input     The text input to configure.
+/// @param callback  Function called with (widget, new_text, user_data).
+/// @param user_data Opaque pointer passed to @p callback.
 void vg_textinput_set_on_change(vg_textinput_t *input,
                                 vg_text_change_callback_t callback,
                                 void *user_data) {
@@ -1678,7 +1739,11 @@ void vg_textinput_set_on_change(vg_textinput_t *input,
     input->on_change_data = user_data;
 }
 
-/// @brief Textinput set on commit.
+/// @brief Set the commit callback invoked when the user presses Enter.
+///
+/// @param input     The text input to configure.
+/// @param callback  Function called with (widget, text, user_data) on Enter.
+/// @param user_data Opaque pointer passed to @p callback.
 void vg_textinput_set_on_commit(vg_textinput_t *input,
                                 vg_text_change_callback_t callback,
                                 void *user_data) {
@@ -1689,7 +1754,10 @@ void vg_textinput_set_on_commit(vg_textinput_t *input,
     input->on_commit_data = user_data;
 }
 
-/// @brief Textinput set cursor.
+/// @brief Move the cursor to a codepoint position and scroll to keep it visible.
+///
+/// @param input The text input to update.
+/// @param pos   Zero-based codepoint index (clamped to valid range).
 void vg_textinput_set_cursor(vg_textinput_t *input, size_t pos) {
     if (!input)
         return;
@@ -1699,7 +1767,11 @@ void vg_textinput_set_cursor(vg_textinput_t *input, size_t pos) {
     input->base.needs_paint = true;
 }
 
-/// @brief Textinput select.
+/// @brief Set the selection range by codepoint indices.
+///
+/// @param input The text input to update.
+/// @param start Zero-based start codepoint index (inclusive).
+/// @param end   Zero-based end codepoint index (exclusive); cursor is placed here.
 void vg_textinput_select(vg_textinput_t *input, size_t start, size_t end) {
     if (!input)
         return;
@@ -1711,7 +1783,9 @@ void vg_textinput_select(vg_textinput_t *input, size_t start, size_t end) {
     input->base.needs_paint = true;
 }
 
-/// @brief Textinput select all.
+/// @brief Select the entire text content.
+///
+/// @param input The text input to update.
 void vg_textinput_select_all(vg_textinput_t *input) {
     if (!input)
         return;
@@ -1723,7 +1797,13 @@ void vg_textinput_select_all(vg_textinput_t *input) {
     input->base.needs_paint = true;
 }
 
-/// @brief Textinput insert.
+/// @brief Insert text at the cursor position, replacing any active selection.
+///
+/// @details Sanitises UTF-8, enforces max_length, shifts existing text, and
+///          fires on_change. No-op if the input is read-only.
+///
+/// @param input The text input to modify.
+/// @param text  UTF-8 string to insert (sanitised before use).
 void vg_textinput_insert(vg_textinput_t *input, const char *text) {
     if (!input || !text || input->read_only)
         return;
@@ -1738,13 +1818,24 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text) {
         return;
     }
 
-    // Delete selection first
-    if (input->selection_start != input->selection_end) {
-        textinput_delete_selection_internal(input, false);
+    size_t selection_start = input->selection_start < input->selection_end ? input->selection_start
+                                                                           : input->selection_end;
+    size_t selection_end = input->selection_start < input->selection_end ? input->selection_end
+                                                                         : input->selection_start;
+    if (selection_start == selection_end) {
+        selection_start = textinput_clamp_char_pos(input, input->cursor_pos);
+        selection_end = selection_start;
     }
+    size_t selection_start_byte = textinput_byte_offset(input, selection_start);
+    size_t selection_end_byte = textinput_byte_offset(input, selection_end);
+    size_t delete_bytes = selection_end_byte > selection_start_byte
+                              ? selection_end_byte - selection_start_byte
+                              : 0;
+    size_t delete_chars = selection_end > selection_start ? selection_end - selection_start : 0;
 
     if (input->max_length > 0) {
         size_t current_chars = textinput_char_count(input);
+        current_chars = current_chars > delete_chars ? current_chars - delete_chars : 0;
         size_t max_chars = (size_t)input->max_length;
         if (current_chars >= max_chars) {
             free(clean);
@@ -1763,26 +1854,35 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text) {
         }
     }
 
-    if (input->text_len > SIZE_MAX - 1 || insert_len > SIZE_MAX - input->text_len - 1) {
+    size_t base_len = input->text_len >= delete_bytes ? input->text_len - delete_bytes : 0;
+    if (base_len > SIZE_MAX - 1 || insert_len > SIZE_MAX - base_len - 1) {
         free(clean);
         return;
     }
-    size_t new_len = input->text_len + insert_len;
+    size_t new_len = base_len + insert_len;
 
     if (!ensure_capacity(input, new_len + 1)) {
         free(clean);
         return;
     }
 
-    size_t byte_pos = textinput_byte_offset(input, input->cursor_pos);
+    if (delete_bytes > 0) {
+        memmove(input->text + selection_start_byte,
+                input->text + selection_end_byte,
+                input->text_len - selection_end_byte + 1);
+        input->text_len = base_len;
+    }
+    input->cursor_pos = selection_start;
+    input->selection_start = selection_start;
+    input->selection_end = selection_start;
 
     // Make room for new text
-    memmove(input->text + byte_pos + insert_len,
-            input->text + byte_pos,
-            input->text_len - byte_pos + 1);
+    memmove(input->text + selection_start_byte + insert_len,
+            input->text + selection_start_byte,
+            input->text_len - selection_start_byte + 1);
 
     // Insert text
-    memcpy(input->text + byte_pos, clean, insert_len);
+    memcpy(input->text + selection_start_byte, clean, insert_len);
     free(clean);
     input->text_len = new_len;
     input->cursor_pos += insert_chars;
@@ -1799,6 +1899,7 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text) {
     }
 }
 
+/// @brief Deletes the selected byte range, collapses the cursor to the start, and optionally fires on_change.
 static void textinput_delete_selection_internal(vg_textinput_t *input, bool notify) {
     if (!input || input->read_only)
         return;
@@ -1830,12 +1931,18 @@ static void textinput_delete_selection_internal(vg_textinput_t *input, bool noti
     }
 }
 
-/// @brief Textinput delete selection.
+/// @brief Delete the current selection; fires on_change.
+///
+/// @param input The text input to modify.
 void vg_textinput_delete_selection(vg_textinput_t *input) {
     textinput_delete_selection_internal(input, true);
 }
 
-/// @brief Textinput get selection.
+/// @brief Return a heap-allocated copy of the currently selected text.
+///
+/// @param input The text input to query.
+/// @return Null-terminated copy of the selection (caller must free), or NULL if
+///         there is no selection or input is NULL.
 char *vg_textinput_get_selection(vg_textinput_t *input) {
     if (!input)
         return NULL;
@@ -1860,7 +1967,11 @@ char *vg_textinput_get_selection(vg_textinput_t *input) {
     return result;
 }
 
-/// @brief Textinput set font.
+/// @brief Override the input field's font and size.
+///
+/// @param input The text input to configure.
+/// @param font  Font to use; NULL keeps the existing font.
+/// @param size  Font size in pixels; <= 0 falls back to the theme normal size.
 void vg_textinput_set_font(vg_textinput_t *input, vg_font_t *font, float size) {
     if (!input)
         return;
@@ -1872,7 +1983,10 @@ void vg_textinput_set_font(vg_textinput_t *input, vg_font_t *font, float size) {
     input->base.needs_paint = true;
 }
 
-/// @brief Textinput tick.
+/// @brief Advance the cursor blink animation; call once per frame for focused inputs.
+///
+/// @param input The text input to advance.
+/// @param dt    Elapsed time in seconds since the last tick.
 void vg_textinput_tick(vg_textinput_t *input, float dt) {
     if (!input || !(input->base.state & VG_STATE_FOCUSED))
         return;

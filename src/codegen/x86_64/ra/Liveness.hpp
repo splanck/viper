@@ -5,18 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/ra/Liveness.hpp
+// File: codegen/x86_64/ra/Liveness.hpp
 // Purpose: CFG-aware liveness analysis for the x86-64 register allocator.
 //          Builds control-flow graph from MachineIR terminators and computes
 //          gen/kill/liveIn/liveOut sets via backward dataflow iteration.
 // Key invariants:
-//   - liveOut[B] = union of liveIn[S] for all successors S of B
-//   - liveIn[B] = gen[B] union (liveOut[B] - kill[B])
-//   - Fixed-point iteration bounded by kMaxIterations (1000)
-//   - Gen/kill computed from virtual register operands only (physregs ignored)
+//   - liveOut[B] = union of liveIn[S] for all successors S of B.
+//   - liveIn[B] = gen[B] union (liveOut[B] - kill[B]).
+//   - Fixed-point iteration bounded by kMaxIterations (1000).
+//   - Gen/kill computed from virtual register operands only; physregs ignored.
 // Ownership/Lifetime:
-//   - Value-owned containers valid for the lifetime of the LivenessAnalysis
-// Links: src/codegen/x86_64/ra/Allocator.cpp
+//   - Value-owned containers valid for the lifetime of the LivenessAnalysis instance.
+// Links: codegen/x86_64/ra/Liveness.cpp,
+//        codegen/x86_64/MachineIR.hpp,
+//        codegen/x86_64/ra/Allocator.hpp
 //
 //===----------------------------------------------------------------------===//
 

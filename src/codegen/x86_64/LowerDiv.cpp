@@ -5,24 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the lowering pass that expands signed and unsigned 64-bit division
-// and remainder pseudos into explicit CQO/IDIV or XOR/DIV sequences for the
-// x86-64 backend.  Checked pseudos are guarded with division-by-zero tests,
-// while plain div/rem pseudos lower directly so optimizer-proven nonzero
-// divisors do not keep unnecessary trap edges alive.
-//
-// The pass executes between IL→MIR lowering and register allocation.  It keeps
-// operand usage confined to general-purpose registers, builds continuation
-// blocks to preserve instruction order, and reuses a single trap block per
-// function to minimise code growth.
+// File: codegen/x86_64/LowerDiv.cpp
+// Purpose: Expand signed and unsigned 64-bit division/remainder pseudos into
+//          explicit CQO/IDIV or XOR/DIV sequences for the x86-64 backend.
+// Key invariants:
+//   - Checked pseudos are guarded with division-by-zero trap tests.
+//   - Plain div/rem pseudos lower directly when the divisor is proven nonzero.
+//   - A single trap block per function is reused to minimise code growth.
+//   - The pass executes between IL→MIR lowering and register allocation.
+// Ownership/Lifetime:
+//   - Mutates the MFunction in-place; no persistent auxiliary structures.
+// Links: codegen/x86_64/LowerILToMIR.hpp,
+//        codegen/x86_64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Division lowering utilities for the Phase A x86-64 backend.
-/// @details Contains helpers for cloning operands, locating trap blocks, and
-///          synthesising continuation labels so lowered control flow mirrors the
-///          pseudo-instruction semantics emitted earlier in the pipeline.
 
 #include "MachineIR.hpp"
 

@@ -6,31 +6,20 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/FrameBuilder.hpp
-//
-// This file declares the FrameBuilder class, which centralizes AArch64
-// stack frame layout construction for the Viper codegen backend. FrameBuilder
-// manages the allocation of local variable slots, register spill slots, and
-// outgoing argument areas according to the AAPCS64 (ARM Architecture
-// Procedure Call Standard for 64-bit) requirements.
-//
-// Stack layout is constructed incrementally: locals are added during IL-to-MIR
-// lowering, spill slots are added during register allocation, and outgoing
-// argument space is reserved based on the maximum call argument count.
-// The finalize() method computes the total frame size with proper alignment.
-//
-// All slots are addressed as negative offsets from the frame pointer (x29).
-// The first local slot begins at [x29, #-8] and subsequent slots grow
-// downward. This matches the AAPCS64 convention where the frame pointer
-// points to the saved frame pointer/link register pair.
-//
+// Purpose: AArch64 stack frame layout builder for codegen.
+//          Manages incremental allocation of local variable slots, register
+//          spill slots, and outgoing argument areas per AAPCS64 convention.
+//          All slots are addressed as negative offsets from x29 (frame pointer).
 // Key invariants:
 //   - All offsets are negative (below the frame pointer).
 //   - Stack slots are 8-byte aligned minimum; 16-byte overall frame alignment.
 //   - addLocal() and ensureSpill() must be called before finalize().
 //   - finalize() must be called exactly once before prologue/epilogue emission.
-//
-// Ownership: FrameBuilder borrows the MFunction reference and mutates its
-// frame layout data. The MFunction must outlive the FrameBuilder.
+// Ownership/Lifetime:
+//   - FrameBuilder borrows the MFunction reference; MFunction must outlive it.
+// Links: codegen/aarch64/FrameBuilder.cpp,
+//        codegen/aarch64/MachineIR.hpp,
+//        codegen/common/FrameLayout.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -163,10 +152,15 @@ class FrameBuilder : public common::FrameLayout {
     /// Lifetime records for every slot allocated via ensureSpillWithReuse().
     std::vector<SlotLifetime> slotLifetimes_;
 
+    /// @brief Find the most-recently-allocated spill slot assigned to @p vreg, or nullptr.
     [[nodiscard]] MFunction::SpillSlot *findLatestSpillSlot(uint32_t vreg) noexcept;
+    /// @brief Const overload of findLatestSpillSlot().
     [[nodiscard]] const MFunction::SpillSlot *findLatestSpillSlot(uint32_t vreg) const noexcept;
+    /// @brief Find the SlotLifetime record for the slot at FP-relative @p offset, or nullptr.
     [[nodiscard]] SlotLifetime *findSlotLifetime(int offset) noexcept;
+    /// @brief Const overload of findSlotLifetime().
     [[nodiscard]] const SlotLifetime *findSlotLifetime(int offset) const noexcept;
+    /// @brief Advance slotCursor_ by @p sizeBytes with @p alignBytes alignment; return the offset.
     int assignAlignedSlot(int sizeBytes, int alignBytes);
 };
 

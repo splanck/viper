@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/include/vg_ide_widgets_common.h
+// File: lib/gui/include/vg_ide_widgets_common.h
 // Purpose: Shared types and forward declarations for IDE widget sub-headers.
 //          Extracted from vg_ide_widgets.h to avoid circular dependencies
 //          between the split headers.
@@ -14,7 +14,8 @@
 //   - String parameters are copied internally unless documented otherwise.
 // Ownership/Lifetime:
 //   - vg_icon_destroy frees any resources owned by an icon.
-// Links: vg_ide_widgets.h (umbrella), vg_widget.h (base)
+// Links: lib/gui/include/vg_ide_widgets.h,
+//        lib/gui/include/vg_widget.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once

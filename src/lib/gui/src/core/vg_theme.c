@@ -5,10 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/core/vg_theme.c
+// File: lib/gui/src/core/vg_theme.c
+// Purpose: Theme system implementation — built-in dark/light themes,
+//          current-theme state, custom theme lifecycle, and colour utilities.
+// Key invariants:
+//   - Built-in themes are statically allocated; never pass them to vg_theme_destroy.
+//   - g_current_theme defaults to the dark theme on first access.
+// Ownership/Lifetime:
+//   - Custom themes created by vg_theme_create own their name string.
+// Links: lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_font.h
 //
 //===----------------------------------------------------------------------===//
-// vg_theme.c - Theme system implementation
 #include "../../include/vg_theme.h"
 #include <stdlib.h>
 #include <string.h>
@@ -203,6 +211,7 @@ static vg_theme_t g_light_theme = {
 // Theme API
 //=============================================================================
 
+/// @brief Returns the currently active theme, defaulting to the built-in dark theme on first call.
 vg_theme_t *vg_theme_get_current(void) {
     if (!g_current_theme) {
         g_current_theme = &g_dark_theme;
@@ -210,19 +219,22 @@ vg_theme_t *vg_theme_get_current(void) {
     return g_current_theme;
 }
 
-/// @brief Theme set current.
+/// @brief Sets @p theme as the active theme; falls back to the dark theme if @p theme is NULL.
 void vg_theme_set_current(vg_theme_t *theme) {
     g_current_theme = theme ? theme : &g_dark_theme;
 }
 
+/// @brief Returns a pointer to the statically-allocated built-in dark theme.
 vg_theme_t *vg_theme_dark(void) {
     return &g_dark_theme;
 }
 
+/// @brief Returns a pointer to the statically-allocated built-in light theme.
 vg_theme_t *vg_theme_light(void) {
     return &g_light_theme;
 }
 
+/// @brief Heap-allocates a new theme copied from @p base (or the dark theme if NULL), with @p name strdup'd as its name.
 vg_theme_t *vg_theme_create(const char *name, const vg_theme_t *base) {
     vg_theme_t *theme = malloc(sizeof(vg_theme_t));
     if (!theme)
@@ -243,7 +255,7 @@ vg_theme_t *vg_theme_create(const char *name, const vg_theme_t *base) {
     return theme;
 }
 
-/// @brief Theme destroy.
+/// @brief Frees a custom theme's name string and the theme struct; no-ops on NULL or built-in themes.
 void vg_theme_destroy(vg_theme_t *theme) {
     if (!theme)
         return;
@@ -263,6 +275,7 @@ void vg_theme_destroy(vg_theme_t *theme) {
 // Color Helpers
 //=============================================================================
 
+/// @brief Linearly interpolates between colors @p c1 and @p c2 by factor @p t in [0,1], blending all four channels.
 uint32_t vg_color_blend(uint32_t c1, uint32_t c2, float t) {
     if (t <= 0.0f)
         return c1;
@@ -281,10 +294,12 @@ uint32_t vg_color_blend(uint32_t c1, uint32_t c2, float t) {
     return vg_rgba(r, g, b, a);
 }
 
+/// @brief Blends @p color toward white by @p amount (0 = no change, 1 = fully white).
 uint32_t vg_color_lighten(uint32_t color, float amount) {
     return vg_color_blend(color, 0xFFFFFFFF, amount);
 }
 
+/// @brief Blends @p color toward black by @p amount (0 = no change, 1 = fully black).
 uint32_t vg_color_darken(uint32_t color, float amount) {
     return vg_color_blend(color, 0xFF000000, amount);
 }

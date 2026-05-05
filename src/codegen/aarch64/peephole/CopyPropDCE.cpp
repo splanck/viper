@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/peephole/CopyPropDCE.cpp
+// File: codegen/aarch64/peephole/CopyPropDCE.cpp
 // Purpose: Copy propagation, dead code elimination, dead FP store elimination,
 //          dead flag-setter removal, and compute-into-target folding for the
 //          AArch64 peephole optimizer.
@@ -17,7 +17,7 @@
 // Ownership/Lifetime:
 //   - Operates on mutable instruction vectors owned by the caller.
 //
-// Links: src/codegen/aarch64/Peephole.hpp
+// Links: codegen/aarch64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 

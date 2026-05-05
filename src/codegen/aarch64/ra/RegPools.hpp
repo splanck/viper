@@ -5,17 +5,22 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/ra/RegPools.hpp
+// File: codegen/aarch64/ra/RegPools.hpp
 // Purpose: Physical register pool management for the AArch64 register
 //          allocator. Maintains free-lists for GPR and FPR classes and
 //          tracks callee-saved register usage.
+//
 // Key invariants:
 //   - build() must be called before any take/release operations.
 //   - Callee-saved usage arrays are indexed by PhysReg ordinal.
 //   - GPR pool never hands out X9/X16 (global scratch), X18, X29, X30, or SP.
+//
 // Ownership/Lifetime:
 //   - Owned by the LinearAllocator; one RegPools per allocation run.
-// Links: docs/codemap.md
+//
+// Links: codegen/aarch64/ra/RegPools.cpp,
+//        codegen/aarch64/ra/Allocator.hpp,
+//        codegen/aarch64/TargetAArch64.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,9 +33,11 @@
 
 namespace viper::codegen::aarch64::ra {
 
+/// @brief Physical register free-lists and callee-saved usage tracking for
+///        one function's register allocation run.
 struct RegPools {
-    std::deque<PhysReg> gprFree{};
-    std::deque<PhysReg> fprFree{};
+    std::deque<PhysReg> gprFree{}; ///< Available allocatable GPRs.
+    std::deque<PhysReg> fprFree{}; ///< Available allocatable FPRs.
 
     /// Which callee-saved GPRs were actually used in this function.
     /// Indexed by static_cast<std::size_t>(PhysReg); AArch64 has 64 PhysReg values.

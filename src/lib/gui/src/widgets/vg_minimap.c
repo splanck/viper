@@ -5,10 +5,25 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_minimap.c
+// File: lib/gui/src/widgets/vg_minimap.c
+// Purpose: Minimap widget — a scaled-down pixel-density view of a linked
+//          vg_codeeditor_t that shows the full document and highlights the
+//          current viewport.  Clicking or dragging scrolls the editor.
+// Key invariants:
+//   - render_buffer is a heap-allocated RGBA pixel buffer sized to the widget's
+//     physical dimensions; it is rebuilt when buffer_dirty is true.
+//   - scale controls the vertical pixels-per-line ratio (clamped to [0.05, 0.5]).
+//   - show_viewport controls drawing of the viewport indicator rectangle.
+//   - buffer_dirty is set whenever the document or widget size changes.
+// Ownership/Lifetime:
+//   - minimap->render_buffer and minimap->markers are heap-allocated and freed
+//     in minimap_destroy.
+//   - The widget does not own the linked vg_codeeditor_t.
+// Links: lib/gui/include/vg_ide_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_minimap.c - Minimap widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -45,6 +60,15 @@ static vg_widget_vtable_t g_minimap_vtable = {.destroy = minimap_destroy,
 // Minimap Implementation
 //=============================================================================
 
+/// @brief Create a minimap widget linked to the given code editor.
+///
+/// @details Default scale is 0.1 (1 pixel per 10 lines), char_width=1,
+///          line_height=2, show_viewport=true.  The widget has no parent; attach
+///          it with vg_widget_add_child if needed.
+///
+/// @param editor The code editor to visualise; may be NULL (set later via
+///               vg_minimap_set_editor).
+/// @return Newly allocated vg_minimap_t, or NULL on allocation failure.
 vg_minimap_t *vg_minimap_create(vg_codeeditor_t *editor) {
     vg_minimap_t *minimap = calloc(1, sizeof(vg_minimap_t));
     if (!minimap)
@@ -65,19 +89,23 @@ vg_minimap_t *vg_minimap_create(vg_codeeditor_t *editor) {
     return minimap;
 }
 
+/// @brief VTable destroy: frees the pixel render buffer and the markers array.
 static void minimap_destroy(vg_widget_t *widget) {
     vg_minimap_t *minimap = (vg_minimap_t *)widget;
     free(minimap->render_buffer);
     free(minimap->markers);
 }
 
-/// @brief Minimap destroy.
+/// @brief Destroy the minimap widget, freeing its pixel buffer and markers.
+///
+/// @param minimap The minimap to destroy; may be NULL.
 void vg_minimap_destroy(vg_minimap_t *minimap) {
     if (!minimap)
         return;
     vg_widget_destroy(&minimap->base);
 }
 
+/// @brief VTable measure: uses preferred_width constraint (default 96 px) for width and claims all available height.
 static void minimap_measure(vg_widget_t *widget, float available_width, float available_height) {
     (void)available_width;
 
@@ -96,18 +124,21 @@ static void minimap_measure(vg_widget_t *widget, float available_width, float av
     }
 }
 
+/// @brief Clears the buffer_dirty flag; placeholder for future per-pixel RGBA buffer rasterisation.
 static void render_minimap_buffer(vg_minimap_t *minimap) {
     if (!minimap)
         return;
     minimap->buffer_dirty = false;
 }
 
+/// @brief Returns the line count of the linked editor, or 1 if no editor is attached or the editor is empty.
 static int minimap_document_line_count(const vg_minimap_t *minimap) {
     if (!minimap || !minimap->editor || minimap->editor->line_count <= 0)
         return 1;
     return minimap->editor->line_count;
 }
 
+/// @brief Converts widget-local @p local_y to a document line index proportional to the inner drawing area height.
 static int minimap_line_from_local_y(vg_minimap_t *minimap, float local_y) {
     if (!minimap || !minimap->editor)
         return 0;
@@ -132,6 +163,7 @@ static int minimap_line_from_local_y(vg_minimap_t *minimap, float local_y) {
     return line;
 }
 
+/// @brief Scrolls the linked editor so that @p line is centred in the visible area.
 static void minimap_scroll_editor_to_line(vg_minimap_t *minimap, int line) {
     if (!minimap || !minimap->editor)
         return;
@@ -153,6 +185,7 @@ static void minimap_scroll_editor_to_line(vg_minimap_t *minimap, int line) {
     minimap->base.needs_paint = true;
 }
 
+/// @brief Scans @p text for the first and last non-whitespace byte positions, writing them into @p out_first and @p out_last; returns 0 for blank lines.
 static int minimap_trimmed_line_bounds(const char *text, int *out_first, int *out_last) {
     int first = -1;
     int last = -1;
@@ -180,6 +213,7 @@ static int minimap_trimmed_line_bounds(const char *text, int *out_first, int *ou
     return first >= 0 && last >= first;
 }
 
+/// @brief VTable paint: draws background, then proportional text bars for each document line, marker overlays, and the viewport highlight rectangle.
 static void minimap_paint(vg_widget_t *widget, void *canvas) {
     vg_minimap_t *minimap = (vg_minimap_t *)widget;
     if (!minimap->editor)
@@ -279,6 +313,7 @@ static void minimap_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief VTable handle_event: handles mouse-down to start a drag-scroll and mouse-move while dragging, translating Y to a document line.
 static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_minimap_t *minimap = (vg_minimap_t *)widget;
     if (!minimap->editor)
@@ -311,7 +346,10 @@ static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event) {
     return false;
 }
 
-/// @brief Minimap set editor.
+/// @brief Associate a different code editor with the minimap and invalidate the buffer.
+///
+/// @param minimap The minimap to update.
+/// @param editor  The new editor to visualise; may be NULL to detach.
 void vg_minimap_set_editor(vg_minimap_t *minimap, vg_codeeditor_t *editor) {
     if (!minimap)
         return;
@@ -321,7 +359,10 @@ void vg_minimap_set_editor(vg_minimap_t *minimap, vg_codeeditor_t *editor) {
     minimap->base.needs_paint = true;
 }
 
-/// @brief Minimap set scale.
+/// @brief Set the vertical scale ratio between minimap pixels and document lines.
+///
+/// @param minimap The minimap to configure.
+/// @param scale   Pixels-per-line ratio; clamped to [0.05, 0.5].
 void vg_minimap_set_scale(vg_minimap_t *minimap, float scale) {
     if (!minimap)
         return;
@@ -336,7 +377,10 @@ void vg_minimap_set_scale(vg_minimap_t *minimap, float scale) {
     minimap->base.needs_paint = true;
 }
 
-/// @brief Minimap set show viewport.
+/// @brief Show or hide the viewport indicator rectangle drawn over the minimap.
+///
+/// @param minimap The minimap to configure.
+/// @param show    true to show the viewport highlight; false to hide it.
 void vg_minimap_set_show_viewport(vg_minimap_t *minimap, bool show) {
     if (!minimap)
         return;
@@ -345,7 +389,9 @@ void vg_minimap_set_show_viewport(vg_minimap_t *minimap, bool show) {
     minimap->base.needs_paint = true;
 }
 
-/// @brief Minimap invalidate.
+/// @brief Mark the minimap's pixel buffer as dirty, forcing a full rebuild on next paint.
+///
+/// @param minimap The minimap to invalidate.
 void vg_minimap_invalidate(vg_minimap_t *minimap) {
     if (!minimap)
         return;
@@ -354,7 +400,14 @@ void vg_minimap_invalidate(vg_minimap_t *minimap) {
     minimap->base.needs_paint = true;
 }
 
-/// @brief Minimap invalidate lines.
+/// @brief Invalidate the pixel buffer due to a change in a range of document lines.
+///
+/// @details Currently marks the entire buffer dirty regardless of the line range.
+///          A future optimisation could rebuild only the affected pixel rows.
+///
+/// @param minimap    The minimap to invalidate.
+/// @param start_line First changed line (zero-based, inclusive).
+/// @param end_line   Last changed line (zero-based, inclusive).
 void vg_minimap_invalidate_lines(vg_minimap_t *minimap, uint32_t start_line, uint32_t end_line) {
     if (!minimap)
         return;

@@ -5,16 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/MachineIR.cpp
+// File: codegen/x86_64/MachineIR.cpp
 // Purpose: Provide the concrete implementations for the lightweight Machine IR
 //          types used by the x86-64 code generator.
-// Key invariants: Helpers preserve operand invariants declared in the headers,
-//                 never fabricate invalid register classes, and maintain the
-//                 stable textual form relied upon by debugging utilities.
-// Ownership/Lifetime: All Machine IR nodes own their operands by value; helper
-//                     functions return new values or mutate the receiving
-//                     container without introducing aliasing.
-// Links: docs/codemap.md#codegen
+// Key invariants:
+//   - Helpers preserve operand invariants declared in the headers.
+//   - Never fabricate invalid register classes.
+//   - Maintains the stable textual form relied upon by debugging utilities.
+// Ownership/Lifetime:
+//   - All Machine IR nodes own their operands by value; helper functions
+//     return new values without introducing aliasing.
+// Links: codegen/x86_64/MachineIR.hpp,
+//        codegen/x86_64/TargetX64.hpp
 //
 //===----------------------------------------------------------------------===//
 

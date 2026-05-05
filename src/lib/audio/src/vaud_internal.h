@@ -154,6 +154,7 @@ struct vaud_music {
     int32_t buffer_position;                        ///< Frame position within current buffer
     int stream_eof;                                 ///< Decoder reached EOF while pre-filling.
     int stream_loop_pending;                        ///< Mixer requested a loop rewind.
+    int refill_in_progress;                         ///< Non-realtime thread is mutating buffers.
     int64_t stream_output_generated;                ///< Output frames decoded since last reset/seek.
 
     // Resampling support (allocated when sample_rate != VAUD_SAMPLE_RATE)
@@ -207,8 +208,9 @@ struct vaud_context {
 
     // Thread synchronization
     vaud_mutex_t mutex; ///< Protects voice and music state
-    volatile int running; ///< Audio thread running flag
-    volatile int paused;  ///< Global pause flag
+    volatile int running;    ///< Audio thread running flag
+    volatile int paused;     ///< Global pause flag
+    volatile int destroying; ///< Context teardown is in progress.
 
     // Platform-specific data
     void *platform_data; ///< Platform backend state (AudioQueue, ALSA, WASAPI)

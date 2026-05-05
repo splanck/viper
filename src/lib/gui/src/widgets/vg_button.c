@@ -5,10 +5,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_button.c
+// File: lib/gui/src/widgets/vg_button.c
+// Purpose: Button widget implementation — rendering, event handling, and the
+//          public API for text, style, icon, font, and click-callback control.
+// Key invariants:
+//   - button->text is always a valid heap-allocated string (never NULL).
+//   - Style changes immediately recompute bg/fg/border colours from the theme.
+//   - The vtable (g_button_vtable) is statically allocated and shared.
+// Ownership/Lifetime:
+//   - vg_button_create copies the text string; the caller may free the original.
+//   - button_destroy frees text and icon_text before the base widget is freed.
+// Links: lib/gui/include/vg_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_button.c - Button widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
@@ -42,6 +53,7 @@ static vg_widget_vtable_t g_button_vtable = {.destroy = button_destroy,
 // Helpers
 //=============================================================================
 
+/// @brief Return the effective corner radius (button override or theme default).
 static int button_corner_radius(const vg_button_t *button, const vg_theme_t *theme) {
     float radius = button && button->border_radius > 0.0f
                        ? button->border_radius
@@ -51,6 +63,8 @@ static int button_corner_radius(const vg_button_t *button, const vg_theme_t *the
     return (int)radius;
 }
 
+/// @brief Fill a rounded rectangle by decomposing it into a centre rect and four
+///        corner discs drawn via vgfx primitives.
 static void button_fill_round_rect(vgfx_window_t win,
                                    int32_t x,
                                    int32_t y,
@@ -82,6 +96,7 @@ static void button_fill_round_rect(vgfx_window_t win,
     vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
+/// @brief Stroke a rounded rectangle border using vgfx line primitives.
 static void button_stroke_round_rect(vgfx_window_t win,
                                      int32_t x,
                                      int32_t y,
@@ -118,6 +133,11 @@ static void button_stroke_round_rect(vgfx_window_t win,
 // Button Implementation
 //=============================================================================
 
+/// @brief Create a button widget with the given label text.
+///
+/// @param parent Widget to attach to as a child (may be NULL).
+/// @param text   Label text; copied internally. An empty string is used if NULL.
+/// @return Newly allocated vg_button_t, or NULL on allocation failure.
 vg_button_t *vg_button_create(vg_widget_t *parent, const char *text) {
     vg_button_t *button = calloc(1, sizeof(vg_button_t));
     if (!button)
@@ -159,6 +179,7 @@ vg_button_t *vg_button_create(vg_widget_t *parent, const char *text) {
     return button;
 }
 
+/// @brief VTable destroy: frees the button label text string.
 static void button_destroy(vg_widget_t *widget) {
     vg_button_t *button = (vg_button_t *)widget;
     if (button->text) {
@@ -169,6 +190,7 @@ static void button_destroy(vg_widget_t *widget) {
     button->icon_text = NULL;
 }
 
+/// @brief VTable measure: sizes the button from icon, text, and padding dimensions then applies layout constraints.
 static void button_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_button_t *button = (vg_button_t *)widget;
     (void)available_width;
@@ -212,6 +234,7 @@ static void button_measure(vg_widget_t *widget, float available_width, float ava
     vg_widget_apply_constraints(widget);
 }
 
+/// @brief VTable paint: renders the button background (rounded rect), border, hover/press tints, optional icon, and centred label text.
 static void button_paint(vg_widget_t *widget, void *canvas) {
     vg_button_t *button = (vg_button_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -363,6 +386,7 @@ static void button_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief VTable handle_event: handles hover, press/release state transitions, click firing, and Space/Enter keyboard activation.
 static bool button_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_button_t *button = (vg_button_t *)widget;
 
@@ -400,6 +424,7 @@ static bool button_handle_event(vg_widget_t *widget, vg_event_t *event) {
     return false;
 }
 
+/// @brief VTable can_focus: returns true when the widget is both enabled and visible.
 static bool button_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
@@ -408,6 +433,10 @@ static bool button_can_focus(vg_widget_t *widget) {
 // Button API
 //=============================================================================
 
+/// @brief Replace the button's label text.
+///
+/// @param button The button to update.
+/// @param text   New label text (copied); NULL is treated as an empty string.
 void vg_button_set_text(vg_button_t *button, const char *text) {
     if (!button)
         return;
@@ -422,11 +451,19 @@ void vg_button_set_text(vg_button_t *button, const char *text) {
     button->base.needs_paint = true;
 }
 
+/// @brief Return the button's current label text.
+///
+/// @param button The button to query.
+/// @return Pointer to the internal label string, or NULL if button is NULL.
 const char *vg_button_get_text(vg_button_t *button) {
     return button ? button->text : NULL;
 }
 
-/// @brief Button set on click.
+/// @brief Set the click callback invoked when the button is activated.
+///
+/// @param button    The button to configure.
+/// @param callback  Function called on click; may be NULL to clear the callback.
+/// @param user_data Opaque pointer passed to @p callback (not dereferenced here).
 void vg_button_set_on_click(vg_button_t *button, vg_button_callback_t callback, void *user_data) {
     if (!button)
         return;
@@ -435,7 +472,11 @@ void vg_button_set_on_click(vg_button_t *button, vg_button_callback_t callback, 
     button->user_data = user_data;
 }
 
-/// @brief Button set style.
+/// @brief Apply a visual style preset, updating the button's bg/fg/border colours
+///        from the current theme.
+///
+/// @param button The button to update.
+/// @param style  One of VG_BUTTON_STYLE_PRIMARY, SECONDARY, DANGER, TEXT, or DEFAULT.
 void vg_button_set_style(vg_button_t *button, vg_button_style_t style) {
     if (!button)
         return;
@@ -476,7 +517,11 @@ void vg_button_set_style(vg_button_t *button, vg_button_style_t style) {
     button->base.needs_paint = true;
 }
 
-/// @brief Button set font.
+/// @brief Override the button's label font and size.
+///
+/// @param button The button to configure.
+/// @param font   Font to use; NULL keeps the existing font.
+/// @param size   Font size in pixels; <= 0 falls back to the theme normal size.
 void vg_button_set_font(vg_button_t *button, vg_font_t *font, float size) {
     if (!button)
         return;
@@ -487,7 +532,10 @@ void vg_button_set_font(vg_button_t *button, vg_font_t *font, float size) {
     button->base.needs_paint = true;
 }
 
-/// @brief Button set icon.
+/// @brief Set an icon string (typically a single Unicode symbol) drawn beside the label.
+///
+/// @param button The button to configure.
+/// @param icon   Icon string (copied internally); NULL removes the icon.
 void vg_button_set_icon(vg_button_t *button, const char *icon) {
     if (!button)
         return;
@@ -502,7 +550,10 @@ void vg_button_set_icon(vg_button_t *button, const char *icon) {
     button->base.needs_paint = true;
 }
 
-/// @brief Button set icon position.
+/// @brief Set whether the icon appears to the left (0) or right (1) of the label.
+///
+/// @param button The button to configure.
+/// @param pos    Icon position: 0 = left, 1 = right.
 void vg_button_set_icon_position(vg_button_t *button, int pos) {
     if (!button)
         return;

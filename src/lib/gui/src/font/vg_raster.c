@@ -3,14 +3,26 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// Purpose: Glyph rasterization engine — converts TTF outlines to bitmap glyphs at specified sizes.
-//
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/font/vg_raster.c
+// File: lib/gui/src/font/vg_raster.c
+// Purpose: Glyph rasterisation engine — converts TTF quadratic-Bezier outlines
+//          to antialiased 8-bit alpha bitmaps at arbitrary pixel sizes.
+// Key invariants:
+//   - OVERSAMPLE (4) vertical supersampling is used for coverage antialiasing.
+//   - Polygon conversion flips y from TTF upward-positive to bitmap
+//     downward-positive after outline_to_polygon returns.
+//   - Maximum bitmap dimension is MAX_GLYPH_BITMAP_DIM (4096); inputs exceeding
+//     this limit return NULL to avoid runaway allocation.
+//   - Even-odd fill rule is used for scanline rasterisation.
+// Ownership/Lifetime:
+//   - vg_rasterize_glyph returns a heap-allocated vg_glyph_t (caller owns it).
+//   - All internal working buffers are freed before return.
+// Links: lib/gui/src/font/vg_ttf_internal.h,
+//        lib/gui/src/font/vg_font.c,
+//        lib/gui/src/font/vg_cache.c
 //
 //===----------------------------------------------------------------------===//
-// vg_raster.c - Glyph rasterization with antialiasing
 #include "vg_ttf_internal.h"
 #include <limits.h>
 #include <math.h>
@@ -43,6 +55,8 @@ typedef struct {
 // Quadratic Bezier Flattening
 //=============================================================================
 
+/// @brief Recursively flatten a quadratic Bezier into polyline endpoints via
+///        de Casteljau subdivision until within CURVE_TOLERANCE.
 static int flatten_quadratic(float x0,
                              float y0,
                              float x1,
@@ -98,6 +112,8 @@ static int flatten_quadratic(float x0,
 // Convert Glyph Outline to Polygon Points
 //=============================================================================
 
+/// @brief Convert a TTF glyph outline (on/off-curve points) to a flat polygon
+///        by flattening quadratic Bezier curves into polyline segments.
 static int outline_to_polygon(float *points_x,
                               float *points_y,
                               uint8_t *flags,
@@ -195,12 +211,14 @@ static int outline_to_polygon(float *points_x,
 // Edge Comparison for Sorting
 //=============================================================================
 
+/// @brief qsort comparator for floats (ascending order).
 static int raster_cmp_float(const void *a, const void *b) {
     float fa = *(const float *)a;
     float fb = *(const float *)b;
     return (fa > fb) - (fa < fb);
 }
 
+/// @brief qsort comparator for raster_edge_t: ascending by the edge's minimum y.
 static int compare_edges(const void *a, const void *b) {
     const raster_edge_t *ea = (const raster_edge_t *)a;
     const raster_edge_t *eb = (const raster_edge_t *)b;
@@ -219,6 +237,7 @@ static int compare_edges(const void *a, const void *b) {
 // Build Edge List from Polygon
 //=============================================================================
 
+/// @brief Build a sorted edge list from a flattened polygon; skips horizontal edges.
 static int build_edges(raster_point_t *points,
                        int count,
                        const int *contour_ends,
@@ -266,6 +285,8 @@ static int build_edges(raster_point_t *points,
 // Scanline Rasterization with Coverage-Based Antialiasing
 //=============================================================================
 
+/// @brief Fill a bitmap using scanline rasterisation with OVERSAMPLE vertical
+///        supersampling and even-odd fill rule.
 static void rasterize_scanlines(raster_point_t *points,
                                 int point_count,
                                 const int *contour_ends,
@@ -285,10 +306,20 @@ static void rasterize_scanlines(raster_point_t *points,
         return;
 
     int edge_count = build_edges(points, point_count, contour_ends, contour_count, edges);
+    if (edge_count <= 0) {
+        free(edges);
+        return;
+    }
 
     // Supersampled scanline buffer
     float *coverage = calloc(width, sizeof(float));
     if (!coverage) {
+        free(edges);
+        return;
+    }
+    float *intersections = malloc((size_t)edge_count * sizeof(float));
+    if (!intersections) {
+        free(coverage);
         free(edges);
         return;
     }
@@ -302,7 +333,6 @@ static void rasterize_scanlines(raster_point_t *points,
             float scan_y = y + (sub + 0.5f) / OVERSAMPLE;
 
             // Find intersections with active edges
-            float intersections[256];
             int num_intersections = 0;
 
             for (int e = 0; e < edge_count; e++) {
@@ -312,7 +342,7 @@ static void rasterize_scanlines(raster_point_t *points,
                 // Check if edge crosses this scanline
                 bool crosses = (y0 <= scan_y && y1 > scan_y) || (y1 <= scan_y && y0 > scan_y);
 
-                if (crosses && num_intersections < 256) {
+                if (crosses) {
                     // Calculate x intersection
                     float t = (scan_y - y0) / (y1 - y0);
                     float x = edges[e].x0 + t * (edges[e].x1 - edges[e].x0);
@@ -360,6 +390,7 @@ static void rasterize_scanlines(raster_point_t *points,
         }
     }
 
+    free(intersections);
     free(coverage);
     free(edges);
 }

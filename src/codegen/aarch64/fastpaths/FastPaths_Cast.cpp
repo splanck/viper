@@ -3,19 +3,20 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: codegen/aarch64/fastpaths/FastPaths_Cast.cpp
 // Purpose: Fast-path pattern matching for type conversion operations.
-//
-// Summary:
-//   Handles fast-path lowering for type conversion patterns:
-//   - zext1/trunc1: Boolean extension/truncation
-//   - cast.si_narrow.chk: Signed narrowing with range check
-//   - cast.fp_to_si.rte.chk: FP to integer conversion (round-to-even)
-//
-// Invariants:
-//   - Operand must be an entry parameter or the result of a supported producer
-//   - Result must flow directly to a ret instruction
-//   - Trap blocks are emitted for range/conversion failures
+//          Handles zext1/trunc1 (boolean masking), cast.si_narrow.chk (signed
+//          narrowing with a trap on overflow), and cast.fp_to_si.rte.chk (FP→int
+//          with a trap on out-of-range or NaN).
+// Key invariants:
+//   - Operand must be an entry parameter or the result of a supported producer.
+//   - Result must flow directly to a ret instruction.
+//   - Trap blocks are emitted for range/conversion failures.
+// Ownership/Lifetime:
+//   - Stateless free functions; FastPathContext is borrowed for the call duration.
+// Links: codegen/aarch64/fastpaths/FastPathsInternal.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,7 +26,8 @@ namespace viper::codegen::aarch64::fastpaths {
 
 using il::core::Opcode;
 
-// Thread-local counter for trap labels (defined in main FastPaths.cpp)
+/// Thread-local counter used to generate unique trap block label names (e.g. ".Ltrap_cast_0").
+/// Thread-local because fast-path lowering may be invoked from parallel compilation threads.
 thread_local unsigned trapLabelCounter = 0;
 
 std::optional<MFunction> tryCastFastPaths(FastPathContext &ctx) {

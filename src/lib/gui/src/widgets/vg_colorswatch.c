@@ -5,10 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_colorswatch.c
+// File: lib/gui/src/widgets/vg_colorswatch.c
+// Purpose: Color swatch widget — a square tile that displays a single ARGB colour
+//          with an optional border and checkerboard transparency indicator.
+// Key invariants:
+//   - color is stored as AARRGGBB; the alpha channel drives whether the
+//     checkerboard background is shown (alpha < 255).
+//   - selected state is mirrored to VG_STATE_SELECTED on the base widget.
+//   - show_border controls whether any border is drawn; when true the border
+//     uses selected_border colour while hovered or selected, border_color otherwise.
+// Ownership/Lifetime:
+//   - No heap-allocated fields beyond the widget itself; colorswatch_destroy is
+//     a no-op.
+// Links: lib/gui/include/vg_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_colorswatch.c - Color swatch widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
@@ -42,6 +55,7 @@ static vg_widget_vtable_t g_colorswatch_vtable = {.destroy = colorswatch_destroy
 // Helper: Draw checkerboard pattern for transparency
 //=============================================================================
 
+/// @brief Paint an alternating grey checkerboard into a rectangular region to indicate transparency.
 static void draw_checkerboard(void *canvas, float x, float y, float w, float h, int check_size) {
     vgfx_window_t win = (vgfx_window_t)canvas;
     if (check_size <= 0)
@@ -68,6 +82,14 @@ static void draw_checkerboard(void *canvas, float x, float y, float w, float h, 
 // ColorSwatch Implementation
 //=============================================================================
 
+/// @brief Create a color swatch widget displaying the given color.
+///
+/// @details Default size is 24×24 logical pixels with a 1-pixel border and
+///          2-pixel corner radius sourced from the current theme.
+///
+/// @param parent Widget to attach to as a child (may be NULL).
+/// @param color  Initial AARRGGBB colour value.
+/// @return Newly allocated vg_colorswatch_t, or NULL on allocation failure.
 vg_colorswatch_t *vg_colorswatch_create(vg_widget_t *parent, uint32_t color) {
     vg_colorswatch_t *swatch = calloc(1, sizeof(vg_colorswatch_t));
     if (!swatch)
@@ -109,11 +131,13 @@ vg_colorswatch_t *vg_colorswatch_create(vg_widget_t *parent, uint32_t color) {
     return swatch;
 }
 
+/// @brief VTable destroy: no-op for the swatch (no heap fields beyond the widget struct itself).
 static void colorswatch_destroy(vg_widget_t *widget) {
     (void)widget;
     // No owned resources to free
 }
 
+/// @brief VTable measure: uses preferred_size constraint (default 24 px square) for both dimensions.
 static void colorswatch_measure(vg_widget_t *widget,
                                 float available_width,
                                 float available_height) {
@@ -141,6 +165,7 @@ static void colorswatch_measure(vg_widget_t *widget,
     }
 }
 
+/// @brief VTable paint: draws a checkerboard transparency pattern then fills the swatch colour, adding a border and focus ring.
 static void colorswatch_paint(vg_widget_t *widget, void *canvas) {
     vg_colorswatch_t *swatch = (vg_colorswatch_t *)widget;
 
@@ -170,6 +195,7 @@ static void colorswatch_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief VTable handle_event: fires on_click callback on click and on Space/Enter key when enabled.
 static bool colorswatch_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_colorswatch_t *swatch = (vg_colorswatch_t *)widget;
 
@@ -192,6 +218,7 @@ static bool colorswatch_handle_event(vg_widget_t *widget, vg_event_t *event) {
     return false;
 }
 
+/// @brief VTable can_focus: returns true when the widget is both enabled and visible.
 static bool colorswatch_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
@@ -200,6 +227,10 @@ static bool colorswatch_can_focus(vg_widget_t *widget) {
 // ColorSwatch API
 //=============================================================================
 
+/// @brief Set the colour displayed by the swatch.
+///
+/// @param swatch The color swatch to update.
+/// @param color  New AARRGGBB colour value.
 void vg_colorswatch_set_color(vg_colorswatch_t *swatch, uint32_t color) {
     if (!swatch)
         return;
@@ -208,13 +239,20 @@ void vg_colorswatch_set_color(vg_colorswatch_t *swatch, uint32_t color) {
     swatch->base.needs_paint = true;
 }
 
+/// @brief Return the AARRGGBB colour currently displayed by the swatch.
+///
+/// @param swatch The color swatch to query.
+/// @return Current colour value, or 0 if swatch is NULL.
 uint32_t vg_colorswatch_get_color(vg_colorswatch_t *swatch) {
     if (!swatch)
         return 0;
     return swatch->color;
 }
 
-/// @brief Colorswatch set selected.
+/// @brief Set the selection state of the swatch, updating VG_STATE_SELECTED accordingly.
+///
+/// @param swatch   The color swatch to update.
+/// @param selected true to mark the swatch as selected; false to deselect.
 void vg_colorswatch_set_selected(vg_colorswatch_t *swatch, bool selected) {
     if (!swatch)
         return;
@@ -228,13 +266,22 @@ void vg_colorswatch_set_selected(vg_colorswatch_t *swatch, bool selected) {
     swatch->base.needs_paint = true;
 }
 
+/// @brief Return true if the swatch is currently selected.
+///
+/// @param swatch The color swatch to query.
+/// @return true if selected, false if not selected or swatch is NULL.
 bool vg_colorswatch_is_selected(vg_colorswatch_t *swatch) {
     if (!swatch)
         return false;
     return swatch->selected;
 }
 
-/// @brief Colorswatch set on select.
+/// @brief Register a callback invoked when the swatch is clicked.
+///
+/// @param swatch    The color swatch to configure.
+/// @param callback  Function called with (widget, color, user_data) on click.
+///                  May be NULL to unregister.
+/// @param user_data Opaque pointer forwarded unchanged to the callback.
 void vg_colorswatch_set_on_select(vg_colorswatch_t *swatch,
                                   vg_colorswatch_callback_t callback,
                                   void *user_data) {
@@ -245,7 +292,10 @@ void vg_colorswatch_set_on_select(vg_colorswatch_t *swatch,
     swatch->on_select_data = user_data;
 }
 
-/// @brief Colorswatch set size.
+/// @brief Set the uniform pixel size (width and height) of the swatch.
+///
+/// @param swatch The color swatch to resize.
+/// @param size   Desired size in logical pixels; values ≤ 0 are ignored.
 void vg_colorswatch_set_size(vg_colorswatch_t *swatch, float size) {
     if (!swatch || size <= 0)
         return;

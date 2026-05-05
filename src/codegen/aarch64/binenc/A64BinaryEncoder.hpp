@@ -19,8 +19,9 @@
 // Ownership/Lifetime:
 //   - Encoder is stateless between encodeFunction() calls
 //   - CodeSection is borrowed (caller retains ownership)
-// Links: codegen/aarch64/binenc/A64Encoding.hpp
-//        codegen/common/objfile/CodeSection.hpp
+// Links: codegen/aarch64/binenc/A64BinaryEncoder.cpp,
+//        codegen/aarch64/binenc/A64Encoding.hpp,
+//        codegen/common/objfile/CodeSection.hpp,
 //        codegen/aarch64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
@@ -151,6 +152,9 @@ class A64BinaryEncoder {
 
     // === Internal branch resolution ===
 
+    /// @brief Record of a branch instruction that targets an as-yet-unseen label.
+    /// @details After all instructions of the function are emitted, pendingBranches_ is
+    ///          iterated and each entry is patched with the now-known target offset.
     struct PendingBranch {
         size_t offset;      ///< Byte offset in CodeSection of the instruction.
         std::string target; ///< Target label name.
@@ -187,6 +191,8 @@ class A64BinaryEncoder {
 
     /// Optional debug line table for recording address→line mappings.
     DebugLineTable *debugLines_{nullptr};
+    /// Cached byte-size estimate from the most recent computeFunctionLabelOffsets() call;
+    /// used by verifyPredictedLabelOffset() to detect mismatches in debug builds.
     size_t lastEstimatedFunctionSize_{0};
 };
 

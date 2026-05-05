@@ -7,6 +7,20 @@
 //
 // File: codegen/aarch64/A64ImmediateUtils.hpp
 // Purpose: Shared AArch64 immediate-classification and legalization helpers.
+//          Classifies integer constants into the encoding forms accepted by the
+//          ISA (ADD/SUB 12-bit shifted immediates, MOVZ/MOVN/MOVK sequences) and
+//          emits legalized arithmetic instructions when a direct imm form is not
+//          available.
+// Key invariants:
+//   - classifyAddSubImmEncoding() is a pure predicate; it never modifies MIR.
+//   - forEachMoveWideInst() chooses MOVZ vs MOVN to minimise instruction count.
+//   - emitLegalizedSignedImmArith() appends to MBasicBlock in-place; it never
+//     removes or reorders existing instructions.
+// Ownership/Lifetime:
+//   - All helpers are stateless free functions / function templates; no heap
+//     allocation occurs.
+// Links: codegen/aarch64/MachineIR.hpp,
+//        codegen/aarch64/passes/LegalizePass.cpp (primary caller)
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,27 +34,42 @@
 
 namespace viper::codegen::aarch64 {
 
+/// @brief Encoding parameters for an ADD/SUB 12-bit immediate instruction.
+/// @details AArch64 ADD/SUB accept a 12-bit unsigned immediate with an optional
+///          logical left-shift of 12 bits, covering values 0–0xFFF and 0x1000–0xFFF000.
 struct AddSubImmEncoding {
-    uint32_t imm12;
-    bool shift12;
+    uint32_t imm12;  ///< The 12-bit immediate value (before any shift is applied).
+    bool shift12;    ///< True if the immediate is shifted left 12 bits in the encoding.
 };
 
+/// @brief AArch64 MOVE-WIDE instruction variants for materializing 64-bit constants.
 enum class MoveWideOpcode {
-    MovZ,
-    MovN,
-    MovK,
+    MovZ, ///< Zero-and-move: sets the register to imm16 << shift, zeroing all other bits.
+    MovN, ///< Negate-and-move: sets the register to ~(imm16 << shift), zeroing all other bits.
+    MovK, ///< Keep-and-move: inserts imm16 into the 16-bit lane at @p shift, keeping other bits.
 };
 
+/// @brief A single decoded MOVE-WIDE instruction for use with forEachMoveWideInst().
 struct MoveWideInst {
-    MoveWideOpcode opcode;
-    uint16_t imm16;
-    uint8_t shift;
+    MoveWideOpcode opcode; ///< Which MOVE-WIDE variant to emit (MOVZ / MOVN / MOVK).
+    uint16_t imm16;        ///< The 16-bit immediate payload for this lane.
+    uint8_t shift;         ///< Bit position of the lane: 0, 16, 32, or 48.
 };
 
+/// @brief Return the absolute (unsigned) magnitude of a signed integer immediate.
+/// @details Handles the two's-complement minimum value correctly: -(INT64_MIN + 1) + 1 == 2^63.
+/// @param imm Signed immediate (from the MIR operand).
+/// @return Unsigned magnitude; always positive.
 [[nodiscard]] inline uint64_t absImmUnsigned(long long imm) noexcept {
     return imm < 0 ? static_cast<uint64_t>(-(imm + 1)) + 1ULL : static_cast<uint64_t>(imm);
 }
 
+/// @brief Test whether @p imm fits in the AArch64 ADD/SUB immediate encoding.
+/// @details Returns the imm12 value and shift12 flag if the value fits in 12 bits
+///          (0–0xFFF, shift12=false) or is a multiple of 0x1000 whose top 12 bits
+///          fit in 12 bits (0x1000–0xFFF000, shift12=true). Returns nullopt otherwise.
+/// @param imm Unsigned value to test (caller should pass the magnitude for signed imms).
+/// @return Filled AddSubImmEncoding on success, nullopt if the value requires MOVZ/MOVK.
 [[nodiscard]] inline std::optional<AddSubImmEncoding> classifyAddSubImmEncoding(
     uint64_t imm) noexcept {
     if (imm <= 0xFFFULL)
@@ -50,6 +79,14 @@ struct MoveWideInst {
     return std::nullopt;
 }
 
+/// @brief Invoke @p emit once per MOVE-WIDE instruction needed to load @p imm into a register.
+/// @details Decomposes the 64-bit value into four 16-bit lanes and selects the encoding
+///          strategy (MOVZ-seed or MOVN-seed) that minimises total instruction count by
+///          choosing whichever has fewer non-zero lanes. The first call always uses MOVZ or
+///          MOVN; subsequent non-trivial lanes use MOVK.
+/// @tparam EmitFn Callable with signature `void(MoveWideInst)`.
+/// @param imm  The 64-bit immediate to materialise.
+/// @param emit Callback invoked for each MOVE-WIDE instruction in emission order.
 template <typename EmitFn> inline void forEachMoveWideInst(uint64_t imm, EmitFn &&emit) {
     const std::array<uint16_t, 4> chunks = {
         static_cast<uint16_t>(imm & 0xFFFFULL),
@@ -111,11 +148,29 @@ template <typename EmitFn> inline void forEachMoveWideInst(uint64_t imm, EmitFn 
     }
 }
 
+/// @brief Arithmetic direction for emitLegalizedSignedImmArith().
 enum class SignedImmArithKind {
-    Add,
-    Sub,
+    Add, ///< Emit dst = lhs + imm (or dst = lhs - |imm| when imm is negative).
+    Sub, ///< Emit dst = lhs - imm (or dst = lhs + |imm| when imm is negative).
 };
 
+/// @brief Emit a legalized signed-immediate arithmetic instruction into @p out.
+/// @details If the magnitude of @p imm fits in the ADD/SUB 12-bit encoding, emits
+///          a single ADD-imm or SUB-imm instruction (swapping to the complement form
+///          when the sign makes it cheaper). Otherwise calls @p makeTemp to materialize
+///          the immediate into a temporary register and emits the register form.
+/// @tparam MakeTempFn  Callable `MOperand(long long imm)` that materializes the constant
+///                     and returns an MOperand for the new virtual register.
+/// @param out       Basic block to append the new instruction(s) to.
+/// @param dst       Destination operand (written).
+/// @param lhs       Left-hand source operand (read).
+/// @param imm       Signed immediate operand from the MIR instruction.
+/// @param kind      Whether to prefer ADD or SUB encoding for positive values.
+/// @param addImmOpc MOpcode for the reg+imm ADD variant.
+/// @param subImmOpc MOpcode for the reg+imm SUB variant.
+/// @param addRegOpc MOpcode for the reg+reg ADD variant (used when imm is too large).
+/// @param subRegOpc MOpcode for the reg+reg SUB variant (used when imm is too large).
+/// @param makeTemp  Factory called only when the imm-form is not available.
 template <typename MakeTempFn>
 inline void emitLegalizedSignedImmArith(MBasicBlock &out,
                                         const MOperand &dst,

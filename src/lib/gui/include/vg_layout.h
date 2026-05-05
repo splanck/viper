@@ -4,42 +4,21 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file vg_layout.h
-/// @brief Layout system for automatic widget positioning and sizing.
-///
-/// @details This header provides the layout container types and their APIs for
-///          the Viper GUI toolkit. Layout containers are specialised widgets
-///          that arrange their children according to a particular algorithm:
-///
-///          - **VBox** -- vertical stack (children laid out top-to-bottom).
-///          - **HBox** -- horizontal stack (children laid out left-to-right).
-///          - **Flex** -- CSS-Flexbox-inspired layout with direction, wrapping,
-///            alignment, and gap control.
-///          - **Grid** -- row/column grid with configurable spans and gaps.
-///          - **Dock** -- docking layout suitable for IDE panel arrangements
-///            (left, top, right, bottom, fill).
-///
-///          Each container stores its own layout configuration and invokes the
-///          corresponding internal layout engine function during the arrange
-///          pass. The layout engine functions (vg_layout_vbox, vg_layout_hbox,
-///          etc.) are exposed for internal use but should not normally be called
-///          directly by application code.
-///
-/// Key invariants:
-///   - A layout container is a regular vg_widget_t; it can be nested inside
-///     other containers to compose complex layouts.
-///   - Children participate in the parent's layout via their flex factor,
-///     margins, padding, and size constraints (see vg_widget.h).
-///
-/// Ownership/Lifetime:
-///   - Layout containers own their configuration data (grid column/row arrays).
-///   - Destroying a layout container destroys all children recursively.
-///
-/// Links:
-///   - vg_widget.h  -- widget base and constraint structures
-///   - vg_theme.h   -- spacing presets
-///
+//
+// File: lib/gui/include/vg_layout.h
+// Purpose: Layout system for automatic widget positioning and sizing.
+//          Provides VBox, HBox, Flex, Grid, and Dock layout containers.
+// Key invariants:
+//   - A layout container is a regular vg_widget_t and can be nested arbitrarily.
+//   - Children participate via their flex factor, margins, padding, and constraints.
+//   - Destroying a layout container destroys all children recursively.
+// Ownership/Lifetime:
+//   - Layout containers own their configuration data (grid column/row arrays).
+//   - The grid column_widths and row_heights arrays are freed with the container.
+// Links: lib/gui/src/core/vg_layout.c,
+//        lib/gui/include/vg_widget.h,
+//        lib/gui/include/vg_theme.h
+//
 //===----------------------------------------------------------------------===//
 #pragma once
 

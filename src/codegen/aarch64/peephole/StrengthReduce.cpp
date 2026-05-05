@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/peephole/StrengthReduce.cpp
+// File: codegen/aarch64/peephole/StrengthReduce.cpp
 // Purpose: Arithmetic identity elimination, strength reduction (mul/udiv/sdiv
 //          to shifts, div-by-constant to multiply-by-magic), cmp-zero-to-tst,
 //          and immediate folding for the AArch64 peephole optimizer.
@@ -23,7 +23,7 @@
 // Ownership/Lifetime:
 //   - Operates on mutable instructions owned by the caller.
 //
-// Links: src/codegen/aarch64/Peephole.hpp
+// Links: codegen/aarch64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -77,6 +77,7 @@ struct UnsignedMagicNumber {
     bool needsAdd{false};   ///< True when the libdivide-style add fixup is required.
 };
 
+/// @brief Compute floor(log2(value)) for a non-zero 64-bit integer.
 [[nodiscard]] unsigned floorLog2U64(uint64_t value) noexcept {
     unsigned log = 0;
     while ((uint64_t{1} << (log + 1)) <= value && log < 63)
@@ -84,6 +85,12 @@ struct UnsignedMagicNumber {
     return log;
 }
 
+/// @brief Divide a 128-bit unsigned integer (hi:lo) by a 64-bit divisor.
+/// @param hi      Upper 64 bits of the numerator.
+/// @param lo      Lower 64 bits of the numerator.
+/// @param divisor 64-bit unsigned divisor.
+/// @param rem     Output: remainder of the division.
+/// @return 64-bit quotient.
 [[nodiscard]] uint64_t divU128ByU64(uint64_t hi, uint64_t lo, uint64_t divisor, uint64_t &rem) noexcept {
 #if defined(_MSC_VER) && !defined(__clang__) && (defined(_M_X64) || defined(_M_AMD64))
     unsigned __int64 remainder = 0;
@@ -113,6 +120,10 @@ struct UnsignedMagicNumber {
 #endif
 }
 
+/// @brief Select the first candidate register that does not conflict with any operand in @p avoid.
+/// @param candidates Ordered list of scratch register candidates to try.
+/// @param avoid      Operands whose physical registers must not be reused.
+/// @return The first non-conflicting candidate, or nullopt if all conflict.
 [[nodiscard]] std::optional<MOperand> pickTempReg(const std::array<PhysReg, 3> &candidates,
                                                   std::initializer_list<MOperand> avoid) {
     for (PhysReg candidate : candidates) {
@@ -130,6 +141,8 @@ struct UnsignedMagicNumber {
     return std::nullopt;
 }
 
+/// @brief Return true if @p reg is used by any instruction after @p idx before being redefined.
+/// @details Scans forward from idx+1; stops early when a definition is found.
 [[nodiscard]] bool regUsedAfterBeforeRedef(const std::vector<MInstr> &instrs,
                                            std::size_t idx,
                                            const MOperand &reg) noexcept {
@@ -212,6 +225,14 @@ struct UnsignedMagicNumber {
     return result;
 }
 
+/// @brief Compute the magic number for unsigned division by a non-power-of-2 constant.
+///
+/// Returns the UMULH multiplier and post-shift count for an optimized unsigned divide
+/// sequence. The `needsAdd` flag indicates that the libdivide-style correction step
+/// (subtract-then-shift) is required when the exact multiplier overflows 64 bits.
+///
+/// @param d The unsigned divisor; must be > 1 and not a power of 2.
+/// @return Magic number parameters, or nullopt if @p d is unsuitable.
 [[nodiscard]] std::optional<UnsignedMagicNumber> computeUnsignedMagic(uint64_t d) noexcept {
     if (d <= 1)
         return std::nullopt;

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/peephole/PeepholeCommon.hpp
+// File: codegen/aarch64/peephole/PeepholeCommon.hpp
 // Purpose: Shared utility functions and types for AArch64 peephole sub-passes.
 //
 // Key invariants:
@@ -16,7 +16,7 @@
 // Ownership/Lifetime:
 //   - Header-only; no dynamic state.
 //
-// Links: src/codegen/aarch64/Peephole.hpp, docs/architecture.md
+// Links: codegen/aarch64/Peephole.hpp, docs/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

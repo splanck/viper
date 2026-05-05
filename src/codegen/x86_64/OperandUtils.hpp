@@ -7,12 +7,15 @@
 //
 // File: codegen/x86_64/OperandUtils.hpp
 // Purpose: Provide shared utility functions for Machine IR operand manipulation.
-// Key invariants: Type-check helpers (isReg, isImm, etc.) are side-effect free;
-//                 cloneOperand produces value-equal copies; alignment helpers
-//                 require positive alignment values (asserted at runtime).
-// Ownership/Lifetime: Helpers operate on values or const references; callers retain
-//                     ownership of all operands passed in.
-// Links: docs/architecture.md
+// Key invariants:
+//   - Type-check helpers (isReg, isImm, etc.) are side-effect free.
+//   - cloneOperand produces value-equal copies.
+//   - Alignment helpers require positive alignment values (asserted at runtime).
+// Ownership/Lifetime:
+//   - Helpers operate on values or const references; callers retain ownership
+//     of all operands passed in.
+// Links: codegen/x86_64/MachineIR.hpp,
+//        codegen/x86_64/TargetX64.hpp
 //
 //===----------------------------------------------------------------------===//
 

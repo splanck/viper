@@ -7,11 +7,15 @@
 //
 // File: codegen/aarch64/TargetAArch64.hpp
 // Purpose: Define physical registers, register classes, and target metadata for AArch64.
-// Key invariants: Register enums map 1:1 to hardware registers; TargetInfo singleton
-//   is immutable after initialization; AAPCS64 calling convention rules are encoded.
-// Ownership/Lifetime: No heap ownership; darwinTarget() returns a reference to a
-//   static singleton that lives for the duration of the program.
-// Links: docs/architecture.md
+// Key invariants:
+//   - Register enums map 1:1 to hardware registers (no offset encoding).
+//   - TargetInfo singletons are immutable after initialization.
+//   - AAPCS64 calling convention rules are encoded in TargetInfo fields.
+// Ownership/Lifetime:
+//   - No heap ownership; darwinTarget()/linuxTarget()/windowsTarget() return
+//     references to static singletons that live for the duration of the program.
+// Links: codegen/aarch64/TargetAArch64.cpp,
+//        codegen/common/TargetInfoBase.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,17 +31,6 @@
 #include <intrin.h>
 #endif
 
-/// @brief AArch64 target-specific definitions for the Viper code generator.
-///
-/// This namespace contains all AArch64-specific constants, types, and functions
-/// needed for code generation, including:
-/// - Physical register definitions (GPR and FPR)
-/// - ABI constants (stack alignment, argument passing limits)
-/// - Calling convention abstraction
-/// - Immediate value validation helpers
-///
-/// The definitions follow the AAPCS64 (ARM 64-bit Procedure Call Standard)
-/// and target macOS/Darwin, though most definitions are platform-independent.
 namespace viper::codegen::aarch64 {
 
 /// @brief Physical register identifiers for AArch64.
@@ -238,10 +231,14 @@ struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, kMaxGPRArgs,
         return abiFormat == ABIFormat::Windows;
     }
 
+    /// @brief Returns true when BTI (Branch Target Identification) instructions
+    ///        should be emitted at function entry for pointer-authentication hardening.
     [[nodiscard]] bool hasBranchTargetIdentification() const noexcept {
         return emitBranchTargetIdentification;
     }
 
+    /// @brief Returns true when PAC (Pointer Authentication Code) return-address
+    ///        signing should be emitted in prologues and epilogues.
     [[nodiscard]] bool hasReturnAddressSigning() const noexcept {
         return emitReturnAddressSigning;
     }

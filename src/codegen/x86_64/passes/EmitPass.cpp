@@ -5,21 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the code-generation pass that converts lowered and allocated
-// machine IR into textual x86-64 assembly.  The pass verifies upstream stages
-// completed successfully before invoking the backend emitter and records any
-// diagnostic output through the shared diagnostics sink.  Persisting the emission
-// artefacts on the module keeps downstream tooling agnostic of the pass order
-// used to produce them.
+// File: codegen/x86_64/passes/EmitPass.cpp
+// Purpose: Implement the assembly emission pass for the x86-64 codegen pipeline.
+//          Converts lowered and register-allocated MIR into textual assembly text.
+// Key invariants:
+//   - Pass verifies upstream stages completed before invoking the backend emitter.
+//   - Diagnostics are surfaced through the shared Diagnostics sink.
+// Ownership/Lifetime:
+//   - Pass owns CodegenOptions by value; borrows Module for the duration of run().
+// Links: codegen/x86_64/passes/EmitPass.hpp,
+//        codegen/x86_64/Backend.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Assembly emission pass for the x86-64 backend.
-/// @details Binds together the register allocation results, backend emission
-///          options, and diagnostics reporting so CLI tools and higher-level
-///          pipelines can trigger assembly generation through a single entry
-///          point.
 
 #include "codegen/x86_64/passes/EmitPass.hpp"
 

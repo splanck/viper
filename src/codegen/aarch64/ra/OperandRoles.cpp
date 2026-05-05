@@ -5,14 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/ra/OperandRoles.cpp
+// File: codegen/aarch64/ra/OperandRoles.cpp
 // Purpose: Implementation of operand role classification for every MOpcode
 //          that carries register operands.
+//
 // Key invariants:
 //   - Must stay in sync with MachineIR.hpp opcode additions.
+//
 // Ownership/Lifetime:
-//   - See OperandRoles.hpp.
-// Links: docs/codemap.md
+//   - Stateless free function; no ownership.
+//
+// Links: codegen/aarch64/ra/OperandRoles.hpp,
+//        codegen/aarch64/ra/OpcodeClassify.hpp
 //
 //===----------------------------------------------------------------------===//
 

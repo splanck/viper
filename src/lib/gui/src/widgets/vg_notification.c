@@ -5,10 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_notification.c
+// File: lib/gui/src/widgets/vg_notification.c
+// Purpose: Notification manager widget that displays a stack of transient toast
+//          notifications at a configurable screen corner. Each notification
+//          fades and slides in on creation and fades out on dismiss or timeout.
+// Key invariants:
+//   - notifications[] is a flat pointer array; fully dismissed entries (opacity
+//     and slide_progress both ≤ 0) are compacted out during each update tick.
+//   - created_at == 0 is a sentinel meaning "not yet started"; the first
+//     vg_notification_manager_update call sets it to the current clock value.
+//   - opacity and slide_progress are driven entirely by vg_notification_manager_update;
+//     paint reads them as-is without touching animation state.
+//   - notification_bounds_for_index recomputes positions from scratch every
+//     paint/hit-test call to handle the slide animation correctly.
+// Ownership/Lifetime:
+//   - All vg_notification_t structs are heap-allocated by vg_notification_show*
+//     and freed inside vg_notification_manager_update when fully faded out.
+// Links: lib/gui/include/vg_ide_widgets.h,
+//        lib/gui/include/vg_widget.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_notification.c - Notification widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -76,6 +94,7 @@ static vg_widget_vtable_t g_notification_manager_vtable = {.destroy = notificati
 // Notification Helpers
 //=============================================================================
 
+/// @brief Free all heap strings inside notif and the notif struct itself.
 static void free_notification(vg_notification_t *notif) {
     if (!notif)
         return;
@@ -85,6 +104,7 @@ static void free_notification(vg_notification_t *notif) {
     free(notif);
 }
 
+/// @brief Map a VG_NOTIFICATION_* type to its accent colour from the manager's palette.
 static uint32_t type_to_color(vg_notification_manager_t *mgr, vg_notification_type_t type) {
     switch (type) {
         case VG_NOTIFICATION_INFO:
@@ -100,6 +120,7 @@ static uint32_t type_to_color(vg_notification_manager_t *mgr, vg_notification_ty
     }
 }
 
+/// @brief Lerp a 24-bit RGB colour toward backdrop by (1-opacity), discarding the alpha channel.
 static uint32_t notification_fade_color(uint32_t color, uint32_t backdrop, float opacity) {
     uint32_t rgb = color & 0x00FFFFFFu;
     if (opacity <= 0.0f)
@@ -109,6 +130,7 @@ static uint32_t notification_fade_color(uint32_t color, uint32_t backdrop, float
     return vg_color_blend(backdrop & 0x00FFFFFFu, rgb, opacity);
 }
 
+/// @brief Fill a rounded rectangle, falling back to a plain rect when radius is zero or too large.
 static void notification_fill_round_rect(vgfx_window_t win,
                                          int32_t x,
                                          int32_t y,
@@ -134,6 +156,7 @@ static void notification_fill_round_rect(vgfx_window_t win,
     vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
+/// @brief Stroke the border of a rounded rectangle, falling back to a plain rect when radius is zero or too large.
 static void notification_stroke_round_rect(vgfx_window_t win,
                                            int32_t x,
                                            int32_t y,
@@ -160,6 +183,7 @@ static void notification_stroke_round_rect(vgfx_window_t win,
     vgfx_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
+/// @brief Heap-allocate a NUL-terminated copy of the first len bytes of text.
 static char *notification_dup_range(const char *text, size_t len) {
     char *copy = (char *)malloc(len + 1);
     if (!copy)
@@ -169,6 +193,7 @@ static char *notification_dup_range(const char *text, size_t len) {
     return copy;
 }
 
+/// @brief Word-wrap text to fit max_width, returning the line count and optionally allocating out_lines[].
 static int notification_wrap_text(vg_notification_manager_t *mgr,
                                   const char *text,
                                   float font_size,
@@ -280,6 +305,7 @@ static int notification_wrap_text(vg_notification_manager_t *mgr,
     return count > 0 ? count : 1;
 }
 
+/// @brief Free a lines[] array produced by notification_wrap_text.
 static void notification_free_lines(char **lines, int line_count) {
     if (!lines)
         return;
@@ -288,6 +314,7 @@ static void notification_free_lines(char **lines, int line_count) {
     free(lines);
 }
 
+/// @brief Return the font's line_height in pixels, falling back to font_size when no font is set.
 static float notification_line_height(vg_notification_manager_t *mgr, float font_size) {
     vg_font_metrics_t metrics = {0};
     if (!mgr || !mgr->font)
@@ -296,6 +323,7 @@ static float notification_line_height(vg_notification_manager_t *mgr, float font
     return metrics.line_height > 0 ? (float)metrics.line_height : font_size;
 }
 
+/// @brief Return the total pixel height of text wrapped to max_width at font_size.
 static float notification_text_block_height(vg_notification_manager_t *mgr,
                                             const char *text,
                                             float font_size,
@@ -304,6 +332,7 @@ static float notification_text_block_height(vg_notification_manager_t *mgr,
     return notification_line_height(mgr, font_size) * (float)line_count;
 }
 
+/// @brief Compute the total card height for notif including title, message, action button, and padding.
 static float notification_measure_height(vg_notification_manager_t *mgr,
                                          vg_notification_t *notif,
                                          float *out_action_h) {
@@ -333,6 +362,7 @@ static float notification_measure_height(vg_notification_manager_t *mgr,
     return notif_height;
 }
 
+/// @brief Mark notif as dismissed and record now_ms as the start of the fade-out animation.
 static void notification_request_dismiss(vg_notification_t *notif, uint64_t now_ms) {
     if (!notif)
         return;
@@ -341,6 +371,7 @@ static void notification_request_dismiss(vg_notification_t *notif, uint64_t now_
         notif->dismiss_started_at = now_ms;
 }
 
+/// @brief Compute the screen-space bounding rect (and optional action-button rect) for the notification at target_index.
 static bool notification_bounds_for_index(vg_notification_manager_t *mgr,
                                           size_t target_index,
                                           float *out_x,
@@ -442,6 +473,9 @@ static bool notification_bounds_for_index(vg_notification_manager_t *mgr,
 // Notification Manager Implementation
 //=============================================================================
 
+/// @brief Create a notification manager widget with default styling and a top-right position.
+///
+/// @return Newly allocated manager, or NULL on allocation failure.
 vg_notification_manager_t *vg_notification_manager_create(void) {
     vg_notification_manager_t *mgr = calloc(1, sizeof(vg_notification_manager_t));
     if (!mgr)
@@ -478,6 +512,7 @@ vg_notification_manager_t *vg_notification_manager_create(void) {
     return mgr;
 }
 
+/// @brief vtable destroy — free all pending notification structs and the notifications[] array.
 static void notification_manager_destroy(vg_widget_t *widget) {
     vg_notification_manager_t *mgr = (vg_notification_manager_t *)widget;
 
@@ -487,13 +522,16 @@ static void notification_manager_destroy(vg_widget_t *widget) {
     free(mgr->notifications);
 }
 
-/// @brief Notification manager destroy.
+/// @brief Destroy the notification manager, freeing all pending notifications.
+///
+/// @param mgr Manager to destroy; may be NULL (no-op).
 void vg_notification_manager_destroy(vg_notification_manager_t *mgr) {
     if (!mgr)
         return;
     vg_widget_destroy(&mgr->base);
 }
 
+/// @brief vtable measure — reports available_width × available_height; the manager overlays the entire parent.
 static void notification_manager_measure(vg_widget_t *widget,
                                          float available_width,
                                          float available_height) {
@@ -505,6 +543,7 @@ static void notification_manager_measure(vg_widget_t *widget,
     widget->measured_height = available_height;
 }
 
+/// @brief vtable paint — render all visible notifications at their animated screen positions.
 static void notification_manager_paint(vg_widget_t *widget, void *canvas) {
     vg_notification_manager_t *mgr = (vg_notification_manager_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -660,6 +699,7 @@ static void notification_manager_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief vtable handle_event — on click, hit-test all visible notifications; invoke action callback or dismiss.
 static bool notification_manager_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_notification_manager_t *mgr = (vg_notification_manager_t *)widget;
 
@@ -690,7 +730,14 @@ static bool notification_manager_handle_event(vg_widget_t *widget, vg_event_t *e
     return false;
 }
 
-/// @brief Notification manager update.
+/// @brief Advance animation state for all notifications and compact out fully-dismissed entries.
+///
+/// @details Must be called every frame (or at least once per animation tick) with the current
+///          wall-clock time. Drives fade-in, fade-out, and slide animations. Notifications
+///          whose opacity and slide_progress both reach 0 are freed and removed.
+///
+/// @param mgr    Manager to update; may be NULL (no-op).
+/// @param now_ms Current wall-clock time in milliseconds.
 void vg_notification_manager_update(vg_notification_manager_t *mgr, uint64_t now_ms) {
     if (!mgr)
         return;
@@ -787,6 +834,14 @@ void vg_notification_manager_update(vg_notification_manager_t *mgr, uint64_t now
         mgr->base.needs_paint = true;
 }
 
+/// @brief Show a notification without an action button.
+///
+/// @param mgr         Manager to add to; may be NULL (returns 0).
+/// @param type        VG_NOTIFICATION_INFO/SUCCESS/WARNING/ERROR.
+/// @param title       Optional bold title text; may be NULL.
+/// @param message     Optional body text; may be NULL.
+/// @param duration_ms Auto-dismiss delay in ms; 0 for persistent (no auto-dismiss).
+/// @return            Unique notification ID, or 0 on failure.
 uint32_t vg_notification_show(vg_notification_manager_t *mgr,
                               vg_notification_type_t type,
                               const char *title,
@@ -796,6 +851,17 @@ uint32_t vg_notification_show(vg_notification_manager_t *mgr,
         mgr, type, title, message, duration_ms, NULL, NULL, NULL);
 }
 
+/// @brief Show a notification with an optional action button that invokes action_callback when clicked.
+///
+/// @param mgr             Manager to add to; may be NULL (returns 0).
+/// @param type            VG_NOTIFICATION_INFO/SUCCESS/WARNING/ERROR.
+/// @param title           Optional bold title text; may be NULL.
+/// @param message         Optional body text; may be NULL.
+/// @param duration_ms     Auto-dismiss delay in ms; 0 for persistent.
+/// @param action_label    Button label text; may be NULL (no button rendered).
+/// @param action_callback Invoked with (notification_id, user_data) when button is clicked; may be NULL.
+/// @param user_data       Opaque pointer forwarded to action_callback.
+/// @return                Unique notification ID, or 0 on failure.
 uint32_t vg_notification_show_with_action(vg_notification_manager_t *mgr,
                                           vg_notification_type_t type,
                                           const char *title,
@@ -846,7 +912,10 @@ uint32_t vg_notification_show_with_action(vg_notification_manager_t *mgr,
     return notif->id;
 }
 
-/// @brief Notification dismiss.
+/// @brief Begin the fade-out animation for the notification with the given id.
+///
+/// @param mgr Manager containing the notification; may be NULL (no-op).
+/// @param id  Notification ID returned by vg_notification_show*; 0 is ignored.
 void vg_notification_dismiss(vg_notification_manager_t *mgr, uint32_t id) {
     if (!mgr)
         return;
@@ -860,7 +929,9 @@ void vg_notification_dismiss(vg_notification_manager_t *mgr, uint32_t id) {
     }
 }
 
-/// @brief Notification dismiss all.
+/// @brief Begin the fade-out animation for every active notification.
+///
+/// @param mgr Manager to clear; may be NULL (no-op).
 void vg_notification_dismiss_all(vg_notification_manager_t *mgr) {
     if (!mgr)
         return;
@@ -873,7 +944,10 @@ void vg_notification_dismiss_all(vg_notification_manager_t *mgr) {
     mgr->base.needs_paint = true;
 }
 
-/// @brief Notification manager set position.
+/// @brief Set which screen corner (or centre) new notifications stack from.
+///
+/// @param mgr      Manager to configure; may be NULL (no-op).
+/// @param position VG_NOTIFICATION_TOP_RIGHT, _TOP_LEFT, _BOTTOM_RIGHT, _BOTTOM_LEFT, _TOP_CENTER, or _BOTTOM_CENTER.
 void vg_notification_manager_set_position(vg_notification_manager_t *mgr,
                                           vg_notification_position_t position) {
     if (!mgr)
@@ -882,7 +956,11 @@ void vg_notification_manager_set_position(vg_notification_manager_t *mgr,
     mgr->base.needs_paint = true;
 }
 
-/// @brief Notification manager set font.
+/// @brief Set the font and body size; title_font_size is set to size + 2.
+///
+/// @param mgr  Manager to configure; may be NULL (no-op).
+/// @param font Font for body and title text.
+/// @param size Body point size (title rendered at size + 2).
 void vg_notification_manager_set_font(vg_notification_manager_t *mgr, vg_font_t *font, float size) {
     if (!mgr)
         return;

@@ -5,8 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/passes/PeepholePass.cpp
+// File: codegen/x86_64/passes/PeepholePass.cpp
 // Purpose: Implement the explicit post-RA peephole pass for the x86-64 pipeline.
+// Key invariants:
+//   - Runs after register allocation on physical-register MIR.
+// Ownership/Lifetime:
+//   - Stateless; mutates Module::mir in place via Peephole utilities.
+// Links: codegen/x86_64/passes/PeepholePass.hpp,
+//        codegen/x86_64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 

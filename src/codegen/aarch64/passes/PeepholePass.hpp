@@ -22,11 +22,13 @@ namespace viper::codegen::aarch64::passes {
 /// @brief Apply peephole optimisations to all MIR functions after register allocation.
 class PeepholePass final : public Pass {
   public:
+    /// @brief Controls which subset of peephole patterns to apply.
     enum class Mode {
-        Full,
-        PostScheduleCleanup,
+        Full,               ///< Apply all peephole patterns (default).
+        PostScheduleCleanup ///< Apply only lightweight cleanup after scheduling.
     };
 
+    /// @param mode Which pattern set to use; defaults to Mode::Full.
     explicit PeepholePass(Mode mode = Mode::Full) noexcept : mode_(mode) {}
 
     /// @brief Run peephole optimisations on all functions in AArch64Module::mir.

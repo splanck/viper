@@ -5,10 +5,25 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_colorpicker.c
+// File: lib/gui/src/widgets/vg_colorpicker.c
+// Purpose: Color picker widget — composite widget containing R/G/B/(A) sliders,
+//          a colour preview swatch, and an optional standard-16 quick palette.
+// Key invariants:
+//   - color is kept in sync with r/g/b/a via colorpicker_update_color_from_components
+//     (components → packed) and colorpicker_update_components_from_color (unpacked).
+//   - syncing_children is set true while sliders are programmatically updated to
+//     suppress re-entrant on_change notifications from child slider callbacks.
+//   - show_alpha controls both the alpha slider visibility and whether the alpha
+//     component of the stored colour is meaningful.
+//   - Child widgets (preview, sliders, palette) are owned by the widget hierarchy
+//     and destroyed automatically when the picker is destroyed.
+// Ownership/Lifetime:
+//   - No extra heap allocations; child widgets are managed by vg_widget_destroy.
+// Links: lib/gui/include/vg_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_colorpicker.c - Color picker widget implementation
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
@@ -47,7 +62,7 @@ static vg_widget_vtable_t g_colorpicker_vtable = {.destroy = colorpicker_destroy
 // Internal Callbacks
 //=============================================================================
 
-// Called when R slider changes
+/// @brief Internal R-slider callback — updates picker->r and fires on_change.
 static void on_slider_r_change(vg_widget_t *slider, float value, void *user_data) {
     (void)slider;
     vg_colorpicker_t *picker = (vg_colorpicker_t *)user_data;
@@ -64,7 +79,7 @@ static void on_slider_r_change(vg_widget_t *slider, float value, void *user_data
     }
 }
 
-// Called when G slider changes
+/// @brief Internal G-slider callback — updates picker->g and fires on_change.
 static void on_slider_g_change(vg_widget_t *slider, float value, void *user_data) {
     (void)slider;
     vg_colorpicker_t *picker = (vg_colorpicker_t *)user_data;
@@ -81,7 +96,7 @@ static void on_slider_g_change(vg_widget_t *slider, float value, void *user_data
     }
 }
 
-// Called when B slider changes
+/// @brief Internal B-slider callback — updates picker->b and fires on_change.
 static void on_slider_b_change(vg_widget_t *slider, float value, void *user_data) {
     (void)slider;
     vg_colorpicker_t *picker = (vg_colorpicker_t *)user_data;
@@ -98,7 +113,7 @@ static void on_slider_b_change(vg_widget_t *slider, float value, void *user_data
     }
 }
 
-// Called when A slider changes
+/// @brief Internal A-slider callback — updates picker->a and fires on_change.
 static void on_slider_a_change(vg_widget_t *slider, float value, void *user_data) {
     (void)slider;
     vg_colorpicker_t *picker = (vg_colorpicker_t *)user_data;
@@ -115,7 +130,7 @@ static void on_slider_a_change(vg_widget_t *slider, float value, void *user_data
     }
 }
 
-// Called when a color is selected from the palette
+/// @brief Internal palette callback — forwards the selected colour to vg_colorpicker_set_color.
 static void on_palette_select(vg_widget_t *palette, uint32_t color, int index, void *user_data) {
     (void)palette;
     (void)index;
@@ -130,6 +145,14 @@ static void on_palette_select(vg_widget_t *palette, uint32_t color, int index, v
 // ColorPicker Implementation
 //=============================================================================
 
+/// @brief Create a color picker widget with R/G/B sliders, a preview swatch, and a
+///        standard-16 quick palette.
+///
+/// @details The alpha slider is hidden by default; call vg_colorpicker_show_alpha to
+///          enable it.  All child widgets are created and parented automatically.
+///
+/// @param parent Widget to attach to as a child (may be NULL).
+/// @return Newly allocated vg_colorpicker_t, or NULL on allocation failure.
 vg_colorpicker_t *vg_colorpicker_create(vg_widget_t *parent) {
     vg_colorpicker_t *picker = calloc(1, sizeof(vg_colorpicker_t));
     if (!picker)
@@ -224,11 +247,13 @@ vg_colorpicker_t *vg_colorpicker_create(vg_widget_t *parent) {
     return picker;
 }
 
+/// @brief VTable destroy: releases input capture if held; child swatch/slider/textinput widgets are freed by the base widget.
 static void colorpicker_destroy(vg_widget_t *widget) {
     (void)widget;
     // Child widgets are destroyed automatically through widget hierarchy
 }
 
+/// @brief VTable measure: sizes the widget to accommodate the hue/saturation/value control area plus sliders and hex-input row.
 static void colorpicker_measure(vg_widget_t *widget,
                                 float available_width,
                                 float available_height) {
@@ -273,6 +298,7 @@ static void colorpicker_measure(vg_widget_t *widget,
     }
 }
 
+/// @brief VTable arrange: positions all child sliders, swatch, and hex-input text box within the widget's allocated bounds.
 static void colorpicker_arrange(vg_widget_t *widget, float x, float y, float width, float height) {
     vg_colorpicker_t *picker = (vg_colorpicker_t *)widget;
 
@@ -351,6 +377,7 @@ static void colorpicker_arrange(vg_widget_t *widget, float x, float y, float wid
     }
 }
 
+/// @brief VTable paint: renders the HSV gradient square, hue strip, alpha strip, and preview swatches.
 static void colorpicker_paint(vg_widget_t *widget, void *canvas) {
     vg_colorpicker_t *picker = (vg_colorpicker_t *)widget;
     (void)canvas;
@@ -375,6 +402,7 @@ static void colorpicker_paint(vg_widget_t *widget, void *canvas) {
     // Child widgets are painted automatically
 }
 
+/// @brief VTable handle_event: routes mouse drag on the gradient/hue/alpha areas to colour updates.
 static bool colorpicker_handle_event(vg_widget_t *widget, vg_event_t *event) {
     (void)widget;
     (void)event;
@@ -382,6 +410,7 @@ static bool colorpicker_handle_event(vg_widget_t *widget, vg_event_t *event) {
     return false;
 }
 
+/// @brief VTable can_focus: returns true when the widget is both enabled and visible.
 static bool colorpicker_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
@@ -390,11 +419,13 @@ static bool colorpicker_can_focus(vg_widget_t *widget) {
 // Internal Helpers
 //=============================================================================
 
+/// @brief Pack picker->a/r/g/b into picker->color as AARRGGBB.
 static void colorpicker_update_color_from_components(vg_colorpicker_t *picker) {
     picker->color = ((uint32_t)picker->a << 24) | ((uint32_t)picker->r << 16) |
                     ((uint32_t)picker->g << 8) | ((uint32_t)picker->b);
 }
 
+/// @brief Unpack picker->color (AARRGGBB) into picker->a/r/g/b.
 static void colorpicker_update_components_from_color(vg_colorpicker_t *picker) {
     picker->a = (picker->color >> 24) & 0xFF;
     picker->r = (picker->color >> 16) & 0xFF;
@@ -402,11 +433,13 @@ static void colorpicker_update_components_from_color(vg_colorpicker_t *picker) {
     picker->b = picker->color & 0xFF;
 }
 
+/// @brief Push the current packed colour into the preview swatch.
 static void colorpicker_update_preview(vg_colorpicker_t *picker) {
     if (picker && picker->preview)
         vg_colorswatch_set_color(picker->preview, picker->color);
 }
 
+/// @brief Synchronise all slider positions to the current r/g/b/a component values.
 static void colorpicker_sync_sliders(vg_colorpicker_t *picker, bool sync_alpha) {
     if (!picker)
         return;
@@ -422,6 +455,7 @@ static void colorpicker_sync_sliders(vg_colorpicker_t *picker, bool sync_alpha) 
     picker->syncing_children = false;
 }
 
+/// @brief Update the preview, mark for repaint, and fire on_change if colour changed.
 static void colorpicker_emit_change(vg_colorpicker_t *picker, uint32_t old_color) {
     if (!picker)
         return;
@@ -435,6 +469,13 @@ static void colorpicker_emit_change(vg_colorpicker_t *picker, uint32_t old_color
 // ColorPicker API
 //=============================================================================
 
+/// @brief Set the picker's colour from a packed AARRGGBB value.
+///
+/// @details Updates all component fields and child sliders.  Fires on_change if
+///          the value differs from the previous colour.
+///
+/// @param picker The color picker to update.
+/// @param color  New AARRGGBB colour value.
 void vg_colorpicker_set_color(vg_colorpicker_t *picker, uint32_t color) {
     if (!picker)
         return;
@@ -447,13 +488,25 @@ void vg_colorpicker_set_color(vg_colorpicker_t *picker, uint32_t color) {
     colorpicker_emit_change(picker, old_color);
 }
 
+/// @brief Return the picker's current colour as a packed AARRGGBB value.
+///
+/// @param picker The color picker to query.
+/// @return Current AARRGGBB colour, or 0 if picker is NULL.
 uint32_t vg_colorpicker_get_color(vg_colorpicker_t *picker) {
     if (!picker)
         return 0;
     return picker->color;
 }
 
-/// @brief Colorpicker set rgb.
+/// @brief Set the red, green, and blue components without changing the alpha.
+///
+/// @details Updates the packed colour field and slider positions.  Fires
+///          on_change if the colour changes.
+///
+/// @param picker The color picker to update.
+/// @param r      New red component [0, 255].
+/// @param g      New green component [0, 255].
+/// @param b      New blue component [0, 255].
 void vg_colorpicker_set_rgb(vg_colorpicker_t *picker, uint8_t r, uint8_t g, uint8_t b) {
     if (!picker)
         return;
@@ -468,7 +521,12 @@ void vg_colorpicker_set_rgb(vg_colorpicker_t *picker, uint8_t r, uint8_t g, uint
     colorpicker_emit_change(picker, old_color);
 }
 
-/// @brief Colorpicker get rgb.
+/// @brief Retrieve the current red, green, and blue component values.
+///
+/// @param picker The color picker to query.
+/// @param r      Output parameter for the red component; may be NULL.
+/// @param g      Output parameter for the green component; may be NULL.
+/// @param b      Output parameter for the blue component; may be NULL.
 void vg_colorpicker_get_rgb(vg_colorpicker_t *picker, uint8_t *r, uint8_t *g, uint8_t *b) {
     if (!picker)
         return;
@@ -480,7 +538,10 @@ void vg_colorpicker_get_rgb(vg_colorpicker_t *picker, uint8_t *r, uint8_t *g, ui
         *b = picker->b;
 }
 
-/// @brief Colorpicker set alpha.
+/// @brief Set the alpha (opacity) component of the picker colour.
+///
+/// @param picker The color picker to update.
+/// @param alpha  New alpha component [0, 255]; 0 = fully transparent, 255 = opaque.
 void vg_colorpicker_set_alpha(vg_colorpicker_t *picker, uint8_t alpha) {
     if (!picker)
         return;
@@ -493,14 +554,20 @@ void vg_colorpicker_set_alpha(vg_colorpicker_t *picker, uint8_t alpha) {
     colorpicker_emit_change(picker, old_color);
 }
 
-/// @brief Colorpicker get alpha.
+/// @brief Return the current alpha component of the picker colour.
+///
+/// @param picker The color picker to query.
+/// @return Alpha value in [0, 255], or 255 (fully opaque) if picker is NULL.
 uint8_t vg_colorpicker_get_alpha(vg_colorpicker_t *picker) {
     if (!picker)
         return 255;
     return picker->a;
 }
 
-/// @brief Colorpicker show alpha.
+/// @brief Show or hide the alpha slider row.
+///
+/// @param picker The color picker to configure.
+/// @param show   true to display the alpha slider; false to hide it.
 void vg_colorpicker_show_alpha(vg_colorpicker_t *picker, bool show) {
     if (!picker)
         return;
@@ -513,7 +580,10 @@ void vg_colorpicker_show_alpha(vg_colorpicker_t *picker, bool show) {
     picker->base.needs_paint = true;
 }
 
-/// @brief Colorpicker show palette.
+/// @brief Show or hide the quick-access 16-colour palette row.
+///
+/// @param picker The color picker to configure.
+/// @param show   true to display the palette; false to hide it.
 void vg_colorpicker_show_palette(vg_colorpicker_t *picker, bool show) {
     if (!picker)
         return;
@@ -526,7 +596,12 @@ void vg_colorpicker_show_palette(vg_colorpicker_t *picker, bool show) {
     picker->base.needs_paint = true;
 }
 
-/// @brief Colorpicker set on change.
+/// @brief Register a callback invoked whenever the picker's colour changes.
+///
+/// @param picker    The color picker to configure.
+/// @param callback  Function called with (widget, color, user_data) on each
+///                  committed colour change.  May be NULL to unregister.
+/// @param user_data Opaque pointer forwarded unchanged to the callback.
 void vg_colorpicker_set_on_change(vg_colorpicker_t *picker,
                                   vg_colorpicker_callback_t callback,
                                   void *user_data) {
@@ -537,7 +612,11 @@ void vg_colorpicker_set_on_change(vg_colorpicker_t *picker,
     picker->on_change_data = user_data;
 }
 
-/// @brief Colorpicker set font.
+/// @brief Set the font and size used to render channel labels and value readouts.
+///
+/// @param picker The color picker to configure.
+/// @param font   Font to use; may be NULL (labels will not be rendered).
+/// @param size   Font size in logical pixels; values ≤ 0 default to 12.
 void vg_colorpicker_set_font(vg_colorpicker_t *picker, vg_font_t *font, float size) {
     if (!picker)
         return;

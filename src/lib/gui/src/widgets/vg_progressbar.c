@@ -5,10 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_progressbar.c
+// File: lib/gui/src/widgets/vg_progressbar.c
+// Purpose: ProgressBar widget implementation — determinate bar, circular ring,
+//          and indeterminate animation styles with optional percentage label.
+// Key invariants:
+//   - value is always clamped to [0.0, 1.0]; 0.0 = empty, 1.0 = full.
+//   - Indeterminate animation_phase is advanced in vg_progressbar_tick and
+//     wraps at 1.0.
+// Ownership/Lifetime:
+//   - No heap-allocated fields beyond the widget itself.
+// Links: lib/gui/include/vg_widgets.h,
+//        lib/gui/include/vg_theme.h
 //
 //===----------------------------------------------------------------------===//
-// vg_progressbar.c - ProgressBar widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
@@ -49,6 +58,7 @@ static vg_widget_vtable_t g_progressbar_vtable = {
 // VTable Implementations
 //=============================================================================
 
+/// @brief VTable measure: sizes the bar to 100 px wide and the taller of 8 px, the percentage label height, or 32% of theme input height.
 static void progressbar_measure(vg_widget_t *widget, float avail_w, float avail_h) {
     vg_progressbar_t *pb = (vg_progressbar_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -68,6 +78,7 @@ static void progressbar_measure(vg_widget_t *widget, float avail_w, float avail_
     vg_widget_apply_constraints(widget);
 }
 
+/// @brief VTable arrange: stores the assigned position and dimensions; no children to arrange.
 static void progressbar_arrange(vg_widget_t *widget, float x, float y, float w, float h) {
     widget->x = x;
     widget->y = y;
@@ -75,6 +86,7 @@ static void progressbar_arrange(vg_widget_t *widget, float x, float y, float w, 
     widget->height = h;
 }
 
+/// @brief Fills a rounded rectangle with @p radius corner arcs; degrades to a plain rect when radius is zero or the rect is too small.
 static void progressbar_fill_round_rect(vgfx_window_t win,
                                         int32_t x,
                                         int32_t y,
@@ -97,6 +109,7 @@ static void progressbar_fill_round_rect(vgfx_window_t win,
     vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
+/// @brief VTable paint: draws the track, then the fill (determinate bar or indeterminate sliding block), and optionally the percentage label.
 static void progressbar_paint(vg_widget_t *widget, void *canvas) {
     vg_progressbar_t *pb = (vg_progressbar_t *)widget;
     vgfx_window_t win = (vgfx_window_t)canvas;
@@ -157,6 +170,10 @@ static void progressbar_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief Create a progress bar widget.
+///
+/// @param parent Widget to attach to as a child (may be NULL).
+/// @return Newly allocated vg_progressbar_t, or NULL on allocation failure.
 vg_progressbar_t *vg_progressbar_create(vg_widget_t *parent) {
     vg_progressbar_t *progress = calloc(1, sizeof(vg_progressbar_t));
     if (!progress)
@@ -183,7 +200,10 @@ vg_progressbar_t *vg_progressbar_create(vg_widget_t *parent) {
     return progress;
 }
 
-/// @brief Progressbar set value.
+/// @brief Set the progress value; clamped to [0.0, 1.0].
+///
+/// @param progress The progress bar to update.
+/// @param value    Progress fraction (0.0 = empty, 1.0 = full).
 void vg_progressbar_set_value(vg_progressbar_t *progress, float value) {
     if (!progress)
         return;
@@ -197,12 +217,18 @@ void vg_progressbar_set_value(vg_progressbar_t *progress, float value) {
     progress->base.needs_paint = true;
 }
 
-/// @brief Progressbar get value.
+/// @brief Return the current progress value.
+///
+/// @param progress The progress bar to query.
+/// @return Current value in [0.0, 1.0], or 0 if progress is NULL.
 float vg_progressbar_get_value(vg_progressbar_t *progress) {
     return progress ? progress->value : 0;
 }
 
-/// @brief Progressbar set style.
+/// @brief Set the visual style of the progress indicator.
+///
+/// @param progress The progress bar to configure.
+/// @param style    VG_PROGRESS_BAR, VG_PROGRESS_CIRCLE, or VG_PROGRESS_INDETERMINATE.
 void vg_progressbar_set_style(vg_progressbar_t *progress, vg_progress_style_t style) {
     if (!progress)
         return;
@@ -212,7 +238,10 @@ void vg_progressbar_set_style(vg_progressbar_t *progress, vg_progress_style_t st
     progress->base.needs_paint = true;
 }
 
-/// @brief Progressbar show percentage.
+/// @brief Show or hide the percentage label drawn over the progress bar.
+///
+/// @param progress The progress bar to configure.
+/// @param show     true to show the percentage text; false to hide it.
 void vg_progressbar_show_percentage(vg_progressbar_t *progress, bool show) {
     if (!progress)
         return;
@@ -221,7 +250,11 @@ void vg_progressbar_show_percentage(vg_progressbar_t *progress, bool show) {
     progress->base.needs_paint = true;
 }
 
-/// @brief Progressbar tick.
+/// @brief Advance the indeterminate animation phase; call once per frame.
+///
+/// @param progress The progress bar to advance.
+/// @param dt       Elapsed time in seconds since the last tick. No-op for
+///                 non-indeterminate styles.
 void vg_progressbar_tick(vg_progressbar_t *progress, float dt) {
     if (!progress)
         return;

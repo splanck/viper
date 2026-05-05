@@ -5,20 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/peephole/BranchOpt.hpp
+// File: codegen/x86_64/peephole/BranchOpt.hpp
 // Purpose: Declarations for branch optimizations: greedy trace block layout,
 //          cold block reordering, branch chain elimination, conditional branch
 //          inversion, and fallthrough jump removal.
-//
 // Key invariants:
 //   - Branch rewrites preserve control-flow semantics.
 //   - Entry block always stays first in the layout.
 //   - Block reordering only moves cold blocks (trap/error handlers) to the end.
-//
 // Ownership/Lifetime:
 //   - Operates on mutable MFunction/instruction vectors owned by the caller.
-//
-// Links: src/codegen/x86_64/Peephole.hpp
+// Links: codegen/x86_64/peephole/BranchOpt.cpp,
+//        codegen/x86_64/peephole/PeepholeCommon.hpp,
+//        codegen/x86_64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 

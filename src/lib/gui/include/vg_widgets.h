@@ -4,53 +4,29 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file vg_widgets.h
-/// @brief Core widget library -- concrete implementations of standard UI controls.
-///
-/// @details This header declares all of the standard (non-IDE-specific) widget
-///          types provided by the Viper GUI toolkit. Each widget is represented
-///          as a C struct whose first member is a vg_widget_t base, enabling
-///          safe up-casts for generic tree operations.
-///
-///          Widgets included in this file:
-///          - **Label**        -- static or dynamic text display.
-///          - **Button**       -- clickable push button with multiple styles.
-///          - **TextInput**    -- single-line / multi-line text entry.
-///          - **Checkbox**     -- two/tri-state checkbox with label.
-///          - **ScrollView**   -- scrollable viewport with optional scrollbars.
-///          - **ListBox**      -- selectable item list with virtual scrolling.
-///          - **Dropdown**     -- combo-box / drop-down selector.
-///          - **Slider**       -- horizontal / vertical value slider.
-///          - **ProgressBar**  -- determinate / indeterminate progress indicator.
-///          - **RadioButton**  -- mutually exclusive radio buttons in groups.
-///          - **Image**        -- raster image display with scaling modes.
-///          - **Spinner**      -- numeric up/down input with step and range.
-///          - **ColorSwatch**  -- single-color preview square.
-///          - **ColorPalette** -- grid of colour swatches for quick selection.
-///          - **ColorPicker**  -- full RGB(A) picker with sliders and palette.
-///
-///          Every widget follows a common lifecycle pattern: create, configure
-///          via setters, add to a parent, and eventually destroy.
-///
-/// Key invariants:
-///   - Widget create functions return NULL on allocation failure.
-///   - String parameters (text, placeholder) are copied internally.
-///   - Callback user_data pointers are stored but never dereferenced by the
-///     widget; the application owns the pointed-to data.
-///
-/// Ownership/Lifetime:
-///   - Created widgets are owned by their parent once added; destroying the
-///     parent destroys all children.
-///   - Strings passed to setters are copied; the caller may free the original.
-///
-/// Links:
-///   - vg_widget.h      -- base widget structure and tree operations
-///   - vg_layout.h      -- layout containers (VBox, HBox, etc.)
-///   - vg_theme.h       -- theming for consistent appearance
-///   - vg_font.h        -- font handles referenced by widgets
-///   - vg_ide_widgets.h -- IDE-specific widgets (CodeEditor, TreeView, etc.)
-///
+//
+// File: lib/gui/include/vg_widgets.h
+// Purpose: Core widget library — concrete implementations of standard UI
+//          controls: Label, Button, TextInput, Checkbox, ScrollView, ListBox,
+//          Dropdown, Slider, ProgressBar, RadioButton, Image, Spinner,
+//          ColorSwatch, ColorPalette, and ColorPicker.
+// Key invariants:
+//   - Widget create functions return NULL on allocation failure.
+//   - String parameters (text, placeholder) are copied internally.
+//   - Callback user_data pointers are stored but never dereferenced by the
+//     widget; the application owns the pointed-to data.
+//   - Every widget struct's first member is vg_widget_t base, enabling safe
+//     pointer up-casts for generic tree operations.
+// Ownership/Lifetime:
+//   - Created widgets are owned by their parent once added; destroying the
+//     parent destroys all children.
+//   - Strings passed to setters are copied; the caller may free the original.
+// Links: lib/gui/include/vg_widget.h,
+//        lib/gui/include/vg_layout.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_font.h,
+//        lib/gui/include/vg_ide_widgets.h
+//
 //===----------------------------------------------------------------------===//
 #ifndef VG_WIDGETS_H
 #define VG_WIDGETS_H
@@ -591,31 +567,52 @@ typedef struct vg_listbox {
     void *on_activate_data;
 } vg_listbox_t;
 
-/// @brief Create a new listbox widget
+/// @brief Create a new listbox widget.
+/// @param parent Parent widget (can be NULL).
+/// @return New listbox widget or NULL on failure.
 vg_listbox_t *vg_listbox_create(vg_widget_t *parent);
 
-/// @brief Add an item to the listbox
+/// @brief Add an item to the listbox.
+/// @param listbox  ListBox widget.
+/// @param text     Item label text (copied internally).
+/// @param user_data Caller-owned data associated with the item.
+/// @return Pointer to the new item, or NULL on allocation failure.
 vg_listbox_item_t *vg_listbox_add_item(vg_listbox_t *listbox, const char *text, void *user_data);
 
-/// @brief Remove an item from the listbox
+/// @brief Remove an item from the listbox and free it.
+/// @param listbox ListBox widget.
+/// @param item    Item to remove (must belong to @p listbox).
 void vg_listbox_remove_item(vg_listbox_t *listbox, vg_listbox_item_t *item);
 
-/// @brief Clear all items
+/// @brief Remove and free all items in the listbox.
+/// @param listbox ListBox widget.
 void vg_listbox_clear(vg_listbox_t *listbox);
 
-/// @brief Select an item
+/// @brief Select an item (deselects the current selection first).
+/// @param listbox ListBox widget.
+/// @param item    Item to select, or NULL to deselect all.
 void vg_listbox_select(vg_listbox_t *listbox, vg_listbox_item_t *item);
 
-/// @brief Get selected item
+/// @brief Get the currently selected item.
+/// @param listbox ListBox widget.
+/// @return Selected item pointer, or NULL if nothing is selected.
 vg_listbox_item_t *vg_listbox_get_selected(vg_listbox_t *listbox);
 
 /// @brief Return true when an item handle still belongs to a live listbox.
+/// @param item Item handle to test.
+/// @return true if the item is still live; false if it has been removed or the listbox destroyed.
 bool vg_listbox_item_is_live(const vg_listbox_item_t *item);
 
-/// @brief Set font for listbox
+/// @brief Set the font used for item text rendering.
+/// @param listbox ListBox widget.
+/// @param font    Font handle.
+/// @param size    Font size in pixels.
 void vg_listbox_set_font(vg_listbox_t *listbox, vg_font_t *font, float size);
 
-/// @brief Set selection callback
+/// @brief Set the callback fired when the selection changes.
+/// @param listbox   ListBox widget.
+/// @param callback  Handler function.
+/// @param user_data User data passed to the handler.
 void vg_listbox_set_on_select(vg_listbox_t *listbox,
                               vg_listbox_callback_t callback,
                               void *user_data);
@@ -706,36 +703,56 @@ typedef struct vg_dropdown {
     void *on_change_data;
 } vg_dropdown_t;
 
-/// @brief Create a new dropdown widget
+/// @brief Create a new dropdown widget.
+/// @param parent Parent widget (can be NULL).
+/// @return New dropdown widget or NULL on failure.
 vg_dropdown_t *vg_dropdown_create(vg_widget_t *parent);
 
-/// @brief Add an item to the dropdown
+/// @brief Add an item to the dropdown.
+/// @param dropdown Dropdown widget.
+/// @param text     Item label text (copied internally).
+/// @return Index of the newly added item.
 int vg_dropdown_add_item(vg_dropdown_t *dropdown, const char *text);
 
-/// @brief Remove an item by index
+/// @brief Remove an item by index.
+/// @param dropdown Dropdown widget.
+/// @param index    Zero-based index of the item to remove.
 void vg_dropdown_remove_item(vg_dropdown_t *dropdown, int index);
 
-/// @brief Clear all items
+/// @brief Remove and free all items from the dropdown.
+/// @param dropdown Dropdown widget.
 void vg_dropdown_clear(vg_dropdown_t *dropdown);
 
-/// @brief Set selected index
+/// @brief Set the currently selected item by index.
+/// @param dropdown Dropdown widget.
+/// @param index    Zero-based item index, or -1 to show the placeholder.
 void vg_dropdown_set_selected(vg_dropdown_t *dropdown, int index);
 
-/// @brief Get selected index
+/// @brief Get the currently selected item index.
+/// @param dropdown Dropdown widget.
+/// @return Zero-based index of the selected item, or -1 if nothing is selected.
 int vg_dropdown_get_selected(vg_dropdown_t *dropdown);
 
-/// @brief Get selected text
+/// @brief Get the text of the currently selected item.
+/// @param dropdown Dropdown widget.
+/// @return Read-only pointer to the selected item's text, or NULL if nothing is selected.
 const char *vg_dropdown_get_selected_text(vg_dropdown_t *dropdown);
 
-/// @brief Set placeholder text
-/// @param dropdown Dropdown widget
-/// @param text Placeholder text (copied internally; NULL clears it)
+/// @brief Set placeholder text shown when no item is selected.
+/// @param dropdown Dropdown widget.
+/// @param text     Placeholder text (copied internally; NULL clears it).
 void vg_dropdown_set_placeholder(vg_dropdown_t *dropdown, const char *text);
 
-/// @brief Set font for dropdown
+/// @brief Set the font used for item text rendering.
+/// @param dropdown Dropdown widget.
+/// @param font     Font handle.
+/// @param size     Font size in pixels.
 void vg_dropdown_set_font(vg_dropdown_t *dropdown, vg_font_t *font, float size);
 
-/// @brief Set change callback
+/// @brief Set the callback fired when the selection changes.
+/// @param dropdown  Dropdown widget.
+/// @param callback  Handler function.
+/// @param user_data User data passed to the handler.
 void vg_dropdown_set_on_change(vg_dropdown_t *dropdown,
                                vg_dropdown_callback_t callback,
                                void *user_data);
@@ -785,22 +802,37 @@ typedef struct vg_slider {
     void *on_change_data;
 } vg_slider_t;
 
-/// @brief Create a new slider widget
+/// @brief Create a new slider widget.
+/// @param parent      Parent widget (can be NULL).
+/// @param orientation VG_SLIDER_HORIZONTAL or VG_SLIDER_VERTICAL.
+/// @return New slider widget or NULL on failure.
 vg_slider_t *vg_slider_create(vg_widget_t *parent, vg_slider_orientation_t orientation);
 
-/// @brief Set slider value
+/// @brief Set the current slider value (clamped to [min, max]).
+/// @param slider Slider widget.
+/// @param value  New value.
 void vg_slider_set_value(vg_slider_t *slider, float value);
 
-/// @brief Get slider value
+/// @brief Get the current slider value.
+/// @param slider Slider widget.
+/// @return Current value in [min, max].
 float vg_slider_get_value(vg_slider_t *slider);
 
-/// @brief Set value range
+/// @brief Set the allowed value range.
+/// @param slider  Slider widget.
+/// @param min_val Minimum value.
+/// @param max_val Maximum value.
 void vg_slider_set_range(vg_slider_t *slider, float min_val, float max_val);
 
-/// @brief Set step increment
+/// @brief Set the discrete step increment.
+/// @param slider Slider widget.
+/// @param step   Step size; pass 0 for continuous movement.
 void vg_slider_set_step(vg_slider_t *slider, float step);
 
-/// @brief Set change callback
+/// @brief Set the callback fired when the value changes.
+/// @param slider    Slider widget.
+/// @param callback  Handler function.
+/// @param user_data User data passed to the handler.
 void vg_slider_set_on_change(vg_slider_t *slider, vg_slider_callback_t callback, void *user_data);
 
 //=============================================================================
@@ -835,19 +867,29 @@ typedef struct vg_progressbar {
     float animation_phase; ///< Current animation phase
 } vg_progressbar_t;
 
-/// @brief Create a new progress bar widget
+/// @brief Create a new progress bar widget.
+/// @param parent Parent widget (can be NULL).
+/// @return New progress bar widget or NULL on failure.
 vg_progressbar_t *vg_progressbar_create(vg_widget_t *parent);
 
-/// @brief Set progress value (0-1)
+/// @brief Set the progress value (clamped to [0, 1]).
+/// @param progress Progress bar widget.
+/// @param value    Normalised progress in the range [0.0, 1.0].
 void vg_progressbar_set_value(vg_progressbar_t *progress, float value);
 
-/// @brief Get progress value
+/// @brief Get the current progress value.
+/// @param progress Progress bar widget.
+/// @return Normalised progress in [0.0, 1.0].
 float vg_progressbar_get_value(vg_progressbar_t *progress);
 
-/// @brief Set progress style
+/// @brief Set the rendering style.
+/// @param progress Progress bar widget.
+/// @param style    One of VG_PROGRESS_BAR, VG_PROGRESS_CIRCULAR, or VG_PROGRESS_INDETERMINATE.
 void vg_progressbar_set_style(vg_progressbar_t *progress, vg_progress_style_t style);
 
-/// @brief Set whether to show percentage text
+/// @brief Show or hide the percentage text label.
+/// @param progress Progress bar widget.
+/// @param show     true to overlay the percentage string on the bar.
 void vg_progressbar_show_percentage(vg_progressbar_t *progress, bool show);
 
 /// @brief Advance indeterminate animation; call each frame with elapsed seconds
@@ -892,27 +934,41 @@ typedef struct vg_radiobutton {
     void *on_change_data;
 } vg_radiobutton_t;
 
-/// @brief Create a new radio group
+/// @brief Create a new radio group to manage mutual exclusivity.
+/// @return Newly allocated radio group, or NULL on failure.
 vg_radiogroup_t *vg_radiogroup_create(void);
 
-/// @brief Destroy a radio group
+/// @brief Destroy a radio group (does not destroy the member buttons).
+/// @param group Radio group to destroy (may be NULL).
 void vg_radiogroup_destroy(vg_radiogroup_t *group);
 
-/// @brief Create a new radio button
+/// @brief Create a new radio button and register it in a group.
+/// @param parent Parent widget (can be NULL).
+/// @param text   Label text (copied internally).
+/// @param group  Group that enforces mutual exclusivity (can be NULL for standalone).
+/// @return New radio button widget or NULL on failure.
 vg_radiobutton_t *vg_radiobutton_create(vg_widget_t *parent,
                                         const char *text,
                                         vg_radiogroup_t *group);
 
-/// @brief Set radio button selected state
+/// @brief Set this radio button's selected state and deselect siblings in its group.
+/// @param radio    Radio button widget.
+/// @param selected true to select; false to deselect.
 void vg_radiobutton_set_selected(vg_radiobutton_t *radio, bool selected);
 
-/// @brief Check if radio button is selected
+/// @brief Check whether this radio button is currently selected.
+/// @param radio Radio button widget.
+/// @return true if selected.
 bool vg_radiobutton_is_selected(vg_radiobutton_t *radio);
 
-/// @brief Get selected index in a group
+/// @brief Get the index of the currently selected button within the group.
+/// @param group Radio group.
+/// @return Zero-based index of the selected button, or -1 if none is selected.
 int vg_radiogroup_get_selected(vg_radiogroup_t *group);
 
-/// @brief Set selected index in a group
+/// @brief Select the button at the given index within the group.
+/// @param group Radio group.
+/// @param index Zero-based index of the button to select.
 void vg_radiogroup_set_selected(vg_radiogroup_t *group, int index);
 
 //=============================================================================
@@ -942,22 +998,36 @@ typedef struct vg_image {
     float corner_radius; ///< Corner radius for rounded images
 } vg_image_t;
 
-/// @brief Create a new image widget
+/// @brief Create a new image widget with no initial pixel data.
+/// @param parent Parent widget (can be NULL).
+/// @return New image widget or NULL on failure.
 vg_image_t *vg_image_create(vg_widget_t *parent);
 
-/// @brief Set image from RGBA pixel data
+/// @brief Set image pixel data from an RGBA buffer (copied internally).
+/// @param image  Image widget.
+/// @param pixels RGBA pixel data (4 bytes per pixel).
+/// @param width  Image width in pixels.
+/// @param height Image height in pixels.
 void vg_image_set_pixels(vg_image_t *image, const uint8_t *pixels, int width, int height);
 
-/// @brief Load image from file (PNG, JPEG, BMP)
+/// @brief Load image pixel data from a file (PNG, JPEG, or BMP).
+/// @param image Image widget.
+/// @param path  Filesystem path to the image file (UTF-8).
+/// @return true on success; false if the file cannot be read or decoded.
 bool vg_image_load_file(vg_image_t *image, const char *path);
 
-/// @brief Clear image data
+/// @brief Free the current pixel data and reset the image to an empty state.
+/// @param image Image widget.
 void vg_image_clear(vg_image_t *image);
 
-/// @brief Set scaling mode
+/// @brief Set the scaling mode used when the widget size differs from the image size.
+/// @param image Image widget.
+/// @param mode  One of VG_IMAGE_SCALE_NONE, FIT, FILL, or STRETCH.
 void vg_image_set_scale_mode(vg_image_t *image, vg_image_scale_t mode);
 
-/// @brief Set image opacity
+/// @brief Set the rendering opacity.
+/// @param image   Image widget.
+/// @param opacity Opacity in the range [0.0, 1.0] (0 = transparent, 1 = opaque).
 void vg_image_set_opacity(vg_image_t *image, float opacity);
 
 //=============================================================================
@@ -1001,28 +1071,47 @@ typedef struct vg_spinner {
     void *on_change_data;
 } vg_spinner_t;
 
-/// @brief Create a new spinner widget
+/// @brief Create a new spinner widget with default range [0, 100] and step 1.
+/// @param parent Parent widget (can be NULL).
+/// @return New spinner widget or NULL on failure.
 vg_spinner_t *vg_spinner_create(vg_widget_t *parent);
 
-/// @brief Set spinner value
+/// @brief Set the current numeric value (clamped to [min, max]).
+/// @param spinner Spinner widget.
+/// @param value   New value.
 void vg_spinner_set_value(vg_spinner_t *spinner, double value);
 
-/// @brief Get spinner value
+/// @brief Get the current numeric value.
+/// @param spinner Spinner widget.
+/// @return Current value in [min, max].
 double vg_spinner_get_value(vg_spinner_t *spinner);
 
-/// @brief Set value range
+/// @brief Set the allowed value range.
+/// @param spinner Spinner widget.
+/// @param min_val Minimum allowed value.
+/// @param max_val Maximum allowed value.
 void vg_spinner_set_range(vg_spinner_t *spinner, double min_val, double max_val);
 
-/// @brief Set step increment
+/// @brief Set the increment applied by the up/down buttons.
+/// @param spinner Spinner widget.
+/// @param step    Step size (must be > 0).
 void vg_spinner_set_step(vg_spinner_t *spinner, double step);
 
-/// @brief Set decimal places
+/// @brief Set the number of decimal places shown in the text field.
+/// @param spinner  Spinner widget.
+/// @param decimals Number of digits after the decimal point (0 = integer display).
 void vg_spinner_set_decimals(vg_spinner_t *spinner, int decimals);
 
-/// @brief Set font for spinner
+/// @brief Set the font used to display the numeric value.
+/// @param spinner Spinner widget.
+/// @param font    Font handle.
+/// @param size    Font size in pixels.
 void vg_spinner_set_font(vg_spinner_t *spinner, vg_font_t *font, float size);
 
-/// @brief Set change callback
+/// @brief Set the callback fired when the value changes.
+/// @param spinner   Spinner widget.
+/// @param callback  Handler function.
+/// @param user_data User data passed to the handler.
 void vg_spinner_set_on_change(vg_spinner_t *spinner,
                               vg_spinner_callback_t callback,
                               void *user_data);

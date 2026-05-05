@@ -5,15 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_floatingpanel.c
+// File: lib/gui/src/widgets/vg_floatingpanel.c
+// Purpose: Lightweight overlay panel that draws at an absolute screen position
+//          during the overlay pass, appearing above normal layout content.
+//          Children are part of the widget tree so hit-testing, focus, and
+//          destruction use the normal widget machinery.
+// Key invariants:
+//   - floatingpanel_measure always returns 0×0 so the panel takes no space in
+//     the normal layout pass.
+//   - Children are painted with abs_x/abs_y injected temporarily into widget->x/y
+//     and _paint_screen_space set to true; original values are restored afterwards.
+//   - floatingpanel_child_render_boundary stops subtree traversal at scroll-views
+//     and other panels (widgets that handle their own overlay rendering).
+//   - dragging is cleared automatically when the panel is hidden.
+// Ownership/Lifetime:
+//   - The panel is a standard widget; children added via vg_widget_add_child are
+//     freed in the normal widget destruction chain.
+// Links: lib/gui/include/vg_ide_widgets.h,
+//        lib/gui/include/vg_widget.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_floatingpanel.c - Floating overlay panel widget
-//
-// A lightweight overlay that draws at an absolute screen position regardless
-// of the normal layout hierarchy. Children are part of the widget tree so hit
-// testing, focus, and destruction use the normal widget machinery, but the
-// panel renders them during the overlay pass so they appear above normal content.
 //
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
@@ -77,6 +90,7 @@ static vg_widget_vtable_t g_floatingpanel_vtable = {
 // Implementation
 //=============================================================================
 
+/// @brief Fill a rounded rectangle, falling back to a plain rect when radius is zero or too large.
 static void floatingpanel_fill_round_rect(vgfx_window_t win,
                                           int32_t x,
                                           int32_t y,
@@ -108,6 +122,7 @@ static void floatingpanel_fill_round_rect(vgfx_window_t win,
     vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
+/// @brief Stroke the border of a rounded rectangle, falling back to a plain rect when radius is zero or too large.
 static void floatingpanel_stroke_round_rect(vgfx_window_t win,
                                             int32_t x,
                                             int32_t y,
@@ -140,6 +155,14 @@ static void floatingpanel_stroke_round_rect(vgfx_window_t win,
     vgfx_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
+/// @brief Create a floating panel widget and optionally attach it to a root widget.
+///
+/// @details Initialises the panel with theme-derived background and border colours,
+///          sets it invisible, and adds it as a child of root so that
+///          paint_overlay is dispatched during the root's overlay pass.
+///
+/// @param root Widget to attach the panel to; may be NULL (panel exists but won't be painted).
+/// @return     Newly allocated panel, or NULL on allocation failure.
 vg_floatingpanel_t *vg_floatingpanel_create(vg_widget_t *root) {
     vg_floatingpanel_t *panel = calloc(1, sizeof(vg_floatingpanel_t));
     if (!panel)
@@ -163,18 +186,22 @@ vg_floatingpanel_t *vg_floatingpanel_create(vg_widget_t *root) {
     return panel;
 }
 
+/// @brief vtable destroy — release input capture if this panel held it.
 static void floatingpanel_destroy(vg_widget_t *widget) {
     if (vg_widget_get_input_capture() == widget)
         vg_widget_release_input_capture();
 }
 
-/// @brief Floatingpanel destroy.
+/// @brief Destroy the panel and free all resources, including its child widgets.
+///
+/// @param panel Panel to destroy; may be NULL (no-op).
 void vg_floatingpanel_destroy(vg_floatingpanel_t *panel) {
     if (!panel)
         return;
     vg_widget_destroy(&panel->base);
 }
 
+/// @brief vtable measure — always reports 0×0; the panel occupies no space in the normal layout pass.
 static void floatingpanel_measure(vg_widget_t *widget,
                                   float available_width,
                                   float available_height) {
@@ -185,6 +212,7 @@ static void floatingpanel_measure(vg_widget_t *widget,
     widget->measured_height = 0.0f;
 }
 
+/// @brief vtable arrange — pins the panel at its absolute position and stacks visible children vertically within the content area.
 static void floatingpanel_arrange(vg_widget_t *widget, float x, float y, float width, float height) {
     (void)x;
     (void)y;
@@ -226,13 +254,13 @@ static void floatingpanel_arrange(vg_widget_t *widget, float x, float y, float w
     }
 }
 
-// Normal paint pass — do nothing; all drawing happens in paint_overlay.
+/// @brief vtable paint — no-op; all drawing happens in floatingpanel_paint_overlay.
 static void floatingpanel_paint(vg_widget_t *widget, void *canvas) {
     (void)widget;
     (void)canvas;
 }
 
-// Overlay pass — paint background, border, and children.
+/// @brief vtable paint_overlay — renders background, drop-shadow, border, then recursively paints all children at screen-space coordinates.
 static void floatingpanel_paint_overlay(vg_widget_t *widget, void *canvas) {
     vg_floatingpanel_t *panel = (vg_floatingpanel_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -290,6 +318,7 @@ static void floatingpanel_paint_overlay(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief vtable handle_event — processes mouse-down/move/up to implement panel dragging.
 static bool floatingpanel_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_floatingpanel_t *panel = (vg_floatingpanel_t *)widget;
     if (!widget->visible)
@@ -330,6 +359,7 @@ static bool floatingpanel_handle_event(vg_widget_t *widget, vg_event_t *event) {
     }
 }
 
+/// @brief Return true if widget manages its own overlay rendering and subtree traversal should stop here.
 static bool floatingpanel_child_render_boundary(const vg_widget_t *widget) {
     if (!widget)
         return false;
@@ -338,6 +368,7 @@ static bool floatingpanel_child_render_boundary(const vg_widget_t *widget) {
     return widget->type == VG_WIDGET_CUSTOM && widget->vtable && widget->vtable->paint_overlay;
 }
 
+/// @brief Recursively call each child's paint vtable with screen-space coordinates, stopping at render boundaries.
 static void floatingpanel_render_normal_subtree(vg_widget_t *widget,
                                                 void *canvas,
                                                 float parent_abs_x,
@@ -369,6 +400,7 @@ static void floatingpanel_render_normal_subtree(vg_widget_t *widget,
     }
 }
 
+/// @brief Recursively call each child's paint_overlay vtable with screen-space coordinates, stopping at render boundaries.
 static void floatingpanel_render_overlay_subtree(vg_widget_t *widget,
                                                  void *canvas,
                                                  float parent_abs_x,
@@ -400,7 +432,11 @@ static void floatingpanel_render_overlay_subtree(vg_widget_t *widget,
     }
 }
 
-/// @brief Floatingpanel set position.
+/// @brief Set the top-left screen-space position of the panel and request a layout pass.
+///
+/// @param panel Panel to reposition; may be NULL (no-op).
+/// @param x     Horizontal screen coordinate in logical pixels.
+/// @param y     Vertical screen coordinate in logical pixels.
 void vg_floatingpanel_set_position(vg_floatingpanel_t *panel, float x, float y) {
     if (!panel)
         return;
@@ -410,7 +446,11 @@ void vg_floatingpanel_set_position(vg_floatingpanel_t *panel, float x, float y) 
     panel->base.needs_paint = true;
 }
 
-/// @brief Floatingpanel set size.
+/// @brief Set the explicit size of the panel and request a layout pass.
+///
+/// @param panel Panel to resize; may be NULL (no-op).
+/// @param w     Width in logical pixels.
+/// @param h     Height in logical pixels.
 void vg_floatingpanel_set_size(vg_floatingpanel_t *panel, float w, float h) {
     if (!panel)
         return;
@@ -420,7 +460,13 @@ void vg_floatingpanel_set_size(vg_floatingpanel_t *panel, float w, float h) {
     panel->base.needs_paint = true;
 }
 
-/// @brief Floatingpanel set visible.
+/// @brief Show or hide the panel, clearing the dragging state when hiding.
+///
+/// @details Hiding while a drag is active releases dragging without releasing input
+///          capture — callers should follow with vg_widget_release_input_capture if needed.
+///
+/// @param panel   Panel to show or hide; may be NULL (no-op).
+/// @param visible Non-zero to make visible, zero to hide.
 void vg_floatingpanel_set_visible(vg_floatingpanel_t *panel, int visible) {
     if (!panel)
         return;
@@ -429,7 +475,10 @@ void vg_floatingpanel_set_visible(vg_floatingpanel_t *panel, int visible) {
     vg_widget_set_visible(&panel->base, visible != 0);
 }
 
-/// @brief Floatingpanel add child.
+/// @brief Append a child widget to the panel and invalidate layout.
+///
+/// @param panel Panel to add to; may be NULL (no-op).
+/// @param child Widget to append; may be NULL (no-op). Ownership transfers to the panel.
 void vg_floatingpanel_add_child(vg_floatingpanel_t *panel, vg_widget_t *child) {
     if (!panel || !child)
         return;

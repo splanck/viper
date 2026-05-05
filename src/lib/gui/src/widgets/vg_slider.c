@@ -5,10 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_slider.c
+// File: lib/gui/src/widgets/vg_slider.c
+// Purpose: Slider widget implementation — horizontal or vertical range selector
+//          with clamping, optional step snapping, and an on_change callback.
+// Key invariants:
+//   - value is always clamped to [min_value, max_value] after every set.
+//   - step == 0 means continuous (no snapping); step > 0 snaps to nearest multiple.
+//   - on_change is fired only when the value actually changes.
+// Ownership/Lifetime:
+//   - No heap-allocated fields beyond the widget itself.
+// Links: lib/gui/include/vg_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_slider.c - Slider widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
@@ -44,6 +54,7 @@ static vg_widget_vtable_t g_slider_vtable = {
 // Vtable Implementations
 //=============================================================================
 
+/// @brief Returns the slider's current value as a normalised fraction in [0, 1] within [min, max].
 static float slider_normalized_value(const vg_slider_t *slider) {
     float range = slider->max_value - slider->min_value;
     float norm = (range > 0.0f) ? (slider->value - slider->min_value) / range : 0.0f;
@@ -54,6 +65,7 @@ static float slider_normalized_value(const vg_slider_t *slider) {
     return norm;
 }
 
+/// @brief Converts widget-local coordinates @p x/@p y to a normalised fraction [0, 1] along the track axis.
 static float slider_normalized_from_point(const vg_slider_t *slider, float x, float y) {
     float thumb_r = slider->thumb_size > 0.0f ? slider->thumb_size * 0.5f : 8.0f;
     float norm = 0.0f;
@@ -71,6 +83,7 @@ static float slider_normalized_from_point(const vg_slider_t *slider, float x, fl
     return norm;
 }
 
+/// @brief VTable measure: sets a 100 px preferred length along the track axis and thumb_size along the cross axis.
 static void slider_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_slider_t *slider = (vg_slider_t *)widget;
     (void)available_width;
@@ -85,6 +98,7 @@ static void slider_measure(vg_widget_t *widget, float available_width, float ava
     vg_widget_apply_constraints(widget);
 }
 
+/// @brief VTable arrange: stores the assigned position and dimensions; the slider has no children to arrange.
 static void slider_arrange(vg_widget_t *widget, float x, float y, float w, float h) {
     widget->x = x;
     widget->y = y;
@@ -92,10 +106,12 @@ static void slider_arrange(vg_widget_t *widget, float x, float y, float w, float
     widget->height = h;
 }
 
+/// @brief VTable can_focus: returns true when the widget is both enabled and visible.
 static bool slider_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
 
+/// @brief VTable paint: draws the track background, filled portion, thumb circle with border and hover/drag tint, and focus rect.
 static void slider_paint(vg_widget_t *widget, void *canvas) {
     vg_slider_t *slider = (vg_slider_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -177,6 +193,7 @@ static void slider_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief VTable handle_event: handles thumb drag (mouse-down/move/up), track click-to-jump, leave unhover, and arrow/Home/End keyboard control.
 static bool slider_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_slider_t *slider = (vg_slider_t *)widget;
     float w = widget->width, h = widget->height;
@@ -298,6 +315,11 @@ static bool slider_handle_event(vg_widget_t *widget, vg_event_t *event) {
     return false;
 }
 
+/// @brief Create a slider widget.
+///
+/// @param parent      Widget to attach to as a child (may be NULL).
+/// @param orientation VG_SLIDER_HORIZONTAL or VG_SLIDER_VERTICAL.
+/// @return Newly allocated vg_slider_t, or NULL on allocation failure.
 vg_slider_t *vg_slider_create(vg_widget_t *parent, vg_slider_orientation_t orientation) {
     vg_slider_t *slider = calloc(1, sizeof(vg_slider_t));
     if (!slider)
@@ -333,7 +355,10 @@ vg_slider_t *vg_slider_create(vg_widget_t *parent, vg_slider_orientation_t orien
     return slider;
 }
 
-/// @brief Slider set value.
+/// @brief Set the slider value; clamps to [min, max] and snaps to step if set.
+///
+/// @param slider The slider to update.
+/// @param value  New value (clamped and step-snapped before storing).
 void vg_slider_set_value(vg_slider_t *slider, float value) {
     if (!slider)
         return;
@@ -367,12 +392,19 @@ void vg_slider_set_value(vg_slider_t *slider, float value) {
     }
 }
 
-/// @brief Slider get value.
+/// @brief Return the current slider value.
+///
+/// @param slider The slider to query.
+/// @return Current value, or 0 if slider is NULL.
 float vg_slider_get_value(vg_slider_t *slider) {
     return slider ? slider->value : 0;
 }
 
-/// @brief Slider set range.
+/// @brief Set the slider's minimum and maximum values; re-clamps the current value.
+///
+/// @param slider  The slider to configure.
+/// @param min_val Minimum value (swapped with max_val if larger).
+/// @param max_val Maximum value.
 void vg_slider_set_range(vg_slider_t *slider, float min_val, float max_val) {
     if (!slider)
         return;
@@ -390,7 +422,10 @@ void vg_slider_set_range(vg_slider_t *slider, float min_val, float max_val) {
     slider->base.needs_paint = true;
 }
 
-/// @brief Slider set step.
+/// @brief Set the step increment for discrete snapping.
+///
+/// @param slider The slider to configure.
+/// @param step   Positive step size; 0 or non-finite disables snapping (continuous).
 void vg_slider_set_step(vg_slider_t *slider, float step) {
     if (!slider)
         return;
@@ -398,7 +433,11 @@ void vg_slider_set_step(vg_slider_t *slider, float step) {
     slider->base.needs_paint = true;
 }
 
-/// @brief Slider set on change.
+/// @brief Set the change callback invoked when the slider value changes.
+///
+/// @param slider    The slider to configure.
+/// @param callback  Function called with (widget, new_value, user_data).
+/// @param user_data Opaque pointer passed to @p callback.
 void vg_slider_set_on_change(vg_slider_t *slider, vg_slider_callback_t callback, void *user_data) {
     if (!slider)
         return;

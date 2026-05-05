@@ -5,14 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/include/vg_ide_widgets_editor.h
-// Purpose: CodeEditor, FindReplaceBar, and Minimap widget declarations.
+// File: lib/gui/include/vg_ide_widgets_editor.h
+// Purpose: CodeEditor, FindReplaceBar, and Minimap widget declarations —
+//          syntax-highlighted multi-cursor editing with undo/redo, folding,
+//          IntelliSense completion, and an integrated minimap overview.
 // Key invariants:
 //   - All create functions return NULL on allocation failure.
 //   - String parameters are copied internally unless documented otherwise.
+//   - Line and column indices are zero-based throughout the editor API.
 // Ownership/Lifetime:
 //   - Widgets are owned by their parent in the widget tree.
-// Links: vg_ide_widgets_common.h, vg_widget.h
+// Links: lib/gui/include/vg_ide_widgets_common.h,
+//        lib/gui/include/vg_widget.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -220,76 +224,123 @@ typedef struct vg_codeeditor {
     int extra_cursor_cap;   ///< Allocated capacity
 } vg_codeeditor_t;
 
-/// @brief Advance caret blink state for a code editor.
+/// @brief Advance the cursor blink timer; call each frame.
+/// @param editor Code editor widget.
+/// @param dt     Elapsed time in seconds since the last call.
 void vg_codeeditor_tick(vg_codeeditor_t *editor, float dt);
 
-/// @brief Create a new code editor widget
+/// @brief Create a new code editor widget.
+/// @param parent Parent widget (can be NULL).
+/// @return New code editor or NULL on failure.
 vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent);
 
-/// @brief Set editor text content
+/// @brief Replace the entire document with new text.
+/// @param editor Code editor widget.
+/// @param text   Null-terminated UTF-8 string (copied internally).
 void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text);
 
-/// @brief Get editor text content (caller must free)
+/// @brief Return the full document text as a newly allocated string.
+/// @param editor Code editor widget.
+/// @return Caller-owned null-terminated string; must be freed with free().
 char *vg_codeeditor_get_text(vg_codeeditor_t *editor);
 
-/// @brief Get selected text (caller must free, or NULL if no selection)
+/// @brief Return the currently selected text as a newly allocated string.
+/// @param editor Code editor widget.
+/// @return Caller-owned null-terminated string, or NULL if no selection.
 char *vg_codeeditor_get_selection(vg_codeeditor_t *editor);
 
-/// @brief Set cursor position
+/// @brief Move the primary cursor to a specific line and column.
+/// @param editor Code editor widget.
+/// @param line   Zero-based line index.
+/// @param col    Zero-based column (character) index.
 void vg_codeeditor_set_cursor(vg_codeeditor_t *editor, int line, int col);
 
-/// @brief Get cursor position
+/// @brief Retrieve the current primary cursor position.
+/// @param editor   Code editor widget.
+/// @param out_line Receives the zero-based line index (may be NULL).
+/// @param out_col  Receives the zero-based column index (may be NULL).
 void vg_codeeditor_get_cursor(vg_codeeditor_t *editor, int *out_line, int *out_col);
 
-/// @brief Set selection range
+/// @brief Set the selection range.
+/// @param editor     Code editor widget.
+/// @param start_line Selection start line (zero-based, inclusive).
+/// @param start_col  Selection start column (zero-based, inclusive).
+/// @param end_line   Selection end line (zero-based, exclusive).
+/// @param end_col    Selection end column (zero-based, exclusive).
 void vg_codeeditor_set_selection(
     vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col);
 
-/// @brief Insert text at cursor
+/// @brief Insert text at the current cursor position, pushing it into undo history.
+/// @param editor Code editor widget.
+/// @param text   Null-terminated UTF-8 string to insert.
 void vg_codeeditor_insert_text(vg_codeeditor_t *editor, const char *text);
 
-/// @brief Delete selected text
+/// @brief Delete the currently selected text, pushing the operation into undo history.
+/// @param editor Code editor widget.
 void vg_codeeditor_delete_selection(vg_codeeditor_t *editor);
 
-/// @brief Scroll to line
+/// @brief Scroll the view so that the specified line is visible.
+/// @param editor Code editor widget.
+/// @param line   Zero-based line index to scroll to.
 void vg_codeeditor_scroll_to_line(vg_codeeditor_t *editor, int line);
 
-/// @brief Set syntax highlighter
+/// @brief Set the syntax highlighting callback invoked per visible line.
+/// @param editor    Code editor widget.
+/// @param callback  Function called with the line number, text, and a writable colour array.
+/// @param user_data User data passed to the callback.
 void vg_codeeditor_set_syntax(vg_codeeditor_t *editor,
                               vg_syntax_callback_t callback,
                               void *user_data);
 
-/// @brief Undo last action
+/// @brief Undo the most recent edit operation.
+/// @param editor Code editor widget.
 void vg_codeeditor_undo(vg_codeeditor_t *editor);
 
-/// @brief Redo last undone action
+/// @brief Re-apply the most recently undone operation.
+/// @param editor Code editor widget.
 void vg_codeeditor_redo(vg_codeeditor_t *editor);
 
-/// @brief Copy selected text to clipboard
+/// @brief Copy the current selection to the system clipboard.
+/// @param editor Code editor widget.
+/// @return true if text was copied; false if nothing was selected.
 bool vg_codeeditor_copy(vg_codeeditor_t *editor);
 
-/// @brief Cut selected text to clipboard
+/// @brief Cut the current selection to the system clipboard.
+/// @param editor Code editor widget.
+/// @return true if text was cut; false if nothing was selected.
 bool vg_codeeditor_cut(vg_codeeditor_t *editor);
 
-/// @brief Paste text from clipboard
+/// @brief Insert clipboard text at the current cursor position.
+/// @param editor Code editor widget.
+/// @return true on success; false if the clipboard is empty or unavailable.
 bool vg_codeeditor_paste(vg_codeeditor_t *editor);
 
-/// @brief Select all text
+/// @brief Select the entire document.
+/// @param editor Code editor widget.
 void vg_codeeditor_select_all(vg_codeeditor_t *editor);
 
-/// @brief Set font for code editor
+/// @brief Set the monospace font used for code rendering.
+/// @param editor Code editor widget.
+/// @param font   Font handle (should be a monospace face).
+/// @param size   Font size in pixels.
 void vg_codeeditor_set_font(vg_codeeditor_t *editor, vg_font_t *font, float size);
 
-/// @brief Get line count
+/// @brief Get the total number of lines in the document.
+/// @param editor Code editor widget.
+/// @return Line count (always >= 1).
 int vg_codeeditor_get_line_count(vg_codeeditor_t *editor);
 
-/// @brief Check if document is modified
+/// @brief Check whether the document has unsaved modifications.
+/// @param editor Code editor widget.
+/// @return true if the document has been modified since the last save/clear.
 bool vg_codeeditor_is_modified(vg_codeeditor_t *editor);
 
-/// @brief Clear modified flag
+/// @brief Clear the modified flag (e.g., after a successful save).
+/// @param editor Code editor widget.
 void vg_codeeditor_clear_modified(vg_codeeditor_t *editor);
 
-/// @brief Recompute gutter/layout state after runtime-side visual option changes.
+/// @brief Recompute gutter width and layout metrics after visual option changes.
+/// @param editor Code editor widget.
 void vg_codeeditor_refresh_layout_state(vg_codeeditor_t *editor);
 
 //=============================================================================
@@ -371,54 +422,81 @@ typedef struct vg_findreplacebar {
     void (*on_close)(struct vg_findreplacebar *bar, void *user_data);
 } vg_findreplacebar_t;
 
-/// @brief Create a new find/replace bar widget
+/// @brief Create a new find/replace bar widget (not yet attached to a parent).
+/// @return New find/replace bar or NULL on failure.
 vg_findreplacebar_t *vg_findreplacebar_create(void);
 
-/// @brief Destroy a find/replace bar widget
+/// @brief Destroy a find/replace bar and free all resources.
+/// @param bar Find/replace bar to destroy (may be NULL).
 void vg_findreplacebar_destroy(vg_findreplacebar_t *bar);
 
-/// @brief Set target editor for searching
+/// @brief Set the editor that the find/replace bar operates on.
+/// @param bar    Find/replace bar.
+/// @param editor Target code editor.
 void vg_findreplacebar_set_target(vg_findreplacebar_t *bar, struct vg_codeeditor *editor);
 
-/// @brief Show or hide replace controls
+/// @brief Show or hide the replace row of controls.
+/// @param bar  Find/replace bar.
+/// @param show true to reveal the replace input and buttons.
 void vg_findreplacebar_set_show_replace(vg_findreplacebar_t *bar, bool show);
 
-/// @brief Set search options
+/// @brief Apply new search option flags.
+/// @param bar     Find/replace bar.
+/// @param options Pointer to options struct (values are copied).
 void vg_findreplacebar_set_options(vg_findreplacebar_t *bar, vg_search_options_t *options);
 
-/// @brief Perform search with query
+/// @brief Run a search with a new query string and rebuild the match list.
+/// @param bar   Find/replace bar.
+/// @param query Null-terminated search string.
 void vg_findreplacebar_find(vg_findreplacebar_t *bar, const char *query);
 
-/// @brief Find next match
+/// @brief Navigate to the next match, wrapping if @c wrap_around is set.
+/// @param bar Find/replace bar.
 void vg_findreplacebar_find_next(vg_findreplacebar_t *bar);
 
-/// @brief Find previous match
+/// @brief Navigate to the previous match, wrapping if @c wrap_around is set.
+/// @param bar Find/replace bar.
 void vg_findreplacebar_find_prev(vg_findreplacebar_t *bar);
 
-/// @brief Replace current match
+/// @brief Replace the current match with the replacement text.
+/// @param bar Find/replace bar.
 void vg_findreplacebar_replace_current(vg_findreplacebar_t *bar);
 
-/// @brief Replace all matches
+/// @brief Replace every match in the document with the replacement text.
+/// @param bar Find/replace bar.
 void vg_findreplacebar_replace_all(vg_findreplacebar_t *bar);
 
-/// @brief Get match count
+/// @brief Get the total number of matches found by the last search.
+/// @param bar Find/replace bar.
+/// @return Number of matches.
 size_t vg_findreplacebar_get_match_count(vg_findreplacebar_t *bar);
 
-/// @brief Get current match index
+/// @brief Get the zero-based index of the currently highlighted match.
+/// @param bar Find/replace bar.
+/// @return Current match index.
 size_t vg_findreplacebar_get_current_match(vg_findreplacebar_t *bar);
 
-/// @brief Focus the find input
+/// @brief Move keyboard focus to the find text input.
+/// @param bar Find/replace bar.
 void vg_findreplacebar_focus(vg_findreplacebar_t *bar);
 
-/// @brief Set find text
+/// @brief Programmatically set the find input text.
+/// @param bar  Find/replace bar.
+/// @param text Text to put in the find field (copied internally).
 void vg_findreplacebar_set_find_text(vg_findreplacebar_t *bar, const char *text);
 
-/// @brief Set close callback
+/// @brief Set the callback fired when the user closes the find bar.
+/// @param bar       Find/replace bar.
+/// @param callback  Handler function.
+/// @param user_data User data passed to the handler.
 void vg_findreplacebar_set_on_close(vg_findreplacebar_t *bar,
                                     void (*callback)(vg_findreplacebar_t *, void *),
                                     void *user_data);
 
-/// @brief Set font for find/replace bar
+/// @brief Set the font used in the find and replace input fields.
+/// @param bar  Find/replace bar.
+/// @param font Font handle.
+/// @param size Font size in pixels.
 void vg_findreplacebar_set_font(vg_findreplacebar_t *bar, vg_font_t *font, float size);
 
 //=============================================================================
@@ -468,25 +546,38 @@ typedef struct vg_minimap {
     int marker_cap;   ///< Allocated capacity
 } vg_minimap_t;
 
-/// @brief Create a new minimap widget
+/// @brief Create a new minimap widget linked to a code editor.
+/// @param editor Code editor whose content the minimap reflects.
+/// @return New minimap widget or NULL on failure.
 vg_minimap_t *vg_minimap_create(vg_codeeditor_t *editor);
 
-/// @brief Destroy a minimap widget
+/// @brief Destroy a minimap widget and free its render buffer.
+/// @param minimap Minimap widget to destroy (may be NULL).
 void vg_minimap_destroy(vg_minimap_t *minimap);
 
-/// @brief Set editor for minimap
+/// @brief Change the editor the minimap is linked to.
+/// @param minimap Minimap widget.
+/// @param editor  New source editor.
 void vg_minimap_set_editor(vg_minimap_t *minimap, vg_codeeditor_t *editor);
 
-/// @brief Set scale factor
+/// @brief Set the pixel scale used to render the code overview.
+/// @param minimap Minimap widget.
+/// @param scale   Scale factor (e.g. 0.1 = each source pixel maps to 0.1 display pixels).
 void vg_minimap_set_scale(vg_minimap_t *minimap, float scale);
 
-/// @brief Set viewport indicator visibility
+/// @brief Show or hide the visible-region rectangle overlay.
+/// @param minimap Minimap widget.
+/// @param show    true to draw the viewport indicator.
 void vg_minimap_set_show_viewport(vg_minimap_t *minimap, bool show);
 
-/// @brief Invalidate entire minimap (needs re-render)
+/// @brief Mark the entire minimap render buffer as dirty (needs full re-render).
+/// @param minimap Minimap widget.
 void vg_minimap_invalidate(vg_minimap_t *minimap);
 
-/// @brief Invalidate specific lines
+/// @brief Mark a range of source lines as dirty in the minimap buffer.
+/// @param minimap     Minimap widget.
+/// @param start_line  First dirty source line (zero-based, inclusive).
+/// @param end_line    Last dirty source line (zero-based, inclusive).
 void vg_minimap_invalidate_lines(vg_minimap_t *minimap, uint32_t start_line, uint32_t end_line);
 
 #ifdef __cplusplus

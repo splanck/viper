@@ -5,15 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/ra/VState.hpp
+// File: codegen/aarch64/ra/VState.hpp
 // Purpose: Virtual register state tracking for the AArch64 linear-scan
 //          register allocator.
+//
 // Key invariants:
 //   - hasPhys is true iff the vreg currently occupies a physical register.
 //   - dirty is true iff the register value is newer than the spill slot.
+//
 // Ownership/Lifetime:
 //   - Owned by the allocator's state maps; one VState per active vreg.
-// Links: docs/codemap.md
+//
+// Links: codegen/aarch64/ra/Allocator.hpp,
+//        codegen/aarch64/TargetAArch64.hpp
 //
 //===----------------------------------------------------------------------===//
 

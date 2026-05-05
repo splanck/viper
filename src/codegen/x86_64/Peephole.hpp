@@ -7,12 +7,16 @@
 //
 // File: codegen/x86_64/Peephole.hpp
 // Purpose: Declare peephole optimisations over the provisional Machine IR.
-// Key invariants: Rewrites preserve instruction ordering and semantics; only
-//                 pattern substitutions (e.g., redundant moves, strength
-//                 reduction) are applied without changing control flow.
-// Ownership/Lifetime: Operates on mutable Machine IR owned by the caller; no
-//                     dynamic resources are allocated beyond temporary vectors.
-// Links: docs/architecture.md
+// Key invariants:
+//   - Rewrites preserve instruction ordering and semantics.
+//   - Only pattern substitutions are applied; control flow is not changed.
+//   - Block-level rewrites iterate to a fixed point (bounded by kMaxIterations).
+// Ownership/Lifetime:
+//   - Operates on mutable MIR owned by the caller.
+//   - No dynamic resources allocated beyond temporary vectors.
+// Links: codegen/x86_64/Peephole.cpp,
+//        codegen/x86_64/MachineIR.hpp,
+//        codegen/x86_64/TargetX64.hpp
 //
 //===----------------------------------------------------------------------===//
 

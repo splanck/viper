@@ -21,7 +21,9 @@
 
 #include "test_harness.h"
 #include "vgfx.h"
+#include "vgfx_internal.h"
 #include "vgfx_mock.h"
+#include <limits.h>
 
 /* T16: Keyboard Input (Mock Backend) */
 void test_keyboard_input(void) {
@@ -517,6 +519,28 @@ void test_prevent_close_still_emits_close_event(void) {
     TEST_END();
 }
 
+void test_event_overflow_counter_saturates(void) {
+    TEST_BEGIN("T31: Event Overflow Counter Saturates");
+
+    vgfx_window_params_t params = {
+        .width = 64, .height = 64, .title = "Test", .fps = 0, .resizable = 0};
+    vgfx_window_t public_win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(public_win);
+
+    struct vgfx_window *win = (struct vgfx_window *)public_win;
+    win->event_overflow = INT32_MAX;
+    win->event_head = 0;
+    win->event_tail = 1;
+    win->event_queue[win->event_tail].type = VGFX_EVENT_KEY_DOWN;
+
+    vgfx_event_t event = {.type = VGFX_EVENT_MOUSE_MOVE};
+    ASSERT_EQ(vgfx_internal_enqueue_event(win, &event), 1);
+    ASSERT_EQ(win->event_overflow, INT32_MAX);
+
+    vgfx_destroy_window(public_win);
+    TEST_END();
+}
+
 /* Main test runner */
 /// What: Entry point for input tests covering key/mouse event handling.
 /// Why:  Validate that the input subsystem reports and sequences events
@@ -545,6 +569,7 @@ int main(void) {
     test_mock_fullscreen_per_window();
     test_invalid_negative_input_queries_are_safe();
     test_prevent_close_still_emits_close_event();
+    test_event_overflow_counter_saturates();
 
     TEST_SUMMARY();
     return TEST_RETURN_CODE();

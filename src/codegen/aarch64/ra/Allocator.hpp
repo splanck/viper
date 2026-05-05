@@ -5,19 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/ra/Allocator.hpp
+// File: codegen/aarch64/ra/Allocator.hpp
 // Purpose: Core linear-scan register allocator class for AArch64. Owns all
 //          allocation state and drives the per-block, per-instruction
 //          allocation loop.
+//
 // Key invariants:
 //   - After run(), every MReg in the MFunction has isPhys=true.
 //   - Spill slots are allocated via FrameBuilder; callee-saved usage is
 //     recorded for prologue/epilogue generation.
 //   - Cross-block register persistence uses single-predecessor exit states.
+//
 // Ownership/Lifetime:
 //   - Constructed per-function; borrows MFunction and TargetInfo references.
 //   - Must not outlive the MFunction it modifies.
-// Links: docs/codemap.md
+//
+// Links: codegen/aarch64/ra/Allocator.cpp,
+//        codegen/aarch64/RegAllocLinear.hpp,
+//        codegen/aarch64/ra/Liveness.hpp,
+//        codegen/aarch64/ra/RegPools.hpp,
+//        codegen/aarch64/ra/VState.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -39,8 +46,15 @@
 
 namespace viper::codegen::aarch64::ra {
 
+/// @brief Per-function linear-scan register allocator for AArch64 MIR.
+///
+/// Drives the allocation loop over all basic blocks and instructions.
+/// Virtual registers are mapped to physical registers or spill slots; the
+/// resulting AllocationResult carries callee-saved register usage and
+/// FrameBuilder state for prologue/epilogue emission.
 class LinearAllocator {
   public:
+    /// @brief Construct an allocator for @p fn using target register constraints from @p ti.
     LinearAllocator(MFunction &fn, const TargetInfo &ti);
 
     /// @brief Run the allocator over all blocks and return results.
@@ -71,9 +85,11 @@ class LinearAllocator {
 
     // Cross-block register persistence: exit-state cache.
 
+    /// @brief Snapshot of the vreg→physical register mapping at the end of one basic block,
+    ///        used to seed the allocation state at single-predecessor successors.
     struct BlockExitState {
-        std::unordered_map<uint16_t, PhysReg> gpr;
-        std::unordered_map<uint16_t, PhysReg> fpr;
+        std::unordered_map<uint16_t, PhysReg> gpr; ///< GPR vreg → physical register map.
+        std::unordered_map<uint16_t, PhysReg> fpr; ///< FPR vreg → physical register map.
     };
 
     std::vector<BlockExitState> blockExitStates_;
@@ -82,30 +98,45 @@ class LinearAllocator {
     bool pendingGetBarrier_{false};
 
     // ---- Cross-block ----
+    /// @brief Seed the current block's register state from the single predecessor's exit state.
     void restoreFromPredecessor(std::size_t bi);
 
     // ---- Next-use analysis ----
+    /// @brief Build per-vreg use-position maps for @p bb to guide eviction decisions.
     void computeNextUses(const MBasicBlock &bb);
+    /// @brief Return true if @p vreg has a use after the next call in the block.
     bool nextUseAfterCall(uint16_t vreg, RegClass cls) const;
+    /// @brief Return the instruction-distance to the next use of @p vreg, or UINT_MAX.
     unsigned getNextUseDistance(uint16_t vreg, RegClass cls) const;
+    /// @brief Compute the spill slot last-use index for @p vreg (used to size spill coverage).
     unsigned computeSpillLastUse(uint16_t vreg, RegClass cls, bool forceLiveOut = false) const;
+    /// @brief Allocate or retrieve the current spill slot for @p vreg and return its FP offset.
     int ensureCurrentSpillSlot(uint16_t vreg, RegClass cls, bool forceLiveOut = false);
+    /// @brief Return true if @p vreg appears as an operand in the current instruction.
     [[nodiscard]] bool isProtectedUse(uint16_t vreg, RegClass cls) const;
+    /// @brief Return true if @p vreg is live at the exit of the current block.
     [[nodiscard]] bool isLiveOut(uint16_t vreg, RegClass cls) const;
 
     // ---- Spilling ----
+    /// @brief Evict @p id from its physical register and emit a store to its spill slot.
     void spillVictim(RegClass cls, uint16_t id, std::vector<MInstr> &prefix);
+    /// @brief Select the LRU-allocated vreg as eviction candidate for @p cls.
     uint16_t selectLRUVictim(RegClass cls);
+    /// @brief Select the vreg with the furthest next use as eviction candidate for @p cls.
     uint16_t selectFurthestVictim(RegClass cls);
+    /// @brief Proactively evict a vreg when register pressure exceeds available pools.
     void maybeSpillForPressure(RegClass cls, std::vector<MInstr> &prefix);
 
     // ---- Register materialization ----
+    /// @brief Ensure @p r (a virtual register) is backed by a physical register, inserting
+    ///        loads/stores into @p prefix / @p suffix as needed.
     void materialize(MReg &r,
                      bool isUse,
                      bool isDef,
                      std::vector<MInstr> &prefix,
                      std::vector<MInstr> &suffix,
                      std::vector<PhysReg> &scratch);
+    /// @brief Handle a spilled operand: reload from its slot before use, store after def.
     void handleSpilledOperand(MReg &r,
                               bool isFPR,
                               bool isUse,
@@ -113,18 +144,27 @@ class LinearAllocator {
                               std::vector<MInstr> &prefix,
                               std::vector<MInstr> &suffix,
                               std::vector<PhysReg> &scratch);
+    /// @brief Assign a fresh physical register to virtual register @p vregId.
     void assignNewPhysReg(VState &st, uint16_t vregId, bool isFPR);
+    /// @brief Record that @p pr (a callee-saved register) has been used in this function.
     void trackCalleeSavedPhys(PhysReg pr);
+    /// @brief Return true if @p pr is callee-saved under AAPCS64 for the given @p cls.
     [[nodiscard]] bool isCalleeSaved(PhysReg pr, RegClass cls) const noexcept;
 
     // ---- Block / instruction allocation ----
+    /// @brief Allocate all instructions in @p bb, replacing vregs with physical registers.
     void allocateBlock(MBasicBlock &bb);
+    /// @brief Spill caller-saved physical registers around the call in @p ins.
     void handleCall(MInstr &ins, std::vector<MInstr> &rewritten);
+    /// @brief Materialize all operands of @p ins and append to @p rewritten.
     void allocateInstruction(MInstr &ins, std::vector<MInstr> &rewritten);
 
     // ---- Cleanup ----
+    /// @brief Return scratch physical registers acquired during instruction allocation.
     void releaseScratch(std::vector<PhysReg> &scratch);
+    /// @brief Clear per-block allocation state (vreg→phys maps, call positions, etc.).
     void releaseBlockState();
+    /// @brief Propagate callee-saved register usage into the FrameBuilder.
     void recordCalleeSavedUsage();
 };
 

@@ -5,16 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/ra/LiveIntervals.hpp
+// File: codegen/x86_64/ra/LiveIntervals.hpp
 // Purpose: Declare data structures and analysis utilities for block-local
 //          live interval construction used by the linear-scan allocator.
-// Key invariants: Live intervals are expressed as half-open instruction index
-//                 ranges relative to per-function numbering. Analysis is
-//                 deterministic and does not mutate the input Machine IR.
-// Ownership/Lifetime: Live interval data is stored in value-owned containers
-//                     that remain valid for the lifetime of the analysis
-//                     instance.
-// Links: docs/codemap.md, src/codegen/x86_64/MachineIR.hpp
+// Key invariants:
+//   - Intervals are half-open instruction index ranges relative to per-function numbering.
+//   - Analysis is deterministic and does not mutate the input MIR.
+// Ownership/Lifetime:
+//   - Interval data is stored in value-owned containers valid for the lifetime of the instance.
+// Links: codegen/x86_64/ra/LiveIntervals.cpp,
+//        codegen/x86_64/MachineIR.hpp,
+//        codegen/x86_64/ra/Allocator.hpp
 //
 //===----------------------------------------------------------------------===//
 

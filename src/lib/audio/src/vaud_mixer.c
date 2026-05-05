@@ -172,6 +172,8 @@ static int mix_voice(vaud_voice *voice, int32_t *output, int32_t frames, float m
 static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float master_vol) {
     if (!music || music->state != VAUD_MUSIC_PLAYING)
         return;
+    if (music->refill_in_progress)
+        return;
 
     float vol = music->volume * master_vol;
     if (!isfinite(vol))
@@ -190,11 +192,7 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
             if (music->buffer_frames[music->current_buffer] <= 0) {
                 if (music->loop && music->stream_eof) {
                     music->stream_loop_pending = 1;
-                    music->stream_eof = 0;
                 }
-
-                if (!music->stream_eof)
-                    vaud_music_prefill_locked(music);
 
                 if (music->buffer_frames[music->current_buffer] <= 0 && !music->loop &&
                     music->stream_eof) {
@@ -234,15 +232,28 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
     if (!ctx || !output || frames <= 0)
         return;
 
-    /* H-1: Use pre-allocated 32-bit accumulator (no malloc in real-time audio callback).
-     * ctx->accum_buf holds VAUD_BUFFER_FRAMES * VAUD_CHANNELS int32s; guard against
-     * oversized requests that would overflow it. */
-    if (frames > VAUD_BUFFER_FRAMES) {
+    if (vaud_atomic_load_i32(&ctx->destroying) != 0) {
         size_t output_bytes = 0;
         if (vaud_pcm_s16_buffer_size(frames, VAUD_CHANNELS, &output_bytes))
             memset(output, 0, output_bytes);
         return;
     }
+
+    if (frames > VAUD_BUFFER_FRAMES) {
+        int32_t offset = 0;
+        while (offset < frames) {
+            int32_t chunk = frames - offset;
+            if (chunk > VAUD_BUFFER_FRAMES)
+                chunk = VAUD_BUFFER_FRAMES;
+            vaud_mixer_render(ctx, output + (size_t)offset * VAUD_CHANNELS, chunk);
+            offset += chunk;
+        }
+        return;
+    }
+
+    /* H-1: Use pre-allocated 32-bit accumulator (no malloc in real-time audio callback).
+     * ctx->accum_buf holds VAUD_BUFFER_FRAMES * VAUD_CHANNELS int32s. Oversized
+     * backend periods are rendered above in bounded chunks. */
     int32_t *accum = ctx->accum_buf;
 
     /* Clear accumulator */

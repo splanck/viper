@@ -5,19 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/peephole/DCE.hpp
+// File: codegen/x86_64/peephole/DCE.hpp
 // Purpose: Declaration for x86-64 dead code elimination peephole sub-pass.
 //          Delegates to the shared template in PeepholeDCE.hpp with x86-64
 //          specific traits.
-//
 // Key invariants:
 //   - RSP modifications are never eliminated.
 //   - Iterates to a fixed point within each basic block.
-//
 // Ownership/Lifetime:
 //   - Operates on mutable instructions owned by the caller.
-//
-// Links: src/codegen/common/PeepholeDCE.hpp
+// Links: codegen/x86_64/peephole/DCE.cpp,
+//        codegen/x86_64/peephole/PeepholeCommon.hpp,
+//        codegen/common/PeepholeDCE.hpp
 //
 //===----------------------------------------------------------------------===//
 

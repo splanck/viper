@@ -7,10 +7,18 @@
 //
 // File: codegen/aarch64/passes/RegAllocPass.cpp
 // Purpose: Register allocation pass for the AArch64 modular pipeline.
-//
-// Runs the linear-scan register allocator on every MIR function produced by
-// LoweringPass.  After this pass, all virtual registers are replaced with
-// physical AArch64 registers and spill/reload code has been inserted.
+//          Runs coalescer then linear-scan RA on every MIR function. Functions
+//          are processed in parallel when hardware concurrency ≥ 2.
+// Key invariants:
+//   - Must run after LegalizePass (overflow pseudos must be expanded).
+//   - Each function is allocated independently; errors are deferred and
+//     reported as a single diagnostic after all workers finish.
+//   - After this pass all virtual registers are replaced with physical regs.
+// Ownership/Lifetime:
+//   - Stateless pass; mutates AArch64Module::mir in place.
+// Links: codegen/aarch64/passes/RegAllocPass.hpp,
+//        codegen/aarch64/RegAllocLinear.hpp,
+//        codegen/aarch64/Coalescer.hpp
 //
 //===----------------------------------------------------------------------===//
 

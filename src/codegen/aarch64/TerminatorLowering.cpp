@@ -4,86 +4,26 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file TerminatorLowering.cpp
-/// @brief Control-flow terminator lowering for IL to MIR conversion.
-///
-/// This file handles the lowering of IL terminator instructions that end
-/// basic blocks and transfer control to other blocks. Terminators are
-/// lowered in a separate pass after all other instructions to ensure
-/// branch targets and phi-edge copies are correctly emitted.
-///
-/// **What are Terminators?**
-/// Terminators are instructions that end a basic block and specify where
-/// control flows next. IL terminators include:
-/// - `br` - Unconditional branch to a single target
-/// - `cbr` - Conditional branch based on a boolean value
-/// - `ret` - Return from function
-/// - `trap` - Abort execution with an error
-///
-/// **Phi-Edge Copies:**
-/// SSA phi nodes are eliminated by inserting copies on CFG edges. When a
-/// block branches to a target that has parameters (phi nodes), the branch
-/// arguments must be copied to the parameter spill slots:
-///
-/// ```
-/// IL:
-///   block loop(counter: i64):
-///     ...
-///     br loop(%counter + 1)   ; pass argument to phi
-///
-/// MIR:
-///   ; At end of block before br:
-///   v1 = AddRI v0, #1         ; compute new counter
-///   StrRegFpImm v1, [fp, #phi_slot]  ; store to phi spill
-///   Br .Lloop
-///
-///   .Lloop:
-///   LdrRegFpImm v0, [fp, #phi_slot]  ; reload phi value
-/// ```
-///
-/// **Branch Lowering:**
-/// | IL Terminator | MIR Sequence                                |
-/// |---------------|---------------------------------------------|
-/// | br target     | [phi copies] + Br .Ltarget                  |
-/// | cbr %c, T, F  | [phi copies] + CmpRI/Cset + BCond/Br        |
-/// | ret %v        | MovRR x0, %v + Ret                          |
-/// | trap          | Bl _rt_trap                                 |
-///
-/// **Conditional Branch Expansion:**
-/// IL cbr takes a boolean condition and two targets. Lowering produces:
-/// ```
-/// cbr %cond, then_block, else_block
-///
-/// MIR:
-///   ; Emit phi-edge copies for BOTH targets (computed before condition)
-///   ; Then emit condition test and branches:
-///   CmpRI v_cond, #0
-///   BCond ne, .Lthen_block   ; if cond != 0, branch to then
-///   Br .Lelse_block          ; fall through to else
-/// ```
-///
-/// **Trap Handling:**
-/// Trap instructions call the runtime trap handler with a message:
-/// ```
-/// trap "index out of bounds"
-///
-/// MIR:
-///   AdrPage x0, .Ltrap_msg_1@PAGE
-///   AddPageOff x0, x0, .Ltrap_msg_1@PAGEOFF
-///   Bl _rt_trap
-/// ```
-///
-/// **Why Separate Pass?**
-/// Terminators are lowered after all other instructions because:
-/// 1. All values used by the terminator must be computed first
-/// 2. Phi-edge copies reference block-local vreg mappings
-/// 3. Fall-through and branch ordering matters for code layout
-///
-/// @see LowerILToMIR.cpp For overall lowering orchestration
-/// @see InstrLowering.cpp For non-terminator instruction lowering
-/// @see FrameBuilder.cpp For phi spill slot allocation
-///
+//
+// File: codegen/aarch64/TerminatorLowering.cpp
+// Purpose: Control-flow terminator lowering for IL→MIR conversion.
+//          Handles br, cbr, trap, TrapFromErr, switch, and resume.label.
+//
+// Key invariants:
+//   - Terminators are lowered after all non-terminator instructions so
+//     branch targets and phi-edge vreg mappings are fully resolved.
+//   - SSA phi-edge copies are inserted as PhiStoreGPR/PhiStoreFPR
+//     instructions into predecessor (or edge split) blocks.
+//   - Switch trees with >3 cases are lowered to a recursive binary search
+//     over new auxiliary blocks.
+//
+// Ownership/Lifetime:
+//   - Modifies mf in place; all map/builder arguments are borrowed.
+//
+// Links: codegen/aarch64/TerminatorLowering.hpp,
+//        codegen/aarch64/InstrLowering.hpp,
+//        codegen/aarch64/OpcodeMappings.hpp
+//
 //===----------------------------------------------------------------------===//
 
 #include "TerminatorLowering.hpp"
@@ -97,21 +37,27 @@ namespace viper::codegen::aarch64 {
 
 using il::core::Opcode;
 
+/// @brief Return the AArch64 condition code string for a comparison opcode, or nullptr.
 static const char *condForOpcode(Opcode op) {
     return lookupAnyCondition(op);
 }
 
+/// @brief Emit a rt_trap call with a null (0) message payload into @p bb.
 static void emitNullTrapCall(MBasicBlock &bb) {
     bb.instrs.push_back(
         MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
     bb.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
 }
 
+/// @brief One case arm in a switch/select table: the integer value and the MIR branch target.
 struct SwitchCase {
-    long long value{0};
-    std::string branchLabel;
+    long long value{0};      ///< Integer constant matched by this case.
+    std::string branchLabel; ///< MIR block label to branch to when matched.
 };
 
+/// @brief Emit a compare of @p scrutineeVReg against @p imm into @p bb.
+/// @details Uses CmpRI for small non-negative immediates; falls back to
+///          MovRI + CmpRR for larger values.
 static void emitSwitchCompare(MBasicBlock &bb,
                               uint16_t scrutineeVReg,
                               long long imm,
@@ -131,6 +77,10 @@ static void emitSwitchCompare(MBasicBlock &bb,
                                 MOperand::vregOp(RegClass::GPR, caseVReg)}});
 }
 
+/// @brief Emit a reload of the switch scrutinee from its spill slot into a fresh vreg.
+/// @details Used in binary search auxiliary blocks that need the scrutinee after
+///          the original vreg's live range has ended.
+/// @return The new vreg holding the reloaded scrutinee value.
 static uint16_t reloadSwitchScrutinee(MBasicBlock &bb, int spillOffset, uint16_t &nextVRegId) {
     const uint16_t reloaded = allocateNextVReg(nextVRegId);
     bb.instrs.push_back(MInstr{MOpcode::LdrRegFpImm,
@@ -139,6 +89,9 @@ static uint16_t reloadSwitchScrutinee(MBasicBlock &bb, int spillOffset, uint16_t
     return reloaded;
 }
 
+/// @brief Emit a linear scan of @p cases[begin..end) against @p scrutineeVReg.
+/// @details Used for small case counts (≤3). Emits a CmpRI/CmpRR + BCond pair
+///          per case, followed by an unconditional branch to @p defaultBranchLabel.
 static void emitLinearSwitch(MBasicBlock &bb,
                              uint16_t scrutineeVReg,
                              const std::vector<SwitchCase> &cases,
@@ -156,6 +109,22 @@ static void emitLinearSwitch(MBasicBlock &bb,
         bb.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(defaultBranchLabel)}});
 }
 
+/// @brief Recursively emit a binary search tree for @p cases[begin..end) into @p mf.
+/// @details Picks a pivot at the midpoint, emits a compare + branch-on-equal, then
+///          creates two new MIR blocks for the left and right sub-ranges. The scrutinee
+///          is reloaded from @p spillOffset in each auxiliary block. Falls back to
+///          `emitLinearSwitch` when the sub-range has ≤3 entries.
+/// @param mf             Output MIR function (new auxiliary blocks are appended).
+/// @param bb             Current dispatch block to emit the compare/branches into.
+/// @param scrutineeVReg  Virtual register holding the switch value in @p bb.
+/// @param cases          Sorted case table for the entire switch.
+/// @param begin          Start index of the current sub-range (inclusive).
+/// @param end            End index of the current sub-range (exclusive).
+/// @param defaultBranchLabel Label of the default target block.
+/// @param spillOffset    FP-relative spill slot for the scrutinee (used in sub-blocks).
+/// @param labelPrefix    Prefix for generated auxiliary block label names.
+/// @param auxCounter     Counter for unique auxiliary block name suffixes.
+/// @param nextVRegId     Counter for fresh virtual register allocation.
 static void emitSwitchTree(MFunction &mf,
                            MBasicBlock &bb,
                            uint16_t scrutineeVReg,
@@ -220,6 +189,22 @@ static void emitSwitchTree(MFunction &mf,
                    nextVRegId);
 }
 
+/// @brief Emit PhiStoreGPR/PhiStoreFPR instructions into @p edgeBB for the phi
+///        parameters of block @p dst, materializing each argument from @p args.
+/// @details Called when a branch to @p dst carries arguments. Each argument is
+///          materialized to a vreg and then stored to the corresponding phi spill
+///          slot. Throws if an argument cannot be materialized or has a class mismatch.
+/// @param edgeBB         The MIR block (edge or source) that receives the phi stores.
+/// @param dst            IL block name whose phi slots receive the copies.
+/// @param args           IL branch argument values (one per phi parameter in dst).
+/// @param inBB           IL basic block containing the branch instruction.
+/// @param ti             Target info for register class resolution.
+/// @param fb             Frame builder for phi spill slot allocation.
+/// @param blockTempVReg  Block-local temp-ID → vreg mapping snapshot.
+/// @param tempRegClass   Global temp-ID → register class map.
+/// @param nextVRegId     Counter for fresh virtual register allocation.
+/// @param phiRegClass    Block label → per-parameter register class list.
+/// @param phiSpillOffset Block label → per-parameter FP-relative spill offsets.
 static void emitPhiEdgeCopies(
     MBasicBlock &edgeBB,
     const std::string &dst,

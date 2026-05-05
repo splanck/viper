@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/FrameCodegen.hpp
+// File: codegen/aarch64/FrameCodegen.hpp
 // Purpose: Shared prologue/epilogue iteration utilities for AArch64 callee-saved
 //          register save/restore sequences. Both AsmEmitter (text) and
 //          A64BinaryEncoder (binary) delegate to these templates to avoid
@@ -14,7 +14,10 @@
 //   - Save iterates forward in pairs: stp r0,r1; str r_last if odd count.
 //   - Restore iterates backward: handle odd tail first, then pairs.
 //   - GPRs and FPRs are processed separately (different instruction encodings).
-// Links: AsmEmitter.cpp, binenc/A64BinaryEncoder.cpp
+// Ownership/Lifetime:
+//   - Header-only; all functions are templates with no persistent state.
+// Links: codegen/aarch64/AsmEmitter.cpp,
+//        codegen/aarch64/binenc/A64BinaryEncoder.cpp
 //
 //===----------------------------------------------------------------------===//
 

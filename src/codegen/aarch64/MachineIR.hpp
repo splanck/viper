@@ -14,15 +14,16 @@
 // must be allocated to physical registers before emission.
 //
 // Key invariants:
-// - MInstr operands follow a consistent pattern: destination first, then sources.
-// - Virtual registers (isPhys=false) must be resolved by register allocation.
-// - Physical registers (isPhys=true) are final and correspond to AArch64 regs.
+//   - MInstr operands follow destination-first ordering.
+//   - Virtual registers (isPhys=false) must be resolved before emission.
+//   - Physical registers (isPhys=true) correspond directly to AArch64 regs.
 //
 // Ownership/Lifetime:
-// - MFunction owns all blocks, blocks own instructions.
-// - Frame layout is computed during lowering and finalized after allocation.
+//   - MFunction owns all blocks; blocks own instructions.
+//   - Frame layout is computed during lowering and finalized after allocation.
 //
-// Links: docs/architecture.md
+// Links: codegen/aarch64/MachineIR.cpp,
+//        codegen/aarch64/TargetAArch64.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -42,13 +43,10 @@ namespace viper::codegen::aarch64 {
 
 /// @brief Machine IR opcodes for AArch64 code generation.
 ///
-/// Each opcode represents a target-specific operation that will be emitted
-/// as one or more AArch64 assembly instructions.
-/// @brief Machine IR opcodes for AArch64 code generation.
-///
-/// Generated from MOpcodeDef.inc — the single source of truth for opcode
-/// names. Add new opcodes ONLY in MOpcodeDef.inc; the enum and name table
-/// are auto-generated from that file.
+/// Each opcode represents a target-specific operation that maps to one or
+/// more AArch64 assembly instructions. Generated from MOpcodeDef.inc —
+/// the single source of truth for opcode names. Add new opcodes ONLY in
+/// MOpcodeDef.inc; the enum and name table are auto-generated from that file.
 enum class MOpcode {
 #define VIPER_MIR_OPCODE(name) name,
 #include "codegen/aarch64/MOpcodeDef.inc"

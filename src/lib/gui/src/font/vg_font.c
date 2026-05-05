@@ -5,10 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/font/vg_font.c
+// File: lib/gui/src/font/vg_font.c
+// Purpose: Main font API implementation — loading, destruction, glyph
+//          rasterization (with cache), kerning lookup, UTF-8 utilities,
+//          text measurement, cursor hit-testing, and canvas text rendering.
+// Key invariants:
+//   - vg_font_get_glyph always returns a cache-backed pointer; the caller must
+//     not free it.
+//   - vg_font_draw_text delegates pixel output to the extern
+//     vg_canvas_draw_glyph (implemented in vg_canvas_integration.c).
+//   - UTF-8 decode advances *str past the consumed sequence even on error,
+//     returning U+FFFD to allow resilient iteration.
+// Ownership/Lifetime:
+//   - vg_font_load copies the data buffer; the caller may free the original.
+//   - vg_font_load_file allocates and frees the read buffer internally.
+//   - vg_font_destroy frees the font and all sub-arrays including the cache.
+// Links: lib/gui/include/vg_font.h,
+//        lib/gui/src/font/vg_ttf_internal.h,
+//        lib/gui/src/font/vg_cache.c,
+//        lib/gui/src/font/vg_raster.c,
+//        lib/gui/src/font/vg_canvas_integration.c
 //
 //===----------------------------------------------------------------------===//
-// vg_font.c - Main font API implementation
 #include "vg_ttf_internal.h"
 #include <math.h>
 #include <stdio.h>
@@ -19,6 +37,15 @@
 // Font Loading
 //=============================================================================
 
+/// @brief Load a font from an in-memory TTF buffer.
+///
+/// @details Copies the buffer, parses all required TTF tables, and creates a
+///          glyph cache. Returns NULL on allocation failure, parse error, or if
+///          any required table is missing.
+///
+/// @param data Pointer to the raw TTF font data.
+/// @param size Length of the data buffer in bytes (must be >= 12).
+/// @return A newly allocated vg_font_t, or NULL on failure.
 vg_font_t *vg_font_load(const uint8_t *data, size_t size) {
     if (!data || size < 12)
         return NULL;
@@ -58,6 +85,13 @@ vg_font_t *vg_font_load(const uint8_t *data, size_t size) {
     return font;
 }
 
+/// @brief Load a font from a file path.
+///
+/// @details Reads the entire file into a temporary buffer and delegates to
+///          vg_font_load. Rejects files larger than 100 MB.
+///
+/// @param path Null-terminated path to a TrueType font file.
+/// @return A newly allocated vg_font_t, or NULL on I/O or parse failure.
 vg_font_t *vg_font_load_file(const char *path) {
     if (!path)
         return NULL;
@@ -98,7 +132,12 @@ vg_font_t *vg_font_load_file(const char *path) {
     return font;
 }
 
-/// @brief Font destroy.
+/// @brief Destroy a font and free all associated resources.
+///
+/// @details Frees the glyph cache, all CMAP arrays, kerning pairs, and (when
+///          owns_data is true) the font data buffer. Safe to call with NULL.
+///
+/// @param font The font to destroy (may be NULL).
 void vg_font_destroy(vg_font_t *font) {
     if (!font)
         return;
@@ -133,6 +172,12 @@ void vg_font_destroy(vg_font_t *font) {
 // Font Information
 //=============================================================================
 
+/// @brief Query typographic metrics for a font at a given pixel size.
+///
+/// @param font    The font to query.
+/// @param size    Target font size in pixels.
+/// @param metrics Output struct populated with ascent, descent, line_height,
+///               and units_per_em. No-op if font or metrics is NULL.
 void vg_font_get_metrics(vg_font_t *font, float size, vg_font_metrics_t *metrics) {
     if (!font || !metrics)
         return;
@@ -146,12 +191,21 @@ void vg_font_get_metrics(vg_font_t *font, float size, vg_font_metrics_t *metrics
     metrics->units_per_em = font->head.units_per_em;
 }
 
+/// @brief Return the font family name string parsed from the 'name' table.
+///
+/// @param font The font to query.
+/// @return Null-terminated family name, or "Unknown" if font is NULL.
 const char *vg_font_get_family(vg_font_t *font) {
     if (!font)
         return "Unknown";
     return font->family_name;
 }
 
+/// @brief Test whether the font has a glyph for the given Unicode codepoint.
+///
+/// @param font      The font to query.
+/// @param codepoint Unicode codepoint to test.
+/// @return true if a non-zero glyph index exists for the codepoint; false otherwise.
 bool vg_font_has_glyph(vg_font_t *font, uint32_t codepoint) {
     if (!font)
         return false;
@@ -162,6 +216,15 @@ bool vg_font_has_glyph(vg_font_t *font, uint32_t codepoint) {
 // Glyph Rasterization (with caching)
 //=============================================================================
 
+/// @brief Retrieve a rasterised glyph, populating the cache on first access.
+///
+/// @details Checks the glyph cache first; on a miss, rasterises and inserts.
+///          The returned pointer is owned by the cache and must not be freed.
+///
+/// @param font      The font to rasterise from.
+/// @param size      Target font size in pixels (must be finite and > 0).
+/// @param codepoint Unicode codepoint to look up.
+/// @return Pointer to a cache-owned vg_glyph_t, or NULL on error.
 const vg_glyph_t *vg_font_get_glyph(vg_font_t *font, float size, uint32_t codepoint) {
     if (!font || !isfinite(size) || size <= 0)
         return NULL;
@@ -196,6 +259,17 @@ const vg_glyph_t *vg_font_get_glyph(vg_font_t *font, float size, uint32_t codepo
 // Kerning
 //=============================================================================
 
+/// @brief Return the kerning adjustment in pixels between two adjacent codepoints.
+///
+/// @details Converts both codepoints to glyph indices, then performs a binary
+///          search over the sorted kern_pairs array. Returns 0.0 if no pair
+///          is found or if the font has no kerning data.
+///
+/// @param font  The font to query.
+/// @param size  Font size in pixels (used to scale design-unit values).
+/// @param left  Unicode codepoint of the left (preceding) character.
+/// @param right Unicode codepoint of the right (following) character.
+/// @return Kerning adjustment in pixels (may be negative to tighten pairs).
 float vg_font_get_kerning(vg_font_t *font, float size, uint32_t left, uint32_t right) {
     if (!font || font->kern_pair_count == 0)
         return 0;
@@ -234,6 +308,16 @@ float vg_font_get_kerning(vg_font_t *font, float size, uint32_t left, uint32_t r
 // UTF-8 Utilities
 //=============================================================================
 
+/// @brief Decode one UTF-8 codepoint and advance the string pointer.
+///
+/// @details Handles 1–4 byte sequences. On any encoding error (overlong,
+///          surrogate, out-of-range), the pointer is advanced by one byte
+///          and U+FFFD (replacement character) is returned to allow resilient
+///          iteration.
+///
+/// @param str Pointer to the current position in a null-terminated UTF-8 string.
+///            Advanced past the consumed sequence (or one byte on error).
+/// @return The decoded Unicode codepoint, 0 at end-of-string, or U+FFFD on error.
 uint32_t vg_utf8_decode(const char **str) {
     if (!str || !*str)
         return 0;
@@ -293,7 +377,10 @@ uint32_t vg_utf8_decode(const char **str) {
     return cp;
 }
 
-/// @brief Utf8 strlen.
+/// @brief Count the number of Unicode codepoints in a null-terminated UTF-8 string.
+///
+/// @param str Null-terminated UTF-8 string (may be NULL).
+/// @return Number of decoded codepoints, or 0 if str is NULL.
 int vg_utf8_strlen(const char *str) {
     if (!str)
         return 0;
@@ -306,7 +393,12 @@ int vg_utf8_strlen(const char *str) {
     return count;
 }
 
-/// @brief Utf8 offset.
+/// @brief Return the byte offset of the codepoint at a given character index.
+///
+/// @param str   Null-terminated UTF-8 string.
+/// @param index Zero-based character (codepoint) index to locate.
+/// @return Byte offset from str to the start of the character at index, or 0 if
+///         str is NULL or index is past the end.
 int vg_utf8_offset(const char *str, int index) {
     if (!str)
         return 0;
@@ -322,6 +414,17 @@ int vg_utf8_offset(const char *str, int index) {
 // Text Measurement
 //=============================================================================
 
+/// @brief Measure the pixel dimensions of a UTF-8 text string.
+///
+/// @details Iterates codepoints, accumulates advance widths including kerning,
+///          and returns the total width and line height. Does not handle
+///          multi-line text (newlines are counted as zero-advance glyphs).
+///
+/// @param font    The font to measure with.
+/// @param size    Font size in pixels.
+/// @param text    Null-terminated UTF-8 string to measure.
+/// @param metrics Output struct receiving width, height, and glyph_count.
+///               Zeroed on entry; no-op if metrics is NULL.
 void vg_font_measure_text(vg_font_t *font,
                           float size,
                           const char *text,
@@ -370,6 +473,17 @@ void vg_font_measure_text(vg_font_t *font,
 // Hit Testing
 //=============================================================================
 
+/// @brief Map a pixel x-coordinate to the nearest character index in a text string.
+///
+/// @details Accumulates advance widths with kerning; returns the index of the
+///          character whose left-to-right midpoint is closest to target_x.
+///          Returns the length of the string when target_x is past the last glyph.
+///
+/// @param font     The font to measure with.
+/// @param size     Font size in pixels.
+/// @param text     Null-terminated UTF-8 string.
+/// @param target_x Pixel x-coordinate to map (relative to the text origin).
+/// @return Zero-based character index, or -1 on invalid input.
 int vg_font_hit_test(vg_font_t *font, float size, const char *text, float target_x) {
     if (!font || !text || size <= 0)
         return -1;
@@ -406,7 +520,17 @@ int vg_font_hit_test(vg_font_t *font, float size, const char *text, float target
     return index; // Past end
 }
 
-/// @brief Font get cursor x.
+/// @brief Return the pixel x-position of the cursor before a given character index.
+///
+/// @details Iterates codepoints accumulating advance widths and kerning until
+///          target_index is reached. Used for cursor positioning in text editors.
+///
+/// @param font         The font to measure with.
+/// @param size         Font size in pixels.
+/// @param text         Null-terminated UTF-8 string.
+/// @param target_index Zero-based index of the character before which the cursor
+///                     should appear. Clamped to the end of the string.
+/// @return Pixel x-offset from the text origin, or 0 on invalid input.
 float vg_font_get_cursor_x(vg_font_t *font, float size, const char *text, int target_index) {
     if (!font || !text || size <= 0 || target_index < 0)
         return 0;
@@ -448,7 +572,20 @@ float vg_font_get_cursor_x(vg_font_t *font, float size, const char *text, int ta
 extern void vg_canvas_draw_glyph(
     void *canvas, int x, int y, const uint8_t *bitmap, int width, int height, uint32_t color);
 
-/// @brief Font draw text.
+/// @brief Render a UTF-8 string onto a canvas at the given baseline position.
+///
+/// @details Iterates codepoints, applying kerning between adjacent glyphs and
+///          advancing the cursor by each glyph's advance width. Newlines reset
+///          the cursor x to x and increment y by line_height. Delegates pixel
+///          output to vg_canvas_draw_glyph.
+///
+/// @param canvas vgfx_window_t handle to draw into.
+/// @param font   The font to render with.
+/// @param size   Font size in pixels.
+/// @param x      Pixel x-coordinate of the left edge of the first glyph.
+/// @param y      Pixel y-coordinate of the baseline.
+/// @param text   Null-terminated UTF-8 string to render.
+/// @param color  Foreground colour in 0xRRGGBB format.
 void vg_font_draw_text(
     void *canvas, vg_font_t *font, float size, float x, float y, const char *text, uint32_t color) {
     if (!canvas || !font || !text || size <= 0)

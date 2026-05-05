@@ -5,30 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/Peephole.cpp
-// Purpose: Driver for conservative peephole optimizations over Machine IR for
-//          the AArch64 backend. Delegates to modular sub-passes under
-//          peephole/*.cpp for each optimization category.
-//
+// File: codegen/aarch64/Peephole.cpp
+// Purpose: Driver for conservative peephole optimizations over AArch64 MIR.
+//          Orchestrates modular sub-passes and implements cross-block phi-join
+//          load forwarding/coalescing using a dominator-based analysis.
 // Key invariants:
-// - Rewrites preserve instruction ordering and only substitute encodings that
-//   are provably equivalent under the Machine IR conventions.
-// - Must be called after register allocation when physical registers are known.
-//
+//   - All rewrites preserve instruction semantics and ordering.
+//   - Must be called after register allocation (physical registers required).
+//   - Join-load coalescing skips loop headers whose natural loop contains calls.
 // Ownership/Lifetime:
-// - Mutates Machine IR graphs owned by the caller without retaining references
-//   to transient operands.
-//
-// Links: docs/architecture.md
-//
-//===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Peephole optimization pass driver for the AArch64 code generator.
-/// @details Orchestrates modular sub-passes that eliminate redundant moves,
-///          fold consecutive register-to-register operations, and apply local
-///          rewrites. All patterns are conservative and safe to apply after
-///          register allocation.
+//   - Mutates MFunction in place; borrows fn only during the call.
+// Links: codegen/aarch64/Peephole.hpp,
+//        codegen/aarch64/peephole/ (sub-pass implementations)
 
 #include "Peephole.hpp"
 
@@ -54,31 +42,36 @@ namespace ph = peephole;
 
 namespace {
 
+/// @brief Descriptor for an FP-relative load at the start of a join block.
 struct JoinLoad {
-    std::size_t instrIndex;
-    int64_t offset;
-    MOperand dstReg;
-    RegClass cls;
+    std::size_t instrIndex; ///< Index of the load instruction in the block.
+    int64_t offset;         ///< FP-relative byte offset loaded from.
+    MOperand dstReg;        ///< Destination register operand.
+    RegClass cls;           ///< GPR or FPR.
 };
 
+/// @brief Descriptor for an FP-relative store at the end of a predecessor block.
 struct JoinStore {
-    std::size_t instrIndex;
-    int64_t offset;
-    MOperand srcReg;
-    RegClass cls;
+    std::size_t instrIndex; ///< Index of the store instruction in the predecessor.
+    int64_t offset;         ///< FP-relative byte offset stored to.
+    MOperand srcReg;        ///< Source register operand.
+    RegClass cls;           ///< GPR or FPR.
 };
 
+/// @brief A single register-to-register copy to be inserted on a pred→join edge.
 struct JoinCopy {
-    MOperand srcReg;
-    MOperand dstReg;
-    RegClass cls;
+    MOperand srcReg; ///< Source (value stored in predecessor).
+    MOperand dstReg; ///< Destination (value loaded in join block).
+    RegClass cls;    ///< GPR or FPR.
 };
 
+/// @brief Build a 32-bit key encoding register class and physical ID for set lookups.
 static std::uint32_t regKey(const MOperand &op) {
     return (static_cast<std::uint32_t>(op.reg.cls) << 16) |
            static_cast<std::uint32_t>(op.reg.idOrPhys);
 }
 
+/// @brief Return true if block @p blockIndex can fall through to @p succName without a branch.
 static bool blockFallsThroughTo(const MFunction &fn, std::size_t blockIndex, const std::string &succName) {
     if (blockIndex + 1 >= fn.blocks.size())
         return false;
@@ -92,6 +85,8 @@ static bool blockFallsThroughTo(const MFunction &fn, std::size_t blockIndex, con
            last.opc != MOpcode::Cbnz && last.opc != MOpcode::Ret;
 }
 
+/// @brief Build a map from block name to the list of predecessor block indices.
+/// @details Accounts for fall-through edges as well as explicit branch targets.
 static std::unordered_map<std::string, std::vector<std::size_t>> buildPredecessorMap(const MFunction &fn) {
     std::unordered_map<std::string, std::vector<std::size_t>> preds;
     for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi) {
@@ -138,6 +133,7 @@ static std::unordered_map<std::string, std::vector<std::size_t>> buildPredecesso
     return preds;
 }
 
+/// @brief Return true if @p predIndex has a direct (non-conditional) edge to @p succName.
 static bool isDirectPredEdgeTo(const MFunction &fn, std::size_t predIndex, const std::string &succName) {
     const auto &instrs = fn.blocks[predIndex].instrs;
     if (instrs.empty())
@@ -148,6 +144,9 @@ static bool isDirectPredEdgeTo(const MFunction &fn, std::size_t predIndex, const
     return blockFallsThroughTo(fn, predIndex, succName);
 }
 
+/// @brief Return true if copies can safely be inserted at the end of the pred→succ edge.
+/// @details Unconditional-branch and fall-through edges permit insertion;
+///          conditional branches, returns, and CBZ/CBNZ edges do not.
 static bool canInsertJoinCopiesOnPredEdge(const MFunction &fn,
                                           std::size_t predIndex,
                                           const std::string &succName) {
@@ -163,6 +162,8 @@ static bool canInsertJoinCopiesOnPredEdge(const MFunction &fn,
     return blockFallsThroughTo(fn, predIndex, succName);
 }
 
+/// @brief Collect the leading FP-relative LDR/LDP instructions in @p block into @p loads.
+/// @return True if at least one load was found; stops at the first non-load instruction.
 static bool collectJoinPrefixLoads(const MBasicBlock &block, std::vector<JoinLoad> &loads) {
     loads.clear();
     for (std::size_t i = 0; i < block.instrs.size(); ++i) {
@@ -202,6 +203,11 @@ static bool collectJoinPrefixLoads(const MBasicBlock &block, std::vector<JoinLoa
     return !loads.empty();
 }
 
+/// @brief Collect trailing FP-relative STR/STP instructions in the predecessor block.
+/// @details Scans backward from the block's last non-branch instruction; stops at any
+///          instruction that is not a load, move, or store. Builds a map from FP offset
+///          to JoinStore and a set of the store instruction indices.
+/// @return True if at least one store was found.
 static bool collectJoinSuffixStores(const MFunction &fn,
                                     std::size_t predIndex,
                                     const std::string &succName,
@@ -288,6 +294,8 @@ static bool collectJoinSuffixStores(const MFunction &fn,
     return !stores.empty();
 }
 
+/// @brief Topologically order @p copies so that no copy overwrites a source before it is used.
+/// @return True if a safe order was found; false if a dependency cycle prevents ordering.
 static bool orderJoinCopies(const std::vector<JoinCopy> &copies, std::vector<JoinCopy> &ordered) {
     ordered.clear();
     ordered.reserve(copies.size());
@@ -327,6 +335,8 @@ static bool orderJoinCopies(const std::vector<JoinCopy> &copies, std::vector<Joi
     return true;
 }
 
+/// @brief Add all registers defined (clobbered) by @p instr to @p clobbered.
+/// @details Calls clobber all caller-saved GPRs and FPRs; LDP clobbers both result regs.
 static void markInstructionDefs(const MInstr &instr, std::unordered_set<std::uint32_t> &clobbered) {
     if (instr.opc == MOpcode::LdpRegFpImm || instr.opc == MOpcode::LdpFprFpImm) {
         if (instr.ops.size() >= 1 && ph::isPhysReg(instr.ops[0]))
@@ -352,6 +362,8 @@ static void markInstructionDefs(const MInstr &instr, std::unordered_set<std::uin
         clobbered.insert(regKey(*def));
 }
 
+/// @brief Collect all block indices in the natural loop with @p headerIndex and @p latchIndex.
+/// @details Uses a backward reachability worklist from the latch; the header bounds the search.
 static std::unordered_set<std::size_t> collectNaturalLoopBlocks(
     const MFunction &fn,
     const std::unordered_map<std::string, std::vector<std::size_t>> &preds,
@@ -382,6 +394,7 @@ static std::unordered_set<std::size_t> collectNaturalLoopBlocks(
     return loopBlocks;
 }
 
+/// @brief Return true if any block in @p blocks contains a Bl or Blr instruction.
 static bool blocksContainCall(const MFunction &fn, const std::unordered_set<std::size_t> &blocks) {
     for (std::size_t blockIndex : blocks) {
         if (blockIndex >= fn.blocks.size())
@@ -394,17 +407,23 @@ static bool blocksContainCall(const MFunction &fn, const std::unordered_set<std:
     return false;
 }
 
+/// @brief Bit-vector dominator sets — one 64-bit-word vector per basic block.
 using DominatorSets = std::vector<std::vector<std::uint64_t>>;
 
+/// @brief Set the bit for @p index in the dominator bit-vector @p bits.
 static void setDomBit(std::vector<std::uint64_t> &bits, std::size_t index) {
     bits[index / 64] |= std::uint64_t{1} << (index % 64);
 }
 
+/// @brief Return true if block @p block is dominated by block @p bit.
 static bool hasDomBit(const DominatorSets &dom, std::size_t block, std::size_t bit) {
     return block < dom.size() && bit / 64 < dom[block].size() &&
            (dom[block][bit / 64] & (std::uint64_t{1} << (bit % 64))) != 0;
 }
 
+/// @brief Compute dominator sets for all blocks using iterative bit-vector dataflow.
+/// @details Entry block dominates only itself; all others initialised to all-ones and
+///          refined by intersecting predecessor dom sets until a fixed point is reached.
 static DominatorSets computeDominators(
     const MFunction &fn,
     const std::unordered_map<std::string, std::vector<std::size_t>> &preds) {
@@ -464,6 +483,9 @@ static DominatorSets computeDominators(
     return dom;
 }
 
+/// @brief Replace leading FP-relative loads in single-predecessor join blocks with copies.
+/// @details When all loads match trailing stores in the unique predecessor, eliminates
+///          the memory traffic by inserting MOV/FMOV copies on the pred→join edge.
 static bool forwardSinglePredPhiLoads(MFunction &fn, PeepholeStats &stats) {
     bool changed = false;
     const auto preds = buildPredecessorMap(fn);
@@ -539,6 +561,10 @@ static bool forwardSinglePredPhiLoads(MFunction &fn, PeepholeStats &stats) {
     return changed;
 }
 
+/// @brief Coalesce leading phi-join loads across all predecessors of a multi-pred block.
+/// @details For each predecessor, inserts MOV/FMOV copies before the branch so the
+///          join block can simply read the value from its destination register rather
+///          than reloading from the stack. Skips loop headers that contain calls.
 static bool coalesceJoinPhiLoads(MFunction &fn, PeepholeStats &stats) {
     bool changed = false;
     const auto preds = buildPredecessorMap(fn);

@@ -12,7 +12,8 @@
 //                 it has been read.
 // Ownership/Lifetime: Stateless wrapper; all state lives in the common template
 //                     instantiation and the caller-supplied CopyEmitter.
-// Links: src/codegen/common/ParallelCopyResolver.hpp
+// Links: codegen/common/ParallelCopyResolver.hpp,
+//        codegen/x86_64/TargetX64.hpp
 //
 //===----------------------------------------------------------------------===//
 

@@ -5,19 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/peephole/ArithSimplify.hpp
+// File: codegen/x86_64/peephole/ArithSimplify.hpp
 // Purpose: Declarations for arithmetic simplification peephole sub-passes:
 //          MOV-zero to XOR, CMP-zero to TEST, arithmetic identities, and
 //          strength reduction (multiply by power-of-2 to shift).
-//
 // Key invariants:
 //   - Rewrites preserve semantic equivalence under the x86-64 ISA.
 //   - Flag-clobbering rewrites (XOR, TEST) check for downstream flag readers.
-//
 // Ownership/Lifetime:
 //   - Operates on mutable instructions owned by the caller.
-//
-// Links: src/codegen/x86_64/Peephole.hpp
+// Links: codegen/x86_64/peephole/ArithSimplify.cpp,
+//        codegen/x86_64/peephole/PeepholeCommon.hpp,
+//        codegen/x86_64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 

@@ -5,10 +5,27 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_breadcrumb.c
+// File: lib/gui/src/widgets/vg_breadcrumb.c
+// Purpose: Breadcrumb navigation widget — renders a horizontal trail of clickable
+//          path segments separated by a configurable separator string, with
+//          optional per-item drop-down menus.
+// Key invariants:
+//   - items[] is a heap-allocated array of vg_breadcrumb_item_t; each item owns
+//     its label, tooltip, and dropdown_items array (freed in free_breadcrumb_item).
+//   - When max_items > 0, the oldest item (index 0) is evicted via memmove on
+//     overflow to keep the visible trail bounded.
+//   - dropdown_open/dropdown_index track the currently expanded drop-down; input
+//     capture is held on the widget while the drop-down is visible.
+//   - Separator string is heap-owned; replaced atomically by vg_breadcrumb_set_separator.
+// Ownership/Lifetime:
+//   - bc->items and bc->separator are heap-allocated and freed in breadcrumb_destroy.
+//   - Item user_data is only freed if owns_user_data is true.
+//   - The widget does not own the linked vg_font_t.
+// Links: lib/gui/include/vg_ide_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_breadcrumb.c - Breadcrumb widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -70,6 +87,7 @@ static vg_widget_vtable_t g_breadcrumb_vtable = {.destroy = breadcrumb_destroy,
 // Breadcrumb Item Management
 //=============================================================================
 
+/// @brief Free the label, tooltip, optional user_data, and dropdown array owned by item.
 static void free_breadcrumb_item(vg_breadcrumb_item_t *item) {
     if (!item)
         return;
@@ -85,6 +103,7 @@ static void free_breadcrumb_item(vg_breadcrumb_item_t *item) {
     free(item->dropdown_items);
 }
 
+/// @brief Fill a rectangle with rounded corners using four corner circles and three fill rects.
 static void breadcrumb_fill_round_rect(vgfx_window_t win,
                                        int32_t x,
                                        int32_t y,
@@ -116,6 +135,7 @@ static void breadcrumb_fill_round_rect(vgfx_window_t win,
     vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
+/// @brief Stroke a rounded rectangle border using four edge lines and four corner circles.
 static void breadcrumb_stroke_round_rect(vgfx_window_t win,
                                          int32_t x,
                                          int32_t y,
@@ -148,12 +168,14 @@ static void breadcrumb_stroke_round_rect(vgfx_window_t win,
     vgfx_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
+/// @brief Return the outer horizontal padding used between the widget edge and the first item.
 static float breadcrumb_outer_padding(const vg_breadcrumb_t *bc) {
     if (!bc)
         return 4.0f;
     return (float)bc->separator_padding + 2.0f;
 }
 
+/// @brief Compute the bounding rectangle for the breadcrumb item at index.
 static bool breadcrumb_item_rect(const vg_breadcrumb_t *bc,
                                  int index,
                                  float *out_x,
@@ -200,6 +222,7 @@ static bool breadcrumb_item_rect(const vg_breadcrumb_t *bc,
     return false;
 }
 
+/// @brief Compute the bounding rectangle of the currently open drop-down panel.
 static bool breadcrumb_dropdown_rect(const vg_breadcrumb_t *bc,
                                      float *out_x,
                                      float *out_y,
@@ -238,6 +261,7 @@ static bool breadcrumb_dropdown_rect(const vg_breadcrumb_t *bc,
     return true;
 }
 
+/// @brief Return the zero-based drop-down row index under pixel (px, py), or -1 if none.
 static int breadcrumb_find_dropdown_item_at(const vg_breadcrumb_t *bc, float px, float py) {
     vg_breadcrumb_item_t *item = NULL;
     float x = 0.0f;
@@ -261,6 +285,13 @@ static int breadcrumb_find_dropdown_item_at(const vg_breadcrumb_t *bc, float px,
 // Breadcrumb Implementation
 //=============================================================================
 
+/// @brief Create a breadcrumb navigation widget with default theme colours.
+///
+/// @details Default separator is ">", item_padding and separator_padding are
+///          derived from the current theme.  Attach a font with
+///          vg_breadcrumb_set_font before painting.
+///
+/// @return Newly allocated vg_breadcrumb_t, or NULL on allocation failure.
 vg_breadcrumb_t *vg_breadcrumb_create(void) {
     vg_breadcrumb_t *bc = calloc(1, sizeof(vg_breadcrumb_t));
     if (!bc)
@@ -287,6 +318,7 @@ vg_breadcrumb_t *vg_breadcrumb_create(void) {
     return bc;
 }
 
+/// @brief VTable destroy: frees all item strings, item arrays, and the dropdown item list.
 static void breadcrumb_destroy(vg_widget_t *widget) {
     vg_breadcrumb_t *bc = (vg_breadcrumb_t *)widget;
 
@@ -297,13 +329,16 @@ static void breadcrumb_destroy(vg_widget_t *widget) {
     free(bc->separator);
 }
 
-/// @brief Breadcrumb destroy.
+/// @brief Destroy the breadcrumb widget, freeing all items and the separator string.
+///
+/// @param bc The breadcrumb to destroy; may be NULL.
 void vg_breadcrumb_destroy(vg_breadcrumb_t *bc) {
     if (!bc)
         return;
     vg_widget_destroy(&bc->base);
 }
 
+/// @brief VTable measure: sums item widths including separators, claims available width, and sets a fixed height from the theme input height.
 static void breadcrumb_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_breadcrumb_t *bc = (vg_breadcrumb_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -343,6 +378,7 @@ static void breadcrumb_measure(vg_widget_t *widget, float available_width, float
     widget->measured_height = height + (theme ? theme->spacing.sm * 2.0f : 8.0f);
 }
 
+/// @brief VTable paint: clips to the widget, draws each breadcrumb item with hover highlight, separator arrows, overflow dropdown button, and open panel overlay.
 static void breadcrumb_paint(vg_widget_t *widget, void *canvas) {
     vg_breadcrumb_t *bc = (vg_breadcrumb_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -499,6 +535,7 @@ static void breadcrumb_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief Return the breadcrumb item index under pixel (px, py), or -1 if none.
 static int find_item_at(vg_breadcrumb_t *bc, float px, float py) {
     if (!bc->font)
         return -1;
@@ -531,6 +568,7 @@ static int find_item_at(vg_breadcrumb_t *bc, float px, float py) {
     return -1;
 }
 
+/// @brief VTable handle_event: handles click on items and overflow dropdown, hover tracking, and mouse-leave cleanup.
 static bool breadcrumb_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_breadcrumb_t *bc = (vg_breadcrumb_t *)widget;
 
@@ -619,13 +657,21 @@ static bool breadcrumb_handle_event(vg_widget_t *widget, vg_event_t *event) {
     return false;
 }
 
+/// @brief VTable set_font trampoline — forwards to vg_breadcrumb_set_font.
 static void breadcrumb_set_font_widget(vg_widget_t *widget, void *font, float size) {
     if (!widget || !font)
         return;
     vg_breadcrumb_set_font((vg_breadcrumb_t *)widget, (vg_font_t *)font, size);
 }
 
-/// @brief Breadcrumb push.
+/// @brief Append a new item to the end of the breadcrumb trail.
+///
+/// @details If max_items is set and the trail is already at capacity, the oldest
+///          item (index 0) is evicted before the new one is appended.
+///
+/// @param bc    The breadcrumb to update.
+/// @param label Display text for the new segment; copied internally.
+/// @param data  Arbitrary user pointer associated with the item (not freed by the widget).
 void vg_breadcrumb_push(vg_breadcrumb_t *bc, const char *label, void *data) {
     if (!bc || !label)
         return;
@@ -660,7 +706,9 @@ void vg_breadcrumb_push(vg_breadcrumb_t *bc, const char *label, void *data) {
     bc->base.needs_paint = true;
 }
 
-/// @brief Breadcrumb pop.
+/// @brief Remove the last item from the breadcrumb trail and free its resources.
+///
+/// @param bc The breadcrumb to update; may be NULL or empty.
 void vg_breadcrumb_pop(vg_breadcrumb_t *bc) {
     if (!bc || bc->item_count == 0)
         return;
@@ -672,7 +720,9 @@ void vg_breadcrumb_pop(vg_breadcrumb_t *bc) {
     bc->base.needs_paint = true;
 }
 
-/// @brief Breadcrumb clear.
+/// @brief Remove all items from the breadcrumb trail and close any open drop-down.
+///
+/// @param bc The breadcrumb to clear; may be NULL.
 void vg_breadcrumb_clear(vg_breadcrumb_t *bc) {
     if (!bc)
         return;
@@ -689,7 +739,14 @@ void vg_breadcrumb_clear(vg_breadcrumb_t *bc) {
     bc->base.needs_paint = true;
 }
 
-/// @brief Breadcrumb item add dropdown.
+/// @brief Append a drop-down option to a breadcrumb item.
+///
+/// @details Items with at least one drop-down entry show a pop-over menu when
+///          clicked instead of firing the on_click callback.
+///
+/// @param item  The breadcrumb item to extend; must not be NULL.
+/// @param label Display text for the drop-down option; copied internally.
+/// @param data  Arbitrary user pointer for the drop-down entry (not freed).
 void vg_breadcrumb_item_add_dropdown(vg_breadcrumb_item_t *item, const char *label, void *data) {
     if (!item || !label)
         return;
@@ -712,7 +769,11 @@ void vg_breadcrumb_item_add_dropdown(vg_breadcrumb_item_t *item, const char *lab
     dd->data = data;
 }
 
-/// @brief Breadcrumb set separator.
+/// @brief Set the separator string drawn between breadcrumb segments.
+///
+/// @param bc  The breadcrumb to configure; may be NULL.
+/// @param sep New separator text (e.g. "/" or ">"); NULL removes the separator.
+///            The string is copied internally.
 void vg_breadcrumb_set_separator(vg_breadcrumb_t *bc, const char *sep) {
     if (!bc)
         return;
@@ -723,7 +784,11 @@ void vg_breadcrumb_set_separator(vg_breadcrumb_t *bc, const char *sep) {
     bc->base.needs_paint = true;
 }
 
-/// @brief Breadcrumb set on click.
+/// @brief Register a callback invoked when a segment without a drop-down is clicked.
+///
+/// @param bc        The breadcrumb to configure; may be NULL.
+/// @param callback  Called with (bc, item_index, user_data); NULL to unregister.
+/// @param user_data Opaque pointer forwarded to callback.
 void vg_breadcrumb_set_on_click(vg_breadcrumb_t *bc,
                                 void (*callback)(vg_breadcrumb_t *, int, void *),
                                 void *user_data) {
@@ -733,7 +798,11 @@ void vg_breadcrumb_set_on_click(vg_breadcrumb_t *bc,
     bc->user_data = user_data;
 }
 
-/// @brief Breadcrumb set font.
+/// @brief Set the font used to measure and render breadcrumb text.
+///
+/// @param bc   The breadcrumb to configure; may be NULL.
+/// @param font The font to use; must outlive the widget.
+/// @param size Point size for text rendering.
 void vg_breadcrumb_set_font(vg_breadcrumb_t *bc, vg_font_t *font, float size) {
     if (!bc)
         return;
@@ -744,7 +813,13 @@ void vg_breadcrumb_set_font(vg_breadcrumb_t *bc, vg_font_t *font, float size) {
     bc->base.needs_paint = true;
 }
 
-/// @brief Breadcrumb set max items.
+/// @brief Set the maximum number of items retained in the breadcrumb trail.
+///
+/// @details If the current item count exceeds max, the oldest items are evicted
+///          immediately.  A value ≤ 0 disables the limit.
+///
+/// @param bc  The breadcrumb to configure; may be NULL.
+/// @param max Maximum item count, or ≤ 0 for unlimited.
 void vg_breadcrumb_set_max_items(vg_breadcrumb_t *bc, int max) {
     if (!bc)
         return;

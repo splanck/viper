@@ -17,8 +17,9 @@
 //   - External BL generates A64Call26 relocation; ADRP/ADD generate page relocs
 // Ownership/Lifetime:
 //   - State (labelOffsets_, pendingBranches_) is cleared per encodeFunction() call
-// Links: codegen/aarch64/binenc/A64Encoding.hpp
-//        codegen/aarch64/AsmEmitter.cpp (reference for prologue/epilogue logic)
+// Links: codegen/aarch64/binenc/A64BinaryEncoder.hpp,
+//        codegen/aarch64/binenc/A64Encoding.hpp,
+//        codegen/aarch64/AsmEmitter.cpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -78,10 +79,15 @@ static bool isInSignedImmRange(long long offset) {
     return offset >= -256 && offset <= 255;
 }
 
+/// @brief Return true if @p offset is encodable as an unsigned 12-bit scaled STR/LDR immediate.
+/// AArch64 unsigned-offset LDR/STR (64-bit) encodes imm12 * 8; legal range is [0, 32760] step 8.
 static bool isLegalScaledUImm64(long long offset) {
     return offset >= 0 && (offset % 8) == 0 && (offset / 8) <= 4095;
 }
 
+/// @brief Select a scratch GPR that is not @p base and not @p avoid.
+/// @details Tries kScratchGPR (x9), kScratchGPR2 (x10), kScratchGPR3 (x11) in priority order.
+/// Throws if all three scratch registers conflict (indicates a register-allocation bug).
 static uint32_t chooseGprScratch(uint32_t base, std::optional<uint32_t> avoid = std::nullopt) {
     const uint32_t candidates[] = {hwGPR(kScratchGPR), hwGPR(kScratchGPR2), hwGPR(kScratchGPR3)};
     for (uint32_t candidate : candidates) {
@@ -94,6 +100,11 @@ static uint32_t chooseGprScratch(uint32_t base, std::optional<uint32_t> avoid = 
     throw std::runtime_error("AArch64 binary encoder: no scratch register for large offset load/store");
 }
 
+/// @brief Convert a byte offset to a signed 7-bit scaled immediate for STP/LDP pair encoding.
+/// @details The AArch64 pair-encoding field is imm7 * 8; valid range is [-512, 504] step 8.
+/// Throws std::out_of_range if the offset violates alignment or exceeds the field range.
+/// @param offset Byte offset to encode.
+/// @param opcode Human-readable opcode name used in the exception message.
 static int32_t checkedPairImm7(int64_t offset, const char *opcode) {
     if ((offset % 8) != 0)
         throw std::out_of_range(std::string("AArch64 ") + opcode +
@@ -105,6 +116,17 @@ static int32_t checkedPairImm7(int64_t offset, const char *opcode) {
     return static_cast<int32_t>(scaled);
 }
 
+/// @brief Convert a byte displacement to a word-count displacement and validate it fits.
+/// @details Divides @p deltaBytes by 4 (instruction words) and checks the result fits in
+///          a signed @p immBits-wide field. Throws std::runtime_error on misalignment or range
+///          overflow, embedding @p kind, @p target, @p fnName, and @p rangeDesc in the message.
+/// @param deltaBytes    Signed byte distance from current PC to target.
+/// @param immBits       Width of the branch immediate field (19 for B.cond/CBZ, 26 for B/BL).
+/// @param kind          Human-readable branch opcode name for the error message.
+/// @param rangeDesc     Human-readable range string (e.g., "±1 MiB") for the error message.
+/// @param target        Target label name for the error message.
+/// @param fnName        Enclosing function name for the error message.
+/// @return Signed word-count displacement that fits in immBits.
 static int32_t checkedBranchDispWords(int64_t deltaBytes,
                                       int immBits,
                                       const char *kind,
@@ -127,6 +149,9 @@ static int32_t checkedBranchDispWords(int64_t deltaBytes,
     return static_cast<int32_t>(deltaWords);
 }
 
+/// @brief Non-throwing predicate: return true if @p deltaBytes fits in an immBits-wide branch field.
+/// @details Used during the label-offset fixup pass to choose between the short (4-byte)
+///          and long (8-byte trampoline) conditional branch forms before final emission.
 static bool fitsBranchDispWords(int64_t deltaBytes, int immBits) {
     if ((deltaBytes & 0x3) != 0)
         return false;
@@ -690,7 +715,15 @@ void A64BinaryEncoder::encodeMovImm64(uint32_t rd, uint64_t imm, objfile::CodeSe
     });
 }
 
-/// Emit a single ADD or SUB immediate, using lsl #12 when possible.
+/// @brief Emit one or more add/sub-immediate instructions to apply @p val using @p tmpl.
+/// @details Uses a single instruction when val fits in 12 bits; a single lsl #12 instruction
+///          when val is a multiple of 4096; two instructions (shifted + unshifted parts) for
+///          values that combine both; or a chunked loop at steps of 4080 for very large values.
+/// @param tmpl Base encoding template (e.g. ADD or SUB base word with size/S bits pre-set).
+/// @param rd   Destination register index.
+/// @param rn   Source register index for the first instruction.
+/// @param val  Unsigned immediate to apply (must be ≤ 0xFFFFFF for two-instruction form).
+/// @param cs   CodeSection to emit instruction words into.
 static void emitAddSubImmSmart(
     uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t val, objfile::CodeSection &cs) {
     if (val <= 4095) {

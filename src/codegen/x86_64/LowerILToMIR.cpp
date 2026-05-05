@@ -5,26 +5,22 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/LowerILToMIR.cpp
+// File: codegen/x86_64/LowerILToMIR.cpp
 // Purpose: Bridge IL produced by the compiler front-end into Machine IR consumed
 //          by the x86-64 backend using declarative lowering rules.
-// Key invariants: Lowering must preserve SSA identities, emit deterministic
-//                 basic-block ordering, and leave the adapter's internal caches
-//                 consistent for subsequent functions.  Helper routines manage
-//                 literal materialisation and virtual-register allocation so rule
-//                 implementations remain stateless.
-// Ownership/Lifetime: The adapter owns transient lowering state per function
-//                     and writes into caller-owned Machine IR structures.
-// Links: docs/architecture.md#codegen, src/codegen/x86_64/LowerILToMIR.hpp
+// Key invariants:
+//   - Lowering preserves SSA identities and emits deterministic block ordering.
+//   - Adapter internal caches remain consistent across functions.
+//   - Virtual register allocation and literal materialisation are centralised
+//     here so rule implementations remain stateless.
+// Ownership/Lifetime:
+//   - The adapter owns transient per-function lowering state and writes into
+//     caller-owned Machine IR structures.
+// Links: codegen/x86_64/LowerILToMIR.hpp,
+//        codegen/x86_64/LoweringRules.hpp,
+//        codegen/x86_64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Rule-driven IL-to-MIR lowering entry points for the x86-64 backend.
-/// @details Provides the MIRBuilder façade used by individual rules as well as
-///          the top-level LowerILToMIR::lower dispatch loop.  Helper routines
-///          such as virtual register allocation and literal handling remain in
-///          this translation unit to avoid coupling rules to adapter internals.
 
 #include "LowerILToMIR.hpp"
 

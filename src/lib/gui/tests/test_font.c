@@ -3,14 +3,20 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// Purpose: Font loading and rasterization tests — TTF parsing, glyph rendering, cache invalidation.
-//
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/tests/test_font.c
+// File: lib/gui/tests/test_font.c
+// Purpose: Font loading and rasterization tests — UTF-8 decoding, glyph
+//          rendering, cache invalidation, and null-safety of the font API.
+// Key invariants:
+//   - Tests run without a real font file unless TEST_FONT_PATH is defined
+//   - Null/empty inputs must never crash the font API
+// Ownership/Lifetime:
+//   - Each test function is self-contained; fonts created within a test are
+//     destroyed before the function returns
+// Links: lib/gui/include/vg_font.h
 //
 //===----------------------------------------------------------------------===//
-// test_font.c - Font engine unit tests
 #include "vg_font.h"
 #include <assert.h>
 #include <stdio.h>
@@ -68,6 +74,7 @@ static int tests_failed = 0;
 // UTF-8 Tests
 //=============================================================================
 
+/// @brief Verify that vg_utf8_decode advances through ASCII bytes one codepoint at a time.
 static void test_utf8_decode_ascii(void) {
     TEST(utf8_decode_ascii);
 
@@ -81,6 +88,7 @@ static void test_utf8_decode_ascii(void) {
     PASS();
 }
 
+/// @brief Verify that vg_utf8_decode correctly decodes a 2-byte UTF-8 sequence (U+0080–U+07FF).
 static void test_utf8_decode_2byte(void) {
     TEST(utf8_decode_2byte);
 
@@ -91,6 +99,7 @@ static void test_utf8_decode_2byte(void) {
     PASS();
 }
 
+/// @brief Verify that vg_utf8_decode correctly decodes a 3-byte UTF-8 sequence (U+0800–U+FFFF).
 static void test_utf8_decode_3byte(void) {
     TEST(utf8_decode_3byte);
 
@@ -101,6 +110,7 @@ static void test_utf8_decode_3byte(void) {
     PASS();
 }
 
+/// @brief Verify that vg_utf8_decode correctly decodes a 4-byte UTF-8 sequence (U+10000+, e.g. emoji).
 static void test_utf8_decode_4byte(void) {
     TEST(utf8_decode_4byte);
 
@@ -111,6 +121,7 @@ static void test_utf8_decode_4byte(void) {
     PASS();
 }
 
+/// @brief Verify that vg_utf8_strlen counts Unicode codepoints, not raw bytes.
 static void test_utf8_strlen(void) {
     TEST(utf8_strlen);
 
@@ -122,6 +133,7 @@ static void test_utf8_strlen(void) {
     PASS();
 }
 
+/// @brief Verify that vg_utf8_offset returns the correct byte offset for a given codepoint index.
 static void test_utf8_offset(void) {
     TEST(utf8_offset);
 
@@ -141,6 +153,7 @@ static void test_utf8_offset(void) {
 // Font Loading Tests (require actual font file)
 //=============================================================================
 
+/// @brief Verify that vg_font_load returns NULL when passed a NULL data pointer.
 static void test_font_load_null(void) {
     TEST(font_load_null);
 
@@ -150,6 +163,7 @@ static void test_font_load_null(void) {
     PASS();
 }
 
+/// @brief Verify that vg_font_load returns NULL when given a 1-byte zeroed buffer (invalid TTF).
 static void test_font_load_empty(void) {
     TEST(font_load_empty);
 
@@ -160,6 +174,7 @@ static void test_font_load_empty(void) {
     PASS();
 }
 
+/// @brief Verify that vg_font_destroy does not crash when passed NULL.
 static void test_font_destroy_null(void) {
     TEST(font_destroy_null);
 
@@ -174,6 +189,7 @@ static void test_font_destroy_null(void) {
 //=============================================================================
 
 #ifdef TEST_FONT_PATH
+/// @brief Full integration test: load a real font file and exercise metrics, glyph lookup, hit-test, and cursor-x.
 static void test_font_load_file(void) {
     TEST(font_load_file);
 
@@ -224,6 +240,7 @@ static void test_font_load_file(void) {
 // Main
 //=============================================================================
 
+/// @brief Run all font engine tests and report pass/fail counts.
 int main(int argc, char **argv) {
     printf("Viper GUI Font Engine Tests\n");
     printf("============================\n\n");

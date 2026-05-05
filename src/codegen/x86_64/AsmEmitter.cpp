@@ -5,17 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/AsmEmitter.cpp
+// File: codegen/x86_64/AsmEmitter.cpp
 // Purpose: Materialise textual x86-64 assembly from Machine IR functions while
 //          maintaining deterministic literal pools for read-only data.
-// Key invariants: Emission preserves operand ordering, branch destinations, and
-//                 condition suffixes carried by Machine IR. Literal pools
-//                 deduplicate entries, emit stable labels, and are never emitted
-//                 when empty.
-// Ownership/Lifetime: AsmEmitter borrows the caller-provided RoDataPool; the
-//                     pool outlives the emitter and continues to own all stored
-//                     literal buffers.
-// Links: docs/codemap.md#codegen, docs/architecture.md#cpp-overview
+// Key invariants:
+//   - Emission preserves operand ordering, branch destinations, and condition
+//     suffixes carried by Machine IR.
+//   - Literal pools deduplicate entries, emit stable labels, and are never
+//     emitted when empty.
+// Ownership/Lifetime:
+//   - AsmEmitter borrows the caller-provided RoDataPool; the pool outlives the
+//     emitter and continues to own all stored literal buffers.
+// Links: codegen/x86_64/AsmEmitter.hpp,
+//        codegen/x86_64/asmfmt/Format.hpp,
+//        codegen/x86_64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
 

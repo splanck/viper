@@ -35,71 +35,90 @@
 
 namespace viper::codegen::aarch64 {
 
+/// @brief Result returned by a pipeline run.
 struct PipelineResult {
-    int exit_code{0};
-    std::string stdout_text{};
-    std::string stderr_text{};
+    int exit_code{0};           ///< 0 on success, non-zero on error.
+    std::string stdout_text{};  ///< Captured stdout (assembly text when emit_asm is set).
+    std::string stderr_text{};  ///< Captured stderr (diagnostics, MIR dumps).
 };
 
-/// Options controlling optional MIR dumps and diagnostics.
+/// @brief Options controlling optional MIR dumps and diagnostics for the
+///        pass-level pipeline (used by runCodegenPipeline).
 struct PipelineOptions {
-    bool dumpMirBeforeRA = false;
-    bool dumpMirAfterRA = false;
-    bool emitAssemblyText = true;
-    bool useBinaryEmit = false; ///< When true, also run BinaryEmitPass after EmitPass.
-    int optimizeLevel = 1;      ///< Backend optimization level: 0 disables post-RA backend passes.
-    bool timePasses = false;    ///< Emit per-backend-pass timings.
+    bool dumpMirBeforeRA = false;  ///< Dump MIR to diagOut before register allocation.
+    bool dumpMirAfterRA = false;   ///< Dump MIR to diagOut after register allocation.
+    bool emitAssemblyText = true;  ///< Run EmitPass to produce assembly text output.
+    bool useBinaryEmit = false;    ///< Also run BinaryEmitPass to produce an object file.
+    int optimizeLevel = 1;         ///< Backend optimization level: 0 = none, 1 = peephole+scheduler.
+    bool timePasses = false;       ///< Emit per-pass wall-clock timings to diagOut.
 };
 
+/// @brief High-level driver for the AArch64 code-generation pipeline.
+///
+/// Wraps the full AArch64 pipeline (IL parse → IL opt → MIR lower → RA →
+/// peephole → sched → emit → assemble → link) behind a single `run()` entry
+/// point used by the `viper` CLI driver.
 class CodegenPipeline {
   public:
+    /// @brief Which assembler to use for translating emitted .s files to .o files.
     enum class AssemblerMode {
-        System,
-        Native,
+        System, ///< Invoke the system `as` (or clang -c) via subprocess.
+        Native, ///< Use Viper's built-in assembler/encoder.
     };
 
+    /// @brief Which linker to use for producing the final native binary.
     enum class LinkMode {
-        System,
-        Native,
+        System, ///< Invoke the system `ld` (or clang) via subprocess.
+        Native, ///< Use Viper's built-in linker.
     };
 
+    /// @brief OS target for emitted code; affects symbol mangling and ABI.
     enum class TargetPlatform {
-        Host,
-        Darwin,
-        Linux,
-        Windows,
+        Host,    ///< Auto-detect from the current OS at runtime.
+        Darwin,  ///< macOS / iOS (Mach-O, underscore symbol prefix).
+        Linux,   ///< Linux ELF (no prefix, .type/.size directives).
+        Windows, ///< Windows PE/COFF (no prefix, no .type/.size).
     };
 
+    /// @brief All configuration for a single pipeline run.
     struct Options {
-        std::string input_il_path{};
-        std::string output_obj_path{};
-        std::string output_asm_path{};
-        bool emit_asm = false;
-        bool run_native = false;
-        bool dump_mir_before_ra = false;
-        bool dump_mir_after_ra = false;
-        int optimize = 1;
-        bool skip_il_optimization = false;
-        std::size_t stack_size = 0; ///< Requested stack size in bytes; 0 uses platform defaults.
-        AssemblerMode assembler_mode = AssemblerMode::Native;
-        LinkMode link_mode = LinkMode::Native;
-        TargetPlatform target_platform = TargetPlatform::Host;
-        bool emit_debug_lines = false;
-        bool time_passes = false; ///< Emit per-backend-pass timings.
-        bool fast_link = false;   ///< Skip non-essential native-link size reductions.
-        std::string asset_blob_path{};            ///< Path to VPA asset blob for .rodata embedding.
-        std::vector<std::string> extra_objects{}; ///< Extra .o files to link.
+        std::string input_il_path{};   ///< Path to the IL module file (.il) to compile.
+        std::string output_obj_path{}; ///< Path to write the output .o file.
+        std::string output_asm_path{}; ///< Path to write the assembly text (if emit_asm).
+        bool emit_asm = false;         ///< Also write assembly text to output_asm_path.
+        bool run_native = false;       ///< Execute the compiled binary after linking.
+        bool dump_mir_before_ra = false; ///< Dump MIR to stderr before register allocation.
+        bool dump_mir_after_ra = false;  ///< Dump MIR to stderr after register allocation.
+        int optimize = 1;              ///< 0 = no backend opts; 1 = peephole + scheduler.
+        bool skip_il_optimization = false; ///< Skip IL optimizer passes (for testing).
+        std::size_t stack_size = 0;    ///< Requested stack size in bytes; 0 = platform default.
+        AssemblerMode assembler_mode = AssemblerMode::Native; ///< Assembler selection.
+        LinkMode link_mode = LinkMode::Native;                ///< Linker selection.
+        TargetPlatform target_platform = TargetPlatform::Host; ///< OS ABI target.
+        bool emit_debug_lines = false; ///< Emit .loc / line-number directives in assembly.
+        bool time_passes = false;      ///< Print per-pass wall-clock timings to stderr.
+        bool fast_link = false;        ///< Skip non-essential size-reduction passes in the linker.
+        std::string asset_blob_path{};             ///< Path to VPA asset blob for .rodata embedding.
+        std::vector<std::string> extra_objects{};  ///< Extra .o files to pass to the linker.
     };
 
+    /// @brief Construct a pipeline with the given options.
     explicit CodegenPipeline(Options opts);
 
+    /// @brief Run the pipeline reading the IL module from Options::input_il_path.
+    /// @return PipelineResult with exit_code 0 on success.
     [[nodiscard]] PipelineResult run();
+
+    /// @brief Run the pipeline using an already-loaded IL module.
+    /// @param module The IL module to compile (consumed).
+    /// @param debugSourcePath Source path string embedded in debug info (optional).
+    /// @param moduleAlreadyVerified Skip IL verification when true.
     [[nodiscard]] PipelineResult runWithModule(il::core::Module module,
                                                std::string debugSourcePath = {},
                                                bool moduleAlreadyVerified = false);
 
   private:
-    Options opts_;
+    Options opts_; ///< Pipeline configuration captured at construction time.
 };
 
 /// @brief Run the full AArch64 code-generation pipeline.

@@ -4,32 +4,18 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file vg_filedialog_native.h
-/// @brief Platform-native file dialog declarations for open, save, and folder
-///        selection operations.
-///
-/// @details This internal header exposes thin wrappers around the operating
-///          system's native file-dialog APIs (e.g. Windows GetOpenFileName /
-///          IFileDialog, macOS NSOpenPanel, GTK file chooser). Each function
-///          blocks until the user makes a selection or cancels, and returns a
-///          heap-allocated path string (or NULL on cancel).
-///
-///          These functions are called by the cross-platform vg_filedialog
-///          convenience API (see vg_ide_widgets.h) but can also be invoked
-///          directly when the full widget-based file dialog is not needed.
-///
-/// Key invariants:
-///   - All returned strings are heap-allocated and must be freed by the caller.
-///   - A NULL return indicates the user cancelled the dialog.
-///   - Filter patterns use semicolon-delimited globs (e.g. "*.c;*.h").
-///
-/// Ownership/Lifetime:
-///   - The returned char* is owned by the caller and must be freed with free().
-///
-/// Links:
-///   - vg_ide_widgets.h -- vg_filedialog_open_file / save_file / select_folder
-///
+//
+// File: lib/gui/src/dialogs/vg_filedialog_native.h
+// Purpose: Platform-native file dialog wrappers — blocking open/save/folder
+//          dialogs using the OS APIs (Win32, macOS NSPanel, GTK file chooser).
+// Key invariants:
+//   - All returned strings are heap-allocated and must be freed by the caller.
+//   - A NULL return indicates the user cancelled the dialog.
+//   - Filter patterns use semicolon-delimited globs (e.g. "*.c;*.h").
+// Ownership/Lifetime:
+//   - The returned char* is owned by the caller and must be freed with free().
+// Links: lib/gui/include/vg_ide_widgets_dialog.h
+//
 //===----------------------------------------------------------------------===//
 #pragma once
 

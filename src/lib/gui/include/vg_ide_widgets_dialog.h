@@ -5,14 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/include/vg_ide_widgets_dialog.h
-// Purpose: Dialog and FileDialog widget declarations.
+// File: lib/gui/include/vg_ide_widgets_dialog.h
+// Purpose: Dialog and FileDialog widget declarations — modal dialogs with
+//          preset button configurations and native file-open/save panels.
 // Key invariants:
 //   - All create functions return NULL on allocation failure.
 //   - String parameters are copied internally unless documented otherwise.
 // Ownership/Lifetime:
 //   - Dialogs may be created without a parent and must be explicitly destroyed.
-// Links: vg_ide_widgets_common.h, vg_widget.h
+// Links: lib/gui/include/vg_ide_widgets_common.h,
+//        lib/gui/include/vg_widget.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -131,83 +133,144 @@ typedef struct vg_dialog {
     void (*on_close)(struct vg_dialog *, void *);                      ///< Close callback
 } vg_dialog_t;
 
-/// @brief Create a new dialog widget
+/// @brief Create a new dialog widget.
+/// @param title Title bar text (copied internally).
+/// @return New dialog widget or NULL on failure.
 vg_dialog_t *vg_dialog_create(const char *title);
 
-/// @brief Destroy a dialog widget
+/// @brief Destroy a dialog widget and free all resources.
+/// @param dialog Dialog widget to destroy (may be NULL).
 void vg_dialog_destroy(vg_dialog_t *dialog);
 
-/// @brief Set dialog title
+/// @brief Set the dialog title bar text.
+/// @param dialog Dialog widget.
+/// @param title  New title (copied internally).
 void vg_dialog_set_title(vg_dialog_t *dialog, const char *title);
 
-/// @brief Set dialog content widget
+/// @brief Set the dialog's main content widget.
+/// @param dialog  Dialog widget.
+/// @param content Widget to embed in the dialog body (ownership transfers to dialog).
 void vg_dialog_set_content(vg_dialog_t *dialog, vg_widget_t *content);
 
-/// @brief Set dialog message (simple text content)
+/// @brief Set a plain text message displayed in the dialog body.
+/// @param dialog  Dialog widget.
+/// @param message Message text (copied internally).
 void vg_dialog_set_message(vg_dialog_t *dialog, const char *message);
 
-/// @brief Set dialog icon preset
+/// @brief Set the built-in icon preset shown beside the message.
+/// @param dialog Dialog widget.
+/// @param icon   One of VG_DIALOG_ICON_INFO, WARNING, ERROR, QUESTION, or NONE.
 void vg_dialog_set_icon(vg_dialog_t *dialog, vg_dialog_icon_t icon);
 
-/// @brief Set dialog custom icon
+/// @brief Set a custom icon (overrides any icon preset).
+/// @param dialog Dialog widget.
+/// @param icon   Icon specification (the dialog takes a deep copy).
 void vg_dialog_set_custom_icon(vg_dialog_t *dialog, vg_icon_t icon);
 
-/// @brief Set dialog button preset
+/// @brief Set the button row using a preset.
+/// @param dialog  Dialog widget.
+/// @param buttons One of the VG_DIALOG_BUTTONS_* presets.
 void vg_dialog_set_buttons(vg_dialog_t *dialog, vg_dialog_buttons_t buttons);
 
-/// @brief Set custom buttons
+/// @brief Replace the button row with a fully custom set of buttons.
+/// @param dialog  Dialog widget.
+/// @param buttons Array of button definitions (copied internally).
+/// @param count   Number of entries in @p buttons.
 void vg_dialog_set_custom_buttons(vg_dialog_t *dialog,
                                   vg_dialog_button_def_t *buttons,
                                   size_t count);
 
-/// @brief Set dialog resizable
+/// @brief Control whether the dialog can be resized by dragging its edges.
+/// @param dialog    Dialog widget.
+/// @param resizable true to enable resize handles.
 void vg_dialog_set_resizable(vg_dialog_t *dialog, bool resizable);
 
-/// @brief Set dialog size constraints
+/// @brief Set minimum and maximum size constraints.
+/// @param dialog Dialog widget.
+/// @param min_w  Minimum width in pixels.
+/// @param min_h  Minimum height in pixels.
+/// @param max_w  Maximum width in pixels (0 = unconstrained).
+/// @param max_h  Maximum height in pixels (0 = unconstrained).
 void vg_dialog_set_size_constraints(
     vg_dialog_t *dialog, uint32_t min_w, uint32_t min_h, uint32_t max_w, uint32_t max_h);
 
-/// @brief Set dialog modal state
+/// @brief Set whether the dialog blocks input to its parent (modal behaviour).
+/// @param dialog Dialog widget.
+/// @param modal  true to make the dialog modal.
+/// @param parent Parent widget whose input is blocked while the dialog is open.
 void vg_dialog_set_modal(vg_dialog_t *dialog, bool modal, vg_widget_t *parent);
 
-/// @brief Show the dialog
+/// @brief Make the dialog visible at its last position.
+/// @param dialog Dialog widget.
 void vg_dialog_show(vg_dialog_t *dialog);
 
-/// @brief Show the dialog centered relative to another widget
+/// @brief Make the dialog visible, centred over another widget.
+/// @param dialog      Dialog widget.
+/// @param relative_to Widget whose centre is used as the reference point.
 void vg_dialog_show_centered(vg_dialog_t *dialog, vg_widget_t *relative_to);
 
-/// @brief Hide the dialog
+/// @brief Hide the dialog without producing a result.
+/// @param dialog Dialog widget.
 void vg_dialog_hide(vg_dialog_t *dialog);
 
-/// @brief Close the dialog with a result
+/// @brief Close the dialog and record the result code.
+///
+/// @details Fires the on_result callback (if set) then hides the dialog.
+///          Re-entrant calls while @c closing_in_progress is set are ignored.
+///
+/// @param dialog Dialog widget.
+/// @param result Result code to store (e.g. VG_DIALOG_RESULT_OK).
 void vg_dialog_close(vg_dialog_t *dialog, vg_dialog_result_t result);
 
-/// @brief Get dialog result
+/// @brief Get the result code produced when the dialog last closed.
+/// @param dialog Dialog widget.
+/// @return Last result code; VG_DIALOG_RESULT_NONE if the dialog is still open.
 vg_dialog_result_t vg_dialog_get_result(vg_dialog_t *dialog);
 
-/// @brief Check if dialog is open
+/// @brief Check whether the dialog is currently visible.
+/// @param dialog Dialog widget.
+/// @return true if the dialog is open.
 bool vg_dialog_is_open(vg_dialog_t *dialog);
 
-/// @brief Set result callback
+/// @brief Set the callback fired when the dialog closes with a result.
+/// @param dialog    Dialog widget.
+/// @param callback  Handler function (receives the dialog, result, and user_data).
+/// @param user_data User data passed to the handler.
 void vg_dialog_set_on_result(vg_dialog_t *dialog,
                              void (*callback)(vg_dialog_t *, vg_dialog_result_t, void *),
                              void *user_data);
 
-/// @brief Set close callback
+/// @brief Set the callback fired when the dialog is hidden (any cause).
+/// @param dialog    Dialog widget.
+/// @param callback  Handler function.
+/// @param user_data User data passed to the handler.
 void vg_dialog_set_on_close(vg_dialog_t *dialog,
                             void (*callback)(vg_dialog_t *, void *),
                             void *user_data);
 
-/// @brief Set font for dialog
+/// @brief Set the font used for message text and button labels.
+/// @param dialog Dialog widget.
+/// @param font   Font handle.
+/// @param size   Font size in pixels.
 void vg_dialog_set_font(vg_dialog_t *dialog, vg_font_t *font, float size);
 
-/// @brief Create a simple message dialog
+/// @brief Create a preconfigured message dialog.
+/// @param title   Title bar text.
+/// @param message Body text.
+/// @param icon    Icon preset.
+/// @param buttons Button preset.
+/// @return New dialog widget or NULL on failure.
 vg_dialog_t *vg_dialog_message(const char *title,
                                const char *message,
                                vg_dialog_icon_t icon,
                                vg_dialog_buttons_t buttons);
 
-/// @brief Create a confirmation dialog
+/// @brief Create a YES/NO confirmation dialog with a single confirm callback.
+/// @param title      Title bar text.
+/// @param message    Body text.
+/// @param on_confirm Callback invoked when the user confirms (may be NULL).
+/// @param user_data  User data passed to @p on_confirm.
+/// @return New dialog widget or NULL on failure.
 vg_dialog_t *vg_dialog_confirm(const char *title,
                                const char *message,
                                void (*on_confirm)(void *),
@@ -305,81 +368,133 @@ typedef struct vg_filedialog {
     void (*on_cancel)(struct vg_filedialog *dialog, void *user_data); ///< Cancel callback
 } vg_filedialog_t;
 
-/// @brief Create a new file dialog widget
+/// @brief Create a new file dialog widget.
+/// @param mode VG_FILEDIALOG_OPEN, SAVE, or SELECT_FOLDER.
+/// @return New file dialog or NULL on failure.
 vg_filedialog_t *vg_filedialog_create(vg_filedialog_mode_t mode);
 
-/// @brief Destroy a file dialog widget
+/// @brief Destroy a file dialog and free all resources.
+/// @param dialog File dialog to destroy (may be NULL).
 void vg_filedialog_destroy(vg_filedialog_t *dialog);
 
-/// @brief Set dialog title
+/// @brief Set the title bar text.
+/// @param dialog File dialog.
+/// @param title  Title string (copied internally).
 void vg_filedialog_set_title(vg_filedialog_t *dialog, const char *title);
 
-/// @brief Set initial directory path
+/// @brief Set the directory displayed when the dialog opens.
+/// @param dialog File dialog.
+/// @param path   Absolute directory path (copied internally).
 void vg_filedialog_set_initial_path(vg_filedialog_t *dialog, const char *path);
 
-/// @brief Set default filename (for save mode)
+/// @brief Pre-fill the filename field (save mode only).
+/// @param dialog   File dialog.
+/// @param filename Suggested filename without directory (copied internally).
 void vg_filedialog_set_filename(vg_filedialog_t *dialog, const char *filename);
 
-/// @brief Set multi-select mode (for open mode)
+/// @brief Allow the user to select multiple files (open mode only).
+/// @param dialog File dialog.
+/// @param multi  true to enable multi-selection.
 void vg_filedialog_set_multi_select(vg_filedialog_t *dialog, bool multi);
 
-/// @brief Set show hidden files
+/// @brief Control whether hidden files and directories are listed.
+/// @param dialog File dialog.
+/// @param show   true to show hidden entries.
 void vg_filedialog_set_show_hidden(vg_filedialog_t *dialog, bool show);
 
-/// @brief Set confirm overwrite (for save mode)
+/// @brief Ask the user to confirm before overwriting an existing file (save mode).
+/// @param dialog  File dialog.
+/// @param confirm true to show the overwrite confirmation prompt.
 void vg_filedialog_set_confirm_overwrite(vg_filedialog_t *dialog, bool confirm);
 
-/// @brief Add a file filter
+/// @brief Add a file-type filter to the filter dropdown.
+/// @param dialog  File dialog.
+/// @param name    Display name (e.g. "Viper Files").
+/// @param pattern Semicolon-separated glob patterns (e.g. "*.viper;*.vpr").
 void vg_filedialog_add_filter(vg_filedialog_t *dialog, const char *name, const char *pattern);
 
-/// @brief Clear all file filters
+/// @brief Remove all file-type filters.
+/// @param dialog File dialog.
 void vg_filedialog_clear_filters(vg_filedialog_t *dialog);
 
-/// @brief Set default extension (auto-added to filename in save mode)
+/// @brief Set an extension automatically appended to the filename in save mode.
+/// @param dialog File dialog.
+/// @param ext    Extension including the leading dot (e.g. ".viper").
 void vg_filedialog_set_default_extension(vg_filedialog_t *dialog, const char *ext);
 
-/// @brief Add a bookmark
+/// @brief Add a named quick-access bookmark to the sidebar.
+/// @param dialog File dialog.
+/// @param name   Display name for the bookmark.
+/// @param path   Absolute path the bookmark navigates to.
 void vg_filedialog_add_bookmark(vg_filedialog_t *dialog, const char *name, const char *path);
 
-/// @brief Add default bookmarks (Home, Desktop, Documents)
+/// @brief Add platform-standard bookmarks (Home, Desktop, Documents).
+/// @param dialog File dialog.
 void vg_filedialog_add_default_bookmarks(vg_filedialog_t *dialog);
 
-/// @brief Clear all bookmarks
+/// @brief Remove all bookmarks from the sidebar.
+/// @param dialog File dialog.
 void vg_filedialog_clear_bookmarks(vg_filedialog_t *dialog);
 
-/// @brief Show the file dialog
+/// @brief Show the file dialog.
+/// @param dialog File dialog.
 void vg_filedialog_show(vg_filedialog_t *dialog);
 
-/// @brief Get selected file paths (after dialog closes)
+/// @brief Get all selected file paths after the dialog closes.
+/// @param dialog File dialog.
+/// @param count  Receives the number of paths in the returned array.
+/// @return Array of path strings (owned by the dialog; valid until destroy or next show).
 char **vg_filedialog_get_selected_paths(vg_filedialog_t *dialog, size_t *count);
 
-/// @brief Get single selected file path (convenience)
+/// @brief Get the single selected path (convenience wrapper for non-multi-select).
+/// @param dialog File dialog.
+/// @return The first selected path string, or NULL if nothing was selected.
 char *vg_filedialog_get_selected_path(vg_filedialog_t *dialog);
 
-/// @brief Set selection callback
+/// @brief Set the callback fired when the user confirms a selection.
+/// @param dialog    File dialog.
+/// @param callback  Handler called with the dialog, path array, count, and user_data.
+/// @param user_data User data passed to the handler.
 void vg_filedialog_set_on_select(vg_filedialog_t *dialog,
                                  void (*callback)(vg_filedialog_t *, char **, size_t, void *),
                                  void *user_data);
 
-/// @brief Set cancel callback
+/// @brief Set the callback fired when the user cancels the dialog.
+/// @param dialog    File dialog.
+/// @param callback  Handler function.
+/// @param user_data User data passed to the handler.
 void vg_filedialog_set_on_cancel(vg_filedialog_t *dialog,
                                  void (*callback)(vg_filedialog_t *, void *),
                                  void *user_data);
 
-/// @brief Convenience: Open a single file
+/// @brief Convenience: show a blocking open-file dialog and return the chosen path.
+/// @param title          Dialog title.
+/// @param initial_path   Starting directory (may be NULL for the current directory).
+/// @param filter_name    Filter display name (may be NULL to show all files).
+/// @param filter_pattern Glob pattern (may be NULL).
+/// @return Newly allocated path string that the caller must free, or NULL on cancel.
 char *vg_filedialog_open_file(const char *title,
                               const char *initial_path,
                               const char *filter_name,
                               const char *filter_pattern);
 
-/// @brief Convenience: Save a file
+/// @brief Convenience: show a blocking save-file dialog and return the chosen path.
+/// @param title          Dialog title.
+/// @param initial_path   Starting directory (may be NULL).
+/// @param default_name   Pre-filled filename (may be NULL).
+/// @param filter_name    Filter display name (may be NULL).
+/// @param filter_pattern Glob pattern (may be NULL).
+/// @return Newly allocated path string that the caller must free, or NULL on cancel.
 char *vg_filedialog_save_file(const char *title,
                               const char *initial_path,
                               const char *default_name,
                               const char *filter_name,
                               const char *filter_pattern);
 
-/// @brief Convenience: Select a folder
+/// @brief Convenience: show a blocking folder-select dialog and return the chosen path.
+/// @param title        Dialog title.
+/// @param initial_path Starting directory (may be NULL).
+/// @return Newly allocated path string that the caller must free, or NULL on cancel.
 char *vg_filedialog_select_folder(const char *title, const char *initial_path);
 
 #ifdef __cplusplus

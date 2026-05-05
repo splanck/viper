@@ -4,38 +4,20 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file vg_event.h
-/// @brief Event system for widget interaction -- input, focus, and widget events.
-///
-/// @details Defines the event model used by the Viper GUI toolkit. Every user
-///          interaction (mouse movement, clicks, keyboard presses) and every
-///          internal notification (value changed, focus shift, window resize) is
-///          represented as a vg_event_t value.
-///
-///          Events carry a type tag, a target widget, modifier-key state, a
-///          timestamp, and a tagged union of type-specific payloads (mouse
-///          coordinates, key codes, value data, resize dimensions, etc.).
-///
-///          Dispatch follows a hit-test-then-bubble model: the deepest widget
-///          under the cursor receives the event first and may mark it as
-///          handled to prevent further propagation. Events can also be sent
-///          directly to a specific widget (no bubbling) via vg_event_send.
-///
-///          A convenience translation layer converts platform events (from the
-///          VGFX windowing layer) into GUI events.
-///
-/// Key invariants:
-///   - Setting event->handled = true stops bubbling immediately.
-///   - Mouse coordinates are relative to the target widget for mouse events.
-///
-/// Ownership/Lifetime:
-///   - Events are value types (stack-allocated); no heap allocation is needed.
-///
-/// Links:
-///   - vg_widget.h -- widget tree and event dispatch entry points
-///   - vgfx_event.h (platform) -- raw platform event structures
-///
+//
+// File: lib/gui/include/vg_event.h
+// Purpose: Event system for widget interaction — input, focus, and widget events.
+//          Defines vg_event_t, all event type tags, modifier flags, key codes,
+//          and the dispatch/translation API.
+// Key invariants:
+//   - Setting event->handled = true stops bubbling immediately.
+//   - Mouse coordinates in the mouse payload are relative to the target widget.
+//   - Events are value types; no heap allocation is required.
+// Ownership/Lifetime:
+//   - vg_event_t is stack-allocated by callers and passed by pointer to dispatch.
+// Links: lib/gui/src/core/vg_event.c,
+//        lib/gui/include/vg_widget.h
+//
 //===----------------------------------------------------------------------===//
 #pragma once
 
@@ -117,14 +99,15 @@ typedef enum vg_modifiers {
 } vg_modifiers_t;
 
 //=============================================================================
-// Key Codes (Compatible with VGFX key codes)
+// Key Codes
 //=============================================================================
 
 /// @brief Virtual key codes for keyboard events.
 ///
-/// @details Values are chosen to be compatible with the VGFX platform
-///          abstraction layer. Printable ASCII keys use their ASCII values;
-///          function and navigation keys start at 256.
+/// @details Printable ASCII keys use their ASCII values; function and
+///          navigation keys start at 256. Special-key values are not identical
+///          to VGFX key codes; use vg_key_from_vgfx_key() or
+///          vg_event_from_platform() when translating platform input.
 typedef enum vg_key {
     VG_KEY_UNKNOWN = -1, ///< Unknown or unmapped key.
 
@@ -286,17 +269,21 @@ typedef struct vg_event {
 ///          hit testing. The event is delivered to that widget and then bubbles
 ///          up through ancestors until a handler sets event->handled = true or
 ///          the root is reached. For keyboard events the focused widget
-///          receives the event first.
+///          receives the event first. Runtime state such as focus, modal roots,
+///          input capture, hover, and click tracking is isolated per recently
+///          dispatched root widget.
 ///
 /// @param root  The root of the widget tree.
 /// @param event The event to dispatch (modified in place: target and handled may change).
 /// @return true if the event was handled by any widget.
 bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event);
 
-/// @brief Send an event directly to a single widget without bubbling.
+/// @brief Send an event directly to a widget.
 ///
-/// @details The event's target is set to @p widget and the widget's event
-///          handler is called. No ancestor widgets see the event.
+/// @details The event is localized to @p widget, delivered to its handler, and
+///          bubbles through live ancestors until handled. Use
+///          `vg_event_dispatch` for normal root-based routing and per-root
+///          runtime state activation.
 ///
 /// @param widget The widget to deliver the event to.
 /// @param event  The event to send.
@@ -323,6 +310,15 @@ vg_event_t vg_event_mouse(
 /// @return A fully initialised vg_event_t value.
 vg_event_t vg_event_key(vg_event_type_t type, vg_key_t key, uint32_t codepoint, uint32_t modifiers);
 
+/// @brief Translate a VGFX key code into a GUI key code.
+///
+/// @details Printable ASCII codes are returned unchanged. Navigation and other
+///          special keys are mapped from the VGFX numbering to vg_key_t.
+///
+/// @param vgfx_key Key code from a vgfx_event_t keyboard event.
+/// @return Matching GUI key code, or VG_KEY_UNKNOWN for unknown sentinel input.
+vg_key_t vg_key_from_vgfx_key(int32_t vgfx_key);
+
 /// @brief Translate a platform-level event into a GUI-level vg_event_t.
 ///
 /// @details Reads from the opaque VGFX platform event structure and maps its
@@ -331,6 +327,15 @@ vg_event_t vg_event_key(vg_event_type_t type, vg_key_t key, uint32_t codepoint, 
 /// @param platform_event Pointer to the platform event (e.g. vgfx_event_t*).
 /// @return A fully initialised vg_event_t value.
 vg_event_t vg_event_from_platform(void *platform_event);
+
+/// @brief Clear cached dispatch state for a widget subtree.
+///
+/// @details This is used by the widget lifetime code when a subtree is hidden,
+///          detached, or destroyed so per-root event snapshots cannot restore
+///          stale focus/capture/hover pointers later.
+///
+/// @param widget Root of the subtree to forget.
+void vg_event_forget_widget_subtree(vg_widget_t *widget);
 
 #ifdef __cplusplus
 }

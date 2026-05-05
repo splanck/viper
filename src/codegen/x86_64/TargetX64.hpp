@@ -7,12 +7,14 @@
 //
 // File: codegen/x86_64/TargetX64.hpp
 // Purpose: Define physical registers, register classes, and SysV ABI metadata.
-// Key invariants: sysvTarget() returns a singleton initialised once on first call;
-//                 caller/callee-saved sets and argument order are immutable after
-//                 initialisation; kStackAlignment is always 16 bytes.
-// Ownership/Lifetime: No heap ownership beyond the singleton target info; containers live for the
-//                     duration of the process.
-// Links: docs/architecture.md
+// Key invariants:
+//   - sysvTarget() returns a singleton initialised once on first call.
+//   - Caller/callee-saved sets and argument order are immutable after initialisation.
+//   - kStackAlignment is always 16 bytes.
+// Ownership/Lifetime:
+//   - No heap ownership beyond the singleton TargetInfo; containers live for the process duration.
+// Links: codegen/x86_64/TargetX64.cpp,
+//        codegen/common/TargetInfoBase.hpp
 //
 //===----------------------------------------------------------------------===//
 

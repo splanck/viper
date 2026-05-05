@@ -5,10 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_statusbar.c
+// File: lib/gui/src/widgets/vg_statusbar.c
+// Purpose: Horizontal status bar with three independent item zones (LEFT,
+//          CENTER, RIGHT), supporting text, buttons, progress bars, separators,
+//          and spacers.
+// Key invariants:
+//   - Items in each zone are stored in an independently-allocated pointer array
+//     that doubles from INITIAL_ITEM_CAPACITY (8) when exhausted.
+//   - hovered_item is NULLed in remove/clear before the item is freed so there
+//     is never a dangling pointer in the hover state.
+//   - Progress values are clamped to [0.0, 1.0] in vg_statusbar_item_set_progress.
+//   - All items are owned by the status bar and freed in statusbar_destroy.
+// Ownership/Lifetime:
+//   - vg_statusbar_item_t instances are heap-allocated by create_item and owned
+//     by the status bar. Callers receive handles but must not free them directly.
+//   - item->text and item->tooltip are strdup'd and freed by free_item.
+// Links: lib/gui/include/vg_ide_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_statusbar.c - Status bar widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -52,6 +68,7 @@ static vg_widget_vtable_t g_statusbar_vtable = {.destroy = statusbar_destroy,
 // Helper Functions
 //=============================================================================
 
+/// @brief Grow *items to fit at least needed entries, doubling from INITIAL_ITEM_CAPACITY.
 static bool ensure_item_capacity(vg_statusbar_item_t ***items, size_t *capacity, size_t needed) {
     if (needed <= *capacity)
         return true;
@@ -70,6 +87,7 @@ static bool ensure_item_capacity(vg_statusbar_item_t ***items, size_t *capacity,
     return true;
 }
 
+/// @brief Free an item's text, tooltip, and the item struct itself.
 static void free_item(vg_statusbar_item_t *item) {
     if (!item)
         return;
@@ -80,6 +98,7 @@ static void free_item(vg_statusbar_item_t *item) {
     free(item);
 }
 
+/// @brief Allocate and zero-initialise a status bar item of the given type with optional text.
 static vg_statusbar_item_t *create_item(vg_statusbar_item_type_t type, const char *text) {
     vg_statusbar_item_t *item = calloc(1, sizeof(vg_statusbar_item_t));
     if (!item)
@@ -99,6 +118,7 @@ static vg_statusbar_item_t *create_item(vg_statusbar_item_type_t type, const cha
     return item;
 }
 
+/// @brief Return the pixel width of item, honouring min_width, max_width, and text measurement.
 static float measure_item_width(vg_statusbar_t *sb, vg_statusbar_item_t *item) {
     if (!item->visible)
         return 0;
@@ -136,6 +156,13 @@ static float measure_item_width(vg_statusbar_t *sb, vg_statusbar_item_t *item) {
 // StatusBar Implementation
 //=============================================================================
 
+/// @brief Create a status bar widget with empty left, center, and right item zones.
+///
+/// @details Seeds colours and font size from the current theme. Default height is
+///          STATUSBAR_DEFAULT_HEIGHT. Attaches to parent if non-NULL.
+///
+/// @param parent Optional parent widget; may be NULL.
+/// @return       Heap-allocated status bar, or NULL on allocation failure.
 vg_statusbar_t *vg_statusbar_create(vg_widget_t *parent) {
     vg_statusbar_t *sb = calloc(1, sizeof(vg_statusbar_t));
     if (!sb)
@@ -190,6 +217,7 @@ vg_statusbar_t *vg_statusbar_create(vg_widget_t *parent) {
     return sb;
 }
 
+/// @brief vtable destroy — frees all items in all three zones and their backing arrays.
 static void statusbar_destroy(vg_widget_t *widget) {
     vg_statusbar_t *sb = (vg_statusbar_t *)widget;
 
@@ -212,6 +240,7 @@ static void statusbar_destroy(vg_widget_t *widget) {
     free(sb->right_items);
 }
 
+/// @brief vtable measure — fills available_width; height is the fixed sb->height field.
 static void statusbar_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_statusbar_t *sb = (vg_statusbar_t *)widget;
     (void)available_height;
@@ -220,6 +249,7 @@ static void statusbar_measure(vg_widget_t *widget, float available_width, float 
     widget->measured_height = (float)sb->height;
 }
 
+/// @brief vtable arrange — stores the assigned bounds directly (no children to lay out).
 static void statusbar_arrange(vg_widget_t *widget, float x, float y, float width, float height) {
     widget->x = x;
     widget->y = y;
@@ -227,6 +257,7 @@ static void statusbar_arrange(vg_widget_t *widget, float x, float y, float width
     widget->height = height;
 }
 
+/// @brief Draw a single status bar item (text, button, progress, separator, or spacer).
 static void statusbar_draw_item(vg_statusbar_t *sb,
                                 vgfx_window_t win,
                                 vg_statusbar_item_t *item,
@@ -284,6 +315,7 @@ static void statusbar_draw_item(vg_statusbar_t *sb,
     }
 }
 
+/// @brief vtable paint — fills background, then paints all zone items left-to-right.
 static void statusbar_paint(vg_widget_t *widget, void *canvas) {
     vg_statusbar_t *sb = (vg_statusbar_t *)widget;
 
@@ -351,6 +383,7 @@ static void statusbar_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief Return the item whose screen rect contains (mouse_x, mouse_y), or NULL.
 static vg_statusbar_item_t *find_item_at(vg_statusbar_t *sb, float mouse_x, float mouse_y) {
     if (mouse_y < 0.0f || mouse_y >= sb->base.height)
         return NULL;
@@ -415,6 +448,7 @@ static vg_statusbar_item_t *find_item_at(vg_statusbar_t *sb, float mouse_x, floa
     return NULL;
 }
 
+/// @brief vtable handle_event — tracks hover and fires on_click for button items.
 static bool statusbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_statusbar_t *sb = (vg_statusbar_t *)widget;
 
@@ -453,6 +487,7 @@ static bool statusbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
 // StatusBar API
 //=============================================================================
 
+/// @brief Append item to the given zone's array, growing capacity if needed; sets item->owner.
 static vg_statusbar_item_t *add_item_to_zone(vg_statusbar_t *sb,
                                              vg_statusbar_zone_t zone,
                                              vg_statusbar_item_t *item) {
@@ -494,6 +529,12 @@ static vg_statusbar_item_t *add_item_to_zone(vg_statusbar_t *sb,
     return item;
 }
 
+/// @brief Append a static text label to the given zone.
+///
+/// @param sb   The status bar to append to; may be NULL (returns NULL).
+/// @param zone Target zone (VG_STATUSBAR_ZONE_LEFT/CENTER/RIGHT).
+/// @param text Display text; copied internally, may be NULL.
+/// @return     New item handle, or NULL on allocation failure.
 vg_statusbar_item_t *vg_statusbar_add_text(vg_statusbar_t *sb,
                                            vg_statusbar_zone_t zone,
                                            const char *text) {
@@ -507,6 +548,14 @@ vg_statusbar_item_t *vg_statusbar_add_text(vg_statusbar_t *sb,
     return add_item_to_zone(sb, zone, item);
 }
 
+/// @brief Append a clickable button item to the given zone.
+///
+/// @param sb        The status bar to append to; may be NULL (returns NULL).
+/// @param zone      Target zone.
+/// @param text      Button label; copied internally.
+/// @param on_click  Callback invoked on click with (item, user_data); may be NULL.
+/// @param user_data Opaque pointer forwarded to on_click.
+/// @return          New item handle, or NULL on allocation failure.
 vg_statusbar_item_t *vg_statusbar_add_button(vg_statusbar_t *sb,
                                              vg_statusbar_zone_t zone,
                                              const char *text,
@@ -525,6 +574,11 @@ vg_statusbar_item_t *vg_statusbar_add_button(vg_statusbar_t *sb,
     return add_item_to_zone(sb, zone, item);
 }
 
+/// @brief Append a progress bar item with default min_width 60 px to the given zone.
+///
+/// @param sb   The status bar to append to; may be NULL (returns NULL).
+/// @param zone Target zone.
+/// @return     New item handle, or NULL on allocation failure.
 vg_statusbar_item_t *vg_statusbar_add_progress(vg_statusbar_t *sb, vg_statusbar_zone_t zone) {
     if (!sb)
         return NULL;
@@ -537,6 +591,11 @@ vg_statusbar_item_t *vg_statusbar_add_progress(vg_statusbar_t *sb, vg_statusbar_
     return add_item_to_zone(sb, zone, item);
 }
 
+/// @brief Append a thin vertical separator line to the given zone.
+///
+/// @param sb   The status bar to append to; may be NULL (returns NULL).
+/// @param zone Target zone.
+/// @return     New item handle, or NULL on allocation failure.
 vg_statusbar_item_t *vg_statusbar_add_separator(vg_statusbar_t *sb, vg_statusbar_zone_t zone) {
     if (!sb)
         return NULL;
@@ -548,6 +607,11 @@ vg_statusbar_item_t *vg_statusbar_add_separator(vg_statusbar_t *sb, vg_statusbar
     return add_item_to_zone(sb, zone, item);
 }
 
+/// @brief Append a flexible spacer that expands to fill available zone width.
+///
+/// @param sb   The status bar to append to; may be NULL (returns NULL).
+/// @param zone Target zone.
+/// @return     New item handle, or NULL on allocation failure.
 vg_statusbar_item_t *vg_statusbar_add_spacer(vg_statusbar_t *sb, vg_statusbar_zone_t zone) {
     if (!sb)
         return NULL;
@@ -559,7 +623,13 @@ vg_statusbar_item_t *vg_statusbar_add_spacer(vg_statusbar_t *sb, vg_statusbar_zo
     return add_item_to_zone(sb, zone, item);
 }
 
-/// @brief Statusbar remove item.
+/// @brief Remove and free an item from whichever zone it belongs to.
+///
+/// @details Searches all three zones. Uses memmove to close the gap. Clears
+///          hovered_item before freeing to prevent a dangling hover reference.
+///
+/// @param sb   The status bar; may be NULL (no-op).
+/// @param item The item to remove; may be NULL (no-op).
 void vg_statusbar_remove_item(vg_statusbar_t *sb, vg_statusbar_item_t *item) {
     if (!sb || !item)
         return;
@@ -587,7 +657,10 @@ void vg_statusbar_remove_item(vg_statusbar_t *sb, vg_statusbar_item_t *item) {
     }
 }
 
-/// @brief Statusbar clear zone.
+/// @brief Remove and free all items from a single zone, leaving the other zones intact.
+///
+/// @param sb   The status bar; may be NULL (no-op).
+/// @param zone The zone to clear (LEFT, CENTER, or RIGHT).
 void vg_statusbar_clear_zone(vg_statusbar_t *sb, vg_statusbar_zone_t zone) {
     if (!sb)
         return;
@@ -622,7 +695,10 @@ void vg_statusbar_clear_zone(vg_statusbar_t *sb, vg_statusbar_zone_t zone) {
     sb->base.needs_paint = true;
 }
 
-/// @brief Statusbar item set text.
+/// @brief Replace the text of a status bar item, triggering a layout invalidation.
+///
+/// @param item The item to update; may be NULL.
+/// @param text New display text; copied internally, may be NULL to clear.
 void vg_statusbar_item_set_text(vg_statusbar_item_t *item, const char *text) {
     if (!item)
         return;
@@ -634,7 +710,10 @@ void vg_statusbar_item_set_text(vg_statusbar_item_t *item, const char *text) {
         vg_widget_invalidate_layout(&item->owner->base);
 }
 
-/// @brief Statusbar item set tooltip.
+/// @brief Set the hover tooltip string for a status bar item.
+///
+/// @param item    The item to update; may be NULL.
+/// @param tooltip Tooltip text; copied internally, may be NULL to clear.
 void vg_statusbar_item_set_tooltip(vg_statusbar_item_t *item, const char *tooltip) {
     if (!item)
         return;
@@ -646,7 +725,10 @@ void vg_statusbar_item_set_tooltip(vg_statusbar_item_t *item, const char *toolti
         item->owner->base.needs_paint = true;
 }
 
-/// @brief Statusbar item set progress.
+/// @brief Set the fill level of a progress bar item, clamped to [0.0, 1.0].
+///
+/// @param item     The progress bar item to update; may be NULL.
+/// @param progress Fill fraction in [0.0, 1.0]; values outside the range are clamped.
 void vg_statusbar_item_set_progress(vg_statusbar_item_t *item, float progress) {
     if (!item)
         return;
@@ -660,7 +742,10 @@ void vg_statusbar_item_set_progress(vg_statusbar_item_t *item, float progress) {
         item->owner->base.needs_paint = true;
 }
 
-/// @brief Statusbar item set visible.
+/// @brief Show or hide a status bar item, triggering a layout pass on its owner.
+///
+/// @param item    The item to update; may be NULL.
+/// @param visible false to hide the item (its slot collapses to zero width).
 void vg_statusbar_item_set_visible(vg_statusbar_item_t *item, bool visible) {
     if (!item)
         return;
@@ -669,7 +754,11 @@ void vg_statusbar_item_set_visible(vg_statusbar_item_t *item, bool visible) {
         vg_widget_invalidate_layout(&item->owner->base);
 }
 
-/// @brief Statusbar set font.
+/// @brief Set the font and size used for all text and button labels.
+///
+/// @param sb   The status bar to configure; may be NULL.
+/// @param font Font to use; NULL retains the current font.
+/// @param size Font size in points; if <= 0 the theme's small size is used.
 void vg_statusbar_set_font(vg_statusbar_t *sb, vg_font_t *font, float size) {
     if (!sb)
         return;
@@ -680,7 +769,14 @@ void vg_statusbar_set_font(vg_statusbar_t *sb, vg_font_t *font, float size) {
     sb->base.needs_paint = true;
 }
 
-// Convenience functions for common IDE status items
+/// @brief Update the last text item in the right zone to show "Ln N, Col N".
+///
+/// @details Formats line and col into a "Ln %d, Col %d" string and calls
+///          vg_statusbar_item_set_text on the last right-zone text item if one exists.
+///
+/// @param sb   The status bar to update; may be NULL.
+/// @param line 1-based line number to display.
+/// @param col  1-based column number to display.
 void vg_statusbar_set_cursor_position(vg_statusbar_t *sb, int line, int col) {
     if (!sb)
         return;

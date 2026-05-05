@@ -5,9 +5,24 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/font/vg_ttf.c
-// Purpose: TrueType font (TTF) parser — reads TTF binary format, extracts
-//   glyph outlines, metrics, and kerning data for rasterization.
+// File: lib/gui/src/font/vg_ttf.c
+// Purpose: TrueType font parser — reads binary TTF tables (head, hhea, maxp,
+//          cmap, glyf, loca, hmtx, kern, name) and extracts glyph outlines,
+//          horizontal metrics, kerning pairs, and naming strings.
+// Key invariants:
+//   - All multi-byte reads use the ttf_read_u*/ttf_read_i* helpers that handle
+//     big-endian conversion; never read raw fields directly.
+//   - Bounds checks (ttf_range_fits, ttf_cursor_can_read) guard every read
+//     that could be influenced by attacker-controlled font data.
+//   - Composite glyph recursion is capped at TTF_MAX_COMPOSITE_DEPTH (16).
+//   - CMAP format 12 is preferred over format 4; both may coexist in the font.
+// Ownership/Lifetime:
+//   - All arrays allocated by parse functions are owned by the vg_font and
+//     freed in vg_font_destroy (via vg_font_destroy's direct free calls).
+//   - ttf_get_glyph_outline returns heap-allocated arrays; caller frees them.
+// Links: lib/gui/src/font/vg_ttf_internal.h,
+//        lib/gui/src/font/vg_font.c,
+//        lib/gui/src/font/vg_raster.c
 //
 //===----------------------------------------------------------------------===//
 #include "vg_ttf_internal.h"
@@ -18,14 +33,17 @@
 
 #define TTF_MAX_COMPOSITE_DEPTH 16
 
+/// @brief Return true if [offset, offset+length) lies within a buffer of @p total bytes.
 static bool ttf_range_fits(size_t total, uint32_t offset, uint32_t length) {
     return (size_t)offset <= total && (size_t)length <= total - (size_t)offset;
 }
 
+/// @brief Return true if at least @p n bytes remain between @p p and @p end.
 static bool ttf_cursor_can_read(const uint8_t *p, const uint8_t *end, size_t n) {
     return p <= end && (size_t)(end - p) >= n;
 }
 
+/// @brief Bounds-checked read of one byte; advances *p on success.
 static bool ttf_read_u8_checked(const uint8_t **p, const uint8_t *end, uint8_t *out) {
     if (!ttf_cursor_can_read(*p, end, 1))
         return false;
@@ -34,6 +52,7 @@ static bool ttf_read_u8_checked(const uint8_t **p, const uint8_t *end, uint8_t *
     return true;
 }
 
+/// @brief Bounds-checked big-endian read of two bytes; advances *p on success.
 static bool ttf_read_u16_checked(const uint8_t **p, const uint8_t *end, uint16_t *out) {
     if (!ttf_cursor_can_read(*p, end, 2))
         return false;
@@ -42,6 +61,7 @@ static bool ttf_read_u16_checked(const uint8_t **p, const uint8_t *end, uint16_t
     return true;
 }
 
+/// @brief Bounds-checked big-endian read of a signed 16-bit integer; advances *p on success.
 static bool ttf_read_i16_checked(const uint8_t **p, const uint8_t *end, int16_t *out) {
     uint16_t value;
     if (!ttf_read_u16_checked(p, end, &value))
@@ -50,6 +70,7 @@ static bool ttf_read_i16_checked(const uint8_t **p, const uint8_t *end, int16_t 
     return true;
 }
 
+/// @brief Return true if a * b would overflow size_t.
 static bool ttf_mul_size_overflows(size_t a, size_t b) {
     return a != 0 && b > SIZE_MAX / a;
 }
@@ -58,6 +79,8 @@ static bool ttf_mul_size_overflows(size_t a, size_t b) {
 // Table Finding
 //=============================================================================
 
+/// @brief Locate a TTF table by 4-byte tag; returns a pointer into font->data and
+///        writes the table length to *out_len, or returns NULL if not found.
 static const uint8_t *ttf_find_table(vg_font_t *font, uint32_t tag, uint32_t *out_len) {
     const uint8_t *data = font->data;
     if (out_len)
@@ -142,6 +165,7 @@ bool ttf_parse_maxp(vg_font_t *font, const uint8_t *data, uint32_t len) {
 // Parse 'cmap' Table
 //=============================================================================
 
+/// @brief Free all CMAP format-4 arrays and reset related fields to NULL/0.
 static void ttf_free_cmap4(vg_font_t *font) {
     free(font->cmap4_end_codes);
     free(font->cmap4_start_codes);
@@ -157,6 +181,7 @@ static void ttf_free_cmap4(vg_font_t *font) {
     font->cmap4_glyph_ids_count = 0;
 }
 
+/// @brief Free all CMAP format-12 arrays and reset related fields to NULL/0.
 static void ttf_free_cmap12(vg_font_t *font) {
     free(font->cmap12_start_codes);
     free(font->cmap12_end_codes);
@@ -167,6 +192,8 @@ static void ttf_free_cmap12(vg_font_t *font) {
     font->cmap12_num_groups = 0;
 }
 
+/// @brief Parse a CMAP format-4 subtable (BMP segment mapping); allocates all
+///        cmap4_* arrays in the font struct.
 static bool ttf_parse_cmap_format4(vg_font_t *font,
                                    const uint8_t *subtable,
                                    uint32_t available_len) {
@@ -279,6 +306,8 @@ static bool ttf_parse_cmap_format4(vg_font_t *font,
     return true;
 }
 
+/// @brief Parse a CMAP format-12 subtable (full Unicode group mapping); allocates
+///        all cmap12_* arrays in the font struct.
 static bool ttf_parse_cmap_format12(vg_font_t *font,
                                     const uint8_t *subtable,
                                     uint32_t available_len) {
@@ -510,6 +539,7 @@ bool ttf_parse_name(vg_font_t *font, const uint8_t *data, uint32_t len) {
 // Parse All Tables
 //=============================================================================
 
+/// @brief qsort comparator for ttf_kern_pair_t: ascending by (left<<16 | right).
 static int ttf_kern_pair_cmp(const void *a, const void *b) {
     const ttf_kern_pair_t *pa = (const ttf_kern_pair_t *)a;
     const ttf_kern_pair_t *pb = (const ttf_kern_pair_t *)b;
@@ -697,6 +727,7 @@ void ttf_get_h_metrics(vg_font_t *font,
 // Glyph Outline
 //=============================================================================
 
+/// @brief Look up a glyph's byte offset within the 'glyf' table via the 'loca' index.
 static bool ttf_get_glyph_offset(vg_font_t *font, uint16_t glyph_id, uint32_t *out_offset) {
     if (!font || !out_offset || glyph_id > font->maxp.num_glyphs || font->loca_len == 0)
         return false;
@@ -722,6 +753,7 @@ static bool ttf_get_glyph_offset(vg_font_t *font, uint16_t glyph_id, uint32_t *o
     return *out_offset <= font->glyf_len;
 }
 
+/// @brief Return pointers to the start and end of a glyph's raw data in 'glyf'.
 static bool ttf_get_glyph_range(vg_font_t *font,
                                 uint16_t glyph_id,
                                 const uint8_t **out_glyph,
@@ -754,6 +786,7 @@ static bool ttf_get_glyph_outline_internal(vg_font_t *font,
                                            int *out_num_points,
                                            int *out_num_contours);
 
+/// @brief Decode a simple (non-composite) glyph outline from raw 'glyf' data.
 static bool ttf_get_simple_glyph_outline(vg_font_t *font,
                                          const uint8_t *glyph_data,
                                          const uint8_t *glyph_end,
@@ -773,6 +806,7 @@ static bool ttf_get_simple_glyph_outline(vg_font_t *font,
 #define COMP_WE_HAVE_AN_X_AND_Y_SCALE 0x0040
 #define COMP_WE_HAVE_A_TWO_BY_TWO 0x0080
 
+/// @brief Decode a composite glyph outline by merging transformed component outlines.
 static bool ttf_get_composite_glyph_outline(vg_font_t *font,
                                             const uint8_t *glyph_data,
                                             const uint8_t *glyph_end,
@@ -1015,6 +1049,8 @@ fail:
     return false;
 }
 
+/// @brief Internal recursive entry point for glyph outline extraction; @p depth
+///        guards against infinite recursion in malformed composite glyphs.
 static bool ttf_get_glyph_outline_internal(vg_font_t *font,
                                            uint16_t glyph_id,
                                            int depth,
@@ -1096,6 +1132,7 @@ bool ttf_get_glyph_outline(vg_font_t *font,
                                           out_num_contours);
 }
 
+/// @brief Decodes a simple (non-composite) glyph's raw 'glyf' table data into allocated point arrays and contour end-point indices.
 static bool ttf_get_simple_glyph_outline(vg_font_t *font,
                                          const uint8_t *glyph_data,
                                          const uint8_t *glyph_end,

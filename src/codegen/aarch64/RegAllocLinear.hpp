@@ -6,22 +6,22 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/RegAllocLinear.hpp
-// Purpose: Linear-scan register allocator for AArch64 Machine IR.
-//
-// This allocator uses a simple linear-scan approach to map virtual registers
-// to physical registers. When register pressure exceeds available registers,
-// it spills values to the stack and reloads them as needed.
+// Purpose: Linear-scan register allocator entry point for AArch64 Machine IR.
+//          Maps virtual registers to physical registers, inserting spill/reload
+//          code when register pressure exceeds available registers.
 //
 // Key invariants:
-// - After allocation, all MReg operands have isPhys=true.
-// - Spill slots are allocated in the function's frame layout.
-// - Callee-saved registers are tracked for prologue/epilogue generation.
+//   - After allocation, all MReg operands have isPhys=true.
+//   - Spill slots are allocated in the function's frame layout.
+//   - Callee-saved registers are tracked for prologue/epilogue generation.
 //
 // Ownership/Lifetime:
-// - Modifies the MFunction in place; caller owns the MFunction.
-// - Uses TargetInfo for available registers and calling convention.
+//   - Modifies the MFunction in place; caller owns the MFunction.
+//   - Uses TargetInfo for available registers and calling convention.
 //
-// Links: docs/architecture.md
+// Links: codegen/aarch64/RegAllocLinear.cpp,
+//        codegen/aarch64/ra/Allocator.hpp,
+//        codegen/aarch64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
 

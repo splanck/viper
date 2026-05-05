@@ -13,7 +13,8 @@
 //   - Populates Module::binaryText and Module::binaryRodata
 // Ownership/Lifetime:
 //   - Pass borrows Module during run(), does not own any state beyond options_
-// Links: codegen/x86_64/Backend.hpp (emitModuleToBinary)
+// Links: codegen/x86_64/passes/BinaryEmitPass.hpp,
+//        codegen/x86_64/Backend.hpp
 //
 //===----------------------------------------------------------------------===//
 

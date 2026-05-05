@@ -90,6 +90,10 @@ static float vaud_clamp_pan_float(float value) {
     return value;
 }
 
+static int vaud_context_is_destroying(vaud_context_t ctx) {
+    return !ctx || vaud_atomic_load_i32(&ctx->destroying) != 0;
+}
+
 static void sound_unregister_locked(vaud_context_t ctx, vaud_sound_t sound) {
     if (!ctx || !sound)
         return;
@@ -264,6 +268,7 @@ vaud_context_t vaud_create(void) {
     ctx->next_voice_id = 1; /* Start at 1 so 0 is never valid */
     ctx->frame_counter = 0;
     vaud_atomic_store_i32(&ctx->running, 1);
+    vaud_atomic_store_i32(&ctx->destroying, 0);
     ctx->paused = 0;
     ctx->music_count = 0;
 
@@ -297,6 +302,7 @@ void vaud_destroy(vaud_context_t ctx) {
         return;
 
     /* Stop running flag first */
+    vaud_atomic_store_i32(&ctx->destroying, 1);
     vaud_atomic_store_i32(&ctx->running, 0);
 
     /* Shutdown platform (stops audio thread) */
@@ -332,7 +338,7 @@ void vaud_destroy(vaud_context_t ctx) {
 }
 
 void vaud_set_master_volume(vaud_context_t ctx, float volume) {
-    if (!ctx)
+    if (vaud_context_is_destroying(ctx))
         return;
     volume = vaud_clamp_unit_float(volume);
 
@@ -342,7 +348,7 @@ void vaud_set_master_volume(vaud_context_t ctx, float volume) {
 }
 
 float vaud_get_master_volume(vaud_context_t ctx) {
-    if (!ctx)
+    if (vaud_context_is_destroying(ctx))
         return 0.0f;
     /* H-3: setter holds mutex; reader must too (torn read on ARM64 otherwise) */
     vaud_mutex_lock(&ctx->mutex);
@@ -352,7 +358,7 @@ float vaud_get_master_volume(vaud_context_t ctx) {
 }
 
 void vaud_pause_all(vaud_context_t ctx) {
-    if (!ctx)
+    if (vaud_context_is_destroying(ctx))
         return;
 
     vaud_mutex_lock(&ctx->mutex);
@@ -363,7 +369,7 @@ void vaud_pause_all(vaud_context_t ctx) {
 }
 
 void vaud_resume_all(vaud_context_t ctx) {
-    if (!ctx)
+    if (vaud_context_is_destroying(ctx))
         return;
 
     vaud_mutex_lock(&ctx->mutex);
@@ -378,7 +384,7 @@ void vaud_resume_all(vaud_context_t ctx) {
 //===----------------------------------------------------------------------===//
 
 vaud_sound_t vaud_load_sound(vaud_context_t ctx, const char *path) {
-    if (!ctx || !path) {
+    if (vaud_context_is_destroying(ctx) || !path) {
         vaud_set_error(VAUD_ERR_INVALID_PARAM, "NULL context or path");
         return NULL;
     }
@@ -439,7 +445,7 @@ vaud_sound_t vaud_load_sound(vaud_context_t ctx, const char *path) {
 }
 
 vaud_sound_t vaud_load_sound_mem(vaud_context_t ctx, const void *data, size_t size) {
-    if (!ctx || !data || size == 0) {
+    if (vaud_context_is_destroying(ctx) || !data || size == 0) {
         vaud_set_error(VAUD_ERR_INVALID_PARAM, "NULL context or data");
         return NULL;
     }
@@ -556,7 +562,7 @@ vaud_voice_id vaud_play(vaud_sound_t sound) {
 }
 
 vaud_voice_id vaud_play_ex(vaud_sound_t sound, float volume, float pan) {
-    if (!sound || !sound->ctx)
+    if (!sound || vaud_context_is_destroying(sound->ctx))
         return VAUD_INVALID_VOICE;
 
     vaud_context_t ctx = sound->ctx;
@@ -584,7 +590,7 @@ vaud_voice_id vaud_play_ex(vaud_sound_t sound, float volume, float pan) {
 }
 
 vaud_voice_id vaud_play_loop(vaud_sound_t sound, float volume, float pan) {
-    if (!sound || !sound->ctx)
+    if (!sound || vaud_context_is_destroying(sound->ctx))
         return VAUD_INVALID_VOICE;
 
     vaud_context_t ctx = sound->ctx;
@@ -612,7 +618,7 @@ vaud_voice_id vaud_play_loop(vaud_sound_t sound, float volume, float pan) {
 }
 
 void vaud_stop_voice(vaud_context_t ctx, vaud_voice_id voice_id) {
-    if (!ctx || voice_id == VAUD_INVALID_VOICE)
+    if (vaud_context_is_destroying(ctx) || voice_id == VAUD_INVALID_VOICE)
         return;
 
     vaud_mutex_lock(&ctx->mutex);
@@ -625,7 +631,7 @@ void vaud_stop_voice(vaud_context_t ctx, vaud_voice_id voice_id) {
 }
 
 void vaud_set_voice_volume(vaud_context_t ctx, vaud_voice_id voice_id, float volume) {
-    if (!ctx || voice_id == VAUD_INVALID_VOICE)
+    if (vaud_context_is_destroying(ctx) || voice_id == VAUD_INVALID_VOICE)
         return;
 
     vaud_mutex_lock(&ctx->mutex);
@@ -637,7 +643,7 @@ void vaud_set_voice_volume(vaud_context_t ctx, vaud_voice_id voice_id, float vol
 }
 
 void vaud_set_voice_pan(vaud_context_t ctx, vaud_voice_id voice_id, float pan) {
-    if (!ctx || voice_id == VAUD_INVALID_VOICE)
+    if (vaud_context_is_destroying(ctx) || voice_id == VAUD_INVALID_VOICE)
         return;
 
     vaud_mutex_lock(&ctx->mutex);
@@ -649,7 +655,7 @@ void vaud_set_voice_pan(vaud_context_t ctx, vaud_voice_id voice_id, float pan) {
 }
 
 int vaud_voice_is_playing(vaud_context_t ctx, vaud_voice_id voice_id) {
-    if (!ctx || voice_id == VAUD_INVALID_VOICE)
+    if (vaud_context_is_destroying(ctx) || voice_id == VAUD_INVALID_VOICE)
         return 0;
 
     vaud_mutex_lock(&ctx->mutex);
@@ -1279,6 +1285,43 @@ void vaud_music_prefill_locked(struct vaud_music *music) {
     }
 }
 
+static int vaud_music_needs_refill_locked(vaud_music_t music) {
+    if (!music || music->refill_in_progress)
+        return 0;
+    if (music->state != VAUD_MUSIC_PLAYING && music->state != VAUD_MUSIC_PAUSED)
+        return 0;
+    if (music->stream_loop_pending)
+        return 1;
+    for (int32_t n = 0; n < VAUD_MUSIC_BUFFER_COUNT; n++) {
+        int32_t idx = (music->current_buffer + n) % VAUD_MUSIC_BUFFER_COUNT;
+        if (music->buffer_frames[idx] <= 0 && !music->stream_eof)
+            return 1;
+    }
+    return 0;
+}
+
+static int vaud_music_begin_refill_locked(vaud_music_t music) {
+    if (!vaud_music_needs_refill_locked(music))
+        return 0;
+    music->refill_in_progress = 1;
+    return 1;
+}
+
+static void vaud_music_finish_refill_locked(vaud_music_t music) {
+    if (music)
+        music->refill_in_progress = 0;
+}
+
+static void vaud_music_clear_stream_buffers(vaud_music_t music) {
+    if (!music)
+        return;
+    for (int32_t i = 0; i < VAUD_MUSIC_BUFFER_COUNT; i++)
+        music->buffer_frames[i] = 0;
+    music->buffer_position = 0;
+    music->current_buffer = 0;
+    music->stream_loop_pending = 0;
+}
+
 //===----------------------------------------------------------------------===//
 // Music Loading and Playback
 //===----------------------------------------------------------------------===//
@@ -1287,7 +1330,7 @@ static int music_register(vaud_context_t ctx, vaud_music_t music);
 static vaud_music_t music_alloc_unregistered(vaud_context_t ctx);
 
 vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path) {
-    if (!ctx || !path) {
+    if (vaud_context_is_destroying(ctx) || !path) {
         vaud_set_error(VAUD_ERR_INVALID_PARAM, "NULL context or path");
         return NULL;
     }
@@ -1379,7 +1422,7 @@ vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path) {
 }
 
 static int music_register(vaud_context_t ctx, vaud_music_t music) {
-    if (!ctx || !music)
+    if (vaud_context_is_destroying(ctx) || !music)
         return 0;
 
     vaud_mutex_lock(&ctx->mutex);
@@ -1417,7 +1460,7 @@ static vaud_music_t music_alloc_unregistered(vaud_context_t ctx) {
 }
 
 vaud_music_t vaud_load_music_ogg(vaud_context_t ctx, const char *path) {
-    if (!ctx || !path)
+    if (vaud_context_is_destroying(ctx) || !path)
         return NULL;
 
     ogg_reader_t *reader = ogg_reader_open_file(path);
@@ -1509,7 +1552,7 @@ vaud_music_t vaud_load_music_ogg(vaud_context_t ctx, const char *path) {
 }
 
 vaud_music_t vaud_load_music_mp3(vaud_context_t ctx, const char *path) {
-    if (!ctx || !path)
+    if (vaud_context_is_destroying(ctx) || !path)
         return NULL;
 
     mp3_stream_t *stream = mp3_stream_open(path);
@@ -1559,18 +1602,31 @@ vaud_music_t vaud_load_music_mp3(vaud_context_t ctx, const char *path) {
 }
 
 void vaud_update(vaud_context_t ctx) {
-    if (!ctx)
+    if (vaud_context_is_destroying(ctx))
         return;
 
-    vaud_mutex_lock(&ctx->mutex);
-    for (int32_t i = 0; i < ctx->music_count; i++) {
-        vaud_music_t music = ctx->active_music[i];
+    for (;;) {
+        vaud_music_t music = NULL;
+
+        vaud_mutex_lock(&ctx->mutex);
+        for (int32_t i = 0; i < ctx->music_count; i++) {
+            vaud_music_t candidate = ctx->active_music[i];
+            if (vaud_music_begin_refill_locked(candidate)) {
+                music = candidate;
+                break;
+            }
+        }
+        vaud_mutex_unlock(&ctx->mutex);
+
         if (!music)
-            continue;
-        if (music->state == VAUD_MUSIC_PLAYING || music->state == VAUD_MUSIC_PAUSED)
-            vaud_music_prefill_locked(music);
+            break;
+
+        vaud_music_prefill_locked(music);
+
+        vaud_mutex_lock(&ctx->mutex);
+        vaud_music_finish_refill_locked(music);
+        vaud_mutex_unlock(&ctx->mutex);
     }
-    vaud_mutex_unlock(&ctx->mutex);
 }
 
 void vaud_free_music(vaud_music_t music) {
@@ -1649,40 +1705,55 @@ int vaud_music_is_attached(vaud_music_t music) {
 }
 
 void vaud_music_play(vaud_music_t music, int loop) {
-    if (!music || !music->ctx)
+    if (!music || vaud_context_is_destroying(music->ctx))
         return;
 
-    vaud_mutex_lock(&music->ctx->mutex);
+    vaud_context_t ctx = music->ctx;
+    int prepare_from_start = 0;
 
+    vaud_mutex_lock(&ctx->mutex);
     music->loop = loop ? 1 : 0;
     if (music->state == VAUD_MUSIC_STOPPED) {
-        if (!vaud_music_seek_output_frame(music, 0)) {
-            music->state = VAUD_MUSIC_STOPPED;
-            vaud_mutex_unlock(&music->ctx->mutex);
-            return;
-        }
+        music->refill_in_progress = 1;
+        prepare_from_start = 1;
+    } else {
+        music->state = VAUD_MUSIC_PLAYING;
     }
-    music->state = VAUD_MUSIC_PLAYING;
-    vaud_music_prefill_locked(music);
+    vaud_mutex_unlock(&ctx->mutex);
 
-    vaud_mutex_unlock(&music->ctx->mutex);
+    if (prepare_from_start) {
+        int ok = vaud_music_seek_output_frame(music, 0);
+        if (ok)
+            vaud_music_prefill_locked(music);
+
+        vaud_mutex_lock(&ctx->mutex);
+        music->state = ok ? VAUD_MUSIC_PLAYING : VAUD_MUSIC_STOPPED;
+        vaud_music_finish_refill_locked(music);
+        vaud_mutex_unlock(&ctx->mutex);
+        return;
+    }
+
+    vaud_update(ctx);
 }
 
 void vaud_music_stop(vaud_music_t music) {
-    if (!music || !music->ctx)
+    if (!music || vaud_context_is_destroying(music->ctx))
         return;
 
     vaud_mutex_lock(&music->ctx->mutex);
 
     music->state = VAUD_MUSIC_STOPPED;
-    vaud_music_seek_output_frame(music, 0);
-    vaud_music_prefill_locked(music);
+    music->position = 0;
+    music->source_position = 0;
+    music->stream_output_generated = 0;
+    music->stream_eof = 0;
+    vaud_music_clear_stream_buffers(music);
 
     vaud_mutex_unlock(&music->ctx->mutex);
 }
 
 void vaud_music_pause(vaud_music_t music) {
-    if (!music || !music->ctx)
+    if (!music || vaud_context_is_destroying(music->ctx))
         return;
 
     vaud_mutex_lock(&music->ctx->mutex);
@@ -1693,22 +1764,23 @@ void vaud_music_pause(vaud_music_t music) {
 }
 
 void vaud_music_resume(vaud_music_t music) {
-    if (!music || !music->ctx)
+    if (!music || vaud_context_is_destroying(music->ctx))
         return;
 
+    vaud_context_t ctx = music->ctx;
     vaud_mutex_lock(&music->ctx->mutex);
     if (music->state == VAUD_MUSIC_PAUSED) {
         music->state = VAUD_MUSIC_PLAYING;
-        vaud_music_prefill_locked(music);
     }
     vaud_mutex_unlock(&music->ctx->mutex);
+    vaud_update(ctx);
 }
 
 void vaud_music_set_loop(vaud_music_t music, int loop) {
     if (!music)
         return;
 
-    if (music->ctx) {
+    if (music->ctx && !vaud_context_is_destroying(music->ctx)) {
         vaud_mutex_lock(&music->ctx->mutex);
         music->loop = loop ? 1 : 0;
         vaud_mutex_unlock(&music->ctx->mutex);
@@ -1723,7 +1795,7 @@ void vaud_music_set_volume(vaud_music_t music, float volume) {
 
     volume = vaud_clamp_unit_float(volume);
 
-    if (music->ctx) {
+    if (music->ctx && !vaud_context_is_destroying(music->ctx)) {
         vaud_mutex_lock(&music->ctx->mutex);
         music->volume = volume;
         vaud_mutex_unlock(&music->ctx->mutex);
@@ -1736,7 +1808,7 @@ float vaud_music_get_volume(vaud_music_t music) {
     if (!music)
         return 0.0f;
     /* H-3: read volume under mutex (setter holds it; torn read possible on ARM64) */
-    if (music->ctx) {
+    if (music->ctx && !vaud_context_is_destroying(music->ctx)) {
         vaud_mutex_lock(&music->ctx->mutex);
         float vol = music->volume;
         vaud_mutex_unlock(&music->ctx->mutex);
@@ -1748,7 +1820,7 @@ float vaud_music_get_volume(vaud_music_t music) {
 int vaud_music_is_playing(vaud_music_t music) {
     if (!music)
         return 0;
-    if (music->ctx) {
+    if (music->ctx && !vaud_context_is_destroying(music->ctx)) {
         vaud_mutex_lock(&music->ctx->mutex);
         int playing = (music->state == VAUD_MUSIC_PLAYING) ? 1 : 0;
         vaud_mutex_unlock(&music->ctx->mutex);
@@ -1758,12 +1830,12 @@ int vaud_music_is_playing(vaud_music_t music) {
 }
 
 void vaud_music_seek(vaud_music_t music, float seconds) {
-    if (!music || !music->ctx)
+    if (!music || vaud_context_is_destroying(music->ctx))
         return;
     if (!isfinite(seconds))
         return;
 
-    vaud_mutex_lock(&music->ctx->mutex);
+    vaud_context_t ctx = music->ctx;
 
     double target = (double)seconds * (double)music->sample_rate;
     if (target < 0.0)
@@ -1774,25 +1846,31 @@ void vaud_music_seek(vaud_music_t music, float seconds) {
         target = (double)INT64_MAX;
 
     int64_t target_frame = (int64_t)target;
+
+    vaud_mutex_lock(&ctx->mutex);
+    music->refill_in_progress = 1;
+    vaud_mutex_unlock(&ctx->mutex);
+
     if (!vaud_music_seek_output_frame(music, target_frame)) {
+        vaud_mutex_lock(&ctx->mutex);
         music->state = VAUD_MUSIC_STOPPED;
         music->stream_eof = 1;
-        for (int32_t i = 0; i < VAUD_MUSIC_BUFFER_COUNT; i++)
-            music->buffer_frames[i] = 0;
-        music->buffer_position = 0;
-        music->current_buffer = 0;
-        vaud_mutex_unlock(&music->ctx->mutex);
+        vaud_music_clear_stream_buffers(music);
+        vaud_music_finish_refill_locked(music);
+        vaud_mutex_unlock(&ctx->mutex);
         return;
     }
     vaud_music_prefill_locked(music);
 
-    vaud_mutex_unlock(&music->ctx->mutex);
+    vaud_mutex_lock(&ctx->mutex);
+    vaud_music_finish_refill_locked(music);
+    vaud_mutex_unlock(&ctx->mutex);
 }
 
 float vaud_music_get_position(vaud_music_t music) {
     if (!music)
         return 0.0f;
-    if (music->ctx) {
+    if (music->ctx && !vaud_context_is_destroying(music->ctx)) {
         vaud_mutex_lock(&music->ctx->mutex);
         float position =
             music->sample_rate > 0 ? (float)music->position / (float)music->sample_rate : 0.0f;
@@ -1805,7 +1883,7 @@ float vaud_music_get_position(vaud_music_t music) {
 float vaud_music_get_duration(vaud_music_t music) {
     if (!music)
         return 0.0f;
-    if (music->ctx) {
+    if (music->ctx && !vaud_context_is_destroying(music->ctx)) {
         vaud_mutex_lock(&music->ctx->mutex);
         float duration =
             music->sample_rate > 0 ? (float)music->frame_count / (float)music->sample_rate : 0.0f;
@@ -1820,7 +1898,7 @@ float vaud_music_get_duration(vaud_music_t music) {
 //===----------------------------------------------------------------------===//
 
 int32_t vaud_get_active_voice_count(vaud_context_t ctx) {
-    if (!ctx)
+    if (vaud_context_is_destroying(ctx))
         return 0;
 
     int32_t count = 0;
@@ -1836,7 +1914,7 @@ int32_t vaud_get_active_voice_count(vaud_context_t ctx) {
 }
 
 void vaud_stop_all_sounds(vaud_context_t ctx) {
-    if (!ctx)
+    if (vaud_context_is_destroying(ctx))
         return;
 
     vaud_mutex_lock(&ctx->mutex);
@@ -1848,7 +1926,7 @@ void vaud_stop_all_sounds(vaud_context_t ctx) {
 }
 
 float vaud_get_latency_ms(vaud_context_t ctx) {
-    if (!ctx)
+    if (vaud_context_is_destroying(ctx))
         return 0.0f;
 
     /* Latency is approximately buffer size in frames / sample rate */

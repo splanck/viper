@@ -5,23 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/FrameLowering.cpp
+// File: codegen/x86_64/FrameLowering.cpp
 // Purpose: Define stack-frame construction utilities for the x86-64 backend.
-// Key invariants: Spill slots are addressed off %rbp with negative displacements
-//                 and the final frame size preserves 16-byte alignment across
-//                 calls.
-// Ownership/Lifetime: Operates directly on Machine IR owned by the caller and
-//                     uses only automatic storage duration helpers.
-// Links: docs/codemap.md, src/codegen/x86_64/FrameLowering.hpp
+//          Allocates concrete spill displacements, reserves callee-saved slots,
+//          and generates ABI-compliant prologue/epilogue sequences.
+// Key invariants:
+//   - Spill slots are addressed off %rbp with negative displacements.
+//   - Final frame size preserves 16-byte alignment across calls.
+// Ownership/Lifetime:
+//   - Operates directly on Machine IR owned by the caller; uses only
+//     automatic storage duration helpers.
+// Links: codegen/x86_64/FrameLowering.hpp,
+//        codegen/x86_64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Implements stack-frame layout and prologue/epilogue synthesis.
-/// @details The helpers in this translation unit walk Machine IR produced by the
-///          IL-to-MIR adapter to allocate concrete spill displacements, reserve
-///          callee-saved slots, and generate ABI-compliant prologue/epilogue
-///          sequences for Phase A of the x86-64 backend.
 
 #include "FrameLowering.hpp"
 #include "OperandUtils.hpp"

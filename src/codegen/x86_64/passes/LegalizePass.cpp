@@ -5,21 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/passes/LegalizePass.cpp
+// File: codegen/x86_64/passes/LegalizePass.cpp
 // Purpose: Implement the MIR legalisation stage in the x86-64 codegen pipeline.
-// Key invariants: Legalisation is only considered successful when lowering has produced an
-//                 adapter module and all functions lower cleanly to machine IR.
-// Ownership/Lifetime: Stateless pass mutating Module state in place.
-// Links: docs/codemap.md
+//          Lowers the adapter IL into machine IR, captures the shared rodata
+//          literal pool, and records one frame summary per function.
+// Key invariants:
+//   - Legalisation is only successful when all functions lower cleanly to MIR.
+//   - Failures are surfaced through the Diagnostics sink so later passes do not
+//     infer partial state.
+// Ownership/Lifetime:
+//   - Stateless pass; mutates Module state in place.
+// Links: codegen/x86_64/passes/LegalizePass.hpp,
+//        codegen/x86_64/Backend.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief MIR legalisation pass for the x86-64 backend pipeline.
-/// @details Lowers the adapter IL into machine IR, captures the shared
-///          read-only literal pool, and records one frame summary per
-///          function. Failures are surfaced through the shared diagnostics
-///          sink so later passes never have to infer partial state.
 
 #include "codegen/x86_64/passes/LegalizePass.hpp"
 

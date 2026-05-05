@@ -5,10 +5,32 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_codeeditor.c
+// File: lib/gui/src/widgets/vg_codeeditor.c
+// Purpose: Code editor widget — a full-featured multi-line text editor with
+//          syntax highlighting, undo/redo, multi-cursor editing, line folding,
+//          word wrap, and scrollbars.
+// Key invariants:
+//   - Text is stored as an array of vg_code_line_t, each with a heap-allocated
+//     char buffer; there is always at least one line.
+//   - cursor_line/cursor_col are always clamped to valid positions before use.
+//   - editor->modified is set true by any insert or delete operation and must
+//     be cleared explicitly via vg_codeeditor_clear_modified.
+//   - syncing_children / syncing guards are used in the color picker but not
+//     here; instead, multi-cursor edits apply all targets in a single sorted
+//     pass to avoid position invalidation.
+//   - scroll_x and scroll_y are logical pixel offsets; codeeditor_clamp_scroll
+//     keeps them within valid bounds after every content change.
+//   - Lines hidden by a fold region are excluded from visual row calculations
+//     and paint; fold regions are stored in fold_regions[].
+// Ownership/Lifetime:
+//   - Each vg_code_line_t owns its text and colors buffers; freed by free_line.
+//   - editor->history is heap-allocated and freed in codeeditor_destroy.
+//   - editor->fold_regions is heap-allocated and freed in codeeditor_destroy.
+// Links: lib/gui/include/vg_ide_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_codeeditor.c - Code editor widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../../graphics/src/vgfx_internal.h"
 #include "../../include/vg_event.h"
@@ -73,6 +95,7 @@ static vg_widget_vtable_t g_codeeditor_vtable = {.destroy = codeeditor_destroy,
 // Helper Functions
 //=============================================================================
 
+/// @brief Grows @p *lines to hold at least @p needed entries, doubling capacity; zeros new slots.
 static bool ensure_line_array_capacity(vg_code_line_t **lines, int *capacity, int needed) {
     if (!lines || !capacity || needed < 0)
         return false;
@@ -102,12 +125,14 @@ static bool ensure_line_array_capacity(vg_code_line_t **lines, int *capacity, in
     return true;
 }
 
+/// @brief Ensures editor->lines can hold at least @p needed entries, delegating to ensure_line_array_capacity.
 static bool ensure_line_capacity(vg_codeeditor_t *editor, int needed) {
     if (!editor)
         return false;
     return ensure_line_array_capacity(&editor->lines, &editor->line_capacity, needed);
 }
 
+/// @brief Grows @p line->text to hold at least @p needed bytes, doubling from INITIAL_TEXT_CAPACITY.
 static bool ensure_text_capacity(vg_code_line_t *line, size_t needed) {
     if (needed <= line->capacity)
         return true;
@@ -130,6 +155,7 @@ static bool ensure_text_capacity(vg_code_line_t *line, size_t needed) {
     return true;
 }
 
+/// @brief Allocates and copies @p len bytes from @p text into @p line, zero-initializing all other fields.
 static bool init_line_text(vg_code_line_t *line, const char *text, size_t len) {
     if (!line || len > SIZE_MAX - 1)
         return false;
@@ -146,6 +172,7 @@ static bool init_line_text(vg_code_line_t *line, const char *text, size_t len) {
     return true;
 }
 
+/// @brief Allocates a minimal empty text buffer for @p line if it has none; no-op if text already exists.
 static bool ensure_line_text_exists(vg_code_line_t *line) {
     if (!line)
         return false;
@@ -161,6 +188,7 @@ static bool ensure_line_text_exists(vg_code_line_t *line) {
     return true;
 }
 
+/// @brief Frees the text and colors buffers of @p line and zeroes its length/capacity fields.
 static void free_line(vg_code_line_t *line) {
     if (!line)
         return;
@@ -177,6 +205,7 @@ static void free_line(vg_code_line_t *line) {
     line->colors_capacity = 0;
 }
 
+/// @brief Calls free_line on each of the @p count entries in @p lines, then frees the array itself.
 static void free_line_array(vg_code_line_t *lines, int count) {
     if (!lines)
         return;
@@ -185,6 +214,7 @@ static void free_line_array(vg_code_line_t *lines, int count) {
     free(lines);
 }
 
+/// @brief Returns the byte length of the well-formed UTF-8 sequence starting at @p p (1–4), or 0 on error.
 static size_t codeeditor_utf8_span(const char *p) {
     if (!p || *p == '\0')
         return 0;
@@ -225,6 +255,7 @@ static size_t codeeditor_utf8_span(const char *p) {
     return 0;
 }
 
+/// @brief Frees the highlight_spans array and resets its count and capacity to zero.
 static void codeeditor_clear_highlight_spans(vg_codeeditor_t *editor) {
     if (!editor)
         return;
@@ -234,8 +265,7 @@ static void codeeditor_clear_highlight_spans(vg_codeeditor_t *editor) {
     editor->highlight_span_cap = 0;
 }
 
-// Ensure the colors array for line_idx is allocated and call the syntax highlighter.
-// Safe to call every frame — realloc only when capacity is insufficient.
+/// @brief Ensures the colors buffer for @p line_idx is sized, then invokes the syntax highlighter callback.
 static void highlight_line(vg_codeeditor_t *editor, size_t line_idx) {
     if (!editor->syntax_highlighter || line_idx >= (size_t)editor->line_count)
         return;
@@ -264,6 +294,7 @@ static void highlight_line(vg_codeeditor_t *editor, size_t line_idx) {
         (vg_widget_t *)editor, (int)line_idx, line->text, line->colors, editor->syntax_data);
 }
 
+/// @brief Draws the substring text[start..start+len] at (x,y) using a stack buffer for short slices.
 static void codeeditor_draw_text_slice(void *canvas,
                                        vg_font_t *font,
                                        float font_size,
@@ -291,6 +322,7 @@ static void codeeditor_draw_text_slice(void *canvas,
         free(buf);
 }
 
+/// @brief Draws text[start..start+len] in color runs derived from @p colors[], falling back to @p fallback_color.
 static void codeeditor_draw_colored_slice(void *canvas,
                                           vg_font_t *font,
                                           float font_size,
@@ -336,6 +368,7 @@ static void codeeditor_draw_colored_slice(void *canvas,
                                run_color);
 }
 
+/// @brief Computes the minimum gutter width needed to display the widest line-number string plus 20 px padding.
 static float codeeditor_auto_line_number_gutter_width(const vg_codeeditor_t *editor) {
     if (!editor || !editor->show_line_numbers)
         return 0.0f;
@@ -350,6 +383,7 @@ static float codeeditor_auto_line_number_gutter_width(const vg_codeeditor_t *edi
     return (float)strlen(buf) * editor->char_width + 20.0f;
 }
 
+/// @brief Returns the fold-marker gutter width (one line_height wide, clamped to CODEEDITOR_FOLD_GUTTER_MIN_WIDTH).
 static float codeeditor_fold_gutter_width(const vg_codeeditor_t *editor) {
     if (!editor || !editor->show_fold_gutter)
         return 0.0f;
@@ -357,6 +391,7 @@ static float codeeditor_fold_gutter_width(const vg_codeeditor_t *editor) {
     return width < CODEEDITOR_FOLD_GUTTER_MIN_WIDTH ? CODEEDITOR_FOLD_GUTTER_MIN_WIDTH : width;
 }
 
+/// @brief Returns the effective line-number gutter width, honouring line_number_width_override when set.
 static float codeeditor_line_number_gutter_width(const vg_codeeditor_t *editor) {
     if (!editor || !editor->show_line_numbers)
         return 0.0f;
@@ -365,6 +400,7 @@ static float codeeditor_line_number_gutter_width(const vg_codeeditor_t *editor) 
     return codeeditor_auto_line_number_gutter_width(editor);
 }
 
+/// @brief Returns a const pointer to the fold region whose start_line equals @p line, or NULL if none.
 static const struct vg_fold_region *codeeditor_fold_region_starting_at(const vg_codeeditor_t *editor,
                                                                        int line) {
     if (!editor)
@@ -376,6 +412,7 @@ static const struct vg_fold_region *codeeditor_fold_region_starting_at(const vg_
     return NULL;
 }
 
+/// @brief Returns a mutable pointer to the fold region whose start_line equals @p line, or NULL if none.
 static struct vg_fold_region *codeeditor_fold_region_starting_at_mut(vg_codeeditor_t *editor, int line) {
     if (!editor)
         return NULL;
@@ -386,6 +423,7 @@ static struct vg_fold_region *codeeditor_fold_region_starting_at_mut(vg_codeedit
     return NULL;
 }
 
+/// @brief Returns true if @p line falls inside a currently folded region (i.e., it is not visible).
 static bool codeeditor_line_is_hidden(const vg_codeeditor_t *editor, int line) {
     if (!editor)
         return false;
@@ -397,6 +435,7 @@ static bool codeeditor_line_is_hidden(const vg_codeeditor_t *editor, int line) {
     return false;
 }
 
+/// @brief Returns the nearest visible line at or above @p line, snapping hidden lines to their fold's start_line.
 static int codeeditor_visible_anchor_line(const vg_codeeditor_t *editor, int line) {
     if (!editor || editor->line_count <= 0)
         return 0;
@@ -421,6 +460,7 @@ static int codeeditor_visible_anchor_line(const vg_codeeditor_t *editor, int lin
     return found ? best_start : line;
 }
 
+/// @brief Returns the index of the next visible (non-hidden) line after @p line, or line_count if none.
 static int codeeditor_next_visible_line(const vg_codeeditor_t *editor, int line) {
     if (!editor || editor->line_count <= 0)
         return -1;
@@ -431,6 +471,7 @@ static int codeeditor_next_visible_line(const vg_codeeditor_t *editor, int line)
     return editor->line_count;
 }
 
+/// @brief Returns the index of the previous visible line before @p line, or -1 if none exists.
 VG_UNUSED static int codeeditor_prev_visible_line(const vg_codeeditor_t *editor, int line) {
     if (!editor || editor->line_count <= 0)
         return -1;
@@ -441,6 +482,7 @@ VG_UNUSED static int codeeditor_prev_visible_line(const vg_codeeditor_t *editor,
     return -1;
 }
 
+/// @brief Recomputes editor->gutter_width as the sum of the line-number and fold-gutter widths.
 static void update_gutter_width(vg_codeeditor_t *editor) {
     if (!editor) {
         return;
@@ -449,6 +491,7 @@ static void update_gutter_width(vg_codeeditor_t *editor) {
         codeeditor_line_number_gutter_width(editor) + codeeditor_fold_gutter_width(editor);
 }
 
+/// @brief Returns the number of characters that fit per wrap row given @p content_width; 0 if word_wrap is off.
 static int codeeditor_chars_per_row(const vg_codeeditor_t *editor, float content_width) {
     if (!editor || !editor->word_wrap || editor->char_width <= 0.0f || content_width <= 0.0f)
         return 0;
@@ -456,6 +499,7 @@ static int codeeditor_chars_per_row(const vg_codeeditor_t *editor, float content
     return chars > 0 ? chars : 1;
 }
 
+/// @brief Returns the number of wrapped rows needed to display @p line given @p content_width (minimum 1).
 static int codeeditor_wrapped_rows_for_line(const vg_codeeditor_t *editor,
                                             int line,
                                             float content_width) {
@@ -470,6 +514,7 @@ static int codeeditor_wrapped_rows_for_line(const vg_codeeditor_t *editor,
     return (int)((len + (size_t)chars_per_row - 1) / (size_t)chars_per_row);
 }
 
+/// @brief Returns the visual row count for @p line (0 if hidden, 1 if no word-wrap, else wrapped row count).
 static int codeeditor_visual_rows_for_line(const vg_codeeditor_t *editor,
                                            int line,
                                            float content_width) {
@@ -480,6 +525,7 @@ static int codeeditor_visual_rows_for_line(const vg_codeeditor_t *editor,
     return codeeditor_wrapped_rows_for_line(editor, line, content_width);
 }
 
+/// @brief Returns the total document height in pixels for the given @p content_width (sums all visual rows).
 static float codeeditor_total_content_height_for_width(const vg_codeeditor_t *editor,
                                                        float content_width) {
     if (!editor)
@@ -492,6 +538,7 @@ static float codeeditor_total_content_height_for_width(const vg_codeeditor_t *ed
     return total_rows * editor->line_height;
 }
 
+/// @brief Computes the drawable content width, iterating up to 3 passes to account for vertical scrollbar visibility.
 static float codeeditor_content_draw_width(const vg_codeeditor_t *editor, const vg_widget_t *widget) {
     if (!editor || !widget)
         return 0.0f;
@@ -516,10 +563,12 @@ static float codeeditor_content_draw_width(const vg_codeeditor_t *editor, const 
     return content_width;
 }
 
+/// @brief Returns total document height using the resolved content draw width for the given widget bounds.
 static float codeeditor_total_content_height(const vg_codeeditor_t *editor, const vg_widget_t *widget) {
     return codeeditor_total_content_height_for_width(editor, codeeditor_content_draw_width(editor, widget));
 }
 
+/// @brief Returns the total count of visual rows across all lines for @p content_width (used for scroll math).
 static int codeeditor_total_visual_rows_for_width(const vg_codeeditor_t *editor, float content_width) {
     if (!editor)
         return 0;
@@ -531,6 +580,7 @@ static int codeeditor_total_visual_rows_for_width(const vg_codeeditor_t *editor,
     return total_rows;
 }
 
+/// @brief Returns the maximum valid scroll_y value (content height minus widget height, clamped to ≥ 0).
 static float codeeditor_max_scroll_y(const vg_codeeditor_t *editor, const vg_widget_t *widget) {
     if (!editor || !widget)
         return 0.0f;
@@ -538,6 +588,7 @@ static float codeeditor_max_scroll_y(const vg_codeeditor_t *editor, const vg_wid
     return max_scroll > 0.0f ? max_scroll : 0.0f;
 }
 
+/// @brief Decomposes (line, col) into a wrap-row index within the line and a column within that row.
 static void codeeditor_visual_offset_for_position(const vg_codeeditor_t *editor,
                                                   float content_width,
                                                   int line,
@@ -572,6 +623,7 @@ static void codeeditor_visual_offset_for_position(const vg_codeeditor_t *editor,
         *out_col_in_row = col_in_row;
 }
 
+/// @brief Returns the absolute visual row index (across all lines) for document position (line, col).
 static int codeeditor_visual_row_for_position(const vg_codeeditor_t *editor,
                                               float content_width,
                                               int line,
@@ -595,6 +647,7 @@ static int codeeditor_visual_row_for_position(const vg_codeeditor_t *editor,
     return visual_row;
 }
 
+/// @brief Resolves an absolute @p visual_row index to the source line and wrap-row offset within that line.
 static void codeeditor_locate_visual_row(const vg_codeeditor_t *editor,
                                          float content_width,
                                          int visual_row,
@@ -634,6 +687,7 @@ static void codeeditor_locate_visual_row(const vg_codeeditor_t *editor,
     }
 }
 
+/// @brief Clamps scroll_x to 0 in word-wrap mode and clamps scroll_y to [0, max_scroll_y].
 static void codeeditor_clamp_scroll(vg_codeeditor_t *editor, const vg_widget_t *widget) {
     if (!editor || !widget)
         return;
@@ -646,6 +700,7 @@ static void codeeditor_clamp_scroll(vg_codeeditor_t *editor, const vg_widget_t *
         editor->scroll_y = max_scroll;
 }
 
+/// @brief Computes scrollbar thumb geometry; returns false if content fits without scrolling.
 static bool codeeditor_get_scrollbar_metrics(const vg_codeeditor_t *editor,
                                              const vg_widget_t *widget,
                                              float *out_track_x,
@@ -701,6 +756,7 @@ static bool codeeditor_get_scrollbar_metrics(const vg_codeeditor_t *editor,
     return true;
 }
 
+/// @brief Converts a local-space click point (local_x, local_y) to a document (line, col) position.
 static void codeeditor_local_point_to_position(const vg_codeeditor_t *editor,
                                                const vg_widget_t *widget,
                                                float local_x,
@@ -759,6 +815,7 @@ static void codeeditor_local_point_to_position(const vg_codeeditor_t *editor,
         *out_col = col;
 }
 
+/// @brief Moves the cursor up or down by @p visual_rows visual rows, preserving the column position within a wrap row.
 static void codeeditor_move_cursor_vertical(vg_codeeditor_t *editor,
                                             const vg_widget_t *widget,
                                             int visual_rows) {
@@ -796,7 +853,7 @@ static void codeeditor_move_cursor_vertical(vg_codeeditor_t *editor,
     editor->cursor_col = target_col;
 }
 
-// Ensure the cursor line is visible by adjusting scroll position
+/// @brief Adjusts scroll_y so the cursor's visual row is within the visible viewport.
 static void ensure_cursor_visible(vg_codeeditor_t *editor) {
     if (!editor)
         return;
@@ -825,6 +882,13 @@ static void ensure_cursor_visible(vg_codeeditor_t *editor) {
         editor->scroll_y = max_scroll;
 }
 
+/// @brief Recalculate gutter width, clamp cursors to visible lines, clamp scroll, and
+///        mark the widget for re-layout and repaint.
+///
+/// @details Call this after any structural change (fold toggle, text replacement,
+///          font change) that may affect layout metrics.
+///
+/// @param editor The code editor to refresh.
 void vg_codeeditor_refresh_layout_state(vg_codeeditor_t *editor) {
     if (!editor)
         return;
@@ -841,6 +905,7 @@ void vg_codeeditor_refresh_layout_state(vg_codeeditor_t *editor) {
 
 #define HISTORY_INITIAL_CAPACITY 64
 
+/// @brief Allocates and zero-initializes a new edit history with HISTORY_INITIAL_CAPACITY operation slots.
 static vg_edit_history_t *edit_history_create(void) {
     vg_edit_history_t *history = calloc(1, sizeof(vg_edit_history_t));
     if (!history)
@@ -862,6 +927,7 @@ static vg_edit_history_t *edit_history_create(void) {
     return history;
 }
 
+/// @brief Frees the old_text and new_text strings owned by @p op, then frees the op itself.
 static void edit_op_destroy(vg_edit_op_t *op) {
     if (!op)
         return;
@@ -870,6 +936,7 @@ static void edit_op_destroy(vg_edit_op_t *op) {
     free(op);
 }
 
+/// @brief Destroys all operations in @p history and frees the history struct itself.
 static void edit_history_destroy(vg_edit_history_t *history) {
     if (!history)
         return;
@@ -881,6 +948,7 @@ static void edit_history_destroy(vg_edit_history_t *history) {
     free(history);
 }
 
+/// @brief Destroys all operations in @p history and resets count and current_index to 0 without freeing the struct.
 VG_UNUSED
 static void edit_history_clear(vg_edit_history_t *history) {
     if (!history)
@@ -894,6 +962,7 @@ static void edit_history_clear(vg_edit_history_t *history) {
     history->current_index = 0;
 }
 
+/// @brief Discards any redo tail, grows the operation array if needed, and appends @p op; sets its group_id if grouping.
 static void edit_history_push(vg_edit_history_t *history, vg_edit_op_t *op) {
     if (!history || !op)
         return;
@@ -927,6 +996,7 @@ static void edit_history_push(vg_edit_history_t *history, vg_edit_op_t *op) {
     history->current_index = history->count;
 }
 
+/// @brief Decrements current_index and returns the operation to be undone, or NULL if at the beginning.
 static vg_edit_op_t *edit_history_pop_undo(vg_edit_history_t *history) {
     if (!history || history->current_index == 0)
         return NULL;
@@ -934,12 +1004,14 @@ static vg_edit_op_t *edit_history_pop_undo(vg_edit_history_t *history) {
     return history->operations[history->current_index];
 }
 
+/// @brief Returns the operation at current_index-1 without advancing the index, or NULL if empty.
 static vg_edit_op_t *edit_history_peek_undo(vg_edit_history_t *history) {
     if (!history || history->current_index == 0)
         return NULL;
     return history->operations[history->current_index - 1];
 }
 
+/// @brief Returns the operation at current_index and advances it, enabling a redo step; NULL if at end.
 static vg_edit_op_t *edit_history_pop_redo(vg_edit_history_t *history) {
     if (!history || history->current_index >= history->count)
         return NULL;
@@ -948,6 +1020,7 @@ static vg_edit_op_t *edit_history_pop_redo(vg_edit_history_t *history) {
     return op;
 }
 
+/// @brief Begins an edit group so that subsequent pushed operations share a group_id for atomic undo.
 VG_UNUSED
 static void edit_history_begin_group(vg_edit_history_t *history) {
     if (!history)
@@ -956,6 +1029,7 @@ static void edit_history_begin_group(vg_edit_history_t *history) {
     history->current_group = history->next_group_id++;
 }
 
+/// @brief Ends the current edit group, clearing is_grouping and current_group on @p history.
 VG_UNUSED
 static void edit_history_end_group(vg_edit_history_t *history) {
     if (!history)
@@ -964,6 +1038,7 @@ static void edit_history_end_group(vg_edit_history_t *history) {
     history->current_group = 0;
 }
 
+/// @brief Allocates a new vg_edit_op_t, strdup'ing old_text and new_text, with group_id initialised to 0.
 static vg_edit_op_t *create_edit_op(vg_edit_op_type_t type,
                                     int cursor_id,
                                     int start_line,
@@ -1001,6 +1076,7 @@ static vg_edit_op_t *create_edit_op(vg_edit_op_type_t type,
 // Selection Helper Functions
 //=============================================================================
 
+/// @brief Reads editor->selection and writes a canonically ordered start/end into the four out-params.
 static void normalize_selection(
     vg_codeeditor_t *editor, int *start_line, int *start_col, int *end_line, int *end_col) {
     *start_line = editor->selection.start_line;
@@ -1019,6 +1095,7 @@ static void normalize_selection(
     }
 }
 
+/// @brief Swaps the start/end pair in-place so that start always precedes end in document order.
 static void normalize_selection_range(int *start_line,
                                       int *start_col,
                                       int *end_line,
@@ -1033,6 +1110,7 @@ static void normalize_selection_range(int *start_line,
     }
 }
 
+/// @brief Extracts and returns a heap-allocated copy of the text in [start_line:start_col, end_line:end_col).
 static char *copy_text_range(
     vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col) {
     if (!editor)
@@ -1069,6 +1147,7 @@ static char *copy_text_range(
     return result;
 }
 
+/// @brief Clears the has_selection flag on all extra (non-primary) cursors.
 static void clear_extra_cursor_selections(vg_codeeditor_t *editor) {
     if (!editor)
         return;
@@ -1076,8 +1155,7 @@ static void clear_extra_cursor_selections(vg_codeeditor_t *editor) {
         editor->extra_cursors[i].has_selection = false;
 }
 
-// Clamp a single line index to [0, line_count). Use when the caller wants the
-// column to stay untouched (e.g. extending an existing selection's anchor).
+/// @brief Clamps @p *line to [0, line_count-1] without touching the column (used for selection anchors).
 static void clamp_editor_line(vg_codeeditor_t *editor, int *line) {
     if (!editor || !line || editor->line_count <= 0)
         return;
@@ -1087,7 +1165,7 @@ static void clamp_editor_line(vg_codeeditor_t *editor, int *line) {
         *line = editor->line_count - 1;
 }
 
-// Clamp a column to [0, lines[line].length] for an already-clamped line index.
+/// @brief Clamps @p *col to [0, lines[line].length] for an already-validated @p line index.
 static void clamp_editor_col(vg_codeeditor_t *editor, int line, int *col) {
     if (!editor || !col || editor->line_count <= 0)
         return;
@@ -1099,10 +1177,7 @@ static void clamp_editor_col(vg_codeeditor_t *editor, int line, int *col) {
         *col = (int)editor->lines[line].length;
 }
 
-// Atomic clamp of both axes. Note that clamping the line index can implicitly
-// shift the column (when the new line is shorter than the requested column).
-// Callers that maintain an independent column on a selection anchor should use
-// clamp_editor_line / clamp_editor_col directly so they control the order.
+/// @brief Clamps both line and col atomically; note that clamping the line may implicitly constrain the col.
 static void clamp_editor_position(vg_codeeditor_t *editor, int *line, int *col) {
     if (!editor || !line || !col || editor->line_count <= 0)
         return;
@@ -1110,6 +1185,7 @@ static void clamp_editor_position(vg_codeeditor_t *editor, int *line, int *col) 
     clamp_editor_col(editor, *line, col);
 }
 
+/// @brief Clamps (line, col) to valid bounds and then snaps the line to its fold's visible anchor.
 static void codeeditor_clamp_cursor_to_visible(vg_codeeditor_t *editor, int *line, int *col) {
     if (!editor || !line || !col || editor->line_count <= 0)
         return;
@@ -1118,6 +1194,7 @@ static void codeeditor_clamp_cursor_to_visible(vg_codeeditor_t *editor, int *lin
     clamp_editor_col(editor, *line, col);
 }
 
+/// @brief Snaps all cursors (primary and extra) off hidden lines after a fold toggle or line deletion.
 static void codeeditor_adjust_hidden_cursors(vg_codeeditor_t *editor) {
     if (!editor || editor->line_count <= 0)
         return;
@@ -1129,6 +1206,7 @@ static void codeeditor_adjust_hidden_cursors(vg_codeeditor_t *editor) {
     }
 }
 
+/// @brief Returns -1, 0, or 1 for lhs < rhs, lhs == rhs, or lhs > rhs in document order.
 static int compare_positions(int lhs_line, int lhs_col, int rhs_line, int rhs_col) {
     if (lhs_line != rhs_line)
         return (lhs_line < rhs_line) ? -1 : 1;
@@ -1147,6 +1225,7 @@ typedef struct vg_edit_target {
     int end_col;
 } vg_edit_target_t;
 
+/// @brief qsort comparator that orders edit targets in descending document position (last target first).
 static int edit_target_compare_desc(const void *lhs, const void *rhs) {
     const vg_edit_target_t *a = (const vg_edit_target_t *)lhs;
     const vg_edit_target_t *b = (const vg_edit_target_t *)rhs;
@@ -1159,6 +1238,7 @@ static int edit_target_compare_desc(const void *lhs, const void *rhs) {
     return a->cursor_id - b->cursor_id;
 }
 
+/// @brief qsort comparator that orders edit targets in ascending document position (first target first).
 static int edit_target_compare_asc(const void *lhs, const void *rhs) {
     const vg_edit_target_t *a = (const vg_edit_target_t *)lhs;
     const vg_edit_target_t *b = (const vg_edit_target_t *)rhs;
@@ -1171,6 +1251,7 @@ static int edit_target_compare_asc(const void *lhs, const void *rhs) {
     return a->cursor_id - b->cursor_id;
 }
 
+/// @brief Updates the cursor at @p cursor_id (0 = primary, 1+ = extra) to (line, col).
 static void set_cursor_position_by_id(vg_codeeditor_t *editor, int cursor_id, int line, int col) {
     if (cursor_id == 0) {
         editor->cursor_line = line;
@@ -1184,6 +1265,7 @@ static void set_cursor_position_by_id(vg_codeeditor_t *editor, int cursor_id, in
     editor->extra_cursors[extra_idx].col = col;
 }
 
+/// @brief Clears the selection flag for the cursor identified by @p cursor_id.
 static void clear_cursor_selection_by_id(vg_codeeditor_t *editor, int cursor_id) {
     if (cursor_id == 0) {
         editor->has_selection = false;
@@ -1195,6 +1277,7 @@ static void clear_cursor_selection_by_id(vg_codeeditor_t *editor, int cursor_id)
     editor->extra_cursors[extra_idx].has_selection = false;
 }
 
+/// @brief Appends a normalized, de-duplicated edit target to @p targets[]; no-op if an identical range exists.
 static void add_edit_target(vg_edit_target_t *targets,
                             int *count,
                             int cursor_id,
@@ -1221,6 +1304,7 @@ static void add_edit_target(vg_edit_target_t *targets,
     (*count)++;
 }
 
+/// @brief Creates an edit operation and pushes it onto the undo history; no-op if history is NULL.
 static void record_edit_history(vg_codeeditor_t *editor,
                                 vg_edit_op_type_t type,
                                 int cursor_id,
@@ -1252,6 +1336,7 @@ static void record_edit_history(vg_codeeditor_t *editor,
         edit_history_push(editor->history, op);
 }
 
+/// @brief Applies @p replacement_text at each edit target in descending order, recording undo ops, then updates cursor positions.
 static void apply_edit_targets(vg_codeeditor_t *editor,
                                vg_edit_target_t *targets,
                                int target_count,
@@ -1366,6 +1451,14 @@ static void apply_edit_targets(vg_codeeditor_t *editor,
 // CodeEditor Implementation
 //=============================================================================
 
+/// @brief Create a code editor widget with a single empty line and default theme colours.
+///
+/// @details The editor supports syntax highlighting (set via vg_codeeditor_set_syntax),
+///          word wrap, line numbers, folding gutter, and a scrollbar.  All features
+///          are disabled or hidden by default; enable them via the corresponding setters.
+///
+/// @param parent Widget to attach to as a child (may be NULL).
+/// @return Newly allocated vg_codeeditor_t, or NULL on allocation failure.
 vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
     vg_codeeditor_t *editor = calloc(1, sizeof(vg_codeeditor_t));
     if (!editor)
@@ -1463,6 +1556,7 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
     return editor;
 }
 
+/// @brief VTable destroy: frees all lines, history, custom keywords, highlight spans, gutter icons, and fold regions.
 static void codeeditor_destroy(vg_widget_t *widget) {
     vg_codeeditor_t *editor = (vg_codeeditor_t *)widget;
 
@@ -1508,6 +1602,7 @@ static void codeeditor_destroy(vg_widget_t *widget) {
     editor->extra_cursor_cap = 0;
 }
 
+/// @brief VTable measure: fills all available space, clamped to min_width/min_height constraints.
 static void codeeditor_measure(vg_widget_t *widget, float available_width, float available_height) {
     // Code editor fills available space
     widget->measured_width = available_width > 0 ? available_width : 400;
@@ -1522,6 +1617,7 @@ static void codeeditor_measure(vg_widget_t *widget, float available_width, float
     }
 }
 
+/// @brief Blits a gutter icon's RGBA pixel data into the framebuffer at (dst_x, dst_y) with clipping applied.
 static void codeeditor_draw_gutter_icon_image(vgfx_window_t canvas,
                                               const struct vg_gutter_icon *icon,
                                               int32_t dst_x,
@@ -1596,6 +1692,7 @@ static void codeeditor_draw_gutter_icon_image(vgfx_window_t canvas,
     }
 }
 
+/// @brief Draws a '+' or '-' fold marker in the fold gutter column for the region starting at @p line.
 static void codeeditor_draw_fold_marker(vg_codeeditor_t *editor,
                                         void *canvas,
                                         float fold_gutter_x,
@@ -1616,6 +1713,7 @@ static void codeeditor_draw_fold_marker(vg_codeeditor_t *editor,
         canvas, editor->font, editor->font_size, marker_x, marker_y, marker, editor->line_number_color);
 }
 
+/// @brief Draws a "..." continuation marker after the last visible character of a folded region.
 static void codeeditor_draw_fold_ellipsis(vg_codeeditor_t *editor,
                                           void *canvas,
                                           float content_x,
@@ -1631,6 +1729,7 @@ static void codeeditor_draw_fold_ellipsis(vg_codeeditor_t *editor,
         canvas, editor->font, editor->font_size, ellipsis_x, baseline_y, "...", editor->line_number_color);
 }
 
+/// @brief VTable paint: renders background, gutter, current-line highlight, selection, syntax-coloured text, cursor, and scrollbar.
 static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
     vg_codeeditor_t *editor = (vg_codeeditor_t *)widget;
 
@@ -2210,8 +2309,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
-// Encode a Unicode codepoint as UTF-8 into buf (must be at least 4 bytes).
-// Returns the number of bytes written, or 0 for invalid codepoints.
+/// @brief Encodes @p cp as UTF-8 into @p buf (≥4 bytes); returns bytes written, or 0 for invalid codepoints.
 static int encode_utf8(uint32_t cp, char *buf) {
     if (cp < 0x80) {
         buf[0] = (char)cp;
@@ -2287,6 +2385,7 @@ VG_UNUSED static void insert_char(vg_codeeditor_t *editor, char c) {
     line->modified = true;
 }
 
+/// @brief Inserts @p n bytes from @p bytes into @p line_idx at *col, advancing *col past the inserted content.
 static bool codeeditor_insert_bytes_at(vg_codeeditor_t *editor,
                                        int line_idx,
                                        int *col,
@@ -2318,6 +2417,7 @@ static bool codeeditor_insert_bytes_at(vg_codeeditor_t *editor,
     return true;
 }
 
+/// @brief Splits @p line_idx at @p col by inserting a new empty line and moving trailing text to it.
 static bool codeeditor_split_line_at(vg_codeeditor_t *editor, int line_idx, int col) {
     if (!editor || line_idx < 0 || line_idx >= editor->line_count)
         return false;
@@ -2415,6 +2515,7 @@ VG_UNUSED static void delete_char_backward(vg_codeeditor_t *editor) {
     }
 }
 
+/// @brief Performs a Backspace deletion across all cursors: deletes selections or removes the preceding character/newline.
 static void delete_backspace_targets(vg_codeeditor_t *editor) {
     if (!editor)
         return;
@@ -2497,6 +2598,7 @@ static void delete_backspace_targets(vg_codeeditor_t *editor) {
     free(targets);
 }
 
+/// @brief VTable handle_event: routes mouse (click/drag/scroll/scrollbar) and keyboard events to the appropriate editor action.
 static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_codeeditor_t *editor = (vg_codeeditor_t *)widget;
 
@@ -2817,10 +2919,12 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
     return false;
 }
 
+/// @brief VTable can_focus: returns true when the editor is both enabled and visible.
 static bool codeeditor_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
 
+/// @brief VTable on_focus: on focus gain, resets the cursor blink state and triggers a repaint.
 static void codeeditor_on_focus(vg_widget_t *widget, bool gained) {
     vg_codeeditor_t *editor = (vg_codeeditor_t *)widget;
     if (gained) {
@@ -2834,6 +2938,12 @@ static void codeeditor_on_focus(vg_widget_t *widget, bool gained) {
 // CodeEditor API
 //=============================================================================
 
+/// @brief Advance the cursor blink timer; call once per frame while the editor is visible.
+///
+/// @details Only advances the timer when the editor has focus; no-op otherwise.
+///
+/// @param editor The code editor to tick.
+/// @param dt     Elapsed time in seconds since the last frame.
 void vg_codeeditor_tick(vg_codeeditor_t *editor, float dt) {
     if (!editor || !(editor->base.state & VG_STATE_FOCUSED))
         return;
@@ -2846,6 +2956,15 @@ void vg_codeeditor_tick(vg_codeeditor_t *editor, float dt) {
     }
 }
 
+/// @brief Replace all editor content with the given text.
+///
+/// @details Splits text on newlines to populate the line array.  The cursor is
+///          moved to (0,0), all selections and extra cursors are cleared, scroll
+///          is reset to 0, and the modified flag is cleared.  NULL or empty text
+///          results in a single empty line.
+///
+/// @param editor The code editor to update.
+/// @param text   Null-terminated UTF-8 source text; may be NULL to clear.
 void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
     if (!editor)
         return;
@@ -2907,7 +3026,13 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
     editor->base.needs_paint = true;
 }
 
-/// @brief Codeeditor get text.
+/// @brief Return the complete editor content as a heap-allocated newline-joined string.
+///
+/// @details The caller owns the returned buffer and must free it.
+///
+/// @param editor The code editor to query.
+/// @return Heap-allocated null-terminated UTF-8 string, or NULL on allocation failure
+///         or if editor is NULL.
 char *vg_codeeditor_get_text(vg_codeeditor_t *editor) {
     if (!editor)
         return NULL;
@@ -2943,7 +3068,13 @@ char *vg_codeeditor_get_text(vg_codeeditor_t *editor) {
     return result;
 }
 
-/// @brief Codeeditor get selection.
+/// @brief Return the selected text as a heap-allocated string.
+///
+/// @details The caller owns the returned buffer and must free it.  Returns NULL
+///          if there is no active selection or if editor is NULL.
+///
+/// @param editor The code editor to query.
+/// @return Heap-allocated null-terminated UTF-8 string of selected text, or NULL.
 char *vg_codeeditor_get_selection(vg_codeeditor_t *editor) {
     if (!editor || !editor->has_selection)
         return NULL;
@@ -2953,7 +3084,14 @@ char *vg_codeeditor_get_selection(vg_codeeditor_t *editor) {
     return copy_text_range(editor, start_line, start_col, end_line, end_col);
 }
 
-/// @brief Codeeditor set cursor.
+/// @brief Move the cursor to the specified line and column, clearing any selection.
+///
+/// @details line and col are clamped to valid positions.  Extra cursors and
+///          selections are also cleared.
+///
+/// @param editor The code editor to update.
+/// @param line   Zero-based target line; clamped to [0, line_count-1].
+/// @param col    Zero-based target column; clamped to the line's length.
 void vg_codeeditor_set_cursor(vg_codeeditor_t *editor, int line, int col) {
     if (!editor)
         return;
@@ -2967,7 +3105,11 @@ void vg_codeeditor_set_cursor(vg_codeeditor_t *editor, int line, int col) {
     editor->base.needs_paint = true;
 }
 
-/// @brief Codeeditor get cursor.
+/// @brief Retrieve the current cursor line and column.
+///
+/// @param editor   The code editor to query.
+/// @param out_line Output for the zero-based cursor line; may be NULL.
+/// @param out_col  Output for the zero-based cursor column; may be NULL.
 void vg_codeeditor_get_cursor(vg_codeeditor_t *editor, int *out_line, int *out_col) {
     if (!editor)
         return;
@@ -2977,7 +3119,16 @@ void vg_codeeditor_get_cursor(vg_codeeditor_t *editor, int *out_line, int *out_c
         *out_col = editor->cursor_col;
 }
 
-/// @brief Codeeditor set selection.
+/// @brief Programmatically set the selection range and position the cursor at the end.
+///
+/// @details All coordinates are clamped to valid positions.  The cursor is placed
+///          at (end_line, end_col) after the call.
+///
+/// @param editor     The code editor to update.
+/// @param start_line Zero-based selection start line.
+/// @param start_col  Zero-based selection start column.
+/// @param end_line   Zero-based selection end line; cursor lands here.
+/// @param end_col    Zero-based selection end column; cursor lands here.
 void vg_codeeditor_set_selection(
     vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col) {
     if (!editor)
@@ -2995,7 +3146,14 @@ void vg_codeeditor_set_selection(
     editor->base.needs_paint = true;
 }
 
-/// @brief Codeeditor insetext.
+/// @brief Insert text at each cursor, replacing any active selections.
+///
+/// @details In multi-cursor mode each cursor receives the same text, applied in
+///          reverse document order to preserve position validity.  The operation
+///          is recorded in the undo history.  No-op if editor is in read-only mode.
+///
+/// @param editor The code editor to update.
+/// @param text   Null-terminated UTF-8 text to insert; may contain newlines.
 void vg_codeeditor_insert_text(vg_codeeditor_t *editor, const char *text) {
     if (!editor || !text || text[0] == '\0')
         return;
@@ -3058,7 +3216,12 @@ void vg_codeeditor_insert_text(vg_codeeditor_t *editor, const char *text) {
     free(targets);
 }
 
-/// @brief Codeeditor delete selection.
+/// @brief Delete the selected text at all active cursors, recording the operation.
+///
+/// @details If no selection exists the call is a no-op.  In multi-cursor mode,
+///          all cursor selections are deleted in a single pass.
+///
+/// @param editor The code editor to update.
 void vg_codeeditor_delete_selection(vg_codeeditor_t *editor) {
     if (!editor)
         return;
@@ -3103,7 +3266,14 @@ void vg_codeeditor_delete_selection(vg_codeeditor_t *editor) {
     free(targets);
 }
 
-/// @brief Codeeditor scroll to line.
+/// @brief Scroll the viewport so that the specified line is visible.
+///
+/// @details Scrolls the minimum distance needed: if the line is already visible
+///          the scroll position is unchanged.  Line is clamped to [0, line_count-1].
+///          Hidden (folded) lines are remapped to their visible anchor.
+///
+/// @param editor The code editor to scroll.
+/// @param line   Zero-based line number to scroll into view.
 void vg_codeeditor_scroll_to_line(vg_codeeditor_t *editor, int line) {
     if (!editor)
         return;
@@ -3129,7 +3299,15 @@ void vg_codeeditor_scroll_to_line(vg_codeeditor_t *editor, int line) {
     editor->base.needs_paint = true;
 }
 
-/// @brief Codeeditor set syntax.
+/// @brief Register a syntax highlighting callback invoked once per visible line during paint.
+///
+/// @details Setting a new callback invalidates all cached per-character colour data,
+///          forcing a full highlight refresh on the next repaint.  Set callback to NULL
+///          to disable syntax highlighting.
+///
+/// @param editor    The code editor to configure.
+/// @param callback  Syntax highlighter called with (editor, line_idx, user_data).
+/// @param user_data Opaque pointer forwarded unchanged to the callback.
 void vg_codeeditor_set_syntax(vg_codeeditor_t *editor,
                               vg_syntax_callback_t callback,
                               void *user_data) {
@@ -3148,7 +3326,7 @@ void vg_codeeditor_set_syntax(vg_codeeditor_t *editor,
     editor->base.needs_paint = true;
 }
 
-// Internal helper: insert text at position without recording to history
+/// @brief Low-level text insert at (line, col) without recording to history; handles embedded newlines via line splits.
 static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, const char *text) {
     if (!editor || !text || line < 0 || line >= editor->line_count)
         return;
@@ -3194,7 +3372,7 @@ static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, 
     }
 }
 
-// Internal helper: delete text range without recording to history
+/// @brief Low-level range deletion without history recording; merges lines when the range spans newlines.
 static void delete_text_range_internal(
     vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col) {
     if (!editor || start_line < 0 || start_line >= editor->line_count)
@@ -3262,6 +3440,7 @@ static void delete_text_range_internal(
     editor->modified = true;
 }
 
+/// @brief Computes the document position reached after inserting @p text starting at (start_line, start_col).
 static void compute_text_end_position(
     int start_line, int start_col, const char *text, int *out_line, int *out_col) {
     int line = start_line;
@@ -3302,7 +3481,13 @@ static void compute_text_end_position(
         *out_col = col;
 }
 
-/// @brief Codeeditor undo.
+/// @brief Undo the most recent edit operation (or group of grouped operations).
+///
+/// @details Grouped operations sharing the same group_id are undone atomically.
+///          Cursor position is restored to the pre-edit location.  No-op if the
+///          history stack is empty.
+///
+/// @param editor The code editor to apply undo to.
 void vg_codeeditor_undo(vg_codeeditor_t *editor) {
     if (!editor || !editor->history)
         return;
@@ -3360,7 +3545,12 @@ void vg_codeeditor_undo(vg_codeeditor_t *editor) {
     editor->base.needs_paint = true;
 }
 
-/// @brief Codeeditor redo.
+/// @brief Redo the most recently undone edit operation (or group).
+///
+/// @details Grouped operations are replayed atomically.  Cursor position is
+///          restored to the post-edit location.  No-op if the redo stack is empty.
+///
+/// @param editor The code editor to apply redo to.
 void vg_codeeditor_redo(vg_codeeditor_t *editor) {
     if (!editor || !editor->history)
         return;
@@ -3420,6 +3610,14 @@ void vg_codeeditor_redo(vg_codeeditor_t *editor) {
     editor->base.needs_paint = true;
 }
 
+/// @brief Copy the selected text to the system clipboard.
+///
+/// @details In multi-cursor mode, all cursor selections are concatenated with
+///          newlines between each segment.  Returns false if there is no selection
+///          or if clipboard access fails.
+///
+/// @param editor The code editor to copy from.
+/// @return true if text was placed on the clipboard, false otherwise.
 bool vg_codeeditor_copy(vg_codeeditor_t *editor) {
     if (!editor)
         return false;
@@ -3516,6 +3714,12 @@ cleanup:
     return copied;
 }
 
+/// @brief Copy the selected text to the clipboard and delete it from the editor.
+///
+/// @details No-op if the editor is read-only or there is no selection.
+///
+/// @param editor The code editor to cut from.
+/// @return true if text was cut, false if read-only or nothing was selected.
 bool vg_codeeditor_cut(vg_codeeditor_t *editor) {
     if (!editor || editor->read_only)
         return false;
@@ -3528,6 +3732,12 @@ bool vg_codeeditor_cut(vg_codeeditor_t *editor) {
     return true;
 }
 
+/// @brief Insert the current clipboard text at the cursor, replacing any selection.
+///
+/// @details No-op if the editor is read-only or the clipboard is empty.
+///
+/// @param editor The code editor to paste into.
+/// @return true if text was pasted, false if read-only or clipboard empty.
 bool vg_codeeditor_paste(vg_codeeditor_t *editor) {
     if (!editor || editor->read_only)
         return false;
@@ -3542,7 +3752,9 @@ bool vg_codeeditor_paste(vg_codeeditor_t *editor) {
     return false;
 }
 
-/// @brief Codeeditor select all.
+/// @brief Select all text from the first character of line 0 to the end of the last line.
+///
+/// @param editor The code editor whose content will be fully selected.
 void vg_codeeditor_select_all(vg_codeeditor_t *editor) {
     if (!editor || editor->line_count == 0)
         return;
@@ -3558,7 +3770,15 @@ void vg_codeeditor_select_all(vg_codeeditor_t *editor) {
     editor->base.needs_paint = true;
 }
 
-/// @brief Codeeditor set font.
+/// @brief Set the monospace font and size used to render all editor text.
+///
+/// @details Updates char_width (measured from 'M') and line_height from the font
+///          metrics.  Triggers a full layout refresh.
+///
+/// @param editor The code editor to configure.
+/// @param font   Monospace font to use; NULL leaves the font unchanged.
+/// @param size   Font size in logical pixels; values ≤ 0 default to the theme's
+///               normal text size.
 void vg_codeeditor_set_font(vg_codeeditor_t *editor, vg_font_t *font, float size) {
     if (!editor)
         return;
@@ -3580,16 +3800,28 @@ void vg_codeeditor_set_font(vg_codeeditor_t *editor, vg_font_t *font, float size
     vg_codeeditor_refresh_layout_state(editor);
 }
 
-/// @brief Codeeditor get line count.
+/// @brief Return the number of lines in the editor (always ≥ 1).
+///
+/// @param editor The code editor to query.
+/// @return Total line count, or 0 if editor is NULL.
 int vg_codeeditor_get_line_count(vg_codeeditor_t *editor) {
     return editor ? editor->line_count : 0;
 }
 
+/// @brief Return true if the editor content has been modified since the last
+///        vg_codeeditor_clear_modified call or vg_codeeditor_set_text call.
+///
+/// @param editor The code editor to query.
+/// @return true if modified, false if clean or editor is NULL.
 bool vg_codeeditor_is_modified(vg_codeeditor_t *editor) {
     return editor ? editor->modified : false;
 }
 
-/// @brief Codeeditor clear modified.
+/// @brief Clear the modified flag on the editor and all individual lines.
+///
+/// @details Typically called after saving the file to reset the dirty indicator.
+///
+/// @param editor The code editor to mark as clean.
 void vg_codeeditor_clear_modified(vg_codeeditor_t *editor) {
     if (editor) {
         editor->modified = false;

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/peephole/CopyPropDCE.hpp
+// File: codegen/aarch64/peephole/CopyPropDCE.hpp
 // Purpose: Declarations for copy propagation, dead code elimination, dead FP
 //          store elimination, dead flag-setter removal, and compute-into-target
 //          folding peephole sub-passes.
@@ -17,7 +17,7 @@
 // Ownership/Lifetime:
 //   - Operates on mutable instruction vectors owned by the caller.
 //
-// Links: src/codegen/aarch64/Peephole.hpp
+// Links: codegen/aarch64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 

@@ -19,7 +19,8 @@
 // Ownership/Lifetime:
 //   - Encoder state (labelOffsets_, pendingBranches_) is reset per function
 //   - CodeSection is borrowed, not owned
-// Links: codegen/x86_64/binenc/X64Encoding.hpp
+// Links: codegen/x86_64/binenc/X64BinaryEncoder.hpp,
+//        codegen/x86_64/binenc/X64Encoding.hpp,
 //        codegen/common/objfile/CodeSection.hpp
 //
 //===----------------------------------------------------------------------===//

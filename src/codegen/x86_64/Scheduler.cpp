@@ -5,8 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/Scheduler.cpp
+// File: codegen/x86_64/Scheduler.cpp
 // Purpose: Conservative post-RA list scheduler for x86-64 Machine IR.
+// Key invariants:
+//   - Data dependences are computed per basic block before reordering.
+//   - Block boundaries and control flow instructions are never reordered.
+// Ownership/Lifetime:
+//   - Stateless; mutates caller-owned MFunction in place.
+// Links: codegen/x86_64/Scheduler.hpp,
+//        codegen/x86_64/OperandRoles.hpp
 //
 //===----------------------------------------------------------------------===//
 

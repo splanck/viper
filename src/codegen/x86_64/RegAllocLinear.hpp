@@ -7,12 +7,17 @@
 //
 // File: codegen/x86_64/RegAllocLinear.hpp
 // Purpose: Declare the Phase A linear-scan register allocator for x86-64.
-// Key invariants: Live intervals are computed before allocation; spill slots are
-//                 assigned monotonically per register class; the vregToPhys map
-//                 covers all virtual registers after allocation completes.
-// Ownership/Lifetime: Functions operate directly on the supplied MFunction instance and
-//                     return results by value; no persistent allocator state.
-// Links: docs/architecture.md
+// Key invariants:
+//   - Live intervals are computed before allocation.
+//   - Spill slots are assigned monotonically per register class.
+//   - The vregToPhys map covers all virtual registers after allocation completes.
+// Ownership/Lifetime:
+//   - Functions operate directly on the supplied MFunction; return results by value.
+//   - No persistent allocator state between calls.
+// Links: codegen/x86_64/RegAllocLinear.cpp,
+//        codegen/x86_64/MachineIR.hpp,
+//        codegen/x86_64/TargetX64.hpp,
+//        codegen/x86_64/ra/Allocator.hpp
 //
 //===----------------------------------------------------------------------===//
 

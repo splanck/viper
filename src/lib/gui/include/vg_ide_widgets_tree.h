@@ -5,16 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/include/vg_ide_widgets_tree.h
-// Purpose: TreeView, MenuBar, and ContextMenu widget declarations.
+// File: lib/gui/include/vg_ide_widgets_tree.h
+// Purpose: TreeView, MenuBar, and ContextMenu widget declarations — hierarchical
+//          navigation controls and popup/pull-down menu systems.
 // Key invariants:
 //   - All create functions return NULL on allocation failure.
 //   - String parameters are copied internally unless documented otherwise.
+//   - TreeView node depth is unlimited; rendering uses iterative traversal.
 // Ownership/Lifetime:
 //   - TreeView and MenuBar are owned by their parent in the widget tree.
 //   - ContextMenu may be created without a parent and must be explicitly
 //     destroyed.
-// Links: vg_ide_widgets_common.h, vg_widget.h
+// Links: lib/gui/include/vg_ide_widgets_common.h,
+//        lib/gui/include/vg_widget.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -66,79 +69,125 @@ typedef struct vg_contextmenu {
     uint32_t separator_color; ///< Separator color
 
     // Callbacks
-    void *user_data; ///< User data
+    void *user_data;        ///< Legacy selection user data.
+    void *on_select_data;   ///< User data for selection callback.
+    void *on_dismiss_data;  ///< User data for dismiss callback.
     void (*on_select)(struct vg_contextmenu *menu,
                       vg_menu_item_t *item,
                       void *user_data);                               ///< Selection callback
     void (*on_dismiss)(struct vg_contextmenu *menu, void *user_data); ///< Dismiss callback
 } vg_contextmenu_t;
 
-/// @brief Create a new context menu widget
+/// @brief Create a new context menu (not attached to a widget or parent).
+/// @return New context menu or NULL on failure.
 vg_contextmenu_t *vg_contextmenu_create(void);
 
-/// @brief Destroy a context menu widget
+/// @brief Destroy a context menu and free all items.
+/// @param menu Context menu to destroy (may be NULL).
 void vg_contextmenu_destroy(vg_contextmenu_t *menu);
 
-/// @brief Add an item to the context menu
+/// @brief Add a clickable item to the context menu.
+/// @param menu      Context menu.
+/// @param label     Item label text (copied internally).
+/// @param shortcut  Keyboard shortcut display string, e.g. "Ctrl+C" (copied; may be NULL).
+/// @param action    Callback invoked when the item is selected (may be NULL).
+/// @param user_data User data passed to @p action.
+/// @return Newly added menu item, or NULL on failure.
 vg_menu_item_t *vg_contextmenu_add_item(vg_contextmenu_t *menu,
                                         const char *label,
                                         const char *shortcut,
                                         void (*action)(void *),
                                         void *user_data);
 
-/// @brief Add a submenu to the context menu
+/// @brief Add a nested submenu item to the context menu.
+/// @param menu    Context menu.
+/// @param label   Label for the submenu item (copied internally).
+/// @param submenu Submenu shown when this item is hovered.
+/// @return Menu item representing the submenu entry, or NULL on failure.
 vg_menu_item_t *vg_contextmenu_add_submenu(vg_contextmenu_t *menu,
                                            const char *label,
                                            vg_contextmenu_t *submenu);
 
-/// @brief Add a separator to the context menu
+/// @brief Add a horizontal separator line to the context menu.
+/// @param menu Context menu.
+/// @return The separator menu item, or NULL on failure.
 vg_menu_item_t *vg_contextmenu_add_separator(vg_contextmenu_t *menu);
 
-/// @brief Clear all items from the context menu
+/// @brief Remove and free all items from the context menu.
+/// @param menu Context menu.
 void vg_contextmenu_clear(vg_contextmenu_t *menu);
 
-/// @brief Set item enabled state
+/// @brief Enable or disable a menu item (greyed out when disabled).
+/// @param item    Menu item.
+/// @param enabled true to make the item interactive.
 void vg_contextmenu_item_set_enabled(vg_menu_item_t *item, bool enabled);
 
-/// @brief Set item checked state
+/// @brief Set the checked (tick mark) state of a menu item.
+/// @param item    Menu item.
+/// @param checked true to show a check mark beside the item.
 void vg_contextmenu_item_set_checked(vg_menu_item_t *item, bool checked);
 
-/// @brief Set item icon
-/// @details Takes ownership of the icon payload, matching vg_toolbar_item_set_icon().
+/// @brief Set the icon displayed beside a menu item.
+/// @details Takes ownership of the icon payload (deep copy not made).
+/// @param item Menu item.
+/// @param icon Icon to display.
 void vg_contextmenu_item_set_icon(vg_menu_item_t *item, vg_icon_t icon);
 
-/// @brief Show context menu at position
+/// @brief Show the context menu at specific screen coordinates.
+/// @param menu Context menu.
+/// @param x    Horizontal position in screen pixels.
+/// @param y    Vertical position in screen pixels.
 void vg_contextmenu_show_at(vg_contextmenu_t *menu, int x, int y);
 
-/// @brief Show context menu relative to a widget
+/// @brief Show the context menu offset from a widget's origin.
+/// @param menu     Context menu.
+/// @param widget   Reference widget.
+/// @param offset_x Horizontal offset from the widget's left edge in pixels.
+/// @param offset_y Vertical offset from the widget's top edge in pixels.
 void vg_contextmenu_show_for_widget(vg_contextmenu_t *menu,
                                     vg_widget_t *widget,
                                     int offset_x,
                                     int offset_y);
 
-/// @brief Dismiss (hide) the context menu
+/// @brief Hide the context menu.
+/// @param menu Context menu.
 void vg_contextmenu_dismiss(vg_contextmenu_t *menu);
 
-/// @brief Set selection callback
+/// @brief Set the callback fired when an item is selected.
+/// @param menu      Context menu.
+/// @param callback  Handler called with the menu, selected item, and user_data.
+/// @param user_data User data passed to the handler.
 void vg_contextmenu_set_on_select(vg_contextmenu_t *menu,
                                   void (*callback)(vg_contextmenu_t *, vg_menu_item_t *, void *),
                                   void *user_data);
 
-/// @brief Set dismiss callback
+/// @brief Set the callback fired when the menu is dismissed without a selection.
+/// @param menu      Context menu.
+/// @param callback  Handler function.
+/// @param user_data User data passed to the handler.
 void vg_contextmenu_set_on_dismiss(vg_contextmenu_t *menu,
                                    void (*callback)(vg_contextmenu_t *, void *),
                                    void *user_data);
 
-/// @brief Register a context menu for a widget (shown on right-click)
+/// @brief Attach a context menu to a widget so it opens on right-click.
+/// @param widget Widget that should trigger the menu.
+/// @param menu   Context menu to show on right-click.
 void vg_contextmenu_register_for_widget(vg_widget_t *widget, vg_contextmenu_t *menu);
 
-/// @brief Unregister context menu from a widget
+/// @brief Detach any registered context menu from a widget.
+/// @param widget Widget to detach the menu from.
 void vg_contextmenu_unregister_for_widget(vg_widget_t *widget);
 
-/// @brief Process an event for a registered widget (call from event dispatch loop)
+/// @brief Forward an event to a widget's registered context menu.
+/// @param widget Widget whose context menu should receive the event.
+/// @param event  Event to forward.
+/// @return true if the context menu handled the event.
 bool vg_contextmenu_process_event(vg_widget_t *widget, vg_event_t *event);
 
-/// @brief Set font for context menu
+/// @brief Set the font used to render menu item labels.
+/// @param menu Context menu.
+/// @param font Font handle.
+/// @param size Font size in pixels.
 void vg_contextmenu_set_font(vg_contextmenu_t *menu, vg_font_t *font, float size);
 
 //=============================================================================
@@ -260,74 +309,121 @@ typedef struct vg_treeview {
     bool suppress_click;     ///< Swallow the synthetic click that follows a drag
 } vg_treeview_t;
 
-/// @brief Create a new tree view widget
+/// @brief Create a new tree view widget.
+/// @param parent Parent widget (can be NULL).
+/// @return New tree view or NULL on failure.
 vg_treeview_t *vg_treeview_create(vg_widget_t *parent);
 
-/// @brief Get tree root node
+/// @brief Get the hidden root node (children of root are top-level items).
+/// @param tree Tree view widget.
+/// @return Root node pointer.
 vg_tree_node_t *vg_treeview_get_root(vg_treeview_t *tree);
 
-/// @brief Return true when a node handle still belongs to a live tree.
+/// @brief Check whether a node handle still belongs to a live tree.
+/// @param node Node handle to test.
+/// @return true if the node is live; false if it has been removed or the tree destroyed.
 bool vg_tree_node_is_live(const vg_tree_node_t *node);
 
-/// @brief Add a child node
+/// @brief Add a new child node to a parent.
+/// @param tree   Tree view widget.
+/// @param parent Parent node (pass vg_treeview_get_root() for top-level items).
+/// @param text   Node label text (copied internally).
+/// @return Newly created node, or NULL on failure.
 vg_tree_node_t *vg_treeview_add_node(vg_treeview_t *tree, vg_tree_node_t *parent, const char *text);
 
-/// @brief Remove a node and all its children
+/// @brief Remove a node and all of its descendants from the tree.
+/// @param tree Tree view widget.
+/// @param node Node to remove (must belong to @p tree).
 void vg_treeview_remove_node(vg_treeview_t *tree, vg_tree_node_t *node);
 
-/// @brief Clear all nodes
+/// @brief Remove and free all nodes from the tree.
+/// @param tree Tree view widget.
 void vg_treeview_clear(vg_treeview_t *tree);
 
-/// @brief Expand a node
+/// @brief Expand a node, showing its children.
+/// @param tree Tree view widget.
+/// @param node Node to expand.
 void vg_treeview_expand(vg_treeview_t *tree, vg_tree_node_t *node);
 
-/// @brief Collapse a node
+/// @brief Collapse a node, hiding its children.
+/// @param tree Tree view widget.
+/// @param node Node to collapse.
 void vg_treeview_collapse(vg_treeview_t *tree, vg_tree_node_t *node);
 
-/// @brief Toggle node expansion
+/// @brief Toggle a node between expanded and collapsed.
+/// @param tree Tree view widget.
+/// @param node Node to toggle.
 void vg_treeview_toggle(vg_treeview_t *tree, vg_tree_node_t *node);
 
-/// @brief Select a node
+/// @brief Select a node, deselecting the previous selection.
+/// @param tree Tree view widget.
+/// @param node Node to select, or NULL to deselect all.
 void vg_treeview_select(vg_treeview_t *tree, vg_tree_node_t *node);
 
-/// @brief Scroll to make a node visible
+/// @brief Scroll the view so that a node is visible.
+/// @param tree Tree view widget.
+/// @param node Node to scroll into view.
 void vg_treeview_scroll_to(vg_treeview_t *tree, vg_tree_node_t *node);
 
-/// @brief Set node user data
+/// @brief Set arbitrary caller data on a node.
+/// @param node Node to modify.
+/// @param data Caller-owned pointer stored without copying.
 void vg_tree_node_set_data(vg_tree_node_t *node, void *data);
 
-/// @brief Set font for tree view
+/// @brief Set the font used for node text rendering.
+/// @param tree Tree view widget.
+/// @param font Font handle.
+/// @param size Font size in pixels.
 void vg_treeview_set_font(vg_treeview_t *tree, vg_font_t *font, float size);
 
-/// @brief Set selection callback
+/// @brief Set the callback fired when the selected node changes.
+/// @param tree      Tree view widget.
+/// @param callback  Handler function.
+/// @param user_data User data passed to the handler.
 void vg_treeview_set_on_select(vg_treeview_t *tree,
                                vg_tree_select_callback_t callback,
                                void *user_data);
 
-/// @brief Set expand callback
+/// @brief Set the callback fired when a node is expanded or collapsed.
+/// @param tree      Tree view widget.
+/// @param callback  Handler called with the node and new expanded state.
+/// @param user_data User data passed to the handler.
 void vg_treeview_set_on_expand(vg_treeview_t *tree,
                                vg_tree_expand_callback_t callback,
                                void *user_data);
 
-/// @brief Set activate (double-click) callback
+/// @brief Set the callback fired when a node is double-clicked (activated).
+/// @param tree      Tree view widget.
+/// @param callback  Handler function.
+/// @param user_data User data passed to the handler.
 void vg_treeview_set_on_activate(vg_treeview_t *tree,
                                  vg_tree_activate_callback_t callback,
                                  void *user_data);
 
 // --- Icon Support ---
 
-/// @brief Set node icon
+/// @brief Set the icon displayed beside a node.
+/// @param node Node to modify.
+/// @param icon Icon specification (tree takes ownership).
 void vg_tree_node_set_icon(vg_tree_node_t *node, vg_icon_t icon);
 
-/// @brief Set node expanded icon (used when node is expanded, e.g., open folder)
+/// @brief Set the alternate icon shown when a node is in the expanded state.
+/// @param node Icon shown while the node is expanded (e.g. open-folder glyph).
 void vg_tree_node_set_expanded_icon(vg_tree_node_t *node, vg_icon_t icon);
 
 // --- Drag and Drop ---
 
-/// @brief Enable or disable drag-and-drop for tree view
+/// @brief Enable or disable drag-and-drop reordering.
+/// @param tree    Tree view widget.
+/// @param enabled true to allow nodes to be dragged.
 void vg_treeview_set_drag_enabled(vg_treeview_t *tree, bool enabled);
 
-/// @brief Set drag-and-drop callbacks
+/// @brief Set all three drag-and-drop callbacks at once.
+/// @param tree      Tree view widget.
+/// @param can_drag  Returns true if @p node may be dragged.
+/// @param can_drop  Returns true if @p source may be dropped onto @p target at @p position.
+/// @param on_drop   Called to perform the actual reparenting/reordering.
+/// @param user_data User data passed to all three callbacks.
 void vg_treeview_set_drag_callbacks(vg_treeview_t *tree,
                                     vg_tree_can_drag_callback_t can_drag,
                                     vg_tree_can_drop_callback_t can_drop,
@@ -336,15 +432,22 @@ void vg_treeview_set_drag_callbacks(vg_treeview_t *tree,
 
 // --- Lazy Loading ---
 
-/// @brief Set lazy loading callback
+/// @brief Set the callback invoked when a node with @c has_children is first expanded.
+/// @param tree      Tree view widget.
+/// @param callback  Handler that should call vg_treeview_add_node to populate children.
+/// @param user_data User data passed to the handler.
 void vg_treeview_set_on_load_children(vg_treeview_t *tree,
                                       vg_tree_load_children_callback_t callback,
                                       void *user_data);
 
-/// @brief Set whether a node has children (for lazy loading indicator)
+/// @brief Mark a node as having children without actually creating them yet (lazy loading).
+/// @param node         Node to modify.
+/// @param has_children true to show the expand arrow even when the child list is empty.
 void vg_tree_node_set_has_children(vg_tree_node_t *node, bool has_children);
 
-/// @brief Set node loading state (shows spinner while loading children)
+/// @brief Set or clear the "loading" spinner shown while children are being fetched.
+/// @param node    Node to modify.
+/// @param loading true to display a loading indicator.
 void vg_tree_node_set_loading(vg_tree_node_t *node, bool loading);
 
 //=============================================================================
@@ -426,54 +529,93 @@ typedef struct vg_menubar {
     bool native_main_menu; ///< Mirrors to the native macOS app menubar.
 } vg_menubar_t;
 
-/// @brief Create a new menu bar widget
+/// @brief Create a new menu bar widget.
+/// @param parent Parent widget (can be NULL).
+/// @return New menu bar or NULL on failure.
 vg_menubar_t *vg_menubar_create(vg_widget_t *parent);
 
-/// @brief Add a menu to the menu bar
+/// @brief Add a top-level pull-down menu to the menu bar.
+/// @param menubar Menu bar widget.
+/// @param title   Menu title displayed in the bar (copied internally).
+/// @return Newly added menu, or NULL on failure.
 vg_menu_t *vg_menubar_add_menu(vg_menubar_t *menubar, const char *title);
 
-/// @brief Add an item to a menu
+/// @brief Add a clickable item to a menu.
+/// @param menu     Menu to add the item to.
+/// @param text     Item label text (copied internally).
+/// @param shortcut Keyboard shortcut display string (copied; may be NULL).
+/// @param action   Callback invoked when the item is selected (may be NULL).
+/// @param data     User data passed to @p action.
+/// @return Newly added menu item, or NULL on failure.
 vg_menu_item_t *vg_menu_add_item(
     vg_menu_t *menu, const char *text, const char *shortcut, void (*action)(void *), void *data);
 
-/// @brief Add a separator to a menu
+/// @brief Add a horizontal separator to a menu.
+/// @param menu Menu to add the separator to.
+/// @return Separator menu item, or NULL on failure.
 vg_menu_item_t *vg_menu_add_separator(vg_menu_t *menu);
 
-/// @brief Add a submenu
+/// @brief Add a nested submenu to an existing menu.
+/// @param menu  Parent menu.
+/// @param title Submenu title (copied internally).
+/// @return New submenu, or NULL on failure.
 vg_menu_t *vg_menu_add_submenu(vg_menu_t *menu, const char *title);
 
-/// @brief Set menu item enabled state
+/// @brief Enable or disable a menu item.
+/// @param item    Menu item.
+/// @param enabled true to make the item interactive; false to grey it out.
 void vg_menu_item_set_enabled(vg_menu_item_t *item, bool enabled);
 
-/// @brief Set menu item checked state
+/// @brief Set the checked (tick mark) state of a menu item.
+/// @param item    Menu item.
+/// @param checked true to show a check mark beside the label.
 void vg_menu_item_set_checked(vg_menu_item_t *item, bool checked);
 
 /// @brief Remove and free a specific item from a menu.
+/// @param menu Menu that owns the item.
+/// @param item Item to remove.
 void vg_menu_remove_item(vg_menu_t *menu, vg_menu_item_t *item);
 
 /// @brief Remove and free all items from a menu.
+/// @param menu Menu to clear.
 void vg_menu_clear(vg_menu_t *menu);
 
-/// @brief Remove a menu from the menubar and free it.
+/// @brief Remove a top-level menu from the menu bar and free it.
+/// @param menubar Menu bar widget.
+/// @param menu    Menu to remove.
 void vg_menubar_remove_menu(vg_menubar_t *menubar, vg_menu_t *menu);
 
-/// @brief Set font for menu bar
+/// @brief Set the font used to render menu bar and item labels.
+/// @param menubar Menu bar widget.
+/// @param font    Font handle.
+/// @param size    Font size in pixels.
 void vg_menubar_set_font(vg_menubar_t *menubar, vg_font_t *font, float size);
 
 // --- Keyboard Accelerators ---
 
-/// @brief Parse accelerator string (e.g., "Ctrl+S", "Cmd+Shift+N")
+/// @brief Parse an accelerator string into a key + modifier combination.
+/// @param shortcut Accelerator string, e.g. "Ctrl+S" or "Cmd+Shift+N".
+/// @param accel    Output structure that receives the parsed key and modifiers.
+/// @return true if parsing succeeded; false for an unrecognised format.
 bool vg_parse_accelerator(const char *shortcut, vg_accelerator_t *accel);
 
-/// @brief Register a keyboard accelerator
+/// @brief Register a keyboard shortcut that triggers a menu item.
+/// @param menubar  Menu bar that owns the accelerator table.
+/// @param item     Menu item to trigger.
+/// @param shortcut Accelerator string (see vg_parse_accelerator).
 void vg_menubar_register_accelerator(vg_menubar_t *menubar,
                                      vg_menu_item_t *item,
                                      const char *shortcut);
 
-/// @brief Rebuild accelerator table from all menu items
+/// @brief Rebuild the accelerator lookup table from all items in all menus.
+/// @param menubar Menu bar widget.
 void vg_menubar_rebuild_accelerators(vg_menubar_t *menubar);
 
-/// @brief Handle a key event, triggering accelerator if matched
+/// @brief Handle a key event, firing the matching accelerator if found.
+/// @param menubar   Menu bar widget.
+/// @param key       Virtual key code (VG_KEY_*).
+/// @param modifiers Active modifier flags (VG_MOD_*).
+/// @return true if an accelerator matched and its action was called.
 bool vg_menubar_handle_accelerator(vg_menubar_t *menubar, int key, uint32_t modifiers);
 
 #ifdef __cplusplus

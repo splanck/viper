@@ -15,7 +15,8 @@
 //   - Does NOT produce assembly text (Module::codegenResult remains empty)
 // Ownership/Lifetime:
 //   - Pass stores backend options by value; borrows Module during run()
-// Links: codegen/x86_64/binenc/X64BinaryEncoder.hpp
+// Links: codegen/x86_64/passes/BinaryEmitPass.cpp,
+//        codegen/x86_64/binenc/X64BinaryEncoder.hpp,
 //        codegen/x86_64/passes/PassManager.hpp
 //
 //===----------------------------------------------------------------------===//

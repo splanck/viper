@@ -167,7 +167,7 @@ item.SetTooltip("File encoding");
 
 Right-click context menu.
 
-Context menus now anchor in screen space for nested widgets, capture input while open, clamp to the host window, and reliably dismiss on outside click instead of letting clicks fall through to the underlying UI.
+Context menus now anchor in screen space for nested widgets, capture input while open, clamp to the host window, and reliably dismiss on outside click instead of letting clicks fall through to the underlying UI. Dismissing a submenu restores capture to its parent menu, callback payloads are tracked independently for selection and dismiss handlers, and destroyed menus are removed from the right-click registry.
 
 **Constructor:** `NEW Viper.GUI.ContextMenu()`
 

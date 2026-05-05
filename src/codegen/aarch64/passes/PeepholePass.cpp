@@ -7,10 +7,17 @@
 //
 // File: codegen/aarch64/passes/PeepholePass.cpp
 // Purpose: Peephole optimisation pass for the AArch64 modular pipeline.
-//
-// Runs the AArch64 peephole optimizer on each MIR function after register
-// allocation.  Peephole failures are silently ignored — the pass always
-// returns true (non-fatal).
+//          Runs the optimizer on each post-RA MIR function, optionally
+//          collecting statistics via VIPER_CODEGEN_STATS, and validates that
+//          no virtual registers remain and branches target known blocks.
+// Key invariants:
+//   - Must run after RegAllocPass (all regs must be physical).
+//   - Validation errors abort the pass (returns false).
+//   - Statistics output goes to the Diagnostics warning channel, not stdout.
+// Ownership/Lifetime:
+//   - Stateless pass; mutates AArch64Module::mir in place.
+// Links: codegen/aarch64/passes/PeepholePass.hpp,
+//        codegen/aarch64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,42 +34,49 @@
 namespace viper::codegen::aarch64::passes {
 namespace {
 
+/// @brief Return true if @p opcode is any branch instruction (conditional or unconditional).
 [[nodiscard]] bool isBranchTargetOpcode(MOpcode opcode) noexcept {
     return opcode == MOpcode::Br || opcode == MOpcode::BCond || opcode == MOpcode::Cbz ||
            opcode == MOpcode::Cbnz;
 }
 
+/// @brief Return true when VIPER_CODEGEN_STATS is set to a non-zero value.
 [[nodiscard]] bool codegenStatsEnabled() noexcept {
     if (const char *value = std::getenv("VIPER_CODEGEN_STATS"))
         return value[0] != '\0' && value[0] != '0';
     return false;
 }
 
+/// @brief Aggregate instruction-category counters for the codegen stats report.
 struct MirStats {
-    std::size_t functions = 0;
-    std::size_t blocks = 0;
-    std::size_t instructions = 0;
-    std::size_t calls = 0;
-    std::size_t branches = 0;
-    std::size_t loads = 0;
-    std::size_t stores = 0;
+    std::size_t functions = 0;    ///< Number of MIR functions counted.
+    std::size_t blocks = 0;       ///< Total basic blocks across all functions.
+    std::size_t instructions = 0; ///< Total instructions across all blocks.
+    std::size_t calls = 0;        ///< Call instructions (Bl/Blr).
+    std::size_t branches = 0;     ///< Branch instructions (Br/BCond/Cbz/Cbnz/Ret).
+    std::size_t loads = 0;        ///< Load instructions.
+    std::size_t stores = 0;       ///< Store instructions.
 };
 
+/// @brief Return true if @p opcode is Bl or Blr.
 [[nodiscard]] bool isCallOpcode(MOpcode opcode) noexcept {
     return opcode == MOpcode::Bl || opcode == MOpcode::Blr;
 }
 
+/// @brief Return true if @p opcode is any branch or return (Br/BCond/Cbz/Cbnz/Ret).
 [[nodiscard]] bool isBranchOpcode(MOpcode opcode) noexcept {
     return opcode == MOpcode::Br || opcode == MOpcode::BCond || opcode == MOpcode::Cbz ||
            opcode == MOpcode::Cbnz || opcode == MOpcode::Ret;
 }
 
+/// @brief Return true if @p opcode is any load instruction (LDR/LDP variants).
 [[nodiscard]] bool isLoadOpcode(MOpcode opcode) noexcept {
     return opcode == MOpcode::LdrRegFpImm || opcode == MOpcode::LdrRegBaseImm ||
            opcode == MOpcode::LdrFprFpImm || opcode == MOpcode::LdrFprBaseImm ||
            opcode == MOpcode::LdpRegFpImm || opcode == MOpcode::LdpFprFpImm;
 }
 
+/// @brief Return true if @p opcode is any store instruction (STR/STP/Phi-store variants).
 [[nodiscard]] bool isStoreOpcode(MOpcode opcode) noexcept {
     return opcode == MOpcode::StrRegFpImm || opcode == MOpcode::StrRegBaseImm ||
            opcode == MOpcode::StrRegSpImm || opcode == MOpcode::StrFprFpImm ||
@@ -71,6 +85,7 @@ struct MirStats {
            opcode == MOpcode::PhiStoreGPR || opcode == MOpcode::PhiStoreFPR;
 }
 
+/// @brief Walk @p fn and accumulate instruction-category counts into @p stats.
 void accumulateStats(const MFunction &fn, MirStats &stats) {
     ++stats.functions;
     stats.blocks += fn.blocks.size();
@@ -89,10 +104,14 @@ void accumulateStats(const MFunction &fn, MirStats &stats) {
     }
 }
 
+/// @brief Return true if @p opcode exits the block without a fall-through (Br/Ret).
 [[nodiscard]] bool isHardTerminator(MOpcode opcode) noexcept {
     return opcode == MOpcode::Br || opcode == MOpcode::Ret;
 }
 
+/// @brief Validate that @p fn has no virtual regs, no code after terminators,
+///        and that all branch targets exist within the function.
+/// @return True if valid; false and emits diagnostics on the first violation.
 [[nodiscard]] bool validateFunction(const MFunction &fn, Diagnostics &diags) {
     std::unordered_set<std::string> labels;
     for (const auto &block : fn.blocks)

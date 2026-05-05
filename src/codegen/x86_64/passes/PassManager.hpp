@@ -7,11 +7,16 @@
 //
 // File: codegen/x86_64/passes/PassManager.hpp
 // Purpose: x86_64 pass manager types — delegates to common PassManager template.
-// Key invariants: Passes run sequentially, short-circuiting on failure while preserving
-//                 prior pass results. Each pass receives the shared Module state.
-// Ownership/Lifetime: PassManager owns registered passes via unique_ptr and operates on
-//                     a caller-owned Module instance passed by reference.
-// Links: docs/codemap.md, src/codegen/x86_64/CodegenPipeline.hpp
+// Key invariants:
+//   - Passes run sequentially, short-circuiting on failure while preserving
+//     prior pass results.
+//   - Each pass receives the shared Module state.
+// Ownership/Lifetime:
+//   - PassManager owns registered passes via unique_ptr and operates on a
+//     caller-owned Module instance passed by reference.
+// Links: codegen/x86_64/passes/PassManager.cpp,
+//        codegen/common/PassManager.hpp,
+//        codegen/x86_64/CodegenPipeline.hpp
 //
 //===----------------------------------------------------------------------===//
 

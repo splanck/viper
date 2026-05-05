@@ -5,8 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/OperandRoles.cpp
+// File: codegen/x86_64/OperandRoles.cpp
 // Purpose: Shared x86-64 Machine IR operand role classification.
+// Key invariants:
+//   - Covers all defined MIR opcodes; unknown opcodes return conservative roles.
+// Ownership/Lifetime:
+//   - Stateless free functions; no dynamic allocation.
+// Links: codegen/x86_64/OperandRoles.hpp,
+//        codegen/x86_64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
 

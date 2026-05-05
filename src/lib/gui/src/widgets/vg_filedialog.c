@@ -5,10 +5,32 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_filedialog.c
+// File: lib/gui/src/widgets/vg_filedialog.c
+// Purpose: File-chooser dialog widget — supports open, save, and folder-select
+//          modes with a sidebar of bookmarks, a file list, filters, and an inline
+//          save-mode filename field with UTF-8 cursor editing.
+// Key invariants:
+//   - entries[] is a heap-allocated pointer array sorted directories-first then
+//     alphabetically after each load_directory call.
+//   - Scrolling uses float offsets (file_scroll_y, bookmark_scroll_y) clamped by
+//     filedialog_clamp_scrolls before every paint and event pass.
+//   - filename_cursor_pos tracks a UTF-8 byte offset; prev/next boundary helpers
+//     skip continuation bytes (mask 0xC0 == 0x80) for correct multi-byte navigation.
+//   - confirm_selection navigates into directories rather than selecting them in
+//     OPEN mode when selection_count == 1 and the selected item is a directory.
+//   - Default extension is appended in SAVE mode only when the filename has no
+//     dot after the last path separator.
+//   - selected_files[] is owned by the widget and freed in filedialog_destroy.
+// Ownership/Lifetime:
+//   - entries[], filters[], bookmarks[], selected_files[], current_path,
+//     default_filename, and default_extension are all heap-allocated and freed
+//     in filedialog_destroy.
+//   - The widget extends vg_dialog_t; base.base is the actual widget header.
+// Links: lib/gui/include/vg_ide_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_filedialog.c - FileDialog widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -78,7 +100,7 @@ static vg_widget_vtable_t g_filedialog_vtable = {.destroy = filedialog_destroy,
 
 #ifdef _WIN32
 
-// Windows implementation of pattern matching (simple fnmatch equivalent)
+/// @brief Windows-only case-insensitive glob match with * and ? wildcards.
 static bool win_match_pattern(const char *pattern, const char *filename) {
     const char *p = pattern;
     const char *f = filename;
@@ -119,6 +141,7 @@ static bool win_match_pattern(const char *pattern, const char *filename) {
 
 #endif
 
+/// @brief Return a heap-allocated string holding the current user's home directory path.
 static char *get_home_directory(void) {
 #ifdef _WIN32
     // Try USERPROFILE first
@@ -153,6 +176,7 @@ static char *get_home_directory(void) {
 #endif
 }
 
+/// @brief Heap-allocate the concatenation of dir and file with a platform path separator.
 static char *join_path(const char *dir, const char *file) {
     size_t dir_len = strlen(dir);
     size_t file_len = strlen(file);
@@ -179,6 +203,7 @@ static char *join_path(const char *dir, const char *file) {
     return result;
 }
 
+/// @brief Return a heap-allocated string containing the parent directory of path.
 static char *get_parent_directory(const char *path) {
     if (!path || !*path) {
 #ifdef _WIN32
@@ -238,6 +263,7 @@ static char *get_parent_directory(const char *path) {
     return result;
 }
 
+/// @brief Fill (x, y) with the screen-space origin of widget's parent, or (0, 0) if none.
 static void get_parent_screen_origin(vg_widget_t *widget, float *x, float *y) {
     float sx = 0.0f;
     float sy = 0.0f;
@@ -250,11 +276,13 @@ static void get_parent_screen_origin(vg_widget_t *widget, float *x, float *y) {
         *y = sy;
 }
 
+/// @brief Return the height of the bottom action area, adding SAVE_EXTRA_HEIGHT in save mode.
 static float filedialog_bottom_height(const vg_filedialog_t *dialog) {
     return FILEDIALOG_BOTTOM_HEIGHT +
            (dialog && dialog->mode == VG_FILEDIALOG_SAVE ? FILEDIALOG_SAVE_EXTRA_HEIGHT : 0.0f);
 }
 
+/// @brief Return the label for the accept button ("Open", "Save", or "Select").
 static const char *filedialog_accept_label(const vg_filedialog_t *dialog) {
     if (!dialog)
         return "OK";
@@ -269,6 +297,7 @@ static const char *filedialog_accept_label(const vg_filedialog_t *dialog) {
     }
 }
 
+/// @brief Return true if filename contains a dot after the last path separator.
 static bool filedialog_filename_has_extension(const char *filename) {
     if (!filename || !*filename)
         return false;
@@ -283,6 +312,7 @@ static bool filedialog_filename_has_extension(const char *filename) {
     return last_dot && (!last_slash || last_dot > last_slash + 1);
 }
 
+/// @brief Replace default_filename and reset the cursor to the end of the new name.
 static void filedialog_set_default_filename(vg_filedialog_t *dialog, const char *filename) {
     if (!dialog)
         return;
@@ -295,6 +325,7 @@ static void filedialog_set_default_filename(vg_filedialog_t *dialog, const char 
     dialog->filename_cursor_pos = dialog->default_filename ? strlen(dialog->default_filename) : 0;
 }
 
+/// @brief Step the cursor back one UTF-8 codepoint, skipping continuation bytes.
 static size_t filedialog_prev_codepoint_boundary(const char *text, size_t cursor) {
     size_t len = 0;
     if (!text)
@@ -310,6 +341,7 @@ static size_t filedialog_prev_codepoint_boundary(const char *text, size_t cursor
     return cursor;
 }
 
+/// @brief Step the cursor forward one UTF-8 codepoint, skipping continuation bytes.
 static size_t filedialog_next_codepoint_boundary(const char *text, size_t cursor) {
     size_t len = 0;
     if (!text)
@@ -324,6 +356,7 @@ static size_t filedialog_next_codepoint_boundary(const char *text, size_t cursor
     return cursor;
 }
 
+/// @brief Clamp filename_cursor_pos to the current length of default_filename.
 static void filedialog_sync_filename_cursor(vg_filedialog_t *dialog) {
     size_t len = 0;
     if (!dialog)
@@ -333,6 +366,7 @@ static void filedialog_sync_filename_cursor(vg_filedialog_t *dialog) {
         dialog->filename_cursor_pos = len;
 }
 
+/// @brief Delete the codepoint immediately before the cursor (Backspace behaviour).
 static void filedialog_delete_last_codepoint(vg_filedialog_t *dialog) {
     char *text = NULL;
     size_t cursor = 0;
@@ -354,6 +388,7 @@ static void filedialog_delete_last_codepoint(vg_filedialog_t *dialog) {
     dialog->filename_cursor_pos = prev;
 }
 
+/// @brief Delete the codepoint at the cursor position (Delete key behaviour).
 static void filedialog_delete_codepoint_at_cursor(vg_filedialog_t *dialog) {
     char *text = NULL;
     size_t cursor = 0;
@@ -374,6 +409,7 @@ static void filedialog_delete_codepoint_at_cursor(vg_filedialog_t *dialog) {
     memmove(text + cursor, text + next, len - next + 1);
 }
 
+/// @brief Insert a UTF-8 encoded codepoint at the current cursor position.
 static void filedialog_append_codepoint(vg_filedialog_t *dialog, uint32_t codepoint) {
     char encoded[5] = {0};
     size_t encoded_len = 0;
@@ -381,7 +417,8 @@ static void filedialog_append_codepoint(vg_filedialog_t *dialog, uint32_t codepo
     size_t insert_at = 0;
     char *new_name = NULL;
 
-    if (!dialog || codepoint < 0x20 || codepoint == 0x7F)
+    if (!dialog || codepoint < 0x20 || codepoint == 0x7F || codepoint > 0x10FFFF ||
+        (codepoint >= 0xD800 && codepoint <= 0xDFFF))
         return;
 
     if (codepoint < 0x80) {
@@ -417,17 +454,20 @@ static void filedialog_append_codepoint(vg_filedialog_t *dialog, uint32_t codepo
     dialog->filename_cursor_pos = insert_at + encoded_len;
 }
 
+/// @brief Return the usable height of the scrollable list view (list_height minus margins).
 static float filedialog_list_view_height(float list_height) {
     float view_h = list_height - 10.0f;
     return view_h > 0.0f ? view_h : 0.0f;
 }
 
+/// @brief Compute the maximum scroll offset given item_count rows, row_height, and view_height.
 static float filedialog_max_scroll(size_t item_count, float row_height, float view_height) {
     float content_h = (float)item_count * row_height;
     float max_scroll = content_h - view_height;
     return max_scroll > 0.0f ? max_scroll : 0.0f;
 }
 
+/// @brief Clamp both file_scroll_y and bookmark_scroll_y to their valid ranges.
 static void filedialog_clamp_scrolls(vg_filedialog_t *dialog, float list_height) {
     float view_h = filedialog_list_view_height(list_height);
     float max_file_scroll = 0.0f;
@@ -450,6 +490,7 @@ static void filedialog_clamp_scrolls(vg_filedialog_t *dialog, float list_height)
         dialog->bookmark_scroll_y = max_bookmark_scroll;
 }
 
+/// @brief Adjust file_scroll_y so the first selected item is within the visible list area.
 static void filedialog_scroll_selection_into_view(vg_filedialog_t *dialog, float list_height) {
     float view_h = filedialog_list_view_height(list_height);
     float item_top = 0.0f;
@@ -468,6 +509,7 @@ static void filedialog_scroll_selection_into_view(vg_filedialog_t *dialog, float
         dialog->file_scroll_y = 0.0f;
 }
 
+/// @brief Compute the draw origin X for text, right-aligning it when align_end and overflow.
 static float filedialog_text_origin(vg_font_t *font,
                                     float font_size,
                                     const char *text,
@@ -485,6 +527,7 @@ static float filedialog_text_origin(vg_font_t *font,
     return base_x;
 }
 
+/// @brief Draw text clipped to a rectangle, then clear the clip.
 static void filedialog_draw_clipped_text(void *canvas,
                                          vg_font_t *font,
                                          float font_size,
@@ -504,6 +547,7 @@ static void filedialog_draw_clipped_text(void *canvas,
     vgfx_clear_clip(win);
 }
 
+/// @brief Convert a local Y coordinate plus scroll offset to a list item index.
 static size_t filedialog_index_from_scroll(float local_y,
                                            float scroll_y,
                                            float row_height,
@@ -515,6 +559,7 @@ static size_t filedialog_index_from_scroll(float local_y,
     return index < item_count ? index : SIZE_MAX;
 }
 
+/// @brief Return true if path is absolute (starts with '/' on POSIX or drive letter on Windows).
 static bool filedialog_absolute_path(const char *path) {
     if (!path || !*path)
         return false;
@@ -526,6 +571,7 @@ static bool filedialog_absolute_path(const char *path) {
 #endif
 }
 
+/// @brief qsort comparator — directories before files, then case-insensitive alphabetical.
 static int compare_entries(const void *a, const void *b) {
     const vg_file_entry_t *ea = *(const vg_file_entry_t **)a;
     const vg_file_entry_t *eb = *(const vg_file_entry_t **)b;
@@ -540,6 +586,7 @@ static int compare_entries(const void *a, const void *b) {
     return strcasecmp(ea->name, eb->name);
 }
 
+/// @brief Return true if filename matches any semicolon-separated glob in pattern.
 static bool match_filter(const char *filename, const char *pattern) {
     if (!pattern || !*pattern || strcmp(pattern, "*") == 0 || strcmp(pattern, "*.*") == 0) {
         return true;
@@ -590,6 +637,7 @@ static bool match_filter(const char *filename, const char *pattern) {
     return false;
 }
 
+/// @brief Free the name, full_path, and entry struct for a single file entry.
 static void free_entry(vg_file_entry_t *entry) {
     if (entry) {
         free(entry->name);
@@ -598,6 +646,7 @@ static void free_entry(vg_file_entry_t *entry) {
     }
 }
 
+/// @brief Free all entries in dialog->entries[] and reset entry_count to zero.
 static void clear_entries(vg_filedialog_t *dialog) {
     for (size_t i = 0; i < dialog->entry_count; i++) {
         free_entry(dialog->entries[i]);
@@ -605,6 +654,7 @@ static void clear_entries(vg_filedialog_t *dialog) {
     dialog->entry_count = 0;
 }
 
+/// @brief Load the directory at path into dialog->entries[], sorted and filtered.
 static void load_directory(vg_filedialog_t *dialog, const char *path) {
     clear_entries(dialog);
 
@@ -777,6 +827,7 @@ static void load_directory(vg_filedialog_t *dialog, const char *path) {
     dialog->bookmark_scroll_y = 0.0f;
 }
 
+/// @brief Set or toggle selection for the entry at index; handles multi-select mode.
 static void select_entry(vg_filedialog_t *dialog, size_t index) {
     if (index >= dialog->entry_count)
         return;
@@ -821,6 +872,7 @@ static void select_entry(vg_filedialog_t *dialog, size_t index) {
     }
 }
 
+/// @brief Return true if the entry at index is in the current selection.
 static bool is_selected(vg_filedialog_t *dialog, size_t index) {
     for (size_t i = 0; i < dialog->selection_count; i++) {
         if (dialog->selected_indices[i] == (int)index)
@@ -829,6 +881,7 @@ static bool is_selected(vg_filedialog_t *dialog, size_t index) {
     return false;
 }
 
+/// @brief Validate and commit the selection, populating selected_files[] and closing the dialog.
 static void confirm_selection(vg_filedialog_t *dialog) {
     // Free previous results
     if (dialog->selected_files) {
@@ -948,6 +1001,14 @@ static void confirm_selection(vg_filedialog_t *dialog) {
 // FileDialog Implementation
 //=============================================================================
 
+/// @brief Create a file dialog for the given mode with default theme colours.
+///
+/// @details Default title is "Open File", "Save File", or "Select Folder" based on mode.
+///          The initial directory is the user's home directory.  Attach a font to
+///          base.font with vg_dialog_set_font before calling vg_filedialog_show.
+///
+/// @param mode VG_FILEDIALOG_OPEN, VG_FILEDIALOG_SAVE, or VG_FILEDIALOG_SELECT_FOLDER.
+/// @return Newly allocated vg_filedialog_t, or NULL on allocation failure.
 vg_filedialog_t *vg_filedialog_create(vg_filedialog_mode_t mode) {
     vg_filedialog_t *dialog = calloc(1, sizeof(vg_filedialog_t));
     if (!dialog)
@@ -1002,6 +1063,7 @@ vg_filedialog_t *vg_filedialog_create(vg_filedialog_mode_t mode) {
     return dialog;
 }
 
+/// @brief VTable destroy: releases input capture and modal root if held, then frees entries, selections, filters, bookmarks, string fields, and result arrays.
 static void filedialog_destroy(vg_widget_t *widget) {
     vg_filedialog_t *dialog = (vg_filedialog_t *)widget;
     if (vg_widget_get_input_capture() == widget)
@@ -1048,6 +1110,7 @@ static void filedialog_destroy(vg_widget_t *widget) {
     free((void *)dialog->base.message);
 }
 
+/// @brief VTable measure: sizes the dialog to its configured minimum width and height (full measure is handled by the dialog's fixed-size layout constants).
 static void filedialog_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_filedialog_t *dialog = (vg_filedialog_t *)widget;
     (void)available_width;
@@ -1057,6 +1120,7 @@ static void filedialog_measure(vg_widget_t *widget, float available_width, float
     widget->measured_height = dialog->base.min_height;
 }
 
+/// @brief VTable paint: renders the modal backdrop, title bar, sidebar bookmarks, file entry grid, filename input row, filter selector, and action buttons.
 static void filedialog_paint(vg_widget_t *widget, void *canvas) {
     vg_filedialog_t *dialog = (vg_filedialog_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -1477,6 +1541,7 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief VTable handle_event: routes mouse, key, and scroll events to title-drag, close-button, sidebar, entry-list navigation, filename editing, and OK/Cancel handling.
 static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_filedialog_t *dialog = (vg_filedialog_t *)widget;
 
@@ -1774,12 +1839,18 @@ static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
 // FileDialog API
 //=============================================================================
 
+/// @brief Destroy the file dialog, freeing all entries, filters, bookmarks, and strings.
+///
+/// @param dialog The file dialog to destroy; may be NULL.
 void vg_filedialog_destroy(vg_filedialog_t *dialog) {
     if (dialog)
         vg_widget_destroy(&dialog->base.base);
 }
 
-/// @brief Filedialog set title.
+/// @brief Replace the file dialog title bar text.
+///
+/// @param dialog The dialog to update; may be NULL.
+/// @param title  New title text; copied internally.
 void vg_filedialog_set_title(vg_filedialog_t *dialog, const char *title) {
     if (!dialog)
         return;
@@ -1791,7 +1862,10 @@ void vg_filedialog_set_title(vg_filedialog_t *dialog, const char *title) {
 #endif
 }
 
-/// @brief Filedialog set initial path.
+/// @brief Set the directory the dialog opens at; defaults to home if NULL.
+///
+/// @param dialog The dialog to configure; may be NULL.
+/// @param path   Absolute directory path; copied internally.  NULL → home directory.
 void vg_filedialog_set_initial_path(vg_filedialog_t *dialog, const char *path) {
     if (!dialog)
         return;
@@ -1803,7 +1877,10 @@ void vg_filedialog_set_initial_path(vg_filedialog_t *dialog, const char *path) {
 #endif
 }
 
-/// @brief Filedialog set filename.
+/// @brief Set the default filename pre-filled in the save-mode text field.
+///
+/// @param dialog   The dialog to configure; may be NULL.
+/// @param filename Initial filename string; copied internally.
 void vg_filedialog_set_filename(vg_filedialog_t *dialog, const char *filename) {
     if (!dialog)
         return;
@@ -1811,25 +1888,59 @@ void vg_filedialog_set_filename(vg_filedialog_t *dialog, const char *filename) {
     dialog->base.base.needs_paint = true;
 }
 
-/// @brief Filedialog set multi select.
+/// @brief Enable or disable multi-file selection in the dialog.
+///
+/// @details In multi-select mode, clicking a file row without a modifier toggles
+///          its selection while retaining other selections. When false (the default),
+///          each click replaces the current selection with a single entry and the
+///          confirm button remains labelled for a single file.
+///
+/// @param dialog The dialog to configure; may be NULL.
+/// @param multi  true to allow multiple files to be selected simultaneously.
 void vg_filedialog_set_multi_select(vg_filedialog_t *dialog, bool multi) {
     if (dialog)
         dialog->multi_select = multi;
 }
 
-/// @brief Filedialog set show hidden.
+/// @brief Control whether hidden files and directories appear in the file list.
+///
+/// @details On POSIX, entries whose names begin with '.' are hidden unless show
+///          is true. On Windows, entries carrying FILE_ATTRIBUTE_HIDDEN are treated
+///          equivalently. Changing this flag takes effect the next time the directory
+///          is (re-)loaded via load_directory.
+///
+/// @param dialog The dialog to configure; may be NULL.
+/// @param show   true to include hidden entries in the file list.
 void vg_filedialog_set_show_hidden(vg_filedialog_t *dialog, bool show) {
     if (dialog)
         dialog->show_hidden = show;
 }
 
-/// @brief Filedialog set confirm overwrite.
+/// @brief Enable or disable an overwrite-confirmation prompt in save mode.
+///
+/// @details When true and the dialog is in VG_FILEDIALOG_SAVE mode,
+///          confirm_selection checks whether the chosen filename already exists
+///          and presents a confirmation prompt before populating selected_files[].
+///          Has no effect in OPEN or SELECT_FOLDER modes.
+///
+/// @param dialog   The dialog to configure; may be NULL.
+/// @param confirm  true to prompt before overwriting an existing file.
 void vg_filedialog_set_confirm_overwrite(vg_filedialog_t *dialog, bool confirm) {
     if (dialog)
         dialog->confirm_overwrite = confirm;
 }
 
-/// @brief Filedialog add filter.
+/// @brief Append a named file-type filter to the dialog's filter list.
+///
+/// @details Filters are (name, pattern) pairs where pattern is a semicolon-separated
+///          list of glob patterns (e.g., "*.c;*.h"). The active filter determines
+///          which entries are visible in the file list. Both name and pattern are
+///          copied internally. The backing array doubles in capacity starting at 4;
+///          if realloc fails the filter is silently dropped.
+///
+/// @param dialog   The dialog to configure; may be NULL.
+/// @param name     Display label for the filter (e.g., "C Source Files").
+/// @param pattern  Semicolon-separated glob pattern (e.g., "*.c;*.h").
 void vg_filedialog_add_filter(vg_filedialog_t *dialog, const char *name, const char *pattern) {
     if (!dialog || !name || !pattern)
         return;
@@ -1854,7 +1965,13 @@ void vg_filedialog_add_filter(vg_filedialog_t *dialog, const char *name, const c
     dialog->filter_count++;
 }
 
-/// @brief Filedialog clear filters.
+/// @brief Remove all file-type filters, freeing their name and pattern strings.
+///
+/// @details The backing filters[] array is retained at its current capacity;
+///          only per-entry strings are freed and filter_count reset to zero.
+///          After clearing, no filter drop-down is shown and all files are visible.
+///
+/// @param dialog The dialog to modify; may be NULL.
 void vg_filedialog_clear_filters(vg_filedialog_t *dialog) {
     if (!dialog)
         return;
@@ -1866,7 +1983,17 @@ void vg_filedialog_clear_filters(vg_filedialog_t *dialog) {
     dialog->filter_count = 0;
 }
 
-/// @brief Filedialog set default extension.
+/// @brief Set the extension auto-appended in save mode when the filename lacks one.
+///
+/// @details In VG_FILEDIALOG_SAVE mode, confirm_selection checks whether the typed
+///          filename contains a dot after the last path separator; if none is found
+///          the default_extension is appended with a leading '.' unless ext itself
+///          already starts with '.'. Passing NULL clears the default extension.
+///          Has no effect in OPEN or SELECT_FOLDER modes.
+///
+/// @param dialog The dialog to configure; may be NULL.
+/// @param ext    Extension with or without leading dot (e.g., "txt" or ".txt"),
+///               or NULL to disable automatic extension appending.
 void vg_filedialog_set_default_extension(vg_filedialog_t *dialog, const char *ext) {
     if (!dialog)
         return;
@@ -1878,7 +2005,17 @@ void vg_filedialog_set_default_extension(vg_filedialog_t *dialog, const char *ex
 #endif
 }
 
-/// @brief Filedialog add bookmark.
+/// @brief Append a named shortcut to the sidebar bookmark list.
+///
+/// @details Bookmarks appear in the left sidebar; clicking one navigates the file
+///          list to the bookmark's path via load_directory. Both name and path are
+///          copied internally. The backing array doubles in capacity starting at 8;
+///          if realloc fails the bookmark is silently dropped. The icon field is
+///          initialised to VG_ICON_NONE.
+///
+/// @param dialog The dialog to configure; may be NULL.
+/// @param name   Display label shown in the sidebar (e.g., "Projects").
+/// @param path   Absolute directory path to navigate to when clicked.
 void vg_filedialog_add_bookmark(vg_filedialog_t *dialog, const char *name, const char *path) {
     if (!dialog || !name || !path)
         return;
@@ -1903,7 +2040,15 @@ void vg_filedialog_add_bookmark(vg_filedialog_t *dialog, const char *name, const
     dialog->bookmark_count++;
 }
 
-/// @brief Filedialog add default bookmarks.
+/// @brief Populate the sidebar with standard OS locations.
+///
+/// @details On all platforms adds "Home" (the user's home directory). Any of
+///          Desktop, Documents, and Downloads that exist as subdirectories of home
+///          are stat-checked and added only if they are directories. Finally,
+///          "Computer" is added pointing to '/' on POSIX or 'C:\' on Windows.
+///          The home string from get_home_directory is freed internally after use.
+///
+/// @param dialog The dialog to populate; may be NULL.
 void vg_filedialog_add_default_bookmarks(vg_filedialog_t *dialog) {
     if (!dialog)
         return;
@@ -1951,7 +2096,12 @@ void vg_filedialog_add_default_bookmarks(vg_filedialog_t *dialog) {
 #endif
 }
 
-/// @brief Filedialog clear bookmarks.
+/// @brief Remove all sidebar bookmarks, freeing their name and path strings.
+///
+/// @details The backing bookmarks[] array is retained at its current capacity;
+///          only per-entry strings are freed and bookmark_count reset to zero.
+///
+/// @param dialog The dialog to modify; may be NULL.
 void vg_filedialog_clear_bookmarks(vg_filedialog_t *dialog) {
     if (!dialog)
         return;
@@ -1963,7 +2113,16 @@ void vg_filedialog_clear_bookmarks(vg_filedialog_t *dialog) {
     dialog->bookmark_count = 0;
 }
 
-/// @brief Filedialog show.
+/// @brief Show the dialog by loading the current directory and making it visible.
+///
+/// @details Calls load_directory to populate entries[] from current_path, resets
+///          drag/result state, marks the widget visible, and forces layout and paint
+///          passes. In SAVE mode activates the filename text field immediately
+///          (filename_active = true). If the dialog is modal, registers it as the
+///          modal root via vg_widget_set_modal_root so pointer events outside it
+///          are blocked.
+///
+/// @param dialog The dialog to display; may be NULL.
 void vg_filedialog_show(vg_filedialog_t *dialog) {
     if (!dialog)
         return;
@@ -1983,6 +2142,16 @@ void vg_filedialog_show(vg_filedialog_t *dialog) {
         vg_widget_set_modal_root(&dialog->base.base);
 }
 
+/// @brief Return the array of selected file paths populated after the dialog confirms.
+///
+/// @details selected_files[] is owned by the dialog and remains valid until the
+///          next confirm_selection call or vg_filedialog_destroy. Callers that need
+///          paths to outlive the dialog must copy each string. The count written to
+///          *count is zero until the user confirms a selection.
+///
+/// @param dialog The dialog to query; may be NULL (returns NULL, sets *count to 0).
+/// @param count  Out-parameter receiving the number of entries; may be NULL.
+/// @return       Pointer to the internal selected_files[] array, or NULL on failure.
 char **vg_filedialog_get_selected_paths(vg_filedialog_t *dialog, size_t *count) {
     if (!dialog) {
         if (count)
@@ -1995,14 +2164,32 @@ char **vg_filedialog_get_selected_paths(vg_filedialog_t *dialog, size_t *count) 
     return dialog->selected_files;
 }
 
-/// @brief Filedialog get selected path.
+/// @brief Return the first (or only) selected path after the dialog confirms.
+///
+/// @details Convenience accessor equivalent to indexing vg_filedialog_get_selected_paths[0].
+///          The returned pointer is owned by the dialog; copy it before destroying
+///          the dialog.
+///
+/// @param dialog The dialog to query; may be NULL.
+/// @return       selected_files[0], or NULL if no selection has been confirmed.
 char *vg_filedialog_get_selected_path(vg_filedialog_t *dialog) {
     if (!dialog || dialog->selected_file_count == 0)
         return NULL;
     return dialog->selected_files[0];
 }
 
-/// @brief Filedialog set on select.
+/// @brief Register the callback invoked when the user confirms a selection.
+///
+/// @details The callback receives the dialog pointer, the selected_files[] array,
+///          the selection count, and user_data. It is fired inside confirm_selection
+///          before the dialog closes, so vg_filedialog_get_selected_path remains
+///          valid during the callback. Passing NULL removes the callback.
+///          user_data is shared with the on_cancel callback (both read from
+///          dialog->user_data).
+///
+/// @param dialog    The dialog to configure; may be NULL.
+/// @param callback  Function called on selection confirmation, or NULL to clear.
+/// @param user_data Opaque pointer forwarded to the callback unchanged.
 void vg_filedialog_set_on_select(vg_filedialog_t *dialog,
                                  void (*callback)(vg_filedialog_t *, char **, size_t, void *),
                                  void *user_data) {
@@ -2012,7 +2199,16 @@ void vg_filedialog_set_on_select(vg_filedialog_t *dialog,
     dialog->user_data = user_data;
 }
 
-/// @brief Filedialog set on cancel.
+/// @brief Register the callback invoked when the user cancels the dialog.
+///
+/// @details Fired when the close/cancel button is activated. The callback receives
+///          the dialog pointer and user_data. Passing NULL removes the callback.
+///          user_data is shared with the on_select callback (stored in
+///          dialog->user_data).
+///
+/// @param dialog    The dialog to configure; may be NULL.
+/// @param callback  Function called on cancellation, or NULL to clear.
+/// @param user_data Opaque pointer forwarded to the callback unchanged.
 void vg_filedialog_set_on_cancel(vg_filedialog_t *dialog,
                                  void (*callback)(vg_filedialog_t *, void *),
                                  void *user_data) {
@@ -2026,6 +2222,20 @@ void vg_filedialog_set_on_cancel(vg_filedialog_t *dialog,
 // Convenience Functions
 //=============================================================================
 
+/// @brief Convenience: create, configure, show, and destroy an open-file dialog.
+///
+/// @details Creates a VG_FILEDIALOG_OPEN dialog, optionally sets a title, initial
+///          path, and one filter, then adds default bookmarks and shows the dialog.
+///          Returns a heap-allocated copy of the first selected path (caller must
+///          free) or NULL if cancelled. This wrapper returns immediately after
+///          show without entering an event loop, so it is only suitable for
+///          headless or pre-populated test scenarios.
+///
+/// @param title          Dialog window title, or NULL for the default.
+/// @param initial_path   Directory to open at, or NULL for the home directory.
+/// @param filter_name    Display name for the single filter, or NULL for none.
+/// @param filter_pattern Glob pattern for the filter (e.g., "*.c;*.h"), or NULL.
+/// @return  Heap-allocated selected path (caller must free), or NULL if cancelled.
 char *vg_filedialog_open_file(const char *title,
                               const char *initial_path,
                               const char *filter_name,
@@ -2060,7 +2270,21 @@ char *vg_filedialog_open_file(const char *title,
     return result;
 }
 
-/// @brief Filedialog save file.
+/// @brief Convenience: create, configure, show, and destroy a save-file dialog.
+///
+/// @details Creates a VG_FILEDIALOG_SAVE dialog, optionally sets a title, initial
+///          path, a default filename, and one filter, then adds default bookmarks
+///          and shows the dialog. Returns a heap-allocated copy of the first
+///          selected path (caller must free) or NULL if cancelled. Like
+///          vg_filedialog_open_file, this wrapper returns immediately without
+///          processing an event loop iteration.
+///
+/// @param title          Dialog window title, or NULL for the default.
+/// @param initial_path   Directory to open at, or NULL for the home directory.
+/// @param default_name   Pre-filled filename in the save text field, or NULL.
+/// @param filter_name    Display name for the single filter, or NULL for none.
+/// @param filter_pattern Glob pattern for the filter (e.g., "*.txt"), or NULL.
+/// @return  Heap-allocated selected path (caller must free), or NULL if cancelled.
 char *vg_filedialog_save_file(const char *title,
                               const char *initial_path,
                               const char *default_name,
@@ -2096,7 +2320,16 @@ char *vg_filedialog_save_file(const char *title,
     return result;
 }
 
-/// @brief Filedialog select folder.
+/// @brief Convenience: create, configure, show, and destroy a folder-select dialog.
+///
+/// @details Creates a VG_FILEDIALOG_SELECT_FOLDER dialog, optionally sets a title
+///          and initial path, adds default bookmarks, and shows the dialog. Returns
+///          a heap-allocated copy of the selected folder path (caller must free),
+///          or NULL if cancelled.
+///
+/// @param title        Dialog window title, or NULL for the default.
+/// @param initial_path Directory to open at, or NULL for the home directory.
+/// @return  Heap-allocated selected folder path (caller must free), or NULL if cancelled.
 char *vg_filedialog_select_folder(const char *title, const char *initial_path) {
     vg_filedialog_t *dialog = vg_filedialog_create(VG_FILEDIALOG_SELECT_FOLDER);
     if (!dialog)

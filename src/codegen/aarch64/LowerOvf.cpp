@@ -5,26 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the lowering pass that expands overflow-checked arithmetic pseudos
-// (AddOvfRRR, SubOvfRRR, AddOvfRI, SubOvfRI, MulOvfRRR) into their real
-// AArch64 instructions followed by a conditional branch to a trap block on
-// signed overflow.
-//
-// The pass executes between IL->MIR lowering and register allocation. It keeps
-// operand usage confined to virtual registers and reuses a single trap block per
-// function to minimise code growth.
-//
-// Pattern generated for add/sub overflow:
-//   adds/subs  Xd, Xn, Xm   (or #imm variant)
-//   b.vs  Ltrap_ovf_<funcname>
-//
-// Pattern generated for mul overflow:
-//   mul    Xd, Xn, Xm
-//   smulh  Xtmp, Xn, Xm
-//   cmp    Xtmp, Xd, asr #63
-//   b.ne   Ltrap_ovf_<funcname>
-//
-// The trap block calls rt_trap to abort execution.
+// File: codegen/aarch64/LowerOvf.cpp
+// Purpose: Expand overflow-checked arithmetic pseudo-opcodes into guarded
+//          AArch64 sequences. Executes between IL→MIR lowering and register
+//          allocation; all operands remain virtual registers throughout.
+// Key invariants:
+//   - A single shared trap block (Ltrap_ovf_<fn>) is reused per function.
+//   - The trap block is created before iterating so fn.blocks is not
+//     reallocated mid-walk.
+//   - add/sub overflow uses ADDS/SUBS + b.vs; mul overflow uses smulh+cmp+b.ne.
+// Ownership/Lifetime:
+//   - Rewrites MFunction in place; borrows fn only during the call.
+// Links: codegen/aarch64/LowerOvf.hpp,
+//        codegen/aarch64/passes/LoweringPass.cpp (caller),
+//        docs/viperlib/game/core.md (overflow semantics)
 //
 //===----------------------------------------------------------------------===//
 

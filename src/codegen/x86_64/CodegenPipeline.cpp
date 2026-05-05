@@ -5,24 +5,24 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/CodegenPipeline.cpp
-// Purpose: Implement the reusable IL-to-x86-64 compilation pipeline used by CLI front ends.
-// Key invariants: Passes execute sequentially with early exits on failure, ensuring diagnostics
-//                 are recorded deterministically and no partial artefacts leak on error.
-// Ownership/Lifetime: The pipeline borrows IL modules and writes assembly/binaries to caller-
-//                     specified locations without assuming ownership of external resources.
-// Links: docs/codemap.md, src/tools/common/module_loader.hpp
-// Cross-platform touchpoints: host ABI selection, native-link fallback rules,
-//                             system tool invocation, and runtime archive
-//                             composition.
+// File: codegen/x86_64/CodegenPipeline.cpp
+// Purpose: Implement the reusable IL-to-x86-64 compilation pipeline used by
+//          CLI front ends. Coordinates module loading, verification, backend
+//          pass execution, and optional linking/execution.
+// Key invariants:
+//   - Passes execute sequentially with early exits on failure, ensuring
+//     diagnostics are recorded deterministically.
+//   - No partial artefacts leak on error.
+//   - Host ABI selection, native-link fallback, and system tool invocation
+//     are resolved at runtime based on TargetPlatform.
+// Ownership/Lifetime:
+//   - The pipeline borrows IL modules and writes assembly/binaries to
+//     caller-specified locations without assuming ownership of resources.
+// Links: codegen/x86_64/CodegenPipeline.hpp,
+//        codegen/x86_64/Backend.hpp,
+//        codegen/x86_64/passes/PassManager.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Implementation of the high-level IL-to-native compilation pipeline.
-/// @details Coordinates module loading, verification, backend pass execution,
-///          and optional linking/execution so command-line tools can rely on a
-///          single entry point for x86-64 code generation.
 
 #include "codegen/x86_64/CodegenPipeline.hpp"
 

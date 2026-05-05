@@ -7,12 +7,12 @@
 //
 // File: codegen/x86_64/Unsupported.hpp
 // Purpose: Provides diagnostic helpers for unsupported Phase A features.
-// Key invariants: phaseAUnsupported() never returns; it always throws
-//                 std::runtime_error with a descriptive message identifying
-//                 the unsupported feature.
-// Ownership/Lifetime: Header-only utility with no state; exceptions propagate
-//                     to the caller who must handle or terminate.
-// Links: docs/architecture.md
+// Key invariants:
+//   - phaseAUnsupported() never returns; it always throws std::runtime_error.
+//   - The thrown message identifies the unsupported feature by name.
+// Ownership/Lifetime:
+//   - Header-only utility with no state; exceptions propagate to the caller.
+// Links: codegen/x86_64/Backend.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,12 +20,6 @@
 
 #include <stdexcept>
 #include <string>
-
-/// @file src/codegen/x86_64/Unsupported.hpp
-/// @brief Declares helpers for signaling unsupported x86-64 Phase A features.
-/// @invariant Functions in this header never return; they throw diagnostics for
-///             unsupported features.
-/// @ownership Shared utility owned by the x86-64 code generation backend.
 
 namespace viper::codegen::x64 {
 

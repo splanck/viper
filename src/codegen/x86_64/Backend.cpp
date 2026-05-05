@@ -5,25 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the top-level x86-64 backend facade responsible for sequencing the
-// Phase A pipeline.  The translation unit orchestrates lowering from IL to
-// Machine IR, register allocation, frame layout, peephole optimisations, and
-// final assembly emission while gathering diagnostics about unsupported
-// features.
-//
-// Each IL function is lowered independently to keep pass interactions simple.
-// The backend preserves module function order, reuses shared helpers such as
-// @ref LowerILToMIR and @ref AsmEmitter, and surfaces warnings when callers
-// request configuration that Phase A does not yet implement.
+// File: codegen/x86_64/Backend.cpp
+// Purpose: Top-level x86-64 backend facade that sequences the Phase A pipeline.
+//          Orchestrates IL→MIR lowering, register allocation, frame layout,
+//          peephole optimisations, and final assembly/binary emission.
+// Key invariants:
+//   - Each IL function is lowered independently to keep pass interactions simple.
+//   - Module function order is preserved throughout the pipeline.
+//   - Unsupported configuration options are surfaced as diagnostic warnings.
+// Ownership/Lifetime:
+//   - Borrows caller-provided IL modules and TargetInfo; all MIR state is
+//     stack-local and discarded after emission.
+// Links: codegen/x86_64/Backend.hpp,
+//        codegen/x86_64/LowerILToMIR.hpp,
+//        codegen/x86_64/AsmEmitter.hpp,
+//        codegen/x86_64/passes/PassManager.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Coordinates the Phase A x86-64 code-generation pipeline.
-/// @details Provides utility routines that execute the per-function pipeline,
-///          emit module-level assembly, and surface configuration diagnostics to
-///          the caller.  The implementation focuses on clarity over maximal
-///          optimisation, matching Phase A's educational goals.
 
 #include "Backend.hpp"
 

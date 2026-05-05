@@ -6,12 +6,17 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/passes/LegalizePass.cpp
-// Purpose: Implement pre-RA AArch64 MIR legalization.
-//
-// Responsibilities:
-//   1. Expand overflow-checked arithmetic pseudos into real MIR.
-//   2. Insert runtime context initialization at the start of @main.
-//   3. Recompute MFunction::isLeaf from the legalized MIR.
+// Purpose: Pre-RA AArch64 MIR legalization. Expands overflow pseudos, inserts
+//          runtime context init for @main, and refreshes the isLeaf flag.
+// Key invariants:
+//   - lowerOverflowOps() must run before register allocation (pseudos are
+//     lowered to virtual-register sequences that RA then allocates).
+//   - Trap blocks (Ltrap_… prefix) are excluded from isLeaf analysis so that
+//     hot paths can still benefit from leaf-function frame optimizations.
+// Ownership/Lifetime:
+//   - Stateless pass; mutates AArch64Module::mir in place.
+// Links: codegen/aarch64/passes/LegalizePass.hpp,
+//        codegen/aarch64/LowerOvf.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,20 +30,25 @@
 namespace viper::codegen::aarch64::passes {
 namespace {
 
+/// @brief Return true if @p name begins with any recognised trap-block prefix.
 [[nodiscard]] bool isTrapBlockName(const std::string &name) noexcept {
     return name.rfind("Ltrap_", 0) == 0 || name.rfind(".Ltrap_", 0) == 0 ||
            name.rfind("L.Ltrap_", 0) == 0 || name.rfind("L_Ltrap_", 0) == 0;
 }
 
+/// @brief Return true if @p instr is a direct (Bl) or indirect (Blr) call.
 [[nodiscard]] bool isCall(const MInstr &instr) noexcept {
     return instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr;
 }
 
+/// @brief Return true if @p instr is a Bl to the named symbol @p name.
 [[nodiscard]] bool isCallTo(const MInstr &instr, const char *name) noexcept {
     return instr.opc == MOpcode::Bl && !instr.ops.empty() &&
            instr.ops[0].kind == MOperand::Kind::Label && instr.ops[0].label == name;
 }
 
+/// @brief Insert rt_legacy_context + rt_set_current_context at the start of @main.
+/// @details Idempotent: does nothing if the calls are already present.
 void insertMainRuntimeContextInit(MFunction &fn) {
     if (fn.name != "main" || fn.blocks.empty())
         return;
@@ -54,6 +64,7 @@ void insertMainRuntimeContextInit(MFunction &fn) {
                         MInstr{MOpcode::Bl, {MOperand::labelOp("rt_set_current_context")}}});
 }
 
+/// @brief Recompute MFunction::isLeaf, skipping trap blocks.
 void refreshLeafFlag(MFunction &fn) noexcept {
     fn.isLeaf = true;
     for (const auto &bb : fn.blocks) {

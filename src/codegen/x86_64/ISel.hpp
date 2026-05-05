@@ -7,12 +7,17 @@
 //
 // File: codegen/x86_64/ISel.hpp
 // Purpose: Declare the instruction selection helpers that canonicalise Machine IR.
-// Key invariants: Transformations preserve instruction ordering while rewriting
-//                 pseudo-ops into concrete x86-64 encodings; i1 values are
-//                 materialised via SETcc + MOVZX idioms; compare+branch folds.
-// Ownership/Lifetime: The selector mutates Machine IR in-place; no dynamic resources are
-//                     allocated beyond temporary worklists.
-// Links: docs/architecture.md
+// Key invariants:
+//   - Transformations preserve instruction ordering while rewriting pseudo-ops
+//     into concrete x86-64 encodings.
+//   - i1 values are materialised via SETcc + MOVZX idioms.
+//   - Compare+branch pairs are folded to avoid redundant flag tests.
+// Ownership/Lifetime:
+//   - The selector mutates Machine IR in-place; no dynamic resources are
+//     allocated beyond temporary worklists.
+// Links: codegen/x86_64/ISel.cpp,
+//        codegen/x86_64/MachineIR.hpp,
+//        codegen/x86_64/TargetX64.hpp
 //
 //===----------------------------------------------------------------------===//
 

@@ -4,45 +4,21 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file vg_theme.h
-/// @brief Theming system for consistent widget appearance across the GUI.
-///
-/// @details Provides a complete theme abstraction that centralises every visual
-///          parameter a widget might need: colour scheme (background, foreground,
-///          accent, border, and syntax-highlighting colours), typography (font
-///          handles and size presets), spacing presets, and per-widget-class
-///          style overrides for buttons, text inputs, and scrollbars.
-///
-///          The toolkit ships two built-in themes (dark and light). Applications
-///          can create custom themes by copying a base theme and overriding
-///          individual fields. A single global "current theme" pointer is used
-///          by all widget paint routines; changing it switches the look of the
-///          entire UI in one call.
-///
-///          Colour values are stored as 24-bit RGB integers (0x00RRGGBB), compatible
-///          with the vgfx drawing API which ignores the high byte.  Static theme
-///          defaults use this format directly.  Convenience functions are provided for
-///          constructing colours from components, extracting channels, blending,
-///          lightening, and darkening.  The `vg_color_rgba` helper accepts an optional
-///          alpha byte for future alpha-compositing support.
-///
-/// Key invariants:
-///   - There is always a valid current theme (defaults to the dark theme).
-///   - Built-in themes are statically allocated and must NOT be freed.
-///   - Custom themes created with vg_theme_create must be freed with
-///     vg_theme_destroy.
-///
-/// Ownership/Lifetime:
-///   - Font pointers in vg_typography_t are not owned by the theme; the caller
-///     is responsible for keeping the fonts alive while the theme references them.
-///   - The theme name string is owned by the theme for custom themes.
-///
-/// Links:
-///   - vg_font.h    -- font loading and text rendering
-///   - vg_widget.h  -- widget base that reads theme values for painting
-///   - vg_widgets.h -- concrete widgets that consult the theme
-///
+//
+// File: lib/gui/include/vg_theme.h
+// Purpose: Theming system for consistent widget appearance — colour schemes,
+//          typography presets, spacing, and per-widget-class style overrides.
+// Key invariants:
+//   - There is always a valid current theme; defaults to the dark theme.
+//   - Built-in themes (dark/light) are statically allocated and must NOT be freed.
+//   - Custom themes created with vg_theme_create must be freed with vg_theme_destroy.
+// Ownership/Lifetime:
+//   - Font pointers in vg_typography_t are not owned by the theme.
+//   - The name string is owned by the theme for custom themes.
+// Links: lib/gui/src/core/vg_theme.c,
+//        lib/gui/include/vg_font.h,
+//        lib/gui/include/vg_widget.h
+//
 //===----------------------------------------------------------------------===//
 #pragma once
 

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/peephole/BranchOpt.hpp
+// File: codegen/aarch64/peephole/BranchOpt.hpp
 // Purpose: Declarations for branch optimizations: CBZ/CBNZ fusion, cset
 //          branch fusion, branch inversion, block reordering, and
 //          branch-to-next removal.
@@ -17,7 +17,7 @@
 // Ownership/Lifetime:
 //   - Operates on mutable MFunction/instruction vectors owned by the caller.
 //
-// Links: src/codegen/aarch64/Peephole.hpp
+// Links: codegen/aarch64/Peephole.hpp
 //
 //===----------------------------------------------------------------------===//
 

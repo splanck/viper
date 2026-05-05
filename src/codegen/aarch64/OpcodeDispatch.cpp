@@ -4,93 +4,24 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file OpcodeDispatch.cpp
-/// @brief Instruction opcode dispatch for IL to MIR lowering on AArch64.
-///
-/// This file implements the main instruction lowering switch statement that
-/// dispatches IL opcodes to their appropriate MIR lowering handlers. It serves
-/// as the central routing point for converting individual IL instructions into
-/// sequences of AArch64 machine instructions.
-///
-/// **Dispatch Architecture:**
-/// ```
-/// ┌─────────────────────────────────────────────────────────────────────────┐
-/// │                    lowerInstruction() Entry Point                       │
-/// └────────────────────────────────────┬────────────────────────────────────┘
-///                                      │
-///           ┌──────────────────────────┼──────────────────────────────────┐
-///           │                          │                                  │
-///           ▼                          ▼                                  ▼
-/// ┌─────────────────┐      ┌─────────────────┐            ┌─────────────────┐
-/// │  Type Casts     │      │  Arithmetic     │            │  Memory/Call    │
-/// │  Zext1, Trunc1  │      │  FAdd, FSub,    │            │  Store, Load,   │
-/// │  CastSiNarrowChk│      │  FMul, FDiv,    │            │  GEP, Call,     │
-/// │  CastFpToSiRte  │      │  SDivChk0, etc  │            │  Ret, Alloca    │
-/// └─────────────────┘      └─────────────────┘            └─────────────────┘
-///           │                          │                                  │
-///           └──────────────────────────┼──────────────────────────────────┘
-///                                      ▼
-///                         ┌─────────────────────┐
-///                         │  MIR Instructions   │
-///                         │  added to bbOut()   │
-///                         └─────────────────────┘
-/// ```
-///
-/// **Opcode Categories Handled:**
-///
-/// | Category          | Opcodes                                           |
-/// |-------------------|---------------------------------------------------|
-/// | Bit Manipulation  | Zext1, Trunc1                                     |
-/// | Integer Casts     | CastSiNarrowChk, CastUiNarrowChk                  |
-/// | FP Casts          | CastFpToSiRteChk, CastFpToUiRteChk                |
-/// | Int-to-FP         | CastSiToFp, CastUiToFp, Sitofp                    |
-/// | FP-to-Int         | Fptosi                                            |
-/// | Checked Division  | SRemChk0, SDivChk0, UDivChk0, URemChk0            |
-/// | FP Arithmetic     | FAdd, FSub, FMul, FDiv                            |
-/// | FP Comparison     | FCmpEQ, FCmpNE, FCmpLT, FCmpLE, FCmpGT, FCmpGE    |
-/// | Memory Ops        | Store, Load, GEP, Alloca                          |
-/// | Control Flow      | Call, Ret, Br, CBr (terminators deferred)         |
-/// | Constants         | ConstStr                                          |
-///
-/// **Value Materialization:**
-/// Each handler uses `materializeValueToVReg()` from InstrLowering.hpp to
-/// convert IL values (temps, constants, globals) into virtual registers:
-/// ```cpp
-/// uint16_t vreg = 0;
-/// RegClass cls = RegClass::GPR;
-/// if (materializeValueToVReg(operand, bbIn, ti, fb, bbOut(),
-///                            tempVReg, tempRegClass, nextVRegId, vreg, cls))
-/// {
-///     // Use vreg in MIR instruction
-/// }
-/// ```
-///
-/// **Trap Blocks for Checked Operations:**
-/// Checked operations (CastSiNarrowChk, SDivChk0, etc.) generate trap blocks
-/// that branch to dedicated trap helpers or a NULL-message `rt_trap` path:
-/// ```
-/// Block:                    Trap Block:
-/// cmp original, widened     .Ltrap_cast_N:
-/// b.ne .Ltrap_cast_N    →     bl rt_trap_ovf
-/// mov result, value
-/// ```
-///
-/// **Return Value Convention:**
-/// - Returns `true` if the opcode was handled (MIR emitted)
-/// - Returns `false` if the opcode should be handled by the caller
-/// - Terminators (Br, CBr) return `true` but are lowered in a separate pass
-///
-/// **Cross-Block Value Handling:**
-/// The dispatch operates within the context of `LoweringContext` which tracks:
-/// - `tempVReg`: Map from IL temp ID to MIR vreg ID
-/// - `tempRegClass`: Register class (GPR/FPR) for each temp
-/// - `crossBlockSpillOffset`: Spill slots for cross-block live values
-///
-/// @see InstrLowering.cpp For individual opcode lowering implementations
-/// @see LowerILToMIR.cpp For the main lowering orchestrator
-/// @see TerminatorLowering.cpp For control-flow terminator handling
-///
+//
+// File: codegen/aarch64/OpcodeDispatch.cpp
+// Purpose: Central opcode dispatch switch for IL→MIR lowering. Routes each IL
+//          opcode to its InstrLowering handler; returns false for opcodes that
+//          the caller (LowerILToMIR) must handle directly.
+// Key invariants:
+//   - Returns true on handled opcodes, false to fall through to caller.
+//   - Terminators (Br/CBr/SwitchI32) return true but emit no MIR here;
+//     TerminatorLowering handles them in a later pass.
+//   - All block access goes through bbOut() (index-stable lambda) because
+//     checked-cast handlers call emplace_back() on fn.blocks.
+// Ownership/Lifetime:
+//   - Free function; borrows ctx and its contained MFunction for the call.
+// Links: codegen/aarch64/OpcodeDispatch.hpp,
+//        codegen/aarch64/InstrLowering.cpp,
+//        codegen/aarch64/TerminatorLowering.cpp,
+//        codegen/aarch64/LowerILToMIR.cpp
+//
 //===----------------------------------------------------------------------===//
 
 #include "OpcodeDispatch.hpp"
@@ -106,10 +37,13 @@ namespace viper::codegen::aarch64 {
 
 using il::core::Opcode;
 
+/// @brief Map an IL comparison opcode to its AArch64 condition-code string.
 static const char *condForOpcode(Opcode op) {
     return lookupCondition(op);
 }
 
+/// @brief Materialize @p value into a GPR and move it into @p dstReg.
+/// @param what Human-readable name used in the error message on failure.
 static void moveValueToArg(const il::core::Value &value,
                            const il::core::BasicBlock &bbIn,
                            LoweringContext &ctx,
@@ -126,6 +60,7 @@ static void moveValueToArg(const il::core::Value &value,
         MInstr{MOpcode::MovRR, {MOperand::regOp(dstReg), MOperand::vregOp(RegClass::GPR, src)}});
 }
 
+/// @brief If @p ins has a result, copy x0 into a fresh vreg and record the mapping.
 static void captureGprCallResult(const il::core::Instr &ins,
                                  LoweringContext &ctx,
                                  MBasicBlock &out) {
@@ -138,12 +73,15 @@ static void captureGprCallResult(const il::core::Instr &ins,
         MOpcode::MovRR, {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
 }
 
+/// @brief Return the IEEE-754 bit pattern of @p value as a uint64_t.
 static uint64_t f64Bits(double value) {
     uint64_t bits = 0;
     std::memcpy(&bits, &value, sizeof(bits));
     return bits;
 }
 
+/// @brief Load a 64-bit FP constant into a fresh FPR vreg using movz+fmov.
+/// @return The vreg ID of the newly allocated FPR holding the constant.
 static uint16_t materializeF64Constant(double value, LoweringContext &ctx, MBasicBlock &out) {
     const uint16_t dst = allocateNextVReg(ctx.nextVRegId);
     const uint16_t bitsGpr = allocateNextVReg(ctx.nextVRegId);
@@ -156,6 +94,8 @@ static uint16_t materializeF64Constant(double value, LoweringContext &ctx, MBasi
     return dst;
 }
 
+/// @brief Return the bit width for an integer type kind (I16→16, I32→32, I64→64).
+/// @throws std::runtime_error if @p kind is not a supported integer width.
 static int integerTypeBits(il::core::Type::Kind kind) {
     switch (kind) {
         case il::core::Type::Kind::I16:
@@ -169,6 +109,7 @@ static int integerTypeBits(il::core::Type::Kind kind) {
     }
 }
 
+/// @brief Return the inclusive signed lower bound (e.g. -32768.0 for 16 bits).
 static double signedLowerBoundForBits(int bits) {
     switch (bits) {
         case 16:
@@ -182,6 +123,7 @@ static double signedLowerBoundForBits(int bits) {
     }
 }
 
+/// @brief Return the exclusive signed upper bound (e.g. 32768.0 for 16 bits).
 static double signedUpperExclusiveForBits(int bits) {
     switch (bits) {
         case 16:
@@ -195,6 +137,7 @@ static double signedUpperExclusiveForBits(int bits) {
     }
 }
 
+/// @brief Return the exclusive unsigned upper bound (e.g. 65536.0 for 16 bits).
 static double unsignedUpperExclusiveForBits(int bits) {
     switch (bits) {
         case 16:
@@ -208,6 +151,9 @@ static double unsignedUpperExclusiveForBits(int bits) {
     }
 }
 
+/// @brief Append a trap block that loads @p code into x0 and calls rt_trap_raise_error.
+/// @param label Assembly label for the block (must be unique within the function).
+/// @param code  Error code passed as first argument to the runtime helper.
 static void emitTrapRaiseErrorBlock(MFunction &mf, std::string label, int code) {
     mf.blocks.emplace_back();
     auto &trapBlock = mf.blocks.back();

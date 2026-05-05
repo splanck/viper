@@ -5,22 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/LoweringRules.cpp
+// File: codegen/x86_64/LoweringRules.cpp
 // Purpose: Assemble the lowering rule registry by bridging declarative table
 //          entries to match and emit thunks.
-// Key invariants: Rules are initialised lazily and remain immutable after the
-//                 first access.  The generated registry mirrors the layout of
-//                 the declarative table.
-// Ownership/Lifetime: Returned registry is stored as a static vector whose
-//                     lifetime spans the process.
+// Key invariants:
+//   - Rules are initialised lazily and remain immutable after the first access.
+//   - The generated registry mirrors the layout of the declarative table.
+// Ownership/Lifetime:
+//   - Returned registry is stored as a static vector whose lifetime spans the
+//     process.
+// Links: codegen/x86_64/LoweringRules.hpp,
+//        codegen/x86_64/LoweringRuleTable.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Glue logic that exposes declarative lowering rules to the backend.
-/// @details Connects the @ref viper::codegen::x64::lowering::kLoweringRuleTable
-///          metadata with runtime match and emit function pointers.  The module
-///          constructs the registry lazily and caches it for subsequent queries.
 
 #include "LoweringRules.hpp"
 

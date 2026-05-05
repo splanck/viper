@@ -5,24 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/Lowering.Arith.cpp
-// Purpose: Implement arithmetic opcode lowering rules for the provisional IL
-//          dialect.  Arithmetic emitters delegate common mechanics to
-//          EmitCommon, keeping each rule focused on opcode selection.
-// Key invariants: All emitters honour the register classes reported by the
-//                 MIRBuilder and never emit instructions when operands are
-//                 malformed.
-// Ownership/Lifetime: Operates on borrowed IL instructions and MIR builders.
+// File: codegen/x86_64/Lowering.Arith.cpp
+// Purpose: Implement arithmetic opcode lowering rules for the x86-64 backend.
+//          Arithmetic emitters delegate common mechanics to EmitCommon, keeping
+//          each rule focused on opcode selection.
+// Key invariants:
+//   - All emitters honour the register classes reported by the MIRBuilder.
+//   - No instructions are emitted when operands are malformed.
+// Ownership/Lifetime:
+//   - Operates on borrowed IL instructions and MIR builders; no persistent state.
+// Links: codegen/x86_64/LoweringRules.hpp,
+//        codegen/x86_64/Lowering.EmitCommon.hpp,
+//        codegen/x86_64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Arithmetic lowering rules for the x86-64 backend.
-/// @details Translates IL arithmetic instructions into Machine IR by
-///          orchestrating @ref viper::codegen::x64::EmitCommon helpers.  Each
-///          rule chooses opcode variants that match the operand register class
-///          and ensures integer immediates and floating-point operations are
-///          handled consistently.
 
 #include "LoweringRuleTable.hpp"
 

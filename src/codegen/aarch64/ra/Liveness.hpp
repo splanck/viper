@@ -5,20 +5,24 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/ra/Liveness.hpp
+// File: codegen/aarch64/ra/Liveness.hpp
 // Purpose: CFG-aware liveness analysis for the AArch64 register allocator.
 //          Builds the control-flow graph from AArch64 MIR terminators (Br,
 //          BCond, Cbz) and computes per-block gen/kill/liveIn/liveOut sets
 //          via backward dataflow iteration, split by register class (GPR/FPR).
+//
 // Key invariants:
 //   - liveOut[B] = union of liveIn[S] for all successors S of B
 //   - liveIn[B] = gen[B] union (liveOut[B] - kill[B])
 //   - GPR and FPR liveness computed independently
 //   - Uses shared dataflow solver from common/ra/DataflowLiveness.hpp
+//
 // Ownership/Lifetime:
-//   - Value-owned containers valid for the lifetime of the LivenessAnalysis
-// Links: src/codegen/common/ra/DataflowLiveness.hpp,
-//        src/codegen/aarch64/ra/Allocator.cpp
+//   - Value-owned containers valid for the lifetime of the LivenessAnalysis.
+//
+// Links: codegen/common/ra/DataflowLiveness.hpp,
+//        codegen/aarch64/ra/Allocator.cpp,
+//        codegen/aarch64/ra/Liveness.cpp
 //
 //===----------------------------------------------------------------------===//
 

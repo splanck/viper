@@ -5,10 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_scrollview.c
+// File: lib/gui/src/widgets/vg_scrollview.c
+// Purpose: ScrollView widget implementation — scrollable container with
+//          optional horizontal/vertical scrollbars, mouse-wheel handling,
+//          explicit content-size override, and scroll-to-widget support.
+// Key invariants:
+//   - scroll_x and scroll_y are always clamped by clamp_scroll to [0, content-viewport].
+//   - Scrollbar visibility (show_h/v_scrollbar) is updated on every layout pass.
+// Ownership/Lifetime:
+//   - Children are owned by the base widget's child list; destroyed with the parent.
+// Links: lib/gui/include/vg_widgets.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_scrollview.c - Scroll view widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
@@ -56,6 +66,7 @@ static vg_widget_vtable_t g_scrollview_vtable = {.destroy = scrollview_destroy,
 // Helper Functions
 //=============================================================================
 
+/// @brief Returns true if @p widget renders its own children (ScrollView or custom widget with paint_overlay), suppressing recursive subtree painting.
 static bool scrollview_widget_paints_children_internally(const vg_widget_t *widget) {
     if (!widget)
         return false;
@@ -64,6 +75,7 @@ static bool scrollview_widget_paints_children_internally(const vg_widget_t *widg
     return widget->type == VG_WIDGET_CUSTOM && widget->vtable && widget->vtable->paint_overlay;
 }
 
+/// @brief Calls vg_widget_measure on every visible child with the given available dimensions.
 static void scrollview_measure_children(vg_scrollview_t *scroll,
                                         float available_width,
                                         float available_height) {
@@ -73,6 +85,7 @@ static void scrollview_measure_children(vg_scrollview_t *scroll,
     }
 }
 
+/// @brief Measures all children and computes the total content extent, respecting explicit overrides for each axis.
 static void calculate_content_size(vg_scrollview_t *scroll,
                                    float available_width,
                                    float available_height) {
@@ -102,6 +115,7 @@ static void calculate_content_size(vg_scrollview_t *scroll,
         scroll->has_explicit_content_height ? scroll->explicit_content_height : auto_height;
 }
 
+/// @brief Returns the scrollbar thumb length proportional to visible/total content, clamped to the theme minimum.
 static float scrollbar_thumb_size(float track_size, float content_size, float viewport_size) {
     if (track_size <= 0.0f || content_size <= 0.0f || viewport_size <= 0.0f)
         return track_size;
@@ -118,6 +132,7 @@ static float scrollbar_thumb_size(float track_size, float content_size, float vi
     return thumb_size;
 }
 
+/// @brief Converts a scroll position to the thumb's pixel offset within its track.
 static float scrollbar_thumb_offset(float scroll_pos,
                                     float scroll_range,
                                     float track_size,
@@ -128,6 +143,7 @@ static float scrollbar_thumb_offset(float scroll_pos,
     return (scroll_pos / scroll_range) * thumb_travel;
 }
 
+/// @brief Converts a thumb drag position back to a scroll offset, clamping thumb_offset to the valid travel range.
 static float scrollbar_scroll_from_thumb(float thumb_offset,
                                          float track_size,
                                          float thumb_size,
@@ -142,6 +158,7 @@ static float scrollbar_scroll_from_thumb(float thumb_offset,
     return (thumb_offset / thumb_travel) * scroll_range;
 }
 
+/// @brief Clamps scroll_x and scroll_y to [0, content_size - viewport_size], zeroing axes not enabled by direction flags.
 static void clamp_scroll(vg_scrollview_t *scroll) {
     float viewport_width = 0.0f;
     float viewport_height = 0.0f;
@@ -170,6 +187,7 @@ static void clamp_scroll(vg_scrollview_t *scroll) {
         scroll->scroll_y = max_scroll_y;
 }
 
+/// @brief Writes the usable viewport dimensions (widget size minus visible scrollbar gutters) into @p out_width and @p out_height.
 static void scrollview_get_viewport_size(const vg_scrollview_t *scroll,
                                          float *out_width,
                                          float *out_height) {
@@ -198,6 +216,7 @@ static void scrollview_get_viewport_size(const vg_scrollview_t *scroll,
         *out_height = height;
 }
 
+/// @brief Delegates to calculate_content_size to update content_width/height from child extents or explicit overrides.
 static void scrollview_recompute_content_size(vg_scrollview_t *scroll,
                                               float available_width,
                                               float available_height) {
@@ -210,6 +229,10 @@ static void scrollview_recompute_content_size(vg_scrollview_t *scroll,
 // ScrollView Implementation
 //=============================================================================
 
+/// @brief Create a scroll view widget.
+///
+/// @param parent Widget to attach to as a child (may be NULL).
+/// @return Newly allocated vg_scrollview_t, or NULL on allocation failure.
 vg_scrollview_t *vg_scrollview_create(vg_widget_t *parent) {
     vg_scrollview_t *scroll = calloc(1, sizeof(vg_scrollview_t));
     if (!scroll)
@@ -258,11 +281,13 @@ vg_scrollview_t *vg_scrollview_create(vg_widget_t *parent) {
     return scroll;
 }
 
+/// @brief VTable destroy: releases input capture if this widget currently holds it.
 static void scrollview_destroy(vg_widget_t *widget) {
     if (vg_widget_get_input_capture() == widget)
         vg_widget_release_input_capture();
 }
 
+/// @brief VTable measure: claims all available space as measured size, then applies layout constraints.
 static void scrollview_measure(vg_widget_t *widget, float available_width, float available_height) {
     // ScrollView takes all available space by default
     widget->measured_width = available_width > 0 ? available_width : 200;
@@ -271,6 +296,7 @@ static void scrollview_measure(vg_widget_t *widget, float available_width, float
     vg_widget_apply_constraints(widget);
 }
 
+/// @brief VTable arrange: positions the widget, resolves scrollbar visibility via a 3-pass convergence loop, and stacks children vertically offset by the current scroll position.
 static void scrollview_arrange(vg_widget_t *widget, float x, float y, float width, float height) {
     vg_scrollview_t *scroll = (vg_scrollview_t *)widget;
 
@@ -345,6 +371,7 @@ static void scrollview_arrange(vg_widget_t *widget, float x, float y, float widt
     }
 }
 
+/// @brief VTable paint: clips children to the content viewport, recurses into normal and overlay subtrees, then draws vertical and horizontal scrollbar tracks and thumbs.
 static void scrollview_paint(vg_widget_t *widget, void *canvas) {
     vg_scrollview_t *scroll = (vg_scrollview_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -455,6 +482,7 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief Recursively paints @p widget and its non-overlay descendants, temporarily promoting coordinates to screen space for each paint call.
 static void scrollview_render_normal_subtree(vg_widget_t *widget,
                                              void *canvas,
                                              float parent_abs_x,
@@ -486,6 +514,7 @@ static void scrollview_render_normal_subtree(vg_widget_t *widget,
     }
 }
 
+/// @brief Recursively invokes paint_overlay on @p widget and its descendants, allowing overlays (e.g. open dropdowns) to escape the scroll viewport clip.
 static void scrollview_render_overlay_subtree(vg_widget_t *widget,
                                               void *canvas,
                                               float parent_abs_x,
@@ -517,6 +546,7 @@ static void scrollview_render_overlay_subtree(vg_widget_t *widget,
     }
 }
 
+/// @brief VTable handle_event: handles mouse-wheel scrolling, scrollbar click-to-jump, thumb drag initiation/tracking, and hover highlighting for both scrollbar axes.
 static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_scrollview_t *scroll = (vg_scrollview_t *)widget;
 
@@ -680,6 +710,11 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
 // ScrollView API
 //=============================================================================
 
+/// @brief Programmatically set the scroll offset; values are clamped to valid range.
+///
+/// @param scroll The scroll view to update.
+/// @param x      Horizontal scroll offset in pixels.
+/// @param y      Vertical scroll offset in pixels.
 void vg_scrollview_set_scroll(vg_scrollview_t *scroll, float x, float y) {
     if (!scroll)
         return;
@@ -691,7 +726,11 @@ void vg_scrollview_set_scroll(vg_scrollview_t *scroll, float x, float y) {
     scroll->base.needs_paint = true;
 }
 
-/// @brief Scrollview get scroll.
+/// @brief Retrieve the current scroll offset.
+///
+/// @param scroll The scroll view to query.
+/// @param out_x  Receives the horizontal scroll offset (may be NULL).
+/// @param out_y  Receives the vertical scroll offset (may be NULL).
 void vg_scrollview_get_scroll(vg_scrollview_t *scroll, float *out_x, float *out_y) {
     if (!scroll)
         return;
@@ -702,7 +741,14 @@ void vg_scrollview_get_scroll(vg_scrollview_t *scroll, float *out_x, float *out_
         *out_y = scroll->scroll_y;
 }
 
-/// @brief Scrollview set content size.
+/// @brief Override the content area size, enabling scrolling beyond child bounds.
+///
+/// @details Passing <= 0 for a dimension removes the explicit override for that
+///          axis, reverting to the measured child extents.
+///
+/// @param scroll The scroll view to configure.
+/// @param width  Explicit content width in pixels (or <= 0 to use child extents).
+/// @param height Explicit content height in pixels (or <= 0 to use child extents).
 void vg_scrollview_set_content_size(vg_scrollview_t *scroll, float width, float height) {
     if (!scroll)
         return;
@@ -724,7 +770,10 @@ void vg_scrollview_set_content_size(vg_scrollview_t *scroll, float width, float 
     scroll->base.needs_paint = true;
 }
 
-/// @brief Scrollview scroll to widget.
+/// @brief Scroll the view so that a descendant widget is fully visible.
+///
+/// @param scroll The scroll view to scroll.
+/// @param child  Descendant widget to bring into view; no-op if not a descendant.
 void vg_scrollview_scroll_to_widget(vg_scrollview_t *scroll, vg_widget_t *child) {
     if (!scroll || !child)
         return;
@@ -770,7 +819,10 @@ void vg_scrollview_scroll_to_widget(vg_scrollview_t *scroll, vg_widget_t *child)
     base->needs_paint = true;
 }
 
-/// @brief Scrollview set direction.
+/// @brief Set which scroll axes are enabled.
+///
+/// @param scroll    The scroll view to configure.
+/// @param direction VG_SCROLL_BOTH, VG_SCROLL_VERTICAL, or VG_SCROLL_HORIZONTAL.
 void vg_scrollview_set_direction(vg_scrollview_t *scroll, vg_scroll_direction_t direction) {
     if (!scroll)
         return;

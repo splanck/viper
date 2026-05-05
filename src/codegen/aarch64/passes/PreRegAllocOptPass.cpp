@@ -5,8 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/passes/PreRegAllocOptPass.cpp
+// File: codegen/aarch64/passes/PreRegAllocOptPass.cpp
 // Purpose: Run AArch64 pre-register-allocation MIR cleanup in the modular pipeline.
+// Key invariants:
+//   - Delegates to runPreRegAllocOpt(); return value is intentionally discarded.
+//   - ti must be non-null; returns false immediately if not set.
+// Ownership/Lifetime:
+//   - Stateless pass; mutates AArch64Module::mir in place.
+// Links: codegen/aarch64/passes/PreRegAllocOptPass.hpp,
+//        codegen/aarch64/PreRegAllocOpt.hpp
 //
 //===----------------------------------------------------------------------===//
 

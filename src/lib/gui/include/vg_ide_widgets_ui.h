@@ -5,17 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/include/vg_ide_widgets_ui.h
+// File: lib/gui/include/vg_ide_widgets_ui.h
 // Purpose: StatusBar, Toolbar, CommandPalette, Notification, Tooltip, and
-//          FloatingPanel widget declarations.
+//          FloatingPanel widget declarations — chrome and overlay UI for IDE shells.
 // Key invariants:
 //   - All create functions return NULL on allocation failure.
 //   - String parameters are copied internally unless documented otherwise.
+//   - StatusBar items are positioned in left/center/right zones.
 // Ownership/Lifetime:
 //   - Widgets are owned by their parent in the widget tree.
 //   - CommandPalette and Tooltip may be parentless and must be explicitly
 //     destroyed.
-// Links: vg_ide_widgets_common.h, vg_widget.h
+// Links: lib/gui/include/vg_ide_widgets_common.h,
+//        lib/gui/include/vg_widget.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -96,52 +98,91 @@ typedef struct vg_statusbar {
     vg_statusbar_item_t *hovered_item; ///< Currently hovered item
 } vg_statusbar_t;
 
-/// @brief Create a new status bar widget
+/// @brief Create a new status bar widget.
+/// @param parent Parent widget (can be NULL).
+/// @return New status bar or NULL on failure.
 vg_statusbar_t *vg_statusbar_create(vg_widget_t *parent);
 
-/// @brief Add a text item to the status bar
+/// @brief Add a static text label to a zone.
+/// @param sb   Status bar widget.
+/// @param zone Placement zone (LEFT, CENTER, or RIGHT).
+/// @param text Label text (copied internally).
+/// @return New status bar item, or NULL on failure.
 vg_statusbar_item_t *vg_statusbar_add_text(vg_statusbar_t *sb,
                                            vg_statusbar_zone_t zone,
                                            const char *text);
 
-/// @brief Add a button item to the status bar
+/// @brief Add a clickable button to a zone.
+/// @param sb        Status bar widget.
+/// @param zone      Placement zone.
+/// @param text      Button label text (copied internally).
+/// @param on_click  Click handler function.
+/// @param user_data User data passed to @p on_click.
+/// @return New status bar item, or NULL on failure.
 vg_statusbar_item_t *vg_statusbar_add_button(vg_statusbar_t *sb,
                                              vg_statusbar_zone_t zone,
                                              const char *text,
                                              void (*on_click)(vg_statusbar_item_t *, void *),
                                              void *user_data);
 
-/// @brief Add a progress indicator to the status bar
+/// @brief Add an inline progress indicator to a zone.
+/// @param sb   Status bar widget.
+/// @param zone Placement zone.
+/// @return New status bar item, or NULL on failure.
 vg_statusbar_item_t *vg_statusbar_add_progress(vg_statusbar_t *sb, vg_statusbar_zone_t zone);
 
-/// @brief Add a separator to the status bar
+/// @brief Add a vertical separator line between items.
+/// @param sb   Status bar widget.
+/// @param zone Placement zone.
+/// @return New separator item, or NULL on failure.
 vg_statusbar_item_t *vg_statusbar_add_separator(vg_statusbar_t *sb, vg_statusbar_zone_t zone);
 
-/// @brief Add a spacer to the status bar
+/// @brief Add a flexible spacer that pushes adjacent items apart.
+/// @param sb   Status bar widget.
+/// @param zone Placement zone.
+/// @return New spacer item, or NULL on failure.
 vg_statusbar_item_t *vg_statusbar_add_spacer(vg_statusbar_t *sb, vg_statusbar_zone_t zone);
 
-/// @brief Remove an item from the status bar
+/// @brief Remove and free an item from the status bar.
+/// @param sb   Status bar widget.
+/// @param item Item to remove.
 void vg_statusbar_remove_item(vg_statusbar_t *sb, vg_statusbar_item_t *item);
 
-/// @brief Clear all items in a zone
+/// @brief Remove and free all items in a zone.
+/// @param sb   Status bar widget.
+/// @param zone Zone to clear.
 void vg_statusbar_clear_zone(vg_statusbar_t *sb, vg_statusbar_zone_t zone);
 
-/// @brief Set item text
+/// @brief Update the text of a text or button item.
+/// @param item Item to modify.
+/// @param text New text (copied internally).
 void vg_statusbar_item_set_text(vg_statusbar_item_t *item, const char *text);
 
-/// @brief Set item tooltip
+/// @brief Set the hover tooltip for a status bar item.
+/// @param item    Item to modify.
+/// @param tooltip Tooltip text (copied internally; NULL clears it).
 void vg_statusbar_item_set_tooltip(vg_statusbar_item_t *item, const char *tooltip);
 
-/// @brief Set progress value (for progress items)
+/// @brief Set the progress value on a progress-type item.
+/// @param item     Status bar item (must be VG_STATUSBAR_ITEM_PROGRESS).
+/// @param progress Normalised progress in [0.0, 1.0].
 void vg_statusbar_item_set_progress(vg_statusbar_item_t *item, float progress);
 
-/// @brief Set item visibility
+/// @brief Show or hide a status bar item.
+/// @param item    Item to modify.
+/// @param visible true to show the item.
 void vg_statusbar_item_set_visible(vg_statusbar_item_t *item, bool visible);
 
-/// @brief Set font for status bar
+/// @brief Set the font used for status bar text.
+/// @param sb   Status bar widget.
+/// @param font Font handle.
+/// @param size Font size in pixels.
 void vg_statusbar_set_font(vg_statusbar_t *sb, vg_font_t *font, float size);
 
-/// @brief Convenience: set cursor position display (Ln X, Col Y)
+/// @brief Update the cursor-position indicator (shows "Ln X, Col Y").
+/// @param sb   Status bar widget.
+/// @param line One-based line number.
+/// @param col  One-based column number.
 void vg_statusbar_set_cursor_position(vg_statusbar_t *sb, int line, int col);
 
 //=============================================================================
@@ -231,10 +272,20 @@ typedef struct vg_toolbar {
     int focused_index;                ///< Keyboard-focused visible item index (-1 if none)
 } vg_toolbar_t;
 
-/// @brief Create a new toolbar widget
+/// @brief Create a new toolbar widget.
+/// @param parent      Parent widget (can be NULL).
+/// @param orientation VG_TOOLBAR_HORIZONTAL or VG_TOOLBAR_VERTICAL.
+/// @return New toolbar or NULL on failure.
 vg_toolbar_t *vg_toolbar_create(vg_widget_t *parent, vg_toolbar_orientation_t orientation);
 
-/// @brief Add a button to the toolbar
+/// @brief Add a standard push button to the toolbar.
+/// @param tb        Toolbar widget.
+/// @param id        Unique string identifier for the item.
+/// @param label     Text label (copied; may be NULL when icon-only).
+/// @param icon      Icon specification.
+/// @param on_click  Click handler.
+/// @param user_data User data passed to @p on_click.
+/// @return New toolbar item, or NULL on failure.
 vg_toolbar_item_t *vg_toolbar_add_button(vg_toolbar_t *tb,
                                          const char *id,
                                          const char *label,
@@ -242,7 +293,15 @@ vg_toolbar_item_t *vg_toolbar_add_button(vg_toolbar_t *tb,
                                          void (*on_click)(vg_toolbar_item_t *, void *),
                                          void *user_data);
 
-/// @brief Add a toggle button to the toolbar
+/// @brief Add a checkable toggle button to the toolbar.
+/// @param tb              Toolbar widget.
+/// @param id              Unique string identifier.
+/// @param label           Text label (copied; may be NULL).
+/// @param icon            Icon specification.
+/// @param initial_checked Initial checked state.
+/// @param on_toggle       Toggle callback receiving the new checked state.
+/// @param user_data       User data passed to @p on_toggle.
+/// @return New toolbar item, or NULL on failure.
 vg_toolbar_item_t *vg_toolbar_add_toggle(vg_toolbar_t *tb,
                                          const char *id,
                                          const char *label,
@@ -251,47 +310,83 @@ vg_toolbar_item_t *vg_toolbar_add_toggle(vg_toolbar_t *tb,
                                          void (*on_toggle)(vg_toolbar_item_t *, bool, void *),
                                          void *user_data);
 
-/// @brief Add a dropdown button to the toolbar
+/// @brief Add a button that opens a drop-down menu when clicked.
+/// @param tb    Toolbar widget.
+/// @param id    Unique string identifier.
+/// @param label Text label (copied; may be NULL).
+/// @param icon  Icon specification.
+/// @param menu  Menu to open on click.
+/// @return New toolbar item, or NULL on failure.
 vg_toolbar_item_t *vg_toolbar_add_dropdown(
     vg_toolbar_t *tb, const char *id, const char *label, vg_icon_t icon, struct vg_menu *menu);
 
-/// @brief Add a separator to the toolbar
+/// @brief Add a vertical separator between toolbar items.
+/// @param tb Toolbar widget.
+/// @return New separator item, or NULL on failure.
 vg_toolbar_item_t *vg_toolbar_add_separator(vg_toolbar_t *tb);
 
-/// @brief Add a spacer to the toolbar
+/// @brief Add a flexible spacer that pushes subsequent items to the far end.
+/// @param tb Toolbar widget.
+/// @return New spacer item, or NULL on failure.
 vg_toolbar_item_t *vg_toolbar_add_spacer(vg_toolbar_t *tb);
 
-/// @brief Add a custom widget to the toolbar
+/// @brief Embed an arbitrary widget in the toolbar.
+/// @param tb     Toolbar widget.
+/// @param id     Unique string identifier.
+/// @param widget Widget to embed (toolbar takes ownership).
+/// @return New toolbar item, or NULL on failure.
 vg_toolbar_item_t *vg_toolbar_add_widget(vg_toolbar_t *tb, const char *id, vg_widget_t *widget);
 
-/// @brief Remove an item from the toolbar by ID
+/// @brief Remove and free the toolbar item with the given ID.
+/// @param tb Toolbar widget.
+/// @param id Identifier of the item to remove.
 void vg_toolbar_remove_item(vg_toolbar_t *tb, const char *id);
 
-/// @brief Get an item by ID
+/// @brief Look up a toolbar item by its unique ID.
+/// @param tb Toolbar widget.
+/// @param id Identifier to search for.
+/// @return Matching toolbar item, or NULL if not found.
 vg_toolbar_item_t *vg_toolbar_get_item(vg_toolbar_t *tb, const char *id);
 
-/// @brief Set item enabled state
+/// @brief Enable or disable a toolbar item.
+/// @param item    Toolbar item.
+/// @param enabled true to make the item interactive.
 void vg_toolbar_item_set_enabled(vg_toolbar_item_t *item, bool enabled);
 
-/// @brief Set item checked state (for toggle items)
+/// @brief Set the checked state of a toggle item.
+/// @param item    Toolbar item (must be VG_TOOLBAR_ITEM_TOGGLE).
+/// @param checked New checked state.
 void vg_toolbar_item_set_checked(vg_toolbar_item_t *item, bool checked);
 
-/// @brief Set item tooltip
+/// @brief Set the hover tooltip for a toolbar item.
+/// @param item    Toolbar item.
+/// @param tooltip Tooltip text (copied internally; NULL clears it).
 void vg_toolbar_item_set_tooltip(vg_toolbar_item_t *item, const char *tooltip);
 
-/// @brief Set item label text
+/// @brief Update the text label on a toolbar item.
+/// @param item Toolbar item.
+/// @param text New label text (copied internally).
 void vg_toolbar_item_set_text(vg_toolbar_item_t *item, const char *text);
 
-/// @brief Set item icon
+/// @brief Replace the icon on a toolbar item.
+/// @param item Toolbar item.
+/// @param icon New icon specification (toolbar takes ownership).
 void vg_toolbar_item_set_icon(vg_toolbar_item_t *item, vg_icon_t icon);
 
-/// @brief Set icon size for toolbar
+/// @brief Set the icon size preset for all toolbar items.
+/// @param tb   Toolbar widget.
+/// @param size VG_TOOLBAR_ICONS_SMALL (16px), MEDIUM (24px), or LARGE (32px).
 void vg_toolbar_set_icon_size(vg_toolbar_t *tb, vg_toolbar_icon_size_t size);
 
-/// @brief Set whether labels are shown
+/// @brief Show or hide text labels on all toolbar buttons.
+/// @param tb   Toolbar widget.
+/// @param show true to display text labels alongside icons.
 void vg_toolbar_set_show_labels(vg_toolbar_t *tb, bool show);
 
-/// @brief Set font for toolbar
+/// @brief Set the font used to render toolbar labels.
+/// @param tb   Toolbar widget.
+/// @param font Font handle.
+/// @param size Font size in pixels.
 void vg_toolbar_set_font(vg_toolbar_t *tb, vg_font_t *font, float size);
 
 //=============================================================================
@@ -351,25 +446,39 @@ typedef struct vg_tooltip_manager {
     int cursor_y;
 } vg_tooltip_manager_t;
 
-/// @brief Create a new tooltip widget
+/// @brief Create a new tooltip widget (not attached to any parent).
+/// @return New tooltip or NULL on failure.
 vg_tooltip_t *vg_tooltip_create(void);
 
-/// @brief Destroy a tooltip widget
+/// @brief Destroy a tooltip widget and free its resources.
+/// @param tooltip Tooltip to destroy (may be NULL).
 void vg_tooltip_destroy(vg_tooltip_t *tooltip);
 
-/// @brief Set tooltip text
+/// @brief Set the plain-text content of the tooltip.
+/// @param tooltip Tooltip widget.
+/// @param text    Tooltip text (copied internally).
 void vg_tooltip_set_text(vg_tooltip_t *tooltip, const char *text);
 
-/// @brief Show tooltip at position
+/// @brief Position and show the tooltip at specific screen coordinates.
+/// @param tooltip Tooltip widget.
+/// @param x       Horizontal position in screen pixels.
+/// @param y       Vertical position in screen pixels.
 void vg_tooltip_show_at(vg_tooltip_t *tooltip, int x, int y);
 
-/// @brief Hide tooltip
+/// @brief Hide the tooltip.
+/// @param tooltip Tooltip widget.
 void vg_tooltip_hide(vg_tooltip_t *tooltip);
 
-/// @brief Set tooltip anchor widget
+/// @brief Anchor the tooltip to appear beside a specific widget.
+/// @param tooltip Tooltip widget.
+/// @param anchor  Widget to anchor to; the tooltip appears at the widget's edge.
 void vg_tooltip_set_anchor(vg_tooltip_t *tooltip, vg_widget_t *anchor);
 
-/// @brief Set tooltip timing
+/// @brief Configure show/hide timing and auto-dismiss duration.
+/// @param tooltip       Tooltip widget.
+/// @param show_delay_ms Milliseconds to wait before showing after hover.
+/// @param hide_delay_ms Milliseconds to wait before hiding after mouse leaves.
+/// @param duration_ms   Milliseconds before auto-dismissal (0 = never auto-dismiss).
 void vg_tooltip_set_timing(vg_tooltip_t *tooltip,
                            uint32_t show_delay_ms,
                            uint32_t hide_delay_ms,
@@ -377,16 +486,24 @@ void vg_tooltip_set_timing(vg_tooltip_t *tooltip,
 
 // --- Tooltip Manager ---
 
-/// @brief Get global tooltip manager
+/// @brief Get the process-wide tooltip manager singleton.
+/// @return Pointer to the global tooltip manager (never NULL after initialization).
 vg_tooltip_manager_t *vg_tooltip_manager_get(void);
 
-/// @brief Update tooltip manager (call each frame)
+/// @brief Advance tooltip show/hide timers; call once per frame.
+/// @param mgr    Tooltip manager.
+/// @param now_ms Current wall-clock time in milliseconds.
 void vg_tooltip_manager_update(vg_tooltip_manager_t *mgr, uint64_t now_ms);
 
-/// @brief Notify manager of hover
+/// @brief Notify the manager that the cursor entered a widget.
+/// @param mgr    Tooltip manager.
+/// @param widget Widget that is now hovered.
+/// @param x      Cursor X in screen pixels.
+/// @param y      Cursor Y in screen pixels.
 void vg_tooltip_manager_on_hover(vg_tooltip_manager_t *mgr, vg_widget_t *widget, int x, int y);
 
-/// @brief Notify manager of leave
+/// @brief Notify the manager that the cursor left the previously hovered widget.
+/// @param mgr Tooltip manager.
 void vg_tooltip_manager_on_leave(vg_tooltip_manager_t *mgr);
 
 /// @brief Notify manager that a widget is being destroyed.
@@ -402,7 +519,9 @@ void vg_tooltip_manager_widget_destroyed(vg_widget_t *widget);
 /// subtree being hidden. Safe to call from visibility/enabled-state setters.
 void vg_tooltip_manager_widget_hidden(vg_widget_t *widget);
 
-/// @brief Set tooltip for a widget
+/// @brief Attach a tooltip text string to a widget (shown by the global tooltip manager).
+/// @param widget Widget to annotate.
+/// @param text   Tooltip text (copied internally; NULL removes the tooltip).
 void vg_widget_set_tooltip_text(vg_widget_t *widget, const char *text);
 
 //=============================================================================
@@ -465,13 +584,22 @@ typedef struct vg_commandpalette {
     void *user_data;
 } vg_commandpalette_t;
 
-/// @brief Create a new command palette
+/// @brief Create a new command palette (not attached to any parent).
+/// @return New command palette or NULL on failure.
 vg_commandpalette_t *vg_commandpalette_create(void);
 
-/// @brief Destroy a command palette
+/// @brief Destroy a command palette and free all registered commands.
+/// @param palette Command palette to destroy (may be NULL).
 void vg_commandpalette_destroy(vg_commandpalette_t *palette);
 
-/// @brief Add a command
+/// @brief Register a command in the palette.
+/// @param palette   Command palette.
+/// @param id        Unique string identifier (copied internally).
+/// @param label     Display label shown in search results (copied internally).
+/// @param shortcut  Keyboard shortcut display string (copied; may be NULL).
+/// @param action    Callback invoked when the command is selected.
+/// @param user_data User data passed to @p action.
+/// @return Pointer to the new command, or NULL on failure.
 vg_command_t *vg_commandpalette_add_command(vg_commandpalette_t *palette,
                                             const char *id,
                                             const char *label,
@@ -479,28 +607,42 @@ vg_command_t *vg_commandpalette_add_command(vg_commandpalette_t *palette,
                                             void (*action)(vg_command_t *, void *),
                                             void *user_data);
 
-/// @brief Remove a command by ID
+/// @brief Remove and free the command with the given ID.
+/// @param palette Command palette.
+/// @param id      Identifier of the command to remove.
 void vg_commandpalette_remove_command(vg_commandpalette_t *palette, const char *id);
 
-/// @brief Get command by ID
+/// @brief Look up a command by its unique ID.
+/// @param palette Command palette.
+/// @param id      Identifier to search for.
+/// @return Matching command, or NULL if not found.
 vg_command_t *vg_commandpalette_get_command(vg_commandpalette_t *palette, const char *id);
 
-/// @brief Remove all commands from the palette.
+/// @brief Remove and free all registered commands.
+/// @param palette Command palette.
 void vg_commandpalette_clear(vg_commandpalette_t *palette);
 
-/// @brief Show command palette
+/// @brief Show the command palette overlay.
+/// @param palette Command palette.
 void vg_commandpalette_show(vg_commandpalette_t *palette);
 
-/// @brief Hide command palette
+/// @brief Hide the command palette overlay.
+/// @param palette Command palette.
 void vg_commandpalette_hide(vg_commandpalette_t *palette);
 
-/// @brief Toggle command palette visibility
+/// @brief Toggle the command palette between visible and hidden.
+/// @param palette Command palette.
 void vg_commandpalette_toggle(vg_commandpalette_t *palette);
 
-/// @brief Execute selected command
+/// @brief Execute the currently highlighted command and close the palette.
+/// @param palette Command palette.
 void vg_commandpalette_execute_selected(vg_commandpalette_t *palette);
 
-/// @brief Set callbacks
+/// @brief Set the execute and dismiss callbacks at once.
+/// @param palette    Command palette.
+/// @param on_execute Called when a command is executed.
+/// @param on_dismiss Called when the palette is closed without executing a command.
+/// @param user_data  User data passed to both callbacks.
 void vg_commandpalette_set_callbacks(vg_commandpalette_t *palette,
                                      void (*on_execute)(vg_commandpalette_t *,
                                                         vg_command_t *,
@@ -508,10 +650,15 @@ void vg_commandpalette_set_callbacks(vg_commandpalette_t *palette,
                                      void (*on_dismiss)(vg_commandpalette_t *, void *),
                                      void *user_data);
 
-/// @brief Set font
+/// @brief Set the font used in the search input and result list.
+/// @param palette Command palette.
+/// @param font    Font handle.
+/// @param size    Font size in pixels.
 void vg_commandpalette_set_font(vg_commandpalette_t *palette, vg_font_t *font, float size);
 
-/// @brief Set placeholder text
+/// @brief Set the placeholder text shown in the search input when empty.
+/// @param palette Command palette.
+/// @param text    Placeholder text (copied internally).
 void vg_commandpalette_set_placeholder(vg_commandpalette_t *palette, const char *text);
 
 //=============================================================================
@@ -597,23 +744,42 @@ typedef struct vg_notification_manager {
     uint32_t next_id;
 } vg_notification_manager_t;
 
-/// @brief Create notification manager
+/// @brief Create a notification manager widget (not attached to a parent).
+/// @return New notification manager or NULL on failure.
 vg_notification_manager_t *vg_notification_manager_create(void);
 
-/// @brief Destroy notification manager
+/// @brief Destroy a notification manager and all pending notifications.
+/// @param mgr Notification manager to destroy (may be NULL).
 void vg_notification_manager_destroy(vg_notification_manager_t *mgr);
 
-/// @brief Update animations (call each frame)
+/// @brief Advance notification animations; call once per frame.
+/// @param mgr    Notification manager.
+/// @param now_ms Current wall-clock time in milliseconds.
 void vg_notification_manager_update(vg_notification_manager_t *mgr, uint64_t now_ms);
 
-/// @brief Show a notification
+/// @brief Show a new notification toast.
+/// @param mgr         Notification manager.
+/// @param type        Notification severity (INFO, SUCCESS, WARNING, or ERROR).
+/// @param title       Title line text (copied internally).
+/// @param message     Body text (copied internally; may be NULL).
+/// @param duration_ms Auto-dismiss delay in milliseconds (0 = sticky).
+/// @return Unique notification ID that can be passed to vg_notification_dismiss.
 uint32_t vg_notification_show(vg_notification_manager_t *mgr,
                               vg_notification_type_t type,
                               const char *title,
                               const char *message,
                               uint32_t duration_ms);
 
-/// @brief Show notification with action button
+/// @brief Show a notification with an inline action button.
+/// @param mgr             Notification manager.
+/// @param type            Notification severity.
+/// @param title           Title line text (copied internally).
+/// @param message         Body text (copied internally; may be NULL).
+/// @param duration_ms     Auto-dismiss delay (0 = sticky until button or dismiss).
+/// @param action_label    Label for the action button (copied internally).
+/// @param action_callback Called with the notification ID when the button is clicked.
+/// @param user_data       User data passed to @p action_callback.
+/// @return Unique notification ID.
 uint32_t vg_notification_show_with_action(vg_notification_manager_t *mgr,
                                           vg_notification_type_t type,
                                           const char *title,
@@ -623,17 +789,25 @@ uint32_t vg_notification_show_with_action(vg_notification_manager_t *mgr,
                                           void (*action_callback)(uint32_t, void *),
                                           void *user_data);
 
-/// @brief Dismiss a notification
+/// @brief Dismiss a specific notification by ID.
+/// @param mgr Notification manager.
+/// @param id  ID returned by vg_notification_show or vg_notification_show_with_action.
 void vg_notification_dismiss(vg_notification_manager_t *mgr, uint32_t id);
 
-/// @brief Dismiss all notifications
+/// @brief Dismiss all currently displayed notifications.
+/// @param mgr Notification manager.
 void vg_notification_dismiss_all(vg_notification_manager_t *mgr);
 
-/// @brief Set notification position
+/// @brief Set the screen corner where notifications appear.
+/// @param mgr      Notification manager.
+/// @param position One of the VG_NOTIFICATION_* position constants.
 void vg_notification_manager_set_position(vg_notification_manager_t *mgr,
                                           vg_notification_position_t position);
 
-/// @brief Set font
+/// @brief Set the font used for notification titles and body text.
+/// @param mgr  Notification manager.
+/// @param font Font handle.
+/// @param size Body font size in pixels (title is scaled up automatically).
 void vg_notification_manager_set_font(vg_notification_manager_t *mgr, vg_font_t *font, float size);
 
 //==========================================================================
@@ -665,21 +839,35 @@ typedef struct vg_floatingpanel {
 } vg_floatingpanel_t;
 
 /// @brief Create a floating panel connected to @p root.
+/// @param root Root widget; the panel is appended as root's last child so it
+///             paints above all sibling content.
+/// @return New floating panel or NULL on failure.
 vg_floatingpanel_t *vg_floatingpanel_create(vg_widget_t *root);
 
-/// @brief Destroy and free a floating panel.
+/// @brief Destroy and free a floating panel and all its children.
+/// @param panel Floating panel to destroy (may be NULL).
 void vg_floatingpanel_destroy(vg_floatingpanel_t *panel);
 
 /// @brief Set the absolute screen position of the panel.
+/// @param panel Floating panel.
+/// @param x     Horizontal position in screen pixels.
+/// @param y     Vertical position in screen pixels.
 void vg_floatingpanel_set_position(vg_floatingpanel_t *panel, float x, float y);
 
 /// @brief Set the panel dimensions.
+/// @param panel Floating panel.
+/// @param w     Width in pixels.
+/// @param h     Height in pixels.
 void vg_floatingpanel_set_size(vg_floatingpanel_t *panel, float w, float h);
 
 /// @brief Show or hide the floating panel.
+/// @param panel   Floating panel.
+/// @param visible Non-zero to show; zero to hide.
 void vg_floatingpanel_set_visible(vg_floatingpanel_t *panel, int visible);
 
 /// @brief Add a widget as a child of the floating panel.
+/// @param panel Floating panel.
+/// @param child Widget to reparent under the panel (ownership transfers).
 void vg_floatingpanel_add_child(vg_floatingpanel_t *panel, vg_widget_t *child);
 
 #ifdef __cplusplus

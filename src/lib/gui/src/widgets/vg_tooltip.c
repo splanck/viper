@@ -5,10 +5,31 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_tooltip.c
+// File: lib/gui/src/widgets/vg_tooltip.c
+// Purpose: Tooltip widget and global tooltip manager. Tooltips appear after a
+//          configurable hover delay, follow the cursor or anchor to a widget,
+//          and disappear on mouse-leave after a hide delay.
+// Key invariants:
+//   - g_tooltip_manager is a process-global singleton; vg_tooltip_manager_get
+//     always returns a pointer to it.
+//   - pending_show == true means we are counting down show_delay_ms before
+//     calling vg_tooltip_show_at; the manager drives this in its update tick.
+//   - active_tooltip is lazy-allocated on first hover and reused thereafter
+//     (text and position are updated in-place rather than recreated).
+//   - tooltip_widget_is_descendant_of walks the parent chain, so hiding a
+//     container also clears tooltips anchored to its descendants.
+//   - is_visible and base.visible are kept in sync.
+// Ownership/Lifetime:
+//   - active_tooltip is owned by the manager; never freed explicitly (it
+//     outlives all tooltips since the manager is global).
+//   - tooltip->text is heap-allocated by vg_tooltip_set_text and freed in
+//     tooltip_destroy.
+// Links: lib/gui/include/vg_ide_widgets.h,
+//        lib/gui/include/vg_widget.h,
+//        lib/gui/include/vg_theme.h,
+//        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
-// vg_tooltip.c - Tooltip widget implementation
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_ide_widgets.h"
@@ -45,6 +66,7 @@ static void tooltip_stroke_round_rect(vgfx_window_t win,
                                       int32_t radius,
                                       uint32_t color);
 
+/// @brief Return true if widget is ancestor itself or any descendant by walking the parent chain.
 static bool tooltip_widget_is_descendant_of(const vg_widget_t *widget, const vg_widget_t *ancestor) {
     for (const vg_widget_t *current = widget; current; current = current->parent) {
         if (current == ancestor)
@@ -53,6 +75,7 @@ static bool tooltip_widget_is_descendant_of(const vg_widget_t *widget, const vg_
     return false;
 }
 
+/// @brief Heap-allocate a NUL-terminated copy of the first len bytes of text.
 static char *tooltip_dup_range(const char *text, size_t len) {
     char *copy = (char *)malloc(len + 1);
     if (!copy)
@@ -62,6 +85,7 @@ static char *tooltip_dup_range(const char *text, size_t len) {
     return copy;
 }
 
+/// @brief Word-wrap tooltip->text to tooltip->max_width; returns line count and optionally allocates out_lines[].
 static int tooltip_wrap_text(vg_tooltip_t *tooltip, char ***out_lines, float *out_max_width) {
     if (out_lines)
         *out_lines = NULL;
@@ -202,6 +226,7 @@ static int tooltip_wrap_text(vg_tooltip_t *tooltip, char ***out_lines, float *ou
     return count > 0 ? count : 1;
 }
 
+/// @brief Composite color's stored alpha channel against backdrop, returning a fully-opaque 24-bit RGB result.
 static uint32_t tooltip_apply_alpha(uint32_t color, uint32_t backdrop) {
     uint8_t alpha = (uint8_t)(color >> 24);
     uint32_t rgb = color & 0x00FFFFFFu;
@@ -210,6 +235,7 @@ static uint32_t tooltip_apply_alpha(uint32_t color, uint32_t backdrop) {
     return vg_color_blend(backdrop, rgb, (float)alpha / 255.0f);
 }
 
+/// @brief Fill a rounded rectangle, falling back to a plain rect when radius is zero or too large.
 static void tooltip_fill_round_rect(vgfx_window_t win,
                                     int32_t x,
                                     int32_t y,
@@ -235,6 +261,7 @@ static void tooltip_fill_round_rect(vgfx_window_t win,
     vgfx_fill_circle(win, x + w - radius - 1, y + h - radius - 1, radius, color);
 }
 
+/// @brief Stroke the border of a rounded rectangle, falling back to a plain rect when radius is zero or too large.
 static void tooltip_stroke_round_rect(vgfx_window_t win,
                                       int32_t x,
                                       int32_t y,
@@ -279,6 +306,7 @@ static vg_widget_vtable_t g_tooltip_vtable = {.destroy = tooltip_destroy,
 
 static vg_tooltip_manager_t g_tooltip_manager = {0};
 
+/// @brief Return the current wall-clock time in milliseconds (monotonic on POSIX, GetTickCount64 on Windows).
 static uint64_t tooltip_now_ms(void) {
 #ifdef _WIN32
     return (uint64_t)GetTickCount64();
@@ -289,6 +317,7 @@ static uint64_t tooltip_now_ms(void) {
 #endif
 }
 
+/// @brief Return a pointer to the global tooltip manager singleton.
 vg_tooltip_manager_t *vg_tooltip_manager_get(void) {
     return &g_tooltip_manager;
 }
@@ -297,6 +326,9 @@ vg_tooltip_manager_t *vg_tooltip_manager_get(void) {
 // Tooltip Implementation
 //=============================================================================
 
+/// @brief Create a tooltip widget with theme-derived defaults (500 ms show delay, cursor-follow mode).
+///
+/// @return Newly allocated invisible tooltip, or NULL on allocation failure.
 vg_tooltip_t *vg_tooltip_create(void) {
     vg_tooltip_t *tooltip = calloc(1, sizeof(vg_tooltip_t));
     if (!tooltip)
@@ -329,18 +361,22 @@ vg_tooltip_t *vg_tooltip_create(void) {
     return tooltip;
 }
 
+/// @brief vtable destroy — free the text string.
 static void tooltip_destroy(vg_widget_t *widget) {
     vg_tooltip_t *tooltip = (vg_tooltip_t *)widget;
     free(tooltip->text);
 }
 
-/// @brief Tooltip destroy.
+/// @brief Destroy the tooltip widget and free its text string.
+///
+/// @param tooltip Tooltip to destroy; may be NULL (no-op).
 void vg_tooltip_destroy(vg_tooltip_t *tooltip) {
     if (!tooltip)
         return;
     vg_widget_destroy(&tooltip->base);
 }
 
+/// @brief vtable measure — compute desired size from wrapped text, font metrics, and padding.
 static void tooltip_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_tooltip_t *tooltip = (vg_tooltip_t *)widget;
     (void)available_width;
@@ -366,6 +402,7 @@ static void tooltip_measure(vg_widget_t *widget, float available_width, float av
     widget->measured_height = line_height * (float)line_count + (float)tooltip->padding * 2.0f;
 }
 
+/// @brief vtable paint — render background, drop-shadow, border, and word-wrapped text lines.
 static void tooltip_paint(vg_widget_t *widget, void *canvas) {
     vg_tooltip_t *tooltip = (vg_tooltip_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
@@ -430,7 +467,10 @@ static void tooltip_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
-/// @brief Tooltip set text.
+/// @brief Replace the tooltip's display text, invalidating layout.
+///
+/// @param tooltip Tooltip to modify; may be NULL (no-op).
+/// @param text    New text string, duplicated internally; may be NULL to clear.
 void vg_tooltip_set_text(vg_tooltip_t *tooltip, const char *text) {
     if (!tooltip)
         return;
@@ -441,7 +481,14 @@ void vg_tooltip_set_text(vg_tooltip_t *tooltip, const char *text) {
     tooltip->base.needs_paint = true;
 }
 
-/// @brief Tooltip show at.
+/// @brief Show the tooltip, positioning it at (x, y) plus offset or anchored to anchor_widget.
+///
+/// @details Runs a measure pass, computes screen position (clamped to the root widget's bounds
+///          in anchor mode), marks the tooltip visible, and stamps show_timer on first show.
+///
+/// @param tooltip Tooltip to show; may be NULL (no-op).
+/// @param x       Cursor or anchor X in screen coordinates (used in follow-cursor mode).
+/// @param y       Cursor or anchor Y in screen coordinates.
 void vg_tooltip_show_at(vg_tooltip_t *tooltip, int x, int y) {
     if (!tooltip)
         return;
@@ -479,7 +526,9 @@ void vg_tooltip_show_at(vg_tooltip_t *tooltip, int x, int y) {
     tooltip->base.needs_paint = true;
 }
 
-/// @brief Tooltip hide.
+/// @brief Immediately hide the tooltip.
+///
+/// @param tooltip Tooltip to hide; may be NULL (no-op).
 void vg_tooltip_hide(vg_tooltip_t *tooltip) {
     if (!tooltip)
         return;
@@ -489,7 +538,10 @@ void vg_tooltip_hide(vg_tooltip_t *tooltip) {
     tooltip->base.needs_paint = true;
 }
 
-/// @brief Tooltip set anchor.
+/// @brief Set the anchor widget and switch the tooltip to VG_TOOLTIP_ANCHOR_WIDGET mode.
+///
+/// @param tooltip Tooltip to configure; may be NULL (no-op).
+/// @param anchor  Widget to anchor below; the tooltip appears at anchor's bottom-left + offset.
 void vg_tooltip_set_anchor(vg_tooltip_t *tooltip, vg_widget_t *anchor) {
     if (!tooltip)
         return;
@@ -498,7 +550,12 @@ void vg_tooltip_set_anchor(vg_tooltip_t *tooltip, vg_widget_t *anchor) {
     tooltip->position_mode = VG_TOOLTIP_ANCHOR_WIDGET;
 }
 
-/// @brief Tooltip set timing.
+/// @brief Configure the show delay, hide delay, and optional auto-dismiss duration.
+///
+/// @param tooltip       Tooltip to configure; may be NULL (no-op).
+/// @param show_delay_ms Milliseconds to wait after hover before showing (0 = immediate).
+/// @param hide_delay_ms Milliseconds to wait after mouse-leave before hiding (0 = immediate).
+/// @param duration_ms   Milliseconds to stay visible before auto-hiding (0 = stay until leave).
 void vg_tooltip_set_timing(vg_tooltip_t *tooltip,
                            uint32_t show_delay_ms,
                            uint32_t hide_delay_ms,
@@ -515,6 +572,10 @@ void vg_tooltip_set_timing(vg_tooltip_t *tooltip,
 // Tooltip Manager Implementation
 //=============================================================================
 
+/// @brief Drive pending-show and auto-hide timers; call every frame with the current clock value.
+///
+/// @param mgr    Manager to update; may be NULL (no-op).
+/// @param now_ms Current wall-clock time in milliseconds.
 void vg_tooltip_manager_update(vg_tooltip_manager_t *mgr, uint64_t now_ms) {
     if (!mgr)
         return;
@@ -539,7 +600,15 @@ void vg_tooltip_manager_update(vg_tooltip_manager_t *mgr, uint64_t now_ms) {
     }
 }
 
-/// @brief Tooltip manager on hover.
+/// @brief Notify the manager that the cursor is hovering over widget at screen position (x, y).
+///
+/// @details On widget change, hides any active tooltip and starts the show delay countdown.
+///          On same-widget move, updates cursor position and re-shows if already visible.
+///
+/// @param mgr    Manager to notify; may be NULL (no-op).
+/// @param widget Currently hovered widget; may be NULL (same as calling on_leave).
+/// @param x      Cursor screen X.
+/// @param y      Cursor screen Y.
 void vg_tooltip_manager_on_hover(vg_tooltip_manager_t *mgr, vg_widget_t *widget, int x, int y) {
     if (!mgr)
         return;
@@ -617,7 +686,9 @@ void vg_tooltip_manager_on_hover(vg_tooltip_manager_t *mgr, vg_widget_t *widget,
     }
 }
 
-/// @brief Tooltip manager on leave.
+/// @brief Notify the manager that the cursor has left the hovered widget, starting the hide delay.
+///
+/// @param mgr Manager to notify; may be NULL (no-op).
 void vg_tooltip_manager_on_leave(vg_tooltip_manager_t *mgr) {
     if (!mgr)
         return;
@@ -635,10 +706,9 @@ void vg_tooltip_manager_on_leave(vg_tooltip_manager_t *mgr) {
     mgr->pending_show = false;
 }
 
-/// @brief Tooltip manager widget destroyed.
+/// @brief Clear dangling pointers to widget in the global manager after the widget is destroyed.
 ///
-/// Operates on the global manager and any active tooltip's anchor pointer so
-/// destroying a hovered or anchored widget does not leave a dangling pointer.
+/// @param widget Widget being destroyed; may be NULL (no-op).
 void vg_tooltip_manager_widget_destroyed(vg_widget_t *widget) {
     if (!widget)
         return;
@@ -657,6 +727,9 @@ void vg_tooltip_manager_widget_destroyed(vg_widget_t *widget) {
     }
 }
 
+/// @brief Hide the active tooltip when a widget subtree containing the hovered or anchored widget is hidden.
+///
+/// @param widget Root of the subtree being hidden; may be NULL (no-op).
 void vg_tooltip_manager_widget_hidden(vg_widget_t *widget) {
     if (!widget)
         return;
@@ -676,7 +749,10 @@ void vg_tooltip_manager_widget_hidden(vg_widget_t *widget) {
     }
 }
 
-/// @brief Widget set tooltip text.
+/// @brief Set the tooltip_text field on a widget; the global manager reads this on hover.
+///
+/// @param widget Widget to configure; may be NULL (no-op).
+/// @param text   Tooltip string, duplicated internally; NULL or empty string clears the tooltip.
 void vg_widget_set_tooltip_text(vg_widget_t *widget, const char *text) {
     if (!widget)
         return;

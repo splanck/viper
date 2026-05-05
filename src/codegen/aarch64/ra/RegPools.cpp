@@ -5,15 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/ra/RegPools.cpp
+// File: codegen/aarch64/ra/RegPools.cpp
 // Purpose: Implementation of physical register pool management for the
 //          AArch64 register allocator.
+//
 // Key invariants:
 //   - build() populates free lists with caller-saved first, then callee-saved.
 //   - Argument registers are excluded from initial free lists.
+//
 // Ownership/Lifetime:
-//   - See RegPools.hpp.
-// Links: docs/codemap.md
+//   - Owned by LinearAllocator; one instance per allocation run.
+//
+// Links: codegen/aarch64/ra/RegPools.hpp,
+//        codegen/aarch64/ra/RegClassify.hpp
 //
 //===----------------------------------------------------------------------===//
 

@@ -5,8 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/peephole/MemoryOpt.cpp
-// Purpose: x86-64 memory peephole optimizations.
+// File: codegen/x86_64/peephole/MemoryOpt.cpp
+// Purpose: x86-64 memory access peephole optimizations: dead frame store
+//          elimination and store-to-load forwarding.
+// Key invariants:
+//   - Only frame-relative (RBP-based) memory accesses are considered.
+//   - Memory barriers (CALL, JMP, JCC, RET) flush all forwarding state.
+// Ownership/Lifetime:
+//   - Stateless; all state is owned by the caller.
+// Links: codegen/x86_64/peephole/MemoryOpt.hpp,
+//        codegen/x86_64/peephole/PeepholeCommon.hpp,
+//        codegen/x86_64/OperandRoles.hpp
 //
 //===----------------------------------------------------------------------===//
 

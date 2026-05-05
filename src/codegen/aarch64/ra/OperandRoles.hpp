@@ -5,15 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/ra/OperandRoles.hpp
+// File: codegen/aarch64/ra/OperandRoles.hpp
 // Purpose: Determines whether each operand of an MIR instruction is a use,
 //          a def, or both, for register allocation purposes.
+//
 // Key invariants:
 //   - Must cover every MOpcode that has register operands.
 //   - Returns {isUse, isDef} for the operand at position idx.
+//
 // Ownership/Lifetime:
 //   - Stateless free function; no ownership.
-// Links: docs/codemap.md
+//
+// Links: codegen/aarch64/ra/OperandRoles.cpp,
+//        codegen/aarch64/ra/Allocator.cpp,
+//        codegen/aarch64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
 

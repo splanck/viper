@@ -5,19 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/ISel.cpp
+// File: codegen/x86_64/ISel.cpp
 // Purpose: Define instruction selection helpers that map pseudo Machine IR
-//          emitted by LowerILToMIR into concrete x86-64 encodings for the Phase
-//          A backend experiment.
-// Key invariants: Transformations preserve instruction ordering while rewriting
-//                 opcode/operand combinations to legal encodings (e.g. `cmp`
-//                 immediate forms or inserting `movzx` after `setcc`). Resulting
-//                 instruction streams remain valid for register allocation and
-//                 emission.
-// Ownership/Lifetime: Operates entirely in-place on Machine IR graphs borrowed
-//                     from callers without allocating persistent auxiliary
-//                     structures.
-// Links: docs/architecture.md#cpp-overview
+//          emitted by LowerILToMIR into concrete x86-64 encodings.
+// Key invariants:
+//   - Transformations preserve instruction ordering while rewriting
+//     opcode/operand combinations to legal encodings (e.g. cmp immediate
+//     forms or inserting movzx after setcc).
+//   - Resulting instruction streams remain valid for register allocation
+//     and emission.
+// Ownership/Lifetime:
+//   - Operates entirely in-place on Machine IR borrowed from callers without
+//     allocating persistent auxiliary structures.
+// Links: codegen/x86_64/ISel.hpp,
+//        codegen/x86_64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
 

@@ -6,12 +6,19 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/passes/EmitPass.cpp
-// Purpose: Assembly emission pass for the AArch64 modular pipeline.
-//
-// Emits Darwin-compatible AArch64 assembly:
-//   1. .text section header
-//   2. Rodata pool globals (string literals)
-//   3. Each MIR function emitted via AsmEmitter::emitFunction
+// Purpose: Assembly-text emission pass for the AArch64 modular pipeline.
+//          Emits rodata globals, then each MIR function via AsmEmitter;
+//          appends platform-specific module-level directives at the end.
+// Key invariants:
+//   - Requires AArch64Module::ti to be non-null.
+//   - Requires register allocation to have completed (operates on physical regs).
+//   - .subsections_via_symbols emitted on Mach-O for dead-strip support.
+//   - .note.GNU-stack emitted on Linux ELF to mark non-executable stack.
+// Ownership/Lifetime:
+//   - Stateless pass; writes into AArch64Module::assembly string.
+// Links: codegen/aarch64/passes/EmitPass.hpp,
+//        codegen/aarch64/AsmEmitter.hpp,
+//        codegen/aarch64/RodataPool.hpp
 //
 //===----------------------------------------------------------------------===//
 

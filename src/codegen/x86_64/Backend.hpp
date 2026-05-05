@@ -7,12 +7,16 @@
 //
 // File: codegen/x86_64/Backend.hpp
 // Purpose: Declare the high-level orchestration entry points for x86-64 codegen.
-// Key invariants: emitModuleToAssembly processes all functions in module order;
-//                 errors field is empty on success; Phase A only supports AT&T
-//                 syntax (atandtSyntax must be true).
-// Ownership/Lifetime: Callers retain ownership of IL modules; generated assembly is
-//                     returned by value in CodegenResult.
-// Links: docs/architecture.md
+// Key invariants:
+//   - emitModuleToAssembly processes all functions in module order.
+//   - errors field is empty on success.
+//   - Phase A only supports AT&T syntax (atandtSyntax must be true).
+// Ownership/Lifetime:
+//   - Callers retain ownership of IL modules; generated assembly is returned
+//     by value in CodegenResult.
+// Links: codegen/x86_64/Backend.cpp,
+//        codegen/x86_64/AsmEmitter.hpp,
+//        codegen/x86_64/LowerILToMIR.hpp
 //
 //===----------------------------------------------------------------------===//
 

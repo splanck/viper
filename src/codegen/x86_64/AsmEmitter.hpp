@@ -16,12 +16,16 @@
 // The emitted .s files are intended for consumption by `clang`/`gcc`/`as`.
 // MASM (ml64.exe) and NASM (.asm) output is not supported.
 //
-// Key invariants: Emission preserves operand ordering and branch destinations;
-//                 encoding rows are matched deterministically by opcode and
-//                 operand pattern; rodata labels are unique per literal kind.
-// Ownership/Lifetime: AsmEmitter holds a non-owning reference to a mutable rodata pool;
-//                     emit methods write to ostream and do not retain state.
-// Links: docs/architecture.md
+// Key invariants:
+//   - Emission preserves operand ordering and branch destinations.
+//   - Encoding rows are matched deterministically by opcode and operand pattern.
+//   - Rodata labels are unique per literal kind.
+// Ownership/Lifetime:
+//   - AsmEmitter holds a non-owning reference to a mutable rodata pool.
+//   - Emit methods write to ostream and do not retain state.
+// Links: codegen/x86_64/AsmEmitter.cpp,
+//        codegen/x86_64/MachineIR.hpp,
+//        codegen/x86_64/TargetX64.hpp
 //
 //===----------------------------------------------------------------------===//
 

@@ -5,16 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/Lowering.Mem.cpp
-// Purpose: Implement memory-oriented opcode lowering rules for the provisional
-//          IL dialect, including loads, stores, and call sequencing.
-// Key invariants: Emitters rely on EmitCommon for operand preparation, preserve
-//                 ABI-mandated register classes, and never emit instructions
-//                 when operand requirements are unmet.
-// Ownership/Lifetime: Operates purely on borrowed MIRBuilder state and records
-//                     call metadata for later passes without taking ownership of
-//                     IR nodes.
-// Links: docs/codemap.md, docs/architecture.md#codegen
+// File: codegen/x86_64/Lowering.Mem.cpp
+// Purpose: Implement memory-oriented opcode lowering rules for the x86-64
+//          backend, including loads, stores, and call sequencing.
+// Key invariants:
+//   - Emitters rely on EmitCommon for operand preparation.
+//   - ABI-mandated register classes are preserved.
+//   - No instructions are emitted when operand requirements are unmet.
+// Ownership/Lifetime:
+//   - Operates on borrowed MIRBuilder state; call metadata is recorded for
+//     later passes without taking ownership of IR nodes.
+// Links: codegen/x86_64/LoweringRules.hpp,
+//        codegen/x86_64/Lowering.EmitCommon.hpp,
+//        codegen/x86_64/CallLowering.hpp
 //
 //===----------------------------------------------------------------------===//
 

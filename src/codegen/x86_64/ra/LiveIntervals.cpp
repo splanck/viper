@@ -5,18 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/ra/LiveIntervals.cpp
+// File: codegen/x86_64/ra/LiveIntervals.cpp
 // Purpose: Implement the lightweight live interval analysis that feeds the
 //          linear-scan allocator. The analysis walks each machine instruction
 //          in program order and records first/last touch positions for virtual
 //          registers.
-// Key invariants: Instruction indices are monotonically increasing per
-//                 function; repeated invocations rebuild the analysis state
-//                 deterministically.
-// Ownership/Lifetime: Operates on a const reference to Machine IR without
-//                     mutating it. Interval results are stored in value-owned
-//                     containers on the analysis instance.
-// Links: src/codegen/x86_64/ra/LiveIntervals.hpp
+// Key invariants:
+//   - Instruction indices are monotonically increasing per function.
+//   - Repeated invocations rebuild the analysis state deterministically.
+// Ownership/Lifetime:
+//   - Operates on a const MIR reference; results stored in value-owned containers.
+// Links: codegen/x86_64/ra/LiveIntervals.hpp
 //
 //===----------------------------------------------------------------------===//
 

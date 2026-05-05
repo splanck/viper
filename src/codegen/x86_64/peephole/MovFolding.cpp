@@ -5,19 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/peephole/MovFolding.cpp
+// File: codegen/x86_64/peephole/MovFolding.cpp
 // Purpose: Move folding peephole sub-pass for the x86-64 backend.
 //          Folds consecutive register-to-register moves when the intermediate
 //          register is dead.
-//
 // Key invariants:
 //   - Only folds when r1 is not used after the second move in the same block.
 //   - Argument registers near calls are not folded to avoid ABI violations.
-//
 // Ownership/Lifetime:
 //   - Stateless; all state is owned by the caller.
-//
-// Links: src/codegen/x86_64/Peephole.hpp
+// Links: codegen/x86_64/peephole/MovFolding.hpp,
+//        codegen/x86_64/peephole/PeepholeCommon.hpp
 //
 //===----------------------------------------------------------------------===//
 

@@ -5,10 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/lib/gui/src/widgets/vg_image.c
+// File: lib/gui/src/widgets/vg_image.c
+// Purpose: Image widget implementation — renders RGBA pixel data onto a widget
+//          surface with configurable scale modes and per-widget opacity.
+// Key invariants:
+//   - Stored pixels are always 32-bit RGBA (4 bytes per pixel), unpremultiplied.
+//   - VG_IMAGE_SCALE_NONE draws at the image's natural size from widget origin.
+//   - VG_IMAGE_SCALE_FIT scales uniformly to fit inside the widget bounds.
+//   - VG_IMAGE_SCALE_FILL scales uniformly to fill, cropping excess pixels.
+//   - opacity is clamped to [0.0, 1.0]; 0.0 = fully transparent, 1.0 = opaque.
+//   - paint respects the canvas clip rectangle when clip_enabled is set.
+// Ownership/Lifetime:
+//   - image->pixels is heap-allocated via vg_image_set_pixels and freed in
+//     image_destroy or vg_image_clear; the widget does not borrow pixel data.
+// Links: lib/gui/include/vg_widgets.h,
+//        lib/gui/include/vg_widget.h
 //
 //===----------------------------------------------------------------------===//
-// vg_image.c - Image widget implementation
 #include "../../include/vg_widget.h"
 #include "../../include/vg_widgets.h"
 #include "../../../graphics/src/vgfx_internal.h"
@@ -37,6 +50,7 @@ static vg_widget_vtable_t g_image_vtable = {
     .handle_event = NULL,
 };
 
+/// @brief Integer clamp helper — returns value restricted to [min_value, max_value].
 static int clampi(int value, int min_value, int max_value) {
     if (value < min_value)
         return min_value;
@@ -45,15 +59,18 @@ static int clampi(int value, int min_value, int max_value) {
     return value;
 }
 
+/// @brief Read a little-endian uint16 from an unaligned byte pointer.
 static uint16_t image_read_le16(const uint8_t *p) {
     return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
 
+/// @brief Read a little-endian uint32 from an unaligned byte pointer.
 static uint32_t image_read_le32(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) |
            ((uint32_t)p[3] << 24);
 }
 
+/// @brief Convert premultiplied RGBA in-place back to straight alpha.
 static void image_unpremultiply_rgba(uint8_t *pixels, size_t width, size_t height) {
     if (!pixels || width == 0 || height == 0 || width > SIZE_MAX / height)
         return;
@@ -77,6 +94,7 @@ static void image_unpremultiply_rgba(uint8_t *pixels, size_t width, size_t heigh
     }
 }
 
+/// @brief Load a 24 or 32 bpp uncompressed BMP file into image->pixels.
 static bool image_load_bmp(vg_image_t *image, const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f)
@@ -153,6 +171,7 @@ cleanup:
 }
 
 #if defined(__APPLE__)
+/// @brief Load any image format supported by ImageIO (PNG, JPEG, TIFF, etc.) on macOS.
 static bool image_load_platform(vg_image_t *image, const char *path) {
     if (!image || !path)
         return false;
@@ -216,6 +235,7 @@ static bool image_load_platform(vg_image_t *image, const char *path) {
 }
 #endif
 
+/// @brief Alpha-blend one RGBA source pixel onto an RGBA destination pixel.
 static void image_blend_pixel(uint8_t *dst, const uint8_t *src, uint8_t alpha) {
     if (alpha == 0)
         return;
@@ -371,6 +391,14 @@ static void image_paint(vg_widget_t *widget, void *canvas) {
     }
 }
 
+/// @brief Create an image widget with no initial pixel data.
+///
+/// @details The widget is created with VG_IMAGE_SCALE_FIT and full opacity.
+///          Pixel data must be supplied via vg_image_set_pixels or
+///          vg_image_load_file before the widget displays anything.
+///
+/// @param parent Widget to attach to as a child (may be NULL).
+/// @return Newly allocated vg_image_t, or NULL on allocation failure.
 vg_image_t *vg_image_create(vg_widget_t *parent) {
     vg_image_t *image = calloc(1, sizeof(vg_image_t));
     if (!image)
@@ -389,7 +417,17 @@ vg_image_t *vg_image_create(vg_widget_t *parent) {
     return image;
 }
 
-/// @brief Image set pixels.
+/// @brief Replace the image's pixel data with a copy of the supplied buffer.
+///
+/// @details Any previously held pixel buffer is freed before the new data is
+///          copied.  Passing NULL pixels or non-positive dimensions clears the
+///          image and marks it for re-layout and repaint.
+///
+/// @param image  The image widget to update.
+/// @param pixels Pointer to width×height RGBA pixels (4 bytes per pixel,
+///               straight alpha, top-left origin).  May be NULL to clear.
+/// @param width  Source image width in pixels; must be > 0 when pixels != NULL.
+/// @param height Source image height in pixels; must be > 0 when pixels != NULL.
 void vg_image_set_pixels(vg_image_t *image, const uint8_t *pixels, int width, int height) {
     if (!image)
         return;
@@ -427,6 +465,14 @@ void vg_image_set_pixels(vg_image_t *image, const uint8_t *pixels, int width, in
     image->base.needs_paint = true;
 }
 
+/// @brief Load an image from a file path into the widget's pixel buffer.
+///
+/// @details On macOS, any format supported by ImageIO (PNG, JPEG, TIFF, …) is
+///          tried first; all platforms fall back to the built-in BMP decoder.
+///
+/// @param image The image widget to populate.
+/// @param path  Null-terminated path to the image file.
+/// @return true on success; false if the file cannot be opened or decoded.
 bool vg_image_load_file(vg_image_t *image, const char *path) {
     if (!image || !path)
         return false;
@@ -438,7 +484,9 @@ bool vg_image_load_file(vg_image_t *image, const char *path) {
     return image_load_bmp(image, path);
 }
 
-/// @brief Image clear.
+/// @brief Free the image's pixel buffer and mark it for re-layout and repaint.
+///
+/// @param image The image widget to clear.
 void vg_image_clear(vg_image_t *image) {
     if (!image)
         return;
@@ -450,7 +498,13 @@ void vg_image_clear(vg_image_t *image) {
     image->base.needs_paint = true;
 }
 
-/// @brief Image set scale mode.
+/// @brief Set how pixel data is scaled to fill the widget bounds.
+///
+/// @param image The image widget to configure.
+/// @param mode  VG_IMAGE_SCALE_NONE  — draw at natural size from widget origin.
+///              VG_IMAGE_SCALE_FIT   — scale uniformly to fit, letterboxing if needed.
+///              VG_IMAGE_SCALE_FILL  — scale uniformly to fill, cropping excess.
+///              VG_IMAGE_SCALE_STRETCH — stretch independently on each axis.
 void vg_image_set_scale_mode(vg_image_t *image, vg_image_scale_t mode) {
     if (!image)
         return;
@@ -458,7 +512,12 @@ void vg_image_set_scale_mode(vg_image_t *image, vg_image_scale_t mode) {
     image->base.needs_paint = true;
 }
 
-/// @brief Image set opacity.
+/// @brief Set the overall opacity applied when blending the image onto the canvas.
+///
+/// @param image   The image widget to configure.
+/// @param opacity Opacity in [0.0, 1.0]; clamped and non-finite values default
+///                to 1.0.  0.0 makes the image fully transparent (still laid out);
+///                1.0 renders it fully opaque.
 void vg_image_set_opacity(vg_image_t *image, float opacity) {
     if (!image)
         return;

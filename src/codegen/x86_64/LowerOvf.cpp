@@ -5,19 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the lowering pass that expands overflow-checked arithmetic pseudos
-// (ADDOvfrr, SUBOvfrr, IMULOvfrr) into their real arithmetic instructions
-// followed by a conditional branch to a trap block on signed overflow.
-//
-// The pass executes between IL->MIR lowering and register allocation, alongside
-// the division lowering pass. It keeps operand usage confined to general-purpose
-// registers and reuses a single trap block per function to minimise code growth.
-//
-// Pattern generated for each overflow-checked op:
-//   ADDrr / SUBrr / IMULrr  dest, lhs, rhs
-//   JO  .Ltrap_ovf_<funcname>
-//
-// The trap block calls rt_trap_ovf to abort execution.
+// File: codegen/x86_64/LowerOvf.cpp
+// Purpose: Expand overflow-checked arithmetic pseudos (ADDOvfrr, SUBOvfrr,
+//          IMULOvfrr) into real instructions with a conditional trap branch.
+// Key invariants:
+//   - Each overflow-checked op emits: <arith> dest, lhs, rhs; JO .Ltrap_ovf.
+//   - A single trap block per function is reused to minimise code growth.
+//   - The pass executes between IL→MIR lowering and register allocation.
+// Ownership/Lifetime:
+//   - Mutates the MFunction in-place; no persistent auxiliary structures.
+// Links: codegen/x86_64/LowerILToMIR.hpp,
+//        codegen/x86_64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
 

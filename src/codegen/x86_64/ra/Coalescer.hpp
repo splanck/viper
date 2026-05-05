@@ -5,15 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/ra/Coalescer.hpp
+// File: codegen/x86_64/ra/Coalescer.hpp
 // Purpose: Declare the PX_COPY lowering helper used by the linear-scan
 //          allocator to coalesce parallel move bundles into executable
 //          instruction sequences.
-// Key invariants: Coalescing preserves the semantics of the parallel copy by
-//                 emitting loads/stores/moves in a deterministic order.
-// Ownership/Lifetime: The coalescer operates on Machine IR supplied by the
-//                     allocator and does not take ownership of any structures.
-// Links: src/codegen/x86_64/ra/Allocator.hpp
+// Key invariants:
+//   - Coalescing preserves parallel copy semantics by deterministic ordering.
+//   - Cycle detection prevents infinite loops when copies form a permutation.
+// Ownership/Lifetime:
+//   - Borrows non-owning references to the allocator and spiller.
+// Links: codegen/x86_64/ra/Coalescer.cpp,
+//        codegen/x86_64/ra/Allocator.hpp,
+//        codegen/x86_64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
 

@@ -5,38 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/aarch64/LowerILToMIR.cpp
+// File: codegen/aarch64/LowerILToMIR.cpp
 // Purpose: IL→MIR lowering orchestrator for AArch64.
-//
-// This file contains the main lowerFunction() method that coordinates the
-// IL to MIR conversion. The lowering logic is organized into several modules:
-//
-// File Structure:
-// ---------------
-// LowerILToMIR.cpp      - Main orchestration: frame setup, phi allocation,
-//                         block iteration, cross-block spill/reload
-// LowerILToMIR.hpp      - Public interface (lowerFunction)
-// LoweringContext.hpp   - Shared lowering state passed to handlers
-//
-// Instruction Handlers:
-// ---------------------
-// OpcodeDispatch.cpp    - Main instruction switch statement
-// OpcodeDispatch.hpp    - lowerInstruction() declaration
-// InstrLowering.cpp     - Individual opcode handlers (arithmetic, casts, etc.)
-// InstrLowering.hpp     - Handler declarations and materializeValueToVReg
-// OpcodeMappings.hpp    - Binary op and comparison tables
-//
-// Analysis & Control Flow:
-// ------------------------
-// LivenessAnalysis.cpp  - Cross-block temp liveness analysis
-// LivenessAnalysis.hpp  - LivenessInfo struct and analyzeCrossBlockLiveness()
-// TerminatorLowering.cpp - Control-flow terminator lowering (br, cbr, trap)
-// TerminatorLowering.hpp - lowerTerminators() declaration
-//
-// Fast Paths:
-// -----------
-// FastPaths.cpp         - Fast-path dispatcher for common patterns
-// fastpaths/*           - Category-specific fast-path handlers
+//          Coordinates the full IL-to-MIR conversion: fast-path probe, frame
+//          setup, phi parameter slot allocation, cross-block liveness analysis,
+//          per-block instruction dispatch, and terminator lowering.
+// Key invariants:
+//   - Fast paths are tried first; generic lowering is used on miss.
+//   - Cross-block temps are spilled at definition and reloaded at use.
+//   - Phi slots are allocated as stack spills before instruction lowering.
+// Ownership/Lifetime:
+//   - All state is local to lowerFunction(); the LowerILToMIR object is stateless.
+// Links: codegen/aarch64/LowerILToMIR.hpp,
+//        codegen/aarch64/InstrLowering.hpp,
+//        codegen/aarch64/OpcodeDispatch.hpp,
+//        codegen/aarch64/TerminatorLowering.hpp,
+//        codegen/aarch64/LivenessAnalysis.hpp,
+//        codegen/aarch64/FastPaths.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -65,10 +50,12 @@ namespace viper::codegen::aarch64 {
 namespace {
 using il::core::Opcode;
 
+/// @brief Return the AArch64 condition-code string for an IL comparison opcode.
 static const char *condForOpcode(Opcode op) {
     return lookupAnyCondition(op);
 }
 
+/// @brief Return the bit-width for an IL integer type (I1→1, I16→16, I32→32, else 64).
 static int integerTypeBits(il::core::Type::Kind kind) {
     switch (kind) {
         case il::core::Type::Kind::I1:
@@ -82,6 +69,8 @@ static int integerTypeBits(il::core::Type::Kind kind) {
     }
 }
 
+/// @brief Emit LSL/ASR to sign-extend @p src from @p bits to 64 bits; return the result vreg.
+/// @details No-op (returns @p src) when @p bits >= 64.
 static uint16_t signExtendVRegToWidth(MBasicBlock &out,
                                       uint16_t src,
                                       int bits,
@@ -101,6 +90,12 @@ static uint16_t signExtendVRegToWidth(MBasicBlock &out,
     return dst;
 }
 
+/// @brief Emit a sub-64-bit checked overflow binary operation (IAddOvf/ISubOvf/IMulOvf).
+/// @details Sign-extends both operands to the target width, performs the op, then sign-extends
+///          the result and compares it to the full-width result. If they differ the value
+///          overflowed — a trap block calling rt_trap_ovf is appended to @p mf.
+/// @return true if the instruction was handled as a sub-width checked op; false if bits >= 64
+///         or the opcode is not a checked overflow op (caller should use the generic path).
 static bool emitSubWidthCheckedBinary(MFunction &mf,
                                       MBasicBlock &out,
                                       const il::core::Instr &ins,
@@ -150,6 +145,10 @@ static bool emitSubWidthCheckedBinary(MFunction &mf,
     return true;
 }
 
+/// @brief Build a use-count table indexed by temp ID for the entire function.
+/// @details Scans all operands and branch-arg lists. Returns a vector of length
+///          (max_temp_id + 1) where each entry is the total use count for that temp.
+///          Used to detect single-use temps that can be inlined without a MOV.
 static std::vector<std::size_t> countTempUses(const il::core::Function &fn) {
     using il::core::Value;
 
@@ -188,6 +187,9 @@ static std::vector<std::size_t> countTempUses(const il::core::Function &fn) {
     return uses;
 }
 
+/// @brief Return true if @p bb's terminator is a CBr that consumes @p tempId as its condition.
+/// @details Used to skip materializing the condition into an extra vreg when the CBr
+///          can consume the flag result directly from the preceding comparison.
 static bool cbrConsumesTemp(const il::core::BasicBlock &bb, unsigned tempId) {
     using il::core::Opcode;
     using il::core::Value;

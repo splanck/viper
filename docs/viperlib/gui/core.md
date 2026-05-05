@@ -143,6 +143,17 @@ Main application class that manages the window and widget tree.
 
 `SetSize()` and `SetWindowSize()` share the same window-size validation. Width and height are clamped to at least one pixel and to the platform `int32` range, and invalid font sizes, scale factors, and non-finite numeric values fall back to bounded defaults.
 
+Low-level widget dispatch keeps focus, hover, modal, click, and capture state
+separate for each recently dispatched root. When a subtree is hidden, detached,
+or destroyed, cached event state for that subtree is cleared so later root
+switches cannot restore stale widget handles.
+
+Paint callbacks receive screen-space `x`/`y` for direct drawing compatibility;
+use `vg_widget_get_bounds()` inside paint when a custom C widget needs its
+parent-local layout rectangle. GUI key codes are ASCII-compatible for printable
+keys, but special keys are not numerically identical to VGFX key codes; use
+`vg_key_from_vgfx_key()` or `vg_event_from_platform()` for platform input.
+
 ### Example
 
 ```basic

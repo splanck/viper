@@ -19,8 +19,9 @@
 // Ownership/Lifetime:
 //   - Encoder is stateless between encodeFunction() calls
 //   - CodeSection is borrowed (caller retains ownership)
-// Links: codegen/x86_64/binenc/X64Encoding.hpp
-//        codegen/common/objfile/CodeSection.hpp
+// Links: codegen/x86_64/binenc/X64BinaryEncoder.cpp,
+//        codegen/x86_64/binenc/X64Encoding.hpp,
+//        codegen/common/objfile/CodeSection.hpp,
 //        codegen/x86_64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
@@ -45,15 +46,10 @@ namespace viper::codegen::x64::binenc {
 
 using viper::codegen::DebugLineTable;
 
-/// Encodes x86_64 MIR functions into machine code bytes.
-///
-/// Usage:
-///   X64BinaryEncoder enc;
-///   enc.encodeFunction(fn, textSection, rodataSection, isDarwin);
-///
-/// The encoder processes one function at a time. Internal branches are resolved
-/// via patching after all blocks are emitted. External symbols generate
-/// Relocation entries in the CodeSection.
+/// @brief Encodes x86_64 MIR functions into machine code bytes.
+/// @details The encoder processes one function at a time. Internal branches are
+///          resolved via patching after all blocks are emitted. External symbols
+///          generate Relocation entries in the CodeSection.
 class X64BinaryEncoder {
   public:
     /// Set the debug line table for recording address→line mappings.

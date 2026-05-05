@@ -5,16 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/ra/Spiller.cpp
+// File: codegen/x86_64/ra/Spiller.cpp
 // Purpose: Implement spill slot orchestration for the linear-scan allocator.
 //          Provides helpers for reserving stack slots and emitting loads/stores
 //          around Machine IR instructions when register pressure overflows.
-// Key invariants: Spill slots are allocated in 8-byte increments relative to
-//                 %rbp. Spill stores always precede instruction execution while
-//                 loads precede uses.
-// Ownership/Lifetime: The spiller mutates @ref AllocationResult to reflect
-//                     spilled registers but does not own the Machine IR.
-// Links: src/codegen/x86_64/ra/Spiller.hpp, src/codegen/x86_64/ra/Allocator.hpp
+// Key invariants:
+//   - Spill slots are allocated in 8-byte increments relative to %rbp.
+//   - Spill stores always precede instruction execution; loads precede uses.
+// Ownership/Lifetime:
+//   - Mutates AllocationResult to reflect spilled registers; does not own MIR.
+// Links: codegen/x86_64/ra/Spiller.hpp,
+//        codegen/x86_64/ra/Allocator.hpp,
+//        codegen/x86_64/RegAllocLinear.hpp
 //
 //===----------------------------------------------------------------------===//
 

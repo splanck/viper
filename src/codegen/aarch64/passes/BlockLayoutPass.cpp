@@ -4,25 +4,21 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file codegen/aarch64/passes/BlockLayoutPass.cpp
-/// @brief Greedy trace block layout pass for the AArch64 code-generation pipeline.
-///
-/// **Algorithm:**
-///
-/// For each MFunction, build a name→index map for all basic blocks, then
-/// construct a placement order using a greedy trace:
-///
-/// 1. Seed the trace with the entry block (index 0) — it must stay first.
-/// 2. For each block placed so far: inspect its last instruction.
-///    - If the last instruction is an unconditional branch (`MOpcode::Br`)
-///      with a label operand, try to place that label's block immediately next.
-/// 3. Append any remaining unplaced blocks in their original relative order.
-/// 4. Reorder `fn.blocks` in-place according to the computed trace.
-///
-/// After reordering, `PeepholePass` eliminates the now-redundant fall-through
-/// branches (the peephole already handles `b <next_block>` removal).
-///
+//
+// File: codegen/aarch64/passes/BlockLayoutPass.cpp
+// Purpose: Greedy trace block layout for the AArch64 MIR pipeline. For each
+//          function, builds a name→index map and then extends a trace from the
+//          entry block by following unconditional branches. After reordering,
+//          PeepholePass eliminates the resulting fall-through branches.
+// Key invariants:
+//   - Entry block always remains at index 0 after reordering.
+//   - Only block order changes; no instructions are added or removed.
+//   - If the computed order matches the original, the reorder is skipped.
+// Ownership/Lifetime:
+//   - Mutates MFunction::blocks in place; borrows module only during run().
+// Links: codegen/aarch64/passes/BlockLayoutPass.hpp,
+//        codegen/aarch64/passes/PeepholePass.cpp (consumer of fall-through layout)
+//
 //===----------------------------------------------------------------------===//
 
 #include "codegen/aarch64/passes/BlockLayoutPass.hpp"
@@ -39,6 +35,7 @@ namespace viper::codegen::aarch64::passes {
 
 namespace {
 
+/// @brief Return true if @p opc is a conditional branch (BCond, Cbz, Cbnz).
 static bool isConditionalBranch(MOpcode opc) {
     switch (opc) {
         case MOpcode::BCond:
@@ -50,6 +47,7 @@ static bool isConditionalBranch(MOpcode opc) {
     }
 }
 
+/// @brief Return the index of the label target of @p instr if it is unplaced, else nullopt.
 static std::optional<std::size_t> lookupUnplacedTarget(
     const MInstr &instr,
     const std::unordered_map<std::string, std::size_t> &nameToIdx,

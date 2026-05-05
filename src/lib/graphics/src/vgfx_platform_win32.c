@@ -118,6 +118,19 @@ static WCHAR *utf8_to_utf16(const char *utf8) {
     return wstr;
 }
 
+static int utf16_to_utf8_buffer(const WCHAR *wstr, char *out, size_t out_size) {
+    if (!wstr || !out || out_size == 0)
+        return 0;
+
+    int needed = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
+    if (needed <= 0 || (size_t)needed > out_size)
+        return 0;
+
+    if (WideCharToMultiByte(CP_UTF8, 0, wstr, -1, out, needed, NULL, NULL) == 0)
+        return 0;
+    return 1;
+}
+
 static int32_t win32_logical_to_physical(const struct vgfx_window *win, int32_t logical) {
     float scale = (win && win->scale_factor >= 1.0f) ? win->scale_factor : 1.0f;
     return vgfx_internal_scale_up_i32(logical, scale);
@@ -201,6 +214,57 @@ static int win32_recreate_dib(struct vgfx_window *win) {
     return 1;
 }
 
+static int win32_create_dib_for_size(vgfx_win32_data *w32,
+                                     int width,
+                                     int height,
+                                     HBITMAP *out_hbmp,
+                                     void **out_pixels) {
+    if (!w32 || !w32->memdc || width <= 0 || height <= 0 || !out_hbmp || !out_pixels)
+        return 0;
+
+    *out_hbmp = NULL;
+    *out_pixels = NULL;
+
+    BITMAPINFO bmi = {0};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = width;
+    bmi.bmiHeader.biHeight = -height;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    void *pixels = NULL;
+    HBITMAP hbmp = CreateDIBSection(w32->memdc, &bmi, DIB_RGB_COLORS, &pixels, NULL, 0);
+    if (!hbmp || !pixels) {
+        if (hbmp)
+            DeleteObject(hbmp);
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to create Win32 DIB section");
+        return 0;
+    }
+
+    *out_hbmp = hbmp;
+    *out_pixels = pixels;
+    return 1;
+}
+
+static int win32_install_dib(vgfx_win32_data *w32, HBITMAP hbmp, void *pixels) {
+    if (!w32 || !w32->memdc || !hbmp || !pixels)
+        return 0;
+
+    HGDIOBJ previous = SelectObject(w32->memdc, hbmp);
+    if (!previous || previous == HGDI_ERROR) {
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to select Win32 DIB section");
+        return 0;
+    }
+    if (!w32->old_bitmap)
+        w32->old_bitmap = previous;
+    if (w32->hbmp)
+        DeleteObject(w32->hbmp);
+    w32->hbmp = hbmp;
+    w32->dib_pixels = pixels;
+    return 1;
+}
+
 static int win32_resize_backing_store(struct vgfx_window *win,
                                       int dip_w,
                                       int dip_h,
@@ -219,10 +283,20 @@ static int win32_resize_backing_store(struct vgfx_window *win,
         return 1;
     }
 
-    if (!vgfx_internal_resize_framebuffer(win, phys_w, phys_h))
+    HBITMAP new_hbmp = NULL;
+    void *new_pixels = NULL;
+    if (w32->memdc && !win32_create_dib_for_size(w32, phys_w, phys_h, &new_hbmp, &new_pixels))
         return 0;
-    if (w32->memdc && !win32_recreate_dib(win))
+
+    if (!vgfx_internal_resize_framebuffer(win, phys_w, phys_h)) {
+        if (new_hbmp)
+            DeleteObject(new_hbmp);
         return 0;
+    }
+    if (new_hbmp && !win32_install_dib(w32, new_hbmp, new_pixels)) {
+        DeleteObject(new_hbmp);
+        return 0;
+    }
 
     w32->width = dip_w;
     w32->height = dip_h;
@@ -465,7 +539,12 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             } else {
                 if (w32)
                     w32->pending_high_surrogate = 0;
-                codepoint = (uint32_t)ch;
+                if (ch >= 0xDC00 && ch <= 0xDFFF)
+                    codepoint = 0xFFFD;
+                else if (ch >= 0xD800 && ch <= 0xDBFF)
+                    codepoint = 0xFFFD;
+                else
+                    codepoint = (uint32_t)ch;
             }
 
             if (codepoint >= 0x20 && codepoint != 0x7F) {
@@ -648,14 +727,22 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
         case WM_DROPFILES: {
             HDROP hDrop = (HDROP)wparam;
-            UINT count = DragQueryFileA(hDrop, 0xFFFFFFFF, NULL, 0);
+            UINT count = DragQueryFileW(hDrop, 0xFFFFFFFF, NULL, 0);
             for (UINT i = 0; i < count; i++) {
                 vgfx_event_t event = {0};
                 event.type = VGFX_EVENT_FILE_DROP;
                 event.time_ms = timestamp;
-                DragQueryFileA(
-                    hDrop, i, event.data.file_drop.path, sizeof(event.data.file_drop.path));
-                vgfx_internal_enqueue_event(win, &event);
+                UINT wlen = DragQueryFileW(hDrop, i, NULL, 0);
+                WCHAR *wpath = (WCHAR *)malloc(((size_t)wlen + 1u) * sizeof(WCHAR));
+                if (!wpath)
+                    continue;
+                if (DragQueryFileW(hDrop, i, wpath, wlen + 1u) == wlen &&
+                    utf16_to_utf8_buffer(wpath,
+                                         event.data.file_drop.path,
+                                         sizeof(event.data.file_drop.path))) {
+                    vgfx_internal_enqueue_event(win, &event);
+                }
+                free(wpath);
             }
             DragFinish(hDrop);
             return 0;
@@ -1433,11 +1520,11 @@ void vgfx_platform_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {
 }
 
 void vgfx_platform_hide_cursor(void) {
-    ShowCursor(FALSE);
+    vgfx_platform_set_cursor_visible(NULL, 0);
 }
 
 void vgfx_platform_show_cursor(void) {
-    ShowCursor(TRUE);
+    vgfx_platform_set_cursor_visible(NULL, 1);
 }
 
 #endif /* _WIN32 */

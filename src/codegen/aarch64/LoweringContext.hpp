@@ -7,13 +7,15 @@
 //
 // File: codegen/aarch64/LoweringContext.hpp
 // Purpose: Shared state and helpers for IL->MIR lowering on AArch64.
-// Key invariants: Context references are valid for the duration of a single
-//                 function lowering invocation; maps are populated
-//                 incrementally as instructions are lowered; cross-block temps
-//                 are spilled to frame slots before successor blocks.
-// Ownership/Lifetime: LoweringContext holds references to externally-owned
-//                     state; it does not manage lifetimes of maps or builders.
-// Links: docs/architecture.md
+// Key invariants:
+//   - Context references are valid for the duration of a single lowerFunction().
+//   - Maps are populated incrementally as instructions are lowered.
+//   - Cross-block temps are spilled to frame slots before successor blocks.
+// Ownership/Lifetime:
+//   - LoweringContext holds non-owning references; caller owns all state.
+// Links: codegen/aarch64/LowerILToMIR.hpp,
+//        codegen/aarch64/InstrLowering.hpp,
+//        codegen/aarch64/FrameBuilder.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -35,10 +37,14 @@
 
 namespace viper::codegen::aarch64 {
 
+/// ID range: [1, kPhiVRegStart) for normal vregs.
 inline constexpr uint16_t kFirstVirtualRegId = 1;
+/// ID range: [kPhiVRegStart, kCrossBlockSpillKeyStart) for phi-parameter vregs.
 inline constexpr uint16_t kPhiVRegStart = 40000;
+/// Spill key base: [kCrossBlockSpillKeyStart, ...) encodes cross-block temp IDs.
 inline constexpr uint32_t kCrossBlockSpillKeyStart = 50000;
 
+/// @brief Allocate the next normal virtual register ID; throws if the phi range is reached.
 inline uint16_t allocateNextVReg(uint16_t &nextVRegId) {
     if (nextVRegId >= kPhiVRegStart)
         throw std::runtime_error(
@@ -46,6 +52,7 @@ inline uint16_t allocateNextVReg(uint16_t &nextVRegId) {
     return nextVRegId++;
 }
 
+/// @brief Allocate the next phi-parameter virtual register ID; throws on overflow.
 inline uint16_t allocatePhiVReg(uint16_t &phiNextId) {
     if (phiNextId >= kCrossBlockSpillKeyStart)
         throw std::runtime_error(
@@ -53,6 +60,9 @@ inline uint16_t allocatePhiVReg(uint16_t &phiNextId) {
     return phiNextId++;
 }
 
+/// @brief Map a cross-block temp ID to a unique FrameBuilder spill key.
+/// @details The spill key range [kCrossBlockSpillKeyStart, ...) is reserved for
+///          cross-block temps; it does not overlap with normal vreg IDs.
 inline uint32_t spillKeyForCrossBlockTemp(unsigned tempId) {
     if (tempId > (std::numeric_limits<uint32_t>::max)() - kCrossBlockSpillKeyStart)
         throw std::runtime_error("AArch64 lowering: cross-block spill key overflow");

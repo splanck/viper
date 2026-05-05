@@ -5,22 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/passes/PassManager.cpp
+// File: codegen/x86_64/passes/PassManager.cpp
 // Purpose: Implement the lightweight pass manager for the x86-64 codegen pipeline.
-// Key invariants: Passes execute in registration order; diagnostics are preserved when a
-//                 pass fails and no further passes are run.
-// Ownership/Lifetime: PassManager owns pass instances while callers own the Module state and
-//                     diagnostic sinks supplied to run().
-// Links: docs/codemap.md, src/codegen/x86_64/CodegenPipeline.hpp
+// Key invariants:
+//   - Passes execute in registration order.
+//   - Diagnostics are preserved when a pass fails; no further passes run.
+// Ownership/Lifetime:
+//   - PassManager owns pass instances; callers own the Module state and
+//     diagnostic sinks supplied to run().
+// Links: codegen/x86_64/passes/PassManager.hpp,
+//        codegen/common/PassManager.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Definitions for the x86-64 backend's pass orchestration helpers.
-/// @details Provides diagnostics collection utilities together with the
-///          `PassManager` driver that sequences transformation passes while
-///          honouring early exits on failure and reporting accumulated
-///          warnings/errors to callers.
 
 #include "codegen/x86_64/passes/PassManager.hpp"
 

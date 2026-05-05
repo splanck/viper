@@ -5,26 +5,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/Lowering.EmitCommon.cpp
+// File: codegen/x86_64/Lowering.EmitCommon.cpp
 // Purpose: Implement the shared lowering helpers declared in
-//          Lowering.EmitCommon.hpp.  Consolidating the logic keeps the opcode
-//          specific translation units focused on control flow while reusing the
-//          register materialisation and instruction assembly machinery.
-// Key invariants: Helper routines respect the register class requested by the
-//                 caller and only create temporaries when strictly necessary.
-// Ownership/Lifetime: Operates on a borrowed MIRBuilder reference; no IL or MIR
-//                     objects are owned by this file.
+//          Lowering.EmitCommon.hpp. Centralises register materialisation and
+//          instruction construction so opcode-specific emitters stay focused.
+// Key invariants:
+//   - Helper routines respect the register class requested by the caller.
+//   - Temporaries are created only when strictly necessary.
+// Ownership/Lifetime:
+//   - Operates on a borrowed MIRBuilder reference; no IL or MIR objects
+//     are owned by this file.
+// Links: codegen/x86_64/Lowering.EmitCommon.hpp,
+//        codegen/x86_64/LowerILToMIR.hpp,
+//        codegen/x86_64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Shared lowering helpers used across x86-64 opcode emitters.
-/// @details Provides the @ref viper::codegen::x64::EmitCommon façade used by
-///          individual lowering translation units to materialise operands,
-///          append Machine IR instructions, and synthesise helper operations
-///          such as comparisons, shifts, and select emission. Centralising the
-///          utilities keeps opcode-specific files focused on control flow while
-///          guaranteeing consistent register-class handling.
 
 #include "Lowering.EmitCommon.hpp"
 #include "Unsupported.hpp"

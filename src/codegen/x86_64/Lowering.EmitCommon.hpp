@@ -5,18 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/codegen/x86_64/Lowering.EmitCommon.hpp
+// File: codegen/x86_64/Lowering.EmitCommon.hpp
 // Purpose: Provide shared emission helpers used by the lowering rule
-//          translation units.  The façade centralises register materialisation
-//          and instruction construction so that opcode-specific emitters remain
-//          focused on sequencing rather than boilerplate.
-// Key invariants: Helper routines never mutate MIRBuilder state outside the
-//                 provided block and honour the register classes requested by
-//                 the caller.  Immediate operands are materialised only when
-//                 necessary for the target opcode.
-// Ownership/Lifetime: EmitCommon borrows the MIRBuilder reference supplied at
-//                     construction time; no ownership of IL or MIR nodes is
-//                     transferred.
+//          translation units. Centralises register materialisation and
+//          instruction construction so opcode-specific emitters remain focused.
+// Key invariants:
+//   - Helper routines never mutate MIRBuilder state outside the provided block.
+//   - Register classes requested by the caller are honoured.
+//   - Immediate operands are materialised only when necessary for the opcode.
+// Ownership/Lifetime:
+//   - EmitCommon borrows the MIRBuilder reference supplied at construction;
+//     no ownership of IL or MIR nodes is transferred.
+// Links: codegen/x86_64/Lowering.EmitCommon.cpp,
+//        codegen/x86_64/LowerILToMIR.hpp,
+//        codegen/x86_64/MachineIR.hpp
 //
 //===----------------------------------------------------------------------===//
 
