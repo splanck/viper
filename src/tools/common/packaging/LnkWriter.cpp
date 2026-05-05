@@ -71,6 +71,34 @@ std::vector<uint8_t> ansiPathFallback(const std::string &str) {
     return out;
 }
 
+bool containsEnvironmentVariableReference(const std::string &str) {
+    const std::size_t first = str.find('%');
+    if (first == std::string::npos)
+        return false;
+    return str.find('%', first + 1) != std::string::npos;
+}
+
+void appendFixedAnsiPath(std::vector<uint8_t> &buf, const std::string &str) {
+    if (str.size() >= 260)
+        throw std::runtime_error("lnk: environment target path is too long");
+    const auto ansi = ansiPathFallback(str);
+    const std::size_t start = buf.size();
+    buf.resize(start + 260, 0);
+    std::memcpy(buf.data() + start, ansi.data(), ansi.size());
+}
+
+void appendFixedUtf16Path(std::vector<uint8_t> &buf, const std::string &str) {
+    const auto units = utf8ToUtf16CodeUnits(str);
+    if (units.size() >= 260)
+        throw std::runtime_error("lnk: environment target path is too long");
+    const std::size_t start = buf.size();
+    buf.resize(start + 520, 0);
+    for (std::size_t i = 0; i < units.size(); ++i) {
+        buf[start + i * 2] = static_cast<uint8_t>(units[i] & 0xFF);
+        buf[start + i * 2 + 1] = static_cast<uint8_t>((units[i] >> 8) & 0xFF);
+    }
+}
+
 } // namespace
 
 std::vector<uint8_t> generateLnk(const LnkParams &params) {
@@ -105,11 +133,14 @@ std::vector<uint8_t> generateLnk(const LnkParams &params) {
 
     bool hasWorkDir = !params.workingDir.empty();
     bool hasIcon = !params.iconPath.empty();
+    const bool hasEnvTarget = containsEnvironmentVariableReference(params.targetPath);
 
     if (hasWorkDir)
         linkFlags |= 0x00000010; // HasWorkingDir
     if (hasIcon)
         linkFlags |= 0x00000040; // HasIconLocation
+    if (hasEnvTarget)
+        linkFlags |= 0x00000200; // HasExpString
 
     appendLE32(buf, linkFlags);
 
@@ -244,6 +275,14 @@ std::vector<uint8_t> generateLnk(const LnkParams &params) {
     // ICON_LOCATION
     if (hasIcon)
         appendStringData(buf, params.iconPath);
+
+    if (hasEnvTarget) {
+        // EnvironmentVariableDataBlock: 0x314 bytes, signature 0xA0000001.
+        appendLE32(buf, 0x00000314);
+        appendLE32(buf, 0xA0000001);
+        appendFixedAnsiPath(buf, params.targetPath);
+        appendFixedUtf16Path(buf, params.targetPath);
+    }
 
     // ExtraData terminal block: four zero bytes terminate the Shell Link stream.
     appendLE32(buf, 0);

@@ -36,6 +36,8 @@
 #include "support/source_manager.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -52,6 +54,12 @@ using namespace il::support;
 namespace fs = std::filesystem;
 
 enum class PackageTarget { MacOS, Linux, Windows, Tarball, Auto };
+enum class ExecutableFormat { MachO, ELF, PE };
+
+struct ExecutableInfo {
+    ExecutableFormat format;
+    std::string arch;
+};
 
 /// @brief Print usage information for `viper package`.
 void packageUsage() {
@@ -161,6 +169,146 @@ std::string platformExtension(PackageTarget t) {
     }
 }
 
+uint16_t readLE16(const std::vector<uint8_t> &data, size_t off) {
+    return static_cast<uint16_t>(data[off] | (data[off + 1] << 8));
+}
+
+uint32_t readLE32(const std::vector<uint8_t> &data, size_t off) {
+    return static_cast<uint32_t>(data[off]) | (static_cast<uint32_t>(data[off + 1]) << 8) |
+           (static_cast<uint32_t>(data[off + 2]) << 16) |
+           (static_cast<uint32_t>(data[off + 3]) << 24);
+}
+
+uint32_t readBE32(const std::vector<uint8_t> &data, size_t off) {
+    return (static_cast<uint32_t>(data[off]) << 24) |
+           (static_cast<uint32_t>(data[off + 1]) << 16) |
+           (static_cast<uint32_t>(data[off + 2]) << 8) | static_cast<uint32_t>(data[off + 3]);
+}
+
+std::string formatName(ExecutableFormat format) {
+    switch (format) {
+        case ExecutableFormat::MachO:
+            return "Mach-O";
+        case ExecutableFormat::ELF:
+            return "ELF";
+        case ExecutableFormat::PE:
+            return "PE";
+    }
+    return "unknown";
+}
+
+std::string hexU16(uint16_t value) {
+    std::ostringstream os;
+    os << std::hex << value;
+    return os.str();
+}
+
+ExecutableFormat expectedExecutableFormat(PackageTarget target) {
+    if (target == PackageTarget::Tarball)
+        target = detectHostPlatform();
+    switch (target) {
+        case PackageTarget::MacOS:
+            return ExecutableFormat::MachO;
+        case PackageTarget::Linux:
+            return ExecutableFormat::ELF;
+        case PackageTarget::Windows:
+            return ExecutableFormat::PE;
+        case PackageTarget::Tarball:
+        case PackageTarget::Auto:
+        default:
+            return ExecutableFormat::ELF;
+    }
+}
+
+ExecutableInfo inspectExecutable(const std::string &path) {
+    const auto data = viper::pkg::readFile(path);
+    if (data.size() < 20)
+        throw std::runtime_error("executable is too small to identify: " + path);
+
+    if (data[0] == 0x7F && data[1] == 'E' && data[2] == 'L' && data[3] == 'F') {
+        if (data.size() < 20 || data[4] != 2 || data[5] != 1)
+            throw std::runtime_error("ELF executable must be 64-bit little-endian: " + path);
+        const uint16_t machine = readLE16(data, 18);
+        if (machine == 62)
+            return {ExecutableFormat::ELF, "x64"};
+        if (machine == 183)
+            return {ExecutableFormat::ELF, "arm64"};
+        throw std::runtime_error("ELF executable has unsupported machine type: " +
+                                 std::to_string(machine));
+    }
+
+    if (data[0] == 'M' && data[1] == 'Z') {
+        if (data.size() < 64)
+            throw std::runtime_error("PE executable is truncated: " + path);
+        const size_t peOff = readLE32(data, 60);
+        if (peOff > data.size() || data.size() - peOff < 24 || data[peOff] != 'P' ||
+            data[peOff + 1] != 'E' || data[peOff + 2] != 0 || data[peOff + 3] != 0) {
+            throw std::runtime_error("PE executable has an invalid header: " + path);
+        }
+        const uint16_t machine = readLE16(data, peOff + 4);
+        if (machine == 0x8664)
+            return {ExecutableFormat::PE, "x64"};
+        if (machine == 0xAA64)
+            return {ExecutableFormat::PE, "arm64"};
+        throw std::runtime_error("PE executable has unsupported machine type: 0x" +
+                                 hexU16(machine));
+    }
+
+    const uint32_t magicBE = readBE32(data, 0);
+    const uint32_t magicLE = readLE32(data, 0);
+    if (magicLE == 0xFEEDFACF || magicBE == 0xFEEDFACF) {
+        const bool little = magicLE == 0xFEEDFACF;
+        const uint32_t cputype = little ? readLE32(data, 4) : readBE32(data, 4);
+        if (cputype == 0x01000007u)
+            return {ExecutableFormat::MachO, "x64"};
+        if (cputype == 0x0100000Cu)
+            return {ExecutableFormat::MachO, "arm64"};
+        throw std::runtime_error("Mach-O executable has unsupported CPU type: " +
+                                 std::to_string(cputype));
+    }
+    if (magicBE == 0xCAFEBABEu && data.size() >= 8) {
+        const uint32_t count = readBE32(data, 4);
+        if (count == 0 || count > 64 || data.size() < 8 + static_cast<size_t>(count) * 20)
+            throw std::runtime_error("Mach-O universal binary has an invalid fat header: " + path);
+        bool hasX64 = false;
+        bool hasArm64 = false;
+        for (uint32_t i = 0; i < count; ++i) {
+            const size_t off = 8 + static_cast<size_t>(i) * 20;
+            const uint32_t cputype = readBE32(data, off);
+            if (cputype == 0x01000007u)
+                hasX64 = true;
+            else if (cputype == 0x0100000Cu)
+                hasArm64 = true;
+        }
+        if (hasX64 && hasArm64)
+            return {ExecutableFormat::MachO, "universal"};
+        if (hasX64)
+            return {ExecutableFormat::MachO, "x64"};
+        if (hasArm64)
+            return {ExecutableFormat::MachO, "arm64"};
+        throw std::runtime_error("Mach-O universal binary does not contain x64 or arm64: " + path);
+    }
+
+    throw std::runtime_error("executable format is not Mach-O, ELF, or PE: " + path);
+}
+
+void validateExecutableForPackageTarget(const std::string &path,
+                                        PackageTarget target,
+                                        const std::string &archStr) {
+    const ExecutableInfo info = inspectExecutable(path);
+    const ExecutableFormat expected = expectedExecutableFormat(target);
+    if (info.format != expected) {
+        throw std::runtime_error("executable format " + formatName(info.format) +
+                                 " does not match package target " + platformName(target) +
+                                 " (expected " + formatName(expected) + ")");
+    }
+    if (info.arch != "universal" && info.arch != archStr) {
+        throw std::runtime_error("executable architecture '" + info.arch +
+                                 "' does not match selected package architecture '" + archStr +
+                                 "'");
+    }
+}
+
 bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
     for (int i = 0; i < argc; i++) {
         std::string arg = argv[i];
@@ -267,7 +415,6 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
         viper::pkg::validateSingleLineField(pkg.author, "package author");
         viper::pkg::validateSingleLineField(pkg.description, "package description");
         viper::pkg::validateSingleLineField(pkg.license, "package license");
-        viper::pkg::validatePackageIdentifier(pkg.identifier);
         viper::pkg::validatePackageUrl(pkg.homepage, "package homepage");
         for (const auto &assoc : pkg.fileAssociations)
             viper::pkg::validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
@@ -289,6 +436,8 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                         "macOS bundle display name must not be empty or contain path separators");
                 }
                 viper::pkg::validateWindowsFileName(displayName, "macOS bundle display name");
+                viper::pkg::validateMacOSBundleIdentifier(pkg.identifier,
+                                                          "macOS bundle identifier");
                 viper::pkg::validateDottedNumericVersion(version, "macOS package version");
                 if (!pkg.minOsMacos.empty())
                     viper::pkg::validateDottedNumericVersion(pkg.minOsMacos,
@@ -304,12 +453,18 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                 viper::pkg::validateDesktopCategories(pkg.category);
                 for (const auto &dep : pkg.depends)
                     viper::pkg::validateDebDependency(dep);
+                (void)viper::pkg::normalizePackageHookScript(pkg.postInstallScript,
+                                                              "post-install script");
+                (void)viper::pkg::normalizePackageHookScript(pkg.preUninstallScript,
+                                                              "pre-uninstall script");
                 (void)viper::pkg::normalizeDebName(proj.name);
                 (void)viper::pkg::normalizeExecName(proj.name);
                 break;
             }
             case PackageTarget::Windows:
                 viper::pkg::validateWindowsFileName(displayName, "Windows display name");
+                viper::pkg::validateWindowsProgIdBase(pkg.identifier,
+                                                       "Windows package identifier");
                 viper::pkg::validateDottedNumericVersion(version, "Windows package version");
                 if (!pkg.minOsWindows.empty())
                     viper::pkg::validateDottedNumericVersion(pkg.minOsWindows,
@@ -368,12 +523,13 @@ int cmdPackage(int argc, char **argv) {
     // Determine display name and version
     std::string displayName =
         proj.packageConfig.displayName.empty() ? proj.name : proj.packageConfig.displayName;
+    const std::string resolvedVersion = proj.version.empty() ? "0.0.0" : proj.version;
 
     // Validate version string (warn on clearly invalid formats)
     {
-        bool validVersion = !proj.version.empty();
+        bool validVersion = !resolvedVersion.empty();
         if (validVersion) {
-            for (char c : proj.version) {
+            for (char c : resolvedVersion) {
                 if (!std::isdigit(static_cast<unsigned char>(c)) && c != '.' && c != '-' &&
                     c != '+' && !std::isalpha(static_cast<unsigned char>(c))) {
                     validVersion = false;
@@ -382,7 +538,7 @@ int cmdPackage(int argc, char **argv) {
             }
         }
         if (!validVersion) {
-            std::cerr << "warning: version '" << proj.version
+            std::cerr << "warning: version '" << resolvedVersion
                       << "' may be invalid; expected format like '1.0.0' or '1.0.0-beta'\n";
         }
     }
@@ -413,8 +569,9 @@ int cmdPackage(int argc, char **argv) {
     }
 
     if (args.outputPath.empty()) {
-        args.outputPath = proj.name + "-" + proj.version + "-" + platformName(args.platformTarget) +
-                          "-" + archStr + platformExtension(args.platformTarget);
+        args.outputPath = proj.name + "-" + resolvedVersion + "-" +
+                          platformName(args.platformTarget) + "-" + archStr +
+                          platformExtension(args.platformTarget);
     }
 
     if (!validatePackageConfigForTarget(proj, args.platformTarget, archStr, std::cerr))
@@ -503,6 +660,13 @@ int cmdPackage(int argc, char **argv) {
                       << packageBinaryPath << "\n";
             return 1;
         }
+        try {
+            validateExecutableForPackageTarget(packageBinaryPath, args.platformTarget, archStr);
+        } catch (const std::exception &ex) {
+            std::cerr << "error: prebuilt executable is not valid for this package: " << ex.what()
+                      << "\n";
+            return 1;
+        }
     } else {
         // Step 1: Compile to native binary (using build pipeline)
         std::cerr << "Compiling " << proj.name << "...\n";
@@ -556,6 +720,15 @@ int cmdPackage(int argc, char **argv) {
             fs::remove(packageBinaryPath, ec);
             return 1;
         }
+        try {
+            validateExecutableForPackageTarget(packageBinaryPath, args.platformTarget, archStr);
+        } catch (const std::exception &ex) {
+            std::cerr << "error: compiled executable is not valid for this package: " << ex.what()
+                      << "\n";
+            std::error_code ec;
+            fs::remove(packageBinaryPath, ec);
+            return 1;
+        }
     }
 
     // Step 3: Package
@@ -577,7 +750,7 @@ int cmdPackage(int argc, char **argv) {
             case PackageTarget::MacOS: {
                 viper::pkg::MacOSBuildParams params;
                 params.projectName = proj.name;
-                params.version = proj.version;
+                params.version = resolvedVersion;
                 params.executablePath = packageBinaryPath;
                 params.projectRoot = proj.rootDir;
                 params.pkgConfig = proj.packageConfig;
@@ -588,7 +761,7 @@ int cmdPackage(int argc, char **argv) {
             case PackageTarget::Linux: {
                 viper::pkg::LinuxBuildParams lparams;
                 lparams.projectName = proj.name;
-                lparams.version = proj.version;
+                lparams.version = resolvedVersion;
                 lparams.executablePath = packageBinaryPath;
                 lparams.projectRoot = proj.rootDir;
                 lparams.pkgConfig = proj.packageConfig;
@@ -601,7 +774,7 @@ int cmdPackage(int argc, char **argv) {
             case PackageTarget::Windows: {
                 viper::pkg::WindowsBuildParams wparams;
                 wparams.projectName = proj.name;
-                wparams.version = proj.version;
+                wparams.version = resolvedVersion;
                 wparams.executablePath = packageBinaryPath;
                 wparams.projectRoot = proj.rootDir;
                 wparams.pkgConfig = proj.packageConfig;
@@ -613,7 +786,7 @@ int cmdPackage(int argc, char **argv) {
             case PackageTarget::Tarball: {
                 viper::pkg::LinuxBuildParams tparams;
                 tparams.projectName = proj.name;
-                tparams.version = proj.version;
+                tparams.version = resolvedVersion;
                 tparams.executablePath = packageBinaryPath;
                 tparams.projectRoot = proj.rootDir;
                 tparams.pkgConfig = proj.packageConfig;

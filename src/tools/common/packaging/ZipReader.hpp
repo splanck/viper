@@ -36,6 +36,7 @@ struct ZipEntry {
     uint32_t compressedSize;
     uint32_t uncompressedSize;
     uint16_t method; ///< 0=stored, 8=deflate
+    uint16_t flags{0};
     uint32_t crc32;
     uint32_t localHeaderOffset;
 };

@@ -101,6 +101,7 @@ void ZipReader::parseCentralDirectory() {
 
         ZipEntry entry;
         const uint16_t flags = rdLE16(data_ + pos + 8);
+        entry.flags = flags;
         entry.method = rdLE16(data_ + pos + 10);
         entry.crc32 = rdLE32(data_ + pos + 16);
         entry.compressedSize = rdLE32(data_ + pos + 20);
@@ -159,12 +160,22 @@ std::vector<uint8_t> ZipReader::extract(const ZipEntry &entry) const {
 
     const uint16_t localFlags = rdLE16(data_ + lhOff + 6);
     const uint16_t localMethod = rdLE16(data_ + lhOff + 8);
+    const uint32_t localCrc = rdLE32(data_ + lhOff + 14);
+    const uint32_t localCompressedSize = rdLE32(data_ + lhOff + 18);
+    const uint32_t localUncompressedSize = rdLE32(data_ + lhOff + 22);
     if ((localFlags & 0x0001) != 0)
         throw ZipReadError("ZIP: encrypted entries are not supported");
     if ((localFlags & 0x0008) != 0)
         throw ZipReadError("ZIP: data descriptors are not supported");
+    if (localFlags != entry.flags)
+        throw ZipReadError("ZIP: local flags do not match central directory");
     if (localMethod != entry.method)
         throw ZipReadError("ZIP: local compression method does not match central directory");
+    if (localCrc != entry.crc32)
+        throw ZipReadError("ZIP: local CRC-32 does not match central directory");
+    if (localCompressedSize != entry.compressedSize ||
+        localUncompressedSize != entry.uncompressedSize)
+        throw ZipReadError("ZIP: local sizes do not match central directory");
 
     uint16_t lhNameLen = rdLE16(data_ + lhOff + 26);
     uint16_t lhExtraLen = rdLE16(data_ + lhOff + 28);

@@ -81,16 +81,15 @@ void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
     const std::string installDir = layout.installDirName.empty() ? layout.displayName
                                                                  : layout.installDirName;
     validateWindowsFileName(installDir, "Windows install directory");
-    validateStubPathFits("C:\\Program Files\\" + installDir, "Windows install directory");
+    const std::string rootProbe = "%ProgramFiles%\\" + installDir;
+    validateStubPathFits(rootProbe, "Windows install directory");
     for (const auto &dir : layout.installDirectories) {
         validateWindowsRelativePath(dir.relativePath, "Windows install directory path");
-        validateStubPathFits("C:\\Program Files\\" + installDir + "\\" + dir.relativePath,
-                             "Windows install directory path");
+        validateStubPathFits(rootProbe + "\\" + dir.relativePath, "Windows install directory path");
     }
     for (const auto &file : layout.installFiles) {
         validateWindowsRelativePath(file.relativePath, "Windows install file path");
-        validateStubPathFits("C:\\Program Files\\" + installDir + "\\" + file.relativePath,
-                             "Windows install file path");
+        validateStubPathFits(rootProbe + "\\" + file.relativePath, "Windows install file path");
     }
     for (const auto &file : layout.uninstallFiles)
         validateWindowsRelativePath(file.relativePath, "Windows uninstall file path");
@@ -109,9 +108,16 @@ std::string windowsProgIdFor(const PackageConfig &pkg,
     if (!ext.empty() && ext.front() == '.')
         ext.erase(ext.begin());
     std::string base = pkg.identifier.empty() ? ("viper." + exec) : pkg.identifier;
-    validatePackageIdentifier(base, "Windows file association ProgID base");
+    validateWindowsProgIdBase(base, "Windows file association ProgID base");
     validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
     return base + "." + ext;
+}
+
+std::string programFilesEnvPath(const std::string &installDir, const std::string &leaf = {}) {
+    std::string path = "%ProgramFiles%\\" + installDir;
+    if (!leaf.empty())
+        path += "\\" + leaf;
+    return path;
 }
 
 void addParentDirs(std::vector<WindowsPackageDirEntry> &out,
@@ -176,7 +182,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     const std::string exec = normalizeExecName(params.projectName);
     const std::string installDir = displayName;
     validateWindowsFileName(displayName, "Windows display name");
-    validatePackageIdentifier(pkg.identifier);
+    validateWindowsProgIdBase(pkg.identifier, "Windows package identifier");
     validateDottedNumericVersion(params.version.empty() ? "0.0.0" : params.version,
                                  "Windows package version");
     if (!pkg.minOsWindows.empty())
@@ -231,6 +237,18 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                    exec + ".exe",
                    true);
 
+    if (!icoData.empty()) {
+        addOverlayFile(zip,
+                       "app/" + exec + ".ico",
+                       icoData.data(),
+                       icoData.size(),
+                       0100644,
+                       layout,
+                       WindowsInstallRoot::InstallDir,
+                       exec + ".ico",
+                       true);
+    }
+
     for (const auto &asset : pkg.assets) {
         fs::path srcPath = resolvePackageSourcePath(params.projectRoot, asset.sourcePath, "asset source path");
         const std::string targetDir =
@@ -241,6 +259,12 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
             throw std::runtime_error("asset not found: " + asset.sourcePath);
 
         if (fs::is_directory(srcPath)) {
+            if (!targetDir.empty()) {
+                addUniqueDir(layout.installDirectories,
+                             installDirSet,
+                             WindowsInstallRoot::InstallDir,
+                             targetDir);
+            }
             safeDirectoryIterate(
                 srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
                     const auto relPath = sanitizePackageRelativePath(
@@ -299,11 +323,11 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
 
     if (pkg.shortcutMenu) {
         LnkParams lnk;
-        lnk.targetPath = "C:\\Program Files\\" + installDir + "\\" + exec + ".exe";
-        lnk.workingDir = "C:\\Program Files\\" + installDir;
+        lnk.targetPath = programFilesEnvPath(installDir, exec + ".exe");
+        lnk.workingDir = programFilesEnvPath(installDir);
         lnk.description = displayName;
-        if (!pkg.iconPath.empty())
-            lnk.iconPath = lnk.targetPath;
+        if (!icoData.empty())
+            lnk.iconPath = programFilesEnvPath(installDir, exec + ".ico");
         const auto lnkData = generateLnk(lnk);
         addOverlayFile(zip,
                        "meta/start_menu.lnk",
@@ -318,11 +342,11 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
 
     if (pkg.shortcutDesktop) {
         LnkParams lnk;
-        lnk.targetPath = "C:\\Program Files\\" + installDir + "\\" + exec + ".exe";
-        lnk.workingDir = "C:\\Program Files\\" + installDir;
+        lnk.targetPath = programFilesEnvPath(installDir, exec + ".exe");
+        lnk.workingDir = programFilesEnvPath(installDir);
         lnk.description = displayName;
-        if (!pkg.iconPath.empty())
-            lnk.iconPath = lnk.targetPath;
+        if (!icoData.empty())
+            lnk.iconPath = programFilesEnvPath(installDir, exec + ".ico");
         const auto lnkData = generateLnk(lnk);
         addOverlayFile(zip,
                        "meta/desktop.lnk",
@@ -388,7 +412,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
 
 void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     validateWindowsFileName(params.displayName, "Windows display name");
-    validatePackageIdentifier(params.identifier);
+    validateWindowsProgIdBase(params.identifier, "Windows package identifier");
     validateSingleLineField(params.publisher, "Windows package publisher");
     validateSingleLineField(params.manifest.version, "Windows package version");
     WindowsPackageLayout layout;
@@ -412,6 +436,11 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         const std::string relInstall =
             sanitizePackageRelativePath(file.stagedRelativePath, "windows toolchain path");
         validateWindowsRelativePath(relInstall, "windows toolchain path");
+        if (file.symlink && !fs::is_regular_file(file.stagedAbsolutePath)) {
+            throw std::runtime_error("Windows toolchain installers can only dereference "
+                                     "symlinks to regular files: " +
+                                     file.stagedRelativePath);
+        }
         addParentDirs(layout.installDirectories,
                       installDirSet,
                       WindowsInstallRoot::InstallDir,

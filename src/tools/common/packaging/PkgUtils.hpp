@@ -149,14 +149,60 @@ inline void validateToolchainArchitecture(const std::string &arch,
 }
 
 inline void validateDebVersion(const std::string &version, const char *fieldName = "version") {
+    const auto fail = [&](const std::string &why) {
+        throw std::runtime_error(std::string(fieldName) + " is not a valid Debian version: '" +
+                                 version + "' (" + why + ")");
+    };
     if (version.empty())
-        throw std::runtime_error(std::string(fieldName) + " must not be empty");
-    for (char c : version) {
+        fail("empty");
+
+    int colonCount = 0;
+    std::size_t colon = std::string::npos;
+    for (std::size_t i = 0; i < version.size(); ++i) {
+        const char c = version[i];
         unsigned char uc = static_cast<unsigned char>(c);
         if (!std::isalnum(uc) && c != '.' && c != '+' && c != '~' && c != '-' && c != ':') {
-            throw std::runtime_error(std::string(fieldName) +
-                                     " contains a character invalid for Debian versions: '" +
-                                     version + "'");
+            fail("invalid character");
+        }
+        if (c == ':') {
+            ++colonCount;
+            colon = i;
+        }
+    }
+    if (colonCount > 1)
+        fail("multiple epochs");
+    std::size_t upstreamStart = 0;
+    if (colon != std::string::npos) {
+        if (colon == 0)
+            fail("empty epoch");
+        for (std::size_t i = 0; i < colon; ++i) {
+            if (!std::isdigit(static_cast<unsigned char>(version[i])))
+                fail("epoch must be numeric");
+        }
+        upstreamStart = colon + 1;
+    }
+    if (upstreamStart >= version.size())
+        fail("empty upstream version");
+    const std::size_t dash = version.find('-', upstreamStart);
+    const std::size_t upstreamEnd = dash == std::string::npos ? version.size() : dash;
+    if (upstreamEnd == upstreamStart)
+        fail("empty upstream version");
+    if (!std::isdigit(static_cast<unsigned char>(version[upstreamStart])))
+        fail("upstream version must start with a digit");
+    for (std::size_t i = upstreamStart; i < upstreamEnd; ++i) {
+        const char c = version[i];
+        unsigned char uc = static_cast<unsigned char>(c);
+        if (!std::isalnum(uc) && c != '.' && c != '+' && c != '~' && c != ':')
+            fail("invalid upstream character");
+    }
+    if (dash != std::string::npos) {
+        if (dash + 1 >= version.size())
+            fail("empty Debian revision");
+        for (std::size_t i = dash + 1; i < version.size(); ++i) {
+            const char c = version[i];
+            unsigned char uc = static_cast<unsigned char>(c);
+            if (!std::isalnum(uc) && c != '.' && c != '+' && c != '~')
+                fail("invalid Debian revision character");
         }
     }
 }
@@ -413,23 +459,102 @@ inline void validatePackageIdentifier(const std::string &identifier,
     if (identifier.empty())
         return;
     rejectLineBreaks(identifier, fieldName);
+    if (identifier.size() > 255)
+        throw std::runtime_error(std::string(fieldName) + " is too long: '" + identifier + "'");
+    std::size_t componentStart = 0;
+    bool sawDot = false;
+    for (std::size_t i = 0; i <= identifier.size(); ++i) {
+        if (i < identifier.size() && identifier[i] != '.')
+            continue;
+        const std::size_t len = i - componentStart;
+        if (len == 0)
+            throw std::runtime_error(std::string(fieldName) + " has an empty component: '" +
+                                     identifier + "'");
+        if (len > 63)
+            throw std::runtime_error(std::string(fieldName) + " has a component longer than 63 "
+                                     "characters: '" +
+                                     identifier + "'");
+        const char first = identifier[componentStart];
+        const char last = identifier[i - 1];
+        if (!std::isalnum(static_cast<unsigned char>(first)) ||
+            !std::isalnum(static_cast<unsigned char>(last))) {
+            throw std::runtime_error(std::string(fieldName) +
+                                     " components must start and end with a letter or digit: '" +
+                                     identifier + "'");
+        }
+        for (std::size_t j = componentStart; j < i; ++j) {
+            const char c = identifier[j];
+            unsigned char uc = static_cast<unsigned char>(c);
+            if (!std::isalnum(uc) && c != '-')
+                throw std::runtime_error(std::string(fieldName) +
+                                         " components may contain only letters, digits, and '-': '" +
+                                         identifier + "'");
+        }
+        if (i < identifier.size()) {
+            sawDot = true;
+            componentStart = i + 1;
+        }
+    }
+    if (!sawDot)
+        throw std::runtime_error(std::string(fieldName) +
+                                 " must contain at least one '.' reverse-DNS separator: '" +
+                                 identifier + "'");
+}
+
+inline void validateMacOSBundleIdentifier(const std::string &identifier,
+                                          const char *fieldName = "macOS bundle identifier") {
+    validatePackageIdentifier(identifier, fieldName);
+}
+
+inline void validateWindowsProgIdBase(const std::string &identifier,
+                                      const char *fieldName = "Windows ProgID base") {
+    if (identifier.empty())
+        return;
+    rejectLineBreaks(identifier, fieldName);
+    bool sawDot = false;
     bool lastWasDot = true;
     for (char c : identifier) {
         unsigned char uc = static_cast<unsigned char>(c);
-        if (std::isalnum(uc) || c == '-' || c == '_') {
+        if (std::isalnum(uc) || c == '_' || c == '-') {
             lastWasDot = false;
             continue;
         }
         if (c == '.' && !lastWasDot) {
+            sawDot = true;
             lastWasDot = true;
             continue;
         }
-        throw std::runtime_error(std::string(fieldName) + " is not a valid identifier: '" +
-                                 identifier + "'");
+        throw std::runtime_error(std::string(fieldName) +
+                                 " is not a valid Windows ProgID base: '" + identifier + "'");
     }
-    if (lastWasDot)
-        throw std::runtime_error(std::string(fieldName) + " must not end with '.': '" +
+    if (!sawDot || lastWasDot)
+        throw std::runtime_error(std::string(fieldName) +
+                                 " must contain non-empty dot-separated components: '" +
                                  identifier + "'");
+}
+
+inline std::string normalizePackageHookScript(std::string script, const char *fieldName) {
+    if (script.empty())
+        return {};
+    std::string out;
+    out.reserve(script.size());
+    for (std::size_t i = 0; i < script.size(); ++i) {
+        const unsigned char uc = static_cast<unsigned char>(script[i]);
+        if (uc == 0)
+            throw std::runtime_error(std::string(fieldName) + " must not contain NUL bytes");
+        if (script[i] == '\r') {
+            if (i + 1 < script.size() && script[i + 1] == '\n')
+                continue;
+            out.push_back('\n');
+            continue;
+        }
+        if ((uc < 0x20 && script[i] != '\n' && script[i] != '\t') || uc == 0x7F) {
+            throw std::runtime_error(std::string(fieldName) +
+                                     " must not contain control characters");
+        }
+        out.push_back(script[i]);
+    }
+    return out;
 }
 
 inline void validateFileAssociation(const std::string &extension,

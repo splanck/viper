@@ -60,6 +60,7 @@ struct DataFile {
     std::string installPath; ///< e.g. "usr/bin/hello"
     std::vector<uint8_t> data;
     bool symlink{false};
+    bool directory{false};
     std::string symlinkTarget;
 
     DataFile(std::string path, std::vector<uint8_t> bytes)
@@ -69,6 +70,12 @@ struct DataFile {
         DataFile file(std::move(path), {});
         file.symlink = true;
         file.symlinkTarget = std::move(target);
+        return file;
+    }
+
+    static DataFile dir(std::string path) {
+        DataFile file(std::move(path), {});
+        file.directory = true;
         return file;
     }
 };
@@ -105,6 +112,8 @@ void addDirectoriesForDataFiles(TarWriter &tar, const std::vector<DataFile> &dat
     };
 
     for (const auto &df : dataFiles) {
+        if (df.directory)
+            ensureDir("./" + df.installPath);
         size_t pos = 0;
         while ((pos = df.installPath.find('/', pos)) != std::string::npos) {
             ensureDir("./" + df.installPath.substr(0, pos));
@@ -128,7 +137,28 @@ std::string debSectionFor(const std::string &category) {
         return "utils";
     const size_t semi = category.find(';');
     const std::string first = semi == std::string::npos ? category : category.substr(0, semi);
-    return first.empty() ? std::string("utils") : normalizeDebName(first);
+    if (first.empty())
+        return "utils";
+    if (first == "Development" || first == "IDE" || first == "Debugger" ||
+        first == "RevisionControl")
+        return "devel";
+    if (first == "Game")
+        return "games";
+    if (first == "Graphics" || first == "Photography" || first == "2DGraphics" ||
+        first == "3DGraphics")
+        return "graphics";
+    if (first == "Network" || first == "WebBrowser" || first == "Email")
+        return "net";
+    if (first == "AudioVideo" || first == "Audio" || first == "Video" || first == "Player")
+        return "sound";
+    if (first == "Office" || first == "Spreadsheet" || first == "WordProcessor" ||
+        first == "Presentation")
+        return "editors";
+    if (first == "Science" || first == "Education")
+        return "science";
+    if (first == "System" || first == "Settings" || first == "Utility")
+        return "utils";
+    return "utils";
 }
 
 void validateDebMetadata(const PackageConfig &pkg,
@@ -264,11 +294,15 @@ void buildDebPackage(const LinuxBuildParams &params) {
             throw std::runtime_error("asset not found: " + asset.sourcePath);
 
         if (fs::is_directory(srcPath)) {
+            dataFiles.push_back(DataFile::dir(sharePrefix));
             safeDirectoryIterate(
                 srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
-                    if (entry.is_regular_file()) {
-                        auto relPath = sanitizePackageRelativePath(
-                            fs::relative(entry.path(), srcPath).generic_string(), "asset path");
+                    auto relPath = sanitizePackageRelativePath(
+                        fs::relative(entry.path(), srcPath).generic_string(), "asset path");
+                    if (entry.is_directory()) {
+                        dataFiles.push_back(DataFile::dir(
+                            joinPackageRelativePath(sharePrefix, relPath, "asset path")));
+                    } else if (entry.is_regular_file()) {
                         auto fileData = readFile(entry.path().string());
                         dataFiles.push_back(
                             {joinPackageRelativePath(sharePrefix, relPath, "asset path"),
@@ -287,8 +321,11 @@ void buildDebPackage(const LinuxBuildParams &params) {
         }
     }
 
-    // .desktop file
-    if (pkg.shortcutMenu || pkg.shortcutDesktop) {
+    // .desktop file. File associations require a desktop handler even if it is
+    // hidden from normal application menus.
+    const bool needDesktopEntry =
+        pkg.shortcutMenu || pkg.shortcutDesktop || !pkg.fileAssociations.empty();
+    if (needDesktopEntry) {
         DesktopEntryParams dep;
         dep.name = displayName;
         dep.comment = pkg.description;
@@ -299,6 +336,7 @@ void buildDebPackage(const LinuxBuildParams &params) {
         dep.workingDir = "/usr/share/" + pkgName;
         dep.fileAssociations = pkg.fileAssociations;
         dep.acceptsFileArgument = !pkg.fileAssociations.empty();
+        dep.noDisplay = !pkg.shortcutMenu && !pkg.shortcutDesktop && !pkg.fileAssociations.empty();
         auto desktop = generateDesktopEntry(dep);
         std::vector<uint8_t> ddata(desktop.begin(), desktop.end());
         dataFiles.push_back({"usr/share/applications/" + pkgName + ".desktop", ddata});
@@ -348,6 +386,8 @@ void buildDebPackage(const LinuxBuildParams &params) {
     for (const auto &df : dataFiles) {
         // Ensure all parent directories exist
         std::string path = df.installPath;
+        if (df.directory)
+            ensureDir("./" + path);
         size_t pos = 0;
         while ((pos = path.find('/', pos)) != std::string::npos) {
             ensureDir("./" + path.substr(0, pos));
@@ -367,6 +407,8 @@ void buildDebPackage(const LinuxBuildParams &params) {
     for (const auto &df : dataFiles) {
         uint32_t mode = 0644;
         // Executables get 0755
+        if (df.directory)
+            continue;
         if (df.installPath.find("usr/bin/") == 0)
             mode = 0755;
         dataTar.addFile("./" + df.installPath, df.data.data(), df.data.size(), mode);
@@ -425,7 +467,7 @@ void buildDebPackage(const LinuxBuildParams &params) {
     {
         std::ostringstream md5s;
         for (const auto &df : dataFiles) {
-            if (!df.symlink) {
+            if (!df.symlink && !df.directory) {
                 auto hex = md5hex(df.data.data(), df.data.size());
                 md5s << hex << "  " << df.installPath << "\n";
             }
@@ -435,7 +477,7 @@ void buildDebPackage(const LinuxBuildParams &params) {
 
     // postinst script (update MIME database, desktop database, custom hooks)
     bool needPostinst =
-        !pkg.fileAssociations.empty() || pkg.shortcutMenu || pkg.shortcutDesktop ||
+        needDesktopEntry || pkg.shortcutDesktop ||
         !pkg.postInstallScript.empty();
     if (needPostinst) {
         std::ostringstream pi;
@@ -444,42 +486,49 @@ void buildDebPackage(const LinuxBuildParams &params) {
         if (!pkg.fileAssociations.empty())
             pi << "if command -v update-mime-database >/dev/null 2>&1; then "
                   "update-mime-database /usr/share/mime; fi\n";
-        if (pkg.shortcutMenu)
+        if (needDesktopEntry)
             pi << "if command -v update-desktop-database >/dev/null 2>&1; then "
                   "update-desktop-database /usr/share/applications; fi\n";
         if (pkg.shortcutDesktop) {
             pi << "for d in /root/Desktop /home/*/Desktop; do "
                   "[ -d \"$d\" ] || continue; "
-                  "cp /usr/share/applications/" << pkgName << ".desktop \"$d/" << pkgName
-               << ".desktop\"; chmod 755 \"$d/" << pkgName << ".desktop\" || true; done\n";
+                  "(cp /usr/share/applications/" << pkgName << ".desktop \"$d/" << pkgName
+               << ".desktop\" && chmod 755 \"$d/" << pkgName << ".desktop\") || true; done\n";
         }
         if (!pkg.postInstallScript.empty())
-            pi << pkg.postInstallScript << "\n";
+            pi << normalizePackageHookScript(pkg.postInstallScript, "post-install script") << "\n";
         controlTar.addFileString("./postinst", pi.str(), 0755);
     }
 
-    // prerm script (cleanup + custom hooks)
-    bool needPrerm =
-        !pkg.fileAssociations.empty() || pkg.shortcutMenu || pkg.shortcutDesktop ||
-        !pkg.preUninstallScript.empty();
+    // prerm script (custom hooks + desktop shortcut cleanup before files go away)
+    bool needPrerm = pkg.shortcutDesktop || !pkg.preUninstallScript.empty();
     if (needPrerm) {
         std::ostringstream pr;
         pr << "#!/bin/sh\n";
         pr << "set -e\n";
         if (!pkg.preUninstallScript.empty())
-            pr << pkg.preUninstallScript << "\n";
-        if (!pkg.fileAssociations.empty())
-            pr << "if command -v update-mime-database >/dev/null 2>&1; then "
-                  "update-mime-database /usr/share/mime; fi\n";
-        if (pkg.shortcutMenu)
-            pr << "if command -v update-desktop-database >/dev/null 2>&1; then "
-                  "update-desktop-database /usr/share/applications; fi\n";
+            pr << normalizePackageHookScript(pkg.preUninstallScript, "pre-uninstall script") << "\n";
         if (pkg.shortcutDesktop) {
             pr << "for d in /root/Desktop /home/*/Desktop; do "
                   "[ -e \"$d/" << pkgName << ".desktop\" ] && rm -f \"$d/" << pkgName
                << ".desktop\" || true; done\n";
         }
         controlTar.addFileString("./prerm", pr.str(), 0755);
+    }
+
+    // postrm script refreshes caches after package payload files have been removed.
+    const bool needPostrm = !pkg.fileAssociations.empty() || needDesktopEntry;
+    if (needPostrm) {
+        std::ostringstream po;
+        po << "#!/bin/sh\n";
+        po << "set -e\n";
+        if (!pkg.fileAssociations.empty())
+            po << "if command -v update-mime-database >/dev/null 2>&1; then "
+                  "update-mime-database /usr/share/mime || true; fi\n";
+        if (needDesktopEntry)
+            po << "if command -v update-desktop-database >/dev/null 2>&1; then "
+                  "update-desktop-database /usr/share/applications || true; fi\n";
+        controlTar.addFileString("./postrm", po.str(), 0755);
     }
 
     auto controlTarBytes = controlTar.finish();
@@ -534,6 +583,8 @@ void buildTarball(const LinuxBuildParams &params) {
             throw std::runtime_error("asset not found: " + asset.sourcePath);
 
         if (fs::is_directory(srcPath)) {
+            if (!targetDir.empty())
+                tar.addDirectory(prefix, 0755);
             safeDirectoryIterate(
                 srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
                     if (entry.is_directory()) {

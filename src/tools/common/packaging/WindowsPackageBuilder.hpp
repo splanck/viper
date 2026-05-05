@@ -52,15 +52,15 @@ struct WindowsBuildParams {
 /// Creates a PE32+ executable containing:
 /// 1. PE headers with RT_MANIFEST resource (UAC elevation).
 /// 2. x64 .text stub implementing installation logic.
-/// 3. ZIP overlay containing the application binary, assets, shortcuts, icons.
+/// 3. ZIP overlay containing the application binary, assets, icon files,
+///    shortcuts, and the generated uninstaller.
 ///
 /// The ZIP payload is structured as:
 ///   app/<name>.exe          — The application binary
-///   app/uninstall.exe       — Uninstaller PE (reads meta/install.ini)
+///   app/<name>.ico          — Application shortcut icon (if source PNG exists)
+///   app/uninstall.exe       — Uninstaller PE
 ///   app/<assets>/           — Asset files
-///   meta/install.ini        — Installation metadata (paths, registry keys)
-///   meta/icon.ico           — Application icon (if source PNG exists)
-///   meta/shortcut.lnk       — Start Menu shortcut
+///   meta/start_menu.lnk     — Start Menu shortcut (if enabled)
 ///   meta/desktop.lnk        — Desktop shortcut (if enabled)
 ///
 /// @param params Build parameters.

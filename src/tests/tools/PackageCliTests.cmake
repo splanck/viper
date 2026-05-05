@@ -164,3 +164,82 @@ execute_process(
 if (NOT _linux_dep_rv EQUAL 0)
     message(FATAL_ERROR "valid Debian dependency dry-run should succeed\nstdout:\n${_linux_dep_out}\nstderr:\n${_linux_dep_err}")
 endif ()
+
+set(_bad_deb_version_project "${TEST_WORK_DIR}/bad-deb-version-project")
+file(MAKE_DIRECTORY "${_bad_deb_version_project}")
+file(WRITE "${_bad_deb_version_project}/main.zia" "func start() {}\n")
+file(WRITE "${_bad_deb_version_project}/viper.project"
+"project baddebversion
+version -1.0
+lang zia
+entry main.zia
+")
+
+execute_process(
+        COMMAND "${VIPER_BIN}" package "${_bad_deb_version_project}" --target linux --dry-run
+        RESULT_VARIABLE _bad_deb_version_rv
+        OUTPUT_VARIABLE _bad_deb_version_out
+        ERROR_VARIABLE _bad_deb_version_err)
+if (_bad_deb_version_rv EQUAL 0)
+    message(FATAL_ERROR "dry-run with an invalid Debian version should fail")
+endif ()
+if (NOT _bad_deb_version_err MATCHES "Debian version")
+    message(FATAL_ERROR "bad Debian version diagnostic did not mention Debian version\nstdout:\n${_bad_deb_version_out}\nstderr:\n${_bad_deb_version_err}")
+endif ()
+
+set(_bad_macos_id_project "${TEST_WORK_DIR}/bad-macos-id-project")
+file(MAKE_DIRECTORY "${_bad_macos_id_project}")
+file(WRITE "${_bad_macos_id_project}/main.zia" "func start() {}\n")
+file(WRITE "${_bad_macos_id_project}/viper.project"
+"project badmacid
+version 1.0.0
+lang zia
+entry main.zia
+package-identifier org.viper.bad_id
+")
+
+execute_process(
+        COMMAND "${VIPER_BIN}" package "${_bad_macos_id_project}" --target macos --dry-run
+        RESULT_VARIABLE _bad_macos_id_rv
+        OUTPUT_VARIABLE _bad_macos_id_out
+        ERROR_VARIABLE _bad_macos_id_err)
+if (_bad_macos_id_rv EQUAL 0)
+    message(FATAL_ERROR "dry-run with an invalid macOS bundle identifier should fail")
+endif ()
+if (NOT _bad_macos_id_err MATCHES "bundle identifier")
+    message(FATAL_ERROR "bad macOS identifier diagnostic did not mention bundle identifier\nstdout:\n${_bad_macos_id_out}\nstderr:\n${_bad_macos_id_err}")
+endif ()
+
+set(_no_version_project "${TEST_WORK_DIR}/no-version-project")
+file(MAKE_DIRECTORY "${_no_version_project}")
+file(WRITE "${_no_version_project}/main.zia" "func start() {}\n")
+file(WRITE "${_no_version_project}/viper.project"
+"project noversionpkg
+lang zia
+entry main.zia
+")
+
+execute_process(
+        COMMAND "${VIPER_BIN}" package "${_no_version_project}" --target tarball --dry-run
+        RESULT_VARIABLE _no_version_rv
+        OUTPUT_VARIABLE _no_version_out
+        ERROR_VARIABLE _no_version_err)
+if (NOT _no_version_rv EQUAL 0)
+    message(FATAL_ERROR "dry-run without a version should use the package fallback version\nstdout:\n${_no_version_out}\nstderr:\n${_no_version_err}")
+endif ()
+if (NOT _no_version_err MATCHES "noversionpkg-0\\.0\\.0-tarball")
+    message(FATAL_ERROR "default output path did not use fallback version 0.0.0\nstdout:\n${_no_version_out}\nstderr:\n${_no_version_err}")
+endif ()
+
+file(WRITE "${TEST_WORK_DIR}/not-an-installer.zip" "not an installer\n")
+execute_process(
+        COMMAND "${VIPER_BIN}" install-package --verify-only "${TEST_WORK_DIR}/not-an-installer.zip"
+        RESULT_VARIABLE _verify_unknown_rv
+        OUTPUT_VARIABLE _verify_unknown_out
+        ERROR_VARIABLE _verify_unknown_err)
+if (_verify_unknown_rv EQUAL 0)
+    message(FATAL_ERROR "install-package --verify-only should reject unknown extensions")
+endif ()
+if (NOT _verify_unknown_err MATCHES "cannot infer")
+    message(FATAL_ERROR "unknown verify-only extension diagnostic did not mention inference\nstdout:\n${_verify_unknown_out}\nstderr:\n${_verify_unknown_err}")
+endif ()

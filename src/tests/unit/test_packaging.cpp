@@ -59,6 +59,10 @@
 
 using namespace viper::pkg;
 
+extern "C" {
+uint32_t rt_crc32_compute(const uint8_t *data, size_t len);
+}
+
 // ============================================================================
 // Helper: read a little-endian uint16 from a byte buffer
 // ============================================================================
@@ -76,8 +80,64 @@ static uint32_t readBE32(const uint8_t *p) {
            (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
 }
 
+static void appendBE32(std::vector<uint8_t> &buf, uint32_t v) {
+    buf.push_back(static_cast<uint8_t>((v >> 24) & 0xFF));
+    buf.push_back(static_cast<uint8_t>((v >> 16) & 0xFF));
+    buf.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
+    buf.push_back(static_cast<uint8_t>(v & 0xFF));
+}
+
+static uint32_t testAdler32(const uint8_t *data, size_t len) {
+    uint32_t a = 1, b = 0;
+    for (size_t i = 0; i < len; ++i) {
+        a = (a + data[i]) % 65521;
+        b = (b + a) % 65521;
+    }
+    return (b << 16) | a;
+}
+
+static void appendPngChunk(std::vector<uint8_t> &buf,
+                           const char type[4],
+                           const std::vector<uint8_t> &payload) {
+    appendBE32(buf, static_cast<uint32_t>(payload.size()));
+    const size_t typeOff = buf.size();
+    buf.insert(buf.end(), reinterpret_cast<const uint8_t *>(type),
+               reinterpret_cast<const uint8_t *>(type) + 4);
+    buf.insert(buf.end(), payload.begin(), payload.end());
+    appendBE32(buf, rt_crc32_compute(buf.data() + typeOff, 4 + payload.size()));
+}
+
+static std::vector<uint8_t> makeIndexedPng2x1WithTransparency() {
+    std::vector<uint8_t> png = {137, 80, 78, 71, 13, 10, 26, 10};
+    std::vector<uint8_t> ihdr;
+    appendBE32(ihdr, 2);
+    appendBE32(ihdr, 1);
+    ihdr.push_back(8); // bit depth
+    ihdr.push_back(3); // indexed color
+    ihdr.push_back(0);
+    ihdr.push_back(0);
+    ihdr.push_back(0);
+    appendPngChunk(png, "IHDR", ihdr);
+    appendPngChunk(png, "PLTE", {255, 0, 0, 0, 0, 255});
+    appendPngChunk(png, "tRNS", {255, 0});
+
+    std::vector<uint8_t> raw = {0, 0, 1};
+    auto deflated = deflate(raw.data(), raw.size());
+    std::vector<uint8_t> zlib = {0x78, 0x01};
+    zlib.insert(zlib.end(), deflated.begin(), deflated.end());
+    appendBE32(zlib, testAdler32(raw.data(), raw.size()));
+    appendPngChunk(png, "IDAT", zlib);
+    appendPngChunk(png, "IEND", {});
+    return png;
+}
+
 static bool containsUtf16LE(const std::vector<uint8_t> &data, const std::string &text) {
     const auto needle = utf8ToUtf16LEBytes(text, true);
+    return std::search(data.begin(), data.end(), needle.begin(), needle.end()) != data.end();
+}
+
+static bool containsUtf16LEStringData(const std::vector<uint8_t> &data, const std::string &text) {
+    const auto needle = utf8ToUtf16LEBytes(text, false);
     return std::search(data.begin(), data.end(), needle.begin(), needle.end()) != data.end();
 }
 
@@ -687,6 +747,26 @@ TEST(Lnk, HasLinkInfoFlag) {
     EXPECT_TRUE((flags & 0x80) != 0); // IsUnicode
 }
 
+TEST(Lnk, EnvironmentTargetAddsExpStringBlock) {
+    LnkParams params;
+    params.targetPath = "%ProgramFiles%\\Test App\\testapp.exe";
+    params.workingDir = "%ProgramFiles%\\Test App";
+    params.description = "Test App";
+    auto data = generateLnk(params);
+
+    const uint32_t flags = readLE32(data.data() + 20);
+    EXPECT_TRUE((flags & 0x00000200) != 0); // HasExpString
+    bool foundBlock = false;
+    for (size_t i = 0; i + 8 <= data.size(); ++i) {
+        if (readLE32(data.data() + i) == 0x00000314 &&
+            readLE32(data.data() + i + 4) == 0xA0000001) {
+            foundBlock = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundBlock);
+}
+
 TEST(Lnk, LinkInfoContainsLocalBasePath) {
     LnkParams params;
     params.targetPath = "C:\\MyApp\\app.exe";
@@ -863,6 +943,22 @@ TEST(PNG, ResizeRejectsOverflowDimensions) {
     EXPECT_THROWS(imageResize(img, 0xFFFFFFFFu, 2), PNGError);
 }
 
+TEST(PNG, ReadsIndexedPaletteTransparency) {
+    const auto png = makeIndexedPng2x1WithTransparency();
+    const auto img = pngReadMemory(png.data(), png.size());
+    ASSERT_EQ(img.width, static_cast<uint32_t>(2));
+    ASSERT_EQ(img.height, static_cast<uint32_t>(1));
+    ASSERT_EQ(img.pixels.size(), static_cast<size_t>(8));
+    EXPECT_EQ(img.pixels[0], static_cast<uint8_t>(255));
+    EXPECT_EQ(img.pixels[1], static_cast<uint8_t>(0));
+    EXPECT_EQ(img.pixels[2], static_cast<uint8_t>(0));
+    EXPECT_EQ(img.pixels[3], static_cast<uint8_t>(255));
+    EXPECT_EQ(img.pixels[4], static_cast<uint8_t>(0));
+    EXPECT_EQ(img.pixels[5], static_cast<uint8_t>(0));
+    EXPECT_EQ(img.pixels[6], static_cast<uint8_t>(255));
+    EXPECT_EQ(img.pixels[7], static_cast<uint8_t>(0));
+}
+
 // ============================================================================
 // Plist Tests
 // ============================================================================
@@ -1015,6 +1111,20 @@ TEST(DesktopEntry, RejectsLineBreakInjection) {
     EXPECT_THROWS(generateDesktopEntry(params), std::runtime_error);
 }
 
+TEST(DesktopEntry, SupportsHiddenMimeHandlerEntry) {
+    DesktopEntryParams params;
+    params.name = "Editor";
+    params.execPath = "/usr/bin/editor";
+    params.iconName = "editor";
+    params.noDisplay = true;
+    params.fileAssociations.push_back({".zia", "Zia Source", "text/x-zia"});
+
+    auto content = generateDesktopEntry(params);
+    EXPECT_CONTAINS(content, "NoDisplay=true");
+    EXPECT_CONTAINS(content, "MimeType=text/x-zia;");
+    EXPECT_CONTAINS(content, "Exec=/usr/bin/editor %f");
+}
+
 // ============================================================================
 // MIME Type XML Tests
 // ============================================================================
@@ -1111,6 +1221,40 @@ TEST(Verify, ZipRejectsCrcMismatch) {
     std::ostringstream err;
     EXPECT_FALSE(verifyZip(data, err));
     EXPECT_CONTAINS(err.str(), "CRC");
+}
+
+TEST(Verify, ZipRejectsDuplicateNormalizedEntryPath) {
+    ZipWriter zip;
+    zip.addDirectory("foo/");
+    zip.addFileString("bar", "x");
+    auto data = zip.finishToVector();
+
+    const std::string from = "bar";
+    const std::string to = "foo";
+    for (size_t i = 0; i + from.size() <= data.size(); ++i) {
+        if (std::memcmp(data.data() + i, from.data(), from.size()) == 0)
+            std::memcpy(data.data() + i, to.data(), to.size());
+    }
+
+    std::ostringstream err;
+    EXPECT_FALSE(verifyZip(data, err));
+    EXPECT_CONTAINS(err.str(), "duplicate normalized entry");
+}
+
+TEST(Verify, ZipRejectsLocalHeaderSizeMismatch) {
+    ZipWriter zip;
+    zip.addFileString("hello.txt", "Hello");
+    auto data = zip.finishToVector();
+
+    ASSERT_GE(data.size(), static_cast<size_t>(26));
+    data[22] = 6; // local uncompressed size, central directory still says 5
+    data[23] = 0;
+    data[24] = 0;
+    data[25] = 0;
+
+    std::ostringstream err;
+    EXPECT_FALSE(verifyZip(data, err));
+    EXPECT_CONTAINS(err.str(), "local sizes");
 }
 
 TEST(Verify, MacOSAppZipRequiresBundlePayload) {
@@ -1330,6 +1474,22 @@ TEST(PackageUtils, ValidatesDebDependencyGrammar) {
     EXPECT_THROWS(validateDebDependency("libc6 | "), std::runtime_error);
 }
 
+TEST(PackageUtils, ValidatesDebianVersionGrammar) {
+    EXPECT_NO_THROW(validateDebVersion("1.2.3-1", "version"));
+    EXPECT_NO_THROW(validateDebVersion("2:1.0~beta+1", "version"));
+    EXPECT_THROWS(validateDebVersion("-1.0", "version"), std::runtime_error);
+    EXPECT_THROWS(validateDebVersion("1:2:3", "version"), std::runtime_error);
+    EXPECT_THROWS(validateDebVersion("1.0-", "version"), std::runtime_error);
+}
+
+TEST(PackageUtils, ValidatesTargetSpecificIdentifiers) {
+    EXPECT_NO_THROW(validateMacOSBundleIdentifier("org.viper.test-app"));
+    EXPECT_THROWS(validateMacOSBundleIdentifier("org.viper.test_app"), std::runtime_error);
+    EXPECT_THROWS(validateMacOSBundleIdentifier("org.-viper.test"), std::runtime_error);
+    EXPECT_NO_THROW(validateWindowsProgIdBase("viper.test_app"));
+    EXPECT_THROWS(validateWindowsProgIdBase("viper."), std::runtime_error);
+}
+
 TEST(PackageUtils, ValidatesDottedVersionComponentCountAndRange) {
     EXPECT_NO_THROW(validateDottedNumericVersion("10.0", "version"));
     EXPECT_NO_THROW(validateDottedNumericVersion("1.2.3.4", "version"));
@@ -1406,6 +1566,10 @@ TEST(ZipReader, DeflateExtractionHonorsDeclaredOutputLimit) {
     zipData[cdOff + 25] = 0;
     zipData[cdOff + 26] = 0;
     zipData[cdOff + 27] = 0;
+    zipData[22] = 1;
+    zipData[23] = 0;
+    zipData[24] = 0;
+    zipData[25] = 0;
 
     ZipReader reader(zipData.data(), zipData.size());
     const ZipEntry *entry = reader.find("big.txt");
@@ -1634,6 +1798,15 @@ TEST(InstallerStub, UninstallerGeneratesValidPE) {
 
     EXPECT_GT(stub.textSection.size(), static_cast<size_t>(10));
     EXPECT_FALSE(stub.imports.empty());
+    bool foundGetLastError = false;
+    for (const auto &imp : stub.imports) {
+        if (imp.dllName == "kernel32.dll" &&
+            std::find(imp.functions.begin(), imp.functions.end(), "GetLastError") !=
+                imp.functions.end()) {
+            foundGetLastError = true;
+        }
+    }
+    EXPECT_TRUE(foundGetLastError);
 
     PEBuildParams pe;
     pe.textSection = stub.textSection;
@@ -1681,6 +1854,16 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithStoredZipOverlay) {
         std::ofstream asset(tmpRoot / "assets" / "themes" / "dark.json", std::ios::binary);
         asset << "{\"theme\":\"dark\"}";
     }
+    {
+        PkgImage img;
+        img.width = 1;
+        img.height = 1;
+        img.pixels = {255, 0, 0, 255};
+        const auto png = pngEncode(img);
+        std::ofstream icon(tmpRoot / "icon.png", std::ios::binary);
+        icon.write(reinterpret_cast<const char *>(png.data()),
+                   static_cast<std::streamsize>(png.size()));
+    }
 
     PackageConfig pkg;
     pkg.displayName = "Test App";
@@ -1688,6 +1871,7 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithStoredZipOverlay) {
     pkg.author = "Viper";
     pkg.shortcutDesktop = true;
     pkg.shortcutMenu = true;
+    pkg.iconPath = "icon.png";
     pkg.assets.push_back({"assets", "data"});
     pkg.fileAssociations.push_back({".zia", "Zia Source", "text/x-zia"});
 
@@ -1705,7 +1889,10 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithStoredZipOverlay) {
 
     auto pe = readFile(outPath.string());
     std::ostringstream err;
-    EXPECT_TRUE(verifyPEZipOverlayPayload(pe, {"app/testapp.exe", "app/uninstall.exe"}, err));
+    EXPECT_TRUE(verifyPEZipOverlayPayload(
+        pe, {"app/testapp.exe", "app/uninstall.exe", "app/testapp.ico"}, err));
+    EXPECT_TRUE(containsUtf16LE(pe, "%ProgramFiles%\\Test App\\testapp.exe"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "%ProgramFiles%\\Test App\\testapp.ico"));
     EXPECT_TRUE(containsUtf16LE(pe, "Software\\Classes\\.zia"));
     EXPECT_TRUE(containsUtf16LE(pe, "Software\\Classes\\.zia\\OpenWithProgids"));
     EXPECT_TRUE(containsUtf16LE(pe, "org.viper.testapp.zia"));
@@ -1871,6 +2058,44 @@ TEST(LinuxPackageBuilder, TarballRejectsDuplicateAssetOutputPath) {
     fs::remove_all(tmpRoot);
 }
 
+TEST(LinuxPackageBuilder, DebPreservesHiddenMimeDesktopEntryAndEmptyAssetDir) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_deb_mime_empty_dir";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot / "empty-assets");
+    {
+        std::ofstream exe(tmpRoot / "app", std::ios::binary);
+        exe << "stub";
+    }
+
+    PackageConfig pkg;
+    pkg.displayName = "Empty App";
+    pkg.shortcutMenu = false;
+    pkg.shortcutDesktop = false;
+    pkg.assets.push_back({"empty-assets", "data/empty"});
+    pkg.fileAssociations.push_back({".zia", "Zia Source", "text/x-zia"});
+
+    LinuxBuildParams params;
+    params.projectName = "emptyapp";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "emptyapp.deb").string();
+    params.archStr = "amd64";
+
+    buildDebPackage(params);
+    const auto deb = readFile(params.outputPath);
+    std::ostringstream err;
+    EXPECT_TRUE(verifyDebPayload(deb,
+                                 {"usr/bin/emptyapp",
+                                  "usr/share/applications/emptyapp.desktop",
+                                  "usr/share/mime/packages/emptyapp.xml",
+                                  "usr/share/emptyapp/data/empty"},
+                                 err));
+    fs::remove_all(tmpRoot);
+}
+
 TEST(ToolchainInstallManifest, GatherAndValidateMockStage) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_stage";
@@ -1923,6 +2148,25 @@ TEST(ToolchainInstallManifest, RejectsInvalidArchitecture) {
     fs::remove_all(tmpRoot);
 }
 
+TEST(ToolchainInstallManifest, RequiresOptionalLibraryOnlyWhenStagedMetadataReferencesIt) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_manifest_optional_refs";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    {
+        std::ofstream targets(stage / "lib" / "cmake" / "Viper" / "ViperTargets.cmake",
+                              std::ios::app);
+        targets << "vipergfx\n";
+    }
+    std::error_code ec;
+    fs::remove(stage / "lib" / "libvipergfx.a", ec);
+    ec.clear();
+    fs::remove(stage / "lib" / "vipergfx.lib", ec);
+
+    EXPECT_THROWS(gatherToolchainInstallManifest(stage), std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
+
 #if !defined(_WIN32)
 TEST(ToolchainInstallManifest, RejectsSymlinkEscapingStage) {
     namespace fs = std::filesystem;
@@ -1953,6 +2197,23 @@ TEST(ToolchainInstallManifest, PreservesInternalSymlinkTargets) {
     ASSERT_TRUE(it != manifest.files.end());
     EXPECT_TRUE(it->symlink);
     EXPECT_EQ(it->symlinkTarget, std::string("../share/doc/viper/README.md"));
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainWindowsPackageBuilder, RejectsDirectorySymlinkDereference) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_toolchain_windows_dir_symlink";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    fs::create_directory_symlink("../share/doc", stage / "bin" / "doc-link");
+    auto manifest = gatherToolchainInstallManifest(stage);
+    manifest.arch = "x64";
+
+    WindowsToolchainBuildParams params;
+    params.manifest = manifest;
+    params.outputPath = (tmpRoot / "bad.exe").string();
+    params.archStr = "x64";
+    EXPECT_THROWS(buildWindowsToolchainInstaller(params), std::runtime_error);
     fs::remove_all(tmpRoot);
 }
 #endif

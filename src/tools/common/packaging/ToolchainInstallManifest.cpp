@@ -9,7 +9,6 @@
 
 #include "PkgUtils.hpp"
 
-#include "viper/platform/Capabilities.hpp"
 #include "viper/runtime/RuntimeComponentManifest.hpp"
 
 #include <algorithm>
@@ -320,6 +319,22 @@ bool manifestHasBaseNameKind(const ToolchainInstallManifest &manifest,
     });
 }
 
+bool stagedCMakeMetadataMentions(const ToolchainInstallManifest &manifest, std::string_view needle) {
+    const std::string lowerNeedle = lowerCopy(std::string(needle));
+    for (const auto &entry : manifest.files) {
+        if (entry.kind != ToolchainFileKind::CMakeConfig || entry.symlink)
+            continue;
+        std::ifstream in(entry.stagedAbsolutePath, std::ios::binary);
+        if (!in)
+            continue;
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        if (lowerCopy(ss.str()).find(lowerNeedle) != std::string::npos)
+            return true;
+    }
+    return false;
+}
+
 } // namespace
 
 uint64_t ToolchainInstallManifest::totalSizeBytes() const {
@@ -396,15 +411,15 @@ void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest) 
         }
     }
 
-    if (platform::kBuildHasGraphics &&
+    if (stagedCMakeMetadataMentions(manifest, "vipergfx") &&
         !manifestHasBaseNameKind(manifest, ToolchainFileKind::SupportLibrary, "vipergfx")) {
         throw std::runtime_error("staged toolchain is missing support library vipergfx");
     }
-    if (platform::kBuildHasGUI &&
+    if (stagedCMakeMetadataMentions(manifest, "vipergui") &&
         !manifestHasBaseNameKind(manifest, ToolchainFileKind::SupportLibrary, "vipergui")) {
         throw std::runtime_error("staged toolchain is missing support library vipergui");
     }
-    if (platform::kBuildHasAudio &&
+    if (stagedCMakeMetadataMentions(manifest, "viperaud") &&
         !manifestHasBaseNameKind(manifest, ToolchainFileKind::SupportLibrary, "viperaud")) {
         throw std::runtime_error("staged toolchain is missing support library viperaud");
     }

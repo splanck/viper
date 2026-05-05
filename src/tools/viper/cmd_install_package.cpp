@@ -15,6 +15,9 @@
 #include "tools/common/packaging/ToolchainInstallManifest.hpp"
 #include "tools/common/packaging/WindowsPackageBuilder.hpp"
 
+#include <chrono>
+#include <cctype>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -89,6 +92,26 @@ std::string debArchFor(const std::string &arch) {
 std::string rpmArchFor(const std::string &arch) {
     viper::pkg::validateToolchainArchitecture(arch);
     return arch == "arm64" ? "aarch64" : "x86_64";
+}
+
+uint16_t readBE16(const std::vector<uint8_t> &data, size_t off) {
+    return static_cast<uint16_t>((data[off] << 8) | data[off + 1]);
+}
+
+uint32_t readBE32(const std::vector<uint8_t> &data, size_t off) {
+    return (static_cast<uint32_t>(data[off]) << 24) |
+           (static_cast<uint32_t>(data[off + 1]) << 16) |
+           (static_cast<uint32_t>(data[off + 2]) << 8) | static_cast<uint32_t>(data[off + 3]);
+}
+
+uint64_t readBE64(const std::vector<uint8_t> &data, size_t off) {
+    return (static_cast<uint64_t>(readBE32(data, off)) << 32) | readBE32(data, off + 4);
+}
+
+std::string lowerAscii(std::string text) {
+    for (char &c : text)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return text;
 }
 
 bool parseTarget(const std::string &text, InstallPackageTarget &out) {
@@ -196,23 +219,102 @@ bool verifyArtifact(const fs::path &artifact, InstallPackageTarget target, std::
         case InstallPackageTarget::Tarball:
             return viper::pkg::verifyTarGz(data, err);
         case InstallPackageTarget::MacOS:
-            if (data.size() < 4 || data[0] != 'x' || data[1] != 'a' || data[2] != 'r' ||
+            if (data.size() < 28 || data[0] != 'x' || data[1] != 'a' || data[2] != 'r' ||
                 data[3] != '!') {
                 err << "macos: pkg does not begin with xar header\n";
                 return false;
             }
+            {
+                const uint16_t headerSize = readBE16(data, 4);
+                const uint16_t version = readBE16(data, 6);
+                const uint64_t tocCompressed = readBE64(data, 8);
+                const uint64_t tocUncompressed = readBE64(data, 16);
+                if (headerSize < 28 || headerSize > data.size()) {
+                    err << "macos: pkg has invalid xar header size\n";
+                    return false;
+                }
+                if (version != 1) {
+                    err << "macos: unsupported xar version " << version << "\n";
+                    return false;
+                }
+                if (tocCompressed == 0 || tocUncompressed == 0 ||
+                    tocCompressed > data.size() - headerSize) {
+                    err << "macos: xar TOC length is invalid\n";
+                    return false;
+                }
+            }
             return true;
         case InstallPackageTarget::LinuxRpm:
-            if (data.size() < 4 || data[0] != 0xED || data[1] != 0xAB || data[2] != 0xEE ||
+            if (data.size() < 112 || data[0] != 0xED || data[1] != 0xAB || data[2] != 0xEE ||
                 data[3] != 0xDB) {
                 err << "rpm: missing lead magic\n";
                 return false;
+            }
+            if (data[4] != 3) {
+                err << "rpm: unsupported lead major version " << static_cast<int>(data[4])
+                    << "\n";
+                return false;
+            }
+            if (readBE16(data, 78) != 5) {
+                err << "rpm: unsupported signature type\n";
+                return false;
+            }
+            if (data[96] != 0x8E || data[97] != 0xAD || data[98] != 0xE8 || data[99] != 0x01) {
+                err << "rpm: missing signature header magic\n";
+                return false;
+            }
+            {
+                const uint32_t sigIndexCount = readBE32(data, 104);
+                const uint32_t sigStoreSize = readBE32(data, 108);
+                const uint64_t sigEnd = 96ull + 16ull + static_cast<uint64_t>(sigIndexCount) * 16ull +
+                                        sigStoreSize;
+                if (sigEnd > data.size()) {
+                    err << "rpm: signature header extends past end of file\n";
+                    return false;
+                }
+                const size_t mainOff = static_cast<size_t>((sigEnd + 7ull) & ~7ull);
+                if (mainOff + 16 > data.size()) {
+                    err << "rpm: missing main header\n";
+                    return false;
+                }
+                if (data[mainOff] != 0x8E || data[mainOff + 1] != 0xAD ||
+                    data[mainOff + 2] != 0xE8 || data[mainOff + 3] != 0x01) {
+                    err << "rpm: missing main header magic\n";
+                    return false;
+                }
+                const uint32_t mainIndexCount = readBE32(data, mainOff + 8);
+                const uint32_t mainStoreSize = readBE32(data, mainOff + 12);
+                const uint64_t mainEnd = static_cast<uint64_t>(mainOff) + 16ull +
+                                         static_cast<uint64_t>(mainIndexCount) * 16ull +
+                                         mainStoreSize;
+                if (mainEnd > data.size()) {
+                    err << "rpm: main header extends past end of file\n";
+                    return false;
+                }
             }
             return true;
         case InstallPackageTarget::All:
         default:
             return false;
     }
+}
+
+bool inferVerifyTargetFromPath(const fs::path &path, InstallPackageTarget &target) {
+    const std::string name = lowerAscii(path.filename().string());
+    if (name.size() >= 4 && name.substr(name.size() - 4) == ".exe")
+        target = InstallPackageTarget::Windows;
+    else if (name.size() >= 4 && name.substr(name.size() - 4) == ".pkg")
+        target = InstallPackageTarget::MacOS;
+    else if (name.size() >= 4 && name.substr(name.size() - 4) == ".deb")
+        target = InstallPackageTarget::LinuxDeb;
+    else if (name.size() >= 4 && name.substr(name.size() - 4) == ".rpm")
+        target = InstallPackageTarget::LinuxRpm;
+    else if ((name.size() >= 7 && name.substr(name.size() - 7) == ".tar.gz") ||
+             (name.size() >= 4 && name.substr(name.size() - 4) == ".tgz"))
+        target = InstallPackageTarget::Tarball;
+    else
+        return false;
+    return true;
 }
 
 class AutoStageCleanup {
@@ -243,10 +345,19 @@ fs::path ensureStageDir(const InstallPackageArgs &args) {
 #else
         static_cast<unsigned long>(::getpid());
 #endif
-    fs::path stageDir =
-        args.buildDir / ("install-toolchain-stage-" + std::to_string(pid));
-    fs::remove_all(stageDir);
-    fs::create_directories(stageDir);
+    const auto tick =
+        static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count());
+    fs::path stageDir;
+    for (unsigned attempt = 0; attempt < 100; ++attempt) {
+        stageDir = args.buildDir / ("install-toolchain-stage-" + std::to_string(pid) + "-" +
+                                    std::to_string(tick) + "-" + std::to_string(attempt));
+        std::error_code ec;
+        if (fs::create_directory(stageDir, ec))
+            break;
+        if (attempt == 99)
+            throw std::runtime_error("cannot create a unique staging directory under " +
+                                     args.buildDir.string());
+    }
 
     std::vector<std::string> installCmd = {
         "cmake", "--install", args.buildDir.string(), "--prefix", stageDir.string()};
@@ -299,16 +410,14 @@ int cmdInstallPackage(int argc, char **argv) {
     try {
     if (!args.verifyOnlyPath.empty()) {
         std::ostringstream err;
-        InstallPackageTarget target = InstallPackageTarget::Tarball;
-        const std::string ext = args.verifyOnlyPath.extension().string();
-        if (ext == ".exe")
-            target = InstallPackageTarget::Windows;
-        else if (ext == ".pkg")
-            target = InstallPackageTarget::MacOS;
-        else if (ext == ".deb")
-            target = InstallPackageTarget::LinuxDeb;
-        else if (ext == ".rpm")
-            target = InstallPackageTarget::LinuxRpm;
+        InstallPackageTarget target = args.target;
+        if (target == InstallPackageTarget::All &&
+            !inferVerifyTargetFromPath(args.verifyOnlyPath, target)) {
+            std::cerr << "error: cannot infer install-package artifact type from extension: "
+                      << args.verifyOnlyPath.string()
+                      << " (use --target for supported artifact formats)\n";
+            return 1;
+        }
         if (!verifyArtifact(args.verifyOnlyPath, target, err)) {
             std::cerr << err.str();
             return 1;

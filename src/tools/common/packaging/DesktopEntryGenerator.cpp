@@ -96,6 +96,8 @@ std::string generateDesktopEntry(const DesktopEntryParams &params) {
         os << "Categories=" << desktopEscape(categories) << "\n";
     if (!params.workingDir.empty())
         os << "Path=" << desktopEscape(params.workingDir) << "\n";
+    if (params.noDisplay)
+        os << "NoDisplay=true\n";
     os << "Terminal=" << (params.terminal ? "true" : "false") << "\n";
 
     // MimeType field for file associations

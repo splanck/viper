@@ -10,7 +10,8 @@
 //          src/runtime/graphics/rt_pixels.c with GC dependencies removed.
 //
 // Key invariants:
-//   - Reader supports 8-bit RGB (color_type=2) and RGBA (color_type=6).
+//   - Reader supports 8-bit grayscale, palette, RGB, grayscale-alpha, and RGBA
+//     (color_type=0,2,3,4,6), tRNS transparency, and Adam7 interlace.
 //   - Reader handles all 5 PNG filter types (None, Sub, Up, Average, Paeth).
 //   - Writer always uses RGBA (color_type=6) with filter=0.
 //   - Zlib framing: CMF=0x78, FLG=0x01, + DEFLATE + Adler-32.
@@ -27,6 +28,7 @@
 #include "PkgDeflate.hpp"
 #include "PkgUtils.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -102,6 +104,9 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
 
     uint32_t width = 0, height = 0;
     uint8_t colorType = 0;
+    uint8_t interlaceMethod = 0;
+    std::vector<uint8_t> palette;
+    std::vector<uint8_t> transparency;
     std::vector<uint8_t> idatBuf;
     size_t pos = 8;
     bool seenIHDR = false;
@@ -131,14 +136,27 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
             colorType = chunkData[9];
             uint8_t compression = chunkData[10];
             uint8_t filter = chunkData[11];
-            uint8_t interlace = chunkData[12];
+            interlaceMethod = chunkData[12];
             if (width == 0 || height == 0)
                 throw PNGError("PNG: empty image");
-            if (bitDepth != 8 || (colorType != 2 && colorType != 6))
-                throw PNGError("PNG: unsupported format (need 8-bit RGB or RGBA)");
-            if (compression != 0 || filter != 0 || interlace != 0)
+            if (bitDepth != 8 ||
+                (colorType != 0 && colorType != 2 && colorType != 3 && colorType != 4 &&
+                 colorType != 6))
+                throw PNGError("PNG: unsupported format (need 8-bit grayscale, palette, RGB, "
+                               "grayscale-alpha, or RGBA)");
+            if (compression != 0 || filter != 0 || interlaceMethod > 1)
                 throw PNGError("PNG: unsupported IHDR compression/filter/interlace method");
             seenIHDR = true;
+        } else if (std::memcmp(chunkType, "PLTE", 4) == 0) {
+            if (!seenIHDR)
+                throw PNGError("PNG: PLTE before IHDR");
+            if (chunkLen == 0 || chunkLen % 3 != 0 || chunkLen / 3 > 256)
+                throw PNGError("PNG: invalid PLTE length");
+            palette.assign(chunkData, chunkData + chunkLen);
+        } else if (std::memcmp(chunkType, "tRNS", 4) == 0) {
+            if (!seenIHDR)
+                throw PNGError("PNG: tRNS before IHDR");
+            transparency.assign(chunkData, chunkData + chunkLen);
         } else if (std::memcmp(chunkType, "IDAT", 4) == 0) {
             if (!seenIHDR)
                 throw PNGError("PNG: IDAT before IHDR");
@@ -161,14 +179,25 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
     if (pos != len)
         throw PNGError("PNG: trailing data after IEND");
 
+    if (colorType == 3 && palette.empty())
+        throw PNGError("PNG: indexed-color image is missing PLTE");
+    if (colorType == 3 && !transparency.empty() && transparency.size() > palette.size() / 3)
+        throw PNGError("PNG: tRNS palette alpha table is longer than PLTE");
+    if (colorType == 0 && !transparency.empty() && transparency.size() != 2)
+        throw PNGError("PNG: invalid grayscale tRNS length");
+    if (colorType == 2 && !transparency.empty() && transparency.size() != 6)
+        throw PNGError("PNG: invalid RGB tRNS length");
+    if ((colorType == 4 || colorType == 6) && !transparency.empty())
+        throw PNGError("PNG: tRNS is not allowed for images with alpha");
+
     const uint8_t cmf = idatBuf[0];
     const uint8_t flg = idatBuf[1];
-    if ((cmf & 0x0F) != 8 || (cmf >> 4) > 7 || (((static_cast<uint16_t>(cmf) << 8) | flg) % 31) != 0)
+    if ((cmf & 0x0F) != 8 || (cmf >> 4) > 7 ||
+        (((static_cast<uint16_t>(cmf) << 8) | flg) % 31) != 0)
         throw PNGError("PNG: invalid zlib header");
     if ((flg & 0x20) != 0)
         throw PNGError("PNG: zlib preset dictionaries are not supported");
 
-    // IDAT is a zlib stream: 2-byte header + DEFLATE + 4-byte Adler-32
     size_t deflateLen = idatBuf.size() - 2 - 4;
     auto raw = inflate(idatBuf.data() + 2, deflateLen);
     const uint32_t expectedAdler = readBE32(idatBuf.data() + idatBuf.size() - 4);
@@ -176,26 +205,37 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
     if (expectedAdler != actualAdler)
         throw PNGError("PNG: Adler-32 mismatch");
 
-    int channels = (colorType == 6) ? 4 : 3;
+    int channels = 0;
+    switch (colorType) {
+        case 0:
+        case 3:
+            channels = 1;
+            break;
+        case 2:
+            channels = 3;
+            break;
+        case 4:
+            channels = 2;
+            break;
+        case 6:
+            channels = 4;
+            break;
+        default:
+            throw PNGError("PNG: unsupported color type");
+    }
     if (width > kMaxDecodedPngBytes / static_cast<size_t>(channels))
         throw PNGError("PNG: image dimensions are too large");
-    size_t stride = static_cast<size_t>(width) * channels;
-    if (stride + 1 > kMaxDecodedPngBytes ||
-        height > kMaxDecodedPngBytes / (stride + 1))
+    const size_t stride = static_cast<size_t>(width) * channels;
+    if (stride == 0 || height > kMaxDecodedPngBytes / stride)
         throw PNGError("PNG: image data is too large");
-    size_t expected = (stride + 1) * height;
-    if (raw.size() != expected)
-        throw PNGError("PNG: decompressed data size mismatch");
-
-    // Apply scanline filters
     std::vector<uint8_t> img(stride * height);
-    for (uint32_t y = 0; y < height; y++) {
-        uint8_t filter = raw[y * (stride + 1)];
-        const uint8_t *src = raw.data() + y * (stride + 1) + 1;
-        uint8_t *dst = img.data() + y * stride;
-        const uint8_t *prev = (y > 0) ? img.data() + (y - 1) * stride : nullptr;
 
-        for (size_t i = 0; i < stride; i++) {
+    auto unfilterRow = [&](uint8_t filter,
+                           const uint8_t *src,
+                           uint8_t *dst,
+                           const uint8_t *prev,
+                           size_t rowBytes) {
+        for (size_t i = 0; i < rowBytes; i++) {
             uint8_t rawByte = src[i];
             uint8_t a = (i >= static_cast<size_t>(channels)) ? dst[i - channels] : 0;
             uint8_t b = prev ? prev[i] : 0;
@@ -222,9 +262,62 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
                     throw PNGError("PNG: unknown filter type");
             }
         }
+    };
+
+    if (interlaceMethod == 0) {
+        if (stride + 1 > kMaxDecodedPngBytes ||
+            height > kMaxDecodedPngBytes / (stride + 1))
+            throw PNGError("PNG: image data is too large");
+        const size_t expected = (stride + 1) * height;
+        if (raw.size() != expected)
+            throw PNGError("PNG: decompressed data size mismatch");
+
+        for (uint32_t y = 0; y < height; y++) {
+            uint8_t filter = raw[y * (stride + 1)];
+            const uint8_t *src = raw.data() + y * (stride + 1) + 1;
+            uint8_t *dst = img.data() + y * stride;
+            const uint8_t *prev = (y > 0) ? img.data() + (y - 1) * stride : nullptr;
+            unfilterRow(filter, src, dst, prev, stride);
+        }
+    } else {
+        static constexpr uint32_t xStart[7] = {0, 4, 0, 2, 0, 1, 0};
+        static constexpr uint32_t yStart[7] = {0, 0, 4, 0, 2, 0, 1};
+        static constexpr uint32_t xStep[7] = {8, 8, 4, 4, 2, 2, 1};
+        static constexpr uint32_t yStep[7] = {8, 8, 8, 4, 4, 2, 2};
+        size_t rawPos = 0;
+        for (int pass = 0; pass < 7; ++pass) {
+            if (xStart[pass] >= width || yStart[pass] >= height)
+                continue;
+            const uint32_t passWidth = (width - xStart[pass] + xStep[pass] - 1) / xStep[pass];
+            const uint32_t passHeight = (height - yStart[pass] + yStep[pass] - 1) / yStep[pass];
+            if (passWidth == 0 || passHeight == 0)
+                continue;
+            const size_t passStride = static_cast<size_t>(passWidth) * channels;
+            std::vector<uint8_t> prevPassRow(passStride, 0);
+            std::vector<uint8_t> curPassRow(passStride, 0);
+            for (uint32_t row = 0; row < passHeight; ++row) {
+                if (rawPos + 1 + passStride > raw.size())
+                    throw PNGError("PNG: interlaced data truncated");
+                const uint8_t filter = raw[rawPos++];
+                const uint8_t *src = raw.data() + rawPos;
+                rawPos += passStride;
+                std::fill(curPassRow.begin(), curPassRow.end(), 0);
+                const uint8_t *prev = row == 0 ? nullptr : prevPassRow.data();
+                unfilterRow(filter, src, curPassRow.data(), prev, passStride);
+                const uint32_t y = yStart[pass] + row * yStep[pass];
+                for (uint32_t col = 0; col < passWidth; ++col) {
+                    const uint32_t x = xStart[pass] + col * xStep[pass];
+                    std::memcpy(img.data() + (static_cast<size_t>(y) * width + x) * channels,
+                                curPassRow.data() + static_cast<size_t>(col) * channels,
+                                static_cast<size_t>(channels));
+                }
+                prevPassRow.swap(curPassRow);
+            }
+        }
+        if (rawPos != raw.size())
+            throw PNGError("PNG: trailing interlaced image data");
     }
 
-    // Convert to RGBA
     PkgImage result;
     result.width = width;
     result.height = height;
@@ -235,12 +328,49 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
 
     for (uint32_t y = 0; y < height; y++) {
         for (uint32_t x = 0; x < width; x++) {
-            const uint8_t *px = img.data() + (y * stride) + x * channels;
-            uint8_t *dst = result.pixels.data() + (y * width + x) * 4;
-            dst[0] = px[0];                          // R
-            dst[1] = px[1];                          // G
-            dst[2] = px[2];                          // B
-            dst[3] = (channels == 4) ? px[3] : 0xFF; // A
+            const uint8_t *px = img.data() + (static_cast<size_t>(y) * stride) + x * channels;
+            uint8_t *dst = result.pixels.data() + (static_cast<size_t>(y) * width + x) * 4;
+            switch (colorType) {
+                case 0:
+                    dst[0] = px[0];
+                    dst[1] = px[0];
+                    dst[2] = px[0];
+                    dst[3] = (!transparency.empty() && px[0] == transparency[1]) ? 0 : 0xFF;
+                    break;
+                case 2:
+                    dst[0] = px[0];
+                    dst[1] = px[1];
+                    dst[2] = px[2];
+                    dst[3] = (!transparency.empty() && px[0] == transparency[1] &&
+                              px[1] == transparency[3] && px[2] == transparency[5])
+                                 ? 0
+                                 : 0xFF;
+                    break;
+                case 3: {
+                    const uint8_t index = px[0];
+                    if (static_cast<size_t>(index) >= palette.size() / 3)
+                        throw PNGError("PNG: palette index out of range");
+                    dst[0] = palette[static_cast<size_t>(index) * 3];
+                    dst[1] = palette[static_cast<size_t>(index) * 3 + 1];
+                    dst[2] = palette[static_cast<size_t>(index) * 3 + 2];
+                    dst[3] = static_cast<size_t>(index) < transparency.size()
+                                 ? transparency[index]
+                                 : 0xFF;
+                    break;
+                }
+                case 4:
+                    dst[0] = px[0];
+                    dst[1] = px[0];
+                    dst[2] = px[0];
+                    dst[3] = px[1];
+                    break;
+                case 6:
+                    dst[0] = px[0];
+                    dst[1] = px[1];
+                    dst[2] = px[2];
+                    dst[3] = px[3];
+                    break;
+            }
         }
     }
 

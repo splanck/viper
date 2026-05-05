@@ -360,14 +360,19 @@ bool verifyZip(const std::vector<uint8_t> &data, std::ostream &err) {
         ZipReader reader(data.data(), data.size());
         std::set<std::string> seen;
         for (const auto &entry : reader.entries()) {
-            if (!seen.insert(entry.name).second) {
-                err << "ZIP: duplicate entry '" << entry.name << "'\n";
-                return false;
-            }
+            std::string clean;
             try {
-                (void)sanitizePackageRelativePath(entry.name, "zip entry path");
+                clean = sanitizePackageRelativePath(entry.name, "zip entry path");
             } catch (const std::exception &ex) {
                 err << "ZIP: unsafe entry path '" << entry.name << "': " << ex.what() << "\n";
+                return false;
+            }
+            if (clean.empty()) {
+                err << "ZIP: empty entry path\n";
+                return false;
+            }
+            if (!seen.insert(clean).second) {
+                err << "ZIP: duplicate normalized entry '" << clean << "'\n";
                 return false;
             }
             (void)reader.extract(entry);

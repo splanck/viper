@@ -109,7 +109,7 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
     std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
     const std::string version = params.version.empty() ? "0.0.0" : params.version;
     validateBundleDisplayName(displayName);
-    validatePackageIdentifier(pkg.identifier);
+    validateMacOSBundleIdentifier(pkg.identifier, "macOS bundle identifier");
     validateDottedNumericVersion(version, "macOS package version");
     if (!pkg.minOsMacos.empty())
         validateDottedNumericVersion(pkg.minOsMacos, "minimum macOS version");
@@ -176,6 +176,11 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
             throw std::runtime_error("asset not found: " + asset.sourcePath);
 
         if (fs::is_directory(srcPath)) {
+            if (!targetDir.empty()) {
+                std::string assetBase =
+                    joinPackageRelativePath(resourcesRoot, targetDir, "asset target path");
+                zip.addDirectory(assetBase);
+            }
             // Recurse directory (symlink-safe)
             safeDirectoryIterate(
                 srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
@@ -212,7 +217,7 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
 void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
     namespace fs = std::filesystem;
     const std::string version = params.manifest.version.empty() ? "0.0.0" : params.manifest.version;
-    validatePackageIdentifier(params.identifier);
+    validateMacOSBundleIdentifier(params.identifier, "macOS package identifier");
     validateSingleLineField(version, "macOS toolchain package version");
 
     const fs::path tmpRoot = uniqueTempPackagingDir("viper-macos-toolchain-" + version);
