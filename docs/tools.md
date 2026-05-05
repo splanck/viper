@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-01
+last-verified: 2026-05-04
 ---
 
 # CLI Tools Reference
@@ -264,6 +264,33 @@ writes a relocatable object instead of linking an executable.
 On arm64, target selection is explicit: `--target-darwin`, `--target-linux`, and `--target-windows` select the assembly dialect, native object format, and native-link platform together. When you use `--native-asm` with `-o <file.o>` or `-o <file.obj>`, the compiler writes a relocatable object instead of linking an executable.
 
 File-based `viper codegen` loads and verifies the input IL once before backend lowering. Project builds through `viper build` skip the textual IL round trip and transfer the verified in-memory module to the backend. Native assembler debug line emission is disabled by default for faster object generation; pass `--debug-lines` when you need DWARF `.debug_line` content. `--fast-link` skips string deduplication and identical-code folding in the native linker; on arm64 it also emits one generated text section instead of per-function sections for faster debug links.
+
+### viper package
+
+Build a native payload and package a project for distribution.
+
+```bash
+viper package .
+viper package . --target linux
+viper package . --target windows --executable build/myapp.exe
+viper package . --target tarball -o myapp.tar.gz
+viper package . --dry-run --verbose
+```
+
+| Option | Description |
+|--------|-------------|
+| `--target macos|linux|windows|tarball` | Select output format; default is the host platform |
+| `--arch x64|arm64` | Select payload architecture |
+| `--executable <path>` | Package a prebuilt native executable; required for non-host installer targets |
+| `-o <path>` | Output artifact path |
+| `--dry-run` | Print resolved package contents without building |
+| `--verbose` | Print binary, output, asset, and verification details |
+
+Packaging manifest paths are project-relative. `package-icon` and `asset` sources are resolved inside the canonical project root, reject absolute paths and `..` traversal, and skip symlinks that resolve outside the project. Archive entry paths are normalized to forward slashes and must remain relative.
+
+Package names, executable names, Windows shortcut names, bundle identifiers, file associations, MIME types, Debian versions, RPM versions, and single-line metadata fields are validated before writing artifacts. Invalid metadata fails the package command instead of producing malformed `.desktop`, plist, control, spec, shortcut, tar, ZIP, or installer data.
+
+Built artifacts are structurally verified by default: ZIP payloads are parsed and CRC-checked, `.deb` members are decompressed and their tar contents checked, Windows installers verify the PE structure and ZIP overlay, and tarballs verify gzip framing plus USTAR headers. Failed verification removes the generated artifact.
 
 ### viper install-package
 

@@ -27,8 +27,10 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <mutex>
+#include <string>
 
 namespace viper::pkg {
 
@@ -75,13 +77,8 @@ struct BitReader {
 
     bool fill(int n) {
         while (bitsInBuf < n) {
-            if (pos >= len) {
-                if (bitsInBuf > 0) {
-                    bitsInBuf = n;
-                    return true;
-                }
+            if (pos >= len)
                 return false;
-            }
             buffer |= static_cast<uint32_t>(data[pos++]) << bitsInBuf;
             bitsInBuf += 8;
         }
@@ -90,7 +87,7 @@ struct BitReader {
 
     uint32_t read(int n) {
         if (!fill(n))
-            return 0;
+            throw DeflateError("inflate: unexpected end of data");
         uint32_t val = buffer & ((1U << n) - 1);
         buffer >>= n;
         bitsInBuf -= n;
@@ -98,11 +95,14 @@ struct BitReader {
     }
 
     uint32_t peek(int n) {
-        fill(n);
+        if (!fill(n))
+            throw DeflateError("inflate: unexpected end of data");
         return buffer & ((1U << n) - 1);
     }
 
     void consume(int n) {
+        if (bitsInBuf < n)
+            throw DeflateError("inflate: unexpected end of data");
         buffer >>= n;
         bitsInBuf -= n;
     }
@@ -271,15 +271,16 @@ struct HuffmanTree {
     }
 
     int decode(BitReader &br) const {
-        if (!br.fill(tableBits))
+        const bool haveFullTable = br.fill(tableBits);
+        if (!haveFullTable && br.bitsInBuf == 0)
             return -1;
-        uint32_t bits = br.peek(tableBits);
+        uint32_t bits = br.buffer & ((static_cast<uint32_t>(1) << tableBits) - 1);
         uint16_t entry = symbols[bits];
         if (entry == 0)
             return -1;
         int len = entry >> 12;
         int symbol = entry & 0xFFF;
-        if (len == 0)
+        if (len == 0 || len > br.bitsInBuf)
             return -1;
         br.consume(len);
         return symbol;
@@ -351,8 +352,12 @@ struct OutputBuffer {
     uint8_t *data;
     size_t len;
     size_t capacity;
+    size_t maxOutput;
 
-    void init(size_t initialCap) {
+    void init(size_t initialCap, size_t maxOutputBytes) {
+        maxOutput = maxOutputBytes;
+        if (initialCap > maxOutput)
+            initialCap = maxOutput;
         capacity = initialCap > 256 ? initialCap : 256;
         data = static_cast<uint8_t *>(std::malloc(capacity));
         if (!data)
@@ -361,14 +366,17 @@ struct OutputBuffer {
     }
 
     void ensure(size_t need) {
-        if (len + need > kInflateMaxOutput)
-            throw DeflateError("inflate: output exceeds 256 MB limit");
+        if (need > maxOutput || len > maxOutput - need) {
+            const size_t maxMB = maxOutput / (1024u * 1024u);
+            throw DeflateError("inflate: output exceeds " + std::to_string(maxMB) +
+                               " MB limit");
+        }
         if (len + need > capacity) {
             size_t newCap = capacity * 2;
             if (newCap < len + need)
                 newCap = len + need + 256;
-            if (newCap > kInflateMaxOutput)
-                newCap = kInflateMaxOutput;
+            if (newCap > maxOutput)
+                newCap = maxOutput;
             auto *newData = static_cast<uint8_t *>(std::realloc(data, newCap));
             if (!newData)
                 throw DeflateError("inflate: out of memory");
@@ -522,14 +530,16 @@ static bool inflateDynamic(BitReader &br, OutputBuffer &out) {
     return inflateHuffman(br, out, litTree, distTree);
 }
 
-static std::vector<uint8_t> inflateData(const uint8_t *data, size_t len) {
+static std::vector<uint8_t> inflateData(const uint8_t *data, size_t len, size_t maxOutputBytes) {
     initFixedTrees();
 
     BitReader br;
     br.init(data, len);
 
     OutputBuffer out;
-    out.init(len * 4);
+    const size_t initialCap =
+        len > std::numeric_limits<size_t>::max() / 4 ? maxOutputBytes : len * 4;
+    out.init(initialCap, maxOutputBytes);
 
     bool lastBlock = false;
     while (!lastBlock) {
@@ -804,7 +814,11 @@ std::vector<uint8_t> deflate(const uint8_t *data, size_t len, int level) {
 }
 
 std::vector<uint8_t> inflate(const uint8_t *data, size_t len) {
-    return inflateData(data, len);
+    return inflateData(data, len, kInflateMaxOutput);
+}
+
+std::vector<uint8_t> inflate(const uint8_t *data, size_t len, size_t maxOutputBytes) {
+    return inflateData(data, len, maxOutputBytes);
 }
 
 } // namespace viper::pkg

@@ -51,7 +51,10 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
+#include <iostream>
 #include <sstream>
+#include <utility>
 
 using namespace viper::pkg;
 
@@ -73,9 +76,7 @@ static uint32_t readBE32(const uint8_t *p) {
 }
 
 static std::vector<uint8_t> inflateGzipPayload(const std::vector<uint8_t> &gzipData) {
-    if (gzipData.size() < 18)
-        return {};
-    return inflate(gzipData.data() + 10, gzipData.size() - 18);
+    return gunzip(gzipData.data(), gzipData.size());
 }
 
 static std::string tarFirstEntryName(const std::vector<uint8_t> &tarBytes) {
@@ -86,6 +87,15 @@ static std::string tarFirstEntryName(const std::vector<uint8_t> &tarBytes) {
     while (len < 100 && name[len] != '\0')
         ++len;
     return std::string(name, name + len);
+}
+
+static std::vector<uint8_t> makeTarGz(std::initializer_list<std::pair<std::string, std::string>> files) {
+    TarWriter tar;
+    tar.addDirectory("./", 0755);
+    for (const auto &file : files)
+        tar.addFileString(file.first, file.second);
+    auto tarBytes = tar.finish();
+    return gzip(tarBytes.data(), tarBytes.size());
 }
 
 static std::filesystem::path createMockToolchainStage(const std::filesystem::path &tmpRoot) {
@@ -220,6 +230,23 @@ TEST(Deflate, AllLevels) {
     }
 }
 
+TEST(Deflate, TruncatedInputThrows) {
+    const char *msg = "truncated deflate stream";
+    auto compressed = deflate(reinterpret_cast<const uint8_t *>(msg), std::strlen(msg));
+    ASSERT_GT(compressed.size(), static_cast<size_t>(1));
+    compressed.pop_back();
+    EXPECT_THROWS(inflate(compressed.data(), compressed.size()), DeflateError);
+}
+
+TEST(Deflate, ExplicitOutputLimit) {
+    const char *msg = "bounded inflate";
+    const size_t len = std::strlen(msg);
+    auto compressed = deflate(reinterpret_cast<const uint8_t *>(msg), len);
+    EXPECT_THROWS(inflate(compressed.data(), compressed.size(), len - 1), DeflateError);
+    auto decompressed = inflate(compressed.data(), compressed.size(), len);
+    EXPECT_EQ(std::string(decompressed.begin(), decompressed.end()), std::string(msg));
+}
+
 // ============================================================================
 // ZIP Tests
 // ============================================================================
@@ -324,6 +351,12 @@ TEST(Zip, RejectsTooLongNames) {
     EXPECT_THROWS(zip.addFileString(longName, "x"), std::runtime_error);
 }
 
+TEST(Zip, WriterRejectsTraversalNames) {
+    ZipWriter zip;
+    EXPECT_THROWS(zip.addFileString("../escape.txt", "x"), std::runtime_error);
+    EXPECT_THROWS(zip.addDirectory("/absolute"), std::runtime_error);
+}
+
 // ============================================================================
 // Tar Tests
 // ============================================================================
@@ -393,6 +426,17 @@ TEST(Tar, DirectoryTypeflag) {
     EXPECT_EQ(data[156], '5');
 }
 
+TEST(Tar, RejectsOversizedPath) {
+    TarWriter tar;
+    tar.addFileString(std::string("./") + std::string(180, 'a'), "data");
+    EXPECT_THROWS(tar.finish(), std::runtime_error);
+}
+
+TEST(Tar, RejectsUnsafePath) {
+    TarWriter tar;
+    EXPECT_THROWS(tar.addFileString("../escape", "data"), std::runtime_error);
+}
+
 // ============================================================================
 // Ar Tests
 // ============================================================================
@@ -431,6 +475,12 @@ TEST(Ar, DebianBinaryOrdering) {
 
     // First member name: "debian-binary"
     EXPECT_TRUE(std::memcmp(data.data() + 8, "debian-binary/", 14) == 0);
+}
+
+TEST(Ar, RejectsTooLongMemberName) {
+    ArWriter ar;
+    ar.addMemberString("this-name-is-far-too-long", "data");
+    EXPECT_THROWS(ar.finish(), std::runtime_error);
 }
 
 // ============================================================================
@@ -582,6 +632,23 @@ TEST(Lnk, LinkInfoContainsLocalBasePath) {
     EXPECT_CONTAINS(lbp, "C:\\MyApp\\app.exe");
 }
 
+TEST(Lnk, Utf8StringDataUsesUtf16) {
+    LnkParams params;
+    params.targetPath = "C:\\Program Files\\Cafe\\cafe.exe";
+    params.workingDir = "C:\\Program Files\\Cafe";
+    params.description = "Cafe \xC3\xA9";
+    auto data = generateLnk(params);
+
+    bool foundEAcute = false;
+    for (size_t i = 0; i + 1 < data.size(); ++i) {
+        if (data[i] == 0xE9 && data[i + 1] == 0x00) {
+            foundEAcute = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundEAcute);
+}
+
 // ============================================================================
 // Icon Tests (DEFLATE double-free fixed — full tests now enabled)
 // ============================================================================
@@ -647,6 +714,42 @@ TEST(Icon, IcoEntryBitCount) {
     // First ICONDIRENTRY at offset 6, BitCount at +6: should be 32 (RGBA)
     uint16_t bitCount = readLE16(ico.data() + 6 + 6);
     EXPECT_EQ(bitCount, static_cast<uint16_t>(32));
+}
+
+TEST(Icon, SmallSourceStillProducesStandardEntries) {
+    PkgImage img;
+    img.width = 1;
+    img.height = 1;
+    img.pixels.resize(4, 255);
+
+    auto ico = generateIco(img);
+    ASSERT_GE(ico.size(), static_cast<size_t>(6));
+    EXPECT_EQ(readLE16(ico.data() + 4), static_cast<uint16_t>(7));
+
+    auto icns = generateIcns(img);
+    EXPECT_GT(icns.size(), static_cast<size_t>(8));
+
+    auto pngs = generateMultiSizePngs(img);
+    EXPECT_EQ(pngs.size(), static_cast<size_t>(5));
+}
+
+TEST(PNG, RejectsBadChunkCrc) {
+    PkgImage img;
+    img.width = 1;
+    img.height = 1;
+    img.pixels = {255, 0, 0, 255};
+    auto png = pngEncode(img);
+    ASSERT_GT(png.size(), static_cast<size_t>(32));
+    png[29] ^= 0xFF; // IHDR CRC
+    EXPECT_THROWS(pngReadMemory(png.data(), png.size()), PNGError);
+}
+
+TEST(PNG, RejectsMismatchedPixelBuffer) {
+    PkgImage img;
+    img.width = 2;
+    img.height = 2;
+    img.pixels.resize(4);
+    EXPECT_THROWS(pngEncode(img), PNGError);
 }
 
 // ============================================================================
@@ -749,6 +852,14 @@ TEST(DesktopEntry, CategoryField) {
     EXPECT_CONTAINS(content, "Categories=Game;ArcadeGame;");
 }
 
+TEST(DesktopEntry, RejectsLineBreakInjection) {
+    DesktopEntryParams params;
+    params.name = "Bad\nName";
+    params.execPath = "/usr/bin/bad";
+    params.iconName = "bad";
+    EXPECT_THROWS(generateDesktopEntry(params), std::runtime_error);
+}
+
 // ============================================================================
 // MIME Type XML Tests
 // ============================================================================
@@ -760,6 +871,14 @@ TEST(MimeXml, ContainsGlobPattern) {
     auto xml = generateMimeTypeXml("mypackage", assocs);
     EXPECT_CONTAINS(xml, "text/x-zia");
     EXPECT_CONTAINS(xml, "*.zia");
+}
+
+TEST(MimeXml, EscapesXmlFields) {
+    std::vector<FileAssoc> assocs;
+    assocs.push_back({".vp", "A & B <C>", "application/x-viper"});
+
+    auto xml = generateMimeTypeXml("mypackage", assocs);
+    EXPECT_CONTAINS(xml, "A &amp; B &lt;C&gt;");
 }
 
 // ============================================================================
@@ -806,7 +925,54 @@ TEST(Verify, ZipRejectsZip64Sentinel) {
     EXPECT_CONTAINS(err.str(), "ZIP64");
 }
 
+TEST(Verify, ZipRejectsTraversalEntry) {
+    ZipWriter zip;
+    zip.addFileString("safe.txt", "Hello");
+    auto data = zip.finishToVector();
+
+    const std::string from = "safe.txt";
+    const std::string to = "../x.txt";
+    ASSERT_EQ(from.size(), to.size());
+    for (size_t i = 0; i + from.size() <= data.size(); ++i) {
+        if (std::memcmp(data.data() + i, from.data(), from.size()) == 0)
+            std::memcpy(data.data() + i, to.data(), to.size());
+    }
+
+    std::ostringstream err;
+    EXPECT_FALSE(verifyZip(data, err));
+    EXPECT_CONTAINS(err.str(), "unsafe entry path");
+}
+
+TEST(Verify, ZipRejectsCrcMismatch) {
+    ZipWriter zip;
+    zip.addFileString("hello.txt", "Hello");
+    auto data = zip.finishToVector();
+
+    const uint16_t nameLen = readLE16(data.data() + 26);
+    const size_t dataOff = 30 + nameLen;
+    ASSERT_LT(dataOff, data.size());
+    data[dataOff] ^= 0xFF;
+
+    std::ostringstream err;
+    EXPECT_FALSE(verifyZip(data, err));
+    EXPECT_CONTAINS(err.str(), "CRC");
+}
+
 TEST(Verify, DebValid) {
+    ArWriter ar;
+    ar.addMemberString("debian-binary", "2.0\n");
+    ar.addMemberVec("control.tar.gz", makeTarGz({{"./control", "Package: test\n"}}));
+    ar.addMemberVec("data.tar.gz", makeTarGz({{"./usr/bin/test", "data"}}));
+    auto data = ar.finish();
+
+    std::ostringstream err;
+    const bool ok = verifyDeb(data, err);
+    if (!ok)
+        std::cerr << err.str();
+    EXPECT_TRUE(ok);
+}
+
+TEST(Verify, DebRejectsUngzippedMembers) {
     ArWriter ar;
     ar.addMemberString("debian-binary", "2.0\n");
     ar.addMemberString("control.tar.gz", "ctrl");
@@ -814,7 +980,14 @@ TEST(Verify, DebValid) {
     auto data = ar.finish();
 
     std::ostringstream err;
-    EXPECT_TRUE(verifyDeb(data, err));
+    EXPECT_FALSE(verifyDeb(data, err));
+    EXPECT_CONTAINS(err.str(), "compressed tar");
+}
+
+TEST(Verify, TarGzValid) {
+    auto tarGz = makeTarGz({{"./hello.txt", "hello"}});
+    std::ostringstream err;
+    EXPECT_TRUE(verifyTarGz(tarGz, err));
 }
 
 TEST(Verify, DebMissingMagic) {
@@ -894,6 +1067,28 @@ TEST(PackageUtils, RejectsArchiveEscapes) {
     EXPECT_THROWS(sanitizePackageRelativePath("../escape"), std::runtime_error);
     EXPECT_THROWS(sanitizePackageRelativePath("/absolute"), std::runtime_error);
     EXPECT_THROWS(sanitizePackageRelativePath("C:/drive"), std::runtime_error);
+}
+
+TEST(PackageUtils, RejectsInvalidPackageNames) {
+    EXPECT_THROWS(normalizeExecName("bad/name"), std::runtime_error);
+    EXPECT_THROWS(normalizeDebName("a"), std::runtime_error);
+    EXPECT_THROWS(normalizeDebName("-bad"), std::runtime_error);
+}
+
+TEST(PackageUtils, RejectsInvalidFileAssociations) {
+    EXPECT_THROWS(validateFileAssociation(".bad", "Bad", "text/with space"), std::runtime_error);
+    EXPECT_THROWS(validateFileAssociation("../bad", "Bad", "text/plain"), std::runtime_error);
+}
+
+TEST(PackageUtils, RejectsSourcePathEscape) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_pkg_source_escape_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot / "project");
+
+    EXPECT_THROWS(resolvePackageSourcePath(tmpRoot / "project", "../outside.txt", "asset"),
+                  std::runtime_error);
+    fs::remove_all(tmpRoot);
 }
 
 TEST(PackageConfig, DetectsNonDefaultPackageFields) {
@@ -1043,6 +1238,18 @@ TEST(StubGen, EmbedStringW) {
     EXPECT_EQ(data[5], 0);
 }
 
+TEST(StubGen, EmbedStringWAcceptsUtf8) {
+    InstallerStubGen gen;
+    uint32_t off = gen.embedStringW("\xE2\x82\xAC");
+    EXPECT_EQ(off, static_cast<uint32_t>(0));
+    const auto &data = gen.dataSection();
+    ASSERT_EQ(data.size(), static_cast<size_t>(4));
+    EXPECT_EQ(data[0], static_cast<uint8_t>(0xAC));
+    EXPECT_EQ(data[1], static_cast<uint8_t>(0x20));
+    EXPECT_EQ(data[2], 0);
+    EXPECT_EQ(data[3], 0);
+}
+
 // ============================================================================
 // InstallerStub Integration Tests
 // ============================================================================
@@ -1110,6 +1317,17 @@ TEST(InstallerStub, ARM64UsesX64Bootstrap) {
     EXPECT_EQ(stub.peArch, "x64");
     EXPECT_GT(stub.textSection.size(), static_cast<size_t>(10));
     EXPECT_FALSE(stub.imports.empty());
+}
+
+TEST(InstallerStub, AllowsZeroBytePayloadFile) {
+    WindowsPackageLayout layout;
+    layout.displayName = "TestApp";
+    layout.installDirName = "TestApp";
+    layout.executableName = "testapp.exe";
+    layout.overlayFileOffset = 0x400;
+    layout.installFiles.push_back({WindowsInstallRoot::InstallDir, "empty.dat", 0x80, 0});
+    auto stub = buildInstallerStub(layout, "x64");
+    EXPECT_GT(stub.textSection.size(), static_cast<size_t>(10));
 }
 
 TEST(WindowsPackageBuilder, BuildsInstallerWithStoredZipOverlay) {
@@ -1183,6 +1401,32 @@ TEST(WindowsPackageBuilder, BuildsArm64PayloadPackageWithX64Bootstrap) {
     std::ostringstream err;
     EXPECT_TRUE(verifyPEZipOverlay(pe, err));
     EXPECT_EQ(readLE16(pe.data() + 0x84), static_cast<uint16_t>(0x8664));
+    fs::remove_all(tmpRoot);
+}
+
+TEST(WindowsPackageBuilder, RejectsUnsafeDisplayName) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot = fs::temp_directory_path() / "viper_packaging_windows_bad_name_test";
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+    {
+        std::ofstream exe(tmpRoot / "app.exe", std::ios::binary);
+        exe.write("MZstub", 6);
+    }
+
+    PackageConfig pkg;
+    pkg.displayName = "Bad/Name";
+
+    WindowsBuildParams params;
+    params.projectName = "testapp";
+    params.version = "1.0.0";
+    params.executablePath = (tmpRoot / "app.exe").string();
+    params.projectRoot = tmpRoot.string();
+    params.pkgConfig = pkg;
+    params.outputPath = (tmpRoot / "bad.exe").string();
+    params.archStr = "x64";
+
+    EXPECT_THROWS(buildWindowsPackage(params), std::runtime_error);
     fs::remove_all(tmpRoot);
 }
 

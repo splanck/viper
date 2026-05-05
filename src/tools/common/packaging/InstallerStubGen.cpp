@@ -22,6 +22,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "InstallerStubGen.hpp"
+#include "PkgUtils.hpp"
 
 #include <cstring>
 #include <stdexcept>
@@ -297,14 +298,8 @@ void InstallerStubGen::leaRipData(X64Reg dst, uint32_t dataOffset) {
 
 uint32_t InstallerStubGen::embedStringW(const std::string &asciiStr) {
     uint32_t offset = static_cast<uint32_t>(data_.size());
-    // Convert ASCII to UTF-16LE
-    for (char c : asciiStr) {
-        data_.push_back(static_cast<uint8_t>(c));
-        data_.push_back(0);
-    }
-    // NUL terminator (2 bytes)
-    data_.push_back(0);
-    data_.push_back(0);
+    const auto bytes = utf8ToUtf16LEBytes(asciiStr, true);
+    data_.insert(data_.end(), bytes.begin(), bytes.end());
     return offset;
 }
 

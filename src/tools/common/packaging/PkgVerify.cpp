@@ -20,8 +20,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "PkgVerify.hpp"
+#include "PkgGzip.hpp"
+#include "PkgUtils.hpp"
+#include "ZipReader.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <cstring>
+#include <set>
+#include <sstream>
 
 namespace viper::pkg {
 
@@ -34,6 +41,187 @@ uint16_t rdLE16(const uint8_t *p) {
 uint32_t rdLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+}
+
+bool isAllZeroBlock(const uint8_t *p) {
+    for (size_t i = 0; i < 512; ++i) {
+        if (p[i] != 0)
+            return false;
+    }
+    return true;
+}
+
+bool parseDecimalField(const uint8_t *field, size_t width, size_t &out) {
+    out = 0;
+    bool sawDigit = false;
+    for (size_t i = 0; i < width; ++i) {
+        const unsigned char c = field[i];
+        if (c == ' ' || c == '\0') {
+            for (++i; i < width; ++i) {
+                if (field[i] != ' ' && field[i] != '\0')
+                    return false;
+            }
+            return sawDigit;
+        }
+        if (!std::isdigit(c))
+            return false;
+        sawDigit = true;
+        if (out > (static_cast<size_t>(-1) - (c - '0')) / 10)
+            return false;
+        out = out * 10 + static_cast<size_t>(c - '0');
+    }
+    return sawDigit;
+}
+
+bool parseOctalField(const uint8_t *field, size_t width, uint64_t &out) {
+    out = 0;
+    bool sawDigit = false;
+    for (size_t i = 0; i < width; ++i) {
+        const unsigned char c = field[i];
+        if (c == ' ' || c == '\0') {
+            for (++i; i < width; ++i) {
+                if (field[i] != ' ' && field[i] != '\0')
+                    return false;
+            }
+            return sawDigit;
+        }
+        if (c < '0' || c > '7')
+            return false;
+        sawDigit = true;
+        if (out > (static_cast<uint64_t>(-1) - (c - '0')) / 8)
+            return false;
+        out = (out << 3) + static_cast<uint64_t>(c - '0');
+    }
+    return sawDigit;
+}
+
+std::string tarFieldString(const uint8_t *field, size_t width) {
+    size_t len = 0;
+    while (len < width && field[len] != '\0')
+        ++len;
+    return std::string(reinterpret_cast<const char *>(field), len);
+}
+
+uint32_t tarChecksum(const uint8_t *hdr) {
+    uint32_t sum = 0;
+    for (size_t i = 0; i < 512; ++i)
+        sum += (i >= 148 && i < 156) ? static_cast<uint8_t>(' ') : hdr[i];
+    return sum;
+}
+
+bool verifyTarBytes(const std::vector<uint8_t> &data,
+                    std::ostream &err,
+                    std::set<std::string> *outNames = nullptr) {
+    if (data.size() < 1024 || data.size() % 512 != 0) {
+        err << "TAR: archive size is not a valid 512-byte-block tar stream\n";
+        return false;
+    }
+
+    size_t pos = 0;
+    bool sawEnd = false;
+    while (pos + 512 <= data.size()) {
+        const uint8_t *hdr = data.data() + pos;
+        if (isAllZeroBlock(hdr)) {
+            if (pos + 1024 > data.size() || !isAllZeroBlock(data.data() + pos + 512)) {
+                err << "TAR: missing second zero end-of-archive block\n";
+                return false;
+            }
+            sawEnd = true;
+            for (size_t tail = pos + 1024; tail < data.size(); ++tail) {
+                if (data[tail] != 0) {
+                    err << "TAR: non-zero bytes after end-of-archive marker\n";
+                    return false;
+                }
+            }
+            break;
+        }
+
+        if (std::memcmp(hdr + 257, "ustar", 5) != 0) {
+            err << "TAR: missing ustar magic at offset " << pos << "\n";
+            return false;
+        }
+
+        uint64_t storedChecksum = 0;
+        if (!parseOctalField(hdr + 148, 8, storedChecksum)) {
+            err << "TAR: invalid checksum field at offset " << pos << "\n";
+            return false;
+        }
+        if (storedChecksum != tarChecksum(hdr)) {
+            err << "TAR: checksum mismatch at offset " << pos << "\n";
+            return false;
+        }
+
+        uint64_t fileSize = 0;
+        if (!parseOctalField(hdr + 124, 12, fileSize)) {
+            err << "TAR: invalid size field at offset " << pos << "\n";
+            return false;
+        }
+
+        std::string name = tarFieldString(hdr, 100);
+        const std::string prefix = tarFieldString(hdr + 345, 155);
+        if (!prefix.empty())
+            name = prefix + "/" + name;
+        if (name.rfind("./", 0) == 0)
+            name = name.substr(2);
+        if (!name.empty()) {
+            try {
+                const bool isDir = hdr[156] == '5';
+                const std::string clean =
+                    sanitizePackageRelativePath(name, isDir ? "tar directory path" : "tar path");
+                if (clean.empty() && !isDir) {
+                    err << "TAR: empty file path at offset " << pos << "\n";
+                    return false;
+                }
+                if (outNames)
+                    outNames->insert(clean);
+            } catch (const std::exception &ex) {
+                err << "TAR: unsafe path '" << name << "': " << ex.what() << "\n";
+                return false;
+            }
+        }
+
+        const char type = hdr[156] == '\0' ? '0' : static_cast<char>(hdr[156]);
+        if (name.empty() && type != '5') {
+            err << "TAR: empty entry path at offset " << pos << "\n";
+            return false;
+        }
+        if (type != '0' && type != '5' && type != '2') {
+            err << "TAR: unsupported entry type '" << type << "' at offset " << pos << "\n";
+            return false;
+        }
+        if (type == '2') {
+            const std::string target = tarFieldString(hdr + 157, 100);
+            if (target.empty()) {
+                err << "TAR: empty symlink target at offset " << pos << "\n";
+                return false;
+            }
+            try {
+                (void)sanitizePackageRelativePath(target, "tar symlink target");
+            } catch (const std::exception &ex) {
+                err << "TAR: unsafe symlink target '" << target << "': " << ex.what() << "\n";
+                return false;
+            }
+        }
+        if (type != '0' && fileSize != 0) {
+            err << "TAR: non-file entry carries data at offset " << pos << "\n";
+            return false;
+        }
+
+        const size_t paddedSize =
+            static_cast<size_t>((fileSize + 511u) & ~static_cast<uint64_t>(511u));
+        if (fileSize > static_cast<uint64_t>(data.size() - pos - 512) ||
+            paddedSize > data.size() - pos - 512) {
+            err << "TAR: entry data extends past end of archive\n";
+            return false;
+        }
+        pos += 512 + paddedSize;
+    }
+
+    if (!sawEnd) {
+        err << "TAR: missing end-of-archive marker\n";
+        return false;
+    }
+    return true;
 }
 
 bool parsePeOverlayOffset(const std::vector<uint8_t> &data, size_t &overlayOff, std::ostream &err) {
@@ -76,11 +264,12 @@ bool parsePeOverlayOffset(const std::vector<uint8_t> &data, size_t &overlayOff, 
         size_t secOff = secTableOff + static_cast<size_t>(i) * 40;
         uint32_t rawSize = rdLE32(data.data() + secOff + 16);
         uint32_t rawOff = rdLE32(data.data() + secOff + 20);
-        size_t secEnd = static_cast<size_t>(rawOff) + static_cast<size_t>(rawSize);
-        if (secEnd > data.size()) {
+        uint64_t secEnd64 = static_cast<uint64_t>(rawOff) + static_cast<uint64_t>(rawSize);
+        if (secEnd64 > static_cast<uint64_t>(data.size())) {
             err << "PE: section raw data extends past end of file\n";
             return false;
         }
+        size_t secEnd = static_cast<size_t>(secEnd64);
         if (secEnd > maxRawEnd)
             maxRawEnd = secEnd;
     }
@@ -96,107 +285,26 @@ bool parsePeOverlayOffset(const std::vector<uint8_t> &data, size_t &overlayOff, 
 // ============================================================================
 
 bool verifyZip(const std::vector<uint8_t> &data, std::ostream &err) {
-    if (data.size() < 22) {
-        err << "ZIP: file too small (" << data.size() << " bytes)\n";
-        return false;
-    }
-
-    // Find end-of-central-directory record (scan backwards)
-    // EOCD signature = 0x06054B50
-    bool foundEocd = false;
-    size_t eocdOff = 0;
-    // EOCD can have a variable-length comment, so scan from end
-    size_t searchStart = (data.size() > 65557) ? data.size() - 65557 : 0;
-    for (size_t i = data.size() - 22; i >= searchStart; --i) {
-        if (rdLE32(data.data() + i) == 0x06054B50) {
-            foundEocd = true;
-            eocdOff = i;
-            break;
+    try {
+        ZipReader reader(data.data(), data.size());
+        std::set<std::string> seen;
+        for (const auto &entry : reader.entries()) {
+            if (!seen.insert(entry.name).second) {
+                err << "ZIP: duplicate entry '" << entry.name << "'\n";
+                return false;
+            }
+            try {
+                (void)sanitizePackageRelativePath(entry.name, "zip entry path");
+            } catch (const std::exception &ex) {
+                err << "ZIP: unsafe entry path '" << entry.name << "': " << ex.what() << "\n";
+                return false;
+            }
+            (void)reader.extract(entry);
         }
-        if (i == 0)
-            break;
-    }
-
-    if (!foundEocd) {
-        err << "ZIP: end-of-central-directory signature not found\n";
+    } catch (const std::exception &ex) {
+        err << ex.what() << "\n";
         return false;
     }
-
-    // Read entry count from EOCD
-    uint16_t totalEntries = rdLE16(data.data() + eocdOff + 10);
-    uint16_t commentLen = rdLE16(data.data() + eocdOff + 20);
-    uint32_t cdSize = rdLE32(data.data() + eocdOff + 12);
-    uint32_t cdOffset = rdLE32(data.data() + eocdOff + 16);
-
-    if (rdLE16(data.data() + eocdOff + 8) == 0xFFFF || totalEntries == 0xFFFF ||
-        cdSize == 0xFFFFFFFFu || cdOffset == 0xFFFFFFFFu) {
-        err << "ZIP: ZIP64 archives are not supported\n";
-        return false;
-    }
-
-    if (eocdOff + 22 + commentLen != data.size()) {
-        err << "ZIP: EOCD comment length does not match file size\n";
-        return false;
-    }
-    if (static_cast<uint64_t>(cdOffset) + static_cast<uint64_t>(cdSize) >
-        static_cast<uint64_t>(eocdOff)) {
-        err << "ZIP: central directory extends past EOCD\n";
-        return false;
-    }
-
-    // Verify central directory entries
-    size_t pos = cdOffset;
-    uint16_t entriesFound = 0;
-    while (pos + 46 <= data.size() && entriesFound < totalEntries) {
-        if (rdLE32(data.data() + pos) != 0x02014B50) {
-            err << "ZIP: invalid central directory header at offset " << pos << "\n";
-            return false;
-        }
-        uint16_t nameLen = rdLE16(data.data() + pos + 28);
-        uint16_t extraLen = rdLE16(data.data() + pos + 30);
-        uint16_t entryCommentLen = rdLE16(data.data() + pos + 32);
-        uint32_t compSize = rdLE32(data.data() + pos + 20);
-
-        // Verify the corresponding local header exists
-        uint32_t localOff = rdLE32(data.data() + pos + 42);
-        if (localOff + 30 > data.size()) {
-            err << "ZIP: local header offset " << localOff << " out of bounds\n";
-            return false;
-        }
-        if (rdLE32(data.data() + localOff) != 0x04034B50) {
-            err << "ZIP: invalid local file header at offset " << localOff << "\n";
-            return false;
-        }
-
-        size_t centralEnd = pos + 46 + static_cast<size_t>(nameLen) +
-                            static_cast<size_t>(extraLen) + static_cast<size_t>(entryCommentLen);
-        if (centralEnd > data.size() || centralEnd > static_cast<size_t>(cdOffset) + cdSize) {
-            err << "ZIP: truncated central directory entry at offset " << pos << "\n";
-            return false;
-        }
-
-        uint16_t localNameLen = rdLE16(data.data() + localOff + 26);
-        uint16_t localExtraLen = rdLE16(data.data() + localOff + 28);
-        size_t localDataOff =
-            static_cast<size_t>(localOff) + 30 + static_cast<size_t>(localNameLen) + localExtraLen;
-        if (localDataOff + compSize > data.size()) {
-            err << "ZIP: local file data at offset " << localOff << " is truncated\n";
-            return false;
-        }
-
-        pos = centralEnd;
-        entriesFound++;
-    }
-
-    if (entriesFound != totalEntries) {
-        err << "ZIP: expected " << totalEntries << " entries, found " << entriesFound << "\n";
-        return false;
-    }
-    if (pos != static_cast<size_t>(cdOffset) + cdSize) {
-        err << "ZIP: central directory size does not match EOCD\n";
-        return false;
-    }
-
     return true;
 }
 
@@ -216,78 +324,85 @@ bool verifyDeb(const std::vector<uint8_t> &data, std::ostream &err) {
         return false;
     }
 
-    // Parse first member header (60 bytes at offset 8)
-    if (data.size() < 68) {
-        err << "DEB: no member headers found\n";
-        return false;
-    }
-
-    // Member name: first 16 bytes, "/" terminated
-    // Check for "debian-binary/"
-    if (std::memcmp(data.data() + 8, "debian-binary/", 14) != 0) {
-        err << "DEB: first member is not 'debian-binary'\n";
-        return false;
-    }
-
-    // File magic at end of header: "`\n"
-    if (data[8 + 58] != '`' || data[8 + 59] != '\n') {
-        err << "DEB: invalid member header terminator\n";
-        return false;
-    }
-
-    // Parse size field (offset 48 in header, 10 bytes, decimal ASCII)
-    char sizeBuf[11] = {};
-    std::memcpy(sizeBuf, data.data() + 8 + 48, 10);
-    size_t memberSize = 0;
-    for (int i = 0; i < 10 && sizeBuf[i] != ' '; ++i)
-        memberSize = memberSize * 10 + static_cast<size_t>(sizeBuf[i] - '0');
-
-    // Content of debian-binary should be "2.0\n"
-    size_t contentOff = 68; // 8 (ar magic) + 60 (header)
-    if (contentOff + memberSize > data.size()) {
-        err << "DEB: debian-binary content truncated\n";
-        return false;
-    }
-
-    if (memberSize < 4 || std::memcmp(data.data() + contentOff, "2.0\n", 4) != 0) {
-        err << "DEB: debian-binary content is not '2.0\\n'\n";
-        return false;
-    }
-
-    // Scan for control.tar.gz and data.tar.gz members
+    std::vector<uint8_t> controlTarGz;
+    std::vector<uint8_t> dataTarGz;
     bool foundControl = false;
     bool foundData = false;
     size_t pos = 8; // after ar magic
+    size_t memberIndex = 0;
     while (pos + 60 <= data.size()) {
         // Check header terminator
-        if (data[pos + 58] != '`' || data[pos + 59] != '\n')
-            break;
+        if (data[pos + 58] != '`' || data[pos + 59] != '\n') {
+            err << "DEB: invalid member header terminator at offset " << pos << "\n";
+            return false;
+        }
 
         // Read name (16 bytes)
         std::string name(reinterpret_cast<const char *>(data.data() + pos), 16);
-        // Trim trailing spaces and "/"
+        while (!name.empty() && name.back() == ' ')
+            name.pop_back();
         auto end = name.find('/');
         if (end != std::string::npos)
             name = name.substr(0, end);
 
-        if (name == "control.tar.gz")
-            foundControl = true;
-        if (name == "data.tar.gz")
-            foundData = true;
-
         // Read size
-        char sb[11] = {};
-        std::memcpy(sb, data.data() + pos + 48, 10);
         size_t sz = 0;
-        for (int i = 0; i < 10 && sb[i] != ' '; ++i)
-            sz = sz * 10 + static_cast<size_t>(sb[i] - '0');
+        if (!parseDecimalField(data.data() + pos + 48, 10, sz)) {
+            err << "DEB: invalid member size field at offset " << pos << "\n";
+            return false;
+        }
+        const size_t contentOff = pos + 60;
+        if (sz > data.size() - contentOff) {
+            err << "DEB: member '" << name << "' content truncated\n";
+            return false;
+        }
+
+        const uint8_t *content = data.data() + contentOff;
+        if (memberIndex == 0) {
+            if (name != "debian-binary") {
+                err << "DEB: first member is not 'debian-binary'\n";
+                return false;
+            }
+            if (sz != 4 || std::memcmp(content, "2.0\n", 4) != 0) {
+                err << "DEB: debian-binary content is not exactly '2.0\\n'\n";
+                return false;
+            }
+        } else if (name == "control.tar.gz") {
+            if (foundControl) {
+                err << "DEB: duplicate control.tar.gz member\n";
+                return false;
+            }
+            foundControl = true;
+            controlTarGz.assign(content, content + sz);
+        } else if (name == "data.tar.gz") {
+            if (foundData) {
+                err << "DEB: duplicate data.tar.gz member\n";
+                return false;
+            }
+            foundData = true;
+            dataTarGz.assign(content, content + sz);
+        }
 
         // Advance past header + data + optional padding
         pos += 60 + sz;
-        if (sz % 2 != 0)
+        if (sz % 2 != 0) {
+            if (pos >= data.size()) {
+                err << "DEB: missing ar padding byte after member '" << name << "'\n";
+                return false;
+            }
+            if (data[pos] != '\n') {
+                err << "DEB: invalid ar padding byte after member '" << name << "'\n";
+                return false;
+            }
             pos++; // odd-size padding
+        }
+        ++memberIndex;
     }
 
+    if (pos != data.size()) {
+        err << "DEB: trailing or truncated ar member data\n";
+        return false;
+    }
     if (!foundControl) {
         err << "DEB: 'control.tar.gz' member not found\n";
         return false;
@@ -297,7 +412,35 @@ bool verifyDeb(const std::vector<uint8_t> &data, std::ostream &err) {
         return false;
     }
 
+    try {
+        std::set<std::string> controlNames;
+        const auto controlTar = gunzip(controlTarGz.data(), controlTarGz.size());
+        if (!verifyTarBytes(controlTar, err, &controlNames))
+            return false;
+        if (controlNames.find("control") == controlNames.end()) {
+            err << "DEB: control.tar.gz does not contain ./control\n";
+            return false;
+        }
+
+        const auto dataTar = gunzip(dataTarGz.data(), dataTarGz.size());
+        if (!verifyTarBytes(dataTar, err))
+            return false;
+    } catch (const std::exception &ex) {
+        err << "DEB: compressed tar verification failed: " << ex.what() << "\n";
+        return false;
+    }
+
     return true;
+}
+
+bool verifyTarGz(const std::vector<uint8_t> &data, std::ostream &err) {
+    try {
+        const auto tarBytes = gunzip(data.data(), data.size());
+        return verifyTarBytes(tarBytes, err);
+    } catch (const std::exception &ex) {
+        err << "TAR.GZ: " << ex.what() << "\n";
+        return false;
+    }
 }
 
 // ============================================================================
@@ -379,6 +522,11 @@ bool verifyPE(const std::vector<uint8_t> &data, std::ostream &err) {
         }
         uint32_t rawSize = rdLE32(data.data() + hdrOff + 16);
         uint32_t rawOff = rdLE32(data.data() + hdrOff + 20);
+        if (static_cast<uint64_t>(rawOff) + static_cast<uint64_t>(rawSize) >
+            static_cast<uint64_t>(data.size())) {
+            err << "PE: section raw data extends past end of file\n";
+            return false;
+        }
         if (rawSize > 0)
             sections.push_back({rawOff, rawSize});
     }
@@ -386,8 +534,10 @@ bool verifyPE(const std::vector<uint8_t> &data, std::ostream &err) {
     // Check for overlap
     for (size_t i = 0; i < sections.size(); ++i) {
         for (size_t j = i + 1; j < sections.size(); ++j) {
-            uint32_t aEnd = sections[i].rawOff + sections[i].rawSize;
-            uint32_t bEnd = sections[j].rawOff + sections[j].rawSize;
+            uint64_t aEnd =
+                static_cast<uint64_t>(sections[i].rawOff) + static_cast<uint64_t>(sections[i].rawSize);
+            uint64_t bEnd =
+                static_cast<uint64_t>(sections[j].rawOff) + static_cast<uint64_t>(sections[j].rawSize);
             bool overlap = (sections[i].rawOff < bEnd && sections[j].rawOff < aEnd);
             if (overlap) {
                 err << "PE: sections " << i << " and " << j << " overlap\n";

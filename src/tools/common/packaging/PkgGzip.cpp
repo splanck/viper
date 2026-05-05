@@ -25,6 +25,8 @@
 #include "PkgDeflate.hpp"
 
 #include <cstring>
+#include <stdexcept>
+#include <string>
 
 // rt_crc32 has no GC dependency — link directly
 extern "C" {
@@ -32,6 +34,21 @@ uint32_t rt_crc32_compute(const uint8_t *data, size_t len);
 }
 
 namespace viper::pkg {
+
+namespace {
+
+static constexpr size_t kGzipMaxOutput = 2u * 1024u * 1024u * 1024u;
+
+uint16_t rdLE16(const uint8_t *p) {
+    return static_cast<uint16_t>(p[0] | (p[1] << 8));
+}
+
+uint32_t rdLE32(const uint8_t *p) {
+    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
+           (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+}
+
+} // namespace
 
 std::vector<uint8_t> gzip(const uint8_t *data, size_t len, int level) {
     // Compress with raw DEFLATE
@@ -72,6 +89,61 @@ std::vector<uint8_t> gzip(const uint8_t *data, size_t len, int level) {
     out[tp + 7] = (len >> 24) & 0xFF;
 
     return result;
+}
+
+std::vector<uint8_t> gunzip(const uint8_t *data, size_t len) {
+    if (!data || len < 18)
+        throw std::runtime_error("gzip: stream too small");
+    if (data[0] != 0x1F || data[1] != 0x8B)
+        throw std::runtime_error("gzip: missing magic header");
+    if (data[2] != 0x08)
+        throw std::runtime_error("gzip: unsupported compression method");
+    const uint8_t flags = data[3];
+    if ((flags & 0xE0) != 0)
+        throw std::runtime_error("gzip: reserved flags are set");
+
+    size_t pos = 10;
+    if (flags & 0x04) {
+        if (pos + 2 > len)
+            throw std::runtime_error("gzip: truncated extra field");
+        const uint16_t xlen = rdLE16(data + pos);
+        pos += 2;
+        if (pos + xlen > len)
+            throw std::runtime_error("gzip: truncated extra field payload");
+        pos += xlen;
+    }
+    auto skipZString = [&](const char *field) {
+        while (pos < len && data[pos] != 0)
+            ++pos;
+        if (pos >= len)
+            throw std::runtime_error(std::string("gzip: unterminated ") + field);
+        ++pos;
+    };
+    if (flags & 0x08)
+        skipZString("filename");
+    if (flags & 0x10)
+        skipZString("comment");
+    if (flags & 0x02) {
+        if (pos + 2 > len)
+            throw std::runtime_error("gzip: truncated header CRC");
+        pos += 2;
+    }
+    if (pos + 8 > len)
+        throw std::runtime_error("gzip: missing trailer");
+
+    const uint32_t expectedCrc = rdLE32(data + len - 8);
+    const uint32_t expectedSize = rdLE32(data + len - 4);
+    if (expectedSize > kGzipMaxOutput)
+        throw std::runtime_error("gzip: uncompressed size exceeds 2 GiB limit");
+
+    const size_t deflateLen = len - pos - 8;
+    auto out = inflate(data + pos, deflateLen, expectedSize);
+    const uint32_t actualCrc = rt_crc32_compute(out.data(), out.size());
+    if (actualCrc != expectedCrc)
+        throw std::runtime_error("gzip: CRC-32 mismatch");
+    if (static_cast<uint32_t>(out.size()) != expectedSize)
+        throw std::runtime_error("gzip: uncompressed size mismatch");
+    return out;
 }
 
 } // namespace viper::pkg

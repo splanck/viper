@@ -211,7 +211,10 @@ void storeStackPtrToLocal(InstallerStubGen &gen, int32_t stackOff, int32_t local
 }
 
 uint32_t wideBytesFor(const std::string &text) {
-    return static_cast<uint32_t>((text.size() + 1) * 2);
+    const size_t bytes = (utf16CodeUnitCountFromUtf8(text) + 1) * 2;
+    if (bytes > UINT32_MAX)
+        throw std::runtime_error("Windows installer string is too large");
+    return static_cast<uint32_t>(bytes);
 }
 
 std::string installDirNameFor(const WindowsPackageLayout &layout) {
@@ -358,7 +361,8 @@ void emitRegSetConstString(InstallerStubGen &gen,
                            uint32_t regSetSlot,
                            uint32_t valueNameOff,
                            uint32_t valueOff,
-                           uint32_t valueBytes) {
+                           uint32_t valueBytes,
+                           uint32_t errorLabel) {
     gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kRegKeyOff);
     gen.leaRipData(X64Reg::RDX, valueNameOff);
     gen.xorRegReg(X64Reg::R8, X64Reg::R8);
@@ -368,13 +372,16 @@ void emitRegSetConstString(InstallerStubGen &gen,
     gen.movRegImm32(X64Reg::RAX, valueBytes);
     gen.movMemReg(X64Reg::RSP, 0x28, X64Reg::RAX);
     gen.callIATSlot(regSetSlot);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jnz(errorLabel);
 }
 
 void emitRegSetStackString(InstallerStubGen &gen,
                            uint32_t regSetSlot,
                            uint32_t valueNameOff,
                            int32_t stackBufOff,
-                           uint32_t bufferBytes) {
+                           uint32_t bufferBytes,
+                           uint32_t errorLabel) {
     gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kRegKeyOff);
     gen.leaRipData(X64Reg::RDX, valueNameOff);
     gen.xorRegReg(X64Reg::R8, X64Reg::R8);
@@ -384,6 +391,8 @@ void emitRegSetStackString(InstallerStubGen &gen,
     gen.movRegImm32(X64Reg::RAX, bufferBytes);
     gen.movMemReg(X64Reg::RSP, 0x28, X64Reg::RAX);
     gen.callIATSlot(regSetSlot);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jnz(errorLabel);
 }
 
 void emitBuildRootPaths(InstallerStubGen &gen,
@@ -461,30 +470,62 @@ void emitExtractFile(InstallerStubGen &gen,
                      uint32_t freeSlot,
                      uint32_t setFilePointerSlot,
                      uint32_t errorLabel) {
+    if (entry.sizeBytes > UINT32_MAX)
+        throw std::runtime_error("Windows installer entry is too large: " + entry.relativePath);
+    if (entry.overlayDataOffset > UINT32_MAX ||
+        overlayFileOffset > UINT32_MAX - static_cast<uint32_t>(entry.overlayDataOffset)) {
+        throw std::runtime_error("Windows installer overlay offset is too large: " +
+                                 entry.relativePath);
+    }
+
+    const uint32_t entrySize = static_cast<uint32_t>(entry.sizeBytes);
+    const uint32_t entryOffset = overlayFileOffset + static_cast<uint32_t>(entry.overlayDataOffset);
+    const uint32_t relPathOff = gen.embedStringW(entry.relativePath);
+
+    if (entrySize == 0) {
+        emitComposePath(gen, entry.root, kTempPathOff, slashOff, relPathOff, copySlot, catSlot);
+
+        gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
+        gen.movRegImm32(X64Reg::RDX, kGenericWrite);
+        gen.xorRegReg(X64Reg::R8, X64Reg::R8);
+        gen.xorRegReg(X64Reg::R9, X64Reg::R9);
+        storeStackImm64(gen, 0x20, kCreateAlways);
+        storeStackImm64(gen, 0x28, kFileAttributeNormal);
+        storeStackImm64(gen, 0x30, 0);
+        gen.callIATSlot(createFileSlot);
+        gen.cmpRegImm32(X64Reg::RAX, 0xFFFFFFFFu);
+        gen.jz(errorLabel);
+        gen.movMemReg(X64Reg::RBP, kHOutOff, X64Reg::RAX);
+        emitCloseLocalHandleIfSet(gen, kHOutOff, closeSlot);
+        return;
+    }
+
     gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kHFileOff);
-    gen.movRegImm32(X64Reg::RDX,
-                    overlayFileOffset + static_cast<uint32_t>(entry.overlayDataOffset));
+    gen.movRegImm32(X64Reg::RDX, entryOffset);
     gen.xorRegReg(X64Reg::R8, X64Reg::R8);
     gen.xorRegReg(X64Reg::R9, X64Reg::R9);
     gen.callIATSlot(setFilePointerSlot);
 
     gen.xorRegReg(X64Reg::RCX, X64Reg::RCX);
-    gen.movRegImm32(X64Reg::RDX, static_cast<uint32_t>(entry.sizeBytes));
+    gen.movRegImm32(X64Reg::RDX, entrySize);
     gen.callIATSlot(allocSlot);
     gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
     gen.jz(errorLabel);
     gen.movMemReg(X64Reg::RBP, kPFileBufOff, X64Reg::RAX);
 
+    zeroLocalQword(gen, kBytesReadOff);
     gen.movRegMem(X64Reg::RCX, X64Reg::RBP, kHFileOff);
     gen.movRegMem(X64Reg::RDX, X64Reg::RBP, kPFileBufOff);
-    gen.movRegImm32(X64Reg::R8, static_cast<uint32_t>(entry.sizeBytes));
+    gen.movRegImm32(X64Reg::R8, entrySize);
     gen.leaRegMem(X64Reg::R9, X64Reg::RBP, kBytesReadOff);
     storeStackImm64(gen, 0x20, 0);
     gen.callIATSlot(readSlot);
     gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
     gen.jz(errorLabel);
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kBytesReadOff);
+    gen.cmpRegImm32(X64Reg::RAX, entrySize);
+    gen.jnz(errorLabel);
 
-    const uint32_t relPathOff = gen.embedStringW(entry.relativePath);
     emitComposePath(gen, entry.root, kTempPathOff, slashOff, relPathOff, copySlot, catSlot);
 
     gen.leaRegMem(X64Reg::RCX, X64Reg::RBP, kTempPathOff);
@@ -499,14 +540,18 @@ void emitExtractFile(InstallerStubGen &gen,
     gen.jz(errorLabel);
     gen.movMemReg(X64Reg::RBP, kHOutOff, X64Reg::RAX);
 
+    zeroLocalQword(gen, kBytesWrittenOff);
     gen.movRegReg(X64Reg::RCX, X64Reg::RAX);
     gen.movRegMem(X64Reg::RDX, X64Reg::RBP, kPFileBufOff);
-    gen.movRegImm32(X64Reg::R8, static_cast<uint32_t>(entry.sizeBytes));
+    gen.movRegImm32(X64Reg::R8, entrySize);
     gen.leaRegMem(X64Reg::R9, X64Reg::RBP, kBytesWrittenOff);
     storeStackImm64(gen, 0x20, 0);
     gen.callIATSlot(writeSlot);
     gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
     gen.jz(errorLabel);
+    gen.movRegMem(X64Reg::RAX, X64Reg::RBP, kBytesWrittenOff);
+    gen.cmpRegImm32(X64Reg::RAX, entrySize);
+    gen.jnz(errorLabel);
 
     emitCloseLocalHandleIfSet(gen, kHOutOff, closeSlot);
     emitLocalFreeIfSet(gen, kPFileBufOff, freeSlot);
@@ -654,20 +699,23 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     gen.leaRipData(X64Reg::RDX, uninstallKeyOff);
     gen.leaRegMem(X64Reg::R8, X64Reg::RBP, kRegKeyOff);
     gen.callIATSlot(kI_RegCreateKeyW);
+    gen.testRegReg(X64Reg::RAX, X64Reg::RAX);
+    gen.jnz(lblError);
 
     emitRegSetConstString(gen,
                           kI_RegSetValueExW,
                           regDisplayNameOff,
                           displayNameOff,
-                          wideBytesFor(layout.displayName));
+                          wideBytesFor(layout.displayName),
+                          lblError);
     emitRegSetConstString(
-        gen, kI_RegSetValueExW, regDisplayVersionOff, versionOff, wideBytesFor(version));
+        gen, kI_RegSetValueExW, regDisplayVersionOff, versionOff, wideBytesFor(version), lblError);
     emitRegSetConstString(
-        gen, kI_RegSetValueExW, regPublisherOff, publisherOff, wideBytesFor(publisher));
+        gen, kI_RegSetValueExW, regPublisherOff, publisherOff, wideBytesFor(publisher), lblError);
     emitRegSetStackString(
-        gen, kI_RegSetValueExW, regInstallLocationOff, kInstallPathOff, kMaxPathBytes);
+        gen, kI_RegSetValueExW, regInstallLocationOff, kInstallPathOff, kMaxPathBytes, lblError);
     emitRegSetStackString(
-        gen, kI_RegSetValueExW, regUninstallStringOff, kUninstallPathOff, kMaxPathBytes);
+        gen, kI_RegSetValueExW, regUninstallStringOff, kUninstallPathOff, kMaxPathBytes, lblError);
     emitRegCloseIfSet(gen, kRegKeyOff, kI_RegCloseKey);
 
     emitMessageBox(gen, kI_MessageBoxW, successTitleOff, successMsgOff, 0x40);

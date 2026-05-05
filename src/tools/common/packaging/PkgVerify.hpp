@@ -53,6 +53,17 @@ bool verifyZip(const std::vector<uint8_t> &data, std::ostream &err);
 /// @return true if the .deb is structurally valid.
 bool verifyDeb(const std::vector<uint8_t> &data, std::ostream &err);
 
+/// @brief Verify a gzip-compressed USTAR tarball.
+///
+/// Checks:
+///   - gzip framing, CRC-32, and uncompressed size
+///   - tar headers, checksums, end markers, and safe relative paths
+///
+/// @param data .tar.gz file bytes.
+/// @param err  Stream for error messages.
+/// @return true if the tarball is structurally valid.
+bool verifyTarGz(const std::vector<uint8_t> &data, std::ostream &err);
+
 /// @brief Verify structural correctness of a PE32+ executable.
 ///
 /// Checks:

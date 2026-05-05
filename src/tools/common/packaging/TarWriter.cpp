@@ -23,14 +23,31 @@
 //===----------------------------------------------------------------------===//
 
 #include "TarWriter.hpp"
+#include "PkgUtils.hpp"
 
 #include <cstring>
 #include <stdexcept>
 
 namespace viper::pkg {
 
+namespace {
+
+void validateTarEntryPath(const std::string &path, const char *fieldName) {
+    std::string clean = path;
+    if (clean.rfind("./", 0) == 0)
+        clean = clean.substr(2);
+    while (!clean.empty() && clean.back() == '/')
+        clean.pop_back();
+    if (clean.empty())
+        return;
+    (void)sanitizePackageRelativePath(clean, fieldName);
+}
+
+} // namespace
+
 void TarWriter::addFile(
     const std::string &path, const uint8_t *data, size_t size, uint32_t mode, uint32_t mtime) {
+    validateTarEntryPath(path, "tar file path");
     Entry e;
     e.path = path;
     e.data.assign(data, data + size);
@@ -55,6 +72,7 @@ void TarWriter::addFileVec(const std::string &path,
 }
 
 void TarWriter::addDirectory(const std::string &path, uint32_t mode, uint32_t mtime) {
+    validateTarEntryPath(path, "tar directory path");
     Entry e;
     e.path = path;
     if (!e.path.empty() && e.path.back() != '/')
@@ -66,6 +84,10 @@ void TarWriter::addDirectory(const std::string &path, uint32_t mode, uint32_t mt
 }
 
 void TarWriter::addSymlink(const std::string &path, const std::string &target, uint32_t mtime) {
+    validateTarEntryPath(path, "tar symlink path");
+    if (target.empty())
+        throw std::runtime_error("tar symlink target must not be empty");
+    validateTarEntryPath(target, "tar symlink target");
     Entry e;
     e.path = path;
     e.linkTarget = target;
@@ -80,6 +102,12 @@ namespace {
 // Write an octal value as NUL-terminated ASCII into a fixed-width field.
 // Format: (width-1) octal digits + NUL byte.
 void writeOctal(uint8_t *field, size_t width, uint64_t value) {
+    uint64_t maxValue = 0;
+    for (size_t i = 0; i + 1 < width; ++i)
+        maxValue = (maxValue << 3) | 7u;
+    if (value > maxValue)
+        throw std::runtime_error("tar numeric field overflow");
+
     // Fill with zeros first
     std::memset(field, '0', width - 1);
     field[width - 1] = '\0';
@@ -101,7 +129,9 @@ void writeOctal(uint8_t *field, size_t width, uint64_t value) {
 
 // Write a NUL-terminated string into a fixed-width field.
 void writeString(uint8_t *field, size_t width, const std::string &s) {
-    size_t len = std::min(s.size(), width);
+    if (s.size() > width)
+        throw std::runtime_error("tar string field too long: " + s);
+    size_t len = s.size();
     std::memcpy(field, s.data(), len);
     if (len < width)
         field[len] = '\0';
@@ -150,7 +180,7 @@ std::vector<uint8_t> TarWriter::finish() const {
                 prefix = name.substr(0, splitAt);
                 name = name.substr(splitAt + 1);
             }
-            if (name.size() > 100)
+            if (name.size() > 100 || prefix.size() > 155)
                 throw std::runtime_error("tar path too long: " + e.path);
         }
 
@@ -177,8 +207,11 @@ std::vector<uint8_t> TarWriter::finish() const {
         hdr[156] = static_cast<uint8_t>(e.typeflag);
 
         // linkname[100]
-        if (e.typeflag == '2')
+        if (e.typeflag == '2') {
+            if (e.linkTarget.size() > 100)
+                throw std::runtime_error("tar symlink target too long: " + e.linkTarget);
             writeString(hdr + 157, 100, e.linkTarget);
+        }
 
         // magic[6] = "ustar\0"
         std::memcpy(hdr + 257, "ustar", 6);

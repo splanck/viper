@@ -27,6 +27,7 @@
 #include "tools/common/native_compiler.hpp"
 #include "tools/common/packaging/LinuxPackageBuilder.hpp"
 #include "tools/common/packaging/MacOSPackageBuilder.hpp"
+#include "tools/common/packaging/PkgUtils.hpp"
 #include "tools/common/packaging/PkgVerify.hpp"
 #include "tools/common/packaging/WindowsPackageBuilder.hpp"
 #include "tools/common/project_loader.hpp"
@@ -81,7 +82,7 @@ void packageUsage() {
         << "  package-homepage <url>              Project homepage URL\n"
         << "  package-license <spdx>              License identifier (SPDX)\n"
         << "  package-identifier <id>             Reverse-DNS identifier\n"
-        << "  package-icon <path>                 Source PNG for icons (512x512+)\n"
+        << "  package-icon <path>                 Source PNG for generated icons\n"
         << "  asset <source> <target>             Include asset files\n"
         << "  file-assoc <ext> <desc> <mime>      Register file type association\n"
         << "  shortcut-desktop on|off             Create desktop shortcut (Windows/Linux)\n"
@@ -292,6 +293,11 @@ int cmdPackage(int argc, char **argv) {
         }
     }
 
+    if (args.outputPath.empty()) {
+        args.outputPath = proj.name + "-" + proj.version + "-" + platformName(args.platformTarget) +
+                          "-" + archStr + platformExtension(args.platformTarget);
+    }
+
     // Dry-run mode: list what would be packaged, then exit
     if (args.dryRun) {
         std::cerr << "Dry run: " << displayName << " for " << platformName(args.platformTarget)
@@ -302,22 +308,36 @@ int cmdPackage(int argc, char **argv) {
         else
             std::cerr << "  Executable: " << proj.name << " (build)\n";
         if (!proj.packageConfig.iconPath.empty()) {
-            fs::path iconPath = fs::path(proj.rootDir) / proj.packageConfig.iconPath;
+            fs::path iconPath;
             std::cerr << "  Icon: " << proj.packageConfig.iconPath;
-            if (!fs::exists(iconPath))
+            try {
+                iconPath = viper::pkg::resolvePackageSourcePath(
+                    proj.rootDir, proj.packageConfig.iconPath, "package icon");
+            } catch (const std::exception &ex) {
+                std::cerr << " [INVALID: " << ex.what() << "]";
+            }
+            if (!iconPath.empty() && !fs::exists(iconPath))
                 std::cerr << " [NOT FOUND]";
             std::cerr << "\n";
         }
         for (const auto &asset : proj.packageConfig.assets) {
-            fs::path assetPath = fs::path(proj.rootDir) / asset.sourcePath;
+            fs::path assetPath;
             std::cerr << "  Asset: " << asset.sourcePath << " -> " << asset.targetPath;
-            if (!fs::exists(assetPath))
+            try {
+                assetPath = viper::pkg::resolvePackageSourcePath(
+                    proj.rootDir, asset.sourcePath, "asset source path");
+            } catch (const std::exception &ex) {
+                std::cerr << " [INVALID: " << ex.what() << "]";
+            }
+            if (!assetPath.empty() && !fs::exists(assetPath))
                 std::cerr << " [NOT FOUND]";
-            else if (fs::is_directory(assetPath)) {
+            else if (!assetPath.empty() && fs::is_directory(assetPath)) {
                 size_t count = 0;
-                for (auto &e : fs::recursive_directory_iterator(assetPath))
-                    if (e.is_regular_file())
-                        count++;
+                viper::pkg::safeDirectoryIterate(
+                    assetPath, proj.rootDir, [&](const fs::directory_entry &e) {
+                        if (e.is_regular_file())
+                            ++count;
+                    });
                 std::cerr << " (" << count << " files)";
             }
             std::cerr << "\n";
@@ -354,6 +374,11 @@ int cmdPackage(int argc, char **argv) {
         packageBinaryPath = exePath.lexically_normal().string();
         if (!fs::exists(packageBinaryPath)) {
             std::cerr << "error: prebuilt executable not found at " << packageBinaryPath << "\n";
+            return 1;
+        }
+        if (!fs::is_regular_file(packageBinaryPath)) {
+            std::cerr << "error: prebuilt executable is not a regular file at "
+                      << packageBinaryPath << "\n";
             return 1;
         }
     } else {
@@ -406,12 +431,6 @@ int cmdPackage(int argc, char **argv) {
 
         packageBinaryPath = std::move(tempBinaryPath);
         cleanupPackagedBinary = true;
-    }
-
-    // Step 2: Determine output path
-    if (args.outputPath.empty()) {
-        args.outputPath = proj.name + "-" + proj.version + "-" + platformName(args.platformTarget) +
-                          "-" + archStr + platformExtension(args.platformTarget);
     }
 
     // Step 3: Package
@@ -512,8 +531,11 @@ int cmdPackage(int argc, char **argv) {
                 case PackageTarget::Windows:
                     valid = viper::pkg::verifyPEZipOverlay(pkgData, verifyErr);
                     break;
+                case PackageTarget::Tarball:
+                    valid = viper::pkg::verifyTarGz(pkgData, verifyErr);
+                    break;
                 default:
-                    break; // Tarball: no structural verification needed
+                    break;
             }
             if (!valid) {
                 std::cerr << "error: package verification failed:\n" << verifyErr.str();

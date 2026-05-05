@@ -25,6 +25,7 @@
 #include "PkgDeflate.hpp"
 
 #include <cstring>
+#include <string>
 
 extern "C" {
 uint32_t rt_crc32_compute(const uint8_t *data, size_t len);
@@ -72,9 +73,21 @@ void ZipReader::parseCentralDirectory() {
         throw ZipReadError("ZIP: end-of-central-directory signature not found");
 
     uint16_t totalEntries = rdLE16(data_ + eocdOff + 10);
+    uint16_t diskEntries = rdLE16(data_ + eocdOff + 8);
+    uint16_t commentLen = rdLE16(data_ + eocdOff + 20);
+    uint32_t cdSize = rdLE32(data_ + eocdOff + 12);
     uint32_t cdOffset = rdLE32(data_ + eocdOff + 16);
 
-    if (cdOffset >= len_)
+    if (diskEntries == 0xFFFF || totalEntries == 0xFFFF || cdSize == 0xFFFFFFFFu ||
+        cdOffset == 0xFFFFFFFFu)
+        throw ZipReadError("ZIP: ZIP64 archives are not supported");
+    if (diskEntries != totalEntries)
+        throw ZipReadError("ZIP: split archives are not supported");
+    if (eocdOff + 22 + commentLen != len_)
+        throw ZipReadError("ZIP: EOCD comment length does not match file size");
+    if (static_cast<uint64_t>(cdOffset) + cdSize > eocdOff)
+        throw ZipReadError("ZIP: central directory extends past EOCD");
+    if (cdOffset >= len_ && totalEntries != 0)
         throw ZipReadError("ZIP: central directory offset out of bounds");
 
     // Parse central directory entries
@@ -87,6 +100,7 @@ void ZipReader::parseCentralDirectory() {
             throw ZipReadError("ZIP: invalid central directory header signature");
 
         ZipEntry entry;
+        const uint16_t flags = rdLE16(data_ + pos + 8);
         entry.method = rdLE16(data_ + pos + 10);
         entry.crc32 = rdLE32(data_ + pos + 16);
         entry.compressedSize = rdLE32(data_ + pos + 20);
@@ -94,17 +108,36 @@ void ZipReader::parseCentralDirectory() {
 
         uint16_t nameLen = rdLE16(data_ + pos + 28);
         uint16_t extraLen = rdLE16(data_ + pos + 30);
-        uint16_t commentLen = rdLE16(data_ + pos + 32);
+        uint16_t entryCommentLen = rdLE16(data_ + pos + 32);
         entry.localHeaderOffset = rdLE32(data_ + pos + 42);
 
-        if (pos + 46 + nameLen > len_)
-            throw ZipReadError("ZIP: entry name truncated");
+        if ((flags & 0x0001) != 0)
+            throw ZipReadError("ZIP: encrypted entries are not supported");
+        if ((flags & 0x0008) != 0)
+            throw ZipReadError("ZIP: data descriptors are not supported");
+        if (entry.method != 0 && entry.method != 8)
+            throw ZipReadError("ZIP: unsupported compression method " +
+                               std::to_string(entry.method));
+        if (entry.method == 0 && entry.compressedSize != entry.uncompressedSize)
+            throw ZipReadError("ZIP: stored entry has mismatched compressed size");
+
+        size_t centralEnd = pos + 46 + static_cast<size_t>(nameLen) +
+                            static_cast<size_t>(extraLen) + static_cast<size_t>(entryCommentLen);
+        if (centralEnd > len_ || centralEnd > static_cast<size_t>(cdOffset) + cdSize)
+            throw ZipReadError("ZIP: central directory entry truncated");
+        if (entry.localHeaderOffset == 0xFFFFFFFFu || entry.compressedSize == 0xFFFFFFFFu ||
+            entry.uncompressedSize == 0xFFFFFFFFu)
+            throw ZipReadError("ZIP: ZIP64 entry fields are not supported");
 
         entry.name.assign(reinterpret_cast<const char *>(data_ + pos + 46), nameLen);
+        if (entry.name.empty())
+            throw ZipReadError("ZIP: entry name is empty");
         entries_.push_back(std::move(entry));
 
-        pos += 46 + nameLen + extraLen + commentLen;
+        pos = centralEnd;
     }
+    if (pos != static_cast<size_t>(cdOffset) + cdSize)
+        throw ZipReadError("ZIP: central directory size does not match EOCD");
 }
 
 const ZipEntry *ZipReader::find(const std::string &name) const {
@@ -124,12 +157,26 @@ std::vector<uint8_t> ZipReader::extract(const ZipEntry &entry) const {
     if (rdLE32(data_ + lhOff) != 0x04034B50)
         throw ZipReadError("ZIP: invalid local file header signature");
 
+    const uint16_t localFlags = rdLE16(data_ + lhOff + 6);
+    const uint16_t localMethod = rdLE16(data_ + lhOff + 8);
+    if ((localFlags & 0x0001) != 0)
+        throw ZipReadError("ZIP: encrypted entries are not supported");
+    if ((localFlags & 0x0008) != 0)
+        throw ZipReadError("ZIP: data descriptors are not supported");
+    if (localMethod != entry.method)
+        throw ZipReadError("ZIP: local compression method does not match central directory");
+
     uint16_t lhNameLen = rdLE16(data_ + lhOff + 26);
     uint16_t lhExtraLen = rdLE16(data_ + lhOff + 28);
     size_t dataOff = lhOff + 30 + lhNameLen + lhExtraLen;
 
-    if (dataOff + entry.compressedSize > len_)
+    if (lhOff + 30 + lhNameLen + lhExtraLen < lhOff)
+        throw ZipReadError("ZIP: local header offset overflow");
+    if (dataOff > len_ || entry.compressedSize > len_ - dataOff)
         throw ZipReadError("ZIP: entry data extends past buffer");
+    std::string localName(reinterpret_cast<const char *>(data_ + lhOff + 30), lhNameLen);
+    if (localName != entry.name)
+        throw ZipReadError("ZIP: local file name does not match central directory");
 
     std::vector<uint8_t> result;
 
@@ -143,12 +190,13 @@ std::vector<uint8_t> ZipReader::extract(const ZipEntry &entry) const {
         throw ZipReadError("ZIP: unsupported compression method " + std::to_string(entry.method));
     }
 
-    // Verify CRC-32 (skip for directories which have crc=0 and size=0)
-    if (entry.uncompressedSize > 0) {
-        uint32_t actualCrc = rt_crc32_compute(result.data(), result.size());
-        if (actualCrc != entry.crc32)
-            throw ZipReadError("ZIP: CRC-32 mismatch for '" + entry.name + "'");
-    }
+    if (result.size() != entry.uncompressedSize)
+        throw ZipReadError("ZIP: uncompressed size mismatch for '" + entry.name + "'");
+
+    // Verify CRC-32 for every entry, including zero-length files/directories.
+    uint32_t actualCrc = rt_crc32_compute(result.data(), result.size());
+    if (actualCrc != entry.crc32)
+        throw ZipReadError("ZIP: CRC-32 mismatch for '" + entry.name + "'");
 
     return result;
 }

@@ -53,4 +53,12 @@ std::vector<uint8_t> deflate(const uint8_t *data, size_t len, int level = 6);
 /// @throws DeflateError on invalid or truncated data.
 std::vector<uint8_t> inflate(const uint8_t *data, size_t len);
 
+/// @brief Decompress a raw DEFLATE stream with an explicit output limit.
+/// @param data Compressed DEFLATE data.
+/// @param len Length of compressed data.
+/// @param maxOutputBytes Maximum allowed decompressed byte count.
+/// @return Decompressed bytes.
+/// @throws DeflateError on invalid/truncated data or output larger than maxOutputBytes.
+std::vector<uint8_t> inflate(const uint8_t *data, size_t len, size_t maxOutputBytes);
+
 } // namespace viper::pkg

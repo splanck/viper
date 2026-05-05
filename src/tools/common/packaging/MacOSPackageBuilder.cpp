@@ -87,6 +87,15 @@ class TempDirGuard {
     fs::path path_;
 };
 
+void validateBundleDisplayName(const std::string &name) {
+    if (name.empty())
+        throw std::runtime_error("macOS bundle display name must not be empty");
+    validateSingleLineField(name, "macOS bundle display name");
+    if (name.find('/') != std::string::npos || name.find(':') != std::string::npos)
+        throw std::runtime_error("macOS bundle display name must not contain path separators: " +
+                                 name);
+}
+
 } // namespace
 
 //=============================================================================
@@ -96,6 +105,15 @@ class TempDirGuard {
 void buildMacOSPackage(const MacOSBuildParams &params) {
     const auto &pkg = params.pkgConfig;
     std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
+    const std::string version = params.version.empty() ? "0.0.0" : params.version;
+    validateBundleDisplayName(displayName);
+    validatePackageIdentifier(pkg.identifier);
+    validateSingleLineField(version, "macOS package version");
+    for (const auto &assoc : pkg.fileAssociations)
+        validateFileAssociation(assoc.extension, assoc.description, assoc.mimeType);
+    if (!fs::is_regular_file(params.executablePath))
+        throw std::runtime_error("macOS package executable is not a regular file: " +
+                                 params.executablePath);
 
     // Determine executable name (lowercase, no spaces)
     std::string execName = normalizeExecName(params.projectName);
@@ -125,7 +143,7 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
     // Icon (ICNS from source PNG)
     std::string iconFileName;
     if (!pkg.iconPath.empty()) {
-        fs::path iconSrc = fs::path(params.projectRoot) / pkg.iconPath;
+        fs::path iconSrc = resolvePackageSourcePath(params.projectRoot, pkg.iconPath, "package icon");
         if (fs::exists(iconSrc)) {
             auto srcImage = pngRead(iconSrc.string());
             auto icnsData = generateIcns(srcImage);
@@ -142,7 +160,7 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
     plistParams.executableName = execName;
     plistParams.bundleId = pkg.identifier.empty() ? ("com.viper." + execName) : pkg.identifier;
     plistParams.bundleName = displayName;
-    plistParams.version = params.version;
+    plistParams.version = version;
     plistParams.iconFile = iconFileName;
     plistParams.minOsVersion = pkg.minOsMacos;
     plistParams.fileAssociations = pkg.fileAssociations;
@@ -150,7 +168,7 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
 
     // Assets
     for (const auto &asset : pkg.assets) {
-        fs::path srcPath = fs::path(params.projectRoot) / asset.sourcePath;
+        fs::path srcPath = resolvePackageSourcePath(params.projectRoot, asset.sourcePath, "asset source path");
         std::string targetDir = sanitizePackageRelativePath(asset.targetPath, "asset target path");
 
         if (!fs::exists(srcPath)) {
@@ -192,6 +210,8 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
 void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {
     namespace fs = std::filesystem;
     const std::string version = params.manifest.version.empty() ? "0.0.0" : params.manifest.version;
+    validatePackageIdentifier(params.identifier);
+    validateSingleLineField(version, "macOS toolchain package version");
 
     const fs::path tmpRoot = uniqueTempPackagingDir("viper-macos-toolchain-" + version);
     TempDirGuard cleanup(tmpRoot);

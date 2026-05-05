@@ -23,6 +23,8 @@
 
 #include "IconGenerator.hpp"
 
+#include <limits>
+
 namespace viper::pkg {
 
 //=============================================================================
@@ -75,9 +77,24 @@ static const uint32_t kLinuxIconSizes[] = {16, 32, 48, 128, 256};
 /// @brief Standard icon sizes for Windows ICO.
 static const uint32_t kIcoSizes[] = {16, 24, 32, 48, 64, 128, 256};
 
+void validateSourceImage(const PkgImage &srcImage) {
+    if (srcImage.width == 0 || srcImage.height == 0)
+        throw PNGError("icon: source image is empty");
+    const size_t expectedPixels = static_cast<size_t>(srcImage.width) * srcImage.height * 4;
+    if (srcImage.pixels.size() != expectedPixels)
+        throw PNGError("icon: RGBA pixel buffer size does not match dimensions");
+}
+
+uint32_t checkedIconSize(size_t value, const char *format) {
+    if (value > std::numeric_limits<uint32_t>::max())
+        throw PNGError(std::string("icon: ") + format + " entry is too large");
+    return static_cast<uint32_t>(value);
+}
+
 } // namespace
 
 std::vector<uint8_t> generateIcns(const PkgImage &srcImage) {
+    validateSourceImage(srcImage);
     std::vector<uint8_t> result;
 
     // ICNS header: magic "icns" (4 bytes) + total_size placeholder (4 bytes)
@@ -89,10 +106,6 @@ std::vector<uint8_t> generateIcns(const PkgImage &srcImage) {
     result.resize(8, 0);
 
     for (const auto &entry : kIcnsTypes) {
-        // Skip sizes larger than source
-        if (entry.size > srcImage.width && entry.size > srcImage.height)
-            continue;
-
         // Resize to target size
         PkgImage resized = imageResize(srcImage, entry.size, entry.size);
 
@@ -101,7 +114,7 @@ std::vector<uint8_t> generateIcns(const PkgImage &srcImage) {
 
         // Write entry: type(4) + entry_size(4, big-endian) + PNG data
         // entry_size includes the 8-byte type+size header
-        uint32_t entrySize = static_cast<uint32_t>(8 + png.size());
+        uint32_t entrySize = checkedIconSize(8 + png.size(), "ICNS");
 
         result.push_back(static_cast<uint8_t>(entry.type[0]));
         result.push_back(static_cast<uint8_t>(entry.type[1]));
@@ -114,7 +127,7 @@ std::vector<uint8_t> generateIcns(const PkgImage &srcImage) {
     }
 
     // Fill in total size (big-endian) at offset 4
-    uint32_t totalSize = static_cast<uint32_t>(result.size());
+    uint32_t totalSize = checkedIconSize(result.size(), "ICNS");
     result[4] = static_cast<uint8_t>((totalSize >> 24) & 0xFF);
     result[5] = static_cast<uint8_t>((totalSize >> 16) & 0xFF);
     result[6] = static_cast<uint8_t>((totalSize >> 8) & 0xFF);
@@ -128,6 +141,7 @@ std::vector<uint8_t> generateIcns(const PkgImage &srcImage) {
 //=============================================================================
 
 std::vector<uint8_t> generateIco(const PkgImage &srcImage) {
+    validateSourceImage(srcImage);
     // First, generate all the PNG blobs for sizes that fit
     struct IcoEntry {
         uint32_t size;
@@ -137,16 +151,10 @@ std::vector<uint8_t> generateIco(const PkgImage &srcImage) {
     std::vector<IcoEntry> entries;
 
     for (uint32_t sz : kIcoSizes) {
-        if (sz > srcImage.width && sz > srcImage.height)
-            continue;
-
         PkgImage resized = imageResize(srcImage, sz, sz);
         auto png = pngEncode(resized);
         entries.push_back({sz, std::move(png)});
     }
-
-    if (entries.empty())
-        return {};
 
     std::vector<uint8_t> result;
 
@@ -181,10 +189,13 @@ std::vector<uint8_t> generateIco(const PkgImage &srcImage) {
         result.push_back(0);                                        // Reserved
         writeLE16(result, 1);                                       // Planes
         writeLE16(result, 32);                                      // BitCount (32bpp RGBA)
-        writeLE32(result, static_cast<uint32_t>(e.pngData.size())); // Size
+        writeLE32(result, checkedIconSize(e.pngData.size(), "ICO")); // Size
         writeLE32(result, currentOffset);                           // FileOffset
 
-        currentOffset += static_cast<uint32_t>(e.pngData.size());
+        const uint32_t pngSize = checkedIconSize(e.pngData.size(), "ICO");
+        if (currentOffset > std::numeric_limits<uint32_t>::max() - pngSize)
+            throw PNGError("icon: ICO file is too large");
+        currentOffset += pngSize;
     }
 
     // PNG data blocks
@@ -200,12 +211,10 @@ std::vector<uint8_t> generateIco(const PkgImage &srcImage) {
 //=============================================================================
 
 std::map<uint32_t, std::vector<uint8_t>> generateMultiSizePngs(const PkgImage &srcImage) {
+    validateSourceImage(srcImage);
     std::map<uint32_t, std::vector<uint8_t>> result;
 
     for (uint32_t sz : kLinuxIconSizes) {
-        if (sz > srcImage.width && sz > srcImage.height)
-            continue;
-
         PkgImage resized = imageResize(srcImage, sz, sz);
         result[sz] = pngEncode(resized);
     }

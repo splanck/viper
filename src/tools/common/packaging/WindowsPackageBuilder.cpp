@@ -30,6 +30,7 @@
 #include "ZipWriter.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <set>
 #include <sstream>
@@ -52,6 +53,51 @@ void addUniqueDir(std::vector<WindowsPackageDirEntry> &out,
     if (!seen.insert(key).second)
         return;
     out.push_back(WindowsPackageDirEntry{root, clean});
+}
+
+void validateWindowsRelativePath(const std::string &relativePath, const char *fieldName) {
+    const std::string clean = sanitizePackageRelativePath(relativePath, fieldName);
+    size_t pos = 0;
+    while (pos < clean.size()) {
+        const size_t next = clean.find('/', pos);
+        const std::string segment =
+            next == std::string::npos ? clean.substr(pos) : clean.substr(pos, next - pos);
+        validateWindowsFileName(segment, fieldName);
+        if (next == std::string::npos)
+            break;
+        pos = next + 1;
+    }
+}
+
+void validateStubPathFits(const std::string &path, const char *fieldName) {
+    if (utf16CodeUnitCountFromUtf8(path) + 1 > 260)
+        throw std::runtime_error(std::string(fieldName) +
+                                 " exceeds the Windows installer MAX_PATH stub limit: " + path);
+}
+
+void validateWindowsLayoutFitsStub(const WindowsPackageLayout &layout) {
+    const std::string installDir = layout.installDirName.empty() ? layout.displayName
+                                                                 : layout.installDirName;
+    validateWindowsFileName(installDir, "Windows install directory");
+    validateStubPathFits("C:\\Program Files\\" + installDir, "Windows install directory");
+    for (const auto &dir : layout.installDirectories) {
+        validateWindowsRelativePath(dir.relativePath, "Windows install directory path");
+        validateStubPathFits("C:\\Program Files\\" + installDir + "\\" + dir.relativePath,
+                             "Windows install directory path");
+    }
+    for (const auto &file : layout.installFiles) {
+        validateWindowsRelativePath(file.relativePath, "Windows install file path");
+        validateStubPathFits("C:\\Program Files\\" + installDir + "\\" + file.relativePath,
+                             "Windows install file path");
+    }
+    for (const auto &file : layout.uninstallFiles)
+        validateWindowsRelativePath(file.relativePath, "Windows uninstall file path");
+}
+
+std::string lowerAscii(std::string text) {
+    for (char &c : text)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return text;
 }
 
 void addParentDirs(std::vector<WindowsPackageDirEntry> &out,
@@ -115,6 +161,13 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     const std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
     const std::string exec = normalizeExecName(params.projectName);
     const std::string installDir = displayName;
+    validateWindowsFileName(displayName, "Windows display name");
+    validatePackageIdentifier(pkg.identifier);
+    validateSingleLineField(params.version, "Windows package version");
+    validateSingleLineField(pkg.author, "Windows package author");
+    if (!fs::is_regular_file(params.executablePath))
+        throw std::runtime_error("Windows package executable is not a regular file: " +
+                                 params.executablePath);
 
     WindowsPackageLayout layout;
     layout.displayName = displayName;
@@ -135,7 +188,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
 
     std::vector<uint8_t> icoData;
     if (!pkg.iconPath.empty()) {
-        fs::path iconSrc = fs::path(params.projectRoot) / pkg.iconPath;
+        fs::path iconSrc = resolvePackageSourcePath(params.projectRoot, pkg.iconPath, "package icon");
         if (fs::exists(iconSrc)) {
             auto srcImage = pngRead(iconSrc.string());
             icoData = generateIco(srcImage);
@@ -157,9 +210,10 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                    true);
 
     for (const auto &asset : pkg.assets) {
-        fs::path srcPath = fs::path(params.projectRoot) / asset.sourcePath;
+        fs::path srcPath = resolvePackageSourcePath(params.projectRoot, asset.sourcePath, "asset source path");
         const std::string targetDir =
             sanitizePackageRelativePath(asset.targetPath, "asset target path");
+        validateWindowsRelativePath(targetDir, "asset target path");
 
         if (!fs::exists(srcPath)) {
             std::cerr << "warning: asset '" << asset.sourcePath << "' not found, skipping\n";
@@ -259,6 +313,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     }
 
     finalizeUninstallDirs(layout);
+    validateWindowsLayoutFitsStub(layout);
 
     auto uninstStub = buildUninstallerStub(layout, params.archStr);
     PEBuildParams uninstPe;
@@ -309,6 +364,10 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
 }
 
 void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
+    validateWindowsFileName(params.displayName, "Windows display name");
+    validatePackageIdentifier(params.identifier);
+    validateSingleLineField(params.publisher, "Windows package publisher");
+    validateSingleLineField(params.manifest.version, "Windows package version");
     WindowsPackageLayout layout;
     layout.displayName = params.displayName;
     layout.installDirName = "Viper";
@@ -329,6 +388,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     for (const auto &file : params.manifest.files) {
         const std::string relInstall =
             sanitizePackageRelativePath(file.stagedRelativePath, "windows toolchain path");
+        validateWindowsRelativePath(relInstall, "windows toolchain path");
         addParentDirs(layout.installDirectories,
                       installDirSet,
                       WindowsInstallRoot::InstallDir,
@@ -344,14 +404,16 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                        relInstall,
                        true);
 
-        const std::string lowerRel = normalizeExecName(relInstall);
-        if (lowerRel == "license" || lowerRel == "readme.md") {
-            const std::string overlayName = lowerRel == "license" ? "meta/license.txt" : "meta/readme.txt";
+        const std::string lowerName = lowerAscii(fs::path(relInstall).filename().generic_string());
+        if (lowerName == "license" || lowerName == "readme.md") {
+            const std::string overlayName =
+                lowerName == "license" ? "meta/license.txt" : "meta/readme.txt";
             zip.addFile(overlayName, data.data(), data.size(), 0100644);
         }
     }
 
     finalizeUninstallDirs(layout);
+    validateWindowsLayoutFitsStub(layout);
 
     auto uninstStub = buildUninstallerStub(layout, params.archStr);
     PEBuildParams uninstPe;

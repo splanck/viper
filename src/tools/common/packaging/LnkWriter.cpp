@@ -27,8 +27,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "LnkWriter.hpp"
+#include "PkgUtils.hpp"
 
 #include <cstring>
+#include <limits>
+#include <stdexcept>
 
 namespace viper::pkg {
 
@@ -47,14 +50,25 @@ void appendLE32(std::vector<uint8_t> &buf, uint32_t val) {
 }
 
 /// @brief Append a UTF-16LE StringData entry: charCount(2) + UTF-16LE chars.
-/// @note Simple ASCII-to-UTF-16LE conversion (sufficient for file paths).
 void appendStringData(std::vector<uint8_t> &buf, const std::string &str) {
-    uint16_t charCount = static_cast<uint16_t>(str.size());
+    const auto units = utf8ToUtf16CodeUnits(str);
+    if (units.size() > std::numeric_limits<uint16_t>::max())
+        throw std::runtime_error("lnk: string data is too long");
+    uint16_t charCount = static_cast<uint16_t>(units.size());
     appendLE16(buf, charCount);
-    for (char c : str) {
-        buf.push_back(static_cast<uint8_t>(c));
-        buf.push_back(0); // High byte = 0 for ASCII
+    for (uint16_t unit : units) {
+        buf.push_back(static_cast<uint8_t>(unit & 0xFF));
+        buf.push_back(static_cast<uint8_t>((unit >> 8) & 0xFF));
     }
+}
+
+std::vector<uint8_t> ansiPathFallback(const std::string &str) {
+    std::vector<uint8_t> out;
+    out.reserve(str.size() + 1);
+    for (unsigned char c : str)
+        out.push_back((c >= 0x20 && c < 0x7F) ? c : static_cast<uint8_t>('?'));
+    out.push_back(0);
+    return out;
 }
 
 } // namespace
@@ -147,8 +161,8 @@ std::vector<uint8_t> generateLnk(const LnkParams &params) {
         // Build LinkInfo in a temporary buffer, then append
         std::vector<uint8_t> li;
 
-        // LinkInfoHeaderSize = 0x1C (28 bytes, minimum for §2.3)
-        uint32_t liHeaderSize = 0x1C;
+        // LinkInfoHeaderSize = 0x24 includes Unicode path offsets.
+        uint32_t liHeaderSize = 0x24;
 
         // VolumeID structure: VolumeIDSize(4) + DriveType(4) + DriveSerialNumber(4)
         //                   + VolumeLabelOffset(4) + VolumeLabel("C:\0")
@@ -166,21 +180,25 @@ std::vector<uint8_t> generateLnk(const LnkParams &params) {
         volumeId[2] = static_cast<uint8_t>((volIdSize >> 16) & 0xFF);
         volumeId[3] = static_cast<uint8_t>((volIdSize >> 24) & 0xFF);
 
-        // LocalBasePath: the target path as ANSI (NUL terminated)
-        std::string localBasePath = params.targetPath;
-        // Ensure NUL terminator
-        std::vector<uint8_t> lbp(localBasePath.begin(), localBasePath.end());
-        lbp.push_back(0);
+        // LocalBasePath: ANSI fallback plus Unicode path for non-ASCII-correct resolution.
+        std::vector<uint8_t> lbp = ansiPathFallback(params.targetPath);
+        std::vector<uint8_t> lbpUnicode = utf8ToUtf16LEBytes(params.targetPath, true);
 
         // CommonPathSuffix: empty (NUL terminated)
         std::vector<uint8_t> cps = {0};
+        std::vector<uint8_t> cpsUnicode = {0, 0};
 
         // Calculate offsets
         uint32_t volumeIdOffset = liHeaderSize;
         uint32_t localBasePathOffset = volumeIdOffset + volIdSize;
         uint32_t commonNetworkOffset = 0; // Not present
         uint32_t commonPathSuffixOffset = localBasePathOffset + static_cast<uint32_t>(lbp.size());
-        uint32_t linkInfoSize = commonPathSuffixOffset + static_cast<uint32_t>(cps.size());
+        uint32_t localBasePathOffsetUnicode =
+            commonPathSuffixOffset + static_cast<uint32_t>(cps.size());
+        uint32_t commonPathSuffixOffsetUnicode =
+            localBasePathOffsetUnicode + static_cast<uint32_t>(lbpUnicode.size());
+        uint32_t linkInfoSize =
+            commonPathSuffixOffsetUnicode + static_cast<uint32_t>(cpsUnicode.size());
 
         // Write LinkInfo header
         appendLE32(li, linkInfoSize);
@@ -190,6 +208,8 @@ std::vector<uint8_t> generateLnk(const LnkParams &params) {
         appendLE32(li, localBasePathOffset);
         appendLE32(li, commonNetworkOffset);
         appendLE32(li, commonPathSuffixOffset);
+        appendLE32(li, localBasePathOffsetUnicode);
+        appendLE32(li, commonPathSuffixOffsetUnicode);
 
         // VolumeID
         li.insert(li.end(), volumeId.begin(), volumeId.end());
@@ -199,6 +219,10 @@ std::vector<uint8_t> generateLnk(const LnkParams &params) {
 
         // CommonPathSuffix
         li.insert(li.end(), cps.begin(), cps.end());
+
+        // Unicode LocalBasePath and CommonPathSuffix
+        li.insert(li.end(), lbpUnicode.begin(), lbpUnicode.end());
+        li.insert(li.end(), cpsUnicode.begin(), cpsUnicode.end());
 
         buf.insert(buf.end(), li.begin(), li.end());
     }

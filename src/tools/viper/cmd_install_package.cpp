@@ -21,6 +21,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #if defined(_WIN32)
@@ -191,11 +192,7 @@ bool verifyArtifact(const fs::path &artifact, InstallPackageTarget target, std::
         case InstallPackageTarget::LinuxDeb:
             return viper::pkg::verifyDeb(data, err);
         case InstallPackageTarget::Tarball:
-            if (data.size() < 2 || data[0] != 0x1F || data[1] != 0x8B) {
-                err << "tarball: missing gzip header\n";
-                return false;
-            }
-            return true;
+            return viper::pkg::verifyTarGz(data, err);
         case InstallPackageTarget::MacOS:
             if (data.size() < 4 || data[0] != 'x' || data[1] != 'a' || data[2] != 'r' ||
                 data[3] != '!') {
@@ -215,6 +212,24 @@ bool verifyArtifact(const fs::path &artifact, InstallPackageTarget target, std::
             return false;
     }
 }
+
+class AutoStageCleanup {
+  public:
+    AutoStageCleanup(fs::path path, bool enabled) : path_(std::move(path)), enabled_(enabled) {}
+    ~AutoStageCleanup() {
+        if (enabled_ && !path_.empty()) {
+            std::error_code ec;
+            fs::remove_all(path_, ec);
+        }
+    }
+    void dismiss() {
+        enabled_ = false;
+    }
+
+  private:
+    fs::path path_;
+    bool enabled_{false};
+};
 
 fs::path ensureStageDir(const InstallPackageArgs &args) {
     if (!args.stageDir.empty())
@@ -300,6 +315,7 @@ int cmdInstallPackage(int argc, char **argv) {
     }
 
     fs::path stageDir = ensureStageDir(args);
+    AutoStageCleanup stageCleanup(stageDir, args.stageDir.empty() && !args.keepStageDir);
     viper::pkg::ToolchainInstallManifest manifest =
         viper::pkg::gatherToolchainInstallManifest(stageDir);
     if (!args.archOverride.empty())
@@ -382,6 +398,7 @@ int cmdInstallPackage(int argc, char **argv) {
 
     if (!args.keepStageDir && args.stageDir.empty())
         fs::remove_all(stageDir);
+    stageCleanup.dismiss();
 
     return 0;
     } catch (const std::exception &ex) {

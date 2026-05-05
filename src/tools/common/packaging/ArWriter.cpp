@@ -56,11 +56,13 @@ void ArWriter::addMemberVec(const std::string &name,
 namespace {
 
 // Write a right-padded field to buf. Field is exactly `width` bytes, padded
-// with spaces.
-void writeField(uint8_t *buf, const std::string &value, size_t width) {
-    size_t len = std::min(value.size(), width);
-    std::memcpy(buf, value.data(), len);
-    std::memset(buf + len, ' ', width - len);
+// with spaces. ar has no overflow indicator for these fixed fields, so reject
+// instead of silently truncating headers.
+void writeField(uint8_t *buf, const std::string &value, size_t width, const char *fieldName) {
+    if (value.size() > width)
+        throw std::runtime_error(std::string("ar ") + fieldName + " field too long: " + value);
+    std::memcpy(buf, value.data(), value.size());
+    std::memset(buf + value.size(), ' ', width - value.size());
 }
 
 } // namespace
@@ -84,24 +86,24 @@ std::vector<uint8_t> ArWriter::finish() const {
 
         // ar_name[16]: "name/" padded with spaces
         std::string arName = m.name + "/";
-        writeField(hdr + 0, arName, 16);
+        writeField(hdr + 0, arName, 16, "name");
 
         // ar_date[12]: decimal mtime
-        writeField(hdr + 16, std::to_string(m.mtime), 12);
+        writeField(hdr + 16, std::to_string(m.mtime), 12, "date");
 
         // ar_uid[6]: "0"
-        writeField(hdr + 28, "0", 6);
+        writeField(hdr + 28, "0", 6, "uid");
 
         // ar_gid[6]: "0"
-        writeField(hdr + 34, "0", 6);
+        writeField(hdr + 34, "0", 6, "gid");
 
         // ar_mode[8]: octal mode
         char modeStr[16];
         std::snprintf(modeStr, sizeof(modeStr), "%o", m.mode);
-        writeField(hdr + 40, modeStr, 8);
+        writeField(hdr + 40, modeStr, 8, "mode");
 
         // ar_size[10]: decimal byte count
-        writeField(hdr + 48, std::to_string(m.data.size()), 10);
+        writeField(hdr + 48, std::to_string(m.data.size()), 10, "size");
 
         // ar_fmag[2]: "`\n"
         hdr[58] = '`';

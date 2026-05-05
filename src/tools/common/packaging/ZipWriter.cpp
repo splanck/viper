@@ -26,6 +26,7 @@
 
 #include "ZipWriter.hpp"
 #include "PkgDeflate.hpp"
+#include "PkgUtils.hpp"
 
 #include <cstring>
 #include <ctime>
@@ -91,6 +92,7 @@ void ZipWriter::validateArchiveLimit(size_t value, size_t maxValue, const char *
 
 void ZipWriter::validateEntryName(const std::string &name) const {
     validateArchiveLimit(name.size(), 0xFFFFu, "entry names longer than 65535 bytes");
+    (void)sanitizePackageRelativePath(name, "zip entry name");
 }
 
 void ZipWriter::writeBytes(const uint8_t *data, size_t len) {

@@ -29,6 +29,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <limits>
 
 extern "C" {
 uint32_t rt_crc32_compute(const uint8_t *data, size_t len);
@@ -86,6 +87,8 @@ static uint32_t adler32(const uint8_t *data, size_t len) {
     return (b << 16) | a;
 }
 
+static constexpr size_t kMaxDecodedPngBytes = 256u * 1024u * 1024u;
+
 //=============================================================================
 // PNG Reader
 //=============================================================================
@@ -98,43 +101,86 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
     uint8_t colorType = 0;
     std::vector<uint8_t> idatBuf;
     size_t pos = 8;
+    bool seenIHDR = false;
+    bool seenIEND = false;
 
     while (pos + 12 <= len) {
         uint32_t chunkLen = readBE32(data + pos);
         const uint8_t *chunkType = data + pos + 4;
         const uint8_t *chunkData = data + pos + 8;
 
-        if (pos + 12 + chunkLen > len)
-            break;
+        if (chunkLen > len - pos - 12)
+            throw PNGError("PNG: truncated chunk");
 
-        if (std::memcmp(chunkType, "IHDR", 4) == 0 && chunkLen >= 13) {
+        const uint32_t storedCrc = readBE32(data + pos + 8 + chunkLen);
+        const uint32_t actualCrc = pngCRC(data + pos + 4, 4 + chunkLen);
+        if (storedCrc != actualCrc)
+            throw PNGError("PNG: chunk CRC mismatch");
+
+        if (std::memcmp(chunkType, "IHDR", 4) == 0) {
+            if (seenIHDR)
+                throw PNGError("PNG: duplicate IHDR");
+            if (chunkLen != 13)
+                throw PNGError("PNG: invalid IHDR length");
             width = readBE32(chunkData);
             height = readBE32(chunkData + 4);
             uint8_t bitDepth = chunkData[8];
             colorType = chunkData[9];
+            uint8_t compression = chunkData[10];
+            uint8_t filter = chunkData[11];
+            uint8_t interlace = chunkData[12];
+            if (width == 0 || height == 0)
+                throw PNGError("PNG: empty image");
             if (bitDepth != 8 || (colorType != 2 && colorType != 6))
                 throw PNGError("PNG: unsupported format (need 8-bit RGB or RGBA)");
+            if (compression != 0 || filter != 0 || interlace != 0)
+                throw PNGError("PNG: unsupported IHDR compression/filter/interlace method");
+            seenIHDR = true;
         } else if (std::memcmp(chunkType, "IDAT", 4) == 0) {
+            if (!seenIHDR)
+                throw PNGError("PNG: IDAT before IHDR");
             idatBuf.insert(idatBuf.end(), chunkData, chunkData + chunkLen);
         } else if (std::memcmp(chunkType, "IEND", 4) == 0) {
+            if (chunkLen != 0)
+                throw PNGError("PNG: invalid IEND length");
+            seenIEND = true;
+            pos += 12 + chunkLen;
             break;
         }
 
         pos += 12 + chunkLen;
     }
 
-    if (width == 0 || height == 0 || idatBuf.size() < 6)
+    if (!seenIHDR || idatBuf.size() < 6)
         throw PNGError("PNG: missing IHDR or IDAT");
+    if (!seenIEND)
+        throw PNGError("PNG: missing IEND");
+
+    const uint8_t cmf = idatBuf[0];
+    const uint8_t flg = idatBuf[1];
+    if ((cmf & 0x0F) != 8 || (cmf >> 4) > 7 || (((static_cast<uint16_t>(cmf) << 8) | flg) % 31) != 0)
+        throw PNGError("PNG: invalid zlib header");
+    if ((flg & 0x20) != 0)
+        throw PNGError("PNG: zlib preset dictionaries are not supported");
 
     // IDAT is a zlib stream: 2-byte header + DEFLATE + 4-byte Adler-32
     size_t deflateLen = idatBuf.size() - 2 - 4;
     auto raw = inflate(idatBuf.data() + 2, deflateLen);
+    const uint32_t expectedAdler = readBE32(idatBuf.data() + idatBuf.size() - 4);
+    const uint32_t actualAdler = adler32(raw.data(), raw.size());
+    if (expectedAdler != actualAdler)
+        throw PNGError("PNG: Adler-32 mismatch");
 
     int channels = (colorType == 6) ? 4 : 3;
+    if (width > kMaxDecodedPngBytes / static_cast<size_t>(channels))
+        throw PNGError("PNG: image dimensions are too large");
     size_t stride = static_cast<size_t>(width) * channels;
+    if (stride + 1 > kMaxDecodedPngBytes ||
+        height > kMaxDecodedPngBytes / (stride + 1))
+        throw PNGError("PNG: image data is too large");
     size_t expected = (stride + 1) * height;
-    if (raw.size() < expected)
-        throw PNGError("PNG: decompressed data too short");
+    if (raw.size() != expected)
+        throw PNGError("PNG: decompressed data size mismatch");
 
     // Apply scanline filters
     std::vector<uint8_t> img(stride * height);
@@ -177,6 +223,9 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len) {
     PkgImage result;
     result.width = width;
     result.height = height;
+    if (width > kMaxDecodedPngBytes / 4 ||
+        height > kMaxDecodedPngBytes / (static_cast<size_t>(width) * 4))
+        throw PNGError("PNG: image dimensions are too large");
     result.pixels.resize(width * height * 4);
 
     for (uint32_t y = 0; y < height; y++) {
@@ -217,6 +266,9 @@ static void writeChunk(std::vector<uint8_t> &buf,
                        const char *type,
                        const uint8_t *data,
                        size_t len) {
+    if (len > std::numeric_limits<uint32_t>::max())
+        throw PNGError("PNG: chunk too large");
+
     // Length (big-endian)
     uint8_t lenBuf[4];
     writeBE32(lenBuf, static_cast<uint32_t>(len));
@@ -240,9 +292,15 @@ static void writeChunk(std::vector<uint8_t> &buf,
 std::vector<uint8_t> pngEncode(const PkgImage &img) {
     if (img.width == 0 || img.height == 0)
         throw PNGError("PNG: empty image");
+    if (img.width > kMaxDecodedPngBytes / 4 ||
+        img.height > kMaxDecodedPngBytes / (static_cast<size_t>(img.width) * 4))
+        throw PNGError("PNG: image dimensions are too large");
+    const size_t pixelBytes = static_cast<size_t>(img.width) * img.height * 4;
+    if (img.pixels.size() != pixelBytes)
+        throw PNGError("PNG: RGBA pixel buffer size does not match dimensions");
 
     std::vector<uint8_t> result;
-    result.reserve(img.width * img.height * 4 + 1024);
+    result.reserve(pixelBytes + 1024);
 
     // PNG signature
     result.insert(result.end(), kPNGSignature, kPNGSignature + 8);
