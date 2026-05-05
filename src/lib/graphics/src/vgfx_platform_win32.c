@@ -66,6 +66,8 @@ typedef struct {
     HBITMAP hbmp;                 ///< DIB section bitmap handle
     HGDIOBJ old_bitmap;           ///< Original object selected into memdc
     void *dib_pixels;             ///< Pointer to DIB pixel data (BGRA format)
+    int dib_width;                 ///< Current DIB width in physical pixels
+    int dib_height;                ///< Current DIB height in physical pixels
     int width;                    ///< Cached window width
     int height;                   ///< Cached window height
     int close_requested;          ///< 1 if WM_CLOSE received, 0 otherwise
@@ -189,6 +191,8 @@ static int win32_recreate_dib(struct vgfx_window *win) {
         DeleteObject(w32->hbmp);
         w32->hbmp = NULL;
         w32->dib_pixels = NULL;
+        w32->dib_width = 0;
+        w32->dib_height = 0;
     }
 
     BITMAPINFO bmi = {0};
@@ -204,6 +208,8 @@ static int win32_recreate_dib(struct vgfx_window *win) {
     if (!w32->hbmp || !w32->dib_pixels) {
         w32->hbmp = NULL;
         w32->dib_pixels = NULL;
+        w32->dib_width = 0;
+        w32->dib_height = 0;
         vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to create Win32 DIB section");
         return 0;
     }
@@ -211,6 +217,8 @@ static int win32_recreate_dib(struct vgfx_window *win) {
     HGDIOBJ previous = SelectObject(w32->memdc, w32->hbmp);
     if (!w32->old_bitmap)
         w32->old_bitmap = previous;
+    w32->dib_width = win->width;
+    w32->dib_height = win->height;
     return 1;
 }
 
@@ -247,24 +255,6 @@ static int win32_create_dib_for_size(vgfx_win32_data *w32,
     return 1;
 }
 
-static int win32_install_dib(vgfx_win32_data *w32, HBITMAP hbmp, void *pixels) {
-    if (!w32 || !w32->memdc || !hbmp || !pixels)
-        return 0;
-
-    HGDIOBJ previous = SelectObject(w32->memdc, hbmp);
-    if (!previous || previous == HGDI_ERROR) {
-        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to select Win32 DIB section");
-        return 0;
-    }
-    if (!w32->old_bitmap)
-        w32->old_bitmap = previous;
-    if (w32->hbmp)
-        DeleteObject(w32->hbmp);
-    w32->hbmp = hbmp;
-    w32->dib_pixels = pixels;
-    return 1;
-}
-
 static int win32_resize_backing_store(struct vgfx_window *win,
                                       int dip_w,
                                       int dip_h,
@@ -288,14 +278,34 @@ static int win32_resize_backing_store(struct vgfx_window *win,
     if (w32->memdc && !win32_create_dib_for_size(w32, phys_w, phys_h, &new_hbmp, &new_pixels))
         return 0;
 
-    if (!vgfx_internal_resize_framebuffer(win, phys_w, phys_h)) {
-        if (new_hbmp)
+    HGDIOBJ previous_bitmap = NULL;
+    HBITMAP old_hbmp = w32->hbmp;
+    if (new_hbmp) {
+        previous_bitmap = SelectObject(w32->memdc, new_hbmp);
+        if (!previous_bitmap || previous_bitmap == HGDI_ERROR) {
             DeleteObject(new_hbmp);
+            vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to select resized Win32 DIB");
+            return 0;
+        }
+        if (!w32->old_bitmap)
+            w32->old_bitmap = previous_bitmap;
+    }
+
+    if (!vgfx_internal_resize_framebuffer(win, phys_w, phys_h)) {
+        if (new_hbmp) {
+            SelectObject(w32->memdc, previous_bitmap);
+            DeleteObject(new_hbmp);
+        }
         return 0;
     }
-    if (new_hbmp && !win32_install_dib(w32, new_hbmp, new_pixels)) {
-        DeleteObject(new_hbmp);
-        return 0;
+
+    if (new_hbmp) {
+        w32->hbmp = new_hbmp;
+        w32->dib_pixels = new_pixels;
+        w32->dib_width = phys_w;
+        w32->dib_height = phys_h;
+        if (old_hbmp)
+            DeleteObject(old_hbmp);
     }
 
     w32->width = dip_w;
@@ -487,6 +497,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         case WM_KILLFOCUS: {
             /* Window lost focus */
             win->is_focused = 0;
+            vgfx_internal_clear_input_state(win);
             vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = timestamp};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
@@ -547,11 +558,12 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
                     codepoint = (uint32_t)ch;
             }
 
-            if (codepoint >= 0x20 && codepoint != 0x7F) {
+            int modifiers = win32_modifiers();
+            if (vgfx_internal_should_emit_text_input(codepoint, modifiers)) {
                 vgfx_event_t event = {
                     .type = VGFX_EVENT_TEXT_INPUT,
                     .time_ms = timestamp,
-                    .data.text = {.codepoint = codepoint, .modifiers = win32_modifiers()}};
+                    .data.text = {.codepoint = codepoint, .modifiers = modifiers}};
                 vgfx_internal_enqueue_event(win, &event);
             }
             return 0;
@@ -971,6 +983,8 @@ void vgfx_platform_destroy_window(struct vgfx_window *win) {
         DeleteObject(w32->hbmp);
         w32->hbmp = NULL;
         w32->dib_pixels = NULL;
+        w32->dib_width = 0;
+        w32->dib_height = 0;
     }
 
     /* Delete memory DC */
@@ -1054,6 +1068,8 @@ int vgfx_platform_present(struct vgfx_window *win) {
 
     vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
     if (!w32->hwnd || !w32->hdc || !w32->memdc || !w32->dib_pixels)
+        return 0;
+    if (w32->dib_width != win->width || w32->dib_height != win->height)
         return 0;
 
     /* Copy framebuffer to DIB with RGBA→BGRA conversion.

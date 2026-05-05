@@ -455,9 +455,18 @@ void test_focus_state_sync(void) {
     ASSERT_NOT_NULL(win);
     ASSERT_EQ(vgfx_is_focused(win), 1);
 
+    vgfx_mock_inject_key_event(win, VGFX_KEY_A, 1);
+    vgfx_mock_inject_mouse_button(win, VGFX_MOUSE_LEFT, 1);
+    ASSERT_EQ(vgfx_pump_events(win), 1);
+    ASSERT_EQ(vgfx_key_down(win, VGFX_KEY_A), 1);
+    ASSERT_EQ(vgfx_mouse_button(win, VGFX_MOUSE_LEFT), 1);
+    vgfx_clear_events(win);
+
     vgfx_mock_inject_focus(win, 0);
     ASSERT_EQ(vgfx_pump_events(win), 1);
     ASSERT_EQ(vgfx_is_focused(win), 0);
+    ASSERT_EQ(vgfx_key_down(win, VGFX_KEY_A), 0);
+    ASSERT_EQ(vgfx_mouse_button(win, VGFX_MOUSE_LEFT), 0);
 
     vgfx_event_t ev;
     ASSERT_EQ(vgfx_poll_event(win, &ev), 1);

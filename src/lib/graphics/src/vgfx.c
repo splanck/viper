@@ -248,6 +248,13 @@ int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int
     return 1;
 }
 
+void vgfx_internal_clear_input_state(struct vgfx_window *win) {
+    if (!win)
+        return;
+    memset(win->key_state, 0, sizeof(win->key_state));
+    memset(win->mouse_button_state, 0, sizeof(win->mouse_button_state));
+}
+
 //===----------------------------------------------------------------------===//
 // Event Queue Implementation (Synchronized Ring Buffer)
 //===----------------------------------------------------------------------===//
@@ -759,8 +766,7 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) {
     win->close_requested = 0;
 
     /* Initialize input state (all keys/buttons released) */
-    memset(win->key_state, 0, sizeof(win->key_state));
-    memset(win->mouse_button_state, 0, sizeof(win->mouse_button_state));
+    vgfx_internal_clear_input_state(win);
     win->mouse_x = 0;
     win->mouse_y = 0;
 

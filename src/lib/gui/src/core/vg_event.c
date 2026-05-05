@@ -10,8 +10,8 @@
 //          custom widget events through the widget tree with hit-testing,
 //          bubbling, capture, and per-root state slots.
 // Key invariants:
-//   - Per-root state (hover, focus, capture) is isolated per root widget slot.
-//   - Up to VG_EVENT_ROOT_STATE_SLOTS roots may be active simultaneously.
+//   - Per-root state (hover, focus, capture) is isolated per root widget.
+//   - Root state storage grows as needed instead of sharing state on overflow.
 //   - Setting event->handled = true stops bubbling immediately.
 // Ownership/Lifetime:
 //   - Events are stack-allocated value types; no heap allocation occurs here.
@@ -23,11 +23,12 @@
 #include "../../include/vg_widget.h"
 #include "vgfx.h"
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define VG_DOUBLE_CLICK_MAX_INTERVAL_MS 400
 #define VG_DOUBLE_CLICK_MAX_DISTANCE_PX 5.0f
-#define VG_EVENT_ROOT_STATE_SLOTS 16
+#define VG_EVENT_ROOT_STATE_INITIAL_CAPACITY 16
 
 typedef struct vg_event_root_state_slot {
     vg_widget_t *root;
@@ -36,7 +37,8 @@ typedef struct vg_event_root_state_slot {
     bool initialized;
 } vg_event_root_state_slot_t;
 
-static vg_event_root_state_slot_t g_root_state_slots[VG_EVENT_ROOT_STATE_SLOTS];
+static vg_event_root_state_slot_t *g_root_state_slots = NULL;
+static size_t g_root_state_slot_capacity = 0;
 static vg_widget_t *g_active_event_root = NULL;
 static uint64_t g_active_event_root_id = 0;
 
@@ -147,7 +149,7 @@ void vg_event_forget_widget_subtree(vg_widget_t *widget) {
     if (!widget)
         return;
 
-    for (size_t i = 0; i < VG_EVENT_ROOT_STATE_SLOTS; i++) {
+    for (size_t i = 0; i < g_root_state_slot_capacity; i++) {
         vg_event_root_state_slot_t *slot = &g_root_state_slots[i];
         if (!slot->root)
             continue;
@@ -173,7 +175,7 @@ void vg_event_forget_widget_subtree(vg_widget_t *widget) {
 
 /// @brief Frees any root-state slots whose root widget has since been destroyed or recycled.
 static void event_prune_dead_root_state_slots(void) {
-    for (size_t i = 0; i < VG_EVENT_ROOT_STATE_SLOTS; i++) {
+    for (size_t i = 0; i < g_root_state_slot_capacity; i++) {
         if (!g_root_state_slots[i].root)
             continue;
         if (vg_widget_is_live(g_root_state_slots[i].root) &&
@@ -194,7 +196,7 @@ static vg_event_root_state_slot_t *event_find_root_state_slot(vg_widget_t *root,
 
     event_prune_dead_root_state_slots();
 
-    for (size_t i = 0; i < VG_EVENT_ROOT_STATE_SLOTS; i++) {
+    for (size_t i = 0; i < g_root_state_slot_capacity; i++) {
         if (g_root_state_slots[i].root == root && g_root_state_slots[i].root_id == root->id)
             return &g_root_state_slots[i];
     }
@@ -202,7 +204,7 @@ static vg_event_root_state_slot_t *event_find_root_state_slot(vg_widget_t *root,
     if (!create)
         return NULL;
 
-    for (size_t i = 0; i < VG_EVENT_ROOT_STATE_SLOTS; i++) {
+    for (size_t i = 0; i < g_root_state_slot_capacity; i++) {
         if (g_root_state_slots[i].root)
             continue;
         g_root_state_slots[i].root = root;
@@ -212,7 +214,27 @@ static vg_event_root_state_slot_t *event_find_root_state_slot(vg_widget_t *root,
         return &g_root_state_slots[i];
     }
 
-    return NULL;
+    size_t old_capacity = g_root_state_slot_capacity;
+    size_t new_capacity =
+        old_capacity > 0 ? old_capacity * 2u : (size_t)VG_EVENT_ROOT_STATE_INITIAL_CAPACITY;
+    if (new_capacity <= old_capacity)
+        return NULL;
+
+    vg_event_root_state_slot_t *new_slots =
+        (vg_event_root_state_slot_t *)realloc(g_root_state_slots,
+                                              new_capacity * sizeof(*new_slots));
+    if (!new_slots)
+        return NULL;
+
+    memset(new_slots + old_capacity, 0, (new_capacity - old_capacity) * sizeof(*new_slots));
+    g_root_state_slots = new_slots;
+    g_root_state_slot_capacity = new_capacity;
+
+    g_root_state_slots[old_capacity].root = root;
+    g_root_state_slots[old_capacity].root_id = root->id;
+    event_init_empty_runtime_state(&g_root_state_slots[old_capacity].state);
+    g_root_state_slots[old_capacity].initialized = false;
+    return &g_root_state_slots[old_capacity];
 }
 
 /// @brief Saves the current global event state into the previously-active root's slot, then restores state for @p root.
@@ -299,7 +321,15 @@ static bool event_widget_is_in_subtree(vg_widget_t *root, vg_widget_t *widget) {
 /// @brief Returns the captured widget only if it resides inside the active modal; releases and returns NULL if outside.
 static vg_widget_t *event_modal_safe_capture(void) {
     vg_widget_t *capture = vg_widget_get_input_capture();
+    if (capture && !vg_widget_is_live(capture)) {
+        vg_widget_release_input_capture();
+        return NULL;
+    }
     vg_widget_t *modal = vg_widget_get_modal_root();
+    if (modal && (!vg_widget_is_live(modal) || !modal->visible)) {
+        vg_widget_set_modal_root(NULL);
+        modal = NULL;
+    }
     if (capture && modal && modal->visible && !event_widget_is_in_subtree(modal, capture)) {
         vg_widget_release_input_capture();
         return NULL;

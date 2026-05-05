@@ -2,3 +2,14 @@ project crackman
 version 0.1.0
 lang zia
 entry main.zia
+
+# === Package Metadata ===
+package-name Crackman
+package-description "A Pac-Man style arcade game built with Viper"
+package-identifier org.viper-lang.crackman
+package-author "Viper Project"
+package-license MIT
+package-icon packaging/icon.png
+
+# === Assets ===
+asset assets assets

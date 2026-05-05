@@ -1307,6 +1307,13 @@ static int vaud_music_begin_refill_locked(vaud_music_t music) {
     return 1;
 }
 
+static int vaud_music_begin_forced_refill_locked(vaud_music_t music) {
+    if (!music || music->refill_in_progress)
+        return 0;
+    music->refill_in_progress = 1;
+    return 1;
+}
+
 static void vaud_music_finish_refill_locked(vaud_music_t music) {
     if (music)
         music->refill_in_progress = 0;
@@ -1605,10 +1612,10 @@ void vaud_update(vaud_context_t ctx) {
     if (vaud_context_is_destroying(ctx))
         return;
 
+    vaud_mutex_lock(&ctx->mutex);
     for (;;) {
         vaud_music_t music = NULL;
 
-        vaud_mutex_lock(&ctx->mutex);
         for (int32_t i = 0; i < ctx->music_count; i++) {
             vaud_music_t candidate = ctx->active_music[i];
             if (vaud_music_begin_refill_locked(candidate)) {
@@ -1616,17 +1623,14 @@ void vaud_update(vaud_context_t ctx) {
                 break;
             }
         }
-        vaud_mutex_unlock(&ctx->mutex);
 
         if (!music)
             break;
 
         vaud_music_prefill_locked(music);
-
-        vaud_mutex_lock(&ctx->mutex);
         vaud_music_finish_refill_locked(music);
-        vaud_mutex_unlock(&ctx->mutex);
     }
+    vaud_mutex_unlock(&ctx->mutex);
 }
 
 void vaud_free_music(vaud_music_t music) {
@@ -1635,7 +1639,8 @@ void vaud_free_music(vaud_music_t music) {
 
     vaud_context_t ctx = music->ctx;
 
-    /* Remove from context's music list */
+    /* Remove from context's music list. This waits behind any in-progress
+     * refill/seek because those operations hold the same mutex while decoding. */
     if (ctx) {
         vaud_mutex_lock(&ctx->mutex);
         for (int32_t i = 0; i < ctx->music_count; i++) {
@@ -1649,6 +1654,9 @@ void vaud_free_music(vaud_music_t music) {
                 break;
             }
         }
+        music->state = VAUD_MUSIC_STOPPED;
+        music->refill_in_progress = 0;
+        music->ctx = NULL;
         vaud_mutex_unlock(&ctx->mutex);
     }
 
@@ -1693,11 +1701,15 @@ void vaud_detach_music(vaud_music_t music) {
                 break;
             }
         }
+        music->refill_in_progress = 0;
+        music->state = VAUD_MUSIC_STOPPED;
+        music->ctx = NULL;
         vaud_mutex_unlock(&ctx->mutex);
     }
-
-    music->state = VAUD_MUSIC_STOPPED;
-    music->ctx = NULL;
+    if (!ctx) {
+        music->state = VAUD_MUSIC_STOPPED;
+        music->ctx = NULL;
+    }
 }
 
 int vaud_music_is_attached(vaud_music_t music) {
@@ -1709,29 +1721,25 @@ void vaud_music_play(vaud_music_t music, int loop) {
         return;
 
     vaud_context_t ctx = music->ctx;
-    int prepare_from_start = 0;
 
     vaud_mutex_lock(&ctx->mutex);
     music->loop = loop ? 1 : 0;
     if (music->state == VAUD_MUSIC_STOPPED) {
-        music->refill_in_progress = 1;
-        prepare_from_start = 1;
-    } else {
-        music->state = VAUD_MUSIC_PLAYING;
-    }
-    vaud_mutex_unlock(&ctx->mutex);
-
-    if (prepare_from_start) {
+        if (!vaud_music_begin_forced_refill_locked(music)) {
+            vaud_mutex_unlock(&ctx->mutex);
+            return;
+        }
         int ok = vaud_music_seek_output_frame(music, 0);
         if (ok)
             vaud_music_prefill_locked(music);
-
-        vaud_mutex_lock(&ctx->mutex);
         music->state = ok ? VAUD_MUSIC_PLAYING : VAUD_MUSIC_STOPPED;
         vaud_music_finish_refill_locked(music);
         vaud_mutex_unlock(&ctx->mutex);
         return;
+    } else {
+        music->state = VAUD_MUSIC_PLAYING;
     }
+    vaud_mutex_unlock(&ctx->mutex);
 
     vaud_update(ctx);
 }
@@ -1743,6 +1751,7 @@ void vaud_music_stop(vaud_music_t music) {
     vaud_mutex_lock(&music->ctx->mutex);
 
     music->state = VAUD_MUSIC_STOPPED;
+    music->refill_in_progress = 0;
     music->position = 0;
     music->source_position = 0;
     music->stream_output_generated = 0;
@@ -1848,11 +1857,12 @@ void vaud_music_seek(vaud_music_t music, float seconds) {
     int64_t target_frame = (int64_t)target;
 
     vaud_mutex_lock(&ctx->mutex);
-    music->refill_in_progress = 1;
-    vaud_mutex_unlock(&ctx->mutex);
+    if (!vaud_music_begin_forced_refill_locked(music)) {
+        vaud_mutex_unlock(&ctx->mutex);
+        return;
+    }
 
     if (!vaud_music_seek_output_frame(music, target_frame)) {
-        vaud_mutex_lock(&ctx->mutex);
         music->state = VAUD_MUSIC_STOPPED;
         music->stream_eof = 1;
         vaud_music_clear_stream_buffers(music);
@@ -1862,7 +1872,6 @@ void vaud_music_seek(vaud_music_t music, float seconds) {
     }
     vaud_music_prefill_locked(music);
 
-    vaud_mutex_lock(&ctx->mutex);
     vaud_music_finish_refill_locked(music);
     vaud_mutex_unlock(&ctx->mutex);
 }

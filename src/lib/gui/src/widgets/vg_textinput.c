@@ -93,6 +93,24 @@ static bool ensure_capacity(vg_textinput_t *input, size_t needed) {
     return true;
 }
 
+static bool textinput_key_char_allows_text(const vg_event_t *event) {
+    if (!event)
+        return false;
+
+    uint32_t mods = event->modifiers;
+    bool has_super = (mods & VG_MOD_SUPER) != 0;
+    bool has_ctrl = (mods & VG_MOD_CTRL) != 0;
+    bool has_alt = (mods & VG_MOD_ALT) != 0;
+
+    if (has_super)
+        return false;
+    if (has_ctrl && !has_alt)
+        return false;
+    if (has_alt && !has_ctrl)
+        return false;
+    return true;
+}
+
 /// @brief Returns the number of UTF-8 codepoints in the input's text buffer.
 static size_t textinput_char_count(const vg_textinput_t *input) {
     return input && input->text ? (size_t)vg_utf8_strlen(input->text) : 0;
@@ -1597,6 +1615,8 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
         }
 
         case VG_EVENT_KEY_CHAR:
+            if (!textinput_key_char_allows_text(event))
+                return false;
             if (!input->read_only) {
                 textinput_reset_cursor_blink(input);
                 // Insert typed character

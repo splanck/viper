@@ -46,9 +46,9 @@ typedef struct vg_theme vg_theme_t;
 /// @details The GUI runtime can save and restore this state when switching
 ///          between multiple app windows so focus, modal roots, input capture,
 ///          and hover tracking do not bleed across apps. `vg_event_dispatch`
-///          automatically keeps separate snapshots for recently dispatched root
-///          widgets; these functions remain available for embedders that need
-///          explicit save/restore.
+///          automatically grows root-state storage as new root widgets are
+///          dispatched; these functions remain available for embedders that
+///          need explicit save/restore.
 typedef struct vg_widget_runtime_state {
     vg_widget_t *focused_widget;
     uint64_t focused_widget_id;
@@ -767,7 +767,9 @@ bool vg_widget_contains_point(vg_widget_t *widget, float x, float y);
 /// @details Used by popups, dropdowns, and drag operations that need to
 ///          receive mouse events even when the cursor moves outside the
 ///          widget's bounds. Only one widget can capture input at a time;
-///          calling this while another widget has capture replaces it.
+///          calling this while another widget has capture replaces it. Capture
+///          accepts only live widget handles and is cleared automatically when
+///          the captured subtree is hidden, removed, or destroyed.
 ///
 /// @param widget The widget that should receive all mouse events.
 void vg_widget_set_input_capture(vg_widget_t *widget);
@@ -853,7 +855,9 @@ void vg_widget_set_tab_index(vg_widget_t *widget, int tab_index);
 /// @details When a modal root is active, mouse hit-testing is restricted to
 ///          the modal widget's subtree, and keyboard events are redirected to
 ///          the modal root if the focused widget lies outside it. Pass NULL to
-///          clear the modal root and restore normal event routing.
+///          clear the modal root and restore normal event routing. Modal roots
+///          must be live and visible; hidden, removed, or destroyed modal roots
+///          are discarded automatically.
 ///
 /// @param widget The modal root widget, or NULL to clear.
 void vg_widget_set_modal_root(vg_widget_t *widget);

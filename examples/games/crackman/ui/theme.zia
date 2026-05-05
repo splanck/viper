@@ -20,6 +20,7 @@ module theme;
 
 bind Viper.Graphics;
 bind Color = Viper.Graphics.Color;
+bind Viper.IO.Path as Path;
 
 // Lazily-loaded bitmap fonts and their ready flag.
 var bodyFont_: BitmapFont = null;
@@ -75,6 +76,10 @@ func initAssets() {
     bodyFont_ = BitmapFont.LoadBDF("examples/games/crackman/assets/fonts/viper_8x8.bdf");
     if bodyFont_ == null {
         bodyFont_ = BitmapFont.LoadBDF("assets/fonts/viper_8x8.bdf");
+    }
+    if bodyFont_ == null {
+        var bundleResources = Path.Join(Path.Dir(Path.ExeDir()), "Resources");
+        bodyFont_ = BitmapFont.LoadBDF(Path.Join(bundleResources, "assets/fonts/viper_8x8.bdf"));
     }
     if bodyFont_ == null {
         bodyFont_ = BitmapFont.LoadBDF("examples/games/chess/assets/fonts/viper_8x8.bdf");

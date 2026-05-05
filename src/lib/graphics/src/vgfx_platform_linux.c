@@ -335,7 +335,7 @@ static void x11_enqueue_text_input_events(struct vgfx_window *win,
             break;
         offset += consumed;
 
-        if (codepoint >= 0x20 && codepoint != 0x7F) {
+        if (vgfx_internal_should_emit_text_input(codepoint, mods)) {
             vgfx_event_t text_event = {.type = VGFX_EVENT_TEXT_INPUT,
                                        .time_ms = timestamp,
                                        .data.text = {.codepoint = codepoint, .modifiers = mods}};
@@ -1393,6 +1393,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                 if (x11->xic)
                     XUnsetICFocus(x11->xic);
                 win->is_focused = 0;
+                vgfx_internal_clear_input_state(win);
                 vgfx_event_t vgfx_event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = timestamp};
                 vgfx_internal_enqueue_event(win, &vgfx_event);
                 break;

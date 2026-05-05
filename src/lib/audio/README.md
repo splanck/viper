@@ -226,7 +226,9 @@ Applications that use streaming music should call `vaud_update(ctx)` regularly
 from the control/update thread, typically once per frame. `vaud_update` refills
 empty stream buffers and processes loop rewinds. The realtime mixer consumes
 already-decoded buffers only; it does not perform file I/O or codec decode work
-inside the audio callback.
+inside the audio callback. Refill, seek, stop, play, and free operations are
+serialized through the context mutex so a streaming handle cannot be freed or
+retargeted while its buffer is being rebuilt.
 
 ### Error Handling
 
@@ -264,9 +266,11 @@ audio thread:
   any non-destroying context thread
 - Audio mixing runs on a dedicated background thread
 - Voice allocations and music state changes are protected by mutex
-- Streaming decode, seek, and loop-refill work is prepared outside the
-  realtime mixer lock; while a stream is being refilled the mixer skips that
-  stream for the current callback instead of blocking behind file I/O
+- Streaming decode, seek, and loop-refill work runs on the control/update thread
+  while holding the context mutex and a per-stream refill token
+- The realtime mixer never waits for control-thread work. If the state mutex is
+  already held, the current callback is filled with silence rather than blocking
+  behind decode, seek, free, or destroy activity.
 - Do not call `vaud_destroy`, `vaud_free_sound`, or `vaud_free_music`
   concurrently with other operations on the same context or handle. Stop worker
   activity first, then destroy/free handles.
@@ -316,7 +320,9 @@ Music uses triple-buffering for gapless playback:
 
 1. Only a small portion is in memory at any time (~50ms buffer)
 2. `vaud_update` refills buffers outside the realtime mixer callback
-3. Seamless looping with no audible gap
+3. Refills are serialized against seek/stop/play/free so published music buffers
+   stay owned by a live stream
+4. Seamless looping with no audible gap
 
 On Windows, the WASAPI backend negotiates the shared-mode render format and
 converts the internal 44.1 kHz stereo S16 mixer output to common PCM or float

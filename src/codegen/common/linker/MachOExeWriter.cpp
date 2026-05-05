@@ -183,10 +183,8 @@ bool writeMachOExe(const std::string &path,
     uint32_t nExtDef = 0, nUndef = 0;
     buildSymtab(symtabData, strtabData, layout, dynSyms, symOrdinals, nExtDef, nUndef);
 
-    // Pad string table to pointer alignment so subsequent LINKEDIT sections
-    // (rebase, bind opcodes) start at 8-byte-aligned offsets.  ARM64 dyld
-    // rejects misaligned bind opcodes, which prevents _tlv_bootstrap binding
-    // and causes crashes on TLS access.
+    // Pad string table to 8-byte alignment so that if it ever precedes
+    // pointer-sized structures, offsets remain sane.
     while (strtabData.size() % 8 != 0)
         strtabData.push_back(0);
 
@@ -359,18 +357,27 @@ bool writeMachOExe(const std::string &path,
 
     const size_t linkeditTotalSize =
         needsCodeSign ? (codeSignOff - linkeditFileOff + codeSignSize) : linkeditDataSize;
-    const size_t linkeditFileSize = alignUp(linkeditTotalSize, pageSize);
+    // Unlike loadable text/data segments, __LINKEDIT should describe exactly
+    // the link-edit records present in the file. Padding the final segment to
+    // a page boundary leaves bytes after LC_CODE_SIGNATURE, which Apple tools
+    // reject with "link edit information does not fill the __LINKEDIT segment".
+    const size_t linkeditFileSize = linkeditTotalSize;
     // __DWARF segment has no VM mapping (vmaddr=0, vmsize=0), so it doesn't
     // shift __LINKEDIT's vmaddr. However, it does occupy file space.
     const uint64_t linkeditVmAddr =
         textSegVmAddr + textSegVmSize + (dataSections.empty() ? 0 : dataSegVmSize);
     const uint64_t linkeditVmSize = alignUp(linkeditTotalSize, pageSize);
 
-    // Offsets within __LINKEDIT: symtab → strtab → rebase → bind.
-    const uint32_t symtabOff = static_cast<uint32_t>(linkeditFileOff);
+    // Offsets within __LINKEDIT follow Apple's required order:
+    //   rebase → bind → symtab → strtab → code signature
+    // Apple's strip and codesign validate that LC_DYLD_INFO_ONLY content
+    // precedes the symbol table; placing it after causes "dyld_info out of
+    // place" errors that prevent both strip and codesign from processing
+    // the binary.
+    const uint32_t rebaseOff = static_cast<uint32_t>(linkeditFileOff);
+    const uint32_t bindOff   = rebaseOff + static_cast<uint32_t>(rebaseData.size());
+    const uint32_t symtabOff = bindOff   + static_cast<uint32_t>(bindData.size());
     const uint32_t strtabOff = symtabOff + static_cast<uint32_t>(symtabData.size());
-    const uint32_t rebaseOff = strtabOff + static_cast<uint32_t>(strtabData.size());
-    const uint32_t bindOff = rebaseOff + static_cast<uint32_t>(rebaseData.size());
 
     // Entry point: LC_MAIN entryoff = file offset of the resolved entry symbol.
     // The linker stores custom entry symbols in layout.entryAddr; fall back to
@@ -709,11 +716,11 @@ bool writeMachOExe(const std::string &path,
     if (file.size() < linkeditFileOff)
         writePad(file, linkeditFileOff - file.size());
 
-    // __LINKEDIT content: symtab → strtab → rebase → bind.
-    file.insert(file.end(), symtabData.begin(), symtabData.end());
-    file.insert(file.end(), strtabData.begin(), strtabData.end());
+    // __LINKEDIT content: rebase → bind → symtab → strtab.
     file.insert(file.end(), rebaseData.begin(), rebaseData.end());
     file.insert(file.end(), bindData.begin(), bindData.end());
+    file.insert(file.end(), symtabData.begin(), symtabData.end());
+    file.insert(file.end(), strtabData.begin(), strtabData.end());
 
     // Append native code signature (arm64) or just pad to final page.
     if (needsCodeSign) {
@@ -728,10 +735,11 @@ bool writeMachOExe(const std::string &path,
         file.insert(file.end(), sig.begin(), sig.end());
     }
 
-    // Pad to final page boundary.
-    size_t finalPad = alignUp(file.size(), pageSize) - file.size();
-    if (finalPad > 0)
-        writePad(file, finalPad);
+    // Pad only to the declared end of __LINKEDIT. The final segment's file
+    // size is intentionally not page-aligned.
+    const size_t declaredFileSize = linkeditFileOff + linkeditFileSize;
+    if (file.size() < declaredFileSize)
+        writePad(file, declaredFileSize - file.size());
 
     // =======================================================================
     // Phase 6: Write to disk via atomic replace to avoid stale executable vnode

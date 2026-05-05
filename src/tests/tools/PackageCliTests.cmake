@@ -210,6 +210,53 @@ if (NOT _bad_macos_id_err MATCHES "bundle identifier")
     message(FATAL_ERROR "bad macOS identifier diagnostic did not mention bundle identifier\nstdout:\n${_bad_macos_id_out}\nstderr:\n${_bad_macos_id_err}")
 endif ()
 
+set(_bad_macos_sign_project "${TEST_WORK_DIR}/bad-macos-sign-project")
+file(MAKE_DIRECTORY "${_bad_macos_sign_project}")
+file(WRITE "${_bad_macos_sign_project}/main.zia" "func start() {}\n")
+file(WRITE "${_bad_macos_sign_project}/viper.project"
+"project badmacsign
+version 1.0.0
+lang zia
+entry main.zia
+macos-sign-mode bogus
+")
+
+execute_process(
+        COMMAND "${VIPER_BIN}" package "${_bad_macos_sign_project}" --target macos --dry-run
+        RESULT_VARIABLE _bad_macos_sign_rv
+        OUTPUT_VARIABLE _bad_macos_sign_out
+        ERROR_VARIABLE _bad_macos_sign_err)
+if (_bad_macos_sign_rv EQUAL 0)
+    message(FATAL_ERROR "dry-run with an invalid macOS sign mode should fail")
+endif ()
+if (NOT _bad_macos_sign_err MATCHES "sign mode")
+    message(FATAL_ERROR "bad macOS sign mode diagnostic did not mention sign mode\nstdout:\n${_bad_macos_sign_out}\nstderr:\n${_bad_macos_sign_err}")
+endif ()
+
+set(_macos_sign_project "${TEST_WORK_DIR}/macos-sign-project")
+file(MAKE_DIRECTORY "${_macos_sign_project}")
+file(WRITE "${_macos_sign_project}/main.zia" "func start() {}\n")
+file(WRITE "${_macos_sign_project}/viper.project"
+"project macsign
+version 1.0.0
+lang zia
+entry main.zia
+macos-sign-mode adhoc
+macos-hardened-runtime on
+")
+
+execute_process(
+        COMMAND "${VIPER_BIN}" package "${_macos_sign_project}" --target macos --dry-run
+        RESULT_VARIABLE _macos_sign_rv
+        OUTPUT_VARIABLE _macos_sign_out
+        ERROR_VARIABLE _macos_sign_err)
+if (NOT _macos_sign_rv EQUAL 0)
+    message(FATAL_ERROR "dry-run with valid macOS signing metadata should succeed\nstdout:\n${_macos_sign_out}\nstderr:\n${_macos_sign_err}")
+endif ()
+if (NOT _macos_sign_err MATCHES "macOS signing: adhoc")
+    message(FATAL_ERROR "macOS signing dry-run did not report signing mode\nstdout:\n${_macos_sign_out}\nstderr:\n${_macos_sign_err}")
+endif ()
+
 set(_no_version_project "${TEST_WORK_DIR}/no-version-project")
 file(MAKE_DIRECTORY "${_no_version_project}")
 file(WRITE "${_no_version_project}/main.zia" "func start() {}\n")

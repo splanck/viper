@@ -736,24 +736,28 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
         }
 
         case VG_EVENT_KEY_DOWN: {
-            int total = lb->virtual_mode ? (int)lb->total_item_count : lb->item_count;
-            if (total <= 0)
+            size_t total = lb->virtual_mode ? lb->total_item_count
+                                            : (lb->item_count > 0 ? (size_t)lb->item_count : 0u);
+            if (total == 0)
                 return false;
             uint32_t mods = event->modifiers;
             bool range = lb->multi_select && (mods & VG_MOD_SHIFT) != 0;
-            int page_items = (lb->item_height > 0.0f) ? (int)(widget->height / lb->item_height) : 8;
+            size_t page_items =
+                (lb->item_height > 0.0f) ? (size_t)(widget->height / lb->item_height) : 8u;
             if (page_items < 1)
                 page_items = 1;
 
-            int current_idx = (int)vg_listbox_get_selected_index(lb);
-            int new_idx = current_idx;
+            size_t current_idx = vg_listbox_get_selected_index(lb);
+            bool has_current = current_idx != SIZE_MAX && current_idx < total;
+            size_t new_idx = has_current ? current_idx : 0u;
+            bool navigated = true;
 
             switch (event->key.key) {
                 case VG_KEY_UP:
-                    new_idx = (current_idx > 0) ? current_idx - 1 : 0;
+                    new_idx = (has_current && current_idx > 0) ? current_idx - 1 : 0;
                     break;
                 case VG_KEY_DOWN:
-                    new_idx = (current_idx < total - 1) ? current_idx + 1 : total - 1;
+                    new_idx = has_current && current_idx < total - 1 ? current_idx + 1 : 0;
                     break;
                 case VG_KEY_HOME:
                     new_idx = 0;
@@ -762,12 +766,15 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     new_idx = total - 1;
                     break;
                 case VG_KEY_PAGE_UP:
-                    new_idx = current_idx - page_items;
-                    if (new_idx < 0)
-                        new_idx = 0;
+                    new_idx = has_current && current_idx > page_items ? current_idx - page_items : 0;
                     break;
                 case VG_KEY_PAGE_DOWN:
-                    new_idx = current_idx + page_items;
+                    if (!has_current)
+                        new_idx = page_items > 0 ? page_items - 1 : 0;
+                    else if (current_idx > SIZE_MAX - page_items)
+                        new_idx = total - 1;
+                    else
+                        new_idx = current_idx + page_items;
                     if (new_idx >= total)
                         new_idx = total - 1;
                     break;
@@ -783,16 +790,17 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     event->handled = true;
                     return true;
                 default:
+                    navigated = false;
                     break;
             }
 
-            if (new_idx != current_idx && new_idx >= 0 && new_idx < total) {
+            if (navigated && (!has_current || new_idx != current_idx) && new_idx < total) {
                 if (lb->virtual_mode) {
-                    listbox_select_virtual_with_modifiers(lb, (size_t)new_idx, false, range);
+                    listbox_select_virtual_with_modifiers(lb, new_idx, false, range);
                     if (lb->on_select)
                         lb->on_select(widget, NULL, lb->on_select_data);
                 } else {
-                    vg_listbox_item_t *item = listbox_item_at_index_nonvirtual(lb, (size_t)new_idx);
+                    vg_listbox_item_t *item = listbox_item_at_index_nonvirtual(lb, new_idx);
                     if (item) {
                         listbox_select_nonvirtual_with_modifiers(lb, item, false, range);
                         if (lb->on_select)

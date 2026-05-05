@@ -446,6 +446,10 @@ void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type);
 /// @brief Show or hide the native mouse cursor.
 void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible);
 
+/// @brief Hide/show the process or current-window cursor through the active platform backend.
+void vgfx_platform_hide_cursor(void);
+void vgfx_platform_show_cursor(void);
+
 #ifdef __APPLE__
 /// @brief Ensure the Cocoa app is finished launching before menu installation.
 /// @details Safe to call repeatedly. Used by the macOS platform backend and
@@ -544,6 +548,12 @@ int vgfx_internal_peek_event(struct vgfx_window *win, vgfx_event_t *out_event);
 /// @param height New physical framebuffer height in pixels
 /// @return 1 on success, 0 on allocation or validation failure
 int vgfx_internal_resize_framebuffer(struct vgfx_window *win, int32_t width, int32_t height);
+
+/// @brief Clear all sticky keyboard and mouse button polling state for a window.
+/// @details Platform backends call this when the native window loses focus so
+///          polling APIs cannot report keys/buttons as held forever after the
+///          operating system stops sending release events to the window.
+void vgfx_internal_clear_input_state(struct vgfx_window *win);
 
 static inline void vgfx_internal_event_lock(struct vgfx_window *win) {
     while (vgfx_atomic_flag_test_and_set(&win->event_lock)) {
@@ -647,6 +657,30 @@ static inline void vgfx_internal_init_resize_event(vgfx_event_t *event,
         vgfx_internal_scale_down_i32(framebuffer_width, coord_scale);
     event->data.resize.logical_height =
         vgfx_internal_scale_down_i32(framebuffer_height, coord_scale);
+}
+
+static inline int vgfx_internal_codepoint_is_text(uint32_t codepoint) {
+    return codepoint >= 0x20 && codepoint != 0x7F && codepoint <= 0x10FFFF &&
+           !(codepoint >= 0xD800 && codepoint <= 0xDFFF);
+}
+
+static inline int vgfx_internal_text_modifiers_allow_text(int modifiers) {
+    int has_cmd = (modifiers & VGFX_MOD_CMD) != 0;
+    int has_ctrl = (modifiers & VGFX_MOD_CTRL) != 0;
+    int has_alt = (modifiers & VGFX_MOD_ALT) != 0;
+
+    if (has_cmd)
+        return 0;
+    if (has_ctrl && !has_alt)
+        return 0;
+    if (has_alt && !has_ctrl)
+        return 0;
+    return 1;
+}
+
+static inline int vgfx_internal_should_emit_text_input(uint32_t codepoint, int modifiers) {
+    return vgfx_internal_codepoint_is_text(codepoint) &&
+           vgfx_internal_text_modifiers_allow_text(modifiers);
 }
 
 //===----------------------------------------------------------------------===//

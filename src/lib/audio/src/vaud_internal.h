@@ -363,7 +363,9 @@ int vaud_pcm_s16_buffer_size(int64_t frames, int32_t channels, size_t *out_bytes
 int32_t vaud_music_fill_buffer(struct vaud_music *music, int32_t buf_idx);
 
 /// @brief Fill all empty music buffers that can be safely prepared off-callback.
-/// @details Caller must hold the owning context mutex.
+/// @details For registered streams, caller must hold the owning context mutex
+///          and a refill token. Loaders may call this before publishing a
+///          stream to the context because no other thread can observe it yet.
 void vaud_music_prefill_locked(struct vaud_music *music);
 
 /// @brief Rewind or seek a music stream to the given output frame.

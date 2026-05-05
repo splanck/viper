@@ -2920,6 +2920,114 @@ TEST(dropdown_placeholder_marks_layout_dirty) {
 }
 
 //=============================================================================
+// Round 8: Low-level library correctness fixes
+//=============================================================================
+
+TEST(widget_capture_and_modal_reject_non_live_pointers) {
+    vg_widget_t fake;
+    memset(&fake, 0, sizeof(fake));
+
+    vg_widget_set_input_capture(&fake);
+    ASSERT_NULL(vg_widget_get_input_capture());
+
+    vg_widget_set_modal_root(&fake);
+    ASSERT_NULL(vg_widget_get_modal_root());
+
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    vg_widget_set_input_capture(root);
+    ASSERT(vg_widget_get_input_capture() == root);
+    vg_widget_set_modal_root(root);
+    ASSERT(vg_widget_get_modal_root() == root);
+
+    vg_widget_set_visible(root, false);
+    ASSERT_NULL(vg_widget_get_input_capture());
+    ASSERT_NULL(vg_widget_get_modal_root());
+    vg_widget_destroy(root);
+    ASSERT_NULL(vg_widget_get_input_capture());
+    ASSERT_NULL(vg_widget_get_modal_root());
+}
+
+TEST(event_dispatch_keeps_state_for_more_than_legacy_root_cap) {
+    enum { ROOT_COUNT = 20 };
+    vg_widget_t *roots[ROOT_COUNT] = {0};
+    vg_widget_t *children[ROOT_COUNT] = {0};
+
+    for (int i = 0; i < ROOT_COUNT; i++) {
+        roots[i] = vg_widget_create(VG_WIDGET_CONTAINER);
+        children[i] = vg_widget_create(VG_WIDGET_CUSTOM);
+        ASSERT_NOT_NULL(roots[i]);
+        ASSERT_NOT_NULL(children[i]);
+        children[i]->vtable = &g_per_root_focus_vtable;
+        vg_widget_add_child(roots[i], children[i]);
+    }
+
+    for (int i = 0; i < ROOT_COUNT; i++) {
+        vg_event_t ev = {0};
+        ev.type = VG_EVENT_RESIZE;
+        vg_event_dispatch(roots[i], &ev);
+        vg_widget_set_focus(children[i]);
+    }
+
+    vg_event_t save_last = {0};
+    save_last.type = VG_EVENT_RESIZE;
+    vg_event_dispatch(roots[0], &save_last);
+
+    for (int i = 0; i < ROOT_COUNT; i++) {
+        vg_event_t ev = {0};
+        ev.type = VG_EVENT_RESIZE;
+        vg_event_dispatch(roots[i], &ev);
+        ASSERT(vg_widget_get_focused(roots[i]) == children[i]);
+    }
+
+    for (int i = 0; i < ROOT_COUNT; i++)
+        vg_widget_destroy(roots[i]);
+}
+
+TEST(textinput_ignores_command_modified_character_events) {
+    vg_textinput_t *input = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(input);
+
+    vg_event_t ev = vg_event_key(VG_EVENT_KEY_CHAR, VG_KEY_UNKNOWN, 'x', VG_MOD_CTRL);
+    ASSERT_FALSE(vg_event_send(&input->base, &ev));
+    ASSERT(strcmp(vg_textinput_get_text(input), "") == 0);
+
+    ev = vg_event_key(VG_EVENT_KEY_CHAR, VG_KEY_UNKNOWN, 'y', VG_MOD_SUPER);
+    ASSERT_FALSE(vg_event_send(&input->base, &ev));
+    ASSERT(strcmp(vg_textinput_get_text(input), "") == 0);
+
+    ev = vg_event_key(VG_EVENT_KEY_CHAR, VG_KEY_UNKNOWN, '@', VG_MOD_CTRL | VG_MOD_ALT);
+    ASSERT_TRUE(vg_event_send(&input->base, &ev));
+    ASSERT(strcmp(vg_textinput_get_text(input), "@") == 0);
+
+    vg_widget_destroy(&input->base);
+}
+
+TEST(listbox_virtual_keyboard_navigation_handles_large_counts) {
+    vg_listbox_t *listbox = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(listbox);
+
+    bool selection[4] = {0};
+    listbox->virtual_mode = true;
+    listbox->total_item_count = (size_t)INT32_MAX + 4u;
+    listbox->selection_bitmap = selection;
+    listbox->selection_bitmap_size = sizeof(selection) / sizeof(selection[0]);
+    listbox->selected_index = SIZE_MAX;
+    listbox->anchor_selected_index = SIZE_MAX;
+    listbox->item_height = 20.0f;
+    listbox->base.height = 60.0f;
+
+    vg_event_t ev = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_DOWN, 0, VG_MOD_NONE);
+    ASSERT_TRUE(vg_event_send(&listbox->base, &ev));
+    ASSERT_EQ(vg_listbox_get_selected_index(listbox), (size_t)0);
+    ASSERT_TRUE(selection[0]);
+
+    listbox->selection_bitmap = NULL;
+    listbox->selection_bitmap_size = 0;
+    vg_widget_destroy(&listbox->base);
+}
+
+//=============================================================================
 // Main
 //=============================================================================
 
@@ -3058,6 +3166,12 @@ int main(void) {
     RUN(progressbar_sanitizes_nan_value_and_normalizes_phase);
     RUN(spinner_set_font_rejects_invalid_sizes);
     RUN(dropdown_placeholder_marks_layout_dirty);
+
+    printf("\nRound 8 - Low-level library correctness fixes\n");
+    RUN(widget_capture_and_modal_reject_non_live_pointers);
+    RUN(event_dispatch_keeps_state_for_more_than_legacy_root_cap);
+    RUN(textinput_ignores_command_modified_character_events);
+    RUN(listbox_virtual_keyboard_navigation_handles_large_counts);
 
     printf("\n=== Results: %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;

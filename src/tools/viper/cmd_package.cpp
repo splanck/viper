@@ -80,6 +80,16 @@ void packageUsage() {
         << "  --arch <arch>         Target architecture: x64 or arm64 (default: host)\n"
         << "  --executable <path>   Package a prebuilt native executable instead of compiling\n"
         << "  -o <path>             Output file path\n"
+        << "  --macos-sign-mode <m> macOS signing: none, preserve, adhoc, developer-id\n"
+        << "  --macos-sign-identity <id>\n"
+        << "                        Developer ID Application identity for macOS signing\n"
+        << "  --macos-entitlements <path>\n"
+        << "                        Entitlements plist for macOS signing\n"
+        << "  --macos-hardened-runtime\n"
+        << "                        Enable hardened runtime for macOS signing\n"
+        << "  --macos-notary-profile <profile>\n"
+        << "                        notarytool keychain profile for macOS notarization\n"
+        << "  --macos-staple        Staple the notarization ticket before final ZIP output\n"
         << "  --dry-run             List package contents without building\n"
         << "  --verbose, -v         Show detailed packaging output\n"
         << "  --help, -h            Show this help\n"
@@ -98,6 +108,12 @@ void packageUsage() {
         << "  shortcut-menu on|off                Create menu entry (default: on)\n"
         << "  min-os-macos <ver>                  Minimum macOS version (default: 10.13)\n"
         << "  min-os-windows <ver>                Minimum Windows version\n"
+        << "  macos-sign-mode none|preserve|adhoc|developer-id\n"
+        << "  macos-sign-identity <identity>      Developer ID Application identity\n"
+        << "  macos-entitlements <path>           Entitlements plist\n"
+        << "  macos-hardened-runtime on|off       Enable hardened runtime\n"
+        << "  macos-notary-profile <profile>      notarytool keychain profile\n"
+        << "  macos-staple on|off                 Staple notarization ticket\n"
         << "  package-category <category>          Application category (e.g. Game, Utility)\n"
         << "  package-depends <pkg1>, <pkg2>      Package dependencies (Linux .deb)\n"
         << "  target-arch x64|arm64               Target architecture\n"
@@ -122,6 +138,14 @@ struct PackageArgs {
     std::string outputPath;
     std::string archOverride; // "x64" or "arm64"
     std::string executablePath;
+    std::string macosSignMode;
+    std::string macosSignIdentity;
+    std::string macosEntitlements;
+    std::string macosNotaryProfile;
+    bool macosHardenedRuntime{false};
+    bool macosHardenedRuntimeSet{false};
+    bool macosStaple{false};
+    bool macosStapleSet{false};
     bool dryRun{false};
     bool verbose{false};
     bool help{false};
@@ -201,6 +225,11 @@ std::string hexU16(uint16_t value) {
     std::ostringstream os;
     os << std::hex << value;
     return os.str();
+}
+
+bool isValidMacOSSignMode(const std::string &mode) {
+    return mode.empty() || mode == "none" || mode == "preserve" || mode == "adhoc" ||
+           mode == "developer-id";
 }
 
 ExecutableFormat expectedExecutableFormat(PackageTarget target) {
@@ -354,6 +383,36 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
                 return false;
             }
             args.outputPath = argv[++i];
+        } else if (arg == "--macos-sign-mode") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --macos-sign-mode requires a value\n";
+                return false;
+            }
+            args.macosSignMode = argv[++i];
+        } else if (arg == "--macos-sign-identity") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --macos-sign-identity requires a value\n";
+                return false;
+            }
+            args.macosSignIdentity = argv[++i];
+        } else if (arg == "--macos-entitlements") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --macos-entitlements requires a path\n";
+                return false;
+            }
+            args.macosEntitlements = argv[++i];
+        } else if (arg == "--macos-notary-profile") {
+            if (i + 1 >= argc) {
+                std::cerr << "error: --macos-notary-profile requires a value\n";
+                return false;
+            }
+            args.macosNotaryProfile = argv[++i];
+        } else if (arg == "--macos-hardened-runtime") {
+            args.macosHardenedRuntime = true;
+            args.macosHardenedRuntimeSet = true;
+        } else if (arg == "--macos-staple") {
+            args.macosStaple = true;
+            args.macosStapleSet = true;
         } else if (arg == "--dry-run") {
             args.dryRun = true;
         } else if (arg == "--verbose" || arg == "-v") {
@@ -442,6 +501,24 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                 if (!pkg.minOsMacos.empty())
                     viper::pkg::validateDottedNumericVersion(pkg.minOsMacos,
                                                              "minimum macOS version");
+                if (!isValidMacOSSignMode(pkg.macosSignMode)) {
+                    throw std::runtime_error(
+                        "macOS sign mode must be none, preserve, adhoc, or developer-id: " +
+                        pkg.macosSignMode);
+                }
+                if (pkg.macosSignMode == "developer-id" && pkg.macosSignIdentity.empty()) {
+                    throw std::runtime_error(
+                        "macOS Developer ID signing requires macos-sign-identity");
+                }
+                if (!pkg.macosEntitlements.empty() &&
+                    !validatePackageSourcePathExists(
+                        proj, pkg.macosEntitlements, "macOS entitlements", false)) {
+                    return false;
+                }
+                if (pkg.macosStaple && pkg.macosNotaryProfile.empty()) {
+                    throw std::runtime_error(
+                        "macos-staple requires macos-notary-profile for this package build");
+                }
                 break;
             case PackageTarget::Linux: {
                 const std::string debArch = archStr == "x64" ? "amd64" : archStr;
@@ -513,6 +590,19 @@ int cmdPackage(int argc, char **argv) {
     }
 
     ProjectConfig &proj = project.value();
+
+    if (!args.macosSignMode.empty())
+        proj.packageConfig.macosSignMode = args.macosSignMode;
+    if (!args.macosSignIdentity.empty())
+        proj.packageConfig.macosSignIdentity = args.macosSignIdentity;
+    if (!args.macosEntitlements.empty())
+        proj.packageConfig.macosEntitlements = args.macosEntitlements;
+    if (!args.macosNotaryProfile.empty())
+        proj.packageConfig.macosNotaryProfile = args.macosNotaryProfile;
+    if (args.macosHardenedRuntimeSet)
+        proj.packageConfig.macosHardenedRuntime = args.macosHardenedRuntime;
+    if (args.macosStapleSet)
+        proj.packageConfig.macosStaple = args.macosStaple;
 
     // Check that package config is present
     if (!proj.packageConfig.hasPackageConfig()) {
@@ -598,6 +688,24 @@ int cmdPackage(int argc, char **argv) {
             if (!iconPath.empty() && !fs::exists(iconPath))
                 std::cerr << " [NOT FOUND]";
             std::cerr << "\n";
+        }
+        if (args.platformTarget == PackageTarget::MacOS) {
+            const std::string signMode =
+                proj.packageConfig.macosSignMode.empty() ? "adhoc" : proj.packageConfig.macosSignMode;
+            std::cerr << "  macOS signing: " << signMode << "\n";
+            if (!proj.packageConfig.macosSignIdentity.empty())
+                std::cerr << "  macOS signing identity: "
+                          << proj.packageConfig.macosSignIdentity << "\n";
+            if (!proj.packageConfig.macosEntitlements.empty())
+                std::cerr << "  macOS entitlements: " << proj.packageConfig.macosEntitlements
+                          << "\n";
+            if (proj.packageConfig.macosHardenedRuntime)
+                std::cerr << "  macOS hardened runtime: on\n";
+            if (!proj.packageConfig.macosNotaryProfile.empty())
+                std::cerr << "  macOS notary profile: "
+                          << proj.packageConfig.macosNotaryProfile << "\n";
+            if (proj.packageConfig.macosStaple)
+                std::cerr << "  macOS staple: on\n";
         }
         for (const auto &asset : proj.packageConfig.assets) {
             fs::path assetPath;

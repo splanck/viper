@@ -35,6 +35,7 @@
 #include <iostream>
 #include <sstream>
 #include <chrono>
+#include <string_view>
 
 #if defined(_WIN32)
 #include <process.h>
@@ -98,6 +99,173 @@ void validateBundleDisplayName(const std::string &name) {
     validateWindowsFileName(name, "macOS bundle display name");
 }
 
+void writeFileBytes(const fs::path &path, const std::vector<uint8_t> &data, fs::perms perms) {
+    fs::create_directories(path.parent_path());
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out)
+        throw std::runtime_error("cannot write macOS package file: " + path.string());
+    out.write(reinterpret_cast<const char *>(data.data()), static_cast<std::streamsize>(data.size()));
+    if (!out)
+        throw std::runtime_error("failed while writing macOS package file: " + path.string());
+    out.close();
+    fs::permissions(path, perms, fs::perm_options::replace);
+}
+
+void writeFileString(const fs::path &path, const std::string &text, fs::perms perms) {
+    const auto *bytes = reinterpret_cast<const uint8_t *>(text.data());
+    writeFileBytes(path, std::vector<uint8_t>(bytes, bytes + text.size()), perms);
+}
+
+void copyPackageAssetToResources(const fs::path &srcPath,
+                                 const fs::path &projectRoot,
+                                 const fs::path &resourcesDir,
+                                 const std::string &targetDir,
+                                 const std::string &sourceText) {
+    const fs::path targetRoot = resourcesDir / fs::path(targetDir);
+    if (!fs::exists(srcPath))
+        throw std::runtime_error("asset not found: " + sourceText);
+
+    if (fs::is_directory(srcPath)) {
+        if (!targetDir.empty())
+            fs::create_directories(targetRoot);
+        safeDirectoryIterate(
+            srcPath, projectRoot, [&](const fs::directory_entry &entry) {
+                const auto relPath = sanitizePackageRelativePath(
+                    fs::relative(entry.path(), srcPath).generic_string(), "asset path");
+                const fs::path dst = targetRoot / fs::path(relPath);
+                if (entry.is_directory()) {
+                    fs::create_directories(dst);
+                } else if (entry.is_regular_file()) {
+                    writeFileBytes(dst,
+                                   readFile(entry.path().string()),
+                                   fs::perms::owner_read | fs::perms::owner_write |
+                                       fs::perms::group_read | fs::perms::others_read);
+                }
+            });
+    } else if (fs::is_regular_file(srcPath)) {
+        writeFileBytes(targetRoot / srcPath.filename(),
+                       readFile(srcPath.string()),
+                       fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
+                           fs::perms::others_read);
+    } else {
+        throw std::runtime_error("asset is not a regular file or directory: " + sourceText);
+    }
+}
+
+std::string resolvedMacOSSignMode(const PackageConfig &pkg) {
+    if (!pkg.macosSignMode.empty())
+        return pkg.macosSignMode;
+#if defined(__APPLE__)
+    return "adhoc";
+#else
+    return "preserve";
+#endif
+}
+
+bool validMacOSSignMode(const std::string &mode) {
+    return mode == "none" || mode == "preserve" || mode == "adhoc" || mode == "developer-id";
+}
+
+void runChecked(const std::vector<std::string> &args, const std::string &what) {
+    RunResult rr = run_process(args);
+    if (rr.exit_code != 0)
+        throw std::runtime_error(what + " failed:\n" + rr.out + rr.err);
+}
+
+void addStagedAppToZip(const fs::path &stageRoot,
+                       const fs::path &appPath,
+                       const fs::path &execPath,
+                       const std::string &outputPath) {
+    ZipWriter zip;
+    const std::string appEntry = fs::relative(appPath, stageRoot).generic_string();
+    zip.addDirectory(appEntry);
+
+    for (const auto &entry : fs::recursive_directory_iterator(appPath)) {
+        const std::string rel = fs::relative(entry.path(), stageRoot).generic_string();
+        if (entry.is_directory()) {
+            zip.addDirectory(rel);
+        } else if (entry.is_regular_file()) {
+            const auto data = readFile(entry.path().string());
+            const uint32_t mode = fs::equivalent(entry.path(), execPath) ? 0100755 : 0100644;
+            zip.addFile(rel, data.data(), data.size(), mode);
+        }
+    }
+    zip.finish(outputPath);
+}
+
+void verifyMacOSBundleSignatureIfAvailable(const fs::path &appPath) {
+#if defined(__APPLE__)
+    runChecked({"codesign", "--verify", "--deep", "--strict", "--verbose=2", appPath.string()},
+               "macOS code signature verification");
+#else
+    (void)appPath;
+#endif
+}
+
+void signMacOSBundle(const fs::path &stageRoot,
+                     const fs::path &appPath,
+                     const fs::path &execPath,
+                     const fs::path &projectRoot,
+                     const PackageConfig &pkg) {
+    const std::string mode = resolvedMacOSSignMode(pkg);
+    if (!validMacOSSignMode(mode))
+        throw std::runtime_error(
+            "macOS sign mode must be none, preserve, adhoc, or developer-id: " + mode);
+    if (mode == "none" || mode == "preserve")
+        return;
+
+#if !defined(__APPLE__)
+    (void)stageRoot;
+    (void)appPath;
+    (void)execPath;
+    (void)projectRoot;
+    (void)pkg;
+    throw std::runtime_error("macOS signing mode '" + mode + "' requires running on macOS");
+#else
+    const bool developerId = mode == "developer-id";
+    if (developerId && pkg.macosSignIdentity.empty())
+        throw std::runtime_error("macOS Developer ID signing requires macos-sign-identity");
+    if (!pkg.macosNotaryProfile.empty() && !developerId)
+        throw std::runtime_error("macOS notarization requires macos-sign-mode developer-id");
+
+    std::vector<std::string> args = {"codesign", "--force", "--sign",
+                                     developerId ? pkg.macosSignIdentity : std::string("-")};
+    if (developerId)
+        args.push_back("--timestamp");
+    if (pkg.macosHardenedRuntime || !pkg.macosNotaryProfile.empty()) {
+        args.push_back("--options");
+        args.push_back("runtime");
+    }
+    if (!pkg.macosEntitlements.empty()) {
+        const fs::path entitlements =
+            resolvePackageSourcePath(projectRoot, pkg.macosEntitlements, "macOS entitlements");
+        args.push_back("--entitlements");
+        args.push_back(entitlements.string());
+    }
+    args.push_back(appPath.string());
+    runChecked(args, "macOS code signing");
+    verifyMacOSBundleSignatureIfAvailable(appPath);
+
+    if (!pkg.macosNotaryProfile.empty()) {
+        const fs::path notaryZip = stageRoot / "notary-submit.zip";
+        addStagedAppToZip(stageRoot, appPath, execPath, notaryZip.string());
+        runChecked({"xcrun",
+                    "notarytool",
+                    "submit",
+                    notaryZip.string(),
+                    "--keychain-profile",
+                    pkg.macosNotaryProfile,
+                    "--wait"},
+                   "macOS notarization");
+        if (pkg.macosStaple) {
+            runChecked({"xcrun", "stapler", "staple", appPath.string()},
+                       "macOS notarization stapling");
+            verifyMacOSBundleSignatureIfAvailable(appPath);
+        }
+    }
+#endif
+}
+
 } // namespace
 
 //=============================================================================
@@ -123,28 +291,29 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
     std::string execName = normalizeExecName(params.projectName);
 
     std::string appName = displayName + ".app";
-    std::string contentsPrefix = appName + "/Contents/";
-    std::string macosPrefix = contentsPrefix + "MacOS/";
-    std::string resourcesPrefix = contentsPrefix + "Resources/";
-    const std::string resourcesRoot =
-        sanitizePackageRelativePath(resourcesPrefix, "bundle resource path");
+    const fs::path stageRoot = uniqueTempPackagingDir("viper-macos-app-" + execName);
+    TempDirGuard cleanup(stageRoot);
+    fs::remove_all(stageRoot);
 
-    ZipWriter zip;
+    const fs::path appPath = stageRoot / appName;
+    const fs::path contentsDir = appPath / "Contents";
+    const fs::path macosDir = contentsDir / "MacOS";
+    const fs::path resourcesDir = contentsDir / "Resources";
+    fs::create_directories(macosDir);
+    fs::create_directories(resourcesDir);
 
-    // Create directory structure
-    zip.addDirectory(appName);
-    zip.addDirectory(contentsPrefix);
-    zip.addDirectory(macosPrefix);
-    zip.addDirectory(resourcesPrefix);
+    writeFileString(contentsDir / "PkgInfo",
+                    generatePkgInfo(),
+                    fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
+                        fs::perms::others_read);
 
-    // PkgInfo
-    zip.addFileString(contentsPrefix + "PkgInfo", generatePkgInfo());
+    const fs::path stagedExec = macosDir / execName;
+    writeFileBytes(stagedExec,
+                   readFile(params.executablePath),
+                   fs::perms::owner_read | fs::perms::owner_write | fs::perms::owner_exec |
+                       fs::perms::group_read | fs::perms::group_exec | fs::perms::others_read |
+                       fs::perms::others_exec);
 
-    // Executable (with 0755 permission!)
-    auto execData = readFile(params.executablePath);
-    zip.addFile(macosPrefix + execName, execData.data(), execData.size(), 0100755);
-
-    // Icon (ICNS from source PNG)
     std::string iconFileName;
     if (!pkg.iconPath.empty()) {
         fs::path iconSrc = resolvePackageSourcePath(params.projectRoot, pkg.iconPath, "package icon");
@@ -153,10 +322,12 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
         auto srcImage = pngRead(iconSrc.string());
         auto icnsData = generateIcns(srcImage);
         iconFileName = execName;
-        zip.addFile(resourcesPrefix + execName + ".icns", icnsData.data(), icnsData.size());
+        writeFileBytes(resourcesDir / (execName + ".icns"),
+                       icnsData,
+                       fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
+                           fs::perms::others_read);
     }
 
-    // Info.plist
     PlistParams plistParams;
     plistParams.executableName = execName;
     plistParams.bundleId = pkg.identifier.empty() ? ("com.viper." + execName) : pkg.identifier;
@@ -165,53 +336,19 @@ void buildMacOSPackage(const MacOSBuildParams &params) {
     plistParams.iconFile = iconFileName;
     plistParams.minOsVersion = pkg.minOsMacos;
     plistParams.fileAssociations = pkg.fileAssociations;
-    zip.addFileString(contentsPrefix + "Info.plist", generatePlist(plistParams));
+    writeFileString(contentsDir / "Info.plist",
+                    generatePlist(plistParams),
+                    fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read |
+                        fs::perms::others_read);
 
-    // Assets
     for (const auto &asset : pkg.assets) {
         fs::path srcPath = resolvePackageSourcePath(params.projectRoot, asset.sourcePath, "asset source path");
         std::string targetDir = sanitizePackageRelativePath(asset.targetPath, "asset target path");
-
-        if (!fs::exists(srcPath))
-            throw std::runtime_error("asset not found: " + asset.sourcePath);
-
-        if (fs::is_directory(srcPath)) {
-            if (!targetDir.empty()) {
-                std::string assetBase =
-                    joinPackageRelativePath(resourcesRoot, targetDir, "asset target path");
-                zip.addDirectory(assetBase);
-            }
-            // Recurse directory (symlink-safe)
-            safeDirectoryIterate(
-                srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
-                    auto relPath = sanitizePackageRelativePath(
-                        fs::relative(entry.path(), srcPath).generic_string(), "asset path");
-                    std::string assetBase =
-                        joinPackageRelativePath(resourcesRoot, targetDir, "asset target path");
-                    std::string zipPath = joinPackageRelativePath(assetBase, relPath, "asset path");
-
-                    if (entry.is_directory()) {
-                        zip.addDirectory(zipPath);
-                    } else if (entry.is_regular_file()) {
-                        auto data = readFile(entry.path().string());
-                        zip.addFile(zipPath, data.data(), data.size());
-                    }
-                });
-        } else if (fs::is_regular_file(srcPath)) {
-            auto data = readFile(srcPath.string());
-            std::string assetBase =
-                joinPackageRelativePath(resourcesRoot, targetDir, "asset target path");
-            std::string zipPath = joinPackageRelativePath(
-                assetBase, srcPath.filename().generic_string(), "asset path");
-            zip.addFile(zipPath, data.data(), data.size());
-        } else {
-            throw std::runtime_error("asset is not a regular file or directory: " +
-                                     asset.sourcePath);
-        }
+        copyPackageAssetToResources(srcPath, params.projectRoot, resourcesDir, targetDir, asset.sourcePath);
     }
 
-    // Write the ZIP
-    zip.finish(params.outputPath);
+    signMacOSBundle(stageRoot, appPath, stagedExec, params.projectRoot, pkg);
+    addStagedAppToZip(stageRoot, appPath, stagedExec, params.outputPath);
 }
 
 void buildMacOSToolchainPackage(const MacOSToolchainBuildParams &params) {

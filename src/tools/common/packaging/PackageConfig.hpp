@@ -59,6 +59,13 @@ struct PackageConfig {
     std::string minOsWindows; ///< "10.0"
     std::string minOsMacos;   ///< "11.0"
 
+    std::string macosSignMode;      ///< none, preserve, adhoc, or developer-id
+    std::string macosSignIdentity;  ///< Developer ID Application identity
+    std::string macosEntitlements;  ///< Entitlements plist path, project-relative
+    bool macosHardenedRuntime{false};
+    std::string macosNotaryProfile; ///< notarytool keychain profile
+    bool macosStaple{false};
+
     std::vector<std::string> targetArchitectures; ///< "x64", "arm64"
 
     std::string category;             ///< package-category (e.g. "Game", "Development", "Utility")
@@ -72,9 +79,11 @@ struct PackageConfig {
         return !displayName.empty() || !author.empty() || !description.empty() ||
                !homepage.empty() || !license.empty() || !identifier.empty() || !iconPath.empty() ||
                !assets.empty() || !fileAssociations.empty() || shortcutDesktop || !shortcutMenu ||
-               !minOsWindows.empty() || !minOsMacos.empty() || !targetArchitectures.empty() ||
-               !category.empty() || !depends.empty() || !postInstallScript.empty() ||
-               !preUninstallScript.empty();
+               !minOsWindows.empty() || !minOsMacos.empty() || !macosSignMode.empty() ||
+               !macosSignIdentity.empty() || !macosEntitlements.empty() ||
+               macosHardenedRuntime || !macosNotaryProfile.empty() || macosStaple ||
+               !targetArchitectures.empty() || !category.empty() || !depends.empty() ||
+               !postInstallScript.empty() || !preUninstallScript.empty();
     }
 };
 

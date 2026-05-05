@@ -558,7 +558,13 @@ if (vgfx_get_size(win, &width, &height)) {
     - `0` = released
 - Applications must track their own edges if needed
 - Key codes for letters use uppercase ASCII (`'A'`–`'Z'`) regardless of Shift/CapsLock
-- **Modifiers are out of scope for Phase 1** (Shift/Ctrl/Alt/Meta)
+- Key events include modifier flags for Shift/Ctrl/Alt/Cmd. Use `VGFX_EVENT_TEXT_INPUT`
+  for text entry instead of inferring characters from key codes.
+- `VGFX_EVENT_TEXT_INPUT` carries translated Unicode codepoints. Backends suppress
+  control characters and menu/shortcut chords such as Ctrl/Cmd text, while preserving
+  Ctrl+Alt combinations used by AltGr-style layouts.
+- Losing window focus clears polled key and mouse-button state so applications do not
+  keep stale "pressed" states when the OS delivers focus loss before key/button release.
 
 **Key Repeat**
 
@@ -734,6 +740,7 @@ typedef enum {
     // Keyboard events
     VGFX_EVENT_KEY_DOWN,
     VGFX_EVENT_KEY_UP,
+    VGFX_EVENT_TEXT_INPUT,
 
     // Mouse events
     VGFX_EVENT_MOUSE_MOVE,
@@ -778,8 +785,9 @@ typedef enum {
 
 - All `vgfx_key_t` values are `< 512` (matches internal key state array size)
 - Letter and digit ranges are contiguous (safe for range checks)
-- Letter/digit codes reflect current keyboard layout (ASCII on US layouts). For character text input (including
-  IME/composed characters), use a future text input API rather than inferring from key codes.
+- Letter/digit key codes identify physical key events. For character text input,
+  including composed characters and platform layout translation, consume
+  `VGFX_EVENT_TEXT_INPUT` events.
 
 **Phase 1 Supported Keys (Exhaustive List):**
 
@@ -824,7 +832,14 @@ typedef struct {
         struct {
             vgfx_key_t key;
             int32_t    is_repeat;  // 1 = auto-repeat, 0 = initial press
+            int32_t    modifiers;  // VGFX_MOD_SHIFT/CTRL/ALT/CMD flags
         } key;
+
+        // VGFX_EVENT_TEXT_INPUT
+        struct {
+            uint32_t codepoint;     // Unicode scalar value
+            int32_t  modifiers;     // Modifiers active while generated
+        } text;
 
         // VGFX_EVENT_MOUSE_MOVE
         struct {

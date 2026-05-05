@@ -783,6 +783,7 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
         return;
 
     _vgfxWindow->is_focused = 0;
+    vgfx_internal_clear_input_state(_vgfxWindow);
     vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = vgfx_platform_now_ms()};
     vgfx_internal_enqueue_event(_vgfxWindow, &event);
 }
@@ -987,20 +988,47 @@ static int macos_modifiers(NSEventModifierFlags flags) {
     return mods;
 }
 
-static uint32_t macos_first_codepoint(NSString *string) {
-    if (!string || [string length] == 0)
+static uint32_t macos_codepoint_at(NSString *string, NSUInteger *index) {
+    if (!string || !index || *index >= [string length])
         return 0;
-    unichar high = [string characterAtIndex:0];
-    if (high >= 0xD800 && high <= 0xDBFF && [string length] > 1) {
-        unichar low = [string characterAtIndex:1];
-        if (low >= 0xDC00 && low <= 0xDFFF) {
-            return 0x10000 + ((((uint32_t)high - 0xD800) << 10) | ((uint32_t)low - 0xDC00));
+
+    unichar high = [string characterAtIndex:*index];
+    (*index)++;
+    if (high >= 0xD800 && high <= 0xDBFF) {
+        if (*index < [string length]) {
+            unichar low = [string characterAtIndex:*index];
+            if (low >= 0xDC00 && low <= 0xDFFF) {
+                (*index)++;
+                return 0x10000 + ((((uint32_t)high - 0xD800) << 10) |
+                                  ((uint32_t)low - 0xDC00));
+            }
         }
         return 0xFFFD;
     }
-    if (high >= 0xD800 && high <= 0xDFFF)
+    if (high >= 0xDC00 && high <= 0xDFFF)
         return 0xFFFD;
     return (uint32_t)high;
+}
+
+static void macos_enqueue_text_input_events(struct vgfx_window *win,
+                                            int64_t timestamp,
+                                            NSString *characters,
+                                            int modifiers) {
+    if (!win || !characters)
+        return;
+
+    NSUInteger index = 0;
+    NSUInteger length = [characters length];
+    while (index < length) {
+        uint32_t codepoint = macos_codepoint_at(characters, &index);
+        if (vgfx_internal_should_emit_text_input(codepoint, modifiers)) {
+            vgfx_event_t text_event = {.type = VGFX_EVENT_TEXT_INPUT,
+                                       .time_ms = timestamp,
+                                       .data.text = {.codepoint = codepoint,
+                                                     .modifiers = modifiers}};
+            vgfx_internal_enqueue_event(win, &text_event);
+        }
+    }
 }
 
 int vgfx_platform_process_events(struct vgfx_window *win) {
@@ -1046,13 +1074,12 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             switch ([event type]) {
                 case NSEventTypeKeyDown: {
                     NSEventModifierFlags flags = [event modifierFlags];
+                    int mods = macos_modifiers(flags);
                     vgfx_key_t key =
                         translate_keycode(
                             [event keyCode], [event charactersIgnoringModifiers], flags);
                     if (key != VGFX_KEY_UNKNOWN && key < 512) {
                         win->key_state[key] = 1; /* Update input state */
-
-                        int mods = macos_modifiers(flags);
 
                         vgfx_event_t vgfx_event = {
                             .type = VGFX_EVENT_KEY_DOWN,
@@ -1064,15 +1091,7 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     }
 
                     NSString *characters = [event characters];
-                    uint32_t codepoint = macos_first_codepoint(characters);
-                    if (codepoint >= 0x20 && codepoint != 0x7F) {
-                        vgfx_event_t text_event = {
-                            .type = VGFX_EVENT_TEXT_INPUT,
-                            .time_ms = timestamp,
-                            .data.text = {.codepoint = codepoint,
-                                          .modifiers = macos_modifiers(flags)}};
-                        vgfx_internal_enqueue_event(win, &text_event);
-                    }
+                    macos_enqueue_text_input_events(win, timestamp, characters, mods);
                     break;
                 }
 
@@ -1569,9 +1588,9 @@ void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible) 
     (void)win;
     @autoreleasepool {
         if (visible)
-            [NSCursor unhide];
+            vgfx_platform_show_cursor();
         else
-            [NSCursor hide];
+            vgfx_platform_hide_cursor();
     }
 }
 

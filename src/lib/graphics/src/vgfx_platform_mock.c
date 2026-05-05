@@ -133,6 +133,7 @@ static void mock_apply_event(struct vgfx_window *win,
         case VGFX_EVENT_FOCUS_LOST:
             win->is_focused = 0;
             platform->focused = 0;
+            vgfx_internal_clear_input_state(win);
             break;
         default:
             break;
@@ -525,6 +526,8 @@ void vgfx_mock_inject_text_input(vgfx_window_t window, uint32_t codepoint) {
         return;
     vgfx_mock_platform *platform = (vgfx_mock_platform *)win->platform_data;
     if (!platform)
+        return;
+    if (!vgfx_internal_should_emit_text_input(codepoint, 0))
         return;
 
     vgfx_event_t event = {.type = VGFX_EVENT_TEXT_INPUT,

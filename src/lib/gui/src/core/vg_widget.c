@@ -1304,6 +1304,14 @@ bool vg_widget_contains_point(vg_widget_t *widget, float x, float y) {
 
 /// @brief Routes all subsequent mouse events to @p widget, bypassing hit-testing (used by open dropdowns/menus).
 void vg_widget_set_input_capture(vg_widget_t *widget) {
+    if (!widget) {
+        g_input_capture_widget = NULL;
+        return;
+    }
+    if (!vg_widget_is_live(widget)) {
+        g_input_capture_widget = NULL;
+        return;
+    }
     g_input_capture_widget = widget;
 }
 
@@ -1314,6 +1322,9 @@ void vg_widget_release_input_capture(void) {
 
 /// @brief Returns the widget currently holding input capture, or NULL if none.
 vg_widget_t *vg_widget_get_input_capture(void) {
+    if (!vg_widget_is_live(g_input_capture_widget)) {
+        g_input_capture_widget = NULL;
+    }
     return g_input_capture_widget;
 }
 
@@ -1629,10 +1640,20 @@ void vg_widget_set_tab_index(vg_widget_t *widget, int tab_index) {
 
 /// @brief Sets @p widget as the application's modal root; all event routing is restricted to its subtree until cleared.
 void vg_widget_set_modal_root(vg_widget_t *widget) {
+    if (!widget) {
+        g_modal_root = NULL;
+        return;
+    }
+    if (!vg_widget_is_live(widget) || !widget->visible) {
+        g_modal_root = NULL;
+        return;
+    }
     g_modal_root = widget;
 }
 
 /// @brief Returns the currently active modal root, or NULL if no modal is active.
 vg_widget_t *vg_widget_get_modal_root(void) {
+    if (!vg_widget_is_live(g_modal_root) || (g_modal_root && !g_modal_root->visible))
+        g_modal_root = NULL;
     return g_modal_root;
 }

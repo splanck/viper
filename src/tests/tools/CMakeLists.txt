@@ -61,6 +61,16 @@ function(viper_add_tools_tests)
             -P ${_VIPER_TOOLS_DIR}/PackageCliTests.cmake)
     viper_add_test_labels(package_cli tools installer)
 
+    if (APPLE)
+        viper_add_ctest(package_crackman_macos_signed
+                ${CMAKE_COMMAND}
+                -DVIPER_BIN=$<TARGET_FILE:viper>
+                -DVIPER_REPO_ROOT=${CMAKE_SOURCE_DIR}
+                -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/package_crackman_macos_signed
+                -P ${_VIPER_TOOLS_DIR}/MacOSPackageSmokeTests.cmake)
+        viper_add_test_labels(package_crackman_macos_signed tools installer zia slow)
+    endif ()
+
     viper_add_test(test_cli_run_missing_main
             ${VIPER_TESTS_DIR}/unit/test_cli_run_missing_main.cpp
             ${CMAKE_SOURCE_DIR}/src/tools/viper/cli.cpp

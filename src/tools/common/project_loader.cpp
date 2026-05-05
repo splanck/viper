@@ -682,6 +682,42 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             if (!scalar)
                 return il::support::Expected<ProjectConfig>(scalar.error());
             config.packageConfig.iconPath = scalar.value();
+        } else if (directive == "macos-sign-mode") {
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.macosSignMode = scalar.value();
+        } else if (directive == "macos-sign-identity") {
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.macosSignIdentity = scalar.value();
+        } else if (directive == "macos-entitlements") {
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.macosEntitlements = scalar.value();
+        } else if (directive == "macos-notary-profile") {
+            auto scalar = parsePackageScalar(directive, value, lineNum);
+            if (!scalar)
+                return il::support::Expected<ProjectConfig>(scalar.error());
+            config.packageConfig.macosNotaryProfile = scalar.value();
+        } else if (directive == "macos-hardened-runtime") {
+            auto ok = markPackageScalar(directive, lineNum);
+            if (!ok)
+                return il::support::Expected<ProjectConfig>(ok.error());
+            auto b = parseBool(value, manifestPath, lineNum, directive);
+            if (!b)
+                return il::support::Expected<ProjectConfig>(b.error());
+            config.packageConfig.macosHardenedRuntime = b.value();
+        } else if (directive == "macos-staple") {
+            auto ok = markPackageScalar(directive, lineNum);
+            if (!ok)
+                return il::support::Expected<ProjectConfig>(ok.error());
+            auto b = parseBool(value, manifestPath, lineNum, directive);
+            if (!b)
+                return il::support::Expected<ProjectConfig>(b.error());
+            config.packageConfig.macosStaple = b.value();
         } else if (directive == "asset") {
             // Format: asset <source-path> <target-relative-dir>
             auto tokens = tokenizeManifestValue(value, manifestPath, lineNum, directive);

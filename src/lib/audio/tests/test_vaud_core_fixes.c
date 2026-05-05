@@ -576,6 +576,26 @@ static void test_refill_in_progress_makes_mixer_skip_music_buffer_mutation(void)
     vaud_destroy(ctx);
 }
 
+static void test_mixer_outputs_silence_when_state_lock_is_busy(void) {
+#if !defined(VAUD_PLATFORM_WINDOWS)
+    vaud_context_t ctx = vaud_create();
+    EXPECT_TRUE(ctx != NULL);
+
+    int16_t out[VAUD_CHANNELS * 4];
+    for (size_t i = 0; i < sizeof(out) / sizeof(out[0]); i++)
+        out[i] = 777;
+
+    vaud_mutex_lock(&ctx->mutex);
+    vaud_mixer_render(ctx, out, 4);
+    vaud_mutex_unlock(&ctx->mutex);
+
+    for (size_t i = 0; i < sizeof(out) / sizeof(out[0]); i++)
+        EXPECT_TRUE(out[i] == 0);
+
+    vaud_destroy(ctx);
+#endif
+}
+
 int main(void) {
     srand(1);
     test_destroy_detaches_loaded_sounds();
@@ -591,6 +611,7 @@ int main(void) {
     test_mixer_does_not_decode_empty_music_buffers();
     test_mixer_renders_oversized_requests_in_chunks();
     test_refill_in_progress_makes_mixer_skip_music_buffer_mutation();
+    test_mixer_outputs_silence_when_state_lock_is_busy();
 
     if (tests_failed != 0)
         return 1;

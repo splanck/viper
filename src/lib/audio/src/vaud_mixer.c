@@ -72,6 +72,12 @@ static inline int16_t soft_clip(int32_t sample) {
     return (int16_t)sample;
 }
 
+static void vaud_zero_output(int16_t *output, int32_t frames) {
+    size_t output_bytes = 0;
+    if (vaud_pcm_s16_buffer_size(frames, VAUD_CHANNELS, &output_bytes))
+        memset(output, 0, output_bytes);
+}
+
 /// @brief Calculate left/right gain from pan value.
 /// @param pan Pan value (-1.0 = left, 0.0 = center, 1.0 = right).
 /// @param source_channels Original source channel count (1 = mono, 2 = stereo).
@@ -233,9 +239,7 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
         return;
 
     if (vaud_atomic_load_i32(&ctx->destroying) != 0) {
-        size_t output_bytes = 0;
-        if (vaud_pcm_s16_buffer_size(frames, VAUD_CHANNELS, &output_bytes))
-            memset(output, 0, output_bytes);
+        vaud_zero_output(output, frames);
         return;
     }
 
@@ -260,9 +264,10 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
     size_t sample_count = (size_t)frames * (size_t)VAUD_CHANNELS;
     memset(accum, 0, sample_count * sizeof(int32_t));
 
-    /* Correctness beats dropping an otherwise valid buffer: wait for the state
-     * lock instead of emitting silence when control-side work is in progress. */
-    vaud_mutex_lock(&ctx->mutex);
+    if (!vaud_mutex_trylock(&ctx->mutex)) {
+        vaud_zero_output(output, frames);
+        return;
+    }
 
     float master = ctx->master_volume;
     if (!isfinite(master))
