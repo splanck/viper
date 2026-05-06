@@ -122,8 +122,10 @@ void vg_font_destroy(vg_font_t *font);
 /// @brief Retrieve global metrics for a font at a specific pixel size.
 ///
 /// @param font    The font to query.
-/// @param size    Desired font size in pixels.
+/// @param size    Desired finite, positive font size in pixels.
 /// @param metrics Pointer to the output structure that receives the metrics.
+///                Invalid sizes produce zeroed metrics with units_per_em
+///                preserved when a font is supplied.
 void vg_font_get_metrics(vg_font_t *font, float size, vg_font_metrics_t *metrics);
 
 /// @brief Retrieve the font's family name (e.g. "Noto Sans", "Fira Code").
@@ -152,7 +154,7 @@ bool vg_font_has_glyph(vg_font_t *font, uint32_t codepoint);
 ///          or the cache is evicted under memory pressure.
 ///
 /// @param font      The font handle.
-/// @param size      Font size in pixels.
+/// @param size      Finite, positive font size in pixels.
 /// @param codepoint Unicode codepoint.
 /// @return Pointer to the cached glyph data, or NULL if the glyph is missing.
 const vg_glyph_t *vg_font_get_glyph(vg_font_t *font, float size, uint32_t codepoint);

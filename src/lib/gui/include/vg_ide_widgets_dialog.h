@@ -410,7 +410,8 @@ void vg_filedialog_set_confirm_overwrite(vg_filedialog_t *dialog, bool confirm);
 /// @brief Add a file-type filter to the filter dropdown.
 /// @param dialog  File dialog.
 /// @param name    Display name (e.g. "Viper Files").
-/// @param pattern Semicolon-separated glob patterns (e.g. "*.viper;*.vpr").
+/// @param pattern Semicolon-separated glob patterns (e.g. "*.viper;*.vpr");
+///                empty tokens are ignored.
 void vg_filedialog_add_filter(vg_filedialog_t *dialog, const char *name, const char *pattern);
 
 /// @brief Remove all file-type filters.

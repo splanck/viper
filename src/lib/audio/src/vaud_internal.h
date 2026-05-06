@@ -155,6 +155,7 @@ struct vaud_music {
     int stream_eof;                                 ///< Decoder reached EOF while pre-filling.
     int stream_loop_pending;                        ///< Mixer requested a loop rewind.
     int refill_in_progress;                         ///< Non-realtime thread is mutating buffers.
+    int buffer_refilling[VAUD_MUSIC_BUFFER_COUNT];  ///< Per-buffer refill ownership flags.
     int64_t stream_output_generated;                ///< Output frames decoded since last reset/seek.
 
     // Resampling support (allocated when sample_rate != VAUD_SAMPLE_RATE)
@@ -363,9 +364,10 @@ int vaud_pcm_s16_buffer_size(int64_t frames, int32_t channels, size_t *out_bytes
 int32_t vaud_music_fill_buffer(struct vaud_music *music, int32_t buf_idx);
 
 /// @brief Fill all empty music buffers that can be safely prepared off-callback.
-/// @details For registered streams, caller must hold the owning context mutex
-///          and a refill token. Loaders may call this before publishing a
-///          stream to the context because no other thread can observe it yet.
+/// @details For registered streams this is used only on already-claimed buffer
+///          slots or while the caller holds exclusive stream ownership. Loaders
+///          may call this before publishing a stream to the context because no
+///          other thread can observe it yet.
 void vaud_music_prefill_locked(struct vaud_music *music);
 
 /// @brief Rewind or seek a music stream to the given output frame.

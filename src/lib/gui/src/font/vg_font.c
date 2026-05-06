@@ -28,6 +28,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "vg_ttf_internal.h"
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,6 +37,20 @@
 //=============================================================================
 // Font Loading
 //=============================================================================
+
+static bool vg_font_valid_size(float size) {
+    return isfinite(size) && size > 0.0f && size <= 1000000.0f;
+}
+
+static int vg_font_metric_to_int(double value) {
+    if (!isfinite(value))
+        return 0;
+    if (value > (double)INT_MAX)
+        return INT_MAX;
+    if (value < (double)INT_MIN)
+        return INT_MIN;
+    return (int)value;
+}
 
 /// @brief Load a font from an in-memory TTF buffer.
 ///
@@ -101,9 +116,15 @@ vg_font_t *vg_font_load_file(const char *path) {
         return NULL;
 
     // Get file size
-    fseek(f, 0, SEEK_END);
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return NULL;
+    }
     long size = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    if (size < 0 || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return NULL;
+    }
 
     if (size <= 0 || size > 100 * 1024 * 1024) { // Max 100MB
         fclose(f);
@@ -111,13 +132,13 @@ vg_font_t *vg_font_load_file(const char *path) {
     }
 
     // Read file
-    uint8_t *data = malloc(size);
+    uint8_t *data = malloc((size_t)size);
     if (!data) {
         fclose(f);
         return NULL;
     }
 
-    if (fread(data, 1, size, f) != (size_t)size) {
+    if (fread(data, 1, (size_t)size, f) != (size_t)size) {
         free(data);
         fclose(f);
         return NULL;
@@ -126,7 +147,7 @@ vg_font_t *vg_font_load_file(const char *path) {
     fclose(f);
 
     // Load font
-    vg_font_t *font = vg_font_load(data, size);
+    vg_font_t *font = vg_font_load(data, (size_t)size);
     free(data);
 
     return font;
@@ -181,13 +202,20 @@ void vg_font_destroy(vg_font_t *font) {
 void vg_font_get_metrics(vg_font_t *font, float size, vg_font_metrics_t *metrics) {
     if (!font || !metrics)
         return;
+    metrics->ascent = 0;
+    metrics->descent = 0;
+    metrics->line_height = 0;
+    metrics->units_per_em = font ? font->head.units_per_em : 0;
+    if (!vg_font_valid_size(size) || font->head.units_per_em <= 0)
+        return;
 
     float scale = size / (float)font->head.units_per_em;
 
-    metrics->ascent = (int)(font->hhea.ascent * scale + 0.5f);
-    metrics->descent = (int)(font->hhea.descent * scale - 0.5f); // Usually negative
-    metrics->line_height =
-        (int)((font->hhea.ascent - font->hhea.descent + font->hhea.line_gap) * scale + 0.5f);
+    metrics->ascent = vg_font_metric_to_int((double)font->hhea.ascent * scale + 0.5);
+    metrics->descent =
+        vg_font_metric_to_int((double)font->hhea.descent * scale - 0.5); // Usually negative
+    metrics->line_height = vg_font_metric_to_int(
+        (double)(font->hhea.ascent - font->hhea.descent + font->hhea.line_gap) * scale + 0.5);
     metrics->units_per_em = font->head.units_per_em;
 }
 
@@ -226,7 +254,7 @@ bool vg_font_has_glyph(vg_font_t *font, uint32_t codepoint) {
 /// @param codepoint Unicode codepoint to look up.
 /// @return Pointer to a cache-owned vg_glyph_t, or NULL on error.
 const vg_glyph_t *vg_font_get_glyph(vg_font_t *font, float size, uint32_t codepoint) {
-    if (!font || !isfinite(size) || size <= 0)
+    if (!font || !vg_font_valid_size(size))
         return NULL;
 
     // Check cache first
@@ -435,7 +463,7 @@ void vg_font_measure_text(vg_font_t *font,
     metrics->height = 0;
     metrics->glyph_count = 0;
 
-    if (!font || !text || size <= 0)
+    if (!font || !text || !vg_font_valid_size(size))
         return;
 
     vg_font_metrics_t fm;
@@ -485,7 +513,7 @@ void vg_font_measure_text(vg_font_t *font,
 /// @param target_x Pixel x-coordinate to map (relative to the text origin).
 /// @return Zero-based character index, or -1 on invalid input.
 int vg_font_hit_test(vg_font_t *font, float size, const char *text, float target_x) {
-    if (!font || !text || size <= 0)
+    if (!font || !text || !vg_font_valid_size(size))
         return -1;
 
     float x = 0;
@@ -532,7 +560,7 @@ int vg_font_hit_test(vg_font_t *font, float size, const char *text, float target
 ///                     should appear. Clamped to the end of the string.
 /// @return Pixel x-offset from the text origin, or 0 on invalid input.
 float vg_font_get_cursor_x(vg_font_t *font, float size, const char *text, int target_index) {
-    if (!font || !text || size <= 0 || target_index < 0)
+    if (!font || !text || !vg_font_valid_size(size) || target_index < 0)
         return 0;
 
     float x = 0;

@@ -509,6 +509,11 @@ void vgfx_internal_set_error(vgfx_error_t code, const char *msg);
 /// @post Event is in the queue OR event_overflow incremented
 int vgfx_internal_enqueue_event(struct vgfx_window *win, const vgfx_event_t *event);
 
+/// @brief Record a platform-side event that had to be dropped before enqueue.
+/// @details Used when a backend rejects an oversized or otherwise unsafe native
+///          event payload before it can be represented as a vgfx_event_t.
+void vgfx_internal_note_event_overflow(struct vgfx_window *win);
+
 /// @brief Dequeue the next event from the window's ring buffer.
 /// @details Removes and returns the oldest event from the queue.  If the queue
 ///          is empty, returns 0 without modifying out_event.

@@ -120,6 +120,12 @@ static char *make_tab_title(const vg_tab_t *tab) {
     return title;
 }
 
+static size_t utf8_prev_boundary(const char *text, size_t len) {
+    while (len > 0 && (((unsigned char)text[len] & 0xC0u) == 0x80u))
+        len--;
+    return len;
+}
+
 /// @brief Returns a heap-allocated copy of @p title truncated with "..." to fit within @p max_width pixels; caller must free.
 static char *fit_tab_title(vg_tabbar_t *tabbar, const char *title, float max_width) {
     if (!title)
@@ -149,6 +155,7 @@ static char *fit_tab_title(vg_tabbar_t *tabbar, const char *title, float max_wid
         if (metrics.width <= max_width)
             return buf;
         len--;
+        len = utf8_prev_boundary(title, len);
     }
 
     memcpy(buf, "...", 4);

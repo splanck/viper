@@ -24,9 +24,9 @@ The biggest user-visible new thing is a text-mode baseball-franchise simulator.
 
 | Metric | v0.2.4 | v0.2.5 | Delta |
 |---|---|---|---|
-| Commits | — | 136 | +136 |
+| Commits | — | 135 | +135 |
 | Source files | 2,869 | 2,995 | +126 |
-| Production SLOC | 450K | 548K | +98K |
+| Production SLOC | 450K | 550K | +100K |
 | Test SLOC | 183K | 227K | +44K |
 | Demo SLOC | 177K | 188K | +11K |
 
@@ -192,39 +192,44 @@ Eleven-class `Viper.Localization.*` namespace. Zero external dependencies; en-US
 
 ### Packaging & distribution
 
-Three-pass hardening of the `viper install` and `viper package` subsystems.
+Six-pass hardening of the `viper install-package` and `viper package` subsystems.
 
-- **Cross-platform installer correctness** — Windows uninstaller now removes all registry entries it created (was leaving stale file-association and application-registration keys). File-association templates are written correctly. ProgID ownership is validated before modifying, preventing `viper install` from silently overwriting another application's file associations.
+- **Cross-platform installer correctness** — Windows uninstaller removes all registry entries it created. Existing `Content Type` values for extensions are preserved; only VAPS-owned MIME values are tagged on install and removed on uninstall. ProgID trees are tagged with a VAPS owner marker and only deleted when that marker is present, preventing `viper install` from silently overwriting another application's file associations. Duplicate `file-assoc` extensions in a project manifest are now rejected at validation time.
 - **Windows long-path support** — Installer paths are prefixed with `\\?\` before all `CreateFile`/`CopyFile`/`DeleteFile` calls so installations into deep directory trees succeed on Windows without requiring the system-wide `LongPathsEnabled` registry key.
+- **Windows toolchain PATH and file-association management** — The toolchain installer adds the Viper `bin` directory to the system `Path` environment variable as a `REG_EXPAND_SZ` entry; on reinstall, existing Viper-owned PATH entries are deduplicated rather than appended. `SendMessageTimeoutW(WM_SETTINGCHANGE)` is broadcast after each PATH modification so running processes pick up the change without a reboot. On uninstall, only the Viper-owned PATH token is removed. Source (`.zia`) and IL (`.il`) file associations are registered during toolchain install with `viper run` and `viper -run` open commands respectively.
 - **PE hardening** — Emitted Windows executables now have ASLR, NX (DEP), Control Flow Guard, and high-entropy VA enabled; the application manifest is embedded with `asInvoker` execution level. The linker validates that all required security flags are present in the output before reporting success.
 - **Manifest validation** — The embedded application manifest is compared against the source manifest after each build to catch silent embedding failures.
 - **PNG full color-type support in package assets** — Asset packager now handles PNG color types 0 (greyscale), 2 (RGB), 3 (indexed), 4 (greyscale+alpha), and 6 (RGBA); previously only type 6 was decoded correctly for VPA asset packs.
 - **ZIP header cross-check** — `viper package` verifies that the central-directory entry for each asset matches the local-file header (compression method, CRC, sizes) and rejects the archive if any field diverges — catches truncated or partially-written asset packs before distribution.
-- **Executable format validation** — Packaged native executables validated post-link: ELF magic + class + machine checked for the target architecture; PE `MachineType` and `Subsystem` validated against the build profile; Mach-O `cputype`/`cpusubtype` pair validated per platform.
-- **macOS signed app packaging** — macOS app packages are now staged as real `.app` bundles before ZIP emission. The default macOS signing mode is ad-hoc on macOS hosts, sealing `Info.plist` and bundled resources with `codesign`; Developer ID signing, hardened runtime, notarization profile, entitlements, and stapling metadata are accepted for production distribution flows.
+- **Executable format validation** — Packaged native executables validated post-link: ELF magic + class + machine checked for the target architecture; PE `MachineType` and `Subsystem` validated against the build profile; Mach-O `cputype`/`cpusubtype` pair validated per platform. Portable tarballs accept Mach-O, ELF, or PE payloads but reject unknown formats and architecture mismatches.
+- **macOS signed app packaging** — macOS app packages are now staged as real `.app` bundles before ZIP emission. The default signing mode is ad-hoc on macOS hosts (sealing `Info.plist` and bundled resources with `codesign`) and `preserve` on non-macOS hosts where local signing tools are unavailable. Developer ID signing, hardened runtime, notarization profile, entitlements, and stapling are supported for production distribution flows. `macos-staple` requires `developer-id` mode and a notary profile.
+- **macOS toolchain package hardening** — `viper install-package --target macos` validates that the staged tree's platform matches before invoking `pkgbuild`; `--macos-pkg-version` accepts a dotted-numeric override for cases where the Viper version string has pre-release suffixes that `pkgbuild` cannot accept. `/usr/local/bin` symlinks are now embedded directly in the package root so the postinstall script no longer needs to create them.
 - **Mach-O `__LINKEDIT` correctness** — Native Mach-O output no longer pads the final `__LINKEDIT` segment past `LC_CODE_SIGNATURE`, allowing Apple `strip` and `codesign --force` to process Viper-generated arm64 binaries and enabling bundle-level signing.
-- **Package asset root clarification** — `asset <source> <target>` targets are now documented as relative to each platform's resource root. Crackman packages its runtime font under `Contents/Resources/assets/...` on macOS and resolves the bundle resource path at startup.
-- **xar/rpm deep verification** — `xar` archive payloads and `rpm` CPIO payloads now fully verified: xar heap SHA-1/SHA-256 digests checked against the TOC; rpm `RPMTAG_PAYLOADFORMAT` and CPIO entry sizes cross-checked against the declared archive size before extraction.
+- **Linux toolchain package improvements** — Staged Unix permission bits are preserved in `.deb` and tarball payloads. Toolchain packages include a `NoDisplay` desktop entry and shared-MIME XML for `.zia` and `.il` file types so file associations work system-wide after `dpkg -i`.
+- **Platform and architecture auto-detection** — `viper install-package` now inspects the staged `viper` binary's ELF, PE, or Mach-O header to derive platform and architecture automatically. A `--arch` override that contradicts the detected binary architecture is rejected. `--target all` includes RPM only when `rpmbuild` is available on the host.
+- **Package asset root clarification** — `asset <source> <target>` targets are relative to each platform's resource root. Asset directory symlinks are followed when their resolved targets remain inside the project root; their packaged paths preserve the symlink path.
+- **Deep installer verification** — Post-build verification for Windows `.exe`, `.deb`, and `.tar.gz` toolchain artifacts checks every path listed in the staged manifest against the emitted payload. `.pkg` verification now inflates and validates the XAR TOC and requires a payload entry. `.rpm` verification confirms a non-empty CPIO payload follows the headers. Installer stub overlay extraction streams in 1 MiB fixed-size chunks, preventing large-payload OOM on the target machine.
 
 ### Tests
 
-~22K new lines of test coverage added this cycle.
+~23K new lines of test coverage added this cycle.
 
 - **3D handle-safety contracts** — Every major 3D class (Mesh3D, Scene3D, Canvas3D, Camera3D, Collider3D, Light3D, Material3D, Particles3D, Physics3D, Water3D) has contract tests confirming that NULL, wrong-type, and out-of-range handles return safe defaults rather than crashing. STL loader tests verify that NaN/inf vertices and out-of-range floats are rejected in both binary and ASCII formats.
 - **2D graphics regression suite** — New tests cover wrong-class handle contracts for Sprite/SpriteSheet/SpriteBatch/Camera/Scene, PNG chunk-order and palette validation, sub-byte greyscale transparency, zero-frame GIF rejection, scene transform saturation at int64 limits, tilemap autotile fallback, and tile-animation JSON deduplication.
 - **Game runtime contracts** — All 16 2D game modules have dedicated wrong-class-handle tests aligned with the class-ID guard pass; new suites cover Lighting2D, Typewriter, Physics2D, Collision, ObjPool, ScreenFX, Behavior, Raycast2D, SceneManager, and Pathfinder.
 - **GUI** — 40+ new regression tests covering layout constraints, image loading, widget lifecycle, regex search, modal input routing, TextInput undo, TrueType composite glyph bounds, Grid/Dock metadata cleanup on child removal, RadioButton deselect callbacks, Checkbox indeterminate state, and TextInput single-change paste.
+- **Packaging** — New unit and CLI smoke tests covering duplicate file-association extension rejection, `validatePackageFileAssociations`, `resolveMacOSSignModeForHost`, `validateMacOSSigningConfig`, macOS toolchain platform guard, `--macos-pkg-version` override validation, Windows PATH token dedup logic, file-association ProgID generation, Linux `permissionBitsFor` mode selection, and deep archive verification (`.pkg` XAR TOC, `.rpm` CPIO, `.deb` payload paths, tarball entry completeness).
 - **IL, compiler, and audio** — New tests for linker correctness, opcode metadata consistency, optimizer passes (DSE, LICM, LoopRotate, LoopUnroll, IndVarSimplify, MemorySSA, ValueKey), verifier escape-analysis golden fixtures, and IL transform edge cases. Audio tests cover PCM overflow, ALSA write simulation, and WAV format variants. Localization fuzzing harnesses added (opt-in via `VIPER_ENABLE_FUZZ`).
 
 ### Demos & docs
 
-- **Demos** — New text-mode baseball franchise simulator; Crackman rewrite; two new 3D demos; Paint gains layers and undo; ViperIDE file-watcher and context-menu fixes; XENOSCAPE boss/player fixes; Chess drag-vs-click detection fix; three localization examples; Windows ARM64 builds for all 3D demos.
+- **Demos** — New text-mode baseball franchise simulator; Crackman rewrite; two new 3D demos; Paint gains layers and undo; ViperIDE file-watcher and context-menu fixes; XENOSCAPE boss/player fixes and macOS package; Chess drag-vs-click detection fix; three localization examples; Windows ARM64 builds for all 3D demos.
 - **Docs** — `viperlib/` coverage extended across all subsystems: 2D graphics split into rendering/effects, tilemaps/layers, shapes/text/UI, and animation/collision/camera; new `viperlib/localization/`; IL Optimizer Correctness Contract; GUI viperlib updated through round-7 APIs. Doxygen coverage pass across all 42 `lib/gui` source files and ~100 runtime files.
 
 ---
 
 ### Commits
 
-See `git log a91d388db..HEAD -- .` for the full 136-commit history.
+See `git log a91d388db..HEAD -- .` for the full 135-commit history.
 
 <!-- END DRAFT -->

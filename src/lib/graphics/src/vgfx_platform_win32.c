@@ -497,6 +497,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         case WM_KILLFOCUS: {
             /* Window lost focus */
             win->is_focused = 0;
+            if (w32)
+                w32->pending_high_surrogate = 0;
             vgfx_internal_clear_input_state(win);
             vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = timestamp};
             vgfx_internal_enqueue_event(win, &event);
@@ -505,6 +507,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
         case WM_KEYDOWN: {
             /* Key pressed */
+            if (w32)
+                w32->pending_high_surrogate = 0;
             vgfx_key_t key = translate_vk(wparam);
             if (key != VGFX_KEY_UNKNOWN && key < 512) {
                 /* Detect repeat: bit 30 of lparam indicates previous key state */
@@ -753,6 +757,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
                                          event.data.file_drop.path,
                                          sizeof(event.data.file_drop.path))) {
                     vgfx_internal_enqueue_event(win, &event);
+                } else {
+                    vgfx_internal_note_event_overflow(win);
                 }
                 free(wpath);
             }

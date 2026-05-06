@@ -205,13 +205,22 @@ may be evicted; `VGFX_EVENT_CLOSE` is preserved and drops are observable through
 `vgfx_event_overflow_count`. The overflow counter saturates instead of wrapping
 negative after extreme sustained event loss.
 
+Resize events report physical framebuffer dimensions and logical dimensions
+after the active coordinate scale. Platform backends reject resize dimensions
+that exceed framebuffer safety limits before allocating presentation buffers, so
+native resize storms cannot leave the framebuffer and presentation surface with
+different committed sizes.
+
 `vgfx_mouse_pos` always writes the last known window-relative coordinates, even
 when the cursor is outside the client area. In that case it returns `0` and the
 coordinates may be negative or greater than/equal to the current window size.
 Clipboard text and file-drop paths are normalized as UTF-8 where the platform
-backend exposes Unicode paths. On X11, clipboard operations use the focused
-window when available and fall back to another live ViperGFX window, so
-multi-window apps keep clipboard access after the last-created window closes.
+backend exposes Unicode paths. File-drop paths must fit in the fixed event
+payload; oversized paths are dropped and counted by `vgfx_event_overflow_count`
+instead of being truncated into invalid or misleading paths. On X11, clipboard
+operations use the focused window when available and fall back to another live
+ViperGFX window, so multi-window apps keep clipboard access after the
+last-created window closes.
 
 ### Colors
 

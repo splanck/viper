@@ -26,6 +26,7 @@
 #include "vg_ttf_internal.h"
 
 #include <stdint.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -360,6 +361,31 @@ static void test_composite_glyph_point_indices_align_component(void) {
     free(contours);
 }
 
+static void test_nonfinite_and_huge_font_sizes_are_rejected(void) {
+    vg_font_t font;
+    memset(&font, 0, sizeof(font));
+    font.head.units_per_em = 1000;
+    font.hhea.ascent = 800;
+    font.hhea.descent = -200;
+    font.hhea.line_gap = 100;
+
+    vg_font_metrics_t metrics;
+    memset(&metrics, 0x7F, sizeof(metrics));
+    vg_font_get_metrics(&font, NAN, &metrics);
+    EXPECT_TRUE(metrics.ascent == 0);
+    EXPECT_TRUE(metrics.descent == 0);
+    EXPECT_TRUE(metrics.line_height == 0);
+    EXPECT_TRUE(metrics.units_per_em == 1000);
+
+    vg_text_metrics_t text_metrics;
+    vg_font_measure_text(&font, INFINITY, "abc", &text_metrics);
+    EXPECT_TRUE(text_metrics.width == 0.0f);
+    EXPECT_TRUE(text_metrics.height == 0.0f);
+    EXPECT_TRUE(text_metrics.glyph_count == 0);
+    EXPECT_TRUE(vg_font_hit_test(&font, -INFINITY, "abc", 1.0f) == -1);
+    EXPECT_TRUE(vg_font_get_cursor_x(&font, INFINITY, "abc", 1) == 0.0f);
+}
+
 /// @brief Run all font bounds-checking tests and print a single PASS line on success.
 int main(void) {
     test_wrapped_table_bounds_rejected();
@@ -370,6 +396,7 @@ int main(void) {
     test_utf8_decoder_rejects_invalid_scalar_values();
     test_name_table_odd_utf16_length_does_not_overread();
     test_composite_glyph_point_indices_align_component();
+    test_nonfinite_and_huge_font_sizes_are_rejected();
     if (tests_failed != 0)
         return 1;
     printf("test_vg_font_bounds: PASS\n");

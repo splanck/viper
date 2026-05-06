@@ -32,6 +32,7 @@
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include <ctype.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -63,6 +64,46 @@ static vg_widget_vtable_t g_commandpalette_vtable = {.destroy = commandpalette_d
 // Fuzzy Matching
 //=============================================================================
 
+static uint32_t commandpalette_decode_utf8(const char **cursor) {
+    const unsigned char *s = (const unsigned char *)*cursor;
+    if (!s || !*s)
+        return 0;
+    if (s[0] < 0x80) {
+        *cursor += 1;
+        return s[0];
+    }
+    if ((s[0] & 0xE0) == 0xC0 && (s[1] & 0xC0) == 0x80) {
+        uint32_t cp = ((uint32_t)(s[0] & 0x1F) << 6) | (uint32_t)(s[1] & 0x3F);
+        *cursor += 2;
+        return cp >= 0x80 ? cp : 0xFFFD;
+    }
+    if ((s[0] & 0xF0) == 0xE0 && (s[1] & 0xC0) == 0x80 && (s[2] & 0xC0) == 0x80) {
+        uint32_t cp = ((uint32_t)(s[0] & 0x0F) << 12) | ((uint32_t)(s[1] & 0x3F) << 6) |
+                      (uint32_t)(s[2] & 0x3F);
+        *cursor += 3;
+        return cp >= 0x800 && !(cp >= 0xD800 && cp <= 0xDFFF) ? cp : 0xFFFD;
+    }
+    if ((s[0] & 0xF8) == 0xF0 && (s[1] & 0xC0) == 0x80 && (s[2] & 0xC0) == 0x80 &&
+        (s[3] & 0xC0) == 0x80) {
+        uint32_t cp = ((uint32_t)(s[0] & 0x07) << 18) | ((uint32_t)(s[1] & 0x3F) << 12) |
+                      ((uint32_t)(s[2] & 0x3F) << 6) | (uint32_t)(s[3] & 0x3F);
+        *cursor += 4;
+        return cp >= 0x10000 && cp <= 0x10FFFF ? cp : 0xFFFD;
+    }
+    *cursor += 1;
+    return 0xFFFD;
+}
+
+static uint32_t commandpalette_fold_codepoint(uint32_t cp) {
+    if (cp >= 'A' && cp <= 'Z')
+        return cp + ('a' - 'A');
+    return cp;
+}
+
+static bool commandpalette_is_word_boundary(uint32_t cp) {
+    return cp == 0 || cp == ' ' || cp == '_' || cp == '-';
+}
+
 /// @brief Compute a fuzzy-match score for pattern against text; returns 0 (no match) or a positive score (higher = better).
 static int fuzzy_match_score(const char *pattern, const char *text) {
     if (!pattern || !text)
@@ -75,32 +116,38 @@ static int fuzzy_match_score(const char *pattern, const char *text) {
     const char *t = text;
     bool consecutive = true;
     int last_match_pos = -1;
+    uint32_t prev_tc = 0;
+    int text_pos = 0;
 
     while (*p && *t) {
-        char pc = (char)tolower((unsigned char)*p);
-        char tc = (char)tolower((unsigned char)*t);
+        const char *p_next = p;
+        const char *t_next = t;
+        uint32_t pc = commandpalette_fold_codepoint(commandpalette_decode_utf8(&p_next));
+        uint32_t tc = commandpalette_fold_codepoint(commandpalette_decode_utf8(&t_next));
 
         if (pc == tc) {
             // Found a match
             score += consecutive ? 10 : 5;
 
             // Bonus for matching at word boundaries
-            if (t == text || *(t - 1) == ' ' || *(t - 1) == '_' || *(t - 1) == '-') {
+            if (t == text || commandpalette_is_word_boundary(prev_tc)) {
                 score += 15;
             }
 
             // Bonus for consecutive matches
-            if ((int)(t - text) == last_match_pos + 1) {
+            if (text_pos == last_match_pos + 1) {
                 score += 5;
             }
 
-            last_match_pos = (int)(t - text);
-            p++;
+            last_match_pos = text_pos;
+            p = p_next;
             consecutive = true;
         } else {
             consecutive = false;
         }
-        t++;
+        prev_tc = tc;
+        t = t_next;
+        text_pos++;
     }
 
     // Pattern must be fully matched
@@ -225,6 +272,8 @@ static void append_query_char(vg_commandpalette_t *palette, uint32_t codepoint) 
     if (encoded_len == 0)
         return;
     size_t old_len = palette->current_query ? strlen(palette->current_query) : 0;
+    if (old_len > SIZE_MAX - encoded_len - 1u)
+        return;
     char *next = realloc(palette->current_query, old_len + encoded_len + 1);
     if (!next)
         return;

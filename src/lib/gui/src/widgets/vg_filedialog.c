@@ -36,6 +36,7 @@
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include <ctype.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,6 +53,7 @@
 #define strcasecmp _stricmp
 #define stat _stat
 #define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
+#define S_ISREG(m) (((m) & _S_IFMT) == _S_IFREG)
 #else
 #include <dirent.h>
 #include <fnmatch.h>
@@ -178,6 +180,8 @@ static char *get_home_directory(void) {
 
 /// @brief Heap-allocate the concatenation of dir and file with a platform path separator.
 static char *join_path(const char *dir, const char *file) {
+    if (!dir || !file)
+        return NULL;
     size_t dir_len = strlen(dir);
     size_t file_len = strlen(file);
 
@@ -189,16 +193,23 @@ static char *join_path(const char *dir, const char *file) {
     bool need_sep = (dir_len > 0 && dir[dir_len - 1] != '/');
 #endif
 
-    char *result = malloc(dir_len + (need_sep ? 1 : 0) + file_len + 1);
+    size_t sep_len = need_sep ? 1u : 0u;
+    if (dir_len > SIZE_MAX - sep_len || dir_len + sep_len > SIZE_MAX - file_len ||
+        dir_len + sep_len + file_len > SIZE_MAX - 1u) {
+        return NULL;
+    }
+    size_t total = dir_len + sep_len + file_len;
+    char *result = malloc(total + 1u);
     if (!result)
         return NULL;
 
-    strcpy(result, dir);
+    memcpy(result, dir, dir_len);
+    size_t offset = dir_len;
     if (need_sep) {
-        result[dir_len] = sep;
-        result[dir_len + 1] = '\0';
+        result[offset++] = sep;
     }
-    strcat(result, file);
+    memcpy(result + offset, file, file_len);
+    result[total] = '\0';
 
     return result;
 }
@@ -614,9 +625,17 @@ static bool match_filter(const char *filename, const char *pattern) {
         // Trim whitespace
         while (*token == ' ')
             token++;
-        char *end = token + strlen(token) - 1;
-        while (end > token && *end == ' ')
-            *end-- = '\0';
+        size_t token_len = strlen(token);
+        while (token_len > 0 && token[token_len - 1] == ' ')
+            token[--token_len] = '\0';
+        if (token_len == 0) {
+#ifdef _WIN32
+            token = strtok_s(NULL, ";", &saveptr);
+#else
+            token = strtok_r(NULL, ";", &saveptr);
+#endif
+            continue;
+        }
 
 #ifdef _WIN32
         if (win_match_pattern(token, filename)) {
@@ -656,26 +675,34 @@ static void clear_entries(vg_filedialog_t *dialog) {
 
 /// @brief Load the directory at path into dialog->entries[], sorted and filtered.
 static void load_directory(vg_filedialog_t *dialog, const char *path) {
-    clear_entries(dialog);
-
-    // Update current path
-    free(dialog->current_path);
 #ifdef _WIN32
-    dialog->current_path = _strdup(path);
+    char *new_current_path = _strdup(path);
 #else
-    dialog->current_path = strdup(path);
+    char *new_current_path = strdup(path);
 #endif
+    if (!new_current_path)
+        return;
 
 #ifdef _WIN32
     // Windows directory iteration using FindFirstFile/FindNextFile
-    char search_path[MAX_PATH];
-    snprintf(search_path, sizeof(search_path), "%s\\*", path);
+    char *search_path = join_path(path, "*");
+    if (!search_path) {
+        free(new_current_path);
+        return;
+    }
 
     WIN32_FIND_DATAA find_data;
     HANDLE hFind = FindFirstFileA(search_path, &find_data);
+    free(search_path);
 
-    if (hFind == INVALID_HANDLE_VALUE)
+    if (hFind == INVALID_HANDLE_VALUE) {
+        free(new_current_path);
         return;
+    }
+
+    clear_entries(dialog);
+    free(dialog->current_path);
+    dialog->current_path = new_current_path;
 
     do {
         // Skip . and ..
@@ -710,6 +737,10 @@ static void load_directory(vg_filedialog_t *dialog, const char *path) {
 
         fe->name = _strdup(find_data.cFileName);
         fe->full_path = join_path(path, find_data.cFileName);
+        if (!fe->name || !fe->full_path) {
+            free_entry(fe);
+            continue;
+        }
         fe->is_directory = is_dir;
 
         // Calculate size (combine high and low parts for 64-bit size)
@@ -723,6 +754,10 @@ static void load_directory(vg_filedialog_t *dialog, const char *path) {
 
         // Add to array
         if (dialog->entry_count >= dialog->entry_capacity) {
+            if (dialog->entry_capacity > SIZE_MAX / (2u * sizeof(vg_file_entry_t *))) {
+                free_entry(fe);
+                continue;
+            }
             size_t new_cap = dialog->entry_capacity == 0 ? 64 : dialog->entry_capacity * 2;
             vg_file_entry_t **new_entries =
                 realloc(dialog->entries, new_cap * sizeof(vg_file_entry_t *));
@@ -742,8 +777,14 @@ static void load_directory(vg_filedialog_t *dialog, const char *path) {
 #else
     // POSIX directory iteration
     DIR *dir = opendir(path);
-    if (!dir)
+    if (!dir) {
+        free(new_current_path);
         return;
+    }
+
+    clear_entries(dialog);
+    free(dialog->current_path);
+    dialog->current_path = new_current_path;
 
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
@@ -793,12 +834,20 @@ static void load_directory(vg_filedialog_t *dialog, const char *path) {
 
         fe->name = strdup(entry->d_name);
         fe->full_path = full_path;
+        if (!fe->name || !fe->full_path) {
+            free_entry(fe);
+            continue;
+        }
         fe->is_directory = is_dir;
-        fe->size = st.st_size;
+        fe->size = S_ISREG(st.st_mode) && st.st_size > 0 ? (uint64_t)st.st_size : 0u;
         fe->modified_time = st.st_mtime;
 
         // Add to array
         if (dialog->entry_count >= dialog->entry_capacity) {
+            if (dialog->entry_capacity > SIZE_MAX / (2u * sizeof(vg_file_entry_t *))) {
+                free_entry(fe);
+                continue;
+            }
             size_t new_cap = dialog->entry_capacity == 0 ? 64 : dialog->entry_capacity * 2;
             vg_file_entry_t **new_entries =
                 realloc(dialog->entries, new_cap * sizeof(vg_file_entry_t *));

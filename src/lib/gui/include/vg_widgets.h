@@ -308,13 +308,13 @@ char *vg_textinput_get_selection(vg_textinput_t *input);
 
 /// @brief Set font for text input
 /// @param input Text input widget
-/// @param font Font to use
-/// @param size Font size in pixels
+/// @param font Font to use; NULL keeps the existing font
+/// @param size Finite positive font size in pixels; invalid values use the theme normal size
 void vg_textinput_set_font(vg_textinput_t *input, vg_font_t *font, float size);
 
 /// @brief Advance cursor blink timer; call each frame with elapsed seconds
 /// @param input Text input widget
-/// @param dt Elapsed time in seconds since last call
+/// @param dt Elapsed time in seconds since last call; NaN, infinity, and negative values are ignored
 void vg_textinput_tick(vg_textinput_t *input, float dt);
 
 //=============================================================================

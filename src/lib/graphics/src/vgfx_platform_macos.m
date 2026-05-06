@@ -119,14 +119,28 @@ static CGDirectDisplayID macos_display_id_for_screen(NSScreen *screen) {
     return screen_number ? (CGDirectDisplayID)[screen_number unsignedIntValue] : CGMainDisplayID();
 }
 
+static int32_t macos_clamp_i32(int32_t value, int32_t min_value, int32_t max_value) {
+    if (value < min_value)
+        return min_value;
+    if (value > max_value)
+        return max_value;
+    return value;
+}
+
 static void macos_event_location_to_physical(struct vgfx_window *win,
                                              NSPoint location,
                                              NSRect content_rect,
                                              int32_t *out_x,
                                              int32_t *out_y) {
     float sf = (win && win->scale_factor > 0.0f) ? win->scale_factor : 1.0f;
+    int32_t width_px = vgfx_internal_round_scaled((float)content_rect.size.width * sf);
+    int32_t height_px = vgfx_internal_round_scaled((float)content_rect.size.height * sf);
     int32_t x = vgfx_internal_round_scaled((float)location.x * sf);
-    int32_t y = vgfx_internal_round_scaled((float)(content_rect.size.height - location.y) * sf) - 1;
+    int32_t y = height_px - 1 - vgfx_internal_round_scaled((float)location.y * sf);
+    if (width_px > 0 && location.x >= 0.0 && location.x <= content_rect.size.width)
+        x = macos_clamp_i32(x, 0, width_px - 1);
+    if (height_px > 0 && location.y >= 0.0 && location.y <= content_rect.size.height)
+        y = macos_clamp_i32(y, 0, height_px - 1);
 
     if (out_x)
         *out_x = x;
@@ -669,8 +683,10 @@ static bool macos_should_check_menu_key_equivalent(vgfx_key_t key, NSEventModifi
         event.type = VGFX_EVENT_FILE_DROP;
         event.time_ms = timestamp;
         size_t len = strlen(path);
-        if (len >= sizeof(event.data.file_drop.path))
-            len = sizeof(event.data.file_drop.path) - 1;
+        if (len >= sizeof(event.data.file_drop.path)) {
+            vgfx_internal_note_event_overflow(_vgfxWindow);
+            continue;
+        }
         memcpy(event.data.file_drop.path, path, len);
         event.data.file_drop.path[len] = '\0';
         vgfx_internal_enqueue_event(_vgfxWindow, &event);

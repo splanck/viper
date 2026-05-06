@@ -224,11 +224,13 @@ after the stream has reached EOF.
 
 Applications that use streaming music should call `vaud_update(ctx)` regularly
 from the control/update thread, typically once per frame. `vaud_update` refills
-empty stream buffers and processes loop rewinds. The realtime mixer consumes
-already-decoded buffers only; it does not perform file I/O or codec decode work
-inside the audio callback. Refill, seek, stop, play, and free operations are
-serialized through the context mutex so a streaming handle cannot be freed or
-retargeted while its buffer is being rebuilt.
+empty stream buffers and processes loop rewinds. It claims empty buffer slots
+under the context mutex, releases the mutex while doing file I/O or codec work,
+then commits the decoded frames. The realtime mixer consumes already-decoded
+buffers only and can continue mixing the current buffer while another slot is
+being refilled; if the current slot itself is being rebuilt, that stream is
+silent for that callback. Free/detach waits for any in-flight refill token before
+releasing decoder and buffer storage.
 
 ### Error Handling
 

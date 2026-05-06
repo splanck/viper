@@ -39,6 +39,7 @@
 
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
+#include <X11/cursorfont.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <stdint.h>
@@ -112,15 +113,19 @@ static int hex_value(unsigned char c) {
     return -1;
 }
 
-static size_t percent_decode_path(const char *src, size_t len, char *dst, size_t dst_cap) {
+static int percent_decode_path(const char *src, size_t len, char *dst, size_t dst_cap) {
     if (!dst || dst_cap == 0)
         return 0;
 
     size_t out = 0;
-    for (size_t i = 0; i < len && out + 1 < dst_cap; i++) {
+    for (size_t i = 0; i < len; i++) {
         unsigned char ch = (unsigned char)src[i];
         if (ch == '\0')
             break;
+        if (out + 1 >= dst_cap) {
+            dst[0] = '\0';
+            return 0;
+        }
         if (ch == '%' && i + 2 < len) {
             int hi = hex_value((unsigned char)src[i + 1]);
             int lo = hex_value((unsigned char)src[i + 2]);
@@ -133,7 +138,7 @@ static size_t percent_decode_path(const char *src, size_t len, char *dst, size_t
         dst[out++] = (char)ch;
     }
     dst[out] = '\0';
-    return out;
+    return 1;
 }
 
 static void enqueue_xdnd_uri_line(struct vgfx_window *win,
@@ -165,10 +170,13 @@ static void enqueue_xdnd_uri_line(struct vgfx_window *win,
     vgfx_event_t vgfx_event = {0};
     vgfx_event.type = VGFX_EVENT_FILE_DROP;
     vgfx_event.time_ms = timestamp;
-    percent_decode_path(path,
-                        path_len,
-                        vgfx_event.data.file_drop.path,
-                        sizeof(vgfx_event.data.file_drop.path));
+    if (!percent_decode_path(path,
+                             path_len,
+                             vgfx_event.data.file_drop.path,
+                             sizeof(vgfx_event.data.file_drop.path))) {
+        vgfx_internal_note_event_overflow(win);
+        return;
+    }
     if (vgfx_event.data.file_drop.path[0] != '\0')
         vgfx_internal_enqueue_event(win, &vgfx_event);
 }
@@ -1138,11 +1146,14 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                     Status status = 0;
                     text_len = Xutf8LookupString(
                         x11->xic, &event.xkey, text_storage, (int)sizeof(text_buf), &keysym, &status);
-                    if (status == XBufferOverflow && text_len > 0) {
-                        text_storage = (char *)malloc((size_t)text_len + 1u);
+                    if (status == XBufferOverflow && text_len > 0 && text_len < INT_MAX) {
+                        int text_cap = text_len + 1;
+                        text_storage = (char *)malloc((size_t)text_cap);
                         if (text_storage) {
                             text_len = Xutf8LookupString(
-                                x11->xic, &event.xkey, text_storage, text_len, &keysym, &status);
+                                x11->xic, &event.xkey, text_storage, text_cap, &keysym, &status);
+                            if (status == XBufferOverflow)
+                                text_len = 0;
                         } else {
                             text_storage = text_buf;
                             text_len = 0;
@@ -1405,8 +1416,12 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                      event.xconfigure.height != x11->height)) {
                     int32_t new_w = event.xconfigure.width;
                     int32_t new_h = event.xconfigure.height;
-                    if (new_w > INT32_MAX / 4)
+                    if (new_w <= 0 || new_h <= 0 || new_w > VGFX_MAX_WIDTH ||
+                        new_h > VGFX_MAX_HEIGHT || new_w > INT32_MAX / 4) {
+                        vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM,
+                                                "X11 resize exceeds framebuffer limits");
                         break;
+                    }
                     int32_t new_stride = new_w * 4;
                     XImage *new_image = NULL;
                     uint8_t *new_buf = NULL;
@@ -1885,17 +1900,17 @@ void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent) {
 static unsigned int x11_cursor_shape_for_type(int32_t cursor_type) {
     switch (cursor_type) {
         case 1:
-            return 58; // XC_hand2
+            return XC_hand2;
         case 2:
-            return 152; // XC_xterm
+            return XC_xterm;
         case 3:
-            return 108; // XC_sb_h_double_arrow
+            return XC_sb_h_double_arrow;
         case 4:
-            return 116; // XC_sb_v_double_arrow
+            return XC_sb_v_double_arrow;
         case 5:
-            return 150; // XC_watch
+            return XC_watch;
         default:
-            return 68; // XC_left_ptr (default arrow)
+            return XC_left_ptr;
     }
 }
 

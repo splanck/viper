@@ -137,19 +137,69 @@ static void findreplacebar_set_font_widget(vg_widget_t *widget, void *font, floa
 }
 
 /// @brief Return true if c is a word-boundary character (non-alphanumeric and not '_').
-static bool is_word_boundary(char c) {
-    return !isalnum((unsigned char)c) && c != '_';
+static bool fr_utf8_is_continuation(unsigned char c) {
+    return (c & 0xC0u) == 0x80u;
+}
+
+static const char *fr_utf8_next(const char *p) {
+    if (!p || !*p)
+        return p;
+    p++;
+    while (*p && fr_utf8_is_continuation((unsigned char)*p))
+        p++;
+    return p;
+}
+
+static const char *fr_utf8_prev_start(const char *text, const char *p) {
+    if (!text || !p || p <= text)
+        return NULL;
+    p--;
+    while (p > text && fr_utf8_is_continuation((unsigned char)*p))
+        p--;
+    return p;
+}
+
+static uint32_t fr_utf8_decode_at(const char *p, size_t max_len) {
+    const unsigned char *s = (const unsigned char *)p;
+    if (!s || max_len == 0)
+        return 0;
+    if (s[0] < 0x80)
+        return s[0];
+    if (max_len >= 2 && (s[0] & 0xE0) == 0xC0 && (s[1] & 0xC0) == 0x80)
+        return ((uint32_t)(s[0] & 0x1F) << 6) | (uint32_t)(s[1] & 0x3F);
+    if (max_len >= 3 && (s[0] & 0xF0) == 0xE0 && (s[1] & 0xC0) == 0x80 &&
+        (s[2] & 0xC0) == 0x80)
+        return ((uint32_t)(s[0] & 0x0F) << 12) | ((uint32_t)(s[1] & 0x3F) << 6) |
+               (uint32_t)(s[2] & 0x3F);
+    if (max_len >= 4 && (s[0] & 0xF8) == 0xF0 && (s[1] & 0xC0) == 0x80 &&
+        (s[2] & 0xC0) == 0x80 && (s[3] & 0xC0) == 0x80)
+        return ((uint32_t)(s[0] & 0x07) << 18) | ((uint32_t)(s[1] & 0x3F) << 12) |
+               ((uint32_t)(s[2] & 0x3F) << 6) | (uint32_t)(s[3] & 0x3F);
+    return 0xFFFD;
+}
+
+static bool is_word_boundary_codepoint(uint32_t cp) {
+    if (cp == 0)
+        return true;
+    if (cp < 0x80)
+        return !isalnum((unsigned char)cp) && cp != '_';
+    return false;
 }
 
 /// @brief Return true if the match at `match` is surrounded by word-boundary characters.
 static bool check_whole_word(const char *text, const char *match, size_t match_len) {
     // Check character before match
-    if (match > text && !is_word_boundary(match[-1])) {
-        return false;
+    const char *prev = fr_utf8_prev_start(text, match);
+    if (prev) {
+        uint32_t cp = fr_utf8_decode_at(prev, (size_t)(match - prev));
+        if (!is_word_boundary_codepoint(cp))
+            return false;
     }
     // Check character after match
-    if (match[match_len] && !is_word_boundary(match[match_len])) {
-        return false;
+    if (match[match_len]) {
+        uint32_t cp = fr_utf8_decode_at(match + match_len, strlen(match + match_len));
+        if (!is_word_boundary_codepoint(cp))
+            return false;
     }
     return true;
 }
@@ -183,7 +233,7 @@ static const char *find_in_line(const char *text,
         // Check whole word if required
         if (options->whole_word) {
             if (!check_whole_word(text, found, *match_len)) {
-                pos = found + 1;
+                pos = fr_utf8_next(found);
                 continue;
             }
         }
@@ -214,12 +264,12 @@ static const char *find_regex_in_line(const char *text,
         const char *found = pos + match.rm_so;
         size_t len = (size_t)(match.rm_eo - match.rm_so);
         if (len == 0) {
-            pos = found + 1;
+            pos = fr_utf8_next(found);
             continue;
         }
 
         if (options->whole_word && !check_whole_word(text, found, len)) {
-            pos = found + 1;
+            pos = fr_utf8_next(found);
             continue;
         }
 

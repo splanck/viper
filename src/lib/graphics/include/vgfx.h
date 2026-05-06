@@ -287,7 +287,9 @@ typedef struct {
         /// @brief File drop event data (FILE_DROP).
         /// @details One event is enqueued per dropped file. The path is
         ///          NUL-terminated and copied into the event struct (not a
-        ///          pointer to external memory).
+        ///          pointer to external memory). Platform backends drop paths
+        ///          that do not fit and increment the event overflow counter
+        ///          rather than enqueueing a truncated path.
         struct {
             char path[260]; ///< File path (NUL-terminated, max 259 chars)
         } file_drop;

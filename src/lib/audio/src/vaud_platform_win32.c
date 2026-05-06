@@ -779,17 +779,31 @@ void vaud_platform_resume(vaud_context_t ctx) {
 // Timing
 //===----------------------------------------------------------------------===//
 
-int64_t vaud_platform_now_ms(void) {
-    static LARGE_INTEGER freq = {0};
-    if (freq.QuadPart == 0) {
-        QueryPerformanceFrequency(&freq);
+static INIT_ONCE g_vaud_qpc_init_once = INIT_ONCE_STATIC_INIT;
+static LARGE_INTEGER g_vaud_qpc_frequency = {0};
+
+static BOOL CALLBACK vaud_qpc_init_once(PINIT_ONCE init_once, PVOID parameter, PVOID *context) {
+    (void)init_once;
+    (void)parameter;
+    (void)context;
+    if (!QueryPerformanceFrequency(&g_vaud_qpc_frequency) ||
+        g_vaud_qpc_frequency.QuadPart <= 0) {
+        g_vaud_qpc_frequency.QuadPart = 1000;
+        return FALSE;
     }
+    return TRUE;
+}
+
+int64_t vaud_platform_now_ms(void) {
+    if (!InitOnceExecuteOnce(&g_vaud_qpc_init_once, vaud_qpc_init_once, NULL, NULL) ||
+        g_vaud_qpc_frequency.QuadPart <= 0)
+        return 0;
 
     LARGE_INTEGER counter;
     QueryPerformanceCounter(&counter);
 
     long double millis =
-        ((long double)counter.QuadPart * 1000.0L) / (long double)freq.QuadPart;
+        ((long double)counter.QuadPart * 1000.0L) / (long double)g_vaud_qpc_frequency.QuadPart;
     if (millis > (long double)INT64_MAX)
         return INT64_MAX;
     return (int64_t)millis;

@@ -317,6 +317,16 @@ int vgfx_internal_enqueue_event(struct vgfx_window *win, const vgfx_event_t *eve
     return 1;
 }
 
+void vgfx_internal_note_event_overflow(struct vgfx_window *win) {
+    if (!win)
+        return;
+
+    vgfx_internal_event_lock(win);
+    if (win->event_overflow < INT32_MAX)
+        win->event_overflow++;
+    vgfx_internal_event_unlock(win);
+}
+
 /// @brief Dequeue the next event from the window's ring buffer.
 /// @details Removes and returns the oldest event from the queue.  If the queue
 ///          is empty, returns 0 without modifying out_event.

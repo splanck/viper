@@ -27,6 +27,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1996,8 +1997,10 @@ void vg_textinput_set_font(vg_textinput_t *input, vg_font_t *font, float size) {
     if (!input)
         return;
 
-    input->font = font;
-    input->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
+    if (font)
+        input->font = font;
+    input->font_size =
+        (isfinite(size) && size > 0.0f) ? size : vg_theme_get_current()->typography.size_normal;
     textinput_ensure_cursor_visible(input);
     input->base.needs_layout = true;
     input->base.needs_paint = true;
@@ -2010,6 +2013,10 @@ void vg_textinput_set_font(vg_textinput_t *input, vg_font_t *font, float size) {
 void vg_textinput_tick(vg_textinput_t *input, float dt) {
     if (!input || !(input->base.state & VG_STATE_FOCUSED))
         return;
+    if (!isfinite(dt) || dt < 0.0f)
+        return;
+    if (dt > CURSOR_BLINK_RATE * 16.0f)
+        dt = fmodf(dt, CURSOR_BLINK_RATE);
 
     input->cursor_blink_time += dt;
     if (input->cursor_blink_time >= CURSOR_BLINK_RATE) {

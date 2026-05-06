@@ -61,9 +61,12 @@ typedef struct {
 /// @param buffer The buffer to fill.
 static void audio_callback(void *user_data, AudioQueueRef queue, AudioQueueBufferRef buffer) {
     vaud_context_t ctx = (vaud_context_t)user_data;
+    if (!ctx || !buffer)
+        return;
+
     vaud_macos_data *plat = (vaud_macos_data *)ctx->platform_data;
 
-    if (!__atomic_load_n(&ctx->running, __ATOMIC_ACQUIRE) ||
+    if (!plat || !__atomic_load_n(&ctx->running, __ATOMIC_ACQUIRE) ||
         __atomic_load_n(&plat->paused, __ATOMIC_ACQUIRE)) {
         /* Fill with silence when paused or stopping */
         memset(buffer->mAudioData, 0, buffer->mAudioDataBytesCapacity);

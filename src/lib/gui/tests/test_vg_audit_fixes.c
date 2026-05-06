@@ -2349,6 +2349,50 @@ TEST(textinput_replacement_validates_before_mutating_selection) {
     vg_widget_destroy(&input->base);
 }
 
+TEST(textinput_null_font_preserves_existing_font_and_invalid_tick_is_ignored) {
+    vg_textinput_t *input = vg_textinput_create(NULL);
+    ASSERT_NOT_NULL(input);
+
+    vg_font_t *sentinel_font = (vg_font_t *)0x1234;
+    input->font = sentinel_font;
+    input->font_size = 13.0f;
+    vg_textinput_set_font(input, NULL, 18.0f);
+    ASSERT_EQ(input->font, sentinel_font);
+    ASSERT_EQ(input->font_size, 18.0f);
+
+    input->base.state |= VG_STATE_FOCUSED;
+    input->cursor_blink_time = 0.25f;
+    input->cursor_visible = true;
+    vg_textinput_tick(input, NAN);
+    ASSERT_NEAR(input->cursor_blink_time, 0.25f, 0.0001f);
+    ASSERT_TRUE(input->cursor_visible);
+    vg_textinput_tick(input, -1.0f);
+    ASSERT_NEAR(input->cursor_blink_time, 0.25f, 0.0001f);
+    ASSERT_TRUE(input->cursor_visible);
+
+    vg_widget_destroy(&input->base);
+}
+
+TEST(findreplace_whole_word_does_not_match_inside_utf8_word) {
+    vg_codeeditor_t *ed = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(ed);
+    vg_codeeditor_set_text(ed, "été t");
+
+    vg_findreplacebar_t *bar = vg_findreplacebar_create();
+    ASSERT_NOT_NULL(bar);
+    vg_findreplacebar_set_target(bar, ed);
+    vg_search_options_t options = {0};
+    options.whole_word = true;
+    vg_findreplacebar_set_options(bar, &options);
+    vg_findreplacebar_find(bar, "t");
+
+    ASSERT_EQ(bar->match_count, (size_t)1);
+    ASSERT_EQ(bar->matches[0].start_col, (uint32_t)6);
+
+    vg_widget_destroy(&bar->base);
+    vg_widget_destroy(&ed->base);
+}
+
 /// @brief R6 — append_line, select_all, clear, and max_lines=0 all leave line_count and has_selection consistent.
 TEST(outputpane_append_line_and_clear_keep_line_state_consistent) {
     vg_outputpane_t *pane = vg_outputpane_create();
@@ -3172,6 +3216,8 @@ int main(void) {
     RUN(event_dispatch_keeps_state_for_more_than_legacy_root_cap);
     RUN(textinput_ignores_command_modified_character_events);
     RUN(listbox_virtual_keyboard_navigation_handles_large_counts);
+    RUN(textinput_null_font_preserves_existing_font_and_invalid_tick_is_ignored);
+    RUN(findreplace_whole_word_does_not_match_inside_utf8_word);
 
     printf("\n=== Results: %d passed, %d failed ===\n", g_passed, g_failed);
     return g_failed > 0 ? 1 : 0;

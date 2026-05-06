@@ -27,6 +27,8 @@ struct mp3_stream {
 
 static mp3_stream_t g_fake_zero_total_mp3;
 static int16_t g_fake_mp3_pcm[2] = {100, -100};
+static vaud_context_t g_decode_probe_ctx = NULL;
+static int g_decode_probe_saw_unlocked = 0;
 
 typedef struct {
     uint32_t serial_number;
@@ -101,6 +103,10 @@ int mp3_stream_decode_frame(mp3_stream_t *stream, int16_t **out_pcm) {
         *out_pcm = NULL;
     if (!stream || stream->decoded_frames++ > 0)
         return 0;
+    if (g_decode_probe_ctx && vaud_mutex_trylock(&g_decode_probe_ctx->mutex)) {
+        g_decode_probe_saw_unlocked = 1;
+        vaud_mutex_unlock(&g_decode_probe_ctx->mutex);
+    }
     if (out_pcm)
         *out_pcm = g_fake_mp3_pcm;
     return 1;
@@ -543,7 +549,7 @@ static void test_mixer_renders_oversized_requests_in_chunks(void) {
     vaud_destroy(ctx);
 }
 
-static void test_refill_in_progress_makes_mixer_skip_music_buffer_mutation(void) {
+static void test_refill_in_progress_still_mixes_ready_current_buffer(void) {
     vaud_context_t ctx = vaud_create();
     EXPECT_TRUE(ctx != NULL);
 
@@ -553,10 +559,11 @@ static void test_refill_in_progress_makes_mixer_skip_music_buffer_mutation(void)
     music.state = VAUD_MUSIC_PLAYING;
     music.refill_in_progress = 1;
     music.buffer_frames[0] = 1;
+    music.volume = 1.0f;
     music.buffers[0] = (int16_t *)calloc(2, sizeof(int16_t));
     EXPECT_TRUE(music.buffers[0] != NULL);
-    music.buffers[0][0] = 1234;
-    music.buffers[0][1] = 1234;
+    music.buffers[0][0] = 4096;
+    music.buffers[0][1] = 4096;
 
     vaud_mutex_lock(&ctx->mutex);
     ctx->active_music[0] = &music;
@@ -564,6 +571,41 @@ static void test_refill_in_progress_makes_mixer_skip_music_buffer_mutation(void)
     vaud_mutex_unlock(&ctx->mutex);
 
     int16_t out[VAUD_CHANNELS] = {0, 0};
+    vaud_mixer_render(ctx, out, 1);
+    EXPECT_TRUE(out[0] != 0 && out[1] != 0);
+    EXPECT_TRUE(music.buffer_position == 1);
+
+    vaud_mutex_lock(&ctx->mutex);
+    ctx->active_music[0] = NULL;
+    ctx->music_count = 0;
+    vaud_mutex_unlock(&ctx->mutex);
+    free(music.buffers[0]);
+    vaud_destroy(ctx);
+}
+
+static void test_mixer_skips_music_when_current_buffer_is_refilling(void) {
+    vaud_context_t ctx = vaud_create();
+    EXPECT_TRUE(ctx != NULL);
+
+    struct vaud_music music;
+    memset(&music, 0, sizeof(music));
+    music.ctx = ctx;
+    music.state = VAUD_MUSIC_PLAYING;
+    music.refill_in_progress = 1;
+    music.buffer_refilling[0] = 1;
+    music.buffer_frames[0] = 1;
+    music.volume = 1.0f;
+    music.buffers[0] = (int16_t *)calloc(2, sizeof(int16_t));
+    EXPECT_TRUE(music.buffers[0] != NULL);
+    music.buffers[0][0] = 4096;
+    music.buffers[0][1] = 4096;
+
+    vaud_mutex_lock(&ctx->mutex);
+    ctx->active_music[0] = &music;
+    ctx->music_count = 1;
+    vaud_mutex_unlock(&ctx->mutex);
+
+    int16_t out[VAUD_CHANNELS] = {123, 456};
     vaud_mixer_render(ctx, out, 1);
     EXPECT_TRUE(out[0] == 0 && out[1] == 0);
     EXPECT_TRUE(music.buffer_position == 0);
@@ -573,6 +615,82 @@ static void test_refill_in_progress_makes_mixer_skip_music_buffer_mutation(void)
     ctx->music_count = 0;
     vaud_mutex_unlock(&ctx->mutex);
     free(music.buffers[0]);
+    vaud_destroy(ctx);
+}
+
+static void test_mixer_outputs_silence_when_context_paused(void) {
+    vaud_context_t ctx = vaud_create();
+    EXPECT_TRUE(ctx != NULL);
+
+    int16_t samples[VAUD_CHANNELS] = {8000, 8000};
+    struct vaud_sound sound;
+    memset(&sound, 0, sizeof(sound));
+    sound.ctx = ctx;
+    sound.samples = samples;
+    sound.frame_count = 1;
+    sound.sample_rate = VAUD_SAMPLE_RATE;
+    sound.channels = VAUD_CHANNELS;
+    sound.source_channels = VAUD_CHANNELS;
+
+    vaud_mutex_lock(&ctx->mutex);
+    ctx->voices[0].state = VAUD_VOICE_PLAYING;
+    ctx->voices[0].sound = &sound;
+    ctx->voices[0].volume = 1.0f;
+    ctx->voices[0].pan = 0.0f;
+    ctx->paused = 1;
+    vaud_mutex_unlock(&ctx->mutex);
+
+    int16_t out[VAUD_CHANNELS] = {111, 222};
+    vaud_mixer_render(ctx, out, 1);
+    EXPECT_TRUE(out[0] == 0 && out[1] == 0);
+
+    vaud_destroy(ctx);
+}
+
+static void test_vaud_update_refills_without_holding_state_mutex(void) {
+    vaud_context_t ctx = vaud_create();
+    EXPECT_TRUE(ctx != NULL);
+
+    struct vaud_music music;
+    memset(&music, 0, sizeof(music));
+    music.ctx = ctx;
+    music.format = 2;
+    music.mp3_stream = &g_fake_zero_total_mp3;
+    g_fake_zero_total_mp3.sample_rate = VAUD_SAMPLE_RATE;
+    g_fake_zero_total_mp3.channels = VAUD_CHANNELS;
+    g_fake_zero_total_mp3.total_samples = 0;
+    g_fake_zero_total_mp3.decoded_frames = 0;
+    music.sample_rate = VAUD_SAMPLE_RATE;
+    music.source_sample_rate = VAUD_SAMPLE_RATE;
+    music.channels = VAUD_CHANNELS;
+    music.state = VAUD_MUSIC_PLAYING;
+    music.volume = 1.0f;
+    music.buffer_frames[0] = 1;
+    music.buffers[0] = (int16_t *)calloc(2, sizeof(int16_t));
+    music.buffers[1] = (int16_t *)calloc(2, sizeof(int16_t));
+    EXPECT_TRUE(music.buffers[0] != NULL && music.buffers[1] != NULL);
+
+    vaud_mutex_lock(&ctx->mutex);
+    ctx->active_music[0] = &music;
+    ctx->music_count = 1;
+    vaud_mutex_unlock(&ctx->mutex);
+
+    g_decode_probe_ctx = ctx;
+    g_decode_probe_saw_unlocked = 0;
+    vaud_update(ctx);
+    g_decode_probe_ctx = NULL;
+
+    EXPECT_TRUE(g_decode_probe_saw_unlocked == 1);
+    EXPECT_TRUE(music.buffer_frames[1] == 1);
+    EXPECT_TRUE(music.refill_in_progress == 0);
+    EXPECT_TRUE(music.buffer_refilling[1] == 0);
+
+    vaud_mutex_lock(&ctx->mutex);
+    ctx->active_music[0] = NULL;
+    ctx->music_count = 0;
+    vaud_mutex_unlock(&ctx->mutex);
+    free(music.buffers[0]);
+    free(music.buffers[1]);
     vaud_destroy(ctx);
 }
 
@@ -610,7 +728,10 @@ int main(void) {
     test_buffered_stream_read_rejects_partial_frame();
     test_mixer_does_not_decode_empty_music_buffers();
     test_mixer_renders_oversized_requests_in_chunks();
-    test_refill_in_progress_makes_mixer_skip_music_buffer_mutation();
+    test_refill_in_progress_still_mixes_ready_current_buffer();
+    test_mixer_skips_music_when_current_buffer_is_refilling();
+    test_mixer_outputs_silence_when_context_paused();
+    test_vaud_update_refills_without_holding_state_mutex();
     test_mixer_outputs_silence_when_state_lock_is_busy();
 
     if (tests_failed != 0)
