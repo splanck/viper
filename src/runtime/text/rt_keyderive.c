@@ -13,7 +13,7 @@
 //
 // Key invariants:
 //   - Minimum iteration count is PBKDF2_MIN_ITERATIONS (1000); requests below
-//     this threshold are silently raised to the minimum.
+//     this threshold are silently raised to the minimum by public wrappers.
 //   - Salt must be non-empty; a NULL or empty salt causes a trap.
 //   - Output key length is specified in bytes; any positive length is supported.
 //   - HMAC-SHA256 block size is 64 bytes; key padding follows RFC 2104.
@@ -41,6 +41,23 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+static const uint8_t *pbkdf2_string_bytes(rt_string password, size_t *len) {
+    int64_t len64 = rt_str_len(password);
+    if (len64 <= 0) {
+        *len = 0;
+        return (const uint8_t *)"";
+    }
+
+    const char *pwd_cstr = rt_string_cstr(password);
+    if (!pwd_cstr) {
+        *len = 0;
+        return (const uint8_t *)"";
+    }
+
+    *len = (size_t)len64;
+    return (const uint8_t *)pwd_cstr;
+}
 
 /// SHA256 output size in bytes.
 #define SHA256_DIGEST_LEN 32
@@ -111,6 +128,8 @@ void rt_keyderive_pbkdf2_sha256_raw(const uint8_t *password,
     uint32_t block_count = (uint32_t)((out_len + SHA256_DIGEST_LEN - 1) / SHA256_DIGEST_LEN);
 
     // Allocate buffer for salt || INT(i)
+    if (salt_len > SIZE_MAX - 4)
+        rt_trap("PBKDF2: salt too large");
     size_t salt_int_len = salt_len + 4;
     uint8_t *salt_int = (uint8_t *)malloc(salt_int_len);
     if (!salt_int)
@@ -178,14 +197,14 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
     uint8_t *salt_data;
 
     if (iterations < RT_PBKDF2_MIN_ITERATIONS)
-        rt_trap("PBKDF2: iterations must be at least 1000");
+        iterations = RT_PBKDF2_MIN_ITERATIONS;
+    if (iterations > UINT32_MAX)
+        rt_trap("PBKDF2: iterations must not exceed 4294967295");
     if (key_len < 1 || key_len > RT_PBKDF2_MAX_KEY_LEN)
         rt_trap("PBKDF2: key_len must be between 1 and 1024");
 
-    const char *pwd_cstr = rt_string_cstr(password);
-    if (!pwd_cstr)
-        pwd_cstr = "";
-    size_t pwd_len = strlen(pwd_cstr);
+    size_t pwd_len;
+    const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len);
 
     salt_data = rt_bytes_extract_raw(salt, &salt_len);
     if (!salt_data || salt_len == 0) {
@@ -199,7 +218,7 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
         rt_trap("PBKDF2: memory allocation failed");
     }
 
-    rt_keyderive_pbkdf2_sha256_raw((const uint8_t *)pwd_cstr,
+    rt_keyderive_pbkdf2_sha256_raw(pwd,
                                    pwd_len,
                                    salt_data,
                                    salt_len,
@@ -235,14 +254,14 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
     uint8_t *salt_data;
 
     if (iterations < RT_PBKDF2_MIN_ITERATIONS)
-        rt_trap("PBKDF2: iterations must be at least 1000");
+        iterations = RT_PBKDF2_MIN_ITERATIONS;
+    if (iterations > UINT32_MAX)
+        rt_trap("PBKDF2: iterations must not exceed 4294967295");
     if (key_len < 1 || key_len > RT_PBKDF2_MAX_KEY_LEN)
         rt_trap("PBKDF2: key_len must be between 1 and 1024");
 
-    const char *pwd_cstr = rt_string_cstr(password);
-    if (!pwd_cstr)
-        pwd_cstr = "";
-    size_t pwd_len = strlen(pwd_cstr);
+    size_t pwd_len;
+    const uint8_t *pwd = pbkdf2_string_bytes(password, &pwd_len);
 
     salt_data = rt_bytes_extract_raw(salt, &salt_len);
     if (!salt_data || salt_len == 0) {
@@ -256,7 +275,7 @@ rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
         rt_trap("PBKDF2: memory allocation failed");
     }
 
-    rt_keyderive_pbkdf2_sha256_raw((const uint8_t *)pwd_cstr,
+    rt_keyderive_pbkdf2_sha256_raw(pwd,
                                    pwd_len,
                                    salt_data,
                                    salt_len,

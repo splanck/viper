@@ -40,6 +40,33 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Zero len bytes at ptr through a volatile pointer so the compiler
+///        cannot eliminate the write as a dead store when zeroing key material.
+static void hash_secure_zero(void *ptr, size_t len) {
+    volatile uint8_t *p = (volatile uint8_t *)ptr;
+    while (len-- > 0)
+        *p++ = 0;
+}
+
+/// @brief Extract a raw byte pointer and byte count from an rt_string.
+///        Returns an empty string and sets *len = 0 for null or zero-length input.
+static const uint8_t *hash_string_bytes(rt_string str, size_t *len) {
+    int64_t len64 = rt_str_len(str);
+    if (len64 <= 0) {
+        *len = 0;
+        return (const uint8_t *)"";
+    }
+
+    const char *cstr = rt_string_cstr(str);
+    if (!cstr) {
+        *len = 0;
+        return (const uint8_t *)"";
+    }
+
+    *len = (size_t)len64;
+    return (const uint8_t *)cstr;
+}
+
 //=============================================================================
 // MD5 Implementation (RFC 1321)
 //=============================================================================
@@ -585,12 +612,11 @@ static void compute_sha256(const uint8_t *data, size_t len, uint8_t hash[32]) {
 /// @see rt_hash_sha256 For a secure alternative
 /// @see rt_hash_md5_bytes For hashing Bytes objects
 rt_string rt_hash_md5(rt_string str) {
-    const char *cstr = rt_string_cstr(str);
-    if (!cstr)
-        cstr = "";
+    size_t len;
+    const uint8_t *data = hash_string_bytes(str, &len);
 
     uint8_t digest[16];
-    compute_md5((const uint8_t *)cstr, strlen(cstr), digest);
+    compute_md5(data, len, digest);
     return rt_codec_hex_enc_bytes(digest, 16);
 }
 
@@ -671,12 +697,11 @@ rt_string rt_hash_md5_bytes(void *bytes) {
 /// @see rt_hash_sha256 For a secure alternative
 /// @see rt_hash_sha1_bytes For hashing Bytes objects
 rt_string rt_hash_sha1(rt_string str) {
-    const char *cstr = rt_string_cstr(str);
-    if (!cstr)
-        cstr = "";
+    size_t len;
+    const uint8_t *data = hash_string_bytes(str, &len);
 
     uint8_t digest[20];
-    compute_sha1((const uint8_t *)cstr, strlen(cstr), digest);
+    compute_sha1(data, len, digest);
     return rt_codec_hex_enc_bytes(digest, 20);
 }
 
@@ -770,12 +795,11 @@ rt_string rt_hash_sha1_bytes(void *bytes) {
 /// @see rt_hash_sha256_bytes For hashing Bytes objects
 /// @see rt_hash_md5 For legacy/checksum uses (NOT secure)
 rt_string rt_hash_sha256(rt_string str) {
-    const char *cstr = rt_string_cstr(str);
-    if (!cstr)
-        cstr = "";
+    size_t len;
+    const uint8_t *data = hash_string_bytes(str, &len);
 
     uint8_t hash[32];
-    compute_sha256((const uint8_t *)cstr, strlen(cstr), hash);
+    compute_sha256(data, len, hash);
     return rt_codec_hex_enc_bytes(hash, 32);
 }
 
@@ -879,11 +903,10 @@ rt_string rt_hash_sha256_bytes(void *bytes) {
 /// @see rt_hash_crc32_bytes For computing CRC32 of Bytes objects
 /// @see rt_hash_sha256 For security-sensitive applications
 int64_t rt_hash_crc32(rt_string str) {
-    const char *cstr = rt_string_cstr(str);
-    if (!cstr)
-        return (int64_t)rt_crc32_compute(NULL, 0);
+    size_t len;
+    const uint8_t *data = hash_string_bytes(str, &len);
 
-    return (int64_t)rt_crc32_compute((const uint8_t *)cstr, strlen(cstr));
+    return (int64_t)rt_crc32_compute(data, len);
 }
 
 /// @brief Computes the CRC32 checksum of a Bytes object.
@@ -955,6 +978,15 @@ static void hmac_compute(hash_fn_t hash_fn,
                          const uint8_t *data,
                          size_t data_len,
                          uint8_t *out) {
+    if (!hash_fn || !out)
+        rt_trap("HMAC: invalid output buffer");
+    if ((!key && key_len > 0) || (!data && data_len > 0))
+        rt_trap("HMAC: invalid input buffer");
+    if (!key)
+        key = (const uint8_t *)"";
+    if (!data)
+        data = (const uint8_t *)"";
+
     uint8_t k_padded[HMAC_BLOCK_SIZE];
     uint8_t k_ipad[HMAC_BLOCK_SIZE];
     uint8_t k_opad[HMAC_BLOCK_SIZE];
@@ -974,6 +1006,9 @@ static void hmac_compute(hash_fn_t hash_fn,
         k_opad[i] = k_padded[i] ^ 0x5c;
     }
 
+    if (data_len > SIZE_MAX - HMAC_BLOCK_SIZE)
+        rt_trap("HMAC: data too large");
+
     // Inner hash: H(K xor ipad || data)
     uint8_t inner_hash[32]; // Max digest size
     size_t inner_len = HMAC_BLOCK_SIZE + data_len;
@@ -985,6 +1020,7 @@ static void hmac_compute(hash_fn_t hash_fn,
     if (data_len > 0)
         memcpy(inner_data + HMAC_BLOCK_SIZE, data, data_len);
     hash_fn(inner_data, inner_len, inner_hash);
+    hash_secure_zero(inner_data, inner_len);
     free(inner_data);
 
     // Outer hash: H(K xor opad || inner_hash)
@@ -992,6 +1028,11 @@ static void hmac_compute(hash_fn_t hash_fn,
     memcpy(outer_data, k_opad, HMAC_BLOCK_SIZE);
     memcpy(outer_data + HMAC_BLOCK_SIZE, inner_hash, digest_size);
     hash_fn(outer_data, HMAC_BLOCK_SIZE + digest_size, out);
+    hash_secure_zero(k_padded, sizeof(k_padded));
+    hash_secure_zero(k_ipad, sizeof(k_ipad));
+    hash_secure_zero(k_opad, sizeof(k_opad));
+    hash_secure_zero(inner_hash, sizeof(inner_hash));
+    hash_secure_zero(outer_data, sizeof(outer_data));
 }
 
 /// @brief Compute HMAC-MD5 with raw bytes.
@@ -1018,19 +1059,12 @@ void rt_hash_hmac_sha256_raw(
 
 /// @brief Compute HMAC-MD5 of string data with string key.
 rt_string rt_hash_hmac_md5(rt_string key, rt_string data) {
-    const char *key_cstr = rt_string_cstr(key);
-    const char *data_cstr = rt_string_cstr(data);
-    if (!key_cstr)
-        key_cstr = "";
-    if (!data_cstr)
-        data_cstr = "";
+    size_t key_len, data_len;
+    const uint8_t *key_data = hash_string_bytes(key, &key_len);
+    const uint8_t *msg_data = hash_string_bytes(data, &data_len);
 
     uint8_t digest[16];
-    hmac_md5_raw((const uint8_t *)key_cstr,
-                 strlen(key_cstr),
-                 (const uint8_t *)data_cstr,
-                 strlen(data_cstr),
-                 digest);
+    hmac_md5_raw(key_data, key_len, msg_data, data_len, digest);
     return rt_codec_hex_enc_bytes(digest, 16);
 }
 
@@ -1047,8 +1081,10 @@ rt_string rt_hash_hmac_md5_bytes(void *key, void *data) {
                  data_len,
                  digest);
 
-    if (key_data)
+    if (key_data) {
+        hash_secure_zero(key_data, key_len);
         free(key_data);
+    }
     if (msg_data)
         free(msg_data);
 
@@ -1057,19 +1093,12 @@ rt_string rt_hash_hmac_md5_bytes(void *key, void *data) {
 
 /// @brief Compute HMAC-SHA1 of string data with string key.
 rt_string rt_hash_hmac_sha1(rt_string key, rt_string data) {
-    const char *key_cstr = rt_string_cstr(key);
-    const char *data_cstr = rt_string_cstr(data);
-    if (!key_cstr)
-        key_cstr = "";
-    if (!data_cstr)
-        data_cstr = "";
+    size_t key_len, data_len;
+    const uint8_t *key_data = hash_string_bytes(key, &key_len);
+    const uint8_t *msg_data = hash_string_bytes(data, &data_len);
 
     uint8_t digest[20];
-    hmac_sha1_raw((const uint8_t *)key_cstr,
-                  strlen(key_cstr),
-                  (const uint8_t *)data_cstr,
-                  strlen(data_cstr),
-                  digest);
+    hmac_sha1_raw(key_data, key_len, msg_data, data_len, digest);
     return rt_codec_hex_enc_bytes(digest, 20);
 }
 
@@ -1086,8 +1115,10 @@ rt_string rt_hash_hmac_sha1_bytes(void *key, void *data) {
                   data_len,
                   digest);
 
-    if (key_data)
+    if (key_data) {
+        hash_secure_zero(key_data, key_len);
         free(key_data);
+    }
     if (msg_data)
         free(msg_data);
 
@@ -1096,19 +1127,12 @@ rt_string rt_hash_hmac_sha1_bytes(void *key, void *data) {
 
 /// @brief Compute HMAC-SHA256 of string data with string key.
 rt_string rt_hash_hmac_sha256(rt_string key, rt_string data) {
-    const char *key_cstr = rt_string_cstr(key);
-    const char *data_cstr = rt_string_cstr(data);
-    if (!key_cstr)
-        key_cstr = "";
-    if (!data_cstr)
-        data_cstr = "";
+    size_t key_len, data_len;
+    const uint8_t *key_data = hash_string_bytes(key, &key_len);
+    const uint8_t *msg_data = hash_string_bytes(data, &data_len);
 
     uint8_t digest[32];
-    rt_hash_hmac_sha256_raw((const uint8_t *)key_cstr,
-                            strlen(key_cstr),
-                            (const uint8_t *)data_cstr,
-                            strlen(data_cstr),
-                            digest);
+    rt_hash_hmac_sha256_raw(key_data, key_len, msg_data, data_len, digest);
     return rt_codec_hex_enc_bytes(digest, 32);
 }
 
@@ -1125,8 +1149,10 @@ rt_string rt_hash_hmac_sha256_bytes(void *key, void *data) {
                             data_len,
                             digest);
 
-    if (key_data)
+    if (key_data) {
+        hash_secure_zero(key_data, key_len);
         free(key_data);
+    }
     if (msg_data)
         free(msg_data);
 
@@ -1143,10 +1169,9 @@ rt_string rt_hash_hmac_sha256_bytes(void *key, void *data) {
 /// @param str Input string.
 /// @return 64-bit hash value.
 int64_t rt_hash_fast(rt_string str) {
-    const char *cstr = rt_string_cstr(str);
-    if (!cstr)
-        return (int64_t)rt_fnv1a("", 0);
-    return (int64_t)rt_fnv1a(cstr, strlen(cstr));
+    size_t len;
+    const uint8_t *data = hash_string_bytes(str, &len);
+    return (int64_t)rt_fnv1a(data, len);
 }
 
 /// @brief Compute fast hash of a Bytes object (FNV-1a).
@@ -1157,8 +1182,10 @@ int64_t rt_hash_fast_bytes(void *bytes) {
         return (int64_t)rt_fnv1a("", 0);
     size_t len;
     uint8_t *data = rt_bytes_extract_raw(bytes, &len);
-    if (!data || len == 0)
+    if (!data || len == 0) {
+        free(data);
         return (int64_t)rt_fnv1a("", 0);
+    }
     int64_t result = (int64_t)rt_fnv1a(data, len);
     free(data);
     return result;

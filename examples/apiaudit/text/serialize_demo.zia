@@ -11,29 +11,33 @@ bind Viper.Data.Serialize as Ser;
 func start() {
     Say("=== API Audit: Viper.Data.Serialize ===");
 
-    // Format constants: 0=JSON, 1=YAML, 2=TOML, 3=XML
+    // Format constants: 0=JSON, 1=XML, 2=YAML, 3=TOML, 4=CSV
 
     // --- FormatName ---
     Say("--- FormatName ---");
     Say("FormatName(0) JSON:");
     Say(Ser.FormatName(0));
-    Say("FormatName(1) YAML:");
+    Say("FormatName(1) XML:");
     Say(Ser.FormatName(1));
-    Say("FormatName(2) TOML:");
+    Say("FormatName(2) YAML:");
     Say(Ser.FormatName(2));
-    Say("FormatName(3) XML:");
+    Say("FormatName(3) TOML:");
     Say(Ser.FormatName(3));
+    Say("FormatName(4) CSV:");
+    Say(Ser.FormatName(4));
 
     // --- MimeType ---
     Say("--- MimeType ---");
     Say("MimeType(0) JSON:");
     Say(Ser.MimeType(0));
-    Say("MimeType(1) YAML:");
+    Say("MimeType(1) XML:");
     Say(Ser.MimeType(1));
-    Say("MimeType(2) TOML:");
+    Say("MimeType(2) YAML:");
     Say(Ser.MimeType(2));
-    Say("MimeType(3) XML:");
+    Say("MimeType(3) TOML:");
     Say(Ser.MimeType(3));
+    Say("MimeType(4) CSV:");
+    Say(Ser.MimeType(4));
 
     // --- FormatFromName ---
     Say("--- FormatFromName ---");
@@ -45,6 +49,8 @@ func start() {
     SayInt(Ser.FormatFromName("toml"));
     Say("FormatFromName('xml'):");
     SayInt(Ser.FormatFromName("xml"));
+    Say("FormatFromName('csv'):");
+    SayInt(Ser.FormatFromName("csv"));
 
     // --- IsValid ---
     Say("--- IsValid ---");
@@ -60,6 +66,12 @@ func start() {
     SayInt(Ser.Detect(jsonStr));
     Say("Detect(YAML string):");
     SayInt(Ser.Detect("name: Alice\nage: 30\n"));
+    Say("Detect(TOML string):");
+    SayInt(Ser.Detect("[person]\nname = \"Alice\"\n"));
+    Say("Detect(CSV string):");
+    SayInt(Ser.Detect("name,age\nAlice,30\n"));
+    Say("Detect(plain text unknown):");
+    SayInt(Ser.Detect("plain text"));
 
     // --- Parse ---
     Say("--- Parse ---");
@@ -86,7 +98,13 @@ func start() {
     // --- Convert ---
     Say("--- Convert ---");
     Say("Convert JSON to YAML:");
+    Say(Ser.Convert(jsonStr, 0, 2));
+    Say("Convert JSON to XML:");
     Say(Ser.Convert(jsonStr, 0, 1));
+    Say("Convert JSON to TOML:");
+    Say(Ser.Convert(jsonStr, 0, 3));
+    Say("Convert JSON to CSV:");
+    Say(Ser.Convert(jsonStr, 0, 4));
 
     Say("=== Serialize Demo Complete ===");
 }

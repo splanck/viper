@@ -5,10 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-/// @file rt_tls.c
-/// @brief TLS 1.3 client implementation.
-///
-/// Implements TLS 1.3 using ChaCha20-Poly1305 AEAD and X25519 key exchange.
+// File: src/runtime/network/rt_tls.c
+// Purpose: TLS 1.3 client and server implementation in pure C. Provides the
+//          Viper.Crypto.Tls class: X25519 key exchange, AES-128-GCM-SHA256 and
+//          ChaCha20-Poly1305-SHA256 AEAD, certificate chain verification against
+//          the system trust store, SNI/ALPN extensions, and KeyUpdate.
+//
+// Key invariants:
+//   - All handshake transcript bytes are accumulated into a running SHA-256 state.
+//   - Traffic secrets are derived via HKDF-SHA256 per RFC 8446 §7.
+//   - Record encryption uses per-direction sequence counters; nonces are XORed
+//     with the IV per RFC 8446 §5.3.
+//   - Certificate verification delegates to rt_tls_verify.c for chain building.
+//   - No global mutable state; per-session state lives in rt_tls_session_t.
+//
+// Ownership/Lifetime:
+//   - rt_tls_session_t is heap-allocated; caller must call rt_tls_close().
+//   - rt_tls_server_ctx_t is heap-allocated; caller must call rt_tls_server_ctx_free().
+//
+// Links: src/runtime/network/rt_tls.h (public API),
+//        src/runtime/network/rt_tls_internal.h (session struct),
+//        src/runtime/network/rt_tls_verify.c (certificate chain verification),
+//        src/runtime/network/rt_crypto.h (AEAD/hash primitives)
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,6 +37,7 @@
 #include "rt_tls_internal.h"
 #include "rt_tls_server_internal.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -224,6 +243,11 @@ static void tls_release_dynamic_state(rt_tls_session_t *session) {
     session->app_buffer_pos = 0;
 }
 
+/// @brief Append one DER-encoded certificate to the server context's wire-format list.
+///        The entry is encoded as a 3-byte big-endian length prefix followed by the DER
+///        bytes and a 2-byte zero extension field (TLS 1.3 CertificateEntry format).
+///        If is_leaf is non-zero, a copy is also stored in ctx->leaf_cert_der for later
+///        hostname and signature verification.
 static int tls_server_ctx_append_cert(
     rt_tls_server_ctx_t *ctx, const uint8_t *der, size_t der_len, int is_leaf) {
     size_t entry_len = 3 + der_len + 2;
@@ -255,6 +279,8 @@ static int tls_server_ctx_append_cert(
     return 1;
 }
 
+/// @brief Zero-initialise a server TLS configuration and set safe defaults.
+///        Sets timeout_ms to 30 s; all other fields default to NULL / 0.
 void rt_tls_server_config_init(rt_tls_server_config_t *config) {
     if (!config)
         return;
@@ -262,6 +288,11 @@ void rt_tls_server_config_init(rt_tls_server_config_t *config) {
     config->timeout_ms = 30000;
 }
 
+/// @brief Create a TLS server context from a PEM certificate chain and private key file.
+///        Reads and decodes the PEM files, appends each certificate to the wire-format
+///        cert list, loads the ECDSA P-256 or RSA-PSS-SHA256 private key, and validates
+///        that the key matches the leaf certificate public key.
+/// @return Newly allocated context on success, NULL with server last-error set on failure.
 rt_tls_server_ctx_t *rt_tls_server_ctx_new(const rt_tls_server_config_t *config) {
     char *cert_pem = NULL;
     char *key_pem = NULL;
@@ -478,6 +509,8 @@ fail:
     return NULL;
 }
 
+/// @brief Free a server TLS context and all associated resources.
+///        Releases the RSA key, the wire-format certificate list, and the leaf cert copy.
 void rt_tls_server_ctx_free(rt_tls_server_ctx_t *ctx) {
     if (!ctx)
         return;
@@ -554,6 +587,10 @@ static uint32_t read_u24(const uint8_t *p) {
     return ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
 }
 
+/// @brief Parse one ASN.1 BER/DER TLV triple from buf.
+///        Populates *tag, *val_len (value byte count), and *hdr_len (tag + length octets).
+///        Supports both short-form and multi-byte definite-length encodings (up to 4 bytes).
+///        Returns 0 on success, -1 if the buffer is too small or the encoding is malformed.
 static int tls_der_read_tlv(
     const uint8_t *buf, size_t buf_len, uint8_t *tag, size_t *val_len, size_t *hdr_len) {
     if (buf_len < 2)
@@ -577,11 +614,14 @@ static int tls_der_read_tlv(
     return (*hdr_len + *val_len <= buf_len) ? 0 : -1;
 }
 
+/// @brief Return 1 if buf contains exactly the given DER-encoded OID bytes, 0 otherwise.
 static int tls_oid_matches(
     const uint8_t *buf, size_t buf_len, const uint8_t *oid, size_t oid_len) {
     return buf_len == oid_len && memcmp(buf, oid, oid_len) == 0;
 }
 
+/// @brief Return 1 if hostname is a numeric IPv4 or IPv6 literal, 0 otherwise.
+///        IP-literal hostnames skip DNS-name SAN matching and are verified by IP SAN or exact match.
 static int tls_hostname_is_ip_literal(const char *hostname) {
     struct in_addr ipv4;
     struct in6_addr ipv6;
@@ -594,6 +634,10 @@ static int tls_hostname_is_ip_literal(const char *hostname) {
     return 0;
 }
 
+/// @brief Parse the ServerNameList from a ClientHello server_name extension.
+///        Stores the first host_name entry (lowercased, NUL-terminated) into
+///        session->hostname. IP literals are silently cleared so SAN checks skip them.
+///        Returns RT_TLS_OK or RT_TLS_ERROR_HANDSHAKE with session->error set.
 static int tls_parse_client_sni(rt_tls_session_t *session, const uint8_t *data, size_t len) {
     size_t pos = 0;
     int saw_host_name = 0;
@@ -650,6 +694,10 @@ static int tls_parse_client_sni(rt_tls_session_t *session, const uint8_t *data, 
     return RT_TLS_OK;
 }
 
+/// @brief Return 1 if hostname matches the leaf certificate's SANs or CommonName.
+///        Checks SubjectAltName DNS names first (preferred per RFC 6125); falls back to
+///        CommonName only when no SANs are present. IP literals always match (verified
+///        separately).  Returns 1 (accept) when the certificate or hostname is absent.
 static int tls_server_name_matches_leaf_cert(const rt_tls_server_ctx_t *ctx, const char *hostname) {
     char san_names[32][256];
     char cn[256];
@@ -674,6 +722,9 @@ static int tls_server_name_matches_leaf_cert(const rt_tls_server_ctx_t *ctx, con
     return 0;
 }
 
+/// @brief Read the entire contents of a text file into a NUL-terminated heap buffer.
+///        Returns NULL on error (file not found, read failure, or allocation failure).
+///        Sets *len_out to the file length (not including the NUL) when provided.
 static char *tls_read_text_file(const char *path, size_t *len_out) {
     FILE *f = NULL;
     char *buf = NULL;
@@ -711,6 +762,9 @@ fail:
     return NULL;
 }
 
+/// @brief Decode the Base64 body of a PEM block into a DER byte buffer.
+///        Skips whitespace and stops at '=' padding characters or non-Base64 bytes.
+///        Returns the number of DER bytes written; returns 0 if out_der overflows max_der.
 static size_t tls_pem_base64_decode(
     const char *pem_b64, size_t b64_len, uint8_t *out_der, size_t max_der) {
     static const int8_t b64tab[256] = {
@@ -750,6 +804,10 @@ static size_t tls_pem_base64_decode(
     return out_len;
 }
 
+/// @brief Locate one PEM block delimited by begin_marker / end_marker in the pem string.
+///        Sets *body_out and *body_len_out to the Base64 text between the markers.
+///        Sets *next_out to the character after the end marker for chained iteration.
+///        Returns 1 if a block was found, 0 otherwise.
 static int tls_find_pem_block(const char *pem,
                               const char *begin_marker,
                               const char *end_marker,
@@ -778,6 +836,9 @@ static int tls_find_pem_block(const char *pem,
     return 1;
 }
 
+/// @brief Copy up to 32 DER integer bytes into a right-aligned 32-byte big-endian buffer.
+///        Strips leading zero padding bytes (required for DER positive-integer encoding).
+///        Returns 1 on success; 0 if the remaining value exceeds 32 bytes.
 static int tls_copy_der_octets(
     const uint8_t *data, size_t len, uint8_t out[32], size_t *out_len) {
     size_t skip = 0;
@@ -795,6 +856,9 @@ static int tls_copy_der_octets(
     return 1;
 }
 
+/// @brief Extract the 32-byte scalar from a SEC 1 (RFC 5915) DER-encoded EC private key.
+///        SEC 1 structure: SEQUENCE { INTEGER (version), OCTET STRING (key), ... }.
+///        Returns 1 on success, 0 on parse failure or key too long.
 static int tls_parse_sec1_ec_private_key(const uint8_t *der,
                                          size_t der_len,
                                          uint8_t out_priv[32]) {
@@ -817,6 +881,10 @@ static int tls_parse_sec1_ec_private_key(const uint8_t *der,
     return tls_copy_der_octets(p + hl, vl, out_priv, &scalar_len);
 }
 
+/// @brief Extract the 32-byte scalar from a PKCS#8 (RFC 5958) DER-encoded EC private key.
+///        Verifies the AlgorithmIdentifier contains id-ecPublicKey + prime256v1 OIDs before
+///        delegating the inner SEC 1 ECPrivateKey to tls_parse_sec1_ec_private_key.
+///        Returns 1 on success, 0 on parse failure or OID mismatch.
 static int tls_parse_pkcs8_ec_private_key(const uint8_t *der,
                                           size_t der_len,
                                           uint8_t out_priv[32]) {
@@ -861,6 +929,10 @@ static int tls_parse_pkcs8_ec_private_key(const uint8_t *der,
     return tls_parse_sec1_ec_private_key(p + hl, vl, out_priv);
 }
 
+/// @brief Extract the uncompressed P-256 public key (x, y) from a DER-encoded X.509 certificate.
+///        Navigates TBSCertificate → SubjectPublicKeyInfo, checks the ec-public-key +
+///        prime256v1 OIDs, then reads the 04-prefixed 65-byte uncompressed point.
+///        Returns 1 on success, 0 on parse failure or wrong key type.
 static int tls_extract_cert_ec_pubkey(const uint8_t *cert_der,
                                       size_t cert_len,
                                       uint8_t x_out[32],
@@ -936,6 +1008,10 @@ static int tls_extract_cert_ec_pubkey(const uint8_t *cert_der,
     return 1;
 }
 
+/// @brief Extract an RSA public key from a DER-encoded X.509 certificate into out.
+///        Navigates TBSCertificate → SubjectPublicKeyInfo, verifies the rsaEncryption OID,
+///        then parses the RSAPublicKey (modulus + exponent) via rt_rsa_key_from_der.
+///        Returns 1 on success, 0 on parse failure or wrong key type.
 static int tls_extract_cert_rsa_pubkey(
     const uint8_t *cert_der, size_t cert_len, rt_rsa_key_t *out) {
     static const uint8_t OID_RSA_ENCRYPTION[] = {
@@ -1002,6 +1078,9 @@ static int tls_extract_cert_rsa_pubkey(
     return rt_rsa_parse_public_key_pkcs1(bits + 1, vl - 1, out);
 }
 
+/// @brief Return TLS_SERVER_KEY_ECDSA_P256 or TLS_SERVER_KEY_RSA_PSS_SHA256 by inspecting
+///        the SubjectPublicKeyInfo algorithm OID in the leaf certificate.
+///        Returns TLS_SERVER_KEY_NONE if the key type is not recognised.
 static int tls_extract_cert_key_type(const uint8_t *cert_der, size_t cert_len) {
     static const uint8_t OID_EC_PUBLIC_KEY[] = {0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01};
     static const uint8_t OID_PRIME256V1[] = {
@@ -1080,6 +1159,7 @@ static void transcript_init(rt_tls_session_t *session) {
     rt_sha256(NULL, 0, session->transcript_hash);
 }
 
+/// @brief Store msg in the thread-local client error string (empty msg clears it).
 static void tls_set_last_error_msg(const char *msg) {
     if (!msg || !*msg) {
         g_tls_last_error[0] = '\0';
@@ -1088,6 +1168,7 @@ static void tls_set_last_error_msg(const char *msg) {
     snprintf(g_tls_last_error, sizeof(g_tls_last_error), "%s", msg);
 }
 
+/// @brief Store msg in the thread-local server error string (empty msg clears it).
 static void tls_set_server_last_error_msg(const char *msg) {
     if (!msg || !*msg) {
         g_tls_server_last_error[0] = '\0';
@@ -1096,10 +1177,12 @@ static void tls_set_server_last_error_msg(const char *msg) {
     snprintf(g_tls_server_last_error, sizeof(g_tls_server_last_error), "%s", msg);
 }
 
+/// @brief Return the last TLS client error string set on this thread, or "no error".
 const char *rt_tls_last_error(void) {
     return g_tls_last_error[0] ? g_tls_last_error : "no error";
 }
 
+/// @brief Return the last TLS server error string set on this thread, or "no error".
 const char *rt_tls_server_last_error(void) {
     return g_tls_server_last_error[0] ? g_tls_server_last_error : "no error";
 }
@@ -1190,6 +1273,9 @@ static void derive_handshake_keys(rt_tls_session_t *session, const uint8_t share
     session->keys_established = 1;
 }
 
+/// @brief Server-side mirror of derive_handshake_keys: derives TLS 1.3 handshake secrets
+///        and installs read keys from the client traffic secret and write keys from the
+///        server traffic secret (reversed direction relative to the client path).
 static void derive_handshake_keys_server(
     rt_tls_session_t *session, const uint8_t shared_secret[32]) {
     uint8_t zero_key[32] = {0};
@@ -1236,6 +1322,11 @@ static void derive_handshake_keys_server(
     session->keys_established = 1;
 }
 
+/// @brief Derive TLS 1.3 application traffic secrets (RFC 8446 §7.1) after Finished.
+///        Computes master_secret = HKDF-Extract(derived(handshake_secret), 0), then
+///        expands client_application_traffic_secret ("c ap traffic") and
+///        server_application_traffic_secret ("s ap traffic") using the transcript hash
+///        at the time Finished was verified.
 static void derive_application_secrets(rt_tls_session_t *session) {
     uint8_t derived[32];
     uint8_t zero_key[32] = {0};
@@ -1264,6 +1355,9 @@ static void derive_application_secrets(rt_tls_session_t *session) {
                          32);
 }
 
+/// @brief Expand a 32-byte TLS 1.3 traffic secret into a AEAD key and 12-byte IV.
+///        Key length is 16 for AES-128-GCM or 32 for ChaCha20-Poly1305.
+///        Resets the per-direction sequence counter to 0 (RFC 8446 §5.3).
 static void install_traffic_keys_from_secret(
     const uint8_t secret[32], traffic_keys_t *keys, uint16_t cipher_suite) {
     int key_len = (cipher_suite == TLS_AES_128_GCM_SHA256) ? 16 : 32;
@@ -1272,26 +1366,33 @@ static void install_traffic_keys_from_secret(
     keys->seq_num = 0;
 }
 
+/// @brief Install client read keys from server_application_traffic_secret (client reads from server).
 static void install_client_application_read_keys(rt_tls_session_t *session) {
     install_traffic_keys_from_secret(
         session->server_application_traffic_secret, &session->read_keys, session->cipher_suite);
 }
 
+/// @brief Install client write keys from client_application_traffic_secret (client writes to server).
 static void install_client_application_write_keys(rt_tls_session_t *session) {
     install_traffic_keys_from_secret(
         session->client_application_traffic_secret, &session->write_keys, session->cipher_suite);
 }
 
+/// @brief Install server read keys from client_application_traffic_secret (server reads from client).
 static void install_server_application_read_keys(rt_tls_session_t *session) {
     install_traffic_keys_from_secret(
         session->client_application_traffic_secret, &session->read_keys, session->cipher_suite);
 }
 
+/// @brief Install server write keys from server_application_traffic_secret (server writes to client).
 static void install_server_application_write_keys(rt_tls_session_t *session) {
     install_traffic_keys_from_secret(
         session->server_application_traffic_secret, &session->write_keys, session->cipher_suite);
 }
 
+/// @brief Perform a TLS 1.3 KeyUpdate ratchet (RFC 8446 §7.2) on secret in-place.
+///        Derives the next traffic secret via HKDF-Expand-Label(secret, "traffic upd", "", 32),
+///        updates secret, then re-derives key and IV and resets the sequence counter to 0.
 static void update_application_secret_and_keys(uint8_t secret[32],
                                                traffic_keys_t *keys,
                                                uint16_t cipher_suite) {
@@ -1306,6 +1407,7 @@ static void update_application_secret_and_keys(uint8_t secret[32],
     keys->seq_num = 0;
 }
 
+/// @brief Ratchet the inbound application traffic keys after receiving a KeyUpdate.
 static void update_read_application_keys(rt_tls_session_t *session) {
     if (session->is_server) {
         update_application_secret_and_keys(
@@ -1316,6 +1418,7 @@ static void update_read_application_keys(rt_tls_session_t *session) {
     }
 }
 
+/// @brief Ratchet the outbound application traffic keys before sending a KeyUpdate.
 static void update_write_application_keys(rt_tls_session_t *session) {
     if (session->is_server) {
         update_application_secret_and_keys(
@@ -1326,11 +1429,14 @@ static void update_write_application_keys(rt_tls_session_t *session) {
     }
 }
 
+/// Forward declaration — definition below (send_key_update_record calls send_record).
 static int send_record(rt_tls_session_t *session,
                        uint8_t content_type,
                        const uint8_t *data,
                        size_t len);
 
+/// @brief Send a TLS 1.3 KeyUpdate handshake message to request or acknowledge a key rollover.
+///        request_update non-zero asks the peer to respond with its own KeyUpdate.
 static int send_key_update_record(rt_tls_session_t *session, uint8_t request_update) {
     uint8_t msg[5];
     msg[0] = 24; // KeyUpdate
@@ -1917,13 +2023,21 @@ static int process_server_hello(rt_tls_session_t *session,
 
     // Compute shared secret and derive handshake keys
     uint8_t shared_secret[32];
-    rt_x25519(session->client_private_key, session->server_public_key, shared_secret);
+    if (rt_x25519(session->client_private_key, session->server_public_key, shared_secret) != 0) {
+        memset(shared_secret, 0, sizeof(shared_secret));
+        session->error = "TLS: invalid X25519 server key share";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
     derive_handshake_keys(session, shared_secret);
+    memset(shared_secret, 0, sizeof(shared_secret));
 
     session->state = TLS_STATE_WAIT_ENCRYPTED_EXTENSIONS;
     return RT_TLS_OK;
 }
 
+/// @brief Process the server EncryptedExtensions message (RFC 8446 §4.3.1).
+///        Currently handles the ALPN extension: records the negotiated protocol name in
+///        session->negotiated_alpn. Ignores unrecognised extensions.
 static int process_encrypted_extensions(rt_tls_session_t *session, const uint8_t *data, size_t len) {
     if (len < 2) {
         session->error = "EncryptedExtensions too short";
@@ -1987,6 +2101,9 @@ static int process_encrypted_extensions(rt_tls_session_t *session, const uint8_t
     return RT_TLS_OK;
 }
 
+/// @brief Dispatch a post-handshake TLS 1.3 message received after the handshake completes.
+///        Handles NewSessionTicket (silently ignored) and KeyUpdate (ratchets read keys;
+///        if update_requested=1, ratchets write keys and responds with a KeyUpdate).
 static int process_post_handshake_message(rt_tls_session_t *session,
                                           uint8_t hs_type,
                                           const uint8_t *hs_data,
@@ -2045,10 +2162,12 @@ static int send_finished_with_secret(
     return transcript_update(session, msg, 36) == 0 ? RT_TLS_OK : RT_TLS_ERROR_HANDSHAKE;
 }
 
+/// @brief Send the client Finished message using the client handshake traffic secret.
 static int send_finished(rt_tls_session_t *session) {
     return send_finished_with_secret(session, session->client_handshake_traffic_secret);
 }
 
+/// @brief Send the server Finished message using the server handshake traffic secret.
 static int send_finished_server(rt_tls_session_t *session) {
     return send_finished_with_secret(session, session->server_handshake_traffic_secret);
 }
@@ -2096,14 +2215,18 @@ static int verify_finished_with_secret(
     return RT_TLS_OK;
 }
 
+/// @brief Client-side Finished verification — checks against server_handshake_traffic_secret.
 static int verify_finished(rt_tls_session_t *session, const uint8_t *data, size_t len) {
     return verify_finished_with_secret(session, session->server_handshake_traffic_secret, data, len);
 }
 
+/// @brief Server-side Finished verification — checks against client_handshake_traffic_secret.
 static int verify_finished_server(rt_tls_session_t *session, const uint8_t *data, size_t len) {
     return verify_finished_with_secret(session, session->client_handshake_traffic_secret, data, len);
 }
 
+/// @brief Return 1 if the ClientHello signature_algorithms extension list contains wanted_scheme.
+///        list points to the wire-format list body (pairs of uint16 scheme codes).
 static int clienthello_offers_sig_scheme(
     const uint8_t *list, size_t list_len, uint16_t wanted_scheme) {
     if (list_len < 2 || (list_len & 1) != 0)
@@ -2115,6 +2238,9 @@ static int clienthello_offers_sig_scheme(
     return 0;
 }
 
+/// @brief Iterate through one token of a comma-separated ALPN preference string.
+///        Advances *offset_io past the consumed token and its trailing comma.
+///        Returns 1 if a non-empty token was found; 0 when the list is exhausted.
 static int tls_alpn_list_next_token(const char *list,
                                     size_t *offset_io,
                                     const char **token_out,
@@ -2177,6 +2303,8 @@ static int clienthello_offers_alpn(const uint8_t *list,
     return 0;
 }
 
+/// @brief Return 1 if the comma-separated ALPN preference string contains the protocol
+///        given as a raw byte pointer + length (not necessarily NUL-terminated).
 static int tls_alpn_list_contains(const char *list, const uint8_t *wanted, size_t wanted_len) {
     size_t offset = 0;
     const char *token = NULL;
@@ -2192,6 +2320,9 @@ static int tls_alpn_list_contains(const char *list, const uint8_t *wanted, size_
     return 0;
 }
 
+/// @brief Compute the TLS wire-format byte length for all protocols in a comma-separated ALPN list.
+///        Each protocol entry adds 1-byte length prefix + protocol name bytes.
+///        Returns 1 on success; 0 if any token is empty, >255 bytes, or causes overflow.
 static int tls_alpn_list_wire_len(const char *list, size_t *wire_len_out) {
     size_t offset = 0;
     const char *token = NULL;
@@ -2216,6 +2347,9 @@ static int tls_alpn_list_wire_len(const char *list, size_t *wire_len_out) {
     return 1;
 }
 
+/// @brief Encode a comma-separated ALPN list into TLS wire format in dst.
+///        Each token is written as a 1-byte length prefix followed by the protocol name.
+///        Returns 1 on success; 0 if the output would exceed dst_cap.
 static int tls_alpn_write_wire_list(
     uint8_t *dst, size_t dst_cap, const char *list, size_t *wire_len_out) {
     size_t offset = 0;
@@ -2241,6 +2375,10 @@ static int tls_alpn_write_wire_list(
     return 1;
 }
 
+/// @brief Select the first protocol from preferred_list that the client also offered in wire_list.
+///        Iterates preferred_list in order so the server's preference takes precedence.
+///        Writes the selected name (NUL-terminated) to selected_out[64] and returns 1 on match;
+///        returns 0 when there is no mutual protocol.
 static int tls_select_alpn_from_wire_list(const char *preferred_list,
                                           const uint8_t *wire_list,
                                           size_t wire_list_len,
@@ -2267,6 +2405,12 @@ static int tls_select_alpn_from_wire_list(const char *preferred_list,
     return 0;
 }
 
+/// @brief Parse a TLS 1.3 ClientHello from the server's perspective.
+///        Validates protocol version, random, cipher suites, compression, and all
+///        required extensions (supported_versions with 0x0304, key_share with X25519,
+///        signature_algorithms with a supported scheme). Records the client key-share
+///        public key in session->peer_public_key and negotiates ALPN when configured.
+///        Returns RT_TLS_OK or RT_TLS_ERROR_HANDSHAKE with session->error set.
 static int parse_client_hello(rt_tls_session_t *session, const uint8_t *data, size_t len) {
     size_t pos = 0;
     int found_tls13 = 0;
@@ -2498,6 +2642,11 @@ static int parse_client_hello(rt_tls_session_t *session, const uint8_t *data, si
     return RT_TLS_OK;
 }
 
+/// @brief Build and send the ServerHello handshake message.
+///        Generates a fresh server random, echoes the legacy session ID, selects the
+///        negotiated cipher suite, appends supported_versions (0x0304) and key_share
+///        (X25519 server public key) extensions.  Performs the X25519 ECDH with the
+///        client's public key and calls derive_handshake_keys_server to install keys.
 static int send_server_hello(rt_tls_session_t *session) {
     uint8_t body[256];
     uint8_t hs[4 + 256];
@@ -2551,20 +2700,30 @@ static int send_server_hello(rt_tls_session_t *session) {
     if (transcript_update(session, hs, 4 + pos) != 0)
         return RT_TLS_ERROR_HANDSHAKE;
 
-    rt_x25519(session->client_private_key, session->server_public_key, shared_secret);
+    if (rt_x25519(session->client_private_key, session->server_public_key, shared_secret) != 0) {
+        memset(shared_secret, 0, sizeof(shared_secret));
+        session->error = "TLS: invalid X25519 client key share";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
 
     // ServerHello itself is still plaintext in TLS 1.3. Switch to handshake
     // traffic keys only after the record has been transmitted.
     {
         int rc = send_record(session, TLS_CONTENT_HANDSHAKE, hs, 4 + pos);
-        if (rc != RT_TLS_OK)
+        if (rc != RT_TLS_OK) {
+            memset(shared_secret, 0, sizeof(shared_secret));
             return rc;
+        }
     }
 
     derive_handshake_keys_server(session, shared_secret);
+    memset(shared_secret, 0, sizeof(shared_secret));
     return RT_TLS_OK;
 }
 
+/// @brief Build and send the server EncryptedExtensions message.
+///        Includes the ALPN extension if a protocol was negotiated; otherwise sends an empty
+///        extension list.
 static int send_encrypted_extensions_server(rt_tls_session_t *session) {
     uint8_t body[256];
     uint8_t hs[4 + 256];
@@ -2595,6 +2754,9 @@ static int send_encrypted_extensions_server(rt_tls_session_t *session) {
     return send_record(session, TLS_CONTENT_HANDSHAKE, hs, 4 + pos);
 }
 
+/// @brief Build and send the TLS 1.3 Certificate message containing the server's cert chain.
+///        The cert_list_entries in the server context are already in TLS wire format
+///        (3-byte length prefix + DER bytes + 2-byte empty extensions per entry).
 static int send_certificate_server(rt_tls_session_t *session) {
     size_t body_len = 1 + 3 + session->server_ctx->cert_list_entries_len;
     uint8_t *hs = (uint8_t *)malloc(4 + body_len);
@@ -2623,6 +2785,9 @@ static int send_certificate_server(rt_tls_session_t *session) {
     }
 }
 
+/// @brief DER-encode an ECDSA P-256 signature (r, s) into out.
+///        Each of r and s is wrapped in an INTEGER TLV with a leading 0x00 byte when the
+///        high bit is set (DER positive-integer rule). Returns the total byte count written.
 static size_t encode_ecdsa_signature_der(
     const uint8_t r[32], const uint8_t s[32], uint8_t out[80]) {
     const uint8_t *r_ptr = r;
@@ -2663,6 +2828,8 @@ static size_t encode_ecdsa_signature_der(
     return pos;
 }
 
+/// @brief Construct the 130-byte content buffer signed in CertificateVerify (RFC 8446 §4.4.3).
+///        Format: 64 × 0x20 | context string "TLS 1.3, server CertificateVerify" | 0x00 | transcript_hash.
 static void build_server_cert_verify_message(
     const uint8_t transcript_hash[32], uint8_t out_content[130]) {
     static const char context_str[] = "TLS 1.3, server CertificateVerify";
@@ -2672,6 +2839,10 @@ static void build_server_cert_verify_message(
     memcpy(out_content + 98, transcript_hash, 32);
 }
 
+/// @brief Build and send the server CertificateVerify message.
+///        Constructs the signed content, SHA-256 hashes it, signs with ECDSA-P256-SHA256 or
+///        RSA-PSS-RSAE-SHA256 depending on the server key type, DER-encodes the signature,
+///        and sends a CertificateVerify handshake record with the appropriate scheme code.
 static int send_certificate_verify_server(rt_tls_session_t *session) {
     uint8_t content[130];
     uint8_t digest[32];
@@ -2745,6 +2916,11 @@ static int send_certificate_verify_server(rt_tls_session_t *session) {
     return send_record(session, TLS_CONTENT_HANDSHAKE, hs, 8 + sig_der_len);
 }
 
+/// @brief Accept an inbound TLS 1.3 connection on an already-accepted TCP socket.
+///        Performs the server-side handshake: receive ClientHello, send ServerHello +
+///        ChangeCipherSpec + EncryptedExtensions + Certificate + CertificateVerify + Finished,
+///        receive and verify client Finished.
+/// @return Newly allocated session in TLS_STATE_CONNECTED, or NULL with server last-error set.
 rt_tls_session_t *rt_tls_server_accept_socket(int socket_fd, const rt_tls_server_ctx_t *ctx) {
     rt_tls_session_t *session = NULL;
     uint8_t content_type = 0;
@@ -3235,6 +3411,7 @@ int rt_tls_has_buffered_data(rt_tls_session_t *session) {
     return session->app_buffer_pos < session->app_buffer_len ? 1 : 0;
 }
 
+/// @brief Return the ALPN protocol negotiated during the handshake, or "" if none was negotiated.
 const char *rt_tls_get_negotiated_alpn(rt_tls_session_t *session) {
     if (!session)
         return "";
@@ -3425,8 +3602,13 @@ void *rt_viper_tls_connect(rt_string host, int64_t port) {
     if (!host || port < 1 || port > 65535)
         return NULL;
 
+    int64_t host_len = rt_str_len(host);
+    if (host_len <= 0 || host_len >= 256)
+        return NULL;
     const char *host_cstr = rt_string_cstr(host);
     if (!host_cstr)
+        return NULL;
+    if (strlen(host_cstr) != (size_t)host_len)
         return NULL;
 
     rt_tls_config_t config;
@@ -3467,9 +3649,18 @@ void *rt_viper_tls_connect(rt_string host, int64_t port) {
 void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
     if (!host || port < 1 || port > 65535)
         return NULL;
+    if (timeout_ms > INT_MAX)
+        return NULL;
+    if (timeout_ms < 0)
+        timeout_ms = 0;
 
+    int64_t host_len = rt_str_len(host);
+    if (host_len <= 0 || host_len >= 256)
+        return NULL;
     const char *host_cstr = rt_string_cstr(host);
     if (!host_cstr)
+        return NULL;
+    if (strlen(host_cstr) != (size_t)host_len)
         return NULL;
 
     rt_tls_config_t config;
@@ -3525,7 +3716,7 @@ int8_t rt_viper_tls_is_open(void *obj) {
     if (!obj)
         return 0;
     rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
-    return tls->session != NULL;
+    return tls->session && tls->session->state == TLS_STATE_CONNECTED;
 }
 
 /// @brief Send bytes over TLS connection.
@@ -3571,7 +3762,10 @@ int64_t rt_viper_tls_send_str(void *obj, rt_string text) {
     const char *cstr = rt_string_cstr(text);
     if (!cstr)
         return 0;
-    size_t len = strlen(cstr);
+    int64_t len64 = rt_str_len(text);
+    if (len64 <= 0)
+        return 0;
+    size_t len = (size_t)len64;
     if (len == 0)
         return 0;
 
@@ -3586,6 +3780,8 @@ int64_t rt_viper_tls_send_str(void *obj, rt_string text) {
 void *rt_viper_tls_recv(void *obj, int64_t max_bytes) {
     if (!obj || max_bytes <= 0)
         return NULL;
+    if (max_bytes > TLS_MAX_RECORD_SIZE)
+        max_bytes = TLS_MAX_RECORD_SIZE;
 
     rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
     if (!tls->session)
@@ -3619,6 +3815,8 @@ void *rt_viper_tls_recv(void *obj, int64_t max_bytes) {
 rt_string rt_viper_tls_recv_str(void *obj, int64_t max_bytes) {
     if (!obj || max_bytes <= 0)
         return rt_string_from_bytes("", 0);
+    if (max_bytes > TLS_MAX_RECORD_SIZE)
+        max_bytes = TLS_MAX_RECORD_SIZE;
 
     rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
     if (!tls->session)

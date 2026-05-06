@@ -28,6 +28,10 @@ namespace viper::pkg {
 
 namespace {
 
+// Escape a string for use as a .desktop file value.
+// The only character requiring escaping in Desktop Entry values is backslash;
+// the spec does not require escaping of other characters in string values.
+// Also validates that the string is single-line (no embedded newlines).
 std::string desktopEscape(const std::string &s) {
     validateSingleLineField(s, "desktop entry field");
     std::string out;
@@ -41,6 +45,8 @@ std::string desktopEscape(const std::string &s) {
     return out;
 }
 
+// Escape a string for safe embedding in XML attribute values and text content.
+// Replaces the five predefined XML entities: & < > " '
 std::string xmlEscape(const std::string &s) {
     std::string out;
     out.reserve(s.size());
@@ -69,6 +75,8 @@ std::string xmlEscape(const std::string &s) {
     return out;
 }
 
+// Validate all file associations in the list, checking for duplicate extensions,
+// well-formed MIME types, and legal extension characters.
 void validateAssociations(const std::vector<FileAssoc> &assocs) {
     validatePackageFileAssociations(assocs);
 }

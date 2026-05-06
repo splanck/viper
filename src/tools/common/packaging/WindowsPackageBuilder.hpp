@@ -69,15 +69,24 @@ void buildWindowsPackage(const WindowsBuildParams &params);
 
 /// @brief Parameters for building a Windows toolchain installer from a staged manifest.
 struct WindowsToolchainBuildParams {
-    ToolchainInstallManifest manifest;
-    std::string outputPath;
-    std::string archStr{"x64"};
-    std::string displayName{"Viper"};
-    std::string publisher{"Viper Project"};
-    std::string identifier{"org.viper.toolchain"};
+    ToolchainInstallManifest manifest;          ///< Staged file list produced by gatherToolchainInstallManifest.
+    std::string outputPath;                     ///< Output .exe path for the installer.
+    std::string archStr{"x64"};                 ///< Payload architecture ("x64" or "arm64").
+    std::string displayName{"Viper"};           ///< Human-readable product name shown in Add/Remove Programs.
+    std::string publisher{"Viper Project"};     ///< Publisher string written to the uninstall registry key.
+    std::string identifier{"org.viper.toolchain"}; ///< Unique product identifier used as the registry key name.
 };
 
-/// @brief Build a Windows toolchain installer from a staged install manifest.
+/// @brief Build a Windows toolchain installer .exe from a staged install manifest.
+///
+/// Packages every file in params.manifest into a ZIP overlay appended to a PE32+
+/// self-extracting stub. The stub installs files under %ProgramFiles%\Viper, writes
+/// an uninstall registry key, and creates Start Menu shortcuts. All required toolchain
+/// components (viper binary, CMake config, runtime archives) must already be validated
+/// in the manifest by validateToolchainInstallManifest before calling this function.
+///
+/// @param params Build parameters.
+/// @throws std::runtime_error on any I/O, validation, or PE assembly failure.
 void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params);
 
 } // namespace viper::pkg

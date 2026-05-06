@@ -146,6 +146,8 @@ enum UninstallerIAT : uint32_t {
     kU_SendMessageTimeoutW = 20,
 };
 
+// Returns the ordered PEImport list for the installer PE. Slot indices here
+// must match the InstallerIAT enum above — the order is load-bearing.
 std::vector<PEImport> installerImports() {
     return {
         {"kernel32.dll",
@@ -181,6 +183,8 @@ std::vector<PEImport> installerImports() {
     };
 }
 
+// Returns the ordered PEImport list for the uninstaller PE. Slot indices must
+// match the UninstallerIAT enum above.
 std::vector<PEImport> uninstallerImports() {
     return {
         {"kernel32.dll",
@@ -208,10 +212,14 @@ std::vector<PEImport> uninstallerImports() {
     };
 }
 
+// Round value up to the next multiple of alignment (alignment must be a power of 2).
 uint32_t alignUp(uint32_t value, uint32_t alignment) {
     return (value + alignment - 1u) & ~(alignment - 1u);
 }
 
+// Resolve the payload architecture to the bootstrap PE machine type.
+// ARM64 payloads still use an x64 bootstrap so the installer runs under
+// Windows-on-ARM emulation while deploying an ARM64 application.
 std::string resolveBootstrapArch(const std::string &payloadArch) {
     if (payloadArch.empty() || payloadArch == "x64")
         return "x64";
@@ -220,6 +228,10 @@ std::string resolveBootstrapArch(const std::string &payloadArch) {
     throw std::runtime_error("unsupported Windows package architecture '" + payloadArch + "'");
 }
 
+// Compute the byte offset within the .rdata section where the IAT begins.
+// Layout: IDT (20 bytes * (N+1)) + ILTs + hint/name table + DLL name strings,
+// rounded up to 8-byte alignment. This offset is needed to patch RIP-relative
+// IAT call targets in the emitted machine code.
 uint32_t computeIATOffset(const std::vector<PEImport> &imports) {
     if (imports.empty())
         return 0;
@@ -243,6 +255,9 @@ uint32_t computeIATOffset(const std::vector<PEImport> &imports) {
     return alignUp(iatOff, 8);
 }
 
+// Finalize all section RVAs, patch IAT call offsets in the emitted code, and
+// populate stub.textSection. Must be called once after all emit* calls are done.
+// The .text section is placed at kTextRVA; .rdata immediately follows (aligned).
 void finalizeStubRVAs(StubResult &stub, InstallerStubGen &gen) {
     const uint32_t textRVA = kTextRVA;
     const uint32_t rdataRVA =
@@ -261,21 +276,28 @@ void finalizeStubRVAs(StubResult &stub, InstallerStubGen &gen) {
     stub.textSection = gen.finishText(textRVA, iatBaseRVA, stub.imports, dataBaseRVA);
 }
 
+// Emit code to zero an 8-byte local variable at [RBP+off] using xor/mov.
 void zeroLocalQword(InstallerStubGen &gen, int32_t off) {
     gen.xorRegReg(X64Reg::RAX, X64Reg::RAX);
     gen.movMemReg(X64Reg::RBP, off, X64Reg::RAX);
 }
 
+// Emit code to store a 64-bit immediate to [RSP+off] (the Windows x64 shadow
+// space / argument area for the 5th+ arguments in a call sequence).
 void storeStackImm64(InstallerStubGen &gen, int32_t off, uint64_t imm) {
     gen.movRegImm64(X64Reg::RAX, imm);
     gen.movMemReg(X64Reg::RSP, off, X64Reg::RAX);
 }
 
+// Emit code to compute LEA [RBP+localOff] into RAX and store it at [RSP+stackOff].
+// Used to pass a pointer to a stack-resident buffer as a 5th+ argument.
 void storeStackPtrToLocal(InstallerStubGen &gen, int32_t stackOff, int32_t localOff) {
     gen.leaRegMem(X64Reg::RAX, X64Reg::RBP, localOff);
     gen.movMemReg(X64Reg::RSP, stackOff, X64Reg::RAX);
 }
 
+// Return the byte count of the UTF-16LE encoding of text including the null terminator.
+// Throws if the result exceeds UINT32_MAX (needed by RegSetValueExW cbData).
 uint32_t wideBytesFor(const std::string &text) {
     const size_t bytes = (utf16CodeUnitCountFromUtf8(text) + 1) * 2;
     if (bytes > UINT32_MAX)
@@ -283,10 +305,13 @@ uint32_t wideBytesFor(const std::string &text) {
     return static_cast<uint32_t>(bytes);
 }
 
+// Return the install directory name, falling back to displayName if installDirName is empty.
 std::string installDirNameFor(const WindowsPackageLayout &layout) {
     return layout.installDirName.empty() ? layout.displayName : layout.installDirName;
 }
 
+// Return the identifier used for registry keys, preferring layout.identifier,
+// then normalizing the executable name, then the display name.
 std::string registryIdFor(const WindowsPackageLayout &layout) {
     if (!layout.identifier.empty())
         return layout.identifier;
@@ -295,6 +320,7 @@ std::string registryIdFor(const WindowsPackageLayout &layout) {
     return normalizeExecName(layout.displayName);
 }
 
+// Convert forward slashes to backslashes for use as a Windows path component.
 std::string windowsPathFragment(std::string text) {
     for (char &ch : text) {
         if (ch == '/')
@@ -303,10 +329,13 @@ std::string windowsPathFragment(std::string text) {
     return text;
 }
 
+// Build the full HKLM registry key path for the application's uninstall entry.
 std::string uninstallKeyPathFor(const WindowsPackageLayout &layout) {
     return "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + registryIdFor(layout);
 }
 
+// Return true if the desktop path buffer must be resolved at install/uninstall time —
+// i.e. if a desktop shortcut is requested or any file entry targets DesktopDir.
 bool needsDesktopPath(const WindowsPackageLayout &layout) {
     if (layout.createDesktopShortcut)
         return true;
@@ -322,6 +351,8 @@ bool needsDesktopPath(const WindowsPackageLayout &layout) {
                        });
 }
 
+// Return true if the Start Menu path buffer must be resolved — i.e. if a Start Menu
+// shortcut is requested or any file/dir entry targets StartMenuDir.
 bool needsMenuPath(const WindowsPackageLayout &layout) {
     if (layout.createStartMenuShortcut)
         return true;
@@ -347,6 +378,7 @@ bool needsMenuPath(const WindowsPackageLayout &layout) {
                        });
 }
 
+// Map a WindowsInstallRoot enum value to the corresponding stack-frame buffer offset.
 int32_t rootBufferOffset(WindowsInstallRoot root) {
     switch (root) {
         case WindowsInstallRoot::DesktopDir:
@@ -359,6 +391,8 @@ int32_t rootBufferOffset(WindowsInstallRoot root) {
     }
 }
 
+// Emit a null-guarded CloseHandle call for the HANDLE stored at [RBP+handleOff],
+// then zero the slot. Safe to call even when the handle is already zero/null.
 void emitCloseLocalHandleIfSet(InstallerStubGen &gen, int32_t handleOff, uint32_t closeSlot) {
     const auto lblSkip = gen.newLabel();
     gen.movRegMem(X64Reg::RCX, X64Reg::RBP, handleOff);
@@ -369,6 +403,8 @@ void emitCloseLocalHandleIfSet(InstallerStubGen &gen, int32_t handleOff, uint32_
     gen.bindLabel(lblSkip);
 }
 
+// Emit a null-guarded LocalFree call for the pointer stored at [RBP+ptrOff],
+// then zero the slot. Safe to call even if the pointer is already null.
 void emitLocalFreeIfSet(InstallerStubGen &gen, int32_t ptrOff, uint32_t freeSlot) {
     const auto lblSkip = gen.newLabel();
     gen.movRegMem(X64Reg::RCX, X64Reg::RBP, ptrOff);
@@ -379,6 +415,8 @@ void emitLocalFreeIfSet(InstallerStubGen &gen, int32_t ptrOff, uint32_t freeSlot
     gen.bindLabel(lblSkip);
 }
 
+// Emit a null-guarded RegCloseKey call for the HKEY stored at [RBP+keyOff],
+// then zero the slot. Safe to call even if the key is already zero/null.
 void emitRegCloseIfSet(InstallerStubGen &gen, int32_t keyOff, uint32_t closeSlot) {
     const auto lblSkip = gen.newLabel();
     gen.movRegMem(X64Reg::RCX, X64Reg::RBP, keyOff);
@@ -389,6 +427,8 @@ void emitRegCloseIfSet(InstallerStubGen &gen, int32_t keyOff, uint32_t closeSlot
     gen.bindLabel(lblSkip);
 }
 
+// Emit an lstrcatW of an embedded (RIP-relative) wide string onto [RBP+destOff],
+// guarded by a length check against kMaxPathChars. Jumps to errorLabel on overflow.
 void emitCheckedCatEmbedded(InstallerStubGen &gen,
                             int32_t destOff,
                             uint32_t srcDataOff,
@@ -414,6 +454,8 @@ void emitCheckedCatEmbedded(InstallerStubGen &gen,
     gen.callIATSlot(catSlot);
 }
 
+// Emit an lstrcatW of a stack buffer at [RBP+srcOff] onto [RBP+destOff],
+// guarded by a length check against kMaxPathChars. Jumps to errorLabel on overflow.
 void emitCheckedCatStack(InstallerStubGen &gen,
                          int32_t destOff,
                          int32_t srcOff,
@@ -439,6 +481,8 @@ void emitCheckedCatStack(InstallerStubGen &gen,
     gen.callIATSlot(catSlot);
 }
 
+// Emit an lstrcatW of the wide string pointed to by srcReg onto [RBP+destOff],
+// guarded by a length check against kMaxPathChars. Jumps to errorLabel on overflow.
 void emitCheckedCatReg(InstallerStubGen &gen,
                        int32_t destOff,
                        X64Reg srcReg,
@@ -463,6 +507,8 @@ void emitCheckedCatReg(InstallerStubGen &gen,
     gen.callIATSlot(catSlot);
 }
 
+// Emit a CreateDirectoryW call for RCX (already set by caller) treating
+// ERROR_ALREADY_EXISTS as success and jumping to errorLabel on any other failure.
 void emitCreateDirectoryChecked(InstallerStubGen &gen,
                                 uint32_t createDirSlot,
                                 uint32_t getLastErrorSlot,
@@ -477,11 +523,17 @@ void emitCreateDirectoryChecked(InstallerStubGen &gen,
     gen.bindLabel(lblOk);
 }
 
+// Emit a cmp reg, value using R10 as scratch to hold the 32-bit immediate.
+// Needed because the direct cmp-reg-imm32 encoding sign-extends; using R10
+// for the immediate avoids that when comparing against unsigned values.
 void emitCmpRegU32(InstallerStubGen &gen, X64Reg reg, uint32_t value) {
     gen.movRegImm32(X64Reg::R10, value);
     gen.cmpRegReg(reg, X64Reg::R10);
 }
 
+// Emit code to compose a full path into [RBP+tempOff]: copies the resolved root
+// path (install/desktop/menu) then appends "\" and the relative path. Jumps to
+// errorLabel on path overflow.
 void emitComposePath(InstallerStubGen &gen,
                      WindowsInstallRoot root,
                      int32_t tempOff,
@@ -499,6 +551,8 @@ void emitComposePath(InstallerStubGen &gen,
     emitCheckedCatEmbedded(gen, tempOff, relPathOff, catSlot, strlenSlot, errorLabel);
 }
 
+// Emit a MessageBoxW call with NULL parent window, given message/title embedded
+// strings, and the specified flags (e.g. MB_ICONINFORMATION=0x40, MB_ICONERROR=0x10).
 void emitMessageBox(
     InstallerStubGen &gen, uint32_t slot, uint32_t titleOff, uint32_t messageOff, uint32_t flags) {
     gen.xorRegReg(X64Reg::RCX, X64Reg::RCX);
@@ -508,6 +562,8 @@ void emitMessageBox(
     gen.callIATSlot(slot);
 }
 
+// Emit code to create a directory at root\relPath, composing the full path into
+// the temp buffer and calling CreateDirectoryW (ERROR_ALREADY_EXISTS is tolerated).
 void emitCreateDirectoryAtRoot(InstallerStubGen &gen,
                                WindowsInstallRoot root,
                                uint32_t slashOff,
@@ -525,6 +581,9 @@ void emitCreateDirectoryAtRoot(InstallerStubGen &gen,
     emitCreateDirectoryChecked(gen, createDirSlot, getLastErrorSlot, errorLabel);
 }
 
+// Emit RegSetValueExW on kRegKeyOff to write a named REG_SZ value from an
+// embedded (RIP-relative) wide string. valueBytes is the full byte count
+// including null terminator. Jumps to errorLabel on failure.
 void emitRegSetConstString(InstallerStubGen &gen,
                            uint32_t regSetSlot,
                            uint32_t valueNameOff,
@@ -544,6 +603,8 @@ void emitRegSetConstString(InstallerStubGen &gen,
     gen.jnz(errorLabel);
 }
 
+// Emit RegSetValueExW on kRegKeyOff to write a named REG_NONE value with zero
+// length and NULL data. Used to stamp a ProgID name into OpenWithProgids.
 void emitRegSetConstNoneValue(InstallerStubGen &gen,
                               uint32_t regSetSlot,
                               uint32_t valueNameOff,
@@ -560,6 +621,8 @@ void emitRegSetConstNoneValue(InstallerStubGen &gen,
     gen.jnz(errorLabel);
 }
 
+// Emit RegSetValueExW on kRegKeyOff to write the default (unnamed) value as a
+// REG_SZ from an embedded wide string. Used to set the ProgID description.
 void emitRegSetDefaultConstString(InstallerStubGen &gen,
                                   uint32_t regSetSlot,
                                   uint32_t valueOff,
@@ -578,6 +641,9 @@ void emitRegSetDefaultConstString(InstallerStubGen &gen,
     gen.jnz(errorLabel);
 }
 
+// Emit RegSetValueExW on kRegKeyOff to write a named value from a stack buffer,
+// computing the byte length at runtime via lstrlenW. valueType selects
+// REG_SZ vs REG_EXPAND_SZ. Jumps to errorLabel on failure.
 void emitRegSetStackString(InstallerStubGen &gen,
                            uint32_t regSetSlot,
                            uint32_t strlenSlot,
@@ -607,6 +673,7 @@ void emitRegSetStackString(InstallerStubGen &gen,
     gen.jnz(errorLabel);
 }
 
+// Convenience overload of emitRegSetStackString that defaults valueType to REG_SZ.
 void emitRegSetStackString(InstallerStubGen &gen,
                            uint32_t regSetSlot,
                            uint32_t strlenSlot,
@@ -617,6 +684,8 @@ void emitRegSetStackString(InstallerStubGen &gen,
         gen, regSetSlot, strlenSlot, valueNameOff, stackBufOff, kRegSz, errorLabel);
 }
 
+// Emit RegSetValueExW on kRegKeyOff to write the default (unnamed) value from a
+// stack buffer, computing the byte length at runtime. Used for Open command strings.
 void emitRegSetDefaultStackString(InstallerStubGen &gen,
                                   uint32_t regSetSlot,
                                   uint32_t strlenSlot,
@@ -639,6 +708,9 @@ void emitRegSetDefaultStackString(InstallerStubGen &gen,
     gen.jnz(errorLabel);
 }
 
+// Emit RegQueryValueExW on kRegKeyOff to read a named value into a stack buffer.
+// bufferBytes is the buffer capacity. Jumps to missingLabel if the key/value is
+// absent or any error occurs (including ERROR_MORE_DATA).
 void emitRegQueryStackString(InstallerStubGen &gen,
                              uint32_t querySlot,
                              uint32_t valueNameOff,
@@ -662,6 +734,8 @@ void emitRegQueryStackString(InstallerStubGen &gen,
     gen.jnz(missingLabel);
 }
 
+// Emit code to append the separator string only when [RBP+destOff] is non-empty.
+// Used to insert ";" between PATH tokens without a leading separator.
 void emitAppendSeparatorIfNonEmpty(InstallerStubGen &gen,
                                    int32_t destOff,
                                    uint32_t separatorOff,
@@ -677,6 +751,8 @@ void emitAppendSeparatorIfNonEmpty(InstallerStubGen &gen,
     gen.bindLabel(lblSkip);
 }
 
+// Emit SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0, "Environment", ...)
+// so that running applications (e.g. Explorer) pick up the updated PATH immediately.
 void emitBroadcastEnvironmentChange(InstallerStubGen &gen,
                                     uint32_t sendSlot,
                                     uint32_t environmentOff) {
@@ -690,6 +766,8 @@ void emitBroadcastEnvironmentChange(InstallerStubGen &gen,
     gen.callIATSlot(sendSlot);
 }
 
+// Emit RegCreateKeyW under HKLM for the key path at keyOff, closing any
+// previously open key in kRegKeyOff first. Jumps to errorLabel on failure.
 void emitRegCreateConstKey(InstallerStubGen &gen,
                            uint32_t createSlot,
                            uint32_t keyOff,
@@ -703,12 +781,16 @@ void emitRegCreateConstKey(InstallerStubGen &gen,
     gen.jnz(errorLabel);
 }
 
+// Emit RegDeleteKeyW under HKLM for the key path at keyOff. Errors are ignored
+// (key may not exist during rollback or uninstall).
 void emitRegDeleteConstKey(InstallerStubGen &gen, uint32_t deleteSlot, uint32_t keyOff) {
     gen.movRegImm64(X64Reg::RCX, kHkeyLocalMachine);
     gen.leaRipData(X64Reg::RDX, keyOff);
     gen.callIATSlot(deleteSlot);
 }
 
+// Build the Software\Classes\.<ext> registry key path for a file association.
+// Ensures the extension has a leading dot.
 std::string extensionKeyFor(const WindowsFileAssociationEntry &assoc) {
     std::string ext = assoc.extension;
     if (ext.empty() || ext.front() != '.')
@@ -716,14 +798,18 @@ std::string extensionKeyFor(const WindowsFileAssociationEntry &assoc) {
     return "Software\\Classes\\" + ext;
 }
 
+// Build the Software\Classes\<ProgID> registry key path for a file association.
 std::string progIdKeyFor(const WindowsFileAssociationEntry &assoc) {
     return "Software\\Classes\\" + assoc.progId;
 }
 
+// Build the Software\Classes\.<ext>\OpenWithProgids registry key path.
 std::string openWithProgIdsKeyFor(const WindowsFileAssociationEntry &assoc) {
     return extensionKeyFor(assoc) + "\\OpenWithProgids";
 }
 
+// Emit RegOpenKeyW under HKLM for the key path at keyOff, closing any previously
+// open key first. Jumps to missingLabel if the key does not exist.
 void emitRegOpenConstKeyIfExists(InstallerStubGen &gen,
                                  uint32_t openSlot,
                                  uint32_t closeSlot,
@@ -738,6 +824,8 @@ void emitRegOpenConstKeyIfExists(InstallerStubGen &gen,
     gen.jnz(missingLabel);
 }
 
+// Emit conditional RegDeleteValueW: opens the key at keyOff, deletes the named
+// value, then closes the key. Silently skips if the key does not exist.
 void emitRegDeleteNamedValueIfPresent(InstallerStubGen &gen,
                                       uint32_t openSlot,
                                       uint32_t closeSlot,
@@ -753,6 +841,9 @@ void emitRegDeleteNamedValueIfPresent(InstallerStubGen &gen,
     gen.bindLabel(lblDone);
 }
 
+// Emit code to query a registry value and compare it against an embedded expected
+// string. Reads into kTempPathOff, then calls lstrcmpW. Jumps to notEqualLabel
+// if the query fails, the byte count mismatches, or the string comparison fails.
 void emitRegQueryConstStringEquals(InstallerStubGen &gen,
                                    uint32_t querySlot,
                                    uint32_t strcmpSlot,
@@ -785,6 +876,8 @@ void emitRegQueryConstStringEquals(InstallerStubGen &gen,
     gen.jnz(notEqualLabel);
 }
 
+// Emit code to check whether a named registry value exists under kRegKeyOff.
+// Jumps to existsLabel if the query succeeds or returns ERROR_MORE_DATA.
 void emitRegQueryValueExists(InstallerStubGen &gen,
                              uint32_t querySlot,
                              uint32_t valueNameOff,
@@ -807,6 +900,9 @@ void emitRegQueryValueExists(InstallerStubGen &gen,
     gen.jz(existsLabel);
 }
 
+// Emit code to delete the ProgID subtree (shell/open/command, shell/open, shell,
+// and the ProgID key itself) only if we own it — i.e. only if the VAPSOwner marker
+// matches our identifier. Silently skips if the key is absent or owned by another app.
 void emitDeleteProgIdTreeIfOwned(InstallerStubGen &gen,
                                  uint32_t openSlot,
                                  uint32_t closeSlot,
@@ -845,6 +941,12 @@ void emitDeleteProgIdTreeIfOwned(InstallerStubGen &gen,
     gen.bindLabel(lblSkip);
 }
 
+// Emit code to register all file associations from layout.fileAssociations in
+// the Windows registry. For each association this creates:
+//   - Software\Classes\.<ext> with Content Type (if not already set) and VAPSContentTypeOwner
+//   - Software\Classes\.<ext>\OpenWithProgids\<ProgID> = REG_NONE
+//   - Software\Classes\<ProgID> with VAPSOwner marker, default description
+//   - Software\Classes\<ProgID>\shell\open\command = "<exe>" [args] "%1"
 void emitRegisterFileAssociations(InstallerStubGen &gen,
                                   const WindowsPackageLayout &layout,
                                   uint32_t slashOff,
@@ -949,6 +1051,10 @@ void emitRegisterFileAssociations(InstallerStubGen &gen,
     }
 }
 
+// Emit code to unregister all file associations owned by this application.
+// Removes OpenWithProgids entries, Content Type if we set it (VAPSContentTypeOwner),
+// and the full ProgID subtree if we own it (VAPSOwner marker matches our identifier).
+// Silently skips any key that is missing or owned by another app.
 void emitUnregisterFileAssociations(InstallerStubGen &gen,
                                     const WindowsPackageLayout &layout,
                                     uint32_t openSlot,
@@ -1014,6 +1120,10 @@ void emitUnregisterFileAssociations(InstallerStubGen &gen,
     }
 }
 
+// Emit code to resolve all install root paths via SHGetFolderPathW and store them
+// in the stack-frame buffers (kInstallPathOff, kDesktopPathOff, kMenuPathOff).
+// If createRoots is true, also emits CreateDirectoryW for each resolved path.
+// Only resolves the paths actually needed per needsDesktopPath / needsMenuPath.
 void emitBuildRootPaths(InstallerStubGen &gen,
                         const WindowsPackageLayout &layout,
                         uint32_t slashOff,
@@ -1076,6 +1186,8 @@ void emitBuildRootPaths(InstallerStubGen &gen,
     }
 }
 
+// Emit code to compose the PATH entry string into [RBP+destOff]: copies
+// kInstallPathOff then appends "\<pathRelativePath>" if configured.
 void emitComposeInstallPathEntry(InstallerStubGen &gen,
                                  const WindowsPackageLayout &layout,
                                  int32_t destOff,
@@ -1098,6 +1210,10 @@ void emitComposeInstallPathEntry(InstallerStubGen &gen,
     }
 }
 
+// Emit code to delete all existing contents of the install root before extraction
+// (upgrade path). Builds an "<installDir>\*" glob, constructs an SHFILEOPSTRUCT
+// with FO_DELETE | FOF_NOCONFIRMATION, and calls SHFileOperationW. No-op if
+// layout.cleanInstallRootBeforeInstall is false.
 void emitCleanInstallRootContents(InstallerStubGen &gen,
                                   const WindowsPackageLayout &layout,
                                   uint32_t slashOff,
@@ -1136,6 +1252,8 @@ void emitCleanInstallRootContents(InstallerStubGen &gen,
     gen.jnz(errorLabel);
 }
 
+// Forward declaration — implemented after emitRestorePathFromOriginalLocal
+// to allow emitInstallPathUpdate to reference it.
 void emitRemovePathEntryTokens(InstallerStubGen &gen,
                                int32_t currentPathOff,
                                int32_t entryOff,
@@ -1147,6 +1265,12 @@ void emitRemovePathEntryTokens(InstallerStubGen &gen,
                                uint32_t strlenSlot,
                                uint32_t errorLabel);
 
+// Emit code to add the install path entry to the system PATH registry value.
+// Checks whether the entry is already present (idempotent). If the uninstall key
+// already contains a matching VAPSPathEntry, skips. Otherwise reads the current
+// PATH, strips any existing entry (via emitRemovePathEntryTokens), appends the
+// new entry, writes it back as REG_EXPAND_SZ, and broadcasts WM_SETTINGCHANGE.
+// No-op if layout.addToPath is false.
 void emitInstallPathUpdate(InstallerStubGen &gen,
                            const WindowsPackageLayout &layout,
                            uint32_t slashOff,
@@ -1254,6 +1378,10 @@ void emitInstallPathUpdate(InstallerStubGen &gen,
     gen.bindLabel(lblSkipUpdate);
 }
 
+// Emit rollback code to restore the system PATH from the saved original value
+// in kPathOriginalOff (captured before installation modified PATH). Only runs
+// if kPathUpdatedOff is non-zero (i.e. PATH was actually modified). No-op if
+// layout.addToPath is false.
 void emitRestorePathFromOriginalLocal(InstallerStubGen &gen,
                                       const WindowsPackageLayout &layout,
                                       uint32_t envKeyOff,
@@ -1286,6 +1414,10 @@ void emitRestorePathFromOriginalLocal(InstallerStubGen &gen,
     gen.bindLabel(lblSkip);
 }
 
+// Emit code to rebuild the PATH string at [RBP+outputPathOff] by iterating the
+// semicolon-delimited tokens in [RBP+currentPathOff] and skipping any token that
+// matches [RBP+entryOff]. Used both during install (to remove stale entry before
+// re-appending) and during uninstall (to remove our entry from PATH).
 void emitRemovePathEntryTokens(InstallerStubGen &gen,
                                int32_t currentPathOff,
                                int32_t entryOff,
@@ -1364,6 +1496,11 @@ void emitRemovePathEntryTokens(InstallerStubGen &gen,
     gen.bindLabel(lblDone);
 }
 
+// Emit code to remove our PATH entry during uninstall. Reads VAPSPathEntry from
+// the uninstall registry key to find the exact entry that was added, reads the
+// current system PATH, removes our entry via emitRemovePathEntryTokens, writes
+// the cleaned PATH back as REG_EXPAND_SZ, and broadcasts WM_SETTINGCHANGE.
+// No-op if layout.addToPath is false or the uninstall key is missing.
 void emitRestorePathFromUninstallKey(InstallerStubGen &gen,
                                      const WindowsPackageLayout &layout,
                                      uint32_t slashOff,
@@ -1436,6 +1573,11 @@ void emitRestorePathFromUninstallKey(InstallerStubGen &gen,
     gen.bindLabel(lblSkip);
 }
 
+// Emit code to extract a single file from the ZIP overlay appended to the
+// installer PE. Seeks to the precomputed file offset via SetFilePointer, reads
+// the data in kInstallerCopyChunkBytes chunks, incrementally computes CRC-32 via
+// RtlComputeCrc32, creates the destination file, writes it, and verifies the
+// final CRC against entry.crc32. For zero-byte files, just creates the file.
 void emitExtractFile(InstallerStubGen &gen,
                      const WindowsPackageFileEntry &entry,
                      uint32_t overlayFileOffset,
@@ -1598,6 +1740,9 @@ void emitExtractFile(InstallerStubGen &gen,
     emitLocalFreeIfSet(gen, kPFileBufOff, freeSlot);
 }
 
+// Emit code to delete a single file at entry.root\entry.relativePath.
+// Treats ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, and ERROR_DIR_NOT_EMPTY
+// as success (file already gone). Jumps to errorLabel on any other failure.
 void emitDeleteFile(InstallerStubGen &gen,
                     const WindowsPackageFileEntry &entry,
                     uint32_t slashOff,
@@ -1626,6 +1771,9 @@ void emitDeleteFile(InstallerStubGen &gen,
     gen.bindLabel(lblOk);
 }
 
+// Emit code to remove a directory at entry.root\entry.relativePath.
+// Treats ERROR_FILE_NOT_FOUND and ERROR_PATH_NOT_FOUND as success (already gone).
+// Jumps to errorLabel on any other failure.
 void emitRemoveDirectory(InstallerStubGen &gen,
                          const WindowsPackageDirEntry &entry,
                          uint32_t slashOff,

@@ -87,17 +87,21 @@ struct DataFile {
     }
 };
 
+// Map a Viper arch string ("x64", "arm64") to the Debian architecture field value.
 std::string debArchFor(const std::string &arch) {
     validateToolchainArchitecture(arch);
     return arch == "arm64" ? "arm64" : "amd64";
 }
 
+// Return text with all ASCII letters converted to lowercase.
 std::string lowerAscii(std::string text) {
     for (char &c : text)
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return text;
 }
 
+// Return Unix permission bits for a toolchain file, using the stored unixMode if
+// non-zero, otherwise defaulting to 0755 for executables and 0644 for data files.
 uint32_t permissionBitsFor(const ToolchainFileEntry &file) {
     const uint32_t bits = file.unixMode & 07777u;
     if (bits != 0)
@@ -105,6 +109,9 @@ uint32_t permissionBitsFor(const ToolchainFileEntry &file) {
     return file.executable ? 0755u : 0644u;
 }
 
+// Append a .desktop file for the given file associations to dataFiles.
+// Creates a hidden terminal-type desktop entry under usr/share/applications/.
+// No-op if associations is empty.
 void addToolchainDesktopMetadata(std::vector<DataFile> &dataFiles,
                                  const std::string &desktopName,
                                  const std::string &execPath,
@@ -129,6 +136,9 @@ void addToolchainDesktopMetadata(std::vector<DataFile> &dataFiles,
                            0644);
 }
 
+// Append MIME XML and separate .desktop files (one for .il, one for source files)
+// to dataFiles for all file associations in the toolchain manifest. No-op if
+// manifest.fileAssociations is empty.
 void addToolchainFileAssociationMetadata(std::vector<DataFile> &dataFiles,
                                          const ToolchainInstallManifest &manifest,
                                          const std::string &packageName,
@@ -158,6 +168,8 @@ void addToolchainFileAssociationMetadata(std::vector<DataFile> &dataFiles,
                            0644);
 }
 
+// Collect all Linux install files from the manifest, mapping each to its FHS
+// path under /usr (via LinuxUsrRoot policy), plus generated file-association metadata.
 std::vector<DataFile> collectToolchainLinuxFiles(const ToolchainInstallManifest &manifest,
                                                  const std::string &packageName) {
     std::vector<DataFile> dataFiles;
@@ -178,6 +190,8 @@ std::vector<DataFile> collectToolchainLinuxFiles(const ToolchainInstallManifest 
     return dataFiles;
 }
 
+// Add all parent directory entries to the tar archive for every path in dataFiles,
+// ensuring directories are emitted before their contents. Deduplicates entries.
 void addDirectoriesForDataFiles(TarWriter &tar, const std::vector<DataFile> &dataFiles) {
     std::vector<std::string> dirs;
     auto ensureDir = [&](const std::string &dirPath) {
@@ -204,11 +218,14 @@ void addDirectoriesForDataFiles(TarWriter &tar, const std::vector<DataFile> &dat
         tar.addDirectory(dir, 0755);
 }
 
+// Map a Viper arch string ("x64", "arm64") to the RPM architecture name.
 std::string rpmArchFor(const std::string &arch) {
     validateToolchainArchitecture(arch);
     return arch == "arm64" ? "aarch64" : "x86_64";
 }
 
+// Validate that manifest is a well-formed Linux toolchain manifest. Throws if the
+// manifest platform is not "linux", with a message naming the package kind.
 void requireLinuxToolchainManifest(const ToolchainInstallManifest &manifest,
                                    const char *packageKind) {
     validateToolchainInstallManifest(manifest);
@@ -219,15 +236,19 @@ void requireLinuxToolchainManifest(const ToolchainInstallManifest &manifest,
     }
 }
 
+// Return the Debian Depends line for a toolchain .deb (minimal C/C++ runtime).
 std::string toolchainDebDepends() {
     return "libc6, libstdc++6 | libc++1";
 }
 
+// Return true if the rpmbuild tool is available on PATH (exit code 0).
 bool rpmbuildAvailable() {
     const RunResult rr = run_process({"rpmbuild", "--version"});
     return rr.exit_code == 0;
 }
 
+// Find the .rpm file produced by rpmbuild under tmpRoot/RPMS/<arch>/. Expects exactly
+// one file matching <packageName>-<version>-*.<arch>.rpm; throws if none or more than one.
 fs::path findGeneratedRpm(const fs::path &tmpRoot,
                           const std::string &packageName,
                           const std::string &version,
@@ -262,6 +283,8 @@ fs::path findGeneratedRpm(const fs::path &tmpRoot,
     return matches.front();
 }
 
+// Map a freedesktop.org Category string to the closest Debian section name.
+// Falls back to "utils" for unrecognized or empty categories.
 std::string debSectionFor(const std::string &category) {
     if (category.empty())
         return "utils";
@@ -291,6 +314,9 @@ std::string debSectionFor(const std::string &category) {
     return "utils";
 }
 
+// Validate all metadata fields required for a Debian package: display name, version
+// format, architecture, author, description, homepage URL, license, categories,
+// dependency syntax, and file association entries.
 void validateDebMetadata(const PackageConfig &pkg,
                          const std::string &displayName,
                          const std::string &version,
@@ -308,6 +334,8 @@ void validateDebMetadata(const PackageConfig &pkg,
     validatePackageFileAssociations(pkg.fileAssociations);
 }
 
+// Validate metadata fields required for a portable tarball: display name,
+// version format, author, description, homepage URL, and license.
 void validatePortableMetadata(const PackageConfig &pkg,
                               const std::string &displayName,
                               const std::string &version) {
@@ -319,6 +347,9 @@ void validatePortableMetadata(const PackageConfig &pkg,
     validateSingleLineField(pkg.license, "package license");
 }
 
+// Build the Debian Maintainer field from pkg.author. If the author string does not
+// already contain an email address, appends a dummy "<noreply@example.invalid>" to
+// satisfy the required Maintainer: Name <email> format.
 std::string debMaintainerFor(const PackageConfig &pkg, const std::string &displayName) {
     std::string maintainer = trimAsciiWhitespace(pkg.author);
     if (maintainer.empty())
@@ -331,6 +362,8 @@ std::string debMaintainerFor(const PackageConfig &pkg, const std::string &displa
     return maintainer + " <noreply@example.invalid>";
 }
 
+// Validate all install paths in dataFiles: each must be normalized and unique.
+// Throws on path traversal, duplicate paths, or non-normalized separators.
 void validateDataFilePaths(const std::vector<DataFile> &dataFiles) {
     std::set<std::string> seen;
     for (const auto &df : dataFiles) {
@@ -342,12 +375,17 @@ void validateDataFilePaths(const std::vector<DataFile> &dataFiles) {
     }
 }
 
+// Validate that a single portable archive path is normalized (no "..", absolute paths,
+// or non-canonical separators). Throws with fieldName in the error message.
 void validatePortableArchivePath(const std::string &path, const char *fieldName) {
     const std::string clean = sanitizePackageRelativePath(path, fieldName);
     if (clean != path)
         throw std::runtime_error(std::string(fieldName) + " was not normalized: " + path);
 }
 
+// Format a relative install path for use in an RPM spec %files section.
+// Prepends "/" and escapes "%" characters (which RPM treats as macro start).
+// Returns a quoted string if the path contains spaces or tabs.
 std::string rpmSpecFilePath(const std::string &path) {
     const std::string clean = sanitizePackageRelativePath(path, "rpm payload path");
     if (clean != path)
@@ -375,6 +413,8 @@ std::string rpmSpecFilePath(const std::string &path) {
     return "\"" + out + "\"";
 }
 
+// Validate that path can safely appear in an RPM spec %files section — must pass
+// the standard normalize check and must not contain embedded line breaks.
 void validateRpmSpecPath(const std::string &path) {
     (void)rpmSpecFilePath(path);
     for (char c : path) {
@@ -383,6 +423,7 @@ void validateRpmSpecPath(const std::string &path) {
     }
 }
 
+// Return the platform name used in portable archive filenames for the current host.
 std::string portableArchivePlatformName() {
 #if defined(__APPLE__)
     return "macos";
@@ -393,6 +434,8 @@ std::string portableArchivePlatformName() {
 #endif
 }
 
+// Generate a unique temp directory path by combining stem, PID, and a steady-clock
+// tick count to avoid collisions between concurrent packaging invocations.
 fs::path uniqueTempPackagingDir(std::string_view stem) {
     const auto tick =
         static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count());
@@ -406,6 +449,8 @@ fs::path uniqueTempPackagingDir(std::string_view stem) {
            (std::string(stem) + "-" + std::to_string(pid) + "-" + std::to_string(tick));
 }
 
+// RAII guard that removes the given directory tree on destruction.
+// Used to clean up the rpmbuild temp workspace on success or failure.
 class TempDirGuard {
   public:
     explicit TempDirGuard(fs::path path) : path_(std::move(path)) {}

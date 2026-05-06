@@ -3,6 +3,8 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/network/rt_tls.h
 // Purpose: TLS 1.3 transport for secure networking using AES-128-GCM-SHA256
 // and ChaCha20-Poly1305-SHA256 AEAD with X25519 key exchange, implemented in
@@ -52,11 +54,11 @@ typedef struct rt_tls_session rt_tls_session_t;
 
 /// @brief TLS configuration.
 typedef struct rt_tls_config {
-    const char *hostname; // Server hostname for cert verification and DNS-name SNI
-    const char *alpn_protocol; // Optional comma-separated ALPN preference list (e.g. "h2,http/1.1")
-    const char *ca_file;  // Optional PEM bundle override for trust anchors
-    int verify_cert;      // 1 = verify certificate (default), 0 = skip
-    int timeout_ms;       // Connection timeout in ms (0 = default 30s)
+    const char *hostname;       ///< Server hostname for cert verification and DNS-name SNI.
+    const char *alpn_protocol;  ///< Optional comma-separated ALPN preference list (e.g. "h2,http/1.1").
+    const char *ca_file;        ///< Optional PEM bundle override for trust anchors.
+    int verify_cert;            ///< 1 = verify certificate (default), 0 = skip verification.
+    int timeout_ms;             ///< Connection timeout in ms (0 = default 30 s).
 } rt_tls_config_t;
 
 /// @brief Initialize default TLS configuration.

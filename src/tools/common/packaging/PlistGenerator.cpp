@@ -52,6 +52,10 @@ static std::string xmlEscape(const std::string &s) {
     return result;
 }
 
+// Generate a complete macOS Info.plist for an .app bundle.
+// Validates file associations first, then emits the PropertyList-1.0 XML with
+// required CFBundle* keys, optional icon and min-OS entries, and — if file
+// associations are present — both CFBundleDocumentTypes and UTExportedTypeDeclarations.
 std::string generatePlist(const PlistParams &params) {
     validatePackageFileAssociations(params.fileAssociations);
     std::ostringstream os;
@@ -157,6 +161,10 @@ std::string generatePlist(const PlistParams &params) {
     return os.str();
 }
 
+// Return the 8-byte macOS PkgInfo file content "APPL????".
+// Every .app bundle requires this file in Contents/ alongside Info.plist.
+// The first four bytes are the package type (APPL = application) and the
+// second four are the legacy creator code (all '?' = unregistered).
 std::string generatePkgInfo() {
     return "APPL????";
 }

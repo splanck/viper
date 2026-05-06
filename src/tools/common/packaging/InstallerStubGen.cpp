@@ -420,6 +420,8 @@ static uint32_t computeIATSlotRVA(const std::vector<PEImport> &imports,
     throw std::runtime_error("InstallerStubGen: IAT slot index out of range");
 }
 
+// Patch a 4-byte little-endian displacement field in buf at offset off.
+// Used to back-fill forward-reference fixups after all code is emitted.
 static void patchLE32(std::vector<uint8_t> &buf, uint32_t off, int32_t val) {
     buf[off + 0] = static_cast<uint8_t>(val & 0xFF);
     buf[off + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);

@@ -33,6 +33,9 @@ extern "C" {
 // XML Node Types
 //=========================================================================
 
+/// @brief Runtime class identifier for XML node handles.
+#define RT_XML_NODE_CLASS_ID INT64_C(-0x44584D4C)
+
 /// @brief Node type enumeration.
 typedef enum {
     XML_NODE_ELEMENT = 1, ///< Element node (has tag, attributes, children)
@@ -60,6 +63,9 @@ rt_string rt_xml_error(void);
 /// @param text String to validate.
 /// @return 1 if valid XML, 0 otherwise.
 int8_t rt_xml_is_valid(rt_string text);
+
+/// @brief Return 1 when @p node is a Viper.Data.Xml node handle.
+int8_t rt_xml_is_node(void *node);
 
 //=========================================================================
 // Node Creation
@@ -211,19 +217,19 @@ void rt_xml_set_text(void *node, rt_string text);
 void *rt_xml_parent(void *node);
 
 /// @brief Get document root element.
-/// @param doc Document node.
+/// @param doc Document node or any descendant node.
 /// @return Root element, or NULL if empty document.
 void *rt_xml_root(void *doc);
 
-/// @brief Find elements by tag name (recursive).
+/// @brief Find elements by tag name or slash-separated path.
 /// @param node Starting node.
-/// @param tag Tag name to match.
+/// @param tag Tag name to match recursively, or slash-separated element path.
 /// @return Seq of all matching elements in subtree.
 void *rt_xml_find_all(void *node, rt_string tag);
 
-/// @brief Find first element by tag name (recursive).
+/// @brief Find first element by tag name or slash-separated path.
 /// @param node Starting node.
-/// @param tag Tag name to match.
+/// @param tag Tag name to match recursively, or slash-separated element path.
 /// @return First matching element, or NULL if not found.
 void *rt_xml_find(void *node, rt_string tag);
 

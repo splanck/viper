@@ -3,6 +3,8 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/text/rt_cipher.h
 // Purpose: High-level encryption/decryption API using ChaCha20-Poly1305 AEAD with automatic nonce
 // generation and PBKDF2-HMAC-SHA256 key derivation from passwords.
@@ -68,8 +70,8 @@ void *rt_cipher_encrypt_with_key(void *plaintext, void *key);
 /// @brief Decrypt data that was encrypted with rt_cipher_encrypt_with_key.
 /// @param ciphertext Bytes object containing encrypted data.
 /// @param key Bytes object containing exactly 32 bytes (256-bit key).
-/// @return Bytes object containing decrypted plaintext.
-/// @note Traps if authentication fails, ciphertext is malformed, or key wrong size.
+/// @return Bytes object containing decrypted plaintext, or NULL on authentication failure.
+/// @note Traps only if ciphertext is malformed or the key has the wrong size.
 void *rt_cipher_decrypt_with_key(void *ciphertext, void *key);
 
 //=========================================================================

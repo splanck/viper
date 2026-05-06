@@ -52,6 +52,7 @@ static const IcnsTypeEntry kIcnsTypes[] = {
     {"ic10", 1024}, // 1024x1024 (Retina 512)
 };
 
+// Append a 32-bit big-endian value to out. Used for ICNS headers.
 void writeBE32(std::vector<uint8_t> &out, uint32_t val) {
     out.push_back(static_cast<uint8_t>((val >> 24) & 0xFF));
     out.push_back(static_cast<uint8_t>((val >> 16) & 0xFF));
@@ -59,11 +60,13 @@ void writeBE32(std::vector<uint8_t> &out, uint32_t val) {
     out.push_back(static_cast<uint8_t>(val & 0xFF));
 }
 
+// Append a 16-bit little-endian value to out. Used for ICO headers.
 void writeLE16(std::vector<uint8_t> &out, uint16_t val) {
     out.push_back(static_cast<uint8_t>(val & 0xFF));
     out.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
 }
 
+// Append a 32-bit little-endian value to out. Used for ICO headers.
 void writeLE32(std::vector<uint8_t> &out, uint32_t val) {
     out.push_back(static_cast<uint8_t>(val & 0xFF));
     out.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
@@ -77,6 +80,9 @@ static const uint32_t kLinuxIconSizes[] = {16, 32, 48, 128, 256};
 /// @brief Standard icon sizes for Windows ICO.
 static const uint32_t kIcoSizes[] = {16, 24, 32, 48, 64, 128, 256};
 
+// Validate that srcImage is non-empty and that its pixel buffer is the expected
+// size for an RGBA (4 bytes per pixel) image at srcImage.width x srcImage.height.
+// Throws PNGError on any mismatch.
 void validateSourceImage(const PkgImage &srcImage) {
     if (srcImage.width == 0 || srcImage.height == 0)
         throw PNGError("icon: source image is empty");
@@ -85,6 +91,9 @@ void validateSourceImage(const PkgImage &srcImage) {
         throw PNGError("icon: RGBA pixel buffer size does not match dimensions");
 }
 
+// Safely narrow a size_t byte count to uint32_t for use in icon format headers.
+// Throws PNGError if the value exceeds UINT32_MAX, which would indicate a
+// single icon entry that cannot be represented in the format.
 uint32_t checkedIconSize(size_t value, const char *format) {
     if (value > std::numeric_limits<uint32_t>::max())
         throw PNGError(std::string("icon: ") + format + " entry is too large");

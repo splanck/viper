@@ -38,6 +38,10 @@ static rt_string S(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
+static rt_string S_raw(const char *s, size_t len) {
+    return rt_string_from_bytes(s, len);
+}
+
 static void test_str_roundtrip(void) {
     printf("rt_aes_encrypt_str / rt_aes_decrypt_str roundtrip:\n");
 
@@ -77,6 +81,29 @@ static void test_empty_str_roundtrip(void) {
     rt_string_unref(password);
     rt_string_unref(plaintext);
 }
+
+static void test_embedded_nul_str_roundtrip(void) {
+    printf("rt_aes_encrypt_str / rt_aes_decrypt_str with embedded NUL bytes:\n");
+
+    const char plain_raw[] = {'A', 0, 'B'};
+    const char pass_raw[] = {'p', 0, 'w'};
+    rt_string plaintext = S_raw(plain_raw, sizeof(plain_raw));
+    rt_string password = S_raw(pass_raw, sizeof(pass_raw));
+
+    void *ciphertext = rt_aes_encrypt_str(plaintext, password);
+    check("encrypt embedded NUL string returns non-null", ciphertext != NULL);
+
+    rt_string decrypted = rt_aes_decrypt_str(ciphertext, password);
+    check("decrypt embedded NUL length", rt_str_len(decrypted) == (int64_t)sizeof(plain_raw));
+    check("decrypt embedded NUL bytes",
+          memcmp(rt_string_cstr(decrypted), plain_raw, sizeof(plain_raw)) == 0);
+
+    rt_string_unref(decrypted);
+    obj_release(ciphertext);
+    rt_string_unref(password);
+    rt_string_unref(plaintext);
+}
+
 
 static void test_str_format_magic(void) {
     printf("rt_aes_encrypt_str emits authenticated VAG1 payload:\n");
@@ -160,6 +187,7 @@ int main(void) {
     printf("=== RTAesTests ===\n");
     test_str_roundtrip();
     test_empty_str_roundtrip();
+    test_embedded_nul_str_roundtrip();
     test_str_format_magic();
     // wrong-password decrypt traps (bad PKCS7 padding aborts via rt_trap),
     // so that path cannot be tested with assert-style checks.

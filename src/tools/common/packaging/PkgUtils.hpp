@@ -115,6 +115,7 @@ inline std::string normalizeDebName(const std::string &name) {
     return result;
 }
 
+/// @brief Strip leading and trailing ASCII whitespace (space, tab, CR, LF).
 inline std::string trimAsciiWhitespace(std::string value) {
     const std::size_t start = value.find_first_not_of(" \t\r\n");
     if (start == std::string::npos)
@@ -123,6 +124,7 @@ inline std::string trimAsciiWhitespace(std::string value) {
     return value.substr(start, end - start + 1);
 }
 
+/// @brief Return a copy of value with all ASCII letters converted to lowercase.
 inline std::string lowerAsciiCopy(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
         return static_cast<char>(std::tolower(c));
@@ -130,6 +132,8 @@ inline std::string lowerAsciiCopy(std::string value) {
     return value;
 }
 
+/// @brief Throw if value contains any ASCII control character (0x00-0x1F or 0x7F).
+/// Used to keep metadata strings safe for embedding in package control files.
 inline void rejectControlChars(const std::string &value, const char *fieldName) {
     for (char c : value) {
         unsigned char uc = static_cast<unsigned char>(c);
@@ -140,17 +144,22 @@ inline void rejectControlChars(const std::string &value, const char *fieldName) 
     }
 }
 
+/// @brief Throw if value contains CR or LF characters.
+/// Single-line metadata fields (Name, Version, etc.) must not span multiple lines.
 inline void rejectLineBreaks(const std::string &value, const char *fieldName) {
     if (value.find('\n') != std::string::npos || value.find('\r') != std::string::npos) {
         throw std::runtime_error(std::string(fieldName) + " must not contain line breaks");
     }
 }
 
+/// @brief Validate a string that must be a single, control-character-free line.
+/// Combines rejectLineBreaks + rejectControlChars in one call.
 inline void validateSingleLineField(const std::string &value, const char *fieldName) {
     rejectLineBreaks(value, fieldName);
     rejectControlChars(value, fieldName);
 }
 
+/// @brief Validate that arch is one of the two supported Viper target architectures ("x64", "arm64").
 inline void validateToolchainArchitecture(const std::string &arch,
                                           const char *fieldName = "toolchain architecture") {
     validateSingleLineField(arch, fieldName);
@@ -158,6 +167,7 @@ inline void validateToolchainArchitecture(const std::string &arch,
         throw std::runtime_error(std::string(fieldName) + " must be x64 or arm64: '" + arch + "'");
 }
 
+/// @brief Validate that platform is one of "windows", "macos", or "linux".
 inline void validateToolchainPlatform(const std::string &platform,
                                       const char *fieldName = "toolchain platform") {
     validateSingleLineField(platform, fieldName);
@@ -167,6 +177,9 @@ inline void validateToolchainPlatform(const std::string &platform,
     }
 }
 
+/// @brief Validate a Debian package version string per Policy Manual §5.6.12.
+/// Accepts the full [epoch:]upstream[-revision] format. Throws on any invalid
+/// character, empty component, non-numeric epoch, or wrong starting digit.
 inline void validateDebVersion(const std::string &version, const char *fieldName = "version") {
     const auto fail = [&](const std::string &why) {
         throw std::runtime_error(std::string(fieldName) + " is not a valid Debian version: '" +
@@ -226,6 +239,9 @@ inline void validateDebVersion(const std::string &version, const char *fieldName
     }
 }
 
+/// @brief Parse a dotted-numeric version string ("1.2.3.4") into a uint32_t vector.
+/// Each component is validated to be purely numeric and ≤ 65535.
+/// Throws on empty input, non-numeric characters, or a trailing dot.
 inline std::vector<uint32_t> parseDottedNumericVersionParts(const std::string &version,
                                                             const char *fieldName) {
     if (version.empty())
@@ -260,6 +276,7 @@ inline std::vector<uint32_t> parseDottedNumericVersionParts(const std::string &v
     return parts;
 }
 
+/// @brief Validate a dotted-numeric version string with 2-4 components (e.g. "1.0" or "1.2.3.4").
 inline void validateDottedNumericVersion(const std::string &version, const char *fieldName) {
     const auto parts = parseDottedNumericVersionParts(version, fieldName);
     if (parts.size() < 2 || parts.size() > 4)
@@ -267,6 +284,9 @@ inline void validateDottedNumericVersion(const std::string &version, const char 
                                  " must have 2 to 4 numeric components: '" + version + "'");
 }
 
+/// @brief Validate a Debian dependency specification per Policy Manual §7.1.
+/// Accepts the full pkgname[:arch] [(op version)] [arch-list] [profile-list] | alt ...
+/// syntax. Throws with a descriptive error on any violation.
 inline void validateDebDependency(const std::string &dependency) {
     const std::string dep = trimAsciiWhitespace(dependency);
     if (dep.empty())
@@ -394,6 +414,9 @@ inline void validateDebDependency(const std::string &dependency) {
         throw std::runtime_error("package dependency has empty alternative: '" + dep + "'");
 }
 
+/// @brief Return true if category is a registered freedesktop.org desktop category.
+/// Used by normalizeDesktopCategories to reject unknown tokens before writing
+/// the .desktop Categories= field.
 inline bool isKnownDesktopCategory(std::string_view category) {
     static constexpr std::string_view known[] = {
         "AudioVideo", "Audio", "Video", "Development", "Education", "Game", "Graphics",
@@ -427,6 +450,9 @@ inline bool isKnownDesktopCategory(std::string_view category) {
     return false;
 }
 
+/// @brief Parse, validate, and normalize a semicolon-delimited freedesktop.org
+/// Categories string. Each token is trimmed of whitespace, checked against the
+/// known-categories list, and rejoined with semicolons. Returns "" for empty input.
 inline std::string normalizeDesktopCategories(const std::string &categories) {
     if (categories.empty())
         return {};
@@ -456,10 +482,14 @@ inline std::string normalizeDesktopCategories(const std::string &categories) {
     return out;
 }
 
+/// @brief Validate desktop categories without returning the normalized form.
 inline void validateDesktopCategories(const std::string &categories) {
     (void)normalizeDesktopCategories(categories);
 }
 
+/// @brief Validate an RPM version string.
+/// RPM versions may contain alphanumerics plus '.', '_', '+', '~', '^'.
+/// No epoch/revision parsing — RPM spec file handles those separately.
 inline void validateRpmVersion(const std::string &version, const char *fieldName = "version") {
     if (version.empty())
         throw std::runtime_error(std::string(fieldName) + " must not be empty");
@@ -473,6 +503,10 @@ inline void validateRpmVersion(const std::string &version, const char *fieldName
     }
 }
 
+/// @brief Validate a reverse-DNS package identifier (e.g. "com.example.MyApp").
+/// Rules: ≤255 chars total; each dot-separated component ≤63 chars, starts and
+/// ends with alphanumeric, contains only alphanumerics and '-'; must have ≥1 dot.
+/// An empty identifier is accepted (optional field).
 inline void validatePackageIdentifier(const std::string &identifier,
                                       const char *fieldName = "package identifier") {
     if (identifier.empty())
@@ -520,11 +554,16 @@ inline void validatePackageIdentifier(const std::string &identifier,
                                  identifier + "'");
 }
 
+/// @brief Validate a macOS bundle identifier. Delegates to validatePackageIdentifier
+/// with a macOS-specific field name for clearer error messages.
 inline void validateMacOSBundleIdentifier(const std::string &identifier,
                                           const char *fieldName = "macOS bundle identifier") {
     validatePackageIdentifier(identifier, fieldName);
 }
 
+/// @brief Validate a Windows ProgID base string (e.g. "Company.AppName").
+/// Must contain at least one '.' separating non-empty components composed of
+/// alphanumerics, '_', or '-'. Empty identifier is accepted (optional field).
 inline void validateWindowsProgIdBase(const std::string &identifier,
                                       const char *fieldName = "Windows ProgID base") {
     if (identifier.empty())
@@ -552,6 +591,9 @@ inline void validateWindowsProgIdBase(const std::string &identifier,
                                  identifier + "'");
 }
 
+/// @brief Normalize a package lifecycle hook script (preinst, postinst, etc.).
+/// Converts Windows CRLF line endings to LF, and rejects NUL bytes and other
+/// non-printable control characters. Returns "" for an empty input.
 inline std::string normalizePackageHookScript(std::string script, const char *fieldName) {
     if (script.empty())
         return {};
@@ -576,6 +618,10 @@ inline std::string normalizePackageHookScript(std::string script, const char *fi
     return out;
 }
 
+/// @brief Validate a single file association entry.
+/// Checks that the extension starts with '.' and contains valid characters,
+/// that description and mimeType are single-line printable strings, and that
+/// mimeType has exactly one '/' separating non-empty type and subtype.
 inline void validateFileAssociation(const std::string &extension,
                                     const std::string &description,
                                     const std::string &mimeType) {
@@ -617,6 +663,9 @@ inline void validateFileAssociation(const std::string &extension,
     }
 }
 
+/// @brief Validate all file associations in the package config.
+/// Calls validateFileAssociation for each entry and additionally checks for
+/// duplicate extensions (case-insensitive comparison).
 inline void validatePackageFileAssociations(const std::vector<FileAssoc> &associations) {
     std::set<std::string> seenExtensions;
     for (const auto &assoc : associations) {
@@ -629,11 +678,16 @@ inline void validatePackageFileAssociations(const std::vector<FileAssoc> &associ
     }
 }
 
+/// @brief Return true if mode is one of the four supported macOS signing modes.
+/// Valid values: "" (unset/default), "none", "preserve", "adhoc", "developer-id".
 inline bool isValidMacOSSignModeText(const std::string &mode) {
     return mode.empty() || mode == "none" || mode == "preserve" || mode == "adhoc" ||
            mode == "developer-id";
 }
 
+/// @brief Return the effective macOS sign mode for the current host.
+/// If pkg.macosSignMode is set, returns it directly. Otherwise defaults to
+/// "adhoc" on Apple hosts (where codesign is available) and "preserve" elsewhere.
 inline std::string resolveMacOSSignModeForHost(const PackageConfig &pkg) {
     if (!pkg.macosSignMode.empty())
         return pkg.macosSignMode;
@@ -644,6 +698,10 @@ inline std::string resolveMacOSSignModeForHost(const PackageConfig &pkg) {
 #endif
 }
 
+/// @brief Validate the full macOS signing/notarization/stapling configuration.
+/// Enforces that developer-id mode is required for notarization and stapling,
+/// that an identity string is present when developer-id is selected, and that
+/// stapling requires a notary profile.
 inline void validateMacOSSigningConfig(const PackageConfig &pkg) {
     if (!isValidMacOSSignModeText(pkg.macosSignMode)) {
         throw std::runtime_error("macOS sign mode must be none, preserve, adhoc, or "
@@ -667,6 +725,10 @@ inline void validateMacOSSigningConfig(const PackageConfig &pkg) {
     }
 }
 
+/// @brief Validate a package metadata URL.
+/// Checks for a valid URI scheme (letters only start), "://" separator, non-empty
+/// authority (host + optional port), no userinfo, and that the port (if present)
+/// is purely numeric. Accepts IPv6 bracket notation. Empty URL is accepted.
 inline void validatePackageUrl(const std::string &url, const char *fieldName) {
     if (url.empty())
         return;
@@ -783,6 +845,9 @@ inline void validatePackageUrl(const std::string &url, const char *fieldName) {
     }
 }
 
+/// @brief Validate a filename for use on Windows.
+/// Rejects control characters, the characters <, >, :, ", /, \, |, ?, *,
+/// trailing spaces/dots, and Windows reserved device names (CON, NUL, COM1, etc.).
 inline void validateWindowsFileName(const std::string &name, const char *fieldName) {
     if (name.empty())
         throw std::runtime_error(std::string(fieldName) + " must not be empty");
@@ -814,6 +879,9 @@ inline void validateWindowsFileName(const std::string &name, const char *fieldNa
     }
 }
 
+/// @brief Return true if path starts with every component of root.
+/// Used to guard against symlink escapes that resolve outside the project root.
+/// Both paths should be canonical (absolute, no symlinks) before comparison.
 inline bool isPathWithin(const std::filesystem::path &root, const std::filesystem::path &path) {
     auto rootIt = root.begin();
     auto pathIt = path.begin();
@@ -915,6 +983,11 @@ inline std::string joinPackageRelativePath(const std::string &base,
     return sanitizePackageRelativePath(cleanBase + "/" + cleanLeaf, fieldName);
 }
 
+/// @brief Resolve a package-relative source path to an absolute filesystem path.
+/// Sanitizes raw via sanitizePackageRelativePath, then resolves against projectRoot.
+/// Uses fs::canonical when the file exists; falls back to weakly_canonical otherwise
+/// (so missing files can still be validated for escapes before creation).
+/// Throws if the result escapes the project root.
 inline std::filesystem::path resolvePackageSourcePath(const std::filesystem::path &projectRoot,
                                                       const std::string &raw,
                                                       const char *fieldName) {
@@ -949,6 +1022,10 @@ inline std::filesystem::path resolvePackageSourcePath(const std::filesystem::pat
     return resolved;
 }
 
+/// @brief Convert a UTF-8 string to a vector of UTF-16 code units (no BOM).
+/// Handles the full Unicode range including supplementary characters via
+/// surrogate pairs (U+10000–U+10FFFF). Throws on overlong sequences, truncated
+/// multi-byte sequences, invalid leading bytes, or lone surrogates.
 inline std::vector<uint16_t> utf8ToUtf16CodeUnits(const std::string &text) {
     std::vector<uint16_t> out;
     out.reserve(text.size());
@@ -997,10 +1074,16 @@ inline std::vector<uint16_t> utf8ToUtf16CodeUnits(const std::string &text) {
     return out;
 }
 
+/// @brief Return the number of UTF-16 code units that text would occupy.
+/// Convenience wrapper around utf8ToUtf16CodeUnits for size-checking without
+/// retaining the full code unit array.
 inline size_t utf16CodeUnitCountFromUtf8(const std::string &text) {
     return utf8ToUtf16CodeUnits(text).size();
 }
 
+/// @brief Convert a UTF-8 string to a little-endian UTF-16 byte sequence.
+/// @param nulTerminate If true, appends a UTF-16 NUL (two zero bytes).
+/// Used for Win32 registry string fields and .lnk StringData blocks.
 inline std::vector<uint8_t> utf8ToUtf16LEBytes(const std::string &text, bool nulTerminate = true) {
     const auto units = utf8ToUtf16CodeUnits(text);
     if (units.size() > static_cast<size_t>(std::numeric_limits<uint16_t>::max()))

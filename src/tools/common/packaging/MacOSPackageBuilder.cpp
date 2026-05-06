@@ -46,6 +46,8 @@ namespace fs = std::filesystem;
 namespace viper::pkg {
 namespace {
 
+// Generate a unique temp directory path using stem, PID, and a steady-clock
+// tick to avoid collisions between concurrent packaging invocations.
 fs::path uniqueTempPackagingDir(std::string_view stem) {
     const auto tick =
         static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count());
@@ -59,6 +61,7 @@ fs::path uniqueTempPackagingDir(std::string_view stem) {
            (std::string(stem) + "-" + std::to_string(pid) + "-" + std::to_string(tick));
 }
 
+// RAII guard that removes the directory tree at path_ on destruction.
 class TempDirGuard {
   public:
     explicit TempDirGuard(fs::path path) : path_(std::move(path)) {}
@@ -73,6 +76,8 @@ class TempDirGuard {
     fs::path path_;
 };
 
+// Validate that name is a legal macOS bundle display name: non-empty, single-line,
+// no path separator characters (/, \, :), and no Windows-illegal filename chars.
 void validateBundleDisplayName(const std::string &name) {
     if (name.empty())
         throw std::runtime_error("macOS bundle display name must not be empty");
@@ -84,6 +89,7 @@ void validateBundleDisplayName(const std::string &name) {
     validateWindowsFileName(name, "macOS bundle display name");
 }
 
+// Write data to path, creating parent directories as needed, and set file permissions.
 void writeFileBytes(const fs::path &path, const std::vector<uint8_t> &data, fs::perms perms) {
     fs::create_directories(path.parent_path());
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -96,11 +102,15 @@ void writeFileBytes(const fs::path &path, const std::vector<uint8_t> &data, fs::
     fs::permissions(path, perms, fs::perm_options::replace);
 }
 
+// Write text to path as UTF-8 bytes with the given permissions.
 void writeFileString(const fs::path &path, const std::string &text, fs::perms perms) {
     const auto *bytes = reinterpret_cast<const uint8_t *>(text.data());
     writeFileBytes(path, std::vector<uint8_t>(bytes, bytes + text.size()), perms);
 }
 
+// Copy a package asset (file or directory tree) from srcPath into the .app bundle's
+// Resources directory at the given targetDir sub-path. All copied files get 0644;
+// directories are created as needed.
 void copyPackageAssetToResources(const fs::path &srcPath,
                                  const fs::path &projectRoot,
                                  const fs::path &resourcesDir,
@@ -137,12 +147,16 @@ void copyPackageAssetToResources(const fs::path &srcPath,
     }
 }
 
+// Run the specified command and throw a std::runtime_error if it exits non-zero,
+// including stdout and stderr in the error message.
 void runChecked(const std::vector<std::string> &args, const std::string &what) {
     RunResult rr = run_process(args);
     if (rr.exit_code != 0)
         throw std::runtime_error(what + " failed:\n" + rr.out + rr.err);
 }
 
+// Resolve the pkgbuild version string: returns the override if non-empty (validated),
+// otherwise validates and returns the manifest version.
 std::string resolveMacOSToolchainPackageVersion(const std::string &manifestVersion,
                                                 const std::string &packageVersionOverride) {
     if (!packageVersionOverride.empty()) {
@@ -154,6 +168,8 @@ std::string resolveMacOSToolchainPackageVersion(const std::string &manifestVersi
     return manifestVersion;
 }
 
+// Walk the staged .app bundle and write all entries to a ZIP at outputPath.
+// The executable at execPath gets Unix mode 0100755; all other files get 0100644.
 void addStagedAppToZip(const fs::path &stageRoot,
                        const fs::path &appPath,
                        const fs::path &execPath,
@@ -175,6 +191,8 @@ void addStagedAppToZip(const fs::path &stageRoot,
     zip.finish(outputPath);
 }
 
+// Verify the codesign signature of the .app bundle using codesign --verify --deep.
+// Only runs on Apple hosts; no-op on other platforms.
 void verifyMacOSBundleSignatureIfAvailable(const fs::path &appPath) {
 #if defined(__APPLE__)
     runChecked({"codesign", "--verify", "--deep", "--strict", "--verbose=2", appPath.string()},
@@ -184,6 +202,10 @@ void verifyMacOSBundleSignatureIfAvailable(const fs::path &appPath) {
 #endif
 }
 
+// Sign the .app bundle using codesign, optionally with Developer ID identity,
+// hardened runtime, entitlements, notarization via notarytool, and stapling.
+// On non-Apple hosts only "none"/"preserve" modes are allowed; "ad-hoc" and
+// "developer-id" modes throw unless running on macOS.
 void signMacOSBundle(const fs::path &stageRoot,
                      const fs::path &appPath,
                      const fs::path &execPath,

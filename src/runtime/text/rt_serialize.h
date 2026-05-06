@@ -4,13 +4,12 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/text/rt_serialize.h
-// Purpose: Unified serialization interface providing format-agnostic dispatch (JSON, TOML, YAML,
-// INI, XML) via a format enum or auto-detection from file extension.
+// Purpose: Unified serialization interface providing format-agnostic dispatch
+// (JSON, XML, YAML, TOML, CSV) via a format enum or content auto-detection.
 //
 // Key invariants:
-//   - Format is selected by enum or auto-detected from file extension.
+//   - Format is selected by enum or auto-detected from text content.
 //   - All serialize operations produce a string; deserialize produces a value.
-//   - rt_serialize_auto detects the format from the file extension.
 //   - Format-specific errors return NULL; no trapping on bad input.
 //
 // Ownership/Lifetime:
@@ -78,11 +77,11 @@ int8_t rt_serialize_is_valid(rt_string text, int64_t format);
 
 /// @brief Detect the format of a text string.
 /// @details Heuristically detects the format based on content:
-///          - Starts with '{' or '[' → JSON
+///          - Starts with '{' or a JSON-style '[' array → JSON
 ///          - Starts with '<' → XML
 ///          - Contains '---' at start → YAML
 ///          - Contains '[section]' or 'key = value' → TOML
-///          - Contains commas with no special markers → CSV
+///          - Contains commas on the first line → CSV
 /// @param text Text to detect.
 /// @return Format enum, or -1 if unrecognized.
 int64_t rt_serialize_detect(rt_string text);

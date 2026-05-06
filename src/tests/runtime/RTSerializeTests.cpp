@@ -195,16 +195,30 @@ static void test_detect_yaml() {
 
 static void test_detect_toml() {
     ASSERT(rt_serialize_detect(make_str("name = \"Alice\"")) == RT_FORMAT_TOML, "detect TOML kv");
+    ASSERT(rt_serialize_detect(make_str("[server]\nname = \"Alice\"")) == RT_FORMAT_TOML,
+           "detect TOML section");
+    ASSERT(rt_serialize_detect(make_str("[1,2,3]")) == RT_FORMAT_JSON,
+           "JSON arrays are not TOML sections");
 }
 
 static void test_detect_null() {
     ASSERT(rt_serialize_detect(NULL) == -1, "detect null = -1");
     ASSERT(rt_serialize_detect(make_str("")) == -1, "detect empty = -1");
+    ASSERT(rt_serialize_detect(make_str("   \n\t  ")) == -1, "detect whitespace = -1");
+    ASSERT(rt_serialize_detect(make_str("just words")) == -1, "plain text is unknown");
+    ASSERT(rt_serialize_detect(make_str("name,age\nAlice,30\n")) == RT_FORMAT_CSV, "detect CSV");
 }
 
 static void test_auto_parse_json() {
     void *parsed = rt_serialize_auto_parse(make_str("{\"x\":1}"));
     ASSERT(parsed != NULL, "auto-parse JSON");
+}
+
+static void test_invalid_json_parse_reports_error() {
+    void *parsed = rt_serialize_parse(make_str("{\"x\":"), RT_FORMAT_JSON);
+    ASSERT(parsed == NULL, "invalid JSON parse returns NULL");
+    rt_string err = rt_serialize_error();
+    ASSERT(err != NULL && rt_str_len(err) > 0, "invalid JSON sets serialize error");
 }
 
 //=============================================================================
@@ -225,6 +239,41 @@ static void test_convert_json_to_json() {
     ASSERT(rt_json_is_valid(json_out) == 1, "round-trip JSON valid");
 }
 
+static void test_convert_json_to_xml() {
+    rt_string json_in = make_str("{\"name\":\"Alice\",\"age\":30}");
+    rt_string xml_out = rt_serialize_convert(json_in, RT_FORMAT_JSON, RT_FORMAT_XML);
+    ASSERT(xml_out != NULL, "JSON->XML conversion");
+    ASSERT(rt_serialize_is_valid(xml_out, RT_FORMAT_XML) == 1, "JSON->XML output is valid XML");
+    ASSERT(strstr(rt_string_cstr(xml_out), "<root>") != NULL, "JSON->XML output has root");
+    ASSERT(strstr(rt_string_cstr(xml_out), "<name>Alice</name>") != NULL,
+           "JSON->XML output preserves string field");
+    ASSERT(strstr(rt_string_cstr(xml_out), "<age>30</age>") != NULL,
+           "JSON->XML output preserves numeric field");
+}
+
+static void test_convert_xml_to_json() {
+    rt_string xml_in = make_str("<root><item id=\"1\">one</item><item>two</item></root>");
+    rt_string json_out = rt_serialize_convert(xml_in, RT_FORMAT_XML, RT_FORMAT_JSON);
+    ASSERT(json_out != NULL, "XML->JSON conversion");
+    ASSERT(rt_json_is_valid(json_out) == 1, "XML->JSON output is valid JSON");
+    ASSERT(strstr(rt_string_cstr(json_out), "\"root\"") != NULL, "XML->JSON output has root key");
+    ASSERT(strstr(rt_string_cstr(json_out), "\"item\"") != NULL, "XML->JSON output has child key");
+    ASSERT(strstr(rt_string_cstr(json_out), "\"@attrs\"") != NULL,
+           "XML->JSON output preserves attributes");
+}
+
+static void test_convert_json_to_toml_and_csv() {
+    rt_string json_in = make_str("{\"name\":\"Alice\",\"age\":30}");
+    rt_string toml_out = rt_serialize_convert(json_in, RT_FORMAT_JSON, RT_FORMAT_TOML);
+    ASSERT(toml_out != NULL, "JSON->TOML conversion");
+    ASSERT(rt_serialize_is_valid(toml_out, RT_FORMAT_TOML) == 1, "JSON->TOML output is valid TOML");
+
+    rt_string csv_out = rt_serialize_convert(json_in, RT_FORMAT_JSON, RT_FORMAT_CSV);
+    ASSERT(csv_out != NULL, "JSON->CSV conversion");
+    ASSERT(strstr(rt_string_cstr(csv_out), "name") != NULL, "JSON->CSV output contains key");
+    ASSERT(strstr(rt_string_cstr(csv_out), "Alice") != NULL, "JSON->CSV output contains value");
+}
+
 //=============================================================================
 // Null safety
 //=============================================================================
@@ -233,6 +282,8 @@ static void test_null_safety() {
     ASSERT(rt_serialize_is_valid(NULL, RT_FORMAT_JSON) == 0, "null is_valid = 0");
     ASSERT(rt_serialize_detect(NULL) == -1, "null detect = -1");
     ASSERT(rt_serialize_auto_parse(NULL) == NULL, "null auto = NULL");
+    rt_string err = rt_serialize_error();
+    ASSERT(err != NULL && rt_str_len(err) > 0, "null auto_parse sets error");
 
     rt_string result = rt_serialize_convert(NULL, RT_FORMAT_JSON, RT_FORMAT_YAML);
     ASSERT(result != NULL, "convert null returns string");
@@ -276,10 +327,14 @@ int main() {
     test_detect_toml();
     test_detect_null();
     test_auto_parse_json();
+    test_invalid_json_parse_reports_error();
 
     // Conversion
     test_convert_json_to_yaml();
     test_convert_json_to_json();
+    test_convert_json_to_xml();
+    test_convert_xml_to_json();
+    test_convert_json_to_toml_and_csv();
 
     // Safety
     test_null_safety();

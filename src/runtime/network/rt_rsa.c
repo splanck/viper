@@ -6,7 +6,21 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_rsa.c
-// Purpose: Native RSA parsing and signature helpers for TLS/X.509.
+// Purpose: Native RSA key parsing, Montgomery modular exponentiation, and
+//          PKCS#1 v1.5 / RSA-PSS signature verification for TLS 1.3 and X.509.
+//          Implements arbitrary-precision big-integer arithmetic using 64-bit
+//          limbs (big-endian), Montgomery multiplication, and Barrett-style
+//          conditional subtraction for constant-time modular reduction.
+// Key invariants:
+//   - All big integers are stored big-endian (limb[0] = most-significant word).
+//   - Modular exponentiation uses Montgomery form; no division in the hot loop.
+//   - Signature verification is NOT constant-time on the public key / signature
+//     path — only key operations (CRT private key) require constant time.
+//   - Maximum modulus: RT_RSA_MAX_MOD_BYTES (512) bytes = 4096-bit RSA.
+// Ownership/Lifetime:
+//   - rt_rsa_key_t members (modulus, exponents) are heap-allocated; caller
+//     must call rt_rsa_key_free() to release.
+// Links: rt_rsa.h (public API), rt_tls_verify.c (caller), rt_crypto.h
 //
 //===----------------------------------------------------------------------===//
 

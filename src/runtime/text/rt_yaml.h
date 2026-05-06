@@ -8,8 +8,10 @@
 // supporting scalars, sequences, mappings, and multi-document streams.
 //
 // Key invariants:
-//   - Supports YAML 1.2 subset: scalars (string/int/float/bool/null), sequences, mappings.
-//   - rt_yaml_parse returns NULL on invalid YAML syntax and records an error.
+//   - Supports YAML 1.2 subset: scalars (string/int/float/bool/null), block/flow sequences, and
+//     block/flow mappings.
+//   - rt_yaml_parse returns NULL for YAML null and for invalid syntax; invalid syntax records an
+//     error.
 //   - Multi-document streams separated by '---' return a Seq of documents.
 //   - Formatting uses block style by default.
 //
@@ -35,8 +37,9 @@ extern "C" {
 
 /// @brief Parse YAML string into a Viper value.
 /// @param text YAML text to parse.
-/// @return Parsed value: Map (mapping), Seq (sequence), String, or boxed number/bool/null.
-/// @note Returns NULL on invalid YAML; call rt_yaml_error() for details.
+/// @return Parsed value: Map (mapping), Seq (sequence), String, boxed number/bool, or NULL.
+/// @note YAML null and empty documents return NULL with no error. Invalid YAML returns NULL and
+///       records an error.
 void *rt_yaml_parse(rt_string text);
 
 /// @brief Get the last parse error message.

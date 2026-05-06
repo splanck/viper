@@ -22,6 +22,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <set>
 
 /// @brief Helper to print test result.
@@ -42,6 +43,10 @@ static void *make_bytes(const uint8_t *data, size_t len) {
 /// @brief Create a Bytes object from a C string.
 static void *make_bytes_str(const char *str) {
     return make_bytes((const uint8_t *)str, strlen(str));
+}
+
+static rt_string make_string_raw(const uint8_t *data, size_t len) {
+    return rt_string_from_bytes((const char *)data, len);
 }
 
 //=============================================================================
@@ -241,6 +246,38 @@ static void test_sha256_incremental_matches_one_shot() {
     printf("\n");
 }
 
+static void test_string_inputs_preserve_embedded_nul() {
+    printf("Testing string APIs preserve embedded NUL bytes:\n");
+
+    uint8_t msg_data[] = {'a', 0, 'b'};
+    uint8_t key_data[] = {'k', 0, 'y'};
+    rt_string msg = make_string_raw(msg_data, sizeof(msg_data));
+    rt_string key = make_string_raw(key_data, sizeof(key_data));
+    void *msg_bytes = make_bytes(msg_data, sizeof(msg_data));
+    void *key_bytes = make_bytes(key_data, sizeof(key_data));
+
+    test_result("MD5 string matches Bytes",
+                strcmp(rt_string_cstr(rt_hash_md5(msg)), rt_string_cstr(rt_hash_md5_bytes(msg_bytes))) == 0);
+    test_result("SHA1 string matches Bytes",
+                strcmp(rt_string_cstr(rt_hash_sha1(msg)), rt_string_cstr(rt_hash_sha1_bytes(msg_bytes))) == 0);
+    test_result("SHA256 string matches Bytes",
+                strcmp(rt_string_cstr(rt_hash_sha256(msg)), rt_string_cstr(rt_hash_sha256_bytes(msg_bytes))) == 0);
+    test_result("CRC32 string matches Bytes", rt_hash_crc32(msg) == rt_hash_crc32_bytes(msg_bytes));
+    test_result("Fast hash string matches Bytes", rt_hash_fast(msg) == rt_hash_fast_bytes(msg_bytes));
+
+    test_result("HMAC-MD5 string matches Bytes",
+                strcmp(rt_string_cstr(rt_hash_hmac_md5(key, msg)),
+                       rt_string_cstr(rt_hash_hmac_md5_bytes(key_bytes, msg_bytes))) == 0);
+    test_result("HMAC-SHA1 string matches Bytes",
+                strcmp(rt_string_cstr(rt_hash_hmac_sha1(key, msg)),
+                       rt_string_cstr(rt_hash_hmac_sha1_bytes(key_bytes, msg_bytes))) == 0);
+    test_result("HMAC-SHA256 string matches Bytes",
+                strcmp(rt_string_cstr(rt_hash_hmac_sha256(key, msg)),
+                       rt_string_cstr(rt_hash_hmac_sha256_bytes(key_bytes, msg_bytes))) == 0);
+
+    printf("\n");
+}
+
 //=============================================================================
 // PBKDF2-SHA256 Tests (RFC 6070 extended)
 //=============================================================================
@@ -286,6 +323,32 @@ static void test_pbkdf2_sha256() {
         test_result("PBKDF2-SHA256 Bytes has correct length", rt_bytes_len(result) == 16);
     }
 
+    // Test 4: Embedded NUL bytes in passwords are significant
+    {
+        uint8_t full_password[] = {'p', 'a', 's', 's', 0, 'w', 'o', 'r', 'd'};
+        rt_string password_full = make_string_raw(full_password, sizeof(full_password));
+        rt_string password_prefix = rt_const_cstr("pass");
+        void *salt = make_bytes_str("salt");
+
+        rt_string full =
+            rt_keyderive_pbkdf2_sha256_str(password_full, salt, 1000, 16);
+        rt_string prefix =
+            rt_keyderive_pbkdf2_sha256_str(password_prefix, salt, 1000, 16);
+        test_result("PBKDF2 treats embedded NUL as password data",
+                    strcmp(rt_string_cstr(full), rt_string_cstr(prefix)) != 0);
+    }
+
+    // Test 5: Iterations below the public minimum are clamped
+    {
+        rt_string password = rt_const_cstr("password");
+        void *salt = make_bytes_str("salt");
+
+        rt_string clamped = rt_keyderive_pbkdf2_sha256_str(password, salt, 1, 16);
+        rt_string min_iters = rt_keyderive_pbkdf2_sha256_str(password, salt, 1000, 16);
+        test_result("PBKDF2 low iterations clamp to 1000",
+                    strcmp(rt_string_cstr(clamped), rt_string_cstr(min_iters)) == 0);
+    }
+
     printf("\n");
 }
 
@@ -300,6 +363,12 @@ static void test_crypto_rand() {
     {
         void *bytes = rt_crypto_rand_bytes(32);
         test_result("Rand.Bytes returns correct length", rt_bytes_len(bytes) == 32);
+    }
+
+    // Test 1b: Bytes(0) returns an empty Bytes object
+    {
+        void *bytes = rt_crypto_rand_bytes(0);
+        test_result("Rand.Bytes(0) returns empty Bytes", rt_bytes_len(bytes) == 0);
     }
 
     // Test 2: Multiple calls produce different results
@@ -374,6 +443,22 @@ static void test_crypto_rand() {
                     saw_negative && saw_positive);
     }
 
+    // Test 8: Int handles ranges that used to overflow signed arithmetic
+    {
+        bool ok = true;
+        for (int i = 0; i < 20; i++) {
+            int64_t neg = rt_crypto_rand_int(std::numeric_limits<int64_t>::min(), -1);
+            int64_t pos = rt_crypto_rand_int(0, std::numeric_limits<int64_t>::max());
+            (void)rt_crypto_rand_int(std::numeric_limits<int64_t>::min(),
+                                     std::numeric_limits<int64_t>::max());
+            if (neg > -1 || pos < 0) {
+                ok = false;
+                break;
+            }
+        }
+        test_result("Rand.Int handles extreme signed ranges", ok);
+    }
+
     printf("\n");
 }
 
@@ -400,6 +485,9 @@ static void test_aead_tamper_detection() {
         test_result("ChaCha20 tamper detected",
                     rt_chacha20_poly1305_decrypt(
                         key, nonce, nullptr, 0, ciphertext, cipher_len, plaintext) < 0);
+        test_result("ChaCha20 rejects NULL AAD with nonzero length",
+                    rt_chacha20_poly1305_encrypt(
+                        key, nonce, nullptr, 1, msg, strlen(msg), ciphertext) == 0);
     }
 
     {
@@ -418,6 +506,9 @@ static void test_aead_tamper_detection() {
         test_result(
             "AES-GCM tamper detected",
             rt_aes128_gcm_decrypt(key, nonce, nullptr, 0, ciphertext, cipher_len, plaintext) < 0);
+        test_result("AES-GCM rejects NULL AAD with nonzero length",
+                    rt_aes128_gcm_encrypt(key, nonce, nullptr, 1, msg, strlen(msg), ciphertext) ==
+                        0);
     }
 
     printf("\n");
@@ -432,13 +523,15 @@ static void test_x25519_shared_secret_agreement() {
 
     rt_x25519_keygen(alice_secret, alice_public);
     rt_x25519_keygen(bob_secret, bob_public);
-    rt_x25519(alice_secret, bob_public, shared1);
-    rt_x25519(bob_secret, alice_public, shared2);
+    test_result("Alice X25519 succeeds", rt_x25519(alice_secret, bob_public, shared1) == 0);
+    test_result("Bob X25519 succeeds", rt_x25519(bob_secret, alice_public, shared2) == 0);
 
     test_result("Shared secrets match", memcmp(shared1, shared2, sizeof(shared1)) == 0);
 
     uint8_t zeros[32] = {0};
     test_result("Shared secret is non-zero", memcmp(shared1, zeros, sizeof(shared1)) != 0);
+    test_result("All-zero peer public key is rejected",
+                rt_x25519(alice_secret, zeros, shared1) != 0);
     printf("\n");
 }
 
@@ -453,6 +546,7 @@ int main() {
     test_hmac_sha1();
     test_hmac_sha256();
     test_sha256_incremental_matches_one_shot();
+    test_string_inputs_preserve_embedded_nul();
     test_pbkdf2_sha256();
     test_crypto_rand();
     test_aead_tamper_detection();

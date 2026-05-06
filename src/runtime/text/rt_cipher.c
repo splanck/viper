@@ -52,6 +52,7 @@
 #define CIPHER_KEY_SIZE 32
 #define CIPHER_TAG_SIZE 16
 #define CIPHER_PBKDF2_ITERATIONS 300000
+#define CIPHER_CHACHA20_MAX_BYTES (((UINT64_C(1) << 32) - 1u) * 64u)
 
 // HKDF info string for key derivation
 static const char *HKDF_INFO = "viper-cipher-v1";
@@ -93,6 +94,50 @@ static void cipher_secure_zero(void *ptr, size_t len) {
     volatile uint8_t *p = (volatile uint8_t *)ptr;
     while (len-- > 0)
         *p++ = 0;
+}
+
+/// @brief Extract a C string pointer and byte length from an rt_string password.
+///        Calls rt_trap with @p op if the password handle is NULL.
+///        Returns an empty string and sets *len = 0 for zero-length input.
+static const char *cipher_password_bytes(rt_string password, size_t *len, const char *op) {
+    if (!password) {
+        rt_trap(op);
+        return "";
+    }
+
+    int64_t len64 = rt_str_len(password);
+    if (len64 <= 0) {
+        *len = 0;
+        return "";
+    }
+
+    const char *pwd = rt_string_cstr(password);
+    if (!pwd) {
+        *len = 0;
+        return "";
+    }
+
+    *len = (size_t)len64;
+    return pwd;
+}
+
+/// @brief Compute and validate the output length for an encryption operation.
+///        Traps if input_len is negative, would overflow when added to @p overhead,
+///        or exceeds the ChaCha20-Poly1305 single-key stream limit (~256 GiB).
+static int64_t cipher_checked_output_len(int64_t input_len, int64_t overhead, const char *op) {
+    if (input_len < 0) {
+        rt_trap(op);
+        return 0;
+    }
+    if (input_len > INT64_MAX - overhead) {
+        rt_trap("Cipher: input is too large");
+        return 0;
+    }
+    if ((uint64_t)input_len > CIPHER_CHACHA20_MAX_BYTES) {
+        rt_trap("Cipher: input exceeds ChaCha20-Poly1305 size limit");
+        return 0;
+    }
+    return input_len + overhead;
 }
 
 /// @brief Derive a 32-byte key using the legacy HKDF-SHA256 scheme.
@@ -173,8 +218,8 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password) {
         return NULL;
     }
 
-    const char *pwd = rt_string_cstr(password);
-    size_t pwd_len = (size_t)rt_str_len(password);
+    size_t pwd_len;
+    const char *pwd = cipher_password_bytes(password, &pwd_len, "Cipher.Encrypt: password is null");
     if (pwd_len == 0) {
         rt_trap("Cipher.Encrypt: password is empty");
         return NULL;
@@ -182,6 +227,8 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password) {
 
     uint8_t *plain_data = bytes_data(plaintext);
     int64_t plain_len = bytes_len(plaintext);
+    int64_t out_len = cipher_checked_output_len(
+        plain_len, CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE + CIPHER_TAG_SIZE, "Cipher.Encrypt: plaintext length is invalid");
 
     // Generate random salt and nonce
     uint8_t salt[CIPHER_SALT_SIZE];
@@ -193,8 +240,6 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password) {
     uint8_t key[CIPHER_KEY_SIZE];
     derive_key_pbkdf2(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
 
-    // Output: salt + nonce + ciphertext + tag
-    int64_t out_len = CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE + plain_len + CIPHER_TAG_SIZE;
     void *result = rt_bytes_new(out_len);
     uint8_t *out_data = bytes_data(result);
 
@@ -213,6 +258,8 @@ void *rt_cipher_encrypt(void *plaintext, rt_string password) {
                                      out_data + CIPHER_SALT_SIZE + CIPHER_NONCE_SIZE);
     if (encrypted_len == 0 && plain_len != 0) {
         cipher_secure_zero(key, sizeof(key));
+        if (result && rt_obj_release_check0(result))
+            rt_obj_free(result);
         rt_trap("Cipher.Encrypt: encryption failed");
         return NULL;
     }
@@ -240,8 +287,8 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password) {
         return NULL;
     }
 
-    const char *pwd = rt_string_cstr(password);
-    size_t pwd_len = (size_t)rt_str_len(password);
+    size_t pwd_len;
+    const char *pwd = cipher_password_bytes(password, &pwd_len, "Cipher.Decrypt: password is null");
     if (pwd_len == 0) {
         rt_trap("Cipher.Decrypt: password is empty");
         return NULL;
@@ -282,11 +329,15 @@ void *rt_cipher_decrypt(void *ciphertext, rt_string password) {
                                                        plain_data);
 
     if (decrypt_result < 0) {
+        if (plain_len > 0)
+            cipher_secure_zero(plain_data, (size_t)plain_len);
         derive_key_legacy(pwd, pwd_len, salt, CIPHER_SALT_SIZE, key);
         decrypt_result = rt_chacha20_poly1305_decrypt(
             key, nonce, NULL, 0, encrypted, (size_t)encrypted_len, plain_data);
         if (decrypt_result < 0) {
             cipher_secure_zero(key, sizeof(key));
+            if (plain_len > 0)
+                cipher_secure_zero(plain_data, (size_t)plain_len);
             if (result && rt_obj_release_check0(result))
                 rt_obj_free(result);
             return NULL;
@@ -326,13 +377,13 @@ void *rt_cipher_encrypt_with_key(void *plaintext, void *key_bytes) {
     uint8_t *plain_data = bytes_data(plaintext);
     int64_t plain_len = bytes_len(plaintext);
     const uint8_t *key = bytes_data(key_bytes);
+    int64_t out_len = cipher_checked_output_len(
+        plain_len, CIPHER_NONCE_SIZE + CIPHER_TAG_SIZE, "Cipher.EncryptWithKey: plaintext length is invalid");
 
     // Generate random nonce
     uint8_t nonce[CIPHER_NONCE_SIZE];
     rt_crypto_random_bytes(nonce, CIPHER_NONCE_SIZE);
 
-    // Output: nonce + ciphertext + tag
-    int64_t out_len = CIPHER_NONCE_SIZE + plain_len + CIPHER_TAG_SIZE;
     void *result = rt_bytes_new(out_len);
     uint8_t *out_data = bytes_data(result);
 
@@ -348,6 +399,8 @@ void *rt_cipher_encrypt_with_key(void *plaintext, void *key_bytes) {
                                                         (size_t)plain_len,
                                                         out_data + CIPHER_NONCE_SIZE);
     if (encrypted_len == 0 && plain_len != 0) {
+        if (result && rt_obj_release_check0(result))
+            rt_obj_free(result);
         rt_trap("Cipher.EncryptWithKey: encryption failed");
         return NULL;
     }
@@ -406,7 +459,10 @@ void *rt_cipher_decrypt_with_key(void *ciphertext, void *key_bytes) {
                                                        plain_data);
 
     if (decrypt_result < 0) {
-        rt_trap("Cipher.DecryptWithKey: authentication failed (corrupted data or wrong key)");
+        if (plain_len > 0)
+            cipher_secure_zero(plain_data, (size_t)plain_len);
+        if (result && rt_obj_release_check0(result))
+            rt_obj_free(result);
         return NULL;
     }
 
@@ -445,8 +501,8 @@ void *rt_cipher_derive_key(rt_string password, void *salt_bytes) {
         return NULL;
     }
 
-    const char *pwd = rt_string_cstr(password);
-    size_t pwd_len = (size_t)rt_str_len(password);
+    size_t pwd_len;
+    const char *pwd = cipher_password_bytes(password, &pwd_len, "Cipher.DeriveKey: password is null");
     if (pwd_len == 0) {
         rt_trap("Cipher.DeriveKey: password is empty");
         return NULL;

@@ -7,12 +7,12 @@
 //
 // File: src/runtime/text/rt_yaml.c
 // Purpose: Implements a practical YAML 1.2 subset parser and formatter for the
-//          Viper.Text.Yaml class. Supports scalars (string, int, float, bool,
-//          null), block sequences (- item), block mappings (key: value),
-//          quoted strings, comments (#), and multiline strings (| and >).
+//          Viper.Data.Yaml class. Supports scalars (string, int, float, bool,
+//          null), block/flow sequences, block/flow mappings, quoted strings,
+//          comments (#), and multiline strings (| and >).
 //
 // Key invariants:
-//   - YAML types map to: null→Box.I64(0), bool→Box.I64(0/1), int→Box.I64,
+//   - YAML types map to: null→NULL, bool→Box.I1, int→Box.I64,
 //     float→Box.F64, string→String, sequence→Seq, mapping→Map.
 //   - Indentation determines nesting; tabs are not permitted as indentation.
 //   - Parse returns NULL on invalid YAML (not a trap).
@@ -38,6 +38,8 @@
 #include "rt_string.h"
 
 #include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -188,20 +190,29 @@ static void parser_skip_blank_lines_and_comments(yaml_parser *p) {
     }
 }
 
-/// @brief Count the leading-space indent of the *current* line (peek-only).
-///
-/// YAML uses indentation as block structure (RFC 1.2 §6.1). This
-/// helper reads from `p->pos` without consuming, so block-parsing
-/// loops can decide whether a line still belongs to the current
-/// container.
-static int get_indent(yaml_parser *p) {
+static int get_indent_checked(yaml_parser *p) {
     int indent = 0;
     size_t pos = p->pos;
-    while (pos < p->len && p->input[pos] == ' ') {
-        indent++;
-        pos++;
+    while (pos < p->len) {
+        if (p->input[pos] == ' ') {
+            indent++;
+            pos++;
+            continue;
+        }
+        if (p->input[pos] == '\t') {
+            set_error("tabs are not allowed in indentation", p->line);
+            return -1;
+        }
+        break;
     }
     return indent;
+}
+
+static void parser_finish_value_line(yaml_parser *p) {
+    parser_skip_spaces(p);
+    parser_skip_comment(p);
+    if (parser_peek(p) == '\n')
+        parser_advance(p);
 }
 
 /// @brief True if (after leading spaces) the current line is exactly `marker` followed by EOL/space/comment.
@@ -326,30 +337,46 @@ static void *parse_scalar(const char *str, size_t len) {
 
     // Check for hex
     if (len > 2 && buf[0] == '0' && (buf[1] == 'x' || buf[1] == 'X')) {
+        errno = 0;
         long long val = strtoll(buf, &end, 16);
-        if (*end == '\0') {
+        if (*end == '\0' && errno != ERANGE) {
             free(buf);
             return rt_box_i64(val);
+        }
+        if (*end == '\0') {
+            free(buf);
+            return rt_string_from_bytes(str, (int64_t)len);
         }
     }
     // Check for octal
     else if (len > 2 && buf[0] == '0' && (buf[1] == 'o' || buf[1] == 'O')) {
+        errno = 0;
         long long val = strtoll(buf + 2, &end, 8);
-        if (*end == '\0') {
+        if (*end == '\0' && errno != ERANGE) {
             free(buf);
             return rt_box_i64(val);
+        }
+        if (*end == '\0') {
+            free(buf);
+            return rt_string_from_bytes(str, (int64_t)len);
         }
     } else {
         // Decimal integer
+        errno = 0;
         long long val = strtoll(buf, &end, 10);
-        if (*end == '\0') {
+        if (*end == '\0' && errno != ERANGE) {
             free(buf);
             return rt_box_i64(val);
         }
+        if (*end == '\0') {
+            free(buf);
+            return rt_string_from_bytes(str, (int64_t)len);
+        }
 
         // Try float
+        errno = 0;
         double fval = strtod(buf, &end);
-        if (*end == '\0') {
+        if (*end == '\0' && errno != ERANGE) {
             free(buf);
             return rt_box_f64(fval);
         }
@@ -378,6 +405,50 @@ static void *parse_scalar(const char *str, size_t len) {
     return rt_string_from_bytes(str, (int64_t)len);
 }
 
+static int hex_value(char c) {
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
+}
+
+static bool append_utf8(uint32_t cp, char **buf, size_t *len, size_t *capacity) {
+    if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
+        return false;
+
+    char bytes[4];
+    size_t n = 0;
+    if (cp < 0x80) {
+        bytes[n++] = (char)cp;
+    } else if (cp < 0x800) {
+        bytes[n++] = (char)(0xC0 | (cp >> 6));
+        bytes[n++] = (char)(0x80 | (cp & 0x3F));
+    } else if (cp < 0x10000) {
+        bytes[n++] = (char)(0xE0 | (cp >> 12));
+        bytes[n++] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        bytes[n++] = (char)(0x80 | (cp & 0x3F));
+    } else {
+        bytes[n++] = (char)(0xF0 | (cp >> 18));
+        bytes[n++] = (char)(0x80 | ((cp >> 12) & 0x3F));
+        bytes[n++] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        bytes[n++] = (char)(0x80 | (cp & 0x3F));
+    }
+
+    while (*len + n + 1 > *capacity) {
+        *capacity *= 2;
+        char *tmp = realloc(*buf, *capacity);
+        if (!tmp)
+            rt_trap("rt_yaml: memory allocation failed");
+        *buf = tmp;
+    }
+    memcpy(*buf + *len, bytes, n);
+    *len += n;
+    return true;
+}
+
 /// @brief Parse a single- or double-quoted YAML string with escape processing.
 ///
 /// `quote` is `'` (no escapes except `''` for a literal quote) or
@@ -394,36 +465,128 @@ static rt_string parse_quoted_string(yaml_parser *p, char quote) {
         rt_trap("rt_yaml: memory allocation failed");
     size_t len = 0;
 
-    while (!parser_eof(p) && parser_peek(p) != quote) {
+    while (!parser_eof(p)) {
         char c = parser_peek(p);
-
-        if (c == '\\' && quote == '"') {
+        if (c == quote) {
+            if (quote == '\'' && parser_peek_at(p, 1) == '\'') {
+                parser_advance(p);
+                parser_advance(p);
+                c = '\'';
+            } else {
+                break;
+            }
+        } else if (c == '\\' && quote == '"') {
             parser_advance(p);
+            if (parser_eof(p)) {
+                free(buf);
+                set_error("unterminated escape sequence", p->line);
+                return NULL;
+            }
             c = parser_advance(p);
+            uint32_t cp = 0;
+            int digits = 0;
             switch (c) {
+                case '0':
+                    c = '\0';
+                    break;
+                case 'a':
+                    c = '\a';
+                    break;
+                case 'b':
+                    c = '\b';
+                    break;
+                case 't':
+                case '\t':
+                    c = '\t';
+                    break;
                 case 'n':
                     c = '\n';
                     break;
-                case 't':
-                    c = '\t';
+                case 'v':
+                    c = '\v';
+                    break;
+                case 'f':
+                    c = '\f';
                     break;
                 case 'r':
                     c = '\r';
                     break;
-                case '\\':
-                    c = '\\';
+                case 'e':
+                    c = '\x1B';
+                    break;
+                case ' ':
+                    c = ' ';
                     break;
                 case '"':
                     c = '"';
                     break;
-                case '\'':
-                    c = '\'';
+                case '/':
+                    c = '/';
                     break;
-                case '0':
-                    c = '\0';
+                case '\\':
+                    c = '\\';
+                    break;
+                case 'N':
+                    cp = 0x85;
+                    digits = -1;
+                    break;
+                case '_':
+                    cp = 0xA0;
+                    digits = -1;
+                    break;
+                case 'L':
+                    cp = 0x2028;
+                    digits = -1;
+                    break;
+                case 'P':
+                    cp = 0x2029;
+                    digits = -1;
+                    break;
+                case 'x':
+                    digits = 2;
+                    break;
+                case 'u':
+                    digits = 4;
+                    break;
+                case 'U':
+                    digits = 8;
                     break;
                 default:
-                    break;
+                    free(buf);
+                    set_error("invalid escape sequence", p->line);
+                    return NULL;
+            }
+
+            if (digits > 0) {
+                cp = 0;
+                for (int i = 0; i < digits; i++) {
+                    if (parser_eof(p)) {
+                        free(buf);
+                        set_error("unterminated unicode escape", p->line);
+                        return NULL;
+                    }
+                    int hv = hex_value(parser_advance(p));
+                    if (hv < 0) {
+                        free(buf);
+                        set_error("invalid unicode escape", p->line);
+                        return NULL;
+                    }
+                    cp = (cp << 4) | (uint32_t)hv;
+                }
+                if (!append_utf8(cp, &buf, &len, &capacity)) {
+                    free(buf);
+                    set_error("invalid unicode codepoint", p->line);
+                    return NULL;
+                }
+                continue;
+            }
+            if (digits == -1) {
+                if (!append_utf8(cp, &buf, &len, &capacity)) {
+                    free(buf);
+                    set_error("invalid unicode codepoint", p->line);
+                    return NULL;
+                }
+                continue;
             }
         } else {
             parser_advance(p);
@@ -484,9 +647,20 @@ static void *parse_block_sequence(yaml_parser *p, int base_indent) {
         if (parser_eof(p))
             break;
 
-        int indent = get_indent(p);
+        int indent = get_indent_checked(p);
+        if (indent < 0) {
+            yaml_release(seq);
+            p->depth--;
+            return NULL;
+        }
         if (indent < base_indent)
             break;
+        if (indent > base_indent) {
+            set_error("unexpected indentation in sequence", p->line);
+            yaml_release(seq);
+            p->depth--;
+            return NULL;
+        }
 
         // Skip to the '-'
         while (parser_peek(p) == ' ')
@@ -508,7 +682,18 @@ static void *parse_block_sequence(yaml_parser *p, int base_indent) {
                 parser_advance(p); // Skip space after '-'
                 item = parse_value(p, 0);
             } else {
-                item = parse_value(p, indent + 1);
+                parser_advance(p); // Empty item, or nested value on following indented lines.
+                parser_skip_blank_lines_and_comments(p);
+                if (!parser_eof(p)) {
+                    int next_indent = get_indent_checked(p);
+                    if (next_indent < 0) {
+                        yaml_release(seq);
+                        p->depth--;
+                        return NULL;
+                    }
+                    if (next_indent > indent)
+                        item = parse_value(p, next_indent);
+                }
             }
             if (!item && yaml_last_error[0] != '\0') {
                 yaml_release(seq);
@@ -555,9 +740,20 @@ static void *parse_block_mapping(yaml_parser *p, int base_indent) {
         if (parser_eof(p))
             break;
 
-        int indent = get_indent(p);
+        int indent = get_indent_checked(p);
+        if (indent < 0) {
+            yaml_release(map);
+            p->depth--;
+            return NULL;
+        }
         if (indent < base_indent)
             break;
+        if (indent > base_indent) {
+            set_error("unexpected indentation in mapping", p->line);
+            yaml_release(map);
+            p->depth--;
+            return NULL;
+        }
 
         // Skip indentation
         while (parser_peek(p) == ' ')
@@ -568,23 +764,35 @@ static void *parse_block_mapping(yaml_parser *p, int base_indent) {
             break;
 
         // Parse key
-        size_t key_start = p->pos;
-        while (!parser_eof(p) && parser_peek(p) != ':' && parser_peek(p) != '\n')
-            parser_advance(p);
+        rt_string key = NULL;
+        if (parser_peek(p) == '"' || parser_peek(p) == '\'') {
+            key = parse_quoted_string(p, parser_peek(p));
+            if (!key) {
+                yaml_release(map);
+                p->depth--;
+                return NULL;
+            }
+            parser_skip_spaces(p);
+        } else {
+            size_t key_start = p->pos;
+            while (!parser_eof(p) && parser_peek(p) != ':' && parser_peek(p) != '\n')
+                parser_advance(p);
+
+            size_t key_len = p->pos - key_start;
+            // Trim trailing spaces from key
+            while (key_len > 0 && p->input[key_start + key_len - 1] == ' ')
+                key_len--;
+
+            key = rt_string_from_bytes(p->input + key_start, (int64_t)key_len);
+        }
 
         if (parser_peek(p) != ':') {
             set_error("expected ':' after mapping key", p->line);
+            yaml_release((void *)key);
             yaml_release(map);
             p->depth--;
             return NULL;
         }
-
-        size_t key_len = p->pos - key_start;
-        // Trim trailing spaces from key
-        while (key_len > 0 && p->input[key_start + key_len - 1] == ' ')
-            key_len--;
-
-        rt_string key = rt_string_from_bytes(p->input + key_start, (int64_t)key_len);
 
         parser_advance(p); // Skip ':'
         parser_skip_spaces(p);
@@ -596,10 +804,22 @@ static void *parse_block_mapping(yaml_parser *p, int base_indent) {
             if (parser_peek(p) == '\n')
                 parser_advance(p);
 
-            value = parse_value(p, indent + 1);
+            value = NULL;
+            parser_skip_blank_lines_and_comments(p);
+            if (!parser_eof(p)) {
+                int next_indent = get_indent_checked(p);
+                if (next_indent < 0) {
+                    yaml_release((void *)key);
+                    yaml_release(map);
+                    p->depth--;
+                    return NULL;
+                }
+                if (next_indent > indent)
+                    value = parse_value(p, next_indent);
+            }
         } else {
             // Inline value
-            value = parse_value(p, indent);
+            value = parse_value(p, 0);
         }
 
         if (!value && yaml_last_error[0] != '\0') {
@@ -618,6 +838,158 @@ static void *parse_block_mapping(yaml_parser *p, int base_indent) {
     return map;
 }
 
+static void *parse_flow_value(yaml_parser *p);
+
+static void skip_flow_ws(yaml_parser *p) {
+    while (!parser_eof(p) && (parser_peek(p) == ' ' || parser_peek(p) == '\t' ||
+                              parser_peek(p) == '\n' || parser_peek(p) == '\r'))
+        parser_advance(p);
+}
+
+static rt_string parse_flow_key(yaml_parser *p) {
+    skip_flow_ws(p);
+    char c = parser_peek(p);
+    if (c == '"' || c == '\'')
+        return parse_quoted_string(p, c);
+
+    size_t start = p->pos;
+    while (!parser_eof(p) && parser_peek(p) != ':' && parser_peek(p) != '}' && parser_peek(p) != '\n')
+        parser_advance(p);
+    size_t len = p->pos - start;
+    while (len > 0 && isspace((unsigned char)p->input[start + len - 1]))
+        len--;
+    if (len == 0) {
+        set_error("expected flow mapping key", p->line);
+        return NULL;
+    }
+    return rt_string_from_bytes(p->input + start, (int64_t)len);
+}
+
+static void *parse_flow_sequence(yaml_parser *p) {
+    parser_advance(p); // [
+    void *seq = rt_seq_new();
+    rt_seq_set_owns_elements(seq, 1);
+
+    skip_flow_ws(p);
+    if (parser_peek(p) == ']') {
+        parser_advance(p);
+        return seq;
+    }
+
+    while (!parser_eof(p)) {
+        void *item = parse_flow_value(p);
+        if (!item && yaml_last_error[0] != '\0') {
+            yaml_release(seq);
+            return NULL;
+        }
+        rt_seq_push(seq, item);
+        yaml_release(item);
+
+        skip_flow_ws(p);
+        if (parser_peek(p) == ',') {
+            parser_advance(p);
+            skip_flow_ws(p);
+            if (parser_peek(p) == ']') {
+                set_error("trailing comma in flow sequence", p->line);
+                yaml_release(seq);
+                return NULL;
+            }
+            continue;
+        }
+        if (parser_peek(p) == ']') {
+            parser_advance(p);
+            return seq;
+        }
+        set_error("expected ',' or ']' in flow sequence", p->line);
+        yaml_release(seq);
+        return NULL;
+    }
+
+    set_error("unterminated flow sequence", p->line);
+    yaml_release(seq);
+    return NULL;
+}
+
+static void *parse_flow_mapping(yaml_parser *p) {
+    parser_advance(p); // {
+    void *map = rt_map_new();
+
+    skip_flow_ws(p);
+    if (parser_peek(p) == '}') {
+        parser_advance(p);
+        return map;
+    }
+
+    while (!parser_eof(p)) {
+        rt_string key = parse_flow_key(p);
+        if (!key) {
+            yaml_release(map);
+            return NULL;
+        }
+
+        skip_flow_ws(p);
+        if (parser_peek(p) != ':') {
+            set_error("expected ':' in flow mapping", p->line);
+            yaml_release((void *)key);
+            yaml_release(map);
+            return NULL;
+        }
+        parser_advance(p);
+
+        void *value = parse_flow_value(p);
+        if (!value && yaml_last_error[0] != '\0') {
+            yaml_release((void *)key);
+            yaml_release(map);
+            return NULL;
+        }
+        rt_map_set(map, key, value);
+        yaml_release(value);
+        yaml_release((void *)key);
+
+        skip_flow_ws(p);
+        if (parser_peek(p) == ',') {
+            parser_advance(p);
+            skip_flow_ws(p);
+            if (parser_peek(p) == '}') {
+                set_error("trailing comma in flow mapping", p->line);
+                yaml_release(map);
+                return NULL;
+            }
+            continue;
+        }
+        if (parser_peek(p) == '}') {
+            parser_advance(p);
+            return map;
+        }
+        set_error("expected ',' or '}' in flow mapping", p->line);
+        yaml_release(map);
+        return NULL;
+    }
+
+    set_error("unterminated flow mapping", p->line);
+    yaml_release(map);
+    return NULL;
+}
+
+static void *parse_flow_value(yaml_parser *p) {
+    skip_flow_ws(p);
+    char c = parser_peek(p);
+    if (c == '[')
+        return parse_flow_sequence(p);
+    if (c == '{')
+        return parse_flow_mapping(p);
+    if (c == '"' || c == '\'')
+        return (void *)parse_quoted_string(p, c);
+
+    size_t start = p->pos;
+    while (!parser_eof(p) && parser_peek(p) != ',' && parser_peek(p) != ']' && parser_peek(p) != '}')
+        parser_advance(p);
+    size_t len = p->pos - start;
+    while (len > 0 && isspace((unsigned char)p->input[start + len - 1]))
+        len--;
+    return parse_scalar(p->input + start, len);
+}
+
 /// @brief Top-level value dispatch — picks the right block/flow/scalar parser.
 ///
 /// Looks at the first non-space character on the current line:
@@ -634,7 +1006,9 @@ static void *parse_value(yaml_parser *p, int base_indent) {
     if (parser_eof(p))
         return NULL; // YAML null
 
-    int indent = get_indent(p);
+    int indent = get_indent_checked(p);
+    if (indent < 0)
+        return NULL;
     if (indent < base_indent)
         return NULL;
 
@@ -652,8 +1026,25 @@ static void *parse_value(yaml_parser *p, int base_indent) {
     // Check if it's a mapping (look for ':')
     {
         size_t scan = content_pos;
+        char quote = '\0';
         while (scan < p->len && p->input[scan] != '\n' && p->input[scan] != '#') {
-            if (p->input[scan] == ':' &&
+            char sc = p->input[scan];
+            if (quote) {
+                if (sc == '\\' && quote == '"' && scan + 1 < p->len) {
+                    scan += 2;
+                    continue;
+                }
+                if (sc == quote)
+                    quote = '\0';
+                scan++;
+                continue;
+            }
+            if (sc == '"' || sc == '\'') {
+                quote = sc;
+                scan++;
+                continue;
+            }
+            if (sc == ':' &&
                 (scan + 1 >= p->len || p->input[scan + 1] == ' ' || p->input[scan + 1] == '\n')) {
                 return parse_block_mapping(p, indent);
             }
@@ -669,7 +1060,21 @@ static void *parse_value(yaml_parser *p, int base_indent) {
 
     // Quoted string
     if (c == '"' || c == '\'') {
-        return (void *)parse_quoted_string(p, c);
+        rt_string quoted = parse_quoted_string(p, c);
+        parser_finish_value_line(p);
+        return (void *)quoted;
+    }
+
+    if (c == '[') {
+        void *seq = parse_flow_sequence(p);
+        parser_finish_value_line(p);
+        return seq;
+    }
+
+    if (c == '{') {
+        void *map = parse_flow_mapping(p);
+        parser_finish_value_line(p);
+        return map;
     }
 
     // Literal block scalar
@@ -681,7 +1086,9 @@ static void *parse_value(yaml_parser *p, int base_indent) {
             parser_advance(p);
 
         // Get block indent
-        int block_indent = get_indent(p);
+        int block_indent = get_indent_checked(p);
+        if (block_indent < 0)
+            return NULL;
         if (block_indent <= indent)
             return (void *)rt_str_empty();
 
@@ -692,7 +1099,11 @@ static void *parse_value(yaml_parser *p, int base_indent) {
         size_t len = 0;
 
         while (!parser_eof(p)) {
-            int line_indent = get_indent(p);
+            int line_indent = get_indent_checked(p);
+            if (line_indent < 0) {
+                free(buf);
+                return NULL;
+            }
             if (line_indent < block_indent && p->input[p->pos + line_indent] != '\n')
                 break;
 
@@ -743,7 +1154,9 @@ static void *parse_value(yaml_parser *p, int base_indent) {
     while (len > 0 && p->input[start + len - 1] == ' ')
         len--;
 
-    return parse_scalar(p->input + start, len);
+    void *scalar = parse_scalar(p->input + start, len);
+    parser_finish_value_line(p);
+    return scalar;
 }
 
 //=============================================================================
@@ -867,7 +1280,7 @@ int8_t rt_yaml_is_valid(rt_string text) {
             rt_obj_free(result);
         return 1;
     }
-    return 0;
+    return yaml_last_error[0] == '\0' ? 1 : 0;
 }
 
 //=============================================================================
@@ -929,8 +1342,13 @@ static bool needs_quoting(const char *str) {
         return true;
 
     // Check for special values
-    if (strcmp(str, "true") == 0 || strcmp(str, "false") == 0 || strcmp(str, "null") == 0 ||
-        strcmp(str, "~") == 0 || strcmp(str, "yes") == 0 || strcmp(str, "no") == 0)
+    if (is_special_value(str, strlen(str), "true") || is_special_value(str, strlen(str), "false") ||
+        is_special_value(str, strlen(str), "null") || strcmp(str, "~") == 0 ||
+        is_special_value(str, strlen(str), "yes") || is_special_value(str, strlen(str), "no") ||
+        is_special_value(str, strlen(str), "on") || is_special_value(str, strlen(str), "off"))
+        return true;
+
+    if (isspace((unsigned char)str[0]) || isspace((unsigned char)str[strlen(str) - 1]))
         return true;
 
     // Check first char
@@ -942,7 +1360,7 @@ static bool needs_quoting(const char *str) {
 
     // Check for special chars
     for (const char *p = str; *p; p++) {
-        if (*p == '\n' || *p == '\r' || *p == ':')
+        if (*p == '\n' || *p == '\r' || *p == ':' || *p == '#')
             return true;
     }
 
@@ -960,7 +1378,8 @@ static bool needs_quoting(const char *str) {
 /// When quoted, escapes `\\`, `\"`, and the standard control
 /// characters (`\n`, `\t`, etc.) so the output round-trips through
 /// `parse_quoted_string`.
-static void format_string(const char *str, char **buf, size_t *cap, size_t *len) {
+static void format_string(
+    const char *str, int indent, int level, char **buf, size_t *cap, size_t *len) {
     if (!str || !*str) {
         buf_append(buf, cap, len, "''");
         return;
@@ -976,9 +1395,10 @@ static void format_string(const char *str, char **buf, size_t *cap, size_t *len)
     if (has_newline) {
         buf_append(buf, cap, len, "|\n");
         // Add with indentation
+        int block_indent = indent * (level + 1);
         const char *p = str;
         while (*p) {
-            buf_append(buf, cap, len, "  ");
+            buf_append_indent(buf, cap, len, block_indent);
             while (*p && *p != '\n') {
                 buf_append_char(buf, cap, len, *p);
                 p++;
@@ -1064,7 +1484,7 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
         if (type_tag == RT_BOX_STR) {
             rt_string s = rt_unbox_str(obj);
             const char *str = rt_string_cstr(s);
-            format_string(str, buf, cap, len);
+            format_string(str, indent, level, buf, cap, len);
             if (rt_obj_release_check0((void *)s))
                 rt_obj_free((void *)s);
             return;
@@ -1074,7 +1494,7 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
     // Check for string
     if (rt_string_is_handle(obj)) {
         const char *str = rt_string_cstr((rt_string)obj);
-        format_string(str, buf, cap, len);
+        format_string(str, indent, level, buf, cap, len);
         return;
     }
 
@@ -1118,7 +1538,7 @@ static void format_value(void *obj, int indent, int level, char **buf, size_t *c
             void *key = rt_seq_get(keys, i);
             const char *key_str = rt_string_cstr((rt_string)key);
             if (needs_quoting(key_str)) {
-                format_string(key_str, buf, cap, len);
+                format_string(key_str, indent, level, buf, cap, len);
             } else {
                 buf_append(buf, cap, len, key_str);
             }

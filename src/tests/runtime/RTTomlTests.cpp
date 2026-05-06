@@ -5,6 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_box.h"
 #include "rt_internal.h"
 #include "rt_map.h"
 #include "rt_seq.h"
@@ -195,6 +196,40 @@ static void test_depth_limit() {
     assert(rt_toml_is_valid(src2) == 1);
 }
 
+static void test_format_scalar_values() {
+    void *root = rt_map_new();
+
+    rt_string name_key = make_str("name");
+    rt_string name_value = make_str("Alice");
+    rt_map_set(root, name_key, (void *)name_value);
+
+    rt_string age_key = make_str("age");
+    rt_map_set(root, age_key, rt_box_i64(30));
+
+    rt_string enabled_key = make_str("enabled");
+    rt_map_set(root, enabled_key, rt_box_i1(1));
+
+    void *items = rt_seq_new();
+    rt_seq_set_owns_elements(items, 1);
+    rt_string item = make_str("x");
+    rt_seq_push(items, item);
+    rt_seq_push(items, rt_box_i64(7));
+
+    rt_string items_key = make_str("items");
+    rt_map_set(root, items_key, items);
+
+    rt_string formatted = rt_toml_format(root);
+    assert(rt_toml_is_valid(formatted) == 1);
+    assert(strstr(rt_string_cstr(formatted), "name = \"Alice\"") != NULL);
+    assert(strstr(rt_string_cstr(formatted), "age = 30") != NULL);
+    assert(strstr(rt_string_cstr(formatted), "enabled = true") != NULL);
+    assert(strstr(rt_string_cstr(formatted), "items = [\"x\", 7]") != NULL);
+
+    rt_string not_map = make_str("not a map");
+    rt_string empty = rt_toml_format((void *)not_map);
+    assert(rt_str_len(empty) == 0);
+}
+
 /// @brief Main.
 int main() {
     test_parse_simple();
@@ -209,5 +244,6 @@ int main() {
     test_null_safety();
     test_empty();
     test_depth_limit();
+    test_format_scalar_values();
     return 0;
 }

@@ -87,10 +87,22 @@ static void test_is_valid(void) {
     printf("rt_xml_is_valid:\n");
     rt_string valid = S("<a><b/></a>");
     rt_string invalid = S("<a><b></a>");
+    rt_string text = S("not xml");
+    rt_string multi = S("<a/><b/>");
+    rt_string raw_amp = S("<a>Tom & Jerry</a>");
+    rt_string dup_attr = S("<a id=\"1\" id=\"2\"/>");
     check("valid XML returns 1", rt_xml_is_valid(valid));
     check("invalid XML returns 0", !rt_xml_is_valid(invalid));
+    check("top-level text is invalid XML", !rt_xml_is_valid(text));
+    check("multiple roots are invalid XML", !rt_xml_is_valid(multi));
+    check("raw ampersand is invalid XML", !rt_xml_is_valid(raw_amp));
+    check("duplicate attributes are invalid XML", !rt_xml_is_valid(dup_attr));
     rt_string_unref(valid);
     rt_string_unref(invalid);
+    rt_string_unref(text);
+    rt_string_unref(multi);
+    rt_string_unref(raw_amp);
+    rt_string_unref(dup_attr);
 }
 
 static void test_create_and_format(void) {
@@ -159,6 +171,47 @@ static void test_children(void) {
     rt_string_unref(item_tag2);
 }
 
+static void test_root_and_path_find(void) {
+    printf("rt_xml root and path find:\n");
+    rt_string xml = S("<catalog><book id=\"1\"><title>Primer</title></book></catalog>");
+    void *doc = rt_xml_parse(xml);
+    rt_string_unref(xml);
+    check("parse returns doc", doc != NULL);
+
+    void *root = rt_xml_root(doc);
+    rt_string book_tag = S("book");
+    void *book = rt_xml_child(root, book_tag);
+    rt_string_unref(book_tag);
+    check("book child found", book != NULL);
+
+    void *root_from_book = rt_xml_root(book);
+    rt_string root_tag = rt_xml_tag(root_from_book);
+    check("root works from descendant", str_eq_c(root_tag, "catalog"));
+    rt_string_unref(root_tag);
+
+    rt_string path = S("catalog/book/title");
+    void *title = rt_xml_find(doc, path);
+    rt_string_unref(path);
+    rt_string title_text = rt_xml_text_content(title);
+    check("path find returns title", str_eq_c(title_text, "Primer"));
+    rt_string_unref(title_text);
+}
+
+static void test_invalid_node_creation(void) {
+    printf("rt_xml invalid node creation:\n");
+    rt_string bad_tag = S("1bad");
+    check("invalid element name returns null", rt_xml_element(bad_tag) == NULL);
+    rt_string_unref(bad_tag);
+
+    rt_string comment = S("bad--comment");
+    check("invalid comment returns null", rt_xml_comment(comment) == NULL);
+    rt_string_unref(comment);
+
+    rt_string cdata = S("bad]]>cdata");
+    check("invalid cdata returns null", rt_xml_cdata(cdata) == NULL);
+    rt_string_unref(cdata);
+}
+
 int main(void) {
     printf("=== RTXmlTests ===\n");
     test_parse_simple();
@@ -166,6 +219,8 @@ int main(void) {
     test_create_and_format();
     test_escape_unescape();
     test_children();
+    test_root_and_path_find();
+    test_invalid_node_creation();
     printf("All XML tests passed.\n");
     return 0;
 }

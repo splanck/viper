@@ -150,8 +150,14 @@ static int secure_random_fill(uint8_t *buf, size_t len) {
 
 /// @brief Generate cryptographically secure random bytes.
 void *rt_crypto_rand_bytes(int64_t count) {
-    if (count < 1) {
-        rt_trap("Rand.Bytes: count must be at least 1");
+    if (count < 0) {
+        rt_trap("Rand.Bytes: count must not be negative");
+    }
+    if (count == 0) {
+        return rt_bytes_new(0);
+    }
+    if ((uint64_t)count > (uint64_t)SIZE_MAX) {
+        rt_trap("Rand.Bytes: count is too large");
     }
 
     // Allocate temporary buffer
@@ -191,16 +197,8 @@ int64_t rt_crypto_rand_int(int64_t min, int64_t max) {
         return min;
     }
 
-    // Calculate range (max - min + 1), handling potential overflow
-    uint64_t range;
-    if (min >= 0) {
-        range = (uint64_t)(max - min) + 1;
-    } else if (max < 0) {
-        range = (uint64_t)(max - min) + 1;
-    } else {
-        // min < 0 && max >= 0
-        range = (uint64_t)max - (uint64_t)min + 1;
-    }
+    // Calculate range (max - min + 1) in unsigned space to avoid signed overflow.
+    uint64_t range = (uint64_t)max - (uint64_t)min + 1;
 
     // Find number of bits needed
     int bits = 64;
@@ -218,9 +216,6 @@ int64_t rt_crypto_rand_int(int64_t min, int64_t max) {
 
     // Rejection sampling
     uint64_t value;
-    int attempts = 0;
-    const int max_attempts = 1000; // Safety limit
-
     do {
         // Generate random bytes
         uint8_t buf[8];
@@ -237,12 +232,10 @@ int64_t rt_crypto_rand_int(int64_t min, int64_t max) {
         // Apply mask
         value &= mask;
 
-        attempts++;
-        if (attempts >= max_attempts) {
-            rt_trap("Rand.Int: too many rejection sampling attempts");
-        }
     } while (range != 0 && value >= range);
 
-    // Add to min
-    return min + (int64_t)value;
+    uint64_t result_bits = (uint64_t)min + value;
+    int64_t result;
+    memcpy(&result, &result_bits, sizeof(result));
+    return result;
 }

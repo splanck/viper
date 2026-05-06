@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-04-19
+last-verified: 2026-05-06
 ---
 
 # Cryptography
@@ -24,7 +24,7 @@ last-verified: 2026-04-19
 
 ## Viper.Crypto.Aes
 
-AES-128/256 symmetric encryption with CBC mode and PKCS7 padding.
+AES utilities: raw AES-CBC with PKCS7 padding for `Bytes`, plus authenticated PBKDF2 + AES-128-GCM for password-encrypted strings.
 
 **Type:** Static utility class
 
@@ -43,6 +43,7 @@ AES-128/256 symmetric encryption with CBC mode and PKCS7 padding.
 - `EncryptStr` derives an AES-128 key from the password using PBKDF2-HMAC-SHA256 with a random salt and a 300,000-iteration default
 - `EncryptStr` output format is `[magic(4)][iterations(4)][salt(16)][nonce(12)][ciphertext][tag(16)]`
 - `DecryptStr` remains backward-compatible with older `[IV(16)][AES-CBC ciphertext]` payloads
+- String plaintexts and passwords use the stored Viper string byte length, so embedded `NUL` bytes are significant
 - For higher-level authenticated encryption with automatic key management, use `Viper.Crypto.Cipher` instead
 
 ### Zia Example
@@ -138,6 +139,7 @@ Key-based encryption produces:
 - **Authentication Tag:** 128 bits (16 bytes)
 - **Key Derivation:** PBKDF2-HMAC-SHA256 with random 16-byte salt and a 300,000-iteration default
 - Password-based `Decrypt()` remains backward-compatible with older HKDF-derived payloads during migration
+- Password strings use their stored byte length, so embedded `NUL` bytes are part of the password
 
 ### Zia Example
 
@@ -244,7 +246,7 @@ Viper.IO.File.WriteAllBytes("secret.doc", decrypted)
 Cipher operations use two failure modes:
 
 - `Decrypt()` returns `NULL` when authentication fails (wrong password or corrupted ciphertext)
-- `DecryptWithKey()` traps if authentication fails (wrong key or corrupted data)
+- `DecryptWithKey()` returns `NULL` when authentication fails (wrong key or corrupted data)
 - `EncryptWithKey()`/`DecryptWithKey()` trap if key is not exactly 32 bytes
 - Structural misuse still traps: null ciphertext, empty password, or malformed too-short ciphertext
 - Empty plaintext is allowed and produces valid ciphertext
@@ -313,6 +315,8 @@ Cryptographic hash functions, checksums, and HMAC authentication for strings and
 | SHA256    | 256 bits      | 64-character hex string   |
 | HMAC-*    | Same as hash  | Same as underlying hash   |
 | FNV-1a    | 64 bits       | Integer (i64)             |
+
+String hash and HMAC methods use the stored Viper string byte length. Embedded `NUL` bytes are hashed as data, matching the corresponding `Bytes` methods for the same byte sequence.
 
 ### Fast Hash Methods
 
@@ -438,12 +442,12 @@ Key derivation functions for deriving cryptographic keys from passwords.
 |--------------|---------|------------------------------------------------|
 | `password`   | String  | The password to derive from                    |
 | `salt`       | Bytes   | Unique random salt (non-empty; 16 bytes recommended) |
-| `iterations` | Integer | Number of iterations (minimum 1000, recommend 300000+ for password storage) |
+| `iterations` | Integer | Number of iterations (values below 1000 are raised to 1000; recommend 300000+ for password storage) |
 | `keyLen`     | Integer | Desired key length in bytes (1-1024)           |
 
 ### Traps
 
-- `iterations < 1000`: Traps with "iterations must be at least 1000"
+- `iterations > 4294967295`: Traps because PBKDF2 stores the iteration count as a 32-bit value
 - empty `salt`: Traps with "salt must not be empty"
 - `keyLen < 1 or keyLen > 1024`: Traps with "key_len must be between 1 and 1024"
 
@@ -540,14 +544,16 @@ Cryptographically secure random number generation.
 
 | Method  | Parameter | Constraints                |
 |---------|-----------|----------------------------|
-| `Bytes` | `count`   | Must be >= 1               |
+| `Bytes` | `count`   | Must be >= 0               |
 | `Int`   | `min`     | Must be <= max             |
 | `Int`   | `max`     | Must be >= min             |
 
 ### Traps
 
-- `Bytes(count)` with count < 1: Traps with "count must be at least 1"
+- `Bytes(0)` returns an empty `Bytes` object
+- `Bytes(count)` with count < 0: Traps with "count must not be negative"
 - `Int(min, max)` with min > max: Traps with "min must not be greater than max"
+- `Int(min, max)` supports ranges spanning the full signed 64-bit domain
 
 ### Platform Implementation
 
@@ -692,10 +698,13 @@ The TLS implementation uses:
 - **Certificate Signature Support:** In-tree verification of ECDSA P-256, RSA PKCS#1 v1.5, and RSA-PSS certificate signatures. The TLS client advertises only signature algorithms it can verify; ECDSA P-384 is not advertised until P-384 CertificateVerify support is implemented.
 - **Leaf-certificate policy:** Built-in verification enforces TLS server-auth EKU / compatible key-usage on the presented server certificate
 - **Hostname / SNI behavior:** DNS hostnames are sent in SNI; IP literals are verified against IP SANs but are not sent in SNI
+- **Key-share validation:** X25519 all-zero shared secrets are rejected during the handshake
+- **String handling:** `SendStr` sends the full stored string byte length, including embedded `NUL` bytes
+- **Connection state:** `IsOpen` is true only while the TLS session is in the connected state
 
 ### Zia Example
 
-> Tls is accessible via fully-qualified calls: `Viper.Crypto.Tls.Connect(...)`, `Viper.Crypto.Tls.Send(...)`, `Viper.Crypto.Tls.Receive(...)`.
+> Tls is accessible via fully-qualified calls: `Viper.Crypto.Tls.Connect(...)`, `Viper.Crypto.Tls.Send(...)`, `Viper.Crypto.Tls.Recv(...)`.
 
 ### BASIC Example
 
@@ -761,14 +770,14 @@ END IF
 
 ### Error Handling
 
-TLS operations trap on errors:
+TLS wrapper methods use return values for routine failures:
 
-- `Connect()` traps on connection refused, host not found, or TLS handshake failure
-- Certificate / hostname / handshake diagnostics are preserved in `conn.Error()`
-- `ConnectFor()` traps on timeout
-- `Send()` traps if connection is closed
-- `Recv()` traps on receive errors
-- Certificate validation failures cause `Connect()` to trap
+- `Connect()` / `ConnectFor()` return `NULL` on invalid input, connection failure, timeout, or TLS handshake failure
+- Certificate / hostname / handshake diagnostics are preserved in `conn.Error()` when a connection object exists
+- `ConnectFor()` rejects timeout values too large to fit the runtime socket timeout
+- Host strings containing embedded `NUL` bytes are rejected instead of being truncated
+- `Send()` / `SendStr()` return a negative value if the connection is closed or invalid
+- `Recv()` returns `NULL` on receive errors; `RecvStr()` returns an empty string on receive errors
 
 Use `Error()` to get descriptive error messages for debugging.
 
@@ -833,7 +842,9 @@ This format stores everything needed for verification: the algorithm identifier,
 - A random 16-byte salt is generated automatically for each hash
 - The salt and iteration count are embedded in the output string, so no separate storage is needed
 - `Verify` parses the stored hash string to extract parameters before re-deriving
-- `Verify` returns `false` for malformed or null stored hashes instead of trapping
+- `Verify` returns `false` for malformed, null, or non-canonical stored hashes instead of trapping
+- Stored password hashes require strict Base64 salt/hash fields with the expected decoded lengths
+- Embedded `NUL` bytes in passwords are significant
 - Use `HashIters` to increase iterations beyond the default when you have the latency budget
 
 ### Zia Example

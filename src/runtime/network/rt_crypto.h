@@ -229,7 +229,8 @@ void rt_x25519_keygen(uint8_t secret[32], uint8_t public_key[32]);
 /// @param peer_public The peer's 32-byte public key.
 /// @param shared Output buffer for the 32-byte shared secret (result of the
 ///               Diffie-Hellman computation on Curve25519).
-void rt_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t shared[32]);
+/// @return 0 on success, -1 if the peer public key produces an all-zero secret.
+int rt_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t shared[32]);
 
 //=========================================================================
 // Random

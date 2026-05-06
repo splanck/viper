@@ -461,7 +461,8 @@ TOML (Tom's Obvious Minimal Language) configuration file parser and formatter.
 - **Parse output:** Returns a Map where keys are strings and values are strings, Maps (for sections), or Seqs (for arrays).
 - **Dotted paths:** `Get()` and `GetStr()` support dotted key paths like `"server.host"` to navigate into nested sections.
 - Dotted section headers such as `[server.database.primary]` create nested Maps for each path part.
-- **Format:** Converts a Map back to TOML text format.
+- **Format:** Converts a Map back to TOML text format, including string values, boxed numeric/boolean values, arrays, and section Maps.
+- `Format()` quotes keys and string values when needed so scalar values are not misinterpreted as Maps.
 - Invalid TOML returns NULL from `Parse()` rather than trapping.
 - Missing closing section or array brackets, trailing junk after section headers, duplicate keys, scalar/table conflicts, and overly deep section paths are invalid.
 - `GetStr()` returns a retained string value when found, or a new empty string when the path is missing or not a string.
@@ -647,9 +648,10 @@ Unified serialization interface for converting data between JSON, XML, YAML, TOM
 
 ### Notes
 
-- **Auto-detection heuristics:** `{`/`[` → JSON, `<` → XML, `---` → YAML, `[section]`/`key = value` → TOML, commas → CSV
+- **Auto-detection heuristics:** `{` and JSON-style arrays → JSON, `<` → XML, `---` → YAML, `[section]`/`key = value` → TOML, first-line commas → CSV; unknown plain text returns `-1`
 - `Parse()` returns NULL on error; check `Error()` for details
-- `Convert()` is a convenience for `Format(Parse(text, from), to)`
+- `Convert()` is a convenience for `Format(Parse(text, from), to)` with built-in projections for XML, TOML, and CSV.
+- XML conversion preserves element attributes under an `@attrs` mapping and element text under `@text` when mixed with attributes or child elements.
 - All returned strings are newly allocated
 - Dispatches to the format-specific parsers (Json, Xml, Yaml, Toml, Csv) internally
 
@@ -702,7 +704,7 @@ XPath-lite path queries. All node values are opaque objects.
 
 | Method             | Signature                | Description                                     |
 |--------------------|--------------------------|--------------------------------------------------|
-| `Parse(xml)`       | `Object(String)`         | Parse an XML string; returns root node or NULL  |
+| `Parse(xml)`       | `Object(String)`         | Parse an XML string; returns document node or NULL |
 | `Error()`          | `String()`               | Last parse/operation error (empty if none)      |
 | `IsValid(xml)`     | `Boolean(String)`        | True if the string is well-formed XML            |
 
@@ -719,7 +721,7 @@ XPath-lite path queries. All node values are opaque objects.
 
 | Method               | Signature                | Description                                         |
 |----------------------|--------------------------|-----------------------------------------------------|
-| `NodeType(n)`        | `String(Object)`         | Node type: "element", "text", "comment", "cdata"    |
+| `NodeType(n)`        | `Integer(Object)`        | Node type constant: element=1, text=2, comment=3, cdata=4, document=5 |
 | `Tag(n)`             | `String(Object)`         | Tag name (element nodes only)                       |
 | `Content(n)`         | `String(Object)`         | Raw text content of a text/comment/cdata node       |
 | `TextContent(n)`     | `String(Object)`         | All descendant text concatenated (recursive)        |
@@ -774,10 +776,13 @@ XPath-lite path queries. All node values are opaque objects.
 
 ### Notes
 
-- `Parse` returns the document root element on success, or NULL on error.
+- `Parse` returns a document node on success, or NULL on error. Use `Root(doc)` to get the document element.
 - Check `Error()` after any NULL return for a diagnostic message.
-- Path syntax for `Find`/`FindAll`: slash-separated tag names from the given node (e.g. `"books/book/title"`).
+- XML parsing enforces one document element, matching closing tags, valid XML names, unique attributes, and valid entity references.
+- Element, attribute, comment, and CDATA creation/mutation validate XML name/content rules and report errors instead of creating malformed trees.
+- Path syntax for `Find`/`FindAll`: slash-separated tag names from the given node or its direct children (e.g. `"books/book/title"`). A path without `/` remains a recursive tag search.
 - Attribute and child mutations are performed in-place on the node object.
+- `Append` and `Insert` reject non-node children, document children, cycles, and children that already have a parent.
 - `TextContent` is useful for extracting all readable text from a subtree.
 
 ### Zia Example
@@ -790,7 +795,8 @@ bind Viper.Data.Xml as Xml;
 
 func start() {
     var src = "<catalog><book id=\"1\"><title>Viper Primer</title><price>29.99</price></book></catalog>";
-    var root = Xml.Parse(src);
+    var doc = Xml.Parse(src);
+    var root = Xml.Root(doc);
 
     var book = Xml.Child(root, "book");
     Say("ID: " + Xml.Attr(book, "id"));                     // 1
@@ -817,13 +823,14 @@ func start() {
 
 ```basic
 DIM src AS STRING = "<config><host>localhost</host><port>8080</port></config>"
-DIM root AS OBJECT = Viper.Data.Xml.Parse(src)
+DIM doc AS OBJECT = Viper.Data.Xml.Parse(src)
 
-IF root = NULL THEN
+IF doc = NULL THEN
     PRINT "Parse error: "; Viper.Data.Xml.Error()
     END
 END IF
 
+DIM root AS OBJECT = Viper.Data.Xml.Root(doc)
 DIM host AS STRING = Viper.Data.Xml.TextContent(Viper.Data.Xml.Child(root, "host"))
 DIM port AS STRING = Viper.Data.Xml.TextContent(Viper.Data.Xml.Child(root, "port"))
 PRINT "Host: "; host   ' localhost
@@ -844,7 +851,7 @@ PRINT Viper.Data.Xml.FormatPretty(root, 2)
 ' Attribute access
 DIM items AS STRING = "<items><item key=""a"" val=""1""/><item key=""b"" val=""2""/></items>"
 DIM ir AS OBJECT = Viper.Data.Xml.Parse(items)
-DIM allItems AS OBJECT = Viper.Data.Xml.ChildrenByTag(ir, "item")
+DIM allItems AS OBJECT = Viper.Data.Xml.ChildrenByTag(Viper.Data.Xml.Root(ir), "item")
 FOR i = 0 TO allItems.Length - 1
     DIM it AS OBJECT = allItems.Get(i)
     PRINT Viper.Data.Xml.Attr(it, "key"); "="; Viper.Data.Xml.Attr(it, "val")
@@ -887,10 +894,12 @@ model mirrors Viper.Text.Json — strings, integers, doubles, booleans, NULL, ma
 
 - The returned object uses the same representation as `Viper.Text.Json.Parse` — use `Map`, `Seq`, and scalar
   accessors to traverse the parsed value.
-- Multi-document YAML (separated by `---`) is not supported; only the first document is parsed.
-- Anchors and aliases are resolved during parsing and are transparent to the caller.
+- Explicit multi-document YAML streams separated by `---` parse as a sequence of documents.
+- Anchors, aliases, custom tags, and merge keys are not supported.
+- Flow collections (`[]` and `{}`), quoted keys, comments after scalars, and common quoted-string escapes are supported.
 - `Format` round-trips losslessly for all scalar types, sequences, and mappings.
 - YAML scalars with no explicit type tag are auto-typed (number detection, boolean keywords, etc.).
+- Tabs in indentation, unexpected over-indentation, invalid quoted-string escapes, and malformed flow collections are rejected.
 
 ### Zia Example
 

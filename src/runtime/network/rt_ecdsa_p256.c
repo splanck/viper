@@ -40,6 +40,8 @@ typedef uint64_t u256[4];
 // 512-bit for multiplication intermediate
 typedef uint64_t u512[8];
 
+/// @brief Add two 64-bit values with an incoming carry and write the result to *out.
+/// @return 1 if the addition overflowed (carry out), 0 otherwise.
 static uint64_t u64_add_with_carry(uint64_t a, uint64_t b, uint64_t carry, uint64_t *out) {
     uint64_t sum = a + b;
     uint64_t carry1 = (sum < a);
@@ -49,6 +51,8 @@ static uint64_t u64_add_with_carry(uint64_t a, uint64_t b, uint64_t carry, uint6
     return carry1 | carry2;
 }
 
+/// @brief Subtract b + borrow from a, write the result to *out.
+/// @return 1 if the subtraction underflowed (borrow out), 0 otherwise.
 static uint64_t u64_sub_with_borrow(uint64_t a, uint64_t b, uint64_t borrow, uint64_t *out) {
     uint64_t subtrahend = b + borrow;
     uint64_t borrow1 = (subtrahend < b);
@@ -57,6 +61,7 @@ static uint64_t u64_sub_with_borrow(uint64_t a, uint64_t b, uint64_t borrow, uin
     return borrow1 | borrow2;
 }
 
+/// @brief Subtract a small 64-bit value from a 256-bit integer in-place, propagating borrow.
 static void u256_sub_small_inplace(u256 value, uint64_t small) {
     uint64_t borrow = u64_sub_with_borrow(value[3], small, 0, &value[3]);
     for (int i = 2; i >= 0 && borrow; i--)
@@ -225,6 +230,8 @@ static ECDSA_P256_MAYBE_UNUSED void u256_mul_wide(u512 r, const u256 a, const u2
         r[7 - i] = (acc[2 * i + 1] << 32) | acc[2 * i];
 }
 
+/// @brief Compute the bit-length of a 512-bit little-endian integer (index 0 = LSW).
+/// @return Position of the highest set bit + 1; 0 if the value is zero.
 static ECDSA_P256_MAYBE_UNUSED int u512_bit_length_le(const uint64_t limbs[8]) {
     for (int i = 7; i >= 0; i--) {
         if (limbs[i] != 0)
@@ -233,6 +240,8 @@ static ECDSA_P256_MAYBE_UNUSED int u512_bit_length_le(const uint64_t limbs[8]) {
     return 0;
 }
 
+/// @brief Return the 64-bit limb at position limb_index of a 256-bit little-endian value after
+///        left-shifting it by shift bits.  Used by the bitwise long-division in u512_mod_u256.
 static ECDSA_P256_MAYBE_UNUSED uint64_t u256_shifted_limb_le(const uint64_t mod_le[4],
                                                              int shift,
                                                              int limb_index) {
@@ -248,6 +257,8 @@ static ECDSA_P256_MAYBE_UNUSED uint64_t u256_shifted_limb_le(const uint64_t mod_
     return limb;
 }
 
+/// @brief Compare a 512-bit little-endian value against a 256-bit modulus shifted left by shift bits.
+/// @return -1 / 0 / 1 (value < shifted_mod / equal / greater).
 static ECDSA_P256_MAYBE_UNUSED int u512_cmp_shifted_u256_le(const uint64_t value_le[8],
                                                             const uint64_t mod_le[4],
                                                             int shift) {
@@ -261,6 +272,7 @@ static ECDSA_P256_MAYBE_UNUSED int u512_cmp_shifted_u256_le(const uint64_t value
     return 0;
 }
 
+/// @brief Subtract (mod << shift) from a 512-bit little-endian value in-place; propagates borrow.
 static ECDSA_P256_MAYBE_UNUSED void u512_sub_shifted_u256_le(uint64_t value_le[8],
                                                              const uint64_t mod_le[4],
                                                              int shift) {
@@ -271,6 +283,8 @@ static ECDSA_P256_MAYBE_UNUSED void u512_sub_shifted_u256_le(uint64_t value_le[8
     }
 }
 
+/// @brief Compute wide mod mod using binary long division (generic fallback for any modulus).
+///        Converts between big-endian and little-endian limb order for the shift helpers.
 static ECDSA_P256_MAYBE_UNUSED void u512_mod_u256(u256 out, const u512 wide, const u256 mod) {
     uint64_t value_le[8];
     uint64_t mod_le[4];
@@ -342,16 +356,20 @@ static void fp_sub(u256 r, const u256 a, const u256 b) {
     }
 }
 
+/// @brief r = (a + b) mod mod — generic version for any modulus (assumes a, b < mod).
 static void u256_mod_add_generic(u256 r, const u256 a, const u256 b, const u256 mod) {
     uint64_t carry = u256_add(r, a, b);
     if (carry || u256_cmp(r, mod) >= 0)
         u256_sub(r, r, mod);
 }
 
+/// @brief r = (2 * a) mod mod — generic version for any modulus.
 static void u256_mod_double_generic(u256 r, const u256 a, const u256 mod) {
     u256_mod_add_generic(r, a, a, mod);
 }
 
+/// @brief r = (a * b) mod mod — generic double-and-add multiplication (any modulus).
+///        Used for order-n scalar arithmetic where Solinas reduction doesn't apply.
 static void u256_mod_mul_generic(u256 r, const u256 a, const u256 b, const u256 mod) {
     u256 result, base;
     u256_zero(result);
@@ -371,9 +389,9 @@ static void u256_mod_mul_generic(u256 r, const u256 a, const u256 b, const u256 
     u256_copy(r, result);
 }
 
-// P-256 fast reduction (Solinas reduction)
-// p = 2^256 - 2^224 + 2^192 + 2^96 - 1
-// Input: 512-bit product t[0..7], output: 256-bit result r mod p
+/// @brief Reduce a 512-bit product modulo the P-256 prime using Solinas reduction.
+///        Implements the NIST FIPS 186-4 formula for p = 2^256 - 2^224 + 2^192 + 2^96 - 1.
+///        Input: t[0..7] big-endian 512-bit; output: r = t mod p, 256-bit.
 #if defined(__GNUC__) || defined(__clang__)
 static ECDSA_P256_MAYBE_UNUSED void fp_reduce_512(u256 r, const u512 t) {
 #else
@@ -550,21 +568,23 @@ static void fp_reduce_512(u256 r, const u512 t) {
     fp_reduce_once(r, r);
 }
 
+/// @brief Generic fallback reduction: r = t mod P256_P via binary long division.
+///        Used when the Solinas fast path is unavailable (e.g., non-GCC/Clang compilers).
 static ECDSA_P256_MAYBE_UNUSED void fp_reduce_512_generic(u256 r, const u512 t) {
     u512_mod_u256(r, t, P256_P);
 }
 
-// r = a * b mod p
+/// @brief r = a * b mod p — field multiplication with Solinas reduction.
 static void fp_mul(u256 r, const u256 a, const u256 b) {
     u256_mod_mul_generic(r, a, b, P256_P);
 }
 
-// r = a^2 mod p
+/// @brief r = a^2 mod p — field squaring.
 static void fp_sqr(u256 r, const u256 a) {
     fp_mul(r, a, a);
 }
 
-// r = a^exp mod p (binary square-and-multiply, exp is u256)
+/// @brief r = a^exp mod p — binary square-and-multiply exponentiation over the P-256 field.
 static void fp_pow(u256 r, const u256 a, const u256 exp) {
     u256 base, result;
     u256_copy(base, a);
@@ -583,7 +603,7 @@ static void fp_pow(u256 r, const u256 a, const u256 exp) {
     u256_copy(r, result);
 }
 
-// r = a^(-1) mod p using Fermat's little theorem: a^(p-2) mod p
+/// @brief r = a^(-1) mod p — field inversion via Fermat's little theorem: a^(p-2) mod p.
 static void fp_inv(u256 r, const u256 a) {
     u256 exp;
     u256_copy(exp, P256_P);
@@ -597,7 +617,7 @@ static void fp_inv(u256 r, const u256 a) {
 // Scalar arithmetic mod n (curve order)
 //=============================================================================
 
-// r = a mod n (assumes a < 2n)
+/// @brief r = a mod n — conditional subtraction of the curve order (assumes a < 2n).
 static void sn_reduce_once(u256 r, const u256 a) {
     u256 tmp;
     uint64_t borrow = u256_sub(tmp, a, P256_N);
@@ -607,19 +627,19 @@ static void sn_reduce_once(u256 r, const u256 a) {
         u256_copy(r, tmp);
 }
 
-// r = a + b mod n
+/// @brief r = (a + b) mod n — scalar addition modulo the curve order.
 static void sn_add(u256 r, const u256 a, const u256 b) {
     uint64_t carry = u256_add(r, a, b);
     if (carry || u256_cmp(r, P256_N) >= 0)
         u256_sub(r, r, P256_N);
 }
 
-// r = a * b mod n
+/// @brief r = (a * b) mod n — scalar multiplication modulo the curve order.
 static void sn_mul(u256 r, const u256 a, const u256 b) {
     u256_mod_mul_generic(r, a, b, P256_N);
 }
 
-// r = a^(-1) mod n using Fermat: a^(n-2) mod n
+/// @brief r = a^(-1) mod n — scalar inversion modulo the curve order via Fermat: a^(n-2) mod n.
 static void sn_inv(u256 r, const u256 a) {
     u256 exp;
     u256_copy(exp, P256_N);
@@ -684,11 +704,9 @@ static void jpoint_from_affine(jpoint *P, const u256 x, const u256 y) {
 
 static void jpoint_to_affine(u256 x, u256 y, const jpoint *P);
 
-// Point doubling using affine formulas.
-//
-// This deliberately trades speed for simpler, easier-to-audit arithmetic.
-// The server/client TLS stack only needs a small number of scalar multiplies
-// per handshake, so the extra inversion cost is acceptable.
+/// @brief Double a Jacobian point: R = 2P (affine formula with one field inversion).
+///        Deliberately trades speed for simpler, auditable arithmetic — acceptable because
+///        TLS only needs a small number of scalar multiplications per handshake.
 static void jpoint_double(jpoint *R, const jpoint *P) {
     static const u256 THREE = {0, 0, 0, 3};
 
@@ -726,7 +744,8 @@ static void jpoint_double(jpoint *R, const jpoint *P) {
     R->Z[3] = 1;
 }
 
-// Point addition using affine formulas.
+/// @brief Add two Jacobian curve points: Res = P + Q (affine formula with one field inversion).
+///        Handles point-at-infinity identity cases and the equal-point case by delegating to jpoint_double.
 static void jpoint_add(jpoint *Res, const jpoint *P, const jpoint *Q) {
     if (jpoint_is_infinity(P)) {
         memcpy(Res, Q, sizeof(jpoint));
@@ -804,7 +823,8 @@ static void jpoint_scalar_mul(jpoint *R, const u256 k, const jpoint *P) {
     }
 }
 
-// Convert Jacobian → affine: x = X/Z^2, y = Y/Z^3
+/// @brief Convert a Jacobian projective point to affine coordinates: x = X/Z^2, y = Y/Z^3.
+///        Returns (0, 0) for the point at infinity.
 static void jpoint_to_affine(u256 x, u256 y, const jpoint *P) {
     if (jpoint_is_infinity(P)) {
         u256_zero(x);

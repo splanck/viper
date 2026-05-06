@@ -36,17 +36,20 @@ namespace viper::pkg {
 
 class ZipWriter {
   public:
+    /// @brief Metadata about a written entry, used by callers that need the
+    ///        exact byte offsets to embed into stub data before finish() is called.
     struct LayoutEntry {
-        std::string name;
-        uint32_t localHeaderOffset{0};
-        uint32_t localDataOffset{0};
-        uint32_t compressedSize{0};
-        uint32_t uncompressedSize{0};
-        uint32_t crc32{0};
-        uint16_t method{0};
-        bool isDirectory{false};
+        std::string name;               ///< Normalised entry path as stored in the archive.
+        uint32_t localHeaderOffset{0};  ///< Byte offset of the local file header from archive start.
+        uint32_t localDataOffset{0};    ///< Byte offset of the compressed data from archive start.
+        uint32_t compressedSize{0};     ///< Compressed byte count (equals uncompressedSize for stored).
+        uint32_t uncompressedSize{0};   ///< Original byte count before compression.
+        uint32_t crc32{0};              ///< CRC-32 of the uncompressed data.
+        uint16_t method{0};             ///< Compression method: 0=stored, 8=deflate.
+        bool isDirectory{false};        ///< True for directory entries (typeflag 5).
     };
 
+    /// @brief Construct an empty ZIP writer with compression enabled.
     ZipWriter();
     ~ZipWriter();
 
@@ -97,16 +100,17 @@ class ZipWriter {
     }
 
   private:
+    // Internal per-entry record used to build the central directory on finish().
     struct Entry {
-        std::string name;
-        uint32_t crc32;
-        uint32_t compressedSize;
-        uint32_t uncompressedSize;
-        uint16_t method;
-        uint16_t modTime;
-        uint16_t modDate;
-        uint32_t localOffset;
-        uint32_t externalAttrs;
+        std::string name;           ///< Normalised entry path.
+        uint32_t crc32;             ///< CRC-32 of uncompressed data.
+        uint32_t compressedSize;    ///< Byte count of data as stored in archive.
+        uint32_t uncompressedSize;  ///< Byte count of data before compression.
+        uint16_t method;            ///< Compression method (0=stored, 8=deflate).
+        uint16_t modTime;           ///< DOS last-modified time.
+        uint16_t modDate;           ///< DOS last-modified date.
+        uint32_t localOffset;       ///< Byte offset of this entry's local header from archive start.
+        uint32_t externalAttrs;     ///< ZIP external file attributes (Unix mode in upper 16 bits).
     };
 
     std::vector<uint8_t> buffer_;
@@ -115,12 +119,19 @@ class ZipWriter {
     std::set<std::string> seenNames_;
     bool compressionEnabled_{true};
 
+    /// @brief Sanitize an entry path: reject control characters, absolute paths, and ".." segments.
     std::string normalizeEntryName(const std::string &name) const;
+    /// @brief Throw if value > maxValue; prevents central-directory integer overflow on large archives.
     void validateArchiveLimit(size_t value, size_t maxValue, const char *what) const;
+    /// @brief Append len bytes of data to buffer_.
     void writeBytes(const uint8_t *data, size_t len);
+    /// @brief Append a 16-bit little-endian integer to buffer_.
     void writeU16(uint16_t v);
+    /// @brief Append a 32-bit little-endian integer to buffer_.
     void writeU32(uint32_t v);
+    /// @brief Write all central directory records and the EOCD to buffer_.
     void writeCentralDirectory();
+    /// @brief Return the current wall-clock time as a DOS time/date pair for entry metadata.
     static void getDosTime(uint16_t &time, uint16_t &date);
 };
 

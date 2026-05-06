@@ -39,6 +39,7 @@
 #include "rt_string.h"
 
 #include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -114,7 +115,7 @@ static rt_string parse_quoted_string(const char **p) {
 ///          `rt_parse_try_bool` to coerce after the fact). Stops at
 ///          newline, `#` (comment), or `,` (array element separator);
 ///          trailing in-line whitespace is trimmed off.
-static rt_string parse_value(const char **p) {
+static rt_string parse_value_until(const char **p, int stop_bracket) {
     skip_ws(p);
 
     // Quoted string
@@ -123,7 +124,7 @@ static rt_string parse_value(const char **p) {
 
     // Bare value (number, boolean, date, or unquoted string)
     const char *start = *p;
-    while (**p && **p != '\n' && **p != '#' && **p != ',')
+    while (**p && **p != '\n' && **p != '#' && **p != ',' && (!stop_bracket || **p != ']'))
         (*p)++;
 
     // Trim trailing whitespace
@@ -132,6 +133,10 @@ static rt_string parse_value(const char **p) {
         end--;
 
     return make_str(start, (int64_t)(end - start));
+}
+
+static rt_string parse_value(const char **p) {
+    return parse_value_until(p, 0);
 }
 
 // --- Internal parse error flag (S-14, thread-local to avoid concurrent parse clobbering) ---
@@ -159,7 +164,7 @@ static void *parse_array(const char **p) {
             (*p)++;
             continue;
         }
-        rt_string val = parse_value(p);
+        rt_string val = parse_value_until(p, 1);
         if (val) {
             rt_seq_push(seq, val);
             rt_string_unref(val);
@@ -182,6 +187,10 @@ static void release_obj_maybe(void *obj) {
 
 static int is_map_obj(void *obj) {
     return obj && !rt_string_is_handle(obj) && rt_obj_class_id(obj) == RT_MAP_CLASS_ID;
+}
+
+static int is_seq_obj(void *obj) {
+    return obj && !rt_string_is_handle(obj) && rt_obj_class_id(obj) == RT_SEQ_CLASS_ID;
 }
 
 static void *ensure_table_path(void *root, const char *name, size_t len) {
@@ -380,9 +389,119 @@ int8_t rt_toml_is_valid(rt_string src) {
     return 1;
 }
 
+static int is_bare_key(const char *s) {
+    if (!s || *s == '\0')
+        return 0;
+    for (const char *p = s; *p; ++p) {
+        if (!(isalnum((unsigned char)*p) || *p == '_' || *p == '-'))
+            return 0;
+    }
+    return 1;
+}
+
+static void append_quoted_toml_string(rt_string_builder *sb, const char *s) {
+    rt_sb_append_cstr(sb, "\"");
+    if (s) {
+        for (const char *p = s; *p; ++p) {
+            switch (*p) {
+                case '\\':
+                    rt_sb_append_cstr(sb, "\\\\");
+                    break;
+                case '"':
+                    rt_sb_append_cstr(sb, "\\\"");
+                    break;
+                case '\n':
+                    rt_sb_append_cstr(sb, "\\n");
+                    break;
+                case '\r':
+                    rt_sb_append_cstr(sb, "\\r");
+                    break;
+                case '\t':
+                    rt_sb_append_cstr(sb, "\\t");
+                    break;
+                case '\b':
+                    rt_sb_append_cstr(sb, "\\b");
+                    break;
+                case '\f':
+                    rt_sb_append_cstr(sb, "\\f");
+                    break;
+                default:
+                    if ((unsigned char)*p < 0x20) {
+                        char esc[7];
+                        snprintf(esc, sizeof(esc), "\\u%04x", (unsigned char)*p);
+                        rt_sb_append_cstr(sb, esc);
+                    } else {
+                        rt_sb_append_bytes(sb, p, 1);
+                    }
+                    break;
+            }
+        }
+    }
+    rt_sb_append_cstr(sb, "\"");
+}
+
+static void append_toml_key(rt_string_builder *sb, const char *key) {
+    if (is_bare_key(key))
+        rt_sb_append_bytes(sb, key, strlen(key));
+    else
+        append_quoted_toml_string(sb, key ? key : "");
+}
+
+static void append_toml_value(rt_string_builder *sb, void *val) {
+    if (!val) {
+        append_quoted_toml_string(sb, "");
+        return;
+    }
+
+    if (rt_string_is_handle(val)) {
+        append_quoted_toml_string(sb, rt_string_cstr((rt_string)val));
+        return;
+    }
+
+    int64_t box_type = rt_box_type(val);
+    char buf[96];
+    switch (box_type) {
+        case RT_BOX_I1:
+            rt_sb_append_cstr(sb, rt_unbox_i1(val) ? "true" : "false");
+            return;
+        case RT_BOX_I64:
+            snprintf(buf, sizeof(buf), "%lld", (long long)rt_unbox_i64(val));
+            rt_sb_append_bytes(sb, buf, strlen(buf));
+            return;
+        case RT_BOX_F64:
+            snprintf(buf, sizeof(buf), "%.17g", rt_unbox_f64(val));
+            rt_sb_append_bytes(sb, buf, strlen(buf));
+            return;
+        case RT_BOX_STR: {
+            rt_string s = rt_unbox_str(val);
+            append_quoted_toml_string(sb, rt_string_cstr(s));
+            rt_string_unref(s);
+            return;
+        }
+        default:
+            break;
+    }
+
+    if (is_seq_obj(val)) {
+        rt_sb_append_cstr(sb, "[");
+        int64_t len = rt_seq_len(val);
+        for (int64_t i = 0; i < len; i++) {
+            if (i > 0)
+                rt_sb_append_cstr(sb, ", ");
+            append_toml_value(sb, rt_seq_get(val, i));
+        }
+        rt_sb_append_cstr(sb, "]");
+        return;
+    }
+
+    append_quoted_toml_string(sb, "");
+}
+
 /// @brief Format a Map as a TOML document string.
 rt_string rt_toml_format(void *map) {
     if (!map)
+        return rt_string_from_bytes("", 0);
+    if (!is_map_obj(map))
         return rt_string_from_bytes("", 0);
 
     rt_string_builder sb;
@@ -396,42 +515,35 @@ rt_string rt_toml_format(void *map) {
         void *val = rt_map_get(map, key);
         const char *key_cstr = rt_string_cstr(key);
 
-        // Check if value is a sub-map
-        void *sub_keys = rt_map_keys(val);
-        if (sub_keys && rt_seq_len(sub_keys) >= 0) {
-            // It's a section - try to format as section
-            // But first we need to tell if it's really a map
-            // Simple heuristic: try rt_map_len
-            int64_t sub_len = rt_map_len(val);
-            if (sub_len > 0) {
-                rt_sb_append_cstr(&sb, "[");
-                rt_sb_append_bytes(&sb, key_cstr, strlen(key_cstr));
-                rt_sb_append_cstr(&sb, "]\n");
+        if (is_map_obj(val)) {
+            rt_sb_append_cstr(&sb, "[");
+            append_toml_key(&sb, key_cstr);
+            rt_sb_append_cstr(&sb, "]\n");
 
-                void *sub_k = rt_map_keys(val);
-                for (int64_t j = 0; j < rt_seq_len(sub_k); j++) {
-                    rt_string sk = (rt_string)rt_seq_get(sub_k, j);
-                    void *sv = rt_map_get(val, sk);
-                    const char *sk_cstr = rt_string_cstr(sk);
-                    rt_sb_append_bytes(&sb, sk_cstr, strlen(sk_cstr));
-                    rt_sb_append_cstr(&sb, " = \"");
-                    const char *sv_cstr = rt_string_cstr((rt_string)sv);
-                    rt_sb_append_bytes(&sb, sv_cstr, strlen(sv_cstr));
-                    rt_sb_append_cstr(&sb, "\"\n");
-                }
+            void *sub_k = rt_map_keys(val);
+            for (int64_t j = 0; j < rt_seq_len(sub_k); j++) {
+                rt_string sk = (rt_string)rt_seq_get(sub_k, j);
+                void *sv = rt_map_get(val, sk);
+                if (is_map_obj(sv))
+                    continue;
+                const char *sk_cstr = rt_string_cstr(sk);
+                append_toml_key(&sb, sk_cstr);
+                rt_sb_append_cstr(&sb, " = ");
+                append_toml_value(&sb, sv);
                 rt_sb_append_cstr(&sb, "\n");
-                continue;
             }
+            release_obj_maybe(sub_k);
+            rt_sb_append_cstr(&sb, "\n");
+            continue;
         }
 
-        // Simple key = value
-        rt_sb_append_bytes(&sb, key_cstr, strlen(key_cstr));
-        rt_sb_append_cstr(&sb, " = \"");
-        const char *val_cstr = rt_string_cstr((rt_string)val);
-        rt_sb_append_bytes(&sb, val_cstr, strlen(val_cstr));
-        rt_sb_append_cstr(&sb, "\"\n");
+        append_toml_key(&sb, key_cstr);
+        rt_sb_append_cstr(&sb, " = ");
+        append_toml_value(&sb, val);
+        rt_sb_append_cstr(&sb, "\n");
     }
 
+    release_obj_maybe(keys);
     rt_string result = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
     return result;

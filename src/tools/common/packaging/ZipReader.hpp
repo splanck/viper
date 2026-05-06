@@ -32,13 +32,13 @@ namespace viper::pkg {
 
 /// @brief A single entry in a ZIP archive.
 struct ZipEntry {
-    std::string name;
-    uint32_t compressedSize;
-    uint32_t uncompressedSize;
-    uint16_t method; ///< 0=stored, 8=deflate
-    uint16_t flags{0};
-    uint32_t crc32;
-    uint32_t localHeaderOffset;
+    std::string name;                ///< Entry path as stored in the central directory.
+    uint32_t compressedSize{0};      ///< Compressed byte count in the local data record.
+    uint32_t uncompressedSize{0};    ///< Original byte count after decompression.
+    uint16_t method{0};              ///< Compression method: 0=stored, 8=deflate.
+    uint16_t flags{0};               ///< General-purpose bit flags from the local header.
+    uint32_t crc32{0};               ///< CRC-32 of the uncompressed data.
+    uint32_t localHeaderOffset{0};   ///< Offset of the local file header from the start of the archive.
 };
 
 /// @brief Error thrown on invalid ZIP data.
@@ -74,6 +74,8 @@ class ZipReader {
     size_t len_;
     std::vector<ZipEntry> entries_;
 
+    /// @brief Scan the end-of-central-directory record to locate and parse
+    ///        all central directory entries, populating entries_.
     void parseCentralDirectory();
 };
 

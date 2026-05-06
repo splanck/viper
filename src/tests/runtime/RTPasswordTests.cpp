@@ -24,6 +24,10 @@ static void test_result(const char *name, bool passed) {
     assert(passed);
 }
 
+static rt_string make_string_raw(const char *data, size_t len) {
+    return rt_string_from_bytes(data, len);
+}
+
 //=============================================================================
 // Password Hash Format Tests
 //=============================================================================
@@ -151,6 +155,18 @@ static void test_password_verify() {
         test_result("Custom iteration hash verifies", result == 1);
     }
 
+    // Test 7: Embedded NUL bytes in passwords are significant
+    {
+        const char full_raw[] = {'p', 'a', 's', 's', 0, 'w', 'o', 'r', 'd'};
+        rt_string full_password = make_string_raw(full_raw, sizeof(full_raw));
+        rt_string prefix_password = rt_const_cstr("pass");
+        rt_string hash = rt_password_hash_with_iterations(full_password, 100000);
+        test_result("Embedded NUL password verifies",
+                    rt_password_verify(full_password, hash) == 1);
+        test_result("Embedded NUL password differs from prefix",
+                    rt_password_verify(prefix_password, hash) == 0);
+    }
+
     printf("\n");
 }
 
@@ -199,6 +215,38 @@ static void test_password_invalid_input() {
         rt_string password = rt_const_cstr("password");
         int8_t result = rt_password_verify(password, NULL);
         test_result("NULL hash input returns 0", result == 0);
+    }
+
+    // Test 6: Malformed Base64 padding is rejected
+    {
+        rt_string password = rt_const_cstr("password");
+        rt_string invalid_hash = rt_const_cstr("PBKDF2$100000$AAA=AAAAAAAAAAAAAAAAAAAA$"
+                                               "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+        int8_t result = rt_password_verify(password, invalid_hash);
+        test_result("Malformed salt base64 padding returns 0", result == 0);
+    }
+
+    // Test 7: Wrong decoded hash length is rejected before comparison
+    {
+        rt_string password = rt_const_cstr("password");
+        rt_string invalid_hash = rt_const_cstr("PBKDF2$100000$AAAAAAAAAAAAAAAAAAAAAA==$"
+                                               "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+        int8_t result = rt_password_verify(password, invalid_hash);
+        test_result("Wrong hash base64 shape returns 0", result == 0);
+    }
+
+    // Test 8: Embedded NUL in stored hash is rejected
+    {
+        const char raw[] = "PBKDF2$100000$AAAAAAAAAAAAAAAAAAAAAA==$"
+                           "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+        char with_nul[sizeof(raw) + 5];
+        memcpy(with_nul, raw, sizeof(raw) - 1);
+        with_nul[sizeof(raw) - 1] = '\0';
+        memcpy(with_nul + sizeof(raw), "junk", 5);
+        rt_string password = rt_const_cstr("password");
+        rt_string invalid_hash = make_string_raw(with_nul, sizeof(with_nul));
+        int8_t result = rt_password_verify(password, invalid_hash);
+        test_result("Stored hash with embedded NUL returns 0", result == 0);
     }
 
     printf("\n");

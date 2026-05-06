@@ -5,11 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-/// @file rt_crypto.c
-/// @brief Cryptographic primitives for TLS support.
-///
-/// Implements SHA-256, HMAC-SHA256, HKDF, ChaCha20-Poly1305 AEAD, and X25519.
-/// All implementations are self-contained with no external dependencies.
+// File: src/runtime/network/rt_crypto.c
+// Purpose: Cryptographic primitives for TLS support: SHA-256/384/512, HMAC-SHA256,
+//          HKDF (RFC 5869), ChaCha20-Poly1305 AEAD (RFC 8439), AES-128-GCM
+//          (NIST SP 800-38D), and X25519 key exchange (RFC 7748). All implemented
+//          in pure C with no external dependencies.
+//
+// Key invariants:
+//   - All key material is zeroed before return using rt_secure_zero to prevent
+//     stack-residue leaks even when the compiler would otherwise elide the writes.
+//   - AEAD tag verification is always constant-time (XOR accumulator).
+//   - RT_CHACHA20_MAX_BYTES and RT_AES_GCM_MAX_BYTES enforce per-key size limits.
+//   - Random byte generation traps rather than falling back to a predictable source.
+//
+// Ownership/Lifetime:
+//   - Pure functions operating on caller-provided buffers; no heap allocation.
+//
+// Links: rt_crypto.h, rt_tls.c
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,7 +38,7 @@ extern void arc4random_buf(void *buf, size_t nbytes);
 #endif
 
 #define RT_HKDF_MAX_OKM_LEN (255u * 32u)
-#define RT_CHACHA20_MAX_BYTES (UINT64_C(1) << 38)
+#define RT_CHACHA20_MAX_BYTES (((UINT64_C(1) << 32) - 1u) * 64u)
 #define RT_AES_GCM_MAX_BYTES (((UINT64_C(1) << 32) - 2u) * 16u)
 
 /// @brief Secure memory zeroing that the compiler cannot optimize away.
@@ -36,6 +48,20 @@ static void rt_secure_zero(void *ptr, size_t len) {
     volatile unsigned char *p = (volatile unsigned char *)ptr;
     while (len--)
         *p++ = 0;
+}
+
+/// @brief Store a 64-bit value as 8 little-endian bytes.
+/// Used to encode the AAD and ciphertext length fields in AEAD constructions.
+static void store64_le(uint8_t out[8], uint64_t value) {
+    for (int i = 0; i < 8; i++)
+        out[i] = (uint8_t)(value >> (8 * i));
+}
+
+/// @brief Return non-zero if both lengths can be safely multiplied by 8 to get bit counts.
+/// GCM length block encodes aad_len and ct_len in bits as 64-bit big-endian values;
+/// overflow would silently produce a wrong tag.
+static int gcm_lengths_valid(size_t aad_len, size_t text_len) {
+    return (uint64_t)aad_len <= UINT64_MAX / 8 && (uint64_t)text_len <= UINT64_MAX / 8;
 }
 
 //=============================================================================
@@ -236,6 +262,11 @@ static const uint64_t sha512_k[80] = {
 #define SIG0_64(x) (ROTR64((x), 1) ^ ROTR64((x), 8) ^ ((x) >> 7))
 #define SIG1_64(x) (ROTR64((x), 19) ^ ROTR64((x), 61) ^ ((x) >> 6))
 
+/// @brief Apply one 128-byte block to the SHA-512/384 compression function.
+///
+/// Mirrors sha256_transform but operates on 64-bit words, 80 rounds, and the
+/// FIPS 180-4 SHA-512 message schedule (SIG0_64/SIG1_64 macros). Used by both
+/// SHA-384 and SHA-512 since they share the same compression function.
 static void sha512_transform(rt_sha512_ctx_internal *ctx, const uint8_t data[128]) {
     uint64_t a, b, c, d, e, f, g, h, t1, t2, w[80];
 
@@ -280,6 +311,8 @@ static void sha512_transform(rt_sha512_ctx_internal *ctx, const uint8_t data[128
     ctx->state[7] += h;
 }
 
+/// @brief Initialise SHA-512 or SHA-384 context with the correct FIPS 180-4 IV.
+/// @param is_sha384 Non-zero to use SHA-384 IVs; zero for SHA-512.
 static void sha512_family_init(rt_sha512_ctx_internal *ctx, int is_sha384) {
     if (is_sha384) {
         ctx->state[0] = 0xcbbb9d5dc1059ed8ULL;
@@ -304,6 +337,12 @@ static void sha512_family_init(rt_sha512_ctx_internal *ctx, int is_sha384) {
     ctx->count_lo = 0;
 }
 
+/// @brief Feed bytes into a SHA-512/384 rolling context.
+///
+/// Equivalent to rt_sha256_update but with a 128-byte block and a
+/// 128-bit count (count_hi/count_lo) to handle the >2^64 bit-length
+/// that SHA-512 supports in theory. In practice `count_hi` carries
+/// overflow from count_lo so the implementation handles files > 2 EiB.
 static void sha512_family_update(rt_sha512_ctx_internal *ctx, const void *data, size_t len) {
     const uint8_t *ptr = (const uint8_t *)data;
     size_t idx = (size_t)((ctx->count_lo >> 3) & 127u);
@@ -329,6 +368,13 @@ static void sha512_family_update(rt_sha512_ctx_internal *ctx, const void *data, 
     }
 }
 
+/// @brief Finalise a SHA-512/384 context, writing `digest_len` bytes to `digest`.
+/// @param digest_len 48 for SHA-384, 64 for SHA-512.
+///
+/// Appends the 0x80 byte + zero padding + 128-bit big-endian length and
+/// processes the remaining blocks. The outer caller truncates the state
+/// by passing the appropriate digest_len; the state words are serialised
+/// big-endian, byte-by-byte.
 static void sha512_family_final(
     rt_sha512_ctx_internal *ctx, uint8_t *digest, size_t digest_len) {
     uint64_t bits_hi = ctx->count_hi;
@@ -365,6 +411,7 @@ static void sha512_family_final(
     }
 }
 
+/// @brief One-shot SHA-384: init → update → final → 48-byte digest.
 void rt_sha384(const void *data, size_t len, uint8_t digest[48]) {
     rt_sha512_ctx_internal ctx;
     sha512_family_init(&ctx, 1);
@@ -372,6 +419,7 @@ void rt_sha384(const void *data, size_t len, uint8_t digest[48]) {
     sha512_family_final(&ctx, digest, 48);
 }
 
+/// @brief One-shot SHA-512: init → update → final → 64-byte digest.
 void rt_sha512(const void *data, size_t len, uint8_t digest[64]) {
     rt_sha512_ctx_internal ctx;
     sha512_family_init(&ctx, 0);
@@ -458,6 +506,10 @@ int rt_hkdf_expand(
     uint8_t counter = 1;
     size_t pos = 0;
 
+    if (!prk || !okm)
+        return -1;
+    if (!info && info_len > 0)
+        return -1;
     if (okm_len > RT_HKDF_MAX_OKM_LEN)
         return -1;
 
@@ -523,6 +575,13 @@ int rt_hkdf_expand_label(const uint8_t secret[32],
     uint8_t hkdf_label[512];
     size_t pos = 0;
 
+    if (!secret || !label || !out)
+        return -1;
+    if (!context && context_len > 0)
+        return -1;
+    if (out_len > RT_HKDF_MAX_OKM_LEN || out_len > UINT16_MAX)
+        return -1;
+
     // Length (2 bytes, big-endian)
     hkdf_label[pos++] = (out_len >> 8) & 0xFF;
     hkdf_label[pos++] = out_len & 0xFF;
@@ -532,8 +591,6 @@ int rt_hkdf_expand_label(const uint8_t secret[32],
     size_t prefix_len = 6;
     size_t label_len = strlen(label);
 
-    if (out_len > RT_HKDF_MAX_OKM_LEN)
-        return -1;
     if (prefix_len + label_len > 255 || context_len > 255)
         return -1;
     if (2 + 1 + prefix_len + label_len + 1 + context_len > sizeof(hkdf_label))
@@ -648,12 +705,12 @@ static void chacha20_init(uint32_t state[16],
 /// Generates one 64-byte keystream block per iteration, advancing
 /// the block counter. Aborts the loop if the counter wraps to zero
 /// (256 GiB with the same key+nonce) so we never reuse keystream.
-static void chacha20_crypt(const uint8_t key[32],
-                           const uint8_t nonce[12],
-                           uint32_t counter,
-                           const uint8_t *in,
-                           uint8_t *out,
-                           size_t len) {
+static int chacha20_crypt(const uint8_t key[32],
+                          const uint8_t nonce[12],
+                          uint32_t counter,
+                          const uint8_t *in,
+                          uint8_t *out,
+                          size_t len) {
     uint32_t state[16];
     uint8_t keystream[64];
 
@@ -668,9 +725,10 @@ static void chacha20_crypt(const uint8_t key[32],
         out += use;
         len -= use;
         // Increment counter; abort if it wraps to prevent keystream reuse
-        if (++state[12] == 0)
-            break;
+        if (++state[12] == 0 && len > 0)
+            return -1;
     }
+    return 0;
 }
 
 //=============================================================================
@@ -952,16 +1010,24 @@ size_t rt_chacha20_poly1305_encrypt(const uint8_t key[32],
                                     const void *plaintext,
                                     size_t plaintext_len,
                                     uint8_t *ciphertext) {
+    if (!key || !nonce || !ciphertext)
+        return 0;
+    if ((!aad && aad_len > 0) || (!plaintext && plaintext_len > 0))
+        return 0;
     if ((uint64_t)plaintext_len > RT_CHACHA20_MAX_BYTES)
         return 0;
 
     // Generate Poly1305 key (block 0)
     uint8_t poly_key[64];
     uint8_t zeros[64] = {0};
-    chacha20_crypt(key, nonce, 0, zeros, poly_key, 64);
+    if (chacha20_crypt(key, nonce, 0, zeros, poly_key, 64) != 0)
+        return 0;
 
     // Encrypt plaintext (starting at block 1)
-    chacha20_crypt(key, nonce, 1, (const uint8_t *)plaintext, ciphertext, plaintext_len);
+    if (chacha20_crypt(key, nonce, 1, (const uint8_t *)plaintext, ciphertext, plaintext_len) != 0) {
+        rt_secure_zero(poly_key, sizeof(poly_key));
+        return 0;
+    }
 
     // Compute tag
     poly1305_ctx poly;
@@ -973,16 +1039,8 @@ size_t rt_chacha20_poly1305_encrypt(const uint8_t key[32],
 
     // Lengths (little-endian)
     uint8_t lens[16];
-    lens[0] = aad_len & 0xFF;
-    lens[1] = (aad_len >> 8) & 0xFF;
-    lens[2] = (aad_len >> 16) & 0xFF;
-    lens[3] = (aad_len >> 24) & 0xFF;
-    lens[4] = lens[5] = lens[6] = lens[7] = 0;
-    lens[8] = plaintext_len & 0xFF;
-    lens[9] = (plaintext_len >> 8) & 0xFF;
-    lens[10] = (plaintext_len >> 16) & 0xFF;
-    lens[11] = (plaintext_len >> 24) & 0xFF;
-    lens[12] = lens[13] = lens[14] = lens[15] = 0;
+    store64_le(lens, (uint64_t)aad_len);
+    store64_le(lens + 8, (uint64_t)plaintext_len);
     poly1305_update(&poly, lens, 16);
 
     poly1305_final(&poly, ciphertext + plaintext_len);
@@ -1008,6 +1066,10 @@ long rt_chacha20_poly1305_decrypt(const uint8_t key[32],
                                   const void *ciphertext,
                                   size_t ciphertext_len,
                                   uint8_t *plaintext) {
+    if (!key || !nonce || !ciphertext)
+        return -1;
+    if ((!aad && aad_len > 0) || (!plaintext && ciphertext_len > 16))
+        return -1;
     if (ciphertext_len < 16)
         return -1;
 
@@ -1019,7 +1081,8 @@ long rt_chacha20_poly1305_decrypt(const uint8_t key[32],
     // Generate Poly1305 key
     uint8_t poly_key[64];
     uint8_t zeros[64] = {0};
-    chacha20_crypt(key, nonce, 0, zeros, poly_key, 64);
+    if (chacha20_crypt(key, nonce, 0, zeros, poly_key, 64) != 0)
+        return -1;
 
     // Verify tag
     poly1305_ctx poly;
@@ -1030,16 +1093,8 @@ long rt_chacha20_poly1305_decrypt(const uint8_t key[32],
     pad16(&poly, data_len);
 
     uint8_t lens[16];
-    lens[0] = aad_len & 0xFF;
-    lens[1] = (aad_len >> 8) & 0xFF;
-    lens[2] = (aad_len >> 16) & 0xFF;
-    lens[3] = (aad_len >> 24) & 0xFF;
-    lens[4] = lens[5] = lens[6] = lens[7] = 0;
-    lens[8] = data_len & 0xFF;
-    lens[9] = (data_len >> 8) & 0xFF;
-    lens[10] = (data_len >> 16) & 0xFF;
-    lens[11] = (data_len >> 24) & 0xFF;
-    lens[12] = lens[13] = lens[14] = lens[15] = 0;
+    store64_le(lens, (uint64_t)aad_len);
+    store64_le(lens + 8, (uint64_t)data_len);
     poly1305_update(&poly, lens, 16);
 
     uint8_t computed_tag[16];
@@ -1055,7 +1110,10 @@ long rt_chacha20_poly1305_decrypt(const uint8_t key[32],
     }
 
     // Decrypt
-    chacha20_crypt(key, nonce, 1, (const uint8_t *)ciphertext, plaintext, data_len);
+    if (chacha20_crypt(key, nonce, 1, (const uint8_t *)ciphertext, plaintext, data_len) != 0) {
+        rt_secure_zero(poly_key, sizeof(poly_key));
+        return -1;
+    }
 
     // Zero key material to prevent stack residue
     rt_secure_zero(poly_key, sizeof(poly_key));
@@ -1294,7 +1352,13 @@ size_t rt_aes128_gcm_encrypt(const uint8_t key[16],
                              const void *plaintext,
                              size_t plaintext_len,
                              uint8_t *ciphertext) {
+    if (!key || !nonce || !ciphertext)
+        return 0;
+    if ((!aad && aad_len > 0) || (!plaintext && plaintext_len > 0))
+        return 0;
     if ((uint64_t)plaintext_len > RT_AES_GCM_MAX_BYTES)
+        return 0;
+    if (!gcm_lengths_valid(aad_len, plaintext_len))
         return 0;
 
     uint8_t rk[176];
@@ -1361,11 +1425,17 @@ long rt_aes128_gcm_decrypt(const uint8_t key[16],
                            const void *ciphertext,
                            size_t ciphertext_len,
                            uint8_t *plaintext) {
+    if (!key || !nonce || !ciphertext)
+        return -1;
+    if ((!aad && aad_len > 0) || (!plaintext && ciphertext_len > 16))
+        return -1;
     if (ciphertext_len < 16)
         return -1;
 
     size_t data_len = ciphertext_len - 16;
     if ((uint64_t)data_len > RT_AES_GCM_MAX_BYTES)
+        return -1;
+    if (!gcm_lengths_valid(aad_len, data_len))
         return -1;
     const uint8_t *ct = (const uint8_t *)ciphertext;
     const uint8_t *recv_tag = ct + data_len;
@@ -1831,8 +1901,14 @@ void rt_x25519_keygen(uint8_t secret[32], uint8_t public_key[32]) {
 ///
 /// Used by TLS 1.3 (RFC 8446 §7.4.2) and other protocols that need
 /// an ECDH key agreement step.
-void rt_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t shared[32]) {
+int rt_x25519(const uint8_t secret[32], const uint8_t peer_public[32], uint8_t shared[32]) {
+    if (!secret || !peer_public || !shared)
+        return -1;
     x25519_scalarmult(shared, secret, peer_public);
+    uint8_t any = 0;
+    for (int i = 0; i < 32; i++)
+        any |= shared[i];
+    return any == 0 ? -1 : 0;
 }
 
 //=============================================================================

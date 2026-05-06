@@ -40,6 +40,10 @@ static void *make_bytes_str(const char *str) {
     return make_bytes((const uint8_t *)str, strlen(str));
 }
 
+static rt_string make_string_raw(const uint8_t *data, size_t len) {
+    return rt_string_from_bytes((const char *)data, len);
+}
+
 /// @brief Clone a Bytes object.
 static void *clone_bytes(void *src) {
     int64_t len = rt_bytes_len(src);
@@ -171,6 +175,12 @@ static void test_key_based_encrypt_decrypt() {
 
         void *decrypted = rt_cipher_decrypt_with_key(encrypted, key);
         test_result("DecryptWithKey roundtrip", bytes_equal(plain, decrypted));
+
+        void *tampered = clone_bytes(encrypted);
+        int64_t last = rt_bytes_len(tampered) - 1;
+        rt_bytes_set(tampered, last, rt_bytes_get(tampered, last) ^ 0x01);
+        void *bad = rt_cipher_decrypt_with_key(tampered, key);
+        test_result("DecryptWithKey auth failure returns NULL", bad == NULL);
     }
 
     // Test 2: Key-based encryption is smaller (no salt)
@@ -246,6 +256,18 @@ static void test_key_derivation() {
         void *decrypted = rt_cipher_decrypt_with_key(encrypted, key);
 
         test_result("Derived key roundtrip", bytes_equal(plain, decrypted));
+    }
+
+    // Test 5: Embedded NUL bytes in passwords are significant
+    {
+        uint8_t password_raw[] = {'s', 'e', 'c', 'r', 'e', 't', 0, 'x'};
+        rt_string full_password = make_string_raw(password_raw, sizeof(password_raw));
+        rt_string prefix_password = rt_const_cstr("secret");
+        void *salt = make_bytes_str("common-salt!!!!!");
+
+        void *full_key = rt_cipher_derive_key(full_password, salt);
+        void *prefix_key = rt_cipher_derive_key(prefix_password, salt);
+        test_result("Embedded NUL password changes derived key", !bytes_equal(full_key, prefix_key));
     }
 
     printf("\n");

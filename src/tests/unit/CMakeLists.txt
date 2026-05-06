@@ -1123,6 +1123,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_tls_cert PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_tls_cert test_rt_tls_cert)
 
+    viper_add_test(test_rt_tls_wrapper ${VIPER_TESTS_DIR}/runtime/RTTlsWrapperTests.cpp)
+    target_link_libraries(test_rt_tls_wrapper PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_tls_wrapper test_rt_tls_wrapper)
+
     viper_add_test(test_rt_http2 ${VIPER_TESTS_DIR}/runtime/RTHttp2Tests.cpp)
     target_link_libraries(test_rt_http2 PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_http2 test_rt_http2)

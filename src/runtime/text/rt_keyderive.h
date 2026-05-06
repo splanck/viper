@@ -36,7 +36,7 @@ extern "C" {
 /// @param iterations Number of iterations (minimum 1000).
 /// @param key_len Desired key length in bytes (1-1024).
 /// @return Derived key as a Bytes object.
-/// @note Traps if iterations < 1000 or key_len not in [1, 1024].
+/// @note Iterations below 1000 are raised to 1000. Traps if key_len is not in [1, 1024].
 void *rt_keyderive_pbkdf2_sha256(rt_string password,
                                  void *salt,
                                  int64_t iterations,
@@ -48,7 +48,7 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
 /// @param iterations Number of iterations (minimum 1000).
 /// @param key_len Desired key length in bytes (1-1024).
 /// @return Derived key as lowercase hex string.
-/// @note Traps if iterations < 1000 or key_len not in [1, 1024].
+/// @note Iterations below 1000 are raised to 1000. Traps if key_len is not in [1, 1024].
 rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
                                          void *salt,
                                          int64_t iterations,

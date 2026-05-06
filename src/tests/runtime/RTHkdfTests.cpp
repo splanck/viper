@@ -202,6 +202,27 @@ static void test_hkdf_rejects_oversized_output() {
     printf("\n");
 }
 
+static void test_hkdf_rejects_invalid_pointer_lengths() {
+    printf("Testing HKDF pointer/length validation:\n");
+
+    uint8_t prk[32];
+    uint8_t okm[32];
+    uint8_t info[1] = {0};
+    memset(prk, 0x42, sizeof(prk));
+
+    test_result("Expand rejects NULL info with nonzero length",
+                rt_hkdf_expand(prk, nullptr, 1, okm, sizeof(okm)) != 0);
+    test_result("ExpandLabel rejects NULL label",
+                rt_hkdf_expand_label(prk, nullptr, nullptr, 0, okm, sizeof(okm)) != 0);
+    test_result("ExpandLabel rejects NULL context with nonzero length",
+                rt_hkdf_expand_label(prk, "traffic upd", nullptr, 1, okm, sizeof(okm)) != 0);
+    test_result("Expand still accepts valid context",
+                rt_hkdf_expand_label(prk, "traffic upd", info, sizeof(info), okm, sizeof(okm)) ==
+                    0);
+
+    printf("\n");
+}
+
 //=============================================================================
 // Entry Point
 //=============================================================================
@@ -215,6 +236,7 @@ int main() {
     test_hkdf_repeatability();
     test_hmac_sha256_after_secure_zero();
     test_hkdf_rejects_oversized_output();
+    test_hkdf_rejects_invalid_pointer_lengths();
 
     printf("All HKDF tests passed!\n");
     return 0;
